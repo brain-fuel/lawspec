@@ -1,0 +1,39 @@
+unit example.alternatives
+
+render :: Int32 -> Text
+referenceRender :: Int32 -> Text
+clamp :: Int32 -> Int32
+referenceClamp :: Int32 -> Int32
+
+law `decimal renderers agree` is
+  definition is
+    `equivalent` render referenceRender
+  end
+  description is
+    "{render} agrees with {referenceRender} on decimal formatting"
+  end
+  rationale is
+    "changing the formatting implementation must preserve its result"
+  end
+  example `negative integer` is
+    x = -42
+  end
+  example `zero` is
+    x = 0
+  end
+end
+
+law `nonnegative clamps agree` is
+  definition is
+    `equivalent` clamp referenceClamp
+  end
+  description is
+    "{clamp} agrees with {referenceClamp} when clamping negative inputs to zero"
+  end
+  example `negative boundary` is
+    x = -2147483648
+  end
+  example `positive boundary` is
+    x = 2147483647
+  end
+end

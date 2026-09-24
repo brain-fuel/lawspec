@@ -60,7 +60,13 @@ try {
     [
       "--input-type=module",
       "-e",
-      `import {createCompiler} from 'lawspec'; const c=await createCompiler(); const r=await c.check({sources:[]}); if(r.diagnostics.length)throw new Error(JSON.stringify(r)); console.log('Typed API entry point loads');`,
+      `import {createCompiler} from 'lawspec';
+       import {readFileSync} from 'node:fs';
+       const c=await createCompiler();
+       const source=readFileSync(new URL('./examples/specs/equivalent.lawspec', import.meta.resolve('lawspec')), 'utf8');
+       const r=await c.expand({sources:[{path:'equivalent.lawspec',content:source}]});
+       if(r.diagnostics.length || r.laws.length!==2 || !r.expansions[0].includes('referenceRender'))throw new Error(JSON.stringify(r));
+       console.log('Installed API expands the bundled equivalent examples');`,
     ],
     app,
   );

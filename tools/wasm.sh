@@ -11,5 +11,7 @@ core_file="$(cd wasm && wasm32-wasi-cabal list-bin lawspec-wasm)"
 "$(wasm32-wasi-ghc --print-libdir)/post-link.mjs" --input "$core_file" --output npm/core_jsffi.js
 cp "$core_file" npm/core.wasm
 cp examples/specs/atoi_codec.lawspec npm/starter.lawspec
+mkdir -p npm/examples/specs
+cp examples/specs/*.lawspec npm/examples/specs/
 cp README.md LICENSE npm/
 node tools/build-integrity.mjs --record

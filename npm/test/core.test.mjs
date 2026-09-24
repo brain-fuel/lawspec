@@ -76,3 +76,35 @@ test("invalid examples, types and source syntax return structured diagnostics", 
     assert.equal(typeof result.diagnostics[0].message, "string");
   }
 });
+
+test("equivalent specializes both result types on every backend", async () => {
+  const content = await readFile(
+    new URL("../../examples/specs/equivalent.lawspec", import.meta.url),
+    "utf8",
+  );
+  const request = { sources: [{ path: "equivalent.lawspec", content }] };
+  const expanded = await compiler.expand(request);
+  assert.deepEqual(expanded.diagnostics, []);
+  assert.deepEqual(expanded.expansions, [
+    "for all (x :: Int32) . render (x) = referenceRender (x)",
+    "for all (x :: Int32) . clamp (x) = referenceClamp (x)",
+  ]);
+  for (const target of [
+    "java",
+    "python",
+    "javascript",
+    "typescript",
+    "go",
+    "haskell",
+    "kotlin",
+  ]) {
+    const result = await compiler.planGeneration({ ...request, target });
+    assert.deepEqual(result.diagnostics, []);
+    assert.deepEqual(
+      result.files.map((f) => f.ownership),
+      ["user", "generated"],
+    );
+    assert.match(result.files[1].content, /decimal renderers agree/);
+    assert.match(result.files[1].content, /nonnegative clamps agree/);
+  }
+});

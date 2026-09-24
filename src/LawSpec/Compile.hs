@@ -134,7 +134,7 @@ compile sources = do
       checkedInputs <- forM bs $ \v -> do
         t <- resolve (inputType v)
         unless (validType t || (symbolic && case t of Named ('@':_) -> True; _ -> False)) (throwC "unsupported quantified type")
-        when (not symbolic && t /= Named "Int32") (throwC "v0.1 generates quantified inputs of type Int32 only")
+        when (not symbolic && t /= Named "Int32") (throwC "v0.2 generates quantified inputs of type Int32 only")
         pure v{inputType=t}
       os <- gets obligations >>= mapM resolve
       allowed <- mapM (resolve . rigid) (requirements l)

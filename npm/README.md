@@ -2,7 +2,7 @@
 
 **State the law once. Check it everywhere.**
 
-LawSpec 0.1 compiles reusable laws into native property tests, executable examples,
+LawSpec 0.2 compiles reusable laws into native property tests, executable examples,
 and implementation adapters. The compiler is Haskell, distributed as prebuilt
 WebAssembly with a Node CLI and an asynchronous, typed JavaScript API.
 
@@ -12,12 +12,12 @@ The checkout includes the npm package in `npm/`. Build an installable archive:
 
 ```sh
 npm pack ./npm
-npm install --save-dev ./lawspec-0.1.0.tgz
+npm install --save-dev ./lawspec-0.2.0.tgz
 ```
 
 No Haskell toolchain is needed to install or run the npm package. Node 22+ and the
 selected target's build tools are required. The reference platforms are macOS
-and Linux. This checkout has not been published to the npm registry.
+and Linux. Stable releases are available as the `lawspec` package on npm.
 
 From an empty application directory, use the installed `lawspec` command:
 
@@ -54,7 +54,7 @@ properties with the selected framework's shrinking and failure reporting.
 | `kotlin` | JDK/JVM 25, Gradle 9.1–9.3, Kotlin 2.3.21 | Kotest 5.9.1 | `gradle test` |
 
 Java 25 and Python 3.13 are the minimum baselines. New JVM releases are admitted
-through compatibility profiles after testing; v0.1's current JVM profile certifies
+through compatibility profiles after testing; v0.2's current JVM profile certifies
 25. Python templates declare `requires-python = ">=3.13"` and runtime checks
 currently recognize 3.13 and 3.14. Kotlin templates pin Gradle's supported build
 configuration to Kotlin 2.3.21 and target JVM 25.
@@ -138,7 +138,8 @@ law `round trip` is
 end
 ```
 
-The implicit prelude defines `left inverse` and `round trip identity is preserved`.
+The implicit prelude defines `left inverse`, `round trip identity is preserved`,
+and `equivalent`.
 A law may reference a local reusable law or a prelude law. The compiler performs
 capture-avoiding expansion and specializes types; it does not recognize codec
 function names specially. `explain` shows the final property:
@@ -150,7 +151,7 @@ for all (x :: Int32) . atoi (itoa (x)) = x
 Reusable laws can declare typed unary function parameters and `requires Eq a`.
 Definitions support law application, function application/composition, universal
 quantification, integer literals and equality. Function signatures use `Int32`
-and `Text`; generic variables are supported in reusable laws. v0.1 generates
+and `Text`; generic variables are supported in reusable laws. v0.2 generates
 quantified `Int32` inputs, including multiple inputs. `Text` can be an intermediate
 or compared result. Functions are synchronous and unary.
 
@@ -164,6 +165,49 @@ definition, optional description, optional rationale, examples, optional referen
 Additional primitives, external law packages, cross-unit imports beyond the
 prelude, async functions, direct existing-symbol binding and browser hosting are
 outside this release.
+
+## Comparing alternative implementations
+
+`equivalent` compares two functions with the same input and output types. Its
+`Eq b` requirement applies to the **result**, so an `Int32 -> Text` comparison
+uses text equality, while `Int32 -> Int32` uses integer equality.
+
+```lawspec
+unit example.formatting
+
+render :: Int32 -> Text
+referenceRender :: Int32 -> Text
+
+law `decimal renderers agree` is
+  definition is
+    `equivalent` render referenceRender
+  end
+  example `negative integer` is
+    x = -42
+  end
+end
+```
+
+This expands to `for all (x :: Int32) . render (x) = referenceRender (x)`.
+The example inherits the input name `x` from the prelude. Both functions are
+user-owned adapter functions; either may delegate to your existing code.
+
+[The complete example](examples/specs/equivalent.lawspec) compares decimal
+renderers and two implementations that clamp negative integers to zero. For
+JavaScript, their adapters can be:
+
+```javascript
+export const render = x => String(x);
+export const referenceRender = x => x.toString(10);
+export const clamp = x => Math.max(0, x);
+export const referenceClamp = x => x < 0 ? 0 : x;
+```
+
+The same specification generates native tests for all seven targets. The
+integration suite checks both examples with matching implementations, then
+breaks each alternative separately to verify detection. Agreement does not
+establish that either implementation meets an independent specification; two
+implementations can share the same bug. Quantified inputs remain `Int32` in v0.2.
 
 ## Ownership
 

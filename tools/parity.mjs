@@ -17,6 +17,7 @@ const content = await readFile(
 );
 const compiler = await createCompiler();
 const fixtures = [
+  await readFile(path.join(root, "examples/specs/equivalent.lawspec"), "utf8"),
   content,
   content.replace("x = -42", "x = 2147483648"),
   content.replace("representing an Int32", "λ 日本語 😀 representing an Int32"),
@@ -43,4 +44,6 @@ for (const text of fixtures)
     );
     assert.deepEqual(await compiler.planGeneration(input), native);
   }
-console.log("Native/WASM parity: 21 fixture/target combinations passed.");
+console.log(
+  `Native/WASM parity: ${fixtures.length * 7} fixture/target combinations passed.`,
+);

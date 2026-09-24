@@ -23,6 +23,26 @@ main = hspec $ do
           prettyExpanded e `shouldBe` "for all (x :: Int32) . atoi (itoa (x)) = x"
           length (trace e) `shouldBe` 3
         Right other -> expectationFailure (show other)
+    it "expands equivalent with Text and Int32 results and inherited examples" $ do
+      s <- readFile "examples/specs/equivalent.lawspec"
+      case compile [Source "equivalent.lawspec" s] of
+        Left ds -> expectationFailure (show ds)
+        Right (_, es) -> do
+          map prettyExpanded es `shouldBe`
+            ["for all (x :: Int32) . render (x) = referenceRender (x)",
+             "for all (x :: Int32) . clamp (x) = referenceClamp (x)"]
+          map (map inputName . inputs) es `shouldBe` [["x"], ["x"]]
+          map (length . examples . original) es `shouldBe` [2, 2]
+    it "requires equality of the output type when wrapping equivalent" $ do
+      let wrapper eq = Source "generic.lawspec" ("unit generic\nlaw `alternatives` (f :: a -> b) (g :: a -> b) requires Eq " ++ eq ++ " is definition is `equivalent` f g end end")
+      compile [wrapper "b"] `shouldSatisfy` isRight
+      compile [wrapper "a"] `shouldSatisfy` isLeft
+    it "rejects equivalent functions with different result types" $
+      compile [Source "bad.lawspec" "unit bad\nf :: Int32 -> Text\ng :: Int32 -> Int32\nlaw `bad` is definition is `equivalent` f g end end"] `shouldSatisfy` isLeft
+    it "rejects equivalent functions with different input types" $
+      compile [Source "bad.lawspec" "unit bad\nf :: Int32 -> Int32\ng :: Text -> Int32\nlaw `bad` is definition is `equivalent` f g end end"] `shouldSatisfy` isLeft
+    it "expands equivalent without capturing an implementation named x" $
+      compile [Source "capture.lawspec" "unit capture\nx :: Int32 -> Text\ng :: Int32 -> Text\nlaw `ok` is definition is `equivalent` x g end example `zero` is x = 0 end end"] `shouldSatisfy` isRight
     it "rejects mismatched function directions" $
       compile [source (concrete "`left inverse` f g")] `shouldSatisfy` isLeft
     it "rejects recursive expansion" $

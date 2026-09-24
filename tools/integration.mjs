@@ -1,9 +1,10 @@
 // Runs generated tests against stubs, correct adapters, and deliberately broken adapters.
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { readFile, writeFile, readdir } from "node:fs/promises";
+import { readFile, writeFile, readdir, rm } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { equivalentAdapters } from "./equivalent-fixtures.mjs";
 const exec = promisify(execFile);
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const cli = path.join(repo, "npm/bin/lawspec.mjs");
@@ -84,9 +85,15 @@ async function testCommand(target, root, config, pass) {
     case "java":
       return run("mvn", ["-B", "-q", "test"], root, pass);
     case "python":
+      // Same-size mutations within one second can reuse Python's timestamp-based
+      // bytecode cache. Always load the freshly written fixture source.
+      await rm(path.join(root, "src/example/__pycache__"), {
+        recursive: true,
+        force: true,
+      });
       return run(
         config.targets[0].python || "python3",
-        ["-m", "pytest", "-q"],
+        ["-B", "-m", "pytest", "-q"],
         root,
         pass,
       );
@@ -140,23 +147,51 @@ async function verify(target) {
     path.join(root, "laws/purelaw.lawspec"),
     "unit purelaw\nlaw `reflexivity $ λ` is definition is `for all` (x :: Int32) . x = x end end\n",
   );
+  await writeFile(
+    path.join(root, "laws/equivalent.lawspec"),
+    await readFile(
+      path.join(repo, "examples/specs/equivalent.lawspec"),
+      "utf8",
+    ),
+  );
   await guardedGenerate([], root);
   const adapter = path.join(root, relative);
   const initial = await readFile(adapter, "utf8");
   if (initial.includes("TODO")) await testCommand(target, root, config, false);
+  const [
+    equivalentPath,
+    equivalentGood,
+    textWas,
+    textMutant,
+    intWas,
+    intMutant,
+  ] = equivalentAdapters[target];
+  const equivalentAdapter = path.join(root, equivalentPath);
+  await writeFile(equivalentAdapter, equivalentGood);
   await writeFile(adapter, good);
   try {
     await testCommand(target, root, config, true);
     await guardedGenerate(["--check"], root);
     if ((await readFile(adapter, "utf8")) !== good)
       throw new Error("User adapter changed");
+    if ((await readFile(equivalentAdapter, "utf8")) !== equivalentGood)
+      throw new Error("Equivalent adapter changed");
+    for (const [before, after] of [
+      [textWas, textMutant],
+      [intWas, intMutant],
+    ]) {
+      await writeFile(equivalentAdapter, equivalentGood.replace(before, after));
+      await testCommand(target, root, config, false);
+    }
+    await writeFile(equivalentAdapter, equivalentGood);
     await writeFile(adapter, good.replace(was, mutant));
     await testCommand(target, root, config, false);
   } finally {
+    await writeFile(equivalentAdapter, equivalentGood);
     await writeFile(adapter, good);
   }
   console.log(
-    `${target}: correct implementation passes; broken implementation fails; regeneration preserves adapter`,
+    `${target}: correct implementations pass; broken codec and Text/Int32 alternatives fail; regeneration preserves adapter`,
   );
 }
 const selected = process.argv.slice(2);

@@ -1,0 +1,31 @@
+unit example.atoi_codec
+
+itoa :: Int32 -> Text
+atoi :: Text -> Int32
+
+law `itoa and then atoi yields a` is
+  definition is
+    `round trip identity is preserved` itoa atoi
+  end
+
+  description is
+    "converting an Int32 to Text with {itoa} and then back with {atoi} yields the original Int32"
+  end
+
+  rationale is
+    "representing an Int32 as Text must not change its value"
+  end
+
+  example `negative integer` is
+    x = -42
+  end
+
+  example `zero` is
+    x = 0
+  end
+
+  references are
+    "left inverse"
+    "round-trip property"
+  end
+end
