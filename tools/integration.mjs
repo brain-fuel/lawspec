@@ -4,6 +4,7 @@ import { promisify } from "node:util";
 import { readFile, writeFile, readdir, rm } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { predicateAdapters } from "./predicate-fixtures.mjs";
 import { equivalentAdapters } from "./equivalent-fixtures.mjs";
 import { textAdapters, oracleMutants } from "./text-fixtures.mjs";
 const exec = promisify(execFile);
@@ -48,7 +49,7 @@ const implementations = {
   ],
   kotlin: [
     "src/main/kotlin/example/AtoiCodec.kt",
-    "package example\nfun itoa(value: Int): String = value.toString()\nfun atoi(value: String): Int = value.toInt()\n",
+    "package example\nobject AtoiCodec {\nfun itoa(value: Int): String = value.toString()\nfun atoi(value: String): Int = value.toInt()\n}\n",
     "value.toInt()",
     "0",
   ],
@@ -158,12 +159,33 @@ async function verify(target) {
       "utf8",
     ),
   );
-  for (const name of ["slug", "canonical_url", "mixed_inputs"]) {
+  for (const name of [
+    "slug",
+    "canonical_url",
+    "mixed_inputs",
+    "parse_port",
+    "boolean_flags",
+  ]) {
     await writeFile(
       path.join(root, `laws/${name}.lawspec`),
       await readFile(path.join(repo, `examples/specs/${name}.lawspec`), "utf8"),
     );
   }
+  // Mixed Bool/Text/Int32 generation, nested guards and a bare predicate.
+  await writeFile(
+    path.join(root, "laws/predicate_mixed.lawspec"),
+    `unit predicate_mixed
+law \`mixed guard\` is definition is
+ \`for all\` (flag :: Bool) (text :: Text) (number :: Int32) .
+ flag implies true implies flag
+end
+example \`enabled\` is flag = true text = "port" number = 443 expect flag = true end
+example \`disabled\` is flag = false text = "" number = 0 expect flag = false end
+end
+law \`two Boolean inputs\` is definition is
+ \`for all\` (a :: Bool) (b :: Bool) . a implies b implies a = b
+end end`,
+  );
   await guardedGenerate([], root);
   const adapter = path.join(root, relative);
   const initial = await readFile(adapter, "utf8");
@@ -177,6 +199,9 @@ async function verify(target) {
     intMutant,
   ] = equivalentAdapters[target];
   const equivalentAdapter = path.join(root, equivalentPath);
+  const predicateFiles = predicateAdapters(target);
+  for (const [file, content] of predicateFiles)
+    await writeFile(path.join(root, file), content);
   const textFiles = textAdapters(target);
   for (const [file, content] of textFiles)
     await writeFile(path.join(root, file), content);
@@ -227,16 +252,38 @@ async function verify(target) {
         );
       await writeFile(path.join(root, file), correct);
     }
+    for (const [file, content, mutants] of predicateFiles) {
+      if ((await readFile(path.join(root, file), "utf8")) !== content)
+        throw new Error("Predicate adapter changed");
+      for (const mutant of mutants) {
+        await writeFile(path.join(root, file), mutant);
+        const failure = await testCommand(target, root, config, false);
+        let report = `${failure.stdout}\n${failure.stderr}`;
+        if (target === "kotlin") {
+          const reports = path.join(root, "build/test-results/test");
+          for (const name of await readdir(reports))
+            if (name.endsWith(".xml"))
+              report += await readFile(path.join(reports, name), "utf8");
+        }
+        if (!report.includes("expect "))
+          throw new Error(
+            `Predicate mutant lacked assertion failure: ${report}`,
+          );
+      }
+      await writeFile(path.join(root, file), content);
+    }
     await writeFile(adapter, good.replace(was, mutant));
     await testCommand(target, root, config, false);
   } finally {
+    for (const [file, content] of predicateFiles)
+      await writeFile(path.join(root, file), content);
     for (const [file, content] of textFiles)
       await writeFile(path.join(root, file), content);
     await writeFile(equivalentAdapter, equivalentGood);
     await writeFile(adapter, good);
   }
   console.log(
-    `${target}: correct implementations pass; broken codec, alternatives, Text normalization and idempotence fail; regeneration preserves adapter`,
+    `${target}: correct implementations pass; broken codec, alternatives, Text normalization idempotence and predicate mutants fail; conditional evaluation and Bool inputs pass; regeneration preserves adapter`,
   );
 }
 const selected = process.argv.slice(2);

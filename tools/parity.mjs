@@ -18,7 +18,13 @@ const content = await readFile(
 const compiler = await createCompiler();
 const fixtures = [
   ...(await Promise.all(
-    ["slug", "canonical_url", "mixed_inputs"].map((name) =>
+    [
+      "slug",
+      "canonical_url",
+      "mixed_inputs",
+      "parse_port",
+      "boolean_flags",
+    ].map((name) =>
       readFile(path.join(root, `examples/specs/${name}.lawspec`), "utf8"),
     ),
   )),

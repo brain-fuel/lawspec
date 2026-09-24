@@ -17,23 +17,23 @@
     "wasm/lawspec-wasm.cabal"
   ],
   "digests": {
-    "package.yaml": "2c1176c912901bd218743a88df1b67fb1ee8d58ed73fcbe7e2f23827f10a3a0f",
+    "package.yaml": "deae9eb35385fd0e08aa44432ae718e7ba6bad8e8320c728018ee9d224733c8c",
     "src/LawSpec/Api.hs": "00b1e4bc81231ebd387f10652463904084ebf9c3c4486fd2c2217a6d4dbfc157",
-    "src/LawSpec/Compile.hs": "336eca415ed6c8594612ad5acfc7ff6f29ef387cf3cb374b60b2407f811c31c7",
-    "src/LawSpec/Emit.hs": "2e23ca38aa5c4c65305283705633209843dd6ba116c43ba8a42ee8731040f7c3",
-    "src/LawSpec/Gen.hs": "305d7710dbc69b25d95fa6c0ac9a59622481f6b89682c1e5c9048def3962315a",
-    "src/LawSpec/Model.hs": "d1eda2b420edbc327b1adbf437c6f39a9e576ef0ab9b82f468c28202a433eb96",
-    "src/LawSpec/Parser.hs": "7fef1876c52d2204f852704150288910bb0c12bcde1d3159219ad25526a879b6",
-    "src/LawSpec/Prelude.hs": "0b60dd85bdf0642077dfb497043c63606d507e71e12d3ed8bfe2bf773214c66b",
+    "src/LawSpec/Compile.hs": "fd696c774025cb0ec6eb29f71661ab71ac603314865ef068778ae9df1355b6cb",
+    "src/LawSpec/Emit.hs": "7f53109a18d2450313c9dc9f9ff0fe31d80f533858baf9b2c30e36b8849b416c",
+    "src/LawSpec/Gen.hs": "c4b5d4f003c52fb31983794187890ef0dad09c86a451d8e1145974605a5ca0e8",
+    "src/LawSpec/Model.hs": "148f133296be537d4e076c2716219fdafa6d2a44b26c9de4b033f87694870911",
+    "src/LawSpec/Parser.hs": "12b652dbbf174a7091609385c4564bd47b99e45329cfc1bcdaa3936901b2f966",
+    "src/LawSpec/Prelude.hs": "98cc20e242d2f70510fa09e59d0f3e387d1ebe438b4d3435ba2f32a1192cfb4e",
     "stack.yaml": "20ccf4d599e355e60b7aa4f814a7cd4299fe2048616cc2e6dbdc22a7bd8cec73",
     "stack.yaml.lock": "ae222b9c81af920c56e50fa4596fa57786e7fa5a7b461390362b2b2ff63818c7",
     "wasm/app/Exports.hs": "4ecbdac8faa2449e6fc61b93c82e6278fa14374154f29b4dacf0eef433f06a47",
     "wasm/cabal.project": "021e560afdc5eb4cb7169e7119ecb8f92c9ee170245af909c94b612941bff5cc",
     "wasm/cabal.project.freeze": "733dbed3d2ecccb26e874fd58f136296dad772184deb1658c196b5d54a0814dc",
-    "wasm/lawspec-wasm.cabal": "098f1d0fc52575907312c95095846d1d4f6e7ace7cfbe0419a305b9fe8a75a92",
-    "npm/core.wasm": "0a4ce15cefcd866cd7dd584c32d683c7f8a46823104afcceba1298570883a88a",
+    "wasm/lawspec-wasm.cabal": "4c96fa2ec9c6cb61ca16f705c23cdae8723054bb252d27d8ef58043f8e31b868",
+    "npm/core.wasm": "581d42431681aa93b64bcd775d403612974f5cb9c7350be4b07d3ed49575c18e",
     "npm/core_jsffi.js": "88d136efe92f7cff5758c8fec8d9b6bbc9707fe37741cebeeb415fe34ce3d72b",
     "npm/api.mjs": "d6df654600172131ac66a55b86876fc29cde2a76a0a63bbefff3183488a4837b",
-    "npm/index.d.ts": "85ad409ae09d243d3b3f21243d0784390d7b0209e2a09fc7c3b733e8dd2e8765"
+    "npm/index.d.ts": "9687bedaa439c0888aa54cb94279f4fbda536122f0e55f6ab4ec3ea82ddb4283"
   }
 }

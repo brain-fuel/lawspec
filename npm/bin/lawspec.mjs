@@ -154,7 +154,11 @@ async function init() {
 function showExpression(expr) {
   const value = expr.contents;
   if (expr.tag === "Var") return value;
-  if (expr.tag === "Number" || expr.tag === "StringLit")
+  if (
+    expr.tag === "Number" ||
+    expr.tag === "StringLit" ||
+    expr.tag === "BoolLit"
+  )
     return JSON.stringify(value);
   if (expr.tag === "Apply")
     return `${showExpression(value[0])} (${showExpression(value[1])})`;
@@ -181,13 +185,13 @@ function explainExamples(law) {
 async function main() {
   if (!verb || ["help", "--help", "-h"].includes(verb)) {
     output(
-      "LawSpec 0.4.0\nUsage: lawspec init --target <language> [--project <directory>]\n       lawspec check | doctor | explain <unit>::<law> | generate\n       lawspec examples [--target <language>] [--output example_artifacts]\nOptions: --config <path>, --target <language>, --json\nGeneration: --dry-run, --check\nTargets: " +
+      "LawSpec 0.5.0\nUsage: lawspec init --target <language> [--project <directory>]\n       lawspec check | doctor | explain <unit>::<law> | generate\n       lawspec examples [--target <language>] [--output example_artifacts]\nOptions: --config <path>, --target <language>, --json\nGeneration: --dry-run, --check\nTargets: " +
         targets.join(", "),
     );
     return;
   }
   if (verb === "--version") {
-    output("0.4.0");
+    output("0.5.0");
     return;
   }
   if (positional.length > (verb === "explain" ? 1 : 0))
@@ -207,7 +211,7 @@ async function main() {
         : result
             .map(
               (r) =>
-                `${r.target}: ${r.files.length} artifacts in ${r.directory}; ${r.preservedAdapters.length} user adapters preserved.`,
+                `${r.target}: ${r.files.length} artifacts in ${r.directory}; ${r.preservedAdapters.length} user adapters preserved.${r.adapterUpdates.length ? "\nReview required adapter signatures:\n" + r.adapterUpdates.map((a) => a.path + "\n" + a.requiredAdapter).join("\n") : ""}`,
             )
             .join("\n") +
             "\nInspection artifacts only; native toolchains and dependencies are not checked. Stubs must be implemented before running tests.",

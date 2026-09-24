@@ -84,19 +84,19 @@ public static int identity(int x) { return x; }
     kotlin: [
       [
         "src/main/kotlin/example/Slug.kt",
-        `package example\nfun normalize(x: String): String = x.replace(" ", "-")\nfun referenceNormalize(x: String): String = x.replace(' ', '-')\n`,
+        `package example\nobject Slug {\nfun normalize(x: String): String = x.replace(" ", "-")\nfun referenceNormalize(x: String): String = x.replace(' ', '-')\n}\n`,
         "x.replace(' ', '-')",
         "x",
       ],
       [
         "src/main/kotlin/example/CanonicalUrl.kt",
-        `package example\nfun canonicalize(x: String): String = x.trimEnd('/')\n`,
+        `package example\nobject CanonicalUrl {\nfun canonicalize(x: String): String = x.trimEnd('/')\n}\n`,
         "x.trimEnd('/')",
         'x.removeSuffix("/")',
       ],
       [
         "src/main/kotlin/example/mixed/Inputs.kt",
-        `package example.mixed\nfun normalize(x: String): String = x.replace(" ", "-")\nfun identity(x: Int): Int = x\n`,
+        `package example.mixed\nobject Inputs {\nfun normalize(x: String): String = x.replace(" ", "-")\nfun identity(x: Int): Int = x\n}\n`,
       ],
     ],
   };

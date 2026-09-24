@@ -78,6 +78,30 @@ main = hspec $ do
       compile [Source "wrong.lawspec" "unit wrong\nf :: Int32 -> Text\nlaw `same` is definition is `equivalent` f f end example `zero` is x = 0 expect f x = 0 end end"] `shouldSatisfy` isLeft
     it "supports composed expectation expressions" $
       compile [source "law `codec` is definition is `left inverse` g f end example `negative` is x = -42 expect (g . f) x = -42 end end"] `shouldSatisfy` isRight
+  describe "predicates" $ do
+    it "compiles the port and Boolean examples" $ do
+      mapM_ (\name -> do
+        text <- readFile ("examples/specs/" ++ name ++ ".lawspec")
+        compile [Source (name ++ ".lawspec") text] `shouldSatisfy` isRight) ["parse_port", "boolean_flags"]
+    it "rejects ambiguous inputs introduced by a guarded nested law call" $
+      compile [Source "guards.lawspec" "unit guards\np :: Int32 -> Bool\nf :: Int32 -> Int32\nlaw `check` is definition is `for all` (x :: Int32) . p x implies `idempotent` f end end"] `shouldSatisfy` isLeft
+    it "preserves caller predicate arguments named like inherited inputs" $ do
+      let text = "unit guards\nx :: Int32 -> Bool\nf :: Int32 -> Text\ng :: Text -> Int32\nlaw `check` is definition is `left inverse when` x g f end end"
+      case compile [Source "guards.lawspec" text] of
+        Right (_, [e]) -> do
+          prettyExpanded e `shouldBe` "for all (x :: Int32) . x (x) implies g (f (x)) = x"
+          guards e `shouldBe` [Apply (Var "x") (Var (inputId (head (inputs e))))]
+        other -> expectationFailure (show other)
+    it "accepts nested implications and Boolean predicate conclusions" $
+      compile [Source "bool.lawspec" "unit bools\nf :: Bool -> Bool\nlaw `nested` is definition is `for all` (x :: Bool) . x implies f x implies true end example `enabled` is x = true expect f x = true end end"] `shouldSatisfy` isRight
+    it "requires Boolean conditions and predicate conclusions" $ do
+      mapM_ (\d -> compile [source (concrete ("`for all` (x :: Int32) . " ++ d))] `shouldSatisfy` isLeft)
+        ["x implies x = x", "f x implies x = x", "x", "f x"]
+    it "rejects unknown guard values and Boolean/int expectation mismatches" $ do
+      compile [source (concrete "`for all` (x :: Int32) . missing x implies x = x")] `shouldSatisfy` isLeft
+      compile [Source "bad.lawspec" "unit bad\nf :: Int32 -> Bool\nlaw `check` is definition is `satisfies` f end example `zero` is x = 0 expect f x = 1 end end"] `shouldSatisfy` isLeft
+    it "checks generic predicate constraints without requiring Eq of the input" $
+      compile [Source "generic.lawspec" "unit generic\nlaw `predicate` (p :: a -> Bool) is definition is `satisfies` p end end"] `shouldSatisfy` isRight
   describe "emission" $ do
     it "emits tests and user-owned adapters for all seven targets" $ do
       s <- readFile "examples/specs/atoi_codec.lawspec"

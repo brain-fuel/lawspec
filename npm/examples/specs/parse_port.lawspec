@@ -1,0 +1,66 @@
+unit example.parse_port
+
+validPort :: Int32 -> Bool
+render    :: Int32 -> Text
+parse     :: Text -> Int32
+
+law `valid ports round trip` is
+  definition is
+    `for all` (x :: Int32) .
+      validPort x implies
+        parse (render x) = x
+  end
+
+  description is
+    "For ports in 1 through 65535, {parse} recovers the value written by {render}"
+  end
+
+  example `ordinary port` is
+    x = 443
+    expect validPort x = true
+    expect render x = "443"
+    expect parse (render x) = 443
+  end
+
+  example `lowest port is accepted and round trips` is
+    x = 1
+    expect validPort x = true
+    expect render x = "1"
+    expect parse (render x) = 1
+  end
+
+  example `highest port is accepted and round trips` is
+    x = 65535
+    expect validPort x = true
+    expect render x = "65535"
+    expect parse (render x) = 65535
+  end
+
+  example `zero is rejected; rendering and parsing are skipped` is
+    x = 0
+    expect validPort x = false
+  end
+
+  example `negative port is rejected; rendering and parsing are skipped` is
+    x = -1
+    expect validPort x = false
+  end
+
+  example `65536 is rejected; rendering and parsing are skipped` is
+    x = 65536
+    expect validPort x = false
+  end
+end
+
+law `the same port contract via the prelude` is
+  definition is
+    `left inverse when` validPort parse render
+  end
+
+  example `port 8080 satisfies the inherited condition and round trips` is
+    x = 8080
+    expect validPort x = true
+    expect render x = "8080"
+    expect parse (render x) = 8080
+  end
+end

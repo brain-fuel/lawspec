@@ -46,6 +46,7 @@ infer _ (Number n) | n < -2147483648 || n > 2147483647 = throwC "integer outside
 infer _ (StringLit s)
   | any (\c -> c >= '\xD800' && c <= '\xDFFF') s = throwC "Text cannot contain surrogate code points"
   | otherwise = pure (Named "Text")
+infer _ (BoolLit _) = pure (Named "Bool")
 infer env (Apply f x) = do
   ft <- infer env f; xt <- infer env x; r <- Variable . ("result:"++) <$> fresh
   unify ft (Arrow xt r); resolve r
@@ -69,7 +70,7 @@ normal (Compose f g) = Compose (normal f) (normal g)
 normal e = e
 
 type Table = M.Map (String,String) Law
-expand :: Table -> String -> Env -> [String] -> Law -> [Expr] -> C ([Input], Expr, Expr, [String])
+expand :: Table -> String -> Env -> [String] -> Law -> [Expr] -> C ([Input], Expr, Expr, [Expr], [String])
 expand table unit env stack law args = do
   let key = unit ++ "::" ++ lawName law
   when (key `elem` stack) (throwC ("recursive law expansion: " ++ intercalate " -> " (reverse (key:stack))))
@@ -83,25 +84,31 @@ expand table unit env stack law args = do
         bs <- forM qs $ \(n,t) -> do i <- ("_input"++) <$> fresh; pure (Input n i (rt t))
         let e' = M.union (M.fromList [(inputId b,inputType b) | b <- bs]) e
             m' = M.union (M.fromList [(inputName b,Var (inputId b)) | b <- bs]) m
-        (rest,l,r,tr) <- walk e' m' d
-        pure (bs++rest,l,r,tr)
+        (rest,l,r,gs,tr) <- walk e' m' d
+        pure (bs++rest,l,r,gs,tr)
       walk e m (Equal a b) = do
         let l = normal (subst m a); r = normal (subst m b)
         lt <- infer e l; rt' <- infer e r; unify lt rt'
         modify (\s -> s{obligations=lt:obligations s})
-        pure ([],l,r,[])
+        pure ([],l,r,[],[])
+      walk e m (Holds a) = walk e m (Equal a (BoolLit True))
+      walk e m (Implies condition consequence) = do
+        let guard = normal (subst m condition)
+        infer e guard >>= unify (Named "Bool")
+        (bs,l,r,gs,tr) <- walk e m consequence
+        pure (bs,l,r,guard:gs,tr)
       walk e m (Invoke n as) = do
         (u,called) <- case M.lookup (unit,n) table of
           Just v -> pure (unit,v)
           Nothing -> maybe (throwC ("unknown law: " ++ n)) (pure . (,) "prelude") (M.lookup ("prelude",n) table)
         expand table u e (key:stack) called (map (subst m) as)
-  (bs,l,r,tr) <- walk env replacements (definition law)
-  pure (bs,l,r,(lawName law ++ concatMap ((" "++) . prettyExpr) args):tr)
+  (bs,l,r,gs,tr) <- walk env replacements (definition law)
+  pure (bs,l,r,gs,(lawName law ++ concatMap ((" "++) . prettyExpr) args):tr)
 
 unique :: String -> [String] -> Either String ()
 unique kind xs = unless (length xs == length (nub xs)) (Left ("duplicate " ++ kind))
 validType :: Type -> Bool
-validType (Named n) = n `elem` ["Int32","Text"]
+validType (Named n) = n `elem` ["Int32","Text","Bool"]
 validType (Variable _) = True
 validType (Arrow a b) = validType a && validType b
 scalar :: Type -> Bool
@@ -114,7 +121,7 @@ validateUnit u = either (Left . pure . (\m -> Diagnostic "declaration" m Nothing
     unless (maybe False (isLower . fst) (uncons n)) (Left "function names must start with a lowercase letter")
     case t of
       Arrow a@(Named _) b@(Named _) | validType a && validType b -> pure ()
-      _ -> Left (n ++ ": functions require a monomorphic unary Int32/Text signature")
+      _ -> Left (n ++ ": functions require a monomorphic unary Int32/Text/Bool signature")
   forM_ (laws u) $ \l -> do
     mapM_ (metadataText (map fst (parameters l ++ functions u))) [description l, rationale l]
     forM_ (examples l) $ \ex ->
@@ -139,37 +146,37 @@ compile sources = do
           rigid (Arrow a b) = Arrow (rigid a) (rigid b)
           rigid t = t
           env = M.fromList ([(n,rigid t) | (n,t) <- parameters l] ++ functions u)
-      (bs,a,b,tr) <- expand table (unitName u) env [] l (map (Var . fst) (parameters l))
+      (bs,a,b,gs,tr) <- expand table (unitName u) env [] l (map (Var . fst) (parameters l))
       checkedInputs <- forM bs $ \v -> do
         t <- resolve (inputType v)
         unless (validType t || (symbolic && case t of Named ('@':_) -> True; _ -> False)) (throwC "unsupported quantified type")
-        when (not symbolic && t `notElem` [Named "Int32", Named "Text"]) (throwC "executable inputs must have type Int32 or Text")
+        when (not symbolic && t `notElem` [Named "Int32", Named "Text", Named "Bool"]) (throwC "executable inputs must have type Int32, Text or Bool")
         pure v{inputType=t}
       os <- gets obligations >>= mapM resolve
       allowed <- mapM (resolve . rigid) (requirements l)
-      forM_ os $ \t -> unless (t `elem` [Named "Int32",Named "Text"] || (symbolic && t `elem` allowed)) (throwC ("unsatisfied Eq requirement: " ++ prettyType t))
+      forM_ os $ \t -> unless (t `elem` [Named "Int32",Named "Text",Named "Bool"] || (symbolic && t `elem` allowed)) (throwC ("unsatisfied Eq requirement: " ++ prettyType t))
       unless symbolic $ do
-        when (null checkedInputs) (throwC "an executable law must quantify at least one Int32 or Text input")
+        when (null checkedInputs) (throwC "an executable law must quantify at least one Int32, Text or Bool input")
         lift (unique "expanded input name" (map inputName checkedInputs))
       forM_ (examples l) $ \ex -> withContext ("example " ++ exampleName ex ++ ": ") $ do
         lift (unique "example binding" (map fst (bindings ex)))
         unless (M.keys (M.fromList (bindings ex)) == M.keys (M.fromList [(inputName v,()) | v <- checkedInputs])) (throwC ("example " ++ exampleName ex ++ " must bind exactly: " ++ intercalate ", " (map inputName checkedInputs)))
         forM_ (bindings ex) $ \(n,v) -> do
-          actual <- infer M.empty (case v of IntLiteral k -> Number k; TextLiteral text -> StringLit text)
+          actual <- infer M.empty (case v of IntLiteral k -> Number k; TextLiteral text -> StringLit text; BoolLiteral flag -> BoolLit flag)
           case lookup n [(inputName inp,inputType inp) | inp <- checkedInputs] of
             Just expected -> unless (actual == expected) (throwC ("example " ++ exampleName ex ++ ": " ++ n ++ " expects " ++ prettyType expected ++ ", got " ++ prettyType actual))
             Nothing -> throwC "unknown example input"
         let exampleEnv = M.union (M.fromList [(inputName inp,inputType inp) | inp <- checkedInputs]) env
         forM_ (expectations ex) $ \check -> do
           actualType <- infer exampleEnv (actual check) >>= resolve
-          expectedType <- infer M.empty (case expected check of IntLiteral k -> Number k; TextLiteral text -> StringLit text)
+          expectedType <- infer M.empty (case expected check of IntLiteral k -> Number k; TextLiteral text -> StringLit text; BoolLiteral flag -> BoolLit flag)
           unless (actualType == expectedType) (throwC ("example " ++ exampleName ex ++ ": expectation " ++ prettyExpr (actual check) ++ " has type " ++ prettyType actualType ++ ", expected literal has type " ++ prettyType expectedType))
-      pure (Expanded (unitName u) (lawName l) checkedInputs a b tr l)
+      pure (Expanded (unitName u) (lawName l) checkedInputs a b gs tr l)
       ) (CS M.empty 0 [])
   pure (filter ((/= "prelude") . unitName) us, filter (null . parameters . original) allExpanded)
 
 prettyExpanded :: Expanded -> String
-prettyExpanded e = "for all " ++ intercalate " " ["(" ++ inputName i ++ " :: " ++ prettyType (inputType i) ++ ")" | i <- inputs e] ++ " . " ++ showExpr (left e) ++ " = " ++ showExpr (right e)
+prettyExpanded e = "for all " ++ intercalate " " ["(" ++ inputName i ++ " :: " ++ prettyType (inputType i) ++ ")" | i <- inputs e] ++ " . " ++ concatMap ((++ " implies ") . showExpr) (guards e) ++ showExpr (left e) ++ " = " ++ showExpr (right e)
   where names = M.fromList [(inputId i,Var (inputName i)) | i <- inputs e]
         showExpr = prettyExpr . subst names
 

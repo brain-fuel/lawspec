@@ -21,7 +21,7 @@ keyword s = lexeme (try (string s *> notFollowedBy (alphaNumChar <|> char '_')))
 ident :: P String
 ident = lexeme $ try $ do
   x <- (:) <$> letterChar <*> many (alphaNumChar <|> char '_')
-  if x `elem` ["unit","law","requires","is","end","definition","description","rationale","example","expect","references","are","Eq"] then fail "reserved identifier" else pure x
+  if x `elem` ["unit","law","requires","is","end","definition","description","rationale","example","expect","implies","true","false","references","are","Eq"] then fail "reserved identifier" else pure x
 quoted :: P String
 quoted = lexeme (char '`' *> some (satisfy (\c -> c /= '`' && not (isControl c))) <* char '`')
 str :: P String
@@ -38,11 +38,18 @@ expr :: P Expr
 expr = do
   a <- foldl1 Apply <$> some atom
   option a (Compose a <$> (symbol "." *> expr))
-  where atom = (StringLit <$> str) <|> parens expr <|> (Var <$> ident) <|> (Number <$> lexeme (L.signed (pure ()) L.decimal))
+  where atom = (BoolLit <$> boolP) <|> (StringLit <$> str) <|> parens expr <|> (Var <$> ident) <|> (Number <$> lexeme (L.signed (pure ()) L.decimal))
 defP :: P Definition
 defP = (do void (symbol "`for all`"); ps <- some param; void (symbol "."); Forall ps <$> defP)
    <|> (Invoke <$> quoted <*> many (parens expr <|> (Var <$> ident)))
-   <|> (Equal <$> expr <* symbol "=" <*> expr)
+   <|> (do a <- expr
+           (keyword "implies" *> (Implies a <$> defP))
+             <|> (symbol "=" *> (Equal a <$> expr))
+             <|> pure (Holds a))
+boolP :: P Bool
+boolP = (keyword "true" *> pure True) <|> (keyword "false" *> pure False)
+literalP :: P Literal
+literalP = (BoolLiteral <$> boolP) <|> (TextLiteral <$> str) <|> (IntLiteral <$> lexeme (L.signed (pure ()) L.decimal))
 block :: String -> P a -> P a
 block n p = keyword n *> keyword "is" *> p <* keyword "end"
 lawP :: P Law
@@ -58,8 +65,8 @@ lawP = do
   why <- option "" (block "rationale" str)
   ex <- many $ do
     keyword "example"; en <- quoted; keyword "is"
-    bs <- some ((,) <$> ident <* symbol "=" <*> ((TextLiteral <$> str) <|> (IntLiteral <$> lexeme (L.signed (pure ()) L.decimal))))
-    checks <- many (keyword "expect" *> (Expectation <$> expr <* symbol "=" <*> ((TextLiteral <$> str) <|> (IntLiteral <$> lexeme (L.signed (pure ()) L.decimal)))))
+    bs <- some ((,) <$> ident <* symbol "=" <*> literalP)
+    checks <- many (keyword "expect" *> (Expectation <$> expr <* symbol "=" <*> literalP))
     keyword "end"; pure (Example en bs checks)
   refs <- option [] (keyword "references" *> keyword "are" *> some str <* keyword "end")
   keyword "end"

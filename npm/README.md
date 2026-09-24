@@ -2,7 +2,7 @@
 
 **State the law once. Check it everywhere.**
 
-LawSpec 0.4 compiles reusable laws into native property tests, executable examples,
+LawSpec 0.5 compiles reusable laws into native property tests, executable examples,
 and implementation adapters. The compiler is Haskell, distributed as prebuilt
 WebAssembly with a Node CLI and an asynchronous, typed JavaScript API.
 
@@ -11,7 +11,7 @@ WebAssembly with a Node CLI and an asynchronous, typed JavaScript API.
 Install [LawSpec from npm](https://www.npmjs.com/package/lawspec):
 
 ```sh
-npm install --save-dev lawspec@0.4.0
+npm install --save-dev lawspec@0.5.0
 npx lawspec --version
 ```
 
@@ -25,8 +25,8 @@ local dependencies so LawSpec can create its `package.json` and test script:
 ```sh
 mkdir lawspec-example
 cd lawspec-example
-npm exec --package=lawspec@0.4.0 -- lawspec init --target javascript
-npm install --save-dev lawspec@0.4.0
+npm exec --package=lawspec@0.5.0 -- lawspec init --target javascript
+npm install --save-dev lawspec@0.5.0
 npx lawspec check
 npx lawspec explain 'example.atoi_codec::itoa and then atoi yields a'
 npx lawspec doctor
@@ -52,7 +52,7 @@ properties with the selected framework's shrinking and failure reporting.
 
 | Target | Build setup | Test libraries | Test command |
 | --- | --- | --- | --- |
-| `java` | Maven, JDK 25, release 25 | JetCheck 0.4.0, JUnit Jupiter 5.14.x | `mvn test` |
+| `java` | Maven, JDK 25, release 25 | JetCheck 0.3.0, JUnit Jupiter 5.14.x | `mvn test` |
 | `python` | Python 3.13 or 3.14, pyproject | pytest 8.4.x, Hypothesis 6.135.26+ (6.x) | `python -m pytest` |
 | `javascript` | Node 22+, npm, ESM | fast-check 4.x, node:test | `npm test` |
 | `typescript` | Node 22+, npm, TypeScript 5.9.x, ESM | fast-check 4.x, node:test | `npm test` |
@@ -61,7 +61,7 @@ properties with the selected framework's shrinking and failure reporting.
 | `kotlin` | JDK/JVM 25, Gradle 9.1–9.3, Kotlin 2.3.21 | Kotest 5.9.1 | `gradle test` |
 
 Java 25 and Python 3.13 are the minimum baselines. New JVM releases are admitted
-through compatibility profiles after testing; v0.4's current JVM profile certifies
+through compatibility profiles after testing; v0.5's current JVM profile certifies
 25. Python templates declare `requires-python = ">=3.13"` and runtime checks
 currently recognize 3.13 and 3.14. Kotlin templates pin Gradle's supported build
 configuration to Kotlin 2.3.21 and target JVM 25.
@@ -159,10 +159,11 @@ for all (x :: Int32) . atoi (itoa (x)) = x
 
 Reusable laws can declare typed unary function parameters and `requires Eq a`.
 Definitions support law application, function application/composition, universal
-quantification, integer and text literals, and equality. Function signatures use `Int32`
-and `Text`; generic variables are supported in reusable laws. v0.4 generates
-quantified `Int32` and `Text` inputs, including mixed and multiple inputs. Both
-types can also be intermediate or compared results. Functions are synchronous
+quantification, `implies`, Boolean predicates, scalar literals, and equality.
+Function signatures use `Int32`, `Text`, and `Bool`; generic variables are
+supported in reusable laws. v0.5 generates quantified inputs of all three types,
+including mixed and multiple inputs. These types can also be intermediate or
+compared results. Functions are synchronous
 and unary. Text literals are double-quoted, with escapes such as `\"`, `\\`,
 `\n`, and `\t`; examples must bind each input to a literal of its declared type.
 Text values contain Unicode scalar values; surrogate code points are rejected.
@@ -178,11 +179,85 @@ Additional primitives, external law packages, cross-unit imports beyond the
 prelude, async functions, direct existing-symbol binding and browser hosting are
 outside this release.
 
-## Expected results and migration to 0.4
+## Predicates and conditional laws (0.5)
+
+A predicate is a unary function returning `Bool`. Use `true` and `false` in
+expressions, example bindings, and expected results. A Boolean expression can
+stand alone as a law's definition: it must evaluate to `true`.
+
+`condition implies consequence` checks the consequence only when the condition
+is true. Conditions must have type `Bool`; nested implications short-circuit in
+source order. The consequence can be an equality, another implication, a Boolean
+predicate, or a reusable law application. Quantify any inputs before using them.
+
+```lawspec
+unit example.parse_port
+
+validPort :: Int32 -> Bool
+render    :: Int32 -> Text
+parse     :: Text -> Int32
+
+law `valid ports round trip` is
+  definition is
+    `for all` (x :: Int32) .
+      validPort x implies
+        parse (render x) = x
+  end
+
+  example `ordinary port` is
+    x = 443
+    expect validPort x = true
+    expect render x = "443"
+    expect parse (render x) = 443
+  end
+
+  example `zero is rejected; the round trip is skipped` is
+    x = 0
+    expect validPort x = false
+  end
+end
+```
+
+The [complete port example](https://github.com/brain-fuel/lawspec/blob/v0.5.0/examples/specs/parse_port.lawspec)
+defines valid ports as 1–65535, and covers both endpoints, ordinary ports, zero,
+negative values, and 65536. All explicit `expect` assertions run regardless of
+the law's condition. A false condition skips only the consequence: invalid ports
+never reach `render` or `parse` through the law. Predicate errors still fail the
+test; they are not treated as false.
+
+Implication is logical implication, not generator filtering or an assumption.
+Randomized tests still sample the full input domain and count a false condition
+as satisfying the law. A narrow predicate may therefore exercise few or no
+consequences during a random run. Explicit valid examples ensure the important
+cases run, and expectations of both `true` and `false` catch always-false and
+always-true predicate implementations.
+
+The prelude includes `satisfies predicate` (the predicate holds for every input)
+and `left inverse when predicate parse render` (the guarded round trip above).
+These reusable laws preserve the condition and its lexical bindings when expanded.
+`equivalent` can also compare two predicates, since `Bool` supports equality.
+The [Boolean flags example](https://github.com/brain-fuel/lawspec/blob/v0.5.0/examples/specs/boolean_flags.lawspec)
+checks that flipping twice restores both `false` and `true`; all targets generate
+Boolean property inputs and explicit tests for both Boolean boundary values. Java caps Boolean-only JetCheck runs at the number of
+possible input combinations (up to 100), avoiding generator exhaustion.
+
+In 0.5, `implies`, `true`, and `false` become reserved words. Existing 0.4 specs
+that use those words as identifiers need renaming. The API adds `BoolLit`,
+`Holds`, and `Implies` AST variants, Boolean literal values, and an ordered
+`guards` array on expanded laws. `lawspec explain` prints the conditions.
+
+Kotlin adapters now group functions in an `object` named after the unit (for
+example, `object ParsePort` in package `example`). This allows both the port and
+alternatives units to define `render(Int)`. When upgrading a Kotlin project,
+move existing top-level adapter functions into the indicated object; generation
+preserves your adapter and reports the required stub shape. Generated tests call
+`ParsePort.validPort(...)`, `ParsePort.render(...)`, and `ParsePort.parse(...)`.
+
+## Expected results and migration from 0.3
 
 Every `example` must bind all quantified inputs and then include one or more
 `expect <expression> = <literal>` assertions. The expected literal must have the
-same `Int32` or `Text` type as the expression. Expressions can reference the
+same `Int32`, `Text`, or `Bool` type as the expression. Expressions can reference the
 example's inputs and the unit's functions, including composed function calls.
 Input names shadow function names within expectations, following lexical scope.
 
@@ -240,7 +315,7 @@ This expands to `for all (x :: Int32) . render (x) = referenceRender (x)`.
 The example inherits the input name `x` from the prelude. Both functions are
 user-owned adapter functions; either may delegate to your existing code.
 
-[The complete example](https://github.com/brain-fuel/lawspec/blob/v0.4.0/examples/specs/equivalent.lawspec) compares decimal
+[The complete example](https://github.com/brain-fuel/lawspec/blob/v0.5.0/examples/specs/equivalent.lawspec) compares decimal
 renderers and two implementations that clamp negative integers to zero. For
 JavaScript, their adapters can be:
 
@@ -255,7 +330,7 @@ The same specification generates native tests for all seven targets. The
 integration suite checks both examples with matching implementations, then
 breaks each alternative separately to verify detection. The general equivalence law alone does not establish independent correctness;
 two implementations can share the same bug. Explicit expectations additionally
-check the specified outputs at the supplied example inputs. Quantified inputs can be `Int32` or `Text`.
+check the specified outputs at the supplied example inputs. Quantified inputs can be `Int32`, `Text`, or `Bool`.
 
 ## Text properties and idempotence
 
@@ -277,7 +352,7 @@ law `normalizers agree` is
 end
 ```
 
-The [slug example](https://github.com/brain-fuel/lawspec/blob/v0.4.0/examples/specs/slug.lawspec)
+The [slug example](https://github.com/brain-fuel/lawspec/blob/v0.5.0/examples/specs/slug.lawspec)
 compares two implementations of ASCII-space replacement. It includes empty,
 Unicode and escaped text. Each target uses its native string generator:
 JetCheck `Generator.stringsOf(Generator.asciiPrintableChars())`, Hypothesis `st.text()`, fast-check `fc.string()`,
@@ -304,7 +379,7 @@ law `canonicalization reaches a fixed point` is
 end
 ```
 
-The [canonical URL example](https://github.com/brain-fuel/lawspec/blob/v0.4.0/examples/specs/canonical_url.lawspec)
+The [canonical URL example](https://github.com/brain-fuel/lawspec/blob/v0.5.0/examples/specs/canonical_url.lawspec)
 uses removal of **all trailing slashes** as a small fixed-point demonstration,
 not a complete URL canonicalization algorithm. For JavaScript:
 
@@ -313,10 +388,10 @@ export const canonicalize = value => value.replace(/\/+$/, "");
 ```
 
 Removing just one trailing slash fails the supplied repeated-slash example.
-The [mixed-input example](https://github.com/brain-fuel/lawspec/blob/v0.4.0/examples/specs/mixed_inputs.lawspec)
+The [mixed-input example](https://github.com/brain-fuel/lawspec/blob/v0.5.0/examples/specs/mixed_inputs.lawspec)
 shows `Text` and `Int32` in the same quantified property and executable example.
-The JavaScript API represents input bindings and expected values as `number | string`.
-Each example includes `expectations: { actual: Expr; expected: number | string }[]`.
+The JavaScript API represents input bindings and expected values as `number | string | boolean`.
+Each example includes `expectations: { actual: Expr; expected: number | string | boolean }[]`.
 
 ## Generate all example artifacts
 
@@ -378,7 +453,7 @@ by the JS shim.
 ## Build and verify
 
 For contributors working from a repository checkout, build a local archive with
-`npm pack ./npm` and install it with `npm install --save-dev ./lawspec-0.4.0.tgz`.
+`npm pack ./npm` and install it with `npm install --save-dev ./lawspec-0.5.0.tgz`.
 The package payload lives in `npm/`.
 
 ```sh

@@ -99,6 +99,18 @@ try {
     !textTest.includes("Generator.stringsOf(Generator.asciiPrintableChars())")
   )
     throw new Error("Installed examples command omitted Text generation");
+  const portTest = await readFile(
+    path.join(
+      app,
+      "example_artifacts/java/src/test/java/example/ParsePortLawSpecTest.java",
+    ),
+    "utf8",
+  );
+  if (
+    !portTest.includes("if (ParsePort.validPort(") ||
+    !portTest.includes("ordinary port")
+  )
+    throw new Error("Installed examples omitted predicate checks");
   const api = await run(
     process.execPath,
     [
@@ -110,7 +122,10 @@ try {
        const source=readFileSync(new URL('./examples/specs/equivalent.lawspec', import.meta.resolve('lawspec')), 'utf8');
        const r=await c.expand({sources:[{path:'equivalent.lawspec',content:source}]});
        if(r.diagnostics.length || r.laws.length!==2 || !r.expansions[0].includes('referenceRender'))throw new Error(JSON.stringify(r));
-       console.log('Installed API expands the bundled equivalent examples');`,
+       const port=readFileSync(new URL('./examples/specs/parse_port.lawspec', import.meta.resolve('lawspec')), 'utf8');
+       const guarded=await c.expand({sources:[{path:'parse_port.lawspec',content:port}]});
+       if(guarded.diagnostics.length || guarded.laws[0].guards.length!==1 || !guarded.expansions[0].includes('implies'))throw new Error(JSON.stringify(guarded));
+       console.log('Installed API expands equivalent and predicate examples');`,
     ],
     app,
   );
