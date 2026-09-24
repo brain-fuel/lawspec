@@ -1,0 +1,9 @@
+.stack-work/
+dist-newstyle/
+wasm/dist-newstyle/
+node_modules/
+.integration/
+*.tgz
+.DS_Store
+.tools/
+.artifacts/

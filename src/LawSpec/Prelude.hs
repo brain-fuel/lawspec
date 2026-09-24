@@ -1,0 +1,4 @@
+module LawSpec.Prelude (preludeSource) where
+import LawSpec.Model
+preludeSource :: Source
+preludeSource = Source "<prelude>" "unit prelude\n\nlaw `left inverse`\n  (f :: b -> a)\n  (g :: a -> b)\nrequires\n  Eq a\nis\n  definition is\n    `for all` (x :: a) .\n      (f . g) x = x\n  end\n\n  description is\n    \"applying {g} to a value and then applying {f} yields the original value\"\n  end\n\n  rationale is\n    \"{g} must preserve enough information for {f} to recover the original value\"\n  end\nend\n\nlaw `round trip identity is preserved`\n  (a :: x -> y)\n  (b :: y -> x)\nrequires\n  Eq x\nis\n  definition is\n    `left inverse` b a\n  end\n\n  description is\n    \"applying {a} to a value and then applying {b} yields the original value\"\n  end\n\n  rationale is\n    \"{a} must preserve enough information for {b} to recover the original value\"\n  end\nend\n"

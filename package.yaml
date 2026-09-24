@@ -1,0 +1,20 @@
+name: lawspec
+version: 0.1.0
+license: MIT
+synopsis: Portable executable laws
+extra-source-files: [README.md]
+dependencies: [base >= 4.18 && < 5, text, containers, aeson, bytestring, megaparsec, parser-combinators, mtl]
+default-extensions: [OverloadedStrings, DeriveGeneric, LambdaCase, RecordWildCards]
+ghc-options: [-Wall]
+library:
+  source-dirs: src
+executables:
+  lawspec-core:
+    main: Main.hs
+    source-dirs: app
+    dependencies: [lawspec]
+tests:
+  lawspec-test:
+    main: Main.hs
+    source-dirs: test
+    dependencies: [lawspec, hspec]

@@ -1,0 +1,13 @@
+{
+  "name": "lawspec",
+  "version": "0.1.0",
+  "description": "State the law once. Check it everywhere.",
+  "license": "MIT",
+  "type": "module",
+  "engines": { "node": ">=22" },
+  "bin": { "lawspec": "bin/lawspec.mjs" },
+  "exports": { ".": { "types": "./index.d.ts", "import": "./api.mjs" } },
+  "types": "index.d.ts",
+  "files": ["*.mjs", "*.json", "index.d.ts", "bin", "core.wasm", "core_jsffi.js", "README.md", "LICENSE", "starter.lawspec"],
+  "scripts": { "test": "node --test test/*.test.mjs" }
+}

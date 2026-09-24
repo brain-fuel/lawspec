@@ -1,0 +1,9 @@
+# Reference environment tested on Python 3.13 and 3.14.
+attrs==26.1.0
+hypothesis==6.135.26
+iniconfig==2.3.0
+packaging==26.3
+pluggy==1.6.0
+pygments==2.21.0
+pytest==8.4.2
+sortedcontainers==2.4.0
