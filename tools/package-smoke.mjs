@@ -82,6 +82,16 @@ try {
   );
   await run("npm", ["test"], app);
   await run(process.execPath, [cli, "generate", "--check"], app);
+  await run("npm", ["exec", "--no", "--", "lawspec", "examples"], app);
+  const textTest = await readFile(
+    path.join(
+      app,
+      "example_artifacts/java/src/test/java/example/SlugLawSpecTest.java",
+    ),
+    "utf8",
+  );
+  if (!textTest.includes("Generator.stringsOf(Generator.asciiPrintableChars())"))
+    throw new Error("Installed examples command omitted Text generation");
   const api = await run(
     process.execPath,
     [

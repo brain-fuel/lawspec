@@ -2,7 +2,7 @@
 
 **State the law once. Check it everywhere.**
 
-LawSpec 0.2 compiles reusable laws into native property tests, executable examples,
+LawSpec 0.3 compiles reusable laws into native property tests, executable examples,
 and implementation adapters. The compiler is Haskell, distributed as prebuilt
 WebAssembly with a Node CLI and an asynchronous, typed JavaScript API.
 
@@ -11,7 +11,7 @@ WebAssembly with a Node CLI and an asynchronous, typed JavaScript API.
 Install [LawSpec from npm](https://www.npmjs.com/package/lawspec):
 
 ```sh
-npm install --save-dev lawspec@0.2.1
+npm install --save-dev lawspec@0.3.0
 npx lawspec --version
 ```
 
@@ -25,8 +25,8 @@ local dependencies so LawSpec can create its `package.json` and test script:
 ```sh
 mkdir lawspec-example
 cd lawspec-example
-npm exec --package=lawspec@0.2.1 -- lawspec init --target javascript
-npm install --save-dev lawspec@0.2.1
+npm exec --package=lawspec@0.3.0 -- lawspec init --target javascript
+npm install --save-dev lawspec@0.3.0
 npx lawspec check
 npx lawspec explain 'example.atoi_codec::itoa and then atoi yields a'
 npx lawspec doctor
@@ -61,7 +61,7 @@ properties with the selected framework's shrinking and failure reporting.
 | `kotlin` | JDK/JVM 25, Gradle 9.1–9.3, Kotlin 2.3.21 | Kotest 5.9.1 | `gradle test` |
 
 Java 25 and Python 3.13 are the minimum baselines. New JVM releases are admitted
-through compatibility profiles after testing; v0.2's current JVM profile certifies
+through compatibility profiles after testing; v0.3's current JVM profile certifies
 25. Python templates declare `requires-python = ">=3.13"` and runtime checks
 currently recognize 3.13 and 3.14. Kotlin templates pin Gradle's supported build
 configuration to Kotlin 2.3.21 and target JVM 25.
@@ -146,7 +146,7 @@ end
 ```
 
 The implicit prelude defines `left inverse`, `round trip identity is preserved`,
-and `equivalent`.
+`equivalent`, and `idempotent`.
 A law may reference a local reusable law or a prelude law. The compiler performs
 capture-avoiding expansion and specializes types; it does not recognize codec
 function names specially. `explain` shows the final property:
@@ -157,10 +157,13 @@ for all (x :: Int32) . atoi (itoa (x)) = x
 
 Reusable laws can declare typed unary function parameters and `requires Eq a`.
 Definitions support law application, function application/composition, universal
-quantification, integer literals and equality. Function signatures use `Int32`
-and `Text`; generic variables are supported in reusable laws. v0.2 generates
-quantified `Int32` inputs, including multiple inputs. `Text` can be an intermediate
-or compared result. Functions are synchronous and unary.
+quantification, integer and text literals, and equality. Function signatures use `Int32`
+and `Text`; generic variables are supported in reusable laws. v0.3 generates
+quantified `Int32` and `Text` inputs, including mixed and multiple inputs. Both
+types can also be intermediate or compared results. Functions are synchronous
+and unary. Text literals are double-quoted, with escapes such as `\"`, `\\`,
+`\n`, and `\t`; examples must bind each input to a literal of its declared type.
+Text values contain Unicode scalar values; surrogate code points are rejected.
 
 Examples refer to the expanded input names, including names inherited from the
 prelude. Bind every input exactly once. Ambiguous names and out-of-range values
@@ -199,7 +202,7 @@ This expands to `for all (x :: Int32) . render (x) = referenceRender (x)`.
 The example inherits the input name `x` from the prelude. Both functions are
 user-owned adapter functions; either may delegate to your existing code.
 
-[The complete example](https://github.com/brain-fuel/lawspec/blob/v0.2.1/examples/specs/equivalent.lawspec) compares decimal
+[The complete example](https://github.com/brain-fuel/lawspec/blob/v0.3.0/examples/specs/equivalent.lawspec) compares decimal
 renderers and two implementations that clamp negative integers to zero. For
 JavaScript, their adapters can be:
 
@@ -214,7 +217,82 @@ The same specification generates native tests for all seven targets. The
 integration suite checks both examples with matching implementations, then
 breaks each alternative separately to verify detection. Agreement does not
 establish that either implementation meets an independent specification; two
-implementations can share the same bug. Quantified inputs remain `Int32` in v0.2.
+implementations can share the same bug. Quantified inputs can be `Int32` or `Text`.
+
+## Text properties and idempotence
+
+```lawspec
+unit example.slug
+
+normalize :: Text -> Text
+referenceNormalize :: Text -> Text
+
+law `normalizers agree` is
+  definition is
+    `equivalent` normalize referenceNormalize
+  end
+  example `ordinary text` is
+    x = "Hello, World!"
+  end
+end
+```
+
+The [slug example](https://github.com/brain-fuel/lawspec/blob/v0.3.0/examples/specs/slug.lawspec)
+compares two implementations of ASCII-space replacement. It includes empty,
+Unicode and escaped text. Each target uses its native string generator:
+JetCheck `Generator.stringsOf(Generator.asciiPrintableChars())`, Hypothesis `st.text()`, fast-check `fc.string()`,
+Rapid `rapid.String()`, Hedgehog `Gen.text`, or Kotest `Arb.string()`.
+Generator distributions differ between libraries; the generated tests also
+exercise deterministic empty, whitespace, Unicode, combining-mark and escaped
+control-character cases. Hedgehog's generated text length range is 0–100.
+
+The prelude's `idempotent` law requires `f (f x) = f x`:
+
+```lawspec
+unit example.canonical_url
+
+canonicalize :: Text -> Text
+
+law `canonicalization reaches a fixed point` is
+  definition is
+    `idempotent` canonicalize
+  end
+end
+```
+
+The [canonical URL example](https://github.com/brain-fuel/lawspec/blob/v0.3.0/examples/specs/canonical_url.lawspec)
+uses removal of **all trailing slashes** as a small fixed-point demonstration,
+not a complete URL canonicalization algorithm. For JavaScript:
+
+```javascript
+export const canonicalize = value => value.replace(/\/+$/, "");
+```
+
+Removing just one trailing slash fails the supplied repeated-slash example.
+The [mixed-input example](https://github.com/brain-fuel/lawspec/blob/v0.3.0/examples/specs/mixed_inputs.lawspec)
+shows `Text` and `Int32` in the same quantified property and executable example.
+The JavaScript API represents example values as `number | string`.
+
+## Generate all example artifacts
+
+```sh
+npx lawspec examples
+# Or select a target and a relative output directory:
+npx lawspec examples --target java --output example_artifacts
+```
+
+This command works without a project configuration or native build tools. It
+compiles every bundled example and writes its tests and user-owned stubs to
+`example_artifacts/<language>/`, using each target's normal source/test layout.
+By default it exports all seven languages; `--json` returns the file inventory.
+From a checkout, `make examples` runs the same command.
+
+These are inspection artifacts, not initialized projects: no build files are
+created and dependency compatibility is not checked. To run them, configure the
+corresponding native project and implement the stubs. Regeneration preserves
+user-owned stubs and refuses to overwrite edited generated tests. Each target
+has its own ownership manifest. Output paths must be relative and cannot use
+parent traversal or symlinks. The default directory is ignored by Git.
 
 ## Ownership
 
@@ -255,7 +333,7 @@ by the JS shim.
 ## Build and verify
 
 For contributors working from a repository checkout, build a local archive with
-`npm pack ./npm` and install it with `npm install --save-dev ./lawspec-0.2.1.tgz`.
+`npm pack ./npm` and install it with `npm install --save-dev ./lawspec-0.3.0.tgz`.
 The package payload lives in `npm/`.
 
 ```sh

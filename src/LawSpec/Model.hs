@@ -4,9 +4,14 @@ import Data.Aeson hiding (Number)
 import GHC.Generics (Generic)
 
 data Type = Named String | Variable String | Arrow Type Type deriving (Eq, Ord, Show, Generic)
-data Expr = Var String | Apply Expr Expr | Compose Expr Expr | Number Integer deriving (Eq, Show, Generic)
+data Expr = Var String | Apply Expr Expr | Compose Expr Expr | Number Integer | StringLit String deriving (Eq, Show, Generic)
 data Definition = Forall [(String, Type)] Definition | Equal Expr Expr | Invoke String [Expr] deriving (Eq, Show, Generic)
-data Example = Example { exampleName :: String, bindings :: [(String, Integer)] } deriving (Eq, Show, Generic)
+data Literal = IntLiteral Integer | TextLiteral String deriving (Eq, Show)
+instance ToJSON Literal where
+  toJSON (IntLiteral n) = toJSON n
+  toJSON (TextLiteral s) = toJSON s
+
+data Example = Example { exampleName :: String, bindings :: [(String, Literal)] } deriving (Eq, Show, Generic)
 data Location = Location { file :: String, line :: Int, column :: Int } deriving (Eq, Show, Generic)
 data Law = Law { lawName :: String, parameters :: [(String, Type)], requirements :: [Type], definition :: Definition, description :: String, rationale :: String, examples :: [Example], references :: [String], location :: Location } deriving (Eq, Show, Generic)
 data Unit = Unit { unitName :: String, functions :: [(String, Type)], laws :: [Law] } deriving (Eq, Show, Generic)
@@ -38,5 +43,6 @@ prettyType (Arrow a b) = atom a ++ " -> " ++ prettyType b where
 prettyExpr :: Expr -> String
 prettyExpr (Var n) = n
 prettyExpr (Number n) = show n
+prettyExpr (StringLit s) = show s
 prettyExpr (Apply f x) = prettyExpr f ++ " (" ++ prettyExpr x ++ ")"
 prettyExpr (Compose f g) = "(" ++ prettyExpr f ++ " . " ++ prettyExpr g ++ ")"

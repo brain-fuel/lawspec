@@ -5,6 +5,7 @@ import { readFile, writeFile, readdir, rm } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { equivalentAdapters } from "./equivalent-fixtures.mjs";
+import { textAdapters } from "./text-fixtures.mjs";
 const exec = promisify(execFile);
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const cli = path.join(repo, "npm/bin/lawspec.mjs");
@@ -154,6 +155,12 @@ async function verify(target) {
       "utf8",
     ),
   );
+  for (const name of ["slug", "canonical_url", "mixed_inputs"]) {
+    await writeFile(
+      path.join(root, `laws/${name}.lawspec`),
+      await readFile(path.join(repo, `examples/specs/${name}.lawspec`), "utf8"),
+    );
+  }
   await guardedGenerate([], root);
   const adapter = path.join(root, relative);
   const initial = await readFile(adapter, "utf8");
@@ -167,6 +174,9 @@ async function verify(target) {
     intMutant,
   ] = equivalentAdapters[target];
   const equivalentAdapter = path.join(root, equivalentPath);
+  const textFiles = textAdapters(target);
+  for (const [file, content] of textFiles)
+    await writeFile(path.join(root, file), content);
   await writeFile(equivalentAdapter, equivalentGood);
   await writeFile(adapter, good);
   try {
@@ -184,14 +194,26 @@ async function verify(target) {
       await testCommand(target, root, config, false);
     }
     await writeFile(equivalentAdapter, equivalentGood);
+    for (const [file, content, before, after] of textFiles) {
+      if ((await readFile(path.join(root, file), "utf8")) !== content)
+        throw new Error("Text adapter changed");
+      if (!before) continue;
+      if (!content.includes(before))
+        throw new Error("Missing text mutation marker");
+      await writeFile(path.join(root, file), content.replace(before, after));
+      await testCommand(target, root, config, false);
+      await writeFile(path.join(root, file), content);
+    }
     await writeFile(adapter, good.replace(was, mutant));
     await testCommand(target, root, config, false);
   } finally {
+    for (const [file, content] of textFiles)
+      await writeFile(path.join(root, file), content);
     await writeFile(equivalentAdapter, equivalentGood);
     await writeFile(adapter, good);
   }
   console.log(
-    `${target}: correct implementations pass; broken codec and Text/Int32 alternatives fail; regeneration preserves adapter`,
+    `${target}: correct implementations pass; broken codec, alternatives, Text normalization and idempotence fail; regeneration preserves adapter`,
   );
 }
 const selected = process.argv.slice(2);

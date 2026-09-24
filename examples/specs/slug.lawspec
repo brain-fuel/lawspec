@@ -1,0 +1,25 @@
+unit example.slug
+
+normalize :: Text -> Text
+referenceNormalize :: Text -> Text
+
+law `normalizers agree` is
+  definition is
+    `equivalent` normalize referenceNormalize
+  end
+  description is
+    "{normalize} and {referenceNormalize} replace ASCII spaces with hyphens"
+  end
+  example `ordinary text` is
+    x = "Hello, World!"
+  end
+  example `empty` is
+    x = ""
+  end
+  example `Unicode` is
+    x = "café 日本語 😀"
+  end
+  example `escaped text` is
+    x = "quote: \" slash: \\ newline: \n tab: \t dollar: $"
+  end
+end

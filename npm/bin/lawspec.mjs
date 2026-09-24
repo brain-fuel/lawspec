@@ -3,6 +3,7 @@ import { readFile, mkdir, readdir, stat } from "node:fs/promises";
 import path from "node:path";
 import { createCompiler } from "../api.mjs";
 import { targets, templates, commands, setup } from "../templates.mjs";
+import { generateExamples } from "../examples-command.mjs";
 import { doctor } from "../doctor.mjs";
 import {
   readOptional,
@@ -17,7 +18,7 @@ const options = {};
 const positional = [];
 for (let i = 0; i < args.length; i++) {
   const arg = args[i];
-  if (["--target", "--project", "--config"].includes(arg)) {
+  if (["--target", "--project", "--config", "--output"].includes(arg)) {
     if (!args[i + 1] || args[i + 1].startsWith("--"))
       throw new Error(`Missing value for ${arg}`);
     options[arg.slice(2)] = args[++i];
@@ -153,17 +154,40 @@ async function init() {
 async function main() {
   if (!verb || ["help", "--help", "-h"].includes(verb)) {
     output(
-      "LawSpec 0.2.1\nUsage: lawspec init --target <language> [--project <directory>]\n       lawspec check | doctor | explain <unit>::<law> | generate\nOptions: --config <path>, --target <language>, --json\nGeneration: --dry-run, --check\nTargets: " +
+      "LawSpec 0.3.0\nUsage: lawspec init --target <language> [--project <directory>]\n       lawspec check | doctor | explain <unit>::<law> | generate\n       lawspec examples [--target <language>] [--output example_artifacts]\nOptions: --config <path>, --target <language>, --json\nGeneration: --dry-run, --check\nTargets: " +
         targets.join(", "),
     );
     return;
   }
   if (verb === "--version") {
-    output("0.2.1");
+    output("0.3.0");
     return;
   }
   if (positional.length > (verb === "explain" ? 1 : 0))
     throw new Error(`Unexpected argument: ${positional.join(" ")}`);
+  if (verb === "examples") {
+    if (
+      options.config ||
+      options.project ||
+      options["dry-run"] ||
+      options.check
+    )
+      throw new Error("examples supports --target, --output and --json only");
+    const result = await generateExamples(options);
+    output(
+      options.json
+        ? result
+        : result
+            .map(
+              (r) =>
+                `${r.target}: ${r.files.length} artifacts in ${r.directory}; ${r.preservedAdapters.length} user adapters preserved.`,
+            )
+            .join("\n") +
+            "\nInspection artifacts only; native toolchains and dependencies are not checked. Stubs must be implemented before running tests.",
+    );
+    return;
+  }
+  if (options.output) throw new Error("--output is only supported by examples");
   if (verb === "init") return init();
   if (!["check", "doctor", "explain", "generate"].includes(verb))
     throw new Error(`Unknown command: ${verb}`);

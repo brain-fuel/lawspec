@@ -1,6 +1,6 @@
 {
   "name": "lawspec",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "State the law once. Check it everywhere.",
   "license": "MIT",
   "type": "module",

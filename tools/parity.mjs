@@ -17,6 +17,11 @@ const content = await readFile(
 );
 const compiler = await createCompiler();
 const fixtures = [
+  ...(await Promise.all(
+    ["slug", "canonical_url", "mixed_inputs"].map((name) =>
+      readFile(path.join(root, `examples/specs/${name}.lawspec`), "utf8"),
+    ),
+  )),
   await readFile(path.join(root, "examples/specs/equivalent.lawspec"), "utf8"),
   content,
   content.replace("x = -42", "x = 2147483648"),

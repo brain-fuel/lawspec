@@ -1,0 +1,33 @@
+unit example.mixed.inputs
+
+normalize :: Text -> Text
+identity :: Int32 -> Int32
+
+law `text and integer inputs remain independent` is
+  definition is
+    `for all` (text :: Text) (number :: Int32) .
+      normalize text = normalize (normalize text)
+  end
+  example `mixed inputs` is
+    text = "Hello, World!"
+    number = -42
+  end
+end
+
+law `integer behavior with a text context` is
+  definition is
+    `for all` (text :: Text) (number :: Int32) .
+      identity number = number
+  end
+  example `Unicode context` is
+    text = "λ 😀"
+    number = 2147483647
+  end
+end
+
+law `normalizing an empty literal` is
+  definition is
+    `for all` (text :: Text) .
+      normalize "" = ""
+  end
+end

@@ -38,7 +38,7 @@ expr :: P Expr
 expr = do
   a <- foldl1 Apply <$> some atom
   option a (Compose a <$> (symbol "." *> expr))
-  where atom = parens expr <|> (Var <$> ident) <|> (Number <$> lexeme (L.signed (pure ()) L.decimal))
+  where atom = (StringLit <$> str) <|> parens expr <|> (Var <$> ident) <|> (Number <$> lexeme (L.signed (pure ()) L.decimal))
 defP :: P Definition
 defP = (do void (symbol "`for all`"); ps <- some param; void (symbol "."); Forall ps <$> defP)
    <|> (Invoke <$> quoted <*> many (parens expr <|> (Var <$> ident)))
@@ -58,7 +58,7 @@ lawP = do
   why <- option "" (block "rationale" str)
   ex <- many $ do
     keyword "example"; en <- quoted; keyword "is"
-    bs <- some ((,) <$> ident <* symbol "=" <*> lexeme (L.signed (pure ()) L.decimal))
+    bs <- some ((,) <$> ident <* symbol "=" <*> ((TextLiteral <$> str) <|> (IntLiteral <$> lexeme (L.signed (pure ()) L.decimal))))
     keyword "end"; pure (Example en bs)
   refs <- option [] (keyword "references" *> keyword "are" *> some str <* keyword "end")
   keyword "end"

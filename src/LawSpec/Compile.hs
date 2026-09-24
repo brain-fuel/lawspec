@@ -39,6 +39,9 @@ infer :: Env -> Expr -> C Type
 infer env (Var n) = maybe (throwC ("unknown value: " ++ n)) pure (M.lookup n env)
 infer _ (Number n) | n < -2147483648 || n > 2147483647 = throwC "integer outside Int32 range"
                    | otherwise = pure (Named "Int32")
+infer _ (StringLit s)
+  | any (\c -> c >= '\xD800' && c <= '\xDFFF') s = throwC "Text cannot contain surrogate code points"
+  | otherwise = pure (Named "Text")
 infer env (Apply f x) = do
   ft <- infer env f; xt <- infer env x; r <- Variable . ("result:"++) <$> fresh
   unify ft (Arrow xt r); resolve r
@@ -134,18 +137,22 @@ compile sources = do
       checkedInputs <- forM bs $ \v -> do
         t <- resolve (inputType v)
         unless (validType t || (symbolic && case t of Named ('@':_) -> True; _ -> False)) (throwC "unsupported quantified type")
-        when (not symbolic && t /= Named "Int32") (throwC "v0.2 generates quantified inputs of type Int32 only")
+        when (not symbolic && t `notElem` [Named "Int32", Named "Text"]) (throwC "executable inputs must have type Int32 or Text")
         pure v{inputType=t}
       os <- gets obligations >>= mapM resolve
       allowed <- mapM (resolve . rigid) (requirements l)
       forM_ os $ \t -> unless (t `elem` [Named "Int32",Named "Text"] || (symbolic && t `elem` allowed)) (throwC ("unsatisfied Eq requirement: " ++ prettyType t))
       unless symbolic $ do
-        when (null checkedInputs) (throwC "an executable law must quantify at least one Int32 input")
+        when (null checkedInputs) (throwC "an executable law must quantify at least one Int32 or Text input")
         lift (unique "expanded input name" (map inputName checkedInputs))
         forM_ (examples l) $ \ex -> do
           lift (unique "example binding" (map fst (bindings ex)))
           unless (M.keys (M.fromList (bindings ex)) == M.keys (M.fromList [(inputName v,()) | v <- checkedInputs])) (throwC ("example " ++ exampleName ex ++ " must bind exactly: " ++ intercalate ", " (map inputName checkedInputs)))
-          forM_ (bindings ex) $ \(_,v) -> when (v < -2147483648 || v > 2147483647) (throwC "example integer outside Int32 range")
+          forM_ (bindings ex) $ \(n,v) -> do
+            actual <- infer M.empty (case v of IntLiteral k -> Number k; TextLiteral text -> StringLit text)
+            case lookup n [(inputName inp,inputType inp) | inp <- checkedInputs] of
+              Just expected -> unless (actual == expected) (throwC ("example " ++ exampleName ex ++ ": " ++ n ++ " expects " ++ prettyType expected ++ ", got " ++ prettyType actual))
+              Nothing -> throwC "unknown example input"
       pure (Expanded (unitName u) (lawName l) checkedInputs a b tr l)
       ) (CS M.empty 0 [])
   pure (filter ((/= "prelude") . unitName) us, filter (null . parameters . original) allExpanded)

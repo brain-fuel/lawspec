@@ -43,8 +43,8 @@ main = hspec $ do
       compile [Source "bad.lawspec" "unit bad\nf :: Int32 -> Int32\ng :: Text -> Int32\nlaw `bad` is definition is `equivalent` f g end end"] `shouldSatisfy` isLeft
     it "expands equivalent without capturing an implementation named x" $
       compile [Source "capture.lawspec" "unit capture\nx :: Int32 -> Text\ng :: Int32 -> Text\nlaw `ok` is definition is `equivalent` x g end example `zero` is x = 0 end end"] `shouldSatisfy` isRight
-    it "rejects mismatched function directions" $
-      compile [source (concrete "`left inverse` f g")] `shouldSatisfy` isLeft
+    it "accepts the reverse round trip with quantified Text" $
+      compile [source (concrete "`left inverse` f g")] `shouldSatisfy` isRight
     it "rejects recursive expansion" $
       compile [source (concrete "`codec`")] `shouldSatisfy` isLeft
     it "rejects unknown functions" $
@@ -61,6 +61,17 @@ main = hspec $ do
       compile [source (concrete "`for all` (x :: Int32) (y :: Int32) . g (f x) = y")] `shouldSatisfy` isRight
     it "does not capture an argument named like an inherited input" $
       compile [Source "capture.lawspec" "unit capture\nx :: Int32 -> Text\ng :: Text -> Int32\nlaw `ok` is definition is `left inverse` g x end end"] `shouldSatisfy` isRight
+    it "checks Text and mixed example fixtures" $ do
+      mapM_ (\name -> do
+        text <- readFile ("examples/specs/" ++ name ++ ".lawspec")
+        compile [Source (name ++ ".lawspec") text] `shouldSatisfy` isRight) ["slug", "canonical_url", "mixed_inputs"]
+    it "rejects example values that do not match input types" $ do
+      compile [Source "bad.lawspec" "unit bad\nf :: Text -> Text\nlaw `bad` is definition is `idempotent` f end example `bad` is x = 42 end end"] `shouldSatisfy` isLeft
+      compile [Source "bad.lawspec" "unit bad\nf :: Int32 -> Int32\nlaw `bad` is definition is `idempotent` f end example `bad` is x = \"42\" end end"] `shouldSatisfy` isLeft
+    it "rejects non-scalar Text values" $
+      compile [Source "bad.lawspec" ("unit bad\nf :: Text -> Text\nlaw `bad` is definition is `idempotent` f end example `bad` is x = \"" ++ ['\xD800'] ++ "\" end end")] `shouldSatisfy` isLeft
+    it "requires the same input and output types for idempotence" $
+      compile [Source "bad.lawspec" "unit bad\nf :: Text -> Int32\nlaw `bad` is definition is `idempotent` f end end"] `shouldSatisfy` isLeft
   describe "emission" $ do
     it "emits tests and user-owned adapters for all seven targets" $ do
       s <- readFile "examples/specs/atoi_codec.lawspec"

@@ -108,3 +108,60 @@ test("equivalent specializes both result types on every backend", async () => {
     assert.match(result.files[1].content, /nonnegative clamps agree/);
   }
 });
+
+test("Text laws, idempotence, escaped examples and mixed inputs work on every backend", async () => {
+  const sources = await Promise.all(
+    ["slug", "canonical_url", "mixed_inputs"].map(async (name) => ({
+      path: `${name}.lawspec`,
+      content: await readFile(
+        new URL(`../../examples/specs/${name}.lawspec`, import.meta.url),
+        "utf8",
+      ),
+    })),
+  );
+  const result = await compiler.expand({ sources });
+  assert.deepEqual(result.diagnostics, []);
+  assert.equal(result.laws.length, 5);
+  assert.match(result.expansions[0], /\(x :: Text\)/);
+  assert.match(
+    result.expansions[1],
+    /canonicalize \(canonicalize \(x\)\) = canonicalize \(x\)/,
+  );
+  assert.deepEqual(
+    result.laws[2].inputs.map((i) => i.inputType.contents),
+    ["Text", "Int32"],
+  );
+  assert.equal(
+    result.laws[0].original.examples[0].bindings[0][1],
+    "Hello, World!",
+  );
+  const generators = {
+    java: "Generator.stringsOf(Generator.asciiPrintableChars())",
+    python: "st.text()",
+    javascript: "fc.string()",
+    typescript: "fc.string()",
+    go: "rapid.String()",
+    haskell: "Gen.text",
+    kotlin: "Arb.string()",
+  };
+  for (const [target, generator] of Object.entries(generators)) {
+    const plan = await compiler.planGeneration({ sources, target });
+    assert.deepEqual(plan.diagnostics, []);
+    assert.equal(plan.files.length, 6);
+    assert.ok(
+      plan.files
+        .filter((f) => f.ownership === "generated")
+        .every((f) => f.content.includes(generator)),
+    );
+  }
+  for (const content of [
+    sources[0].content.replace('x = "Hello, World!"', "x = 42"),
+    sources[0].content.replace('x = "Hello, World!"', 'y = "oops"'),
+    "unit bad\nf :: Text -> Int32\nlaw `bad` is definition is `idempotent` f end end",
+  ]) {
+    const invalid = await compiler.check({
+      sources: [{ path: "bad.lawspec", content }],
+    });
+    assert.ok(invalid.diagnostics.length);
+  }
+});

@@ -1,0 +1,21 @@
+unit example.canonical_url
+
+canonicalize :: Text -> Text
+
+law `canonicalization reaches a fixed point` is
+  definition is
+    `idempotent` canonicalize
+  end
+  description is
+    "{canonicalize} removes trailing slashes until the result is stable"
+  end
+  example `trailing slashes` is
+    x = "https://example.com/path///"
+  end
+  example `already canonical` is
+    x = "https://example.com/path"
+  end
+  example `empty` is
+    x = ""
+  end
+end
