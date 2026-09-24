@@ -21,7 +21,7 @@ keyword s = lexeme (try (string s *> notFollowedBy (alphaNumChar <|> char '_')))
 ident :: P String
 ident = lexeme $ try $ do
   x <- (:) <$> letterChar <*> many (alphaNumChar <|> char '_')
-  if x `elem` ["unit","law","requires","is","end","definition","description","rationale","example","expect","implies","true","false","references","are","Eq"] then fail "reserved identifier" else pure x
+  if x `elem` ["unit","law","requires","is","end","definition","description","rationale","example","expect","implies","and","true","false","references","are","Eq"] then fail "reserved identifier" else pure x
 quoted :: P String
 quoted = lexeme (char '`' *> some (satisfy (\c -> c /= '`' && not (isControl c))) <* char '`')
 str :: P String
@@ -41,11 +41,16 @@ expr = do
   where atom = (BoolLit <$> boolP) <|> (StringLit <$> str) <|> parens expr <|> (Var <$> ident) <|> (Number <$> lexeme (L.signed (pure ()) L.decimal))
 defP :: P Definition
 defP = (do void (symbol "`for all`"); ps <- some param; void (symbol "."); Forall ps <$> defP)
-   <|> (Invoke <$> quoted <*> many (parens expr <|> (Var <$> ident)))
-   <|> (do a <- expr
-           (keyword "implies" *> (Implies a <$> defP))
-             <|> (symbol "=" *> (Equal a <$> expr))
-             <|> pure (Holds a))
+   <|> do a <- clause
+          option a (And a <$> (keyword "and" *> defP))
+  where
+    clause = (Invoke <$> quoted <*> many (parens expr <|> (BoolLit <$> boolP) <|> (StringLit <$> str) <|> (Number <$> lexeme (L.signed (pure ()) L.decimal)) <|> (Var <$> ident)))
+      <|> try (do
+        a <- expr
+        (keyword "implies" *> (Implies a <$> defP))
+          <|> (symbol "=" *> (Equal a <$> expr))
+          <|> pure (Holds a))
+      <|> parens defP
 boolP :: P Bool
 boolP = (keyword "true" *> pure True) <|> (keyword "false" *> pure False)
 literalP :: P Literal

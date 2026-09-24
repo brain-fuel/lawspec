@@ -185,13 +185,13 @@ function explainExamples(law) {
 async function main() {
   if (!verb || ["help", "--help", "-h"].includes(verb)) {
     output(
-      "LawSpec 0.5.0\nUsage: lawspec init --target <language> [--project <directory>]\n       lawspec check | doctor | explain <unit>::<law> | generate\n       lawspec examples [--target <language>] [--output example_artifacts]\nOptions: --config <path>, --target <language>, --json\nGeneration: --dry-run, --check\nTargets: " +
+      "LawSpec 0.6.0\nUsage: lawspec init --target <language> [--project <directory>]\n       lawspec check | doctor | explain <unit>::<law> | generate\n       lawspec examples [--target <language>] [--output example_artifacts]\nOptions: --config <path>, --target <language>, --json\nGeneration: --dry-run, --check\nTargets: " +
         targets.join(", "),
     );
     return;
   }
   if (verb === "--version") {
-    output("0.5.0");
+    output("0.6.0");
     return;
   }
   if (positional.length > (verb === "explain" ? 1 : 0))

@@ -125,7 +125,10 @@ try {
        const port=readFileSync(new URL('./examples/specs/parse_port.lawspec', import.meta.resolve('lawspec')), 'utf8');
        const guarded=await c.expand({sources:[{path:'parse_port.lawspec',content:port}]});
        if(guarded.diagnostics.length || guarded.laws[0].guards.length!==1 || !guarded.expansions[0].includes('implies'))throw new Error(JSON.stringify(guarded));
-       console.log('Installed API expands equivalent and predicate examples');`,
+       const algebra=readFileSync(new URL('./examples/specs/algebra.lawspec', import.meta.resolve('lawspec')), 'utf8');
+       const expanded=await c.expand({sources:[{path:'algebra.lawspec',content:algebra}]});
+       if(expanded.diagnostics.length || expanded.laws.length!==19 || !expanded.expansions.some(s=>s.includes('divideRight') && s.includes('divideLeft')))throw new Error(JSON.stringify(expanded));
+       console.log('Installed API expands equivalent, predicate and all algebra examples');`,
     ],
     app,
   );

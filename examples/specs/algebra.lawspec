@@ -1,0 +1,254 @@
+unit example.algebra
+
+-- Int32 arithmetic in this example wraps modulo 2^32 on every target.
+add           :: Int32 -> Int32 -> Int32
+multiply      :: Int32 -> Int32 -> Int32
+negateValue   :: Int32 -> Int32
+maximumValue  :: Int32 -> Int32 -> Int32
+subtractValue :: Int32 -> Int32 -> Int32
+divideLeft    :: Int32 -> Int32 -> Int32
+divideRight   :: Int32 -> Int32 -> Int32
+
+law `addition is commutative` is
+  definition is
+    `commutative` add
+  end
+
+  example `3 plus 5 and 5 plus 3 both produce 8` is
+    x = 3
+    y = 5
+    expect add x y = 8
+    expect add y x = 8
+  end
+end
+
+law `addition is associative` is
+  definition is
+    `associative` add
+  end
+
+  example `both groupings of 3 plus 5 plus 7 produce 15` is
+    x = 3
+    y = 5
+    z = 7
+    expect add (add x y) z = 15
+    expect add x (add y z) = 15
+  end
+end
+
+law `zero is left identity for addition` is
+  definition is
+    `left identity` add 0
+  end
+
+  example `adding zero on left preserves 3` is
+    x = 3
+    expect add 0 x = 3
+  end
+end
+
+law `zero is right identity for addition` is
+  definition is
+    `right identity` add 0
+  end
+
+  example `adding zero on right preserves 3` is
+    x = 3
+    expect add x 0 = 3
+  end
+end
+
+law `zero is two-sided identity for addition` is
+  definition is
+    `identity` add 0
+  end
+
+  example `adding zero on both sides preserves 3` is
+    x = 3
+    expect add 0 x = 3
+    expect add x 0 = 3
+  end
+end
+
+law `zero absorbs multiplication left` is
+  definition is
+    `left absorbing element` multiply 0
+  end
+
+  example `zero on left of multiplication produces zero` is
+    x = 3
+    expect multiply 0 x = 0
+  end
+end
+
+law `zero absorbs multiplication right` is
+  definition is
+    `right absorbing element` multiply 0
+  end
+
+  example `zero on right of multiplication produces zero` is
+    x = 3
+    expect multiply x 0 = 0
+  end
+end
+
+law `zero absorbs multiplication on both sides` is
+  definition is
+    `absorbing element` multiply 0
+  end
+
+  example `zero on both sides of multiplication produces zero` is
+    x = 3
+    expect multiply 0 x = 0
+    expect multiply x 0 = 0
+  end
+end
+
+law `multiplication distributes over addition left` is
+  definition is
+    `left distributive` multiply add
+  end
+
+  example `left distribution produces 36` is
+    x = 3
+    y = 5
+    z = 7
+    expect multiply x (add y z) = 36
+    expect add (multiply x y) (multiply x z) = 36
+  end
+end
+
+law `multiplication distributes over addition right` is
+  definition is
+    `right distributive` multiply add
+  end
+
+  example `right distribution produces 56` is
+    x = 3
+    y = 5
+    z = 7
+    expect multiply (add x y) z = 56
+    expect add (multiply x z) (multiply y z) = 56
+  end
+end
+
+law `multiplication distributes over addition on both sides` is
+  definition is
+    `distributive` multiply add
+  end
+
+  example `left distribution produces 36; right distribution produces 56` is
+    x = 3
+    y = 5
+    z = 7
+    expect multiply x (add y z) = 36
+    expect add (multiply x y) (multiply x z) = 36
+    expect multiply (add x y) z = 56
+    expect add (multiply x z) (multiply y z) = 56
+  end
+end
+
+law `maximum is an idempotent operation` is
+  definition is
+    `idempotent operation` maximumValue
+  end
+
+  example `the maximum of 3 and itself is 3` is
+    x = 3
+    expect maximumValue x x = 3
+  end
+end
+
+law `negation supplies left additive inverses` is
+  definition is
+    `left inverse element` add negateValue 0
+  end
+
+  example `3 has inverse -3; the left inverse equation produces zero` is
+    x = 3
+    expect negateValue x = -3
+    expect add (negateValue x) x = 0
+  end
+end
+
+law `negation supplies right additive inverses` is
+  definition is
+    `right inverse element` add negateValue 0
+  end
+
+  example `3 has inverse -3; the right inverse equation produces zero` is
+    x = 3
+    expect negateValue x = -3
+    expect add x (negateValue x) = 0
+  end
+end
+
+law `negation supplies both additive inverses` is
+  definition is
+    `invertible` add negateValue 0
+  end
+
+  example `3 has inverse -3; the left and right inverse equation produces zero` is
+    x = 3
+    expect negateValue x = -3
+    expect add (negateValue x) x = 0
+    expect add x (negateValue x) = 0
+  end
+end
+
+law `subtraction has left division` is
+  definition is
+    `left division` subtractValue divideLeft
+  end
+
+  example `left solution is -2 since 3 - (-2) = 5; reversing the operation recovers 5` is
+    x = 3
+    y = 5
+    expect divideLeft x y = -2
+    expect subtractValue x (divideLeft x y) = 5
+    expect divideLeft x (subtractValue x y) = 5
+  end
+end
+
+law `subtraction has right division` is
+  definition is
+    `right division` subtractValue divideRight
+  end
+
+  example `right solution is 8 since 8 - 5 = 3; reversing the operation recovers 3` is
+    x = 3
+    y = 5
+    expect divideRight x y = 8
+    expect subtractValue (divideRight x y) y = 3
+    expect divideRight (subtractValue x y) y = 3
+  end
+end
+
+law `subtraction has divisible` is
+  definition is
+    `divisible` subtractValue divideLeft divideRight
+  end
+
+  example `left solution is -2; right solution is 8; both recovery directions hold` is
+    x = 3
+    y = 5
+    expect divideLeft x y = -2
+    expect subtractValue x (divideLeft x y) = 5
+    expect divideLeft x (subtractValue x y) = 5
+    expect divideRight x y = 8
+    expect subtractValue (divideRight x y) y = 3
+    expect divideRight (subtractValue x y) y = 3
+  end
+end
+
+law `negation is an involution` is
+  definition is
+    `involution` negateValue
+  end
+
+  example `negating -3 twice restores -3` is
+    x = -3
+    expect negateValue x = 3
+    expect negateValue (negateValue x) = -3
+  end
+end

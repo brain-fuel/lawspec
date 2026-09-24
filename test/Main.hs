@@ -102,6 +102,29 @@ main = hspec $ do
       compile [Source "bad.lawspec" "unit bad\nf :: Int32 -> Bool\nlaw `check` is definition is `satisfies` f end example `zero` is x = 0 expect f x = 1 end end"] `shouldSatisfy` isLeft
     it "checks generic predicate constraints without requiring Eq of the input" $
       compile [Source "generic.lawspec" "unit generic\nlaw `predicate` (p :: a -> Bool) is definition is `satisfies` p end end"] `shouldSatisfy` isRight
+  describe "algebra and currying" $ do
+    it "compiles every algebra and partial-application example" $ do
+      mapM_ (\n -> do
+        text <- readFile ("examples/specs/" ++ n ++ ".lawspec")
+        compile [Source (n ++ ".lawspec") text] `shouldSatisfy` isRight) ["algebra", "currying"]
+    it "accepts exactly the generic commutative and associative signatures" $ do
+      let generic name body = Source "generic.lawspec" ("unit generic\nlaw `" ++ name ++ "` (f :: a -> a -> a) requires Eq a is definition is " ++ body ++ " end end")
+      compile [generic "commutes" "`for all` (x :: a) (y :: a) . f x y = f y x"] `shouldSatisfy` isRight
+      compile [generic "associates" "`for all` (x :: a) (y :: a) (z :: a) . f (f x y) z = f x (f y z)"] `shouldSatisfy` isRight
+    it "checks scalar identity parameters and rejects wrong types or arities" $ do
+      let spec d = Source "arity.lawspec" ("unit arity\nf :: Int32 -> Int32 -> Int32\nlaw `check` is definition is " ++ d ++ " end end")
+      compile [spec "`left identity` f 0"] `shouldSatisfy` isRight
+      mapM_ (\d -> compile [spec d] `shouldSatisfy` isLeft)
+        ["`left identity` f true", "`commutative` (f 1)", "`for all` (x :: Int32) . f x = x", "`for all` (x :: Int32) . f x x x = x"]
+    it "retains every conjunct and shared conditional scope" $ do
+      let spec = Source "both.lawspec" "unit both\nlaw `check` is definition is `for all` (x :: Bool) . x implies (x = true and true = x) end end"
+      case compile [spec] of
+        Right (_, [e]) -> case assertion e of
+          AssertImplies _ (AssertAll [AssertEqual _ _, AssertEqual _ _]) -> pure ()
+          other -> expectationFailure (show other)
+        other -> expectationFailure (show other)
+    it "requires Eq constraints for all generic equality conclusions" $
+      compile [Source "bad.lawspec" "unit bad\nlaw `check` (f :: a -> a -> a) is definition is `commutative` f end end"] `shouldSatisfy` isLeft
   describe "emission" $ do
     it "emits tests and user-owned adapters for all seven targets" $ do
       s <- readFile "examples/specs/atoi_codec.lawspec"

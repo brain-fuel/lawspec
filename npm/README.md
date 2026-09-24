@@ -2,7 +2,7 @@
 
 **State the law once. Check it everywhere.**
 
-LawSpec 0.5 compiles reusable laws into native property tests, executable examples,
+LawSpec 0.6 compiles reusable laws into native property tests, executable examples,
 and implementation adapters. The compiler is Haskell, distributed as prebuilt
 WebAssembly with a Node CLI and an asynchronous, typed JavaScript API.
 
@@ -11,7 +11,7 @@ WebAssembly with a Node CLI and an asynchronous, typed JavaScript API.
 Install [LawSpec from npm](https://www.npmjs.com/package/lawspec):
 
 ```sh
-npm install --save-dev lawspec@0.5.0
+npm install --save-dev lawspec@0.6.0
 npx lawspec --version
 ```
 
@@ -25,8 +25,8 @@ local dependencies so LawSpec can create its `package.json` and test script:
 ```sh
 mkdir lawspec-example
 cd lawspec-example
-npm exec --package=lawspec@0.5.0 -- lawspec init --target javascript
-npm install --save-dev lawspec@0.5.0
+npm exec --package=lawspec@0.6.0 -- lawspec init --target javascript
+npm install --save-dev lawspec@0.6.0
 npx lawspec check
 npx lawspec explain 'example.atoi_codec::itoa and then atoi yields a'
 npx lawspec doctor
@@ -61,7 +61,7 @@ properties with the selected framework's shrinking and failure reporting.
 | `kotlin` | JDK/JVM 25, Gradle 9.1–9.3, Kotlin 2.3.21 | Kotest 5.9.1 | `gradle test` |
 
 Java 25 and Python 3.13 are the minimum baselines. New JVM releases are admitted
-through compatibility profiles after testing; v0.5's current JVM profile certifies
+through compatibility profiles after testing; v0.6's current JVM profile certifies
 25. Python templates declare `requires-python = ">=3.13"` and runtime checks
 currently recognize 3.13 and 3.14. Kotlin templates pin Gradle's supported build
 configuration to Kotlin 2.3.21 and target JVM 25.
@@ -161,10 +161,10 @@ Reusable laws can declare typed unary function parameters and `requires Eq a`.
 Definitions support law application, function application/composition, universal
 quantification, `implies`, Boolean predicates, scalar literals, and equality.
 Function signatures use `Int32`, `Text`, and `Bool`; generic variables are
-supported in reusable laws. v0.5 generates quantified inputs of all three types,
+supported in reusable laws. v0.6 generates quantified inputs of all three types,
 including mixed and multiple inputs. These types can also be intermediate or
-compared results. Functions are synchronous
-and unary. Text literals are double-quoted, with escapes such as `\"`, `\\`,
+compared results. Functions are synchronous and support curried signatures with any positive
+number of scalar arguments. Text literals are double-quoted, with escapes such as `\"`, `\\`,
 `\n`, and `\t`; examples must bind each input to a literal of its declared type.
 Text values contain Unicode scalar values; surrogate code points are rejected.
 
@@ -178,6 +178,140 @@ definition, optional description, optional rationale, examples, optional referen
 Additional primitives, external law packages, cross-unit imports beyond the
 prelude, async functions, direct existing-symbol binding and browser hosting are
 outside this release.
+
+## Algebra and currying (0.6)
+
+Version 0.6 adds algebra laws, scalar law parameters, curried signatures,
+and conjunctions.
+
+```lawspec
+unit example.addition
+
+add :: Int32 -> Int32 -> Int32
+
+law `addition commutes` is
+  definition is
+    `commutative` add
+  end
+
+  example `3 plus 5 and 5 plus 3 both produce 8` is
+    x = 3
+    y = 5
+    expect add x y = 8
+    expect add y x = 8
+  end
+end
+
+law `zero is an identity on both sides` is
+  definition is
+    `identity` add 0
+  end
+
+  example `zero preserves 3 on either side` is
+    x = 3
+    expect add 0 x = 3
+    expect add x 0 = 3
+  end
+end
+```
+
+Arrows associate to the right and application associates to the left:
+`f :: a -> b -> c` takes two arguments, and `f x y` means `(f x) y`.
+A partial application such as `add 1` can be passed to a reusable unary law;
+`sumFour 1 2` can be passed to a binary law. Partial applications also compose.
+The compiler specializes these expressions before emission. Java, Kotlin,
+Python, JavaScript, TypeScript and Go adapters take ordinary positional arguments
+(`add(x, y)`); Haskell adapters use native currying (`add x y`). Argument order
+and types are preserved, including mixtures of `Text`, `Bool` and `Int32`.
+
+Law parameters can also be scalar values: `(e :: a)` supplies an identity and
+`(zero :: a)` supplies an absorbing element. Pass literals directly, for example
+`left identity` with arguments `add 0`, or `absorbing element` with `multiply 0`.
+Functions declared by a unit take one or more scalar inputs and return a scalar;
+reusable laws accept these curried functions, their partial applications, and
+scalar parameters. Quantified test inputs remain scalar.
+
+The prelude defines the following laws. Every row has an executable example in
+[algebra.lawspec](https://github.com/brain-fuel/lawspec/blob/v0.6.0/examples/specs/algebra.lawspec), including both sides of every
+combined law. `f` and `g` are binary operations, `inverse` is unary, and `e` and
+`zero` are scalar parameters. All these laws require equality of the element type.
+
+| Law and arguments | Equations checked for every quantified input |
+| --- | --- |
+| `commutative f` | `f x y = f y x` |
+| `associative f` | `f (f x y) z = f x (f y z)` |
+| `left identity f e` | `f e x = x` |
+| `right identity f e` | `f x e = x` |
+| `identity f e` | Both identity equations |
+| `left absorbing element f zero` | `f zero x = zero` |
+| `right absorbing element f zero` | `f x zero = zero` |
+| `absorbing element f zero` | Both absorbing equations |
+| `left distributive f g` | `f x (g y z) = g (f x y) (f x z)` |
+| `right distributive f g` | `f (g x y) z = g (f x z) (f y z)` |
+| `distributive f g` | Both distributive equations |
+| `idempotent operation f` | `f x x = x` (the existing `idempotent` law is unary) |
+| `left inverse element f inverse e` | `f (inverse x) x = e` |
+| `right inverse element f inverse e` | `f x (inverse x) = e` |
+| `invertible f inverse e` | Both inverse equations |
+| `left division f divideLeft` | `f x (divideLeft x y) = y` and `divideLeft x (f x y) = y` |
+| `right division f divideRight` | `f (divideRight x y) y = x` and `divideRight (f x y) y = x` |
+| `divisible f divideLeft divideRight` | All four division equations |
+| `involution f` | `f (f x) = x` |
+
+Here **divisible** means algebraic left/right division. `divideLeft x y` solves
+`f x result = y`; `divideRight x y` solves `f result y = x`. The subtraction
+example deliberately uses a noncommutative operation: with `x = 3` and `y = 5`,
+the left solution is `-2` and the right solution is `8`. Recovery is checked in
+both directions. These are total laws; a partially defined division needs an
+explicit domain predicate and conditional equations.
+
+`invertible` checks the supplied inverse operation. Check `identity` and
+`associative` as well when specifying a group. The prelude states contracts;
+it does not supply arithmetic implementations or prove a structure from random
+tests. The numeric examples use Int32 arithmetic modulo 2^32 so their laws hold
+at overflow boundaries on every target. JavaScript uses `Math.imul` for products,
+and Python explicitly wraps results into the signed Int32 range in the test
+adapters.
+
+Use `and` to require multiple conclusions in one law. For example:
+
+```lawspec
+unit example.absorption
+multiply :: Int32 -> Int32 -> Int32
+
+law `zero absorbs on both sides` is
+  definition is
+    `for all` (x :: Int32) .
+      multiply 0 x = 0 and multiply x 0 = 0
+  end
+
+  example `3 times zero and zero times 3 both produce zero` is
+    x = 3
+    expect multiply 0 x = 0
+    expect multiply x 0 = 0
+  end
+end
+```
+
+Quantification and implication extend through the following conjunction:
+`p x implies A and B` guards both conclusions. Write `(p x implies A) and B`
+to guard only the first. A shared guard runs once per check; false guards skip
+their entire consequence. Every conjunct is type-checked and emitted. As with
+existing assertions, the first failure stops that individual test. `and` is now
+a reserved word.
+
+[Currying examples](https://github.com/brain-fuel/lawspec/blob/v0.6.0/examples/specs/currying.lawspec) demonstrate a four-argument
+function partially applied twice, a formatter with four heterogeneous arguments,
+and composition after partial application. Each example states its exact outputs.
+Run `node npm/bin/lawspec.mjs examples` after rebuilding to inspect all nine units
+in all seven target languages (126 artifacts).
+
+The expanded API's **`assertion` tree is authoritative**: `AssertEqual` contains
+two expressions, `AssertImplies` contains a condition and consequence, and
+`AssertAll` contains every conjunct. Existing `left`, `right`, and `guards`
+fields are compatibility projections of the first conclusion only; consumers
+checking compound laws must traverse `assertion`. Source definitions add `And`.
+`lawspec explain` prints the full conjunction and its conditional scope.
 
 ## Predicates and conditional laws (0.5)
 
@@ -218,7 +352,7 @@ law `valid ports round trip` is
 end
 ```
 
-The [complete port example](https://github.com/brain-fuel/lawspec/blob/v0.5.0/examples/specs/parse_port.lawspec)
+The [complete port example](https://github.com/brain-fuel/lawspec/blob/v0.6.0/examples/specs/parse_port.lawspec)
 defines valid ports as 1–65535, and covers both endpoints, ordinary ports, zero,
 negative values, and 65536. All explicit `expect` assertions run regardless of
 the law's condition. A false condition skips only the consequence: invalid ports
@@ -236,7 +370,7 @@ The prelude includes `satisfies predicate` (the predicate holds for every input)
 and `left inverse when predicate parse render` (the guarded round trip above).
 These reusable laws preserve the condition and its lexical bindings when expanded.
 `equivalent` can also compare two predicates, since `Bool` supports equality.
-The [Boolean flags example](https://github.com/brain-fuel/lawspec/blob/v0.5.0/examples/specs/boolean_flags.lawspec)
+The [Boolean flags example](https://github.com/brain-fuel/lawspec/blob/v0.6.0/examples/specs/boolean_flags.lawspec)
 checks that flipping twice restores both `false` and `true`; all targets generate
 Boolean property inputs and explicit tests for both Boolean boundary values. Java caps Boolean-only JetCheck runs at the number of
 possible input combinations (up to 100), avoiding generator exhaustion.
@@ -315,7 +449,7 @@ This expands to `for all (x :: Int32) . render (x) = referenceRender (x)`.
 The example inherits the input name `x` from the prelude. Both functions are
 user-owned adapter functions; either may delegate to your existing code.
 
-[The complete example](https://github.com/brain-fuel/lawspec/blob/v0.5.0/examples/specs/equivalent.lawspec) compares decimal
+[The complete example](https://github.com/brain-fuel/lawspec/blob/v0.6.0/examples/specs/equivalent.lawspec) compares decimal
 renderers and two implementations that clamp negative integers to zero. For
 JavaScript, their adapters can be:
 
@@ -352,7 +486,7 @@ law `normalizers agree` is
 end
 ```
 
-The [slug example](https://github.com/brain-fuel/lawspec/blob/v0.5.0/examples/specs/slug.lawspec)
+The [slug example](https://github.com/brain-fuel/lawspec/blob/v0.6.0/examples/specs/slug.lawspec)
 compares two implementations of ASCII-space replacement. It includes empty,
 Unicode and escaped text. Each target uses its native string generator:
 JetCheck `Generator.stringsOf(Generator.asciiPrintableChars())`, Hypothesis `st.text()`, fast-check `fc.string()`,
@@ -379,7 +513,7 @@ law `canonicalization reaches a fixed point` is
 end
 ```
 
-The [canonical URL example](https://github.com/brain-fuel/lawspec/blob/v0.5.0/examples/specs/canonical_url.lawspec)
+The [canonical URL example](https://github.com/brain-fuel/lawspec/blob/v0.6.0/examples/specs/canonical_url.lawspec)
 uses removal of **all trailing slashes** as a small fixed-point demonstration,
 not a complete URL canonicalization algorithm. For JavaScript:
 
@@ -388,7 +522,7 @@ export const canonicalize = value => value.replace(/\/+$/, "");
 ```
 
 Removing just one trailing slash fails the supplied repeated-slash example.
-The [mixed-input example](https://github.com/brain-fuel/lawspec/blob/v0.5.0/examples/specs/mixed_inputs.lawspec)
+The [mixed-input example](https://github.com/brain-fuel/lawspec/blob/v0.6.0/examples/specs/mixed_inputs.lawspec)
 shows `Text` and `Int32` in the same quantified property and executable example.
 The JavaScript API represents input bindings and expected values as `number | string | boolean`.
 Each example includes `expectations: { actual: Expr; expected: number | string | boolean }[]`.
@@ -453,7 +587,7 @@ by the JS shim.
 ## Build and verify
 
 For contributors working from a repository checkout, build a local archive with
-`npm pack ./npm` and install it with `npm install --save-dev ./lawspec-0.5.0.tgz`.
+`npm pack ./npm` and install it with `npm install --save-dev ./lawspec-0.6.0.tgz`.
 The package payload lives in `npm/`.
 
 ```sh

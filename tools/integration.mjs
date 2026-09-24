@@ -4,6 +4,7 @@ import { promisify } from "node:util";
 import { readFile, writeFile, readdir, rm } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { algebraAdapters } from "./algebra-fixtures.mjs";
 import { predicateAdapters } from "./predicate-fixtures.mjs";
 import { equivalentAdapters } from "./equivalent-fixtures.mjs";
 import { textAdapters, oracleMutants } from "./text-fixtures.mjs";
@@ -165,6 +166,8 @@ async function verify(target) {
     "mixed_inputs",
     "parse_port",
     "boolean_flags",
+    "algebra",
+    "currying",
   ]) {
     await writeFile(
       path.join(root, `laws/${name}.lawspec`),
@@ -199,6 +202,9 @@ end end`,
     intMutant,
   ] = equivalentAdapters[target];
   const equivalentAdapter = path.join(root, equivalentPath);
+  const algebraFiles = algebraAdapters(target);
+  for (const [file, content] of algebraFiles)
+    await writeFile(path.join(root, file), content);
   const predicateFiles = predicateAdapters(target);
   for (const [file, content] of predicateFiles)
     await writeFile(path.join(root, file), content);
@@ -252,6 +258,20 @@ end end`,
         );
       await writeFile(path.join(root, file), correct);
     }
+    for (const [file, content, ...mutations] of algebraFiles) {
+      if ((await readFile(path.join(root, file), "utf8")) !== content)
+        throw new Error("Algebra adapter changed");
+      for (let i = 0; i < mutations.length; i += 2) {
+        if (!content.includes(mutations[i]))
+          throw new Error("Missing algebra mutation marker");
+        await writeFile(
+          path.join(root, file),
+          content.replace(mutations[i], mutations[i + 1]),
+        );
+        await testCommand(target, root, config, false);
+      }
+      await writeFile(path.join(root, file), content);
+    }
     for (const [file, content, mutants] of predicateFiles) {
       if ((await readFile(path.join(root, file), "utf8")) !== content)
         throw new Error("Predicate adapter changed");
@@ -275,6 +295,8 @@ end end`,
     await writeFile(adapter, good.replace(was, mutant));
     await testCommand(target, root, config, false);
   } finally {
+    for (const [file, content] of algebraFiles)
+      await writeFile(path.join(root, file), content);
     for (const [file, content] of predicateFiles)
       await writeFile(path.join(root, file), content);
     for (const [file, content] of textFiles)
@@ -283,7 +305,7 @@ end end`,
     await writeFile(adapter, good);
   }
   console.log(
-    `${target}: correct implementations pass; broken codec, alternatives, Text normalization idempotence and predicate mutants fail; conditional evaluation and Bool inputs pass; regeneration preserves adapter`,
+    `${target}: correct implementations pass; broken codec, alternatives, Text normalization idempotence and predicate mutants fail; conditional evaluation, Bool inputs, algebra laws and currying pass; regeneration preserves adapter`,
   );
 }
 const selected = process.argv.slice(2);

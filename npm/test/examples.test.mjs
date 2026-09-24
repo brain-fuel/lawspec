@@ -15,10 +15,10 @@ test("examples exports all bundled stubs/tests, preserves adapters, and protects
     const result = JSON.parse((await run()).stdout);
     assert.equal(result.length, 7);
     for (const target of result) {
-      assert.equal(target.files.length, 14);
+      assert.equal(target.files.length, 18);
       assert.equal(
         target.files.filter((f) => f.ownership === "user").length,
-        7,
+        9,
       );
       for (const f of target.files)
         assert.ok(

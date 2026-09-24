@@ -1,0 +1,60 @@
+unit example.currying
+
+sumFour :: Int32 -> Int32 -> Int32 -> Int32 -> Int32
+format  :: Text -> Bool -> Int32 -> Text -> Text
+referenceFormat :: Text -> Bool -> Int32 -> Text -> Text
+trim    :: Text -> Text
+
+law `a four-argument function partially applied twice is commutative` is
+  definition is
+    `commutative` (sumFour 1 2)
+  end
+
+  example `the fixed 1 and 2 plus 3 and 4 sum to 10 in either order` is
+    x = 3
+    y = 4
+    expect sumFour 1 2 x y = 10
+    expect sumFour 1 2 y x = 10
+  end
+end
+
+law `staged formatter`
+  (render :: Int32 -> Text -> Text)
+  (reference :: Int32 -> Text -> Text)
+is
+  definition is
+    `for all` (port :: Int32) (suffix :: Text) .
+      render port suffix = reference port suffix
+  end
+end
+
+law `partial application preserves heterogeneous argument order` is
+  definition is
+    `staged formatter` (format "port:" true) (referenceFormat "port:" true)
+  end
+
+  example `port 443 with a tcp suffix formats as port:443/tcp` is
+    port = 443
+    suffix = "/tcp"
+    expect format "port:" true port suffix = "port:443/tcp"
+    expect referenceFormat "port:" true port suffix = "port:443/tcp"
+  end
+
+  example `a disabled numeric field keeps the prefix and suffix` is
+    port = 443
+    suffix = "/tcp"
+    expect format "port:" false port suffix = "port:/tcp"
+    expect referenceFormat "port:" false port suffix = "port:/tcp"
+  end
+end
+
+law `composition accepts a partially applied function` is
+  definition is
+    `equivalent` ((format "port:" true 443) . trim) ((referenceFormat "port:" true 443) . trim)
+  end
+
+  example `trim runs before the remaining formatter argument` is
+    x = "  /tcp  "
+    expect ((format "port:" true 443) . trim) x = "port:443/tcp"
+  end
+end

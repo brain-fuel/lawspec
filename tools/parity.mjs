@@ -24,6 +24,8 @@ const fixtures = [
       "mixed_inputs",
       "parse_port",
       "boolean_flags",
+      "algebra",
+      "currying",
     ].map((name) =>
       readFile(path.join(root, `examples/specs/${name}.lawspec`), "utf8"),
     ),
