@@ -165,3 +165,63 @@ test("Text laws, idempotence, escaped examples and mixed inputs work on every ba
     assert.ok(invalid.diagnostics.length);
   }
 });
+
+test("examples require typed expectations and preserve multiple assertions in the API", async () => {
+  const source = `unit example.expected
+actual :: Int32 -> Text
+law \`formats\` is
+ definition is \`equivalent\` actual actual end
+ example \`negative rendering\` is
+  x = -42
+  expect actual x = "-42"
+  expect actual (x) = "-42"
+ end
+end`;
+  const check = (content) =>
+    compiler.check({ sources: [{ path: "expect.lawspec", content }] });
+  const result = await check(source);
+  assert.deepEqual(result.diagnostics, []);
+  const assertions = result.laws[0].original.examples[0].expectations;
+  assert.equal(assertions.length, 2);
+  assert.equal(assertions[0].actual.tag, "Apply");
+  assert.equal(assertions[0].expected, "-42");
+  const failures = [
+    [
+      source.replace(/\s*expect actual[^\n]*/g, ""),
+      /requires at least one expect/,
+    ],
+    [
+      source.replace('expect actual x = "-42"', "expect actual x = -42"),
+      /type/,
+    ],
+    [source.replace("expect actual x", "expect missing x"), /unknown/],
+    [
+      source.replace('expect actual x = "-42"', "expect x = 2147483648"),
+      /Int32/,
+    ],
+    [source.replace('expect actual x = "-42"', "expect actual x = x"), /parse/],
+    [source.replace("actual ::", "expect ::"), /parse/],
+  ];
+  for (const [content, message] of failures) {
+    const r = await check(content);
+    assert.ok(r.diagnostics.length);
+    assert.match(JSON.stringify(r.diagnostics), message);
+  }
+  for (const target of [
+    "java",
+    "python",
+    "javascript",
+    "typescript",
+    "go",
+    "haskell",
+    "kotlin",
+  ]) {
+    const r = await compiler.planGeneration({
+      sources: [{ path: "expect.lawspec", content: source }],
+      target,
+    });
+    assert.deepEqual(r.diagnostics, []);
+    assert.ok(r.files[1].content.includes("negative rendering"));
+    assert.ok(r.files[1].content.includes("expect actual"));
+  }
+});

@@ -15,11 +15,15 @@ law `decimal renderers agree` is
   rationale is
     "changing the formatting implementation must preserve its result"
   end
-  example `negative integer` is
+  example `both renderers produce "-42"` is
     x = -42
+    expect render x = "-42"
+    expect referenceRender x = "-42"
   end
-  example `zero` is
+  example `both renderers produce "0"` is
     x = 0
+    expect render x = "0"
+    expect referenceRender x = "0"
   end
 end
 
@@ -30,10 +34,14 @@ law `nonnegative clamps agree` is
   description is
     "{clamp} agrees with {referenceClamp} when clamping negative inputs to zero"
   end
-  example `negative boundary` is
+  example `both clamps return 0 for -2147483648` is
     x = -2147483648
+    expect clamp x = 0
+    expect referenceClamp x = 0
   end
-  example `positive boundary` is
+  example `both clamps return 2147483647 for 2147483647` is
     x = 2147483647
+    expect clamp x = 2147483647
+    expect referenceClamp x = 2147483647
   end
 end

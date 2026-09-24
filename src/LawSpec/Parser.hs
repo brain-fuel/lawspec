@@ -21,7 +21,7 @@ keyword s = lexeme (try (string s *> notFollowedBy (alphaNumChar <|> char '_')))
 ident :: P String
 ident = lexeme $ try $ do
   x <- (:) <$> letterChar <*> many (alphaNumChar <|> char '_')
-  if x `elem` ["unit","law","requires","is","end","definition","description","rationale","example","references","are","Eq"] then fail "reserved identifier" else pure x
+  if x `elem` ["unit","law","requires","is","end","definition","description","rationale","example","expect","references","are","Eq"] then fail "reserved identifier" else pure x
 quoted :: P String
 quoted = lexeme (char '`' *> some (satisfy (\c -> c /= '`' && not (isControl c))) <* char '`')
 str :: P String
@@ -59,7 +59,8 @@ lawP = do
   ex <- many $ do
     keyword "example"; en <- quoted; keyword "is"
     bs <- some ((,) <$> ident <* symbol "=" <*> ((TextLiteral <$> str) <|> (IntLiteral <$> lexeme (L.signed (pure ()) L.decimal))))
-    keyword "end"; pure (Example en bs)
+    checks <- many (keyword "expect" *> (Expectation <$> expr <* symbol "=" <*> ((TextLiteral <$> str) <|> (IntLiteral <$> lexeme (L.signed (pure ()) L.decimal)))))
+    keyword "end"; pure (Example en bs checks)
   refs <- option [] (keyword "references" *> keyword "are" *> some str <* keyword "end")
   keyword "end"
   pure (Law n ps req d desc why ex refs (Location (sourceName pos) (unPos (sourceLine pos)) (unPos (sourceColumn pos))))

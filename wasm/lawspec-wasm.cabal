@@ -1,6 +1,6 @@
 cabal-version: 3.0
 name: lawspec-wasm
-version: 0.3.0
+version: 0.4.0
 build-type: Simple
 executable lawspec-wasm
   main-is: Exports.hs

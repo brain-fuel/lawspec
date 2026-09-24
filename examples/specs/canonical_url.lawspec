@@ -9,13 +9,16 @@ law `canonicalization reaches a fixed point` is
   description is
     "{canonicalize} removes trailing slashes until the result is stable"
   end
-  example `trailing slashes` is
+  example `all trailing slashes are removed in one pass` is
     x = "https://example.com/path///"
+    expect canonicalize x = "https://example.com/path"
   end
-  example `already canonical` is
+  example `a URL without trailing slashes stays unchanged` is
     x = "https://example.com/path"
+    expect canonicalize x = "https://example.com/path"
   end
-  example `empty` is
+  example `empty input remains empty` is
     x = ""
+    expect canonicalize x = ""
   end
 end

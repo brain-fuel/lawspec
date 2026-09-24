@@ -11,7 +11,10 @@ instance ToJSON Literal where
   toJSON (IntLiteral n) = toJSON n
   toJSON (TextLiteral s) = toJSON s
 
-data Example = Example { exampleName :: String, bindings :: [(String, Literal)] } deriving (Eq, Show, Generic)
+data Expectation = Expectation { actual :: Expr, expected :: Literal } deriving (Eq, Show, Generic)
+instance ToJSON Expectation
+
+data Example = Example { exampleName :: String, bindings :: [(String, Literal)], expectations :: [Expectation] } deriving (Eq, Show, Generic)
 data Location = Location { file :: String, line :: Int, column :: Int } deriving (Eq, Show, Generic)
 data Law = Law { lawName :: String, parameters :: [(String, Type)], requirements :: [Type], definition :: Definition, description :: String, rationale :: String, examples :: [Example], references :: [String], location :: Location } deriving (Eq, Show, Generic)
 data Unit = Unit { unitName :: String, functions :: [(String, Type)], laws :: [Law] } deriving (Eq, Show, Generic)

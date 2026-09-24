@@ -1,4 +1,4 @@
-module LawSpec.Compile (compile, prettyExpanded, metadataText) where
+module LawSpec.Compile (compile, prettyExpanded, metadataText, normal) where
 
 import LawSpec.Model
 import LawSpec.Parser
@@ -14,6 +14,10 @@ type C = StateT CS (Either String)
 type Env = M.Map String Type
 throwC :: String -> C a
 throwC = lift . Left
+withContext :: String -> C a -> C a
+withContext prefix action = StateT $ \s -> case runStateT action s of
+  Left err -> Left (prefix ++ err)
+  Right result -> Right result
 fresh :: C String
 fresh = do s <- get; put s{counter=counter s+1}; pure (show (counter s))
 resolve :: Type -> C Type
@@ -113,6 +117,8 @@ validateUnit u = either (Left . pure . (\m -> Diagnostic "declaration" m Nothing
       _ -> Left (n ++ ": functions require a monomorphic unary Int32/Text signature")
   forM_ (laws u) $ \l -> do
     mapM_ (metadataText (map fst (parameters l ++ functions u))) [description l, rationale l]
+    forM_ (examples l) $ \ex ->
+      when (null (expectations ex)) (Left ("example " ++ exampleName ex ++ " requires at least one expect assertion; add expect <expression> = <literal>"))
     unique "parameter" (map fst (parameters l)); unique "example" (map exampleName (examples l))
     forM_ (parameters l) $ \(_,t) -> case t of
       Arrow a b | scalar a && scalar b -> pure ()
@@ -145,14 +151,19 @@ compile sources = do
       unless symbolic $ do
         when (null checkedInputs) (throwC "an executable law must quantify at least one Int32 or Text input")
         lift (unique "expanded input name" (map inputName checkedInputs))
-        forM_ (examples l) $ \ex -> do
-          lift (unique "example binding" (map fst (bindings ex)))
-          unless (M.keys (M.fromList (bindings ex)) == M.keys (M.fromList [(inputName v,()) | v <- checkedInputs])) (throwC ("example " ++ exampleName ex ++ " must bind exactly: " ++ intercalate ", " (map inputName checkedInputs)))
-          forM_ (bindings ex) $ \(n,v) -> do
-            actual <- infer M.empty (case v of IntLiteral k -> Number k; TextLiteral text -> StringLit text)
-            case lookup n [(inputName inp,inputType inp) | inp <- checkedInputs] of
-              Just expected -> unless (actual == expected) (throwC ("example " ++ exampleName ex ++ ": " ++ n ++ " expects " ++ prettyType expected ++ ", got " ++ prettyType actual))
-              Nothing -> throwC "unknown example input"
+      forM_ (examples l) $ \ex -> withContext ("example " ++ exampleName ex ++ ": ") $ do
+        lift (unique "example binding" (map fst (bindings ex)))
+        unless (M.keys (M.fromList (bindings ex)) == M.keys (M.fromList [(inputName v,()) | v <- checkedInputs])) (throwC ("example " ++ exampleName ex ++ " must bind exactly: " ++ intercalate ", " (map inputName checkedInputs)))
+        forM_ (bindings ex) $ \(n,v) -> do
+          actual <- infer M.empty (case v of IntLiteral k -> Number k; TextLiteral text -> StringLit text)
+          case lookup n [(inputName inp,inputType inp) | inp <- checkedInputs] of
+            Just expected -> unless (actual == expected) (throwC ("example " ++ exampleName ex ++ ": " ++ n ++ " expects " ++ prettyType expected ++ ", got " ++ prettyType actual))
+            Nothing -> throwC "unknown example input"
+        let exampleEnv = M.union (M.fromList [(inputName inp,inputType inp) | inp <- checkedInputs]) env
+        forM_ (expectations ex) $ \check -> do
+          actualType <- infer exampleEnv (actual check) >>= resolve
+          expectedType <- infer M.empty (case expected check of IntLiteral k -> Number k; TextLiteral text -> StringLit text)
+          unless (actualType == expectedType) (throwC ("example " ++ exampleName ex ++ ": expectation " ++ prettyExpr (actual check) ++ " has type " ++ prettyType actualType ++ ", expected literal has type " ++ prettyType expectedType))
       pure (Expanded (unitName u) (lawName l) checkedInputs a b tr l)
       ) (CS M.empty 0 [])
   pure (filter ((/= "prelude") . unitName) us, filter (null . parameters . original) allExpanded)

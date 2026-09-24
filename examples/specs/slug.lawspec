@@ -10,16 +10,24 @@ law `normalizers agree` is
   description is
     "{normalize} and {referenceNormalize} replace ASCII spaces with hyphens"
   end
-  example `ordinary text` is
+  example `spaces become hyphens; punctuation is preserved` is
     x = "Hello, World!"
+    expect normalize x = "Hello,-World!"
+    expect referenceNormalize x = "Hello,-World!"
   end
-  example `empty` is
+  example `empty text remains empty` is
     x = ""
+    expect normalize x = ""
+    expect referenceNormalize x = ""
   end
-  example `Unicode` is
+  example `Unicode is preserved while spaces become hyphens` is
     x = "café 日本語 😀"
+    expect normalize x = "café-日本語-😀"
+    expect referenceNormalize x = "café-日本語-😀"
   end
-  example `escaped text` is
+  example `quotes, backslashes and controls survive space replacement` is
     x = "quote: \" slash: \\ newline: \n tab: \t dollar: $"
+    expect normalize x = "quote:-\"-slash:-\\-newline:-\n-tab:-\t-dollar:-$"
+    expect referenceNormalize x = "quote:-\"-slash:-\\-newline:-\n-tab:-\t-dollar:-$"
   end
 end

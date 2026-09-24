@@ -62,7 +62,7 @@ try {
   );
   const cli = path.join(app, "node_modules/lawspec/bin/lawspec.mjs");
   await run("npm", ["exec", "--no", "--", "lawspec", "check"], app);
-  await run(
+  const explanation = await run(
     "npm",
     [
       "exec",
@@ -74,6 +74,11 @@ try {
     ],
     app,
   );
+  if (
+    !explanation.stdout.includes("expect itoa") ||
+    !explanation.stdout.includes('"-42"')
+  )
+    throw new Error("explain omitted expected results");
   await run("npm", ["exec", "--no", "--", "lawspec", "doctor"], app);
   await run("npm", ["exec", "--no", "--", "lawspec", "generate"], app);
   await writeFile(
@@ -90,7 +95,9 @@ try {
     ),
     "utf8",
   );
-  if (!textTest.includes("Generator.stringsOf(Generator.asciiPrintableChars())"))
+  if (
+    !textTest.includes("Generator.stringsOf(Generator.asciiPrintableChars())")
+  )
     throw new Error("Installed examples command omitted Text generation");
   const api = await run(
     process.execPath,

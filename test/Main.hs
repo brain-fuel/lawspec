@@ -42,7 +42,7 @@ main = hspec $ do
     it "rejects equivalent functions with different input types" $
       compile [Source "bad.lawspec" "unit bad\nf :: Int32 -> Int32\ng :: Text -> Int32\nlaw `bad` is definition is `equivalent` f g end end"] `shouldSatisfy` isLeft
     it "expands equivalent without capturing an implementation named x" $
-      compile [Source "capture.lawspec" "unit capture\nx :: Int32 -> Text\ng :: Int32 -> Text\nlaw `ok` is definition is `equivalent` x g end example `zero` is x = 0 end end"] `shouldSatisfy` isRight
+      compile [Source "capture.lawspec" "unit capture\nx :: Int32 -> Text\ng :: Int32 -> Text\nlaw `ok` is definition is `equivalent` x g end example `zero` is x = 0 expect g x = \"0\" end end"] `shouldSatisfy` isRight
     it "accepts the reverse round trip with quantified Text" $
       compile [source (concrete "`left inverse` f g")] `shouldSatisfy` isRight
     it "rejects recursive expansion" $
@@ -54,9 +54,9 @@ main = hspec $ do
     it "does not specialize rigid generic parameters to hide a mismatch" $
       compile [Source "generic.lawspec" "unit generic\nlaw `bad` (f :: a -> b) requires Eq a is definition is `for all` (x :: a) . f x = x end end"] `shouldSatisfy` isLeft
     it "rejects an incorrect inherited example input" $
-      compile [source "law `codec` is definition is `left inverse` g f end example `bad` is y = 1 end end"] `shouldSatisfy` isLeft
+      compile [source "law `codec` is definition is `left inverse` g f end example `bad` is y = 1 expect g (f x) = 1 end end"] `shouldSatisfy` isLeft
     it "rejects out-of-range examples" $
-      compile [source "law `codec` is definition is `left inverse` g f end example `bad` is x = 2147483648 end end"] `shouldSatisfy` isLeft
+      compile [source "law `codec` is definition is `left inverse` g f end example `bad` is x = 2147483648 expect g (f x) = 0 end end"] `shouldSatisfy` isLeft
     it "accepts multiple independent quantified inputs" $
       compile [source (concrete "`for all` (x :: Int32) (y :: Int32) . g (f x) = y")] `shouldSatisfy` isRight
     it "does not capture an argument named like an inherited input" $
@@ -66,12 +66,18 @@ main = hspec $ do
         text <- readFile ("examples/specs/" ++ name ++ ".lawspec")
         compile [Source (name ++ ".lawspec") text] `shouldSatisfy` isRight) ["slug", "canonical_url", "mixed_inputs"]
     it "rejects example values that do not match input types" $ do
-      compile [Source "bad.lawspec" "unit bad\nf :: Text -> Text\nlaw `bad` is definition is `idempotent` f end example `bad` is x = 42 end end"] `shouldSatisfy` isLeft
-      compile [Source "bad.lawspec" "unit bad\nf :: Int32 -> Int32\nlaw `bad` is definition is `idempotent` f end example `bad` is x = \"42\" end end"] `shouldSatisfy` isLeft
+      compile [Source "bad.lawspec" "unit bad\nf :: Text -> Text\nlaw `bad` is definition is `idempotent` f end example `bad` is x = 42 expect f x = 42 end end"] `shouldSatisfy` isLeft
+      compile [Source "bad.lawspec" "unit bad\nf :: Int32 -> Int32\nlaw `bad` is definition is `idempotent` f end example `bad` is x = \"42\" expect f x = 42 end end"] `shouldSatisfy` isLeft
     it "rejects non-scalar Text values" $
-      compile [Source "bad.lawspec" ("unit bad\nf :: Text -> Text\nlaw `bad` is definition is `idempotent` f end example `bad` is x = \"" ++ ['\xD800'] ++ "\" end end")] `shouldSatisfy` isLeft
+      compile [Source "bad.lawspec" ("unit bad\nf :: Text -> Text\nlaw `bad` is definition is `idempotent` f end example `bad` is x = \"" ++ ['\xD800'] ++ "\" expect f x = \"\" end end")] `shouldSatisfy` isLeft
     it "requires the same input and output types for idempotence" $
       compile [Source "bad.lawspec" "unit bad\nf :: Text -> Int32\nlaw `bad` is definition is `idempotent` f end end"] `shouldSatisfy` isLeft
+    it "requires an expected result in every example" $
+      compile [Source "missing.lawspec" "unit missing\nf :: Int32 -> Int32\nlaw `identity` is definition is `idempotent` f end example `zero` is x = 0 end end"] `shouldSatisfy` (\r -> case r of Left ds -> any (isInfixOf "requires at least one expect" . message) ds; _ -> False)
+    it "type-checks expectation results" $
+      compile [Source "wrong.lawspec" "unit wrong\nf :: Int32 -> Text\nlaw `same` is definition is `equivalent` f f end example `zero` is x = 0 expect f x = 0 end end"] `shouldSatisfy` isLeft
+    it "supports composed expectation expressions" $
+      compile [source "law `codec` is definition is `left inverse` g f end example `negative` is x = -42 expect (g . f) x = -42 end end"] `shouldSatisfy` isRight
   describe "emission" $ do
     it "emits tests and user-owned adapters for all seven targets" $ do
       s <- readFile "examples/specs/atoi_codec.lawspec"

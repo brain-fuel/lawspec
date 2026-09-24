@@ -151,16 +151,43 @@ async function init() {
     `Configured ${language}. ${hasBuild ? "Existing build files preserved." : "Created missing project build files."}\n${setup[language]}\nNext: lawspec doctor, then lawspec generate.`,
   );
 }
+function showExpression(expr) {
+  const value = expr.contents;
+  if (expr.tag === "Var") return value;
+  if (expr.tag === "Number" || expr.tag === "StringLit")
+    return JSON.stringify(value);
+  if (expr.tag === "Apply")
+    return `${showExpression(value[0])} (${showExpression(value[1])})`;
+  return `(${showExpression(value[0])} . ${showExpression(value[1])})`;
+}
+function explainExamples(law) {
+  return law.original.examples
+    .map(
+      (ex) =>
+        `\nexample ${JSON.stringify(ex.exampleName)}\n` +
+        ex.bindings
+          .map(([n, v]) => `  ${n} = ${JSON.stringify(v)}`)
+          .join("\n") +
+        "\n" +
+        ex.expectations
+          .map(
+            (e) =>
+              `  expect ${showExpression(e.actual)} = ${JSON.stringify(e.expected)}`,
+          )
+          .join("\n"),
+    )
+    .join("\n");
+}
 async function main() {
   if (!verb || ["help", "--help", "-h"].includes(verb)) {
     output(
-      "LawSpec 0.3.0\nUsage: lawspec init --target <language> [--project <directory>]\n       lawspec check | doctor | explain <unit>::<law> | generate\n       lawspec examples [--target <language>] [--output example_artifacts]\nOptions: --config <path>, --target <language>, --json\nGeneration: --dry-run, --check\nTargets: " +
+      "LawSpec 0.4.0\nUsage: lawspec init --target <language> [--project <directory>]\n       lawspec check | doctor | explain <unit>::<law> | generate\n       lawspec examples [--target <language>] [--output example_artifacts]\nOptions: --config <path>, --target <language>, --json\nGeneration: --dry-run, --check\nTargets: " +
         targets.join(", "),
     );
     return;
   }
   if (verb === "--version") {
-    output("0.3.0");
+    output("0.4.0");
     return;
   }
   if (positional.length > (verb === "explain" ? 1 : 0))
@@ -250,7 +277,7 @@ async function main() {
         : indices
             .map(
               ({ e, i }) =>
-                `${e.owner}::${e.name}\n${e.trace.join("\n=> ")}\n=> ${result.expansions[i]}`,
+                `${e.owner}::${e.name}\n${e.trace.join("\n=> ")}\n=> ${result.expansions[i]}${explainExamples(e)}`,
             )
             .join("\n\n"),
     );

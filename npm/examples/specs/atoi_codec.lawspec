@@ -16,12 +16,16 @@ law `itoa and then atoi yields a` is
     "representing an Int32 as Text must not change its value"
   end
 
-  example `negative integer` is
+  example `negative integers use a minus sign and round-trip unchanged` is
     x = -42
+    expect itoa x = "-42"
+    expect atoi (itoa x) = -42
   end
 
-  example `zero` is
+  example `zero renders as 0 and round-trips unchanged` is
     x = 0
+    expect itoa x = "0"
+    expect atoi (itoa x) = 0
   end
 
   references are

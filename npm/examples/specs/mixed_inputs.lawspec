@@ -3,25 +3,29 @@ unit example.mixed.inputs
 normalize :: Text -> Text
 identity :: Int32 -> Int32
 
-law `text and integer inputs remain independent` is
+law `text normalization reaches a fixed point with an unused integer input` is
   definition is
     `for all` (text :: Text) (number :: Int32) .
       normalize text = normalize (normalize text)
   end
-  example `mixed inputs` is
+  example `text normalization and integer identity have explicit results` is
     text = "Hello, World!"
     number = -42
+    expect normalize text = "Hello,-World!"
+    expect identity number = -42
   end
 end
 
-law `integer behavior with a text context` is
+law `integer identity with an unused text input` is
   definition is
     `for all` (text :: Text) (number :: Int32) .
       identity number = number
   end
-  example `Unicode context` is
+  example `text normalization and integer identity have explicit results` is
     text = "λ 😀"
     number = 2147483647
+    expect normalize text = "λ-😀"
+    expect identity number = 2147483647
   end
 end
 
@@ -29,5 +33,9 @@ law `normalizing an empty literal` is
   definition is
     `for all` (text :: Text) .
       normalize "" = ""
+  end
+  example `empty literal stays empty; quantified text is unused` is
+    text = "unused context"
+    expect normalize "" = ""
   end
 end

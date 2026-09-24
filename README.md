@@ -2,7 +2,7 @@
 
 **State the law once. Check it everywhere.**
 
-LawSpec 0.3 compiles reusable laws into native property tests, executable examples,
+LawSpec 0.4 compiles reusable laws into native property tests, executable examples,
 and implementation adapters. The compiler is Haskell, distributed as prebuilt
 WebAssembly with a Node CLI and an asynchronous, typed JavaScript API.
 
@@ -11,7 +11,7 @@ WebAssembly with a Node CLI and an asynchronous, typed JavaScript API.
 Install [LawSpec from npm](https://www.npmjs.com/package/lawspec):
 
 ```sh
-npm install --save-dev lawspec@0.3.0
+npm install --save-dev lawspec@0.4.0
 npx lawspec --version
 ```
 
@@ -25,8 +25,8 @@ local dependencies so LawSpec can create its `package.json` and test script:
 ```sh
 mkdir lawspec-example
 cd lawspec-example
-npm exec --package=lawspec@0.3.0 -- lawspec init --target javascript
-npm install --save-dev lawspec@0.3.0
+npm exec --package=lawspec@0.4.0 -- lawspec init --target javascript
+npm install --save-dev lawspec@0.4.0
 npx lawspec check
 npx lawspec explain 'example.atoi_codec::itoa and then atoi yields a'
 npx lawspec doctor
@@ -52,7 +52,7 @@ properties with the selected framework's shrinking and failure reporting.
 
 | Target | Build setup | Test libraries | Test command |
 | --- | --- | --- | --- |
-| `java` | Maven, JDK 25, release 25 | JetCheck 0.3.0, JUnit Jupiter 5.14.x | `mvn test` |
+| `java` | Maven, JDK 25, release 25 | JetCheck 0.4.0, JUnit Jupiter 5.14.x | `mvn test` |
 | `python` | Python 3.13 or 3.14, pyproject | pytest 8.4.x, Hypothesis 6.135.26+ (6.x) | `python -m pytest` |
 | `javascript` | Node 22+, npm, ESM | fast-check 4.x, node:test | `npm test` |
 | `typescript` | Node 22+, npm, TypeScript 5.9.x, ESM | fast-check 4.x, node:test | `npm test` |
@@ -61,7 +61,7 @@ properties with the selected framework's shrinking and failure reporting.
 | `kotlin` | JDK/JVM 25, Gradle 9.1–9.3, Kotlin 2.3.21 | Kotest 5.9.1 | `gradle test` |
 
 Java 25 and Python 3.13 are the minimum baselines. New JVM releases are admitted
-through compatibility profiles after testing; v0.3's current JVM profile certifies
+through compatibility profiles after testing; v0.4's current JVM profile certifies
 25. Python templates declare `requires-python = ">=3.13"` and runtime checks
 currently recognize 3.13 and 3.14. Kotlin templates pin Gradle's supported build
 configuration to Kotlin 2.3.21 and target JVM 25.
@@ -113,7 +113,7 @@ uses `test/Spec.hs` with `hspec-discover`.
 Commands:
 
 - `check`: parse, resolve, type-check and expand laws without target dependencies.
-- `explain [unit::law]`: display expansion steps and inherited example inputs.
+- `explain [unit::law]`: display expansions, example inputs, and expected results.
 - `doctor`: inspect selected native environments and print corrective instructions.
 - `generate`: check environments, validate every output, then write artifacts.
 - `generate --dry-run`: show proposed file operations without applying them.
@@ -139,8 +139,10 @@ law `round trip` is
   description is
     "applying {itoa} and then {atoi} recovers the original integer"
   end
-  example `negative` is
+  example `negative integers use a minus sign and round-trip unchanged` is
     x = -42
+    expect itoa x = "-42"
+    expect atoi (itoa x) = -42
   end
 end
 ```
@@ -158,7 +160,7 @@ for all (x :: Int32) . atoi (itoa (x)) = x
 Reusable laws can declare typed unary function parameters and `requires Eq a`.
 Definitions support law application, function application/composition, universal
 quantification, integer and text literals, and equality. Function signatures use `Int32`
-and `Text`; generic variables are supported in reusable laws. v0.3 generates
+and `Text`; generic variables are supported in reusable laws. v0.4 generates
 quantified `Int32` and `Text` inputs, including mixed and multiple inputs. Both
 types can also be intermediate or compared results. Functions are synchronous
 and unary. Text literals are double-quoted, with escapes such as `\"`, `\\`,
@@ -168,13 +170,47 @@ Text values contain Unicode scalar values; surrogate code points are rejected.
 Examples refer to the expanded input names, including names inherited from the
 prelude. Bind every input exactly once. Ambiguous names and out-of-range values
 are errors. Descriptions and rationales use `{function}` references; `{{` and `}}`
-produce literal braces. Metadata blocks follow the order shown in `scratch.md`:
+produce literal braces. Law blocks use this order:
 definition, optional description, optional rationale, examples, optional references.
 `--` starts a line comment. Names that cannot be emitted portably are diagnosed.
 
 Additional primitives, external law packages, cross-unit imports beyond the
 prelude, async functions, direct existing-symbol binding and browser hosting are
 outside this release.
+
+## Expected results and migration to 0.4
+
+Every `example` must bind all quantified inputs and then include one or more
+`expect <expression> = <literal>` assertions. The expected literal must have the
+same `Int32` or `Text` type as the expression. Expressions can reference the
+example's inputs and the unit's functions, including composed function calls.
+Input names shadow function names within expectations, following lexical scope.
+
+An example passes only when **all its expected results and its enclosing law**
+pass. Expected results are authored specifications, never inferred by executing
+your adapter. They apply to that example's inputs; randomized and boundary tests
+continue to check the general law. Generated assertions show compared values and
+identify the example, input bindings and expression. A failing assertion stops
+that individual test; other tests remain independent.
+
+This is an intentional syntax break from 0.3: input-only examples are rejected,
+and `expect` is now a reserved keyword. Laws can still omit examples altogether.
+For an existing input-only example, retain its bindings and add the intended
+result before `end`:
+
+```lawspec
+example `zero renders as 0 and round-trips unchanged` is
+  x = 0
+  expect itoa x = "0"
+  expect atoi (itoa x) = 0
+end
+```
+
+Update every example before running `check` or `generate`. Use
+`npx lawspec explain` to inspect the law expansion, example inputs and expected
+results; this command displays the specification without executing adapters.
+Existing implementation adapters remain user-owned and are never overwritten.
+The historical `scratch.md` is a design draft, not the current syntax reference.
 
 ## Comparing alternative implementations
 
@@ -192,8 +228,10 @@ law `decimal renderers agree` is
   definition is
     `equivalent` render referenceRender
   end
-  example `negative integer` is
+  example `both renderers produce a negative decimal string` is
     x = -42
+    expect render x = "-42"
+    expect referenceRender x = "-42"
   end
 end
 ```
@@ -202,7 +240,7 @@ This expands to `for all (x :: Int32) . render (x) = referenceRender (x)`.
 The example inherits the input name `x` from the prelude. Both functions are
 user-owned adapter functions; either may delegate to your existing code.
 
-[The complete example](https://github.com/brain-fuel/lawspec/blob/v0.3.0/examples/specs/equivalent.lawspec) compares decimal
+[The complete example](https://github.com/brain-fuel/lawspec/blob/v0.4.0/examples/specs/equivalent.lawspec) compares decimal
 renderers and two implementations that clamp negative integers to zero. For
 JavaScript, their adapters can be:
 
@@ -215,9 +253,9 @@ export const referenceClamp = x => x < 0 ? 0 : x;
 
 The same specification generates native tests for all seven targets. The
 integration suite checks both examples with matching implementations, then
-breaks each alternative separately to verify detection. Agreement does not
-establish that either implementation meets an independent specification; two
-implementations can share the same bug. Quantified inputs can be `Int32` or `Text`.
+breaks each alternative separately to verify detection. The general equivalence law alone does not establish independent correctness;
+two implementations can share the same bug. Explicit expectations additionally
+check the specified outputs at the supplied example inputs. Quantified inputs can be `Int32` or `Text`.
 
 ## Text properties and idempotence
 
@@ -231,13 +269,15 @@ law `normalizers agree` is
   definition is
     `equivalent` normalize referenceNormalize
   end
-  example `ordinary text` is
+  example `spaces become hyphens; punctuation is preserved` is
     x = "Hello, World!"
+    expect normalize x = "Hello,-World!"
+    expect referenceNormalize x = "Hello,-World!"
   end
 end
 ```
 
-The [slug example](https://github.com/brain-fuel/lawspec/blob/v0.3.0/examples/specs/slug.lawspec)
+The [slug example](https://github.com/brain-fuel/lawspec/blob/v0.4.0/examples/specs/slug.lawspec)
 compares two implementations of ASCII-space replacement. It includes empty,
 Unicode and escaped text. Each target uses its native string generator:
 JetCheck `Generator.stringsOf(Generator.asciiPrintableChars())`, Hypothesis `st.text()`, fast-check `fc.string()`,
@@ -257,10 +297,14 @@ law `canonicalization reaches a fixed point` is
   definition is
     `idempotent` canonicalize
   end
+  example `all trailing slashes are removed in one pass` is
+    x = "https://example.com/path///"
+    expect canonicalize x = "https://example.com/path"
+  end
 end
 ```
 
-The [canonical URL example](https://github.com/brain-fuel/lawspec/blob/v0.3.0/examples/specs/canonical_url.lawspec)
+The [canonical URL example](https://github.com/brain-fuel/lawspec/blob/v0.4.0/examples/specs/canonical_url.lawspec)
 uses removal of **all trailing slashes** as a small fixed-point demonstration,
 not a complete URL canonicalization algorithm. For JavaScript:
 
@@ -269,9 +313,10 @@ export const canonicalize = value => value.replace(/\/+$/, "");
 ```
 
 Removing just one trailing slash fails the supplied repeated-slash example.
-The [mixed-input example](https://github.com/brain-fuel/lawspec/blob/v0.3.0/examples/specs/mixed_inputs.lawspec)
+The [mixed-input example](https://github.com/brain-fuel/lawspec/blob/v0.4.0/examples/specs/mixed_inputs.lawspec)
 shows `Text` and `Int32` in the same quantified property and executable example.
-The JavaScript API represents example values as `number | string`.
+The JavaScript API represents input bindings and expected values as `number | string`.
+Each example includes `expectations: { actual: Expr; expected: number | string }[]`.
 
 ## Generate all example artifacts
 
@@ -333,7 +378,7 @@ by the JS shim.
 ## Build and verify
 
 For contributors working from a repository checkout, build a local archive with
-`npm pack ./npm` and install it with `npm install --save-dev ./lawspec-0.3.0.tgz`.
+`npm pack ./npm` and install it with `npm install --save-dev ./lawspec-0.4.0.tgz`.
 The package payload lives in `npm/`.
 
 ```sh

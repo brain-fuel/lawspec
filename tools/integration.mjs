@@ -5,7 +5,7 @@ import { readFile, writeFile, readdir, rm } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { equivalentAdapters } from "./equivalent-fixtures.mjs";
-import { textAdapters } from "./text-fixtures.mjs";
+import { textAdapters, oracleMutants } from "./text-fixtures.mjs";
 const exec = promisify(execFile);
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const cli = path.join(repo, "npm/bin/lawspec.mjs");
@@ -137,12 +137,15 @@ async function verify(target) {
   );
   const [relative, good, was, mutant] = implementations[target];
   const specPath = path.join(root, "laws/atoi_codec.lawspec");
-  const spec = await readFile(specPath, "utf8");
+  const spec = await readFile(
+    path.join(repo, "examples/specs/atoi_codec.lawspec"),
+    "utf8",
+  );
   if (!spec.includes("two independent inputs"))
     await writeFile(
       specPath,
       spec +
-        "\nlaw `two independent inputs` is\n  definition is\n    `for all` (x :: Int32) (y :: Int32) . atoi (itoa x) = x\n  end\n  example `mixed` is\n    x = -42\n    y = 2147483647\n  end\nend\n",
+        "\nlaw `two independent inputs` is\n  definition is\n    `for all` (x :: Int32) (y :: Int32) . atoi (itoa x) = x\n  end\n  example `mixed` is\n    x = -42\n    y = 2147483647\n    expect atoi (itoa x) = -42\n  end\nend\n",
     );
   await writeFile(
     path.join(root, "laws/purelaw.lawspec"),
@@ -203,6 +206,26 @@ async function verify(target) {
       await writeFile(path.join(root, file), content.replace(before, after));
       await testCommand(target, root, config, false);
       await writeFile(path.join(root, file), content);
+    }
+    for (const [file, mutantSource, correct] of oracleMutants(target)) {
+      await writeFile(path.join(root, file), mutantSource);
+      const failure = await testCommand(target, root, config, false);
+      let report = `${failure.stdout}\n${failure.stderr}`;
+      if (target === "kotlin") {
+        const reportDir = path.join(root, "build/test-results/test");
+        for (const name of await readdir(reportDir))
+          if (name.endsWith(".xml"))
+            report += await readFile(path.join(reportDir, name), "utf8");
+      }
+      if (
+        !report.includes("expect ") ||
+        (!report.includes("Hello") &&
+          !report.includes("https://example.com/path"))
+      )
+        throw new Error(
+          `Missing expected-result diagnostics for ${target}: ${report}`,
+        );
+      await writeFile(path.join(root, file), correct);
     }
     await writeFile(adapter, good.replace(was, mutant));
     await testCommand(target, root, config, false);

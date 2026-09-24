@@ -125,3 +125,63 @@ public static int identity(int x) { return x; }
   }
   return data[target];
 }
+
+// These implementations satisfy the general law but violate the example oracle.
+export function oracleMutants(target) {
+  const fixtures = textAdapters(target);
+  const replacements = {
+    java: [
+      [
+        ['x.replace(" ", "-")', "x"],
+        ["x.replace(' ', '-')", "x"],
+      ],
+      ['x.replaceAll("/+$", "")', "x.substring(0, 0)"],
+    ],
+    python: [
+      [
+        ['x.replace(" ", "-")', "x"],
+        ['"-".join(x.split(" "))', "x"],
+      ],
+      ['x.rstrip("/")', "x[:0]"],
+    ],
+    go: [
+      [
+        ['strings.ReplaceAll(x, " ", "-")', "strings.Clone(x)"],
+        ['strings.Join(strings.Split(x, " "), "-")', "strings.Clone(x)"],
+      ],
+      ['strings.TrimRight(x, "/")', "strings.Repeat(x, 0)"],
+    ],
+    haskell: [
+      [
+        ['T.replace (T.pack " ") (T.pack "-")', "id"],
+        ["T.map (\\c -> if c == ' ' then '-' else c)", "id"],
+      ],
+      ["T.dropWhileEnd (== '/')", "T.take 0"],
+    ],
+    kotlin: [
+      [
+        ['x.replace(" ", "-")', "x"],
+        ["x.replace(' ', '-')", "x"],
+      ],
+      ["x.trimEnd('/')", "x.take(0)"],
+    ],
+    javascript: [
+      [
+        ['x.replaceAll(" ", "-")', "x"],
+        ['x.split(" ").join("-")', "x"],
+      ],
+      ['x.replace(/\\/+$/, "")', "x.slice(0, 0)"],
+    ],
+  };
+  const [slug, canonical] =
+    replacements[target === "typescript" ? "javascript" : target];
+  return [slug, [canonical]].map((edits, i) => {
+    let content = fixtures[i][1];
+    for (const [before, after] of edits) {
+      if (!content.includes(before))
+        throw new Error("Missing oracle mutation marker");
+      content = content.replace(before, after);
+    }
+    return [fixtures[i][0], content, fixtures[i][1]];
+  });
+}
