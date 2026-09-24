@@ -8,27 +8,34 @@ WebAssembly with a Node CLI and an asynchronous, typed JavaScript API.
 
 ## Install and try it
 
-The checkout includes the npm package in `npm/`. Build an installable archive:
+Install [LawSpec from npm](https://www.npmjs.com/package/lawspec):
 
 ```sh
-npm pack ./npm
-npm install --save-dev ./lawspec-0.2.0.tgz
+npm install --save-dev lawspec@0.2.1
+npx lawspec --version
 ```
 
-No Haskell toolchain is needed to install or run the npm package. Node 22+ and the
-selected target's build tools are required. The reference platforms are macOS
-and Linux. Stable releases are available as the `lawspec` package on npm.
+Node 22+ and the selected target's build tools are required. No Haskell toolchain
+is needed to install or run LawSpec. The reference platforms are macOS and Linux.
+Use `npx lawspec` to run the locally installed CLI.
 
-From an empty application directory, use the installed `lawspec` command:
+To try it in a **new, empty directory**, initialize the starter before installing
+local dependencies so LawSpec can create its `package.json` and test script:
 
 ```sh
-lawspec init --target javascript
-npm install
-lawspec check
-lawspec explain 'example.atoi_codec::itoa and then atoi yields a'
-lawspec doctor
-lawspec generate
+mkdir lawspec-example
+cd lawspec-example
+npm exec --package=lawspec@0.2.1 -- lawspec init --target javascript
+npm install --save-dev lawspec@0.2.1
+npx lawspec check
+npx lawspec explain 'example.atoi_codec::itoa and then atoi yields a'
+npx lawspec doctor
+npx lawspec generate
 ```
+
+In an existing project, install LawSpec first, then run
+`npx lawspec init --target javascript`. Existing build files are preserved;
+apply the printed dependency and test-runner setup instructions before generation.
 
 Implement `src/example/atoi_codec.mjs`, then run `npm test`:
 
@@ -192,7 +199,7 @@ This expands to `for all (x :: Int32) . render (x) = referenceRender (x)`.
 The example inherits the input name `x` from the prelude. Both functions are
 user-owned adapter functions; either may delegate to your existing code.
 
-[The complete example](examples/specs/equivalent.lawspec) compares decimal
+[The complete example](https://github.com/brain-fuel/lawspec/blob/v0.2.1/examples/specs/equivalent.lawspec) compares decimal
 renderers and two implementations that clamp negative integers to zero. For
 JavaScript, their adapters can be:
 
@@ -246,6 +253,10 @@ The same compiler instance supports repeated and concurrent requests, serialized
 by the JS shim.
 
 ## Build and verify
+
+For contributors working from a repository checkout, build a local archive with
+`npm pack ./npm` and install it with `npm install --save-dev ./lawspec-0.2.1.tgz`.
+The package payload lives in `npm/`.
 
 ```sh
 stack test

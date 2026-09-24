@@ -31,24 +31,51 @@ async function run(cmd, args, cwd = root) {
   }
 }
 try {
-  await run("npm", [
-    "install",
-    "--ignore-scripts",
-    "--no-audit",
-    "--no-fund",
-    archive,
-  ]);
-  const cli = path.join(root, "node_modules/lawspec/bin/lawspec.mjs");
   const app = path.join(root, "app");
   await mkdir(app);
-  await run(process.execPath, [cli, "init", "--target", "javascript"], app);
+  // Follow the README quickstart using the exact release archive before publication.
   await run(
     "npm",
-    ["install", "--ignore-scripts", "--no-audit", "--no-fund"],
+    [
+      "exec",
+      "--yes",
+      `--package=${archive}`,
+      "--",
+      "lawspec",
+      "init",
+      "--target",
+      "javascript",
+    ],
     app,
   );
-  await run(process.execPath, [cli, "check"], app);
-  await run(process.execPath, [cli, "generate"], app);
+  await run(
+    "npm",
+    [
+      "install",
+      "--save-dev",
+      "--ignore-scripts",
+      "--no-audit",
+      "--no-fund",
+      archive,
+    ],
+    app,
+  );
+  const cli = path.join(app, "node_modules/lawspec/bin/lawspec.mjs");
+  await run("npm", ["exec", "--no", "--", "lawspec", "check"], app);
+  await run(
+    "npm",
+    [
+      "exec",
+      "--no",
+      "--",
+      "lawspec",
+      "explain",
+      "example.atoi_codec::itoa and then atoi yields a",
+    ],
+    app,
+  );
+  await run("npm", ["exec", "--no", "--", "lawspec", "doctor"], app);
+  await run("npm", ["exec", "--no", "--", "lawspec", "generate"], app);
   await writeFile(
     path.join(app, "src/example/atoi_codec.mjs"),
     "export const itoa = String;\nexport const atoi = Number;\n",
