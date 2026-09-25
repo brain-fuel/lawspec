@@ -26,6 +26,7 @@ jobs:
           path: .artifacts/*.tgz
   runtime:
     strategy:
+      fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
         node: ['22', '24', '26']

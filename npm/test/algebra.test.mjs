@@ -176,7 +176,7 @@ end example \`right side matters\` is x = 3 expect x = 3 end end`;
     await writeFile(adapter, good);
     assert.match((await run()).stdout, /GUARDS=1\s/);
     await writeFile(adapter, good.replace("return x+y;", "return y;"));
-    await assert.rejects(run(), (e) => /AssertionError/.test(e.stdout));
+    await assert.rejects(run(), (e) => e.code === 1 && /expect operation/.test(e.stdout));
     await writeFile(
       adapter,
       good
