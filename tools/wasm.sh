@@ -14,5 +14,5 @@ cp "$core_file" npm/core.wasm
 cp examples/specs/atoi_codec.lawspec npm/starter.lawspec
 mkdir -p npm/examples/specs
 cp examples/specs/*.lawspec npm/examples/specs/
-cp README.md PRIMITIVES.md REFINEMENTS.md API-MIGRATION.md LICENSE npm/
+cp README.md PRIMITIVES.md REFINEMENTS.md RUST.md LANGUAGE.md API-MIGRATION.md LICENSE npm/
 node tools/build-integrity.mjs --record

@@ -18,20 +18,20 @@ test("port predicates, reusable guards and Bool literals survive the public API"
   assert.deepEqual(result.diagnostics, []);
   assert.equal(result.laws.length, 2);
   for (const law of result.laws) {
-    assert.equal(law.guards.length, 1);
-    assert.equal(law.guards[0].contents[0].contents, "validPort");
-    assert.equal(law.guards[0].contents[1].contents, law.inputs[0].inputId);
+    assert.equal(law.assertion.kind, "implies");
+    assert.ok(law.assertion.guard.node.declaration.endsWith("::validPort"));
+    assert.equal(law.assertion.guard.node.arguments[0].node.id, law.inputs[0].id);
   }
   assert.match(
     result.expansions[0],
     /validPort \(x\) implies parse \(render \(x\)\) = x/,
   );
   assert.deepEqual(
-    result.laws[0].original.examples[0].expectations[0].expected,
+    result.laws[0].examples[0].expectations[0].right.node.value,
     {type:"Bool",value:true},
   );
   assert.deepEqual(
-    result.laws[0].original.examples[3].expectations[0].expected,
+    result.laws[0].examples[3].expectations[0].right.node.value,
     {type:"Bool",value:false},
   );
   for (const bad of [
@@ -69,7 +69,7 @@ test("Bool equality, predicate laws, nested conditions and generic wrappers type
     "unit nested\np :: Int32 -> Bool\nf :: Int32 -> Int32\nlaw `guarded` (p :: a -> Bool) (f :: a -> a) requires Eq a is definition is `for all` (x :: a) . p x implies p (f x) implies f x = x end end\nlaw `use` is definition is `guarded` p f end end",
   );
   assert.deepEqual(nested.diagnostics, []);
-  assert.equal(nested.laws[0].guards.length, 2);
+  assert.equal(nested.laws[0].assertion.body.kind, "implies");
   assert.match(nested.expansions[0], /p \(x\) implies p \(f \(x\)\) implies/);
 });
 

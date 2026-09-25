@@ -1,5 +1,10 @@
 // Correct implementations and adversarial replacements for the scalar bridge suite.
 export function implementScalarAdapter(target, source) {
+ if(target==='rust') {
+  const bodies={successor:'ls::BigInt::from(value0) + 1',addDecimal:'value0.add(&value1).unwrap()',sameSymbol:'value0 == value1',finish:'()'};
+  return source.replace(/(pub fn (\w+)\([^\n]+?\{) todo!\([^\n]+?\) }/g,(_,prefix,name)=>`${prefix} ${bodies[name]||'value0'} }`);
+ }
+
  const js=target==='javascript'||target==='typescript';
  const bodies={
   javascript:{preserveBig:'return value0;',machineEcho:'return value0;',successor:'return BigInt(value0) + 1n;',narrow:'return value0;',addDecimal:"return ls.binary('+', value0, value1, 'Decimal', 'Decimal');",sameSymbol:'return value0 === value1;',echoRaw:'return value0;',echoPresence:'return value0;',finish:'return;'},
@@ -24,6 +29,11 @@ export function overflowMutant(target,source){
  const [a,b]=changes[target];if(!source.includes(a))throw new Error('Missing mutant marker');return source.replace(a,b);
 }
 export function scalarMutants(target,source) {
+ if(target==='rust') {
+  const bodies={successor:'ls::BigInt::from(value0.wrapping_add(1))',preserveBig:'(value0 as f64) as u64',addDecimal:'ls::Decimal::round(value0.ratio().unwrap() + value1.ratio().unwrap(), 0).unwrap()',echoRaw:'ls::Utf16Text(vec![65533])',echoPresence:'ls::Optional::Undefined',sameSymbol:'value0.description() == value1.description()'};
+  return Object.entries(bodies).map(([name,body])=>({name,content:source.replace(new RegExp(`(pub fn ${name}\\([^\\n]+?\\{)[^\\n]+? }`),`$1 ${body} }`)}));
+ }
+
  const js=target==='javascript'||target==='typescript';
  const expressions={
   javascript:{preserveBig:'return BigInt(Number(value0));',addDecimal:"return ls.helper('round',[ls.binary('+',value0,value1,'Decimal','Decimal'),0],['Decimal','Int32']);",echoRaw:"return new ls.Raw('Utf16Text',[65533]);",echoPresence:"return new ls.Presence('Optional',false);",sameSymbol:'return value0.description === value1.description;'},

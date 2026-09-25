@@ -5,7 +5,7 @@ cabal-version: 1.12
 -- see: https://github.com/sol/hpack
 
 name:           lawspec
-version:        0.7.0
+version:        0.8.0
 synopsis:       Portable executable laws
 license:        MIT
 license-file:   LICENSE
@@ -14,12 +14,18 @@ extra-source-files:
     README.md
     PRIMITIVES.md
     REFINEMENTS.md
+    RUST.md
+    LANGUAGE.md
     API-MIGRATION.md
-    runtime/lawspec_runtime.go
+    runtime/lawspec_runtime.rs
+    runtime/lawspec_strategies.rs
     runtime/lawspec_runtime.mjs
     runtime/lawspec_runtime.py
     runtime/LawSpecRuntime.hs
     runtime/LawSpecRuntime.java
+    runtime/lawspec_runtime.go
+    runtime/rust/Cargo.toml
+    runtime/rust/Cargo.lock
     examples/specs/algebra.lawspec
     examples/specs/atoi_codec.lawspec
     examples/specs/boolean_flags.lawspec
@@ -37,19 +43,30 @@ extra-source-files:
 library
   exposed-modules:
       LawSpec.Api
+      LawSpec.Backend
+      LawSpec.Common
       LawSpec.Compile
+      LawSpec.Core
+      LawSpec.Core.Eval
+      LawSpec.Core.Semantics
+      LawSpec.Core.Validate
+      LawSpec.CoreEmit
+      LawSpec.CoreNativeScalarEmit
+      LawSpec.CoreScalarEmit
       LawSpec.Domain
       LawSpec.Emit
       LawSpec.Eval
+      LawSpec.Frontend
       LawSpec.Gen
       LawSpec.Model
-      LawSpec.NativeScalarEmit
       LawSpec.Parser
       LawSpec.Prelude
+      LawSpec.Public
       LawSpec.Refinement
       LawSpec.RuntimeSources
+      LawSpec.RustEmit
       LawSpec.Scalar
-      LawSpec.ScalarEmit
+      LawSpec.Testing
   other-modules:
       Paths_lawspec
   hs-source-dirs:
@@ -99,6 +116,7 @@ test-suite lawspec-test
   type: exitcode-stdio-1.0
   main-is: Main.hs
   other-modules:
+      CoreSpec
       Paths_lawspec
   hs-source-dirs:
       test

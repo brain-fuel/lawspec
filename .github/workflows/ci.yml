@@ -16,6 +16,7 @@ jobs:
           enable-stack: true
           stack-version: latest
       - run: node tools/build-integrity.mjs
+      - run: node tools/check-boundaries.mjs
       - run: stack --no-terminal test
       - run: node tools/parity.mjs
       - run: node tools/package-smoke.mjs
@@ -50,6 +51,7 @@ jobs:
           - target: typescript
           - target: go
           - target: haskell
+          - target: rust
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -82,6 +84,11 @@ jobs:
         env:
           LAWSPEC_PYTHON: ${{ matrix.python }}
       - run: node tools/integration.mjs ${{ matrix.target }}
+      - run: node tools/rust-layout-integration.mjs
+        if: matrix.target == 'rust'
+      - run: node tools/algebra-integration.mjs ${{ matrix.target }}
+        env:
+          LAWSPEC_MUTANTS: '1'
 
       - run: node tools/scalar-integration.mjs ${{ matrix.target }}
         env:
@@ -96,3 +103,50 @@ jobs:
       - run: node tools/refinement-integration.mjs ${{ matrix.target }}
         env:
           LAWSPEC_MACHINE_BITS: '32'
+
+  rust:
+    strategy:
+      fail-fast: false
+      matrix:
+        toolchain: ['1.85.0', 'stable']
+        mode: ['debug', 'release']
+        target: [x86_64-unknown-linux-gnu, i686-unknown-linux-gnu]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: sudo apt-get update && sudo apt-get install -y gcc-multilib
+        if: matrix.target == 'i686-unknown-linux-gnu'
+      - run: rustup toolchain install ${{ matrix.toolchain }} --profile minimal --target ${{ matrix.target }}
+      - run: cargo test --manifest-path runtime/rust/Cargo.toml --locked ${{ matrix.mode == 'release' && '--release' || '' }}
+        env:
+          RUSTUP_TOOLCHAIN: ${{ matrix.toolchain }}
+          CARGO_BUILD_TARGET: ${{ matrix.target }}
+      - run: node tools/scalar-integration.mjs rust
+        env:
+          RUSTUP_TOOLCHAIN: ${{ matrix.toolchain }}
+          CARGO_BUILD_TARGET: ${{ matrix.target }}
+          LAWSPEC_MACHINE_BITS: ${{ matrix.target == 'i686-unknown-linux-gnu' && '32' || '64' }}
+          LAWSPEC_RUST_RELEASE: ${{ matrix.mode == 'release' && '1' || '0' }}
+          LAWSPEC_MUTANTS: '1'
+      - run: node tools/scalar-integration.mjs rust
+        env:
+          RUSTUP_TOOLCHAIN: ${{ matrix.toolchain }}
+          CARGO_BUILD_TARGET: ${{ matrix.target }}
+          LAWSPEC_MACHINE_BITS: ${{ matrix.target == 'i686-unknown-linux-gnu' && '64' || '32' }}
+          LAWSPEC_RUST_RELEASE: ${{ matrix.mode == 'release' && '1' || '0' }}
+      - run: node tools/refinement-integration.mjs rust
+        env:
+          RUSTUP_TOOLCHAIN: ${{ matrix.toolchain }}
+          CARGO_BUILD_TARGET: ${{ matrix.target }}
+          LAWSPEC_MACHINE_BITS: ${{ matrix.target == 'i686-unknown-linux-gnu' && '32' || '64' }}
+          LAWSPEC_RUST_RELEASE: ${{ matrix.mode == 'release' && '1' || '0' }}
+          LAWSPEC_MUTANTS: '1'
+      - run: node tools/algebra-integration.mjs rust
+        env:
+          RUSTUP_TOOLCHAIN: ${{ matrix.toolchain }}
+          CARGO_BUILD_TARGET: ${{ matrix.target }}
+          LAWSPEC_RUST_RELEASE: ${{ matrix.mode == 'release' && '1' || '0' }}
+          LAWSPEC_MUTANTS: '1'

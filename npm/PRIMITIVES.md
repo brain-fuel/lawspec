@@ -1,4 +1,4 @@
-# LawSpec scalar reference (0.7.0)
+# LawSpec scalar reference (0.8.0)
 
 A scalar has a declared domain, checked literals, equality, property inputs, and
 boundary fixtures. General collections, objects, pointers, and type-only constructs
@@ -142,7 +142,7 @@ portable across architectures.
 The bundled `scalars.lawspec`, `scalar_catalog.lawspec`, and
 `scalar_adapters.lawspec` contain explicit fixtures for every scalar family.
 `tools/scalar-reference.py` produces independent Fraction-based conformance
-vectors; `tools/scalar-integration.mjs` executes them across the seven targets.
+vectors; `tools/scalar-integration.mjs` executes them across the eight targets.
 Set `LAWSPEC_MUTANTS=1` to also verify that incorrect adapters are detected.
 
 

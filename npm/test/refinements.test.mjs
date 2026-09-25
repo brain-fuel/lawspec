@@ -14,12 +14,12 @@ const runtime=runtimeCode?await import('data:text/javascript;base64,'+Buffer.fro
 test('API retains parameter kinds, contracts, domains and generation settings',async()=>{
  assert.deepEqual(compiled.diagnostics,[]);
  assert.equal(compiled.refinements.length,3);
- assert.equal(compiled.refinements[0].declaration.refinementParameters[0][1].contents,'Type');
+ assert.equal(compiled.refinements[0].parameters[0].kind,'type');
  assert.ok(compiled.contracts.length>=5);
  const overflow=compiled.laws.find(l=>l.name==='overflow pairs');
- assert.equal(overflow.inputs[1].inputRefinements.length,1);
- assert.equal(overflow.generationPlan[1].domainBounds.length,1);
- assert.equal(overflow.original.examples[0].expectations[0].expected.type,'Integer');
+ assert.equal(overflow.inputs[1].predicates.length,1);
+ assert.equal(overflow.inputs[1].bounds.length,1);
+ assert.equal(overflow.examples[0].expectations[0].right.node.value.type,'Integer');
  const result=await compiler.check({sources:sources(content),generation:{cases:7,maxAttempts:80,maxShrinks:9,exhaustiveLimit:32}});
  assert.deepEqual(result.diagnostics,[]);assert.deepEqual(result.generation,{cases:7,maxAttempts:80,maxShrinks:9,exhaustiveLimit:32});
  assert.equal(result.laws[0].generation.cases,7);

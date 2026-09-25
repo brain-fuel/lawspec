@@ -11,13 +11,13 @@ const compiler = await createCompiler();
 test("WASM expands the scratch law and preserves inherited example inputs", async () => {
   const result = await compiler.expand(input);
   assert.deepEqual(result.diagnostics, []);
-  assert.equal(result.laws[0].inputs[0].inputName, "x");
+  assert.equal(result.laws[0].inputs[0].name, "x");
   assert.equal(
     result.expansions[0],
     "for all (x :: Int32) . atoi (itoa (x)) = x",
   );
 });
-test("all seven backends return deterministic owned artifact plans", async () => {
+test("all eight backends return deterministic owned artifact plans", async () => {
   for (const target of [
     "java",
     "python",
@@ -26,6 +26,7 @@ test("all seven backends return deterministic owned artifact plans", async () =>
     "go",
     "haskell",
     "kotlin",
+    "rust",
   ]) {
     const request = { ...input, target };
     const [a, b] = await Promise.all([
@@ -35,10 +36,10 @@ test("all seven backends return deterministic owned artifact plans", async () =>
     assert.deepEqual(a, b);
     assert.deepEqual(a.diagnostics, []);
     assert.deepEqual(
-      a.files.map((f) => f.ownership),
-      ["user", "generated"],
+      a.files.filter(f => f.ownership === "user").map(f => f.placement),
+      ["source"],
     );
-    assert.match(a.files[1].content, /2147483647/);
+    assert.match(a.files.find(f => f.placement === "test").content, /2147483647/);
   }
 });
 test("Unicode metadata survives repeated JSON/JSFFI calls", async () => {
@@ -59,7 +60,7 @@ test("Unicode metadata survives repeated JSON/JSFFI calls", async () => {
       target: "python",
     });
     assert.deepEqual(result.diagnostics, []);
-    assert.match(result.files[1].content, /λ 日本語 😀/);
+    assert.match(result.files.find(f => f.placement === "test").content, /λ 日本語 😀/);
   }
 });
 test("invalid examples, types and source syntax return structured diagnostics", async () => {
@@ -97,15 +98,16 @@ test("equivalent specializes both result types on every backend", async () => {
     "go",
     "haskell",
     "kotlin",
+    "rust",
   ]) {
     const result = await compiler.planGeneration({ ...request, target });
     assert.deepEqual(result.diagnostics, []);
     assert.deepEqual(
-      result.files.map((f) => f.ownership),
-      ["user", "generated"],
+      result.files.filter(f => f.ownership === "user").map(f => f.placement),
+      ["source"],
     );
-    assert.match(result.files[1].content, /decimal renderers agree/);
-    assert.match(result.files[1].content, /nonnegative clamps agree/);
+    assert.match(result.files.find(f => f.placement === "test").content, /decimal renderers agree/);
+    assert.match(result.files.find(f => f.placement === "test").content, /nonnegative clamps agree/);
   }
 });
 
@@ -128,31 +130,21 @@ test("Text laws, idempotence, escaped examples and mixed inputs work on every ba
     /canonicalize \(canonicalize \(x\)\) = canonicalize \(x\)/,
   );
   assert.deepEqual(
-    result.laws[2].inputs.map((i) => i.inputType.contents),
+    result.laws[2].inputs.map((i) => i.type.name),
     ["Text", "Int32"],
   );
   assert.deepEqual(
-    result.laws[0].original.examples[0].bindings[0][1],
+    result.laws[0].examples[0].bindings[0].value,
     {type:"Text",units:[..."Hello, World!"].map(c=>c.codePointAt(0))},
   );
-  const generators = {
-    java: "Generator.stringsOf(Generator.asciiPrintableChars())",
-    python: "st.text()",
-    javascript: "fc.string()",
-    typescript: "fc.string()",
-    go: "rapid.String()",
-    haskell: "Gen.text",
-    kotlin: "Arb.string()",
-  };
-  for (const [target, generator] of Object.entries(generators)) {
+  for (const target of ['java','python','javascript','typescript','go','haskell','kotlin','rust']) {
     const plan = await compiler.planGeneration({ sources, target });
     assert.deepEqual(plan.diagnostics, []);
-    assert.equal(plan.files.length, 6);
-    assert.ok(
-      plan.files
-        .filter((f) => f.ownership === "generated")
-        .every((f) => f.content.includes(generator)),
-    );
+    assert.equal(plan.files.filter(f => f.ownership === 'user').length, 3);
+    const tests = plan.files.filter(f => f.placement === 'test' && !f.path.includes('support/'));
+    assert.equal(tests.length, 3);
+    assert.ok(tests.every(f => f.content.includes('example')));
+    assert.ok(plan.files.some(f => f.ownership === 'generated' && f.placement === 'source'));
   }
   for (const content of [
     sources[0].content.replace('x = "Hello, World!"', "x = 42"),
@@ -181,10 +173,10 @@ end`;
     compiler.check({ sources: [{ path: "expect.lawspec", content }] });
   const result = await check(source);
   assert.deepEqual(result.diagnostics, []);
-  const assertions = result.laws[0].original.examples[0].expectations;
+  const assertions = result.laws[0].examples[0].expectations;
   assert.equal(assertions.length, 2);
-  assert.equal(assertions[0].actual.tag, "Apply");
-  assert.deepEqual(assertions[0].expected, {type:"Text",units:[45,52,50]});
+  assert.equal(assertions[0].left.node.kind, "call");
+  assert.deepEqual(assertions[0].right.node.value, {type:"Text",units:[45,52,50]});
   const failures = [
     [
       source.replace(/\s*expect actual[^\n]*/g, ""),
@@ -215,13 +207,14 @@ end`;
     "go",
     "haskell",
     "kotlin",
+    "rust",
   ]) {
     const r = await compiler.planGeneration({
       sources: [{ path: "expect.lawspec", content: source }],
       target,
     });
     assert.deepEqual(r.diagnostics, []);
-    assert.ok(r.files[1].content.includes("negative rendering"));
-    assert.ok(r.files[1].content.includes("expect actual"));
+    assert.ok(r.files.find(f => f.placement === "test").content.includes("negative rendering"));
+    assert.ok(r.files.find(f => f.placement === "test").content.includes("expect actual"));
   }
 });

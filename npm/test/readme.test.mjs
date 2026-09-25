@@ -23,7 +23,7 @@ test("every README LawSpec snippet compiles with required expectations", async (
     assert.deepEqual(result.diagnostics, []);
     assert.ok(
       result.laws
-        .flatMap((l) => l.original.examples)
+        .flatMap((l) => l.examples)
         .every((ex) => ex.expectations.length > 0),
     );
   }

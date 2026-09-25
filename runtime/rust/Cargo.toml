@@ -1,0 +1,15 @@
+[package]
+name = "lawspec-runtime-conformance"
+version = "0.8.0"
+edition = "2024"
+rust-version = "1.85"
+publish = false
+
+[lib]
+path = "../lawspec_runtime.rs"
+
+[dependencies]
+num-bigint = "=0.4.8"
+num-rational = "=0.4.2"
+num-complex = "=0.4.6"
+num-traits = "=0.2.19"

@@ -1,6 +1,14 @@
 // [adapter path, correct source, expression to mutate, replacement]
 export function textAdapters(target) {
   const data = {
+    rust: [
+      ['src/example/slug.rs', `#![allow(non_snake_case)]
+pub fn normalize(x:String)->String {x.replace(" ","-")}
+pub fn referenceNormalize(x:String)->String {x.split(' ').collect::<Vec<_>>().join("-")}
+`, `x.split(' ').collect::<Vec<_>>().join("-")`, 'x'],
+      ['src/example/canonical_url.rs', `pub fn canonicalize(x:String)->String {x.trim_end_matches('/').to_owned()}\n`, "x.trim_end_matches('/').to_owned()", "x.strip_suffix('/').unwrap_or(&x).to_owned()"],
+      ['src/example/mixed/inputs.rs', 'pub fn normalize(x:String)->String {x.replace(" ","-")}\npub fn identity(x:i32)->i32 {x}\n'],
+    ],
     java: [
       [
         "src/main/java/example/Slug.java",
@@ -130,6 +138,10 @@ public static int identity(int x) { return x; }
 export function oracleMutants(target) {
   const fixtures = textAdapters(target);
   const replacements = {
+    rust: [
+      [['x.replace(" ","-")','x'],["x.split(' ').collect::<Vec<_>>().join(\"-\")",'x']],
+      ["x.trim_end_matches('/').to_owned()",'String::new()'],
+    ],
     java: [
       [
         ['x.replace(" ", "-")', "x"],

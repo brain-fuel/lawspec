@@ -114,7 +114,7 @@ typeNames (RefinementApp _ args) = concat [case a of TypeArgument t -> typeNames
 -- Isolate affine occurrences of the current integer input. All other terms may
 -- be arbitrary pure expressions over the preceding inputs.
 planDomain :: [(String,Type)] -> Input -> DomainPlan
-planDomain env i = DomainPlan i (if isIntegerType (inputType i) then concatMap bounds (inputRefinements i) else [])
+planDomain env i = DomainPlan i (if isIntegerType (inputType i) then concatMap (bounds . stripLocations) (inputRefinements i) else [])
   where
     variable = inputId i
     isIntegerType (Named n) = isInteger n
@@ -143,6 +143,7 @@ planDomain env i = DomainPlan i (if isIntegerType (inputType i) then concatMap b
 -- Optimizations must never evaluate a partial expression before its guard.
 -- Unrecognized expressions remain in the authoritative short-circuit predicate.
 safeDomainExpr :: [(String,Type)] -> Expr -> Bool
+safeDomainExpr env (Located _ e) = safeDomainExpr env e
 safeDomainExpr env (Annotate (Var n) t) = lookup n env == Just (baseType t)
 safeDomainExpr env (Unary _ a) = safeDomainExpr env a
 safeDomainExpr env (Binary op a b) | op `elem` ["+","-","*","==","!=","<","<=",">",">="] = safeDomainExpr env a && safeDomainExpr env b

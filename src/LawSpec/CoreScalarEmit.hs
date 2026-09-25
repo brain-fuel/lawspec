@@ -1,9 +1,9 @@
-module LawSpec.ScalarEmit (scalarEmit, advanced, typeKey) where
-import LawSpec.Model
-import qualified LawSpec.Domain as D
+module LawSpec.CoreScalarEmit (scalarEmit, typeKey) where
+import LawSpec.Backend
+import LawSpec.Common
+import LawSpec.Testing
+import qualified LawSpec.Core as C
 import LawSpec.Scalar
-import LawSpec.Compile (typedExpression, normal, prettyExpanded)
-import LawSpec.NativeScalarEmit
 import Data.Aeson (encode)
 import qualified Data.Text.Lazy as T
 import qualified Data.Text.Lazy.Encoding as T
@@ -17,25 +17,7 @@ json = T.unpack . T.decodeUtf8 . encode
 typeKey :: Type -> String
 typeKey (Applied n t) = n ++ " " ++ typeKey t
 typeKey t = prettyType t
-advanced :: Unit -> [Expanded] -> Bool
-advanced u es = not (null (contracts u)) || any (not . legacy . snd) (functions u) || any complexLaw (filter ((== unitName u) . owner) es)
-  where legacy (Arrow a b) = legacy a && legacy b
-        legacy t = t `elem` map Named ["Bool","Int32","Text"]
-        complexLaw e = any (not . null . inputRefinements) (inputs e) || any (not . legacy . inputType) (inputs e) || exprs (assertion e) || any (any (newExpr . actual) . expectations) (examples (original e)) || any (any (newExpr . literalExpr . snd) . bindings) (examples (original e))
-        exprs (AssertEqual a b) = newExpr a || newExpr b
-        exprs (AssertImplies g a) = newExpr g || exprs a
-        exprs (AssertAll as) = any exprs as
-        newExpr (Var n) = "prelude." `isPrefixOf` n
-        newExpr (Apply a b) = newExpr a || newExpr b
-        newExpr (Compose a b) = newExpr a || newExpr b
-        newExpr (Number n) = n < -2147483648 || n > 2147483647
-        newExpr (StringLit _) = False
-        newExpr (BoolLit _) = False
-        newExpr (ScalarLit s) = scalarName s `notElem` ["Int32","Text","Bool"]
-        newExpr _ = True
-
 scalarEmit :: Int -> String -> Unit -> [Expanded] -> Either [Diagnostic] [Artifact]
-scalarEmit bits target u allLaws | target `elem` ["java","kotlin","go","haskell"] = nativeScalarEmit bits target u allLaws
 scalarEmit bits target u allLaws = do
   unless (target `elem` ["python","javascript","typescript"]) (Left [Diagnostic "target-runtime" ("portable scalar runtime is not implemented for " ++ target) Nothing])
   tests <- concat <$> mapM lawTests (zip [0 :: Int ..] ls)
@@ -80,97 +62,66 @@ scalarEmit bits target u allLaws = do
     call n args = "ls." ++ n ++ "(" ++ intercalate ", " args ++ ")"
     lit s = call "literal" [if py then "json.loads(" ++ q (json s) ++ ")" else json s,"symbols"]
     converted t e = call "convert" [e,q (typeKey t),show bits]
-    expression env e = either (Left . pure . (\m -> Diagnostic "typed-ir" m Nothing)) (Right . render) (typedExpression bits env (normal e))
-    render (TypedExpr t e children conversion) = case (e,children) of
-      (Var n,_) -> if n `elem` map fst (functions u) then "impl." ++ n else n
-      (DecimalNumber c p,_) -> lit (either (const (SDecimal c p)) id (convertScalar bits (typeKey t) (SDecimal c p)))
-      (Number n,_) -> lit (either (const (SInteger "BigInt" n)) id (convertScalar bits (typeKey t) (SInteger "BigInt" n)))
-      (StringLit s,_) -> lit (textScalar s)
-      (BoolLit b,_) -> lit (SBool b)
-      (ScalarLit s,_) -> lit (contextScalar t s)
-      (Annotate _ _,[x]) -> converted t (render x)
-      (Binary op _ _,[a,b]) | op `elem` ["&&","||"] -> "(" ++ render a ++ (if py then if op == "&&" then " and " else " or " else " " ++ op ++ " ") ++ render b ++ ")"
-      (Unary "!" _,[a]) -> "(" ++ (if py then "not " else "!") ++ render a ++ ")"
-      (Binary op _ _,[a,b]) -> call "binary" [q op,render a,render b,q (typeKey (expressionType a)),q (typeKey (expressionType b))]
-      (Unary "-" _,[a]) -> call "helper" [q "negate","[" ++ render a ++ "]","[" ++ q (typeKey (expressionType a)) ++ "]",show bits]
-      (Apply _ _,_) | (Var n,_) <- application e, "prelude." `isPrefixOf` n -> call "helper" [q (drop 8 n),"[" ++ intercalate ", " (map render children) ++ "]","[" ++ intercalate ", " (map (q . typeKey . expressionType) children) ++ "]",show bits]
-      (Apply _ _,_) | (Var n,_) <- application e, n `elem` map contractName (contracts u) ->
-        let (_,args) = typedApplication (TypedExpr t e children conversion)
-        in "_lawspec_call_" ++ n ++ "(" ++ intercalate ", " ("symbols":[converted (bridgeType a) (render a) | a <- args]) ++ ")"
-      (Apply _ _,_) -> let { (callee,args) = typedApplication (TypedExpr t e children conversion); invocation = render callee ++ "(" ++ intercalate ", " [bridge a | a <- args] ++ ")" }
-                      in call "validate" [if t == Named "Unit" then (if py then "ls.unit_result(" ++ invocation ++ ")" else "ls.unitResult(" ++ invocation ++ ")") else invocation,q (typeKey t),show bits]
-      _ -> error ("unrenderable typed scalar expression " ++ show e)
-    bridge a = converted (bridgeType a) (render a)
-    contextScalar (Applied n _) (SAbsent a) | (n,a) `elem` [("Nullable","Null"),("Optional","Undefined")] = SPresent n Nothing
-    contextScalar (Applied n t) (SPresent _ (Just v)) = SPresent n (Just (contextScalar t v))
-    contextScalar (Named n) s | isNumeric n = either (const s) id (convertScalar bits n s)
-    contextScalar _ s = s
-    envFor e = functions u ++ [(inputId i,inputType i) | i <- inputs e]
-    assertionCode env indent context a = case a of
-      AssertAll as -> concat <$> mapM (assertionCode env indent context) as
+    render term = case C.expressionNode term of
+      C.Local n -> localName n
+      C.Constant s -> lit s
+      C.Convert C.CheckedArgument t e -> converted t (render e)
+      C.Convert C.Explicit t e -> call "helper" [q (typeKey t),"[" ++ render e ++ "]","[" ++ q (typeKey (expressionType e)) ++ "]",show bits]
+      C.ShortCircuit op a b -> "(" ++ render a ++ (if py then if op == C.And then " and " else " or " else if op == C.And then " && " else " || ") ++ render b ++ ")"
+      C.Unary C.Not a -> "(" ++ (if py then "not " else "!") ++ render a ++ ")"
+      C.Binary op _ a b -> call "binary" [q (C.binaryName op),render a,render b,q (typeKey (expressionType a)),q (typeKey (expressionType b))]
+      C.Unary C.Negate a -> call "helper" [q "negate","[" ++ render a ++ "]","[" ++ q (typeKey (expressionType a)) ++ "]",show bits]
+      C.Helper builtin args -> call "helper" [q (C.builtinName builtin),"[" ++ intercalate ", " (map render args) ++ "]","[" ++ intercalate ", " (map (q . typeKey . expressionType) args) ++ "]",show bits]
+      C.ExternalCall decl args ->
+        let n = declarationName decl
+            t = expressionType term
+            values = [converted (expressionType a) (render a) | a <- args]
+            invocation = "impl." ++ n ++ "(" ++ intercalate ", " values ++ ")"
+        in if n `elem` map contractName (contracts u)
+          then "_lawspec_call_" ++ n ++ "(" ++ intercalate ", " ("symbols":values) ++ ")"
+          else call "validate" [if t == Named "Unit" then call (if py then "unit_result" else "unitResult") [invocation] else invocation,q (typeKey t),show bits]
+    assertionCode indent context proposition = case proposition of
+      AssertAll ps -> concat <$> mapM (assertionCode indent context) ps
       AssertImplies g body -> do
-        gs <- expression env g
-        bs <- assertionCode env (indent ++ "  ") context body
-        pure $ indent ++ "if " ++ (if py then gs ++ ":\n" else "(" ++ gs ++ ") {\n") ++ bs ++ (if py then "" else indent ++ "}\n")
-      AssertEqual a b -> do
-        let pair = case (a,b) of
-              (Number _,_) -> (a,b)
-              _ -> (a,b)
-        ta <- typed env (fst pair); tb <- typed env (snd pair)
-        let ta' = if literalLike a then contextual (expressionType tb) ta else ta
-            tb' = if literalLike b then contextual (expressionType ta) tb else tb
-            arguments = [q context,(if py then "lambda: " else "() => ") ++ render ta',(if py then "lambda: " else "() => ") ++ render tb',q (typeKey (expressionType ta')),q (typeKey (expressionType tb'))]
-        pure $ indent ++ (if py then "_lawspec_assert(" else "_lawspecAssert(") ++ intercalate ", " arguments ++ (if py then ")\n" else ");\n")
-    contextual t (TypedExpr _ e cs _) = TypedExpr t e cs Nothing
-    literalLike (Number _) = True
-    literalLike (DecimalNumber _ _) = True
-    literalLike (ScalarLit s) = scalarName s `elem` ["Null","Undefined","Nullable","Optional"]
-    literalLike _ = False
-    typed env e = either (Left . pure . (\m -> Diagnostic "typed-ir" m Nothing)) Right (typedExpression bits env (normal e))
+        bs <- assertionCode (indent ++ "  ") context body
+        pure $ indent ++ "if " ++ (if py then render g ++ ":\n" else "(" ++ render g ++ ") {\n") ++ bs ++ (if py then "" else indent ++ "}\n")
+      AssertEqual a b ->
+        let arguments = [q (context ++ " | expect " ++ propositionText proposition),(if py then "lambda: " else "() => ") ++ render a,(if py then "lambda: " else "() => ") ++ render b,q (typeKey (expressionType a)),q (typeKey (expressionType b))]
+        in pure $ indent ++ (if py then "_lawspec_assert(" else "_lawspecAssert(") ++ intercalate ", " arguments ++ (if py then ")\n" else ");\n")
     symbolsLine indent = indent ++ "symbols = {}\n"
     jsSymbols indent = indent ++ "const symbols = new Map();\n"
     freshSymbols = if py then symbolsLine else jsSymbols
     block label name' body = if py then "def " ++ name' ++ "():\n" ++ freshSymbols "  " ++ body ++ "\n" else "test(" ++ q label ++ ", () => {\n" ++ freshSymbols "  " ++ body ++ "});\n"
     assign n v = "  " ++ (if py then n ++ " = " ++ v ++ "\n" else "const " ++ n ++ " = " ++ v ++ ";\n")
     lawTests (index,e) = do
-      let env = envFor e; label = owner e ++ "::" ++ name e; prefix = "test_law" ++ show index
+      let label = owner e ++ "::" ++ name e; prefix = "test_law" ++ show index
       exampleTests <- concat <$> mapM (\(j,ex) -> do
-        values <- mapM (\(n,v) -> do
-          let t = maybe (Named "BigInt") id (lookup n [(inputName inp,inputType inp) | inp <- inputs e])
-              variable = maybe n id (lookup n [(inputName inp,inputId inp) | inp <- inputs e])
-          text <- expression env (Annotate (literalExpr v) t)
-          pure (assign variable text)) (bindings ex)
-        checks <- concat <$> mapM (\c -> assertionCode env "  " (label ++ " example " ++ exampleName ex) (AssertEqual (replaceExprVars [(inputName inp,Var (inputId inp)) | inp <- inputs e] (actual c)) (literalExpr (expected c)))) (expectations ex)
-        lawCheck <- assertionCode env "  " label (assertion e)
-        let aliases = ""
-        pure (block label (prefix ++ "_example" ++ show j) (concat values ++ aliases ++ checks ++ lawCheck))) (zip [0 :: Int ..] (examples (original e)))
-      finite <- either failure pure (D.finiteTuples bits (generation e) (inputs e))
-      cases' <- maybe (either failure pure (D.boundaryTuples bits e)) pure finite
+        let values = [assign n (render v) | (n,v) <- bindings ex]
+        checks <- concat <$> mapM (assertionCode "  " (label ++ " example " ++ exampleName ex)) (expectations ex)
+        lawCheck <- assertionCode "  " label (assertion e)
+        pure (block (label ++ " example: " ++ exampleName ex) (prefix ++ "_example" ++ show j) (concat values ++ checks ++ lawCheck))) (zip [0 :: Int ..] (examples (original e)))
+      let finite = finiteCases e
+          cases' = maybe (boundaryCases e) id finite
       boundaryTests <- concat <$> mapM (\(j,vs) -> do
-        checks <- assertionCode env "  " (label ++ " boundary " ++ show j) (assertion e)
+        checks <- assertionCode "  " (label ++ " boundary " ++ show j) (assertion e)
         pure (block label (prefix ++ "_boundary" ++ show j) (concat [assign (inputId inp) (lit v) | (inp,v) <- zip (inputs e) vs] ++ checks))) (zip [0 :: Int ..] cases')
-      body <- assertionCode env "  " (label ++ " property") (assertion e)
+      body <- assertionCode "  " (label ++ " property") (assertion e)
       let gs = map (generator . inputType) (inputs e)
           ns = map inputId (inputs e)
           propertyTest = if py then "@given(" ++ intercalate ", " gs ++ ")\ndef " ++ prefix ++ "_property(" ++ intercalate ", " ns ++ "):\n" ++ freshSymbols "  " ++ body
             else "test(" ++ q (label ++ " property") ++ ", () => fc.assert(fc.property(" ++ intercalate ", " gs ++ ", (" ++ intercalate ", " ns ++ ") => {\n" ++ freshSymbols "  " ++ body ++ "})));\n"
       refined <- refinedProperty prefix label e body
-      pure (exampleTests ++ boundaryTests ++ if maybe False (const True) finite then "" else if any (not . null . inputRefinements) (inputs e) || propertyKind e == "contract" then refined else propertyTest)
-    failure m = Left [Diagnostic "refinement-generation" m Nothing]
+      pure (metadata (if py then "#" else "//") e ++ exampleTests ++ boundaryTests ++ if maybe False (const True) finite then "" else if any (not . null . inputRefinements) (inputs e) || propertyKind e == "contract" then refined else propertyTest)
     contractWrapper c = do
-      let bindings' = zip (map fst (contractArguments c) ++ [fst (contractResult c)]) ["_arg" ++ show j | j <- [0::Int ..]]
-          args = [(maybe n id (lookup n bindings'),baseType t) | (n,t) <- contractArguments c]
-          resultName = maybe "_result" id (lookup (fst (contractResult c)) bindings')
-          resultType = baseType (snd (contractResult c))
-          env = args ++ [(resultName,resultType)]
-          replaced = replaceExprVars [(n,Var v) | (n,v) <- bindings']
+      let args = contractArguments c
+          (resultName,resultType) = contractResult c
           conjunction [] = if py then "True" else "true"
           conjunction xs = intercalate (if py then " and " else " && ") ["(" ++ x ++ ")" | x <- xs]
           line context ps = "  " ++ call (if py then "require_contract" else "requireContract") [conjunction ps,q context] ++ (if py then "\n" else ";\n")
           invocation = "impl." ++ contractName c ++ "(" ++ intercalate ", " [converted t n | (n,t) <- args] ++ ")"
           value = call "validate" [if resultType == Named "Unit" then call (if py then "unit_result" else "unitResult") [invocation] else invocation,q (typeKey resultType),show bits]
-      pre <- mapM (expression env . replaced) (contractPreconditions c)
-      post <- mapM (expression env . replaced) (contractPostconditions c)
+          pre = map render (contractPreconditions c)
+          post = map render (contractPostconditions c)
       pure $ (if py then "def " else "function ") ++ "_lawspec_call_" ++ contractName c ++ "(" ++ intercalate ", " ("symbols":map fst args) ++ (if py then "):\n" else ") {\n") ++
         line (contractName c ++ " precondition: " ++ intercalate " && " (map prettyExpr (contractPreconditions c))) pre ++ assign resultName value ++
         line (contractName c ++ " postcondition: " ++ intercalate " && " (map prettyExpr (contractPostconditions c))) post ++ "  return " ++ resultName ++ (if py then "\n\n" else ";\n}\n")
@@ -183,14 +134,14 @@ scalarEmit bits target u allLaws = do
       pure $ if py then "@settings(max_examples=" ++ show (cases cfg) ++ ")\n@given(st.integers(min_value=0,max_value=2147483647))\ndef " ++ prefix ++ "_property(_seed):\n" ++ freshSymbols "  " ++ check ++ invoke
         else "test(" ++ q (label ++ " property") ++ ", () => fc.assert(fc.property(fc.integer({min:0,max:2147483647}), (_seed) => {\n" ++ freshSymbols "  " ++ check ++ invoke ++ "}), {numRuns:" ++ show (cases cfg) ++ "}));\n"
     domainCode e (index,plan) = do
-      let inp = domainInput plan; previous = take index (inputs e); env = envFor e
+      let inp = domainInput plan; previous = take index (inputs e)
           boundNames xs = intercalate ", " (map inputId xs)
           lambda xs seed expression' = if py then "lambda _values" ++ (if seed then ", _seed" else "") ++ ": (lambda " ++ boundNames xs ++ ": " ++ expression' ++ ")(*_values)"
              else "([" ++ boundNames xs ++ "]" ++ (if seed then ", _seed" else "") ++ ") => " ++ expression'
-      bs <- mapM (\(op,v) -> do value <- expression env v; pure ("[" ++ q op ++ ", " ++ value ++ "]")) (domainBounds plan)
-      hints <- mapM (expression env) (D.domainHints inp)
-      ps <- mapM (expression env) (inputRefinements inp)
-      let candidates = call (if py then "domain_candidates" else "domainCandidates") [q (typeKey (inputType inp)),"_seed",show bits,"[" ++ intercalate ", " bs ++ "]","[" ++ intercalate ", " (map lit (D.boundaries bits (inputType inp)) ++ hints) ++ "]"]
+      let bs = ["[" ++ q op ++ ", " ++ render v ++ "]" | (op,v) <- domainBounds plan]
+          hints = map render (generatorHints plan)
+          ps = map render (inputRefinements inp)
+      let candidates = call (if py then "domain_candidates" else "domainCandidates") [q (typeKey (inputType inp)),"_seed",show bits,"[" ++ intercalate ", " bs ++ "]","[" ++ intercalate ", " (map lit (generatorBoundaries plan) ++ hints) ++ "]"]
           predicate = if null ps then (if py then "True" else "true") else intercalate (if py then " and " else " && ") ["(" ++ p ++ ")" | p <- ps]
       pure ("[" ++ lambda previous True candidates ++ ", " ++ lambda (previous++[inp]) False predicate ++ "]")
     boundaries (Applied n t) = SPresent n Nothing : map (SPresent n . Just) (boundaries t)
@@ -218,10 +169,3 @@ scalarEmit bits target u allLaws = do
     generator _ = error "non-scalar generator"
     maximumUnit n = if n == "Bytes" then "255" else if n `elem` ["CodeUnit16","Utf16Text"] then "65535" else "1114111"
     split s = case break (== '.') s of (a,[]) -> [a]; (a,_:b) -> a:split b
-
-application :: Expr -> (Expr,[Expr])
-application (Apply f x) = let (n,args) = application f in (n,args ++ [x])
-application e = (e,[])
-typedApplication :: TypedExpr -> (TypedExpr,[TypedExpr])
-typedApplication (TypedExpr _ (Apply _ _) [f,x] _) = let (n,args) = typedApplication f in (n,args ++ [x])
-typedApplication e = (e,[])

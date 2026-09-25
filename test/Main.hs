@@ -1,5 +1,6 @@
 module Main where
 import Test.Hspec
+import qualified CoreSpec
 import LawSpec.Compile
 import LawSpec.Model
 import qualified LawSpec.Domain as D
@@ -16,6 +17,7 @@ concrete :: String -> String
 concrete d = "law `codec` is definition is " ++ d ++ " end end\n"
 main :: IO ()
 main = hspec $ do
+  CoreSpec.spec
   describe "compiler" $ do
     it "checks the bundled prelude" $ compile [] `shouldBe` Right ([],[])
     it "expands the exact scratch example" $ do
@@ -94,7 +96,7 @@ main = hspec $ do
       case compile [Source "guards.lawspec" text] of
         Right (_, [e]) -> do
           prettyExpanded e `shouldBe` "for all (x :: Int32) . x (x) implies g (f (x)) = x"
-          guards e `shouldBe` [Apply (Var "x") (Var (inputId (head (inputs e))))]
+          map stripLocations (guards e) `shouldBe` [Apply (Var "x") (Var (inputId (head (inputs e))))]
         other -> expectationFailure (show other)
     it "accepts nested implications and Boolean predicate conclusions" $
       compile [Source "bool.lawspec" "unit bools\nf :: Bool -> Bool\nlaw `nested` is definition is `for all` (x :: Bool) . x implies f x implies true end example `enabled` is x = true expect f x = true end end"] `shouldSatisfy` isRight
@@ -130,15 +132,15 @@ main = hspec $ do
     it "requires Eq constraints for all generic equality conclusions" $
       compile [Source "bad.lawspec" "unit bad\nlaw `check` (f :: a -> a -> a) is definition is `commutative` f end end"] `shouldSatisfy` isLeft
   describe "emission" $ do
-    it "emits tests and user-owned adapters for all seven targets" $ do
+    it "emits tests and user-owned adapters for all eight targets" $ do
       s <- readFile "examples/specs/atoi_codec.lawspec"
       case compile [Source "codec.lawspec" s] of
         Left ds -> expectationFailure (show ds)
         Right (us,es) -> mapM_ (\t -> case emit t us es of
           Left ds -> expectationFailure (show ds)
           Right fs -> do
-            map ownership fs `shouldBe` ["user","generated"]
-            artifactContent (last fs) `shouldSatisfy` isInfixOf "2147483647") targets
+            filter ((== "user") . ownership) fs `shouldSatisfy` (not . null)
+            concatMap artifactContent fs `shouldSatisfy` isInfixOf "2147483647") targets
 
     it "retains executable laws even without implementation functions" $ do
       let input = Source "pure.lawspec" "unit purelaw\nlaw `reflexive` is definition is `for all` (x :: Int32) . x = x end end"
@@ -147,8 +149,10 @@ main = hspec $ do
         Right (us,es) -> case emit "python" us es of
           Left ds -> expectationFailure (show ds)
           Right fs -> do
-            length fs `shouldBe` 2
-            artifactContent (last fs) `shouldSatisfy` (not . isInfixOf "from purelaw import")
+            let tests = filter ((== "test") . artifactPlacement) fs
+            length tests `shouldBe` 1
+            concatMap artifactContent tests `shouldSatisfy` isInfixOf "test_law0_property"
+            concatMap artifactContent tests `shouldSatisfy` (not . isInfixOf "from purelaw import")
     it "moves generated imports with a custom layout" $ do
       s <- readFile "examples/specs/atoi_codec.lawspec"
       case compile [Source "codec.lawspec" s] of
@@ -157,7 +161,7 @@ main = hspec $ do
           Left ds -> expectationFailure (show ds)
           Right fs -> do
             artifactPath (head fs) `shouldBe` "lib/example/atoi_codec.mjs"
-            artifactContent (last fs) `shouldSatisfy` isInfixOf "../../lib/example/atoi_codec.mjs"
+            concatMap artifactContent (filter ((== "test") . artifactPlacement) fs) `shouldSatisfy` isInfixOf "../../lib/example/atoi_codec.mjs"
 
   describe "portable scalars" $ do
     it "recognizes every scalar domain and both presence constructors" $ do
@@ -182,10 +186,14 @@ main = hspec $ do
     it "checks operator precedence while preserving signed application" $ do
       let spec text = parseSource (Source "precedence" ("unit p\nlaw `p` is definition is `for all` (x :: Int8) . " ++ text ++ " = x end end"))
       case spec "x + 2 * 3" of
-        Right u -> definition (head (laws u)) `shouldBe` Forall [("x",Named "Int8")] (Equal (Binary "+" (Var "x") (Binary "*" (Number 2) (Number 3))) (Var "x"))
+        Right u -> case definition (head (laws u)) of
+          Forall [("x",Named "Int8")] (Equal a b) -> (stripLocations a,stripLocations b) `shouldBe` (Binary "+" (Var "x") (Binary "*" (Number 2) (Number 3)),Var "x")
+          other -> expectationFailure (show other)
         Left ds -> expectationFailure (show ds)
       case spec "f -42" of
-        Right u -> definition (head (laws u)) `shouldBe` Forall [("x",Named "Int8")] (Equal (Apply (Var "f") (Number (-42))) (Var "x"))
+        Right u -> case definition (head (laws u)) of
+          Forall [("x",Named "Int8")] (Equal a b) -> (stripLocations a,stripLocations b) `shouldBe` (Apply (Var "f") (Number (-42)),Var "x")
+          other -> expectationFailure (show other)
         Left ds -> expectationFailure (show ds)
     it "validates raw domains without surrogate replacement" $ do
       validateScalar 64 (SSequence "Text" [55296]) `shouldSatisfy` isLeft
@@ -252,8 +260,10 @@ main = hspec $ do
           all (\xs -> case xs of [SInteger _ x,SInteger _ y] -> x>0 && x+y>=128 && x+y<=254; _ -> False) expected `shouldBe` True
     it "rejects examples outside the dependent domain" $
       compile [spec ("law `bad` is definition is `for all` (x :: Int8) (y :: Int8 where y > Int8.max - x) . x + y > Int8.max end example `invalid` is x = 0 y = 127 expect x + y = 127 end end")] `shouldSatisfy` isLeft
-    it "rejects empty finite domains and non-Boolean refinements" $ do
-      compile [spec (law "(x :: Bool where false)" "x = x")] `shouldSatisfy` isLeft
+    it "separates valid empty domains from executable generation and rejects non-Boolean refinements" $ do
+      case compile [spec (law "(x :: Bool where false)" "x = x")] of
+        Left ds -> expectationFailure (show ds)
+        Right (us,es) -> mapM_ (\target -> emit target us es `shouldSatisfy` isLeft) targets
       compile [spec (law "(x :: Int8 where x)" "x = x")] `shouldSatisfy` isLeft
     it "permits a prefix with no continuation without treating the whole domain as empty" $
       compile [spec (law "(x :: Int8) (y :: Int8 where y > Int8.max - x)" "x + y > Int8.max")] `shouldSatisfy` isRight

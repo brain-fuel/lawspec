@@ -27,13 +27,16 @@ for(const target of selected){
  }
  if(['javascript','typescript'].includes(target))await symlink(path.join(root,'.integration',target,'node_modules'),path.join(dir,'node_modules')).catch(e=>{if(e.code!=='EEXIST')throw e});
  if(target==='go')await copyFile(path.join(root,'test/locks/go/go.sum'),path.join(dir,'go.sum'));
- const commands={java:['mvn',['-q','test']],python:[path.join(root,'.integration/python/.venv/bin/python'),['-B','-m','pytest','-q']],javascript:['node',['--test',...result.files.filter(f=>f.path.endsWith('.test.mjs')).map(f=>f.path)]],typescript:['npm',['test']],go:['go',['test','./...']],haskell:['stack',['--no-terminal','test']],kotlin:[gradle,['test','--console=plain']]};
+ const commands={rust:['cargo',['test',...(process.env.LAWSPEC_RUST_RELEASE==='1'?['--release']:[])]],java:['mvn',['-q','test']],python:[path.join(root,'.integration/python/.venv/bin/python'),['-B','-m','pytest','-q']],javascript:['node',['--test',...result.files.filter(f=>f.path.endsWith('.test.mjs')).map(f=>f.path)]],typescript:['npm',['test']],go:['go',['test','./...']],haskell:['stack',['--no-terminal','test']],kotlin:[gradle,['test','--console=plain']]};
  const [cmd,args]=commands[target];
- if(bits===32&&['go','haskell'].includes(target)&&['arm64','x64'].includes(process.arch)){
+ const nativeBits=target==='rust'
+  ? Number(execFileSync('rustc',['--print','cfg',...(process.env.CARGO_BUILD_TARGET?['--target',process.env.CARGO_BUILD_TARGET]:[])],{encoding:'utf8'}).match(/target_pointer_width="(32|64)"/)[1])
+  : (target==='go'&&process.env.GOARCH==='386'?32:['arm64','x64'].includes(process.arch)?64:32);
+ if(bits!==nativeBits&&['go','haskell','rust'].includes(target)){
   const report=await new Promise((resolve,reject)=>{const p=spawn(cmd,args,{cwd:dir});let log='';p.stdout.on('data',s=>log+=s);p.stderr.on('data',s=>log+=s);p.on('error',reject);p.on('exit',code=>resolve({code,log}));});
   await writeFile(path.join(dir,'architecture-mismatch.log'),report.log);
   if(!report.code||!report.log.includes('machineBits does not match native architecture'))throw new Error(target+': missing architecture mismatch diagnostic');
-  console.log(`${target}: 32-bit profile rejected for native 64-bit machine adapter`);
+  console.log(`${target}: ${bits}-bit profile rejected for native ${nativeBits}-bit machine adapter`);
   continue;
  }
  await new Promise((resolve,reject)=>{const p=spawn(cmd,args,{cwd:dir,stdio:'inherit'});p.on('exit',code=>code?reject(new Error(`${target} exited ${code}`)):resolve());p.on('error',reject)});
@@ -48,7 +51,7 @@ for(const target of selected){
     const report=await new Promise((resolve,reject)=>{const p=spawn(cmd,mutationArgs,{cwd:dir});let log='';p.stdout.on('data',s=>log+=s);p.stderr.on('data',s=>log+=s);p.on('error',reject);p.on('exit',code=>resolve({code,log}));});
     await writeFile(path.join(dir,`mutant-${mutation.name}.log`),report.log);
     if(!report.code)throw new Error(`${target}: mutant ${mutation.name} escaped detection`);
-    if(/COMPILATION ERROR|compileTestKotlin FAILED|SyntaxError|\[build failed\]|parse error on input|not in scope/i.test(report.log))throw new Error(`${target}: mutant ${mutation.name} failed to compile (see log)`);
+    if(/error\[E\d+\]|could not compile|COMPILATION ERROR|compileTestKotlin FAILED|SyntaxError|\[build failed\]|parse error on input|not in scope/i.test(report.log))throw new Error(`${target}: mutant ${mutation.name} failed to compile (see log)`);
     console.log(`${target}: rejected ${mutation.name}`);
    }
   } finally {await writeFile(adapter,correct);}

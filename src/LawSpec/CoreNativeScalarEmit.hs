@@ -1,9 +1,10 @@
-module LawSpec.NativeScalarEmit (nativeScalarEmit) where
-import LawSpec.Model
-import qualified LawSpec.Domain as D
+module LawSpec.CoreNativeScalarEmit (nativeScalarEmit) where
+import LawSpec.Backend
+import LawSpec.Common
+import LawSpec.Testing
+import qualified LawSpec.Core as C
 import LawSpec.Scalar
 import LawSpec.RuntimeSources
-import LawSpec.Compile (typedExpression, normal)
 import Data.Aeson (encode)
 import qualified Data.Text.Lazy as T
 import qualified Data.Text.Lazy.Encoding as T
@@ -80,59 +81,50 @@ nativeScalarEmit bits target u allLaws = do
       SAbsent t -> call "absent" [q t]
       SPresent t v -> call "present" [q t,if go then maybe "nil" (\x -> "lsPointer(" ++ scalar x ++ ")") v else maybe "null" scalar v]
     convert t v = call "convert" [q (key t),v,show bits]
-    typed env e = either (Left . pure . (\m -> Diagnostic "typed-ir" m Nothing)) Right (typedExpression bits env (normal e))
-    render (TypedExpr t e cs conversion) = case (e,cs) of
-      (Var n,_) -> if n `elem` map fst (functions u) then (if hs then "Impl." ++ n else if go then cap n else cls ++ "." ++ n) else n
-      (DecimalNumber c p,_) -> convert t (scalar (SDecimal c p))
-      (Number n,_) -> convert t (scalar (SInteger "BigInt" n))
-      (ScalarLit s,_) -> convert t (scalar s)
-      (BoolLit b,_) -> scalar (SBool b)
-      (StringLit s,_) -> scalar (textScalar s)
-      (Annotate _ _,[a]) -> convert t (render a)
-      (Binary op _ _,[a,b]) | op `elem` ["&&","||"] -> call "bool" ["(" ++ call "truth" [render a] ++ " " ++ op ++ " " ++ call "truth" [render b] ++ ")"]
-      (Unary "!" _,[a]) -> call "bool" [(if hs then "not (" else "!(") ++ call "truth" [render a] ++ ")"]
-      (Binary op _ _,[a,b]) -> call "binary" [q op,render a,render b]
-      (Unary "-" _,[a]) -> call "helper" [q "negate",arr [render a],show bits]
-      (Apply _ _,_) | (Var n,_) <- application e, "prelude." `isPrefixOf` n -> call "helper" [q (drop 8 n),arr (map render cs),show bits]
-      (Apply _ _,_) | (Var n,_) <- application e, n `elem` map contractName (contracts u) ->
-        let (_,args) = typedApplication (TypedExpr t e cs conversion)
-            values = [convert (bridgeType a) (render a) | a <- args]
-        in if hs then "(_lawspec_call_" ++ n ++ concatMap (\v -> " (" ++ v ++ ")") values ++ ")" else "_lawspec_call_" ++ n ++ "(" ++ intercalate ", " ("symbols":values) ++ ")"
-      (Apply _ _,_) ->
-        let (callee,args) = typedApplication (TypedExpr t e cs conversion)
-            invoke = if hs then "(" ++ render callee ++ concatMap (\a -> " (" ++ adapterArg a ++ ")") args ++ ")" else render callee ++ "(" ++ intercalate ", " [adapterArg a | a <- args] ++ ")"
-        in if t == Named "Unit" && not hs then
-          if go then "func() LawSpecValue { " ++ invoke ++ "; return lsAbsent(\"Unit\") }()"
-          else if kt then "run { " ++ invoke ++ "; LawSpecRuntime.absent(\"Unit\") }" else "LawSpecRuntime.unit(() -> " ++ invoke ++ ")"
-          else call "fromNative" [q (key t),invoke,show bits]
-      _ -> error ("unrenderable expression " ++ show e)
-    adapterArg a | bridgeType a == Named "Unit" && not hs = render a
-    adapterArg a = case nativeRepresentation target (key (bridgeType a)) of
-      Nothing -> if go then "lsClone(" ++ convert (bridgeType a) (render a) ++ ")" else convert (bridgeType a) (render a)
-      Just _ -> let nativeType = nativeArg (bridgeType a); converted = call "toNative" [q (key (bridgeType a)),render a,show bits] in
+    render term = case C.expressionNode term of
+      C.Local n -> localName n
+      C.Constant s -> convert (expressionType term) (scalar s)
+      C.Convert C.CheckedArgument t e -> convert t (render e)
+      C.Convert C.Explicit t e -> call "helper" [q (key t),arr [render e],show bits]
+      C.ShortCircuit op a b -> call "bool" ["(" ++ call "truth" [render a] ++ (if op == C.And then " && " else " || ") ++ call "truth" [render b] ++ ")"]
+      C.Unary C.Not a -> call "bool" [(if hs then "not (" else "!(") ++ call "truth" [render a] ++ ")"]
+      C.Binary op _ a b -> call "binary" [q (C.binaryName op),render a,render b]
+      C.Unary C.Negate a -> call "helper" [q "negate",arr [render a],show bits]
+      C.Helper builtin args -> call "helper" [q (C.builtinName builtin),arr (map render args),show bits]
+      C.ExternalCall decl args ->
+        let n = declarationName decl
+            t = expressionType term
+            values = [convert (expressionType a) (render a) | a <- args]
+            callee = if hs then "Impl." ++ n else if go then cap n else cls ++ "." ++ n
+            invocation = if hs then "(" ++ callee ++ concatMap (\a -> " (" ++ adapterArg a ++ ")") args ++ ")" else callee ++ "(" ++ intercalate ", " (map adapterArg args) ++ ")"
+        in if n `elem` map contractName (contracts u)
+          then if hs then "(_lawspec_call_" ++ n ++ concatMap (\v -> " (" ++ v ++ ")") values ++ ")" else "_lawspec_call_" ++ n ++ "(" ++ intercalate ", " ("symbols":values) ++ ")"
+          else wrapResult t invocation
+    wrapResult t invocation
+      | t == Named "Unit" && not hs =
+          if go then "func() LawSpecValue { " ++ invocation ++ "; return lsAbsent(\"Unit\") }()"
+          else if kt then "run { " ++ invocation ++ "; LawSpecRuntime.absent(\"Unit\") }" else "LawSpecRuntime.unit(() -> " ++ invocation ++ ")"
+      | otherwise = call "fromNative" [q (key t),invocation,show bits]
+    adapterArg a = nativeValue (expressionType a) (render a)
+    nativeValue t value | t == Named "Unit" && not hs = value
+    nativeValue t value = case nativeRepresentation target (key t) of
+      Nothing -> if go then "lsClone(" ++ convert t value ++ ")" else convert t value
+      Just _ -> let nativeType = nativeArg t; converted = call "toNative" [q (key t),value,show bits] in
         if hs then converted else if go then converted ++ ".(" ++ nativeType ++ ")" else if kt then "(" ++ converted ++ " as " ++ nativeType ++ ")" else "((" ++ nativeType ++ ") " ++ converted ++ ")"
-    envFor e = functions u ++ [(inputId i,inputType i) | i <- inputs e]
     assign n v | hs = "    let " ++ n ++ " = " ++ v ++ "\n"
                | go = "    " ++ n ++ " := " ++ v ++ "; _ = " ++ n ++ "\n"
                | otherwise = "    " ++ (if kt then "val " else "var ") ++ n ++ " = " ++ v ++ ";\n"
-    code env indent context a = case a of
-      AssertAll as -> concat <$> mapM (code env indent context) as
+    code indent context proposition = case proposition of
+      AssertAll ps -> concat <$> mapM (code indent context) ps
       AssertImplies g body -> do
-        gt <- typed env g
-        rest <- code env (indent ++ "  ") context body
-        pure (if hs then indent ++ "if " ++ call "truth" [render gt] ++ " then do\n" ++ rest ++ indent ++ "else pure ()\n" else indent ++ "if (" ++ call "truth" [render gt] ++ ") {\n" ++ rest ++ indent ++ "}\n")
-      AssertEqual a b -> do
-        at <- typed env a; bt <- typed env b
-        let av = if literalLike a then convert (expressionType bt) (render at) else render at
-            bv = if literalLike b then convert (expressionType at) (render bt) else render bt
-        pure $ indent ++ if hs then "_lawspecAssert " ++ quote context ++ " (" ++ av ++ ") (" ++ bv ++ ")\n"
-          else if go then "_lawspecAssert(t, " ++ quote context ++ ", func() LawSpecValue { return " ++ av ++ " }, func() LawSpecValue { return " ++ bv ++ " })\n"
-          else if kt then "_lawspecAssert(" ++ quote context ++ ", { " ++ av ++ " }, { " ++ bv ++ " })\n"
-          else "_lawspecAssert(" ++ quote context ++ ", () -> " ++ av ++ ", () -> " ++ bv ++ ");\n"
-    literalLike (Number _) = True
-    literalLike (DecimalNumber _ _) = True
-    literalLike (ScalarLit s) = scalarName s `elem` ["Null","Undefined","Nullable","Optional"]
-    literalLike _ = False
+        rest <- code (indent ++ "  ") context body
+        pure (if hs then indent ++ "if " ++ call "truth" [render g] ++ " then do\n" ++ rest ++ indent ++ "else pure ()\n" else indent ++ "if (" ++ call "truth" [render g] ++ ") {\n" ++ rest ++ indent ++ "}\n")
+      AssertEqual a b ->
+        let av = render a; bv = render b; explanation = context ++ " | expect " ++ prettyExpr a ++ " = " ++ prettyExpr b in
+        pure $ indent ++ if hs then "_lawspecAssert " ++ quote explanation ++ " (" ++ av ++ ") (" ++ bv ++ ")\n"
+          else if go then "_lawspecAssert(t, " ++ quote explanation ++ ", func() LawSpecValue { return " ++ av ++ " }, func() LawSpecValue { return " ++ bv ++ " })\n"
+          else if kt then "_lawspecAssert(" ++ quote explanation ++ ", { " ++ av ++ " }, { " ++ bv ++ " })\n"
+          else "_lawspecAssert(" ++ quote explanation ++ ", () -> " ++ av ++ ", () -> " ++ bv ++ ");\n"
     block n body | hs = "  it " ++ q n ++ " $ do\n" ++ body
                  | go = "func Test" ++ cap n ++ "(t *testing.T) {\n    symbols := map[string]*lawSpecSymbol{}; _ = symbols\n" ++ body ++ "}\n"
                  | kt = "  " ++ q n ++ " {\n    val symbols = mutableMapOf<String, Any>();\n" ++ body ++ "  }\n"
@@ -141,22 +133,18 @@ nativeScalarEmit bits target u allLaws = do
     boundaries (Applied n t) = SPresent n Nothing : map (SPresent n . Just) (boundaries t)
     boundaries _ = []
     lawTests (i,e) = do
-      let env = envFor e; label = owner e ++ "::" ++ name e; fn = "law" ++ show i
+      let label = owner e ++ "::" ++ name e; fn = "law" ++ show i
       exs <- concat <$> mapM (\(j,ex) -> do
-        assignments <- mapM (\(n,v) -> do
-          let t = maybe (Named "BigInt") id (lookup n [(inputName inp,inputType inp) | inp <- inputs e])
-              variable = maybe n id (lookup n [(inputName inp,inputId inp) | inp <- inputs e])
-          value <- typed env (Annotate (literalExpr v) t)
-          pure (assign variable (render value))) (bindings ex)
-        expectedChecks <- concat <$> mapM (\c -> code env "    " (label ++ " example " ++ exampleName ex) (AssertEqual (replaceExprVars [(inputName inp,Var (inputId inp)) | inp <- inputs e] (actual c)) (literalExpr (expected c)))) (expectations ex)
-        lawCheck <- code env "    " label (assertion e)
+        let assignments = [assign n (render v) | (n,v) <- bindings ex]
+        expectedChecks <- concat <$> mapM (code "    " (label ++ " example " ++ exampleName ex)) (expectations ex)
+        lawCheck <- code "    " label (assertion e)
         pure (block (fn ++ "Example" ++ show j) (concat assignments ++ expectedChecks ++ lawCheck))) (zip [0 :: Int ..] (examples (original e)))
-      finite <- either failure pure (D.finiteTuples bits (generation e) (inputs e))
-      cases' <- maybe (either failure pure (D.boundaryTuples bits e)) pure finite
+      let finite = finiteCases e
+          cases' = maybe (boundaryCases e) id finite
       boundariesTests <- concat <$> mapM (\(j,vs) -> do
-        check <- code env "    " (label ++ " boundary " ++ show j) (assertion e)
+        check <- code "    " (label ++ " boundary " ++ show j) (assertion e)
         pure (block (fn ++ "Boundary" ++ show j) (concat [assign (inputId inp) (convert (inputType inp) (scalar v)) | (inp,v) <- zip (inputs e) vs] ++ check))) (zip [0 :: Int ..] cases')
-      propertyCheck <- code env "    " (label ++ " property") (assertion e)
+      propertyCheck <- code "    " (label ++ " property") (assertion e)
       let assignments = concat [assign (inputId inp) (call "sample" [q (key (inputType inp)),if go then "int(seed) + " ++ show j else if hs then "seed + " ++ show j else "seed + " ++ show j,show bits]) | (j,inp) <- zip [0 :: Int ..] (inputs e)]
           propertyBody = assignments ++ propertyCheck
           propertyTest
@@ -165,42 +153,37 @@ nativeScalarEmit bits target u allLaws = do
             | kt = "  " ++ q (label ++ " property") ++ " { checkAll(Arb.int()) { seed ->\n    val symbols = mutableMapOf<String, Any>();\n" ++ propertyBody ++ "  } }\n"
             | otherwise = "  @Test void " ++ fn ++ "Property() { PropertyChecker.forAll(Generator.integers(), seed -> {\n    var symbols = new HashMap<String,Object>();\n" ++ propertyBody ++ "    return true;\n  }); }\n"
       refined <- refinedProperty fn label e propertyCheck
-      pure (exs ++ boundariesTests ++ if maybe False (const True) finite then "" else if any (not . null . inputRefinements) (inputs e) || propertyKind e == "contract" then refined else propertyTest)
-    failure m = Left [Diagnostic "refinement-generation" m Nothing]
+      pure (metadata (if hs then "--" else "//") e ++ exs ++ boundariesTests ++ if maybe False (const True) finite then "" else if any (not . null . inputRefinements) (inputs e) || propertyKind e == "contract" then refined else propertyTest)
     conjunction [] = if hs then "True" else "true"
     conjunction xs = intercalate " && " ["(" ++ x ++ ")" | x <- xs]
     contractWrapper c = do
-      let mapping = zip (map fst (contractArguments c) ++ [fst (contractResult c)]) ["_arg" ++ show j | j <- [0::Int ..]]
-          args = [(maybe n id (lookup n mapping),baseType t) | (n,t) <- contractArguments c]
-          rn = maybe "_result" id (lookup (fst (contractResult c)) mapping)
-          rt = baseType (snd (contractResult c))
-          env = args ++ [(rn,rt)]
-          replaced = replaceExprVars [(n,Var v) | (n,v) <- mapping]
+      let args = contractArguments c
+          (rn,rt) = contractResult c
           invoke = (if hs then "Impl." else if go then "" else cls ++ ".") ++ (if go then cap (contractName c) else contractName c) ++
-            (if hs then concatMap (\(n,t) -> " (" ++ adapterArg (TypedExpr t (Var n) [] Nothing) ++ ")") args
-             else "(" ++ intercalate ", " [adapterArg (TypedExpr t (Var n) [] Nothing) | (n,t) <- args] ++ ")")
-          result = if rt == Named "Unit" && not hs then (if go then "func() LawSpecValue { " ++ invoke ++ "; return lsAbsent(\"Unit\") }()" else if kt then "run { " ++ invoke ++ "; LawSpecRuntime.absent(\"Unit\") }" else "LawSpecRuntime.unit(() -> " ++ invoke ++ ")") else call "fromNative" [q (key rt),invoke,show bits]
+            (if hs then concatMap (\(n,t) -> " (" ++ nativeValue t n ++ ")") args
+             else "(" ++ intercalate ", " [nativeValue t n | (n,t) <- args] ++ ")")
+          result = wrapResult rt invoke
           context stage ps = contractName c ++ " " ++ stage ++ ": " ++ intercalate " && " (map prettyExpr ps)
           symbolParam = if go then "symbols map[string]*lawSpecSymbol" else if kt then "symbols: MutableMap<String, Any>" else "Map<String,Object> symbols"
           params = symbolParam:[if go then n ++ " LawSpecValue" else if kt then n ++ ": LawSpecRuntime.Value" else "Value " ++ n | (n,_) <- args]
-      pre <- mapM (fmap (\v -> call "truth" [render v]) . typed env . replaced) (contractPreconditions c)
-      post <- mapM (fmap (\v -> call "truth" [render v]) . typed env . replaced) (contractPostconditions c)
+      let pre = [call "truth" [render v] | v <- contractPreconditions c]
+          post = [call "truth" [render v] | v <- contractPostconditions c]
       let preContext = context "precondition" (contractPreconditions c); postContext = context "postcondition" (contractPostconditions c)
       pure $ if hs then "_lawspec_call_" ++ contractName c ++ " :: " ++ intercalate " -> " (replicate (length args+1) "Scalar") ++ "\n_lawspec_call_" ++ contractName c ++ concatMap ((" " ++) . fst) args ++ " =\n  LS.contract " ++ quote preContext ++ " (" ++ conjunction pre ++ ") $\n    let " ++ rn ++ " = " ++ result ++ "\n    in " ++ rn ++ " `seq` LS.contract " ++ quote postContext ++ " (" ++ conjunction post ++ ") " ++ rn ++ "\n"
         else (if go then "func " else if kt then "private fun " else "  private static Value ") ++ "_lawspec_call_" ++ contractName c ++ "(" ++ intercalate ", " params ++ ")" ++ (if go then " LawSpecValue" else if kt then ": LawSpecRuntime.Value" else "") ++ " {\n" ++
           "    " ++ call "requireContract" [conjunction pre,quote preContext] ++ ";\n" ++ assign rn result ++ "    " ++ call "requireContract" [conjunction post,quote postContext] ++ ";\n    return " ++ rn ++ ";\n  }\n"
     domainCode e (index,plan) = do
-      let inp=domainInput plan; env=envFor e; prior=take index (inputs e)
+      let inp=domainInput plan; prior=take index (inputs e)
           bindings' xs = concat [if hs then inputId i ++ " = _values !! " ++ show j ++ "; " else if go then inputId i ++ " := _values[" ++ show j ++ "]; _ = " ++ inputId i ++ "; " else if kt then "val " ++ inputId i ++ " = _values[" ++ show j ++ "]; " else "var " ++ inputId i ++ " = _values.get(" ++ show j ++ "); " | (j,i) <- zip [0::Int ..] xs]
           lambda xs seed value = if hs then "(\\_values" ++ (if seed then " _seed" else "") ++ " -> " ++ (if null xs then "" else "let { " ++ bindings' xs ++ "} in ") ++ value ++ ")"
             else if go then "func(_values []LawSpecValue" ++ (if seed then ", _seed int" else "") ++ ") " ++ (if seed then "[]LawSpecValue" else "bool") ++ " { " ++ bindings' xs ++ "return " ++ value ++ " }"
             else if kt then "{ _values" ++ (if seed then ", _seed" else "") ++ " -> " ++ bindings' xs ++ value ++ " }"
             else "(_values" ++ (if seed then ", _seed" else "") ++ ") -> { " ++ bindings' xs ++ "return " ++ value ++ "; }"
-      bs <- mapM (\(op,v) -> do value <- render <$> typed env v; pure (if hs then "(" ++ q op ++ "," ++ value ++ ")" else if go then "{" ++ q op ++ "," ++ value ++ "}" else (if kt then "LawSpecRuntime.Bound(" else "new LawSpecRuntime.Bound(") ++ q op ++ "," ++ value ++ ")")) (domainBounds plan)
-      hints <- mapM (fmap render . typed env) (D.domainHints inp)
-      ps <- mapM (fmap (\v -> call "truth" [render v]) . typed env) (inputRefinements inp)
+      bs <- mapM (\(op,v) -> let value = render v in pure (if hs then "(" ++ q op ++ "," ++ value ++ ")" else if go then "{" ++ q op ++ "," ++ value ++ "}" else (if kt then "LawSpecRuntime.Bound(" else "new LawSpecRuntime.Bound(") ++ q op ++ "," ++ value ++ ")")) (domainBounds plan)
+      let hints = map render (generatorHints plan)
+          ps = [call "truth" [render v] | v <- inputRefinements inp]
       let restrictions = (if hs then "[" else if go then "[]lawSpecBound{" else if kt then "arrayOf(" else "new LawSpecRuntime.Bound[]{") ++ intercalate "," bs ++ (if hs then "]" else if kt then ")" else "}")
-          candidates = call "domainCandidates" [q (key (inputType inp)),"_seed",show bits,restrictions,arr (map scalar (D.boundaries bits (inputType inp)) ++ hints)]
+          candidates = call "domainCandidates" [q (key (inputType inp)),"_seed",show bits,restrictions,arr (map scalar (generatorBoundaries plan) ++ hints)]
       pure $ if hs then "LS.Domain " ++ lambda prior True candidates ++ " " ++ lambda (prior++[inp]) False (conjunction ps)
         else (if go then "lawSpecDomain{" else if kt then "LawSpecRuntime.Domain(" else "new LawSpecRuntime.Domain(") ++ lambda prior True candidates ++ ", " ++ lambda (prior++[inp]) False (conjunction ps) ++ (if go then "}" else ")")
     refinedProperty fn label e check = do
@@ -222,13 +205,6 @@ nativeScalarEmit bits target u allLaws = do
     splitOn c s = case break (== c) s of (a,[]) -> [a]; (a,_:b) -> a:splitOn c b
     cap [] = []
     cap (c:cs) = (if c >= 'a' && c <= 'z' then toEnum (fromEnum c - 32) else c):cs
-
-application :: Expr -> (Expr,[Expr])
-application (Apply f x) = let (n,args) = application f in (n,args ++ [x])
-application e = (e,[])
-typedApplication :: TypedExpr -> (TypedExpr,[TypedExpr])
-typedApplication (TypedExpr _ (Apply _ _) [f,x] _) = let (n,args) = typedApplication f in (n,args ++ [x])
-typedApplication e = (e,[])
 
 replace :: String -> String -> String -> String
 replace old new text | old `isPrefixOf` text = new ++ replace old new (drop (length old) text)

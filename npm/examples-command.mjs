@@ -43,7 +43,7 @@ export async function generateExamples(options) {
   return plans.map((plan, i) => ({
     target: selected[i],
     directory: plan.root,
-    files: artifacts[i].map((f) => ({ path: f.path, ownership: f.ownership })),
+    files: artifacts[i].map((f) => ({ path: f.path, ownership: f.ownership, placement: f.placement })),
     changes: plan.changes.length,
     preservedAdapters: plan.preserved,
     adapterUpdates: plan.adapterUpdates,

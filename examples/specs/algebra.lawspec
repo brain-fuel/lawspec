@@ -1,13 +1,13 @@
 unit example.algebra
 
--- Int32 arithmetic in this example wraps modulo 2^32 on every target.
-add           :: Int32 -> Int32 -> Int32
-multiply      :: Int32 -> Int32 -> Int32
-negateValue   :: Int32 -> Int32
-maximumValue  :: Int32 -> Int32 -> Int32
-subtractValue :: Int32 -> Int32 -> Int32
-divideLeft    :: Int32 -> Int32 -> Int32
-divideRight   :: Int32 -> Int32 -> Int32
+-- Integer denotes mathematical integers. Adapter results must remain exact.
+add           :: Integer -> Integer -> Integer
+multiply      :: Integer -> Integer -> Integer
+negateValue   :: Integer -> Integer
+maximumValue  :: Integer -> Integer -> Integer
+subtractValue :: Integer -> Integer -> Integer
+divideLeft    :: Integer -> Integer -> Integer
+divideRight   :: Integer -> Integer -> Integer
 
 law `addition is commutative` is
   definition is
@@ -19,6 +19,20 @@ law `addition is commutative` is
     y = 5
     expect add x y = 8
     expect add y x = 8
+  end
+
+  example `addition exceeds the Int32 maximum without wrapping` is
+    x = 2147483647
+    y = 1
+    expect add x y = 2147483648
+    expect add y x = 2147483648
+  end
+
+  example `addition remains exact beyond machine and safe-number bounds` is
+    x = 18446744073709551615
+    y = 2
+    expect add x y = 18446744073709551617
+    expect add y x = 18446744073709551617
   end
 end
 
@@ -115,6 +129,14 @@ law `multiplication distributes over addition left` is
     z = 7
     expect multiply x (add y z) = 36
     expect add (multiply x y) (multiply x z) = 36
+  end
+
+  example `multiplication preserves products outside Int32` is
+    x = 2147483647
+    y = 2147483647
+    z = 1
+    expect multiply x y = 4611686014132420609
+    expect multiply x (add y z) = 4611686016279904256
   end
 end
 
@@ -250,5 +272,11 @@ law `negation is an involution` is
     x = -3
     expect negateValue x = 3
     expect negateValue (negateValue x) = -3
+  end
+
+  example `negating the Int32 minimum produces a positive integer` is
+    x = -2147483648
+    expect negateValue x = 2147483648
+    expect negateValue (negateValue x) = -2147483648
   end
 end

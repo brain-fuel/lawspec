@@ -96,7 +96,7 @@ try {
     "utf8",
   );
   if (
-    !textTest.includes("Generator.stringsOf(Generator.asciiPrintableChars())")
+    !textTest.includes('LawSpecRuntime.sample("Text"') || !textTest.includes("PropertyChecker")
   )
     throw new Error("Installed examples command omitted Text generation");
   const portTest = await readFile(
@@ -107,7 +107,7 @@ try {
     "utf8",
   );
   if (
-    !portTest.includes("if (ParsePort.validPort(") ||
+    !portTest.includes("if (") || !portTest.includes("ParsePort.validPort(") ||
     !portTest.includes("ordinary port")
   )
     throw new Error("Installed examples omitted predicate checks");
@@ -121,10 +121,10 @@ try {
        const c=await createCompiler();
        const source=readFileSync(new URL('./examples/specs/equivalent.lawspec', import.meta.resolve('lawspec')), 'utf8');
        const r=await c.expand({sources:[{path:'equivalent.lawspec',content:source}]});
-       if(r.diagnostics.length || r.laws.length!==2 || !r.expansions[0].includes('referenceRender'))throw new Error(JSON.stringify(r));
+       if(r.schemaVersion!==3 || r.diagnostics.length || r.laws.length!==2 || !r.expansions[0].includes('referenceRender'))throw new Error(JSON.stringify(r));
        const port=readFileSync(new URL('./examples/specs/parse_port.lawspec', import.meta.resolve('lawspec')), 'utf8');
        const guarded=await c.expand({sources:[{path:'parse_port.lawspec',content:port}]});
-       if(guarded.diagnostics.length || guarded.laws[0].guards.length!==1 || !guarded.expansions[0].includes('implies'))throw new Error(JSON.stringify(guarded));
+       if(guarded.diagnostics.length || guarded.laws[0].assertion.kind!=='implies' || !guarded.expansions[0].includes('implies'))throw new Error(JSON.stringify(guarded));
        const algebra=readFileSync(new URL('./examples/specs/algebra.lawspec', import.meta.resolve('lawspec')), 'utf8');
        const expanded=await c.expand({sources:[{path:'algebra.lawspec',content:algebra}]});
        if(expanded.diagnostics.length || expanded.laws.length!==19 || !expanded.expansions.some(s=>s.includes('divideRight') && s.includes('divideLeft')))throw new Error(JSON.stringify(expanded));
@@ -133,6 +133,17 @@ try {
     app,
   );
   console.log(api.stdout.trim());
+  for (const document of ['RUST.md','LANGUAGE.md','API-MIGRATION.md'])
+    if (!(await readFile(path.join(app,'node_modules/lawspec',document),'utf8')).length) throw new Error('Missing packaged '+document);
+  const rust=path.join(root,'rust');
+  await mkdir(rust);
+  await run(process.execPath,[cli,'init','--target','rust'],rust);
+  await run(process.execPath,[cli,'doctor'],rust);
+  await run(process.execPath,[cli,'generate'],rust);
+  await writeFile(path.join(rust,'src/example/atoi_codec.rs'),'pub fn itoa(value:i32)->String {value.to_string()}\npub fn atoi(value:String)->i32 {value.parse().unwrap()}\n');
+  await run('cargo',['test'],rust);
+  await run(process.execPath,[cli,'generate','--check'],rust);
+  console.log('Installed Rust scaffold, doctor, adapters, tests and regeneration passed');
   console.log(`Packed npm CLI/API smoke test passed: ${archive}`);
 } finally {
   await rm(root, { recursive: true, force: true });

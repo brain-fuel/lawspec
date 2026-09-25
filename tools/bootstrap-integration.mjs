@@ -89,7 +89,9 @@ async function setup(target) {
       ],
       root,
     );
-  } else if (target === "java")
+  } else if (target === "rust")
+    await run("cargo", ["fetch"], root);
+  else if (target === "java")
     await run("mvn", ["-B", "-q", "test-compile"], root);
   else if (target === "go")
     await run("go", ["mod", "download", "pgregory.net/rapid"], root);

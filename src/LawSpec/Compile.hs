@@ -46,6 +46,7 @@ unify a b = do
   where bind n t | occurs n t = throwC "infinite type"
                  | otherwise = modify (\s -> s{substitutions=M.insert n t (substitutions s)})
 infer :: Env -> Expr -> C Type
+infer env (Located _ e) = infer env e
 infer env (Var n) = maybe (throwC ("unknown value: " ++ n)) (pure . baseType) (M.lookup n env)
 infer _ (DecimalNumber _ _) = pure (Named "Decimal")
 infer _ (Number _) = pure (Named "Integer")
@@ -103,9 +104,11 @@ scalarType (SPresent n (Just v)) = Applied n <$> scalarType v
 scalarType (SPresent n Nothing) = Applied n . Variable . ("presence:" ++) <$> fresh
 scalarType s = pure (Named (scalarName s))
 application :: Expr -> (Expr,[Expr])
+application (Located _ e) = application e
 application (Apply f x) = let (n,args) = application f in (n,args ++ [x])
 application e = (e,[])
 checkExpr :: Env -> Type -> Expr -> C ()
+checkExpr env expected (Located _ e) = checkExpr env expected e
 checkExpr env expected e = do
   t <- resolve (baseType expected)
   bits <- gets machineBits
@@ -125,6 +128,7 @@ checkExpr env expected e = do
         (Named n,Named m) | isExact n && m `elem` ["Integer","BigInt","Decimal","Rational"], not (isLiteral e) -> pure ()
         _ -> unify t actual
 isLiteral :: Expr -> Bool
+isLiteral (Located _ e) = isLiteral e
 isLiteral (Number _) = True
 isLiteral (DecimalNumber _ _) = True
 isLiteral (ScalarLit _) = True
@@ -145,7 +149,10 @@ operandTypes env a b = do
   pure (at',bt')
 builtin :: Env -> String -> [Expr] -> C Type
 builtin env n args
-  | n == "checked", [a] <- args = infer env a >> pure (Named "Bool")
+  | n == "checked", [a] <- args = do
+      t <- infer env a >>= resolve
+      when (case t of Arrow _ _ -> True; _ -> False) (throwC "checked requires an evaluated scalar result, not a function")
+      pure (Named "Bool")
   | n `elem` ["isPresent","presentValue"], [a] <- args = do
       t <- infer env a >>= resolve
       case t of Applied _ inner -> pure (if n == "isPresent" then Named "Bool" else inner); _ -> throwC "presence helper requires Nullable or Optional"
@@ -176,6 +183,9 @@ typedExpression :: Int -> [(String,Type)] -> Expr -> Either String TypedExpr
 typedExpression bits env e = evalStateT (go Nothing e) (CS M.empty 0 [] bits)
   where
     context = M.fromList env
+    go expected (Located range e) = do
+      value <- go expected e
+      pure value{expression=Located range (expression value)}
     go expected e = do
       natural <- infer context e >>= resolve
       case expected of Just targetType -> checkExpr context targetType e; Nothing -> pure ()
@@ -203,6 +213,7 @@ renameConstraint p (Capability n t) = Capability n (rename p t)
 require :: String -> Type -> C ()
 require n t = modify (\s -> s{obligations=Capability n t:obligations s})
 subst :: M.Map String Expr -> Expr -> Expr
+subst m (Located range e) = Located range (subst m e)
 subst m (Var n) = M.findWithDefault (Var n) n m
 subst m (Apply f x) = Apply (subst m f) (subst m x)
 subst m (Compose f g) = Compose (subst m f) (subst m g)
@@ -211,13 +222,32 @@ subst m (Unary op a) = Unary op (subst m a)
 subst m (Annotate a t) = Annotate (subst m a) t
 subst _ e = e
 normal :: Expr -> Expr
-normal (Apply (Compose f g) x) = normal (Apply f (Apply g x))
+normal (Located range e) = Located range (normal e)
+normal (Apply f x) | Compose a b <- unlocated f = normal (Apply a (Apply b x))
 normal (Apply f x) = Apply (normal f) (normal x)
 normal (Compose f g) = Compose (normal f) (normal g)
 normal (Binary op a b) = Binary op (normal a) (normal b)
 normal (Unary op a) = Unary op (normal a)
 normal (Annotate a t) = Annotate (normal a) t
 normal e = e
+
+argumentChecks :: Type -> [Expr]
+argumentChecks (CheckedType ps t) = ps ++ argumentChecks t
+argumentChecks (Refined _ t _) = argumentChecks t
+argumentChecks (Qualified _ t) = argumentChecks t
+argumentChecks (Applied _ t) = argumentChecks t
+argumentChecks _ = []
+closedCheck :: Expr -> Bool
+closedCheck (Located _ e) = closedCheck e
+closedCheck (Var n) = take 8 n == "prelude."
+closedCheck (TypeBound _ (Named n)) = maybe False (const True) (integerBounds 64 n)
+closedCheck (TypeBound _ _) = False
+closedCheck (Apply a b) = closedCheck a && closedCheck b
+closedCheck (Compose a b) = closedCheck a && closedCheck b
+closedCheck (Binary _ a b) = closedCheck a && closedCheck b
+closedCheck (Unary _ a) = closedCheck a
+closedCheck (Annotate a _) = closedCheck a
+closedCheck _ = True
 
 type Table = M.Map (String,String) Law
 expand :: Table -> String -> Env -> [String] -> Law -> [Expr] -> C ([Input], Assertion, [String])
@@ -239,6 +269,14 @@ expand table unit env stack law args = do
           t' <- resolve renamed
           let scope' = M.insert i t' scope
           mapM_ (checkPredicate scope') predicates
+          -- A concrete refinement argument must inhabit its declared parameter
+          -- type even when the resulting quantified domain is not executable.
+          bits <- gets machineBits
+          forM_ (map (normal . subst replacements') (argumentChecks renamed)) $ \check ->
+            when (closedCheck check) $ do
+              ir <- lift (typedExpression bits (M.toList scope') check)
+              value <- lift (evaluateTyped bits [] ir)
+              unless (value == SBool True) (throwC "refinement value argument violates its declared parameter type")
           mapM_ (\(Capability c ty) -> resolve ty >>= require c) (typeConstraints renamed)
           pure (bs ++ [Input n i t' predicates],scope',M.insert n (Var i) replacements')) ([],e,m) qs
         (rest,body,tr) <- walk e' m' d
@@ -346,7 +384,6 @@ compileWithSettings bits settings sources = do
       let allowed = [Capability c (rigid t) | Capability c t <- requirements l]
       forM_ os $ \c -> unless (satisfied bits allowed c) (throwC ("unsatisfied capability: " ++ show c))
       unless symbolic $ do
-        when (null checkedInputs) (throwC "an executable law must quantify at least one scalar input")
         lift (unique "expanded input name" (map inputName checkedInputs))
       forM_ (examples l) $ \ex -> withContext ("example " ++ exampleName ex ++ ": ") $ do
         lift (unique "example binding" (map fst (bindings ex)))
@@ -377,7 +414,6 @@ compileWithSettings bits settings sources = do
           resolveKnown t = t
       unless symbolic $ do
         mapM_ (validateExampleDomains bits lawEnv resolvedInputs) normalized
-        validateFiniteDomain bits settings lawEnv resolvedInputs
       pure (Expanded (unitName u) (lawName l) resolvedInputs a b gs body tr l{examples=normalized} ir (if take 9 (lawName l) == "contract " then "contract" else "law") settings (map (planDomain [(inputId i,inputType i) | i <- resolvedInputs]) resolvedInputs))
       ) (CS M.empty 0 [] bits)
   mapM_ (validateContracts bits) us
@@ -427,6 +463,7 @@ comparison :: String -> Bool
 comparison op = op `elem` ["<","<=",">",">=","==","!="]
 
 contextualNumber :: Expr -> Bool
+contextualNumber (Located _ e) = contextualNumber e
 contextualNumber (Number _) = True
 contextualNumber (DecimalNumber _ _) = True
 contextualNumber _ = False
@@ -480,20 +517,8 @@ validateExampleDomains bits env ins ex = withContext ("example " ++ exampleName 
     v <- lift (evaluateTyped bits values ir)
     unless (v == SBool True) (throwC ("example violates refinement: " ++ prettyExpr p))
 
-validateFiniteDomain :: Int -> Generation -> [(String,Type)] -> [Input] -> C ()
-validateFiniteDomain bits settings env ins = do
-  let sets = mapM (finiteValues bits (exhaustiveLimit settings) . inputType) ins
-  case sets of
-    Just xs | product (map (toInteger . length) xs) <= toInteger (exhaustiveLimit settings) -> do
-      predicates <- lift (mapM (typedExpression bits env) (concatMap inputRefinements ins))
-      valid <- lift (mapM (\values -> foldM (\ok p -> if ok then (== SBool True) <$> evaluateTyped bits (zip (map inputId ins) values) p else Right False) True predicates) (sequence xs))
-      unless (or valid) (throwC "empty executable refinement domain")
-    _ -> forM_ (concatMap inputRefinements ins) $ \p -> when (null (filter ((/= "prelude.") . take 8) (exprVars p))) $ do
-      ir <- lift (typedExpression bits env p)
-      v <- lift (evaluateTyped bits [] ir)
-      unless (v == SBool True) (throwC "empty executable refinement domain")
-
 resolveExpr :: Expr -> C Expr
+resolveExpr (Located range e) = Located range <$> resolveExpr e
 resolveExpr (TypeBound b t) = TypeBound b <$> resolve t
 resolveExpr (Annotate e t) = Annotate <$> resolveExpr e <*> resolve t
 resolveExpr (Apply a b) = Apply <$> resolveExpr a <*> resolveExpr b

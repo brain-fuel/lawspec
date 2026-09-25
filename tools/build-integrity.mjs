@@ -3,21 +3,22 @@ import { createHash } from "node:crypto";
 import path from "node:path";
 const root = path.resolve(import.meta.dirname, "..");
 const hash = (bytes) => createHash("sha256").update(bytes).digest("hex");
-async function walk(dir) {
+async function walk(dir, select = p => p.endsWith(".hs")) {
   const out = [];
   for (const e of await readdir(path.join(root, dir), {
     withFileTypes: true,
   })) {
+    if (e.name.startsWith(".") || e.name.startsWith("__") || e.name === "target") continue;
     const p = dir + "/" + e.name;
-    if (e.isDirectory()) out.push(...(await walk(p)));
-    else if (p.endsWith(".hs")) out.push(p);
+    if (e.isDirectory()) out.push(...(await walk(p, select)));
+    else if (select(p)) out.push(p);
   }
   return out;
 }
 const sourceFiles = [
   ...(await walk("src")),
   ...(await walk("wasm/app")),
-  ...(await readdir(path.join(root,"runtime"))).filter(n => !n.startsWith(".") && !n.startsWith("__")).map(n => "runtime/" + n),
+  ...(await walk("runtime", p => /\.(rs|py|mjs|ts|java|kt|go|hs)$/.test(p) || /Cargo\.(toml|lock)$/.test(p))),
   "tools/embed-runtimes.py",
   "package.yaml",
   "stack.yaml",

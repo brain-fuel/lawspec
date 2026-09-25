@@ -73,3 +73,14 @@ end
 law `machine bound` is
   definition is `for all` (x :: IntSize where x == IntSize.max) . x = IntSize.max end
 end
+
+law `symbol fixture refinement` is
+  definition is
+    `for all` (x :: Symbol where x == symbol("selected", "fixture")) .
+      x = symbol("selected", "fixture")
+  end
+  example `selected identity` is
+    x = symbol("selected", "fixture")
+    expect x = symbol("selected", "fixture")
+  end
+end

@@ -65,7 +65,7 @@ refinementP = do
   t <- keyword "is" *> typeP <* keyword "end"
   pure (Refinement n ps cs t)
 expr :: P Expr
-expr = makeExprParser application
+expr = located $ makeExprParser application
   [ [Prefix (Unary "!" <$ try (lexeme (char '!' <* notFollowedBy (char '=')))), Prefix (Unary "-" <$ try (lexeme (char '-' <* notFollowedBy digitChar)))]
   , [InfixR (Compose <$ symbol ".")]
   , [InfixL (Binary "*" <$ symbol "*"), InfixL (Binary "/" <$ symbol "/")]
@@ -76,11 +76,22 @@ expr = makeExprParser application
   ]
   where
     application = foldl1 Apply <$> some atom
-    atom = (BoolLit <$> boolP) <|> (StringLit <$> str) <|> try scalarP
+    atom = located $ (BoolLit <$> boolP) <|> (StringLit <$> str) <|> try scalarP
       <|> parens (do e <- expr; option e (Annotate e <$> (symbol "::" *> typeP)))
       <|> try numeric <|> try (do n <- ident; void (char '.'); b <- ("min" <$ keyword "min") <|> ("max" <$ keyword "max"); pure (TypeBound b (if maybe False (isLower . fst) (uncons n) then Variable n else Named n))) <|> (Var <$> valueName)
     valueName = try (do keyword "prelude"; void (symbol "."); n <- ident; pure ("prelude." ++ n)) <|> ident
     -- An adjacent sign remains part of a numeric argument: f -42. For subtraction use x - 42.
+located :: P Expr -> P Expr
+located parser = do
+  (value,range) <- withSpan parser
+  pure (Located range value)
+withSpan :: P a -> P (a,Span)
+withSpan parser = do
+  start <- getSourcePos
+  value <- parser
+  end <- getSourcePos
+  let position p = Location (sourceName p) (unPos (sourceLine p)) (unPos (sourceColumn p))
+  pure (value,Span (position start) (position end))
 numeric :: P Expr
 numeric = lexeme $ do
   sign <- option "" ((:[]) <$> oneOf ['-','+'])
@@ -168,9 +179,9 @@ unitP :: P Unit
 unitP = do
   spaceP; keyword "unit"
   n <- concatWithDot <$> (lexeme ((:) <$> letterChar <*> many (alphaNumChar <|> char '_')) `sepBy1` symbol ".")
-  declarations <- many ((Left <$> try refinementP) <|> (Right . Left <$> try ((,) <$> ident <* symbol "::" <*> typeP)) <|> (Right . Right <$> lawP))
+  declarations <- many ((Left <$> try refinementP) <|> (Right . Left <$> try (withSpan ((,) <$> ident <* symbol "::" <*> typeP))) <|> (Right . Right <$> lawP))
   eof
-  pure (Unit n [f | Right (Left f) <- declarations] [l | Right (Right l) <- declarations] [r | Left r <- declarations] [])
+  pure (Unit n [f | Right (Left (f,_)) <- declarations] [l | Right (Right l) <- declarations] [r | Left r <- declarations] [] [(name,range) | Right (Left ((name,_),range)) <- declarations])
   where concatWithDot = foldr1 (\a b -> a ++ "." ++ b)
 parseSource :: Source -> Either [Diagnostic] Unit
 parseSource (Source p s) = case runReader (runParserT unitP p s) (headers s) of

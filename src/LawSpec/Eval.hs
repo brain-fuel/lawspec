@@ -21,6 +21,7 @@ boolean _ = Left "predicate must return Bool"
 evaluate :: Int -> [(String,Scalar)] -> Expr -> Either String Scalar
 evaluate bits bindings = go where
   env = M.fromList bindings
+  go (Located _ e) = go e
   go (Var n) = maybe (Left ("unknown pure value: " ++ n)) Right (M.lookup n env)
   go (Number n) = Right (SInteger "Integer" n)
   go (DecimalNumber c e) = Right (SDecimal c e)
@@ -101,6 +102,7 @@ evaluate bits bindings = go where
     decimal (fromInteger (round (x*factor)) / factor)
   helper n [a] | isNumeric n = convert (Named n) a
   helper _ _ = Left "invalid pure helper or arguments"
+  application (Located _ e) = application e
   application (Apply a b) = let (f,as) = application a in (f,as++[b])
   application e = (e,[])
 
@@ -124,6 +126,7 @@ scalarEqual a b = a == b
 -- Respect contextual literal types from the compiler's typed IR.
 evaluateTyped :: Int -> [(String,Scalar)] -> TypedExpr -> Either String Scalar
 evaluateTyped bits env = evaluate bits env . materialize where
+  materialize (TypedExpr t (Located range e) cs conversion) = Located range (materialize (TypedExpr t e cs conversion))
   materialize (TypedExpr t e cs _) = case (e,cs) of
     (Number _,_) -> Annotate e t
     (DecimalNumber _ _,_) -> Annotate e t
@@ -132,6 +135,7 @@ evaluateTyped bits env = evaluate bits env . materialize where
     (Annotate _ t',[a]) -> Annotate (materialize a) t'
     (Apply _ _,_) | (Var n,_) <- app e, take 8 n == "prelude." -> foldl Apply (Var n) (map materialize cs)
     _ -> e
+  app (Located _ e) = app e
   app (Apply f x) = let (n,args) = app f in (n,args++[x])
   app e = (e,[])
 

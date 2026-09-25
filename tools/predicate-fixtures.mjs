@@ -2,6 +2,15 @@
 // A passing suite therefore verifies implication's short-circuit behavior.
 export function predicateAdapters(target) {
   const ports = {
+    rust: [
+      'src/example/parse_port.rs',
+      `#![allow(non_snake_case)]
+pub fn validPort(x:i32)->bool {x>=1 && x<=65535}
+pub fn render(x:i32)->String {assert!(validPort(x),"invalid port"); x.to_string()}
+pub fn parse(x:String)->i32 {x.parse().unwrap()}
+`,
+      'x>=1 && x<=65535', 'x.parse().unwrap()', '0',
+    ],
     java: [
       "src/main/java/example/ParsePort.java",
       `package example;
@@ -93,6 +102,7 @@ fun parse(x: String): Int = x.toInt()
     ],
   };
   const flags = {
+    rust: ['src/example/boolean_flags.rs', '#![allow(non_snake_case)]\npub fn flipFlag(x:bool)->bool {!x}\n', '!x', 'x'],
     java: [
       "src/main/java/example/BooleanFlags.java",
       "package example; public class BooleanFlags { public static boolean flipFlag(boolean x) { return !x; } }",

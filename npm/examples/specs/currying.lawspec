@@ -1,6 +1,6 @@
 unit example.currying
 
-sumFour :: Int32 -> Int32 -> Int32 -> Int32 -> Int32
+sumFour :: Integer -> Integer -> Integer -> Integer -> Integer
 format  :: Text -> Bool -> Int32 -> Text -> Text
 referenceFormat :: Text -> Bool -> Int32 -> Text -> Text
 trim    :: Text -> Text

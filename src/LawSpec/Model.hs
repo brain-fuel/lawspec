@@ -1,27 +1,23 @@
-module LawSpec.Model where
+module LawSpec.Model (module LawSpec.Model, module LawSpec.Common) where
+
+import LawSpec.Common
 
 import Data.Aeson hiding (Number)
 import LawSpec.Scalar
 import GHC.Generics (Generic)
 
 data Type = Named String | Variable String | Arrow Type Type | Applied String Type | Refined String Type (Maybe Expr) | RefinementApp String [RefinementArgument] | Qualified [Constraint] Type | CheckedType [Expr] Type deriving (Eq, Show, Generic)
-data Expr = Var String | Apply Expr Expr | Compose Expr Expr | Number Integer | DecimalNumber Integer Integer | StringLit String | BoolLit Bool | ScalarLit Scalar | Binary String Expr Expr | Unary String Expr | Annotate Expr Type | TypeBound String Type deriving (Eq, Show, Generic)
+data Expr = Located Span Expr | Var String | Apply Expr Expr | Compose Expr Expr | Number Integer | DecimalNumber Integer Integer | StringLit String | BoolLit Bool | ScalarLit Scalar | Binary String Expr Expr | Unary String Expr | Annotate Expr Type | TypeBound String Type deriving (Eq, Show, Generic)
 data Definition = Forall [(String, Type)] Definition | Equal Expr Expr | Holds Expr | Implies Expr Definition | And Definition Definition | Invoke String [Expr] deriving (Eq, Show, Generic)
 data Constraint = Capability String Type deriving (Eq, Show, Generic)
 data RefinementArgument = TypeArgument Type | ValueArgument Expr deriving (Eq, Show, Generic)
 data Refinement = Refinement { refinementName :: String, refinementParameters :: [(String,Type)], refinementRequirements :: [Constraint], refinementBody :: Type } deriving (Eq, Show, Generic)
 data Contract = Contract { contractName :: String, contractArguments :: [(String,Type)], contractResult :: (String,Type), contractPreconditions :: [Expr], contractPostconditions :: [Expr] } deriving (Eq, Show, Generic)
-data Generation = Generation { cases :: Int, maxAttempts :: Int, maxShrinks :: Int, exhaustiveLimit :: Int } deriving (Eq, Show, Generic)
 data DomainPlan = DomainPlan { domainInput :: Input, domainBounds :: [(String,Expr)] } deriving (Eq, Show, Generic)
-defaultGeneration :: Generation
-defaultGeneration = Generation 100 10000 1000 4096
 instance ToJSON Constraint
 instance ToJSON RefinementArgument
 instance ToJSON Refinement
 instance ToJSON Contract
-instance ToJSON Generation
-instance FromJSON Generation where
-  parseJSON = withObject "generation" $ \o -> Generation <$> o .:? "cases" .!= 100 <*> o .:? "maxAttempts" .!= 10000 <*> o .:? "maxShrinks" .!= 1000 <*> o .:? "exhaustiveLimit" .!= 4096
 instance ToJSON DomainPlan
 
 data Literal = IntLiteral Integer | DecimalLiteral Integer Integer | TextLiteral String | BoolLiteral Bool | ScalarLiteral Scalar deriving (Eq, Show)
@@ -36,33 +32,23 @@ data Expectation = Expectation { actual :: Expr, expected :: Literal } deriving 
 instance ToJSON Expectation
 
 data Example = Example { exampleName :: String, bindings :: [(String, Literal)], expectations :: [Expectation] } deriving (Eq, Show, Generic)
-data Location = Location { file :: String, line :: Int, column :: Int } deriving (Eq, Show, Generic)
 data Law = Law { lawName :: String, parameters :: [(String, Type)], requirements :: [Constraint], definition :: Definition, description :: String, rationale :: String, examples :: [Example], references :: [String], location :: Location } deriving (Eq, Show, Generic)
-data Unit = Unit { unitName :: String, functions :: [(String, Type)], laws :: [Law], refinements :: [Refinement], contracts :: [Contract] } deriving (Eq, Show, Generic)
-data Diagnostic = Diagnostic { code :: String, message :: String, at :: Maybe Location } deriving (Eq, Show, Generic)
+data Unit = Unit { unitName :: String, functions :: [(String, Type)], laws :: [Law], refinements :: [Refinement], contracts :: [Contract], declarationSpans :: [(String,Span)] } deriving (Eq, Show, Generic)
 data Input = Input { inputName :: String, inputId :: String, inputType :: Type, inputRefinements :: [Expr] } deriving (Eq, Show, Generic)
 data Assertion = AssertEqual Expr Expr | AssertImplies Expr Assertion | AssertAll [Assertion] deriving (Eq, Show, Generic)
 instance ToJSON Assertion
 
 data Expanded = Expanded { owner :: String, name :: String, inputs :: [Input], left :: Expr, right :: Expr, guards :: [Expr], assertion :: Assertion, trace :: [String], original :: Law, typedExpressions :: [TypedExpr], propertyKind :: String, generation :: Generation, generationPlan :: [DomainPlan] } deriving (Eq, Show, Generic)
-data Source = Source { path :: String, content :: String } deriving (Eq, Show, Generic)
-data Artifact = Artifact { artifactPath :: String, artifactContent :: String, ownership :: String, artifactPlacement :: String } deriving (Eq, Show, Generic)
 instance ToJSON Type
 instance ToJSON Expr where
   toJSON (DecimalNumber c e) = object ["tag" .= ("DecimalNumber" :: String), "contents" .= [show c,show e]]
   toJSON (Number n) = object ["tag" .= ("Number" :: String), "contents" .= show n]
   toJSON e = genericToJSON defaultOptions e
-instance ToJSON Location
-instance ToJSON Diagnostic
 instance ToJSON Example
 instance ToJSON Definition
 instance ToJSON Law
 instance ToJSON Input
 instance ToJSON Expanded
-instance ToJSON Artifact where
-  toJSON Artifact{..} = object ["path" .= artifactPath, "content" .= artifactContent, "ownership" .= ownership, "placement" .= artifactPlacement]
-instance FromJSON Source
-instance ToJSON Source
 
 prettyType :: Type -> String
 prettyType (Refined n t p) = "(" ++ n ++ " :: " ++ prettyType t ++ maybe "" ((" where " ++) . prettyExpr) p ++ ")"
@@ -78,6 +64,7 @@ prettyType (Arrow a b) = atom a ++ " -> " ++ prettyType b where
   atom t@(Arrow _ _) = "(" ++ prettyType t ++ ")"
   atom t = prettyType t
 prettyExpr :: Expr -> String
+prettyExpr (Located _ e) = prettyExpr e
 prettyExpr (TypeBound b t) = prettyType t ++ "." ++ b
 prettyExpr (Var n) = n
 prettyExpr (DecimalNumber c e) = prettyScalar (SDecimal c e)
@@ -121,6 +108,7 @@ finiteScalar (Applied _ t) = finiteScalar t
 finiteScalar _ = False
 
 replaceExprVars :: [(String, Expr)] -> Expr -> Expr
+replaceExprVars env (Located range e) = Located range (replaceExprVars env e)
 replaceExprVars env (Var n) = maybe (Var n) id (lookup n env)
 replaceExprVars env (Apply f x) = Apply (replaceExprVars env f) (replaceExprVars env x)
 replaceExprVars env (Compose f g) = Compose (replaceExprVars env f) (replaceExprVars env g)
@@ -169,6 +157,7 @@ mapType f g = walk where
 
 mapExprTypes :: (Type -> Type) -> Expr -> Expr
 mapExprTypes f e = case e of
+  Located range a -> Located range (go a)
   Annotate a t -> Annotate (go a) (f t)
   TypeBound b t -> TypeBound b (f t)
   Apply a b -> Apply (go a) (go b)
@@ -179,6 +168,7 @@ mapExprTypes f e = case e of
   where go = mapExprTypes f
 
 exprVars :: Expr -> [String]
+exprVars (Located _ e) = exprVars e
 exprVars (Var n) = [n]
 exprVars (Apply a b) = exprVars a ++ exprVars b
 exprVars (Compose a b) = exprVars a ++ exprVars b
@@ -186,3 +176,18 @@ exprVars (Binary _ a b) = exprVars a ++ exprVars b
 exprVars (Unary _ a) = exprVars a
 exprVars (Annotate a _) = exprVars a
 exprVars _ = []
+
+-- Source wrappers survive renaming and substitution. Consumers that only inspect
+-- syntax may discard wrappers explicitly; elaboration retains their real ranges.
+unlocated :: Expr -> Expr
+unlocated (Located _ e) = unlocated e
+unlocated e = e
+stripLocations :: Expr -> Expr
+stripLocations e = case unlocated e of
+  Apply a b -> Apply (go a) (go b)
+  Compose a b -> Compose (go a) (go b)
+  Binary op a b -> Binary op (go a) (go b)
+  Unary op a -> Unary op (go a)
+  Annotate a t -> Annotate (go a) t
+  a -> a
+  where go = stripLocations

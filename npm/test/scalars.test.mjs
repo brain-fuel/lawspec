@@ -6,10 +6,10 @@ import {showScalar} from '../scalars.mjs';
 const compiler=await createCompiler();
 const catalog=await readFile(new URL('../examples/specs/scalar_catalog.lawspec',import.meta.url),'utf8');
 const source=content=>[{path:'scalar.lawspec',content}];
-test('API v2 retains every scalar representation without JSON number loss',async()=>{
+test('API v3 retains every scalar representation without JSON number loss',async()=>{
  const result=await compiler.check({sources:source(catalog)});
- assert.deepEqual(result.diagnostics,[]);assert.equal(result.schemaVersion,2);assert.equal(result.machineBits,64);
- const values=Object.fromEntries(result.laws.map(l=>[l.name.split(' representation')[0],l.original.examples[0].bindings[0][1]]));
+ assert.deepEqual(result.diagnostics,[]);assert.equal(result.schemaVersion,3);assert.equal(result.machineBits,64);
+ const values=Object.fromEntries(result.laws.map(l=>[l.name.split(' representation')[0],l.examples[0].bindings[0].value]));
  assert.equal(Object.keys(values).length,33);
  assert.deepEqual(values.UInt64,{type:'UInt64',value:'18446744073709551615'});
  assert.deepEqual(values.Int64,{type:'Int64',value:'9223372036854775807'});
@@ -20,22 +20,22 @@ test('API v2 retains every scalar representation without JSON number loss',async
  assert.deepEqual(values.Bytes.units,[0,128,255]);assert.deepEqual(values['Optional Int8'],{type:'Optional',value:null});
  assert.deepEqual(values['Nullable Int8'],{type:'Nullable',value:{type:'Int8',value:'127'}});
  assert.equal(showScalar(values.UInt64),'18446744073709551615');assert.ok(showScalar(values.Text).includes('😀'));
- for(const law of result.laws)assert.ok(law.typedExpressions.length);
+ for(const law of result.laws)assert.equal(law.assertion.kind,'equal');
 });
 test('machine profile and request schema have explicit diagnostics',async()=>{
  const content='unit width\nf :: IntSize -> IntSize\nlaw `law` is definition is `equivalent` f f end example `wide` is x = 2147483648 expect f x = 2147483648 end end';
  assert.equal((await compiler.check({sources:source(content),machineBits:32})).diagnostics.length,1);
  assert.deepEqual((await compiler.check({sources:source(content),machineBits:64})).diagnostics,[]);
  assert.match((await compiler.check({sources:[],machineBits:16})).diagnostics[0].message,/32 or 64/);
- assert.match((await compiler.check({sources:[],schemaVersion:1})).diagnostics[0].message,/schemaVersion 2/);
+ assert.match((await compiler.check({sources:[],schemaVersion:2})).diagnostics[0].message,/schemaVersion 3/);
 });
 test('all targets expose generated runtime source placement independently of ownership',async()=>{
- for(const target of ['java','kotlin','python','javascript','typescript','go','haskell']){
+ for(const target of ['java','kotlin','python','javascript','typescript','go','haskell','rust']){
   const result=await compiler.planGeneration({sources:source(catalog),target});
   assert.deepEqual(result.diagnostics,[]);
   const runtimes=result.files.filter(f=>f.placement==='source'&&f.ownership==='generated');
-  assert.equal(runtimes.length,1,target);
-  assert.equal(result.files.filter(f=>f.placement==='test').length,1);
+  assert.equal(runtimes.length,target==='rust'?2:1,target);
+  assert.equal(result.files.filter(f=>f.placement==='test'&&!f.path.includes('support/')).length,1);
  }
 });
 test('arithmetic capabilities resolve at specialization and retain safe lexical scope',async()=>{

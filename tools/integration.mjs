@@ -12,6 +12,11 @@ const exec = promisify(execFile);
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const cli = path.join(repo, "npm/bin/lawspec.mjs");
 const implementations = {
+  rust: [
+    'src/example/atoi_codec.rs',
+    'pub fn itoa(value:i32)->String {value.to_string()}\npub fn atoi(value:String)->i32 {value.parse().unwrap()}\n',
+    'value.parse().unwrap()', '0',
+  ],
   java: [
     "src/main/java/example/AtoiCodec.java",
     "package example;\npublic final class AtoiCodec { public static String itoa(int value) { return Integer.toString(value); } public static int atoi(String value) { return Integer.parseInt(value); } }\n",
@@ -85,6 +90,8 @@ async function runNodeTests(root, directory, extension, pass) {
 }
 async function testCommand(target, root, config, pass) {
   switch (target) {
+    case "rust":
+      return run("cargo", ["test", ...(process.env.LAWSPEC_RUST_RELEASE === "1" ? ["--release"] : [])], root, pass);
     case "java":
       return run("mvn", ["-B", "-q", "test"], root, pass);
     case "python":
@@ -192,7 +199,7 @@ end end`,
   await guardedGenerate([], root);
   const adapter = path.join(root, relative);
   const initial = await readFile(adapter, "utf8");
-  if (initial.includes("TODO")) await testCommand(target, root, config, false);
+  if (/TODO|todo!|NotImplementedError|UnsupportedOperationException/.test(initial)) await testCommand(target, root, config, false);
   const [
     equivalentPath,
     equivalentGood,

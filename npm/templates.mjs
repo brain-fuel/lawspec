@@ -6,8 +6,10 @@ export const targets = [
   "go",
   "haskell",
   "kotlin",
+  "rust",
 ];
 export const commands = {
+  rust: "cargo test",
   java: "mvn test",
   python: "python -m pytest",
   javascript: "node --test test/*.test.mjs",
@@ -18,6 +20,7 @@ export const commands = {
   kotlin: "gradle test",
 };
 export const setup = {
+  rust: "Use Rust 1.85+ with edition 2024, Proptest 1.11.0, num-bigint 0.4.8, num-rational 0.4.2, num-complex 0.4.6, and num-traits 0.2.19. Run cargo test.",
   java: "Use JDK 25+, Maven, JetCheck 0.3.0, JUnit Jupiter 5.14.x, compiler plugin 3.14.1+, Surefire 3.5.x, and maven.compiler.release=25. Run mvn test-compile.",
   python:
     'Use Python 3.13+. Install pytest 8.4.x and Hypothesis 6.x into the selected environment: python -m pip install -e ".[test]". Configure pytest pythonpath=["src"] and testpaths=["tests"]. Set the target python field to the interpreter path if needed.',
@@ -41,6 +44,27 @@ export function templates(target) {
     type: "module",
   };
   switch (target) {
+    case "rust":
+      return {
+        "src/lib.rs": '// Application library. LawSpec maintains the included module declarations.\ninclude!("lawspec_modules.rs");\n',
+        "Cargo.toml": `[package]
+name = "lawspec-example"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+publish = false
+
+[dependencies]
+num-bigint = "=0.4.8"
+num-rational = "=0.4.2"
+num-complex = "=0.4.6"
+num-traits = "=0.2.19"
+
+[dev-dependencies]
+proptest = "=1.11.0"
+`,
+      };
+
     case "javascript":
       return {
         "package.json": json({

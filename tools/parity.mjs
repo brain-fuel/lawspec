@@ -49,6 +49,7 @@ for (const text of fixtures)
     "go",
     "haskell",
     "kotlin",
+    "rust",
   ]) {
     const input = {
       sources: [{ path: "codec.lawspec", content: text }],
@@ -65,5 +66,5 @@ for (const text of fixtures)
     assert.deepEqual(await compiler.planGeneration(input), native);
   }
 console.log(
-  `Native/WASM parity: ${fixtures.length * 14} fixture/target combinations passed.`,
+  `Native/WASM parity: ${fixtures.length * 16} fixture/target combinations passed.`,
 );

@@ -2,19 +2,24 @@
 
 **State the law once. Check it everywhere.**
 
-LawSpec 0.6 compiles reusable laws into native property tests, executable examples,
+LawSpec 0.8 compiles reusable laws into native property tests, executable examples,
 and implementation adapters. The compiler is Haskell, distributed as prebuilt
 WebAssembly with a Node CLI and an asynchronous, typed JavaScript API.
 
-## Portable scalars in 0.7.0
+## Rust and the typed front end in 0.8.0
 
-LawSpec now supports fixed and arbitrary integers, exact decimals and rationals,
+Rust joins Java, Python, JavaScript, TypeScript, Go, Haskell, and Kotlin. All
+eight backends consume the same typed core and testing plan. Source expressions
+retain their ranges, resolved identities, arithmetic evidence, and checked
+conversions. See the [Rust guide](RUST.md) and [language reference](LANGUAGE.md).
+
+The scalar catalog includes fixed and arbitrary integers, exact decimals and rationals,
 IEEE floats and complex values, Unicode and raw-text domains, bytes, symbols,
-and nested absence states on all seven targets. Integer arithmetic produces representation-independent
+and nested absence states on all eight targets. Integer arithmetic produces representation-independent
 `Integer` values; exact division returns Rational. See the [primitive reference](PRIMITIVES.md)
 for constructors, arithmetic, native bridges, and machine-width profiles.
 
-Compiler API consumers should read the [schema v2 migration guide](API-MIGRATION.md).
+Compiler API consumers should read the [schema v3 migration guide](API-MIGRATION.md).
 Scalar values use tagged, lossless encodings; generated runtime placement is
 separate from artifact ownership. Java 25+ and Python 3.13+ baselines are unchanged.
 
@@ -23,7 +28,7 @@ separate from artifact ownership. Java 25+ and Python 3.13+ baselines are unchan
 Install [LawSpec from npm](https://www.npmjs.com/package/lawspec):
 
 ```sh
-npm install --save-dev lawspec@0.7.0
+npm install --save-dev lawspec@0.8.0
 npx lawspec --version
 ```
 
@@ -37,8 +42,8 @@ local dependencies so LawSpec can create its `package.json` and test script:
 ```sh
 mkdir lawspec-example
 cd lawspec-example
-npm exec --package=lawspec@0.7.0 -- lawspec init --target javascript
-npm install --save-dev lawspec@0.7.0
+npm exec --package=lawspec@0.8.0 -- lawspec init --target javascript
+npm install --save-dev lawspec@0.8.0
 npx lawspec check
 npx lawspec explain 'example.atoi_codec::itoa and then atoi yields a'
 npx lawspec doctor
@@ -71,9 +76,10 @@ properties with the selected framework's shrinking and failure reporting.
 | `go` | Go modules, Go 1.22–1.26 | Rapid 1.2.0, testing | `go test ./...` |
 | `haskell` | Stack, GHC 9.10, LTS 24.58 | Hspec 2.11, Hedgehog 1.5, hspec-hedgehog 0.3 | `stack test` |
 | `kotlin` | JDK/JVM 25, Gradle 9.1–9.3, Kotlin 2.3.21 | Kotest 5.9.1 | `gradle test` |
+| `rust` | Rust 1.85+, edition 2024, Cargo | Proptest 1.11.0 | `cargo test` |
 
 Java 25 and Python 3.13 are the minimum baselines. New JVM releases are admitted
-through compatibility profiles after testing; v0.6's current JVM profile certifies
+through compatibility profiles after testing; the current JVM profile certifies
 25. Python templates declare `requires-python = ">=3.13"` and runtime checks
 currently recognize 3.13 and 3.14. Kotlin templates pin Gradle's supported build
 configuration to Kotlin 2.3.21 and target JVM 25.
@@ -244,7 +250,7 @@ reusable laws accept these curried functions, their partial applications, and
 scalar parameters. Quantified test inputs remain scalar.
 
 The prelude defines the following laws. Every row has an executable example in
-[algebra.lawspec](https://github.com/brain-fuel/lawspec/blob/v0.7.0/examples/specs/algebra.lawspec), including both sides of every
+[algebra.lawspec](https://github.com/brain-fuel/lawspec/blob/v0.8.0/examples/specs/algebra.lawspec), including both sides of every
 combined law. `f` and `g` are binary operations, `inverse` is unary, and `e` and
 `zero` are scalar parameters. All these laws require equality of the element type.
 
@@ -280,10 +286,10 @@ explicit domain predicate and conditional equations.
 `invertible` checks the supplied inverse operation. Check `identity` and
 `associative` as well when specifying a group. The prelude states contracts;
 it does not supply arithmetic implementations or prove a structure from random
-tests. The numeric examples use Int32 arithmetic modulo 2^32 so their laws hold
-at overflow boundaries on every target. JavaScript uses `Math.imul` for products,
-and Python explicitly wraps results into the signed Int32 range in the test
-adapters.
+tests. The algebra and numeric currying examples use mathematical `Integer`
+values and exact native arithmetic. Explicit expectations exceed Int32 and
+machine bounds, so wrapping or lossy adapters fail even when their modular
+arithmetic happens to satisfy the algebraic identities.
 
 Use `and` to require multiple conclusions in one law. For example:
 
@@ -312,11 +318,11 @@ their entire consequence. Every conjunct is type-checked and emitted. As with
 existing assertions, the first failure stops that individual test. `and` is now
 a reserved word.
 
-[Currying examples](https://github.com/brain-fuel/lawspec/blob/v0.7.0/examples/specs/currying.lawspec) demonstrate a four-argument
+[Currying examples](https://github.com/brain-fuel/lawspec/blob/v0.8.0/examples/specs/currying.lawspec) demonstrate a four-argument
 function partially applied twice, a formatter with four heterogeneous arguments,
 and composition after partial application. Each example states its exact outputs.
 Run `node npm/bin/lawspec.mjs examples` after rebuilding to inspect all nine units
-in all seven target languages (126 artifacts).
+in all eight target languages.
 
 The expanded API's **`assertion` tree is authoritative**: `AssertEqual` contains
 two expressions, `AssertImplies` contains a condition and consequence, and
@@ -364,7 +370,7 @@ law `valid ports round trip` is
 end
 ```
 
-The [complete port example](https://github.com/brain-fuel/lawspec/blob/v0.7.0/examples/specs/parse_port.lawspec)
+The [complete port example](https://github.com/brain-fuel/lawspec/blob/v0.8.0/examples/specs/parse_port.lawspec)
 defines valid ports as 1–65535, and covers both endpoints, ordinary ports, zero,
 negative values, and 65536. All explicit `expect` assertions run regardless of
 the law's condition. A false condition skips only the consequence: invalid ports
@@ -382,7 +388,7 @@ The prelude includes `satisfies predicate` (the predicate holds for every input)
 and `left inverse when predicate parse render` (the guarded round trip above).
 These reusable laws preserve the condition and its lexical bindings when expanded.
 `equivalent` can also compare two predicates, since `Bool` supports equality.
-The [Boolean flags example](https://github.com/brain-fuel/lawspec/blob/v0.7.0/examples/specs/boolean_flags.lawspec)
+The [Boolean flags example](https://github.com/brain-fuel/lawspec/blob/v0.8.0/examples/specs/boolean_flags.lawspec)
 checks that flipping twice restores both `false` and `true`; all targets generate
 Boolean property inputs and explicit tests for both Boolean boundary values. Java caps Boolean-only JetCheck runs at the number of
 possible input combinations (up to 100), avoiding generator exhaustion.
@@ -461,7 +467,7 @@ This expands to `for all (x :: Int32) . render (x) = referenceRender (x)`.
 The example inherits the input name `x` from the prelude. Both functions are
 user-owned adapter functions; either may delegate to your existing code.
 
-[The complete example](https://github.com/brain-fuel/lawspec/blob/v0.7.0/examples/specs/equivalent.lawspec) compares decimal
+[The complete example](https://github.com/brain-fuel/lawspec/blob/v0.8.0/examples/specs/equivalent.lawspec) compares decimal
 renderers and two implementations that clamp negative integers to zero. For
 JavaScript, their adapters can be:
 
@@ -472,7 +478,7 @@ export const clamp = x => Math.max(0, x);
 export const referenceClamp = x => x < 0 ? 0 : x;
 ```
 
-The same specification generates native tests for all seven targets. The
+The same specification generates native tests for all eight targets. The
 integration suite checks both examples with matching implementations, then
 breaks each alternative separately to verify detection. The general equivalence law alone does not establish independent correctness;
 two implementations can share the same bug. Explicit expectations additionally
@@ -498,7 +504,7 @@ law `normalizers agree` is
 end
 ```
 
-The [slug example](https://github.com/brain-fuel/lawspec/blob/v0.7.0/examples/specs/slug.lawspec)
+The [slug example](https://github.com/brain-fuel/lawspec/blob/v0.8.0/examples/specs/slug.lawspec)
 compares two implementations of ASCII-space replacement. It includes empty,
 Unicode and escaped text. Each target uses its native string generator:
 JetCheck `Generator.stringsOf(Generator.asciiPrintableChars())`, Hypothesis `st.text()`, fast-check `fc.string()`,
@@ -525,7 +531,7 @@ law `canonicalization reaches a fixed point` is
 end
 ```
 
-The [canonical URL example](https://github.com/brain-fuel/lawspec/blob/v0.7.0/examples/specs/canonical_url.lawspec)
+The [canonical URL example](https://github.com/brain-fuel/lawspec/blob/v0.8.0/examples/specs/canonical_url.lawspec)
 uses removal of **all trailing slashes** as a small fixed-point demonstration,
 not a complete URL canonicalization algorithm. For JavaScript:
 
@@ -534,7 +540,7 @@ export const canonicalize = value => value.replace(/\/+$/, "");
 ```
 
 Removing just one trailing slash fails the supplied repeated-slash example.
-The [mixed-input example](https://github.com/brain-fuel/lawspec/blob/v0.7.0/examples/specs/mixed_inputs.lawspec)
+The [mixed-input example](https://github.com/brain-fuel/lawspec/blob/v0.8.0/examples/specs/mixed_inputs.lawspec)
 shows `Text` and `Int32` in the same quantified property and executable example.
 The JavaScript API represents input bindings and expected values as `number | string | boolean`.
 Each example includes `expectations: { actual: Expr; expected: number | string | boolean }[]`.
@@ -550,7 +556,7 @@ npx lawspec examples --target java --output example_artifacts
 This command works without a project configuration or native build tools. It
 compiles every bundled example and writes its tests and user-owned stubs to
 `example_artifacts/<language>/`, using each target's normal source/test layout.
-By default it exports all seven languages; `--json` returns the file inventory.
+By default it exports all eight languages; `--json` returns the file inventory.
 From a checkout, `make examples` runs the same command.
 
 These are inspection artifacts, not initialized projects: no build files are
@@ -599,7 +605,7 @@ by the JS shim.
 ## Build and verify
 
 For contributors working from a repository checkout, build a local archive with
-`npm pack ./npm` and install it with `npm install --save-dev ./lawspec-0.7.0.tgz`.
+`npm pack ./npm` and install it with `npm install --save-dev ./lawspec-0.8.0.tgz`.
 The package payload lives in `npm/`.
 
 ```sh
@@ -623,7 +629,7 @@ compiler-source and artifact hashes in `npm/build.json`; CI rejects stale WASM
 or hand-edited generated wrappers. The npm archive is a self-contained consumer
 artifact, with no install-time compilation or download hook.
 
-For all seven native integrations, install their build tools, then:
+For all eight native integrations, install their build tools, then:
 
 ```sh
 # Set LAWSPEC_GRADLE to a Gradle 9.3.0 executable if it is not on PATH.

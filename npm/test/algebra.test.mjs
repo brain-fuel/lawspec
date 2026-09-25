@@ -16,11 +16,11 @@ const sources = await Promise.all(
   })),
 );
 const count = (a) =>
-  a.tag === "AssertEqual"
+  a.kind === "equal"
     ? 1
-    : a.tag === "AssertImplies"
-      ? count(a.contents[1])
-      : a.contents.reduce((n, a) => n + count(a), 0);
+    : a.kind === "implies"
+      ? count(a.body)
+      : a.items.reduce((n, a) => n + count(a), 0);
 
 test("all algebra laws expand, including both sides and four division equations", async () => {
   const r = await compiler.expand({ sources });
@@ -50,15 +50,15 @@ test("all algebra laws expand, including both sides and four division equations"
   assert.deepEqual(
     r.laws
       .filter((l) => l.owner === "example.algebra")
-      .map((l) => l.original.definition.contents[0])
+      .map((l) => expectedLaws.find(n => l.trace[1] === n || l.trace[1].startsWith(n + " ")))
       .sort(),
     expectedLaws.sort(),
   );
   assert.ok(
     r.laws.every(
       (l) =>
-        l.original.examples.length > 0 &&
-        l.original.examples.every((e) => e.expectations.length > 0),
+        l.examples.length > 0 &&
+        l.examples.every((e) => e.expectations.length > 0),
     ),
   );
 
@@ -88,7 +88,8 @@ test("all algebra laws expand, including both sides and four division equations"
   ]) {
     const plan = await compiler.planGeneration({ sources, target });
     assert.deepEqual(plan.diagnostics, [], target);
-    assert.equal(plan.files.length, 4);
+    assert.equal(plan.files.filter(f => f.ownership === "user").length, 2);
+    assert.equal(plan.files.filter(f => f.placement === "test").length, 2);
   }
 });
 
@@ -113,7 +114,7 @@ test("currying has no fixed arity cap and rejects incomplete or mistyped applica
       target,
     });
     assert.deepEqual(plan.diagnostics, []);
-    if (target !== "haskell") assert.match(plan.files[0].content, /value12/);
+    if (target !== "haskell") assert.match(plan.files[0].content, /value11/);
   }
   for (const bad of [
     content.replace("Int32 -> Int32", "Bool -> Int32"),

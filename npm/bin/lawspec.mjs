@@ -104,6 +104,7 @@ async function init() {
     throw new Error("Target is already configured");
   await mkdir(root, { recursive: true });
   const buildFiles = [
+    "Cargo.toml",
     "pom.xml",
     "pyproject.toml",
     "package.json",
@@ -153,46 +154,17 @@ async function init() {
     `Configured ${language}. ${hasBuild ? "Existing build files preserved." : "Created missing project build files."}\n${setup[language]}\nNext: lawspec doctor, then lawspec generate.`,
   );
 }
-function showType(type) {
-  if (type.tag === 'Named' || type.tag === 'Variable') return type.contents;
-  if (type.tag === 'Applied') return `${type.contents[0]} (${showType(type.contents[1])})`;
-  return `${showType(type.contents[0])} -> ${showType(type.contents[1])}`;
-}
-function showExpression(expr) {
-  const value = expr.contents;
-  if (expr.tag === "Var" || expr.tag === "Number") return value;
-  if (expr.tag === "DecimalNumber") return `${value[0]}e${value[1]}`;
-  if (expr.tag === "ScalarLit") return showScalar(value);
-  if (expr.tag === "Binary") return `(${showExpression(value[1])} ${value[0]} ${showExpression(value[2])})`;
-  if (expr.tag === "Unary") return `${value[0]}(${showExpression(value[1])})`;
-  if (expr.tag === "Annotate") return `(${showExpression(value[0])} :: ${showType(value[1])})`;
-  if (
-    expr.tag === "Number" ||
-    expr.tag === "StringLit" ||
-    expr.tag === "BoolLit"
-  )
-    return JSON.stringify(value);
-  if (expr.tag === "Apply")
-    return `${showExpression(value[0])} (${showExpression(value[1])})`;
-  return `(${showExpression(value[0])} . ${showExpression(value[1])})`;
+function showAssertion(assertion) {
+  if (assertion.kind === "equal") return `${assertion.left.text} = ${assertion.right.text}`;
+  if (assertion.kind === "implies") return `${assertion.guard.text} implies ${showAssertion(assertion.body)}`;
+  return assertion.items.map(showAssertion).join(" and ");
 }
 function explainExamples(law) {
-  return law.original.examples
-    .map(
-      (ex) =>
-        `\nexample ${JSON.stringify(ex.exampleName)}\n` +
-        ex.bindings
-          .map(([n, v]) => `  ${n} = ${showScalar(v)}`)
-          .join("\n") +
-        "\n" +
-        ex.expectations
-          .map(
-            (e) =>
-              `  expect ${showExpression(e.actual)} = ${showScalar(e.expected)}`,
-          )
-          .join("\n"),
-    )
-    .join("\n");
+  return law.examples.map(ex =>
+    `\nexample ${JSON.stringify(ex.name)}\n` +
+    ex.bindings.map(b => `  ${b.name} = ${showScalar(b.value)}`).join("\n") + "\n" +
+    ex.expectations.map(e => `  expect ${showAssertion(e)}`).join("\n")
+  ).join("\n");
 }
 async function main() {
   if (options['machine-bits'] !== undefined) {
@@ -201,13 +173,13 @@ async function main() {
   }
   if (!verb || ["help", "--help", "-h"].includes(verb)) {
     output(
-      "LawSpec 0.7.0\nUsage: lawspec init --target <language> [--project <directory>]\n       lawspec check | doctor | explain <unit>::<law> | generate\n       lawspec examples [--target <language>] [--output example_artifacts]\nOptions: --config <path>, --target <language>, --machine-bits <32|64>, --json\nGeneration: --dry-run, --check\nTargets: " +
+      "LawSpec 0.8.0\nUsage: lawspec init --target <language> [--project <directory>]\n       lawspec check | doctor | explain <unit>::<law> | generate\n       lawspec examples [--target <language>] [--output example_artifacts]\nOptions: --config <path>, --target <language>, --machine-bits <32|64>, --json\nGeneration: --dry-run, --check\nTargets: " +
         targets.join(", "),
     );
     return;
   }
   if (verb === "--version") {
-    output("0.7.0");
+    output("0.8.0");
     return;
   }
   if (positional.length > (verb === "explain" ? 1 : 0))
@@ -280,7 +252,7 @@ async function main() {
     output(
       options.json
         ? result
-        : `Checked ${result.laws.length} executable law(s).`,
+        : `Checked ${result.laws.length} law(s).`,
     );
     return;
   }
@@ -291,7 +263,7 @@ async function main() {
       .filter(
         ({ e }) => !positional[0] || `${e.owner}::${e.name}` === positional[0],
       );
-    if (!indices.length) throw new Error("No matching executable law");
+    if (!indices.length) throw new Error("No matching law");
     output(
       options.json
         ? indices.map(({ e, i }) => ({ ...e, expansion: result.expansions[i] }))
@@ -319,7 +291,7 @@ async function main() {
       ).files,
     );
   const reports = await Promise.all(
-    selected.map((t, i) => doctor(t, roots[i])),
+    selected.map((t, i) => doctor(t, roots[i], artifacts[i])),
   );
   const failed = reports.filter((r) => !r.ok);
   if (failed.length)

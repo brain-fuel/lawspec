@@ -10,6 +10,15 @@ const bits=Number(process.env.LAWSPEC_MACHINE_BITS||64);
 const sources=[{path:'refinements.lawspec',content:await readFile(path.join(root,'examples/specs/refinements.lawspec'),'utf8')}];
 const gradle=await access(path.join(root,'.tools/gradle-9.3.0/bin/gradle')).then(()=>path.join(root,'.tools/gradle-9.3.0/bin/gradle'),()=> 'gradle');
 const implementations={
+ rust:`#![allow(non_snake_case)]
+use crate::lawspec_runtime as ls;
+pub fn add(a:i8,b:i8)->ls::Integer {(i16::from(a)+i16::from(b)).into()}
+pub fn successor(a:i8)->ls::Integer {(i16::from(a)+1).into()}
+pub fn count(a:String)->ls::Integer {a.chars().count().into()}
+pub fn preserve(a:u64)->ls::Integer {a.into()}
+pub fn positive(a:i8)->i8 {a}
+pub fn abstractEcho(a:ls::BigInt)->ls::Integer {a.into()}
+`,
  python:`def add(value0, value1): return value0+value1\ndef successor(value0): return value0+1\ndef count(value0): return len(value0)\ndef preserve(value0): return value0\ndef positive(value0): return value0\ndef abstractEcho(value0): return value0\n`,
  javascript:`export function add(a,b){return a+b;}\nexport function successor(a){return a+1;}\nexport function count(a){return [...a].length;}\nexport function preserve(a){return a;}\nexport function positive(a){return a;}\nexport function abstractEcho(a){return a;}\n`,
  typescript:`export function add(a:number,b:number):number|bigint{return a+b;}\nexport function successor(a:number):number|bigint{return a+1;}\nexport function count(a:string):number|bigint{return [...a].length;}\nexport function preserve(a:bigint):number|bigint{return a;}\nexport function positive(a:number):number{return a;}\nexport function abstractEcho(a:bigint):number|bigint{return a;}\n`,
@@ -27,12 +36,13 @@ for(const target of process.argv.slice(2).length?process.argv.slice(2):targets){
  for(const f of [...Object.entries(templates(target)).map(([path,content])=>({path,content})),...result.files]){const p=path.join(dir,f.path);await mkdir(path.dirname(p),{recursive:true});await writeFile(p,f.ownership==='user'?implementations[target]:f.content);}
  if(['javascript','typescript'].includes(target))await symlink(path.join(root,'.integration',target,'node_modules'),path.join(dir,'node_modules')).catch(e=>{if(e.code!=='EEXIST')throw e});
  if(target==='go')await copyFile(path.join(root,'test/locks/go/go.sum'),path.join(dir,'go.sum'));
- const commands={java:['mvn',['-q','test']],python:[path.join(root,'.integration/python/.venv/bin/python'),['-B','-m','pytest','-q']],javascript:['node',['--test',...result.files.filter(f=>f.path.endsWith('.test.mjs')).map(f=>f.path)]],typescript:['npm',['test']],go:['go',['test','./...']],haskell:['stack',['--no-terminal','test']],kotlin:[gradle,['test','--console=plain']]};
+ const commands={rust:['cargo',['test',...(process.env.LAWSPEC_RUST_RELEASE==='1'?['--release']:[])]],java:['mvn',['-q','test']],python:[path.join(root,'.integration/python/.venv/bin/python'),['-B','-m','pytest','-q']],javascript:['node',['--test',...result.files.filter(f=>f.path.endsWith('.test.mjs')).map(f=>f.path)]],typescript:['npm',['test']],go:['go',['test','./...']],haskell:['stack',['--no-terminal','test']],kotlin:[gradle,['test','--console=plain']]};
  const [cmd,args]=commands[target];
  await new Promise((resolve,reject)=>{const p=spawn(cmd,args,{cwd:dir,stdio:'inherit'});p.on('exit',code=>code?reject(new Error(`${target} exited ${code}`)):resolve());p.on('error',reject)});
  console.log(`${target}: refinement suite passed`);
  if(process.env.LAWSPEC_MUTANTS==='1') {
   const edits={
+   rust:[['overflow','(i16::from(a)+i16::from(b)).into()','a.wrapping_add(b).into()'],['precision','pub fn preserve(a:u64)->ls::Integer {a.into()}','pub fn preserve(a:u64)->ls::Integer {((a as f64) as u64).into()}'],['refinement','pub fn positive(a:i8)->i8 {a}','pub fn positive(a:i8)->i8 {0}'],['standalone','a.chars().count().into()','0i32.into()']],
    python:[['overflow','return value0+value1','return (value0+value1+128)%256-128'],['precision','def preserve(value0): return value0','def preserve(value0): return float(value0)'],['refinement','def positive(value0): return value0','def positive(value0): return 0'],['standalone','return len(value0)','return 0']],
    javascript:[['overflow','return a+b;','return ((a+b+128)&255)-128;'],['precision','function preserve(a){return a;}','function preserve(a){return Number(a);}'],['refinement','function positive(a){return a;}','function positive(a){return 0;}'],['standalone','return [...a].length;','return 0;']],
    typescript:[['overflow','return a+b;','return ((a+b+128)&255)-128;'],['precision','function preserve(a:bigint):number|bigint{return a;}','function preserve(a:bigint):number|bigint{return Number(a);}'],['refinement','function positive(a:number):number{return a;}','function positive(a:number):number{return 0;}'],['standalone','return [...a].length;','return 0;']],
@@ -45,9 +55,9 @@ for(const target of process.argv.slice(2).length?process.argv.slice(2):targets){
   try {for(const [name,before,after] of edits[target]) {
    if(!correct.includes(before))throw new Error(`missing mutant anchor ${target}/${name}`);
    await writeFile(adapter,correct.replace(before,after));
-   const report=await new Promise((resolve,reject)=>{const p=spawn(cmd,args,{cwd:dir});let log='';p.stdout.on('data',s=>log+=s);p.stderr.on('data',s=>log+=s);p.on('error',reject);p.on('exit',code=>resolve({code,log}));});
+   const report=await new Promise((resolve,reject)=>{const p=spawn(cmd,target==='python'?[...args,'-x']:args,{cwd:dir});let log='';p.stdout.on('data',s=>log+=s);p.stderr.on('data',s=>log+=s);p.on('error',reject);p.on('exit',code=>resolve({code,log}));});
    await writeFile(path.join(dir,`mutant-${name}.log`),report.log);
-   if(!report.code||/COMPILATION ERROR|compileTestKotlin FAILED|SyntaxError|\[build failed\]|parse error on input|not in scope/i.test(report.log))throw new Error(`${target}: mutant ${name} escaped or failed to compile`);
+   if(!report.code||/error\[E\d+\]|could not compile|COMPILATION ERROR|compileTestKotlin FAILED|SyntaxError|\[build failed\]|parse error on input|not in scope/i.test(report.log))throw new Error(`${target}: mutant ${name} escaped or failed to compile`);
    console.log(`${target}: rejected ${name}`);
   }}finally{await writeFile(adapter,correct);}
  }

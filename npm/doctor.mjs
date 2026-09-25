@@ -67,14 +67,14 @@ async function installed(req, name) {
     dir = parent;
   }
 }
-export async function doctor(target, root) {
+export async function doctor(target, root, plannedArtifacts = []) {
   const name = target.language;
   const defaults =
     name === "java"
       ? ["src/main/java", "src/test/java"]
       : name === "kotlin"
         ? ["src/main/kotlin", "src/test/kotlin"]
-        : ["src", name === "python" ? "tests" : "test"];
+        : ["src", ["python", "rust"].includes(name) ? "tests" : "test"];
   const sourceDir = target.sourceDir ?? defaults[0];
   const testDir = target.testDir ?? defaults[1];
   try {
@@ -257,6 +257,8 @@ export async function doctor(target, root) {
         "The Stack profile requires one package per target root",
       );
       const cabal = await readFile(path.join(root, cabals[0]), "utf8");
+      const components = cabal.split(/^(?:library(?:[ \t]+\S+)?|test-suite[ \t]+\S+)[ \t]*\n/m).slice(1).map(s => s.split(/\n(?=\S)/)[0]);
+      requireThat(components.some(s => s.includes(sourceDir) && ['text','bytestring'].every(dep => new RegExp(`(?:^|[\\s,])${dep}(?=[\\s,<>=]|$)`).test(s))), "The component compiling generated source must directly depend on text and bytestring");
       const suites = cabal
         .split(/^test-suite\s+/m)
         .slice(1)
@@ -355,6 +357,33 @@ export async function doctor(target, root) {
         ),
         "The JUnit Jupiter test engine must be on the test classpath",
       );
+    } else if (name === "rust") {
+      const compiler = target.rustc || "rustc";
+      const cargo = target.cargo || "cargo";
+      versions.rust = (await run(compiler, ["--version"], root)).match(/^rustc (\d+\.\d+\.\d+)/)?.[1];
+      requireThat(versions.rust && compare(versions.rust, "1.85.0") >= 0, "Rust 1.85+ is required");
+      const data = JSON.parse(await run(cargo, ["metadata", "--format-version", "1"], root));
+      const pkg = data.packages.find(p => path.resolve(p.manifest_path) === path.join(root, "Cargo.toml"));
+      requireThat(pkg, "Select a Cargo package directory containing Cargo.toml");
+      requireThat(pkg.edition === "2024", "Cargo package must use edition 2024");
+      const node = data.resolve.nodes.find(n => n.id === pkg.id);
+      for (const dep of ["proptest", "num-bigint", "num-rational", "num-complex", "num-traits"]) {
+        const reference = node.deps.find(d => d.name === dep.replaceAll("-", "_"));
+        versions[dep] = data.packages.find(p => p.id === reference?.pkg)?.version;
+        requireThat(versions[dep], `Missing direct Cargo dependency: ${dep}`);
+      }
+      const manifest = await readFile(path.join(root, "Cargo.toml"), "utf8");
+      requireThat(!/harness\s*=\s*false/.test(manifest), "Rust generated tests require the standard Cargo test harness");
+      const testRoot = path.resolve(root, testDir);
+      const expectedTests = plannedArtifacts.length
+        ? plannedArtifacts.filter(f => f.placement === "test" && f.path.endsWith("_lawspec.rs")).map(f => path.resolve(root, f.path))
+        : (await readdir(testRoot).catch(error => {if(error.code === "ENOENT") return []; throw error;})).filter(n => n.endsWith("_lawspec.rs")).map(n => path.join(testRoot,n));
+      if (testDir !== "tests" || /autotests\s*=\s*false/.test(manifest)) {
+        const registered = new Set(pkg.targets.filter(t => t.kind.includes("test") && t.test).map(t => path.resolve(t.src_path)));
+        requireThat(expectedTests.length ? expectedTests.every(file => registered.has(file)) : [...registered].some(file => file.startsWith(testRoot + path.sep)), "Register every generated Rust test file with Cargo [[test]] entries for this custom layout");
+      }
+      const library = pkg.targets.find(t => t.kind.includes("lib"));
+      requireThat(!library || path.dirname(path.resolve(library.src_path)) === path.resolve(root, sourceDir), "Cargo library path must match the configured sourceDir");
     } else if (name === "kotlin") {
       const command =
         target.gradle ||

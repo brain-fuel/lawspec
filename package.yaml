@@ -1,8 +1,8 @@
 name: lawspec
-version: 0.7.0
+version: 0.8.0
 license: MIT
 synopsis: Portable executable laws
-extra-source-files: [README.md, PRIMITIVES.md, REFINEMENTS.md, API-MIGRATION.md, runtime/*, examples/specs/*.lawspec]
+extra-source-files: [README.md, PRIMITIVES.md, REFINEMENTS.md, RUST.md, LANGUAGE.md, API-MIGRATION.md, runtime/*.rs, runtime/*.mjs, runtime/*.py, runtime/*.hs, runtime/*.java, runtime/*.go, runtime/rust/Cargo.toml, runtime/rust/Cargo.lock, examples/specs/*.lawspec]
 dependencies: [base >= 4.18 && < 5, text, containers, aeson, bytestring, megaparsec, parser-combinators, mtl]
 default-extensions: [OverloadedStrings, DeriveGeneric, LambdaCase, RecordWildCards]
 ghc-options: [-Wall]

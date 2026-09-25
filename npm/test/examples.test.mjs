@@ -13,9 +13,10 @@ test("examples exports all bundled stubs/tests, preserves adapters, and protects
     exec(process.execPath, [cli, "examples", "--json", ...args], { cwd: root });
   try {
     const result = JSON.parse((await run()).stdout);
-    assert.equal(result.length, 7);
+    assert.equal(result.length, 8);
     for (const target of result) {
-      assert.equal(target.files.length, target.target === "go" ? 30 : 27);
+      assert.equal(target.files.filter(f => f.placement === "test" && !f.path.includes("support/")).length, 13);
+      assert.ok(target.files.some(f => f.placement === "source" && f.ownership === "generated"));
       assert.equal(
         target.files.filter((f) => f.ownership === "user").length,
         13,
