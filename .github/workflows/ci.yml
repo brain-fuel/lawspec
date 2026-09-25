@@ -82,3 +82,17 @@ jobs:
         env:
           LAWSPEC_PYTHON: ${{ matrix.python }}
       - run: node tools/integration.mjs ${{ matrix.target }}
+
+      - run: node tools/scalar-integration.mjs ${{ matrix.target }}
+        env:
+          LAWSPEC_MUTANTS: '1'
+      - run: node tools/scalar-integration.mjs ${{ matrix.target }}
+        env:
+          LAWSPEC_MACHINE_BITS: '32'
+
+      - run: node tools/refinement-integration.mjs ${{ matrix.target }}
+        env:
+          LAWSPEC_MUTANTS: '1'
+      - run: node tools/refinement-integration.mjs ${{ matrix.target }}
+        env:
+          LAWSPEC_MACHINE_BITS: '32'

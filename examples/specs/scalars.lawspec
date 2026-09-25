@@ -1,0 +1,138 @@
+unit example.scalars
+
+law `integer promotion` is
+  definition is `for all` (x :: Int8) . x + 1 = 1 + x end
+  example `overflow is preserved` is
+    x = 127
+    expect x + 1 = 128
+  end
+end
+
+law `unsigned precision` is
+  definition is `for all` (x :: UInt64) . x + 0 = x end
+  example `maximum` is
+    x = 18446744073709551615
+    expect x + 1 = 18446744073709551616
+  end
+end
+
+law `decimal exactness` is
+  definition is `for all` (x :: Decimal) . x + 0.1 = 0.1 + x end
+  example `tenths` is
+    x = 0.1
+    expect x + 0.2 = 0.3
+  end
+end
+
+law `exact division` is
+  definition is `for all` (x :: Int16) . x / 2 = x / 2 end
+  example `one half` is
+    x = 1
+    expect x / 2 = rational(1, 2)
+    expect prelude.quot -7 3 = -2
+    expect prelude.rem -7 3 = -1
+    expect prelude.round rational(125, 100) 1 = 1.2
+  end
+end
+
+law `IEEE classification` is
+  definition is `for all` (x :: Float32) . prelude.isNaN x = prelude.isNaN x end
+  example `NaN` is
+    x = float32Bits("7fc00000")
+    expect prelude.isNaN x = true
+  end
+  example `negative zero` is
+    x = float32Bits("80000000")
+    expect prelude.isNegativeZero x = true
+    expect x = (0 :: Float32)
+  end
+  example `infinity` is
+    x = float32Bits("7f800000")
+    expect prelude.isInfinite x = true
+    expect prelude.Float32 0.1 = (0.1 :: Float32)
+  end
+end
+
+law `complex arithmetic` is
+  definition is `for all` (x :: Unit) . complex64(1, 2) * complex64(3, 4) = complex64(-5, 10) end
+  example `product` is
+    x = unitValue
+    expect complex64(1, 2) * complex64(3, 4) = complex64(-5, 10)
+  end
+end
+
+law `raw units survive` is
+  definition is `for all` (x :: Utf16Text) . x = x end
+  example `unpaired surrogate` is
+    x = utf16([55296, 0, 56320])
+    expect x = utf16([55296, 0, 56320])
+  end
+end
+
+law `arbitrary bytes` is
+  definition is `for all` (x :: Bytes) . x = x end
+  example `octets` is
+    x = bytes([0, 128, 255])
+    expect x = bytes([0, 128, 255])
+  end
+end
+
+law `symbol fixture identity` is
+  definition is `for all` (x :: Symbol) . x = x end
+  example `same reference` is
+    x = symbol("first", "description")
+    expect x = symbol("first", "description")
+  end
+end
+
+law `nested absence` is
+  definition is `for all` (x :: Optional (Nullable Int8)) . x = x end
+  example `undefined` is
+    x = undefined
+    expect x = undefined
+  end
+  example `present null` is
+    x = optional(null)
+    expect x = optional(null)
+  end
+  example `present integer` is
+    x = optional(nullable(7))
+    expect x = optional(nullable(7))
+  end
+end
+
+law `supplementary scalar` is
+  definition is `for all` (x :: Char) . x = x end
+  example `emoji` is
+    x = char(128512)
+    expect x = char(128512)
+  end
+end
+
+law `surrogate code point` is
+  definition is `for all` (x :: CodePointText) . x = x end
+  example `surrogate` is
+    x = codePoints([55296, 128512])
+    expect x = codePoints([55296, 128512])
+  end
+end
+
+law `explicit float rounding` is
+  definition is `for all` (x :: Unit) . x = x end
+  example `IEEE halfway cases` is
+    x = unitValue
+    expect prelude.Complex128 complex64(1, 2) = complex128(1, 2)
+    expect prelude.Complex64 complex128(1.25, -2.5) = complex64(1.25, -2.5)
+    expect prelude.Float32 rational(16777217, 16777216) = float32Bits("3f800000")
+    expect prelude.Float32 rational(1208925891672223212634113, 1208925819614629174706176) = float32Bits("3f800001")
+    expect prelude.Float64 rational(9007199254740993, 9007199254740992) = float64Bits("3ff0000000000000")
+    expect prelude.Float64 rational(1606938044258990453947923680586147734807949174969684883144705, 1606938044258990275541962092341162602522202993782792835301376) = float64Bits("3ff0000000000001")
+    expect prelude.Float32 rational(1, 1427247692705959881058285969449495136382746624) = float32Bits("00000000")
+    expect prelude.Float32 rational(1125899906842625, 1606938044258990275541962092341162602522202993782792835301376) = float32Bits("00000001")
+  end
+end
+
+law `short circuit exact failures` is
+  definition is `for all` (x :: Unit) . false implies 1 / 0 = rational(1, 2) end
+  example `guard prevents division` is x = unitValue expect x = unitValue end
+end

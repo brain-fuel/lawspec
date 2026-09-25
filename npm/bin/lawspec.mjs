@@ -4,6 +4,7 @@ import path from "node:path";
 import { createCompiler } from "../api.mjs";
 import { targets, templates, commands, setup } from "../templates.mjs";
 import { generateExamples } from "../examples-command.mjs";
+import { showScalar } from "../scalars.mjs";
 import { doctor } from "../doctor.mjs";
 import {
   readOptional,
@@ -18,7 +19,7 @@ const options = {};
 const positional = [];
 for (let i = 0; i < args.length; i++) {
   const arg = args[i];
-  if (["--target", "--project", "--config", "--output"].includes(arg)) {
+  if (["--target", "--project", "--config", "--output", "--machine-bits"].includes(arg)) {
     if (!args[i + 1] || args[i + 1].startsWith("--"))
       throw new Error(`Missing value for ${arg}`);
     options[arg.slice(2)] = args[++i];
@@ -138,6 +139,7 @@ async function init() {
       await readFile(new URL("../starter.lawspec", import.meta.url), "utf8"),
       true,
     );
+  if (options.machineBits !== undefined) config.machineBits = options.machineBits;
   config.targets.push({
     language,
     root: path.relative(configRoot, root) || ".",
@@ -151,9 +153,19 @@ async function init() {
     `Configured ${language}. ${hasBuild ? "Existing build files preserved." : "Created missing project build files."}\n${setup[language]}\nNext: lawspec doctor, then lawspec generate.`,
   );
 }
+function showType(type) {
+  if (type.tag === 'Named' || type.tag === 'Variable') return type.contents;
+  if (type.tag === 'Applied') return `${type.contents[0]} (${showType(type.contents[1])})`;
+  return `${showType(type.contents[0])} -> ${showType(type.contents[1])}`;
+}
 function showExpression(expr) {
   const value = expr.contents;
-  if (expr.tag === "Var") return value;
+  if (expr.tag === "Var" || expr.tag === "Number") return value;
+  if (expr.tag === "DecimalNumber") return `${value[0]}e${value[1]}`;
+  if (expr.tag === "ScalarLit") return showScalar(value);
+  if (expr.tag === "Binary") return `(${showExpression(value[1])} ${value[0]} ${showExpression(value[2])})`;
+  if (expr.tag === "Unary") return `${value[0]}(${showExpression(value[1])})`;
+  if (expr.tag === "Annotate") return `(${showExpression(value[0])} :: ${showType(value[1])})`;
   if (
     expr.tag === "Number" ||
     expr.tag === "StringLit" ||
@@ -170,28 +182,32 @@ function explainExamples(law) {
       (ex) =>
         `\nexample ${JSON.stringify(ex.exampleName)}\n` +
         ex.bindings
-          .map(([n, v]) => `  ${n} = ${JSON.stringify(v)}`)
+          .map(([n, v]) => `  ${n} = ${showScalar(v)}`)
           .join("\n") +
         "\n" +
         ex.expectations
           .map(
             (e) =>
-              `  expect ${showExpression(e.actual)} = ${JSON.stringify(e.expected)}`,
+              `  expect ${showExpression(e.actual)} = ${showScalar(e.expected)}`,
           )
           .join("\n"),
     )
     .join("\n");
 }
 async function main() {
+  if (options['machine-bits'] !== undefined) {
+    options.machineBits = Number(options['machine-bits']);
+    if (![32,64].includes(options.machineBits)) throw new Error('machineBits must be 32 or 64');
+  }
   if (!verb || ["help", "--help", "-h"].includes(verb)) {
     output(
-      "LawSpec 0.6.0\nUsage: lawspec init --target <language> [--project <directory>]\n       lawspec check | doctor | explain <unit>::<law> | generate\n       lawspec examples [--target <language>] [--output example_artifacts]\nOptions: --config <path>, --target <language>, --json\nGeneration: --dry-run, --check\nTargets: " +
+      "LawSpec 0.7.0\nUsage: lawspec init --target <language> [--project <directory>]\n       lawspec check | doctor | explain <unit>::<law> | generate\n       lawspec examples [--target <language>] [--output example_artifacts]\nOptions: --config <path>, --target <language>, --machine-bits <32|64>, --json\nGeneration: --dry-run, --check\nTargets: " +
         targets.join(", "),
     );
     return;
   }
   if (verb === "--version") {
-    output("0.6.0");
+    output("0.7.0");
     return;
   }
   if (positional.length > (verb === "explain" ? 1 : 0))
@@ -256,7 +272,8 @@ async function main() {
     if (reports.some((r) => !r.ok)) process.exitCode = 1;
     return;
   }
-  const input = { sources: await sources(config) };
+  if (config.machineBits !== undefined && ![32, 64].includes(config.machineBits)) throw new Error("machineBits must be 32 or 64");
+  const input = { sources: await sources(config), generation: config.generation, machineBits: options.machineBits ?? config.machineBits ?? 64 };
   const compiler = await createCompiler();
   if (verb === "check") {
     const result = diagnostics(await compiler.check(input));

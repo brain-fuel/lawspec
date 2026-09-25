@@ -1,12 +1,16 @@
-module LawSpec.Emit (emit, emitWithLayout, targets) where
+module LawSpec.Emit (emit, emitWithLayout, emitWithProfile, emitWithLayoutProfile, targets) where
 
 import LawSpec.Model
+import LawSpec.Scalar
+import Data.Char (chr)
+import LawSpec.ScalarEmit
+import LawSpec.RuntimeSources
 import LawSpec.Compile (prettyExpanded, normal)
 import Data.Aeson (encode)
 import qualified Data.Text.Lazy as T
 import qualified Data.Text.Lazy.Encoding as T
 import Data.Char (toUpper, toLower, isAlphaNum, isAscii)
-import Data.List (intercalate, nub, stripPrefix, isPrefixOf)
+import Data.List (intercalate, nub, stripPrefix, isPrefixOf, isSuffixOf)
 import Control.Monad (unless)
 
 targets :: [String]
@@ -39,18 +43,31 @@ reserved :: [String]
 reserved = words "class interface enum public private protected static return import package module where data type newtype case of if then else let in do forall object fun val var when is as null true false None True False def lambda pass raise from with yield async await export default function const new delete switch throw try catch finally break continue for while match typealias struct func map range select defer go chan int string error assert test"
 
 emit :: String -> [Unit] -> [Expanded] -> Either [Diagnostic] [Artifact]
-emit target us es = do
+emit = emitWithProfile 64
+
+emitWithProfile :: Int -> String -> [Unit] -> [Expanded] -> Either [Diagnostic] [Artifact]
+emitWithProfile bits target us es = do
+  unless (bits `elem` [32,64]) (Left [Diagnostic "machineBits" "machineBits must be 32 or 64" Nothing])
   unless (target `elem` targets) (Left [Diagnostic "target" ("unknown target: " ++ target) Nothing])
   let bad = [n | u <- us, n <- map fst (functions u) ++ split '.' (unitName u), n `elem` reserved || not (all (\c -> isAscii c && (isAlphaNum c || c == '_')) n)]
   unless (null bad) (Left [Diagnostic "identifier" ("reserved target identifier: " ++ comma bad) Nothing])
-  let files = concatMap (emitUnit target es) (filter (\u -> not (null (functions u)) || any ((== unitName u) . owner) es) us)
+  emitted <- mapM (\u -> if advanced u es then scalarEmit bits target u es else Right (emitUnit target es u)) (filter (\u -> not (null (functions u)) || any ((== unitName u) . owner) es) us)
+  let needsRuntime = any (\u -> advanced u es) us
+      runtime = case target of
+        "python" -> Artifact "src/lawspec_runtime.py" (runtimeSource "python") "generated" "source"
+        "java" -> Artifact "src/main/java/lawspec/runtime/LawSpecRuntime.java" (runtimeSource "java") "generated" "source"
+        "kotlin" -> Artifact "src/main/java/lawspec/runtime/LawSpecRuntime.java" (runtimeSource "java") "generated" "source"
+        "typescript" -> Artifact "src/lawspec_runtime.ts" ("// @ts-nocheck\n" ++ runtimeSource "javascript") "generated" "source"
+        "haskell" -> Artifact "src/LawSpecRuntime.hs" (runtimeSource "haskell") "generated" "source"
+        _ -> Artifact "src/lawspec_runtime.mjs" (runtimeSource "javascript") "generated" "source"
+      files = concat emitted ++ [runtime | needsRuntime && target /= "go"]
   unless (length (map artifactPath files) == length (nub (map (map toLower . artifactPath) files))) (Left [Diagnostic "collision" "units map to the same output path" Nothing])
   let generatedNames u = map (\(n,_) -> if target == "go" then cap n else n) (functions u)
   unless (all (\u -> let ns = generatedNames u in length ns == length (nub ns)) us) (Left [Diagnostic "collision" "functions map to the same target identifier" Nothing])
   pure files
 
 emitUnit :: String -> [Expanded] -> Unit -> [Artifact]
-emitUnit target allLaws u = [Artifact stubPath stub "user", Artifact testPath tests "generated"]
+emitUnit target allLaws u = [Artifact stubPath stub "user" "source", Artifact testPath tests "generated" "test"]
   where
     parts = split '.' (unitName u)
     base = last parts
@@ -65,7 +82,8 @@ emitUnit target allLaws u = [Artifact stubPath stub "user", Artifact testPath te
     fn n = if target == "go" then cap n else n
     ty (Named "Int32") = case target of "python" -> "int"; "java" -> "int"; "kotlin" -> "Int"; "go" -> "int32"; "haskell" -> "Int32"; _ -> "number"
     ty (Named "Bool") = case target of "python" -> "bool"; "java" -> "boolean"; "kotlin" -> "Boolean"; "go" -> "bool"; "haskell" -> "Bool"; _ -> "boolean"
-    ty _ = case target of "python" -> "str"; "java" -> "String"; "kotlin" -> "String"; "go" -> "string"; "haskell" -> "Text"; _ -> "string"
+    ty (Named "Text") = case target of "python" -> "str"; "java" -> "String"; "kotlin" -> "String"; "go" -> "string"; "haskell" -> "Text"; _ -> "string"
+    ty t = error ("unsupported legacy type: " ++ prettyType t)
     functions' = [(fn n, args,result) | (n,t) <- functions u, let (args,result) = functionType t]
     arguments args = zip (if length args == 1 then ["value"] else ["value" ++ show i | i <- [1 :: Int ..]]) args
     nativeArgs args = comma [case target of
@@ -74,7 +92,7 @@ emitUnit target allLaws u = [Artifact stubPath stub "user", Artifact testPath te
       "javascript" -> n
       _ -> n ++ ": " ++ ty t | (n,t) <- arguments args]
     header prefix = prefix ++ " Scaffolded by LawSpec. User-owned; never overwritten.\n"
-    generated prefix = prefix ++ " Generated by LawSpec 0.6.0. Do not edit.\n"
+    generated prefix = prefix ++ " Generated by LawSpec 0.7.0. Do not edit.\n"
     pkg = if null packageName then "" else "package " ++ packageName ++ (if target == "java" then ";\n" else "\n")
     stubPath = case target of
       "java" -> "src/main/java/" ++ javaSlash ++ ".java"
@@ -109,11 +127,21 @@ emitUnit target allLaws u = [Artifact stubPath stub "user", Artifact testPath te
     render expression@(Apply f x)
       | target == "haskell" = "(" ++ render f ++ " " ++ render x ++ ")"
       | otherwise = let (callee,args) = application expression in render callee ++ "(" ++ comma (map render args) ++ ")"
+    render (DecimalNumber _ _) = error "decimal literal routed to legacy emitter"
+    render (ScalarLit (SInteger "Int32" n)) = render (Number n)
+    render (ScalarLit (SBool b)) = render (BoolLit b)
+    render (ScalarLit (SSequence "Text" xs)) = render (StringLit (map chr xs))
+    render (ScalarLit _) = error "scalar literal routed to legacy emitter"
+    render (Binary _ _ _) = error "arithmetic routed to legacy emitter"
+    render (Unary _ _) = error "unary expression routed to legacy emitter"
+    render (Annotate _ _) = error "annotation routed to legacy emitter"
     render (Compose f g) = "(" ++ render f ++ " . " ++ render g ++ ")"
     application (Apply f x) = let (callee,args) = application f in (callee,args ++ [x])
     application e = (e,[])
     count e = length (inputs e)
     lawFn i = "_lawspecLaw" ++ show i
+    literal (DecimalLiteral _ _) = error "decimal fixture routed to legacy emitter"
+    literal (ScalarLiteral s) = render (ScalarLit s)
     literal (BoolLiteral b) = if target `elem` ["python","haskell"] then show b else if b then "true" else "false"
     literal (IntLiteral n) = show n
     literal (TextLiteral text)
@@ -149,9 +177,6 @@ emitUnit target allLaws u = [Artifact stubPath stub "user", Artifact testPath te
       Apply f x -> Apply (replaceValues values f) (replaceValues values x)
       Compose f g -> Compose (replaceValues values f) (replaceValues values g)
       _ -> expression
-    literalExpr (BoolLiteral b) = BoolLit b
-    literalExpr (IntLiteral n) = Number n
-    literalExpr (TextLiteral text) = StringLit text
     namedBindings bs = intercalate ", " [n ++ " = " ++ prettyExpr (literalExpr v) | (n,v) <- bs]
     label e kind bs = owner e ++ "::" ++ name e ++ ": " ++ kind ++ " [" ++ namedBindings bs ++ "]"
     replaceAssertion values (AssertEqual a b) = AssertEqual (replaceValues values a) (replaceValues values b)
@@ -278,8 +303,11 @@ emitUnit target allLaws u = [Artifact stubPath stub "user", Artifact testPath te
 
 -- Paths and imports are transformed together so custom layouts remain executable.
 emitWithLayout :: String -> Maybe String -> Maybe String -> [Unit] -> [Expanded] -> Either [Diagnostic] [Artifact]
-emitWithLayout target sourceDir testDir us es = do
-  files <- emit target us es
+emitWithLayout = emitWithLayoutProfile 64
+
+emitWithLayoutProfile :: Int -> String -> Maybe String -> Maybe String -> [Unit] -> [Expanded] -> Either [Diagnostic] [Artifact]
+emitWithLayoutProfile bits target sourceDir testDir us es = do
+  files <- emitWithProfile bits target us es
   let defaults = case target of
         "java" -> ("src/main/java", "src/test/java")
         "kotlin" -> ("src/main/kotlin", "src/test/kotlin")
@@ -303,10 +331,10 @@ emitWithLayout target sourceDir testDir us es = do
         | Just rest <- stripPrefix old text = new ++ replace old new rest
         | c:rest <- text = c:replace old new rest
         | otherwise = []
-      adjust a = a { artifactPath = if ownership a == "user" then move (fst defaults) src (artifactPath a) else move (snd defaults) tst (artifactPath a)
-                   , artifactContent = if target `elem` ["javascript","typescript"] && ownership a == "generated" then replace " } from '../src/" (" } from '"
-                       ++ importRoot
-                       ++ "/") (artifactContent a) else artifactContent a }
+      sourceBase a = if target == "kotlin" && ".java" `isSuffixOf` artifactPath a then "src/main/java" else fst defaults
+      sourceRoot a = if target == "kotlin" && ".java" `isSuffixOf` artifactPath a then maybe "src/main/java" id sourceDir else src
+      adjust a = a { artifactPath = if artifactPlacement a == "source" then move (sourceBase a) (sourceRoot a) (artifactPath a) else move (snd defaults) tst (artifactPath a)
+                   , artifactContent = if target `elem` ["javascript","typescript"] && artifactPlacement a == "test" then replace "from '../src/" ("from '" ++ importRoot ++ "/") (artifactContent a) else artifactContent a }
       result = map adjust files
   unless (length result == length (nub (map (map toLower . artifactPath) result))) (Left [Diagnostic "collision" "custom layout causes an output collision" Nothing])
   pure result

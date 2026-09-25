@@ -17,6 +17,8 @@ async function walk(dir) {
 const sourceFiles = [
   ...(await walk("src")),
   ...(await walk("wasm/app")),
+  ...(await readdir(path.join(root,"runtime"))).filter(n => !n.startsWith(".") && !n.startsWith("__")).map(n => "runtime/" + n),
+  "tools/embed-runtimes.py",
   "package.yaml",
   "stack.yaml",
   "stack.yaml.lock",

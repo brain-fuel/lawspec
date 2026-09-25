@@ -2,7 +2,11 @@ module Main where
 import Test.Hspec
 import LawSpec.Compile
 import LawSpec.Model
+import qualified LawSpec.Domain as D
+import LawSpec.Eval
 import LawSpec.Emit
+import LawSpec.Scalar
+import LawSpec.Parser (parseSource)
 import Data.Either (isLeft, isRight)
 import Data.List (isInfixOf)
 
@@ -154,3 +158,150 @@ main = hspec $ do
           Right fs -> do
             artifactPath (head fs) `shouldBe` "lib/example/atoi_codec.mjs"
             artifactContent (last fs) `shouldSatisfy` isInfixOf "../../lib/example/atoi_codec.mjs"
+
+  describe "portable scalars" $ do
+    it "recognizes every scalar domain and both presence constructors" $ do
+      let types = map primitiveName primitives ++ ["Optional (Nullable Int8)","Nullable (Optional Bool)"]
+      mapM_ (\t -> compile [Source "all" ("unit domain\nf :: " ++ t ++ " -> " ++ t ++ "\nlaw `identity` is definition is `equivalent` f f end end")] `shouldSatisfy` isRight) types
+    it "compiles the executable scalar and adapter examples" $ do
+      mapM_ (\n -> readFile ("examples/specs/" ++ n ++ ".lawspec") >>= \s -> compile [Source n s] `shouldSatisfy` isRight) ["scalars","scalar_adapters"]
+    it "promotes primitive integer arithmetic to Integer and division to Rational" $ do
+      let env = [("x",Named "Int8")]
+      fmap expressionType (typedExpression 64 env (Binary "+" (Var "x") (Number 1))) `shouldBe` Right (Named "Integer")
+      fmap expressionType (typedExpression 64 env (Binary "/" (Var "x") (Number 2))) `shouldBe` Right (Named "Rational")
+    it "checks contextual literals at both machine widths" $ do
+      let s = Source "width" "unit width\nf :: IntSize -> IntSize\nlaw `id` is definition is `equivalent` f f end example `large` is x = 2147483648 expect f x = 2147483648 end end"
+      compileWithProfile 32 [s] `shouldSatisfy` isLeft
+      compileWithProfile 64 [s] `shouldSatisfy` isRight
+      compileWithProfile 16 [] `shouldSatisfy` isLeft
+    it "rejects implicit exact/inexact mixing and Bool arithmetic" $ do
+      let env = [("x",Named "Float32"),("y",Named "Int8"),("b",Named "Bool")]
+      typedExpression 64 env (Binary "+" (Var "x") (Var "y")) `shouldSatisfy` isLeft
+      typedExpression 64 env (Binary "+" (Var "b") (Number 1)) `shouldSatisfy` isLeft
+      typedExpression 64 env (Binary "+" (Var "x") (Apply (Var "prelude.Float32") (Var "y"))) `shouldSatisfy` isRight
+    it "checks operator precedence while preserving signed application" $ do
+      let spec text = parseSource (Source "precedence" ("unit p\nlaw `p` is definition is `for all` (x :: Int8) . " ++ text ++ " = x end end"))
+      case spec "x + 2 * 3" of
+        Right u -> definition (head (laws u)) `shouldBe` Forall [("x",Named "Int8")] (Equal (Binary "+" (Var "x") (Binary "*" (Number 2) (Number 3))) (Var "x"))
+        Left ds -> expectationFailure (show ds)
+      case spec "f -42" of
+        Right u -> definition (head (laws u)) `shouldBe` Forall [("x",Named "Int8")] (Equal (Apply (Var "f") (Number (-42))) (Var "x"))
+        Left ds -> expectationFailure (show ds)
+    it "validates raw domains without surrogate replacement" $ do
+      validateScalar 64 (SSequence "Text" [55296]) `shouldSatisfy` isLeft
+      validateScalar 64 (SSequence "CodePointText" [55296]) `shouldSatisfy` isRight
+      validateScalar 64 (SSequence "Utf16Text" [55296,65535]) `shouldSatisfy` isRight
+      validateScalar 64 (SSequence "Bytes" [256]) `shouldSatisfy` isLeft
+      validateScalar 64 (SCharacter "Char" 128512) `shouldSatisfy` isRight
+      validateScalar 64 (SCharacter "CodeUnit16" 128512) `shouldSatisfy` isLeft
+    it "checks exact conversion and rational canonicalization" $ do
+      convertScalar 64 "Int8" (SRational 1 2) `shouldSatisfy` isLeft
+      convertScalar 64 "Int8" (SInteger "BigInt" 128) `shouldSatisfy` isLeft
+      convertScalar 64 "Decimal" (SRational 1 3) `shouldSatisfy` isLeft
+      validateScalar 64 (SRational 4 (-6)) `shouldBe` Right (SRational (-2) 3)
+      validateScalar 64 (SRational 1 0) `shouldSatisfy` isLeft
+    it "places generated runtimes in source directories with custom layouts" $ do
+      s <- readFile "examples/specs/scalars.lawspec"
+      case compile [Source "scalars" s] of
+        Left ds -> expectationFailure (show ds)
+        Right (us,es) -> case emitWithLayout "javascript" (Just "lib") (Just "checks/unit") us es of
+          Left ds -> expectationFailure (show ds)
+          Right fs -> do
+            [artifactPath a | a <- fs, artifactPlacement a == "source", ownership a == "generated"] `shouldBe` ["lib/lawspec_runtime.mjs"]
+            artifactContent (fs !! 1) `shouldSatisfy` isInfixOf "../../lib/lawspec_runtime.mjs"
+
+    it "infers tagged presence literals in law assertions" $ do
+      compile [Source "absence" "unit absence\nlaw `missing` is definition is `for all` (x :: Optional Int8) . x = undefined end end"] `shouldSatisfy` isRight
+      compile [Source "presence" "unit presence\nlaw `present` is definition is `for all` (x :: Optional Int8) . x = optional(7) end end"] `shouldSatisfy` isRight
+    it "keeps explicit Decimal constructors distinct from contextual decimal tokens" $ do
+      let env = [("x",Named "Float32")]
+      typedExpression 64 env (Binary "+" (Var "x") (DecimalNumber 1 (-1))) `shouldSatisfy` isRight
+      typedExpression 64 env (Binary "+" (Var "x") (ScalarLit (SDecimal 1 (-1)))) `shouldSatisfy` isLeft
+    it "retains promoted operation types and checked bridge targets in the IR" $ do
+      let env = [("f",Arrow (Named "Int8") (Named "Int8")),("x",Named "Int8")]
+      case typedExpression 64 env (Apply (Var "f") (Binary "+" (Var "x") (Number 0))) of
+        Right ir -> do
+          expressionType (operands ir !! 1) `shouldBe` Named "Integer"
+          requiredConversion (operands ir !! 1) `shouldBe` Just (Named "Int8")
+        Left e -> expectationFailure e
+
+    it "specializes generic laws over nested presence types" $ do
+      let s = Source "generic-presence" "unit generic_presence\nf :: Optional (Nullable Int8) -> Optional (Nullable Int8)\nlaw `identity` (g :: Optional a -> Optional a) requires Eq (Optional a) is definition is `for all` (x :: Optional a) . g x = x end end\nlaw `concrete` is definition is `identity` f end end"
+      compile [s] `shouldSatisfy` isRight
+
+
+  describe "dependent refinements" $ do
+    let spec body = Source "refinement.lawspec" ("unit refinement\n" ++ body)
+        law qs body = "law `check` is definition is `for all` " ++ qs ++ " . " ++ body ++ " end end"
+    it "compiles parameterized refinements and independently executable contracts" $ do
+      text <- readFile "examples/specs/refinements.lawspec"
+      case compile [Source "refinements" text] of
+        Left ds -> expectationFailure (show ds)
+        Right (us,es) -> do
+          length (contracts (head us)) `shouldBe` 6
+          length (filter ((== "contract") . propertyKind) es) `shouldBe` 6
+          length (refinements (head us)) `shouldBe` 3
+    it "finds exactly the mathematical Int8 overflow pairs" $ do
+      let s = spec (law "(x :: Int8) (y :: Int8 where y > Int8.max - x)" "x + y > Int8.max")
+      case compile [s] of
+        Left ds -> expectationFailure (show ds)
+        Right (_, [e]) -> do
+          let expected = [[SInteger "Int8" x,SInteger "Int8" y] | x <- [-128..127], y <- [-128..127], x+y>127]
+          D.finiteTuples 64 defaultGeneration{exhaustiveLimit=65536} (inputs e) `shouldBe` Right (Just expected)
+          length expected `shouldBe` 8128
+          all (\xs -> case xs of [SInteger _ x,SInteger _ y] -> x>0 && x+y>=128 && x+y<=254; _ -> False) expected `shouldBe` True
+    it "rejects examples outside the dependent domain" $
+      compile [spec ("law `bad` is definition is `for all` (x :: Int8) (y :: Int8 where y > Int8.max - x) . x + y > Int8.max end example `invalid` is x = 0 y = 127 expect x + y = 127 end end")] `shouldSatisfy` isLeft
+    it "rejects empty finite domains and non-Boolean refinements" $ do
+      compile [spec (law "(x :: Bool where false)" "x = x")] `shouldSatisfy` isLeft
+      compile [spec (law "(x :: Int8 where x)" "x = x")] `shouldSatisfy` isLeft
+    it "permits a prefix with no continuation without treating the whole domain as empty" $
+      compile [spec (law "(x :: Int8) (y :: Int8 where y > Int8.max - x)" "x + y > Int8.max")] `shouldSatisfy` isRight
+    it "rejects adapter calls in predicates" $
+      compile [spec ("valid :: Int8 -> Bool\n" ++ law "(x :: Int8 where valid x)" "x = x")] `shouldSatisfy` isLeft
+    it "rejects forward value references and recursive aliases" $ do
+      compile [spec (law "(x :: Int8 where x > y) (y :: Int8)" "x = x")] `shouldSatisfy` isLeft
+      compile [spec "refinement Loop is (x :: Loop where true) end"] `shouldSatisfy` isLeft
+    it "resolves forward refinement declarations and zero-parameter aliases" $
+      compile [spec ("identity :: Positive -> Positive\nrefinement Positive is (x :: Int8 where x > 0) end")] `shouldSatisfy` isRight
+    it "checks capabilities on unused generic refinements" $ do
+      compile [spec "refinement Positive (T :: Type) is (x :: T where x > 0) end"] `shouldSatisfy` isLeft
+      compile [spec "refinement Positive (T :: Type) requires Ordered T is (x :: T where x > 0) end"] `shouldSatisfy` isRight
+    it "rejects invalid scalar specializations" $ do
+      compile [spec ("refinement Positive (T :: Type) requires Integer T is (x :: T where x > 0) end\n" ++ law "(x :: Positive Float64)" "x = x")] `shouldSatisfy` isLeft
+      compile [spec (law "(x :: Integer)" "x < Integer.max")] `shouldSatisfy` isLeft
+    it "supports abstract results and integer-constrained reusable laws" $
+      compile [spec ("f :: Int8 -> Integer\nlaw `successor` (g :: a -> b) requires Integer a Integer b is definition is `for all` (x :: a) . g x = x + 1 end end\nlaw `instance` is definition is `successor` f end end")] `shouldSatisfy` isRight
+    it "checks dependent postcondition scope" $ do
+      compile [spec "f :: (x :: Int8) -> (r :: Integer where r == x + 1)"] `shouldSatisfy` isRight
+      compile [spec "f :: (x :: Int8) -> (r :: Integer where r == missing)"] `shouldSatisfy` isLeft
+    it "composes nested presence refinements" $
+      compile [spec ("refinement Positive is (x :: Int8 where x > 0) end\n" ++ law "(x :: Optional (Nullable Positive))" "x = x")] `shouldSatisfy` isRight
+    it "preserves short circuiting in pure reference evaluation" $ do
+      evaluateBool 64 [] (Binary "&&" (BoolLit False) (Binary ">" (Binary "/" (Number 1) (Number 0)) (Number 0))) `shouldBe` Right False
+      evaluateBool 64 [] (Binary "||" (BoolLit True) (Binary ">" (Binary "/" (Number 1) (Number 0)) (Number 0))) `shouldBe` Right True
+      evaluateBool 64 [] (Binary ">" (Binary "/" (Number 1) (Number 0)) (Number 0)) `shouldSatisfy` isLeft
+    it "resolves machine bounds from the requested profile" $ do
+      boundsValue 32 "max" (Named "IntSize") `shouldBe` Right (SInteger "Integer" 2147483647)
+      boundsValue 64 "max" (Named "IntSize") `shouldBe` Right (SInteger "Integer" 9223372036854775807)
+    it "rejects invalid generation limits" $
+      compileWithSettings 64 defaultGeneration{maxAttempts=0} [spec (law "(x :: Int8)" "x = x")] `shouldSatisfy` isLeft
+
+    it "avoids capturing a value argument with an alias's own binder" $ do
+      let header = "refinement GreaterThan (T :: Type) (lower :: T) requires Ordered T is (x :: T where x > lower) end\n"
+          body = "law `dependent` is definition is `for all` (x :: Int8) (y :: GreaterThan Int8 x) . y > x end example `valid` is x = 0 y = 1 expect y = 1 end end"
+      compile [spec (header ++ body)] `shouldSatisfy` isRight
+    it "rejects capability mismatches in refined results" $
+      compile [spec "refinement Positive (T :: Type) requires Integer T is (x :: T where x > 0) end\nf :: Int8 -> Positive Float64"] `shouldSatisfy` isLeft
+
+    it "enforces refinements on named refinement value parameters" $ do
+      let header = "refinement Positive is (x :: Int8 where x > 0) end\nrefinement Above (lower :: Positive) is (value :: Int8 where value > lower) end\n"
+      compile [spec (header ++ law "(x :: Above (-1))" "x = x")] `shouldSatisfy` isLeft
+      compile [spec (header ++ law "(x :: Above 1)" "x = x")] `shouldSatisfy` isRight
+
+    it "evaluates complex equality and negation in pure predicates" $ do
+      let z = SComplex "Complex64" (floatScalar "Float32" 1) (floatScalar "Float32" 2)
+          negative = SComplex "Complex64" (floatScalar "Float32" (-1)) (floatScalar "Float32" (-2))
+      evaluateBool 64 [] (Binary "==" (ScalarLit z) (ScalarLit z)) `shouldBe` Right True
+      evaluateBool 64 [] (Binary "!=" (ScalarLit z) (ScalarLit negative)) `shouldBe` Right True
+      evaluate 64 [] (Unary "-" (ScalarLit z)) `shouldBe` Right negative

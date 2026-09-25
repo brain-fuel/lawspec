@@ -5,23 +5,51 @@ cabal-version: 1.12
 -- see: https://github.com/sol/hpack
 
 name:           lawspec
-version:        0.6.0
+version:        0.7.0
 synopsis:       Portable executable laws
 license:        MIT
 license-file:   LICENSE
 build-type:     Simple
 extra-source-files:
     README.md
+    PRIMITIVES.md
+    REFINEMENTS.md
+    API-MIGRATION.md
+    runtime/lawspec_runtime.go
+    runtime/lawspec_runtime.mjs
+    runtime/lawspec_runtime.py
+    runtime/LawSpecRuntime.hs
+    runtime/LawSpecRuntime.java
+    examples/specs/algebra.lawspec
+    examples/specs/atoi_codec.lawspec
+    examples/specs/boolean_flags.lawspec
+    examples/specs/canonical_url.lawspec
+    examples/specs/currying.lawspec
+    examples/specs/equivalent.lawspec
+    examples/specs/mixed_inputs.lawspec
+    examples/specs/parse_port.lawspec
+    examples/specs/refinements.lawspec
+    examples/specs/scalar_adapters.lawspec
+    examples/specs/scalar_catalog.lawspec
+    examples/specs/scalars.lawspec
+    examples/specs/slug.lawspec
 
 library
   exposed-modules:
       LawSpec.Api
       LawSpec.Compile
+      LawSpec.Domain
       LawSpec.Emit
+      LawSpec.Eval
       LawSpec.Gen
       LawSpec.Model
+      LawSpec.NativeScalarEmit
       LawSpec.Parser
       LawSpec.Prelude
+      LawSpec.Refinement
+      LawSpec.RuntimeSources
+      LawSpec.Scalar
+      LawSpec.ScalarEmit
   other-modules:
       Paths_lawspec
   hs-source-dirs:

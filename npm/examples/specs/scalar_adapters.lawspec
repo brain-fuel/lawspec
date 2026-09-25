@@ -1,0 +1,83 @@
+unit example.scalar_adapters
+echoChar :: Char -> Char
+echoCodePoint :: CodePoint -> CodePoint
+echoCodeUnit :: CodeUnit16 -> CodeUnit16
+echoBytes :: Bytes -> Bytes
+echoComplex :: Complex64 -> Complex64
+successor :: Int8 -> BigInt
+narrow :: Int8 -> Int8
+addDecimal :: Decimal -> Decimal -> Decimal
+sameSymbol :: Symbol -> Symbol -> Bool
+echoRaw :: Utf16Text -> Utf16Text
+echoPresence :: Optional (Nullable Int8) -> Optional (Nullable Int8)
+finish :: Unit -> Unit
+preserveBig :: UInt64 -> UInt64
+machineEcho :: IntSize -> IntSize
+
+law `promoted successor` is
+  definition is `for all` (x :: Int8) . successor x = x + 1 end
+  example `no overflow` is x = 127 expect successor x = 128 end
+end
+law `checked bridge` is
+  definition is `for all` (x :: Int8) . narrow (x + 0) = x end
+  example `maximum` is x = 127 expect narrow (x + 0) = 127 end
+end
+law `exact decimal adapter` is
+  definition is `for all` (x :: Decimal) (y :: Decimal) . addDecimal x y = x + y end
+  example `tenths` is x = 0.1 y = 0.2 expect addDecimal x y = 0.3 end
+end
+law `symbol identity adapter` is
+  definition is `for all` (x :: Symbol) (y :: Symbol) . sameSymbol x x and sameSymbol y y end
+  example `same description distinct identities` is
+    x = symbol("a", "same") y = symbol("b", "same")
+    expect sameSymbol x y = false
+    expect sameSymbol x x = true
+  end
+end
+law `raw adapter` is
+  definition is `for all` (x :: Utf16Text) . echoRaw x = x end
+  example `lone surrogate` is x = utf16([55296]) expect echoRaw x = utf16([55296]) end
+end
+law `presence adapter` is
+  definition is `for all` (x :: Optional (Nullable Int8)) . echoPresence x = x end
+  example `missing` is x = undefined expect echoPresence x = undefined end
+  example `null present` is x = optional(null) expect echoPresence x = optional(null) end
+end
+law `unit adapter` is
+  definition is `for all` (x :: Unit) . finish x = unitValue end
+  example `completed` is x = unitValue expect finish x = unitValue end
+end
+
+law `no safe-number truncation` is
+  definition is `for all` (x :: UInt64) . preserveBig x = x end
+  example `unsigned maximum` is x = 18446744073709551615 expect preserveBig x = 18446744073709551615 end
+end
+law `machine profile binding` is
+  definition is `for all` (x :: IntSize) . machineEcho x = x end
+  example `portable width` is x = 2147483647 expect machineEcho x = 2147483647 end
+end
+
+law `Char native bridge` is
+  definition is `for all` (x :: Char) . echoChar x = x end
+  example `native value` is x = char(128512) expect echoChar x = char(128512) end
+end
+
+law `CodePoint native bridge` is
+  definition is `for all` (x :: CodePoint) . echoCodePoint x = x end
+  example `native value` is x = codePoint(55296) expect echoCodePoint x = codePoint(55296) end
+end
+
+law `CodeUnit16 native bridge` is
+  definition is `for all` (x :: CodeUnit16) . echoCodeUnit x = x end
+  example `native value` is x = codeUnit16(65535) expect echoCodeUnit x = codeUnit16(65535) end
+end
+
+law `Bytes native bridge` is
+  definition is `for all` (x :: Bytes) . echoBytes x = x end
+  example `native value` is x = bytes([0,128,255]) expect echoBytes x = bytes([0,128,255]) end
+end
+
+law `Complex64 native bridge` is
+  definition is `for all` (x :: Complex64) . prelude.isNaN (prelude.real (echoComplex x)) = prelude.isNaN (prelude.real x) end
+  example `native value` is x = complex64(1,2) expect echoComplex x = complex64(1,2) end
+end

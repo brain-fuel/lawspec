@@ -21,7 +21,7 @@ export async function generateExamples(options) {
   const compiler = await createCompiler();
   const artifacts = [];
   for (const target of selected) {
-    const result = await compiler.planGeneration({ sources, target });
+    const result = await compiler.planGeneration({ sources, target, machineBits: options.machineBits ?? 64 });
     if (result.diagnostics.length)
       throw Object.assign(new Error("Bundled examples failed to compile"), {
         diagnostics: result.diagnostics,

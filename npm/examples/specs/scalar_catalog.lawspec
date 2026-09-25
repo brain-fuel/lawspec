@@ -1,0 +1,166 @@
+unit example.scalar_catalog
+
+law `Bool representation` is
+  definition is `for all` (x :: Bool) . x = x end
+  example `explicit value` is x = true expect x = true end
+end
+
+law `Int8 representation` is
+  definition is `for all` (x :: Int8) . x = x end
+  example `explicit value` is x = -128 expect x = -128 end
+end
+
+law `Int16 representation` is
+  definition is `for all` (x :: Int16) . x = x end
+  example `explicit value` is x = 32767 expect x = 32767 end
+end
+
+law `Int32 representation` is
+  definition is `for all` (x :: Int32) . x = x end
+  example `explicit value` is x = 2147483647 expect x = 2147483647 end
+end
+
+law `Int64 representation` is
+  definition is `for all` (x :: Int64) . x = x end
+  example `explicit value` is x = 9223372036854775807 expect x = 9223372036854775807 end
+end
+
+law `UInt8 representation` is
+  definition is `for all` (x :: UInt8) . x = x end
+  example `explicit value` is x = 255 expect x = 255 end
+end
+
+law `UInt16 representation` is
+  definition is `for all` (x :: UInt16) . x = x end
+  example `explicit value` is x = 65535 expect x = 65535 end
+end
+
+law `UInt32 representation` is
+  definition is `for all` (x :: UInt32) . x = x end
+  example `explicit value` is x = 4294967295 expect x = 4294967295 end
+end
+
+law `UInt64 representation` is
+  definition is `for all` (x :: UInt64) . x = x end
+  example `explicit value` is x = 18446744073709551615 expect x = 18446744073709551615 end
+end
+
+law `IntSize representation` is
+  definition is `for all` (x :: IntSize) . x = x end
+  example `explicit value` is x = 2147483647 expect x = 2147483647 end
+end
+
+law `UIntSize representation` is
+  definition is `for all` (x :: UIntSize) . x = x end
+  example `explicit value` is x = 4294967295 expect x = 4294967295 end
+end
+
+law `UIntPtr representation` is
+  definition is `for all` (x :: UIntPtr) . x = x end
+  example `explicit value` is x = 4294967295 expect x = 4294967295 end
+end
+
+law `BigInt representation` is
+  definition is `for all` (x :: BigInt) . x = x end
+  example `explicit value` is x = -1234567890123456789012345678901234567890 expect x = -1234567890123456789012345678901234567890 end
+end
+
+law `BigUInt representation` is
+  definition is `for all` (x :: BigUInt) . x = x end
+  example `explicit value` is x = 1234567890123456789012345678901234567890 expect x = 1234567890123456789012345678901234567890 end
+end
+
+law `Decimal representation` is
+  definition is `for all` (x :: Decimal) . x = x end
+  example `explicit value` is x = 0.000000000000000000000000000000000001 expect x = 0.000000000000000000000000000000000001 end
+end
+
+law `Rational representation` is
+  definition is `for all` (x :: Rational) . x = x end
+  example `explicit value` is x = rational(-7, 11) expect x = rational(-7, 11) end
+end
+
+law `Float32 representation` is
+  definition is `for all` (x :: Float32) . prelude.isNaN x = prelude.isNaN x end
+  example `explicit value` is x = float32Bits("80000000") expect x = float32Bits("80000000") end
+end
+
+law `Float64 representation` is
+  definition is `for all` (x :: Float64) . prelude.isNaN x = prelude.isNaN x end
+  example `explicit value` is x = float64Bits("7ff0000000000000") expect x = float64Bits("7ff0000000000000") end
+end
+
+law `Complex64 representation` is
+  definition is `for all` (x :: Complex64) . prelude.isNaN (prelude.real x) = prelude.isNaN (prelude.real x) end
+  example `explicit value` is x = complex64(1, -2) expect x = complex64(1, -2) end
+end
+
+law `Complex128 representation` is
+  definition is `for all` (x :: Complex128) . prelude.isNaN (prelude.real x) = prelude.isNaN (prelude.real x) end
+  example `explicit value` is x = complex128(0.5, -3.5) expect x = complex128(0.5, -3.5) end
+end
+
+law `Char representation` is
+  definition is `for all` (x :: Char) . x = x end
+  example `explicit value` is x = char(128512) expect x = char(128512) end
+end
+
+law `CodePoint representation` is
+  definition is `for all` (x :: CodePoint) . x = x end
+  example `explicit value` is x = codePoint(55296) expect x = codePoint(55296) end
+end
+
+law `CodeUnit16 representation` is
+  definition is `for all` (x :: CodeUnit16) . x = x end
+  example `explicit value` is x = codeUnit16(65535) expect x = codeUnit16(65535) end
+end
+
+law `Text representation` is
+  definition is `for all` (x :: Text) . x = x end
+  example `explicit value` is x = "λ日本語😀" expect x = "λ日本語😀" end
+end
+
+law `CodePointText representation` is
+  definition is `for all` (x :: CodePointText) . x = x end
+  example `explicit value` is x = codePoints([55296, 1114111]) expect x = codePoints([55296, 1114111]) end
+end
+
+law `Utf16Text representation` is
+  definition is `for all` (x :: Utf16Text) . x = x end
+  example `explicit value` is x = utf16([55296, 0, 65535]) expect x = utf16([55296, 0, 65535]) end
+end
+
+law `Bytes representation` is
+  definition is `for all` (x :: Bytes) . x = x end
+  example `explicit value` is x = bytes([0, 128, 255]) expect x = bytes([0, 128, 255]) end
+end
+
+law `Symbol representation` is
+  definition is `for all` (x :: Symbol) . x = x end
+  example `explicit value` is x = symbol("catalog", "same") expect x = symbol("catalog", "same") end
+end
+
+law `Unit representation` is
+  definition is `for all` (x :: Unit) . x = x end
+  example `explicit value` is x = unitValue expect x = unitValue end
+end
+
+law `Null representation` is
+  definition is `for all` (x :: Null) . x = x end
+  example `explicit value` is x = null expect x = null end
+end
+
+law `Undefined representation` is
+  definition is `for all` (x :: Undefined) . x = x end
+  example `explicit value` is x = undefined expect x = undefined end
+end
+
+law `Nullable Int8 representation` is
+  definition is `for all` (x :: Nullable Int8) . x = x end
+  example `explicit value` is x = nullable(127) expect x = nullable(127) end
+end
+
+law `Optional Int8 representation` is
+  definition is `for all` (x :: Optional Int8) . x = x end
+  example `explicit value` is x = undefined expect x = undefined end
+end

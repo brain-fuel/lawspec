@@ -131,9 +131,9 @@ test("Text laws, idempotence, escaped examples and mixed inputs work on every ba
     result.laws[2].inputs.map((i) => i.inputType.contents),
     ["Text", "Int32"],
   );
-  assert.equal(
+  assert.deepEqual(
     result.laws[0].original.examples[0].bindings[0][1],
-    "Hello, World!",
+    {type:"Text",units:[..."Hello, World!"].map(c=>c.codePointAt(0))},
   );
   const generators = {
     java: "Generator.stringsOf(Generator.asciiPrintableChars())",
@@ -184,7 +184,7 @@ end`;
   const assertions = result.laws[0].original.examples[0].expectations;
   assert.equal(assertions.length, 2);
   assert.equal(assertions[0].actual.tag, "Apply");
-  assert.equal(assertions[0].expected, "-42");
+  assert.deepEqual(assertions[0].expected, {type:"Text",units:[45,52,50]});
   const failures = [
     [
       source.replace(/\s*expect actual[^\n]*/g, ""),

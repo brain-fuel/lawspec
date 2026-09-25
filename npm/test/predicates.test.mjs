@@ -26,13 +26,13 @@ test("port predicates, reusable guards and Bool literals survive the public API"
     result.expansions[0],
     /validPort \(x\) implies parse \(render \(x\)\) = x/,
   );
-  assert.equal(
+  assert.deepEqual(
     result.laws[0].original.examples[0].expectations[0].expected,
-    true,
+    {type:"Bool",value:true},
   );
-  assert.equal(
+  assert.deepEqual(
     result.laws[0].original.examples[3].expectations[0].expected,
-    false,
+    {type:"Bool",value:false},
   );
   for (const bad of [
     content.replace(

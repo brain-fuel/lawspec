@@ -1,0 +1,75 @@
+unit example.refinements
+
+refinement Between (T :: Type) (minimum :: T) (maximum :: T)
+  requires Ordered T is
+  (value :: T where minimum <= value && value <= maximum)
+end
+
+refinement Positive (T :: Type) requires Integer T is
+  (value :: T where value > 0)
+end
+
+refinement AdditionOverflows (T :: Type) (left :: T)
+  requires Integer T Bounded T is
+  (right :: T where left + right > T.max)
+end
+
+add :: (x :: Int8)
+    -> (y :: AdditionOverflows Int8 x)
+    -> (result :: Integer where result == x + y)
+successor :: (x :: Int8) -> (result :: Integer where result == x + 1)
+count :: (text :: Text where prelude.length text > 0)
+      -> (result :: Integer where result == prelude.length text)
+preserve :: (x :: UInt64) -> (result :: Integer where result == x)
+positive :: (x :: Positive Int8) -> (result :: Positive Int8 where result == x)
+
+law `maximum input` is
+  definition is `for all` (x :: Int8) . successor x = x + 1 end
+  example `beyond Int8` is x = 127 expect successor x = 128 end
+end
+
+law `overflow pairs` is
+  definition is
+    `for all` (x :: Int8) (y :: AdditionOverflows Int8 x) .
+      add x y = x + y
+  end
+  example `smallest overflowing sum` is x = 127 y = 1 expect add x y = 128 end
+  example `largest sum` is x = 127 y = 127 expect add x y = 254 end
+end
+
+law `bounded input` is
+  definition is `for all` (x :: Between Int8 1 3) . positive x = x end
+  example `middle` is x = 2 expect positive x = 2 end
+end
+
+law `large integer` is
+  definition is `for all` (x :: UInt64) . preserve x = x end
+  example `maximum UInt64` is x = 18446744073709551615 expect preserve x = 18446744073709551615 end
+end
+
+abstractEcho :: (x :: Integer) -> (result :: Integer where result == x)
+
+law `nested presence` is
+  definition is `for all` (x :: Optional (Nullable (Positive Int8))) . x = x end
+end
+
+law `finite positive floats` is
+  definition is
+    `for all` (x :: Float32 where prelude.isFinite x && x > 0) .
+      prelude.isFinite x
+  end
+  example `positive` is x = 0.5 expect x = 0.5 end
+end
+
+law `raw byte length` is
+  definition is `for all` (x :: Bytes where prelude.length x == 3) . prelude.length x = 3 end
+  example `arbitrary octets` is x = bytes([0,128,255]) expect prelude.length x = 3 end
+end
+
+law `guarded predicate arithmetic` is
+  definition is `for all` (x :: Int8) (y :: Int8 where x != 0 && y > 10 / x) . y > 10 / x end
+end
+
+law `machine bound` is
+  definition is `for all` (x :: IntSize where x == IntSize.max) . x = IntSize.max end
+end

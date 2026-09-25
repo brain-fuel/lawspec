@@ -19,6 +19,10 @@ const compiler = await createCompiler();
 const fixtures = [
   ...(await Promise.all(
     [
+      "refinements",
+      "scalars",
+      "scalar_catalog",
+      "scalar_adapters",
       "slug",
       "canonical_url",
       "mixed_inputs",
@@ -35,6 +39,7 @@ const fixtures = [
   content.replace("x = -42", "x = 2147483648"),
   content.replace("representing an Int32", "λ 日本語 😀 representing an Int32"),
 ];
+for (const machineBits of [32,64])
 for (const text of fixtures)
   for (const target of [
     "java",
@@ -48,15 +53,17 @@ for (const text of fixtures)
     const input = {
       sources: [{ path: "codec.lawspec", content: text }],
       target,
+      machineBits,
     };
     const native = JSON.parse(
       execFileSync(bin, [], {
         input: JSON.stringify({ ...input, method: "planGeneration" }),
+        maxBuffer: 64 * 1024 * 1024,
         encoding: "utf8",
       }),
     );
     assert.deepEqual(await compiler.planGeneration(input), native);
   }
 console.log(
-  `Native/WASM parity: ${fixtures.length * 7} fixture/target combinations passed.`,
+  `Native/WASM parity: ${fixtures.length * 14} fixture/target combinations passed.`,
 );
