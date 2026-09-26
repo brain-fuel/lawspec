@@ -103,7 +103,7 @@ async function testCommand(target, root, config, pass) {
       });
       return run(
         config.targets[0].python || "python3",
-        ["-B", "-m", "pytest", "-q"],
+        ["-B", "-m", "pytest", "-q", ...(pass ? [] : ["-x"])],
         root,
         pass,
       );
