@@ -2,4 +2,5 @@
 *.wasm binary
 
 # GitHub fallback until Linguist supports LawSpec's own grammar.
+# Canonical grammar: editors/vscode/syntaxes/lawspec.tmLanguage.json
 *.lawspec linguist-language=Haskell

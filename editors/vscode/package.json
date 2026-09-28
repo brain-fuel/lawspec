@@ -1,0 +1,49 @@
+{
+  "name": "lawspec-language",
+  "displayName": "LawSpec",
+  "description": "LawSpec syntax highlighting, comments, and bracket matching.",
+  "version": "0.1.0",
+  "publisher": "brain-fuel",
+  "private": true,
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/brain-fuel/lawspec.git",
+    "directory": "editors/vscode"
+  },
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "lawspec",
+        "aliases": [
+          "LawSpec",
+          "lawspec"
+        ],
+        "extensions": [
+          ".lawspec"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "lawspec",
+        "scopeName": "source.lawspec",
+        "path": "./syntaxes/lawspec.tmLanguage.json"
+      }
+    ]
+  },
+  "scripts": {
+    "test": "node --test test/*.test.mjs"
+  },
+  "devDependencies": {
+    "vscode-textmate": "9.2.0",
+    "vscode-oniguruma": "2.0.1"
+  }
+}

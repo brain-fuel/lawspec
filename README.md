@@ -38,6 +38,10 @@ separate from artifact ownership. Java 25+ and Python 3.13+ baselines are unchan
 
 ## Install and try it
 
+LawSpec has its own [syntax-highlighting grammar and VS Code extension](editors/vscode/README.md)
+for keywords, types, refinements, literals, and law names. GitHub needs upstream Linguist
+support to use it; GitHub currently uses the Haskell fallback.
+
 Install [LawSpec from npm](https://www.npmjs.com/package/lawspec):
 
 ```sh

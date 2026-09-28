@@ -1,0 +1,180 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "LawSpec",
+  "scopeName": "source.lawspec",
+  "fileTypes": [
+    "lawspec"
+  ],
+  "patterns": [
+    {
+      "name": "comment.line.double-dash.lawspec",
+      "begin": "--",
+      "end": "$",
+      "beginCaptures": {
+        "0": {
+          "name": "punctuation.definition.comment.lawspec"
+        }
+      }
+    },
+    {
+      "name": "string.quoted.double.lawspec",
+      "begin": "\"",
+      "end": "\"",
+      "beginCaptures": {
+        "0": {
+          "name": "punctuation.definition.string.begin.lawspec"
+        }
+      },
+      "endCaptures": {
+        "0": {
+          "name": "punctuation.definition.string.end.lawspec"
+        }
+      },
+      "patterns": [
+        {
+          "match": "\\\\(?:[abfnrtv\\\\\"\\x27]|[0-9]+|[oO][0-7]+|[xX][0-9a-fA-F]+|\\^[A-Z@\\[\\]\\\\^_]|NUL|SOH|STX|ETX|EOT|ENQ|ACK|BEL|BS|HT|LF|VT|FF|CR|SO|SI|DLE|DC[1-4]|NAK|SYN|ETB|CAN|EM|SUB|ESC|FS|GS|RS|US|SP|DEL)",
+          "name": "constant.character.escape.lawspec"
+        }
+      ]
+    },
+    {
+      "match": "`for all`",
+      "name": "keyword.control.quantifier.lawspec"
+    },
+    {
+      "match": "\\b(law|example)\\b([ \\t]+)(`[^`\\x00-\\x1f\\x7f]+`)",
+      "captures": {
+        "1": {
+          "name": "keyword.control.lawspec"
+        },
+        "3": {
+          "name": "entity.name.function.law.lawspec"
+        }
+      }
+    },
+    {
+      "name": "entity.name.function.law.lawspec",
+      "begin": "`",
+      "end": "`|$",
+      "beginCaptures": {
+        "0": {
+          "name": "punctuation.definition.law.begin.lawspec"
+        }
+      },
+      "endCaptures": {
+        "0": {
+          "name": "punctuation.definition.law.end.lawspec"
+        }
+      }
+    },
+    {
+      "match": "\\b(unit)\\b[ \\t]+(\\p{L}[\\p{L}\\p{N}_]*(?:[ \\t]*\\.[ \\t]*\\p{L}[\\p{L}\\p{N}_]*)*)",
+      "captures": {
+        "1": {
+          "name": "keyword.control.lawspec"
+        },
+        "2": {
+          "name": "entity.name.namespace.lawspec"
+        }
+      }
+    },
+    {
+      "match": "\\b(type|refinement)\\b[ \\t]+(\\p{L}[\\p{L}\\p{N}_]*)",
+      "captures": {
+        "1": {
+          "name": "keyword.declaration.lawspec"
+        },
+        "2": {
+          "name": "entity.name.type.lawspec"
+        }
+      }
+    },
+    {
+      "match": "\\b(definition)\\b[ \\t]+((?!is\\b)\\p{L}[\\p{L}\\p{N}_]*)",
+      "captures": {
+        "1": {
+          "name": "keyword.declaration.lawspec"
+        },
+        "2": {
+          "name": "entity.name.function.lawspec"
+        }
+      }
+    },
+    {
+      "match": "^(\\p{L}[\\p{L}\\p{N}_]*)(?=[ \\t]*::)",
+      "captures": {
+        "1": {
+          "name": "entity.name.function.lawspec"
+        }
+      }
+    },
+    {
+      "match": "\\b(?:unit|law|requires|is|end|definition|description|rationale|example|expect|implies|and|references|are|where|refinement|type|match|with)\\b",
+      "name": "keyword.control.lawspec"
+    },
+    {
+      "match": "\\b\\p{L}[\\p{L}\\p{N}_]*\\.(?:min|max)\\b",
+      "name": "constant.language.bound.lawspec"
+    },
+    {
+      "match": "\\b(?:Nothing|Just|Left|Right|Nil|Cons)\\b",
+      "name": "support.function.constructor.lawspec"
+    },
+    {
+      "match": "\\b(?:true|false|unitValue|null|undefined)\\b",
+      "name": "constant.language.lawspec"
+    },
+    {
+      "match": "\\b(?:Eq|Ordered|Bounded)\\b",
+      "name": "support.type.class.lawspec"
+    },
+    {
+      "match": "\\b(?:Bool|Int8|Int16|Int32|Int64|UInt8|UInt16|UInt32|UInt64|IntSize|UIntSize|UIntPtr|Integer|BigInt|BigUInt|Decimal|Rational|Float32|Float64|Complex64|Complex128|Char|CodePoint|CodeUnit16|Text|CodePointText|Utf16Text|Bytes|Symbol|Unit|Null|Undefined|Nullable|Optional|List|Maybe|Either|Type)\\b",
+      "name": "support.type.lawspec"
+    },
+    {
+      "match": "\\bprelude\\.\\p{L}[\\p{L}\\p{N}_]*",
+      "name": "support.function.lawspec"
+    },
+    {
+      "match": "\\b(?:rational|decimal|symbol|bytes|codePoints|utf16|char|codePoint|codeUnit16|float32Bits|float64Bits|complex64|complex128|nullable|optional)\\b(?=\\s*\\()",
+      "name": "support.function.lawspec"
+    },
+    {
+      "match": "\\b[0-9]+(?:\\.[0-9]+)?(?:[eE][+-]?[0-9]+)?\\b",
+      "name": "constant.numeric.lawspec"
+    },
+    {
+      "match": "::|->",
+      "name": "keyword.operator.type.lawspec"
+    },
+    {
+      "match": "&&|\\|\\||<=|>=|==|!=|[+*/<>=!.\\-]",
+      "name": "keyword.operator.lawspec"
+    },
+    {
+      "match": "\\|",
+      "name": "punctuation.separator.branch.lawspec"
+    },
+    {
+      "match": "[()\\[\\]]",
+      "name": "punctuation.section.brackets.lawspec"
+    },
+    {
+      "match": ",",
+      "name": "punctuation.separator.lawspec"
+    },
+    {
+      "match": "\\b\\p{L}[\\p{L}\\p{N}_]*(?=[ \\t]*::)",
+      "name": "variable.parameter.lawspec"
+    },
+    {
+      "match": "\\b\\p{Lu}[\\p{L}\\p{N}_]*\\b",
+      "name": "entity.name.type.lawspec"
+    },
+    {
+      "match": "\\b\\p{L}[\\p{L}\\p{N}_]*\\b",
+      "name": "variable.other.lawspec"
+    }
+  ]
+}
