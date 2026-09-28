@@ -1,0 +1,19 @@
+unit constructor.boundaries
+
+-- Boundary planning must combine fields, not pair identical Int8 extremes.
+type Gap is
+  Gap first :: Int8 second :: (n :: Int8 where n > first)
+end
+
+-- A matching description does not identify the required Symbol fixture.
+type Identity is
+  Identity value :: (s :: Symbol where s == symbol("fixture", "same"))
+end
+
+law `dependent gaps have witnesses` is
+  definition is `for all` (x :: Gap) . x = x end
+end
+
+law `identity fixtures have witnesses` is
+  definition is `for all` (x :: Identity) . x = x end
+end

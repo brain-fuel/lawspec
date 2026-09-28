@@ -1,3 +1,4 @@
+import {propertyFiles} from './artifacts.mjs';
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
@@ -141,7 +142,7 @@ test("Text laws, idempotence, escaped examples and mixed inputs work on every ba
     const plan = await compiler.planGeneration({ sources, target });
     assert.deepEqual(plan.diagnostics, []);
     assert.equal(plan.files.filter(f => f.ownership === 'user').length, 3);
-    const tests = plan.files.filter(f => f.placement === 'test' && !f.path.includes('support/'));
+    const tests = propertyFiles(plan.files);
     assert.equal(tests.length, 3);
     assert.ok(tests.every(f => f.content.includes('example')));
     assert.ok(plan.files.some(f => f.ownership === 'generated' && f.placement === 'source'));

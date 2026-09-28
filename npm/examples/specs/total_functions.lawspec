@@ -1,0 +1,101 @@
+unit example.total_functions
+
+-- These functions are implemented in the specification. LawSpec checks their
+-- bodies and emits reusable source; they do not need adapter implementations.
+definition increment (x :: a) :: BigInt
+requires Integer a
+is
+  x + 1
+end
+
+definition count (xs :: List a) :: BigInt is
+  match xs with
+    | Nil -> 0
+    | Cons head tail -> 1 + count tail
+  end
+end
+
+definition nonempty (xs :: List a) :: Bool is
+  match xs with
+    | Nil -> false
+    | Cons head tail -> true
+  end
+end
+
+law `nonempty lists have positive length` is
+  definition is
+    `for all` (xs :: List Int8 where nonempty xs) . count xs > 0
+  end
+  example `singleton` is xs = [0] expect count xs = 1 end
+end
+
+-- The exact guard proves that the promoted denominator cannot be zero.
+definition positiveReciprocal (x :: a) :: Bool
+requires Integer a
+is
+  x >= 0 && 1 / (x + 1) > 0
+end
+
+law `guarded exact arithmetic` is
+  definition is
+    `for all` (x :: Int8) . positiveReciprocal x = (x >= 0)
+  end
+  example `skip zero denominator` is
+    x = -1 expect positiveReciprocal x = false
+  end
+  example `promote before division` is
+    x = 127 expect positiveReciprocal x = true
+  end
+end
+
+definition guardedNarrow (x :: Int8) :: Bool is
+  x < 127 && prelude.Int8 (x + 1) > x
+end
+
+law `narrow only after proving the range` is
+  definition is
+    `for all` (x :: Int8) . guardedNarrow x = (x < 127)
+  end
+  example `largest valid conversion` is x = 126 expect guardedNarrow x = true end
+  example `overflow branch is skipped` is x = 127 expect guardedNarrow x = false end
+end
+
+definition same (xs :: List a) (ys :: List a) :: Bool
+requires Eq a
+is
+  xs == ys
+end
+
+-- The same checked template produces independent concrete instances.
+law `count also accepts text` is
+  definition is
+    `for all` (xs :: List Text) . count xs = prelude.length xs
+  end
+  example `two words` is xs = ["hello", "world"] expect count xs = 2 end
+end
+
+law `increment preserves the mathematical result` is
+  definition is
+    `for all` (x :: Int8) . increment x = x + 1
+  end
+  example `maximum input` is
+    x = 127 expect increment x = 128
+  end
+end
+
+law `recursive count agrees with length` is
+  definition is
+    `for all` (xs :: List Int8) . count xs = prelude.length xs
+  end
+  example `empty` is xs = [] expect count xs = 0 end
+  example `duplicates still count` is xs = [7, 7, 7] expect count xs = 3 end
+end
+
+law `list equality preserves duplicates and order` is
+  definition is
+    `for all` (xs :: List Int8) (ys :: List Int8) . same xs ys = (xs == ys)
+  end
+  example `different order` is
+    xs = [1, 2] ys = [2, 1] expect same xs ys = false
+  end
+end

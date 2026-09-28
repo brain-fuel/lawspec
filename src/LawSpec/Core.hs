@@ -18,12 +18,34 @@ functionType t = ([],t)
 
 data Binder = Binder { binderId :: Id, binderName :: String, binderType :: Type } deriving (Eq, Show)
 data Declaration = Declaration { declarationId :: Id, declarationName :: String, declarationType :: Type, declarationOrigin :: Origin } deriving (Eq, Show)
+-- A definition supplies a checked body rather than a user-owned adapter.
+-- Calls retain resolved declaration identities; the total-definition audit
+-- determines which declaration bodies may be invoked within this closed set.
+data Definition = Definition
+  { definitionDeclaration :: Declaration, definitionArguments :: [Binder]
+  , definitionBody :: Expr
+  } deriving (Eq, Show)
+-- Products are single-constructor declarations; sums retain the identity of
+-- each constructor even when their payloads have identical representations.
+data DataDeclaration = DataDeclaration
+  { dataId :: Id, dataName :: String, dataParameters :: [Id]
+  , dataConstructors :: [DataConstructor], dataOrigin :: Origin
+  } deriving (Eq, Show)
+data DataConstructor = DataConstructor
+  { constructorId :: Id, constructorName :: String
+  , constructorFields :: [Binder], constructorPredicates :: [Expr]
+  , constructorOrigin :: Origin
+  } deriving (Eq, Show)
 -- Synthetic nodes explicitly have no source span; elaboration never fabricates
 -- expression ranges from the containing law's location.
 data Origin = SourceSpan Span | GeneratedFrom Id deriving (Eq, Show)
 data Expr = Expr { expressionType :: Type, expressionNode :: Node, expressionOrigin :: Origin } deriving (Eq, Show)
 data Node
   = Constant Scalar
+  | Construct Id [Expr]
+  | Match Expr [MatchCase]
+  | AllElements Expr Binder Expr
+  | AllPayloads Expr [(Binder, Expr)]
   | Local Id
   | ExternalCall Id [Expr]
   | Binary BinaryOp Evidence Expr Expr
@@ -32,6 +54,10 @@ data Node
   | Convert Conversion Type Expr
   | Helper Builtin [Expr]
   deriving (Eq, Show)
+data MatchCase = MatchCase
+  { caseConstructor :: Id, caseBinders :: [Binder], caseBody :: Expr
+  } deriving (Eq, Show)
+
 data BinaryOp = Add | Subtract | Multiply | Divide | Quotient | Remainder
   | Equal | NotEqual | Less | LessEqual | Greater | GreaterEqual deriving (Eq, Show)
 data UnaryOp = Negate | Not deriving (Eq, Show)
@@ -53,8 +79,11 @@ data Property = Property
   , propertyDescription :: String, propertyRationale :: String
   , propertyReferences :: [String], propertyTrace :: [String]
   } deriving (Eq, Show)
-data Unit = Unit { unitId :: Id, unitDeclarations :: [Declaration], unitContracts :: [Contract], unitProperties :: [Property] } deriving (Eq, Show)
-data Program = Program { programMachineBits :: Int, programUnits :: [Unit] } deriving (Eq, Show)
+data Unit = Unit { unitId :: Id, unitDeclarations :: [Declaration], unitContracts :: [Contract], unitProperties :: [Property], unitDefinitions :: [Definition] } deriving (Eq, Show)
+data Program = Program
+  { programMachineBits :: Int, programDataDeclarations :: [DataDeclaration]
+  , programUnits :: [Unit]
+  } deriving (Eq, Show)
 
 binaryName :: BinaryOp -> String
 binaryName Add = "+"
@@ -73,6 +102,10 @@ isComparison :: BinaryOp -> Bool
 isComparison op = op `elem` [Equal,NotEqual,Less,LessEqual,Greater,GreaterEqual]
 children :: Expr -> [Expr]
 children Expr{expressionNode=node} = case node of
+  Match value cases -> value : map caseBody cases
+  AllElements value _ predicate -> [value,predicate]
+  AllPayloads value predicates -> value : map snd predicates
+  Construct _ es -> es
   ExternalCall _ es -> es
   Binary _ _ a b -> [a,b]
   Unary _ a -> [a]
@@ -83,7 +116,14 @@ children Expr{expressionNode=node} = case node of
 
 freeBinders :: Expr -> [Id]
 freeBinders e = case expressionNode e of
+  AllElements value binder predicate -> freeBinders value ++
+    filter (/= binderId binder) (freeBinders predicate)
+  AllPayloads value predicates -> freeBinders value ++ concat
+    [filter (/= binderId binder) (freeBinders predicate) | (binder,predicate) <- predicates]
   Local n -> [n]
+  Match value cases -> freeBinders value ++ concat
+    [[n | n <- freeBinders (caseBody branch), n `notElem` map binderId (caseBinders branch)]
+      | branch <- cases]
   _ -> concatMap freeBinders (children e)
 isPure :: Expr -> Bool
 isPure e = case expressionNode e of
@@ -102,3 +142,26 @@ builtinName IsFinite = "isFinite"
 builtinName IsNegativeZero = "isNegativeZero"
 builtinName RoundHalfEven = "round"
 builtinName Checked = "checked"
+
+-- Example bindings are closed data, never computations or adapter invocations.
+isConcrete :: Expr -> Bool
+isConcrete Expr{expressionNode = Constant _} = True
+isConcrete Expr{expressionNode = Construct _ fields} = all isConcrete fields
+isConcrete _ = False
+
+-- Root expressions, without repeated descendants, for backend capability and
+-- dependency checks. Include fixtures and generator bounds as well as laws.
+propositionExpressions :: Proposition -> [Expr]
+propositionExpressions (Equation _ a b) = [a,b]
+propositionExpressions (Implication guard body) = guard : propositionExpressions body
+propositionExpressions (Conjunction bodies) = concatMap propositionExpressions bodies
+
+propertyExpressions :: Property -> [Expr]
+propertyExpressions property =
+  propositionExpressions (propertyBody property) ++
+  concat [quantifiedPredicates q ++ map snd (quantifiedBounds q) | q <- propertyInputs property] ++
+  concat [map snd (exampleBindings example) ++ concatMap propositionExpressions (exampleExpectations example)
+    | example <- propertyExamples property]
+
+contractExpressions :: Contract -> [Expr]
+contractExpressions contract = contractPreconditions contract ++ contractPostconditions contract

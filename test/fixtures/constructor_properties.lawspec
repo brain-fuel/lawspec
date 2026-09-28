@@ -1,0 +1,77 @@
+unit native.fields
+
+type Gap is
+  Gap first :: Int8 second :: (n :: Int8 where n > first)
+end
+
+type Identity is
+  Identity value :: (s :: Symbol where s == symbol("fixture", "same"))
+end
+
+type Bucket (a :: Type) is
+  Bucket values :: (xs :: List a where prelude.length xs > 0)
+end
+
+type Positives is
+  Positives values :: List (n :: Int8 where n > 0)
+end
+
+type Choice is
+  Accepted value :: (n :: Int8 where n > 0)
+  Rejected reason :: Text
+end
+
+type Machine is
+  Machine value :: (n :: IntSize where n > 0)
+end
+
+definition inverseGap (gap :: Gap) :: Rational is
+  match gap with | Gap x y -> 1 / (y - x) end
+end
+
+definition echoIdentity (box :: Identity) :: Identity is box end
+definition echoBucket (box :: Bucket Int8) :: Bucket Int8 is box end
+definition echoPositives (box :: Positives) :: Positives is box end
+definition echoChoice (box :: Choice) :: Choice is box end
+definition echoMachine (box :: Machine) :: Machine is box end
+
+type Guarded is
+  Guarded value :: (n :: Int8 where n != 0 && 1 / n > 0)
+end
+
+definition echoGuarded (box :: Guarded) :: Guarded is box end
+
+echoAdapter :: Identity -> Identity
+law `adapter identity` is definition is `for all` (x :: Identity) . echoAdapter x = x end end
+law `positive gap` is definition is `for all` (x :: Gap) . inverseGap x > 0 end end
+law `fixture identity` is definition is `for all` (x :: Identity) . echoIdentity x = x end end
+law `nonempty bucket` is definition is `for all` (x :: Bucket Int8) . echoBucket x = x end end
+law `positive elements` is definition is `for all` (x :: Positives) . echoPositives x = x end end
+law `sum alternatives` is definition is `for all` (x :: Choice) . echoChoice x = x end end
+law `machine field` is definition is `for all` (x :: Machine) . echoMachine x = x end end
+law `guarded field` is definition is `for all` (x :: Guarded) . echoGuarded x = x end end
+law `mixed fixture inputs` is definition is
+  `for all` (x :: Identity) (s :: Symbol where s == symbol("fixture", "same")) .
+  echoIdentity x = x
+end end
+law `dependent fixture inputs` is definition is
+  `for all` (x :: Identity) (s :: Symbol where s == symbol("fixture", "same"))
+    (t :: Symbol where t == s) . s = t
+end end
+law `nested identities` is definition is `for all` (xs :: List Identity) . xs = xs end end
+
+type Flag is
+  Flag enabled :: (b :: Bool where b)
+end
+
+law `finite field domain` is
+  definition is `for all` (x :: Flag) . x = x end
+end
+
+law `nullable identity` is
+  definition is `for all` (x :: Nullable Identity) . x = x end
+end
+
+law `optional identity` is
+  definition is `for all` (x :: Optional Identity) . x = x end
+end

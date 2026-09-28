@@ -1,10 +1,59 @@
 # Compiler API migration: schema 2 → schema 3
 
-LawSpec 0.8 uses API schema version **3**. Requests may omit `schemaVersion` or
+LawSpec 0.8 introduced API schema version **3**, which 0.9 continues to use.
+Requests may omit `schemaVersion` or
 send `3`. An explicit `2` (or any other version) receives a request diagnostic;
 it is never silently reinterpreted. LawSpec specification syntax remains compatible.
 The generated `index.d.ts` describes the public protocol. Internal Haskell
 constructors and record fields are no longer the wire format.
+
+## 0.9 structural data and definition metadata
+
+Successful results also expose `dataTypes: DataTypeDeclaration[]`. Each named
+declaration has a resolved `id`, a display `name`, parameter IDs, an origin, and
+constructors with resolved IDs and ordered typed fields. Use resolved IDs to
+join references; constructors with the same display name can belong to different
+units. Built-in container types do not need user declarations in this array.
+
+Example bindings now use `DataValue`: either an existing tagged scalar or
+`{kind: "data", type: Type, constructor: string, fields: DataValue[]}`. List values
+use `List::Nil` and `List::Cons`, with head and tail fields; Maybe and Either use
+their qualified constructor IDs. Do not flatten these values to JSON arrays or
+nullable fields: that would lose constructor and nested-presence distinctions.
+
+Expressions add `construct` nodes with a constructor ID and argument expressions,
+and `match` nodes with a scrutinee and cases. Each case has a constructor ID,
+ordered typed binders, and a body. Its binders are local to that case. Structural
+expressions are represented by these nodes, not by scalar `constant` nodes.
+Exhaustive API visitors must handle the added expression variants even though
+the protocol continues to use schema version 3.
+
+Successful results add `definitions: Definition[]`. Each entry contains `owner`,
+the resolved declaration `id`, typed `arguments: Binder[]`, and a typed `body`.
+The matching entry in `units[].declarations` supplies the signature and origin.
+Calls retain their declaration ID; consumers can join against `definitions` to
+distinguish checked bodies from external adapters. An empty array means the
+program has no definitions.
+
+The native frontend checks these bodies for typing, exhaustive matching,
+structural termination, and potentially failing operations. Native reference
+execution and source emission for Rust, Java, Kotlin, Python, JavaScript,
+TypeScript, Go, and Haskell are implemented, including generic definitions
+specialized to concrete signatures. The API exposes concrete instances with
+generated names and resolved IDs, not unspecialized templates. Calls sharing a
+signature reuse an instance; unused templates emit none. Consumers should join
+by ID rather than parse generated names. Refinement-bearing definitions are
+checked and emitted by both the native compiler and bundled WASM distribution.
+Definition bodies produce generated source rather than
+user-owned adapter stubs. Haskell native entry points take an `LS.SymbolContext`
+and return `Either String a`; generated tests allocate a context per example or
+property iteration so Symbol fixture identity does not escape its scope.
+
+Refinement and contract expressions may now contain calls whose IDs resolve to
+checked `definitions`. Validation still rejects calls to external adapters in
+these expressions. Test planning evaluates the closed definitions when filtering
+finite cases, boundaries, and concrete example inputs. Calls remain ordinary
+typed call nodes; consumers need no source-level refinement interpreter.
 
 ## Laws and typed expressions
 
@@ -101,3 +150,55 @@ All nonempty test plans now emit the portable scalar runtime. Existing Haskell
 projects must include `text` and `bytestring` in the component that compiles
 that source. Doctor reports the missing dependencies before generation. Build
 files remain user-owned; new scaffolds already include these dependencies.
+
+## Formatting requests and adapter references (0.9)
+
+`GenerationRequest` accepts `minify?: boolean`, defaulting to `false`. The CLI
+passes an explicit `--minify` from `generate` and `examples`. `init --minify`
+also compacts newly created scaffolds and the configuration JSON; the choice is
+not saved as a project setting. Existing project build files stay user-owned. Source/test placement is independent of
+formatting. Compact rendering preserves mandatory newlines, indentation, token
+separators, comments, and literal contents.
+
+User-owned artifacts may include `adapterReference`, the compiler's canonical
+readable scaffold. It is comparison data, not the user's implementation and not
+an additional file to write. Manifest writers should hash this reference when
+present, falling back to `content` for older producers. Continue hashing actual
+`content` for generated-file ownership. This keeps a switch of formatting mode
+from producing false adapter-update reports, while declared interface changes
+still request review. Never normalize, overwrite, or hash user implementations
+as the required adapter interface. Existing version-1 manifests remain readable.
+
+Native and bundled WASM requests share this formatting behavior. CLI scaffolds,
+generated sources, and tests preserve the same ownership rules in both modes.
+
+
+Scoped List payload predicates use the schema-3 expression node
+`{kind: "allElements", value: Expr, binder: Binder, predicate: Expr}`. The binder
+is local to `predicate`; `value` is evaluated in the surrounding scope. The
+predicate and result have type Bool. Visitors must handle this node alongside
+`match`, including empty-list truth and short-circuit evaluation.
+
+The Core also defines a scoped recursive payload operation:
+`{kind: "allPayloads", value: Expr, predicates: PayloadPredicate[]}`, where each
+`PayloadPredicate` contains a `binder: Binder` and `predicate: Expr`. Entries
+correspond, in order, to the root data type's type arguments. Each binder has
+that argument's type and is local only to its own predicate; sibling predicates
+cannot refer to it. The scrutinee is evaluated in the surrounding scope, and
+both each predicate and the whole operation have type Bool.
+
+Traversal follows stored parameter occurrences through recursive declarations,
+including nested containers and changing type arguments. It does not constrain
+unrelated fixed fields that happen to have the same concrete type. Empty and
+phantom occurrences are vacuously true; rejection short-circuits traversal.
+
+Source named-payload refinements now elaborate to this discriminator, including
+recursive applications. API consumers should handle it in checked Core views.
+All eight Core emitters support this operation in definitions, properties and
+constructor predicates.
+The internal surface predicate node is type checked and lowered through
+specialization and template proofs into this same Core operation. Internal
+definition and constructor contracts support recursive payload proof facts. Constructor predicates are audited in order, and callback
+matches/constructions participate in the constructor dependency-cycle check.
+The TypeScript declarations now include both
+`allElements` and `allPayloads`; exhaustive visitors should handle both.

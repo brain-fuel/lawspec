@@ -1,13 +1,68 @@
+# Local integration projects, toolchains, and verification output
+/.integration/
+/.tools/
+/.artifacts/
+/example_artifacts/
+
+# Local agent working notes (not release documentation)
+/PLAN-*.md
+/RECOVERY.md
+/ACCEPTANCE-*.md
+
+# Haskell build and profiling output
 .stack-work/
 dist-newstyle/
-wasm/dist-newstyle/
-node_modules/
-.integration/
-*.tgz
-.DS_Store
-.tools/
-.artifacts/
-example_artifacts/
+*.hi
+*.dyn_hi
+*.hie
+*.o
+*.dyn_o
+*.prof
+*.hp
+*.eventlog
 
-.hypothesis/
+# JavaScript/TypeScript dependencies, caches, and packed releases
+node_modules/
+.npm/
+*.tsbuildinfo
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+*.tgz
+
+# Python environments and test/tool caches
+.venv/
+venv/
 __pycache__/
+*.py[cod]
+.pytest_cache/
+.hypothesis/
+.mypy_cache/
+.ruff_cache/
+.tox/
+.nox/
+.coverage
+.coverage.*
+htmlcov/
+
+# JVM and Rust build output
+.gradle/
+.kotlin/
+*.class
+/build/
+/dist/
+/target/
+/runtime/rust/target/
+
+# Local environment overrides and editor/OS temporary files
+.env
+.env.local
+.env.*.local
+.DS_Store
+*.swp
+*.swo
+*~
+
+# Keep release inputs: npm/core.wasm, npm/build.json, runtime sources,
+# dependency lockfiles, examples, tests, and RELEASE-*.md belong in Git.

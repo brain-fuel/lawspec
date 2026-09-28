@@ -1,3 +1,4 @@
+import {propertyFiles} from './artifacts.mjs';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
@@ -34,8 +35,10 @@ test('all targets expose generated runtime source placement independently of own
   const result=await compiler.planGeneration({sources:source(catalog),target});
   assert.deepEqual(result.diagnostics,[]);
   const runtimes=result.files.filter(f=>f.placement==='source'&&f.ownership==='generated');
-  assert.equal(runtimes.length,target==='rust'?2:1,target);
-  assert.equal(result.files.filter(f=>f.placement==='test'&&!f.path.includes('support/')).length,1);
+  assert.ok(runtimes.length > 0, target);
+  const runtimeNames = {java:'LawSpecRuntime.java',kotlin:'LawSpecRuntime.java',python:'lawspec_runtime.py',javascript:'lawspec_runtime.mjs',typescript:'lawspec_runtime.ts',go:'lawspec_runtime.go',haskell:'LawSpecRuntime.hs',rust:'lawspec_runtime.rs'};
+  assert.ok(runtimes.some(f => f.path.endsWith(runtimeNames[target])), target);
+  assert.equal(propertyFiles(result.files).length,1);
  }
 });
 test('arithmetic capabilities resolve at specialization and retain safe lexical scope',async()=>{

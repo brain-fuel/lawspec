@@ -13,6 +13,15 @@ import qualified Data.Map.Strict as M
 
 spec :: Spec
 spec = describe "typed core boundary" $ do
+  it "preserves IEEE special values when converting host float precision" $ do
+    floatValue (SFloat "Float32" "7fc00000") `shouldSatisfy` isNaN
+    floatValue (SFloat "Float32" "7f800000") `shouldBe` (1 / 0)
+    floatValue (SFloat "Float32" "ff800000") `shouldBe` (-1 / 0)
+    floatValue (SFloat "Float32" "80000000") `shouldSatisfy` isNegativeZero
+    floatScalar "Float32" (1 / 0) `shouldBe` SFloat "Float32" "7f800000"
+    floatScalar "Float32" (-1 / 0) `shouldBe` SFloat "Float32" "ff800000"
+    floatScalar "Float32" (-0.0) `shouldBe` SFloat "Float32" "80000000"
+    floatValue (floatScalar "Float32" (0 / 0)) `shouldSatisfy` isNaN
   it "elaborates all bundled programs at both machine widths and independently validates them" $ do
     mapM_ (\name -> do
       source <- readFile ("examples/specs/" ++ name ++ ".lawspec")
@@ -41,7 +50,9 @@ spec = describe "typed core boundary" $ do
       Right c -> mapM_ (\p -> mapM_ (\example -> do
         case mapM (\(i,e) -> (,) i <$> E.evaluatePure 64 [] e) (C.exampleBindings example) of
           Left err -> expectationFailure err
-          Right bindings -> mapM_ (\expect -> E.evaluateProposition 64 (\_ _ -> Left "unexpected adapter") bindings expect `shouldBe` Right True) (C.exampleExpectations example)) (C.propertyExamples p)) (concatMap C.unitProperties (C.programUnits c))
+          Right bindings -> mapM_ (\expect -> case E.evaluateProposition 64 (\_ _ -> Left "unexpected adapter") bindings expect of
+            Right True -> pure ()
+            actual -> expectationFailure (show expect ++ " evaluated to " ++ show actual)) (C.exampleExpectations example)) (C.propertyExamples p)) (concatMap C.unitProperties (C.programUnits c))
 
   it "keeps checked conversions explicit and rejects overflow before adapter invocation" $ do
     let source = S.Apply (S.Var "narrow") (S.Binary "+" (S.Var "x") (S.Number 1))

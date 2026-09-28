@@ -1,13 +1,208 @@
-# LawSpec language and compiler boundary (0.8)
+# LawSpec language and compiler boundary (0.9)
 
 LawSpec describes portable laws, concrete examples, and adapter contracts. The
 compiler is written in Haskell. Rust is an output backend alongside Java, Python,
 JavaScript, TypeScript, Go, Haskell, and Kotlin.
 
+## Lists and algebraic containers
+
+`List a` is an ordered, finite sequence of values of one type. Lists nest and
+retain duplicates. Literals use brackets; their element type comes from the
+surrounding signature, quantifier, or annotation. An unconstrained empty list
+needs an annotation such as `([] :: List Int8)`.
+
+```lawspec
+unit guide.lists
+
+reverse :: List Int32 -> List Int32
+
+law `reverse preserves length` is
+  definition is
+    `for all` (xs :: List Int32) .
+      prelude.length (reverse xs) = prelude.length xs
+  end
+  example `duplicates count separately` is
+    xs = [3, 1, 3]
+    expect prelude.length xs = 3
+    expect reverse xs = [3, 1, 3]
+  end
+end
+```
+
+`prelude.length` returns an exact integer. List equality compares corresponding
+values in order and requires equal lengths. It preserves scalar equality rules:
+NaN still differs from itself, signed zeros compare equal, and Symbols compare
+by identity. Generic list equality requires `Eq a`.
+
+`Maybe a` has constructors `Nothing` and `Just value`. `Either a b` has
+constructors `Left value` and `Right value`. These are algebraic sums, separate
+from the interoperability types `Nullable a` and `Optional a`.
+
+```lawspec
+unit guide.presence
+
+echo :: Maybe (Either Int8 Bool) -> Maybe (Either Int8 Bool)
+
+law `preserve every alternative` is
+  definition is `for all` (x :: Maybe (Either Int8 Bool)) . echo x = x end
+  example `absent` is x = Nothing expect echo x = Nothing end
+  example `left integer` is x = Just (Left 127) expect echo x = Just (Left 127) end
+  example `right boolean` is x = Just (Right false) expect echo x = Just (Right false) end
+end
+```
+
+For `Maybe (Maybe Bool)`, `Nothing`, `Just Nothing`, and `Just (Just false)`
+remain distinct. Nesting a constructor application as an argument generally
+requires parentheses, as in `Just (Left 127)`.
+
+The [collections example](examples/specs/collections.lawspec) combines reverse
+involution, sorting idempotence, sortedness, length, and permutation preservation.
+`sorted` and `permutation` in that example are adapters supplied by the user;
+they are not built-in helpers. Sortedness and length alone cannot establish that
+a sorting adapter retained the original elements.
+
+## Products, sums, and pattern matching
+
+A `type` declaration names its constructors and each constructor's fields. One
+constructor describes a product; multiple constructors describe a sum. Type
+parameters are declared explicitly with `:: Type`.
+
+```lawspec
+unit guide.trees
+
+type Pair (a :: Type) (b :: Type) is
+  Pair
+    first :: a
+    second :: b
+end
+
+type Tree (a :: Type) is
+  Leaf value :: a
+  Branch children :: List (Tree a)
+end
+
+definition rebuild (tree :: Tree a) :: Tree a is
+  match tree with
+    | Leaf value -> Leaf value
+    | Branch children -> Branch children
+  end
+end
+
+law `preserve the constructor and its fields` is
+  definition is `for all` (tree :: Tree Int8) . rebuild tree = tree end
+  example `nested branches` is
+    tree = Branch [Leaf 127, Branch [], Leaf -128]
+    expect rebuild tree = Branch [Leaf 127, Branch [], Leaf -128]
+  end
+end
+```
+
+Constructors receive fields in declaration order. A match evaluates its
+scrutinee once; each branch binds that constructor's fields in the same order.
+Bindings are scoped to the branch. Matching must be exhaustive and cannot repeat
+a constructor. Lists match with `Nil` and `Cons head tail`; Maybe and Either use
+their constructors above. Recursive declarations must be strictly positive.
+General indexed constructors and GADT result signatures are not supported.
+
+Equality is structural and type-directed, including named fields and nested
+containers. Native public declarations retain their names and type parameters;
+schemas and checked codecs support them at runtime. They are not replacements
+for the public data types. See the target guides for native representations:
+[Java](JAVA.md), [Python](PYTHON.md), [JavaScript/TypeScript](WEB.md),
+[Go](GO.md), [Haskell](HASKELL.md), [Kotlin](KOTLIN.md), and [Rust](RUST.md).
+In Haskell, `Text` remains `Data.Text.Text`, while `List Char` becomes the linked
+list `[Char]`. These are distinct LawSpec types even when they contain the same
+characters.
+
+Generators compose the target framework's generators and shrinkers. Recursive
+values have a structural size budget; each constructor reserves enough budget
+for its fields before distributing the remainder. Boundaries include empty and
+singleton lists and constructor-specific values. Small finite domains are
+enumerated. An empty type cannot supply a generated argument, but containers
+such as `List Empty` and `Maybe Empty` can still be inhabited. An empty or
+unreachable input domain never makes a property pass vacuously.
+
+Whole-value refinements can inspect products and sums using exhaustive matches.
+List element refinements, Maybe/Either payload refinements, and refined arguments
+of recursive and nonrecursive named type constructors are supported; see
+[refinements](REFINEMENTS.md#named-data-payloads). Direct refinements on named
+constructor fields use checked constructor contracts. Recursive payload predicates
+follow stored type arguments and preserve outer dependent inputs.
+
+## Total definitions
+
+A unit can supply an implementation as a checked total definition:
+
+```lawspec
+definition increment (x :: Int8) :: BigInt
+requires Integer Int8
+is
+  x + 1
+end
+```
+
+Parameters and the result have explicit types. The optional `requires` clause
+uses the same `Eq`, `Integer`, `Ordered`, and `Bounded` capabilities as laws.
+Requirements are checked even when the definition is unused. Bodies must have
+exhaustive matches, proven structural descent for recursive calls, and guards
+for operations that could otherwise fail. Calls may use other checked
+definitions; external adapters cannot establish a definition's totality.
+
+For exact arithmetic, the totality checker can combine linear bounds and Boolean
+guards. For example, `x >= 0 && 1 / (x + 1) > 0` is safe for integer `x`: the
+right side runs only when its denominator is positive. Proof arithmetic uses
+arbitrary exact fractions, preserves strict boundaries, and has a bounded work
+budget. An unproved obligation is rejected; IEEE expressions never acquire
+rational identities such as `x - x = 0` from this checker.
+
+Primitive integer ranges are available to the checker automatically, including
+the selected machine width and BigUInt's nonnegative domain. Integer comparisons
+retain integrality: for Int8 `x`, `x < 127 && prelude.Int8 (x + 1) > x` safely
+narrows only on the guarded branch. The unguarded conversion is rejected because
+`127 + 1` is outside Int8. Range bounds alone do not prove that a Rational or
+Decimal input has no fractional part.
+Pattern matching retains the primitive ranges of extracted fields within that
+branch. For example, an Int8 list head still makes `head + 129` strictly positive;
+that fact cannot be reused for an Int64 field in another constructor branch.
+
+Definitions produce reusable generated source with checked native entry points
+on all eight targets. They do not produce user-owned adapter stubs. Integer
+arithmetic preserves the mathematical result; the example above returns `128`
+for the largest Int8 input. See [the total-function example](examples/specs/total_functions.lawspec)
+for recursive list counting, structural equality, and explicit expected values.
+
+Definitions can quantify type variables implicitly through their signatures:
+
+```lawspec
+definition same (x :: a) (y :: a) :: Bool requires Eq a is x == y end
+definition count (xs :: List a) :: BigInt is
+  match xs with
+    | Nil -> 0
+    | Cons head tail -> 1 + count tail
+  end
+end
+```
+
+Each template is checked for typing, capabilities, termination, and definedness,
+including unused templates. Calls specialize it to concrete argument and result
+types before Core elaboration. Different calls can use different types; recursive
+self-calls must retain the same types. Ambiguous calls require an annotation,
+such as `count ([] :: List Int8)` to specify an empty list's element type.
+Unused templates emit no instances.
+Checked definitions may also appear in refinement predicates and adapter
+preconditions or postconditions. Their closed call graphs contain only other
+checked definitions; adapter calls remain forbidden in predicates. The compiler
+uses the same concrete Core definitions to check example domains and plan finite
+cases and boundaries that generated tests use at runtime.
+Definition parameters and results may carry refinements. The compiler proves
+body definedness and result claims under ordered input preconditions, checks
+callee preconditions, and preserves the contracts through specialization. Native
+entry points enforce the same contracts. See [refined definitions](REFINEMENTS.md#refined-definitions).
+
 ## Source and declarations
 
-A source has one named `unit`, function signatures, reusable refinements, and
-laws. Qualified unit names determine target module/package paths. Function
+A source has one named `unit`, function signatures, data declarations, checked
+definitions, reusable refinements, and laws. Qualified unit names determine target module/package paths. Function
 signatures are curried: `a -> b -> c` takes two inputs and returns `c`. Parentheses
 group types and expressions. Comments start with `--` and run to the line end.
 
@@ -16,10 +211,17 @@ compiler tests specify lexical details:
 
 ```text
 source       = "unit" qualified-name declaration*
-declaration  = name "::" type | law | refinement
+declaration  = name "::" type | law | refinement | data-type | function
+data-type    = "type" name ("(" name "::" "Type" ")")*
+               "is" constructor* "end"
+constructor  = name (name "::" type)*
+function     = "definition" name parameter* "::" type requirements?
+               "is" expression "end"
 type         = type-atom ["->" type]
 type-atom    = primitive | type-variable | "(" type ")"
-             | ("Nullable" | "Optional") type-atom
+             | ("Nullable" | "Optional" | "List" | "Maybe") type-atom
+             | "Either" type-atom type-atom
+             | data-type-name type-atom*
              | refinement-name argument*
              | "(" name "::" type ["where" expression] ")"
 refinement   = "refinement" name parameter* requirements?
@@ -35,6 +237,10 @@ proposition  = "`for all`" parameter+ "." proposition
              | expression "implies" proposition
              | proposition "and" proposition
              | quoted-name expression* | expression
+expression   = ... | "[" [expression ("," expression)*] "]"
+             | constructor-name expression*
+             | "match" expression "with"
+               ("|" constructor-name name* "->" expression)+ "end"
 example      = "example" quoted-name "is" (name "=" literal)+
                ("expect" expression "=" literal)+ "end"
 ```
@@ -126,11 +332,30 @@ API schema v3 uses separately defined wire views, with lossless tagged scalar
 values. It does not serialize internal AST constructors. See the
 [API migration guide](API-MIGRATION.md).
 
-## Next language features
+## Beyond 0.9
 
-`List`, algebraic `Maybe`/`Either`, user-defined sums and products, pattern
-matching, GADTs, and general dependent types are outside 0.8. The core type model
-supports arbitrary constructor arity and distinguishes type and index arguments
-so those features can be added without target-specific surface interpretation.
-`Nullable` and `Optional` retain their interoperability semantics; they do not
-stand in for future algebraic sum types.
+GADTs, indexed families, and general dependent types are planned after 0.9.
+The Core type model distinguishes type arguments from index arguments, but that
+representation is not a claim that arbitrary dependent programs are accepted.
+User-defined products and sums have ordinary uniform type parameters. External
+type bindings, custom generator bindings, and cross-unit packages are separate
+future features.
+
+## Generated project formatting
+
+`lawspec init --target java` creates a readable Maven scaffold; Kotlin init
+likewise expands Gradle blocks with two-space indentation. `--minify` explicitly
+selects compact scaffolds and configuration JSON. `generate` and `examples`
+accept the same flag for generated source. The mode is per invocation and does
+not become a project default. Init preserves existing build files, and generation
+preserves user-owned adapters regardless of formatting mode.
+
+Generated runtime support and checked definitions belong in source directories;
+framework-specific property helpers belong in test directories. Both follow
+custom layout settings. Python uses PEP 8: four-space indentation, 79-column
+code, and 72-column prose. Other targets follow Google language guidance where
+applicable, with standard Rust formatting. Formatting is deterministic in the
+native and WASM compilers; generation does not download or invoke a formatter.
+
+See [the release notes](RELEASE-0.9.md) for compatibility and scope, and the target
+guides for formatting verification and native representation details.

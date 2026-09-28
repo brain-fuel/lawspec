@@ -1,101 +1,36 @@
-module LawSpec.Core.Validate (validateProgram, validateExpression, kindOf, operationEvidence) where
+module LawSpec.Core.Validate (validateProgram, module LawSpec.Core.Expression) where
 
 import LawSpec.Core
+import LawSpec.Core.Eval (evaluateValuePure)
+import LawSpec.Core.Expression
+import LawSpec.Core.Total (validateDefinitionContracts)
+import LawSpec.Core.DefinitionContracts (definitionContracts)
+import qualified LawSpec.Core.Types as Types
 import LawSpec.Common
 import LawSpec.Scalar
-import LawSpec.Core.Semantics (convertValue)
 import Control.Monad (unless, foldM)
 import qualified Data.Map.Strict as M
+import qualified Data.Set as Set
 import Data.List (nub)
 
-type Scope = M.Map Id Type
-
--- Constructor signatures are kinded independently of source spelling. The
--- representation accepts arbitrary arity, including distinct index arguments.
-kindOf :: [(String,Kind)] -> Type -> Either String Kind
-kindOf registry ty = case ty of
-  TypeVariable _ -> Right TypeKind
-  Arrow a b -> do
-    ka <- kindOf registry a; kb <- kindOf registry b
-    unless (ka == TypeKind && kb == TypeKind) (Left "arrow operands must have kind Type")
-    pure TypeKind
-  Constructor n args -> do
-    k <- maybe (Left ("unknown type constructor: " ++ n)) Right (lookup n registry)
-    foldM apply k args
-  where
-    apply (KindArrow expected result) arg = do
-      actual <- case arg of
-        TypeArgument t -> kindOf registry t
-        IndexArgument (Natural n) | n < 0 -> Left "natural index cannot be negative"
-        IndexArgument _ -> Right ValueKind
-      unless (actual == expected) (Left "type/index argument kind mismatch")
-      pure result
-    apply _ _ = Left "too many type arguments"
-registry :: [(String,Kind)]
-registry = [(primitiveName p,TypeKind) | p <- primitives] ++ [(n,KindArrow TypeKind TypeKind) | n <- ["Nullable","Optional"]]
-checkType :: Type -> Either String ()
-checkType t = do k <- kindOf registry t; unless (k == TypeKind) (Left "unsaturated type constructor")
-
-operationEvidence :: BinaryOp -> Type -> Type -> Either String Evidence
-operationEvidence op a b = case (a,b) of
-  (Constructor x [],Constructor y []) | isNumeric x && isNumeric y -> do
-    result <- promote (binaryName op) x y
-    unless (not (op `elem` [Less,LessEqual,Greater,GreaterEqual] && result `elem` ["Complex64","Complex128"])) (Left "complex values are not ordered")
-    pure (Numeric (scalarType result))
-  _ | op `elem` [Equal,NotEqual], a == b -> checkType a >> pure (Structural a)
-    | otherwise -> Left "invalid operation operand types"
-
-validateExpression :: Int -> Scope -> Scope -> Expr -> Either String ()
-validateExpression bits declarations scope expr@Expr{..} = do
-  checkType expressionType
-  mapM_ (validateExpression bits declarations scope) (children expr)
-  actual <- case expressionNode of
-    Constant s -> do
-      canonical <- validateScalar bits s
-      converted <- convertValue bits expressionType canonical
-      unless (converted == canonical) (Left "core constant must already have its contextual representation")
-      pure expressionType
-    Local n -> maybe (Left ("unbound core binder: " ++ idText n)) Right (M.lookup n scope)
-    ExternalCall n args -> do
-      t <- maybe (Left ("unknown core declaration: " ++ idText n)) Right (M.lookup n declarations)
-      let (parameters,result) = functionType t
-      unless (parameters == map LawSpec.Core.expressionType args) (Left "core call argument types or arity do not match")
-      pure result
-    Binary op evidence a b -> do
-      expected <- operationEvidence op (expressionTypeOf a) (expressionTypeOf b)
-      unless (expected == evidence) (Left "invalid arithmetic/equality evidence")
-      pure $ if isComparison op then scalarType "Bool" else case evidence of Numeric t -> t; Structural t -> t
-    Unary Not a -> requireType "Bool" a >> pure (scalarType "Bool")
-    Unary Negate a -> case expressionTypeOf a of
-      Constructor n [] | isNumeric n -> pure (scalarType (if isInteger n then "Integer" else n))
-      _ -> Left "numeric negation requires numeric operand"
-    ShortCircuit _ a b -> mapM_ (requireType "Bool") [a,b] >> pure (scalarType "Bool")
-    Convert mode target a -> do
-      unless (target == expressionType) (Left "conversion result type mismatch")
-      case (target,expressionTypeOf a) of
-        (Constructor n [],Constructor m []) | isNumeric n && isNumeric m ->
-          unless (mode == Explicit || isExact n && isExact m) (Left "checked adapter bridge requires exact operands")
-        _ -> unless (target == expressionTypeOf a) (Left "invalid conversion types")
-      pure target
-    Helper builtin args -> helperType builtin args
-  unless (actual == expressionType) (Left ("core result type mismatch: expected " ++ show actual ++ ", found " ++ show expressionType))
-  where
-    expressionTypeOf = LawSpec.Core.expressionType
-    requireType n e = unless (expressionTypeOf e == scalarType n) (Left ("expected " ++ n))
-    helperType Checked [_] = Right (scalarType "Bool")
-    helperType Length [a] | expressionTypeOf a `elem` map scalarType ["Text","CodePointText","Utf16Text","Bytes"] = Right (scalarType "Integer")
-    helperType IsPresent [a] | Constructor n [TypeArgument _] <- expressionTypeOf a, n `elem` ["Nullable","Optional"] = Right (scalarType "Bool")
-    helperType PresentValue [a] | Constructor n [TypeArgument t] <- expressionTypeOf a, n `elem` ["Nullable","Optional"] = Right t
-    helperType b [a] | b `elem` [RealPart,ImaginaryPart] = case expressionTypeOf a of
-      Constructor "Complex64" [] -> Right (scalarType "Float32")
-      Constructor "Complex128" [] -> Right (scalarType "Float64")
-      _ -> Left "complex component helper requires complex value"
-    helperType b [a] | b `elem` [IsNaN,IsInfinite,IsFinite,IsNegativeZero], expressionTypeOf a `elem` map scalarType ["Float32","Float64"] = Right (scalarType "Bool")
-    helperType RoundHalfEven [a,b] | Constructor n [] <- expressionTypeOf a, isExact n = requireType "Int32" b >> pure (scalarType "Decimal")
-    helperType _ _ = Left "invalid core helper arguments"
-
 validateProgram :: Program -> Either [Diagnostic] ()
-validateProgram Program{..} = either (Left . pure . (\m -> Diagnostic "core" m Nothing)) Right $ do
+validateProgram program = do
+  let checked = either (Left . pure . (\m -> Diagnostic "core" m Nothing)) Right
+  registry <- checked (Types.makeRegistry (programDataDeclarations program))
+  checked (validateProgramWith registry program)
+  validateDefinitionContracts (programMachineBits program) (programDataDeclarations program)
+    (concatMap unitDefinitions (programUnits program))
+    (definitionContracts (programUnits program))
+  -- Evaluating fixtures may invoke constructor predicates. First audit all
+  -- predicates, so an invalid cyclic contract cannot run during validation.
+  let concrete term
+        | isConcrete term = () <$ evaluateValuePure registry (programMachineBits program) [] term
+        | otherwise = mapM_ concrete (children term)
+  checked (mapM_ concrete [term | unit <- programUnits program,
+    property <- unitProperties unit, term <- propertyExpressions property])
+
+validateProgramWith :: Types.TypeRegistry -> Program -> Either String ()
+validateProgramWith registry Program{..} = do
   unless (programMachineBits `elem` [32,64]) (Left "machineBits must be 32 or 64")
   let unitIds = map unitId programUnits
       propertyIds = [propertyId p | u <- programUnits,p <- unitProperties u]
@@ -104,22 +39,27 @@ validateProgram Program{..} = either (Left . pure . (\m -> Diagnostic "core" m N
       ids = map declarationId declarations
       scope = M.fromList [(declarationId d,declarationType d) | d <- declarations]
   unless (length ids == length (nub ids)) (Left "duplicate core declaration identity")
-  mapM_ (checkType . declarationType) declarations
+  mapM_ (Types.checkType registry . declarationType) declarations
   mapM_ (validateUnit scope) programUnits
   where
-    expression = validateExpression programMachineBits
+    definitions = Set.fromList [declarationId (definitionDeclaration d)
+      | u <- programUnits, d <- unitDefinitions u]
+    closedPredicate e = case expressionNode e of
+      ExternalCall name arguments -> Set.member name definitions && all closedPredicate arguments
+      _ -> all closedPredicate (children e)
+    expression = validateExpressionWithRegistry registry programMachineBits
     extend scope b = do
-      checkType (binderType b)
+      Types.checkType registry (binderType b)
       unless (M.notMember (binderId b) scope) (Left "duplicate core binder identity")
       pure (M.insert (binderId b) (binderType b) scope)
     predicate ds scope p = do
       expression ds scope p
-      unless (isPure p) (Left "external calls are forbidden in refinement predicates")
+      unless (closedPredicate p) (Left "adapter calls are forbidden in refinement predicates")
       unless (expressionType p == scalarType "Bool") (Left "proposition guard must be Bool")
     proposition ds scope p = case p of
       Equation ev a b -> do
         expression ds scope a; expression ds scope b
-        expected <- operationEvidence Equal (expressionType a) (expressionType b)
+        expected <- operationEvidenceWithRegistry registry Equal (expressionType a) (expressionType b)
         unless (ev == expected) (Left "invalid proposition equality evidence")
       Implication g body -> do
         expression ds scope g
@@ -127,6 +67,9 @@ validateProgram Program{..} = either (Left . pure . (\m -> Diagnostic "core" m N
         proposition ds scope body
       Conjunction ps -> mapM_ (proposition ds scope) ps
     validateUnit ds u = do
+      let own = unitDeclarations u
+      mapM_ (\definition -> unless (definitionDeclaration definition `elem` own)
+        (Left "total definition must have a matching declaration in its owning unit")) (unitDefinitions u)
       mapM_ (validateProperty ds) (unitProperties u)
       mapM_ (validateContract ds) (unitContracts u)
     validateProperty ds p = do
@@ -145,7 +88,7 @@ validateProgram Program{..} = either (Left . pure . (\m -> Diagnostic "core" m N
       unless (M.keys (M.fromList (exampleBindings e)) == M.keys scope && length (exampleBindings e) == M.size scope) (Left "example must bind every input exactly once")
       mapM_ (\(i,v) -> do
         expression ds M.empty v
-        unless (case expressionNode v of Constant _ -> True; _ -> False) (Left "example bindings must be concrete constants")
+        unless (isConcrete v) (Left "example bindings must be concrete constants")
         unless (Just (expressionType v) == M.lookup i scope) (Left "example binding type mismatch")) (exampleBindings e)
       mapM_ (proposition ds scope) (exampleExpectations e)
     validateContract ds c = do

@@ -1,8 +1,8 @@
 // Follow transitive local imports so a convenience module cannot hide inference.
 import {readFile} from 'node:fs/promises';
 import assert from 'node:assert/strict';
-const forbidden=new Set(['Model','Parser','Compile','Frontend','Refinement','Domain','Eval','Public','Api']);
-const roots=['Core','Core.Validate','Core.Eval','Core.Semantics','Testing','Backend','CoreEmit','RustEmit','CoreScalarEmit','CoreNativeScalarEmit'];
+const forbidden=new Set(['Model','Parser','Compile','Inference','Elaboration','Frontend','Refinement','Domain','Eval','Public','Api']);
+const roots=['Core','Core.Validate','Core.Total','Core.Definitions','Core.Eval','Core.Payload','Core.Semantics','Testing','Backend','CoreEmit','JavaData','RustEmit','CoreScalarEmit','CoreNativeScalarEmit','KotlinData'];
 const seen=new Set();
 async function visit(name,trail=[]){
  assert.ok(!forbidden.has(name),`Core/backend boundary violation: ${[...trail,name].join(' -> ')}`);

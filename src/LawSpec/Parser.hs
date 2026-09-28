@@ -3,17 +3,18 @@ module LawSpec.Parser (parseSource) where
 import LawSpec.Model
 import LawSpec.Scalar
 import Control.Monad.Combinators.Expr
-import Control.Monad (void)
+import Control.Monad (void, unless)
 import Control.Monad.Reader (Reader, asks, runReader)
 import qualified Data.Map.Strict as M
-import Data.Char (isLower, isControl)
+import Data.Char (isLower, isUpper, isControl)
 import Data.List (uncons)
 import Data.Void (Void)
 import Text.Megaparsec hiding (SourcePos, parse)
 import Text.Megaparsec.Char
 import qualified Text.Megaparsec.Char.Lexer as L
 
-type P = ParsecT Void String (Reader (M.Map String [Bool]))
+data Header = RefinementHeader [Bool] | DataHeader [Bool]
+type P = ParsecT Void String (Reader (M.Map String Header))
 spaceP :: P ()
 spaceP = L.space space1 (L.skipLineComment "--") empty
 lexeme :: P a -> P a
@@ -25,7 +26,7 @@ keyword s = lexeme (try (string s *> notFollowedBy (alphaNumChar <|> char '_')))
 ident :: P String
 ident = lexeme $ try $ do
   x <- (:) <$> letterChar <*> many (alphaNumChar <|> char '_')
-  if x `elem` ["unit","law","requires","is","end","definition","description","rationale","example","expect","implies","and","true","false","references","are","Eq","where","refinement"] then fail "reserved identifier" else pure x
+  if x `elem` ["unit","law","requires","is","end","definition","description","rationale","example","expect","implies","and","true","false","references","are","Eq","where","refinement","type","match","with"] then fail "reserved identifier" else pure x
 quoted :: P String
 quoted = lexeme (char '`' *> some (satisfy (\c -> c /= '`' && not (isControl c))) <* char '`')
 str :: P String
@@ -45,11 +46,16 @@ typeAtom = try (parens $ do
     n <- ident
     headers <- asks (M.lookup n)
     case headers of
-      Just kinds -> RefinementApp n <$> mapM argument kinds
-      Nothing | n `elem` ["Nullable","Optional"] -> Applied n <$> typeAtom
+      Just (RefinementHeader kinds) -> RefinementApp n <$> mapM argument kinds
+      Just (DataHeader kinds) -> application n <$> mapM (const typeAtom) kinds
+      Nothing | n `elem` ["Nullable","Optional","List","Maybe"] -> Applied n <$> typeAtom
+              | n == "Either" -> Application n <$> sequence [typeAtom, typeAtom]
               | otherwise -> pure (if maybe False (isLower . fst) (uncons n) then Variable n else Named n)
   where argument True = TypeArgument <$> typeAtom
         argument False = ValueArgument <$> (parens expr <|> try numeric <|> (BoolLit <$> boolP) <|> (StringLit <$> str) <|> (Var <$> ident))
+        application n [] = Named n
+        application n [a] = Applied n a
+        application n args = Application n args
 param :: P (String,Type)
 param = parens $ do
   n <- ident; void (symbol "::"); t <- typeP
@@ -64,6 +70,37 @@ refinementP = do
   keyword "refinement"; n <- ident; ps <- many param; cs <- constraintsP
   t <- keyword "is" *> typeP <* keyword "end"
   pure (Refinement n ps cs t)
+dataTypeP :: P DataTypeDeclaration
+dataTypeP = do
+  ((name, parameters, constructors), range) <- withSpan $ do
+    keyword "type"
+    name <- upperName
+    parameters <- many $ parens $ do
+      parameter <- ident
+      unless (maybe False (isLower . fst) (uncons parameter)) (fail "type parameters must start with a lowercase letter")
+      void (symbol "::")
+      keyword "Type"
+      pure parameter
+    keyword "is"
+    constructors <- many $ do
+      void (optional (symbol "|"))
+      ((tag, fields), constructorRange) <- withSpan $ do
+        tag <- upperName
+        fields <- many $ try $ do
+          field <- ident
+          unless (maybe False (isLower . fst) (uncons field)) (fail "field names must start with a lowercase letter")
+          void (symbol "::")
+          (,) field <$> typeP
+        pure (tag, fields)
+      pure (ConstructorDeclaration tag fields constructorRange)
+    keyword "end"
+    pure (name, parameters, constructors)
+  pure (DataTypeDeclaration name parameters constructors range)
+  where
+    upperName = do
+      name <- ident
+      unless (maybe False (isUpper . fst) (uncons name)) (fail "type and constructor names must start with an uppercase letter")
+      pure name
 expr :: P Expr
 expr = located $ makeExprParser application
   [ [Prefix (Unary "!" <$ try (lexeme (char '!' <* notFollowedBy (char '=')))), Prefix (Unary "-" <$ try (lexeme (char '-' <* notFollowedBy digitChar)))]
@@ -75,10 +112,28 @@ expr = located $ makeExprParser application
   , [InfixL (Binary "||" <$ symbol "||")]
   ]
   where
-    application = foldl1 Apply <$> some atom
-    atom = located $ (BoolLit <$> boolP) <|> (StringLit <$> str) <|> try scalarP
-      <|> parens (do e <- expr; option e (Annotate e <$> (symbol "::" *> typeP)))
-      <|> try numeric <|> try (do n <- ident; void (char '.'); b <- ("min" <$ keyword "min") <|> ("max" <$ keyword "max"); pure (TypeBound b (if maybe False (isLower . fst) (uncons n) then Variable n else Named n))) <|> (Var <$> valueName)
+    application = do
+      terms <- some atom
+      pure $ case terms of
+        first:rest | ConstructLit name [] <- unlocated first -> ConstructLit name rest
+        _ -> foldl1 Apply terms
+    atom = located $ matchP <|> (ListLit <$> between (symbol "[") (symbol "]") (expr `sepBy` symbol ",")) <|> (BoolLit <$> boolP) <|> (StringLit <$> str) <|> try scalarP
+      <|> parenthesizedExpr
+      <|> try numeric <|> try (do n <- ident; void (char '.'); b <- ("min" <$ keyword "min") <|> ("max" <$ keyword "max"); pure (TypeBound b (if maybe False (isLower . fst) (uncons n) then Variable n else Named n))) <|> (do name <- valueName; pure (if maybe False (isUpper . fst) (uncons name) then ConstructLit name [] else Var name))
+    matchP = do
+      keyword "match"
+      value <- expr
+      keyword "with"
+      branches <- some $ do
+        void (symbol "|")
+        tag <- ident
+        unless (maybe False (isUpper . fst) (uncons tag)) (fail "expected constructor in match pattern")
+        names <- many ident
+        unless (all (maybe False (isLower . fst) . uncons) names) (fail "pattern binders must start with a lowercase letter")
+        void (symbol "->")
+        MatchBranch tag names <$> expr
+      keyword "end"
+      pure (MatchExpr value branches)
     valueName = try (do keyword "prelude"; void (symbol "."); n <- ident; pure ("prelude." ++ n)) <|> ident
     -- An adjacent sign remains part of a numeric argument: f -42. For subtraction use x - 42.
 located :: P Expr -> P Expr
@@ -126,12 +181,15 @@ scalarP = ScalarLit <$> choice
       e <- try numeric <|> scalarP
       let value = case e of Number n -> SInteger "BigInt" n; DecimalNumber c p -> SDecimal c p; ScalarLit s -> s; _ -> SAbsent "invalid"
       either fail pure (convertScalar 64 t value)
+parenthesizedExpr :: P Expr
+parenthesizedExpr = parens (do e <- expr; option e (Annotate e <$> (symbol "::" *> typeP)))
+
 defP :: P Definition
 defP = (do void (symbol "`for all`"); ps <- some param; void (symbol "."); Forall ps <$> defP)
    <|> do a <- clause
           option a (And a <$> (keyword "and" *> defP))
   where
-    clause = (Invoke <$> quoted <*> many (parens expr <|> (BoolLit <$> boolP) <|> (StringLit <$> str) <|> (Number <$> lexeme (L.signed (pure ()) L.decimal)) <|> (Var <$> ident)))
+    clause = (Invoke <$> quoted <*> many (parenthesizedExpr <|> (BoolLit <$> boolP) <|> (StringLit <$> str) <|> (Number <$> lexeme (L.signed (pure ()) L.decimal)) <|> (Var <$> ident)))
       <|> try (do
         a <- expr
         (keyword "implies" *> (Implies a <$> defP))
@@ -140,8 +198,23 @@ defP = (do void (symbol "`for all`"); ps <- some param; void (symbol "."); Foral
       <|> parens defP
 boolP :: P Bool
 boolP = (keyword "true" *> pure True) <|> (keyword "false" *> pure False)
+constructorLiteral :: P Literal
+constructorLiteral = do
+  name <- try $ do
+    name <- ident
+    unless (maybe False (isUpper . fst) (uncons name)) (fail "expected constructor literal")
+    pure name
+  declared <- asks (M.lookup ("constructor:" ++ name))
+  arity <- case declared of
+    Just (DataHeader fields) -> pure (length fields)
+    _ -> maybe (fail ("unknown literal constructor: " ++ name)) pure
+      (lookup name [("Nothing",0),("Just",1),("Left",1),("Right",1),("Nil",0),("Cons",2)])
+  ConstructorLiteral name <$> count arity literalP
+
 literalP :: P Literal
-literalP = try (do e <- scalarP; case e of ScalarLit v -> pure (ScalarLiteral v); _ -> fail "literal")
+literalP = constructorLiteral
+  <|> (ListLiteral <$> between (symbol "[") (symbol "]") (literalP `sepBy` symbol ","))
+  <|> try (do e <- scalarP; case e of ScalarLit v -> pure (ScalarLiteral v); _ -> fail "literal")
   <|> try (parens (do
         e <- numeric <|> scalarP
         void (symbol "::")
@@ -151,6 +224,7 @@ literalP = try (do e <- scalarP; case e of ScalarLit v -> pure (ScalarLiteral v)
           (DecimalNumber c p,Named name) -> either fail (pure . ScalarLiteral) (convertScalar 64 name (SDecimal c p))
           (ScalarLit v,Named name) -> either fail (pure . ScalarLiteral) (convertScalar 64 name v)
           _ -> fail "expected concrete annotated literal"))
+  <|> parens literalP
   <|> (BoolLiteral <$> boolP) <|> (TextLiteral <$> str)
   <|> (do e <- numeric; case e of Number n -> pure (IntLiteral n); DecimalNumber c p -> pure (DecimalLiteral c p); ScalarLit v -> pure (ScalarLiteral v); _ -> fail "literal")
 
@@ -175,29 +249,58 @@ lawP = do
   refs <- option [] (keyword "references" *> keyword "are" *> some str <* keyword "end")
   keyword "end"
   pure (Law n ps req d desc why ex refs (Location (sourceName pos) (unPos (sourceLine pos)) (unPos (sourceColumn pos))))
+-- Unit definitions have explicit parameter and result types. Law definitions
+-- remain proposition blocks and are parsed separately by lawP.
+functionDefinitionP :: P FunctionDefinition
+functionDefinitionP = do
+  ((name, arguments, result, requirements, body), range) <- withSpan $ do
+    keyword "definition"
+    name <- ident
+    arguments <- some param
+    void (symbol "::")
+    result <- typeP
+    requirements <- constraintsP
+    body <- keyword "is" *> expr <* keyword "end"
+    pure (name, arguments, result, requirements, body)
+  pure (FunctionDefinition name arguments result requirements body range)
+
+data UnitMember = DataMember DataTypeDeclaration | RefinementMember Refinement
+  | SignatureMember ((String, Type), Span) | LawMember Law
+  | DefinitionMember FunctionDefinition
+
 unitP :: P Unit
 unitP = do
   spaceP; keyword "unit"
   n <- concatWithDot <$> (lexeme ((:) <$> letterChar <*> many (alphaNumChar <|> char '_')) `sepBy1` symbol ".")
-  declarations <- many ((Left <$> try refinementP) <|> (Right . Left <$> try (withSpan ((,) <$> ident <* symbol "::" <*> typeP))) <|> (Right . Right <$> lawP))
+  members <- many ((DataMember <$> dataTypeP)
+    <|> (RefinementMember <$> refinementP)
+    <|> (DefinitionMember <$> functionDefinitionP)
+    <|> (SignatureMember <$> try (withSpan ((,) <$> ident <* symbol "::" <*> typeP)))
+    <|> (LawMember <$> lawP))
   eof
-  pure (Unit n [f | Right (Left (f,_)) <- declarations] [l | Right (Right l) <- declarations] [r | Left r <- declarations] [] [(name,range) | Right (Left ((name,_),range)) <- declarations])
+  let definitions = [d | DefinitionMember d <- members]
+      signatures = [signature | SignatureMember signature <- members] ++
+        [((functionName d, foldr Arrow (functionResult d) (map snd (functionArguments d))), functionSpan d) | d <- definitions]
+  pure (Unit n (map fst signatures) [l | LawMember l <- members]
+    [r | RefinementMember r <- members] [] [(name,range) | ((name,_),range) <- signatures]
+    [d | DataMember d <- members] definitions)
   where concatWithDot = foldr1 (\a b -> a ++ "." ++ b)
 parseSource :: Source -> Either [Diagnostic] Unit
-parseSource (Source p s) = case runReader (runParserT unitP p s) (headers s) of
+parseSource (Source p s) = case runReader (runParserT unitP p s) (literalHeaders s (headers s)) of
   Left e -> Left [Diagnostic "parse" (errorBundlePretty e) Nothing]
   Right u -> Right u
 
 -- Read declaration arities before parsing applications, including forward references.
 -- Strings, quoted law names and comments are consumed atomically.
-headers :: String -> M.Map String [Bool]
+headers :: String -> M.Map String Header
 headers source = M.fromList (scan tokens) where
   tokens = either (const []) id $ runReader (runParserT (spaceP *> many token <* eof) "headers" source) M.empty
   token = ("<string>" <$ str) <|> ("<quoted>" <$ quoted)
       <|> lexeme ((:) <$> letterChar <*> many (alphaNumChar <|> char '_'))
       <|> symbol "::" <|> ((:[]) <$> lexeme anySingle)
   scan ("unit":_:rest) = scan (dropUnit rest)
-  scan ("refinement":n:rest) = let (ks,remaining) = parametersH rest in (n,ks):scan remaining
+  scan ("refinement":n:rest) = let (ks,remaining) = parametersH rest in (n,RefinementHeader ks):scan remaining
+  scan ("type":n:rest) = let (ks,remaining) = parametersH rest in (n,DataHeader ks):scan remaining
   scan (_:rest) = scan rest
   scan [] = []
   dropUnit (".":_:rest) = dropUnit rest
@@ -210,3 +313,17 @@ headers source = M.fromList (scan tokens) where
   group depth acc (t:rest)
     | t == ")" && depth == 1 = (reverse acc,rest)
     | otherwise = group (depth + if t == "(" then 1 else if t == ")" then -1 else 0) (t:acc) rest
+
+-- Reuse the declaration parser to discover fixture constructor arities. This
+-- pass skips other tokens atomically; the full parse remains authoritative for
+-- errors and source ranges, including malformed declarations.
+literalHeaders :: String -> M.Map String Header -> M.Map String Header
+literalHeaders source initial = case runReader (runParserT scan "constructor headers" source) initial of
+  Left _ -> initial
+  Right declarations -> M.union (M.fromList
+    [("constructor:" ++ dataConstructorName c, DataHeader (replicate (length (dataConstructorFields c)) True))
+      | Just d <- declarations, c <- dataTypeConstructors d]) initial
+  where
+    scan = spaceP *> many ((Just <$> try dataTypeP) <|> (Nothing <$ token)) <* eof
+    token = void str <|> void quoted <|>
+      void (lexeme ((:) <$> letterChar <*> many (alphaNumChar <|> char '_'))) <|> void (lexeme anySingle)

@@ -3,10 +3,12 @@
 -- substitution, type inference, or refinement expansion belongs here.
 module LawSpec.Backend where
 import qualified LawSpec.Core as C
+import qualified LawSpec.Code.Doc as Doc
 import LawSpec.Testing (PlannedProperty(..), GeneratorRequirement(..))
 import LawSpec.Common (Generation, Location)
 import LawSpec.Scalar (prettyScalar)
 import Data.List (intercalate, stripPrefix)
+import Data.Char (isAlphaNum)
 
 type Type = C.Type
 pattern Named :: String -> Type
@@ -36,7 +38,11 @@ unitName = C.idText . C.unitId
 functions :: Unit -> [(String,Type)]
 functions u = [(C.declarationName d,C.declarationType d) | d <- C.unitDeclarations u]
 contracts :: Unit -> [Contract]
-contracts = C.unitContracts
+-- Checked definitions enforce their contracts in reusable implementation bodies.
+-- Test-only wrappers are exclusively for user adapters, which have native stubs.
+contracts unit = [contract | contract <- C.unitContracts unit,
+  C.contractDeclaration contract `notElem` definitionIds]
+  where definitionIds = map (C.declarationId . C.definitionDeclaration) (C.unitDefinitions unit)
 functionType :: Type -> ([Type],Type)
 functionType = C.functionType
 expressionType :: Expr -> Type
@@ -92,6 +98,12 @@ declarationName :: C.Id -> String
 declarationName = lastPart . C.idText where
   lastPart s = case splitOnce "::" s of (_,Just rest) -> lastPart rest; _ -> s
 localName :: C.Id -> String
+localName i | (_,Just suffix) <- splitOnce "::payload::" (C.idText i) =
+  let (depth,rest) = splitOnce "::" suffix
+      index = fst (splitOnce "::" (maybe "" id rest))
+  in "_payload" ++ map (\c -> if isAlphaNum c then c else '_') (depth ++ "_" ++ index)
+localName i | (_,Just suffix) <- splitOnce "::match::" (C.idText i) =
+  "_match" ++ map (\c -> if c == ':' then '_' else c) suffix
 localName i = case splitOnce "::input::" (C.idText i) of
   (_,Just n) -> "_input" ++ n
   _ -> case splitOnce "::contract::" (C.idText i) of
@@ -110,6 +122,13 @@ domainInput g = C.Quantifier (generatorBinder g) (generatorPredicates g) (genera
 domainBounds :: GeneratorRequirement -> [(String,Expr)]
 domainBounds g = [(C.binaryName op,e) | (op,e) <- generatorBounds g]
 
+-- Portable runtime keys retain nested presence and Either argument boundaries.
+scalarTypeKey :: Type -> String
+scalarTypeKey (C.Constructor "Either" [C.TypeArgument a,C.TypeArgument b]) =
+  "Either (" ++ scalarTypeKey a ++ ") (" ++ scalarTypeKey b ++ ")"
+scalarTypeKey (C.Constructor n [C.TypeArgument t]) = n ++ " " ++ scalarTypeKey t
+scalarTypeKey t = prettyType t
+
 prettyType :: Type -> String
 prettyType (C.Constructor n args) = unwords (n:map argument args) where
   argument (C.TypeArgument t) = "(" ++ prettyType t ++ ")"
@@ -120,6 +139,15 @@ prettyType (C.Arrow a b) = "(" ++ prettyType a ++ " -> " ++ prettyType b ++ ")"
 prettyExpr :: Expr -> String
 prettyExpr e = case C.expressionNode e of
   C.Constant s -> prettyScalar s
+  C.Construct tag args -> C.idText tag ++ "(" ++ intercalate ", " (map prettyExpr args) ++ ")"
+  C.Match value branches -> "match (" ++ prettyExpr value ++ ") { " ++ intercalate "; "
+    [C.idText (C.caseConstructor branch) ++ " " ++ unwords (map (localName . C.binderId) (C.caseBinders branch)) ++
+      " -> " ++ prettyExpr (C.caseBody branch) | branch <- branches] ++ " }"
+  C.AllElements value binder predicate -> "allElements (" ++ prettyExpr value ++ ") (" ++
+    localName (C.binderId binder) ++ " -> " ++ prettyExpr predicate ++ ")"
+  C.AllPayloads value predicates -> "allPayloads (" ++ prettyExpr value ++ ") [" ++
+    intercalate ", " [localName (C.binderId binder) ++ " -> " ++ prettyExpr predicate
+      | (binder,predicate) <- predicates] ++ "]"
   C.Local n -> localName n
   C.ExternalCall n args -> unwords (declarationName n:map ((\s -> "(" ++ s ++ ")") . prettyExpr) args)
   C.Binary op _ a b -> "(" ++ prettyExpr a ++ " " ++ C.binaryName op ++ " " ++ prettyExpr b ++ ")"
@@ -137,7 +165,13 @@ propositionText (AssertImplies g p) = prettyExpr g ++ " implies " ++ proposition
 propositionText (AssertAll ps) = intercalate " and " (map propositionText ps)
 
 metadata :: String -> Expanded -> String
-metadata prefix e = unlines [prefix ++ " " ++ map safe line | line <- lines text] where
+metadata prefix e = unlines [prefix ++ " " ++ line | line <- metadataLines e]
+
+metadataDocument :: Int -> String -> Expanded -> Doc.Doc
+metadataDocument width prefix = mconcat . map (Doc.lineComment width (prefix ++ " ")) . metadataLines
+
+metadataLines :: Expanded -> [String]
+metadataLines e = map (map safe) (lines text) where
   text = "Law: " ++ owner e ++ "::" ++ name e ++ "\nDescription: " ++ description (original e)
     ++ "\nRationale: " ++ rationale (original e) ++ "\nReferences: " ++ intercalate ", " (references (original e))
     ++ "\nExpansion:\n" ++ unlines (trace e) ++ prettyExpanded e

@@ -1,0 +1,31 @@
+unit fixture
+
+refinement Nonzero (T :: Type) requires Integer T is
+  (value :: T where value != 0)
+end
+
+definition next (x :: Int8 where x > 0)
+  :: (result :: Integer where result > 1)
+is
+  x + 1
+end
+
+definition divide (x :: Nonzero a) :: Rational requires Integer a is
+  1 / x
+end
+
+definition reciprocal (x :: Nonzero Int8) :: Rational is
+  divide x
+end
+
+definition ordered (x :: Nonzero Int8 where 1 / x > 0) :: Int8 is
+  x
+end
+
+definition narrow (x :: Int8 where x < 127) :: Int8 is
+  prelude.Int8 (x + 1)
+end
+
+definition caller (x :: Int8 where x > 0) :: Integer is
+  next x
+end

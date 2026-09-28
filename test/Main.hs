@@ -1,5 +1,17 @@
 module Main where
 import Test.Hspec
+import qualified GenericDefinitionSpec
+import qualified DefinitionPredicateSpec
+import qualified RefinementProofSpec
+import qualified DefinitionContractProofSpec
+import qualified DefinitionSchemeSpec
+import qualified InferenceSchemeSpec
+import qualified TotalSpec
+import qualified SourceDataSpec
+import qualified StructuralSpec
+import qualified DocumentSpec
+import qualified PayloadProofSpec
+import qualified PayloadSpec
 import qualified CoreSpec
 import LawSpec.Compile
 import LawSpec.Model
@@ -18,6 +30,18 @@ concrete d = "law `codec` is definition is " ++ d ++ " end end\n"
 main :: IO ()
 main = hspec $ do
   CoreSpec.spec
+  PayloadSpec.spec
+  PayloadProofSpec.spec
+  DocumentSpec.spec
+  StructuralSpec.spec
+  SourceDataSpec.spec
+  TotalSpec.spec
+  InferenceSchemeSpec.spec
+  DefinitionSchemeSpec.spec
+  GenericDefinitionSpec.spec
+  DefinitionPredicateSpec.spec
+  RefinementProofSpec.spec
+  DefinitionContractProofSpec.spec
   describe "compiler" $ do
     it "checks the bundled prelude" $ compile [] `shouldBe` Right ([],[])
     it "expands the exact scratch example" $ do
@@ -215,7 +239,7 @@ main = hspec $ do
         Right (us,es) -> case emitWithLayout "javascript" (Just "lib") (Just "checks/unit") us es of
           Left ds -> expectationFailure (show ds)
           Right fs -> do
-            [artifactPath a | a <- fs, artifactPlacement a == "source", ownership a == "generated"] `shouldBe` ["lib/lawspec_runtime.mjs"]
+            [artifactPath a | a <- fs, artifactPlacement a == "source", ownership a == "generated"] `shouldBe` ["lib/lawspec_data.mjs", "lib/lawspec_schema.mjs", "lib/lawspec_runtime.mjs"]
             artifactContent (fs !! 1) `shouldSatisfy` isInfixOf "../../lib/lawspec_runtime.mjs"
 
     it "infers tagged presence literals in law assertions" $ do

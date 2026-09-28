@@ -33,6 +33,20 @@ expressionView names e = object ["type" .= typeView (C.expressionType e),"origin
   expr = expressionView names
   node = case C.expressionNode e of
     C.Constant v -> object ["kind" .= str "constant", "value" .= v]
+    C.Construct tag args -> object ["kind" .= str "construct", "constructor" .= C.idText tag, "arguments" .= map expr args]
+    C.Match value cases -> object ["kind" .= str "match", "value" .= expr value, "cases" .=
+      [object ["constructor" .= C.idText (C.caseConstructor branch),
+        "binders" .= map binderView (C.caseBinders branch),
+        "body" .= expressionView ([(C.binderId b, C.binderName b) | b <- C.caseBinders branch] ++ names) (C.caseBody branch)]
+        | branch <- cases]]
+    C.AllElements value binder predicate -> object
+      ["kind" .= str "allElements", "value" .= expr value, "binder" .= binderView binder,
+       "predicate" .= expressionView ((C.binderId binder,C.binderName binder):names) predicate]
+    C.AllPayloads value predicates -> object
+      ["kind" .= str "allPayloads", "value" .= expr value, "predicates" .=
+       [object ["binder" .= binderView binder,
+         "predicate" .= expressionView ((C.binderId binder,C.binderName binder):names) predicate]
+         | (binder,predicate) <- predicates]]
     C.Local n -> object ["kind" .= str "local", "id" .= C.idText n]
     C.ExternalCall n args -> object ["kind" .= str "call", "declaration" .= C.idText n, "arguments" .= map expr args]
     C.Binary op ev a b -> object ["kind" .= str "binary", "operator" .= C.binaryName op, "evidence" .= evidenceView ev, "left" .= expr a, "right" .= expr b]
@@ -49,6 +63,17 @@ logical C.Or = "||"
 expressionText :: Names -> C.Expr -> String
 expressionText names e = case C.expressionNode e of
   C.Constant v -> prettyScalar v
+  C.Construct tag args -> unwords (C.idText tag : map ((\v -> "(" ++ go v ++ ")")) args)
+  C.Match value cases -> "match (" ++ go value ++ ") { " ++ unwords
+    [C.idText (C.caseConstructor branch) ++ " " ++ unwords (map C.binderName (C.caseBinders branch)) ++
+     " -> " ++ expressionText ([(C.binderId b, C.binderName b) | b <- C.caseBinders branch] ++ names) (C.caseBody branch) ++ ";"
+      | branch <- cases] ++ " }"
+  C.AllElements value binder predicate -> "allElements (" ++ go value ++ ") (" ++ C.binderName binder ++
+    " -> " ++ expressionText ((C.binderId binder,C.binderName binder):names) predicate ++ ")"
+  C.AllPayloads value predicates -> "allPayloads (" ++ go value ++ ") [" ++ unwords
+    [C.binderName binder ++ " -> " ++
+      expressionText ((C.binderId binder,C.binderName binder):names) predicate ++ ";"
+      | (binder,predicate) <- predicates] ++ "]"
   C.Local n -> maybe (C.idText n) id (lookup n names)
   C.ExternalCall n args -> unwords (declarationName n:map ((\v -> "(" ++ go v ++ ")")) args)
   C.Binary op _ a b -> "(" ++ go a ++ " " ++ C.binaryName op ++ " " ++ go b ++ ")"
@@ -71,12 +96,30 @@ programView :: Generation -> [S.Unit] -> [String] -> [Artifact] -> C.Program -> 
 programView settings surface expansions artifacts C.Program{..} = object
   [ "schemaVersion" .= (3 :: Int), "machineBits" .= programMachineBits, "generation" .= settings
   , "diagnostics" .= ([] :: [Diagnostic]), "units" .= map unitView programUnits
+  , "dataTypes" .= map dataView programDataDeclarations
+  , "definitions" .= [definitionView u d | u <- programUnits, d <- C.unitDefinitions u]
   , "laws" .= [propertyView (C.idText (C.unitId u)) p | u <- programUnits,p <- C.unitProperties u]
   , "contracts" .= [object ["owner" .= C.idText (C.unitId u),"contract" .= contractView c] | u <- programUnits,c <- C.unitContracts u]
   , "refinements" .= [refinementView u r | u <- surface,r <- S.refinements u]
   , "expansions" .= expansions, "files" .= artifacts
   ]
   where
+    definitionView u d = object
+      [ "owner" .= C.idText (C.unitId u)
+      , "id" .= C.idText (C.declarationId (C.definitionDeclaration d))
+      , "arguments" .= map binderView (C.definitionArguments d)
+      , "body" .= expressionView [(C.binderId b,C.binderName b) | b <- C.definitionArguments d] (C.definitionBody d)
+      ]
+    dataView declaration = object
+      [ "id" .= C.idText (C.dataId declaration), "name" .= C.dataName declaration
+      , "parameters" .= map C.idText (C.dataParameters declaration)
+      , "origin" .= originView (C.dataOrigin declaration)
+      , "constructors" .= [object
+          [ "id" .= C.idText (C.constructorId constructor), "name" .= C.constructorName constructor
+          , "fields" .= map binderView (C.constructorFields constructor)
+          , "origin" .= originView (C.constructorOrigin constructor)
+          ] | constructor <- C.dataConstructors declaration]
+      ]
     unitView u = object ["id" .= C.idText (C.unitId u), "declarations" .= [object ["id" .= C.idText (C.declarationId d),"name" .= C.declarationName d,"type" .= typeView (C.declarationType d),"origin" .= originView (C.declarationOrigin d)] | d <- C.unitDeclarations u]]
     propertyView owner p =
       let names = [(C.binderId b,C.binderName b) | q <- C.propertyInputs p, let b = C.quantifiedBinder q]
@@ -105,4 +148,5 @@ programView settings surface expansions artifacts C.Program{..} = object
       ,"definition" .= S.prettyType (S.refinementBody r)]
     constant e = case C.expressionNode e of
       C.Constant v -> toJSON v
+      C.Construct tag fields -> object ["kind" .= str "data", "type" .= typeView (C.expressionType e), "constructor" .= C.idText tag, "fields" .= map constant fields]
       _ -> error "core validator must reject non-concrete example bindings"

@@ -1,31 +1,69 @@
-module LawSpec.CoreScalarEmit (scalarEmit, typeKey) where
+module LawSpec.CoreScalarEmit (scalarEmit, scalarEmitWithData, scalarEmitWithDefinitions, scalarEmitWithFormat, typeKey) where
 import LawSpec.Backend
 import LawSpec.Common
 import LawSpec.Testing
+import qualified LawSpec.Core.Value as V
 import qualified LawSpec.Core as C
+import qualified LawSpec.PythonData as PythonData
+import qualified LawSpec.WebData as WebData
+import qualified LawSpec.WebExpr as WebExpr
+import qualified LawSpec.PythonExpr as PythonExpr
+import qualified LawSpec.Code.Doc as Doc
+import qualified LawSpec.PortableGenerator as Generator
+import qualified LawSpec.PortableTestHelpers as Helpers
 import LawSpec.Scalar
-import Data.Aeson (encode)
+import Data.Aeson (encode, toJSON)
 import qualified Data.Text.Lazy as T
 import qualified Data.Text.Lazy.Encoding as T
 import Data.List (intercalate, isPrefixOf, isInfixOf)
-import Control.Monad (unless)
+import Control.Monad (unless, foldM)
 
 q :: String -> String
 q = T.unpack . T.decodeUtf8 . encode
-json :: Scalar -> String
-json = T.unpack . T.decodeUtf8 . encode
 typeKey :: Type -> String
-typeKey (Applied n t) = n ++ " " ++ typeKey t
-typeKey t = prettyType t
+typeKey = scalarTypeKey
 scalarEmit :: Int -> String -> Unit -> [Expanded] -> Either [Diagnostic] [Artifact]
-scalarEmit bits target u allLaws = do
+scalarEmit = scalarEmitWithData []
+scalarEmitWithData :: [C.DataDeclaration] -> Int -> String -> Unit -> [Expanded] -> Either [Diagnostic] [Artifact]
+scalarEmitWithData declarations = scalarEmitWithDefinitions declarations []
+scalarEmitWithDefinitions :: [C.DataDeclaration] -> [(C.Id,String)] -> Int -> String -> Unit -> [Expanded] -> Either [Diagnostic] [Artifact]
+scalarEmitWithDefinitions = scalarEmitWithFormat False
+scalarEmitWithFormat :: Bool -> [C.DataDeclaration] -> [(C.Id,String)] -> Int -> String -> Unit -> [Expanded] -> Either [Diagnostic] [Artifact]
+scalarEmitWithFormat minify declarations definitions bits target u allLaws = do
   unless (target `elem` ["python","javascript","typescript"]) (Left [Diagnostic "target-runtime" ("portable scalar runtime is not implemented for " ++ target) Nothing])
   tests <- concat <$> mapM lawTests (zip [0 :: Int ..] ls)
   wrappers <- concat <$> mapM contractWrapper (contracts u)
-  let completeHeader = if py || "fc." `isInfixOf` tests then testHeader else unlines (filter (/= "import fc from 'fast-check';") (lines testHeader))
-  pure [Artifact stubPath stub "user" "source",Artifact testPath (completeHeader ++ testHelpers ++ wrappers ++ tests) "generated" "test"]
+  let completeHeader = if py || hasData || "fc." `isInfixOf` tests then testHeader else unlines (filter (/= "import fc from 'fast-check';") (lines testHeader))
+  pure [Artifact stubPath stub "user" "source",Artifact testPath (finish (completeHeader ++ dataHelpers ++ testHelpers ++ wrappers ++ tests)) "generated" "test"]
   where
+    finish content = if py then reverse (dropWhile (== '\n') (reverse content)) ++ "\n" else content
+    adapterFunctions = [(n,t) | (n,t) <- functions u, C.Id (unitName u ++ "::" ++ n) `notElem` map fst definitions]
     py = target == "python"
+    hasData = (not (null definitions) || not (null declarations) || any (usesData . snd) (functions u) ||
+      any (any (usesData . inputType) . inputs) ls ||
+      any expressionNeedsSchema (concatMap C.contractExpressions (contracts u) ++
+        concatMap (C.propertyExpressions . original) ls))
+    fieldContracts = any (not . null . C.constructorPredicates)
+      (concatMap C.dataConstructors declarations)
+    usesData = (if py then PythonData.requiresSchema else WebData.requiresSchema) declarations
+    expressionNeedsSchema term | C.AllPayloads _ _ <- C.expressionNode term = True
+    expressionNeedsSchema term = usesData (expressionType term) || any expressionNeedsSchema (C.children term)
+    dataImports = if hasData then "import builtins as _builtins\nimport lawspec_data as data\nimport lawspec_schema as _schema\n" else ""
+    nodeCount (V.ScalarValue _) = 1
+    nodeCount (V.PresenceValue _ value) = 1 + maybe 0 nodeCount value
+    nodeCount value@(V.DataValue (C.Constructor "List" _) _ _) = either (const 1) ((+1) . sum . map nodeCount) (V.listItems value)
+    nodeCount (V.DataValue _ _ fields) = 1 + sum (map nodeCount fields)
+    budget = maximum (64 : [8 + nodeCount value | law <- ls, requirement <- generationPlan law, value <- generatorBoundaries requirement])
+    outputLayout = Doc.selectLayout minify (Doc.Pretty (if py then 79 else 80))
+    referenceDoc ty = either error id ((if py then PythonData.pythonTypeReferenceDoc else WebData.webTypeReferenceDoc) ty)
+    generatorDoc = Generator.generatorDoc py bits usesData referenceDoc
+    dataHelpers = if not hasData then "" else
+      (if py then "from lawspec_data_strategies import strategy as _data_strategy\n\n\n"
+       else "import {strategy as _data_strategy} from './lawspec_data_strategies." ++ (if ts then "js" else "mjs") ++ "';\n\n") ++
+      Doc.render outputLayout (Helpers.dataHelperDoc py bits budget
+        [(if py then PythonExpr.quoted else WebExpr.quoted) (primitiveName p) <> Doc.text ": " <>
+          generatorDoc (Named (primitiveName p)) | p <- primitives]) ++
+      (if py then "\n\n\n" else "\n\n")
     ts = target == "typescript"
     ext = if py then ".py" else if ts then ".ts" else ".mjs"
     parts = split (unitName u)
@@ -35,11 +73,17 @@ scalarEmit bits target u allLaws = do
     ls = filter ((== unitName u) . owner) allLaws
     runtimeImport = if py then "import lawspec_runtime as ls\n" else "import * as ls from '../src/lawspec_runtime." ++ (if ts then "js" else "mjs") ++ "';\n"
     testHeader = (if ts then "// @ts-nocheck\n" else "") ++ (if py then "#" else "//") ++ " Generated by LawSpec.\n" ++ runtimeImport ++ if py
-      then "import json\nfrom hypothesis import given, settings, strategies as st\n" ++ (if null (functions u) then "" else "import " ++ unitName u ++ " as impl\n")
-      else "import {test} from 'node:test';\nimport assert from 'node:assert/strict';\nimport fc from 'fast-check';\nimport * as impl from '../src/" ++ slash ++ (if ts then ".js" else ".mjs") ++ "';\n"
-    testHelpers = if py then unlines
-      ["def _lawspec_assert(context, actual, expected, ta, tb):", "  try:", "    a, b = actual(), expected()", "    assert ls.equal(a, b, ta, tb), f'{context} | actual={a!r}, expected={b!r}'", "  except Exception as error:", "    raise AssertionError(f'{context}: {error}') from error", ""]
-      else "function _lawspecAssert(context, actual, expected, ta, tb) { try { const a = actual(), b = expected(); assert.ok(ls.equal(a,b,ta,tb), `${context} | actual=${String(a)}, expected=${String(b)}`); } catch(error) { throw new Error(`${context}: ${error.message}`, {cause:error}); } }\n"
+      then (if null definitions then "" else "import lawspec_definition_bodies as _definitions\n") ++ dataImports ++ "import json\nfrom hypothesis import assume, given, settings, strategies as st\n" ++ (if null adapterFunctions then "" else "import " ++ unitName u ++ " as impl\n")
+      else (if null definitions then "" else "import * as _definitions from '../src/lawspec_definition_bodies." ++ (if ts then "js" else "mjs") ++ "';\n") ++ webImports "../src/" ++ "import {test} from 'node:test';\nimport assert from 'node:assert/strict';\nimport fc from 'fast-check';\nimport * as impl from '../src/" ++ slash ++ (if ts then ".js" else ".mjs") ++ "';\n"
+    testHelpers = (if hasData then "" else if py then "\n\n" else "\n") ++
+      Doc.render outputLayout (Helpers.assertionHelperDoc py) ++
+      (if py then "\n\n\n" else "\n\n")
+    native ty | usesData ty = either error id ((if py then PythonData.pythonDataType else WebData.webDataType) declarations ty)
+    native (Applied "Maybe" _) = if py then "ls.DataValue" else "unknown"
+    native (C.Constructor "Either" _) = if py then "ls.DataValue" else "unknown"
+    native (Applied "List" element) =
+      if py then "list[" ++ (if element == Named "Unit" then "ls.Absence" else native element) ++ "]"
+      else "Array<" ++ (if element == Named "Unit" then "unknown" else native element) ++ ">"
     native (Named n)
       | py = case n of
           "Bytes" -> "bytes"; "Bool" -> "bool"; "Text" -> "str"; "Char" -> "str"; "Decimal" -> "ls.Decimal"; "Rational" -> "ls.Fraction"
@@ -54,118 +98,311 @@ scalarEmit bits target u allLaws = do
           _ | n `elem` ["Float32","Float64","CodePoint","CodeUnit16"] -> "number"
           _ -> "unknown"
     native _ = if py then "ls.Presence" else "unknown"
-    stub = (if py then "#" else "//") ++ " User-owned LawSpec adapter.\n" ++ (if py then "import lawspec_runtime as ls\n" else "") ++ concatMap stubFn (functions u)
+    stub = (if py then "#" else "//") ++ " User-owned LawSpec adapter.\n" ++ (if py then dataImports ++ "import lawspec_runtime as ls\n" else webImports (concat (replicate (length parts - 1) "../") ++ "./") ++ (if hasData then "import * as ls from '" ++ (if length parts == 1 then "./" else concat (replicate (length parts - 1) "../")) ++ "lawspec_runtime." ++ (if ts then "js" else "mjs") ++ "';\n" else "")) ++ (if py && not (null adapterFunctions) then "\n\n" else "") ++ intercalate (if py then "\n\n" else "\n") (map stubFn adapterFunctions)
+    webImports root = if not hasData then "" else "import * as data from '" ++ root ++ "lawspec_data." ++ (if ts then "js" else "mjs") ++ "';\nimport * as schema from '" ++ root ++ "lawspec_schema." ++ (if ts then "js" else "mjs") ++ "';\n"
+    nativeArg ty | usesData ty = native ty
+    nativeArg (Applied "List" element) = if py then "list[" ++ nativeArg element ++ "]" else "Array<" ++ nativeArg element ++ ">"
     nativeArg t = if t == Named "Integer" then (if py then "int" else "bigint") else if t == Named "Unit" then (if py then "ls.Absence" else "unknown") else native t
-    stubFn (n,t) = let (args,r) = functionType t; args' = ["value" ++ show i ++ (if py || ts then ": " ++ nativeArg a else "") | (i,a) <- zip [0 :: Int ..] args] in
-      if py then "def " ++ n ++ "(" ++ intercalate ", " args' ++ ") -> " ++ native r ++ ":\n    raise NotImplementedError(" ++ q n ++ ")\n"
-      else "export function " ++ n ++ "(" ++ intercalate ", " args' ++ ")" ++ (if ts then ": " ++ native r else "") ++ " { throw new Error(" ++ q n ++ "); }\n"
-    call n args = "ls." ++ n ++ "(" ++ intercalate ", " args ++ ")"
-    lit s = call "literal" [if py then "json.loads(" ++ q (json s) ++ ")" else json s,"symbols"]
-    converted t e = call "convert" [e,q (typeKey t),show bits]
-    render term = case C.expressionNode term of
-      C.Local n -> localName n
-      C.Constant s -> lit s
-      C.Convert C.CheckedArgument t e -> converted t (render e)
-      C.Convert C.Explicit t e -> call "helper" [q (typeKey t),"[" ++ render e ++ "]","[" ++ q (typeKey (expressionType e)) ++ "]",show bits]
-      C.ShortCircuit op a b -> "(" ++ render a ++ (if py then if op == C.And then " and " else " or " else if op == C.And then " && " else " || ") ++ render b ++ ")"
-      C.Unary C.Not a -> "(" ++ (if py then "not " else "!") ++ render a ++ ")"
-      C.Binary op _ a b -> call "binary" [q (C.binaryName op),render a,render b,q (typeKey (expressionType a)),q (typeKey (expressionType b))]
-      C.Unary C.Negate a -> call "helper" [q "negate","[" ++ render a ++ "]","[" ++ q (typeKey (expressionType a)) ++ "]",show bits]
-      C.Helper builtin args -> call "helper" [q (C.builtinName builtin),"[" ++ intercalate ", " (map render args) ++ "]","[" ++ intercalate ", " (map (q . typeKey . expressionType) args) ++ "]",show bits]
-      C.ExternalCall decl args ->
-        let n = declarationName decl
-            t = expressionType term
-            values = [converted (expressionType a) (render a) | a <- args]
-            invocation = "impl." ++ n ++ "(" ++ intercalate ", " values ++ ")"
-        in if n `elem` map contractName (contracts u)
-          then "_lawspec_call_" ++ n ++ "(" ++ intercalate ", " ("symbols":values) ++ ")"
-          else call "validate" [if t == Named "Unit" then call (if py then "unit_result" else "unitResult") [invocation] else invocation,q (typeKey t),show bits]
-    assertionCode indent context proposition = case proposition of
-      AssertAll ps -> concat <$> mapM (assertionCode indent context) ps
-      AssertImplies g body -> do
-        bs <- assertionCode (indent ++ "  ") context body
-        pure $ indent ++ "if " ++ (if py then render g ++ ":\n" else "(" ++ render g ++ ") {\n") ++ bs ++ (if py then "" else indent ++ "}\n")
-      AssertEqual a b ->
-        let arguments = [q (context ++ " | expect " ++ propositionText proposition),(if py then "lambda: " else "() => ") ++ render a,(if py then "lambda: " else "() => ") ++ render b,q (typeKey (expressionType a)),q (typeKey (expressionType b))]
-        in pure $ indent ++ (if py then "_lawspec_assert(" else "_lawspecAssert(") ++ intercalate ", " arguments ++ (if py then ")\n" else ");\n")
-    symbolsLine indent = indent ++ "symbols = {}\n"
-    jsSymbols indent = indent ++ "const symbols = new Map();\n"
-    freshSymbols = if py then symbolsLine else jsSymbols
-    block label name' body = if py then "def " ++ name' ++ "():\n" ++ freshSymbols "  " ++ body ++ "\n" else "test(" ++ q label ++ ", () => {\n" ++ freshSymbols "  " ++ body ++ "});\n"
-    assign n v = "  " ++ (if py then n ++ " = " ++ v ++ "\n" else "const " ++ n ++ " = " ++ v ++ ";\n")
+    stubFn (n,t) = Doc.render outputLayout $
+      let (args,r) = functionType t
+          pythonType ty = if usesData ty then either error id (PythonData.pythonDataTypeDoc declarations ty) else Doc.text (nativeArg ty)
+          arguments = [Doc.text ("value" ++ show i) <>
+            (if py then Doc.text ": " <> pythonType a
+             else Doc.text (if ts then ": " ++ nativeArg a else "")) |
+            (i,a) <- zip [0 :: Int ..] args]
+          -- Native representations can erase LawSpec distinctions. Keep the
+          -- declared interface visible in both the stub and its canonical key.
+          signatureComments =
+            mconcat [stubComment ("LawSpec argument " ++ show i ++ ": " ++ prettyType a) |
+              (i,a) <- zip [0 :: Int ..] args] <>
+            stubComment ("LawSpec result: " ++ prettyType r)
+          signature = Doc.text ((if py then "def " else "export function ") ++ n) <>
+            Doc.delimit 4 "(" ")" arguments <>
+            (if py then Doc.text " -> " <> (if r == Named "Unit" then Doc.text "None" else pythonType r) <> Doc.text ":"
+             else Doc.text (if ts then ": " ++ native r else ""))
+      in signatureComments <> signature <>
+        (if py then Doc.nest 4 (Doc.hardline <> Doc.text ("raise NotImplementedError(" ++ q n ++ ")"))
+         else Doc.text " " <> Doc.block 2 (Doc.text "throw " <> WebExpr.call "new Error" [WebExpr.quoted n] <> Doc.text ";")) <> Doc.hardline
+
+    stubComment = Doc.lineComment (if py then 72 else 80) (if py then "# " else "// ")
+    text = Doc.text
+    quoted = if py then PythonExpr.quoted else WebExpr.quoted
+    -- Diagnostics are expression values, so long messages can concatenate
+    -- literal chunks without changing their runtime payload.
+    message value
+      | quotedWidth value <= 60 = quoted value
+      | otherwise = parenthesized (Doc.joinWith (if py then Doc.softline <> text "+ " else text " +" <> Doc.softline)
+          (map quoted (chunks value)))
+      where
+        quotedWidth = length . Doc.render Doc.Compact . quoted
+        chunks [] = []
+        chunks rest =
+          let candidates = takeWhile (\n -> quotedWidth (take n rest) <= 40) [1 .. length (take 40 rest)]
+              limit = foldl (\_ n -> n) 1 candidates
+              wordEnd = foldl (\lastSpace (index,c) -> if c == ' ' then index + 1 else lastSpace)
+                0 (zip [0 :: Int ..] (take limit rest))
+              count = if wordEnd == 0 then limit else wordEnd
+          in take count rest : chunks (drop count rest)
+    invoke = if py then PythonExpr.call else WebExpr.call
+    array = if py then PythonExpr.array else WebExpr.array
+    indentation = if py then 4 else 2
+    width = text (show bits)
+    runtime name = invoke ("ls." ++ name)
+    schema name arguments = invoke ("_lawspec_schema." ++ name)
+      (arguments ++ [text "symbols"])
+    statement value = value <> if py then mempty else text ";"
+    statements = Doc.joinWith Doc.hardline
+    parenthesized value = Doc.group (text "(" <> Doc.nest 4 (Doc.softbreak <> value) <> Doc.softbreak <> text ")")
+    object fields = Doc.delimitTrailing indentation "{" "}"
+      [text name <> text ": " <> value | (name,value) <- fields]
+    method value name arguments = value <> text "." <> invoke name arguments
+    lambda parameters value = if py
+      then PythonExpr.lambdaExpression parameters value
+      else Doc.delimitTrailing 4 "(" ")" parameters <> text " => " <> value
+    callback parameters body = Doc.delimitTrailing 4 "(" ")" parameters <> text " => " <> Doc.block 2 body
+    function name parameters body =
+      let header = text ((if py then "def " else "function ") ++ name) <>
+            Doc.delimitTrailing indentation "(" ")" (map text parameters)
+      in if py then PythonExpr.suite header body else header <> text " " <> Doc.block 2 body
+    assign name value = statement (text ((if py then "" else "const ") ++ name ++ " = ") <> value)
+    freshSymbols = assign "symbols" (if py then text "{}" else invoke "new Map" [])
+    renderDocument doc = Doc.render outputLayout doc ++ if py then "\n\n\n" else "\n\n"
+    -- Calls containing statement blocks use mandatory argument breaks. A flat
+    -- enclosing call group must not flatten the groups inside a callback body.
+    blockCall name arguments = text (name ++ "(") <>
+      Doc.nest 4 (Doc.hardline <> Doc.joinWith (text "," <> Doc.hardline) arguments <>
+        text ",") <> Doc.hardline <> text ")"
+    testBlock label name body = if py then function name [] body
+      else text "test(" <> message label <> text ", " <> callback [] body <> text ");"
+    nativeInput ty value = if usesData ty
+      then schema (if py then "to_native" else "toNative") [referenceDoc ty,value,width] else value
+    checkedResult ty value = if usesData ty
+      then schema (if py then "from_native" else "fromNative") [referenceDoc ty,value,width]
+      else runtime "validate"
+        [if ty == Named "Unit" then runtime (if py then "unit_result" else "unitResult") [value] else value,
+         quoted (typeKey ty),width]
+    converted ty value = if usesData ty then schema "validate" [referenceDoc ty,value,width]
+      else runtime "convert" [value,quoted (typeKey ty),width]
+    render term = either error id (renderer declarations bits localName external term)
+      where
+        renderer = if py then PythonExpr.renderExpression else WebExpr.renderExpression ts
+        external expression values = case C.expressionNode expression of
+          C.ExternalCall decl args -> case lookup decl definitions of
+            Just name -> Right (invoke name (text "symbols":values))
+            Nothing ->
+              let convertedValues = [converted (expressionType a) value | (a,value) <- zip args values]
+                  invocation = invoke ("impl." ++ declarationName decl)
+                    [nativeInput (expressionType a) value | (a,value) <- zip args convertedValues]
+              in Right (if declarationName decl `elem` map contractName (contracts u)
+                then invoke ("_lawspec_call_" ++ declarationName decl) (text "symbols":convertedValues)
+                else checkedResult (expressionType expression) invocation)
+          _ -> Left "expected portable external call"
+    assertionDoc context proposition = case proposition of
+      AssertAll propositions -> statements (map (assertionDoc context) propositions)
+      AssertImplies guard body -> if py
+        then PythonExpr.suite (text "if " <> parenthesized (render guard)) (assertionDoc context body)
+        else text "if " <> parenthesized (render guard) <> text " " <> Doc.block 2 (assertionDoc context body)
+      AssertEqual left right ->
+        let arguments = [message (context ++ " | expect " ++ propositionText proposition),
+              lambda [] (render left),lambda [] (render right)]
+            structural = usesData (expressionType left)
+            extra = if structural then [referenceDoc (expressionType left),text "symbols"]
+              else map (quoted . typeKey . expressionType) [left,right]
+            helper = if structural then "_lawspec_data_assert" else if py then "_lawspec_assert" else "_lawspecAssert"
+        in statement (invoke helper (arguments ++ extra))
+    conjunction [] = text (if py then "True" else "true")
+    conjunction expressions = parenthesized (Doc.joinWith
+      (if py then Doc.softline <> text "and " else text " &&" <> Doc.softline) (map parenthesized expressions))
+    propertyInvocation label generators parameters body options =
+      let property = blockCall "fc.property" (generators ++ [callback parameters body])
+          assertion = blockCall "fc.assert" (property:options)
+      in testBlock (label ++ " property") "unused" (statement assertion)
+    pythonProperty prefix decorators names body = statements
+      (map (\decorator -> text "@" <> decorator) decorators ++ [function (prefix ++ "_property") names body])
     lawTests (index,e) = do
-      let label = owner e ++ "::" ++ name e; prefix = "test_law" ++ show index
-      exampleTests <- concat <$> mapM (\(j,ex) -> do
-        let values = [assign n (render v) | (n,v) <- bindings ex]
-        checks <- concat <$> mapM (assertionCode "  " (label ++ " example " ++ exampleName ex)) (expectations ex)
-        lawCheck <- assertionCode "  " label (assertion e)
-        pure (block (label ++ " example: " ++ exampleName ex) (prefix ++ "_example" ++ show j) (concat values ++ checks ++ lawCheck))) (zip [0 :: Int ..] (examples (original e)))
-      let finite = finiteCases e
+      let label = owner e ++ "::" ++ name e
+          prefix = "test_law" ++ show index
+          examples' = [testBlock (label ++ " example: " ++ exampleName example)
+            (prefix ++ "_example" ++ show j) (statements
+              (freshSymbols : [assign name (render value) | (name,value) <- bindings example] ++
+               map (assertionDoc (label ++ " example " ++ exampleName example)) (expectations example) ++
+               [assertionDoc label (assertion e)])) |
+            (j,example) <- zip [0 :: Int ..] (examples (original e))]
+          finite = finiteCases e
           cases' = maybe (boundaryCases e) id finite
-      boundaryTests <- concat <$> mapM (\(j,vs) -> do
-        checks <- assertionCode "  " (label ++ " boundary " ++ show j) (assertion e)
-        pure (block label (prefix ++ "_boundary" ++ show j) (concat [assign (inputId inp) (lit v) | (inp,v) <- zip (inputs e) vs] ++ checks))) (zip [0 :: Int ..] cases')
-      body <- assertionCode "  " (label ++ " property") (assertion e)
-      let gs = map (generator . inputType) (inputs e)
-          ns = map inputId (inputs e)
-          propertyTest = if py then "@given(" ++ intercalate ", " gs ++ ")\ndef " ++ prefix ++ "_property(" ++ intercalate ", " ns ++ "):\n" ++ freshSymbols "  " ++ body
-            else "test(" ++ q (label ++ " property") ++ ", () => fc.assert(fc.property(" ++ intercalate ", " gs ++ ", (" ++ intercalate ", " ns ++ ") => {\n" ++ freshSymbols "  " ++ body ++ "})));\n"
-      refined <- refinedProperty prefix label e body
-      pure (metadata (if py then "#" else "//") e ++ exampleTests ++ boundaryTests ++ if maybe False (const True) finite then "" else if any (not . null . inputRefinements) (inputs e) || propertyKind e == "contract" then refined else propertyTest)
-    contractWrapper c = do
-      let args = contractArguments c
-          (resultName,resultType) = contractResult c
-          conjunction [] = if py then "True" else "true"
-          conjunction xs = intercalate (if py then " and " else " && ") ["(" ++ x ++ ")" | x <- xs]
-          line context ps = "  " ++ call (if py then "require_contract" else "requireContract") [conjunction ps,q context] ++ (if py then "\n" else ";\n")
-          invocation = "impl." ++ contractName c ++ "(" ++ intercalate ", " [converted t n | (n,t) <- args] ++ ")"
-          value = call "validate" [if resultType == Named "Unit" then call (if py then "unit_result" else "unitResult") [invocation] else invocation,q (typeKey resultType),show bits]
-          pre = map render (contractPreconditions c)
-          post = map render (contractPostconditions c)
-      pure $ (if py then "def " else "function ") ++ "_lawspec_call_" ++ contractName c ++ "(" ++ intercalate ", " ("symbols":map fst args) ++ (if py then "):\n" else ") {\n") ++
-        line (contractName c ++ " precondition: " ++ intercalate " && " (map prettyExpr (contractPreconditions c))) pre ++ assign resultName value ++
-        line (contractName c ++ " postcondition: " ++ intercalate " && " (map prettyExpr (contractPostconditions c))) post ++ "  return " ++ resultName ++ (if py then "\n\n" else ";\n}\n")
+      boundaries' <- mapM (\(j,values) -> do
+        literals <- mapM valueLit values
+        pure (testBlock label (prefix ++ "_boundary" ++ show j) (statements
+          (freshSymbols : [assign (inputId input) value | (input,value) <- zip (inputs e) literals] ++
+           [assertionDoc (label ++ " boundary " ++ show j) (assertion e)])))) (zip [0 :: Int ..] cases')
+      let body = assertionDoc (label ++ " property") (assertion e)
+          generators = map (generatorDoc . inputType) (inputs e)
+          names = map inputId (inputs e)
+          ordinary = if py then pythonProperty prefix [invoke "given" generators] names
+            (statements [freshSymbols,body])
+            else propertyInvocation label generators (map text names) (statements [freshSymbols,body]) []
+      refined <- (if any (containsStructural . inputType) (inputs e) then nativeRefinedProperty else refinedProperty) prefix label e body
+      let needsContext = fieldContracts && any (usesData . inputType) (inputs e)
+      contextual <- if needsContext then
+        (if py then contextualProperty prefix else webContextualProperty label) e body
+        else pure ordinary
+      let properties = if maybe False (const True) finite then [] else
+            [if needsContext then contextual else if any (not . null . inputRefinements) (inputs e) || propertyKind e == "contract" then refined else ordinary]
+      pure (Doc.render outputLayout (metadataDocument (if py then 72 else 80) (if py then "#" else "//") e) ++
+        concatMap renderDocument (examples' ++ boundaries' ++ properties))
+    contractWrapper contract =
+      let arguments = contractArguments contract
+          (resultName,resultType) = contractResult contract
+          require label predicates = statement (runtime (if py then "require_contract" else "requireContract")
+            [conjunction (map render predicates),message (contractName contract ++ " " ++ label ++ ": " ++
+              intercalate " && " (map prettyExpr predicates))])
+          invocation = invoke ("impl." ++ contractName contract)
+            [nativeInput ty (converted ty (text name)) | (name,ty) <- arguments]
+          body = statements
+            [require "precondition" (contractPreconditions contract),
+             assign resultName (checkedResult resultType invocation),
+             require "postcondition" (contractPostconditions contract),
+             statement (text ("return " ++ resultName))]
+      in pure (renderDocument (function ("_lawspec_call_" ++ contractName contract) ("symbols":map fst arguments) body))
+    valueLit (V.ScalarValue value) = Right (if py then PythonExpr.scalarLiteral value else runtime "literal"
+      [WebExpr.literalValue (toJSON value),text "symbols"])
+    valueLit value@(V.DataValue (C.Constructor "List" _) _ _) = do
+      items <- either (Left . pure . (\message -> Diagnostic "target" message Nothing)) Right (V.listItems value)
+      array <$> mapM valueLit items
+    valueLit (V.PresenceValue (C.Constructor wrapper _) payload) = do
+      field <- traverse valueLit payload
+      pure (invoke (if py then "ls.Presence" else "new ls.Presence")
+        (quoted wrapper : case field of
+          Nothing -> [text (if py then "False" else "false")]
+          Just value -> [text (if py then "True" else "true"),value]))
+    valueLit (V.DataValue ty tag fields) | usesData ty = do
+      values <- mapM valueLit fields
+      pure (schema "construct" [referenceDoc ty,quoted (C.idText tag),array values,width])
+    valueLit (V.DataValue (C.Constructor name _) tag fields) | name `elem` ["Maybe","Either"] = do
+      values <- mapM valueLit fields
+      pure (runtime "construct" [quoted (C.idText tag),array values])
+    valueLit _ = Left [Diagnostic "target" ("structural literal is not implemented for " ++ target) Nothing]
+    containsStructural ty | usesData ty = True
+    containsStructural (C.Constructor name args) = name `elem` ["List","Maybe","Either"] ||
+      any (\arg -> case arg of C.TypeArgument inner -> containsStructural inner; _ -> False) args
+    containsStructural _ = False
+    -- Hypothesis owns the draw and shrink lifecycle. The fixture identity map
+    -- is created per case and retained for generation, contracts and assertions.
+    contextualProperty prefix e body = do
+      draws <- mapM (\plan -> do
+        let input = domainInput plan
+        strategy <- contextStrategy e plan
+        pure (assign (inputId input) (method (text "_draw") "draw" [strategy])))
+        (generationPlan e)
+      let predicate = conjunction (map render (concatMap inputRefinements (inputs e)))
+      pure (pythonProperty prefix
+        [invoke "settings" [text ("max_examples=" ++ show (cases (generation e)))],
+         invoke "given" [invoke "st.data" []]] ["_draw"]
+        (statements (freshSymbols : draws ++ [statement (invoke "assume" [predicate]),body])))
+    contextStrategy e plan = do
+      let ty = inputType (domainInput plan)
+      seeds <- mapM valueLit (generatorBoundaries plan)
+      let hints = [render hint | hint <- generatorHints plan,
+            C.expressionType hint == ty, case C.expressionNode hint of
+              C.Constant _ -> True
+              C.Local _ -> True
+              _ -> False]
+      pure (case requiredSymbol plan of
+        value:_ -> invoke (if py then "st.just" else "fc.constant") [render value]
+        [] -> invoke "_data_strategy"
+          ([text "_lawspec_schema",referenceDoc ty,width,text (show budget),
+            text (if py then "_lawspec_primitive_generators.__getitem__"
+              else "(name) => _lawspec_primitive_generators[name]"),
+            text "symbols",array (seeds ++ hints)] ++
+            [text (show (maxAttempts (generation e))) | not py]))
+    webContextualProperty label e body = do
+      let state names = object [("_values",array names),("symbols",text "symbols")]
+          initial = method (invoke "fc.constant" [text "null"]) "map"
+            [lambda [] (parenthesized (object [("_values",array []),("symbols",invoke "new Map" [])]))]
+          step source (index,plan) = do
+            strategy <- contextStrategy e plan
+            let previous = map (text . inputId) (take index (inputs e))
+                mapped = method strategy "map" [lambda [text "_value"]
+                  (parenthesized (state (previous ++ [text "_value"])))]
+            pure (method source "chain" [lambda [state previous] mapped])
+      cases' <- foldM step initial (zip [0 :: Int ..] (generationPlan e))
+      let predicate = conjunction (map render (concatMap inputRefinements (inputs e)))
+          cfg = generation e
+          checkedBody = statements [statement (invoke "fc.pre" [predicate]),body]
+      pure (propertyInvocation label [cases'] [state (map (text . inputId) (inputs e))]
+        checkedBody [object [("numRuns",text (show (cases cfg))),
+          ("maxSkipsPerRun",text (show (maxAttempts cfg))) ]])
+    -- Identity equality restricts Symbol to one fixture. Only required
+    -- conjuncts qualify; an equality under disjunction does not define a domain.
+    requiredSymbol plan
+      | inputType (domainInput plan) /= C.scalarType "Symbol" = []
+      | otherwise = concatMap required (generatorPredicates plan)
+      where
+        current = C.binderId (generatorBinder plan)
+        required expression = case C.expressionNode expression of
+          C.ShortCircuit C.And a b -> required a ++ required b
+          C.Binary C.Equal _ a b -> [value | (local,value) <- [(a,b),(b,a)],
+            C.expressionNode local == C.Local current,
+            C.expressionType value == C.scalarType "Symbol",
+            current `notElem` C.freeBinders value,
+            case C.expressionNode value of
+              C.Constant _ -> True
+              C.Local _ -> True
+              _ -> False]
+          _ -> []
+    nativeRefinedProperty prefix label e body =
+      let names = map (text . inputId) (inputs e)
+          generators = map (generatorDoc . inputType) (inputs e)
+          predicate = conjunction (map render (concatMap inputRefinements (inputs e)))
+          cfg = generation e
+          tuple = invoke (if py then "st.tuples" else "fc.tuple") generators
+          caseValue = if py then Doc.delimitTrailing 4 "(" ")" [text "_values",text "{}"]
+            else parenthesized (object [("_values",text "_values"),("symbols",invoke "new Map" [])])
+          mapped = method tuple "map" [lambda [text "_values"] caseValue]
+          pattern = object [("_values",array names),("symbols",text "symbols")]
+          condition = if py then lambda [text "_case"]
+            (parenthesized (lambda (text "symbols":names) predicate) <>
+              Doc.delimitTrailing 4 "(" ")" [text "_case[1]",text "*_case[0]"])
+            else lambda [pattern] predicate
+          filtered = method mapped "filter" [condition]
+          assignments = [assign (inputId input) (text ("_values[" ++ show index ++ "]")) |
+            (index,input) <- zip [0 :: Int ..] (inputs e)]
+      in pure $ if py then pythonProperty prefix
+        [invoke "settings" [text ("max_examples=" ++ show (cases cfg))],invoke "given" [filtered]]
+        ["_case"] (statements ([text "_values, symbols = _case"] ++ assignments ++ [body]))
+        else propertyInvocation label [filtered] [pattern] body
+          [object [("numRuns",text (show (cases cfg))),("maxSkipsPerRun",text (show (maxAttempts cfg)))]]
     refinedProperty prefix label e body = do
-      ds <- mapM (domainCode e) (zip [0::Int ..] (generationPlan e))
+      domains <- mapM (domainCode e) (zip [0 :: Int ..] (generationPlan e))
       let cfg = generation e
-          check = if py then "  def _check(_values):\n" ++ concat ["    " ++ inputId inp ++ " = _values[" ++ show j ++ "]\n" | (j,inp) <- zip [0::Int ..] (inputs e)] ++ unlines ["  " ++ line | line <- lines body]
-                  else "  const _check = (_values) => {\n" ++ concat ["    const " ++ inputId inp ++ " = _values[" ++ show j ++ "];\n" | (j,inp) <- zip [0::Int ..] (inputs e)] ++ body ++ "  };\n"
-          invoke = "  " ++ call (if py then "refined_case" else "refinedCase") ["[" ++ intercalate ", " ds ++ "]","_seed",show (maxAttempts cfg),show (maxShrinks cfg),"_check",q (label ++ " | " ++ intercalate "; " (map prettyExpr (concatMap inputRefinements (inputs e))))] ++ (if py then "\n" else ";\n")
-      pure $ if py then "@settings(max_examples=" ++ show (cases cfg) ++ ")\n@given(st.integers(min_value=0,max_value=2147483647))\ndef " ++ prefix ++ "_property(_seed):\n" ++ freshSymbols "  " ++ check ++ invoke
-        else "test(" ++ q (label ++ " property") ++ ", () => fc.assert(fc.property(fc.integer({min:0,max:2147483647}), (_seed) => {\n" ++ freshSymbols "  " ++ check ++ invoke ++ "}), {numRuns:" ++ show (cases cfg) ++ "}));\n"
+          checkBody = statements ([assign (inputId input) (text ("_values[" ++ show index ++ "]")) |
+            (index,input) <- zip [0 :: Int ..] (inputs e)] ++ [body])
+          check = if py then function "_check" ["_values"] checkBody
+            else assign "_check" (callback [text "_values"] checkBody)
+          run = statement (runtime (if py then "refined_case" else "refinedCase")
+            [array domains,text "_seed",text (show (maxAttempts cfg)),text (show (maxShrinks cfg)),text "_check",
+             message (label ++ " | " ++ intercalate "; " (map prettyExpr (concatMap inputRefinements (inputs e))))])
+          seededBody = statements [freshSymbols, (if py then Doc.hardline else mempty) <> check, run]
+      pure $ if py then pythonProperty prefix
+        [invoke "settings" [text ("max_examples=" ++ show (cases cfg))],
+         invoke "given" [invoke "st.integers" [text "min_value=0",text "max_value=2147483647"]]]
+        ["_seed"] seededBody
+        else propertyInvocation label [invoke "fc.integer" [object [("min",text "0"),("max",text "2147483647")]]]
+          [text "_seed"] seededBody [object [("numRuns",text (show (cases cfg)))]]
     domainCode e (index,plan) = do
-      let inp = domainInput plan; previous = take index (inputs e)
-          boundNames xs = intercalate ", " (map inputId xs)
-          lambda xs seed expression' = if py then "lambda _values" ++ (if seed then ", _seed" else "") ++ ": (lambda " ++ boundNames xs ++ ": " ++ expression' ++ ")(*_values)"
-             else "([" ++ boundNames xs ++ "]" ++ (if seed then ", _seed" else "") ++ ") => " ++ expression'
-      let bs = ["[" ++ q op ++ ", " ++ render v ++ "]" | (op,v) <- domainBounds plan]
-          hints = map render (generatorHints plan)
-          ps = map render (inputRefinements inp)
-      let candidates = call (if py then "domain_candidates" else "domainCandidates") [q (typeKey (inputType inp)),"_seed",show bits,"[" ++ intercalate ", " bs ++ "]","[" ++ intercalate ", " (map lit (generatorBoundaries plan) ++ hints) ++ "]"]
-          predicate = if null ps then (if py then "True" else "true") else intercalate (if py then " and " else " && ") ["(" ++ p ++ ")" | p <- ps]
-      pure ("[" ++ lambda previous True candidates ++ ", " ++ lambda (previous++[inp]) False predicate ++ "]")
-    boundaries (Applied n t) = SPresent n Nothing : map (SPresent n . Just) (boundaries t)
-    boundaries (Named n) = scalarBoundaries bits n
-    boundaries _ = []
-    generator t@(Applied n inner) = if py then "st.one_of(st.just(ls.Presence(" ++ q n ++ ", False)), " ++ generator inner ++ ".map(lambda x: ls.Presence(" ++ q n ++ ", True, x)))"
-      else "fc.oneof(fc.constant(new ls.Presence(" ++ q n ++ ", false)), " ++ generator inner ++ ".map(x => new ls.Presence(" ++ q n ++ ", true, x)))"
-    generator t@(Named n)
-      | isInteger n = let b = integerBounds bits n; lo = maybe (if n == "BigUInt" then 0 else -2^(256::Int)) fst b; hi = maybe (2^(256::Int)) snd b in
-          if py then "st.integers(min_value=" ++ show lo ++ ", max_value=" ++ show hi ++ ")"
-          else "fc.bigInt({min:" ++ show lo ++ "n,max:" ++ show hi ++ "n}).map(x => ls.convert(x," ++ q n ++ "," ++ show bits ++ "))"
-      | n == "Bool" = if py then "st.booleans()" else "fc.boolean()"
-      | n == "Text" = if py then "st.text()" else "fc.array(fc.integer({min:0,max:1114111}).filter(x => x<55296 || x>57343),{maxLength:100}).map(xs => xs.map(x => String.fromCodePoint(x)).join(''))"
-      | n `elem` ["Float32","Float64"] = if py then "st.floats(width=" ++ (if n == "Float32" then "32" else "64") ++ ")" else (if n == "Float32" then "fc.float()" else "fc.double()")
-      | n == "Decimal" = if py then "st.tuples(st.integers(), st.integers(-20,20)).map(lambda v: ls.make_decimal(v[0],v[1]))" else "fc.tuple(fc.bigInt(),fc.integer({min:-20,max:20})).map(v => new ls.Decimal(v[0],v[1]))"
-      | n == "Rational" = if py then "st.tuples(st.integers(),st.integers(min_value=1)).map(lambda v: ls.Fraction(v[0],v[1]))" else "fc.tuple(fc.bigInt(),fc.bigInt({min:1n})).map(v => new ls.Rational(v[0],v[1]))"
-      | n `elem` ["Complex64","Complex128"] = let f = generator (Named (if n == "Complex64" then "Float32" else "Float64")) in if py then "st.tuples(" ++ f ++ "," ++ f ++ ").map(lambda v: complex(v[0],v[1]))" else "fc.tuple(" ++ f ++ "," ++ f ++ ").map(v => new ls.Complex(v[0],v[1]))"
-      | n == "Char" = if py then "st.characters(blacklist_categories=('Cs',))" else "fc.integer({min:0,max:1114111}).filter(x => x<55296 || x>57343).map(x => String.fromCodePoint(x))"
-      | n `elem` ["CodePoint","CodeUnit16"] = if py then "st.integers(0," ++ maximumUnit n ++ ")" else "fc.integer({min:0,max:" ++ maximumUnit n ++ "})"
-      | n == "Bytes" = if py then "st.binary(max_size=100)" else "fc.array(fc.integer({min:0,max:255}),{maxLength:100}).map(v => new Uint8Array(v))"
-      | n `elem` ["Bytes","CodePointText","Utf16Text"] = if py then "st.lists(st.integers(0," ++ maximumUnit n ++ "),max_size=100).map(lambda v: ls.Raw(" ++ q n ++ ",tuple(v)))" else "fc.array(fc.integer({min:0,max:" ++ maximumUnit n ++ "}),{maxLength:100}).map(v => new ls.Raw(" ++ q n ++ ",v))"
-      | n == "Symbol" = if py then "st.text().map(ls.Symbol)" else "fc.string().map(x => Symbol(x))"
-      | otherwise = if py then "st.sampled_from([" ++ intercalate ", " ["ls.literal(json.loads(" ++ q (json v) ++ "))" | v <- boundaries t] ++ "])"
-          else "fc.constantFrom(" ++ intercalate ", " ["ls.literal(" ++ json v ++ ")" | v <- boundaries t] ++ ")"
-    generator _ = error "non-scalar generator"
-    maximumUnit n = if n == "Bytes" then "255" else if n `elem` ["CodeUnit16","Utf16Text"] then "65535" else "1114111"
+      seeds <- mapM valueLit (generatorBoundaries plan)
+      let input = domainInput plan
+          previous = take index (inputs e)
+          bind inputs' seeded expression =
+            let names = map (text . inputId) inputs'
+                seedArgument = if seeded then [text "_seed"] else []
+            in if py then lambda (text "_values":seedArgument)
+              (parenthesized (lambda names expression) <> Doc.delimitTrailing 4 "(" ")" [text "*_values"])
+              else lambda (array names:seedArgument) expression
+          bounds = [array [quoted operator,render value] | (operator,value) <- domainBounds plan]
+          candidates = runtime (if py then "domain_candidates" else "domainCandidates")
+            [quoted (typeKey (inputType input)),text "_seed",width,array bounds,
+             array (seeds ++ map render (generatorHints plan))]
+          predicate = conjunction (map render (inputRefinements input))
+      pure (array [bind previous True candidates,bind (previous ++ [input]) False predicate])
     split s = case break (== '.') s of (a,[]) -> [a]; (a,_:b) -> a:split b

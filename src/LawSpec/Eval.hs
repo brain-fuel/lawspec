@@ -126,8 +126,8 @@ scalarEqual a b = a == b
 -- Respect contextual literal types from the compiler's typed IR.
 evaluateTyped :: Int -> [(String,Scalar)] -> TypedExpr -> Either String Scalar
 evaluateTyped bits env = evaluate bits env . materialize where
-  materialize (TypedExpr t (Located range e) cs conversion) = Located range (materialize (TypedExpr t e cs conversion))
-  materialize (TypedExpr t e cs _) = case (e,cs) of
+  materialize (TypedExpr t (Located range e) cs conversion branches) = Located range (materialize (TypedExpr t e cs conversion branches))
+  materialize (TypedExpr t e cs _ _) = case (e,cs) of
     (Number _,_) -> Annotate e t
     (DecimalNumber _ _,_) -> Annotate e t
     (Binary op _ _,[a,b]) -> Binary op (materialize a) (materialize b)
@@ -143,5 +143,5 @@ finiteValues :: Int -> Int -> Type -> Maybe [Scalar]
 finiteValues bits limit t = case baseType t of
   Named n | Just (lo,hi) <- integerBounds bits n, hi-lo+1 <= fromIntegral limit -> Just [SInteger n x | x <- [lo..hi]]
           | n `elem` ["Bool","Unit","Null","Undefined"] -> Just (scalarBoundaries bits n)
-  Applied n a -> do xs <- finiteValues bits (limit-1) a; pure (SPresent n Nothing : map (SPresent n . Just) xs)
+  Applied n a | n `elem` ["Nullable","Optional"] -> do xs <- finiteValues bits (limit-1) a; pure (SPresent n Nothing : map (SPresent n . Just) xs)
   _ -> Nothing

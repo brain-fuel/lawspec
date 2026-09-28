@@ -21,6 +21,7 @@ const sourceFiles = [
   ...(await walk("runtime", p => /\.(rs|py|mjs|ts|java|kt|go|hs)$/.test(p) || /Cargo\.(toml|lock)$/.test(p))),
   "tools/embed-runtimes.py",
   "package.yaml",
+  "lawspec.cabal",
   "stack.yaml",
   "stack.yaml.lock",
   "wasm/cabal.project",

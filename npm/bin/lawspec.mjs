@@ -23,7 +23,7 @@ for (let i = 0; i < args.length; i++) {
     if (!args[i + 1] || args[i + 1].startsWith("--"))
       throw new Error(`Missing value for ${arg}`);
     options[arg.slice(2)] = args[++i];
-  } else if (["--dry-run", "--check", "--json"].includes(arg))
+  } else if (["--dry-run", "--check", "--json", "--minify"].includes(arg))
     options[arg.slice(2)] = true;
   else if (arg.startsWith("--")) throw new Error(`Unknown option: ${arg}`);
   else positional.push(arg);
@@ -118,7 +118,7 @@ async function init() {
   const hasBuild = (await readdir(root)).some(
     (f) => buildFiles.includes(f) || f.endsWith(".cabal"),
   );
-  const additions = hasBuild ? {} : templates(language);
+  const additions = hasBuild ? {} : templates(language, {minify: options.minify === true});
   for (const name of Object.keys(additions)) {
     const file = await safePath(root, name);
     if ((await readOptional(file)) !== null)
@@ -147,7 +147,7 @@ async function init() {
   });
   await atomicWrite(
     configFile,
-    JSON.stringify(config, null, 2) + "\n",
+    JSON.stringify(config, null, options.minify ? undefined : 2) + "\n",
     current === null,
   );
   output(
@@ -173,13 +173,13 @@ async function main() {
   }
   if (!verb || ["help", "--help", "-h"].includes(verb)) {
     output(
-      "LawSpec 0.8.0\nUsage: lawspec init --target <language> [--project <directory>]\n       lawspec check | doctor | explain <unit>::<law> | generate\n       lawspec examples [--target <language>] [--output example_artifacts]\nOptions: --config <path>, --target <language>, --machine-bits <32|64>, --json\nGeneration: --dry-run, --check\nTargets: " +
+      "LawSpec 0.9.0\nUsage: lawspec init --target <language> [--project <directory>] [--minify]\n       lawspec check | doctor | explain <unit>::<law> | generate\n       lawspec examples [--target <language>] [--output example_artifacts]\nOptions: --config <path>, --target <language>, --machine-bits <32|64>, --json\nGeneration: --dry-run, --check, --minify\nTargets: " +
         targets.join(", "),
     );
     return;
   }
   if (verb === "--version") {
-    output("0.8.0");
+    output("0.9.0");
     return;
   }
   if (positional.length > (verb === "explain" ? 1 : 0))
@@ -191,7 +191,7 @@ async function main() {
       options["dry-run"] ||
       options.check
     )
-      throw new Error("examples supports --target, --output and --json only");
+      throw new Error("examples supports --target, --output, --json and --minify only");
     const result = await generateExamples(options);
     output(
       options.json
@@ -207,6 +207,8 @@ async function main() {
     return;
   }
   if (options.output) throw new Error("--output is only supported by examples");
+  if (options.minify && !["init", "generate", "examples"].includes(verb))
+    throw new Error("--minify applies to init, generate and examples");
   if (verb === "init") return init();
   if (!["check", "doctor", "explain", "generate"].includes(verb))
     throw new Error(`Unknown command: ${verb}`);
@@ -287,6 +289,7 @@ async function main() {
           target: target.language,
           sourceDir: target.sourceDir,
           testDir: target.testDir,
+          minify: options.minify === true,
         }),
       ).files,
     );

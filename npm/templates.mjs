@@ -34,8 +34,97 @@ export const setup = {
   kotlin:
     "Use JDK 25, Gradle 9.3.0, Kotlin plugin 2.3.21, JVM target 25, Kotest 5.9.1 (runner, assertions, property), and useJUnitPlatform(). Run gradle testClasses.",
 };
-const json = (value) => JSON.stringify(value, null, 2) + "\n";
-export function templates(target) {
+// These render known scaffold structure; they never reformat user source.
+const element = (name, value, attributes = {}) => ({ name, value, attributes });
+const xmlEscape = (text) =>
+  String(text)
+    .replaceAll("&", "&amp;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;");
+function renderXml(node, minify, depth = 0) {
+  const indent = minify ? "" : "  ".repeat(depth);
+  const attributes = Object.entries(node.attributes).map(
+    ([key, value]) => `${key}="${xmlEscape(value)}"`,
+  );
+  const open = `<${node.name}${
+    attributes.length === 0
+      ? ""
+      : minify
+        ? " " + attributes.join(" ")
+        : "\n" + attributes.map((a) => indent + "  " + a).join("\n")
+  }>`;
+  if (!Array.isArray(node.value)) {
+    return `${indent}${open}${xmlEscape(node.value)}</${node.name}>`;
+  }
+  const children = node.value.map((child) =>
+    renderXml(child, minify, depth + 1),
+  );
+  return minify
+    ? `${open}${children.join("")}</${node.name}>`
+    : `${indent}${open}\n${children.join("\n")}\n${indent}</${node.name}>`;
+}
+function mavenProject(minify) {
+  const fields = (values) =>
+    Object.entries(values).map(([name, value]) => element(name, value));
+  const dependency = (groupId, artifactId, version) =>
+    element(
+      "dependency",
+      fields({ groupId, artifactId, version, scope: "test" }),
+    );
+  const plugin = (artifactId, version) =>
+    element(
+      "plugin",
+      fields({ groupId: "org.apache.maven.plugins", artifactId, version }),
+    );
+  return (
+    renderXml(
+      element(
+        "project",
+        [
+          ...fields({
+            modelVersion: "4.0.0",
+            groupId: "example",
+            artifactId: "lawspec-example",
+            version: "0.1.0",
+          }),
+          element(
+            "properties",
+            fields({
+              "maven.compiler.release": "25",
+              "project.build.sourceEncoding": "UTF-8",
+            }),
+          ),
+          element("dependencies", [
+            dependency("org.jetbrains", "jetCheck", "0.3.0"),
+            dependency("org.junit.jupiter", "junit-jupiter", "5.14.0"),
+          ]),
+          element("build", [
+            element("plugins", [
+              plugin("maven-compiler-plugin", "3.14.1"),
+              plugin("maven-surefire-plugin", "3.5.4"),
+            ]),
+          ]),
+        ],
+        {
+          xmlns: "http://maven.apache.org/POM/4.0.0",
+          "xmlns:xsi": "http://www.w3.org/2001/XMLSchema-instance",
+          "xsi:schemaLocation":
+            "http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd",
+        },
+      ),
+      minify,
+    ) + "\n"
+  );
+}
+export function templates(target, { minify = false } = {}) {
+  if (typeof minify !== "boolean") throw new Error("minify must be a boolean");
+  const json = (value) =>
+    JSON.stringify(value, null, minify ? undefined : 2) + "\n";
+  const kotlinBlock = (name, statements) =>
+    minify
+      ? `${name} { ${statements.join("; ")} }`
+      : `${name} {\n${statements.map((line) => "    " + line).join("\n")}\n}`;
   if (!targets.includes(target)) throw new Error(`Unknown target: ${target}`);
   const commonPackage = {
     name: "lawspec-example",
@@ -46,7 +135,8 @@ export function templates(target) {
   switch (target) {
     case "rust":
       return {
-        "src/lib.rs": '// Application library. LawSpec maintains the included module declarations.\ninclude!("lawspec_modules.rs");\n',
+        "src/lib.rs":
+          '// Application library. LawSpec maintains the included module declarations.\ninclude!("lawspec_modules.rs");\n',
         "Cargo.toml": `[package]
 name = "lawspec-example"
 version = "0.1.0"
@@ -103,18 +193,7 @@ proptest = "=1.11.0"
       };
     case "java":
       return {
-        "pom.xml": `<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
-  <modelVersion>4.0.0</modelVersion><groupId>example</groupId><artifactId>lawspec-example</artifactId><version>0.1.0</version>
-  <properties><maven.compiler.release>25</maven.compiler.release><project.build.sourceEncoding>UTF-8</project.build.sourceEncoding></properties>
-  <dependencies>
-    <dependency><groupId>org.jetbrains</groupId><artifactId>jetCheck</artifactId><version>0.3.0</version><scope>test</scope></dependency>
-    <dependency><groupId>org.junit.jupiter</groupId><artifactId>junit-jupiter</artifactId><version>5.14.0</version><scope>test</scope></dependency>
-  </dependencies>
-  <build><plugins>
-    <plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-compiler-plugin</artifactId><version>3.14.1</version></plugin>
-    <plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-surefire-plugin</artifactId><version>3.5.4</version></plugin>
-  </plugins></build>
-</project>\n`,
+        "pom.xml": mavenProject(minify),
       };
     case "go":
       return {
@@ -124,13 +203,24 @@ proptest = "=1.11.0"
     case "haskell":
       return {
         "stack.yaml": "snapshot: lts-24.58\npackages: [.]\n",
-        "package.yaml": `name: lawspec-example\nversion: 0.1.0\ndependencies: [base, text, bytestring]\nlibrary:\n  source-dirs: src\ntests:\n  laws:\n    main: Spec.hs\n    source-dirs: test\n    dependencies: [lawspec-example, hspec, hedgehog, hspec-hedgehog]\n    build-tools: [hspec-discover]\n`,
+        "package.yaml": `name: lawspec-example\nversion: 0.1.0\ndependencies: [base, text, bytestring]\nlibrary:\n  source-dirs: src\ntests:\n  laws:\n    main: Spec.hs\n    source-dirs: test\n    dependencies: [lawspec-example, hspec, hedgehog, hspec-hedgehog, containers, mtl]\n    build-tools: [hspec-discover]\n`,
         "test/Spec.hs": "{-# OPTIONS_GHC -F -pgmF hspec-discover #-}\n",
       };
     case "kotlin":
       return {
         "settings.gradle.kts": 'rootProject.name = "lawspec-example"\n',
-        "build.gradle.kts": `plugins { kotlin("jvm") version "2.3.21" }\nrepositories { mavenCentral() }\nkotlin { jvmToolchain(25) }\ndependencies {\n  testImplementation("io.kotest:kotest-runner-junit5:5.9.1")\n  testImplementation("io.kotest:kotest-assertions-core:5.9.1")\n  testImplementation("io.kotest:kotest-property:5.9.1")\n}\ntasks.test { useJUnitPlatform() }\n`,
+        "build.gradle.kts":
+          [
+            kotlinBlock("plugins", ['kotlin("jvm") version "2.3.21"']),
+            kotlinBlock("repositories", ["mavenCentral()"]),
+            kotlinBlock("kotlin", ["jvmToolchain(25)"]),
+            kotlinBlock("dependencies", [
+              'testImplementation("io.kotest:kotest-runner-junit5:5.9.1")',
+              'testImplementation("io.kotest:kotest-assertions-core:5.9.1")',
+              'testImplementation("io.kotest:kotest-property:5.9.1")',
+            ]),
+            kotlinBlock("tasks.test", ["useJUnitPlatform()"]),
+          ].join(minify ? "\n" : "\n\n") + "\n",
       };
   }
 }

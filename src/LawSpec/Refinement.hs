@@ -10,24 +10,40 @@ lowerUnit :: Unit -> Either String Unit
 lowerUnit u = do
   let rs = refinements u; table = M.fromList [(refinementName r,r) | r <- rs]
   unless (length rs == M.size table) (Left "duplicate refinement")
-  mapM_ (validateDeclaration table) rs
-  fs <- mapM (\(n,t) -> (,) n <$> expandType table [] M.empty M.empty t) (functions u)
-  ls <- mapM (lowerLaw table) (laws u)
-  cs <- mapM contractFor fs
+  let structures = M.fromList [(dataTypeName d,d{dataTypeConstructors=
+        [c{dataConstructorName=unitName u ++ "::type::" ++ dataTypeName d ++ "::" ++ dataConstructorName c}
+        | c <- dataTypeConstructors d]}) | d <- dataTypes u]
+  mapM_ (validateDeclaration structures table) rs
+  fs <- mapM (\(n,t) -> (,) n <$> expandType structures table [] M.empty M.empty t) (functions u)
+  -- Keep definition refinements until template proof and specialization derive
+  -- their closed contracts. Adapter signatures become generated contract laws.
+  definitions <- mapM (\d -> do
+    args <- mapM (\(n,t) -> (,) n <$> expandType structures table [] M.empty M.empty t) (functionArguments d)
+    result <- expandType structures table [] M.empty M.empty (functionResult d)
+    requirements <- mapM (\(Capability name ty) ->
+      Capability name <$> expandType structures table [] M.empty M.empty ty) (functionRequirements d)
+    pure d{functionArguments=args,functionResult=result,functionRequirements=requirements}) (functionDefinitions u)
+  ls <- mapM (lowerLaw structures table) (laws u)
+  ds <- mapM (\d -> do
+    constructors <- mapM (\c -> do
+      fields <- mapM (\(n,t) -> (,) n <$> expandType structures table [] M.empty M.empty t) (dataConstructorFields c)
+      pure c{dataConstructorFields=fields}) (dataTypeConstructors d)
+    pure d{dataTypeConstructors=constructors}) (dataTypes u)
+  cs <- mapM contractFor [(n,t) | (n,t) <- fs, n `notElem` map functionName definitions]
   let active = [c | c <- cs, not (null (contractPreconditions c) && null (contractPostconditions c))]
       checks = map refinementCheck rs
-  checks' <- mapM (lowerLaw table) checks
-  pure u{functions=map (\(n,t) -> (n,baseType t)) fs, contracts=active, laws=ls ++ map contractLaw active ++ checks'}
+  checks' <- mapM (lowerLaw structures table) checks
+  pure u{functions=map (\(n,t) -> (n,baseType t)) fs, contracts=active, laws=ls ++ map contractLaw active ++ checks', dataTypes=ds, functionDefinitions=definitions}
 
-validateDeclaration :: M.Map String Refinement -> Refinement -> Either String ()
-validateDeclaration table r = do
+validateDeclaration :: M.Map String DataTypeDeclaration -> M.Map String Refinement -> Refinement -> Either String ()
+validateDeclaration structures table r = do
   let ps = refinementParameters r; ns = map fst ps
   unless (length ns == length (nub ns)) (Left "duplicate refinement parameter")
   _ <- foldM (\known (n,t) -> do
        when (t /= Named "Type" && any (`elem` dropWhile (/= n) ns) (typeNames t)) (Left "refinement parameter refers to itself or a later parameter")
        pure (n:known)) [] ps
   let ts = M.fromList [(n,Variable n) | (n,Named "Type") <- ps]
-  _ <- expandType table [refinementName r] ts M.empty (refinementBody r)
+  _ <- expandType structures table [refinementName r] ts M.empty (refinementBody r)
   pure ()
 
 -- A synthetic generic declaration checks unused aliases as well as instantiated ones.
@@ -39,40 +55,76 @@ refinementCheck r = Law ("refinement " ++ refinementName r) ps cs (Forall [("_re
         cs = [Capability n (sub t) | Capability n t <- refinementRequirements r]
         body = sub (refinementBody r)
 
-lowerLaw :: M.Map String Refinement -> Law -> Either String Law
-lowerLaw table l = do
-  ps <- mapM (\(n,t) -> (,) n <$> expandType table [] M.empty M.empty t) (parameters l)
+lowerLaw :: M.Map String DataTypeDeclaration -> M.Map String Refinement -> Law -> Either String Law
+lowerLaw structures table l = do
+  ps <- mapM (\(n,t) -> (,) n <$> expandType structures table [] M.empty M.empty t) (parameters l)
   d <- walk (definition l)
   pure l{parameters=ps,definition=d}
-  where walk (Forall qs d) = Forall <$> mapM (\(n,t) -> (,) n <$> expandType table [] M.empty M.empty t) qs <*> walk d
+  where walk (Forall qs d) = Forall <$> mapM (\(n,t) -> (,) n <$> expandType structures table [] M.empty M.empty t) qs <*> walk d
         walk (And a b) = And <$> walk a <*> walk b
         walk (Implies a b) = Implies a <$> walk b
         walk d = pure d
 
-expandType :: M.Map String Refinement -> [String] -> M.Map String Type -> M.Map String Expr -> Type -> Either String Type
-expandType table stack ts vs t = case substituteType ts vs t of
+expandType :: M.Map String DataTypeDeclaration -> M.Map String Refinement -> [String] -> M.Map String Type -> M.Map String Expr -> Type -> Either String Type
+expandType structures table stack ts vs t = case substituteType ts vs t of
   RefinementApp n args -> do
     when (n `elem` stack) (Left ("recursive refinement: " ++ n))
     r <- maybe (Left ("unknown refinement: " ++ n)) Right (M.lookup n table)
     unless (length args == length (refinementParameters r)) (Left ("wrong refinement arity: " ++ n))
     (types,values,checks,required) <- foldM bind (M.empty,M.empty,[],[]) (zip (refinementParameters r) args)
-    body <- expandType table (n:stack) types values (refinementBody r)
+    body <- expandType structures table (n:stack) types values (refinementBody r)
     let cs = [Capability c (substituteType types values a) | Capability c a <- refinementRequirements r]
     pure (if null checks then Qualified (required++cs) body else CheckedType checks (Qualified (required++cs) body))
-  Refined n a p -> Refined n <$> expandType table stack M.empty M.empty a <*> pure p
-  Applied n a -> Applied n <$> expandType table stack M.empty M.empty a
-  Arrow a b -> Arrow <$> expandType table stack M.empty M.empty a <*> expandType table stack M.empty M.empty b
-  CheckedType ps a -> CheckedType ps <$> expandType table stack M.empty M.empty a
-  Qualified cs a -> Qualified cs <$> expandType table stack M.empty M.empty a
+  Refined n a p -> Refined n <$> expandType structures table stack M.empty M.empty a <*> pure p
+  Applied n a -> do
+    a' <- expandType structures table stack M.empty M.empty a
+    let application = Applied n a'
+    if n `elem` ["List","Maybe","Nullable","Optional"] || not (hasValueRefinements a')
+      then pure application else namedPredicates n [a'] application
+  Application n args -> do
+    args' <- mapM (expandType structures table stack M.empty M.empty) args
+    let application = Application n args'
+    if n == "Either" || not (any hasValueRefinements args')
+      then pure application else namedPredicates n args' application
+  Arrow a b -> Arrow <$> expandType structures table stack M.empty M.empty a <*> expandType structures table stack M.empty M.empty b
+  CheckedType ps a -> CheckedType ps <$> expandType structures table stack M.empty M.empty a
+  Qualified cs a -> Qualified cs <$> expandType structures table stack M.empty M.empty a
   a -> pure a
   where
+    namedPredicates name arguments application = do
+      declaration <- maybe (Left "structural element refinements require element predicates") Right
+        (M.lookup name structures)
+      unless (length arguments == length (dataTypeParameters declaration))
+        (Left ("wrong data type arity: " ++ name))
+      let probe = "$lawspecPayload"
+          free = concatMap (concatMap exprVars . typePredicates (Var probe)) arguments
+          fresh name = head [name ++ replicate n '_' | n <- [0..],
+            name ++ replicate n '_' `notElem` free]
+          binder = fresh probe
+          callbacks = [(fresh ("$lawspecArgument" ++ show index),argument)
+            | (index,argument) <- zip [0 :: Int ..] arguments]
+          predicate (local,argument) = (local,
+            foldr (Binary "&&") (BoolLit True) (typePredicates (Var local) argument))
+      pure (Refined binder application
+        (Just (AllPayloadsExpr (Var binder) (map predicate callbacks))))
+
     bind (types,values,checks,required) ((n,Named "Type"),TypeArgument a) = do
-      a' <- expandType table stack M.empty M.empty a
+      a' <- expandType structures table stack M.empty M.empty a
       pure (M.insert n a' types,values,checks,required)
     bind (types,values,checks,required) ((n,t'),ValueArgument e) = do
-      t'' <- expandType table stack types values t'
+      t'' <- expandType structures table stack types values t'
       pure (types,M.insert n (Annotate e (baseType t'')) values,checks ++ typePredicates (Annotate e (baseType t'')) t'',required ++ typeConstraints t'')
     bind _ _ = Left "refinement argument kind mismatch (type versus value)"
+
+hasValueRefinements :: Type -> Bool
+hasValueRefinements ty = case ty of
+  Refined _ inner predicate -> maybe False (const True) predicate || hasValueRefinements inner
+  CheckedType predicates inner -> not (null predicates) || hasValueRefinements inner
+  Qualified _ inner -> hasValueRefinements inner
+  Applied _ inner -> hasValueRefinements inner
+  Application _ arguments -> any hasValueRefinements arguments
+  Arrow a b -> hasValueRefinements a || hasValueRefinements b
+  _ -> False
 
 substituteType :: M.Map String Type -> M.Map String Expr -> Type -> Type
 substituteType ts vs = go where
@@ -83,19 +135,46 @@ substituteType ts vs = go where
           expr = mapExprTypes go . replaceExprVars (M.toList (M.delete n vs)) . replaceExprVars [(n,Var fresh)]
   go (Arrow a b) = Arrow (go a) (go b)
   go (Applied n a) = Applied n (go a)
+  go (Application n args) = Application n (map go args)
   go (CheckedType ps a) = CheckedType (map (mapExprTypes go . replaceExprVars (M.toList vs)) ps) (go a)
   go (Qualified cs a) = Qualified [Capability n (go t) | Capability n t <- cs] (go a)
   go (RefinementApp n args) = RefinementApp n [case a of TypeArgument t -> TypeArgument (go t); ValueArgument e -> ValueArgument (mapExprTypes go (replaceExprVars (M.toList vs) e)) | a <- args]
 
+-- Synthetic predicate binders are not user-declared dependent argument names.
+-- '$' is unavailable in source identifiers, so it cannot capture a source binder.
+internalBinder :: String -> Bool
+internalBinder ('$':_) = True
+internalBinder _ = False
+
 contractFor :: (String,Type) -> Either String Contract
 contractFor (n,t) = do
   let (args,result) = functionType t
-      binder fallback (Refined name a p) = (name,Refined name a p)
+      binder fallback t@(Refined name _ _) = (if internalBinder name then fallback else name,t)
       binder fallback a = (fallback,a)
       as = [binder ("_argument" ++ show i) a | (i,a) <- zip [0::Int ..] args]
       r = binder "_result" result
   unless (length (map fst as ++ [fst r]) == length (nub (map fst as ++ [fst r]))) (Left (n ++ ": duplicate dependent binder"))
   pure (Contract n as r (concat [typePredicates (Var name) a | (name,a) <- as]) (typePredicates (Var (fst r)) (snd r)))
+
+-- Definitions already bind their arguments explicitly. Preserve those names
+-- when deriving dependent contracts instead of inventing signature binders.
+definitionContractFor :: FunctionDefinition -> Either String Contract
+definitionContractFor definition = do
+  let arguments = functionArguments definition
+      resultType = functionResult definition
+      names = map fst arguments
+      resultName ty = case ty of
+        Refined name _ _ | not (internalBinder name) -> name
+        Qualified _ inner -> resultName inner
+        CheckedType _ inner -> resultName inner
+        _ -> head ["_result" ++ replicate i '_' | i <- [0..],
+          "_result" ++ replicate i '_' `notElem` names]
+      result = (resultName resultType,resultType)
+  unless (length names == length (nub names)) (Left "duplicate definition argument")
+  unless (fst result `notElem` names) (Left "definition result binder shadows an argument")
+  pure (Contract (functionName definition) arguments result
+    (concat [typePredicates (Var name) ty | (name,ty) <- arguments])
+    (typePredicates (Var (fst result)) resultType))
 
 contractLaw :: Contract -> Law
 contractLaw c = Law ("contract " ++ contractName c) [] [] (Forall (contractArguments c) (Holds (Apply (Var "prelude.checked") invocation))) (contractName c ++ " :: " ++ intercalate " -> " (map (prettyType . snd) (contractArguments c ++ [contractResult c]))) "" [] [] (Location "<contract>" 1 1)
@@ -106,6 +185,7 @@ typeNames (Named n) = [n]
 typeNames (Variable n) = [n]
 typeNames (Arrow a b) = typeNames a ++ typeNames b
 typeNames (Applied _ t) = typeNames t
+typeNames (Application _ ts) = concatMap typeNames ts
 typeNames (Refined _ t p) = typeNames t ++ maybe [] exprVars p
 typeNames (Qualified _ t) = typeNames t
 typeNames (CheckedType ps t) = concatMap exprVars ps ++ typeNames t

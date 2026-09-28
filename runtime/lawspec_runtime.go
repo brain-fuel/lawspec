@@ -23,6 +23,283 @@ type lawSpecDecimal struct {
 type lawSpecSymbol struct{ description string }
 type lawSpecPresence struct{ value *LawSpecValue }
 
+// Named support types preserve scalar domains in native data fields.
+type LawSpecDecimal = lawSpecDecimal
+type LawSpecSymbol = lawSpecSymbol
+type LawSpecUnit struct{}
+type LawSpecNull struct{}
+type LawSpecUndefined struct{}
+
+// Presence is tagged so nested nullable and optional states remain distinct.
+type LawSpecNullable[T any] struct {
+	Present bool
+	Value   T
+}
+
+type LawSpecOptional[T any] struct {
+	Present bool
+	Value   T
+}
+
+// LawSpecMaybe keeps algebraic absence separate from nullable payloads.
+type LawSpecMaybe[T any] struct {
+	present bool
+	value   T
+}
+
+func LawSpecNothing[T any]() LawSpecMaybe[T]     { return LawSpecMaybe[T]{} }
+func LawSpecJust[T any](value T) LawSpecMaybe[T] { return LawSpecMaybe[T]{true, value} }
+func (m LawSpecMaybe[T]) Value() (T, bool)       { return m.value, m.present }
+func (m LawSpecMaybe[T]) lawSpecTag() string {
+	if m.present {
+		return "Maybe::Just"
+	}
+	return "Maybe::Nothing"
+}
+func (m LawSpecMaybe[T]) lawSpecFields() []any {
+	if m.present {
+		return []any{m.value}
+	}
+	return nil
+}
+
+// LawSpecEither has an explicit constructor; its zero value is invalid.
+type LawSpecEither[L, R any] struct {
+	tag   uint8
+	left  L
+	right R
+}
+
+func LawSpecLeft[L, R any](value L) LawSpecEither[L, R] {
+	return LawSpecEither[L, R]{tag: 1, left: value}
+}
+func LawSpecRight[L, R any](value R) LawSpecEither[L, R] {
+	return LawSpecEither[L, R]{tag: 2, right: value}
+}
+func (e LawSpecEither[L, R]) Left() (L, bool)  { return e.left, e.tag == 1 }
+func (e LawSpecEither[L, R]) Right() (R, bool) { return e.right, e.tag == 2 }
+func (e LawSpecEither[L, R]) lawSpecTag() string {
+	switch e.tag {
+	case 1:
+		return "Either::Left"
+	case 2:
+		return "Either::Right"
+	default:
+		panic("Either requires Left or Right")
+	}
+}
+func (e LawSpecEither[L, R]) lawSpecFields() []any {
+	switch e.tag {
+	case 1:
+		return []any{e.left}
+	case 2:
+		return []any{e.right}
+	default:
+		panic("Either requires Left or Right")
+	}
+}
+
+type lawSpecSum interface {
+	lawSpecTag() string
+	lawSpecFields() []any
+}
+type lawSpecData struct {
+	tag    string
+	fields []LawSpecValue
+}
+
+func (d lawSpecData) String() string { return fmt.Sprintf("%s(%v)", d.tag, d.fields) }
+
+func lsSumType(t string) bool {
+	return strings.HasPrefix(t, "Maybe ") || strings.HasPrefix(t, "Either ")
+}
+func lsEitherArguments(t string) []string {
+	if !strings.HasPrefix(t, "Either ") {
+		panic("Either type required")
+	}
+	var result []string
+	for cursor := 7; cursor < len(t); {
+		if t[cursor] != '(' {
+			panic("invalid Either type: " + t)
+		}
+		cursor++
+		start, depth := cursor, 1
+		for cursor < len(t) && depth > 0 {
+			if t[cursor] == '(' {
+				depth++
+			}
+			if t[cursor] == ')' {
+				depth--
+			}
+			cursor++
+		}
+		if depth != 0 || cursor == start+1 {
+			panic("invalid Either type: " + t)
+		}
+		result = append(result, t[start:cursor-1])
+		if cursor < len(t) {
+			if t[cursor] != ' ' || cursor+1 == len(t) {
+				panic("invalid Either type: " + t)
+			}
+			cursor++
+		}
+	}
+	if len(result) != 2 {
+		panic("Either requires two type arguments")
+	}
+	return result
+}
+func lsSumFields(t, tag string) []string {
+	if strings.HasPrefix(t, "Maybe ") {
+		switch tag {
+		case "Maybe::Nothing":
+			return nil
+		case "Maybe::Just":
+			return []string{strings.TrimPrefix(t, "Maybe ")}
+		}
+	}
+	if strings.HasPrefix(t, "Either ") {
+		arguments := lsEitherArguments(t)
+		switch tag {
+		case "Either::Left":
+			return arguments[:1]
+		case "Either::Right":
+			return arguments[1:]
+		}
+	}
+	panic("invalid constructor " + tag + " for " + t)
+}
+func lsDataValue(value LawSpecValue) lawSpecData {
+	data, ok := value.Data.(lawSpecData)
+	if !ok || len(lsSumFields(value.Type, data.tag)) != len(data.fields) {
+		panic("invalid sum representation")
+	}
+	return data
+}
+func lsMaybeToNative[T any](t string, value LawSpecValue, bits int, element func(LawSpecValue) T) LawSpecMaybe[T] {
+	if !strings.HasPrefix(t, "Maybe ") {
+		panic("Maybe type required")
+	}
+	lsCheckNativeProfile(t, bits)
+	data := lsDataValue(lsConvert(t, value, bits))
+	if data.tag == "Maybe::Nothing" {
+		return LawSpecNothing[T]()
+	}
+	return LawSpecJust(element(data.fields[0]))
+}
+func lsEitherToNative[L, R any](t string, value LawSpecValue, bits int, left func(LawSpecValue) L, right func(LawSpecValue) R) LawSpecEither[L, R] {
+	if !strings.HasPrefix(t, "Either ") {
+		panic("Either type required")
+	}
+	lsCheckNativeProfile(t, bits)
+	data := lsDataValue(lsConvert(t, value, bits))
+	if data.tag == "Either::Left" {
+		return LawSpecLeft[L, R](left(data.fields[0]))
+	}
+	return LawSpecRight[L, R](right(data.fields[0]))
+}
+func lsAllElements(value LawSpecValue, predicate func(LawSpecValue) LawSpecValue) LawSpecValue {
+	values, ok := value.Data.([]LawSpecValue)
+	if !ok {
+		panic("expected List in element predicate")
+	}
+	index := 0
+	defer func() {
+		if failure := recover(); failure != nil {
+			panic(fmt.Sprintf("List element %d: %v", index, failure))
+		}
+	}()
+	for index = range values {
+		if !lsTruth(predicate(values[index])) {
+			return lsBool(false)
+		}
+	}
+	return lsBool(true)
+}
+
+func lsMatchMaybe(value LawSpecValue, nothing func() LawSpecValue, just func(LawSpecValue) LawSpecValue) LawSpecValue {
+	data := lsDataValue(value)
+	switch data.tag {
+	case "Maybe::Nothing":
+		return nothing()
+	case "Maybe::Just":
+		return just(data.fields[0])
+	default:
+		panic("Maybe value required")
+	}
+}
+func lsMatchEither(value LawSpecValue, left, right func(LawSpecValue) LawSpecValue) LawSpecValue {
+	data := lsDataValue(value)
+	switch data.tag {
+	case "Either::Left":
+		return left(data.fields[0])
+	case "Either::Right":
+		return right(data.fields[0])
+	default:
+		panic("Either value required")
+	}
+}
+
+func lsList(t string, values []LawSpecValue) LawSpecValue {
+	return LawSpecValue{t, append([]LawSpecValue{}, values...)}
+}
+
+func lsConstruct(t, tag string, fields []LawSpecValue) LawSpecValue {
+	if lsSumType(t) {
+		if len(lsSumFields(t, tag)) != len(fields) {
+			panic("invalid constructor arity: " + tag)
+		}
+		return LawSpecValue{t, lawSpecData{tag, append([]LawSpecValue{}, fields...)}}
+	}
+	switch tag {
+	case "List::Nil":
+		if len(fields) == 0 {
+			return lsList(t, nil)
+		}
+	case "List::Cons":
+		if len(fields) == 2 {
+			if tail, ok := fields[1].Data.([]LawSpecValue); ok {
+				return lsList(t, append([]LawSpecValue{fields[0]}, tail...))
+			}
+		}
+	}
+	panic("invalid constructor or arity: " + tag)
+}
+
+func lsSignedInteger(t string, value int64) LawSpecValue {
+	return lsInteger(t, strconv.FormatInt(value, 10))
+}
+
+func lsUnsignedInteger(t string, value uint64) LawSpecValue {
+	return lsInteger(t, strconv.FormatUint(value, 10))
+}
+
+func lsListToNative[T any](t string, value LawSpecValue, bits int, element func(LawSpecValue) T) []T {
+	lsCheckNativeProfile(t, bits)
+	values := lsConvert(t, value, bits).Data.([]LawSpecValue)
+	result := make([]T, len(values))
+	for index, item := range values {
+		result[index] = element(item)
+	}
+	return result
+}
+
+func lsCheckNativeProfile(t string, bits int) {
+	if strings.HasPrefix(t, "List ") || strings.HasPrefix(t, "Maybe ") {
+		lsCheckNativeProfile(strings.SplitN(t, " ", 2)[1], bits)
+		return
+	}
+	if strings.HasPrefix(t, "Either ") {
+		for _, argument := range lsEitherArguments(t) {
+			lsCheckNativeProfile(argument, bits)
+		}
+		return
+	}
+	if (t == "IntSize" || t == "UIntSize" || t == "UIntPtr") && strconv.IntSize != bits {
+		panic("machineBits does not match native architecture")
+	}
+}
+
 func lsIntegerType(t string) bool {
 	return strings.HasPrefix(t, "Int") || strings.HasPrefix(t, "UInt") || t == "BigInt" || t == "BigUInt"
 }
@@ -109,6 +386,26 @@ func lsPrecision(t string, x float64) float64 {
 	return x
 }
 func lsConvert(t string, v LawSpecValue, bits int) LawSpecValue {
+	if lsSumType(t) {
+		data := lsDataValue(v)
+		types := lsSumFields(t, data.tag)
+		fields := make([]LawSpecValue, len(types))
+		for index, fieldType := range types {
+			fields[index] = lsConvert(fieldType, data.fields[index], bits)
+		}
+		return lsConstruct(t, data.tag, fields)
+	}
+	if strings.HasPrefix(t, "List ") {
+		values, ok := v.Data.([]LawSpecValue)
+		if !ok || !strings.HasPrefix(v.Type, "List ") {
+			panic("List required")
+		}
+		converted := make([]LawSpecValue, len(values))
+		for index, value := range values {
+			converted[index] = lsConvert(strings.TrimPrefix(t, "List "), value, bits)
+		}
+		return lsList(t, converted)
+	}
 	if strings.HasPrefix(t, "Nullable ") || strings.HasPrefix(t, "Optional ") {
 		parts := strings.SplitN(t, " ", 2)
 		missing := "Null"
@@ -231,6 +528,23 @@ func lsValidate(t string, v LawSpecValue, bits int) LawSpecValue {
 	if t != v.Type {
 		panic("invalid " + t + " representation")
 	}
+	if lsSumType(t) {
+		data := lsDataValue(v)
+		for index, fieldType := range lsSumFields(t, data.tag) {
+			lsValidate(fieldType, data.fields[index], bits)
+		}
+		return lsClone(v)
+	}
+	if strings.HasPrefix(t, "List ") {
+		values, ok := v.Data.([]LawSpecValue)
+		if !ok {
+			panic("List required")
+		}
+		for _, value := range values {
+			lsValidate(strings.TrimPrefix(t, "List "), value, bits)
+		}
+		return lsClone(v)
+	}
 	if lsIntegerType(t) {
 		return lsConvert(t, v, bits)
 	}
@@ -259,9 +573,11 @@ func lsValidate(t string, v LawSpecValue, bits int) LawSpecValue {
 		case "Bool":
 			_, valid = v.Data.(bool)
 		case "Decimal":
-			_, valid = v.Data.(lawSpecDecimal)
+			x, ok := v.Data.(lawSpecDecimal)
+			valid = ok && x.coefficient != nil
 		case "Rational":
-			_, valid = v.Data.(*big.Rat)
+			x, ok := v.Data.(*big.Rat)
+			valid = ok && x != nil
 		case "Float32", "Float64":
 			x, ok := v.Data.(float64)
 			valid = ok && (t == "Float64" || math.IsNaN(x) || float64(float32(x)) == x)
@@ -419,6 +735,33 @@ func lsBinary(op string, a, b LawSpecValue) LawSpecValue {
 	return LawSpecValue{t, lsPrecision(t, v)}
 }
 func lsEqual(a, b LawSpecValue) bool {
+	if lsSumType(a.Type) || lsSumType(b.Type) {
+		if !lsSumType(a.Type) || !lsSumType(b.Type) {
+			return false
+		}
+		x, y := lsDataValue(a), lsDataValue(b)
+		if x.tag != y.tag || len(x.fields) != len(y.fields) {
+			return false
+		}
+		for index, field := range x.fields {
+			if !lsEqual(field, y.fields[index]) {
+				return false
+			}
+		}
+		return true
+	}
+	if strings.HasPrefix(a.Type, "List ") && strings.HasPrefix(b.Type, "List ") {
+		xs, ys := a.Data.([]LawSpecValue), b.Data.([]LawSpecValue)
+		if len(xs) != len(ys) {
+			return false
+		}
+		for index, value := range xs {
+			if !lsEqual(value, ys[index]) {
+				return false
+			}
+		}
+		return true
+	}
 	if (strings.HasPrefix(a.Type, "Float") || strings.HasPrefix(a.Type, "Complex")) && (strings.HasPrefix(b.Type, "Float") || strings.HasPrefix(b.Type, "Complex")) {
 		return lsTruth(lsBinary("==", a, b))
 	}
@@ -446,12 +789,23 @@ func lsEqual(a, b LawSpecValue) bool {
 }
 func lsTruth(v LawSpecValue) bool { return lsValidate("Bool", v, 64).Data.(bool) }
 func lsHelper(n string, args []LawSpecValue, bits int) LawSpecValue {
-    switch n {
-    case "checked": return lsBool(true)
-    case "length": return lsInteger("Integer",strconv.Itoa(len(args[0].Data.([]int))))
-    case "isPresent": return lsBool(args[0].Data.(lawSpecPresence).value != nil)
-    case "presentValue": p:=args[0].Data.(lawSpecPresence).value; if p==nil {panic("absent presence value")}; return *p
-    }
+	switch n {
+	case "checked":
+		return lsBool(true)
+	case "length":
+		if values, ok := args[0].Data.([]LawSpecValue); ok {
+			return lsInteger("Integer", strconv.Itoa(len(values)))
+		}
+		return lsInteger("Integer", strconv.Itoa(len(args[0].Data.([]int))))
+	case "isPresent":
+		return lsBool(args[0].Data.(lawSpecPresence).value != nil)
+	case "presentValue":
+		p := args[0].Data.(lawSpecPresence).value
+		if p == nil {
+			panic("absent presence value")
+		}
+		return *p
+	}
 
 	x := args[0]
 	switch n {
@@ -587,11 +941,7 @@ type LawSpecRational = big.Rat
 
 func lsToNative(t string, v LawSpecValue, bits int) any {
 	v = lsConvert(t, v, bits)
-	if t == "IntSize" || t == "UIntSize" || t == "UIntPtr" {
-		if strconv.IntSize != bits {
-			panic("machineBits does not match native architecture")
-		}
-	}
+	lsCheckNativeProfile(t, bits)
 	if lsIntegerType(t) {
 		n := v.Data.(*big.Int)
 		switch t {
@@ -674,11 +1024,36 @@ func lsFromNative(t string, value any, bits int) LawSpecValue {
 	if v, ok := value.(LawSpecValue); ok {
 		return lsClone(lsValidate(t, v, bits))
 	}
-	if t == "IntSize" || t == "UIntSize" || t == "UIntPtr" {
-		if strconv.IntSize != bits {
-			panic("machineBits does not match native architecture")
+	if lsSumType(t) {
+		lsCheckNativeProfile(t, bits)
+		native, ok := value.(lawSpecSum)
+		if !ok {
+			panic("native sum requires a constructor")
 		}
+		tag := native.lawSpecTag()
+		types, values := lsSumFields(t, tag), native.lawSpecFields()
+		if len(types) != len(values) {
+			panic("invalid native constructor arity")
+		}
+		fields := make([]LawSpecValue, len(types))
+		for index, fieldType := range types {
+			fields[index] = lsFromNative(fieldType, values[index], bits)
+		}
+		return lsConstruct(t, tag, fields)
 	}
+	if strings.HasPrefix(t, "List ") {
+		lsCheckNativeProfile(t, bits)
+		values := reflect.ValueOf(value)
+		if !values.IsValid() || values.Kind() != reflect.Slice {
+			panic("native List requires a slice")
+		}
+		converted := make([]LawSpecValue, values.Len())
+		for index := range converted {
+			converted[index] = lsFromNative(strings.TrimPrefix(t, "List "), values.Index(index).Interface(), bits)
+		}
+		return lsList(t, converted)
+	}
+	lsCheckNativeProfile(t, bits)
 	var data any = value
 	if lsIntegerType(t) {
 		rv := reflect.ValueOf(value)
@@ -688,7 +1063,17 @@ func lsFromNative(t string, value any, bits int) LawSpecValue {
 		case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
 			data = new(big.Int).SetUint64(rv.Uint())
 		default:
-			switch n:=value.(type) {case *big.Int: if n==nil {panic("invalid Integer representation")}; data=new(big.Int).Set(n); case big.Int: data=new(big.Int).Set(&n); default: panic("invalid Integer representation")}
+			switch n := value.(type) {
+			case *big.Int:
+				if n == nil {
+					panic("invalid Integer representation")
+				}
+				data = new(big.Int).Set(n)
+			case big.Int:
+				data = new(big.Int).Set(&n)
+			default:
+				panic("invalid Integer representation")
+			}
 		}
 	}
 	if t == "Char" || t == "CodePoint" {
@@ -743,6 +1128,18 @@ func lsFromNative(t string, value any, bits int) LawSpecValue {
 
 func lsClone(v LawSpecValue) LawSpecValue {
 	switch x := v.Data.(type) {
+	case lawSpecData:
+		fields := make([]LawSpecValue, len(x.fields))
+		for index, field := range x.fields {
+			fields[index] = lsClone(field)
+		}
+		v.Data = lawSpecData{x.tag, fields}
+	case []LawSpecValue:
+		values := make([]LawSpecValue, len(x))
+		for index, value := range x {
+			values[index] = lsClone(value)
+		}
+		v.Data = values
 	case *big.Int:
 		v.Data = new(big.Int).Set(x)
 	case *big.Rat:
@@ -760,64 +1157,241 @@ func lsClone(v LawSpecValue) LawSpecValue {
 	return v
 }
 
-type lawSpecBound struct { op string; value LawSpecValue }
-type lawSpecDomain struct { candidates func([]LawSpecValue,int) []LawSpecValue; accept func([]LawSpecValue) bool }
-func lsFloor(r *big.Rat) *big.Int { q,rem:=new(big.Int).QuoRem(r.Num(),r.Denom(),new(big.Int));if rem.Sign()<0 {q.Sub(q,big.NewInt(1))};return q }
-func lsCeil(r *big.Rat) *big.Int { return new(big.Int).Neg(lsFloor(new(big.Rat).Neg(r))) }
-func lsDomainCandidates(t string,seed,bits int,restrictions []lawSpecBound,hints []LawSpecValue) []LawSpecValue {
- values:=[]LawSpecValue{};for _,hint:=range hints {func(){defer func(){recover()}();values=append(values,lsConvert(t,hint,bits))}()}
- if lsIntegerType(t) {
-  var lo,hi *big.Int
-  if t=="BigUInt" {lo=big.NewInt(0)} else if t!="Integer" && t!="BigInt" {w:=bits;if t!="IntSize"&&t!="UIntSize"&&t!="UIntPtr" {w,_=strconv.Atoi(strings.TrimLeft(t,"UInt"))};if strings.HasPrefix(t,"Int") {hi=new(big.Int).Lsh(big.NewInt(1),uint(w-1));lo=new(big.Int).Neg(new(big.Int).Set(hi));hi.Sub(hi,big.NewInt(1))}else{lo=big.NewInt(0);hi=new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1),uint(w)),big.NewInt(1))}}
-  for _,b:=range restrictions {r:=lsRatio(b.value)
-   if b.op==">"||b.op==">="||b.op=="==" {v:=lsCeil(r);if b.op==">" {v.Add(lsFloor(r),big.NewInt(1))};if lo==nil||v.Cmp(lo)>0 {lo=v}}
-   if b.op=="<"||b.op=="<="||b.op=="==" {v:=lsFloor(r);if b.op=="<" {v.Sub(lsCeil(r),big.NewInt(1))};if hi==nil||v.Cmp(hi)<0 {hi=v}}
-  }
-  if lo!=nil&&hi!=nil&&lo.Cmp(hi)>0{return nil}
-  lower,upper:=lo,hi
-  if lower==nil {lower=new(big.Int).Neg(new(big.Int).Lsh(big.NewInt(1),256));if hi!=nil&&hi.Sign()<0 {lower.Add(lower,hi)}}
-  if upper==nil {upper=new(big.Int).Lsh(big.NewInt(1),256);if lo!=nil&&lo.Sign()>0 {upper.Add(upper,lo)}}
-  ns:=[]*big.Int{lower,upper,big.NewInt(0),big.NewInt(1),big.NewInt(-1),new(big.Int).Add(lower,big.NewInt(1)),new(big.Int).Sub(upper,big.NewInt(1))}
-  random:=rand.New(rand.NewSource(int64(seed)));width:=new(big.Int).Add(new(big.Int).Sub(upper,lower),big.NewInt(1))
-  for j:=0;j<8;j++ {ns=append(ns,new(big.Int).Add(lower,new(big.Int).Rand(random,width)))}
-  for _,n:=range ns {values=append(values,LawSpecValue{t,n})}
-  filtered:=[]LawSpecValue{};for _,v:=range values {if lsIntegerType(v.Type) {n:=v.Data.(*big.Int);if n.Cmp(lower)>=0&&n.Cmp(upper)<=0 {filtered=append(filtered,lsConvert(t,v,bits))}}};values=filtered
- } else {for j:=0;j<8;j++ {values=append(values,lsSample(t,seed+j*7919,bits))}}
- if len(values)>0 {offset:=((seed%len(values))+len(values))%len(values);values=append(append([]LawSpecValue{},values[offset:]...),values[:offset]...)}
- return values
+type lawSpecBound struct {
+	op    string
+	value LawSpecValue
 }
-func lsGenerateTuple(domains []lawSpecDomain,seed,attempts int,prefix []LawSpecValue) ([]LawSpecValue,bool) {
- used:=0;lastPrefix:=prefix
- var search func([]LawSpecValue)([]LawSpecValue,bool)
- search=func(values []LawSpecValue)([]LawSpecValue,bool){lastPrefix=values;if len(values)==len(domains){return values,true};if used>=attempts{return nil,false};used++
-  d:=domains[len(values)];for _,v:=range d.candidates(values,seed+used*7919){if used>=attempts{break};used++;next:=append(append([]LawSpecValue{},values...),v);if d.accept(next){if result,ok:=search(next);ok{return result,true}}};return nil,false}
- for used<attempts {if result,ok:=search(append([]LawSpecValue{},prefix...));ok{return result,true}}
- return lastPrefix,false
+type lawSpecDomain struct {
+	candidates func([]LawSpecValue, int) []LawSpecValue
+	accept     func([]LawSpecValue) bool
 }
-func lsRequireContract(condition bool,context string){if !condition{panic(context)}}
-func lsContract(context string,condition bool,result LawSpecValue) LawSpecValue {lsRequireContract(condition,context);return result}
-func lsCapture(check func([]LawSpecValue),values []LawSpecValue)(failure any){defer func(){failure=recover()}();check(values);return nil}
-func lsRefinedCase(domains []lawSpecDomain,seed,attempts,shrinks int,check func([]LawSpecValue),context string) {
- values,ok:=lsGenerateTuple(domains,seed,attempts,nil);if !ok{panic(fmt.Sprintf("%s: refinement-generation-exhausted after %d attempts; prefix=%v; seed=%d",context,attempts,values,seed))}
- if original:=lsCapture(check,values);original!=nil {best,budget:=values,shrinks
-  for i:=range best {value:=best[i];candidates:=domains[i].candidates(best[:i],0)
-   if lsIntegerType(value.Type){initial:=value.Data.(*big.Int);candidates=append([]LawSpecValue{{value.Type,big.NewInt(0)},{value.Type,big.NewInt(int64(initial.Sign()))}},candidates...);for n:=new(big.Int).Quo(initial,big.NewInt(2));new(big.Int).Abs(n).Cmp(big.NewInt(1))>0;n=new(big.Int).Quo(n,big.NewInt(2)){candidates=append(candidates,LawSpecValue{value.Type,n})}}
-   for _,candidate:=range candidates {if budget<=0{break};budget--;if lsComplexity(candidate).Cmp(lsComplexity(best[i]))>=0{continue};prefix:=append(append([]LawSpecValue{},best[:i]...),candidate);if !domains[i].accept(prefix){continue};trial,ok:=lsGenerateTuple(domains,seed,min(attempts,100),prefix);if ok&&lsCapture(check,trial)!=nil{best=trial}}
-  };panic(fmt.Sprintf("%s: %v; refined counterexample=%v; seed=%d",context,original,best,seed))
- }
-}
-func lsAssert(context string,actual,expected func()LawSpecValue){defer func(){if err:=recover();err!=nil{panic(fmt.Sprintf("%s: %v",context,err))}}();a,b:=actual(),expected();if !lsEqual(a,b){panic(fmt.Sprintf("%s | actual=%v expected=%v",context,a,b))}}
 
-func lsComplexity(v LawSpecValue)*big.Int {
- switch x:=v.Data.(type){
- case *big.Int:return new(big.Int).Abs(x)
- case []int:return big.NewInt(int64(len(x)))
- case lawSpecPresence:if x.value==nil{return big.NewInt(0)};return new(big.Int).Add(big.NewInt(1),lsComplexity(*x.value))
- case bool:if x{return big.NewInt(1)};return big.NewInt(0)
- case float64:return new(big.Int).SetUint64(math.Float64bits(math.Abs(x)))
- case complex128:return new(big.Int).Add(lsComplexity(LawSpecValue{"Float64",real(x)}),lsComplexity(LawSpecValue{"Float64",imag(x)}))
- case int:return big.NewInt(int64(x))
- }
- if lsExactType(v.Type){r:=lsRatio(v);return new(big.Int).Sub(new(big.Int).Add(new(big.Int).Abs(r.Num()),r.Denom()),big.NewInt(1))}
- if v.Data==nil{return big.NewInt(0)};return big.NewInt(1)
+func lsFloor(r *big.Rat) *big.Int {
+	q, rem := new(big.Int).QuoRem(r.Num(), r.Denom(), new(big.Int))
+	if rem.Sign() < 0 {
+		q.Sub(q, big.NewInt(1))
+	}
+	return q
+}
+func lsCeil(r *big.Rat) *big.Int { return new(big.Int).Neg(lsFloor(new(big.Rat).Neg(r))) }
+func lsDomainCandidates(t string, seed, bits int, restrictions []lawSpecBound, hints []LawSpecValue) []LawSpecValue {
+	values := []LawSpecValue{}
+	for _, hint := range hints {
+		func() { defer func() { recover() }(); values = append(values, lsConvert(t, hint, bits)) }()
+	}
+	if lsIntegerType(t) {
+		var lo, hi *big.Int
+		if t == "BigUInt" {
+			lo = big.NewInt(0)
+		} else if t != "Integer" && t != "BigInt" {
+			w := bits
+			if t != "IntSize" && t != "UIntSize" && t != "UIntPtr" {
+				w, _ = strconv.Atoi(strings.TrimLeft(t, "UInt"))
+			}
+			if strings.HasPrefix(t, "Int") {
+				hi = new(big.Int).Lsh(big.NewInt(1), uint(w-1))
+				lo = new(big.Int).Neg(new(big.Int).Set(hi))
+				hi.Sub(hi, big.NewInt(1))
+			} else {
+				lo = big.NewInt(0)
+				hi = new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(w)), big.NewInt(1))
+			}
+		}
+		for _, b := range restrictions {
+			r := lsRatio(b.value)
+			if b.op == ">" || b.op == ">=" || b.op == "==" {
+				v := lsCeil(r)
+				if b.op == ">" {
+					v.Add(lsFloor(r), big.NewInt(1))
+				}
+				if lo == nil || v.Cmp(lo) > 0 {
+					lo = v
+				}
+			}
+			if b.op == "<" || b.op == "<=" || b.op == "==" {
+				v := lsFloor(r)
+				if b.op == "<" {
+					v.Sub(lsCeil(r), big.NewInt(1))
+				}
+				if hi == nil || v.Cmp(hi) < 0 {
+					hi = v
+				}
+			}
+		}
+		if lo != nil && hi != nil && lo.Cmp(hi) > 0 {
+			return nil
+		}
+		lower, upper := lo, hi
+		if lower == nil {
+			lower = new(big.Int).Neg(new(big.Int).Lsh(big.NewInt(1), 256))
+			if hi != nil && hi.Sign() < 0 {
+				lower.Add(lower, hi)
+			}
+		}
+		if upper == nil {
+			upper = new(big.Int).Lsh(big.NewInt(1), 256)
+			if lo != nil && lo.Sign() > 0 {
+				upper.Add(upper, lo)
+			}
+		}
+		ns := []*big.Int{lower, upper, big.NewInt(0), big.NewInt(1), big.NewInt(-1), new(big.Int).Add(lower, big.NewInt(1)), new(big.Int).Sub(upper, big.NewInt(1))}
+		random := rand.New(rand.NewSource(int64(seed)))
+		width := new(big.Int).Add(new(big.Int).Sub(upper, lower), big.NewInt(1))
+		for j := 0; j < 8; j++ {
+			ns = append(ns, new(big.Int).Add(lower, new(big.Int).Rand(random, width)))
+		}
+		for _, n := range ns {
+			values = append(values, LawSpecValue{t, n})
+		}
+		filtered := []LawSpecValue{}
+		for _, v := range values {
+			if lsIntegerType(v.Type) {
+				n := v.Data.(*big.Int)
+				if n.Cmp(lower) >= 0 && n.Cmp(upper) <= 0 {
+					filtered = append(filtered, lsConvert(t, v, bits))
+				}
+			}
+		}
+		values = filtered
+	} else {
+		for j := 0; j < 8; j++ {
+			values = append(values, lsSample(t, seed+j*7919, bits))
+		}
+	}
+	if len(values) > 0 {
+		offset := ((seed % len(values)) + len(values)) % len(values)
+		values = append(append([]LawSpecValue{}, values[offset:]...), values[:offset]...)
+	}
+	return values
+}
+func lsGenerateTuple(domains []lawSpecDomain, seed, attempts int, prefix []LawSpecValue) ([]LawSpecValue, bool) {
+	used := 0
+	lastPrefix := prefix
+	var search func([]LawSpecValue) ([]LawSpecValue, bool)
+	search = func(values []LawSpecValue) ([]LawSpecValue, bool) {
+		lastPrefix = values
+		if len(values) == len(domains) {
+			return values, true
+		}
+		if used >= attempts {
+			return nil, false
+		}
+		used++
+		d := domains[len(values)]
+		for _, v := range d.candidates(values, seed+used*7919) {
+			if used >= attempts {
+				break
+			}
+			used++
+			next := append(append([]LawSpecValue{}, values...), v)
+			if d.accept(next) {
+				if result, ok := search(next); ok {
+					return result, true
+				}
+			}
+		}
+		return nil, false
+	}
+	for used < attempts {
+		if result, ok := search(append([]LawSpecValue{}, prefix...)); ok {
+			return result, true
+		}
+	}
+	return lastPrefix, false
+}
+func lsRequireContract(condition bool, context string) {
+	if !condition {
+		panic(context)
+	}
+}
+func lsContract(context string, condition bool, result LawSpecValue) LawSpecValue {
+	lsRequireContract(condition, context)
+	return result
+}
+func lsCapture(check func([]LawSpecValue), values []LawSpecValue) (failure any) {
+	defer func() { failure = recover() }()
+	check(values)
+	return nil
+}
+func lsRefinedCase(domains []lawSpecDomain, seed, attempts, shrinks int, check func([]LawSpecValue), context string) {
+	values, ok := lsGenerateTuple(domains, seed, attempts, nil)
+	if !ok {
+		panic(fmt.Sprintf("%s: refinement-generation-exhausted after %d attempts; prefix=%v; seed=%d", context, attempts, values, seed))
+	}
+	if original := lsCapture(check, values); original != nil {
+		best, budget := values, shrinks
+		for i := range best {
+			value := best[i]
+			candidates := domains[i].candidates(best[:i], 0)
+			if lsIntegerType(value.Type) {
+				initial := value.Data.(*big.Int)
+				candidates = append([]LawSpecValue{{value.Type, big.NewInt(0)}, {value.Type, big.NewInt(int64(initial.Sign()))}}, candidates...)
+				for n := new(big.Int).Quo(initial, big.NewInt(2)); new(big.Int).Abs(n).Cmp(big.NewInt(1)) > 0; n = new(big.Int).Quo(n, big.NewInt(2)) {
+					candidates = append(candidates, LawSpecValue{value.Type, n})
+				}
+			}
+			for _, candidate := range candidates {
+				if budget <= 0 {
+					break
+				}
+				budget--
+				if lsComplexity(candidate).Cmp(lsComplexity(best[i])) >= 0 {
+					continue
+				}
+				prefix := append(append([]LawSpecValue{}, best[:i]...), candidate)
+				if !domains[i].accept(prefix) {
+					continue
+				}
+				trial, ok := lsGenerateTuple(domains, seed, min(attempts, 100), prefix)
+				if ok && lsCapture(check, trial) != nil {
+					best = trial
+				}
+			}
+		}
+		panic(fmt.Sprintf("%s: %v; refined counterexample=%v; seed=%d", context, original, best, seed))
+	}
+}
+func lsAssert(context string, actual, expected func() LawSpecValue) {
+	defer func() {
+		if err := recover(); err != nil {
+			panic(fmt.Sprintf("%s: %v", context, err))
+		}
+	}()
+	a, b := actual(), expected()
+	if !lsEqual(a, b) {
+		panic(fmt.Sprintf("%s | actual=%v expected=%v", context, a, b))
+	}
+}
+
+func lsComplexity(v LawSpecValue) *big.Int {
+	switch x := v.Data.(type) {
+	case *big.Int:
+		return new(big.Int).Abs(x)
+	case []int:
+		return big.NewInt(int64(len(x)))
+	case lawSpecPresence:
+		if x.value == nil {
+			return big.NewInt(0)
+		}
+		return new(big.Int).Add(big.NewInt(1), lsComplexity(*x.value))
+	case bool:
+		if x {
+			return big.NewInt(1)
+		}
+		return big.NewInt(0)
+	case float64:
+		return new(big.Int).SetUint64(math.Float64bits(math.Abs(x)))
+	case complex128:
+		return new(big.Int).Add(lsComplexity(LawSpecValue{"Float64", real(x)}), lsComplexity(LawSpecValue{"Float64", imag(x)}))
+	case int:
+		return big.NewInt(int64(x))
+	}
+	if lsExactType(v.Type) {
+		r := lsRatio(v)
+		return new(big.Int).Sub(new(big.Int).Add(new(big.Int).Abs(r.Num()), r.Denom()), big.NewInt(1))
+	}
+	if v.Data == nil {
+		return big.NewInt(0)
+	}
+	return big.NewInt(1)
 }

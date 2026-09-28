@@ -89,7 +89,16 @@ export async function planWrites(root, artifacts) {
     const file = await safePath(root, artifact.path);
     const old = await readOptional(file);
     if (artifact.ownership === "user") {
-      adapterHashes[artifact.path] = digest(artifact.content);
+      if (
+        artifact.adapterReference !== undefined &&
+        typeof artifact.adapterReference !== "string"
+      )
+        throw new Error(`Invalid adapter reference: ${artifact.path}`);
+      // Compare compiler-owned canonical scaffolds, never normalized user code.
+      // Older compilers and manifests used readable content as this reference.
+      adapterHashes[artifact.path] = digest(
+        artifact.adapterReference ?? artifact.content,
+      );
       if (
         old !== null &&
         previous.adapters?.[artifact.path] !== adapterHashes[artifact.path]

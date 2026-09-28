@@ -1,0 +1,51 @@
+unit example.list_refinements
+
+definition above (floor :: Int8) (xs :: List Int8) :: Bool is
+  match xs with
+  | Nil -> true
+  | Cons first rest -> first > floor && above floor rest
+  end
+end
+
+definition positiveRows (rows :: List (List Int8)) :: Bool is
+  match rows with
+  | Nil -> true
+  | Cons first rest -> above 0 first && positiveRows rest
+  end
+end
+
+law `each element is positive` is
+  definition is `for all` (xs :: List (value :: Int8 where value > 0)) .
+    above 0 xs = true
+  end
+  example `empty` is xs = [] expect above 0 xs = true end
+  example `positive values` is xs = [1, 127] expect above 0 xs = true end
+end
+
+law `nested element domains` is
+  definition is `for all` (rows :: List (List (value :: Int8 where value > 0))) .
+    positiveRows rows = true
+  end
+  example `empty rows` is rows = [[], [1, 2]] expect positiveRows rows = true end
+end
+
+law `dependent elements` is
+  definition is `for all` (lawspecElement :: Int8)
+    (xs :: List (value :: Int8 where value > lawspecElement)) .
+    above lawspecElement xs = true
+  end
+  example `maximum prefix still permits empty` is
+    lawspecElement = 127 xs = [] expect above lawspecElement xs = true
+  end
+  example `nonempty continuation` is
+    lawspecElement = 0 xs = [1, 2] expect above lawspecElement xs = true
+  end
+end
+
+law `division stays behind its guard` is
+  definition is `for all`
+    (xs :: List (value :: Int8 where value != 0 && 1 / value > 0)) .
+    above 0 xs = true
+  end
+  example `positive denominator` is xs = [1] expect above 0 xs = true end
+end

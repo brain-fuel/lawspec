@@ -1,0 +1,42 @@
+unit native.fields
+
+type Gap is
+  Gap first :: Int8 second :: (n :: Int8 where n > first)
+end
+
+type Identity is
+  Identity value :: (s :: Symbol where s == symbol("fixture", "same"))
+end
+
+type Bucket (a :: Type) is
+  Bucket values :: (xs :: List a where prelude.length xs > 0)
+end
+
+type Positives is
+  Positives values :: List (n :: Int8 where n > 0)
+end
+
+type Choice is
+  Accepted value :: (n :: Int8 where n > 0)
+  Rejected reason :: Text
+end
+
+type Machine is
+  Machine value :: (n :: IntSize where n > 0)
+end
+
+definition inverseGap (gap :: Gap) :: Rational is
+  match gap with | Gap x y -> 1 / (y - x) end
+end
+
+definition echoIdentity (box :: Identity) :: Identity is box end
+definition echoBucket (box :: Bucket Int8) :: Bucket Int8 is box end
+definition echoPositives (box :: Positives) :: Positives is box end
+definition echoChoice (box :: Choice) :: Choice is box end
+definition echoMachine (box :: Machine) :: Machine is box end
+
+type Guarded is
+  Guarded value :: (n :: Int8 where n != 0 && 1 / n > 0)
+end
+
+definition echoGuarded (box :: Guarded) :: Guarded is box end

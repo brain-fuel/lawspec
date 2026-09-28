@@ -29,8 +29,9 @@ boundaryTuples bits e = filterM (validTuple bits (inputs e)) raw where
 
 boundaries :: Int -> Type -> [Scalar]
 boundaries bits (Named n) = scalarBoundaries bits n
-boundaries bits (Applied n t) = SPresent n Nothing : map (SPresent n . Just) (boundaries bits t)
-boundaries bits t = boundaries bits (baseType t)
+boundaries bits (Applied n t) | n `elem` ["Nullable","Optional"] = SPresent n Nothing : map (SPresent n . Just) (boundaries bits t)
+boundaries bits t | baseType t /= t = boundaries bits (baseType t)
+boundaries _ _ = []
 
 -- Direct comparisons seed the candidate pool, including sparse equalities.
 domainHints :: Input -> [Expr]

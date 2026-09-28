@@ -5,9 +5,12 @@ import LawSpec.Common
 import Data.Aeson hiding (Number)
 import LawSpec.Scalar
 import GHC.Generics (Generic)
+import Data.List (intercalate)
 
-data Type = Named String | Variable String | Arrow Type Type | Applied String Type | Refined String Type (Maybe Expr) | RefinementApp String [RefinementArgument] | Qualified [Constraint] Type | CheckedType [Expr] Type deriving (Eq, Show, Generic)
-data Expr = Located Span Expr | Var String | Apply Expr Expr | Compose Expr Expr | Number Integer | DecimalNumber Integer Integer | StringLit String | BoolLit Bool | ScalarLit Scalar | Binary String Expr Expr | Unary String Expr | Annotate Expr Type | TypeBound String Type deriving (Eq, Show, Generic)
+data Type = Named String | Variable String | Arrow Type Type | Applied String Type | Application String [Type] | Refined String Type (Maybe Expr) | RefinementApp String [RefinementArgument] | Qualified [Constraint] Type | CheckedType [Expr] Type deriving (Eq, Show, Generic)
+data Expr = Located Span Expr | Var String | Apply Expr Expr | Compose Expr Expr | Number Integer | DecimalNumber Integer Integer | StringLit String | BoolLit Bool | ScalarLit Scalar | ListLit [Expr] | ConstructLit String [Expr] | MatchExpr Expr [MatchBranch] | AllElementsExpr Expr String Expr | AllPayloadsExpr Expr [(String, Expr)] | Binary String Expr Expr | Unary String Expr | Annotate Expr Type | TypeBound String Type deriving (Eq, Show, Generic)
+data MatchBranch = MatchBranch String [String] Expr deriving (Eq, Show, Generic)
+data TypedCase = TypedCase String [(String,Type)] TypedExpr deriving (Eq, Show, Generic)
 data Definition = Forall [(String, Type)] Definition | Equal Expr Expr | Holds Expr | Implies Expr Definition | And Definition Definition | Invoke String [Expr] deriving (Eq, Show, Generic)
 data Constraint = Capability String Type deriving (Eq, Show, Generic)
 data RefinementArgument = TypeArgument Type | ValueArgument Expr deriving (Eq, Show, Generic)
@@ -20,25 +23,40 @@ instance ToJSON Refinement
 instance ToJSON Contract
 instance ToJSON DomainPlan
 
-data Literal = IntLiteral Integer | DecimalLiteral Integer Integer | TextLiteral String | BoolLiteral Bool | ScalarLiteral Scalar deriving (Eq, Show)
+data Literal = IntLiteral Integer | DecimalLiteral Integer Integer | TextLiteral String | BoolLiteral Bool | ScalarLiteral Scalar | ListLiteral [Literal] | ConstructorLiteral String [Literal] deriving (Eq, Show)
 instance ToJSON Literal where
   toJSON (DecimalLiteral c e) = toJSON (SDecimal c e)
   toJSON (IntLiteral n) = toJSON (SInteger "BigInt" n)
   toJSON (TextLiteral s) = toJSON (textScalar s)
   toJSON (BoolLiteral b) = toJSON (SBool b)
   toJSON (ScalarLiteral s) = toJSON s
+  toJSON (ConstructorLiteral name fields) = object ["constructor" .= name, "fields" .= fields]
+  toJSON (ListLiteral xs) = object ["list" .= xs]
 
 data Expectation = Expectation { actual :: Expr, expected :: Literal } deriving (Eq, Show, Generic)
 instance ToJSON Expectation
 
 data Example = Example { exampleName :: String, bindings :: [(String, Literal)], expectations :: [Expectation] } deriving (Eq, Show, Generic)
 data Law = Law { lawName :: String, parameters :: [(String, Type)], requirements :: [Constraint], definition :: Definition, description :: String, rationale :: String, examples :: [Example], references :: [String], location :: Location } deriving (Eq, Show, Generic)
-data Unit = Unit { unitName :: String, functions :: [(String, Type)], laws :: [Law], refinements :: [Refinement], contracts :: [Contract], declarationSpans :: [(String,Span)] } deriving (Eq, Show, Generic)
+data DataTypeDeclaration = DataTypeDeclaration
+  { dataTypeName :: String, dataTypeParameters :: [String]
+  , dataTypeConstructors :: [ConstructorDeclaration], dataTypeSpan :: Span
+  } deriving (Eq, Show, Generic)
+data ConstructorDeclaration = ConstructorDeclaration
+  { dataConstructorName :: String, dataConstructorFields :: [(String,Type)]
+  , dataConstructorSpan :: Span
+  } deriving (Eq, Show, Generic)
+data FunctionDefinition = FunctionDefinition
+  { functionName :: String, functionArguments :: [(String, Type)]
+  , functionResult :: Type, functionRequirements :: [Constraint]
+  , functionBody :: Expr, functionSpan :: Span
+  } deriving (Eq, Show, Generic)
+data Unit = Unit { unitName :: String, functions :: [(String, Type)], laws :: [Law], refinements :: [Refinement], contracts :: [Contract], declarationSpans :: [(String,Span)], dataTypes :: [DataTypeDeclaration], functionDefinitions :: [FunctionDefinition] } deriving (Eq, Show, Generic)
 data Input = Input { inputName :: String, inputId :: String, inputType :: Type, inputRefinements :: [Expr] } deriving (Eq, Show, Generic)
 data Assertion = AssertEqual Expr Expr | AssertImplies Expr Assertion | AssertAll [Assertion] deriving (Eq, Show, Generic)
 instance ToJSON Assertion
 
-data Expanded = Expanded { owner :: String, name :: String, inputs :: [Input], left :: Expr, right :: Expr, guards :: [Expr], assertion :: Assertion, trace :: [String], original :: Law, typedExpressions :: [TypedExpr], propertyKind :: String, generation :: Generation, generationPlan :: [DomainPlan] } deriving (Eq, Show, Generic)
+data Expanded = Expanded { owner :: String, name :: String, inputs :: [Input], left :: Expr, right :: Expr, guards :: [Expr], assertion :: Assertion, trace :: [String], original :: Law, typedExpressions :: [TypedExpr], propertyKind :: String, generation :: Generation, generationPlan :: [DomainPlan], refinementArgumentChecks :: [Expr] } deriving (Eq, Show, Generic)
 instance ToJSON Type
 instance ToJSON Expr where
   toJSON (DecimalNumber c e) = object ["tag" .= ("DecimalNumber" :: String), "contents" .= [show c,show e]]
@@ -60,6 +78,7 @@ prettyType (RefinementApp n args) = unwords (n:map arg args) where
 prettyType (Named n) = n
 prettyType (Variable n) = reverse (takeWhile (/= ':') (reverse n))
 prettyType (Applied n t) = n ++ " (" ++ prettyType t ++ ")"
+prettyType (Application n ts) = n ++ concatMap (\t -> " (" ++ prettyType t ++ ")") ts
 prettyType (Arrow a b) = atom a ++ " -> " ++ prettyType b where
   atom t@(Arrow _ _) = "(" ++ prettyType t ++ ")"
   atom t = prettyType t
@@ -74,6 +93,12 @@ prettyExpr (Apply f x) = prettyExpr f ++ " (" ++ prettyExpr x ++ ")"
 prettyExpr (Compose f g) = "(" ++ prettyExpr f ++ " . " ++ prettyExpr g ++ ")"
 
 prettyExpr (ScalarLit s) = prettyScalar s
+prettyExpr (ConstructLit name fields) = unwords (name : map ((\value -> "(" ++ prettyExpr value ++ ")")) fields)
+prettyExpr (AllPayloadsExpr value predicates) = "allPayloads (" ++ prettyExpr value ++ ") [" ++ intercalate ", " [binder ++ " -> " ++ prettyExpr body | (binder,body) <- predicates] ++ "]"
+prettyExpr (AllElementsExpr value binder predicate) = "allElements (" ++ prettyExpr value ++ ") (" ++ binder ++ " -> " ++ prettyExpr predicate ++ ")"
+prettyExpr (MatchExpr value branches) = "match " ++ prettyExpr value ++ " with " ++ concat
+  ["| " ++ unwords (tag:names) ++ " -> " ++ prettyExpr body ++ " " | MatchBranch tag names body <- branches] ++ "end"
+prettyExpr (ListLit xs) = "[" ++ intercalate ", " (map prettyExpr xs) ++ "]"
 prettyExpr (Binary op a b) = "(" ++ prettyExpr a ++ " " ++ op ++ " " ++ prettyExpr b ++ ")"
 prettyExpr (Unary op a) = op ++ "(" ++ prettyExpr a ++ ")"
 prettyExpr (Annotate a t) = "(" ++ prettyExpr a ++ " :: " ++ prettyType t ++ ")"
@@ -93,7 +118,9 @@ firstConclusion (AssertAll (a:_)) = firstConclusion a
 firstConclusion (AssertAll []) = (BoolLit True,BoolLit True,[])
 
 -- Typed operations retain operand types and adapter conversions after specialization.
-data TypedExpr = TypedExpr { expressionType :: Type, expression :: Expr, operands :: [TypedExpr], requiredConversion :: Maybe Type } deriving (Eq, Show, Generic)
+data TypedExpr = TypedExpr { expressionType :: Type, expression :: Expr, operands :: [TypedExpr], requiredConversion :: Maybe Type, typedCases :: [TypedCase] } deriving (Eq, Show, Generic)
+instance ToJSON MatchBranch
+instance ToJSON TypedCase
 instance ToJSON TypedExpr
 literalExpr :: Literal -> Expr
 literalExpr (DecimalLiteral c e) = DecimalNumber c e
@@ -101,14 +128,33 @@ literalExpr (IntLiteral n) = Number n
 literalExpr (TextLiteral s) = StringLit s
 literalExpr (BoolLiteral b) = BoolLit b
 literalExpr (ScalarLiteral s) = ScalarLit s
+literalExpr (ConstructorLiteral name fields) = ConstructLit name (map literalExpr fields)
+literalExpr (ListLiteral xs) = ListLit (map literalExpr xs)
 
 finiteScalar :: Type -> Bool
 finiteScalar (Named n) = n `elem` ["Bool","Unit","Null","Undefined"]
-finiteScalar (Applied _ t) = finiteScalar t
+finiteScalar (Applied n t) = n `elem` ["Nullable", "Optional"] && finiteScalar t
 finiteScalar _ = False
 
 replaceExprVars :: [(String, Expr)] -> Expr -> Expr
 replaceExprVars env (Located range e) = Located range (replaceExprVars env e)
+replaceExprVars env (ConstructLit name fields) = ConstructLit name (map (replaceExprVars env) fields)
+replaceExprVars env (AllPayloadsExpr value predicates) = AllPayloadsExpr (replaceExprVars env value)
+  [replaceBoundExpr env binder body | (binder,body) <- predicates]
+replaceExprVars env (AllElementsExpr value binder predicate) =
+  let (name,body) = replaceBoundExpr env binder predicate
+  in AllElementsExpr (replaceExprVars env value) name body
+replaceExprVars env (MatchExpr value branches) = MatchExpr (replaceExprVars env value)
+  [let active = filter ((`notElem` names) . fst) env
+       forbidden = concatMap (exprVars . snd) active
+       used = names ++ exprVars body ++ forbidden ++ map fst env
+       renamed = [(n, head ["_match_" ++ n ++ "_" ++ show i | i <- [0::Int ..],
+                    ("_match_" ++ n ++ "_" ++ show i) `notElem` used]) | n <- names, n `elem` forbidden]
+       names' = [maybe n id (lookup n renamed) | n <- names]
+       body' = replaceExprVars [(n, Var fresh) | (n,fresh) <- renamed] body
+   in MatchBranch tag names' (replaceExprVars active body')
+  | MatchBranch tag names body <- branches]
+replaceExprVars env (ListLit xs) = ListLit (map (replaceExprVars env) xs)
 replaceExprVars env (Var n) = maybe (Var n) id (lookup n env)
 replaceExprVars env (Apply f x) = Apply (replaceExprVars env f) (replaceExprVars env x)
 replaceExprVars env (Compose f g) = Compose (replaceExprVars env f) (replaceExprVars env g)
@@ -126,6 +172,7 @@ baseType (Qualified _ t) = baseType t
 baseType (CheckedType _ t) = baseType t
 baseType (Arrow a b) = Arrow (baseType a) (baseType b)
 baseType (Applied n t) = Applied n (baseType t)
+baseType (Application n ts) = Application n (map baseType ts)
 baseType t = t
 
 -- Predicates are expressions over values; aliases never introduce storage wrappers.
@@ -135,13 +182,62 @@ typePredicates value (Qualified _ t) = typePredicates value t
 typePredicates value (CheckedType ps t) = ps ++ typePredicates value t
 typePredicates value (Applied n t) | n `elem` ["Nullable","Optional"] =
   [Binary "||" (Unary "!" (Apply (Var "prelude.isPresent") value)) p | p <- typePredicates (Apply (Var "prelude.presentValue") value) t]
+typePredicates value (Applied "List" inner) =
+  let probe = "lawspecElement"
+      free = exprVars value ++ concatMap exprVars (typePredicates (Var probe) inner)
+      binder = head [probe ++ replicate n '_' | n <- [0..], probe ++ replicate n '_' `notElem` free]
+      predicates = typePredicates (Var binder) inner
+  in if null predicates then [] else
+    [AllElementsExpr value binder (foldr (Binary "&&") (BoolLit True) predicates)]
+typePredicates value (Applied "Maybe" inner) =
+  sumPredicates value [("Maybe::Nothing",Nothing),("Maybe::Just",Just inner)]
+typePredicates value (Application "Either" [left,right]) =
+  sumPredicates value [("Either::Left",Just left),("Either::Right",Just right)]
 typePredicates _ _ = []
+
+-- Sum payload constraints elaborate to ordinary exhaustive, lazy matches. The
+-- fresh local cannot capture a dependency on a surrounding refinement binder.
+sumPredicates :: Expr -> [(String,Maybe Type)] -> [Expr]
+sumPredicates value variants = constructorPayloadPredicates value
+  [(tag, maybe [] (pure . (,) "value") payload) | (tag,payload) <- variants]
+
+-- Compose ordered field constraints into an ordinary exhaustive match. Earlier
+-- fields are in scope for later predicates; sibling constructors have separate
+-- scopes. Declaration admission must reject duplicate or forward field names.
+-- Fresh match binders must avoid free outer dependencies as well as field names.
+constructorPredicates :: Expr -> [(String,[(String,Type)])] -> [Expr]
+constructorPredicates = constructorPredicatesWith True
+
+-- A refinement supplied as a type argument keeps its caller's value scope.
+-- Its free names must never be rebound to similarly named constructor fields.
+constructorPayloadPredicates :: Expr -> [(String,[(String,Type)])] -> [Expr]
+constructorPayloadPredicates = constructorPredicatesWith False
+
+constructorPredicatesWith :: Bool -> Expr -> [(String,[(String,Type)])] -> [Expr]
+constructorPredicatesWith dependentFields value variants =
+  let probe = "lawspecElement"
+      free = exprVars value ++ concat
+        [name : concatMap exprVars (typePredicates (Var probe) ty)
+        | (_,fields) <- variants, (name,ty) <- fields]
+      fresh = filter (`notElem` free) [probe ++ replicate n '_' | n <- [0..]]
+      branch (tag,fields) =
+        let names = take (length fields) fresh
+            predicates = concat
+              [map (replaceExprVars (if dependentFields then
+                  zip (map fst (take index fields)) (map Var names) else []))
+                (typePredicates (Var binder) ty)
+              | (index,((_,ty),binder)) <- zip [0..] (zip fields names)]
+        in (MatchBranch tag names (foldr (Binary "&&") (BoolLit True) predicates),
+            null predicates)
+      branches = map branch variants
+  in if all snd branches then [] else [MatchExpr value (map fst branches)]
 
 typeConstraints :: Type -> [Constraint]
 typeConstraints (Qualified cs t) = cs ++ typeConstraints t
 typeConstraints (CheckedType _ t) = typeConstraints t
 typeConstraints (Refined _ t _) = typeConstraints t
 typeConstraints (Applied _ t) = typeConstraints t
+typeConstraints (Application _ ts) = concatMap typeConstraints ts
 typeConstraints (Arrow a b) = typeConstraints a ++ typeConstraints b
 typeConstraints _ = []
 
@@ -149,6 +245,7 @@ mapType :: (Type -> Type) -> (Expr -> Expr) -> Type -> Type
 mapType f g = walk where
   walk (Arrow a b) = f (Arrow (walk a) (walk b))
   walk (Applied n t) = f (Applied n (walk t))
+  walk (Application n ts) = f (Application n (map walk ts))
   walk (Refined n t p) = f (Refined n (walk t) (g <$> p))
   walk (CheckedType ps t) = f (CheckedType (map g ps) (walk t))
   walk (Qualified cs t) = f (Qualified [Capability n (walk a) | Capability n a <- cs] (walk t))
@@ -160,6 +257,11 @@ mapExprTypes f e = case e of
   Located range a -> Located range (go a)
   Annotate a t -> Annotate (go a) (f t)
   TypeBound b t -> TypeBound b (f t)
+  ConstructLit name fields -> ConstructLit name (map go fields)
+  AllPayloadsExpr value predicates -> AllPayloadsExpr (go value) [(binder,go body) | (binder,body) <- predicates]
+  AllElementsExpr value binder predicate -> AllElementsExpr (go value) binder (go predicate)
+  MatchExpr value branches -> MatchExpr (go value) [MatchBranch tag names (go body) | MatchBranch tag names body <- branches]
+  ListLit xs -> ListLit (map go xs)
   Apply a b -> Apply (go a) (go b)
   Compose a b -> Compose (go a) (go b)
   Binary op a b -> Binary op (go a) (go b)
@@ -170,6 +272,12 @@ mapExprTypes f e = case e of
 exprVars :: Expr -> [String]
 exprVars (Located _ e) = exprVars e
 exprVars (Var n) = [n]
+exprVars (ConstructLit _ fields) = concatMap exprVars fields
+exprVars (AllPayloadsExpr value predicates) = exprVars value ++ concat [filter (/= binder) (exprVars body) | (binder,body) <- predicates]
+exprVars (AllElementsExpr value binder predicate) = exprVars value ++ filter (/= binder) (exprVars predicate)
+exprVars (MatchExpr value branches) = exprVars value ++ concat
+  [[n | n <- exprVars body, n `notElem` names] | MatchBranch _ names body <- branches]
+exprVars (ListLit xs) = concatMap exprVars xs
 exprVars (Apply a b) = exprVars a ++ exprVars b
 exprVars (Compose a b) = exprVars a ++ exprVars b
 exprVars (Binary _ a b) = exprVars a ++ exprVars b
@@ -184,6 +292,11 @@ unlocated (Located _ e) = unlocated e
 unlocated e = e
 stripLocations :: Expr -> Expr
 stripLocations e = case unlocated e of
+  ConstructLit name fields -> ConstructLit name (map go fields)
+  AllPayloadsExpr value predicates -> AllPayloadsExpr (go value) [(binder,go body) | (binder,body) <- predicates]
+  AllElementsExpr value binder predicate -> AllElementsExpr (go value) binder (go predicate)
+  MatchExpr value branches -> MatchExpr (go value) [MatchBranch tag names (go body) | MatchBranch tag names body <- branches]
+  ListLit xs -> ListLit (map go xs)
   Apply a b -> Apply (go a) (go b)
   Compose a b -> Compose (go a) (go b)
   Binary op a b -> Binary op (go a) (go b)
@@ -191,3 +304,15 @@ stripLocations e = case unlocated e of
   Annotate a t -> Annotate (go a) t
   a -> a
   where go = stripLocations
+
+-- Each payload callback has its own lexical scope, including when two callbacks
+-- use the same source spelling for their binders.
+replaceBoundExpr :: [(String,Expr)] -> String -> Expr -> (String,Expr)
+replaceBoundExpr env binder predicate =
+  let active = filter ((/= binder) . fst) env
+      forbidden = concatMap (exprVars . snd) active
+      used = exprVars predicate ++ forbidden ++ map fst env ++ [binder]
+      fresh = head [binder ++ replicate i '_' | i <- [1..], binder ++ replicate i '_' `notElem` used]
+      name = if binder `elem` forbidden then fresh else binder
+      body = if name == binder then predicate else replaceExprVars [(binder,Var name)] predicate
+  in (name,replaceExprVars active body)

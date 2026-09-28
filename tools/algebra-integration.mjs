@@ -6,18 +6,20 @@ import {createCompiler} from '../npm/api.mjs';
 import {templates,targets} from '../npm/templates.mjs';
 import {algebraAdapters} from './algebra-fixtures.mjs';
 const root=path.resolve(import.meta.dirname,'..');
-const bin=process.env.LAWSPEC_NATIVE==='1'?path.join(execFileSync('stack',['path','--local-install-root'],{cwd:root,encoding:'utf8'}).trim(),'bin/lawspec-core'):null;
+const bin=process.env.LAWSPEC_CORE||(process.env.LAWSPEC_NATIVE==='1'?path.join(execFileSync('stack',['path','--local-install-root'],{cwd:root,encoding:'utf8'}).trim(),'bin/lawspec-core'):null);
 const compiler=bin?null:await createCompiler();
+const minify=process.env.LAWSPEC_MINIFY==='1';
+const machineBits=Number(process.env.LAWSPEC_MACHINE_BITS||64);
 const sources=await Promise.all(['algebra','currying'].map(async n=>({path:n+'.lawspec',content:await readFile(path.join(root,'examples/specs',n+'.lawspec'),'utf8')})));
 const gradle=await access(path.join(root,'.tools/gradle-9.3.0/bin/gradle')).then(()=>path.join(root,'.tools/gradle-9.3.0/bin/gradle'),()=> 'gradle');
 for(const target of process.argv.slice(2).length?process.argv.slice(2):targets){
- const dir=path.join(root,'.artifacts/algebra',target);await mkdir(dir,{recursive:true});
+ const dir=path.join(root,'.artifacts',`algebra${machineBits===64?'':machineBits}${minify?'-compact':''}`,target);await mkdir(dir,{recursive:true});
  for(const folder of ['src','test','tests','example'])await rm(path.join(dir,folder),{recursive:true,force:true});
- const input={sources,target};
+ const input={sources,target,minify,machineBits};
  const result=bin?JSON.parse(execFileSync(bin,[],{input:JSON.stringify({method:'planGeneration',...input}),encoding:'utf8',maxBuffer:64*1024*1024})):await compiler.planGeneration(input);
  if(result.diagnostics.length)throw new Error(JSON.stringify(result.diagnostics));
  const adapters=algebraAdapters(target);
- for(const f of [...Object.entries(templates(target)).map(([path,content])=>({path,content})),...result.files]){
+ for(const f of [...Object.entries(templates(target,{minify})).map(([path,content])=>({path,content})),...result.files]){
   const p=path.join(dir,f.path);await mkdir(path.dirname(p),{recursive:true});
   await writeFile(p,f.ownership==='user'?adapters.find(a=>a[0]===f.path)[1]:f.content);
  }

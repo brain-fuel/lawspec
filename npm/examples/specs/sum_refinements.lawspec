@@ -1,0 +1,49 @@
+unit example.sum_refinements
+
+law `positive Maybe payloads` is
+  definition is `for all` (x :: Maybe (value :: Int8 where value > 0)) .
+    (match x with | Nothing -> true | Just payload -> payload >= 1 end) = true
+  end
+  example `absent` is x = Nothing expect x = Nothing end
+  example `present` is x = Just 1 expect x = Just 1 end
+end
+
+law `selected Either payload` is
+  definition is `for all`
+    (x :: Either (value :: Int8 where value > 0) (value :: Int8 where value < 0)) .
+    (match x with | Left payload -> payload >= 1 | Right payload -> payload <= -1 end) = true
+  end
+  example `left` is x = Left 1 expect x = Left 1 end
+  example `right` is x = Right -1 expect x = Right -1 end
+end
+
+law `nested Maybe states` is
+  definition is `for all` (x :: Maybe (Maybe (value :: Bool where value))) .
+    (match x with | Nothing -> true | Just inner ->
+      match inner with | Nothing -> true | Just payload -> payload end
+    end) = true
+  end
+  example `outer absent` is x = Nothing expect x = Nothing end
+  example `inner absent` is x = Just Nothing expect x = Just Nothing end
+  example `present` is x = Just (Just true) expect x = Just (Just true) end
+end
+
+law `finite Either variants` is
+  definition is `for all`
+    (x :: Either (value :: Bool where value) (value :: Bool where !value)) .
+    (match x with | Left payload -> payload | Right payload -> !payload end) = true
+  end
+end
+
+law `dependent payload keeps outer binding` is
+  definition is `for all` (lawspecElement :: Int8)
+    (x :: Maybe (value :: Int8 where value > lawspecElement)) .
+    (match x with | Nothing -> true | Just payload -> payload - lawspecElement >= 1 end) = true
+  end
+  example `maximum prefix has absent continuation` is
+    lawspecElement = 127 x = Nothing expect x = Nothing
+  end
+  example `present continuation` is
+    lawspecElement = 0 x = Just 1 expect x = Just 1
+  end
+end

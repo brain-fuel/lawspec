@@ -5,7 +5,7 @@ cabal-version: 1.12
 -- see: https://github.com/sol/hpack
 
 name:           lawspec
-version:        0.8.0
+version:        0.9.0
 synopsis:       Portable executable laws
 license:        MIT
 license-file:   LICENSE
@@ -15,58 +15,147 @@ extra-source-files:
     PRIMITIVES.md
     REFINEMENTS.md
     RUST.md
+    JAVA.md
+    PYTHON.md
+    GO.md
+    HASKELL.md
+    KOTLIN.md
+    WEB.md
     LANGUAGE.md
     API-MIGRATION.md
+    RELEASE-0.9.md
     runtime/lawspec_runtime.rs
     runtime/lawspec_strategies.rs
+    runtime/lawspec_data_strategies.mjs
     runtime/lawspec_runtime.mjs
+    runtime/lawspec_schema.mjs
+    runtime/lawspec_data_strategies.py
     runtime/lawspec_runtime.py
+    runtime/lawspec_schema.py
+    runtime/LawSpecCodecs.hs
+    runtime/LawSpecDataStrategies.hs
     runtime/LawSpecRuntime.hs
+    runtime/LawSpecSchema.hs
+    runtime/LawSpecDataStrategies.java
     runtime/LawSpecRuntime.java
+    runtime/LawSpecSchema.java
+    runtime/LawSpecKotlin.kt
+    runtime/LawSpecKotlinCodecs.kt
+    runtime/LawSpecKotlinStrategies.kt
+    runtime/LawSpecStrategies.kt
+    runtime/lawspec_codecs.go
+    runtime/lawspec_data_strategies.go
     runtime/lawspec_runtime.go
+    runtime/lawspec_schema.go
     runtime/rust/Cargo.toml
     runtime/rust/Cargo.lock
     examples/specs/algebra.lawspec
     examples/specs/atoi_codec.lawspec
     examples/specs/boolean_flags.lawspec
     examples/specs/canonical_url.lawspec
+    examples/specs/collections.lawspec
     examples/specs/currying.lawspec
+    examples/specs/data_types.lawspec
     examples/specs/equivalent.lawspec
+    examples/specs/finite_data.lawspec
+    examples/specs/list_contracts.lawspec
+    examples/specs/list_refinements.lawspec
+    examples/specs/matching.lawspec
     examples/specs/mixed_inputs.lawspec
     examples/specs/parse_port.lawspec
+    examples/specs/refined_definitions.lawspec
     examples/specs/refinements.lawspec
     examples/specs/scalar_adapters.lawspec
     examples/specs/scalar_catalog.lawspec
     examples/specs/scalars.lawspec
     examples/specs/slug.lawspec
+    examples/specs/sum_refinements.lawspec
+    examples/specs/total_functions.lawspec
+    test/fixtures/definition_contracts.lawspec
+    test/fixtures/list_contracts.lawspec
+    test/fixtures/total_definitions.lawspec
 
 library
   exposed-modules:
       LawSpec.Api
       LawSpec.Backend
+      LawSpec.Code.Doc
+      LawSpec.Code.JavaScript
       LawSpec.Common
       LawSpec.Compile
       LawSpec.Core
       LawSpec.Core.Eval
+      LawSpec.Core.Schema
       LawSpec.Core.Semantics
+      LawSpec.Core.Total
+      LawSpec.Core.Totality
+      LawSpec.Core.RefinementProof
+      LawSpec.Core.Types
+      LawSpec.Core.DefinitionContracts
+      LawSpec.Core.Definitions
+      LawSpec.Core.Expression
       LawSpec.Core.Validate
+      LawSpec.Core.Payload
+      LawSpec.Core.PayloadPlan
+      LawSpec.Core.Value
       LawSpec.CoreEmit
       LawSpec.CoreNativeScalarEmit
       LawSpec.CoreScalarEmit
+      LawSpec.Data
+      LawSpec.Capabilities
       LawSpec.Domain
+      LawSpec.Elaboration
       LawSpec.Emit
       LawSpec.Eval
       LawSpec.Frontend
       LawSpec.Gen
+      LawSpec.Inference
+      LawSpec.DefinitionTotality
+      LawSpec.SpecializeDefinitions
+      LawSpec.KotlinDefinitions
+      LawSpec.KotlinData
+      LawSpec.KotlinProperties
+      LawSpec.KotlinExpr
+      LawSpec.KotlinTestHelpers
+      LawSpec.JavaExpr
+      LawSpec.JavaTestHelpers
+      LawSpec.JavaProperties
+      LawSpec.JavaDefinitions
+      LawSpec.JavaData
+      LawSpec.GoData
+      LawSpec.GoTypeRefs
+      LawSpec.GoDefinitions
+      LawSpec.GoExpr
+      LawSpec.GoTestHelpers
+      LawSpec.GoProperties
+      LawSpec.HaskellData
+      LawSpec.HaskellTypeRefs
+      LawSpec.HaskellDefinitions
+      LawSpec.HaskellProperties
+      LawSpec.HaskellTestHelpers
+      LawSpec.HaskellExpr
       LawSpec.Model
       LawSpec.Parser
       LawSpec.Prelude
+      LawSpec.PortableGenerator
+      LawSpec.PortableTestHelpers
+      LawSpec.PythonData
+      LawSpec.PythonTypes
+      LawSpec.PythonDefinitions
+      LawSpec.PythonExpr
       LawSpec.Public
       LawSpec.Refinement
       LawSpec.RuntimeSources
+      LawSpec.RustData
+      LawSpec.RustExpr
+      LawSpec.RustDefinitions
       LawSpec.RustEmit
       LawSpec.Scalar
       LawSpec.Testing
+      LawSpec.WebData
+      LawSpec.WebDefinitions
+      LawSpec.WebExpr
+      LawSpec.WebTypes
   other-modules:
       Paths_lawspec
   hs-source-dirs:
@@ -82,10 +171,13 @@ library
     , base >=4.18 && <5
     , bytestring
     , containers
+    , directory
+    , filepath
     , megaparsec
     , mtl
     , parser-combinators
     , text
+    , transformers
   default-language: Haskell2010
 
 executable lawspec-core
@@ -105,6 +197,8 @@ executable lawspec-core
     , base >=4.18 && <5
     , bytestring
     , containers
+    , directory
+    , filepath
     , lawspec
     , megaparsec
     , mtl
@@ -117,6 +211,19 @@ test-suite lawspec-test
   main-is: Main.hs
   other-modules:
       CoreSpec
+      PayloadSpec
+      PayloadProofSpec
+      DocumentSpec
+      StructuralSpec
+      SourceDataSpec
+      GenericDefinitionSpec
+      DefinitionPredicateSpec
+      RefinementProofSpec
+      DefinitionContractFixture
+      DefinitionContractProofSpec
+      DefinitionSchemeSpec
+      InferenceSchemeSpec
+      TotalSpec
       Paths_lawspec
   hs-source-dirs:
       test
@@ -131,6 +238,8 @@ test-suite lawspec-test
     , base >=4.18 && <5
     , bytestring
     , containers
+    , directory
+    , filepath
     , hspec
     , lawspec
     , megaparsec

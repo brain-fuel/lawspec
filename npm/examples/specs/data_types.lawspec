@@ -1,0 +1,66 @@
+unit example.data_types
+
+type Pair (a :: Type) (b :: Type) is
+  Pair
+    first :: a
+    second :: b
+end
+
+type Tree (a :: Type) is
+  Leaf value :: a
+  Branch children :: List (Tree a)
+end
+
+law `products preserve every field` is
+  definition is
+    `for all` (pair :: Pair Int8 Bool) .
+      (match pair with
+        | Pair first second -> Pair first second
+      end) = pair
+  end
+  example `maximum integer and false` is
+    pair = Pair 127 false
+    expect pair = Pair 127 false
+  end
+end
+
+law `sums preserve constructor identity and payloads` is
+  definition is
+    `for all` (tree :: Tree Int8) .
+      (match tree with
+        | Leaf value -> Leaf value
+        | Branch children -> Branch children
+      end) = tree
+  end
+  example `nested branches` is
+    tree = Branch [Leaf 127, Branch [], Leaf -128]
+    expect tree = Branch [Leaf 127, Branch [], Leaf -128]
+  end
+end
+
+
+-- A refined type argument constrains the corresponding stored fields. This
+-- predicate becomes a scoped Core traversal, shared by all eight backends.
+refinement Positive is (value :: Int8 where value > 0) end
+
+definition positivePair (value :: Positive) :: Pair Positive Bool is
+  Pair value true
+end
+
+definition reciprocalFirst (pair :: Pair Positive Bool) :: Rational is
+  match pair with
+    | Pair first second -> 1 / first
+  end
+end
+
+law `named payload contracts justify exact division` is
+  definition is
+    `for all` (value :: Positive) .
+      reciprocalFirst (positivePair value) = 1 / value
+  end
+  example `one half` is
+    value = 2
+    expect positivePair value = Pair 2 true
+    expect reciprocalFirst (positivePair value) = rational(1, 2)
+  end
+end

@@ -1,0 +1,19 @@
+unit fixture.constructor_fields
+
+-- Front-end/reference fixture. Native generation remains gated until each
+-- runtime and generator enforces the field invariants.
+type Gap is
+  Gap first :: Int8 second :: (n :: Int8 where n > first)
+end
+
+definition inverseGap (gap :: Gap) :: Rational is
+  match gap with | Gap x y -> 1 / (y - x) end
+end
+
+law `dependent stored fields` is
+  definition is `for all` (gap :: Gap) . inverseGap gap > 0 end
+  example `widest gap` is
+    gap = Gap -128 127
+    expect inverseGap gap = rational(1, 255)
+  end
+end

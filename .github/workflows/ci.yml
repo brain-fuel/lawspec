@@ -23,7 +23,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: lawspec-npm
-          path: .artifacts/*.tgz
+          path: .artifacts/package-smoke/*.tgz
   runtime:
     strategy:
       fail-fast: false

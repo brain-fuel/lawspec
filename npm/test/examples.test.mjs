@@ -1,8 +1,9 @@
+import {createCompiler} from '../api.mjs';
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { mkdtemp, readFile, writeFile, rm, symlink } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, writeFile, rm, symlink } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 const exec = promisify(execFile);
@@ -14,13 +15,16 @@ test("examples exports all bundled stubs/tests, preserves adapters, and protects
   try {
     const result = JSON.parse((await run()).stdout);
     assert.equal(result.length, 8);
+    const compiler = await createCompiler();
+    const directory = new URL('../../examples/specs/', import.meta.url);
+    const sources = await Promise.all((await readdir(directory)).filter(n => n.endsWith('.lawspec')).sort().map(async name => ({
+      path: name, content: await readFile(new URL(name, directory), 'utf8'),
+    })));
     for (const target of result) {
-      assert.equal(target.files.filter(f => f.placement === "test" && !f.path.includes("support/")).length, 13);
+      const expected = await compiler.planGeneration({sources, target: target.target});
+      assert.deepEqual(expected.diagnostics, []);
+      assert.deepEqual(target.files, expected.files.map(({path, ownership, placement}) => ({path, ownership, placement})));
       assert.ok(target.files.some(f => f.placement === "source" && f.ownership === "generated"));
-      assert.equal(
-        target.files.filter((f) => f.ownership === "user").length,
-        13,
-      );
       for (const f of target.files)
         assert.ok(
           (await readFile(path.join(target.directory, f.path), "utf8")).length,

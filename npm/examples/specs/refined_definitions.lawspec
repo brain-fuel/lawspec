@@ -1,0 +1,44 @@
+unit example.refined_definitions
+
+refinement Nonzero (T :: Type) requires Integer T is
+  (value :: T where value != 0)
+end
+
+-- The compiler proves division is defined under the input contract.
+-- Native callers are checked before the body runs.
+definition reciprocal (x :: Nonzero a) :: Rational
+requires Integer a
+is
+  1 / x
+end
+
+-- Arithmetic promotes before this explicit, proved narrowing conversion.
+definition increment (x :: Int8 where x < 127)
+  :: (result :: Int8 where result > x)
+is
+  prelude.Int8 (x + 1)
+end
+
+-- Later argument refinements can depend on earlier arguments.
+definition inverseGap (x :: Int8) (y :: Int8 where y > x) :: Rational is
+  1 / (y - x)
+end
+
+law `exact reciprocal` is
+  definition is `for all` (x :: Nonzero Int8) . reciprocal x = 1 / x end
+  example `one half` is x = 2 expect reciprocal x = rational(1, 2) end
+end
+
+law `checked increment` is
+  definition is `for all` (x :: Int8 where x < 127) . increment x = x + 1 end
+  example `largest admitted input` is x = 126 expect increment x = 127 end
+end
+
+law `dependent gap` is
+  definition is `for all` (x :: Int8) (y :: Int8 where y > x) .
+    inverseGap x y = 1 / (y - x)
+  end
+  example `difference exceeds Int8` is
+    x = -128 y = 127 expect inverseGap x y = rational(1, 255)
+  end
+end

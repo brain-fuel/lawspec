@@ -4,9 +4,10 @@ import path from 'node:path';
 import {createCompiler} from '../npm/api.mjs';
 import {templates,targets} from '../npm/templates.mjs';
 const root=path.resolve(import.meta.dirname,'..');
-const bin=process.env.LAWSPEC_NATIVE==='1'?path.join(execFileSync('stack',['path','--local-install-root'],{cwd:root,encoding:'utf8'}).trim(),'bin/lawspec-core'):null;
+const bin=process.env.LAWSPEC_CORE||(process.env.LAWSPEC_NATIVE==='1'?path.join(execFileSync('stack',['path','--local-install-root'],{cwd:root,encoding:'utf8'}).trim(),'bin/lawspec-core'):null);
 const compiler=bin?null:await createCompiler();
 const bits=Number(process.env.LAWSPEC_MACHINE_BITS||64);
+const minify=process.env.LAWSPEC_MINIFY==='1';
 const sources=[{path:'refinements.lawspec',content:await readFile(path.join(root,'examples/specs/refinements.lawspec'),'utf8')}];
 const gradle=await access(path.join(root,'.tools/gradle-9.3.0/bin/gradle')).then(()=>path.join(root,'.tools/gradle-9.3.0/bin/gradle'),()=> 'gradle');
 const implementations={
@@ -28,15 +29,15 @@ pub fn abstractEcho(a:ls::BigInt)->ls::Integer {a.into()}
  haskell:`module Example.Refinements where\nimport LawSpecRuntime (IntegerValue,integerValue)\nimport Data.Int\nimport Data.Word\nimport Data.Text (Text)\nimport qualified Data.Text as T\nadd :: Int8 -> Int8 -> IntegerValue\nadd a b = integerValue (toInteger a+toInteger b)\nsuccessor :: Int8 -> IntegerValue\nsuccessor a = integerValue (toInteger a+1)\ncount :: Text -> IntegerValue\ncount = integerValue . T.length\npreserve :: Word64 -> IntegerValue\npreserve = integerValue\npositive :: Int8 -> Int8\npositive = id\nabstractEcho :: Integer -> IntegerValue\nabstractEcho = integerValue\n`
 };
 for(const target of process.argv.slice(2).length?process.argv.slice(2):targets){
- const dir=path.join(root,'.artifacts',`refinements${bits}`,target);await mkdir(dir,{recursive:true});
+ const dir=path.join(root,'.artifacts',`refinements${bits}${minify?'-compact':''}`,target);await mkdir(dir,{recursive:true});
  for(const folder of ['src','test','tests','example'])await rm(path.join(dir,folder),{recursive:true,force:true});
- const input={sources,target,machineBits:bits};
+ const input={sources,target,machineBits:bits,minify};
  const result=bin?JSON.parse(execFileSync(bin,[],{input:JSON.stringify({method:'planGeneration',...input}),encoding:'utf8',maxBuffer:64*1024*1024})):await compiler.planGeneration(input);
  if(result.diagnostics.length)throw new Error(JSON.stringify(result.diagnostics));
  for(const f of [...Object.entries(templates(target)).map(([path,content])=>({path,content})),...result.files]){const p=path.join(dir,f.path);await mkdir(path.dirname(p),{recursive:true});await writeFile(p,f.ownership==='user'?implementations[target]:f.content);}
  if(['javascript','typescript'].includes(target))await symlink(path.join(root,'.integration',target,'node_modules'),path.join(dir,'node_modules')).catch(e=>{if(e.code!=='EEXIST')throw e});
  if(target==='go')await copyFile(path.join(root,'test/locks/go/go.sum'),path.join(dir,'go.sum'));
- const commands={rust:['cargo',['test',...(process.env.LAWSPEC_RUST_RELEASE==='1'?['--release']:[])]],java:['mvn',['-q','test']],python:[path.join(root,'.integration/python/.venv/bin/python'),['-B','-m','pytest','-q']],javascript:['node',['--test',...result.files.filter(f=>f.path.endsWith('.test.mjs')).map(f=>f.path)]],typescript:['npm',['test']],go:['go',['test','./...']],haskell:['stack',['--no-terminal','test']],kotlin:[gradle,['test','--console=plain']]};
+ const commands={rust:['cargo',['test',...(process.env.LAWSPEC_RUST_RELEASE==='1'?['--release']:[])]],java:['mvn',['-q','test']],python:[process.env.LAWSPEC_PYTHON||path.join(root,'.integration/python/.venv/bin/python'),['-B','-m','pytest','-q']],javascript:['node',['--test',...result.files.filter(f=>f.path.endsWith('.test.mjs')).map(f=>f.path)]],typescript:['npm',['test']],go:['go',['test','./...']],haskell:['stack',['--no-terminal','test']],kotlin:[gradle,['test','--console=plain']]};
  const [cmd,args]=commands[target];
  await new Promise((resolve,reject)=>{const p=spawn(cmd,args,{cwd:dir,stdio:'inherit'});p.on('exit',code=>code?reject(new Error(`${target} exited ${code}`)):resolve());p.on('error',reject)});
  console.log(`${target}: refinement suite passed`);

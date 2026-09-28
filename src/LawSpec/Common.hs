@@ -12,11 +12,28 @@ instance FromJSON Generation where
 data Location = Location { file :: String, line :: Int, column :: Int } deriving (Eq, Show, Generic)
 data Diagnostic = Diagnostic { code :: String, message :: String, at :: Maybe Location } deriving (Eq, Show, Generic)
 data Source = Source { path :: String, content :: String } deriving (Eq, Show, Generic)
-data Artifact = Artifact { artifactPath :: String, artifactContent :: String, ownership :: String, artifactPlacement :: String } deriving (Eq, Show, Generic)
+data Artifact
+  = Artifact { artifactPath :: String, artifactContent :: String, ownership :: String, artifactPlacement :: String }
+  | AdapterArtifact { artifactPath :: String, artifactContent :: String, ownership :: String, artifactPlacement :: String, canonicalAdapter :: String }
+  deriving (Eq, Show, Generic)
+
+-- Canonical generated scaffold, never the user's implementation. A layout-only
+-- change must not be reported as a changed adapter requirement.
+adapterReference :: Artifact -> Maybe String
+adapterReference AdapterArtifact{canonicalAdapter=reference} = Just reference
+adapterReference _ = Nothing
+
+mapArtifactContent :: (String -> String) -> Artifact -> Artifact
+mapArtifactContent f artifact = case artifact of
+  AdapterArtifact{} -> artifact { artifactContent = f (artifactContent artifact), canonicalAdapter = f (canonicalAdapter artifact) }
+  Artifact{} -> artifact { artifactContent = f (artifactContent artifact) }
 instance ToJSON Location
 instance ToJSON Diagnostic
 instance ToJSON Artifact where
-  toJSON Artifact{..} = object ["path" .= artifactPath, "content" .= artifactContent, "ownership" .= ownership, "placement" .= artifactPlacement]
+  toJSON artifact = object
+    (["path" .= artifactPath artifact, "content" .= artifactContent artifact,
+      "ownership" .= ownership artifact, "placement" .= artifactPlacement artifact] ++
+     maybe [] (\reference -> ["adapterReference" .= reference]) (adapterReference artifact))
 instance FromJSON Source
 instance ToJSON Source
 

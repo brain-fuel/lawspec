@@ -1,0 +1,114 @@
+unit example.total
+
+type Tree is Leaf value :: Int8 | Branch left :: Tree right :: Tree end
+type Architecture is Unused | Native size :: IntSize end
+
+definition size (xs :: List Int8) :: BigInt is
+  match xs with | Nil -> 0 | Cons head tail -> 1 + size tail end
+end
+
+definition sumList (xs :: List Int8) :: BigInt is
+  match xs with | Nil -> 0 | Cons head tail -> head + sumList tail end
+end
+
+definition sumTree (tree :: Tree) :: BigInt is
+  match tree with | Leaf value -> value + 0 | Branch left right -> sumTree left + sumTree right end
+end
+
+definition forward (xs :: List Int8) :: BigInt is size xs end
+
+definition divisible (x :: BigInt) (y :: BigInt) :: Bool is
+  y != 0 && prelude.rem x y == 0
+end
+
+definition increment (x :: Int8) :: BigInt is x + 1 end
+
+definition maybeDefault (x :: Maybe Int8) :: Int8 is
+  match x with | Nothing -> 0 | Just value -> value end
+end
+
+definition raw (x :: List CodeUnit16) :: List CodeUnit16 is x end
+
+definition absent (x :: Optional (Nullable Int8)) :: Optional (Nullable Int8) is x end
+
+definition machine (x :: IntSize) :: IntSize is x end
+
+definition architecture (x :: Architecture) :: Architecture is x end
+
+definition symbol (x :: Unit) :: Symbol is symbol("same", "description") end
+
+definition exact (x :: Decimal) :: Decimal is x + 0.2 end
+
+definition either (x :: Either Int8 Bool) :: Either Int8 Bool is
+  match x with | Left n -> Left n | Right b -> Right b end
+end
+
+actualSum :: (xs :: List Int8 where sumList xs == sumList xs)
+          -> (result :: BigInt where result == sumList xs)
+actualIncrement :: Int8 -> BigInt
+actualTree :: Tree -> BigInt
+
+law `native sum agrees with checked definition` is
+  definition is `for all` (xs :: List Int8) . actualSum xs = sumList xs end
+  example `beyond Int8` is xs = [127, 127] expect sumList xs = 254 end
+end
+law `native increment promotes` is
+  definition is `for all` (x :: Int8) . actualIncrement x = increment x end
+  example `maximum` is x = 127 expect increment x = 128 end
+end
+law `native tree agrees with checked definition` is
+  definition is `for all` (x :: Tree) . actualTree x = sumTree x end
+end
+law `list length` is
+  definition is `for all` (xs :: List Int8) . forward xs = prelude.length xs end
+end
+law `safe division` is
+  definition is `for all` (x :: BigInt) . divisible x 0 = false end
+end
+law `constructor identity` is
+  definition is `for all` (x :: Either Int8 Bool) . either x = x end
+end
+
+definition guardedReciprocal (x :: Int8) :: Bool is
+  x >= 0 && 1 / (x + 1) > 0
+end
+
+law `affine denominator stays nonzero under its guard` is
+  definition is
+    `for all` (x :: Int8) . guardedReciprocal x = (x >= 0)
+  end
+  example `zero denominator is skipped` is
+    x = -1 expect guardedReciprocal x = false
+  end
+  example `promoted denominator` is
+    x = 127 expect guardedReciprocal x = true
+  end
+end
+
+definition guardedNarrow (x :: Int8) :: Bool is
+  x < 127 && prelude.Int8 (x + 1) > x
+end
+
+law `guarded conversion preserves the promoted result` is
+  definition is
+    `for all` (x :: Int8) . guardedNarrow x = (x < 127)
+  end
+  example `skip overflow` is x = 127 expect guardedNarrow x = false end
+  example `largest valid conversion` is x = 126 expect guardedNarrow x = true end
+end
+
+definition reciprocalHead (xs :: List Int8) :: Rational is
+  match xs with
+    | Nil -> 0
+    | Cons head tail -> 1 / (head + 129)
+  end
+end
+
+law `matched Int8 fields keep their range` is
+  definition is
+    `for all` (xs :: List Int8) . reciprocalHead xs >= 0
+  end
+  example `empty list` is xs = [] expect reciprocalHead xs = rational(0, 1) end
+  example `minimum field` is xs = [-128] expect reciprocalHead xs = rational(1, 1) end
+  example `maximum field` is xs = [127] expect reciprocalHead xs = rational(1, 256) end
+end

@@ -5,7 +5,7 @@ import Data.Aeson (ToJSON(..), object, (.=))
 import Data.Char (ord)
 import Data.List (find)
 import Data.Ratio
-import GHC.Float (castFloatToWord32, castDoubleToWord64, castWord32ToFloat, castWord64ToDouble)
+import GHC.Float (castFloatToWord32, castDoubleToWord64, castWord32ToFloat, castWord64ToDouble, float2Double, double2Float)
 import Numeric (showHex, readHex)
 
 data Family = Boolean | IntegerFamily | Exact | Floating | Complex | Character | Sequence | Identity | Absence deriving (Eq, Show)
@@ -61,11 +61,12 @@ instance ToJSON Scalar where
     SPresent _ v -> ["value" .= v]
 
 floatScalar :: String -> Double -> Scalar
-floatScalar t x = SFloat t $ pad (if t == "Float32" then 8 else 16) $ if t == "Float32" then showHex (castFloatToWord32 (realToFrac x)) "" else showHex (castDoubleToWord64 x) ""
+-- realToFrac's Rational fallback loses IEEE specials without GHC rewrite rules.
+floatScalar t x = SFloat t $ pad (if t == "Float32" then 8 else 16) $ if t == "Float32" then showHex (castFloatToWord32 (double2Float x)) "" else showHex (castDoubleToWord64 x) ""
   where pad n s = replicate (n-length s) '0' ++ s
 floatValue :: Scalar -> Double
 floatValue (SFloat t bits) = case readHex bits of
-  [(n,"")] -> if t == "Float32" then realToFrac (castWord32ToFloat (fromInteger n)) else castWord64ToDouble (fromInteger n)
+  [(n,"")] -> if t == "Float32" then float2Double (castWord32ToFloat (fromInteger n)) else castWord64ToDouble (fromInteger n)
   _ -> error "invalid internal float bits"
 floatValue _ = error "not a float"
 exactValue :: Scalar -> Either String Rational

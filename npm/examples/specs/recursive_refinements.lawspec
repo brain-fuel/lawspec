@@ -1,0 +1,41 @@
+unit example.recursive_refinements
+
+-- Refining a type argument follows its stored occurrences through recursion.
+-- The fixed Int8 field remains independent of the refined argument.
+type Tree (a :: Type) is
+  Leaf value :: a fixed :: Int8
+  Fork left :: Tree a right :: Tree a
+end
+
+refinement Positive is (value :: Int8 where value > 0) end
+
+-- The payload guarantee is available when proving recursive definitions.
+definition positiveSum (tree :: Tree Positive) :: (total :: BigInt where total > 0) is
+  match tree with
+    | Leaf value fixed -> value + 0
+    | Fork left right -> positiveSum left + positiveSum right
+  end
+end
+
+law `positive leaves have a positive total` is
+  definition is
+    `for all` (tree :: Tree Positive) . positiveSum tree > 0
+  end
+  example `fixed fields may be negative` is
+    tree = Fork (Leaf 1 -128) (Fork (Leaf 2 0) (Leaf 3 -1))
+    expect positiveSum tree = 6
+  end
+end
+
+-- Dependent predicates retain the enclosing input, even below several forks.
+law `every stored argument exceeds the threshold` is
+  definition is
+    `for all` (threshold :: Int8 where threshold < 127)
+      (tree :: Tree (value :: Int8 where value > threshold)) . tree = tree
+  end
+  example `nested threshold` is
+    threshold = 4
+    tree = Fork (Leaf 5 -128) (Leaf 6 0)
+    expect tree = Fork (Leaf 5 -128) (Leaf 6 0)
+  end
+end

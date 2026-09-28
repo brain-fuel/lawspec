@@ -5,7 +5,8 @@ import os from "node:os";
 import path from "node:path";
 const exec = promisify(execFile);
 const repo = path.resolve(import.meta.dirname, "..");
-const output = path.join(repo, ".artifacts");
+const output = process.env.LAWSPEC_PACKAGE_DIR ??
+  path.join(repo, ".artifacts/package-smoke");
 await mkdir(output, { recursive: true });
 const packed = JSON.parse(
   (
@@ -133,7 +134,38 @@ try {
     app,
   );
   console.log(api.stdout.trim());
-  for (const document of ['RUST.md','LANGUAGE.md','API-MIGRATION.md'])
+  const structures = await run(process.execPath, ['--input-type=module', '-e', `
+    import assert from 'node:assert/strict';
+    import {readFileSync} from 'node:fs';
+    import {createCompiler} from 'lawspec';
+    const compiler = await createCompiler();
+    const names = ['collections', 'data_types', 'total_functions',
+      'recursive_refinements'];
+    const sources = names.map(name => ({path: name + '.lawspec',
+      content: readFileSync(new URL('./examples/specs/' + name + '.lawspec',
+        import.meta.resolve('lawspec')), 'utf8')}));
+    for (const machineBits of [32, 64]) {
+      const checked = await compiler.check({sources, machineBits});
+      assert.deepEqual(checked.diagnostics, []);
+      assert.ok(checked.dataTypes.some(type => type.name === 'Tree'));
+      assert.ok(checked.definitions.length > 0);
+      for (const target of ['java', 'python', 'javascript', 'typescript',
+        'go', 'haskell', 'kotlin', 'rust']) {
+        for (const minify of [false, true]) {
+          const result = await compiler.planGeneration({sources, machineBits,
+            target, minify});
+          assert.deepEqual(result.diagnostics, [], target);
+          assert.ok(result.files.some(file => file.placement === 'source' &&
+            file.ownership === 'generated'), target);
+          assert.ok(result.files.some(file => file.placement === 'test'), target);
+          assert.ok(result.files.every(file => file.content.length > 0), target);
+        }
+      }
+    }
+    console.log('Installed structural API: all eight targets, widths and layouts');
+  `], app);
+  console.log(structures.stdout.trim());
+  for (const document of ['RUST.md','JAVA.md','PYTHON.md','GO.md','HASKELL.md','KOTLIN.md','WEB.md','LANGUAGE.md','API-MIGRATION.md','RELEASE-0.9.md'])
     if (!(await readFile(path.join(app,'node_modules/lawspec',document),'utf8')).length) throw new Error('Missing packaged '+document);
   const rust=path.join(root,'rust');
   await mkdir(rust);

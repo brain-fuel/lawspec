@@ -1,0 +1,87 @@
+unit fixture
+
+definition keep (xs :: List (value :: Int8 where value > 0))
+  :: List (value :: Int8 where value > 0)
+is xs end
+
+definition stronger (xs :: List (value :: Int8 where value > 10)) :: List Int8 is
+  keep (copypositive xs)
+end
+
+definition positive (value :: a) :: Bool requires Integer a is value > 0 end
+
+definition keephelper (xs :: List (value :: a where positive value))
+  :: List a requires Integer a
+is xs end
+
+definition reuse (xs :: List (value :: Int8 where positive value)) :: List Int8 is
+  keephelper xs
+end
+
+definition empty (value :: Int8) :: List (element :: Int8 where false) is [] end
+
+definition singleton (value :: Int8 where value > 0)
+  :: List (element :: Int8 where element > 0)
+is [value] end
+
+definition sumreciprocal (xs :: List (value :: Int8 where value != 0)) :: Rational is
+  match xs with
+  | Nil -> 0
+  | Cons first rest -> unwrapnonzero (wrapnonzero (nonzero first)) + sumreciprocal rest
+  end
+end
+
+definition sumrows (rows :: List (List (value :: Int8 where value != 0))) :: Rational is
+  match rows with
+  | Nil -> 0
+  | Cons first rest -> sumreciprocal first + sumrows rest
+  end
+end
+
+definition positivetail (xs :: List (value :: Int8 where value > 0))
+  :: List (value :: Int8 where value > 0)
+is
+  match xs with | Nil -> [] | Cons first rest -> rest end
+end
+
+definition positivefirst (xs :: List (value :: Int8 where value > 0))
+  :: (result :: Int8 where result > 0)
+is
+  match xs with | Nil -> 1 | Cons first rest -> first end
+end
+
+-- Recursive calls supply their verified result contract by structural induction.
+definition copypositive (xs :: List (value :: Int8 where value > 0))
+  :: List (value :: Int8 where value > 0)
+is
+  match xs with
+  | Nil -> []
+  | Cons first rest -> Cons first (copypositive rest)
+  end
+end
+
+definition nonzero (value :: Int8 where value != 0)
+  :: (result :: Int8 where result != 0)
+is value end
+
+definition wrapnonzero (value :: Int8 where value != 0)
+  :: Maybe (result :: Int8 where result != 0)
+is Just value end
+
+definition unwrapnonzero (value :: Maybe (element :: Int8 where element != 0))
+  :: Rational
+is
+  match value with
+  | Nothing -> 0
+  | Just element -> selectnonzero (Left element)
+  end
+end
+
+definition selectnonzero (value :: Either (element :: Int8 where element != 0) Bool)
+  :: Rational
+is
+  match value with
+  | Left element -> 1 / element
+  | Right ignored -> 0
+  end
+end

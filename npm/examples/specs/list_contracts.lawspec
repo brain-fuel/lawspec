@@ -1,0 +1,136 @@
+unit example.list_contracts
+
+definition keep (xs :: List (value :: Int8 where value > 0))
+  :: List (value :: Int8 where value > 0)
+is xs end
+
+definition stronger (xs :: List (value :: Int8 where value > 10)) :: List Int8 is
+  keep (copypositive xs)
+end
+
+definition positive (value :: a) :: Bool requires Integer a is value > 0 end
+
+definition keephelper (xs :: List (value :: a where positive value))
+  :: List a requires Integer a
+is xs end
+
+definition reuse (xs :: List (value :: Int8 where positive value)) :: List Int8 is
+  keephelper xs
+end
+
+definition empty (value :: Int8) :: List (element :: Int8 where false) is [] end
+
+definition singleton (value :: Int8 where value > 0)
+  :: List (element :: Int8 where element > 0)
+is [value] end
+
+
+law `stronger domains satisfy the callee` is
+  definition is `for all` (xs :: List (value :: Int8 where value > 10)) .
+    stronger xs = xs
+  end
+  example `positive input` is xs = [11, 127] expect stronger xs = [11, 127] end
+end
+
+law `generic predicates keep their scope` is
+  definition is `for all` (xs :: List (value :: Int8 where value > 0)) .
+    reuse xs = xs
+  end
+  example `empty` is xs = [] expect reuse xs = [] end
+  example `nonempty` is xs = [1, 2] expect reuse xs = [1, 2] end
+end
+
+law `empty output satisfies an impossible element domain` is
+  definition is `for all` (value :: Int8) . empty value = [] end
+  example `zero` is value = 0 expect empty value = [] end
+end
+
+law `constructed output satisfies its contract` is
+  definition is `for all` (value :: Int8 where value > 0) . singleton value = [value] end
+  example `maximum` is value = 127 expect singleton value = [127] end
+end
+
+
+definition sumreciprocal (xs :: List (value :: Int8 where value != 0)) :: Rational is
+  match xs with
+  | Nil -> 0
+  | Cons first rest -> unwrapnonzero (wrapnonzero (nonzero first)) + sumreciprocal rest
+  end
+end
+
+definition sumrows (rows :: List (List (value :: Int8 where value != 0))) :: Rational is
+  match rows with
+  | Nil -> 0
+  | Cons first rest -> sumreciprocal first + sumrows rest
+  end
+end
+
+definition positivetail (xs :: List (value :: Int8 where value > 0))
+  :: List (value :: Int8 where value > 0)
+is
+  match xs with | Nil -> [] | Cons first rest -> rest end
+end
+
+definition positivefirst (xs :: List (value :: Int8 where value > 0))
+  :: (result :: Int8 where result > 0)
+is
+  match xs with | Nil -> 1 | Cons first rest -> first end
+end
+
+
+law `reciprocal sum uses each nonzero head` is
+  definition is `for all` (value :: Int8 where value != 0) .
+    sumreciprocal [value] = 1 / value
+  end
+  example `half` is value = 2 expect sumreciprocal [value] = rational(1, 2) end
+end
+
+law `nested membership keeps row contracts` is
+  definition is `for all` (value :: Int8 where value != 0) .
+    sumrows [[], [value]] = 1 / value
+  end
+  example `negative half` is value = -2 expect sumrows [[], [value]] = rational(-1, 2) end
+end
+
+law `tail preserves its positive elements` is
+  definition is `for all` (first :: Int8 where first > 0)
+    (second :: Int8 where second > 0) . positivetail [first, second] = [second]
+  end
+  example `two values` is first = 1 second = 2 expect positivetail [first, second] = [2] end
+end
+
+-- Recursive calls supply their verified result contract by structural induction.
+definition copypositive (xs :: List (value :: Int8 where value > 0))
+  :: List (value :: Int8 where value > 0)
+is
+  match xs with
+  | Nil -> []
+  | Cons first rest -> Cons first (copypositive rest)
+  end
+end
+
+definition nonzero (value :: Int8 where value != 0)
+  :: (result :: Int8 where result != 0)
+is value end
+
+definition wrapnonzero (value :: Int8 where value != 0)
+  :: Maybe (result :: Int8 where result != 0)
+is Just value end
+
+definition unwrapnonzero (value :: Maybe (element :: Int8 where element != 0))
+  :: Rational
+is
+  match value with
+  | Nothing -> 0
+  | Just element -> selectnonzero (Left element)
+  end
+end
+
+definition selectnonzero (value :: Either (element :: Int8 where element != 0) Bool)
+  :: Rational
+is
+  match value with
+  | Left element -> 1 / element
+  | Right ignored -> 0
+  end
+end

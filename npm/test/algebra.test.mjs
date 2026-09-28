@@ -1,3 +1,4 @@
+import {propertyFiles} from './artifacts.mjs';
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFile, mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
@@ -85,11 +86,12 @@ test("all algebra laws expand, including both sides and four division equations"
     "go",
     "haskell",
     "kotlin",
+    "rust",
   ]) {
     const plan = await compiler.planGeneration({ sources, target });
     assert.deepEqual(plan.diagnostics, [], target);
     assert.equal(plan.files.filter(f => f.ownership === "user").length, 2);
-    assert.equal(plan.files.filter(f => f.placement === "test").length, 2);
+    assert.equal(propertyFiles(plan.files).length, 2);
   }
 });
 
