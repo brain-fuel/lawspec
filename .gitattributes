@@ -1,2 +1,5 @@
 * text=auto eol=lf
 *.wasm binary
+
+# GitHub fallback until Linguist supports LawSpec's own grammar.
+*.lawspec linguist-language=Haskell
