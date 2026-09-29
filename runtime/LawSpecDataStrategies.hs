@@ -1,10 +1,11 @@
 -- Native Hedgehog generation and shrinking for checked Core schemas.
 module LawSpecDataStrategies
   (strategy, checkedStrategy, checkedStrategyWith, primitiveStrategy
-  , NativeFactory, nativeValues, nativeArguments) where
+  , indexedStrategy, NativeFactory, nativeValues, nativeArguments) where
 
 import Control.Monad (unless, when, foldM)
 import Control.Monad.State.Strict (StateT, evalStateT, get, modify, lift)
+import Data.List (elemIndex, nub)
 import Data.Maybe (catMaybes)
 import Numeric (showHex)
 import Data.Char (chr)
@@ -227,6 +228,78 @@ buildStrategyWith factories schema reference bits budget scalar finish = do
         Nothing -> lift (Left "internal list budget allocation failure")
         Just generator -> pure
           (LS.SList <$> Gen.list (Range.singleton count) generator)
+
+-- Values whose linear structural measure equals the target. Each constructor's
+-- equation holds its constant and the positions of recursive fields whose
+-- measures it adds, so the target is solved backwards and split across those
+-- fields. Reachability is a least fixpoint per index level; generation never
+-- filters, and Gen.element shrinks each choice toward the first alternative.
+indexedStrategy :: S.Schema -> S.TypeRef -> Int -> Int -> LS.Scalar
+                -> [(String, (Integer, [Int]))]
+                -> (String -> Either String (Gen LS.Scalar))
+                -> Either String (Gen LS.Scalar)
+indexedStrategy schema reference bits budget target equations scalar = do
+  k <- case target of
+    LS.SInteger _ n | n >= 0 -> Right n
+    _ -> Left "index target must be a natural number"
+  let details ty = do
+        constructors <- S.constructors schema ty
+        variants <- maybe (Left "indexed generation requires a data type") Right constructors
+        mapM (\(S.Constructor tag fields) -> do
+          (constant, positions) <- maybe (Left ("missing index equation for " ++ tag))
+            Right (lookup tag equations)
+          pure (tag, fields, constant, positions)) variants
+      indexTypes (_, fields, _, positions) = [ty | (i, S.Field _ ty) <- zip [0 ..] fields, i `elem` positions]
+      explore seen [] = pure seen
+      explore seen (ty : rest)
+        | ty `elem` map fst seen = explore seen rest
+        | otherwise = do
+            variants <- details ty
+            explore ((ty, variants) : seen) (concatMap indexTypes variants ++ rest)
+  families <- explore [] [reference]
+  let plainFields (_, fields, _, positions) =
+        [ty | (i, S.Field _ ty) <- zip [0 ..] fields, i `notElem` positions]
+      plain = Map.fromList [(ty, either (const Nothing) Just
+        (buildStrategy schema ty bits budget scalar (\_ _ -> id)))
+        | ty <- nub (concatMap plainFields (concatMap snd families))]
+      plainReady variant = all (\ty -> maybe False (const True)
+        (Map.findWithDefault Nothing ty plain)) (plainFields variant)
+      feasible table j variant@(_, _, constant, _) =
+        let rest = j - constant
+            types = indexTypes variant
+        in rest >= 0 && plainReady variant &&
+           (if null types then rest == 0 else splittable table types rest)
+      splittable table [ty] rest = Map.findWithDefault False (ty, rest) table
+      splittable table (ty : types) rest =
+        or [Map.findWithDefault False (ty, first) table && splittable table types (rest - first)
+           | first <- [0 .. rest]]
+      splittable _ [] rest = rest == 0
+      level table j =
+        let step current =
+              let next = foldr (\(ty, variants) acc ->
+                    Map.insert (ty, j) (any (feasible current j) variants) acc) current families
+              in if next == current then current else step next
+        in step (foldr (\(ty, _) acc -> Map.insert (ty, j) False acc) table families)
+      table = foldl level Map.empty [0 .. k]
+      variantsOf ty = maybe [] id (lookup ty families)
+      generate ty j = do
+        let options = filter (feasible table j) (variantsOf ty)
+        variant@(tag, fields, constant, positions) <- Gen.element options
+        targets <- splits (indexTypes variant) (j - constant)
+        values <- mapM (\(i, S.Field _ fieldType) -> case elemIndex i positions of
+          Just position -> generate fieldType (targets !! position)
+          Nothing -> maybe (error "uninhabited field in indexed generation") id
+            (Map.findWithDefault Nothing fieldType plain)) (zip [0 ..] fields)
+        pure (LS.SData tag values)
+      splits [] _ = pure []
+      splits [_] rest = pure [rest]
+      splits (ty : types) rest = do
+        first <- Gen.element [first | first <- [0 .. rest],
+          Map.findWithDefault False (ty, first) table, splittable table types (rest - first)]
+        (first :) <$> splits types (rest - first)
+  unless (Map.findWithDefault False (reference, k) table)
+    (Left ("no value of " ++ show reference ++ " has index " ++ show k))
+  pure (either error id . S.validateWith Nothing schema reference bits <$> generate reference k)
 
 -- Primitive shrinkers remain in Hedgehog: integers, lists, and IEEE bit words.
 primitiveStrategy :: Int -> String -> Either String (Gen LS.Scalar)

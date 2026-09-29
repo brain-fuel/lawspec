@@ -117,7 +117,8 @@ emitTests Config{..} unit laws = do
         (zip [0::Int ..] (maybe (boundaryCases e) id (finiteCases e)))
       let check = assertionDoc (label ++ " property") (assertion e)
       property <- if finiteCases e /= Nothing then pure []
-        else if nativeGenerators || constructorContracts then (:[]) <$> contextualProperty label e check
+        else if nativeGenerators || constructorContracts || any (maybe False (const True) . generatorIndex) (generationPlan e)
+          then (:[]) <$> contextualProperty label e check
         else if any (structural . inputType) (inputs e) then pure [nativeProperty label e check]
         else if any (not . null . inputRefinements) (inputs e) || propertyKind e == "contract"
           then (:[]) <$> refinedProperty label e check
@@ -134,6 +135,14 @@ emitTests Config{..} unit laws = do
               case C.expressionNode hint of C.Constant _ -> True; C.Local _ -> True; _ -> False]
             strategy = case requiredSymbol plan of
               value:_ -> apply "pure" [expr value]
+              -- The target is evaluated from the inputs drawn above.
+              [] | Just indexed <- generatorIndex plan -> E.checked (apply "Strategies.indexedStrategy"
+                [text "_lawspecSchema",reference ty,number machineBits,number nodeBudget,
+                 expr (indexedTarget indexed),
+                 E.array [text "(" <> quoted (C.idText tag) <> text ", (" <> number constant <> text ", " <>
+                   E.array (map (number . toInteger) positions) <> text "))"
+                   | (tag,constant,positions) <- indexedEquations indexed],
+                 apply "Strategies.primitiveStrategy" [number machineBits]])
               [] -> E.checked (apply (if nativeGenerators then "Strategies.checkedStrategyWith" else "Strategies.checkedStrategy")
                 ([apply "NativeGenerators.factories" [text "symbols",text "_lawspecSchema",number machineBits] | nativeGenerators] ++ [text "_lawspecSchema",reference ty,number machineBits,number nodeBudget,
                  apply "P.Just" [text "symbols"],E.array (seeds ++ hints),
