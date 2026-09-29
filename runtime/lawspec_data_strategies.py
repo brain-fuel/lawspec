@@ -9,7 +9,8 @@ from lawspec_schema import RefinementViolation
 
 
 def strategy(schema, reference, bits, budget, scalar, symbols=None,
-             witnesses=(), native_generators=None, native_schema=None):
+             witnesses=(), native_generators=None, native_schema=None,
+             index=None):
     """Generate values with native strategies and checked witnesses.
 
     Witness subvalues seed nested domains in the given Symbol context.
@@ -189,4 +190,103 @@ def strategy(schema, reference, bits, budget, scalar, symbols=None,
                 if inhabited(child, available - 1)])
         raise ValueError("unsupported generator type: " + name)
 
+    if index is not None:
+        target, equations = index
+        return indexed_strategy(schema, reference, int(target), equations,
+                                budget, build, inhabited, valid)
     return build(reference, budget)
+
+
+def indexed_strategy(schema, reference, target, equations, budget, build,
+                     inhabited, valid):
+    """Construct values whose linear structural measure equals target.
+
+    Each constructor contributes a constant plus the measures of its listed
+    recursive fields, so a target is solved backwards and split across those
+    fields. Samples and shrinks keep the measure; nothing is filtered away.
+    """
+    if target < 0:
+        raise ValueError("index target must be a natural number")
+    equations = {tag: (int(constant), tuple(positions))
+                 for tag, (constant, positions) in equations.items()}
+    visiting = set()
+
+    def equation(constructor):
+        if constructor.tag not in equations:
+            raise ValueError("missing index equation for " + constructor.tag)
+        return equations[constructor.tag]
+
+    def plain_fields(constructor, positions):
+        return all(inhabited(field.type, budget)
+                   for index, field in enumerate(constructor.fields)
+                   if index not in positions)
+
+    @cache
+    def reachable(ty, k):
+        if (ty, k) in visiting:
+            return False
+        visiting.add((ty, k))
+        try:
+            for constructor in schema.constructors(ty):
+                constant, positions = equation(constructor)
+                rest = k - constant
+                if rest < 0 or not plain_fields(constructor, positions):
+                    continue
+                types = tuple(constructor.fields[p].type for p in positions)
+                if (rest == 0 if not types else splittable(types, rest)):
+                    return True
+            return False
+        finally:
+            visiting.discard((ty, k))
+
+    @cache
+    def splittable(types, rest):
+        if len(types) == 1:
+            return reachable(types[0], rest)
+        return any(reachable(types[0], first) and
+                   splittable(types[1:], rest - first)
+                   for first in range(rest + 1))
+
+    def splits(types, rest):
+        if len(types) == 1:
+            return st.just((rest,))
+        return st.integers(0, rest).filter(
+            lambda first: reachable(types[0], first) and
+            splittable(types[1:], rest - first)).flatmap(
+            lambda first: splits(types[1:], rest - first).map(
+                lambda tail: (first,) + tail))
+
+    @cache
+    def indexed(ty, k):
+        alternatives = []
+        for constructor in schema.constructors(ty):
+            constant, positions = equation(constructor)
+            rest = k - constant
+            if rest < 0 or not plain_fields(constructor, positions):
+                continue
+            types = tuple(constructor.fields[p].type for p in positions)
+            if not (rest == 0 if not types else splittable(types, rest)):
+                continue
+
+            def assemble(targets, constructor=constructor,
+                         positions=positions):
+                children = [
+                    indexed(field.type, targets[positions.index(index)])
+                    if index in positions else build(field.type, budget)
+                    for index, field in enumerate(constructor.fields)]
+                return st.tuples(*children).map(
+                    lambda fields, tag=constructor.tag:
+                    ls.DataValue(tag, fields))
+
+            values = (assemble(()) if not types
+                      else splits(types, rest).flatmap(assemble))
+            if constructor.predicates:
+                values = values.filter(lambda value, ty=ty: valid(ty, value))
+            alternatives.append(values)
+        if not alternatives:
+            raise ValueError(f"no value of {ty} has index {k}")
+        return st.one_of(*alternatives)
+
+    if schema.constructors(reference) is None:
+        raise ValueError("indexed generation requires a data type")
+    return indexed(reference, target)

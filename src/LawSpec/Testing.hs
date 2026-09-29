@@ -23,7 +23,16 @@ data PlannedProperty = PlannedProperty
   { plannedProperty :: Property, finiteCases :: Maybe [[Value]], boundaryCases :: [[Value]]
   , generatorRequirements :: [GeneratorRequirement]
   } deriving (Eq, Show)
-data GeneratorRequirement = GeneratorRequirement { generatorBinder :: Binder, generatorPredicates :: [Expr], generatorBoundaries :: [Value], generatorBounds :: [(BinaryOp,Expr)], generatorHints :: [Expr] } deriving (Eq, Show)
+data GeneratorRequirement = GeneratorRequirement { generatorBinder :: Binder, generatorPredicates :: [Expr], generatorBoundaries :: [Value], generatorBounds :: [(BinaryOp,Expr)], generatorHints :: [Expr], generatorIndex :: Maybe IndexedGeneration } deriving (Eq, Show)
+
+-- A predicate m x == target, where m is a linear self-recursive measure,
+-- directs generation: each constructor contributes a constant and the
+-- measures of listed recursive fields. Runtimes construct a value whose
+-- measure is exactly the target, so the predicate never rejects a sample.
+data IndexedGeneration = IndexedGeneration
+  { indexedTarget :: Expr
+  , indexedEquations :: [(Id, Integer, [Int])]
+  } deriving (Eq, Show)
 
 planTesting :: Program -> Either [Diagnostic] Plan
 planTesting program@Program{..} = do
@@ -62,7 +71,8 @@ planTesting program@Program{..} = do
           (lookup (binderId (quantifiedBinder q)) bindings)) qs
         valid <- validTupleWithDefinitions registry programMachineBits invoke qs values
         unless valid (Left ("example " ++ exampleName example ++ " violates refinement"))) (propertyExamples p)
-      pure (PlannedProperty p finite cases [GeneratorRequirement (quantifiedBinder q) (quantifiedPredicates q) b (quantifiedBounds q) (domainHints q) | (q,b) <- zip qs bs])
+      let definitions = concatMap unitDefinitions programUnits
+      pure (PlannedProperty p finite cases [GeneratorRequirement (quantifiedBinder q) (quantifiedPredicates q) b (quantifiedBounds q) (domainHints q) (indexedGeneration definitions q) | (q,b) <- zip qs bs])
 
 validTuple :: TypeRegistry -> Int -> [Quantifier] -> [Value] -> Either String Bool
 validTuple registry bits qs values = do
@@ -386,3 +396,55 @@ typeSize :: Type -> Int
 typeSize (Constructor _ args) = 1 + sum [typeSize t | TypeArgument t <- args]
 typeSize (Arrow a b) = 1 + typeSize a + typeSize b
 typeSize (TypeVariable _) = 1
+
+indexedGeneration :: [Definition] -> Quantifier -> Maybe IndexedGeneration
+indexedGeneration definitions q = case concatMap claim (concatMap conjuncts (quantifiedPredicates q)) of
+  found:_ -> Just found
+  [] -> Nothing
+  where
+    self = binderId (quantifiedBinder q)
+    conjuncts e = case expressionNode e of
+      ShortCircuit And a b -> conjuncts a ++ conjuncts b
+      _ -> [e]
+    claim e = case expressionNode e of
+      Binary Equal _ a b -> [IndexedGeneration target equations
+        | (measured, target) <- [(a, b), (b, a)]
+        , ExternalCall measure [argument] <- [expressionNode (unconverted measured)]
+        , expressionNode (unconverted argument) == Local self
+        , self `notElem` freeBinders target
+        , Just equations <- [linearMeasure definitions measure]]
+      _ -> []
+
+unconverted :: Expr -> Expr
+unconverted e = case expressionNode e of
+  Convert _ _ inner -> unconverted inner
+  _ -> e
+
+-- A measure qualifies when it matches on its only argument and each branch is
+-- a non-negative constant plus the same measure of that branch's binders.
+linearMeasure :: [Definition] -> Id -> Maybe [(Id, Integer, [Int])]
+linearMeasure definitions measure = do
+  definition <- lookup measure [(declarationId (definitionDeclaration d), d) | d <- definitions]
+  [argument] <- pure (definitionArguments definition)
+  Match subject cases <- pure (expressionNode (unconverted (definitionBody definition)))
+  Local subjectId <- pure (expressionNode (unconverted subject))
+  unless' (subjectId == binderId argument)
+  mapM equation cases
+  where
+    unless' condition = if condition then Just () else Nothing
+    equation matched = do
+      let positions = zip (map binderId (caseBinders matched)) [0 ..]
+      (constant, fields) <- linear positions (caseBody matched)
+      unless' (constant >= 0)
+      pure (caseConstructor matched, constant, sort fields)
+    linear positions e = case expressionNode (unconverted e) of
+      Constant (SInteger _ n) -> Just (n, [])
+      Binary Add _ a b -> do
+        (c1, f1) <- linear positions a
+        (c2, f2) <- linear positions b
+        pure (c1 + c2, f1 ++ f2)
+      ExternalCall callee [field] | callee == measure -> do
+        Local local <- pure (expressionNode (unconverted field))
+        position <- lookup local positions
+        pure (0, [position])
+      _ -> Nothing

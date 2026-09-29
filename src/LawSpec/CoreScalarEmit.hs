@@ -245,6 +245,7 @@ scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions 
             else propertyInvocation label generators (map text names) (statements [freshSymbols,body]) []
       refined <- (if any (containsStructural . inputType) (inputs e) then nativeRefinedProperty else refinedProperty) prefix label e body
       let needsContext = nativeGenerators || fieldContracts && any (usesData . inputType) (inputs e)
+            || any (maybe False (const True) . generatorIndex) (generationPlan e)
       contextual <- if needsContext then
         (if py then contextualProperty prefix else webContextualProperty label) e body
         else pure ordinary
@@ -316,7 +317,23 @@ scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions 
             text (if py then "_lawspec_primitive_generators.__getitem__"
               else "(name) => _lawspec_primitive_generators[name]"),
             text "symbols",array (seeds ++ hints)] ++
-            [text (show (maxAttempts (generation e))) | not py]))
+            [text (show (maxAttempts (generation e))) | not py] ++
+            -- The generated native wrapper takes index directly; the shared
+            -- runtime receives its default native generators and schema.
+            [text "undefined" | not py, not nativeGenerators, generatorIndex plan /= Nothing] ++
+            [text "undefined" | not py, not nativeGenerators, generatorIndex plan /= Nothing] ++
+            maybe [] (pure . indexDoc) (generatorIndex plan)))
+    -- Index-directed generation: the target is evaluated from earlier draws.
+    indexDoc indexed =
+      let equation (tag,constant,positions) = (quoted (C.idText tag),
+            if py then Doc.delimitTrailing 4 "(" ")" [text (show constant),
+              Doc.delimitTrailing 4 "(" ")" (map (text . show) positions ++ [mempty | length positions == 1])]
+            else array [text (show constant),array (map (text . show) positions)])
+          table = Doc.delimitTrailing 4 "{" "}"
+            [key <> text ": " <> value | (key,value) <- map equation (indexedEquations indexed)]
+          pair = if py then Doc.delimitTrailing 4 "(" ")" [render (indexedTarget indexed),table]
+            else array [render (indexedTarget indexed),table]
+      in if py then text "index=" <> pair else pair
     webContextualProperty label e body = do
       let state names = object [("_values",array names),("symbols",text "symbols")]
           initial = method (invoke "fc.constant" [text "null"]) "map"

@@ -68,6 +68,7 @@ export function strategy(
     maxAttempts = 1000,
     nativeGenerators = new Map(),
     nativeSchema = schema,
+    index = null,
 ) {
   if (!Number.isSafeInteger(budget) || budget < 1) {
     throw new RangeError('structural node budget must be positive');
@@ -308,10 +309,117 @@ export function strategy(
 
   // Reject complete candidates, not subtrees: an impossible child must not
   // prevent choosing a viable sibling constructor on the next attempt.
+  const root = index === null
+    ? build(reference, budget)
+    : indexedArbitrary(schema, reference, Number(index[0]), index[1], budget,
+        build, inhabited, (type, value) => accepts(type, value));
   return new ContractArbitrary(
-      build(reference, budget),
+      root,
       (value) => accepts(reference, value),
       maxAttempts,
       reference.name,
   );
+}
+
+// Construct values whose linear structural measure equals target. Each
+// constructor contributes a constant plus the measures of its listed recursive
+// fields, so the target is solved backwards and split across those fields.
+// Samples and shrinks keep the measure; nothing is filtered away.
+function indexedArbitrary(
+    schema, reference, target, equations, budget, build, inhabited, accepts) {
+  if (!Number.isSafeInteger(target) || target < 0) {
+    throw new RangeError('index target must be a natural number');
+  }
+  if (schema.constructors(reference) === null) {
+    throw new TypeError('indexed generation requires a data type');
+  }
+  const key = (...parts) => JSON.stringify(parts);
+  const equation = (constructor) => {
+    const found = equations[constructor.tag];
+    if (found === undefined) {
+      throw new TypeError(`missing index equation for ${constructor.tag}`);
+    }
+    return [Number(found[0]), found[1].map(Number)];
+  };
+  const plainFields = (constructor, positions) =>
+    constructor.fields.every((field, index) =>
+      positions.includes(index) || inhabited(field.type, budget));
+  const reachableMemo = new Map();
+  const visiting = new Set();
+  function reachable(type, k) {
+    const id = key(type, k);
+    if (reachableMemo.has(id)) return reachableMemo.get(id);
+    if (visiting.has(id)) return false;
+    visiting.add(id);
+    let result = false;
+    for (const constructor of schema.constructors(type)) {
+      const [constant, positions] = equation(constructor);
+      const rest = k - constant;
+      if (rest < 0 || !plainFields(constructor, positions)) continue;
+      const types = positions.map((position) => constructor.fields[position].type);
+      if (types.length === 0 ? rest === 0 : splittable(types, rest)) {
+        result = true;
+        break;
+      }
+    }
+    visiting.delete(id);
+    reachableMemo.set(id, result);
+    return result;
+  }
+  const splitMemo = new Map();
+  function splittable(types, rest) {
+    if (types.length === 1) return reachable(types[0], rest);
+    const id = key(types, rest);
+    if (splitMemo.has(id)) return splitMemo.get(id);
+    let result = false;
+    for (let first = 0; first <= rest && !result; ++first) {
+      result = reachable(types[0], first) &&
+        splittable(types.slice(1), rest - first);
+    }
+    splitMemo.set(id, result);
+    return result;
+  }
+  function splits(types, rest) {
+    if (types.length === 1) return fc.constant([rest]);
+    return fc.integer({min: 0, max: rest})
+        .filter((first) => reachable(types[0], first) &&
+          splittable(types.slice(1), rest - first))
+        .chain((first) => splits(types.slice(1), rest - first)
+            .map((tail) => [first, ...tail]));
+  }
+  const arbitraries = new Map();
+  function indexed(type, k) {
+    const id = key(type, k);
+    if (arbitraries.has(id)) return arbitraries.get(id);
+    const alternatives = [];
+    for (const constructor of schema.constructors(type)) {
+      const [constant, positions] = equation(constructor);
+      const rest = k - constant;
+      if (rest < 0 || !plainFields(constructor, positions)) continue;
+      const types = positions.map((position) => constructor.fields[position].type);
+      if (!(types.length === 0 ? rest === 0 : splittable(types, rest))) continue;
+      const assemble = (targets) => fc
+          .tuple(...constructor.fields.map((field, index) =>
+            positions.includes(index)
+              ? indexed(field.type, targets[positions.indexOf(index)])
+              : build(field.type, budget)))
+          .map((fields) => new ls.DataValue(constructor.tag, fields));
+      let values = types.length === 0
+        ? assemble([])
+        : splits(types, rest).chain(assemble);
+      if (constructor.predicates && constructor.predicates.length) {
+        values = values.filter((value) => accepts(type, value));
+      }
+      alternatives.push(values);
+    }
+    if (!alternatives.length) {
+      throw new RangeError(`no value of ${type.name} has index ${k}`);
+    }
+    const result = alternatives.length === 1
+      ? alternatives[0]
+      : fc.oneof({withCrossShrink: true}, ...alternatives);
+    arbitraries.set(id, result);
+    return result;
+  }
+  return indexed(reference, target);
 }
