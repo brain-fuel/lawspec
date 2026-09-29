@@ -168,6 +168,10 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
     native (Applied "Maybe" inner) | go = "LawSpecMaybe[" ++ nativeField inner ++ "]"
     native (C.Constructor "Either" [C.TypeArgument a,C.TypeArgument b]) | go = "LawSpecEither[" ++ nativeField a ++ ", " ++ nativeField b ++ "]"
     native t = maybe valueType id (nativeRepresentation target (key t))
+    towerResult t = t == Named "Integer"
+    stubResult t | kt && towerResult t = "Number"
+                 | hs && towerResult t = "LS.IntegerValue"
+                 | otherwise = native t
     nativeField t = if t == Named "Unit" then valueType else native t
     jvmSumType constructor fields = "LawSpecRuntime." ++ constructor ++ "<" ++ intercalate ", " (map (if kt then id else boxed) fields) ++ ">"
     nativeArg t | kt = native t
@@ -229,7 +233,7 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
           | otherwise = wrap (current ++ [word]) rest
     haskellStubFn n t =
       let (args,result) = functionType t
-          types = map (Doc.text . nativeArg) args ++ [Doc.text (native result)]
+          types = map (Doc.text . nativeArg) args ++ [Doc.text (stubResult result)]
           signature = Doc.group (Doc.text (n ++ " ::") <>
             Doc.nest 2 (Doc.softline <> Doc.joinWith (Doc.softline <> Doc.text "-> ") types))
           body = Doc.group (Doc.text (n ++ concatMap (const " _") args ++ " =") <>
@@ -241,7 +245,7 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
           arguments = [Doc.text ("value" ++ show i ++ ": ") <> typeDoc ty |
             (i,ty) <- zip [0::Int ..] args]
           signature = Doc.text ("fun " ++ n) <> Doc.delimitTrailing 4 "(" ")" arguments <>
-            Doc.text ": " <> typeDoc result
+            Doc.text ": " <> (if towerResult result then Doc.text (stubResult result) else typeDoc result)
       in Doc.lineComment 96 "// " (prettyType t) <>
         Doc.group (signature <> Doc.text " =" <>
           Doc.nest 4 (Doc.softline <> Doc.text ("TODO(" ++ quote n ++ ")")))
@@ -304,6 +308,10 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
     ktChecked ty = java . KotlinExpr.checked dataDeclarations bits ty
     ktNativeArgument ty value = java (KotlinExpr.codec dataDeclarations bits ty) <>
       Doc.text ".decode" <> Doc.delimitTrailing 4 "(" ")" [value]
+    -- The abstract Integer result is tower-polymorphic: adapters may return any
+    -- integral Number, and the runtime bridge discharges the logical domain.
+    ktNativeResult ty value | towerResult ty = KotlinExpr.call "LawSpecRuntime.fromNative"
+      [Doc.text (q "Integer"),value,Doc.text (show bits)]
     ktNativeResult ty value = java (KotlinExpr.codec dataDeclarations bits ty) <>
       Doc.text ".encode" <> Doc.delimitTrailing 4 "(" ")" [value]
     ktExternal term values = case C.expressionNode term of
@@ -355,6 +363,8 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
       | otherwise = HaskellExpr.apply "LS.convert" [Doc.text (show (key ty)),value,Doc.text (show bits)]
     hsNativeArgument ty value = HaskellExpr.checked (HaskellExpr.apply "Codec.decode"
       [java (HaskellData.haskellCodecDocWithContext hsScope dataDeclarations "_lawspecSchema" (show bits) ty),value])
+    hsNativeResult ty value | towerResult ty = HaskellExpr.apply "LS.fromNative"
+      [Doc.text (q "Integer"),value,Doc.text (show bits)]
     hsNativeResult ty value = HaskellExpr.checked (HaskellExpr.apply "Codec.encode"
       [java (HaskellData.haskellCodecDocWithContext hsScope dataDeclarations "_lawspecSchema" (show bits) ty),value])
     hsNativeCall name arguments = case lookup (C.Id (unitName u ++ "::" ++ name)) adapterBindings of
@@ -670,6 +680,7 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
       (tag,binders) -> "SData " ++ q tag ++ " [" ++ intercalate ", " (map (localName . C.binderId) binders) ++
         "] -> " ++ render (C.caseBody branch)
     wrapResult t invocation
+      | (kt || hs) && towerResult t = call "fromNative" [q "Integer",invocation,show bits]
       | kt = ktCodec t ++ ".encode(" ++ invocation ++ ")"
       | hs = hsChecked ("Codec.encode (" ++ hsCodec t ++ ") (" ++ invocation ++ ")")
       | goCustom t = goCodec t ++ ".fromNative(" ++ invocation ++ ")"

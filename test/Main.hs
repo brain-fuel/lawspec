@@ -170,6 +170,21 @@ main = hspec $ do
             filter ((== "user") . ownership) fs `shouldSatisfy` (not . null)
             concatMap artifactContent fs `shouldSatisfy` isInfixOf "2147483647") targets
 
+    it "keeps abstract Integer adapter results polymorphic over the integral tower" $ do
+      let input = Source "tower.lawspec" "unit example.tower\nadd :: Integer -> Integer -> Integer\nlaw `add commutes` is definition is `for all` (x :: Integer) (y :: Integer) . add x y = add y x end end"
+          user fs = concatMap artifactContent (filter ((== "user") . ownership) fs)
+          everything = concatMap artifactContent
+      case compile [input] of
+        Left ds -> expectationFailure (show ds)
+        Right (us,es) -> mapM_ (\(t,signature,bridge) -> case emit t us es of
+          Left ds -> expectationFailure (show ds)
+          Right fs -> do
+            user fs `shouldSatisfy` isInfixOf signature
+            everything fs `shouldSatisfy` isInfixOf bridge)
+          [ ("java","public static Number add(","LawSpecRuntime.fromNative(")
+          , ("kotlin","java.math.BigInteger): Number","LawSpecRuntime.fromNative(")
+          , ("haskell","-> LS.IntegerValue","LS.fromNative") ]
+
     it "retains executable laws even without implementation functions" $ do
       let input = Source "pure.lawspec" "unit purelaw\nlaw `reflexive` is definition is `for all` (x :: Int32) . x = x end end"
       case compile [input] of

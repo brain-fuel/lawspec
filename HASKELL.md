@@ -41,6 +41,7 @@ have no constructors. They can appear in inhabited containers such as
 | `Nullable a` | `LS.Nullable a`, with `NullValue` and `NullableValue` |
 | `Optional a` | `LS.Optional a`, with `UndefinedValue` and `OptionalValue` |
 | `BigInt`, `BigUInt`, `Integer` | `Integer`, with domain checks |
+| `Integer` adapter result | `LS.IntegerValue`, built from any `Integral` with `LS.integerValue` |
 | `Decimal` | `LS.Decimal`, wrapping an exact finite base-ten `Rational` |
 | `Rational` | `Rational` |
 | `Complex64`, `Complex128` | `Complex Float`, `Complex Double` |

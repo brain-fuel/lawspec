@@ -61,6 +61,11 @@ arbitrary integers, and machine-profile integers use `BigInteger` with explicit
 domain checks. These portable machine-profile representations do not bind a
 host machine-sized primitive.
 
+An adapter whose result is the abstract `Integer` returns Kotlin `Number`.
+`Integer` is the top of the integral tower, so an implementation may return
+`Int`, `Long` or `BigInteger`; the result bridge rejects non-integral values
+such as `Double` and checks the logical domain. Arguments remain `BigInteger`.
+
 Decimal uses exact `BigDecimal`; Rational uses the normalized
 `LawSpecRuntime.Ratio`. Complex components use `LawSpecRuntime.Complex`, with
 Float32 precision validated for Complex64. Raw code-point text uses `IntArray`,
