@@ -78,7 +78,12 @@ auditWithConstructorContracts constructors contracts definitions = do
       known = S.fromList ids
       signatures = M.fromList [(proofId d,proofArguments d) | d <- definitions]
       constructorTable = M.fromList [(constructorOwner c,c) | c <- constructors]
-      initialFacts = emptyFacts{constructorContracts=constructorTable}
+      unfoldable = M.fromList [(proofId d,(argument,branches)) | d <- definitions,
+        [argument] <- [proofArguments d], DataMatch (Variable subject) branches <- [stripDomains (proofBody d)],
+        subject == argument]
+      initialFacts = emptyFacts{constructorContracts=constructorTable,unfoldings=unfoldable,
+        naturalMeasures=S.fromList [name | (name,(_,branches)) <- M.toList unfoldable,
+          all (naturalBranch name . (\(_,_,body) -> body)) branches]}
       contractTable = M.fromList [(contractOwner c,c) | c <- contracts]
       expressions d = proofBody d : proofArgumentDomains d ++ case M.lookup (proofId d) contractTable of
         Nothing -> []
@@ -231,9 +236,15 @@ data Facts = Facts
   , constructorPredicates :: [(Id,Id,[Id],Proof)]
   , constructorContracts :: M.Map Id ProofConstructorContract
   , emptyLists :: S.Set Id
+  -- Single-argument definitions that match on their argument. A call whose
+  -- argument has a known constructor equals the selected branch (unfolding).
+  , unfoldings :: M.Map Id (Id,[(Id,[Id],Proof)])
+  -- Definitions whose every branch is a non-negative constant plus calls of
+  -- the same definition: their results are natural numbers (index measures).
+  , naturalMeasures :: S.Set Id
   }
 emptyFacts :: Facts
-emptyFacts = Facts S.empty S.empty [] [] [] S.empty [] [] M.empty [] M.empty S.empty
+emptyFacts = Facts S.empty S.empty [] [] [] S.empty [] [] M.empty [] M.empty S.empty M.empty S.empty
 
 walk :: M.Map Id [Id] -> M.Map Id ProofContract -> Id -> Provenance -> Facts -> Proof -> Either String [S.Set Int]
 walk signatures contracts self provenance facts expression = case expression of
@@ -536,6 +547,7 @@ linear expression = case expression of
   ExactArithmetic Multiply a b@(Literal _) -> linear (ExactArithmetic Multiply b a)
   NarrowInteger _ _ value -> linear value
   Integral value -> linear value
+  Call callee arguments -> Just (R.variable (callAtom callee arguments))
   _ -> Nothing
 
 predicate :: Proof -> Maybe R.Predicate
@@ -818,7 +830,66 @@ callResultFacts signatures contracts facts result callee arguments =
                  | entails facts (Negated existing) = assume False (Variable result) facts
                  | otherwise = facts
       initial = remembered{usedVariables=S.insert result (usedVariables remembered)}
-  in foldl (flip (assume True)) initial guarantees
+      -- Checked definitions are pure: equal calls have equal results, and a call
+      -- on a known constructor equals the selected branch of its definition.
+      equal value = ExactComparison Equal (Variable result) value
+      evidence = equal existing : [equal unfolded | Just unfolded <- [unfold facts callee arguments]] ++
+        [ExactComparison GreaterEqual (Variable result) (Literal (SInteger "Integer" 0))
+          | callee `S.member` naturalMeasures facts]
+  in foldl (flip (assume True)) initial (map (expandKnown facts) guarantees ++ evidence)
+
+-- Expanding is bounded by the finite constructor terms and known constructor
+-- values it follows; each step removes one known constructor from an argument.
+unfold :: Facts -> Id -> [Proof] -> Maybe Proof
+unfold facts callee arguments = do
+  (parameter,branches) <- M.lookup callee (unfoldings facts)
+  [argument] <- pure arguments
+  (tag,fields) <- case argument of
+    Construct tag fields -> Just (tag,fields)
+    _ -> variableIdentity argument >>= (`M.lookup` constructorValues facts)
+  (binders,body) <- case [(binders,body) | (candidate,binders,body) <- branches, candidate == tag] of
+    found:_ -> Just found
+    [] -> Nothing
+  if length binders /= length fields then Nothing
+  else Just (expandKnown facts (substituteProof (M.fromList ((parameter,argument) : zip binders fields)) (stripDomains body)))
+
+-- Replace calls on known constructors by their unfolded branches, through the
+-- arithmetic and logic that the linear prover reads.
+expandKnown :: Facts -> Proof -> Proof
+expandKnown facts term = case term of
+  Call name values | Just unfolded <- unfold facts name (map expand values) -> unfolded
+  Call name values -> Call name (map expand values)
+  ExactArithmetic op a b -> ExactArithmetic op (expand a) (expand b)
+  ExactComparison op a b -> ExactComparison op (expand a) (expand b)
+  Logical op a b -> Logical op (expand a) (expand b)
+  Negated value -> Negated (expand value)
+  NarrowInteger lower upper value -> NarrowInteger lower upper (expand value)
+  Integral value -> Integral (expand value)
+  Conversion total value -> Conversion total (expand value)
+  _ -> term
+  where expand = expandKnown facts
+
+-- Proof bodies carry typed domains and integral evidence around the match.
+-- Neither changes the value, so both are transparent when unfolding.
+stripDomains :: Proof -> Proof
+stripDomains (TypedDomain _ body) = stripDomains body
+stripDomains (Integral body) = stripDomains body
+stripDomains body = body
+
+naturalBranch :: Id -> Proof -> Bool
+naturalBranch self body = case stripDomains body of
+  Literal scalar -> either (const False) (>= 0) (exactValue scalar)
+  Call name _ -> name == self
+  ExactArithmetic Add a b -> naturalBranch self a && naturalBranch self b
+  NarrowInteger _ _ value -> naturalBranch self value
+  Integral value -> naturalBranch self value
+  Conversion _ value -> naturalBranch self value
+  _ -> False
+
+-- Calls of checked definitions are pure, so a call is a linear atom: equal
+-- callee and arguments denote the same value in every fact.
+callAtom :: Id -> [Proof] -> Id
+callAtom callee arguments = Id ("::call::" ++ idText callee ++ show arguments)
 
 -- Canonicalize every named step to one predicate per current type argument.
 -- Composed recipes become scoped List/presence/named predicates, allowing a

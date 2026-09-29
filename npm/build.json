@@ -172,7 +172,7 @@
     "src/LawSpec/Core/Schema.hs": "9a4ec3967803913e6ff43d33e00a1b4b3b8ec0c79dbdbd80ae98101c85bf430f",
     "src/LawSpec/Core/Semantics.hs": "a9d019433e3b9731f8cd0f65ec0ccc53179824bea58247b72df26760b878c2b6",
     "src/LawSpec/Core/Total.hs": "95d2b19ba7fbfd033295504d31f786815384003b3b4d370776860b423cf079dd",
-    "src/LawSpec/Core/Totality.hs": "8f5b5d69f4baaba45301899ef568cbe90133943c3771ba78d492424e9725e7a7",
+    "src/LawSpec/Core/Totality.hs": "a96fc3b9e8be5d18997065b9d09c0f8a2ede4d6ed2974b3bf355967986b0e459",
     "src/LawSpec/Core/Types.hs": "48ed1d197ce7089737895b7279f93437301fcfacff8b3a8dd98ecd7f1cb32b37",
     "src/LawSpec/Core/Validate.hs": "0f045241215e068081d6cd7cf451f0166671bae5fffafda71a2e2320e8014c27",
     "src/LawSpec/Core/Value.hs": "f2b2e4d82491e184d60b1217922b25c57a06cbbaecb2cb6f31174af50268fbc9",
@@ -251,7 +251,7 @@
     "wasm/cabal.project": "021e560afdc5eb4cb7169e7119ecb8f92c9ee170245af909c94b612941bff5cc",
     "wasm/cabal.project.freeze": "733dbed3d2ecccb26e874fd58f136296dad772184deb1658c196b5d54a0814dc",
     "wasm/lawspec-wasm.cabal": "01198a858a300d47ea5a9d766523ab577092add5139d09333dbe6fbbf1834c5b",
-    "npm/core.wasm": "ecf8b4ee304838dd5ea7d9b708dd6e4c2572f76d60e3ac346b3c740b8f0318e7",
+    "npm/core.wasm": "d13bd98e300f45237c068408f312fb46531c8f46c7e8334a406b36fc301762a9",
     "npm/core_jsffi.js": "88d136efe92f7cff5758c8fec8d9b6bbc9707fe37741cebeeb415fe34ce3d72b",
     "npm/api.mjs": "e93251db289ff0609abaff78ad67f0a9af82508c1141c6a999604f67c56b6e7d",
     "npm/index.d.ts": "2674f8830bd20a2b9ef7dfa99e183598125b6bcc17e8d454e8f7cca1bbd2c9fe"
