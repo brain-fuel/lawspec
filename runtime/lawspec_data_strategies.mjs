@@ -15,7 +15,7 @@ class EmptyArgumentArbitrary extends fc.Arbitrary {
   generate() {
     throw new RangeError(
         `no native generator argument for ${JSON.stringify(this.type)} ` +
-        `within node budget ${this.budget}`,
+          `within node budget ${this.budget}`,
     );
   }
 
@@ -43,11 +43,15 @@ class ContractArbitrary extends fc.Arbitrary {
       const value = this.source.generate(random, bias);
       if (this.accepts(value.value)) return value;
     }
-    throw new RangeError(`constructor generation exhausted for ${this.name}`);
+    throw new RangeError(
+        `constructor generation exhausted for ${this.name}`,
+    );
   }
 
   canShrinkWithoutContext(value) {
-    return this.source.canShrinkWithoutContext(value) && this.accepts(value);
+    return (
+      this.source.canShrinkWithoutContext(value) && this.accepts(value)
+    );
   }
 
   shrink(value, context) {
@@ -91,14 +95,19 @@ export function strategy(
     const constructors = schema.constructors(type);
     let children = [];
     if (constructors !== null) {
-      const constructor = constructors.find((item) => item.tag === value.tag);
+      const constructor = constructors.find(
+          (item) => item.tag === value.tag,
+      );
       children = constructor.fields.map((field, index) => [
         field.type,
         value.fields[index],
       ]);
     } else if (type.name === 'List') {
       children = value.map((child) => [type.args[0], child]);
-    } else if (['Nullable', 'Optional'].includes(type.name) && value.present) {
+    } else if (
+        ['Nullable', 'Optional'].includes(type.name) &&
+        value.present
+    ) {
       children = [[type.args[0], value.value]];
     } else if (type.name === 'Maybe' && value.tag === 'Maybe::Just') {
       children = [[type.args[0], value.fields[0]]];
@@ -200,7 +209,8 @@ export function strategy(
           ? build(child, remaining)
           : new EmptyArgumentArbitrary(child, remaining);
         return source.map((value) =>
-          nativeSchema.toNative(child, value, bits, symbols));
+            nativeSchema.toNative(child, value, bits, symbols),
+        );
       });
       const source = nativeGenerators.get(type.name)(...children);
       if (!(source instanceof fc.Arbitrary)) {
@@ -309,10 +319,19 @@ export function strategy(
 
   // Reject complete candidates, not subtrees: an impossible child must not
   // prevent choosing a viable sibling constructor on the next attempt.
-  const root = index === null
-    ? build(reference, budget)
-    : indexedArbitrary(schema, reference, Number(index[0]), index[1], budget,
-        build, inhabited, (type, value) => accepts(type, value));
+  const root =
+      index === null
+        ? build(reference, budget)
+        : indexedArbitrary(
+            schema,
+            reference,
+            Number(index[0]),
+            index[1],
+            budget,
+            build,
+            inhabited,
+            (type, value) => accepts(type, value),
+          );
   return new ContractArbitrary(
       root,
       (value) => accepts(reference, value),
@@ -326,7 +345,15 @@ export function strategy(
 // fields, so the target is solved backwards and split across those fields.
 // Samples and shrinks keep the measure; nothing is filtered away.
 function indexedArbitrary(
-    schema, reference, target, equations, budget, build, inhabited, accepts) {
+    schema,
+    reference,
+    target,
+    equations,
+    budget,
+    build,
+    inhabited,
+    accepts,
+) {
   if (!Number.isSafeInteger(target) || target < 0) {
     throw new RangeError('index target must be a natural number');
   }
@@ -342,8 +369,10 @@ function indexedArbitrary(
     return [Number(found[0]), found[1].map(Number)];
   };
   const plainFields = (constructor, positions) =>
-    constructor.fields.every((field, index) =>
-      positions.includes(index) || inhabited(field.type, budget));
+      constructor.fields.every(
+          (field, index) =>
+              positions.includes(index) || inhabited(field.type, budget),
+      );
   const reachableMemo = new Map();
   const visiting = new Set();
   function reachable(type, k) {
@@ -356,7 +385,9 @@ function indexedArbitrary(
       const [constant, positions] = equation(constructor);
       const rest = k - constant;
       if (rest < 0 || !plainFields(constructor, positions)) continue;
-      const types = positions.map((position) => constructor.fields[position].type);
+      const types = positions.map(
+          (position) => constructor.fields[position].type,
+      );
       if (types.length === 0 ? rest === 0 : splittable(types, rest)) {
         result = true;
         break;
@@ -373,19 +404,28 @@ function indexedArbitrary(
     if (splitMemo.has(id)) return splitMemo.get(id);
     let result = false;
     for (let first = 0; first <= rest && !result; ++first) {
-      result = reachable(types[0], first) &&
-        splittable(types.slice(1), rest - first);
+      result =
+          reachable(types[0], first) &&
+          splittable(types.slice(1), rest - first);
     }
     splitMemo.set(id, result);
     return result;
   }
   function splits(types, rest) {
     if (types.length === 1) return fc.constant([rest]);
-    return fc.integer({min: 0, max: rest})
-        .filter((first) => reachable(types[0], first) &&
-          splittable(types.slice(1), rest - first))
-        .chain((first) => splits(types.slice(1), rest - first)
-            .map((tail) => [first, ...tail]));
+    return fc
+        .integer({min: 0, max: rest})
+        .filter(
+        (first) =>
+            reachable(types[0], first) &&
+            splittable(types.slice(1), rest - first),
+      )
+        .chain((first) =>
+            splits(types.slice(1), rest - first).map((tail) => [
+              first,
+              ...tail,
+            ]),
+      );
   }
   const arbitraries = new Map();
   function indexed(type, k) {
@@ -396,17 +436,25 @@ function indexedArbitrary(
       const [constant, positions] = equation(constructor);
       const rest = k - constant;
       if (rest < 0 || !plainFields(constructor, positions)) continue;
-      const types = positions.map((position) => constructor.fields[position].type);
-      if (!(types.length === 0 ? rest === 0 : splittable(types, rest))) continue;
-      const assemble = (targets) => fc
-          .tuple(...constructor.fields.map((field, index) =>
-            positions.includes(index)
-              ? indexed(field.type, targets[positions.indexOf(index)])
-              : build(field.type, budget)))
-          .map((fields) => new ls.DataValue(constructor.tag, fields));
-      let values = types.length === 0
-        ? assemble([])
-        : splits(types, rest).chain(assemble);
+      const types = positions.map(
+          (position) => constructor.fields[position].type,
+      );
+      if (!(types.length === 0 ? rest === 0 : splittable(types, rest)))
+        continue;
+      const assemble = (targets) =>
+          fc
+              .tuple(
+              ...constructor.fields.map((field, index) =>
+                  positions.includes(index)
+                    ? indexed(field.type, targets[positions.indexOf(index)])
+                    : build(field.type, budget),
+              ),
+            )
+              .map((fields) => new ls.DataValue(constructor.tag, fields));
+      let values =
+          types.length === 0
+            ? assemble([])
+            : splits(types, rest).chain(assemble);
       if (constructor.predicates && constructor.predicates.length) {
         values = values.filter((value) => accepts(type, value));
       }
@@ -415,9 +463,10 @@ function indexedArbitrary(
     if (!alternatives.length) {
       throw new RangeError(`no value of ${type.name} has index ${k}`);
     }
-    const result = alternatives.length === 1
-      ? alternatives[0]
-      : fc.oneof({withCrossShrink: true}, ...alternatives);
+    const result =
+        alternatives.length === 1
+          ? alternatives[0]
+          : fc.oneof({withCrossShrink: true}, ...alternatives);
     arbitraries.set(id, result);
     return result;
   }
