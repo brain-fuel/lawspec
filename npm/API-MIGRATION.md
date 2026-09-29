@@ -278,3 +278,12 @@ Existing factory files remain untouched. Factory signature changes
 use the existing `adapterUpdates` reporting channel. See `NATIVE-BINDINGS.md`
 for grouping, module collision checks, and layout
 migration behavior.
+
+## Evidence in check results (0.12)
+
+Check, expand and generation responses include an additive `evidence` array.
+Each item names the owning unit, the contract `declaration`, the `stage`
+(`precondition` or `postcondition`), a `status` of `proved` or
+`runtime-checked`, a `reason`, and the `claim` as a typed expression. Schemas 3
+and 4 are otherwise unchanged; clients that ignore unknown fields need no
+changes. Generated definition code no longer re-checks proved postconditions.

@@ -7,6 +7,7 @@ import Data.List (intercalate)
 import LawSpec.Common
 import LawSpec.Core
 import LawSpec.Core.DefinitionContracts (checkedDefinitionContracts)
+import LawSpec.Core.Evidence (runtimePostconditions)
 import qualified LawSpec.JavaData as Native
 import qualified LawSpec.JavaExpr as E
 import qualified LawSpec.Code.Doc as D
@@ -116,7 +117,8 @@ emitDefinitions withNative layout bits declarations units = do
                 pure (E.call "LawSpecRuntime.requireContract"
                   [E.call "LawSpecRuntime.truth" [expression],E.quoted stage] <> D.text ";")
           pre <- mapM (require "precondition") (contractPreconditions c)
-          post <- mapM (require "postcondition") (contractPostconditions c)
+          -- Proved by the totality audit; see LawSpec.Core.Evidence.
+          post <- mapM (require "postcondition") (runtimePostconditions c)
           pure (checks ++ pre ++ [assign "result" body,assign "checkedResult" validated] ++
             post ++ [D.text "return checkedResult;"])
       pure (signature <> D.block 2 (contextual (declarationId (definitionDeclaration d))

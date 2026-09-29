@@ -1,4 +1,4 @@
-# LawSpec language and compiler boundary (0.11)
+# LawSpec language and compiler boundary (0.12)
 
 LawSpec describes portable laws, concrete examples, and adapter contracts. The
 compiler is written in Haskell. Rust is an output backend alongside Java, Python,
@@ -181,6 +181,37 @@ splits `n - 1` between its subtrees. Samples are constructed, not filtered, and
 shrinking stays within the index on every target. The same planning applies to
 any user-written measure over declared data whose branches are a constant plus
 the same measure of that branch's fields.
+
+### Proved indices and evidence
+
+Checked definitions may return indexed families. The compiler proves their
+result indices statically, so they need no runtime postcondition:
+
+```lawspec
+definition concatV (xs :: Vec n Int8) (ys :: Vec m Int8) :: Vec (n + m) Int8 is
+  match xs with
+  | VNil -> ys
+  | VCons h t -> VCons h (concatV t ys)
+  end
+end
+```
+
+The proof uses exact linear arithmetic over the measures. A measure applied to a
+known constructor unfolds to that constructor's equation, so `nOfVec (VCons h t)`
+is `nOfVec t + 1`. Within a match branch, the scrutinee's constructor is known.
+Calls of checked definitions are pure, so equal calls have equal results. A
+recursive call contributes its own signature as the induction hypothesis, and
+natural measures are non-negative. A definition whose result index does not
+follow fails with `definition result refinement could not be proved`.
+
+Every contract obligation is recorded with how it is discharged. Definition
+postconditions are `proved`, and generated code omits their runtime checks.
+Definition preconditions guard native callers, and adapter contracts cover
+native code that LawSpec cannot inspect, so both are `runtime-checked`.
+`lawspec check` summarizes the evidence, and the API reports each obligation in
+the `evidence` field. A proved definition is a natural reference model for a
+native adapter, as in `append xs ys = concatV xs ys` in the
+[indexed example](examples/specs/indexed_families.lawspec).
 
 ## Total definitions
 
@@ -395,17 +426,21 @@ programs are accepted. External type bindings and custom generator bindings
 not change source-language typing or equality; see
 [the binding reference](NATIVE-BINDINGS.md).
 
-### 0.12 Proof-producing dependent layer
+### 0.12 Proof-producing dependent layer (released)
 
-- Decide which index equalities the compiler can discharge statically.
-- Normalize and solve decidable `Natural` arithmetic, starting with the linear
-  sums that 0.11 accepts.
-- Record proof evidence explicitly.
-- Distinguish proven obligations from runtime-checked contracts.
-- Possibly allow checked definitions to transport or refine indices, including
-  definitions that return indexed families.
-- Evaluate index equalities between sibling fields (such as perfect trees whose
-  subtrees share one index) and GADTs that refine type arguments.
+- Index equalities in checked definitions are discharged statically. Adapter
+  results remain runtime-checked.
+- Linear `Natural` arithmetic over measures is solved exactly, with unfolding
+  on known constructors and induction through recursive calls.
+- Evidence is recorded for every contract obligation as `proved` or
+  `runtime-checked`, and reported by `lawspec check` and the API.
+- Proved definition postconditions produce no runtime checks.
+- Checked definitions may return indexed families. See
+  [proved indices](#proved-indices-and-evidence).
+
+Still open, for evaluation in later releases: index equalities between sibling
+fields (perfect trees whose subtrees share one index), non-linear indices, and
+GADTs that refine type arguments.
 
 ### 0.13 Wlaschin-style domain modeling primitives
 

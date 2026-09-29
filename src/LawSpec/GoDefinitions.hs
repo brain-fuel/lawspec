@@ -3,6 +3,7 @@ module LawSpec.GoDefinitions (emitGoDefinitions, definitionCalls) where
 
 import LawSpec.Core
 import LawSpec.Core.DefinitionContracts (checkedDefinitionContracts)
+import LawSpec.Core.Evidence (runtimePostconditions)
 import LawSpec.Common (Artifact(..))
 import qualified LawSpec.GoData as Native
 import qualified LawSpec.GoExpr as E
@@ -73,7 +74,8 @@ emitGoDefinitions layout bits declarations units = do
                 expression <- E.renderExpression declarations bits schema resolve external predicate
                 pure (E.call "lsRequireContract" [E.call "lsTruth" [expression],E.quoted stage])
           pre <- mapM (require "precondition") (contractPreconditions c)
-          post <- mapM (require "postcondition") (contractPostconditions c)
+          -- Proved by the totality audit; see LawSpec.Core.Evidence.
+          post <- mapM (require "postcondition") (runtimePostconditions c)
           pure (checks ++ pre ++ [assign "result" body,assign "checkedResult" result] ++
             post ++ [line "return checkedResult"])
       pure (line ("func lawSpecEvaluate" ++ show index) <>

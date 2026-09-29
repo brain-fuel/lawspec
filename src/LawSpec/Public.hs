@@ -3,6 +3,7 @@
 module LawSpec.Public (programView, typeView, expressionView) where
 import Data.Aeson
 import qualified LawSpec.Core as C
+import LawSpec.Core.Evidence (Obligation(..), programEvidence, statusName)
 import qualified LawSpec.Model as S
 import LawSpec.Common
 import LawSpec.Scalar (prettyScalar)
@@ -101,6 +102,7 @@ programView settings surface expansions artifacts C.Program{..} = object
   , "laws" .= [propertyView (C.idText (C.unitId u)) p | u <- programUnits,p <- C.unitProperties u]
   , "contracts" .= [object ["owner" .= C.idText (C.unitId u),"contract" .= contractView c] | u <- programUnits,c <- C.unitContracts u]
   , "refinements" .= [refinementView u r | u <- surface,r <- S.refinements u]
+  , "evidence" .= map evidenceView (programEvidence C.Program{..})
   , "expansions" .= expansions, "files" .= artifacts
   ]
   where
@@ -137,6 +139,14 @@ programView settings surface expansions artifacts C.Program{..} = object
         ,"examples" .= map example (C.propertyExamples p), "description" .= C.propertyDescription p
         ,"rationale" .= C.propertyRationale p, "references" .= C.propertyReferences p
         ,"location" .= C.propertyLocation p, "trace" .= C.propertyTrace p, "generation" .= C.propertyGeneration p]
+    evidenceView o = object
+      [ "owner" .= C.idText (obligationUnit o), "declaration" .= C.idText (obligationDeclaration o)
+      , "stage" .= obligationStage o, "status" .= statusName (obligationStatus o)
+      , "reason" .= obligationReason o
+      , "claim" .= expressionView (declarationBinders (obligationDeclaration o)) (obligationClaim o) ]
+    declarationBinders declaration = concat
+      [ [(C.binderId b,C.binderName b) | b <- C.contractArguments c ++ [C.contractResult c]]
+      | u <- programUnits, c <- C.unitContracts u, C.contractDeclaration c == declaration ]
     contractView c = let names = [(C.binderId b,C.binderName b) | b <- C.contractArguments c ++ [C.contractResult c]] in object
       ["id" .= C.idText (C.contractDeclaration c),"name" .= declarationName (C.contractDeclaration c)
       ,"arguments" .= map binderView (C.contractArguments c),"result" .= binderView (C.contractResult c)

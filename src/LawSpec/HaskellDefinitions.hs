@@ -3,6 +3,7 @@ module LawSpec.HaskellDefinitions (emitHaskellDefinitions, definitionCalls) wher
 
 import LawSpec.Core
 import LawSpec.Core.DefinitionContracts (checkedDefinitionContracts)
+import LawSpec.Core.Evidence (runtimePostconditions)
 import LawSpec.Common (Artifact(..))
 import qualified LawSpec.HaskellData as Native
 import qualified LawSpec.HaskellExpr as E
@@ -84,7 +85,8 @@ emitHaskellDefinitions layout bits declarations units = do
                   D.nest 2 (D.softline <> text "then P.Right ()" <> D.softline <>
                     text "else " <> E.apply "P.Left" [E.quoted (stage ++ " failed")])) )
           pre <- mapM (require "precondition") (contractPreconditions c)
-          post <- mapM (require "postcondition") (contractPostconditions c)
+          -- Proved by the totality audit; see LawSpec.Core.Evidence.
+          post <- mapM (require "postcondition") (runtimePostconditions c)
           pure (checks ++ pre ++ [evaluate,
             D.group (text "checkedResult <-" <> D.nest 2 (D.softline <> checkedResult))] ++
             post ++ [text "P.Right checkedResult"])

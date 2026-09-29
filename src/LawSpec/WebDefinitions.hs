@@ -3,6 +3,7 @@ module LawSpec.WebDefinitions (emitWebDefinitions, definitionCalls) where
 
 import LawSpec.Core
 import LawSpec.Core.DefinitionContracts (checkedDefinitionContracts)
+import LawSpec.Core.Evidence (runtimePostconditions)
 import LawSpec.Common (Artifact(..))
 import qualified LawSpec.WebData as Native
 import qualified LawSpec.WebExpr as E
@@ -73,7 +74,8 @@ emitWebDefinitions ts layout bits declarations units = do
                 expression <- E.renderExpression ts declarations bits resolve external predicate
                 pure (E.call "ls.requireContract" [expression,E.quoted stage] <> D.text ";")
           pre <- mapM (require "precondition") (contractPreconditions c)
-          post <- mapM (require "postcondition") (contractPostconditions c)
+          -- Proved by the totality audit; see LawSpec.Core.Evidence.
+          post <- mapM (require "postcondition") (runtimePostconditions c)
           pure (checks ++ pre ++ [assign "result" body,assign "checked_result" result] ++
             post ++ [D.text "return checked_result;"])
       pure (D.text ("export function evaluate" ++ show index) <>

@@ -173,13 +173,13 @@ async function main() {
   }
   if (!verb || ["help", "--help", "-h"].includes(verb)) {
     output(
-      "LawSpec 0.11.0\nUsage: lawspec init --target <language> [--project <directory>] [--minify]\n       lawspec check | doctor | explain <unit>::<law> | generate\n       lawspec examples [--example payments] [--target <language>] [--output <directory>]\nOptions: --config <path>, --target <language>, --machine-bits <32|64>, --json\nGeneration: --dry-run, --check, --minify\nTargets: " +
+      "LawSpec 0.12.0\nUsage: lawspec init --target <language> [--project <directory>] [--minify]\n       lawspec check | doctor | explain <unit>::<law> | generate\n       lawspec examples [--example payments] [--target <language>] [--output <directory>]\nOptions: --config <path>, --target <language>, --machine-bits <32|64>, --json\nGeneration: --dry-run, --check, --minify\nTargets: " +
         targets.join(", "),
     );
     return;
   }
   if (verb === "--version") {
-    output("0.11.0");
+    output("0.12.0");
     return;
   }
   if (positional.length > (verb === "explain" ? 1 : 0))
@@ -257,6 +257,12 @@ async function main() {
   if (config.machineBits !== undefined && ![32, 64].includes(config.machineBits)) throw new Error("machineBits must be 32 or 64");
   const input = { sources: await sources(config), generation: config.generation, machineBits: options.machineBits ?? config.machineBits ?? 64 };
   const compiler = await createCompiler();
+  // Proved obligations need no runtime check; the rest are enforced at runtime.
+  const evidenceSummary = (evidence) => {
+    if (!evidence.length) return "";
+    const count = (status) => evidence.filter((item) => item.status === status).length;
+    return ` Evidence: ${count("proved")} proved, ${count("runtime-checked")} runtime-checked obligation(s).`;
+  };
   if (verb === "check") {
     const result = diagnostics(await compiler.check(input));
     for (const target of selected) {
@@ -266,7 +272,7 @@ async function main() {
     output(
       options.json
         ? result
-        : `Checked ${result.laws.length} law(s).`,
+        : `Checked ${result.laws.length} law(s).` + evidenceSummary(result.evidence ?? []),
     );
     return;
   }

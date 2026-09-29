@@ -3,6 +3,7 @@ module LawSpec.PythonDefinitions (emitPythonDefinitions, definitionCalls) where
 
 import LawSpec.Core
 import LawSpec.Core.DefinitionContracts (checkedDefinitionContracts)
+import LawSpec.Core.Evidence (runtimePostconditions)
 import LawSpec.Common (Artifact(..))
 import qualified LawSpec.PythonData as Native
 import qualified LawSpec.PythonExpr as E
@@ -71,7 +72,8 @@ emitPythonDefinitions layout bits declarations units = do
                 expression <- E.renderExpression declarations bits resolve external predicate
                 pure (E.call "ls.require_contract" [expression,E.quoted stage])
           pre <- mapM (require "precondition") (contractPreconditions c)
-          post <- mapM (require "postcondition") (contractPostconditions c)
+          -- Proved by the totality audit; see LawSpec.Core.Evidence.
+          post <- mapM (require "postcondition") (runtimePostconditions c)
           pure (checks ++ pre ++ [assign "result" body,assign "checked_result" result] ++
             post ++ [D.text "return checked_result"])
       pure (E.suite (D.text ("def evaluate_" ++ show index) <>

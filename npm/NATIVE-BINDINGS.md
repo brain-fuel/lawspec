@@ -1045,5 +1045,7 @@ after the empty-parameter changes.
   regeneration protection and packaged installation remain tested.
 - Python follows PEP 8; Rust remains a first-class acceptance target throughout.
 
-GADTs, dependent indices and cross-unit package resolution are subsequent work.
-They are not prerequisites for binding ordinary 0.9 products and sums.
+Dependent indices shipped as natural-indexed families in 0.11. Proof-producing
+indices and cross-unit packages are 0.12 and 0.14 on the
+[roadmap](LANGUAGE.md#roadmap). They are not prerequisites for binding ordinary
+0.9 products and sums.

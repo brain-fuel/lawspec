@@ -6,6 +6,7 @@ import Control.Monad (forM)
 import Data.Char (isAlphaNum)
 import LawSpec.Core
 import LawSpec.Core.DefinitionContracts (checkedDefinitionContracts)
+import LawSpec.Core.Evidence (runtimePostconditions)
 import qualified LawSpec.RustData as Native
 import qualified LawSpec.RustExpr as E
 import qualified LawSpec.Code.Doc as D
@@ -89,7 +90,8 @@ emitRustDefinitions layout bits declarations units = do
                   D.text "if !predicate.boolean()? " <> D.block 4
                     (D.text "return " <> E.call "Err" [E.stringLiteral (stage ++ " failed") <> D.text ".into()"] <> D.text ";"))
           pre <- mapM (require "precondition") (contractPreconditions c)
-          post <- mapM (require "postcondition") (contractPostconditions c)
+          -- Proved by the totality audit; see LawSpec.Core.Evidence.
+          post <- mapM (require "postcondition") (runtimePostconditions c)
           -- Rustfmt hangs a fitting call, but wraps its arguments when the
           -- continuation would reach the right margin (12-column indentation).
           let checkedBinding = if length (D.render D.Compact checkedResult) + 2 < 88

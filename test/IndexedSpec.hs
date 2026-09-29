@@ -10,6 +10,7 @@ import LawSpec.Emit
 import LawSpec.Frontend (compileCore)
 import LawSpec.Model hiding (Expectation)
 import LawSpec.Testing
+import LawSpec.Core.Evidence
 
 vectors :: String
 vectors = unlines
@@ -52,7 +53,10 @@ plansFor law = do
                 C.propertyName (plannedProperty p) == law])
 
 spec :: Spec
-spec = describe "natural-indexed families" $ do
+spec = indexedSpec >> proofSpec
+
+indexedSpec :: Spec
+indexedSpec = describe "natural-indexed families" $ do
   it "elaborates to erased data, a structural measure and a named refinement" $
     case compileVectors vectors of
       Left diagnostics -> expectationFailure (show diagnostics)
@@ -123,3 +127,49 @@ spec = describe "natural-indexed families" $ do
       isLeft (compileVectors (vectors ++
         "law `negative` is definition is `for all` (xs :: Vec (0 - 1) Int8) . true end end\n"))
         `shouldBe` True
+
+proofHeader :: String
+proofHeader = unlines
+  [ "unit example.proofs"
+  , "type Vec (n :: Natural) (a :: Type) is"
+  , "  | VNil where n = 0"
+  , "  | VCons head :: a tail :: Vec m a where n = m + 1"
+  , "end"
+  , "type Tree (n :: Natural) (a :: Type) is"
+  , "  | Tip where n = 0"
+  , "  | Bin left :: Tree l a value :: a right :: Tree r a where n = l + r + 1"
+  , "end"
+  , "definition concat (xs :: Vec n Int8) (ys :: Vec m Int8) :: Vec (n + m) Int8 is"
+  , "  match xs with | VNil -> ys | VCons h t -> VCons h (concat t ys) end"
+  , "end"
+  ]
+
+coreFor :: String -> Either [Diagnostic] C.Program
+coreFor source = compileCore 64 defaultGeneration [Source "proofs.lawspec" (proofHeader ++ source)]
+
+proofSpec :: Spec
+proofSpec = describe "proof-producing index layer" $ do
+  it "proves definition result indices by unfolding and structural induction" $
+    mapM_ (\source -> coreFor source `shouldSatisfy` either (const False) (const True))
+      [ "definition single (x :: Int8) :: Vec 1 Int8 is VCons x VNil end"
+      , "definition push (x :: Int8) (xs :: Vec n Int8) :: Vec (n + 1) Int8 is VCons x xs end"
+      , "definition copy (xs :: Vec n Int8) :: Vec n Int8 is match xs with | VNil -> VNil | VCons h t -> VCons h (copy t) end end"
+      , "definition flat (tree :: Tree n Int8) :: Vec n Int8 is match tree with | Tip -> VNil | Bin l v r -> concat (flat l) (VCons v (flat r)) end end" ]
+  it "rejects definitions whose results have the wrong index" $
+    mapM_ (\source -> case coreFor source of
+        Left diagnostics -> concatMap show diagnostics `shouldSatisfy` isInfixOf "could not be proved"
+        Right _ -> expectationFailure ("accepted: " ++ source))
+      [ "definition bad (xs :: Vec n Int8) :: Vec (n + 1) Int8 is xs end"
+      , "definition bad (x :: Int8) :: Vec 2 Int8 is VCons x VNil end"
+      , "definition bad (xs :: Vec n Int8) (ys :: Vec m Int8) :: Vec (n + m) Int8 is match xs with | VNil -> ys | VCons h t -> VCons h (bad t t) end end"
+      , "definition bad (xs :: Vec n Int8) (ys :: Vec m Int8) :: Vec (n + m) Int8 is match xs with | VNil -> ys | VCons h t -> bad t ys end end"
+      , "definition bad (xs :: Vec n Int8) :: Vec n Int8 is match xs with | VNil -> VNil | VCons h t -> VCons h (VCons h t) end end" ]
+  it "records proved definition results and runtime-checked adapter contracts" $
+    case coreFor "native :: (xs :: Vec n Int8) -> (r :: Vec (n + 1) Int8)\n" of
+      Left diagnostics -> expectationFailure (show diagnostics)
+      Right program -> do
+        let statuses name = [(obligationStage o,obligationStatus o) | o <- programEvidence program,
+              ("::" ++ name) `isSuffixOf'` C.idText (obligationDeclaration o)]
+            isSuffixOf' suffix text = reverse suffix == take (length suffix) (reverse text)
+        statuses "concat" `shouldSatisfy` (\found -> not (null found) && all ((== Proved) . snd) found)
+        statuses "native" `shouldSatisfy` (\found -> not (null found) && all ((== RuntimeChecked) . snd) found)
