@@ -164,6 +164,12 @@ emitTests Config{..} unit laws = do
               _ -> False]
           strategy = case requiredSymbol plan of
             value:_ -> call "Generator.constant" [expr value]
+            [] | Just indexed <- generatorIndex plan ->
+              -- The target is evaluated from inputs drawn earlier in this environment.
+              call "lawspec.testing.LawSpecDataStrategies.indexedGenerator"
+                [text "_schema",reference ty,number machineBits,number nodeBudget,
+                 expr (indexedTarget indexed),equationsDoc (indexedEquations indexed),
+                 text (className ++ "LawSpecTest::_lawspecScalarGenerator")]
             [] | nativeGenerators || constructorContracts -> chain
               (call "lawspec.testing.LawSpecDataStrategies.checkedGenerator"
                 ([text "_schema",reference ty,number machineBits,number nodeBudget,number (maxAttempts settings),
@@ -173,6 +179,10 @@ emitTests Config{..} unit laws = do
               [("map",[D.group (text "lawspec.testing.LawSpecDataStrategies.Checked" <> D.nest 4 (D.softbreak <> text "::requireValue"))])]
             [] -> generator ty
       pure (inputId input,strategy)
+    equationsDoc equations = call "java.util.Map.ofEntries"
+      [call "java.util.Map.entry" [quoted (C.idText tag),
+        D.group (text "new long[] {" <> D.commaSep (map number (constant : map toInteger positions)) <> text "}")]
+      | (tag,constant,positions) <- equations]
     requiredSymbol plan
       | nativeGenerators = []
       | inputType (domainInput plan) /= C.scalarType "Symbol" = []

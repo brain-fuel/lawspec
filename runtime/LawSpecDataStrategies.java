@@ -105,6 +105,158 @@ public final class LawSpecDataStrategies {
         });
   }
 
+  /**
+   * Values whose linear structural measure equals {@code target}. Each constructor's equation
+   * holds its constant followed by the positions of recursive fields whose measures it adds, so
+   * the target is solved backwards and split across those fields. Nothing is filtered away.
+   */
+  public static Generator<Value> indexedGenerator(
+      LawSpecSchema schema,
+      Named type,
+      int bits,
+      int nodeBudget,
+      Object target,
+      Map<String, long[]> equations,
+      Function<String, Generator<Value>> scalar) {
+    long k = target instanceof Value value ? ((Number) value.data()).longValue()
+        : ((Number) target).longValue();
+    if (k < 0) throw new IllegalArgumentException("index target must be a natural number");
+    if (schema.isScalar(type)) {
+      throw new IllegalArgumentException("indexed generation requires a data type");
+    }
+    return new Indexed(schema, bits, nodeBudget, equations, new Builder(schema, bits, scalar))
+        .generate(type, k);
+  }
+
+  private static final class Indexed {
+    private final LawSpecSchema schema;
+    private final int bits;
+    private final int budget;
+    private final Map<String, long[]> equations;
+    private final Builder builder;
+    private final Map<List<Object>, Boolean> reachable = new HashMap<>();
+    private final java.util.Set<List<Object>> visiting = new java.util.HashSet<>();
+    private final Map<List<Object>, Generator<Value>> generators = new HashMap<>();
+
+    Indexed(
+        LawSpecSchema schema,
+        int bits,
+        int budget,
+        Map<String, long[]> equations,
+        Builder builder) {
+      this.schema = schema;
+      this.bits = bits;
+      this.budget = budget;
+      this.equations = equations;
+      this.builder = builder;
+    }
+
+    private long[] equation(String tag) {
+      var found = equations.get(tag);
+      if (found == null) throw new IllegalArgumentException("missing index equation for " + tag);
+      return found;
+    }
+
+    private List<Integer> positions(long[] equation) {
+      var result = new ArrayList<Integer>();
+      for (int i = 1; i < equation.length; i++) result.add((int) equation[i]);
+      return result;
+    }
+
+    private boolean plainFields(List<LawSpecSchema.Field> fields, List<Integer> positions) {
+      for (int i = 0; i < fields.size(); i++) {
+        if (!positions.contains(i) && !builder.canGenerate((Named) fields.get(i).type(), budget)) {
+          return false;
+        }
+      }
+      return true;
+    }
+
+    private boolean feasible(Named type, String tag, long k) {
+      var equation = equation(tag);
+      long rest = k - equation[0];
+      var fields = schema.fields(type, tag);
+      var positions = positions(equation);
+      if (rest < 0 || !plainFields(fields, positions)) return false;
+      var types = positions.stream().map(p -> (Named) fields.get(p).type()).toList();
+      return types.isEmpty() ? rest == 0 : splittable(types, rest);
+    }
+
+    private boolean reachable(Named type, long k) {
+      var key = List.<Object>of(type, k);
+      if (reachable.containsKey(key)) return reachable.get(key);
+      if (!visiting.add(key)) return false;
+      boolean result = false;
+      for (var tag : schema.constructors(type)) {
+        if (feasible(type, tag, k)) {
+          result = true;
+          break;
+        }
+      }
+      visiting.remove(key);
+      reachable.put(key, result);
+      return result;
+    }
+
+    private boolean splittable(List<Named> types, long rest) {
+      if (types.size() == 1) return reachable(types.get(0), rest);
+      for (long first = 0; first <= rest; first++) {
+        if (reachable(types.get(0), first) && splittable(types.subList(1, types.size()), rest - first)) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    Generator<Value> generate(Named type, long k) {
+      var key = List.<Object>of(type, k);
+      if (generators.containsKey(key)) return generators.get(key);
+      var variants = new ArrayList<Generator<Value>>();
+      for (var tag : schema.constructors(type)) {
+        if (!feasible(type, tag, k)) continue;
+        var equation = equation(tag);
+        var fields = schema.fields(type, tag);
+        var positions = positions(equation);
+        long rest = k - equation[0];
+        variants.add(
+            Generator.from(
+                environment -> {
+                  var targets = new ArrayList<Long>();
+                  long remaining = rest;
+                  for (int i = 0; i < positions.size(); i++) {
+                    var types = positions.subList(i, positions.size()).stream()
+                        .map(p -> (Named) fields.get(p).type()).toList();
+                    long left = remaining;
+                    long first = i == positions.size() - 1 ? remaining
+                        : environment.generate(
+                            Generator.integers(0, (int) Math.min(Integer.MAX_VALUE, left))
+                                .suchThat(
+                                    choice -> reachable(types.get(0), choice)
+                                        && splittable(types.subList(1, types.size()), left - choice)));
+                    targets.add(first);
+                    remaining -= first;
+                  }
+                  var values = new ArrayList<Value>();
+                  for (int i = 0; i < fields.size(); i++) {
+                    var fieldType = (Named) fields.get(i).type();
+                    int position = positions.indexOf(i);
+                    values.add(environment.generate(position >= 0
+                        ? generate(fieldType, targets.get(position))
+                        : builder.generate(fieldType, budget)));
+                  }
+                  return schema.construct(type, tag, values, bits);
+                }));
+      }
+      if (variants.isEmpty()) {
+        throw new IllegalArgumentException(
+            "no value of " + LawSpecSchema.key(type) + " has index " + k);
+      }
+      var generator = variants.size() == 1 ? variants.get(0) : Generator.anyOf(variants);
+      generators.put(key, generator);
+      return generator;
+    }
+  }
+
   /** A rejected predicate is retried; an evaluation error is delivered to the property. */
   public record Checked(Value value, RuntimeException error) {
     public Value requireValue() {

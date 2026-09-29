@@ -105,7 +105,8 @@ emitTests Config{..} unit laws = do
         (zip [0::Int ..] (maybe (boundaryCases e) id (finiteCases e)))
       let check = assertionDoc (label ++ " property") (assertion e)
       property <- if finiteCases e /= Nothing then pure []
-        else if constructorContracts || nativeGenerators then (:[]) <$> contextualProperty label e check
+        else if constructorContracts || nativeGenerators || any (maybe False (const True) . generatorIndex) (generationPlan e)
+          then (:[]) <$> contextualProperty label e check
         else if any (structural . inputType) (inputs e) then pure [nativeProperty label e check]
         else if any (not . null . inputRefinements) (inputs e) || propertyKind e == "contract"
           then (:[]) <$> refinedProperty label e check
@@ -127,6 +128,14 @@ emitTests Config{..} unit laws = do
                     _ -> False]
                 strategy = case (if nativeGenerators then [] else requiredSymbol plan) of
                   value:_ -> call "Arb.constant" [call "LawSpecKotlinStrategies.Checked" [expr value,text "null"]]
+                  -- The target is evaluated from the inputs bound above.
+                  [] | Just indexed <- generatorIndex plan -> call "LawSpecKotlinStrategies.indexedGenerator"
+                    [text "_schema",reference ty,number machineBits,number nodeBudget,text "symbols",
+                     expr (indexedTarget indexed),
+                     call "mapOf" [quoted (C.idText tag) <> text " to " <>
+                       call "longArrayOf" (map number (constant : map toInteger positions))
+                       | (tag,constant,positions) <- indexedEquations indexed],
+                     text "::_lawspecScalarGenerator"]
                   [] -> call "LawSpecKotlinStrategies.checkedGenerator" $
                     [text "_schema",reference ty,number machineBits,number nodeBudget,
                      number (maxAttempts (generation e)),text "symbols",call "listOf" (seeds ++ hints)] ++
