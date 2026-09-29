@@ -8,7 +8,8 @@ wasm:
 	tools/wasm.sh
 
 check: test
-	node tools/build-integrity.mjs
+	stack --no-terminal run lawspec-dev -- integrity
+	stack --no-terminal run lawspec-dev -- boundaries
 	node tools/parity.mjs
 
 package:

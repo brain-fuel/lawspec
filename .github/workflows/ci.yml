@@ -26,8 +26,8 @@ jobs:
           ghc-version: '9.10.3'
           enable-stack: true
           stack-version: latest
-      - run: node tools/build-integrity.mjs
-      - run: node tools/check-boundaries.mjs
+      - run: stack --no-terminal run lawspec-dev -- integrity
+      - run: stack --no-terminal run lawspec-dev -- boundaries
       - run: stack --no-terminal test
       - run: node tools/parity.mjs
       - run: node tools/package-smoke.mjs

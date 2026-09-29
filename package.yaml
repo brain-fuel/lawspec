@@ -14,8 +14,12 @@ executables:
     main: Main.hs
     source-dirs: app
     dependencies: [lawspec]
+  lawspec-dev:
+    main: Main.hs
+    source-dirs: dev
+    dependencies: [cryptohash-sha256]
 tests:
   lawspec-test:
     main: Main.hs
     source-dirs: test
-    dependencies: [lawspec, hspec]
+    dependencies: [lawspec, hspec, vector]

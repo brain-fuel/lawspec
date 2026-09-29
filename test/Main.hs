@@ -17,6 +17,7 @@ import qualified PayloadSpec
 import qualified CoreSpec
 import qualified IndexedSpec
 import qualified DomainModelSpec
+import qualified ApiContractSpec
 import LawSpec.Compile
 import LawSpec.Model
 import qualified LawSpec.Domain as D
@@ -38,6 +39,7 @@ main = hspec $ do
   CoreSpec.spec
   IndexedSpec.spec
   DomainModelSpec.spec
+  ApiContractSpec.spec
   PayloadSpec.spec
   PayloadProofSpec.spec
   DocumentSpec.spec

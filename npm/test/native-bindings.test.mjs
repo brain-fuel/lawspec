@@ -12,33 +12,6 @@ const sources = [{path: 'payments.lawspec', content:
 const nativeBindings = JSON.parse(await readFile(
   new URL('../../test/fixtures/native-payments/bindings.json', import.meta.url), 'utf8'));
 
-test('binding requests negotiate schema 4, and schema 3 cannot silently ignore them', async () => {
-  const valid = await compiler.check({sources, nativeBindings});
-  assert.equal(valid.schemaVersion, 4);
-  assert.deepEqual(valid.diagnostics, []);
-  const incompatible = await compiler.check({sources, nativeBindings, schemaVersion: 3});
-  assert.equal(incompatible.diagnostics[0].code, 'request');
-  assert.match(incompatible.diagnostics[0].message, /requires API schemaVersion 4/);
-});
-
-test('unknown configuration fields and invalid symbols produce request errors', async () => {
-  for (const bindings of [{tyeps: []}, {functions: [{declaration: 'example.payments::addFee', native: 'app.call()'}]}]) {
-    const result = await compiler.check({sources, nativeBindings: bindings});
-    assert.equal(result.diagnostics[0].code, 'request');
-  }
-});
-
-test('bound Rust plans generate bridges and link shared application-library types', async () => {
-  const result = await compiler.planGeneration({sources, nativeBindings, target: 'rust'});
-  assert.deepEqual(result.diagnostics, []);
-  const adapter = result.files.find(file => file.path.endsWith('example/payments.rs'));
-  assert.equal(adapter.ownership, 'generated');
-  assert.ok(!adapter.content.includes('todo!'));
-  const tests = result.files.find(file => file.path.endsWith('_lawspec.rs'));
-  assert.match(tests.content, /use lawspec_example::lawspec_runtime;/);
-  assert.match(tests.content, /use lawspec_example::example_payments as adapter;/);
-});
-
 test('adopting a native binding cannot overwrite an existing user-owned adapter', async () => {
   const before = await compiler.planGeneration({sources, target: 'rust'});
   const after = await compiler.planGeneration({sources, nativeBindings, target: 'rust'});
@@ -94,33 +67,6 @@ test('Python generator scaffolds group factories and preserve implementations ac
   }
 });
 
-test('generator scaffolds are opt-in and reject ambiguous requests', async () => {
-  const sources = [{path:'stub.lawspec', content:'unit stub'}];
-  const binding = {type:'Int8',factory:['factories','values']};
-  const plan = (generators, target='python') => compiler.planGeneration({sources,target,nativeBindings:{generators}});
-  const ordinary = await plan([binding]);
-  assert.deepEqual(ordinary.diagnostics,[]);
-  assert.ok(!ordinary.files.some(file=>file.path==='tests/factories.py'));
-  for (const factory of [['lawspec_native_generators','values'],['lawspec_runtime','values'],
-    ['hypothesis','values'],['typing','values'],['decimal','values'],['sys','values'],
-    ['factories','_strategies']]) {
-    const result=await plan([{...binding,factory,stub:true}]);
-    assert.equal(result.diagnostics[0].code,'native-binding');
-    assert.match(result.diagnostics[0].message,/conflict/);
-  }
-  for (const generators of [
-    [{...binding,stub:true},{...binding,type:'Int16'}],
-    [{...binding,stub:true},{type:'Int16',factory:['factories','nested','values'],stub:true}],
-  ]) assert.equal((await plan(generators)).diagnostics[0].code,'native-binding');
-  assert.equal((await plan([{...binding,stub:'yes'}])).diagnostics[0].code,'request');
-  const shadowed = await compiler.planGeneration({target:'python',
-    sources:[{path:'stub.lawspec',content:'unit stub\nf :: Int8 -> Int8'}],
-    nativeBindings:{functions:[{declaration:'stub::f',native:['factories','echo']}],
-      generators:[{...binding,stub:true}]}});
-  assert.equal(shadowed.diagnostics[0].code,'native-binding');
-  assert.match(shadowed.diagnostics[0].message,/conflicts with another module/);
-});
-
 test('Rust factory scaffolds retain native signatures, nested modules and ownership', async () => {
   const {writeFile} = await import('node:fs/promises');
   const directory=await mkdtemp(path.join(os.tmpdir(),'lawspec-rust-scaffolds-'));
@@ -164,23 +110,6 @@ test('Rust factory scaffolds retain native signatures, nested modules and owners
     assert.equal(await readFile(path.join(directory,stub.path),'utf8'),implementation);
     assert.match(await readFile(path.join(directory,'relocated/support/factories.rs'),'utf8'),/pub mod collections/);
   } finally {await rm(directory,{recursive:true,force:true});}
-});
-
-test('Rust generator scaffolds reject ambiguous modules and normalized factory paths', async () => {
-  const sources=[{path:'stub.lawspec',content:'unit stub'}];
-  for(const factories of [
-    [['application','factory']], [['proptest','factory']], [['ls_gen','factory']],
-    [['Vec','factory']], [['ValueStrategy','factory']], [['factories','std','factory']],
-    [['lawspec_strategies','factory']], [['only_name']],
-    [['factories','values'],['crate','factories','values']],
-    [['factories','nested'],['factories','nested','values']],
-    [['factories','values'],['Factories','other']],
-  ]) {
-    const result=await compiler.planGeneration({sources,target:'rust',nativeBindings:{rustCrate:'application',
-      generators:factories.map((factory,index)=>({type:index?'Int16':'Int8',factory,stub:true}))}});
-    assert.ok(result.diagnostics.length,JSON.stringify(factories));
-    assert.match(result.diagnostics[0].message,/scaffold/);
-  }
 });
 
 for (const target of ['javascript','typescript']) {
@@ -293,18 +222,6 @@ test('Java generator scaffolds group typed factories and preserve edited impleme
   } finally {await rm(directory,{recursive:true,force:true});}
 });
 
-test('Java scaffolds reject inaccessible, colliding and inherited method names',async()=>{
-  for(const factory of [ ['Factories','values'], ['lawspec','runtime','LawSpecRuntime','values'],
-    ['lawspec','testing','LawSpecNativeGenerators','values'], ['application','java','values'],
-    ['java','util','Factories','values'], ['org','jetbrains','jetCheck','Generator','values'],
-    ['application','Factories','wait'] ]) {
-    const result=await compiler.planGeneration({target:'java',sources:[{path:'stub.lawspec',content:'unit stub'}],
-      nativeBindings:{generators:[{type:'Int8',factory,stub:true}]}});
-    assert.equal(result.diagnostics[0].code,'native-binding');
-    assert.match(result.diagnostics[0].message,/scaffold/);
-  }
-});
-
 test('Kotlin scaffolds group native Arb factories and preserve implementations across signature changes',async()=>{
   const {writeFile}=await import('node:fs/promises');
   const directory=await mkdtemp(path.join(os.tmpdir(),'lawspec-kotlin-scaffolds-'));
@@ -340,17 +257,6 @@ test('Kotlin scaffolds group native Arb factories and preserve implementations a
   } finally {await rm(directory,{recursive:true,force:true});}
 });
 
-test('Kotlin scaffolds reject conflicting objects and reserved namespaces',async()=>{
-  for(const factory of [['Factories','values'],['application','Factories','toString'],
-    ['kotlin','Factories','values'],['application','kotlin','values'],
-    ['lawspec','testing','LawSpecNativeGenerators','values'],['io','kotest','property','Arb','values']]) {
-    const result=await compiler.planGeneration({target:'kotlin',sources:[{path:'stub.lawspec',content:'unit stub'}],
-      nativeBindings:{generators:[{type:'Int8',factory,stub:true}]}});
-    assert.equal(result.diagnostics[0].code,'native-binding');
-    assert.match(result.diagnostics[0].message,/scaffold/);
-  }
-});
-
 test('Go scaffolds preserve generic Rapid factories through layouts and signature changes',async()=>{
   const {writeFile}=await import('node:fs/promises');
   const directory=await mkdtemp(path.join(os.tmpdir(),'lawspec-go-scaffolds-'));
@@ -383,36 +289,6 @@ test('Go scaffolds preserve generic Rapid factories through layouts and signatur
     assert.equal(await readFile(path.join(directory,stub.path),'utf8'),implementation);
     assert.match(await readFile(path.join(directory,'relocated/stub/native_generators_test.go'),'utf8'),/argument1/);
   } finally {await rm(directory,{recursive:true,force:true});}
-});
-
-test('Go scaffolds diagnose unused bindings, imported factories and package identifier conflicts',async()=>{
-  const source='unit stub\nlaw `identity` is definition is `for all` (x :: Int8) . x = x end end';
-  for(const factory of [['panic'],['rapid'],['fmt'],['TestValues'],['lawSpecNativeFactories']]) {
-    const result=await compiler.planGeneration({target:'go',sources:[{path:'stub.lawspec',content:source}],
-      nativeBindings:{generators:[{type:'Int8',factory,stub:true}]}});
-    assert.equal(result.diagnostics[0].code,'native-binding');
-    assert.match(result.diagnostics[0].message,/scaffold.*conflicts/);
-  }
-  const unused=await compiler.planGeneration({target:'go',sources:[{path:'stub.lawspec',content:'unit stub'}],
-    nativeBindings:{generators:[{type:'Int8',factory:['NativeBytes'],stub:true}]}});
-  assert.match(unused.diagnostics[0].message,/requires a quantified use/);
-  const imported=await compiler.planGeneration({target:'go',sources:[{path:'stub.lawspec',content:source}],
-    nativeBindings:{goImports:[{alias:'app',path:'example.com/application'}],
-      generators:[{type:'Int8',factory:['app','Bytes'],stub:true}]}});
-  assert.match(imported.diagnostics[0].message,/package-local factories/);
-});
-
-test('Go scaffold collisions are scoped to their consuming package',async()=>{
-  const law='law `identity` is definition is `for all` (x :: Int8) . x = x end end';
-  const plan=contents=>compiler.planGeneration({target:'go',sources:contents.map((content,index)=>({path:`scope${index}.lawspec`,content})),
-    nativeBindings:{functions:[{declaration:'first::echo',native:['Shared']}],
-      generators:[{type:'Int8',factory:['Shared'],stub:true}]}});
-  const separate=await plan(['unit first\necho :: Int8 -> Int8',`unit second\n${law}`]);
-  assert.deepEqual(separate.diagnostics,[]);
-  assert.ok(separate.files.some(file=>file.path==='second/native_generators_test.go'));
-  assert.ok(!separate.files.some(file=>file.path==='first/native_generators_test.go'));
-  const same=await plan([`unit first\necho :: Int8 -> Int8\n${law}`]);
-  assert.match(same.diagnostics[0].message,/scaffold.*conflicts/);
 });
 
 test('Go native result class changes update the user-owned factory contract',async()=>{
@@ -467,23 +343,6 @@ test('Haskell scaffolds preserve typed generic factories and user implementation
     assert.equal(await readFile(path.join(directory,stub.path),'utf8'),implementation);
     assert.match(await readFile(path.join(directory,'relocated/Application/Generators.hs'),'utf8'),/H.Gen a1/);
   } finally {await rm(directory,{recursive:true,force:true});}
-});
-
-test('Haskell scaffolds reject generated, application and runtime module collisions',async()=>{
-  for (const factory of [['Prelude','bytes'],['Data','Int','bytes'],['Hedgehog','Gen','bytes'],
-    ['Numeric','bytes'],['Test','Hspec','bytes'],
-    ['LawSpecNativeGenerators','bytes'],['Application','Domain','bytes']]) {
-    const result=await compiler.planGeneration({target:'haskell',sources:[{path:'stub.lawspec',content:
-      'unit stub\necho :: Int8 -> Int8'}],nativeBindings:{
-      functions:[{declaration:'stub::echo',native:['Application','Domain','echo']}],
-      generators:[{type:'Int8',factory,stub:true}]}});
-    assert.equal(result.diagnostics[0].code,'native-binding');
-    assert.match(result.diagnostics[0].message,/scaffold|shadows/);
-  }
-  const application=await compiler.planGeneration({target:'haskell',sources:[{path:'stub.lawspec',content:'unit stub'}],
-    nativeBindings:{generators:[{type:'Int8',factory:['Data','Application','bytes'],stub:true}]}});
-  assert.deepEqual(application.diagnostics,[]);
-  assert.ok(application.files.some(file=>file.path==='test/Data/Application.hs'));
 });
 
 test('Haskell native class changes update the generator signature',async()=>{

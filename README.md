@@ -698,7 +698,7 @@ stack test
 tools/wasm.sh
 node --test npm/test/*.test.mjs
 node tools/parity.mjs
-node tools/build-integrity.mjs
+stack run lawspec-dev -- integrity
 node tools/package-smoke.mjs
 ```
 

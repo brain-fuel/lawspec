@@ -13,41 +13,6 @@ law \`promotes\` is
  example \`maximum\` is x = 127 expect successor x = 128 end
 end`}];
 
-test('Rust owns adapters and separates numeric runtime from Proptest helpers',async()=>{
- const result=await compiler.planGeneration({sources,target:'rust'});
- assert.deepEqual(result.diagnostics,[]);
- assert.equal(result.schemaVersion,3);
- assert.equal(result.units[0].declarations[0].origin.kind,'source');
- const adapter=result.files.find(f=>f.ownership==='user');
- assert.equal(adapter.path,'src/rust_example.rs');
- assert.match(adapter.content,/value0: i8.*ls::Integer/);
- const runtime=result.files.find(f=>f.path==='src/lawspec_runtime.rs');
- assert.equal(runtime.placement,'source');assert.equal(runtime.ownership,'generated');
- assert.doesNotMatch(runtime.content,/use proptest/);
- assert.match(result.files.find(f=>f.path.endsWith('lawspec_strategies.rs')).content,/proptest/);
- assert.match(result.files.find(f=>f.path.endsWith('lawspec_modules.rs')).content,/pub mod rust_example/);
- const test=result.files.find(f=>f.path==='tests/rust_example_lawspec.rs');
- assert.match(test.content,/128/);assert.doesNotMatch(test.content,/TestRunner/);
- const sampled=await compiler.planGeneration({sources,target:'rust',generation:{exhaustiveLimit:16}});
- assert.deepEqual(sampled.diagnostics,[]);
- assert.match(sampled.files.find(f=>f.path==='tests/rust_example_lawspec.rs').content,/TestRunner/);
- assert.equal(result.laws[0].assertion.right.node.kind,'binary');
- assert.equal(result.laws[0].assertion.right.type.name,'Integer');
- assert.equal(result.laws[0].assertion.right.origin.span.start.file,'rust.lawspec');
- assert.ok(!('original' in result.laws[0]));assert.ok(!('typedExpressions' in result.laws[0]));
-});
-
-test('Rust custom layouts relocate runtime, module declarations and test imports',async()=>{
- const result=await compiler.planGeneration({sources,target:'rust',sourceDir:'library/core',testDir:'checks/unit'});
- assert.deepEqual(result.diagnostics,[]);
- assert.ok(result.files.some(f=>f.path==='library/core/lawspec_runtime.rs'));
- assert.ok(result.files.some(f=>f.path==='library/core/lawspec_modules.rs'));
- const test=result.files.find(f=>f.path==='checks/unit/rust_example_lawspec.rs');
- assert.match(test.content,/\.\.\/\.\.\/library\/core\/lawspec_runtime.rs/);
- assert.match(test.content,/\.\.\/\.\.\/library\/core\/rust_example.rs/);
- assert.ok(result.files.some(f=>f.path==='checks/unit/support/lawspec_strategies.rs'));
-});
-
 test('Cargo preflight verifies every custom test target and rejects an unsupported toolchain',async t=>{
  const root=await mkdtemp(path.join(os.tmpdir(),'lawspec-rust-doctor-'));
  t.after(()=>rm(root,{recursive:true,force:true}));

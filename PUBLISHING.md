@@ -16,8 +16,8 @@ installation examples. Preserve historical release notes.
 stack --no-terminal test
 bash tools/wasm.sh
 node --test npm/test/*.test.mjs
-node tools/build-integrity.mjs
-node tools/check-boundaries.mjs
+stack --no-terminal run lawspec-dev -- integrity
+stack --no-terminal run lawspec-dev -- boundaries
 node tools/package-smoke.mjs
 mkdir -p .artifacts/0.13.0
 npm pack ./npm --pack-destination .artifacts/0.13.0

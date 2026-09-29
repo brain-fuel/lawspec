@@ -129,8 +129,8 @@
     "wasm/lawspec-wasm.cabal"
   ],
   "digests": {
-    "lawspec.cabal": "2aab726a6d4e9c64e218c0563d52fab738b0753f9597683b9d650dde1baa948c",
-    "package.yaml": "95807129285b33f8ac2bf7452aae1ee049f8f7711f0dc9f962fdf9586b58fcc8",
+    "lawspec.cabal": "4260a3f7dc402c8ab0343856afd0f45989683c6545b0fc099ada3931213b5339",
+    "package.yaml": "36f6f504c2c6deb582840a3e037b8a9835390d519cd6cd736e8b977830a2d9fd",
     "runtime/LawSpecCodecs.hs": "90cb1ed15d7ab664a17a054580c849408d77cfd2b2adcb4a3228b05132caeaca",
     "runtime/LawSpecDataStrategies.hs": "cbe9f1946228db1076c19cd3158e8798fe32766cfdbea3f66b63d22d3d217508",
     "runtime/LawSpecDataStrategies.java": "e3416efe8a0d7b1276cb4d1a8105fd01b1f5f3f02a803bf55d955d9e3ec39095",

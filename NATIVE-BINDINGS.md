@@ -17,7 +17,7 @@ emission requests fail explicitly.
 ## Audit of 0.9
 
 The checked-in compiler, generated API, and WASM fingerprints agree
-(`node tools/build-integrity.mjs`). The audit inspected the following boundaries:
+(`stack run lawspec-dev -- integrity`). The audit inspected the following boundaries:
 
 | Boundary | Existing machinery | Missing for 0.10 |
 | --- | --- | --- |
@@ -991,9 +991,9 @@ The release audit maps the six shared requirements to these executable checks:
 | Resolve bindings once | `NativeBindingSpec` checks identities, complete mappings, ordering, arities, reference validation and unchanged defaults. `NativeRequestSpec` checks the public request boundary. `stack test` passes 509 examples. |
 | Checked native bridges | The target-specific native-payment, native-codec and native-shapes runners compile application models and reject incorrect conversions, precision loss, altered variants and collapsed absence. They compare native/WASM plans across machine profiles, layouts and formatting. |
 | Native generation and shrinking | The native-generator runtime checks and payment/codec runners verify framework factories, shrinking, invalid samples/shrinks, contracts and exhaustion. The shared empty-domain runners cover ignored and demanded empty parameters on all eight targets. |
-| Core semantics and source independence | `tools/check-boundaries.mjs` checks all eight emitter dependency boundaries. The codec/source runners build generated source without test-framework dependencies; native representations are checked against the shared schema. |
+| Core semantics and source independence | `lawspec-dev boundaries` checks all eight emitter dependency boundaries. The codec/source runners build generated source without test-framework dependencies; native representations are checked against the shared schema. |
 | Application ownership | `npm/test/native-ownership.test.mjs` checks all-target migration, edited files, custom layouts, profile/format changes and adapter updates. `npm/test/native-bindings.test.mjs` covers optional generator scaffolds and signature changes. |
-| Coherent public interface | Schema negotiation and declarations are covered by compiler/npm tests; `tools/build-integrity.mjs` checks compiler/WASM/API fingerprints. Bundled projects are exercised by the installed-package runners. The migration guide and release notes document the interface. |
+| Coherent public interface | Schema negotiation and declarations are covered by compiler/npm tests; `lawspec-dev integrity` checks compiler/WASM/API fingerprints. Bundled projects are exercised by the installed-package runners. The migration guide and release notes document the interface. |
 
 The full npm regression suite passes 77 tests, and the package smoke test passes
 installed API generation on all eight targets plus executable Rust scaffold,
