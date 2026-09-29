@@ -122,10 +122,10 @@ validateFamily table f = do
         equations = indexedEquations c
         stated = map fst equations
         context = name ++ "." ++ tag
-    forM_ (stated \\ indices) $ \extra ->
-      Left (context ++ ": " ++ extra ++ " is not an index of " ++ name)
     unless (length (nub stated) == length stated)
       (Left (context ++ ": duplicate index equation"))
+    forM_ (stated \\ indices) $ \extra ->
+      Left (context ++ ": " ++ extra ++ " is not an index of " ++ name)
     forM_ (indices \\ stated) $ \missing ->
       Left (context ++ ": missing index equation for " ++ missing)
     bindings <- constructorBindings table f c

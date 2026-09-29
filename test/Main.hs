@@ -15,6 +15,7 @@ import qualified DocumentSpec
 import qualified PayloadProofSpec
 import qualified PayloadSpec
 import qualified CoreSpec
+import qualified IndexedSpec
 import LawSpec.Compile
 import LawSpec.Model
 import qualified LawSpec.Domain as D
@@ -34,6 +35,7 @@ main = hspec $ do
   NativeBindingSpec.spec
   NativeRequestSpec.spec
   CoreSpec.spec
+  IndexedSpec.spec
   PayloadSpec.spec
   PayloadProofSpec.spec
   DocumentSpec.spec

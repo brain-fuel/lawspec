@@ -399,9 +399,13 @@ typeSize (TypeVariable _) = 1
 
 indexedGeneration :: [Definition] -> Quantifier -> Maybe IndexedGeneration
 indexedGeneration definitions q = case concatMap claim (concatMap conjuncts (quantifiedPredicates q)) of
-  found:_ -> Just found
-  [] -> Nothing
+  found:_ | declaredData (binderType (quantifiedBinder q)) -> Just found
+  _ -> Nothing
   where
+    -- Runtime schemas describe declared data by constructor; built-in
+    -- containers use native generators and are not index-directed.
+    declaredData (Constructor name _) = name `notElem` ["List", "Maybe", "Either"]
+    declaredData _ = False
     self = binderId (quantifiedBinder q)
     conjuncts e = case expressionNode e of
       ShortCircuit And a b -> conjuncts a ++ conjuncts b
