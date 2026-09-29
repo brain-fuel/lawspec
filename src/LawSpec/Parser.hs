@@ -1,6 +1,7 @@
 module LawSpec.Parser (parseSource) where
 
 import LawSpec.Model
+import LawSpec.Indexed
 import LawSpec.Scalar
 import Control.Monad.Combinators.Expr
 import Control.Monad (void, unless)
@@ -47,8 +48,11 @@ typeAtom = try (parens $ do
     headers <- asks (M.lookup n)
     case headers of
       Just (RefinementHeader kinds) -> RefinementApp n <$> mapM argument kinds
-      Just (DataHeader kinds) -> application n <$> mapM (const typeAtom) kinds
-      Nothing | n `elem` ["Nullable","Optional","List","Maybe"] -> Applied n <$> typeAtom
+      Just (DataHeader kinds)
+        | and kinds -> application n <$> mapM (const typeAtom) kinds
+        | otherwise -> RefinementApp (indexedRefinementName n) <$> mapM argument kinds
+      Nothing | n == naturalRefinementName -> pure (RefinementApp n [])
+              | n `elem` ["Nullable","Optional","List","Maybe"] -> Applied n <$> typeAtom
               | n == "Either" -> Application n <$> sequence [typeAtom, typeAtom]
               | otherwise -> pure (if maybe False (isLower . fst) (uncons n) then Variable n else Named n)
   where argument True = TypeArgument <$> typeAtom
@@ -71,7 +75,14 @@ refinementP = do
   t <- keyword "is" *> typeP <* keyword "end"
   pure (Refinement n ps cs t)
 dataTypeP :: P DataTypeDeclaration
-dataTypeP = do
+dataTypeP = either erased id <$> declarationP
+  where erased f = DataTypeDeclaration (familyName f) (map fst (familyParameters f))
+          (map indexedDeclaration (familyConstructors f)) (familySpan f)
+
+-- Declarations with a Natural parameter or an index equation are indexed
+-- families; LawSpec.Indexed elaborates them after the unit is parsed.
+declarationP :: P (Either IndexedFamily DataTypeDeclaration)
+declarationP = do
   ((name, parameters, constructors), range) <- withSpan $ do
     keyword "type"
     name <- upperName
@@ -79,23 +90,27 @@ dataTypeP = do
       parameter <- ident
       unless (maybe False (isLower . fst) (uncons parameter)) (fail "type parameters must start with a lowercase letter")
       void (symbol "::")
-      keyword "Type"
-      pure parameter
+      isType <- (True <$ keyword "Type") <|> (False <$ keyword naturalRefinementName)
+      pure (parameter, isType)
     keyword "is"
     constructors <- many $ do
       void (optional (symbol "|"))
-      ((tag, fields), constructorRange) <- withSpan $ do
+      ((tag, fields, equations), constructorRange) <- withSpan $ do
         tag <- upperName
         fields <- many $ try $ do
           field <- ident
           unless (maybe False (isLower . fst) (uncons field)) (fail "field names must start with a lowercase letter")
           void (symbol "::")
           (,) field <$> typeP
-        pure (tag, fields)
-      pure (ConstructorDeclaration tag fields constructorRange)
+        equations <- option [] (keyword "where" *>
+          (((,) <$> ident <* symbol "=" <*> expr) `sepBy1` symbol ","))
+        pure (tag, fields, equations)
+      pure (IndexedConstructor (ConstructorDeclaration tag fields constructorRange) equations)
     keyword "end"
     pure (name, parameters, constructors)
-  pure (DataTypeDeclaration name parameters constructors range)
+  pure $ if all snd parameters && all (null . indexedEquations) constructors
+    then Right (DataTypeDeclaration name (map fst parameters) (map indexedDeclaration constructors) range)
+    else Left (IndexedFamily name parameters constructors range)
   where
     upperName = do
       name <- ident
@@ -264,15 +279,15 @@ functionDefinitionP = do
     pure (name, arguments, result, requirements, body)
   pure (FunctionDefinition name arguments result requirements body range)
 
-data UnitMember = DataMember DataTypeDeclaration | RefinementMember Refinement
+data UnitMember = DataMember DataTypeDeclaration | FamilyMember IndexedFamily | RefinementMember Refinement
   | SignatureMember ((String, Type), Span) | LawMember Law
   | DefinitionMember FunctionDefinition
 
-unitP :: P Unit
+unitP :: P (Unit, [IndexedFamily])
 unitP = do
   spaceP; keyword "unit"
   n <- concatWithDot <$> (lexeme ((:) <$> letterChar <*> many (alphaNumChar <|> char '_')) `sepBy1` symbol ".")
-  members <- many ((DataMember <$> dataTypeP)
+  members <- many ((either FamilyMember DataMember <$> declarationP)
     <|> (RefinementMember <$> refinementP)
     <|> (DefinitionMember <$> functionDefinitionP)
     <|> (SignatureMember <$> try (withSpan ((,) <$> ident <* symbol "::" <*> typeP)))
@@ -283,12 +298,13 @@ unitP = do
         [((functionName d, foldr Arrow (functionResult d) (map snd (functionArguments d))), functionSpan d) | d <- definitions]
   pure (Unit n (map fst signatures) [l | LawMember l <- members]
     [r | RefinementMember r <- members] [] [(name,range) | ((name,_),range) <- signatures]
-    [d | DataMember d <- members] definitions)
+    [d | DataMember d <- members] definitions, [f | FamilyMember f <- members])
   where concatWithDot = foldr1 (\a b -> a ++ "." ++ b)
 parseSource :: Source -> Either [Diagnostic] Unit
 parseSource (Source p s) = case runReader (runParserT unitP p s) (literalHeaders s (headers s)) of
   Left e -> Left [Diagnostic "parse" (errorBundlePretty e) Nothing]
-  Right u -> Right u
+  Right (u, families) -> either (\message -> Left [Diagnostic "indexed" (p ++ ": " ++ message) Nothing]) Right
+    (elaborateFamilies families u)
 
 -- Read declaration arities before parsing applications, including forward references.
 -- Strings, quoted law names and comments are consumed atomically.

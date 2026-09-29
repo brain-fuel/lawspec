@@ -217,6 +217,7 @@ library
       LawSpec.HaskellProperties
       LawSpec.HaskellTestHelpers
       LawSpec.HaskellTypeRefs
+      LawSpec.Indexed
       LawSpec.Inference
       LawSpec.JavaData
       LawSpec.JavaDefinitions
