@@ -165,7 +165,7 @@ try {
     console.log('Installed structural API: all eight targets, widths and layouts');
   `], app);
   console.log(structures.stdout.trim());
-  for (const document of ['RUST.md','JAVA.md','PYTHON.md','GO.md','HASKELL.md','KOTLIN.md','WEB.md','LANGUAGE.md','API-MIGRATION.md','NATIVE-BINDINGS.md','RELEASE-0.9.md','RELEASE-0.10.md'])
+  for (const document of ['RUST.md','JAVA.md','PYTHON.md','GO.md','HASKELL.md','KOTLIN.md','WEB.md','LANGUAGE.md','API-MIGRATION.md','NATIVE-BINDINGS.md','RELEASE-0.9.md','RELEASE-0.10.md','RELEASE-0.11.md'])
     if (!(await readFile(path.join(app,'node_modules/lawspec',document),'utf8')).length) throw new Error('Missing packaged '+document);
   const rust=path.join(root,'rust');
   await mkdir(rust);

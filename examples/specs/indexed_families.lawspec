@@ -1,0 +1,59 @@
+unit example.indexed
+
+-- A list indexed by its length. Each constructor states how it changes the
+-- index; nOfVec is the checked measure that recomputes it from a value.
+type Vec (n :: Natural) (a :: Type) is
+  | VNil where n = 0
+  | VCons head :: a tail :: Vec m a where n = m + 1
+end
+
+-- A binary tree indexed by its number of values.
+type Tree (n :: Natural) (a :: Type) is
+  | Tip where n = 0
+  | Bin left :: Tree l a value :: a right :: Tree r a where n = l + r + 1
+end
+
+-- Result indices are checked contracts over the native implementations.
+replicate :: (n :: Natural where n < 64) -> (x :: Int8) -> (r :: Vec n Int8)
+append :: (xs :: Vec n Int8) -> (ys :: Vec m Int8) -> (r :: Vec (n + m) Int8)
+zip :: (xs :: Vec n Int8) -> (ys :: Vec n Bool) -> (r :: Vec n Bool)
+flatten :: (tree :: Tree n Int8) -> (r :: Vec n Int8)
+
+law `replicate has the requested length` is
+  definition is
+    `for all` (n :: Natural where n < 16) (x :: Int8) . nOfVec (replicate n x) = n
+  end
+  example `three copies` is
+    n = 3
+    x = 7
+    expect nOfVec (replicate n x) = 3
+  end
+end
+
+law `append adds lengths` is
+  definition is
+    `for all` (xs :: Vec n Int8) (ys :: Vec m Int8) .
+      nOfVec (append xs ys) = n + m
+  end
+end
+
+-- A fixed index is generated directly rather than filtered.
+law `vectors of three elements` is
+  definition is
+    `for all` (xs :: Vec 3 Int8) . nOfVec (append xs xs) = 6
+  end
+end
+
+-- A shared index constrains the second input by the first.
+law `zip preserves a shared length` is
+  definition is
+    `for all` (xs :: Vec n Int8) (ys :: Vec n Bool) . nOfVec (zip xs ys) = n
+  end
+end
+
+-- Generation splits the remaining index across both subtrees.
+law `flattening five values` is
+  definition is
+    `for all` (tree :: Tree 5 Int8) . nOfVec (flatten tree) = 5
+  end
+end

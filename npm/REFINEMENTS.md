@@ -1,4 +1,4 @@
-# Refinements and abstract integers (0.10.0)
+# Refinements and abstract integers (0.11.0)
 
 A refinement restricts a scalar domain with a pure Boolean expression. LawSpec
 checks concrete examples, generates satisfying input tuples, and checks adapter
@@ -153,6 +153,11 @@ The generator derives integer bounds from affine comparisons and conjunctions,
 seeds direct comparison values and boundaries, and checks the complete predicate.
 Predicates outside that analysis use bounded sampling. Small finite base-domain
 products are enumerated exhaustively, retaining only satisfying tuples.
+
+A refinement `m x == e` over declared data, where `m` is a linear structural
+measure (each branch is a constant plus `m` of that branch's fields), is solved
+rather than sampled: values are constructed with measure exactly `e`. Indexed
+families rely on this; see [natural-indexed families](LANGUAGE.md#natural-indexed-families).
 
 Shrinking checks refinements again and repairs dependent later inputs when an
 earlier value changes. An overflowing counterexample can shrink to `(1, 127)`;

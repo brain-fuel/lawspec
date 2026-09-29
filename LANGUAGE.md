@@ -1,4 +1,4 @@
-# LawSpec language and compiler boundary (0.10)
+# LawSpec language and compiler boundary (0.11)
 
 LawSpec describes portable laws, concrete examples, and adapter contracts. The
 compiler is written in Haskell. Rust is an output backend alongside Java, Python,
@@ -102,7 +102,8 @@ scrutinee once; each branch binds that constructor's fields in the same order.
 Bindings are scoped to the branch. Matching must be exhaustive and cannot repeat
 a constructor. Lists match with `Nil` and `Cons head tail`; Maybe and Either use
 their constructors above. Recursive declarations must be strictly positive.
-General indexed constructors and GADT result signatures are not supported.
+Constructors may refine natural indices; see [indexed families](#natural-indexed-families).
+GADT result signatures that refine type arguments are not supported.
 
 Equality is structural and type-directed, including named fields and nested
 containers. Native public declarations retain their names and type parameters;
@@ -128,6 +129,58 @@ of recursive and nonrecursive named type constructors are supported; see
 [refinements](REFINEMENTS.md#named-data-payloads). Direct refinements on named
 constructor fields use checked constructor contracts. Recursive payload predicates
 follow stored type arguments and preserve outer dependent inputs.
+
+## Natural-indexed families
+
+A data declaration may take `Natural` parameters. Each constructor states how it
+determines them with `where <index> = <expression>`:
+
+```lawspec
+type Vec (n :: Natural) (a :: Type) is
+  | VNil where n = 0
+  | VCons head :: a tail :: Vec m a where n = m + 1
+end
+
+type Tree (n :: Natural) (a :: Type) is
+  | Tip where n = 0
+  | Bin left :: Tree l a value :: a right :: Tree r a where n = l + r + 1
+end
+
+append :: (xs :: Vec n Int8) -> (ys :: Vec m Int8) -> (r :: Vec (n + m) Int8)
+zip :: (xs :: Vec n Int8) -> (ys :: Vec n Bool) -> (r :: Vec n Bool)
+```
+
+Index expressions are sums of natural literals and index variables. A variable
+such as `m` is bound by the field whose type mentions it, and every index needs
+exactly one equation in every constructor. `Natural` is also an ordinary value
+type: an unbounded integer that is at least zero.
+
+Indices are evidence, not a second type system. The compiler elaborates a family
+before inference into three ordinary declarations:
+
+- erased data `Vec a` with the same constructors, which is the native
+  representation on every target;
+- a checked structural measure for each index, named `<index>Of<Type>` (here
+  `nOfVec` and `nOfTree`), recomputed from the constructor equations;
+- a refinement, so `Vec e a` in any signature or quantifier means
+  `(v :: Vec a where nOfVec v == e)`.
+
+`append` above is therefore an adapter contract: its result must have length
+`nOfVec xs + nOfVec ys`, and a native implementation that drops an element
+fails with the postcondition. An index variable that is otherwise unbound, like
+`n` and `m` in `append`, is implicit. It is determined by the first binder whose
+family type mentions it alone, and later occurrences read that binder's measure.
+Implicit indices must not first appear inside an expression, and a result cannot
+introduce one.
+
+Generation follows the index. For a free index, as in `append`, values come from
+the erased type and the index is their measure. For a fixed index (`Vec 3 Int8`)
+or a shared one (`zip`'s `ys`), the target is solved backwards through the
+constructor equations: `VCons` for `n = 3` needs a tail with index 2, and `Bin`
+splits `n - 1` between its subtrees. Samples are constructed, not filtered, and
+shrinking stays within the index on every target. The same planning applies to
+any user-written measure over declared data whose branches are a constant plus
+the same measure of that branch's fields.
 
 ## Total definitions
 
@@ -332,12 +385,15 @@ API schema v3 uses separately defined wire views, with lossless tagged scalar
 values. It does not serialize internal AST constructors. See the
 [API migration guide](API-MIGRATION.md).
 
-## Beyond 0.10
+## Beyond 0.11
 
-GADTs, indexed families, and general dependent types are planned after 0.10.
-The Core type model distinguishes type arguments from index arguments, but that
-representation is not a claim that arbitrary dependent programs are accepted.
-User-defined products and sums have ordinary uniform type parameters.
+Natural-indexed families are implemented in 0.11 by elaboration to erased data,
+measures and refinements. GADTs that refine type arguments, non-linear or
+non-natural indices, index equalities between sibling fields (such as perfect
+trees whose subtrees share one index), and general dependent types remain future
+work. The Core type model distinguishes type arguments from index arguments, but
+that representation is not a claim that arbitrary dependent programs are
+accepted.
 External type bindings and custom generator bindings are implemented in the
 0.10 release; see [the binding reference](NATIVE-BINDINGS.md) for their
 interface and acceptance status. They configure native representations alongside

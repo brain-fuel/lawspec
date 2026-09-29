@@ -20,5 +20,5 @@ mkdir -p npm/examples/specs
 cp examples/specs/*.lawspec npm/examples/specs/
 mkdir -p npm/examples/native-payments
 cp -R examples/native-payments/. npm/examples/native-payments/
-cp README.md NATIVE-BINDINGS.md PRIMITIVES.md REFINEMENTS.md RUST.md JAVA.md PYTHON.md GO.md HASKELL.md KOTLIN.md WEB.md LANGUAGE.md API-MIGRATION.md RELEASE-0.9.md RELEASE-0.10.md LICENSE npm/
+cp README.md NATIVE-BINDINGS.md PRIMITIVES.md REFINEMENTS.md RUST.md JAVA.md PYTHON.md GO.md HASKELL.md KOTLIN.md WEB.md LANGUAGE.md API-MIGRATION.md RELEASE-0.9.md RELEASE-0.10.md RELEASE-0.11.md LICENSE npm/
 node tools/build-integrity.mjs --record

@@ -973,7 +973,10 @@ Gradle's coordination socket. The saved logs confirm successful native tests,
 seven expected failures among 45 tests for the deliberately incorrect fee, and
 zero planned regeneration changes in both configurations. This verifies the
 installed CLI/Gradle path as well as the separate compilation/runtime harness.
-The CI additions have not yet run remotely.
+The remote run of these CI additions exposed failures in the Kotlin and Haskell
+target jobs. They came from the 0.9 narrowing of abstract `Integer` adapter
+results, not from bindings, and are fixed in 0.11
+([release notes](RELEASE-0.11.md#tower-polymorphic-integer-results-restored)).
 
 The runnable assets live in `examples/native-payments/` and are copied into the
 npm package by `tools/wasm.sh`. The original `lawspec examples` command retains its
@@ -996,8 +999,8 @@ The full npm regression suite passes 77 tests, and the package smoke test passes
 installed API generation on all eight targets plus executable Rust scaffold,
 doctor, adapter and regeneration checks. The package contains the binding guide,
 migration notes, release notes and all eight application example configurations.
-These checks do not replace the pending remote CI gate described above. Release
-status remains incomplete until that result has been reviewed.
+The remote CI gate for these checks was reviewed during the 0.11 release, which
+re-ran every target job, including both installed native-binding profiles.
 
 The empty-parameter audit must distinguish an empty type from an inhabited type
 that mentions it. A native factory for `Phantom Empty` may ignore its child

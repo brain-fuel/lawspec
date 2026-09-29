@@ -116,6 +116,14 @@ jobs:
         env:
           LAWSPEC_MACHINE_BITS: '32'
 
+      - name: Natural-indexed families and index mutants
+        run: node tools/indexed-integration.mjs ${{ matrix.target }}
+      - name: Natural-indexed families with compact 32-bit profile
+        run: node tools/indexed-integration.mjs ${{ matrix.target }}
+        env:
+          LAWSPEC_MACHINE_BITS: '32'
+          LAWSPEC_MINIFY: '1'
+
       - name: Installed native bindings and adapter failure
         run: node tools/native-example-integration.mjs ${{ matrix.target }}
         env:
