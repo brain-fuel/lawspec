@@ -1,0 +1,7 @@
+expect: expect 
+@@ src/main/java/example/BooleanFlags.java
+<<<<<<<
+*
+=======
+package example; public class BooleanFlags { public static boolean flipFlag(boolean x) { return x; } }
+>>>>>>>

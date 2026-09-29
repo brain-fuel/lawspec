@@ -1,0 +1,6 @@
+@@ example/scalar_adapters/adapter.go
+<<<<<<<
+	return new(LawSpecBigInt).SetInt64(int64(value0) + 1)
+=======
+	return new(LawSpecBigInt).SetInt64(int64(value0 + 1))
+>>>>>>>

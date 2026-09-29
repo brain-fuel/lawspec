@@ -1,0 +1,6 @@
+@@ src/main/kotlin/example/Alternatives.kt
+<<<<<<<
+if (x < 0) 0 else x
+=======
+-1
+>>>>>>>

@@ -1,0 +1,6 @@
+@@ src/example/scalar_adapters.py
+<<<<<<<
+    return value0 is value1
+=======
+    return value0.description == value1.description
+>>>>>>>

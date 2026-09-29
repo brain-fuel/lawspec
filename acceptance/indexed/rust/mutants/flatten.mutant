@@ -1,0 +1,6 @@
+@@ src/example/indexed.rs
+<<<<<<<
+            let right = Vec::VCons { head: value, tail: Box::new(flatten(*right)) };
+=======
+            let right = Vec::VCons { head: value, tail: Box::new(Vec::VNil) };
+>>>>>>>

@@ -1,0 +1,6 @@
+@@ src/Example/ScalarAdapters.hs
+<<<<<<<
+preserveBig value0 = value0
+=======
+preserveBig value0 = round (fromIntegral value0 :: Double)
+>>>>>>>

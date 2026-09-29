@@ -1,0 +1,13 @@
+expect: expect 
+@@ src/main/kotlin/example/ParsePort.kt
+<<<<<<<
+*
+=======
+package example
+object ParsePort {
+fun validPort(x: Int): Boolean = true
+fun render(x: Int): String { require(validPort(x)); return x.toString() }
+fun parse(x: String): Int = x.toInt()
+}
+
+>>>>>>>

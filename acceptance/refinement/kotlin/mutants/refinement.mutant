@@ -1,0 +1,6 @@
+@@ src/main/kotlin/example/Refinements.kt
+<<<<<<<
+positive(a:Byte):Byte=a;
+=======
+positive(a:Byte):Byte=0;
+>>>>>>>

@@ -1,0 +1,6 @@
+@@ src/main/java/example/Indexed.java
+<<<<<<<
+    for (var i = java.math.BigInteger.ZERO; i.compareTo(value0) < 0; i = i.add(java.math.BigInteger.ONE)) {
+=======
+    for (var i = java.math.BigInteger.ZERO; i.compareTo(value0) <= 0; i = i.add(java.math.BigInteger.ONE)) {
+>>>>>>>

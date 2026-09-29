@@ -1,0 +1,6 @@
+@@ src/main/kotlin/example/ScalarAdapters.kt
+<<<<<<<
+    fun preserveBig(value0: java.math.BigInteger): java.math.BigInteger = value0
+=======
+    fun preserveBig(value0: java.math.BigInteger): java.math.BigInteger = java.math.BigInteger.valueOf(value0.toDouble().toLong())
+>>>>>>>

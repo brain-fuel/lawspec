@@ -1,0 +1,6 @@
+@@ src/example/algebra.py
+<<<<<<<
+def divideRight(x: int,y: int) -> int: return x+y
+=======
+def divideRight(x: int,y: int) -> int: return x-y
+>>>>>>>

@@ -1,0 +1,6 @@
+@@ src/main/java/example/Algebra.java
+<<<<<<<
+divideRight(BigInteger x,BigInteger y){return x.add(y);}
+=======
+divideRight(BigInteger x,BigInteger y){return x.subtract(y);}
+>>>>>>>

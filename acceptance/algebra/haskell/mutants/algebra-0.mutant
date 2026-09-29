@@ -1,0 +1,6 @@
+@@ src/Example/Algebra.hs
+<<<<<<<
+multiply x y = integerValue (x*y)
+=======
+multiply x y = integerValue (x+y)
+>>>>>>>

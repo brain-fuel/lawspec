@@ -1,0 +1,6 @@
+@@ src/example/ordering.rs
+<<<<<<<
+    value[0]
+=======
+    value[value.len() - 1]
+>>>>>>>

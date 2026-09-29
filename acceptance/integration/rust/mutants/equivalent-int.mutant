@@ -1,0 +1,6 @@
+@@ src/example/alternatives.rs
+<<<<<<<
+if x<0 {0} else {x}
+=======
+-1
+>>>>>>>

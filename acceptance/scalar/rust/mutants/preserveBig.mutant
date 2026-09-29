@@ -1,0 +1,8 @@
+@@ src/example/scalar_adapters.rs
+<<<<<<<
+pub fn preserveBig(value0: u64) -> u64 {
+    value0
+=======
+pub fn preserveBig(value0: u64) -> u64 {
+    (value0 as f64) as u64
+>>>>>>>

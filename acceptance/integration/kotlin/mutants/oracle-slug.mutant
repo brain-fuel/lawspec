@@ -1,0 +1,13 @@
+expect: expect 
+expect-any: Hello | https://example.com/path
+@@ src/main/kotlin/example/Slug.kt
+<<<<<<<
+*
+=======
+package example
+object Slug {
+fun normalize(x: String): String = x
+fun referenceNormalize(x: String): String = x
+}
+
+>>>>>>>

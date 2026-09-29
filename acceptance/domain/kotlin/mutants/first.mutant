@@ -1,0 +1,6 @@
+@@ src/main/kotlin/example/Ordering.kt
+<<<<<<<
+    fun firstLine(value0: NonEmptyList<Int>): Int = (value0 as NonEmptyList.NonEmptyListCase).value[0]
+=======
+    fun firstLine(value0: NonEmptyList<Int>): Int = (value0 as NonEmptyList.NonEmptyListCase).value.last()
+>>>>>>>

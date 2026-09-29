@@ -1,0 +1,6 @@
+@@ src/example/ordering.mjs
+<<<<<<<
+  return value0.value[0];
+=======
+  return value0.value[value0.value.length - 1];
+>>>>>>>

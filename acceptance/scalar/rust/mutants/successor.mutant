@@ -1,0 +1,6 @@
+@@ src/example/scalar_adapters.rs
+<<<<<<<
+    ls::BigInt::from(value0) + 1
+=======
+    ls::BigInt::from(value0.wrapping_add(1))
+>>>>>>>

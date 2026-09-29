@@ -1,0 +1,6 @@
+@@ example/indexed/adapter.go
+<<<<<<<
+	for i := new(big.Int); i.Cmp(value0) < 0; i.Add(i, big.NewInt(1)) {
+=======
+	for i := new(big.Int); i.Cmp(value0) <= 0; i.Add(i, big.NewInt(1)) {
+>>>>>>>

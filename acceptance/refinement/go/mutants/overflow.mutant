@@ -1,0 +1,6 @@
+@@ example/refinements/adapter.go
+<<<<<<<
+return int16(a)+int16(b)
+=======
+return a+b
+>>>>>>>

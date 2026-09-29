@@ -1,0 +1,6 @@
+@@ src/main/java/example/Refinements.java
+<<<<<<<
+return (int)a+b;
+=======
+return (byte)(a+b);
+>>>>>>>

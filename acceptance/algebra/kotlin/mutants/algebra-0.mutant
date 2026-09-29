@@ -1,0 +1,6 @@
+@@ src/main/kotlin/example/Algebra.kt
+<<<<<<<
+fun multiply(x: BigInteger,y: BigInteger): Number = x*y
+=======
+fun multiply(x: BigInteger,y: BigInteger): Number = x+y
+>>>>>>>

@@ -1,0 +1,6 @@
+@@ example/refinements/adapter.go
+<<<<<<<
+func Preserve(a uint64) any {return a}
+=======
+func Preserve(a uint64) any {return float64(a)}
+>>>>>>>

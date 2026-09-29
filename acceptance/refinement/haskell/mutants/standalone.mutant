@@ -1,0 +1,6 @@
+@@ src/Example/Refinements.hs
+<<<<<<<
+count = integerValue . T.length
+=======
+count = integerValue . const (0 :: Int) . T.length
+>>>>>>>

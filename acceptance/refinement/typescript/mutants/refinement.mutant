@@ -1,0 +1,6 @@
+@@ src/example/refinements.ts
+<<<<<<<
+function positive(a:number):number{return a;}
+=======
+function positive(a:number):number{return 0;}
+>>>>>>>

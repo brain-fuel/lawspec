@@ -1,0 +1,6 @@
+@@ src/example/scalar_adapters.py
+<<<<<<<
+    return value0 + 1
+=======
+    return (value0 + 129) % 256 - 128
+>>>>>>>

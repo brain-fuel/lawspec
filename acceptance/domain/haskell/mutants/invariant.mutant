@@ -1,0 +1,6 @@
+@@ src/Example/Ordering.hs
+<<<<<<<
+  | quantity < 1 || quantity > 1000 = Left Data.OrderErrorInvalidQuantity
+=======
+  | quantity < 0 || quantity > 1000 = Left Data.OrderErrorInvalidQuantity
+>>>>>>>

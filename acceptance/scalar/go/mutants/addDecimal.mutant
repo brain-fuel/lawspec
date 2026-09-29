@@ -1,0 +1,6 @@
+@@ example/scalar_adapters/adapter.go
+<<<<<<<
+	return lsBinary("+", value0, value1)
+=======
+	return lsHelper("round",[]LawSpecValue{lsBinary("+",value0,value1),lsInteger("Int32","0")},64)
+>>>>>>>

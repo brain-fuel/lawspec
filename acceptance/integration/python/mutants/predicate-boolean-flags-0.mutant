@@ -1,0 +1,9 @@
+expect: expect 
+@@ src/example/boolean_flags.py
+<<<<<<<
+*
+=======
+def flipFlag(x: bool) -> bool:
+    return x
+
+>>>>>>>

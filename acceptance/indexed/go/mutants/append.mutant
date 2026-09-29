@@ -1,0 +1,6 @@
+@@ example/indexed/adapter.go
+<<<<<<<
+	return VecVCons[int8]{Head: cons.Head, Tail: Append(cons.Tail, value1)}
+=======
+	return Append(cons.Tail, value1)
+>>>>>>>

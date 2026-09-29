@@ -1,0 +1,6 @@
+@@ src/example/scalar_adapters.py
+<<<<<<<
+    return ls.finite_decimal(ls.ratio(value0) + ls.ratio(value1))
+=======
+    return value0 + value1
+>>>>>>>

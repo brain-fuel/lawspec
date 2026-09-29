@@ -1,0 +1,8 @@
+@@ example/scalar_adapters/adapter.go
+<<<<<<<
+) LawSpecOptional[LawSpecNullable[int8]] {
+	return value0
+=======
+) LawSpecOptional[LawSpecNullable[int8]] {
+	return LawSpecOptional[LawSpecNullable[int8]]{}
+>>>>>>>

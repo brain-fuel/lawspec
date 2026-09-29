@@ -1,0 +1,6 @@
+@@ src/Example/ScalarAdapters.hs
+<<<<<<<
+echoPresence value0 = value0
+=======
+echoPresence value0 = LS.UndefinedValue
+>>>>>>>

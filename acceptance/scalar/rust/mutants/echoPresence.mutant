@@ -1,0 +1,8 @@
+@@ src/example/scalar_adapters.rs
+<<<<<<<
+pub fn echoPresence(value0: ls::Optional<ls::Nullable<i8>>) -> ls::Optional<ls::Nullable<i8>> {
+    value0
+=======
+pub fn echoPresence(value0: ls::Optional<ls::Nullable<i8>>) -> ls::Optional<ls::Nullable<i8>> {
+    ls::Optional::Undefined
+>>>>>>>

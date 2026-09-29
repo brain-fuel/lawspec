@@ -1,0 +1,6 @@
+@@ src/Example/Algebra.hs
+<<<<<<<
+add x y = integerValue (x+y)
+=======
+add x y = integerValue (fromInteger (x+y) :: Int32)
+>>>>>>>

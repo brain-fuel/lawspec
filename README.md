@@ -91,7 +91,7 @@ support to use it; GitHub currently uses the Haskell fallback.
 Install [LawSpec from npm](https://www.npmjs.com/package/lawspec):
 
 ```sh
-npm install --save-dev lawspec@0.13.0
+npm install --save-dev lawspec@0.13.1
 npx lawspec --version
 ```
 
@@ -105,8 +105,8 @@ local dependencies so LawSpec can create its `package.json` and test script:
 ```sh
 mkdir lawspec-example
 cd lawspec-example
-npm exec --package=lawspec@0.13.0 -- lawspec init --target javascript
-npm install --save-dev lawspec@0.13.0
+npm exec --package=lawspec@0.13.1 -- lawspec init --target javascript
+npm install --save-dev lawspec@0.13.1
 npx lawspec check
 npx lawspec explain 'example.atoi_codec::itoa and then atoi yields a'
 npx lawspec doctor
@@ -316,7 +316,7 @@ reusable laws accept these curried functions, their partial applications, and
 scalar parameters. Quantified test inputs remain scalar.
 
 The prelude defines the following laws. Every row has an executable example in
-[algebra.lawspec](https://github.com/brain-fuel/lawspec/blob/v0.13.0/examples/specs/algebra.lawspec), including both sides of every
+[algebra.lawspec](https://github.com/brain-fuel/lawspec/blob/v0.13.1/examples/specs/algebra.lawspec), including both sides of every
 combined law. `f` and `g` are binary operations, `inverse` is unary, and `e` and
 `zero` are scalar parameters. All these laws require equality of the element type.
 
@@ -384,7 +384,7 @@ their entire consequence. Every conjunct is type-checked and emitted. As with
 existing assertions, the first failure stops that individual test. `and` is now
 a reserved word.
 
-[Currying examples](https://github.com/brain-fuel/lawspec/blob/v0.13.0/examples/specs/currying.lawspec) demonstrate a four-argument
+[Currying examples](https://github.com/brain-fuel/lawspec/blob/v0.13.1/examples/specs/currying.lawspec) demonstrate a four-argument
 function partially applied twice, a formatter with four heterogeneous arguments,
 and composition after partial application. Each example states its exact outputs.
 Run `node npm/bin/lawspec.mjs examples` after rebuilding to inspect all nine units
@@ -436,7 +436,7 @@ law `valid ports round trip` is
 end
 ```
 
-The [complete port example](https://github.com/brain-fuel/lawspec/blob/v0.13.0/examples/specs/parse_port.lawspec)
+The [complete port example](https://github.com/brain-fuel/lawspec/blob/v0.13.1/examples/specs/parse_port.lawspec)
 defines valid ports as 1–65535, and covers both endpoints, ordinary ports, zero,
 negative values, and 65536. All explicit `expect` assertions run regardless of
 the law's condition. A false condition skips only the consequence: invalid ports
@@ -454,7 +454,7 @@ The prelude includes `satisfies predicate` (the predicate holds for every input)
 and `left inverse when predicate parse render` (the guarded round trip above).
 These reusable laws preserve the condition and its lexical bindings when expanded.
 `equivalent` can also compare two predicates, since `Bool` supports equality.
-The [Boolean flags example](https://github.com/brain-fuel/lawspec/blob/v0.13.0/examples/specs/boolean_flags.lawspec)
+The [Boolean flags example](https://github.com/brain-fuel/lawspec/blob/v0.13.1/examples/specs/boolean_flags.lawspec)
 checks that flipping twice restores both `false` and `true`; all targets generate
 Boolean property inputs and explicit tests for both Boolean boundary values. Java caps Boolean-only JetCheck runs at the number of
 possible input combinations (up to 100), avoiding generator exhaustion.
@@ -533,7 +533,7 @@ This expands to `for all (x :: Int32) . render (x) = referenceRender (x)`.
 The example inherits the input name `x` from the prelude. Both functions are
 user-owned adapter functions; either may delegate to your existing code.
 
-[The complete example](https://github.com/brain-fuel/lawspec/blob/v0.13.0/examples/specs/equivalent.lawspec) compares decimal
+[The complete example](https://github.com/brain-fuel/lawspec/blob/v0.13.1/examples/specs/equivalent.lawspec) compares decimal
 renderers and two implementations that clamp negative integers to zero. For
 JavaScript, their adapters can be:
 
@@ -570,7 +570,7 @@ law `normalizers agree` is
 end
 ```
 
-The [slug example](https://github.com/brain-fuel/lawspec/blob/v0.13.0/examples/specs/slug.lawspec)
+The [slug example](https://github.com/brain-fuel/lawspec/blob/v0.13.1/examples/specs/slug.lawspec)
 compares two implementations of ASCII-space replacement. It includes empty,
 Unicode and escaped text. Each target uses its native string generator:
 JetCheck `Generator.stringsOf(Generator.asciiPrintableChars())`, Hypothesis `st.text()`, fast-check `fc.string()`,
@@ -597,7 +597,7 @@ law `canonicalization reaches a fixed point` is
 end
 ```
 
-The [canonical URL example](https://github.com/brain-fuel/lawspec/blob/v0.13.0/examples/specs/canonical_url.lawspec)
+The [canonical URL example](https://github.com/brain-fuel/lawspec/blob/v0.13.1/examples/specs/canonical_url.lawspec)
 uses removal of **all trailing slashes** as a small fixed-point demonstration,
 not a complete URL canonicalization algorithm. For JavaScript:
 
@@ -606,7 +606,7 @@ export const canonicalize = value => value.replace(/\/+$/, "");
 ```
 
 Removing just one trailing slash fails the supplied repeated-slash example.
-The [mixed-input example](https://github.com/brain-fuel/lawspec/blob/v0.13.0/examples/specs/mixed_inputs.lawspec)
+The [mixed-input example](https://github.com/brain-fuel/lawspec/blob/v0.13.1/examples/specs/mixed_inputs.lawspec)
 shows `Text` and `Int32` in the same quantified property and executable example.
 The JavaScript API represents example bindings as typed records whose values use
 `DataValue`: lossless tagged scalar payloads or structural constructors. Expected results are
@@ -689,7 +689,7 @@ by the JS shim.
 ## Build and verify
 
 For contributors working from a repository checkout, build a local archive with
-`npm pack ./npm` and install it with `npm install --save-dev ./lawspec-0.13.0.tgz`.
+`npm pack ./npm` and install it with `npm install --save-dev ./lawspec-0.13.1.tgz`.
 The package payload lives in `npm/`.
 
 ```sh
@@ -716,15 +716,25 @@ artifact, with no install-time compilation or download hook.
 For all eight native integrations, install their build tools, then:
 
 ```sh
-# Set LAWSPEC_GRADLE to a Gradle 9.3.0 executable if it is not on PATH.
 node tools/bootstrap-integration.mjs
-node tools/integration.mjs
+stack run lawspec-acceptance -- integration          # all eight targets
+stack run lawspec-acceptance -- scalar rust          # one suite, one target
+LAWSPEC_MACHINE_BITS=32 LAWSPEC_MINIFY=1 stack run lawspec-acceptance -- indexed go
+stack run lawspec-acceptance -- domain --check        # regenerate and compare only
 ```
 
-These scripts use isolated `.integration/` projects. Bootstrap installs the pinned
-test dependencies; integration verifies that correct adapters pass, broken adapters
-fail, regeneration preserves implementations, and generation leaves build files
-unchanged. Arguments select individual targets. `LAWSPEC_PYTHON=3.14` selects the
+Bootstrap installs the pinned test dependencies into isolated `.integration/`
+projects. `lawspec-acceptance` generates each suite's bundled examples in process,
+installs the suite's adapters, runs the target's own test command, and requires
+every mutant to fail its laws at test time; a mutant that only breaks the build
+fails the suite. Suites live in `acceptance/<suite>/`: `suite.json` names the
+specifications, `<target>/files/` holds real adapter sources, `<target>/stubs/`
+records the stub an adapter was written against, and `<target>/mutants/*.mutant`
+holds one search/replace edit per mutant. Suites are `integration`, `algebra`,
+`scalar`, `refinement`, `indexed` and `domain`. Gradle 9.3.0 is used from
+`.tools/gradle-9.3.0` when present, otherwise from `PATH`; `LAWSPEC_OFFLINE=1`
+uses existing dependency caches. `npm/test/build-files.test.mjs` checks that
+generation leaves build files unchanged. `LAWSPEC_PYTHON=3.14` selects the
 additional Python reference environment. CI also exercises Node 22/24/26 and packs
 and installs the npm archive. Registry publication is a separate release action.
 

@@ -1,0 +1,6 @@
+@@ example/slug/adapter.go
+<<<<<<<
+strings.Join(strings.Split(x, " "), "-")
+=======
+x
+>>>>>>>

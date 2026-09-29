@@ -1,0 +1,8 @@
+@@ src/main/java/example/ScalarAdapters.java
+<<<<<<<
+    return value0.add(value1);
+  }
+=======
+    return value0.add(value1, new java.math.MathContext(3));
+}
+>>>>>>>

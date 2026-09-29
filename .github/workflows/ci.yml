@@ -35,6 +35,15 @@ jobs:
         with:
           name: lawspec-npm
           path: .artifacts/package-smoke/*.tgz
+      - name: Build the acceptance harness for target jobs
+        run: |
+          stack --no-terminal build lawspec:exe:lawspec-acceptance
+          mkdir -p .artifacts/harness
+          cp "$(stack --no-terminal path --local-install-root)/bin/lawspec-acceptance" .artifacts/harness/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lawspec-acceptance
+          path: .artifacts/harness/lawspec-acceptance
   runtime:
     strategy:
       fail-fast: false
@@ -49,6 +58,7 @@ jobs:
           node-version: ${{ matrix.node }}
       - run: node --test npm/test/*.test.mjs
   targets:
+    needs: compiler
     strategy:
       fail-fast: false
       matrix:
@@ -95,6 +105,22 @@ jobs:
       - run: node tools/bootstrap-integration.mjs ${{ matrix.target }}
         env:
           LAWSPEC_PYTHON: ${{ matrix.python }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: lawspec-acceptance
+          path: .artifacts/harness
+      - name: Acceptance suites (Haskell harness, alongside the JavaScript runners)
+        run: |
+          chmod +x .artifacts/harness/lawspec-acceptance
+          for suite in integration algebra indexed domain refinement scalar; do
+            .artifacts/harness/lawspec-acceptance "$suite" ${{ matrix.target }}
+          done
+          for suite in indexed domain algebra; do
+            LAWSPEC_MACHINE_BITS=32 LAWSPEC_MINIFY=1 .artifacts/harness/lawspec-acceptance "$suite" ${{ matrix.target }}
+          done
+          for suite in refinement scalar; do
+            LAWSPEC_MACHINE_BITS=32 .artifacts/harness/lawspec-acceptance "$suite" --no-mutants ${{ matrix.target }}
+          done
       - run: node tools/integration.mjs ${{ matrix.target }}
       - run: node tools/rust-layout-integration.mjs
         if: matrix.target == 'rust'

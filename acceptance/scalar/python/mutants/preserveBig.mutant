@@ -1,0 +1,8 @@
+@@ src/example/scalar_adapters.py
+<<<<<<<
+def preserveBig(value0: int) -> int:
+    return value0
+=======
+def preserveBig(value0: int) -> int:
+    return int(float(value0))
+>>>>>>>

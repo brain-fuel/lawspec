@@ -1,0 +1,9 @@
+{
+  "specs": [
+    "examples/specs/scalars.lawspec",
+    "examples/specs/scalar_adapters.lawspec",
+    "examples/specs/scalar_catalog.lawspec"
+  ],
+  "vectors": "test/scalar-vectors.json",
+  "architecture": true
+}

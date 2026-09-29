@@ -1,0 +1,6 @@
+@@ src/main/kotlin/example/Algebra.kt
+<<<<<<<
+fun add(x: BigInteger,y: BigInteger): Number = x+y
+=======
+fun add(x: BigInteger,y: BigInteger): Number = (x+y).toInt()
+>>>>>>>

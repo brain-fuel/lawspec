@@ -1,0 +1,6 @@
+@@ src/Example/Alternatives.hs
+<<<<<<<
+if x < 0 then 0 else x
+=======
+-1
+>>>>>>>

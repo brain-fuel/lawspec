@@ -1,0 +1,6 @@
+@@ src/example/refinements.mjs
+<<<<<<<
+function positive(a){return a;}
+=======
+function positive(a){return 0;}
+>>>>>>>

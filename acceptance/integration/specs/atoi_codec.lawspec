@@ -1,0 +1,46 @@
+unit example.atoi_codec
+
+itoa :: Int32 -> Text
+atoi :: Text -> Int32
+
+law `itoa and then atoi yields a` is
+  definition is
+    `round trip identity is preserved` itoa atoi
+  end
+
+  description is
+    "converting an Int32 to Text with {itoa} and then back with {atoi} yields the original Int32"
+  end
+
+  rationale is
+    "representing an Int32 as Text must not change its value"
+  end
+
+  example `negative integers use a minus sign and round-trip unchanged` is
+    x = -42
+    expect itoa x = "-42"
+    expect atoi (itoa x) = -42
+  end
+
+  example `zero renders as 0 and round-trips unchanged` is
+    x = 0
+    expect itoa x = "0"
+    expect atoi (itoa x) = 0
+  end
+
+  references are
+    "left inverse"
+    "round-trip property"
+  end
+end
+
+law `two independent inputs` is
+  definition is
+    `for all` (x :: Int32) (y :: Int32) . atoi (itoa x) = x
+  end
+  example `mixed` is
+    x = -42
+    y = 2147483647
+    expect atoi (itoa x) = -42
+  end
+end

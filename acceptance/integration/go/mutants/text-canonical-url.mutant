@@ -1,0 +1,6 @@
+@@ example/canonical_url/adapter.go
+<<<<<<<
+strings.TrimRight(x, "/")
+=======
+strings.TrimSuffix(x, "/")
+>>>>>>>

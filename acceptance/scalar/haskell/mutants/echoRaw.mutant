@@ -1,0 +1,6 @@
+@@ src/Example/ScalarAdapters.hs
+<<<<<<<
+echoRaw value0 = value0
+=======
+echoRaw value0 = LS.Utf16Text [65533]
+>>>>>>>

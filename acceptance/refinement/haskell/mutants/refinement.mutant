@@ -1,0 +1,6 @@
+@@ src/Example/Refinements.hs
+<<<<<<<
+positive = id
+=======
+positive _ = 0
+>>>>>>>

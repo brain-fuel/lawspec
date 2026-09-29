@@ -1,0 +1,6 @@
+@@ example/indexed/adapter.go
+<<<<<<<
+	right := VecVCons[int8]{Head: node.Value, Tail: Flatten(node.Right)}
+=======
+	right := VecVCons[int8]{Head: node.Value, Tail: VecVNil[int8]{}}
+>>>>>>>

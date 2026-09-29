@@ -1,0 +1,6 @@
+@@ src/example/refinements.rs
+<<<<<<<
+pub fn preserve(a:u64)->ls::Integer {a.into()}
+=======
+pub fn preserve(a:u64)->ls::Integer {((a as f64) as u64).into()}
+>>>>>>>

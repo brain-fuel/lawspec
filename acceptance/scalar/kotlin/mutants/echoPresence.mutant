@@ -1,0 +1,8 @@
+@@ src/main/kotlin/example/ScalarAdapters.kt
+<<<<<<<
+    ): lawspec.runtime.LawSpecKotlin.Optional<lawspec.runtime.LawSpecKotlin.Nullable<kotlin.Byte>> =
+        value0
+=======
+    ): lawspec.runtime.LawSpecKotlin.Optional<lawspec.runtime.LawSpecKotlin.Nullable<kotlin.Byte>> =
+        lawspec.runtime.LawSpecKotlin.Optional.Undefined()
+>>>>>>>

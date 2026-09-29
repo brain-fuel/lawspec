@@ -1,0 +1,6 @@
+@@ src/example/alternatives.rs
+<<<<<<<
+format!("{x}")
+=======
+"broken".to_owned()
+>>>>>>>

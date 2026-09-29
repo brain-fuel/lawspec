@@ -1,0 +1,6 @@
+@@ src/example/indexed.py
+<<<<<<<
+    return data.VecVCons(value0.head, append(value0.tail, value1))
+=======
+    return append(value0.tail, value1)
+>>>>>>>

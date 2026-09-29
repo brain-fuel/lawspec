@@ -1,0 +1,8 @@
+expect: expect 
+@@ src/example/boolean_flags.ts
+<<<<<<<
+*
+=======
+export const flipFlag = (x: boolean): boolean => x;
+
+>>>>>>>

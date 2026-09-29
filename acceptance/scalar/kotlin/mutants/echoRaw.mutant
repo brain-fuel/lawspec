@@ -1,0 +1,6 @@
+@@ src/main/kotlin/example/ScalarAdapters.kt
+<<<<<<<
+    fun echoRaw(value0: kotlin.String): kotlin.String = value0
+=======
+    fun echoRaw(value0: kotlin.String): kotlin.String = 65533.toChar().toString()
+>>>>>>>

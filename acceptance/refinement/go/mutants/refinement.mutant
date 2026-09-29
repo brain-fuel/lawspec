@@ -1,0 +1,6 @@
+@@ example/refinements/adapter.go
+<<<<<<<
+func Positive(a int8) int8 {return a}
+=======
+func Positive(a int8) int8 {return 0}
+>>>>>>>

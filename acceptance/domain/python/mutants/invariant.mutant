@@ -1,0 +1,6 @@
+@@ src/example/ordering.py
+<<<<<<<
+    if not 1 <= value0.quantity <= 1000:
+=======
+    if not 0 <= value0.quantity <= 1000:
+>>>>>>>

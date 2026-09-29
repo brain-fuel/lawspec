@@ -1,0 +1,6 @@
+@@ src/Example/Algebra.hs
+<<<<<<<
+divideRight x y = integerValue (x+y)
+=======
+divideRight x y = integerValue (x-y)
+>>>>>>>

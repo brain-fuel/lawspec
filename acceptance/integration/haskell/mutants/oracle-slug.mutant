@@ -1,0 +1,15 @@
+expect: expect 
+expect-any: Hello | https://example.com/path
+@@ src/Example/Slug.hs
+<<<<<<<
+*
+=======
+module Example.Slug where
+import Data.Text (Text)
+import qualified Data.Text as T
+normalize :: Text -> Text
+normalize = id
+referenceNormalize :: Text -> Text
+referenceNormalize = id
+
+>>>>>>>

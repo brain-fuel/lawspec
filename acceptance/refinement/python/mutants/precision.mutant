@@ -1,0 +1,6 @@
+@@ src/example/refinements.py
+<<<<<<<
+def preserve(value0): return value0
+=======
+def preserve(value0): return float(value0)
+>>>>>>>

@@ -1,0 +1,6 @@
+@@ example/atoi_codec/adapter.go
+<<<<<<<
+return int32(n)
+=======
+return int32(n) - int32(n)
+>>>>>>>

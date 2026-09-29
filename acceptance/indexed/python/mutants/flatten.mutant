@@ -1,0 +1,6 @@
+@@ src/example/indexed.py
+<<<<<<<
+    right = data.VecVCons(value0.value, flatten(value0.right))
+=======
+    right = data.VecVCons(value0.value, data.VecVNil())
+>>>>>>>

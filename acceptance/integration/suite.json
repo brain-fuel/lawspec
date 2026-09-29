@@ -1,0 +1,15 @@
+{
+  "specs": [
+    "acceptance/integration/specs/atoi_codec.lawspec",
+    "acceptance/integration/specs/purelaw.lawspec",
+    "examples/specs/equivalent.lawspec",
+    "examples/specs/slug.lawspec",
+    "examples/specs/canonical_url.lawspec",
+    "examples/specs/mixed_inputs.lawspec",
+    "examples/specs/parse_port.lawspec",
+    "examples/specs/boolean_flags.lawspec",
+    "examples/specs/algebra.lawspec",
+    "examples/specs/currying.lawspec",
+    "acceptance/integration/specs/predicate_mixed.lawspec"
+  ]
+}

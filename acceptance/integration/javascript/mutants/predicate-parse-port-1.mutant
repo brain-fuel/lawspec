@@ -1,0 +1,10 @@
+expect: expect 
+@@ src/example/parse_port.mjs
+<<<<<<<
+*
+=======
+export const validPort = x => true;
+export function render(x) { if (!validPort(x)) throw new Error("invalid port"); return String(x); }
+export const parse = x => Number(x);
+
+>>>>>>>

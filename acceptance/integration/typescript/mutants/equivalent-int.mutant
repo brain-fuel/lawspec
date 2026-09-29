@@ -1,0 +1,6 @@
+@@ src/example/alternatives.ts
+<<<<<<<
+x < 0 ? 0 : x
+=======
+-1
+>>>>>>>

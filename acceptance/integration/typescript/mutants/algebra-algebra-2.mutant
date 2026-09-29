@@ -1,0 +1,6 @@
+@@ src/example/algebra.ts
+<<<<<<<
+export const add = (x: bigint,y: bigint): bigint => x+y;
+=======
+export const add = (x: bigint,y: bigint): bigint => BigInt.asIntN(32,x+y);
+>>>>>>>

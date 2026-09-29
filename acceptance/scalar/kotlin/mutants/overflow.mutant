@@ -1,0 +1,6 @@
+@@ src/main/kotlin/example/ScalarAdapters.kt
+<<<<<<<
+    fun successor(value0: kotlin.Byte): java.math.BigInteger = java.math.BigInteger.valueOf(value0.toLong() + 1)
+=======
+    fun successor(value0: kotlin.Byte): java.math.BigInteger = java.math.BigInteger.valueOf((value0 + 1).toByte().toLong())
+>>>>>>>

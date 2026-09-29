@@ -1,0 +1,9 @@
+expect: expect 
+expect-any: Hello | https://example.com/path
+@@ src/example/canonical_url.ts
+<<<<<<<
+*
+=======
+export const canonicalize = (x: string) => x.slice(0, 0);
+
+>>>>>>>

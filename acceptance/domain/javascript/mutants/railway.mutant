@@ -1,0 +1,6 @@
+@@ src/example/ordering.mjs
+<<<<<<<
+  if (validated instanceof data.Left) return validated;
+=======
+  if (validated instanceof data.Left) return new data.Left(new data.OrderErrorPriceTooHigh());
+>>>>>>>

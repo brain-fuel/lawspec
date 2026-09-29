@@ -1,0 +1,6 @@
+@@ src/Example/ScalarAdapters.hs
+<<<<<<<
+successor value0 = toInteger value0 + 1
+=======
+successor value0 = toInteger (value0 + 1)
+>>>>>>>

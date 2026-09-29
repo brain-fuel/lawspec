@@ -1,0 +1,6 @@
+@@ src/main/java/example/Algebra.java
+<<<<<<<
+return x.multiply(y);
+=======
+return x.add(y);
+>>>>>>>

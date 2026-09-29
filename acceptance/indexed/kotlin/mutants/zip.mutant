@@ -1,0 +1,6 @@
+@@ src/main/kotlin/example/Indexed.kt
+<<<<<<<
+            Vec.VConsCase(value1.head, zip(value0.tail, value1.tail))
+=======
+            zip(value0.tail, value1.tail)
+>>>>>>>

@@ -1,0 +1,6 @@
+@@ src/example/refinements.mjs
+<<<<<<<
+return [...a].length;
+=======
+return 0;
+>>>>>>>

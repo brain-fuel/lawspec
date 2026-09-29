@@ -1,0 +1,312 @@
+-- Acceptance suites: generate a bundled example for a target in process,
+-- install the suite's native adapters, run the target's own test tool, and
+-- require every mutant to fail its laws at test time.
+--
+--   lawspec-acceptance <suite> [target...]
+--   lawspec-acceptance <suite> --check [target...]   generation only, compare disk
+--   lawspec-acceptance <suite> --no-mutants [target...]  correct adapters only
+--
+-- A suite lives in acceptance/<suite>/:
+--   suite.json                     {"specs": ["examples/specs/x.lawspec", ...],
+--                                    "vectors": "test/scalar-vectors.json",  (optional)
+--                                    "architecture": true}                  (optional)
+--   <target>/files/<path>          adapters replacing generated user-owned stubs
+--   <target>/stubs/<path>          the stub an adapter was written against (optional)
+--   <target>/mutants/<name>.mutant search/replace edits, one mutant per file
+--
+-- With stubs, a regenerated stub that differs fails the suite (review the
+-- adapter's signature), and the bare stub is itself a mutant that must fail.
+-- With architecture, a profile whose width differs from the host must be
+-- rejected by native machine-sized adapters (Go, Haskell, Rust).
+--
+-- LAWSPEC_MACHINE_BITS=32 and LAWSPEC_MINIFY=1 select the profile; output goes
+-- to .artifacts/<suite>[32][-compact]/<target>.
+module Main (main) where
+
+import Control.Exception (finally)
+import Control.Monad (filterM, forM, forM_, unless, when)
+import Data.Aeson
+import qualified Data.Aeson.Key as K
+import qualified Data.Aeson.KeyMap as KM
+import qualified Data.ByteString.Lazy as BL
+import Data.List (isInfixOf, isPrefixOf, isSuffixOf, sort, stripPrefix)
+import Data.Maybe (fromMaybe)
+import qualified Data.Text as T
+import qualified Data.Vector as V
+import System.Directory
+import System.Environment (getArgs, lookupEnv)
+import System.Exit (ExitCode(..), die, exitFailure)
+import System.FilePath ((</>), takeDirectory)
+import System.IO (hPutStrLn, readFile', stderr)
+import System.Process (CreateProcess(..), proc, readCreateProcessWithExitCode)
+import LawSpec.Api (dispatch)
+import LawSpec.Scaffold (scaffoldFiles, scaffoldTargets)
+import Toolchain
+
+data Generated = Generated { generatedPath :: FilePath, generatedContent :: String, generatedOwnership :: String }
+
+-- Each expectation is a set of alternatives, one of which the failing
+-- output must contain (the diagnostic that exposed the mutant).
+data Mutant = Mutant
+  { mutantName :: String, mutantExpect :: [[String]], mutantEdits :: [(FilePath, String, String)] }
+
+main :: IO ()
+main = do
+  args <- getArgs
+  (suite, flags, selected) <- case args of
+    suite : rest -> pure (suite, filter ("--" `isPrefixOf`) rest, filter (not . ("--" `isPrefixOf`)) rest)
+    [] -> die "usage: lawspec-acceptance <suite> [--check | --no-mutants] [target...]"
+  let check = "--check" `elem` flags
+      mutate = "--no-mutants" `notElem` flags
+  bits <- maybe 64 read <$> lookupEnv "LAWSPEC_MACHINE_BITS"
+  minify <- (== Just "1") <$> lookupEnv "LAWSPEC_MINIFY"
+  manifest <- BL.readFile ("acceptance" </> suite </> "suite.json")
+  specs <- case decode manifest >>= list . field "specs" of
+    Just values -> pure [T.unpack s | String s <- values]
+    Nothing -> die ("invalid acceptance/" ++ suite ++ "/suite.json")
+  sources <- forM specs $ \path -> (,) path <$> readFile path
+  vectors <- case field "vectors" <$> decode manifest of
+    Just (String path) -> pure . conformance <$> BL.readFile (T.unpack path)
+    _ -> pure []
+  let architecture = (field "architecture" <$> decode manifest) == Just (Bool True)
+  let targets = if null selected then scaffoldTargets else selected
+      profile = (if bits == 32 then "32" else "") ++ (if minify then "-compact" else "")
+  forM_ targets $ \target -> do
+    let project = ".artifacts" </> (suite ++ profile) </> target
+    generated <- plan (sources ++ vectors) target bits minify
+    if check then checkDisk project generated else do
+      writeProject suite target project (bits == 64 && not minify) minify generated
+      mismatch <- if architecture then architectureMismatch target bits else pure False
+      if mismatch then expectMismatch target bits project
+      else runSuite suite target project mutate
+
+-- Generation goes through the same JSON boundary that core.wasm exports.
+plan :: [(FilePath, String)] -> String -> Int -> Bool -> IO [Generated]
+plan sources target bits minify = do
+  let request = object
+        [ "method" .= ("planGeneration" :: String), "target" .= target, "machineBits" .= bits, "minify" .= minify
+        , "sources" .= [object ["path" .= takeName path, "content" .= content] | (path, content) <- sources] ]
+      response = fromMaybe Null (decode (dispatch (encode request)))
+  case list (field "diagnostics" response) of
+    Just [] -> pure ()
+    _ -> die (target ++ ": generation failed: " ++ show (encode (field "diagnostics" response)))
+  pure [ Generated (text (field "path" f)) (text (field "content" f)) (text (field "ownership" f))
+       | f <- fromMaybe [] (list (field "files" response)) ]
+  where takeName = reverse . takeWhile (/= '/') . reverse
+
+writeProject :: String -> String -> FilePath -> Bool -> Bool -> [Generated] -> IO ()
+writeProject suite target project defaultProfile minify generated = do
+  createDirectoryIfMissing True project
+  forM_ ["src", "test", "tests", "example"] $ \folder -> removePathForcibly (project </> folder)
+  scaffolds <- either die pure (scaffoldFiles minify target)
+  forM_ scaffolds $ \(path, content) -> writeAt (project </> path) content
+  forM_ generated $ \g -> writeAt (project </> generatedPath g) (generatedContent g)
+  adapters <- suiteFiles suite target
+  -- An adapter may only replace a generated user-owned file, so a renamed or
+  -- removed stub cannot leave a stale adapter unnoticed.
+  forM_ adapters $ \(relative, source) -> do
+    unless (relative `elem` [generatedPath g | g <- generated, generatedOwnership g == "user"])
+      (die (target ++ ": adapter " ++ relative ++ " does not replace a generated user-owned file"))
+    readFile source >>= writeAt (project </> relative)
+  -- Stubs depend on the profile, so they are compared in the default one.
+  when defaultProfile $ forM_ adapters $ \(relative, _) -> do
+    let recorded = "acceptance" </> suite </> target </> "stubs" </> relative
+    exists <- doesFileExist recorded
+    when exists $ do
+      expected <- readFile' recorded
+      unless (Just expected == lookup relative [(generatedPath g, generatedContent g) | g <- generated])
+        (die (target ++ ": the generated stub for " ++ relative ++ " changed; review the adapter and update " ++ recorded))
+  root <- getCurrentDirectory
+  when (target `elem` ["javascript", "typescript"]) $ do
+    let link = project </> "node_modules"
+    exists <- doesPathExist link
+    unless exists (createDirectoryLink (root </> ".integration" </> target </> "node_modules") link)
+  when (target == "go") (copyFile "test/locks/go/go.sum" (project </> "go.sum"))
+
+runSuite :: String -> String -> FilePath -> Bool -> IO ()
+runSuite suite target project mutate = do
+  tool <- toolchain project target
+  (code, output) <- runTool tool (arguments tool) project
+  writeFile (project </> "correct.log") output
+  when (code /= ExitSuccess) $ do
+    hPutStrLn stderr (target ++ ": correct adapters failed (see " ++ project </> "correct.log)")
+    exitFailure
+  putStrLn (target ++ ": " ++ suite ++ " passes")
+  mutants <- if mutate then suiteMutants suite target else pure []
+  stubs <- if mutate then suiteStubs suite target else pure []
+  adapters <- suiteFiles suite target
+  let restore = forM_ adapters $ \(relative, source) -> readFile source >>= writeAt (project </> relative)
+  flip finally restore $ forM_ (stubs ++ mutants) $ \mutant -> do
+    restore
+    forM_ (mutantEdits mutant) $ \(relative, search, replacement) -> do
+      unless (relative `elem` map fst adapters)
+        (die (target ++ ": mutant " ++ mutantName mutant ++ " must edit an adapter, not " ++ relative))
+      original <- readFile' (project </> relative)
+      case if search == "*" then Just replacement else replaceOnce search replacement original of
+        Just changed -> writeAt (project </> relative) changed
+        Nothing -> die (target ++ ": mutant " ++ mutantName mutant ++ " does not match " ++ relative)
+    (mutantCode, mutantOutput) <- runTool tool (mutantArguments target (arguments tool)) project
+    writeFile (project </> ("mutant-" ++ mutantName mutant ++ ".log")) mutantOutput
+    when (mutantCode == ExitSuccess) (die (target ++ ": mutant " ++ mutantName mutant ++ " escaped detection"))
+    when (compileFailure mutantOutput)
+      (die (target ++ ": mutant " ++ mutantName mutant ++ " failed to compile (see log)"))
+    forM_ (mutantExpect mutant) $ \alternatives ->
+      unless (any (`isInfixOf` mutantOutput) alternatives)
+        (die (target ++ ": mutant " ++ mutantName mutant ++ " failed without " ++ show alternatives))
+    putStrLn (target ++ ": rejected " ++ mutantName mutant)
+
+-- Regenerate without running anything and compare with the files on disk.
+checkDisk :: FilePath -> [Generated] -> IO ()
+checkDisk project generated = do
+  -- User-owned files hold adapters, so only compiler-owned output is compared.
+  stale <- filterM (\g -> do
+    let path = project </> generatedPath g
+    exists <- doesFileExist path
+    if exists then (/= generatedContent g) <$> readFile' path else pure True)
+    [g | g <- generated, generatedOwnership g /= "user"]
+  unless (null stale) (die ("stale generated files: " ++ unwords (map generatedPath stale)))
+  putStrLn (project ++ ": generated files match")
+
+runTool :: Toolchain -> [String] -> FilePath -> IO (ExitCode, String)
+runTool tool args project = do
+  prepare tool
+  (code, out, err) <- readCreateProcessWithExitCode (proc (command tool) args) { cwd = Just project } ""
+  extra <- report tool
+  pure (code, out ++ err ++ extra)
+
+suiteFiles :: String -> String -> IO [(FilePath, FilePath)]
+suiteFiles suite target = do
+  let base = "acceptance" </> suite </> target </> "files"
+  exists <- doesDirectoryExist base
+  if not exists then pure [] else map (\path -> (dropBase base path, path)) <$> walk base
+  where dropBase base path = fromMaybe path (stripPrefix (base ++ "/") path)
+
+-- The generated stub replaces the adapter wholesale: unimplemented functions
+-- must fail the laws rather than pass vacuously.
+suiteStubs :: String -> String -> IO [Mutant]
+suiteStubs suite target = do
+  let base = "acceptance" </> suite </> target </> "stubs"
+  exists <- doesDirectoryExist base
+  stubs <- if exists then walk base else pure []
+  adapters <- suiteFiles suite target
+  edits <- forM stubs $ \path -> do
+    let relative = fromMaybe path (stripPrefix (base ++ "/") path)
+    source <- maybe (die (path ++ ": no adapter for this stub")) pure (lookup relative adapters)
+    (,,) relative <$> readFile' source <*> readFile' path
+  pure [Mutant "stub" [] edits | not (null edits)]
+
+-- The conformance unit checks every shared scalar vector as a law.
+conformance :: BL.ByteString -> (FilePath, String)
+conformance bytes = ("conformance.lawspec", unlines ("unit conformance" :
+  [ "law `vector " ++ show i ++ "` is definition is `for all` (marker :: Unit) . " ++
+      text (field "expression" v) ++ " = " ++ text (field "expected" v) ++ " end end"
+  | (i, v) <- zip [0 :: Int ..] (fromMaybe [] (decode bytes >>= list)) ]))
+
+-- Machine-sized native adapters check the executing architecture. The width
+-- of the host comes from the toolchain that will run the tests.
+architectureMismatch :: String -> Int -> IO Bool
+architectureMismatch target bits
+  | target `notElem` ["go", "haskell", "rust"] = pure False
+  | otherwise = (/= bits) <$> nativeBits
+  where
+    nativeBits = case target of
+      "rust" -> do
+        cross <- lookupEnv "CARGO_BUILD_TARGET"
+        (_, out, _) <- readCreateProcessWithExitCode
+          (proc "rustc" (["--print", "cfg"] ++ maybe [] (\t -> ["--target", t]) cross)) ""
+        pure (if "target_pointer_width=\"32\"" `elem` lines out then 32 else 64)
+      "go" -> (\arch -> if arch == Just "386" then 32 else 64) <$> lookupEnv "GOARCH"
+      _ -> pure 64
+
+expectMismatch :: String -> Int -> FilePath -> IO ()
+expectMismatch target bits project = do
+  tool <- toolchain project target
+  (code, output) <- runTool tool (arguments tool) project
+  writeFile (project </> "architecture-mismatch.log") output
+  when (code == ExitSuccess || not ("machineBits does not match native architecture" `isInfixOf` output))
+    (die (target ++ ": missing architecture mismatch diagnostic"))
+  putStrLn (target ++ ": " ++ show bits ++ "-bit profile rejected for the native machine adapter")
+
+suiteMutants :: String -> String -> IO [Mutant]
+suiteMutants suite target = do
+  let base = "acceptance" </> suite </> target </> "mutants"
+  exists <- doesDirectoryExist base
+  names <- if exists then sort . filter (".mutant" `isSuffixOf`) <$> listDirectory base else pure []
+  forM names $ \name -> do
+    content <- readFile' (base </> name)
+    (expectations, edits) <- either (die . ((base </> name ++ ": ") ++)) pure (parseMutant content)
+    pure (Mutant (take (length name - length (".mutant" :: String)) name) expectations edits)
+
+-- expect: <text the failing output must contain>        (optional, repeatable)
+-- expect-any: <alternative> | <alternative>            (optional, repeatable)
+-- @@ <path>
+-- <<<<<<<
+-- text to find (exactly once), or * to replace the whole file
+-- =======
+-- replacement
+-- >>>>>>>
+parseMutant :: String -> Either String ([[String]], [(FilePath, String, String)])
+parseMutant content = do
+  let (header, body) = span (not . ("@@ " `isPrefixOf`)) (lines content)
+  expectations <- mapM expectation (filter (not . all (== ' ')) header)
+  edits <- go Nothing body
+  pure (expectations, edits)
+  where
+    expectation line
+      | Just text' <- stripPrefix "expect: " line = Right [text']
+      | Just alternatives <- stripPrefix "expect-any: " line = Right (splitOn " | " alternatives)
+      | otherwise = Left ("unexpected header line: " ++ line)
+    splitOn separator = go' ""
+      where go' current [] = [reverse current]
+            go' current rest@(c : cs)
+              | separator `isPrefixOf` rest = reverse current : go' "" (drop (length separator) rest)
+              | otherwise = go' (c : current) cs
+    go _ [] = Right []
+    go _ (line : rest) | Just path <- stripPrefix "@@ " line = go (Just path) rest
+    go (Just path) ("<<<<<<<" : rest) = do
+      let (search, afterSearch) = break (== "=======") rest
+      (replacement, afterReplacement) <- case afterSearch of
+        _ : more -> Right (break (== ">>>>>>>") more)
+        [] -> Left "missing ======="
+      remaining <- case afterReplacement of
+        _ : more -> Right more
+        [] -> Left "missing >>>>>>>"
+      ((path, joined search, joined replacement) :) <$> go (Just path) remaining
+    go path (line : rest) | all (== ' ') line = go path rest
+    go _ (line : _) = Left ("unexpected line: " ++ line)
+    joined = foldr1' (\a b -> a ++ "\n" ++ b)
+    foldr1' _ [] = ""
+    foldr1' f xs = foldr1 f xs
+
+replaceOnce :: String -> String -> String -> Maybe String
+replaceOnce search replacement = go ""
+  where
+    go _ [] = Nothing
+    go before rest@(c : cs)
+      | search `isPrefixOf` rest = Just (reverse before ++ replacement ++ drop (length search) rest)
+      | otherwise = go (c : before) cs
+
+walk :: FilePath -> IO [FilePath]
+walk dir = do
+  entries <- sort <$> listDirectory dir
+  concat <$> forM entries (\entry -> do
+    let path = dir </> entry
+    isDirectory <- doesDirectoryExist path
+    if isDirectory then walk path else pure [path])
+
+writeAt :: FilePath -> String -> IO ()
+writeAt path content = do
+  createDirectoryIfMissing True (takeDirectory path)
+  writeFile path content
+
+field :: String -> Value -> Value
+field name (Object o) = fromMaybe Null (KM.lookup (K.fromString name) o)
+field _ _ = Null
+
+list :: Value -> Maybe [Value]
+list (Array a) = Just (V.toList a)
+list _ = Nothing
+
+text :: Value -> String
+text (String s) = T.unpack s
+text _ = ""

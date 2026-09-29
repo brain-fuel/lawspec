@@ -1,0 +1,6 @@
+@@ src/example/scalar_adapters.mjs
+<<<<<<<
+  return ls.binary('+', value0, value1, 'Decimal', 'Decimal');
+=======
+  return ls.helper('round',[ls.binary('+',value0,value1,'Decimal','Decimal'),0],['Decimal','Int32']);
+>>>>>>>

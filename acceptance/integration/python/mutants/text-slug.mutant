@@ -1,0 +1,6 @@
+@@ src/example/slug.py
+<<<<<<<
+"-".join(x.split(" "))
+=======
+x
+>>>>>>>

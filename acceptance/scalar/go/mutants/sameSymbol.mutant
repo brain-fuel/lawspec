@@ -1,0 +1,6 @@
+@@ example/scalar_adapters/adapter.go
+<<<<<<<
+	return lsEqual(value0, value1)
+=======
+	return value0.Data.(*lawSpecSymbol).description == value1.Data.(*lawSpecSymbol).description
+>>>>>>>

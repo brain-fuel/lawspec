@@ -1,0 +1,6 @@
+@@ src/example/slug.rs
+<<<<<<<
+x.split(' ').collect::<Vec<_>>().join("-")
+=======
+x
+>>>>>>>

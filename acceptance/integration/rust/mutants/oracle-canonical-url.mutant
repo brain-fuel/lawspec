@@ -1,0 +1,9 @@
+expect: expect 
+expect-any: Hello | https://example.com/path
+@@ src/example/canonical_url.rs
+<<<<<<<
+*
+=======
+pub fn canonicalize(x:String)->String {String::new()}
+
+>>>>>>>

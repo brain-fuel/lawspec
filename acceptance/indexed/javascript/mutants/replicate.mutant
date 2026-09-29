@@ -1,0 +1,6 @@
+@@ src/example/indexed.mjs
+<<<<<<<
+  for (let i = 0n; i < BigInt(value0); i++) result = new data.VecVCons(value1, result);
+=======
+  for (let i = 0n; i <= BigInt(value0); i++) result = new data.VecVCons(value1, result);
+>>>>>>>

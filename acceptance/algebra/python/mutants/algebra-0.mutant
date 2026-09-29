@@ -1,0 +1,6 @@
+@@ src/example/algebra.py
+<<<<<<<
+return x*y
+=======
+return x+y
+>>>>>>>

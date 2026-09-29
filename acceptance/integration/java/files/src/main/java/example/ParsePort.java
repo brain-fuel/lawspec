@@ -1,0 +1,6 @@
+package example;
+public final class ParsePort {
+ public static boolean validPort(int x) { return x >= 1 && x <= 65535; }
+ public static String render(int x) { if (!validPort(x)) throw new IllegalArgumentException("invalid port"); return Integer.toString(x); }
+ public static int parse(String x) { return Integer.parseInt(x); }
+}

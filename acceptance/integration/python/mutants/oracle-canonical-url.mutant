@@ -1,0 +1,10 @@
+expect: expect 
+expect-any: Hello | https://example.com/path
+@@ src/example/canonical_url.py
+<<<<<<<
+*
+=======
+def canonicalize(x: str) -> str:
+    return x[:0]
+
+>>>>>>>

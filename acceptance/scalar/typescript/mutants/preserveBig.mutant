@@ -1,0 +1,8 @@
+@@ src/example/scalar_adapters.ts
+<<<<<<<
+export function preserveBig(value0: bigint): bigint {
+  return value0;
+=======
+export function preserveBig(value0: bigint): bigint {
+  return BigInt(Number(value0));
+>>>>>>>

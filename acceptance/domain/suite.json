@@ -1,0 +1,5 @@
+{
+  "specs": [
+    "examples/specs/domain_modeling.lawspec"
+  ]
+}

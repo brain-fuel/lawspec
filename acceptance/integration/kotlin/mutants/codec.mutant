@@ -1,0 +1,6 @@
+@@ src/main/kotlin/example/AtoiCodec.kt
+<<<<<<<
+value.toInt()
+=======
+0
+>>>>>>>

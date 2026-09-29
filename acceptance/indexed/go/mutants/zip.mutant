@@ -1,0 +1,6 @@
+@@ example/indexed/adapter.go
+<<<<<<<
+	return VecVCons[bool]{Head: b.Head, Tail: Zip(a.Tail, b.Tail)}
+=======
+	return Zip(a.Tail, b.Tail)
+>>>>>>>

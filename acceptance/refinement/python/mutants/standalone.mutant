@@ -1,0 +1,6 @@
+@@ src/example/refinements.py
+<<<<<<<
+return len(value0)
+=======
+return 0
+>>>>>>>

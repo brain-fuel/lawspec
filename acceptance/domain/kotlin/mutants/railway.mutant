@@ -1,0 +1,6 @@
+@@ src/main/kotlin/example/Ordering.kt
+<<<<<<<
+        if (validated is LawSpecRuntime.Left) return LawSpecRuntime.Left(validated.value())
+=======
+        if (validated is LawSpecRuntime.Left) return LawSpecRuntime.Left(OrderError.PriceTooHighCase())
+>>>>>>>

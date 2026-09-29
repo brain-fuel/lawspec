@@ -1,0 +1,6 @@
+@@ src/example/scalar_adapters.rs
+<<<<<<<
+    value0.add(&value1).unwrap()
+=======
+    ls::Decimal::round(value0.ratio().unwrap() + value1.ratio().unwrap(), 0).unwrap()
+>>>>>>>

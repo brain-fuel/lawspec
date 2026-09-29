@@ -1,0 +1,6 @@
+@@ src/example/ordering.py
+<<<<<<<
+    return value0.value[0]
+=======
+    return value0.value[-1]
+>>>>>>>

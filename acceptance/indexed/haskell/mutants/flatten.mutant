@@ -1,0 +1,6 @@
+@@ src/Example/Indexed.hs
+<<<<<<<
+  append (flatten left) (Data.VecVCons value (flatten right))
+=======
+  append (flatten left) (Data.VecVCons value Data.VecVNil)
+>>>>>>>

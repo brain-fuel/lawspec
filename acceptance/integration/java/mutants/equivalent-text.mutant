@@ -1,0 +1,6 @@
+@@ src/main/java/example/Alternatives.java
+<<<<<<<
+String.valueOf(x)
+=======
+"broken"
+>>>>>>>

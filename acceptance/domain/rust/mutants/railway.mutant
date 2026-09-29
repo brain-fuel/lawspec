@@ -1,0 +1,6 @@
+@@ src/example/ordering.rs
+<<<<<<<
+        ls::Either::Left(failure) => ls::Either::Left(failure),
+=======
+        ls::Either::Left(_) => ls::Either::Left(OrderError::PriceTooHigh),
+>>>>>>>

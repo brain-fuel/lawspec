@@ -1,0 +1,13 @@
+expect: expect 
+expect-any: Hello | https://example.com/path
+@@ src/Example/CanonicalUrl.hs
+<<<<<<<
+*
+=======
+module Example.CanonicalUrl where
+import Data.Text (Text)
+import qualified Data.Text as T
+canonicalize :: Text -> Text
+canonicalize = T.take 0
+
+>>>>>>>

@@ -1,0 +1,6 @@
+@@ src/Example/Refinements.hs
+<<<<<<<
+integerValue (toInteger a+toInteger b)
+=======
+integerValue (a+b)
+>>>>>>>

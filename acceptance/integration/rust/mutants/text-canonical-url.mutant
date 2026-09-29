@@ -1,0 +1,6 @@
+@@ src/example/canonical_url.rs
+<<<<<<<
+x.trim_end_matches('/').to_owned()
+=======
+x.strip_suffix('/').unwrap_or(&x).to_owned()
+>>>>>>>

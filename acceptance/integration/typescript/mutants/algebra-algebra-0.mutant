@@ -1,0 +1,6 @@
+@@ src/example/algebra.ts
+<<<<<<<
+=> x*y;
+=======
+=> x+y;
+>>>>>>>

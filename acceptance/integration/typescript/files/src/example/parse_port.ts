@@ -1,0 +1,3 @@
+export const validPort = (x: number): boolean => x >= 1 && x <= 65535;
+export function render(x: number): string { if (!validPort(x)) throw new Error("invalid port"); return String(x); }
+export const parse = (x: string): number => Number(x);

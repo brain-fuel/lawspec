@@ -1,0 +1,8 @@
+@@ src/main/java/example/ScalarAdapters.java
+<<<<<<<
+    return LawSpecRuntime.equal(value0, value1);
+  }
+=======
+    return ((LawSpecRuntime.SymbolValue)value0.data()).description().equals(((LawSpecRuntime.SymbolValue)value1.data()).description());
+}
+>>>>>>>

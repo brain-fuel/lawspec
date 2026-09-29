@@ -1,0 +1,6 @@
+@@ src/main/java/example/Indexed.java
+<<<<<<<
+    return new Vec.VConsCase<>(cons.head, append(cons.tail, value1));
+=======
+    return append(cons.tail, value1);
+>>>>>>>

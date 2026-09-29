@@ -1,0 +1,1 @@
+package example; public class BooleanFlags { public static boolean flipFlag(boolean x) { return !x; } }

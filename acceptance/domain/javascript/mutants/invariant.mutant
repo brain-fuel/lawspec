@@ -1,0 +1,6 @@
+@@ src/example/ordering.mjs
+<<<<<<<
+  if (!(value0.quantity >= 1 && value0.quantity <= 1000)) return new data.Left(new data.OrderErrorInvalidQuantity());
+=======
+  if (!(value0.quantity >= 0 && value0.quantity <= 1000)) return new data.Left(new data.OrderErrorInvalidQuantity());
+>>>>>>>

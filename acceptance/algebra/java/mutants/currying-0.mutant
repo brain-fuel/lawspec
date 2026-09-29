@@ -1,0 +1,6 @@
+@@ src/main/java/example/Currying.java
+<<<<<<<
+return a.add(b).add(c).add(d);
+=======
+return a.add(b).add(c).subtract(d);
+>>>>>>>

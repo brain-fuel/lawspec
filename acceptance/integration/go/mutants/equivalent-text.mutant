@@ -1,0 +1,6 @@
+@@ example/alternatives/adapter.go
+<<<<<<<
+fmt.Sprintf("%d", x)
+=======
+fmt.Sprintf("broken%d", x)
+>>>>>>>

@@ -1,0 +1,6 @@
+@@ src/main/kotlin/example/ScalarAdapters.kt
+<<<<<<<
+        value0.add(value1)
+=======
+        value0.add(value1,java.math.MathContext(3))
+>>>>>>>

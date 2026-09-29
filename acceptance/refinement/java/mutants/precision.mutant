@@ -1,0 +1,6 @@
+@@ src/main/java/example/Refinements.java
+<<<<<<<
+preserve(java.math.BigInteger a){return a;}
+=======
+preserve(java.math.BigInteger a){return a.doubleValue();}
+>>>>>>>

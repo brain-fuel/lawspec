@@ -1,0 +1,6 @@
+@@ src/main/kotlin/example/Currying.kt
+<<<<<<<
+a+b+c+d
+=======
+a+b+c-d
+>>>>>>>

@@ -1,0 +1,6 @@
+@@ src/main/kotlin/example/Refinements.kt
+<<<<<<<
+Number=a.codePointCount(0,a.length)
+=======
+Number=0
+>>>>>>>

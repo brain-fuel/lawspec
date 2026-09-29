@@ -1,0 +1,6 @@
+@@ example/alternatives/adapter.go
+<<<<<<<
+if x < 0 { return 0 }; return x
+=======
+return -1
+>>>>>>>

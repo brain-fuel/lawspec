@@ -1,0 +1,8 @@
+@@ src/example/scalar_adapters.ts
+<<<<<<<
+): data.Presence<data.Presence<number>> {
+  return value0;
+=======
+): data.Presence<data.Presence<number>> {
+  return new data.Presence<data.Presence<number>>('Optional', false);
+>>>>>>>

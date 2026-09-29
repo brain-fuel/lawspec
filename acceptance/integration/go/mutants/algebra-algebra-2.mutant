@@ -1,0 +1,6 @@
+@@ example/algebra/adapter.go
+<<<<<<<
+func Add(x,y *LawSpecBigInt) any {return new(LawSpecBigInt).Add(x,y)}
+=======
+func Add(x,y *LawSpecBigInt) any {return int32(new(LawSpecBigInt).Add(x,y).Int64())}
+>>>>>>>

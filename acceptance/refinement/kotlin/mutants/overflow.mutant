@@ -1,0 +1,6 @@
+@@ src/main/kotlin/example/Refinements.kt
+<<<<<<<
+Number=a.toInt()+b.toInt()
+=======
+Number=(a.toInt()+b.toInt()).toByte()
+>>>>>>>

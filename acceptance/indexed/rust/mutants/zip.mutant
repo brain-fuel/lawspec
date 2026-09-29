@@ -1,0 +1,6 @@
+@@ src/example/indexed.rs
+<<<<<<<
+        (Vec::VCons { tail: a, .. }, Vec::VCons { head, tail: b }) => Vec::VCons { head, tail: Box::new(zip(*a, *b)) },
+=======
+        (Vec::VCons { tail: a, .. }, Vec::VCons { head, tail: b }) => zip(*a, *b),
+>>>>>>>

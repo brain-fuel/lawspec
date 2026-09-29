@@ -1,0 +1,12 @@
+expect: expect 
+expect-any: Hello | https://example.com/path
+@@ src/example/slug.py
+<<<<<<<
+*
+=======
+def normalize(x: str) -> str:
+    return x
+def referenceNormalize(x: str) -> str:
+    return x
+
+>>>>>>>

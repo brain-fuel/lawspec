@@ -1,0 +1,10 @@
+expect: expect 
+@@ src/Example/BooleanFlags.hs
+<<<<<<<
+*
+=======
+module Example.BooleanFlags where
+flipFlag :: Bool -> Bool
+flipFlag = id
+
+>>>>>>>

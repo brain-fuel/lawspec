@@ -1,0 +1,9 @@
+expect: expect 
+@@ example/boolean_flags/adapter.go
+<<<<<<<
+*
+=======
+package boolean_flags
+func FlipFlag(x bool) bool { return x }
+
+>>>>>>>

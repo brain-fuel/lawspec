@@ -1,0 +1,6 @@
+@@ src/example/refinements.ts
+<<<<<<<
+return [...a].length;
+=======
+return 0;
+>>>>>>>

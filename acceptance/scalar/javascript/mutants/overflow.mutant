@@ -1,0 +1,6 @@
+@@ src/example/scalar_adapters.mjs
+<<<<<<<
+  return BigInt(value0) + 1n;
+=======
+  return BigInt((value0 + 1) << 24 >> 24);
+>>>>>>>

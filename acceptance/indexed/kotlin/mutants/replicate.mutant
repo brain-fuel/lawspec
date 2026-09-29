@@ -1,0 +1,6 @@
+@@ src/main/kotlin/example/Indexed.kt
+<<<<<<<
+        while (i < value0) {
+=======
+        while (i <= value0) {
+>>>>>>>

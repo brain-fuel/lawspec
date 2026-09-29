@@ -1,0 +1,7 @@
+@@ example/ordering/adapter.go
+<<<<<<<
+		return LawSpecLeft[OrderError, PricedOrder](failure)
+=======
+		_ = failure
+		return LawSpecLeft[OrderError, PricedOrder](OrderErrorPriceTooHigh{})
+>>>>>>>

@@ -1,0 +1,12 @@
+expect: expect 
+expect-any: Hello | https://example.com/path
+@@ src/main/kotlin/example/CanonicalUrl.kt
+<<<<<<<
+*
+=======
+package example
+object CanonicalUrl {
+fun canonicalize(x: String): String = x.take(0)
+}
+
+>>>>>>>

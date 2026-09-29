@@ -1,0 +1,6 @@
+@@ src/example/scalar_adapters.mjs
+<<<<<<<
+  return value0 === value1;
+=======
+  return value0.description === value1.description;
+>>>>>>>

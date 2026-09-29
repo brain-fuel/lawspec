@@ -1,0 +1,8 @@
+expect: expect 
+@@ src/example/boolean_flags.mjs
+<<<<<<<
+*
+=======
+export const flipFlag = x => x;
+
+>>>>>>>

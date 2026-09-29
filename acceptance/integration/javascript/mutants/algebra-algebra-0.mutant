@@ -1,0 +1,6 @@
+@@ src/example/algebra.mjs
+<<<<<<<
+=> x*y;
+=======
+=> x+y;
+>>>>>>>

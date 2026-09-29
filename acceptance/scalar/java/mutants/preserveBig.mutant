@@ -1,0 +1,10 @@
+@@ src/main/java/example/ScalarAdapters.java
+<<<<<<<
+  public static java.math.BigInteger preserveBig(java.math.BigInteger value0) {
+    return value0;
+  }
+=======
+  public static java.math.BigInteger preserveBig(java.math.BigInteger value0) {
+    return java.math.BigInteger.valueOf((long)value0.doubleValue());
+}
+>>>>>>>

@@ -1,0 +1,6 @@
+{
+  "specs": [
+    "examples/specs/algebra.lawspec",
+    "examples/specs/currying.lawspec"
+  ]
+}

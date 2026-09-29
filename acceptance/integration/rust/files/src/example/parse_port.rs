@@ -1,0 +1,4 @@
+#![allow(non_snake_case)]
+pub fn validPort(x:i32)->bool {x>=1 && x<=65535}
+pub fn render(x:i32)->String {assert!(validPort(x),"invalid port"); x.to_string()}
+pub fn parse(x:String)->i32 {x.parse().unwrap()}

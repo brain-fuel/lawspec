@@ -1,0 +1,8 @@
+@@ src/example/scalar_adapters.mjs
+<<<<<<<
+export function echoPresence(value0) {
+  return value0;
+=======
+export function echoPresence(value0) {
+  return new ls.Presence('Optional',false);
+>>>>>>>

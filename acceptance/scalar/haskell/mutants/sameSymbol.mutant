@@ -1,0 +1,6 @@
+@@ src/Example/ScalarAdapters.hs
+<<<<<<<
+sameSymbol value0 value1 = value0 == value1
+=======
+sameSymbol value0 value1 = let { d (LS.Symbol _ x) = x; d (LS.ScopedSymbol _ _ x) = x } in d value0 == d value1
+>>>>>>>

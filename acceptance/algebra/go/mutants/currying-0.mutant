@@ -1,0 +1,6 @@
+@@ example/currying/adapter.go
+<<<<<<<
+return new(LawSpecBigInt).Add(new(LawSpecBigInt).Add(new(LawSpecBigInt).Add(a,b),c),d)
+=======
+return new(LawSpecBigInt).Sub(new(LawSpecBigInt).Add(new(LawSpecBigInt).Add(a,b),c),d)
+>>>>>>>

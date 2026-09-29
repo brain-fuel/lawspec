@@ -1,0 +1,6 @@
+@@ src/example/refinements.ts
+<<<<<<<
+function preserve(a:bigint):number|bigint{return a;}
+=======
+function preserve(a:bigint):number|bigint{return Number(a);}
+>>>>>>>

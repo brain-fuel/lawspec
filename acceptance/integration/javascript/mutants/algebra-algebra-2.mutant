@@ -1,0 +1,6 @@
+@@ src/example/algebra.mjs
+<<<<<<<
+export const add = (x,y) => x+y;
+=======
+export const add = (x,y) => BigInt.asIntN(32,x+y);
+>>>>>>>

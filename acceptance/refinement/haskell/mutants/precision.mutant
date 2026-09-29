@@ -1,0 +1,6 @@
+@@ src/Example/Refinements.hs
+<<<<<<<
+preserve = integerValue
+=======
+preserve a = integerValue (round (fromIntegral a :: Double) :: Integer)
+>>>>>>>

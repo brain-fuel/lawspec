@@ -1,0 +1,6 @@
+@@ example/refinements/adapter.go
+<<<<<<<
+return utf8.RuneCountInString(a)
+=======
+return utf8.RuneCountInString(a)-utf8.RuneCountInString(a)
+>>>>>>>

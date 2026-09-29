@@ -1,0 +1,11 @@
+expect: expect 
+@@ src/example/parse_port.rs
+<<<<<<<
+*
+=======
+#![allow(non_snake_case)]
+pub fn validPort(x:i32)->bool {true}
+pub fn render(x:i32)->String {assert!(validPort(x),"invalid port"); x.to_string()}
+pub fn parse(x:String)->i32 {x.parse().unwrap()}
+
+>>>>>>>

@@ -1,0 +1,6 @@
+@@ example/algebra/adapter.go
+<<<<<<<
+return new(LawSpecBigInt).Mul(x,y)
+=======
+return new(LawSpecBigInt).Add(x,y)
+>>>>>>>

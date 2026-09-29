@@ -1,0 +1,2 @@
+package example;
+public final class Refinements { public static Number add(byte a,byte b){return (int)a+b;} public static Number successor(byte a){return (int)a+1;} public static Number count(String a){return a.codePointCount(0,a.length());} public static Number preserve(java.math.BigInteger a){return a;} public static byte positive(byte a){return a;} public static Number abstractEcho(java.math.BigInteger a){return a;} }

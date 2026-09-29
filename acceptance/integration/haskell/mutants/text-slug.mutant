@@ -1,0 +1,6 @@
+@@ src/Example/Slug.hs
+<<<<<<<
+T.map (\c -> if c == ' ' then '-' else c)
+=======
+id
+>>>>>>>

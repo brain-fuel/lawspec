@@ -1,0 +1,6 @@
+@@ src/main/java/example/Alternatives.java
+<<<<<<<
+x < 0 ? 0 : x
+=======
+-1
+>>>>>>>

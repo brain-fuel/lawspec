@@ -1,0 +1,8 @@
+@@ src/example/scalar_adapters.ts
+<<<<<<<
+export function echoRaw(value0: unknown): unknown {
+  return value0;
+=======
+export function echoRaw(value0: unknown): unknown {
+  return new ls.Raw('Utf16Text',[65533]);
+>>>>>>>

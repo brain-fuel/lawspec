@@ -1,0 +1,6 @@
+@@ src/example/alternatives.ts
+<<<<<<<
+x.toString(10)
+=======
+"broken"
+>>>>>>>

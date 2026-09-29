@@ -1,0 +1,6 @@
+@@ src/example/refinements.rs
+<<<<<<<
+(i16::from(a)+i16::from(b)).into()
+=======
+a.wrapping_add(b).into()
+>>>>>>>

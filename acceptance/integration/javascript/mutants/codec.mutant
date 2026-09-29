@@ -1,0 +1,6 @@
+@@ src/example/atoi_codec.mjs
+<<<<<<<
+Number(value)
+=======
+0
+>>>>>>>

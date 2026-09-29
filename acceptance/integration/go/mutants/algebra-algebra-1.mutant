@@ -1,0 +1,6 @@
+@@ example/algebra/adapter.go
+<<<<<<<
+func DivideRight(x,y *LawSpecBigInt) any {return new(LawSpecBigInt).Add(x,y)}
+=======
+func DivideRight(x,y *LawSpecBigInt) any {return new(LawSpecBigInt).Sub(x,y)}
+>>>>>>>

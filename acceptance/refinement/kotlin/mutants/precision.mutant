@@ -1,0 +1,6 @@
+@@ src/main/kotlin/example/Refinements.kt
+<<<<<<<
+preserve(a:java.math.BigInteger):Number=a;
+=======
+preserve(a:java.math.BigInteger):Number=a.toDouble();
+>>>>>>>

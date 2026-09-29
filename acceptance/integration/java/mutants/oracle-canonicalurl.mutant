@@ -1,0 +1,10 @@
+expect: expect 
+expect-any: Hello | https://example.com/path
+@@ src/main/java/example/CanonicalUrl.java
+<<<<<<<
+*
+=======
+package example; public class CanonicalUrl {
+public static String canonicalize(String x) { return x.substring(0, 0); }
+}
+>>>>>>>

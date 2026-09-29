@@ -1,0 +1,6 @@
+@@ src/Example/Ordering.hs
+<<<<<<<
+firstLine (Data.NonEmptyListNonEmptyList values) = head values
+=======
+firstLine (Data.NonEmptyListNonEmptyList values) = last values
+>>>>>>>

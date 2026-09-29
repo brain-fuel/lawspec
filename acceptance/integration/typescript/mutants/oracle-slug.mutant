@@ -1,0 +1,10 @@
+expect: expect 
+expect-any: Hello | https://example.com/path
+@@ src/example/slug.ts
+<<<<<<<
+*
+=======
+export const normalize = (x: string) => x;
+export const referenceNormalize = (x: string) => x;
+
+>>>>>>>

@@ -1,0 +1,10 @@
+module Example.ParsePort where
+import Data.Int (Int32)
+import Data.Text (Text)
+import qualified Data.Text as T
+validPort :: Int32 -> Bool
+validPort x = x >= 1 && x <= 65535
+render :: Int32 -> Text
+render x = if validPort x then T.pack (show x) else error "invalid port"
+parse :: Text -> Int32
+parse = read . T.unpack

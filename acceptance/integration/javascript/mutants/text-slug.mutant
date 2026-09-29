@@ -1,0 +1,6 @@
+@@ src/example/slug.mjs
+<<<<<<<
+x.split(" ").join("-")
+=======
+x
+>>>>>>>

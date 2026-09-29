@@ -1,0 +1,6 @@
+@@ src/example/ordering.rs
+<<<<<<<
+    if !(quantity >= 1 && quantity <= 1000) {
+=======
+    if !(quantity >= 0 && quantity <= 1000) {
+>>>>>>>

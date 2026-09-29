@@ -1,0 +1,6 @@
+@@ src/main/java/example/ScalarAdapters.java
+<<<<<<<
+    return java.math.BigInteger.valueOf(value0).add(java.math.BigInteger.ONE);
+=======
+    return java.math.BigInteger.valueOf((byte)(value0 + 1));
+>>>>>>>

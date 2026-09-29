@@ -1,0 +1,6 @@
+@@ src/Example/CanonicalUrl.hs
+<<<<<<<
+T.dropWhileEnd (== '/')
+=======
+T.dropEnd 1
+>>>>>>>

@@ -1,0 +1,6 @@
+@@ src/example/indexed.rs
+<<<<<<<
+    while count > ls::BigInt::from(0) {
+=======
+    while count >= ls::BigInt::from(0) {
+>>>>>>>

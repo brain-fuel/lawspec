@@ -1,0 +1,8 @@
+@@ src/example/scalar_adapters.mjs
+<<<<<<<
+export function preserveBig(value0) {
+  return value0;
+=======
+export function preserveBig(value0) {
+  return BigInt(Number(value0));
+>>>>>>>

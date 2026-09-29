@@ -1,0 +1,6 @@
+@@ src/Example/Indexed.hs
+<<<<<<<
+append (Data.VecVCons x xs) ys = Data.VecVCons x (append xs ys)
+=======
+append (Data.VecVCons _ xs) ys = append xs ys
+>>>>>>>

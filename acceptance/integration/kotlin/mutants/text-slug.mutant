@@ -1,0 +1,6 @@
+@@ src/main/kotlin/example/Slug.kt
+<<<<<<<
+x.replace(' ', '-')
+=======
+x
+>>>>>>>

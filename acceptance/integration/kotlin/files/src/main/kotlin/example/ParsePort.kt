@@ -1,0 +1,6 @@
+package example
+object ParsePort {
+fun validPort(x: Int): Boolean = x >= 1 && x <= 65535
+fun render(x: Int): String { require(validPort(x)); return x.toString() }
+fun parse(x: String): Int = x.toInt()
+}

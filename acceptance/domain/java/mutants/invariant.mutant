@@ -1,0 +1,6 @@
+@@ src/main/java/example/Ordering.java
+<<<<<<<
+    if (!(input.quantity >= 1 && input.quantity <= 1000)) {
+=======
+    if (!(input.quantity >= 0 && input.quantity <= 1000)) {
+>>>>>>>

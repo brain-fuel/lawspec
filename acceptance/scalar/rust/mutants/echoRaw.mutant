@@ -1,0 +1,8 @@
+@@ src/example/scalar_adapters.rs
+<<<<<<<
+pub fn echoRaw(value0: ls::Utf16Text) -> ls::Utf16Text {
+    value0
+=======
+pub fn echoRaw(value0: ls::Utf16Text) -> ls::Utf16Text {
+    ls::Utf16Text(vec![65533])
+>>>>>>>

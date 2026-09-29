@@ -1,0 +1,6 @@
+@@ src/main/kotlin/example/CanonicalUrl.kt
+<<<<<<<
+x.trimEnd('/')
+=======
+x.removeSuffix("/")
+>>>>>>>

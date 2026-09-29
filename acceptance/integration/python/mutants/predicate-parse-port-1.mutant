@@ -1,0 +1,15 @@
+expect: expect 
+@@ src/example/parse_port.py
+<<<<<<<
+*
+=======
+def validPort(x: int) -> bool:
+    return True
+def render(x: int) -> str:
+    if not validPort(x):
+        raise ValueError("invalid port")
+    return str(x)
+def parse(x: str) -> int:
+    return int(x)
+
+>>>>>>>

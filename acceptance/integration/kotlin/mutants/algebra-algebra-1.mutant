@@ -1,0 +1,6 @@
+@@ src/main/kotlin/example/Algebra.kt
+<<<<<<<
+fun divideRight(x: BigInteger,y: BigInteger): Number = x+y
+=======
+fun divideRight(x: BigInteger,y: BigInteger): Number = x-y
+>>>>>>>

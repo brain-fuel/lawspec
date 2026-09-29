@@ -1,0 +1,6 @@
+@@ example/ordering/adapter.go
+<<<<<<<
+	if !(input.Quantity >= 1 && input.Quantity <= 1000) {
+=======
+	if !(input.Quantity >= 0 && input.Quantity <= 1000) {
+>>>>>>>

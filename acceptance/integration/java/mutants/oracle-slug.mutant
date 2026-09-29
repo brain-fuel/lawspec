@@ -1,0 +1,11 @@
+expect: expect 
+expect-any: Hello | https://example.com/path
+@@ src/main/java/example/Slug.java
+<<<<<<<
+*
+=======
+package example; public class Slug {
+public static String normalize(String x) { return x; }
+public static String referenceNormalize(String x) { return x; }
+}
+>>>>>>>

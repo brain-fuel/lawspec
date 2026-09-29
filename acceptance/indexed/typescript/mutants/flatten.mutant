@@ -1,0 +1,6 @@
+@@ src/example/indexed.ts
+<<<<<<<
+  const right = new data.VecVCons(value0.value, flatten(value0.right));
+=======
+  const right = new data.VecVCons(value0.value, new data.VecVNil());
+>>>>>>>

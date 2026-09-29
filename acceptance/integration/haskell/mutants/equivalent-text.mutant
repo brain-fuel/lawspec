@@ -1,0 +1,6 @@
+@@ src/Example/Alternatives.hs
+<<<<<<<
+TL.toStrict . B.toLazyText . B.decimal
+=======
+const (T.pack "broken")
+>>>>>>>

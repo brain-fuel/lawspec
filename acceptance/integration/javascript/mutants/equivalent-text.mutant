@@ -1,0 +1,6 @@
+@@ src/example/alternatives.mjs
+<<<<<<<
+x.toString(10)
+=======
+"broken"
+>>>>>>>

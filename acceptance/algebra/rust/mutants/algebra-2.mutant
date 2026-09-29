@@ -1,0 +1,6 @@
+@@ src/example/algebra.rs
+<<<<<<<
+pub fn add(x:BigInt,y:BigInt)->Integer {(x+y).into()}
+=======
+pub fn add(x:BigInt,y:BigInt)->Integer {use num_traits::ToPrimitive; (((x+y)&BigInt::from(u32::MAX)).to_u32().unwrap() as i32).into()}
+>>>>>>>

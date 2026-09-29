@@ -1,0 +1,6 @@
+@@ src/example/indexed.rs
+<<<<<<<
+        Vec::VCons { head, tail } => Vec::VCons { head, tail: Box::new(append(*tail, value1)) },
+=======
+        Vec::VCons { tail, .. } => append(*tail, value1),
+>>>>>>>

@@ -1,0 +1,8 @@
+@@ example/scalar_adapters/adapter.go
+<<<<<<<
+func PreserveBig(value0 uint64) uint64 {
+	return value0
+=======
+func PreserveBig(value0 uint64) uint64 {
+	return uint64(float64(value0))
+>>>>>>>

@@ -1,0 +1,6 @@
+@@ src/main/kotlin/example/ScalarAdapters.kt
+<<<<<<<
+        value0 == value1
+=======
+        value0.description == value1.description
+>>>>>>>

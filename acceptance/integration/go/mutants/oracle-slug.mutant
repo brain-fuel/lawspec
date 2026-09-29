@@ -1,0 +1,12 @@
+expect: expect 
+expect-any: Hello | https://example.com/path
+@@ example/slug/adapter.go
+<<<<<<<
+*
+=======
+package slug
+import "strings"
+func Normalize(x string) string { return strings.Clone(x) }
+func ReferenceNormalize(x string) string { return strings.Clone(x) }
+
+>>>>>>>

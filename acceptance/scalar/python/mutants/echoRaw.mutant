@@ -1,0 +1,8 @@
+@@ src/example/scalar_adapters.py
+<<<<<<<
+def echoRaw(value0: ls.Raw) -> ls.Raw:
+    return value0
+=======
+def echoRaw(value0: ls.Raw) -> ls.Raw:
+    return ls.Raw("Utf16Text",(65533,))
+>>>>>>>

@@ -1,0 +1,6 @@
+@@ src/main/java/example/Algebra.java
+<<<<<<<
+add(BigInteger x,BigInteger y){return x.add(y);}
+=======
+add(BigInteger x,BigInteger y){return x.add(y).intValue();}
+>>>>>>>

@@ -1,0 +1,6 @@
+@@ src/example/alternatives.py
+<<<<<<<
+f"{x:d}"
+=======
+"broken"
+>>>>>>>

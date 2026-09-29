@@ -1,0 +1,6 @@
+@@ src/example/algebra.mjs
+<<<<<<<
+export const divideRight = (x,y) => x+y;
+=======
+export const divideRight = (x,y) => x-y;
+>>>>>>>

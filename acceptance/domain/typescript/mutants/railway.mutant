@@ -1,0 +1,6 @@
+@@ src/example/ordering.ts
+<<<<<<<
+  if (validated instanceof data.Left) return validated as data.Either<data.OrderError, data.PricedOrder>;
+=======
+  if (validated instanceof data.Left) return new data.Left(new data.OrderErrorPriceTooHigh()) as data.Either<data.OrderError, data.PricedOrder>;
+>>>>>>>

@@ -1,0 +1,11 @@
+expect: expect 
+expect-any: Hello | https://example.com/path
+@@ example/canonical_url/adapter.go
+<<<<<<<
+*
+=======
+package canonical_url
+import "strings"
+func Canonicalize(x string) string { return strings.Repeat(x, 0) }
+
+>>>>>>>

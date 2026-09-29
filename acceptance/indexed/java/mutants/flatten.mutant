@@ -1,0 +1,6 @@
+@@ src/main/java/example/Indexed.java
+<<<<<<<
+    Vec<Byte> right = new Vec.VConsCase<>(node.value, flatten(node.right));
+=======
+    Vec<Byte> right = new Vec.VConsCase<>(node.value, new Vec.VNilCase<>());
+>>>>>>>

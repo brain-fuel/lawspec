@@ -1,0 +1,6 @@
+@@ src/example/refinements.mjs
+<<<<<<<
+function preserve(a){return a;}
+=======
+function preserve(a){return Number(a);}
+>>>>>>>

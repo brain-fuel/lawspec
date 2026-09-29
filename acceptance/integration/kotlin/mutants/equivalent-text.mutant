@@ -1,0 +1,6 @@
+@@ src/main/kotlin/example/Alternatives.kt
+<<<<<<<
+java.lang.Integer.toString(x)
+=======
+"broken"
+>>>>>>>

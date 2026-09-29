@@ -1,0 +1,11 @@
+expect: expect 
+@@ src/main/kotlin/example/BooleanFlags.kt
+<<<<<<<
+*
+=======
+package example
+object BooleanFlags {
+fun flipFlag(x: Boolean): Boolean = x
+}
+
+>>>>>>>

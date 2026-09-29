@@ -1,0 +1,6 @@
+@@ src/example/algebra.ts
+<<<<<<<
+export const divideRight = (x: bigint,y: bigint): bigint => x+y;
+=======
+export const divideRight = (x: bigint,y: bigint): bigint => x-y;
+>>>>>>>

@@ -1,0 +1,6 @@
+@@ src/main/java/example/Slug.java
+<<<<<<<
+x.replace(' ', '-')
+=======
+x
+>>>>>>>

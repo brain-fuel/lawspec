@@ -1,0 +1,11 @@
+expect: expect 
+expect-any: Hello | https://example.com/path
+@@ src/example/slug.rs
+<<<<<<<
+*
+=======
+#![allow(non_snake_case)]
+pub fn normalize(x:String)->String {x}
+pub fn referenceNormalize(x:String)->String {x}
+
+>>>>>>>

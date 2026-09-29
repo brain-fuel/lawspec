@@ -1,0 +1,6 @@
+@@ src/example/indexed.py
+<<<<<<<
+    for _ in range(value0):
+=======
+    for _ in range(value0 + 1):
+>>>>>>>

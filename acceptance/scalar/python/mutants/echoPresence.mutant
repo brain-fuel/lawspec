@@ -1,0 +1,8 @@
+@@ src/example/scalar_adapters.py
+<<<<<<<
+def echoPresence(value0: ls.Presence) -> ls.Presence:
+    return value0
+=======
+def echoPresence(value0: ls.Presence) -> ls.Presence:
+    return ls.Presence("Optional",False)
+>>>>>>>

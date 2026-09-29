@@ -1,0 +1,6 @@
+@@ src/example/indexed.py
+<<<<<<<
+    return data.VecVCons(value1.head, zip(value0.tail, value1.tail))
+=======
+    return zip(value0.tail, value1.tail)
+>>>>>>>

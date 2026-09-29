@@ -1,4 +1,4 @@
-# Refinements and abstract integers (0.13.0)
+# Refinements and abstract integers (0.13.1)
 
 A refinement restricts a scalar domain with a pure Boolean expression. LawSpec
 checks concrete examples, generates satisfying input tuples, and checks adapter

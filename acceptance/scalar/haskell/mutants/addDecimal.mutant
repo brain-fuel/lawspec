@@ -1,0 +1,6 @@
+@@ src/Example/ScalarAdapters.hs
+<<<<<<<
+addDecimal value0 value1 = case (value0,value1) of (LS.Decimal a,LS.Decimal b) -> LS.Decimal (a+b)
+=======
+addDecimal value0 value1 = case (value0,value1) of (LS.Decimal a,LS.Decimal b) -> LS.Decimal (fromInteger (round (a+b)))
+>>>>>>>
