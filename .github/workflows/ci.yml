@@ -124,6 +124,14 @@ jobs:
           LAWSPEC_MACHINE_BITS: '32'
           LAWSPEC_MINIFY: '1'
 
+      - name: Domain wrappers, workflows and mutants
+        run: node tools/domain-integration.mjs ${{ matrix.target }}
+      - name: Domain modeling with compact 32-bit profile
+        run: node tools/domain-integration.mjs ${{ matrix.target }}
+        env:
+          LAWSPEC_MACHINE_BITS: '32'
+          LAWSPEC_MINIFY: '1'
+
       - name: Installed native bindings and adapter failure
         run: node tools/native-example-integration.mjs ${{ matrix.target }}
         env:

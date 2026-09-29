@@ -2,6 +2,7 @@ module LawSpec.Parser (parseSource) where
 
 import LawSpec.Model
 import LawSpec.Indexed
+import LawSpec.DomainModel
 import LawSpec.Scalar
 import Control.Monad.Combinators.Expr
 import Control.Monad (void, unless)
@@ -78,6 +79,42 @@ dataTypeP :: P DataTypeDeclaration
 dataTypeP = either erased id <$> declarationP
   where erased f = DataTypeDeclaration (familyName f) (map fst (familyParameters f))
           (map indexedDeclaration (familyConstructors f)) (familySpan f)
+
+-- wrapper Name (a :: Type)* is <type> [where <predicate over value>] end
+wrapperP :: P Wrapper
+wrapperP = do
+  ((name, parameters, base, predicate), range) <- withSpan $ do
+    keyword "wrapper"
+    name <- ident
+    unless (maybe False (isUpper . fst) (uncons name)) (fail "wrapper names must start with an uppercase letter")
+    parameters <- many $ parens $ do
+      parameter <- ident
+      unless (maybe False (isLower . fst) (uncons parameter)) (fail "type parameters must start with a lowercase letter")
+      void (symbol "::")
+      keyword "Type"
+      pure parameter
+    keyword "is"
+    base <- typeP
+    predicate <- optional (keyword "where" *> expr)
+    keyword "end"
+    pure (name, parameters, base, predicate)
+  pure (Wrapper name parameters base predicate range)
+
+-- workflow name :: Input -> Result is (step :: Type)+ end
+workflowP :: P Workflow
+workflowP = do
+  ((name, ty, steps), range) <- withSpan $ do
+    keyword "workflow"
+    name <- ident
+    void (symbol "::")
+    ty <- typeP
+    keyword "is"
+    steps <- some $ do
+      ((step, stepTy), stepRange) <- withSpan ((,) <$> ident <* symbol "::" <*> typeP)
+      pure (WorkflowStep step stepTy stepRange)
+    keyword "end"
+    pure (name, ty, steps)
+  pure (Workflow name ty steps range)
 
 -- Declarations with a Natural parameter or an index equation are indexed
 -- families; LawSpec.Indexed elaborates them after the unit is parsed.
@@ -280,14 +317,17 @@ functionDefinitionP = do
   pure (FunctionDefinition name arguments result requirements body range)
 
 data UnitMember = DataMember DataTypeDeclaration | FamilyMember IndexedFamily | RefinementMember Refinement
+  | WrapperMember Wrapper | WorkflowMember Workflow
   | SignatureMember ((String, Type), Span) | LawMember Law
   | DefinitionMember FunctionDefinition
 
-unitP :: P (Unit, [IndexedFamily])
+unitP :: P (Unit, [IndexedFamily], [Wrapper], [Workflow])
 unitP = do
   spaceP; keyword "unit"
   n <- concatWithDot <$> (lexeme ((:) <$> letterChar <*> many (alphaNumChar <|> char '_')) `sepBy1` symbol ".")
   members <- many ((either FamilyMember DataMember <$> declarationP)
+    <|> (WrapperMember <$> wrapperP)
+    <|> (WorkflowMember <$> workflowP)
     <|> (RefinementMember <$> refinementP)
     <|> (DefinitionMember <$> functionDefinitionP)
     <|> (SignatureMember <$> try (withSpan ((,) <$> ident <* symbol "::" <*> typeP)))
@@ -298,13 +338,17 @@ unitP = do
         [((functionName d, foldr Arrow (functionResult d) (map snd (functionArguments d))), functionSpan d) | d <- definitions]
   pure (Unit n (map fst signatures) [l | LawMember l <- members]
     [r | RefinementMember r <- members] [] [(name,range) | ((name,_),range) <- signatures]
-    [d | DataMember d <- members] definitions, [f | FamilyMember f <- members])
+    [d | DataMember d <- members] definitions, [f | FamilyMember f <- members],
+    [w | WrapperMember w <- members], [w | WorkflowMember w <- members])
   where concatWithDot = foldr1 (\a b -> a ++ "." ++ b)
 parseSource :: Source -> Either [Diagnostic] Unit
 parseSource (Source p s) = case runReader (runParserT unitP p s) (literalHeaders s (headers s)) of
   Left e -> Left [Diagnostic "parse" (errorBundlePretty e) Nothing]
-  Right (u, families) -> either (\message -> Left [Diagnostic "indexed" (p ++ ": " ++ message) Nothing]) Right
-    (elaborateFamilies families u)
+  Right (u, families, wrappers, workflows) -> do
+    modeled <- either (\(at, message) -> Left [Diagnostic "domain" message at]) Right
+      (elaborateDomain wrappers workflows u)
+    either (\message -> Left [Diagnostic "indexed" (p ++ ": " ++ message) Nothing]) Right
+      (elaborateFamilies families modeled)
 
 -- Read declaration arities before parsing applications, including forward references.
 -- Strings, quoted law names and comments are consumed atomically.
@@ -317,6 +361,7 @@ headers source = M.fromList (scan tokens) where
   scan ("unit":_:rest) = scan (dropUnit rest)
   scan ("refinement":n:rest) = let (ks,remaining) = parametersH rest in (n,RefinementHeader ks):scan remaining
   scan ("type":n:rest) = let (ks,remaining) = parametersH rest in (n,DataHeader ks):scan remaining
+  scan ("wrapper":n:rest) = let (ks,remaining) = parametersH rest in (n,DataHeader ks):scan remaining
   scan (_:rest) = scan rest
   scan [] = []
   dropUnit (".":_:rest) = dropUnit rest
@@ -340,6 +385,9 @@ literalHeaders source initial = case runReader (runParserT scan "constructor hea
     [("constructor:" ++ dataConstructorName c, DataHeader (replicate (length (dataConstructorFields c)) True))
       | Just d <- declarations, c <- dataTypeConstructors d]) initial
   where
-    scan = spaceP *> many ((Just <$> try dataTypeP) <|> (Nothing <$ token)) <* eof
+    -- A wrapper's constructor shares its name and takes the single value field.
+    wrapped w = DataTypeDeclaration (wrapperName w) (wrapperParameters w)
+      [ConstructorDeclaration (wrapperName w) [("value", wrapperBase w)] (wrapperSpan w)] (wrapperSpan w)
+    scan = spaceP *> many ((Just <$> try dataTypeP) <|> (Just . wrapped <$> try wrapperP) <|> (Nothing <$ token)) <* eof
     token = void str <|> void quoted <|>
       void (lexeme ((:) <$> letterChar <*> many (alphaNumChar <|> char '_'))) <|> void (lexeme anySingle)

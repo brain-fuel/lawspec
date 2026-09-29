@@ -1,4 +1,4 @@
-# LawSpec language and compiler boundary (0.12)
+# LawSpec language and compiler boundary (0.13)
 
 LawSpec describes portable laws, concrete examples, and adapter contracts. The
 compiler is written in Haskell. Rust is an output backend alongside Java, Python,
@@ -212,6 +212,54 @@ native code that LawSpec cannot inspect, so both are `runtime-checked`.
 the `evidence` field. A proved definition is a natural reference model for a
 native adapter, as in `append xs ys = concatV xs ys` in the
 [indexed example](examples/specs/indexed_families.lawspec).
+
+## Domain modeling
+
+### Wrappers and constrained primitives
+
+A `wrapper` gives a primitive or container a domain meaning. It declares a
+distinct nominal type with one field, `value`, and an optional constraint:
+
+```lawspec
+wrapper UnitQuantity is Int32 where value >= 1 && value <= 1000 end
+wrapper OrderId is Text where prelude.length value > 0 end
+wrapper NonEmptyList (a :: Type) is List a where prelude.length value > 0 end
+```
+
+`UnitQuantity` is not interchangeable with `Int32` or with another wrapper over
+`Int32`. Its constructor, `UnitQuantity 5`, checks the constraint, so an invalid
+value cannot be constructed in an example, produced by a generator, or decoded
+from native code. `valueOfUnitQuantity` unwraps it. A wrapper elaborates to a
+single-constructor product with a refined field and a checked definition, and
+its native representation is that product on every target. The constraint is
+reported as a `construction` obligation in the evidence.
+
+### Workflows and state distinctions
+
+A workflow names a pipeline of adapter steps between distinct state types:
+
+```lawspec
+type UnvalidatedOrder is UnvalidatedOrder id :: Text quantity :: Int32 end
+type ValidatedOrder is ValidatedOrder id :: OrderId quantity :: UnitQuantity end
+type PricedOrder is PricedOrder id :: OrderId quantity :: UnitQuantity total :: Int64 end
+
+workflow placeOrder :: UnvalidatedOrder -> Either OrderError PricedOrder is
+  validateOrder :: UnvalidatedOrder -> Either OrderError ValidatedOrder
+  priceOrder :: ValidatedOrder -> Either OrderError PricedOrder
+end
+```
+
+Each step is an ordinary adapter declaration with one input. The compiler checks
+that every step accepts the state the previous step produces, that fallible steps
+(those returning `Either E T`) share one error type, and that the workflow's
+declared result matches: `Either E T` if any step can fail, otherwise `T`. It then
+adds the law `placeOrder composes its steps`: the native workflow must equal the
+railway composition of the native steps, where the first `Left` is the result. A
+step declared again with the same type is shared between workflows.
+
+Because each state is its own type, a `ValidatedOrder` can only hold checked
+values, and a step that needs one cannot be given raw input. See the
+[domain modeling example](examples/specs/domain_modeling.lawspec).
 
 ## Total definitions
 
@@ -442,13 +490,15 @@ Still open, for evaluation in later releases: index equalities between sibling
 fields (perfect trees whose subtrees share one index), non-linear indices, and
 GADTs that refine type arguments.
 
-### 0.13 Wlaschin-style domain modeling primitives
+### 0.13 Wlaschin-style domain modeling primitives (released)
 
-- Semantic wrappers and constrained primitives.
-- Make illegal states unrepresentable.
-- Explicit domain workflows and state distinctions.
-
-These build on 0.10 native bindings and 0.11 refinements.
+- Semantic wrappers and constrained primitives: `wrapper` declarations with
+  checked constructors.
+- Illegal states are unrepresentable: wrapper and field constraints are checked
+  on construction, generation and native decoding, and reported as evidence.
+- Explicit domain workflows and state distinctions: `workflow` declarations with
+  checked step types and a generated railway composition law.
+- See [domain modeling](#domain-modeling).
 
 ### 0.14 Cross-unit imports and packages
 

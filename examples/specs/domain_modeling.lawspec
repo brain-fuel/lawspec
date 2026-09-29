@@ -1,0 +1,59 @@
+unit example.ordering
+
+-- Constrained primitives. Each wrapper is a distinct type whose constructor
+-- checks the value, so an out-of-range quantity cannot be constructed,
+-- generated or decoded from native code. valueOf<Name> unwraps a value.
+wrapper UnitQuantity is Int32 where value >= 1 && value <= 1000 end
+wrapper OrderId is Text where prelude.length value > 0 end
+wrapper NonEmptyList (a :: Type) is List a where prelude.length value > 0 end
+
+-- Each workflow state is its own type. A ValidatedOrder can only hold checked
+-- values, so no later step needs to validate again.
+type UnvalidatedOrder is UnvalidatedOrder id :: Text quantity :: Int32 end
+type ValidatedOrder is ValidatedOrder id :: OrderId quantity :: UnitQuantity end
+type PricedOrder is PricedOrder id :: OrderId quantity :: UnitQuantity total :: Int64 end
+type OrderError is | InvalidOrderId | InvalidQuantity | PriceTooHigh end
+
+-- The compiler checks that each step accepts the previous step's state and that
+-- all failures share one error type. It adds a law that placeOrder is the
+-- railway composition of the steps: the first Left is the workflow's result.
+workflow placeOrder :: UnvalidatedOrder -> Either OrderError PricedOrder is
+  validateOrder :: UnvalidatedOrder -> Either OrderError ValidatedOrder
+  priceOrder :: ValidatedOrder -> Either OrderError PricedOrder
+end
+
+firstLine :: NonEmptyList Int32 -> Int32
+
+law `validation accepts exactly the valid orders` is
+  definition is
+    `for all` (input :: UnvalidatedOrder) .
+      (match validateOrder input with
+        | Left e -> false
+        | Right v -> true
+        end) = (match input with
+        | UnvalidatedOrder id quantity ->
+            prelude.length id > 0 && quantity >= 1 && quantity <= 1000
+        end)
+  end
+end
+
+law `quantities are always in range` is
+  definition is
+    `for all` (q :: UnitQuantity) .
+      valueOfUnitQuantity q >= 1 && valueOfUnitQuantity q <= 1000
+  end
+  example `largest quantity` is
+    q = UnitQuantity 1000
+    expect valueOfUnitQuantity q = 1000
+  end
+end
+
+law `a non-empty list has a first element` is
+  definition is
+    `for all` (xs :: NonEmptyList Int32) .
+      (match valueOfNonEmptyList xs with
+        | Nil -> false
+        | Cons head tail -> firstLine xs == head
+        end) = true
+  end
+end

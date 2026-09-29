@@ -5,7 +5,7 @@ cabal-version: 1.12
 -- see: https://github.com/sol/hpack
 
 name:           lawspec
-version:        0.12.0
+version:        0.13.0
 synopsis:       Portable executable laws
 license:        MIT
 license-file:   LICENSE
@@ -58,6 +58,7 @@ extra-source-files:
     examples/specs/collections.lawspec
     examples/specs/currying.lawspec
     examples/specs/data_types.lawspec
+    examples/specs/domain_modeling.lawspec
     examples/specs/equivalent.lawspec
     examples/specs/finite_data.lawspec
     examples/specs/indexed_families.lawspec
@@ -200,6 +201,7 @@ library
       LawSpec.Data
       LawSpec.DefinitionTotality
       LawSpec.Domain
+      LawSpec.DomainModel
       LawSpec.Elaboration
       LawSpec.Emit
       LawSpec.Eval
@@ -322,6 +324,7 @@ test-suite lawspec-test
       DefinitionPredicateSpec
       DefinitionSchemeSpec
       DocumentSpec
+      DomainModelSpec
       GenericDefinitionSpec
       IndexedSpec
       InferenceSchemeSpec

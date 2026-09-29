@@ -146,7 +146,9 @@ programView settings surface expansions artifacts C.Program{..} = object
       , "claim" .= expressionView (declarationBinders (obligationDeclaration o)) (obligationClaim o) ]
     declarationBinders declaration = concat
       [ [(C.binderId b,C.binderName b) | b <- C.contractArguments c ++ [C.contractResult c]]
-      | u <- programUnits, c <- C.unitContracts u, C.contractDeclaration c == declaration ]
+      | u <- programUnits, c <- C.unitContracts u, C.contractDeclaration c == declaration ] ++ concat
+      [ [(C.binderId b,C.binderName b) | b <- C.constructorFields c]
+      | d <- programDataDeclarations, c <- C.dataConstructors d, C.constructorId c == declaration ]
     contractView c = let names = [(C.binderId b,C.binderName b) | b <- C.contractArguments c ++ [C.contractResult c]] in object
       ["id" .= C.idText (C.contractDeclaration c),"name" .= declarationName (C.contractDeclaration c)
       ,"arguments" .= map binderView (C.contractArguments c),"result" .= binderView (C.contractResult c)

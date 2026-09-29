@@ -287,3 +287,10 @@ Each item names the owning unit, the contract `declaration`, the `stage`
 `runtime-checked`, a `reason`, and the `claim` as a typed expression. Schemas 3
 and 4 are otherwise unchanged; clients that ignore unknown fields need no
 changes. Generated definition code no longer re-checks proved postconditions.
+
+## Construction evidence (0.13)
+
+`evidence` items may have stage `construction`: a constructor field constraint,
+including a `wrapper` constraint, checked whenever a value is constructed or
+decoded. Its `declaration` is the constructor identity and its `status` is
+`runtime-checked`. The TypeScript API names these records `ObligationEvidence`.

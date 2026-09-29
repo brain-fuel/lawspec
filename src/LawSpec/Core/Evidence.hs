@@ -1,4 +1,4 @@
--- How each contract obligation of a checked program is discharged. Definition
+-- How each contract and construction obligation of a checked program is discharged. Definition
 -- postconditions are proved by the totality audit (compilation fails
 -- otherwise), so emitters never re-check them at runtime. Preconditions guard
 -- native callers, and adapter contracts cover code LawSpec cannot inspect, so
@@ -26,8 +26,15 @@ data Obligation = Obligation
   } deriving (Eq, Show)
 
 programEvidence :: Program -> [Obligation]
-programEvidence program = concatMap unitEvidence (programUnits program)
+programEvidence program =
+  concatMap unitEvidence (programUnits program) ++ concatMap dataEvidence (programDataDeclarations program)
   where
+    -- Constructor field refinements, including wrapper constraints, make an
+    -- invalid value unrepresentable: construction and native decoding check them.
+    dataEvidence declaration =
+      [ Obligation (dataId declaration) (constructorId constructor) "construction" claim RuntimeChecked
+          "checked whenever a value is constructed or decoded"
+      | constructor <- dataConstructors declaration, claim <- constructorPredicates constructor ]
     unitEvidence unit =
       let definitions = S.fromList [declarationId (definitionDeclaration d) | d <- unitDefinitions unit]
       in concatMap (contractEvidence (unitId unit) definitions) (unitContracts unit)

@@ -1,4 +1,4 @@
-# LawSpec scalar reference (0.12.0)
+# LawSpec scalar reference (0.13.0)
 
 A scalar has a declared domain, checked literals, equality, property inputs, and
 boundary fixtures. General collections, objects, pointers, and type-only constructs
