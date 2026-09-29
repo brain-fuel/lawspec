@@ -351,7 +351,19 @@ emitRustWithBindings minify bindings Plan{..} = either (Left . pure . (\m -> Dia
                 _ -> []
           symbols <- if inputType == scalarType "Symbol"
             then mapM (render names) (concatMap required (quantifiedPredicates input)) else pure []
-          baseStrategy <- if usesData inputType || hasNativeGenerators then do
+          indexTarget <- traverse (render names . indexedTarget) (generatorIndex requirement)
+          baseStrategy <- case (usesData inputType, generatorIndex requirement, indexTarget) of
+           (True, Just indexed, Just target) -> do
+            -- The target is evaluated from the inputs bound earlier in this case.
+            ty <- schemaType inputType
+            let budget = maximum (64 : map ((+ 8) . valueBudget) (generatorBoundaries requirement))
+                table = Expression.vector [Doc.text "(" <> string (idText tag) <> Doc.text ", &" <>
+                  Expression.vector (map (Doc.text . show) (constant : map toInteger positions)) <> Doc.text "[..])"
+                  | (tag,constant,positions) <- indexedEquations indexed]
+            pure (invoke "ls_gen::indexed_strategy"
+              [Doc.text "&lawspec_schema::schema()?",borrow ty,bits,Doc.text (show budget),
+               Doc.text "&" <> target,Doc.text "&" <> table] <> Doc.text "?")
+           _ -> if usesData inputType || hasNativeGenerators then do
             ty <- schemaType inputType
             let budget = maximum (64 : map ((+ 8) . valueBudget) (generatorBoundaries requirement))
             let name = (if checked then "ls_gen::checked_schema_strategy" else "ls_gen::schema_strategy") ++

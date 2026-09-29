@@ -704,3 +704,201 @@ fn shape_strategy_with_generators(
     }
     .generate(ty, budget)
 }
+
+/// Values whose linear structural measure equals `target`. Each equation holds a
+/// constructor's constant followed by the positions of recursive fields whose
+/// measures it adds, so the target is solved backwards and split across those
+/// fields. Reachability is a least fixpoint per index level and strategies are
+/// built bottom-up; generation never filters, and splits shrink toward the first.
+pub fn indexed_strategy(
+    schema: &ls::Schema,
+    ty: &ls::TypeRef,
+    bits: u32,
+    budget: usize,
+    target: &Value,
+    equations: &[(&str, &[u64])],
+) -> ls::Result<BoxedStrategy<Value>> {
+    type Key = (ls::TypeRef, u64);
+    struct Variant {
+        tag: &'static str,
+        fields: Vec<ls::TypeRef>,
+        constant: u64,
+        positions: Vec<usize>,
+    }
+    let Value::Integer(target) = target else {
+        return Err("index target must be a natural number".into());
+    };
+    let k: u64 = target
+        .to_string()
+        .parse()
+        .map_err(|_| "index target must be a natural number".to_string())?;
+    let equation = |tag: &str| -> ls::Result<(u64, Vec<usize>)> {
+        let (_, found) = equations
+            .iter()
+            .find(|(name, _)| *name == tag)
+            .ok_or_else(|| format!("missing index equation for {tag}"))?;
+        Ok((found[0], found[1..].iter().map(|p| *p as usize).collect()))
+    };
+    let mut families: Vec<(ls::TypeRef, Vec<Variant>)> = Vec::new();
+    let mut pending = vec![ty.clone()];
+    while let Some(next) = pending.pop() {
+        if families.iter().any(|(known, _)| *known == next) {
+            continue;
+        }
+        let constructors = schema
+            .constructor_fields(&next)?
+            .ok_or("indexed generation requires a data type")?;
+        let mut variants = Vec::new();
+        for constructor in constructors {
+            let (constant, positions) = equation(constructor.tag)?;
+            pending.extend(positions.iter().map(|p| constructor.fields[*p].clone()));
+            variants.push(Variant {
+                tag: constructor.tag,
+                fields: constructor.fields.clone(),
+                constant,
+                positions,
+            });
+        }
+        families.push((next, variants));
+    }
+    let mut plain: std::collections::HashMap<ls::TypeRef, Option<BoxedStrategy<Value>>> =
+        std::collections::HashMap::new();
+    for (_, variants) in &families {
+        for variant in variants {
+            for (index, field) in variant.fields.iter().enumerate() {
+                if !variant.positions.contains(&index) && !plain.contains_key(field) {
+                    let strategy =
+                        shape_strategy(schema, field, bits, budget, Witnesses::new()).ok();
+                    plain.insert(field.clone(), strategy);
+                }
+            }
+        }
+    }
+    let index_types = |variant: &Variant| -> Vec<ls::TypeRef> {
+        variant
+            .positions
+            .iter()
+            .map(|p| variant.fields[*p].clone())
+            .collect()
+    };
+    let ready = |variant: &Variant| {
+        variant.fields.iter().enumerate().all(|(index, field)| {
+            variant.positions.contains(&index) || matches!(plain.get(field), Some(Some(_)))
+        })
+    };
+    fn splits(
+        table: &std::collections::HashMap<Key, bool>,
+        types: &[ls::TypeRef],
+        rest: u64,
+    ) -> Vec<Vec<u64>> {
+        match types {
+            [] if rest == 0 => vec![vec![]],
+            [] => vec![],
+            [only] if *table.get(&(only.clone(), rest)).unwrap_or(&false) => vec![vec![rest]],
+            [_] => vec![],
+            [first, others @ ..] => (0..=rest)
+                .filter(|part| *table.get(&(first.clone(), *part)).unwrap_or(&false))
+                .flat_map(|part| {
+                    splits(table, others, rest - part)
+                        .into_iter()
+                        .map(move |mut tail| {
+                            tail.insert(0, part);
+                            tail
+                        })
+                })
+                .collect(),
+        }
+    }
+    let feasible = |table: &std::collections::HashMap<Key, bool>, variant: &Variant, j: u64| {
+        j >= variant.constant
+            && ready(variant)
+            && !splits(table, &index_types(variant), j - variant.constant).is_empty()
+    };
+    let mut table: std::collections::HashMap<Key, bool> = std::collections::HashMap::new();
+    for j in 0..=k {
+        for (family, _) in &families {
+            table.insert((family.clone(), j), false);
+        }
+        loop {
+            let mut changed = false;
+            for (family, variants) in &families {
+                let value = variants.iter().any(|variant| feasible(&table, variant, j));
+                if table.insert((family.clone(), j), value) != Some(value) {
+                    changed = true;
+                }
+            }
+            if !changed {
+                break;
+            }
+        }
+    }
+    if !table.get(&(ty.clone(), k)).copied().unwrap_or(false) {
+        return Err(format!("no value of {ty:?} has index {k}"));
+    }
+    let mut built: std::collections::HashMap<Key, BoxedStrategy<Value>> =
+        std::collections::HashMap::new();
+    for j in 0..=k {
+        for (family, variants) in &families {
+            if !table.get(&(family.clone(), j)).copied().unwrap_or(false) {
+                continue;
+            }
+            let mut alternatives = Vec::new();
+            for variant in variants {
+                if !feasible(&table, variant, j) {
+                    continue;
+                }
+                // Children at this level are only available once built, which
+                // excludes self-referential splits that do not consume index.
+                let choices: Vec<Vec<u64>> =
+                    splits(&table, &index_types(variant), j - variant.constant)
+                        .into_iter()
+                        .filter(|split| {
+                            split
+                                .iter()
+                                .zip(index_types(variant))
+                                .all(|(part, child)| built.contains_key(&(child, *part)))
+                        })
+                        .collect();
+                if choices.is_empty() {
+                    continue;
+                }
+                let available = std::sync::Arc::new(built.clone());
+                let fields = variant.fields.clone();
+                let positions = variant.positions.clone();
+                let plain_fields: Vec<Option<BoxedStrategy<Value>>> = fields
+                    .iter()
+                    .map(|field| plain.get(field).cloned().flatten())
+                    .collect();
+                let tag = variant.tag;
+                alternatives.push(
+                    proptest::sample::select(choices)
+                        .prop_flat_map(move |split| {
+                            let children: Vec<BoxedStrategy<Value>> = fields
+                                .iter()
+                                .enumerate()
+                                .map(|(index, field)| {
+                                    match positions.iter().position(|p| *p == index) {
+                                        Some(position) => {
+                                            available[&(field.clone(), split[position])].clone()
+                                        }
+                                        None => plain_fields[index].clone().unwrap(),
+                                    }
+                                })
+                                .collect();
+                            children.prop_map(move |values| ls::construct_data(tag, values))
+                        })
+                        .boxed(),
+                );
+            }
+            if !alternatives.is_empty() {
+                built.insert(
+                    (family.clone(), j),
+                    proptest::strategy::Union::new(alternatives).boxed(),
+                );
+            }
+        }
+    }
+    built
+        .remove(&(ty.clone(), k))
+        .ok_or_else(|| format!("no value of {ty:?} has index {k}"))
+}
