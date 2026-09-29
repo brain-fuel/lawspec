@@ -60,6 +60,10 @@ index instead of filtering for it. See the
 [indexed example](examples/specs/indexed_families.lawspec), and the
 [release notes](RELEASE-0.11.md).
 
+Planned: 0.12 proofs for indices, 0.13 domain modeling primitives, 0.14
+cross-unit packages, and 0.15 evidence reporting. See the
+[roadmap](LANGUAGE.md#roadmap).
+
 ## Install and try it
 
 LawSpec has its own [syntax-highlighting grammar and VS Code extension](editors/vscode/README.md)

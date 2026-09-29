@@ -385,20 +385,52 @@ API schema v3 uses separately defined wire views, with lossless tagged scalar
 values. It does not serialize internal AST constructors. See the
 [API migration guide](API-MIGRATION.md).
 
-## Beyond 0.11
+## Roadmap
 
-Natural-indexed families are implemented in 0.11 by elaboration to erased data,
-measures and refinements. GADTs that refine type arguments, non-linear or
-non-natural indices, index equalities between sibling fields (such as perfect
-trees whose subtrees share one index), and general dependent types remain future
-work. The Core type model distinguishes type arguments from index arguments, but
-that representation is not a claim that arbitrary dependent programs are
-accepted.
-External type bindings and custom generator bindings are implemented in the
-0.10 release; see [the binding reference](NATIVE-BINDINGS.md) for their
-interface and acceptance status. They configure native representations alongside
-the typed testing plan and do not change source-language typing or equality.
-Cross-unit packages remain future work.
+0.11 elaborates natural-indexed families to erased data, measures and
+refinements. The Core type model distinguishes type arguments from index
+arguments, but that representation is not a claim that arbitrary dependent
+programs are accepted. External type bindings and custom generator bindings
+(0.10) configure native representations alongside the typed testing plan and do
+not change source-language typing or equality; see
+[the binding reference](NATIVE-BINDINGS.md).
+
+### 0.12 Proof-producing dependent layer
+
+- Decide which index equalities the compiler can discharge statically.
+- Normalize and solve decidable `Natural` arithmetic, starting with the linear
+  sums that 0.11 accepts.
+- Record proof evidence explicitly.
+- Distinguish proven obligations from runtime-checked contracts.
+- Possibly allow checked definitions to transport or refine indices, including
+  definitions that return indexed families.
+- Evaluate index equalities between sibling fields (such as perfect trees whose
+  subtrees share one index) and GADTs that refine type arguments.
+
+### 0.13 Wlaschin-style domain modeling primitives
+
+- Semantic wrappers and constrained primitives.
+- Make illegal states unrepresentable.
+- Explicit domain workflows and state distinctions.
+
+These build on 0.10 native bindings and 0.11 refinements.
+
+### 0.14 Cross-unit imports and packages
+
+- Reusable law, type and refinement libraries.
+- Versioning and namespacing, including constructor names scoped to their unit.
+  Today every unit compiled together needs distinct constructor names.
+- Publishable behavioral contracts.
+
+### 0.15 Evidence/discharge model
+
+Each obligation reports how it was discharged:
+
+- `PROVED`: discharged statically, by 0.12 evidence or definition proofs.
+- `EXHAUSTIVELY CHECKED`: every value of a finite domain was checked.
+- `PROPERTY TESTED`: generated cases, examples and boundaries.
+- `RUNTIME CHECKED`: adapter contracts and checked codecs at native boundaries.
+- `ASSUMED / EXTERNAL`: native adapters and bindings taken on trust.
 
 ## Generated project formatting
 
