@@ -1,4 +1,4 @@
-module LawSpec.CoreNativeScalarEmit (nativeScalarEmit, nativeScalarEmitWithData, nativeScalarEmitWithDefinitions, nativeScalarEmitWithFormat) where
+module LawSpec.CoreNativeScalarEmit (nativeScalarEmit, nativeScalarEmitWithData, nativeScalarEmitWithDefinitions, nativeScalarEmitWithFormat, nativeScalarEmitWithNativeGenerators, nativeScalarEmitWithAdapterBindings) where
 import qualified LawSpec.JavaData as JavaData
 import qualified LawSpec.JavaExpr as JavaExpr
 import qualified LawSpec.JavaTestHelpers as JavaTestHelpers
@@ -43,7 +43,11 @@ nativeScalarEmitWithData dataDeclarations = nativeScalarEmitWithDefinitions data
 nativeScalarEmitWithDefinitions :: [C.DataDeclaration] -> [(C.Id,String)] -> Int -> String -> Unit -> [Expanded] -> Either [Diagnostic] [Artifact]
 nativeScalarEmitWithDefinitions = nativeScalarEmitWithFormat False
 nativeScalarEmitWithFormat :: Bool -> [C.DataDeclaration] -> [(C.Id,String)] -> Int -> String -> Unit -> [Expanded] -> Either [Diagnostic] [Artifact]
-nativeScalarEmitWithFormat minify dataDeclarations definitions bits target u allLaws = do
+nativeScalarEmitWithFormat = nativeScalarEmitWithNativeGenerators False
+nativeScalarEmitWithNativeGenerators :: Bool -> Bool -> [C.DataDeclaration] -> [(C.Id,String)] -> Int -> String -> Unit -> [Expanded] -> Either [Diagnostic] [Artifact]
+nativeScalarEmitWithNativeGenerators = nativeScalarEmitWithAdapterBindings []
+nativeScalarEmitWithAdapterBindings :: [(C.Id,String)] -> Bool -> Bool -> [C.DataDeclaration] -> [(C.Id,String)] -> Int -> String -> Unit -> [Expanded] -> Either [Diagnostic] [Artifact]
+nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify dataDeclarations definitions bits target u allLaws = do
   if go then either (Left . pure . (\message -> Diagnostic "collision" message Nothing)) Right
     (GoData.validateGoBindings dataDeclarations (map (cap . fst) adapterFunctions)) else pure ()
   tests <- if go then goDocument <$> GoProperties.emitTests goProperties u ls
@@ -88,7 +92,7 @@ nativeScalarEmitWithFormat minify dataDeclarations definitions bits target u all
     hsDocument = Doc.render (Doc.selectLayout minify (Doc.Pretty 80))
     hsDataHelpers = hsDocument (HaskellTestHelpers.schemaDoc <> Doc.hardline <> Doc.hardline)
     goCustom = (go &&) . GoData.requiresSchema dataDeclarations
-    goSchemaNeeded = go && (not (null definitions) || not (null dataDeclarations) || any (goCustom . snd) (functions u) ||
+    goSchemaNeeded = go && (nativeGenerators || not (null adapterBindings) || not (null definitions) || not (null dataDeclarations) || any (goCustom . snd) (functions u) ||
       any (any (goCustom . inputType) . inputs) ls ||
       any goExpression (concatMap C.contractExpressions (contracts u) ++ concatMap (C.propertyExpressions . original) ls))
     goExpression term | C.AllPayloads _ _ <- C.expressionNode term = True
@@ -331,6 +335,7 @@ nativeScalarEmitWithFormat minify dataDeclarations definitions bits target u all
       , KotlinProperties.className = cls
       , KotlinProperties.machineBits = bits
       , KotlinProperties.constructorContracts = any (not . null . C.constructorPredicates) (concatMap C.dataConstructors dataDeclarations)
+      , KotlinProperties.nativeGenerators = nativeGenerators
       , KotlinProperties.nodeBudget = javaDataBudget
       , KotlinProperties.expression = ktRender
       , KotlinProperties.literal = ktValueLiteral
@@ -352,6 +357,9 @@ nativeScalarEmitWithFormat minify dataDeclarations definitions bits target u all
       [java (HaskellData.haskellCodecDocWithContext hsScope dataDeclarations "_lawspecSchema" (show bits) ty),value])
     hsNativeResult ty value = HaskellExpr.checked (HaskellExpr.apply "Codec.encode"
       [java (HaskellData.haskellCodecDocWithContext hsScope dataDeclarations "_lawspecSchema" (show bits) ty),value])
+    hsNativeCall name arguments = case lookup (C.Id (unitName u ++ "::" ++ name)) adapterBindings of
+      Just bridge -> HaskellExpr.apply ("Impl." ++ bridge) (Doc.text "symbols" : arguments)
+      Nothing -> HaskellExpr.apply ("Impl." ++ name) arguments
     hsCallChecked values invocation =
       let names = ["_lawspecArgument" ++ show i | i <- [0::Int .. length values - 1]]
           bindingsDoc = Doc.joinWith (Doc.text ";" <> Doc.softline)
@@ -370,7 +378,7 @@ nativeScalarEmitWithFormat minify dataDeclarations definitions bits target u all
             result = if name `elem` map contractName (contracts u)
               then hsCallChecked converted (\names -> HaskellExpr.apply ("_lawspec_call_" ++ name) (Doc.text "symbols" : names))
               else hsNativeResult (expressionType term) (hsCallChecked converted (\names ->
-                HaskellExpr.apply ("Impl." ++ name) (zipWith hsNativeArgument types names)))
+                hsNativeCall name (zipWith hsNativeArgument types names)))
         in Right $ if any hsNativeMachine (expressionType term : types)
           then Doc.group (HaskellExpr.apply "LS.checkMachineBits" [Doc.text (show bits)] <> Doc.text " `seq`" <>
             Doc.nest 2 (Doc.softline <> result))
@@ -395,6 +403,7 @@ nativeScalarEmitWithFormat minify dataDeclarations definitions bits target u all
       _ -> Left [Diagnostic "target" "unsupported Haskell structural literal" Nothing]
     haskellProperties = HaskellProperties.Config
       { HaskellProperties.moduleName = intercalate "." (map hsPart parts)
+      , HaskellProperties.nativeGenerators = nativeGenerators
       , HaskellProperties.hasDefinitions = not (null definitions)
       , HaskellProperties.constructorContracts = any (not . null . C.constructorPredicates) (concatMap C.dataConstructors dataDeclarations)
       , HaskellProperties.nodeBudget = javaDataBudget
@@ -407,12 +416,14 @@ nativeScalarEmitWithFormat minify dataDeclarations definitions bits target u all
       , HaskellProperties.typeKey = key
       , HaskellProperties.generator = hsGeneratorDoc
       , HaskellProperties.nativeArgument = hsNativeArgument
+      , HaskellProperties.nativeCall = hsNativeCall
       , HaskellProperties.nativeResult = hsNativeResult
       }
     goChecked ty value
       | goCustom ty = GoExpr.call "_lawspecSchema.validate" [Doc.text (goRef ty),value,Doc.text (show bits),Doc.text "symbols"]
       | otherwise = GoExpr.call "lsConvert" [GoExpr.quoted (key ty),value,Doc.text (show bits)]
     goNativeArgument ty value
+      | not (null adapterBindings) = GoExpr.call (goCodec ty ++ ".toNative") [value]
       | goCustom ty = GoExpr.call (goCodec ty ++ ".toNative") [value]
       | ty == Named "Unit" = value
       | Nothing <- nativeRepresentation target (key ty) = GoExpr.call "lsClone" [goChecked ty value]
@@ -422,6 +433,7 @@ nativeScalarEmitWithFormat minify dataDeclarations definitions bits target u all
       | goCustom ty = GoExpr.call (goCodec ty ++ ".fromNative") [invocation]
       | ty == Named "Unit" = Doc.text "func() LawSpecValue " <> Doc.block 8
           (invocation <> Doc.hardline <> Doc.text "return lsAbsent(\"Unit\")") <> Doc.text "()"
+      | not (null adapterBindings) = GoExpr.call (goCodec ty ++ ".fromNative") [invocation]
       | otherwise = GoExpr.call "lsFromNative" [GoExpr.quoted (key ty),invocation,Doc.text (show bits)]
     goRender term = java (GoExpr.renderExpression dataDeclarations bits "_lawspecSchema" localName goExternal term)
     goValueLiteral value = case value of
@@ -443,6 +455,7 @@ nativeScalarEmitWithFormat minify dataDeclarations definitions bits target u all
       { GoProperties.packageName = last parts
       , GoProperties.schemaNeeded = goSchemaNeeded
       , GoProperties.constructorContracts = any (not . null . C.constructorPredicates) (concatMap C.dataConstructors dataDeclarations)
+      , GoProperties.nativeGenerators = nativeGenerators
       , GoProperties.nodeBudget = javaDataBudget
       , GoProperties.machineBits = bits
       , GoProperties.expression = goRender
@@ -452,9 +465,11 @@ nativeScalarEmitWithFormat minify dataDeclarations definitions bits target u all
       , GoProperties.reference = Doc.text . goRef
       , GoProperties.typeKey = key
       , GoProperties.generator = goGeneratorDoc
+      , GoProperties.nativeFunction = goAdapterName
       , GoProperties.nativeArgument = goNativeArgument
       , GoProperties.nativeResult = goNativeResult
       }
+    goAdapterName n = maybe (cap n) id (lookup (C.Id (unitName u ++ "::" ++ n)) adapterBindings)
     goExternal term values = case C.expressionNode term of
       C.ExternalCall identity _ | Just evaluator <- lookup identity definitions ->
         Right (GoExpr.call evaluator (Doc.text "symbols" : values))
@@ -463,7 +478,7 @@ nativeScalarEmitWithFormat minify dataDeclarations definitions bits target u all
             typed = zip (map expressionType args) values
         in Right $ if n `elem` map contractName (contracts u)
           then GoExpr.call ("_lawspec_call_" ++ n) (Doc.text "symbols" : [goChecked ty v | (ty,v) <- typed])
-          else goNativeResult (expressionType term) (GoExpr.call (cap n) [goNativeArgument ty v | (ty,v) <- typed])
+          else goNativeResult (expressionType term) (GoExpr.call (goAdapterName n) [goNativeArgument ty v | (ty,v) <- typed])
       _ -> Left "expected checked Go external call"
     javaDocument = Doc.render (Doc.selectLayout minify (Doc.Pretty 100))
     javaRender term = java (JavaExpr.renderExpression dataDeclarations bits localName javaExternal term)
@@ -509,7 +524,7 @@ nativeScalarEmitWithFormat minify dataDeclarations definitions bits target u all
       V.PresenceValue ty payload -> do
         rendered <- traverse javaValueLiteral payload
         pure (javaRuntime "present" [JavaExpr.quoted (key ty),maybe (Doc.text "null") id rendered])
-    javaSchemaNeeded = not (null dataDeclarations) || any payloadExpression
+    javaSchemaNeeded = nativeGenerators || not (null dataDeclarations) || any payloadExpression
       (concatMap C.contractExpressions (contracts u) ++ concatMap (C.propertyExpressions . original) ls)
     payloadExpression term = case C.expressionNode term of
       C.AllPayloads _ _ -> True
@@ -518,6 +533,7 @@ nativeScalarEmitWithFormat minify dataDeclarations definitions bits target u all
       { JavaProperties.packageName = pkg
       , JavaProperties.className = cls
       , JavaProperties.schemaNeeded = javaSchemaNeeded
+      , JavaProperties.nativeGenerators = nativeGenerators
       , JavaProperties.machineBits = bits
       , JavaProperties.constructorContracts = any (not . null . C.constructorPredicates) (concatMap C.dataConstructors dataDeclarations)
       , JavaProperties.nodeBudget = javaDataBudget

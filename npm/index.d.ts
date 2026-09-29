@@ -162,11 +162,62 @@ export interface Refinement {
   definition: string;
 }
 
+export type NativeReference = string[];
+
+export interface NativeFieldBinding {
+  field: string;
+  native: string;
+}
+
+export interface NativeConstructorBinding {
+  constructor: string;
+  native: NativeReference;
+  fields?: NativeFieldBinding[];
+  style: 'record' | 'variant' | 'unit';
+}
+
+export interface NativeCodecBinding {
+  toNative: NativeReference;
+  fromNative: NativeReference;
+}
+
+export interface NativeTypeBinding {
+  type: string;
+  native: NativeReference;
+  constructors?: NativeConstructorBinding[];
+  codec?: NativeCodecBinding;
+}
+
+export interface NativeGeneratorBinding {
+  type: string;
+  factory: NativeReference;
+  stub?: boolean;
+}
+
+export interface NativeFunctionBinding {
+  declaration: string;
+  native: NativeReference;
+}
+
+export interface NativeGoImport {
+  alias: string;
+  path: string;
+}
+
+export interface NativeBindings {
+  types?: NativeTypeBinding[];
+  generators?: NativeGeneratorBinding[];
+  functions?: NativeFunctionBinding[];
+  rustCrate?: string;
+  goImports?: NativeGoImport[];
+}
+
 export interface CheckRequest {
   sources: Source[];
-  schemaVersion?: 3;
+  schemaVersion?: 3 | 4;
   machineBits?: 32 | 64;
   generation?: Partial<Generation>;
+  nativeBindings?: NativeBindings;
 }
 
 export interface GenerationRequest extends CheckRequest {
@@ -177,7 +228,7 @@ export interface GenerationRequest extends CheckRequest {
 }
 
 export interface Result {
-  schemaVersion: 3;
+  schemaVersion: 3 | 4;
   machineBits?: 32 | 64;
   generation?: Generation;
   units?: Unit[];

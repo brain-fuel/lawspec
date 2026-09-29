@@ -1,0 +1,101 @@
+{
+  "types": [
+    {
+      "type": "native.codecs::type::Parcel",
+      "native": [
+        "codec_domain",
+        "Parcel"
+      ],
+      "codec": {
+        "toNative": [
+          "codec_hooks",
+          "to_parcel"
+        ],
+        "fromNative": [
+          "codec_hooks",
+          "from_parcel"
+        ]
+      }
+    },
+    {
+      "type": "native.codecs::type::Chain",
+      "native": [
+        "codec_domain",
+        "FlatChain"
+      ],
+      "codec": {
+        "toNative": [
+          "codec_hooks",
+          "to_chain"
+        ],
+        "fromNative": [
+          "codec_hooks",
+          "from_chain"
+        ]
+      }
+    },
+    {
+      "type": "native.codecs::type::Positive",
+      "native": [
+        "codec_domain",
+        "Positive"
+      ],
+      "codec": {
+        "toNative": [
+          "codec_hooks",
+          "to_positive"
+        ],
+        "fromNative": [
+          "codec_hooks",
+          "from_positive"
+        ]
+      }
+    }
+  ],
+  "functions": [
+    {
+      "declaration": "native.codecs::copyParcel",
+      "native": [
+        "codec_domain",
+        "copy"
+      ]
+    },
+    {
+      "declaration": "native.codecs::copyNested",
+      "native": [
+        "codec_domain",
+        "copy"
+      ]
+    },
+    {
+      "declaration": "native.codecs::copyChain",
+      "native": [
+        "codec_domain",
+        "copy"
+      ]
+    },
+    {
+      "declaration": "native.codecs::copyPositive",
+      "native": [
+        "codec_domain",
+        "copy"
+      ]
+    }
+  ],
+  "generators": [
+    {
+      "type": "native.codecs::type::Parcel",
+      "factory": [
+        "codec_generators",
+        "parcels"
+      ]
+    },
+    {
+      "type": "native.codecs::type::Positive",
+      "factory": [
+        "codec_generators",
+        "positives"
+      ]
+    }
+  ]
+}

@@ -2,6 +2,62 @@
 use crate::lawspec_runtime::{self as ls, IntoValue, Value};
 use proptest::prelude::*;
 
+/// A framework-native factory. Child strategies correspond to type parameters,
+/// not constructor fields. Mapping the returned strategy retains its ValueTree.
+pub type NativeFactory = fn(
+    &ls::Schema,
+    &ls::TypeRef,
+    u32,
+    &ls::Context,
+    Vec<BoxedStrategy<Value>>,
+) -> ls::Result<BoxedStrategy<Value>>;
+
+#[derive(Default)]
+pub struct NativeGenerators {
+    factories: std::collections::HashMap<&'static str, NativeFactory>,
+}
+
+impl NativeGenerators {
+    pub fn new(entries: Vec<(&'static str, NativeFactory)>) -> ls::Result<Self> {
+        let mut factories = std::collections::HashMap::new();
+        for (name, factory) in entries {
+            if name.is_empty() || factories.insert(name, factory).is_some() {
+                return Err(format!("duplicate or empty native generator: {name}"));
+            }
+        }
+        Ok(Self { factories })
+    }
+
+    fn factory(&self, ty: &ls::TypeRef) -> Option<NativeFactory> {
+        match ty {
+            ls::TypeRef::Named(name, _) => self.factories.get(name).copied(),
+            _ => None,
+        }
+    }
+}
+
+pub fn schema_strategy_with_generators(
+    schema: &ls::Schema,
+    ty: &ls::TypeRef,
+    bits: u32,
+    budget: usize,
+    context: &ls::Context,
+    native: &NativeGenerators,
+) -> ls::Result<BoxedStrategy<Value>> {
+    if schema.has_contracts() {
+        return Err("constructor contracts require checked_schema_strategy_with_generators".into());
+    }
+    shape_strategy_with_generators(
+        schema,
+        ty,
+        bits,
+        budget,
+        Default::default(),
+        context,
+        native,
+    )
+}
+
 pub fn strategy(name: &str) -> ls::Result<BoxedStrategy<Value>> {
     strategy_with_profile(name, usize::BITS)
 }
@@ -332,6 +388,26 @@ pub fn checked_schema_strategy(
     context: &ls::Context,
     witnesses: Vec<Value>,
 ) -> ls::Result<BoxedStrategy<ls::Result<Value>>> {
+    checked_schema_strategy_with_generators(
+        schema,
+        ty,
+        bits,
+        budget,
+        context,
+        witnesses,
+        &NativeGenerators::default(),
+    )
+}
+
+pub fn checked_schema_strategy_with_generators(
+    schema: &ls::Schema,
+    ty: &ls::TypeRef,
+    bits: u32,
+    budget: usize,
+    context: &ls::Context,
+    witnesses: Vec<Value>,
+    native: &NativeGenerators,
+) -> ls::Result<BoxedStrategy<ls::Result<Value>>> {
     let mut seeds = Witnesses::new();
     for witness in witnesses {
         let value = schema.validate_with_context(witness, ty, bits, &mut context.clone())?;
@@ -340,7 +416,8 @@ pub fn checked_schema_strategy(
         }
         collect_witnesses(schema, ty, &value, &mut seeds)?;
     }
-    let strategy = shape_strategy(schema, ty, bits, budget, seeds)?;
+    let strategy =
+        shape_strategy_with_generators(schema, ty, bits, budget, seeds, context, native)?;
     let schema = schema.clone();
     let ty = ty.clone();
     let context = context.clone();
@@ -362,9 +439,31 @@ fn shape_strategy(
     budget: usize,
     witnesses: Witnesses,
 ) -> ls::Result<BoxedStrategy<Value>> {
+    shape_strategy_with_generators(
+        schema,
+        ty,
+        bits,
+        budget,
+        witnesses,
+        &ls::Context::default(),
+        &NativeGenerators::default(),
+    )
+}
+
+fn shape_strategy_with_generators(
+    schema: &ls::Schema,
+    ty: &ls::TypeRef,
+    bits: u32,
+    budget: usize,
+    witnesses: Witnesses,
+    context: &ls::Context,
+    native: &NativeGenerators,
+) -> ls::Result<BoxedStrategy<Value>> {
     type Request = (ls::TypeRef, usize);
     struct Builder<'a> {
         schema: &'a ls::Schema,
+        context: &'a ls::Context,
+        native: &'a NativeGenerators,
         bits: u32,
         witnesses: Witnesses,
         inhabited: std::collections::HashMap<Request, bool>,
@@ -380,7 +479,9 @@ fn shape_strategy(
             if let Some(result) = self.inhabited.get(&key) {
                 return Ok(*result);
             }
-            let result = if let Some(constructors) = self.schema.constructor_fields(ty)? {
+            let result = if self.native.factory(ty).is_some() {
+                true
+            } else if let Some(constructors) = self.schema.constructor_fields(ty)? {
                 let mut found = false;
                 for constructor in constructors {
                     if self.allocate(&constructor.fields, budget - 1)?.is_some() {
@@ -453,7 +554,40 @@ fn shape_strategy(
             if let Some(cached) = self.generators.get(&key) {
                 return Ok(cached.clone());
             }
-            let result = if let Some(constructors) = self.schema.constructor_fields(ty)? {
+            let result = if let Some(factory) = self.native.factory(ty) {
+                let ls::TypeRef::Named(_, arguments) = ty else {
+                    return Err("uninstantiated native generator type".into());
+                };
+                let mut children = Vec::new();
+                for argument in arguments {
+                    let remaining = budget.saturating_sub(1).max(1);
+                    let child = if self.can_generate(argument, remaining)? {
+                        self.generate(argument, remaining)?
+                    } else {
+                        // Phantom parameters may be uninhabited. Keep a native
+                        // strategy argument that rejects if actually sampled.
+                        Just(Value::Unit)
+                            .prop_filter(
+                                format!("no native generator argument within node budget {remaining}: {argument:?}"),
+                                |_| false,
+                            )
+                            .boxed()
+                    };
+                    children.push(child);
+                }
+                let strategy = factory(self.schema, ty, self.bits, self.context, children)?;
+                let schema = self.schema.clone();
+                let ty = ty.clone();
+                let bits = self.bits;
+                let context = self.context.clone();
+                strategy
+                    .prop_map(move |value| {
+                        schema
+                            .validate_with_context(value, &ty, bits, &mut context.clone())
+                            .unwrap_or_else(|error| panic!("native generator {ty:?}: {error}"))
+                    })
+                    .boxed()
+            } else if let Some(constructors) = self.schema.constructor_fields(ty)? {
                 let mut alternatives = Vec::new();
                 for constructor in constructors {
                     let Some(costs) = self.allocate(&constructor.fields, budget - 1)? else {
@@ -546,7 +680,11 @@ fn shape_strategy(
                 .filter(|value| value_cost(value) <= budget)
                 .cloned()
                 .collect();
-            let result = seeded(result, seeds);
+            let result = if self.native.factory(ty).is_some() {
+                result
+            } else {
+                seeded(result, seeds)
+            };
             self.generators.insert(key, result.clone());
             Ok(result)
         }
@@ -557,6 +695,8 @@ fn shape_strategy(
     }
     Builder {
         schema,
+        context,
+        native,
         bits,
         witnesses,
         inhabited: Default::default(),

@@ -116,6 +116,22 @@ jobs:
         env:
           LAWSPEC_MACHINE_BITS: '32'
 
+      - name: Installed native bindings and adapter failure
+        run: node tools/native-example-integration.mjs ${{ matrix.target }}
+        env:
+          LAWSPEC_PYTHON: ${{ matrix.python }}
+      - name: Installed native bindings with compact 32-bit profile
+        run: node tools/native-example-integration.mjs ${{ matrix.target }}
+        env:
+          LAWSPEC_PYTHON: ${{ matrix.python }}
+          LAWSPEC_MACHINE_BITS: '32'
+          LAWSPEC_MINIFY: '1'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: native-bindings-${{ matrix.target }}-${{ matrix.python || 'default' }}
+          path: .artifacts/native-example-integration/**/*.log
+
   rust:
     strategy:
       fail-fast: false

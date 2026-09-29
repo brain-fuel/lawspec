@@ -1,6 +1,7 @@
 -- Native Hedgehog generation and shrinking for checked Core schemas.
 module LawSpecDataStrategies
-  (strategy, checkedStrategy, primitiveStrategy) where
+  (strategy, checkedStrategy, checkedStrategyWith, primitiveStrategy
+  , NativeFactory, nativeValues, nativeArguments) where
 
 import Control.Monad (unless, when, foldM)
 import Control.Monad.State.Strict (StateT, evalStateT, get, modify, lift)
@@ -14,6 +15,22 @@ import qualified Hedgehog.Gen as Gen
 import qualified Hedgehog.Range as Range
 import qualified LawSpecRuntime as LS
 import qualified LawSpecSchema as S
+import qualified LawSpecCodecs as Codec
+
+-- Factories return native Hedgehog trees; fmap preserves their shrink structure.
+type NativeFactory = S.TypeRef -> [Gen LS.Scalar]
+                   -> Either String (Gen LS.Scalar)
+
+nativeValues :: Codec.Codec a -> Gen a -> Gen LS.Scalar
+nativeValues codec = fmap $ \value ->
+  case Codec.encode codec value of
+    Left message -> error ("native generator: " ++ message)
+    Right logical -> LS.forceScalar logical `seq` logical
+
+nativeArguments :: Codec.Codec a -> Gen LS.Scalar -> Gen a
+nativeArguments codec = fmap $ \value ->
+  either (error . ("native generator argument: " ++)) id
+    (Codec.decode codec value)
 
 type Cache = Map.Map (S.TypeRef, Int) (Maybe (Gen LS.Scalar))
 type Build = StateT Cache (Either String)
@@ -33,7 +50,13 @@ strategy schema reference bits budget scalar = do
 checkedStrategy :: S.Schema -> S.TypeRef -> Int -> Int -> Maybe LS.SymbolContext
                 -> [LS.Scalar] -> (String -> Either String (Gen LS.Scalar))
                 -> Either String (Gen LS.Scalar)
-checkedStrategy schema reference bits budget scope witnesses scalar = do
+checkedStrategy = checkedStrategyWith []
+
+checkedStrategyWith :: [(String, NativeFactory)]
+                    -> S.Schema -> S.TypeRef -> Int -> Int -> Maybe LS.SymbolContext
+                    -> [LS.Scalar] -> (String -> Either String (Gen LS.Scalar))
+                    -> Either String (Gen LS.Scalar)
+checkedStrategyWith factories schema reference bits budget scope witnesses scalar = do
   checked <- mapM (S.validateWith scope schema reference bits) witnesses
   seeds <- foldM (indexWitness schema reference) Map.empty checked
   let scoped = maybe id LS.scopeSymbols scope
@@ -48,7 +71,7 @@ checkedStrategy schema reference bits budget scope witnesses scalar = do
             choices = if null values then native
               else Gen.choice [native, Gen.element values]
         in Gen.filterT (accepted ty) choices
-  generated <- buildStrategy schema reference bits budget scalar finish
+  generated <- buildStrategyWith factories schema reference bits budget scalar finish
   pure
     (either error id . S.validateWith scope schema reference bits <$> generated)
 
@@ -91,7 +114,14 @@ buildStrategy :: S.Schema -> S.TypeRef -> Int -> Int
               -> (String -> Either String (Gen LS.Scalar))
               -> (S.TypeRef -> Int -> Gen LS.Scalar -> Gen LS.Scalar)
               -> Either String (Gen LS.Scalar)
-buildStrategy schema reference bits budget scalar finish = do
+buildStrategy = buildStrategyWith []
+
+buildStrategyWith :: [(String, NativeFactory)]
+                  -> S.Schema -> S.TypeRef -> Int -> Int
+                  -> (String -> Either String (Gen LS.Scalar))
+                  -> (S.TypeRef -> Int -> Gen LS.Scalar -> Gen LS.Scalar)
+                  -> Either String (Gen LS.Scalar)
+buildStrategyWith factories schema reference bits budget scalar finish = do
   unless (budget > 0) (Left "structural node budget must be positive")
   unless (bits == 32 || bits == 64) (Left "machineBits must be 32 or 64")
   S.checkType schema 0 reference
@@ -106,8 +136,16 @@ buildStrategy schema reference bits budget scalar finish = do
       case cached of
         Just result -> pure result
         Nothing -> do
-          raw <- assemble ty available
-          let result = fmap (finish ty available) raw
+          -- A custom distribution owns its samples and shrink tree. It must
+          -- never acquire fallback witnesses or discard invalid native values.
+          result <- case ty of
+            S.Named name arguments | Just factory <- lookup name factories -> do
+              -- A native factory may ignore a phantom parameter. Discard only
+              -- if it actually requests a value from an uninhabited child.
+              children <- mapM (\child -> maybe Gen.discard id <$>
+                build child (available - 1)) arguments
+              Just <$> lift (factory ty children)
+            _ -> fmap (finish ty available) <$> assemble ty available
           modify (Map.insert (ty, available) result)
           pure result
 

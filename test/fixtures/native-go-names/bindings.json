@@ -1,0 +1,4 @@
+{"types":[
+ {"type":"collision.model::type::Box","native":["Box"],"constructors":[{"constructor":"Box","native":["Box"],"style":"record","fields":[{"field":"item","native":"Stored"}]}]},
+ {"type":"collision.model::type::Tree","native":["Tree"],"constructors":[{"constructor":"Leaf","native":["Leaf"],"style":"variant","fields":[{"field":"value","native":"Stored"}]},{"constructor":"Branch","native":["Branch"],"style":"variant","fields":[{"field":"children","native":"Children"}]}]}
+],"functions":[{"declaration":"collision.model::copyBox","native":["Copy"]},{"declaration":"collision.model::copyFlag","native":["Copy"]},{"declaration":"collision.model::copyTree","native":["Copy"]}],"generators":[{"type":"collision.model::type::Box","factory":["Boxes"]}]}

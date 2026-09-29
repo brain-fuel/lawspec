@@ -1,5 +1,7 @@
 module Main where
 import Test.Hspec
+import qualified NativeBindingSpec
+import qualified NativeRequestSpec
 import qualified GenericDefinitionSpec
 import qualified DefinitionPredicateSpec
 import qualified RefinementProofSpec
@@ -29,6 +31,8 @@ concrete :: String -> String
 concrete d = "law `codec` is definition is " ++ d ++ " end end\n"
 main :: IO ()
 main = hspec $ do
+  NativeBindingSpec.spec
+  NativeRequestSpec.spec
   CoreSpec.spec
   PayloadSpec.spec
   PayloadProofSpec.spec

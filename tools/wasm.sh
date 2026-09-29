@@ -18,5 +18,7 @@ cp "$core_file" npm/core.wasm
 cp examples/specs/atoi_codec.lawspec npm/starter.lawspec
 mkdir -p npm/examples/specs
 cp examples/specs/*.lawspec npm/examples/specs/
-cp README.md PRIMITIVES.md REFINEMENTS.md RUST.md JAVA.md PYTHON.md GO.md HASKELL.md KOTLIN.md WEB.md LANGUAGE.md API-MIGRATION.md RELEASE-0.9.md LICENSE npm/
+mkdir -p npm/examples/native-payments
+cp -R examples/native-payments/. npm/examples/native-payments/
+cp README.md NATIVE-BINDINGS.md PRIMITIVES.md REFINEMENTS.md RUST.md JAVA.md PYTHON.md GO.md HASKELL.md KOTLIN.md WEB.md LANGUAGE.md API-MIGRATION.md RELEASE-0.9.md RELEASE-0.10.md LICENSE npm/
 node tools/build-integrity.mjs --record

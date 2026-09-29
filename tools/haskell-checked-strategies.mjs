@@ -8,7 +8,7 @@ const packageDb = process.env.LAWSPEC_GHC_PACKAGE_DB;
 assert.ok(ghc && packageDb, 'Set LAWSPEC_GHC and LAWSPEC_GHC_PACKAGE_DB');
 const directory = path.join(root, '.artifacts/haskell-checked-strategies');
 await mkdir(directory, {recursive: true});
-for (const name of ['LawSpecRuntime.hs', 'LawSpecSchema.hs', 'LawSpecDataStrategies.hs']) {
+for (const name of ['LawSpecRuntime.hs', 'LawSpecSchema.hs', 'LawSpecCodecs.hs', 'LawSpecDataStrategies.hs']) {
   await writeFile(path.join(directory, name), await readFile(path.join(root, 'runtime', name)));
 }
 await writeFile(path.join(directory, 'Main.hs'),

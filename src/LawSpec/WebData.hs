@@ -69,8 +69,8 @@ emitWebDataWithProfile ts bits layout declarations = do
            D.block 2 (D.joinWith D.hardline (map D.text ["nothing: Nothing,", "just: Just,", "left: Left,", "right: Right,", "presence: Presence,"]))] <> D.text ";"]))
       source = D.joinWith (D.hardline <> D.hardline)
         (header : builtins ++ classes ++ [factory]) <> D.hardline
-      typedRuntime = if ts then replace "constructor(tag, fields, native, predicates = [])"
-        "constructor(tag, fields, native, predicates: FieldPredicate[] = [])" $
+      typedRuntime = if ts then replace "predicates = []"
+        "predicates: FieldPredicate[] = []" $
         replace "constructor(name, args = [])"
           "constructor(name: string, args: ReadonlyArray<Named | Parameter> = [])" (runtimeSource "web-schema")
         else runtimeSource "web-schema"

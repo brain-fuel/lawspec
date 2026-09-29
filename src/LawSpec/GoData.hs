@@ -1,12 +1,13 @@
 -- Native sealed interfaces and variants follow Go+'s resolved enum lowering.
-module LawSpec.GoData (emitGoData, goDataType, goTypeReference, emitGoSchema, emitGoSchemaWithProfile, goCodec, goCodecWithContext, emitGoCodecs, requiresSchema, goDataKey, validateGoBindings) where
+module LawSpec.GoData (emitGoData, goDataType, goTypeReference, emitGoSchema, emitGoSchemaWithProfile, goCodec, goCodecWithContext, emitGoCodecs, requiresSchema, goDataKey, validateGoBindings, identifier, goNativeCodec, emitGoNativeCodecs, goGeneratedNames, goNativeTypeWithParameters) where
 
 import LawSpec.GoTypeRefs
 import qualified LawSpec.GoExpr as E
 import LawSpec.Core.Total (constructorProofContracts)
 import Control.Monad (unless, forM)
 import Data.Char (isAscii, isAlphaNum, isLetter, toUpper, toLower, ord)
-import Data.List (intercalate, nub)
+import Data.List (intercalate, nub, find)
+import LawSpec.NativeBinding
 import Numeric (showHex)
 import qualified LawSpec.Core as C
 import LawSpec.Core.Types (makeRegistry, checkType)
@@ -45,6 +46,9 @@ namesFor declarations = do
   pure names
   where
     qualify = concatMap capitalize . words . map (\c -> if isAlphaNum c then c else ' ')
+
+goGeneratedNames :: [C.DataDeclaration] -> Either String [String]
+goGeneratedNames declarations = map snd <$> namesFor declarations
 
 applied :: String -> [String] -> String
 applied name [] = name
@@ -192,14 +196,17 @@ goCodecUsing context declarations ty = do
   codec context names [] [] ty
 
 codec :: Maybe String -> Names -> [(C.Id,String)] -> [(C.Id,String)] -> C.Type -> Either String String
-codec context names parameters codecs ty = case ty of
+codec = codecUsing "lawSpec" Nothing
+
+codecUsing :: String -> Maybe Names -> Maybe String -> Names -> [(C.Id,String)] -> [(C.Id,String)] -> C.Type -> Either String String
+codecUsing prefix nativeNames context names parameters codecs ty = case ty of
   C.TypeVariable variable -> maybe (Left "unbound Go codec parameter") Right (lookup variable codecs)
   C.Constructor name arguments -> do
     types <- mapM argument arguments
-    children <- mapM (codec context names parameters codecs) types
-    native <- typeText names parameters ty
+    children <- mapM (codecUsing prefix nativeNames context names parameters codecs) types
+    native <- typeText (maybe names id nativeNames) parameters ty
     case lookup (C.Id name) names of
-      Just dataName -> pure (invoke ("lawSpec" ++ dataName ++ "Codec") (["schema","bits"] ++ children ++ maybe [] pure context))
+      Just dataName -> pure (invoke (prefix ++ dataName ++ "Codec") (["schema","bits"] ++ children ++ maybe [] pure context))
       Nothing -> case name of
         "List" -> pure (invoke "lsListCodec" (["schema","bits"] ++ children ++ maybe [] pure context))
         "Maybe" -> pure (invoke "lsMaybeCodec" (["schema","bits"] ++ children ++ maybe [] pure context))
@@ -214,13 +221,39 @@ codec context names parameters codecs ty = case ty of
     argument _ = Left "indexed Go codec is not supported"
     invoke name arguments = name ++ "(" ++ intercalate ", " arguments ++ ")"
 
+goNativeCodec :: [C.DataDeclaration] -> [ResolvedTypeBinding] -> C.Type -> Either String String
+goNativeCodec declarations mappings ty = do
+  names <- namesFor declarations
+  codecUsing "lawSpecNative" (Just (nativeNamesFor names mappings)) (Just "symbols") names [] [] ty
+
+goNativeTypeWithParameters :: [C.DataDeclaration] -> [ResolvedTypeBinding] -> [(C.Id,String)] -> C.Type -> Either String String
+goNativeTypeWithParameters declarations mappings parameters ty = do
+  names <- namesFor declarations
+  typeText (nativeNamesFor names mappings) parameters ty
+
+nativeNamesFor :: Names -> [ResolvedTypeBinding] -> Names
+nativeNamesFor names mappings = [(identity, maybe name (intercalate "." . referenceParts)
+  (lookup identity references)) | (identity,name) <- names]
+  where
+    references = [(C.dataId (resolvedDeclaration m), resolvedNativeType m) | m <- mappings] ++
+      [(C.constructorId (resolvedConstructor c), resolvedNativeConstructor c) | m <- mappings, c <- resolvedConstructors m]
+
+emitGoNativeCodecs :: D.Layout -> String -> [(String,String)] -> [C.DataDeclaration] -> [ResolvedTypeBinding] -> [C.Id] -> Either String String
+emitGoNativeCodecs layout packageName imports declarations mappings needed =
+  emitCodecs "lawSpecNative" mappings (Just needed) imports layout packageName declarations
+
 emitGoCodecs :: D.Layout -> String -> [C.DataDeclaration] -> Either String String
-emitGoCodecs layout packageName declarations = do
+emitGoCodecs = emitCodecs "lawSpec" [] Nothing []
+
+emitCodecs :: String -> [ResolvedTypeBinding] -> Maybe [C.Id] -> [(String,String)] -> D.Layout -> String -> [C.DataDeclaration] -> Either String String
+emitCodecs prefix mappings needed imports layout packageName declarations = do
   _ <- emitGoData layout packageName declarations
   names <- namesFor declarations
-  definitions <- mapM (definition names) declarations
+  definitions <- mapM (definition names) [d | d <- declarations, maybe True (C.dataId d `elem`) needed]
   pure (D.render (if layout == D.Compact then D.CompactTabs else layout) (D.text "// Generated by LawSpec. Do not edit." <> D.hardline <>
     D.text ("package " ++ packageName) <>
+    (if null imports then mempty else D.hardline <> D.hardline <>
+      D.joinWith D.hardline [D.text ("import " ++ alias ++ " " ++ q path) | (alias,path) <- imports]) <>
     (if null definitions then mempty else D.hardline <> D.hardline <>
       D.joinWith (D.hardline <> D.hardline) definitions) <> D.hardline))
   where
@@ -232,23 +265,30 @@ emitGoCodecs layout packageName declarations = do
             [candidate | n <- [0::Int ..], let candidate = "T" ++ show n, candidate `notElem` map snd names]
           arguments = map snd parameters
           codecParameters = zip (C.dataParameters declaration) ["element" ++ show n | n <- [0::Int ..]]
-          native = applied name arguments
+          native = applied (maybe name id (lookup (C.dataId declaration) (nativeNamesFor names mappings))) arguments
           typeRef = "lsNamed(" ++ intercalate ", " (q (C.idText (C.dataId declaration)) : [value ++ ".typeRef" | (_,value) <- codecParameters]) ++ ")"
           params = ["schema *lawSpecSchema", "bits int"] ++
             [value ++ " lawSpecCodec[" ++ ty ++ "]" | ((_,ty),(_,value)) <- zip parameters codecParameters] ++
             ["contexts ...map[string]*lawSpecSymbol"]
-          signature = "func " ++ applied ("lawSpec" ++ name ++ "Codec") [arg ++ " any" | arg <- arguments] ++
+          signature = "func " ++ applied (prefix ++ name ++ "Codec") [arg ++ " any" | arg <- arguments] ++
             "(" ++ intercalate ", " params ++ ") lawSpecCodec[" ++ native ++ "] "
       variants <- forM (C.dataConstructors declaration) $ \variant -> do
-        variantName <- lookupName names (C.constructorId variant)
+        variantName <- lookupName (nativeNamesFor names mappings) (C.constructorId variant)
         fields <- forM (C.constructorFields variant) $ \field -> do
-          expression <- codec (Just "symbols") names parameters codecParameters (C.binderType field)
+          expression <- codecUsing prefix (Just (nativeNamesFor names mappings)) (Just "symbols") names parameters codecParameters (C.binderType field)
           fieldType <- typeText names parameters (C.binderType field)
-          pure (capitalize (C.binderName field),C.binderName field,fieldType,expression)
-        let tag = C.idText (C.constructorId variant)
+          let mapped = find ((== C.constructorId variant) . C.constructorId . resolvedConstructor)
+                [c | m <- mappings,c <- resolvedConstructors m]
+              fieldName = maybe (capitalize (C.binderName field)) id
+                (mapped >>= lookup (C.binderId field) . map (\(f,n) -> (C.binderId f,n)) . resolvedFields)
+          pure (fieldName,C.binderName field,fieldType,expression)
+        let mapped = find ((== C.constructorId variant) . C.constructorId . resolvedConstructor)
+              [c | m <- mappings,c <- resolvedConstructors m]
+            unit = maybe False ((== UnitConstructor) . resolvedConstructorStyle) mapped
+            tag = C.idText (C.constructorId variant)
             concrete = applied variantName arguments
             width = maximum (0 : [length n | (n,_,_,_) <- fields])
-            construct = if null fields then line (concrete ++ "{}") else
+            construct = if unit then line variantName else if null fields then line (concrete ++ "{}") else
               line concrete <> D.block 8 (linesDoc
                 [line (n ++ ":" ++ replicate (width - length n + 1) ' ' ++ expression ++ ".toNative(data.fields[" ++ show index ++ "]),")
                 | (index,(n,_,_,expression)) <- zip [0::Int ..] fields])
@@ -258,8 +298,12 @@ emitGoCodecs layout packageName declarations = do
                   D.block 8 (line ("return " ++ expression ++ ".encode(native." ++ n ++ ", path)")) <> line "),"
                 | (n,original,_,expression) <- fields])
             decode = line ("case " ++ q tag ++ ":") <> D.nest 8 (D.hardline <> line "return " <> construct)
-            encodeValue = line ("case " ++ concrete ++ ":") <> D.nest 8 (D.hardline <>
-              line ("return schema.construct(typeRef, " ++ q tag ++ ", ") <> encodeFields <> line ", bits, symbols)")
+            result = line ("return schema.construct(typeRef, " ++ q tag ++ ", ") <> encodeFields <> line ", bits, symbols)"
+            encodeValue = if prefix == "lawSpec" then
+              line ("case " ++ concrete ++ ":") <> D.nest 8 (D.hardline <> result)
+              else line (if unit then "if any(value) == any(" ++ variantName ++ ") "
+                else "if native, ok := any(value).(" ++ concrete ++ "); ok ") <>
+                D.block 8 ((if not unit && null fields then line "_ = native" <> D.hardline else mempty) <> result)
         pure (decode,encodeValue)
       let decode = line ("func(value LawSpecValue) " ++ native ++ " ") <> D.block 8
             (line "data := value.Data.(lawSpecData)" <> D.hardline <>
@@ -267,13 +311,40 @@ emitGoCodecs layout packageName declarations = do
              linesDoc (map fst variants ++ [line "default:" <> D.nest 8 (D.hardline <> line "panic(\"unknown checked constructor\")")]) <>
              D.hardline <> line "}")
           encodeValue = line ("func(value " ++ native ++ ", path lawSpecPath) LawSpecValue ") <> D.block 8
-            (line "switch native := value.(type) {" <> D.hardline <>
-             linesDoc (map snd variants ++ [line "default:" <> D.nest 8 (D.hardline <> line "_ = native" <> D.hardline <>
-               line ("panic(" ++ q ("unexpected native constructor for " ++ C.idText (C.dataId declaration)) ++ ")"))]) <>
-             D.hardline <> line "}")
-          body = line "symbols := lsSchemaSymbols(contexts)" <> D.hardline <> line ("typeRef := " ++ typeRef) <> D.hardline <>
+            (if prefix == "lawSpec" then
+              line "switch native := value.(type) {" <> D.hardline <>
+              linesDoc (map snd variants ++ [line "default:" <> D.nest 8 (D.hardline <> line "_ = native" <> D.hardline <> failure)]) <>
+              D.hardline <> line "}"
+             else linesDoc (map snd variants ++ [failure]))
+          failure = line ("panic(" ++ q ("unexpected native constructor for " ++ C.idText (C.dataId declaration)) ++ ")")
+      (setup, hookDecode, hookEncode) <- case find ((== C.dataId declaration) . C.dataId . resolvedDeclaration) mappings >>= resolvedCodec of
+        Nothing -> pure (mempty, decode, encodeValue)
+        Just hook -> do
+          let reference = intercalate "." . referenceParts
+              invoke name args = name ++ "(" ++ intercalate ", " args ++ ")"
+              logical = invoke ("lawSpec" ++ name ++ "Codec")
+                (["schema","bits"] ++ [invoke "lsLogicalCodec" ["schema","bits",v ++ ".typeRef","symbols"] |
+                  (_,v) <- codecParameters] ++ ["symbols"])
+              context direction result expression =
+                line ("return lsNativeContext(" ++ q ("native codec " ++ C.idText (C.dataId declaration) ++ " " ++ direction) ++ ", func() " ++ result ++ " ") <>
+                D.block 8 (line "converted, err := " <> expression <> D.hardline <>
+                  line "if err != nil " <> D.block 8 (line "panic(err)") <> D.hardline <>
+                  line (if direction == "toNative" then "return converted" else "return canonical.encode(converted, path)")) <> line ")"
+              decodeArgs = line "canonical.toNative(value)" : [line (v ++ ".toNative") | (_,v) <- codecParameters]
+              encodeArgs = line "value" : [line ("func(child " ++ ty ++ ") LawSpecValue ") <>
+                D.block 8 (line ("return " ++ v ++ ".encode(child, path)")) |
+                  ((_,ty),(_,v)) <- zip parameters codecParameters]
+              call name args = line (name ++ "(") <>
+                D.nest 8 (D.hardline <> D.joinWith (line "," <> D.hardline) args <> line ",") <>
+                D.hardline <> line ")"
+          pure (line ("canonical := " ++ logical) <> D.hardline,
+            line ("func(value LawSpecValue) " ++ native ++ " ") <> D.block 8
+              (context "toNative" native (call (reference (codecToNative hook)) decodeArgs)),
+            line ("func(value " ++ native ++ ", path lawSpecPath) LawSpecValue ") <> D.block 8
+              (context "fromNative" "LawSpecValue" (call (reference (codecFromNative hook)) encodeArgs)))
+      let body = line "symbols := lsSchemaSymbols(contexts)" <> D.hardline <> line ("typeRef := " ++ typeRef) <> D.hardline <> setup <>
             line "return lsCodec(schema, bits, typeRef," <>
-            D.nest 8 (D.hardline <> decode <> line "," <> D.hardline <> encodeValue <> line ", symbols)")
+            D.nest 8 (D.hardline <> hookDecode <> line "," <> D.hardline <> hookEncode <> line ", symbols)")
       pure (line signature <> D.block 8 body)
     lookupName names identity = maybe (Left "unplanned Go codec name") Right (lookup identity names)
 

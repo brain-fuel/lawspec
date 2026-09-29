@@ -1,6 +1,7 @@
 package lawspec.testing
 
 import io.kotest.property.Arb
+import io.kotest.property.RTree
 import io.kotest.property.RandomSource
 import io.kotest.property.Sample
 import io.kotest.property.arbitrary.bind
@@ -62,6 +63,71 @@ object LawSpecKotlinStrategies {
         }
     }
 
+    fun interface NativeFactory {
+        fun create(
+            schema: LawSpecSchema,
+            type: Named,
+            bits: Int,
+            symbols: MutableMap<String, Any>,
+            arguments: List<Arb<Value>>,
+        ): Arb<Value>
+    }
+
+    private class NativeFailure(type: Named, cause: RuntimeException) :
+        IllegalArgumentException(
+            "native generator ${LawSpecSchema.key(type)}: ${cause.message}", cause,
+        )
+
+    fun <T> nativeValues(codec: LawSpecSchema.Codec<T>, source: Arb<T>): Arb<Value> =
+        source.map { value ->
+            try {
+                codec.encode(value)
+            } catch (error: RuntimeException) {
+                throw NativeFailure(codec.type(), error)
+            }
+        }
+
+    fun <T> nativeArguments(codec: LawSpecSchema.Codec<T>, source: Arb<Value>): Arb<T> =
+        source.map { value ->
+            try {
+                codec.decode(value)
+            } catch (error: RuntimeException) {
+                throw NativeFailure(codec.type(), error)
+            }
+        }
+
+    // Retain the native tree, including failures encountered while evaluating a
+    // shrink node or enumerating its children. Report those in property callbacks.
+    private fun capture(source: Arb<Checked>): Arb<Checked> = object : Arb<Checked>() {
+        override fun edgecase(rs: RandomSource): Checked? = null
+
+        fun failure(error: NativeFailure) = RTree({ Checked(null, error) })
+
+        fun tree(source: RTree<Checked>): RTree<Checked> {
+            val value = try {
+                source.value()
+            } catch (error: NativeFailure) {
+                return failure(error)
+            }
+            return RTree({ value }, lazy {
+                try {
+                    source.children.value.map(::tree)
+                } catch (error: NativeFailure) {
+                    listOf(failure(error))
+                }
+            })
+        }
+
+        override fun sample(rs: RandomSource): Sample<Checked> {
+            val result = try {
+                tree(source.sample(rs).shrinks)
+            } catch (error: NativeFailure) {
+                failure(error)
+            }
+            return Sample(result.value(), result)
+        }
+    }
+
     fun checkedGenerator(
         schema: LawSpecSchema,
         type: Named,
@@ -71,23 +137,37 @@ object LawSpecKotlinStrategies {
         symbols: MutableMap<String, Any>,
         witnesses: List<Value>,
         scalar: (String) -> Arb<Value>,
+    ): Arb<Checked> = checkedGenerator(
+        schema, type, bits, budget, maxAttempts, symbols, witnesses, emptyMap(), scalar,
+    )
+
+    fun checkedGenerator(
+        schema: LawSpecSchema,
+        type: Named,
+        bits: Int,
+        budget: Int,
+        maxAttempts: Int,
+        symbols: MutableMap<String, Any>,
+        witnesses: List<Value>,
+        factories: Map<String, NativeFactory>,
+        scalar: (String) -> Arb<Value>,
     ): Arb<Checked> {
         require(budget > 0) { "structural node budget must be positive" }
         require(bits == 32 || bits == 64) { "machineBits must be 32 or 64" }
         require(maxAttempts > 0) { "maxAttempts must be positive" }
         schema.isScalar(type)
-        val builder = Builder(schema, bits, scalar, symbols, maxAttempts)
+        val builder = Builder(schema, bits, scalar, symbols, maxAttempts, factories)
         witnesses.forEach { builder.addWitness(type, schema.validate(type, it, bits, symbols)) }
         val source = requireNotNull(builder.build(type, budget)) {
             "no value of ${LawSpecSchema.key(type)} within structural node budget $budget"
         }
-        return source.map { value ->
+        return capture(source.map { value ->
             try {
                 Checked(schema.validate(type, value, bits, symbols), null)
             } catch (error: RuntimeException) {
                 Checked(null, error)
             }
-        }
+        })
     }
 
     private fun nodes(value: Value): Int = 1 + when (val data = value.data()) {
@@ -131,6 +211,7 @@ object LawSpecKotlinStrategies {
         val scalar: (String) -> Arb<Value>,
         val symbols: MutableMap<String, Any>? = null,
         val maxAttempts: Int = 100,
+        val factories: Map<String, NativeFactory> = emptyMap(),
     ) {
         val witnesses = mutableMapOf<Named, MutableList<Value>>()
         val cache = mutableMapOf<Request, Arb<Value>?>()
@@ -178,6 +259,27 @@ object LawSpecKotlinStrategies {
             if (available < 1) return null
             val request = Request(type, available)
             if (cache.containsKey(request)) return cache[request]
+            factories[type.name()]?.let { factory ->
+                val arguments = type.arguments().map {
+                    build(it as Named, available) ?: object : Arb<Value>() {
+                        // A phantom parameter can be uninhabited. Fail only if
+                        // its factory actually asks this arbitrary for a value.
+                        override fun edgecase(rs: RandomSource): Value? = null
+                        override fun sample(rs: RandomSource): Sample<Value> =
+                            error("no native generator argument for ${LawSpecSchema.key(it)} within node budget $available")
+                    }
+                }
+                val context = requireNotNull(symbols)
+                val result = factory.create(schema, type, bits, context, arguments).map { value ->
+                    try {
+                        schema.validate(type, value, bits, context)
+                    } catch (error: RuntimeException) {
+                        throw NativeFailure(type, error)
+                    }
+                }
+                cache[request] = result
+                return result
+            }
             var result = when {
                 schema.isScalar(type) -> scalar(type.name()).map { schema.validate(type, it, bits) }
                 type.name() == "List" -> list(type, available)

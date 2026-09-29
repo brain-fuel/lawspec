@@ -1,0 +1,165 @@
+{
+  "version": 1,
+  "sources": [
+    "laws"
+  ],
+  "machineBits": 64,
+  "targets": [
+    {
+      "language": "kotlin",
+      "root": ".",
+      "nativeBindings": {
+        "types": [
+          {
+            "type": "example.payments::type::Currency",
+            "native": [
+              "domain",
+              "PaymentsDomain",
+              "CurrencyCode"
+            ],
+            "constructors": [
+              {
+                "constructor": "USD",
+                "native": [
+                  "domain",
+                  "PaymentsDomain",
+                  "CurrencyCode",
+                  "Dollars"
+                ],
+                "style": "unit",
+                "fields": []
+              },
+              {
+                "constructor": "EUR",
+                "native": [
+                  "domain",
+                  "PaymentsDomain",
+                  "CurrencyCode",
+                  "Euros"
+                ],
+                "style": "unit",
+                "fields": []
+              },
+              {
+                "constructor": "GBP",
+                "native": [
+                  "domain",
+                  "PaymentsDomain",
+                  "CurrencyCode",
+                  "Pounds"
+                ],
+                "style": "unit",
+                "fields": []
+              }
+            ]
+          },
+          {
+            "type": "example.payments::type::Money",
+            "native": [
+              "domain",
+              "PaymentsDomain",
+              "Price"
+            ],
+            "constructors": [
+              {
+                "constructor": "Money",
+                "native": [
+                  "domain",
+                  "PaymentsDomain",
+                  "Price"
+                ],
+                "style": "record",
+                "fields": [
+                  {
+                    "field": "amount",
+                    "native": "major"
+                  },
+                  {
+                    "field": "currency",
+                    "native": "unit"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "type": "example.payments::type::Payment",
+            "native": [
+              "domain",
+              "PaymentsDomain",
+              "PaymentStatus"
+            ],
+            "constructors": [
+              {
+                "constructor": "Paid",
+                "native": [
+                  "domain",
+                  "PaymentsDomain",
+                  "Settled"
+                ],
+                "style": "variant",
+                "fields": [
+                  {
+                    "field": "value",
+                    "native": "price"
+                  }
+                ]
+              },
+              {
+                "constructor": "Declined",
+                "native": [
+                  "domain",
+                  "PaymentsDomain",
+                  "Rejected"
+                ],
+                "style": "variant",
+                "fields": [
+                  {
+                    "field": "reason",
+                    "native": "explanation"
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "functions": [
+          {
+            "declaration": "example.payments::addFee",
+            "native": [
+              "domain",
+              "PaymentsDomain",
+              "apply_fee"
+            ]
+          },
+          {
+            "declaration": "example.payments::roundTrip",
+            "native": [
+              "domain",
+              "PaymentsDomain",
+              "restore"
+            ]
+          },
+          {
+            "declaration": "example.payments::archive",
+            "native": [
+              "domain",
+              "PaymentsDomain",
+              "store"
+            ]
+          }
+        ],
+        "generators": [
+          {
+            "type": "example.payments::type::Money",
+            "factory": [
+              "domain",
+              "PaymentGenerators",
+              "prices"
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

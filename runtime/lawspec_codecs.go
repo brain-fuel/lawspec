@@ -48,6 +48,13 @@ func lsCodec[T any](schema *lawSpecSchema, bits int, typeRef lawSpecTypeRef,
 	}
 }
 
+// Opaque generic payloads retain validation while crossing application hooks.
+func lsLogicalCodec(schema *lawSpecSchema, bits int, typeRef lawSpecTypeRef, contexts ...map[string]*lawSpecSymbol) lawSpecCodec[LawSpecValue] {
+	return lsCodec(schema, bits, typeRef,
+		func(value LawSpecValue) LawSpecValue { return value },
+		func(value LawSpecValue, path lawSpecPath) LawSpecValue { return value }, contexts...)
+}
+
 func lsScalarCodec[T any](schema *lawSpecSchema, bits int, name string) lawSpecCodec[T] {
 	lsCheckNativeProfile(name, bits)
 	return lsCodec(schema, bits, lsNamed(name),

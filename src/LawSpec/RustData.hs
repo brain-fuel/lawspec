@@ -1,5 +1,5 @@
 -- Native declarations and bridges consume resolved Core, never surface syntax.
-module LawSpec.RustData (emitRustData, rustDataType) where
+module LawSpec.RustData (emitRustData, rustDataType, rustDataTypeWithParameters, rustFieldBoxed) where
 
 import Control.Monad (unless, forM)
 import Data.Char (isAscii, isAlphaNum, isLetter, toLower, toUpper, ord)
@@ -41,6 +41,27 @@ rustDataType declarations ty = do
   checkType registry ty
   names <- namesFor declarations
   typeText names [] ty
+
+-- Native boundary converters reuse the canonical representation and recursive
+-- indirection choices rather than guessing target field storage independently.
+rustDataTypeWithParameters :: [C.DataDeclaration] -> [(C.Id,String)] -> C.Type -> Either String String
+rustDataTypeWithParameters declarations parameters ty = do
+  names <- namesFor declarations
+  typeText names parameters ty
+
+rustFieldBoxed :: [C.DataDeclaration] -> C.Id -> C.Type -> Bool
+rustFieldBoxed declarations owner ty = case ty of
+  C.Constructor name _ -> name `elem` map (C.idText . C.dataId) declarations &&
+    any (reaches []) (inlineNames ty)
+  _ -> False
+  where
+    reaches visited name
+      | name == C.idText owner = True
+      | name `elem` visited = False
+      | otherwise = any (reaches (name:visited))
+          [dependency | declaration <- declarations, C.dataId declaration == C.Id name,
+            constructor <- C.dataConstructors declaration, field <- C.constructorFields constructor,
+            dependency <- inlineNames (C.binderType field)]
 
 typeText :: Names -> [(C.Id,String)] -> C.Type -> Either String String
 typeText = typeTextScoped "crate::lawspec_data::"

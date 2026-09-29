@@ -1,0 +1,167 @@
+{
+  "version": 1,
+  "sources": [
+    "laws"
+  ],
+  "machineBits": 64,
+  "targets": [
+    {
+      "language": "rust",
+      "root": ".",
+      "nativeBindings": {
+        "rustCrate": "lawspec_example",
+        "types": [
+          {
+            "type": "example.payments::type::Currency",
+            "native": [
+              "crate",
+              "domain",
+              "CurrencyCode"
+            ],
+            "constructors": [
+              {
+                "constructor": "USD",
+                "native": [
+                  "crate",
+                  "domain",
+                  "CurrencyCode",
+                  "Dollars"
+                ],
+                "style": "unit",
+                "fields": []
+              },
+              {
+                "constructor": "EUR",
+                "native": [
+                  "crate",
+                  "domain",
+                  "CurrencyCode",
+                  "Euros"
+                ],
+                "style": "unit",
+                "fields": []
+              },
+              {
+                "constructor": "GBP",
+                "native": [
+                  "crate",
+                  "domain",
+                  "CurrencyCode",
+                  "Pounds"
+                ],
+                "style": "unit",
+                "fields": []
+              }
+            ]
+          },
+          {
+            "type": "example.payments::type::Money",
+            "native": [
+              "crate",
+              "domain",
+              "Price"
+            ],
+            "constructors": [
+              {
+                "constructor": "Money",
+                "native": [
+                  "crate",
+                  "domain",
+                  "Price"
+                ],
+                "style": "record",
+                "fields": [
+                  {
+                    "field": "amount",
+                    "native": "major"
+                  },
+                  {
+                    "field": "currency",
+                    "native": "unit"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "type": "example.payments::type::Payment",
+            "native": [
+              "crate",
+              "domain",
+              "PaymentStatus"
+            ],
+            "constructors": [
+              {
+                "constructor": "Paid",
+                "native": [
+                  "crate",
+                  "domain",
+                  "PaymentStatus",
+                  "Settled"
+                ],
+                "style": "variant",
+                "fields": [
+                  {
+                    "field": "value",
+                    "native": "price"
+                  }
+                ]
+              },
+              {
+                "constructor": "Declined",
+                "native": [
+                  "crate",
+                  "domain",
+                  "PaymentStatus",
+                  "Rejected"
+                ],
+                "style": "variant",
+                "fields": [
+                  {
+                    "field": "reason",
+                    "native": "explanation"
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "functions": [
+          {
+            "declaration": "example.payments::addFee",
+            "native": [
+              "crate",
+              "domain",
+              "apply_fee"
+            ]
+          },
+          {
+            "declaration": "example.payments::roundTrip",
+            "native": [
+              "crate",
+              "domain",
+              "restore"
+            ]
+          },
+          {
+            "declaration": "example.payments::archive",
+            "native": [
+              "crate",
+              "domain",
+              "store"
+            ]
+          }
+        ],
+        "generators": [
+          {
+            "type": "example.payments::type::Money",
+            "factory": [
+              "lawspec_generators",
+              "prices"
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -1,6 +1,6 @@
 """Typed data validation and native bridges without test frameworks."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 import lawspec_runtime as ls
 
@@ -31,10 +31,14 @@ class Constructor:
     fields: tuple
     native: type
     predicates: tuple = ()
+    native_fields: tuple | None = None
 
     def __post_init__(self):
         object.__setattr__(self, "fields", tuple(self.fields))
         object.__setattr__(self, "predicates", tuple(self.predicates))
+        if self.native_fields is not None:
+            object.__setattr__(
+                self, "native_fields", tuple(self.native_fields))
 
 
 @dataclass(frozen=True)
@@ -123,6 +127,8 @@ class Schema:
     """Validated Core metadata and native constructor classes."""
 
     def __init__(self, definitions, primitives):
+        self._native_codecs = {}
+        self._canonical = None
         self._definitions = {}
         self._arity = dict.fromkeys(primitives, 0)
         self._arity.update(List=1, Maybe=1, Either=2, Nullable=1, Optional=1)
@@ -149,6 +155,14 @@ class Schema:
                 names = [field.name for field in constructor.fields]
                 if len(names) != len(set(names)):
                     raise ValueError("duplicate constructor field")
+                if constructor.native_fields is not None:
+                    native_names = constructor.native_fields
+                    if (len(native_names) != len(names)
+                            or len(set(native_names)) != len(native_names)
+                            or not all(isinstance(name, str)
+                                       and name.isidentifier()
+                                       for name in native_names)):
+                        raise ValueError("invalid native field mapping")
                 for field in constructor.fields:
                     self._check(field.type, definition.parameters)
                 if not all(callable(test) for test in constructor.predicates):
@@ -177,8 +191,52 @@ class Schema:
         return tuple(Constructor(constructor.tag, tuple(
             Field(field.name, substitute(field.type, reference.arguments))
             for field in constructor.fields), constructor.native,
-            constructor.predicates)
+            constructor.predicates, constructor.native_fields)
             for constructor in definition.constructors)
+
+    def with_native_bindings(self, bindings, codecs=None):
+        """Copy this schema with application classes and field names.
+
+        Keys are resolved constructor tags. Values pair a class with its
+        field names in LawSpec declaration order. Predicates retain their
+        logical fields and run against the same checked values. Optional codec
+        entries map a type identity to (native class, to_native, from_native).
+        Hooks use canonical values and receive directional child converters.
+        """
+        bindings = dict(bindings)
+        hooks = dict(self._native_codecs)
+        hooks.update({} if codecs is None else codecs)
+        for name, hook in hooks.items():
+            definition = self._definitions.get(name)
+            if definition is None or not definition.constructors:
+                raise ValueError("unknown or empty native codec type: " + name)
+            if (not isinstance(hook, tuple) or len(hook) != 3
+                    or not isinstance(hook[0], type)
+                    or not all(callable(part) for part in hook[1:])):
+                raise TypeError("invalid native codec: " + name)
+            if any(item.tag in bindings for item in definition.constructors):
+                raise ValueError(
+                    "codec conflicts with native mapping: " + name)
+        definitions = []
+        for definition in self._definitions.values():
+            constructors = []
+            for constructor in definition.constructors:
+                mapped = bindings.pop(constructor.tag, None)
+                if mapped is not None:
+                    native, fields = mapped
+                    constructor = replace(
+                        constructor, native=native, native_fields=fields)
+                constructors.append(constructor)
+            definitions.append(replace(
+                definition, constructors=tuple(constructors)))
+        if bindings:
+            raise ValueError("unknown native constructor binding")
+        primitives = set(self._arity) - set(self._definitions)
+        primitives -= {"List", "Maybe", "Either", "Nullable", "Optional"}
+        result = Schema(definitions, primitives)
+        result._canonical = self._canonical or self
+        result._native_codecs = hooks
+        return result
 
     @staticmethod
     def _bits(bits):
@@ -267,7 +325,40 @@ class Schema:
         logical = self._walk(reference, value, bits, "logical", symbols)
         return self.validate(reference, logical, bits, symbols)
 
+    def _codec_walk(self, reference, value, bits, mode, symbols):
+        native, to_native, from_native = self._native_codecs[reference.name]
+        canonical = self._canonical
+        direction = "toNative" if mode == "native" else "fromNative"
+
+        def converter(argument):
+            if mode == "native":
+                return lambda child: self.to_native(
+                    argument, canonical.from_native(
+                        argument, child, bits, symbols), bits, symbols)
+            return lambda child: canonical.to_native(
+                argument, self.from_native(
+                    argument, child, bits, symbols), bits, symbols)
+
+        try:
+            children = tuple(map(converter, reference.arguments))
+            if mode == "native":
+                logical = canonical.to_native(reference, value, bits, symbols)
+                result = to_native(logical, *children)
+                if not isinstance(result, native):
+                    raise TypeError("hook returned the wrong native type")
+                return result
+            if not isinstance(value, native):
+                raise TypeError("expected the bound native type")
+            result = from_native(value, *children)
+            return canonical.from_native(reference, result, bits, symbols)
+        except Exception as error:
+            raise ValueError(
+                f"native codec {reference.name} {direction}: {error}"
+            ) from error
+
     def _walk(self, reference, value, bits, mode, symbols):
+        if mode != "validate" and reference.name in self._native_codecs:
+            return self._codec_walk(reference, value, bits, mode, symbols)
         constructors = self.constructors(reference)
         if constructors is not None:
             if mode == "logical":
@@ -275,8 +366,11 @@ class Schema:
                                     if type(value) is item.native), None)
                 if constructor is None:
                     raise TypeError("invalid native " + reference.name)
-                fields = tuple(getattr(value, field.name)
-                               for field in constructor.fields)
+                names = (constructor.native_fields
+                         if constructor.native_fields is not None
+                         else tuple(field.name
+                                    for field in constructor.fields))
+                fields = tuple(getattr(value, name) for name in names)
             else:
                 if not isinstance(value, ls.DataValue):
                     raise TypeError("expected " + reference.name)
@@ -300,6 +394,9 @@ class Schema:
                         constructor.tag + "." + field.name + ": " + str(error)
                     ) from error
             if mode == "native":
+                if constructor.native_fields is not None:
+                    return constructor.native(**dict(zip(
+                        constructor.native_fields, converted)))
                 return constructor.native(*converted)
             if mode == "validate":
                 # Check shapes first. Failed conditions stop before

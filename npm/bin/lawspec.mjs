@@ -19,7 +19,7 @@ const options = {};
 const positional = [];
 for (let i = 0; i < args.length; i++) {
   const arg = args[i];
-  if (["--target", "--project", "--config", "--output", "--machine-bits"].includes(arg)) {
+  if (["--target", "--project", "--config", "--output", "--machine-bits", "--example"].includes(arg)) {
     if (!args[i + 1] || args[i + 1].startsWith("--"))
       throw new Error(`Missing value for ${arg}`);
     options[arg.slice(2)] = args[++i];
@@ -173,13 +173,13 @@ async function main() {
   }
   if (!verb || ["help", "--help", "-h"].includes(verb)) {
     output(
-      "LawSpec 0.9.0\nUsage: lawspec init --target <language> [--project <directory>] [--minify]\n       lawspec check | doctor | explain <unit>::<law> | generate\n       lawspec examples [--target <language>] [--output example_artifacts]\nOptions: --config <path>, --target <language>, --machine-bits <32|64>, --json\nGeneration: --dry-run, --check, --minify\nTargets: " +
+      "LawSpec 0.10.0\nUsage: lawspec init --target <language> [--project <directory>] [--minify]\n       lawspec check | doctor | explain <unit>::<law> | generate\n       lawspec examples [--example payments] [--target <language>] [--output <directory>]\nOptions: --config <path>, --target <language>, --machine-bits <32|64>, --json\nGeneration: --dry-run, --check, --minify\nTargets: " +
         targets.join(", "),
     );
     return;
   }
   if (verb === "--version") {
-    output("0.9.0");
+    output("0.10.0");
     return;
   }
   if (positional.length > (verb === "explain" ? 1 : 0))
@@ -191,8 +191,15 @@ async function main() {
       options["dry-run"] ||
       options.check
     )
-      throw new Error("examples supports --target, --output, --json and --minify only");
+      throw new Error("examples supports --example, --target, --output, --machine-bits, --json and --minify only");
     const result = await generateExamples(options);
+    if (options.example) {
+      output(options.json ? result : result.map(r =>
+        `${r.target}: payment project in ${r.directory}; ${r.preservedAdapters.length} user files preserved.` +
+        (r.adapterUpdates.length ? `\nReview changed example files: ${r.adapterUpdates.map(a => a.path).join(", ")}` : "")
+      ).join("\n") + "\nOpen each project's README.md, run lawspec generate, then its native test command.");
+      return;
+    }
     output(
       options.json
         ? result
@@ -207,6 +214,7 @@ async function main() {
     return;
   }
   if (options.output) throw new Error("--output is only supported by examples");
+  if (options.example) throw new Error("--example is only supported by examples");
   if (options.minify && !["init", "generate", "examples"].includes(verb))
     throw new Error("--minify applies to init, generate and examples");
   if (verb === "init") return init();
@@ -251,6 +259,10 @@ async function main() {
   const compiler = await createCompiler();
   if (verb === "check") {
     const result = diagnostics(await compiler.check(input));
+    for (const target of selected) {
+      if (target.nativeBindings !== undefined)
+        diagnostics(await compiler.check({...input, nativeBindings: target.nativeBindings}));
+    }
     output(
       options.json
         ? result
@@ -289,6 +301,7 @@ async function main() {
           target: target.language,
           sourceDir: target.sourceDir,
           testDir: target.testDir,
+          nativeBindings: target.nativeBindings,
           minify: options.minify === true,
         }),
       ).files,

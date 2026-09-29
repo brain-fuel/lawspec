@@ -1,9 +1,10 @@
 -- Native JVM declarations from checked Core; no surface syntax or inference.
-module LawSpec.KotlinData (emitKotlinData, emitKotlinDataWithProfile, kotlinCodecDocWithContext, kotlinDataType, emitKotlinCodecs, kotlinCodec, kotlinTypeReference, requiresSchema, kotlinDataTypeDoc, kotlinCodecDoc, kotlinTypeReferenceDoc) where
+module LawSpec.KotlinData (emitKotlinData, emitKotlinDataWithProfile, kotlinCodecDocWithContext, kotlinDataType, emitKotlinCodecs, kotlinCodec, kotlinTypeReference, requiresSchema, kotlinDataTypeDoc, kotlinCodecDoc, kotlinTypeReferenceDoc, identifier, emitKotlinNativeCodecs, kotlinNativeCodecDoc, kotlinNativeTypeDoc) where
 
 import Control.Monad (unless, forM)
 import Data.Char (isAscii, isAlphaNum, isLetter, toUpper, toLower, ord)
-import Data.List (nub)
+import Data.List (nub, find, intercalate)
+import LawSpec.NativeBinding
 import Numeric (showHex)
 import Data.Aeson (encode)
 import qualified Data.Text.Lazy as T
@@ -50,13 +51,23 @@ applied name args = D.group (D.text (name ++ "<") <>
   D.nest 4 (D.softbreak <> D.commaSep args) <> D.text ">")
 
 typeDoc :: Names -> [(C.Id, String)] -> C.Type -> Either String D.Doc
-typeDoc names parameters ty = case ty of
+typeDoc = typeDocWithNative []
+
+kotlinNativeTypeDoc :: [C.DataDeclaration] -> [ResolvedTypeBinding] -> [(C.Id,String)] -> C.Type -> Either String D.Doc
+kotlinNativeTypeDoc declarations mappings parameters ty = do
+  names <- namesFor declarations
+  typeDocWithNative mappings names parameters ty
+
+typeDocWithNative :: [ResolvedTypeBinding] -> Names -> [(C.Id,String)] -> C.Type -> Either String D.Doc
+typeDocWithNative mappings names parameters ty = case ty of
   C.TypeVariable variable -> maybe (Left "unbound Kotlin data parameter")
     (Right . D.text) (lookup variable parameters)
   C.Constructor name arguments -> do
     args <- mapM argument arguments
-    case lookup (C.Id name) names of
-      Just native -> pure (applied ("lawspec.data." ++ native) args)
+    let nativeNames = [(C.dataId (resolvedDeclaration mapping),intercalate "." (referenceParts (resolvedNativeType mapping))) | mapping <- mappings]
+        canonicalNames = [(identity,"lawspec.data." ++ native) | (identity,native) <- names]
+    case lookup (C.Id name) (nativeNames ++ canonicalNames) of
+      Just native -> pure (applied native args)
       Nothing -> case (name,args) of
         ("List",[_]) -> pure (applied "kotlin.collections.List" args)
         ("Maybe",[_]) -> pure (applied "lawspec.runtime.LawSpecRuntime.Maybe" args)
@@ -68,7 +79,7 @@ typeDoc names parameters ty = case ty of
         _ -> Left ("no Kotlin data representation for " ++ show ty)
   _ -> Left ("no Kotlin data representation for " ++ show ty)
   where
-    argument (C.TypeArgument value) = typeDoc names parameters value
+    argument (C.TypeArgument value) = typeDocWithNative mappings names parameters value
     argument _ = Left "indexed Kotlin data is not supported"
     qualifyScalar native = if '.' `elem` native then native else "kotlin." ++ native
     scalars = [("Bool","Boolean"),("Int8","Byte"),("Int16","Short"),
@@ -170,13 +181,16 @@ codecDoc :: Names -> [(C.Id, (String, String))] -> C.Type -> Either String D.Doc
 codecDoc = codecDocUsing Nothing
 
 codecDocUsing :: Maybe D.Doc -> Names -> [(C.Id, (String, String))] -> C.Type -> Either String D.Doc
-codecDocUsing context names parameters ty = case ty of
+codecDocUsing = codecDocUsingOwner "LawSpecDataCodecs"
+
+codecDocUsingOwner :: String -> Maybe D.Doc -> Names -> [(C.Id, (String, String))] -> C.Type -> Either String D.Doc
+codecDocUsingOwner owner context names parameters ty = case ty of
   C.TypeVariable variable -> maybe (Left "unbound Kotlin codec parameter")
     (Right . D.text . snd) (lookup variable parameters)
   C.Constructor name args -> do
-    children <- mapM (argument (codecDocUsing context names parameters)) args
+    children <- mapM (argument (codecDocUsingOwner owner context names parameters)) args
     case lookup (C.Id name) names of
-      Just native -> pure (call ("LawSpecDataCodecs." ++ codecName native)
+      Just native -> pure (call (owner ++ "." ++ codecName native)
         ([D.text "schema", D.text "bits"] ++ children ++ maybe [] pure context))
       Nothing | name `elem` ["List", "Maybe", "Either"] ->
         pure (call ("schema." ++ map toLower name) (children ++ [D.text "bits"] ++ maybe [] pure context))
@@ -210,21 +224,41 @@ kotlinCodecDocWithContext context declarations ty = do
   codecDocUsing (Just context) names [] ty
 
 emitKotlinCodecs :: D.Layout -> [C.DataDeclaration] -> Either String String
-emitKotlinCodecs layout declarations = do
+emitKotlinCodecs = emitCodecs [] "LawSpecDataCodecs"
+
+emitKotlinNativeCodecs :: D.Layout -> [C.DataDeclaration] -> [ResolvedTypeBinding] -> Either String String
+emitKotlinNativeCodecs layout declarations mappings = emitCodecs mappings "LawSpecNativeCodecs" layout declarations
+
+kotlinNativeCodecDoc :: [C.DataDeclaration] -> C.Type -> Either String D.Doc
+kotlinNativeCodecDoc declarations ty = do
+  names <- namesFor declarations
+  codecDocUsingOwner "LawSpecNativeCodecs" (Just (D.text "symbols")) names [] ty
+
+emitCodecs :: [ResolvedTypeBinding] -> String -> D.Layout -> [C.DataDeclaration] -> Either String String
+emitCodecs mappings owner layout declarations = do
   _ <- makeRegistry declarations
   names <- namesFor declarations
   definitions <- mapM (definition names) declarations
   pure (D.render layout (D.text "// Generated by LawSpec. Do not edit." <> D.hardline <>
     D.text "package lawspec.runtime" <> D.hardline <> D.hardline <>
     D.text "import lawspec.runtime.LawSpecSchema.Codec" <> D.hardline <> D.hardline <>
-    D.text "object LawSpecDataCodecs " <>
+    D.text ("object " ++ owner ++ " ") <>
     D.block 4 (D.joinWith (D.hardline <> D.hardline) definitions) <> D.hardline))
   where
+    mapping declaration = find ((== C.dataId declaration) . C.dataId . resolvedDeclaration) mappings
+    nativeOwner declaration name = maybe ("lawspec.data." ++ name)
+      (intercalate "." . referenceParts . resolvedNativeType) (mapping declaration)
+    constructorMapping variant = find ((== C.constructorId variant) . C.constructorId . resolvedConstructor)
+      [c | m <- mappings, c <- resolvedConstructors m]
+    constructorName owner variant = maybe ("lawspec.data." ++ owner ++ "." ++ C.constructorName variant ++ "Case")
+      (intercalate "." . referenceParts . resolvedNativeConstructor) (constructorMapping variant)
+    unitConstructor variant = maybe False ((== UnitConstructor) . resolvedConstructorStyle) (constructorMapping variant)
+    fieldName variant field = maybe field id (constructorMapping variant >>= lookup field . map (\(f,n) -> (C.binderName f,n)) . resolvedFields)
     definition names declaration = do
       name <- maybe (Left "unplanned Kotlin codec") Right (lookup (C.dataId declaration) names)
       let parameters = zip (C.dataParameters declaration)
             [("T" ++ show i, "type" ++ show i) | i <- [0::Int ..]]
-          native = applied ("lawspec.data." ++ name) [D.text t | (_,(t,_)) <- parameters]
+          native = applied (nativeOwner declaration name) [D.text t | (_,(t,_)) <- parameters]
           ty = C.Constructor (C.idText (C.dataId declaration))
             [C.TypeArgument (C.TypeVariable v) | (v,_) <- parameters]
           generic = if null parameters then mempty else
@@ -240,40 +274,71 @@ emitKotlinCodecs layout declarations = do
       let failure = D.text "throw IllegalArgumentException(\"uninhabited or invalid native data\")"
           encoder = D.text "{ value ->" <> D.nest 4 (D.hardline <>
             (if null encodeArms then failure else
-              D.text "when (value) " <> D.block 4 (D.joinWith D.hardline encodeArms))) <>
+              D.text (if owner == "LawSpecDataCodecs" then "when (value) " else "when ") <>
+              D.block 4 (D.joinWith D.hardline
+                (encodeArms ++ [D.text "else -> " <> failure | owner /= "LawSpecDataCodecs"])))) <>
             D.hardline <> D.text "}"
           decoder = D.text "{ value ->" <> D.nest 4 (D.hardline <>
             D.text "val data = value.data() as LawSpecRuntime.Data" <> D.hardline <>
             D.text "when (data.tag()) " <> D.block 4
               (D.joinWith D.hardline (decodeArms ++ [D.text "else -> " <> failure]))) <>
             D.hardline <> D.text "}"
-          body = D.text "val type = " <> ref <> D.hardline <>
+      (setup, encodeBody, decodeBody) <- case mapping declaration >>= resolvedCodec of
+        Nothing -> pure (mempty, encoder, decoder)
+        Just hook -> do
+          let canonical = call ("LawSpecDataCodecs." ++ codecName name)
+                ([D.text "schema",D.text "bits"] ++
+                 [call "schema.supported" [D.text (v ++ ".type()"),D.text "bits",D.text "symbols"] |
+                   (_,(_,v)) <- parameters] ++ [D.text "symbols"])
+              converters method = [D.text (v ++ "::" ++ method) | (_,(_,v)) <- parameters]
+              nativeRef = intercalate "." . referenceParts
+              contextual direction expression = D.text "{ value ->" <> D.nest 4
+                (D.hardline <> D.text "try " <> D.block 4 expression <>
+                 D.text " catch (error: RuntimeException) " <> D.block 4
+                   (D.text "throw " <> call "IllegalArgumentException"
+                     [quoted ("native codec " ++ C.idText (C.dataId declaration) ++ " " ++ direction ++ ": ") <>
+                       D.text " + error.message",D.text "error"])) <> D.hardline <> D.text "}"
+              encodeHook = call "canonicalCodec.encode"
+                [call (nativeRef (codecFromNative hook)) (D.text "value" : converters "encode")]
+              decodeHook = call "requireNotNull"
+                [call (nativeRef (codecToNative hook))
+                  (call "canonicalCodec.decode" [D.text "value"] : converters "decode")]
+          pure (D.text "val canonicalCodec = " <> canonical <> D.hardline,
+            contextual "fromNative" encodeHook, contextual "toNative" decodeHook)
+      let body = D.text "val type = " <> ref <> D.hardline <> setup <>
             D.text ("return schema.codec<" ++ D.render D.Compact native ++ ">(") <>
             D.nest 4 (D.hardline <> D.joinWith (D.text "," <> D.hardline)
-              [D.text "type", D.text "bits", D.text "symbols", encoder, decoder] <> D.text ",") <>
+              [D.text "type", D.text "bits", D.text "symbols", encodeBody, decodeBody] <> D.text ",") <>
             D.hardline <> D.text ")"
       pure (signature <> D.text " " <> D.block 4 body)
     fields names parameters variant = forM (zip [0::Int ..] (C.constructorFields variant)) $ \(i,field) -> do
-      bridge <- codecDocUsing (Just (D.text "symbols")) names parameters (C.binderType field)
+      bridge <- codecDocUsingOwner owner (Just (D.text "symbols")) names parameters (C.binderType field)
       pure ("field" ++ show i, C.binderName field,
         D.text ("val field" ++ show i ++ " = ") <> bridge)
-    encodeArm names parameters owner variant = do
+    encodeArm names parameters dataOwner variant = do
       bindings <- fields names parameters variant
       let payload = [call "LawSpecSchema.encodeField"
-            [D.text local, D.text ("value." ++ field), quoted (C.idText (C.constructorId variant) ++ "." ++ field)]
+            [D.text local, D.text ("value." ++ fieldName variant field), quoted (C.idText (C.constructorId variant) ++ "." ++ field)]
             | (local,field,_) <- bindings]
-      pure (D.text ("is lawspec.data." ++ owner ++ "." ++ C.constructorName variant ++ "Case -> ") <>
-        D.block 4 (D.joinWith D.hardline ([doc | (_,_,doc) <- bindings] ++
+          condition = (if unitConstructor variant then "value === "
+            else if owner == "LawSpecDataCodecs" then "is " else "value is ") ++
+            constructorName dataOwner variant
+          identityCheck = [call "require"
+            [D.group (D.text "value.javaClass ==" <> D.nest 4
+              (D.softline <> D.text (constructorName dataOwner variant ++ "::class.java")))] <>
+            D.text " " <> D.block 4 (quoted "invalid native constructor") |
+              owner /= "LawSpecDataCodecs", not (unitConstructor variant)]
+      pure (D.text (condition ++ " -> ") <>
+        D.block 4 (D.joinWith D.hardline (identityCheck ++ [doc | (_,_,doc) <- bindings] ++
           [call "schema.construct" [D.text "type", quoted (C.idText (C.constructorId variant)),
             call "listOf" payload, D.text "bits", D.text "symbols"]])))
     decodeArm names parameters owner variant = do
       bindings <- fields names parameters variant
       let payload = [D.text (local ++ ".decode(data.fields()[" ++ show i ++ "])") |
             (i,(local,_,_)) <- zip [0::Int ..] bindings]
-          constructor = D.render D.Compact (applied ("lawspec.data." ++ owner ++ "." ++
-            C.constructorName variant ++ "Case") [D.text t | (_,(t,_)) <- parameters])
+          constructor = D.render D.Compact (applied (constructorName owner variant) [D.text t | (_,(t,_)) <- parameters])
       pure (quoted (C.idText (C.constructorId variant)) <> D.text " -> " <>
-        D.block 4 (D.joinWith D.hardline ([doc | (_,_,doc) <- bindings] ++ [call constructor payload])))
+        D.block 4 (D.joinWith D.hardline ([doc | (_,_,doc) <- bindings] ++ [if unitConstructor variant then D.text (constructorName owner variant) else call constructor payload])))
 
 
 kotlinTypeReference :: C.Type -> Either String String

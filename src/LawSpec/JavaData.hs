@@ -1,7 +1,7 @@
 -- Native data declarations follow the resolved-plan/renderer separation used
 -- by Go+. Public fields retain native types; runtime Value is only the bridge
 -- for primitive domains with no faithful Java representation.
-module LawSpec.JavaData (schemaSource, emitJavaData, emitJavaDataWithProfile, emitJavaSchema, javaDataType, javaCodec, javaTypeReference, javaDataKey, javaDataTypeDoc, javaCodecDoc, javaCodecDocWithContext) where
+module LawSpec.JavaData (schemaSource, emitJavaData, emitJavaDataWithProfile, emitJavaSchema, javaDataType, javaCodec, javaTypeReference, javaDataKey, javaDataTypeDoc, javaCodecDoc, javaCodecDocWithContext, javaDataName, identifier) where
 
 import Control.Monad (unless, forM)
 import Data.Char (isAscii, isAlphaNum, isLetter, toLower, toUpper, ord)
@@ -61,6 +61,12 @@ identifier name = unless (valid && name `notElem` keywords)
 
 javaDataType :: [C.DataDeclaration] -> C.Type -> Either String String
 javaDataType declarations ty = D.render (D.Pretty 100) <$> javaDataTypeDoc declarations ty
+
+javaDataName :: [C.DataDeclaration] -> C.Id -> Either String String
+javaDataName declarations identity = do
+  names <- namesFor declarations
+  maybe (Left "unknown Java data identity") (Right . ("lawspec.data." ++))
+    (lookup (C.idText identity) names)
 
 javaDataTypeDoc :: [C.DataDeclaration] -> C.Type -> Either String D.Doc
 javaDataTypeDoc declarations ty = do

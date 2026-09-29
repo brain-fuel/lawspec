@@ -9,7 +9,7 @@ from lawspec_schema import RefinementViolation
 
 
 def strategy(schema, reference, bits, budget, scalar, symbols=None,
-             witnesses=()):
+             witnesses=(), native_generators=None, native_schema=None):
     """Generate values with native strategies and checked witnesses.
 
     Witness subvalues seed nested domains in the given Symbol context.
@@ -22,6 +22,12 @@ def strategy(schema, reference, bits, budget, scalar, symbols=None,
     schema._check(reference)
     schema._bits(bits)
     symbols = {} if symbols is None else symbols
+    native_generators = ({} if native_generators is None
+                         else dict(native_generators))
+    native_schema = schema if native_schema is None else native_schema
+    for name, factory in native_generators.items():
+        if name not in schema._arity or not callable(factory):
+            raise ValueError("invalid native generator binding: " + str(name))
 
     seeds = {}
 
@@ -78,6 +84,8 @@ def strategy(schema, reference, bits, budget, scalar, symbols=None,
     def inhabited(ty, available):
         if available < 1:
             return False
+        if ty.name in native_generators:
+            return True
         constructors = schema.constructors(ty)
         if constructors is not None:
             return any(allocation(item.fields, available - 1) is not None
@@ -92,6 +100,34 @@ def strategy(schema, reference, bits, budget, scalar, symbols=None,
 
     @cache
     def build(ty, available):
+        if ty.name in native_generators:
+            def native_child(child):
+                remaining = max(1, available - 1)
+                # A parameter need not be stored (Phantom Empty), and native
+                # containers may be inhabited without an element (List Empty).
+                if not inhabited(child, remaining):
+                    return st.nothing()
+                return build(child, remaining).map(
+                    lambda value: native_schema.to_native(
+                        child, value, bits, symbols))
+
+            def checked(value):
+                try:
+                    return native_schema.from_native(ty, value, bits, symbols)
+                except (ValueError, TypeError, ArithmeticError,
+                        AttributeError) as error:
+                    raise ValueError(
+                        f"native generator {ty.name}: {error}") from error
+
+            factory = native_generators[ty.name]
+            generated = factory(*(native_child(child)
+                                  for child in ty.arguments))
+            if not isinstance(generated, st.SearchStrategy):
+                raise TypeError(
+                    f"native generator {ty.name} must return a strategy")
+            # Mapping retains Hypothesis's shrink choices. Invalid samples
+            # and shrinks fail; they are never filtered into rejections.
+            return generated.map(checked)
         native = build_native(ty, available)
         candidates = [value for cost, value in seeds.get(ty, ())
                       if cost <= available]

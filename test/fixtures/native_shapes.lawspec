@@ -1,0 +1,50 @@
+unit native.shapes
+
+type Box (a :: Type) is Box item :: a end
+type Chain (a :: Type) is
+  Stop
+  More value :: a tail :: Maybe (Chain a)
+end
+type Tree (a :: Type) is
+  Leaf item :: a
+  Branch children :: List (Tree a)
+end
+type Stamp is Stamp end
+
+copyBox :: Box Int8 -> Box Int8
+copyChain :: Chain Int8 -> Chain Int8
+copyTree :: Tree Text -> Tree Text
+copyNested :: Box (Maybe (Box Int8)) -> Box (Maybe (Box Int8))
+copyStamp :: Stamp -> Stamp
+
+law `generic box` is
+  definition is `for all` (x :: Box Int8) . copyBox x = x end
+  example `maximum` is x = Box 127 expect copyBox x = Box 127 end
+end
+law `inline recursive chain` is
+  definition is `for all` (x :: Chain Int8) . copyChain x = x end
+  example `nested` is
+    x = More 7 (Just (More -128 Nothing))
+    expect copyChain x = More 7 (Just (More -128 Nothing))
+  end
+end
+law `recursion through a list` is
+  definition is `for all` (x :: Tree Text) . copyTree x = x end
+  example `branches` is
+    x = Branch [Leaf "λ", Branch []]
+    expect copyTree x = Branch [Leaf "λ", Branch []]
+  end
+end
+law `nested instantiations` is
+  definition is `for all` (x :: Box (Maybe (Box Int8))) . copyNested x = x end
+  example `present` is x = Box (Just (Box 42)) expect copyNested x = Box (Just (Box 42)) end
+  example `absent` is x = Box Nothing expect copyNested x = Box Nothing end
+end
+law `empty record` is
+  definition is `for all` (x :: Stamp) . copyStamp x = x end
+  example `one value` is x = Stamp expect copyStamp x = Stamp end
+end
+
+law `refinements retain the selected generator` is
+  definition is `for all` (x :: Int8 where x > 5) . x = x end
+end

@@ -27,11 +27,21 @@ export class Field {
 }
 
 export class Constructor {
-  constructor(tag, fields, native, predicates = []) {
+  constructor(
+      tag,
+      fields,
+      native,
+      predicates = [],
+      nativeFields = null,
+  ) {
     this.tag = tag;
     this.fields = Object.freeze([...fields]);
     this.native = native;
     this.predicates = Object.freeze([...predicates]);
+    this.nativeFields =
+        nativeFields === null
+          ? null
+          : Object.freeze([...nativeFields]);
     Object.freeze(this);
   }
 }
@@ -79,6 +89,8 @@ export class Schema {
   #definitions = new Map();
   #arity;
   #builtins;
+  #nativeCodecs = new Map();
+  #canonical = null;
 
   constructor(definitions, primitives, builtins) {
     this.#arity = new Map(primitives.map((name) => [name, 0]));
@@ -137,6 +149,20 @@ export class Schema {
         }
         tags.add(constructor.tag);
         this.#checkNative(constructor.native, nativeClasses);
+        if (constructor.nativeFields !== null) {
+          const fields = constructor.nativeFields;
+          if (
+              fields.length !== constructor.fields.length ||
+              new Set(fields).size !== fields.length ||
+              !fields.every(
+                  (field) =>
+                      typeof field === 'string' &&
+                      /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(field),
+              )
+          ) {
+            throw new TypeError('invalid native field mapping');
+          }
+        }
         const names = new Set();
         for (const field of constructor.fields) {
           if (names.has(field.name)) {
@@ -202,8 +228,86 @@ export class Schema {
                 ),
                 constructor.native,
                 constructor.predicates,
+                constructor.nativeFields,
             ),
     );
+  }
+
+  withNativeBindings(bindings, codecs = new Map()) {
+    const remaining = new Map(bindings);
+    const hooks = new Map([...this.#nativeCodecs, ...codecs]);
+    for (const [name, hook] of hooks) {
+      const definition = this.#definitions.get(name);
+      if (!definition || !definition.constructors.length) {
+        throw new TypeError(
+            `unknown or empty native codec type: ${name}`,
+        );
+      }
+      if (
+          !hook ||
+          typeof hook.native !== 'function' ||
+          !hook.native.prototype ||
+          typeof hook.toNative !== 'function' ||
+          typeof hook.fromNative !== 'function'
+      ) {
+        throw new TypeError(`invalid native codec: ${name}`);
+      }
+      if (
+          definition.constructors.some((item) =>
+              remaining.has(item.tag),
+          )
+      ) {
+        throw new TypeError(
+            `codec conflicts with native mapping: ${name}`,
+        );
+      }
+    }
+    const definitions = [...this.#definitions.values()].map(
+        (definition) =>
+            new Definition(
+                definition.name,
+                definition.parameters,
+                definition.constructors.map((constructor) => {
+                  if (!remaining.has(constructor.tag)) return constructor;
+                  const {native, fields} = remaining.get(constructor.tag);
+                  remaining.delete(constructor.tag);
+                  return new Constructor(
+                      constructor.tag,
+                      constructor.fields,
+                      native,
+                      constructor.predicates,
+                      fields,
+                  );
+                }),
+            ),
+    );
+    if (remaining.size) {
+      throw new TypeError('unknown native constructor binding');
+    }
+    const structural = [
+      'List',
+      'Maybe',
+      'Either',
+      'Nullable',
+      'Optional',
+    ];
+    const primitives = [...this.#arity.keys()].filter(
+        (name) =>
+            !this.#definitions.has(name) && !structural.includes(name),
+    );
+    const result = new Schema(
+        definitions,
+        primitives,
+        this.#builtins,
+    );
+    result.#canonical = this.#canonical ?? this;
+    result.#nativeCodecs = new Map(
+        [...hooks].map(([name, hook]) => [
+          name,
+          Object.freeze({...hook}),
+        ]),
+    );
+    return result;
   }
 
   #bits(bits) {
@@ -348,7 +452,65 @@ export class Schema {
     );
   }
 
+  #codecWalk(type, value, bits, mode, symbols) {
+    const hook = this.#nativeCodecs.get(type.name);
+    const canonical = this.#canonical;
+    const direction = mode === 'native' ? 'toNative' : 'fromNative';
+    try {
+      const children = type.args.map((argument) =>
+          mode === 'native'
+            ? (child) =>
+                this.toNative(
+                    argument,
+                    canonical.fromNative(
+                        argument,
+                        child,
+                        bits,
+                        symbols,
+                    ),
+                    bits,
+                    symbols,
+                )
+            : (child) =>
+                canonical.toNative(
+                    argument,
+                    this.fromNative(argument, child, bits, symbols),
+                    bits,
+                    symbols,
+                ),
+      );
+      if (mode === 'native') {
+        const logical = canonical.toNative(
+            type,
+            value,
+            bits,
+            symbols,
+        );
+        const result = hook.toNative(logical, ...children);
+        if (!(result instanceof hook.native)) {
+          throw new TypeError(
+              'hook returned the wrong native type',
+          );
+        }
+        return result;
+      }
+      if (!(value instanceof hook.native)) {
+        throw new TypeError('expected the bound native type');
+      }
+      const result = hook.fromNative(value, ...children);
+      return canonical.fromNative(type, result, bits, symbols);
+    } catch (error) {
+      throw new TypeError(
+          `native codec ${type.name} ${direction}: ${String(error)}`,
+          {cause: error},
+      );
+    }
+  }
+
   #walk(type, value, bits, mode, symbols) {
+    if (mode !== 'validate' && this.#nativeCodecs.has(type.name)) {
+      return this.#codecWalk(type, value, bits, mode, symbols);
+    }
     const constructors = this.constructors(type);
     if (constructors !== null) {
       let constructor;
@@ -364,13 +526,15 @@ export class Schema {
         if (!constructor) {
           throw new TypeError(`invalid native ${type.name}`);
         }
-        fields = constructor.fields.map((field) => {
-          if (!Object.hasOwn(value, field.name)) {
+        fields = constructor.fields.map((field, index) => {
+          const name =
+              constructor.nativeFields?.[index] ?? field.name;
+          if (!Object.hasOwn(value, name)) {
             throw new TypeError(
                 `missing native field: ${field.name}`,
             );
           }
-          return value[field.name];
+          return value[name];
         });
       } else {
         if (!(value instanceof ls.DataValue)) {
@@ -435,6 +599,18 @@ export class Schema {
             throw new TypeError(`${context} did not produce Bool`);
           }
         });
+      }
+      if (mode === 'native' && constructor.nativeFields !== null) {
+        return converted.length === 0
+          ? new constructor.native()
+          : new constructor.native(
+              Object.fromEntries(
+                  constructor.nativeFields.map((name, index) => [
+                    name,
+                    converted[index],
+                  ]),
+              ),
+            );
       }
       return mode === 'native'
         ? new constructor.native(...converted)

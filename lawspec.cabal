@@ -5,13 +5,14 @@ cabal-version: 1.12
 -- see: https://github.com/sol/hpack
 
 name:           lawspec
-version:        0.9.0
+version:        0.10.0
 synopsis:       Portable executable laws
 license:        MIT
 license-file:   LICENSE
 build-type:     Simple
 extra-source-files:
     README.md
+    NATIVE-BINDINGS.md
     PRIMITIVES.md
     REFINEMENTS.md
     RUST.md
@@ -24,6 +25,7 @@ extra-source-files:
     LANGUAGE.md
     API-MIGRATION.md
     RELEASE-0.9.md
+    RELEASE-0.10.md
     runtime/lawspec_runtime.rs
     runtime/lawspec_strategies.rs
     runtime/lawspec_data_strategies.mjs
@@ -63,6 +65,8 @@ extra-source-files:
     examples/specs/matching.lawspec
     examples/specs/mixed_inputs.lawspec
     examples/specs/parse_port.lawspec
+    examples/specs/payments.lawspec
+    examples/specs/recursive_refinements.lawspec
     examples/specs/refined_definitions.lawspec
     examples/specs/refinements.lawspec
     examples/specs/scalar_adapters.lawspec
@@ -71,90 +75,189 @@ extra-source-files:
     examples/specs/slug.lawspec
     examples/specs/sum_refinements.lawspec
     examples/specs/total_functions.lawspec
+    test/fixtures/constructor_boundaries.lawspec
+    test/fixtures/constructor_fields.lawspec
+    test/fixtures/constructor_properties.lawspec
     test/fixtures/definition_contracts.lawspec
     test/fixtures/list_contracts.lawspec
+    test/fixtures/native_empty_domains.lawspec
+    test/fixtures/native_shapes.lawspec
+    test/fixtures/python_constructor_fields.lawspec
     test/fixtures/total_definitions.lawspec
+    test/fixtures/native-payments/domain.rs
+    test/fixtures/native-payments/generators.rs
+    test/fixtures/native-payments/manual_adapter.rs
+    test/fixtures/native-payments/domain.py
+    test/fixtures/native-payments/generators.py
+    test/fixtures/native-payments/domain.ts
+    test/fixtures/native-payments/generators.ts
+    test/fixtures/native-payments/NativeGeneratorContractsTest.java
+    test/fixtures/native-payments/PaymentGenerators.java
+    test/fixtures/native-payments/PaymentsDomain.java
+    test/fixtures/native-payments/NativeGeneratorContractsCheck.kt
+    test/fixtures/native-payments/PaymentGenerators.kt
+    test/fixtures/native-payments/PaymentsDomain.kt
+    test/fixtures/native-payments/PaymentGenerators.hs
+    test/fixtures/native-payments/PaymentsDomain.hs
+    test/fixtures/native-payments/domain.go
+    test/fixtures/native-payments/generators.go
+    test/fixtures/native-payments/generators_common.go
+    test/fixtures/native-payments/NativeGeneratorContractsCheck.go
+    test/fixtures/native-payments/bindings-go.json
+    test/fixtures/native-payments/bindings-haskell.json
+    test/fixtures/native-payments/bindings-java.json
+    test/fixtures/native-payments/bindings-kotlin.json
+    test/fixtures/native-payments/bindings-python.json
+    test/fixtures/native-payments/bindings-web.json
+    test/fixtures/native-payments/bindings.json
+    test/fixtures/native-shapes/domain.rs
+    test/fixtures/native-shapes/generators.rs
+    test/fixtures/native-shapes/Shapes.java
+    test/fixtures/native-shapes/Shapes.kt
+    test/fixtures/native-shapes/P.hs
+    test/fixtures/native-shapes/ShapesDomain.hs
+    test/fixtures/native-shapes/domain.go
+    test/fixtures/native-shapes/generators.go
+    test/fixtures/native-shapes/bindings-go.json
+    test/fixtures/native-shapes/bindings-haskell.json
+    test/fixtures/native-shapes/bindings-java.json
+    test/fixtures/native-shapes/bindings-kotlin.json
+    test/fixtures/native-shapes/bindings.json
+    test/fixtures/native-go-names/domain.go
+    test/fixtures/native-go-names/generators.go
+    test/fixtures/native-go-names/bindings.json
+    test/fixtures/native-go-names/domain.lawspec
+    test/fixtures/native-go-codecs/domain.go
+    test/fixtures/native-go-codecs/generators.go
+    test/fixtures/native-go-codecs/hooks.go
+    test/fixtures/native-go-codecs/shrink_test.go
+    test/fixtures/native-go-codecs/bindings-go.json
+    test/fixtures/native-go-external/domain.go
+    test/fixtures/native-go-external/generators.go
+    test/fixtures/native-go-external/shrink_test.go
+    test/fixtures/native-go-external/bindings.json
+    test/fixtures/native-go-external/domain.lawspec
+    test/fixtures/native-codecs/codecs.rs
+    test/fixtures/native-codecs/domain.rs
+    test/fixtures/native-codecs/generators.rs
+    test/fixtures/native-codecs/CodecDomain.hs
+    test/fixtures/native-codecs/CodecGenerators.hs
+    test/fixtures/native-codecs/CodecHooks.hs
+    test/fixtures/native-codecs/codec_domain.py
+    test/fixtures/native-codecs/codec_generators.py
+    test/fixtures/native-codecs/codec_hooks.py
+    test/fixtures/native-codecs/codec_domain.ts
+    test/fixtures/native-codecs/codec_generators.ts
+    test/fixtures/native-codecs/codec_hooks.ts
+    test/fixtures/native-codecs/CodecDomain.java
+    test/fixtures/native-codecs/CodecGenerators.java
+    test/fixtures/native-codecs/CodecHooks.java
+    test/fixtures/native-codecs/CodecDomain.kt
+    test/fixtures/native-codecs/CodecGenerators.kt
+    test/fixtures/native-codecs/CodecHooks.kt
+    test/fixtures/native-codecs/domain.go
+    test/fixtures/native-codecs/generators.go
+    test/fixtures/native-codecs/hooks.go
+    test/fixtures/native-codecs/shrink_test.go
+    test/fixtures/native-codecs/bindings-go.json
+    test/fixtures/native-codecs/bindings-haskell.json
+    test/fixtures/native-codecs/bindings-java.json
+    test/fixtures/native-codecs/bindings-kotlin.json
+    test/fixtures/native-codecs/bindings-python.json
+    test/fixtures/native-codecs/bindings-rust.json
+    test/fixtures/native-codecs/bindings-web.json
+    test/fixtures/native-codecs/domain.lawspec
 
 library
   exposed-modules:
       LawSpec.Api
       LawSpec.Backend
+      LawSpec.Capabilities
       LawSpec.Code.Doc
       LawSpec.Code.JavaScript
       LawSpec.Common
       LawSpec.Compile
       LawSpec.Core
+      LawSpec.Core.DefinitionContracts
+      LawSpec.Core.Definitions
       LawSpec.Core.Eval
+      LawSpec.Core.Expression
+      LawSpec.Core.Payload
+      LawSpec.Core.PayloadPlan
+      LawSpec.Core.RefinementProof
       LawSpec.Core.Schema
       LawSpec.Core.Semantics
       LawSpec.Core.Total
       LawSpec.Core.Totality
-      LawSpec.Core.RefinementProof
       LawSpec.Core.Types
-      LawSpec.Core.DefinitionContracts
-      LawSpec.Core.Definitions
-      LawSpec.Core.Expression
       LawSpec.Core.Validate
-      LawSpec.Core.Payload
-      LawSpec.Core.PayloadPlan
       LawSpec.Core.Value
       LawSpec.CoreEmit
       LawSpec.CoreNativeScalarEmit
       LawSpec.CoreScalarEmit
       LawSpec.Data
-      LawSpec.Capabilities
+      LawSpec.DefinitionTotality
       LawSpec.Domain
       LawSpec.Elaboration
       LawSpec.Emit
       LawSpec.Eval
       LawSpec.Frontend
       LawSpec.Gen
-      LawSpec.Inference
-      LawSpec.DefinitionTotality
-      LawSpec.SpecializeDefinitions
-      LawSpec.KotlinDefinitions
-      LawSpec.KotlinData
-      LawSpec.KotlinProperties
-      LawSpec.KotlinExpr
-      LawSpec.KotlinTestHelpers
-      LawSpec.JavaExpr
-      LawSpec.JavaTestHelpers
-      LawSpec.JavaProperties
-      LawSpec.JavaDefinitions
-      LawSpec.JavaData
       LawSpec.GoData
-      LawSpec.GoTypeRefs
       LawSpec.GoDefinitions
       LawSpec.GoExpr
-      LawSpec.GoTestHelpers
+      LawSpec.GoNativeBinding
       LawSpec.GoProperties
+      LawSpec.GoTestHelpers
+      LawSpec.GoTypeRefs
       LawSpec.HaskellData
-      LawSpec.HaskellTypeRefs
       LawSpec.HaskellDefinitions
+      LawSpec.HaskellExpr
+      LawSpec.HaskellNativeBinding
       LawSpec.HaskellProperties
       LawSpec.HaskellTestHelpers
-      LawSpec.HaskellExpr
+      LawSpec.HaskellTypeRefs
+      LawSpec.Inference
+      LawSpec.JavaData
+      LawSpec.JavaDefinitions
+      LawSpec.JavaExpr
+      LawSpec.JavaNativeBinding
+      LawSpec.JavaProperties
+      LawSpec.JavaTestHelpers
+      LawSpec.KotlinData
+      LawSpec.KotlinDefinitions
+      LawSpec.KotlinExpr
+      LawSpec.KotlinNativeBinding
+      LawSpec.KotlinProperties
+      LawSpec.KotlinTestHelpers
       LawSpec.Model
+      LawSpec.NativeBinding
+      LawSpec.NativeRequest
       LawSpec.Parser
-      LawSpec.Prelude
       LawSpec.PortableGenerator
       LawSpec.PortableTestHelpers
+      LawSpec.Prelude
+      LawSpec.Public
       LawSpec.PythonData
-      LawSpec.PythonTypes
       LawSpec.PythonDefinitions
       LawSpec.PythonExpr
-      LawSpec.Public
+      LawSpec.PythonNativeBinding
+      LawSpec.PythonTypes
       LawSpec.Refinement
       LawSpec.RuntimeSources
       LawSpec.RustData
-      LawSpec.RustExpr
       LawSpec.RustDefinitions
       LawSpec.RustEmit
+      LawSpec.RustExpr
+      LawSpec.RustNativeBinding
+      LawSpec.RustNativeGenerators
       LawSpec.Scalar
+      LawSpec.SpecializeDefinitions
       LawSpec.Testing
       LawSpec.WebData
       LawSpec.WebDefinitions
       LawSpec.WebExpr
+      LawSpec.WebNativeBinding
       LawSpec.WebTypes
   other-modules:
       Paths_lawspec
@@ -211,18 +314,20 @@ test-suite lawspec-test
   main-is: Main.hs
   other-modules:
       CoreSpec
-      PayloadSpec
-      PayloadProofSpec
-      DocumentSpec
-      StructuralSpec
-      SourceDataSpec
-      GenericDefinitionSpec
-      DefinitionPredicateSpec
-      RefinementProofSpec
       DefinitionContractFixture
       DefinitionContractProofSpec
+      DefinitionPredicateSpec
       DefinitionSchemeSpec
+      DocumentSpec
+      GenericDefinitionSpec
       InferenceSchemeSpec
+      NativeBindingSpec
+      NativeRequestSpec
+      PayloadProofSpec
+      PayloadSpec
+      RefinementProofSpec
+      SourceDataSpec
+      StructuralSpec
       TotalSpec
       Paths_lawspec
   hs-source-dirs:

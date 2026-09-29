@@ -68,7 +68,7 @@ api = text "import {loadCore} from './launcher.mjs';" <> softbreak <> softbreak 
   where
     method name = group (text (name ++ ": (input) =>") <>
       nest 4 (softline <> text "call" <>
-        delimit 4 "(" ")" [group (object [text "schemaVersion: 3", text "...input", text "method: " <> quoted name])]))
+        delimit 4 "(" ")" [group (object [text "schemaVersion: input.nativeBindings === undefined ? 3 : 4", text "...input", text "method: " <> quoted name])]))
 
 declarations :: Doc
 declarations = joinWith (softbreak <> softbreak)
@@ -137,12 +137,24 @@ declarations = joinWith (softbreak <> softbreak)
        ("parameters", array (record [("name", text "string"), ("kind", union (map quoted ["type", "value"])), ("type", text "string")])),
        ("requirements", array (record (fields [("capability", "string"), ("type", "string")]))),
        ("definition", text "string")]
+  , alias "NativeReference" [text "string[]"]
+  , interface "NativeFieldBinding" (fields [("field", "string"), ("native", "string")])
+  , interface "NativeConstructorBinding"
+      (fields [("constructor", "string"), ("native", "NativeReference"), ("fields?", "NativeFieldBinding[]")] ++
+       [("style", union (map quoted ["record", "variant", "unit"]))])
+  , interface "NativeCodecBinding" (fields [("toNative", "NativeReference"), ("fromNative", "NativeReference")])
+  , interface "NativeTypeBinding" (fields [("type", "string"), ("native", "NativeReference"), ("constructors?", "NativeConstructorBinding[]"), ("codec?", "NativeCodecBinding")])
+  , interface "NativeGeneratorBinding" (fields [("type", "string"), ("factory", "NativeReference"), ("stub?", "boolean")])
+  , interface "NativeFunctionBinding" (fields [("declaration", "string"), ("native", "NativeReference")])
+  , interface "NativeGoImport" (fields [("alias", "string"), ("path", "string")])
+  , interface "NativeBindings" (fields [("types?", "NativeTypeBinding[]"), ("generators?", "NativeGeneratorBinding[]"),
+      ("functions?", "NativeFunctionBinding[]"), ("rustCrate?", "string"), ("goImports?", "NativeGoImport[]")])
   , interface "CheckRequest"
-      [("sources", text "Source[]"), ("schemaVersion?", text "3"),
-       ("machineBits?", union [text "32", text "64"]), ("generation?", text "Partial<Generation>")]
+      [("sources", text "Source[]"), ("schemaVersion?", union [text "3", text "4"]),
+       ("machineBits?", union [text "32", text "64"]), ("generation?", text "Partial<Generation>"), ("nativeBindings?", text "NativeBindings")]
   , interface "GenerationRequest extends CheckRequest" (fields [("target", "Target"), ("sourceDir?", "string"), ("testDir?", "string"), ("minify?", "boolean")])
   , interface "Result"
-      ([("schemaVersion", text "3"), ("machineBits?", union [text "32", text "64"])] ++
+      ([("schemaVersion", union [text "3", text "4"]), ("machineBits?", union [text "32", text "64"])] ++
        fields [("generation?", "Generation"), ("units?", "Unit[]"), ("dataTypes?", "DataTypeDeclaration[]"), ("definitions?", "Definition[]"), ("laws?", "Law[]")] ++
        [("contracts?", array (record (fields [("owner", "string"), ("contract", "Contract")])))] ++
        fields [("refinements?", "Refinement[]"), ("diagnostics", "Diagnostic[]"), ("expansions?", "string[]"), ("files?", "Artifact[]")])

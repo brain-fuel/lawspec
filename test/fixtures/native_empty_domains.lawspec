@@ -1,0 +1,16 @@
+unit example.empty
+
+type Empty is end
+
+type Phantom (a :: Type) is
+  Phantom value :: Int8
+end
+
+law `phantom empty argument` is
+  definition is `for all` (x :: Phantom Empty) . x = x end
+  example `explicit value` is x = Phantom 6 expect x = Phantom 6 end
+end
+
+law `list of empty` is
+  definition is `for all` (xs :: List Empty) . xs = xs end
+end

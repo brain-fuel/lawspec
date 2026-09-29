@@ -13,6 +13,7 @@ import Data.List (intercalate)
 
 data Config = Config
   { moduleName :: String
+  , nativeGenerators :: Bool
   , hasDefinitions :: Bool
   , constructorContracts :: Bool
   , nodeBudget :: Integer
@@ -25,6 +26,7 @@ data Config = Config
   , typeKey :: Type -> String
   , generator :: Type -> D.Doc
   , nativeArgument :: Type -> D.Doc -> D.Doc
+  , nativeCall :: String -> [D.Doc] -> D.Doc
   , nativeResult :: Type -> D.Doc -> D.Doc
   }
 
@@ -58,7 +60,7 @@ emitTests :: Config -> Unit -> [Expanded] -> Either [Diagnostic] D.Doc
 emitTests Config{..} unit laws = do
   bodies <- mapM law (zip [0::Int ..] laws)
   let imports = ["import qualified Prelude as P", "import Prelude", "import Test.Hspec",
-        "import Control.Exception (SomeException, catch, displayException)",
+        "import Control.Exception (SomeException, catch, displayException, evaluate)",
         "import Test.Hspec.Hedgehog (hedgehog, modifyMaxSuccess)",
         "import Hedgehog (forAll, evalIO, footnote)",
         "import qualified Hedgehog",
@@ -66,6 +68,7 @@ emitTests Config{..} unit laws = do
         "import LawSpecRuntime (Scalar(..))", "import qualified LawSpecRuntime as LS",
         "import qualified " ++ moduleName ++ " as Impl"] ++
         ["import qualified LawSpecDefinitionBodies as Definitions" | hasDefinitions] ++
+        ["import qualified LawSpecNativeGenerators as NativeGenerators" | nativeGenerators] ++
         ["import qualified LawSpecSchema as Schema", "import qualified LawSpecDataSchema as DataSchema",
          "import qualified LawSpecCodecs as Codec", "import qualified LawSpecDataCodecs as Codecs",
          "import qualified LawSpecDataStrategies as Strategies"]
@@ -89,7 +92,7 @@ emitTests Config{..} unit laws = do
           (rn,rt) = contractResult c
           context stage ps = quoted (contractName c ++ " " ++ stage ++ ": " ++ intercalate " && " (map prettyExpr ps))
           require stage ps body = runtime "contract" [context stage ps,conjunction (map (truth . expr) ps),body]
-          invocation = apply ("Impl." ++ contractName c) [nativeArgument ty (text name) | (name,ty) <- args]
+          invocation = nativeCall (contractName c) [nativeArgument ty (text name) | (name,ty) <- args]
           result = nativeResult rt invocation
           post = D.group (text (rn ++ " `seq`") <> D.nest 2 (D.softline <>
             require "postcondition" (contractPostconditions c) (text rn)))
@@ -114,7 +117,7 @@ emitTests Config{..} unit laws = do
         (zip [0::Int ..] (maybe (boundaryCases e) id (finiteCases e)))
       let check = assertionDoc (label ++ " property") (assertion e)
       property <- if finiteCases e /= Nothing then pure []
-        else if constructorContracts then (:[]) <$> contextualProperty label e check
+        else if nativeGenerators || constructorContracts then (:[]) <$> contextualProperty label e check
         else if any (structural . inputType) (inputs e) then pure [nativeProperty label e check]
         else if any (not . null . inputRefinements) (inputs e) || propertyKind e == "contract"
           then (:[]) <$> refinedProperty label e check
@@ -131,13 +134,13 @@ emitTests Config{..} unit laws = do
               case C.expressionNode hint of C.Constant _ -> True; C.Local _ -> True; _ -> False]
             strategy = case requiredSymbol plan of
               value:_ -> apply "pure" [expr value]
-              [] -> E.checked (apply "Strategies.checkedStrategy"
-                [text "_lawspecSchema",reference ty,number machineBits,number nodeBudget,
+              [] -> E.checked (apply (if nativeGenerators then "Strategies.checkedStrategyWith" else "Strategies.checkedStrategy")
+                ([apply "NativeGenerators.factories" [text "symbols",text "_lawspecSchema",number machineBits] | nativeGenerators] ++ [text "_lawspecSchema",reference ty,number machineBits,number nodeBudget,
                  apply "P.Just" [text "symbols"],E.array (seeds ++ hints),
-                 apply "Strategies.primitiveStrategy" [number machineBits]])
+                 apply "Strategies.primitiveStrategy" [number machineBits]]))
         pure (statements
-          [text (inputId inp ++ " <-") <> D.nest 2 (D.hardline <> strategy),
-           runtime "forceScalar" [text (inputId inp)] <> text " `seq` pure ()"])) (generationPlan e)
+          ([text (inputId inp ++ " <-") <> D.nest 2 (D.hardline <> strategy)] ++
+           [runtime "forceScalar" [text (inputId inp)] <> text " `seq` pure ()" | not nativeGenerators]))) (generationPlan e)
       let names = E.array (map (text . inputId) (inputs e))
           base = D.multiline (text "do" <> D.nest 2 (D.hardline <>
             statements (draws ++ [apply "pure" [names]])))
@@ -145,9 +148,14 @@ emitTests Config{..} unit laws = do
           strategy = if null predicates then base else apply "Gen.filterT"
             [D.group (text "\\" <> names <> text " ->" <> D.nest 2
               (D.softline <> conjunction (map (truth . expr) predicates))),base]
-          body = statements [text "symbols <- evalIO LS.newSymbolContext",
-            D.group (names <> text " <-" <> D.nest 2 (D.softline <> apply "forAll" [strategy])),
-            apply "footnote" [quoted label],text "evalIO $ do" <> D.nest 2 (D.hardline <> check)]
+          draw = if nativeGenerators then apply "Hedgehog.forAllWith"
+            [lambda "_" (quoted "native generated inputs"),strategy] else apply "forAll" [strategy]
+          body = statements ([text "symbols <- evalIO LS.newSymbolContext",
+            D.group (names <> text " <-" <> D.nest 2 (D.softline <> draw))] ++
+            [apply "evalIO" [apply "evaluate" [runtime "forceScalar" [text (inputId inp)]]] |
+              nativeGenerators,inp <- inputs e] ++
+            [apply "footnote" [apply "show" [names]] | nativeGenerators] ++
+            [apply "footnote" [quoted label],text "evalIO $ do" <> D.nest 2 (D.hardline <> check)])
           cfg = generation e
           settings = [apply name [number value] | (name,value) <-
             [("Hedgehog.withTests",cases cfg),("Hedgehog.withDiscards",maxAttempts cfg),
@@ -157,6 +165,7 @@ emitTests Config{..} unit laws = do
             D.nest 2 (D.hardline <> body))
       pure $ testFunction (label ++ " property") [run,text "_passed `shouldBe` True"]
     requiredSymbol plan
+      | nativeGenerators = []
       | inputType (domainInput plan) /= C.scalarType "Symbol" = []
       | otherwise = concatMap required (generatorPredicates plan)
       where

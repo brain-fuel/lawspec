@@ -1,0 +1,151 @@
+{
+  "goImports": [
+    {
+      "alias": "schema",
+      "path": "example.invalid/native/domain"
+    },
+    {
+      "alias": "rapid",
+      "path": "example.invalid/native/generators"
+    },
+    {
+      "alias": "unused",
+      "path": "example.invalid/not-imported"
+    }
+  ],
+  "types": [
+    {
+      "type": "external.binding::type::Box",
+      "native": [
+        "schema",
+        "Box"
+      ],
+      "constructors": [
+        {
+          "constructor": "Box",
+          "native": [
+            "schema",
+            "Box"
+          ],
+          "style": "record",
+          "fields": [
+            {
+              "field": "value",
+              "native": "Payload"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "external.binding::type::Tree",
+      "native": [
+        "schema",
+        "Tree"
+      ],
+      "constructors": [
+        {
+          "constructor": "Leaf",
+          "native": [
+            "schema",
+            "Leaf"
+          ],
+          "style": "variant",
+          "fields": [
+            {
+              "field": "value",
+              "native": "Value"
+            }
+          ]
+        },
+        {
+          "constructor": "Branch",
+          "native": [
+            "schema",
+            "Branch"
+          ],
+          "style": "variant",
+          "fields": [
+            {
+              "field": "children",
+              "native": "Children"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "external.binding::type::Currency",
+      "native": [
+        "schema",
+        "Currency"
+      ],
+      "constructors": [
+        {
+          "constructor": "USD",
+          "native": [
+            "schema",
+            "Dollars"
+          ],
+          "style": "unit",
+          "fields": []
+        },
+        {
+          "constructor": "EUR",
+          "native": [
+            "schema",
+            "Euros"
+          ],
+          "style": "unit",
+          "fields": []
+        }
+      ]
+    }
+  ],
+  "functions": [
+    {
+      "declaration": "external.binding::copyBox",
+      "native": [
+        "schema",
+        "CopyBox"
+      ]
+    },
+    {
+      "declaration": "external.binding::copyTree",
+      "native": [
+        "schema",
+        "Copy"
+      ]
+    },
+    {
+      "declaration": "external.binding::copyNested",
+      "native": [
+        "schema",
+        "Copy"
+      ]
+    },
+    {
+      "declaration": "external.binding::copyCurrency",
+      "native": [
+        "schema",
+        "Copy"
+      ]
+    },
+    {
+      "declaration": "external.binding::copyWide",
+      "native": [
+        "schema",
+        "Copy"
+      ]
+    }
+  ],
+  "generators": [
+    {
+      "type": "external.binding::type::Box",
+      "factory": [
+        "rapid",
+        "Boxes"
+      ]
+    }
+  ]
+}

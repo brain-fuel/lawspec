@@ -1,20 +1,28 @@
-module LawSpec.CoreEmit (emitPlan, emitPlanWithFormat, emitPlanWithLayout, emitPlanWithOptions, targets) where
+module LawSpec.CoreEmit (emitPlan, emitPlanWithFormat, emitPlanWithLayout, emitPlanWithOptions, emitPlanWithNativeOptions, targets) where
 import LawSpec.Backend
 import LawSpec.Common
 import LawSpec.Testing
-import LawSpec.RustEmit (emitRustWithFormat)
+import LawSpec.RustEmit (emitRustWithFormat, emitRustWithBindings)
+import qualified LawSpec.NativeBinding as Binding
+import qualified LawSpec.NativeRequest as NB
 import qualified LawSpec.CoreScalarEmit as Scalar
 import qualified LawSpec.CoreNativeScalarEmit as Native
 import qualified LawSpec.JavaData as JavaData
+import qualified LawSpec.JavaNativeBinding as JavaNativeBinding
+import qualified LawSpec.KotlinNativeBinding as KotlinNativeBinding
+import qualified LawSpec.GoNativeBinding as GoNativeBinding
 import qualified LawSpec.JavaDefinitions as JavaDefinitions
+import qualified LawSpec.HaskellNativeBinding as HaskellNativeBinding
 import qualified LawSpec.HaskellData as HaskellData
 import qualified LawSpec.HaskellDefinitions as HaskellDefinitions
 import qualified LawSpec.KotlinData as KotlinData
 import qualified LawSpec.KotlinDefinitions as KotlinDefinitions
 import qualified LawSpec.GoDefinitions as GoDefinitions
 import qualified LawSpec.PythonData as PythonData
+import qualified LawSpec.PythonNativeBinding as PythonNativeBinding
 import qualified LawSpec.PythonDefinitions as PythonDefinitions
 import qualified LawSpec.WebData as WebData
+import qualified LawSpec.WebNativeBinding as WebNativeBinding
 import qualified LawSpec.WebDefinitions as WebDefinitions
 import qualified LawSpec.Code.Doc as Doc
 import LawSpec.RuntimeSources
@@ -241,8 +249,82 @@ emitPlanWithLayout :: String -> Maybe String -> Maybe String -> Plan -> Either [
 emitPlanWithLayout = emitPlanWithOptions False
 
 emitPlanWithOptions :: Bool -> String -> Maybe String -> Maybe String -> Plan -> Either [Diagnostic] [Artifact]
-emitPlanWithOptions minify target sourceDir testDir plan = do
-  files <- emitPlanWithFormat minify target plan
+emitPlanWithOptions minify target sourceDir testDir plan =
+  emitPlanWithNativeOptions minify target sourceDir testDir NB.emptyBindingPlan plan
+
+emitPlanWithNativeOptions :: Bool -> String -> Maybe String -> Maybe String -> NB.BindingPlan -> Plan -> Either [Diagnostic] [Artifact]
+emitPlanWithNativeOptions minify target sourceDir testDir bindings originalPlan = do
+  unless (target `elem` ["python","rust","javascript","typescript","java","kotlin","go","haskell"] || not (any Binding.resolvedGeneratorStub
+    (Binding.resolvedGenerators (NB.bindingRepresentations bindings))))
+    (Left [Diagnostic "native-binding" ("generator scaffolds are not implemented for " ++ target) Nothing])
+  plan <- if target == "go" && NB.hasBindings bindings
+    then either (Left . pure . (\m -> Diagnostic "native-binding" m Nothing)) Right
+      (GoNativeBinding.preparePlan bindings originalPlan)
+    else Right originalPlan
+  unless (target `elem` ["rust","haskell","python","javascript","typescript","java","kotlin","go"] || all ((== Nothing) . Binding.resolvedCodec)
+    (Binding.resolvedTypes (NB.bindingRepresentations bindings)))
+    (Left [Diagnostic "native-binding" ("codec hook emission is not implemented for " ++ target) Nothing])
+  unless (target == "go" || null (NB.bindingGoImports bindings))
+    (Left [Diagnostic "native-binding" "goImports is only valid for Go bindings" Nothing])
+  emitted <- if not (NB.hasBindings bindings) then emitPlanWithFormat minify target plan
+    else if target == "rust" then emitRustWithBindings minify bindings plan
+    else if target == "python" then do
+      ordinary <- emitPlanWithFormat minify target plan
+      either (Left . pure . (\m -> Diagnostic "native-binding" m Nothing)) Right
+        (PythonNativeBinding.emitBindings minify bindings plan ordinary)
+    else if target `elem` ["javascript","typescript"] then do
+      ordinary <- emitPlanWithFormat minify target plan
+      either (Left . pure . (\m -> Diagnostic "native-binding" m Nothing)) Right
+        (WebNativeBinding.emitBindings (target == "typescript") minify bindings plan ordinary)
+    else if target == "java" then do
+      ordinary <- emitPlanWithFormat minify target plan
+      either (Left . pure . (\m -> Diagnostic "native-binding" m Nothing)) Right
+        (JavaNativeBinding.emitBindings minify bindings plan ordinary)
+    else if target == "kotlin" then do
+      ordinary <- emitPlanWithFormat minify target plan
+      either (Left . pure . (\m -> Diagnostic "native-binding" m Nothing)) Right
+        (KotlinNativeBinding.emitBindings minify bindings plan ordinary)
+    else if target == "haskell" then do
+      ordinary <- emitPlanWithFormat minify target plan
+      either (Left . pure . (\m -> Diagnostic "native-binding" m Nothing)) Right
+        (HaskellNativeBinding.emitBindings minify bindings plan ordinary)
+    else if target == "go" then do
+      ordinary <- emitPlanWithFormat minify target plan
+      either (Left . pure . (\m -> Diagnostic "native-binding" m Nothing)) Right
+        (GoNativeBinding.emitBindings minify bindings plan ordinary)
+    else Left [Diagnostic "native-binding" ("native binding emission is not implemented for " ++ target) Nothing]
+  canonical <- if NB.hasBindings bindings && minify && target == "rust"
+    then emitRustWithBindings False bindings plan
+    else if NB.hasBindings bindings && minify && target == "python" then do
+      ordinary <- emitPlanWithFormat False target plan
+      either (Left . pure . (\m -> Diagnostic "native-binding" m Nothing)) Right
+        (PythonNativeBinding.emitBindings False bindings plan ordinary)
+    else if NB.hasBindings bindings && minify && target `elem` ["javascript","typescript"] then do
+      ordinary <- emitPlanWithFormat False target plan
+      either (Left . pure . (\m -> Diagnostic "native-binding" m Nothing)) Right
+        (WebNativeBinding.emitBindings (target == "typescript") False bindings plan ordinary)
+    else if NB.hasBindings bindings && minify && target == "java" then do
+      ordinary <- emitPlanWithFormat False target plan
+      either (Left . pure . (\m -> Diagnostic "native-binding" m Nothing)) Right
+        (JavaNativeBinding.emitBindings False bindings plan ordinary)
+    else if NB.hasBindings bindings && minify && target == "kotlin" then do
+      ordinary <- emitPlanWithFormat False target plan
+      either (Left . pure . (\m -> Diagnostic "native-binding" m Nothing)) Right
+        (KotlinNativeBinding.emitBindings False bindings plan ordinary)
+    else if NB.hasBindings bindings && minify && target == "haskell" then do
+      ordinary <- emitPlanWithFormat False target plan
+      either (Left . pure . (\m -> Diagnostic "native-binding" m Nothing)) Right
+        (HaskellNativeBinding.emitBindings False bindings plan ordinary)
+    else if NB.hasBindings bindings && minify && target == "go" then do
+      ordinary <- emitPlanWithFormat False target plan
+      either (Left . pure . (\m -> Diagnostic "native-binding" m Nothing)) Right
+        (GoNativeBinding.emitBindings False bindings plan ordinary)
+    else pure emitted
+  files <- if not (NB.hasBindings bindings) then pure emitted else mapM (\artifact -> if ownership artifact /= "user" then pure artifact else
+    case lookup (artifactPath artifact) [(artifactPath a,artifactContent a) | a <- canonical, ownership a == "user"] of
+      Nothing -> Left [Diagnostic "native-binding" "missing canonical adapter reference" Nothing]
+      Just reference -> pure (AdapterArtifact (artifactPath artifact) (artifactContent artifact)
+        (ownership artifact) (artifactPlacement artifact) reference)) emitted
   let defaults = case target of
         "java" -> ("src/main/java", "src/test/java")
         "kotlin" -> ("src/main/kotlin", "src/test/kotlin")
@@ -272,7 +354,13 @@ emitPlanWithOptions minify target sourceDir testDir plan = do
       adjust a = (mapArtifactContent (adjustContent a) a)
         { artifactPath = if artifactPlacement a == "source" then move (sourceBase a) (sourceRoot a) (artifactPath a) else move (snd defaults) tst (artifactPath a) }
       adjustContent a
-        | target `elem` ["javascript","typescript"] && artifactPlacement a == "test" = replace "from '../src/" ("from '" ++ importRoot ++ "/")
+        | target `elem` ["javascript","typescript"] && artifactPlacement a == "test" =
+          let nested = init (split '/' (drop (length (snd defaults) + 1) (artifactPath a)))
+              old = concat (replicate (length nested + 1) "../") ++ "src/"
+              destination = rel (split '/' tst ++ nested) (split '/' src)
+              root = if null destination then "." else if ".." `isPrefixOf` destination
+                then destination else "./" ++ destination
+          in replace ("from '" ++ old) ("from '" ++ root ++ "/")
         | target == "rust" && artifactPlacement a == "test" = replace "\n#[path = \"../src/" ("\n#[path = \"" ++ importRoot ++ "/")
         | otherwise = id
       result = map adjust files

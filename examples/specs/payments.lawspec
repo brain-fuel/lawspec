@@ -1,0 +1,76 @@
+unit example.payments
+
+-- The executable acceptance model for native domain bindings in 0.10.
+-- Applications may call Money "Price", amount "major", and currency "unit";
+-- those representation choices must not alter these laws.
+type Currency is USD | EUR | GBP end
+
+type Money is
+  Money amount :: Decimal currency :: Currency
+end
+
+type Payment is
+  Paid value :: Money
+  Declined reason :: Text
+end
+
+-- These are adapter functions supplied by the application.
+addFee :: Money -> Money
+roundTrip :: Payment -> Payment
+archive :: List (Maybe Payment) -> List (Maybe Payment)
+
+-- The model is exact, independent of host decimal rounding settings.
+definition feeModel (money :: Money) :: Money is
+  match money with
+    | Money amount currency -> Money (amount + 0.2) currency
+  end
+end
+
+law `fees preserve currency and exact decimal value` is
+  definition is
+    `for all` (money :: Money) . addFee money = feeModel money
+  end
+  example `decimal tenths` is
+    money = Money 0.1 USD
+    expect addFee money = Money 0.3 USD
+  end
+  example `small amount is not rounded away` is
+    money = Money 0.000000000000000000000000000001 EUR
+    expect addFee money = Money 0.200000000000000000000000000001 EUR
+  end
+  example `beyond binary floating precision` is
+    money = Money 9007199254740993.1 GBP
+    expect addFee money = Money 9007199254740993.3 GBP
+  end
+end
+
+law `payment variants and payloads survive native conversion` is
+  definition is
+    `for all` (payment :: Payment) . roundTrip payment = payment
+  end
+  example `successful payment` is
+    payment = Paid (Money 12.34 EUR)
+    expect roundTrip payment = Paid (Money 12.34 EUR)
+  end
+  example `declined payment` is
+    payment = Declined "card declined"
+    expect roundTrip payment = Declined "card declined"
+  end
+end
+
+law `archives preserve order duplicates and absence` is
+  definition is
+    `for all` (payments :: List (Maybe Payment)) . archive payments = payments
+  end
+  example `empty archive` is
+    payments = []
+    expect archive payments = []
+  end
+  example `missing is different from a declined payment` is
+    payments = [Nothing, Just (Declined ""), Just (Paid (Money 0.1 USD)),
+                Just (Paid (Money 0.1 USD))]
+    expect archive payments = [Nothing, Just (Declined ""),
+                              Just (Paid (Money 0.1 USD)),
+                              Just (Paid (Money 0.1 USD))]
+  end
+end

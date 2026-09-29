@@ -1,4 +1,4 @@
-# LawSpec language and compiler boundary (0.9)
+# LawSpec language and compiler boundary (0.10)
 
 LawSpec describes portable laws, concrete examples, and adapter contracts. The
 compiler is written in Haskell. Rust is an output backend alongside Java, Python,
@@ -332,14 +332,17 @@ API schema v3 uses separately defined wire views, with lossless tagged scalar
 values. It does not serialize internal AST constructors. See the
 [API migration guide](API-MIGRATION.md).
 
-## Beyond 0.9
+## Beyond 0.10
 
-GADTs, indexed families, and general dependent types are planned after 0.9.
+GADTs, indexed families, and general dependent types are planned after 0.10.
 The Core type model distinguishes type arguments from index arguments, but that
 representation is not a claim that arbitrary dependent programs are accepted.
-User-defined products and sums have ordinary uniform type parameters. External
-type bindings, custom generator bindings, and cross-unit packages are separate
-future features.
+User-defined products and sums have ordinary uniform type parameters.
+External type bindings and custom generator bindings are implemented in the
+0.10 release; see [the binding reference](NATIVE-BINDINGS.md) for their
+interface and acceptance status. They configure native representations alongside
+the typed testing plan and do not change source-language typing or equality.
+Cross-unit packages remain future work.
 
 ## Generated project formatting
 
@@ -357,5 +360,5 @@ code, and 72-column prose. Other targets follow Google language guidance where
 applicable, with standard Rust formatting. Formatting is deterministic in the
 native and WASM compilers; generation does not download or invoke a formatter.
 
-See [the release notes](RELEASE-0.9.md) for compatibility and scope, and the target
+See [the release notes](RELEASE-0.10.md) for compatibility and scope, and the target
 guides for formatting verification and native representation details.

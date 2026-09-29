@@ -1,0 +1,175 @@
+{
+  "rustCrate": "lawspec_example",
+  "types": [
+    {
+      "type": "native.shapes::type::Box",
+      "native": [
+        "crate",
+        "domain",
+        "Wrapped"
+      ],
+      "constructors": [
+        {
+          "constructor": "Box",
+          "native": [
+            "crate",
+            "domain",
+            "Wrapped"
+          ],
+          "style": "record",
+          "fields": [
+            {
+              "field": "item",
+              "native": "stored"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "native.shapes::type::Chain",
+      "native": [
+        "crate",
+        "domain",
+        "Link"
+      ],
+      "constructors": [
+        {
+          "constructor": "Stop",
+          "native": [
+            "crate",
+            "domain",
+            "Link",
+            "End"
+          ],
+          "style": "unit",
+          "fields": []
+        },
+        {
+          "constructor": "More",
+          "native": [
+            "crate",
+            "domain",
+            "Link",
+            "Next"
+          ],
+          "style": "variant",
+          "fields": [
+            {
+              "field": "value",
+              "native": "item"
+            },
+            {
+              "field": "tail",
+              "native": "remainder"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "native.shapes::type::Tree",
+      "native": [
+        "crate",
+        "domain",
+        "Forest"
+      ],
+      "constructors": [
+        {
+          "constructor": "Leaf",
+          "native": [
+            "crate",
+            "domain",
+            "Forest",
+            "Item"
+          ],
+          "style": "variant",
+          "fields": [
+            {
+              "field": "item",
+              "native": "datum"
+            }
+          ]
+        },
+        {
+          "constructor": "Branch",
+          "native": [
+            "crate",
+            "domain",
+            "Forest",
+            "Group"
+          ],
+          "style": "variant",
+          "fields": [
+            {
+              "field": "children",
+              "native": "trees"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "native.shapes::type::Stamp",
+      "native": [
+        "crate",
+        "domain",
+        "Seal"
+      ],
+      "constructors": [
+        {
+          "constructor": "Stamp",
+          "native": [
+            "crate",
+            "domain",
+            "Seal"
+          ],
+          "style": "record",
+          "fields": []
+        }
+      ]
+    }
+  ],
+  "functions": [
+    {
+      "declaration": "native.shapes::copyBox",
+      "native": [
+        "crate",
+        "domain",
+        "copy"
+      ]
+    },
+    {
+      "declaration": "native.shapes::copyChain",
+      "native": [
+        "crate",
+        "domain",
+        "copy"
+      ]
+    },
+    {
+      "declaration": "native.shapes::copyTree",
+      "native": [
+        "crate",
+        "domain",
+        "copy"
+      ]
+    },
+    {
+      "declaration": "native.shapes::copyNested",
+      "native": [
+        "crate",
+        "domain",
+        "copy"
+      ]
+    },
+    {
+      "declaration": "native.shapes::copyStamp",
+      "native": [
+        "crate",
+        "domain",
+        "copy"
+      ]
+    }
+  ]
+}

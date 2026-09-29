@@ -2,7 +2,7 @@
 -- core identities, never source names awaiting resolution or target mappings.
 module LawSpec.Core.Types
   ( TypeRegistry, makeRegistry, builtinDataDeclarations, registryKinds, registryDeclarations
-  , kindOf, checkType, constructorFieldsFor, constructorPredicatesFor, lookupData, equalityRequirements, generationRequirements
+  , kindOf, checkType, substitute, constructorFieldsFor, constructorPredicatesFor, lookupData, equalityRequirements, generationRequirements
   ) where
 
 import Control.Monad (foldM, unless)

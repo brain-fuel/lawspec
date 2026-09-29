@@ -13,7 +13,7 @@ const rapid = path.join(execFileSync('go', ['env', 'GOMODCACHE'], {encoding: 'ut
 await writeFile(path.join(directory, 'go.mod'),
   'module fixture\n\ngo 1.24.0\n\nrequire pgregory.net/rapid v1.2.0\nreplace pgregory.net/rapid => ' +
   JSON.stringify(rapid) + '\n');
-for (const name of ['lawspec_runtime.go', 'lawspec_schema.go', 'lawspec_data_strategies.go']) {
+for (const name of ['lawspec_runtime.go', 'lawspec_schema.go', 'lawspec_codecs.go', 'lawspec_data_strategies.go']) {
   const source = (await readFile(path.join(root, 'runtime', name), 'utf8'))
     .replace('package RUNTIME_PACKAGE', 'package fixture');
   assert.equal(execFileSync('gofmt', [], {input: source, encoding: 'utf8'}), source);

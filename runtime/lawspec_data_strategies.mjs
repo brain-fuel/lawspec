@@ -3,6 +3,31 @@ import * as fc from 'fast-check';
 import * as ls from './lawspec_runtime.mjs';
 import {RefinementViolation} from './lawspec_schema.mjs';
 
+// fast-check has no empty arbitrary: an always-false filter would loop forever.
+// A native factory may ignore this argument, but drawing it must fail promptly.
+class EmptyArgumentArbitrary extends fc.Arbitrary {
+  constructor(type, budget) {
+    super();
+    this.type = type;
+    this.budget = budget;
+  }
+
+  generate() {
+    throw new RangeError(
+        `no native generator argument for ${JSON.stringify(this.type)} ` +
+        `within node budget ${this.budget}`,
+    );
+  }
+
+  canShrinkWithoutContext() {
+    return false;
+  }
+
+  shrink() {
+    return fc.Stream.nil();
+  }
+}
+
 // Preserve the underlying Value and shrink context while bounding rejection.
 class ContractArbitrary extends fc.Arbitrary {
   constructor(source, accepts, attempts, name) {
@@ -41,6 +66,8 @@ export function strategy(
     symbols = new Map(),
     witnesses = [],
     maxAttempts = 1000,
+    nativeGenerators = new Map(),
+    nativeSchema = schema,
 ) {
   if (!Number.isSafeInteger(budget) || budget < 1) {
     throw new RangeError('structural node budget must be positive');
@@ -49,6 +76,12 @@ export function strategy(
     throw new RangeError('machineBits must be 32 or 64');
   }
   schema.constructors(reference);
+  nativeGenerators = new Map(nativeGenerators);
+  for (const [name, factory] of nativeGenerators) {
+    if (typeof name !== 'string' || typeof factory !== 'function') {
+      throw new TypeError('invalid native generator binding');
+    }
+  }
   if (!Number.isSafeInteger(maxAttempts) || maxAttempts < 1) {
     throw new RangeError('constructor attempt budget must be positive');
   }
@@ -133,6 +166,7 @@ export function strategy(
 
   function inhabited(type, available) {
     if (available < 1) return false;
+    if (nativeGenerators.has(type.name)) return true;
     const id = key(type, available);
     if (inhabitants.has(id)) return inhabitants.get(id);
     const constructors = schema.constructors(type);
@@ -158,6 +192,34 @@ export function strategy(
   function build(type, available) {
     const id = key(type, available);
     if (arbitraries.has(id)) return arbitraries.get(id);
+    if (nativeGenerators.has(type.name)) {
+      const children = type.args.map((child) => {
+        const remaining = Math.max(1, available - 1);
+        const source = inhabited(child, remaining)
+          ? build(child, remaining)
+          : new EmptyArgumentArbitrary(child, remaining);
+        return source.map((value) =>
+          nativeSchema.toNative(child, value, bits, symbols));
+      });
+      const source = nativeGenerators.get(type.name)(...children);
+      if (!(source instanceof fc.Arbitrary)) {
+        throw new TypeError(
+            `native generator ${type.name} must return an arbitrary`,
+        );
+      }
+      const result = source.map((value) => {
+        try {
+          return nativeSchema.fromNative(type, value, bits, symbols);
+        } catch (error) {
+          throw new TypeError(
+              `native generator ${type.name}: ${error.message}`,
+              {cause: error},
+          );
+        }
+      });
+      arbitraries.set(id, result);
+      return result;
+    }
     if (!inhabited(type, available)) {
       throw new RangeError(
           `no value of ${type.name} within structural node budget ${available}`,

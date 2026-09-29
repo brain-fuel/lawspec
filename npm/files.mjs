@@ -63,8 +63,8 @@ export async function atomicWrite(file, content, exclusive = false) {
     }
   }
 }
-export async function planWrites(root, artifacts) {
-  const manifestPath = await safePath(root, ".lawspec/generated.json");
+export async function planWrites(root, artifacts, {manifest = ".lawspec/generated.json"} = {}) {
+  const manifestPath = await safePath(root, manifest);
   const previousText = await readOptional(manifestPath);
   const previous =
     previousText === null
@@ -144,18 +144,18 @@ export async function planWrites(root, artifacts) {
       throw new Error(`Refusing to remove edited generated file: ${relative}`);
     changes.push({ action: "remove", file, relative, expected: old });
   }
-  const manifest =
+  const manifestContent =
     JSON.stringify(
       { version: 1, files: next, adapters: adapterHashes },
       null,
       2,
     ) + "\n";
-  if (manifest !== previousText)
+  if (manifestContent !== previousText)
     changes.push({
       action: previousText === null ? "create" : "update",
       file: manifestPath,
-      relative: ".lawspec/generated.json",
-      content: manifest,
+      relative: manifest,
+      content: manifestContent,
       expected: previousText,
     });
   return { root, changes, preserved, adapterUpdates };

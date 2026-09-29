@@ -15,6 +15,7 @@ data Config = Config
   { packageName :: String
   , schemaNeeded :: Bool
   , constructorContracts :: Bool
+  , nativeGenerators :: Bool
   , nodeBudget :: Integer
   , machineBits :: Int
   , expression :: Expr -> D.Doc
@@ -24,6 +25,7 @@ data Config = Config
   , reference :: Type -> D.Doc
   , typeKey :: Type -> String
   , generator :: Type -> D.Doc
+  , nativeFunction :: String -> String
   , nativeArgument :: Type -> D.Doc -> D.Doc
   , nativeResult :: Type -> D.Doc -> D.Doc
   }
@@ -79,7 +81,7 @@ emitTests Config{..} unit laws = do
           params = intercalate ", " ("symbols map[string]*lawSpecSymbol" : [n ++ " LawSpecValue" | (n,_) <- args])
           context stage ps = quoted (contractName c ++ " " ++ stage ++ ": " ++ intercalate " && " (map prettyExpr ps))
           require stage ps = call "lsRequireContract" [conjunction (map (truth . expr) ps),context stage ps]
-          invocation = call (cap (contractName c)) [nativeArgument ty (text n) | (n,ty) <- args]
+          invocation = call (nativeFunction (contractName c)) [nativeArgument ty (text n) | (n,ty) <- args]
       in text ("func _lawspec_call_" ++ contractName c ++ "(" ++ params ++ ") LawSpecValue ") <>
         block (statements [require "precondition" (contractPreconditions c),
           bind rn (nativeResult rt invocation),require "postcondition" (contractPostconditions c),returned (text rn)])
@@ -98,7 +100,7 @@ emitTests Config{..} unit laws = do
         (zip [0::Int ..] (maybe (boundaryCases e) id (finiteCases e)))
       let check = assertionDoc (label ++ " property") (assertion e)
       property <- if finiteCases e /= Nothing then pure []
-        else if constructorContracts then (:[]) <$> contextualProperty fn label e check
+        else if constructorContracts || nativeGenerators then (:[]) <$> contextualProperty fn label e check
         else if any (structural . inputType) (inputs e) then pure [structuralProperty fn label e check]
         else if any (not . null . inputRefinements) (inputs e) || propertyKind e == "contract"
           then (:[]) <$> refinedProperty fn label e check
@@ -114,12 +116,13 @@ emitTests Config{..} unit laws = do
             ty = inputType inp
             hints = [expr hint | hint <- generatorHints plan, expressionType hint == ty,
               case C.expressionNode hint of C.Constant _ -> True; C.Local _ -> True; _ -> False]
-            strategy = case requiredSymbol plan of
+            strategy = case (if nativeGenerators then [] else requiredSymbol plan) of
               value:_ -> call "rapid.Just" [expr value]
-              [] -> call "lsCheckedDataStrategyWithAttempts"
+              [] -> call "lsCheckedDataStrategyWithAttempts" $
                 [text "_lawspecSchema",reference ty,number machineBits,number nodeBudget,number (maxAttempts (generation e)),
-                 text "symbols",E.array (seeds ++ hints),text "_lawspecScalarGenerator"]
-            suffix = if null (requiredSymbol plan) then text ".requireValue()" else mempty
+                 text "symbols",E.array (seeds ++ hints),text "_lawspecScalarGenerator"] ++
+                [text "lawSpecNativeFactories()" | nativeGenerators]
+            suffix = if nativeGenerators || null (requiredSymbol plan) then text ".requireValue()" else mempty
         pure (assign (inputId inp) (strategy <> text ".Draw(t, " <>
           quoted (inputId inp) <> text ")" <> suffix))) (generationPlan e)
       let base = call "rapid.Custom" [closure "t *rapid.T" "[]LawSpecValue" $

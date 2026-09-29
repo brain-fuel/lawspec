@@ -16,6 +16,7 @@ data Config = Config
   { packageName :: String
   , className :: String
   , constructorContracts :: Bool
+  , nativeGenerators :: Bool
   , nodeBudget :: Integer
   , machineBits :: Int
   , expression :: Expr -> D.Doc
@@ -104,7 +105,7 @@ emitTests Config{..} unit laws = do
         (zip [0::Int ..] (maybe (boundaryCases e) id (finiteCases e)))
       let check = assertionDoc (label ++ " property") (assertion e)
       property <- if finiteCases e /= Nothing then pure []
-        else if constructorContracts then (:[]) <$> contextualProperty label e check
+        else if constructorContracts || nativeGenerators then (:[]) <$> contextualProperty label e check
         else if any (structural . inputType) (inputs e) then pure [nativeProperty label e check]
         else if any (not . null . inputRefinements) (inputs e) || propertyKind e == "contract"
           then (:[]) <$> refinedProperty label e check
@@ -124,12 +125,13 @@ emitTests Config{..} unit laws = do
                     C.Constant _ -> True
                     C.Local _ -> True
                     _ -> False]
-                strategy = case requiredSymbol plan of
+                strategy = case (if nativeGenerators then [] else requiredSymbol plan) of
                   value:_ -> call "Arb.constant" [call "LawSpecKotlinStrategies.Checked" [expr value,text "null"]]
-                  [] -> call "LawSpecKotlinStrategies.checkedGenerator"
+                  [] -> call "LawSpecKotlinStrategies.checkedGenerator" $
                     [text "_schema",reference ty,number machineBits,number nodeBudget,
-                     number (maxAttempts (generation e)),text "symbols",call "listOf" (seeds ++ hints),
-                     text "::_lawspecScalarGenerator"]
+                     number (maxAttempts (generation e)),text "symbols",call "listOf" (seeds ++ hints)] ++
+                    [text "lawspec.testing.LawSpecNativeGenerators.factories()" | nativeGenerators] ++
+                    [text "::_lawspecScalarGenerator"]
                 added = trailing (strategy <> text ".map") "_checked"
                   (text "if (_checked.error != null) " <> block (state (text "_values")) <>
                    text " else " <> block (state (text "_values + _checked.requireValue()")))

@@ -1,8 +1,15 @@
-# Compiler API migration: schema 2 → schema 3
+# Compiler API migration
+
+This document covers the published schema-3 interface and the schema-4 native
+binding interface introduced in 0.10. See
+[schema 4 native bindings](#schema-4-native-bindings) when adding
+application types or generators to an existing project.
+
+## Schema 2 → schema 3
 
 LawSpec 0.8 introduced API schema version **3**, which 0.9 continues to use.
 Requests may omit `schemaVersion` or
-send `3`. An explicit `2` (or any other version) receives a request diagnostic;
+send `3`. An explicit `2` receives a request diagnostic;
 it is never silently reinterpreted. LawSpec specification syntax remains compatible.
 The generated `index.d.ts` describes the public protocol. Internal Haskell
 constructors and record fields are no longer the wire format.
@@ -202,3 +209,72 @@ definition and constructor contracts support recursive payload proof facts. Cons
 matches/constructions participate in the constructor dependency-cycle check.
 The TypeScript declarations now include both
 `allElements` and `allPayloads`; exhaustive visitors should handle both.
+
+## Schema 4 native bindings
+
+Binding requests use `schemaVersion: 4`. Schema-3 requests remain supported for
+existing specifications without bindings. This negotiation is deliberate: an
+older compiler must reject a binding request rather than silently use generated
+types in place of application types.
+
+The JavaScript API selects schema 4 when `nativeBindings` is provided, unless an
+explicit `schemaVersion` overrides it. A nonempty binding configuration with
+schema 3 is rejected. Results and diagnostics report the negotiated schema.
+
+`nativeBindings` contains optional `types`, `functions`, `generators`,
+`rustCrate` and `goImports` fields. Native symbols use arrays of identifier segments; unknown
+configuration fields are rejected. See [the native-binding scope and current
+implementation status](NATIVE-BINDINGS.md). Rust, Python, JavaScript, TypeScript,
+Java and Kotlin support application type bridges and native generator factories.
+Go supports package-local and imported application types with native Rapid
+factories. Haskell supports application types and native Hedgehog factories.
+Custom codec hooks are available on all eight targets; see the native-binding
+reference for target-specific signatures and current integration limitations.
+
+### Go imports in schema 4 binding requests
+
+`nativeBindings.goImports` is an optional array of `{alias, path}` entries.
+References such as `["domain", "Price"]` select exported names from that alias's
+Go import path. One-component references continue to select package-local names.
+Types, constructors, functions and generator factories share the import table;
+only imports used by each generated file are emitted. Other targets reject this
+option. Paths must be module import paths without empty or traversal segments.
+
+Go reserves local application symbols before generating canonical data names.
+Colliding generated families receive a fresh `Canonical` prefix (and a numeric
+suffix in that prefix if necessary). Logical type and constructor IDs do not
+change. Hooks that name generated data types should use the emitted canonical
+names; imported application types keep their original names.
+
+### Codec hooks in schema 4 type bindings
+
+`NativeTypeBinding` now accepts either `constructors` or
+`codec: {toNative: NativeReference, fromNative: NativeReference}`. Both hook
+references are required and constructor mappings cannot be combined with hooks.
+The canonical side uses generated LawSpec data types, while the native side uses
+`native`; generic hooks receive one directional child converter per type argument.
+All eight targets implement emission. Go hooks return `(value, error)` and the
+verified fixture places them beside the generated canonical types to avoid package
+import cycles. See `NATIVE-BINDINGS.md` for signatures and
+validation behavior.
+
+### Native-binding ownership transitions
+
+Existing user adapters are protected when their paths become generated bridges.
+Move application implementations into the configured native modules and save the
+old adapters elsewhere before adopting bindings. Removing bindings preserves the
+old bridge as user-owned content and reports a required adapter update; it does
+not silently replace that content with a stub. Generated layout changes do not
+move application-owned model, hook or factory files. See `NATIVE-BINDINGS.md` for
+the migration sequence and all-target filesystem acceptance checks.
+
+### Optional generator scaffolds in schema 4
+
+`NativeGeneratorBinding` accepts `stub?: boolean`, defaulting to false. Python,
+Rust, JavaScript, TypeScript, Java, Kotlin, Go and Haskell support `stub: true` to
+create a user-owned factory in the test directory. Go
+requires a package-local factory and a quantified use to determine placement.
+Existing factory files remain untouched. Factory signature changes
+use the existing `adapterUpdates` reporting channel. See `NATIVE-BINDINGS.md`
+for grouping, module collision checks, and layout
+migration behavior.

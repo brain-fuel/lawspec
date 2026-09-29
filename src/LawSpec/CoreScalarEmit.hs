@@ -1,4 +1,4 @@
-module LawSpec.CoreScalarEmit (scalarEmit, scalarEmitWithData, scalarEmitWithDefinitions, scalarEmitWithFormat, typeKey) where
+module LawSpec.CoreScalarEmit (scalarEmit, scalarEmitWithData, scalarEmitWithDefinitions, scalarEmitWithFormat, scalarEmitWithNativeGenerators, typeKey) where
 import LawSpec.Backend
 import LawSpec.Common
 import LawSpec.Testing
@@ -29,7 +29,9 @@ scalarEmitWithData declarations = scalarEmitWithDefinitions declarations []
 scalarEmitWithDefinitions :: [C.DataDeclaration] -> [(C.Id,String)] -> Int -> String -> Unit -> [Expanded] -> Either [Diagnostic] [Artifact]
 scalarEmitWithDefinitions = scalarEmitWithFormat False
 scalarEmitWithFormat :: Bool -> [C.DataDeclaration] -> [(C.Id,String)] -> Int -> String -> Unit -> [Expanded] -> Either [Diagnostic] [Artifact]
-scalarEmitWithFormat minify declarations definitions bits target u allLaws = do
+scalarEmitWithFormat = scalarEmitWithNativeGenerators False
+scalarEmitWithNativeGenerators :: Bool -> Bool -> [C.DataDeclaration] -> [(C.Id,String)] -> Int -> String -> Unit -> [Expanded] -> Either [Diagnostic] [Artifact]
+scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions bits target u allLaws = do
   unless (target `elem` ["python","javascript","typescript"]) (Left [Diagnostic "target-runtime" ("portable scalar runtime is not implemented for " ++ target) Nothing])
   tests <- concat <$> mapM lawTests (zip [0 :: Int ..] ls)
   wrappers <- concat <$> mapM contractWrapper (contracts u)
@@ -39,7 +41,7 @@ scalarEmitWithFormat minify declarations definitions bits target u allLaws = do
     finish content = if py then reverse (dropWhile (== '\n') (reverse content)) ++ "\n" else content
     adapterFunctions = [(n,t) | (n,t) <- functions u, C.Id (unitName u ++ "::" ++ n) `notElem` map fst definitions]
     py = target == "python"
-    hasData = (not (null definitions) || not (null declarations) || any (usesData . snd) (functions u) ||
+    hasData = (nativeGenerators || not (null definitions) || not (null declarations) || any (usesData . snd) (functions u) ||
       any (any (usesData . inputType) . inputs) ls ||
       any expressionNeedsSchema (concatMap C.contractExpressions (contracts u) ++
         concatMap (C.propertyExpressions . original) ls))
@@ -58,8 +60,8 @@ scalarEmitWithFormat minify declarations definitions bits target u allLaws = do
     referenceDoc ty = either error id ((if py then PythonData.pythonTypeReferenceDoc else WebData.webTypeReferenceDoc) ty)
     generatorDoc = Generator.generatorDoc py bits usesData referenceDoc
     dataHelpers = if not hasData then "" else
-      (if py then "from lawspec_data_strategies import strategy as _data_strategy\n\n\n"
-       else "import {strategy as _data_strategy} from './lawspec_data_strategies." ++ (if ts then "js" else "mjs") ++ "';\n\n") ++
+      (if py then "from " ++ (if nativeGenerators then "lawspec_native_generators" else "lawspec_data_strategies") ++ " import strategy as _data_strategy\n\n\n"
+       else "import {strategy as _data_strategy} from './" ++ (if nativeGenerators then "lawspec_native_generators" else "lawspec_data_strategies") ++ "." ++ (if ts then "js" else "mjs") ++ "';\n\n") ++
       Doc.render outputLayout (Helpers.dataHelperDoc py bits budget
         [(if py then PythonExpr.quoted else WebExpr.quoted) (primitiveName p) <> Doc.text ": " <>
           generatorDoc (Named (primitiveName p)) | p <- primitives]) ++
@@ -242,7 +244,7 @@ scalarEmitWithFormat minify declarations definitions bits target u allLaws = do
             (statements [freshSymbols,body])
             else propertyInvocation label generators (map text names) (statements [freshSymbols,body]) []
       refined <- (if any (containsStructural . inputType) (inputs e) then nativeRefinedProperty else refinedProperty) prefix label e body
-      let needsContext = fieldContracts && any (usesData . inputType) (inputs e)
+      let needsContext = nativeGenerators || fieldContracts && any (usesData . inputType) (inputs e)
       contextual <- if needsContext then
         (if py then contextualProperty prefix else webContextualProperty label) e body
         else pure ordinary
@@ -335,6 +337,7 @@ scalarEmitWithFormat minify declarations definitions bits target u allLaws = do
     -- Identity equality restricts Symbol to one fixture. Only required
     -- conjuncts qualify; an equality under disjunction does not define a domain.
     requiredSymbol plan
+      | nativeGenerators = []
       | inputType (domainInput plan) /= C.scalarType "Symbol" = []
       | otherwise = concatMap required (generatorPredicates plan)
       where

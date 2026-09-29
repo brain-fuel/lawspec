@@ -1,0 +1,25 @@
+unit native.codecs
+
+type Parcel (a :: Type) is Parcel item :: a end
+type Chain (a :: Type) is Stop More item :: a tail :: Maybe (Chain a) end
+type Positive is Positive value :: (x :: Int8 where x > 0) end
+copyParcel :: Parcel Int8 -> Parcel Int8
+copyNested :: Parcel (Maybe (Parcel Int8)) -> Parcel (Maybe (Parcel Int8))
+copyChain :: Chain Text -> Chain Text
+copyPositive :: Positive -> Positive
+law `private product` is
+  definition is `for all` (x :: Parcel Int8) . copyParcel x = x end
+  example `maximum` is x = Parcel 127 expect copyParcel x = Parcel 127 end
+end
+law `nested codec arguments` is
+  definition is `for all` (x :: Parcel (Maybe (Parcel Int8))) . copyNested x = x end
+  example `present` is x = Parcel (Just (Parcel 42)) expect copyNested x = Parcel (Just (Parcel 42)) end
+end
+law `flattened recursive representation` is
+  definition is `for all` (x :: Chain Text) . copyChain x = x end
+  example `no tail` is x = More "λ" Nothing expect copyChain x = More "λ" Nothing end
+  example `explicit stop` is x = More "λ" (Just Stop) expect copyChain x = More "λ" (Just Stop) end
+end
+law `codec output retains contracts` is
+  definition is `for all` (x :: Positive) . copyPositive x = x end
+end

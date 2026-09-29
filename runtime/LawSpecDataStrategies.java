@@ -18,6 +18,66 @@ import org.jetbrains.jetCheck.IntDistribution;
 public final class LawSpecDataStrategies {
   private LawSpecDataStrategies() {}
 
+  @FunctionalInterface
+  public interface NativeFactory {
+    Generator<Value> create(
+        LawSpecSchema schema,
+        Named type,
+        int bits,
+        Map<String, Object> symbols,
+        List<Generator<Value>> arguments);
+  }
+
+  /** Conversion failures are values at the checked property boundary, even on replay. */
+  private static final class NativeFailure extends IllegalArgumentException {
+    NativeFailure(Named type, RuntimeException cause) {
+      super("native generator " + LawSpecSchema.key(type) + ": " + cause.getMessage(), cause);
+    }
+  }
+
+  public static <T> Generator<Value> nativeValues(
+      LawSpecSchema.Codec<T> codec, Generator<T> source) {
+    return source.map(
+        value -> {
+          try {
+            return codec.encode(value);
+          } catch (RuntimeException error) {
+            throw new NativeFailure(codec.type(), error);
+          }
+        });
+  }
+
+  public static <T> Generator<T> nativeArguments(
+      LawSpecSchema.Codec<T> codec, Generator<Value> source) {
+    return source.map(
+        value -> {
+          try {
+            return codec.decode(value);
+          } catch (RuntimeException error) {
+            throw new NativeFailure(codec.type(), error);
+          }
+        });
+  }
+
+  public record Captured<T>(T value, RuntimeException error) {
+    public T requireValue() {
+      if (error != null) throw error;
+      return value;
+    }
+  }
+
+  /** Carry native conversion errors across composed draws to the property callback. */
+  public static <T> Generator<Captured<T>> capture(Generator<T> source) {
+    return Generator.from(
+        environment -> {
+          try {
+            return new Captured<>(environment.generate(source), null);
+          } catch (NativeFailure error) {
+            return new Captured<>(null, error);
+          }
+        });
+  }
+
   public static Generator<Value> generator(
       LawSpecSchema schema,
       Named type,
@@ -73,40 +133,59 @@ public final class LawSpecDataStrategies {
       Map<String, Object> symbols,
       List<Value> witnesses,
       Function<String, Generator<Value>> scalar) {
+    return checkedGenerator(
+        schema, type, bits, minimumBudget, maxAttempts, symbols, witnesses, scalar, Map.of());
+  }
+
+  public static Generator<Checked> checkedGenerator(
+      LawSpecSchema schema,
+      Named type,
+      int bits,
+      int minimumBudget,
+      int maxAttempts,
+      Map<String, Object> symbols,
+      List<Value> witnesses,
+      Function<String, Generator<Value>> scalar,
+      Map<String, NativeFactory> factories) {
     if (maxAttempts < 1) throw new IllegalArgumentException("maxAttempts must be positive");
-    var builder = new Builder(schema, bits, scalar, symbols, maxAttempts);
+    var builder = new Builder(schema, bits, scalar, symbols, maxAttempts, factories);
     for (var witness : witnesses) {
       // Invalid witnesses indicate a compiler/caller error, not an empty domain.
       builder.addWitness(type, schema.validate(type, witness, bits, symbols));
     }
     return Generator.from(
         environment -> {
-          int budget =
-              (int)
-                  Math.min(
-                      Integer.MAX_VALUE,
-                      Math.max(minimumBudget, 4L * environment.getSizeHint() + 1));
-          var candidate =
-              builder
-                  .generate(type, budget)
-                  .map(
-                      value -> {
-                        try {
-                          var result = schema.check(type, value, bits, symbols);
-                          if (result instanceof LawSpecSchema.Accepted accepted)
-                            return new Checked(accepted.value(), null);
-                          return new Checked(null, null);
-                        } catch (RuntimeException error) {
-                          return new Checked(null, error);
-                        }
-                      });
-          // JetCheck bounds rejection at 100 attempts and discards invalid replays
-          // while shrinking. Errors remain values so properties report them.
-          return environment.generate(
-              boundedFilter(
-                  candidate,
-                  checked -> checked.value() != null || checked.error() != null,
-                  maxAttempts));
+          try {
+            int budget =
+                (int)
+                    Math.min(
+                        Integer.MAX_VALUE,
+                        Math.max(minimumBudget, 4L * environment.getSizeHint() + 1));
+            var candidate =
+                builder
+                    .generate(type, budget)
+                    .map(
+                        value -> {
+                          try {
+                            var result = schema.check(type, value, bits, symbols);
+                            if (result instanceof LawSpecSchema.Accepted accepted)
+                              return new Checked(accepted.value(), null);
+                            return new Checked(null, null);
+                          } catch (RuntimeException error) {
+                            return new Checked(null, error);
+                          }
+                        });
+            // JetCheck bounds rejection at 100 attempts and discards invalid replays
+            // while shrinking. Errors remain values so properties report them.
+            return environment.generate(
+                boundedFilter(
+                    candidate,
+                    checked -> checked.value() != null || checked.error() != null,
+                    maxAttempts));
+          } catch (NativeFailure error) {
+            // Do not catch JetCheck's internal replay-control exceptions.
+            return new Checked(null, error);
+          }
         });
   }
 
@@ -153,6 +232,7 @@ public final class LawSpecDataStrategies {
     private final Map<Named, List<Value>> witnesses = new HashMap<>();
     private final Map<Request, Boolean> inhabited = new HashMap<>();
     private final Map<Request, Generator<Value>> generators = new HashMap<>();
+    private final Map<String, NativeFactory> factories;
 
     Builder(LawSpecSchema schema, int bits, Function<String, Generator<Value>> scalar) {
       this(schema, bits, scalar, null, 100);
@@ -164,6 +244,16 @@ public final class LawSpecDataStrategies {
         Function<String, Generator<Value>> scalar,
         Map<String, Object> symbols,
         int maxAttempts) {
+      this(schema, bits, scalar, symbols, maxAttempts, Map.of());
+    }
+
+    Builder(
+        LawSpecSchema schema,
+        int bits,
+        Function<String, Generator<Value>> scalar,
+        Map<String, Object> symbols,
+        int maxAttempts,
+        Map<String, NativeFactory> factories) {
       boolean unchecked = symbols != null;
       if (!unchecked && schema.hasContracts())
         throw new IllegalArgumentException("constructor contracts require checked generation");
@@ -173,6 +263,7 @@ public final class LawSpecDataStrategies {
       this.schema = schema;
       this.bits = bits;
       this.scalar = scalar;
+      this.factories = Map.copyOf(factories);
     }
 
     private void addWitness(Named type, Value value) {
@@ -194,6 +285,7 @@ public final class LawSpecDataStrategies {
 
     private boolean canGenerate(Named type, int budget) {
       if (budget < 1) return false;
+      if (factories.containsKey(type.name())) return true;
       var request = new Request(type, budget);
       if (inhabited.containsKey(request)) return inhabited.get(request);
       boolean result;
@@ -238,6 +330,33 @@ public final class LawSpecDataStrategies {
       }
       var request = new Request(type, budget);
       if (generators.containsKey(request)) return generators.get(request);
+      if (factories.containsKey(type.name())) {
+        var arguments = new ArrayList<Generator<Value>>();
+        for (var argument : type.arguments()) {
+          int remaining = Math.max(1, budget - 1);
+          // An uninhabited parameter need not be stored by the native type.
+          // JetCheck bounds rejection if its factory actually draws this child.
+          arguments.add(
+              canGenerate((Named) argument, remaining)
+                  ? generate((Named) argument, remaining)
+                  : Generator.constant(new Value("Unit", null)).suchThat(ignored -> false));
+        }
+        var source = factories.get(type.name()).create(schema, type, bits, symbols, arguments);
+        if (source == null) {
+          throw new IllegalArgumentException("native generator " + type.name() + " returned null");
+        }
+        var nativeGenerator =
+            source.map(
+                value -> {
+                  try {
+                    return schema.validate(type, value, bits, symbols);
+                  } catch (RuntimeException error) {
+                    throw new NativeFailure(type, error);
+                  }
+                });
+        generators.put(request, nativeGenerator);
+        return nativeGenerator;
+      }
       Generator<Value> generator;
       if (schema.isScalar(type)) {
         generator = scalar.apply(type.name()).map(value -> schema.validate(type, value, bits));

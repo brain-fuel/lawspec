@@ -101,7 +101,42 @@ func lsCheckCandidate(schema *lawSpecSchema, reference lawSpecTypeRef, value Law
 	return result
 }
 
+// Native factories compose Rapid generators rather than sampling into a new RNG.
+type lawSpecNativeFactory func(*lawSpecSchema, lawSpecTypeRef, int,
+	map[string]*lawSpecSymbol, []*rapid.Generator[LawSpecValue]) *rapid.Generator[LawSpecValue]
+
+type lawSpecNativeGeneratorFailure struct {
+	typeName string
+	problem  any
+}
+
+func (e lawSpecNativeGeneratorFailure) Error() string {
+	return fmt.Sprintf("native generator %s: %v", e.typeName, e.problem)
+}
+
+func lsNativeGeneratorConvert[T any](reference lawSpecTypeRef, convert func() T) (value T) {
+	defer func() {
+		if problem := recover(); problem != nil {
+			panic(lawSpecNativeGeneratorFailure{reference.key(), problem})
+		}
+	}()
+	return convert()
+}
+
+func lsNativeGeneratorValues[T any](codec lawSpecCodec[T], source *rapid.Generator[T]) *rapid.Generator[LawSpecValue] {
+	return rapid.Map(source, func(value T) LawSpecValue {
+		return lsNativeGeneratorConvert(codec.typeRef, func() LawSpecValue { return codec.fromNative(value) })
+	})
+}
+
+func lsNativeGeneratorArguments[T any](codec lawSpecCodec[T], source *rapid.Generator[LawSpecValue]) *rapid.Generator[T] {
+	return rapid.Map(source, func(value LawSpecValue) T {
+		return lsNativeGeneratorConvert(codec.typeRef, func() T { return codec.toNative(value) })
+	})
+}
+
 type lawSpecCheckedStrategy struct {
+	factories map[string]lawSpecNativeFactory
 	attempts  int
 	problem   any
 	symbols   map[string]*lawSpecSymbol
@@ -169,18 +204,33 @@ func lsCheckedDataStrategy(schema *lawSpecSchema, reference lawSpecTypeRef, bits
 
 func lsCheckedDataStrategyWithAttempts(schema *lawSpecSchema, reference lawSpecTypeRef, bits, budget, attempts int,
 	symbols map[string]*lawSpecSymbol, witnesses []LawSpecValue,
-	scalar func(string) *rapid.Generator[LawSpecValue]) *rapid.Generator[lawSpecCheckedValue] {
+	scalar func(string) *rapid.Generator[LawSpecValue], factories ...map[string]lawSpecNativeFactory) *rapid.Generator[lawSpecCheckedValue] {
 	if attempts < 1 {
 		panic("filter attempt limit must be positive")
 	}
 	context := &lawSpecCheckedStrategy{attempts: attempts, symbols: lsSchemaSymbols([]map[string]*lawSpecSymbol{symbols}),
 		witnesses: map[string][]LawSpecValue{}}
+	if len(factories) > 1 {
+		panic("only one native factory registry is allowed")
+	}
+	if len(factories) == 1 {
+		context.factories = factories[0]
+	}
 	for _, witness := range witnesses {
 		context.addWitness(schema, reference, schema.validate(reference, witness, bits, context.symbols))
 	}
 	// Validate the plan now; every sample/replay gets its own error state.
 	_ = lsBuildDataStrategy(schema, reference, bits, budget, scalar, context)
-	return rapid.Custom(func(t *rapid.T) lawSpecCheckedValue {
+	return rapid.Custom(func(t *rapid.T) (result lawSpecCheckedValue) {
+		defer func() {
+			if problem := recover(); problem != nil {
+				if _, native := problem.(lawSpecNativeGeneratorFailure); native {
+					result = lawSpecCheckedValue{problem: problem}
+				} else {
+					panic(problem) // Rapid discards and replay control remain Rapid-owned.
+				}
+			}
+		}()
 		sample := *context
 		raw := lsBuildDataStrategy(schema, reference, bits, budget, scalar, &sample)
 		value := raw.Draw(t, "candidate")
@@ -253,6 +303,9 @@ func lsBuildDataStrategy(schema *lawSpecSchema, reference lawSpecTypeRef, bits, 
 		if result, exists := inhabitants[key]; exists {
 			return result
 		}
+		if checked != nil && checked.factories[typeRef.name] != nil {
+			return true
+		}
 		constructors, custom := schema.constructors(typeRef)
 		result := false
 		if custom {
@@ -282,6 +335,29 @@ func lsBuildDataStrategy(schema *lawSpecSchema, reference lawSpecTypeRef, bits, 
 		}
 		if !inhabited(typeRef, available) {
 			panic(fmt.Sprintf("no value of %s within structural node budget %d", typeRef.key(), available))
+		}
+		if checked != nil && checked.factories[typeRef.name] != nil {
+			arguments := make([]*rapid.Generator[LawSpecValue], len(typeRef.arguments))
+			for i, argument := range typeRef.arguments {
+				if inhabited(argument, available) {
+					arguments[i] = build(argument, available)
+				} else {
+					// Phantom parameters may be empty. Rapid owns discards if
+					// the native factory actually draws this argument.
+					arguments[i] = rapid.Custom(func(t *rapid.T) LawSpecValue {
+						t.Skipf("no native generator argument for %s within node budget %d", argument.key(), available)
+						return LawSpecValue{} // Skipf does not return.
+					})
+				}
+			}
+			source := checked.factories[typeRef.name](schema, typeRef, bits, checked.symbols, arguments)
+			result := rapid.Map(source, func(value LawSpecValue) LawSpecValue {
+				return lsNativeGeneratorConvert(typeRef, func() LawSpecValue {
+					return schema.validate(typeRef, value, bits, checked.symbols)
+				})
+			})
+			arbitraries[key] = result
+			return result // Custom distributions never use witness fallback or contract rejection.
 		}
 		constructors, custom := schema.constructors(typeRef)
 		var result *rapid.Generator[LawSpecValue]

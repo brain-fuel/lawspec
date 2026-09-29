@@ -1,0 +1,115 @@
+{
+  "rustCrate": "lawspec_example",
+  "types": [
+    {
+      "type": "native.codecs::type::Parcel",
+      "native": [
+        "crate",
+        "domain",
+        "Parcel"
+      ],
+      "codec": {
+        "toNative": [
+          "crate",
+          "codecs",
+          "to_parcel"
+        ],
+        "fromNative": [
+          "crate",
+          "codecs",
+          "from_parcel"
+        ]
+      }
+    },
+    {
+      "type": "native.codecs::type::Chain",
+      "native": [
+        "crate",
+        "domain",
+        "FlatChain"
+      ],
+      "codec": {
+        "toNative": [
+          "crate",
+          "codecs",
+          "to_chain"
+        ],
+        "fromNative": [
+          "crate",
+          "codecs",
+          "from_chain"
+        ]
+      }
+    },
+    {
+      "type": "native.codecs::type::Positive",
+      "native": [
+        "crate",
+        "domain",
+        "Positive"
+      ],
+      "codec": {
+        "toNative": [
+          "crate",
+          "codecs",
+          "to_positive"
+        ],
+        "fromNative": [
+          "crate",
+          "codecs",
+          "from_positive"
+        ]
+      }
+    }
+  ],
+  "functions": [
+    {
+      "declaration": "native.codecs::copyParcel",
+      "native": [
+        "crate",
+        "domain",
+        "copy"
+      ]
+    },
+    {
+      "declaration": "native.codecs::copyNested",
+      "native": [
+        "crate",
+        "domain",
+        "copy"
+      ]
+    },
+    {
+      "declaration": "native.codecs::copyChain",
+      "native": [
+        "crate",
+        "domain",
+        "copy"
+      ]
+    },
+    {
+      "declaration": "native.codecs::copyPositive",
+      "native": [
+        "crate",
+        "domain",
+        "copy"
+      ]
+    }
+  ],
+  "generators": [
+    {
+      "type": "native.codecs::type::Parcel",
+      "factory": [
+        "lawspec_generators",
+        "parcels"
+      ]
+    },
+    {
+      "type": "native.codecs::type::Positive",
+      "factory": [
+        "lawspec_generators",
+        "positives"
+      ]
+    }
+  ]
+}

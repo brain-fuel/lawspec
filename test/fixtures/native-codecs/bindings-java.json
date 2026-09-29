@@ -1,0 +1,124 @@
+{
+  "types": [
+    {
+      "type": "bound.codecs::type::Parcel",
+      "native": [
+        "domain",
+        "CodecDomain",
+        "Parcel"
+      ],
+      "codec": {
+        "toNative": [
+          "domain",
+          "CodecHooks",
+          "to_parcel"
+        ],
+        "fromNative": [
+          "domain",
+          "CodecHooks",
+          "from_parcel"
+        ]
+      }
+    },
+    {
+      "type": "bound.codecs::type::Chain",
+      "native": [
+        "domain",
+        "CodecDomain",
+        "FlatChain"
+      ],
+      "codec": {
+        "toNative": [
+          "domain",
+          "CodecHooks",
+          "to_chain"
+        ],
+        "fromNative": [
+          "domain",
+          "CodecHooks",
+          "from_chain"
+        ]
+      }
+    },
+    {
+      "type": "bound.codecs::type::Positive",
+      "native": [
+        "domain",
+        "CodecDomain",
+        "Positive"
+      ],
+      "codec": {
+        "toNative": [
+          "domain",
+          "CodecHooks",
+          "to_positive"
+        ],
+        "fromNative": [
+          "domain",
+          "CodecHooks",
+          "from_positive"
+        ]
+      }
+    }
+  ],
+  "functions": [
+    {
+      "declaration": "bound.codecs::copyParcel",
+      "native": [
+        "domain",
+        "CodecDomain",
+        "copy"
+      ]
+    },
+    {
+      "declaration": "bound.codecs::copyNested",
+      "native": [
+        "domain",
+        "CodecDomain",
+        "copy"
+      ]
+    },
+    {
+      "declaration": "bound.codecs::copyChain",
+      "native": [
+        "domain",
+        "CodecDomain",
+        "copy"
+      ]
+    },
+    {
+      "declaration": "bound.codecs::copyPositive",
+      "native": [
+        "domain",
+        "CodecDomain",
+        "copy"
+      ]
+    }
+  ],
+  "generators": [
+    {
+      "type": "bound.codecs::type::Parcel",
+      "factory": [
+        "domain",
+        "CodecGenerators",
+        "parcels"
+      ]
+    },
+    {
+      "type": "bound.codecs::type::Positive",
+      "factory": [
+        "domain",
+        "CodecGenerators",
+        "positives"
+      ]
+    },
+    {
+      "type": "Int8",
+      "factory": [
+        "domain",
+        "CodecGenerators",
+        "bytes"
+      ]
+    }
+  ]
+}

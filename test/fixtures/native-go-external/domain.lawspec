@@ -1,0 +1,29 @@
+unit external.binding
+
+type Box (a :: Type) is Box value :: a end
+type Tree (a :: Type) is Leaf value :: a Branch children :: List (Tree a) end
+type Currency is USD | EUR end
+copyBox :: Box Int8 -> Box Int8
+copyTree :: Tree Text -> Tree Text
+copyNested :: Box (List (Box Int8)) -> Box (List (Box Int8))
+copyCurrency :: Currency -> Currency
+law `external generic product` is
+  definition is `for all` (x :: Box Int8) . copyBox x = x end
+  example `maximum` is x = Box 127 expect copyBox x = Box 127 end
+end
+law `external recursive sum` is
+  definition is `for all` (x :: Tree Text) . copyTree x = x end
+  example `nested` is x = Branch [Leaf "λ", Branch []] expect copyTree x = Branch [Leaf "λ", Branch []] end
+end
+law `external nested instances` is
+  definition is `for all` (x :: Box (List (Box Int8))) . copyNested x = x end
+end
+law `external enum` is
+  definition is `for all` (x :: Currency) . copyCurrency x = x end
+end
+
+copyWide :: Box UInt64 -> Box UInt64
+law `external unsigned precision` is
+  definition is `for all` (x :: Box UInt64) . copyWide x = x end
+  example `unsigned maximum` is x = Box 18446744073709551615 expect copyWide x = Box 18446744073709551615 end
+end

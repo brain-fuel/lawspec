@@ -15,6 +15,7 @@ data Config = Config
   { packageName :: String
   , className :: String
   , schemaNeeded :: Bool
+  , nativeGenerators :: Bool
   , constructorContracts :: Bool
   , nodeBudget :: Integer
   , machineBits :: Int
@@ -108,7 +109,7 @@ emitTests Config{..} unit laws = do
         (zip [0::Int ..] (maybe (boundaryCases e) id (finiteCases e)))
       let check = assertionDoc (label ++ " property") (assertion e)
       property <- if finiteCases e /= Nothing then pure []
-        else if any (structural . inputType) (inputs e) then (:[]) <$> structuralProperty fn e check
+        else if nativeGenerators || any (structural . inputType) (inputs e) then (:[]) <$> structuralProperty fn e check
         else if any (not . null . inputRefinements) (inputs e) || propertyKind e == "contract"
           then (:[]) <$> refinedProperty fn label e check
           else pure [testFunction (fn ++ "Property") $ statement $ call "PropertyChecker.forAll"
@@ -122,18 +123,24 @@ emitTests Config{..} unit laws = do
       let predicatesFor inp = concatMap conjuncts (inputRefinements inp)
           generate inp = call "_environment.<Value>generate"
             [maybe (generator (inputType inp)) id (lookup (inputId inp) strategies)]
+          prepare inp | nativeGenerators = generate inp
           prepare inp = prepareElements (C.binderId (C.quantifiedBinder inp))
             (predicatesFor inp) (generate inp)
           valueGenerator = call "java.util.List.of" [text (inputId inp) | inp <- inputs e]
-          base = call "Generator.from" [closure "_environment" (statements
+          base = call (if nativeGenerators then "Generator.<_LawSpecInputs>from" else "Generator.from") [closure "_environment" (statements
             ([symbols] ++ [bind (inputId inp) (prepare inp) | inp <- inputs e] ++
              [returned (call "new _LawSpecInputs" [valueGenerator,text "symbols"])]))]
           predicates = concatMap inputRefinements (inputs e)
           bindingsDoc = statements [text "var symbols = _inputs.symbols();",
             text "var _values = _inputs.values();",fromValues (inputs e)]
-          strategy = if null predicates then base else chain base [("suchThat",
-            [closure "_inputs" (statements [bindingsDoc,returned (conjunction (map (truth . expr) predicates))])])]
-          callback = closure "_inputs" (statements [bindingsDoc,check,returned (text "true")])
+          captured = if nativeGenerators then call "lawspec.testing.LawSpecDataStrategies.capture" [base] else base
+          inputName = if nativeGenerators then "_captured" else "_inputs"
+          unpack = [bind "_inputs" (call "_captured.requireValue" []) | nativeGenerators]
+          strategy = if null predicates then captured else chain captured [("suchThat",
+            [closure inputName (statements
+              ([text "if (_captured.error() != null) return true;" | nativeGenerators] ++
+               unpack ++ [bindingsDoc,returned (conjunction (map (truth . expr) predicates))]))])]
+          callback = closure inputName (statements (unpack ++ [bindingsDoc,check,returned (text "true")]))
       -- Keep JetCheck's native tree shrinking and its growing list budget.
       let invocation count size = statement $ chain (text "PropertyChecker.customized()")
             [("withIterationCount",[number count]),
@@ -141,7 +148,7 @@ emitTests Config{..} unit laws = do
              ("forAll",[strategy,callback])]
           growing iteration = text "(int) " <> call "Math.min"
             [text "java.lang.Integer.MAX_VALUE",text ("2L * " ++ iteration ++ " + 8")]
-          body | constructorContracts =
+          body | nativeGenerators || constructorContracts =
             text ("for (int _case = 0; _case < " ++ show (cases (generation e)) ++ "; _case++) ") <>
               block (statements [bind "_sizeHint" (growing "_case"),invocation (1 :: Int) (text "_sizeHint")])
             | otherwise = invocation (cases (generation e)) (growing "_iteration")
@@ -157,15 +164,17 @@ emitTests Config{..} unit laws = do
               _ -> False]
           strategy = case requiredSymbol plan of
             value:_ -> call "Generator.constant" [expr value]
-            [] | constructorContracts -> chain
+            [] | nativeGenerators || constructorContracts -> chain
               (call "lawspec.testing.LawSpecDataStrategies.checkedGenerator"
-                [text "_schema",reference ty,number machineBits,number nodeBudget,number (maxAttempts settings),
+                ([text "_schema",reference ty,number machineBits,number nodeBudget,number (maxAttempts settings),
                  text "symbols",call "java.util.List.of" (seeds ++ hints),
-                 text (className ++ "LawSpecTest::_lawspecScalarGenerator")])
+                 text (className ++ "LawSpecTest::_lawspecScalarGenerator")] ++
+                [call "lawspec.testing.LawSpecNativeGenerators.factories" [] | nativeGenerators]))
               [("map",[D.group (text "lawspec.testing.LawSpecDataStrategies.Checked" <> D.nest 4 (D.softbreak <> text "::requireValue"))])]
             [] -> generator ty
       pure (inputId input,strategy)
     requiredSymbol plan
+      | nativeGenerators = []
       | inputType (domainInput plan) /= C.scalarType "Symbol" = []
       | otherwise = concatMap required (generatorPredicates plan)
       where

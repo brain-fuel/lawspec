@@ -1,0 +1,115 @@
+{
+  "types": [
+    {
+      "type": "example.payments::type::Currency",
+      "native": [
+        "CurrencyCode"
+      ],
+      "constructors": [
+        {
+          "constructor": "USD",
+          "native": [
+            "Dollars"
+          ],
+          "style": "unit",
+          "fields": []
+        },
+        {
+          "constructor": "EUR",
+          "native": [
+            "Euros"
+          ],
+          "style": "unit",
+          "fields": []
+        },
+        {
+          "constructor": "GBP",
+          "native": [
+            "Pounds"
+          ],
+          "style": "unit",
+          "fields": []
+        }
+      ]
+    },
+    {
+      "type": "example.payments::type::Money",
+      "native": [
+        "Price"
+      ],
+      "constructors": [
+        {
+          "constructor": "Money",
+          "native": [
+            "Price"
+          ],
+          "style": "record",
+          "fields": [
+            {
+              "field": "amount",
+              "native": "Major"
+            },
+            {
+              "field": "currency",
+              "native": "Unit"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "example.payments::type::Payment",
+      "native": [
+        "PaymentStatus"
+      ],
+      "constructors": [
+        {
+          "constructor": "Paid",
+          "native": [
+            "Settled"
+          ],
+          "style": "variant",
+          "fields": [
+            {
+              "field": "value",
+              "native": "Price"
+            }
+          ]
+        },
+        {
+          "constructor": "Declined",
+          "native": [
+            "Rejected"
+          ],
+          "style": "variant",
+          "fields": [
+            {
+              "field": "reason",
+              "native": "Explanation"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "functions": [
+    {
+      "declaration": "example.payments::addFee",
+      "native": [
+        "AddFee"
+      ]
+    },
+    {
+      "declaration": "example.payments::roundTrip",
+      "native": [
+        "Restore"
+      ]
+    },
+    {
+      "declaration": "example.payments::archive",
+      "native": [
+        "Store"
+      ]
+    }
+  ]
+}
