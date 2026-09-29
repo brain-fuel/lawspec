@@ -25,7 +25,9 @@ async function run(cmd, args, cwd = root) {
       cwd,
       encoding: "utf8",
       maxBuffer: 4 * 1024 * 1024,
-      timeout: 120000,
+      // Guards against hangs, not slow machines: exporting every bundled example
+      // takes over a minute locally and roughly twice that on CI runners.
+      timeout: 600000,
     });
   } catch (e) {
     throw new Error(`${cmd}: ${e.stdout}\n${e.stderr}`);
