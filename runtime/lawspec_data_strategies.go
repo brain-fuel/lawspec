@@ -4,6 +4,8 @@ package RUNTIME_PACKAGE
 import (
 	"flag"
 	"fmt"
+	"math/big"
+	"slices"
 	"strconv"
 	"sync"
 
@@ -473,4 +475,148 @@ func lsBuildDataStrategy(schema *lawSpecSchema, reference lawSpecTypeRef, bits, 
 		return result
 	}
 	return build(reference, budget)
+}
+
+// lsIndexedDataStrategy constructs values whose linear structural measure
+// equals target. Each constructor's equation holds its constant followed by
+// the positions of recursive fields whose measures it adds, so the target is
+// solved backwards and split across those fields. Nothing is filtered away.
+func lsIndexedDataStrategy(schema *lawSpecSchema, reference lawSpecTypeRef, bits, budget int,
+	target LawSpecValue, equations map[string][]int64,
+	scalar func(string) *rapid.Generator[LawSpecValue]) *rapid.Generator[lawSpecCheckedValue] {
+	number, ok := target.Data.(*big.Int)
+	if !ok || number.Sign() < 0 || !number.IsInt64() {
+		panic("index target must be a natural number")
+	}
+	if _, custom := schema.constructors(reference); !custom {
+		panic("indexed generation requires a data type")
+	}
+	plain := map[string]*rapid.Generator[LawSpecValue]{}
+	plainField := func(typeRef lawSpecTypeRef) (generator *rapid.Generator[LawSpecValue]) {
+		if cached, exists := plain[typeRef.key()]; exists {
+			return cached
+		}
+		defer func() {
+			if recover() != nil {
+				generator = nil
+			}
+			plain[typeRef.key()] = generator
+		}()
+		return lsBuildDataStrategy(schema, typeRef, bits, budget, scalar, nil)
+	}
+	equation := func(tag string) (int64, []int) {
+		found, exists := equations[tag]
+		if !exists {
+			panic("missing index equation for " + tag)
+		}
+		positions := make([]int, len(found)-1)
+		for i, position := range found[1:] {
+			positions[i] = int(position)
+		}
+		return found[0], positions
+	}
+	type request struct {
+		key   string
+		index int64
+	}
+	reachableMemo := map[request]bool{}
+	visiting := map[request]bool{}
+	var reachable func(lawSpecTypeRef, int64) bool
+	var splittable func([]lawSpecTypeRef, int64) bool
+	feasible := func(typeRef lawSpecTypeRef, constructor lawSpecConstructorSchema, k int64) ([]lawSpecTypeRef, bool) {
+		constant, positions := equation(constructor.tag)
+		rest := k - constant
+		if rest < 0 {
+			return nil, false
+		}
+		types := make([]lawSpecTypeRef, len(positions))
+		for i, position := range positions {
+			types[i] = constructor.fields[position].typeRef
+		}
+		for index, field := range constructor.fields {
+			if !slices.Contains(positions, index) && plainField(field.typeRef) == nil {
+				return nil, false
+			}
+		}
+		if len(types) == 0 {
+			return types, rest == 0
+		}
+		return types, splittable(types, rest)
+	}
+	reachable = func(typeRef lawSpecTypeRef, k int64) bool {
+		key := request{typeRef.key(), k}
+		if result, exists := reachableMemo[key]; exists {
+			return result
+		}
+		if visiting[key] {
+			return false
+		}
+		visiting[key] = true
+		constructors, _ := schema.constructors(typeRef)
+		result := false
+		for _, constructor := range constructors {
+			if _, ok := feasible(typeRef, constructor, k); ok {
+				result = true
+				break
+			}
+		}
+		delete(visiting, key)
+		reachableMemo[key] = result
+		return result
+	}
+	splittable = func(types []lawSpecTypeRef, rest int64) bool {
+		if len(types) == 1 {
+			return reachable(types[0], rest)
+		}
+		for first := int64(0); first <= rest; first++ {
+			if reachable(types[0], first) && splittable(types[1:], rest-first) {
+				return true
+			}
+		}
+		return false
+	}
+	var draw func(*rapid.T, lawSpecTypeRef, int64) LawSpecValue
+	draw = func(t *rapid.T, typeRef lawSpecTypeRef, k int64) LawSpecValue {
+		constructors, _ := schema.constructors(typeRef)
+		options := []lawSpecConstructorSchema{}
+		for _, constructor := range constructors {
+			if _, ok := feasible(typeRef, constructor, k); ok {
+				options = append(options, constructor)
+			}
+		}
+		if len(options) == 0 {
+			panic(fmt.Sprintf("no value of %s has index %d", typeRef.key(), k))
+		}
+		constructor := options[rapid.IntRange(0, len(options)-1).Draw(t, "constructor")]
+		constant, positions := equation(constructor.tag)
+		types, _ := feasible(typeRef, constructor, k)
+		targets := make([]int64, len(types))
+		rest := k - constant
+		for i := range types {
+			if i == len(types)-1 {
+				targets[i] = rest
+				break
+			}
+			choices := []int64{}
+			for first := int64(0); first <= rest; first++ {
+				if reachable(types[i], first) && splittable(types[i+1:], rest-first) {
+					choices = append(choices, first)
+				}
+			}
+			targets[i] = choices[rapid.IntRange(0, len(choices)-1).Draw(t, "split")]
+			rest -= targets[i]
+		}
+		values := make([]LawSpecValue, len(constructor.fields))
+		for index, field := range constructor.fields {
+			if position := slices.Index(positions, index); position >= 0 {
+				values[index] = draw(t, field.typeRef, targets[position])
+			} else {
+				values[index] = plainField(field.typeRef).Draw(t, field.name)
+			}
+		}
+		return schema.construct(typeRef, constructor.tag, values, bits)
+	}
+	return rapid.Custom(func(t *rapid.T) lawSpecCheckedValue {
+		return lawSpecCheckedValue{value: draw(t, reference, number.Int64())}
+	})
 }

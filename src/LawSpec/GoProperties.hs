@@ -100,7 +100,8 @@ emitTests Config{..} unit laws = do
         (zip [0::Int ..] (maybe (boundaryCases e) id (finiteCases e)))
       let check = assertionDoc (label ++ " property") (assertion e)
       property <- if finiteCases e /= Nothing then pure []
-        else if constructorContracts || nativeGenerators then (:[]) <$> contextualProperty fn label e check
+        else if constructorContracts || nativeGenerators || any (maybe False (const True) . generatorIndex) (generationPlan e)
+          then (:[]) <$> contextualProperty fn label e check
         else if any (structural . inputType) (inputs e) then pure [structuralProperty fn label e check]
         else if any (not . null . inputRefinements) (inputs e) || propertyKind e == "contract"
           then (:[]) <$> refinedProperty fn label e check
@@ -118,6 +119,15 @@ emitTests Config{..} unit laws = do
               case C.expressionNode hint of C.Constant _ -> True; C.Local _ -> True; _ -> False]
             strategy = case (if nativeGenerators then [] else requiredSymbol plan) of
               value:_ -> call "rapid.Just" [expr value]
+              -- The target is evaluated from the inputs drawn above.
+              [] | Just indexed <- generatorIndex plan -> call "lsIndexedDataStrategy"
+                [text "_lawspecSchema",reference ty,number machineBits,number nodeBudget,
+                 expr (indexedTarget indexed),
+                 -- Go requires trailing commas across lines; keep the table on one line.
+                 text "map[string][]int64{" <> D.joinWith (text ", ")
+                   [quoted (C.idText tag) <> text ": {" <> D.joinWith (text ", ") (map number (constant : map toInteger positions)) <> text "}"
+                   | (tag,constant,positions) <- indexedEquations indexed] <> text "}",
+                 text "_lawspecScalarGenerator"]
               [] -> call "lsCheckedDataStrategyWithAttempts" $
                 [text "_lawspecSchema",reference ty,number machineBits,number nodeBudget,number (maxAttempts (generation e)),
                  text "symbols",E.array (seeds ++ hints),text "_lawspecScalarGenerator"] ++
