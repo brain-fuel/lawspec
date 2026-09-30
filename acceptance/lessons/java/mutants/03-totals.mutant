@@ -1,0 +1,6 @@
+@@ src/main/java/lessons/Totals.java
+<<<<<<<
+return Math.max(value0, value1);
+=======
+return value0;
+>>>>>>>

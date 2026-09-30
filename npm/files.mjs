@@ -1,3 +1,4 @@
+// Generated from templates/npm/files.mjs by lawspec-dev generate. Do not edit.
 import {
   readFile,
   mkdir,

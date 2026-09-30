@@ -1,0 +1,6 @@
+@@ src/main/java/lessons/Discounts.java
+<<<<<<<
+return value0 * (100 - value1) / 100;
+=======
+return value0 * (100 - value1) / 100 + (value1 == 100 ? 1 : 0);
+>>>>>>>

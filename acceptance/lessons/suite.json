@@ -1,0 +1,13 @@
+{
+  "specs": [
+    "docs/lessons/specs/01-first-law.lawspec",
+    "docs/lessons/specs/02-examples.lawspec",
+    "docs/lessons/specs/03-algebra.lawspec",
+    "docs/lessons/specs/04-data.lawspec",
+    "docs/lessons/specs/05-refinements.lawspec",
+    "docs/lessons/specs/06-domain.lawspec",
+    "docs/lessons/specs/07-imports.lawspec",
+    "docs/lessons/specs/07-money.lawspec",
+    "docs/lessons/specs/08-evidence.lawspec"
+  ]
+}

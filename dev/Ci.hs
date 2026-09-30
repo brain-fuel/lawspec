@@ -77,11 +77,13 @@ coreSteps :: [Step]
 coreSteps =
   [ step "integrity" ["stack", "--no-terminal", "run", "lawspec-dev", "--", "integrity"]
   , step "boundaries" ["stack", "--no-terminal", "run", "lawspec-dev", "--", "boundaries"]
-  , step "embedded-runtimes" ["python3", "tools/embed-runtimes.py", "--check"]
+  , step "generated" ["stack", "--no-terminal", "run", "lawspec-dev", "--", "generate", "--check"]
+  , step "version" ["stack", "--no-terminal", "run", "lawspec-dev", "--", "version", "--check"]
   , step "compiler-tests" ["stack", "--no-terminal", "test"]
   , step "npm-tests" ["sh", "-c", "node --test npm/test/*.test.mjs"]
   , step "parity" ["node", "tools/parity.mjs"]
-  , step "package-smoke" ["node", "tools/package-smoke.mjs"] ]
+  , step "package-smoke" ["node", "tools/package-smoke.mjs"]
+  , step "docs" ["stack", "--no-terminal", "run", "lawspec-dev", "--", "docs", "--check"] ]
 
 -- The profiles match the acceptance matrix: suites run with mutants in the
 -- default profile, and with the 32-bit (and compact) profiles as well.
@@ -90,6 +92,9 @@ targetSteps target =
   [ step (target ++ "-bootstrap") ["node", "tools/bootstrap-integration.mjs", target] ] ++
   [ step (target ++ "-" ++ suite) (acceptance [suite, target])
   | suite <- ["integration", "algebra", "indexed", "domain", "packages", "refinement", "scalar"] ] ++
+  -- The tutorial lessons have Java, Python and JavaScript tracks; the site
+  -- also runs their TypeScript implementations.
+  [ step (target ++ "-lessons") (acceptance ["lessons", target]) | target `elem` ["java", "python", "javascript", "typescript"] ] ++
   [ Step (target ++ "-" ++ suite ++ "-32-compact") compact (acceptance [suite, target])
   | suite <- ["indexed", "domain", "packages", "algebra"] ] ++
   [ Step (target ++ "-" ++ suite ++ "-32") [("LAWSPEC_MACHINE_BITS", "32")] (acceptance [suite, "--no-mutants", target])

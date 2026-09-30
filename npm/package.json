@@ -1,13 +1,40 @@
 {
   "name": "lawspec",
-  "version": "0.15.0",
+  "version": "0.15.1",
   "description": "State the law once. Check it everywhere.",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/brain-fuel/lawspec.git"
+  },
   "type": "module",
-  "engines": { "node": ">=22" },
-  "bin": { "lawspec": "bin/lawspec.mjs" },
-  "exports": { ".": { "types": "./index.d.ts", "import": "./api.mjs" } },
+  "engines": {
+    "node": ">=22"
+  },
+  "bin": {
+    "lawspec": "bin/lawspec.mjs"
+  },
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "import": "./api.mjs"
+    }
+  },
   "types": "index.d.ts",
-  "files": ["*.mjs", "*.json", "index.d.ts", "bin", "core.wasm", "core_jsffi.js", "README.md", "NATIVE-BINDINGS.md", "PRIMITIVES.md", "REFINEMENTS.md", "RUST.md", "JAVA.md", "PYTHON.md", "GO.md", "HASKELL.md", "KOTLIN.md", "WEB.md", "LANGUAGE.md", "API-MIGRATION.md", "RELEASE-0.9.md", "RELEASE-0.10.md", "RELEASE-0.11.md", "RELEASE-0.12.md", "RELEASE-0.13.md", "RELEASE-0.14.md", "RELEASE-0.15.md", "LICENSE", "starter.lawspec", "examples"],
-  "scripts": { "test": "node --test test/*.test.mjs" }
+  "files": [
+             "*.mjs",
+             "*.json",
+             "index.d.ts",
+             "bin",
+             "core.wasm",
+             "core_jsffi.js",
+             "README.md",
+             "CHANGELOG.md",
+             "LICENSE",
+             "starter.lawspec",
+             "examples"
+           ],
+  "scripts": {
+    "test": "node --test test/*.test.mjs"
+  }
 }

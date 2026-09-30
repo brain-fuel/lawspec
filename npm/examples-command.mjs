@@ -1,3 +1,4 @@
+// Generated from templates/npm/examples-command.mjs by lawspec-dev generate. Do not edit.
 import { readFile, readdir, mkdir } from "node:fs/promises";
 import path from "node:path";
 import { createCompiler } from "./api.mjs";

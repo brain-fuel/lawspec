@@ -82,21 +82,29 @@ dischargeEvidence program = do
         Left message -> Left [Diagnostic "refuted" ("law " ++ propertyName p ++ " fails" ++ input ++ ": " ++ message) at]
 
 -- The law as a Boolean claim over its inputs: implications become disjunctions.
+-- `p = true` is shown as p; other equations are shown as written.
 lawClaim :: Property -> Expr
-lawClaim p = claim (propertyBody p)
+lawClaim = claimWith False
+
+-- For the prover, a Boolean equation between two predicates becomes their
+-- equivalence, which linear arithmetic can decide.
+proofClaim :: Property -> Expr
+proofClaim = claimWith True
+
+claimWith :: Bool -> Property -> Expr
+claimWith forProof p = claim (propertyBody p)
   where
     origin = GeneratedFrom (propertyId p)
     bool = scalarType "Bool"
-    -- A Boolean equation is a predicate: `p = true` states p, and a general one
-    -- states that both sides agree.
     claim (Equation evidence a b)
       | expressionType a == bool = case (expressionNode a, expressionNode b) of
           (_, Constant (SBool True)) -> a
           (Constant (SBool True), _) -> b
           (_, Constant (SBool False)) -> negation a
           (Constant (SBool False), _) -> negation b
-          _ -> Expr bool (ShortCircuit Or (Expr bool (ShortCircuit And a b) origin)
+          _ | forProof -> Expr bool (ShortCircuit Or (Expr bool (ShortCircuit And a b) origin)
                  (Expr bool (ShortCircuit And (negation a) (negation b)) origin)) origin
+          _ -> Expr bool (Binary Equal evidence a b) origin
       | otherwise = Expr bool (Binary Equal evidence a b) origin
     claim (Implication guard body) =
       Expr bool (ShortCircuit Or (negation guard) (claim body)) origin
@@ -114,7 +122,7 @@ proves program definitions p =
       inputs = map quantifiedBinder (propertyInputs p)
       bool = scalarType "Bool"
       origin = GeneratedFrom (propertyId p)
-      claim = inline program definitions (lawClaim p)
+      claim = inline program definitions (proofClaim p)
       -- The claim is the postcondition itself: the prover must derive it from
       -- the input refinements alone. The body only has to be defined.
       synthetic = Definition (Declaration proof ("proof of " ++ propertyName p)

@@ -1,3 +1,4 @@
+// Generated from templates/tools/bootstrap-integration.mjs by lawspec-dev generate. Do not edit.
 // Initializes isolated reference projects; dependency installation is explicit developer tooling.
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";

@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// Generated from templates/npm/bin/lawspec.mjs by lawspec-dev generate. Do not edit.
 import { readFile, mkdir, readdir, stat } from "node:fs/promises";
 import path from "node:path";
 import { createCompiler } from "../api.mjs";
@@ -13,6 +14,7 @@ import {
   atomicWrite,
   safePath,
 } from "../files.mjs";
+const VERSION = "0.15.1";
 const args = process.argv.slice(2);
 const verb = args.shift();
 const options = {};
@@ -242,13 +244,13 @@ async function main() {
   }
   if (!verb || ["help", "--help", "-h"].includes(verb)) {
     output(
-      "LawSpec 0.15.0\nUsage: lawspec init --target <language> [--project <directory>] [--minify]\n       lawspec check | doctor | explain <unit>::<law> | generate\n       lawspec evidence [<unit> | <unit>::<declaration>]\n       lawspec package [--project <package directory>]\n       lawspec examples [--example payments] [--target <language>] [--output <directory>]\nOptions: --config <path>, --target <language>, --machine-bits <32|64>, --json\nGeneration: --dry-run, --check, --minify\nTargets: " +
+      "LawSpec " + VERSION + "\nUsage: lawspec init --target <language> [--project <directory>] [--minify]\n       lawspec check | doctor | explain <unit>::<law> | generate\n       lawspec evidence [<unit> | <unit>::<declaration>]\n       lawspec package [--project <package directory>]\n       lawspec examples [--example payments] [--target <language>] [--output <directory>]\nOptions: --config <path>, --target <language>, --machine-bits <32|64>, --json\nGeneration: --dry-run, --check, --minify\nTargets: " +
         targets.join(", "),
     );
     return;
   }
   if (verb === "--version") {
-    output("0.15.0");
+    output(VERSION);
     return;
   }
   if (positional.length > (["explain", "evidence"].includes(verb) ? 1 : 0))

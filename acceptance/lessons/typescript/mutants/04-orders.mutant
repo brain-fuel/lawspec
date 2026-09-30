@@ -1,0 +1,6 @@
+@@ src/lessons/orders.ts
+<<<<<<<
+  return base + BigInt(value0.shots) * 60n;
+=======
+  return base + BigInt(value0.shots) * 50n;
+>>>>>>>

@@ -1,0 +1,28 @@
+{
+  "name": "lawspec",
+  "version": /*@ version @*/,
+  "description": "State the law once. Check it everywhere.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/brain-fuel/lawspec.git"
+  },
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "bin": {
+    "lawspec": "bin/lawspec.mjs"
+  },
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "import": "./api.mjs"
+    }
+  },
+  "types": "index.d.ts",
+  "files": /*@ package-files @*/,
+  "scripts": {
+    "test": "node --test test/*.test.mjs"
+  }
+}

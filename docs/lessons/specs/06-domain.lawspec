@@ -1,0 +1,42 @@
+unit lessons.checkout
+
+-- A wrapper is a distinct type whose constructor checks its value: a
+-- Quantity outside 1..20 cannot be constructed, generated or decoded.
+wrapper Quantity is Int32 where value >= 1 && value <= 20 end
+
+type RawOrder is RawOrder item :: Text quantity :: Int32 end
+type ValidOrder is ValidOrder item :: Text quantity :: Quantity end
+type Receipt is Receipt item :: Text total :: Int64 end
+type OrderProblem is | EmptyItem | BadQuantity end
+
+-- A workflow chains adapter steps. LawSpec checks that the steps fit
+-- together and adds a law: checkout is validate followed by charge, and the
+-- first problem stops the chain.
+workflow checkout :: RawOrder -> Either OrderProblem Receipt is
+  validate :: RawOrder -> Either OrderProblem ValidOrder
+  charge :: ValidOrder -> Receipt
+end
+
+law `validation accepts exactly the valid orders` is
+  definition is
+    `for all` (order :: RawOrder) .
+      (match validate order with
+        | Left problem -> false
+        | Right valid -> true
+        end) = (match order with
+        | RawOrder item quantity ->
+            prelude.length item > 0 && quantity >= 1 && quantity <= 20
+        end)
+  end
+end
+
+law `a receipt charges 250 cents per item` is
+  definition is
+    `for all` (order :: ValidOrder) .
+      (match charge order with
+        | Receipt item total -> total
+        end) = (match order with
+        | ValidOrder item quantity -> valueOfQuantity quantity * 250
+        end)
+  end
+end

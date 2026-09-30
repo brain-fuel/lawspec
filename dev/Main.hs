@@ -5,10 +5,16 @@
 --                                   and staged npm copies match their sources
 --   lawspec-dev integrity --record  rewrite npm/build.json (tools/wasm.sh)
 --   lawspec-dev ci [options]        the complete check; see dev/Ci.hs
+--   lawspec-dev generate [--check]  generated JavaScript and runtimes; see dev/Generate.hs
+--   lawspec-dev version [--check]   the release version
+--   lawspec-dev bump <x.y.z>        set the release version everywhere
+--   lawspec-dev docs [--check]      the documentation site; see dev/Docs.hs
 module Main (main) where
 
 import Control.Monad (forM, forM_, unless, when)
 import Ci (ci)
+import Docs (docsCommand)
+import Generate (bumpCommand, generateCommand, versionCommand)
 import qualified Crypto.Hash.SHA256 as SHA256
 import qualified Data.ByteString as B
 import Data.Char (intToDigit)
@@ -26,7 +32,11 @@ main = getArgs >>= \case
   ["integrity"] -> integrity False
   ["integrity", "--record"] -> integrity True
   "ci" : options -> ci options
-  _ -> die "usage: lawspec-dev boundaries | integrity [--record] | ci [options]"
+  "generate" : options -> generateCommand options
+  "version" : options -> versionCommand options
+  "bump" : options -> bumpCommand options
+  "docs" : options -> docsCommand options
+  _ -> die "usage: lawspec-dev boundaries | integrity [--record] | ci [options] | generate [--check|--list] | version [--check] | bump <x.y.z> | docs --out <dir> | docs --check"
 
 -- Follow transitive local imports, so a convenience module cannot hide
 -- syntax or inference behind Core, the testing plan, or an emitter.
@@ -64,7 +74,7 @@ integrity record = do
   wasmApp <- walk (".hs" `isSuffixOf`) "wasm/app"
   runtimes <- walk runtimeFile "runtime"
   let sources = sort (haskell ++ wasmApp ++ runtimes ++
-        [ "tools/embed-runtimes.py", "package.yaml", "lawspec.cabal", "stack.yaml"
+        [ "dev/Gen/Embed.hs", "package.yaml", "lawspec.cabal", "stack.yaml"
         , "stack.yaml.lock", "wasm/cabal.project", "wasm/cabal.project.freeze"
         , "wasm/lawspec-wasm.cabal" ])
       artifacts = ["npm/core.wasm", "npm/core_jsffi.js", "npm/api.mjs", "npm/index.d.ts"]

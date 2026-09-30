@@ -1,0 +1,6 @@
+@@ src/lessons/checkout.ts
+<<<<<<<
+if (value0.quantity < 1 ||
+=======
+if (value0.quantity < 0 ||
+>>>>>>>

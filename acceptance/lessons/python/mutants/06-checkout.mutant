@@ -1,0 +1,6 @@
+@@ src/lessons/checkout.py
+<<<<<<<
+    if not 1 <= value0.quantity <= 20:
+=======
+    if not 0 <= value0.quantity <= 20:
+>>>>>>>

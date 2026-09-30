@@ -1,3 +1,4 @@
+// Generated from templates/editors/vscode/test/grammar.test.mjs by lawspec-dev generate. Do not edit.
 import assert from 'node:assert/strict';
 import { readFile, readdir } from 'node:fs/promises';
 import { createRequire } from 'node:module';

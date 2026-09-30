@@ -1,3 +1,4 @@
+// Generated from templates/tools/parity.mjs by lawspec-dev generate. Do not edit.
 import { execFileSync } from "node:child_process";
 import { readFile, readdir } from "node:fs/promises";
 import assert from "node:assert/strict";

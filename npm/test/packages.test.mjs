@@ -1,3 +1,4 @@
+// Generated from templates/npm/test/packages.test.mjs by lawspec-dev generate. Do not edit.
 // The CLI reads package manifests and sends them with the project's sources;
 // the compiler checks versions, namespaces and import visibility.
 import {test} from 'node:test';

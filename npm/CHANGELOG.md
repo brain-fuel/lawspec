@@ -1,0 +1,501 @@
+# Changelog
+
+## 0.15.1
+
+A maintenance release. The language and generated code are unchanged.
+
+- **Documentation** moves into a [Diátaxis](https://diataxis.fr) site in
+  `docs/`: tutorials, how-to guides, reference and explanation. It replaces the
+  README's version-history sections, the per-target guides, `LANGUAGE.md`,
+  `NATIVE-BINDINGS.md`, `PRIMITIVES.md`, `REFINEMENTS.md`, `API-MIGRATION.md`
+  and the separate release notes, which this changelog now collects.
+- **Lessons.** Eight tutorials build a coffee shop's ordering system, in Java,
+  Python and JavaScript tracks. Each lesson's specification is editable and
+  compiles in the browser, and the JavaScript tests run in the page. The lesson
+  implementations are a new acceptance suite, `lessons`, with a mutant per
+  lesson on each of the three targets.
+- **The site** is static and built with `make docs`: `make docs-serve` previews
+  it and `make docs-deploy` deploys it to Cloudflare Pages. It runs the npm
+  package's `core.wasm` through a browser launcher with a minimal WASI shim,
+  and highlights LawSpec and every target language, in the editor too. Every
+  example is an editable sandbox: **Check** shows each law's evidence, and
+  lessons' **▶ Run** runs the generated JavaScript or TypeScript tests against
+  an editable implementation in an isolated frame, reporting each law's
+  examples, boundary cases and generated cases. Generated tests are read-only.
+  The `lessons` acceptance suite also covers TypeScript.
+- **Evidence.** A law whose equation compares two Boolean expressions now shows
+  its claim as written (`isWeekend d == (d == 0 || d == 6)`), not as the
+  equivalence the prover uses.
+- **Generated JavaScript.** Every JavaScript file in the repository is generated
+  from `templates/` by `lawspec-dev generate`, with the version, targets,
+  scaffolds and test commands filled in from the Haskell sources. The
+  compiler's own facts are no longer copied by hand into the npm CLI.
+- **Development.** 121 unmaintained integration scripts, most of which needed
+  manual setup and no longer ran, are removed; the acceptance suites and the
+  Hspec tests cover what they did. The TypeScript API type check becomes an npm
+  test. The Makefile covers every task (`make` lists them), `lawspec-dev bump`
+  sets the version everywhere, and `RELEASING.md` documents the release.
+- The npm package ships `README.md`, `CHANGELOG.md` and `LICENSE`; the
+  documentation is online.
+
+## 0.15.0
+
+### Evidence and discharge
+
+Every obligation of a program reports how it is discharged, strongest first:
+
+- `proved`: statically. Definition postconditions and indices, as since 0.12,
+  and now laws that call only checked definitions.
+- `exhaustively-checked`: every input of a finite domain, by the compiler for
+  laws over checked definitions and otherwise by the generated tests. A law with
+  no inputs is a single case.
+- `property-tested`: generated cases, boundary cases and examples.
+- `runtime-checked`: adapter contracts, definition preconditions, constructor
+  constraints and native type bindings, at every native boundary.
+- `assumed`: adapters, native functions, custom generators and codec hooks,
+  taken on trust. Each adapter reports how many laws call it, or that none does.
+
+`lawspec check` summarizes the obligations by status, and the new
+`lawspec evidence` lists each with its claim and reason (`--json` for the API
+records, and a unit or `unit::declaration` filter). See
+[evidence and discharge](docs/reference/language/evidence-and-discharge.md).
+
+### Laws proved and refuted by the compiler
+
+A law over checked definitions is attempted as a proof by the same exact linear
+arithmetic that proves definition results, from its input refinements, with
+definitions that have no preconditions unfolded into the claim. When it is not
+proved and its domain is finite, the compiler evaluates every input; a
+counterexample is a compile error with code `refuted`, such as
+`law always positive is false for x = -128`. Specifications that compiled
+before may therefore be rejected if a law over definitions is false.
+
+The prover also handles constant factors on integer expressions (`x * 2`),
+which it previously treated as non-linear, so more definition results are
+proved.
+
+### API
+
+`evidence` items have the five statuses above and new stages: `law`,
+`adapter`, and, with native bindings, `binding`, `codec`, `generator` and
+`native-function`. `claim` is `null` for obligations without one. The
+TypeScript API declares `ObligationEvidence` and `DischargeStatus`. See
+[API migration](docs/explanation/api-migration.md#evidence-and-discharge-0150).
+
+## 0.14.0
+
+### Imports
+
+```lawspec fragment
+unit shop.orders
+import shop.domain as domain (Money, Cents, `commutative`)
+```
+
+A unit imports other units by name. Every declaration of an imported unit is
+available through the alias (`domain.Usd`, `domain.centsOf`), and listed names
+also unqualified. Types, wrappers, indexed families, refinements, checked
+definitions and generic laws can be imported. Adapters and concrete laws stay
+with their unit. Import cycles, unknown units and missing or ambiguous names are
+reported at the import, with the reason: an adapter, a constructor listed
+without its type, or a law without parameters.
+
+Names are scoped to their unit, so units compiled together no longer need
+distinct constructor names. Targets with one data namespace (Python,
+JavaScript, TypeScript, Go and Haskell) name colliding types after their unit,
+`ShopDomainCurrency` and `ShopOrdersCurrency`, and their constructors
+`ShopDomainCurrencyUsd`. Java, Kotlin and Rust qualify only the type. Earlier
+versions qualified only the colliding names, for example
+`ShopDomainTypeCurrencyUsd` next to `CurrencyEur`.
+
+Imports are resolved before type checking, like indexed families and domain
+models, so Core and the eight backends are unchanged.
+
+### Packages
+
+A `lawspec-package.json` names a package, its version, its source directories
+and the version ranges of its dependencies. Package units are named after the
+package, a unit imports only from its own package and direct dependencies, and
+every range must accept the supplied version. A project lists `dependencies` and
+the `packages` directories in `lawspec.json`. A package's adapters and laws are a
+published contract: dependent projects implement and test them as their own.
+`lawspec package` checks a package and summarizes it. See
+[imports and packages](docs/reference/language/imports-and-packages.md).
+
+The compiler API accepts `dependencies`, `packages` and `package`, and reports
+the resolved packages (see
+[API migration](docs/explanation/api-migration.md#imports-and-packages-0140)).
+
+### Other changes
+
+- Rust: a law without quantified inputs no longer emits an untyped empty case
+  vector, which did not compile.
+- The VS Code grammar highlights `import` and `as`.
+- A new acceptance suite, `packages`, runs the
+  [package example](examples/packages) on all eight targets in both machine
+  profiles and rejects five adapter mutants plus the bare stubs. `lawspec-dev ci`
+  includes it.
+
+## 0.13.2
+
+A maintenance release. The language, generated code and API are unchanged.
+
+- The repository has no hosted CI. `stack run lawspec-dev -- ci` runs the
+  complete check locally: compiler, npm, parity, package and editor checks, then
+  for each target the dependency bootstrap, every acceptance suite in both
+  machine profiles, and the installed native-binding example. It logs each step to
+  `.artifacts/ci/` and exits non-zero on any failure. `--target`, `--core`,
+  `--fail-fast`, `--rust-toolchains` and `--rust-targets` select what to run.
+  `make ci` is equivalent.
+- The JavaScript acceptance runners and fixture modules replaced by
+  `lawspec-acceptance` are removed.
+- The package smoke test's per-command timeout is ten minutes: exporting every
+  bundled example had exceeded the former two-minute limit on slower machines.
+- The integration bootstrap restores missing scaffold files in existing projects.
+
+## 0.13.1
+
+A maintenance release. The language, generated code and API are unchanged from
+0.13.0.
+
+- Repository checks move from JavaScript to Haskell. `lawspec-dev boundaries` and
+  `lawspec-dev integrity` replace `tools/check-boundaries.mjs` and
+  `tools/build-integrity.mjs`. The integrity check now also rejects staged npm
+  copies of documentation and examples that differ from their sources.
+- `lawspec-acceptance` runs the bundled-example acceptance suites
+  (`integration`, `algebra`, `scalar`, `refinement`, `indexed`, `domain`) in
+  process. Adapters and mutants are real files under `acceptance/`, and a
+  mutant that only breaks the build now fails the suite. This exposed a
+  TypeScript scalar mutant that previously counted as rejected because it
+  failed type-checking; it now exercises the laws.
+- Build-file scaffolds are defined once in Haskell (`LawSpec.Scaffold`) and
+  checked against the npm templates byte for byte.
+- Compiler API contract tests formerly in `npm/test` run in hspec against the
+  same JSON boundary that `core.wasm` exports. A new npm test checks that
+  generation never rewrites build files and that regeneration is a no-op on
+  every target.
+
+## 0.13.0
+
+### Wrappers and constrained primitives
+
+```lawspec fragment
+wrapper UnitQuantity is Int32 where value >= 1 && value <= 1000 end
+wrapper NonEmptyList (a :: Type) is List a where prelude.length value > 0 end
+```
+
+A wrapper declares a distinct nominal type with one field, `value`, and an
+optional constraint. Its constructor checks the constraint, so an invalid value
+cannot be constructed in an example (the compiler rejects `UnitQuantity 0`),
+produced by a generator, or decoded from native code. `valueOf<Name>` unwraps a
+value. Wrappers may take type parameters. They elaborate to a single-constructor
+product with a refined field, so all eight targets represent them natively with
+no new runtime machinery.
+
+### Workflows and state distinctions
+
+```lawspec fragment
+workflow placeOrder :: UnvalidatedOrder -> Either OrderError PricedOrder is
+  validateOrder :: UnvalidatedOrder -> Either OrderError ValidatedOrder
+  priceOrder :: ValidatedOrder -> Either OrderError PricedOrder
+end
+```
+
+A workflow declares its steps as adapters and checks the pipeline: each step
+must accept the previous step's state, and fallible steps must share an error
+type. The workflow's result must match `Either E T` when any step can fail, or
+`T` otherwise. The compiler adds the law `placeOrder composes its steps`: the
+native workflow must equal the railway composition of the native steps.
+Diagnostics name the step and the mismatched types, with the workflow's source
+location. See [domain modeling](docs/reference/language/domain-modeling.md).
+
+### Evidence
+
+Constructor field constraints, including wrapper constraints, appear in the
+evidence as `construction` obligations with status `runtime-checked`, next to
+the contract obligations introduced in 0.12. The TypeScript API declares these
+records as `ObligationEvidence`; the 0.12 typing was not published.
+
+### Examples and acceptance
+
+`examples/specs/domain_modeling.lawspec` combines wrappers, a parameterized
+`NonEmptyList`, order states and the workflow. It runs on all eight targets in
+both machine profiles. Correct adapters pass; mutants that break a wrapper
+invariant, the railway composition, or a non-empty list operation fail.
+
+### Compatibility
+
+`wrapper` and `workflow` begin new declarations. Specifications that do not use
+them compile as in 0.12. API schemas 3 and 4 are unchanged, apart from the
+additive `construction` stage in `evidence`.
+
+## 0.12.0
+
+### Proved indices
+
+Checked definitions may return natural-indexed families, and the compiler
+proves their result indices statically:
+
+```lawspec fragment
+definition concatV (xs :: Vec n Int8) (ys :: Vec m Int8) :: Vec (n + m) Int8 is
+  match xs with
+  | VNil -> ys
+  | VCons h t -> VCons h (concatV t ys)
+  end
+end
+```
+
+The totality prover now treats calls of checked definitions as pure linear
+atoms, so equal calls have equal results. A single-argument definition that
+matches on its argument unfolds on a known constructor, so `nOfVec (VCons h t)`
+is `nOfVec t + 1`. Natural measures are non-negative. Together with the existing
+match facts and the induction hypothesis from recursive calls, this proves
+definitions such as `concatV`, and tree flattening through nested calls. It
+rejects definitions whose result indices do not follow, including an unchanged
+length, a dropped element, an extra element and a wrong recursive argument.
+See [proved indices](docs/reference/language/indexed-families.md#proved-indices).
+
+### Evidence
+
+Every contract obligation is recorded as `proved` or `runtime-checked`.
+Definition postconditions are proved, and generated code on all eight targets no
+longer re-checks them at runtime. Definition preconditions, which guard native
+callers, and adapter contracts remain runtime-checked. `lawspec check` prints a
+summary, and API responses include an additive `evidence` array; see
+[API migration](docs/explanation/api-migration.md#evidence-0120).
+
+The indexed example now includes proved definitions `concatV` and `flattenV`,
+used as reference models for the native `append` and `flatten` adapters. The
+eight-target acceptance runner executes them in both machine profiles and still
+rejects every index-breaking adapter mutant.
+
+### Compatibility
+
+Specifications that compiled with 0.11 compile unchanged. Generated definition
+code omits postcondition checks that are now proved, which changes generated
+output but not behavior. API schemas 3 and 4 are unchanged apart from the
+additive `evidence` field. Index equalities between sibling fields, non-linear
+indices and type-refining GADTs remain open; see the
+[current limits](docs/reference/language/index.md#current-limits).
+
+## 0.11.0
+
+### Natural-indexed families
+
+Data declarations may take `Natural` parameters, and each constructor states
+its index equation:
+
+```lawspec fragment
+type Vec (n :: Natural) (a :: Type) is
+  | VNil where n = 0
+  | VCons head :: a tail :: Vec m a where n = m + 1
+end
+
+append :: (xs :: Vec n Int8) -> (ys :: Vec m Int8) -> (r :: Vec (n + m) Int8)
+```
+
+A family elaborates before inference into ordinary erased data, a checked
+structural measure per index (`nOfVec`), and a refinement relating the measure
+to the index. Core and all eight emitters are unchanged. Native code works with
+the erased type, and every index claim is evidence checked at test time: a
+dependent result such as `Vec (n + m) Int8` is an adapter postcondition.
+
+An index variable that is otherwise unbound is implicit. The first binder whose
+family type mentions it determines it, and later occurrences read that binder's
+measure. Index expressions are sums of natural literals and index variables.
+`Natural` is also available as a value type. Diagnostics use the `indexed` code.
+See [indexed families](docs/reference/language/indexed-families.md).
+
+### Index-directed generation
+
+A quantifier constrained by a linear structural measure, including a fixed index
+(`Vec 3 Int8`) or a shared one (`zip`'s second argument), is generated by solving
+the constructor equations backwards instead of filtering. Multi-field equations
+such as `Bin … where n = l + r + 1` split the remaining index across fields.
+Python, JavaScript, TypeScript, Java, Kotlin, Go, Haskell and Rust construct these
+values natively, and framework shrinking stays within the index. The same
+planning applies to user-written linear measures over declared data.
+
+`examples/specs/indexed_families.lawspec` runs on all eight targets. Correct
+adapters pass free, fixed and shared index laws; mutants that add, drop or lose
+elements fail their dependent contracts.
+
+### Tower-polymorphic Integer results restored
+
+0.9 had narrowed Kotlin and Haskell adapters whose result is the abstract
+`Integer` to `BigInteger` and `Integer`. They again return `Number` (Kotlin) and
+`LS.IntegerValue` (Haskell), as in 0.8 and as Java always did. `Integer` is the top
+of the integral tower: an implementation may return any integral native value,
+and the result bridge rejects non-integral values and checks the logical domain.
+Adapters written against 0.9 or 0.10 stubs that return `BigInteger` or `Integer`
+still compile, because both are integral.
+
+This regression had kept the Kotlin and Haskell target checks failing since
+0.9. Those checks, and the scalar mutation fixtures, now pass with the documented
+typed Symbol, Decimal, Utf16Text and Optional representations.
+
+### Compatibility
+
+Specifications without indexed families generate the same code as 0.10, apart
+from the Integer result signatures above. API schemas 3 and 4 are unchanged.
+GADTs that refine type arguments, non-linear indices and index equalities between
+sibling fields remain future work.
+
+## 0.10.0
+
+### Existing application models
+
+Native bindings connect LawSpec products and sums to existing application types
+on Java, Python, JavaScript, TypeScript, Go, Haskell, Kotlin and Rust. Configure
+constructor and field mappings, bind adapter declarations to existing functions,
+or supply paired conversion hooks for representations requiring custom code.
+Bindings resolve against typed declaration identities; they do not change the
+meaning of arithmetic, equality, definitions or refinements. See
+[Bind native types and functions](docs/how-to/bind-native-types.md).
+
+Checked bridges compose through generic and recursive types and the built-in
+containers. They preserve exact numeric values, Symbol identity and distinct
+absence states. Invalid native inputs, results, generator samples and shrink
+candidates fail with context.
+
+### Native generators
+
+Factories return their framework's generator: JetCheck, Hypothesis, fast-check,
+Rapid, Hedgehog, Kotest or Proptest. Generic factories receive child generators.
+Composition retains native shrinking. Explicit examples, deterministic boundaries
+and finite-domain enumeration still run when the factory's distribution excludes
+those values.
+
+A factory can ignore an uninhabited parameter, as in `Phantom Empty`. Requesting a
+value from that parameter fails generation; it cannot turn a property into a
+vacuous success. Finite inhabited containers such as `List Empty` still enumerate.
+
+Optional `stub: true` generator bindings create user-owned implementation files.
+Regeneration preserves edits and reports changed factory signatures for review.
+
+### API and migration
+
+Native binding requests negotiate schema 4. Schema 3 remains supported for
+specifications without bindings. Structured native references and strict
+configuration validation prevent older compilers from silently ignoring mappings.
+Go additionally supports explicit import aliases; Rust binds tests to the
+application library's type identities.
+
+Existing adapter files cannot be overwritten by adopting a binding. Move their
+implementations into the application module and save the old adapters before
+generation. Generated source bridges, test helpers and user-owned application
+files retain separate placement and ownership. See the
+[migration guide](docs/explanation/api-migration.md#native-bindings-schema-4-0100) and
+[adopting bindings](docs/how-to/bind-native-types.md#adopt-bindings-in-an-existing-project).
+
+### Runnable payment projects
+
+`lawspec examples --example payments` exports a project for every target; use
+`--target rust` or another language to select one. Each project includes an
+application model, native generator, configuration, build files and instructions.
+The shared specification checks exact fees, currency preservation, sum payloads,
+ordered archives, duplicates and absence. Re-exporting preserves application
+edits and the separate compiler generation manifest.
+
+Both 32-bit and 64-bit logical machine profiles and readable/compact output are
+covered by the acceptance matrices. Java 25+, Python 3.13+ and the other published
+toolchain baselines remain unchanged. Python output follows PEP 8.
+
+## 0.9.0
+
+This release adds structural data and checked total definitions across Java,
+Python, JavaScript, TypeScript, Go, Haskell, Kotlin and Rust.
+
+### Language
+
+- `List a` supports nested contextual literals, structural equality, exact
+  length, deterministic boundaries, and native framework generation/shrinking.
+- Algebraic `Maybe a` and `Either a b` provide `Nothing`/`Just` and `Left`/`Right`.
+  They remain distinct from interoperability `Nullable` and `Optional` values.
+- Named parameterized products and sums have constructors and ordered fields.
+  Generated native types and typed adapters preserve their structure.
+- Total definitions support exhaustive matching and checked structural recursion.
+  The compiler rejects partial matches and recursion it cannot establish as
+  terminating. Generic definitions specialize to their concrete uses.
+- Refined definition signatures become executable native contracts. Scoped
+  payload predicates preserve type-parameter roles through recursive and mutual
+  data declarations, including predicates that depend on preceding inputs.
+
+Existing scalar semantics remain intact: exact arithmetic does not wrap,
+conversions to bounded adapter parameters are checked, floating equality follows
+IEEE rules, and Symbol equality uses identity.
+
+### Generated output
+
+Readable code is the default for runtimes, declarations, definitions, adapters,
+tests, and scaffolds. Explicit `--minify` selects compact output for `init`,
+`generate`, and `examples`; the compiler API accepts `minify: true`.
+
+Output follows Google language-specific guidance where applicable, PEP 8 for
+Python, standard Go and Rust formatting, and an 80-column Haskell layout.
+Formatting is deterministic in both native and WASM compilation and requires
+no formatter download. Compact output preserves required layout, literal
+contents, and semantics. Changing formatting mode does not overwrite edited
+adapters or create false adapter-signature updates.
+
+### API and compatibility
+
+API schema 3 adds named data declarations, structural values, checked definitions,
+construction/matching expressions, and scoped payload predicates. Existing scalar
+wire encodings are unchanged. Exhaustive expression visitors must handle the
+new variants; see [API migration](docs/explanation/api-migration.md#structural-data-and-definitions-090).
+
+Java 25+, Python 3.13+, Node 22+, and Rust 1.85+ baselines remain unchanged.
+Machine-width profiles, custom source/test directories, generation manifests,
+and user ownership of adapters/build files remain supported. Framework-specific
+strategies stay separate from reusable runtime source.
+
+### Examples and release acceptance
+
+Bundled examples cover reverse involution, sorting idempotence/sortedness/length/
+permutation, nested presence, products/sums, exhaustive matches, total functions,
+and recursive payload refinements. Release acceptance includes compiler and
+native/WASM checks, native execution on all eight targets, deliberately incorrect
+adapters, independent formatting/syntax checks, regeneration protection, and
+installation of the packed npm artifact.
+
+## 0.8.0
+
+Rust support and a shared typed compiler boundary are the focus of this release.
+The compiler remains implemented in Haskell and ships as prebuilt WebAssembly.
+
+### Changes
+
+- Rust 2024, with Rust 1.85 as the minimum toolchain, Cargo scaffolding, Proptest
+  generation/shrinking, the complete scalar catalog, refinements, and contracts.
+- An independent numeric Rust runtime with owned native bridges, exact arithmetic,
+  checked conversions, direct IEEE rounding, raw text, Symbol identity, and
+  distinct nested absence states. Proptest support is emitted separately.
+- A typed core and proposition tree shared by all eight emitters. Resolved IDs,
+  parsed source ranges, contextual literals, arithmetic evidence, and conversions
+  survive elaboration. Emitters no longer import source syntax or inference.
+- An independent core validator and evaluator. Testing plans distinguish semantic
+  validity from execution feasibility and preserve dependent refinement domains.
+- API schema v3 with explicit wire views and unchanged lossless scalar encodings.
+  Explicit schema-v2 requests receive a migration diagnostic.
+- Rust module wiring, custom layouts, Cargo preflight, adapter preservation,
+  generation manifests, bundled examples, and installed-package coverage.
+- Exact algebra and numeric currying examples. Logical `Integer` replaces their
+  former modular Int32 contracts. Examples cover Int32 overflow, large products,
+  Int32-minimum negation, and values beyond machine/safe-number bounds; deliberately
+  wrapping adapters are rejected on every target.
+
+See [Rust](docs/how-to/targets/rust.md), [the language reference](docs/reference/language/index.md),
+[primitives](docs/reference/primitives.md), [refinements](docs/reference/refinements.md), and
+[API migration](docs/explanation/api-migration.md#schema-2-to-schema-3-080).
+
+### Compatibility and scope
+
+Java 25+, Python 3.13+, and Node 22+ baselines remain unchanged. Existing LawSpec
+source remains compatible. API clients must migrate to schema v3. All nonempty
+plans emit scalar runtime source; existing Haskell projects need direct `text`
+and `bytestring` dependencies in the component compiling that source. Build
+files and implementation adapters remain user-owned.
+
+Machine-sized domains use an explicit 32/64-bit profile. Native machine-sized
+bindings reject an architecture mismatch. Rust adapters take owned values;
+borrowing/lifetimes do not become LawSpec language constructs.

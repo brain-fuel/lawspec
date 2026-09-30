@@ -1,3 +1,4 @@
+// Generated from templates/npm/scalars.mjs by lawspec-dev generate. Do not edit.
 // Human-readable, lossless API v2 scalar display.
 export function showScalar(v) {
   if (!v || typeof v !== 'object') throw new TypeError('Expected an API v2 scalar');

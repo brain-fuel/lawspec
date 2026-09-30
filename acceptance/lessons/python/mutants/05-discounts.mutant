@@ -1,0 +1,6 @@
+@@ src/lessons/discounts.py
+<<<<<<<
+    return value0 * (100 - value1) // 100
+=======
+    return value0 * (100 - value1) // 100 + (1 if value1 == 100 else 0)
+>>>>>>>

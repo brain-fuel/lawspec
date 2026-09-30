@@ -1,3 +1,4 @@
+// Generated from templates/npm/test/examples.test.mjs by lawspec-dev generate. Do not edit.
 import {createCompiler} from '../api.mjs';
 import { test } from "node:test";
 import assert from "node:assert/strict";

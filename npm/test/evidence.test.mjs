@@ -1,3 +1,4 @@
+// Generated from templates/npm/test/evidence.test.mjs by lawspec-dev generate. Do not edit.
 // lawspec evidence reports how every obligation is discharged.
 import {test} from 'node:test';
 import assert from 'node:assert/strict';

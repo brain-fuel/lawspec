@@ -1,3 +1,4 @@
+// Generated from templates/npm/test/build-files.test.mjs by lawspec-dev generate. Do not edit.
 // Generation never rewrites project build files, and regenerating is a no-op.
 // This replaces the build-file guard formerly in tools/integration.mjs; the
 // generated projects themselves are exercised by lawspec-acceptance.

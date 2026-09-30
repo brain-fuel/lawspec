@@ -1,0 +1,6 @@
+@@ src/lessons/menu.ts
+<<<<<<<
+  if (value0 instanceof data.ItemLatte) return 350n;
+=======
+  if (value0 instanceof data.ItemLatte) return 550n;
+>>>>>>>

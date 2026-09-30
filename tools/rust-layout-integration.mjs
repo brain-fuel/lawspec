@@ -1,3 +1,4 @@
+// Generated from templates/tools/rust-layout-integration.mjs by lawspec-dev generate. Do not edit.
 // Compile a real custom Cargo layout, then verify adapter and manifest ownership.
 import {execFileSync} from 'node:child_process';
 import {mkdir,readFile,writeFile,rm} from 'node:fs/promises';

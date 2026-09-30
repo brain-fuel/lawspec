@@ -1,0 +1,6 @@
+@@ src/main/java/lessons/Checkout.java
+<<<<<<<
+if (order.quantity < 1 || order.quantity > 20)
+=======
+if (order.quantity < 0 || order.quantity > 20)
+>>>>>>>

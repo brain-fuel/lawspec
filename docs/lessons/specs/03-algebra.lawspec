@@ -1,0 +1,35 @@
+unit lessons.totals
+
+-- The larger of two totals, as used to find the biggest order of the day.
+larger :: Int64 -> Int64 -> Int64
+
+law `the order of the totals does not matter` is
+  definition is
+    `commutative` larger
+  end
+end
+
+law `grouping does not matter` is
+  definition is
+    `associative` larger
+  end
+end
+
+law `a total compared with itself is itself` is
+  definition is
+    `idempotent operation` larger
+  end
+end
+
+law `the smallest total is neutral` is
+  definition is
+    `identity` larger (Int64.min)
+  end
+end
+
+law `the larger total is at least each total` is
+  definition is
+    `for all` (a :: Int64) (b :: Int64) .
+      larger a b >= a && larger a b >= b
+  end
+end

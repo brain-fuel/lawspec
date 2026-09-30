@@ -1,3 +1,4 @@
+// Generated from templates/npm/doctor.mjs by lawspec-dev generate. Do not edit.
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import {

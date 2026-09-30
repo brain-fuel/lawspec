@@ -45,7 +45,7 @@ dispatch bytes = encode $ versioned $ case eitherDecode bytes >>= parseEither re
     versioned value = value
     request = withObject "request" $ \o -> do
       version <- o .:? "schemaVersion" .!= (3 :: Int)
-      unless (version `elem` [3,4]) (fail "LawSpec requires API schemaVersion 3 or 4; see API-MIGRATION.md")
+      unless (version `elem` [3,4]) (fail "LawSpec requires API schemaVersion 3 or 4; see docs/explanation/api-migration.md")
       native <- o .:? "nativeBindings" .!= emptyNativeRequest
       unless (native == emptyNativeRequest || version == 4)
         (fail "nativeBindings requires API schemaVersion 4; schema 3 compilers may ignore bindings")

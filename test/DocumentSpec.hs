@@ -8,7 +8,6 @@ import LawSpec.Frontend (compileCore)
 import LawSpec.Testing (planTesting)
 import LawSpec.CoreEmit (emitPlan, emitPlanWithFormat, emitPlanWithLayout, emitPlanWithOptions, targets)
 import qualified LawSpec.Code.Doc as D
-import LawSpec.Gen (apiSources)
 import LawSpec.Core (scalarType)
 import LawSpec.Scalar (primitives, primitiveName)
 import qualified LawSpec.PortableGenerator as Generator
@@ -104,14 +103,6 @@ spec = describe "generated code layout" $ do
     D.render D.CompactTabs (D.block 8 (D.text "return " <>
       D.delimitTrailing 8 "f(" ")" [D.text "alpha", D.text "beta"]))
       `shouldBe` "{\n\treturn f(alpha, beta)\n}"
-  it "keeps generated API lines within 80 columns" $
-    all ((<= 80) . length) (concatMap (lines . snd) (apiSources (D.Pretty 80))) `shouldBe` True
-  it "emits smaller compact API source retaining its comment" $ do
-    let pretty = apiSources (D.Pretty 80)
-        compact = apiSources D.Compact
-    sum (map (length . snd) compact) `shouldSatisfy` (< sum (map (length . snd) pretty))
-    map (head . lines . snd) compact `shouldBe` map (head . lines . snd) pretty
-
   it "wraps comments without dropping their required line markers" $
     D.render D.Compact (D.lineComment 12 "// " "alpha beta x")
       `shouldBe` "// alpha\n// beta x\n"

@@ -1,0 +1,6 @@
+@@ src/lessons/codec.py
+<<<<<<<
+    return str(value0)
+=======
+    return str(abs(value0))
+>>>>>>>

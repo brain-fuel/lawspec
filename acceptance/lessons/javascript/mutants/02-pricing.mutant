@@ -1,0 +1,6 @@
+@@ src/lessons/pricing.mjs
+<<<<<<<
+value0 >= 10 ? 225n : 250n
+=======
+value0 > 10 ? 225n : 250n
+>>>>>>>

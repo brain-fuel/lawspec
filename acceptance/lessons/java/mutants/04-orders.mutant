@@ -1,0 +1,6 @@
+@@ src/main/java/lessons/Orders.java
+<<<<<<<
+return base + drink.shots * 60L;
+=======
+return base + drink.shots * 50L;
+>>>>>>>

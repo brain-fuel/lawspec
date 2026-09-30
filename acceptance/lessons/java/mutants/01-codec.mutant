@@ -1,0 +1,6 @@
+@@ src/main/java/lessons/Codec.java
+<<<<<<<
+return Integer.toString(value0);
+=======
+return Integer.toString(Math.abs(value0));
+>>>>>>>

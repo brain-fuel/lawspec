@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title><!--@ title @--> · LawSpec</title>
+<link rel="stylesheet" href="<!--@ root @-->assets/style.css">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ctext y='13' font-size='13'%3E%C2%A7%3C/text%3E%3C/svg%3E">
+<script type="module" src="<!--@ root @-->assets/playground.mjs"></script>
+</head>
+<body>
+<header class="top">
+  <a class="brand" href="<!--@ root @-->index.html">LawSpec</a>
+  <span class="version"><!--@ version @--></span>
+  <button class="menu" aria-controls="nav" aria-expanded="false">Contents</button>
+</header>
+<div class="layout">
+<nav id="nav" aria-label="Contents">
+<!--@ nav @-->
+</nav>
+<main>
+<!--@ content @-->
+<footer class="pager"><!--@ pager @--></footer>
+</main>
+</div>
+<script>
+  const menu = document.querySelector(".menu");
+  menu.addEventListener("click", () => {
+    const open = document.body.classList.toggle("nav-open");
+    menu.setAttribute("aria-expanded", String(open));
+  });
+</script>
+</body>
+</html>

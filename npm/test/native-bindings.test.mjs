@@ -1,3 +1,4 @@
+// Generated from templates/npm/test/native-bindings.test.mjs by lawspec-dev generate. Do not edit.
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {readFile, mkdtemp, rm} from 'node:fs/promises';

@@ -1,0 +1,6 @@
+@@ src/lessons/discounts.mjs
+<<<<<<<
+  return (value0 * BigInt(100 - value1)) / 100n;
+=======
+  return (value0 * BigInt(100 - value1)) / 100n + (value1 === 100 ? 1n : 0n);
+>>>>>>>

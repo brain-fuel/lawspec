@@ -1,0 +1,6 @@
+@@ src/main/java/lessons/Pricing.java
+<<<<<<<
+value0 >= 10 ? 225 : 250
+=======
+value0 > 10 ? 225 : 250
+>>>>>>>

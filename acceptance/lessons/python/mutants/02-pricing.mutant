@@ -1,0 +1,6 @@
+@@ src/lessons/pricing.py
+<<<<<<<
+225 if value0 >= 10 else 250
+=======
+225 if value0 > 10 else 250
+>>>>>>>

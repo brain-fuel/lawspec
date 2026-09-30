@@ -1,0 +1,34 @@
+unit lessons.pricing
+
+-- The price of an order in cents: 250 per drink, or 225 per drink for ten or
+-- more.
+priceInCents :: Int32 -> Int64
+
+law `drinks cost 250 cents each below ten` is
+  definition is
+    `for all` (q :: Int32) .
+      q >= 0 && q < 10 implies priceInCents q = q * 250
+  end
+
+  example `nothing ordered` is
+    q = 0
+    expect priceInCents q = 0
+  end
+
+  example `one coffee` is
+    q = 1
+    expect priceInCents q = 250
+  end
+end
+
+law `ten or more drinks are discounted` is
+  definition is
+    `for all` (q :: Int32) .
+      q >= 10 && q <= 1000 implies priceInCents q = q * 225
+  end
+
+  example `a tray of ten` is
+    q = 10
+    expect priceInCents q = 2250
+  end
+end

@@ -1,0 +1,19 @@
+unit lessons.codec
+
+-- Two adapters: functions your code implements and LawSpec tests.
+formatQuantity :: Int32 -> Text
+parseQuantity :: Text -> Int32
+
+-- A law states a property for every input. This one reuses a prelude law:
+-- parsing what was formatted gives back the original value.
+law `quantities survive a round trip` is
+  definition is
+    `round trip identity is preserved` formatQuantity parseQuantity
+  end
+
+  example `a dozen` is
+    x = 12
+    expect formatQuantity x = "12"
+    expect parseQuantity (formatQuantity x) = 12
+  end
+end

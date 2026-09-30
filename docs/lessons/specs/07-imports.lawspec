@@ -1,0 +1,24 @@
+unit lessons.menu
+import lessons.money as money (Cents, `never more than`)
+
+-- Types, refinements, definitions and generic laws come from another unit;
+-- adapters stay with the unit that declares them.
+type Item is | Espresso | Latte | Tea end
+
+priceOf :: Item -> Cents
+
+-- A generic law quantifies over the base type, Int64 here, so the adapter
+-- it is applied to accepts any Int64.
+cheapest :: Int64 -> Int64 -> Int64
+
+law `every item costs at most five dollars` is
+  definition is
+    `for all` (item :: Item) . priceOf item <= money.dollars 5
+  end
+end
+
+law `the cheaper price is never more than either price` is
+  definition is
+    `never more than` cheapest
+  end
+end

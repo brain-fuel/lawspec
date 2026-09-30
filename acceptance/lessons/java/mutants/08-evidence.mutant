@@ -1,0 +1,6 @@
+@@ src/main/java/lessons/Evidence.java
+<<<<<<<
+return value0 == 0 || value0 == 6;
+=======
+return value0 == 0 || value0 == 5;
+>>>>>>>

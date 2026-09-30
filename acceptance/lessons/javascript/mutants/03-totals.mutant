@@ -1,0 +1,6 @@
+@@ src/lessons/totals.mjs
+<<<<<<<
+  return value0 > value1 ? value0 : value1;
+=======
+  return value0;
+>>>>>>>

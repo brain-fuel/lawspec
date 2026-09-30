@@ -1,0 +1,6 @@
+@@ src/lessons/menu.py
+<<<<<<<
+        return 350
+=======
+        return 550
+>>>>>>>

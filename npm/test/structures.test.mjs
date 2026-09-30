@@ -1,3 +1,4 @@
+// Generated from templates/npm/test/structures.test.mjs by lawspec-dev generate. Do not edit.
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';

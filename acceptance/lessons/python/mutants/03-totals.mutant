@@ -1,0 +1,6 @@
+@@ src/lessons/totals.py
+<<<<<<<
+    return max(value0, value1)
+=======
+    return value0
+>>>>>>>

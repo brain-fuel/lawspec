@@ -1,0 +1,6 @@
+@@ src/lessons/evidence.py
+<<<<<<<
+    return value0 in (0, 6)
+=======
+    return value0 in (0, 5)
+>>>>>>>

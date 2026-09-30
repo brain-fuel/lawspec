@@ -1,0 +1,35 @@
+unit lessons.orders
+
+type Size is | Small | Large end
+
+-- A drink has a size and up to four extra shots of espresso.
+type Drink is Drink size :: Size shots :: (s :: Int32 where s >= 0 && s <= 4) end
+
+-- Checked definitions are part of the specification: LawSpec proves they
+-- are total and generates them for every target.
+definition basePrice (size :: Size) :: Int32 is
+  match size with
+  | Small -> 250
+  | Large -> 320
+  end
+end
+
+definition drinkPrice (drink :: Drink) :: BigInt is
+  match drink with
+  | Drink size shots -> basePrice size + shots * 60
+  end
+end
+
+-- Your implementation must agree with the definition for every drink.
+price :: Drink -> Int64
+
+law `the price follows the menu` is
+  definition is
+    `for all` (d :: Drink) . price d = drinkPrice d
+  end
+
+  example `a large with two shots` is
+    d = Drink Large 2
+    expect price d = 440
+  end
+end

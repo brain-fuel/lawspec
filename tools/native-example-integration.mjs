@@ -1,3 +1,4 @@
+// Generated from templates/tools/native-example-integration.mjs by lawspec-dev generate. Do not edit.
 // Exercise the installed public CLI and each project's normal native build tool.
 import assert from 'node:assert/strict';
 import {spawnSync} from 'node:child_process';

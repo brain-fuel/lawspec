@@ -1,0 +1,6 @@
+@@ src/lessons/codec.ts
+<<<<<<<
+  return String(value0);
+=======
+  return String(Math.abs(value0));
+>>>>>>>

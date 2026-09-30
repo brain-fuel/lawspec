@@ -1,3 +1,4 @@
+// Generated from templates/npm/test/scalars.test.mjs by lawspec-dev generate. Do not edit.
 import {propertyFiles} from './artifacts.mjs';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';

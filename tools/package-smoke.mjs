@@ -1,3 +1,4 @@
+// Generated from templates/tools/package-smoke.mjs by lawspec-dev generate. Do not edit.
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { mkdtemp, mkdir, readFile, writeFile, rm } from "node:fs/promises";
@@ -167,7 +168,11 @@ try {
     console.log('Installed structural API: all eight targets, widths and layouts');
   `], app);
   console.log(structures.stdout.trim());
-  for (const document of ['RUST.md','JAVA.md','PYTHON.md','GO.md','HASKELL.md','KOTLIN.md','WEB.md','LANGUAGE.md','API-MIGRATION.md','NATIVE-BINDINGS.md','RELEASE-0.9.md','RELEASE-0.10.md','RELEASE-0.11.md','RELEASE-0.12.md','RELEASE-0.13.md'])
+  for (const document of [
+                           "README.md",
+                           "CHANGELOG.md",
+                           "LICENSE"
+                         ])
     if (!(await readFile(path.join(app,'node_modules/lawspec',document),'utf8')).length) throw new Error('Missing packaged '+document);
   const rust=path.join(root,'rust');
   await mkdir(rust);

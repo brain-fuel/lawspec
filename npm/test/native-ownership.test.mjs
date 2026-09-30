@@ -1,3 +1,4 @@
+// Generated from templates/npm/test/native-ownership.test.mjs by lawspec-dev generate. Do not edit.
 // Filesystem acceptance for adopting and regenerating native bindings.
 import assert from 'node:assert/strict';
 import {test} from 'node:test';

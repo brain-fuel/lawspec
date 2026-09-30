@@ -1,0 +1,6 @@
+@@ src/lessons/orders.py
+<<<<<<<
+    return base + value0.shots * 60
+=======
+    return base + value0.shots * 50
+>>>>>>>

@@ -1,0 +1,6 @@
+@@ src/main/java/lessons/Menu.java
+<<<<<<<
+if (value0 instanceof Item.LatteCase) return 350;
+=======
+if (value0 instanceof Item.LatteCase) return 550;
+>>>>>>>

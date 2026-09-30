@@ -1,3 +1,4 @@
+// Generated from templates/npm/test/files.test.mjs by lawspec-dev generate. Do not edit.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, readFile, writeFile, rm, symlink } from "node:fs/promises";
