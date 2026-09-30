@@ -169,6 +169,7 @@ proofSpec = describe "proof-producing index layer" $ do
       Left diagnostics -> expectationFailure (show diagnostics)
       Right program -> do
         let statuses name = [(obligationStage o,obligationStatus o) | o <- programEvidence program,
+              obligationStage o `elem` ["precondition", "postcondition"],
               ("::" ++ name) `isSuffixOf'` C.idText (obligationDeclaration o)]
             isSuffixOf' suffix text = reverse suffix == take (length suffix) (reverse text)
         statuses "concat" `shouldSatisfy` (\found -> not (null found) && all ((== Proved) . snd) found)

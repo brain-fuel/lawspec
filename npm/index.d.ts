@@ -212,6 +212,22 @@ export interface NativeBindings {
   goImports?: NativeGoImport[];
 }
 
+export type DischargeStatus =
+    'proved' |
+    'exhaustively-checked' |
+    'property-tested' |
+    'runtime-checked' |
+    'assumed';
+
+export interface ObligationEvidence {
+  owner: string;
+  declaration: string;
+  stage: string;
+  status: DischargeStatus;
+  reason: string;
+  claim: Expr | null;
+}
+
 export interface PackageVersion {
   name: string;
   version: string;
@@ -262,6 +278,7 @@ export interface Result {
   diagnostics: Diagnostic[];
   expansions?: string[];
   files?: Artifact[];
+  evidence?: ObligationEvidence[];
   packages?: PackageView[];
   project?: {package?: PackageVersion; dependencies: Record<string, string>;};
 }

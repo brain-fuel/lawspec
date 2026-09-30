@@ -318,3 +318,22 @@ Imported declarations need no new wire forms. Data declarations keep the ID of
 the unit that declares them. An imported checked definition appears among the
 importing unit's definitions with a name derived from its unit
 (`shop.orders::shopDomainCentsOf`).
+
+## Evidence and discharge (0.15)
+
+`evidence` items now cover every obligation, and `status` is one of `proved`,
+`exhaustively-checked`, `property-tested`, `runtime-checked` or `assumed`
+(`DischargeStatus`). New stages:
+
+- `law`: `declaration` is the law's identity (`unit::law::name`) and `claim` the
+  law as a Boolean expression over its inputs;
+- `adapter`: an adapter declaration, `assumed`, with `claim: null`;
+- with native bindings: `binding` (`runtime-checked`), `codec`, `generator` and
+  `native-function` (`assumed`), each with `claim: null`.
+
+Clients that compared `status` against `proved` and `runtime-checked` only must
+handle the new values. Law obligations come first, then contracts,
+adapters, constructions and bindings.
+
+A false law over checked definitions with a finite domain is now reported as a
+diagnostic with code `refuted` instead of compiling.

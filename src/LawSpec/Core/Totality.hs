@@ -541,13 +541,19 @@ linear expression = case expression of
   Literal scalar -> either (const Nothing) (Just . R.constant) (exactValue scalar)
   ExactArithmetic Add a b -> R.plus <$> linear a <*> linear b
   ExactArithmetic Subtract a b -> R.plus <$> linear a <*> (R.scale (-1) <$> linear b)
-  ExactArithmetic Multiply (Literal scalar) b -> do
-    coefficient <- either (const Nothing) Just (exactValue scalar)
-    R.scale coefficient <$> linear b
-  ExactArithmetic Multiply a b@(Literal _) -> linear (ExactArithmetic Multiply b a)
+  -- A constant factor may carry its integer typing: Integral (Literal 2).
+  ExactArithmetic Multiply a b
+    | Just coefficient <- constantFactor a -> R.scale coefficient <$> linear b
+    | Just coefficient <- constantFactor b -> R.scale coefficient <$> linear a
   NarrowInteger _ _ value -> linear value
   Integral value -> linear value
   Call callee arguments -> Just (R.variable (callAtom callee arguments))
+  _ -> Nothing
+
+constantFactor :: Proof -> Maybe Rational
+constantFactor expression = case expression of
+  Literal scalar -> either (const Nothing) Just (exactValue scalar)
+  Integral value -> constantFactor value
   _ -> Nothing
 
 predicate :: Proof -> Maybe R.Predicate

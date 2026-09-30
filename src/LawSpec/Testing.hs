@@ -38,10 +38,16 @@ planTesting :: Program -> Either [Diagnostic] Plan
 planTesting program@Program{..} = do
   invoke <- prepareDefinitions program
   registry <- either (Left . pure . (\message -> Diagnostic "generation" message Nothing)) Right (makeRegistry programDataDeclarations)
-  Plan programMachineBits programDataDeclarations <$> mapM (unit registry invoke) programUnits
-  where
-    unit registry invoke u = PlannedUnit u <$> mapM (property registry invoke) (unitProperties u)
-    property registry invoke p = either (Left . pure . (\m -> Diagnostic "generation" m (Just (propertyLocation p)))) Right $ do
+  let definitions = concatMap unitDefinitions programUnits
+      unit u = PlannedUnit u <$> mapM property (unitProperties u)
+      property p = either (Left . pure . (\m -> Diagnostic "generation" m (Just (propertyLocation p)))) Right
+        (planProperty registry programMachineBits invoke definitions p)
+  Plan programMachineBits programDataDeclarations <$> mapM unit programUnits
+
+-- One property's finite domain, boundary cases and generator requirements.
+planProperty :: TypeRegistry -> Int -> (Id -> [Value] -> Either String Value) -> [Definition]
+  -> Property -> Either String PlannedProperty
+planProperty registry programMachineBits invoke definitions p = do
       let qs = propertyInputs p
           settings = propertyGeneration p
           types = map (binderType . quantifiedBinder) qs
@@ -71,7 +77,6 @@ planTesting program@Program{..} = do
           (lookup (binderId (quantifiedBinder q)) bindings)) qs
         valid <- validTupleWithDefinitions registry programMachineBits invoke qs values
         unless valid (Left ("example " ++ exampleName example ++ " violates refinement"))) (propertyExamples p)
-      let definitions = concatMap unitDefinitions programUnits
       pure (PlannedProperty p finite cases [GeneratorRequirement (quantifiedBinder q) (quantifiedPredicates q) b (quantifiedBounds q) (domainHints q) (indexedGeneration definitions q) | (q,b) <- zip qs bs])
 
 validTuple :: TypeRegistry -> Int -> [Quantifier] -> [Value] -> Either String Bool

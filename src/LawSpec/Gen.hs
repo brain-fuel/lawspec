@@ -149,6 +149,10 @@ declarations = joinWith (softbreak <> softbreak)
   , interface "NativeGoImport" (fields [("alias", "string"), ("path", "string")])
   , interface "NativeBindings" (fields [("types?", "NativeTypeBinding[]"), ("generators?", "NativeGeneratorBinding[]"),
       ("functions?", "NativeFunctionBinding[]"), ("rustCrate?", "string"), ("goImports?", "NativeGoImport[]")])
+  , alias "DischargeStatus" (map quoted ["proved", "exhaustively-checked", "property-tested", "runtime-checked", "assumed"])
+  , interface "ObligationEvidence"
+      (fields [("owner", "string"), ("declaration", "string"), ("stage", "string"), ("status", "DischargeStatus"), ("reason", "string")] ++
+       [("claim", union [text "Expr", text "null"])])
   , interface "PackageVersion" (fields [("name", "string"), ("version", "string")])
   , interface "Package" (fields [("name", "string"), ("version", "string"), ("dependencies?", "Record<string, string>"), ("sources", "Source[]")])
   , interface "PackageView" (fields [("name", "string"), ("version", "string"), ("dependencies", "Record<string, string>"), ("units", "string[]")])
@@ -162,7 +166,7 @@ declarations = joinWith (softbreak <> softbreak)
        fields [("generation?", "Generation"), ("units?", "Unit[]"), ("dataTypes?", "DataTypeDeclaration[]"), ("definitions?", "Definition[]"), ("laws?", "Law[]")] ++
        [("contracts?", array (record (fields [("owner", "string"), ("contract", "Contract")])))] ++
        fields [("refinements?", "Refinement[]"), ("diagnostics", "Diagnostic[]"), ("expansions?", "string[]"), ("files?", "Artifact[]")] ++
-       [("packages?", text "PackageView[]"), ("project?", record (fields [("package?", "PackageVersion"), ("dependencies", "Record<string, string>")]))])
+       [("evidence?", text "ObligationEvidence[]"), ("packages?", text "PackageView[]"), ("project?", record (fields [("package?", "PackageVersion"), ("dependencies", "Record<string, string>")]))])
   , interface "PayloadPredicate" (fields [("binder", "Binder"), ("predicate", "Expr")])
   , interface "MatchCase" (fields [("constructor", "string"), ("binders", "Binder[]"), ("body", "Expr")])
   , alias "DataValue" [text "ScalarValue", variant "data" [("type", "Type"), ("constructor", "string"), ("fields", "DataValue[]")]]

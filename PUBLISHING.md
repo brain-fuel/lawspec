@@ -2,7 +2,7 @@
 
 Release from `main` using Git over the existing SSH remote. Do not use the GitHub
 CLI. npm stores the immutable package version separately from dist-tags:
-publishing version 0.14.0 with `--tag latest` preserves `lawspec@0.14.0` and moves
+publishing version 0.15.0 with `--tag latest` preserves `lawspec@0.15.0` and moves
 `lawspec@latest` to that version. Never try to overwrite an existing npm version.
 
 ## Prepare and verify
@@ -19,8 +19,8 @@ node --test npm/test/*.test.mjs
 stack --no-terminal run lawspec-dev -- integrity
 stack --no-terminal run lawspec-dev -- boundaries
 node tools/package-smoke.mjs
-mkdir -p .artifacts/0.14.0
-npm pack ./npm --pack-destination .artifacts/0.14.0
+mkdir -p .artifacts/0.15.0
+npm pack ./npm --pack-destination .artifacts/0.15.0
 ```
 
 Check the native integration results for all eight targets. The installed native
@@ -35,9 +35,9 @@ together. Do not force-push or move an existing release tag.
 
 ```sh
 git add -A
-git commit -m "Release LawSpec 0.14.0: imports and packages"
-git tag -a v0.14.0 -m "LawSpec 0.14.0"
-git push --atomic origin main v0.14.0
+git commit -m "Release LawSpec 0.15.0: evidence and discharge"
+git tag -a v0.15.0 -m "LawSpec 0.15.0"
+git push --atomic origin main v0.15.0
 ```
 
 Run `stack run lawspec-dev -- ci` before publishing; every step must pass. Resolve
@@ -47,8 +47,8 @@ being published.
 ## Publish the tested archive
 
 ```sh
-npm publish .artifacts/0.14.0/lawspec-0.14.0.tgz --access public --tag latest --registry https://registry.npmjs.org --browser false
-npm view lawspec@0.14.0 version dist.integrity --registry https://registry.npmjs.org
+npm publish .artifacts/0.15.0/lawspec-0.15.0.tgz --access public --tag latest --registry https://registry.npmjs.org --browser false
+npm view lawspec@0.15.0 version dist.integrity --registry https://registry.npmjs.org
 npm view lawspec dist-tags --registry https://registry.npmjs.org
 ```
 

@@ -12,6 +12,7 @@ import LawSpec.CoreEmit (emitPlanWithNativeOptions)
 import LawSpec.NativeRequest
 import LawSpec.Public (programView)
 import LawSpec.Packages
+import LawSpec.Discharge (dischargeEvidence, bindingEvidence)
 
 dispatch :: B.ByteString -> B.ByteString
 dispatch bytes = encode $ versioned $ case eitherDecode bytes >>= parseEither request of
@@ -24,7 +25,9 @@ dispatch bytes = encode $ versioned $ case eitherDecode bytes >>= parseEither re
       Left ds -> failure ds
       Right core -> case resolveNativeRequest core native of
         Left message -> failure [Diagnostic "native-binding" message Nothing]
-        Right bindings -> let result files = withPackages project described (programView settings us (map prettyExpanded es) files core) in case method of
+        Right bindings -> case dischargeEvidence core of
+         Left ds -> failure ds
+         Right evidence -> let result files = withPackages project described (programView settings us (map prettyExpanded es) files (evidence ++ bindingEvidence bindings) core) in case method of
           "check" -> result []
           "expand" -> result []
           "planGeneration" -> either failure result (planTesting core >>= emitPlanWithNativeOptions minify target sourceDir testDir bindings)

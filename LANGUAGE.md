@@ -1,4 +1,4 @@
-# LawSpec language and compiler boundary (0.14)
+# LawSpec language and compiler boundary (0.15)
 
 LawSpec describes portable laws, concrete examples, and adapter contracts. The
 compiler is written in Haskell. Rust is an output backend alongside Java, Python,
@@ -204,14 +204,56 @@ recursive call contributes its own signature as the induction hypothesis, and
 natural measures are non-negative. A definition whose result index does not
 follow fails with `definition result refinement could not be proved`.
 
-Every contract obligation is recorded with how it is discharged. Definition
-postconditions are `proved`, and generated code omits their runtime checks.
-Definition preconditions guard native callers, and adapter contracts cover
-native code that LawSpec cannot inspect, so both are `runtime-checked`.
-`lawspec check` summarizes the evidence, and the API reports each obligation in
-the `evidence` field. A proved definition is a natural reference model for a
+Definition postconditions are `proved`, and generated code omits their runtime
+checks; see [evidence and discharge](#evidence-and-discharge) for every other
+obligation. A proved definition is a natural reference model for a
 native adapter, as in `append xs ys = concatV xs ys` in the
 [indexed example](examples/specs/indexed_families.lawspec).
+
+## Evidence and discharge
+
+Every obligation of a program reports how it is discharged, strongest first:
+
+| Status | Obligations | How |
+| --- | --- | --- |
+| `PROVED` | laws over checked definitions; definition postconditions and indices | statically, by the prover |
+| `EXHAUSTIVELY CHECKED` | laws whose inputs form a finite domain | every input, by the compiler or the generated tests |
+| `PROPERTY TESTED` | other laws | generated cases, boundary cases and examples |
+| `RUNTIME CHECKED` | adapter contracts, definition preconditions, constructor constraints, native type bindings | at every native boundary |
+| `ASSUMED / EXTERNAL` | adapters, native functions, custom generators and codec hooks | taken on trust |
+
+A law that calls only checked definitions is attempted as a proof: its claim
+must follow from its input refinements by the same exact linear arithmetic that
+proves definition results. Definitions without preconditions are unfolded
+into the claim; a definition with preconditions stays a call, and its arguments
+must be shown to satisfy them. For example, with
+`definition twice (x :: Int32) :: BigInt is x + x end`, the law
+`` `for all` (x :: Int32) . twice x = x * 2 `` is proved.
+
+A law over checked definitions that is not proved but has a finite domain (at
+most `exhaustiveLimit` inputs) is evaluated by the compiler for every input. A
+counterexample is a compile error with code `refuted`:
+
+```text
+law always positive is false for x = -128
+```
+
+A law that calls an adapter is checked by the generated tests: for every input
+of a finite domain, or else by property testing, with the adapters it relies on
+listed. A law with no inputs has a single case and is exhaustively checked.
+Proved and compiler-checked laws are still emitted as tests, which check the
+generated native definitions.
+
+An adapter is native code that LawSpec cannot inspect: its only evidence is the
+laws that call it, and one that no law calls is reported as such. Native type
+bindings decode values through checked codecs, so they are runtime-checked,
+while native functions, custom generators and codec hooks are taken on trust
+(their values are still validated).
+
+`lawspec check` summarizes the evidence by status. `lawspec evidence` lists each
+obligation with its claim and reason, grouped by status, and accepts a unit or a
+`unit::declaration` filter; with `--json` it prints the API records. The API
+reports the obligations in the `evidence` field.
 
 ## Domain modeling
 
@@ -616,7 +658,7 @@ GADTs that refine type arguments.
 
 Still open: re-exports, and several versions of one package in one build.
 
-### 0.15 Evidence/discharge model
+### 0.15 Evidence/discharge model (released)
 
 Each obligation reports how it was discharged:
 
@@ -625,6 +667,10 @@ Each obligation reports how it was discharged:
 - `PROPERTY TESTED`: generated cases, examples and boundaries.
 - `RUNTIME CHECKED`: adapter contracts and checked codecs at native boundaries.
 - `ASSUMED / EXTERNAL`: native adapters and bindings taken on trust.
+
+Laws over checked definitions are proved or exhaustively evaluated by the
+compiler, and false ones on finite domains are rejected. See
+[evidence and discharge](#evidence-and-discharge).
 
 ## Generated project formatting
 

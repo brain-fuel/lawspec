@@ -91,7 +91,17 @@ and tests the adapters of the contracts they publish. See
 [imports and packages](LANGUAGE.md#imports-and-packages), the
 [package example](examples/packages) and the [release notes](RELEASE-0.14.md).
 
-Planned: 0.15 evidence reporting. See the [roadmap](LANGUAGE.md#roadmap).
+## Evidence and discharge in 0.15
+
+Every obligation now reports how it is discharged: `PROVED`, `EXHAUSTIVELY
+CHECKED`, `PROPERTY TESTED`, `RUNTIME CHECKED` or `ASSUMED / EXTERNAL`. Laws over
+checked definitions are proved by the compiler's linear-arithmetic prover or,
+on finite domains, evaluated for every input, and a false one is a compile
+error. Laws over adapters are exhaustively or property tested by the generated
+tests, and adapters, native functions and custom generators are listed as taken
+on trust. `lawspec evidence` shows each obligation and why. See
+[evidence and discharge](LANGUAGE.md#evidence-and-discharge) and the
+[release notes](RELEASE-0.15.md).
 
 ## Install and try it
 
@@ -102,7 +112,7 @@ support to use it; GitHub currently uses the Haskell fallback.
 Install [LawSpec from npm](https://www.npmjs.com/package/lawspec):
 
 ```sh
-npm install --save-dev lawspec@0.14.0
+npm install --save-dev lawspec@0.15.0
 npx lawspec --version
 ```
 
@@ -116,8 +126,8 @@ local dependencies so LawSpec can create its `package.json` and test script:
 ```sh
 mkdir lawspec-example
 cd lawspec-example
-npm exec --package=lawspec@0.14.0 -- lawspec init --target javascript
-npm install --save-dev lawspec@0.14.0
+npm exec --package=lawspec@0.15.0 -- lawspec init --target javascript
+npm install --save-dev lawspec@0.15.0
 npx lawspec check
 npx lawspec explain 'example.atoi_codec::itoa and then atoi yields a'
 npx lawspec doctor
@@ -207,7 +217,10 @@ uses `test/Spec.hs` with `hspec-discover`.
 
 Commands:
 
-- `check`: parse, resolve, type-check and expand laws without target dependencies.
+- `check`: parse, resolve, type-check and expand laws without target dependencies,
+  and summarize how the obligations are discharged.
+- `evidence [unit | unit::declaration]`: list each obligation, its claim and how
+  it is discharged, grouped by status.
 - `explain [unit::law]`: display expansions, example inputs, and expected results.
 - `doctor`: inspect selected native environments and print corrective instructions.
 - `generate`: check environments, validate every output, then write artifacts.
@@ -332,7 +345,7 @@ reusable laws accept these curried functions, their partial applications, and
 scalar parameters. Quantified test inputs remain scalar.
 
 The prelude defines the following laws. Every row has an executable example in
-[algebra.lawspec](https://github.com/brain-fuel/lawspec/blob/v0.14.0/examples/specs/algebra.lawspec), including both sides of every
+[algebra.lawspec](https://github.com/brain-fuel/lawspec/blob/v0.15.0/examples/specs/algebra.lawspec), including both sides of every
 combined law. `f` and `g` are binary operations, `inverse` is unary, and `e` and
 `zero` are scalar parameters. All these laws require equality of the element type.
 
@@ -400,7 +413,7 @@ their entire consequence. Every conjunct is type-checked and emitted. As with
 existing assertions, the first failure stops that individual test. `and` is now
 a reserved word.
 
-[Currying examples](https://github.com/brain-fuel/lawspec/blob/v0.14.0/examples/specs/currying.lawspec) demonstrate a four-argument
+[Currying examples](https://github.com/brain-fuel/lawspec/blob/v0.15.0/examples/specs/currying.lawspec) demonstrate a four-argument
 function partially applied twice, a formatter with four heterogeneous arguments,
 and composition after partial application. Each example states its exact outputs.
 Run `node npm/bin/lawspec.mjs examples` after rebuilding to inspect all nine units
@@ -452,7 +465,7 @@ law `valid ports round trip` is
 end
 ```
 
-The [complete port example](https://github.com/brain-fuel/lawspec/blob/v0.14.0/examples/specs/parse_port.lawspec)
+The [complete port example](https://github.com/brain-fuel/lawspec/blob/v0.15.0/examples/specs/parse_port.lawspec)
 defines valid ports as 1–65535, and covers both endpoints, ordinary ports, zero,
 negative values, and 65536. All explicit `expect` assertions run regardless of
 the law's condition. A false condition skips only the consequence: invalid ports
@@ -470,7 +483,7 @@ The prelude includes `satisfies predicate` (the predicate holds for every input)
 and `left inverse when predicate parse render` (the guarded round trip above).
 These reusable laws preserve the condition and its lexical bindings when expanded.
 `equivalent` can also compare two predicates, since `Bool` supports equality.
-The [Boolean flags example](https://github.com/brain-fuel/lawspec/blob/v0.14.0/examples/specs/boolean_flags.lawspec)
+The [Boolean flags example](https://github.com/brain-fuel/lawspec/blob/v0.15.0/examples/specs/boolean_flags.lawspec)
 checks that flipping twice restores both `false` and `true`; all targets generate
 Boolean property inputs and explicit tests for both Boolean boundary values. Java caps Boolean-only JetCheck runs at the number of
 possible input combinations (up to 100), avoiding generator exhaustion.
@@ -549,7 +562,7 @@ This expands to `for all (x :: Int32) . render (x) = referenceRender (x)`.
 The example inherits the input name `x` from the prelude. Both functions are
 user-owned adapter functions; either may delegate to your existing code.
 
-[The complete example](https://github.com/brain-fuel/lawspec/blob/v0.14.0/examples/specs/equivalent.lawspec) compares decimal
+[The complete example](https://github.com/brain-fuel/lawspec/blob/v0.15.0/examples/specs/equivalent.lawspec) compares decimal
 renderers and two implementations that clamp negative integers to zero. For
 JavaScript, their adapters can be:
 
@@ -586,7 +599,7 @@ law `normalizers agree` is
 end
 ```
 
-The [slug example](https://github.com/brain-fuel/lawspec/blob/v0.14.0/examples/specs/slug.lawspec)
+The [slug example](https://github.com/brain-fuel/lawspec/blob/v0.15.0/examples/specs/slug.lawspec)
 compares two implementations of ASCII-space replacement. It includes empty,
 Unicode and escaped text. Each target uses its native string generator:
 JetCheck `Generator.stringsOf(Generator.asciiPrintableChars())`, Hypothesis `st.text()`, fast-check `fc.string()`,
@@ -613,7 +626,7 @@ law `canonicalization reaches a fixed point` is
 end
 ```
 
-The [canonical URL example](https://github.com/brain-fuel/lawspec/blob/v0.14.0/examples/specs/canonical_url.lawspec)
+The [canonical URL example](https://github.com/brain-fuel/lawspec/blob/v0.15.0/examples/specs/canonical_url.lawspec)
 uses removal of **all trailing slashes** as a small fixed-point demonstration,
 not a complete URL canonicalization algorithm. For JavaScript:
 
@@ -622,7 +635,7 @@ export const canonicalize = value => value.replace(/\/+$/, "");
 ```
 
 Removing just one trailing slash fails the supplied repeated-slash example.
-The [mixed-input example](https://github.com/brain-fuel/lawspec/blob/v0.14.0/examples/specs/mixed_inputs.lawspec)
+The [mixed-input example](https://github.com/brain-fuel/lawspec/blob/v0.15.0/examples/specs/mixed_inputs.lawspec)
 shows `Text` and `Int32` in the same quantified property and executable example.
 The JavaScript API represents example bindings as typed records whose values use
 `DataValue`: lossless tagged scalar payloads or structural constructors. Expected results are
@@ -705,7 +718,7 @@ by the JS shim.
 ## Build and verify
 
 For contributors working from a repository checkout, build a local archive with
-`npm pack ./npm` and install it with `npm install --save-dev ./lawspec-0.14.0.tgz`.
+`npm pack ./npm` and install it with `npm install --save-dev ./lawspec-0.15.0.tgz`.
 The package payload lives in `npm/`.
 
 ```sh

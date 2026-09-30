@@ -166,7 +166,7 @@ spec = describe "source algebraic data" $ do
     case check (law "List (value :: Int8 where value > 0)" "x = x") of
       Left diagnostics -> expectationFailure (show diagnostics)
       Right program -> do
-        let encoded = BL.unpack (A.encode (Public.programView defaultGeneration [] [] [] program))
+        let encoded = BL.unpack (A.encode (Public.programView defaultGeneration [] [] [] [] program))
         encoded `shouldSatisfy` isInfixOf "allElements"
         encoded `shouldSatisfy` isInfixOf "predicate"
   it "keeps dependent List payload binders fresh" $ do

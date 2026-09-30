@@ -242,16 +242,16 @@ async function main() {
   }
   if (!verb || ["help", "--help", "-h"].includes(verb)) {
     output(
-      "LawSpec 0.14.0\nUsage: lawspec init --target <language> [--project <directory>] [--minify]\n       lawspec check | doctor | explain <unit>::<law> | generate\n       lawspec package [--project <package directory>]\n       lawspec examples [--example payments] [--target <language>] [--output <directory>]\nOptions: --config <path>, --target <language>, --machine-bits <32|64>, --json\nGeneration: --dry-run, --check, --minify\nTargets: " +
+      "LawSpec 0.15.0\nUsage: lawspec init --target <language> [--project <directory>] [--minify]\n       lawspec check | doctor | explain <unit>::<law> | generate\n       lawspec evidence [<unit> | <unit>::<declaration>]\n       lawspec package [--project <package directory>]\n       lawspec examples [--example payments] [--target <language>] [--output <directory>]\nOptions: --config <path>, --target <language>, --machine-bits <32|64>, --json\nGeneration: --dry-run, --check, --minify\nTargets: " +
         targets.join(", "),
     );
     return;
   }
   if (verb === "--version") {
-    output("0.14.0");
+    output("0.15.0");
     return;
   }
-  if (positional.length > (verb === "explain" ? 1 : 0))
+  if (positional.length > (["explain", "evidence"].includes(verb) ? 1 : 0))
     throw new Error(`Unexpected argument: ${positional.join(" ")}`);
   if (verb === "examples") {
     if (
@@ -288,7 +288,7 @@ async function main() {
     throw new Error("--minify applies to init, generate and examples");
   if (verb === "init") return init();
   if (verb === "package") return packageCommand();
-  if (!["check", "doctor", "explain", "generate"].includes(verb))
+  if (!["check", "doctor", "evidence", "explain", "generate"].includes(verb))
     throw new Error(`Unknown command: ${verb}`);
   const config = JSON.parse(await readFile(configFile, "utf8"));
   if (
@@ -332,12 +332,20 @@ async function main() {
     machineBits: options.machineBits ?? config.machineBits ?? 64,
   };
   const compiler = await createCompiler();
-  // Proved obligations need no runtime check; the rest are enforced at runtime.
+  // Each obligation reports how it is discharged, strongest first.
+  const statuses = [
+    ["proved", "PROVED"],
+    ["exhaustively-checked", "EXHAUSTIVELY CHECKED"],
+    ["property-tested", "PROPERTY TESTED"],
+    ["runtime-checked", "RUNTIME CHECKED"],
+    ["assumed", "ASSUMED / EXTERNAL"],
+  ];
   const evidenceSummary = (evidence) => {
     if (!evidence.length) return "";
     const count = (status) => evidence.filter((item) => item.status === status).length;
-    return ` Evidence: ${count("proved")} proved, ${count("runtime-checked")} runtime-checked obligation(s).`;
+    return ` Evidence: ${statuses.map(([status, label]) => `${count(status)} ${label.toLowerCase()}`).join(", ")}.`;
   };
+  const obligationName = (item) => item.declaration.replace("::law::", "::");
   if (verb === "check") {
     const result = diagnostics(await compiler.check(input));
     for (const target of selected) {
@@ -348,6 +356,36 @@ async function main() {
       options.json
         ? result
         : `Checked ${result.laws.length} law(s).` + evidenceSummary(result.evidence ?? []),
+    );
+    return;
+  }
+  if (verb === "evidence") {
+    const result = diagnostics(await compiler.check(input));
+    let evidence = result.evidence;
+    // Native bindings are configured per target; their obligations are added.
+    for (const target of selected) {
+      if (target.nativeBindings === undefined) continue;
+      const bound = diagnostics(await compiler.check({...input, nativeBindings: target.nativeBindings}));
+      evidence = evidence.concat(bound.evidence
+        .filter((item) => ["binding", "codec", "generator", "native-function"].includes(item.stage))
+        .map((item) => ({...item, target: target.language})));
+    }
+    evidence = evidence.filter((item) => !positional[0] ||
+      obligationName(item) === positional[0] || item.owner === positional[0]);
+    if (positional[0] && !evidence.length) throw new Error("No matching obligation");
+    output(
+      options.json
+        ? evidence
+        : statuses
+            .map(([status, label]) => {
+              const items = evidence.filter((item) => item.status === status);
+              if (!items.length) return null;
+              return `${label} (${items.length})\n` + items.map((item) =>
+                `  ${item.stage} ${obligationName(item)}${item.target ? ` [${item.target}]` : ""}` +
+                (item.claim ? `: ${item.claim.text}` : "") + `\n    ${item.reason}`).join("\n");
+            })
+            .filter((section) => section !== null)
+            .join("\n\n"),
     );
     return;
   }

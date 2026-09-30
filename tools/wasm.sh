@@ -22,5 +22,5 @@ mkdir -p npm/examples/native-payments
 cp -R examples/native-payments/. npm/examples/native-payments/
 mkdir -p npm/examples/packages
 cp -R examples/packages/. npm/examples/packages/
-cp README.md NATIVE-BINDINGS.md PRIMITIVES.md REFINEMENTS.md RUST.md JAVA.md PYTHON.md GO.md HASKELL.md KOTLIN.md WEB.md LANGUAGE.md API-MIGRATION.md RELEASE-0.9.md RELEASE-0.10.md RELEASE-0.11.md RELEASE-0.12.md RELEASE-0.13.md RELEASE-0.14.md LICENSE npm/
+cp README.md NATIVE-BINDINGS.md PRIMITIVES.md REFINEMENTS.md RUST.md JAVA.md PYTHON.md GO.md HASKELL.md KOTLIN.md WEB.md LANGUAGE.md API-MIGRATION.md RELEASE-0.9.md RELEASE-0.10.md RELEASE-0.11.md RELEASE-0.12.md RELEASE-0.13.md RELEASE-0.14.md RELEASE-0.15.md LICENSE npm/
 stack --no-terminal run lawspec-dev -- integrity --record

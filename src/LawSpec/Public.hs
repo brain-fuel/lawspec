@@ -3,7 +3,7 @@
 module LawSpec.Public (programView, typeView, expressionView) where
 import Data.Aeson
 import qualified LawSpec.Core as C
-import LawSpec.Core.Evidence (Obligation(..), programEvidence, statusName)
+import LawSpec.Core.Evidence (Obligation(..), statusName)
 import qualified LawSpec.Model as S
 import LawSpec.Common
 import LawSpec.Scalar (prettyScalar)
@@ -93,8 +93,8 @@ propositionView names p = case p of
 binderView :: C.Binder -> Value
 binderView b = object ["id" .= C.idText (C.binderId b), "name" .= C.binderName b, "type" .= typeView (C.binderType b)]
 
-programView :: Generation -> [S.Unit] -> [String] -> [Artifact] -> C.Program -> Value
-programView settings surface expansions artifacts C.Program{..} = object
+programView :: Generation -> [S.Unit] -> [String] -> [Artifact] -> [Obligation] -> C.Program -> Value
+programView settings surface expansions artifacts evidence C.Program{..} = object
   [ "schemaVersion" .= (3 :: Int), "machineBits" .= programMachineBits, "generation" .= settings
   , "diagnostics" .= ([] :: [Diagnostic]), "units" .= map unitView programUnits
   , "dataTypes" .= map dataView programDataDeclarations
@@ -102,7 +102,7 @@ programView settings surface expansions artifacts C.Program{..} = object
   , "laws" .= [propertyView (C.idText (C.unitId u)) p | u <- programUnits,p <- C.unitProperties u]
   , "contracts" .= [object ["owner" .= C.idText (C.unitId u),"contract" .= contractView c] | u <- programUnits,c <- C.unitContracts u]
   , "refinements" .= [refinementView u r | u <- surface,r <- S.refinements u]
-  , "evidence" .= map evidenceView (programEvidence C.Program{..})
+  , "evidence" .= map evidenceView evidence
   , "expansions" .= expansions, "files" .= artifacts
   ]
   where
@@ -143,12 +143,14 @@ programView settings surface expansions artifacts C.Program{..} = object
       [ "owner" .= C.idText (obligationUnit o), "declaration" .= C.idText (obligationDeclaration o)
       , "stage" .= obligationStage o, "status" .= statusName (obligationStatus o)
       , "reason" .= obligationReason o
-      , "claim" .= expressionView (declarationBinders (obligationDeclaration o)) (obligationClaim o) ]
+      , "claim" .= fmap (expressionView (declarationBinders (obligationDeclaration o))) (obligationClaim o) ]
     declarationBinders declaration = concat
       [ [(C.binderId b,C.binderName b) | b <- C.contractArguments c ++ [C.contractResult c]]
       | u <- programUnits, c <- C.unitContracts u, C.contractDeclaration c == declaration ] ++ concat
       [ [(C.binderId b,C.binderName b) | b <- C.constructorFields c]
-      | d <- programDataDeclarations, c <- C.dataConstructors d, C.constructorId c == declaration ]
+      | d <- programDataDeclarations, c <- C.dataConstructors d, C.constructorId c == declaration ] ++ concat
+      [ [(C.binderId b,C.binderName b) | q <- C.propertyInputs p, let b = C.quantifiedBinder q]
+      | u <- programUnits, p <- C.unitProperties u, C.propertyId p == declaration ]
     contractView c = let names = [(C.binderId b,C.binderName b) | b <- C.contractArguments c ++ [C.contractResult c]] in object
       ["id" .= C.idText (C.contractDeclaration c),"name" .= declarationName (C.contractDeclaration c)
       ,"arguments" .= map binderView (C.contractArguments c),"result" .= binderView (C.contractResult c)
