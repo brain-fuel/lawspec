@@ -57,7 +57,7 @@ npm test
 Tests use VS Code's actual TextMate tokenizer and Oniguruma engine. They check
 token scopes, keyword boundaries, Unicode identifiers, escapes, recovery from
 unfinished law names, editor registration, and tokenization of the repository's
-examples and parser fixtures. CI runs these separately from compiler tests.
+examples and parser fixtures. `lawspec-dev ci` runs them alongside the compiler tests.
 
 ## GitHub highlighting
 

@@ -1,5 +1,22 @@
 # LawSpec 0.13
 
+## 0.13.2
+
+A maintenance release. The language, generated code and API are unchanged.
+
+- The repository has no hosted CI. `stack run lawspec-dev -- ci` runs the
+  complete check locally: compiler, npm, parity, package and editor checks, then
+  for each target the dependency bootstrap, every acceptance suite in both
+  machine profiles, and the installed native-binding example. It logs each step to
+  `.artifacts/ci/` and exits non-zero on any failure. `--target`, `--core`,
+  `--fail-fast`, `--rust-toolchains` and `--rust-targets` select what to run.
+  `make ci` is equivalent.
+- The JavaScript acceptance runners and fixture modules replaced by
+  `lawspec-acceptance` are removed.
+- The package smoke test's per-command timeout is ten minutes: exporting every
+  bundled example had exceeded the former two-minute limit on slower machines.
+- The integration bootstrap restores missing scaffold files in existing projects.
+
 ## 0.13.1
 
 A maintenance release. The language, generated code and API are unchanged from

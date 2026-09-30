@@ -1,6 +1,6 @@
 # Native domain bindings: 0.10 acceptance scope
 
-Status: implementation and local acceptance complete; remote CI remains pending. The payment example now executes with
+Status: implementation and acceptance complete. The payment example now executes with
 compiler-generated Rust bridges and application-library linkage. Rust supports
 generic products/sums, regular recursive mappings, nested built-in containers,
 and native Proptest factories that compose child strategies and retain shrinking.
@@ -955,7 +955,7 @@ CLI acceptance path: pack and install, export the payment project, prepare nativ
 dependencies, check and generate, run the normal native build tool, reject an
 incorrect fee implementation, restore application source, re-export, and check
 regeneration. Logs for every command are retained under
-`.artifacts/native-example-integration/`. CI runs this for every target with the
+`.artifacts/native-example-integration/`. `lawspec-dev ci` runs this for every target with the
 default profile and with `LAWSPEC_MACHINE_BITS=32 LAWSPEC_MINIFY=1`.
 `LAWSPEC_PYTHON` selects the Python version for uv; an existing interpreter can be
 selected with `LAWSPEC_PYTHON_EXECUTABLE`. `LAWSPEC_NODE_MODULES` and
@@ -964,7 +964,7 @@ selected with `LAWSPEC_PYTHON_EXECUTABLE`. `LAWSPEC_NODE_MODULES` and
 Go proxy access; Stack still requires its normal configured dependency cache.
 `STACK_ROOT` and `GRADLE_USER_HOME` can select writable copies of existing caches.
 
-The installed CLI/native-tool path has passed for all eight targets in both CI
+The installed CLI/native-tool path has passed for all eight targets in both
 configurations: 64-bit readable output and 32-bit compact output. TypeScript
 uses the exact declared dependencies recovered from the existing npm cache;
 Haskell uses a writable copy of the existing Stack cache. Kotlin's Gradle 9.3.0
@@ -999,8 +999,8 @@ The full npm regression suite passes 77 tests, and the package smoke test passes
 installed API generation on all eight targets plus executable Rust scaffold,
 doctor, adapter and regeneration checks. The package contains the binding guide,
 migration notes, release notes and all eight application example configurations.
-The remote CI gate for these checks was reviewed during the 0.11 release, which
-re-ran every target job, including both installed native-binding profiles.
+These checks, including both installed native-binding profiles, are part of
+`lawspec-dev ci`, the repository's local check.
 
 The empty-parameter audit must distinguish an empty type from an inhabited type
 that mentions it. A native factory for `Phantom Empty` may ignore its child

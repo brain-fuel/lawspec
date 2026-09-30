@@ -130,8 +130,8 @@
     "wasm/lawspec-wasm.cabal"
   ],
   "digests": {
-    "lawspec.cabal": "662be847d4a1a18ca1da0bede8fa9a9c941963f2bd5c4bc8d7f04617eb4f824f",
-    "package.yaml": "7e5fbcbc06abf886d2c4b6130ab3d572c1db9754e56d5597cbe356bb3f45024c",
+    "lawspec.cabal": "88e838807acd277e0e8935016e1fef69a833077f4d71f124c90dc82595a38ff1",
+    "package.yaml": "63da3402b545fee063873916cbf7a1a21043a7c2a66424d0be715b28e4e2d590",
     "runtime/LawSpecCodecs.hs": "90cb1ed15d7ab664a17a054580c849408d77cfd2b2adcb4a3228b05132caeaca",
     "runtime/LawSpecDataStrategies.hs": "cbe9f1946228db1076c19cd3158e8798fe32766cfdbea3f66b63d22d3d217508",
     "runtime/LawSpecDataStrategies.java": "e3416efe8a0d7b1276cb4d1a8105fd01b1f5f3f02a803bf55d955d9e3ec39095",
@@ -155,8 +155,8 @@
     "runtime/lawspec_schema.mjs": "60eb4204461eaa2c207fc7c3394014e2a814e4383b7045c065b4dae7c7a202c2",
     "runtime/lawspec_schema.py": "b6967ef1a33fe6a1a180d5573ec37cd8bb2079c06e961ac2eeb05f23cffcdd07",
     "runtime/lawspec_strategies.rs": "cac9ca301d4614fff9acfe61e7cc5678fabc044edadfa89ec11599b6780dc5f3",
-    "runtime/rust/Cargo.lock": "764ed121852a042549e0e3a022ed6e9bb363698aec5511a43752b0b1b242b421",
-    "runtime/rust/Cargo.toml": "0e9864240849670edebb580adaa0f014f4e29fed9dfac1337913975d6f8ee577",
+    "runtime/rust/Cargo.lock": "17f3a870021e47b128578e6a4e2467ac02376584b89b851daa6280fbeda23abf",
+    "runtime/rust/Cargo.toml": "f3737514e8a696bdfcf496c483d03aab9dda0c9fc6cf07b8a6ec300d9b0d8e15",
     "src/LawSpec/Api.hs": "392f6e8c1a9ae81a95e219ac071e5b4bea03ee330d63b829036f8f54b2eda8a7",
     "src/LawSpec/Backend.hs": "03c3b0cd62467ca677c88d29d7b12b2ab505cc0076d93d1f48fbddb0e9bcf133",
     "src/LawSpec/Capabilities.hs": "e43d4fc3a4481fbb8aa3ff1c3f41f7e7fca5db01bfe256a30162a45d75a00c1c",
@@ -256,8 +256,8 @@
     "wasm/app/Exports.hs": "4ecbdac8faa2449e6fc61b93c82e6278fa14374154f29b4dacf0eef433f06a47",
     "wasm/cabal.project": "021e560afdc5eb4cb7169e7119ecb8f92c9ee170245af909c94b612941bff5cc",
     "wasm/cabal.project.freeze": "733dbed3d2ecccb26e874fd58f136296dad772184deb1658c196b5d54a0814dc",
-    "wasm/lawspec-wasm.cabal": "bbfe03c6412b713e64116759c14d26bcc886e90d58ff501c06958e04c56333e5",
-    "npm/core.wasm": "1468d3e3ec32994762b90eed7193627cc0e890218eec4a61d06a3a3b96c03964",
+    "wasm/lawspec-wasm.cabal": "5ca5b6f2ed98be3095c0f1f2233efbe13f61f2a13dd111936c5c956df0fd1725",
+    "npm/core.wasm": "16f17510da392bc8fff7d4cbcb34abab2fa0e45abd4a9d4f4d62bf0ffb19cff5",
     "npm/core_jsffi.js": "88d136efe92f7cff5758c8fec8d9b6bbc9707fe37741cebeeb415fe34ce3d72b",
     "npm/api.mjs": "e93251db289ff0609abaff78ad67f0a9af82508c1141c6a999604f67c56b6e7d",
     "npm/index.d.ts": "2674f8830bd20a2b9ef7dfa99e183598125b6bcc17e8d454e8f7cca1bbd2c9fe"

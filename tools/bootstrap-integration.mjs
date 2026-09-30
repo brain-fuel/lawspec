@@ -3,7 +3,7 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { access, readFile, writeFile, mkdir, copyFile } from "node:fs/promises";
 import path from "node:path";
-import { targets } from "../npm/templates.mjs";
+import { targets, templates } from "../npm/templates.mjs";
 const exec = promisify(execFile);
 const repo = path.resolve(import.meta.dirname, "..");
 async function run(cmd, args, cwd) {
@@ -40,6 +40,15 @@ async function setup(target) {
       ],
       repo,
     );
+  // An existing project may predate a scaffold file; restore any that are
+  // missing without touching files already present.
+  for (const [file, content] of Object.entries(templates(target))) {
+    const destination = path.join(root, file);
+    if (!(await access(destination).then(() => true, () => false))) {
+      await mkdir(path.dirname(destination), { recursive: true });
+      await writeFile(destination, content);
+    }
+  }
   const config = JSON.parse(await readFile(configPath, "utf8"));
   if (["javascript", "typescript"].includes(target)) {
     const lock = path.join(repo, "test/locks", target, "package-lock.json");

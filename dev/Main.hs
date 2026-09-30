@@ -4,9 +4,11 @@
 --   lawspec-dev integrity           npm/build.json matches sources and artifacts,
 --                                   and staged npm copies match their sources
 --   lawspec-dev integrity --record  rewrite npm/build.json (tools/wasm.sh)
+--   lawspec-dev ci [options]        the complete check; see dev/Ci.hs
 module Main (main) where
 
 import Control.Monad (forM, forM_, unless, when)
+import Ci (ci)
 import qualified Crypto.Hash.SHA256 as SHA256
 import qualified Data.ByteString as B
 import Data.Char (intToDigit)
@@ -23,7 +25,8 @@ main = getArgs >>= \case
   ["boundaries"] -> boundaries
   ["integrity"] -> integrity False
   ["integrity", "--record"] -> integrity True
-  _ -> die "usage: lawspec-dev boundaries | integrity [--record]"
+  "ci" : options -> ci options
+  _ -> die "usage: lawspec-dev boundaries | integrity [--record] | ci [options]"
 
 -- Follow transitive local imports, so a convenience module cannot hide
 -- syntax or inference behind Core, the testing plan, or an emitter.

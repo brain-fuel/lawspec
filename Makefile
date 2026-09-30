@@ -1,4 +1,4 @@
-.PHONY: test wasm check package integration
+.PHONY: test wasm check package integration ci
 
 test:
 	stack --no-terminal test
@@ -15,9 +15,12 @@ check: test
 package:
 	node tools/package-smoke.mjs
 
+# The complete check: compiler, npm, editor and all eight targets.
+ci:
+	stack --no-terminal run lawspec-dev -- ci
+
 integration:
-	node tools/bootstrap-integration.mjs
-	node tools/integration.mjs
+	stack --no-terminal run lawspec-dev -- ci --fail-fast
 
 .PHONY: examples
 examples:
