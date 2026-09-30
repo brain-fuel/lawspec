@@ -46,6 +46,13 @@ data ConstructorDeclaration = ConstructorDeclaration
   { dataConstructorName :: String, dataConstructorFields :: [(String,Type)]
   , dataConstructorSpan :: Span
   } deriving (Eq, Show, Generic)
+-- import shop.money [as money] [(Amount, add, `associative`)]: qualified
+-- access through the alias, plus unqualified access to the listed names. Law
+-- names are listed with their backticks.
+data Import = Import
+  { importUnit :: String, importAlias :: String
+  , importItems :: [String], importSpan :: Span
+  } deriving (Eq, Show, Generic)
 data FunctionDefinition = FunctionDefinition
   { functionName :: String, functionArguments :: [(String, Type)]
   , functionResult :: Type, functionRequirements :: [Constraint]

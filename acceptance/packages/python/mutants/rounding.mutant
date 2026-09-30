@@ -1,0 +1,8 @@
+@@ src/shop/orders.py
+<<<<<<<
+    remainder = abs(value0) % 100
+
+=======
+    remainder = 1 if value0 > 0 else 0
+
+>>>>>>>

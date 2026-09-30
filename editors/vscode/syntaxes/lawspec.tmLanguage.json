@@ -79,6 +79,23 @@
       }
     },
     {
+      "match": "\\b(import)\\b[ \\t]+(\\p{L}[\\p{L}\\p{N}_]*(?:[ \\t]*\\.[ \\t]*\\p{L}[\\p{L}\\p{N}_]*)*)(?:[ \\t]+(as)\\b[ \\t]+(\\p{L}[\\p{L}\\p{N}_]*))?",
+      "captures": {
+        "1": {
+          "name": "keyword.control.import.lawspec"
+        },
+        "2": {
+          "name": "entity.name.namespace.lawspec"
+        },
+        "3": {
+          "name": "keyword.control.import.lawspec"
+        },
+        "4": {
+          "name": "entity.name.namespace.lawspec"
+        }
+      }
+    },
+    {
       "match": "\\b(type|refinement)\\b[ \\t]+(\\p{L}[\\p{L}\\p{N}_]*)",
       "captures": {
         "1": {

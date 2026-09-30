@@ -5,7 +5,7 @@ cabal-version: 1.12
 -- see: https://github.com/sol/hpack
 
 name:           lawspec
-version:        0.13.2
+version:        0.14.0
 synopsis:       Portable executable laws
 license:        MIT
 license-file:   LICENSE
@@ -199,6 +199,7 @@ library
       LawSpec.CoreNativeScalarEmit
       LawSpec.CoreScalarEmit
       LawSpec.Data
+      LawSpec.DataNames
       LawSpec.DefinitionTotality
       LawSpec.Domain
       LawSpec.DomainModel
@@ -221,6 +222,7 @@ library
       LawSpec.HaskellProperties
       LawSpec.HaskellTestHelpers
       LawSpec.HaskellTypeRefs
+      LawSpec.Imports
       LawSpec.Indexed
       LawSpec.Inference
       LawSpec.JavaData
@@ -238,6 +240,7 @@ library
       LawSpec.Model
       LawSpec.NativeBinding
       LawSpec.NativeRequest
+      LawSpec.Packages
       LawSpec.Parser
       LawSpec.PortableGenerator
       LawSpec.PortableTestHelpers
@@ -386,6 +389,7 @@ test-suite lawspec-test
       DocumentSpec
       DomainModelSpec
       GenericDefinitionSpec
+      ImportSpec
       IndexedSpec
       InferenceSchemeSpec
       NativeBindingSpec

@@ -3,8 +3,9 @@
 -- for primitive domains with no faithful Java representation.
 module LawSpec.JavaData (schemaSource, emitJavaData, emitJavaDataWithProfile, emitJavaSchema, javaDataType, javaCodec, javaTypeReference, javaDataKey, javaDataTypeDoc, javaCodecDoc, javaCodecDocWithContext, javaDataName, identifier) where
 
+import LawSpec.DataNames (qualifiedDataName)
 import Control.Monad (unless, forM)
-import Data.Char (isAscii, isAlphaNum, isLetter, toLower, toUpper, ord)
+import Data.Char (isAscii, isAlphaNum, isLetter, toLower, ord)
 import Data.List (nub)
 import Numeric (showHex)
 import qualified LawSpec.Core as C
@@ -30,7 +31,7 @@ namesFor :: [C.DataDeclaration] -> Either String Names
 namesFor declarations = do
   let sourceNames = [(C.idText (C.dataId d), C.dataName d) | d <- declarations]
       duplicated name candidates = length (filter ((== map toLower name) . map toLower . snd) candidates) > 1
-      qualified = [(identity, if duplicated name sourceNames then qualify identity else name)
+      qualified = [(identity, if duplicated name sourceNames then qualifiedDataName identity else name)
         | (identity,name) <- sourceNames]
       names = [(identity, if duplicated name qualified then name ++ "_" ++ encodeIdentity identity else name)
         | (identity,name) <- qualified]
@@ -39,9 +40,6 @@ namesFor declarations = do
     (Left "Java data declarations have conflicting identities")
   pure names
   where
-    qualify = concatMap capitalize . words . map (\c -> if isAlphaNum c then c else ' ')
-    capitalize [] = []
-    capitalize (first:rest) = toUpper first : rest
     encodeIdentity = concatMap (\c -> showHex (ord c) "_")
 
 nativeName :: Names -> C.DataDeclaration -> String

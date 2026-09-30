@@ -1,0 +1,6 @@
+@@ src/shop/orders.rs
+<<<<<<<
+ShopOrdersCurrency::Gbp => ShopDomainCurrency::Eur,
+=======
+ShopOrdersCurrency::Gbp => ShopDomainCurrency::Usd,
+>>>>>>>

@@ -1,6 +1,7 @@
 -- Native algebraic declarations are rendered from resolved Core identities.
 module LawSpec.HaskellData (requiresSchema, emitHaskellData, haskellDataType, haskellDataTypeWithRepresentations, haskellNativeTypeWithParameters, emitHaskellSchema, emitHaskellSchemaWithProfile, haskellTypeReference, emitHaskellCodecs, emitHaskellCodecsWithRepresentations, emitHaskellCodecsWithHooks, haskellCodec, haskellCodecDoc, haskellCodecDocWithContext, haskellCodecDocIn, haskellTypeReferenceDoc) where
 
+import LawSpec.DataNames (flatDataCandidates)
 import LawSpec.HaskellTypeRefs
 import qualified LawSpec.HaskellExpr as E
 import qualified LawSpec.Backend as Backend
@@ -30,18 +31,12 @@ identifier name = unless valid (Left ("invalid Haskell data identifier: " ++ nam
 
 namesFor :: [C.DataDeclaration] -> Either String Names
 namesFor declarations = do
-  let candidates = concat
-        [[(C.dataId d, capitalize (C.dataName d))] ++
-          [(C.constructorId c, capitalize (C.dataName d) ++ capitalize (C.constructorName c)) | c <- C.dataConstructors d]
-        | d <- declarations]
-      duplicate name xs = length (filter ((== map toLower name) . map toLower . snd) xs) > 1
-      qualified = [(identity, if duplicate name candidates then qualify (C.idText identity) else name) | (identity,name) <- candidates]
+  let duplicate name xs = length (filter ((== map toLower name) . map toLower . snd) xs) > 1
+      qualified = flatDataCandidates capitalize (const False) declarations
       names = [(identity, if duplicate name qualified then name ++ "_" ++ concatMap (\c -> showHex (ord c) "_") (C.idText identity) else name) | (identity,name) <- qualified]
   mapM_ (identifier . snd) names
   unless (length names == length (nub (map (map toLower . snd) names))) (Left "conflicting Haskell data identities")
   pure names
-  where
-    qualify = concatMap capitalize . words . map (\c -> if isAlphaNum c then c else ' ')
 
 application :: String -> [String] -> String
 application name [] = name

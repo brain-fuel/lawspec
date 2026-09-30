@@ -7,10 +7,14 @@ import qualified Data.Map.Strict as M
 import Data.List (nub, intercalate)
 
 lowerUnit :: Unit -> Either String Unit
-lowerUnit u = do
+lowerUnit = lowerUnitWith M.empty
+
+-- Imported data types are known by their qualified names.
+lowerUnitWith :: M.Map String DataTypeDeclaration -> Unit -> Either String Unit
+lowerUnitWith imported u = do
   let rs = refinements u; table = M.fromList [(refinementName r,r) | r <- rs]
   unless (length rs == M.size table) (Left "duplicate refinement")
-  let structures = M.fromList [(dataTypeName d,d{dataTypeConstructors=
+  let structures = M.union imported $ M.fromList [(dataTypeName d,d{dataTypeConstructors=
         [c{dataConstructorName=unitName u ++ "::type::" ++ dataTypeName d ++ "::" ++ dataConstructorName c}
         | c <- dataTypeConstructors d]}) | d <- dataTypes u]
   mapM_ (validateDeclaration structures table) rs

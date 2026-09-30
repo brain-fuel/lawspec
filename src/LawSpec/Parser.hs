@@ -1,21 +1,22 @@
-module LawSpec.Parser (parseSource) where
+module LawSpec.Parser (parseSource, parseSources, sourceUnit) where
 
 import LawSpec.Model
 import LawSpec.Indexed
 import LawSpec.DomainModel
 import LawSpec.Scalar
 import Control.Monad.Combinators.Expr
-import Control.Monad (void, unless)
+import Control.Monad (void, unless, when, forM_)
 import Control.Monad.Reader (Reader, asks, runReader)
 import qualified Data.Map.Strict as M
+import qualified Data.Map.Lazy as Lazy
 import Data.Char (isLower, isUpper, isControl)
-import Data.List (uncons)
+import Data.List (uncons, intercalate)
 import Data.Void (Void)
 import Text.Megaparsec hiding (SourcePos, parse)
 import Text.Megaparsec.Char
 import qualified Text.Megaparsec.Char.Lexer as L
 
-data Header = RefinementHeader [Bool] | DataHeader [Bool]
+data Header = RefinementHeader [Bool] | DataHeader [Bool] | AliasHeader
 type P = ParsecT Void String (Reader (M.Map String Header))
 spaceP :: P ()
 spaceP = L.space space1 (L.skipLineComment "--") empty
@@ -29,6 +30,33 @@ ident :: P String
 ident = lexeme $ try $ do
   x <- (:) <$> letterChar <*> many (alphaNumChar <|> char '_')
   if x `elem` ["unit","law","requires","is","end","definition","description","rationale","example","expect","implies","and","true","false","references","are","Eq","where","refinement","type","match","with"] then fail "reserved identifier" else pure x
+-- A name, or alias.name for a name exported by an imported unit. The alias and
+-- the dot are adjacent; write f . g with spaces to compose a function named
+-- like an alias.
+qualifiedName :: P String
+qualifiedName = try (do
+    alias <- (:) <$> letterChar <*> many (alphaNumChar <|> char '_')
+    known <- asks (M.member ("alias:" ++ alias))
+    unless known (fail "not an import alias")
+    void (char '.')
+    n <- ident
+    pure (alias ++ "." ++ n))
+  <|> ident
+-- The declared name without its import alias.
+baseName :: String -> String
+baseName = reverse . takeWhile (/= '.') . reverse
+-- Constructors start with an uppercase letter; prelude.Int32 is a conversion.
+startsUpper :: String -> Bool
+startsUpper name = take 8 name /= "prelude." && maybe False (isUpper . fst) (uncons (baseName name))
+lawReference :: P String
+lawReference = try (do
+    alias <- (:) <$> letterChar <*> many (alphaNumChar <|> char '_')
+    known <- asks (M.member ("alias:" ++ alias))
+    unless known (fail "not an import alias")
+    void (char '.')
+    n <- quoted
+    pure (alias ++ ".`" ++ n ++ "`"))
+  <|> quoted
 quoted :: P String
 quoted = lexeme (char '`' *> some (satisfy (\c -> c /= '`' && not (isControl c))) <* char '`')
 str :: P String
@@ -45,7 +73,7 @@ typeAtom = try (parens $ do
     p <- optional (keyword "where" *> expr)
     pure (Refined n t p))
   <|> parens typeP <|> do
-    n <- ident
+    n <- qualifiedName
     headers <- asks (M.lookup n)
     case headers of
       Just (RefinementHeader kinds) -> RefinementApp n <$> mapM argument kinds
@@ -55,6 +83,7 @@ typeAtom = try (parens $ do
       Nothing | n == naturalRefinementName -> pure (RefinementApp n [])
               | n `elem` ["Nullable","Optional","List","Maybe"] -> Applied n <$> typeAtom
               | n == "Either" -> Application n <$> sequence [typeAtom, typeAtom]
+              | '.' `elem` n -> pure (Named n)
               | otherwise -> pure (if maybe False (isLower . fst) (uncons n) then Variable n else Named n)
   where argument True = TypeArgument <$> typeAtom
         argument False = ValueArgument <$> (parens expr <|> try numeric <|> (BoolLit <$> boolP) <|> (StringLit <$> str) <|> (Var <$> ident))
@@ -171,22 +200,22 @@ expr = located $ makeExprParser application
         _ -> foldl1 Apply terms
     atom = located $ matchP <|> (ListLit <$> between (symbol "[") (symbol "]") (expr `sepBy` symbol ",")) <|> (BoolLit <$> boolP) <|> (StringLit <$> str) <|> try scalarP
       <|> parenthesizedExpr
-      <|> try numeric <|> try (do n <- ident; void (char '.'); b <- ("min" <$ keyword "min") <|> ("max" <$ keyword "max"); pure (TypeBound b (if maybe False (isLower . fst) (uncons n) then Variable n else Named n))) <|> (do name <- valueName; pure (if maybe False (isUpper . fst) (uncons name) then ConstructLit name [] else Var name))
+      <|> try numeric <|> try (do n <- ident; alias <- asks (M.member ("alias:" ++ n)); unless (not alias) (fail "import alias"); void (char '.'); b <- ("min" <$ keyword "min") <|> ("max" <$ keyword "max"); pure (TypeBound b (if maybe False (isLower . fst) (uncons n) then Variable n else Named n))) <|> (do name <- valueName; pure (if startsUpper name then ConstructLit name [] else Var name))
     matchP = do
       keyword "match"
       value <- expr
       keyword "with"
       branches <- some $ do
         void (symbol "|")
-        tag <- ident
-        unless (maybe False (isUpper . fst) (uncons tag)) (fail "expected constructor in match pattern")
+        tag <- qualifiedName
+        unless (startsUpper tag) (fail "expected constructor in match pattern")
         names <- many ident
         unless (all (maybe False (isLower . fst) . uncons) names) (fail "pattern binders must start with a lowercase letter")
         void (symbol "->")
         MatchBranch tag names <$> expr
       keyword "end"
       pure (MatchExpr value branches)
-    valueName = try (do keyword "prelude"; void (symbol "."); n <- ident; pure ("prelude." ++ n)) <|> ident
+    valueName = try (do keyword "prelude"; void (symbol "."); n <- ident; pure ("prelude." ++ n)) <|> qualifiedName
     -- An adjacent sign remains part of a numeric argument: f -42. For subtraction use x - 42.
 located :: P Expr -> P Expr
 located parser = do
@@ -241,7 +270,7 @@ defP = (do void (symbol "`for all`"); ps <- some param; void (symbol "."); Foral
    <|> do a <- clause
           option a (And a <$> (keyword "and" *> defP))
   where
-    clause = (Invoke <$> quoted <*> many (parenthesizedExpr <|> (BoolLit <$> boolP) <|> (StringLit <$> str) <|> (Number <$> lexeme (L.signed (pure ()) L.decimal)) <|> (Var <$> ident)))
+    clause = (Invoke <$> lawReference <*> many (parenthesizedExpr <|> (BoolLit <$> boolP) <|> (StringLit <$> str) <|> (Number <$> lexeme (L.signed (pure ()) L.decimal)) <|> (Var <$> qualifiedName)))
       <|> try (do
         a <- expr
         (keyword "implies" *> (Implies a <$> defP))
@@ -253,8 +282,8 @@ boolP = (keyword "true" *> pure True) <|> (keyword "false" *> pure False)
 constructorLiteral :: P Literal
 constructorLiteral = do
   name <- try $ do
-    name <- ident
-    unless (maybe False (isUpper . fst) (uncons name)) (fail "expected constructor literal")
+    name <- qualifiedName
+    unless (startsUpper name) (fail "expected constructor literal")
     pure name
   declared <- asks (M.lookup ("constructor:" ++ name))
   arity <- case declared of
@@ -321,10 +350,32 @@ data UnitMember = DataMember DataTypeDeclaration | FamilyMember IndexedFamily | 
   | SignatureMember ((String, Type), Span) | LawMember Law
   | DefinitionMember FunctionDefinition
 
-unitP :: P (Unit, [IndexedFamily], [Wrapper], [Workflow])
-unitP = do
+unitNameP :: P String
+unitNameP = foldr1 (\a b -> a ++ "." ++ b) <$>
+  (lexeme ((:) <$> letterChar <*> many (alphaNumChar <|> char '_')) `sepBy1` symbol ".")
+
+importP :: P Import
+importP = do
+  ((target, alias, items), range) <- withSpan $ do
+    keyword "import"
+    target <- unitNameP
+    alias <- optional (keyword "as" *> ident)
+    items <- option [] (parens (((\n -> "`" ++ n ++ "`") <$> quoted <|> ident) `sepBy1` symbol ","))
+    pure (target, alias, items)
+  pure (Import target (maybe (baseName target) id alias) items range)
+
+-- The unit header and its imports, read before the full parse so that imported
+-- declaration arities are known.
+preambleP :: P (String, [Import])
+preambleP = do
   spaceP; keyword "unit"
-  n <- concatWithDot <$> (lexeme ((:) <$> letterChar <*> many (alphaNumChar <|> char '_')) `sepBy1` symbol ".")
+  n <- unitNameP
+  imports <- many (try importP)
+  pure (n, imports)
+
+unitP :: P (Unit, [Import], [IndexedFamily], [Wrapper], [Workflow])
+unitP = do
+  (n, imports) <- preambleP
   members <- many ((either FamilyMember DataMember <$> declarationP)
     <|> (WrapperMember <$> wrapperP)
     <|> (WorkflowMember <$> workflowP)
@@ -338,17 +389,79 @@ unitP = do
         [((functionName d, foldr Arrow (functionResult d) (map snd (functionArguments d))), functionSpan d) | d <- definitions]
   pure (Unit n (map fst signatures) [l | LawMember l <- members]
     [r | RefinementMember r <- members] [] [(name,range) | ((name,_),range) <- signatures]
-    [d | DataMember d <- members] definitions, [f | FamilyMember f <- members],
+    [d | DataMember d <- members] definitions, imports, [f | FamilyMember f <- members],
     [w | WrapperMember w <- members], [w | WorkflowMember w <- members])
-  where concatWithDot = foldr1 (\a b -> a ++ "." ++ b)
+
 parseSource :: Source -> Either [Diagnostic] Unit
-parseSource (Source p s) = case runReader (runParserT unitP p s) (literalHeaders s (headers s)) of
+parseSource source = fst . fst <$> parseWith M.empty [] source
+
+-- Parse sources that may import one another. Each unit sees the declaration
+-- arities of the units it imports, qualified by alias and unqualified for
+-- listed names; LawSpec.Imports resolves the names themselves.
+parseSources :: [Source] -> Either [Diagnostic] [(Unit, [Import])]
+parseSources sources = do
+  mapM_ acyclic (M.keys graph)
+  let names = [n | (_, n, _) <- preambles]
+  forM_ names $ \n -> when (length (filter (== n) names) > 1)
+    (Left [Diagnostic "duplicate-unit" "unit names must be unique; prelude is reserved" Nothing])
+  mapM (\source -> either (const (fst <$> parseWith (imported source) [] source))
+    (\(n, _) -> fst <$> results Lazy.! n) (preamble source)) sources
+  where
+    -- Parsed lazily in import order, so a unit sees its imports' indexed
+    -- families under the names it uses for them.
+    results = Lazy.fromList [(n, parseWith (imported s) (families imports) s) | (s, n, imports) <- preambles]
+    families imports = concat
+      [ [f{familyName = importAlias i ++ "." ++ familyName f} | f <- declared] ++
+        [f | f <- declared, familyName f `elem` importItems i]
+      | i <- imports, Just (Right (_, declared)) <- [Lazy.lookup (importUnit i) results] ]
+    preambles = [(s, n, imports) | s <- sources, Right (n, imports) <- [preamble s]]
+    preamble (Source p s) = runReader (runParserT preambleP p s) M.empty
+    graph = M.fromList [(n, imports) | (_, n, imports) <- preambles]
+    -- Exports are computed lazily in import order, so an exported declaration
+    -- may itself use its unit's imports.
+    exports = Lazy.fromList [(n, sourceExports (imported s) s) | (s, n, _) <- preambles]
+    imported source = case preamble source of
+      Left _ -> M.empty
+      Right (_, imports) -> M.unions
+        [ M.insert ("alias:" ++ importAlias i) AliasHeader (M.unions
+            [ M.fromList [(qualify (importAlias i) key, h) | (key, h) <- M.toList table]
+            , M.fromList [(key, h) | (key, h) <- M.toList table, listed owners (importItems i) key] ])
+        | i <- imports, Just (table, owners) <- [Lazy.lookup (importUnit i) exports] ]
+    qualify alias key = case break (== ':') key of
+      ("constructor", ':' : n) -> "constructor:" ++ alias ++ "." ++ n
+      _ -> alias ++ "." ++ key
+    listed owners items key = case break (== ':') key of
+      ("constructor", ':' : n) -> any (\item -> maybe False (n `elem`) (lookup item owners)) items
+      _ -> key `elem` items
+    acyclic start = go [start] start
+      where
+        go path n = forM_ (M.findWithDefault [] n graph) $ \i ->
+          if importUnit i == start
+            then Left [Diagnostic "import" ("import cycle: " ++ intercalate " -> " (reverse path ++ [start]))
+              (Just (spanStart (importSpan i)))]
+            else unless (importUnit i `elem` path) (go (importUnit i : path) (importUnit i))
+
+-- The unit a source declares.
+sourceUnit :: Source -> Either String String
+sourceUnit (Source p s) = either (Left . errorBundlePretty) (Right . fst)
+  (runReader (runParserT preambleP p s) M.empty)
+
+-- The headers a unit exports: its type, wrapper and refinement arities and its
+-- constructor arities, with each data type's constructors.
+sourceExports :: M.Map String Header -> Source -> (M.Map String Header, [(String, [String])])
+sourceExports extra (Source _ s) =
+  (M.filterWithKey (\key _ -> not ('.' `elem` key)) (literalHeaders s (M.union (headers s) extra)),
+   constructorOwners extra s)
+
+parseWith :: M.Map String Header -> [IndexedFamily] -> Source -> Either [Diagnostic] ((Unit, [Import]), [IndexedFamily])
+parseWith extra importedFamilies (Source p s) = case runReader (runParserT unitP p s) (literalHeaders s (M.union (headers s) extra)) of
   Left e -> Left [Diagnostic "parse" (errorBundlePretty e) Nothing]
-  Right (u, families, wrappers, workflows) -> do
+  Right (u, imports, families, wrappers, workflows) -> do
     modeled <- either (\(at, message) -> Left [Diagnostic "domain" message at]) Right
       (elaborateDomain wrappers workflows u)
-    either (\message -> Left [Diagnostic "indexed" (p ++ ": " ++ message) Nothing]) Right
-      (elaborateFamilies families modeled)
+    elaborated <- either (\message -> Left [Diagnostic "indexed" (p ++ ": " ++ message) Nothing]) Right
+      (elaborateFamiliesWith importedFamilies families modeled)
+    pure ((elaborated, imports), families)
 
 -- Read declaration arities before parsing applications, including forward references.
 -- Strings, quoted law names and comments are consumed atomically.
@@ -374,6 +487,17 @@ headers source = M.fromList (scan tokens) where
   group depth acc (t:rest)
     | t == ")" && depth == 1 = (reverse acc,rest)
     | otherwise = group (depth + if t == "(" then 1 else if t == ")" then -1 else 0) (t:acc) rest
+
+-- Each data type or wrapper with its constructor names.
+constructorOwners :: M.Map String Header -> String -> [(String, [String])]
+constructorOwners extra source = either (const []) id $
+  runReader (runParserT scan "constructor owners" source) (M.union (headers source) extra)
+  where
+    scan = spaceP *> (concat <$> many ((pure . owner <$> try dataTypeP)
+      <|> ((\w -> [(wrapperName w, [wrapperName w])]) <$> try wrapperP) <|> ([] <$ token))) <* eof
+    owner d = (dataTypeName d, map dataConstructorName (dataTypeConstructors d))
+    token = void str <|> void quoted <|>
+      void (lexeme ((:) <$> letterChar <*> many (alphaNumChar <|> char '_'))) <|> void (lexeme anySingle)
 
 -- Reuse the declaration parser to discover fixture constructor arities. This
 -- pass skips other tokens atomically; the full parse remains authoritative for

@@ -212,12 +212,34 @@ export interface NativeBindings {
   goImports?: NativeGoImport[];
 }
 
+export interface PackageVersion {
+  name: string;
+  version: string;
+}
+
+export interface Package {
+  name: string;
+  version: string;
+  dependencies?: Record<string, string>;
+  sources: Source[];
+}
+
+export interface PackageView {
+  name: string;
+  version: string;
+  dependencies: Record<string, string>;
+  units: string[];
+}
+
 export interface CheckRequest {
   sources: Source[];
   schemaVersion?: 3 | 4;
   machineBits?: 32 | 64;
   generation?: Partial<Generation>;
   nativeBindings?: NativeBindings;
+  package?: PackageVersion;
+  dependencies?: Record<string, string>;
+  packages?: Package[];
 }
 
 export interface GenerationRequest extends CheckRequest {
@@ -240,6 +262,8 @@ export interface Result {
   diagnostics: Diagnostic[];
   expansions?: string[];
   files?: Artifact[];
+  packages?: PackageView[];
+  project?: {package?: PackageVersion; dependencies: Record<string, string>;};
 }
 
 export interface PayloadPredicate {

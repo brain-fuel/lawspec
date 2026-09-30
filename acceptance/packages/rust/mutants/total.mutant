@@ -1,0 +1,6 @@
+@@ src/shop/orders.rs
+<<<<<<<
+Money::Money { currency, cents: (cents
+=======
+Money::Money { currency: { let _ = currency; ShopDomainCurrency::Eur }, cents: (cents
+>>>>>>>

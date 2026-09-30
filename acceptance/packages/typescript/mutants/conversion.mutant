@@ -1,0 +1,6 @@
+@@ src/shop/domain.ts
+<<<<<<<
+return new data.MoneyMoney(value0, value1.cents);
+=======
+return value1;
+>>>>>>>

@@ -1,0 +1,11 @@
+{
+  "specs": [
+    "examples/packages/orders/orders.lawspec"
+  ],
+  "packages": [
+    "examples/packages/shop-domain"
+  ],
+  "dependencies": {
+    "shop.domain": "^1.0.0"
+  }
+}

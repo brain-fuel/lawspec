@@ -1,0 +1,6 @@
+@@ src/shop/orders.mjs
+<<<<<<<
+return value0 - value0 % 100n;
+=======
+return value0 > 0n ? value0 - 1n : value0;
+>>>>>>>

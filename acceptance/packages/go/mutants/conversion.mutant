@@ -1,0 +1,6 @@
+@@ shop/domain/adapter.go
+<<<<<<<
+return MoneyMoney{Currency: value0, Cents: value1.(MoneyMoney).Cents}
+=======
+return value1
+>>>>>>>

@@ -1,4 +1,4 @@
-module LawSpec.Compile (compile, prettyExpanded, metadataText, normal, compileWithProfile, typedExpression, validType, compileWithSettings, validateDefinitionTypes, validateDefinitionTotality) where
+module LawSpec.Compile (compile, prettyExpanded, metadataText, normal, compileWithProfile, typedExpression, validType, compileWithSettings, compileWithImports, validateDefinitionTypes, validateDefinitionTotality) where
 
 import LawSpec.Model
 import LawSpec.Data (qualifyDataNames, elaborateDataDeclarationsWithProfile)
@@ -14,6 +14,7 @@ import qualified LawSpec.Core.Types as CoreTypes
 import qualified LawSpec.Core.Value as CoreValue
 import LawSpec.Scalar
 import LawSpec.Parser
+import LawSpec.Imports (resolveImports)
 import LawSpec.Refinement
 import LawSpec.Prelude
 import Control.Monad.State.Strict
@@ -180,11 +181,21 @@ compileWithProfile :: Int -> [Source] -> Either [Diagnostic] ([Unit],[Expanded])
 compileWithProfile bits = compileWithSettings bits defaultGeneration
 
 compileWithSettings :: Int -> Generation -> [Source] -> Either [Diagnostic] ([Unit],[Expanded])
-compileWithSettings bits settings sources = do
+compileWithSettings = compileWithImports (\_ _ -> Nothing)
+
+-- visible importer imported explains why a unit may not import another
+-- (package boundaries), or is Nothing when it may.
+compileWithImports :: (String -> String -> Maybe String) -> Int -> Generation -> [Source] -> Either [Diagnostic] ([Unit],[Expanded])
+compileWithImports visible bits settings sources = do
   unless (all (>0) [cases settings,maxAttempts settings,maxShrinks settings,exhaustiveLimit settings]) (Left [Diagnostic "generation" "generation limits must be positive integers" Nothing])
   unless (bits `elem` [32,64]) (Left [Diagnostic "machineBits" "machineBits must be 32 or 64" Nothing])
-  parsed <- traverse parseSource (preludeSource:sources)
-  lowered <- either (Left . pure . (\m -> Diagnostic "refinement" m Nothing)) Right (mapM lowerUnit parsed)
+  parsedUnits <- parseSources (preludeSource:sources)
+  unless (length parsedUnits == length (nub (map (unitName . fst) parsedUnits))) (Left [Diagnostic "duplicate-unit" "unit names must be unique; prelude is reserved" Nothing])
+  parsed <- resolveImports visible parsedUnits
+  let imported = M.fromList [(unitName u ++ "::type::" ++ dataTypeName d, d{dataTypeConstructors=
+        [c{dataConstructorName=unitName u ++ "::type::" ++ dataTypeName d ++ "::" ++ dataConstructorName c}
+        | c <- dataTypeConstructors d]}) | u <- parsed, d <- dataTypes u]
+  lowered <- either (Left . pure . (\m -> Diagnostic "refinement" m Nothing)) Right (mapM (lowerUnitWith imported) parsed)
   let us = map qualifyDataNames lowered
   dataTypes <- elaborateDataDeclarationsWithProfile bits us
   _ <- either (Left . pure . (\m -> Diagnostic "data-type" m Nothing)) Right (CoreTypes.makeRegistry dataTypes)

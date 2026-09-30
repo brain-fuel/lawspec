@@ -1,6 +1,7 @@
 -- Native sealed interfaces and variants follow Go+'s resolved enum lowering.
 module LawSpec.GoData (emitGoData, goDataType, goTypeReference, emitGoSchema, emitGoSchemaWithProfile, goCodec, goCodecWithContext, emitGoCodecs, requiresSchema, goDataKey, validateGoBindings, identifier, goNativeCodec, emitGoNativeCodecs, goGeneratedNames, goNativeTypeWithParameters) where
 
+import LawSpec.DataNames (flatDataCandidates)
 import LawSpec.GoTypeRefs
 import qualified LawSpec.GoExpr as E
 import LawSpec.Core.Total (constructorProofContracts)
@@ -33,19 +34,13 @@ identifier name = unless valid (Left ("invalid Go data identifier: " ++ name))
 
 namesFor :: [C.DataDeclaration] -> Either String Names
 namesFor declarations = do
-  let candidates = concat
-        [[(C.dataId d, capitalize (C.dataName d))] ++
-          [(C.constructorId c, capitalize (C.dataName d) ++ capitalize (C.constructorName c)) | c <- C.dataConstructors d]
-        | d <- declarations]
-      duplicate name xs = length (filter ((== map toLower name) . map toLower . snd) xs) > 1
+  let duplicate name xs = length (filter ((== map toLower name) . map toLower . snd) xs) > 1
       reserved name = take 7 name == "LawSpec"
-      qualified = [(identity, if duplicate name candidates || reserved name then qualify (C.idText identity) else name) | (identity,name) <- candidates]
+      qualified = flatDataCandidates capitalize reserved declarations
       names = [(identity, if duplicate name qualified || reserved name then "Data" ++ name ++ "_" ++ concatMap (\c -> showHex (ord c) "_") (C.idText identity) else name) | (identity,name) <- qualified]
   mapM_ (identifier . snd) names
   unless (length names == length (nub (map (map toLower . snd) names))) (Left "conflicting Go data identities")
   pure names
-  where
-    qualify = concatMap capitalize . words . map (\c -> if isAlphaNum c then c else ' ')
 
 goGeneratedNames :: [C.DataDeclaration] -> Either String [String]
 goGeneratedNames declarations = map snd <$> namesFor declarations

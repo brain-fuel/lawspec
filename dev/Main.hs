@@ -96,12 +96,13 @@ stagedCopies :: IO ()
 stagedCopies = do
   specs <- filter (".lawspec" `isSuffixOf`) . sort <$> listDirectory "examples/specs"
   payments <- walkAll "examples/native-payments"
+  packages <- walkAll "examples/packages"
   -- Every staged document has its source at the repository root.
   documents <- filter (\f -> ".md" `isSuffixOf` f || f == "LICENSE") . sort <$> listDirectory "npm"
   let pairs = ("examples/specs/atoi_codec.lawspec", "npm/starter.lawspec") :
         [(d, "npm/" ++ d) | d <- documents] ++
         [("examples/specs/" ++ f, "npm/examples/specs/" ++ f) | f <- specs] ++
-        [(f, "npm/" ++ f) | f <- payments]
+        [(f, "npm/" ++ f) | f <- payments ++ packages]
   forM_ pairs $ \(source, copy) -> do
     exists <- doesFileExist copy
     same <- if exists then (==) <$> B.readFile source <*> B.readFile copy else pure False

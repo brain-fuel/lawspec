@@ -1,0 +1,57 @@
+unit shop.orders
+import shop.domain as domain (Money, Cents, `commutative`, `idempotent`)
+
+-- Constructor names are scoped to their unit: this Usd is not domain.Usd.
+type Currency is | Usd | Gbp end
+
+type Line is Line price :: Money quantity :: domain.Quantity end
+
+settlement :: Currency -> domain.Currency
+lineTotal :: Line -> Money
+-- Generic laws quantify over the argument's base type, so these adapters take
+-- any Int64; the last law restricts its inputs to Cents.
+cheaper :: Int64 -> Int64 -> Int64
+roundDown :: Int64 -> Int64
+
+law `dollars settle in dollars` is
+  definition is
+    settlement Usd = domain.Usd
+  end
+end
+
+law `pounds settle in euros` is
+  definition is
+    settlement Gbp = domain.Eur
+  end
+end
+
+law `a line total keeps the price currency` is
+  definition is
+    `for all` (l :: Line) .
+      domain.currencyOf (lineTotal l) = (match l with
+        | Line p q -> domain.currencyOf p
+        end)
+  end
+  example `two items` is
+    l = Line (Money domain.Usd 250) (domain.Quantity 2)
+    expect domain.centsOf (lineTotal l) = 500
+  end
+end
+
+law `the cheaper price does not depend on order` is
+  definition is
+    `commutative` cheaper
+  end
+end
+
+law `rounding down to whole dollars is stable` is
+  definition is
+    `idempotent` roundDown
+  end
+end
+
+law `rounding down never raises a price` is
+  definition is
+    `for all` (c :: Cents) . roundDown c <= c
+  end
+end

@@ -1,0 +1,6 @@
+@@ src/main/java/shop/Orders.java
+<<<<<<<
+return Math.min(value0, value1);
+=======
+return value0;
+>>>>>>>

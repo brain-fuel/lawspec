@@ -76,8 +76,8 @@ spec = do
       Java.emitJavaData (Doc.Pretty 100) [decl "Foo" [] [],decl "foo" [] []] `shouldSatisfy` isRight
       let left = (decl "Pair" [] []) {dataId = Id "left::type::Pair"}
           right = (decl "Pair" [] []) {dataId = Id "right::type::Pair"}
-      Java.javaDataType [left,right] (scalarType "left::type::Pair") `shouldBe` Right "lawspec.data.LeftTypePair"
-      Java.javaDataType [left,right] (scalarType "right::type::Pair") `shouldBe` Right "lawspec.data.RightTypePair"
+      Java.javaDataType [left,right] (scalarType "left::type::Pair") `shouldBe` Right "lawspec.data.LeftPair"
+      Java.javaDataType [left,right] (scalarType "right::type::Pair") `shouldBe` Right "lawspec.data.RightPair"
   describe "native Python declarations" $ do
     it "retains generic native types under containers" $ do
       let a = Id "a"; box = decl "Box" [a] [ctor "Wrap" [TypeVariable a]]
@@ -184,8 +184,8 @@ spec = do
     it "plans distinct names for identically named data in different units" $ do
       let left = (decl "Pair" [] []) {dataId = Id "left::type::Pair"}
           right = (decl "Pair" [] []) {dataId = Id "right::type::Pair"}
-      Rust.rustDataType [left,right] (scalarType "left::type::Pair") `shouldBe` Right "crate::lawspec_data::LeftTypePair"
-      Rust.rustDataType [left,right] (scalarType "right::type::Pair") `shouldBe` Right "crate::lawspec_data::RightTypePair"
+      Rust.rustDataType [left,right] (scalarType "left::type::Pair") `shouldBe` Right "crate::lawspec_data::LeftPair"
+      Rust.rustDataType [left,right] (scalarType "right::type::Pair") `shouldBe` Right "crate::lawspec_data::RightPair"
   describe "structural values and evaluation" $ do
     it "validates nested lists without flattening them" $ do
       r <- registry []

@@ -1,0 +1,6 @@
+@@ src/main/java/shop/Orders.java
+<<<<<<<
+return value0 - value0 % 100;
+=======
+return value0 > 0 ? value0 - 1 : value0;
+>>>>>>>

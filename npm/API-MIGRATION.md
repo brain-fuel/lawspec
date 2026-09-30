@@ -294,3 +294,27 @@ changes. Generated definition code no longer re-checks proved postconditions.
 including a `wrapper` constraint, checked whenever a value is constructed or
 decoded. Its `declaration` is the constructor identity and its `status` is
 `runtime-checked`. The TypeScript API names these records `ObligationEvidence`.
+
+## Imports and packages (0.14)
+
+Requests on schema 3 or 4 may add three optional fields:
+
+- `dependencies`: `Record<string, string>`, package names and version ranges the
+  request's own sources require;
+- `packages`: `Package[]`, each `{name, version, dependencies?, sources}`, the
+  complete set of packages those sources require directly or indirectly;
+- `package`: `{name, version}` when the request's own sources are themselves a
+  package, whose units must then be named after it.
+
+Package sources are compiled with the request's sources. When any of these fields
+is present, results add `packages: PackageView[]`, each with `name`, `version`,
+`dependencies` and the package's `units`, and `project: {package?,
+dependencies}`. Package errors use the diagnostic code `package`; import errors
+use `import`. Requests without these fields produce the same results as before.
+A compiler older than 0.14 ignores the fields and reports the imports it cannot
+resolve.
+
+Imported declarations need no new wire forms. Data declarations keep the ID of
+the unit that declares them. An imported checked definition appears among the
+importing unit's definitions with a name derived from its unit
+(`shop.orders::shopDomainCentsOf`).

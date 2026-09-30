@@ -1,8 +1,9 @@
 -- Python names, type representations and schema references shared by emitters.
 module LawSpec.PythonTypes where
 
+import LawSpec.DataNames (flatDataCandidates)
 import Control.Monad (unless)
-import Data.Char (isAscii, isAlphaNum, isLetter, toLower, toUpper, ord)
+import Data.Char (isAscii, isAlphaNum, isLetter, toLower, ord)
 import Data.List (nub)
 import Numeric (showHex)
 import Data.Aeson (encode)
@@ -21,20 +22,12 @@ type Names = [(C.Id,String)]
 
 namesFor :: [C.DataDeclaration] -> Either String Names
 namesFor declarations = do
-  let candidates = concat
-        [[(C.dataId d, C.dataName d)] ++
-          [(C.constructorId c, C.dataName d ++ C.constructorName c) | c <- C.dataConstructors d]
-        | d <- declarations]
-      duplicate name xs = length (filter ((== map toLower name) . map toLower . snd) xs) > 1
-      qualified = [(identity, if duplicate name candidates then qualify (C.idText identity) else name) | (identity,name) <- candidates]
+  let duplicate name xs = length (filter ((== map toLower name) . map toLower . snd) xs) > 1
+      qualified = flatDataCandidates id (const False) declarations
       names = [(identity, if duplicate name qualified then name ++ "_" ++ concatMap (\c -> showHex (ord c) "_") (C.idText identity) else name) | (identity,name) <- qualified]
   mapM_ (identifier . snd) names
   unless (length names == length (nub (map (map toLower . snd) names))) (Left "conflicting Python data identities")
   pure names
-  where
-    qualify = concatMap capitalize . words . map (\c -> if isAlphaNum c then c else ' ')
-    capitalize [] = []
-    capitalize (c:cs) = toUpper c:cs
 
 identifier :: String -> Either String ()
 identifier name = unless (valid && name `notElem` reserved)

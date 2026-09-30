@@ -1,0 +1,6 @@
+@@ src/shop/orders.py
+<<<<<<<
+return min(value0, value1)
+=======
+return value0
+>>>>>>>

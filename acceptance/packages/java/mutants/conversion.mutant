@@ -1,0 +1,6 @@
+@@ src/main/java/shop/Domain.java
+<<<<<<<
+return new Money.MoneyCase(value0, ((Money.MoneyCase) value1).cents);
+=======
+return value1;
+>>>>>>>

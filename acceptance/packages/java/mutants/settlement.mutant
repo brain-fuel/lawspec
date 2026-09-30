@@ -1,0 +1,6 @@
+@@ src/main/java/shop/Orders.java
+<<<<<<<
+return new ShopDomainCurrency.EurCase();
+=======
+return new ShopDomainCurrency.UsdCase();
+>>>>>>>

@@ -89,9 +89,9 @@ targetSteps :: String -> [Step]
 targetSteps target =
   [ step (target ++ "-bootstrap") ["node", "tools/bootstrap-integration.mjs", target] ] ++
   [ step (target ++ "-" ++ suite) (acceptance [suite, target])
-  | suite <- ["integration", "algebra", "indexed", "domain", "refinement", "scalar"] ] ++
+  | suite <- ["integration", "algebra", "indexed", "domain", "packages", "refinement", "scalar"] ] ++
   [ Step (target ++ "-" ++ suite ++ "-32-compact") compact (acceptance [suite, target])
-  | suite <- ["indexed", "domain", "algebra"] ] ++
+  | suite <- ["indexed", "domain", "packages", "algebra"] ] ++
   [ Step (target ++ "-" ++ suite ++ "-32") [("LAWSPEC_MACHINE_BITS", "32")] (acceptance [suite, "--no-mutants", target])
   | suite <- ["refinement", "scalar"] ] ++
   [ step (target ++ "-native-bindings") ["node", "tools/native-example-integration.mjs", target]

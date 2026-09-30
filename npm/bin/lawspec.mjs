@@ -67,6 +67,9 @@ function diagnostics(result) {
   return result;
 }
 async function sources(config) {
+  return lawspecFiles(configRoot, config.sources);
+}
+async function lawspecFiles(root, entries) {
   const files = [];
   async function visit(file) {
     const info = await stat(file);
@@ -75,14 +78,80 @@ async function sources(config) {
         await visit(path.join(file, entry));
     else if (file.endsWith(".lawspec")) files.push(file);
   }
-  for (const source of config.sources)
-    await visit(path.resolve(configRoot, source));
+  for (const source of entries) await visit(path.resolve(root, source));
   if (!files.length) throw new Error("No .lawspec source files found");
   return Promise.all(
     [...new Set(files)].sort().map(async (file) => ({
       path: path.relative(configRoot, file).split(path.sep).join("/"),
       content: await readFile(file, "utf8"),
     })),
+  );
+}
+// A package directory holds lawspec-package.json: its name, version, source
+// directories and dependency ranges. The compiler checks names, versions,
+// namespaces and which units may import which.
+async function loadPackage(directory) {
+  const file = path.join(directory, "lawspec-package.json");
+  const manifest = JSON.parse(await readFile(file, "utf8"));
+  if (
+    typeof manifest.name !== "string" ||
+    typeof manifest.version !== "string" ||
+    !Array.isArray(manifest.sources)
+  )
+    throw new Error(`${file}: expected name, version and a sources array`);
+  return {
+    manifest,
+    package: {
+      name: manifest.name,
+      version: manifest.version,
+      dependencies: manifest.dependencies ?? {},
+      sources: await lawspecFiles(directory, manifest.sources),
+    },
+  };
+}
+async function packageInput(owner, root) {
+  if (owner.packages !== undefined && !Array.isArray(owner.packages))
+    throw new Error("packages must be an array of package directories");
+  const packages = await Promise.all(
+    (owner.packages ?? []).map(async (p) => (await loadPackage(path.resolve(root, p))).package),
+  );
+  return {
+    ...(packages.length ? { packages } : {}),
+    ...(owner.dependencies !== undefined ? { dependencies: owner.dependencies } : {}),
+  };
+}
+async function packageCommand() {
+  const directory = path.resolve(options.project || ".");
+  const { manifest, package: own } = await loadPackage(directory);
+  const compiler = await createCompiler();
+  const result = diagnostics(
+    await compiler.check({
+      sources: own.sources,
+      package: { name: own.name, version: own.version },
+      ...(await packageInput(manifest, directory)),
+      machineBits: options.machineBits ?? 64,
+    }),
+  );
+  const units = result.units.map((u) => u.id).filter((u) => u !== "prelude");
+  const laws = result.laws.filter((l) => units.includes(l.owner));
+  const summary = {
+    name: own.name,
+    version: own.version,
+    dependencies: own.dependencies,
+    units,
+    laws: laws.map((l) => `${l.owner}::${l.name}`),
+    dataTypes: result.dataTypes
+      .filter((d) => units.some((u) => d.id.startsWith(u + "::")))
+      .map((d) => d.id),
+  };
+  output(
+    options.json
+      ? summary
+      : `${summary.name} ${summary.version}: ${units.length} unit(s), ${summary.laws.length} law(s), ${summary.dataTypes.length} data type(s).
+` +
+          `Units: ${units.join(", ")}
+` +
+          `Dependencies: ${Object.entries(summary.dependencies).map(([n, r]) => `${n} ${r}`).join(", ") || "none"}`,
   );
 }
 async function init() {
@@ -173,13 +242,13 @@ async function main() {
   }
   if (!verb || ["help", "--help", "-h"].includes(verb)) {
     output(
-      "LawSpec 0.13.2\nUsage: lawspec init --target <language> [--project <directory>] [--minify]\n       lawspec check | doctor | explain <unit>::<law> | generate\n       lawspec examples [--example payments] [--target <language>] [--output <directory>]\nOptions: --config <path>, --target <language>, --machine-bits <32|64>, --json\nGeneration: --dry-run, --check, --minify\nTargets: " +
+      "LawSpec 0.14.0\nUsage: lawspec init --target <language> [--project <directory>] [--minify]\n       lawspec check | doctor | explain <unit>::<law> | generate\n       lawspec package [--project <package directory>]\n       lawspec examples [--example payments] [--target <language>] [--output <directory>]\nOptions: --config <path>, --target <language>, --machine-bits <32|64>, --json\nGeneration: --dry-run, --check, --minify\nTargets: " +
         targets.join(", "),
     );
     return;
   }
   if (verb === "--version") {
-    output("0.13.2");
+    output("0.14.0");
     return;
   }
   if (positional.length > (verb === "explain" ? 1 : 0))
@@ -218,6 +287,7 @@ async function main() {
   if (options.minify && !["init", "generate", "examples"].includes(verb))
     throw new Error("--minify applies to init, generate and examples");
   if (verb === "init") return init();
+  if (verb === "package") return packageCommand();
   if (!["check", "doctor", "explain", "generate"].includes(verb))
     throw new Error(`Unknown command: ${verb}`);
   const config = JSON.parse(await readFile(configFile, "utf8"));
@@ -255,7 +325,12 @@ async function main() {
     return;
   }
   if (config.machineBits !== undefined && ![32, 64].includes(config.machineBits)) throw new Error("machineBits must be 32 or 64");
-  const input = { sources: await sources(config), generation: config.generation, machineBits: options.machineBits ?? config.machineBits ?? 64 };
+  const input = {
+    sources: await sources(config),
+    ...(await packageInput(config, configRoot)),
+    generation: config.generation,
+    machineBits: options.machineBits ?? config.machineBits ?? 64,
+  };
   const compiler = await createCompiler();
   // Proved obligations need no runtime check; the rest are enforced at runtime.
   const evidenceSummary = (evidence) => {

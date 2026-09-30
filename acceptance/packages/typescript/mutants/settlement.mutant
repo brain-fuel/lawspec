@@ -1,0 +1,6 @@
+@@ src/shop/orders.ts
+<<<<<<<
+  return new data.ShopDomainCurrencyEur();
+=======
+  return new data.ShopDomainCurrencyUsd();
+>>>>>>>

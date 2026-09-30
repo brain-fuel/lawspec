@@ -69,6 +69,17 @@ for (const [index, text] of fixtures.entries())
   }
 console.log(`Generation parity passed at ${machineBits} bits, minify=${minify}.`);
 }
+// Imports and packages: a project and the package it depends on.
+const packaged = {
+  sources: [{path: "orders.lawspec", content: await readFile(path.join(root, "examples/packages/orders/orders.lawspec"), "utf8")}],
+  dependencies: {"shop.domain": "^1.0.0"},
+  packages: [{name: "shop.domain", version: "1.2.0", sources: [{path: "domain.lawspec",
+    content: await readFile(path.join(root, "examples/packages/shop-domain/src/domain.lawspec"), "utf8")}]}],
+};
+for (const method of ["check", "expand"]) await compare(method, packaged, `${method}: packages`);
+for (const target of ["java", "python", "javascript", "typescript", "go", "haskell", "kotlin", "rust"])
+  await compare("planGeneration", {...packaged, target}, `packages, ${target}`);
+console.log("Package parity passed for check, expand and every target.");
 console.log(
   `Native/WASM parity: ${fixtures.length * 32} fixture/target/width/layout combinations passed.`,
 );

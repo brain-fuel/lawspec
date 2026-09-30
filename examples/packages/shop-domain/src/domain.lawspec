@@ -1,0 +1,49 @@
+unit shop.domain
+
+-- A package of reusable types, refinements, definitions and laws. Other units
+-- import it by name; its declarations keep their own names, so an importer may
+-- declare a Currency or a Usd of its own.
+type Currency is | Usd | Eur end
+
+refinement Cents is (c :: Int64 where c >= 0 && c <= 100000000) end
+
+type Money is Money currency :: Currency cents :: Cents end
+
+wrapper Quantity is Int32 where value >= 1 && value <= 1000 end
+
+definition currencyOf (m :: Money) :: Currency is
+  match m with | Money c n -> c end
+end
+
+definition centsOf (m :: Money) :: Int64 is
+  match m with | Money c n -> n end
+end
+
+-- Generic laws are templates: an importer applies them to its own adapters.
+law `commutative` (f :: a -> a -> a) requires Eq a is
+  definition is
+    `for all` (x :: a) (y :: a) . f x y = f y x
+  end
+end
+
+law `idempotent` (f :: a -> a) requires Eq a is
+  definition is
+    `for all` (x :: a) . f (f x) = f x
+  end
+end
+
+-- A published contract: every project that depends on this package implements
+-- convert and is tested against these laws.
+convert :: Currency -> Money -> Money
+
+law `conversion targets the requested currency` is
+  definition is
+    `for all` (c :: Currency) (m :: Money) . currencyOf (convert c m) = c
+  end
+end
+
+law `converting to the same currency changes nothing` is
+  definition is
+    `for all` (m :: Money) . convert (currencyOf m) m = m
+  end
+end

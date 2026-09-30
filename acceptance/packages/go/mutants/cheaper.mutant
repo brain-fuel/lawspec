@@ -1,0 +1,9 @@
+@@ shop/orders/adapter.go
+<<<<<<<
+	if value0 < value1 {
+		return value0
+	}
+	return value1
+=======
+	return value0
+>>>>>>>

@@ -1,0 +1,6 @@
+@@ src/shop/orders.py
+<<<<<<<
+return data.MoneyMoney(price.currency,
+=======
+return data.MoneyMoney(data.ShopDomainCurrencyEur(),
+>>>>>>>

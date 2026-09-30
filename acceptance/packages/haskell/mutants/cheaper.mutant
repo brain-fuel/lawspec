@@ -1,0 +1,6 @@
+@@ src/Shop/Orders.hs
+<<<<<<<
+cheaper = min
+=======
+cheaper a _ = a
+>>>>>>>

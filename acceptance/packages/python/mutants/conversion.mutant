@@ -1,0 +1,6 @@
+@@ src/shop/domain.py
+<<<<<<<
+return data.MoneyMoney(value0, value1.cents)
+=======
+return value1
+>>>>>>>

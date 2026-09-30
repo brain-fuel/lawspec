@@ -1,8 +1,9 @@
 -- Native JVM declarations from checked Core; no surface syntax or inference.
 module LawSpec.KotlinData (emitKotlinData, emitKotlinDataWithProfile, kotlinCodecDocWithContext, kotlinDataType, emitKotlinCodecs, kotlinCodec, kotlinTypeReference, requiresSchema, kotlinDataTypeDoc, kotlinCodecDoc, kotlinTypeReferenceDoc, identifier, emitKotlinNativeCodecs, kotlinNativeCodecDoc, kotlinNativeTypeDoc) where
 
+import LawSpec.DataNames (qualifiedDataName)
 import Control.Monad (unless, forM)
-import Data.Char (isAscii, isAlphaNum, isLetter, toUpper, toLower, ord)
+import Data.Char (isAscii, isAlphaNum, isLetter, toLower, ord)
 import Data.List (nub, find, intercalate)
 import LawSpec.NativeBinding
 import Numeric (showHex)
@@ -31,7 +32,7 @@ namesFor :: [C.DataDeclaration] -> Either String Names
 namesFor declarations = do
   let source = [(C.dataId d, C.dataName d) | d <- declarations]
       duplicated name entries = length (filter ((== map toLower name) . map toLower . snd) entries) > 1
-      qualified = [(identity, if duplicated name source then qualify (C.idText identity) else name)
+      qualified = [(identity, if duplicated name source then qualifiedDataName (C.idText identity) else name)
         | (identity,name) <- source]
       names = [(identity, if duplicated name qualified
         then name ++ "_" ++ concatMap (\c -> showHex (ord c) "_") (C.idText identity)
@@ -40,10 +41,6 @@ namesFor declarations = do
   unless (length names == length (nub (map (map toLower . snd) names)))
     (Left "conflicting Kotlin data identities")
   pure names
-  where
-    qualify = concatMap capitalize . words . map (\c -> if isAlphaNum c then c else ' ')
-    capitalize [] = []
-    capitalize (c:cs) = toUpper c : cs
 
 applied :: String -> [D.Doc] -> D.Doc
 applied name [] = D.text name

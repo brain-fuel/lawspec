@@ -1,8 +1,9 @@
 -- Native declarations and bridges consume resolved Core, never surface syntax.
 module LawSpec.RustData (emitRustData, rustDataType, rustDataTypeWithParameters, rustFieldBoxed) where
 
+import LawSpec.DataNames (qualifiedDataName)
 import Control.Monad (unless, forM)
-import Data.Char (isAscii, isAlphaNum, isLetter, toLower, toUpper, ord)
+import Data.Char (isAscii, isAlphaNum, isLetter, toLower, ord)
 import Data.List (nub, intercalate, find)
 import Numeric (showHex)
 import qualified LawSpec.Core as C
@@ -16,15 +17,11 @@ namesFor :: [C.DataDeclaration] -> Either String Names
 namesFor declarations = do
   let original = [(C.idText (C.dataId d), C.dataName d) | d <- declarations]
       duplicates name = (> 1) . length . filter ((== map toLower name) . map toLower . snd)
-      qualified = [(identity, if duplicates name original then qualify identity else name) | (identity,name) <- original]
+      qualified = [(identity, if duplicates name original then qualifiedDataName identity else name) | (identity,name) <- original]
       names = [(identity, if duplicates name qualified then name ++ "_" ++ concatMap (\c -> showHex (ord c) "_") identity else name) | (identity,name) <- qualified]
   mapM_ (identifier . snd) names
   unless (length names == length (nub (map (map toLower . snd) names))) (Left "conflicting Rust data identities")
   mapM (\(identity,name) -> do native <- identifier name; pure (identity,native)) names
-  where
-    qualify = concatMap capitalize . words . map (\c -> if isAlphaNum c then c else ' ')
-    capitalize [] = []
-    capitalize (c:cs) = toUpper c:cs
 
 identifier :: String -> Either String String
 identifier name = do

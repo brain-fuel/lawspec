@@ -9,10 +9,16 @@
 -- A suite lives in acceptance/<suite>/:
 --   suite.json                     {"specs": ["examples/specs/x.lawspec", ...],
 --                                    "vectors": "test/scalar-vectors.json",  (optional)
---                                    "architecture": true}                  (optional)
+--                                    "architecture": true,                  (optional)
+--                                    "packages": ["examples/packages/p"],   (optional)
+--                                    "dependencies": {"p.name": "^1.0.0"}}  (optional)
 --   <target>/files/<path>          adapters replacing generated user-owned stubs
 --   <target>/stubs/<path>          the stub an adapter was written against (optional)
 --   <target>/mutants/<name>.mutant search/replace edits, one mutant per file
+--
+-- A package directory holds lawspec-package.json ({"name", "version",
+-- "sources": [directories or files], "dependencies"}); its sources are sent
+-- with the request as they would be by the lawspec CLI.
 --
 -- With stubs, a regenerated stub that differs fails the suite (review the
 -- adapter's signature), and the bare stub is itself a mutant that must fail.
@@ -69,11 +75,17 @@ main = do
     Just (String path) -> pure . conformance <$> BL.readFile (T.unpack path)
     _ -> pure []
   let architecture = (field "architecture" <$> decode manifest) == Just (Bool True)
+  packages <- case decode manifest >>= list . field "packages" of
+    Just values -> mapM (loadPackage . T.unpack) [s | String s <- values]
+    Nothing -> pure []
+  let dependencies = maybe (object []) (field "dependencies") (decode manifest)
+      extra = [("packages", toJSON packages) | not (null packages)] ++
+        [("dependencies", dependencies) | dependencies /= Null]
   let targets = if null selected then scaffoldTargets else selected
       profile = (if bits == 32 then "32" else "") ++ (if minify then "-compact" else "")
   forM_ targets $ \target -> do
     let project = ".artifacts" </> (suite ++ profile) </> target
-    generated <- plan (sources ++ vectors) target bits minify
+    generated <- plan extra (sources ++ vectors) target bits minify
     if check then checkDisk project generated else do
       writeProject suite target project (bits == 64 && not minify) minify generated
       mismatch <- if architecture then architectureMismatch target bits else pure False
@@ -81,11 +93,11 @@ main = do
       else runSuite suite target project mutate
 
 -- Generation goes through the same JSON boundary that core.wasm exports.
-plan :: [(FilePath, String)] -> String -> Int -> Bool -> IO [Generated]
-plan sources target bits minify = do
-  let request = object
+plan :: [(K.Key, Value)] -> [(FilePath, String)] -> String -> Int -> Bool -> IO [Generated]
+plan extra sources target bits minify = do
+  let request = object $
         [ "method" .= ("planGeneration" :: String), "target" .= target, "machineBits" .= bits, "minify" .= minify
-        , "sources" .= [object ["path" .= takeName path, "content" .= content] | (path, content) <- sources] ]
+        , "sources" .= [object ["path" .= takeName path, "content" .= content] | (path, content) <- sources] ] ++ extra
       response = fromMaybe Null (decode (dispatch (encode request)))
   case list (field "diagnostics" response) of
     Just [] -> pure ()
@@ -93,6 +105,28 @@ plan sources target bits minify = do
   pure [ Generated (text (field "path" f)) (text (field "content" f)) (text (field "ownership" f))
        | f <- fromMaybe [] (list (field "files" response)) ]
   where takeName = reverse . takeWhile (/= '/') . reverse
+
+-- A package as the lawspec CLI sends it: its manifest with the sources read.
+loadPackage :: FilePath -> IO Value
+loadPackage directory = do
+  manifest <- BL.readFile (directory </> "lawspec-package.json")
+  value <- maybe (die ("invalid " ++ directory ++ "/lawspec-package.json")) pure (decode manifest)
+  let roots = [T.unpack s | String s <- fromMaybe [] (list (field "sources" value))]
+  files <- concat <$> mapM (lawspecFiles . (directory </>)) roots
+  sources <- forM (sort files) $ \path -> do
+    content <- readFile path
+    pure (object ["path" .= path, "content" .= content])
+  case value of
+    Object o -> pure (Object (KM.insert "sources" (toJSON sources) o))
+    _ -> die ("invalid " ++ directory ++ "/lawspec-package.json")
+  where
+    lawspecFiles path = do
+      isDirectory <- doesDirectoryExist path
+      if isDirectory
+        then do
+          entries <- sort <$> listDirectory path
+          concat <$> mapM (lawspecFiles . (path </>)) entries
+        else pure [path | ".lawspec" `isSuffixOf` path]
 
 writeProject :: String -> String -> FilePath -> Bool -> Bool -> [Generated] -> IO ()
 writeProject suite target project defaultProfile minify generated = do

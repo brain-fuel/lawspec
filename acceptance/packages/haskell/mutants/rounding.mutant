@@ -1,0 +1,6 @@
+@@ src/Shop/Orders.hs
+<<<<<<<
+roundDown value = value - value `rem` 100
+=======
+roundDown value = if value > 0 then value - 1 else value
+>>>>>>>

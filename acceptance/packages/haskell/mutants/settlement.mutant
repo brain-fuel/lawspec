@@ -1,0 +1,6 @@
+@@ src/Shop/Orders.hs
+<<<<<<<
+settlement Data.ShopOrdersCurrencyGbp = Data.ShopDomainCurrencyEur
+=======
+settlement Data.ShopOrdersCurrencyGbp = Data.ShopDomainCurrencyUsd
+>>>>>>>

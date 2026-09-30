@@ -1,0 +1,6 @@
+@@ shop/orders/adapter.go
+<<<<<<<
+	return ShopDomainCurrencyEur{}
+=======
+	return ShopDomainCurrencyUsd{}
+>>>>>>>

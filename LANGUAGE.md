@@ -1,4 +1,4 @@
-# LawSpec language and compiler boundary (0.13)
+# LawSpec language and compiler boundary (0.14)
 
 LawSpec describes portable laws, concrete examples, and adapter contracts. The
 compiler is written in Haskell. Rust is an output backend alongside Java, Python,
@@ -261,6 +261,107 @@ Because each state is its own type, a `ValidatedOrder` can only hold checked
 values, and a step that needs one cannot be given raw input. See the
 [domain modeling example](examples/specs/domain_modeling.lawspec).
 
+## Imports and packages
+
+### Importing units
+
+A unit may import other units after its `unit` line:
+
+```lawspec
+unit shop.orders
+import shop.domain as domain (Money, Cents, `commutative`)
+
+type Currency is | Usd | Gbp end
+settlement :: Currency -> domain.Currency
+
+law `dollars settle in dollars` is
+  definition is
+    settlement Usd = domain.Usd
+  end
+end
+```
+
+`import U` makes every declaration of `U` available qualified by an alias, which
+defaults to the unit's last name segment (`import shop.domain` gives `domain`);
+`as` names another alias. A parenthesized list also makes the listed names
+available unqualified. Listing a data type or wrapper brings its constructors and
+its generated functions (`valueOf<Name>`, indexed-family measures) with it; list
+a law by its quoted name. Qualified names are written without spaces around the
+dot (`domain.Usd`); write `f . g` with spaces to compose a function whose name is
+also an alias.
+
+What can be imported:
+
+- data types, wrappers and indexed families, with their constructors;
+- refinements;
+- checked definitions;
+- generic laws, that is laws with parameters, which the importer applies to its
+  own adapters (`` `commutative` total ``).
+
+Adapter signatures and laws without parameters belong to their unit: they are the
+unit's own contract with its native code and are tested there. Referring to
+another unit's adapter is an error, as is importing a declaration that uses one.
+
+Names are scoped to their unit. Two units may both declare `Currency`, `Usd` or a
+definition `size`; `domain.Usd` and the local `Usd` are different constructors.
+Targets with a single data namespace qualify the colliding native names by unit
+(`ShopDomainCurrency`, `ShopOrdersCurrency`). An unqualified name that is both
+listed in an import and declared locally is an error, as is one listed from two
+units. Imports are not re-exported: a unit uses what it imports itself.
+
+Imports are resolved before type checking. A data type stays with the unit that
+declares it, so values of `domain.Money` are the same values in every importing
+unit. Imported refinements, checked definitions and generic laws are copied into
+the importing unit, together with everything they use, under names derived from
+their unit (`domain.centsOf` is emitted as `shopDomainCentsOf`). Core and all
+eight targets therefore need nothing new. Import cycles, unknown units and
+missing names are reported at the import.
+
+### Packages
+
+A package is a named, versioned directory of units, described by
+`lawspec-package.json`:
+
+```json
+{
+  "name": "shop.domain",
+  "version": "1.2.0",
+  "sources": ["src"],
+  "dependencies": {}
+}
+```
+
+Every unit of a package is named after it: `shop.domain` or `shop.domain.<name>`.
+A project, or another package, declares the packages it depends on with version
+ranges, and lists the package directories to load:
+
+```json
+{
+  "version": 1,
+  "sources": ["orders.lawspec"],
+  "dependencies": {"shop.domain": "^1.0.0"},
+  "packages": ["../shop-domain"],
+  "targets": [{"language": "java", "root": "java"}]
+}
+```
+
+A unit may import the units of its own package (or project) and of the packages
+it depends on directly. Versions are `MAJOR.MINOR.PATCH` with an optional
+prerelease. Ranges combine `1.2.3` (exactly), `^1.2.3`, `~1.2.3`, `>=`, `>`,
+`<=`, `<` and `*`, with npm's meaning. Resolution is exact: one version of each
+package is supplied, every range must accept it, a package that nothing requires
+is rejected, and package dependency cycles are rejected. Project units may not
+use a dependency's namespace.
+
+A package publishes a behavioral contract. Its types, refinements, definitions
+and generic laws are a library, and its adapter signatures and concrete laws are
+obligations: a project that depends on the package implements those adapters in
+its own native code and is tested against the package's laws, with the same
+user-owned adapter files as for its own units. `lawspec package` checks a
+package on its own and summarizes its units, laws and data types. A package
+directory can be distributed any way that delivers the directory, for example
+as an npm package. See the [package example](examples/packages).
+
 ## Total definitions
 
 A unit can supply an implementation as a checked total definition:
@@ -333,8 +434,8 @@ entry points enforce the same contracts. See [refined definitions](REFINEMENTS.m
 
 ## Source and declarations
 
-A source has one named `unit`, function signatures, data declarations, checked
-definitions, reusable refinements, and laws. Qualified unit names determine target module/package paths. Function
+A source has one named `unit`, its imports, function signatures, data
+declarations, checked definitions, reusable refinements, and laws. Qualified unit names determine target module/package paths. Function
 signatures are curried: `a -> b -> c` takes two inputs and returns `c`. Parentheses
 group types and expressions. Comments start with `--` and run to the line end.
 
@@ -342,7 +443,9 @@ The following grammar summarizes the main forms; the parser and executable
 compiler tests specify lexical details:
 
 ```text
-source       = "unit" qualified-name declaration*
+source       = "unit" qualified-name import* declaration*
+import       = "import" qualified-name ["as" name]
+               ["(" (name | quoted-name) ("," (name | quoted-name))* ")"]
 declaration  = name "::" type | law | refinement | data-type | function
 data-type    = "type" name ("(" name "::" "Type" ")")*
                "is" constructor* "end"
@@ -500,12 +603,18 @@ GADTs that refine type arguments.
   checked step types and a generated railway composition law.
 - See [domain modeling](#domain-modeling).
 
-### 0.14 Cross-unit imports and packages
+### 0.14 Cross-unit imports and packages (released)
 
-- Reusable law, type and refinement libraries.
-- Versioning and namespacing, including constructor names scoped to their unit.
-  Today every unit compiled together needs distinct constructor names.
-- Publishable behavioral contracts.
+- Reusable law, type and refinement libraries: `import` brings another unit's
+  types, refinements, checked definitions and generic laws into scope.
+- Versioning and namespacing: packages have names, semantic versions and
+  dependency ranges, units live in their package's namespace, and constructor
+  names are scoped to their unit.
+- Publishable behavioral contracts: a package's adapter signatures and laws are
+  implemented and tested by every project that depends on it.
+- See [imports and packages](#imports-and-packages).
+
+Still open: re-exports, and several versions of one package in one build.
 
 ### 0.15 Evidence/discharge model
 

@@ -409,9 +409,10 @@ emitRustWithBindings minify bindings Plan{..} = either (Left . pure . (\m -> Dia
              Doc.softbreak <> Doc.text ".boxed()")))
         fixed <- forM (maybe (boundaryCases pp) id (finiteCases pp)) $ \values -> do
           callArgs <- mapM valueLiteral values
-          pure (block (statements [context,binding "values" (Expression.vector callArgs),
+          -- A law without inputs has one empty case and needs no values.
+          pure (block (statements ([context] ++ [binding "values" (Expression.vector callArgs) | not (null callArgs)] ++ [
             statement (invoke law (Doc.text "ctx" :
-              [Doc.text ("values[" ++ show i ++ "].clone()") | i <- [0..length names-1]]) <> Doc.text "?")]))
+              [Doc.text ("values[" ++ show i ++ "].clone()") | i <- [0..length names-1]]) <> Doc.text "?")])))
         examples <- forM (propertyExamples p) $ \e -> do
           bindings <- forM (exampleBindings e) $ \(i,x) -> do
             value <- render [] x

@@ -1,0 +1,6 @@
+@@ src/Shop/Domain.hs
+<<<<<<<
+convert currency (Data.MoneyMoney _ cents) = Data.MoneyMoney currency cents
+=======
+convert _ money = money
+>>>>>>>

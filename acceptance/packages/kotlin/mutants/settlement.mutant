@@ -1,0 +1,6 @@
+@@ src/main/kotlin/shop/Orders.kt
+<<<<<<<
+ShopDomainCurrency.UsdCase() else ShopDomainCurrency.EurCase()
+=======
+ShopDomainCurrency.UsdCase() else ShopDomainCurrency.UsdCase()
+>>>>>>>

@@ -1,0 +1,6 @@
+@@ src/main/kotlin/shop/Orders.kt
+<<<<<<<
+= minOf(value0, value1)
+=======
+= value0
+>>>>>>>

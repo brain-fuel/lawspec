@@ -5,7 +5,7 @@
 module LawSpec.Indexed
   ( IndexedFamily(..), IndexedConstructor(..)
   , indexedRefinementName, naturalRefinementName, measureName
-  , elaborateFamilies
+  , elaborateFamilies, elaborateFamiliesWith
   ) where
 
 import Control.Monad (forM, forM_, unless, when)
@@ -35,13 +35,22 @@ indexedRefinementName family = family ++ "@index"
 naturalRefinementName :: String
 naturalRefinementName = "Natural"
 
+-- An imported family keeps its alias: v.Vec's measure is v.nOfVec.
 measureName :: String -> String -> String
-measureName family index = index ++ "Of" ++ family
+measureName family index = case break (== '.') (reverse family) of
+  (base, '.' : alias) -> reverse alias ++ "." ++ index ++ "Of" ++ reverse base
+  _ -> index ++ "Of" ++ family
 
 elaborateFamilies :: [IndexedFamily] -> Unit -> Either String Unit
-elaborateFamilies families u = do
+elaborateFamilies = elaborateFamiliesWith []
+
+-- Imported families, under the names this unit uses for them, take part in
+-- erasure and implicit index binding; their declarations stay with their unit.
+elaborateFamiliesWith :: [IndexedFamily] -> [IndexedFamily] -> Unit -> Either String Unit
+elaborateFamiliesWith imported families u = do
   let names = map familyName families
-      table = M.fromList [(familyName f, f) | f <- families]
+      table = M.union (M.fromList [(familyName f, f) | f <- families])
+        (M.fromList [(familyName f, f) | f <- imported])
   forM_ families (validateFamily table)
   declarations <- mapM (erasedDeclaration table) families
   measures <- concat <$> mapM (familyMeasures table) families

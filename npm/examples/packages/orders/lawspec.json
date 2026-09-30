@@ -1,0 +1,7 @@
+{
+  "version": 1,
+  "sources": ["orders.lawspec"],
+  "dependencies": { "shop.domain": "^1.0.0" },
+  "packages": ["../shop-domain"],
+  "targets": []
+}
