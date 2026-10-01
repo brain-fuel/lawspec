@@ -48,6 +48,7 @@ extra-source-files:
     examples/specs/domain_modeling.lawspec
     examples/specs/equivalent.lawspec
     examples/specs/finite_data.lawspec
+    examples/specs/flow_stack.lawspec
     examples/specs/gadt_expressions.lawspec
     examples/specs/indexed_arithmetic.lawspec
     examples/specs/indexed_families.lawspec
@@ -196,6 +197,7 @@ library
       LawSpec.Elaboration
       LawSpec.Emit
       LawSpec.Eval
+      LawSpec.Flow
       LawSpec.Frontend
       LawSpec.GoData
       LawSpec.GoDefinitions
@@ -391,6 +393,7 @@ test-suite lawspec-test
       DischargeSpec
       DocumentSpec
       DomainModelSpec
+      FlowSpec
       GadtSpec
       GenericDefinitionSpec
       ImportSpec

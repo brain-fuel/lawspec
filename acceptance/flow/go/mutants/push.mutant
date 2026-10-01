@@ -1,0 +1,6 @@
+@@ example/flow/adapter.go
+<<<<<<<
+	return PushFlow{State: StackPush{Top: value0, Rest: value1}}
+=======
+	return PushFlow{State: value1}
+>>>>>>>

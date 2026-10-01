@@ -1,0 +1,6 @@
+@@ example/flow/adapter.go
+<<<<<<<
+	return PopFlow{Result: cell.Top, State: cell.Rest}
+=======
+	return PopFlow{Result: 0, State: cell.Rest}
+>>>>>>>

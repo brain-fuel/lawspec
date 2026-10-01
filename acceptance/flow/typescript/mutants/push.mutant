@@ -1,0 +1,6 @@
+@@ src/example/flow.ts
+<<<<<<<
+  return new data.PushFlow(new data.StackPush(value0, value1));
+=======
+  return new data.PushFlow(value1);
+>>>>>>>

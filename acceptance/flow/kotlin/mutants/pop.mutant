@@ -1,0 +1,6 @@
+@@ src/main/kotlin/example/Flow.kt
+<<<<<<<
+        return PopFlow(cell.top, cell.rest)
+=======
+        return PopFlow(0, cell.rest)
+>>>>>>>

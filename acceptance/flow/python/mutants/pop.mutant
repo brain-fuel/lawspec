@@ -1,0 +1,6 @@
+@@ src/example/flow.py
+<<<<<<<
+    return data.PopFlow(value0.top, value0.rest)
+=======
+    return data.PopFlow(0, value0.rest)
+>>>>>>>

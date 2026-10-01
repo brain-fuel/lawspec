@@ -1,5 +1,6 @@
 module LawSpec.Parser (parseSource, parseSources, sourceUnit) where
 
+import LawSpec.Flow (desugarFlows, flowTypeName)
 import LawSpec.Model
 import LawSpec.Indexed
 import LawSpec.DomainModel
@@ -66,7 +67,9 @@ parens = between (symbol "(") (symbol ")")
 typeP :: P Type
 typeP = do
   a <- typeAtom
-  option a (Arrow a <$> (symbol "->" *> typeP))
+  -- A / A' is a flow parameter: the call takes the state at A to A'.
+  a' <- option a (do void (symbol "/"); b <- typeAtom; pure (Application flowTypeName [a, b]))
+  option a' (Arrow a' <$> (symbol "->" *> typeP))
 typeAtom :: P Type
 typeAtom = try (parens $ do
     n <- ident; void (symbol "::"); t <- typeP
@@ -205,8 +208,19 @@ indexExpr = located $ makeExprParser indexAtom
     helper name a b = Apply (Apply (Var ("prelude." ++ name)) a) b
     indexAtom = located (parens indexExpr <|> try numeric <|> (Var <$> ident))
 
+-- `e1; e2` sequences at the lowest precedence, and `~s := e` updates a
+-- definition's flow parameter just above it.
 expr :: P Expr
-expr = located $ makeExprParser application
+expr = do
+  first <- statement
+  option first (located (Binary ";" first <$> (symbol ";" *> expr)))
+  where
+    statement = do
+      e <- operatorExpr
+      option e (located (Binary ":=" e <$> (symbol ":=" *> operatorExpr)))
+
+operatorExpr :: P Expr
+operatorExpr = located $ makeExprParser application
   [ [Prefix (Unary "!" <$ try (lexeme (char '!' <* notFollowedBy (char '=')))), Prefix (Unary "-" <$ try (lexeme (char '-' <* notFollowedBy digitChar)))]
   , [InfixR (Compose <$ symbol ".")]
   , [InfixL (Binary "*" <$ symbol "*"), InfixL (Binary "/" <$ symbol "/")]
@@ -223,6 +237,7 @@ expr = located $ makeExprParser application
         _ -> foldl1 Apply terms
     atom = located $ matchP <|> (ListLit <$> between (symbol "[") (symbol "]") (expr `sepBy` symbol ",")) <|> (BoolLit <$> boolP) <|> (StringLit <$> str) <|> try scalarP
       <|> parenthesizedExpr
+      <|> try (Var . ('~' :) <$> (char '~' *> ident))
       <|> try numeric <|> try (do n <- ident; alias <- asks (M.member ("alias:" ++ n)); unless (not alias) (fail "import alias"); void (char '.'); b <- ("min" <$ keyword "min") <|> ("max" <$ keyword "max"); pure (TypeBound b (if maybe False (isLower . fst) (uncons n) then Variable n else Named n))) <|> (do name <- valueName; pure (if startsUpper name then ConstructLit name [] else Var name))
     matchP = do
       keyword "match"
@@ -482,9 +497,11 @@ parseWith extra importedFamilies (Source p s) = case runReader (runParserT unitP
   Right (u, imports, families, wrappers, workflows) -> do
     modeled <- either (\(at, message) -> Left [Diagnostic "domain" message at]) Right
       (elaborateDomain wrappers workflows u)
+    (families', flowed) <- either (\(at, message) -> Left [Diagnostic "flow" message at]) Right
+      (desugarFlows importedFamilies families modeled)
     elaborated <- either (\message -> Left [Diagnostic "indexed" (p ++ ": " ++ message) Nothing]) Right
-      (elaborateFamiliesWith importedFamilies families modeled)
-    pure ((elaborated, imports), families)
+      (elaborateFamiliesWith importedFamilies families' flowed)
+    pure ((elaborated, imports), families')
 
 -- Read declaration arities before parsing applications, including forward references.
 -- Strings, quoted law names and comments are consumed atomically.

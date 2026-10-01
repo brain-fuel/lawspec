@@ -1,0 +1,6 @@
+@@ src/main/java/example/Flow.java
+<<<<<<<
+    return new PushFlow(new Stack.Push(value0, value1));
+=======
+    return new PushFlow(value1);
+>>>>>>>

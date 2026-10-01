@@ -1,0 +1,6 @@
+@@ src/example/flow.ts
+<<<<<<<
+  return new data.PopFlow(cell.top, cell.rest);
+=======
+  return new data.PopFlow(cell.top, cell);
+>>>>>>>

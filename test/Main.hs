@@ -22,6 +22,7 @@ import qualified DischargeSpec
 import qualified ApiContractSpec
 import qualified DataShapeSpec
 import qualified GadtSpec
+import qualified FlowSpec
 import LawSpec.Compile
 import LawSpec.Model
 import qualified LawSpec.Domain as D
@@ -48,6 +49,7 @@ main = hspec $ do
   ApiContractSpec.spec
   DataShapeSpec.spec
   GadtSpec.spec
+  FlowSpec.spec
   PayloadSpec.spec
   PayloadProofSpec.spec
   DocumentSpec.spec

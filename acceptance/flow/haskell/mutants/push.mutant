@@ -1,0 +1,6 @@
+@@ src/Example/Flow.hs
+<<<<<<<
+push top rest = Data.PushFlow (Data.StackPush top rest)
+=======
+push _ rest = Data.PushFlow rest
+>>>>>>>

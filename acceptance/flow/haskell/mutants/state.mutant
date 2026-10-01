@@ -1,0 +1,6 @@
+@@ src/Example/Flow.hs
+<<<<<<<
+pop (Data.StackPush top rest) = Data.PopFlow top rest
+=======
+pop stack@(Data.StackPush top _) = Data.PopFlow top stack
+>>>>>>>

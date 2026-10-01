@@ -1,0 +1,6 @@
+@@ src/main/java/example/Flow.java
+<<<<<<<
+    return new PopFlow(cell.top(), cell.rest());
+=======
+    return new PopFlow(cell.top(), cell);
+>>>>>>>

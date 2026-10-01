@@ -1,0 +1,59 @@
+unit example.flow
+
+type Stack (n :: Natural) is
+  | Empty where n = 0
+  | Push top :: Int8 rest :: Stack m where n = m + 1
+end
+
+-- A / A' is a flow parameter: the call takes the stack from A to A'. Each
+-- adapter returns its result with the stack it leaves, as a generated
+-- product (PushFlow, PopFlow, PeekFlow); the stack's index is checked.
+push :: (x :: Int8) -> Stack n / Stack (n + 1) -> Unit
+pop :: Stack (n + 1) / Stack n -> Int8
+peek :: Stack (n + 1) / Stack (n + 1) -> Int8
+
+-- A reference definition updates its flow parameter with ~s := e.
+definition pushed (x :: Int8) (s :: Stack n / Stack (n + 1)) :: Unit is
+  ~s := Push x s
+end
+
+-- ~s passes s to a flow parameter and rebinds s to the stack the call
+-- leaves; e1; e2 sequences, left to right. pop needs Stack (m + 1): after
+-- push, s is a Stack (n + 1), so the pop below type-checks.
+law `pop returns what push pushed` is
+  definition is
+    `for all` (x :: Int8) (s :: Stack n) . (push x ~s; pop ~s) = x
+  end
+end
+
+law `push grows the stack` is
+  definition is
+    `for all` (x :: Int8) (s :: Stack n) . (push x ~s; nOfStack s) = n + 1
+  end
+end
+
+law `pops come back in reverse` is
+  definition is
+    `for all` (x :: Int8) (y :: Int8) (s :: Stack n) .
+      (push x ~s; push y ~s; pop ~s; pop ~s) = x
+  end
+end
+
+-- The quantifier's index k + 1 lets peek and pop take s.
+law `peek and pop agree` is
+  definition is
+    `for all` (s :: Stack (k + 1)) . peek ~s = pop ~s
+  end
+end
+
+law `pop shrinks the stack` is
+  definition is
+    `for all` (s :: Stack (k + 1)) . (pop ~s; nOfStack s) = k
+  end
+end
+
+law `push agrees with the reference` is
+  definition is
+    `for all` (x :: Int8) (s :: Stack n) . (pushed x ~s; pop ~s) = x
+  end
+end

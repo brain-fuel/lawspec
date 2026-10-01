@@ -1,0 +1,5 @@
+{
+  "specs": [
+    "examples/specs/flow_stack.lawspec"
+  ]
+}

@@ -1,0 +1,6 @@
+@@ src/main/kotlin/example/Flow.kt
+<<<<<<<
+PushFlow(Stack.Push(value0, value1))
+=======
+PushFlow(value1)
+>>>>>>>

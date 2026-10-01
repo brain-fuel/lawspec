@@ -1,0 +1,6 @@
+@@ src/example/flow.rs
+<<<<<<<
+    PushFlow { state: Stack::Push { top: value0, rest: Box::new(value1) } }
+=======
+    PushFlow { state: value1 }
+>>>>>>>
