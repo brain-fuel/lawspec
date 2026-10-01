@@ -105,9 +105,10 @@ indexWitness schema reference witnesses value = do
             [expected | S.Constructor name expected <- maybe [] id constructors,
                         name == tag]
       case matches of
-        expected:_ -> foldM
-          (\acc (S.Field _ ty, child) -> indexWitness schema ty acc child)
-          indexed (zip expected fields)
+        expected:_ -> do
+          types <- S.witnessKeys schema tag fields >>= S.witnessed schema tag [ty | S.Field _ ty <- expected]
+          foldM (\acc (ty, child) -> indexWitness schema ty acc child)
+            indexed (zip types fields)
         [] -> pure indexed
     _ -> pure indexed
 
@@ -181,7 +182,10 @@ buildStrategyWith factories schema reference bits budget scalar finish = do
     choose [only] = Just only
     choose choices = Just (Gen.choice choices)
 
-    variant available (S.Constructor tag fields) = do
+    variant available (S.Constructor tag fields) = variantWith available tag fields []
+
+    -- Witness values follow the generated declared fields.
+    variantWith available tag fields witnesses = do
       costs <- allocation fields (available - 1)
       case costs of
         Nothing -> pure Nothing
@@ -189,12 +193,17 @@ buildStrategyWith factories schema reference bits budget scalar finish = do
           children <- sequence <$> sequence
             [build ty amount | (S.Field _ ty, amount) <- zip fields amounts]
           pure
-            ((\generators -> LS.SData tag <$> sequence generators) <$> children)
+            ((\generators -> LS.SData tag . (++ witnesses) <$> sequence generators) <$> children)
+
+    -- A field-only existential takes each type of the witness pool.
+    witnessVariants available constructor@(S.Constructor tag _) = do
+      choices <- lift (S.witnessChoices schema constructor)
+      mapM (\(fields, witnesses) -> variantWith available tag fields witnesses) choices
 
     assemble ty available = do
       constructors <- lift (S.constructors schema ty)
       case constructors of
-        Just variants -> mapM (variant available) variants >>= alternatives
+        Just variants -> concat <$> mapM (witnessVariants available) variants >>= alternatives
         Nothing -> builtin ty available
 
     builtin (S.Named name []) _ = do

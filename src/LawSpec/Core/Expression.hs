@@ -45,7 +45,7 @@ validateExpressionWithRegistry registry bits declarations scope expr@Expr{..} = 
       unless (converted == canonical) (Left "core constant must already have its contextual representation")
       pure expressionType
     Construct tag args -> do
-      fields <- Types.constructorFieldsFor registry expressionType tag
+      fields <- Types.constructorFieldsAt registry expressionType tag (map LawSpec.Core.expressionType args)
       unless (map binderType fields == map LawSpec.Core.expressionType args)
         (Left "constructor field types or arity do not match")
       pure expressionType
@@ -119,7 +119,7 @@ validateExpressionWithRegistry registry bits declarations scope expr@Expr{..} = 
   unless (actual == expressionType) (Left ("core result type mismatch: expected " ++ show actual ++ ", found " ++ show expressionType))
   where
     validateCase ty MatchCase{..} = do
-      fields <- Types.constructorFieldsFor registry ty caseConstructor
+      fields <- Types.constructorFieldsAt registry ty caseConstructor (map binderType caseBinders)
       unless (map binderType fields == map binderType caseBinders)
         (Left "match field types or arity do not match")
       let ids = map binderId caseBinders

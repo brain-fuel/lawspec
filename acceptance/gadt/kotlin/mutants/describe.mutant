@@ -1,0 +1,6 @@
+@@ src/main/kotlin/example/Gadt.kt
+<<<<<<<
+value0.witness
+=======
+"Int32"
+>>>>>>>

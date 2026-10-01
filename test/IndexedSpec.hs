@@ -113,7 +113,7 @@ indexedSpec = describe "natural-indexed families" $ do
       rejects "may raise only a literal base or to a literal exponent"
         (family ["  | Nil where n = 0", "  | Cons head :: a tail :: Vec m a where n = m ^ m"])
     it "rejects equations for names that are not indices" $
-      rejects "a is not an index of Vec" (family ["  | Nil where n = 0, a = 1"])
+      rejects "k is not an index of Vec" (family ["  | Nil where n = 0, k = 1"])
     it "rejects duplicate index equations" $
       rejects "duplicate index equation" (family ["  | Nil where n = 0, n = 1"])
     it "rejects index expressions in field types" $

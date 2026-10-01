@@ -70,12 +70,26 @@ public final class LawSpecSchema {
       List<FieldPredicate> predicates,
       List<String> indices,
       List<Refinement> refinements,
-      int existentials) {
+      int existentials,
+      List<Integer> witnesses) {
+    // witnesses: existentials only a value determines (parameter numbers); their types travel
+    // as the trailing Text witness fields.
     public Constructor {
       fields = List.copyOf(fields);
       predicates = List.copyOf(predicates);
       indices = List.copyOf(indices);
       refinements = List.copyOf(refinements);
+      witnesses = List.copyOf(witnesses);
+    }
+
+    public Constructor(
+        String tag,
+        List<Field> fields,
+        List<FieldPredicate> predicates,
+        List<String> indices,
+        List<Refinement> refinements,
+        int existentials) {
+      this(tag, fields, predicates, indices, refinements, existentials, List.of());
     }
 
     public Constructor(
@@ -300,8 +314,143 @@ public final class LawSpecSchema {
       }
     }
     var extended = new ArrayList<TypeRef>(arguments);
-    for (int k = 0; k < constructor.existentials(); k++) extended.add(bound.get(parameters + k));
+    for (int k = 0; k < constructor.existentials(); k++) {
+      var found = bound.get(parameters + k);
+      extended.add(found != null ? found : new Parameter(parameters + k));
+    }
     return extended;
+  }
+
+  /** Types a generator may choose for an existential that only a value fixes. */
+  public static final List<Named> WITNESS_POOL =
+      List.of(new Named("Bool", List.of()), new Named("Int32", List.of()));
+
+  /** A witness spells a type as its name, or a parenthesized application. */
+  public static String witnessKey(TypeRef type) {
+    var named = (Named) type;
+    if (named.arguments().isEmpty()) return named.name();
+    var parts = new ArrayList<String>();
+    parts.add(named.name());
+    for (var argument : named.arguments()) parts.add(witnessKey(argument));
+    return "(" + String.join(" ", parts) + ")";
+  }
+
+  /** Reads a witness key back into a type reference. */
+  public static Named parseWitness(String text) {
+    var tokens =
+        java.util.Arrays.stream(text.replace("(", " ( ").replace(")", " ) ").trim().split("\\s+"))
+            .filter(token -> !token.isEmpty())
+            .toList();
+    int[] at = {0};
+    var result = readWitness(tokens, at);
+    if (at[0] != tokens.size()) throw new IllegalArgumentException("malformed type witness");
+    return result;
+  }
+
+  private static Named readWitness(List<String> tokens, int[] at) {
+    if (at[0] >= tokens.size()) throw new IllegalArgumentException("malformed type witness");
+    if (!tokens.get(at[0]).equals("(")) return new Named(tokens.get(at[0]++), List.of());
+    if (at[0] + 1 >= tokens.size()) throw new IllegalArgumentException("malformed type witness");
+    var name = tokens.get(at[0] + 1);
+    at[0] += 2;
+    var arguments = new ArrayList<TypeRef>();
+    while (at[0] < tokens.size() && !tokens.get(at[0]).equals(")"))
+      arguments.add(readWitness(tokens, at));
+    if (at[0] >= tokens.size()) throw new IllegalArgumentException("malformed type witness");
+    at[0]++;
+    return new Named(name, arguments);
+  }
+
+  private Constructor constructorOf(Named type, String tag) {
+    var definition = definitions.get(type.name());
+    if (definition == null) return null;
+    return definition.constructors().stream()
+        .filter(candidate -> candidate.tag().equals(tag))
+        .findFirst()
+        .orElse(null);
+  }
+
+  /** Field types with witnessed existentials read from the given witness keys. */
+  private List<Field> witnessedFields(Named type, String tag, List<String> keys) {
+    var fields = fields(type, tag);
+    var constructor = constructorOf(type, tag);
+    if (constructor == null || constructor.witnesses().isEmpty()) return fields;
+    var known = new ArrayList<TypeRef>();
+    for (int k = 0; k < keys.size(); k++) {
+      int index = constructor.witnesses().get(k);
+      while (known.size() <= index) known.add(new Parameter(known.size()));
+      known.set(index, parseWitness(keys.get(k)));
+    }
+    return fields.stream()
+        .map(field -> new Field(field.name(), substitute(field.type(), known)))
+        .toList();
+  }
+
+  /** A value's fields at their types, with witnessed existentials read from its witnesses. */
+  public List<Field> fieldsOf(Named type, String tag, List<Value> values) {
+    var constructor = constructorOf(type, tag);
+    if (constructor == null || constructor.witnesses().isEmpty()) return fields(type, tag);
+    int count = constructor.witnesses().size();
+    if (values.size() < count) throw new IllegalArgumentException("missing type witness");
+    var keys = new ArrayList<String>();
+    for (int k = 0; k < count; k++) {
+      var witness = values.get(values.size() - count + k);
+      if (!"Text".equals(witness.type()))
+        throw new IllegalArgumentException("type witness must be text");
+      keys.add((String) LawSpecRuntime.toNative("Text", witness, 64));
+    }
+    var result = witnessedFields(type, tag, keys);
+    for (var field : result) checkType(field.type(), 0);
+    return result;
+  }
+
+  /** A field's type at a value's witnesses, for generated codecs of existential fields. */
+  public Named fieldType(Named type, String tag, int index, List<String> keys) {
+    var result = witnessedFields(type, tag, keys).get(index).type();
+    checkType(result, 0);
+    return (Named) result;
+  }
+
+  /** One choice of witnesses: the declared fields at it, and the witness keys. */
+  public record WitnessInstance(List<Field> fields, List<String> keys) {}
+
+  /** Each choice of witnesses from the pool. */
+  public List<WitnessInstance> instances(Named type, String tag) {
+    var constructor = constructorOf(type, tag);
+    var all = fields(type, tag);
+    if (constructor == null || constructor.witnesses().isEmpty())
+      return List.of(new WitnessInstance(all, List.of()));
+    int count = constructor.witnesses().size();
+    List<List<String>> choices = List.of(List.of());
+    for (int k = 0; k < count; k++) {
+      var next = new ArrayList<List<String>>();
+      for (var choice : choices)
+        for (var pooled : WITNESS_POOL) {
+          var extended = new ArrayList<>(choice);
+          extended.add(witnessKey(pooled));
+          next.add(List.copyOf(extended));
+        }
+      choices = next;
+    }
+    var result = new ArrayList<WitnessInstance>();
+    for (var keys : choices) {
+      var resolved = witnessedFields(type, tag, keys);
+      result.add(new WitnessInstance(resolved.subList(0, resolved.size() - count), keys));
+    }
+    return result;
+  }
+
+  /** The trailing witness keys of a value's fields, for generated codecs. */
+  public static List<String> witnessKeys(List<Value> fields, int count) {
+    var keys = new ArrayList<String>();
+    for (int k = 0; k < count; k++)
+      keys.add((String) LawSpecRuntime.toNative("Text", fields.get(fields.size() - count + k), 64));
+    return keys;
+  }
+
+  /** A witness key as a Text value. */
+  public static Value witnessText(String key) {
+    return LawSpecRuntime.sequence("Text", key.codePoints().toArray());
   }
 
   private static boolean matches(
@@ -331,8 +480,8 @@ public final class LawSpecSchema {
 
   public TypeRef substitute(TypeRef type, List<TypeRef> arguments) {
     if (type instanceof Parameter variable) {
-      if (variable.index() >= arguments.size())
-        throw new IllegalArgumentException("unbound schema parameter");
+      // A witnessed existential stays open until a value supplies it.
+      if (variable.index() >= arguments.size()) return variable;
       return arguments.get(variable.index());
     }
     var named = (Named) type;
@@ -520,9 +669,9 @@ public final class LawSpecSchema {
         || type.name().equals("Either")) {
       if (!(value.data() instanceof Data data))
         throw new IllegalArgumentException("tagged data required");
-      var types = fields(type, data.tag());
-      if (types.size() != data.fields().size())
+      if (fields(type, data.tag()).size() != data.fields().size())
         throw new IllegalArgumentException("invalid constructor arity");
+      var types = fieldsOf(type, data.tag(), data.fields());
       var checked = new ArrayList<Value>();
       for (int index = 0; index < types.size(); index++) {
         var field = types.get(index);

@@ -3,7 +3,7 @@
 module LawSpec.Core.Types
   ( TypeRegistry, makeRegistry, builtinDataDeclarations, registryKinds, registryDeclarations
   , kindOf, checkType, substitute, constructorFieldsFor, constructorPredicatesFor, lookupData, equalityRequirements, generationRequirements
-  , constructorCompatibility, compatibleConstructors, matchType
+  , constructorCompatibility, compatibleConstructors, matchType, constructorFieldsAt, freeExistentials, witnessPool
   ) where
 
 import Control.Monad (foldM, forM_, unless)
@@ -63,6 +63,11 @@ makeRegistry userDeclarations = do
       unique "field identity" (map binderId (constructorFields c))
       unique "field name" (map binderName (constructorFields c))
       unique "existential type" (constructorExistentials c)
+      -- Runtimes append witness fields named witness or witness<k>.
+      let witnessed = length [e | e <- constructorExistentials c, e `notElem` concatMap (typeVariables . snd) (constructorEquations c)]
+          reserved = "witness" : ["witness" ++ show k | k <- [0 .. witnessed - 1]]
+      unless (witnessed == 0 || all ((`notElem` reserved) . binderName) (constructorFields c))
+        (Left ("a field of " ++ idText (constructorId c) ++ " cannot be named witness: its type witness takes that name"))
       let scope = parameters ++ constructorExistentials c
       mapM_ (\field -> do
         let ty = binderType field
@@ -123,6 +128,39 @@ constructorFieldsFor registry ty tag = do
       existentials <- constructorCompatibility declaration constructor [t | TypeArgument t <- arguments]
       let substitutions = M.union (M.fromList (zip (dataParameters declaration) [t | TypeArgument t <- arguments])) existentials
       pure [field {binderType = substitute substitutions (binderType field)} | field <- constructorFields constructor]
+    _ -> Left "data construction requires an applied data type"
+
+-- A field-only existential is not determined by the type: its type comes from
+-- the constructor's arguments (or a value's fields), matched against the
+-- field types. Runtimes carry it as a witness.
+freeExistentials :: DataDeclaration -> DataConstructor -> [Id]
+freeExistentials _ constructor =
+  [e | e <- constructorExistentials constructor, e `notElem` concatMap (typeVariables . snd) (constructorEquations constructor)]
+
+-- The types generated values of a field-only existential take. Runtimes use
+-- the same pool.
+witnessPool :: [Type]
+witnessPool = [Constructor "Bool" [], Constructor "Int32" []]
+
+constructorFieldsAt :: TypeRegistry -> Type -> Id -> [Type] -> Either String [Binder]
+constructorFieldsAt registry ty tag actual = do
+  checkType registry ty
+  case ty of
+    Constructor name arguments -> do
+      declaration <- lookupData registry (Id name)
+      constructor <- maybe (Left ("constructor " ++ idText tag ++ " does not belong to " ++ name)) Right
+        (lookup tag [(constructorId c, c) | c <- dataConstructors declaration])
+      determined <- constructorCompatibility declaration constructor [t | TypeArgument t <- arguments]
+      let parameters = M.fromList (zip (dataParameters declaration) [t | TypeArgument t <- arguments])
+          known = M.union parameters determined
+          free = freeExistentials declaration constructor
+      bound <- if null free then pure known else do
+        unless (length actual == length (constructorFields constructor))
+          (Left ("constructor payload arity mismatch: " ++ idText tag))
+        maybe (Left ("the field types of " ++ idText tag ++ " disagree on its existential types")) Right $
+          foldM (\acc (field, value) -> matchType free acc (substitute known (binderType field)) value)
+            known (zip (constructorFields constructor) actual)
+      pure [field {binderType = substitute bound (binderType field)} | field <- constructorFields constructor]
     _ -> Left "data construction requires an applied data type"
 
 -- Whether a constructor builds values of a declaration at these arguments,
@@ -260,7 +298,9 @@ deriveStoredFieldCapabilities definitions = fixedPoint initial
     fixedPoint previous =
       let next = M.fromList
             [(dataId d, combineNeeds
-              [storedFieldNeeds table previous (binderType f)
+              -- An existential's types (the witness pool, or those its
+              -- equations fix) all have equality and generators.
+              [filter (`notElem` constructorExistentials c) <$> storedFieldNeeds table previous (binderType f)
                 | c <- dataConstructors d, f <- constructorFields c])
               | d <- definitions]
       in if next == previous then next else fixedPoint next

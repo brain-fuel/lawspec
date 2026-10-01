@@ -82,6 +82,9 @@ type lawSpecConstructorSchema struct {
 	indices      []string
 	refinements  []lawSpecRefinement
 	existentials int
+	// Existentials only a value determines (parameter numbers); their types
+	// travel as the trailing Text witness fields.
+	witnesses []int
 }
 
 type lawSpecRefinement struct {
@@ -138,7 +141,8 @@ func lsNewSchema(definitions []lawSpecDataSchema, primitives []string) *lawSpecS
 				fields[position] = lawSpecFieldSchema{field.name, lsCopyType(field.typeRef)}
 			}
 			constructors[index] = lawSpecConstructorSchema{constructor.tag, fields, append([]string{}, constructor.indices...),
-				append([]lawSpecRefinement{}, constructor.refinements...), constructor.existentials}
+				append([]lawSpecRefinement{}, constructor.refinements...), constructor.existentials,
+				append([]int{}, constructor.witnesses...)}
 		}
 		definition.constructors = constructors
 		schema.definitions[definition.name] = definition
@@ -252,6 +256,10 @@ func (s *lawSpecSchema) check(t lawSpecTypeRef, parameters int) {
 
 func lsSubstitute(t lawSpecTypeRef, arguments []lawSpecTypeRef) lawSpecTypeRef {
 	if t.name == "" {
+		// A witnessed existential stays open until a value supplies it.
+		if t.parameter >= len(arguments) {
+			return t
+		}
 		return lsCopyType(arguments[t.parameter])
 	}
 	children := make([]lawSpecTypeRef, len(t.arguments))
@@ -279,7 +287,7 @@ func (s *lawSpecSchema) constructors(t lawSpecTypeRef) ([]lawSpecConstructorSche
 		for position, field := range constructor.fields {
 			fields[position] = lawSpecFieldSchema{field.name, lsSubstitute(field.typeRef, arguments)}
 		}
-		result = append(result, lawSpecConstructorSchema{constructor.tag, fields, constructor.indices, nil, 0})
+		result = append(result, lawSpecConstructorSchema{constructor.tag, fields, constructor.indices, nil, 0, constructor.witnesses})
 	}
 	return result, true
 }
@@ -294,6 +302,29 @@ func lsFieldType(schema *lawSpecSchema, t lawSpecTypeRef, tag string, index int)
 		}
 	}
 	panic("constructor " + tag + " is not a value of " + t.key())
+}
+
+// lsFieldTypeWith is lsFieldType with witnessed existentials read from the
+// value's witness keys.
+func lsFieldTypeWith(schema *lawSpecSchema, t lawSpecTypeRef, tag string, index int, keys []string) lawSpecTypeRef {
+	constructors, _ := schema.constructors(t)
+	for _, constructor := range constructors {
+		if constructor.tag == tag {
+			result := lsWitnessed(constructor, keys)[index]
+			schema.check(result, 0)
+			return result
+		}
+	}
+	panic("constructor " + tag + " is not a value of " + t.key())
+}
+
+// lsWitnessTail reads the trailing witness keys of a value's fields.
+func lsWitnessTail(fields []LawSpecValue, count int) []string {
+	keys := make([]string, count)
+	for k := range keys {
+		keys[k] = lsWitnessString(fields[len(fields)-count+k])
+	}
+	return keys
 }
 
 func lsSameType(a, b lawSpecTypeRef) bool {
@@ -341,9 +372,147 @@ func lsRefine(constructor lawSpecConstructorSchema, arguments []lawSpecTypeRef, 
 	}
 	extended := append([]lawSpecTypeRef{}, arguments...)
 	for k := 0; k < constructor.existentials; k++ {
-		extended = append(extended, bound[parameters+k])
+		if previous, exists := bound[parameters+k]; exists {
+			extended = append(extended, previous)
+		} else {
+			extended = append(extended, lsParameter(parameters+k))
+		}
 	}
 	return extended, true
+}
+
+// lsWitnessKey spells a type as its name, or a parenthesized application.
+func lsWitnessKey(t lawSpecTypeRef) string {
+	if len(t.arguments) == 0 {
+		return t.name
+	}
+	parts := []string{t.name}
+	for _, argument := range t.arguments {
+		parts = append(parts, lsWitnessKey(argument))
+	}
+	return "(" + strings.Join(parts, " ") + ")"
+}
+
+// lsParseWitness reads a witness key back into a type reference.
+func lsParseWitness(text string) lawSpecTypeRef {
+	tokens := strings.Fields(strings.NewReplacer("(", " ( ", ")", " ) ").Replace(text))
+	at := 0
+	var read func() lawSpecTypeRef
+	read = func() lawSpecTypeRef {
+		if at >= len(tokens) {
+			panic("malformed type witness")
+		}
+		if tokens[at] == "(" {
+			if at+1 >= len(tokens) {
+				panic("malformed type witness")
+			}
+			name := tokens[at+1]
+			at += 2
+			arguments := []lawSpecTypeRef{}
+			for at < len(tokens) && tokens[at] != ")" {
+				arguments = append(arguments, read())
+			}
+			if at >= len(tokens) {
+				panic("malformed type witness")
+			}
+			at++
+			return lsNamed(name, arguments...)
+		}
+		at++
+		return lsNamed(tokens[at-1])
+	}
+	result := read()
+	if at != len(tokens) {
+		panic("malformed type witness")
+	}
+	return result
+}
+
+// lsWitnessText is a witness key as a Text value; lsWitnessString reads it.
+func lsWitnessText(key string) LawSpecValue {
+	units := []int{}
+	for _, c := range key {
+		units = append(units, int(c))
+	}
+	return LawSpecValue{"Text", units}
+}
+
+func lsWitnessString(value LawSpecValue) string {
+	units, ok := value.Data.([]int)
+	if value.Type != "Text" || !ok {
+		panic("type witness must be text")
+	}
+	runes := make([]rune, len(units))
+	for i, c := range units {
+		runes[i] = rune(c)
+	}
+	return string(runes)
+}
+
+// lsWitnessed is a constructor's field types with witnessed existentials
+// read from the given witness keys.
+func lsWitnessed(constructor lawSpecConstructorSchema, keys []string) []lawSpecTypeRef {
+	types := make([]lawSpecTypeRef, len(constructor.fields))
+	known := []lawSpecTypeRef{}
+	for k, index := range constructor.witnesses {
+		for len(known) <= index {
+			known = append(known, lsParameter(len(known)))
+		}
+		known[index] = lsParseWitness(keys[k])
+	}
+	for position, field := range constructor.fields {
+		types[position] = lsSubstitute(field.typeRef, known)
+	}
+	return types
+}
+
+// lsWitnessKeys reads a value's trailing witness fields.
+func lsWitnessKeys(constructor lawSpecConstructorSchema, fields []LawSpecValue) []string {
+	keys := make([]string, len(constructor.witnesses))
+	if len(fields) < len(keys) {
+		panic("missing type witness")
+	}
+	for k := range keys {
+		keys[k] = lsWitnessString(fields[len(fields)-len(keys)+k])
+	}
+	return keys
+}
+
+// lsWitnessPool lists the types a generator may choose for an existential
+// that only a value fixes.
+var lsWitnessPool = []lawSpecTypeRef{lsNamed("Bool"), lsNamed("Int32")}
+
+// lsWitnessInstances is each choice of witnesses: the declared fields at it
+// and the witness keys.
+func lsWitnessInstances(constructor lawSpecConstructorSchema) ([][]lawSpecFieldSchema, [][]string) {
+	count := len(constructor.witnesses)
+	declared := constructor.fields[:len(constructor.fields)-count]
+	choices := [][]lawSpecTypeRef{{}}
+	for k := 0; k < count; k++ {
+		next := [][]lawSpecTypeRef{}
+		for _, choice := range choices {
+			for _, ty := range lsWitnessPool {
+				next = append(next, append(append([]lawSpecTypeRef{}, choice...), ty))
+			}
+		}
+		choices = next
+	}
+	fieldSets := [][]lawSpecFieldSchema{}
+	keySets := [][]string{}
+	for _, choice := range choices {
+		keys := make([]string, len(choice))
+		for k, ty := range choice {
+			keys[k] = lsWitnessKey(ty)
+		}
+		types := lsWitnessed(lawSpecConstructorSchema{constructor.tag, declared, nil, nil, 0, constructor.witnesses}, keys)
+		fields := make([]lawSpecFieldSchema, len(declared))
+		for position, field := range declared {
+			fields[position] = lawSpecFieldSchema{field.name, types[position]}
+		}
+		fieldSets = append(fieldSets, fields)
+		keySets = append(keySets, keys)
+	}
+	return fieldSets, keySets
 }
 
 func lsSchemaContext(context string, operation func() LawSpecValue) (result LawSpecValue) {
@@ -512,13 +681,13 @@ func (s *lawSpecSchema) validateValue(t lawSpecTypeRef, value LawSpecValue, bits
 			return lsPresent(t.key(), &child)
 		case "Maybe":
 			constructors = []lawSpecConstructorSchema{
-				{"Maybe::Nothing", nil, nil, nil, 0},
-				{"Maybe::Just", []lawSpecFieldSchema{{"value", t.arguments[0]}}, nil, nil, 0},
+				{"Maybe::Nothing", nil, nil, nil, 0, nil},
+				{"Maybe::Just", []lawSpecFieldSchema{{"value", t.arguments[0]}}, nil, nil, 0, nil},
 			}
 		case "Either":
 			constructors = []lawSpecConstructorSchema{
-				{"Either::Left", []lawSpecFieldSchema{{"value", t.arguments[0]}}, nil, nil, 0},
-				{"Either::Right", []lawSpecFieldSchema{{"value", t.arguments[1]}}, nil, nil, 0},
+				{"Either::Left", []lawSpecFieldSchema{{"value", t.arguments[0]}}, nil, nil, 0, nil},
+				{"Either::Right", []lawSpecFieldSchema{{"value", t.arguments[1]}}, nil, nil, 0, nil},
 			}
 		default:
 			return lsClone(lsValidate(t.name, value, bits))
@@ -536,9 +705,13 @@ func (s *lawSpecSchema) validateValue(t lawSpecTypeRef, value LawSpecValue, bits
 			panic("wrong field count: " + data.tag)
 		}
 		fields := make([]LawSpecValue, len(data.fields))
+		types := lsWitnessed(constructor, lsWitnessKeys(constructor, data.fields))
 		for index, field := range constructor.fields {
 			fields[index] = lsSchemaContext(data.tag+"."+field.name, func() LawSpecValue {
-				return s.validateValue(field.typeRef, data.fields[index], bits, path, symbols)
+				if len(constructor.witnesses) > 0 {
+					s.check(types[index], 0)
+				}
+				return s.validateValue(types[index], data.fields[index], bits, path, symbols)
 			})
 		}
 		for index, predicate := range s.contracts[data.tag] {
@@ -746,6 +919,11 @@ func (s *lawSpecSchema) checkNativeProfile(t lawSpecTypeRef, bits int) {
 	visited := map[string]bool{}
 	var check func(lawSpecTypeRef)
 	check = func(current lawSpecTypeRef) {
+		// A witnessed existential takes a witness pool type, which every
+		// profile supports.
+		if current.name == "" {
+			return
+		}
 		for _, argument := range current.arguments {
 			check(argument)
 		}

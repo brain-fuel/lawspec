@@ -182,8 +182,9 @@ func (c *lawSpecCheckedStrategy) addWitness(schema *lawSpecSchema, reference law
 		if custom {
 			for _, constructor := range constructors {
 				if constructor.tag == data.tag {
-					for index, field := range constructor.fields {
-						c.addWitness(schema, field.typeRef, data.fields[index])
+					types := lsWitnessed(constructor, lsWitnessKeys(constructor, data.fields))
+					for index := range constructor.fields {
+						c.addWitness(schema, types[index], data.fields[index])
 					}
 				}
 			}
@@ -313,9 +314,11 @@ func lsBuildDataStrategy(schema *lawSpecSchema, reference lawSpecTypeRef, bits, 
 		result := false
 		if custom {
 			for _, constructor := range constructors {
-				if _, ok := allocation(constructor.fields, available-1); ok {
-					result = true
-					break
+				fieldSets, _ := lsWitnessInstances(constructor)
+				for _, fields := range fieldSets {
+					if _, ok := allocation(fields, available-1); ok {
+						result = true
+					}
 				}
 			}
 		} else {
@@ -367,25 +370,33 @@ func lsBuildDataStrategy(schema *lawSpecSchema, reference lawSpecTypeRef, bits, 
 		if custom {
 			alternatives := []*rapid.Generator[LawSpecValue]{}
 			for _, constructor := range constructors {
-				costs, ok := allocation(constructor.fields, available-1)
-				if !ok {
-					continue
-				}
-				if len(costs) == 0 {
-					alternatives = append(alternatives, rapid.Just(construct(typeRef, constructor.tag, nil, bits)))
-					continue
-				}
-				fields := make([]*rapid.Generator[LawSpecValue], len(costs))
-				for index, field := range constructor.fields {
-					fields[index] = build(field.typeRef, costs[index])
-				}
-				alternatives = append(alternatives, rapid.Custom(func(t *rapid.T) LawSpecValue {
-					values := make([]LawSpecValue, len(fields))
-					for index, field := range fields {
-						values[index] = field.Draw(t, constructor.fields[index].name)
+				fieldSets, keySets := lsWitnessInstances(constructor)
+				for choice, declared := range fieldSets {
+					keys := keySets[choice]
+					costs, ok := allocation(declared, available-1)
+					if !ok {
+						continue
 					}
-					return construct(typeRef, constructor.tag, values, bits)
-				}))
+					witnesses := make([]LawSpecValue, len(keys))
+					for k, key := range keys {
+						witnesses[k] = lsWitnessText(key)
+					}
+					if len(costs) == 0 {
+						alternatives = append(alternatives, rapid.Just(construct(typeRef, constructor.tag, witnesses, bits)))
+						continue
+					}
+					fields := make([]*rapid.Generator[LawSpecValue], len(costs))
+					for index, field := range declared {
+						fields[index] = build(field.typeRef, costs[index])
+					}
+					alternatives = append(alternatives, rapid.Custom(func(t *rapid.T) LawSpecValue {
+						values := make([]LawSpecValue, 0, len(fields)+len(witnesses))
+						for index, field := range fields {
+							values = append(values, field.Draw(t, declared[index].name))
+						}
+						return construct(typeRef, constructor.tag, append(values, witnesses...), bits)
+					}))
+				}
 			}
 			result = rapid.OneOf(alternatives...)
 		} else if len(typeRef.arguments) == 0 {

@@ -4,6 +4,7 @@ package example
 import java.math.BigInteger
 import lawspec.data.Expr
 import lawspec.data.Pair
+import lawspec.data.Shown
 
 object Gadt {
     // Kotlin does not prune when-branches by type arguments, so these whens
@@ -27,4 +28,6 @@ object Gadt {
     }
 
     fun fold(value0: Expr<BigInteger>): Expr<BigInteger> = Expr.Number(evalNumber(value0))
+
+    fun describe(value0: Shown): String = value0.witness
 }

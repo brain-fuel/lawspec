@@ -4,7 +4,7 @@ module LawSpec.PythonData (emitPythonData, emitPythonDataWithProfile, pythonData
 import Control.Monad (unless, forM)
 import qualified LawSpec.Core as C
 import qualified LawSpec.Core.Schema as S
-import LawSpec.Core.Types (makeRegistry)
+import LawSpec.Core.Types (makeRegistry, freeExistentials)
 import LawSpec.Core.Total (constructorProofContracts)
 import LawSpec.Common (Artifact(..))
 import LawSpec.Scalar (primitives, primitiveName)
@@ -86,10 +86,14 @@ emitPythonDataWithProfile bits layout declarations = do
           unless (take 2 (C.binderName field) /= "__") (Left "Python data fields cannot replace special methods")
           ty <- typeDoc "" names scope (C.binderType field)
           pure (D.text (C.binderName field ++ ": ") <> ty)
+        -- Each field-only existential's type travels as a witness text.
+        let free = freeExistentials declaration constructor
+            witnesses = [D.text (S.witnessFieldName (length free) k ++ ": str") | k <- [0 .. length free - 1]]
+        let fields' = fields ++ witnesses
         pure (D.text "@_dataclasses.dataclass(frozen=True, slots=True, eq=False)" <> D.hardline <>
           suite (D.text "class " <> application native open <>
             (if isProduct declaration then mempty else D.text "(" <> application name baseArgs <> D.text ")"))
-            (if null fields then D.text "pass" else D.joinWith D.hardline fields))
+            (if null fields' then D.text "pass" else D.joinWith D.hardline fields'))
       -- A product is a single dataclass named after its type.
       pure ([base | not (isProduct declaration)] ++ variants)
     definitionSchema names bindings schema = do
@@ -103,6 +107,7 @@ emitPythonDataWithProfile bits layout declarations = do
            [D.text "indices=" <> array (map (D.text . q) (S.constructorIndex constructor)) | not (null (S.constructorIndex constructor))] ++
            [D.text "refinements=" <> array [array [D.text (show index), reference pattern] | (index, pattern) <- S.constructorRefinements constructor]
              | not (null (S.constructorRefinements constructor))] ++
-           [D.text ("existentials=" ++ show (S.constructorExistentials constructor)) | S.constructorExistentials constructor > 0]))
+           [D.text ("existentials=" ++ show (S.constructorExistentials constructor)) | S.constructorExistentials constructor > 0] ++
+           [D.text "witnesses=" <> array (map (D.text . show) (S.constructorWitnesses constructor)) | not (null (S.constructorWitnesses constructor))]))
       pure (invoke "_schema.Definition"
         [D.text (q (S.typeName schema)), D.text (show (S.parameterCount schema)),array variants])

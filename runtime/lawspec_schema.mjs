@@ -70,6 +70,7 @@ export class Constructor {
       indices = [],
       refinements = [],
       existentials = 0,
+      witnesses = [],
   ) {
     this.tag = tag;
     this.fields = Object.freeze([...fields]);
@@ -80,6 +81,9 @@ export class Constructor {
     // the parameters numbered after the definition's own.
     this.refinements = Object.freeze(refinements.map(([index, pattern]) => [index, pattern]));
     this.existentials = existentials;
+    // Existentials only a value determines (parameter numbers); their types
+    // travel as the trailing string witness fields.
+    this.witnesses = Object.freeze([...witnesses]);
     this.nativeFields =
         nativeFields === null
           ? null
@@ -130,12 +134,75 @@ function refine(constructor, args, parameters) {
 }
 
 export function substitute(type, args) {
-  return type instanceof Parameter
-    ? args[type.index]
-    : new Named(
+  if (type instanceof Parameter) {
+    // A witnessed existential stays open until a value supplies it.
+    const bound = args[type.index];
+    return bound === undefined || bound === null ? type : bound;
+  }
+  return new Named(
         type.name,
         type.args.map((child) => substitute(child, args)),
       );
+}
+
+// A witness spells a type as its name, or a parenthesized application.
+export function witnessKey(type) {
+  if (!type.args.length) return type.name;
+  return `(${[type.name, ...type.args.map(witnessKey)].join(' ')})`;
+}
+
+export function parseWitness(text) {
+  if (typeof text !== 'string') throw new TypeError('type witness must be text');
+  const tokens = text.replaceAll('(', ' ( ').replaceAll(')', ' ) ').trim().split(/\s+/).filter(Boolean);
+  let at = 0;
+  const read = () => {
+    if (at >= tokens.length) throw new TypeError('malformed type witness');
+    if (tokens[at] === '(') {
+      const name = tokens[at + 1];
+      at += 2;
+      const args = [];
+      while (tokens[at] !== ')') {
+        if (at >= tokens.length) throw new TypeError('malformed type witness');
+        args.push(read());
+      }
+      at += 1;
+      return new Named(name, args);
+    }
+    return new Named(tokens[at++]);
+  };
+  const type = read();
+  if (at !== tokens.length) throw new TypeError('malformed type witness');
+  return type;
+}
+
+// Types a generator may choose for an existential that only a value fixes.
+export const WITNESS_POOL = Object.freeze([new Named('Bool'), new Named('Int32')]);
+
+// Field types with witnessed existentials read from a value's fields.
+export function witnessed(constructor, fields) {
+  if (!constructor.witnesses.length) return constructor.fields.map((field) => field.type);
+  const known = [];
+  const texts = fields.slice(fields.length - constructor.witnesses.length);
+  constructor.witnesses.forEach((index, k) => { known[index] = parseWitness(texts[k]); });
+  return constructor.fields.map((field) => substitute(field.type, known));
+}
+
+// Each choice of witnesses: [declared fields at it, witness texts].
+export function witnessInstances(constructor) {
+  const count = constructor.witnesses.length;
+  const declared = constructor.fields.slice(0, constructor.fields.length - count);
+  let choices = [[]];
+  for (let k = 0; k < count; ++k) {
+    choices = choices.flatMap((choice) => WITNESS_POOL.map((type) => [...choice, type]));
+  }
+  return choices.map((choice) => {
+    const known = [];
+    constructor.witnesses.forEach((index, k) => { known[index] = choice[k]; });
+    return [
+      declared.map((field) => new Field(field.name, substitute(field.type, known))),
+      choice.map(witnessKey),
+    ];
+  });
 }
 
 export function typeKey(type) {
@@ -304,6 +371,9 @@ export class Schema {
           constructor.predicates,
           constructor.nativeFields,
           constructor.indices,
+          [],
+          0,
+          constructor.witnesses,
       ));
     }
     return found;
@@ -663,10 +733,12 @@ export class Schema {
             `wrong field count: ${constructor.tag}`,
         );
       }
+      const types = witnessed(constructor, fields);
       const converted = constructor.fields.map((field, index) => {
         try {
+          if (types[index] !== field.type) this.#check(types[index]);
           return this.#walk(
-              field.type,
+              types[index],
               fields[index],
               bits,
               mode,

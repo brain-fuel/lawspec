@@ -39,7 +39,9 @@ checkNativeProfile schema typeRef bits = do
   _ <- visit [] typeRef
   pure ()
   where
-    visit _ (S.Parameter _) = Left "unbound native type parameter"
+    -- A witnessed existential takes a witness pool type, which every profile
+    -- supports.
+    visit seen (S.Parameter _) = pure seen
     visit seen current@(S.Named name arguments) = do
       previous <- foldM visit seen arguments
       unless (name `notElem` ["IntSize", "UIntSize", "UIntPtr"] ||

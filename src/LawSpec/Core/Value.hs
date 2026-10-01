@@ -2,14 +2,15 @@
 -- lossless leaves; algebraic constructors never share absence representations.
 module LawSpec.Core.Value
   ( Value(..), fromScalarValue, toScalarValue, validateValue, validateValueWith, ValueCheck(..), checkValueWith
-  , equalValues, listValue, listItems, valueIndex
+  , equalValues, listValue, listItems, valueIndex, valueType, witnessFields, witnessKey, witnessKeys
   ) where
 
 import Control.Monad (unless, zipWithM)
 import Control.Monad.Trans.Class (lift)
 import Control.Monad.Trans.Except (ExceptT, runExceptT, throwE)
-import LawSpec.Core (Type(..), Argument(..), Id(..), Expr, binderId, binderType, dataIndex)
-import LawSpec.Core.Types (TypeRegistry, checkType, constructorFieldsFor, constructorPredicatesFor, lookupData)
+import LawSpec.Core (Type(..), Argument(..), Id(..), Expr, DataDeclaration(..), DataConstructor(..), binderId, binderType)
+import qualified Data.Map.Strict as M
+import LawSpec.Core.Types (TypeRegistry, checkType, constructorFieldsAt, constructorPredicatesFor, lookupData, freeExistentials, matchType, substitute)
 import LawSpec.IndexTerm (FamilyIndex(..), ConstructorIndex(..), evaluateIndex, guardHolds)
 import LawSpec.Core.Semantics (binaryValue)
 import LawSpec.Scalar
@@ -71,7 +72,7 @@ checkValueWith evaluate registry bits expected value =
           _ -> lift (Left "presence value does not match its declared type")
         DataValue actual tag payload -> do
           lift $ unless (actual == expected) (Left "data value does not match its declared type")
-          fields <- lift (constructorFieldsFor registry actual tag)
+          fields <- lift (constructorFieldsAt registry actual tag (map valueType payload))
           lift $ unless (length fields == length payload)
             (Left ("constructor payload arity mismatch: " ++ idText tag))
           checked <- zipWithM walk (map binderType fields) payload
@@ -95,6 +96,40 @@ checkValueWith evaluate registry bits expected value =
                          , Just family <- dataIndex declaration
                          , Just (ConstructorIndex _ guards) <- lookup (idText tag) (familyIndexConstructors family) -> guards
       _ -> []
+
+-- Runtimes carry a field-only existential's type as a trailing Text field,
+-- after the declared ones: a witness, keyed by witnessKey.
+witnessFields :: [DataDeclaration] -> Type -> Id -> [Value] -> [Value]
+witnessFields declarations ty tag fields =
+  map (ScalarValue . textScalar) (witnessKeys declarations ty tag (map valueType fields))
+
+-- The witness keys of a construction from its declared fields' types; none
+-- when the constructor has no field-only existential.
+witnessKeys :: [DataDeclaration] -> Type -> Id -> [Type] -> [String]
+witnessKeys declarations ty tag types = case ty of
+  Constructor name arguments
+    | declaration : _ <- [d | d <- declarations, dataId d == Id name]
+    , constructor : _ <- [c | c <- dataConstructors declaration, constructorId c == tag]
+    , free@(_ : _) <- freeExistentials declaration constructor ->
+        let known = M.fromList (zip (dataParameters declaration) [t | TypeArgument t <- arguments])
+            bound = foldl (\acc (field, actual) -> maybe acc id (matchType free acc (substitute known (binderType field)) actual))
+              known (zip (constructorFields constructor) types)
+        in [maybe "" witnessKey (M.lookup e bound) | e <- free]
+  _ -> []
+
+-- A witness spells a type as its name, or a parenthesized application.
+witnessKey :: Type -> String
+witnessKey ty = case ty of
+  Constructor name [] -> name
+  Constructor name arguments -> "(" ++ unwords (name : [witnessKey t | TypeArgument t <- arguments]) ++ ")"
+  _ -> ""
+
+-- The type a value carries: a field-only existential takes it from here.
+valueType :: Value -> Type
+valueType value = case value of
+  ScalarValue scalar -> Constructor (scalarName scalar) []
+  DataValue ty _ _ -> ty
+  PresenceValue ty _ -> ty
 
 -- An indexed family's index of a value, recomputed from its constructor's
 -- term; Nothing when the value is not of an indexed family or has no value.

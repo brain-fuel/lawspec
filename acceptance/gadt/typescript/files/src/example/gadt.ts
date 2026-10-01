@@ -22,3 +22,7 @@ export function evalPair(value0: data.Expr<data.Pair<bigint, boolean>>): data.Pa
 export function fold(value0: data.Expr<bigint>): data.Expr<bigint> {
   return new data.ExprNumber(evalNumber(value0));
 }
+
+export function describe(value0: data.Shown): string {
+  return value0.witness;
+}

@@ -45,3 +45,8 @@ func EvalPair(value0 Expr[Pair[*LawSpecBigInt, bool]]) Pair[*LawSpecBigInt, bool
 func Fold(value0 Expr[*LawSpecBigInt]) Expr[*LawSpecBigInt] {
 	return ExprNumber{Value: EvalNumber(value0)}
 }
+
+// Describe names the type a shown value holds, from its witness.
+func Describe(value0 Shown) string {
+	return value0.Witness
+}

@@ -7,7 +7,8 @@ import Data.Char (isAscii, isAlphaNum, isLetter, toLower, ord)
 import Data.List (nub, intercalate, find)
 import Numeric (showHex)
 import qualified LawSpec.Core as C
-import LawSpec.Core.Types (makeRegistry, checkType)
+import LawSpec.Core.Types (makeRegistry, checkType, freeExistentials)
+import qualified LawSpec.Core.Schema as S
 import LawSpec.Scalar (nativeRepresentation)
 import qualified LawSpec.Code.Doc as D
 
@@ -152,10 +153,13 @@ emitRustData layout declarations = do
             | (v,ts) <- zip variants allFieldTypes] || not (null phantom)
       rendered <- forM variants $ \variant -> do
         tag <- identifier (C.constructorName variant)
-        fields <- forM (C.constructorFields variant) $ \field -> do
+        declaredFields <- forM (C.constructorFields variant) $ \field -> do
           fieldName <- identifier (C.binderName field)
           ty <- fieldType (C.binderType field)
           pure (fieldName,ty)
+        -- Each field-only existential's type travels as a witness string.
+        let free = length (freeExistentials declaration variant)
+            fields = declaredFields ++ [(S.witnessFieldName free k, "String") | k <- [0 .. free - 1]]
         unless (length fields == length (nub (map fst fields)) && all ((/= "_lawspec_marker") . fst) fields)
           (Left "conflicting Rust data fields")
         let marker = [("_lawspec_marker",markerType) | not (null phantom)]

@@ -12,7 +12,8 @@ import Data.Aeson (encode)
 import qualified Data.Text.Lazy as T
 import qualified Data.Text.Lazy.Encoding as T
 import qualified LawSpec.Core as C
-import LawSpec.Core.Types (makeRegistry, checkType)
+import LawSpec.Core.Types (makeRegistry, checkType, freeExistentials)
+import qualified LawSpec.Core.Schema as S
 import LawSpec.Common (Artifact(..))
 import LawSpec.RuntimeSources (runtimeSource)
 import qualified LawSpec.JavaData as JVM
@@ -131,16 +132,19 @@ emitKotlinDataWithProfile bits layout declarations = do
         -- existentials, and implements the interface it refines to.
         declare className supertype variant = do
           identifier className
-          let existentials = zip (C.constructorExistentials variant)
+          -- A field-only existential is Any?; its witness names its type.
+          let free = freeExistentials declaration variant
+              existentials = zip [e | e <- C.constructorExistentials variant, e `notElem` free]
                 [candidate | i <- [0::Int ..], let candidate = "E" ++ show i, candidate /= name]
-              scope = parameters ++ existentials
+              scope = parameters ++ existentials ++ [(e, "Any?") | e <- free]
               equations = C.constructorEquations variant
               own = if null equations && null existentials then arguments
                 else [D.text t | (p, t) <- parameters, p `notElem` map fst equations] ++ map (D.text . snd) existentials
-          fields <- forM (C.constructorFields variant) $ \field -> do
+          declared <- forM (C.constructorFields variant) $ \field -> do
             identifier (C.binderName field)
             ty <- typeDoc names scope (C.binderType field)
             pure (D.text ("val " ++ C.binderName field ++ ": ") <> ty)
+          let fields = declared ++ [D.text ("val " ++ S.witnessFieldName (length free) k ++ ": String") | k <- [0 .. length free - 1]]
           implemented <- mapM (\(p, t) -> maybe (pure (D.text t)) (typeDoc names scope) (lookup p equations)) parameters
           let inherits = maybe mempty (\owner -> D.text " : " <> applied owner (if null equations then arguments else implemented)) supertype
           pure $ case (fields, not (null own)) of
@@ -371,19 +375,31 @@ emitCodecs mappings owner layout declarations = do
               [D.text "type", D.text "bits", D.text "symbols", encodeBody, decodeBody] <> D.text ",") <>
             D.hardline <> D.text ")"
       pure (signature <> D.text " " <> D.block 4 body)
-    fields names parameters variant = forM (zip [0::Int ..] (C.constructorFields variant)) $ \(i,field) -> do
-      -- An existential field's type comes from the value's own type.
-      bridge <- if any (`elem` C.constructorExistentials variant) (typeVariablesIn (C.binderType field))
-        then pure (call "dynamic" [D.text "schema", D.text "bits", D.text "symbols",
-          call "schema.fieldType" [D.text "type", quoted (C.idText (C.constructorId variant)), D.text (show i)]])
-        else codecDocUsingOwner owner (Just (D.text "symbols")) names parameters (C.binderType field)
-      pure ("field" ++ show i, C.binderName field,
-        D.text ("val field" ++ show i ++ " = ") <> bridge)
+    witnessCount variant = maybe 0 (\d -> length (freeExistentials d variant)) (declarationOf variant)
+    -- keys: the value's witness keys, read from the native value or the data.
+    fields names parameters keys variant = do
+      declared <- forM (zip [0::Int ..] (C.constructorFields variant)) $ \(i,field) -> do
+        -- An existential field's type comes from the value's own type, or
+        -- from its witnesses.
+        bridge <- if any (`elem` C.constructorExistentials variant) (typeVariablesIn (C.binderType field))
+          then pure (call "dynamic" [D.text "schema", D.text "bits", D.text "symbols",
+            call "schema.fieldType" ([D.text "type", quoted (C.idText (C.constructorId variant)), D.text (show i)] ++
+              [keys | witnessCount variant > 0])])
+          else codecDocUsingOwner owner (Just (D.text "symbols")) names parameters (C.binderType field)
+        pure ("field" ++ show i, C.binderName field,
+          D.text ("val field" ++ show i ++ " = ") <> bridge)
+      text <- codecDocUsingOwner owner (Just (D.text "symbols")) names parameters (C.Constructor "Text" [])
+      let n = length (C.constructorFields variant)
+      pure (declared ++ [("field" ++ show (n + k), S.witnessFieldName (witnessCount variant) k,
+        D.text ("val field" ++ show (n + k) ++ " = ") <> text) | k <- [0 .. witnessCount variant - 1]])
+    nativeKeys variant = call "listOf" [D.text ("value." ++ S.witnessFieldName (witnessCount variant) k) | k <- [0 .. witnessCount variant - 1]]
+    dataKeys variant = call "LawSpecSchema.witnessKeys" [D.text "data.fields()", D.text (show (witnessCount variant))]
     encodeArm names parameters dataOwner variant = do
-      bindings <- fields names parameters variant
-      let payload = [call "LawSpecSchema.encodeField"
-            [D.text local, D.text ("value." ++ fieldName variant field), quoted (C.idText (C.constructorId variant) ++ "." ++ field)]
-            | (local,field,_) <- bindings]
+      bindings <- fields names parameters (nativeKeys variant) variant
+      let n = length (C.constructorFields variant)
+          payload = [call "LawSpecSchema.encodeField"
+            [D.text local, D.text ("value." ++ (if i < n then fieldName variant field else field)), quoted (C.idText (C.constructorId variant) ++ "." ++ field)]
+            | (i,(local,field,_)) <- zip [0 :: Int ..] bindings]
           condition = (if generatedObject variant && owner == "LawSpecDataCodecs" then ""
             else if unitConstructor variant then "value === "
             else if owner == "LawSpecDataCodecs" then "is " else "value is ") ++
@@ -400,10 +416,11 @@ emitCodecs mappings owner layout declarations = do
           [call "schema.construct" [D.text "type", quoted (C.idText (C.constructorId variant)),
             call "listOf" payload, D.text "bits", D.text "symbols"]])))
     decodeArm names parameters owner variant = do
-      bindings <- fields names parameters variant
+      bindings <- fields names parameters (dataKeys variant) variant
       let decoded i local = D.text (local ++ ".decode(data.fields()[" ++ show i ++ "])")
           payload = [if existentialField variant field then call "LawSpecSchema.cast" [decoded i local] else decoded i local
-            | (i,((local,_,_),field)) <- zip [0::Int ..] (zip bindings (C.constructorFields variant))]
+            | (i,((local,_,_),field)) <- zip [0::Int ..] (zip bindings (C.constructorFields variant))] ++
+            [decoded i local | (i,(local,_,_)) <- drop (length (C.constructorFields variant)) (zip [0::Int ..] bindings)]
           constructor = if gadtVariant variant
             then constructorName owner variant ++ (if ownCount variant > 0 then "<" ++ intercalate ", " (replicate (ownCount variant) "Any?") ++ ">" else "")
             else D.render D.Compact (applied (constructorName owner variant) [D.text t | (_,(t,_)) <- parameters])
@@ -419,7 +436,7 @@ emitCodecs mappings owner layout declarations = do
     existentialField variant field = any (`elem` C.constructorExistentials variant) (typeVariablesIn (C.binderType field))
     ownCount variant = case declarationOf variant of
       Just d | gadtVariant variant -> length [p | p <- C.dataParameters d, p `notElem` map fst (C.constructorEquations variant)]
-        + length (C.constructorExistentials variant)
+        + length [e | e <- C.constructorExistentials variant, e `notElem` freeExistentials d variant]
              | otherwise -> length (C.dataParameters d)
       Nothing -> 0
 

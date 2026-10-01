@@ -1,6 +1,7 @@
 -- User-owned LawSpec adapter.
-module Example.Gadt (evalNumber, evalTruth, evalPair, fold) where
+module Example.Gadt (evalNumber, evalTruth, evalPair, fold, describe) where
 
+import qualified Data.Text as T
 import qualified LawSpecData as Data
 
 -- Only the number cases build an Expr Integer, so GHC accepts these matches
@@ -19,3 +20,7 @@ evalPair (Data.ExprBoth first second) = Data.Pair (evalNumber first) (evalTruth 
 
 fold :: Data.Expr Integer -> Data.Expr Integer
 fold = Data.ExprNumber . evalNumber
+
+-- The witness names the type the shown value holds.
+describe :: Data.Shown -> T.Text
+describe (Data.Shown _ witness) = witness

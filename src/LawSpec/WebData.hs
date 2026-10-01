@@ -6,7 +6,7 @@ import Data.List (nub, intercalate, isPrefixOf)
 import qualified LawSpec.Backend as Backend
 import qualified LawSpec.Core as C
 import qualified LawSpec.Core.Schema as S
-import LawSpec.Core.Types (makeRegistry)
+import LawSpec.Core.Types (makeRegistry, freeExistentials)
 import LawSpec.Common (Artifact(..))
 import LawSpec.Scalar
 import LawSpec.RuntimeSources (runtimeSource)
@@ -74,6 +74,8 @@ emitWebDataWithProfile ts bits layout declarations = do
         "predicates: FieldPredicate[] = []" $
         replace "      indices = [],\n      refinements = [],"
           "      indices: ReadonlyArray<string> = [],\n      refinements: ReadonlyArray<readonly [number, Named | Parameter]> = []," $
+        replace "      witnesses = [],\n"
+          "      witnesses: ReadonlyArray<number> = [],\n" $
         replace "constructor(name, args = [])"
           "constructor(name: string, args: ReadonlyArray<Named | Parameter> = [])" (runtimeSource "web-schema")
         else runtimeSource "web-schema"
@@ -135,20 +137,25 @@ emitWebDataWithProfile ts bits layout declarations = do
         let equations = C.constructorEquations constructor
             existentials = zip (C.constructorExistentials constructor)
               [candidate | n <- [0::Int ..], let candidate = "E" ++ show n, candidate `notElem` map snd names]
-            scope = parameters ++ existentials
-            open = [v | (p, v) <- parameters, p `notElem` map fst equations] ++ map snd existentials
+            -- A field-only existential is unknown statically; its witness
+            -- names the type.
+            free = freeExistentials declaration constructor
+            scope = parameters ++ [(e, if e `elem` free then "unknown" else v) | (e, v) <- existentials]
+            open = [v | (p, v) <- parameters, p `notElem` map fst equations] ++ [v | (e, v) <- existentials, e `notElem` free]
             classArgs = if ts && not (null equations) then open else args
         fields <- forM (C.constructorFields constructor) $ \field -> do
           identifier False (C.binderName field)
           unless (C.binderName field /= "_lawspecBrand") (Left "reserved TypeScript data field: _lawspecBrand")
           ty <- typeDoc "" names scope (C.binderType field)
           pure (C.binderName field,ty)
+        -- Each field-only existential's type travels as a witness string.
+        let fields' = fields ++ [(S.witnessFieldName (length free) k, D.text "string") | k <- [0 .. length free - 1]]
         member <- if not ts || null equations then pure (application native (map D.text classArgs)) else do
           patterns <- mapM (\(p, ty) -> typeDoc "" names [(e, "infer " ++ v) | (e, v) <- existentials] ty >>= \pattern ->
             pure (maybe (D.text "never") D.text (lookup p parameters), pattern)) equations
           pure (D.text "([" <> D.commaSep (map fst patterns) <> D.text "] extends [" <> D.commaSep (map snd patterns) <>
             D.text "] ? " <> application native (map D.text classArgs) <> D.text " : never)")
-        pure (member,nativeClass native classArgs fields)
+        pure (member,nativeClass native classArgs fields')
       -- A product's class is the type itself; only sums need a union alias.
       pure ([alias name args (if null variants then [D.text "never"] else map fst variants) | not (isProduct declaration)] ++ map snd variants)
     -- Optional trailing arguments up to the last one that is needed.
@@ -164,10 +171,12 @@ emitWebDataWithProfile ts bits layout declarations = do
              , D.text "null"
              , array (map (D.text . q) (S.constructorIndex constructor))
              , array [array [D.text (show index), reference pattern] | (index, pattern) <- S.constructorRefinements constructor]
-             , D.text (show (S.constructorExistentials constructor)) ]
+             , D.text (show (S.constructorExistentials constructor))
+             , array (map (D.text . show) (S.constructorWitnesses constructor)) ]
              [ any ((== S.constructorTag constructor) . fst) bindings, False
              , not (null (S.constructorIndex constructor))
              , not (null (S.constructorRefinements constructor))
-             , S.constructorExistentials constructor > 0 ]))
+             , S.constructorExistentials constructor > 0
+             , not (null (S.constructorWitnesses constructor)) ]))
       pure (invoke "new schema.Definition"
         [D.text (q (S.typeName schema)),D.text (show (S.parameterCount schema)),array variants])

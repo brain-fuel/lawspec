@@ -25,3 +25,7 @@ def evalPair(value0):
 
 def fold(value0):
     return data.ExprNumber(evalNumber(value0))
+
+
+def describe(value0):
+    return value0.witness

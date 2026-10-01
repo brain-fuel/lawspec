@@ -2,6 +2,7 @@ module LawSpec.CoreEmit (emitPlan, emitPlanWithFormat, emitPlanWithLayout, emitP
 import LawSpec.Backend
 import LawSpec.Common
 import LawSpec.Testing
+import LawSpec.Witness (witnessPlan)
 import LawSpec.RustEmit (emitRustWithFormat, emitRustWithBindings)
 import qualified LawSpec.NativeBinding as Binding
 import qualified LawSpec.NativeRequest as NB
@@ -52,7 +53,8 @@ emitPlan = emitPlanWithFormat False
 -- Canonical adapter references are independent of the selected presentation.
 -- Legacy runtime/test templates are still being migrated to structured Docs.
 emitPlanWithFormat :: Bool -> String -> Plan -> Either [Diagnostic] [Artifact]
-emitPlanWithFormat minify target plan = do
+emitPlanWithFormat minify target original = do
+  let plan = witnessPlan original
   files <- emitPlanFormatted minify target plan
   canonical <- if minify then emitPlanFormatted False target plan else pure files
   let references = [(artifactPath a, artifactContent a) | a <- canonical, ownership a == "user"]
@@ -195,8 +197,8 @@ emitPlanFormatted minify target Plan{..} = do
     definitionCalls = JavaDefinitions.definitionCalls (map plannedUnit plannedUnits)
     webStrategies = unlines [if line == "import * as ls from './lawspec_runtime.mjs';"
       then "import * as ls from '../src/lawspec_runtime." ++ (if target == "typescript" then "js" else "mjs") ++ "';"
-      else if line == "import {RefinementViolation} from './lawspec_schema.mjs';"
-      then "import {RefinementViolation} from '../src/lawspec_schema." ++ (if target == "typescript" then "js" else "mjs") ++ "';"
+      else if line == schemaImport
+      then "import {RefinementViolation, witnessed, witnessInstances} from '../src/lawspec_schema." ++ (if target == "typescript" then "js" else "mjs") ++ "';"
       else line | line <- lines (runtimeSource "web-data-strategies")]
     requiresSchema = if target == "python" then PythonData.requiresSchema else WebData.requiresSchema
     hasPayload = any payloadExpression
@@ -253,7 +255,8 @@ emitPlanWithOptions minify target sourceDir testDir plan =
   emitPlanWithNativeOptions minify target sourceDir testDir NB.emptyBindingPlan plan
 
 emitPlanWithNativeOptions :: Bool -> String -> Maybe String -> Maybe String -> NB.BindingPlan -> Plan -> Either [Diagnostic] [Artifact]
-emitPlanWithNativeOptions minify target sourceDir testDir bindings originalPlan = do
+emitPlanWithNativeOptions minify target sourceDir testDir bindings unwitnessed = do
+  let originalPlan = witnessPlan unwitnessed
   unless (target `elem` ["python","rust","javascript","typescript","java","kotlin","go","haskell"] || not (any Binding.resolvedGeneratorStub
     (Binding.resolvedGenerators (NB.bindingRepresentations bindings))))
     (Left [Diagnostic "native-binding" ("generator scaffolds are not implemented for " ++ target) Nothing])
@@ -366,3 +369,7 @@ emitPlanWithNativeOptions minify target sourceDir testDir bindings originalPlan 
       result = map adjust files
   unless (length result == length (nub (map (map toLower . artifactPath) result))) (Left [Diagnostic "collision" "custom layout causes an output collision" Nothing])
   pure result
+
+-- The web strategies' schema import, rewritten to the emitted layout.
+schemaImport :: String
+schemaImport = "import {RefinementViolation, witnessed, witnessInstances} from './lawspec_schema.mjs';"

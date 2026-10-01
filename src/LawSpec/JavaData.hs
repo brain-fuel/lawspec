@@ -17,7 +17,7 @@ import LawSpec.Core.Total (constructorProofContracts)
 import Data.Aeson (encode)
 import qualified Data.Text.Lazy as Text
 import qualified Data.Text.Lazy.Encoding as Text
-import LawSpec.Core.Types (makeRegistry, checkType)
+import LawSpec.Core.Types (makeRegistry, checkType, freeExistentials)
 import LawSpec.Common (Artifact(..))
 import LawSpec.Scalar (nativeRepresentation, primitive, primitives, primitiveName)
 import qualified LawSpec.Code.Doc as D
@@ -157,7 +157,9 @@ emitJavaDataWithProfile bits layout declarations = do
           body <- D.joinWith D.hardline <$> mapM (\v -> do
             -- A GADT case is generic in the parameters it leaves open and in
             -- its existentials, and implements the interface it refines to.
-            let existentials = zip (C.constructorExistentials v)
+            -- A field-only existential is an Object; its witness names its type.
+            let free = freeExistentials declaration v
+                existentials = zip [e | e <- C.constructorExistentials v, e `notElem` free]
                   [candidate | n <- [0 :: Int ..], let candidate = "E" ++ show n, candidate /= name]
                 scope = parameters ++ existentials
                 equations = C.constructorEquations v
@@ -170,8 +172,11 @@ emitJavaDataWithProfile bits layout declarations = do
           pure (D.group header <> D.text " " <> D.block 2 body)
       pure (Artifact ("src/main/java/lawspec/data/" ++ name ++ ".java")
         (D.render layout (file source)) "generated" "source")
-    record names parameters keywordName args implements value = do
-      components <- mapM (\field -> do
+    record names scope keywordName args implements value = do
+      let free = concat [freeExistentials d value | d <- declarations, value `elem` C.dataConstructors d]
+          parameters = scope ++ [(e, "Object") | e <- free]
+          witnesses = [D.text ("String " ++ Schema.witnessFieldName (length free) k) | k <- [0 .. length free - 1]]
+      components <- (++ witnesses) <$> mapM (\field -> do
         identifier (C.binderName field)
         unless (C.binderName field `notElem` objectMethods)
           (Left ("Java record component " ++ C.binderName field ++ " of " ++ C.constructorName value ++
@@ -283,7 +288,8 @@ renderSchema layout callbacks bindings schemas = D.render layout $
        [list (map quoted (Schema.constructorIndex value)) | indexed value || refined value] ++
        concat [[list [call "new LawSpecSchema.Refinement" [D.text (show index), reference pattern]
                  | (index, pattern) <- Schema.constructorRefinements value],
-                D.text (show (Schema.constructorExistentials value))] | refined value])
+                D.text (show (Schema.constructorExistentials value))] | refined value] ++
+       [list (map (D.text . show) (Schema.constructorWitnesses value)) | not (null (Schema.constructorWitnesses value))])
     indexed value = not (null (Schema.constructorIndex value))
     refined value = not (null (Schema.constructorRefinements value)) || Schema.constructorExistentials value > 0
     field value = call "new Field" [quoted (Schema.fieldName value), reference (Schema.fieldType value)]
@@ -407,35 +413,49 @@ codecSource layout names declarations = do
         caseArguments args value
           | null (C.constructorEquations value) && null (C.constructorExistentials value) = args
           | otherwise = replicate (length [p | p <- C.dataParameters declaration, p `notElem` map fst (C.constructorEquations value)]
-              + length (C.constructorExistentials value)) (D.text "?")
+              + length [e | e <- C.constructorExistentials value, e `notElem` freeExistentials declaration value]) (D.text "?")
         existential value ty = any (`elem` C.constructorExistentials value) (typeVariablesOf ty)
-        fieldBindings parameters value = mapM (\(i,field) -> do
-          -- An existential field's type comes from the value's own type.
-          bridge <- if existential value (C.binderType field)
-            then pure (call "dynamic" [D.text "schema", D.text "bits", D.text "symbols",
-              call "schema.fieldType" [D.text "type", quoted (C.idText (C.constructorId value)), D.text (show i)]])
-            else codec parameters (C.binderType field)
-          pure ("field" ++ show i, C.binderName field,
-            D.group (D.text ("var field" ++ show i ++ " =") <>
-              D.nest 4 (D.softline <> bridge) <> D.text ";")))
-          (zip [0::Int ..] (C.constructorFields value))
+        witnessCount value = length (freeExistentials declaration value)
+        -- keys: the value's witness keys, read from the record or the data.
+        fieldBindings parameters keys value = do
+          declared <- mapM (\(i,field) -> do
+            -- An existential field's type comes from the value's own type, or
+            -- from its witnesses.
+            bridge <- if existential value (C.binderType field)
+              then pure (call "dynamic" [D.text "schema", D.text "bits", D.text "symbols",
+                call "schema.fieldType" ([D.text "type", quoted (C.idText (C.constructorId value)), D.text (show i)] ++
+                  [keys | witnessCount value > 0])])
+              else codec parameters (C.binderType field)
+            pure ("field" ++ show i, C.binderName field,
+              D.group (D.text ("var field" ++ show i ++ " =") <>
+                D.nest 4 (D.softline <> bridge) <> D.text ";")))
+            (zip [0::Int ..] (C.constructorFields value))
+          text <- codec parameters (C.Constructor "Text" [])
+          let n = length (C.constructorFields value)
+              witnesses = [("field" ++ show (n + k), Schema.witnessFieldName (witnessCount value) k,
+                D.group (D.text ("var field" ++ show (n + k) ++ " =") <> D.nest 4 (D.softline <> text) <> D.text ";"))
+                | k <- [0 .. witnessCount value - 1]]
+          pure (declared ++ witnesses)
+        recordKeys value = call "List.of" [D.text ("item." ++ Schema.witnessFieldName (witnessCount value) k ++ "()") | k <- [0 .. witnessCount value - 1]]
+        dataKeys value = call "LawSpecSchema.witnessKeys" [D.text "data.fields()", D.text (show (witnessCount value))]
         encodeArm parameters args value = do
-          bindings <- fieldBindings parameters value
+          bindings <- fieldBindings parameters (recordKeys value) value
           pure (D.text "case " <> applied (variantName value) (caseArguments args value) <> D.text " item -> " <>
             D.block 2 (D.joinWith D.hardline ([doc | (_,_,doc) <- bindings] ++ [D.text "yield " <> construct value bindings <> D.text ";"])))
         -- A product needs no switch: the value is the record.
         productEncode parameters value = do
-          bindings <- fieldBindings parameters value
+          bindings <- fieldBindings parameters (recordKeys value) value
           pure (D.joinWith D.hardline ([doc | (_,_,doc) <- bindings] ++ [D.text "return " <> construct value bindings <> D.text ";"]))
         construct value bindings = call "schema.construct"
           [D.text "type", quoted (C.idText (C.constructorId value)), call "List.of"
             [call "LawSpecSchema.encodeField" [D.text name, D.text ("item." ++ field ++ "()"), quoted (C.idText (C.constructorId value) ++ "." ++ field)]
             | (name,field,_) <- bindings], D.text "bits",D.text "symbols"]
         decodeArm parameters value = do
-          bindings <- fieldBindings parameters value
+          bindings <- fieldBindings parameters (dataKeys value) value
           let decoded i name = D.text (name ++ ".decode(data.fields().get(" ++ show i ++ "))")
               fields = [if existential value (C.binderType field) then call "LawSpecSchema.cast" [decoded i name] else decoded i name
-                | (i,((name,_,_),field)) <- zip [0::Int ..] (zip bindings (C.constructorFields value))]
+                | (i,((name,_,_),field)) <- zip [0::Int ..] (zip bindings (C.constructorFields value))] ++
+                [decoded i name | (i,(name,_,_)) <- drop (length (C.constructorFields value)) (zip [0::Int ..] bindings)]
               generic = not (null (caseArguments [D.text "_" | _ <- parameters] value))
               built = call ("new " ++ variantName value ++ if generic then "<>" else "") fields
               -- A refined case implements its refined interface; the schema

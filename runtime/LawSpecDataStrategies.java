@@ -548,7 +548,7 @@ public final class LawSpecDataStrategies {
         if (presence.present()) addWitness((Named) type.arguments().get(0), presence.value());
       } else {
         var data = (Data) value.data();
-        var fields = schema.fields(type, data.tag());
+        var fields = schema.fieldsOf(type, data.tag(), data.fields());
         for (int i = 0; i < fields.size(); i++)
           addWitness((Named) fields.get(i).type(), data.fields().get(i));
       }
@@ -568,7 +568,10 @@ public final class LawSpecDataStrategies {
       } else {
         result =
             schema.constructors(type).stream()
-                .anyMatch(tag -> allocation(schema.fields(type, tag), budget - 1) != null);
+                .anyMatch(
+                    tag ->
+                        schema.instances(type, tag).stream()
+                            .anyMatch(choice -> allocation(choice.fields(), budget - 1) != null));
       }
       inhabited.put(request, result);
       return result;
@@ -662,22 +665,26 @@ public final class LawSpecDataStrategies {
       } else {
         var variants = new ArrayList<Generator<Value>>();
         for (var tag : schema.constructors(type)) {
-          var fields = schema.fields(type, tag);
+         for (var choice : schema.instances(type, tag)) {
+          var fields = choice.fields();
           var budgets = allocation(fields, budget - 1);
           if (budgets == null) continue;
           var children = new ArrayList<Generator<Value>>();
           for (int i = 0; i < fields.size(); i++) {
             children.add(generate((Named) fields.get(i).type(), budgets.get(i)));
           }
+          var keys = choice.keys();
           variants.add(
               Generator.from(
                   environment -> {
                     var values = new ArrayList<Value>();
                     for (var child : children) values.add(environment.generate(child));
+                    for (var key : keys) values.add(LawSpecSchema.witnessText(key));
                     return unchecked
                         ? new Value(LawSpecSchema.key(type), new Data(tag, List.copyOf(values)))
                         : schema.construct(type, tag, values, bits);
                   }));
+         }
         }
         generator = Generator.anyOf(variants);
       }

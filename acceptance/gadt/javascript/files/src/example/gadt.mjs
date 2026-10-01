@@ -21,3 +21,7 @@ export function evalPair(value0) {
 export function fold(value0) {
   return new data.ExprNumber(evalNumber(value0));
 }
+
+export function describe(value0) {
+  return value0.witness;
+}

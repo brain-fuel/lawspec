@@ -147,8 +147,10 @@ spec = describe "definition capabilities and template typing" $ do
     let header = "definition size (xs :: List a) :: BigInt is "
     audit (header ++ "match xs with | Nil -> 0 | Cons head tail -> 1 + size tail end end") `shouldBe` Right ()
     audit (header ++ "match xs with | Cons head tail -> 1 + size tail end end") `shouldSatisfy` isLeft
-  it "rejects polymorphic recursive self-calls" $
-    audit "definition loop (xs :: List a) :: BigInt is loop [xs] end" `shouldSatisfy` isLeft
+  -- Polymorphic recursion type-checks; totality still needs a decrease.
+  it "accepts polymorphic recursive self-calls but not as total" $ do
+    audit "definition loop (xs :: List a) :: BigInt is loop [xs] end" `shouldBe` Right ()
+    auditTotal "definition loop (xs :: List a) :: BigInt is loop [xs] end" `shouldSatisfy` isLeft
   it "instantiates other definitions independently and propagates their requirements" $ do
     let identity = "definition identity (x :: a) :: a requires Eq a is x end\n"
     audit (identity ++ "definition both (x :: Unit) :: Bool is identity true && identity 1 == 1 end") `shouldBe` Right ()

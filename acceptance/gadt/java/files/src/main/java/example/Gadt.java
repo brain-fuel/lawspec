@@ -4,6 +4,7 @@ package example;
 import java.math.BigInteger;
 import lawspec.data.Expr;
 import lawspec.data.Pair;
+import lawspec.data.Shown;
 
 public final class Gadt {
   // Only the number cases implement Expr<BigInteger>, so the switch is
@@ -32,5 +33,9 @@ public final class Gadt {
 
   public static Expr<BigInteger> fold(Expr<BigInteger> value0) {
     return new Expr.Number(evalNumber(value0));
+  }
+
+  public static String describe(Shown value0) {
+    return value0.witness();
   }
 }

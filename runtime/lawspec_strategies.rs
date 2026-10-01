@@ -353,7 +353,8 @@ fn collect_witnesses(
             .iter()
             .find(|c| c.tag == tag)
             .ok_or("unknown witness constructor")?;
-        for (field_type, field) in constructor.fields.iter().zip(fields) {
+        let field_types = schema.witnessed_fields(constructor.tag, &constructor.fields, fields)?;
+        for (field_type, field) in field_types.iter().zip(fields) {
             collect_witnesses(schema, field_type, field, seeds)?;
         }
     } else if let ls::TypeRef::Named(_, arguments) = ty {
@@ -484,9 +485,10 @@ fn shape_strategy_with_generators(
             } else if let Some(constructors) = self.schema.constructor_fields(ty)? {
                 let mut found = false;
                 for constructor in constructors {
-                    if self.allocate(&constructor.fields, budget - 1)?.is_some() {
-                        found = true;
-                        break;
+                    for (fields, _) in self.schema.witness_choices(&constructor)? {
+                        if self.allocate(&fields, budget - 1)?.is_some() {
+                            found = true;
+                        }
                     }
                 }
                 found
@@ -590,11 +592,13 @@ fn shape_strategy_with_generators(
             } else if let Some(constructors) = self.schema.constructor_fields(ty)? {
                 let mut alternatives = Vec::new();
                 for constructor in constructors {
-                    let Some(costs) = self.allocate(&constructor.fields, budget - 1)? else {
+                  // A field-only existential takes each type of the witness pool.
+                  for (declared, witnesses) in self.schema.witness_choices(&constructor)? {
+                    let Some(costs) = self.allocate(&declared, budget - 1)? else {
                         continue;
                     };
                     let mut fields = Just(Vec::<Value>::new()).boxed();
-                    for (field, cost) in constructor.fields.iter().zip(costs) {
+                    for (field, cost) in declared.iter().zip(costs) {
                         let next = self.generate(field, cost)?;
                         fields = (fields, next)
                             .prop_map(|(mut values, value)| {
@@ -603,11 +607,16 @@ fn shape_strategy_with_generators(
                             })
                             .boxed();
                     }
+                    let tag = constructor.tag;
                     alternatives.push(
                         fields
-                            .prop_map(move |fields| ls::construct_data(constructor.tag, fields))
+                            .prop_map(move |mut fields| {
+                                fields.extend(witnesses.iter().cloned());
+                                ls::construct_data(tag, fields)
+                            })
                             .boxed(),
                     );
+                  }
                 }
                 proptest::strategy::Union::new(alternatives).boxed()
             } else {

@@ -8,7 +8,7 @@ import LawSpec.Core.Eval (evaluateValue, evaluateValuePure)
 import LawSpec.Core.Definitions (prepareDefinitions)
 import LawSpec.Core.Total (constructorProofContracts)
 import LawSpec.Core.Value
-import LawSpec.Core.Types (TypeRegistry, makeRegistry, registryDeclarations, builtinDataDeclarations, lookupData, constructorFieldsFor, compatibleConstructors, generationRequirements)
+import LawSpec.Core.Types (TypeRegistry, makeRegistry, registryDeclarations, builtinDataDeclarations, lookupData, constructorFieldsFor, compatibleConstructors, generationRequirements, freeExistentials, substitute, witnessPool)
 import qualified Data.Map.Strict as M
 import Data.List (find, nub, sort, stripPrefix)
 import LawSpec.IndexTerm
@@ -170,7 +170,8 @@ population registry = converge initial
     declarations = registryDeclarations registry
     initial = M.fromList [(dataId d, (dataParameters d, [])) | d <- declarations]
     step table = M.fromList [(dataId d, (dataParameters d, minimal
-      (concat [combine [needs table (binderType field) | field <- constructorFields c]
+      -- A field-only existential takes a witness type, always inhabited.
+      (concat [map (filter (`notElem` freeExistentials d c)) (combine [needs table (binderType field) | field <- constructorFields c])
         | c <- dataConstructors d]))) | d <- declarations]
     converge current = let next = step current in if next == current then current else converge next
 
@@ -207,11 +208,21 @@ populationKey _ _ = (Id "<non-data>", [])
 viableConstructors :: TypeRegistry -> Population -> Type -> Either String [(Id, [Type])]
 viableConstructors registry table ty = case ty of
   Constructor _ _ -> do
-    -- A GADT constructor that cannot build this type is not a candidate.
+    -- A GADT constructor that cannot build this type is not a candidate. A
+    -- field-only existential takes each type of a small witness pool.
     compatible <- compatibleConstructors registry ty
-    fields <- mapM (\c -> do
-      parameters <- constructorFieldsFor registry ty (constructorId c)
-      pure (constructorId c, map binderType parameters)) compatible
+    declaration <- case ty of
+      Constructor name _ -> lookupData registry (Id name)
+      _ -> Left "no declaration"
+    fields <- fmap concat $ mapM (\c -> case freeExistentials declaration c of
+      [] -> do
+        parameters <- constructorFieldsFor registry ty (constructorId c)
+        pure [(constructorId c, map binderType parameters)]
+      free -> mapM (\witnesses -> do
+        let pinned = M.fromList (zip free witnesses)
+        parameters <- constructorFieldsFor registry ty (constructorId c)
+        pure (constructorId c, map (substitute pinned . binderType) parameters))
+        (sequence [witnessPool | _ <- free])) compatible
     pure [(tag,parameters) | (tag,parameters) <- fields, all (inhabited table) parameters]
   _ -> Left ("no constructors for " ++ show ty)
 

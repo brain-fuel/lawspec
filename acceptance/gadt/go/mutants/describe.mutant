@@ -1,0 +1,6 @@
+@@ example/gadt/adapter.go
+<<<<<<<
+	return value0.Witness
+=======
+	return "Int32"
+>>>>>>>

@@ -474,7 +474,7 @@ object LawSpecKotlinStrategies {
                 }
                 else -> {
                     val data = value.data() as Data
-                    schema.fields(type, data.tag()).forEachIndexed { index, field ->
+                    schema.fieldsOf(type, data.tag(), data.fields()).forEachIndexed { index, field ->
                         addWitness(field.type() as Named, data.fields()[index])
                     }
                 }
@@ -526,8 +526,11 @@ object LawSpecKotlinStrategies {
                 type.name() == "List" -> list(type, available)
                 type.name() in listOf("Nullable", "Optional") -> presence(type, available)
                 else -> {
-                    choice(schema.constructors(type).mapNotNull { tag ->
-                        val fields = schema.fields(type, tag)
+                    // A field-only existential takes each type of the witness pool.
+                    choice(schema.constructors(type).flatMap { tag ->
+                      schema.instances(type, tag).mapNotNull { instance ->
+                        val fields = instance.fields()
+                        val witnessValues = instance.keys().map { LawSpecSchema.witnessText(it) }
                         val costs = allocation(fields, available - 1) ?: return@mapNotNull null
                         val children = fields.mapIndexed { index, field ->
                             requireNotNull(build(field.type() as Named, costs[index]))
@@ -536,13 +539,14 @@ object LawSpecKotlinStrategies {
                             children.fold(Arb.constant(emptyList<Value>())) { prior, child ->
                                 Arb.bind(prior, child) { values, value -> values + value }
                             }
-                        product.map {
+                        product.map { it + witnessValues }.map {
                             if (symbols == null) {
                                 schema.construct(type, tag, it, bits)
                             } else {
                                 Value(LawSpecSchema.key(type), Data(tag, it))
                             }
                         }
+                      }
                     })
                 }
             }

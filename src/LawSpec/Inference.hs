@@ -461,7 +461,9 @@ instantiateConstructor name declarations = do
 data ConstructorShape = ConstructorShape
   { shapeFields :: [Type], shapeResult :: Type
   , shapeArguments :: [(Type, Bool)]  -- each result argument, and whether an equation fixed it
-  , shapeExistentials :: [String] }
+  , shapeExistentials :: [String]
+  -- Existentials no refinement mentions: only a value says what they are.
+  , shapeFieldOnly :: [String] }
 
 instantiateShape :: String -> [Core.DataDeclaration] -> C ConstructorShape
 instantiateShape name declarations = case
@@ -485,13 +487,21 @@ instantiateShape name declarations = case
     let arguments = [maybe (variable, False) (\ty -> (ty, True)) (lookup parameter equations) | (parameter, variable) <- parameters]
         result = applyType (Core.idText (Core.dataId declaration)) (map fst arguments)
     fields <- mapM (convert . Core.binderType) (Core.constructorFields constructor)
-    pure (ConstructorShape fields result arguments (map snd existentials))
+    let mentioned = concatMap (coreVariables . snd) (Core.constructorEquations constructor)
+        fieldOnly = [v | (e, v) <- existentials, e `notElem` mentioned]
+    pure (ConstructorShape fields result arguments (map snd existentials) fieldOnly)
   [] -> throwC ("unknown constructor: " ++ name)
   _ -> throwC ("ambiguous constructor: " ++ name)
   where
     applyType name [] = Named name
     applyType name [argument] = Applied name argument
     applyType name arguments = Application name arguments
+
+coreVariables :: Core.Type -> [Core.Id]
+coreVariables ty = case ty of
+  Core.TypeVariable v -> [v]
+  Core.Constructor _ arguments -> concat [coreVariables t | Core.TypeArgument t <- arguments]
+  Core.Arrow a b -> coreVariables a ++ coreVariables b
 
 withGivens :: M.Map String Type -> C a -> C a
 withGivens local action
@@ -520,6 +530,10 @@ matchConstructor scrutinee tag = do
         Named n -> (n, []); Applied n a -> (n, [a]); Application n as -> (n, as); _ -> ("", [])
       candidates = filter ((== parent) . Core.idText . Core.dataId) declarations
   shape <- instantiateShape tag (if null candidates then declarations else candidates)
+  -- Core is monomorphic: a field whose type only its value knows has no
+  -- type in a law or definition. Adapters receive such values natively.
+  unless (null (shapeFieldOnly shape))
+    (throwC ("matching " ++ tag ++ ", whose fields have existential types only a value determines, is supported only in adapters"))
   unless (length arguments == length (shapeArguments shape) || null candidates)
     (throwC ("constructor " ++ tag ++ " does not match " ++ prettyType resolved))
   saved <- gets givens

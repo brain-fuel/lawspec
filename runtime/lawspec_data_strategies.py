@@ -5,7 +5,8 @@ from functools import cache
 from hypothesis import strategies as st
 
 import lawspec_runtime as ls
-from lawspec_schema import RefinementViolation
+from lawspec_schema import (RefinementViolation, witness_instances,
+                            witnessed)
 
 
 def strategy(schema, reference, bits, budget, scalar, symbols=None,
@@ -38,8 +39,8 @@ def strategy(schema, reference, bits, budget, scalar, symbols=None,
         if constructors is not None:
             constructor = next(item for item in constructors
                                if item.tag == value.tag)
-            children = [(field.type, child) for field, child in
-                        zip(constructor.fields, value.fields)]
+            children = list(zip(witnessed(constructor, value.fields),
+                                value.fields))
         elif ty.name == "List":
             children = [(ty.arguments[0], child) for child in value]
         elif ty.name in ("Nullable", "Optional") and value.present:
@@ -89,8 +90,9 @@ def strategy(schema, reference, bits, budget, scalar, symbols=None,
             return True
         constructors = schema.constructors(ty)
         if constructors is not None:
-            return any(allocation(item.fields, available - 1) is not None
-                       for item in constructors)
+            return any(allocation(fields, available - 1) is not None
+                       for item in constructors
+                       for fields, _ in witness_instances(item))
         if not ty.arguments or ty.name in (
                 "List", "Maybe", "Nullable", "Optional"):
             return True
@@ -144,17 +146,18 @@ def strategy(schema, reference, bits, budget, scalar, symbols=None,
         if constructors is not None:
             alternatives = []
             for constructor in constructors:
-                costs = allocation(constructor.fields, available - 1)
-                if costs is None:
-                    continue
-                children = [build(field.type, cost)
-                            for field, cost in zip(constructor.fields, costs)]
-                values = st.tuples(*children).map(
-                    lambda fields, tag=constructor.tag:
-                    ls.DataValue(tag, fields))
-                if constructor.predicates:
-                    values = values.filter(lambda value: valid(ty, value))
-                alternatives.append(values)
+                for fields, keys in witness_instances(constructor):
+                    costs = allocation(fields, available - 1)
+                    if costs is None:
+                        continue
+                    children = [build(field.type, cost)
+                                for field, cost in zip(fields, costs)]
+                    values = st.tuples(*children).map(
+                        lambda values, tag=constructor.tag, keys=keys:
+                        ls.DataValue(tag, tuple(values) + keys))
+                    if constructor.predicates:
+                        values = values.filter(lambda value: valid(ty, value))
+                    alternatives.append(values)
             return st.one_of(*alternatives)
         if not ty.arguments:
             return scalar(ty.name).map(

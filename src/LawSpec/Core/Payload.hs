@@ -7,6 +7,7 @@ import Control.Monad (unless)
 import LawSpec.Core
 import LawSpec.Core.Types
 import LawSpec.Core.Value (Value(..))
+import qualified LawSpec.Core.Value as CoreValue
 import LawSpec.Core.PayloadPlan (Plan(..))
 import qualified LawSpec.Core.PayloadPlan as P
 
@@ -38,7 +39,7 @@ checkPayloads validate registry root predicates value = do
             _ -> Left "invalid presence payload plan"
       (Constructor actual _, DataValue valueType tag fields)
         | name == actual && expected == valueType -> do
-            instantiated <- constructorFieldsFor registry expected tag
+            instantiated <- constructorFieldsAt registry expected tag (map CoreValue.valueType fields)
             unless (length fields == length instantiated)
               (Left "payload constructor arity mismatch")
             children <- P.fields schema name tag plans

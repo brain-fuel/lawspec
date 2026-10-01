@@ -13,7 +13,7 @@ import Numeric (showHex)
 import qualified LawSpec.Core as C
 import qualified LawSpec.Core.Schema as S
 import LawSpec.Scalar (primitives, primitiveName, isInteger)
-import LawSpec.Core.Types (makeRegistry, checkType)
+import LawSpec.Core.Types (makeRegistry, checkType, freeExistentials)
 import qualified LawSpec.Code.Doc as D
 
 type Names = [(C.Id,String)]
@@ -146,7 +146,7 @@ emitHaskellData layout declarations = do
             scope = parameters ++ existentials
         arguments <- forM parameters $ \(p, v) -> maybe (pure v) (fmap wrapped . typeText "" names scope)
           (lookup p (C.constructorEquations variant))
-        fields <- forM (C.constructorFields variant) $ \field -> do
+        fields <- forM (C.constructorFields variant ++ witnessBinders declaration variant) $ \field -> do
           identifier (C.binderName field)
           native <- typeText "" names scope (C.binderType field)
           selector <- maybe (Left "unplanned Haskell record selector") Right
@@ -156,9 +156,16 @@ emitHaskellData layout declarations = do
         pure (D.text (constructor ++ " :: ") <> (if null fields then mempty else
           D.text "{ " <> D.joinWith (D.text ", ") [D.text (field ++ " :: " ++ ty) | (field,ty) <- fields] <> D.text " } -> ") <>
           D.text result)
+      constructorNames <- mapM (lookupName names . C.constructorId) (C.dataConstructors declaration)
       let existential = any (not . null . C.constructorExistentials) (C.dataConstructors declaration)
+          -- A field-only existential's value has no Show instance to use:
+          -- such a type shows only its constructors.
+          opaque = any (not . null . freeExistentials declaration) (C.dataConstructors declaration)
           instances = [D.text ("deriving instance P.Eq (" ++ own ++ ")") | not existential] ++
-            [D.text ("deriving instance P.Show (" ++ own ++ ")")]
+            (if opaque
+              then [D.text ("instance P.Show (" ++ own ++ ") where") <> D.nest 2 (D.hardline <>
+                D.joinWith D.hardline [D.text ("showsPrec _ " ++ constructor ++ " {} = P.showString " ++ show constructor) | constructor <- constructorNames])]
+              else [D.text ("deriving instance P.Show (" ++ own ++ ")")])
       pure (D.text ("data " ++ own ++ " where") <> D.nest 2 (D.hardline <> D.joinWith D.hardline variants) <>
         D.hardline <> D.hardline <> D.joinWith D.hardline instances)
     lookupName names identity = maybe (Left "unplanned Haskell data name") Right (lookup identity names)
@@ -223,7 +230,10 @@ emitHaskellSchemaWithProfile bits layout declarations = do
           list [D.text ("(" ++ show index ++ ", ") <> parenthesize (reference pattern) <> D.text ")" | (index, pattern) <- S.constructorRefinements c] <>
           D.text (", " ++ show (S.constructorExistentials c) ++ "))")
         | s <- schemas, c <- S.constructors s, not (null (S.constructorRefinements c)) || S.constructorExistentials c > 0]
-      expression = if not (null refinementTable)
+      witnessTable = [D.text ("(" ++ show (S.constructorTag c) ++ ", " ++ show (S.constructorWitnesses c) ++ ")")
+        | s <- schemas, c <- S.constructors s, not (null (S.constructorWitnesses c))]
+      expression = if not (null witnessTable) then apply "Schema.witnessedSchema" [list witnessTable, parenthesize unwitnessed] else unwitnessed
+      unwitnessed = if not (null refinementTable)
         then apply "Schema.createRefined"
           [list (map definition schemas), list (map (D.text . show . primitiveName) primitives),list callbacks,list indexTables,list refinementTable]
         else if null indexTables
@@ -260,7 +270,7 @@ selectorsFor names declarations = do
         let prefix = case constructor of c:cs -> toLower c:cs; [] -> ""
         pure ((C.constructorId variant, C.binderId field), prefix ++ capitalize (C.binderName field))
     | declaration <- declarations, variant <- C.dataConstructors declaration,
-      field <- C.constructorFields variant]
+      field <- C.constructorFields variant ++ witnessBinders declaration variant]
   let duplicated name = length (filter ((== name) . snd) candidates) > 1
       unique (constructor,field) name = if duplicated name
         then "field_" ++ concatMap (\c -> showHex (ord c) "_")
@@ -270,6 +280,13 @@ selectorsFor names declarations = do
   unless (length result == length (nub (map snd result)))
     (Left "conflicting Haskell field identities")
   pure result
+
+-- A field-only existential's type travels as a Text witness field, after the
+-- declared fields.
+witnessBinders :: C.DataDeclaration -> C.DataConstructor -> [C.Binder]
+witnessBinders declaration variant =
+  [C.Binder (C.Id ("witness#" ++ show k)) (S.witnessFieldName count k) (C.Constructor "Text" []) | k <- [0 .. count - 1]]
+  where count = length (freeExistentials declaration variant)
 
 codecName :: String -> String
 codecName [] = "dataCodec"
@@ -378,7 +395,8 @@ emitHaskellCodecsWithHooks layout declarations owner imports representations con
             doc <- codecExpressionWith (Just (D.text "symbols")) "schema" "bits" "" names children ty
             -- A scalar codec is fixed to its native type before it loses it.
             annotated <- if arity == 0
-              then (\native -> doc <> D.text (" :: Codec.Codec " ++ native)) <$> typeText "" names [] ty
+              then (\native -> doc <> D.text (" :: Codec.Codec " ++ native)) <$>
+                typeText (if any ((== C.Id key) . C.dataId) declarations then "Data." else "") names [] ty
               else pure doc
             pure (D.text ("Schema.Named " ++ show key ++ " [" ++ intercalate ", " ["x" ++ show i | i <- [0 .. arity - 1]] ++ "] -> unsafeCoerce ") <>
               parenthesize annotated)
@@ -424,14 +442,24 @@ emitHaskellCodecsWithHooks layout declarations owner imports representations con
             (Left ("Haskell native field mapping arity mismatch: " ++ C.idText (C.constructorId variant)))
           Nothing -> pure ()
         let existentialField field = any (`elem` C.constructorExistentials variant) (typeVariablesIn (C.binderType field))
+            witnesses = witnessBinders declaration variant
+            declaredCount = length (C.constructorFields variant)
+            -- @KEYS@: the value's witness keys, from its data or native fields.
+            keysOf method = if method == "encode"
+              then "[" ++ intercalate ", " ["T.unpack value" ++ show (declaredCount + k) | k <- [0 .. length witnesses - 1]] ++ "]"
+              else "[" ++ intercalate ", " ["Schema.witnessText value" ++ show (declaredCount + k) | k <- [0 .. length witnesses - 1]] ++ "]"
         fields <- mapM (\(position, field) -> if existentialField field
-          -- An existential field's type comes from the value's own type.
-          then pure (apply "dynamicCodecWith" [D.text "symbols", D.text "schema", D.text "bits",
-            parenthesize (apply "Schema.fieldType" [D.text "schema", D.text "typeReference",
-              D.text (show (C.idText (C.constructorId variant))), D.text (show position)])])
-          else codecExpressionWith (Just (D.text "symbols")) "schema" "bits"
+          -- An existential field's type comes from the value's own type, or
+          -- from its witnesses.
+          then pure (\method -> apply "dynamicCodecWith" [D.text "symbols", D.text "schema", D.text "bits",
+            parenthesize (if null witnesses
+              then apply "Schema.fieldType" [D.text "schema", D.text "typeReference",
+                D.text (show (C.idText (C.constructorId variant))), D.text (show position)]
+              else apply "Schema.fieldTypeAt" [D.text "schema", D.text "typeReference",
+                D.text (show (C.idText (C.constructorId variant))), D.text (show position), D.text (keysOf method)])])
+          else const <$> codecExpressionWith (Just (D.text "symbols")) "schema" "bits"
           (if owner /= "LawSpecDataCodecs" && lookup (C.dataId declaration) representations == Nothing then "Canonical." else "") names codecs (C.binderType field))
-          (zip [0 :: Int ..] (C.constructorFields variant))
+          (zip [0 :: Int ..] (C.constructorFields variant ++ witnesses))
         let tag = C.idText (C.constructorId variant)
             values = ["value" ++ show n | n <- [0::Int .. length fields - 1]]
             converted = ["field" ++ show n | n <- [0::Int .. length fields - 1]]
@@ -442,7 +470,8 @@ emitHaskellCodecsWithHooks layout declarations owner imports representations con
                 (apply "Codec.context" [D.text (show (tag ++ "." ++ C.binderName binder)),
                   parenthesize (apply ("Codec." ++ method) [parenthesize converter,
                     D.text (if method == "encode" then coerced binder value else value)])]))
-              | (binder,converter,value,field) <- zip4 (C.constructorFields variant) fields values converted]
+              | (binder,converter',value,field) <- zip4 (C.constructorFields variant ++ witnesses) fields values converted
+              , let converter = converter' method]
             construct arguments = case mapped of
               Nothing -> apply ("Data." ++ constructor) (map D.text arguments)
               Just (name, []) -> D.text name
@@ -458,7 +487,7 @@ emitHaskellCodecsWithHooks layout declarations owner imports representations con
             -- checked it is a value of this one.
             decodeBody = bindings "decode" ++
               [apply "P.pure" [parenthesize ((if gadt then \d -> apply "unsafeCoerce" [parenthesize d] else id)
-                (construct [coerced binder value | (binder, value) <- zip (C.constructorFields variant) converted]))]]
+                (construct [coerced binder value | (binder, value) <- zip (C.constructorFields variant ++ witnesses) converted]))]]
             encodeBody = bindings "encode" ++
               [apply "P.pure" [parenthesize (apply "LS.SData" [D.text (show tag),list (map D.text converted)])]]
         pure (decodeHeader <> D.nest 2 (D.hardline <> D.joinWith D.hardline decodeBody),

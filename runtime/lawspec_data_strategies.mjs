@@ -1,7 +1,7 @@
 // Native fast-check generation and shrinking for instantiated Core schemas.
 import * as fc from 'fast-check';
 import * as ls from './lawspec_runtime.mjs';
-import {RefinementViolation} from './lawspec_schema.mjs';
+import {RefinementViolation, witnessed, witnessInstances} from './lawspec_schema.mjs';
 
 // fast-check has no empty arbitrary: an always-false filter would loop forever.
 // A native factory may ignore this argument, but drawing it must fail promptly.
@@ -98,8 +98,9 @@ export function strategy(
       const constructor = constructors.find(
           (item) => item.tag === value.tag,
       );
+      const types = witnessed(constructor, value.fields);
       children = constructor.fields.map((field, index) => [
-        field.type,
+        types[index],
         value.fields[index],
       ]);
     } else if (type.name === 'List') {
@@ -182,9 +183,9 @@ export function strategy(
     const constructors = schema.constructors(type);
     let result;
     if (constructors !== null) {
-      result = constructors.some(
-          (item) => allocation(item.fields, available - 1) !== null,
-      );
+      result = constructors.some((item) => witnessInstances(item).some(
+          ([fields]) => allocation(fields, available - 1) !== null,
+      ));
     } else if (
         type.args.length === 0 ||
         ['List', 'Maybe', 'Nullable', 'Optional'].includes(type.name)
@@ -241,15 +242,17 @@ export function strategy(
     if (constructors !== null) {
       const alternatives = [];
       for (const constructor of constructors) {
-        const costs = allocation(constructor.fields, available - 1);
-        if (costs === null) continue;
-        const children = constructor.fields.map((field, index) =>
-            build(field.type, costs[index]),
-        );
-        const values = fc
-            .tuple(...children)
-            .map((fields) => new ls.DataValue(constructor.tag, fields));
-        alternatives.push(values);
+        for (const [declared, keys] of witnessInstances(constructor)) {
+          const costs = allocation(declared, available - 1);
+          if (costs === null) continue;
+          const children = declared.map((field, index) =>
+              build(field.type, costs[index]),
+          );
+          const values = fc
+              .tuple(...children)
+              .map((fields) => new ls.DataValue(constructor.tag, [...fields, ...keys]));
+          alternatives.push(values);
+        }
       }
       result = fc.oneof({withCrossShrink: true}, ...alternatives);
     } else if (type.args.length === 0) {

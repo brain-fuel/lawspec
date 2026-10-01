@@ -11,7 +11,7 @@ import Data.List (intercalate, nub, find)
 import LawSpec.NativeBinding
 import Numeric (showHex)
 import qualified LawSpec.Core as C
-import LawSpec.Core.Types (makeRegistry, checkType)
+import LawSpec.Core.Types (makeRegistry, checkType, freeExistentials)
 import LawSpec.Scalar (nativeRepresentation, primitives, primitiveName)
 import qualified LawSpec.Core.Schema as S
 import Data.Aeson (encode)
@@ -123,11 +123,15 @@ emitGoData layout packageName declarations = do
           fieldType <- if mentionsAny (map fst existentials) (C.binderType field) then pure "LawSpecValue"
             else typeText names scope (C.binderType field)
           pure (fieldName,fieldType)
+        -- Each field-only existential's type travels as a witness string.
+        let free = length (freeExistentials declaration variant)
+            witnessFields = [(capitalize (S.witnessFieldName free k), "string") | k <- [0 .. free - 1]]
         unless (length fields == length (nub (map fst fields))) (Left "Go constructor fields collide after export capitalization")
         let header = "type " ++ applied variantName [arg ++ " any" | arg <- own] ++ " struct"
-            width = maximum (0 : map (length . fst) fields)
+            allFields = fields ++ witnessFields
+            width = maximum (0 : map (length . fst) allFields)
             field (n,t) = D.text (n ++ replicate (width - length n + 1) ' ' ++ t)
-            body = if null fields then D.text "{}" else D.text " " <> D.block 8 (D.joinWith D.hardline (map field fields))
+            body = if null allFields then D.text "{}" else D.text " " <> D.block 8 (D.joinWith D.hardline (map field allFields))
             method = "func (" ++ applied variantName own ++ ") " ++ marker ++ "(" ++ intercalate ", " markerArguments ++ ") {}"
         pure (D.text header <> body, D.text method)
       -- A product is a plain struct named after its type; a sum is a sealed
@@ -187,7 +191,9 @@ emitGoSchemaWithProfile bits layout packageName declarations = do
          else D.text ("[]string{" ++ intercalate ", " (map q (S.constructorIndex value)) ++ "}")) <> D.text ", " <>
         (if null (S.constructorRefinements value) then D.text "nil"
          else D.text ("[]lawSpecRefinement{" ++ intercalate ", " ["{" ++ show index ++ ", " ++ reference pattern ++ "}" | (index, pattern) <- S.constructorRefinements value] ++ "}")) <>
-        D.text (", " ++ show (S.constructorExistentials value)) <> D.text "}"
+        D.text (", " ++ show (S.constructorExistentials value)) <>
+        (if null (S.constructorWitnesses value) then D.text ", nil"
+         else D.text (", []int{" ++ intercalate ", " (map show (S.constructorWitnesses value)) ++ "}")) <> D.text "}"
       definition value = D.text ("{" ++ q (S.typeName value) ++ ", " ++ show (S.parameterCount value) ++ ", ") <>
         array "lawSpecConstructorSchema" (map constructor (S.constructors value)) <> D.text "}"
       body = D.text "return lsNewSchemaWithContracts(" <> D.nest 8 (D.hardline <>
@@ -303,10 +309,14 @@ emitCodecs prefix mappings needed imports layout packageName declarations = do
         let existential = mentionsAny (C.constructorExistentials variant)
             refinedOnly = not (null (C.constructorEquations variant)) && null (C.constructorExistentials variant)
             openArguments = [v | (p, v) <- parameters, p `notElem` map fst (C.constructorEquations variant)]
-        fields <- forM (zip [0 :: Int ..] (C.constructorFields variant)) $ \(position, field) -> do
-          -- An existential field's type comes from the value's own type.
+        let free = length (freeExistentials declaration variant)
+        declaredFields <- forM (zip [0 :: Int ..] (C.constructorFields variant)) $ \(position, field) -> do
+          -- An existential field's type comes from the value's own type, or
+          -- from its witnesses (@KEYS@: read from the value or native).
           expression <- if existential (C.binderType field)
-            then pure ("lsLogicalCodec(schema, bits, lsFieldType(schema, typeRef, " ++ q (C.idText (C.constructorId variant)) ++ ", " ++ show position ++ "), symbols)")
+            then pure (if free > 0
+              then "lsLogicalCodec(schema, bits, lsFieldTypeWith(schema, typeRef, " ++ q (C.idText (C.constructorId variant)) ++ ", " ++ show position ++ ", @KEYS@), symbols)"
+              else "lsLogicalCodec(schema, bits, lsFieldType(schema, typeRef, " ++ q (C.idText (C.constructorId variant)) ++ ", " ++ show position ++ "), symbols)")
             else codecUsing prefix (Just (nativeNamesFor names mappings)) (Just "symbols") names parameters codecParameters (C.binderType field)
           fieldType <- if existential (C.binderType field) then pure "LawSpecValue" else typeText names parameters (C.binderType field)
           let mapped = find ((== C.constructorId variant) . C.constructorId . resolvedConstructor)
@@ -314,6 +324,12 @@ emitCodecs prefix mappings needed imports layout packageName declarations = do
               fieldName = maybe (capitalize (C.binderName field)) id
                 (mapped >>= lookup (C.binderId field) . map (\(f,n) -> (C.binderId f,n)) . resolvedFields)
           pure (fieldName,C.binderName field,fieldType,expression)
+        textCodec <- codecUsing prefix (Just (nativeNamesFor names mappings)) (Just "symbols") names parameters codecParameters (C.Constructor "Text" [])
+        let fields = declaredFields ++
+              [(capitalize (S.witnessFieldName free k), S.witnessFieldName free k, "string", textCodec) | k <- [0 .. free - 1]]
+            decodeKeys = "lsWitnessTail(data.fields, " ++ show free ++ ")"
+            encodeKeys = "[]string{" ++ intercalate ", " ["native." ++ capitalize (S.witnessFieldName free k) | k <- [0 .. free - 1]] ++ "}"
+            keyed keys expression = replaceKeys keys expression
         let mapped = find ((== C.constructorId variant) . C.constructorId . resolvedConstructor)
               [c | m <- mappings,c <- resolvedConstructors m]
             unit = maybe False ((== UnitConstructor) . resolvedConstructorStyle) mapped
@@ -322,12 +338,12 @@ emitCodecs prefix mappings needed imports layout packageName declarations = do
             width = maximum (0 : [length n | (n,_,_,_) <- fields])
             construct = if unit then line variantName else if null fields then line (concrete ++ "{}") else
               line concrete <> D.block 8 (linesDoc
-                [line (n ++ ":" ++ replicate (width - length n + 1) ' ' ++ expression ++ ".toNative(data.fields[" ++ show index ++ "]),")
+                [line (n ++ ":" ++ replicate (width - length n + 1) ' ' ++ keyed decodeKeys expression ++ ".toNative(data.fields[" ++ show index ++ "]),")
                 | (index,(n,_,_,expression)) <- zip [0::Int ..] fields])
             encodeFields = if null fields then line "nil" else
               line "[]LawSpecValue" <> D.block 8 (linesDoc
                 [line ("lsSchemaContext(" ++ q (tag ++ "." ++ original) ++ ", func() LawSpecValue ") <>
-                  D.block 8 (line ("return " ++ expression ++ ".encode(native." ++ n ++ ", path)")) <> line "),"
+                  D.block 8 (line ("return " ++ keyed encodeKeys expression ++ ".encode(native." ++ n ++ ", path)")) <> line "),"
                 | (n,original,_,expression) <- fields])
             -- A refined variant implements only its refined interface.
             decode = line ("case " ++ q tag ++ ":") <> D.nest 8 (D.hardline <> line "return " <>
@@ -392,3 +408,10 @@ validateGoBindings declarations functions = do
   names <- namesFor declarations
   let collisions = [name | name <- functions, name `elem` map snd names || take 7 name == "LawSpec"]
   unless (null collisions) (Left ("Go adapter names collide with generated support: " ++ intercalate ", " collisions))
+
+-- Replace each @KEYS@ placeholder with the witness keys' expression.
+replaceKeys :: String -> String -> String
+replaceKeys keys text = case text of
+  [] -> []
+  _ | take 6 text == "@KEYS@" -> keys ++ replaceKeys keys (drop 6 text)
+  c : rest -> c : replaceKeys keys rest

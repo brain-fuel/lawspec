@@ -2,7 +2,8 @@
 module LawSpecSchema
   ( TypeRef(..), Field(..), Constructor(..), Definition(..), Schema
   , FieldPredicate, ValidationFailure(..), failureMessage
-  , create, createWithContracts, createIndexed, createRefined, hasContracts, checkType, fieldType
+  , create, createWithContracts, createIndexed, createRefined, withWitnesses, witnessedSchema, witnessText, hasContracts, checkType, fieldType
+  , fieldTypeAt, witnessKeys, witnessed, witnessChoices, witnessPool, witnessKey, parseWitness
   , constructors, substitute
   , validate, validateWith, validateChecked
   , allPayloads, allPayloadsWith
@@ -35,11 +36,13 @@ failureMessage (EvaluationFailure message) = message
 -- prefix notation over field indices; validation checks the guards.
 -- GADT constructors add refinements (parameter, pattern) and an existential
 -- count; existentials are parameters numbered after the definition's own.
+-- Witnessed existentials (parameter numbers), by tag, are those only a value
+-- determines; their types travel as the trailing Text witness fields.
 data Schema = Schema [Definition] [(String, Int)] [(String, [FieldPredicate])] [(String, [String])]
-  [(String, ([(Int, TypeRef)], Int))]
+  [(String, ([(Int, TypeRef)], Int))] [(String, [Int])]
 
 hasContracts :: Schema -> Bool
-hasContracts (Schema _ _ contracts _ _) = any (not . null . snd) contracts
+hasContracts (Schema _ _ contracts _ _ _) = any (not . null . snd) contracts
 
 create :: [Definition] -> [String] -> Either String Schema
 create definitions primitives = createWithContracts definitions primitives []
@@ -63,7 +66,7 @@ createRefined definitions primitives contracts indices refinements = do
       names = map fst arities
       tags = [tag | Definition _ _ variants <- definitions,
                     Constructor tag _ <- variants]
-      schema = Schema definitions arities contracts indices refinements
+      schema = Schema definitions arities contracts indices refinements []
   unless (all (not . null) names && length names == length (nub names))
     (Left "duplicate or empty schema type")
   unless (all (not . null) tags && length tags == length (nub tags))
@@ -86,18 +89,21 @@ createRefined definitions primitives contracts indices refinements = do
 checkType :: Schema -> Int -> TypeRef -> Either String ()
 checkType _ count (Parameter index) =
   unless (index >= 0 && index < count) (Left "unbound schema parameter")
-checkType schema@(Schema _ arities _ _ _) count (Named name arguments) = do
+checkType schema@(Schema _ arities _ _ _ _) count (Named name arguments) = do
   unless (lookup name arities == Just (length arguments))
     (Left ("unknown type or wrong arity: " ++ name))
   mapM_ (checkType schema count) arguments
 
 substitute :: [TypeRef] -> TypeRef -> TypeRef
-substitute arguments (Parameter index) = arguments !! index
+-- A witnessed existential stays open until a value supplies it.
+substitute arguments (Parameter index)
+  | index < length arguments = arguments !! index
+  | otherwise = Parameter index
 substitute arguments (Named name children) =
   Named name (map (substitute arguments) children)
 
 constructors :: Schema -> TypeRef -> Either String (Maybe [Constructor])
-constructors schema@(Schema definitions _ _ _ refinements) typeRef = do
+constructors schema@(Schema definitions _ _ _ refinements _) typeRef = do
   checkType schema 0 typeRef
   case typeRef of
     Named name arguments -> case
@@ -118,7 +124,7 @@ refine :: Maybe ([(Int, TypeRef)], Int) -> Int -> [TypeRef] -> Maybe [TypeRef]
 refine Nothing _ arguments = Just arguments
 refine (Just (patterns, existentials)) parameters arguments = do
   bound <- foldM (\acc (index, pattern) -> match acc pattern (arguments !! index)) [] patterns
-  extra <- mapM (\k -> lookup (parameters + k) bound) [0 .. existentials - 1]
+  let extra = [maybe (Parameter (parameters + k)) id (lookup (parameters + k) bound) | k <- [0 .. existentials - 1]]
   pure (arguments ++ extra)
   where
     match acc (Parameter index) actual
@@ -136,6 +142,81 @@ fieldType :: Schema -> TypeRef -> String -> Int -> TypeRef
 fieldType schema typeRef tag index = case constructors schema typeRef of
   Right (Just variants) | Constructor _ fields : _ <- [v | v@(Constructor t _) <- variants, t == tag]
                         , Field _ ty : _ <- drop index fields -> ty
+  _ -> error ("constructor " ++ tag ++ " is not a value of " ++ show typeRef)
+
+witnessedSchema :: [(String, [Int])] -> Either String Schema -> Either String Schema
+witnessedSchema witnesses = fmap (withWitnesses witnesses)
+
+-- A witness field's key, for generated codecs; the schema has checked it.
+witnessText :: LS.Scalar -> String
+witnessText (LS.SSequence "Text" units) = map toEnum units
+witnessText _ = error "type witness must be text"
+
+withWitnesses :: [(String, [Int])] -> Schema -> Schema
+withWitnesses witnesses (Schema a b c d e w) = Schema a b c d e (w ++ witnesses)
+
+-- Types a generator may choose for an existential that only a value fixes.
+witnessPool :: [TypeRef]
+witnessPool = [Named "Bool" [], Named "Int32" []]
+
+-- A witness spells a type as its name, or a parenthesized application.
+witnessKey :: TypeRef -> String
+witnessKey (Named name []) = name
+witnessKey (Named name arguments) = "(" ++ unwords (name : map witnessKey arguments) ++ ")"
+witnessKey (Parameter index) = "?" ++ show index
+
+parseWitness :: String -> Either String TypeRef
+parseWitness text = case readType (words (concatMap spaced text)) of
+  Just (ty, []) -> Right ty
+  _ -> Left "malformed type witness"
+  where
+    spaced c = if c `elem` "()" then [' ', c, ' '] else [c]
+    readType ("(" : name : rest) = arguments [] rest
+      where
+        arguments acc (")" : more) = Just (Named name (reverse acc), more)
+        arguments acc more = readType more >>= \(child, after) -> arguments (child : acc) after
+    readType (token : rest) | token /= ")" = Just (Named token [], rest)
+    readType _ = Nothing
+
+-- The trailing witness keys of a value's fields.
+witnessKeys :: Schema -> String -> [LS.Scalar] -> Either String [String]
+witnessKeys (Schema _ _ _ _ _ witnesses) tag fields = case lookup tag witnesses of
+  Nothing -> Right []
+  Just indices -> mapM key (drop (length fields - length indices) fields)
+  where
+    key (LS.SSequence "Text" units) = Right (map toEnum units)
+    key _ = Left "type witness must be text"
+
+-- Field types with witnessed existentials read from the given keys.
+witnessed :: Schema -> String -> [TypeRef] -> [String] -> Either String [TypeRef]
+witnessed schema@(Schema _ _ _ _ _ witnesses) tag types keys = case lookup tag witnesses of
+  Nothing -> Right types
+  Just indices -> do
+    parsed <- mapM parseWitness keys
+    mapM_ (checkType schema 0) parsed
+    let size = if null indices then 0 else maximum indices + 1
+        known = [maybe (Parameter i) id (lookup i (zip indices parsed)) | i <- [0 .. size - 1]]
+    pure (map (substitute known) types)
+
+-- Each choice of witnesses from the pool: the declared fields at it, and the
+-- witness values.
+witnessChoices :: Schema -> Constructor -> Either String [([Field], [LS.Scalar])]
+witnessChoices schema@(Schema _ _ _ _ _ witnesses) (Constructor tag fields) = case lookup tag witnesses of
+  Nothing -> Right [(fields, [])]
+  Just indices -> do
+    let declared = take (length fields - length indices) fields
+    mapM (\choice -> do
+      let keys = map witnessKey choice
+      types <- witnessed schema tag [ty | Field _ ty <- declared] keys
+      pure ([Field name ty | (Field name _, ty) <- zip declared types], map LS.textScalar keys))
+      (mapM (const witnessPool) indices)
+
+-- A field's type at a value's witness keys, for generated codecs.
+fieldTypeAt :: Schema -> TypeRef -> String -> Int -> [String] -> TypeRef
+fieldTypeAt schema typeRef tag index keys = case constructors schema typeRef of
+  Right (Just variants) | Constructor _ fields : _ <- [v | v@(Constructor t _) <- variants, t == tag]
+                        , Right types <- witnessed schema tag [ty | Field _ ty <- fields] keys
+                        , ty : _ <- drop index types -> ty
   _ -> error ("constructor " ++ tag ++ " is not a value of " ++ show typeRef)
 
 validate :: Schema -> TypeRef -> Int -> LS.Scalar -> Either String LS.Scalar
@@ -213,7 +294,7 @@ indexGuard field text = case words text of
 
 -- The index of a checked value, computed from its constructor's term.
 indexOf :: Schema -> TypeRef -> LS.Scalar -> Int -> Either String Integer
-indexOf schema@(Schema _ _ _ indices _) typeRef value index = case value of
+indexOf schema@(Schema _ _ _ indices _ _) typeRef value index = case value of
   LS.SData tag children -> do
     variants <- constructors schema typeRef
     expected <- case [fields | Just choices <- [variants], Constructor name fields <- choices, name == tag] of
@@ -228,7 +309,7 @@ indexOf schema@(Schema _ _ _ indices _) typeRef value index = case value of
 
 validateChecked :: Maybe LS.SymbolContext -> Schema -> TypeRef -> Int
                 -> LS.Scalar -> Either ValidationFailure LS.Scalar
-validateChecked scope schema@(Schema _ _ contracts indices _) typeRef bits value = do
+validateChecked scope schema@(Schema _ _ contracts indices _ _) typeRef bits value = do
   unless (bits == 32 || bits == 64)
     (Left (EvaluationFailure "machineBits must be 32 or 64"))
   variants <- fromEvaluation (constructors schema typeRef)
@@ -268,9 +349,10 @@ validateChecked scope schema@(Schema _ _ contracts indices _) typeRef bits value
         Just (Constructor _ expected) -> do
           unless (length fields == length expected)
             (Left (EvaluationFailure ("wrong field count: " ++ tag)))
+          types <- fromEvaluation (witnessKeys schema tag fields >>= witnessed schema tag [ty | Field _ ty <- expected])
           checked <- zipWithM
-            (\(Field name ty) field -> failureContext (tag ++ "." ++ name)
-              (validateChecked scope schema ty bits field)) expected fields
+            (\(Field name _, ty) field -> failureContext (tag ++ "." ++ name)
+              (validateChecked scope schema ty bits field)) (zip expected types) fields
           let arguments = case typeRef of
                 Named _ values -> values
                 Parameter _ -> []
@@ -314,7 +396,7 @@ allPayloads = allPayloadsWith Nothing
 allPayloadsWith :: Maybe LS.SymbolContext -> Schema -> TypeRef -> Int
                 -> LS.Scalar -> [LS.Scalar -> Either String LS.Scalar]
                 -> Either String LS.Scalar
-allPayloadsWith scope schema@(Schema definitions _ _ _ _) typeRef bits value
+allPayloadsWith scope schema@(Schema definitions _ _ _ _ _) typeRef bits value
                 predicates = do
   checkType schema 0 typeRef
   (name, arguments) <- case typeRef of

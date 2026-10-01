@@ -301,10 +301,12 @@ spec = describe "source algebraic data" $ do
       ("list length", law "List Int8" "prelude.length x >= 0"),
       ("exhaustive matching", law "Maybe Bool" "(match x with | Nothing -> false | Just payload -> payload end) = true"),
       ("nested local matching", law "Maybe (Maybe Bool)" "(match x with | Nothing -> false | Just x -> match x with | Nothing -> false | Just x -> x end end) = true"),
-      ("product matching", "type Pair (a :: Type) is Pair first :: a second :: Bool end\n" ++ law "Pair Int8" "(match x with | Pair first second -> Pair first second end) = x")
+      ("product matching", "type Pair (a :: Type) is Pair first :: a second :: Bool end\n" ++ law "Pair Int8" "(match x with | Pair first second -> Pair first second end) = x"),
+      -- An undeclared field type variable is a field-only existential.
+      ("field-only existentials", "type Box is Box value :: a end")
     ] $ \(label,source) -> it ("accepts " ++ label) $ check source `shouldSatisfy` isRight
   forM_ [
-      ("unbound data parameters", "type Box is Box value :: a end"),
+      ("witness fields shadowed by declared fields", "type Box is Box value :: a witness :: Bool end"),
       ("unknown field types", "type Box is Box value :: Missing end"),
       ("unsaturated applications", law "Either Int8" "x = x"),
       ("excess type arguments", law "Maybe Bool Bool" "x = x"),

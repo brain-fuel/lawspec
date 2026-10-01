@@ -1,0 +1,6 @@
+@@ src/example/gadt.ts
+<<<<<<<
+  return value0.witness;
+=======
+  return "Int32";
+>>>>>>>

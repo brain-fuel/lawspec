@@ -258,6 +258,7 @@ library
       LawSpec.WebExpr
       LawSpec.WebNativeBinding
       LawSpec.WebTypes
+      LawSpec.Witness
   other-modules:
       Paths_lawspec
   hs-source-dirs:
@@ -390,6 +391,7 @@ test-suite lawspec-test
       DischargeSpec
       DocumentSpec
       DomainModelSpec
+      GadtSpec
       GenericDefinitionSpec
       ImportSpec
       IndexedSpec

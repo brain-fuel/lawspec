@@ -1,0 +1,6 @@
+@@ src/main/java/example/Gadt.java
+<<<<<<<
+    return value0.witness();
+=======
+    return "Int32";
+>>>>>>>

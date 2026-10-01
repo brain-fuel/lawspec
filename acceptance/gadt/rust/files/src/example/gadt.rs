@@ -1,6 +1,6 @@
 // Scaffolded by LawSpec. User-owned; never overwritten.
 #![allow(non_snake_case)]
-use crate::lawspec_data::{Expr, Pair};
+use crate::lawspec_data::{Expr, Pair, Shown};
 use crate::lawspec_runtime as ls;
 
 // Rust enums cannot refine their type arguments per variant, so the other
@@ -34,4 +34,8 @@ pub fn evalPair(value0: Expr<Pair<ls::BigInt, bool>>) -> Pair<ls::BigInt, bool> 
 
 pub fn fold(value0: Expr<ls::BigInt>) -> Expr<ls::BigInt> {
     Expr::Number { value: evalNumber(value0), _lawspec_marker: std::marker::PhantomData }
+}
+
+pub fn describe(value0: Shown) -> String {
+    value0.witness
 }

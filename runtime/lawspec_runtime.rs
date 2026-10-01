@@ -783,6 +783,17 @@ impl TypeRef {
     }
 }
 
+/// Substitute known types, leaving open parameters in place.
+fn substitute_open(ty: &TypeRef, known: &[TypeRef]) -> Result<TypeRef> {
+    Ok(match ty {
+        TypeRef::Parameter(index) => known.get(*index).cloned().unwrap_or(TypeRef::Parameter(*index)),
+        TypeRef::Named(name, arguments) => TypeRef::Named(
+            name,
+            arguments.iter().map(|argument| substitute_open(argument, known)).collect::<Result<_>>()?,
+        ),
+    })
+}
+
 #[derive(Clone, Debug)]
 pub struct ConstructorSchema {
     pub tag: &'static str,
@@ -851,6 +862,68 @@ pub struct Schema {
     // GADT constructors: refinements fixing parameters to patterns, and the
     // number of existentials (parameters numbered after the definition's own).
     refinements: HashMap<&'static str, (Vec<(usize, TypeRef)>, usize)>,
+    // Existentials only a value determines (parameter numbers), by tag; their
+    // types travel as the trailing Text witness fields.
+    witnesses: HashMap<&'static str, &'static [usize]>,
+}
+
+/// Types a generator may choose for an existential that only a value fixes.
+pub fn witness_pool() -> Vec<TypeRef> {
+    vec![TypeRef::Named("Bool", vec![]), TypeRef::Named("Int32", vec![])]
+}
+
+/// A witness spells a type as its name, or a parenthesized application.
+pub fn witness_key(ty: &TypeRef) -> String {
+    match ty {
+        TypeRef::Named(name, arguments) if arguments.is_empty() => (*name).to_owned(),
+        TypeRef::Named(name, arguments) => {
+            let mut parts = vec![(*name).to_owned()];
+            parts.extend(arguments.iter().map(witness_key));
+            format!("({})", parts.join(" "))
+        }
+        TypeRef::Parameter(index) => format!("?{index}"),
+    }
+}
+
+/// Reads a witness key back into a type reference. Type names are interned:
+/// a name the schema does not know is rejected by the caller's type check.
+pub fn parse_witness(text: &str) -> Result<TypeRef> {
+    let spaced = text.replace('(', " ( ").replace(')', " ) ");
+    let tokens: Vec<&str> = spaced.split_whitespace().collect();
+    fn read(tokens: &[&str], at: &mut usize) -> Result<TypeRef> {
+        let token = *tokens.get(*at).ok_or("malformed type witness")?;
+        *at += 1;
+        if token != "(" {
+            return Ok(TypeRef::Named(intern(token), vec![]));
+        }
+        let name = *tokens.get(*at).ok_or("malformed type witness")?;
+        *at += 1;
+        let mut arguments = Vec::new();
+        while *tokens.get(*at).ok_or("malformed type witness")? != ")" {
+            arguments.push(read(tokens, at)?);
+        }
+        *at += 1;
+        Ok(TypeRef::Named(intern(name), arguments))
+    }
+    let mut at = 0;
+    let result = read(&tokens, &mut at)?;
+    if at != tokens.len() {
+        return Err("malformed type witness".into());
+    }
+    Ok(result)
+}
+
+/// Witness type names are few; leaking each distinct name once is bounded.
+fn intern(name: &str) -> &'static str {
+    use std::sync::{Mutex, OnceLock};
+    static NAMES: OnceLock<Mutex<std::collections::HashSet<&'static str>>> = OnceLock::new();
+    let mut names = NAMES.get_or_init(|| Mutex::new(std::collections::HashSet::new())).lock().unwrap();
+    if let Some(found) = names.get(name) {
+        return found;
+    }
+    let leaked: &'static str = Box::leak(name.to_owned().into_boxed_str());
+    names.insert(leaked);
+    leaked
 }
 
 /// A GADT constructor's refinements and existential count, by tag.
@@ -976,6 +1049,73 @@ impl Schema {
         self
     }
 
+    /// Attach constructors' witnessed existentials (parameter numbers).
+    pub fn with_witnesses(mut self, witnesses: &[(&'static str, &'static [usize])]) -> Self {
+        self.witnesses.extend(witnesses.iter().copied());
+        self
+    }
+
+    /// Field types with witnessed existentials read from the trailing witness
+    /// fields of a value.
+    pub fn witnessed_fields(&self, tag: &str, fields: &[TypeRef], values: &[Value]) -> Result<Vec<TypeRef>> {
+        let Some(witnesses) = self.witnesses.get(tag) else {
+            return Ok(fields.to_vec());
+        };
+        if values.len() < witnesses.len() {
+            return Err("missing type witness".into());
+        }
+        let mut keys = Vec::new();
+        for value in &values[values.len() - witnesses.len()..] {
+            let Value::Text(text) = value else {
+                return Err("type witness must be text".into());
+            };
+            keys.push(text.clone());
+        }
+        self.fields_at_witnesses(tag, fields, &keys)
+    }
+
+    /// Field types at the given witness keys; generated codecs use this too.
+    pub fn fields_at_witnesses(&self, tag: &str, fields: &[TypeRef], keys: &[String]) -> Result<Vec<TypeRef>> {
+        let witnesses = self.witnesses.get(tag).copied().unwrap_or(&[]);
+        let size = witnesses.iter().copied().max().map_or(0, |m| m + 1);
+        let mut known: Vec<TypeRef> = (0..size).map(TypeRef::Parameter).collect();
+        for (index, key) in witnesses.iter().zip(keys) {
+            let ty = parse_witness(key)?;
+            self.check_type(&ty, 0)?;
+            known[*index] = ty;
+        }
+        fields.iter().map(|field| substitute_open(field, &known)).collect()
+    }
+
+    /// Each choice of witnesses from the pool: the declared fields at it and
+    /// the witness values.
+    pub fn witness_choices(&self, constructor: &ConstructorSchema) -> Result<Vec<(Vec<TypeRef>, Vec<Value>)>> {
+        let Some(witnesses) = self.witnesses.get(constructor.tag) else {
+            return Ok(vec![(constructor.fields.clone(), vec![])]);
+        };
+        let declared = &constructor.fields[..constructor.fields.len() - witnesses.len()];
+        let mut choices: Vec<Vec<String>> = vec![vec![]];
+        for _ in 0..witnesses.len() {
+            choices = choices
+                .into_iter()
+                .flat_map(|choice| {
+                    witness_pool().into_iter().map(move |ty| {
+                        let mut next = choice.clone();
+                        next.push(witness_key(&ty));
+                        next
+                    })
+                })
+                .collect();
+        }
+        choices
+            .into_iter()
+            .map(|keys| {
+                let fields = self.fields_at_witnesses(constructor.tag, declared, &keys)?;
+                Ok((fields, keys.into_iter().map(Value::Text).collect()))
+            })
+            .collect()
+    }
+
     /// The index of a checked value, computed from its constructor's term.
     fn index_of(&self, ty: &TypeRef, value: &Value, index: usize) -> Result<BigInt> {
         let (TypeRef::Named(name, arguments), Value::Data(tag, fields)) = (ty, value) else {
@@ -1044,6 +1184,7 @@ impl Schema {
             definitions: types,
             contracts: predicates,
             indices: HashMap::new(),
+            witnesses: HashMap::new(),
             refinements: refinements
                 .into_iter()
                 .map(|(tag, patterns, existentials)| (tag, (patterns, existentials)))
@@ -1145,7 +1286,8 @@ impl Schema {
         }
         let mut extended = arguments.to_vec();
         for k in 0..*existentials {
-            extended.push(bound.get(&(parameters + k))?.clone());
+            // A witnessed existential stays open until a value supplies it.
+            extended.push(bound.get(&(parameters + k)).cloned().unwrap_or(TypeRef::Parameter(parameters + k)));
         }
         Some(extended)
     }
@@ -1323,14 +1465,20 @@ impl Schema {
             let arguments = &self
                 .refine(constructor, arguments, definition.parameters)
                 .ok_or_else(|| format!("constructor {tag} is not a value of {name}"))?;
+            let instantiated = constructor
+                .fields
+                .iter()
+                .map(|field| field.instantiate(arguments))
+                .collect::<Result<Vec<_>>>()?;
+            let field_types = self.witnessed_fields(&tag, &instantiated, &fields)?;
             let checked: Vec<Value> = fields
                 .into_iter()
-                .zip(&constructor.fields)
+                .zip(&field_types)
                 .enumerate()
                 .map(|(index, (field, field_type))| {
                     self.walk(
                         field,
-                        &field_type.instantiate(arguments)?,
+                        field_type,
                         bits,
                         native,
                         context,

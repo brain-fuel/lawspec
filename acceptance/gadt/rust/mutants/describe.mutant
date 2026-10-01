@@ -1,0 +1,6 @@
+@@ src/example/gadt.rs
+<<<<<<<
+    value0.witness
+=======
+    "Int32".to_owned()
+>>>>>>>

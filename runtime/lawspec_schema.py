@@ -75,6 +75,9 @@ class Constructor:
     # the parameters numbered after the definition's own.
     refinements: tuple = ()
     existentials: int = 0
+    # Existentials only a value determines (parameter numbers); their types
+    # travel as the trailing Text witness fields.
+    witnesses: tuple = ()
 
     def __post_init__(self):
         object.__setattr__(self, "fields", tuple(self.fields))
@@ -139,6 +142,71 @@ class Right[L, R](Either[L, R]):
     value: R
 
 
+def witness_key(reference):
+    """Spell a type as its name, or a parenthesized application."""
+    if not reference.arguments:
+        return reference.name
+    return "(" + " ".join(
+        [reference.name] + [witness_key(a) for a in reference.arguments]) + ")"
+
+
+def parse_witness(text):
+    """Read a witness key back into a type reference."""
+    tokens = text.replace("(", " ( ").replace(")", " ) ").split()
+
+    def read(at):
+        if tokens[at] == "(":
+            name, at = tokens[at + 1], at + 2
+            arguments = []
+            while tokens[at] != ")":
+                child, at = read(at)
+                arguments.append(child)
+            return Named(name, tuple(arguments)), at + 1
+        return Named(tokens[at]), at + 1
+
+    if not tokens:
+        raise ValueError("empty type witness")
+    reference, at = read(0)
+    if at != len(tokens):
+        raise ValueError("malformed type witness")
+    return reference
+
+
+def witnessed(constructor, fields):
+    """Field types with witnessed existentials read from a value's fields."""
+    if not constructor.witnesses:
+        return [field.type for field in constructor.fields]
+    known = {}
+    for index, text in zip(constructor.witnesses,
+                           fields[-len(constructor.witnesses):]):
+        if not isinstance(text, str):
+            raise TypeError("type witness must be text")
+        known[index] = parse_witness(text)
+    arguments = [known.get(i) for i in range(max(known) + 1)]
+    return [substitute(field.type, arguments) for field in constructor.fields]
+
+
+# Types a generator may choose for an existential that only a value fixes.
+WITNESS_POOL = (Named("Bool"), Named("Int32"))
+
+
+def witness_instances(constructor):
+    """Each choice of witnesses: (declared fields at it, witness texts)."""
+    count = len(constructor.witnesses)
+    declared = constructor.fields[:len(constructor.fields) - count]
+    if not count:
+        return [(declared, ())]
+    from itertools import product
+    found = []
+    for choice in product(WITNESS_POOL, repeat=count):
+        known = dict(zip(constructor.witnesses, choice))
+        arguments = [known.get(i) for i in range(max(known) + 1)]
+        found.append((tuple(Field(field.name, substitute(field.type, arguments))
+                            for field in declared),
+                      tuple(witness_key(item) for item in choice)))
+    return found
+
+
 def refine(constructor, arguments, parameters):
     """Arguments extended with the existentials a constructor's refinements
     bind; None when the refinements do not match."""
@@ -164,6 +232,10 @@ def refine(constructor, arguments, parameters):
 
 def substitute(reference, arguments):
     if isinstance(reference, Parameter):
+        # A witnessed existential stays open until a value supplies it.
+        if (reference.index >= len(arguments)
+                or arguments[reference.index] is None):
+            return reference
         return arguments[reference.index]
     return Named(reference.name, tuple(
         substitute(child, arguments) for child in reference.arguments))
@@ -274,7 +346,7 @@ class Schema:
                 Field(field.name, substitute(field.type, arguments))
                 for field in constructor.fields), constructor.native,
                 constructor.predicates, constructor.native_fields,
-                constructor.indices))
+                constructor.indices, witnesses=constructor.witnesses))
         return tuple(found)
 
     def with_native_bindings(self, bindings, codecs=None):
@@ -497,10 +569,14 @@ class Schema:
             if len(fields) != len(constructor.fields):
                 raise ValueError("wrong field count: " + constructor.tag)
             converted = []
-            for field, child in zip(constructor.fields, fields):
+            types = witnessed(constructor, fields)
+            for field, field_type, child in zip(
+                    constructor.fields, types, fields):
                 try:
+                    if field_type != field.type:
+                        self._check(field_type)
                     converted.append(self._walk(
-                        field.type, child, bits, mode, symbols))
+                        field_type, child, bits, mode, symbols))
                 except (ValueError, TypeError, OverflowError) as error:
                     error_type = (RefinementViolation if isinstance(
                         error, RefinementViolation) else ValueError)

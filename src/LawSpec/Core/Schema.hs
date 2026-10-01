@@ -4,7 +4,7 @@
 -- a runtime's substitution algorithm.
 module LawSpec.Core.Schema
   ( TypeRef(..), FieldSchema(..), ConstructorSchema(..), DataSchema(..)
-  , ConstructorContractSchema(..), typeReference, dataSchemas, dataSchemasWithContracts
+  , ConstructorContractSchema(..), typeReference, dataSchemas, dataSchemasWithContracts, witnessFieldName
   ) where
 
 import qualified LawSpec.Core as C
@@ -22,6 +22,9 @@ data ConstructorSchema = ConstructorSchema
   { constructorTag :: String, fields :: [FieldSchema], constructorIndex :: [String]
   , constructorRefinements :: [(Int, TypeRef)]
   , constructorExistentials :: Int
+  -- Existentials only a value determines (parameter numbers): each value
+  -- carries their types as trailing Text witness fields.
+  , constructorWitnesses :: [Int]
   } deriving (Eq, Show)
 data DataSchema = DataSchema
   { typeName :: String, parameterCount :: Int
@@ -75,7 +78,21 @@ dataSchemasWithContracts declarations = do
           Just index -> (,) index <$> typeReference scope ty
           Nothing -> Left ("refinement of an unknown parameter: " ++ C.idText parameter))
         (C.constructorEquations value)
-      pure (ConstructorSchema (C.idText (C.constructorId value)) fields' [] refinements
-        (length (C.constructorExistentials value)))
+      let mentioned = concatMap (typeVariablesOf . snd) (C.constructorEquations value)
+          witnesses = [index | (index, e) <- zip [length parameters ..] (C.constructorExistentials value), e `notElem` mentioned]
+          witnessFields = [FieldSchema (witnessFieldName (length witnesses) k) (Named "Text" []) | k <- [0 .. length witnesses - 1]]
+      pure (ConstructorSchema (C.idText (C.constructorId value)) (fields' ++ witnessFields) [] refinements
+        (length (C.constructorExistentials value)) witnesses)
     field parameters binder = FieldSchema (C.binderName binder) <$>
       typeReference parameters (C.binderType binder)
+
+typeVariablesOf :: C.Type -> [C.Id]
+typeVariablesOf ty = case ty of
+  C.TypeVariable v -> [v]
+  C.Constructor _ arguments -> concat [typeVariablesOf t | C.TypeArgument t <- arguments]
+  C.Arrow a b -> typeVariablesOf a ++ typeVariablesOf b
+
+-- A value's witness fields, after its declared ones: witness, or witness0..
+witnessFieldName :: Int -> Int -> String
+witnessFieldName 1 _ = "witness"
+witnessFieldName _ k = "witness" ++ show k

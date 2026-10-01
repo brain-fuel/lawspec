@@ -113,8 +113,8 @@ emitBindings ts minify bindings plan files = do
         [unit | unit <- plannedUnits plan, not (null (plannedProperties unit))]
     let strategies = unlines [if line == "import * as ls from './lawspec_runtime.mjs';"
           then "import * as ls from '../src/lawspec_runtime." ++ importExt ++ "';"
-          else if line == "import {RefinementViolation} from './lawspec_schema.mjs';"
-            then "import {RefinementViolation} from '../src/lawspec_schema." ++ importExt ++ "';"
+          else if line == schemaImport
+            then "import {RefinementViolation, witnessed, witnessInstances} from '../src/lawspec_schema." ++ importExt ++ "';"
           else line | line <- lines (runtimeSource "web-data-strategies")]
     pure (helper : [file | file <- emitted, artifactPlacement file == "test"] ++
       [Artifact ("test/lawspec_data_strategies." ++ ext) ((if ts then "// @ts-nocheck\n" else "") ++ strategies) "generated" "test" |
@@ -212,3 +212,7 @@ generatorStubs ts plan bindings files = do
     pure (Artifact (output parts) (D.render (D.Pretty 80)
       (D.joinWith D.hardline (header:imports) <> D.hardline <> D.hardline <>
        D.joinWith (D.hardline <> D.hardline) (map snd entries) <> D.hardline)) "user" "test")
+
+-- The web strategies' schema import, rewritten to the emitted layout.
+schemaImport :: String
+schemaImport = "import {RefinementViolation, witnessed, witnessInstances} from './lawspec_schema.mjs';"

@@ -1,0 +1,6 @@
+@@ src/Example/Gadt.hs
+<<<<<<<
+describe (Data.Shown _ witness) = witness
+=======
+describe _ = T.pack "Int32"
+>>>>>>>

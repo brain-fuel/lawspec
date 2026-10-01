@@ -34,6 +34,15 @@ evalPair :: Expr (Pair BigInt Bool) -> Pair BigInt Bool
 -- Constant folding: a single number with the same value.
 fold :: Expr BigInt -> Expr BigInt
 
+-- A shown value's type is existential and only the value says what it is:
+-- each value carries its type, as a witness, to native code.
+type Shown is
+  | Shown value :: b
+end
+
+-- The name of the type a shown value holds.
+describe :: Shown -> Text
+
 law `numbers agree with eval` is
   definition is `for all` (e :: Expr BigInt) . evalNumber e = eval e end
 end
@@ -48,6 +57,18 @@ end
 
 law `folding keeps the value` is
   definition is `for all` (e :: Expr BigInt) . eval (fold e) = eval e end
+end
+
+law `a shown number names its type` is
+  definition is `for all` (x :: Int32) . describe (Shown x) = "Int32" end
+end
+
+law `a shown flag names its type` is
+  definition is `for all` (b :: Bool) . describe (Shown b) = "Bool" end
+end
+
+law `every shown value is described` is
+  definition is `for all` (s :: Shown) . prelude.length (describe s) > 0 end
 end
 
 law `two plus three` is
