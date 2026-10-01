@@ -4,7 +4,7 @@ module LawSpec.NativeRequest
   , emptyNativeRequest, emptyBindingPlan, resolveNativeRequest, hasBindings
   ) where
 
-import Control.Monad (unless)
+import Control.Monad (unless, when)
 import Data.Aeson
 import Data.Aeson.Types (Parser)
 import qualified Data.Aeson.Key as K
@@ -56,6 +56,10 @@ resolveNativeRequest program NativeRequest{..} = do
       validReference functionNative
       declaration <- maybe (Left ("unknown adapter binding: " ++ C.idText functionDeclaration)) Right
         (find ((== functionDeclaration) . C.declarationId) declarations)
+      -- Native function bridges are synchronous; an async adapter keeps its
+      -- scaffolded stub.
+      when (C.declarationAsync declaration)
+        (Left ("async adapter " ++ C.idText functionDeclaration ++ " cannot bind a native function yet"))
       pure (declaration,functionNative)
 
 strict :: String -> [String] -> (Object -> Parser a) -> Value -> Parser a

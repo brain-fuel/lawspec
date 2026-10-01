@@ -37,6 +37,9 @@ unitName :: Unit -> String
 unitName = C.idText . C.unitId
 functions :: Unit -> [(String,Type)]
 functions u = [(C.declarationName d,C.declarationType d) | d <- C.unitDeclarations u]
+-- The adapters declared async: tests await each call where it is made.
+asyncFunctions :: Unit -> [String]
+asyncFunctions u = [C.declarationName d | d <- C.unitDeclarations u, C.declarationAsync d]
 contracts :: Unit -> [Contract]
 -- Checked definitions enforce their contracts in reusable implementation bodies.
 -- Test-only wrappers are exclusively for user adapters, which have native stubs.

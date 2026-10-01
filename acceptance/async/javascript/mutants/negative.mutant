@@ -1,0 +1,6 @@
+@@ src/example/orders.mjs
+<<<<<<<
+  return sku === 'free' ? 0 : [...sku].length % 100;
+=======
+  return -1;
+>>>>>>>

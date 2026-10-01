@@ -22,7 +22,7 @@ definition countWords (words :: List Text) (counts :: KeyVal Text BigInt) :: Key
   match words with
   | Nil -> counts
   | Cons w rest -> match prelude.lookup w counts with
-    | Nothing -> countWords rest (prelude.put w (1 :: BigInt) counts)
+    | Nothing -> countWords rest (prelude.put w 1 counts)
     | Just n -> countWords rest (prelude.put w ((n + 1) :: BigInt) counts)
     end
   end

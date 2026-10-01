@@ -12,6 +12,7 @@ patch (0.x.y). This page records what has shipped and what comes next.
 | 0.14 | Imports and packages | Re-exports of imported names; several versions of one package in one build |
 | 0.15 | Evidence and discharge: every obligation reports how it is checked | — |
 | 0.16 | More dependent types: GADTs, index arithmetic, shared indices and the core of flow typing | Several flow parameters per function; flow calls inside match branches |
+| 0.17 | Portable collections and asynchronous functions | Size-indexed queues and stacks; native bindings for asynchronous adapters |
 
 0.16 in detail:
 
@@ -24,15 +25,15 @@ patch (0.x.y). This page records what has shipped and what comes next.
 - [Flow types](../reference/language/flow-types.md): `A / A'` state parameters
   whose type changes with each call, checked left to right.
 
+0.17 in detail:
+
+- [Collections](../reference/language/collections.md): `Set`, `KeyVal`,
+  `Queue`, `Stack` and `Deque`, with a portable total order of keys and each
+  target's own native collections.
+- [Asynchronous functions](../reference/language/async-functions.md): `async`
+  adapters return each target's task, and the generated tests await them.
+
 ## Planned
-
-### 0.17: Portable collections
-
-- `List`, `Set`, `KeyVal`, `Queue`, `Stack` and `Deque`. Each gets a schema,
-  codecs, generators and shrinking, and a mapping to each target's native
-  collection.
-- Asynchronous functions: an adapter's result becomes each target's promise or
-  future, and the generated tests await it.
 
 ### 0.18: Railway-oriented workflows
 
@@ -50,3 +51,7 @@ State machines over the flow typing of 0.16:
 - generated command sequences stay well-typed, because each command's typestate
   is checked as in a law;
 - shrinking removes commands while keeping the sequence well-typed.
+
+Actors, processes and supervision are a separate, later feature: long-lived
+concurrent components in the style of OTP, beyond 0.17's one-shot asynchronous
+calls.

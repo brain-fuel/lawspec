@@ -190,6 +190,30 @@ infer env (Binary op a b) = do
       pure (Named (if op `elem` ["<","<=",">",">=","==","!="] then "Bool" else result))
     _ -> throwC "arithmetic requires concrete numeric operands after specialization"
 infer env e@(Apply _ _) | (Var n,args) <- application e, take 8 n == "prelude." = builtin env (drop 8 n) args
+-- Numeric literals are checked after the other arguments, so a polymorphic
+-- parameter takes its type from them: prelude.insert 1 s with s :: Set Int32
+-- reads 1 as an Int32, not an Integer.
+infer env e@(Apply _ _)
+  | (f, args@(_ : _ : _)) <- application e, any numericLiteral args, not (all numericLiteral args) = do
+      ft <- infer env f >>= resolve
+      case arrows (length args) ft of
+        Just (parameters, result) -> do
+          let pairs = zip parameters args
+          mapM_ (\(t, a) -> checkExpr env t a) [p | p@(_, a) <- pairs, not (numericLiteral a)]
+          mapM_ (\(t, a) -> checkExpr env t a) [p | p@(_, a) <- pairs, numericLiteral a]
+          resolve result
+        Nothing -> applyInOrder ft (args)
+  where
+    arrows 0 t = Just ([], t)
+    arrows n (Arrow a b) = (\(as, r) -> (a : as, r)) <$> arrows (n - 1 :: Int) b
+    arrows _ _ = Nothing
+    applyInOrder ft [] = pure ft
+    applyInOrder ft (x : xs) = do
+      ft' <- resolve ft
+      next <- case ft' of
+        Arrow a b -> checkExpr env a x >> resolve b
+        _ -> do xt <- infer env x; r <- Variable . ("result:"++) <$> fresh; unify ft' (Arrow xt r); resolve r
+      applyInOrder next xs
 infer env (Apply f x) = do
   ft <- infer env f >>= resolve
   case ft of
@@ -203,6 +227,36 @@ scalarType :: Scalar -> C Type
 scalarType (SPresent n (Just v)) = Applied n <$> scalarType v
 scalarType (SPresent n Nothing) = Applied n . Variable . ("presence:" ++) <$> fresh
 scalarType s = pure (Named (scalarName s))
+-- Check an application against an expected type: the function's result
+-- first, then its other arguments, then its numeric literals.
+checkApplication :: Env -> Type -> Expr -> C Type
+checkApplication env expected e = do
+  let (f, args) = application e
+  ft <- infer env f >>= resolve
+  case arrows (length args) ft of
+    Just (parameters, result) -> do
+      checkInferred expected e result
+      let pairs = zip parameters args
+      mapM_ (\(t, a) -> checkExpr env t a) [p | p@(_, a) <- pairs, not (numericLiteral a)]
+      mapM_ (\(t, a) -> checkExpr env t a) [p | p@(_, a) <- pairs, numericLiteral a]
+      resolve result
+    Nothing -> do
+      inferred <- infer env e
+      checkInferred expected e inferred
+      resolve inferred
+  where
+    arrows 0 t = Just ([], t)
+    arrows n (Arrow a b) = (\(as, r) -> (a : as, r)) <$> arrows (n - 1 :: Int) b
+    arrows _ _ = Nothing
+
+numericLiteral :: Expr -> Bool
+numericLiteral e = case e of
+  Located _ inner -> numericLiteral inner
+  Number _ -> True
+  DecimalNumber _ _ -> True
+  Unary "-" inner -> numericLiteral inner
+  _ -> False
+
 application :: Expr -> (Expr,[Expr])
 application (Located _ e) = application e
 application (Apply f x) = let (n,args) = application f in (n,args ++ [x])
@@ -291,7 +345,8 @@ builtin env n args
       items <- case t of
         Applied c e | Just short <- collectionName c, short `elem` ["Set","Queue","Stack","Deque"] -> pure e
         Application c [k,v] | collectionName c == Just "KeyVal" -> pure (Application (collectionsUnit ++ "::type::Entry") [k,v])
-        _ -> throwC ("prelude." ++ n ++ " requires a Set, KeyVal, Queue, Stack or Deque")
+        Applied "List" e -> pure e
+        _ -> throwC ("prelude." ++ n ++ " requires a List, Set, KeyVal, Queue, Stack or Deque")
       pure (case n of "toList" -> Applied "List" items; "size" -> Named "Integer"; _ -> Named "Bool")
   | n == "length", [a] <- args = do
       t <- infer env a >>= resolve
@@ -345,6 +400,11 @@ typedExpressionWithSchemes declarations bits env e = do
         (Just targetType, ConstructLit _ _) -> checkExpr context targetType e >> resolve targetType
         (Just targetType, MatchExpr _ _) -> checkExpr context targetType e >> resolve targetType
         (Just targetType, ListLit _) -> checkExpr context targetType e >> resolve targetType
+        -- An application checks against its expected type before its
+        -- numeric literals, which may then take a polymorphic parameter's
+        -- type from it.
+        (Just targetType, Apply _ _) | (Var n, args) <- application e, take 8 n /= "prelude.", any numericLiteral args ->
+          checkApplication context targetType e
         _ -> do
           inferred <- infer context e
           case expected of
@@ -369,6 +429,16 @@ typedExpressionWithSchemes declarations bits env e = do
           Applied "List" element -> mapM (descend (Just element)) xs
           _ -> throwC "list literal requires a List type"
         Apply _ _ | (Var n,args) <- application e, take 8 n == "prelude." -> mapM (descend Nothing) args
+        -- With a numeric literal among its arguments, the function's
+        -- expected type carries the argument's and the result's, so a
+        -- partial application's literals see both.
+        Apply f x | any numericLiteral (snd (application e)) -> do
+          argument <- if numericLiteral x then Variable . ("argument:" ++) <$> fresh else infer context x >>= resolve
+          function <- resolve (Arrow argument natural)
+          f' <- descend (Just function) f
+          a <- resolve argument
+          x' <- descend (Just a) x
+          pure [f', x']
         Apply f x -> do
           ft <- infer context f >>= resolve
           case ft of

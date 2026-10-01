@@ -288,7 +288,7 @@ emitRustWithBindings minify bindings Plan{..} = either (Left . pure . (\m -> Dia
         argTypes <- mapM argumentType args
         resultType <- nativeType result
         let arguments = [Doc.text ("value" ++ show i ++ ": " ++ t) | (i,t) <- zip [0::Int ..] argTypes]
-            signature = Doc.text ("pub fn " ++ declarationName d)
+            signature = Doc.text ((if declarationAsync d then "pub async fn " else "pub fn ") ++ declarationName d)
               <> Doc.delimitTrailing 4 "(" ")" arguments
               <> Doc.text (" -> " ++ resultType ++ " ")
         body <- case lookup d (NR.bindingFunctions bindings) of
@@ -320,8 +320,10 @@ emitRustWithBindings minify bindings Plan{..} = either (Left . pure . (\m -> Dia
             else convert (invoke "ls::native_value" [value,string (typeName t)] <> Doc.text "?")
         pre <- maybe (Right []) (mapM (predicate names (declarationName d ++ " precondition")) . contractPreconditions) contract
         post <- maybe (Right []) (mapM (predicate names (declarationName d ++ " postcondition")) . contractPostconditions) contract
-        let called = invoke ("adapter::" ++ declarationName d)
+        -- An async adapter's future is awaited where it is called.
+        let call = invoke ("adapter::" ++ declarationName d)
               [Doc.text ("native_arg_" ++ show i) | i <- [0..length args-1]]
+            called = if declarationAsync d then invoke "ls::block_on" [call] else call
             wrapped = invoke (if typeName result == "CodeUnit16" then "ls::Value::CodeUnit16" else "ls::IntoValue::into_value") [Doc.text "native_result"]
         ref <- schemaType result
         let checkedResult = (if usesData result

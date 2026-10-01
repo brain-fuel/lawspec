@@ -843,6 +843,85 @@ export function refinedCase(
   }
 }
 
+// refinedCase for checks that await async adapters.
+export async function refinedCaseAsync(
+    domains,
+    seed,
+    attempts,
+    shrinks,
+    check,
+    context = 'refinement',
+) {
+  let values;
+  try {
+    values = generateTuple(domains, seed, attempts);
+  } catch (error) {
+    throw new Error(`${context}: ${error.message}`, {cause: error});
+  }
+  try {
+    await check(values);
+  } catch (original) {
+    let best = values,
+        budget = shrinks;
+    for (let i = 0; i < best.length; i++) {
+      const current = best[i],
+          integer =
+              typeof current === 'bigint' ||
+              (typeof current === 'number' && Number.isSafeInteger(current));
+      const candidates = domains[i][0](best.slice(0, i), 0);
+      if (integer) {
+        const initial = BigInt(current);
+        let reduced = initial;
+        candidates.unshift(
+            typeof current === 'number' ? 0 : 0n,
+            typeof current === 'number'
+              ? Math.sign(current)
+              : initial > 0n
+                ? 1n
+                : -1n,
+        );
+        while (reduced > 1n || reduced < -1n) {
+          reduced /= 2n;
+          candidates.splice(
+              2,
+              0,
+              typeof current === 'number' ? Number(reduced) : reduced,
+          );
+        }
+      }
+      for (const candidate of candidates) {
+        if (budget-- <= 0) break;
+        if (complexity(candidate) >= complexity(best[i])) continue;
+        const prefix = [...best.slice(0, i), candidate];
+        if (!domains[i][1](prefix)) continue;
+        let trial;
+        try {
+          trial = generateTuple(
+              domains,
+              seed,
+              Math.min(attempts, 100),
+              prefix,
+          );
+        } catch (error) {
+          if (error.message.startsWith('refinement-generation-exhausted'))
+            continue;
+          throw error;
+        }
+        try {
+          await check(trial);
+        } catch {
+          best = trial;
+        }
+      }
+    }
+    throw new Error(
+        `${context}: ${original.message}; ` +
+          `refined counterexample=${best.map(String)}; seed=${seed}`,
+        {cause: original},
+    );
+  }
+}
+
 function complexity(value) {
   if (value instanceof Presence)
     return value.present ? 1n + complexity(value.value) : 0n;

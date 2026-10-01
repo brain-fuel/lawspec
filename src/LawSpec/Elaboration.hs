@@ -163,6 +163,7 @@ elaborateResolvedWithData dataTypes declarations bits origin resolve env source 
   root e = e
   -- A collection's items: its single constructor's field.
   collectionItems x = case C.expressionType x of
+    C.Constructor "List" _ -> pure x
     C.Constructor name arguments
       | Just short <- stripPrefix (collectionsUnit ++ "::type::") name, Just constructor <- internalConstructor short -> do
           let itemType = case (short, [a | C.TypeArgument a <- arguments]) of
@@ -215,7 +216,9 @@ binaryOp op = maybe (Left ("unknown binary operation: " ++ op)) Right (lookup op
 -- closed definition execution on the same typed Core path as generated code.
 elaborateDefinitionUnit :: [C.DataDeclaration] -> Int -> S.Unit -> Either String C.Unit
 elaborateDefinitionUnit dataDeclarations bits u = do
-  ds <- forM (S.functions u) $ \(n,t) -> C.Declaration (declarationId u n) n <$> coreType t <*> pure (maybe (C.GeneratedFrom (declarationId u n)) C.SourceSpan (lookup n (S.declarationSpans u)))
+  ds <- forM (S.functions u) $ \(n,t) -> (\ty -> C.MkDeclaration (declarationId u n) n ty
+    (maybe (C.GeneratedFrom (declarationId u n)) C.SourceSpan (lookup n (S.declarationSpans u)))
+    (n `elem` S.asyncFunctions u)) <$> coreType t
   definitions <- forM (S.functionDefinitions u) $ \d -> do
     let name = S.functionName d
         did = declarationId u name

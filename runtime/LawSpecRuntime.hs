@@ -3,6 +3,7 @@
 module LawSpecRuntime where
 
 import Control.Exception (SomeException, catch, displayException)
+import System.IO.Unsafe (unsafePerformIO)
 import Control.Monad (foldM)
 import Data.Unique (Unique, newUnique)
 import Data.Char (ord, chr)
@@ -406,6 +407,12 @@ binary op a b = either error run (promote op (scalarName a) (scalarName b))
   compareWith "==" x y = x == y
   compareWith "!=" x y = x /= y
   compareWith _ _ _ = error "unknown comparison"
+-- An async adapter's IO result, awaited where it is called. Adapters are
+-- functions of their arguments, so running the action in place is safe.
+awaitTask :: IO a -> a
+awaitTask action = unsafePerformIO action
+{-# NOINLINE awaitTask #-}
+
 -- The portable total order. Exact numbers by value, sequences by unit, False
 -- before True, absence before presence, lists element by element, Nothing
 -- before Just, and other data by constructor identity, then fields left to

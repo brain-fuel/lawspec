@@ -1,0 +1,6 @@
+@@ src/main/kotlin/example/Orders.kt
+<<<<<<<
+        if (sku == "free") 0 else sku.codePointCount(0, sku.length) % 100
+=======
+        -1
+>>>>>>>

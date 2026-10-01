@@ -1,0 +1,6 @@
+@@ src/main/java/example/Orders.java
+<<<<<<<
+    return CompletableFuture.supplyAsync(() -> priceOf(value0));
+=======
+    return CompletableFuture.failedFuture(new IllegalStateException("unavailable"));
+>>>>>>>

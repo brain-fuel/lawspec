@@ -252,6 +252,14 @@
             "path": "reference/language/flow-types.md"
           },
           {
+            "title": "Collections",
+            "path": "reference/language/collections.md"
+          },
+          {
+            "title": "Asynchronous functions",
+            "path": "reference/language/async-functions.md"
+          },
+          {
             "title": "Evidence and discharge",
             "path": "reference/language/evidence-and-discharge.md"
           },

@@ -79,6 +79,7 @@ scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions 
       else (if null definitions then "" else "import * as _definitions from '../src/lawspec_definition_bodies." ++ (if ts then "js" else "mjs") ++ "';\n") ++ webImports "../src/" ++ "import {test} from 'node:test';\nimport assert from 'node:assert/strict';\nimport fc from 'fast-check';\nimport * as impl from '../src/" ++ slash ++ (if ts then ".js" else ".mjs") ++ "';\n"
     testHelpers = (if hasData then "" else if py then "\n\n" else "\n") ++
       Doc.render outputLayout (Helpers.assertionHelperDoc py) ++
+      (if asyncMode then "\n\n" ++ Doc.render outputLayout (Helpers.asyncAssertionHelpersDoc bits) else "") ++
       (if py then "\n\n\n" else "\n\n")
     native ty | usesData ty = either error id ((if py then PythonData.pythonDataType else WebData.webDataType) declarations ty)
     native (Applied "Maybe" _) = if py then "ls.DataValue" else "unknown"
@@ -118,7 +119,8 @@ scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions 
             mconcat [stubComment ("LawSpec argument " ++ show i ++ ": " ++ prettyType a) |
               (i,a) <- zip [0 :: Int ..] args] <>
             stubComment ("LawSpec result: " ++ prettyType r)
-          signature = Doc.text ((if py then "def " else "export function ") ++ n) <>
+          asyncStub = n `elem` asyncFunctions u
+          signature = Doc.text ((if py then (if asyncStub then "async def " else "def ") else (if asyncStub then "export async function " else "export function ")) ++ n) <>
             Doc.delimit 4 "(" ")" arguments <>
             (if py then Doc.text " -> " <> (if r == Named "Unit" then Doc.text "None" else pythonType r) <> Doc.text ":"
              else Doc.text (if ts then ": " ++ native r else ""))
@@ -161,7 +163,11 @@ scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions 
     lambda parameters value = if py
       then PythonExpr.lambdaExpression parameters value
       else Doc.delimitTrailing 4 "(" ")" parameters <> text " => " <> value
-    callback parameters body = Doc.delimitTrailing 4 "(" ")" parameters <> text " => " <> Doc.block 2 body
+    -- JavaScript tests that call async adapters await them, so their test
+    -- bodies, property callbacks and assertion thunks are async too.
+    asyncMode = not py && not (null (asyncFunctions u))
+    asyncPrefix = text (if asyncMode then "async " else "")
+    callback parameters body = asyncPrefix <> Doc.delimitTrailing 4 "(" ")" parameters <> text " => " <> Doc.block 2 body
     function name parameters body =
       let header = text ((if py then "def " else "function ") ++ name) <>
             Doc.delimitTrailing indentation "(" ")" (map text parameters)
@@ -193,10 +199,11 @@ scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions 
             Just name -> Right (invoke name (text "symbols":values))
             Nothing ->
               let convertedValues = [converted (expressionType a) value | (a,value) <- zip args values]
-                  invocation = invoke ("impl." ++ declarationName decl)
-                    [nativeInput (expressionType a) value | (a,value) <- zip args convertedValues]
+                  invocation = awaited (declarationName decl) (invoke ("impl." ++ declarationName decl)
+                    [nativeInput (expressionType a) value | (a,value) <- zip args convertedValues])
               in Right (if declarationName decl `elem` map contractName (contracts u)
-                then invoke ("_lawspec_call_" ++ declarationName decl) (text "symbols":convertedValues)
+                then (if asyncMode then \call -> text "(await " <> call <> text ")" else id)
+                  (invoke ("_lawspec_call_" ++ declarationName decl) (text "symbols":convertedValues))
                 else checkedResult (expressionType expression) invocation)
           _ -> Left "expected portable external call"
     assertionDoc context proposition = case proposition of
@@ -205,19 +212,21 @@ scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions 
         then PythonExpr.suite (text "if " <> parenthesized (render guard)) (assertionDoc context body)
         else text "if " <> parenthesized (render guard) <> text " " <> Doc.block 2 (assertionDoc context body)
       AssertEqual left right ->
-        let arguments = [message (context ++ " | expect " ++ propositionText proposition),
-              lambda [] (render left),lambda [] (render right)]
+        let thunk value = asyncPrefix <> lambda [] value
+            arguments = [message (context ++ " | expect " ++ propositionText proposition),
+              thunk (render left),thunk (render right)]
             structural = usesData (expressionType left)
             extra = if structural then [referenceDoc (expressionType left),text "symbols"]
               else map (quoted . typeKey . expressionType) [left,right]
-            helper = if structural then "_lawspec_data_assert" else if py then "_lawspec_assert" else "_lawspecAssert"
-        in statement (invoke helper (arguments ++ extra))
+            helper = (if structural then "_lawspec_data_assert" else if py then "_lawspec_assert" else "_lawspecAssert") ++
+              (if asyncMode then "Async" else "")
+        in statement ((if asyncMode then text "await " else mempty) <> invoke helper (arguments ++ extra))
     conjunction [] = text (if py then "True" else "true")
     conjunction expressions = parenthesized (Doc.joinWith
       (if py then Doc.softline <> text "and " else text " &&" <> Doc.softline) (map parenthesized expressions))
     propertyInvocation label generators parameters body options =
-      let property = blockCall "fc.property" (generators ++ [callback parameters body])
-          assertion = blockCall "fc.assert" (property:options)
+      let property = blockCall (if asyncMode then "fc.asyncProperty" else "fc.property") (generators ++ [callback parameters body])
+          assertion = (if asyncMode then text "await " else mempty) <> blockCall "fc.assert" (property:options)
       in testBlock (label ++ " property") "unused" (statement assertion)
     pythonProperty prefix decorators names body = statements
       (map (\decorator -> text "@" <> decorator) decorators ++ [function (prefix ++ "_property") names body])
@@ -253,20 +262,26 @@ scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions 
             [if needsContext then contextual else if any (not . null . inputRefinements) (inputs e) || propertyKind e == "contract" then refined else ordinary]
       pure (Doc.render outputLayout (metadataDocument (if py then 72 else 80) (if py then "#" else "//") e) ++
         concatMap renderDocument (examples' ++ boundaries' ++ properties))
+    -- An async adapter's task is awaited where it is called.
+    awaited name call
+      | name `notElem` asyncFunctions u = call
+      | py = runtime "await_task" [call]
+      | otherwise = text "(await " <> call <> text ")"
     contractWrapper contract =
       let arguments = contractArguments contract
           (resultName,resultType) = contractResult contract
           require label predicates = statement (runtime (if py then "require_contract" else "requireContract")
             [conjunction (map render predicates),message (contractName contract ++ " " ++ label ++ ": " ++
               intercalate " && " (map prettyExpr predicates))])
-          invocation = invoke ("impl." ++ contractName contract)
-            [nativeInput ty (converted ty (text name)) | (name,ty) <- arguments]
+          invocation = awaited (contractName contract) (invoke ("impl." ++ contractName contract)
+            [nativeInput ty (converted ty (text name)) | (name,ty) <- arguments])
           body = statements
             [require "precondition" (contractPreconditions contract),
              assign resultName (checkedResult resultType invocation),
              require "postcondition" (contractPostconditions contract),
              statement (text ("return " ++ resultName))]
-      in pure (renderDocument (function ("_lawspec_call_" ++ contractName contract) ("symbols":map fst arguments) body))
+      in pure (renderDocument ((if asyncMode then text "async " else mempty) <>
+        function ("_lawspec_call_" ++ contractName contract) ("symbols":map fst arguments) body))
     valueLit (V.ScalarValue value) = Right (if py then PythonExpr.scalarLiteral value else runtime "literal"
       [WebExpr.literalValue (toJSON value),text "symbols"])
     valueLit value@(V.DataValue (C.Constructor "List" _) _ _) = do
@@ -401,7 +416,7 @@ scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions 
             (index,input) <- zip [0 :: Int ..] (inputs e)] ++ [body])
           check = if py then function "_check" ["_values"] checkBody
             else assign "_check" (callback [text "_values"] checkBody)
-          run = statement (runtime (if py then "refined_case" else "refinedCase")
+          run = statement ((if asyncMode then text "await " else mempty) <> runtime (if py then "refined_case" else if asyncMode then "refinedCaseAsync" else "refinedCase")
             [array domains,text "_seed",text (show (maxAttempts cfg)),text (show (maxShrinks cfg)),text "_check",
              message (label ++ " | " ++ intercalate "; " (map prettyExpr (concatMap inputRefinements (inputs e))))])
           seededBody = statements [freshSymbols, (if py then Doc.hardline else mempty) <> check, run]

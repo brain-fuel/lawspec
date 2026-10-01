@@ -1,3 +1,4 @@
+{-# LANGUAGE PatternSynonyms #-}
 -- Authoritative typed terms shared by evaluators and backends. This module has
 -- no dependency on the surface syntax, inference, or a testing framework.
 module LawSpec.Core where
@@ -18,7 +19,13 @@ functionType (Arrow a b) = let (as,r) = functionType b in (a:as,r)
 functionType t = ([],t)
 
 data Binder = Binder { binderId :: Id, binderName :: String, binderType :: Type } deriving (Eq, Show)
-data Declaration = Declaration { declarationId :: Id, declarationName :: String, declarationType :: Type, declarationOrigin :: Origin } deriving (Eq, Show)
+-- An async declaration is an adapter whose result arrives later, as each
+-- target's task; Declaration builds a synchronous one.
+data Declaration = MkDeclaration { declarationId :: Id, declarationName :: String, declarationType :: Type, declarationOrigin :: Origin, declarationAsync :: Bool } deriving (Eq, Show)
+pattern Declaration :: Id -> String -> Type -> Origin -> Declaration
+pattern Declaration identity name ty origin <- MkDeclaration identity name ty origin _
+  where Declaration identity name ty origin = MkDeclaration identity name ty origin False
+{-# COMPLETE Declaration #-}
 -- A definition supplies a checked body rather than a user-owned adapter.
 -- Calls retain resolved declaration identities; the total-definition audit
 -- determines which declaration bodies may be invoked within this closed set.

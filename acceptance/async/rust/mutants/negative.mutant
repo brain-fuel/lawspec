@@ -1,0 +1,11 @@
+@@ src/example/orders.rs
+<<<<<<<
+    if sku == "free" {
+        0
+    } else {
+        (sku.chars().count() % 100) as i32
+    }
+=======
+    let _ = sku;
+    -1
+>>>>>>>

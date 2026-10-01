@@ -74,9 +74,10 @@ programEvidence program =
           [ obligation "postcondition" claim RuntimeChecked "checked on each native adapter result"
           | claim <- contractPostconditions contract ]
       where obligation stage claim = Obligation owner (contractDeclaration contract) stage (Just claim)
-    adapterReason unit adapter = case [propertyName p | p <- unitProperties unit, calls (declarationId adapter) p] of
-      [] -> "native implementation taken on trust; no law calls it"
-      laws -> "native implementation taken on trust; called by " ++ show (length laws) ++ " law(s)"
+    adapterReason unit adapter = (if declarationAsync adapter then "asynchronous " else "") ++
+      case [propertyName p | p <- unitProperties unit, calls (declarationId adapter) p] of
+        [] -> "native implementation taken on trust; no law calls it"
+        laws -> "native implementation taken on trust; called by " ++ show (length laws) ++ " law(s)"
 
 -- Whether a property calls the declaration, in its body, domain or examples.
 calls :: Id -> Property -> Bool

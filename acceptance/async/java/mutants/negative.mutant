@@ -1,0 +1,6 @@
+@@ src/main/java/example/Orders.java
+<<<<<<<
+    return sku.equals("free") ? 0 : sku.codePointCount(0, sku.length()) % 100;
+=======
+    return -1;
+>>>>>>>

@@ -14,6 +14,8 @@ import Data.List (intercalate, sort)
 
 data Config = Config
   { packageName :: String
+  -- An async adapter's call, awaited.
+  , awaitResult :: String -> D.Doc -> D.Doc
   , className :: String
   , constructorContracts :: Bool
   , nativeGenerators :: Bool
@@ -86,7 +88,7 @@ emitTests Config{..} unit laws = do
           params = text "symbols: MutableMap<String, Any>" : [text (n ++ ": LawSpecRuntime.Value") | (n,_) <- args]
           context stage ps = quoted (contractName c ++ " " ++ stage ++ ": " ++ intercalate " && " (map prettyExpr ps))
           require stage ps = runtime "requireContract" [conjunction (map (truth . expr) ps),context stage ps]
-          invocation = call (className ++ "." ++ contractName c) [nativeArgument ty (text n) | (n,ty) <- args]
+          invocation = awaitResult (contractName c) (call (className ++ "." ++ contractName c) [nativeArgument ty (text n) | (n,ty) <- args])
       in call ("private fun _lawspec_call_" ++ contractName c) params <> text ": LawSpecRuntime.Value " <>
         block (statements [require "precondition" (contractPreconditions c),
           bind rn (nativeResult rt invocation),require "postcondition" (contractPostconditions c),text "return " <> text rn])

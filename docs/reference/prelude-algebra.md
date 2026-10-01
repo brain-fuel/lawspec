@@ -68,6 +68,12 @@ of every combined law. Its examples use exact `Integer` values whose expected
 results exceed `Int32` and machine bounds, so an adapter that wraps fails even
 when modular arithmetic happens to satisfy the identities.
 
+### Collection operations
+
+`prelude.setOf`, `prelude.lookup`, `prelude.push` and the other collection
+operations, and `prelude.compare`, are listed in
+[collections](language/collections.md#operations).
+
 ## Currying and partial application
 
 Arrows associate to the right and application to the left: `f :: a -> b -> c`

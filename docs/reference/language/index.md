@@ -15,6 +15,10 @@ types, checked definitions, refinements and laws.
   witnesses.
 - [Flow types](flow-types.md): state parameters whose type changes with each
   call.
+- [Collections](collections.md): sets, key/value maps, queues, stacks and
+  deques, and the portable order of keys.
+- [Asynchronous functions](async-functions.md): adapters that return each
+  target's task.
 - [Evidence and discharge](evidence-and-discharge.md): how each obligation is
   discharged.
 - [Domain modeling](domain-modeling.md): wrappers and workflows.
@@ -30,9 +34,8 @@ the [prelude](../prelude-algebra.md).
 
 The following are not part of the language:
 
-- collections other than `List` (and the algebraic `Maybe` and `Either`), such
-  as sets and maps;
-- asynchronous functions;
+- queues, stacks and deques indexed by their size;
+- binding an asynchronous adapter to an existing native function;
 - several flow parameters in one function, and flow calls inside match
   branches;
 - re-exports of imported names, and several versions of one package in one

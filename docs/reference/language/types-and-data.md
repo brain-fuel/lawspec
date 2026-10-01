@@ -34,10 +34,13 @@ the same length and equal elements in order. Element equality keeps the scalar
 rules: NaN differs from itself, signed zeros are equal, and Symbols compare by
 identity. Generic list equality requires `Eq a`.
 
-The [collections example](../../../examples/specs/collections.lawspec) checks
+The [lists example](../../../examples/specs/lists.lawspec) checks
 reverse involution, sorting idempotence, sortedness, length and permutation
 preservation. Its `sorted` and `permutation` functions are adapters the user
 supplies, not built-in helpers.
+
+Sets, maps, queues, stacks and deques are built in as well; see
+[collections](collections.md).
 
 ## Maybe and Either
 

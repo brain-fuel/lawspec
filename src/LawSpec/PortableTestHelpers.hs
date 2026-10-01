@@ -1,5 +1,5 @@
 -- Framework-specific assertion helpers, with layout supplied by the caller.
-module LawSpec.PortableTestHelpers (assertionHelperDoc, dataHelperDoc) where
+module LawSpec.PortableTestHelpers (assertionHelperDoc, dataHelperDoc, asyncAssertionHelpersDoc) where
 
 import qualified LawSpec.Code.Doc as D
 import qualified LawSpec.PythonExpr as Python
@@ -31,6 +31,21 @@ function py name parameters body =
   let signature = D.text ((if py then "def " else "function ") ++ name) <>
         D.delimitTrailing (if py then 4 else 2) "(" ")" (map D.text parameters)
   in if py then Python.suite signature body else signature <> D.text " " <> D.block 2 body
+
+-- JavaScript assertions whose thunks await async adapters.
+asyncAssertionHelpersDoc :: Int -> D.Doc
+asyncAssertionHelpersDoc bits = D.joinWith (D.hardline <> D.hardline)
+  [asynchronous (assertionHelper False Nothing), asynchronous (assertionHelper False (Just bits))]
+  where
+    asynchronous doc = D.text (rewrite (D.render (D.Pretty 80) doc))
+    rewrite text = foldr (\(a, b) acc -> replaceAll a b acc) text
+      [ ("function _lawspecAssert(", "async function _lawspecAssertAsync(")
+      , ("function _lawspec_data_assert(", "async function _lawspec_data_assertAsync(")
+      , ("actual()", "await actual()"), ("expected()", "await expected()") ]
+    replaceAll a b text = case text of
+      [] -> []
+      _ | take (length a) text == a -> b ++ replaceAll a b (drop (length a) text)
+      c : rest -> c : replaceAll a b rest
 
 assertionHelper :: Bool -> Maybe Int -> D.Doc
 assertionHelper py profile = function py name parameters guarded

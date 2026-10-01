@@ -796,6 +796,36 @@ func lsEqual(a, b LawSpecValue) bool {
 	return reflect.DeepEqual(a.Data, b.Data)
 }
 func lsTruth(v LawSpecValue) bool { return lsValidate("Bool", v, 64).Data.(bool) }
+// LawSpecTask is an async adapter's result: a goroutine's value, awaited where
+// it is used. A panic in the goroutine is raised again by Await.
+type LawSpecTask[T any] struct{ state *lawSpecTaskState[T] }
+
+type lawSpecTaskState[T any] struct {
+	done    chan struct{}
+	value   T
+	failure any
+}
+
+// LawSpecGo starts work in a goroutine.
+func LawSpecGo[T any](work func() T) LawSpecTask[T] {
+	state := &lawSpecTaskState[T]{done: make(chan struct{})}
+	go func() {
+		defer close(state.done)
+		defer func() { state.failure = recover() }()
+		state.value = work()
+	}()
+	return LawSpecTask[T]{state}
+}
+
+// Await blocks until the task is done and returns its value.
+func (t LawSpecTask[T]) Await() T {
+	<-t.state.done
+	if t.state.failure != nil {
+		panic(t.state.failure)
+	}
+	return t.state.value
+}
+
 const lsOrdering = "lawspec.collections::type::Ordering"
 
 // lsCompareValues is the portable total order: -1, 0 or 1. Exact numbers by

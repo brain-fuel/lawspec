@@ -1,0 +1,10 @@
+@@ example/orders/adapter.go
+<<<<<<<
+		return 0
+	}
+	return int32(len([]rune(sku)) % 100)
+=======
+		return -1
+	}
+	return -1
+>>>>>>>

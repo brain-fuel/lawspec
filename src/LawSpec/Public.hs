@@ -122,7 +122,7 @@ programView settings surface expansions artifacts evidence C.Program{..} = objec
           , "origin" .= originView (C.constructorOrigin constructor)
           ] | constructor <- C.dataConstructors declaration]
       ]
-    unitView u = object ["id" .= C.idText (C.unitId u), "declarations" .= [object ["id" .= C.idText (C.declarationId d),"name" .= C.declarationName d,"type" .= typeView (C.declarationType d),"origin" .= originView (C.declarationOrigin d)] | d <- C.unitDeclarations u]]
+    unitView u = object ["id" .= C.idText (C.unitId u), "declarations" .= [object (["id" .= C.idText (C.declarationId d),"name" .= C.declarationName d,"type" .= typeView (C.declarationType d),"origin" .= originView (C.declarationOrigin d)] ++ ["async" .= True | C.declarationAsync d]) | d <- C.unitDeclarations u]]
     propertyView owner p =
       let names = [(C.binderId b,C.binderName b) | q <- C.propertyInputs p, let b = C.quantifiedBinder q]
           expr = expressionView names

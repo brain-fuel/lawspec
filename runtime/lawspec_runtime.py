@@ -347,6 +347,15 @@ def equal(a, b, ta, tb):
     return a == b
 
 
+def await_task(task):
+    """An async adapter's result: run its coroutine (or awaitable) to completion."""
+    import asyncio
+
+    async def result():
+        return await task
+    return asyncio.run(result())
+
+
 ORDERING = 'lawspec.collections::type::Ordering::'
 
 

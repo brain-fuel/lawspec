@@ -1,0 +1,6 @@
+@@ src/Example/Orders.hs
+<<<<<<<
+price = pure . priceOf
+=======
+price = pure . (+ 1) . priceOf
+>>>>>>>

@@ -1,0 +1,7 @@
+@@ src/Example/Orders.hs
+<<<<<<<
+  | sku == T.pack "free" = 0
+  | otherwise = fromIntegral (T.length sku `mod` 100)
+=======
+  | otherwise = -1
+>>>>>>>

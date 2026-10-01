@@ -1701,6 +1701,26 @@ pub fn require_architecture(machine_bits: u32) -> Result<()> {
     }
 }
 
+/// Run an async adapter's future to completion on this thread. A waker that
+/// unparks the thread is enough: adapters own whatever executor they need.
+pub fn block_on<F: std::future::Future>(future: F) -> F::Output {
+    struct Unpark(std::thread::Thread);
+    impl std::task::Wake for Unpark {
+        fn wake(self: Arc<Self>) {
+            self.0.unpark();
+        }
+    }
+    let waker = std::task::Waker::from(Arc::new(Unpark(std::thread::current())));
+    let mut context = std::task::Context::from_waker(&waker);
+    let mut future = std::pin::pin!(future);
+    loop {
+        match future.as_mut().poll(&mut context) {
+            std::task::Poll::Ready(value) => return value,
+            std::task::Poll::Pending => std::thread::park(),
+        }
+    }
+}
+
 /// The portable total order. Exact numbers by value, text by code point,
 /// sequences by unit, false before true, absence before presence, lists
 /// element by element, Nothing before Just, Left before Right, and other data

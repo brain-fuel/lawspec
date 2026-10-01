@@ -50,7 +50,9 @@ support. Specifications without bindings keep their default generated types.
   recursion, `List`, `Maybe`, `Either`, `Nullable` and `Optional`. They keep
   exact values, Symbol identity, distinct absence states, constructor
   contracts and both machine profiles. Adapter inputs and outputs are validated;
-  an invalid native value is a failure, never a rejected sample.
+  an invalid native value is a failure, never a rejected sample. The built-in
+  collections map to each target's own collections; see
+  [collections](language/collections.md#native-types).
 - **Generators stay native.** Factories return the framework's own generator.
   The tests compose and map it directly, without resampling or replacing its
   shrinker. Every sample and shrink is validated through the bridge.

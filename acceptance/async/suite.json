@@ -1,0 +1,5 @@
+{
+  "specs": [
+    "examples/specs/async_fetch.lawspec"
+  ]
+}

@@ -13,6 +13,8 @@ import Data.List (intercalate)
 
 data Config = Config
   { packageName :: String
+  -- An async adapter's call, awaited.
+  , awaitResult :: String -> D.Doc -> D.Doc
   , schemaNeeded :: Bool
   , constructorContracts :: Bool
   , nativeGenerators :: Bool
@@ -81,7 +83,7 @@ emitTests Config{..} unit laws = do
           params = intercalate ", " ("symbols map[string]*lawSpecSymbol" : [n ++ " LawSpecValue" | (n,_) <- args])
           context stage ps = quoted (contractName c ++ " " ++ stage ++ ": " ++ intercalate " && " (map prettyExpr ps))
           require stage ps = call "lsRequireContract" [conjunction (map (truth . expr) ps),context stage ps]
-          invocation = call (nativeFunction (contractName c)) [nativeArgument ty (text n) | (n,ty) <- args]
+          invocation = awaitResult (contractName c) (call (nativeFunction (contractName c)) [nativeArgument ty (text n) | (n,ty) <- args])
       in text ("func _lawspec_call_" ++ contractName c ++ "(" ++ params ++ ") LawSpecValue ") <>
         block (statements [require "precondition" (contractPreconditions c),
           bind rn (nativeResult rt invocation),require "postcondition" (contractPostconditions c),returned (text rn)])

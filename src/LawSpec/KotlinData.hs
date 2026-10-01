@@ -224,9 +224,9 @@ codecDocUsingOwner owner context names parameters ty = case ty of
     children <- mapM (argument (codecDocUsingOwner owner context names parameters)) args
     let rest = maybe [] pure context
     pure $ case short of
-      "Set" -> call "LawSpecKotlinCodecs.set" ([D.text "schema", D.text "bits"] ++ children ++ rest)
-      "KeyVal" -> call "LawSpecKotlinCodecs.keyVal" ([D.text "schema", D.text "bits"] ++ children ++ rest)
-      _ -> call "LawSpecKotlinCodecs.sequence" ([D.text "schema", D.text "bits", quoted short] ++ children ++ rest)
+      "Set" -> call "lawspec.runtime.LawSpecKotlinCodecs.set" ([D.text "schema", D.text "bits"] ++ children ++ rest)
+      "KeyVal" -> call "lawspec.runtime.LawSpecKotlinCodecs.keyVal" ([D.text "schema", D.text "bits"] ++ children ++ rest)
+      _ -> call "lawspec.runtime.LawSpecKotlinCodecs.sequence" ([D.text "schema", D.text "bits", quoted short] ++ children ++ rest)
   C.Constructor name args -> do
     children <- mapM (argument (codecDocUsingOwner owner context names parameters)) args
     case lookup (C.Id name) names of

@@ -1,0 +1,6 @@
+@@ example/orders/adapter.go
+<<<<<<<
+	return LawSpecGo(func() int32 { return price(value0) })
+=======
+	return LawSpecGo(func() int32 { return price(value0) + 1 })
+>>>>>>>

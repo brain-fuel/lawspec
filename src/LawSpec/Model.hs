@@ -64,7 +64,9 @@ data FunctionDefinition = FunctionDefinition
   , functionResult :: Type, functionRequirements :: [Constraint]
   , functionBody :: Expr, functionSpan :: Span
   } deriving (Eq, Show, Generic)
-data Unit = Unit { unitName :: String, functions :: [(String, Type)], laws :: [Law], refinements :: [Refinement], contracts :: [Contract], declarationSpans :: [(String,Span)], dataTypes :: [DataTypeDeclaration], functionDefinitions :: [FunctionDefinition] } deriving (Eq, Show, Generic)
+-- asyncFunctions names the adapters declared `async`: their results arrive
+-- later, as each target's task, and tests await them where they are called.
+data Unit = Unit { unitName :: String, functions :: [(String, Type)], laws :: [Law], refinements :: [Refinement], contracts :: [Contract], declarationSpans :: [(String,Span)], dataTypes :: [DataTypeDeclaration], functionDefinitions :: [FunctionDefinition], asyncFunctions :: [String] } deriving (Eq, Show, Generic)
 data Input = Input { inputName :: String, inputId :: String, inputType :: Type, inputRefinements :: [Expr] } deriving (Eq, Show, Generic)
 data Assertion = AssertEqual Expr Expr | AssertImplies Expr Assertion | AssertAll [Assertion] deriving (Eq, Show, Generic)
 instance ToJSON Assertion

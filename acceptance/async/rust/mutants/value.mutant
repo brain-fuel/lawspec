@@ -1,0 +1,8 @@
+@@ src/example/orders.rs
+<<<<<<<
+pub async fn price(value0: String) -> i32 {
+    price_of(&value0)
+=======
+pub async fn price(value0: String) -> i32 {
+    price_of(&value0) + 1
+>>>>>>>

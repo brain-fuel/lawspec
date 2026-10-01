@@ -198,10 +198,18 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
       [("byte","Byte"),("short","Short"),("int","Integer"),("long","Long"),
        ("float","Float"),("double","Double"),("char","Character"),("boolean","Boolean"),
        ("String","String"),("Number","Number")])
+    -- An async adapter's task is awaited where it is called.
+    awaitFor name call
+      | name `notElem` asyncFunctions u = call
+      | go = call <> Doc.text ".Await()"
+      | kt = Doc.text "kotlinx.coroutines.runBlocking { " <> call <> Doc.text " }"
+      | hs = Doc.text "LS.awaitTask (" <> call <> Doc.text ")"
+      | otherwise = call <> Doc.text ".join()"
     goStubFn n t =
       let (args,result) = functionType t
           params = [Doc.text ("value" ++ show i ++ " " ++ nativeArg a) | (i,a) <- zip [0::Int ..] args]
-          returnType = if result == Named "Unit" then "" else " " ++ native result
+          returnType = if n `elem` asyncFunctions u then " LawSpecTask[" ++ (if result == Named "Unit" then "LawSpecUnit" else native result) ++ "]"
+            else if result == Named "Unit" then "" else " " ++ native result
       in Doc.lineComment 100 "// " (cap n ++ " implements " ++ n ++ " :: " ++ prettyType t ++ ".") <>
          Doc.text ("func " ++ cap n) <> Doc.delimitTrailing 8 "(" ")" params <>
          Doc.text (returnType ++ " ") <>
@@ -213,8 +221,10 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
     javaStubFn n t =
       let (args,result) = functionType t
           params = [Doc.group (javaTypeDoc True False 8 a <> Doc.nest 4 (Doc.softline <> Doc.text ("value" ++ show i))) | (i,a) <- zip [0::Int ..] args]
-          flatHeader = "public static " ++ native result ++ " " ++ n ++ "("
-          signature = Doc.group $ if length flatHeader <= 98
+          asyncStub = n `elem` asyncFunctions u
+          resultText = if asyncStub then "java.util.concurrent.CompletableFuture<" ++ boxed (native result) ++ ">" else native result
+          flatHeader = "public static " ++ resultText ++ " " ++ n ++ "("
+          signature = Doc.group $ if length flatHeader <= 98 || asyncStub
             then Doc.text flatHeader <> Doc.nest 4 (Doc.softbreak <> Doc.group (Doc.commaSep params)) <> Doc.text ") "
             else Doc.text "public static " <> javaTypeDoc False False 8 result <>
               Doc.nest 4 (Doc.softline <> Doc.group (Doc.text (n ++ "(") <>
@@ -238,7 +248,9 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
           | otherwise = wrap (current ++ [word]) rest
     haskellStubFn n t =
       let (args,result) = functionType t
-          types = map (Doc.text . nativeArg) args ++ [Doc.text (stubResult result)]
+          types = map (Doc.text . nativeArg) args ++
+            [Doc.text (if n `elem` asyncFunctions u then "P.IO " ++ parenthesized (stubResult result) else stubResult result)]
+          parenthesized text = if ' ' `elem` text && take 1 text /= "(" then "(" ++ text ++ ")" else text
           signature = Doc.group (Doc.text (n ++ " ::") <>
             Doc.nest 2 (Doc.softline <> Doc.joinWith (Doc.softline <> Doc.text "-> ") types))
           body = Doc.group (Doc.text (n ++ concatMap (const " _") args ++ " =") <>
@@ -249,7 +261,7 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
           typeDoc = java . KotlinData.kotlinDataTypeDoc dataDeclarations
           arguments = [Doc.text ("value" ++ show i ++ ": ") <> typeDoc ty |
             (i,ty) <- zip [0::Int ..] args]
-          signature = Doc.text ("fun " ++ n) <> Doc.delimitTrailing 4 "(" ")" arguments <>
+          signature = Doc.text ((if n `elem` asyncFunctions u then "suspend fun " else "fun ") ++ n) <> Doc.delimitTrailing 4 "(" ")" arguments <>
             Doc.text ": " <> (if towerResult result then Doc.text (stubResult result) else typeDoc result)
       in Doc.lineComment 96 "// " (prettyType t) <>
         Doc.group (signature <> Doc.text " =" <>
@@ -328,8 +340,8 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
         in Right $ if name `elem` map contractName (contracts u)
           then KotlinExpr.call ("_lawspec_call_" ++ name)
             (Doc.text "symbols" : [ktChecked ty value | (ty,value) <- typed])
-          else ktNativeResult (expressionType term) (KotlinExpr.call (cls ++ "." ++ name)
-            [ktNativeArgument ty value | (ty,value) <- typed])
+          else ktNativeResult (expressionType term) (awaitFor name (KotlinExpr.call (cls ++ "." ++ name)
+            [ktNativeArgument ty value | (ty,value) <- typed]))
       _ -> Left "expected checked Kotlin external call"
     ktValueLiteral value = case value of
       V.ScalarValue scalarValue -> either (Left . pure . (\message -> Diagnostic "target" message Nothing)) Right
@@ -347,6 +359,7 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
       { KotlinProperties.packageName = pkg
       , KotlinProperties.className = cls
       , KotlinProperties.machineBits = bits
+      , KotlinProperties.awaitResult = awaitFor
       , KotlinProperties.constructorContracts = any (not . null . C.constructorPredicates) (concatMap C.dataConstructors dataDeclarations)
       , KotlinProperties.nativeGenerators = nativeGenerators
       , KotlinProperties.nodeBudget = javaDataBudget
@@ -393,7 +406,7 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
             result = if name `elem` map contractName (contracts u)
               then hsCallChecked converted (\names -> HaskellExpr.apply ("_lawspec_call_" ++ name) (Doc.text "symbols" : names))
               else hsNativeResult (expressionType term) (hsCallChecked converted (\names ->
-                hsNativeCall name (zipWith hsNativeArgument types names)))
+                awaitFor name (hsNativeCall name (zipWith hsNativeArgument types names))))
         in Right $ if any hsNativeMachine (expressionType term : types)
           then Doc.group (HaskellExpr.apply "LS.checkMachineBits" [Doc.text (show bits)] <> Doc.text " `seq`" <>
             Doc.nest 2 (Doc.softline <> result))
@@ -420,6 +433,7 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
       { HaskellProperties.moduleName = intercalate "." (map hsPart parts)
       , HaskellProperties.nativeGenerators = nativeGenerators
       , HaskellProperties.hasDefinitions = not (null definitions)
+      , HaskellProperties.awaitResult = awaitFor
       , HaskellProperties.constructorContracts = any (not . null . C.constructorPredicates) (concatMap C.dataConstructors dataDeclarations)
       , HaskellProperties.usesCollections = hsCollections
       , HaskellProperties.nodeBudget = javaDataBudget
@@ -470,6 +484,7 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
     goProperties = GoProperties.Config
       { GoProperties.packageName = last parts
       , GoProperties.schemaNeeded = goSchemaNeeded
+      , GoProperties.awaitResult = awaitFor
       , GoProperties.constructorContracts = any (not . null . C.constructorPredicates) (concatMap C.dataConstructors dataDeclarations)
       , GoProperties.nativeGenerators = nativeGenerators
       , GoProperties.nodeBudget = javaDataBudget
@@ -494,7 +509,7 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
             typed = zip (map expressionType args) values
         in Right $ if n `elem` map contractName (contracts u)
           then GoExpr.call ("_lawspec_call_" ++ n) (Doc.text "symbols" : [goChecked ty v | (ty,v) <- typed])
-          else goNativeResult (expressionType term) (GoExpr.call (goAdapterName n) [goNativeArgument ty v | (ty,v) <- typed])
+          else goNativeResult (expressionType term) (awaitFor n (GoExpr.call (goAdapterName n) [goNativeArgument ty v | (ty,v) <- typed]))
       _ -> Left "expected checked Go external call"
     javaDocument = Doc.render (Doc.selectLayout minify (Doc.Pretty 100))
     javaRender term = java (JavaExpr.renderExpression dataDeclarations bits localName javaExternal term)
@@ -553,6 +568,7 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
       , JavaProperties.machineBits = bits
       , JavaProperties.constructorContracts = any (not . null . C.constructorPredicates) (concatMap C.dataConstructors dataDeclarations)
       , JavaProperties.nodeBudget = javaDataBudget
+      , JavaProperties.awaitResult = awaitFor
       , JavaProperties.expression = javaRender
       , JavaProperties.literal = javaValueLiteral
       , JavaProperties.checked = javaChecked
@@ -572,7 +588,7 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
             typed = zip (map expressionType args) values
         in Right $ if n `elem` map contractName (contracts u)
           then JavaExpr.call ("_lawspec_call_" ++ n) (Doc.text "symbols" : [javaChecked ty v | (ty,v) <- typed])
-          else javaNativeResult (expressionType term) (JavaExpr.call (cls ++ "." ++ n) [javaNativeArgument ty v | (ty,v) <- typed])
+          else javaNativeResult (expressionType term) (awaitFor n (JavaExpr.call (cls ++ "." ++ n) [javaNativeArgument ty v | (ty,v) <- typed]))
       _ -> Left "expected checked Java external call"
     renderLegacy term = case C.expressionNode term of
       C.Local n -> localName n

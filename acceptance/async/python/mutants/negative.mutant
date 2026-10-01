@@ -1,0 +1,6 @@
+@@ src/example/orders.py
+<<<<<<<
+    return 0 if sku == "free" else len(sku) % 100
+=======
+    return -1
+>>>>>>>

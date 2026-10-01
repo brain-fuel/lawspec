@@ -1,0 +1,6 @@
+@@ src/main/kotlin/example/Orders.kt
+<<<<<<<
+    suspend fun price(value0: String): Int = priceOf(value0)
+=======
+    suspend fun price(value0: String): Int = throw IllegalStateException("unavailable")
+>>>>>>>

@@ -40,6 +40,7 @@ extra-source-files:
     runtime/rust/Cargo.toml
     runtime/rust/Cargo.lock
     examples/specs/algebra.lawspec
+    examples/specs/async_fetch.lawspec
     examples/specs/atoi_codec.lawspec
     examples/specs/boolean_flags.lawspec
     examples/specs/canonical_url.lawspec
@@ -55,6 +56,7 @@ extra-source-files:
     examples/specs/indexed_families.lawspec
     examples/specs/list_contracts.lawspec
     examples/specs/list_refinements.lawspec
+    examples/specs/lists.lawspec
     examples/specs/matching.lawspec
     examples/specs/mixed_inputs.lawspec
     examples/specs/parse_port.lawspec
@@ -386,6 +388,8 @@ test-suite lawspec-test
   main-is: Main.hs
   other-modules:
       ApiContractSpec
+      AsyncSpec
+      CollectionsSpec
       CoreSpec
       DataShapeSpec
       DefinitionContractFixture

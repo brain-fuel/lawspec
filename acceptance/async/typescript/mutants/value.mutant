@@ -1,0 +1,8 @@
+@@ src/example/orders.ts
+<<<<<<<
+  await Promise.resolve();
+  return priceOf(value0);
+=======
+  await Promise.resolve();
+  return priceOf(value0) + 1;
+>>>>>>>

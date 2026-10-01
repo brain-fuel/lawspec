@@ -386,7 +386,7 @@ functionDefinitionP = do
 
 data UnitMember = DataMember DataTypeDeclaration | FamilyMember IndexedFamily | RefinementMember Refinement
   | WrapperMember Wrapper | WorkflowMember Workflow
-  | SignatureMember ((String, Type), Span) | LawMember Law
+  | SignatureMember ((String, Type), Span) | AsyncMember ((String, Type), Span) | LawMember Law
   | DefinitionMember FunctionDefinition
 
 unitNameP :: P String
@@ -420,15 +420,19 @@ unitP = do
     <|> (WorkflowMember <$> workflowP)
     <|> (RefinementMember <$> refinementP)
     <|> (DefinitionMember <$> functionDefinitionP)
+    <|> (AsyncMember <$> try (keyword "async" *> withSpan ((,) <$> ident <* symbol "::" <*> typeP)))
     <|> (SignatureMember <$> try (withSpan ((,) <$> ident <* symbol "::" <*> typeP)))
     <|> (LawMember <$> lawP))
   eof
   let definitions = [d | DefinitionMember d <- members]
-      signatures = [signature | SignatureMember signature <- members] ++
+      signatures = [signature | member <- members, signature <- case member of
+          SignatureMember s -> [s]
+          AsyncMember s -> [s]
+          _ -> []] ++
         [((functionName d, foldr Arrow (functionResult d) (map snd (functionArguments d))), functionSpan d) | d <- definitions]
   pure (Unit n (map fst signatures) [l | LawMember l <- members]
     [r | RefinementMember r <- members] [] [(name,range) | ((name,_),range) <- signatures]
-    [d | DataMember d <- members] definitions, imports, [f | FamilyMember f <- members],
+    [d | DataMember d <- members] definitions [name | AsyncMember ((name, _), _) <- members], imports, [f | FamilyMember f <- members],
     [w | WrapperMember w <- members], [w | WorkflowMember w <- members])
 
 parseSource :: Source -> Either [Diagnostic] Unit
