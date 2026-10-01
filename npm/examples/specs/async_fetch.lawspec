@@ -1,0 +1,30 @@
+unit example.orders
+
+-- An async adapter's result arrives later, as the target's task (a coroutine,
+-- Promise, CompletableFuture, suspend call, Go task, IO action or Future); the
+-- tests await each call where it is made, in order.
+
+-- A product's price, looked up remotely. Prices are never negative.
+async price :: (sku :: Text) -> (r :: Int32 where r >= 0)
+-- How many are in stock.
+async stock :: Text -> Int32
+-- A local quote of the same price.
+quote :: Text -> Int32
+
+law `prices agree with quotes` is
+  definition is `for all` (sku :: Text) . price sku = quote sku end
+  example `a free sample` is
+    sku = "free"
+    expect price sku = 0
+  end
+end
+
+-- Two awaited calls in one clause.
+law `stock never lowers a price` is
+  definition is `for all` (sku :: Text) . price sku + stock sku >= stock sku end
+end
+
+-- An awaited call in a guard.
+law `stocked products have prices` is
+  definition is `for all` (sku :: Text) . stock sku > 0 implies price sku >= 0 end
+end

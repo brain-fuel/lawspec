@@ -1,67 +1,126 @@
 unit example.collections
 
-reverse :: List Int32 -> List Int32
-sort :: List Int32 -> List Int32
-sorted :: List Int32 -> Bool
-permutation :: List Int32 -> List Int32 -> Bool
-echoMaybe :: Maybe (Maybe Bool) -> Maybe (Maybe Bool)
-echoEither :: Either (List Int32) (Maybe Bool) -> Either (List Int32) (Maybe Bool)
-echoNested :: List (Maybe (Either CodeUnit16 Bytes)) -> List (Maybe (Either CodeUnit16 Bytes))
+-- Built-in collections: Set and KeyVal keep their elements and keys in the
+-- portable total order, without repeats; Queue, Stack and Deque keep their
+-- items in order. prelude.setOf, keyValOf, queueOf, stackOf and dequeOf
+-- build them from lists.
 
-law `list involution` (f :: List a -> List a) requires Eq a is
-  definition is `involution` f end
-end
+-- The distinct values of a list.
+dedupe :: List Int32 -> Set Int32
+-- How many times each word occurs.
+wordCounts :: List Text -> KeyVal Text BigInt
+-- Enqueue every value, first to last.
+fifo :: List Int8 -> Queue Int8
+-- Push every value, first to last: the last is on top.
+lifo :: List Int8 -> Stack Int8
+-- Move the front item to the back.
+rotate :: Deque Int8 -> Deque Int8
+-- The distinct lists among some lists: structured elements.
+distinctRows :: List (List Int8) -> Set (List Int8)
 
-law `reverse twice restores the list` is
-  definition is `list involution` reverse end
-  example `ordered input` is
-    x = [3, 1, 2]
-    expect reverse x = [2, 1, 3]
+definition countWords (words :: List Text) (counts :: KeyVal Text BigInt) :: KeyVal Text BigInt is
+  match words with
+  | Nil -> counts
+  | Cons w rest -> match prelude.lookup w counts with
+    | Nothing -> countWords rest (prelude.put w 1 counts)
+    | Just n -> countWords rest (prelude.put w ((n + 1) :: BigInt) counts)
+    end
   end
-  example `empty input` is x = [] expect reverse x = [] end
 end
 
-law `sorting is idempotent` is
-  definition is `idempotent` sort end
-  example `duplicates` is x = [3, 1, 3] expect sort x = [1, 3, 3] end
+definition rotated (d :: Deque Int8) :: Deque Int8 is
+  match prelude.peekFront d with
+  | Nothing -> d
+  | Just x -> prelude.pushBack x (prelude.popFront d)
+  end
 end
 
-law `sort produces sorted output` is
-  definition is `for all` (xs :: List Int32) . sorted (sort xs) end
+law `dedupe agrees with setOf` is
+  definition is `for all` (xs :: List Int32) . dedupe xs = prelude.setOf xs end
 end
 
-law `sort preserves length` is
-  definition is `for all` (xs :: List Int32) . prelude.length (sort xs) = prelude.length xs end
+law `distinct rows agree with setOf` is
+  definition is `for all` (rows :: List (List Int8)) . distinctRows rows = prelude.setOf rows end
 end
 
-law `sort preserves elements` is
-  definition is `for all` (xs :: List Int32) . permutation (sort xs) xs end
-end
-
-law `nonempty reversal preserves length` is
+law `word counts agree with the definition` is
   definition is
-    `for all` (xs :: List Int32 where prelude.length xs > 0) .
-      prelude.length (reverse xs) = prelude.length xs
+    `for all` (words :: List Text) . wordCounts words = countWords words (prelude.keyValOf [])
   end
 end
 
-law `Maybe preserves nested absence` is
-  definition is `for all` (x :: Maybe (Maybe Bool)) . echoMaybe x = x end
-  example `outer absence` is x = Nothing expect echoMaybe x = Nothing end
-  example `inner absence` is x = Just Nothing expect echoMaybe x = Just Nothing end
-  example `present` is x = Just (Just true) expect echoMaybe x = Just (Just true) end
+law `the queue's front is the first value` is
+  definition is
+    `for all` (x :: Int8) (xs :: List Int8) . prelude.front (fifo (Cons x xs)) = Just x
+  end
 end
 
-law `Either preserves branches` is
-  definition is `for all` (x :: Either (List Int32) (Maybe Bool)) . echoEither x = x end
-  example `left list` is x = Left [3, 1, 3] expect echoEither x = Left [3, 1, 3] end
-  example `right absence` is x = Right Nothing expect echoEither x = Right Nothing end
+law `the stack's top is the last value` is
+  definition is
+    `for all` (x :: Int8) (xs :: List Int8) . prelude.peek (lifo [x]) = Just x
+  end
 end
 
-law `nested raw values survive` is
-  definition is `for all` (xs :: List (Maybe (Either CodeUnit16 Bytes))) . echoNested xs = xs end
-  example `surrogate and octets` is
-    xs = [Nothing, Just (Left codeUnit16(55296)), Just (Right bytes([0, 255]))]
-    expect echoNested xs = [Nothing, Just (Left codeUnit16(55296)), Just (Right bytes([0, 255]))]
+law `fifo keeps the order` is
+  definition is `for all` (xs :: List Int8) . prelude.toList (fifo xs) = xs end
+end
+
+law `rotate agrees with the definition` is
+  definition is `for all` (d :: Deque Int8) . rotate d = rotated d end
+end
+
+law `union is commutative` is
+  definition is
+    `for all` (s :: Set Int32) (t :: Set Int32) . prelude.union s t = prelude.union t s
+  end
+end
+
+law `a removed value is no member` is
+  definition is
+    `for all` (x :: Int32) (s :: Set Int32) . prelude.member x (prelude.remove x s) = false
+  end
+end
+
+law `an inserted value is a member` is
+  definition is
+    `for all` (x :: Int32) (s :: Set Int32) . prelude.member x (prelude.insert x s) = true
+  end
+end
+
+law `intersection and difference split a set` is
+  definition is
+    `for all` (s :: Set Int32) (t :: Set Int32) .
+      prelude.union (prelude.intersection s t) (prelude.difference s t) = s
+  end
+end
+
+law `the latest put wins` is
+  definition is
+    `for all` (k :: Text) (v :: BigInt) (w :: BigInt) (m :: KeyVal Text BigInt) .
+      prelude.lookup k (prelude.put k w (prelude.put k v m)) = Just w
+  end
+end
+
+law `a deleted key is absent` is
+  definition is
+    `for all` (k :: Text) (m :: KeyVal Text BigInt) . prelude.lookup k (prelude.delete k m) = Nothing
+  end
+end
+
+law `keys are distinct` is
+  definition is
+    `for all` (m :: KeyVal Text BigInt) . prelude.size (prelude.setOf (prelude.keys m)) = prelude.size m
+  end
+end
+
+law `popping the back leaves the rest` is
+  definition is
+    `for all` (x :: Int8) (d :: Deque Int8) . prelude.popBack (prelude.pushBack x d) = d
+  end
+end
+
+law `the empty stack stays empty` is
+  definition is
+    `for all` (x :: Int8) . prelude.isEmpty (prelude.pop (prelude.stackOf [x])) = true
   end
 end

@@ -1,5 +1,51 @@
 # Changelog
 
+## 0.17.0
+
+### Collections
+
+`Set a`, `KeyVal k v`, `Queue a`, `Stack a` and `Deque a` are built in, with
+`Entry k v` and `Ordering`. Operations are total prelude functions, such as
+`prelude.setOf`, `prelude.lookup`, `prelude.push` and `prelude.popBack`, and
+`prelude.compare` orders two keyed values. A unit that declares a type of the
+same name keeps its own.
+
+- Set elements and KeyVal keys need the new `Keyed` capability: a total order
+  shared by every target. Exact numbers order by value, text by code point,
+  lists element by element and data by constructor, then fields. Floats,
+  complex numbers and symbols are not keyed.
+- Adapters use each target's own collections: `frozenset` and `dict` in
+  Python, `Set` and `Map` in JavaScript, sorted slices in Go, `java.util.Set`
+  and `Map` in Java and Kotlin, `BTreeSet` and `BTreeMap` in Rust, and
+  `Data.Set` and `Data.Map` in Haskell. Python and JavaScript use sorted tuples
+  or arrays where elements are structured. Codecs sort, deduplicate and keep
+  the last value for a repeated key.
+- Generated Haskell projects depend on `containers`. Rust and Haskell
+  generated data derive `Ord` when it is keyed.
+
+See [collections](docs/reference/language/collections.md).
+
+### Asynchronous functions
+
+`async price :: Text -> Int32` declares an asynchronous adapter. It returns a
+coroutine in Python, a `Promise` in JavaScript and TypeScript, a
+`CompletableFuture` in Java, a `suspend fun` in Kotlin, a goroutine-backed
+`lawspec.Task` in Go, an `IO` action in Haskell and a `Future` in Rust. The
+generated tests await each call where it is made, and check contracts on the
+awaited result. See
+[asynchronous functions](docs/reference/language/async-functions.md).
+
+### Other changes
+
+- A numeric literal passed to a generic function takes the type its other
+  arguments fix: `prelude.insert 1 s` with `s :: Set Int32` needs no
+  annotation.
+- Generated schemas no longer revalidate a whole value on each construction,
+  match or checked-definition call; values are checked at the adapter
+  boundary. Large recursive values test much faster.
+- The list example is now `examples/specs/lists.lawspec`;
+  `collections.lawspec` covers the new collections.
+
 ## 0.16.0
 
 ### GADTs
