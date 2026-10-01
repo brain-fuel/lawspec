@@ -9,8 +9,8 @@ settlement Data.ShopOrdersCurrencyUsd = Data.ShopDomainCurrencyUsd
 settlement Data.ShopOrdersCurrencyGbp = Data.ShopDomainCurrencyEur
 
 lineTotal :: Data.Line -> Data.Money
-lineTotal (Data.LineLine (Data.MoneyMoney currency cents) (Data.QuantityQuantity count)) =
-  Data.MoneyMoney currency (min (cents * fromIntegral count) 100000000)
+lineTotal (Data.Line (Data.Money currency cents) (Data.Quantity count)) =
+  Data.Money currency (min (cents * fromIntegral count) 100000000)
 
 cheaper :: I.Int64 -> I.Int64 -> I.Int64
 cheaper = min

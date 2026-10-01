@@ -244,12 +244,13 @@ emitBindings minify plan testing files = do
       tyRef <- ref ps ty
       arms <- forM (C.dataConstructors d) $ \c -> do
         let mapped = mapping d >>= \m -> find ((== C.constructorId c) . C.constructorId . resolvedConstructor) (resolvedConstructors m)
-        base <- maybe ((++ ("." ++ C.constructorName c ++ "Case")) <$> J.javaDataName declarations (C.dataId d))
+        base <- maybe (J.javaConstructorClass declarations d c)
           (Right . reference . resolvedNativeConstructor) mapped
         codecs <- mapM (codec ps (D.text "schema") (D.text "bits") . C.binderType) (C.constructorFields c)
         let unit = maybe False ((== UnitConstructor) . resolvedConstructorStyle) mapped
             nativeFields = maybe (map C.binderName (C.constructorFields c)) (map snd . resolvedFields) mapped
-            access field = D.text ("item." ++ field ++ maybe "" (const "()") mapped)
+            -- Generated types are records, like mapped native types: accessors.
+            access field = D.text ("item." ++ field ++ "()")
             encoded = [call "LawSpecSchema.encodeField" [bridge,access field,
               E.quoted (C.idText (C.constructorId c) ++ "." ++ C.binderName logical)] |
                 (bridge,field,logical) <- zip3 codecs nativeFields (C.constructorFields c)]

@@ -40,7 +40,7 @@ are reported with the type identity and the conversion direction.
 | --- | --- | --- |
 | Rust | `fn to_parcel<T, N>(value: Parcel<T>, convert: &dyn Fn(T) -> N) -> lawspec_runtime::Result<domain::Parcel<N>>` | Return an error |
 | Haskell | `toParcel :: Data.Parcel a -> (a -> b) -> Either String (Domain.Parcel b)` | Return `Left` |
-| Python | `to_parcel(value, convert_item)`, receiving the generated class (for example `ParcelParcel`) | Raise an exception |
+| Python | `to_parcel(value, convert_item)`, receiving the generated class (for example `Parcel`) | Raise an exception |
 | JavaScript, TypeScript | `to_parcel(value, convertItem)`, receiving the generated class | Throw |
 | Java | `to_parcel(Parcel<A> value, Function<A, B> convert)` returning your `Parcel<B>` | Throw |
 | Kotlin | `to_parcel(value: Parcel<A>, convert: (A) -> B): Parcel<B>` | Throw |

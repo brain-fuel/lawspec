@@ -117,6 +117,10 @@ emitRustData layout declarations = do
           parameterNames = map snd parameters
           owner = C.idText (C.dataId declaration)
           variants = C.dataConstructors declaration
+          product = length variants == 1
+          -- A product is a struct named after its type; its constructor
+          -- path is Self rather than Self::Tag.
+          path tag = if product then "Self" else "Self::" ++ tag
           -- Rust requires each generic parameter to occur outside a recursive
           -- cycle. PhantomData records parameters which have no such field.
           independent variable ty = case ty of
@@ -158,36 +162,44 @@ emitRustData layout declarations = do
               (if length (intercalate ", " (map (D.render D.Compact) arguments)) > 60
               then D.text "(" <> D.nest 4 (D.hardline <> D.joinWith D.hardline [a <> D.text "," | a <- arguments]) <> D.hardline <> D.text ")"
               else D.delimitTrailing 4 "(" ")" arguments)
-            encode = record 18 ("Self::" ++ tag) patternFields <> D.text " => " <> D.block 4
+            encodePattern = record 18 (path tag) patternFields
+            encodeBody =
               (D.text "let fields = " <> D.text "vec!" <> D.delimitTrailing 4 "[" "]"
                 [D.text ("ls::IntoValue::into_value(" ++ f ++ ")") | (f,_) <- fields] <> D.text ";" <> D.hardline <>
                call "ls::Value::Data"
                 [D.text (show (C.idText (C.constructorId variant)) ++ ".into()"), D.text "fields"])
+            encode = if product
+              then (if null patternFields then mempty else D.text "let " <> encodePattern <> D.text " = self;" <> D.hardline) <> encodeBody
+              else encodePattern <> D.text " => " <> D.block 4 encodeBody
             decoded = [f ++ ": _lawspec_field" ++ show i | (i,(f,_)) <- zip [0::Int ..] fields] ++ ["_lawspec_marker: std::marker::PhantomData" | not (null phantom)]
-            resultRecord = if null phantom then record 18 ("Self::" ++ tag) decoded else
-              D.text ("Self::" ++ tag ++ " ") <> D.block 4 (D.joinWith D.hardline [D.text (f ++ ",") | f <- decoded])
+            resultRecord = if null phantom then record 18 (path tag) decoded else
+              D.text (path tag ++ " ") <> D.block 4 (D.joinWith D.hardline [D.text (f ++ ",") | f <- decoded])
             decode = D.text (show (C.idText (C.constructorId variant)) ++ " if fields.len() == " ++ show (length fields) ++ " => ") <>
               (if null fields then D.text "Ok(" <> resultRecord <> D.text ")," else D.block 4 (D.text "let mut _lawspec_fields = fields.into_iter();" <> D.hardline <>
                 D.joinWith D.hardline [D.group (D.text ("let _lawspec_field" ++ show i ++ ": " ++ t ++ " =") <>
                   D.nest 4 (D.softline <> D.text "ls::FromValue::from_value(_lawspec_fields.next().unwrap())?;")) | (i,(_,t)) <- zip [0::Int ..] fields] <>
                 (if null fields then mempty else D.hardline) <>
                 D.text "Ok(" <> resultRecord <> D.text ")"))
-        pure (variantDoc,encode,decode)
-      let declarationDoc = D.text "#[derive(Clone, Debug)]" <> D.hardline <>
+        pure (variantDoc,encode,decode,recordFields)
+      let structFields = [D.text ((if f == "_lawspec_marker" then "" else "pub ") ++ f ++ ": " ++ t ++ ",") | (_,_,_,fs) <- rendered, (f,t) <- fs]
+          declarationDoc = D.text "#[derive(Clone, Debug)]" <> D.hardline <>
+            if product then (if null structFields then D.text ("pub struct " ++ generic ++ ";")
+              else D.text ("pub struct " ++ generic ++ " ") <> D.block 4 (D.joinWith D.hardline structFields)) else
             D.text ((if null variants then "pub struct " else "pub enum ") ++ generic ++ " ") <>
             D.block 4 (if null variants then D.text "_never: std::convert::Infallible," <>
               (if null parameters then mempty else D.hardline <> D.text ("_marker: std::marker::PhantomData<(" ++ concatMap (++ ",") parameterNames ++ ")>,"))
-              else D.joinWith D.hardline [a | (a,_,_) <- rendered])
+              else D.joinWith D.hardline [a | (a,_,_,_) <- rendered])
           encodeDoc = D.text (implHead "IntoValue") <> D.block 4
             (D.text "fn into_value(self) -> ls::Value " <> D.block 4
               (if null variants then D.text "match self._never {}" else
-                D.text "match self " <> D.block 4 (D.joinWith D.hardline [a | (_,a,_) <- rendered])))
+                if product then D.joinWith D.hardline [a | (_,a,_,_) <- rendered] else
+                D.text "match self " <> D.block 4 (D.joinWith D.hardline [a | (_,a,_,_) <- rendered])))
           decodeDoc = D.text (implHead "FromValue") <> D.block 4
             (D.text "fn from_value(value: ls::Value) -> ls::Result<Self> " <> D.block 4
               (D.text "let ls::Value::Data(tag, fields) = value else {" <> D.nest 4
                 (D.hardline <> D.text ("return Err(" ++ show ("expected " ++ owner) ++ ".into());")) <> D.hardline <> D.text "};" <> D.hardline <>
                 D.text "match tag.as_str() " <> D.block 4 (D.joinWith D.hardline
-                  ([a | (_,_,a) <- rendered] ++ [D.text "_ => " <> D.block 4
+                  ([a | (_,_,a,_) <- rendered] ++ [D.text "_ => " <> D.block 4
                     (D.group (D.text "let message =" <> D.nest 4 (D.softline <> D.text (show ("invalid constructor or fields for " ++ owner) ++ ";"))) <>
                     D.hardline <> D.text "Err(message.into())")]))))
       pure (D.joinWith (D.hardline <> D.hardline) [declarationDoc,encodeDoc,decodeDoc])

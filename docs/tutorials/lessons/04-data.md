@@ -30,24 +30,28 @@ the rule that the production code must match.
 LawSpec generates a native type for each data type.
 
 ::: only java
-Each type is a sealed interface in `lawspec.data`, with a record-like case class
-per constructor:
+A type with one constructor, such as `Drink`, is a record in `lawspec.data`,
+read through its accessors (`value0.size()`). A type with several, such as
+`Size`, is a sealed interface with a record per constructor (`Size.Large`), so
+a `switch` over it must cover every case:
 
 ```lawspec file=docs/lessons/specs/04-data.lawspec implementations=acceptance/lessons view=implementation target=java
 ```
 :::
 
 ::: only python
-Each constructor is a frozen dataclass in `lawspec_data`, named after its type
-and constructor (`SizeLarge`, `DrinkDrink`):
+Each constructor is a frozen dataclass in `lawspec_data`. A type with one
+constructor is named after the type (`Drink`); the cases of a type with several
+are named after the type and the constructor (`SizeLarge`):
 
 ```lawspec file=docs/lessons/specs/04-data.lawspec implementations=acceptance/lessons view=implementation target=python
 ```
 :::
 
 ::: only javascript
-Each constructor is a frozen class in `lawspec_data.mjs`, named after its type
-and constructor (`SizeLarge`, `DrinkDrink`):
+Each constructor is a frozen class in `lawspec_data.mjs`. A type with one
+constructor is named after the type (`Drink`); the cases of a type with several
+are named after the type and the constructor (`SizeLarge`):
 
 ```lawspec file=docs/lessons/specs/04-data.lawspec implementations=acceptance/lessons view=implementation target=javascript
 ```

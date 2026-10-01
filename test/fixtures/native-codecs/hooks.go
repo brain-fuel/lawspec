@@ -3,11 +3,11 @@ package codecs
 import "fmt"
 
 func ToParcel[A, B any](value Parcel[A], convert func(A) B) (NativeParcel[B], error) {
-	item := convert(value.(ParcelParcel[A]).Item)
+	item := convert(value.Item)
 	return NativeParcel[B]{&item}, nil
 }
 func FromParcel[A, B any](value NativeParcel[B], convert func(B) A) (Parcel[A], error) {
-	return ParcelParcel[A]{Item: convert(*value.item)}, nil
+	return Parcel[A]{Item: convert(*value.item)}, nil
 }
 func ToChain[A, B any](value Chain[A], convert func(A) B) (NativeFlatChain[B], error) {
 	items := []B{}
@@ -40,8 +40,8 @@ func FromChain[A, B any](value NativeFlatChain[B], convert func(B) A) (Chain[A],
 	return tail.value, nil
 }
 func ToPositive(value Positive) (NativePositive, error) {
-	return NativePositive{value.(PositivePositive).Value}, nil
+	return NativePositive{value.Value}, nil
 }
 func FromPositive(value NativePositive) (Positive, error) {
-	return PositivePositive{Value: value.value}, nil
+	return Positive{Value: value.value}, nil
 }

@@ -1,6 +1,6 @@
 @@ src/main/java/example/Ordering.java
 <<<<<<<
-      return new LawSpecRuntime.Left<>(failure.value());
+      case LawSpecRuntime.Left<OrderError, ValidatedOrder> failure -> new LawSpecRuntime.Left<>(failure.value());
 =======
-      return new LawSpecRuntime.Left<>(new OrderError.PriceTooHighCase());
+      case LawSpecRuntime.Left<OrderError, ValidatedOrder> failure -> new LawSpecRuntime.Left<>(new OrderError.PriceTooHigh());
 >>>>>>>

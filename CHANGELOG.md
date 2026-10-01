@@ -1,5 +1,36 @@
 # Changelog
 
+## 0.15.2
+
+Generated data types are the types you would write by hand, so adapters no
+longer cast. A product (a type with one constructor) is named after its type
+and read directly; a sum (several constructors) is a closed family that the
+language's own pattern matching checks for exhaustiveness. Laws, tests,
+evidence and codec checks are unchanged, but the generated types adapters
+compile against change:
+
+| Target | Before | After |
+| --- | --- | --- |
+| Java | `var d = (Drink.DrinkCase) value0; d.shots` | `value0.shots()` (a `record`) |
+| Java | `new Size.LargeCase()`, `x instanceof Size.LargeCase` | `new Size.Large()`, `case Size.Large large ->` (sealed interface of records) |
+| Kotlin | `(value0 as Drink.DrinkCase).shots` | `value0.shots` (a `data class`) |
+| Kotlin | `Size.SmallCase()`, `is Size.LargeCase` | `Size.Small` (a `data object`), `is Size.Large` |
+| Go | `value0.(DrinkDrink).Shots`, `DrinkDrink{...}` | `value0.Shots`, `Drink{...}` (a plain struct) |
+| Rust | `let Drink::Drink { shots, .. } = value0;` | `value0.shots` (a `struct` with public fields) |
+| Python | `data.DrinkDrink(...)` | `data.Drink(...)` |
+| JavaScript, TypeScript | `new data.DrinkDrink(...)` | `new data.Drink(...)`; TypeScript's `Drink` is the class |
+| Haskell | `Data.DrinkDrink size shots` | `Data.Drink size shots` |
+
+- A case is named after its constructor. When that name equals the type's name
+  or clashes with another case, Java and Kotlin keep a `Case` suffix.
+- Java records compare by value. A field named like a `java.lang.Object`
+  method (`hashCode`, `toString`, ...) is rejected, since its accessor would
+  override that method.
+- A nullary case of a generic Kotlin sum is a class with value equality
+  (`Chain.Stop<T>()`); other nullary cases are `data object`s.
+- Sums in Go, Rust, Python, JavaScript, TypeScript and Haskell keep their
+  names (`SizeSmall`, `Size::Small`).
+
 ## 0.15.1
 
 A maintenance release. The language and generated code are unchanged.

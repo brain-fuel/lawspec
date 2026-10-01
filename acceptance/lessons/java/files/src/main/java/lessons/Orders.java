@@ -6,8 +6,10 @@ import lawspec.data.Size;
 
 public final class Orders {
   public static long price(Drink value0) {
-    var drink = (Drink.DrinkCase) value0;
-    long base = drink.size instanceof Size.LargeCase ? 320 : 250;
-    return base + drink.shots * 60L;
+    long base = switch (value0.size()) {
+      case Size.Small small -> 250;
+      case Size.Large large -> 320;
+    };
+    return base + value0.shots() * 60L;
   }
 }

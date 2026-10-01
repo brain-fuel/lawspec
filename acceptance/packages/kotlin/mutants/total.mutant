@@ -1,6 +1,6 @@
 @@ src/main/kotlin/shop/Orders.kt
 <<<<<<<
-return Money.MoneyCase(price.currency,
+return Money(value0.price.currency,
 =======
-return Money.MoneyCase(ShopDomainCurrency.EurCase(),
+return Money(ShopDomainCurrency.Eur,
 >>>>>>>

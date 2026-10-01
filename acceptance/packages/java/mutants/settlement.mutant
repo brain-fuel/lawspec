@@ -1,6 +1,6 @@
 @@ src/main/java/shop/Orders.java
 <<<<<<<
-return new ShopDomainCurrency.EurCase();
+case ShopOrdersCurrency.Gbp gbp -> new ShopDomainCurrency.Eur();
 =======
-return new ShopDomainCurrency.UsdCase();
+case ShopOrdersCurrency.Gbp gbp -> new ShopDomainCurrency.Usd();
 >>>>>>>

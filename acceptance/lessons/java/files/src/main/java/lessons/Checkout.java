@@ -10,23 +10,19 @@ import lawspec.runtime.LawSpecRuntime;
 
 public final class Checkout {
   public static LawSpecRuntime.Either<OrderProblem, Receipt> checkout(RawOrder value0) {
-    var validated = validate(value0);
-    if (validated instanceof LawSpecRuntime.Left<OrderProblem, ValidOrder> problem) {
-      return new LawSpecRuntime.Left<>(problem.value());
-    }
-    return new LawSpecRuntime.Right<>(charge(((LawSpecRuntime.Right<OrderProblem, ValidOrder>) validated).value()));
+    return switch (validate(value0)) {
+      case LawSpecRuntime.Left<OrderProblem, ValidOrder> problem -> new LawSpecRuntime.Left<>(problem.value());
+      case LawSpecRuntime.Right<OrderProblem, ValidOrder> valid -> new LawSpecRuntime.Right<>(charge(valid.value()));
+    };
   }
 
   public static LawSpecRuntime.Either<OrderProblem, ValidOrder> validate(RawOrder value0) {
-    var order = (RawOrder.RawOrderCase) value0;
-    if (order.item.isEmpty()) return new LawSpecRuntime.Left<>(new OrderProblem.EmptyItemCase());
-    if (order.quantity < 1 || order.quantity > 20) return new LawSpecRuntime.Left<>(new OrderProblem.BadQuantityCase());
-    return new LawSpecRuntime.Right<>(new ValidOrder.ValidOrderCase(order.item, new Quantity.QuantityCase(order.quantity)));
+    if (value0.item().isEmpty()) return new LawSpecRuntime.Left<>(new OrderProblem.EmptyItem());
+    if (value0.quantity() < 1 || value0.quantity() > 20) return new LawSpecRuntime.Left<>(new OrderProblem.BadQuantity());
+    return new LawSpecRuntime.Right<>(new ValidOrder(value0.item(), new Quantity(value0.quantity())));
   }
 
   public static Receipt charge(ValidOrder value0) {
-    var order = (ValidOrder.ValidOrderCase) value0;
-    long count = ((Quantity.QuantityCase) order.quantity).value;
-    return new Receipt.ReceiptCase(order.item, count * 250);
+    return new Receipt(value0.item(), value0.quantity().value() * 250L);
   }
 }

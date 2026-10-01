@@ -1,6 +1,6 @@
 @@ src/main/kotlin/example/Ordering.kt
 <<<<<<<
-        if (input.quantity !in 1..1000) return LawSpecRuntime.Left(OrderError.InvalidQuantityCase())
+        if (value0.quantity !in 1..1000) return LawSpecRuntime.Left(OrderError.InvalidQuantity)
 =======
-        if (input.quantity !in 0..1000) return LawSpecRuntime.Left(OrderError.InvalidQuantityCase())
+        if (value0.quantity !in 0..1000) return LawSpecRuntime.Left(OrderError.InvalidQuantity)
 >>>>>>>

@@ -1,6 +1,6 @@
 @@ src/Shop/Orders.hs
 <<<<<<<
-  Data.MoneyMoney currency (min
+  Data.Money currency (min
 =======
-  Data.MoneyMoney (const Data.ShopDomainCurrencyEur currency) (min
+  Data.Money (const Data.ShopDomainCurrencyEur currency) (min
 >>>>>>>

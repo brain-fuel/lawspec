@@ -1,6 +1,6 @@
 @@ example/ordering/adapter.go
 <<<<<<<
-	return value0.(NonEmptyListNonEmptyList[int32]).Value[0]
+	return value0.Value[0]
 =======
-	return value0.(NonEmptyListNonEmptyList[int32]).Value[len(value0.(NonEmptyListNonEmptyList[int32]).Value)-1]
+	return value0.Value[len(value0.Value)-1]
 >>>>>>>

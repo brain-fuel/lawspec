@@ -1,6 +1,6 @@
 @@ src/main/kotlin/shop/Domain.kt
 <<<<<<<
-Money.MoneyCase(value0, (value1 as Money.MoneyCase).cents)
+Money(value0, value1.cents)
 =======
 value1
 >>>>>>>

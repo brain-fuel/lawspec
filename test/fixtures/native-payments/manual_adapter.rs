@@ -27,7 +27,7 @@ impl From<CurrencyCode> for Currency {
 
 impl From<Money> for Price {
     fn from(value: Money) -> Self {
-        let Money::Money { amount, currency } = value;
+        let Money { amount, currency } = value;
         Self {
             major: amount,
             unit: currency.into(),

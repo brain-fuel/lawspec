@@ -43,8 +43,10 @@ call `ParsePort.render(...)`. Two units can therefore both define `render(Int)`.
 
 ## Native representations
 
-Products and sums become sealed interfaces with named generic variant classes.
-For:
+A product, a type with one constructor, is a `data class` named after the type
+(a `data object` when it has no fields). A sum is a sealed interface with a
+`data class` per constructor, or a `data object` for a constructor without
+fields, so `when` is exhaustive without casts. For:
 
 ```lawspec fragment
 type Tree (a :: Type) is
@@ -56,12 +58,20 @@ echo :: Tree Int8 -> Tree Int8
 ```
 
 the public type is `lawspec.data.Tree<Byte>`, with variants
-`Tree.LeafCase<Byte>` (property `value`) and `Tree.BranchCase<Byte>` (property
+`Tree.Leaf<Byte>` (property `value`) and `Tree.Branch<Byte>` (property
 `children: List<Tree<Byte>>`):
 
 ```kotlin
-fun echo(value: lawspec.data.Tree<Byte>): lawspec.data.Tree<Byte> = value
+fun size(value: lawspec.data.Tree<Byte>): Int = when (value) {
+    is Tree.Leaf -> 1
+    is Tree.Branch -> value.children.sumOf { size(it) }
+}
 ```
+
+A case is named after its constructor. When that name is the type's own name,
+or would clash with another case, the case keeps a `Case` suffix
+(`type Shape is | Shape | Other end` gives `Shape.ShapeCase`). A nullary case of
+a generic sum is a class with value equality, such as `Chain.Stop<T>()`.
 
 | LawSpec | Kotlin |
 | --- | --- |

@@ -3,30 +3,28 @@ package ordering
 
 // FirstLine returns the first element of a non-empty list.
 func FirstLine(value0 NonEmptyList[int32]) int32 {
-	return value0.(NonEmptyListNonEmptyList[int32]).Value[0]
+	return value0.Value[0]
 }
 
 // ValidateOrder checks the raw order and wraps its values.
 func ValidateOrder(value0 UnvalidatedOrder) LawSpecEither[OrderError, ValidatedOrder] {
-	input := value0.(UnvalidatedOrderUnvalidatedOrder)
-	if len(input.Id) == 0 {
+	if len(value0.Id) == 0 {
 		return LawSpecLeft[OrderError, ValidatedOrder](OrderErrorInvalidOrderId{})
 	}
-	if !(input.Quantity >= 1 && input.Quantity <= 1000) {
+	if !(value0.Quantity >= 1 && value0.Quantity <= 1000) {
 		return LawSpecLeft[OrderError, ValidatedOrder](OrderErrorInvalidQuantity{})
 	}
-	return LawSpecRight[OrderError, ValidatedOrder](ValidatedOrderValidatedOrder{
-		Id: OrderIdOrderId{Value: input.Id}, Quantity: UnitQuantityUnitQuantity{Value: input.Quantity}})
+	return LawSpecRight[OrderError, ValidatedOrder](ValidatedOrder{
+		Id: OrderId{Value: value0.Id}, Quantity: UnitQuantity{Value: value0.Quantity}})
 }
 
 // PriceOrder prices a validated order.
 func PriceOrder(value0 ValidatedOrder) LawSpecEither[OrderError, PricedOrder] {
-	order := value0.(ValidatedOrderValidatedOrder)
-	total := int64(order.Quantity.(UnitQuantityUnitQuantity).Value) * 25
+	total := int64(value0.Quantity.Value) * 25
 	if total > 20000 {
 		return LawSpecLeft[OrderError, PricedOrder](OrderErrorPriceTooHigh{})
 	}
-	return LawSpecRight[OrderError, PricedOrder](PricedOrderPricedOrder{Id: order.Id, Quantity: order.Quantity, Total: total})
+	return LawSpecRight[OrderError, PricedOrder](PricedOrder{Id: value0.Id, Quantity: value0.Quantity, Total: total})
 }
 
 // PlaceOrder validates and then prices an order.

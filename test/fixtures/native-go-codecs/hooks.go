@@ -6,11 +6,11 @@ import (
 )
 
 func ToParcel[A, B any](value Parcel[A], convert func(A) B) (model.Parcel[B], error) {
-	item := convert(value.(ParcelParcel[A]).Item)
+	item := convert(value.Item)
 	return model.NewParcel(item), nil
 }
 func FromParcel[A, B any](value model.Parcel[B], convert func(B) A) (Parcel[A], error) {
-	return ParcelParcel[A]{Item: convert(value.Unpack())}, nil
+	return Parcel[A]{Item: convert(value.Unpack())}, nil
 }
 func ToChain[A, B any](value Chain[A], convert func(A) B) (model.FlatChain[B], error) {
 	items := []B{}
@@ -43,8 +43,8 @@ func FromChain[A, B any](value model.FlatChain[B], convert func(B) A) (Chain[A],
 	return tail.value, nil
 }
 func ToPositive(value Positive) (model.Positive, error) {
-	return model.NewPositive(value.(PositivePositive).Value), nil
+	return model.NewPositive(value.Value), nil
 }
 func FromPositive(value model.Positive) (Positive, error) {
-	return PositivePositive{Value: value.Unpack()}, nil
+	return Positive{Value: value.Unpack()}, nil
 }

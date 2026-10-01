@@ -8,7 +8,7 @@ export function settlement(value0: data.ShopOrdersCurrency): data.ShopDomainCurr
 
 export function lineTotal(value0: data.Line): data.Money {
   const total = value0.price.cents * BigInt(value0.quantity.value);
-  return new data.MoneyMoney(value0.price.currency, total < 100000000n ? total : 100000000n);
+  return new data.Money(value0.price.currency, total < 100000000n ? total : 100000000n);
 }
 
 export function cheaper(value0: bigint, value1: bigint): bigint {

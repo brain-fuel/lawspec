@@ -5,7 +5,7 @@ export function to_parcel<A, B>(value: data.Parcel<A>, convert: (a: A) => B): do
   return new domain.Parcel(convert(value.item));
 }
 export function from_parcel<A, B>(value: domain.Parcel<B>, convert: (b: B) => A): data.Parcel<A> {
-  return new data.ParcelParcel(convert(value.unpack()));
+  return new data.Parcel(convert(value.unpack()));
 }
 export function to_chain<A, B>(value: data.Chain<A>, convert: (a: A) => B): domain.FlatChain<B> {
   const items: B[] = [];
@@ -27,5 +27,5 @@ export function to_positive(value: data.Positive): domain.Positive {
   return new domain.Positive(value.value);
 }
 export function from_positive(value: domain.Positive): data.Positive {
-  return new data.PositivePositive(value.unpack());
+  return new data.Positive(value.unpack());
 }

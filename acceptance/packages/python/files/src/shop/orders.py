@@ -11,7 +11,7 @@ def settlement(value0):
 def lineTotal(value0):
     price = value0.price
     total = price.cents * value0.quantity.value
-    return data.MoneyMoney(price.currency, min(total, 100000000))
+    return data.Money(price.currency, min(total, 100000000))
 
 
 def cheaper(value0, value1):

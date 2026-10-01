@@ -10,6 +10,7 @@ import LawSpec.Common (Artifact(..))
 import LawSpec.Scalar (primitives, primitiveName)
 import LawSpec.RuntimeSources (runtimeSource)
 import LawSpec.PythonTypes
+import LawSpec.DataNames (isProduct)
 import qualified LawSpec.PythonExpr as E
 import qualified LawSpec.Code.Doc as D
 
@@ -78,9 +79,10 @@ emitPythonDataWithProfile bits layout declarations = do
           pure (D.text (C.binderName field ++ ": ") <> ty)
         pure (D.text "@_dataclasses.dataclass(frozen=True, slots=True, eq=False)" <> D.hardline <>
           suite (D.text "class " <> application native args <>
-            D.text "(" <> application name args <> D.text ")")
+            (if isProduct declaration then mempty else D.text "(" <> application name args <> D.text ")"))
             (if null fields then D.text "pass" else D.joinWith D.hardline fields))
-      pure (base:variants)
+      -- A product is a single dataclass named after its type.
+      pure ([base | not (isProduct declaration)] ++ variants)
     definitionSchema names bindings schema = do
       variants <- forM (S.constructors schema) $ \constructor -> do
         native <- lookupName names (C.Id (S.constructorTag constructor))

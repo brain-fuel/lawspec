@@ -1,6 +1,6 @@
 @@ src/shop/orders.ts
 <<<<<<<
-return new data.MoneyMoney(value0.price.currency,
+return new data.Money(value0.price.currency,
 =======
-return new data.MoneyMoney(new data.ShopDomainCurrencyEur(),
+return new data.Money(new data.ShopDomainCurrencyEur(),
 >>>>>>>

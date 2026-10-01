@@ -7,5 +7,5 @@ import lawspec.data.ShopDomainCurrency
 object Domain {
     // One-to-one rates keep the example exact.
     fun convert(value0: ShopDomainCurrency, value1: Money): Money =
-        Money.MoneyCase(value0, (value1 as Money.MoneyCase).cents)
+        Money(value0, value1.cents)
 }

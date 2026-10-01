@@ -13,6 +13,7 @@ import LawSpec.RuntimeSources (runtimeSource)
 import qualified LawSpec.Code.Doc as D
 
 import LawSpec.WebTypes
+import LawSpec.DataNames (isProduct)
 import LawSpec.Core.Total (constructorProofContracts)
 import qualified LawSpec.WebExpr as E
 
@@ -133,7 +134,8 @@ emitWebDataWithProfile ts bits layout declarations = do
           ty <- typeDoc "" names parameters (C.binderType field)
           pure (C.binderName field,ty)
         pure (application native (map D.text args),nativeClass native args fields)
-      pure (alias name args (if null variants then [D.text "never"] else map fst variants) : map snd variants)
+      -- A product's class is the type itself; only sums need a union alias.
+      pure ([alias name args (if null variants then [D.text "never"] else map fst variants) | not (isProduct declaration)] ++ map snd variants)
     definitionSchema names bindings schema = do
       variants <- forM (S.constructors schema) $ \constructor -> do
         native <- lookupName names (C.Id (S.constructorTag constructor))

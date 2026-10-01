@@ -1,6 +1,6 @@
 @@ src/main/java/example/Indexed.java
 <<<<<<<
-    Vec<Byte> right = new Vec.VConsCase<>(node.value, flatten(node.right));
+      case Tree.Bin<Byte>(var left, var value, var right) -> append(flatten(left), new Vec.VCons<>(value, flatten(right)));
 =======
-    Vec<Byte> right = new Vec.VConsCase<>(node.value, new Vec.VNilCase<>());
+      case Tree.Bin<Byte>(var left, var value, var right) -> append(flatten(left), new Vec.VCons<>(value, new Vec.VNil<>()));
 >>>>>>>

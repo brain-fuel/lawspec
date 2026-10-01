@@ -12,16 +12,16 @@ def validateOrder(value0):
         return _schema.Left(data.OrderErrorInvalidOrderId())
     if not 1 <= value0.quantity <= 1000:
         return _schema.Left(data.OrderErrorInvalidQuantity())
-    return _schema.Right(data.ValidatedOrderValidatedOrder(
-        data.OrderIdOrderId(value0.id),
-        data.UnitQuantityUnitQuantity(value0.quantity)))
+    return _schema.Right(data.ValidatedOrder(
+        data.OrderId(value0.id),
+        data.UnitQuantity(value0.quantity)))
 
 
 def priceOrder(value0):
     total = value0.quantity.value * 25
     if total > 20000:
         return _schema.Left(data.OrderErrorPriceTooHigh())
-    return _schema.Right(data.PricedOrderPricedOrder(value0.id, value0.quantity, total))
+    return _schema.Right(data.PricedOrder(value0.id, value0.quantity, total))
 
 
 def placeOrder(value0):

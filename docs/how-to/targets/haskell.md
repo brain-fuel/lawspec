@@ -64,7 +64,9 @@ echo value = value
 ```
 
 The adapter module imports `LawSpecData` as `Data` and `Data.Int` as `I`. The
-constructors are `TreeLeaf` and `TreeBranch`. Empty types have no constructors:
+constructors are `TreeLeaf` and `TreeBranch`. A product's constructor has the
+type's name: `type Pair is Pair first :: Int8 second :: Int8 end` becomes
+`data Pair = Pair ...`. Empty types have no constructors:
 they can appear in inhabited containers such as `Maybe Empty`, but cannot be
 generated on their own.
 

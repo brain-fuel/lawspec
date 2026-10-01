@@ -1,7 +1,7 @@
 -- Native web type representations and schema references.
 module LawSpec.WebTypes where
 
-import LawSpec.DataNames (flatDataCandidates)
+import LawSpec.DataNames (flatDataCandidates, productConstructors)
 import Control.Monad (unless)
 import Data.Char (isAscii, isAlphaNum, isLetter, toLower, ord)
 import Data.List (nub)
@@ -28,7 +28,7 @@ namesFor declarations = do
       names = [(identity, if duplicate name qualified || name `elem` supportNames then name ++ "_" ++ concatMap (\c -> showHex (ord c) "_") (C.idText identity) else name) | (identity,name) <- qualified]
   mapM_ (identifier True . snd) names
   unless (length names == length (nub (map (map toLower . snd) names))) (Left "conflicting JavaScript data identities")
-  pure names
+  pure (names ++ productConstructors declarations names)
 
 identifier :: Bool -> String -> Either String ()
 identifier binding name = unless (valid && (not binding || name `notElem` reserved))

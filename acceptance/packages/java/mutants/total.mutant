@@ -1,6 +1,6 @@
 @@ src/main/java/shop/Orders.java
 <<<<<<<
-return new Money.MoneyCase(price.currency,
+return new Money(price.currency(),
 =======
-return new Money.MoneyCase(new ShopDomainCurrency.EurCase(),
+return new Money(new ShopDomainCurrency.Eur(),
 >>>>>>>

@@ -4,7 +4,7 @@ pub fn to_parcel<T, N>(
     value: data::Parcel<T>,
     convert: &dyn Fn(T) -> N,
 ) -> ls::Result<domain::Parcel<N>> {
-    let data::Parcel::Parcel { item } = value;
+    let data::Parcel { item } = value;
     Ok(domain::Parcel::new(convert(item)))
 }
 
@@ -12,7 +12,7 @@ pub fn from_parcel<T, N>(
     value: domain::Parcel<N>,
     convert: &dyn Fn(N) -> T,
 ) -> ls::Result<data::Parcel<T>> {
-    Ok(data::Parcel::Parcel {
+    Ok(data::Parcel {
         item: convert(value.into_inner()),
     })
 }
@@ -57,12 +57,12 @@ pub fn from_chain<T, N>(
 }
 
 pub fn to_positive(value: data::Positive) -> ls::Result<domain::Positive> {
-    let data::Positive::Positive { value } = value;
+    let data::Positive { value } = value;
     Ok(domain::Positive::new(value))
 }
 
 pub fn from_positive(value: domain::Positive) -> ls::Result<data::Positive> {
-    Ok(data::Positive::Positive {
+    Ok(data::Positive {
         value: value.into_inner(),
     })
 }

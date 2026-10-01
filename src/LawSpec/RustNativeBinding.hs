@@ -119,7 +119,8 @@ emitConversions declarations plan = do
         let variant = resolvedConstructor constructor
         tag <- rustReference (NativeRef [C.constructorName variant])
         nativeTag <- rustReference (resolvedNativeConstructor constructor)
-        let canonicalTag = canonicalName ++ "::" ++ tag
+        -- A product's canonical form is a struct, so its path has no variant.
+        let canonicalTag = if length (C.dataConstructors declaration) == 1 then canonicalName else canonicalName ++ "::" ++ tag
             fields = resolvedFields constructor
         names <- forM (zip [0::Int ..] fields) $ \(i,(field,nativeFieldName)) -> do
           canonicalField <- rustReference (NativeRef [C.binderName field])

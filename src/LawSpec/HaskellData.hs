@@ -1,7 +1,7 @@
 -- Native algebraic declarations are rendered from resolved Core identities.
 module LawSpec.HaskellData (requiresSchema, emitHaskellData, haskellDataType, haskellDataTypeWithRepresentations, haskellNativeTypeWithParameters, emitHaskellSchema, emitHaskellSchemaWithProfile, haskellTypeReference, emitHaskellCodecs, emitHaskellCodecsWithRepresentations, emitHaskellCodecsWithHooks, haskellCodec, haskellCodecDoc, haskellCodecDocWithContext, haskellCodecDocIn, haskellTypeReferenceDoc) where
 
-import LawSpec.DataNames (flatDataCandidates)
+import LawSpec.DataNames (flatDataCandidates, productConstructors)
 import LawSpec.HaskellTypeRefs
 import qualified LawSpec.HaskellExpr as E
 import qualified LawSpec.Backend as Backend
@@ -36,7 +36,7 @@ namesFor declarations = do
       names = [(identity, if duplicate name qualified then name ++ "_" ++ concatMap (\c -> showHex (ord c) "_") (C.idText identity) else name) | (identity,name) <- qualified]
   mapM_ (identifier . snd) names
   unless (length names == length (nub (map (map toLower . snd) names))) (Left "conflicting Haskell data identities")
-  pure names
+  pure (names ++ productConstructors declarations names)
 
 application :: String -> [String] -> String
 application name [] = name

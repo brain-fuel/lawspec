@@ -1,6 +1,6 @@
 @@ src/main/kotlin/example/Indexed.kt
 <<<<<<<
-        if (value0 is Vec.VConsCase) Vec.VConsCase(value0.head, append(value0.tail, value1)) else value1
+        if (value0 is Vec.VCons) Vec.VCons(value0.head, append(value0.tail, value1)) else value1
 =======
-        if (value0 is Vec.VConsCase) append(value0.tail, value1) else value1
+        if (value0 is Vec.VCons) append(value0.tail, value1) else value1
 >>>>>>>

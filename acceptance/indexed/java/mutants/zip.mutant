@@ -1,6 +1,6 @@
 @@ src/main/java/example/Indexed.java
 <<<<<<<
-      return new Vec.VConsCase<>(b.head, zip(a.tail, b.tail));
+      return new Vec.VCons<>(b, zip(as, bs));
 =======
-      return zip(a.tail, b.tail);
+      return zip(as, bs);
 >>>>>>>

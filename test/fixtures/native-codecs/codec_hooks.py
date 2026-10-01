@@ -10,7 +10,7 @@ def to_parcel(value, convert):
 
 
 def from_parcel(value, convert):
-    return data.ParcelParcel(convert(value.unpack()))
+    return data.Parcel(convert(value.unpack()))
 
 
 def to_chain(value, convert):
@@ -38,4 +38,4 @@ def to_positive(value):
 
 
 def from_positive(value):
-    return data.PositivePositive(value.unpack())
+    return data.Positive(value.unpack())

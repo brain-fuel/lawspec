@@ -40,7 +40,27 @@ Maven's `sourceDirectory` and `testSourceDirectory` at them.
 ## Native representations
 
 Generated code uses native named products and sums, with type parameters
-visible in public declarations and adapter signatures.
+visible in public declarations and adapter signatures:
+
+- a product, a type with one constructor, is a record named after the type:
+  `type Drink is Drink size :: Size shots :: Int32 end` becomes
+  `public record Drink(Size size, Integer shots)`, read as `drink.shots()`;
+- a sum is a sealed interface with a nested record per constructor:
+  `type Size is | Small | Large end` becomes `sealed interface Size` with
+  `Size.Small` and `Size.Large`, so a `switch` over it is exhaustive:
+
+```java
+long base = switch (drink.size()) {
+  case Size.Small small -> 250;
+  case Size.Large large -> 320;
+};
+```
+
+A case is named after its constructor. When that name is the type's own name,
+or would clash with another case, the case keeps a `Case` suffix. A field named
+like a `java.lang.Object` method (`hashCode`, `toString` and so on) is rejected,
+because its record accessor would override that method. Records compare by
+value.
 
 Scalars use native Java types where they represent the whole domain:
 

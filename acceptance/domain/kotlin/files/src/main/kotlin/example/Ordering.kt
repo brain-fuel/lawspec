@@ -11,22 +11,20 @@ import lawspec.data.ValidatedOrder
 import lawspec.runtime.LawSpecRuntime
 
 object Ordering {
-    fun firstLine(value0: NonEmptyList<Int>): Int = (value0 as NonEmptyList.NonEmptyListCase).value[0]
+    fun firstLine(value0: NonEmptyList<Int>): Int = value0.value[0]
 
     fun validateOrder(value0: UnvalidatedOrder): LawSpecRuntime.Either<OrderError, ValidatedOrder> {
-        val input = value0 as UnvalidatedOrder.UnvalidatedOrderCase
-        if (input.id.isEmpty()) return LawSpecRuntime.Left(OrderError.InvalidOrderIdCase())
-        if (input.quantity !in 1..1000) return LawSpecRuntime.Left(OrderError.InvalidQuantityCase())
+        if (value0.id.isEmpty()) return LawSpecRuntime.Left(OrderError.InvalidOrderId)
+        if (value0.quantity !in 1..1000) return LawSpecRuntime.Left(OrderError.InvalidQuantity)
         return LawSpecRuntime.Right(
-            ValidatedOrder.ValidatedOrderCase(OrderId.OrderIdCase(input.id), UnitQuantity.UnitQuantityCase(input.quantity)),
+            ValidatedOrder(OrderId(value0.id), UnitQuantity(value0.quantity)),
         )
     }
 
     fun priceOrder(value0: ValidatedOrder): LawSpecRuntime.Either<OrderError, PricedOrder> {
-        val order = value0 as ValidatedOrder.ValidatedOrderCase
-        val total = (order.quantity as UnitQuantity.UnitQuantityCase).value.toLong() * 25
-        if (total > 20000) return LawSpecRuntime.Left(OrderError.PriceTooHighCase())
-        return LawSpecRuntime.Right(PricedOrder.PricedOrderCase(order.id, order.quantity, total))
+        val total = value0.quantity.value.toLong() * 25
+        if (total > 20000) return LawSpecRuntime.Left(OrderError.PriceTooHigh)
+        return LawSpecRuntime.Right(PricedOrder(value0.id, value0.quantity, total))
     }
 
     fun placeOrder(value0: UnvalidatedOrder): LawSpecRuntime.Either<OrderError, PricedOrder> {

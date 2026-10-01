@@ -11,13 +11,11 @@ func Settlement(value0 ShopOrdersCurrency) ShopDomainCurrency {
 
 // LineTotal prices a line, capped at the largest amount of Cents.
 func LineTotal(value0 Line) Money {
-	line := value0.(LineLine)
-	price := line.Price.(MoneyMoney)
-	total := price.Cents * int64(line.Quantity.(QuantityQuantity).Value)
+	total := value0.Price.Cents * int64(value0.Quantity.Value)
 	if total > 100000000 {
 		total = 100000000
 	}
-	return MoneyMoney{Currency: price.Currency, Cents: total}
+	return Money{Currency: value0.Price.Currency, Cents: total}
 }
 
 // Cheaper returns the smaller price.

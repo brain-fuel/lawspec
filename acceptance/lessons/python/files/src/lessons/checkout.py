@@ -15,9 +15,9 @@ def validate(value0):
         return _schema.Left(data.OrderProblemEmptyItem())
     if not 1 <= value0.quantity <= 20:
         return _schema.Left(data.OrderProblemBadQuantity())
-    return _schema.Right(data.ValidOrderValidOrder(
-        value0.item, data.QuantityQuantity(value0.quantity)))
+    return _schema.Right(data.ValidOrder(
+        value0.item, data.Quantity(value0.quantity)))
 
 
 def charge(value0):
-    return data.ReceiptReceipt(value0.item, value0.quantity.value * 250)
+    return data.Receipt(value0.item, value0.quantity.value * 250)

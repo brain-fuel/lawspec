@@ -9,8 +9,8 @@
 ## Create the project
 
 ```sh
-npm exec --package=lawspec@0.15.1 -- lawspec init --target javascript
-npm install --save-dev lawspec@0.15.1
+npm exec --package=lawspec@0.15.2 -- lawspec init --target javascript
+npm install --save-dev lawspec@0.15.2
 npx lawspec doctor
 npx lawspec generate
 npm test
@@ -50,7 +50,8 @@ The runtime and data modules do not depend on fast-check.
 | `Symbol` | `symbol` |
 | `Decimal`, `Rational`, complex, raw text | Runtime support classes |
 | `List a` | `Array` |
-| `Maybe a`, `Either a b`, products and sums | Named variant classes from `lawspec_data` |
+| Products | A frozen class named after the type, from `lawspec_data` |
+| `Maybe a`, `Either a b` and sums | Named variant classes from `lawspec_data` |
 | `Nullable a`, `Optional a` | Tagged `data.Presence` values |
 | `Unit` | A `void` return |
 

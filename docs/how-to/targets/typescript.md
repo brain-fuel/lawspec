@@ -13,8 +13,8 @@
 ## Create the project
 
 ```sh
-npm exec --package=lawspec@0.15.1 -- lawspec init --target typescript
-npm install --save-dev lawspec@0.15.1
+npm exec --package=lawspec@0.15.2 -- lawspec init --target typescript
+npm install --save-dev lawspec@0.15.2
 npx lawspec doctor
 npx lawspec generate
 npm test
@@ -49,7 +49,8 @@ runtime, data and definitions in `src`, tests in `test`.
 The representations are those of [JavaScript](javascript.md#native-representations),
 with types:
 
-- `Maybe a`, `Either a b` and your products and sums are generic unions of named
+- A product is a generic class named after its type.
+- `Maybe a`, `Either a b` and your sums are generic unions of named
   variant classes. They keep payload types and nominal variant identity,
   including recursive fields and phantom parameters.
 - `Nullable a` and `Optional a` are `data.Presence<A>`.

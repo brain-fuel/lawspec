@@ -1,6 +1,6 @@
 @@ shop/orders/adapter.go
 <<<<<<<
-return MoneyMoney{Currency: price.Currency, Cents: total}
+return Money{Currency: value0.Price.Currency, Cents: total}
 =======
-return MoneyMoney{Currency: ShopDomainCurrencyEur{}, Cents: total}
+return Money{Currency: ShopDomainCurrencyEur{}, Cents: total}
 >>>>>>>

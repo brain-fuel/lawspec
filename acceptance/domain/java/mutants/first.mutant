@@ -1,6 +1,6 @@
 @@ src/main/java/example/Ordering.java
 <<<<<<<
-    return ((NonEmptyList.NonEmptyListCase<Integer>) value0).value.get(0);
+    return value0.value().get(0);
 =======
-    return ((NonEmptyList.NonEmptyListCase<Integer>) value0).value.get(((NonEmptyList.NonEmptyListCase<Integer>) value0).value.size() - 1);
+    return value0.value().get(value0.value().size() - 1);
 >>>>>>>

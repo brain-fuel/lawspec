@@ -5,7 +5,7 @@ cabal-version: 1.12
 -- see: https://github.com/sol/hpack
 
 name:           lawspec
-version:        0.15.1
+version:        0.15.2
 synopsis:       Portable executable laws
 license:        MIT
 license-file:   LICENSE
@@ -379,6 +379,7 @@ test-suite lawspec-test
   other-modules:
       ApiContractSpec
       CoreSpec
+      DataShapeSpec
       DefinitionContractFixture
       DefinitionContractProofSpec
       DefinitionPredicateSpec

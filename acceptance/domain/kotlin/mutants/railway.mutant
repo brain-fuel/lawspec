@@ -2,5 +2,5 @@
 <<<<<<<
         if (validated is LawSpecRuntime.Left) return LawSpecRuntime.Left(validated.value())
 =======
-        if (validated is LawSpecRuntime.Left) return LawSpecRuntime.Left(OrderError.PriceTooHighCase())
+        if (validated is LawSpecRuntime.Left) return LawSpecRuntime.Left(OrderError.PriceTooHigh)
 >>>>>>>

@@ -43,8 +43,9 @@ qualified by unit.
 
 ## Native representations
 
-Products and sums become sealed interfaces with named generic variant structs.
-For:
+A product, a type with one constructor, is a plain generic struct named after
+the type, with exported fields. A sum becomes a sealed interface with named
+generic variant structs. For:
 
 ```lawspec
 unit example.trees
@@ -64,7 +65,26 @@ end
 the adapter receives `Tree[int8]`, whose variants are `TreeLeaf[int8]` (field
 `Value`) and `TreeBranch[int8]` (field `Children []Tree[int8]`). The
 interface's marker method includes the type parameters, so Go rejects a
-`TreeLeaf[bool]` where a `Tree[int8]` is required.
+`TreeLeaf[bool]` where a `Tree[int8]` is required. Switch on the variants:
+
+```go
+func Size(value0 Tree[int8]) int {
+	switch tree := value0.(type) {
+	case TreeLeaf[int8]:
+		return 1
+	case TreeBranch[int8]:
+		total := 0
+		for _, child := range tree.Children {
+			total += Size(child)
+		}
+		return total
+	}
+	panic("unknown Tree variant")
+}
+```
+
+`type Pair is Pair first :: Int8 second :: Int8 end` becomes
+`type Pair struct { First int8; Second int8 }`, read as `value0.First`.
 
 ```go
 func Echo(value0 Tree[int8]) Tree[int8] {

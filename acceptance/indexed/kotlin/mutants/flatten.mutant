@@ -1,6 +1,6 @@
 @@ src/main/kotlin/example/Indexed.kt
 <<<<<<<
-        val right: Vec<Byte> = Vec.VConsCase(value0.value, flatten(value0.right))
+        val right: Vec<Byte> = Vec.VCons(value0.value, flatten(value0.right))
 =======
-        val right: Vec<Byte> = Vec.VConsCase(value0.value, Vec.VNilCase())
+        val right: Vec<Byte> = Vec.VCons(value0.value, Vec.VNil())
 >>>>>>>

@@ -70,7 +70,8 @@ end
 ```
 
 produces a generic `Tree` base with `TreeLeaf` and `TreeBranch` dataclasses. A
-single-constructor product `Pair` with constructor `Pair` produces `PairPair`.
+product, a type with one constructor, is a single dataclass named after the
+type: `type Pair is Pair first :: Int8 second :: Int8 end` produces `Pair`.
 When names collide across units, the compiler qualifies them; the emitted
 declarations and adapter annotations are authoritative. Match on the variants
 natively:

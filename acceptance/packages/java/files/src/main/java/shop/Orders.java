@@ -3,21 +3,21 @@ package shop;
 
 import lawspec.data.Line;
 import lawspec.data.Money;
-import lawspec.data.Quantity;
 import lawspec.data.ShopDomainCurrency;
 import lawspec.data.ShopOrdersCurrency;
 
 public final class Orders {
   public static ShopDomainCurrency settlement(ShopOrdersCurrency value0) {
-    if (value0 instanceof ShopOrdersCurrency.UsdCase) return new ShopDomainCurrency.UsdCase();
-    return new ShopDomainCurrency.EurCase();
+    return switch (value0) {
+      case ShopOrdersCurrency.Usd usd -> new ShopDomainCurrency.Usd();
+      case ShopOrdersCurrency.Gbp gbp -> new ShopDomainCurrency.Eur();
+    };
   }
 
   public static Money lineTotal(Line value0) {
-    var line = (Line.LineCase) value0;
-    var price = (Money.MoneyCase) line.price;
-    long count = ((Quantity.QuantityCase) line.quantity).value;
-    return new Money.MoneyCase(price.currency, Math.min(price.cents * count, 100000000L));
+    var price = value0.price();
+    long count = value0.quantity().value();
+    return new Money(price.currency(), Math.min(price.cents() * count, 100000000L));
   }
 
   public static long cheaper(long value0, long value1) {

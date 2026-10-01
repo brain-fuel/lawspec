@@ -1,7 +1,7 @@
 -- Native sealed interfaces and variants follow Go+'s resolved enum lowering.
 module LawSpec.GoData (emitGoData, goDataType, goTypeReference, emitGoSchema, emitGoSchemaWithProfile, goCodec, goCodecWithContext, emitGoCodecs, requiresSchema, goDataKey, validateGoBindings, identifier, goNativeCodec, emitGoNativeCodecs, goGeneratedNames, goNativeTypeWithParameters) where
 
-import LawSpec.DataNames (flatDataCandidates)
+import LawSpec.DataNames (flatDataCandidates, productConstructors, isProduct)
 import LawSpec.GoTypeRefs
 import qualified LawSpec.GoExpr as E
 import LawSpec.Core.Total (constructorProofContracts)
@@ -40,7 +40,7 @@ namesFor declarations = do
       names = [(identity, if duplicate name qualified || reserved name then "Data" ++ name ++ "_" ++ concatMap (\c -> showHex (ord c) "_") (C.idText identity) else name) | (identity,name) <- qualified]
   mapM_ (identifier . snd) names
   unless (length names == length (nub (map (map toLower . snd) names))) (Left "conflicting Go data identities")
-  pure names
+  pure (names ++ productConstructors declarations names)
 
 goGeneratedNames :: [C.DataDeclaration] -> Either String [String]
 goGeneratedNames declarations = map snd <$> namesFor declarations
@@ -114,10 +114,14 @@ emitGoData layout packageName declarations = do
             field (n,t) = D.text (n ++ replicate (width - length n + 1) ' ' ++ t)
             body = if null fields then D.text "{}" else D.text " " <> D.block 8 (D.joinWith D.hardline (map field fields))
             method = "func (" ++ applied variantName args ++ ") " ++ marker ++ "(" ++ intercalate ", " args ++ ") {}"
-        pure (D.text header <> body <> D.hardline <> D.hardline <> D.text method)
-      pure (D.text ("type " ++ generic ++ " interface ") <>
+        pure (D.text header <> body, D.text method)
+      -- A product is a plain struct named after its type; a sum is a sealed
+      -- interface whose variants carry the marker method.
+      if isProduct declaration then pure (D.joinWith mempty (map fst variants)) else
+       pure (D.text ("type " ++ generic ++ " interface ") <>
         D.block 8 (D.text (marker ++ "(" ++ intercalate ", " args ++ ")")) <>
-        (if null variants then mempty else D.hardline <> D.hardline <> D.joinWith (D.hardline <> D.hardline) variants))
+        (if null variants then mempty else D.hardline <> D.hardline <>
+          D.joinWith (D.hardline <> D.hardline) [d <> D.hardline <> D.hardline <> m | (d,m) <- variants]))
     lookupName names identity = maybe (Left "unplanned Go data name") Right (lookup identity names)
 
 -- Schema descriptions and native declarations share resolved Core identities.
@@ -299,18 +303,22 @@ emitCodecs prefix mappings needed imports layout packageName declarations = do
               else line (if unit then "if any(value) == any(" ++ variantName ++ ") "
                 else "if native, ok := any(value).(" ++ concrete ++ "); ok ") <>
                 D.block 8 ((if not unit && null fields then line "_ = native" <> D.hardline else mempty) <> result)
-        pure (decode,encodeValue)
+        pure (decode,encodeValue,result)
       let decode = line ("func(value LawSpecValue) " ++ native ++ " ") <> D.block 8
             (line "data := value.Data.(lawSpecData)" <> D.hardline <>
              line "switch data.tag {" <> D.hardline <>
-             linesDoc (map fst variants ++ [line "default:" <> D.nest 8 (D.hardline <> line "panic(\"unknown checked constructor\")")]) <>
+             linesDoc ([d | (d,_,_) <- variants] ++ [line "default:" <> D.nest 8 (D.hardline <> line "panic(\"unknown checked constructor\")")]) <>
              D.hardline <> line "}")
           encodeValue = line ("func(value " ++ native ++ ", path lawSpecPath) LawSpecValue ") <> D.block 8
-            (if prefix == "lawSpec" then
+            (if prefix == "lawSpec" && isProduct declaration then
+              line "native := value" <> D.hardline <>
+              (if any (\v -> null (C.constructorFields v)) (C.dataConstructors declaration) then line "_ = native" <> D.hardline else mempty) <>
+              linesDoc [r | (_,_,r) <- variants]
+             else if prefix == "lawSpec" then
               line "switch native := value.(type) {" <> D.hardline <>
-              linesDoc (map snd variants ++ [line "default:" <> D.nest 8 (D.hardline <> line "_ = native" <> D.hardline <> failure)]) <>
+              linesDoc ([e | (_,e,_) <- variants] ++ [line "default:" <> D.nest 8 (D.hardline <> line "_ = native" <> D.hardline <> failure)]) <>
               D.hardline <> line "}"
-             else linesDoc (map snd variants ++ [failure]))
+             else linesDoc ([e | (_,e,_) <- variants] ++ [failure]))
           failure = line ("panic(" ++ q ("unexpected native constructor for " ++ C.idText (C.dataId declaration)) ++ ")")
       (setup, hookDecode, hookEncode) <- case find ((== C.dataId declaration) . C.dataId . resolvedDeclaration) mappings >>= resolvedCodec of
         Nothing -> pure (mempty, decode, encodeValue)

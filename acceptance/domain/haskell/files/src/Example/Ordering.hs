@@ -6,19 +6,19 @@ import qualified Data.Text as T
 import qualified LawSpecData as Data
 
 firstLine :: Data.NonEmptyList I.Int32 -> I.Int32
-firstLine (Data.NonEmptyListNonEmptyList values) = head values
+firstLine (Data.NonEmptyList values) = head values
 
 validateOrder :: Data.UnvalidatedOrder -> Either Data.OrderError Data.ValidatedOrder
-validateOrder (Data.UnvalidatedOrderUnvalidatedOrder orderId quantity)
+validateOrder (Data.UnvalidatedOrder orderId quantity)
   | T.null orderId = Left Data.OrderErrorInvalidOrderId
   | quantity < 1 || quantity > 1000 = Left Data.OrderErrorInvalidQuantity
-  | otherwise = Right (Data.ValidatedOrderValidatedOrder
-      (Data.OrderIdOrderId orderId) (Data.UnitQuantityUnitQuantity quantity))
+  | otherwise = Right (Data.ValidatedOrder
+      (Data.OrderId orderId) (Data.UnitQuantity quantity))
 
 priceOrder :: Data.ValidatedOrder -> Either Data.OrderError Data.PricedOrder
-priceOrder (Data.ValidatedOrderValidatedOrder orderId quantity@(Data.UnitQuantityUnitQuantity count))
+priceOrder (Data.ValidatedOrder orderId quantity@(Data.UnitQuantity count))
   | total > 20000 = Left Data.OrderErrorPriceTooHigh
-  | otherwise = Right (Data.PricedOrderPricedOrder orderId quantity total)
+  | otherwise = Right (Data.PricedOrder orderId quantity total)
   where total = fromIntegral count * 25 :: I.Int64
 
 placeOrder :: Data.UnvalidatedOrder -> Either Data.OrderError Data.PricedOrder

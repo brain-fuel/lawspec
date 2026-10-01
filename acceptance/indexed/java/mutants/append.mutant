@@ -1,6 +1,6 @@
 @@ src/main/java/example/Indexed.java
 <<<<<<<
-    return new Vec.VConsCase<>(cons.head, append(cons.tail, value1));
+      case Vec.VCons<Byte>(var head, var tail) -> new Vec.VCons<>(head, append(tail, value1));
 =======
-    return append(cons.tail, value1);
+      case Vec.VCons<Byte>(var head, var tail) -> append(tail, value1);
 >>>>>>>

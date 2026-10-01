@@ -10,10 +10,10 @@ pub fn settlement(value0: ShopOrdersCurrency) -> ShopDomainCurrency {
 }
 
 pub fn lineTotal(value0: Line) -> Money {
-    let Line::Line { price, quantity } = value0;
-    let Money::Money { currency, cents } = price;
-    let Quantity::Quantity { value: count } = quantity;
-    Money::Money { currency, cents: (cents * i64::from(count)).min(100000000) }
+    let Line { price, quantity } = value0;
+    let Money { currency, cents } = price;
+    let Quantity { value: count } = quantity;
+    Money { currency, cents: (cents * i64::from(count)).min(100000000) }
 }
 
 pub fn cheaper(value0: i64, value1: i64) -> i64 {

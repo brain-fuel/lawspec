@@ -5,4 +5,4 @@ import qualified LawSpecData as Data
 
 -- One-to-one rates keep the example exact.
 convert :: Data.ShopDomainCurrency -> Data.Money -> Data.Money
-convert currency (Data.MoneyMoney _ cents) = Data.MoneyMoney currency cents
+convert currency (Data.Money _ cents) = Data.Money currency cents

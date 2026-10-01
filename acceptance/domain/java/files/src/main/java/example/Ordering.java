@@ -12,32 +12,29 @@ import lawspec.runtime.LawSpecRuntime;
 
 public final class Ordering {
   public static int firstLine(NonEmptyList<Integer> value0) {
-    return ((NonEmptyList.NonEmptyListCase<Integer>) value0).value.get(0);
+    return value0.value().get(0);
   }
 
   public static LawSpecRuntime.Either<OrderError, ValidatedOrder> validateOrder(
       UnvalidatedOrder value0) {
-    var input = (UnvalidatedOrder.UnvalidatedOrderCase) value0;
-    if (input.id.isEmpty()) return new LawSpecRuntime.Left<>(new OrderError.InvalidOrderIdCase());
-    if (!(input.quantity >= 1 && input.quantity <= 1000)) {
-      return new LawSpecRuntime.Left<>(new OrderError.InvalidQuantityCase());
+    if (value0.id().isEmpty()) return new LawSpecRuntime.Left<>(new OrderError.InvalidOrderId());
+    if (!(value0.quantity() >= 1 && value0.quantity() <= 1000)) {
+      return new LawSpecRuntime.Left<>(new OrderError.InvalidQuantity());
     }
-    return new LawSpecRuntime.Right<>(new ValidatedOrder.ValidatedOrderCase(
-        new OrderId.OrderIdCase(input.id), new UnitQuantity.UnitQuantityCase(input.quantity)));
+    return new LawSpecRuntime.Right<>(new ValidatedOrder(
+        new OrderId(value0.id()), new UnitQuantity(value0.quantity())));
   }
 
   public static LawSpecRuntime.Either<OrderError, PricedOrder> priceOrder(ValidatedOrder value0) {
-    var order = (ValidatedOrder.ValidatedOrderCase) value0;
-    long total = (long) ((UnitQuantity.UnitQuantityCase) order.quantity).value * 25;
-    if (total > 20000) return new LawSpecRuntime.Left<>(new OrderError.PriceTooHighCase());
-    return new LawSpecRuntime.Right<>(new PricedOrder.PricedOrderCase(order.id, order.quantity, total));
+    long total = (long) value0.quantity().value() * 25;
+    if (total > 20000) return new LawSpecRuntime.Left<>(new OrderError.PriceTooHigh());
+    return new LawSpecRuntime.Right<>(new PricedOrder(value0.id(), value0.quantity(), total));
   }
 
   public static LawSpecRuntime.Either<OrderError, PricedOrder> placeOrder(UnvalidatedOrder value0) {
-    var validated = validateOrder(value0);
-    if (validated instanceof LawSpecRuntime.Left<OrderError, ValidatedOrder> failure) {
-      return new LawSpecRuntime.Left<>(failure.value());
-    }
-    return priceOrder(((LawSpecRuntime.Right<OrderError, ValidatedOrder>) validated).value());
+    return switch (validateOrder(value0)) {
+      case LawSpecRuntime.Left<OrderError, ValidatedOrder> failure -> new LawSpecRuntime.Left<>(failure.value());
+      case LawSpecRuntime.Right<OrderError, ValidatedOrder> order -> priceOrder(order.value());
+    };
   }
 }

@@ -3,6 +3,6 @@ use crate::lawspec_data::{Money, ShopDomainCurrency};
 
 // One-to-one rates keep the example exact.
 pub fn convert(value0: ShopDomainCurrency, value1: Money) -> Money {
-    let Money::Money { cents, .. } = value1;
-    Money::Money { currency: value0, cents }
+    let Money { cents, .. } = value1;
+    Money { currency: value0, cents }
 }

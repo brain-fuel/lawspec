@@ -68,7 +68,8 @@ or pointers; tests clone values where an input is used more than once.
 | `List a` | `Vec<A>` |
 | `Maybe a` | `Option<A>` |
 | `Either a b` | Generated `Either<A, B>` |
-| Products and sums | Named generic enums in `lawspec_data` |
+| Products | Named generic structs in `lawspec_data` |
+| Sums | Named generic enums in `lawspec_data` |
 
 `Integer` and `Decimal` are exported by the generated `lawspec_runtime` module.
 For `successor :: Int8 -> Integer`, an implementation can compute in a wider
@@ -82,10 +83,12 @@ pub fn successor(value: i8) -> ls::Integer {
 }
 ```
 
-Products are enums with one record variant. Recursive fields use `Box` where
-needed; `Vec` already provides indirection. Unused type parameters use
-`PhantomData`, and types with no constructors stay uninhabited. Generated enums
-derive `Clone` and `Debug`, but not `Eq`: LawSpec equality is a runtime
+A product, a type with one constructor, is a struct with public fields named
+after the type (`Pair { first, second }`), or a unit struct when it has no
+fields. A sum is an enum with one variant per constructor. Recursive fields use
+`Box` where needed; `Vec` already provides indirection. Unused type parameters
+use `PhantomData`, and types with no constructors stay uninhabited. Generated
+types derive `Clone` and `Debug`, but not `Eq`: LawSpec equality is a runtime
 operation with IEEE and Symbol rules.
 
 Machine-sized types check the executing architecture against `machineBits`.
