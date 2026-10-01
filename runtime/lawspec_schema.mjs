@@ -205,6 +205,43 @@ export function witnessInstances(constructor) {
   });
 }
 
+// Built-in collections and their single constructors. Natively a Set is a
+// Set and a KeyVal a Map when JavaScript compares their elements or keys by
+// value, and otherwise a frozen array of items or of [key, value] pairs in
+// canonical order; Queue, Stack and Deque are frozen arrays (a Stack's top
+// last, as for push and pop).
+const COLLECTIONS_UNIT = 'lawspec.collections::type::';
+const COLLECTIONS = new Map([
+  ['Set', 'SetItems'], ['KeyVal', 'KeyValEntries'], ['Queue', 'QueueItems'],
+  ['Stack', 'StackItems'], ['Deque', 'DequeItems'],
+].map(([name, tag]) => [COLLECTIONS_UNIT + name, `${COLLECTIONS_UNIT}${name}::${tag}`]));
+const ENTRY = `${COLLECTIONS_UNIT}Entry::Entry`;
+const BY_VALUE = new Set([
+  'Bool', 'Char', 'Text', 'CodePoint', 'CodeUnit16', 'Unit', 'BigInt', 'BigUInt', 'Integer', 'Natural',
+  'Int8', 'Int16', 'Int32', 'Int64', 'Int128', 'IntSize', 'UInt8', 'UInt16', 'UInt32', 'UInt64', 'UInt128', 'UIntSize', 'UIntPtr',
+]);
+
+// Whether JavaScript compares this type's natives by value.
+export function byValue(type) {
+  return type instanceof Named && type.args.length === 0 && BY_VALUE.has(type.name);
+}
+
+// Sorted by key, keeping the last of equal keys.
+function canonicalItems(items, key) {
+  const ordered = items.map((item, index) => [item, index])
+      .sort(([a, i], [b, j]) => ls.compareValues(key(a), key(b)) || i - j)
+      .map(([item]) => item);
+  const result = [];
+  for (const item of ordered) {
+    if (result.length && ls.compareValues(key(result[result.length - 1]), key(item)) === 0) {
+      result[result.length - 1] = item;
+    } else {
+      result.push(item);
+    }
+  }
+  return result;
+}
+
 export function typeKey(type) {
   if (!(type instanceof Named)) {
     throw new TypeError(
@@ -289,6 +326,8 @@ export class Schema {
           );
         }
         tags.add(constructor.tag);
+        // Native collections convert separately.
+        if (COLLECTIONS.has(definition.name)) continue;
         this.#checkNative(constructor.native, nativeClasses);
         if (constructor.nativeFields !== null) {
           const fields = constructor.nativeFields;
@@ -685,9 +724,49 @@ export class Schema {
     }
   }
 
+  #collectionWalk(type, value, bits, mode, symbols) {
+    const short = type.name.slice(COLLECTIONS_UNIT.length);
+    const tag = COLLECTIONS.get(type.name);
+    const walk = (child, item) => this.#walk(child, item, bits, mode, symbols);
+    const [first, second] = type.args;
+    if (mode === 'native') {
+      if (!(value instanceof ls.DataValue) || value.tag !== tag) {
+        throw new TypeError(`expected ${short}`);
+      }
+      const items = value.fields[0];
+      if (short === 'KeyVal') {
+        const pairs = items.map((entry) => Object.freeze([walk(first, entry.fields[0]), walk(second, entry.fields[1])]));
+        return byValue(first) ? new Map(pairs) : Object.freeze(pairs);
+      }
+      const natives = items.map((item) => walk(first, item));
+      if (short === 'Set') return byValue(first) ? new Set(natives) : Object.freeze(natives);
+      return Object.freeze(short === 'Stack' ? natives.reverse() : natives);
+    }
+    let items;
+    if (short === 'KeyVal') {
+      const pairs = value instanceof Map ? [...value.entries()] : value;
+      if (!Array.isArray(pairs)) throw new TypeError('expected a Map or [key, value] pairs');
+      items = canonicalItems(pairs.map((pair) => {
+        if (!Array.isArray(pair) || pair.length !== 2) throw new TypeError('expected [key, value] pairs');
+        return new ls.DataValue(ENTRY, [walk(first, pair[0]), walk(second, pair[1])]);
+      }), (entry) => entry.fields[0]);
+    } else {
+      if (!(value instanceof Set) && !Array.isArray(value)) {
+        throw new TypeError(`expected a collection for ${short}`);
+      }
+      items = [...value].map((item) => walk(first, item));
+      if (short === 'Set') items = canonicalItems(items, (item) => item);
+      if (short === 'Stack') items.reverse();
+    }
+    return new ls.DataValue(tag, [items]);
+  }
+
   #walk(type, value, bits, mode, symbols) {
-    if (mode !== 'validate' && this.#nativeCodecs.has(type.name)) {
+    if ((mode === 'native' || mode === 'logical') && this.#nativeCodecs.has(type.name)) {
       return this.#codecWalk(type, value, bits, mode, symbols);
+    }
+    if ((mode === 'native' || mode === 'logical') && COLLECTIONS.has(type.name)) {
+      return this.#collectionWalk(type, value, bits, mode, symbols);
     }
     const constructors = this.constructors(type);
     if (constructors !== null) {
@@ -734,7 +813,9 @@ export class Schema {
         );
       }
       const types = witnessed(constructor, fields);
+      // A shallow check trusts fields, which were checked when built.
       const converted = constructor.fields.map((field, index) => {
+        if (mode === 'shallow') return fields[index];
         try {
           if (types[index] !== field.type) this.#check(types[index]);
           return this.#walk(
@@ -755,7 +836,7 @@ export class Schema {
           );
         }
       });
-      if (mode === 'validate') {
+      if (mode === 'validate' || mode === 'shallow') {
         constructor.predicates.forEach((predicate, index) => {
           const context = `${constructor.tag}: field refinement ${index + 1}`;
           let accepted;
@@ -898,16 +979,17 @@ export class Schema {
     throw new TypeError(`unsupported type: ${name}`);
   }
 
+  // Values in generated code are checked where they are built, decoded or
+  // drawn, so constructing checks only the new node and matching only
+  // dispatches; a deep check of each would make recursion quadratic.
   construct(type, tag, fields, bits = 64, symbols = new Map()) {
-    const value =
-        type.name === 'List'
-          ? ls.construct(tag, fields)
-          : new ls.DataValue(tag, fields);
-    return this.validate(type, value, bits, symbols);
+    if (type.name === 'List') return ls.construct(tag, fields);
+    this.#check(type);
+    return this.#walk(type, new ls.DataValue(tag, fields), bits, 'shallow', symbols);
   }
 
   match(type, value, branches, bits = 64, symbols = new Map()) {
-    const checked = this.validate(type, value, bits, symbols);
+    const checked = value;
     if (type.name === 'List')
       return ls.matchList(checked, branches);
     for (const [tag, branch] of branches) {

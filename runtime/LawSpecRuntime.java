@@ -66,8 +66,11 @@ public final class LawSpecRuntime {
     }
   }
 
+  private static final java.util.regex.Pattern INTEGER_TYPE =
+      java.util.regex.Pattern.compile("(U?Int(8|16|32|64|Size)|UIntPtr|BigU?Int|Integer)");
+
   public static boolean integerType(String t) {
-    return t.matches("(U?Int(8|16|32|64|Size)|UIntPtr|BigU?Int|Integer)");
+    return INTEGER_TYPE.matcher(t).matches();
   }
 
   public static boolean exactType(String t) {
@@ -617,8 +620,54 @@ public final class LawSpecRuntime {
     return (boolean) validate("Bool", v, 64).data;
   }
 
+  private static final String ORDERING = "lawspec.collections::type::Ordering";
+
+  /**
+   * The portable total order: -1, 0 or 1. Exact numbers by value, sequences by unit, false before
+   * true, absence before presence, lists element by element, Nothing before Just, and other data
+   * by constructor identity, then fields left to right.
+   */
+  public static int compareValues(Value a, Value b) {
+    if (a.data == null && b.data == null) return 0;
+    if (a.data instanceof Boolean x && b.data instanceof Boolean y) return Boolean.compare(x, y);
+    if (exactType(a.type) && exactType(b.type)) {
+      Ratio x = ratio(a), y = ratio(b);
+      return Integer.signum(x.n().multiply(y.d()).compareTo(y.n().multiply(x.d())));
+    }
+    if (a.data instanceof Integer x && b.data instanceof Integer y) return Integer.signum(Integer.compare(x, y));
+    if (a.data instanceof Presence x && b.data instanceof Presence y) {
+      if (x.present() != y.present()) return x.present() ? 1 : -1;
+      return x.present() ? compareValues(x.value(), y.value()) : 0;
+    }
+    if (a.data instanceof List<?> x && b.data instanceof List<?> y) return compareItems(x, y);
+    if (a.data instanceof Data x && b.data instanceof Data y) {
+      if (!x.tag().equals(y.tag())) {
+        if (x.tag().equals("Maybe::Nothing") && y.tag().equals("Maybe::Just")) return -1;
+        if (x.tag().equals("Maybe::Just") && y.tag().equals("Maybe::Nothing")) return 1;
+        return Integer.signum(x.tag().compareTo(y.tag()));
+      }
+      return compareItems(x.fields(), y.fields());
+    }
+    throw new IllegalArgumentException("values have no portable order: " + a.type);
+  }
+
+  private static int compareItems(List<?> x, List<?> y) {
+    for (int i = 0; i < Math.min(x.size(), y.size()); i++) {
+      int order =
+          x.get(i) instanceof Value u
+              ? compareValues(u, (Value) y.get(i))
+              : Integer.signum(Integer.compare((Integer) x.get(i), (Integer) y.get(i)));
+      if (order != 0) return order;
+    }
+    return Integer.signum(Integer.compare(x.size(), y.size()));
+  }
+
   public static Value helper(String n, Value[] args, int bits) {
     if (n.equals("checked")) return bool(true);
+    if (n.equals("compare")) {
+      var tag = new String[] {"Less", "Equal", "Greater"}[compareValues(args[0], args[1]) + 1];
+      return new Value(ORDERING, new Data(ORDERING + "::" + tag, List.of()));
+    }
     if (n.equals("length"))
       return integer("Integer", Integer.toString(((List<?>) args[0].data).size()));
     if (n.equals("isPresent")) return bool(((Presence) args[0].data).present);

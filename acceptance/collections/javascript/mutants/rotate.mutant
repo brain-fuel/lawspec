@@ -1,0 +1,6 @@
+@@ src/example/collections.mjs
+<<<<<<<
+return value0.length ? [...value0.slice(1), value0[0]] : [];
+=======
+return value0.slice(1);
+>>>>>>>

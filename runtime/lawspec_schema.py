@@ -146,7 +146,8 @@ class Right[L, R](Either[L, R]):
 # Built-in collections and their single constructors. Natively a Set is a
 # frozenset and a KeyVal a dict when Python compares their elements or keys by
 # value, and otherwise a tuple of items or of (key, value) pairs in canonical
-# order; Queue, Stack and Deque are deques (a Stack's top first).
+# order; Queue, Stack and Deque are deques (a Stack's top last, so append
+# and pop use it).
 _COLLECTIONS_UNIT = "lawspec.collections::type::"
 COLLECTIONS = {
     _COLLECTIONS_UNIT + name: _COLLECTIONS_UNIT + name + "::" + tag
@@ -603,7 +604,7 @@ class Schema:
             if short == "Set":
                 return (frozenset(natives) if hashable(arguments[0])
                         else tuple(natives))
-            return deque(natives)
+            return deque(reversed(natives) if short == "Stack" else natives)
         if short == "KeyVal":
             if isinstance(value, dict):
                 pairs = list(value.items())
@@ -624,6 +625,8 @@ class Schema:
             items = [walk(arguments[0], item) for item in value]
             if short == "Set":
                 items = canonical_items(items, lambda item: item)
+            elif short == "Stack":
+                items.reverse()
         return ls.DataValue(tag, (items,))
 
     def _walk(self, reference, value, bits, mode, symbols):

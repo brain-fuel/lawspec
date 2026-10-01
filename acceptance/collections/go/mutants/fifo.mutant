@@ -1,0 +1,12 @@
+@@ example/collections/adapter.go
+<<<<<<<
+// Fifo keeps the values in order, front first.
+func Fifo(value0 []int8) []int8 {
+	return slices.Clone(value0)
+=======
+// Fifo keeps the values in order, front first.
+func Fifo(value0 []int8) []int8 {
+	result := slices.Clone(value0)
+	slices.Reverse(result)
+	return result
+>>>>>>>

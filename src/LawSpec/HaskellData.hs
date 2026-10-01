@@ -13,7 +13,8 @@ import Numeric (showHex)
 import qualified LawSpec.Core as C
 import qualified LawSpec.Core.Schema as S
 import LawSpec.Scalar (primitives, primitiveName, isInteger)
-import LawSpec.Core.Types (makeRegistry, checkType, freeExistentials)
+import LawSpec.Core.Types (makeRegistry, checkType, freeExistentials, keyedRequirements)
+import LawSpec.Collections (collectionContainer)
 import qualified LawSpec.Code.Doc as D
 
 type Names = [(C.Id,String)]
@@ -45,6 +46,13 @@ application name arguments = "(" ++ unwords (name : arguments) ++ ")"
 typeText :: String -> Names -> [(C.Id,String)] -> C.Type -> Either String String
 typeText scope names parameters ty = case ty of
   C.TypeVariable variable -> maybe (Left "unbound Haskell data parameter") Right (lookup variable parameters)
+  -- Built-in collections are native (LawSpecCollectionCodecs).
+  C.Constructor name arguments | Just short <- collectionContainer name -> do
+    args <- mapM argument arguments
+    pure $ case short of
+      "Set" -> application "Set.Set" args
+      "KeyVal" -> application "Map.Map" args
+      _ -> application "Seq.Seq" args
   C.Constructor name arguments -> do
     args <- mapM argument arguments
     case lookup (C.Id name) names of
@@ -92,15 +100,20 @@ haskellNativeTypeWithParameters declarations representations parameters ty = do
 
 emitHaskellData :: D.Layout -> [C.DataDeclaration] -> Either String String
 emitHaskellData layout declarations = do
-  _ <- makeRegistry declarations
+  registry <- makeRegistry declarations
   names <- namesFor declarations
   selectors <- selectorsFor names declarations
-  definitions <- mapM (definition names selectors) declarations
+  -- Keyed data can be a Data.Set element or Data.Map key, so it is ordered
+  -- natively too.
+  let ordered declaration = either (const False) (const True) (keyedRequirements registry
+        (C.Constructor (C.idText (C.dataId declaration)) [C.TypeArgument (C.TypeVariable p) | p <- C.dataParameters declaration]))
+  definitions <- mapM (\d -> definition names selectors (ordered d) d) [d | d <- declarations, collectionContainer (C.idText (C.dataId d)) == Nothing]
   let body = D.joinWith (D.hardline <> D.hardline) definitions
       rendered = D.render layout body
       imports = [D.text ("import qualified " ++ moduleName ++ " as " ++ alias) |
         (moduleName,alias) <- [("Prelude","P"),("Data.Int","I"),("Data.Word","W"),
-          ("Data.Text","T"),("Data.ByteString","B"),("Data.Complex","C"),("LawSpecRuntime","LS")],
+          ("Data.Text","T"),("Data.ByteString","B"),("Data.Complex","C"),("LawSpecRuntime","LS"),
+          ("Data.Set","Set"),("Data.Map.Strict","Map"),("Data.Sequence","Seq")],
         (alias ++ ".") `isInfixOf` rendered]
   let gadts = any gadtDeclaration declarations
   pure (D.render layout (D.text (if gadts then "{-# LANGUAGE EmptyDataDecls, EmptyDataDeriving, GADTs, StandaloneDeriving #-}"
@@ -109,8 +122,8 @@ emitHaskellData layout declarations = do
     D.text "module LawSpecData where" <> D.hardline <> D.hardline <>
     D.joinWith D.hardline imports <> D.hardline <> D.hardline <> body <> D.hardline))
   where
-    definition names selectors declaration | gadtDeclaration declaration = gadtDefinition names selectors declaration
-    definition names selectors declaration = do
+    definition names selectors _ declaration | gadtDeclaration declaration = gadtDefinition names selectors declaration
+    definition names selectors ordered declaration = do
       name <- lookupName names (C.dataId declaration)
       let parameters = zip (C.dataParameters declaration) ["a" ++ show n | n <- [0::Int ..]]
           header = D.text (unwords ("data":name:map snd parameters))
@@ -131,7 +144,7 @@ emitHaskellData layout declarations = do
       pure (header <>
         (if null variants then mempty else D.nest 2 (D.hardline <> D.text "= " <>
           D.joinWith (D.hardline <> D.text "| ") variants)) <>
-        D.nest 2 (D.hardline <> D.text "deriving (P.Eq, P.Show)"))
+        D.nest 2 (D.hardline <> D.text (if ordered then "deriving (P.Eq, P.Ord, P.Show)" else "deriving (P.Eq, P.Show)")))
     -- GADT syntax: each constructor states the type it builds. Existential
     -- fields keep their types; values compare only through LawSpec's codecs,
     -- so Eq is derived only where no constructor is existential.
@@ -298,6 +311,15 @@ codecExpression = codecExpressionWith Nothing "schema" "bits"
 codecExpressionWith :: Maybe D.Doc -> String -> String -> String -> Names -> [(C.Id,String)] -> C.Type -> Either String D.Doc
 codecExpressionWith context schema bits scope names parameters ty = case ty of
   C.TypeVariable variable -> maybe (Left "unbound Haskell codec parameter") (Right . D.text) (lookup variable parameters)
+  C.Constructor name arguments | Just short <- collectionContainer name -> do
+    children <- mapM argument arguments
+    values <- mapM (codecExpressionWith context schema bits scope names parameters) children
+    let scope' = maybe (D.text "P.Nothing") (\value -> parenthesize value) context
+        call function extra = apply function (extra ++ [scope', D.text schema, D.text bits] ++ map parenthesize values)
+    pure $ case short of
+      "Set" -> call "Collections.setCodecWith" []
+      "KeyVal" -> call "Collections.keyValCodecWith" []
+      _ -> call "Collections.sequenceCodecWith" [D.text (show short)]
   C.Constructor name arguments -> do
     children <- mapM argument arguments
     values <- mapM (codecExpressionWith context schema bits scope names parameters) children
@@ -367,7 +389,7 @@ emitHaskellCodecsWithHooks
 emitHaskellCodecsWithHooks layout declarations owner imports representations constructors hooks = do
   _ <- emitHaskellData layout declarations
   names <- namesFor declarations
-  definitions' <- mapM (definition names) declarations
+  definitions' <- mapM (definition names) [d | d <- declarations, collectionContainer (C.idText (C.dataId d)) == Nothing]
   dynamic <- if owner == "LawSpecDataCodecs" && any existentialDeclaration declarations
     then (: []) <$> dynamicDispatch names else pure []
   let definitions = definitions' ++ dynamic
@@ -377,6 +399,9 @@ emitHaskellCodecsWithHooks layout declarations owner imports representations con
      "module " ++ owner ++ " where", "", "import qualified Prelude as P",
      "import qualified LawSpecRuntime as LS", "import qualified LawSpecSchema as Schema",
      "import qualified LawSpecCodecs as Codec", "import qualified LawSpecData as Data", ""] ++
+     concat [["import qualified LawSpecCollectionCodecs as Collections", "import qualified Data.Set as Set",
+              "import qualified Data.Map.Strict as Map", "import qualified Data.Sequence as Seq"]
+             | any (\d -> collectionContainer (C.idText (C.dataId d)) /= Nothing) declarations] ++
      ["import Unsafe.Coerce (unsafeCoerce)" | gadts] ++
      concat [["import GHC.Exts (Any)", "import qualified Data.Int as I", "import qualified Data.Word as W",
               "import qualified Data.Text as T", "import qualified Data.ByteString as B", "import qualified Data.Complex as C"]

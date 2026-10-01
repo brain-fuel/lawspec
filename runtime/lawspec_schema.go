@@ -864,13 +864,44 @@ func (s *lawSpecSchema) construct(t lawSpecTypeRef, tag string, fields []LawSpec
 			if len(fields) != 2 {
 				panic("Cons takes two fields")
 			}
-			tail := s.validate(t, fields[1], bits, symbols).Data.([]LawSpecValue)
-			return s.validate(t, LawSpecValue{t.key(), append([]LawSpecValue{fields[0]}, tail...)}, bits, symbols)
+			tail := fields[1].Data.([]LawSpecValue)
+			return LawSpecValue{t.key(), append([]LawSpecValue{fields[0]}, tail...)}
 		default:
 			panic("unknown List constructor: " + tag)
 		}
 	}
-	return s.validate(t, LawSpecValue{t.key(), lawSpecData{tag, fields}}, bits, symbols)
+	return s.shallow(t, LawSpecValue{t.key(), lawSpecData{tag, fields}}, bits, symbols)
+}
+
+// shallow checks a newly built node: its fields were checked when they were
+// built, decoded or drawn, and a deep check of each node would make
+// recursion quadratic.
+func (s *lawSpecSchema) shallow(t lawSpecTypeRef, value LawSpecValue, bits int, symbols map[string]*lawSpecSymbol) LawSpecValue {
+	s.check(t, 0)
+	constructors, custom := s.constructors(t)
+	if !custom {
+		return s.validate(t, value, bits, symbols)
+	}
+	data := value.Data.(lawSpecData)
+	for _, constructor := range constructors {
+		if constructor.tag != data.tag {
+			continue
+		}
+		if len(constructor.fields) != len(data.fields) {
+			panic("wrong field count: " + data.tag)
+		}
+		for index, predicate := range s.contracts[data.tag] {
+			lsSchemaContext(fmt.Sprintf("%s predicate %d", data.tag, index+1), func() LawSpecValue {
+				if !predicate(s, t.arguments, data.fields, bits, symbols) {
+					panic(lawSpecRefinementViolation{"constructor field contract rejected"})
+				}
+				return lsBool(true)
+			})
+		}
+		s.checkIndices(constructor, data.fields)
+		return value
+	}
+	panic("unknown constructor " + data.tag + " for " + t.key())
 }
 
 func (s *lawSpecSchema) equal(t lawSpecTypeRef, a, b LawSpecValue, bits int, contexts ...map[string]*lawSpecSymbol) bool {

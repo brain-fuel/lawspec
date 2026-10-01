@@ -1,0 +1,6 @@
+@@ src/main/java/example/Collections.java
+<<<<<<<
+    if (!rotated.isEmpty()) rotated.addLast(rotated.pollFirst());
+=======
+    rotated.pollFirst();
+>>>>>>>

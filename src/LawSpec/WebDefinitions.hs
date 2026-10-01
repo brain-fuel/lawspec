@@ -56,10 +56,10 @@ emitWebDefinitions ts layout bits declarations units = do
               pure (E.call (drop (length ("_definitions." :: String)) name) (D.text "symbols":values))
             _ -> Left "expected JS/TS definition call"
       body <- E.renderExpression ts declarations bits local external (definitionBody d)
-      checks <- mapM (\binder -> do
-        value <- schemaCall "validate" (binderType binder) (D.text (local (binderId binder)))
-        pure (D.text (local (binderId binder) ++ " = ") <> value <> D.text ";")) (definitionArguments d)
-      result <- schemaCall "validate" (expressionType (definitionBody d)) (D.text "result")
+      -- Arguments and results were checked where they were built, decoded
+      -- or drawn; the native wrappers check values crossing from adapters.
+      let checks = []
+          result = D.text "result"
       let contract = lookup (declarationId (definitionDeclaration d)) [(contractDeclaration c,c) | c <- contracts]
       statements <- case contract of
         Nothing -> pure (checks ++ [assign "result" body,D.text "return " <> result <> D.text ";"])

@@ -540,11 +540,13 @@ object LawSpecKotlinStrategies {
                                 Arb.bind(prior, child) { values, value -> values + value }
                             }
                         product.map { it + witnessValues }.map {
-                            if (symbols == null) {
+                            val value = if (symbols == null) {
                                 schema.construct(type, tag, it, bits)
                             } else {
                                 Value(LawSpecSchema.key(type), Data(tag, it))
                             }
+                            // Generated collections are canonicalised rather than filtered.
+                            if (LawSpecSchema.canonicalCollection(type.name())) LawSpecSchema.canonical(value) else value
                         }
                       }
                     })

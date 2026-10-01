@@ -1,7 +1,10 @@
 // Typed conversion bridges are independent of property-testing frameworks.
 package RUNTIME_PACKAGE
 
-import "fmt"
+import (
+	"fmt"
+	"slices"
+)
 
 type lawSpecCodec[T any] struct {
 	typeRef    lawSpecTypeRef
@@ -113,6 +116,63 @@ func lsListCodec[T any](schema *lawSpecSchema, bits int, element lawSpecCodec[T]
 			}
 			return LawSpecValue{typeRef.key(), result}
 		}, symbols)
+}
+
+// Built-in collections and their single constructors. Natively each is a
+// slice of its items (a KeyVal's entries) in canonical order; a Stack's top is
+// last, as for append.
+var lsCollectionTags = map[string]string{
+	"Set": "SetItems", "KeyVal": "KeyValEntries", "Queue": "QueueItems",
+	"Stack": "StackItems", "Deque": "DequeItems",
+}
+
+func lsCollectionCodec[T any](schema *lawSpecSchema, bits int, name string, arguments []lawSpecTypeRef, item lawSpecCodec[T], contexts ...map[string]*lawSpecSymbol) lawSpecCodec[[]T] {
+	symbols := lsSchemaSymbols(contexts)
+	typeRef := lsNamed("lawspec.collections::type::"+name, arguments...)
+	tag := typeRef.name + "::" + lsCollectionTags[name]
+	listKey := lsNamed("List", item.typeRef).key()
+	return lsCodec(schema, bits, typeRef,
+		func(value LawSpecValue) []T {
+			values := value.Data.(lawSpecData).fields[0].Data.([]LawSpecValue)
+			result := make([]T, len(values))
+			for index, child := range values {
+				result[index] = item.toNative(child)
+			}
+			if name == "Stack" {
+				slices.Reverse(result)
+			}
+			return result
+		},
+		func(value []T, path lawSpecPath) LawSpecValue {
+			items := make([]LawSpecValue, len(value))
+			for index, child := range value {
+				items[index] = item.encode(child, path)
+			}
+			switch name {
+			case "Stack":
+				slices.Reverse(items)
+			case "Set":
+				items = lsCanonicalItems(items, func(item LawSpecValue) LawSpecValue { return item })
+			case "KeyVal":
+				items = lsCanonicalItems(items, func(entry LawSpecValue) LawSpecValue { return entry.Data.(lawSpecData).fields[0] })
+			}
+			return LawSpecValue{typeRef.key(), lawSpecData{tag, []LawSpecValue{{listKey, items}}}}
+		}, symbols)
+}
+
+// lsCanonicalItems sorts by key, keeping the last of equal keys.
+func lsCanonicalItems(items []LawSpecValue, key func(LawSpecValue) LawSpecValue) []LawSpecValue {
+	ordered := slices.Clone(items)
+	slices.SortStableFunc(ordered, func(a, b LawSpecValue) int { return lsCompareValues(key(a), key(b)) })
+	result := []LawSpecValue{}
+	for _, item := range ordered {
+		if len(result) > 0 && lsCompareValues(key(result[len(result)-1]), key(item)) == 0 {
+			result[len(result)-1] = item
+		} else {
+			result = append(result, item)
+		}
+	}
+	return result
 }
 
 func lsMaybeCodec[T any](schema *lawSpecSchema, bits int, element lawSpecCodec[T], contexts ...map[string]*lawSpecSymbol) lawSpecCodec[LawSpecMaybe[T]] {

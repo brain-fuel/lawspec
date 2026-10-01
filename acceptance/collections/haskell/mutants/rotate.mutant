@@ -1,0 +1,6 @@
+@@ src/Example/Collections.hs
+<<<<<<<
+rotate (front :<| rest) = rest |> front
+=======
+rotate (_ :<| rest) = rest
+>>>>>>>

@@ -1,0 +1,8 @@
+@@ src/example/collections.rs
+<<<<<<<
+pub fn distinctRows(value0: Vec<Vec<i8>>) -> BTreeSet<Vec<i8>> {
+    value0.into_iter().collect()
+=======
+pub fn distinctRows(value0: Vec<Vec<i8>>) -> BTreeSet<Vec<i8>> {
+    value0.into_iter().filter(|row| !row.is_empty()).collect()
+>>>>>>>

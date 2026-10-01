@@ -1,0 +1,6 @@
+@@ example/collections/adapter.go
+<<<<<<<
+	return slices.Compact(distinct)
+=======
+	return slices.Compact(distinct)[min(1, len(distinct)):]
+>>>>>>>

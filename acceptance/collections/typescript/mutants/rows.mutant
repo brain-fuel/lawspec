@@ -1,0 +1,6 @@
+@@ src/example/collections.ts
+<<<<<<<
+    if (!distinct.some(
+=======
+    if (row.length && !distinct.some(
+>>>>>>>

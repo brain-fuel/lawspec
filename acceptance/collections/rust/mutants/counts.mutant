@@ -1,0 +1,6 @@
+@@ src/example/collections.rs
+<<<<<<<
+*counts.entry(word).or_insert_with(|| ls::BigInt::from(0)) += 1;
+=======
+counts.insert(word, ls::BigInt::from(1));
+>>>>>>>

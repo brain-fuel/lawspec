@@ -1,0 +1,6 @@
+@@ src/main/kotlin/example/Collections.kt
+<<<<<<<
+if (rotated.isNotEmpty()) rotated.addLast(rotated.removeFirst())
+=======
+if (rotated.isNotEmpty()) rotated.removeFirst()
+>>>>>>>

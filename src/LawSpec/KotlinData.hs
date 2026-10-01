@@ -13,6 +13,7 @@ import qualified Data.Text.Lazy as T
 import qualified Data.Text.Lazy.Encoding as T
 import qualified LawSpec.Core as C
 import LawSpec.Core.Types (makeRegistry, checkType, freeExistentials)
+import LawSpec.Collections (collectionContainer)
 import qualified LawSpec.Core.Schema as S
 import LawSpec.Common (Artifact(..))
 import LawSpec.RuntimeSources (runtimeSource)
@@ -61,6 +62,13 @@ typeDocWithNative :: [ResolvedTypeBinding] -> Names -> [(C.Id,String)] -> C.Type
 typeDocWithNative mappings names parameters ty = case ty of
   C.TypeVariable variable -> maybe (Left "unbound Kotlin data parameter")
     (Right . D.text) (lookup variable parameters)
+  -- Built-in collections are native (LawSpecKotlinCodecs' set, keyVal, sequence).
+  C.Constructor name arguments | Just short <- collectionContainer name -> do
+    args <- mapM argument arguments
+    pure $ case short of
+      "Set" -> applied "kotlin.collections.Set" args
+      "KeyVal" -> applied "kotlin.collections.Map" args
+      _ -> applied "kotlin.collections.ArrayDeque" args
   C.Constructor name arguments -> do
     args <- mapM argument arguments
     let nativeNames = [(C.dataId (resolvedDeclaration mapping),intercalate "." (referenceParts (resolvedNativeType mapping))) | mapping <- mappings]
@@ -114,7 +122,7 @@ emitKotlinDataWithProfile bits layout declarations = do
   names <- namesFor declarations
   schema <- JVM.emitJavaSchema bits (D.Pretty 100) declarations
   codecs <- emitKotlinCodecs layout declarations
-  native <- forM declarations $ \declaration -> do
+  native <- forM [d | d <- declarations, collectionContainer (C.idText (C.dataId d)) == Nothing] $ \declaration -> do
     name <- maybe (Left "unplanned Kotlin data name") Right (lookup (C.dataId declaration) names)
     let parameters = zip (C.dataParameters declaration) [candidate | i <- [0::Int ..], let candidate = "T" ++ show i, candidate /= name]
         arguments = map (D.text . snd) parameters
@@ -212,6 +220,13 @@ codecDocUsingOwner :: String -> Maybe D.Doc -> Names -> [(C.Id, (String, String)
 codecDocUsingOwner owner context names parameters ty = case ty of
   C.TypeVariable variable -> maybe (Left "unbound Kotlin codec parameter")
     (Right . D.text . snd) (lookup variable parameters)
+  C.Constructor name args | Just short <- collectionContainer name -> do
+    children <- mapM (argument (codecDocUsingOwner owner context names parameters)) args
+    let rest = maybe [] pure context
+    pure $ case short of
+      "Set" -> call "LawSpecKotlinCodecs.set" ([D.text "schema", D.text "bits"] ++ children ++ rest)
+      "KeyVal" -> call "LawSpecKotlinCodecs.keyVal" ([D.text "schema", D.text "bits"] ++ children ++ rest)
+      _ -> call "LawSpecKotlinCodecs.sequence" ([D.text "schema", D.text "bits", quoted short] ++ children ++ rest)
   C.Constructor name args -> do
     children <- mapM (argument (codecDocUsingOwner owner context names parameters)) args
     case lookup (C.Id name) names of
@@ -263,7 +278,7 @@ emitCodecs :: [ResolvedTypeBinding] -> String -> D.Layout -> [C.DataDeclaration]
 emitCodecs mappings owner layout declarations = do
   _ <- makeRegistry declarations
   names <- namesFor declarations
-  definitions' <- mapM (definition names) declarations
+  definitions' <- mapM (definition names) [d | d <- declarations, collectionContainer (C.idText (C.dataId d)) == Nothing]
   dynamicDispatch <- if owner == "LawSpecDataCodecs" && any existentialData declarations
     then (: []) <$> dynamicCodec names else pure []
   let definitions = definitions' ++ dynamicDispatch

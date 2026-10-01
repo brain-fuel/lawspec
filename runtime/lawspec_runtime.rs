@@ -20,7 +20,7 @@ pub fn with_stack<T: Send + 'static>(body: impl FnOnce() -> T + Send + 'static) 
 }
 
 /// A logical Integer result accepts any native integer without losing bits.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Integer(pub BigInt);
 macro_rules! integer_from {
     ($($t:ty),*) => {$ (impl From<$t> for Integer {
@@ -37,6 +37,22 @@ pub struct Decimal {
     pub coefficient: BigInt,
     pub exponent: BigInt,
 }
+// Decimals compare by value, so 1.0 and 1.00 are one key.
+impl Eq for Decimal {}
+impl PartialOrd for Decimal {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+impl Ord for Decimal {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        match (self.ratio(), other.ratio()) {
+            (Ok(a), Ok(b)) => a.cmp(&b),
+            _ => (&self.coefficient, &self.exponent).cmp(&(&other.coefficient, &other.exponent)),
+        }
+    }
+}
+
 impl Decimal {
     pub fn new(coefficient: BigInt, exponent: BigInt) -> Self {
         Self {
@@ -121,22 +137,22 @@ impl PartialEq for Decimal {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct CodePoint(pub u32);
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct CodePointText(pub Vec<u32>);
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Utf16Text(pub Vec<u16>);
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Null;
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Undefined;
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Nullable<T> {
     Null,
     Present(T),
 }
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Optional<T> {
     Undefined,
     Present(T),
@@ -664,7 +680,7 @@ presence!(Nullable, Null);
 presence!(Optional, Undefined);
 
 /// Algebraic Either is independent of interoperability absence wrappers.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Either<L, R> {
     Left(L),
     Right(R),
@@ -688,6 +704,8 @@ impl<T: FromValue> FromValue for Vec<T> {
     fn from_value(value: Value) -> Result<Self> {
         let values = match value {
             Value::List(values) => values,
+            // A Stack, whose top is last natively.
+            value @ Value::Data(..) => collection_items(value)?,
             Value::Bytes(values) => values
                 .into_iter()
                 .map(|v| Value::Integer(v.into()))
@@ -1450,6 +1468,19 @@ impl Schema {
         let TypeRef::Named(name, arguments) = ty else {
             return Err("uninstantiated data type parameter".to_string().into());
         };
+        // A native collection arrives as a plain list: retag it, put a Set
+        // or KeyVal in canonical order, and a Stack's top first.
+        let value = match (collection_tag(name), value) {
+            (Some(tag), Value::List(mut items)) => {
+                if name.ends_with("::Set") || name.ends_with("::KeyVal") {
+                    items = canonical_items(items, name.ends_with("::KeyVal"))?;
+                } else if name.ends_with("::Stack") {
+                    items.reverse();
+                }
+                Value::Data(tag.into(), vec![Value::List(items)])
+            }
+            (_, value) => value,
+        };
         if let Some(definition) = self.definitions.get(name) {
             let Value::Data(tag, fields) = value else {
                 return Err(format!("expected data value of type {name}").into());
@@ -1670,8 +1701,175 @@ pub fn require_architecture(machine_bits: u32) -> Result<()> {
     }
 }
 
+/// The portable total order. Exact numbers by value, text by code point,
+/// sequences by unit, false before true, absence before presence, lists
+/// element by element, Nothing before Just, Left before Right, and other data
+/// by constructor identity, then fields left to right.
+pub fn compare_values(a: &Value, b: &Value) -> Result<std::cmp::Ordering> {
+    use std::cmp::Ordering::*;
+    use Value::*;
+    fn items(a: &[Value], b: &[Value]) -> Result<std::cmp::Ordering> {
+        for (x, y) in a.iter().zip(b) {
+            let order = compare_values(x, y)?;
+            if order != Equal {
+                return Ok(order);
+            }
+        }
+        Ok(a.len().cmp(&b.len()))
+    }
+    fn optional(a: &Option<Box<Value>>, b: &Option<Box<Value>>) -> Result<std::cmp::Ordering> {
+        match (a, b) {
+            (None, None) => Ok(Equal),
+            (None, Some(_)) => Ok(Less),
+            (Some(_), None) => Ok(Greater),
+            (Some(x), Some(y)) => compare_values(x, y),
+        }
+    }
+    Ok(match (a, b) {
+        (Bool(x), Bool(y)) => x.cmp(y),
+        (Integer(_) | Decimal(_) | Rational(_), Integer(_) | Decimal(_) | Rational(_)) => a.exact()?.cmp(&b.exact()?),
+        (Text(x), Text(y)) => x.chars().cmp(y.chars()),
+        (Char(x), Char(y)) => x.cmp(y),
+        (CodePoint(x), CodePoint(y)) => x.cmp(y),
+        (CodeUnit16(x), CodeUnit16(y)) => x.cmp(y),
+        (CodePointText(x), CodePointText(y)) => x.cmp(y),
+        (Utf16Text(x), Utf16Text(y)) => x.cmp(y),
+        (Bytes(x), Bytes(y)) => x.cmp(y),
+        (Unit, Unit) | (Null, Null) | (Undefined, Undefined) => Equal,
+        (Nullable(x), Nullable(y)) | (Optional(x), Optional(y)) | (Maybe(x), Maybe(y)) => optional(x, y)?,
+        (Left(_), Right(_)) => Less,
+        (Right(_), Left(_)) => Greater,
+        (Left(x), Left(y)) | (Right(x), Right(y)) => compare_values(x, y)?,
+        (List(x), List(y)) => items(x, y)?,
+        (Data(s, x), Data(t, y)) if s == t => items(x, y)?,
+        (Data(s, _), Data(t, _)) => s.cmp(t),
+        _ => return Err("values have no portable order".into()),
+    })
+}
+
+/// A Set's items or a KeyVal's entries sorted by key, keeping the last of
+/// equal keys.
+pub fn canonical_items(items: Vec<Value>, keyed: bool) -> Result<Vec<Value>> {
+    let key = |item: &Value| -> Value {
+        match (keyed, item) {
+            (true, Value::Data(_, fields)) if !fields.is_empty() => fields[0].clone(),
+            _ => item.clone(),
+        }
+    };
+    let mut ordered = items;
+    let mut failure = None;
+    ordered.sort_by(|a, b| match compare_values(&key(a), &key(b)) {
+        Ok(order) => order,
+        Err(error) => {
+            failure = Some(error);
+            std::cmp::Ordering::Equal
+        }
+    });
+    if let Some(error) = failure {
+        return Err(error);
+    }
+    let mut result: Vec<Value> = Vec::new();
+    for item in ordered {
+        if let Some(last) = result.last() {
+            if compare_values(&key(last), &key(&item))? == std::cmp::Ordering::Equal {
+                *result.last_mut().unwrap() = item;
+                continue;
+            }
+        }
+        result.push(item);
+    }
+    Ok(result)
+}
+
+/// Built-in collections: natively a BTreeSet, a BTreeMap, a VecDeque (Queue
+/// and Deque) or a Vec whose top is last (Stack). Natives convert to plain
+/// lists; the schema retags them by the expected type.
+pub const COLLECTIONS: &str = "lawspec.collections::type::";
+
+pub fn collection_tag(name: &str) -> Option<&'static str> {
+    Some(match name.strip_prefix(COLLECTIONS)? {
+        "Set" => "lawspec.collections::type::Set::SetItems",
+        "KeyVal" => "lawspec.collections::type::KeyVal::KeyValEntries",
+        "Queue" => "lawspec.collections::type::Queue::QueueItems",
+        "Stack" => "lawspec.collections::type::Stack::StackItems",
+        "Deque" => "lawspec.collections::type::Deque::DequeItems",
+        _ => return None,
+    })
+}
+
+fn collection_items(value: Value) -> Result<Vec<Value>> {
+    match value {
+        Value::List(items) => Ok(items),
+        Value::Data(tag, mut fields) if tag.starts_with(COLLECTIONS) && fields.len() == 1 => {
+            let reverse = tag.ends_with("::StackItems");
+            match fields.pop().unwrap() {
+                Value::List(mut items) => {
+                    if reverse {
+                        items.reverse();
+                    }
+                    Ok(items)
+                }
+                _ => Err("expected collection items".into()),
+            }
+        }
+        _ => Err("expected a collection".into()),
+    }
+}
+
+impl<T: IntoValue> IntoValue for std::collections::BTreeSet<T> {
+    fn into_value(self) -> Value {
+        Value::List(self.into_iter().map(IntoValue::into_value).collect())
+    }
+}
+impl<T: FromValue + Ord> FromValue for std::collections::BTreeSet<T> {
+    fn from_value(value: Value) -> Result<Self> {
+        collection_items(value)?.into_iter().map(T::from_value).collect()
+    }
+}
+impl<K: IntoValue, V: IntoValue> IntoValue for std::collections::BTreeMap<K, V> {
+    fn into_value(self) -> Value {
+        Value::List(
+            self.into_iter()
+                .map(|(k, v)| Value::Data("lawspec.collections::type::Entry::Entry".into(), vec![k.into_value(), v.into_value()]))
+                .collect(),
+        )
+    }
+}
+impl<K: FromValue + Ord, V: FromValue> FromValue for std::collections::BTreeMap<K, V> {
+    fn from_value(value: Value) -> Result<Self> {
+        collection_items(value)?
+            .into_iter()
+            .map(|entry| match entry {
+                Value::Data(_, fields) if fields.len() == 2 => {
+                    let mut fields = fields.into_iter();
+                    Ok((K::from_value(fields.next().unwrap())?, V::from_value(fields.next().unwrap())?))
+                }
+                _ => Err("expected a KeyVal entry".into()),
+            })
+            .collect()
+    }
+}
+impl<T: IntoValue> IntoValue for std::collections::VecDeque<T> {
+    fn into_value(self) -> Value {
+        Value::List(self.into_iter().map(IntoValue::into_value).collect())
+    }
+}
+impl<T: FromValue> FromValue for std::collections::VecDeque<T> {
+    fn from_value(value: Value) -> Result<Self> {
+        collection_items(value)?.into_iter().map(T::from_value).collect()
+    }
+}
+
 pub fn helper(name: &str, mut args: Vec<Value>) -> Result<Value> {
     use Value::*;
+    if name == "compare" && args.len() == 2 {
+        let tag = match compare_values(&args[0], &args[1])? {
+            std::cmp::Ordering::Less => "Less",
+            std::cmp::Ordering::Equal => "Equal",
+            std::cmp::Ordering::Greater => "Greater",
+        };
+        return Ok(Data(format!("lawspec.collections::type::Ordering::{tag}"), vec![]));
+    }
     if name == "round" && args.len() == 2 {
         let scale = i32::from_value(args.pop().unwrap())?;
         return Ok(Decimal(self::Decimal::round(args[0].exact()?, scale)?));

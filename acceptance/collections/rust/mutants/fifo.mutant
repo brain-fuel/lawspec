@@ -1,0 +1,8 @@
+@@ src/example/collections.rs
+<<<<<<<
+pub fn fifo(value0: Vec<i8>) -> VecDeque<i8> {
+    value0.into_iter().collect()
+=======
+pub fn fifo(value0: Vec<i8>) -> VecDeque<i8> {
+    value0.into_iter().rev().collect()
+>>>>>>>

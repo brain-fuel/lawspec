@@ -457,15 +457,36 @@ constructWith :: Maybe LS.SymbolContext -> Schema -> TypeRef -> Int
               -> String -> [LS.Scalar] -> Either String LS.Scalar
 constructWith scope schema typeRef bits tag fields = case typeRef of
   Named "List" [_] -> case (tag, fields) of
-    ("List::Nil", []) -> validateWith scope schema typeRef bits (LS.SList [])
-    ("List::Cons", [headValue, tailValue]) -> do
-      checked <- validateWith scope schema typeRef bits tailValue
-      case checked of
-        LS.SList values -> validateWith scope schema typeRef bits
-          (LS.SList (headValue : values))
-        _ -> Left "invalid checked List representation"
+    ("List::Nil", []) -> pure (LS.SList [])
+    ("List::Cons", [headValue, LS.SList values]) -> pure (LS.SList (headValue : values))
     _ -> Left "invalid List constructor or field count"
-  _ -> validateWith scope schema typeRef bits (LS.SData tag fields)
+  _ -> either (Left . failureMessage) Right (shallowChecked scope schema typeRef bits (LS.SData tag fields))
+
+-- A newly built node: its fields were checked when they were built, decoded
+-- or drawn, and a deep check of each node would make recursion quadratic.
+shallowChecked :: Maybe LS.SymbolContext -> Schema -> TypeRef -> Int -> LS.Scalar
+               -> Either ValidationFailure LS.Scalar
+shallowChecked scope schema@(Schema _ _ contracts indices _ _) typeRef bits value = do
+  variants <- fromEvaluation (constructors schema typeRef)
+  case (variants, value) of
+    (Just choices, LS.SData tag fields) -> case find (\(Constructor name _) -> name == tag) choices of
+      Nothing -> Left (EvaluationFailure ("unknown constructor " ++ tag ++ " for " ++ show typeRef))
+      Just (Constructor _ expected) -> do
+        unless (length fields == length expected)
+          (Left (EvaluationFailure ("wrong field count: " ++ tag)))
+        let arguments = case typeRef of
+              Named _ values -> values
+              Parameter _ -> []
+        forM_ (zip [1 :: Int ..] (maybe [] id (lookup tag contracts))) $ \(index, predicate) ->
+          failureContext (tag ++ " predicate " ++ show index) $ do
+            accepted <- fromEvaluation (predicate schema arguments fields bits scope)
+            unless accepted (Left (Rejected "constructor field contract rejected"))
+        forM_ [text | text <- maybe [] id (lookup tag indices), isIndexGuard text] $ \text -> do
+          let field position index = indexOf schema (fieldTypes expected !! position) (fields !! position) index
+          holds <- fromEvaluation (indexGuard field text)
+          unless holds (Left (Rejected (tag ++ ": index guard " ++ text ++ " failed")))
+        pure value
+    _ -> validateChecked scope schema typeRef bits value
 
 equal :: Schema -> TypeRef -> Int -> LS.Scalar -> LS.Scalar
       -> Either String Bool
@@ -485,8 +506,9 @@ match = matchWith Nothing
 
 matchWith :: Maybe LS.SymbolContext -> Schema -> TypeRef -> Int -> LS.Scalar
           -> [(String, [LS.Scalar] -> a)] -> Either String a
-matchWith scope schema typeRef bits value branches = do
-  checked <- validateWith scope schema typeRef bits value
+matchWith _ _ _ _ value branches = do
+  -- Values are checked where they are built, decoded or drawn.
+  let checked = value
   (tag, fields) <- case checked of
     LS.SData name payload -> pure (name, payload)
     LS.SList [] -> pure ("List::Nil", [])

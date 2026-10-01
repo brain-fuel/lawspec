@@ -472,9 +472,55 @@ export function equal(a, b, ta, tb) {
     );
   return a === b;
 }
+const ORDERING = 'lawspec.collections::type::Ordering::';
+const sign = (x) => (x > 0 ? 1 : x < 0 ? -1 : 0);
+
+// The portable total order: -1, 0 or 1. Exact numbers by value, text by code
+// point, raw sequences by unit, false before true, absence before presence,
+// lists element by element, Nothing before Just, and other data by
+// constructor identity, then fields left to right.
+export function compareValues(a, b) {
+  if (typeof a === 'boolean' && typeof b === 'boolean') return sign(Number(a) - Number(b));
+  if (typeof a === 'string' && typeof b === 'string') {
+    const x = [...a], y = [...b];
+    for (let i = 0; i < Math.min(x.length, y.length); ++i) {
+      const order = sign(x[i].codePointAt(0) - y[i].codePointAt(0));
+      if (order) return order;
+    }
+    return sign(x.length - y.length);
+  }
+  if (a instanceof Raw && b instanceof Raw) return compareValues([...a.units], [...b.units]);
+  if (a === UNIT && b === UNIT) return 0;
+  if (a instanceof Presence && b instanceof Presence) {
+    if (a.present !== b.present) return a.present ? 1 : -1;
+    return a.present ? compareValues(a.value, b.value) : 0;
+  }
+  if (Array.isArray(a) && Array.isArray(b)) {
+    for (let i = 0; i < Math.min(a.length, b.length); ++i) {
+      const order = compareValues(a[i], b[i]);
+      if (order) return order;
+    }
+    return sign(a.length - b.length);
+  }
+  if (a instanceof DataValue && b instanceof DataValue) {
+    if (a.tag !== b.tag) {
+      if (a.tag === 'Maybe::Nothing' && b.tag === 'Maybe::Just') return -1;
+      if (a.tag === 'Maybe::Just' && b.tag === 'Maybe::Nothing') return 1;
+      return a.tag < b.tag ? -1 : 1;
+    }
+    return compareValues([...a.fields], [...b.fields]);
+  }
+  if (typeof a === 'number' && typeof b === 'number') return sign(a - b);
+  const x = ratio(a), y = ratio(b);
+  const difference = x.n * y.d - y.n * x.d;
+  return difference > 0n ? 1 : difference < 0n ? -1 : 0;
+}
+
 export function helper(n, args, types, bits = 64) {
   const x = args[0];
   if (n === 'checked') return true;
+  if (n === 'compare')
+    return new DataValue(ORDERING + ['Less', 'Equal', 'Greater'][compareValues(args[0], args[1]) + 1], []);
   if (n === 'length')
     return BigInt(
         typeof x === 'string'

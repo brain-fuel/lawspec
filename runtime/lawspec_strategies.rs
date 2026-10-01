@@ -618,7 +618,28 @@ fn shape_strategy_with_generators(
                     );
                   }
                 }
-                proptest::strategy::Union::new(alternatives).boxed()
+                let union = proptest::strategy::Union::new(alternatives).boxed();
+                // Generated collections are canonicalised rather than filtered.
+                match ty {
+                    ls::TypeRef::Named(name, _)
+                        if name.starts_with(ls::COLLECTIONS) && (name.ends_with("::Set") || name.ends_with("::KeyVal")) =>
+                    {
+                        let keyed = name.ends_with("::KeyVal");
+                        union
+                            .prop_map(move |value| match value {
+                                Value::Data(tag, mut fields) if fields.len() == 1 => match fields.pop().unwrap() {
+                                    Value::List(items) => Value::Data(
+                                        tag,
+                                        vec![Value::List(ls::canonical_items(items, keyed).expect("keyed values have an order"))],
+                                    ),
+                                    other => Value::Data(tag, vec![other]),
+                                },
+                                other => other,
+                            })
+                            .boxed()
+                    }
+                    _ => union,
+                }
             } else {
                 let ls::TypeRef::Named(name, arguments) = ty else {
                     return Err("uninstantiated generator type".into());

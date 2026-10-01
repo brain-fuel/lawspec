@@ -1,0 +1,6 @@
+@@ src/example/collections.mjs
+<<<<<<<
+  return new Set(value0);
+=======
+  return new Set(value0.slice(1));
+>>>>>>>

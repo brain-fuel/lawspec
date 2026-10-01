@@ -148,7 +148,8 @@ renderExpressionWithContext declarations bits reference typeKey local external =
         values <- mapM render args
         pure (runtime "helper" [quoted (builtinName builtin),array values,bits])
       Match scrutinee branches -> do
-        value <- render scrutinee >>= checked (expressionType scrutinee)
+        -- Values are checked where they are built, decoded or drawn.
+        value <- render scrutinee
         let dataName = "_match" ++ show (length (show term))
         case expressionType scrutinee of
           Constructor name _ | any ((== Id name) . dataId) declarations -> do

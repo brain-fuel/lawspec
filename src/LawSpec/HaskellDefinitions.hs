@@ -6,6 +6,7 @@ import LawSpec.Core.DefinitionContracts (checkedDefinitionContracts)
 import LawSpec.Core.Evidence (runtimePostconditions)
 import LawSpec.Common (Artifact(..))
 import qualified LawSpec.HaskellData as Native
+import LawSpec.Collections (isCollectionsType)
 import qualified LawSpec.HaskellExpr as E
 import qualified LawSpec.Code.Doc as D
 import Data.Char (toUpper)
@@ -33,7 +34,10 @@ emitHaskellDefinitions layout bits declarations units = do
           "import LawSpecRuntime (Scalar(..))", "import qualified LawSpecRuntime as LS",
           "import qualified LawSpecSchema as Schema", "import qualified LawSpecCodecs as Codec",
           "import qualified LawSpecData as Data", "import qualified LawSpecDataSchema as DataSchema",
-          "import qualified LawSpecDataCodecs as Codecs"] ++ imports ++
+          "import qualified LawSpecDataCodecs as Codecs"] ++
+         concat [["import qualified LawSpecCollectionCodecs as Collections", "import qualified Data.Set as Set",
+                  "import qualified Data.Map.Strict as Map", "import qualified Data.Sequence as Seq"]
+                 | any (isCollectionsType . idText . dataId) declarations] ++ imports ++
          (if null imports then "" : environment else []) ++ [""])) <>
         D.hardline <> D.joinWith (D.hardline <> D.hardline) bodies <> D.hardline)) "generated" "source"
     environment = ["_lawspecSchema :: Schema.Schema",
@@ -59,12 +63,11 @@ emitHaskellDefinitions layout bits declarations units = do
               callee <- maybe (Left "unresolved Haskell total call") Right (lookup identity names)
               pure (E.checked (E.apply (drop (length ("Definitions." :: String)) callee) (text "symbols":values)))
             _ -> Left "expected Haskell definition call"
-      checks <- mapM (\binder -> do
-        expression <- validate (binderType binder) (text (local (binderId binder)))
-        pure (D.group (text (local (binderId binder) ++ " <-") <>
-          D.nest 2 (D.softline <> expression)))) (definitionArguments d)
+      -- Arguments and results were checked where they were built, decoded
+      -- or drawn; the native wrappers check values crossing from adapters.
+      let checks = []
       body <- E.renderExpression declarations bits "_lawspecSchema" "symbols" local external (definitionBody d)
-      result <- validate (expressionType (definitionBody d)) (text "result")
+      let result = E.apply "P.pure" [text "result"]
       let evaluate = text "let result =" <> D.nest 6 (D.hardline <> body)
           checkedResult = D.group (E.apply "LS.forceScalar" [text "result"] <> text " `P.seq`" <>
             D.nest 2 (D.softline <> result))

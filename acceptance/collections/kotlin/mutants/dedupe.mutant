@@ -1,0 +1,6 @@
+@@ src/main/kotlin/example/Collections.kt
+<<<<<<<
+fun dedupe(value0: List<Int>): Set<Int> = value0.toSet()
+=======
+fun dedupe(value0: List<Int>): Set<Int> = value0.drop(1).toSet()
+>>>>>>>

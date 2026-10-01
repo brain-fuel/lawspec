@@ -1,0 +1,6 @@
+@@ src/example/collections.rs
+<<<<<<<
+    rotated.rotate_left(if rotated.is_empty() { 0 } else { 1 });
+=======
+    rotated.pop_front();
+>>>>>>>

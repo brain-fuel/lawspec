@@ -1,0 +1,12 @@
+@@ src/example/collections.mjs
+<<<<<<<
+  return [...value0];
+}
+
+// A Stack
+=======
+  return [...value0].reverse();
+}
+
+// A Stack
+>>>>>>>

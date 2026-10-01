@@ -96,14 +96,13 @@ emitDefinitions withNative layout bits declarations units = do
             _ -> Left "expected resolved definition call"
           signature = E.call ("public static Value evaluate" ++ show index)
             (D.text "Map<String, Object> symbols" : [D.text ("Value input" ++ show i) | i <- [0..length args-1]]) <> D.text " "
-      checks <- forM (zip [0::Int ..] args) $ \(i,b) -> do
-        ref <- E.reference (binderType b)
-        pure (assign (local (binderId b))
-          (E.call "_schema.validate" [ref,D.text ("input" ++ show i),D.text (show bits),D.text "symbols"]))
+      -- Arguments and results were checked where they were built, decoded
+      -- or drawn; the native wrappers check values crossing from adapters.
+      let checks = [assign (local (binderId b)) (D.text ("input" ++ show i)) | (i,b) <- zip [0::Int ..] args]
       body <- E.renderExpression declarations bits local external (definitionBody d)
       ref <- E.reference (expressionType (definitionBody d))
       let contract = lookup (declarationId (definitionDeclaration d)) [(contractDeclaration c,c) | c <- contracts]
-          validated = E.call "_schema.validate" [ref,D.text "result",D.text (show bits),D.text "symbols"]
+          validated = const (D.text "result") ref
       statements <- case contract of
         Nothing -> pure (checks ++ [assign "result" body,D.text "return " <> validated <> D.text ";"])
         Just c -> do

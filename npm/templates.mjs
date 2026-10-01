@@ -81,12 +81,12 @@ const scaffolds = {
                     "haskell": {
                       "readable": {
                         "stack.yaml": "snapshot: lts-24.58\npackages: [.]\n",
-                        "package.yaml": "name: lawspec-example\nversion: 0.1.0\ndependencies: [base, text, bytestring]\nlibrary:\n  source-dirs: src\ntests:\n  laws:\n    main: Spec.hs\n    source-dirs: test\n    dependencies: [lawspec-example, hspec, hedgehog, hspec-hedgehog, containers, mtl]\n    build-tools: [hspec-discover]\n",
+                        "package.yaml": "name: lawspec-example\nversion: 0.1.0\ndependencies: [base, text, bytestring, containers]\nlibrary:\n  source-dirs: src\ntests:\n  laws:\n    main: Spec.hs\n    source-dirs: test\n    dependencies: [lawspec-example, hspec, hedgehog, hspec-hedgehog, containers, mtl]\n    build-tools: [hspec-discover]\n",
                         "test/Spec.hs": "{-# OPTIONS_GHC -F -pgmF hspec-discover #-}\n"
                       },
                       "compact": {
                         "stack.yaml": "snapshot: lts-24.58\npackages: [.]\n",
-                        "package.yaml": "name: lawspec-example\nversion: 0.1.0\ndependencies: [base, text, bytestring]\nlibrary:\n  source-dirs: src\ntests:\n  laws:\n    main: Spec.hs\n    source-dirs: test\n    dependencies: [lawspec-example, hspec, hedgehog, hspec-hedgehog, containers, mtl]\n    build-tools: [hspec-discover]\n",
+                        "package.yaml": "name: lawspec-example\nversion: 0.1.0\ndependencies: [base, text, bytestring, containers]\nlibrary:\n  source-dirs: src\ntests:\n  laws:\n    main: Spec.hs\n    source-dirs: test\n    dependencies: [lawspec-example, hspec, hedgehog, hspec-hedgehog, containers, mtl]\n    build-tools: [hspec-discover]\n",
                         "test/Spec.hs": "{-# OPTIONS_GHC -F -pgmF hspec-discover #-}\n"
                       }
                     },

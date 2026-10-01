@@ -1,0 +1,6 @@
+@@ example/collections/adapter.go
+<<<<<<<
+	return append(slices.Clone(value0[1:]), value0[0])
+=======
+	return slices.Clone(value0[1:])
+>>>>>>>

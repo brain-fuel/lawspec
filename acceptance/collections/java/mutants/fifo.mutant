@@ -1,0 +1,14 @@
+@@ src/main/java/example/Collections.java
+<<<<<<<
+    return new ArrayDeque<>(value0);
+  }
+
+  // A Stack
+=======
+    var reversed = new ArrayDeque<Byte>();
+    for (var value : value0) reversed.push(value);
+    return reversed;
+  }
+
+  // A Stack
+>>>>>>>

@@ -56,10 +56,10 @@ emitGoDefinitions layout bits declarations units = do
               pure (E.call name (line "symbols":values))
             _ -> Left "expected Go definition call"
       body <- E.renderExpression declarations bits schema local external (definitionBody d)
-      checks <- mapM (\binder -> do
-        value <- schemaCall "validate" (binderType binder) (line (local (binderId binder)))
-        pure (line (local (binderId binder) ++ " = ") <> value)) (definitionArguments d)
-      result <- schemaCall "validate" (expressionType (definitionBody d)) (line "result")
+      -- Arguments and results were checked where they were built, decoded
+      -- or drawn; the native wrappers check values crossing from adapters.
+      let checks = []
+          result = line "result"
       let contract = lookup (declarationId (definitionDeclaration d)) [(contractDeclaration c,c) | c <- contracts]
       statements <- case contract of
         Nothing -> pure (checks ++ [assign "result" body,line "return " <> result])

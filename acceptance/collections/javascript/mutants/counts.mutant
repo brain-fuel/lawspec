@@ -1,0 +1,6 @@
+@@ src/example/collections.mjs
+<<<<<<<
+counts.set(word, (counts.get(word) ?? 0n) + 1n);
+=======
+counts.set(word, 1n);
+>>>>>>>

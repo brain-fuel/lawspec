@@ -1,0 +1,6 @@
+@@ src/main/kotlin/example/Collections.kt
+<<<<<<<
+fun fifo(value0: List<Byte>): ArrayDeque<Byte> = ArrayDeque(value0)
+=======
+fun fifo(value0: List<Byte>): ArrayDeque<Byte> = ArrayDeque(value0.reversed())
+>>>>>>>

@@ -1,0 +1,12 @@
+@@ src/example/collections.rs
+<<<<<<<
+    value0.into_iter().collect()
+}
+
+pub fn wordCounts
+=======
+    value0.into_iter().skip(1).collect()
+}
+
+pub fn wordCounts
+>>>>>>>

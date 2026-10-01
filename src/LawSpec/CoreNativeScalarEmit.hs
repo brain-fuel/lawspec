@@ -1,4 +1,5 @@
 module LawSpec.CoreNativeScalarEmit (nativeScalarEmit, nativeScalarEmitWithData, nativeScalarEmitWithDefinitions, nativeScalarEmitWithFormat, nativeScalarEmitWithNativeGenerators, nativeScalarEmitWithAdapterBindings) where
+import LawSpec.Collections (isCollectionsType)
 import qualified LawSpec.JavaData as JavaData
 import qualified LawSpec.JavaExpr as JavaExpr
 import qualified LawSpec.JavaTestHelpers as JavaTestHelpers
@@ -87,8 +88,12 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
     hsChecked expression = "(either error id (" ++ expression ++ "))"
     hsConstruct ty tag fields = hsChecked ("Schema.construct _lawspecSchema (" ++ hsRef ty ++ ") " ++
       show bits ++ " " ++ q tag ++ " " ++ arr fields)
-    hsImports = "import Prelude\nimport qualified Prelude as P\nimport qualified Data.Int as I\nimport qualified Data.Word as W\nimport qualified Data.Text as T\nimport qualified Data.ByteString as B\nimport qualified Data.Complex as C\nimport qualified LawSpecRuntime as LS\nimport qualified LawSpecData as Data\n"
-    hsSupport = "import qualified LawSpecSchema as Schema\nimport qualified LawSpecDataSchema as DataSchema\nimport qualified LawSpecCodecs as Codec\nimport qualified LawSpecDataCodecs as Codecs\nimport qualified LawSpecDataStrategies as Strategies\n"
+    hsImports = "import Prelude\nimport qualified Prelude as P\nimport qualified Data.Int as I\nimport qualified Data.Word as W\nimport qualified Data.Text as T\nimport qualified Data.ByteString as B\nimport qualified Data.Complex as C\nimport qualified LawSpecRuntime as LS\nimport qualified LawSpecData as Data\n" ++ hsCollectionImports
+    hsSupport = "import qualified LawSpecSchema as Schema\nimport qualified LawSpecDataSchema as DataSchema\nimport qualified LawSpecCodecs as Codec\nimport qualified LawSpecDataCodecs as Codecs\nimport qualified LawSpecDataStrategies as Strategies\n" ++
+      (if hsCollections then "import qualified LawSpecCollectionCodecs as Collections\n" else "")
+    -- Collections need the containers package; only programs using them import it.
+    hsCollections = any (isCollectionsType . C.idText . C.dataId) dataDeclarations
+    hsCollectionImports = if hsCollections then "import qualified Data.Set as Set\nimport qualified Data.Map.Strict as Map\nimport qualified Data.Sequence as Seq\n" else ""
     hsDocument = Doc.render (Doc.selectLayout minify (Doc.Pretty 80))
     hsDataHelpers = hsDocument (HaskellTestHelpers.schemaDoc <> Doc.hardline <> Doc.hardline)
     goCustom = (go &&) . GoData.requiresSchema dataDeclarations
@@ -416,6 +421,7 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
       , HaskellProperties.nativeGenerators = nativeGenerators
       , HaskellProperties.hasDefinitions = not (null definitions)
       , HaskellProperties.constructorContracts = any (not . null . C.constructorPredicates) (concatMap C.dataConstructors dataDeclarations)
+      , HaskellProperties.usesCollections = hsCollections
       , HaskellProperties.nodeBudget = javaDataBudget
       , HaskellProperties.reference = java . HaskellData.haskellTypeReferenceDoc
       , HaskellProperties.machineBits = bits

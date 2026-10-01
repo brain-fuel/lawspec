@@ -3,6 +3,7 @@ import LawSpec.Backend
 import LawSpec.Common
 import LawSpec.Testing
 import LawSpec.Witness (witnessPlan)
+import LawSpec.Collections (isCollectionsType)
 import LawSpec.RustEmit (emitRustWithFormat, emitRustWithBindings)
 import qualified LawSpec.NativeBinding as Binding
 import qualified LawSpec.NativeRequest as NB
@@ -137,11 +138,15 @@ emitPlanFormatted minify target Plan{..} = do
             content <- either (Left . pure . (\m -> Diagnostic "target" m Nothing)) Right
               (emit (layout (Doc.Pretty 80)) planDataDeclarations)
             pure (Artifact ("src/" ++ filename) content "generated" "source")) emitted
+          -- Collection codecs need the containers package, so only programs
+          -- that use collections get them.
+          let usesCollections = any (isCollectionsType . C.idText . C.dataId) planDataDeclarations
           pure (files ++ [Artifact (directory ++ filename) (runtimeSource source) "generated" placement |
             (directory,filename,source,placement) <-
               [("src/","LawSpecSchema.hs","haskell-schema","source"),
-               ("src/","LawSpecCodecs.hs","haskell-codecs","source"),
-               ("test/","LawSpecDataStrategies.hs","haskell-data-strategies","test")]])
+               ("src/","LawSpecCodecs.hs","haskell-codecs","source")] ++
+              [("src/","LawSpecCollectionCodecs.hs","haskell-collection-codecs","source") | usesCollections] ++
+              [("test/","LawSpecDataStrategies.hs","haskell-data-strategies","test")]])
         else if target == "kotlin" then
           either (Left . pure . (\m -> Diagnostic "target" m Nothing)) Right
             (KotlinData.emitKotlinDataWithProfile planMachineBits (layout (Doc.Pretty 100)) planDataDeclarations)

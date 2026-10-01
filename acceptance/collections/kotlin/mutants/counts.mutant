@@ -1,0 +1,6 @@
+@@ src/main/kotlin/example/Collections.kt
+<<<<<<<
+.eachCount().mapValues { BigInteger.valueOf(it.value.toLong()) }
+=======
+.eachCount().mapValues { BigInteger.ONE }
+>>>>>>>

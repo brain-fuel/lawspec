@@ -796,10 +796,88 @@ func lsEqual(a, b LawSpecValue) bool {
 	return reflect.DeepEqual(a.Data, b.Data)
 }
 func lsTruth(v LawSpecValue) bool { return lsValidate("Bool", v, 64).Data.(bool) }
+const lsOrdering = "lawspec.collections::type::Ordering"
+
+// lsCompareValues is the portable total order: -1, 0 or 1. Exact numbers by
+// value, sequences by unit, false before true, absence before presence,
+// lists element by element, Nothing before Just, and other data by
+// constructor identity, then fields left to right.
+func lsCompareValues(a, b LawSpecValue) int {
+	switch x := a.Data.(type) {
+	case bool:
+		y := b.Data.(bool)
+		if x == y {
+			return 0
+		} else if x {
+			return 1
+		}
+		return -1
+	case *big.Int, *big.Rat, lawSpecDecimal:
+		return lsRatio(a).Cmp(lsRatio(b))
+	case int:
+		return lsSign(x - b.Data.(int))
+	case []int:
+		y := b.Data.([]int)
+		for i := 0; i < len(x) && i < len(y); i++ {
+			if x[i] != y[i] {
+				return lsSign(x[i] - y[i])
+			}
+		}
+		return lsSign(len(x) - len(y))
+	case []LawSpecValue:
+		y := b.Data.([]LawSpecValue)
+		for i := 0; i < len(x) && i < len(y); i++ {
+			if order := lsCompareValues(x[i], y[i]); order != 0 {
+				return order
+			}
+		}
+		return lsSign(len(x) - len(y))
+	case lawSpecPresence:
+		y := b.Data.(lawSpecPresence)
+		switch {
+		case x.value == nil && y.value == nil:
+			return 0
+		case x.value == nil:
+			return -1
+		case y.value == nil:
+			return 1
+		}
+		return lsCompareValues(*x.value, *y.value)
+	case lawSpecData:
+		y := b.Data.(lawSpecData)
+		if x.tag != y.tag {
+			if x.tag == "Maybe::Nothing" && y.tag == "Maybe::Just" {
+				return -1
+			}
+			if x.tag == "Maybe::Just" && y.tag == "Maybe::Nothing" {
+				return 1
+			}
+			return strings.Compare(x.tag, y.tag)
+		}
+		return lsCompareValues(LawSpecValue{"", x.fields}, LawSpecValue{"", y.fields})
+	case nil:
+		return 0
+	}
+	panic("values have no portable order: " + a.Type)
+}
+
+func lsSign(n int) int {
+	switch {
+	case n < 0:
+		return -1
+	case n > 0:
+		return 1
+	}
+	return 0
+}
+
 func lsHelper(n string, args []LawSpecValue, bits int) LawSpecValue {
 	switch n {
 	case "checked":
 		return lsBool(true)
+	case "compare":
+		tag := [...]string{"Less", "Equal", "Greater"}[lsCompareValues(args[0], args[1])+1]
+		return LawSpecValue{lsOrdering, lawSpecData{lsOrdering + "::" + tag, nil}}
 	case "length":
 		if values, ok := args[0].Data.([]LawSpecValue); ok {
 			return lsInteger("Integer", strconv.Itoa(len(values)))

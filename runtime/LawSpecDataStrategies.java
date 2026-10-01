@@ -687,6 +687,10 @@ public final class LawSpecDataStrategies {
          }
         }
         generator = Generator.anyOf(variants);
+        // Generated collections are canonicalised rather than filtered.
+        if (LawSpecSchema.canonicalCollection(type.name())) {
+          generator = generator.map(LawSpecSchema::canonical);
+        }
       }
       if (witnesses.containsKey(type)) {
         var seeds = witnesses.get(type).stream().filter(value -> nodes(value) <= budget).toList();

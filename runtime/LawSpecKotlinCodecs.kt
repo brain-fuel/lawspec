@@ -19,12 +19,12 @@ object LawSpecKotlinCodecs {
         val values = when {
             tag == "List::Nil" && fields.isEmpty() -> emptyList()
             tag == "List::Cons" && fields.size == 2 -> {
-                val tail = schema.validate(type, fields[1], bits, symbols).data() as List<*>
+                val tail = fields[1].data() as List<*>
                 listOf(fields[0]) + tail.map { it as Runtime.Value }
             }
             else -> throw IllegalArgumentException("invalid List constructor or field count")
         }
-        return schema.validate(type, Runtime.Value(LawSpecSchema.key(type), values), bits, symbols)
+        return Runtime.Value(LawSpecSchema.key(type), values)
     }
 
     fun match(
@@ -43,7 +43,9 @@ object LawSpecKotlinCodecs {
         symbols: MutableMap<String, Any>,
         branch: (String, List<Runtime.Value>) -> Runtime.Value,
     ): Runtime.Value {
-        val checked = schema.validate(type, value, bits, symbols)
+        // Values in generated code are checked where they are built, decoded
+        // or drawn, so matching only dispatches.
+        val checked = value
         if (type.name() == "List") {
             val values = (checked.data() as List<*>).map { it as Runtime.Value }
             return if (values.isEmpty()) {
@@ -57,6 +59,35 @@ object LawSpecKotlinCodecs {
         }
         val data = checked.data() as Runtime.Data
         return branch(data.tag(), data.fields())
+    }
+
+    /** A Set natively, in canonical order when LawSpec builds it. */
+    fun <T> set(schema: LawSpecSchema, bits: Int, element: Codec<T>, symbols: MutableMap<String, Any> = mutableMapOf()): Codec<Set<T>> {
+        val codec = schema.set(element, bits, symbols)
+        return schema.codec(codec.type(), bits, symbols, { codec.encode(it) }, { codec.decode(it) })
+    }
+
+    /** A KeyVal natively, in canonical key order when LawSpec builds it. */
+    fun <K, V> keyVal(
+        schema: LawSpecSchema, bits: Int, keys: Codec<K>, values: Codec<V>,
+        symbols: MutableMap<String, Any> = mutableMapOf(),
+    ): Codec<Map<K, V>> {
+        val codec = schema.keyVal(keys, values, bits, symbols)
+        return schema.codec(codec.type(), bits, symbols, { codec.encode(it) }, { codec.decode(it) })
+    }
+
+    /** A Queue, Stack or Deque natively: an ArrayDeque from its first item (a Stack's top is last). */
+    fun <T> sequence(
+        schema: LawSpecSchema, bits: Int, name: String, element: Codec<T>,
+        symbols: MutableMap<String, Any> = mutableMapOf(),
+    ): Codec<ArrayDeque<T>> {
+        val codec = schema.sequence(name, element, bits, symbols)
+        val stack = name == "Stack"
+        return schema.codec(
+            codec.type(), bits, symbols,
+            { deque -> codec.encode(java.util.ArrayDeque(if (stack) deque.reversed() else deque)) },
+            { value -> codec.decode(value).toList().let { if (stack) it.reversed() else it }.let { ArrayDeque(it) } },
+        )
     }
 
     fun unit(schema: LawSpecSchema, bits: Int): Codec<Unit> =

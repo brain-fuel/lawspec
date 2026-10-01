@@ -128,7 +128,8 @@ renderExpressionWithContext declarations width schema scope reference key local 
         values <- mapM render args
         pure (apply "LS.helper" [D.text (show (builtinName builtin)),array values,width])
       Match value branches -> do
-        argument <- render value >>= validate (expressionType value)
+        -- Values are checked where they are built, decoded or drawn.
+        argument <- render value
         arms <- mapM branch branches
         pure (D.group (D.text "(case " <> argument <> D.text " of {" <>
           D.nest 2 (D.softline <> D.joinWith (D.text ";" <> D.softline)

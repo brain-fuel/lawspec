@@ -11,7 +11,7 @@
 module LawSpec.Collections
   ( collectionsUnit, collectionsAlias, collectionTypes, collectionsSource
   , usedCollections, collectionOperation, collectionOperations
-  , internalConstructor, isCollectionsType
+  , internalConstructor, isCollectionsType, collectionContainer, entryTypeName
   ) where
 
 import Data.Char (isAlphaNum)
@@ -30,6 +30,16 @@ collectionTypes = ["Set", "KeyVal", "Queue", "Stack", "Deque", "Entry", "Orderin
 
 isCollectionsType :: String -> Bool
 isCollectionsType name = (collectionsUnit ++ "::type::") `isPrefixOf` name
+
+-- A built-in container's short name, from its Core type name.
+collectionContainer :: String -> Maybe String
+collectionContainer name = case stripPrefix' (collectionsUnit ++ "::type::") name of
+  Just short | short `elem` ["Set", "KeyVal", "Queue", "Stack", "Deque"] -> Just short
+  _ -> Nothing
+  where stripPrefix' prefix t = if prefix `isPrefixOf` t then Just (drop (length prefix) t) else Nothing
+
+entryTypeName :: String
+entryTypeName = collectionsUnit ++ "::type::Entry"
 
 -- A container's single, internal constructor, which source cannot name.
 internalConstructor :: String -> Maybe String

@@ -1,0 +1,6 @@
+@@ src/main/kotlin/example/Collections.kt
+<<<<<<<
+Set<List<Byte>> = value0.toSet()
+=======
+Set<List<Byte>> = value0.filter { it.isNotEmpty() }.toSet()
+>>>>>>>

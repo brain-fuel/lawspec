@@ -1,0 +1,6 @@
+@@ src/Example/Collections.hs
+<<<<<<<
+dedupe = Set.fromList
+=======
+dedupe = Set.fromList . drop 1
+>>>>>>>

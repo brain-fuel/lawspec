@@ -4,7 +4,8 @@ module LawSpec.WebTypes where
 import LawSpec.DataNames (flatDataCandidates, productConstructors)
 import Control.Monad (unless)
 import Data.Char (isAscii, isAlphaNum, isLetter, toLower, ord)
-import Data.List (nub)
+import Data.List (nub, stripPrefix)
+import LawSpec.Collections (collectionsUnit)
 import Numeric (showHex)
 import qualified LawSpec.Core as C
 import qualified LawSpec.Core.Schema as S
@@ -49,6 +50,18 @@ application name args = D.text name <> D.delimitTrailing 4 "<" ">" args
 typeDoc :: String -> Names -> [(C.Id,String)] -> C.Type -> Either String D.Doc
 typeDoc scope names parameters ty = case ty of
   C.TypeVariable variable -> maybe (Left "unbound TypeScript data parameter") (Right . D.text) (lookup variable parameters)
+  -- Built-in collections are native: see runtime/lawspec_schema.mjs.
+  C.Constructor name arguments | Just short <- collectionContainer name -> do
+    args <- mapM argument arguments
+    let byValue = case arguments of C.TypeArgument (C.Constructor n []) : _ -> webByValue n; _ -> False
+        readonly a = application "ReadonlyArray" [a]
+    pure $ case (short, args) of
+      ("Set", [a]) | byValue -> application "ReadonlySet" [a]
+                   | otherwise -> readonly a
+      ("KeyVal", [k, v]) | byValue -> application "ReadonlyMap" [k, v]
+                         | otherwise -> readonly (D.text "readonly [" <> k <> D.text ", " <> v <> D.text "]")
+      (_, [a]) -> readonly a
+      _ -> D.text "unknown"
   C.Constructor name arguments -> do
     args <- mapM argument arguments
     case lookup (C.Id name) names of
@@ -119,3 +132,13 @@ invoke name values = D.text name <> D.delimitTrailing 4 "(" ")" values
 array :: [D.Doc] -> D.Doc
 array = D.delimitTrailing 2 "[" "]"
 
+
+-- A built-in collection container's short name.
+collectionContainer :: String -> Maybe String
+collectionContainer name = case stripPrefix (collectionsUnit ++ "::type::") name of
+  Just short | short `elem` ["Set", "KeyVal", "Queue", "Stack", "Deque"] -> Just short
+  _ -> Nothing
+
+-- Scalars whose JavaScript natives compare by value.
+webByValue :: String -> Bool
+webByValue n = isInteger n || n `elem` ["Bool", "Char", "Text", "CodePoint", "CodeUnit16", "Unit"]

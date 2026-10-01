@@ -255,6 +255,7 @@ export function strategy(
         }
       }
       result = fc.oneof({withCrossShrink: true}, ...alternatives);
+      if (CANONICAL[type.name]) result = result.map(CANONICAL[type.name]);
     } else if (type.args.length === 0) {
       result = scalar(type.name).map((value) =>
           schema.validate(type, value, bits, symbols),
@@ -342,6 +343,22 @@ export function strategy(
       reference.name,
   );
 }
+
+// Sorted items without repeated keys: a Set's or a KeyVal's invariant.
+function canonical(key) {
+  return (value) => {
+    const items = [...value.fields[0]].sort((a, b) => ls.compareValues(key(a), key(b)));
+    const distinct = items.filter((item, index) =>
+      index === 0 || ls.compareValues(key(items[index - 1]), key(item)) !== 0);
+    return new ls.DataValue(value.tag, [distinct]);
+  };
+}
+
+// Generated collections are canonicalised rather than filtered.
+const CANONICAL = {
+  'lawspec.collections::type::Set': canonical((item) => item),
+  'lawspec.collections::type::KeyVal': canonical((entry) => entry.fields[0]),
+};
 
 const INDEX_SLACK = 16;
 const INDEX_CHOICES = 6;

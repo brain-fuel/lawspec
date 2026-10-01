@@ -658,6 +658,12 @@ public final class LawSpecSchema {
   }
 
   public Value validate(Named type, Value value, int bits, Map<String, Object> symbols) {
+    return validate(type, value, bits, symbols, true);
+  }
+
+  // A shallow check (deep == false) trusts fields, which were checked when built.
+  private Value validate(
+      Named type, Value value, int bits, Map<String, Object> symbols, boolean deep) {
     checkType(type, 0);
     if (bits != 32 && bits != 64)
       throw new IllegalArgumentException("machineBits must be 32 or 64");
@@ -675,6 +681,10 @@ public final class LawSpecSchema {
       var checked = new ArrayList<Value>();
       for (int index = 0; index < types.size(); index++) {
         var field = types.get(index);
+        if (!deep) {
+          checked.add(data.fields().get(index));
+          continue;
+        }
         checked.add(
             validateField(
                 (Named) field.type(),
@@ -756,7 +766,10 @@ public final class LawSpecSchema {
 
   public Value construct(
       Named type, String tag, List<Value> fields, int bits, Map<String, Object> symbols) {
-    return validate(type, new Value(key(type), new Data(tag, fields)), bits, symbols);
+    // Values in generated code are checked where they are built, decoded or
+    // drawn, so constructing checks only the new node and matching only
+    // dispatches; a deep check of each would make recursion quadratic.
+    return validate(type, new Value(key(type), new Data(tag, fields)), bits, symbols, false);
   }
 
   public Value match(Named type, Value value, int bits, Function<Data, Value> branch) {
@@ -769,7 +782,7 @@ public final class LawSpecSchema {
       int bits,
       Map<String, Object> symbols,
       Function<Data, Value> branch) {
-    var checked = validate(type, value, bits, symbols);
+    var checked = value;
     if (!(checked.data() instanceof Data data))
       throw new IllegalArgumentException("algebraic data required");
     return branch.apply(data);
@@ -847,6 +860,100 @@ public final class LawSpecSchema {
 
   public Codec<Value> supported(Named type, int bits, Map<String, Object> symbols) {
     return codec(type, bits, symbols, Function.identity(), Function.identity());
+  }
+
+  private static final String COLLECTIONS = "lawspec.collections::type::";
+
+  /** Whether a type's values keep sorted, distinct items (a Set) or keys (a KeyVal). */
+  public static boolean canonicalCollection(String name) {
+    return name.equals(COLLECTIONS + "Set") || name.equals(COLLECTIONS + "KeyVal");
+  }
+
+  /** A Set or KeyVal with its items sorted by key, keeping the last of equal keys. */
+  public static Value canonical(Value collection) {
+    var data = (Data) collection.data();
+    var list = data.fields().get(0);
+    boolean keyed = collection.type().startsWith(COLLECTIONS + "KeyVal");
+    Function<Value, Value> key = item -> keyed ? ((Data) item.data()).fields().get(0) : item;
+    var items = new ArrayList<Value>();
+    for (var item : (List<?>) list.data()) items.add((Value) item);
+    items.sort((a, b) -> LawSpecRuntime.compareValues(key.apply(a), key.apply(b)));
+    var distinct = new ArrayList<Value>();
+    for (var item : items) {
+      if (!distinct.isEmpty()
+          && LawSpecRuntime.compareValues(key.apply(distinct.get(distinct.size() - 1)), key.apply(item)) == 0) {
+        distinct.set(distinct.size() - 1, item);
+      } else {
+        distinct.add(item);
+      }
+    }
+    return new Value(collection.type(), new Data(data.tag(), List.of(new Value(list.type(), List.copyOf(distinct)))));
+  }
+
+  /** A Set natively, in canonical order when LawSpec builds it. */
+  public <T> Codec<java.util.Set<T>> set(Codec<T> element, int bits, Map<String, Object> symbols) {
+    var type = new Named(COLLECTIONS + "Set", element.type());
+    var listKey = key(new Named("List", element.type()));
+    return codec(
+        type,
+        bits,
+        symbols,
+        values -> canonical(new Value(key(type), new Data(COLLECTIONS + "Set::SetItems",
+            List.of(new Value(listKey, values.stream().map(element::encode).toList()))))),
+        value -> {
+          var result = new java.util.LinkedHashSet<T>();
+          for (var item : items(value)) result.add(element.decode(item));
+          return java.util.Collections.unmodifiableSet(result);
+        });
+  }
+
+  /** A KeyVal natively, in canonical key order when LawSpec builds it. */
+  public <K, V> Codec<java.util.Map<K, V>> keyVal(
+      Codec<K> keys, Codec<V> values, int bits, Map<String, Object> symbols) {
+    var type = new Named(COLLECTIONS + "KeyVal", keys.type(), values.type());
+    var entryType = new Named(COLLECTIONS + "Entry", keys.type(), values.type());
+    var listKey = key(new Named("List", entryType));
+    return codec(
+        type,
+        bits,
+        symbols,
+        map -> canonical(new Value(key(type), new Data(COLLECTIONS + "KeyVal::KeyValEntries",
+            List.of(new Value(listKey, map.entrySet().stream()
+                .map(entry -> new Value(key(entryType), new Data(COLLECTIONS + "Entry::Entry",
+                    List.of(keys.encode(entry.getKey()), values.encode(entry.getValue())))))
+                .toList()))))),
+        value -> {
+          var result = new java.util.LinkedHashMap<K, V>();
+          for (var entry : items(value)) {
+            var fields = ((Data) entry.data()).fields();
+            result.put(keys.decode(fields.get(0)), values.decode(fields.get(1)));
+          }
+          return java.util.Collections.unmodifiableMap(result);
+        });
+  }
+
+  /** A Queue, Stack or Deque natively: an ArrayDeque from its head (a Stack's top). */
+  public <T> Codec<java.util.ArrayDeque<T>> sequence(
+      String name, Codec<T> element, int bits, Map<String, Object> symbols) {
+    var type = new Named(COLLECTIONS + name, element.type());
+    var listKey = key(new Named("List", element.type()));
+    return codec(
+        type,
+        bits,
+        symbols,
+        deque -> new Value(key(type), new Data(COLLECTIONS + name + "::" + name + "Items",
+            List.of(new Value(listKey, deque.stream().map(element::encode).toList())))),
+        value -> {
+          var result = new java.util.ArrayDeque<T>();
+          for (var item : items(value)) result.add(element.decode(item));
+          return result;
+        });
+  }
+
+  private static List<Value> items(Value collection) {
+    var result = new ArrayList<Value>();
+    for (var item : (List<?>) ((Data) collection.data()).fields().get(0).data()) result.add((Value) item);
+    return result;
   }
 
   public <T> Codec<List<T>> list(Codec<T> element, int bits) {

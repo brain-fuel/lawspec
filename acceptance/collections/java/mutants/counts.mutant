@@ -1,0 +1,6 @@
+@@ src/main/java/example/Collections.java
+<<<<<<<
+counts.merge(word, BigInteger.ONE, BigInteger::add);
+=======
+counts.put(word, BigInteger.ONE);
+>>>>>>>

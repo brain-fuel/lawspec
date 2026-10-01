@@ -62,11 +62,9 @@ emitRustDefinitions layout bits declarations units = do
           signature = D.text ("pub(crate) fn " ++ name) <>
             D.delimitTrailing 4 "(" ")" [D.text "ctx: &mut ls::Context",D.text "arguments: Vec<ls::Value>"] <>
             D.text " -> ls::Result<ls::Value> "
-      checks <- forM (zip args locals) $ \(binder,(_,local)) -> do
-        ref <- E.reference (binderType binder)
-        pure (D.text ("let " ++ local ++ " = ") <>
-          E.call "schema.validate_with_context" [D.text "arguments.next().unwrap()",D.text "&" <> ref,D.text (show bits),D.text "ctx"] <> D.text "?;")
-      resultRef <- E.reference (expressionType (definitionBody d))
+      -- Arguments and results were checked where they were built, decoded
+      -- or drawn; the native wrappers check values crossing from adapters.
+      let checks = [D.text ("let " ++ local ++ " = arguments.next().unwrap();") | (_,(_,local)) <- zip args locals]
       body <- E.renderExpression declarations bits names locals (definitionBody d)
       let arity = D.text ("if arguments.len() != " ++ show (length args) ++ " ") <>
             D.block 4 (D.text "return Err" <> D.delimitTrailing 4 "(" ")"
@@ -76,7 +74,7 @@ emitRustDefinitions layout bits declarations units = do
       let prefix = [arity,D.text "let schema = crate::lawspec_schema::schema()?;",
             D.text "let mut arguments = arguments.into_iter();"] ++ checks
           evaluate = D.text "let result = " <> body <> D.text ";"
-          checkedResult = E.call "schema.validate_with_context" [D.text "result",D.text "&" <> resultRef,D.text (show bits),D.text "ctx"]
+          checkedResult = D.text "Ok::<ls::Value, String>(result)"
           contract = lookup (declarationId (definitionDeclaration d))
             [(contractDeclaration c,c) | c <- contracts]
       statements <- case contract of

@@ -14,7 +14,7 @@ import Data.Word
 import Data.Bits (finiteBitSize)
 import Data.Text (Text)
 import qualified Data.Text as T
-import Data.List (find, stripPrefix)
+import Data.List (find, sortBy, stripPrefix)
 import Data.Ratio
 import GHC.Float
   ( castFloatToWord32, castDoubleToWord64, castWord32ToFloat
@@ -406,9 +406,60 @@ binary op a b = either error run (promote op (scalarName a) (scalarName b))
   compareWith "==" x y = x == y
   compareWith "!=" x y = x /= y
   compareWith _ _ _ = error "unknown comparison"
+-- The portable total order. Exact numbers by value, sequences by unit, False
+-- before True, absence before presence, lists element by element, Nothing
+-- before Just, and other data by constructor identity, then fields left to
+-- right.
+compareValues :: Scalar -> Scalar -> Either String Ordering
+compareValues a b = case (a, b) of
+  (SBool x, SBool y) -> Right (compare x y)
+  (SSequence _ x, SSequence _ y) -> Right (compare x y)
+  (SCharacter _ x, SCharacter _ y) -> Right (compare x y)
+  (SAbsent _, SAbsent _) -> Right EQ
+  (SPresent _ x, SPresent _ y) -> optional x y
+  (SList xs, SList ys) -> items xs ys
+  (SData s xs, SData t ys)
+    | s == t -> items xs ys
+    | s == "Maybe::Nothing" && t == "Maybe::Just" -> Right LT
+    | s == "Maybe::Just" && t == "Maybe::Nothing" -> Right GT
+    | otherwise -> Right (compare s t)
+  _ | isExact (scalarName a) && isExact (scalarName b) -> compare <$> exactRatio a <*> exactRatio b
+  _ -> Left "values have no portable order"
+  where
+    optional Nothing Nothing = Right EQ
+    optional Nothing (Just _) = Right LT
+    optional (Just _) Nothing = Right GT
+    optional (Just x) (Just y) = compareValues x y
+    items [] [] = Right EQ
+    items [] _ = Right LT
+    items _ [] = Right GT
+    items (x : xs) (y : ys) = compareValues x y >>= \order -> if order == EQ then items xs ys else Right order
+    exactRatio value = case value of
+      SInteger _ n -> Right (fromInteger n :: Rational)
+      SDecimal c e -> Right (fromInteger c * (10 ^^ e))
+      SRational n d -> Right (n % d)
+      _ -> Left "exact value required"
+
+-- A Set's items or a KeyVal's entries sorted by key, keeping the last of
+-- equal keys.
+canonicalItems :: Bool -> [Scalar] -> [Scalar]
+canonicalItems keyed values = foldr keepLast [] (sortBy order values)
+  where
+    key value = case (keyed, value) of
+      (True, SData _ (k : _)) -> k
+      _ -> value
+    order x y = either (const EQ) id (compareValues (key x) (key y))
+    keepLast item rest = case rest of
+      next : others | order item next == EQ -> next : others
+      _ -> item : rest
+
 helper :: String -> [Scalar] -> Int -> Scalar
 helper n args bits = case (n,args) of
   ("checked",[v]) -> forceScalar v `seq` SBool True
+  ("compare",[x,y]) -> case compareValues x y of
+    Right order -> SData ("lawspec.collections::type::Ordering::" ++
+      case order of LT -> "Less"; EQ -> "Equal"; GT -> "Greater") []
+    Left message -> error message
   ("length",[SSequence _ xs]) -> SInteger "Integer" (fromIntegral (length xs))
   ("length",[SList xs]) -> SInteger "Integer" (fromIntegral (length xs))
   ("isPresent",[SPresent _ v]) -> SBool (case v of Just _ -> True; _ -> False)
@@ -474,9 +525,9 @@ sample t seed bits
         pad n s = replicate (n-length s) '0' ++ s
 
 -- Native support types preserve domains that lack a faithful Prelude type.
-newtype Decimal = Decimal Rational deriving (Eq, Show)
-newtype CodePointText = CodePointText [Char] deriving (Eq, Show)
-newtype Utf16Text = Utf16Text [Word16] deriving (Eq, Show)
+newtype Decimal = Decimal Rational deriving (Eq, Ord, Show)
+newtype CodePointText = CodePointText [Char] deriving (Eq, Ord, Show)
+newtype Utf16Text = Utf16Text [Word16] deriving (Eq, Ord, Show)
 -- Context creation is the only effect needed for fixture Symbol identity.
 -- Equality uses Unique directly, never a potentially colliding hash or label.
 newtype SymbolContext = SymbolContext Unique deriving (Eq)
@@ -501,10 +552,10 @@ instance Eq Symbol where
   ScopedSymbol scope identity _ == ScopedSymbol otherScope other _ =
     scope == otherScope && identity == other
   _ == _ = False
-data Null = Null deriving (Eq, Show)
-data Undefined = Undefined deriving (Eq, Show)
-data Nullable a = NullValue | NullableValue a deriving (Eq, Show)
-data Optional a = UndefinedValue | OptionalValue a deriving (Eq, Show)
+data Null = Null deriving (Eq, Ord, Show)
+data Undefined = Undefined deriving (Eq, Ord, Show)
+data Nullable a = NullValue | NullableValue a deriving (Eq, Ord, Show)
+data Optional a = UndefinedValue | OptionalValue a deriving (Eq, Ord, Show)
 
 class Native a where
   toNative :: String -> Scalar -> Int -> a

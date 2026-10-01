@@ -203,7 +203,13 @@ buildStrategyWith factories schema reference bits budget scalar finish = do
     assemble ty available = do
       constructors <- lift (S.constructors schema ty)
       case constructors of
-        Just variants -> concat <$> mapM (witnessVariants available) variants >>= alternatives
+        Just variants -> do
+          generator <- concat <$> mapM (witnessVariants available) variants >>= alternatives
+          -- Generated collections are canonicalised rather than filtered.
+          pure (case ty of
+            S.Named name _ | name `elem` ["lawspec.collections::type::Set", "lawspec.collections::type::KeyVal"] ->
+              fmap (fmap (canonical (name == "lawspec.collections::type::KeyVal"))) generator
+            _ -> generator)
         Nothing -> builtin ty available
 
     builtin (S.Named name []) _ = do
@@ -423,3 +429,9 @@ primitiveStrategy bits name
       in if kind `elem` ["Char", "Text"]
          then Gen.filter (\point -> point < 55296 || point > 57343) generator
          else generator
+
+-- A Set's or KeyVal's items in canonical order.
+canonical :: Bool -> LS.Scalar -> LS.Scalar
+canonical keyed value = case value of
+  LS.SData tag [LS.SList items] -> LS.SData tag [LS.SList (LS.canonicalItems keyed items)]
+  _ -> value

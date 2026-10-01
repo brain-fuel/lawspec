@@ -399,6 +399,9 @@ func lsBuildDataStrategy(schema *lawSpecSchema, reference lawSpecTypeRef, bits, 
 				}
 			}
 			result = rapid.OneOf(alternatives...)
+			if key, canonical := lsCanonicalKeys[typeRef.name]; canonical {
+				result = rapid.Map(result, func(value LawSpecValue) LawSpecValue { return lsCanonical(value, key) })
+			}
 		} else if len(typeRef.arguments) == 0 {
 			result = rapid.Map(scalar(typeRef.name), func(value LawSpecValue) LawSpecValue {
 				if checked != nil {
@@ -818,4 +821,25 @@ func lsIndexedDataStrategy(schema *lawSpecSchema, reference lawSpecTypeRef, bits
 		chosen := levels[rapid.IntRange(0, len(levels)-1).Draw(t, "index")]
 		return lawSpecCheckedValue{value: draw(t, reference, chosen)}
 	})
+}
+
+// Generated collections are canonicalised rather than filtered: a Set's
+// items and a KeyVal's keys are sorted and distinct.
+var lsCanonicalKeys = map[string]func(LawSpecValue) LawSpecValue{
+	"lawspec.collections::type::Set":    func(item LawSpecValue) LawSpecValue { return item },
+	"lawspec.collections::type::KeyVal": func(entry LawSpecValue) LawSpecValue { return entry.Data.(lawSpecData).fields[0] },
+}
+
+func lsCanonical(value LawSpecValue, key func(LawSpecValue) LawSpecValue) LawSpecValue {
+	data := value.Data.(lawSpecData)
+	list := data.fields[0]
+	items := slices.Clone(list.Data.([]LawSpecValue))
+	slices.SortStableFunc(items, func(a, b LawSpecValue) int { return lsCompareValues(key(a), key(b)) })
+	distinct := []LawSpecValue{}
+	for index, item := range items {
+		if index == 0 || lsCompareValues(key(items[index-1]), key(item)) != 0 {
+			distinct = append(distinct, item)
+		}
+	}
+	return LawSpecValue{value.Type, lawSpecData{data.tag, []LawSpecValue{{list.Type, distinct}}}}
 }

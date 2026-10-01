@@ -68,7 +68,7 @@ scaffoldFiles minify target = case target of
   "haskell" -> Right
     [ ("stack.yaml", "snapshot: lts-24.58\npackages: [.]\n")
     , ("package.yaml", unlines
-        [ "name: lawspec-example", "version: 0.1.0", "dependencies: [base, text, bytestring]"
+        [ "name: lawspec-example", "version: 0.1.0", "dependencies: [base, text, bytestring, containers]"
         , "library:", "  source-dirs: src", "tests:", "  laws:", "    main: Spec.hs", "    source-dirs: test"
         , "    dependencies: [lawspec-example, hspec, hedgehog, hspec-hedgehog, containers, mtl]"
         , "    build-tools: [hspec-discover]" ])

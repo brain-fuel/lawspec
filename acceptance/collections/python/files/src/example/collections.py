@@ -14,9 +14,9 @@ def fifo(value0):
     return deque(value0)
 
 
-# A Stack's top is its first item.
+# A Stack's top is its last item, as for append and pop.
 def lifo(value0):
-    return deque(reversed(value0))
+    return deque(value0)
 
 
 def rotate(value0):

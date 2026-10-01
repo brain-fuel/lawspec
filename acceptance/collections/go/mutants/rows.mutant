@@ -1,0 +1,6 @@
+@@ example/collections/adapter.go
+<<<<<<<
+		if !slices.ContainsFunc(
+=======
+		if len(row) > 0 && !slices.ContainsFunc(
+>>>>>>>

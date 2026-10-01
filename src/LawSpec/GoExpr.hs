@@ -121,7 +121,8 @@ renderExpressionWithContext declarations width schema ref key local external = r
         values <- mapM render args
         pure (call "lsHelper" [quoted (builtinName builtin),array values,width])
       Match scrutinee branches -> do
-        value <- render scrutinee >>= checked (expressionType scrutinee)
+        -- Values are checked where they are built, decoded or drawn.
+        value <- render scrutinee
         let matchedName = "matched" ++ show (length (show term))
             fieldsName = matchedName ++ "Fields"
             bind binder expression = [D.text (local (binderId binder) ++ " := ") <> expression,

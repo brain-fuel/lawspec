@@ -57,7 +57,7 @@ emitWebDataWithProfile ts bits layout declarations = do
         ("_fields","ReadonlyArray<unknown>"),("bits","number"),("symbols","Map<string, symbol>")]) <>
       D.text " " <> D.block 2 (D.text "return " <> body <>
         (if ts then D.text " as boolean" else mempty) <> D.text ";"))
-  classes <- concat <$> mapM (definition names) declarations
+  classes <- concat <$> mapM (definition names) [d | d <- declarations, collectionContainer (C.idText (C.dataId d)) == Nothing]
   metadata <- mapM (definitionSchema names bindings) schemas
   let extension = if ts then "ts" else "mjs"
       importExtension = if ts then "js" else "mjs"
@@ -162,7 +162,8 @@ emitWebDataWithProfile ts bits layout declarations = do
     trimmed values needed = take (length needed - length (takeWhile not (reverse needed))) values
     definitionSchema names bindings schema = do
       variants <- forM (S.constructors schema) $ \constructor -> do
-        native <- lookupName names (C.Id (S.constructorTag constructor))
+        native <- if collectionContainer (S.typeName schema) /= Nothing then pure "null"
+          else lookupName names (C.Id (S.constructorTag constructor))
         pure (invoke "new schema.Constructor"
           ([D.text (q (S.constructorTag constructor)),
            array [invoke "new schema.Field" [D.text (q (S.fieldName field)),reference (S.fieldType field)] | field <- S.fields constructor],
