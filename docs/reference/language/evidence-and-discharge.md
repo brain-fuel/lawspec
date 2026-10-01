@@ -8,7 +8,7 @@ strongest to weakest:
 | `PROVED` | `proved` | Laws over checked definitions; definition postconditions and indices | Statically, by the prover |
 | `EXHAUSTIVELY CHECKED` | `exhaustively-checked` | Laws whose inputs form a finite domain | Every input, by the compiler or the generated tests |
 | `PROPERTY TESTED` | `property-tested` | Other laws | Generated cases, boundary cases and examples |
-| `RUNTIME CHECKED` | `runtime-checked` | Adapter contracts, definition preconditions, constructor constraints, native type bindings | At every native boundary |
+| `RUNTIME CHECKED` | `runtime-checked` | Adapter contracts, definition preconditions, constructor constraints, native type bindings, non-linear definition indices | At every native boundary, or on each definition result |
 | `ASSUMED / EXTERNAL` | `assumed` | Adapters, native functions, custom generators and codec hooks | Taken on trust |
 
 The reasoning behind these categories is in
@@ -54,6 +54,14 @@ end
 ```text
 law always positive is false for x = -128
 ```
+
+## Non-linear definition indices
+
+A definition's result index that needs non-linear arithmetic, such as
+`(r + r) * c = 2 * (r * c)`, cannot be proved by linear arithmetic. It is
+checked on each result instead and reported as `RUNTIME CHECKED`, with the
+reason "non-linear index arithmetic is beyond the prover; checked on each
+result". A linear claim that does not follow is still a compile error.
 
 ## Laws over adapters
 

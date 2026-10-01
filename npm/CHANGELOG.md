@@ -1,5 +1,63 @@
 # Changelog
 
+## 0.16.0
+
+### GADTs
+
+A constructor can fix a type parameter: `| Number value :: BigInt where a =
+BigInt` builds only `Expr BigInt`. Matching refines the parameter in each
+branch, so `definition eval (e :: Expr a) :: a` type-checks. A constructor that
+cannot build a type is no value of it: matches need no branch for it, and
+decoding rejects it. Definitions may call themselves at other instances
+(polymorphic recursion), up to 64 instances each. Existentials determined by
+the type (`where a = Pair b c`) are supported, and so are existentials only a
+field mentions: each such value carries its type as a trailing `witness` field,
+and generated values draw it from `Bool` and `Int32`. Native types use each
+target's own GADT form where it has one: sealed interfaces of records in Java,
+Kotlin data classes, Haskell GADT syntax, TypeScript conditional unions and
+`Expr[int]` in Python. See [GADTs](docs/reference/language/gadts.md).
+
+### Index arithmetic and shared indices
+
+- Index expressions accept `+ - * div mod ^`. Subtraction never truncates:
+  `n = m - 1` requires `m >= 1`, as a runtime-checked constructor constraint.
+- A variable bound by several fields makes their indices equal, so
+  `Node left :: Perfect m right :: Perfect m` declares perfect trees.
+- An implicit index may first appear as `v + k` or `k * v`:
+  `dropFirst :: (xs :: Row (k + 1)) -> (r :: Rest k)`.
+- Products and powers are uninterpreted atoms in the prover, so `r * c` and
+  `c * r` agree. A definition's non-linear result index that cannot be proved
+  is checked on each result and reported as `runtime-checked`; a linear one is
+  still an error.
+- Generation solves any equation backwards over the indices each constructor
+  can reach, in all seven runtimes. This fixes `n = m + m`, which used to build
+  children of the wrong size, and builds balanced trees even without a fixed
+  index.
+
+See [indexed families](docs/reference/language/indexed-families.md).
+
+### Flow types
+
+`pop :: Stack (n + 1) / Stack n -> Int8` declares a flow parameter: the call
+takes the stack from one type to another. In laws, `~s` passes a state and
+rebinds it to the state the call leaves, and `e1; e2` sequences:
+`(push x ~s; pop ~s) = x`. Each clause is checked left to right, so a pop the
+stack cannot take is a compile error that suggests a bound. A definition
+updates its flow parameter with `~s := e`. Each flow function returns a
+generated product (`PopFlow` with `result` and `state`), indexed by the state
+it leaves, so adapters' output states are runtime checked. See
+[flow types](docs/reference/language/flow-types.md).
+
+### Other changes
+
+- A type variable that only a field mentions is now an existential, not an
+  error.
+- Rust property tests run on a thread with a 64 MiB stack, for deep generated
+  values.
+- New acceptance suites `gadt` and `flow`, and `indexed` gains
+  `examples/specs/indexed_arithmetic.lawspec`, with mutants for every target.
+- The [roadmap](docs/explanation/roadmap.md) records 0.12 to 0.19.
+
 ## 0.15.2
 
 Generated data types are the types you would write by hand, so adapters no

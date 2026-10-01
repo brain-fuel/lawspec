@@ -5,6 +5,7 @@ reading, not instructions.
 
 - [Why executable laws](why-executable-laws.md): the idea LawSpec builds on,
   and what it adds.
+- [Roadmap](roadmap.md): what each release delivers, and what comes next.
 - [How the compiler works](how-the-compiler-works.md): from source to eight
   targets.
 - [Evidence and discharge](evidence-and-discharge.md): why every obligation

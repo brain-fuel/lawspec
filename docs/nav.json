@@ -244,6 +244,14 @@
             "path": "reference/language/indexed-families.md"
           },
           {
+            "title": "GADTs",
+            "path": "reference/language/gadts.md"
+          },
+          {
+            "title": "Flow types",
+            "path": "reference/language/flow-types.md"
+          },
+          {
             "title": "Evidence and discharge",
             "path": "reference/language/evidence-and-discharge.md"
           },
@@ -306,6 +314,10 @@
       {
         "title": "Why executable laws",
         "path": "explanation/why-executable-laws.md"
+      },
+      {
+        "title": "Roadmap",
+        "path": "explanation/roadmap.md"
       },
       {
         "title": "How the compiler works",

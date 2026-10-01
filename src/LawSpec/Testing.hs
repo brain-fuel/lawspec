@@ -10,7 +10,7 @@ import LawSpec.Core.Total (constructorProofContracts)
 import LawSpec.Core.Value
 import LawSpec.Core.Types (TypeRegistry, makeRegistry, registryDeclarations, builtinDataDeclarations, lookupData, constructorFieldsFor, compatibleConstructors, generationRequirements, freeExistentials, substitute, witnessPool)
 import qualified Data.Map.Strict as M
-import Data.List (find, nub, sort, stripPrefix)
+import Data.List (find, nub, partition, sort, stripPrefix)
 import LawSpec.IndexTerm
 import Control.Monad (filterM, unless)
 import Control.Monad.State.Strict (StateT, evalStateT, get, modify, lift)
@@ -398,9 +398,28 @@ constrainedBoundaries registry bits root =
         constructors <- lift (viableConstructors registry table ty)
         concat <$> mapM (\(tag,fields) -> do
           domains <- mapM (walk (depth-1)) fields
+          -- Witnesses are rendered into every test that uses them: prefer
+          -- small ones, as deep balanced trees double in size with each
+          -- level, and use larger ones only when no small one is valid.
           let candidates = [DataValue ty tag payload | payload <- combinations domains]
-          take 32 <$> lift (filterM (acceptsValue registry bits ty) candidates)) constructors
+              (small, large) = partition ((<= 32) . valueNodes) candidates
+          preferred <- lift (acceptedPrefix 32 (acceptsValue registry bits ty) small)
+          if null preferred then lift (acceptedPrefix 32 (acceptsValue registry bits ty) large)
+            else pure preferred) constructors
       _ -> lift (Left ("no boundary witnesses for " ++ show ty))
+    valueNodes value = case value of
+      DataValue _ _ fields -> 1 + sum (map valueNodes fields)
+      PresenceValue _ (Just inner) -> 1 + valueNodes inner
+      _ -> 1 :: Int
+    -- Validation can cost a walk of each candidate (index guards recompute
+    -- indices), so stop once enough candidates are accepted.
+    acceptedPrefix :: Int -> (Value -> Either String Bool) -> [Value] -> Either String [Value]
+    acceptedPrefix 0 _ _ = pure []
+    acceptedPrefix _ _ [] = pure []
+    acceptedPrefix n accepts (candidate : rest) = do
+      accepted <- accepts candidate
+      if accepted then (candidate :) <$> acceptedPrefix (n - 1) accepts rest
+        else acceptedPrefix n accepts rest
     -- Diagonals preserve coverage of each field's extrema; the bounded product
     -- adds unequal combinations needed by dependent fields such as y > x.
     combinations [] = [[]]

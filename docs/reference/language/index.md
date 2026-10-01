@@ -9,8 +9,12 @@ types, checked definitions, refinements and laws.
 - [Laws and examples](laws-and-examples.md): propositions, reusable laws,
   capabilities and examples.
 - [Definitions](definitions.md): checked total definitions.
-- [Indexed families](indexed-families.md): data indexed by natural numbers, and
-  proved indices.
+- [Indexed families](indexed-families.md): data indexed by natural numbers,
+  index arithmetic, and proved indices.
+- [GADTs](gadts.md): constructors that refine type arguments, and type
+  witnesses.
+- [Flow types](flow-types.md): state parameters whose type changes with each
+  call.
 - [Evidence and discharge](evidence-and-discharge.md): how each obligation is
   discharged.
 - [Domain modeling](domain-modeling.md): wrappers and workflows.
@@ -29,9 +33,9 @@ The following are not part of the language:
 - collections other than `List` (and the algebraic `Maybe` and `Either`), such
   as sets and maps;
 - asynchronous functions;
-- GADTs that refine type arguments, non-linear index expressions, and index
-  equalities between sibling fields;
+- several flow parameters in one function, and flow calls inside match
+  branches;
 - re-exports of imported names, and several versions of one package in one
   build.
 
-The compiler runs in Node; hosting it in a browser is not supported.
+See the [roadmap](../../explanation/roadmap.md) for what is planned.

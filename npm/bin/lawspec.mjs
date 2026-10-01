@@ -14,7 +14,7 @@ import {
   atomicWrite,
   safePath,
 } from "../files.mjs";
-const VERSION = "0.15.2";
+const VERSION = "0.16.0";
 const args = process.argv.slice(2);
 const verb = args.shift();
 const options = {};

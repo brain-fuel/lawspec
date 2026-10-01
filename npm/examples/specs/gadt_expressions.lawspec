@@ -1,0 +1,76 @@
+unit example.gadt
+
+type Pair (a :: Type) (b :: Type) is Pair first :: a second :: b end
+
+-- An expression indexed by the type of its value. Each constructor's `where`
+-- fixes that type, so a value of Expr Bool is never a number literal. The
+-- types b and c of Both are existential: Expr (Pair b c) determines them.
+type Expr (a :: Type) is
+  | Number value :: BigInt where a = BigInt
+  | Truth value :: Bool where a = Bool
+  | Plus left :: Expr BigInt right :: Expr BigInt where a = BigInt
+  | Same left :: Expr BigInt right :: Expr BigInt where a = Bool
+  | Negate operand :: Expr Bool where a = Bool
+  | Both first :: Expr b second :: Expr c where a = Pair b c
+end
+
+-- Matching Number refines a to BigInt in that branch, so v is a value of a.
+-- eval calls itself at other types (Expr BigInt inside Expr Bool): each type
+-- it is used at becomes a checked instance, and unreachable branches vanish.
+definition eval (e :: Expr a) :: a is
+  match e with
+  | Number v -> v
+  | Truth b -> b
+  | Plus l r -> eval l + eval r
+  | Same l r -> eval l == eval r
+  | Negate x -> !(eval x)
+  | Both l r -> Pair (eval l) (eval r)
+  end
+end
+
+evalNumber :: Expr BigInt -> BigInt
+evalTruth :: Expr Bool -> Bool
+evalPair :: Expr (Pair BigInt Bool) -> Pair BigInt Bool
+-- Constant folding: a single number with the same value.
+fold :: Expr BigInt -> Expr BigInt
+
+-- A shown value's type is existential and only the value says what it is:
+-- each value carries its type, as a witness, to native code.
+type Shown is
+  | Shown value :: b
+end
+
+-- The name of the type a shown value holds.
+describe :: Shown -> Text
+
+law `numbers agree with eval` is
+  definition is `for all` (e :: Expr BigInt) . evalNumber e = eval e end
+end
+
+law `truths agree with eval` is
+  definition is `for all` (e :: Expr Bool) . evalTruth e = eval e end
+end
+
+law `pairs agree with eval` is
+  definition is `for all` (e :: Expr (Pair BigInt Bool)) . evalPair e = eval e end
+end
+
+law `folding keeps the value` is
+  definition is `for all` (e :: Expr BigInt) . eval (fold e) = eval e end
+end
+
+law `a shown number names its type` is
+  definition is `for all` (x :: Int32) . describe (Shown x) = "Int32" end
+end
+
+law `a shown flag names its type` is
+  definition is `for all` (b :: Bool) . describe (Shown b) = "Bool" end
+end
+
+law `every shown value is described` is
+  definition is `for all` (s :: Shown) . prelude.length (describe s) > 0 end
+end
+
+law `two plus three` is
+  definition is `for all` (x :: BigInt) . eval (Plus (Number 2) (Number 3)) = 5 end
+end

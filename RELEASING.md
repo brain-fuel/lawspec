@@ -11,7 +11,8 @@ registry. Every step runs on your machine; there is no hosted CI.
 - npm versions are immutable: never try to overwrite or unpublish one. Never
   move an existing tag or force-push `main`.
 - Roadmap milestones are minor releases (0.x.0). Everything else, such as
-  tooling, documentation and fixes, is a patch release (0.x.y).
+  tooling, documentation and fixes, is a patch release (0.x.y). The milestones
+  are listed in [the roadmap](docs/explanation/roadmap.md).
 
 ## 1. Check the preconditions
 
@@ -64,7 +65,7 @@ eight targets in both machine profiles. Logs are in `.artifacts/ci/`.
 
 ```sh
 make package
-tar -tzf .artifacts/0.15.2/lawspec-0.15.2.tgz
+tar -tzf .artifacts/0.16.0/lawspec-0.16.0.tgz
 ```
 
 The archive holds the CLI and library code, `core.wasm` and its JavaScript glue,
@@ -77,8 +78,8 @@ packed copy.
 ```sh
 git add -A
 git commit -m "Release LawSpec 0.15.1"
-git tag -a v0.15.2 -m "LawSpec 0.15.1"
-git push --atomic origin main v0.15.2
+git tag -a v0.16.0 -m "LawSpec 0.15.1"
+git push --atomic origin main v0.16.0
 ```
 
 Push the branch and the annotated tag together, so the tag always names a
@@ -87,7 +88,7 @@ commit that is on `main`.
 ## 7. Publish
 
 ```sh
-npm publish .artifacts/0.15.2/lawspec-0.15.2.tgz --access public --tag latest --registry https://registry.npmjs.org
+npm publish .artifacts/0.16.0/lawspec-0.16.0.tgz --access public --tag latest --registry https://registry.npmjs.org
 ```
 
 Publish the archive you inspected, not the directory. npm asks for approval in
@@ -97,9 +98,9 @@ the browser; complete it there. If npm reports that you are not logged in, run
 ## 8. Verify the registry
 
 ```sh
-npm view lawspec@0.15.2 version dist.integrity
+npm view lawspec@0.16.0 version dist.integrity
 npm view lawspec dist-tags
-shasum -a 512 .artifacts/0.15.2/lawspec-0.15.2.tgz | awk '{print $1}' | xxd -r -p | base64
+shasum -a 512 .artifacts/0.16.0/lawspec-0.16.0.tgz | awk '{print $1}' | xxd -r -p | base64
 ```
 
 `dist.integrity` must be `sha512-` followed by the local archive's digest, and
