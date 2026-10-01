@@ -77,8 +77,8 @@ packed copy.
 
 ```sh
 git add -A
-git commit -m "Release LawSpec 0.15.1"
-git tag -a v0.16.0 -m "LawSpec 0.15.1"
+git commit -m "Release LawSpec 0.16.0"
+git tag -a v0.16.0 -m "LawSpec 0.16.0"
 git push --atomic origin main v0.16.0
 ```
 
