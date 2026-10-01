@@ -16,7 +16,6 @@ module LawSpec.Collections
 
 import Data.Char (isAlphaNum)
 import Data.List (isPrefixOf, nub)
-import LawSpec.Model (Source(..))
 
 collectionsUnit :: String
 collectionsUnit = "lawspec.collections"
@@ -65,20 +64,23 @@ collectionOperations =
 collectionOperation :: String -> Maybe (String, String)
 collectionOperation op = lookup op collectionOperations
 
--- The collection types a program's sources use and do not declare: a type
--- name or a prelude operation of one. Entry and Ordering come with KeyVal and
--- Set, which need them.
-usedCollections :: [Source] -> [String]
+-- The collection types a program's sources use and do not themselves declare:
+-- a type name or a prelude operation of one. A source's own type shadows the
+-- built-in only in that source. Entry and Ordering come with KeyVal and Set,
+-- which need them.
+usedCollections :: [String] -> [String]
 usedCollections sources =
-  let tokens = concatMap (\(Source _ text) -> words (map (\c -> if isAlphaNum c || c `elem` ("._" :: String) then c else ' ') (stripComments text))) sources
-      declared = [name | (keyword, name) <- zip tokens (drop 1 tokens), keyword `elem` ["type", "wrapper"]]
-      named = [t | t <- collectionTypes, t `elem` tokens]
-      operated = [owner | t <- tokens, Just op <- [stripPrefix' "prelude." t], Just (_, owner) <- [collectionOperation op]] ++
-        ["Ordering" | "prelude.compare" `elem` tokens]
-      wanted = nub (named ++ operated)
+  let wanted = nub (concatMap used sources)
       closure = nub (wanted ++ ["Ordering" | any (`elem` wanted) ["Set", "KeyVal"]] ++ ["Entry" | "KeyVal" `elem` wanted])
-  in [t | t <- collectionTypes, t `elem` closure, t `notElem` declared]
+  in [t | t <- collectionTypes, t `elem` closure]
   where
+    used text =
+      let tokens = words (map (\c -> if isAlphaNum c || c `elem` ("._" :: String) then c else ' ') (stripComments text))
+          declared = [name | (keyword, name) <- zip tokens (drop 1 tokens), keyword `elem` ["type", "wrapper"]]
+          named = [t | t <- collectionTypes, t `elem` tokens]
+          operated = [owner | t <- tokens, Just op <- [stripPrefix' "prelude." t], Just (_, owner) <- [collectionOperation op]] ++
+            ["Ordering" | "prelude.compare" `elem` tokens]
+      in [t | t <- named ++ operated, t `notElem` declared]
     stripPrefix' prefix t = if prefix `isPrefixOf` t then Just (drop (length prefix) t) else Nothing
     stripComments = unlines . map (\line -> takeComment line) . lines
     takeComment ('-' : '-' : _) = ""
@@ -86,8 +88,8 @@ usedCollections sources =
     takeComment [] = []
 
 -- The unit's source, with the given types and the operations over them.
-collectionsSource :: [String] -> Source
-collectionsSource types = Source "<lawspec.collections>" $ unlines $
+collectionsSource :: [String] -> String
+collectionsSource types = unlines $
   ["unit " ++ collectionsUnit, ""] ++
   concat [block | (t, block) <- declarations, t `elem` types] ++
   (if any (`elem` types) ["Set", "Queue", "Stack", "Deque"] then listHelpers else []) ++

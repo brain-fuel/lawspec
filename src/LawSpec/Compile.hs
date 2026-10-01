@@ -192,8 +192,8 @@ compileWithImports visible bits settings sources = do
   unless (all (>0) [cases settings,maxAttempts settings,maxShrinks settings,exhaustiveLimit settings]) (Left [Diagnostic "generation" "generation limits must be positive integers" Nothing])
   unless (bits `elem` [32,64]) (Left [Diagnostic "machineBits" "machineBits must be 32 or 64" Nothing])
   -- Programs that use a collection get the built-in collections unit.
-  let collections = usedCollections sources
-      builtins = preludeSource : [collectionsSource collections | not (null collections)]
+  let collections = usedCollections [text | Source _ text <- sources]
+      builtins = preludeSource : [Source "<lawspec.collections>" (collectionsSource collections) | not (null collections)]
   parsedUnits <- parseSourcesWith collections (builtins ++ sources)
   unless (length parsedUnits == length (nub (map (unitName . fst) parsedUnits))) (Left [Diagnostic "duplicate-unit" "unit names must be unique; prelude is reserved" Nothing])
   parsed <- resolveImports visible parsedUnits

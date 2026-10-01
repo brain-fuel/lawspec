@@ -15,6 +15,9 @@ import LawSpec.Scalar (Scalar(..), textScalar)
 source :: [String] -> Source
 source = Source "collections.lawspec" . unlines . ("unit example.collections" :)
 
+sourceText :: [String] -> String
+sourceText lines' = let Source _ text = source lines' in text
+
 accepts :: [String] -> Expectation
 accepts lines' = compileCore 64 defaultGeneration [source lines'] `shouldSatisfy` isRight
 
@@ -43,13 +46,18 @@ spec :: Spec
 spec = describe "collections" $ do
   describe "the built-in unit" $ do
     it "is added only for the collections a source uses" $ do
-      usedCollections [source ["f :: Int32 -> Set Int32"]] `shouldBe` ["Set", "Ordering"]
-      usedCollections [source ["f :: Int32 -> Int32"]] `shouldBe` []
-      usedCollections [source ["law `l` is definition is prelude.size (prelude.stackOf [1]) = 1 end end"]] `shouldBe` ["Stack"]
-      usedCollections [source ["f :: Int32 -> KeyVal Text Int32"]] `shouldBe` ["KeyVal", "Entry", "Ordering"]
+      usedCollections [sourceText ["f :: Int32 -> Set Int32"]] `shouldBe` ["Set", "Ordering"]
+      usedCollections [sourceText ["f :: Int32 -> Int32"]] `shouldBe` []
+      usedCollections [sourceText ["law `l` is definition is prelude.size (prelude.stackOf [1]) = 1 end end"]] `shouldBe` ["Stack"]
+      usedCollections [sourceText ["f :: Int32 -> KeyVal Text Int32"]] `shouldBe` ["KeyVal", "Entry", "Ordering"]
     it "is shadowed by a type the source declares" $ do
-      usedCollections [source ["type Stack is Empty end", "f :: Stack -> Int32"]] `shouldBe` []
+      usedCollections [sourceText ["type Stack is Empty end", "f :: Stack -> Int32"]] `shouldBe` []
       accepts ["type Stack is | Empty | Push top :: Int8 end", "f :: Stack -> Int32", "g :: Int32 -> Set Int32"]
+    it "is shadowed only in the source that declares the type" $ do
+      let own = Source "own.lawspec" (unlines ["unit example.own", "type Stack is | Empty | Push top :: Int8 end", "f :: Stack -> Int32"])
+          builtin = Source "builtin.lawspec" (unlines ["unit example.builtin", "g :: List Int8 -> Stack Int8"])
+      usedCollections [text | Source _ text <- [own, builtin]] `shouldBe` ["Stack"]
+      compileCore 64 defaultGeneration [own, builtin] `shouldSatisfy` isRight
   describe "typing" $ do
     it "accepts operations over each collection" $
       accepts

@@ -14,7 +14,7 @@ const shape = value => value.kind === 'data'
   : value;
 
 test('WASM preserves nested sum tags, surrogate units and octets in structural examples', async () => {
-  const sources = await bundled('collections');
+  const sources = await bundled('lists');
   for (const machineBits of [32, 64]) {
     const result = await compiler.check({sources, machineBits});
     assert.deepEqual(result.diagnostics, []);
