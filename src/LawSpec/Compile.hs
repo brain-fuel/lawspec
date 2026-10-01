@@ -16,6 +16,7 @@ import qualified LawSpec.Core.Value as CoreValue
 import LawSpec.Scalar
 import LawSpec.Parser
 import LawSpec.Imports (resolveImports)
+import LawSpec.Collections (usedCollections, collectionsSource)
 import LawSpec.Refinement
 import LawSpec.Prelude
 import Control.Monad.State.Strict
@@ -190,7 +191,10 @@ compileWithImports :: (String -> String -> Maybe String) -> Int -> Generation ->
 compileWithImports visible bits settings sources = do
   unless (all (>0) [cases settings,maxAttempts settings,maxShrinks settings,exhaustiveLimit settings]) (Left [Diagnostic "generation" "generation limits must be positive integers" Nothing])
   unless (bits `elem` [32,64]) (Left [Diagnostic "machineBits" "machineBits must be 32 or 64" Nothing])
-  parsedUnits <- parseSources (preludeSource:sources)
+  -- Programs that use a collection get the built-in collections unit.
+  let collections = usedCollections sources
+      builtins = preludeSource : [collectionsSource collections | not (null collections)]
+  parsedUnits <- parseSourcesWith collections (builtins ++ sources)
   unless (length parsedUnits == length (nub (map (unitName . fst) parsedUnits))) (Left [Diagnostic "duplicate-unit" "unit names must be unique; prelude is reserved" Nothing])
   parsed <- resolveImports visible parsedUnits
   let imported = M.fromList [(unitName u ++ "::type::" ++ dataTypeName d, d{dataTypeConstructors=
@@ -456,7 +460,7 @@ inferDefinitionTemplates declarations bits unit = do
       unless (all (valueType declarations) (functionResult d : map snd parameters))
         (Left "definition parameters and result require value types")
       forM_ declared $ \(Capability name ty) -> do
-        unless (name `elem` ["Eq","Integer","Ordered","Bounded"])
+        unless (name `elem` ["Eq","Integer","Ordered","Bounded","Keyed"])
           (Left ("unknown capability: " ++ name))
         unless (valueType declarations ty && all (`elem` bound) (variables ty))
           (Left "capability mentions an invalid or unbound type")

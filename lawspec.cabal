@@ -167,6 +167,7 @@ library
       LawSpec.Capabilities
       LawSpec.Code.Doc
       LawSpec.Code.JavaScript
+      LawSpec.Collections
       LawSpec.Common
       LawSpec.Compile
       LawSpec.Core

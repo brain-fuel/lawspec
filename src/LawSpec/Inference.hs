@@ -2,6 +2,8 @@
 -- expand laws or execute examples; elaboration consumes its typed expressions.
 module LawSpec.Inference where
 
+import LawSpec.Collections (collectionsUnit)
+import Data.List (stripPrefix)
 import LawSpec.Model
 import LawSpec.Refinement (hasValueRefinements)
 import LawSpec.Scalar
@@ -276,6 +278,21 @@ builtin env n args
   | n `elem` ["isPresent","presentValue"], [a] <- args = do
       t <- infer env a >>= resolve
       case t of Applied wrapper inner | wrapper `elem` ["Nullable","Optional"] -> pure (if n == "isPresent" then Named "Bool" else inner); _ -> throwC "presence helper requires Nullable or Optional"
+  -- The portable total order, as the collections unit's Ordering.
+  | n == "compare", [a,b] <- args = do
+      t <- infer env a >>= resolve
+      checkExpr env t b
+      require "Keyed" t
+      pure (Named (collectionsUnit ++ "::type::Ordering"))
+  -- A collection's items, count and emptiness; a KeyVal's items are its
+  -- entries.
+  | n `elem` ["toList","size","isEmpty"], [a] <- args = do
+      t <- infer env a >>= resolve
+      items <- case t of
+        Applied c e | Just short <- collectionName c, short `elem` ["Set","Queue","Stack","Deque"] -> pure e
+        Application c [k,v] | collectionName c == Just "KeyVal" -> pure (Application (collectionsUnit ++ "::type::Entry") [k,v])
+        _ -> throwC ("prelude." ++ n ++ " requires a Set, KeyVal, Queue, Stack or Deque")
+      pure (case n of "toList" -> Applied "List" items; "size" -> Named "Integer"; _ -> Named "Bool")
   | n == "length", [a] <- args = do
       t <- infer env a >>= resolve
       unless (t `elem` map Named ["Text","CodePointText","Utf16Text","Bytes"] || case t of Applied "List" _ -> True; _ -> False)
@@ -669,3 +686,7 @@ payloadArguments ty = do
       _ -> throwC "payload predicates require a registered data type"
   unless (count == length arguments) (throwC "payload data type arity mismatch")
   pure arguments
+
+-- A collections-unit type's short name.
+collectionName :: String -> Maybe String
+collectionName n = stripPrefix (collectionsUnit ++ "::type::") n

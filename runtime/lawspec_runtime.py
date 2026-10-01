@@ -1,4 +1,5 @@
 """LawSpec scalar runtime, independent of test frameworks."""
+from collections import deque  # noqa: F401  (native Queue, Stack, Deque)
 from dataclasses import dataclass
 from fractions import Fraction
 from decimal import Decimal
@@ -346,10 +347,53 @@ def equal(a, b, ta, tb):
     return a == b
 
 
+ORDERING = 'lawspec.collections::type::Ordering::'
+
+
+def compare_values(a, b):
+    """The portable total order: -1, 0 or 1.
+
+    Exact numbers by value, text and raw sequences by unit, False before True,
+    absence before presence, lists element by element, Nothing before Just,
+    and other data by constructor identity, then fields left to right.
+    """
+    if isinstance(a, bool) and isinstance(b, bool):
+        return (a > b) - (a < b)
+    if isinstance(a, (int, Fraction, Decimal)) and not isinstance(a, bool):
+        x, y = ratio(a), ratio(b)
+        return (x > y) - (x < y)
+    if isinstance(a, str) and isinstance(b, str):
+        return (a > b) - (a < b)
+    if isinstance(a, Raw) and isinstance(b, Raw):
+        return (a.units > b.units) - (a.units < b.units)
+    if isinstance(a, Absence) and isinstance(b, Absence):
+        return 0
+    if isinstance(a, Presence) and isinstance(b, Presence):
+        if a.present != b.present:
+            return 1 if a.present else -1
+        return compare_values(a.value, b.value) if a.present else 0
+    if isinstance(a, (list, tuple)) and isinstance(b, (list, tuple)):
+        for x, y in zip(a, b):
+            order = compare_values(x, y)
+            if order:
+                return order
+        return (len(a) > len(b)) - (len(a) < len(b))
+    if isinstance(a, DataValue) and isinstance(b, DataValue):
+        if a.tag != b.tag:
+            if {a.tag, b.tag} == {'Maybe::Nothing', 'Maybe::Just'}:
+                return -1 if a.tag == 'Maybe::Nothing' else 1
+            return (a.tag > b.tag) - (a.tag < b.tag)
+        return compare_values(list(a.fields), list(b.fields))
+    raise TypeError('values have no portable order')
+
+
 def helper(n, args, types, bits=64):
     x = args[0]
     if n == 'checked':
         return True
+    if n == 'compare':
+        order = compare_values(args[0], args[1])
+        return DataValue(ORDERING + ('Less', 'Equal', 'Greater')[order + 1], ())
     if n == 'length':
         return len(x.units) if isinstance(x, Raw) else len(x)
     if n == 'isPresent':

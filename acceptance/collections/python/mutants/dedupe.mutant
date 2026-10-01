@@ -1,0 +1,6 @@
+@@ src/example/collections.py
+<<<<<<<
+    return frozenset(value0)
+=======
+    return frozenset(value0[1:])
+>>>>>>>

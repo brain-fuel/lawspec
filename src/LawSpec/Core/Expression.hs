@@ -1,5 +1,6 @@
 module LawSpec.Core.Expression ( validateExpression, validateExpressionWithRegistry, kindOf, operationEvidence, operationEvidenceWithRegistry) where
 
+import LawSpec.Collections (collectionsUnit)
 import LawSpec.Core
 import LawSpec.Core.Types (kindOf)
 import qualified LawSpec.Core.Types as Types
@@ -131,6 +132,10 @@ validateExpressionWithRegistry registry bits declarations scope expr@Expr{..} = 
     expressionTypeOf = LawSpec.Core.expressionType
     requireType n e = unless (expressionTypeOf e == scalarType n) (Left ("expected " ++ n))
     helperType Checked [_] = Right (scalarType "Bool")
+    helperType Compare [a, b] | expressionTypeOf a == expressionTypeOf b = do
+      Types.keyedRequirements registry (expressionTypeOf a) >>= \needed ->
+        unless (null needed) (Left "compare requires a type with a portable order")
+      pure (Constructor (collectionsUnit ++ "::type::Ordering") [])
     helperType Length [a] | expressionTypeOf a `elem` map scalarType ["Text","CodePointText","Utf16Text","Bytes"] = Right (scalarType "Integer")
     helperType Length [a] | Constructor "List" [TypeArgument _] <- expressionTypeOf a = Right (scalarType "Integer")
     helperType IsPresent [a] | Constructor n [TypeArgument _] <- expressionTypeOf a, n `elem` ["Nullable","Optional"] = Right (scalarType "Bool")

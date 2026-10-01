@@ -274,7 +274,8 @@ hasValueContracts registry ty
     declarations = registryDeclarations registry
     -- Index guards (balanced subtrees, non-negative subtraction) constrain
     -- values just like constructor predicates.
-    own declaration = any (not . null . constructorPredicates) (dataConstructors declaration) ||
+    own declaration = idText (dataId declaration) `elem` ["lawspec.collections::type::Set", "lawspec.collections::type::KeyVal"] ||
+      any (not . null . constructorPredicates) (dataConstructors declaration) ||
       maybe False (any (not . null . constructorIndexGuards . snd) . familyIndexConstructors) (dataIndex declaration)
     initial = M.fromList [(dataId d,(dataParameters d,(own d,[]))) | d <- declarations]
     merge values = (any fst values, sort (nub (concatMap snd values)))

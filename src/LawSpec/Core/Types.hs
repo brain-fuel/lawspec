@@ -2,7 +2,7 @@
 -- core identities, never source names awaiting resolution or target mappings.
 module LawSpec.Core.Types
   ( TypeRegistry, makeRegistry, builtinDataDeclarations, registryKinds, registryDeclarations
-  , kindOf, checkType, substitute, constructorFieldsFor, constructorPredicatesFor, lookupData, equalityRequirements, generationRequirements
+  , kindOf, checkType, substitute, constructorFieldsFor, constructorPredicatesFor, lookupData, equalityRequirements, generationRequirements, keyedRequirements, keyedPrimitive
   , constructorCompatibility, compatibleConstructors, matchType, constructorFieldsAt, freeExistentials, witnessPool
   ) where
 
@@ -17,6 +17,7 @@ data TypeRegistry = TypeRegistry
   { registryKinds :: [(String, Kind)]
   , declarations :: M.Map Id DataDeclaration
   , storedFieldRules :: M.Map Id (Maybe [Id])
+  , keyedFieldRules :: M.Map Id (Maybe [Id])
   }
 
 registryDeclarations :: TypeRegistry -> [DataDeclaration]
@@ -48,7 +49,8 @@ makeRegistry userDeclarations = do
       kinds = scalarKinds ++ presenceKinds ++
         [(idText (dataId d), foldr (const (KindArrow TypeKind)) TypeKind (dataParameters d)) | d <- allDeclarations]
       registry = TypeRegistry kinds (M.fromList [(dataId d, d) | d <- allDeclarations])
-        (deriveStoredFieldCapabilities allDeclarations)
+        (deriveStoredFieldCapabilities everyPrimitive allDeclarations)
+        (deriveStoredFieldCapabilities keyedPrimitive allDeclarations)
   unique "type constructor identity" (map fst kinds)
   unique "data constructor identity" [constructorId c | d <- allDeclarations, c <- dataConstructors d]
   mapM_ (validateDeclaration registry) allDeclarations
@@ -290,8 +292,8 @@ validateStrictPositivity definitions = mapM_ checkComponent components
 -- than demanding Eq for every argument. The finite fixed point also handles
 -- mutual and non-regular recursion without unfolding an infinite type tree.
 -- Nothing means a stored field has no equality (for example a function).
-deriveStoredFieldCapabilities :: [DataDeclaration] -> M.Map Id (Maybe [Id])
-deriveStoredFieldCapabilities definitions = fixedPoint initial
+deriveStoredFieldCapabilities :: (String -> Bool) -> [DataDeclaration] -> M.Map Id (Maybe [Id])
+deriveStoredFieldCapabilities primitiveOk definitions = fixedPoint initial
   where
     table = M.fromList [(dataId d, d) | d <- definitions]
     initial = M.fromList [(dataId d, Just []) | d <- definitions]
@@ -300,7 +302,7 @@ deriveStoredFieldCapabilities definitions = fixedPoint initial
             [(dataId d, combineNeeds
               -- An existential's types (the witness pool, or those its
               -- equations fix) all have equality and generators.
-              [filter (`notElem` constructorExistentials c) <$> storedFieldNeeds table previous (binderType f)
+              [filter (`notElem` constructorExistentials c) <$> storedFieldNeeds primitiveOk table previous (binderType f)
                 | c <- dataConstructors d, f <- constructorFields c])
               | d <- definitions]
       in if next == previous then next else fixedPoint next
@@ -308,18 +310,27 @@ deriveStoredFieldCapabilities definitions = fixedPoint initial
 combineNeeds :: [Maybe [Id]] -> Maybe [Id]
 combineNeeds = fmap (sort . nub . concat) . sequence
 
-storedFieldNeeds :: M.Map Id DataDeclaration -> M.Map Id (Maybe [Id]) -> Type -> Maybe [Id]
-storedFieldNeeds definitions rules ty = case ty of
+everyPrimitive :: String -> Bool
+everyPrimitive name = name `elem` map primitiveName primitives
+
+-- Primitives with a portable total order: floats, complex numbers and
+-- symbols have none (NaN, signed zeros, identity).
+keyedPrimitive :: String -> Bool
+keyedPrimitive name = everyPrimitive name &&
+  name `notElem` ["Float32", "Float64", "Complex64", "Complex128", "Symbol"]
+
+storedFieldNeeds :: (String -> Bool) -> M.Map Id DataDeclaration -> M.Map Id (Maybe [Id]) -> Type -> Maybe [Id]
+storedFieldNeeds primitiveOk definitions rules ty = case ty of
   TypeVariable n -> Just [n]
   Arrow _ _ -> Nothing
   Constructor name arguments
     | name `elem` ["Nullable", "Optional"], [TypeArgument element] <- arguments ->
-        storedFieldNeeds definitions rules element
+        storedFieldNeeds primitiveOk definitions rules element
     | Just declaration <- M.lookup (Id name) definitions -> do
         required <- M.lookup (Id name) rules >>= id
         let parameters = zip (dataParameters declaration) [t | TypeArgument t <- arguments]
-        combineNeeds [lookup parameter parameters >>= storedFieldNeeds definitions rules | parameter <- required]
-    | null arguments, name `elem` map primitiveName primitives -> Just []
+        combineNeeds [lookup parameter parameters >>= storedFieldNeeds primitiveOk definitions rules | parameter <- required]
+    | null arguments, primitiveOk name -> Just []
     | otherwise -> Nothing
 
 -- Return outstanding Eq obligations for type variables. A concrete type has
@@ -337,4 +348,11 @@ storedRequirements :: String -> TypeRegistry -> Type -> Either String [Id]
 storedRequirements capability registry ty = do
   checkType registry ty
   maybe (Left ("type does not support " ++ capability ++ ": " ++ show ty)) Right
-    (storedFieldNeeds (declarations registry) (storedFieldRules registry) ty)
+    (storedFieldNeeds everyPrimitive (declarations registry) (storedFieldRules registry) ty)
+
+-- Outstanding Keyed obligations: a key needs the portable total order.
+keyedRequirements :: TypeRegistry -> Type -> Either String [Id]
+keyedRequirements registry ty = do
+  checkType registry ty
+  maybe (Left ("type has no portable order: " ++ show ty)) Right
+    (storedFieldNeeds keyedPrimitive (declarations registry) (keyedFieldRules registry) ty)

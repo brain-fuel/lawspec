@@ -1,5 +1,6 @@
-module LawSpec.Parser (parseSource, parseSources, sourceUnit) where
+module LawSpec.Parser (parseSource, parseSources, parseSourcesWith, sourceUnit) where
 
+import LawSpec.Collections (collectionsUnit, collectionsAlias)
 import LawSpec.Flow (desugarFlows, flowTypeName)
 import LawSpec.Model
 import LawSpec.Indexed
@@ -102,7 +103,7 @@ param = parens $ do
   pure (n,maybe t (\e -> Refined n t (Just e)) p)
 constraintsP :: P [Constraint]
 constraintsP = option [] (keyword "requires" *> some (do
-  n <- choice [name <$ keyword name | name <- ["Eq","Integer","Ordered","Bounded"]]
+  n <- choice [name <$ keyword name | name <- ["Eq","Integer","Ordered","Bounded","Keyed"]]
   Capability n <$> typeP))
 refinementP :: P Refinement
 refinementP = do
@@ -437,13 +438,18 @@ parseSource source = fst . fst <$> parseWith M.empty [] source
 -- arities of the units it imports, qualified by alias and unqualified for
 -- listed names; LawSpec.Imports resolves the names themselves.
 parseSources :: [Source] -> Either [Diagnostic] [(Unit, [Import])]
-parseSources sources = do
+parseSources = parseSourcesWith []
+
+-- With the built-in collection types a program uses: every other unit imports
+-- those it does not declare itself (LawSpec.Collections).
+parseSourcesWith :: [String] -> [Source] -> Either [Diagnostic] [(Unit, [Import])]
+parseSourcesWith collections sources = do
   mapM_ acyclic (M.keys graph)
   let names = [n | (_, n, _) <- preambles]
   forM_ names $ \n -> when (length (filter (== n) names) > 1)
     (Left [Diagnostic "duplicate-unit" "unit names must be unique; prelude is reserved" Nothing])
   mapM (\source -> either (const (fst <$> parseWith (imported source) [] source))
-    (\(n, _) -> fst <$> results Lazy.! n) (preamble source)) sources
+    (\(n, imports) -> (\(u, _) -> (u, imports)) . fst <$> results Lazy.! n) (preamble source)) sources
   where
     -- Parsed lazily in import order, so a unit sees its imports' indexed
     -- families under the names it uses for them.
@@ -453,7 +459,14 @@ parseSources sources = do
         [f | f <- declared, familyName f `elem` importItems i]
       | i <- imports, Just (Right (_, declared)) <- [Lazy.lookup (importUnit i) results] ]
     preambles = [(s, n, imports) | s <- sources, Right (n, imports) <- [preamble s]]
-    preamble (Source p s) = runReader (runParserT preambleP p s) M.empty
+    preamble (Source p s) = implicit s <$> runReader (runParserT preambleP p s) M.empty
+    implicit s (n, imports)
+      | null collections || n `elem` ["prelude", collectionsUnit] = (n, imports)
+      | otherwise =
+          let local = M.keys (headers s)
+              items = [t | t <- collections, t `notElem` local]
+              origin = Location "<lawspec.collections>" 1 1
+          in (n, imports ++ [Import collectionsUnit collectionsAlias items (Span origin origin) | not (null items)])
     graph = M.fromList [(n, imports) | (_, n, imports) <- preambles]
     -- Exports are computed lazily in import order, so an exported declaration
     -- may itself use its unit's imports.

@@ -1,0 +1,6 @@
+@@ src/example/collections.py
+<<<<<<<
+        if row not in distinct:
+=======
+        if row and row not in distinct:
+>>>>>>>

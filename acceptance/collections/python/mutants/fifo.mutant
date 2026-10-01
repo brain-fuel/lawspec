@@ -1,0 +1,6 @@
+@@ src/example/collections.py
+<<<<<<<
+    return deque(value0)
+=======
+    return deque(reversed(value0))
+>>>>>>>

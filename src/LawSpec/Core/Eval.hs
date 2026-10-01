@@ -4,6 +4,7 @@ module LawSpec.Core.Eval
   ( evaluate, evaluatePure, evaluateProposition
   , evaluateValue, evaluateValuePure, evaluateValueProposition, validateValueWithContracts
   ) where
+import LawSpec.Collections (collectionsUnit)
 import LawSpec.Core
 import LawSpec.Scalar
 import LawSpec.Core.Semantics
@@ -115,6 +116,11 @@ evaluateValue registry bits adapter bindings = run (M.fromList bindings) where
   helper PresentValue [PresenceValue _ (Just value)] = Right value
   helper PresentValue [PresenceValue _ Nothing] = Left "presentValue requires a present value"
   helper Checked [_] = Right (ScalarValue (SBool True))
+  helper Compare [a, b] = do
+    order <- compareValues a b
+    let ty = Constructor (collectionsUnit ++ "::type::Ordering") []
+        tag = case order of LT -> "Less"; EQ -> "Equal"; GT -> "Greater"
+    Right (DataValue ty (Id (collectionsUnit ++ "::type::Ordering::" ++ tag)) [])
   helper builtin values = ScalarValue <$> (mapM toScalarValue values >>= helperValue bits (builtinName builtin))
   context origin result = case result of
     Left msg -> Left (show origin ++ ": " ++ msg)

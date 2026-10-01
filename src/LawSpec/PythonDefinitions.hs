@@ -55,9 +55,10 @@ emitPythonDefinitions layout bits declarations units = do
               pure (E.call (drop (length ("_definitions." :: String)) name) (D.text "symbols":values))
             _ -> Left "expected Python definition call"
       body <- E.renderExpression declarations bits local external (definitionBody d)
-      checks <- mapM (\binder -> assign (local (binderId binder)) <$>
-        schemaCall "validate" (binderType binder) (D.text (local (binderId binder)))) (definitionArguments d)
-      result <- schemaCall "validate" (expressionType (definitionBody d)) (D.text "result")
+      -- Arguments and results were checked where they were built, decoded
+      -- or drawn; the native wrappers check values crossing from adapters.
+      let checks = []
+          result = D.text "result"
       let contract = lookup (declarationId (definitionDeclaration d)) [(contractDeclaration c,c) | c <- contracts]
       statements <- case contract of
         Nothing -> pure (checks ++ [assign "result" body,D.text "return " <> result])

@@ -1,6 +1,6 @@
 """Native Hypothesis strategies for instantiated Core data schemas."""
 
-from functools import cache
+from functools import cache, cmp_to_key
 
 from hypothesis import strategies as st
 
@@ -158,6 +158,8 @@ def strategy(schema, reference, bits, budget, scalar, symbols=None,
                     if constructor.predicates:
                         values = values.filter(lambda value: valid(ty, value))
                     alternatives.append(values)
+            if ty.name in CANONICAL:
+                return st.one_of(*alternatives).map(CANONICAL[ty.name])
             return st.one_of(*alternatives)
         if not ty.arguments:
             return scalar(ty.name).map(
@@ -198,6 +200,25 @@ def strategy(schema, reference, bits, budget, scalar, symbols=None,
         return indexed_strategy(schema, reference, int(target), equations,
                                 budget, build, inhabited, valid)
     return build(reference, budget)
+
+
+def _canonical(key):
+    """Sorted items without repeated keys: a Set's or a KeyVal's invariant."""
+    def canonical(value):
+        items = sorted(value.fields[0], key=cmp_to_key(
+            lambda a, b: ls.compare_values(key(a), key(b))))
+        distinct = [item for index, item in enumerate(items)
+                    if index == 0 or ls.compare_values(
+                        key(items[index - 1]), key(item)) != 0]
+        return ls.DataValue(value.tag, (distinct,))
+    return canonical
+
+
+# Generated collections are canonicalised rather than filtered.
+CANONICAL = {
+    "lawspec.collections::type::Set": _canonical(lambda item: item),
+    "lawspec.collections::type::KeyVal": _canonical(lambda entry: entry.fields[0]),
+}
 
 
 INDEX_SLACK = 16

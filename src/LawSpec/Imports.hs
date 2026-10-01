@@ -12,11 +12,12 @@ module LawSpec.Imports (resolveImports, importedDefinitionName) where
 
 import LawSpec.Model
 import LawSpec.Indexed (naturalRefinementName)
+import LawSpec.Collections (collectionsUnit, collectionsAlias, collectionOperation, internalConstructor)
 import Control.Monad (forM, forM_, unless, when)
 import Control.Monad.State.Strict (State, execState, modify)
 import Data.Char (toUpper)
 import Data.Functor.Identity (Identity(..))
-import Data.List (intercalate, isSuffixOf, nub)
+import Data.List (intercalate, isSuffixOf, nub, stripPrefix)
 import qualified Data.Map.Strict as M
 import qualified Data.Map.Lazy as Lazy
 import qualified Data.Set as S
@@ -160,7 +161,11 @@ importScope u i exports = do
       local = S.fromList $ map dataTypeName (dataTypes u) ++
         [dataConstructorName c | d <- dataTypes u, c <- dataTypeConstructors d] ++
         map refinementName (refinements u) ++ map fst (functions u) ++ map lawName (laws u)
-  listed <- forM (importItems i) $ \item -> do
+  -- The implicit collections import leaves out what the unit declares, and
+  -- the containers' constructors, which keep their items canonical.
+  let implicit = importUnit i == collectionsUnit
+      hidden = [c | Just c <- map internalConstructor (importItems i)]
+  listed <- forM [item | item <- importItems i, not (implicit && unquote item `S.member` local)] $ \item -> do
     when (unquote item `S.member` local)
       (failAt (unquote item ++ " is imported from " ++ importUnit i ++ " and also declared in " ++ unitName u))
     let law = "`" `isSuffixOf` item
@@ -184,7 +189,7 @@ importScope u i exports = do
           then n ++ " is an adapter of " ++ importUnit i ++ "; adapters belong to their unit"
           else importUnit i ++ " does not export " ++ n
     pure found
-  let items = concat listed
+  let items = [entry | entry@((kind, n), _) <- concat listed, not (implicit && kind == ConstructorName && (n `elem` hidden || n `S.member` local))]
   forM_ (nub (map (snd . fst) items)) $ \n ->
     when (n `elem` [dataConstructorName c | d <- dataTypes u, c <- dataTypeConstructors d])
       (failAt (n ++ " is imported from " ++ importUnit i ++ " and also declared in " ++ unitName u))
@@ -379,6 +384,9 @@ walkType names scope t = case t of
 walkExpr :: Monad m => Names m -> [String] -> Expr -> m Expr
 walkExpr names scope e = case e of
   Located range inner -> Located range <$> walkExpr names scope inner
+  -- prelude.<op> of a collection is a definition of the collections unit.
+  Var n | n `notElem` scope, Just op <- stripPrefix "prelude." n, Just (definition, _) <- collectionOperation op ->
+          Var <$> onValue names (collectionsAlias ++ "." ++ definition)
   Var n | n `elem` scope || take 8 n == "prelude." -> pure (Var n)
         | otherwise -> Var <$> onValue names n
   Apply a b -> Apply <$> walkExpr names scope a <*> walkExpr names scope b

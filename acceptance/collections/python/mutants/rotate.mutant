@@ -1,0 +1,6 @@
+@@ src/example/collections.py
+<<<<<<<
+    rotated.rotate(-1)
+=======
+    rotated.popleft() if rotated else None
+>>>>>>>

@@ -1,5 +1,6 @@
 """Typed data validation and native bridges without test frameworks."""
 
+from collections import deque
 from dataclasses import dataclass, replace
 
 import lawspec_runtime as ls
@@ -140,6 +141,44 @@ class Left[L, R](Either[L, R]):
 @dataclass(frozen=True, slots=True, eq=False)
 class Right[L, R](Either[L, R]):
     value: R
+
+
+# Built-in collections and their single constructors. Natively a Set is a
+# frozenset and a KeyVal a dict when Python compares their elements or keys by
+# value, and otherwise a tuple of items or of (key, value) pairs in canonical
+# order; Queue, Stack and Deque are deques (a Stack's top first).
+_COLLECTIONS_UNIT = "lawspec.collections::type::"
+COLLECTIONS = {
+    _COLLECTIONS_UNIT + name: _COLLECTIONS_UNIT + name + "::" + tag
+    for name, tag in (("Set", "SetItems"), ("KeyVal", "KeyValEntries"),
+                      ("Queue", "QueueItems"), ("Stack", "StackItems"),
+                      ("Deque", "DequeItems"))}
+_ENTRY = _COLLECTIONS_UNIT + "Entry::Entry"
+_HASHABLE = frozenset(
+    ["Bool", "Char", "Text", "Bytes", "Decimal", "Rational", "BigInt",
+     "BigUInt", "Integer", "Natural", "CodePoint", "CodeUnit16", "Unit"] +
+    [f"{sign}Int{width}" for sign in ("", "U")
+     for width in (8, 16, 32, 64, 128, "Size")] + ["UIntPtr"])
+
+
+def hashable(reference):
+    """Whether Python compares this type's natives by value."""
+    return isinstance(reference, Named) and not reference.arguments and (
+        reference.name in _HASHABLE)
+
+
+def canonical_items(items, key):
+    """Sorted by key, keeping the last of equal keys."""
+    from functools import cmp_to_key
+    ordered = sorted(items, key=cmp_to_key(
+        lambda a, b: ls.compare_values(key(a), key(b))))
+    result = []
+    for item in ordered:
+        if result and ls.compare_values(key(result[-1]), key(item)) == 0:
+            result[-1] = item
+        else:
+            result.append(item)
+    return result
 
 
 def witness_key(reference):
@@ -288,6 +327,8 @@ class Schema:
                     raise ValueError(
                         "duplicate constructor: " + constructor.tag)
                 tags.add(constructor.tag)
+                if definition.name in COLLECTIONS:
+                    continue  # Native collections convert separately.
                 if not isinstance(constructor.native, type):
                     raise TypeError("native constructor must be a class")
                 if constructor.native in native_classes:
@@ -542,9 +583,54 @@ class Schema:
                 f"native codec {reference.name} {direction}: {error}"
             ) from error
 
+    def _collection_walk(self, reference, value, bits, mode, symbols):
+        short = reference.name[len(_COLLECTIONS_UNIT):]
+        arguments = reference.arguments
+        tag = COLLECTIONS[reference.name]
+
+        def walk(ty, child):
+            return self._walk(ty, child, bits, mode, symbols)
+        if mode == "native":
+            if not isinstance(value, ls.DataValue) or value.tag != tag:
+                raise TypeError("expected " + short)
+            items = value.fields[0]
+            if short == "KeyVal":
+                pairs = [(walk(arguments[0], entry.fields[0]),
+                          walk(arguments[1], entry.fields[1]))
+                         for entry in items]
+                return dict(pairs) if hashable(arguments[0]) else tuple(pairs)
+            natives = [walk(arguments[0], item) for item in items]
+            if short == "Set":
+                return (frozenset(natives) if hashable(arguments[0])
+                        else tuple(natives))
+            return deque(natives)
+        if short == "KeyVal":
+            if isinstance(value, dict):
+                pairs = list(value.items())
+            elif isinstance(value, (tuple, list)):
+                pairs = list(value)
+            else:
+                raise TypeError("expected a dict or (key, value) pairs")
+            entries = []
+            for pair in pairs:
+                if not isinstance(pair, tuple) or len(pair) != 2:
+                    raise TypeError("expected (key, value) pairs")
+                entries.append(ls.DataValue(_ENTRY, (
+                    walk(arguments[0], pair[0]), walk(arguments[1], pair[1]))))
+            items = canonical_items(entries, lambda entry: entry.fields[0])
+        else:
+            if not isinstance(value, (frozenset, set, tuple, list, deque)):
+                raise TypeError("expected a collection for " + short)
+            items = [walk(arguments[0], item) for item in value]
+            if short == "Set":
+                items = canonical_items(items, lambda item: item)
+        return ls.DataValue(tag, (items,))
+
     def _walk(self, reference, value, bits, mode, symbols):
-        if mode != "validate" and reference.name in self._native_codecs:
+        if mode in ("native", "logical") and reference.name in self._native_codecs:
             return self._codec_walk(reference, value, bits, mode, symbols)
+        if mode in ("native", "logical") and reference.name in COLLECTIONS:
+            return self._collection_walk(reference, value, bits, mode, symbols)
         constructors = self.constructors(reference)
         if constructors is not None:
             if mode == "logical":
@@ -570,8 +656,12 @@ class Schema:
                 raise ValueError("wrong field count: " + constructor.tag)
             converted = []
             types = witnessed(constructor, fields)
+            # A shallow check trusts fields, which were checked when built.
             for field, field_type, child in zip(
                     constructor.fields, types, fields):
+                if mode == "shallow":
+                    converted.append(child)
+                    continue
                 try:
                     if field_type != field.type:
                         self._check(field_type)
@@ -588,7 +678,7 @@ class Schema:
                     return constructor.native(**dict(zip(
                         constructor.native_fields, converted)))
                 return constructor.native(*converted)
-            if mode == "validate":
+            if mode in ("validate", "shallow"):
                 # Check shapes first. Failed conditions stop before
                 # predicates whose definedness depends on them.
                 for index, predicate in enumerate(constructor.predicates):
@@ -655,13 +745,19 @@ class Schema:
                     else ls.DataValue(tags[index], converted))
         raise ValueError("unsupported type: " + name)
 
+    # Values in generated code are checked where they are built, decoded or
+    # drawn, so constructing checks only the new node and matching only
+    # dispatches; a deep check of each would make recursion quadratic.
     def construct(self, reference, tag, fields, bits=64, symbols=None):
-        value = (ls.construct(tag, fields) if reference.name == "List"
-                 else ls.DataValue(tag, fields))
-        return self.validate(reference, value, bits, symbols)
+        if reference.name == "List":
+            return ls.construct(tag, fields)
+        self._check(reference)
+        self._bits(bits)
+        return self._walk(reference, ls.DataValue(tag, fields), bits,
+                          "shallow", {} if symbols is None else symbols)
 
     def match(self, reference, value, branches, bits=64, symbols=None):
-        checked = self.validate(reference, value, bits, symbols)
+        checked = value
         if reference.name == "List":
             return ls.match_list(checked, branches)
         for tag, branch in branches:

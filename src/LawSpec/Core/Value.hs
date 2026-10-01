@@ -2,7 +2,7 @@
 -- lossless leaves; algebraic constructors never share absence representations.
 module LawSpec.Core.Value
   ( Value(..), fromScalarValue, toScalarValue, validateValue, validateValueWith, ValueCheck(..), checkValueWith
-  , equalValues, listValue, listItems, valueIndex, valueType, witnessFields, witnessKey, witnessKeys
+  , equalValues, compareValues, listValue, listItems, valueIndex, valueType, witnessFields, witnessKey, witnessKeys
   ) where
 
 import Control.Monad (unless, zipWithM)
@@ -90,7 +90,21 @@ checkValueWith evaluate registry bits expected value =
                 [] -> Nothing
           unless (all (guardHolds field) (indexGuards actual tag))
             (throwE (idText tag ++ ": index guard failed"))
+          canonicalCollection actual checked
           pure (DataValue actual tag checked)
+    -- A Set's items and a KeyVal's keys strictly increase.
+    canonicalCollection actual checked = case (actual, checked) of
+      (Constructor name _, [items])
+        | name `elem` [collections ++ "Set", collections ++ "KeyVal"] -> do
+            values <- lift (listItems items)
+            let key v = if name == collections ++ "KeyVal"
+                  then case v of DataValue _ _ (k : _) -> k; _ -> v
+                  else v
+            orders <- lift (sequence [compareValues (key a) (key b) | (a, b) <- zip values (drop 1 values)])
+            unless (all (== LT) orders)
+              (throwE (name ++ ": items must be sorted and distinct"))
+      _ -> pure ()
+    collections = "lawspec.collections::type::"
     indexGuards actual tag = case actual of
       Constructor name _ | Right declaration <- lookupData registry (Id name)
                          , Just family <- dataIndex declaration
@@ -169,6 +183,54 @@ equalValues bits (PresenceValue ta a) (PresenceValue tb b)
       (Just x, Just y) -> equalValues bits x y
       _ -> Right False
 equalValues _ _ _ = Right False
+
+-- The portable total order of keyed values, which every runtime implements
+-- identically: exact numbers by value, sequences by their units, False before
+-- True, and absence before presence. Lists compare element by element (a
+-- prefix first), Nothing comes before Just, and other data compare by
+-- constructor identity and then by fields left to right. Floats, complex
+-- numbers and symbols have no portable order.
+compareValues :: Value -> Value -> Either String Ordering
+compareValues a b = case (a, b) of
+  (ScalarValue x, ScalarValue y) -> scalar x y
+  (PresenceValue _ x, PresenceValue _ y) -> optional (maybe [] pure x) (maybe [] pure y)
+  (DataValue (Constructor "List" _) _ _, DataValue (Constructor "List" _) _ _) -> do
+    xs <- listItems a
+    ys <- listItems b
+    sequenceOrder xs ys
+  (DataValue (Constructor "Maybe" _) ca xs, DataValue (Constructor "Maybe" _) cb ys) ->
+    optional (if idText ca == "Maybe::Just" then take 1 xs else []) (if idText cb == "Maybe::Just" then take 1 ys else [])
+  (DataValue _ ca xs, DataValue _ cb ys)
+    | ca == cb -> sequenceOrder xs ys
+    | otherwise -> Right (compare (idText ca) (idText cb))
+  _ -> Left "values of different shapes have no order"
+  where
+    optional x y = case (x, y) of
+      ([], []) -> Right EQ
+      ([], _) -> Right LT
+      (_, []) -> Right GT
+      (p : _, q : _) -> compareValues p q
+    sequenceOrder [] [] = Right EQ
+    sequenceOrder [] _ = Right LT
+    sequenceOrder _ [] = Right GT
+    sequenceOrder (x : xs) (y : ys) = do
+      order <- compareValues x y
+      if order == EQ then sequenceOrder xs ys else Right order
+    scalar x y = case (x, y) of
+      (SInteger _ m, SInteger _ n) -> Right (compare m n)
+      (SDecimal c e, SDecimal d f) -> Right (compare (decimal c e) (decimal d f))
+      (SRational n d, SRational m e) -> Right (compare (toRational n / toRational d) (toRational m / toRational e))
+      (SBool p, SBool q) -> Right (compare p q)
+      (SSequence _ ps, SSequence _ qs) -> Right (compare ps qs)
+      (SCharacter _ p, SCharacter _ q) -> Right (compare p q)
+      (SAbsent _, SAbsent _) -> Right EQ
+      (SPresent _ p, SPresent _ q) -> case (p, q) of
+        (Nothing, Nothing) -> Right EQ
+        (Nothing, Just _) -> Right LT
+        (Just _, Nothing) -> Right GT
+        (Just u, Just v) -> scalar u v
+      _ -> Left ("no portable order for " ++ scalarName x)
+    decimal c e = toRational c * (10 ^^ e)
 
 listValue :: Type -> [Value] -> Value
 listValue element = foldr cons (DataValue ty (Id "List::Nil") [])

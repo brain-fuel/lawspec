@@ -1,0 +1,6 @@
+@@ src/example/collections.py
+<<<<<<<
+    return dict(Counter(value0))
+=======
+    return {word: 1 for word in value0}
+>>>>>>>

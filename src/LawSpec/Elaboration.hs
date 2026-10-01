@@ -3,6 +3,7 @@
 module LawSpec.Elaboration
   ( coreType, equation, elaborateExpression, elaborateResolved, elaborateResolvedWithData, equationWithData, binaryOp, elaborateDefinitionUnit, elaborateContract ) where
 
+import LawSpec.Collections (collectionsUnit, internalConstructor)
 import qualified LawSpec.Model as S
 import qualified LawSpec.Inference as S
 import qualified LawSpec.Core as C
@@ -160,6 +161,18 @@ elaborateResolvedWithData dataTypes declarations bits origin resolve env source 
   root (S.Located _ e) = root e
   root (S.Apply f _) = root f
   root e = e
+  -- A collection's items: its single constructor's field.
+  collectionItems x = case C.expressionType x of
+    C.Constructor name arguments
+      | Just short <- stripPrefix (collectionsUnit ++ "::type::") name, Just constructor <- internalConstructor short -> do
+          let itemType = case (short, [a | C.TypeArgument a <- arguments]) of
+                ("KeyVal", [k, v]) -> C.Constructor (collectionsUnit ++ "::type::Entry") [C.TypeArgument k, C.TypeArgument v]
+                (_, a : _) -> a
+                _ -> C.scalarType "Unit"
+              listType = C.Constructor "List" [C.TypeArgument itemType]
+              binder = C.Binder (C.Id (C.idText origin ++ "::items")) "items" listType
+          pure (node listType (C.Match x [C.MatchCase (C.Id (name ++ "::" ++ constructor)) [binder] (node listType (C.Local (C.binderId binder)))]))
+    _ -> Left "collection helper requires a collection"
   builtinApplication e = case root e of S.Var n -> take 8 n == "prelude."; _ -> False
   builtinNode t n xs
     | isNumeric n, [x] <- xs = pure (node t (C.Convert C.Explicit t x))
@@ -167,10 +180,24 @@ elaborateResolvedWithData dataTypes declarations bits origin resolve env source 
         op <- binaryOp n
         ev <- operationEvidence op (C.expressionType a) (C.expressionType b)
         pure (node t (C.Binary op ev a b))
+    | n == "toList", [x] <- xs = collectionItems x
+    | n == "size", [x] <- xs = do
+        items <- collectionItems x
+        pure (node t (C.Helper C.Length [items]))
+    | n == "isEmpty", [x] <- xs = do
+        items <- collectionItems x
+        let listType = C.expressionType items
+            element = case listType of C.Constructor _ [C.TypeArgument e] -> e; _ -> listType
+            binder suffix ty = C.Binder (C.Id (C.idText origin ++ "::isEmpty::" ++ suffix)) suffix ty
+            bool b = node (C.scalarType "Bool") (C.Constant (SBool b))
+        pure (node t (C.Match items
+          [ C.MatchCase (C.Id "List::Nil") [] (bool True)
+          , C.MatchCase (C.Id "List::Cons") [binder "head" element, binder "tail" listType] (bool False) ]))
     | otherwise = do
         builtin <- maybe (Left ("unknown resolved helper: " ++ n)) Right (lookup n
           [("length",C.Length),("isPresent",C.IsPresent),("presentValue",C.PresentValue),("real",C.RealPart),("imag",C.ImaginaryPart)
-          ,("isNaN",C.IsNaN),("isInfinite",C.IsInfinite),("isFinite",C.IsFinite),("isNegativeZero",C.IsNegativeZero),("round",C.RoundHalfEven),("checked",C.Checked)])
+          ,("isNaN",C.IsNaN),("isInfinite",C.IsInfinite),("isFinite",C.IsFinite),("isNegativeZero",C.IsNegativeZero),("round",C.RoundHalfEven),("checked",C.Checked)
+          ,("compare",C.Compare)])
         args <- case (builtin,xs) of
           (C.RoundHalfEven,[a,b]) -> do
             let ty = C.scalarType "Int32"

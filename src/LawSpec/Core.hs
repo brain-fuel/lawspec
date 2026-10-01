@@ -75,7 +75,7 @@ data Conversion = Explicit | CheckedArgument deriving (Eq, Show)
 -- neither choose a promotion nor infer a capability from surface syntax.
 data Evidence = Numeric Type | Structural Type deriving (Eq, Show)
 data Builtin = Length | IsPresent | PresentValue | RealPart | ImaginaryPart
-  | IsNaN | IsInfinite | IsFinite | IsNegativeZero | RoundHalfEven | Checked deriving (Eq, Show)
+  | IsNaN | IsInfinite | IsFinite | IsNegativeZero | RoundHalfEven | Checked | Compare deriving (Eq, Show)
 data Proposition = Equation Evidence Expr Expr | Implication Expr Proposition | Conjunction [Proposition] deriving (Eq, Show)
 data Quantifier = Quantifier { quantifiedBinder :: Binder, quantifiedPredicates :: [Expr], quantifiedBounds :: [(BinaryOp,Expr)] } deriving (Eq, Show)
 data Example = Example { exampleName :: String, exampleBindings :: [(Id,Expr)], exampleExpectations :: [Proposition] } deriving (Eq, Show)
@@ -154,6 +154,7 @@ builtinName IsFinite = "isFinite"
 builtinName IsNegativeZero = "isNegativeZero"
 builtinName RoundHalfEven = "round"
 builtinName Checked = "checked"
+builtinName Compare = "compare"
 
 -- Example bindings are closed data, never computations or adapter invocations.
 isConcrete :: Expr -> Bool

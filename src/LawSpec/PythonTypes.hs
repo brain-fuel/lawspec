@@ -4,7 +4,8 @@ module LawSpec.PythonTypes where
 import LawSpec.DataNames (flatDataCandidates, productConstructors)
 import Control.Monad (unless)
 import Data.Char (isAscii, isAlphaNum, isLetter, toLower, ord)
-import Data.List (nub)
+import Data.List (nub, stripPrefix)
+import LawSpec.Collections (collectionsUnit)
 import Numeric (showHex)
 import Data.Aeson (encode)
 import qualified Data.Text.Lazy as T
@@ -38,6 +39,16 @@ identifier name = unless (valid && name `notElem` reserved)
       [] -> False
     reserved = words "False None True and as assert async await break class continue def del elif else except finally for from global if import in is lambda nonlocal not or pass raise return try while with yield _builtins _dataclasses _schema ls make_schema"
 
+-- A built-in collection container's short name.
+collectionContainer :: String -> Maybe String
+collectionContainer name = case stripPrefix (collectionsUnit ++ "::type::") name of
+  Just short | short `elem` ["Set", "KeyVal", "Queue", "Stack", "Deque"] -> Just short
+  _ -> Nothing
+
+-- Scalars whose Python natives compare and hash by value.
+pythonHashable :: String -> Bool
+pythonHashable n = isInteger n || n `elem` ["Bool", "Char", "Text", "Bytes", "Decimal", "Rational", "CodePoint", "CodeUnit16", "Unit"]
+
 lookupName :: Names -> C.Id -> Either String String
 lookupName names identity = maybe (Left "unplanned Python data name") Right (lookup identity names)
 
@@ -48,6 +59,17 @@ application name args = D.text name <> D.delimit 4 "[" "]" args
 typeDoc :: String -> Names -> [(C.Id,String)] -> C.Type -> Either String D.Doc
 typeDoc scope names parameters ty = case ty of
   C.TypeVariable variable -> maybe (Left "unbound Python data parameter") (Right . D.text) (lookup variable parameters)
+  -- Built-in collections are native: see runtime/lawspec_schema.py.
+  C.Constructor name arguments | Just short <- collectionContainer name -> do
+    args <- mapM argument arguments
+    let byValue = case arguments of C.TypeArgument (C.Constructor n []) : _ -> pythonHashable n; _ -> False
+    pure $ case (short, args) of
+      ("Set", [a]) | byValue -> application "_builtins.frozenset" [a]
+                   | otherwise -> application "_builtins.tuple" [a, D.text "..."]
+      ("KeyVal", [k, v]) | byValue -> application "_builtins.dict" [k, v]
+                         | otherwise -> application "_builtins.tuple" [application "_builtins.tuple" [k, v], D.text "..."]
+      (_, [a]) -> application "ls.deque" [a]
+      _ -> D.text "_builtins.object"
   C.Constructor name arguments -> do
     args <- mapM argument arguments
     case lookup (C.Id name) names of

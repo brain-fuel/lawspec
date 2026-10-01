@@ -180,7 +180,7 @@ auditTemplates declarations bits unit templates = do
       ("round", [_,scale], [value,scaleValue]) -> do
         checkedScale <- convert integers (S.Named "Int32") (effectiveType scale) scaleValue
         pure (T.Sequence [value,checkedScale])
-      _ | name `elem` ["length","real","imag","isNaN","isInfinite","isFinite","isNegativeZero","checked"] ->
+      _ | name `elem` ["length","real","imag","isNaN","isInfinite","isFinite","isNegativeZero","checked","compare","size","isEmpty","toList"] ->
         pure (T.Sequence values)
       _ -> lift (Left ("unknown total-definition helper: " ++ name))
     binary integers typed op left right
