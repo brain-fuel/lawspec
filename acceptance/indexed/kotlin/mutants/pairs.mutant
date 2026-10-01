@@ -1,0 +1,6 @@
+@@ src/main/kotlin/example/Arithmetic.kt
+<<<<<<<
+Pairs(value0)
+=======
+Pairs(Row.Cell(0, value0))
+>>>>>>>

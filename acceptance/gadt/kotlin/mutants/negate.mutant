@@ -1,0 +1,6 @@
+@@ src/main/kotlin/example/Gadt.kt
+<<<<<<<
+        is Expr.Negate -> !evalTruth(value0.operand)
+=======
+        is Expr.Negate -> evalTruth(value0.operand)
+>>>>>>>

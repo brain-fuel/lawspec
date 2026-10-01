@@ -1,0 +1,6 @@
+@@ src/example/arithmetic.py
+<<<<<<<
+    return length(value0.rows) * length(value0.columns)
+=======
+    return length(value0.rows) + length(value0.columns)
+>>>>>>>

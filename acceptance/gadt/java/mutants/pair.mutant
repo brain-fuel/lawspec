@@ -1,0 +1,6 @@
+@@ src/main/java/example/Gadt.java
+<<<<<<<
+          new Pair<>(evalNumber(both.first()), evalTruth(both.second()));
+=======
+          new Pair<>(evalNumber(both.first()), !evalTruth(both.second()));
+>>>>>>>

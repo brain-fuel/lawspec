@@ -1,0 +1,5 @@
+{
+  "specs": [
+    "examples/specs/gadt_expressions.lawspec"
+  ]
+}

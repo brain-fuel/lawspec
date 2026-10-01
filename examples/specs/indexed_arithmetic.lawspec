@@ -1,0 +1,154 @@
+unit example.arithmetic
+
+-- Index equations may use natural arithmetic: + - * div mod ^. Subtraction
+-- never truncates, so `m - 1` requires m >= 1 of every value. A variable bound
+-- by several fields makes those fields' indices equal.
+type Row (n :: Natural) is
+  | End where n = 0
+  | Cell head :: Int8 tail :: Row m where n = m + 1
+end
+
+-- A perfect tree: both subtrees share one height.
+type Perfect (n :: Natural) is
+  | Leaf value :: Int8 where n = 0
+  | Node left :: Perfect m right :: Perfect m where n = m + 1
+end
+
+-- A grid's index is its number of cells.
+type Grid (n :: Natural) is
+  | Grid rows :: Row r columns :: Row c where n = r * c
+end
+
+-- Two halves of one length.
+type Halves (n :: Natural) is
+  | Halves front :: Row m back :: Row m where n = m + m
+end
+
+-- The number of whole pairs, and the length after the first element.
+type Pairs (n :: Natural) is
+  | Pairs items :: Row m where n = m div 2
+end
+
+type Rest (n :: Natural) is
+  | Rest items :: Row m where n = m - 1
+end
+
+mirror :: (tree :: Perfect n) -> (r :: Perfect n)
+area :: (grid :: Grid n) -> BigInt
+duplicate :: (xs :: Row m) -> (r :: Halves (m + m))
+countPairs :: (xs :: Row m) -> (r :: Pairs (m div 2))
+-- `k + 1` binds k to one less than the argument's length.
+dropFirst :: (xs :: Row (k + 1)) -> (r :: Rest k)
+
+-- Checked definitions. Matching a Node tells the prover its subtrees share a
+-- height, so mirrorP's result height is proved; so is transposeG's, as r * c
+-- and c * r are the same product. stackRows' claim, (r + r) * c = 2 * (r * c),
+-- is beyond linear arithmetic: it is checked on each result instead.
+definition mirrorP (tree :: Perfect n) :: Perfect n is
+  match tree with
+  | Leaf v -> Leaf v
+  | Node l r -> Node (mirrorP r) (mirrorP l)
+  end
+end
+
+definition transposeG (grid :: Grid n) :: Grid n is
+  match grid with
+  | Grid rows columns -> Grid columns rows
+  end
+end
+
+definition appendRow (xs :: Row n) (ys :: Row m) :: Row (n + m) is
+  match xs with
+  | End -> ys
+  | Cell h t -> Cell h (appendRow t ys)
+  end
+end
+
+definition stackRows (grid :: Grid n) :: Grid (2 * n) is
+  match grid with
+  | Grid rows columns -> Grid (appendRow rows rows) columns
+  end
+end
+
+law `mirror agrees with the proved definition` is
+  definition is
+    `for all` (tree :: Perfect 3) . mirror tree = mirrorP tree
+  end
+end
+
+law `transposing keeps the area` is
+  definition is
+    `for all` (grid :: Grid 12) . area (transposeG grid) = 12
+  end
+end
+
+law `stacking doubles the area` is
+  definition is
+    `for all` (grid :: Grid 6) . area (stackRows grid) = 12
+  end
+end
+
+-- Without an index claim, balanced trees are still generated directly, from a
+-- few small heights; random trees would almost never be balanced.
+law `mirroring twice restores a tree` is
+  definition is
+    `for all` (tree :: Perfect n) . mirror (mirror tree) = tree
+  end
+end
+
+law `mirroring keeps the height` is
+  definition is
+    `for all` (tree :: Perfect 3) . nOfPerfect (mirror tree) = 3
+  end
+end
+
+law `a grid of six cells` is
+  definition is
+    `for all` (grid :: Grid 6) . area grid = 6
+  end
+end
+
+-- Generation chooses rows and columns among the divisors of twelve.
+law `the area is the index` is
+  definition is
+    `for all` (grid :: Grid 12) . area grid = nOfGrid grid
+  end
+end
+
+law `duplicating makes equal halves` is
+  definition is
+    `for all` (xs :: Row m) . nOfHalves (duplicate xs) = m + m
+  end
+end
+
+-- Generation gives both halves the same length.
+law `halves of six` is
+  definition is
+    `for all` (halves :: Halves 6) . nOfHalves halves = 6
+  end
+end
+
+law `seven elements make three pairs` is
+  definition is
+    `for all` (xs :: Row 7) . nOfPairs (countPairs xs) = 3
+  end
+end
+
+-- A child may have a larger index than its parent: Pairs 2 holds four or five.
+law `two pairs` is
+  definition is
+    `for all` (p :: Pairs 2) . nOfPairs p = 2
+  end
+end
+
+law `the rest is one shorter` is
+  definition is
+    `for all` (xs :: Row (k + 1)) . nOfRest (dropFirst xs) = k
+  end
+end
+
+law `the rest of three` is
+  definition is
+    `for all` (r :: Rest 3) . nOfRest r = 3
+  end
+end

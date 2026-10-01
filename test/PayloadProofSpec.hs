@@ -35,15 +35,15 @@ construct ty tag fields = Expr ty (Construct (Id tag) fields) origin
 match ty value cases = Expr ty (Match value cases) origin
 branch tag binders body = MatchCase (Id tag) binders body
 variant owner tag fields = DataConstructor (Id (owner ++ "::" ++ tag)) tag
-  [bind (owner ++ "::" ++ tag ++ "::" ++ name) ty | (name,ty) <- fields] [] origin
-structure name parameters variants = DataDeclaration (Id name) name (map Id parameters) variants origin
+  [bind (owner ++ "::" ++ tag ++ "::" ++ name) ty | (name,ty) <- fields] [] origin [] []
+structure name parameters variants = DataDeclaration (Id name) name (map Id parameters) variants origin Nothing
 forallPayload value predicates = Expr bool (AllPayloads value predicates) origin
 positive name ty value = let member = bind name ty
   in forallPayload value [(member,binary Greater (local member) (literal 0))]
 function name arguments result body = Definition
   (Declaration (Id name) name (foldr Arrow result (map binderType arguments)) origin) arguments body
 contract definition result pre post = Contract
-  (declarationId (definitionDeclaration definition)) (definitionArguments definition) result pre post
+  (declarationId (definitionDeclaration definition)) (definitionArguments definition) result pre post []
 check dat definitions contracts = validateDefinitionContracts 64 dat definitions contracts
 
 spec :: Spec

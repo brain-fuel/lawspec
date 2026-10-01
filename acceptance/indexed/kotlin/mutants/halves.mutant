@@ -1,0 +1,6 @@
+@@ src/main/kotlin/example/Arithmetic.kt
+<<<<<<<
+Halves(value0, value0)
+=======
+Halves(value0, Row.Cell(0, value0))
+>>>>>>>

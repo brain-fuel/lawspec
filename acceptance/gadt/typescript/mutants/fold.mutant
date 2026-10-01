@@ -1,0 +1,6 @@
+@@ src/example/gadt.ts
+<<<<<<<
+  return new data.ExprNumber(evalNumber(value0));
+=======
+  return new data.ExprNumber(0n);
+>>>>>>>

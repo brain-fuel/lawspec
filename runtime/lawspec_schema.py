@@ -25,6 +25,44 @@ class Field:
     type: object
 
 
+def parse_index_term(tokens, at):
+    """Parse a prefix index term: c<n>, f<field>[.<index>] or an operator."""
+    token = tokens[at]
+    if token[0] == 'c':
+        return ('c', int(token[1:])), at + 1
+    if token[0] == 'f':
+        position, _, index = token[1:].partition('.')
+        return ('f', int(position), int(index or 0)), at + 1
+    if token in ('+', '-', '*', 'div', 'mod', '^'):
+        left, at = parse_index_term(tokens, at + 1)
+        right, at = parse_index_term(tokens, at)
+        return (token, left, right), at
+    raise ValueError('malformed index term')
+
+
+def eval_index_term(term, field):
+    """Natural index arithmetic; None when an operation has no value."""
+    if term[0] == 'c':
+        return term[1]
+    if term[0] == 'f':
+        return field(term[1], term[2])
+    x = eval_index_term(term[1], field)
+    y = eval_index_term(term[2], field)
+    if x is None or y is None:
+        return None
+    if term[0] == '+':
+        return x + y
+    if term[0] == '-':
+        return x - y if x >= y else None
+    if term[0] == '*':
+        return x * y
+    if term[0] == 'div':
+        return x // y if y > 0 else None
+    if term[0] == 'mod':
+        return x % y if y > 0 else None
+    return x ** y if 0 <= y <= 64 else None
+
+
 @dataclass(frozen=True)
 class Constructor:
     tag: str
@@ -32,10 +70,18 @@ class Constructor:
     native: type
     predicates: tuple = ()
     native_fields: tuple | None = None
+    indices: tuple = ()
+    # A GADT constructor fixes parameters to patterns; its existentials are
+    # the parameters numbered after the definition's own.
+    refinements: tuple = ()
+    existentials: int = 0
 
     def __post_init__(self):
         object.__setattr__(self, "fields", tuple(self.fields))
         object.__setattr__(self, "predicates", tuple(self.predicates))
+        object.__setattr__(self, "indices", tuple(self.indices))
+        object.__setattr__(self, "refinements", tuple(
+            (index, pattern) for index, pattern in self.refinements))
         if self.native_fields is not None:
             object.__setattr__(
                 self, "native_fields", tuple(self.native_fields))
@@ -91,6 +137,29 @@ class Left[L, R](Either[L, R]):
 @dataclass(frozen=True, slots=True, eq=False)
 class Right[L, R](Either[L, R]):
     value: R
+
+
+def refine(constructor, arguments, parameters):
+    """Arguments extended with the existentials a constructor's refinements
+    bind; None when the refinements do not match."""
+    bound = {}
+
+    def match(pattern, actual):
+        if isinstance(pattern, Parameter):
+            if pattern.index < parameters:
+                return arguments[pattern.index] == actual
+            previous = bound.setdefault(pattern.index, actual)
+            return previous == actual
+        return (isinstance(actual, Named) and actual.name == pattern.name
+                and len(actual.arguments) == len(pattern.arguments)
+                and all(match(p, a) for p, a in
+                        zip(pattern.arguments, actual.arguments)))
+
+    for index, pattern in constructor.refinements:
+        if not match(pattern, arguments[index]):
+            return None
+    return tuple(arguments) + tuple(
+        bound.get(parameters + k) for k in range(constructor.existentials))
 
 
 def substitute(reference, arguments):
@@ -163,8 +232,13 @@ class Schema:
                                        and name.isidentifier()
                                        for name in native_names)):
                         raise ValueError("invalid native field mapping")
+                scope = definition.parameters + constructor.existentials
                 for field in constructor.fields:
-                    self._check(field.type, definition.parameters)
+                    self._check(field.type, scope)
+                for index, pattern in constructor.refinements:
+                    if not 0 <= index < definition.parameters:
+                        raise ValueError("invalid refined parameter")
+                    self._check(pattern, scope)
                 if not all(callable(test) for test in constructor.predicates):
                     raise TypeError("constructor predicate must be callable")
 
@@ -188,11 +262,20 @@ class Schema:
         definition = self._definitions.get(reference.name)
         if definition is None:
             return None
-        return tuple(Constructor(constructor.tag, tuple(
-            Field(field.name, substitute(field.type, reference.arguments))
-            for field in constructor.fields), constructor.native,
-            constructor.predicates, constructor.native_fields)
-            for constructor in definition.constructors)
+        found = []
+        for constructor in definition.constructors:
+            # A GADT constructor whose refinements do not match these
+            # arguments builds no value of this type.
+            arguments = refine(constructor, reference.arguments,
+                               definition.parameters)
+            if arguments is None:
+                continue
+            found.append(Constructor(constructor.tag, tuple(
+                Field(field.name, substitute(field.type, arguments))
+                for field in constructor.fields), constructor.native,
+                constructor.predicates, constructor.native_fields,
+                constructor.indices))
+        return tuple(found)
 
     def with_native_bindings(self, bindings, codecs=None):
         """Copy this schema with application classes and field names.
@@ -242,6 +325,37 @@ class Schema:
     def _bits(bits):
         if type(bits) is not int or bits not in (32, 64):
             raise ValueError("machineBits must be 32 or 64")
+
+    def _check_indices(self, constructor, fields):
+        """Check an indexed family's guards against its fields' indices."""
+        for text in constructor.indices:
+            tokens = text.split()
+            if tokens[0] not in ('==', '>='):
+                continue
+            left, at = parse_index_term(tokens, 1)
+            right, _ = parse_index_term(tokens, at)
+
+            def field(position, index):
+                return self._index_of(constructor.fields[position].type,
+                                      fields[position], index)
+            x = eval_index_term(left, field)
+            y = eval_index_term(right, field)
+            if x is None or y is None or (
+                    x != y if tokens[0] == '==' else x < y):
+                raise RefinementViolation(
+                    f"{constructor.tag}: index guard {text} failed")
+
+    def _index_of(self, reference, value, index):
+        constructors = self.constructors(reference)
+        constructor = next((item for item in constructors or ()
+                            if item.tag == value.tag), None)
+        terms = [text for text in (constructor.indices if constructor else ())
+                 if text.split()[0] not in ('==', '>=')]
+        if index >= len(terms):
+            raise ValueError("no index for " + reference.name)
+        term, _ = parse_index_term(terms[index].split(), 0)
+        return eval_index_term(term, lambda position, child: self._index_of(
+            constructor.fields[position].type, value.fields[position], child))
 
     def validate(self, reference, value, bits=64, symbols=None):
         self._check(reference)
@@ -413,6 +527,7 @@ class Schema:
                         raise RefinementViolation(f"{context} failed")
                     if accepted is not True:
                         raise ValueError(f"{context} did not produce Bool")
+                self._check_indices(constructor, converted)
             return ls.DataValue(constructor.tag, converted)
         name, arguments = reference.name, reference.arguments
         if not arguments:

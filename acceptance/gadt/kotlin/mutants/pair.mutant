@@ -1,0 +1,6 @@
+@@ src/main/kotlin/example/Gadt.kt
+<<<<<<<
+Pair(evalNumber(value0.first), evalTruth(value0.second))
+=======
+Pair(evalNumber(value0.first), !evalTruth(value0.second))
+>>>>>>>

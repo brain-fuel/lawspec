@@ -9,8 +9,9 @@ module LawSpec.Indexed
   ) where
 
 import Control.Monad (forM, forM_, unless, when)
-import Data.List (intercalate, nub, (\\))
+import Data.List (elemIndex, intercalate, nub, (\\))
 import qualified Data.Map.Strict as M
+import LawSpec.IndexTerm
 import LawSpec.Model
 
 data IndexedConstructor = IndexedConstructor
@@ -159,9 +160,9 @@ constructorBindings table f c = do
             Var v -> pure [(v, Binding field (familyName g) parameter)]
             _ -> Left (context ++ ": field " ++ field ++ " must use an index variable, not an expression")
           _ -> pure []
-  let variables = map fst pairs
-  unless (length (nub variables) == length variables)
-    (Left (context ++ ": an index variable may be bound by only one field"))
+  -- A variable bound by several fields is a sibling equality: the measure
+  -- reads the first binder, and the others are guarded equal to it.
+  let variables = nub (map fst pairs)
   forM_ variables $ \v -> when (v `elem` map fst (familyParameters f))
     (Left (context ++ ": index variable " ++ v ++ " shadows a family parameter"))
   pure pairs
@@ -178,21 +179,68 @@ mentionsFamily table ty = case ty of
   CheckedType _ a -> mentionsFamily table a
   _ -> False
 
--- Index expressions are sums of natural literals and bound index variables.
--- Linear sums keep the equations solvable backwards during generation.
+-- Index expressions are natural arithmetic over literals and index
+-- variables. div, mod and ^ arrive as the prelude's quot, rem and pow.
+data IndexShape = IndexLiteral Integer | IndexVariable String | IndexBinary IndexOperation Expr Expr | IndexOther
+
+indexShape :: Expr -> IndexShape
+indexShape e = case unlocated e of
+  Number n -> IndexLiteral n
+  Var v -> IndexVariable v
+  Binary "+" a b -> IndexBinary IndexAdd a b
+  Binary "-" a b -> IndexBinary IndexSubtract a b
+  Binary "*" a b -> IndexBinary IndexMultiply a b
+  Apply f b | Apply g a <- unlocated f, Var n <- unlocated g, Just op <- lookup n helpers -> IndexBinary op a b
+  _ -> IndexOther
+  where helpers = [("prelude.quot", IndexQuotient), ("prelude.rem", IndexRemainder), ("prelude.pow", IndexPower)]
+
 checkIndexExpr :: String -> String -> Expr -> Either String ()
-checkIndexExpr context index e = case unlocated e of
-  Number n | n >= 0 -> pure ()
-  Number _ -> Left (context ++ ": index " ++ index ++ " must be a natural number")
-  Var _ -> pure ()
-  Binary "+" a b -> checkIndexExpr context index a >> checkIndexExpr context index b
-  _ -> Left (context ++ ": index " ++ index ++ " must be a sum of natural literals and index variables")
+checkIndexExpr context index e = case indexShape e of
+  IndexLiteral n | n >= 0 -> pure ()
+                 | otherwise -> Left (context ++ ": index " ++ index ++ " must be a natural number")
+  IndexVariable _ -> pure ()
+  IndexBinary IndexPower a b | not (literal a || literal b) ->
+    Left (context ++ ": index " ++ index ++ " may raise only a literal base or to a literal exponent")
+  IndexBinary _ a b -> checkIndexExpr context index a >> checkIndexExpr context index b
+  IndexOther -> Left (context ++ ": index " ++ index ++
+    " must be natural arithmetic (+, -, *, div, mod, ^) over literals and index variables")
+  where literal x = case indexShape x of IndexLiteral _ -> True; _ -> False
 
 indexVariables :: Expr -> [String]
-indexVariables e = case unlocated e of
-  Var v -> [v]
-  Binary _ a b -> indexVariables a ++ indexVariables b
+indexVariables e = case indexShape e of
+  IndexVariable v -> [v]
+  IndexBinary _ a b -> indexVariables a ++ indexVariables b
   _ -> []
+
+-- The family's index table: each constructor's index terms over the indices
+-- of its fields, with guards for subtraction and shared (sibling) indices.
+familyIndex :: M.Map String IndexedFamily -> IndexedFamily -> Either String FamilyIndex
+familyIndex table f = do
+  constructors <- forM (familyConstructors f) $ \c -> do
+    bindings <- constructorBindings table f c
+    let d = indexedDeclaration c
+        fields = map fst (dataConstructorFields d)
+        reference b = do
+          position <- elemIndex (boundField b) fields
+          family <- M.lookup (boundFamily b) table
+          index <- elemIndex (boundIndex b) (indexParameters family)
+          pure (IndexField position index)
+        term e = case indexShape e of
+          IndexLiteral n -> Right (IndexConstant n)
+          IndexVariable v -> maybe (Left ("unbound index variable " ++ v)) Right (lookup v bindings >>= reference)
+          IndexBinary op a b -> IndexApply op <$> term a <*> term b
+          IndexOther -> Left "invalid index expression"
+    terms <- forM (indexParameters f) $ \index -> term (maybe (Number 0) id (lookup index (indexedEquations c)))
+    siblings <- fmap concat $ forM (nub (map fst bindings)) $ \v ->
+      case [b | (v', b) <- bindings, v' == v] of
+        first : rest -> do
+          references <- maybe (Left ("unresolved index field for " ++ v)) Right (mapM reference (first : rest))
+          case references of
+            r : rs -> pure [IndexGuard IndexEqual r other | other <- rs]
+            [] -> pure []
+        [] -> pure []
+    pure (dataConstructorName d, ConstructorIndex terms (siblings ++ concatMap subtractionGuards terms))
+  pure (FamilyIndex (indexParameters f) constructors)
 
 eraseType :: M.Map String IndexedFamily -> Type -> Type
 eraseType table ty = case familyReference table ty of
@@ -210,10 +258,12 @@ eraseType table ty = case familyReference table ty of
     _ -> ty
 
 erasedDeclaration :: M.Map String IndexedFamily -> IndexedFamily -> Either String DataTypeDeclaration
-erasedDeclaration table f = pure $ DataTypeDeclaration (familyName f) (typeParameters f)
-  [ d { dataConstructorFields = [(field, eraseType table ty) | (field, ty) <- dataConstructorFields d] }
-  | c <- familyConstructors f, let d = indexedDeclaration c ]
-  (familySpan f)
+erasedDeclaration table f = do
+  index <- familyIndex table f
+  pure $ DataTypeDeclaration (familyName f) (typeParameters f)
+    [ d { dataConstructorFields = [(field, eraseType table ty) | (field, ty) <- dataConstructorFields d] }
+    | c <- familyConstructors f, let d = indexedDeclaration c ]
+    (familySpan f) (Just index)
 
 -- The measure recomputes an index from the constructor equations, replacing
 -- each index variable with the measure of the field that binds it.
@@ -239,6 +289,7 @@ replaceIndex :: (String -> Expr) -> Expr -> Expr
 replaceIndex measured e = case unlocated e of
   Var v -> measured v
   Binary op a b -> Binary op (replaceIndex measured a) (replaceIndex measured b)
+  Apply a b -> Apply (replaceIndex measured a) (replaceIndex measured b)
   other -> other
 
 familyRefinement :: IndexedFamily -> Refinement
@@ -315,19 +366,43 @@ implicitAt table scope binder ty = case ty of
     Nothing -> pure (ty, [])
     Just (f, args) -> do
       let indices = [(p, e) | ((p, False), ValueArgument e) <- zip (familyParameters f) args]
-          freshVar e = case unlocated e of
-            Var v | v `notElem` scope -> Just v
+          fresh v = v `notElem` scope
+          measure p = Apply (Var (measureName (familyName f) p)) (Var binder)
+          literal x = case indexShape x of IndexLiteral k -> Just k; _ -> Nothing
+          -- v, v + k and k * v determine v from the binder's measure; the
+          -- binder's domain then requires the measure to fit the pattern.
+          invert p e = case indexShape e of
+            IndexVariable v | fresh v -> Just (v, measure p, [])
+            IndexBinary IndexAdd a b
+              | Just (v, k) <- variablePlus a b -> Just (v, Binary "-" (measure p) (Number k),
+                  [Binary ">=" (measure p) (Number k)])
+            IndexBinary IndexMultiply a b
+              | Just (v, k) <- variableTimes a b, k > 0 -> Just (v, helper "quot" (measure p) (Number k),
+                  [Binary "==" (helper "rem" (measure p) (Number k)) (Number 0)])
             _ -> Nothing
-          fresh = [(p, v) | (p, e) <- indices, Just v <- [freshVar e]]
-          implicitMentions = [v | (_, e) <- indices, freshVar e == Nothing,
+          variablePlus a b = case (indexShape a, indexShape b) of
+            (IndexVariable v, IndexLiteral k) | fresh v -> Just (v, k)
+            (IndexLiteral k, IndexVariable v) | fresh v -> Just (v, k)
+            _ -> Nothing
+          variableTimes a b = variablePlus a b >>= \_ -> case (literal a, literal b, indexShape a, indexShape b) of
+            (_, Just k, IndexVariable v, _) -> Just (v, k)
+            (Just k, _, _, IndexVariable v) -> Just (v, k)
+            _ -> Nothing
+          helper n x y = Apply (Apply (Var ("prelude." ++ n)) x) y
+          inverted = [(p, invert p e) | (p, e) <- indices]
+          introduces = [r | (_, Just r) <- inverted]
+          implicitMentions = [v | (_, e) <- indices, invert "" e == Nothing,
                               v <- indexVariables e, v `notElem` scope]
       unless (null implicitMentions) (Left ("index variable " ++ head implicitMentions ++
-        " must first appear alone as an index of an earlier binder"))
-      if null fresh then pure (ty, [])
-      else if length fresh /= length indices
+        " must first appear as v, v + k or k * v in an index of an earlier binder"))
+      if null introduces then pure (ty, [])
+      else if length introduces /= length indices
         then Left ("binder " ++ binder ++ " mixes implicit and explicit indices of " ++ familyName f)
-        else pure (eraseType table ty,
-          [(v, Apply (Var (measureName (familyName f) p)) (Var binder)) | (p, v) <- fresh])
+        else do
+          let conditions = concat [c | (_, _, c) <- introduces]
+              erased = eraseType table ty
+          pure (if null conditions then erased else Refined binder erased (Just (foldr1 (Binary "&&") conditions)),
+            [(v, e) | (v, e, _) <- introduces])
 
 checkClosed :: M.Map String IndexedFamily -> [String] -> Type -> Either String ()
 checkClosed table scope ty = case familyReference table (stripRefined ty) of

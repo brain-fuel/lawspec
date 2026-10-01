@@ -7,6 +7,7 @@ import (
 	"math/big"
 	"slices"
 	"strconv"
+	"strings"
 	"sync"
 
 	"pgregory.net/rapid"
@@ -477,20 +478,127 @@ func lsBuildDataStrategy(schema *lawSpecSchema, reference lawSpecTypeRef, bits, 
 	return build(reference, budget)
 }
 
-// lsIndexedDataStrategy constructs values whose linear structural measure
-// equals target. Each constructor's equation holds its constant followed by
-// the positions of recursive fields whose measures it adds, so the target is
-// solved backwards and split across those fields. Nothing is filtered away.
+const (
+	lsIndexSlack   = 16
+	lsIndexChoices = 6
+)
+
+// lsIndexTerm is a prefix index term over field indices (f<i>), literals
+// (c<n>) and the natural operators + - * div mod ^.
+type lsIndexTerm struct {
+	op          string
+	value       int64
+	left, right *lsIndexTerm
+}
+
+func lsParseIndexTerm(tokens []string, at int) (*lsIndexTerm, int) {
+	if at >= len(tokens) {
+		panic("malformed index term")
+	}
+	token := tokens[at]
+	switch {
+	case token[0] == 'c' || token[0] == 'f':
+		value, err := strconv.ParseInt(token[1:], 10, 64)
+		if err != nil {
+			panic("malformed index term")
+		}
+		return &lsIndexTerm{op: token[:1], value: value}, at + 1
+	case slices.Contains([]string{"+", "-", "*", "div", "mod", "^"}, token):
+		left, next := lsParseIndexTerm(tokens, at+1)
+		right, end := lsParseIndexTerm(tokens, next)
+		return &lsIndexTerm{op: token, left: left, right: right}, end
+	}
+	panic("malformed index term")
+}
+
+// lsEvalIndexTerm is natural index arithmetic; false when an operation has
+// no natural value or leaves the int64 range.
+func lsEvalIndexTerm(term *lsIndexTerm, fields map[int]int64) (int64, bool) {
+	switch term.op {
+	case "c":
+		return term.value, true
+	case "f":
+		value, ok := fields[int(term.value)]
+		return value, ok
+	}
+	x, ok := lsEvalIndexTerm(term.left, fields)
+	if !ok {
+		return 0, false
+	}
+	y, ok := lsEvalIndexTerm(term.right, fields)
+	if !ok {
+		return 0, false
+	}
+	result := new(big.Int)
+	switch term.op {
+	case "+":
+		result.Add(big.NewInt(x), big.NewInt(y))
+	case "-":
+		if x < y {
+			return 0, false
+		}
+		result.SetInt64(x - y)
+	case "*":
+		result.Mul(big.NewInt(x), big.NewInt(y))
+	case "div", "mod":
+		if y <= 0 {
+			return 0, false
+		}
+		if term.op == "div" {
+			result.SetInt64(x / y)
+		} else {
+			result.SetInt64(x % y)
+		}
+	default:
+		if y > 64 {
+			return 0, false
+		}
+		result.Exp(big.NewInt(x), big.NewInt(y), nil)
+	}
+	if !result.IsInt64() {
+		return 0, false
+	}
+	return result.Int64(), true
+}
+
+func lsIndexTermFields(term *lsIndexTerm) []int {
+	switch term.op {
+	case "c":
+		return nil
+	case "f":
+		return []int{int(term.value)}
+	}
+	return append(lsIndexTermFields(term.left), lsIndexTermFields(term.right)...)
+}
+
+type lsIndexGuard struct {
+	relation    string
+	left, right *lsIndexTerm
+}
+
+type lsIndexEquation struct {
+	term      *lsIndexTerm
+	guards    []lsIndexGuard
+	positions []int
+}
+
+// lsIndexedDataStrategy constructs values whose structural index equals
+// target. Each constructor carries its index term then its guards, in prefix
+// notation over field indices. Reachability is a forward fixpoint over levels
+// 0..target+slack, so a child may exceed its parent's index; the target is
+// then solved backwards, and nothing is filtered away.
 func lsIndexedDataStrategy(schema *lawSpecSchema, reference lawSpecTypeRef, bits, budget int,
-	target LawSpecValue, equations map[string][]int64,
+	target LawSpecValue, equations map[string][]string,
 	scalar func(string) *rapid.Generator[LawSpecValue]) *rapid.Generator[lawSpecCheckedValue] {
 	number, ok := target.Data.(*big.Int)
-	if !ok || number.Sign() < 0 || !number.IsInt64() {
-		panic("index target must be a natural number")
+	if !ok || !number.IsInt64() {
+		panic("index target must be an integer")
 	}
 	if _, custom := schema.constructors(reference); !custom {
 		panic("indexed generation requires a data type")
 	}
+	goal := number.Int64()
+	limit := max(goal, 0) + lsIndexSlack
 	plain := map[string]*rapid.Generator[LawSpecValue]{}
 	plainField := func(typeRef lawSpecTypeRef) (generator *rapid.Generator[LawSpecValue]) {
 		if cached, exists := plain[typeRef.key()]; exists {
@@ -504,83 +612,178 @@ func lsIndexedDataStrategy(schema *lawSpecSchema, reference lawSpecTypeRef, bits
 		}()
 		return lsBuildDataStrategy(schema, typeRef, bits, budget, scalar, nil)
 	}
-	equation := func(tag string) (int64, []int) {
-		found, exists := equations[tag]
-		if !exists {
+	parsed := map[string]lsIndexEquation{}
+	equation := func(tag string) lsIndexEquation {
+		if found, exists := parsed[tag]; exists {
+			return found
+		}
+		texts, exists := equations[tag]
+		if !exists || len(texts) == 0 {
 			panic("missing index equation for " + tag)
 		}
-		positions := make([]int, len(found)-1)
-		for i, position := range found[1:] {
-			positions[i] = int(position)
+		tokens := strings.Fields(texts[0])
+		term, end := lsParseIndexTerm(tokens, 0)
+		if end != len(tokens) {
+			panic("malformed index term")
 		}
-		return found[0], positions
+		result := lsIndexEquation{term: term}
+		positions := lsIndexTermFields(term)
+		for _, text := range texts[1:] {
+			parts := strings.Fields(text)
+			if len(parts) == 0 || (parts[0] != "==" && parts[0] != ">=") {
+				panic("malformed index guard")
+			}
+			left, next := lsParseIndexTerm(parts, 1)
+			right, _ := lsParseIndexTerm(parts, next)
+			result.guards = append(result.guards, lsIndexGuard{parts[0], left, right})
+			positions = append(append(positions, lsIndexTermFields(left)...), lsIndexTermFields(right)...)
+		}
+		for _, position := range positions {
+			if !slices.Contains(result.positions, position) {
+				result.positions = append(result.positions, position)
+			}
+		}
+		parsed[tag] = result
+		return result
 	}
-	type request struct {
+	ready := func(constructor lawSpecConstructorSchema) bool {
+		positions := equation(constructor.tag).positions
+		for index, field := range constructor.fields {
+			if !slices.Contains(positions, index) && plainField(field.typeRef) == nil {
+				return false
+			}
+		}
+		return true
+	}
+	families := []lawSpecTypeRef{}
+	seen := map[string]bool{}
+	pending := []lawSpecTypeRef{reference}
+	for len(pending) > 0 {
+		typeRef := pending[len(pending)-1]
+		pending = pending[:len(pending)-1]
+		if seen[typeRef.key()] {
+			continue
+		}
+		constructors, custom := schema.constructors(typeRef)
+		if !custom {
+			panic("indexed generation requires a data type")
+		}
+		seen[typeRef.key()] = true
+		families = append(families, typeRef)
+		for _, constructor := range constructors {
+			for _, position := range equation(constructor.tag).positions {
+				pending = append(pending, constructor.fields[position].typeRef)
+			}
+		}
+	}
+	type level struct {
 		key   string
 		index int64
 	}
-	reachableMemo := map[request]bool{}
-	visiting := map[request]bool{}
-	var reachable func(lawSpecTypeRef, int64) bool
-	var splittable func([]lawSpecTypeRef, int64) bool
-	feasible := func(typeRef lawSpecTypeRef, constructor lawSpecConstructorSchema, k int64) ([]lawSpecTypeRef, bool) {
-		constant, positions := equation(constructor.tag)
-		rest := k - constant
-		if rest < 0 {
-			return nil, false
-		}
-		types := make([]lawSpecTypeRef, len(positions))
-		for i, position := range positions {
-			types[i] = constructor.fields[position].typeRef
-		}
-		for index, field := range constructor.fields {
-			if !slices.Contains(positions, index) && plainField(field.typeRef) == nil {
-				return nil, false
-			}
-		}
-		if len(types) == 0 {
-			return types, rest == 0
-		}
-		return types, splittable(types, rest)
+	type solution struct {
+		value      int64
+		assignment map[int]int64
 	}
-	reachable = func(typeRef lawSpecTypeRef, k int64) bool {
-		key := request{typeRef.key(), k}
-		if result, exists := reachableMemo[key]; exists {
-			return result
-		}
-		if visiting[key] {
-			return false
-		}
-		visiting[key] = true
-		constructors, _ := schema.constructors(typeRef)
-		result := false
-		for _, constructor := range constructors {
-			if _, ok := feasible(typeRef, constructor, k); ok {
-				result = true
-				break
+	// assignments lists every assignment of reachable indices to the index
+	// fields that satisfies the guards, with the index it produces.
+	assignments := func(constructor lawSpecConstructorSchema, reach map[level]bool) []solution {
+		found := equation(constructor.tag)
+		results := []solution{}
+		current := map[int]int64{}
+		var extend func(int)
+		extend = func(at int) {
+			if at == len(found.positions) {
+				for _, guard := range found.guards {
+					x, okLeft := lsEvalIndexTerm(guard.left, current)
+					y, okRight := lsEvalIndexTerm(guard.right, current)
+					if !okLeft || !okRight || (guard.relation == "==" && x != y) || (guard.relation == ">=" && x < y) {
+						return
+					}
+				}
+				if value, ok := lsEvalIndexTerm(found.term, current); ok && value <= limit {
+					copied := make(map[int]int64, len(current))
+					for position, index := range current {
+						copied[position] = index
+					}
+					results = append(results, solution{value, copied})
+				}
+				return
 			}
+			position := found.positions[at]
+			for value := int64(0); value <= limit; value++ {
+				if reach[level{constructor.fields[position].typeRef.key(), value}] {
+					current[position] = value
+					extend(at + 1)
+				}
+			}
+			delete(current, position)
 		}
-		delete(visiting, key)
-		reachableMemo[key] = result
-		return result
+		extend(0)
+		return results
 	}
-	splittable = func(types []lawSpecTypeRef, rest int64) bool {
-		if len(types) == 1 {
-			return reachable(types[0], rest)
+	reach := map[level]bool{}
+	for {
+		grown := false
+		next := map[level]bool{}
+		for key := range reach {
+			next[key] = true
 		}
-		for first := int64(0); first <= rest; first++ {
-			if reachable(types[0], first) && splittable(types[1:], rest-first) {
-				return true
+		for _, typeRef := range families {
+			constructors, _ := schema.constructors(typeRef)
+			for _, constructor := range constructors {
+				if !ready(constructor) {
+					continue
+				}
+				for _, found := range assignments(constructor, reach) {
+					key := level{typeRef.key(), found.value}
+					if !next[key] {
+						next[key] = true
+						grown = true
+					}
+				}
 			}
 		}
-		return false
+		reach = next
+		if !grown {
+			break
+		}
+	}
+	// An open target (negative), or one drawn from earlier inputs that breaks
+	// their preconditions or names no value, generates from the smallest
+	// reachable indices; an index claim rejects a mismatch.
+	levels := []int64{goal}
+	if !reach[level{reference.key(), goal}] {
+		levels = nil
+		for candidate := int64(0); candidate <= limit && len(levels) < lsIndexChoices; candidate++ {
+			if reach[level{reference.key(), candidate}] {
+				levels = append(levels, candidate)
+			}
+		}
+		if len(levels) == 0 {
+			panic(fmt.Sprintf("no value of %s has an index", reference.key()))
+		}
+	}
+	solutions := map[string][]map[int]int64{}
+	solve := func(constructor lawSpecConstructorSchema, k int64) []map[int]int64 {
+		key := constructor.tag + "@" + strconv.FormatInt(k, 10)
+		if found, exists := solutions[key]; exists {
+			return found
+		}
+		matches := []map[int]int64{}
+		for _, found := range assignments(constructor, reach) {
+			if found.value == k {
+				matches = append(matches, found.assignment)
+			}
+		}
+		solutions[key] = matches
+		return matches
 	}
 	var draw func(*rapid.T, lawSpecTypeRef, int64) LawSpecValue
 	draw = func(t *rapid.T, typeRef lawSpecTypeRef, k int64) LawSpecValue {
 		constructors, _ := schema.constructors(typeRef)
 		options := []lawSpecConstructorSchema{}
 		for _, constructor := range constructors {
-			if _, ok := feasible(typeRef, constructor, k); ok {
+			if ready(constructor) && len(solve(constructor, k)) > 0 {
 				options = append(options, constructor)
 			}
 		}
@@ -588,35 +791,20 @@ func lsIndexedDataStrategy(schema *lawSpecSchema, reference lawSpecTypeRef, bits
 			panic(fmt.Sprintf("no value of %s has index %d", typeRef.key(), k))
 		}
 		constructor := options[rapid.IntRange(0, len(options)-1).Draw(t, "constructor")]
-		constant, positions := equation(constructor.tag)
-		types, _ := feasible(typeRef, constructor, k)
-		targets := make([]int64, len(types))
-		rest := k - constant
-		for i := range types {
-			if i == len(types)-1 {
-				targets[i] = rest
-				break
-			}
-			choices := []int64{}
-			for first := int64(0); first <= rest; first++ {
-				if reachable(types[i], first) && splittable(types[i+1:], rest-first) {
-					choices = append(choices, first)
-				}
-			}
-			targets[i] = choices[rapid.IntRange(0, len(choices)-1).Draw(t, "split")]
-			rest -= targets[i]
-		}
+		choices := solve(constructor, k)
+		targets := choices[rapid.IntRange(0, len(choices)-1).Draw(t, "split")]
 		values := make([]LawSpecValue, len(constructor.fields))
-		for index, field := range constructor.fields {
-			if position := slices.Index(positions, index); position >= 0 {
-				values[index] = draw(t, field.typeRef, targets[position])
+		for position, field := range constructor.fields {
+			if childIndex, indexed := targets[position]; indexed {
+				values[position] = draw(t, field.typeRef, childIndex)
 			} else {
-				values[index] = plainField(field.typeRef).Draw(t, field.name)
+				values[position] = plainField(field.typeRef).Draw(t, field.name)
 			}
 		}
 		return schema.construct(typeRef, constructor.tag, values, bits)
 	}
 	return rapid.Custom(func(t *rapid.T) lawSpecCheckedValue {
-		return lawSpecCheckedValue{value: draw(t, reference, number.Int64())}
+		chosen := levels[rapid.IntRange(0, len(levels)-1).Draw(t, "index")]
+		return lawSpecCheckedValue{value: draw(t, reference, chosen)}
 	})
 }

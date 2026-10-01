@@ -163,7 +163,7 @@ elaborateResolvedWithData dataTypes declarations bits origin resolve env source 
   builtinApplication e = case root e of S.Var n -> take 8 n == "prelude."; _ -> False
   builtinNode t n xs
     | isNumeric n, [x] <- xs = pure (node t (C.Convert C.Explicit t x))
-    | n `elem` ["quot","rem"], [a,b] <- xs = do
+    | n `elem` ["quot","rem","pow"], [a,b] <- xs = do
         op <- binaryOp n
         ev <- operationEvidence op (C.expressionType a) (C.expressionType b)
         pure (node t (C.Binary op ev a b))
@@ -181,7 +181,7 @@ elaborateResolvedWithData dataTypes declarations bits origin resolve env source 
 
 binaryOp :: String -> Either String C.BinaryOp
 binaryOp op = maybe (Left ("unknown binary operation: " ++ op)) Right (lookup op
-  [("+",C.Add),("-",C.Subtract),("*",C.Multiply),("/",C.Divide),("quot",C.Quotient),("rem",C.Remainder)
+  [("+",C.Add),("-",C.Subtract),("*",C.Multiply),("/",C.Divide),("quot",C.Quotient),("rem",C.Remainder),("pow",C.Power)
   ,("==",C.Equal),("!=",C.NotEqual),("<",C.Less),("<=",C.LessEqual),(">",C.Greater),(">=",C.GreaterEqual)])
 
 -- Reused by example-domain checking and final program elaboration. This keeps
@@ -227,4 +227,4 @@ elaborateContract dataDeclarations bits u c = do
   args <- forM (S.contractArguments c) $ \(n,t) -> C.Binder (resolve n) n <$> coreType t
   let (n,t) = S.contractResult c
   result <- C.Binder (resolve n) n <$> coreType t
-  C.Contract cid args result <$> mapM term (S.contractPreconditions c) <*> mapM term (S.contractPostconditions c)
+  C.Contract cid args result <$> mapM term (S.contractPreconditions c) <*> mapM term (S.contractPostconditions c) <*> pure []

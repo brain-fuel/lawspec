@@ -3,6 +3,7 @@
 module LawSpec.Data (elaborateDataDeclarations, elaborateDataDeclarationsWithProfile, qualifyDataNames) where
 
 import Control.Monad (forM, unless)
+import Data.List (nub)
 import LawSpec.Elaboration (elaborateResolvedWithData)
 import LawSpec.Capabilities (satisfiedWithData)
 import LawSpec.Core.Total (constructorProofContracts)
@@ -11,6 +12,7 @@ import qualified LawSpec.Model as S
 import qualified LawSpec.Core as C
 import LawSpec.Common
 import LawSpec.Scalar (primitive)
+import LawSpec.IndexTerm (FamilyIndex(..))
 
 elaborateDataDeclarations :: [S.Unit] -> Either [Diagnostic] [C.DataDeclaration]
 elaborateDataDeclarations = elaborateDataDeclarationsWithProfile 64
@@ -47,24 +49,44 @@ elaborateDataDeclarationsWithProfile bits units = do
           parameters = M.fromList [(n, parameter n) | n <- S.dataTypeParameters d]
           localTypes = M.fromList [(S.dataTypeName t, typeIdentity u (S.dataTypeName t)) | t <- S.dataTypes u]
           typeName n = maybe n C.idText (M.lookup n localTypes)
-          core t = case S.baseType t of
+          coreWith variables t = case S.baseType t of
             S.Named n -> Right (C.Constructor (typeName n) [])
-            S.Variable n -> Right (C.TypeVariable (M.findWithDefault (parameter ("unbound::" ++ n)) n parameters))
-            S.Applied n a -> C.Constructor (typeName n) . pure . C.TypeArgument <$> core a
-            S.Application n as -> C.Constructor (typeName n) <$> mapM (fmap C.TypeArgument . core) as
-            S.Arrow a b -> C.Arrow <$> core a <*> core b
-            S.Qualified [] a -> core a
+            S.Variable n -> Right (C.TypeVariable (M.findWithDefault (parameter ("unbound::" ++ n)) n variables))
+            S.Applied n a -> C.Constructor (typeName n) . pure . C.TypeArgument <$> coreWith variables a
+            S.Application n as -> C.Constructor (typeName n) <$> mapM (fmap C.TypeArgument . coreWith variables) as
+            S.Arrow a b -> C.Arrow <$> coreWith variables a <*> coreWith variables b
+            S.Qualified [] a -> coreWith variables a
             _ -> Left "unresolved constructor field type"
+          sourceVariables t = case S.baseType t of
+            S.Variable n -> [n]
+            S.Applied _ a -> sourceVariables a
+            S.Application _ as -> concatMap sourceVariables as
+            S.Arrow a b -> sourceVariables a ++ sourceVariables b
+            S.Qualified _ a -> sourceVariables a
+            _ -> []
       unless (primitive name == Nothing && name `notElem` ["Type", "Nullable", "Optional", "List", "Maybe", "Either"])
         (Left ("reserved data type name: " ++ name))
       unless (name `notElem` map S.refinementName (S.refinements u))
         (Left ("data type and refinement share a name: " ++ name))
       constructors <- forM (S.dataTypeConstructors d) $ \constructor -> do
         let tag = C.Id (C.idText identity ++ "::" ++ S.dataConstructorName constructor)
+            -- Type variables that are not parameters belong to the constructor.
+            existentials = nub [v | (_, ty) <- S.dataConstructorFields constructor ++ S.dataConstructorEquations constructor
+                                  , v <- sourceVariables ty, v `notElem` S.dataTypeParameters d]
+            existential v = C.Id (C.idText tag ++ "::exists::" ++ v)
+            variables = M.union parameters (M.fromList [(v, existential v) | v <- existentials])
         fields <- forM (S.dataConstructorFields constructor) $ \(field, ty) ->
-          C.Binder (C.Id (C.idText tag ++ "::" ++ field)) field <$> core ty
-        pure (C.DataConstructor tag (S.dataConstructorName constructor) fields [] (C.SourceSpan (S.dataConstructorSpan constructor)))
-      pure (C.DataDeclaration identity name (map parameter (S.dataTypeParameters d)) constructors (C.SourceSpan (S.dataTypeSpan d)))
+          C.Binder (C.Id (C.idText tag ++ "::" ++ field)) field <$> coreWith variables ty
+        equations <- forM (S.dataConstructorEquations constructor) $ \(refined, ty) -> do
+          identity' <- maybe (Left (S.dataConstructorName constructor ++ ": " ++ refined ++ " is not a type parameter of " ++ name))
+            Right (M.lookup refined parameters)
+          (,) identity' <$> coreWith variables ty
+        pure (C.DataConstructor tag (S.dataConstructorName constructor) fields [] (C.SourceSpan (S.dataConstructorSpan constructor))
+          equations (map existential existentials))
+      -- Index tables are keyed by source constructor name until here.
+      let index = fmap (\i -> i { familyIndexConstructors =
+            [(C.idText identity ++ "::" ++ tag, c) | (tag, c) <- familyIndexConstructors i] }) (S.dataTypeIndex d)
+      pure (C.DataDeclaration identity name (map parameter (S.dataTypeParameters d)) constructors (C.SourceSpan (S.dataTypeSpan d)) index)
     typeIdentity u name = C.Id (S.unitName u ++ "::type::" ++ name)
     contextual range = either (Left . pure . (\message -> Diagnostic "data-type" message (Just (spanStart range)))) Right
 

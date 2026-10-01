@@ -127,7 +127,7 @@ proves program definitions p =
       -- the input refinements alone. The body only has to be defined.
       synthetic = Definition (Declaration proof ("proof of " ++ propertyName p)
         (foldr (Arrow . binderType) bool inputs) origin) inputs claim
-      contract = Contract proof inputs result (concatMap quantifiedPredicates (propertyInputs p)) [claim]
+      contract = Contract proof inputs result (concatMap quantifiedPredicates (propertyInputs p)) [claim] []
       table = M.fromList [(declarationId (definitionDeclaration d), d) | d <- definitions]
       reachable = close S.empty (concatMap callees (definitionBody synthetic : contractPreconditions contract))
       close seen [] = seen

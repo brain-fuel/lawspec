@@ -1,0 +1,6 @@
+@@ src/example/arithmetic.rs
+<<<<<<<
+Rest { items: value0 }
+=======
+Rest { items: match value0 { Row::Cell { tail, .. } => *tail, end => end } }
+>>>>>>>

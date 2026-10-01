@@ -64,7 +64,10 @@ programEvidence program =
           [ obligation "precondition" claim RuntimeChecked "checked before a native caller's arguments reach the definition"
           | claim <- contractPreconditions contract ] ++
           [ obligation "postcondition" claim Proved "proved from the definition body by the totality audit"
-          | claim <- contractPostconditions contract ]
+          | claim <- contractPostconditions contract ] ++
+          [ obligation "postcondition" claim RuntimeChecked
+              "non-linear index arithmetic is beyond the prover; checked on each result"
+          | claim <- contractRuntimePostconditions contract ]
       | otherwise =
           [ obligation "precondition" claim RuntimeChecked "checked before each adapter call"
           | claim <- contractPreconditions contract ] ++
@@ -93,7 +96,7 @@ mentions name e = case expressionNode e of
   Helper _ args -> any (mentions name) args
   _ -> False
 
--- Definition emitters call this for the result checks they generate. Every
--- definition postcondition is proved, so there is nothing left to check.
+-- Definition emitters call this for the result checks they generate. Proved
+-- postconditions need none; deferred non-linear claims are checked.
 runtimePostconditions :: Contract -> [Expr]
-runtimePostconditions _ = []
+runtimePostconditions = contractRuntimePostconditions

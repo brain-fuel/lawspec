@@ -1,0 +1,6 @@
+@@ example/arithmetic/adapter.go
+<<<<<<<
+Rest{Items: value0}
+=======
+Rest{Items: value0.(RowCell).Tail}
+>>>>>>>

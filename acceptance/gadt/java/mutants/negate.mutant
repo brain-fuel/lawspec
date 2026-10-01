@@ -1,0 +1,6 @@
+@@ src/main/java/example/Gadt.java
+<<<<<<<
+      case Expr.Negate negate -> !evalTruth(negate.operand());
+=======
+      case Expr.Negate negate -> evalTruth(negate.operand());
+>>>>>>>

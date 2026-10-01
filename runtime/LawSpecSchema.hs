@@ -2,14 +2,14 @@
 module LawSpecSchema
   ( TypeRef(..), Field(..), Constructor(..), Definition(..), Schema
   , FieldPredicate, ValidationFailure(..), failureMessage
-  , create, createWithContracts, hasContracts, checkType
+  , create, createWithContracts, createIndexed, createRefined, hasContracts, checkType, fieldType
   , constructors, substitute
   , validate, validateWith, validateChecked
   , allPayloads, allPayloadsWith
   , construct, constructWith, equal, equalWith, match, matchWith
   ) where
 
-import Control.Monad (unless, forM_, zipWithM)
+import Control.Monad (unless, forM_, zipWithM, foldM)
 import Data.List (find, nub)
 import qualified LawSpecRuntime as LS
 
@@ -31,17 +31,30 @@ failureMessage :: ValidationFailure -> String
 failureMessage (Rejected message) = message
 failureMessage (EvaluationFailure message) = message
 
-data Schema = Schema [Definition] [(String, Int)] [(String, [FieldPredicate])]
+-- Indexed families add, per constructor, their index terms then guards in
+-- prefix notation over field indices; validation checks the guards.
+-- GADT constructors add refinements (parameter, pattern) and an existential
+-- count; existentials are parameters numbered after the definition's own.
+data Schema = Schema [Definition] [(String, Int)] [(String, [FieldPredicate])] [(String, [String])]
+  [(String, ([(Int, TypeRef)], Int))]
 
 hasContracts :: Schema -> Bool
-hasContracts (Schema _ _ contracts) = any (not . null . snd) contracts
+hasContracts (Schema _ _ contracts _ _) = any (not . null . snd) contracts
 
 create :: [Definition] -> [String] -> Either String Schema
 create definitions primitives = createWithContracts definitions primitives []
 
 createWithContracts :: [Definition] -> [String] -> [(String, [FieldPredicate])]
                     -> Either String Schema
-createWithContracts definitions primitives contracts = do
+createWithContracts definitions primitives contracts = createIndexed definitions primitives contracts []
+
+createIndexed :: [Definition] -> [String] -> [(String, [FieldPredicate])] -> [(String, [String])]
+              -> Either String Schema
+createIndexed definitions primitives contracts indices = createRefined definitions primitives contracts indices []
+
+createRefined :: [Definition] -> [String] -> [(String, [FieldPredicate])] -> [(String, [String])]
+              -> [(String, ([(Int, TypeRef)], Int))] -> Either String Schema
+createRefined definitions primitives contracts indices refinements = do
   let builtins = [(name, 0) | name <- primitives] ++
         [("List", 1), ("Maybe", 1), ("Either", 2),
          ("Nullable", 1), ("Optional", 1)]
@@ -50,7 +63,7 @@ createWithContracts definitions primitives contracts = do
       names = map fst arities
       tags = [tag | Definition _ _ variants <- definitions,
                     Constructor tag _ <- variants]
-      schema = Schema definitions arities contracts
+      schema = Schema definitions arities contracts indices refinements
   unless (all (not . null) names && length names == length (nub names))
     (Left "duplicate or empty schema type")
   unless (all (not . null) tags && length tags == length (nub tags))
@@ -66,13 +79,14 @@ createWithContracts definitions primitives contracts = do
       unless (all (not . null) fieldNames &&
               length fieldNames == length (nub fieldNames))
         (Left ("duplicate or empty field: " ++ tag))
-      forM_ fields $ \(Field _ typeRef) -> checkType schema parameters typeRef
+      let existentials = maybe 0 snd (lookup tag refinements)
+      forM_ fields $ \(Field _ typeRef) -> checkType schema (parameters + existentials) typeRef
   pure schema
 
 checkType :: Schema -> Int -> TypeRef -> Either String ()
 checkType _ count (Parameter index) =
   unless (index >= 0 && index < count) (Left "unbound schema parameter")
-checkType schema@(Schema _ arities _) count (Named name arguments) = do
+checkType schema@(Schema _ arities _ _ _) count (Named name arguments) = do
   unless (lookup name arities == Just (length arguments))
     (Left ("unknown type or wrong arity: " ++ name))
   mapM_ (checkType schema count) arguments
@@ -83,17 +97,46 @@ substitute arguments (Named name children) =
   Named name (map (substitute arguments) children)
 
 constructors :: Schema -> TypeRef -> Either String (Maybe [Constructor])
-constructors schema@(Schema definitions _ _) typeRef = do
+constructors schema@(Schema definitions _ _ _ refinements) typeRef = do
   checkType schema 0 typeRef
   case typeRef of
     Named name arguments -> case
         find (\(Definition n _ _) -> n == name) definitions of
       Nothing -> pure Nothing
-      Just (Definition _ _ variants) -> pure (Just
-        [Constructor tag [Field field (substitute arguments ty) |
+      -- A GADT constructor whose refinements do not match these arguments
+      -- builds no value of this type.
+      Just (Definition _ parameters variants) -> pure (Just
+        [Constructor tag [Field field (substitute extended ty) |
                           Field field ty <- fields] |
-         Constructor tag fields <- variants])
+         Constructor tag fields <- variants,
+         Just extended <- [refine (lookup tag refinements) parameters arguments]])
     Parameter _ -> Left "unbound schema parameter"
+
+-- Arguments extended with the existentials a constructor's refinements bind;
+-- Nothing when the refinements do not match.
+refine :: Maybe ([(Int, TypeRef)], Int) -> Int -> [TypeRef] -> Maybe [TypeRef]
+refine Nothing _ arguments = Just arguments
+refine (Just (patterns, existentials)) parameters arguments = do
+  bound <- foldM (\acc (index, pattern) -> match acc pattern (arguments !! index)) [] patterns
+  extra <- mapM (\k -> lookup (parameters + k) bound) [0 .. existentials - 1]
+  pure (arguments ++ extra)
+  where
+    match acc (Parameter index) actual
+      | index < parameters = if arguments !! index == actual then Just acc else Nothing
+      | otherwise = case lookup index acc of
+          Just previous -> if previous == actual then Just acc else Nothing
+          Nothing -> Just ((index, actual) : acc)
+    match acc (Named name children) (Named other values)
+      | name == other && length children == length values = foldM (\a (c, v) -> match a c v) acc (zip children values)
+    match _ _ _ = Nothing
+
+-- A constructor field's type at an instantiated type, its existentials
+-- substituted.
+fieldType :: Schema -> TypeRef -> String -> Int -> TypeRef
+fieldType schema typeRef tag index = case constructors schema typeRef of
+  Right (Just variants) | Constructor _ fields : _ <- [v | v@(Constructor t _) <- variants, t == tag]
+                        , Field _ ty : _ <- drop index fields -> ty
+  _ -> error ("constructor " ++ tag ++ " is not a value of " ++ show typeRef)
 
 validate :: Schema -> TypeRef -> Int -> LS.Scalar -> Either String LS.Scalar
 validate schema = validateWith Nothing schema
@@ -115,9 +158,77 @@ failureContext label = either (Left . decorate) Right
     decorate (EvaluationFailure message) =
       EvaluationFailure (label ++ ": " ++ message)
 
+-- Prefix index terms: c<n>, f<field>[.<index>] and natural operators.
+data IndexTerm = IndexConstant Integer | IndexField Int Int | IndexOp String IndexTerm IndexTerm
+
+isIndexGuard :: String -> Bool
+isIndexGuard text = take 1 (words text) `elem` [["=="], [">="]]
+
+fieldTypes :: [Field] -> [TypeRef]
+fieldTypes fields = [ty | Field _ ty <- fields]
+
+parseIndexTerm :: [String] -> Either String (IndexTerm, [String])
+parseIndexTerm tokens = case tokens of
+  ('c' : digits) : rest -> Right (IndexConstant (read digits), rest)
+  ('f' : digits) : rest -> case break (== '.') digits of
+    (position, '.' : index) -> Right (IndexField (read position) (read index), rest)
+    (position, _) -> Right (IndexField (read position) 0, rest)
+  op : rest | op `elem` ["+", "-", "*", "div", "mod", "^"] -> do
+    (a, afterA) <- parseIndexTerm rest
+    (b, afterB) <- parseIndexTerm afterA
+    Right (IndexOp op a b, afterB)
+  _ -> Left "malformed index term"
+
+-- Natural arithmetic; Nothing when an operation has no natural value.
+evalIndexTerm :: (Int -> Int -> Either String Integer) -> IndexTerm -> Either String (Maybe Integer)
+evalIndexTerm field term = case term of
+  IndexConstant n -> Right (Just n)
+  IndexField position index -> Just <$> field position index
+  IndexOp op a b -> do
+    left <- evalIndexTerm field a
+    right <- evalIndexTerm field b
+    pure $ do
+      x <- left
+      y <- right
+      case op of
+        "+" -> Just (x + y)
+        "-" | x >= y -> Just (x - y)
+        "*" -> Just (x * y)
+        "div" | y > 0 -> Just (x `div` y)
+        "mod" | y > 0 -> Just (x `mod` y)
+        "^" | y >= 0 && y <= 64 -> Just (x ^ y)
+        _ -> Nothing
+
+indexGuard :: (Int -> Int -> Either String Integer) -> String -> Either String Bool
+indexGuard field text = case words text of
+  relation : rest -> do
+    (a, afterA) <- parseIndexTerm rest
+    (b, _) <- parseIndexTerm afterA
+    x <- evalIndexTerm field a
+    y <- evalIndexTerm field b
+    pure $ case (x, y) of
+      (Just l, Just r) -> if relation == "==" then l == r else l >= r
+      _ -> False
+  [] -> Left "malformed index guard"
+
+-- The index of a checked value, computed from its constructor's term.
+indexOf :: Schema -> TypeRef -> LS.Scalar -> Int -> Either String Integer
+indexOf schema@(Schema _ _ _ indices _) typeRef value index = case value of
+  LS.SData tag children -> do
+    variants <- constructors schema typeRef
+    expected <- case [fields | Just choices <- [variants], Constructor name fields <- choices, name == tag] of
+      fields : _ -> Right fields
+      [] -> Left ("no index for " ++ show typeRef)
+    let terms = filter (not . isIndexGuard) (maybe [] id (lookup tag indices))
+    text <- if index < length terms then Right (terms !! index) else Left ("no index for " ++ show typeRef)
+    (term, _) <- parseIndexTerm (words text)
+    result <- evalIndexTerm (\position child -> indexOf schema (fieldTypes expected !! position) (children !! position) child) term
+    maybe (Left ("index of " ++ tag ++ " has no natural value")) Right result
+  _ -> Left ("no index for " ++ show typeRef)
+
 validateChecked :: Maybe LS.SymbolContext -> Schema -> TypeRef -> Int
                 -> LS.Scalar -> Either ValidationFailure LS.Scalar
-validateChecked scope schema@(Schema _ _ contracts) typeRef bits value = do
+validateChecked scope schema@(Schema _ _ contracts indices _) typeRef bits value = do
   unless (bits == 32 || bits == 64)
     (Left (EvaluationFailure "machineBits must be 32 or 64"))
   variants <- fromEvaluation (constructors schema typeRef)
@@ -170,6 +281,10 @@ validateChecked scope schema@(Schema _ _ contracts) typeRef bits value = do
                 (predicate schema arguments checked bits scope)
               unless accepted
                 (Left (Rejected "constructor field contract rejected"))
+          forM_ [text | text <- maybe [] id (lookup tag indices), isIndexGuard text] $ \text -> do
+            let field position index = indexOf schema (fieldTypes expected !! position) (checked !! position) index
+            holds <- fromEvaluation (indexGuard field text)
+            unless holds (Left (Rejected (tag ++ ": index guard " ++ text ++ " failed")))
           pure (LS.SData tag checked)
       _ -> Left (EvaluationFailure
         ("expected constructor payload for " ++ show typeRef))
@@ -199,7 +314,7 @@ allPayloads = allPayloadsWith Nothing
 allPayloadsWith :: Maybe LS.SymbolContext -> Schema -> TypeRef -> Int
                 -> LS.Scalar -> [LS.Scalar -> Either String LS.Scalar]
                 -> Either String LS.Scalar
-allPayloadsWith scope schema@(Schema definitions _ _) typeRef bits value
+allPayloadsWith scope schema@(Schema definitions _ _ _ _) typeRef bits value
                 predicates = do
   checkType schema 0 typeRef
   (name, arguments) <- case typeRef of

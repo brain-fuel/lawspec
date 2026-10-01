@@ -77,7 +77,7 @@ emitHaskellDefinitions layout bits declarations units = do
                 (map (local . binderId) (definitionArguments d)) ++
                 [(binderId (contractResult c),"checkedResult")] ++
                 [(binderId b,"contractValue" ++ show i) | (i,b) <- zip [0::Int ..]
-                  (concatMap nestedBinders (contractPreconditions c ++ contractPostconditions c))]
+                  (concatMap nestedBinders (contractPreconditions c ++ contractPostconditions c ++ contractRuntimePostconditions c))]
               resolve identity = maybe (error "unbound Haskell definition contract binder") id (lookup identity aliases)
               require stage predicate = do
                 expression <- E.renderExpression declarations bits "_lawspecSchema" "symbols" resolve external predicate

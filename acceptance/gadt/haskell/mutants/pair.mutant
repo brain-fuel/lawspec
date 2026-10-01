@@ -1,0 +1,6 @@
+@@ src/Example/Gadt.hs
+<<<<<<<
+evalPair (Data.ExprBoth first second) = Data.Pair (evalNumber first) (evalTruth second)
+=======
+evalPair (Data.ExprBoth first second) = Data.Pair (evalNumber first) (not (evalTruth second))
+>>>>>>>

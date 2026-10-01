@@ -1,0 +1,6 @@
+@@ src/example/arithmetic.rs
+<<<<<<<
+Halves { front: value0.clone(), back: value0 }
+=======
+Halves { front: value0.clone(), back: Row::Cell { head: 0, tail: Box::new(value0) } }
+>>>>>>>

@@ -31,9 +31,9 @@ app :: String -> [Type] -> Type
 app name = Constructor name . map TypeArgument
 ctor :: String -> [Type] -> DataConstructor
 ctor name types = DataConstructor (Id name) name
-  [Binder (Id (name ++ show i)) ("field" ++ show i) ty | (i,ty) <- zip [0::Int ..] types] [] origin
+  [Binder (Id (name ++ show i)) ("field" ++ show i) ty | (i,ty) <- zip [0::Int ..] types] [] origin [] []
 decl :: String -> [Id] -> [DataConstructor] -> DataDeclaration
-decl name parameters constructors = DataDeclaration (Id name) name parameters constructors origin
+decl name parameters constructors = DataDeclaration (Id name) name parameters constructors origin Nothing
 registry :: [DataDeclaration] -> IO TypeRegistry
 registry definitions = either (\e -> expectationFailure e >> fail e) pure (makeRegistry definitions)
 
@@ -123,7 +123,7 @@ spec = do
         [decl "Foo" [] [], decl "foo" [] []] `shouldSatisfy` isRight
       let bad = decl "Pair" [] [DataConstructor (Id "PairCtor") "Pair"
             [Binder (Id "first") "field" (scalarType "Bool"),
-             Binder (Id "second") "Field" (scalarType "Bool")] [] origin]
+             Binder (Id "second") "Field" (scalarType "Bool")] [] origin [] []]
       Go.emitGoData (Doc.PrettyTabs 100) "fixture" [bad] `shouldSatisfy` isLeft
       Go.emitGoSchema (Doc.PrettyTabs 100) "type" [] `shouldSatisfy` isLeft
       Go.validateGoBindings [decl "Pair" [] []] ["Pair"] `shouldSatisfy` isLeft
@@ -171,7 +171,7 @@ spec = do
         [decl "Foo" [] [], decl "foo" [] []] `shouldSatisfy` isRight
       let bad = decl "Pair" [] [DataConstructor (Id "PairCtor") "Pair"
             [Binder (Id "first") "field" (scalarType "Bool"),
-             Binder (Id "second") "Field" (scalarType "Bool")] [] origin]
+             Binder (Id "second") "Field" (scalarType "Bool")] [] origin [] []]
       Haskell.emitHaskellData (Doc.Pretty 80) [bad] `shouldSatisfy` isLeft
   describe "native Rust declarations" $ do
     it "keeps nested custom types native and qualifies standard containers" $ do

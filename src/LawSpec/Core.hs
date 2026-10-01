@@ -2,6 +2,7 @@
 -- no dependency on the surface syntax, inference, or a testing framework.
 module LawSpec.Core where
 
+import LawSpec.IndexTerm (FamilyIndex(..))
 import LawSpec.Common
 import LawSpec.Scalar (Scalar)
 
@@ -30,11 +31,18 @@ data Definition = Definition
 data DataDeclaration = DataDeclaration
   { dataId :: Id, dataName :: String, dataParameters :: [Id]
   , dataConstructors :: [DataConstructor], dataOrigin :: Origin
+  -- An indexed family's erased index table, keyed by constructor identity.
+  , dataIndex :: Maybe FamilyIndex
   } deriving (Eq, Show)
+-- A GADT constructor's equations fix declaration parameters to types over its
+-- existentials: a value of T args uses the constructor only where each
+-- equation matches its argument, which also determines the existentials.
 data DataConstructor = DataConstructor
   { constructorId :: Id, constructorName :: String
   , constructorFields :: [Binder], constructorPredicates :: [Expr]
   , constructorOrigin :: Origin
+  , constructorEquations :: [(Id, Type)]
+  , constructorExistentials :: [Id]
   } deriving (Eq, Show)
 -- Synthetic nodes explicitly have no source span; elaboration never fabricates
 -- expression ranges from the containing law's location.
@@ -58,7 +66,7 @@ data MatchCase = MatchCase
   { caseConstructor :: Id, caseBinders :: [Binder], caseBody :: Expr
   } deriving (Eq, Show)
 
-data BinaryOp = Add | Subtract | Multiply | Divide | Quotient | Remainder
+data BinaryOp = Add | Subtract | Multiply | Divide | Quotient | Remainder | Power
   | Equal | NotEqual | Less | LessEqual | Greater | GreaterEqual deriving (Eq, Show)
 data UnaryOp = Negate | Not deriving (Eq, Show)
 data LogicalOp = And | Or deriving (Eq, Show)
@@ -71,7 +79,10 @@ data Builtin = Length | IsPresent | PresentValue | RealPart | ImaginaryPart
 data Proposition = Equation Evidence Expr Expr | Implication Expr Proposition | Conjunction [Proposition] deriving (Eq, Show)
 data Quantifier = Quantifier { quantifiedBinder :: Binder, quantifiedPredicates :: [Expr], quantifiedBounds :: [(BinaryOp,Expr)] } deriving (Eq, Show)
 data Example = Example { exampleName :: String, exampleBindings :: [(Id,Expr)], exampleExpectations :: [Proposition] } deriving (Eq, Show)
-data Contract = Contract { contractDeclaration :: Id, contractArguments :: [Binder], contractResult :: Binder, contractPreconditions :: [Expr], contractPostconditions :: [Expr] } deriving (Eq, Show)
+-- A definition's runtime postconditions are claims the prover could not
+-- establish because they involve non-linear index arithmetic; each result is
+-- checked against them instead.
+data Contract = Contract { contractDeclaration :: Id, contractArguments :: [Binder], contractResult :: Binder, contractPreconditions :: [Expr], contractPostconditions :: [Expr], contractRuntimePostconditions :: [Expr] } deriving (Eq, Show)
 data Property = Property
   { propertyId :: Id, propertyName :: String, propertyLocation :: Location
   , propertyInputs :: [Quantifier], propertyBody :: Proposition
@@ -92,6 +103,7 @@ binaryName Multiply = "*"
 binaryName Divide = "/"
 binaryName Quotient = "quot"
 binaryName Remainder = "rem"
+binaryName Power = "pow"
 binaryName Equal = "=="
 binaryName NotEqual = "!="
 binaryName Less = "<"

@@ -1,0 +1,6 @@
+@@ src/Example/Gadt.hs
+<<<<<<<
+evalTruth (Data.ExprNegate operand) = not (evalTruth operand)
+=======
+evalTruth (Data.ExprNegate operand) = evalTruth operand
+>>>>>>>

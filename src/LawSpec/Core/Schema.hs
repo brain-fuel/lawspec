@@ -8,12 +8,21 @@ module LawSpec.Core.Schema
   ) where
 
 import qualified LawSpec.Core as C
+import LawSpec.IndexTerm (FamilyIndex(..), constructorIndexTexts)
 
 data TypeRef = Parameter Int | Named String [TypeRef] deriving (Eq, Show)
 data FieldSchema = FieldSchema
   { fieldName :: String, fieldType :: TypeRef } deriving (Eq, Show)
+-- An indexed family's constructor also carries its index terms and guards
+-- (constructorIndexTexts), which validation checks on every value. A GADT
+-- constructor's refinements fix parameters to patterns; its existentials are
+-- the parameters numbered after the declaration's own, bound by matching the
+-- refinements against a type's arguments.
 data ConstructorSchema = ConstructorSchema
-  { constructorTag :: String, fields :: [FieldSchema] } deriving (Eq, Show)
+  { constructorTag :: String, fields :: [FieldSchema], constructorIndex :: [String]
+  , constructorRefinements :: [(Int, TypeRef)]
+  , constructorExistentials :: Int
+  } deriving (Eq, Show)
 data DataSchema = DataSchema
   { typeName :: String, parameterCount :: Int
   , constructors :: [ConstructorSchema]
@@ -55,9 +64,18 @@ dataSchemasWithContracts declarations = do
   where
     definition declaration = DataSchema (C.idText (C.dataId declaration))
       (length (C.dataParameters declaration)) <$>
-      mapM (constructor (C.dataParameters declaration)) (C.dataConstructors declaration)
-    constructor parameters value = ConstructorSchema
-      (C.idText (C.constructorId value)) <$>
-      mapM (field parameters) (C.constructorFields value)
+      mapM (indexed declaration <$>) (map (constructor (C.dataParameters declaration)) (C.dataConstructors declaration))
+    indexed declaration schema = case C.dataIndex declaration >>= lookup (constructorTag schema) . familyIndexConstructors of
+      Just index -> schema { constructorIndex = constructorIndexTexts index }
+      Nothing -> schema
+    constructor parameters value = do
+      let scope = parameters ++ C.constructorExistentials value
+      fields' <- mapM (field scope) (C.constructorFields value)
+      refinements <- mapM (\(parameter, ty) -> case lookup parameter (zip parameters [0..]) of
+          Just index -> (,) index <$> typeReference scope ty
+          Nothing -> Left ("refinement of an unknown parameter: " ++ C.idText parameter))
+        (C.constructorEquations value)
+      pure (ConstructorSchema (C.idText (C.constructorId value)) fields' [] refinements
+        (length (C.constructorExistentials value)))
     field parameters binder = FieldSchema (C.binderName binder) <$>
       typeReference parameters (C.binderType binder)

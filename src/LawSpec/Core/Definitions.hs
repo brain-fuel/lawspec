@@ -45,6 +45,6 @@ prepareDefinitions program = do
         value <- evaluateValue registry bits invoke (zip (map binderId arguments) checked)
           (definitionBody definition) >>= validateValueWithContracts registry bits result
         mapM_ (\c -> mapM_ (require "postcondition"
-          ((binderId (contractResult c),value) : contractScope c)) (contractPostconditions c)) contract
+          ((binderId (contractResult c),value) : contractScope c)) (contractPostconditions c ++ contractRuntimePostconditions c)) contract
         pure value
   pure invoke

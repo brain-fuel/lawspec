@@ -340,10 +340,55 @@ export function strategy(
   );
 }
 
-// Construct values whose linear structural measure equals target. Each
-// constructor contributes a constant plus the measures of its listed recursive
-// fields, so the target is solved backwards and split across those fields.
-// Samples and shrinks keep the measure; nothing is filtered away.
+const INDEX_SLACK = 16;
+const INDEX_CHOICES = 6;
+const INDEX_OPERATORS = ['+', '-', '*', 'div', 'mod', '^'];
+
+// A prefix index term over field indices (f<i>), literals (c<n>) and the
+// natural operators. Returns the term and the position after it.
+function parseIndexTerm(tokens, at) {
+  const token = tokens[at];
+  if (token === undefined) throw new TypeError('malformed index term');
+  if (token[0] === 'c') return [['c', Number(token.slice(1))], at + 1];
+  if (token[0] === 'f') return [['f', Number(token.slice(1))], at + 1];
+  if (INDEX_OPERATORS.includes(token)) {
+    const [left, afterLeft] = parseIndexTerm(tokens, at + 1);
+    const [right, afterRight] = parseIndexTerm(tokens, afterLeft);
+    return [[token, left, right], afterRight];
+  }
+  throw new TypeError('malformed index term');
+}
+
+// Natural index arithmetic; null when an operation has no natural value.
+function evalIndexTerm(term, fields) {
+  if (term[0] === 'c') return term[1];
+  if (term[0] === 'f') return fields.has(term[1]) ? fields.get(term[1]) : null;
+  const x = evalIndexTerm(term[1], fields);
+  const y = evalIndexTerm(term[2], fields);
+  if (x === null || y === null) return null;
+  let result;
+  switch (term[0]) {
+    case '+': result = x + y; break;
+    case '-': result = x >= y ? x - y : null; break;
+    case '*': result = x * y; break;
+    case 'div': result = y > 0 ? Math.floor(x / y) : null; break;
+    case 'mod': result = y > 0 ? x % y : null; break;
+    default: result = y <= 64 ? x ** y : null;
+  }
+  return result !== null && Number.isSafeInteger(result) ? result : null;
+}
+
+function indexTermFields(term) {
+  if (term[0] === 'c') return [];
+  if (term[0] === 'f') return [term[1]];
+  return [...indexTermFields(term[1]), ...indexTermFields(term[2])];
+}
+
+// Construct values whose structural index equals target. Each constructor
+// carries its index term then its guards, in prefix notation over field
+// indices. Reachability is a forward fixpoint over levels 0..target+slack, so
+// a child may exceed its parent's index; the target is then solved backwards,
+// and nothing is filtered away.
 function indexedArbitrary(
     schema,
     reference,
@@ -354,107 +399,146 @@ function indexedArbitrary(
     inhabited,
     accepts,
 ) {
-  if (!Number.isSafeInteger(target) || target < 0) {
-    throw new RangeError('index target must be a natural number');
+  if (!Number.isSafeInteger(target)) {
+    throw new RangeError('index target must be an integer');
   }
   if (schema.constructors(reference) === null) {
     throw new TypeError('indexed generation requires a data type');
   }
+  const limit = Math.max(target, 0) + INDEX_SLACK;
   const key = (...parts) => JSON.stringify(parts);
+  const parsed = new Map();
   const equation = (constructor) => {
-    const found = equations[constructor.tag];
-    if (found === undefined) {
+    if (parsed.has(constructor.tag)) return parsed.get(constructor.tag);
+    const texts = equations[constructor.tag];
+    if (texts === undefined) {
       throw new TypeError(`missing index equation for ${constructor.tag}`);
     }
-    return [Number(found[0]), found[1].map(Number)];
+    const tokens = texts[0].split(' ');
+    const [term, end] = parseIndexTerm(tokens, 0);
+    if (end !== tokens.length) throw new TypeError('malformed index term');
+    const guards = texts.slice(1).map((text) => {
+      const parts = text.split(' ');
+      if (parts[0] !== '==' && parts[0] !== '>=') {
+        throw new TypeError('malformed index guard');
+      }
+      const [left, afterLeft] = parseIndexTerm(parts, 1);
+      const [right] = parseIndexTerm(parts, afterLeft);
+      return [parts[0], left, right];
+    });
+    const positions = [...new Set([
+      ...indexTermFields(term),
+      ...guards.flatMap(([, left, right]) => [
+        ...indexTermFields(left), ...indexTermFields(right)]),
+    ])];
+    const result = {term, guards, positions};
+    parsed.set(constructor.tag, result);
+    return result;
   };
   const plainFields = (constructor, positions) =>
       constructor.fields.every(
           (field, index) =>
               positions.includes(index) || inhabited(field.type, budget),
       );
-  const reachableMemo = new Map();
-  const visiting = new Set();
-  function reachable(type, k) {
-    const id = key(type, k);
-    if (reachableMemo.has(id)) return reachableMemo.get(id);
-    if (visiting.has(id)) return false;
-    visiting.add(id);
-    let result = false;
+  const families = [];
+  const familyKeys = new Set();
+  const pending = [reference];
+  while (pending.length) {
+    const type = pending.pop();
+    if (familyKeys.has(key(type))) continue;
+    if (schema.constructors(type) === null) {
+      throw new TypeError('indexed generation requires a data type');
+    }
+    familyKeys.add(key(type));
+    families.push(type);
     for (const constructor of schema.constructors(type)) {
-      const [constant, positions] = equation(constructor);
-      const rest = k - constant;
-      if (rest < 0 || !plainFields(constructor, positions)) continue;
-      const types = positions.map(
-          (position) => constructor.fields[position].type,
-      );
-      if (types.length === 0 ? rest === 0 : splittable(types, rest)) {
-        result = true;
-        break;
+      for (const position of equation(constructor).positions) {
+        pending.push(constructor.fields[position].type);
       }
     }
-    visiting.delete(id);
-    reachableMemo.set(id, result);
-    return result;
   }
-  const splitMemo = new Map();
-  function splittable(types, rest) {
-    if (types.length === 1) return reachable(types[0], rest);
-    const id = key(types, rest);
-    if (splitMemo.has(id)) return splitMemo.get(id);
-    let result = false;
-    for (let first = 0; first <= rest && !result; ++first) {
-      result =
-          reachable(types[0], first) &&
-          splittable(types.slice(1), rest - first);
+  const holds = ([relation, left, right], fields) => {
+    const x = evalIndexTerm(left, fields);
+    const y = evalIndexTerm(right, fields);
+    if (x === null || y === null) return false;
+    return relation === '==' ? x === y : x >= y;
+  };
+  // Every assignment of reachable indices to the index fields that satisfies
+  // the guards, with the index it produces.
+  function assignments(constructor, reach) {
+    const {term, guards, positions} = equation(constructor);
+    const choices = positions.map((position) => {
+      const values = [];
+      for (let value = 0; value <= limit; ++value) {
+        if (reach.has(key(constructor.fields[position].type, value))) {
+          values.push([position, value]);
+        }
+      }
+      return values;
+    });
+    const found = [];
+    const extend = (at, current) => {
+      if (at === choices.length) {
+        const fields = new Map(current);
+        if (guards.every((guard) => holds(guard, fields))) {
+          const value = evalIndexTerm(term, fields);
+          if (value !== null && value <= limit) found.push([value, current]);
+        }
+        return;
+      }
+      for (const choice of choices[at]) extend(at + 1, [...current, choice]);
+    };
+    extend(0, []);
+    return found;
+  }
+  let reach = new Set();
+  for (;;) {
+    const grown = new Set(reach);
+    for (const type of families) {
+      for (const constructor of schema.constructors(type)) {
+        if (!plainFields(constructor, equation(constructor).positions)) {
+          continue;
+        }
+        for (const [value] of assignments(constructor, reach)) {
+          grown.add(key(type, value));
+        }
+      }
     }
-    splitMemo.set(id, result);
-    return result;
+    if (grown.size === reach.size) break;
+    reach = grown;
   }
-  function splits(types, rest) {
-    if (types.length === 1) return fc.constant([rest]);
-    return fc
-        .integer({min: 0, max: rest})
-        .filter(
-        (first) =>
-            reachable(types[0], first) &&
-            splittable(types.slice(1), rest - first),
-      )
-        .chain((first) =>
-            splits(types.slice(1), rest - first).map((tail) => [
-              first,
-              ...tail,
-            ]),
-      );
-  }
+  const solutions = new Map();
+  const solve = (constructor, k) => {
+    const id = key(constructor.tag, k);
+    if (!solutions.has(id)) {
+      solutions.set(id, assignments(constructor, reach)
+          .filter(([value]) => value === k)
+          .map(([, assignment]) => assignment));
+    }
+    return solutions.get(id);
+  };
   const arbitraries = new Map();
   function indexed(type, k) {
     const id = key(type, k);
     if (arbitraries.has(id)) return arbitraries.get(id);
     const alternatives = [];
     for (const constructor of schema.constructors(type)) {
-      const [constant, positions] = equation(constructor);
-      const rest = k - constant;
-      if (rest < 0 || !plainFields(constructor, positions)) continue;
-      const types = positions.map(
-          (position) => constructor.fields[position].type,
-      );
-      if (!(types.length === 0 ? rest === 0 : splittable(types, rest)))
-        continue;
-      const assemble = (targets) =>
-          fc
-              .tuple(
-              ...constructor.fields.map((field, index) =>
-                  positions.includes(index)
-                    ? indexed(field.type, targets[positions.indexOf(index)])
-                    : build(field.type, budget),
-              ),
-            )
-              .map((fields) => new ls.DataValue(constructor.tag, fields));
-      let values =
-          types.length === 0
-            ? assemble([])
-            : splits(types, rest).chain(assemble);
+      if (!plainFields(constructor, equation(constructor).positions)) continue;
+      const choices = solve(constructor, k);
+      if (!choices.length) continue;
+      const assemble = (assignment) => {
+        const targets = new Map(assignment);
+        return fc
+            .tuple(
+            ...constructor.fields.map((field, index) =>
+                targets.has(index)
+                  ? indexed(field.type, targets.get(index))
+                  : build(field.type, budget),
+            ),
+          )
+            .map((fields) => new ls.DataValue(constructor.tag, fields));
+      };
+      let values = fc.constantFrom(...choices).chain(assemble);
       if (constructor.predicates && constructor.predicates.length) {
         values = values.filter((value) => accepts(type, value));
       }
@@ -469,6 +553,19 @@ function indexedArbitrary(
           : fc.oneof({withCrossShrink: true}, ...alternatives);
     arbitraries.set(id, result);
     return result;
+  }
+  if (!reach.has(key(reference, target))) {
+    // An open target (negative), or one drawn from earlier inputs that breaks
+    // their preconditions or names no value, generates from the smallest
+    // reachable indices; an index claim rejects a mismatch.
+    const levels = [];
+    for (let level = 0; level <= limit && levels.length < INDEX_CHOICES; ++level) {
+      if (reach.has(key(reference, level))) levels.push(level);
+    }
+    if (!levels.length) {
+      throw new RangeError(`no value of ${reference.name} has an index`);
+    }
+    return fc.constantFrom(...levels).chain((level) => indexed(reference, level));
   }
   return indexed(reference, target);
 }

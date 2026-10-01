@@ -1,0 +1,6 @@
+@@ src/example/gadt.rs
+<<<<<<<
+        Expr::Plus { left, right, .. } => evalNumber(*left) + evalNumber(*right),
+=======
+        Expr::Plus { left, right, .. } => evalNumber(*left) - evalNumber(*right),
+>>>>>>>

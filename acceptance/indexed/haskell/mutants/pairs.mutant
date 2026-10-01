@@ -1,0 +1,6 @@
+@@ src/Example/Arithmetic.hs
+<<<<<<<
+countPairs = Data.Pairs
+=======
+countPairs = Data.Pairs . Data.RowCell 0
+>>>>>>>

@@ -3,9 +3,10 @@
 module LawSpec.Core.Types
   ( TypeRegistry, makeRegistry, builtinDataDeclarations, registryKinds, registryDeclarations
   , kindOf, checkType, substitute, constructorFieldsFor, constructorPredicatesFor, lookupData, equalityRequirements, generationRequirements
+  , constructorCompatibility, compatibleConstructors, matchType
   ) where
 
-import Control.Monad (foldM, unless)
+import Control.Monad (foldM, forM_, unless)
 import Data.Graph (SCC(..), stronglyConnComp)
 import Data.List (nub, sort)
 import qualified Data.Map.Strict as M
@@ -30,8 +31,8 @@ builtinDataDeclarations = [list, optional, eitherType]
       (Id name) name (map (Id . ((name ++ "::") ++)) parameters)
       [DataConstructor (Id (name ++ "::" ++ tag)) tag
         [Binder (Id (name ++ "::" ++ tag ++ "::" ++ field)) field ty | (field, ty) <- fields]
-        [] (GeneratedFrom (Id name)) | (tag, fields) <- constructors]
-      (GeneratedFrom (Id name))
+        [] (GeneratedFrom (Id name)) [] [] | (tag, fields) <- constructors]
+      (GeneratedFrom (Id name)) Nothing
     list = declaration "List" ["a"]
       [("Nil", []), ("Cons", [("head", a "List"), ("tail", Constructor "List" [TypeArgument (a "List")])])]
     optional = declaration "Maybe" ["a"]
@@ -61,11 +62,20 @@ makeRegistry userDeclarations = do
     validateConstructor registry parameters c = do
       unique "field identity" (map binderId (constructorFields c))
       unique "field name" (map binderName (constructorFields c))
+      unique "existential type" (constructorExistentials c)
+      let scope = parameters ++ constructorExistentials c
       mapM_ (\field -> do
         let ty = binderType field
         checkType registry ty
-        unless (all (`elem` parameters) (typeVariables ty))
+        unless (all (`elem` scope) (typeVariables ty))
           (Left ("unbound type parameter in constructor " ++ idText (constructorId c)))) (constructorFields c)
+      unique "refined type parameter" (map fst (constructorEquations c))
+      forM_ (constructorEquations c) $ \(parameter, ty) -> do
+        unless (parameter `elem` parameters)
+          (Left ("constructor " ++ idText (constructorId c) ++ " refines an unknown type parameter"))
+        checkType registry ty
+        unless (all (`elem` constructorExistentials c) (typeVariables ty))
+          (Left ("unbound type in the refinement of constructor " ++ idText (constructorId c)))
 
 unique :: Eq a => String -> [a] -> Either String ()
 unique label values = unless (length values == length (nub values)) (Left ("duplicate " ++ label))
@@ -110,9 +120,46 @@ constructorFieldsFor registry ty tag = do
       declaration <- lookupData registry (Id name)
       constructor <- maybe (Left ("constructor " ++ idText tag ++ " does not belong to " ++ name)) Right
         (lookup tag [(constructorId c, c) | c <- dataConstructors declaration])
-      let substitutions = M.fromList (zip (dataParameters declaration) [t | TypeArgument t <- arguments])
+      existentials <- constructorCompatibility declaration constructor [t | TypeArgument t <- arguments]
+      let substitutions = M.union (M.fromList (zip (dataParameters declaration) [t | TypeArgument t <- arguments])) existentials
       pure [field {binderType = substitute substitutions (binderType field)} | field <- constructorFields constructor]
     _ -> Left "data construction requires an applied data type"
+
+-- Whether a constructor builds values of a declaration at these arguments,
+-- and the existential types its equations then determine.
+constructorCompatibility :: DataDeclaration -> DataConstructor -> [Type] -> Either String (M.Map Id Type)
+constructorCompatibility declaration constructor arguments =
+  maybe (Left (constructorName constructor ++ " is not a value of " ++ dataName declaration ++
+      concatMap ((" " ++) . show) arguments)) Right $
+    foldM (\bound (parameter, pattern) -> do
+      argument <- lookup parameter (zip (dataParameters declaration) arguments)
+      matchType (constructorExistentials constructor) bound pattern argument) M.empty
+      (constructorEquations constructor)
+
+-- One-way matching: existential variables in the pattern bind to the type.
+matchType :: [Id] -> M.Map Id Type -> Type -> Type -> Maybe (M.Map Id Type)
+matchType existentials bound pattern ty = case (pattern, ty) of
+  (TypeVariable v, _) | v `elem` existentials -> case M.lookup v bound of
+    Just previous | previous == ty -> Just bound
+                  | otherwise -> Nothing
+    Nothing -> Just (M.insert v ty bound)
+  (Constructor a xs, Constructor b ys) | a == b, length xs == length ys ->
+    foldM (\acc (x, y) -> case (x, y) of
+      (TypeArgument p, TypeArgument t) -> matchType existentials acc p t
+      _ | x == y -> Just acc
+        | otherwise -> Nothing) bound (zip xs ys)
+  (Arrow a b, Arrow c d) -> matchType existentials bound a c >>= \acc -> matchType existentials acc b d
+  _ | pattern == ty -> Just bound
+    | otherwise -> Nothing
+
+-- Constructors whose values can have this type.
+compatibleConstructors :: TypeRegistry -> Type -> Either String [DataConstructor]
+compatibleConstructors registry ty = case ty of
+  Constructor name arguments -> do
+    declaration <- lookupData registry (Id name)
+    pure [c | c <- dataConstructors declaration,
+      either (const False) (const True) (constructorCompatibility declaration c [t | TypeArgument t <- arguments])]
+  _ -> Left "constructors require an applied data type"
 
 -- Instantiation retains resolved field identities while substituting every
 -- type carried by an expression, including match binders and numeric evidence.

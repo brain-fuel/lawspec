@@ -1,6 +1,7 @@
 -- Structural termination and definedness auditing over typed Core only.
-module LawSpec.Core.Total (validateDefinitions, validateDefinitionContracts, constructorProofContracts, safeConversionTypes) where
+module LawSpec.Core.Total (validateDefinitions, validateDefinitionContracts, deferNonlinearPostconditions, deferProgramPostconditions, constructorProofContracts, safeConversionTypes) where
 
+import LawSpec.IndexTerm (FamilyIndex(..), ConstructorIndex(..), IndexGuard(..), termFields)
 import Control.Monad (unless, forM_, forM)
 import Data.List (nub)
 import qualified Data.Map.Strict as M
@@ -21,6 +22,37 @@ validateDefinitions bits dataDeclarations definitions = validateDefinitionContra
 -- Native bridges enforce these domains on every entry point.
 validateDefinitionContracts :: Int -> [DataDeclaration] -> [Definition] -> [Contract] -> Either [Diagnostic] ()
 validateDefinitionContracts bits dataDeclarations definitions contracts = do
+  -- Every remaining postcondition must be proved; only the frontend defers.
+  deferred <- auditDefinitionContracts bits dataDeclarations definitions contracts
+  case deferred of
+    [] -> pure ()
+    (owner, _) : _ -> Left [Diagnostic "total" (idText owner ++ ": definition result refinement could not be proved") Nothing]
+
+-- Moves each postcondition the prover defers (non-linear index arithmetic)
+-- into the contract's runtime postconditions; every other claim stays proved.
+deferNonlinearPostconditions :: Int -> [DataDeclaration] -> [Definition] -> [Contract] -> Either [Diagnostic] [Contract]
+deferNonlinearPostconditions bits dataDeclarations definitions contracts = do
+  deferred <- auditDefinitionContracts bits dataDeclarations definitions contracts
+  pure [ contract { contractPostconditions = [p | (i, p) <- numbered, (owner, i) `notElem` deferred]
+                  , contractRuntimePostconditions = contractRuntimePostconditions contract ++
+                      [p | (i, p) <- numbered, (owner, i) `elem` deferred] }
+       | contract <- contracts
+       , let owner = contractDeclaration contract
+             numbered = zip [0..] (contractPostconditions contract) ]
+
+-- Applies the deferral to every definition contract of a program; adapter
+-- contracts are untouched.
+deferProgramPostconditions :: Program -> Either [Diagnostic] Program
+deferProgramPostconditions program = do
+  let definitions = concatMap unitDefinitions (programUnits program)
+      owned = [declarationId (definitionDeclaration d) | d <- definitions]
+      own = [c | u <- programUnits program, c <- unitContracts u, contractDeclaration c `elem` owned]
+  deferred <- deferNonlinearPostconditions (programMachineBits program) (programDataDeclarations program) definitions own
+  let replaced c = maybe c id (lookup (contractDeclaration c) [(contractDeclaration d, d) | d <- deferred])
+  pure program { programUnits = [u { unitContracts = map replaced (unitContracts u) } | u <- programUnits program] }
+
+auditDefinitionContracts :: Int -> [DataDeclaration] -> [Definition] -> [Contract] -> Either [Diagnostic] [(Id, Int)]
+auditDefinitionContracts bits dataDeclarations definitions contracts = do
   registry <- diagnostic Nothing (Types.makeRegistry dataDeclarations)
   diagnostic Nothing $ unless (bits `elem` [32,64]) (Left "machineBits must be 32 or 64")
   let signatures = M.fromList [(declarationId d, declarationType d) |
@@ -64,7 +96,7 @@ validateDefinitionContracts bits dataDeclarations definitions contracts = do
     pure (T.ProofContract (contractDeclaration contract) freshResult
       (map lower (contractPreconditions contract)) (map lower (contractPostconditions contract)))
   constructorProofs <- constructorProofContracts bits dataDeclarations
-  T.auditWithConstructorContracts constructorProofs proofs (map (proofDefinition (Payload.fromRegistry registry)) definitions)
+  T.auditDeferring constructorProofs proofs (map (proofDefinition (Payload.fromRegistry registry)) definitions)
   where
     location declaration = case declarationOrigin declaration of
       SourceSpan span -> Just (spanStart span)
@@ -85,7 +117,8 @@ constructorProofContracts bits dataDeclarations = do
   registry <- diagnostic Nothing (Types.makeRegistry dataDeclarations)
   diagnostic Nothing $ unless (bits `elem` [32,64]) (Left "machineBits must be 32 or 64")
   constructorProofs <- forM
-    [c | d <- dataDeclarations, c <- dataConstructors d, not (null (constructorPredicates c))] $ \c ->
+    [(c, guards) | d <- dataDeclarations, c <- dataConstructors d, let guards = indexGuards d c
+                 , not (null (constructorPredicates c)) || not (null guards)] $ \(c, guards) ->
       diagnostic (case constructorOrigin c of SourceSpan range -> Just (spanStart range); _ -> Nothing) $
       prefix (constructorName c) $ do
         let fields = constructorFields c
@@ -97,10 +130,26 @@ constructorProofContracts bits dataDeclarations = do
         let domains = concat [T.integerAssumptions bits (binderId field) name
               | field <- fields, Constructor name [] <- [binderType field]]
         pure (T.ProofConstructorContract (constructorId c) (map binderId fields)
-          (domains ++ map (proofExpression (Payload.fromRegistry registry) bits) (constructorPredicates c)))
+          (domains ++ map (proofExpression (Payload.fromRegistry registry) bits) (constructorPredicates c)) guards)
   T.auditWithConstructorContracts constructorProofs [] []
   pure constructorProofs
   where
+    -- Index guards with each field reference's measure name (<index>Of<Family>).
+    indexGuards d c =
+      [ (guard, measures)
+      | Just index <- [dataIndex d]
+      , Just (ConstructorIndex _ guards) <- [lookup (idText (constructorId c)) (familyIndexConstructors index)]
+      , guard@(IndexGuard _ left right) <- guards
+      , let references = nub (termFields left ++ termFields right)
+            measures = [((p, i), name) | (p, i) <- references, Just name <- [measureNameAt c p i]]
+      , length measures == length references ]
+    measureNameAt c p i = do
+      field <- case drop p (constructorFields c) of f : _ -> Just f; [] -> Nothing
+      Constructor familyName _ <- Just (binderType field)
+      family <- case [f | f <- dataDeclarations, dataId f == Id familyName] of f : _ -> Just f; [] -> Nothing
+      familyIndex <- dataIndex family
+      indexName <- case drop i (familyIndexNames familyIndex) of n : _ -> Just n; [] -> Nothing
+      Just (indexName ++ "Of" ++ dataName family)
     diagnostic at = either (Left . pure . (\message -> Diagnostic "total" message at)) Right
     prefix name = either (Left . ((name ++ ": ") ++)) Right
 
@@ -145,7 +194,7 @@ proofExpression schema bits = proof
       Binary op (Numeric (Constructor name [])) left right
         | isExact name, op `elem` [Equal,NotEqual,Less,LessEqual,Greater,GreaterEqual] ->
           T.ExactComparison op (proof left) (proof right)
-        | isExact name, op `elem` [Add,Subtract,Multiply] ->
+        | isExact name, op `elem` [Add,Subtract,Multiply,Power] ->
           T.ExactArithmetic op (proof left) (proof right)
       Unary Negate value | exact (expressionType value) ->
         T.ExactArithmetic Subtract (T.Literal (SInteger "Integer" 0)) (proof value)

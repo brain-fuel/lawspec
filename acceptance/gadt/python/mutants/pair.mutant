@@ -1,0 +1,6 @@
+@@ src/example/gadt.py
+<<<<<<<
+    return data.Pair(evalNumber(value0.first), evalTruth(value0.second))
+=======
+    return data.Pair(evalNumber(value0.first), not evalTruth(value0.second))
+>>>>>>>

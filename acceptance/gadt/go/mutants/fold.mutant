@@ -1,0 +1,6 @@
+@@ example/gadt/adapter.go
+<<<<<<<
+	return ExprNumber{Value: EvalNumber(value0)}
+=======
+	return ExprNumber{Value: big.NewInt(0)}
+>>>>>>>

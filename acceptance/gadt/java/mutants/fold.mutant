@@ -1,0 +1,6 @@
+@@ src/main/java/example/Gadt.java
+<<<<<<<
+    return new Expr.Number(evalNumber(value0));
+=======
+    return new Expr.Number(BigInteger.ZERO);
+>>>>>>>

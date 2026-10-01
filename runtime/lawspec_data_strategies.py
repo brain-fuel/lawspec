@@ -197,89 +197,210 @@ def strategy(schema, reference, bits, budget, scalar, symbols=None,
     return build(reference, budget)
 
 
+INDEX_SLACK = 16
+INDEX_CHOICES = 6
+INDEX_OPERATORS = ('+', '-', '*', 'div', 'mod', '^')
+# Solved reachability is shared by strategies over the same equations, so a
+# target drawn per example does not repeat the fixpoint.
+_INDEX_TABLES = {}
+
+
+def parse_index_term(tokens, at=0):
+    """Parse a prefix index term: f<field>, c<literal> or an operator."""
+    token = tokens[at]
+    if token[0] == 'c':
+        return ('c', int(token[1:])), at + 1
+    if token[0] == 'f':
+        return ('f', int(token[1:])), at + 1
+    if token in INDEX_OPERATORS:
+        left, at = parse_index_term(tokens, at + 1)
+        right, at = parse_index_term(tokens, at)
+        return (token, left, right), at
+    raise ValueError('malformed index term')
+
+
+def eval_index_term(term, fields):
+    """Natural index arithmetic; None when an operation has no natural value."""
+    kind = term[0]
+    if kind == 'c':
+        return term[1]
+    if kind == 'f':
+        return fields.get(term[1])
+    x = eval_index_term(term[1], fields)
+    y = eval_index_term(term[2], fields)
+    if x is None or y is None:
+        return None
+    if kind == '+':
+        return x + y
+    if kind == '-':
+        return x - y if x >= y else None
+    if kind == '*':
+        return x * y
+    if kind == 'div':
+        return x // y if y > 0 else None
+    if kind == 'mod':
+        return x % y if y > 0 else None
+    return x ** y if 0 <= y <= 64 else None
+
+
+def index_term_fields(term):
+    if term[0] == 'c':
+        return []
+    if term[0] == 'f':
+        return [term[1]]
+    return index_term_fields(term[1]) + index_term_fields(term[2])
+
+
 def indexed_strategy(schema, reference, target, equations, budget, build,
                      inhabited, valid):
-    """Construct values whose linear structural measure equals target.
+    """Construct values whose structural index equals target.
 
-    Each constructor contributes a constant plus the measures of its listed
-    recursive fields, so a target is solved backwards and split across those
-    fields. Samples and shrinks keep the measure; nothing is filtered away.
+    Each constructor carries its index term then its guards, in prefix
+    notation over field indices. Reachability is a forward fixpoint over
+    levels 0..target+slack, so a child may exceed its parent's index; the
+    target is then solved backwards, and nothing is filtered away.
     """
-    if target < 0:
-        raise ValueError("index target must be a natural number")
-    equations = {tag: (int(constant), tuple(positions))
-                 for tag, (constant, positions) in equations.items()}
-    visiting = set()
+    limit = max(target, 0) + INDEX_SLACK
+
+    def parse(texts):
+        tokens = texts[0].split()
+        term, at = parse_index_term(tokens)
+        if at != len(tokens):
+            raise ValueError('malformed index term')
+        guards = []
+        for text in texts[1:]:
+            tokens = text.split()
+            if tokens[0] not in ('==', '>='):
+                raise ValueError('malformed index guard')
+            left, at = parse_index_term(tokens, 1)
+            right, at = parse_index_term(tokens, at)
+            guards.append((tokens[0], left, right))
+        fields = index_term_fields(term)
+        for _, left, right in guards:
+            fields += index_term_fields(left) + index_term_fields(right)
+        return term, guards, tuple(dict.fromkeys(fields))
+
+    tables = {tag: parse(texts) for tag, texts in equations.items()}
 
     def equation(constructor):
-        if constructor.tag not in equations:
+        if constructor.tag not in tables:
             raise ValueError("missing index equation for " + constructor.tag)
-        return equations[constructor.tag]
+        return tables[constructor.tag]
 
     def plain_fields(constructor, positions):
         return all(inhabited(field.type, budget)
                    for index, field in enumerate(constructor.fields)
                    if index not in positions)
 
-    @cache
-    def reachable(ty, k):
-        if (ty, k) in visiting:
-            return False
-        visiting.add((ty, k))
-        try:
-            for constructor in schema.constructors(ty):
-                constant, positions = equation(constructor)
-                rest = k - constant
-                if rest < 0 or not plain_fields(constructor, positions):
-                    continue
-                types = tuple(constructor.fields[p].type for p in positions)
-                if (rest == 0 if not types else splittable(types, rest)):
-                    return True
-            return False
-        finally:
-            visiting.discard((ty, k))
+    families = []
+    pending = [reference]
+    while pending:
+        ty = pending.pop()
+        if ty in families:
+            continue
+        constructors = schema.constructors(ty)
+        if constructors is None:
+            raise ValueError("indexed generation requires a data type")
+        families.append(ty)
+        for constructor in constructors:
+            _, _, positions = equation(constructor)
+            pending.extend(constructor.fields[p].type for p in positions)
 
-    @cache
-    def splittable(types, rest):
-        if len(types) == 1:
-            return reachable(types[0], rest)
-        return any(reachable(types[0], first) and
-                   splittable(types[1:], rest - first)
-                   for first in range(rest + 1))
+    def holds(guard, fields):
+        relation, left, right = guard
+        x = eval_index_term(left, fields)
+        y = eval_index_term(right, fields)
+        if x is None or y is None:
+            return False
+        return x == y if relation == '==' else x >= y
 
-    def splits(types, rest):
-        if len(types) == 1:
-            return st.just((rest,))
-        return st.integers(0, rest).filter(
-            lambda first: reachable(types[0], first) and
-            splittable(types[1:], rest - first)).flatmap(
-            lambda first: splits(types[1:], rest - first).map(
-                lambda tail: (first,) + tail))
+    def assignments(constructor, reach):
+        term, guards, positions = equation(constructor)
+        choices = [[(p, v) for v in range(limit + 1)
+                    if (constructor.fields[p].type, v) in reach]
+                   for p in positions]
+        found = []
+
+        # A guard is checked as soon as its fields are assigned, so an
+        # equality between siblings prunes every mismatched pair at once.
+        assigned_by = {}
+        for guard in guards:
+            needed = set(index_term_fields(guard[1]) +
+                         index_term_fields(guard[2]))
+            at = max((positions.index(p) for p in needed), default=-1)
+            assigned_by.setdefault(at, []).append(guard)
+
+        def extend(at, current):
+            if at == len(choices):
+                value = eval_index_term(term, dict(current))
+                if value is not None and value <= limit:
+                    found.append((value, tuple(current)))
+                return
+            for choice in choices[at]:
+                following = current + [choice]
+                fields = dict(following)
+                if all(holds(guard, fields)
+                       for guard in assigned_by.get(at, ())):
+                    extend(at + 1, following)
+        if not all(holds(guard, {}) for guard in assigned_by.get(-1, ())):
+            return found
+        extend(0, [])
+        return found
+
+    # Keep the schema in the entry so its id cannot be reused while cached.
+    table_key = (id(schema), reference,
+                 tuple(sorted((tag, tuple(texts))
+                              for tag, texts in equations.items())))
+    cached = _INDEX_TABLES.get(table_key)
+    if cached is not None and cached[1] >= limit:
+        limit = cached[1]
+    else:
+        reach = set()
+        while True:
+            grown = set(reach)
+            for ty in families:
+                for constructor in schema.constructors(ty):
+                    _, _, positions = equation(constructor)
+                    if not plain_fields(constructor, positions):
+                        continue
+                    for value, _ in assignments(constructor, reach):
+                        grown.add((ty, value))
+            if grown == reach:
+                break
+            reach = grown
+        cached = _INDEX_TABLES[table_key] = (schema, limit, reach, {})
+    _, _, reach, solutions = cached
+
+    def solve(constructor, k):
+        key = (constructor.tag, k)
+        if key not in solutions:
+            solutions[key] = [assignment
+                              for value, assignment in
+                              assignments(constructor, reach) if value == k]
+        return solutions[key]
 
     @cache
     def indexed(ty, k):
         alternatives = []
         for constructor in schema.constructors(ty):
-            constant, positions = equation(constructor)
-            rest = k - constant
-            if rest < 0 or not plain_fields(constructor, positions):
+            _, _, positions = equation(constructor)
+            if not plain_fields(constructor, positions):
                 continue
-            types = tuple(constructor.fields[p].type for p in positions)
-            if not (rest == 0 if not types else splittable(types, rest)):
+            choices = solve(constructor, k)
+            if not choices:
                 continue
 
-            def assemble(targets, constructor=constructor,
-                         positions=positions):
+            def assemble(assignment, constructor=constructor):
+                targets = dict(assignment)
                 children = [
-                    indexed(field.type, targets[positions.index(index)])
-                    if index in positions else build(field.type, budget)
+                    indexed(field.type, targets[index])
+                    if index in targets else build(field.type, budget)
                     for index, field in enumerate(constructor.fields)]
                 return st.tuples(*children).map(
                     lambda fields, tag=constructor.tag:
                     ls.DataValue(tag, fields))
 
-            values = (assemble(()) if not types
-                      else splits(types, rest).flatmap(assemble))
+            values = st.sampled_from(choices).flatmap(assemble)
             if constructor.predicates:
                 values = values.filter(lambda value, ty=ty: valid(ty, value))
             alternatives.append(values)
@@ -287,6 +408,14 @@ def indexed_strategy(schema, reference, target, equations, budget, build,
             raise ValueError(f"no value of {ty} has index {k}")
         return st.one_of(*alternatives)
 
-    if schema.constructors(reference) is None:
-        raise ValueError("indexed generation requires a data type")
+    if (reference, target) not in reach:
+        # An open target (negative), or one drawn from earlier inputs that
+        # breaks their preconditions or names no value, generates from the
+        # smallest reachable indices; an index claim rejects a mismatch.
+        levels = sorted(level for ty, level in reach
+                        if ty == reference)[:INDEX_CHOICES]
+        if not levels:
+            raise ValueError(f"no value of {reference} has an index")
+        return st.sampled_from(levels).flatmap(
+            lambda level: indexed(reference, level))
     return indexed(reference, target)

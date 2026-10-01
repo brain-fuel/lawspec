@@ -1,0 +1,6 @@
+@@ example/arithmetic/adapter.go
+<<<<<<<
+Halves{Front: value0, Back: value0}
+=======
+Halves{Front: value0, Back: RowCell{Tail: value0}}
+>>>>>>>

@@ -6,16 +6,18 @@ import LawSpec.Model
 import LawSpec.Refinement (hasValueRefinements)
 import LawSpec.Scalar
 import LawSpec.Eval (boundsValue)
-import Control.Monad (when, unless, zipWithM_)
-import Data.List (nub)
+import Control.Monad (when, unless, zipWithM_, zipWithM, forM, forM_)
+import Data.List (nub, isInfixOf)
 import Control.Monad.State.Strict
 import qualified Data.Map.Strict as M
 import qualified LawSpec.Core as Core
 import LawSpec.Core.Types (builtinDataDeclarations, makeRegistry)
 
-data CS = CS { substitutions :: M.Map String Type, counter :: Int, obligations :: [Constraint], machineBits :: Int, dataDeclarations :: [Core.DataDeclaration] }
+-- Givens are branch-local facts about rigid type variables: matching a GADT
+-- constructor that refines `a` to Int32 makes @a resolve to Int32 there.
+data CS = CS { substitutions :: M.Map String Type, counter :: Int, obligations :: [Constraint], machineBits :: Int, dataDeclarations :: [Core.DataDeclaration], givens :: M.Map String Type }
 initialState :: Int -> CS
-initialState bits = CS M.empty 0 [] bits []
+initialState bits = CS M.empty 0 [] bits [] M.empty
 
 type C = StateT CS (Either String)
 -- Only explicitly generalized declarations get fresh variables at each use.
@@ -75,6 +77,7 @@ fresh :: C String
 fresh = do s <- get; put s{counter=counter s+1}; pure (show (counter s))
 resolve :: Type -> C Type
 resolve (Variable n) = gets (M.lookup n . substitutions) >>= maybe (pure (Variable n)) resolve
+resolve (Named ('@':n)) = gets (M.lookup n . givens) >>= maybe (pure (Named ('@':n))) resolve
 resolve (Arrow a b) = Arrow <$> resolve a <*> resolve b
 resolve (Applied n t) = Applied n <$> resolve t
 resolve (Application n ts) = Application n <$> mapM resolve ts
@@ -132,7 +135,10 @@ infer env (AllElementsExpr value binder predicate) = do
 infer env (MatchExpr value branches) = do
   scopes <- matchScopes env value branches
   result <- Variable . ("match:" ++) <$> fresh
-  sequence_ [infer scope body >>= unify result | (scope, MatchBranch _ _ body) <- zip scopes branches]
+  sequence_ [ do
+      unless (M.null local) (throwC "a match that refines a type variable needs a known result type; annotate it or give the definition a signature")
+      infer scope body >>= unify result
+    | (Just (scope, local), MatchBranch _ _ body) <- zip scopes branches]
   resolve result
 infer env (ListLit xs) = do
   element <- case xs of
@@ -211,7 +217,7 @@ checkExpr env expected e = do
       zipWithM_ (checkExpr env) parameters fields
     (_,MatchExpr value branches) -> do
       scopes <- matchScopes env value branches
-      sequence_ [checkExpr scope t body | (scope, MatchBranch _ _ body) <- zip scopes branches]
+      sequence_ [withGivens local (checkExpr scope t body) | (Just (scope, local), MatchBranch _ _ body) <- zip scopes branches]
     (Applied "List" element,ListLit xs) -> mapM_ (checkExpr env element) xs
     (Named n,Number x) | isNumeric n -> lift (convertScalar bits n (SInteger "BigInt" x)) >> pure ()
     (Named n,DecimalNumber c e) | isNumeric n -> lift (convertScalar bits n (SDecimal c e)) >> pure ()
@@ -278,7 +284,7 @@ builtin env n args
   | n `elem` ["real","imag"], [a] <- args = do
       t <- infer env a >>= resolve
       case t of Named "Complex64" -> pure (Named "Float32"); Named "Complex128" -> pure (Named "Float64"); _ -> throwC "real/imag require a complex operand"
-  | n `elem` ["quot","rem"], [a,b] <- args = infer env (Binary n a b)
+  | n `elem` ["quot","rem","pow"], [a,b] <- args = infer env (Binary n a b)
   | n `elem` ["isNaN","isInfinite","isFinite","isNegativeZero"], [a] <- args = do
       t <- infer env a >>= resolve
       unless (t `elem` map Named ["Float32","Float64"]) (throwC (n ++ " requires Float32 or Float64"))
@@ -335,9 +341,8 @@ typedExpressionWithSchemes declarations bits env e = do
       children <- case e of
         AllPayloadsExpr value _ -> sequence [descend Nothing value]
         AllElementsExpr value _ _ -> sequence [descend Nothing value]
-        MatchExpr value branches -> do
+        MatchExpr value _ -> do
           valueType <- infer context value
-          sequence_ [constructorParameters valueType tag >> pure () | MatchBranch tag _ _ <- branches]
           resolved <- resolve valueType
           sequence [descend (Just resolved) value]
         ConstructLit name fields -> do
@@ -389,13 +394,15 @@ typedExpressionWithSchemes declarations bits env e = do
               body <- go (M.insert binder (Monomorphic element) context) (Just (Named "Bool")) predicate
               pure [TypedCase "" [(binder,element)] body]
             _ -> throwC "element predicate requires a List"
+        -- Branches a GADT constructor cannot reach at this type are dropped,
+        -- so a specialized instance never mentions them.
         MatchExpr value branches -> do
           scopes <- matchScopes context value branches
-          sequence [do
+          sequence [withGivens local $ do
             types <- mapM (\name -> maybe (throwC "missing pattern binder") (resolve . schemeType) (M.lookup name scope)) names
             body' <- go scope (Just t) body
             pure (TypedCase tag (zip names types) body')
-            | (scope, MatchBranch tag names body) <- zip scopes branches]
+            | (Just (scope, local), MatchBranch tag names body) <- zip scopes branches]
         _ -> pure []
       pure (TypedExpr t e' children conversion cases)
     resolveTree (TypedExpr ty expression operands conversion cases) = do
@@ -444,7 +451,20 @@ constructorSignature name = do
   instantiateConstructor name declarations
 
 instantiateConstructor :: String -> [Core.DataDeclaration] -> C ([Type], Type)
-instantiateConstructor name declarations = case
+instantiateConstructor name declarations = do
+  shape <- instantiateShape name declarations
+  pure (shapeFields shape, shapeResult shape)
+
+-- A fresh instance of a constructor: its fields and result over fresh
+-- variables for the declaration's parameters and the constructor's
+-- existentials. A GADT constructor's result applies its equations.
+data ConstructorShape = ConstructorShape
+  { shapeFields :: [Type], shapeResult :: Type
+  , shapeArguments :: [(Type, Bool)]  -- each result argument, and whether an equation fixed it
+  , shapeExistentials :: [String] }
+
+instantiateShape :: String -> [Core.DataDeclaration] -> C ConstructorShape
+instantiateShape name declarations = case
   [(declaration, constructor) | declaration <- declarations,
     constructor <- Core.dataConstructors declaration,
     Core.constructorName constructor == name || Core.idText (Core.constructorId constructor) == name] of
@@ -452,20 +472,100 @@ instantiateConstructor name declarations = case
     parameters <- mapM (\parameter -> do
       variable <- Variable . ("constructor:" ++) <$> fresh
       pure (parameter, variable)) (Core.dataParameters declaration)
-    let convert (Core.TypeVariable variable) = maybe (throwC "unbound constructor parameter") pure (lookup variable parameters)
+    existentials <- mapM (\existential -> do
+      variable <- ("exists:" ++) <$> fresh
+      pure (existential, variable)) (Core.constructorExistentials constructor)
+    let variables = parameters ++ [(e, Variable v) | (e, v) <- existentials]
+        convert (Core.TypeVariable variable) = maybe (throwC "unbound constructor parameter") pure (lookup variable variables)
         convert (Core.Constructor constructorName args) = applyType constructorName <$> mapM argument args
         convert (Core.Arrow a b) = Arrow <$> convert a <*> convert b
         argument (Core.TypeArgument ty) = convert ty
         argument _ = throwC "indexed constructor requires indexed type inference"
-        result = applyType (Core.idText (Core.dataId declaration)) (map snd parameters)
+    equations <- mapM (\(parameter, ty) -> (,) parameter <$> convert ty) (Core.constructorEquations constructor)
+    let arguments = [maybe (variable, False) (\ty -> (ty, True)) (lookup parameter equations) | (parameter, variable) <- parameters]
+        result = applyType (Core.idText (Core.dataId declaration)) (map fst arguments)
     fields <- mapM (convert . Core.binderType) (Core.constructorFields constructor)
-    pure (fields, result)
+    pure (ConstructorShape fields result arguments (map snd existentials))
   [] -> throwC ("unknown constructor: " ++ name)
   _ -> throwC ("ambiguous constructor: " ++ name)
   where
     applyType name [] = Named name
     applyType name [argument] = Applied name argument
     applyType name arguments = Application name arguments
+
+withGivens :: M.Map String Type -> C a -> C a
+withGivens local action
+  | M.null local = action
+  | otherwise = do
+      saved <- gets givens
+      modify (\s -> s{givens = M.union local saved})
+      result <- action
+      modify (\s -> s{givens = saved})
+      pure result
+
+tryC :: C a -> C (Either String a)
+tryC action = StateT $ \s -> case runStateT action s of
+  Left message -> Right (Left message, s)
+  Right (value, s') -> Right (Right value, s')
+
+-- Matching a constructor against a scrutinee type: Nothing when the
+-- constructor cannot build that type (the branch is inaccessible); otherwise
+-- its field types and the givens its equations add for rigid variables.
+-- Existentials the scrutinee does not determine become rigid in the branch.
+matchConstructor :: Type -> String -> C (Maybe ([Type], M.Map String Type))
+matchConstructor scrutinee tag = do
+  declarations <- gets ((builtinDataDeclarations ++) . dataDeclarations)
+  resolved <- resolve scrutinee
+  let (parent, arguments) = case resolved of
+        Named n -> (n, []); Applied n a -> (n, [a]); Application n as -> (n, as); _ -> ("", [])
+      candidates = filter ((== parent) . Core.idText . Core.dataId) declarations
+  shape <- instantiateShape tag (if null candidates then declarations else candidates)
+  unless (length arguments == length (shapeArguments shape) || null candidates)
+    (throwC ("constructor " ++ tag ++ " does not match " ++ prettyType resolved))
+  saved <- gets givens
+  outcome <- tryC $ do
+    local <- fmap M.unions $ forM (zip arguments (shapeArguments shape)) $ \(argument, (pattern, refined)) -> do
+      actual <- resolve argument
+      case actual of
+        Variable _ | refined -> throwC ("matching " ++ tag ++ " refines a type the context does not know; give the definition a signature")
+        _ | refined -> refineTypes pattern actual
+          | otherwise -> unify pattern actual >> pure M.empty
+    forM_ (shapeExistentials shape) $ \v -> do
+      t <- resolve (Variable v)
+      case t of
+        Variable free -> unify (Variable free) (Named ("@" ++ free))
+        _ -> pure ()
+    fields <- mapM resolve (shapeFields shape)
+    pure (fields, local)
+  modify (\s -> s{givens = saved})
+  case outcome of
+    Right found -> pure (Just found)
+    Left message | "refines a type the context does not know" `isInfixOf` message -> throwC message
+                 | otherwise -> pure Nothing
+
+-- Unify a constructor's refinement with the scrutinee's argument; a rigid
+-- variable met on either side is refined (a given) rather than unified.
+refineTypes :: Type -> Type -> C (M.Map String Type)
+refineTypes x y = do
+  a <- resolve x
+  b <- resolve y
+  case (a, b) of
+    _ | a == b -> pure M.empty
+    (Named ('@':n), t) | refinable n -> given n t
+    (t, Named ('@':n)) | refinable n -> given n t
+    (Variable _, _) -> unify a b >> pure M.empty
+    (_, Variable _) -> unify a b >> pure M.empty
+    (Arrow p q, Arrow r s') -> M.union <$> refineTypes p r <*> refineTypes q s'
+    (Applied n p, Applied m q) | n == m -> refineTypes p q
+    (Application n ps, Application m qs) | n == m && length ps == length qs ->
+      M.unions <$> zipWithM refineTypes ps qs
+    _ -> throwC ("type mismatch: " ++ prettyType a ++ " and " ++ prettyType b)
+  where
+    refinable n = take 7 n /= "exists:"
+    given :: String -> Type -> C (M.Map String Type)
+    given n t = do
+      modify (\s -> s{givens = M.insert n t (givens s)})
+      pure (M.singleton n t)
 
 constructorParameters :: Type -> String -> C [Type]
 constructorParameters target name = do
@@ -505,28 +605,39 @@ contextualizeStructuralWithData declarations bits env a b =
   evalStateT (jointStructuralContext (monoEnvironment env) a b) ((initialState bits){dataDeclarations=declarations})
 
 -- Constructor coverage is checked while resolving branch environments and is
--- checked again independently at the Core boundary.
-matchScopes :: Env -> Expr -> [MatchBranch] -> C [Env]
+-- checked again independently at the Core boundary. Each branch is Nothing when
+-- its GADT constructor cannot build the scrutinee's type, or its scope and the
+-- givens it adds.
+matchScopes :: Env -> Expr -> [MatchBranch] -> C [Maybe (Env, M.Map String Type)]
 matchScopes env value branches = do
   ty <- infer env value >>= resolve
   let tags = [tag | MatchBranch tag _ _ <- branches]
   unless (length tags == length (nub tags)) (throwC "duplicate match constructor")
-  scopes <- mapM (scope ty) branches
   resolved <- resolve ty
   known <- gets ((builtinDataDeclarations ++) . dataDeclarations)
   let parent = case resolved of Named n -> n; Applied n _ -> n; Application n _ -> n; _ -> ""
       declarations = [d | d <- known, Core.idText (Core.dataId d) == parent]
-  expected <- case declarations of
-    [declaration] -> pure [[Core.constructorName c, Core.idText (Core.constructorId c)] | c <- Core.dataConstructors declaration]
+  declaration <- case declarations of
+    [declaration] -> pure declaration
     _ -> throwC "matching requires a known data type"
-  unless (all (any (`elem` tags)) expected) (throwC "non-exhaustive match")
+  scopes <- mapM (scope ty) branches
+  -- Every constructor that could build the scrutinee needs a branch.
+  forM_ (Core.dataConstructors declaration) $ \c ->
+    unless (any (`elem` tags) [Core.constructorName c, Core.idText (Core.constructorId c)]) $ do
+      saved <- get
+      reachable <- matchConstructor ty (Core.idText (Core.constructorId c))
+      put saved
+      when (reachable /= Nothing) (throwC "non-exhaustive match")
   pure scopes
   where
     scope ty (MatchBranch tag names _) = do
       unless (length names == length (nub names)) (throwC "duplicate match binder")
-      fields <- constructorParameters ty tag
-      unless (length names == length fields) (throwC ("wrong match constructor arity: " ++ tag))
-      pure (M.union (monoEnvironment (zip names fields)) env)
+      found <- matchConstructor ty tag
+      case found of
+        Nothing -> pure Nothing
+        Just (fields, local) -> do
+          unless (length names == length fields) (throwC ("wrong match constructor arity: " ++ tag))
+          pure (Just (M.union (monoEnvironment (zip names fields)) env, local))
 
 -- Payload callbacks are scoped over declared type arguments, never over fixed
 -- fields whose concrete types happen to coincide with an argument.

@@ -1,0 +1,6 @@
+@@ src/example/arithmetic.ts
+<<<<<<<
+length(value0.rows) * length(value0.columns)
+=======
+length(value0.rows) + length(value0.columns)
+>>>>>>>

@@ -3,7 +3,10 @@ package RUNTIME_PACKAGE
 
 import (
 	"fmt"
+	"math/big"
 	"reflect"
+	"strconv"
+	"strings"
 )
 
 // Conversion paths reject cycles while allowing shared acyclic subtrees.
@@ -69,9 +72,21 @@ type lawSpecFieldSchema struct {
 	typeRef lawSpecTypeRef
 }
 
+// indices holds an indexed family's index terms then its guards, in prefix
+// notation over field indices; validation checks the guards. A GADT
+// constructor's refinements fix parameters to patterns; its existentials are
+// the parameters numbered after the definition's own.
 type lawSpecConstructorSchema struct {
-	tag    string
-	fields []lawSpecFieldSchema
+	tag          string
+	fields       []lawSpecFieldSchema
+	indices      []string
+	refinements  []lawSpecRefinement
+	existentials int
+}
+
+type lawSpecRefinement struct {
+	parameter int
+	pattern   lawSpecTypeRef
 }
 
 type lawSpecDataSchema struct {
@@ -122,7 +137,8 @@ func lsNewSchema(definitions []lawSpecDataSchema, primitives []string) *lawSpecS
 			for position, field := range constructor.fields {
 				fields[position] = lawSpecFieldSchema{field.name, lsCopyType(field.typeRef)}
 			}
-			constructors[index] = lawSpecConstructorSchema{constructor.tag, fields}
+			constructors[index] = lawSpecConstructorSchema{constructor.tag, fields, append([]string{}, constructor.indices...),
+				append([]lawSpecRefinement{}, constructor.refinements...), constructor.existentials}
 		}
 		definition.constructors = constructors
 		schema.definitions[definition.name] = definition
@@ -141,7 +157,7 @@ func lsNewSchema(definitions []lawSpecDataSchema, primitives []string) *lawSpecS
 					panic("duplicate or invalid field: " + field.name)
 				}
 				names[field.name] = true
-				schema.check(field.typeRef, definition.parameters)
+				schema.check(field.typeRef, definition.parameters+constructor.existentials)
 			}
 		}
 	}
@@ -251,15 +267,83 @@ func (s *lawSpecSchema) constructors(t lawSpecTypeRef) ([]lawSpecConstructorSche
 	if !exists {
 		return nil, false
 	}
-	result := make([]lawSpecConstructorSchema, len(definition.constructors))
-	for index, constructor := range definition.constructors {
+	result := []lawSpecConstructorSchema{}
+	for _, constructor := range definition.constructors {
+		// A GADT constructor whose refinements do not match these arguments
+		// builds no value of this type.
+		arguments, compatible := lsRefine(constructor, t.arguments, definition.parameters)
+		if !compatible {
+			continue
+		}
 		fields := make([]lawSpecFieldSchema, len(constructor.fields))
 		for position, field := range constructor.fields {
-			fields[position] = lawSpecFieldSchema{field.name, lsSubstitute(field.typeRef, t.arguments)}
+			fields[position] = lawSpecFieldSchema{field.name, lsSubstitute(field.typeRef, arguments)}
 		}
-		result[index] = lawSpecConstructorSchema{constructor.tag, fields}
+		result = append(result, lawSpecConstructorSchema{constructor.tag, fields, constructor.indices, nil, 0})
 	}
 	return result, true
+}
+
+// lsFieldType is a constructor field's type at an instantiated type, with the
+// existentials its refinements determine substituted.
+func lsFieldType(schema *lawSpecSchema, t lawSpecTypeRef, tag string, index int) lawSpecTypeRef {
+	constructors, _ := schema.constructors(t)
+	for _, constructor := range constructors {
+		if constructor.tag == tag {
+			return constructor.fields[index].typeRef
+		}
+	}
+	panic("constructor " + tag + " is not a value of " + t.key())
+}
+
+func lsSameType(a, b lawSpecTypeRef) bool {
+	if a.name != b.name || len(a.arguments) != len(b.arguments) || (a.name == "" && a.parameter != b.parameter) {
+		return false
+	}
+	for index := range a.arguments {
+		if !lsSameType(a.arguments[index], b.arguments[index]) {
+			return false
+		}
+	}
+	return true
+}
+
+// lsRefine extends arguments with the existentials a constructor's
+// refinements bind, reporting whether the refinements match.
+func lsRefine(constructor lawSpecConstructorSchema, arguments []lawSpecTypeRef, parameters int) ([]lawSpecTypeRef, bool) {
+	bound := map[int]lawSpecTypeRef{}
+	var match func(pattern, actual lawSpecTypeRef) bool
+	match = func(pattern, actual lawSpecTypeRef) bool {
+		if pattern.name == "" {
+			if pattern.parameter < parameters {
+				return lsSameType(arguments[pattern.parameter], actual)
+			}
+			if previous, exists := bound[pattern.parameter]; exists {
+				return lsSameType(previous, actual)
+			}
+			bound[pattern.parameter] = actual
+			return true
+		}
+		if actual.name != pattern.name || len(actual.arguments) != len(pattern.arguments) {
+			return false
+		}
+		for index := range pattern.arguments {
+			if !match(pattern.arguments[index], actual.arguments[index]) {
+				return false
+			}
+		}
+		return true
+	}
+	for _, refinement := range constructor.refinements {
+		if !match(refinement.pattern, arguments[refinement.parameter]) {
+			return nil, false
+		}
+	}
+	extended := append([]lawSpecTypeRef{}, arguments...)
+	for k := 0; k < constructor.existentials; k++ {
+		extended = append(extended, bound[parameters+k])
+	}
+	return extended, true
 }
 
 func lsSchemaContext(context string, operation func() LawSpecValue) (result LawSpecValue) {
@@ -428,13 +512,13 @@ func (s *lawSpecSchema) validateValue(t lawSpecTypeRef, value LawSpecValue, bits
 			return lsPresent(t.key(), &child)
 		case "Maybe":
 			constructors = []lawSpecConstructorSchema{
-				{"Maybe::Nothing", nil},
-				{"Maybe::Just", []lawSpecFieldSchema{{"value", t.arguments[0]}}},
+				{"Maybe::Nothing", nil, nil, nil, 0},
+				{"Maybe::Just", []lawSpecFieldSchema{{"value", t.arguments[0]}}, nil, nil, 0},
 			}
 		case "Either":
 			constructors = []lawSpecConstructorSchema{
-				{"Either::Left", []lawSpecFieldSchema{{"value", t.arguments[0]}}},
-				{"Either::Right", []lawSpecFieldSchema{{"value", t.arguments[1]}}},
+				{"Either::Left", []lawSpecFieldSchema{{"value", t.arguments[0]}}, nil, nil, 0},
+				{"Either::Right", []lawSpecFieldSchema{{"value", t.arguments[1]}}, nil, nil, 0},
 			}
 		default:
 			return lsClone(lsValidate(t.name, value, bits))
@@ -465,9 +549,132 @@ func (s *lawSpecSchema) validateValue(t lawSpecTypeRef, value LawSpecValue, bits
 				return lsBool(true)
 			})
 		}
+		s.checkIndices(constructor, fields)
 		return LawSpecValue{t.key(), lawSpecData{data.tag, fields}}
 	}
 	panic("unknown constructor " + data.tag + " for " + t.key())
+}
+
+// checkIndices checks an indexed family's guards against its fields' indices.
+func (s *lawSpecSchema) checkIndices(constructor lawSpecConstructorSchema, fields []LawSpecValue) {
+	for _, text := range constructor.indices {
+		tokens := strings.Fields(text)
+		if tokens[0] != "==" && tokens[0] != ">=" {
+			continue
+		}
+		left, next := lsParseSchemaIndex(tokens, 1)
+		right, _ := lsParseSchemaIndex(tokens, next)
+		field := func(position, index int) *big.Int {
+			return s.indexOf(constructor.fields[position].typeRef, fields[position], index)
+		}
+		x, y := lsEvalSchemaIndex(left, field), lsEvalSchemaIndex(right, field)
+		if x == nil || y == nil || (tokens[0] == "==" && x.Cmp(y) != 0) || (tokens[0] == ">=" && x.Cmp(y) < 0) {
+			panic(lawSpecRefinementViolation{constructor.tag + ": index guard " + text + " failed"})
+		}
+	}
+}
+
+func (s *lawSpecSchema) indexOf(t lawSpecTypeRef, value LawSpecValue, index int) *big.Int {
+	constructors, _ := s.constructors(t)
+	data := value.Data.(lawSpecData)
+	for _, constructor := range constructors {
+		if constructor.tag != data.tag {
+			continue
+		}
+		terms := []string{}
+		for _, text := range constructor.indices {
+			if !strings.HasPrefix(text, "== ") && !strings.HasPrefix(text, ">= ") {
+				terms = append(terms, text)
+			}
+		}
+		if index >= len(terms) {
+			panic("no index for " + t.key())
+		}
+		term, _ := lsParseSchemaIndex(strings.Fields(terms[index]), 0)
+		return lsEvalSchemaIndex(term, func(position, child int) *big.Int {
+			return s.indexOf(constructor.fields[position].typeRef, data.fields[position], child)
+		})
+	}
+	panic("unknown constructor " + data.tag)
+}
+
+// lawSpecSchemaIndex is a prefix index term: c<n>, f<field>[.<index>] or an
+// operator applied to two terms.
+type lawSpecSchemaIndex struct {
+	op              string
+	value           *big.Int
+	position, index int
+	left, right     *lawSpecSchemaIndex
+}
+
+func lsParseSchemaIndex(tokens []string, at int) (*lawSpecSchemaIndex, int) {
+	if at >= len(tokens) {
+		panic("malformed index term")
+	}
+	token := tokens[at]
+	switch {
+	case token[0] == 'c':
+		value, ok := new(big.Int).SetString(token[1:], 10)
+		if !ok {
+			panic("malformed index term")
+		}
+		return &lawSpecSchemaIndex{op: "c", value: value}, at + 1
+	case token[0] == 'f':
+		parts := strings.SplitN(token[1:], ".", 2)
+		position, err := strconv.Atoi(parts[0])
+		index := 0
+		if err == nil && len(parts) == 2 {
+			index, err = strconv.Atoi(parts[1])
+		}
+		if err != nil {
+			panic("malformed index term")
+		}
+		return &lawSpecSchemaIndex{op: "f", position: position, index: index}, at + 1
+	}
+	left, next := lsParseSchemaIndex(tokens, at+1)
+	right, end := lsParseSchemaIndex(tokens, next)
+	return &lawSpecSchemaIndex{op: token, left: left, right: right}, end
+}
+
+// lsEvalSchemaIndex is natural index arithmetic; nil when an operation has no
+// natural value.
+func lsEvalSchemaIndex(term *lawSpecSchemaIndex, field func(int, int) *big.Int) *big.Int {
+	switch term.op {
+	case "c":
+		return term.value
+	case "f":
+		return field(term.position, term.index)
+	}
+	x, y := lsEvalSchemaIndex(term.left, field), lsEvalSchemaIndex(term.right, field)
+	if x == nil || y == nil {
+		return nil
+	}
+	result := new(big.Int)
+	switch term.op {
+	case "+":
+		return result.Add(x, y)
+	case "-":
+		if x.Cmp(y) < 0 {
+			return nil
+		}
+		return result.Sub(x, y)
+	case "*":
+		return result.Mul(x, y)
+	case "div", "mod":
+		if y.Sign() <= 0 {
+			return nil
+		}
+		if term.op == "div" {
+			return result.Div(x, y)
+		}
+		return result.Mod(x, y)
+	case "^":
+		if !y.IsInt64() || y.Int64() > 64 {
+			return nil
+		}
+		return result.Exp(x, y, nil)
+	}
+	panic("malformed index term")
 }
 
 func (s *lawSpecSchema) construct(t lawSpecTypeRef, tag string, fields []LawSpecValue, bits int, contexts ...map[string]*lawSpecSymbol) LawSpecValue {

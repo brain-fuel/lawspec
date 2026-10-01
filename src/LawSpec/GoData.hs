@@ -103,17 +103,32 @@ emitGoData layout packageName declarations = do
           marker = "lawSpec" ++ name
       variants <- forM (C.dataConstructors declaration) $ \variant -> do
         variantName <- lookupName names (C.constructorId variant)
+        -- A GADT variant is generic in the parameters it leaves open and in
+        -- its existentials; its marker method's arguments apply its
+        -- refinements, so it implements only the refined interface.
+        let existentials = zip (C.constructorExistentials variant)
+              [candidate | n <- [0::Int ..], let candidate = "E" ++ show n, candidate `notElem` map snd names]
+            scope = parameters ++ existentials
+            equations = C.constructorEquations variant
+            open = [v | (p, v) <- parameters, p `notElem` map fst equations]
+            -- Go cannot construct a variant at existential types inside a
+            -- generic codec, so such a variant keeps every parameter and holds
+            -- existential fields as checked dynamic values.
+            own = if null equations || not (null existentials) then args else open
+        markerArguments <- if not (null existentials) then pure args else
+          forM parameters $ \(p, v) -> maybe (pure v) (typeText names scope) (lookup p equations)
         fields <- forM (C.constructorFields variant) $ \field -> do
           let fieldName = capitalize (C.binderName field)
           identifier fieldName
-          fieldType <- typeText names parameters (C.binderType field)
+          fieldType <- if mentionsAny (map fst existentials) (C.binderType field) then pure "LawSpecValue"
+            else typeText names scope (C.binderType field)
           pure (fieldName,fieldType)
         unless (length fields == length (nub (map fst fields))) (Left "Go constructor fields collide after export capitalization")
-        let header = "type " ++ applied variantName [arg ++ " any" | arg <- args] ++ " struct"
+        let header = "type " ++ applied variantName [arg ++ " any" | arg <- own] ++ " struct"
             width = maximum (0 : map (length . fst) fields)
             field (n,t) = D.text (n ++ replicate (width - length n + 1) ' ' ++ t)
             body = if null fields then D.text "{}" else D.text " " <> D.block 8 (D.joinWith D.hardline (map field fields))
-            method = "func (" ++ applied variantName args ++ ") " ++ marker ++ "(" ++ intercalate ", " args ++ ") {}"
+            method = "func (" ++ applied variantName own ++ ") " ++ marker ++ "(" ++ intercalate ", " markerArguments ++ ") {}"
         pure (D.text header <> body, D.text method)
       -- A product is a plain struct named after its type; a sum is a sealed
       -- interface whose variants carry the marker method.
@@ -123,6 +138,13 @@ emitGoData layout packageName declarations = do
         (if null variants then mempty else D.hardline <> D.hardline <>
           D.joinWith (D.hardline <> D.hardline) [d <> D.hardline <> D.hardline <> m | (d,m) <- variants]))
     lookupName names identity = maybe (Left "unplanned Go data name") Right (lookup identity names)
+
+-- Whether a type mentions any of these (existential) variables.
+mentionsAny :: [C.Id] -> C.Type -> Bool
+mentionsAny variables ty = case ty of
+  C.TypeVariable v -> v `elem` variables
+  C.Constructor _ arguments -> or [mentionsAny variables t | C.TypeArgument t <- arguments]
+  C.Arrow a b -> mentionsAny variables a || mentionsAny variables b
 
 -- Schema descriptions and native declarations share resolved Core identities.
 q :: String -> String
@@ -160,7 +182,12 @@ emitGoSchemaWithProfile bits layout packageName declarations = do
         (D.joinWith D.hardline [value <> D.text "," | value <- values])
       field value = D.text ("{" ++ q (S.fieldName value) ++ ", " ++ reference (S.fieldType value) ++ "}")
       constructor value = D.text ("{" ++ q (S.constructorTag value) ++ ", ") <>
-        array "lawSpecFieldSchema" (map field (S.fields value)) <> D.text "}"
+        array "lawSpecFieldSchema" (map field (S.fields value)) <> D.text ", " <>
+        (if null (S.constructorIndex value) then D.text "nil"
+         else D.text ("[]string{" ++ intercalate ", " (map q (S.constructorIndex value)) ++ "}")) <> D.text ", " <>
+        (if null (S.constructorRefinements value) then D.text "nil"
+         else D.text ("[]lawSpecRefinement{" ++ intercalate ", " ["{" ++ show index ++ ", " ++ reference pattern ++ "}" | (index, pattern) <- S.constructorRefinements value] ++ "}")) <>
+        D.text (", " ++ show (S.constructorExistentials value)) <> D.text "}"
       definition value = D.text ("{" ++ q (S.typeName value) ++ ", " ++ show (S.parameterCount value) ++ ", ") <>
         array "lawSpecConstructorSchema" (map constructor (S.constructors value)) <> D.text "}"
       body = D.text "return lsNewSchemaWithContracts(" <> D.nest 8 (D.hardline <>
@@ -273,9 +300,15 @@ emitCodecs prefix mappings needed imports layout packageName declarations = do
             "(" ++ intercalate ", " params ++ ") lawSpecCodec[" ++ native ++ "] "
       variants <- forM (C.dataConstructors declaration) $ \variant -> do
         variantName <- lookupName (nativeNamesFor names mappings) (C.constructorId variant)
-        fields <- forM (C.constructorFields variant) $ \field -> do
-          expression <- codecUsing prefix (Just (nativeNamesFor names mappings)) (Just "symbols") names parameters codecParameters (C.binderType field)
-          fieldType <- typeText names parameters (C.binderType field)
+        let existential = mentionsAny (C.constructorExistentials variant)
+            refinedOnly = not (null (C.constructorEquations variant)) && null (C.constructorExistentials variant)
+            openArguments = [v | (p, v) <- parameters, p `notElem` map fst (C.constructorEquations variant)]
+        fields <- forM (zip [0 :: Int ..] (C.constructorFields variant)) $ \(position, field) -> do
+          -- An existential field's type comes from the value's own type.
+          expression <- if existential (C.binderType field)
+            then pure ("lsLogicalCodec(schema, bits, lsFieldType(schema, typeRef, " ++ q (C.idText (C.constructorId variant)) ++ ", " ++ show position ++ "), symbols)")
+            else codecUsing prefix (Just (nativeNamesFor names mappings)) (Just "symbols") names parameters codecParameters (C.binderType field)
+          fieldType <- if existential (C.binderType field) then pure "LawSpecValue" else typeText names parameters (C.binderType field)
           let mapped = find ((== C.constructorId variant) . C.constructorId . resolvedConstructor)
                 [c | m <- mappings,c <- resolvedConstructors m]
               fieldName = maybe (capitalize (C.binderName field)) id
@@ -285,7 +318,7 @@ emitCodecs prefix mappings needed imports layout packageName declarations = do
               [c | m <- mappings,c <- resolvedConstructors m]
             unit = maybe False ((== UnitConstructor) . resolvedConstructorStyle) mapped
             tag = C.idText (C.constructorId variant)
-            concrete = applied variantName arguments
+            concrete = applied variantName (if refinedOnly then openArguments else arguments)
             width = maximum (0 : [length n | (n,_,_,_) <- fields])
             construct = if unit then line variantName else if null fields then line (concrete ++ "{}") else
               line concrete <> D.block 8 (linesDoc
@@ -296,7 +329,9 @@ emitCodecs prefix mappings needed imports layout packageName declarations = do
                 [line ("lsSchemaContext(" ++ q (tag ++ "." ++ original) ++ ", func() LawSpecValue ") <>
                   D.block 8 (line ("return " ++ expression ++ ".encode(native." ++ n ++ ", path)")) <> line "),"
                 | (n,original,_,expression) <- fields])
-            decode = line ("case " ++ q tag ++ ":") <> D.nest 8 (D.hardline <> line "return " <> construct)
+            -- A refined variant implements only its refined interface.
+            decode = line ("case " ++ q tag ++ ":") <> D.nest 8 (D.hardline <> line "return " <>
+              (if refinedOnly then line "any(" <> construct <> line (").(" ++ native ++ ")") else construct))
             result = line ("return schema.construct(typeRef, " ++ q tag ++ ", ") <> encodeFields <> line ", bits, symbols)"
             encodeValue = if prefix == "lawSpec" then
               line ("case " ++ concrete ++ ":") <> D.nest 8 (D.hardline <> result)
@@ -315,11 +350,12 @@ emitCodecs prefix mappings needed imports layout packageName declarations = do
               (if any (\v -> null (C.constructorFields v)) (C.dataConstructors declaration) then line "_ = native" <> D.hardline else mempty) <>
               linesDoc [r | (_,_,r) <- variants]
              else if prefix == "lawSpec" then
-              line "switch native := value.(type) {" <> D.hardline <>
+              line (if gadt then "switch native := any(value).(type) {" else "switch native := value.(type) {") <> D.hardline <>
               linesDoc ([e | (_,e,_) <- variants] ++ [line "default:" <> D.nest 8 (D.hardline <> line "_ = native" <> D.hardline <> failure)]) <>
               D.hardline <> line "}"
              else linesDoc ([e | (_,e,_) <- variants] ++ [failure]))
           failure = line ("panic(" ++ q ("unexpected native constructor for " ++ C.idText (C.dataId declaration)) ++ ")")
+          gadt = any (not . null . C.constructorEquations) (C.dataConstructors declaration)
       (setup, hookDecode, hookEncode) <- case find ((== C.dataId declaration) . C.dataId . resolvedDeclaration) mappings >>= resolvedCodec of
         Nothing -> pure (mempty, decode, encodeValue)
         Just hook -> do

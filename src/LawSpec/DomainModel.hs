@@ -77,7 +77,7 @@ wrapperType w = applied (wrapperName w) (map Variable (wrapperParameters w))
 -- predicate becomes a constructor field refinement, checked at construction.
 wrapperDeclaration :: Wrapper -> DataTypeDeclaration
 wrapperDeclaration w = DataTypeDeclaration (wrapperName w) (wrapperParameters w)
-  [ConstructorDeclaration (wrapperName w) [("value", field)] (wrapperSpan w)] (wrapperSpan w)
+  [ConstructorDeclaration (wrapperName w) [("value", field)] (wrapperSpan w) []] (wrapperSpan w) Nothing
   where field = maybe (wrapperBase w) (Refined "value" (wrapperBase w) . Just) (wrapperPredicate w)
 
 wrapperDefinition :: Wrapper -> FunctionDefinition

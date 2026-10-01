@@ -1,0 +1,6 @@
+@@ example/arithmetic/adapter.go
+<<<<<<<
+PerfectNode{Left: Mirror(node.Right), Right: Mirror(node.Left)}
+=======
+PerfectNode{Left: Mirror(node.Right), Right: node.Right}
+>>>>>>>

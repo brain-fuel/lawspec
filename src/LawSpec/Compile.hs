@@ -1,5 +1,6 @@
 module LawSpec.Compile (compile, prettyExpanded, metadataText, normal, compileWithProfile, typedExpression, validType, compileWithSettings, compileWithImports, validateDefinitionTypes, validateDefinitionTotality) where
 
+import LawSpec.Core.Total (deferProgramPostconditions)
 import LawSpec.Model
 import LawSpec.Data (qualifyDataNames, elaborateDataDeclarationsWithProfile)
 import LawSpec.Capabilities (satisfiedWithData)
@@ -266,7 +267,8 @@ compileWithImports visible bits settings sources = do
     (filter ((/= "prelude") . unitName) us) (filter (null . parameters . original) allExpanded)
   closedUnits <- either (Left . pure . (\message -> Diagnostic "definition" message Nothing)) Right
     (mapM (Elaboration.elaborateDefinitionUnit dataTypes bits) specialized)
-  invoke <- prepareDefinitions (Core.Program bits dataTypes closedUnits)
+  closedProgram <- deferProgramPostconditions (Core.Program bits dataTypes closedUnits)
+  invoke <- prepareDefinitions closedProgram
   forM_ properties $ \property -> do
     u <- maybe (Left [Diagnostic "semantic" "missing property owner" Nothing]) Right
       (lookup (owner property) [(unitName u,u) | u <- specialized])
@@ -446,10 +448,10 @@ inferDefinitionTemplates declarations bits unit = do
           declared = functionRequirements d
           allowed = [Capability name (rigid ty) | Capability name ty <- declared]
           locals = monoEnvironment [(name, rigid ty) | (name,ty) <- parameters]
-          -- Self-recursion is monomorphic even though other definitions can be
-          -- instantiated independently. Locals have normal lexical precedence.
-          environment = M.union locals (M.insert (functionName d)
-            (Monomorphic (rigid (signature d))) globals)
+          -- Signatures are mandatory, so recursion may be polymorphic: a GADT
+          -- evaluator calls itself at other type arguments. Locals have normal
+          -- lexical precedence.
+          environment = M.union locals globals
       unique "definition argument" (map fst parameters)
       unless (all (valueType declarations) (functionResult d : map snd parameters))
         (Left "definition parameters and result require value types")
@@ -469,7 +471,7 @@ inferDefinitionTemplates declarations bits unit = do
             (tree, constraints) <- typedExpressionWithSchemes declarations bits scope
               (Annotate (normal (mapExprTypes rigid expression)) (Named "Bool"))
             pure (tree,constraints)
-          globalScope = M.insert (functionName d) (Monomorphic (rigid (signature d))) globals
+          globalScope = globals
       (_, preconditions, preObligations) <- foldM (\(scope,trees,constraints) (name,ty) -> do
         let next = M.insert name (Monomorphic (rigid (baseType ty))) scope
         predicates <- mapM (predicate next) (typePredicates (Var name) ty)

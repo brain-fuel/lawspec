@@ -79,13 +79,15 @@ typeAtom = try (parens $ do
       Just (RefinementHeader kinds) -> RefinementApp n <$> mapM argument kinds
       Just (DataHeader kinds)
         | and kinds -> application n <$> mapM (const typeAtom) kinds
-        | otherwise -> RefinementApp (indexedRefinementName n) <$> mapM argument kinds
+        | otherwise -> RefinementApp (indexedRefinementName n) <$> mapM indexArgument kinds
       Nothing | n == naturalRefinementName -> pure (RefinementApp n [])
               | n `elem` ["Nullable","Optional","List","Maybe"] -> Applied n <$> typeAtom
               | n == "Either" -> Application n <$> sequence [typeAtom, typeAtom]
               | '.' `elem` n -> pure (Named n)
               | otherwise -> pure (if maybe False (isLower . fst) (uncons n) then Variable n else Named n)
-  where argument True = TypeArgument <$> typeAtom
+  where indexArgument True = TypeArgument <$> typeAtom
+        indexArgument False = ValueArgument <$> (parens indexExpr <|> try numeric <|> (Var <$> ident))
+        argument True = TypeArgument <$> typeAtom
         argument False = ValueArgument <$> (parens expr <|> try numeric <|> (BoolLit <$> boolP) <|> (StringLit <$> str) <|> (Var <$> ident))
         application n [] = Named n
         application n [a] = Applied n a
@@ -107,7 +109,7 @@ refinementP = do
 dataTypeP :: P DataTypeDeclaration
 dataTypeP = either erased id <$> declarationP
   where erased f = DataTypeDeclaration (familyName f) (map fst (familyParameters f))
-          (map indexedDeclaration (familyConstructors f)) (familySpan f)
+          (map indexedDeclaration (familyConstructors f)) (familySpan f) Nothing
 
 -- wrapper Name (a :: Type)* is <type> [where <predicate over value>] end
 wrapperP :: P Wrapper
@@ -159,6 +161,11 @@ declarationP = do
       isType <- (True <$ keyword "Type") <|> (False <$ keyword naturalRefinementName)
       pure (parameter, isType)
     keyword "is"
+    let typeParameters = [p | (p, True) <- parameters]
+        equation = do
+          lhs <- ident
+          void (symbol "=")
+          if lhs `elem` typeParameters then (,) lhs . Left <$> typeP else (,) lhs . Right <$> indexExpr
     constructors <- many $ do
       void (optional (symbol "|"))
       ((tag, fields, equations), constructorRange) <- withSpan $ do
@@ -168,20 +175,36 @@ declarationP = do
           unless (maybe False (isLower . fst) (uncons field)) (fail "field names must start with a lowercase letter")
           void (symbol "::")
           (,) field <$> typeP
-        equations <- option [] (keyword "where" *>
-          (((,) <$> ident <* symbol "=" <*> expr) `sepBy1` symbol ","))
+        -- An equation on a Type parameter refines it (a GADT constructor); on
+        -- a Natural parameter it states the index.
+        equations <- option [] (keyword "where" *> (equation `sepBy1` symbol ","))
         pure (tag, fields, equations)
-      pure (IndexedConstructor (ConstructorDeclaration tag fields constructorRange) equations)
+      let indexEquations = [(n, e) | (n, Right e) <- equations]
+          typeEquations = [(n, t) | (n, Left t) <- equations]
+      pure (IndexedConstructor (ConstructorDeclaration tag fields constructorRange typeEquations) indexEquations)
     keyword "end"
     pure (name, parameters, constructors)
   pure $ if all snd parameters && all (null . indexedEquations) constructors
-    then Right (DataTypeDeclaration name (map fst parameters) (map indexedDeclaration constructors) range)
+    then Right (DataTypeDeclaration name (map fst parameters) (map indexedDeclaration constructors) range Nothing)
     else Left (IndexedFamily name parameters constructors range)
   where
     upperName = do
       name <- ident
       unless (maybe False (isUpper . fst) (uncons name)) (fail "type and constructor names must start with an uppercase letter")
       pure name
+-- Index expressions are natural arithmetic, written only where an index is
+-- expected. div, mod and ^ elaborate to the prelude's quot, rem and pow, which
+-- agree with them on naturals.
+indexExpr :: P Expr
+indexExpr = located $ makeExprParser indexAtom
+  [ [InfixR (helper "pow" <$ symbol "^")]
+  , [InfixL (Binary "*" <$ symbol "*"), InfixL (helper "quot" <$ keyword "div"), InfixL (helper "rem" <$ keyword "mod")]
+  , [InfixL (Binary "+" <$ symbol "+"), InfixL (Binary "-" <$ try (symbol "-" <* notFollowedBy (char '>')))]
+  ]
+  where
+    helper name a b = Apply (Apply (Var ("prelude." ++ name)) a) b
+    indexAtom = located (parens indexExpr <|> try numeric <|> (Var <$> ident))
+
 expr :: P Expr
 expr = located $ makeExprParser application
   [ [Prefix (Unary "!" <$ try (lexeme (char '!' <* notFollowedBy (char '=')))), Prefix (Unary "-" <$ try (lexeme (char '-' <* notFollowedBy digitChar)))]
@@ -511,7 +534,7 @@ literalHeaders source initial = case runReader (runParserT scan "constructor hea
   where
     -- A wrapper's constructor shares its name and takes the single value field.
     wrapped w = DataTypeDeclaration (wrapperName w) (wrapperParameters w)
-      [ConstructorDeclaration (wrapperName w) [("value", wrapperBase w)] (wrapperSpan w)] (wrapperSpan w)
+      [ConstructorDeclaration (wrapperName w) [("value", wrapperBase w)] (wrapperSpan w) []] (wrapperSpan w) Nothing
     scan = spaceP *> many ((Just <$> try dataTypeP) <|> (Just . wrapped <$> try wrapperP) <|> (Nothing <$ token)) <* eof
     token = void str <|> void quoted <|>
       void (lexeme ((:) <$> letterChar <*> many (alphaNumChar <|> char '_'))) <|> void (lexeme anySingle)

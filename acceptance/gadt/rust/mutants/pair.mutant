@@ -1,0 +1,6 @@
+@@ src/example/gadt.rs
+<<<<<<<
+    Pair { first: evalNumber(first), second: evalTruth(second) }
+=======
+    Pair { first: evalNumber(first), second: !evalTruth(second) }
+>>>>>>>

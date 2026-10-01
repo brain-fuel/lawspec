@@ -662,6 +662,14 @@ func lsBinary(op string, a, b LawSpecValue) LawSpecValue {
 			r.Mul(x, y)
 		case "/":
 			r.Quo(x, y)
+		case "pow":
+			if !x.IsInt() || !y.IsInt() {
+				panic("integer operands required")
+			}
+			if y.Num().Sign() < 0 {
+				panic("negative exponent")
+			}
+			return LawSpecValue{"Integer", new(big.Int).Exp(x.Num(), y.Num(), nil)}
 		case "quot", "rem":
 			if !x.IsInt() || !y.IsInt() {
 				panic("integer operands required")
@@ -820,7 +828,7 @@ func lsHelper(n string, args []LawSpecValue, bits int) LawSpecValue {
 			t = "Float32"
 		}
 		return LawSpecValue{t, f}
-	case "quot", "rem":
+	case "quot", "rem", "pow":
 		return lsBinary(n, x, args[1])
 	case "negate":
 		if lsExactType(x.Type) {

@@ -33,9 +33,9 @@ int = scalarType "Int8"
 integer n = ScalarValue (SInteger "Int8" n)
 variant owner name fields = DataConstructor (Id (owner ++ "::" ++ name)) name
   [Binder (Id (owner ++ "::" ++ name ++ "::" ++ field)) field ty | (field,ty) <- fields]
-  [] origin
+  [] origin [] []
 structure name parameters constructors = DataDeclaration (Id name) name
-  (map Id parameters) constructors origin
+  (map Id parameters) constructors origin Nothing
 right = either error id
 positive (ScalarValue (SInteger "Int8" n)) = Right (n > 0)
 positive _ = Left "wrong positive payload type"
@@ -306,7 +306,7 @@ spec = describe "recursive parameter payload traversal" $ do
           generic = Expr boolean (AllPayloads (local (binderId field) (binderType field))
             [(item{binderType=a},truth)]) origin
           holder = structure "Holder" ["a"]
-            [DataConstructor (Id "Holder::Hold") "Hold" [field] [generic] origin]
+            [DataConstructor (Id "Holder::Hold") "Hold" [field] [generic] origin [] []]
           r = right (makeRegistry [tree,holder])
       case constructorPredicatesFor r (app "Holder" [int]) (Id "Holder::Hold") of
         Right [Expr _ (AllPayloads value [(binder,_)]) _] -> do

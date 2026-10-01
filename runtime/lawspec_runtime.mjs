@@ -356,7 +356,12 @@ export function binary(op, a, b, ta, tb) {
     else if (op === '-') r = new Rational(x - y, a.d * b.d);
     else if (op === '*') r = new Rational(a.n * b.n, a.d * b.d);
     else if (op === '/') r = new Rational(a.n * b.d, a.d * b.n);
-    else if (op === 'quot' || op === 'rem') {
+    else if (op === 'pow') {
+      if (a.d !== 1n || b.d !== 1n)
+        throw new TypeError('integer operands required');
+      if (b.n < 0n) throw new RangeError('negative exponent');
+      return a.n ** b.n;
+    } else if (op === 'quot' || op === 'rem') {
       if (a.d !== 1n || b.d !== 1n)
         throw new TypeError('integer operands required');
       return op === 'quot' ? a.n / b.n : a.n % b.n;
@@ -490,7 +495,7 @@ export function helper(n, args, types, bits = 64) {
     if (exactType(types[0])) return binary('-', 0n, x, 'BigInt', types[0]);
     return x instanceof Complex ? new Complex(-x.real, -x.imaginary) : -x;
   }
-  if (n === 'quot' || n === 'rem') return binary(n, ...args, ...types);
+  if (n === 'quot' || n === 'rem' || n === 'pow') return binary(n, ...args, ...types);
   if (n === 'isNaN') return Number.isNaN(x);
   if (n === 'isInfinite') return x === Infinity || x === -Infinity;
   if (n === 'isFinite') return Number.isFinite(x);

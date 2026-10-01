@@ -1,0 +1,6 @@
+@@ src/example/arithmetic.py
+<<<<<<<
+    return data.Rest(value0)
+=======
+    return data.Rest(value0.tail)
+>>>>>>>

@@ -1,0 +1,6 @@
+@@ example/gadt/adapter.go
+<<<<<<<
+		return !EvalTruth(e.Operand)
+=======
+		return EvalTruth(e.Operand)
+>>>>>>>

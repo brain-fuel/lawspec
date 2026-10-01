@@ -506,6 +506,12 @@ public final class LawSpecRuntime {
       BigInteger p = x.n.multiply(y.d), q = y.n.multiply(x.d), d = x.d.multiply(y.d);
       if (List.of("==", "!=", "<", "<=", ">", ">=").contains(op))
         return bool(compare(op, p.compareTo(q)));
+      if (op.equals("pow")) {
+        if (!x.d.equals(BigInteger.ONE) || !y.d.equals(BigInteger.ONE))
+          throw new IllegalArgumentException("integer required");
+        if (y.n.signum() < 0) throw new IllegalArgumentException("negative exponent");
+        return new Value("Integer", x.n.pow(y.n.intValueExact()));
+      }
       if (op.equals("quot") || op.equals("rem")) {
         if (!x.d.equals(BigInteger.ONE) || !y.d.equals(BigInteger.ONE))
           throw new IllegalArgumentException("integer required");
@@ -629,7 +635,7 @@ public final class LawSpecRuntime {
           x.type.equals("Complex64") ? "Float32" : "Float64",
           n.equals("real") ? c.real : c.imaginary);
     }
-    if (n.equals("quot") || n.equals("rem")) return binary(n, x, args[1]);
+    if (n.equals("quot") || n.equals("rem") || n.equals("pow")) return binary(n, x, args[1]);
     if (n.equals("negate")) {
       if (exactType(x.type)) return binary("-", integer("BigInt", "0"), x);
       if (x.data instanceof Complex c) return new Value(x.type, new Complex(-c.real, -c.imaginary));

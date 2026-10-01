@@ -203,10 +203,14 @@ object LawSpecKotlinStrategies {
         }
     }
 
+    private const val INDEX_SLACK = 16L
+    private const val INDEX_CHOICES = 6
+
     /**
-     * Values whose linear structural measure equals [target]. Each constructor's equation holds
-     * its constant followed by the positions of recursive fields whose measures it adds, so the
-     * target is solved backwards and split across those fields. Nothing is filtered away.
+     * Values whose structural index equals [target]. Each constructor carries its index term then
+     * its guards, in prefix notation over field indices (`f<i>`), literals (`c<n>`) and the natural
+     * operators. Reachability is a forward fixpoint over levels 0..target+slack, so a child may
+     * exceed its parent's index; the target is then solved backwards, and nothing is filtered away.
      */
     fun indexedGenerator(
         schema: LawSpecSchema,
@@ -215,7 +219,7 @@ object LawSpecKotlinStrategies {
         budget: Int,
         symbols: MutableMap<String, Any>,
         target: Any,
-        equations: Map<String, LongArray>,
+        equations: Map<String, List<String>>,
         scalar: (String) -> Arb<Value>,
     ): Arb<Checked> {
         val k = when (target) {
@@ -223,10 +227,24 @@ object LawSpecKotlinStrategies {
             is Number -> target.toLong()
             else -> throw IllegalArgumentException("index target must be a natural number")
         }
-        require(k >= 0) { "index target must be a natural number" }
         require(!schema.isScalar(type)) { "indexed generation requires a data type" }
-        val source = Indexed(schema, bits, budget, equations, Builder(schema, bits, scalar))
-            .generate(type, k)
+        val limit = maxOf(k, 0L) + INDEX_SLACK
+        val indexed = Indexed(schema, bits, budget, limit, equations, Builder(schema, bits, scalar))
+        indexed.explore(type)
+        // An open target (negative), or one drawn from earlier inputs that breaks their
+        // preconditions or names no value, generates from the smallest reachable indices; an index
+        // claim rejects a mismatch.
+        val levels = if ((type to k) in indexed.reach) {
+            listOf(k)
+        } else {
+            (0..limit).filter { (type to it) in indexed.reach }.take(INDEX_CHOICES)
+        }
+        require(levels.isNotEmpty()) { "no value of ${LawSpecSchema.key(type)} has an index" }
+        val source = if (levels.size == 1) {
+            indexed.generate(type, levels[0])
+        } else {
+            lawspecFlatMap(Arb.int(levels.indices)) { indexed.generate(type, levels[it]) }
+        }
         return capture(source.map { value ->
             try {
                 Checked(schema.validate(type, value, bits, symbols), null)
@@ -236,91 +254,183 @@ object LawSpecKotlinStrategies {
         })
     }
 
+    /** A prefix index term: kind is "c", "f" or an operator. */
+    private class IndexTerm(val kind: String, val value: Long, val left: IndexTerm?, val right: IndexTerm?) {
+        /** Natural index arithmetic; null when an operation has no natural value. */
+        fun evaluate(fields: Map<Int, Long>): Long? {
+            if (kind == "c") return value
+            if (kind == "f") return fields[value.toInt()]
+            val x = left!!.evaluate(fields) ?: return null
+            val y = right!!.evaluate(fields) ?: return null
+            val a = java.math.BigInteger.valueOf(x)
+            val b = java.math.BigInteger.valueOf(y)
+            val result = when (kind) {
+                "+" -> a.add(b)
+                "-" -> if (x >= y) a.subtract(b) else null
+                "*" -> a.multiply(b)
+                "div" -> if (y > 0) a.divide(b) else null
+                "mod" -> if (y > 0) a.mod(b) else null
+                else -> if (y <= 64) a.pow(y.toInt()) else null
+            } ?: return null
+            return if (result.bitLength() > 63) null else result.toLong()
+        }
+
+        fun fields(into: MutableList<Int>) {
+            if (kind == "f") {
+                if (value.toInt() !in into) into.add(value.toInt())
+            } else if (left != null) {
+                left.fields(into)
+                right!!.fields(into)
+            }
+        }
+
+        companion object {
+            private val OPERATORS = listOf("+", "-", "*", "div", "mod", "^")
+
+            fun parse(tokens: List<String>, at: IntArray): IndexTerm {
+                require(at[0] < tokens.size) { "malformed index term" }
+                val token = tokens[at[0]++]
+                if (token.startsWith("c") || token.startsWith("f")) {
+                    return IndexTerm(token.substring(0, 1), token.substring(1).toLong(), null, null)
+                }
+                require(token in OPERATORS) { "malformed index term" }
+                val left = parse(tokens, at)
+                val right = parse(tokens, at)
+                return IndexTerm(token, 0, left, right)
+            }
+        }
+    }
+
+    private class IndexGuard(val relation: String, val left: IndexTerm, val right: IndexTerm) {
+        fun holds(fields: Map<Int, Long>): Boolean {
+            val x = left.evaluate(fields) ?: return false
+            val y = right.evaluate(fields) ?: return false
+            return if (relation == "==") x == y else x >= y
+        }
+    }
+
+    private class IndexEquation(val term: IndexTerm, val guards: List<IndexGuard>, val positions: List<Int>)
+
     private class Indexed(
         val schema: LawSpecSchema,
         val bits: Int,
         val budget: Int,
-        val equations: Map<String, LongArray>,
+        val limit: Long,
+        val equations: Map<String, List<String>>,
         val builder: Builder,
     ) {
-        val reachable = mutableMapOf<Pair<Named, Long>, Boolean>()
-        val visiting = mutableSetOf<Pair<Named, Long>>()
+        val parsed = mutableMapOf<String, IndexEquation>()
+        val families = mutableListOf<Named>()
+        val reach = mutableSetOf<Pair<Named, Long>>()
+        val solutions = mutableMapOf<Triple<Named, String, Long>, List<Map<Int, Long>>>()
         val cache = mutableMapOf<Pair<Named, Long>, Arb<Value>>()
 
-        fun equation(tag: String): LongArray =
-            requireNotNull(equations[tag]) { "missing index equation for $tag" }
-
-        fun positions(equation: LongArray): List<Int> =
-            (1 until equation.size).map { equation[it].toInt() }
-
-        fun indexTypes(type: Named, tag: String): List<Named> {
-            val fields = schema.fields(type, tag)
-            return positions(equation(tag)).map { fields[it].type() as Named }
+        fun equation(tag: String): IndexEquation = parsed.getOrPut(tag) {
+            val texts = requireNotNull(equations[tag]) { "missing index equation for $tag" }
+            require(texts.isNotEmpty()) { "missing index equation for $tag" }
+            val tokens = texts[0].split(" ")
+            val at = intArrayOf(0)
+            val term = IndexTerm.parse(tokens, at)
+            require(at[0] == tokens.size) { "malformed index term" }
+            val positions = mutableListOf<Int>()
+            term.fields(positions)
+            val guards = texts.drop(1).map { text ->
+                val parts = text.split(" ")
+                require(parts[0] == "==" || parts[0] == ">=") { "malformed index guard" }
+                val position = intArrayOf(1)
+                val left = IndexTerm.parse(parts, position)
+                val right = IndexTerm.parse(parts, position)
+                left.fields(positions)
+                right.fields(positions)
+                IndexGuard(parts[0], left, right)
+            }
+            IndexEquation(term, guards, positions)
         }
 
-        fun feasible(type: Named, tag: String, k: Long): Boolean {
-            val equation = equation(tag)
-            val rest = k - equation[0]
+        fun plainFields(type: Named, tag: String): Boolean {
             val fields = schema.fields(type, tag)
-            val positions = positions(equation)
-            if (rest < 0) return false
-            val plain = fields.indices.all {
+            val positions = equation(tag).positions
+            return fields.indices.all {
                 it in positions || builder.build(fields[it].type() as Named, budget) != null
             }
-            if (!plain) return false
-            val types = indexTypes(type, tag)
-            return if (types.isEmpty()) rest == 0L else splittable(types, rest)
         }
 
-        fun reachable(type: Named, k: Long): Boolean {
-            val key = type to k
-            reachable[key]?.let { return it }
-            if (!visiting.add(key)) return false
-            val result = schema.constructors(type).any { feasible(type, it, k) }
-            visiting.remove(key)
-            reachable[key] = result
-            return result
-        }
-
-        fun splittable(types: List<Named>, rest: Long): Boolean =
-            if (types.size == 1) {
-                reachable(types[0], rest)
-            } else {
-                (0..rest).any { reachable(types[0], it) && splittable(types.drop(1), rest - it) }
-            }
-
-        // Splits are chosen from the feasible values, which shrink toward the first.
-        fun splits(types: List<Named>, rest: Long): Arb<List<Long>> {
-            if (types.isEmpty()) return Arb.constant(emptyList())
-            if (types.size == 1) return Arb.constant(listOf(rest))
-            val choices = (0..rest).filter {
-                reachable(types[0], it) && splittable(types.drop(1), rest - it)
-            }
-            return lawspecFlatMap(Arb.int(choices.indices)) { index ->
-                splits(types.drop(1), rest - choices[index]).map { listOf(choices[index]) + it }
-            }
-        }
-
-        fun generate(type: Named, k: Long): Arb<Value> {
-            cache[type to k]?.let { return it }
-            val variants = schema.constructors(type).filter { feasible(type, it, k) }.map { tag ->
-                val fields = schema.fields(type, tag)
-                val equation = equation(tag)
-                val positions = positions(equation)
-                lawspecFlatMap(splits(indexTypes(type, tag), k - equation[0])) { targets ->
-                    val children = fields.mapIndexed { index, field ->
-                        val position = positions.indexOf(index)
-                        if (position >= 0) {
-                            generate(field.type() as Named, targets[position])
-                        } else {
-                            requireNotNull(builder.build(field.type() as Named, budget))
-                        }
+        // Every guard-satisfying assignment of reachable indices to the index fields.
+        fun assignments(type: Named, tag: String): List<Pair<Long, Map<Int, Long>>> {
+            val found = equation(tag)
+            val fields = schema.fields(type, tag)
+            val results = mutableListOf<Pair<Long, Map<Int, Long>>>()
+            fun extend(at: Int, current: MutableMap<Int, Long>) {
+                if (at == found.positions.size) {
+                    if (!found.guards.all { it.holds(current) }) return
+                    val value = found.term.evaluate(current) ?: return
+                    if (value <= limit) results.add(value to current.toMap())
+                    return
+                }
+                val position = found.positions[at]
+                val fieldType = fields[position].type() as Named
+                for (value in 0..limit) {
+                    if ((fieldType to value) in reach) {
+                        current[position] = value
+                        extend(at + 1, current)
                     }
-                    children.fold(Arb.constant(emptyList<Value>())) { prior, child ->
-                        Arb.bind(prior, child) { values, value -> values + value }
-                    }.map { schema.construct(type, tag, it, bits) }
+                }
+                current.remove(position)
+            }
+            extend(0, mutableMapOf())
+            return results
+        }
+
+        fun explore(root: Named) {
+            val pending = mutableListOf(root)
+            while (pending.isNotEmpty()) {
+                val type = pending.removeAt(pending.size - 1)
+                if (type in families) continue
+                families.add(type)
+                for (tag in schema.constructors(type)) {
+                    val fields = schema.fields(type, tag)
+                    equation(tag).positions.forEach { pending.add(fields[it].type() as Named) }
                 }
             }
+            do {
+                val next = mutableSetOf<Pair<Named, Long>>()
+                for (type in families) {
+                    for (tag in schema.constructors(type)) {
+                        if (!plainFields(type, tag)) continue
+                        assignments(type, tag).forEach { next.add(type to it.first) }
+                    }
+                }
+            } while (reach.addAll(next))
+        }
+
+        fun solve(type: Named, tag: String, k: Long): List<Map<Int, Long>> =
+            solutions.getOrPut(Triple(type, tag, k)) {
+                assignments(type, tag).filter { it.first == k }.map { it.second }
+            }
+
+        // Assignments are chosen by index, which shrinks toward the first.
+        fun generate(type: Named, k: Long): Arb<Value> {
+            cache[type to k]?.let { return it }
+            val variants = schema.constructors(type)
+                .filter { plainFields(type, it) && solve(type, it, k).isNotEmpty() }
+                .map { tag ->
+                    val fields = schema.fields(type, tag)
+                    val choices = solve(type, tag, k)
+                    lawspecFlatMap(Arb.int(choices.indices)) { choice ->
+                        val targets = choices[choice]
+                        val children = fields.mapIndexed { index, field ->
+                            val target = targets[index]
+                            if (target != null) {
+                                generate(field.type() as Named, target)
+                            } else {
+                                requireNotNull(builder.build(field.type() as Named, budget))
+                            }
+                        }
+                        children.fold(Arb.constant(emptyList<Value>())) { prior, child ->
+                            Arb.bind(prior, child) { values, value -> values + value }
+                        }.map { schema.construct(type, tag, it, bits) }
+                    }
+                }
             require(variants.isNotEmpty()) {
                 "no value of ${LawSpecSchema.key(type)} has index $k"
             }

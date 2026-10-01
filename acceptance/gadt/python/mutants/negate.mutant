@@ -1,0 +1,6 @@
+@@ src/example/gadt.py
+<<<<<<<
+            return not evalTruth(operand)
+=======
+            return evalTruth(operand)
+>>>>>>>

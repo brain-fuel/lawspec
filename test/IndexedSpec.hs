@@ -11,6 +11,7 @@ import LawSpec.Frontend (compileCore)
 import LawSpec.Model hiding (Expectation)
 import LawSpec.Testing
 import LawSpec.Core.Evidence
+import LawSpec.IndexTerm
 
 vectors :: String
 vectors = unlines
@@ -53,7 +54,7 @@ plansFor law = do
                 C.propertyName (plannedProperty p) == law])
 
 spec :: Spec
-spec = indexedSpec >> proofSpec
+spec = indexedSpec >> proofSpec >> arithmeticSpec
 
 indexedSpec :: Spec
 indexedSpec = describe "natural-indexed families" $ do
@@ -82,7 +83,7 @@ indexedSpec = describe "natural-indexed families" $ do
       Right (fixed, shared) -> do
         let equations = map indexedEquations . mapMaybe generatorIndex
             vec = "example.vectors::type::Vec::"
-            expected = [(C.Id (vec ++ "Nil"), 0, []), (C.Id (vec ++ "Cons"), 1, [1])]
+            expected = [(C.Id (vec ++ "Nil"), ["c0"]), (C.Id (vec ++ "Cons"), ["+ f1 c1"])]
         equations fixed `shouldBe` [expected]
         map (isJust . generatorIndex) shared `shouldBe` [False, True]
         equations shared `shouldBe` [expected]
@@ -108,9 +109,9 @@ indexedSpec = describe "natural-indexed families" $ do
       rejects "missing index equation for n" (family ["  | Nil", "  | Cons head :: a tail :: Vec m a where n = m + 1"])
     it "requires index variables to be bound by fields of indexed type" $
       rejects "index variable k is not bound" (family ["  | Nil where n = 0", "  | Cons head :: a where n = k + 1"])
-    it "requires linear index expressions" $
-      rejects "sum of natural literals and index variables"
-        (family ["  | Nil where n = 0", "  | Cons head :: a tail :: Vec m a where n = m * 2"])
+    it "requires a literal base or exponent for powers" $
+      rejects "may raise only a literal base or to a literal exponent"
+        (family ["  | Nil where n = 0", "  | Cons head :: a tail :: Vec m a where n = m ^ m"])
     it "rejects equations for names that are not indices" $
       rejects "a is not an index of Vec" (family ["  | Nil where n = 0, a = 1"])
     it "rejects duplicate index equations" $
@@ -118,9 +119,9 @@ indexedSpec = describe "natural-indexed families" $ do
     it "rejects index expressions in field types" $
       rejects "must use an index variable"
         (family ["  | Nil where n = 0", "  | Cons head :: a tail :: Vec (m + 1) a where n = m"])
-    it "requires implicit indices to appear alone first" $
-      rejects "must first appear alone" (vectors ++
-        "law `late` is definition is `for all` (xs :: Vec (k + 1) Int8) . nOfVec xs = k + 1 end end\n")
+    it "requires implicit indices to appear in an invertible pattern first" $
+      rejects "must first appear as v, v + k or k * v" (vectors ++
+        "law `late` is definition is `for all` (xs :: Vec (k * k) Int8) . nOfVec xs = k * k end end\n")
     it "rejects unbound indices in results" $
       rejects "must be bound by an argument" (vectors ++ "make :: (x :: Int8) -> (r :: Vec k Int8)\n")
     it "rejects negative explicit indices" $
@@ -174,3 +175,88 @@ proofSpec = describe "proof-producing index layer" $ do
             isSuffixOf' suffix text = reverse suffix == take (length suffix) (reverse text)
         statuses "concat" `shouldSatisfy` (\found -> not (null found) && all ((== Proved) . snd) found)
         statuses "native" `shouldSatisfy` (\found -> not (null found) && all ((== RuntimeChecked) . snd) found)
+
+arithmetic :: String
+arithmetic = unlines
+  [ "unit example.sums"
+  , "type Row (n :: Natural) is"
+  , "  | End where n = 0"
+  , "  | Cell head :: Int8 tail :: Row m where n = m + 1"
+  , "end"
+  , "type Perfect (n :: Natural) is"
+  , "  | Leaf value :: Int8 where n = 0"
+  , "  | Node left :: Perfect m right :: Perfect m where n = m + 1"
+  , "end"
+  , "type Grid (n :: Natural) is | Grid rows :: Row r columns :: Row c where n = r * c end"
+  , "type Halves (n :: Natural) is | Halves front :: Row m back :: Row m where n = m + m end"
+  , "type Rest (n :: Natural) is | Rest items :: Row m where n = m - 1 end"
+  , "type Bits (n :: Natural) is | Bits items :: Row m where n = 2 ^ m end"
+  , "type Pairs (n :: Natural) is | Pairs items :: Row m where n = m div 2 + m mod 2 end"
+  ]
+
+arithmeticCore :: String -> Either [Diagnostic] C.Program
+arithmeticCore extra = compileCore 64 defaultGeneration [Source "sums.lawspec" (arithmetic ++ extra)]
+
+-- The index table of one declared family, by constructor name.
+indexTable :: C.Program -> String -> [(String, ConstructorIndex)]
+indexTable program family =
+  [ (reverse (takeWhile (/= ':') (reverse tag)), c)
+  | d <- C.programDataDeclarations program, C.dataName d == family
+  , Just index <- [C.dataIndex d], (tag, c) <- familyIndexConstructors index ]
+
+arithmeticSpec :: Spec
+arithmeticSpec = describe "index arithmetic and sibling indices" $ do
+  it "elaborates natural operators, shared variables and subtraction guards into index tables" $
+    case arithmeticCore "" of
+      Left diagnostics -> expectationFailure (show diagnostics)
+      Right program -> do
+        let texts family = [(tag, constructorIndexTexts c) | (tag, c) <- indexTable program family]
+        texts "Grid" `shouldBe` [("Grid", ["* f0 f1"])]
+        -- A variable bound by two fields reads the first and guards the second.
+        texts "Halves" `shouldBe` [("Halves", ["+ f0 f0", "== f0 f1"])]
+        texts "Perfect" `shouldBe` [("Leaf", ["c0"]), ("Node", ["+ f0 c1", "== f0 f1"])]
+        texts "Rest" `shouldBe` [("Rest", ["- f0 c1", ">= f0 c1"])]
+        texts "Bits" `shouldBe` [("Bits", ["^ c2 f0"])]
+        texts "Pairs" `shouldBe` [("Pairs", ["+ div f0 c2 mod f0 c2", ">= c2 c1", ">= c2 c1"])]
+  it "evaluates index terms with natural semantics" $ do
+    let field values position index = lookup (position, index) values
+        term = IndexApply IndexSubtract (IndexField 0 0) (IndexConstant 1)
+    evaluateIndex (field [((0, 0), 3)]) term `shouldBe` Just 2
+    evaluateIndex (field [((0, 0), 0)]) term `shouldBe` Nothing
+    evaluateIndex (field []) (IndexApply IndexQuotient (IndexConstant 7) (IndexConstant 0)) `shouldBe` Nothing
+  it "inverts v + k and k * v when an index first appears in a binder" $ do
+    arithmeticCore "dropFirst :: (xs :: Row (k + 1)) -> (r :: Rest k)\n" `shouldSatisfy` either (const False) (const True)
+    arithmeticCore "halve :: (xs :: Row (2 * k)) -> (r :: Row k)\n" `shouldSatisfy` either (const False) (const True)
+  it "rejects values that break an index guard" $ do
+    let example value = unlines
+          [ "law `balanced` is definition is `for all` (t :: Perfect 1) . true end"
+          , "  example `given` is t = " ++ value ++ " expect nOfPerfect t = 1 end end" ]
+    arithmeticCore (example "Node (Leaf 1) (Leaf 2)") `shouldSatisfy` either (const False) (const True)
+    arithmeticCore (example "Node (Leaf 1) (Node (Leaf 2) (Leaf 3))") `shouldSatisfy` isLeft
+  it "proves sibling and product indices, and defers non-linear claims to runtime" $ do
+    let status program name = [obligationStatus o | o <- programEvidence program,
+          obligationStage o == "postcondition", C.idText (obligationDeclaration o) == "example.sums::" ++ name]
+        source = unlines
+          [ "definition mirrorP (t :: Perfect n) :: Perfect n is"
+          , "  match t with | Leaf v -> Leaf v | Node l r -> Node (mirrorP r) (mirrorP l) end"
+          , "end"
+          , "definition transposeG (g :: Grid n) :: Grid n is match g with | Grid r c -> Grid c r end end"
+          , "definition widen (g :: Grid n) :: Grid (n + n) is match g with | Grid r c -> Grid r (Cell 0 c) end end" ]
+    case arithmeticCore source of
+      Left diagnostics -> expectationFailure (show diagnostics)
+      Right program -> do
+        status program "mirrorP" `shouldBe` [Proved, Proved]
+        status program "transposeG" `shouldBe` [Proved, Proved]
+        status program "widen" `shouldBe` [Proved, RuntimeChecked]
+  it "proves index guards at construction inside checked definitions" $ do
+    arithmeticCore "definition graft (t :: Perfect n) (u :: Perfect n) :: Perfect (n + 1) is Node t u end\n"
+      `shouldSatisfy` either (const False) (const True)
+    case arithmeticCore "definition skew (t :: Perfect n) :: Perfect (n + 1) is Node t (Leaf 0) end\n" of
+      Left diagnostics -> concatMap show diagnostics `shouldSatisfy` isInfixOf "constructor index guard could not be proved"
+      Right _ -> expectationFailure "accepted an unbalanced construction"
+  it "directs generation for guarded families without an index claim" $
+    case arithmeticCore "mirror :: (t :: Perfect n) -> (r :: Perfect n)\n" >>= planTesting of
+      Left diagnostics -> expectationFailure (show diagnostics)
+      Right plan -> do
+        let indexed = [g | u <- plannedUnits plan, p <- plannedProperties u, Just g <- map generatorIndex (generatorRequirements p)]
+        map indexedEquations indexed `shouldSatisfy` any (any ((== ["+ f0 c1", "== f0 f1"]) . snd))

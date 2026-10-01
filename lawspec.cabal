@@ -48,6 +48,8 @@ extra-source-files:
     examples/specs/domain_modeling.lawspec
     examples/specs/equivalent.lawspec
     examples/specs/finite_data.lawspec
+    examples/specs/gadt_expressions.lawspec
+    examples/specs/indexed_arithmetic.lawspec
     examples/specs/indexed_families.lawspec
     examples/specs/list_contracts.lawspec
     examples/specs/list_refinements.lawspec
@@ -211,6 +213,7 @@ library
       LawSpec.HaskellTypeRefs
       LawSpec.Imports
       LawSpec.Indexed
+      LawSpec.IndexTerm
       LawSpec.Inference
       LawSpec.JavaData
       LawSpec.JavaDefinitions

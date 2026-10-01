@@ -1,0 +1,7 @@
+@@ src/Example/Arithmetic.hs
+<<<<<<<
+dropFirst = Data.Rest
+=======
+dropFirst (Data.RowCell _ rest) = Data.Rest rest
+dropFirst row = Data.Rest row
+>>>>>>>

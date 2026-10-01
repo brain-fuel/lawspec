@@ -41,8 +41,8 @@ definition :: String -> Expr -> Definition
 definition name body = Definition (Declaration (Id name) name (Arrow int (expressionType body)) origin)
   [Binder (Id "x") "x" int] body
 contract :: String -> Type -> [Expr] -> [Expr] -> Contract
-contract name ty = Contract (Id name) [Binder (Id "argument") "argument" int]
-  (Binder (Id "result") "result" ty)
+contract name ty pre post = Contract (Id name) [Binder (Id "argument") "argument" int]
+  (Binder (Id "result") "result" ty) pre post []
 
 spec :: Spec
 spec = describe "refined definition proof obligations" $ do
@@ -52,7 +52,7 @@ spec = describe "refined definition proof obligations" $ do
         argument = Id "input"
         n = T.Literal . SInteger "Integer"
         positive x = T.ExactComparison Greater x (n 0)
-        invariant = T.ProofConstructorContract tag [field] [positive (T.Variable field)]
+        invariant = T.ProofConstructorContract tag [field] [positive (T.Variable field)] []
         function body = T.ProofDefinition (Id "use") "use" Nothing [argument] body []
         check contracts body = T.auditWithConstructorContracts contracts [] [function body]
         reciprocal x = T.Division False (n 1) x
@@ -83,14 +83,14 @@ spec = describe "refined definition proof obligations" $ do
     it "audits ordered predicates before trusting them" $ do
       let nonzero = T.ExactComparison NotEqual (T.Variable field) (n 0)
           divided = positive (reciprocal (T.Variable field))
-          ordered = T.ProofConstructorContract tag [field] [nonzero,divided]
+          ordered = T.ProofConstructorContract tag [field] [nonzero,divided] []
       T.auditWithConstructorContracts [ordered] [] [] `shouldBe` Right ()
       T.auditWithConstructorContracts
         [ordered{T.constructorConditions=[divided,nonzero]}] [] [] `shouldSatisfy` isLeft
     it "substitutes dependent fields together and preserves result contracts" $ do
       let second = Id "second"
           dependent = T.ProofConstructorContract tag [field,second]
-            [T.ExactComparison Greater (T.Variable second) (T.Variable field)]
+            [T.ExactComparison Greater (T.Variable second) (T.Variable field)] []
           result = Id "result"
           body = T.DataMatch (T.Variable argument) [(tag,[field],T.Variable field)]
           post = T.ProofContract (Id "use") result [] [positive (T.Variable result)]
@@ -103,7 +103,7 @@ spec = describe "refined definition proof obligations" $ do
           other = Id "Other"
           refers target = T.DataMatch (T.Variable field) [(target,[argument],T.Literal (SBool True))]
           left = invariant{T.constructorConditions=[refers other]}
-          right = T.ProofConstructorContract other [field] [refers tag]
+          right = T.ProofConstructorContract other [field] [refers tag] []
       T.auditWithConstructorContracts [self] [] [] `shouldSatisfy` isLeft
       T.auditWithConstructorContracts [left,right] [] [] `shouldSatisfy` isLeft
     it "rejects malformed or dependency-unaudited constructor contracts" $ do
@@ -119,8 +119,8 @@ spec = describe "refined definition proof obligations" $ do
         ty = scalarType "Positive"
         field = Binder (Id "stored") "value" int
         positive = operation Greater (value "stored" int) (number 0)
-        variant predicates = DataConstructor tag "Positive" [field] predicates origin
-        datatype predicates = DataDeclaration (Id "Positive") "Positive" [] [variant predicates] origin
+        variant predicates = DataConstructor tag "Positive" [field] predicates origin [] []
+        datatype predicates = DataDeclaration (Id "Positive") "Positive" [] [variant predicates] origin Nothing
         positiveType = datatype [positive]
         argument = Binder (Id "box") "box" ty
         item = Binder (Id "item") "item" int
@@ -204,7 +204,7 @@ spec = describe "refined definition proof obligations" $ do
           size = Expr integer (Helper Length [value "elements" genericList]) origin
           boxTag = Id "Box::Box"
           declaration = DataDeclaration (Id "Box") "Box" [parameter]
-            [DataConstructor boxTag "Box" [listField] [operation Greater size (number 0)] origin] origin
+            [DataConstructor boxTag "Box" [listField] [operation Greater size (number 0)] origin [] []] origin Nothing
           instantiated = Constructor "Box" [TypeArgument int]
           input = Binder (Id "input") "input" instantiated
           identity = Definition (Declaration (Id "identity") "identity" (Arrow instantiated instantiated) origin)
@@ -366,8 +366,8 @@ spec = describe "refined definition proof obligations" $ do
     let mixed = Constructor "Mixed" []
         wide = scalarType "Int64"
         schema = DataDeclaration (Id "Mixed") "Mixed" []
-          [DataConstructor (Id "Mixed::Small") "Small" [Binder (Id "small") "value" int] [] origin,
-           DataConstructor (Id "Mixed::Large") "Large" [Binder (Id "large") "value" wide] [] origin] origin
+          [DataConstructor (Id "Mixed::Small") "Small" [Binder (Id "small") "value" int] [] origin [] [],
+           DataConstructor (Id "Mixed::Large") "Large" [Binder (Id "large") "value" wide] [] origin [] []] origin Nothing
         make large = Definition
           (Declaration (Id "mixed") "mixed" (Arrow mixed integer) origin)
           [Binder (Id "input") "input" mixed]
@@ -377,7 +377,7 @@ spec = describe "refined definition proof obligations" $ do
              MatchCase (Id "Mixed::Large") [Binder (Id "field") "field" wide] large]) origin)
         c = Contract (Id "mixed") [Binder (Id "argument") "argument" mixed]
           (Binder (Id "result") "result" integer) []
-          [operation Greater (value "result" integer) (number 0)]
+          [operation Greater (value "result" integer) (number 0)] []
     validateDefinitionContracts 64 [schema] [make (number 1)] [c] `shouldBe` Right ()
     validateDefinitionContracts 64 [schema]
       [make (operation Add (value "field" wide) (number 129))] [c] `shouldSatisfy` isLeft
@@ -392,7 +392,7 @@ spec = describe "refined definition proof obligations" $ do
                (operation Add (value "head" int) (number offset))]) origin)
         c = Contract (Id "first") [Binder (Id "argument") "argument" list]
           (Binder (Id "result") "result" integer) []
-          [operation Greater (value "result" integer) (number 0)]
+          [operation Greater (value "result" integer) (number 0)] []
     validateDefinitionContracts 64 [] [make 129] [c] `shouldBe` Right ()
     validateDefinitionContracts 64 [] [make 128] [c] `shouldSatisfy` isLeft
   it "uses primitive bounds in result and conversion obligations" $ do

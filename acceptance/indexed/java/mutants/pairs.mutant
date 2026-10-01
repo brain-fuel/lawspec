@@ -1,0 +1,6 @@
+@@ src/main/java/example/Arithmetic.java
+<<<<<<<
+return new Pairs(value0);
+=======
+return new Pairs(new Row.Cell((byte) 0, value0));
+>>>>>>>

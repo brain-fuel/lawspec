@@ -72,6 +72,8 @@ emitWebDataWithProfile ts bits layout declarations = do
         (header : builtins ++ classes ++ [factory]) <> D.hardline
       typedRuntime = if ts then replace "predicates = []"
         "predicates: FieldPredicate[] = []" $
+        replace "      indices = [],\n      refinements = [],"
+          "      indices: ReadonlyArray<string> = [],\n      refinements: ReadonlyArray<readonly [number, Named | Parameter]> = []," $
         replace "constructor(name, args = [])"
           "constructor(name: string, args: ReadonlyArray<Named | Parameter> = [])" (runtimeSource "web-schema")
         else runtimeSource "web-schema"
@@ -92,8 +94,8 @@ emitWebDataWithProfile ts bits layout declarations = do
     variable (C.Constructor _ args) = any (\arg -> case arg of C.TypeArgument ty -> variable ty; _ -> False) args
     variable (C.Arrow a b) = variable a || variable b
     alias name parameters variants = if ts then
-      D.text "export type " <> application name (map D.text parameters) <>
-        D.text " = " <> D.joinWith (D.text " | ") variants <> D.text ";"
+      D.text ("export type " ++ name ++ (if null parameters then "" else "<" ++ intercalate ", " parameters ++ ">") ++ " =") <>
+        D.group (D.nest 2 (D.softline <> D.joinWith (D.softline <> D.text "| ") variants)) <> D.text ";"
       else D.text "/**" <> D.hardline <>
         (if null parameters then mempty else D.text (" * @template " ++ intercalate ", " parameters) <> D.hardline) <>
         D.text " * @typedef {" <> D.joinWith (D.text " | ") variants <> D.text ("} " ++ name) <> D.hardline <> D.text " */"
@@ -128,21 +130,44 @@ emitWebDataWithProfile ts bits layout declarations = do
           args = map snd parameters
       variants <- forM (C.dataConstructors declaration) $ \constructor -> do
         native <- lookupName names (C.constructorId constructor)
+        -- A GADT case is generic in the parameters it leaves open and in its
+        -- existentials; the union admits it only where its refinements hold.
+        let equations = C.constructorEquations constructor
+            existentials = zip (C.constructorExistentials constructor)
+              [candidate | n <- [0::Int ..], let candidate = "E" ++ show n, candidate `notElem` map snd names]
+            scope = parameters ++ existentials
+            open = [v | (p, v) <- parameters, p `notElem` map fst equations] ++ map snd existentials
+            classArgs = if ts && not (null equations) then open else args
         fields <- forM (C.constructorFields constructor) $ \field -> do
           identifier False (C.binderName field)
           unless (C.binderName field /= "_lawspecBrand") (Left "reserved TypeScript data field: _lawspecBrand")
-          ty <- typeDoc "" names parameters (C.binderType field)
+          ty <- typeDoc "" names scope (C.binderType field)
           pure (C.binderName field,ty)
-        pure (application native (map D.text args),nativeClass native args fields)
+        member <- if not ts || null equations then pure (application native (map D.text classArgs)) else do
+          patterns <- mapM (\(p, ty) -> typeDoc "" names [(e, "infer " ++ v) | (e, v) <- existentials] ty >>= \pattern ->
+            pure (maybe (D.text "never") D.text (lookup p parameters), pattern)) equations
+          pure (D.text "([" <> D.commaSep (map fst patterns) <> D.text "] extends [" <> D.commaSep (map snd patterns) <>
+            D.text "] ? " <> application native (map D.text classArgs) <> D.text " : never)")
+        pure (member,nativeClass native classArgs fields)
       -- A product's class is the type itself; only sums need a union alias.
       pure ([alias name args (if null variants then [D.text "never"] else map fst variants) | not (isProduct declaration)] ++ map snd variants)
+    -- Optional trailing arguments up to the last one that is needed.
+    trimmed values needed = take (length needed - length (takeWhile not (reverse needed))) values
     definitionSchema names bindings schema = do
       variants <- forM (S.constructors schema) $ \constructor -> do
         native <- lookupName names (C.Id (S.constructorTag constructor))
         pure (invoke "new schema.Constructor"
           ([D.text (q (S.constructorTag constructor)),
            array [invoke "new schema.Field" [D.text (q (S.fieldName field)),reference (S.fieldType field)] | field <- S.fields constructor],
-           D.text native] ++ [array [D.text callback | (tag,callback) <- bindings,
-             tag == S.constructorTag constructor] | any ((== S.constructorTag constructor) . fst) bindings]))
+           D.text native] ++ trimmed
+             [ array [D.text callback | (tag,callback) <- bindings, tag == S.constructorTag constructor]
+             , D.text "null"
+             , array (map (D.text . q) (S.constructorIndex constructor))
+             , array [array [D.text (show index), reference pattern] | (index, pattern) <- S.constructorRefinements constructor]
+             , D.text (show (S.constructorExistentials constructor)) ]
+             [ any ((== S.constructorTag constructor) . fst) bindings, False
+             , not (null (S.constructorIndex constructor))
+             , not (null (S.constructorRefinements constructor))
+             , S.constructorExistentials constructor > 0 ]))
       pure (invoke "new schema.Definition"
         [D.text (q (S.typeName schema)),D.text (show (S.parameterCount schema)),array variants])

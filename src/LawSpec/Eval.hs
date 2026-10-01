@@ -66,6 +66,8 @@ evaluate bits bindings = go where
             case op of
               "quot" -> pure (SInteger "Integer" (numerator x `quot` numerator y))
               "rem" -> pure (SInteger "Integer" (numerator x `rem` numerator y))
+              "pow" | numerator y < 0 -> Left "negative exponent"
+              "pow" -> pure (SInteger "Integer" (numerator x ^ numerator y))
               _ -> convertScalar bits result (reduced (case op of "+" -> x+y; "-" -> x-y; "*" -> x*y; "/" -> x/y; _ -> 0))
         else if any (`elem` ["Complex64","Complex128"]) [scalarName a,scalarName b] then do
           let pair (SComplex _ r i) = (r,i)

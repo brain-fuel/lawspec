@@ -1,0 +1,6 @@
+@@ src/example/gadt.ts
+<<<<<<<
+  return new data.Pair(evalNumber(value0.first), evalTruth(value0.second));
+=======
+  return new data.Pair(evalNumber(value0.first), !evalTruth(value0.second));
+>>>>>>>

@@ -1,11 +1,12 @@
 -- Shared totality obligations after typing. This proof view contains no surface
 -- syntax, runtime representation choices, or executable code-generation nodes.
-module LawSpec.Core.Totality (Proof(..), ProofDefinition(..), ProofContract(..), ProofConstructorContract(..), audit, auditWithContracts, auditWithConstructorContracts, substituteProof, integerAssumptions, integerConversion, payloadPredicate) where
+module LawSpec.Core.Totality (Proof(..), ProofDefinition(..), ProofContract(..), ProofConstructorContract(..), audit, auditWithContracts, auditWithConstructorContracts, auditDeferring, substituteProof, integerAssumptions, integerConversion, payloadPredicate) where
 
-import Control.Monad (unless, forM_, foldM)
+import LawSpec.IndexTerm (IndexGuard(..), IndexRelation(..), IndexTerm(..), IndexOperation(..))
+import Control.Monad (unless, forM_, foldM, forM)
 import Control.Monad.State.Strict (State, evalState, get, put)
 import Data.Graph (SCC(..), stronglyConnComp)
-import Data.List (nub)
+import Data.List (nub, sortOn, stripPrefix)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 import LawSpec.Common
@@ -60,9 +61,14 @@ data ProofContract = ProofContract
 -- Identities belong to the declaration, and are substituted at construction and
 -- freshly renamed at each pattern. These primitive predicates cannot call user
 -- definitions until constructor/definition dependency cycles are audited.
+-- An indexed family's guards (sibling fields share an index; a subtraction
+-- never underflows) relate its fields' index measures, named by template for
+-- each (field, index) reference. Matching assumes them; construction inside a
+-- checked definition proves them.
 data ProofConstructorContract = ProofConstructorContract
   { constructorOwner :: Id, constructorParameters :: [Id]
   , constructorConditions :: [Proof]
+  , constructorIndexGuards :: [(IndexGuard, [((Int, Int), String)])]
   } deriving (Eq, Show)
 
 audit :: [ProofDefinition] -> Either [Diagnostic] ()
@@ -73,7 +79,16 @@ auditWithContracts = auditWithConstructorContracts []
 
 auditWithConstructorContracts :: [ProofConstructorContract] -> [ProofContract]
   -> [ProofDefinition] -> Either [Diagnostic] ()
-auditWithConstructorContracts constructors contracts definitions = do
+auditWithConstructorContracts constructors contracts definitions =
+  () <$ auditDeferring constructors contracts definitions
+
+-- A postcondition the linear prover cannot establish is an error, unless it
+-- involves non-linear index arithmetic (products of variables, powers,
+-- quotients): those are returned, by definition and postcondition position,
+-- to be checked on each result at runtime instead.
+auditDeferring :: [ProofConstructorContract] -> [ProofContract]
+  -> [ProofDefinition] -> Either [Diagnostic] [(Id, Int)]
+auditDeferring constructors contracts definitions = do
   let ids = map proofId definitions
       known = S.fromList ids
       signatures = M.fromList [(proofId d,proofArguments d) | d <- definitions]
@@ -82,8 +97,14 @@ auditWithConstructorContracts constructors contracts definitions = do
         [argument] <- [proofArguments d], DataMatch (Variable subject) branches <- [stripDomains (proofBody d)],
         subject == argument]
       initialFacts = emptyFacts{constructorContracts=constructorTable,unfoldings=unfoldable,
-        naturalMeasures=S.fromList [name | (name,(_,branches)) <- M.toList unfoldable,
-          all (naturalBranch name . (\(_,_,body) -> body)) branches]}
+        naturalMeasures=naturalFixpoint S.empty,
+        measureIds=M.fromListWith (++) [(templateName (proofName d),[proofId d]) | d <- definitions]}
+      -- A measure is natural when every branch is built from natural values:
+      -- literals, its own calls, and calls of measures already known natural.
+      naturalFixpoint known =
+        let next = S.fromList [name | (name,(_,branches)) <- M.toList unfoldable,
+              all (naturalBranch (\callee -> callee == name || callee `S.member` known) . (\(_,_,body) -> body)) branches]
+        in if next == known then known else naturalFixpoint next
       contractTable = M.fromList [(contractOwner c,c) | c <- contracts]
       expressions d = proofBody d : proofArgumentDomains d ++ case M.lookup (proofId d) contractTable of
         Nothing -> []
@@ -126,9 +147,13 @@ auditWithConstructorContracts constructors contracts definitions = do
       filter (/= proofId d) (concatMap calls (expressions d))) | d <- definitions]) $ \component ->
         case component of
           AcyclicSCC _ -> pure ()
-          CyclicSCC group -> Left ("mutually recursive total definitions are not supported: " ++
-            unwords (map proofName group))
-  forM_ definitions $ \d -> diagnostic (proofLocation d) $ prefix (proofName d) $ do
+          -- Instances of one generic definition (a GADT evaluator at several
+          -- type arguments) recurse into each other like a single definition.
+          CyclicSCC group
+            | all ((== templateName (proofName (head group))) . templateName . proofName) group -> pure ()
+            | otherwise -> Left ("mutually recursive total definitions are not supported: " ++
+                unwords (map proofName group))
+  fmap concat $ forM definitions $ \d -> diagnostic (proofLocation d) $ prefix (proofName d) $ do
     unless (length (proofArguments d) == length (nub (proofArguments d)))
       (Left "duplicate definition argument identity")
     unless (all (`elem` proofArguments d) (concatMap freeVariables (proofArgumentDomains d)))
@@ -149,19 +174,36 @@ auditWithConstructorContracts constructors contracts definitions = do
     decreases <- walk signatures contractTable (proofId d) roots facts body
     unless (null decreases || not (S.null (foldl1 S.intersection decreases)))
       (Left "no single parameter strictly decreases in every recursive call")
-    forM_ contract $ \c ->
-      forM_ (resultCases signatures contractTable roots facts body) $ \(scope,branchFacts,result) ->
-        forM_ (postconditions c) $ \condition -> do
+    deferred <- fmap concat $ forM (maybe [] pure contract) $ \c ->
+      fmap concat $ forM (resultCases signatures contractTable roots facts body) $ \(scope,branchFacts,result) ->
+        fmap concat $ forM (zip [0..] (postconditions c)) $ \(position,condition) -> do
           -- Definedness is checked with each possible result substituted. Local
           -- field domains stay in their branch and never strengthen a sibling.
           let substituted = substituteProof (M.singleton (contractResult c) result) condition
               checked = normalizeCalls (M.keys scope ++ S.toList (usedVariables branchFacts)) substituted
           _ <- walk signatures contractTable (proofId d) scope branchFacts checked
-          unless (provesResult signatures contractTable scope branchFacts checked)
-            (Left "definition result refinement could not be proved")
+          if provesResult signatures contractTable scope branchFacts checked then pure []
+          else if nonlinear checked then pure [(proofId d, position)]
+          else Left "definition result refinement could not be proved"
+    pure (nub deferred)
   where
     diagnostic at = either (Left . pure . (\message -> Diagnostic "total" message at)) Right
     prefix name = either (Left . ((name ++ ": ") ++)) Right
+    -- Definitions whose bodies use non-linear arithmetic, directly or through
+    -- calls, such as the measure of a family indexed by a product.
+    bodies = M.fromList [(proofId d, proofBody d) | d <- definitions]
+    nonlinearDefinitions = grow S.empty
+    grow known =
+      let next = S.fromList [name | (name, body) <- M.toList bodies, nonlinearWith known body]
+      in if next == known then known else grow next
+    nonlinear = nonlinearWith nonlinearDefinitions
+    nonlinearWith known expression = case expression of
+      ExactArithmetic Multiply a b | constantFactor a == Nothing && constantFactor b == Nothing -> True
+      ExactArithmetic Power _ _ -> True
+      Division False _ _ -> True
+      Call callee arguments -> callee `S.member` known || any (nonlinearWith known) arguments
+      LetCall _ callee arguments body -> callee `S.member` known || any (nonlinearWith known) (body : arguments)
+      _ -> any (nonlinearWith known) (children expression)
 
 -- These facts come from validated argument types, not executable user
 -- preconditions. Callers need not restate a primitive's range in a signature.
@@ -242,14 +284,84 @@ data Facts = Facts
   -- Definitions whose every branch is a non-negative constant plus calls of
   -- the same definition: their results are natural numbers (index measures).
   , naturalMeasures :: S.Set Id
+  -- Definition identities by template name, so a sibling fact reaches every
+  -- specialized instance of a family's index measure.
+  , measureIds :: M.Map String [Id]
   }
 emptyFacts :: Facts
-emptyFacts = Facts S.empty S.empty [] [] [] S.empty [] [] M.empty [] M.empty S.empty M.empty S.empty
+emptyFacts = Facts S.empty S.empty [] [] [] S.empty [] [] M.empty [] M.empty S.empty M.empty S.empty M.empty
+
+-- Instances of one template share their recursion check.
+sameDefinition :: Id -> Id -> Bool
+sameDefinition (Id a) (Id b) = a == b || templateIdentity a == templateIdentity b
+  where
+    templateIdentity text = case breakLast text of
+      (owner, name) -> owner ++ templateName name
+    breakLast text = case reverse (splitOnColons text) of
+      name : rest | not (null rest) -> (concatMap (++ "::") (reverse rest), name)
+      _ -> ("", text)
+    splitOnColons text = case breakOn text of
+      (before, Just after) -> before : splitOnColons after
+      (before, Nothing) -> [before]
+    breakOn text = go "" text
+      where go acc (':' : ':' : rest) = (reverse acc, Just rest)
+            go acc (c : rest) = go (c : acc) rest
+            go acc [] = (reverse acc, Nothing)
+
+-- Specialized instances are named lawspec_<template>_<hash>.
+templateName :: String -> String
+templateName n = case stripPrefix "lawspec_" n of
+  Just rest | '_' `elem` rest -> reverse (drop 1 (dropWhile (/= '_') (reverse rest)))
+  _ -> n
+
+-- Index guards over a constructor's fields, with every choice of measure
+-- instance per name; the flag says each name had exactly one instance.
+indexGuardConditions :: Facts -> ProofConstructorContract -> [Proof] -> [(Bool, Proof)]
+indexGuardConditions facts contract fields =
+  [ (all ((== 1) . length) choices, condition)
+  | (IndexGuard relation left right, measures) <- constructorIndexGuards contract
+  , let names = nub (map snd measures)
+        choices = [M.findWithDefault [] name (measureIds facts) | name <- names]
+  , chosen <- sequence choices
+  , let instance' = M.fromList (zip names chosen)
+        field position index = do
+          name <- lookup (position, index) measures
+          measure <- M.lookup name instance'
+          value <- case drop position fields of v : _ -> Just v; [] -> Nothing
+          Just (Call measure [value])
+  , Just a <- [indexProof field left], Just b <- [indexProof field right]
+  , let condition = ExactComparison (case relation of IndexEqual -> Equal; IndexAtLeast -> GreaterEqual) a b ]
+
+indexProof :: (Int -> Int -> Maybe Proof) -> IndexTerm -> Maybe Proof
+indexProof field term = case term of
+  IndexConstant n -> Just (Literal (SInteger "Integer" n))
+  IndexField position index -> field position index
+  IndexApply op a b -> do
+    x <- indexProof field a
+    y <- indexProof field b
+    case op of
+      IndexAdd -> Just (ExactArithmetic Add x y)
+      IndexSubtract -> Just (ExactArithmetic Subtract x y)
+      IndexMultiply -> Just (ExactArithmetic Multiply x y)
+      IndexPower -> Just (ExactArithmetic Power x y)
+      _ -> Nothing
+
+-- Matching a constructor assumes its index guards.
+siblingFacts :: Facts -> Id -> [Proof] -> Facts
+siblingFacts facts tag fields = case M.lookup tag (constructorContracts facts) of
+  Nothing -> facts
+  Just contract -> foldl (flip (assume True)) facts (map snd (indexGuardConditions facts contract fields))
 
 walk :: M.Map Id [Id] -> M.Map Id ProofContract -> Id -> Provenance -> Facts -> Proof -> Either String [S.Set Int]
 walk signatures contracts self provenance facts expression = case expression of
   Construct tag fields -> do
     nested <- concat <$> mapM recur fields
+    -- Index guards are proved where every measure has one instance; generic
+    -- instances stay runtime-checked at construction.
+    forM_ (M.lookup tag (constructorContracts facts)) $ \contract ->
+      forM_ [condition | (True, condition) <- indexGuardConditions facts contract fields] $ \condition ->
+        unless (provesResult signatures contracts provenance facts condition)
+          (Left ("constructor index guard could not be proved: " ++ idText tag))
     forM_ (M.lookup tag (constructorContracts facts)) $ \contract -> do
       unless (length fields == length (constructorParameters contract))
         (Left "constructor contract arity mismatch")
@@ -328,7 +440,7 @@ walk signatures contracts self provenance facts expression = case expression of
           (Left ("definition call precondition could not be proved: " ++ idText callee))
     let smaller index value = valueProvenance provenance value == Just (index, True)
         descending = S.fromList [index | (index,argument) <- zip [0..] arguments, smaller index argument]
-    if callee /= self then pure nested
+    if not (sameDefinition callee self) then pure nested
     else if S.null descending then Left "recursive call has no strict structural descent"
     else pure (descending : nested)
   Logical op left right -> do
@@ -336,6 +448,10 @@ walk signatures contracts self provenance facts expression = case expression of
     let skips = case left of Literal (SBool value) -> value /= (op == And); _ -> False
     after <- if skips then pure [] else walk signatures contracts self provenance (assume (op == And) left facts) right
     pure (before ++ after)
+  ExactArithmetic Power base exponent -> do
+    unless (entails facts (ExactComparison GreaterEqual exponent (Literal (SInteger "Integer" 0))))
+      (Left "pow requires a proven non-negative exponent")
+    (++) <$> recur base <*> recur exponent
   Division ieee left denominator -> do
     unless (ieee || knownNonzero facts denominator)
       (Left "exact division/quotient/remainder requires a proven nonzero denominator")
@@ -437,7 +553,7 @@ constructorFacts facts tag fields = case M.lookup tag (constructorContracts fact
 dataBranches :: Provenance -> Facts -> Proof -> [(Id,[Id],Proof)] -> [(Provenance,Facts,Proof)]
 dataBranches scope facts value branches = case known of
   Just (tag,fields) ->
-    [(scope,payloadConstructorFacts (constructorFacts facts tag fields) value tag fields,substituteProof (M.fromList (zip binders fields)) body)
+    [(scope,siblingFacts (payloadConstructorFacts (constructorFacts facts tag fields) value tag fields) tag fields,substituteProof (M.fromList (zip binders fields)) body)
       | (candidate,binders,body) <- branches, candidate == tag, length fields == length binders]
   Nothing -> map unknown branches
   where
@@ -459,7 +575,7 @@ dataBranches scope facts value branches = case known of
           conditions = [substituteProof (M.fromList (zip parameters fields)) predicate
             | (identity,candidate,parameters,predicate) <- constructorPredicates facts,
               Just identity == variableIdentity value, candidate == tag, length parameters == length fields]
-      in (local,foldl (flip (assume True)) (payloadConstructorFacts (constructorFacts tracked tag fields) value tag fields) conditions,renamed)
+      in (local,siblingFacts (foldl (flip (assume True)) (payloadConstructorFacts (constructorFacts tracked tag fields) value tag fields) conditions) tag fields,renamed)
 
 knownNonzero :: Facts -> Proof -> Bool
 knownNonzero facts expression = direct || case linear expression of
@@ -545,6 +661,10 @@ linear expression = case expression of
   ExactArithmetic Multiply a b
     | Just coefficient <- constantFactor a -> R.scale coefficient <$> linear b
     | Just coefficient <- constantFactor b -> R.scale coefficient <$> linear a
+    -- A product of variables is an uninterpreted atom; sorting its factors
+    -- makes x * y and y * x the same atom.
+    | otherwise -> Just (R.variable (nonlinearAtom "*" (sortOn show (map unwrapped [a, b]))))
+  ExactArithmetic Power a b -> Just (R.variable (nonlinearAtom "^" (map unwrapped [a, b])))
   NarrowInteger _ _ value -> linear value
   Integral value -> linear value
   Call callee arguments -> Just (R.variable (callAtom callee arguments))
@@ -882,15 +1002,25 @@ stripDomains (TypedDomain _ body) = stripDomains body
 stripDomains (Integral body) = stripDomains body
 stripDomains body = body
 
-naturalBranch :: Id -> Proof -> Bool
-naturalBranch self body = case stripDomains body of
+naturalBranch :: (Id -> Bool) -> Proof -> Bool
+naturalBranch natural body = case stripDomains body of
   Literal scalar -> either (const False) (>= 0) (exactValue scalar)
-  Call name _ -> name == self
-  ExactArithmetic Add a b -> naturalBranch self a && naturalBranch self b
-  NarrowInteger _ _ value -> naturalBranch self value
-  Integral value -> naturalBranch self value
-  Conversion _ value -> naturalBranch self value
+  Call name _ -> natural name
+  ExactArithmetic op a b | op `elem` [Add, Multiply, Power] -> naturalBranch natural a && naturalBranch natural b
+  NarrowInteger _ _ value -> naturalBranch natural value
+  Integral value -> naturalBranch natural value
+  Conversion _ value -> naturalBranch natural value
   _ -> False
+
+nonlinearAtom :: String -> [Proof] -> Id
+nonlinearAtom operator operands = Id ("::" ++ operator ++ "::" ++ show operands)
+
+-- Numeric wrappers do not change a value, so they do not distinguish atoms.
+unwrapped :: Proof -> Proof
+unwrapped expression = case expression of
+  Integral value -> unwrapped value
+  NarrowInteger _ _ value -> unwrapped value
+  _ -> expression
 
 -- Calls of checked definitions are pure, so a call is a linear atom: equal
 -- callee and arguments denote the same value in every fact.

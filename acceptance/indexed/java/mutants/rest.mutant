@@ -1,0 +1,6 @@
+@@ src/main/java/example/Arithmetic.java
+<<<<<<<
+return new Rest(value0);
+=======
+return new Rest(value0 instanceof Row.Cell cell ? cell.tail() : value0);
+>>>>>>>

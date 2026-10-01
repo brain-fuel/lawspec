@@ -1,0 +1,6 @@
+@@ src/example/arithmetic.mjs
+<<<<<<<
+new data.Rest(value0)
+=======
+new data.Rest(value0 instanceof data.RowCell ? value0.tail : value0)
+>>>>>>>

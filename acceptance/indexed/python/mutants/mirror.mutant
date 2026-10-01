@@ -1,0 +1,6 @@
+@@ src/example/arithmetic.py
+<<<<<<<
+    return data.PerfectNode(mirror(value0.right), mirror(value0.left))
+=======
+    return data.PerfectNode(mirror(value0.right), value0.right)
+>>>>>>>

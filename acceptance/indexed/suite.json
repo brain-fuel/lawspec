@@ -1,5 +1,6 @@
 {
   "specs": [
-    "examples/specs/indexed_families.lawspec"
+    "examples/specs/indexed_families.lawspec",
+    "examples/specs/indexed_arithmetic.lawspec"
   ]
 }

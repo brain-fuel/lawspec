@@ -1,0 +1,6 @@
+@@ src/example/gadt.py
+<<<<<<<
+    return data.ExprNumber(evalNumber(value0))
+=======
+    return data.ExprNumber(0)
+>>>>>>>

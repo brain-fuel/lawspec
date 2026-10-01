@@ -8,6 +8,17 @@ use std::sync::Arc;
 
 pub type Result<T> = std::result::Result<T, String>;
 
+/// Runs a generated test on a thread with a large stack: generated values of
+/// deep data, in debug builds, can exceed the default test thread's stack.
+pub fn with_stack<T: Send + 'static>(body: impl FnOnce() -> T + Send + 'static) -> T {
+    std::thread::Builder::new()
+        .stack_size(64 * 1024 * 1024)
+        .spawn(body)
+        .expect("test thread")
+        .join()
+        .unwrap_or_else(|panic| std::panic::resume_unwind(panic))
+}
+
 /// A logical Integer result accepts any native integer without losing bits.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Integer(pub BigInt);
@@ -485,6 +496,14 @@ pub fn binary(op: &str, domain: &str, a: Value, b: Value) -> Result<Value> {
         "/" => x / y,
         "quot" => return Ok(Integer(a.integer()? / b.integer()?)),
         "rem" => return Ok(Integer(a.integer()? % b.integer()?)),
+        "pow" => {
+            let exponent = b.integer()?;
+            if exponent.is_negative() {
+                return Err("negative exponent".into());
+            }
+            let exponent = exponent.to_u32().ok_or_else(|| "exponent too large".to_string())?;
+            return Ok(Integer(num_traits::Pow::pow(a.integer()?, exponent)));
+        }
         "<" => return Ok(Bool(x < y)),
         "<=" => return Ok(Bool(x <= y)),
         ">" => return Ok(Bool(x > y)),
@@ -709,6 +728,18 @@ impl<L: FromValue, R: FromValue> FromValue for Either<L, R> {
     }
 }
 
+// A GADT case's existential fields hold checked dynamic values.
+impl IntoValue for Value {
+    fn into_value(self) -> Value {
+        self
+    }
+}
+impl FromValue for Value {
+    fn from_value(value: Value) -> Result<Self> {
+        Ok(value)
+    }
+}
+
 /// A fully applied type, or a parameter in a constructor's field schema.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum TypeRef {
@@ -814,6 +845,73 @@ impl From<String> for ValidationFailure {
 pub struct Schema {
     definitions: HashMap<&'static str, DataSchema>,
     contracts: HashMap<&'static str, Vec<FieldPredicate>>,
+    // Indexed families: per constructor, index terms then guards, in prefix
+    // notation over field indices. Validation checks the guards.
+    indices: HashMap<&'static str, &'static [&'static str]>,
+    // GADT constructors: refinements fixing parameters to patterns, and the
+    // number of existentials (parameters numbered after the definition's own).
+    refinements: HashMap<&'static str, (Vec<(usize, TypeRef)>, usize)>,
+}
+
+/// A GADT constructor's refinements and existential count, by tag.
+pub type Refinements = Vec<(&'static str, Vec<(usize, TypeRef)>, usize)>;
+
+/// A prefix index term: `c<n>`, `f<field>[.<index>]` or an operator.
+enum SchemaIndexTerm {
+    Constant(BigInt),
+    Field(usize, usize),
+    Apply(&'static str, Box<SchemaIndexTerm>, Box<SchemaIndexTerm>),
+}
+
+fn parse_schema_index(tokens: &[&'static str], at: &mut usize) -> Result<SchemaIndexTerm> {
+    let token = *tokens.get(*at).ok_or("malformed index term")?;
+    *at += 1;
+    if let Some(digits) = token.strip_prefix('c') {
+        return Ok(SchemaIndexTerm::Constant(
+            digits.parse().map_err(|_| "malformed index term".to_string())?,
+        ));
+    }
+    if let Some(reference) = token.strip_prefix('f') {
+        let mut parts = reference.splitn(2, '.');
+        let position = parts.next().unwrap_or("").parse().map_err(|_| "malformed index term".to_string())?;
+        let index = match parts.next() {
+            Some(index) => index.parse().map_err(|_| "malformed index term".to_string())?,
+            None => 0,
+        };
+        return Ok(SchemaIndexTerm::Field(position, index));
+    }
+    let left = parse_schema_index(tokens, at)?;
+    let right = parse_schema_index(tokens, at)?;
+    Ok(SchemaIndexTerm::Apply(token, Box::new(left), Box::new(right)))
+}
+
+/// Natural index arithmetic; `None` when an operation has no natural value.
+fn eval_schema_index(
+    term: &SchemaIndexTerm,
+    field: &mut dyn FnMut(usize, usize) -> Result<BigInt>,
+) -> Result<Option<BigInt>> {
+    Ok(match term {
+        SchemaIndexTerm::Constant(value) => Some(value.clone()),
+        SchemaIndexTerm::Field(position, index) => Some(field(*position, *index)?),
+        SchemaIndexTerm::Apply(op, left, right) => {
+            let (Some(x), Some(y)) = (eval_schema_index(left, field)?, eval_schema_index(right, field)?) else {
+                return Ok(None);
+            };
+            match *op {
+                "+" => Some(x + y),
+                "-" => (x >= y).then(|| x - y),
+                "*" => Some(x * y),
+                "div" => (y.is_positive()).then(|| x / y),
+                "mod" => (y.is_positive()).then(|| x % y),
+                "^" => y.to_u32().filter(|e| *e <= 64).map(|e| num_traits::Pow::pow(x, e)),
+                _ => return Err("malformed index term".into()),
+            }
+        }
+    })
+}
+
+fn is_index_guard(text: &str) -> bool {
+    text.starts_with("== ") || text.starts_with(">= ")
 }
 
 fn builtin_arity(name: &str) -> Option<usize> {
@@ -872,9 +970,49 @@ impl Schema {
         Self::with_contracts(definitions, vec![])
     }
 
+    /// Attach indexed families' index terms and guards, keyed by constructor.
+    pub fn with_indices(mut self, indices: &[(&'static str, &'static [&'static str])]) -> Self {
+        self.indices.extend(indices.iter().copied());
+        self
+    }
+
+    /// The index of a checked value, computed from its constructor's term.
+    fn index_of(&self, ty: &TypeRef, value: &Value, index: usize) -> Result<BigInt> {
+        let (TypeRef::Named(name, arguments), Value::Data(tag, fields)) = (ty, value) else {
+            return Err("no index for this value".into());
+        };
+        let definition = self.definitions.get(name).ok_or("no index for this type")?;
+        let constructor = definition
+            .constructors
+            .iter()
+            .find(|constructor| constructor.tag == tag)
+            .ok_or("unknown constructor")?;
+        let texts = self.indices.get(constructor.tag).copied().unwrap_or(&[]);
+        let text = texts
+            .iter()
+            .filter(|text| !is_index_guard(text))
+            .nth(index)
+            .ok_or_else(|| format!("no index for {name}"))?;
+        let tokens: Vec<&'static str> = text.split(' ').collect();
+        let term = parse_schema_index(&tokens, &mut 0)?;
+        let mut field = |position: usize, child: usize| -> Result<BigInt> {
+            let field_type = constructor.fields.get(position).ok_or("malformed index term")?.instantiate(arguments)?;
+            self.index_of(&field_type, &fields[position], child)
+        };
+        eval_schema_index(&term, &mut field)?.ok_or_else(|| format!("index of {tag} has no natural value"))
+    }
+
     pub fn with_contracts(
         definitions: Vec<DataSchema>,
         contracts: Vec<ConstructorContract>,
+    ) -> Result<Self> {
+        Self::with_refinements(definitions, contracts, vec![])
+    }
+
+    pub fn with_refinements(
+        definitions: Vec<DataSchema>,
+        contracts: Vec<ConstructorContract>,
+        refinements: Refinements,
     ) -> Result<Self> {
         let mut types = HashMap::new();
         let mut tags = std::collections::HashSet::new();
@@ -905,11 +1043,17 @@ impl Schema {
         let schema = Self {
             definitions: types,
             contracts: predicates,
+            indices: HashMap::new(),
+            refinements: refinements
+                .into_iter()
+                .map(|(tag, patterns, existentials)| (tag, (patterns, existentials)))
+                .collect(),
         };
         for definition in schema.definitions.values() {
             for constructor in &definition.constructors {
+                let existentials = schema.refinements.get(constructor.tag).map_or(0, |(_, count)| *count);
                 for field in &constructor.fields {
-                    schema.check_type(field, definition.parameters)?;
+                    schema.check_type(field, definition.parameters + existentials)?;
                 }
             }
         }
@@ -948,19 +1092,62 @@ impl Schema {
                 definition
                     .constructors
                     .iter()
-                    .map(|constructor| {
+                    // A GADT constructor whose refinements do not match these
+                    // arguments builds no value of this type.
+                    .filter_map(|constructor| {
+                        self.refine(constructor, arguments, definition.parameters)
+                            .map(|extended| (constructor, extended))
+                    })
+                    .map(|(constructor, extended)| {
                         Ok(ConstructorSchema {
                             tag: constructor.tag,
                             fields: constructor
                                 .fields
                                 .iter()
-                                .map(|field| field.instantiate(arguments))
+                                .map(|field| field.instantiate(&extended))
                                 .collect::<Result<_>>()?,
                         })
                     })
                     .collect::<Result<_>>()
             })
             .transpose()
+    }
+
+    /// Arguments extended with the existentials a constructor's refinements
+    /// bind; None when the refinements do not match.
+    fn refine(&self, constructor: &ConstructorSchema, arguments: &[TypeRef], parameters: usize) -> Option<Vec<TypeRef>> {
+        let Some((patterns, existentials)) = self.refinements.get(constructor.tag) else {
+            return Some(arguments.to_vec());
+        };
+        fn matches(
+            pattern: &TypeRef,
+            actual: &TypeRef,
+            arguments: &[TypeRef],
+            parameters: usize,
+            bound: &mut HashMap<usize, TypeRef>,
+        ) -> bool {
+            match (pattern, actual) {
+                (TypeRef::Parameter(index), _) if *index < parameters => arguments.get(*index) == Some(actual),
+                (TypeRef::Parameter(index), _) => bound.entry(*index).or_insert_with(|| actual.clone()) == actual,
+                (TypeRef::Named(name, children), TypeRef::Named(other, values)) => {
+                    name == other
+                        && children.len() == values.len()
+                        && children.iter().zip(values).all(|(child, value)| matches(child, value, arguments, parameters, bound))
+                }
+                _ => false,
+            }
+        }
+        let mut bound = HashMap::new();
+        for (index, pattern) in patterns {
+            if !matches(pattern, arguments.get(*index)?, arguments, parameters, &mut bound) {
+                return None;
+            }
+        }
+        let mut extended = arguments.to_vec();
+        for k in 0..*existentials {
+            extended.push(bound.get(&(parameters + k))?.clone());
+        }
+        Some(extended)
     }
 
     /// Validate first, then check only stored occurrences of type arguments.
@@ -1133,6 +1320,9 @@ impl Schema {
             if fields.len() != constructor.fields.len() {
                 return Err(format!("wrong field count for {tag}").into());
             }
+            let arguments = &self
+                .refine(constructor, arguments, definition.parameters)
+                .ok_or_else(|| format!("constructor {tag} is not a value of {name}"))?;
             let checked: Vec<Value> = fields
                 .into_iter()
                 .zip(&constructor.fields)
@@ -1159,6 +1349,28 @@ impl Schema {
                         if !accepted {
                             return Err(ValidationFailure::Rejected(format!("{label} failed")));
                         }
+                    }
+                }
+                for text in self.indices.get(constructor.tag).copied().unwrap_or(&[]) {
+                    if !is_index_guard(text) {
+                        continue;
+                    }
+                    let tokens: Vec<&'static str> = text.split(' ').collect();
+                    let mut at = 1;
+                    let left = parse_schema_index(&tokens, &mut at)?;
+                    let right = parse_schema_index(&tokens, &mut at)?;
+                    let mut field = |position: usize, child: usize| -> Result<BigInt> {
+                        let field_type = constructor.fields.get(position).ok_or("malformed index term")?.instantiate(arguments)?;
+                        self.index_of(&field_type, &checked[position], child)
+                    };
+                    let x = eval_schema_index(&left, &mut field)?;
+                    let y = eval_schema_index(&right, &mut field)?;
+                    let holds = match (x, y) {
+                        (Some(x), Some(y)) => if tokens[0] == "==" { x == y } else { x >= y },
+                        _ => false,
+                    };
+                    if !holds {
+                        return Err(ValidationFailure::Rejected(format!("{tag}: index guard {text} failed")));
                     }
                 }
             }

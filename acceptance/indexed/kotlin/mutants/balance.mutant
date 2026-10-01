@@ -1,0 +1,6 @@
+@@ src/main/kotlin/example/Arithmetic.kt
+<<<<<<<
+Perfect.Node(mirror(value0.right), mirror(value0.left))
+=======
+Perfect.Node(mirror(value0.right), Perfect.Leaf(0))
+>>>>>>>

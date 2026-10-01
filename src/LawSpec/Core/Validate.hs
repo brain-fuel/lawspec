@@ -98,7 +98,7 @@ validateProgramWith registry Program{..} = do
       scope <- foldM extend M.empty (contractArguments c)
       mapM_ (predicate ds scope) (contractPreconditions c)
       scope' <- extend scope (contractResult c)
-      mapM_ (predicate ds scope') (contractPostconditions c)
+      mapM_ (predicate ds scope') (contractPostconditions c ++ contractRuntimePostconditions c)
 
 -- Bounds are evaluated before the full short-circuit predicate. Only total
 -- exact arithmetic may move across that boundary; guards remain authoritative.

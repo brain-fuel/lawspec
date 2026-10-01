@@ -1,0 +1,6 @@
+@@ src/example/gadt.ts
+<<<<<<<
+  return !evalTruth(value0.operand);
+=======
+  return evalTruth(value0.operand);
+>>>>>>>

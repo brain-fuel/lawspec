@@ -1,0 +1,6 @@
+@@ src/Example/Arithmetic.hs
+<<<<<<<
+Data.PerfectNode (mirror right) (mirror left)
+=======
+Data.PerfectNode (mirror right) left
+>>>>>>>

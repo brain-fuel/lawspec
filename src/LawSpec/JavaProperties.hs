@@ -180,9 +180,8 @@ emitTests Config{..} unit laws = do
             [] -> generator ty
       pure (inputId input,strategy)
     equationsDoc equations = call "java.util.Map.ofEntries"
-      [call "java.util.Map.entry" [quoted (C.idText tag),
-        D.group (text "new long[] {" <> D.commaSep (map number (constant : map toInteger positions)) <> text "}")]
-      | (tag,constant,positions) <- equations]
+      [call "java.util.Map.entry" [quoted (C.idText tag), call "java.util.List.of" (map quoted texts)]
+      | (tag,texts) <- equations]
     requiredSymbol plan
       | nativeGenerators = []
       | inputType (domainInput plan) /= C.scalarType "Symbol" = []

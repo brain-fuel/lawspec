@@ -287,6 +287,12 @@ def binary(op, a, b, ta, tb):
                     rnd(rnd(a.real * b.real) + rnd(a.imag * b.imag)), d)),
                 rnd(ieee_div(
                     rnd(rnd(a.imag * b.real) - rnd(a.real * b.imag)), d)))
+    if op == 'pow':
+        if a.denominator != 1 or b.denominator != 1:
+            raise TypeError('pow requires integer operands')
+        if b < 0:
+            raise ValueError('negative exponent')
+        return a.numerator ** b.numerator
     if op in ('quot', 'rem'):
         q = abs(a.numerator) // abs(b.numerator)
         if (a < 0) != (b < 0):
@@ -360,7 +366,7 @@ def helper(n, args, types, bits=64):
         if exact_type(types[0]):
             return binary('-', 0, x, 'BigInt', types[0])
         return convert(-x, types[0])
-    if n in ('quot', 'rem'):
+    if n in ('quot', 'rem', 'pow'):
         return binary(n, *args, *types)
     if n == 'isNaN':
         return math.isnan(x)

@@ -105,10 +105,15 @@ public final class LawSpecDataStrategies {
         });
   }
 
+  private static final long INDEX_SLACK = 16;
+  private static final int INDEX_CHOICES = 6;
+
   /**
-   * Values whose linear structural measure equals {@code target}. Each constructor's equation
-   * holds its constant followed by the positions of recursive fields whose measures it adds, so
-   * the target is solved backwards and split across those fields. Nothing is filtered away.
+   * Values whose structural index equals {@code target}. Each constructor carries its index term
+   * then its guards, in prefix notation over field indices ({@code f<i>}), literals ({@code
+   * c<n>}) and the natural operators. Reachability is a forward fixpoint over levels
+   * 0..target+slack, so a child may exceed its parent's index; the target is then solved
+   * backwards, and nothing is filtered away.
    */
   public static Generator<Value> indexedGenerator(
       LawSpecSchema schema,
@@ -116,54 +121,151 @@ public final class LawSpecDataStrategies {
       int bits,
       int nodeBudget,
       Object target,
-      Map<String, long[]> equations,
+      Map<String, List<String>> equations,
       Function<String, Generator<Value>> scalar) {
     long k = target instanceof Value value ? ((Number) value.data()).longValue()
         : ((Number) target).longValue();
-    if (k < 0) throw new IllegalArgumentException("index target must be a natural number");
     if (schema.isScalar(type)) {
       throw new IllegalArgumentException("indexed generation requires a data type");
     }
-    return new Indexed(schema, bits, nodeBudget, equations, new Builder(schema, bits, scalar))
-        .generate(type, k);
+    long limit = Math.max(k, 0) + INDEX_SLACK;
+    var indexed =
+        new Indexed(schema, bits, nodeBudget, limit, equations, new Builder(schema, bits, scalar));
+    indexed.explore(type);
+    // An open target (negative), or one drawn from earlier inputs that breaks their preconditions
+    // or names no value, generates from the smallest reachable indices; an index claim rejects a
+    // mismatch.
+    if (indexed.reach.contains(List.<Object>of(type, k))) return indexed.generate(type, k);
+    var levels = new ArrayList<Long>();
+    for (long level = 0; level <= limit && levels.size() < INDEX_CHOICES; level++) {
+      if (indexed.reach.contains(List.<Object>of(type, level))) levels.add(level);
+    }
+    if (levels.isEmpty()) {
+      throw new IllegalArgumentException("no value of " + LawSpecSchema.key(type) + " has an index");
+    }
+    return Generator.from(
+        environment ->
+            environment.generate(indexed.generate(type, environment.generate(Generator.sampledFrom(levels)))));
   }
+
+  /** A prefix index term: kind is "c", "f" or an operator. */
+  private record IndexTerm(String kind, long value, IndexTerm left, IndexTerm right) {
+    static final List<String> OPERATORS = List.of("+", "-", "*", "div", "mod", "^");
+
+    static IndexTerm parse(String[] tokens, int[] at) {
+      if (at[0] >= tokens.length) throw new IllegalArgumentException("malformed index term");
+      String token = tokens[at[0]++];
+      if (token.startsWith("c") || token.startsWith("f")) {
+        return new IndexTerm(token.substring(0, 1), Long.parseLong(token.substring(1)), null, null);
+      }
+      if (!OPERATORS.contains(token)) throw new IllegalArgumentException("malformed index term");
+      var left = parse(tokens, at);
+      var right = parse(tokens, at);
+      return new IndexTerm(token, 0, left, right);
+    }
+
+    /** Natural index arithmetic; null when an operation has no natural value. */
+    Long evaluate(Map<Integer, Long> fields) {
+      if (kind.equals("c")) return value;
+      if (kind.equals("f")) return fields.get((int) value);
+      Long x = left.evaluate(fields), y = right.evaluate(fields);
+      if (x == null || y == null) return null;
+      var a = java.math.BigInteger.valueOf(x);
+      var b = java.math.BigInteger.valueOf(y);
+      java.math.BigInteger result =
+          switch (kind) {
+            case "+" -> a.add(b);
+            case "-" -> x >= y ? a.subtract(b) : null;
+            case "*" -> a.multiply(b);
+            case "div" -> y > 0 ? a.divide(b) : null;
+            case "mod" -> y > 0 ? a.mod(b) : null;
+            default -> y <= 64 ? a.pow((int) (long) y) : null;
+          };
+      return result == null || result.bitLength() > 63 ? null : result.longValue();
+    }
+
+    void fields(List<Integer> into) {
+      if (kind.equals("f")) {
+        if (!into.contains((int) value)) into.add((int) value);
+      } else if (left != null) {
+        left.fields(into);
+        right.fields(into);
+      }
+    }
+  }
+
+  private record IndexGuard(String relation, IndexTerm left, IndexTerm right) {
+    boolean holds(Map<Integer, Long> fields) {
+      Long x = left.evaluate(fields), y = right.evaluate(fields);
+      if (x == null || y == null) return false;
+      return relation.equals("==") ? x.longValue() == y.longValue() : x >= y;
+    }
+  }
+
+  private record IndexEquation(IndexTerm term, List<IndexGuard> guards, List<Integer> positions) {}
+
+  private record IndexSolution(long value, Map<Integer, Long> assignment) {}
 
   private static final class Indexed {
     private final LawSpecSchema schema;
     private final int bits;
     private final int budget;
-    private final Map<String, long[]> equations;
+    private final long limit;
+    private final Map<String, List<String>> equations;
     private final Builder builder;
-    private final Map<List<Object>, Boolean> reachable = new HashMap<>();
-    private final java.util.Set<List<Object>> visiting = new java.util.HashSet<>();
+    private final Map<String, IndexEquation> parsed = new HashMap<>();
+    private final List<Named> families = new ArrayList<>();
+    final java.util.Set<List<Object>> reach = new java.util.HashSet<>();
+    private final Map<List<Object>, List<Map<Integer, Long>>> solutions = new HashMap<>();
     private final Map<List<Object>, Generator<Value>> generators = new HashMap<>();
 
     Indexed(
         LawSpecSchema schema,
         int bits,
         int budget,
-        Map<String, long[]> equations,
+        long limit,
+        Map<String, List<String>> equations,
         Builder builder) {
       this.schema = schema;
       this.bits = bits;
       this.budget = budget;
+      this.limit = limit;
       this.equations = equations;
       this.builder = builder;
     }
 
-    private long[] equation(String tag) {
-      var found = equations.get(tag);
-      if (found == null) throw new IllegalArgumentException("missing index equation for " + tag);
-      return found;
+    private IndexEquation equation(String tag) {
+      return parsed.computeIfAbsent(tag, ignored -> {
+        var texts = equations.get(tag);
+        if (texts == null || texts.isEmpty()) {
+          throw new IllegalArgumentException("missing index equation for " + tag);
+        }
+        var tokens = texts.get(0).split(" ");
+        var at = new int[] {0};
+        var term = IndexTerm.parse(tokens, at);
+        if (at[0] != tokens.length) throw new IllegalArgumentException("malformed index term");
+        var positions = new ArrayList<Integer>();
+        term.fields(positions);
+        var guards = new ArrayList<IndexGuard>();
+        for (var text : texts.subList(1, texts.size())) {
+          var parts = text.split(" ");
+          if (!parts[0].equals("==") && !parts[0].equals(">=")) {
+            throw new IllegalArgumentException("malformed index guard");
+          }
+          var position = new int[] {1};
+          var left = IndexTerm.parse(parts, position);
+          var right = IndexTerm.parse(parts, position);
+          left.fields(positions);
+          right.fields(positions);
+          guards.add(new IndexGuard(parts[0], left, right));
+        }
+        return new IndexEquation(term, guards, positions);
+      });
     }
 
-    private List<Integer> positions(long[] equation) {
-      var result = new ArrayList<Integer>();
-      for (int i = 1; i < equation.length; i++) result.add((int) equation[i]);
-      return result;
-    }
-
-    private boolean plainFields(List<LawSpecSchema.Field> fields, List<Integer> positions) {
+    private boolean plainFields(Named type, String tag) {
+      var fields = schema.fields(type, tag);
+      var positions = equation(tag).positions();
       for (int i = 0; i < fields.size(); i++) {
         if (!positions.contains(i) && !builder.canGenerate((Named) fields.get(i).type(), budget)) {
           return false;
@@ -172,40 +274,72 @@ public final class LawSpecDataStrategies {
       return true;
     }
 
-    private boolean feasible(Named type, String tag, long k) {
-      var equation = equation(tag);
-      long rest = k - equation[0];
+    /** Every guard-satisfying assignment of reachable indices to the index fields. */
+    private List<IndexSolution> assignments(Named type, String tag) {
+      var found = equation(tag);
       var fields = schema.fields(type, tag);
-      var positions = positions(equation);
-      if (rest < 0 || !plainFields(fields, positions)) return false;
-      var types = positions.stream().map(p -> (Named) fields.get(p).type()).toList();
-      return types.isEmpty() ? rest == 0 : splittable(types, rest);
+      var results = new ArrayList<IndexSolution>();
+      extend(found, fields, 0, new HashMap<>(), results);
+      return results;
     }
 
-    private boolean reachable(Named type, long k) {
-      var key = List.<Object>of(type, k);
-      if (reachable.containsKey(key)) return reachable.get(key);
-      if (!visiting.add(key)) return false;
-      boolean result = false;
-      for (var tag : schema.constructors(type)) {
-        if (feasible(type, tag, k)) {
-          result = true;
-          break;
+    private void extend(
+        IndexEquation found,
+        List<LawSpecSchema.Field> fields,
+        int at,
+        Map<Integer, Long> current,
+        List<IndexSolution> results) {
+      if (at == found.positions().size()) {
+        for (var guard : found.guards()) if (!guard.holds(current)) return;
+        Long value = found.term().evaluate(current);
+        if (value != null && value <= limit) results.add(new IndexSolution(value, Map.copyOf(current)));
+        return;
+      }
+      int position = found.positions().get(at);
+      var fieldType = (Named) fields.get(position).type();
+      for (long value = 0; value <= limit; value++) {
+        if (reach.contains(List.<Object>of(fieldType, value))) {
+          current.put(position, value);
+          extend(found, fields, at + 1, current, results);
         }
       }
-      visiting.remove(key);
-      reachable.put(key, result);
-      return result;
+      current.remove(position);
     }
 
-    private boolean splittable(List<Named> types, long rest) {
-      if (types.size() == 1) return reachable(types.get(0), rest);
-      for (long first = 0; first <= rest; first++) {
-        if (reachable(types.get(0), first) && splittable(types.subList(1, types.size()), rest - first)) {
-          return true;
+    void explore(Named root) {
+      var pending = new ArrayList<Named>(List.of(root));
+      while (!pending.isEmpty()) {
+        var type = pending.remove(pending.size() - 1);
+        if (families.contains(type)) continue;
+        families.add(type);
+        for (var tag : schema.constructors(type)) {
+          var fields = schema.fields(type, tag);
+          for (int position : equation(tag).positions()) {
+            pending.add((Named) fields.get(position).type());
+          }
         }
       }
-      return false;
+      boolean grown = true;
+      while (grown) {
+        var next = new java.util.HashSet<List<Object>>();
+        for (var type : families) {
+          for (var tag : schema.constructors(type)) {
+            if (!plainFields(type, tag)) continue;
+            for (var solution : assignments(type, tag)) {
+              next.add(List.<Object>of(type, solution.value()));
+            }
+          }
+        }
+        grown = reach.addAll(next);
+      }
+    }
+
+    private List<Map<Integer, Long>> solve(Named type, String tag, long k) {
+      return solutions.computeIfAbsent(List.<Object>of(type, tag, k), ignored ->
+          assignments(type, tag).stream()
+              .filter(solution -> solution.value() == k)
+              .map(IndexSolution::assignment)
+              .toList());
     }
 
     Generator<Value> generate(Named type, long k) {
@@ -213,35 +347,20 @@ public final class LawSpecDataStrategies {
       if (generators.containsKey(key)) return generators.get(key);
       var variants = new ArrayList<Generator<Value>>();
       for (var tag : schema.constructors(type)) {
-        if (!feasible(type, tag, k)) continue;
-        var equation = equation(tag);
+        if (!plainFields(type, tag)) continue;
+        var choices = solve(type, tag, k);
+        if (choices.isEmpty()) continue;
         var fields = schema.fields(type, tag);
-        var positions = positions(equation);
-        long rest = k - equation[0];
         variants.add(
             Generator.from(
                 environment -> {
-                  var targets = new ArrayList<Long>();
-                  long remaining = rest;
-                  for (int i = 0; i < positions.size(); i++) {
-                    var types = positions.subList(i, positions.size()).stream()
-                        .map(p -> (Named) fields.get(p).type()).toList();
-                    long left = remaining;
-                    long first = i == positions.size() - 1 ? remaining
-                        : environment.generate(
-                            Generator.integers(0, (int) Math.min(Integer.MAX_VALUE, left))
-                                .suchThat(
-                                    choice -> reachable(types.get(0), choice)
-                                        && splittable(types.subList(1, types.size()), left - choice)));
-                    targets.add(first);
-                    remaining -= first;
-                  }
+                  var targets = environment.generate(Generator.sampledFrom(choices));
                   var values = new ArrayList<Value>();
                   for (int i = 0; i < fields.size(); i++) {
                     var fieldType = (Named) fields.get(i).type();
-                    int position = positions.indexOf(i);
-                    values.add(environment.generate(position >= 0
-                        ? generate(fieldType, targets.get(position))
+                    Long target = targets.get(i);
+                    values.add(environment.generate(target != null
+                        ? generate(fieldType, target)
                         : builder.generate(fieldType, budget)));
                   }
                   return schema.construct(type, tag, values, bits);

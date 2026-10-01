@@ -131,6 +131,14 @@ emitRustData layout declarations = do
           markerType = "std::marker::PhantomData<(" ++ concatMap (++ ",") phantom ++ ")>"
           generic = applied name parameterNames
           implHead bound = "impl" ++ (if null parameters then "" else "<" ++ intercalate ", " [n ++ ": ls::" ++ bound | n <- parameterNames] ++ ">") ++ " ls::" ++ bound ++ " for " ++ generic ++ " "
+          existentials = concatMap C.constructorExistentials variants
+          mentionsExistential ty = case ty of
+            C.TypeVariable v -> v `elem` existentials
+            C.Constructor _ args -> or [mentionsExistential t | C.TypeArgument t <- args]
+            C.Arrow a b -> mentionsExistential a || mentionsExistential b
+          -- A GADT case's existential fields hold checked dynamic values: an
+          -- enum cannot introduce types of its own per variant.
+          fieldType ty | mentionsExistential ty = Right "ls::Value"
           fieldType ty = case ty of
             C.Constructor n _ | n `elem` map fst names && any (reaches owner []) (inlineNames ty) ->
               (\t -> "std::boxed::Box<" ++ t ++ ">") <$> typeTextScoped "" names parameters ty

@@ -1,0 +1,6 @@
+@@ src/Example/Gadt.hs
+<<<<<<<
+fold = Data.ExprNumber . evalNumber
+=======
+fold _ = Data.ExprNumber 0
+>>>>>>>

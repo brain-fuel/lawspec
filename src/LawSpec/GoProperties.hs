@@ -124,9 +124,9 @@ emitTests Config{..} unit laws = do
                 [text "_lawspecSchema",reference ty,number machineBits,number nodeBudget,
                  expr (indexedTarget indexed),
                  -- Go requires trailing commas across lines; keep the table on one line.
-                 text "map[string][]int64{" <> D.joinWith (text ", ")
-                   [quoted (C.idText tag) <> text ": {" <> D.joinWith (text ", ") (map number (constant : map toInteger positions)) <> text "}"
-                   | (tag,constant,positions) <- indexedEquations indexed] <> text "}",
+                 text "map[string][]string{" <> D.joinWith (text ", ")
+                   [quoted (C.idText tag) <> text ": {" <> D.joinWith (text ", ") (map quoted texts) <> text "}"
+                   | (tag,texts) <- indexedEquations indexed] <> text "}",
                  text "_lawspecScalarGenerator"]
               [] -> call "lsCheckedDataStrategyWithAttempts" $
                 [text "_lawspecSchema",reference ty,number machineBits,number nodeBudget,number (maxAttempts (generation e)),

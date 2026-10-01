@@ -1,0 +1,6 @@
+@@ src/main/java/example/Gadt.java
+<<<<<<<
+      case Expr.Plus plus -> evalNumber(plus.left()).add(evalNumber(plus.right()));
+=======
+      case Expr.Plus plus -> evalNumber(plus.left()).subtract(evalNumber(plus.right()));
+>>>>>>>

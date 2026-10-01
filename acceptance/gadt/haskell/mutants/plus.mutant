@@ -1,0 +1,6 @@
+@@ src/Example/Gadt.hs
+<<<<<<<
+evalNumber (Data.ExprPlus left right) = evalNumber left + evalNumber right
+=======
+evalNumber (Data.ExprPlus left right) = evalNumber left - evalNumber right
+>>>>>>>

@@ -1,5 +1,6 @@
 package lawspec.runtime;
 
+import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -59,15 +60,125 @@ public final class LawSpecSchema {
 
   public record Rejected(String reason) implements ValueCheck {}
 
-  public record Constructor(String tag, List<Field> fields, List<FieldPredicate> predicates) {
+  /**
+   * A constructor; an indexed family's constructor also lists its index terms then its guards, in
+   * prefix notation over field indices, and validation checks the guards.
+   */
+  public record Constructor(
+      String tag,
+      List<Field> fields,
+      List<FieldPredicate> predicates,
+      List<String> indices,
+      List<Refinement> refinements,
+      int existentials) {
     public Constructor {
       fields = List.copyOf(fields);
       predicates = List.copyOf(predicates);
+      indices = List.copyOf(indices);
+      refinements = List.copyOf(refinements);
+    }
+
+    public Constructor(
+        String tag, List<Field> fields, List<FieldPredicate> predicates, List<String> indices) {
+      this(tag, fields, predicates, indices, List.of(), 0);
+    }
+
+    public Constructor(String tag, List<Field> fields, List<FieldPredicate> predicates) {
+      this(tag, fields, predicates, List.of(), List.of(), 0);
     }
 
     public Constructor(String tag, List<Field> fields) {
-      this(tag, fields, List.of());
+      this(tag, fields, List.of(), List.of(), List.of(), 0);
     }
+  }
+
+  /**
+   * A GADT constructor fixes a parameter to a pattern; its existentials are the parameters
+   * numbered after the definition's own.
+   */
+  public record Refinement(int parameter, TypeRef pattern) {}
+
+  /** A prefix index term: kind is "c", "f" or an operator. */
+  private record IndexTerm(
+      String kind, BigInteger value, int position, int index, IndexTerm left, IndexTerm right) {
+    static IndexTerm parse(String[] tokens, int[] at) {
+      if (at[0] >= tokens.length) throw new IllegalArgumentException("malformed index term");
+      String token = tokens[at[0]++];
+      if (token.startsWith("c")) {
+        return new IndexTerm("c", new BigInteger(token.substring(1)), 0, 0, null, null);
+      }
+      if (token.startsWith("f")) {
+        var parts = token.substring(1).split("\\.");
+        return new IndexTerm(
+            "f",
+            null,
+            Integer.parseInt(parts[0]),
+            parts.length > 1 ? Integer.parseInt(parts[1]) : 0,
+            null,
+            null);
+      }
+      var left = parse(tokens, at);
+      var right = parse(tokens, at);
+      return new IndexTerm(token, null, 0, 0, left, right);
+    }
+
+    /** Natural index arithmetic; null when an operation has no natural value. */
+    BigInteger evaluate(java.util.function.BiFunction<Integer, Integer, BigInteger> field) {
+      if (kind.equals("c")) return value;
+      if (kind.equals("f")) return field.apply(position, index);
+      var x = left.evaluate(field);
+      var y = right.evaluate(field);
+      if (x == null || y == null) return null;
+      return switch (kind) {
+        case "+" -> x.add(y);
+        case "-" -> x.compareTo(y) >= 0 ? x.subtract(y) : null;
+        case "*" -> x.multiply(y);
+        case "div" -> y.signum() > 0 ? x.divide(y) : null;
+        case "mod" -> y.signum() > 0 ? x.mod(y) : null;
+        case "^" -> y.compareTo(BigInteger.valueOf(64)) <= 0 ? x.pow(y.intValueExact()) : null;
+        default -> throw new IllegalArgumentException("malformed index term");
+      };
+    }
+  }
+
+  private static boolean isIndexGuard(String text) {
+    return text.startsWith("== ") || text.startsWith(">= ");
+  }
+
+  private void checkIndices(Named type, Constructor constructor, List<Value> fields) {
+    var types = fields(type, constructor.tag());
+    for (var text : constructor.indices()) {
+      if (!isIndexGuard(text)) continue;
+      var tokens = text.split(" ");
+      var at = new int[] {1};
+      var left = IndexTerm.parse(tokens, at);
+      var right = IndexTerm.parse(tokens, at);
+      java.util.function.BiFunction<Integer, Integer, BigInteger> field =
+          (position, index) -> indexOf((Named) types.get(position).type(), fields.get(position), index);
+      var x = left.evaluate(field);
+      var y = right.evaluate(field);
+      boolean holds =
+          x != null && y != null && (tokens[0].equals("==") ? x.equals(y) : x.compareTo(y) >= 0);
+      if (!holds) {
+        throw new RefinementViolation(constructor.tag() + ": index guard " + text + " failed");
+      }
+    }
+  }
+
+  private BigInteger indexOf(Named type, Value value, int index) {
+    var data = (Data) value.data();
+    var constructor =
+        definitions.get(type.name()).constructors().stream()
+            .filter(candidate -> candidate.tag().equals(data.tag()))
+            .findFirst()
+            .orElseThrow();
+    var terms = constructor.indices().stream().filter(text -> !isIndexGuard(text)).toList();
+    if (index >= terms.size()) throw new IllegalArgumentException("no index for " + type.name());
+    var types = fields(type, data.tag());
+    return IndexTerm.parse(terms.get(index).split(" "), new int[] {0})
+        .evaluate(
+            (position, child) ->
+                indexOf((Named) types.get(position).type(), data.fields().get(position), child));
   }
 
   public record Definition(String name, int parameters, List<Constructor> constructors) {
@@ -135,7 +246,7 @@ public final class LawSpecSchema {
         var names = new HashSet<String>();
         for (var field : constructor.fields()) {
           if (!names.add(field.name())) throw new IllegalArgumentException("duplicate field name");
-          checkType(field.type(), definition.parameters());
+          checkType(field.type(), definition.parameters() + constructor.existentials());
         }
       }
     }
@@ -165,6 +276,59 @@ public final class LawSpecSchema {
     for (var argument : named.arguments()) checkType(argument, parameters);
   }
 
+  /** A constructor field's type at an instantiated type, with its existentials substituted. */
+  public Named fieldType(Named type, String tag, int index) {
+    return (Named) fields(type, tag).get(index).type();
+  }
+
+  /** Generated GADT codecs build cases whose refined types the schema has already checked. */
+  @SuppressWarnings("unchecked")
+  public static <T> T cast(Object value) {
+    return (T) value;
+  }
+
+  /**
+   * Arguments extended with the existentials a constructor's refinements bind; null when the
+   * refinements do not match.
+   */
+  private static List<TypeRef> refine(
+      Constructor constructor, List<TypeRef> arguments, int parameters) {
+    var bound = new HashMap<Integer, TypeRef>();
+    for (var refinement : constructor.refinements()) {
+      if (!matches(refinement.pattern(), arguments.get(refinement.parameter()), arguments, parameters, bound)) {
+        return null;
+      }
+    }
+    var extended = new ArrayList<TypeRef>(arguments);
+    for (int k = 0; k < constructor.existentials(); k++) extended.add(bound.get(parameters + k));
+    return extended;
+  }
+
+  private static boolean matches(
+      TypeRef pattern,
+      TypeRef actual,
+      List<TypeRef> arguments,
+      int parameters,
+      Map<Integer, TypeRef> bound) {
+    if (pattern instanceof Parameter parameter) {
+      if (parameter.index() < parameters) return arguments.get(parameter.index()).equals(actual);
+      var previous = bound.putIfAbsent(parameter.index(), actual);
+      return previous == null || previous.equals(actual);
+    }
+    var named = (Named) pattern;
+    if (!(actual instanceof Named other)
+        || !named.name().equals(other.name())
+        || named.arguments().size() != other.arguments().size()) {
+      return false;
+    }
+    for (int i = 0; i < named.arguments().size(); i++) {
+      if (!matches(named.arguments().get(i), other.arguments().get(i), arguments, parameters, bound)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
   public TypeRef substitute(TypeRef type, List<TypeRef> arguments) {
     if (type instanceof Parameter variable) {
       if (variable.index() >= arguments.size())
@@ -186,7 +350,10 @@ public final class LawSpecSchema {
     checkType(type, 0);
     var definition = definitions.get(type.name());
     if (definition != null)
-      return definition.constructors().stream().map(Constructor::tag).toList();
+      return definition.constructors().stream()
+          .filter(constructor -> refine(constructor, type.arguments(), definition.parameters()) != null)
+          .map(Constructor::tag)
+          .toList();
     return switch (type.name()) {
       case "Maybe" -> List.of("Maybe::Nothing", "Maybe::Just");
       case "Either" -> List.of("Either::Left", "Either::Right");
@@ -199,10 +366,16 @@ public final class LawSpecSchema {
     var definition = definitions.get(type.name());
     if (definition != null) {
       for (var constructor : definition.constructors()) {
-        if (constructor.tag().equals(tag))
+        if (constructor.tag().equals(tag)) {
+          var arguments = refine(constructor, type.arguments(), definition.parameters());
+          if (arguments == null) {
+            throw new IllegalArgumentException(
+                "constructor " + tag + " is not a value of " + key(type));
+          }
           return constructor.fields().stream()
-              .map(field -> new Field(field.name(), substitute(field.type(), type.arguments())))
+              .map(field -> new Field(field.name(), substitute(field.type(), arguments)))
               .toList();
+        }
       }
     } else if (type.name().equals("Maybe")) {
       if (tag.equals("Maybe::Nothing")) return List.of();
@@ -383,6 +556,7 @@ public final class LawSpecSchema {
           }
           if (!accepted) throw new RefinementViolation(context + " failed");
         }
+        checkIndices(type, constructor, logical);
       }
       return new Value(key(type), new Data(data.tag(), checked));
     }

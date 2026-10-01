@@ -66,7 +66,7 @@ emitPythonDefinitions layout bits declarations units = do
                 (map (local . binderId) (definitionArguments d)) ++
                 [(binderId (contractResult c),"checked_result")] ++
                 [(binderId b,"contract_value_" ++ show i) | (i,b) <- zip [0::Int ..]
-                  (concatMap nestedBinders (contractPreconditions c ++ contractPostconditions c))]
+                  (concatMap nestedBinders (contractPreconditions c ++ contractPostconditions c ++ contractRuntimePostconditions c))]
               resolve identity = maybe (error "unbound definition contract binder") id (lookup identity aliases)
               require stage predicate = do
                 expression <- E.renderExpression declarations bits resolve external predicate

@@ -298,8 +298,11 @@ scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions 
         pure (assign (inputId input) (method (text "_draw") "draw" [strategy])))
         (generationPlan e)
       let predicate = conjunction (map render (concatMap inputRefinements (inputs e)))
+      -- Solving an index table is a one-time cost of the first example, so
+      -- index-directed properties have no per-example deadline.
+      let deadline = [text "deadline=None" | any ((/= Nothing) . generatorIndex) (generationPlan e)]
       pure (pythonProperty prefix
-        [invoke "settings" [text ("max_examples=" ++ show (cases (generation e)))],
+        [invoke "settings" (text ("max_examples=" ++ show (cases (generation e))) : deadline),
          invoke "given" [invoke "st.data" []]] ["_draw"]
         (statements (freshSymbols : draws ++ [statement (invoke "assume" [predicate]),body])))
     contextStrategy e plan = do
@@ -325,10 +328,9 @@ scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions 
             maybe [] (pure . indexDoc) (generatorIndex plan)))
     -- Index-directed generation: the target is evaluated from earlier draws.
     indexDoc indexed =
-      let equation (tag,constant,positions) = (quoted (C.idText tag),
-            if py then Doc.delimitTrailing 4 "(" ")" [text (show constant),
-              Doc.delimitTrailing 4 "(" ")" (map (text . show) positions ++ [mempty | length positions == 1])]
-            else array [text (show constant),array (map (text . show) positions)])
+      let equation (tag,texts) = (quoted (C.idText tag),
+            if py then Doc.delimitTrailing 4 "(" ")" (map quoted texts ++ [mempty | length texts == 1])
+            else array (map quoted texts))
           table = Doc.delimitTrailing 4 "{" "}"
             [key <> text ": " <> value | (key,value) <- map equation (indexedEquations indexed)]
           pair = if py then Doc.delimitTrailing 4 "(" ")" [render (indexedTarget indexed),table]

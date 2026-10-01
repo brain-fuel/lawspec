@@ -132,9 +132,8 @@ emitTests Config{..} unit laws = do
                   [] | Just indexed <- generatorIndex plan -> call "LawSpecKotlinStrategies.indexedGenerator"
                     [text "_schema",reference ty,number machineBits,number nodeBudget,text "symbols",
                      expr (indexedTarget indexed),
-                     call "mapOf" [quoted (C.idText tag) <> text " to " <>
-                       call "longArrayOf" (map number (constant : map toInteger positions))
-                       | (tag,constant,positions) <- indexedEquations indexed],
+                     call "mapOf" [quoted (C.idText tag) <> text " to " <> call "listOf" (map quoted texts)
+                       | (tag,texts) <- indexedEquations indexed],
                      text "::_lawspecScalarGenerator"]
                   [] -> call "LawSpecKotlinStrategies.checkedGenerator" $
                     [text "_schema",reference ty,number machineBits,number nodeBudget,

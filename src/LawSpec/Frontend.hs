@@ -8,6 +8,7 @@ import LawSpec.Common
 import LawSpec.Data (elaborateDataDeclarationsWithProfile)
 import LawSpec.Elaboration (coreType, elaborateExpression, elaborateResolvedWithData, equationWithData, binaryOp, elaborateDefinitionUnit, elaborateContract)
 import LawSpec.Core.Validate (validateProgram)
+import LawSpec.Core.Total (deferProgramPostconditions)
 import Control.Monad (forM)
 
 compileCore :: Int -> Generation -> [Source] -> Either [Diagnostic] C.Program
@@ -18,7 +19,9 @@ compileCore bits settings sources = do
 elaborate :: Int -> [S.Unit] -> [S.Expanded] -> Either [Diagnostic] C.Program
 elaborate bits units properties = do
   dataDeclarations <- elaborateDataDeclarationsWithProfile bits units
-  core <- C.Program bits dataDeclarations <$> mapM (unit dataDeclarations) units
+  elaborated <- C.Program bits dataDeclarations <$> mapM (unit dataDeclarations) units
+  -- Postconditions over non-linear index arithmetic become runtime checks.
+  core <- deferProgramPostconditions elaborated
   validateProgram core
   pure core
   where

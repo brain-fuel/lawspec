@@ -2,14 +2,15 @@
 -- lossless leaves; algebraic constructors never share absence representations.
 module LawSpec.Core.Value
   ( Value(..), fromScalarValue, toScalarValue, validateValue, validateValueWith, ValueCheck(..), checkValueWith
-  , equalValues, listValue, listItems
+  , equalValues, listValue, listItems, valueIndex
   ) where
 
 import Control.Monad (unless, zipWithM)
 import Control.Monad.Trans.Class (lift)
 import Control.Monad.Trans.Except (ExceptT, runExceptT, throwE)
-import LawSpec.Core (Type(..), Argument(..), Id(..), Expr, binderId, binderType)
-import LawSpec.Core.Types (TypeRegistry, checkType, constructorFieldsFor, constructorPredicatesFor)
+import LawSpec.Core (Type(..), Argument(..), Id(..), Expr, binderId, binderType, dataIndex)
+import LawSpec.Core.Types (TypeRegistry, checkType, constructorFieldsFor, constructorPredicatesFor, lookupData)
+import LawSpec.IndexTerm (FamilyIndex(..), ConstructorIndex(..), evaluateIndex, guardHolds)
 import LawSpec.Core.Semantics (binaryValue)
 import LawSpec.Scalar
 
@@ -83,7 +84,33 @@ checkValueWith evaluate registry bits expected value =
               ScalarValue (SBool True) -> pure ()
               ScalarValue (SBool False) -> throwE (idText tag ++ ": field refinement failed")
               _ -> lift (Left (idText tag ++ ": field refinement did not produce Bool"))) predicates
+          let field position index = case drop position checked of
+                child : _ -> valueIndex registry child index
+                [] -> Nothing
+          unless (all (guardHolds field) (indexGuards actual tag))
+            (throwE (idText tag ++ ": index guard failed"))
           pure (DataValue actual tag checked)
+    indexGuards actual tag = case actual of
+      Constructor name _ | Right declaration <- lookupData registry (Id name)
+                         , Just family <- dataIndex declaration
+                         , Just (ConstructorIndex _ guards) <- lookup (idText tag) (familyIndexConstructors family) -> guards
+      _ -> []
+
+-- An indexed family's index of a value, recomputed from its constructor's
+-- term; Nothing when the value is not of an indexed family or has no value.
+valueIndex :: TypeRegistry -> Value -> Int -> Maybe Integer
+valueIndex registry value index = case value of
+  DataValue (Constructor name _) tag fields -> do
+    declaration <- either (const Nothing) Just (lookupData registry (Id name))
+    family <- dataIndex declaration
+    ConstructorIndex terms _ <- lookup (idText tag) (familyIndexConstructors family)
+    term <- case drop index terms of
+      t : _ -> Just t
+      [] -> Nothing
+    evaluateIndex (\position child -> case drop position fields of
+      v : _ -> valueIndex registry v child
+      [] -> Nothing) term
+  _ -> Nothing
 
 -- Do not use derived Eq for language equality: float NaNs and Symbol identity
 -- retain their scalar semantics inside any number of constructors or wrappers.

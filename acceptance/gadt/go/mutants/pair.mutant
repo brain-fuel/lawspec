@@ -1,0 +1,6 @@
+@@ example/gadt/adapter.go
+<<<<<<<
+		Second: EvalTruth(truths.toNative(both.Second)),
+=======
+		Second: !EvalTruth(truths.toNative(both.Second)),
+>>>>>>>

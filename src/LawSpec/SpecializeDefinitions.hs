@@ -3,7 +3,7 @@
 module LawSpec.SpecializeDefinitions (specializeDefinitions) where
 
 import Control.Monad.State.Strict
-import Control.Monad (forM, forM_, unless, foldM)
+import Control.Monad (forM, forM_, unless, when, foldM)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as Set
 import Data.List (sortOn, foldl')
@@ -121,6 +121,12 @@ specializeDefinitions declarations bits satisfies units properties = do
           case existing of
             Just (Instance generated _ _ _) -> pure generated
             Nothing -> do
+              -- Polymorphic recursion may instantiate a definition at new type
+              -- arguments; a recursion that keeps growing them never ends.
+              siblings <- gets (length . filter ((== name) . fst) . M.keys . instances)
+              when (siblings >= 64 || length (show concrete) > 4000)
+                (lift (Left ("definition " ++ name ++ " needs unboundedly many instances; " ++
+                  "polymorphic recursion must not grow its type arguments")))
               template <- lift $ maybe (Left ("unknown definition: " ++ name)) Right
                 (lookup name [(functionName d,d) | d <- definitions])
               substitutions <- lift (match M.empty (baseType (definitionType template)) (baseType concrete))
@@ -163,12 +169,13 @@ specializeDefinitions declarations bits satisfies units properties = do
           pending <- gets (filter (\(_,Instance _ _ _ done) -> not done) . M.toAscList . instances)
           case pending of
             [] -> pure ()
-            ((key@(originalName,_),Instance generated definition attached _):_) -> do
+            ((key,Instance generated definition attached _):_) -> do
               -- Mark before visiting calls, so direct recursion reuses this entry.
               modify (\state -> state{instances=M.insert key (Instance generated definition attached True) (instances state)})
+              -- The definition stays polymorphic in its own body: a recursive
+              -- call at other type arguments specializes another instance.
               let locals = Set.fromList (map fst (functionArguments definition))
-                  scope = M.union (monoEnvironment (functionArguments definition))
-                    (M.insert originalName (Monomorphic (definitionType definition)) environment)
+                  scope = M.union (monoEnvironment (functionArguments definition)) environment
               body <- rewrite scope locals (Annotate (functionBody definition) (baseType (functionResult definition)))
               boundary <- mapM contract attached
               let lowered = definition{functionBody=body,

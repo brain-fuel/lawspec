@@ -1,0 +1,6 @@
+@@ src/example/arithmetic.py
+<<<<<<<
+    return data.Pairs(value0)
+=======
+    return data.Pairs(data.RowCell(0, value0))
+>>>>>>>

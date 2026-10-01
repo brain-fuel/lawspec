@@ -1,0 +1,6 @@
+@@ example/gadt/adapter.go
+<<<<<<<
+		return new(big.Int).Add(EvalNumber(e.Left), EvalNumber(e.Right))
+=======
+		return new(big.Int).Sub(EvalNumber(e.Left), EvalNumber(e.Right))
+>>>>>>>

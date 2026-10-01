@@ -1,0 +1,6 @@
+@@ src/example/arithmetic.rs
+<<<<<<<
+Pairs { items: value0 }
+=======
+Pairs { items: Row::Cell { head: 0, tail: Box::new(value0) } }
+>>>>>>>

@@ -1,0 +1,6 @@
+@@ src/example/arithmetic.ts
+<<<<<<<
+new data.Pairs(value0)
+=======
+new data.Pairs(new data.RowCell(0, value0))
+>>>>>>>

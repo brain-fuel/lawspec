@@ -1,0 +1,6 @@
+@@ src/example/gadt.rs
+<<<<<<<
+    Expr::Number { value: evalNumber(value0), _lawspec_marker: std::marker::PhantomData }
+=======
+    Expr::Number { value: ls::BigInt::from(0), _lawspec_marker: std::marker::PhantomData }
+>>>>>>>

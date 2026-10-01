@@ -1,0 +1,6 @@
+@@ src/example/gadt.rs
+<<<<<<<
+        Expr::Negate { operand, .. } => !evalTruth(*operand),
+=======
+        Expr::Negate { operand, .. } => evalTruth(*operand),
+>>>>>>>

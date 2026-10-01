@@ -5,7 +5,7 @@ module LawSpecDataStrategies
 
 import Control.Monad (unless, when, foldM)
 import Control.Monad.State.Strict (StateT, evalStateT, get, modify, lift)
-import Data.List (elemIndex, nub)
+import Data.List (nub)
 import Data.Maybe (catMaybes)
 import Numeric (showHex)
 import Data.Char (chr)
@@ -229,27 +229,84 @@ buildStrategyWith factories schema reference bits budget scalar finish = do
         Just generator -> pure
           (LS.SList <$> Gen.list (Range.singleton count) generator)
 
--- Values whose linear structural measure equals the target. Each constructor's
--- equation holds its constant and the positions of recursive fields whose
--- measures it adds, so the target is solved backwards and split across those
--- fields. Reachability is a least fixpoint per index level; generation never
--- filters, and Gen.element shrinks each choice toward the first alternative.
+-- Values whose structural index equals the target. Each constructor carries
+-- its index term then its guards, in prefix notation over field indices
+-- (f<i>), literals (c<n>) and + - * div mod ^, with == and >= guards. Indices
+-- are naturals: subtraction never goes below zero. Reachability is a forward
+-- least fixpoint over levels 0..target+slack, so children may exceed their
+-- parent's index; generation then solves the target backwards, never filters,
+-- and Gen.element shrinks each choice toward smaller field indices.
+data IndexTerm = IndexConstant Integer | IndexField Int | IndexOp String IndexTerm IndexTerm
+
+parseIndexTerm :: [String] -> Either String (IndexTerm, [String])
+parseIndexTerm tokens = case tokens of
+  ('c' : digits) : rest -> Right (IndexConstant (read digits), rest)
+  ('f' : digits) : rest -> Right (IndexField (read digits), rest)
+  op : rest | op `elem` ["+", "-", "*", "div", "mod", "^"] -> do
+    (a, afterA) <- parseIndexTerm rest
+    (b, afterB) <- parseIndexTerm afterA
+    Right (IndexOp op a b, afterB)
+  _ -> Left "malformed index term"
+
+evalIndexTerm :: Map.Map Int Integer -> IndexTerm -> Maybe Integer
+evalIndexTerm fields term = case term of
+  IndexConstant n -> Just n
+  IndexField i -> Map.lookup i fields
+  IndexOp op a b -> do
+    x <- evalIndexTerm fields a
+    y <- evalIndexTerm fields b
+    case op of
+      "+" -> Just (x + y)
+      "-" | x >= y -> Just (x - y)
+      "*" -> Just (x * y)
+      "div" | y > 0 -> Just (x `div` y)
+      "mod" | y > 0 -> Just (x `mod` y)
+      "^" | y >= 0 && y <= 64 -> Just (x ^ y)
+      _ -> Nothing
+
+indexTermFields :: IndexTerm -> [Int]
+indexTermFields term = case term of
+  IndexField i -> [i]
+  IndexOp _ a b -> indexTermFields a ++ indexTermFields b
+  _ -> []
+
+indexSlack :: Integer
+indexSlack = 16
+
+indexChoices :: Int
+indexChoices = 6
+
 indexedStrategy :: S.Schema -> S.TypeRef -> Int -> Int -> LS.Scalar
-                -> [(String, (Integer, [Int]))]
+                -> [(String, [String])]
                 -> (String -> Either String (Gen LS.Scalar))
                 -> Either String (Gen LS.Scalar)
 indexedStrategy schema reference bits budget target equations scalar = do
-  k <- case target of
-    LS.SInteger _ n | n >= 0 -> Right n
-    _ -> Left "index target must be a natural number"
-  let details ty = do
+  requested <- case target of
+    LS.SInteger _ n -> Right n
+    _ -> Left "index target must be an integer"
+  let limit = max requested 0 + indexSlack
+      parse text = do
+        (term, rest) <- parseIndexTerm (words text)
+        unless (null rest) (Left "malformed index term")
+        Right term
+      guardOf text = case words text of
+        relation : rest | relation `elem` ["==", ">="] -> do
+          (a, afterA) <- parseIndexTerm rest
+          (b, afterB) <- parseIndexTerm afterA
+          unless (null afterB) (Left "malformed index guard")
+          Right (relation, a, b)
+        _ -> Left "malformed index guard"
+      details ty = do
         constructors <- S.constructors schema ty
         variants <- maybe (Left "indexed generation requires a data type") Right constructors
         mapM (\(S.Constructor tag fields) -> do
-          (constant, positions) <- maybe (Left ("missing index equation for " ++ tag))
-            Right (lookup tag equations)
-          pure (tag, fields, constant, positions)) variants
-      indexTypes (_, fields, _, positions) = [ty | (i, S.Field _ ty) <- zip [0 ..] fields, i `elem` positions]
+          texts <- maybe (Left ("missing index equation for " ++ tag)) Right (lookup tag equations)
+          (term, guards) <- case texts of
+            first : rest -> (,) <$> parse first <*> mapM guardOf rest
+            [] -> Left ("missing index equation for " ++ tag)
+          let positions = nub (indexTermFields term ++ concat [indexTermFields a ++ indexTermFields b | (_, a, b) <- guards])
+          pure (tag, fields, term, guards, positions)) variants
+      indexTypes (_, fields, _, _, positions) = [ty | (i, S.Field _ ty) <- zip [0 ..] fields, i `elem` positions]
       explore seen [] = pure seen
       explore seen (ty : rest)
         | ty `elem` map fst seen = explore seen rest
@@ -257,49 +314,55 @@ indexedStrategy schema reference bits budget target equations scalar = do
             variants <- details ty
             explore ((ty, variants) : seen) (concatMap indexTypes variants ++ rest)
   families <- explore [] [reference]
-  let plainFields (_, fields, _, positions) =
+  let plainFields (_, fields, _, _, positions) =
         [ty | (i, S.Field _ ty) <- zip [0 ..] fields, i `notElem` positions]
       plain = Map.fromList [(ty, either (const Nothing) Just
         (buildStrategy schema ty bits budget scalar (\_ _ -> id)))
         | ty <- nub (concatMap plainFields (concatMap snd families))]
       plainReady variant = all (\ty -> maybe False (const True)
         (Map.findWithDefault Nothing ty plain)) (plainFields variant)
-      feasible table j variant@(_, _, constant, _) =
-        let rest = j - constant
-            types = indexTypes variant
-        in rest >= 0 && plainReady variant &&
-           (if null types then rest == 0 else splittable table types rest)
-      splittable table [ty] rest = Map.findWithDefault False (ty, rest) table
-      splittable table (ty : types) rest =
-        or [Map.findWithDefault False (ty, first) table && splittable table types (rest - first)
-           | first <- [0 .. rest]]
-      splittable _ [] rest = rest == 0
-      level table j =
-        let step current =
-              let next = foldr (\(ty, variants) acc ->
-                    Map.insert (ty, j) (any (feasible current j) variants) acc) current families
-              in if next == current then current else step next
-        in step (foldr (\(ty, _) acc -> Map.insert (ty, j) False acc) table families)
-      table = foldl level Map.empty [0 .. k]
+      fieldType (_, fields, _, _, _) i = case drop i fields of
+        S.Field _ ty : _ -> ty
+        [] -> error "index field out of range"
+      -- Every assignment of reachable indices to the variant's index fields
+      -- that satisfies its guards, with the index it produces.
+      assignments table variant@(_, _, term, guards, positions) =
+        [ (value, assignment)
+        | assignment <- mapM (\i -> [(i, v) | v <- [0 .. limit],
+            Map.findWithDefault False (fieldType variant i, v) table]) positions
+        , let fields = Map.fromList assignment
+        , all (holds fields) guards
+        , Just value <- [evalIndexTerm fields term]
+        , value <= limit ]
+      holds fields (relation, a, b) = case (evalIndexTerm fields a, evalIndexTerm fields b) of
+        (Just x, Just y) -> if relation == "==" then x == y else x >= y
+        _ -> False
+      step table = foldr (\(ty, variants) acc -> foldr (\variant inner ->
+          if plainReady variant
+            then foldr (\(value, _) t -> Map.insert (ty, value) True t) inner (assignments table variant)
+            else inner) acc variants) table families
+      fixpoint table = let next = step table in if next == table then table else fixpoint next
+      table = fixpoint Map.empty
       variantsOf ty = maybe [] id (lookup ty families)
       generate ty j = do
-        let options = filter (feasible table j) (variantsOf ty)
-        variant@(tag, fields, constant, positions) <- Gen.element options
-        targets <- splits (indexTypes variant) (j - constant)
-        values <- mapM (\(i, S.Field _ fieldType) -> case elemIndex i positions of
-          Just position -> generate fieldType (targets !! position)
+        let options = [ (variant, choices) | variant <- variantsOf ty, plainReady variant
+                      , let choices = [assignment | (value, assignment) <- assignments table variant, value == j]
+                      , not (null choices) ]
+        ((tag, fields, _, _, _), choices) <- Gen.element options
+        assignment <- Gen.element choices
+        values <- mapM (\(i, S.Field _ ty) -> case lookup i assignment of
+          Just index -> generate ty index
           Nothing -> maybe (error "uninhabited field in indexed generation") id
-            (Map.findWithDefault Nothing fieldType plain)) (zip [0 ..] fields)
+            (Map.findWithDefault Nothing ty plain)) (zip [0 ..] fields)
         pure (LS.SData tag values)
-      splits [] _ = pure []
-      splits [_] rest = pure [rest]
-      splits (ty : types) rest = do
-        first <- Gen.element [first | first <- [0 .. rest],
-          Map.findWithDefault False (ty, first) table, splittable table types (rest - first)]
-        (first :) <$> splits types (rest - first)
-  unless (Map.findWithDefault False (reference, k) table)
-    (Left ("no value of " ++ show reference ++ " has index " ++ show k))
-  pure (either error id . S.validateWith Nothing schema reference bits <$> generate reference k)
+  -- An open target (negative), or one drawn from earlier inputs that breaks
+  -- their preconditions or names no value, generates from the smallest
+  -- reachable indices; an index claim rejects a mismatch.
+  let reachable level = Map.findWithDefault False (reference, level) table
+      levels = if reachable requested then [requested]
+        else take indexChoices (filter reachable [0 .. limit])
+  when (null levels) (Left ("no value of " ++ show reference ++ " has an index"))
+  pure (either error id . S.validateWith Nothing schema reference bits <$> (Gen.element levels >>= generate reference))
 
 -- Primitive shrinkers remain in Hedgehog: integers, lists, and IEEE bit words.
 primitiveStrategy :: Int -> String -> Either String (Gen LS.Scalar)

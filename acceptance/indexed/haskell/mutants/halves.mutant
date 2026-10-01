@@ -1,0 +1,6 @@
+@@ src/Example/Arithmetic.hs
+<<<<<<<
+duplicate row = Data.Halves row row
+=======
+duplicate row = Data.Halves row (Data.RowCell 0 row)
+>>>>>>>

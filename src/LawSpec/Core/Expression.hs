@@ -53,10 +53,13 @@ validateExpressionWithRegistry registry bits declarations scope expr@Expr{..} = 
       declaration <- case expressionTypeOf value of
         Constructor name _ -> Types.lookupData registry (Id name)
         _ -> Left "matching requires a data type"
+      -- A GADT constructor that cannot build this type has no branch.
+      compatible <- Types.compatibleConstructors registry (expressionTypeOf value)
       let tags = map caseConstructor cases
-          expected = map constructorId (dataConstructors declaration)
+          expected = map constructorId compatible
       unless (length tags == length (nub tags)) (Left "duplicate match constructor")
-      unless (all (`elem` expected) tags) (Left "foreign match constructor")
+      unless (all (`elem` map constructorId (dataConstructors declaration)) tags) (Left "foreign match constructor")
+      unless (all (`elem` expected) tags) (Left "inaccessible match constructor")
       unless (all (`elem` tags) expected) (Left "non-exhaustive match")
       mapM_ (validateCase (expressionTypeOf value)) cases
       pure expressionType

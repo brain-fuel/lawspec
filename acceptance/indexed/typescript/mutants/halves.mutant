@@ -1,0 +1,6 @@
+@@ src/example/arithmetic.ts
+<<<<<<<
+new data.Halves(value0, value0)
+=======
+new data.Halves(value0, new data.RowCell(0, value0))
+>>>>>>>

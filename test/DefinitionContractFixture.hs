@@ -21,7 +21,7 @@ make name body = Definition (Declaration (Id name) name (Arrow int (expressionTy
   [Binder (Id "bodyArgument") "value" int] body
 boundary d pre post = Contract (declarationId (definitionDeclaration d))
   [Binder (Id "contractArgument") "input" int]
-  (Binder (Id "contractResult") "output" (expressionType (definitionBody d))) pre post
+  (Binder (Id "contractResult") "output" (expressionType (definitionBody d))) pre post []
 x = local "bodyArgument" int
 arg = local "contractArgument" int
 

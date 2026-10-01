@@ -1,0 +1,6 @@
+@@ src/Example/Arithmetic.hs
+<<<<<<<
+size rows * size columns
+=======
+size rows + size columns
+>>>>>>>

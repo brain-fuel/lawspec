@@ -139,9 +139,8 @@ emitTests Config{..} unit laws = do
               [] | Just indexed <- generatorIndex plan -> E.checked (apply "Strategies.indexedStrategy"
                 [text "_lawspecSchema",reference ty,number machineBits,number nodeBudget,
                  expr (indexedTarget indexed),
-                 E.array [text "(" <> quoted (C.idText tag) <> text ", (" <> number constant <> text ", " <>
-                   E.array (map (number . toInteger) positions) <> text "))"
-                   | (tag,constant,positions) <- indexedEquations indexed],
+                 E.array [text "(" <> quoted (C.idText tag) <> text ", " <> E.array (map quoted texts) <> text ")"
+                   | (tag,texts) <- indexedEquations indexed],
                  apply "Strategies.primitiveStrategy" [number machineBits]])
               [] -> E.checked (apply (if nativeGenerators then "Strategies.checkedStrategyWith" else "Strategies.checkedStrategy")
                 ([apply "NativeGenerators.factories" [text "symbols",text "_lawspecSchema",number machineBits] | nativeGenerators] ++ [text "_lawspecSchema",reference ty,number machineBits,number nodeBudget,

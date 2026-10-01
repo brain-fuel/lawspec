@@ -72,14 +72,23 @@ emitPythonDataWithProfile bits layout declarations = do
                D.hardline <> D.text "return _builtins.object.__new__(cls)"))
       variants <- forM (C.dataConstructors declaration) $ \constructor -> do
         native <- lookupName names (C.constructorId constructor)
+        -- A GADT case is generic only in the parameters it leaves open and in
+        -- its existentials; its base class applies its refinements.
+        let existentials = zip (C.constructorExistentials constructor)
+              [candidate | n <- [0::Int ..], let candidate = "_E" ++ show n, candidate `notElem` map snd names]
+            scope = parameters ++ existentials
+            open = [D.text v | (p, v) <- parameters, p `notElem` map fst (C.constructorEquations constructor)] ++
+              map (D.text . snd) existentials
+        baseArgs <- forM parameters $ \(p, v) -> maybe (pure (D.text v)) (typeDoc "" names scope)
+          (lookup p (C.constructorEquations constructor))
         fields <- forM (C.constructorFields constructor) $ \field -> do
           identifier (C.binderName field)
           unless (take 2 (C.binderName field) /= "__") (Left "Python data fields cannot replace special methods")
-          ty <- typeDoc "" names parameters (C.binderType field)
+          ty <- typeDoc "" names scope (C.binderType field)
           pure (D.text (C.binderName field ++ ": ") <> ty)
         pure (D.text "@_dataclasses.dataclass(frozen=True, slots=True, eq=False)" <> D.hardline <>
-          suite (D.text "class " <> application native args <>
-            (if isProduct declaration then mempty else D.text "(" <> application name args <> D.text ")"))
+          suite (D.text "class " <> application native open <>
+            (if isProduct declaration then mempty else D.text "(" <> application name baseArgs <> D.text ")"))
             (if null fields then D.text "pass" else D.joinWith D.hardline fields))
       -- A product is a single dataclass named after its type.
       pure ([base | not (isProduct declaration)] ++ variants)
@@ -90,6 +99,10 @@ emitPythonDataWithProfile bits layout declarations = do
         pure (invoke "_schema.Constructor"
           ([D.text (q (S.constructorTag constructor)),
            array [invoke "_schema.Field" [D.text (q (S.fieldName field)),reference (S.fieldType field)] | field <- S.fields constructor],
-           D.text native] ++ [array predicates | not (null predicates)]))
+           D.text native] ++ [array predicates | not (null predicates)] ++
+           [D.text "indices=" <> array (map (D.text . q) (S.constructorIndex constructor)) | not (null (S.constructorIndex constructor))] ++
+           [D.text "refinements=" <> array [array [D.text (show index), reference pattern] | (index, pattern) <- S.constructorRefinements constructor]
+             | not (null (S.constructorRefinements constructor))] ++
+           [D.text ("existentials=" ++ show (S.constructorExistentials constructor)) | S.constructorExistentials constructor > 0]))
       pure (invoke "_schema.Definition"
         [D.text (q (S.typeName schema)), D.text (show (S.parameterCount schema)),array variants])

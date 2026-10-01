@@ -116,7 +116,7 @@ promote :: String -> String -> String -> Either String String
 promote op a b
   | not (isNumeric a && isNumeric b) = Left "arithmetic requires numeric operands (Bool is not an integer)"
   | isExact a /= isExact b = Left "exact/inexact mixing requires an explicit conversion"
-  | op `elem` ["quot","rem"] = if isInteger a && isInteger b then Right "Integer" else Left "quot/rem require integer operands"
+  | op `elem` ["quot","rem","pow"] = if isInteger a && isInteger b then Right "Integer" else Left "quot/rem/pow require integer operands"
   | isExact a = Right $ if op == "/" || "Rational" `elem` [a,b] then "Rational" else if "Decimal" `elem` [a,b] then "Decimal" else "Integer"
   | otherwise = Right $ if any (`elem` ["Complex64","Complex128"]) [a,b]
       then if any (`elem` ["Float64","Complex128"]) [a,b] then "Complex128" else "Complex64"

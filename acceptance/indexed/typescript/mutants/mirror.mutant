@@ -1,0 +1,6 @@
+@@ src/example/arithmetic.ts
+<<<<<<<
+new data.PerfectNode(mirror(value0.right), mirror(value0.left))
+=======
+new data.PerfectNode(mirror(value0.right), value0.right)
+>>>>>>>

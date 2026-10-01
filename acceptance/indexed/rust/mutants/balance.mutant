@@ -1,0 +1,6 @@
+@@ src/example/arithmetic.rs
+<<<<<<<
+right: Box::new(mirror(*left)) }
+=======
+right: Box::new(Perfect::Leaf { value: 0 }) }
+>>>>>>>

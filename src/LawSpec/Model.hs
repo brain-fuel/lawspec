@@ -4,6 +4,7 @@ import LawSpec.Common
 
 import Data.Aeson hiding (Number)
 import LawSpec.Scalar
+import LawSpec.IndexTerm (FamilyIndex)
 import GHC.Generics (Generic)
 import Data.List (intercalate)
 
@@ -41,10 +42,15 @@ data Law = Law { lawName :: String, parameters :: [(String, Type)], requirements
 data DataTypeDeclaration = DataTypeDeclaration
   { dataTypeName :: String, dataTypeParameters :: [String]
   , dataTypeConstructors :: [ConstructorDeclaration], dataTypeSpan :: Span
+  , dataTypeIndex :: Maybe FamilyIndex
   } deriving (Eq, Show, Generic)
+-- A GADT constructor refines type parameters: `where a = Int32` makes it a
+-- value of T Int32 only. Free variables of a refinement or a field that are not
+-- parameters are the constructor's existential types.
 data ConstructorDeclaration = ConstructorDeclaration
   { dataConstructorName :: String, dataConstructorFields :: [(String,Type)]
   , dataConstructorSpan :: Span
+  , dataConstructorEquations :: [(String,Type)]
   } deriving (Eq, Show, Generic)
 -- import shop.money [as money] [(Amount, add, `associative`)]: qualified
 -- access through the alias, plus unqualified access to the listed names. Law

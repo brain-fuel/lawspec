@@ -8,9 +8,10 @@ import LawSpec.Core.Eval (evaluateValue, evaluateValuePure)
 import LawSpec.Core.Definitions (prepareDefinitions)
 import LawSpec.Core.Total (constructorProofContracts)
 import LawSpec.Core.Value
-import LawSpec.Core.Types (TypeRegistry, makeRegistry, registryDeclarations, builtinDataDeclarations, lookupData, constructorFieldsFor, generationRequirements)
+import LawSpec.Core.Types (TypeRegistry, makeRegistry, registryDeclarations, builtinDataDeclarations, lookupData, constructorFieldsFor, compatibleConstructors, generationRequirements)
 import qualified Data.Map.Strict as M
-import Data.List (nub, sort)
+import Data.List (find, nub, sort, stripPrefix)
+import LawSpec.IndexTerm
 import Control.Monad (filterM, unless)
 import Control.Monad.State.Strict (StateT, evalStateT, get, modify, lift)
 
@@ -25,13 +26,14 @@ data PlannedProperty = PlannedProperty
   } deriving (Eq, Show)
 data GeneratorRequirement = GeneratorRequirement { generatorBinder :: Binder, generatorPredicates :: [Expr], generatorBoundaries :: [Value], generatorBounds :: [(BinaryOp,Expr)], generatorHints :: [Expr], generatorIndex :: Maybe IndexedGeneration } deriving (Eq, Show)
 
--- A predicate m x == target, where m is a linear self-recursive measure,
--- directs generation: each constructor contributes a constant and the
--- measures of listed recursive fields. Runtimes construct a value whose
--- measure is exactly the target, so the predicate never rejects a sample.
+-- A predicate m x == target, where m is the index measure of a family,
+-- directs generation. Each constructor of every family reachable through
+-- index fields carries its index term then its guards, in prefix notation
+-- (indexTermText). Runtimes solve the target backwards over field indices, so
+-- the predicate never rejects a sample.
 data IndexedGeneration = IndexedGeneration
   { indexedTarget :: Expr
-  , indexedEquations :: [(Id, Integer, [Int])]
+  , indexedEquations :: [(Id, [String])]
   } deriving (Eq, Show)
 
 planTesting :: Program -> Either [Diagnostic] Plan
@@ -77,7 +79,7 @@ planProperty registry programMachineBits invoke definitions p = do
           (lookup (binderId (quantifiedBinder q)) bindings)) qs
         valid <- validTupleWithDefinitions registry programMachineBits invoke qs values
         unless valid (Left ("example " ++ exampleName example ++ " violates refinement"))) (propertyExamples p)
-      pure (PlannedProperty p finite cases [GeneratorRequirement (quantifiedBinder q) (quantifiedPredicates q) b (quantifiedBounds q) (domainHints q) (indexedGeneration definitions q) | (q,b) <- zip qs bs])
+      pure (PlannedProperty p finite cases [GeneratorRequirement (quantifiedBinder q) (quantifiedPredicates q) b (quantifiedBounds q) (domainHints q) (indexedGeneration (registryDeclarations registry) definitions q) | (q,b) <- zip qs bs])
 
 validTuple :: TypeRegistry -> Int -> [Quantifier] -> [Value] -> Either String Bool
 validTuple registry bits qs values = do
@@ -204,11 +206,12 @@ populationKey _ _ = (Id "<non-data>", [])
 
 viableConstructors :: TypeRegistry -> Population -> Type -> Either String [(Id, [Type])]
 viableConstructors registry table ty = case ty of
-  Constructor name _ -> do
-    declaration <- lookupData registry (Id name)
+  Constructor _ _ -> do
+    -- A GADT constructor that cannot build this type is not a candidate.
+    compatible <- compatibleConstructors registry ty
     fields <- mapM (\c -> do
       parameters <- constructorFieldsFor registry ty (constructorId c)
-      pure (constructorId c, map binderType parameters)) (dataConstructors declaration)
+      pure (constructorId c, map binderType parameters)) compatible
     pure [(tag,parameters) | (tag,parameters) <- fields, all (inhabited table) parameters]
   _ -> Left ("no constructors for " ++ show ty)
 
@@ -258,7 +261,10 @@ hasValueContracts registry ty
   | otherwise = fst (requirements (converge initial) ty)
   where
     declarations = registryDeclarations registry
-    own declaration = any (not . null . constructorPredicates) (dataConstructors declaration)
+    -- Index guards (balanced subtrees, non-negative subtraction) constrain
+    -- values just like constructor predicates.
+    own declaration = any (not . null . constructorPredicates) (dataConstructors declaration) ||
+      maybe False (any (not . null . constructorIndexGuards . snd) . familyIndexConstructors) (dataIndex declaration)
     initial = M.fromList [(dataId d,(dataParameters d,(own d,[]))) | d <- declarations]
     merge values = (any fst values, sort (nub (concatMap snd values)))
     requirements table value = case value of
@@ -402,11 +408,23 @@ typeSize (Constructor _ args) = 1 + sum [typeSize t | TypeArgument t <- args]
 typeSize (Arrow a b) = 1 + typeSize a + typeSize b
 typeSize (TypeVariable _) = 1
 
-indexedGeneration :: [Definition] -> Quantifier -> Maybe IndexedGeneration
-indexedGeneration definitions q = case concatMap claim (concatMap conjuncts (quantifiedPredicates q)) of
+indexedGeneration :: [DataDeclaration] -> [Definition] -> Quantifier -> Maybe IndexedGeneration
+indexedGeneration declarations definitions q = case concatMap claim (concatMap conjuncts (quantifiedPredicates q)) of
   found:_ | declaredData (binderType (quantifiedBinder q)) -> Just found
-  _ -> Nothing
+  _ -> open
   where
+    -- Without an index claim, a family whose values carry index guards (such
+    -- as balanced subtrees) is still solved, from a few small indices; plain
+    -- generation would almost never satisfy the guards.
+    open = case binderType (quantifiedBinder q) of
+      Constructor name _
+        | Just root <- find ((== Id name) . dataId) declarations
+        , Just equations <- familyEquations declarations root
+        , any (any guard . snd) equations ->
+            Just (IndexedGeneration (Expr (Constructor "BigInt" []) (Constant (SInteger "BigInt" (-1)))
+              (GeneratedFrom (binderId (quantifiedBinder q)))) equations)
+      _ -> Nothing
+    guard text = take 3 text `elem` ["== ", ">= "]
     -- Runtime schemas describe declared data by constructor; built-in
     -- containers use native generators and are not index-directed.
     declaredData (Constructor name _) = name `notElem` ["List", "Maybe", "Either"]
@@ -421,7 +439,7 @@ indexedGeneration definitions q = case concatMap claim (concatMap conjuncts (qua
         , ExternalCall measure [argument] <- [expressionNode (unconverted measured)]
         , expressionNode (unconverted argument) == Local self
         , self `notElem` freeBinders target
-        , Just equations <- [linearMeasure definitions measure]]
+        , Just equations <- [indexEquations declarations definitions measure]]
       _ -> []
 
 unconverted :: Expr -> Expr
@@ -429,31 +447,46 @@ unconverted e = case expressionNode e of
   Convert _ _ inner -> unconverted inner
   _ -> e
 
--- A measure qualifies when it matches on its only argument and each branch is
--- a non-negative constant plus the same measure of that branch's binders.
-linearMeasure :: [Definition] -> Id -> Maybe [(Id, Integer, [Int])]
-linearMeasure definitions measure = do
+-- A measure directs generation when it is the only index of a family whose
+-- index fields reach only single-index families, each constructor naming at
+-- most three index fields (runtimes enumerate their combinations).
+indexEquations :: [DataDeclaration] -> [Definition] -> Id -> Maybe [(Id, [String])]
+indexEquations declarations definitions measure = do
   definition <- lookup measure [(declarationId (definitionDeclaration d), d) | d <- definitions]
-  [argument] <- pure (definitionArguments definition)
-  Match subject cases <- pure (expressionNode (unconverted (definitionBody definition)))
-  Local subjectId <- pure (expressionNode (unconverted subject))
-  unless' (subjectId == binderId argument)
-  mapM equation cases
+  let name = templateName (declarationName (definitionDeclaration definition))
+  root <- case [d | d <- declarations, Just index <- [dataIndex d], [indexName] <- [familyIndexNames index]
+                  , indexName ++ "Of" ++ dataName d == name] of
+    d : _ -> Just d
+    [] -> Nothing
+  familyEquations declarations root
   where
+    -- Specialized instances are named lawspec_<template>_<hash>.
+    templateName n = case stripPrefix "lawspec_" n of
+      Just rest | '_' `elem` rest -> reverse (drop 1 (dropWhile (/= '_') (reverse rest)))
+      _ -> n
+
+familyEquations :: [DataDeclaration] -> DataDeclaration -> Maybe [(Id, [String])]
+familyEquations declarations root = do
+  families <- reach [] [dataId root]
+  pure [ (Id tag, indexTermText term : map indexGuardText guards)
+       | d <- families, Just index <- [dataIndex d]
+       , (tag, ConstructorIndex [term] guards) <- familyIndexConstructors index ]
+  where
+    byId = M.fromList [(dataId d, d) | d <- declarations]
+    reach seen [] = Just (reverse seen)
+    reach seen (identity : rest)
+      | identity `elem` map dataId seen = reach seen rest
+      | otherwise = do
+          d <- M.lookup identity byId
+          index <- dataIndex d
+          unless' (length (familyIndexNames index) == 1)
+          children <- fmap concat $ mapM (\c -> do
+            ConstructorIndex terms guards <- lookup (idText (constructorId c)) (familyIndexConstructors index)
+            let positions = nub (concatMap termFields (terms ++ concat [[a, b] | IndexGuard _ a b <- guards]))
+            unless' (length positions <= 3 && all ((== 0) . snd) positions)
+            mapM (\(position, _) -> case binderType <$> drop position (constructorFields c) of
+              Constructor child _ : _ -> Just (Id child)
+              _ -> Nothing) positions) (dataConstructors d)
+          reach (d : seen) (rest ++ children)
     unless' condition = if condition then Just () else Nothing
-    equation matched = do
-      let positions = zip (map binderId (caseBinders matched)) [0 ..]
-      (constant, fields) <- linear positions (caseBody matched)
-      unless' (constant >= 0)
-      pure (caseConstructor matched, constant, sort fields)
-    linear positions e = case expressionNode (unconverted e) of
-      Constant (SInteger _ n) -> Just (n, [])
-      Binary Add _ a b -> do
-        (c1, f1) <- linear positions a
-        (c2, f2) <- linear positions b
-        pure (c1 + c2, f1 ++ f2)
-      ExternalCall callee [field] | callee == measure -> do
-        Local local <- pure (expressionNode (unconverted field))
-        position <- lookup local positions
-        pure (0, [position])
-      _ -> Nothing
+

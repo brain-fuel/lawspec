@@ -1,0 +1,6 @@
+@@ src/main/java/example/Arithmetic.java
+<<<<<<<
+return new Halves(value0, value0);
+=======
+return new Halves(value0, new Row.Cell((byte) 0, value0));
+>>>>>>>

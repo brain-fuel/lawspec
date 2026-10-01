@@ -1,0 +1,6 @@
+@@ example/arithmetic/adapter.go
+<<<<<<<
+Pairs{Items: value0}
+=======
+Pairs{Items: RowCell{Tail: value0}}
+>>>>>>>

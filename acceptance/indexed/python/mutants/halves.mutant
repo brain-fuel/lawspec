@@ -1,0 +1,6 @@
+@@ src/example/arithmetic.py
+<<<<<<<
+    return data.Halves(value0, value0)
+=======
+    return data.Halves(value0, data.RowCell(0, value0))
+>>>>>>>

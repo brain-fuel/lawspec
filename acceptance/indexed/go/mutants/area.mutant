@@ -1,0 +1,6 @@
+@@ example/arithmetic/adapter.go
+<<<<<<<
+length(value0.Rows) * length(value0.Columns)
+=======
+length(value0.Rows) + length(value0.Columns)
+>>>>>>>

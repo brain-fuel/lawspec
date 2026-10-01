@@ -1,0 +1,6 @@
+@@ src/main/kotlin/example/Gadt.kt
+<<<<<<<
+Expr.Number(evalNumber(value0))
+=======
+Expr.Number(BigInteger.ZERO)
+>>>>>>>

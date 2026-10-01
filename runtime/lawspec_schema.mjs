@@ -26,6 +26,40 @@ export class Field {
   }
 }
 
+// A prefix index term: c<n>, f<field>[.<index>] or an operator.
+function parseIndexTerm(tokens, at) {
+  const token = tokens[at];
+  if (token === undefined) throw new TypeError('malformed index term');
+  if (token[0] === 'c') return [['c', Number(token.slice(1))], at + 1];
+  if (token[0] === 'f') {
+    const [position, index = '0'] = token.slice(1).split('.');
+    return [['f', Number(position), Number(index)], at + 1];
+  }
+  if (['+', '-', '*', 'div', 'mod', '^'].includes(token)) {
+    const [left, afterLeft] = parseIndexTerm(tokens, at + 1);
+    const [right, afterRight] = parseIndexTerm(tokens, afterLeft);
+    return [[token, left, right], afterRight];
+  }
+  throw new TypeError('malformed index term');
+}
+
+// Natural index arithmetic over BigInt; null when an operation has no value.
+function evalIndexTerm(term, field) {
+  if (term[0] === 'c') return BigInt(term[1]);
+  if (term[0] === 'f') return field(term[1], term[2]);
+  const x = evalIndexTerm(term[1], field);
+  const y = evalIndexTerm(term[2], field);
+  if (x === null || y === null) return null;
+  switch (term[0]) {
+    case '+': return x + y;
+    case '-': return x >= y ? x - y : null;
+    case '*': return x * y;
+    case 'div': return y > 0n ? x / y : null;
+    case 'mod': return y > 0n ? x % y : null;
+    default: return y <= 64n ? x ** y : null;
+  }
+}
+
 export class Constructor {
   constructor(
       tag,
@@ -33,11 +67,19 @@ export class Constructor {
       native,
       predicates = [],
       nativeFields = null,
+      indices = [],
+      refinements = [],
+      existentials = 0,
   ) {
     this.tag = tag;
     this.fields = Object.freeze([...fields]);
     this.native = native;
     this.predicates = Object.freeze([...predicates]);
+    this.indices = Object.freeze([...indices]);
+    // A GADT constructor fixes parameters to patterns; its existentials are
+    // the parameters numbered after the definition's own.
+    this.refinements = Object.freeze(refinements.map(([index, pattern]) => [index, pattern]));
+    this.existentials = existentials;
     this.nativeFields =
         nativeFields === null
           ? null
@@ -53,6 +95,38 @@ export class Definition {
     this.constructors = Object.freeze([...constructors]);
     Object.freeze(this);
   }
+}
+
+function sameType(a, b) {
+  if (a instanceof Parameter || b instanceof Parameter) {
+    return a instanceof Parameter && b instanceof Parameter && a.index === b.index;
+  }
+  return a.name === b.name && a.args.length === b.args.length &&
+    a.args.every((child, index) => sameType(child, b.args[index]));
+}
+
+// Arguments extended with the existentials a constructor's refinements bind;
+// null when the refinements do not match.
+function refine(constructor, args, parameters) {
+  const bound = new Map();
+  const match = (pattern, actual) => {
+    if (pattern instanceof Parameter) {
+      if (pattern.index < parameters) return sameType(args[pattern.index], actual);
+      if (!bound.has(pattern.index)) bound.set(pattern.index, actual);
+      return sameType(bound.get(pattern.index), actual);
+    }
+    return actual instanceof Named && actual.name === pattern.name &&
+      actual.args.length === pattern.args.length &&
+      pattern.args.every((child, index) => match(child, actual.args[index]));
+  };
+  for (const [index, pattern] of constructor.refinements) {
+    if (!match(pattern, args[index])) return null;
+  }
+  const extended = [...args];
+  for (let k = 0; k < constructor.existentials; ++k) {
+    extended.push(bound.get(parameters + k));
+  }
+  return extended;
 }
 
 export function substitute(type, args) {
@@ -171,7 +245,7 @@ export class Schema {
             );
           }
           names.add(field.name);
-          this.#check(field.type, definition.parameters);
+          this.#check(field.type, definition.parameters + constructor.existentials);
         }
       }
     }
@@ -215,22 +289,24 @@ export class Schema {
     this.#check(type);
     const definition = this.#definitions.get(type.name);
     if (!definition) return null;
-    return definition.constructors.map(
-        (constructor) =>
-            new Constructor(
-                constructor.tag,
-                constructor.fields.map(
-                    (field) =>
-                        new Field(
-                            field.name,
-                            substitute(field.type, type.args),
-                        ),
-                ),
-                constructor.native,
-                constructor.predicates,
-                constructor.nativeFields,
-            ),
-    );
+    const found = [];
+    for (const constructor of definition.constructors) {
+      // A GADT constructor whose refinements do not match these arguments
+      // builds no value of this type.
+      const args = refine(constructor, type.args, definition.parameters);
+      if (args === null) continue;
+      found.push(new Constructor(
+          constructor.tag,
+          constructor.fields.map(
+              (field) => new Field(field.name, substitute(field.type, args)),
+          ),
+          constructor.native,
+          constructor.predicates,
+          constructor.nativeFields,
+          constructor.indices,
+      ));
+    }
+    return found;
   }
 
   withNativeBindings(bindings, codecs = new Map()) {
@@ -277,6 +353,7 @@ export class Schema {
                       native,
                       constructor.predicates,
                       fields,
+                      constructor.indices,
                   );
                 }),
             ),
@@ -314,6 +391,37 @@ export class Schema {
     if (bits !== 32 && bits !== 64) {
       throw new RangeError('machineBits must be 32 or 64');
     }
+  }
+
+  // An indexed family's guards hold over its fields' indices.
+  #checkIndices(constructor, fields) {
+    for (const text of constructor.indices) {
+      const tokens = text.split(' ');
+      if (tokens[0] !== '==' && tokens[0] !== '>=') continue;
+      const [left, at] = parseIndexTerm(tokens, 1);
+      const [right] = parseIndexTerm(tokens, at);
+      const field = (position, index) =>
+        this.#indexOf(constructor.fields[position].type, fields[position], index);
+      const x = evalIndexTerm(left, field);
+      const y = evalIndexTerm(right, field);
+      if (x === null || y === null || (tokens[0] === '==' ? x !== y : x < y)) {
+        throw new RefinementViolation(
+            `${constructor.tag}: index guard ${text} failed`);
+      }
+    }
+  }
+
+  #indexOf(type, value, index) {
+    const constructor = (this.constructors(type) ?? []).find(
+        (item) => item.tag === value.tag);
+    const terms = (constructor ? constructor.indices : []).filter(
+        (text) => !text.startsWith('== ') && !text.startsWith('>= '));
+    if (index >= terms.length) {
+      throw new TypeError(`no index for ${type.name}`);
+    }
+    const [term] = parseIndexTerm(terms[index].split(' '), 0);
+    return evalIndexTerm(term, (position, child) =>
+      this.#indexOf(constructor.fields[position].type, value.fields[position], child));
   }
 
   validate(type, value, bits = 64, symbols = new Map()) {
@@ -599,6 +707,7 @@ export class Schema {
             throw new TypeError(`${context} did not produce Bool`);
           }
         });
+        this.#checkIndices(constructor, converted);
       }
       if (mode === 'native' && constructor.nativeFields !== null) {
         return converted.length === 0

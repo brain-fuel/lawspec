@@ -23,7 +23,8 @@ auditTemplates :: [C.DataDeclaration] -> Int -> S.Unit -> [(S.FunctionDefinition
 auditTemplates declarations bits unit templates = do
   constructors <- constructorProofContracts bits declarations
   lowered <- mapM lower templates
-  T.auditWithConstructorContracts constructors (map snd lowered) (map fst lowered)
+  -- Non-linear postconditions the prover defers become runtime checks in Core.
+  () <$ T.auditDeferring constructors (map snd lowered) (map fst lowered)
   where
     constructorTag ty name
       | "::" `isInfixOf` name = C.Id name
@@ -173,6 +174,7 @@ auditTemplates declarations bits unit templates = do
         convert integers (S.expressionType typed) (effectiveType operand) value
       ("quot", _, [a,b]) -> pure (binary integers typed C.Quotient a b)
       ("rem", _, [a,b]) -> pure (binary integers typed C.Remainder a b)
+      ("pow", _, [a,b]) -> pure (T.ExactArithmetic C.Power a b)
       ("isPresent", _, [value]) -> pure (T.IsPresent value)
       ("presentValue", _, [value]) -> pure (T.PresentValue value)
       ("round", [_,scale], [value,scaleValue]) -> do

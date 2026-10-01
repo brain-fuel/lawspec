@@ -151,7 +151,7 @@ spec = describe "closed definitions in Core predicates" $ do
           call name value = Expr boolean (ExternalCall name [Expr boolean (Local (binderId value)) origin]) origin
           addContract name u = u{unitDeclarations=adapter:unitDeclarations u,
             unitContracts=[Contract (declarationId adapter) [argument] result
-              [call name argument] [call name result]]}
+              [call name argument] [call name result] []]}
           change name = program{programUnits=map (addContract name) (programUnits program)}
       validateProgram (change (Id "predicate::keep")) `shouldBe` Right ()
       validateProgram (change (declarationId adapter)) `shouldSatisfy` isLeft

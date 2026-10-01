@@ -1,0 +1,8 @@
+@@ src/main/kotlin/example/Arithmetic.kt
+<<<<<<<
+Rest(value0)
+
+=======
+Rest((value0 as? Row.Cell)?.tail ?: value0)
+
+>>>>>>>

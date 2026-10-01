@@ -1,0 +1,6 @@
+@@ src/example/gadt.ts
+<<<<<<<
+  return evalNumber(value0.left) + evalNumber(value0.right);
+=======
+  return evalNumber(value0.left) - evalNumber(value0.right);
+>>>>>>>

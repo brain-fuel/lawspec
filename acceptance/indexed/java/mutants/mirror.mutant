@@ -1,0 +1,6 @@
+@@ src/main/java/example/Arithmetic.java
+<<<<<<<
+new Perfect.Node(mirror(node.right()), mirror(node.left()))
+=======
+new Perfect.Node(mirror(node.right()), node.right())
+>>>>>>>

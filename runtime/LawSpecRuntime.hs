@@ -170,9 +170,9 @@ promote op a b
       Left "arithmetic requires numeric operands (Bool is not an integer)"
   | isExact a /= isExact b =
       Left "exact/inexact mixing requires an explicit conversion"
-  | op `elem` ["quot","rem"] =
+  | op `elem` ["quot","rem","pow"] =
       if isInteger a && isInteger b then Right "Integer"
-      else Left "quot/rem require integer operands"
+      else Left "quot/rem/pow require integer operands"
   | isExact a = Right $
       if op == "/" || "Rational" `elem` [a,b] then "Rational"
       else if "Decimal" `elem` [a,b] then "Decimal" else "Integer"
@@ -368,6 +368,9 @@ binary op a b = either error run (promote op (scalarName a) (scalarName b))
           then SInteger "Integer" (numerator x `quot` numerator y)
         else if op == "rem"
           then SInteger "Integer" (numerator x `rem` numerator y)
+        else if op == "pow"
+          then if numerator y < 0 then error "negative exponent"
+            else SInteger "Integer" (numerator x ^ numerator y)
         else convert t (reduced result) 64
     | t `elem` ["Complex64","Complex128"] =
         let component = if t == "Complex64" then "Float32" else "Float64"
@@ -413,6 +416,7 @@ helper n args bits = case (n,args) of
   ("real",[SComplex _ r _]) -> r
   ("imag",[SComplex _ _ i]) -> i
   ("quot",[a,b]) -> binary "quot" a b
+  ("pow",[a,b]) -> binary "pow" a b
   ("rem",[a,b]) -> binary "rem" a b
   ("negate",[a]) | isExact (scalarName a) -> binary "-" (SInteger "BigInt" 0) a
   ("negate",[SComplex t r i]) ->
