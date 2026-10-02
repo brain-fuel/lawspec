@@ -7,6 +7,7 @@ lawspec evidence [<unit> | <unit>::<declaration>] [--target <language>] [--machi
 lawspec explain [<unit>::<law>] [--machine-bits <32|64>] [--json] [--no-cache] [--config <path>]
 lawspec doctor [--target <language>] [--json] [--config <path>]
 lawspec generate [--target <language>] [--dry-run | --check] [--minify] [--machine-bits <32|64>] [--json] [--no-cache] [--config <path>]
+lawspec test [--target <language>] [--fresh] [--seed <n>] [--minify] [--machine-bits <32|64>] [--json] [--no-cache] [--config <path>]
 lawspec package [--project <package directory>] [--machine-bits <32|64>] [--json]
 lawspec examples [--example payments] [--target <language>] [--output <directory>] [--machine-bits <32|64>] [--minify] [--json]
 lawspec --version
@@ -117,6 +118,43 @@ signatures, and the command that runs the tests.
 
 `--dry-run` and `--check` cannot be combined. If any target fails its checks,
 nothing is written for any target.
+
+## `test`
+
+Runs the generated tests of the laws whose results may have changed since their
+last passing run, through each target's own test runner, and records the laws
+that pass.
+
+```text
+$ lawspec test
+python: ran 2 law(s) with seed 1219107216, 41 unchanged since their last passing run.
+$ lawspec test
+python: nothing to run, 43 unchanged since their last passing run.
+```
+
+A law runs again when anything its result depends on changes:
+
+- the law, or a type, definition, signature or contract it reaches;
+- its unit's generated tests, the LawSpec version, or the target's settings;
+- the project's build and lock files, or the toolchain `doctor` reports;
+- for a law that calls adapters, any file in the target project that LawSpec
+  did not generate, such as an adapter or a helper it imports.
+
+The generated files must be current; run `generate` first. A failing run
+records nothing for the laws it ran, so they run again next time. Results are
+kept in `.lawspec/results`.
+
+- `--fresh`: run every law's tests.
+- `--seed <n>`: the property tests' random seed. Without it, each run draws a
+  new one, and the summary prints it. A recorded pass keeps the seed it ran
+  with.
+- `--minify`: the generated files are compact (as `generate --minify` wrote).
+- `--json`: print a summary per target (`ran`, `unchanged`, `seed`, `ok`); the
+  test runners' output goes to standard error.
+
+Generated property tests read the seed from `LAWSPEC_SEED`, so a failure can
+be repeated with the same seed outside LawSpec. Haskell tests also read hspec's
+`HSPEC_SEED`, which `lawspec test` sets as well.
 
 ## `package`
 

@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.17.4
+
+### `lawspec test`
+
+- Runs the generated tests of only the laws whose results may have changed
+  since their last passing run, through each target's own runner, and records
+  the laws that pass. A law runs again when the law changes, or anything it
+  depends on: the types and definitions it reaches, its unit's generated
+  tests, the LawSpec version, the target's settings, the project's build and
+  lock files, the toolchain, and, for a law that calls adapters, any file in
+  the project LawSpec did not generate. `--fresh` runs every law. See
+  [`lawspec test`](docs/reference/cli.md#test).
+- Every run uses one random seed for all property tests, printed in the
+  summary and recorded with each pass; `--seed` fixes it.
+- `planGeneration` responses list each law's generated test file, its
+  position in the unit, its dependency key and whether it calls adapters
+  (`tests`).
+
+### Changes to generated tests
+
+- Property tests read their seed from `LAWSPEC_SEED` on every target, so a
+  failing run can be repeated exactly.
+- Kotlin and Haskell property tests are named `law<n>Property: <law>` like
+  their example and boundary tests, so each law's tests can be selected by
+  name.
+
 ## 0.17.3
 
 ### Incremental front end

@@ -7,6 +7,8 @@ import { targets, templates, commands, setup } from "../templates.mjs";
 import { generateExamples } from "../examples-command.mjs";
 import { showScalar } from "../scalars.mjs";
 import { doctor } from "../doctor.mjs";
+import { spawn } from "node:child_process";
+import { environmentDigest, invocations, lawKeys, projectDigest } from "../test-command.mjs";
 import {
   readOptional,
   planWrites,
@@ -21,11 +23,11 @@ const options = {};
 const positional = [];
 for (let i = 0; i < args.length; i++) {
   const arg = args[i];
-  if (["--target", "--project", "--config", "--output", "--machine-bits", "--example"].includes(arg)) {
+  if (["--target", "--project", "--config", "--output", "--machine-bits", "--example", "--seed"].includes(arg)) {
     if (!args[i + 1] || args[i + 1].startsWith("--"))
       throw new Error(`Missing value for ${arg}`);
     options[arg.slice(2)] = args[++i];
-  } else if (["--dry-run", "--check", "--json", "--minify", "--no-cache"].includes(arg))
+  } else if (["--dry-run", "--check", "--json", "--minify", "--no-cache", "--fresh"].includes(arg))
     options[arg.slice(2)] = true;
   else if (arg.startsWith("--")) throw new Error(`Unknown option: ${arg}`);
   else positional.push(arg);
@@ -247,10 +249,7 @@ async function cacheDirectory(config) {
   const folder = path.join(configRoot, ".lawspec", "cache");
   const relative = path.relative(process.cwd(), folder);
   if (relative.startsWith("..") || path.isAbsolute(relative)) return undefined;
-  const build = createHash("sha256")
-    .update(await readFile(new URL("../core.wasm", import.meta.url)))
-    .digest("hex")
-    .slice(0, 16);
+  const build = (await buildDigest()).slice(0, 16);
   const state = path.join(configRoot, ".lawspec");
   if ((await readOptionalDirectory(state)) === null) createdState = state;
   await mkdir(path.join(folder, build), { recursive: true });
@@ -259,6 +258,70 @@ async function cacheDirectory(config) {
     if (entry !== build && entry !== ".gitignore")
       await rm(path.join(folder, entry), { recursive: true, force: true });
   return path.join(relative, build).split(path.sep).join("/");
+}
+// The compiler build, by the digest of its WebAssembly module.
+let buildDigestValue = null;
+async function buildDigest() {
+  buildDigestValue ??= createHash("sha256")
+    .update(await readFile(new URL("../core.wasm", import.meta.url)))
+    .digest("hex");
+  return buildDigestValue;
+}
+// lawspec test: run the tests of the laws whose results may have changed,
+// and record each passing law's key and seed (see test-command.mjs).
+async function runTests(compiler, input, selected, roots, config) {
+  const seed = options.seed ?? String(1 + Math.floor(Math.random() * 2147483646));
+  const offline = process.env.LAWSPEC_OFFLINE === "1";
+  const build = await buildDigest();
+  const summaries = [];
+  for (const [i, target] of selected.entries()) {
+    const root = roots[i];
+    const planned = diagnostics(await compiler.planGeneration({
+      ...input, target: target.language, sourceDir: target.sourceDir, testDir: target.testDir,
+      nativeBindings: target.nativeBindings, minify: options.minify === true,
+    }));
+    const pending = await planWrites(root, planned.files);
+    if (pending.changes.length)
+      throw new Error(`${target.language}: generated files are out of date; run lawspec generate${options.minify ? " --minify" : ""}`);
+    const report = await doctor(target, root, planned.files);
+    if (!report.ok) throw new Error(`${target.language}: ${report.message}\n${report.instructions}`);
+    const generated = new Set(planned.files.filter((f) => f.ownership === "generated").map((f) => f.path));
+    const keys = lawKeys({
+      build, target, machineBits: input.machineBits, minify: options.minify === true,
+      tests: planned.tests, files: planned.files,
+      environment: await environmentDigest(root, report),
+      project: await projectDigest(root, generated),
+    });
+    const resultsFile = path.join(configRoot, ".lawspec", "results",
+      `${target.language}-${createHash("sha256").update(root).digest("hex").slice(0, 12)}.json`);
+    const previous = JSON.parse((await readOptional(resultsFile)) ?? '{"version":1,"laws":{}}');
+    const stale = planned.tests.filter((entry) => options.fresh || previous.laws[entry.law]?.key !== keys.get(entry.law));
+    const passed = [];
+    let failed = false;
+    for (const run of stale.length ? invocations(target, stale, { offline }) : []) {
+      const ok = await spawned(run.command, run.args, root, { ...process.env, ...run.env, LAWSPEC_SEED: seed, HSPEC_SEED: seed });
+      if (!ok) { failed = true; break; }
+      passed.push(...run.laws);
+    }
+    const laws = Object.fromEntries(planned.tests.filter((entry) => previous.laws[entry.law]).map((entry) => [entry.law, previous.laws[entry.law]]));
+    for (const entry of passed) laws[entry.law] = { key: keys.get(entry.law), seed: Number(seed), passed: new Date().toISOString() };
+    await mkdir(path.dirname(resultsFile), { recursive: true });
+    await writeFile(resultsFile, JSON.stringify({ version: 1, laws }, null, 2) + "\n");
+    summaries.push({ target: target.language, seed: Number(seed), ran: stale.map((e) => e.law),
+      unchanged: planned.tests.length - stale.length, ok: !failed });
+  }
+  output(options.json ? summaries : summaries.map((s) =>
+    `${s.target}: ${s.ran.length ? `ran ${s.ran.length} law(s) with seed ${s.seed}` : "nothing to run"}` +
+    `, ${s.unchanged} unchanged since their last passing run.${s.ok ? "" : " FAILED"}`).join("\n"));
+  if (summaries.some((s) => !s.ok)) process.exitCode = 1;
+}
+// Run a native test command, its output going to ours (to stderr with --json).
+function spawned(command, args, cwd, env) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, { cwd, env, stdio: ["ignore", options.json ? process.stderr : "inherit", "inherit"] });
+    child.on("error", reject);
+    child.on("exit", (code) => resolve(code === 0));
+  });
 }
 async function readOptionalDirectory(folder) {
   try {
@@ -275,7 +338,7 @@ async function main() {
   }
   if (!verb || ["help", "--help", "-h"].includes(verb)) {
     output(
-      "LawSpec " + VERSION + "\nUsage: lawspec init --target <language> [--project <directory>] [--minify]\n       lawspec check | doctor | explain <unit>::<law> | generate\n       lawspec evidence [<unit> | <unit>::<declaration>]\n       lawspec package [--project <package directory>]\n       lawspec examples [--example payments] [--target <language>] [--output <directory>]\nOptions: --config <path>, --target <language>, --machine-bits <32|64>, --json, --no-cache\nGeneration: --dry-run, --check, --minify\nTargets: " +
+      "LawSpec " + VERSION + "\nUsage: lawspec init --target <language> [--project <directory>] [--minify]\n       lawspec check | doctor | explain <unit>::<law> | generate\n       lawspec evidence [<unit> | <unit>::<declaration>]\n       lawspec test [--target <language>] [--fresh] [--seed <n>]\n       lawspec package [--project <package directory>]\n       lawspec examples [--example payments] [--target <language>] [--output <directory>]\nOptions: --config <path>, --target <language>, --machine-bits <32|64>, --json, --no-cache\nGeneration: --dry-run, --check, --minify\nTargets: " +
         targets.join(", "),
     );
     return;
@@ -317,11 +380,15 @@ async function main() {
   }
   if (options.output) throw new Error("--output is only supported by examples");
   if (options.example) throw new Error("--example is only supported by examples");
-  if (options.minify && !["init", "generate", "examples"].includes(verb))
-    throw new Error("--minify applies to init, generate and examples");
+  if (options.minify && !["init", "generate", "examples", "test"].includes(verb))
+    throw new Error("--minify applies to init, generate, test and examples");
+  if ((options.fresh || options.seed !== undefined) && verb !== "test")
+    throw new Error("--fresh and --seed apply to test");
+  if (options.seed !== undefined && !/^[0-9]+$/.test(options.seed))
+    throw new Error("--seed must be a whole number");
   if (verb === "init") return init();
   if (verb === "package") return packageCommand();
-  if (!["check", "doctor", "evidence", "explain", "generate"].includes(verb))
+  if (!["check", "doctor", "evidence", "explain", "generate", "test"].includes(verb))
     throw new Error(`Unknown command: ${verb}`);
   const config = JSON.parse(await readFile(configFile, "utf8"));
   if (
@@ -335,7 +402,7 @@ async function main() {
   const selected = config.targets.filter(
     (t) => !options.target || t.language === options.target,
   );
-  if (["doctor", "generate"].includes(verb) && !selected.length)
+  if (["doctor", "generate", "test"].includes(verb) && !selected.length)
     throw new Error("No matching configured target");
   const roots = selected.map((t) => path.resolve(configRoot, t.root));
   if (new Set(roots).size !== roots.length)
@@ -445,6 +512,7 @@ async function main() {
     );
     return;
   }
+  if (verb === "test") return runTests(compiler, input, selected, roots, config);
   if (options["dry-run"] && options.check)
     throw new Error("--dry-run and --check are mutually exclusive");
   const artifacts = [];

@@ -264,6 +264,7 @@ library
       LawSpec.Scalar
       LawSpec.SpecializeDefinitions
       LawSpec.Testing
+      LawSpec.TestManifest
       LawSpec.WebData
       LawSpec.WebDefinitions
       LawSpec.WebExpr
@@ -422,6 +423,7 @@ test-suite lawspec-test
       RefinementProofSpec
       SourceDataSpec
       StructuralSpec
+      TestManifestSpec
       TotalSpec
       Paths_lawspec
   hs-source-dirs:

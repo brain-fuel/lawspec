@@ -26,6 +26,7 @@ import qualified FlowSpec
 import qualified CollectionsSpec
 import qualified AsyncSpec
 import qualified IncrementalSpec
+import qualified TestManifestSpec
 import LawSpec.Compile
 import LawSpec.Model
 import qualified LawSpec.Domain as D
@@ -56,6 +57,7 @@ main = hspec $ do
   CollectionsSpec.spec
   AsyncSpec.spec
   IncrementalSpec.spec
+  TestManifestSpec.spec
   PayloadSpec.spec
   PayloadProofSpec.spec
   DocumentSpec.spec

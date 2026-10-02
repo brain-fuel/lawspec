@@ -456,6 +456,7 @@ emitRustWithBindings minify bindings Plan{..} = either (Left . pure . (\m -> Dia
                      Doc.text ("max_global_rejects: " ++ show (maxAttempts (propertyGeneration p)) ++ ",")] ++
                      [Doc.text ("max_local_rejects: " ++ show (maxAttempts (propertyGeneration p)) ++ ",") | hasFieldContracts] ++
                      [Doc.text ("max_shrink_iters: " ++ show (maxShrinks (propertyGeneration p)) ++ ","),
+                     Doc.text "rng_seed: lawspec_rng_seed(),",
                      Doc.text "..Default::default()"]) ))
                 , binding "check" (Doc.text "|mut case: ls_gen::Case| " <>
                     block (statements ([Doc.text "if let Some(error) = case.error " <> block
@@ -501,7 +502,16 @@ emitRustWithBindings minify bindings Plan{..} = either (Left . pure . (\m -> Dia
             [Doc.text "use lawspec_runtime as ls;",Doc.text "use proptest::strategy::Strategy;"]) <>
             blank <> Doc.text ("type ValueStrategy = proptest::strategy::BoxedStrategy<" ++ (if hasFieldContracts then "ls::Result<ls::Value>" else "ls::Value") ++ ">;") <>
             (if hasNativeGenerators then blank <> generatorSupport else mempty) <>
+            blank <> seedDoc <>
             blank <> Doc.joinWith blank (wrappers ++ tests) <> Doc.hardline
+          -- LAWSPEC_SEED fixes proptest's seed, so a run can be repeated
+          -- exactly (lawspec test records the seed of every passing run).
+          -- Without it, proptest's own default applies, PROPTEST_RNG_SEED included.
+          seedDoc = Doc.text "fn lawspec_rng_seed() -> proptest::test_runner::RngSeed " <> block (statements
+            [ Doc.text "match std::env::var(\"LAWSPEC_SEED\") " <> block (statements
+                [ Doc.text "Ok(seed) => proptest::test_runner::RngSeed::Fixed(" <> Doc.nest 4 (Doc.hardline <>
+                    Doc.text "seed.parse().expect(\"LAWSPEC_SEED must be a whole number\"),") <> Doc.hardline <> Doc.text "),"
+                , Doc.text "Err(_) => proptest::test_runner::Config::default().rng_seed," ]) ])
       pure [Artifact ("src/" ++ modulePath ++ ".rs") (Doc.render layout adapterDoc) (if generatedAdapter then "generated" else "user") "source",
         Artifact ("tests/" ++ testName ++ "_lawspec.rs") (Doc.render layout testDoc) "generated" "test"]
 

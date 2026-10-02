@@ -15,6 +15,7 @@ import LawSpec.NativeRequest
 import LawSpec.Public (programView)
 import LawSpec.Packages
 import LawSpec.Discharge (dischargeEvidence, bindingEvidence)
+import LawSpec.TestManifest (TestEntry(..), testManifest)
 import LawSpec.Memo (Table, newTable, memoized, withCacheDirectory)
 import qualified Data.ByteString.Lazy.Char8 as BC
 import qualified Data.Aeson.Key as K
@@ -33,7 +34,8 @@ dispatch bytes = withCacheDirectory cacheDirectory $ encode $ versioned $ case e
      let result files = withPackages project described (programView settings us (map prettyExpanded es) files (evidence ++ bindingEvidence bindings) core) in case method of
           "check" -> result []
           "expand" -> result []
-          "planGeneration" -> either failure result (plan >>= emitPlanWithNativeOptions minify target sourceDir testDir bindings)
+          "planGeneration" -> either failure (withTests (testManifest target testDir core) . result)
+            (plan >>= emitPlanWithNativeOptions minify target sourceDir testDir bindings)
           _ -> failure [Diagnostic "request" ("unknown method: " ++ method) Nothing]
 
   where
@@ -64,6 +66,16 @@ dispatch bytes = withCacheDirectory cacheDirectory $ encode $ versioned $ case e
       packages <- o .:? "packages" .!= []
       request' <- (,,,,,,,,) <$> o .:? "method" .!= "check" <*> o .: "sources" <*> o .:? "target" .!= "" <*> o .:? "sourceDir" <*> o .:? "testDir" <*> o .:? "machineBits" .!= 64 <*> o .:? "generation" .!= defaultGeneration <*> o .:? "minify" .!= False <*> pure native
       pure (request', (Project rootPackage dependencies, packages))
+
+-- Which generated tests check each law, for running a subset of them.
+withTests :: [TestEntry] -> Value -> Value
+withTests entries (Object o) = Object (KM.insert "tests" (toJSON (map entry entries)) o)
+  where
+    entry e = object
+      [ "law" .= C.idText (entryLaw e), "unit" .= entryUnit e, "label" .= entryLabel e
+      , "index" .= entryIndex e, "file" .= entryFile e, "key" .= entryKey e
+      , "callsAdapters" .= entryCallsAdapters e ]
+withTests _ value = value
 
 failure :: [Diagnostic] -> Value
 failure ds = object ["schemaVersion" .= (3 :: Int), "diagnostics" .= ds]

@@ -103,9 +103,42 @@ try {
 } finally {
   await writeFile(domain, original);
 }
+// lawspec test runs each law once, then only the laws an edit can affect. A
+// law that calls no adapter does not depend on the adapter's code.
+const specification = path.join(directory, 'laws/payments.lawspec');
+await writeFile(specification, (await readFile(specification, 'utf8')) +
+  '\nlaw `integers equal themselves` is definition is `for all` (x :: Int8) . x = x end end\n');
+await run(process.execPath, [cli, 'generate', ...(minify ? ['--minify'] : [])], directory);
+const lawspecTest = async (flags = [], pass = true) => {
+  const printed = await run(process.execPath, [cli, 'test', '--json', ...(minify ? ['--minify'] : []), ...flags], directory, pass);
+  return pass ? JSON.parse(printed)[0] : printed;
+};
+const first = await lawspecTest();
+assert.ok(first.ok && first.ran.length > 0 && first.unchanged === 0, JSON.stringify(first));
+assert.deepEqual((await lawspecTest()).ran, [], 'An unchanged project runs no tests');
+const comment = {python: '#', haskell: '--'}[target] ?? '//';
+await writeFile(domain, original + `\n${comment} edited\n`);
+const edited = await lawspecTest();
+assert.deepEqual(edited.ran, first.ran.filter((law) => !law.endsWith('::integers equal themselves')),
+  `An adapter edit reruns the laws that call adapters, and only those: ${JSON.stringify(edited)}`);
+await writeFile(domain, original);
+await lawspecTest();
+try {
+  await writeFile(domain, original.replace(before, after));
+  const failed = await lawspecTest(['--seed', '7340271'], false);
+  assert.match(failed, /fees[ _]preserve[ _]currency|decimal[ _]tenths/i, 'lawspec test reports the failing law');
+  if (['javascript', 'typescript', 'go', 'kotlin', 'haskell'].includes(target))
+    assert.match(failed, /7340271/, 'The seed reaches the property tests');
+  // A failed run records nothing, so the failing laws run again.
+  assert.match(await lawspecTest([], false), /fees[ _]preserve[ _]currency|decimal[ _]tenths/i);
+} finally {
+  await writeFile(domain, original);
+}
+// Reverting restores the keys of the last passing run.
+assert.deepEqual((await lawspecTest()).ran, [], 'A reverted edit needs no new run');
 const manifest = await readFile(path.join(directory, '.lawspec/generated.json'), 'utf8');
 await run(process.execPath, [cli, 'examples', '--example', 'payments', '--target', target,
   '--machine-bits', String(bits), ...(minify ? ['--minify'] : [])], base);
 assert.equal(await readFile(path.join(directory, '.lawspec/generated.json'), 'utf8'), manifest);
 await run(process.execPath, [cli, 'generate', '--check', ...(minify ? ['--minify'] : [])], directory);
-console.log(`Installed ${target}: native tests pass, wrong fee fails, regeneration preserves files (${bits}, compact=${minify})`);
+console.log(`Installed ${target}: native tests pass, wrong fee fails, lawspec test reruns only affected laws, regeneration preserves files (${bits}, compact=${minify})`);
