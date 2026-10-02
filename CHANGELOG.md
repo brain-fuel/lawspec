@@ -17,8 +17,9 @@
 
 - `lawspec check`, `evidence`, `explain` and `generate` keep the compiler's
   work in `.lawspec/cache` and reuse it across runs. Results are identical to
-  an uncached run. Planning every bundled example again after a no-op edit
-  takes a third of the uncached time.
+  an uncached run. With every bundled example in one project, a repeated
+  `lawspec check` takes 4.7 seconds instead of 8.4, and generating Python
+  tests through the API 9.2 instead of 18.2 (natively, a third of the time).
 - One folder per compiler build, with its own `.gitignore`; damaged entries
   are recomputed. `--no-cache` or `"cache": false` turns it off. See
   [the compiler cache](docs/reference/cli.md#the-compiler-cache).

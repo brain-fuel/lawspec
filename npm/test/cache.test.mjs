@@ -1,3 +1,4 @@
+// Generated from templates/npm/test/cache.test.mjs by lawspec-dev generate. Do not edit.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";

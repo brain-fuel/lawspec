@@ -256,6 +256,7 @@ export interface CheckRequest {
   package?: PackageVersion;
   dependencies?: Record<string, string>;
   packages?: Package[];
+  cacheDirectory?: string;
 }
 
 export interface GenerationRequest extends CheckRequest {
