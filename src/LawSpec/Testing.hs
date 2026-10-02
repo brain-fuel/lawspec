@@ -42,22 +42,27 @@ data IndexedGeneration = IndexedGeneration
 
 planTesting :: Program -> Either [Diagnostic] Plan
 planTesting program@Program{..} = do
+  plan <- lawPlanner program
+  let unit u = PlannedUnit u <$> mapM property (unitProperties u)
+      property p = either (Left . pure . (\m -> Diagnostic "generation" m (Just (propertyLocation p)))) Right (plan p)
+  Plan programMachineBits programDataDeclarations <$> mapM unit programUnits
+
+-- How each law of a program is planned, by the generated tests and by
+-- evidence discharge alike. A law is planned from what it reaches: the types
+-- and definitions in its dependency closure. Its key is its content and the
+-- Merkle digests of what it references, so an edit replans exactly the laws
+-- that can reach it, and reverting an edit finds the earlier plans again.
+lawPlanner :: Program -> Either [Diagnostic] (Property -> Either String PlannedProperty)
+lawPlanner program@Program{..} = do
   invoke <- prepareDefinitions program
   _ <- either (Left . pure . (\message -> Diagnostic "generation" message Nothing)) Right (makeRegistry programDataDeclarations)
   let graph = dependencyGraph programDataDeclarations programUnits
-      -- A law is planned from what it reaches: the types and definitions in
-      -- its dependency closure. Its key is its content and the Merkle digests
-      -- of what it references, so an edit replans exactly the laws that can
-      -- reach it, and reverting an edit finds the earlier plans again.
-      memo = memoized planTable
-      unit u = PlannedUnit u <$> mapM property (unitProperties u)
-      property p = either (Left . pure . (\m -> Diagnostic "generation" m (Just (propertyLocation p)))) Right $
-        let refs = lawReferences graph p
-            reached = closure graph refs
-        in memo (keyOf graph (show (programMachineBits, p)) refs) $ do
-          registry <- makeRegistry (reachableData graph reached)
-          planProperty registry programMachineBits invoke (reachableDefinitions graph reached) p
-  Plan programMachineBits programDataDeclarations <$> mapM unit programUnits
+  pure $ \p ->
+    let refs = lawReferences graph p
+        reached = closure graph refs
+    in memoized planTable (keyOf graph (show (programMachineBits, p)) refs) $ do
+      registry <- makeRegistry (reachableData graph reached)
+      planProperty registry programMachineBits invoke (reachableDefinitions graph reached) p
 
 planTable :: Table (Either String PlannedProperty)
 planTable = unsafePerformIO (newTable 2048 (const 1))

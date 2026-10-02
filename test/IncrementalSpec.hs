@@ -11,6 +11,8 @@ import LawSpec.Digest (digestHex, digestString)
 import LawSpec.Frontend (compileCore)
 import LawSpec.Model (Source(..), defaultGeneration)
 import LawSpec.Testing (Plan(..), PlannedUnit(..), PlannedProperty(..), planTesting)
+import LawSpec.Core.Evidence (Obligation(..))
+import LawSpec.Discharge (dischargeEvidence)
 
 -- Two programs that differ only in one law of their second unit. The compiler
 -- memoizes stages by content, so a missing input in any key would make one
@@ -69,6 +71,15 @@ spec = describe "incremental compilation" $ do
           beside = planOf "score" [wrapper "Score" "0", wrapper "Wide" "1234"]
       beside `shouldBe` alone
       fmap (isInfixOf "1234" . show) beside `shouldBe` Just False
+    it "reports the boundary cases the generated tests use" $ do
+      let program = compiled $ unlines ["unit incremental.evidence", wrapper "Score" "0", wrapper "Wide" "1234",
+            "law `score` is definition is `for all` (s :: Score) . s = s end end"]
+          Right plan = planTesting program
+          Right evidence = dischargeEvidence program
+          planned = [length (boundaryCases q) | u <- plannedUnits plan, q <- plannedProperties u]
+          reasons = [obligationReason o | o <- evidence, obligationStage o == "law"]
+      planned `shouldSatisfy` (not . null)
+      reasons `shouldSatisfy` all (\r -> any (\n -> (show n ++ " boundary case") `isInfixOf` r) planned)
   where
     compiled text = either (error . show) id (compileCore 64 defaultGeneration [Source "keys.lawspec" text])
     keys body =

@@ -31,13 +31,14 @@ import LawSpec.Core.Value (Value(..))
 import LawSpec.NativeBinding
 import LawSpec.NativeRequest (BindingPlan(..))
 import LawSpec.Scalar (Scalar(..), prettyScalar)
-import LawSpec.Testing (PlannedProperty(..), planProperty)
+import LawSpec.Testing (PlannedProperty(..), lawPlanner)
 
 -- Laws first, then contracts, constructions and adapters. A law over checked
 -- definitions whose finite domain contains a counterexample is refuted here.
 dischargeEvidence :: Program -> Either [Diagnostic] [Obligation]
 dischargeEvidence program = do
   invoke <- prepareDefinitions program
+  plan <- lawPlanner program
   registry <- either (Left . pure . (\m -> Diagnostic "generation" m Nothing)) Right
     (makeRegistry (programDataDeclarations program))
   let bits = programMachineBits program
@@ -52,7 +53,7 @@ dischargeEvidence program = do
         settings = propertyGeneration p
         every [_] = "its only case"
         every tuples = "all " ++ show (length tuples) ++ " inputs"
-    case planProperty registry bits invoke definitions p of
+    case plan p of
       Left message -> pure (obligation Assumed ("not executable, so taken on trust: " ++ message))
       Right planned
         | closed, Right () <- proves program definitions p -> pure (obligation Proved
