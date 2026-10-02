@@ -15,7 +15,9 @@
   renamed. Editing one definition's body no longer replans and re-emits the
   whole program, and reverting an edit reuses the earlier results.
 - Each law is planned from only the types and definitions it reaches, which
-  cuts planning time for the bundled examples by two thirds.
+  cuts planning time for the bundled examples by two thirds. Evidence
+  discharge plans laws the same way, so `lawspec evidence` reports the boundary
+  cases the generated tests use.
 
 ### Changes to generated tests
 
