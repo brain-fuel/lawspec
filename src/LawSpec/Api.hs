@@ -15,13 +15,14 @@ import LawSpec.NativeRequest
 import LawSpec.Public (programView)
 import LawSpec.Packages
 import LawSpec.Discharge (dischargeEvidence, bindingEvidence)
-import LawSpec.Memo (Table, newTable, memoized)
+import LawSpec.Memo (Table, newTable, memoized, withCacheDirectory)
 import qualified Data.ByteString.Lazy.Char8 as BC
 import qualified Data.Aeson.Key as K
+import qualified Data.Text as T
 import System.IO.Unsafe (unsafePerformIO)
 
 dispatch :: B.ByteString -> B.ByteString
-dispatch bytes = encode $ versioned $ case eitherDecode bytes >>= parseEither request of
+dispatch bytes = withCacheDirectory cacheDirectory $ encode $ versioned $ case eitherDecode bytes >>= parseEither request of
   Left err -> failure [Diagnostic "request" err Nothing]
   Right ((method,sources,target,sourceDir,testDir,bits,settings,minify,native),(project,packages)) ->
    -- Compilation, evidence and the testing plan depend on neither the method
@@ -36,6 +37,11 @@ dispatch bytes = encode $ versioned $ case eitherDecode bytes >>= parseEither re
           _ -> failure [Diagnostic "request" ("unknown method: " ++ method) Nothing]
 
   where
+    -- Where the compiler may keep work between runs; the CLI names one per
+    -- project and compiler build.
+    cacheDirectory = case decode bytes of
+      Just (Object o) | Just (String d) <- KM.lookup "cacheDirectory" o -> Just (T.unpack d)
+      _ -> Nothing
     responseVersion = case eitherDecode bytes >>= parseEither
         (withObject "request" (\o -> o .:? "schemaVersion" .!= (3 :: Int))) of
       Right 4 -> 4 :: Int
@@ -81,7 +87,7 @@ stages project packages sources bits settings native = case preparePackages proj
 sharedRequest :: B.ByteString -> String
 sharedRequest bytes = case decode bytes of
   Just (Object o) -> BC.unpack (encode (Object (foldr (KM.delete . K.fromString) o
-    ["method", "target", "sourceDir", "testDir", "minify"])))
+    ["method", "target", "sourceDir", "testDir", "minify", "cacheDirectory"])))
   _ -> BC.unpack bytes
 
 -- Two entries: each holds a whole compiled program and its plan.

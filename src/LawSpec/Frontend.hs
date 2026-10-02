@@ -10,6 +10,10 @@ import LawSpec.Elaboration (coreType, elaborateExpression, elaborateResolvedWith
 import LawSpec.Core.Validate (validateProgram)
 import LawSpec.Core.Total (deferProgramPostconditions)
 import Control.Monad (forM)
+import System.IO.Unsafe (unsafePerformIO)
+import LawSpec.Digest (digestHex, digestString)
+import LawSpec.Memo (Table, newPersistentTable, memoized)
+import LawSpec.Persist ()
 
 compileCore :: Int -> Generation -> [Source] -> Either [Diagnostic] C.Program
 compileCore bits settings sources = do
@@ -28,7 +32,12 @@ elaborate bits units properties = do
     unit dataDeclarations u = contextual Nothing $ do
       closed <- elaborateDefinitionUnit dataDeclarations bits u
       cs <- mapM (elaborateContract dataDeclarations bits u) (S.contracts u)
-      ps <- mapM (property dataDeclarations u) (filter ((== S.unitName u) . S.owner) properties)
+      -- A law's Core depends on it, its unit's signatures and the data types.
+      let dataDigest = digestHex (digestString (show dataDeclarations))
+          elaborated p = memoized elaborationTable
+            (digestHex (digestString (show (bits, dataDigest, S.unitName u, S.functions u, p))))
+            (property dataDeclarations u p)
+      ps <- mapM elaborated (filter ((== S.unitName u) . S.owner) properties)
       pure closed{C.unitContracts=cs,C.unitProperties=ps}
     declarationId u n = C.Id (S.unitName u ++ "::" ++ n)
     property dataDeclarations u p = do
@@ -70,3 +79,7 @@ elaborate bits units properties = do
 -- a display name cannot masquerade as a binder segment in target accessors.
 escapeIdentity :: String -> String
 escapeIdentity = concatMap (\c -> case c of ':' -> "%3A"; '%' -> "%25"; _ -> [c])
+
+elaborationTable :: Table (Either String C.Property)
+elaborationTable = unsafePerformIO (newPersistentTable "elaborate" 4096 (const 1))
+{-# NOINLINE elaborationTable #-}

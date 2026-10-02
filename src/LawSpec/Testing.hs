@@ -1,6 +1,7 @@
 -- Execution feasibility and deterministic cases are planned after elaboration.
 -- This module consumes only typed core, never surface syntax or inference.
 module LawSpec.Testing where
+import GHC.Generics (Generic)
 import LawSpec.Core
 import LawSpec.Common
 import LawSpec.Scalar
@@ -11,7 +12,9 @@ import LawSpec.Core.Value
 import LawSpec.Core.Types (TypeRegistry, makeRegistry, registryDeclarations, builtinDataDeclarations, lookupData, constructorFieldsFor, compatibleConstructors, generationRequirements, freeExistentials, substitute, witnessPool)
 import qualified Data.Map.Strict as M
 import Data.Containers.ListUtils (nubOrd)
-import LawSpec.Memo (Table, newTable, memoized)
+import LawSpec.Memo (Table, newPersistentTable, memoized)
+import LawSpec.Persist ()
+import Data.Binary (Binary)
 import LawSpec.Dependencies (dependencyGraph, lawReferences, closure, keyOf, reachableData, reachableDefinitions)
 import System.IO.Unsafe (unsafePerformIO)
 import Data.List (find, nub, partition, sort, stripPrefix)
@@ -22,13 +25,13 @@ import Control.Monad.State.Strict (StateT, evalStateT, get, modify, lift)
 data Plan = Plan
   { planMachineBits :: Int, planDataDeclarations :: [DataDeclaration]
   , plannedUnits :: [PlannedUnit]
-  } deriving (Eq, Show)
-data PlannedUnit = PlannedUnit { plannedUnit :: Unit, plannedProperties :: [PlannedProperty] } deriving (Eq, Show)
+  } deriving (Eq, Show, Generic)
+data PlannedUnit = PlannedUnit { plannedUnit :: Unit, plannedProperties :: [PlannedProperty] } deriving (Eq, Show, Generic)
 data PlannedProperty = PlannedProperty
   { plannedProperty :: Property, finiteCases :: Maybe [[Value]], boundaryCases :: [[Value]]
   , generatorRequirements :: [GeneratorRequirement]
-  } deriving (Eq, Show)
-data GeneratorRequirement = GeneratorRequirement { generatorBinder :: Binder, generatorPredicates :: [Expr], generatorBoundaries :: [Value], generatorBounds :: [(BinaryOp,Expr)], generatorHints :: [Expr], generatorIndex :: Maybe IndexedGeneration } deriving (Eq, Show)
+  } deriving (Eq, Show, Generic)
+data GeneratorRequirement = GeneratorRequirement { generatorBinder :: Binder, generatorPredicates :: [Expr], generatorBoundaries :: [Value], generatorBounds :: [(BinaryOp,Expr)], generatorHints :: [Expr], generatorIndex :: Maybe IndexedGeneration } deriving (Eq, Show, Generic)
 
 -- A predicate m x == target, where m is the index measure of a family,
 -- directs generation. Each constructor of every family reachable through
@@ -38,7 +41,7 @@ data GeneratorRequirement = GeneratorRequirement { generatorBinder :: Binder, ge
 data IndexedGeneration = IndexedGeneration
   { indexedTarget :: Expr
   , indexedEquations :: [(Id, [String])]
-  } deriving (Eq, Show)
+  } deriving (Eq, Show, Generic)
 
 planTesting :: Program -> Either [Diagnostic] Plan
 planTesting program@Program{..} = do
@@ -64,8 +67,14 @@ lawPlanner program@Program{..} = do
       registry <- makeRegistry (reachableData graph reached)
       planProperty registry programMachineBits invoke (reachableDefinitions graph reached) p
 
+instance Binary GeneratorRequirement
+instance Binary IndexedGeneration
+instance Binary PlannedProperty
+instance Binary PlannedUnit
+instance Binary Plan
+
 planTable :: Table (Either String PlannedProperty)
-planTable = unsafePerformIO (newTable 2048 (const 1))
+planTable = unsafePerformIO (newPersistentTable "plan" 2048 (const 1))
 {-# NOINLINE planTable #-}
 
 -- One property's finite domain, boundary cases and generator requirements.

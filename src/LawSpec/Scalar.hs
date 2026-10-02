@@ -1,6 +1,7 @@
 -- The portable scalar domain. No test framework or target runtime dependencies.
 module LawSpec.Scalar where
 
+import GHC.Generics (Generic)
 import Data.Aeson (ToJSON(..), object, (.=))
 import Data.Char (ord)
 import Data.List (find)
@@ -8,8 +9,8 @@ import Data.Ratio
 import GHC.Float (castFloatToWord32, castDoubleToWord64, castWord32ToFloat, castWord64ToDouble, float2Double, double2Float)
 import Numeric (showHex, readHex)
 
-data Family = Boolean | IntegerFamily | Exact | Floating | Complex | Character | Sequence | Identity | Absence deriving (Eq, Show)
-data Primitive = Primitive { primitiveName :: String, family :: Family, width :: Maybe Int, signed :: Bool } deriving (Eq, Show)
+data Family = Boolean | IntegerFamily | Exact | Floating | Complex | Character | Sequence | Identity | Absence deriving (Eq, Show, Generic)
+data Primitive = Primitive { primitiveName :: String, family :: Family, width :: Maybe Int, signed :: Bool } deriving (Eq, Show, Generic)
 primitives :: [Primitive]
 primitives = [Primitive "Bool" Boolean Nothing False]
   ++ [Primitive (p ++ show w) IntegerFamily (Just w) s | (p,s) <- [("Int",True),("UInt",False)], w <- [8,16,32,64]]
@@ -33,7 +34,7 @@ integerBounds machine n = do
 data Scalar = SInteger String Integer | SBool Bool | SDecimal Integer Integer
   | SRational Integer Integer | SFloat String String | SComplex String Scalar Scalar
   | SSequence String [Int] | SCharacter String Int | SSymbol String String
-  | SAbsent String | SPresent String (Maybe Scalar) deriving (Eq, Ord, Show)
+  | SAbsent String | SPresent String (Maybe Scalar) deriving (Eq, Ord, Show, Generic)
 scalarName :: Scalar -> String
 scalarName (SInteger t _) = t
 scalarName (SBool _) = "Bool"

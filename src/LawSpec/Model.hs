@@ -24,7 +24,7 @@ instance ToJSON Refinement
 instance ToJSON Contract
 instance ToJSON DomainPlan
 
-data Literal = IntLiteral Integer | DecimalLiteral Integer Integer | TextLiteral String | BoolLiteral Bool | ScalarLiteral Scalar | ListLiteral [Literal] | ConstructorLiteral String [Literal] deriving (Eq, Show)
+data Literal = IntLiteral Integer | DecimalLiteral Integer Integer | TextLiteral String | BoolLiteral Bool | ScalarLiteral Scalar | ListLiteral [Literal] | ConstructorLiteral String [Literal] deriving (Eq, Show, Generic)
 instance ToJSON Literal where
   toJSON (DecimalLiteral c e) = toJSON (SDecimal c e)
   toJSON (IntLiteral n) = toJSON (SInteger "BigInt" n)

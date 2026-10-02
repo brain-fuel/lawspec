@@ -10,10 +10,11 @@ module LawSpec.IndexTerm
   , indexTermText, indexGuardText, constructorIndexTexts
   ) where
 
+import GHC.Generics (Generic)
 import Data.List (nub)
 
 data IndexOperation = IndexAdd | IndexSubtract | IndexMultiply | IndexQuotient | IndexRemainder | IndexPower
-  deriving (Eq, Ord, Show, Enum, Bounded)
+  deriving (Eq, Ord, Show, Enum, Bounded, Generic)
 
 -- A field reference names a field position and the position of the index
 -- within that field's own family.
@@ -21,22 +22,22 @@ data IndexTerm
   = IndexConstant Integer
   | IndexField Int Int
   | IndexApply IndexOperation IndexTerm IndexTerm
-  deriving (Eq, Ord, Show)
+  deriving (Eq, Ord, Show, Generic)
 
-data IndexRelation = IndexEqual | IndexAtLeast deriving (Eq, Ord, Show)
+data IndexRelation = IndexEqual | IndexAtLeast deriving (Eq, Ord, Show, Generic)
 
-data IndexGuard = IndexGuard IndexRelation IndexTerm IndexTerm deriving (Eq, Ord, Show)
+data IndexGuard = IndexGuard IndexRelation IndexTerm IndexTerm deriving (Eq, Ord, Show, Generic)
 
 data ConstructorIndex = ConstructorIndex
   { constructorIndexTerms :: [IndexTerm]
   , constructorIndexGuards :: [IndexGuard]
-  } deriving (Eq, Show)
+  } deriving (Eq, Show, Generic)
 
 -- Index names in declaration order; constructors are keyed by source name.
 data FamilyIndex = FamilyIndex
   { familyIndexNames :: [String]
   , familyIndexConstructors :: [(String, ConstructorIndex)]
-  } deriving (Eq, Show)
+  } deriving (Eq, Show, Generic)
 
 indexOperationName :: IndexOperation -> String
 indexOperationName op = case op of

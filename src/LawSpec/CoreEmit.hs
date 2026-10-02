@@ -33,7 +33,8 @@ import LawSpec.Scalar (primitive)
 import Data.Char (toUpper, toLower, isAscii, isAlphaNum)
 import Data.List (intercalate, nub, stripPrefix, isPrefixOf, isSuffixOf)
 import Control.Monad (unless)
-import LawSpec.Memo (Table, newTable, memoized)
+import LawSpec.Memo (Table, newPersistentTable, memoized)
+import Data.Binary (Binary(..))
 import qualified Data.Text as T
 import qualified LawSpec.Dependencies as D
 import LawSpec.Digest (digestHex, digestString)
@@ -403,10 +404,14 @@ schemaImport = "import {RefinementViolation, witnessed, witnessInstances} from '
 
 -- Emitted files are held as text, weighed by their length.
 emitTable :: Table (Either [Diagnostic] [Stored])
-emitTable = unsafePerformIO (newTable 8000000 (either (const 1) (sum . map storedLength)))
+emitTable = unsafePerformIO (newPersistentTable "emit" 8000000 (either (const 1) (sum . map storedLength)))
 {-# NOINLINE emitTable #-}
 
 data Stored = Stored T.Text T.Text T.Text T.Text (Maybe T.Text)
+
+instance Binary Stored where
+  put (Stored p c o l canonical) = put p >> put c >> put o >> put l >> put canonical
+  get = Stored <$> get <*> get <*> get <*> get <*> get
 
 store :: Artifact -> Stored
 store (Artifact p c o l) = Stored (T.pack p) (T.pack c) (T.pack o) (T.pack l) Nothing

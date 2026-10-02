@@ -5,6 +5,7 @@ module LawSpec.Core.Value
   , equalValues, compareValues, listValue, listItems, valueIndex, valueType, witnessFields, witnessKey, witnessKeys
   ) where
 
+import GHC.Generics (Generic)
 import Control.Monad (unless, zipWithM)
 import Control.Monad.Trans.Class (lift)
 import Control.Monad.Trans.Except (ExceptT, runExceptT, throwE)
@@ -19,7 +20,7 @@ data Value
   = ScalarValue Scalar
   | DataValue Type Id [Value]
   | PresenceValue Type (Maybe Value)
-  deriving (Eq, Ord, Show)
+  deriving (Eq, Ord, Show, Generic)
 
 fromScalarValue :: Type -> Scalar -> Value
 fromScalarValue ty@(Constructor name [TypeArgument element]) (SPresent tag payload)
@@ -49,7 +50,7 @@ validateValueWith evaluate registry bits expected value = do
 
 -- Candidate generation must distinguish a false predicate from a malformed
 -- value or an evaluation error. Rejection is data, not an exception to swallow.
-data ValueCheck = ValueAccepted Value | RefinementRejected String deriving (Eq, Show)
+data ValueCheck = ValueAccepted Value | RefinementRejected String deriving (Eq, Show, Generic)
 
 checkValueWith :: ([(Id,Value)] -> Expr -> Either String Value)
   -> TypeRegistry -> Int -> Type -> Value -> Either String ValueCheck

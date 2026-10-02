@@ -3,25 +3,26 @@
 -- no dependency on the surface syntax, inference, or a testing framework.
 module LawSpec.Core where
 
+import GHC.Generics (Generic)
 import LawSpec.IndexTerm (FamilyIndex(..))
 import LawSpec.Common
 import LawSpec.Scalar (Scalar)
 
-newtype Id = Id { idText :: String } deriving (Eq, Ord, Show)
-data Kind = ValueKind | TypeKind | KindArrow Kind Kind deriving (Eq, Show)
-data Type = Constructor String [Argument] | TypeVariable Id | Arrow Type Type deriving (Eq, Ord, Show)
-data Argument = TypeArgument Type | IndexArgument Index deriving (Eq, Ord, Show)
-data Index = Natural Integer | IndexVariable Id deriving (Eq, Ord, Show)
+newtype Id = Id { idText :: String } deriving (Eq, Ord, Show, Generic)
+data Kind = ValueKind | TypeKind | KindArrow Kind Kind deriving (Eq, Show, Generic)
+data Type = Constructor String [Argument] | TypeVariable Id | Arrow Type Type deriving (Eq, Ord, Show, Generic)
+data Argument = TypeArgument Type | IndexArgument Index deriving (Eq, Ord, Show, Generic)
+data Index = Natural Integer | IndexVariable Id deriving (Eq, Ord, Show, Generic)
 scalarType :: String -> Type
 scalarType n = Constructor n []
 functionType :: Type -> ([Type], Type)
 functionType (Arrow a b) = let (as,r) = functionType b in (a:as,r)
 functionType t = ([],t)
 
-data Binder = Binder { binderId :: Id, binderName :: String, binderType :: Type } deriving (Eq, Show)
+data Binder = Binder { binderId :: Id, binderName :: String, binderType :: Type } deriving (Eq, Show, Generic)
 -- An async declaration is an adapter whose result arrives later, as each
 -- target's task; Declaration builds a synchronous one.
-data Declaration = MkDeclaration { declarationId :: Id, declarationName :: String, declarationType :: Type, declarationOrigin :: Origin, declarationAsync :: Bool } deriving (Eq, Show)
+data Declaration = MkDeclaration { declarationId :: Id, declarationName :: String, declarationType :: Type, declarationOrigin :: Origin, declarationAsync :: Bool } deriving (Eq, Show, Generic)
 pattern Declaration :: Id -> String -> Type -> Origin -> Declaration
 pattern Declaration identity name ty origin <- MkDeclaration identity name ty origin _
   where Declaration identity name ty origin = MkDeclaration identity name ty origin False
@@ -32,7 +33,7 @@ pattern Declaration identity name ty origin <- MkDeclaration identity name ty or
 data Definition = Definition
   { definitionDeclaration :: Declaration, definitionArguments :: [Binder]
   , definitionBody :: Expr
-  } deriving (Eq, Show)
+  } deriving (Eq, Show, Generic)
 -- Products are single-constructor declarations; sums retain the identity of
 -- each constructor even when their payloads have identical representations.
 data DataDeclaration = DataDeclaration
@@ -40,7 +41,7 @@ data DataDeclaration = DataDeclaration
   , dataConstructors :: [DataConstructor], dataOrigin :: Origin
   -- An indexed family's erased index table, keyed by constructor identity.
   , dataIndex :: Maybe FamilyIndex
-  } deriving (Eq, Show)
+  } deriving (Eq, Show, Generic)
 -- A GADT constructor's equations fix declaration parameters to types over its
 -- existentials: a value of T args uses the constructor only where each
 -- equation matches its argument, which also determines the existentials.
@@ -50,11 +51,11 @@ data DataConstructor = DataConstructor
   , constructorOrigin :: Origin
   , constructorEquations :: [(Id, Type)]
   , constructorExistentials :: [Id]
-  } deriving (Eq, Show)
+  } deriving (Eq, Show, Generic)
 -- Synthetic nodes explicitly have no source span; elaboration never fabricates
 -- expression ranges from the containing law's location.
-data Origin = SourceSpan Span | GeneratedFrom Id deriving (Eq, Show)
-data Expr = Expr { expressionType :: Type, expressionNode :: Node, expressionOrigin :: Origin } deriving (Eq, Show)
+data Origin = SourceSpan Span | GeneratedFrom Id deriving (Eq, Show, Generic)
+data Expr = Expr { expressionType :: Type, expressionNode :: Node, expressionOrigin :: Origin } deriving (Eq, Show, Generic)
 data Node
   = Constant Scalar
   | Construct Id [Expr]
@@ -68,40 +69,40 @@ data Node
   | ShortCircuit LogicalOp Expr Expr
   | Convert Conversion Type Expr
   | Helper Builtin [Expr]
-  deriving (Eq, Show)
+  deriving (Eq, Show, Generic)
 data MatchCase = MatchCase
   { caseConstructor :: Id, caseBinders :: [Binder], caseBody :: Expr
-  } deriving (Eq, Show)
+  } deriving (Eq, Show, Generic)
 
 data BinaryOp = Add | Subtract | Multiply | Divide | Quotient | Remainder | Power
-  | Equal | NotEqual | Less | LessEqual | Greater | GreaterEqual deriving (Eq, Show)
-data UnaryOp = Negate | Not deriving (Eq, Show)
-data LogicalOp = And | Or deriving (Eq, Show)
-data Conversion = Explicit | CheckedArgument deriving (Eq, Show)
+  | Equal | NotEqual | Less | LessEqual | Greater | GreaterEqual deriving (Eq, Show, Generic)
+data UnaryOp = Negate | Not deriving (Eq, Show, Generic)
+data LogicalOp = And | Or deriving (Eq, Show, Generic)
+data Conversion = Explicit | CheckedArgument deriving (Eq, Show, Generic)
 -- Evidence fixes the arithmetic domain before code generation. Backends must
 -- neither choose a promotion nor infer a capability from surface syntax.
-data Evidence = Numeric Type | Structural Type deriving (Eq, Show)
+data Evidence = Numeric Type | Structural Type deriving (Eq, Show, Generic)
 data Builtin = Length | IsPresent | PresentValue | RealPart | ImaginaryPart
-  | IsNaN | IsInfinite | IsFinite | IsNegativeZero | RoundHalfEven | Checked | Compare deriving (Eq, Show)
-data Proposition = Equation Evidence Expr Expr | Implication Expr Proposition | Conjunction [Proposition] deriving (Eq, Show)
-data Quantifier = Quantifier { quantifiedBinder :: Binder, quantifiedPredicates :: [Expr], quantifiedBounds :: [(BinaryOp,Expr)] } deriving (Eq, Show)
-data Example = Example { exampleName :: String, exampleBindings :: [(Id,Expr)], exampleExpectations :: [Proposition] } deriving (Eq, Show)
+  | IsNaN | IsInfinite | IsFinite | IsNegativeZero | RoundHalfEven | Checked | Compare deriving (Eq, Show, Generic)
+data Proposition = Equation Evidence Expr Expr | Implication Expr Proposition | Conjunction [Proposition] deriving (Eq, Show, Generic)
+data Quantifier = Quantifier { quantifiedBinder :: Binder, quantifiedPredicates :: [Expr], quantifiedBounds :: [(BinaryOp,Expr)] } deriving (Eq, Show, Generic)
+data Example = Example { exampleName :: String, exampleBindings :: [(Id,Expr)], exampleExpectations :: [Proposition] } deriving (Eq, Show, Generic)
 -- A definition's runtime postconditions are claims the prover could not
 -- establish because they involve non-linear index arithmetic; each result is
 -- checked against them instead.
-data Contract = Contract { contractDeclaration :: Id, contractArguments :: [Binder], contractResult :: Binder, contractPreconditions :: [Expr], contractPostconditions :: [Expr], contractRuntimePostconditions :: [Expr] } deriving (Eq, Show)
+data Contract = Contract { contractDeclaration :: Id, contractArguments :: [Binder], contractResult :: Binder, contractPreconditions :: [Expr], contractPostconditions :: [Expr], contractRuntimePostconditions :: [Expr] } deriving (Eq, Show, Generic)
 data Property = Property
   { propertyId :: Id, propertyName :: String, propertyLocation :: Location
   , propertyInputs :: [Quantifier], propertyBody :: Proposition
   , propertyExamples :: [Example], propertyGeneration :: Generation
   , propertyDescription :: String, propertyRationale :: String
   , propertyReferences :: [String], propertyTrace :: [String]
-  } deriving (Eq, Show)
-data Unit = Unit { unitId :: Id, unitDeclarations :: [Declaration], unitContracts :: [Contract], unitProperties :: [Property], unitDefinitions :: [Definition] } deriving (Eq, Show)
+  } deriving (Eq, Show, Generic)
+data Unit = Unit { unitId :: Id, unitDeclarations :: [Declaration], unitContracts :: [Contract], unitProperties :: [Property], unitDefinitions :: [Definition] } deriving (Eq, Show, Generic)
 data Program = Program
   { programMachineBits :: Int, programDataDeclarations :: [DataDeclaration]
   , programUnits :: [Unit]
-  } deriving (Eq, Show)
+  } deriving (Eq, Show, Generic)
 
 binaryName :: BinaryOp -> String
 binaryName Add = "+"

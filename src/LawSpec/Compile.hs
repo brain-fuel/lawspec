@@ -24,6 +24,12 @@ import Control.Monad (unless, when, zipWithM_, forM, forM_, foldM)
 import qualified Data.Map.Strict as M
 import Data.List (nub, intercalate, uncons)
 import Data.Char (isLower)
+import Data.List (isSuffixOf)
+import qualified Data.Set as Set
+import System.IO.Unsafe (unsafePerformIO)
+import LawSpec.Digest (digestHex, digestString)
+import qualified LawSpec.Memo as Memo
+import LawSpec.Persist ()
 
 
 rename :: String -> Type -> Type
@@ -205,15 +211,23 @@ compileWithImports visible bits settings sources = do
   dataTypes <- elaborateDataDeclarationsWithProfile bits us
   _ <- either (Left . pure . (\m -> Diagnostic "data-type" m Nothing)) Right (CoreTypes.makeRegistry dataTypes)
   unless (length us == length (nub (map unitName us))) (Left [Diagnostic "duplicate-unit" "unit names must be unique; prelude is reserved" Nothing])
-  mapM_ (validateUnit dataTypes) us
-  mapM_ (validateDefinitionTotality dataTypes bits) us
+  -- Each unit is validated, and each law expanded, under a key of exactly
+  -- its inputs: a law's expansion depends on the law, the laws it invokes,
+  -- its unit's signatures (not its definitions' bodies) and the data types,
+  -- so editing a body or another unit's laws reuses it.
+  let dataDigest = digestHex (digestString (show dataTypes))
+      key parts = digestHex (digestString parts)
+  mapM_ (\u -> Memo.memoized validationTable (key (show ("unit", bits, dataDigest, u))) (validateUnit dataTypes u)) us
+  mapM_ (\u -> Memo.memoized validationTable (key (show ("totality", bits, dataDigest, u))) (validateDefinitionTotality dataTypes bits u)) us
   let table = M.fromList [((unitName u,lawName l),l) | u <- us, l <- laws u]
+      signatures u = [ (functionName d, functionArguments d, functionResult d, functionRequirements d) | d <- functionDefinitions u ]
+      expansionKey u l = key (show (bits, settings, dataDigest, unitName u, functions u, signatures u, l, invokedLaws table l))
       typedChecked environment expression = do
         (tree, requirements) <- typedExpressionWithSchemes dataTypes bits environment expression
         forM_ requirements $ \requirement -> unless (satisfiedWithData dataTypes bits [] requirement)
           (Left ("unsatisfied capability: " ++ show requirement))
         pure tree
-  allExpanded <- forM [(u,l) | u <- us,l <- laws u] $ \(u,l) ->
+  allExpanded <- forM [(u,l) | u <- us,l <- laws u] $ \(u,l) -> Memo.memoized expansionTable (expansionKey u l) $
     either (Left . pure . (\m -> Diagnostic "semantic" m (Just (location l)))) Right $ evalStateT (do
       let symbolic = not (null (parameters l))
           rigid (Variable n) = Named ("@" ++ n)
@@ -288,6 +302,32 @@ compileWithImports visible bits settings sources = do
         mapM_ (validateExampleDomains bits u invoke (inputs property)) (examples (original property)))
         ((initialState bits){dataDeclarations=dataTypes})
   pure (specialized, properties)
+
+-- The laws a law invokes, transitively: every law whose name ends one of the
+-- names it invokes, a superset of the ones expansion resolves.
+invokedLaws :: M.Map (String,String) Law -> Law -> [Law]
+invokedLaws table root = go Set.empty (invoked (definition root))
+  where
+    go _ [] = []
+    go seen (n : rest)
+      | Set.member n seen = go seen rest
+      | otherwise =
+          let found = [ l | ((_, name), l) <- M.toList table, name `isSuffixOf` n ]
+          in found ++ go (Set.insert n seen) (concatMap (invoked . definition) found ++ rest)
+    invoked d = case d of
+      Forall _ body -> invoked body
+      Implies _ body -> invoked body
+      And a b -> invoked a ++ invoked b
+      Invoke n _ -> [n]
+      _ -> []
+
+expansionTable :: Memo.Table (Either [Diagnostic] Expanded)
+expansionTable = unsafePerformIO (Memo.newPersistentTable "expand" 4096 (const 1))
+{-# NOINLINE expansionTable #-}
+
+validationTable :: Memo.Table (Either [Diagnostic] ())
+validationTable = unsafePerformIO (Memo.newPersistentTable "validate" 4096 (const 1))
+{-# NOINLINE validationTable #-}
 
 prettyExpanded :: Expanded -> String
 prettyExpanded e | propertyKind e == "contract" = description (original e)
