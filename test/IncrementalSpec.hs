@@ -12,6 +12,10 @@ import LawSpec.Frontend (compileCore)
 import LawSpec.Model (Source(..), defaultGeneration)
 import LawSpec.Testing (Plan(..), PlannedUnit(..), PlannedProperty(..), planTesting)
 import LawSpec.Core.Evidence (Obligation(..))
+import qualified Data.ByteString.Lazy.Char8 as BC
+import System.Directory (getTemporaryDirectory, removePathForcibly, listDirectory)
+import System.FilePath ((</>))
+import LawSpec.Memo (newPersistentTable, memoized, withCacheDirectory)
 import LawSpec.Discharge (dischargeEvidence)
 
 -- Two programs that differ only in one law of their second unit. The compiler
@@ -80,6 +84,27 @@ spec = describe "incremental compilation" $ do
           reasons = [obligationReason o | o <- evidence, obligationStage o == "law"]
       planned `shouldSatisfy` (not . null)
       reasons `shouldSatisfy` all (\r -> any (\n -> (show n ++ " boundary case") `isInfixOf` r) planned)
+  describe "the on-disk cache" $ do
+    it "reads an entry another process stored, and recomputes one it cannot read" $ do
+      root <- (</> "lawspec-memo-test") <$> getTemporaryDirectory
+      removePathForcibly root
+      first <- newPersistentTable "probe" 16 (const 1)
+      let run table value = BC.unpack (withCacheDirectory (Just root) (BC.pack (memoized table "key" value)))
+      run first "stored" `shouldBe` "stored"
+      -- A new table has an empty memory, as a new process would.
+      second <- newPersistentTable "probe" 16 (const 1)
+      run second (error "recomputed") `shouldBe` "stored"
+      [versioned] <- listDirectory root
+      [entry] <- listDirectory (root </> versioned </> "probe")
+      writeFile (root </> versioned </> "probe" </> entry) "not a cache entry"
+      third <- newPersistentTable "probe" 16 (const 1)
+      run third "recomputed" `shouldBe` "recomputed"
+      fourth <- newPersistentTable "probe" 16 (const 1)
+      run fourth (error "recomputed again") `shouldBe` "recomputed"
+      removePathForcibly root
+    it "stays out of the way without a cache directory" $ do
+      table <- newPersistentTable "unused" 16 (const 1)
+      memoized table "key" (42 :: Int) `shouldBe` 42
   where
     compiled text = either (error . show) id (compileCore 64 defaultGeneration [Source "keys.lawspec" text])
     keys body =
@@ -98,3 +123,4 @@ spec = describe "incremental compilation" $ do
             ["law `" ++ law ++ "` is definition is `for all` (s :: Score) . s = s end end"])
       plan <- either (const Nothing) Just (planTesting program)
       fmap boundaryCases (find ((== law) . C.propertyName . plannedProperty) (concatMap plannedProperties (plannedUnits plan)))
+

@@ -26,6 +26,7 @@ interface CheckRequest {
   package?: {name: string; version: string};
   dependencies?: Record<string, string>;
   packages?: Package[];
+  cacheDirectory?: string;                  // keep work between runs here
 }
 
 interface GenerationRequest extends CheckRequest {
@@ -43,6 +44,12 @@ interface GenerationRequest extends CheckRequest {
 - `generation` fields you omit keep their defaults (100, 10000, 1000, 4096).
 - `minify` selects compact output; see
   [formatting](formatting.md).
+- `cacheDirectory` names a folder where the compiler keeps its work, so later
+  requests reuse what did not change; results are identical either way. The
+  folder is created as needed, and entries are tied to the compiler version.
+  The WebAssembly compiler resolves it against the working directory, the
+  only directory it can reach. Use one folder per compiler build; the CLI does
+  (see [the compiler cache](cli.md#the-compiler-cache)).
 
 ### Schema versions
 

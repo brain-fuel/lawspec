@@ -287,12 +287,12 @@ compileWithImports visible bits settings sources = do
     (mapM (Elaboration.elaborateDefinitionUnit dataTypes bits) specialized)
   closedProgram <- deferProgramPostconditions (Core.Program bits dataTypes closedUnits)
   invoke <- prepareDefinitions closedProgram
+  registry <- either (Left . pure . (\m -> Diagnostic "data-type" m Nothing)) Right (CoreTypes.makeRegistry dataTypes)
   forM_ properties $ \property -> do
     u <- maybe (Left [Diagnostic "semantic" "missing property owner" Nothing]) Right
       (lookup (owner property) [(unitName u,u) | u <- specialized])
     either (Left . pure . (\message -> Diagnostic "semantic" message (Just (location (original property))))) Right $
       evalStateT (do
-        registry <- lift (CoreTypes.makeRegistry dataTypes)
         let identify name = Core.Id (unitName u ++ "::" ++ name)
         forM_ (refinementArgumentChecks property) $ \check -> do
           term <- lift (Elaboration.elaborateResolvedWithData dataTypes (map (identify . fst) (functions u))

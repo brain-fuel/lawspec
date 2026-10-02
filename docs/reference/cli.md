@@ -2,11 +2,11 @@
 
 ```text
 lawspec init --target <language> [--project <directory>] [--machine-bits <32|64>] [--minify] [--config <path>]
-lawspec check [--target <language>] [--machine-bits <32|64>] [--json] [--config <path>]
-lawspec evidence [<unit> | <unit>::<declaration>] [--target <language>] [--machine-bits <32|64>] [--json] [--config <path>]
-lawspec explain [<unit>::<law>] [--machine-bits <32|64>] [--json] [--config <path>]
+lawspec check [--target <language>] [--machine-bits <32|64>] [--json] [--no-cache] [--config <path>]
+lawspec evidence [<unit> | <unit>::<declaration>] [--target <language>] [--machine-bits <32|64>] [--json] [--no-cache] [--config <path>]
+lawspec explain [<unit>::<law>] [--machine-bits <32|64>] [--json] [--no-cache] [--config <path>]
 lawspec doctor [--target <language>] [--json] [--config <path>]
-lawspec generate [--target <language>] [--dry-run | --check] [--minify] [--machine-bits <32|64>] [--json] [--config <path>]
+lawspec generate [--target <language>] [--dry-run | --check] [--minify] [--machine-bits <32|64>] [--json] [--no-cache] [--config <path>]
 lawspec package [--project <package directory>] [--machine-bits <32|64>] [--json]
 lawspec examples [--example payments] [--target <language>] [--output <directory>] [--machine-bits <32|64>] [--minify] [--json]
 lawspec --version
@@ -25,6 +25,24 @@ Run the locally installed CLI with `npx lawspec`. `<language>` is one of `java`,
 | `--machine-bits <32\|64>` | Override the configuration's machine profile for this command. |
 | `--json` | Print machine-readable output. Errors are printed as `{"diagnostics": [...]}`. |
 | `--minify` | Compact output. Accepted only by `init`, `generate` and `examples`. |
+| `--no-cache` | Do not read or write the compiler cache for this command. |
+
+## The compiler cache
+
+`check`, `evidence`, `explain` and `generate` keep the compiler's work in
+`.lawspec/cache` next to the configuration file, and reuse it on later runs:
+each law is expanded, elaborated and planned again only when it or something
+it depends on changes, and each unit's files are emitted again only when
+their inputs change. The results are the same as without the cache.
+
+- The cache holds one folder per compiler build; upgrading LawSpec discards
+  the previous build's folder.
+- It contains its own `.gitignore`, so it is never committed.
+- A damaged entry is recomputed and replaced. Deleting the folder is always
+  safe.
+- `--no-cache`, or `"cache": false` in `lawspec.json`, turns it off. It is also
+  off when the configuration file is outside the working directory, which the
+  WebAssembly compiler cannot reach.
 
 Options that take a value require one. Unknown options, and positional
 arguments where none are expected, are errors. The command exits with status 1

@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-import { readFile, mkdir, readdir, stat } from "node:fs/promises";
+import { readFile, mkdir, readdir, rm, stat, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
 import path from "node:path";
 import { createCompiler } from "../api.mjs";
 import { targets, templates, commands, setup } from "../templates.mjs";
@@ -24,7 +25,7 @@ for (let i = 0; i < args.length; i++) {
     if (!args[i + 1] || args[i + 1].startsWith("--"))
       throw new Error(`Missing value for ${arg}`);
     options[arg.slice(2)] = args[++i];
-  } else if (["--dry-run", "--check", "--json", "--minify"].includes(arg))
+  } else if (["--dry-run", "--check", "--json", "--minify", "--no-cache"].includes(arg))
     options[arg.slice(2)] = true;
   else if (arg.startsWith("--")) throw new Error(`Unknown option: ${arg}`);
   else positional.push(arg);
@@ -236,6 +237,25 @@ function explainExamples(law) {
     ex.expectations.map(e => `  expect ${showAssertion(e)}`).join("\n")
   ).join("\n");
 }
+// The compiler keeps work between runs in .lawspec/cache, in one folder per
+// compiler build, so a different build never reads another's entries. The
+// WebAssembly compiler sees only the working directory.
+async function cacheDirectory(config) {
+  if (options["no-cache"] || config.cache === false) return undefined;
+  const folder = path.join(configRoot, ".lawspec", "cache");
+  const relative = path.relative(process.cwd(), folder);
+  if (relative.startsWith("..") || path.isAbsolute(relative)) return undefined;
+  const build = createHash("sha256")
+    .update(await readFile(new URL("../core.wasm", import.meta.url)))
+    .digest("hex")
+    .slice(0, 16);
+  await mkdir(path.join(folder, build), { recursive: true });
+  await writeFile(path.join(folder, ".gitignore"), "*\n");
+  for (const entry of await readdir(folder))
+    if (entry !== build && entry !== ".gitignore")
+      await rm(path.join(folder, entry), { recursive: true, force: true });
+  return path.join(relative, build).split(path.sep).join("/");
+}
 async function main() {
   if (options['machine-bits'] !== undefined) {
     options.machineBits = Number(options['machine-bits']);
@@ -243,7 +263,7 @@ async function main() {
   }
   if (!verb || ["help", "--help", "-h"].includes(verb)) {
     output(
-      "LawSpec " + VERSION + "\nUsage: lawspec init --target <language> [--project <directory>] [--minify]\n       lawspec check | doctor | explain <unit>::<law> | generate\n       lawspec evidence [<unit> | <unit>::<declaration>]\n       lawspec package [--project <package directory>]\n       lawspec examples [--example payments] [--target <language>] [--output <directory>]\nOptions: --config <path>, --target <language>, --machine-bits <32|64>, --json\nGeneration: --dry-run, --check, --minify\nTargets: " +
+      "LawSpec " + VERSION + "\nUsage: lawspec init --target <language> [--project <directory>] [--minify]\n       lawspec check | doctor | explain <unit>::<law> | generate\n       lawspec evidence [<unit> | <unit>::<declaration>]\n       lawspec package [--project <package directory>]\n       lawspec examples [--example payments] [--target <language>] [--output <directory>]\nOptions: --config <path>, --target <language>, --machine-bits <32|64>, --json, --no-cache\nGeneration: --dry-run, --check, --minify\nTargets: " +
         targets.join(", "),
     );
     return;
@@ -326,7 +346,10 @@ async function main() {
     return;
   }
   if (config.machineBits !== undefined && ![32, 64].includes(config.machineBits)) throw new Error("machineBits must be 32 or 64");
+  if (config.cache !== undefined && typeof config.cache !== "boolean") throw new Error("cache must be true or false");
+  const cache = await cacheDirectory(config);
   const input = {
+    ...(cache === undefined ? {} : { cacheDirectory: cache }),
     sources: await sources(config),
     ...(await packageInput(config, configRoot)),
     generation: config.generation,

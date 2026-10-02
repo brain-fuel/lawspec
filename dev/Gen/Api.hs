@@ -149,7 +149,7 @@ declarations = joinWith (softbreak <> softbreak)
   , interface "CheckRequest"
       [("sources", text "Source[]"), ("schemaVersion?", union [text "3", text "4"]),
        ("machineBits?", union [text "32", text "64"]), ("generation?", text "Partial<Generation>"), ("nativeBindings?", text "NativeBindings"),
-       ("package?", text "PackageVersion"), ("dependencies?", text "Record<string, string>"), ("packages?", text "Package[]")]
+       ("package?", text "PackageVersion"), ("dependencies?", text "Record<string, string>"), ("packages?", text "Package[]"), ("cacheDirectory?", text "string")]
   , interface "GenerationRequest extends CheckRequest" (fields [("target", "Target"), ("sourceDir?", "string"), ("testDir?", "string"), ("minify?", "boolean")])
   , interface "Result"
       ([("schemaVersion", union [text "3", text "4"]), ("machineBits?", union [text "32", text "64"])] ++

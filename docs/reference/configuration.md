@@ -29,6 +29,7 @@ names another file. Relative paths resolve from the file's directory.
 | `generation` | object | No | Property-test limits; see [below](#generation). |
 | `dependencies` | object | No | Package names mapped to version ranges. |
 | `packages` | array of paths | No | Package directories to load, each with a `lawspec-package.json`. It must include every package required directly or indirectly. |
+| `cache` | boolean | No | Keep the compiler's work in `.lawspec/cache` between runs. Default `true`; see [the compiler cache](cli.md#the-compiler-cache). |
 
 ### Targets
 

@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.17.3
+
+### Incremental front end
+
+- Each law's expansion and type checking, and its elaboration to Core, are
+  keyed by exactly their inputs: the law, the laws it invokes, its unit's
+  signatures and the program's data types. Editing a definition's body, or
+  another unit's laws, no longer re-checks a law; the dependency keys of
+  0.17.2 still replan the laws that reach the edit.
+- Unit validation and totality checks are keyed by the unit.
+- Evidence discharge shares the test planner's work, and builds the type
+  registry once per program rather than once per law.
+
+### On-disk compiler cache
+
+- `lawspec check`, `evidence`, `explain` and `generate` keep the compiler's
+  work in `.lawspec/cache` and reuse it across runs. Results are identical to
+  an uncached run. Planning every bundled example again after a no-op edit
+  takes a third of the uncached time.
+- One folder per compiler build, with its own `.gitignore`; damaged entries
+  are recomputed. `--no-cache` or `"cache": false` turns it off. See
+  [the compiler cache](docs/reference/cli.md#the-compiler-cache).
+- API requests may name a `cacheDirectory` to share work the same way.
+
 ## 0.17.2
 
 ### Dependency-tracked incremental compilation
