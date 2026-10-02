@@ -11,7 +11,7 @@ import LawSpec.Core.Value
 import LawSpec.Core.Types (TypeRegistry, makeRegistry, registryDeclarations, builtinDataDeclarations, lookupData, constructorFieldsFor, compatibleConstructors, generationRequirements, freeExistentials, substitute, witnessPool)
 import qualified Data.Map.Strict as M
 import Data.Containers.ListUtils (nubOrd)
-import LawSpec.Memo (Table, newTable, scoped)
+import LawSpec.Memo (Table, newTable, memoized)
 import LawSpec.Dependencies (dependencyGraph, lawReferences, closure, keyOf, reachableData, reachableDefinitions)
 import System.IO.Unsafe (unsafePerformIO)
 import Data.List (find, nub, partition, sort, stripPrefix)
@@ -49,7 +49,7 @@ planTesting program@Program{..} = do
       -- its dependency closure. Its key is its content and the Merkle digests
       -- of what it references, so an edit replans exactly the laws that can
       -- reach it, and reverting an edit finds the earlier plans again.
-      memo = scoped planTable ""
+      memo = memoized planTable
       unit u = PlannedUnit u <$> mapM property (unitProperties u)
       property p = either (Left . pure . (\m -> Diagnostic "generation" m (Just (propertyLocation p)))) Right $
         let refs = lawReferences graph p
@@ -60,7 +60,7 @@ planTesting program@Program{..} = do
   Plan programMachineBits programDataDeclarations <$> mapM unit programUnits
 
 planTable :: Table (Either String PlannedProperty)
-planTable = unsafePerformIO (newTable 4096)
+planTable = unsafePerformIO (newTable 2048 (const 1))
 {-# NOINLINE planTable #-}
 
 -- One property's finite domain, boundary cases and generator requirements.

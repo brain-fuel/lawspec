@@ -33,7 +33,8 @@ import LawSpec.Scalar (primitive)
 import Data.Char (toUpper, toLower, isAscii, isAlphaNum)
 import Data.List (intercalate, nub, stripPrefix, isPrefixOf, isSuffixOf)
 import Control.Monad (unless)
-import LawSpec.Memo (Table, newTable, scoped)
+import LawSpec.Memo (Table, newTable, memoized)
+import qualified Data.Text as T
 import qualified LawSpec.Dependencies as D
 import LawSpec.Digest (digestHex, digestString)
 import System.IO.Unsafe (unsafePerformIO)
@@ -235,7 +236,6 @@ emitPlanFormatted minify target Plan{..} = do
     -- definition. Editing a definition's body elsewhere re-emits only the
     -- units whose laws reach it.
     graph = D.dependencyGraph planDataDeclarations (map plannedUnit plannedUnits)
-    memoUnit = scoped emitTable ""
     dataDigest = digestHex (digestString (show planDataDeclarations))
     calls
       | target `elem` ["java","kotlin"] = definitionCalls
@@ -246,9 +246,9 @@ emitPlanFormatted minify target Plan{..} = do
     lawKey law = D.keyOf graph (show (planMachineBits, plannedProperty law)) (D.lawReferences graph (plannedProperty law))
     emitUnit laws u =
       let owned = filter ((== unitName u) . owner) laws
-      in memoUnit (digestHex (digestString (show (minify, target, planMachineBits, u { C.unitProperties = [] },
-             map lawKey owned, Native.dataBudget laws, dataDigest, calls))))
-           (emitUnitWith laws u)
+      in fmap (map unstore) $ memoized emitTable (digestHex (digestString (show (minify, target, planMachineBits,
+             u { C.unitProperties = [] }, map lawKey owned, Native.dataBudget laws, dataDigest, calls))))
+           (fmap (map store) (emitUnitWith laws u))
     emitUnitWith laws u
       | target `elem` ["java","kotlin","go","haskell"] =
           Native.nativeScalarEmitWithFormat minify planDataDeclarations calls planMachineBits target u laws
@@ -401,6 +401,20 @@ emitPlanWithNativeOptions minify target sourceDir testDir bindings unwitnessed =
 schemaImport :: String
 schemaImport = "import {RefinementViolation, witnessed, witnessInstances} from './lawspec_schema.mjs';"
 
-emitTable :: Table (Either [Diagnostic] [Artifact])
-emitTable = unsafePerformIO (newTable 1024)
+-- Emitted files are held as text, weighed by their length.
+emitTable :: Table (Either [Diagnostic] [Stored])
+emitTable = unsafePerformIO (newTable 8000000 (either (const 1) (sum . map storedLength)))
 {-# NOINLINE emitTable #-}
+
+data Stored = Stored T.Text T.Text T.Text T.Text (Maybe T.Text)
+
+store :: Artifact -> Stored
+store (Artifact p c o l) = Stored (T.pack p) (T.pack c) (T.pack o) (T.pack l) Nothing
+store (AdapterArtifact p c o l canonical) = Stored (T.pack p) (T.pack c) (T.pack o) (T.pack l) (Just (T.pack canonical))
+
+unstore :: Stored -> Artifact
+unstore (Stored p c o l Nothing) = Artifact (T.unpack p) (T.unpack c) (T.unpack o) (T.unpack l)
+unstore (Stored p c o l (Just canonical)) = AdapterArtifact (T.unpack p) (T.unpack c) (T.unpack o) (T.unpack l) (T.unpack canonical)
+
+storedLength :: Stored -> Int
+storedLength (Stored _ c _ _ canonical) = T.length c + maybe 0 T.length canonical

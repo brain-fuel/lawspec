@@ -15,7 +15,7 @@ import LawSpec.NativeRequest
 import LawSpec.Public (programView)
 import LawSpec.Packages
 import LawSpec.Discharge (dischargeEvidence, bindingEvidence)
-import LawSpec.Memo (Table, newTable, scoped)
+import LawSpec.Memo (Table, newTable, memoized)
 import qualified Data.ByteString.Lazy.Char8 as BC
 import qualified Data.Aeson.Key as K
 import System.IO.Unsafe (unsafePerformIO)
@@ -26,7 +26,7 @@ dispatch bytes = encode $ versioned $ case eitherDecode bytes >>= parseEither re
   Right ((method,sources,target,sourceDir,testDir,bits,settings,minify,native),(project,packages)) ->
    -- Compilation, evidence and the testing plan depend on neither the method
    -- nor the target, so a compiler asked for several targets does them once.
-   case scoped stagesTable "" (sharedRequest bytes) (stages project packages sources bits settings native) of
+   case memoized stagesTable (sharedRequest bytes) (stages project packages sources bits settings native) of
     Left response -> response
     Right (us,es,core,bindings,evidence,described,plan) ->
      let result files = withPackages project described (programView settings us (map prettyExpanded es) files (evidence ++ bindingEvidence bindings) core) in case method of
@@ -84,7 +84,7 @@ sharedRequest bytes = case decode bytes of
     ["method", "target", "sourceDir", "testDir", "minify"])))
   _ -> BC.unpack bytes
 
--- Few entries: each holds a whole compiled program.
+-- Two entries: each holds a whole compiled program and its plan.
 stagesTable :: Table (Either Value Stages)
-stagesTable = unsafePerformIO (newTable 4)
+stagesTable = unsafePerformIO (newTable 2 (const 1))
 {-# NOINLINE stagesTable #-}
