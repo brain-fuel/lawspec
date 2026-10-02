@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.17.2
+
+### Dependency-tracked incremental compilation
+
+- The compiler builds a dependency graph of each program. Its nodes are data
+  types and declarations (with their contracts and checked definitions), and
+  each node has a Merkle digest (SHA-256) of its content and of everything it
+  references, with recursive groups digested together.
+- A law is planned again only when it, or a type or definition it can reach,
+  changes. A unit's files are emitted again only when the unit or one of its
+  laws' plans changes, when a data type changes (emitters name types across
+  the whole program), or when a checked definition is added, removed or
+  renamed. Editing one definition's body no longer replans and re-emits the
+  whole program, and reverting an edit reuses the earlier results.
+- Each law is planned from only the types and definitions it reaches, which
+  cuts planning time for the bundled examples by two thirds.
+
+### Changes to generated tests
+
+- Boundary search for constrained data took its depth from the number of data
+  types in the whole program, and seeded scalar boundaries with literals from
+  every type's constructor predicates. Both now come from the types the law
+  reaches, so adding an unrelated type no longer changes a law's tests.
+  Regenerating can change the boundary cases of laws over indexed families and
+  constrained data; among the bundled examples, `indexed_arithmetic`,
+  `domain_modeling` and the shop package's domain unit gain or lose cases.
+
 ## 0.17.1
 
 ### Faster compilation

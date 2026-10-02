@@ -34,6 +34,8 @@ import Data.Char (toUpper, toLower, isAscii, isAlphaNum)
 import Data.List (intercalate, nub, stripPrefix, isPrefixOf, isSuffixOf)
 import Control.Monad (unless)
 import LawSpec.Memo (Table, newTable, scoped)
+import qualified LawSpec.Dependencies as D
+import LawSpec.Digest (digestHex, digestString)
 import System.IO.Unsafe (unsafePerformIO)
 
 targets :: [String]
@@ -225,19 +227,32 @@ emitPlanFormatted minify target Plan{..} = do
     expressionNeedsSchema term | C.AllPayloads _ _ <- C.expressionNode term = True
     expressionNeedsSchema term = requiresSchema planDataDeclarations (C.expressionType term) ||
       any expressionNeedsSchema (C.children term)
-    -- A unit's files depend on it, its own laws, the program's interface
-    -- (types and every unit without its laws) and, in Java, the data budget.
-    memoUnit = scoped emitTable (show (minify, target, planMachineBits, planDataDeclarations,
-      [(plannedUnit p) { C.unitProperties = [] } | p <- plannedUnits]))
-    emitUnit laws u = memoUnit (show (u, filter ((== unitName u) . owner) laws, Native.dataBudget laws)) (emitUnitWith laws u)
+    -- A unit's files are a function of exactly these inputs, so its key is
+    -- their content: the unit, its laws (each by its plan key, which covers
+    -- the law and everything it reaches), Java's data budget (sized across
+    -- every law on purpose), every data declaration (emitters disambiguate
+    -- type names across the program) and the table naming each checked
+    -- definition. Editing a definition's body elsewhere re-emits only the
+    -- units whose laws reach it.
+    graph = D.dependencyGraph planDataDeclarations (map plannedUnit plannedUnits)
+    memoUnit = scoped emitTable ""
+    dataDigest = digestHex (digestString (show planDataDeclarations))
+    calls
+      | target `elem` ["java","kotlin"] = definitionCalls
+      | target == "go" = GoDefinitions.definitionCalls (map plannedUnit plannedUnits)
+      | target == "haskell" = HaskellDefinitions.definitionCalls (map plannedUnit plannedUnits)
+      | target == "python" = PythonDefinitions.definitionCalls (map plannedUnit plannedUnits)
+      | otherwise = WebDefinitions.definitionCalls (map plannedUnit plannedUnits)
+    lawKey law = D.keyOf graph (show (planMachineBits, plannedProperty law)) (D.lawReferences graph (plannedProperty law))
+    emitUnit laws u =
+      let owned = filter ((== unitName u) . owner) laws
+      in memoUnit (digestHex (digestString (show (minify, target, planMachineBits, u { C.unitProperties = [] },
+             map lawKey owned, Native.dataBudget laws, dataDigest, calls))))
+           (emitUnitWith laws u)
     emitUnitWith laws u
-      | target `elem` ["java","kotlin","go","haskell"] = Native.nativeScalarEmitWithFormat minify planDataDeclarations
-          (if target `elem` ["java","kotlin"] then definitionCalls else
-            if target == "go" then GoDefinitions.definitionCalls (map plannedUnit plannedUnits) else
-              HaskellDefinitions.definitionCalls (map plannedUnit plannedUnits)) planMachineBits target u laws
-      | otherwise = Scalar.scalarEmitWithFormat minify planDataDeclarations
-          ((if target == "python" then PythonDefinitions.definitionCalls else WebDefinitions.definitionCalls) (map plannedUnit plannedUnits))
-          planMachineBits target u laws
+      | target `elem` ["java","kotlin","go","haskell"] =
+          Native.nativeScalarEmitWithFormat minify planDataDeclarations calls planMachineBits target u laws
+      | otherwise = Scalar.scalarEmitWithFormat minify planDataDeclarations calls planMachineBits target u laws
 
 supportedRepresentationWithData :: String -> [C.DataDeclaration] -> C.Type -> Bool
 supportedRepresentationWithData target declarations ty = case ty of

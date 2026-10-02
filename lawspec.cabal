@@ -195,6 +195,8 @@ library
       LawSpec.Data
       LawSpec.DataNames
       LawSpec.DefinitionTotality
+      LawSpec.Dependencies
+      LawSpec.Digest
       LawSpec.Discharge
       LawSpec.Domain
       LawSpec.DomainModel
@@ -278,6 +280,7 @@ library
   ghc-options: -Wall
   build-depends:
       aeson
+    , array
     , base >=4.18 && <5
     , bytestring
     , containers

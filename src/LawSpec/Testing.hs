@@ -12,6 +12,7 @@ import LawSpec.Core.Types (TypeRegistry, makeRegistry, registryDeclarations, bui
 import qualified Data.Map.Strict as M
 import Data.Containers.ListUtils (nubOrd)
 import LawSpec.Memo (Table, newTable, scoped)
+import LawSpec.Dependencies (dependencyGraph, lawReferences, closure, keyOf, reachableData, reachableDefinitions)
 import System.IO.Unsafe (unsafePerformIO)
 import Data.List (find, nub, partition, sort, stripPrefix)
 import LawSpec.IndexTerm
@@ -42,15 +43,20 @@ data IndexedGeneration = IndexedGeneration
 planTesting :: Program -> Either [Diagnostic] Plan
 planTesting program@Program{..} = do
   invoke <- prepareDefinitions program
-  registry <- either (Left . pure . (\message -> Diagnostic "generation" message Nothing)) Right (makeRegistry programDataDeclarations)
-  let definitions = concatMap unitDefinitions programUnits
-      -- A law's plan depends only on the law and the program's interface:
-      -- its types, declarations, contracts and definitions, not other laws.
-      memo = scoped planTable (show (programMachineBits, programDataDeclarations, map withoutLaws programUnits))
-      withoutLaws u = u { unitProperties = [] }
+  _ <- either (Left . pure . (\message -> Diagnostic "generation" message Nothing)) Right (makeRegistry programDataDeclarations)
+  let graph = dependencyGraph programDataDeclarations programUnits
+      -- A law is planned from what it reaches: the types and definitions in
+      -- its dependency closure. Its key is its content and the Merkle digests
+      -- of what it references, so an edit replans exactly the laws that can
+      -- reach it, and reverting an edit finds the earlier plans again.
+      memo = scoped planTable ""
       unit u = PlannedUnit u <$> mapM property (unitProperties u)
-      property p = either (Left . pure . (\m -> Diagnostic "generation" m (Just (propertyLocation p)))) Right
-        (memo (show p) (planProperty registry programMachineBits invoke definitions p))
+      property p = either (Left . pure . (\m -> Diagnostic "generation" m (Just (propertyLocation p)))) Right $
+        let refs = lawReferences graph p
+            reached = closure graph refs
+        in memo (keyOf graph (show (programMachineBits, p)) refs) $ do
+          registry <- makeRegistry (reachableData graph reached)
+          planProperty registry programMachineBits invoke (reachableDefinitions graph reached) p
   Plan programMachineBits programDataDeclarations <$> mapM unit programUnits
 
 planTable :: Table (Either String PlannedProperty)

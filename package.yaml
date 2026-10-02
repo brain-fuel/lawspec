@@ -8,7 +8,7 @@ default-extensions: [OverloadedStrings, DeriveGeneric, LambdaCase, RecordWildCar
 ghc-options: [-Wall]
 library:
   source-dirs: src
-  dependencies: [transformers]
+  dependencies: [transformers, array]
 executables:
   lawspec-core:
     main: Main.hs
