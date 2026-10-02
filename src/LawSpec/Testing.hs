@@ -13,7 +13,7 @@ import LawSpec.Core.Types (TypeRegistry, makeRegistry, registryDeclarations, bui
 import qualified Data.Map.Strict as M
 import Data.Containers.ListUtils (nubOrd)
 import LawSpec.Memo (Table, newPersistentTable, memoized)
-import LawSpec.Persist ()
+import LawSpec.CorePersist ()
 import Data.Binary (Binary)
 import LawSpec.Dependencies (dependencyGraph, lawReferences, closure, keyOf, reachableData, reachableDefinitions)
 import System.IO.Unsafe (unsafePerformIO)

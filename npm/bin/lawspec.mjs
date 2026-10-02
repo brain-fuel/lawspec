@@ -240,7 +240,9 @@ function explainExamples(law) {
 }
 // The compiler keeps work between runs in .lawspec/cache, in one folder per
 // compiler build, so a different build never reads another's entries. The
-// WebAssembly compiler sees only the working directory.
+// WebAssembly compiler sees only the working directory. A command that fails
+// removes the .lawspec folder if it created it, leaving the project as it was.
+let createdState = null;
 async function cacheDirectory(config) {
   if (options["no-cache"] || config.cache === false) return undefined;
   const folder = path.join(configRoot, ".lawspec", "cache");
@@ -250,12 +252,22 @@ async function cacheDirectory(config) {
     .update(await readFile(new URL("../core.wasm", import.meta.url)))
     .digest("hex")
     .slice(0, 16);
+  const state = path.join(configRoot, ".lawspec");
+  if ((await readOptionalDirectory(state)) === null) createdState = state;
   await mkdir(path.join(folder, build), { recursive: true });
   await writeFile(path.join(folder, ".gitignore"), "*\n");
   for (const entry of await readdir(folder))
     if (entry !== build && entry !== ".gitignore")
       await rm(path.join(folder, entry), { recursive: true, force: true });
   return path.join(relative, build).split(path.sep).join("/");
+}
+async function readOptionalDirectory(folder) {
+  try {
+    return await readdir(folder);
+  } catch (error) {
+    if (error.code === "ENOENT") return null;
+    throw error;
+  }
 }
 async function main() {
   if (options['machine-bits'] !== undefined) {
@@ -484,7 +496,8 @@ async function main() {
   if (options.check && plans.some((p) => p.changes.length))
     process.exitCode = 1;
 }
-main().catch((error) => {
+main().catch(async (error) => {
+  if (createdState !== null) await rm(createdState, { recursive: true, force: true });
   if (options.json)
     output({
       diagnostics: error.diagnostics || [

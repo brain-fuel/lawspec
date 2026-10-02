@@ -191,6 +191,7 @@ library
       LawSpec.Core.Value
       LawSpec.CoreEmit
       LawSpec.CoreNativeScalarEmit
+      LawSpec.CorePersist
       LawSpec.CoreScalarEmit
       LawSpec.Data
       LawSpec.DataNames
