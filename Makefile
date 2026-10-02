@@ -10,7 +10,7 @@ SITE    := .artifacts/site
 
 .DEFAULT_GOAL := help
 .PHONY: help build generate generate-check wasm test integrity boundaries check parity \
-        smoke package acceptance lessons ci ci-core examples editor-test docs docs-check \
+        smoke package acceptance lessons ci ci-fresh ci-core examples editor-test docs docs-check \
         docs-serve docs-deploy bump version release-check clean
 
 help: ## List the tasks
@@ -60,6 +60,9 @@ lessons: ## The tutorial lessons, run for real in Java, Python, JavaScript and T
 
 ci: ## The complete check: every step for all eight targets
 	$(DEV) ci
+
+ci-fresh: ## The complete check, ignoring recorded results (for releases)
+	$(DEV) ci --fresh
 
 ci-core: ## The complete check without target toolchains
 	$(DEV) ci --core

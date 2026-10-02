@@ -233,6 +233,7 @@ library
       LawSpec.KotlinNativeBinding
       LawSpec.KotlinProperties
       LawSpec.KotlinTestHelpers
+      LawSpec.Memo
       LawSpec.Model
       LawSpec.NativeBinding
       LawSpec.NativeRequest
@@ -292,6 +293,7 @@ library
 executable lawspec-acceptance
   main-is: Main.hs
   other-modules:
+      Cache
       Toolchain
       Paths_lawspec
   hs-source-dirs:
@@ -307,6 +309,7 @@ executable lawspec-acceptance
     , base >=4.18 && <5
     , bytestring
     , containers
+    , cryptohash-sha256
     , directory
     , filepath
     , lawspec
@@ -403,6 +406,7 @@ test-suite lawspec-test
       GadtSpec
       GenericDefinitionSpec
       ImportSpec
+      IncrementalSpec
       IndexedSpec
       InferenceSchemeSpec
       NativeBindingSpec

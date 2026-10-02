@@ -141,8 +141,15 @@ scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions 
         quotedWidth = length . Doc.render Doc.Compact . quoted
         chunks [] = []
         chunks rest =
-          let candidates = takeWhile (\n -> quotedWidth (take n rest) <= 40) [1 .. length (take 40 rest)]
-              limit = foldl (\_ n -> n) 1 candidates
+          -- A quoted prefix only widens as it grows, so the longest prefix
+          -- that fits is found by bisection instead of quoting every one.
+          let fits n = quotedWidth (take n rest) <= 40
+              longest low high
+                | low >= high = low
+                | fits middle = longest middle high
+                | otherwise = longest low (middle - 1)
+                where middle = (low + high + 1) `div` 2
+              limit = max 1 (longest 0 (length (take 40 rest)))
               wordEnd = foldl (\lastSpace (index,c) -> if c == ' ' then index + 1 else lastSpace)
                 0 (zip [0 :: Int ..] (take limit rest))
               count = if wordEnd == 0 then limit else wordEnd

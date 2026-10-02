@@ -9,9 +9,9 @@ import LawSpec.Scalar (Scalar)
 
 newtype Id = Id { idText :: String } deriving (Eq, Ord, Show)
 data Kind = ValueKind | TypeKind | KindArrow Kind Kind deriving (Eq, Show)
-data Type = Constructor String [Argument] | TypeVariable Id | Arrow Type Type deriving (Eq, Show)
-data Argument = TypeArgument Type | IndexArgument Index deriving (Eq, Show)
-data Index = Natural Integer | IndexVariable Id deriving (Eq, Show)
+data Type = Constructor String [Argument] | TypeVariable Id | Arrow Type Type deriving (Eq, Ord, Show)
+data Argument = TypeArgument Type | IndexArgument Index deriving (Eq, Ord, Show)
+data Index = Natural Integer | IndexVariable Id deriving (Eq, Ord, Show)
 scalarType :: String -> Type
 scalarType n = Constructor n []
 functionType :: Type -> ([Type], Type)

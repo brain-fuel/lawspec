@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.17.1
+
+### Faster compilation
+
+- The compiler reuses work for whatever did not change. A compiler instance
+  (one `createCompiler()`, one wasm instance or one process) compiles,
+  discharges and plans a set of sources once for every method and target, plans
+  each law again only when it or the program's types, declarations, contracts
+  or definitions changed, and emits each unit again only when it, its laws or
+  that interface changed. Results are identical to a full compile.
+- `lawspec examples` and other multi-target runs compile once instead of once
+  per target: generating every bundled example for all eight targets takes
+  about 105 seconds instead of about 270.
+- A single compile is faster too: kind lookups use a map instead of scanning
+  every type in the program, boundary candidates are deduplicated in
+  `n log n`, and long failure messages are split by bisection. Compiling all
+  bundled examples together takes a quarter less time.
+
+### Incremental local checks
+
+- `lawspec-dev ci` records passing results by content. Acceptance suites key
+  each run by the generated project and everything else its tests read, so a
+  compiler change that leaves a target's output unchanged skips that target's
+  native tests. Core steps key by the repository files they read.
+- `lawspec-dev ci --fresh` (`make ci-fresh`) runs every step, and releases use
+  it. See [CONTRIBUTING](CONTRIBUTING.md#checks).
+
 ## 0.17.0
 
 ### Collections

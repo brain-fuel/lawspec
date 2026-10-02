@@ -25,6 +25,7 @@ import qualified GadtSpec
 import qualified FlowSpec
 import qualified CollectionsSpec
 import qualified AsyncSpec
+import qualified IncrementalSpec
 import LawSpec.Compile
 import LawSpec.Model
 import qualified LawSpec.Domain as D
@@ -54,6 +55,7 @@ main = hspec $ do
   FlowSpec.spec
   CollectionsSpec.spec
   AsyncSpec.spec
+  IncrementalSpec.spec
   PayloadSpec.spec
   PayloadProofSpec.spec
   DocumentSpec.spec

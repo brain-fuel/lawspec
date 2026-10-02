@@ -19,7 +19,7 @@ data Value
   = ScalarValue Scalar
   | DataValue Type Id [Value]
   | PresenceValue Type (Maybe Value)
-  deriving (Eq, Show)
+  deriving (Eq, Ord, Show)
 
 fromScalarValue :: Type -> Scalar -> Value
 fromScalarValue ty@(Constructor name [TypeArgument element]) (SPresent tag payload)

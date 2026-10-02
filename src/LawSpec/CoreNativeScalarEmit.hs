@@ -1,4 +1,4 @@
-module LawSpec.CoreNativeScalarEmit (nativeScalarEmit, nativeScalarEmitWithData, nativeScalarEmitWithDefinitions, nativeScalarEmitWithFormat, nativeScalarEmitWithNativeGenerators, nativeScalarEmitWithAdapterBindings) where
+module LawSpec.CoreNativeScalarEmit (nativeScalarEmit, nativeScalarEmitWithData, nativeScalarEmitWithDefinitions, nativeScalarEmitWithFormat, nativeScalarEmitWithNativeGenerators, nativeScalarEmitWithAdapterBindings, dataBudget) where
 import LawSpec.Collections (isCollectionsType)
 import qualified LawSpec.JavaData as JavaData
 import qualified LawSpec.JavaExpr as JavaExpr
@@ -862,10 +862,7 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
             (if null predicates then "" else ".filter { _inputs -> val symbols = _inputs.second\n" ++ bindings' ++ "    " ++ conjunction predicates ++ "\n }")
       in "  " ++ quote (label ++ " property") ++ " {\n    checkAll(" ++ show (cases (generation e)) ++ ", " ++ generator ++ ") { _inputs ->\n" ++
          "    val symbols = _inputs.second\n" ++ bindings' ++ check ++ "    }\n  }\n"
-    javaDataBudget = maximum (64 : [valueNodes v | law <- allLaws, tuple <- boundaryCases law, v <- tuple])
-    valueNodes (V.DataValue _ _ fields) = 1 + sum (map valueNodes fields)
-    valueNodes (V.PresenceValue _ payload) = 1 + maybe 0 valueNodes payload
-    valueNodes _ = 1
+    javaDataBudget = dataBudget allLaws
     javaGeneratorDoc = JavaTestHelpers.generatorDoc bits javaDataBudget (cls ++ "LawSpecTest") custom
       (java . JavaExpr.reference) key
     javaGenerator = Doc.render (Doc.selectLayout minify (Doc.Pretty 100)) . javaGeneratorDoc
@@ -967,3 +964,12 @@ replace :: String -> String -> String -> String
 replace old new text | old `isPrefixOf` text = new ++ replace old new (drop (length old) text)
 replace _ _ [] = []
 replace old new (c:cs) = c:replace old new cs
+
+-- Java's generated data budget: the largest boundary value of any law in the
+-- program, so every unit's tests size their generators alike.
+dataBudget :: [Expanded] -> Integer
+dataBudget laws = maximum (64 : [valueNodes v | law <- laws, tuple <- boundaryCases law, v <- tuple])
+  where
+    valueNodes (V.DataValue _ _ fields) = 1 + sum (map valueNodes fields)
+    valueNodes (V.PresenceValue _ payload) = 1 + maybe 0 valueNodes payload
+    valueNodes _ = 1

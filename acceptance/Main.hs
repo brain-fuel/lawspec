@@ -27,6 +27,11 @@
 --
 -- LAWSPEC_MACHINE_BITS=32 and LAWSPEC_MINIFY=1 select the profile; output goes
 -- to .artifacts/<suite>[32][-compact]/<target>.
+--
+-- A passing run is recorded under .artifacts/cache/acceptance, keyed by the
+-- generated project and everything else its tests read (see Cache). An
+-- unchanged project reuses the result; LAWSPEC_CACHE=refresh runs everything
+-- and records it, and LAWSPEC_CACHE=0 neither reads nor records.
 module Main (main) where
 
 import Control.Exception (finally)
@@ -48,6 +53,7 @@ import System.Process (CreateProcess(..), proc, readCreateProcessWithExitCode)
 import LawSpec.Api (dispatch)
 import LawSpec.Scaffold (scaffoldFiles, scaffoldTargets)
 import Toolchain
+import Cache
 
 data Generated = Generated { generatedPath :: FilePath, generatedContent :: String, generatedOwnership :: String }
 
@@ -90,7 +96,27 @@ main = do
       writeProject suite target project (bits == 64 && not minify) minify generated
       mismatch <- if architecture then architectureMismatch target bits else pure False
       if mismatch then expectMismatch target bits project
-      else runSuite suite target project mutate
+      else do
+        mode <- cacheMode
+        scaffolds <- either die pure (scaffoldFiles minify target)
+        suiteInputs <- let base = "acceptance" </> suite </> target in
+          doesDirectoryExist base >>= \exists -> if exists then walk base else pure []
+        key <- runKey target [suite, target, profile, show mutate]
+          (scaffolds ++ [(generatedPath g, generatedContent g) | g <- generated])
+          (suiteInputs ++ harnessInputs target)
+        recorded <- if mode == Reuse then lookupResult key else pure Nothing
+        case recorded of
+          Just output -> mapM_ (putStrLn . (++ " (cached)")) output
+          Nothing -> do
+            output <- runSuite suite target project mutate
+            when (mode /= Off) (storeResult key output)
+
+-- Files outside the project that a run reads: the harness itself and the
+-- dependency locks it installs.
+harnessInputs :: String -> [FilePath]
+harnessInputs target =
+  [ "acceptance/Main.hs", "acceptance/Toolchain.hs", "acceptance/Cache.hs", "test/locks/go/go.sum"
+  , ".integration" </> target </> "package.json", ".integration" </> target </> "package-lock.json" ]
 
 -- Generation goes through the same JSON boundary that core.wasm exports.
 plan :: [(K.Key, Value)] -> [(FilePath, String)] -> String -> Int -> Bool -> IO [Generated]
@@ -157,7 +183,8 @@ writeProject suite target project defaultProfile minify generated = do
     unless exists (createDirectoryLink (root </> ".integration" </> target </> "node_modules") link)
   when (target == "go") (copyFile "test/locks/go/go.sum" (project </> "go.sum"))
 
-runSuite :: String -> String -> FilePath -> Bool -> IO ()
+-- The lines printed for a passing run.
+runSuite :: String -> String -> FilePath -> Bool -> IO [String]
 runSuite suite target project mutate = do
   tool <- toolchain project target
   (code, output) <- runTool tool (arguments tool) project
@@ -165,12 +192,13 @@ runSuite suite target project mutate = do
   when (code /= ExitSuccess) $ do
     hPutStrLn stderr (target ++ ": correct adapters failed (see " ++ project </> "correct.log)")
     exitFailure
-  putStrLn (target ++ ": " ++ suite ++ " passes")
+  let passed = target ++ ": " ++ suite ++ " passes"
+  putStrLn passed
   mutants <- if mutate then suiteMutants suite target else pure []
   stubs <- if mutate then suiteStubs suite target else pure []
   adapters <- suiteFiles suite target
   let restore = forM_ adapters $ \(relative, source) -> readFile source >>= writeAt (project </> relative)
-  flip finally restore $ forM_ (stubs ++ mutants) $ \mutant -> do
+  rejected <- flip finally restore $ forM (stubs ++ mutants) $ \mutant -> do
     restore
     forM_ (mutantEdits mutant) $ \(relative, search, replacement) -> do
       unless (relative `elem` map fst adapters)
@@ -187,7 +215,10 @@ runSuite suite target project mutate = do
     forM_ (mutantExpect mutant) $ \alternatives ->
       unless (any (`isInfixOf` mutantOutput) alternatives)
         (die (target ++ ": mutant " ++ mutantName mutant ++ " failed without " ++ show alternatives))
-    putStrLn (target ++ ": rejected " ++ mutantName mutant)
+    let line = target ++ ": rejected " ++ mutantName mutant
+    putStrLn line
+    pure line
+  pure (passed : rejected)
 
 -- Regenerate without running anything and compare with the files on disk.
 checkDisk :: FilePath -> [Generated] -> IO ()

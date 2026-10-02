@@ -10,11 +10,13 @@ import Control.Monad (foldM, forM_, unless)
 import Data.Graph (SCC(..), stronglyConnComp)
 import Data.List (nub, sort)
 import qualified Data.Map.Strict as M
+import qualified Data.Set as S
 import LawSpec.Core
 import LawSpec.Scalar (primitiveName, primitives)
 
 data TypeRegistry = TypeRegistry
   { registryKinds :: [(String, Kind)]
+  , registryKindMap :: M.Map String Kind
   , declarations :: M.Map Id DataDeclaration
   , storedFieldRules :: M.Map Id (Maybe [Id])
   , keyedFieldRules :: M.Map Id (Maybe [Id])
@@ -48,7 +50,7 @@ makeRegistry userDeclarations = do
       presenceKinds = [(n, KindArrow TypeKind TypeKind) | n <- ["Nullable", "Optional"]]
       kinds = scalarKinds ++ presenceKinds ++
         [(idText (dataId d), foldr (const (KindArrow TypeKind)) TypeKind (dataParameters d)) | d <- allDeclarations]
-      registry = TypeRegistry kinds (M.fromList [(dataId d, d) | d <- allDeclarations])
+      registry = TypeRegistry kinds (M.fromList kinds) (M.fromList [(dataId d, d) | d <- allDeclarations])
         (deriveStoredFieldCapabilities everyPrimitive allDeclarations)
         (deriveStoredFieldCapabilities keyedPrimitive allDeclarations)
   unique "type constructor identity" (map fst kinds)
@@ -84,24 +86,27 @@ makeRegistry userDeclarations = do
         unless (all (`elem` constructorExistentials c) (typeVariables ty))
           (Left ("unbound type in the refinement of constructor " ++ idText (constructorId c)))
 
-unique :: Eq a => String -> [a] -> Either String ()
-unique label values = unless (length values == length (nub values)) (Left ("duplicate " ++ label))
+unique :: Ord a => String -> [a] -> Either String ()
+unique label values = unless (length values == S.size (S.fromList values)) (Left ("duplicate " ++ label))
 
 kindOf :: [(String, Kind)] -> Type -> Either String Kind
-kindOf registry ty = case ty of
+kindOf registry = kindWith (`lookup` registry)
+
+kindWith :: (String -> Maybe Kind) -> Type -> Either String Kind
+kindWith find ty = case ty of
   TypeVariable _ -> Right TypeKind
   Arrow a b -> do
-    ka <- kindOf registry a
-    kb <- kindOf registry b
+    ka <- kindWith find a
+    kb <- kindWith find b
     unless (ka == TypeKind && kb == TypeKind) (Left "arrow operands must have kind Type")
     pure TypeKind
   Constructor n args -> do
-    k <- maybe (Left ("unknown type constructor: " ++ n)) Right (lookup n registry)
+    k <- maybe (Left ("unknown type constructor: " ++ n)) Right (find n)
     foldM apply k args
   where
     apply (KindArrow expected result) arg = do
       actual <- case arg of
-        TypeArgument t -> kindOf registry t
+        TypeArgument t -> kindWith find t
         IndexArgument (Natural n) | n < 0 -> Left "natural index cannot be negative"
         IndexArgument _ -> Right ValueKind
       unless (actual == expected) (Left "type/index argument kind mismatch")
@@ -110,7 +115,7 @@ kindOf registry ty = case ty of
 
 checkType :: TypeRegistry -> Type -> Either String ()
 checkType registry ty = do
-  k <- kindOf (registryKinds registry) ty
+  k <- kindWith (`M.lookup` registryKindMap registry) ty
   unless (k == TypeKind) (Left "unsaturated type constructor")
 
 lookupData :: TypeRegistry -> Id -> Either String DataDeclaration

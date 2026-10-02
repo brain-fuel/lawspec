@@ -7,30 +7,32 @@ import qualified Data.ByteString.Lazy as B
 import LawSpec.Model
 import LawSpec.Compile
 import LawSpec.Frontend (elaborate)
-import LawSpec.Testing (planTesting)
+import LawSpec.Testing (Plan, planTesting)
+import qualified LawSpec.Core as C
+import LawSpec.Core.Evidence (Obligation)
 import LawSpec.CoreEmit (emitPlanWithNativeOptions)
 import LawSpec.NativeRequest
 import LawSpec.Public (programView)
 import LawSpec.Packages
 import LawSpec.Discharge (dischargeEvidence, bindingEvidence)
+import LawSpec.Memo (Table, newTable, scoped)
+import qualified Data.ByteString.Lazy.Char8 as BC
+import qualified Data.Aeson.Key as K
+import System.IO.Unsafe (unsafePerformIO)
 
 dispatch :: B.ByteString -> B.ByteString
 dispatch bytes = encode $ versioned $ case eitherDecode bytes >>= parseEither request of
   Left err -> failure [Diagnostic "request" err Nothing]
-  Right ((method,sources,target,sourceDir,testDir,bits,settings,minify,native),(project,packages)) -> case preparePackages project packages sources of
-   Left ds -> failure ds
-   Right (allSources,visible,described) -> case compileWithImports visible bits settings allSources of
-    Left ds -> failure ds
-    Right (us,es) -> case elaborate bits us es of
-      Left ds -> failure ds
-      Right core -> case resolveNativeRequest core native of
-        Left message -> failure [Diagnostic "native-binding" message Nothing]
-        Right bindings -> case dischargeEvidence core of
-         Left ds -> failure ds
-         Right evidence -> let result files = withPackages project described (programView settings us (map prettyExpanded es) files (evidence ++ bindingEvidence bindings) core) in case method of
+  Right ((method,sources,target,sourceDir,testDir,bits,settings,minify,native),(project,packages)) ->
+   -- Compilation, evidence and the testing plan depend on neither the method
+   -- nor the target, so a compiler asked for several targets does them once.
+   case scoped stagesTable "" (sharedRequest bytes) (stages project packages sources bits settings native) of
+    Left response -> response
+    Right (us,es,core,bindings,evidence,described,plan) ->
+     let result files = withPackages project described (programView settings us (map prettyExpanded es) files (evidence ++ bindingEvidence bindings) core) in case method of
           "check" -> result []
           "expand" -> result []
-          "planGeneration" -> either failure result (planTesting core >>= emitPlanWithNativeOptions minify target sourceDir testDir bindings)
+          "planGeneration" -> either failure result (plan >>= emitPlanWithNativeOptions minify target sourceDir testDir bindings)
           _ -> failure [Diagnostic "request" ("unknown method: " ++ method) Nothing]
 
   where
@@ -56,4 +58,33 @@ dispatch bytes = encode $ versioned $ case eitherDecode bytes >>= parseEither re
       packages <- o .:? "packages" .!= []
       request' <- (,,,,,,,,) <$> o .:? "method" .!= "check" <*> o .: "sources" <*> o .:? "target" .!= "" <*> o .:? "sourceDir" <*> o .:? "testDir" <*> o .:? "machineBits" .!= 64 <*> o .:? "generation" .!= defaultGeneration <*> o .:? "minify" .!= False <*> pure native
       pure (request', (Project rootPackage dependencies, packages))
-    failure ds = object ["schemaVersion" .= (3 :: Int), "diagnostics" .= ds]
+
+failure :: [Diagnostic] -> Value
+failure ds = object ["schemaVersion" .= (3 :: Int), "diagnostics" .= ds]
+
+type Stages = ([Unit], [Expanded], C.Program, BindingPlan, [Obligation], [(Package, [String])], Either [Diagnostic] Plan)
+
+stages :: Project -> [Package] -> [Source] -> Int -> Generation -> NativeRequest -> Either Value Stages
+stages project packages sources bits settings native = case preparePackages project packages sources of
+  Left ds -> Left (failure ds)
+  Right (allSources,visible,described) -> case compileWithImports visible bits settings allSources of
+    Left ds -> Left (failure ds)
+    Right (us,es) -> case elaborate bits us es of
+      Left ds -> Left (failure ds)
+      Right core -> case resolveNativeRequest core native of
+        Left message -> Left (failure [Diagnostic "native-binding" message Nothing])
+        Right bindings -> case dischargeEvidence core of
+          Left ds -> Left (failure ds)
+          Right evidence -> Right (us, es, core, bindings, evidence, described, planTesting core)
+
+-- The request without the fields that only select a method, target or layout.
+sharedRequest :: B.ByteString -> String
+sharedRequest bytes = case decode bytes of
+  Just (Object o) -> BC.unpack (encode (Object (foldr (KM.delete . K.fromString) o
+    ["method", "target", "sourceDir", "testDir", "minify"])))
+  _ -> BC.unpack bytes
+
+-- Few entries: each holds a whole compiled program.
+stagesTable :: Table (Either Value Stages)
+stagesTable = unsafePerformIO (newTable 4)
+{-# NOINLINE stagesTable #-}

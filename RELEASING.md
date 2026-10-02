@@ -53,9 +53,12 @@ their fingerprints in `npm/build.json`.
 ## 4. Verify
 
 ```sh
-make ci
+make ci-fresh
 make docs-check
 ```
+
+`make ci-fresh` ignores recorded results, so every step runs against the
+release commit.
 
 Every CI step must pass: compiler and npm tests, native/WASM parity, the
 package smoke test, the editor grammar, and every acceptance suite for all

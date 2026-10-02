@@ -10,6 +10,9 @@ import LawSpec.Core.Total (constructorProofContracts)
 import LawSpec.Core.Value
 import LawSpec.Core.Types (TypeRegistry, makeRegistry, registryDeclarations, builtinDataDeclarations, lookupData, constructorFieldsFor, compatibleConstructors, generationRequirements, freeExistentials, substitute, witnessPool)
 import qualified Data.Map.Strict as M
+import Data.Containers.ListUtils (nubOrd)
+import LawSpec.Memo (Table, newTable, scoped)
+import System.IO.Unsafe (unsafePerformIO)
 import Data.List (find, nub, partition, sort, stripPrefix)
 import LawSpec.IndexTerm
 import Control.Monad (filterM, unless)
@@ -41,10 +44,18 @@ planTesting program@Program{..} = do
   invoke <- prepareDefinitions program
   registry <- either (Left . pure . (\message -> Diagnostic "generation" message Nothing)) Right (makeRegistry programDataDeclarations)
   let definitions = concatMap unitDefinitions programUnits
+      -- A law's plan depends only on the law and the program's interface:
+      -- its types, declarations, contracts and definitions, not other laws.
+      memo = scoped planTable (show (programMachineBits, programDataDeclarations, map withoutLaws programUnits))
+      withoutLaws u = u { unitProperties = [] }
       unit u = PlannedUnit u <$> mapM property (unitProperties u)
       property p = either (Left . pure . (\m -> Diagnostic "generation" m (Just (propertyLocation p)))) Right
-        (planProperty registry programMachineBits invoke definitions p)
+        (memo (show p) (planProperty registry programMachineBits invoke definitions p))
   Plan programMachineBits programDataDeclarations <$> mapM unit programUnits
+
+planTable :: Table (Either String PlannedProperty)
+planTable = unsafePerformIO (newTable 4096)
+{-# NOINLINE planTable #-}
 
 -- One property's finite domain, boundary cases and generator requirements.
 planProperty :: TypeRegistry -> Int -> (Id -> [Value] -> Either String Value) -> [Definition]
@@ -425,7 +436,7 @@ constrainedBoundaries registry bits root =
     -- adds unequal combinations needed by dependent fields such as y > x.
     combinations [] = [[]]
     combinations domains | any null domains = []
-    combinations domains = nub (diagonal ++ take 512 (sequence domains))
+    combinations domains = nubOrd (diagonal ++ take 512 (sequence domains))
       where
         diagonal = [[values !! (index `mod` length values) | values <- domains]
           | index <- [0 .. maximum (map length domains) - 1]]

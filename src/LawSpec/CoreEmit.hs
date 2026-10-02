@@ -33,6 +33,8 @@ import LawSpec.Scalar (primitive)
 import Data.Char (toUpper, toLower, isAscii, isAlphaNum)
 import Data.List (intercalate, nub, stripPrefix, isPrefixOf, isSuffixOf)
 import Control.Monad (unless)
+import LawSpec.Memo (Table, newTable, scoped)
+import System.IO.Unsafe (unsafePerformIO)
 
 targets :: [String]
 targets = ["java","python","javascript","typescript","go","haskell","kotlin","rust"]
@@ -223,7 +225,12 @@ emitPlanFormatted minify target Plan{..} = do
     expressionNeedsSchema term | C.AllPayloads _ _ <- C.expressionNode term = True
     expressionNeedsSchema term = requiresSchema planDataDeclarations (C.expressionType term) ||
       any expressionNeedsSchema (C.children term)
-    emitUnit laws u
+    -- A unit's files depend on it, its own laws, the program's interface
+    -- (types and every unit without its laws) and, in Java, the data budget.
+    memoUnit = scoped emitTable (show (minify, target, planMachineBits, planDataDeclarations,
+      [(plannedUnit p) { C.unitProperties = [] } | p <- plannedUnits]))
+    emitUnit laws u = memoUnit (show (u, filter ((== unitName u) . owner) laws, Native.dataBudget laws)) (emitUnitWith laws u)
+    emitUnitWith laws u
       | target `elem` ["java","kotlin","go","haskell"] = Native.nativeScalarEmitWithFormat minify planDataDeclarations
           (if target `elem` ["java","kotlin"] then definitionCalls else
             if target == "go" then GoDefinitions.definitionCalls (map plannedUnit plannedUnits) else
@@ -378,3 +385,7 @@ emitPlanWithNativeOptions minify target sourceDir testDir bindings unwitnessed =
 -- The web strategies' schema import, rewritten to the emitted layout.
 schemaImport :: String
 schemaImport = "import {RefinementViolation, witnessed, witnessInstances} from './lawspec_schema.mjs';"
+
+emitTable :: Table (Either [Diagnostic] [Artifact])
+emitTable = unsafePerformIO (newTable 1024)
+{-# NOINLINE emitTable #-}

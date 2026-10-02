@@ -102,6 +102,7 @@ stack run lawspec-dev -- ci                          # everything
 stack run lawspec-dev -- ci --target rust --target go
 stack run lawspec-dev -- ci --core                   # compiler, npm and editor only
 stack run lawspec-dev -- ci --fail-fast
+stack run lawspec-dev -- ci --fresh                  # ignore recorded results
 stack run lawspec-dev -- ci --rust-toolchains 1.85.0,stable --rust-targets i686-unknown-linux-gnu
 ```
 
@@ -111,6 +112,23 @@ bootstraps the pinned test dependencies, runs every acceptance suite in both
 machine profiles, and runs the installed native-binding example. Each step logs
 to `.artifacts/ci/<step>.log`. Every step runs even after a failure unless
 `--fail-fast` is given, and the command exits non-zero if any step failed.
+
+Results are content-addressed, so a second run only repeats what changed:
+
+- Each acceptance run is keyed by the project it generates, the suite's
+  adapters, stubs and mutants, the harness, and the toolchain's versions,
+  dependency locks and environment. A compiler change that leaves a target's
+  generated files unchanged reuses that target's results; the console marks
+  them `(cached)`.
+- The compiler, npm, parity, package, docs and Rust runtime steps are keyed by
+  the bytes of the repository files they read (tracked or untracked, not
+  ignored) and their tools' versions, and print `cached`.
+
+Passes are recorded in `.artifacts/cache`; delete it to forget them.
+`--fresh` (or `make ci-fresh`) runs everything, as a release does.
+Fresh runs still record their passes. For a single `lawspec-acceptance` run,
+`LAWSPEC_CACHE=refresh` reruns and records, and `LAWSPEC_CACHE=0` turns the
+cache off.
 
 Smaller checks:
 

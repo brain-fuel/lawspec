@@ -33,7 +33,7 @@ integerBounds machine n = do
 data Scalar = SInteger String Integer | SBool Bool | SDecimal Integer Integer
   | SRational Integer Integer | SFloat String String | SComplex String Scalar Scalar
   | SSequence String [Int] | SCharacter String Int | SSymbol String String
-  | SAbsent String | SPresent String (Maybe Scalar) deriving (Eq, Show)
+  | SAbsent String | SPresent String (Maybe Scalar) deriving (Eq, Ord, Show)
 scalarName :: Scalar -> String
 scalarName (SInteger t _) = t
 scalarName (SBool _) = "Bool"
