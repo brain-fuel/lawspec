@@ -50,7 +50,7 @@ workflow register :: Signup -> Either SignupError Account is
 end
 
 -- With the error written as _, LawSpec generates GreetError, with one
--- constructor per step that can fail: CheckNameFailed and CheckAgeFailed.
+-- constructor per step that can fail: GreetCheckNameFailed and GreetCheckAgeFailed.
 workflow greet :: Signup -> Either _ Text is
   checkName :: Signup -> Either SignupError Signup
   >>= checkAge :: Signup -> Either Text Signup
@@ -101,5 +101,45 @@ law `greeting never fails` is
   example `an anonymous greeting` is
     s = Signup "" 30
     expect greet s = Right "guest"
+  end
+end
+
+-- An all group runs its steps on the same state and combines their results.
+-- With accumulate, every failing step's error is reported, in a generated
+-- VetFailures constructor.
+definition firstName (a :: Signup) (b :: Signup) :: Text is nameOf a end
+
+workflow vet :: Signup -> Either _ Text is
+  all accumulate
+    then checkName
+    then checkAge
+  end
+  combine firstName
+end
+
+law `vetting reports every problem` is
+  definition is
+    `for all` (s :: Signup) .
+      prelude.isRight (vet s) = (match s with
+        | Signup name age -> prelude.length name > 0 && age >= 18
+        end)
+  end
+  example `no problems` is
+    s = Signup "ada" 30
+    expect vet s = Right "ada"
+  end
+end
+
+law `vetting a nameless child reports both problems` is
+  definition is
+    `for all` (age :: Int8 where age >= 0 && age < 18) .
+      vet (Signup "" (prelude.Int32 age)) = Left (VetFailures [VetCheckNameFailed MissingName, VetCheckAgeFailed "too young"])
+  end
+end
+
+law `vetting a named child reports its age` is
+  definition is
+    `for all` (age :: Int8 where age >= 0 && age < 18) .
+      vet (Signup "ada" (prelude.Int32 age)) = Left (VetFailures [VetCheckAgeFailed "too young"])
   end
 end

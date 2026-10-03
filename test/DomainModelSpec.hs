@@ -85,7 +85,7 @@ spec = describe "domain modeling" $ do
         Left diagnostics -> expectationFailure (show diagnostics)
         Right (units, _) ->
           [map dataConstructorName (dataTypeConstructors d) | d <- dataTypes (head units), dataTypeName d == "CheckoutError"]
-            `shouldBe` [["ValidateOrderFailed", "PriceOrderFailed"]]
+            `shouldBe` [["CheckoutValidateOrderFailed", "CheckoutPriceOrderFailed"]]
     it "map a step's error into a declared error type" $
       compileOrders (unlines
         [ "definition describe (t :: Text) :: OrderError is PriceTooHigh end"

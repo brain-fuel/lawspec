@@ -92,8 +92,10 @@ Errors name the stage and the mismatched types.
 PricedOrder`, every stage that can fail must fail with that type, or be followed
 by `mapError` with a function into it. With the error written as `_`, as in
 `Either _ PricedOrder`, LawSpec generates a sum type named after the workflow,
-`PlaceOrderError`, with one constructor per stage that can fail:
-`ValidateOrderFailed` holds `validateOrder`'s error, and so on.
+`PlaceOrderError`, with one constructor per stage that can fail, named after
+the workflow and the stage: `PlaceOrderValidateOrderFailed` holds
+`validateOrder`'s error, and so on. (Constructor names are unique within a
+unit, so two workflows sharing a step get distinct constructors.)
 
 ```lawspec fragment
 workflow register :: Signup -> Either SignupError Account is

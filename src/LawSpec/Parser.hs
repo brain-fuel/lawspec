@@ -231,6 +231,15 @@ workflowP = do
         , OrElseStage <$> ((keyword "orElse" <|> keyword "recover" <|> void (symbol "<|>")) *> qualifiedName)
         , FallbackStage <$> ((keyword "fallback" <|> void (symbol "??")) *> qualifiedName)
         , TapStage <$> (keyword "tap" *> qualifiedName)
+        , do
+            keyword "all"
+            accumulate <- option False (True <$ keyword "accumulate")
+            steps <- some (choice
+              [ try ((\n t -> (n, Just t)) <$> ident <* symbol "::" <*> typeP)
+              , (\n -> (n, Nothing)) <$> ((keyword "then" <|> void (symbol ">>=")) *> qualifiedName) ])
+            keyword "end"
+            keyword "combine"
+            AllStage accumulate steps <$> qualifiedName
         , EnsureStage <$> (keyword "ensure" *> qualifiedName) <*> (keyword "else" *> qualifiedName) ]
       pure (WorkflowStage stage stageRange)
 

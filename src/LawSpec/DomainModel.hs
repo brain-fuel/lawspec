@@ -12,7 +12,7 @@ import LawSpec.Core.Policy
 import LawSpec.Scalar (isExact)
 import Control.Monad (foldM, forM, forM_, unless, when)
 import Data.Char (toUpper)
-import Data.List (nub)
+import Data.List (nub, intercalate)
 import LawSpec.Model
 import LawSpec.Railway (railwayLaw)
 
@@ -36,6 +36,9 @@ data StageKind
   | FallbackStage String
   | TapStage String
   | EnsureStage String String
+  -- Steps on the same state, whose results combine passes on. With
+  -- accumulate, every failing step's error is reported, not only the first.
+  | AllStage Bool [(String, Maybe Type)] String
   deriving (Eq, Show)
 
 data WorkflowStage = WorkflowStage { stageKind :: StageKind, stageSpan :: Span } deriving (Eq, Show)
@@ -76,7 +79,9 @@ elaborateDomain wrappers workflows u = either (Left . (,) Nothing) Right (checkW
     , functionDefinitions = unwrap ++ workflowDefinitions ++ functionDefinitions u
     , orchestrations = map functionName workflowDefinitions ++ orchestrations u
     , declarationSpans = [(functionName d, functionSpan d) | d <- unwrap ++ workflowDefinitions] ++
-        [(name, range) | w <- workflows, WorkflowStage (DeclaredStep name _) range <- workflowStages w] ++ declarationSpans u
+        [(name, range) | w <- workflows, WorkflowStage (DeclaredStep name _) range <- workflowStages w] ++
+        [(name, range) | w <- workflows, WorkflowStage (AllStage _ steps _) range <- workflowStages w, (name, Just _) <- steps] ++
+        declarationSpans u
     , laws = laws u ++ concat [ls | Elaborated _ ls _ _ _ <- elaborated]
     , policies = concat [ps | Elaborated _ _ _ _ ps <- elaborated] ++ policies u
     }
@@ -124,7 +129,8 @@ wrapperDefinition w = FunctionDefinition (wrapperValueName (wrapperName w))
 -- with the same type shares it between workflows; a different type is an error.
 declareSteps :: Workflow -> [(String, Type)] -> Either String [(String, Type)]
 declareSteps w known = do
-  let declared = [(name, ty) | WorkflowStage (DeclaredStep name ty) _ <- workflowStages w]
+  let declared = [(name, ty) | WorkflowStage (DeclaredStep name ty) _ <- workflowStages w] ++
+        [(name, ty) | WorkflowStage (AllStage _ steps _) _ <- workflowStages w, (name, Just ty) <- steps]
   when (null (workflowStages w)) (Left (workflowName w ++ ": a workflow needs at least one stage"))
   when (workflowName w `elem` map fst declared)
     (Left (workflowName w ++ ": workflow and step names must be distinct"))
@@ -248,7 +254,9 @@ elaborateWorkflow env0 definitions asyncNames taken0 w = do
               " but the workflow fails with " ++ prettyType e ++ "; map it with mapError"))
             pure (constructors, mapping call')
           Generated _ -> do
-            let constructor = capital stageName ++ "Failed"
+            -- Constructors are unique within a unit, so a generated one is
+            -- named after its workflow too.
+            let constructor = capital name ++ capital stageName ++ "Failed"
             constructors' <- case lookup constructor constructors of
               Just ty | ty /= [mapped] -> Left (context ++ ": " ++ constructor ++ " would hold two error types")
                       | otherwise -> pure constructors
@@ -298,6 +306,51 @@ elaborateWorkflow env0 definitions asyncNames taken0 w = do
             (cs, failing) <- located (failed p mapNames fe constructors tag (left (call f (Var "__state"))))
             let b = bindState body tag (\v -> Apply (Apply (Apply (Var "prelude.select") (call p v)) (right v)) (substitute v failing))
             continue state cs b ([p], [])
+          AllStage accumulate steps combineName -> do
+            infos <- forM steps $ \(f, _) -> do
+              (a, r) <- located (unary f)
+              unless (a == state) (located (Left (context ++ ": step " ++ f ++ " expects " ++ prettyType a ++ " but receives " ++ prettyType state)))
+              pure (f, r)
+            let outputs = [case r of Application "Either" [_, n] -> n; _ -> r | (_, r) <- infos]
+            combineType <- located (typeOf combineName)
+            let (combineArguments, combined) = arguments combineType
+            unless (combineArguments == outputs)
+              (located (Left (context ++ ": combine " ++ combineName ++ " must take " ++ intercalate ", " (map prettyType outputs) ++
+                " in that order")))
+            when (isEither combined) (located (Left (context ++ ": combine " ++ combineName ++ " cannot fail; make it a step")))
+            when (accumulate && case failure of Generated _ -> False; _ -> True)
+              (located (Left (context ++ ": all accumulate needs a generated error type (Either _ T)")))
+            -- Each fallible step's call, its failure mapped to the workflow's
+            -- error type.
+            (cs, mapped) <- foldM (\(cs0, acc) (i, (f, r)) -> case r of
+                Application "Either" [e, _] -> do
+                  (cs1, expr) <- located (failed f [] e cs0 (tag ++ "s" ++ show i) (call f (Var "__state")))
+                  pure (cs1, acc ++ [(i, Just expr)])
+                _ -> pure (cs0, acc ++ [(i, Nothing)])) (constructors, []) (zip [0 :: Int ..] infos)
+            let failuresConstructor = capital name ++ "Failures"
+                cs' = case failure of
+                  Generated n | accumulate, failuresConstructor `notElem` map fst cs -> cs ++ [(failuresConstructor, [Application "List" [Named n]])]
+                  _ -> cs
+                -- Nest a match per fallible step (an infallible step's call is
+                -- its result); at each leaf, the failures so far.
+                nest i results failures
+                  | i == length infos =
+                      if accumulate && not (null failures)
+                        then left (ConstructLit failuresConstructor [ListLit (map Var failures)])
+                        else right (foldl Apply (Var combineName) results)
+                  | Just (Just stepCall) <- lookup i mapped =
+                      let resultVar = fresh ("all" ++ tag ++ "v" ++ show i)
+                          failureVar = fresh ("all" ++ tag ++ "e" ++ show i)
+                      in MatchExpr stepCall
+                           [ MatchBranch "Either::Left" [failureVar]
+                               (if accumulate then nest (i + 1) (results ++ [Var failureVar]) (failures ++ [failureVar]) else left (Var failureVar))
+                           , MatchBranch "Either::Right" [resultVar] (nest (i + 1) (results ++ [Var resultVar]) failures) ]
+                  | otherwise = nest (i + 1) (results ++ [call (fst (infos !! i)) (Var "__state")]) failures
+                group = nest 0 [] []
+                body' = if fallibleWorkflow
+                  then bindState body tag (\v -> substitute v group)
+                  else onSuccess body tag (\v -> foldl Apply (Var combineName) [call f v | (f, _) <- infos])
+            continue combined cs' body' ([], [])
           OrElseStage h -> do
             e <- maybe (located (Left (context ++ ": orElse " ++ h ++ " needs a workflow that can fail"))) Right errorType
             (a, r) <- unary h
@@ -332,9 +385,9 @@ elaborateWorkflow env0 definitions asyncNames taken0 w = do
             (\value -> pure (kind, value)) (lookup kind elses)
           Generated n -> do
             unless (null elses) (Left (context ++ ": else applies to a declared error type; " ++ n ++ " is generated"))
-            pure (kind, ConstructLit kind [])
+            pure (kind, ConstructLit (capital name ++ kind) [])
         let generatedKinds = case failure of
-              Generated _ -> [(kind, []) | kind <- kinds, kind `notElem` map fst constructors]
+              Generated _ -> [(capital name ++ kind, []) | kind <- kinds, capital name ++ kind `notElem` map fst constructors]
               _ -> []
         (cs, stepFailing) <- case stepError of
           Just e -> failed f maps e (constructors ++ generatedKinds) tag (left (Var "__stepError"))
@@ -461,3 +514,8 @@ replaceVar name replacement = go
       Unary op a -> Unary op (go a)
       Annotate a t -> Annotate (go a) t
       other -> other
+
+-- A function type's parameters and result.
+arguments :: Type -> ([Type], Type)
+arguments (Arrow a r) = let (as, result) = arguments r in (a : as, result)
+arguments t = ([], t)
