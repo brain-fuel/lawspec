@@ -97,6 +97,12 @@ contractPreconditions, contractPostconditions :: Contract -> [Expr]
 contractPreconditions = C.contractPreconditions
 contractPostconditions = C.contractPostconditions
 
+-- The native name of an adapter, which may be escaped for the target
+-- (LawSpec.TargetNames); messages keep the declared name.
+adapterName :: Unit -> C.Id -> String
+adapterName u identity = case [C.declarationName d | d <- C.unitDeclarations u, C.declarationId d == identity] of
+  name : _ -> name
+  [] -> declarationName identity
 declarationName :: C.Id -> String
 declarationName = lastPart . C.idText where
   lastPart s = case splitOnce "::" s of (_,Just rest) -> lastPart rest; _ -> s

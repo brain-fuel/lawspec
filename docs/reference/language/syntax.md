@@ -60,6 +60,13 @@ Function signatures are curried: `a -> b -> c` takes two inputs and returns a
 - Qualified names have no spaces around the dot (`domain.Usd`); composition is
   written with spaces (`f . g`).
 - Names that cannot be emitted portably on every target are diagnosed.
+- A definition or adapter named with a keyword of a target language is emitted
+  in that target with a leading underscore, and keeps its name elsewhere. A
+  definition `short` is `_short` in Java; an adapter `class` is written as
+  `_class` in Python, JavaScript, TypeScript, Java, Kotlin and Haskell, `class`
+  in Rust, and `Class` in Go, whose exported names are capitalized. Laws,
+  messages and evidence use the declared name. The [keywords
+  example](../../../examples/specs/keywords.lawspec) shows each case.
 
 The following words are reserved:
 

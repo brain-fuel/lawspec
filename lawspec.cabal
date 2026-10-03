@@ -54,6 +54,7 @@ extra-source-files:
     examples/specs/gadt_expressions.lawspec
     examples/specs/indexed_arithmetic.lawspec
     examples/specs/indexed_families.lawspec
+    examples/specs/keywords.lawspec
     examples/specs/list_contracts.lawspec
     examples/specs/list_refinements.lawspec
     examples/specs/lists.lawspec
@@ -266,6 +267,7 @@ library
       LawSpec.Scaffold
       LawSpec.Scalar
       LawSpec.SpecializeDefinitions
+      LawSpec.TargetNames
       LawSpec.Testing
       LawSpec.TestManifest
       LawSpec.WebData
@@ -427,6 +429,7 @@ test-suite lawspec-test
       RefinementProofSpec
       SourceDataSpec
       StructuralSpec
+      TargetNamesSpec
       TestManifestSpec
       TotalSpec
       Paths_lawspec

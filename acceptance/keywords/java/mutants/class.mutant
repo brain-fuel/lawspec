@@ -1,0 +1,6 @@
+@@ src/main/java/example/Keywords.java
+<<<<<<<
+    return value0.shiftLeft(1);
+=======
+    return value0.shiftLeft(2);
+>>>>>>>

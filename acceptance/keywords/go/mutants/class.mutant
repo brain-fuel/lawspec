@@ -1,0 +1,6 @@
+@@ example/keywords/adapter.go
+<<<<<<<
+	return new(LawSpecBigInt).Add(value0, value0)
+=======
+	return new(LawSpecBigInt).Mul(value0, value0)
+>>>>>>>

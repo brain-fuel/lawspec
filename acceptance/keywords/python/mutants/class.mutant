@@ -1,0 +1,6 @@
+@@ src/example/keywords.py
+<<<<<<<
+    return value0 * 2
+=======
+    return value0 * 3
+>>>>>>>

@@ -14,15 +14,32 @@ type ValidatedOrder is ValidatedOrder id :: OrderId quantity :: UnitQuantity end
 type PricedOrder is PricedOrder id :: OrderId quantity :: UnitQuantity total :: Int64 end
 type OrderError is | InvalidOrderId | InvalidQuantity | PriceTooHigh end
 
--- The compiler checks that each step accepts the previous step's state and that
--- all failures share one error type. It adds a law that placeOrder is the
--- railway composition of the steps: the first Left is the workflow's result.
+-- The compiler checks that each step accepts the previous step's state and
+-- generates placeOrder on every target: the steps run in order and the first
+-- Left is the workflow's result. Only the steps are written by hand. The steps
+-- share OrderError, so it is the workflow's error type; laws say the workflow
+-- succeeds when every step does and stops at the first failing step.
 workflow placeOrder :: UnvalidatedOrder -> Either OrderError PricedOrder is
   validateOrder :: UnvalidatedOrder -> Either OrderError ValidatedOrder
   priceOrder :: ValidatedOrder -> Either OrderError PricedOrder
 end
 
 firstLine :: NonEmptyList Int32 -> Int32
+
+-- An order is placed when it is valid and its total is at most 20000.
+law `placing an order prices it` is
+  definition is
+    `for all` (input :: UnvalidatedOrder) .
+      prelude.isRight (placeOrder input) = (match input with
+        | UnvalidatedOrder id quantity ->
+            prelude.length id > 0 && quantity >= 1 && quantity <= 800
+        end)
+  end
+  example `a hundred units` is
+    input = UnvalidatedOrder "A-1" 100
+    expect prelude.isRight (placeOrder input) = true
+  end
+end
 
 law `validation accepts exactly the valid orders` is
   definition is

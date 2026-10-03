@@ -1,0 +1,6 @@
+@@ src/example/keywords.rs
+<<<<<<<
+    value0.clone() + value0
+=======
+    value0.clone() + value0.clone() + value0
+>>>>>>>

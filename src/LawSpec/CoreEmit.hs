@@ -30,6 +30,7 @@ import qualified LawSpec.Code.Doc as Doc
 import LawSpec.RuntimeSources
 import qualified LawSpec.Core as C
 import LawSpec.Scalar (primitive)
+import LawSpec.TargetNames (nativeName, allTargetKeywords)
 import Data.Char (toUpper, toLower, isAscii, isAlphaNum)
 import Data.List (intercalate, nub, stripPrefix, isPrefixOf, isSuffixOf)
 import Control.Monad (unless)
@@ -61,7 +62,7 @@ emitPlan = emitPlanWithFormat False
 -- Legacy runtime/test templates are still being migrated to structured Docs.
 emitPlanWithFormat :: Bool -> String -> Plan -> Either [Diagnostic] [Artifact]
 emitPlanWithFormat minify target original = do
-  let plan = witnessPlan original
+  let plan = escapePlan target (witnessPlan original)
   files <- emitPlanFormatted minify target plan
   canonical <- if minify then emitPlanFormatted False target plan else pure files
   let references = [(artifactPath a, artifactContent a) | a <- canonical, ownership a == "user"]
@@ -70,6 +71,23 @@ emitPlanWithFormat minify target original = do
       Nothing -> Left [Diagnostic "target" "formatted adapter has no canonical reference" Nothing]
       Just reference -> pure (AdapterArtifact (artifactPath artifact) (artifactContent artifact)
         (ownership artifact) (artifactPlacement artifact) reference)) files
+
+-- A declaration named with a keyword of the target is emitted with a leading
+-- underscore (LawSpec.TargetNames). Escaping is idempotent, and identities are
+-- unchanged, so calls, contracts and bindings still resolve.
+escapePlan :: String -> Plan -> Plan
+escapePlan target plan = plan { plannedUnits = [u { plannedUnit = escapeUnit (plannedUnit u) } | u <- plannedUnits plan] }
+  where
+    escapeUnit unit = unit
+      { C.unitDeclarations = map (escapeDeclaration target) (C.unitDeclarations unit)
+      , C.unitDefinitions = [d { C.definitionDeclaration = escapeDeclaration target (C.definitionDeclaration d) }
+                            | d <- C.unitDefinitions unit] }
+
+escapeDeclaration :: String -> C.Declaration -> C.Declaration
+escapeDeclaration target d = d { C.declarationName = nativeName target (C.declarationName d) }
+
+escapeBindings :: String -> NB.BindingPlan -> NB.BindingPlan
+escapeBindings target b = b { NB.bindingFunctions = [(escapeDeclaration target d, r) | (d, r) <- NB.bindingFunctions b] }
 
 emitPlanFormatted :: Bool -> String -> Plan -> Either [Diagnostic] [Artifact]
 emitPlanFormatted _ target plan
@@ -114,8 +132,13 @@ emitPlanFormatted minify target Plan{..} = do
   unless (target `elem` targets) (Left [Diagnostic "target" ("unknown target: " ++ target) Nothing])
   let units = map plannedUnit plannedUnits
       laws = concatMap plannedProperties plannedUnits
-      bad = [n | u <- units,n <- map fst (functions u) ++ split '.' (unitName u),n `elem` (reserved ++ [alias | target `elem` ["python","javascript","typescript"], alias <- ["ls","data","schema","_schema","_builtins","_definitions","_lawspec_schema"]] ++
-        [alias | target `elem` ["javascript","typescript"], alias <- ["globalThis","eval","arguments"]]) || not (all (\c -> isAscii c && (isAlphaNum c || c == '_')) n)]
+      aliases = [alias | target `elem` ["python","javascript","typescript"], alias <- ["ls","data","schema","_schema","_builtins","_definitions","_lawspec_schema"]] ++
+        [alias | target `elem` ["javascript","typescript"], alias <- ["globalThis","eval","arguments"]]
+      invalid n = not (all (\c -> isAscii c && (isAlphaNum c || c == '_')) n)
+      -- A function named with a target keyword is escaped (escapePlan); other
+      -- reserved words, and every reserved word in a module path, are rejected.
+      bad = [n | u <- units, n <- map fst (functions u), n `elem` (filter (`notElem` allTargetKeywords) reserved ++ aliases) || invalid n] ++
+        [n | u <- units, n <- split '.' (unitName u), n `elem` (reserved ++ aliases) || invalid n]
   unless (null bad) (Left [Diagnostic "identifier" ("reserved target identifier: " ++ comma bad) Nothing])
   let kotlinRuntimeNames = map ("lawspec.runtime." ++)
         ["LawSpecRuntime", "LawSpecSchema", "LawSpecDataSchema", "LawSpecDataCodecs",
@@ -283,8 +306,9 @@ emitPlanWithOptions minify target sourceDir testDir plan =
   emitPlanWithNativeOptions minify target sourceDir testDir NB.emptyBindingPlan plan
 
 emitPlanWithNativeOptions :: Bool -> String -> Maybe String -> Maybe String -> NB.BindingPlan -> Plan -> Either [Diagnostic] [Artifact]
-emitPlanWithNativeOptions minify target sourceDir testDir bindings unwitnessed = do
-  let originalPlan = witnessPlan unwitnessed
+emitPlanWithNativeOptions minify target sourceDir testDir unescaped unwitnessed = do
+  let originalPlan = escapePlan target (witnessPlan unwitnessed)
+      bindings = escapeBindings target unescaped
   unless (target `elem` ["python","rust","javascript","typescript","java","kotlin","go","haskell"] || not (any Binding.resolvedGeneratorStub
     (Binding.resolvedGenerators (NB.bindingRepresentations bindings))))
     (Left [Diagnostic "native-binding" ("generator scaffolds are not implemented for " ++ target) Nothing])

@@ -1,0 +1,104 @@
+unit example.workflows
+
+-- Workflows compose steps written by hand on each target. LawSpec generates
+-- the composition itself, so a workflow behaves the same everywhere: every
+-- stage below is a keyword, and each has a symbol too (>>=, <$>, <!>, <|>, ??).
+
+type Signup is Signup name :: Text age :: Int32 end
+type Account is Account name :: Text age :: Int32 level :: Int32 end
+type SignupError is | MissingName | TooYoung | NameTooLong | Unavailable end
+
+-- Checked definitions: LawSpec writes these on every target.
+definition explain (reason :: Text) :: SignupError is TooYoung end
+
+definition promote (a :: Account) :: Account is
+  match a with
+  | Account name age level -> Account name age 2
+  end
+end
+
+definition brief (a :: Account) :: Bool is
+  match a with
+  | Account name age level -> prelude.length name <= 8
+  end
+end
+
+definition tooLong (a :: Account) :: SignupError is NameTooLong end
+
+definition nameOf (s :: Signup) :: Text is
+  match s with
+  | Signup name age -> name
+  end
+end
+
+-- Side steps and recovery handlers, also written by hand.
+audit :: Account -> Bool
+waitlist :: SignupError -> Either SignupError Account
+
+-- The workflow's error type is declared, so every step must fail with
+-- SignupError; checkAge fails with a reason, which mapError turns into one.
+workflow register :: Signup -> Either SignupError Account is
+  checkName :: Signup -> Either SignupError Signup
+  then checkAge :: Signup -> Either Text Signup
+  mapError explain
+  then openAccount :: Signup -> Either SignupError Account
+  map promote
+  tap audit
+  ensure brief else tooLong
+  orElse waitlist
+end
+
+-- With the error written as _, LawSpec generates GreetError, with one
+-- constructor per step that can fail: CheckNameFailed and CheckAgeFailed.
+workflow greet :: Signup -> Either _ Text is
+  checkName :: Signup -> Either SignupError Signup
+  >>= checkAge :: Signup -> Either Text Signup
+  <$> nameOf
+  ?? anonymous
+end
+
+definition anonymous (e :: GreetError) :: Text is "guest" end
+
+law `registering an account` is
+  definition is
+    `for all` (s :: Signup) .
+      prelude.isRight (register s) = (match s with
+        | Signup name age ->
+            prelude.length name > 0 && age >= 18 && prelude.length name <= 8
+        end)
+  end
+  example `a new account is promoted` is
+    s = Signup "ada" 30
+    expect register s = Right (Account "ada" 30 2)
+  end
+  example `a name is required` is
+    s = Signup "" 30
+    expect register s = Left MissingName
+  end
+  example `seventeen is too young` is
+    s = Signup "bob" 17
+    expect register s = Left TooYoung
+  end
+  example `a long name is rejected` is
+    s = Signup "bartholomew" 30
+    expect register s = Left NameTooLong
+  end
+  example `a taken name joins the waitlist` is
+    s = Signup "taken" 30
+    expect register s = Right (Account "waitlist" 18 0)
+  end
+end
+
+law `greeting never fails` is
+  definition is
+    `for all` (s :: Signup) . prelude.isRight (greet s) = true
+  end
+  example `a named greeting` is
+    s = Signup "ada" 30
+    expect greet s = Right "ada"
+  end
+  example `an anonymous greeting` is
+    s = Signup "" 30
+    expect greet s = Right "guest"
+  end
+end

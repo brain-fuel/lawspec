@@ -1,0 +1,33 @@
+unit example.keywords
+
+-- A name that is a keyword of a target language is emitted there with a
+-- leading underscore: short is _short in Java, lambda is _lambda in Python,
+-- and class is _class wherever class is reserved. Other targets keep the name.
+
+definition short (x :: BigInt) :: Bool is x < 10 end
+definition double (x :: BigInt) :: BigInt is x + x end
+definition lambda (x :: BigInt) :: BigInt is x + 1 end
+definition fun (x :: BigInt) :: BigInt is x + 2 end
+definition loop (x :: BigInt) :: BigInt is x + 3 end
+definition deriving (x :: BigInt) :: BigInt is x + 4 end
+definition delete (x :: BigInt) :: BigInt is x + 5 end
+
+-- An adapter, written by hand on each target as _class or class.
+class :: BigInt -> BigInt
+
+law `keyword names are callable` is
+  definition is
+    `for all` (x :: BigInt) .
+      double x - x + lambda x + fun x + loop x + deriving x + delete x = 6 * x + 15
+  end
+  example `short` is
+    x = 3
+    expect short x = true
+  end
+end
+
+law `the class adapter doubles` is
+  definition is
+    `for all` (x :: BigInt) . class x = double x
+  end
+end

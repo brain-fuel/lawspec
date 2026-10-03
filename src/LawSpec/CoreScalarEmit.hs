@@ -39,7 +39,7 @@ scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions 
   pure [Artifact stubPath stub "user" "source",Artifact testPath (finish (completeHeader ++ dataHelpers ++ testHelpers ++ wrappers ++ tests)) "generated" "test"]
   where
     finish content = if py then reverse (dropWhile (== '\n') (reverse content)) ++ "\n" else content
-    adapterFunctions = [(n,t) | (n,t) <- functions u, C.Id (unitName u ++ "::" ++ n) `notElem` map fst definitions]
+    adapterFunctions = [(C.declarationName d,C.declarationType d) | d <- C.unitDeclarations u, C.declarationId d `notElem` map fst definitions]
     py = target == "python"
     hasData = (nativeGenerators || not (null definitions) || not (null declarations) || any (usesData . snd) (functions u) ||
       any (any (usesData . inputType) . inputs) ls ||
@@ -206,7 +206,7 @@ scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions 
             Just name -> Right (invoke name (text "symbols":values))
             Nothing ->
               let convertedValues = [converted (expressionType a) value | (a,value) <- zip args values]
-                  invocation = awaited (declarationName decl) (invoke ("impl." ++ declarationName decl)
+                  invocation = awaited (adapterName u decl) (invoke ("impl." ++ adapterName u decl)
                     [nativeInput (expressionType a) value | (a,value) <- zip args convertedValues])
               in Right (if declarationName decl `elem` map contractName (contracts u)
                 then (if asyncMode then \call -> text "(await " <> call <> text ")" else id)
@@ -285,7 +285,7 @@ scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions 
           require label predicates = statement (runtime (if py then "require_contract" else "requireContract")
             [conjunction (map render predicates),message (contractName contract ++ " " ++ label ++ ": " ++
               intercalate " && " (map prettyExpr predicates))])
-          invocation = awaited (contractName contract) (invoke ("impl." ++ contractName contract)
+          invocation = awaited (adapterName u (C.contractDeclaration contract)) (invoke ("impl." ++ adapterName u (C.contractDeclaration contract))
             [nativeInput ty (converted ty (text name)) | (name,ty) <- arguments])
           body = statements
             [require "precondition" (contractPreconditions contract),

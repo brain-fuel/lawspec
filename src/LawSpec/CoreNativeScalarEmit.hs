@@ -72,8 +72,8 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
   let completeHeader = if go || kt || hs || target == "java" then "" else if hs then replace "spec :: Spec" (wrappers ++ "spec :: Spec") testHeader else if kt then replace "class " (wrappers ++ "class ") testHeader else (if go && not goSchemaNeeded && not ("rapid.Check" `isInfixOf` tests) then replace "; \"pgregory.net/rapid\"" "" testHeader else testHeader) ++ wrappers
   pure (goFiles ++ [Artifact stubPath stub "user" "source", Artifact testPath (completeHeader ++ tests ++ (if hs || go || kt || target == "java" then "" else if kt then "})\n" else "}\n")) "generated" "test"] ++ [Artifact (intercalate "/" parts ++ "/lawspec_runtime.go") (replace "RUNTIME_PACKAGE" (last parts) (runtimeSource "go")) "generated" "source" | go])
   where
-    adapterFunctions = [(n,t) | (n,t) <- functions u,
-      C.Id (unitName u ++ "::" ++ n) `notElem` map fst definitions]
+    adapterFunctions = [(C.declarationName d,C.declarationType d) | d <- C.unitDeclarations u,
+      C.declarationId d `notElem` map fst definitions]
     ktCustom = (kt &&) . KotlinData.requiresSchema dataDeclarations
     ktRef = java . KotlinData.kotlinTypeReference
     ktCodec ty = "run { val schema = _schema; val bits = " ++ show bits ++ "; " ++
@@ -340,7 +340,7 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
         in Right $ if name `elem` map contractName (contracts u)
           then KotlinExpr.call ("_lawspec_call_" ++ name)
             (Doc.text "symbols" : [ktChecked ty value | (ty,value) <- typed])
-          else ktNativeResult (expressionType term) (awaitFor name (KotlinExpr.call (cls ++ "." ++ name)
+          else ktNativeResult (expressionType term) (awaitFor (adapterName u identity) (KotlinExpr.call (cls ++ "." ++ adapterName u identity)
             [ktNativeArgument ty value | (ty,value) <- typed]))
       _ -> Left "expected checked Kotlin external call"
     ktValueLiteral value = case value of
@@ -387,7 +387,7 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
       [java (HaskellData.haskellCodecDocWithContext hsScope dataDeclarations "_lawspecSchema" (show bits) ty),value])
     hsNativeCall name arguments = case lookup (C.Id (unitName u ++ "::" ++ name)) adapterBindings of
       Just bridge -> HaskellExpr.apply ("Impl." ++ bridge) (Doc.text "symbols" : arguments)
-      Nothing -> HaskellExpr.apply ("Impl." ++ name) arguments
+      Nothing -> HaskellExpr.apply ("Impl." ++ adapterName u (C.Id (unitName u ++ "::" ++ name))) arguments
     hsCallChecked values invocation =
       let names = ["_lawspecArgument" ++ show i | i <- [0::Int .. length values - 1]]
           bindingsDoc = Doc.joinWith (Doc.text ";" <> Doc.softline)
@@ -406,7 +406,7 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
             result = if name `elem` map contractName (contracts u)
               then hsCallChecked converted (\names -> HaskellExpr.apply ("_lawspec_call_" ++ name) (Doc.text "symbols" : names))
               else hsNativeResult (expressionType term) (hsCallChecked converted (\names ->
-                awaitFor name (hsNativeCall name (zipWith hsNativeArgument types names))))
+                awaitFor (adapterName u identity) (hsNativeCall name (zipWith hsNativeArgument types names))))
         in Right $ if any hsNativeMachine (expressionType term : types)
           then Doc.group (HaskellExpr.apply "LS.checkMachineBits" [Doc.text (show bits)] <> Doc.text " `seq`" <>
             Doc.nest 2 (Doc.softline <> result))
@@ -589,7 +589,7 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
             typed = zip (map expressionType args) values
         in Right $ if n `elem` map contractName (contracts u)
           then JavaExpr.call ("_lawspec_call_" ++ n) (Doc.text "symbols" : [javaChecked ty v | (ty,v) <- typed])
-          else javaNativeResult (expressionType term) (awaitFor n (JavaExpr.call (cls ++ "." ++ n) [javaNativeArgument ty v | (ty,v) <- typed]))
+          else javaNativeResult (expressionType term) (awaitFor (adapterName u identity) (JavaExpr.call (cls ++ "." ++ adapterName u identity) [javaNativeArgument ty v | (ty,v) <- typed]))
       _ -> Left "expected checked Java external call"
     renderLegacy term = case C.expressionNode term of
       C.Local n -> localName n
@@ -621,7 +621,7 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
         let n = declarationName decl
             t = expressionType term
             values = [convert (expressionType a) (render a) | a <- args]
-            callee = if hs then "Impl." ++ n else if go then cap n else cls ++ "." ++ n
+            callee = if hs then "Impl." ++ adapterName u decl else if go then cap n else cls ++ "." ++ adapterName u decl
             invocation = if hs then checkedHsCall values (\names -> callee ++
               concat [" (" ++ nativeValue (expressionType a) n' ++ ")" | (a,n') <- zip args names])
               else callee ++ "(" ++ intercalate ", " (map adapterArg args) ++ ")"
@@ -913,7 +913,7 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
     contractWrapper c = do
       let args = contractArguments c
           (rn,rt) = contractResult c
-          invoke = (if hs then "Impl." else if go then "" else cls ++ ".") ++ (if go then cap (contractName c) else contractName c) ++
+          invoke = (if hs then "Impl." else if go then "" else cls ++ ".") ++ (if go then cap (contractName c) else adapterName u (C.contractDeclaration c)) ++
             (if hs then concatMap (\(n,t) -> " (" ++ nativeValue t n ++ ")") args
              else "(" ++ intercalate ", " [nativeValue t n | (n,t) <- args] ++ ")")
           result = wrapResult rt invoke

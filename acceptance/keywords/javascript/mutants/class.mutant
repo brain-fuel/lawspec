@@ -1,0 +1,6 @@
+@@ src/example/keywords.mjs
+<<<<<<<
+  return value0 * 2n;
+=======
+  return value0 * 3n;
+>>>>>>>

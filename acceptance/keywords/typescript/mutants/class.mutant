@@ -1,0 +1,6 @@
+@@ src/example/keywords.ts
+<<<<<<<
+  return value0 * 2n;
+=======
+  return value0 * 3n;
+>>>>>>>

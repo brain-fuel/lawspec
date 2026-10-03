@@ -1,0 +1,6 @@
+@@ src/main/kotlin/example/Keywords.kt
+<<<<<<<
+    fun _class(value0: java.math.BigInteger): java.math.BigInteger = value0.shiftLeft(1)
+=======
+    fun _class(value0: java.math.BigInteger): java.math.BigInteger = value0.shiftLeft(2)
+>>>>>>>

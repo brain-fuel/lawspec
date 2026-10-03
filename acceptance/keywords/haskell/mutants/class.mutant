@@ -1,0 +1,6 @@
+@@ src/Example/Keywords.hs
+<<<<<<<
+_class value = value * 2
+=======
+_class value = value * 3
+>>>>>>>

@@ -115,7 +115,7 @@ emitTests Config{..} unit laws = do
           (rn,rt) = contractResult c
           context stage ps = quoted (contractName c ++ " " ++ stage ++ ": " ++ intercalate " && " (map prettyExpr ps))
           require stage ps body = runtime "contract" [context stage ps,conjunction (map (truth . expr) ps),body]
-          invocation = awaitResult (contractName c) (nativeCall (contractName c) [nativeArgument ty (text name) | (name,ty) <- args])
+          invocation = awaitResult (adapterName unit (C.contractDeclaration c)) (nativeCall (contractName c) [nativeArgument ty (text name) | (name,ty) <- args])
           result = nativeResult rt invocation
           post = D.group (text (rn ++ " `seq`") <> D.nest 2 (D.softline <>
             require "postcondition" (contractPostconditions c) (text rn)))
