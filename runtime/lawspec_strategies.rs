@@ -276,11 +276,17 @@ pub fn strategy_with_profile(name: &str, bits: u32) -> ls::Result<BoxedStrategy<
     })
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct Case {
     pub context: ls::Context,
     pub values: Vec<Value>,
     pub error: Option<String>,
+}
+// A case's workflows wait on a virtual clock, as every generated test's do.
+impl Default for Case {
+    fn default() -> Self {
+        Case { context: ls::Context::testing(), values: Vec::new(), error: None }
+    }
 }
 pub fn seeded(strategy: BoxedStrategy<Value>, seeds: Vec<Value>) -> BoxedStrategy<Value> {
     if seeds.is_empty() {

@@ -1,0 +1,6 @@
+@@ src/Example/Resilience.hs
+<<<<<<<
+    symbols <- LS.workflowContext runtime
+=======
+    symbols <- LS.workflowContext =<< LS.newWorkflowRuntime clock 0
+>>>>>>>

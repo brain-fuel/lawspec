@@ -57,4 +57,17 @@ public final class Resilience {
   public static List<Number> rejectedWaits(int value0) {
     return waits(value0, error -> false);
   }
+
+  /** Calls the generated workflow at each time under one runtime. */
+  public static List<Boolean> limitedAt(List<Number> value0) {
+    var clock = new LawSpecRuntime.VirtualClock();
+    var runtime = new LawSpecRuntime.WorkflowRuntime(clock, 0);
+    var admitted = new ArrayList<Boolean>();
+    for (var time : value0) {
+      clock.time = new BigInteger(time.toString()).longValueExact();
+      admitted.add(lawspec.definitions.example.Limits.limited(runtime.context(new HashMap<>()), new lawspec.data.Ticket(0L))
+          instanceof LawSpecRuntime.Right);
+    }
+    return admitted;
+  }
 }

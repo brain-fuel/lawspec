@@ -1,0 +1,6 @@
+@@ src/main/java/example/Resilience.java
+<<<<<<<
+      admitted.add(lawspec.definitions.example.Limits.limited(runtime.context(new HashMap<>()), new lawspec.data.Ticket(0L))
+=======
+      admitted.add(lawspec.definitions.example.Limits.limited(new LawSpecRuntime.WorkflowRuntime(clock, 0).context(new HashMap<>()), new lawspec.data.Ticket(0L))
+>>>>>>>

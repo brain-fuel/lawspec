@@ -1,5 +1,7 @@
 # User-owned LawSpec adapter: the workflow runtime under test.
+import lawspec_data as data
 import lawspec_runtime as ls
+import lawspec_schema as _schema
 
 
 def runtimeExponentialDelay(value0, value1, value2):
@@ -37,3 +39,15 @@ def retriedWaits(value0):
 
 def rejectedWaits(value0):
     return _waits(value0, lambda error: False)
+
+
+def limitedAt(value0):
+    """Calls the generated workflow at each time under one runtime."""
+    import lawspec_definitions.example.limits as workflows
+    runtime = ls.WorkflowRuntime(ls.VirtualClock())
+    admitted = []
+    for time in value0:
+        runtime.clock.time = time
+        result = workflows.limited(runtime.context(), data.Ticket(0))
+        admitted.append(isinstance(result, _schema.Right))
+    return admitted

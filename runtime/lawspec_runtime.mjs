@@ -1081,16 +1081,23 @@ export class SplitMix64 {
   below(bound) { return bound > 0n ? this.next() % bound : 0n; }
 }
 
+/**
+ * gates: whether rate limits, breakers, bulkheads and caches apply. The
+ * runtime generated tests install has them off: a workflow law calls the
+ * workflow and its composition, which would see each other's state.
+ */
 export class WorkflowRuntime {
   clock;
   random;
   trace;
   state;
-  constructor(clock = new RealClock(), seed = 0n) {
+  gates;
+  constructor(clock = new RealClock(), seed = 0n, gates = true) {
     this.clock = clock;
     this.random = new SplitMix64(seed);
     this.trace = [];
     this.state = new Map();
+    this.gates = gates;
   }
   /** A symbols Map that runs workflows under this runtime. */
   context(symbols = new Map()) {
@@ -1103,7 +1110,7 @@ let defaultRuntime = null;
 
 /** Make the default runtime virtual, as generated tests do. */
 export function useVirtualClock(seed = 0n) {
-  defaultRuntime = new WorkflowRuntime(new VirtualClock(), seed);
+  defaultRuntime = new WorkflowRuntime(new VirtualClock(), seed, false);
 }
 
 export function workflowRuntime(symbols) {
@@ -1159,9 +1166,101 @@ export function jittered(jitter, delay, previous, base, random) {
   return delay;
 }
 
-/** Runs a stage's attempts under its policy; a Left is a failure. */
-export function runStage(symbols, policy, attempt) {
+const STAGE_FAILURE = 'lawspec.resilience::type::StageFailure::';
+const GATE = 'lawspec.resilience::type::Gate::';
+const FAILURES = {breaker: 'CircuitOpen', limit: 'RateLimited', bulkhead: 'Saturated'};
+
+export function stageFailure(kind) {
+  return new DataValue('Either::Left', [new DataValue(STAGE_FAILURE + kind, [])]);
+}
+
+/**
+ * A gate is a stateful policy: start(now) gives its state, admit(state, now)
+ * a Step of the next state and a Gate (Admit, WaitFor or Reject), and
+ * finish(state, now, succeeded) the state after the call. wait is null to
+ * fail at once when not admitted, or the most it waits (-1n for no bound).
+ * Returns null when admitted, or the failure to give instead.
+ */
+function passGate(runtime, policy, gate) {
+  const key = policy.key + '/' + gate.kind;
+  let waited = 0n;
+  for (;;) {
+    const now = runtime.clock.now();
+    const state = runtime.state.has(key) ? runtime.state.get(key) : gate.start(now);
+    const step = gate.admit(state, now);
+    runtime.state.set(key, step.fields[0]);
+    const decision = step.fields[1];
+    if (decision.tag === GATE + 'Admit') return null;
+    if (decision.tag === GATE + 'Reject' || gate.wait === null) return FAILURES[gate.kind];
+    const delay = decision.fields[0];
+    if (gate.wait >= 0n && waited + delay > gate.wait) return FAILURES[gate.kind];
+    runtime.trace.push(['wait', policy.stage, delay]);
+    runtime.clock.sleep(delay);
+    waited += delay;
+  }
+}
+
+function finishGate(runtime, policy, gate, succeeded) {
+  if (gate.finish === null) return;
+  const key = policy.key + '/' + gate.kind;
+  runtime.state.set(key, gate.finish(runtime.state.get(key), runtime.clock.now(), succeeded));
+}
+
+/**
+ * Runs a stage's attempts under its policy; a Left is a failure. attempt()
+ * returns the stage's Either; key is its input, for the cache.
+ */
+export function runStage(symbols, given, attempt, ...input) {
+  // The key is optional (a rest parameter keeps it so for TypeScript), and a
+  // policy built by hand may leave out what it does not use.
+  const key = input[0];
+  const policy = {key: given.stage, gates: [], cache: null, wraps: false, timeout: null, ...given};
   const runtime = workflowRuntime(symbols);
+  const gates = runtime.gates ? policy.gates : [];
+  let cached = null;
+  if (policy.cache !== null && runtime.gates) {
+    const cacheKey = policy.key + '/cache';
+    if (!runtime.state.has(cacheKey)) runtime.state.set(cacheKey, []);
+    cached = runtime.state.get(cacheKey);
+    const now = runtime.clock.now();
+    for (const [entry, value, expires] of cached) {
+      if (now < expires && equalValues(entry, key)) {
+        runtime.trace.push(['cached', policy.stage, 0n]);
+        return value;
+      }
+    }
+  }
+  for (let i = 0; i < gates.length; i++) {
+    const failure = passGate(runtime, policy, gates[i]);
+    if (failure !== null) {
+      for (const passed of gates.slice(0, i)) finishGate(runtime, policy, passed, false);
+      return stageFailure(failure);
+    }
+  }
+  const result = attempts(runtime, policy, attempt);
+  const succeeded = !(result instanceof DataValue && result.tag === 'Either::Left');
+  for (const gate of gates) finishGate(runtime, policy, gate, succeeded);
+  if (cached !== null && succeeded) {
+    const kept = cached.filter(([entry]) => !equalValues(entry, key));
+    cached.length = 0;
+    cached.push(...kept, [key, result, runtime.clock.now() + policy.cache]);
+  }
+  return result;
+}
+
+function equalValues(a, b) {
+  if (a === b) return true;
+  if (a instanceof DataValue && b instanceof DataValue) {
+    return a.tag === b.tag && a.fields.length === b.fields.length &&
+      a.fields.every((field, i) => equalValues(field, b.fields[i]));
+  }
+  if (Array.isArray(a) && Array.isArray(b)) {
+    return a.length === b.length && a.every((item, i) => equalValues(item, b[i]));
+  }
+  return false;
+}
+
+function attempts(runtime, policy, attempt) {
   const retry = policy.retry;
   let number = 1n, previous = 0n;
   for (;;) {
@@ -1171,7 +1270,12 @@ export function runStage(symbols, policy, attempt) {
     runtime.trace.push(['finish', policy.stage, number, !failed]);
     if (!failed || retry === null) return result;
     if (retry.attempts > 0n && number >= retry.attempts) return result;
-    const error = result.fields[0];
+    let error = result.fields[0];
+    if (policy.wraps) {
+      // Only the step's own failures and timeouts are retried.
+      if (error.tag === STAGE_FAILURE + 'StepFailed') error = error.fields[0];
+      else if (error.tag !== STAGE_FAILURE + 'TimedOut') return result;
+    }
     if (retry.when !== null && !retry.when(error)) return result;
     number += 1n;
     let delay;

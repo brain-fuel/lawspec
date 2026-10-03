@@ -1179,11 +1179,17 @@ public final class LawSpecRuntime {
   /** A stage starting or finishing an attempt, or a wait. */
   public record TraceEvent(String kind, String stage, long number, boolean succeeded) {}
 
+  /**
+   * gates: whether rate limits, breakers, bulkheads and caches apply. The
+   * runtime generated tests install has them off: a workflow law calls the
+   * workflow and its composition, which would see each other's state.
+   */
   public static final class WorkflowRuntime {
     public final Clock clock;
     public final SplitMix64 random;
     public final List<TraceEvent> trace = new ArrayList<>();
     public final Map<String, Object> state = new java.util.HashMap<>();
+    public boolean gates = true;
 
     public WorkflowRuntime(Clock clock, long seed) {
       this.clock = clock == null ? new RealClock() : clock;
@@ -1202,6 +1208,7 @@ public final class LawSpecRuntime {
   /** Makes the default runtime virtual, as generated tests do. */
   public static synchronized void useVirtualClock(long seed) {
     defaultRuntime = new WorkflowRuntime(new VirtualClock(), seed);
+    defaultRuntime.gates = false;
   }
 
   public static synchronized WorkflowRuntime workflowRuntime(Map<String, Object> symbols) {
@@ -1223,7 +1230,67 @@ public final class LawSpecRuntime {
       String strategy, long delay, long step, long factor, long cap, long attempts, String jitter,
       Function<Value, Boolean> when, Decide decide) {}
 
-  public record StagePolicy(String stage, Retry retry, long timeout) {}
+  /**
+   * A stateful policy: start gives its state, admit a Step of the next state
+   * and a Gate (Admit, WaitFor or Reject), and finish (when set) the state
+   * after the call. waitMicros is -2 to fail at once when not admitted, -1
+   * to wait without bound, or the most it waits.
+   */
+  public record Gate(
+      String kind, java.util.function.LongFunction<Value> start, java.util.function.BiFunction<Value, Long, Value> admit,
+      GateFinish finish, long waitMicros) {}
+
+  public interface GateFinish {
+    Value finish(Value state, long now, boolean succeeded);
+  }
+
+  /**
+   * key names the stage's state; cache is how long a success is reused (0 or
+   * less for none); wraps says failures are StageFailures; fail gives the
+   * stage's result for a policy failure.
+   */
+  public record StagePolicy(
+      String stage, Retry retry, long timeout, String key, List<Gate> gates, long cache, boolean wraps,
+      Function<String, Value> fail) {
+    public StagePolicy(String stage, Retry retry, long timeout) {
+      this(stage, retry, timeout, stage, List.of(), -1, false, null);
+    }
+  }
+
+  private record CacheEntry(Value key, Value value, long expires) {}
+
+  private static final String STAGE_FAILURE = "lawspec.resilience::type::StageFailure::";
+  private static final String GATE = "lawspec.resilience::type::Gate::";
+
+  private static String passGate(WorkflowRuntime runtime, StagePolicy policy, Gate gate) {
+    String key = policy.key() + "/" + gate.kind();
+    String failure = switch (gate.kind()) {
+      case "breaker" -> "CircuitOpen";
+      case "limit" -> "RateLimited";
+      default -> "Saturated";
+    };
+    long waited = 0;
+    while (true) {
+      long now = runtime.clock.now();
+      Value state = runtime.state.containsKey(key) ? (Value) runtime.state.get(key) : gate.start().apply(now);
+      Data step = (Data) gate.admit().apply(state, now).data();
+      runtime.state.put(key, step.fields().get(0));
+      Data decision = (Data) step.fields().get(1).data();
+      if (decision.tag().equals(GATE + "Admit")) return null;
+      if (decision.tag().equals(GATE + "Reject") || gate.waitMicros() == -2) return failure;
+      long delay = ((BigInteger) decision.fields().get(0).data()).longValueExact();
+      if (gate.waitMicros() >= 0 && waited + delay > gate.waitMicros()) return failure;
+      runtime.trace.add(new TraceEvent("wait", policy.stage(), delay, true));
+      runtime.clock.sleep(delay);
+      waited += delay;
+    }
+  }
+
+  private static void finishGate(WorkflowRuntime runtime, StagePolicy policy, Gate gate, boolean succeeded) {
+    if (gate.finish() == null) return;
+    String key = policy.key() + "/" + gate.kind();
+    runtime.state.put(key, gate.finish().finish((Value) runtime.state.get(key), runtime.clock.now(), succeeded));
+  }
 
   private static long fibonacci(long n) {
     long a = 1, b = 1;
@@ -1280,7 +1347,47 @@ public final class LawSpecRuntime {
 
   /** Runs a stage's attempts under its policy; a Left is a failure. */
   public static Value runStage(Map<String, Object> symbols, StagePolicy policy, java.util.function.Supplier<Value> attempt) {
+    return runStage(symbols, policy, attempt, null);
+  }
+
+  /** As runStage; key is the stage's input, for the cache. */
+  @SuppressWarnings("unchecked")
+  public static Value runStage(
+      Map<String, Object> symbols, StagePolicy policy, java.util.function.Supplier<Value> attempt, Value key) {
     WorkflowRuntime runtime = workflowRuntime(symbols);
+    List<Gate> gates = runtime.gates ? policy.gates() : List.of();
+    String cacheKey = policy.key() + "/cache";
+    boolean caching = policy.cache() > 0 && runtime.gates;
+    if (caching) {
+      long now = runtime.clock.now();
+      for (var entry : (List<CacheEntry>) runtime.state.getOrDefault(cacheKey, List.of())) {
+        if (now < entry.expires() && compareValues(entry.key(), key) == 0) {
+          runtime.trace.add(new TraceEvent("cached", policy.stage(), 0, true));
+          return entry.value();
+        }
+      }
+    }
+    for (int i = 0; i < gates.size(); i++) {
+      String failure = passGate(runtime, policy, gates.get(i));
+      if (failure != null) {
+        for (var passed : gates.subList(0, i)) finishGate(runtime, policy, passed, false);
+        return policy.fail().apply(failure);
+      }
+    }
+    Value result = attempts(runtime, policy, attempt);
+    boolean succeeded = !(result.data() instanceof Data data && data.tag().equals("Either::Left"));
+    for (var gate : gates) finishGate(runtime, policy, gate, succeeded);
+    if (caching && succeeded) {
+      var entries = new ArrayList<CacheEntry>();
+      for (var entry : (List<CacheEntry>) runtime.state.getOrDefault(cacheKey, List.of()))
+        if (compareValues(entry.key(), key) != 0) entries.add(entry);
+      entries.add(new CacheEntry(key, result, runtime.clock.now() + policy.cache()));
+      runtime.state.put(cacheKey, entries);
+    }
+    return result;
+  }
+
+  private static Value attempts(WorkflowRuntime runtime, StagePolicy policy, java.util.function.Supplier<Value> attempt) {
     Retry retry = policy.retry();
     long number = 1, previous = 0;
     while (true) {
@@ -1291,6 +1398,12 @@ public final class LawSpecRuntime {
       if (!failed || retry == null) return result;
       if (retry.attempts() > 0 && number >= retry.attempts()) return result;
       Value failure = ((Data) result.data()).fields().get(0);
+      if (policy.wraps()) {
+        // Only the step's own failures and timeouts are retried.
+        Data wrapped = (Data) failure.data();
+        if (wrapped.tag().equals(STAGE_FAILURE + "StepFailed")) failure = wrapped.fields().get(0);
+        else if (!wrapped.tag().equals(STAGE_FAILURE + "TimedOut")) return result;
+      }
       if (retry.when() != null && !retry.when().apply(failure)) return result;
       number++;
       long delay;

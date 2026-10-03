@@ -1,0 +1,6 @@
+@@ src/main/kotlin/example/Resilience.kt
+<<<<<<<
+            lawspec.definitions.example.Limits.limited(runtime.context(HashMap()), lawspec.data.Ticket(0)) is LawSpecRuntime.Right
+=======
+            lawspec.definitions.example.Limits.limited(LawSpecRuntime.WorkflowRuntime(clock, 0).context(HashMap()), lawspec.data.Ticket(0)) is LawSpecRuntime.Right
+>>>>>>>

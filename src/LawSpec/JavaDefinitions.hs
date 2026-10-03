@@ -1,6 +1,7 @@
 -- Native entry points and checked implementation helpers for total definitions.
 module LawSpec.JavaDefinitions (emitJavaDefinitions, emitJvmDefinitionBodies, definitionCalls, orchestratedAdapters, kotlinAdapterBridge) where
 
+import LawSpec.Core.Stages (stageFailures)
 import LawSpec.Core.Policy
 import Control.Monad (forM)
 import Data.Char (isAlphaNum, toUpper)
@@ -141,8 +142,16 @@ emitDefinitions withNative layout bits declarations units = do
       body <- case definitionPolicy d of
         Nothing -> pure rendered
         Just policy -> do
-          config <- policyDoc policy
-          pure (E.call "LawSpecRuntime.runStage" [D.text "symbols", config, D.text "() -> " <> rendered])
+          failures <- forM (stageFailures d) $ \(kind, value) ->
+            (\rendered' -> D.text ("case " ++ show kind ++ " -> ") <> rendered' <> D.text ";") <$>
+              E.renderExpression declarations bits local external value
+          let fail' = if null failures then D.text "null" else D.text "kind -> switch (kind) " <> D.block 2 (D.joinWith D.hardline
+                (failures ++ [D.text "default -> throw new IllegalStateException(\"unexpected stage failure: \" + kind);"]))
+              key = case args of
+                argument : _ -> D.text (local (binderId argument))
+                [] -> D.text "null"
+          config <- policyDoc (idText (declarationId (definitionDeclaration d))) fail' policy
+          pure (E.call "LawSpecRuntime.runStage" [D.text "symbols", config, D.text "() -> " <> rendered, key])
       ref <- E.reference (expressionType (definitionBody d))
       let contract = lookup (declarationId (definitionDeclaration d)) [(contractDeclaration c,c) | c <- contracts]
           validated = const (D.text "result") ref
@@ -166,7 +175,8 @@ emitDefinitions withNative layout bits declarations units = do
       pure (signature <> D.block 2 (contextual (declarationId (definitionDeclaration d))
         (D.joinWith D.hardline statements)))
     evaluator identity = maybe (Left "unresolved Java policy definition") Right (lookup identity callees)
-    policyDoc policy = do
+    policyDoc key fail' policy = do
+      gates <- policyGates policy
       retry <- case policyRetry policy of
         Nothing -> pure (D.text "null")
         Just r -> do
@@ -186,7 +196,41 @@ emitDefinitions withNative layout bits declarations units = do
             _ -> pure (D.text "null")
           pure (E.call "new LawSpecRuntime.Retry"
             [E.quoted kind, long delay, long step, long factor, long cap, long (retryAttempts r), E.quoted (jitterName (retryJitter r)), condition, decide])
-      pure (E.call "new LawSpecRuntime.StagePolicy" [E.quoted (policyStage policy), retry, long (maybe (-1) id (policyTimeout policy))])
+      pure (E.call "new LawSpecRuntime.StagePolicy" [E.quoted (policyStage policy), retry, long (maybe (-1) id (policyTimeout policy)),
+        E.quoted key, E.call "java.util.List.of" gates, long (maybe (-1) id (policyCache policy)),
+        D.text (if null (policyFailures policy) then "false" else "true"), fail'])
+    -- A gate's callbacks call the unit's copies of the resilience unit's
+    -- state machines, with the policy's numbers.
+    policyGates policy = do
+      breaker <- forM (policyBreaker policy) $ \b -> do
+        start <- evaluator (breakerStart b)
+        admit <- evaluator (breakerAdmit b)
+        record <- evaluator (breakerRecord b)
+        pure (gate "breaker" (start ++ "(symbols, LawSpecRuntime.integer64(now))") (admit ++ "(symbols, state, LawSpecRuntime.integer64(now))")
+          (Just (record ++ "(symbols, " ++ integers [breakerFailures b, breakerWindow b, breakerCooldown b] ++
+            ", state, LawSpecRuntime.integer64(now), LawSpecRuntime.bool(succeeded))")) (-2))
+      limit <- forM (policyLimit policy) $ \l -> do
+        start <- evaluator (limitStart l)
+        admit <- evaluator (limitAdmit l)
+        let numbers = integers [limitCount l, limitPeriod l]
+        pure (gate "limit" (start ++ "(symbols, " ++ numbers ++ ", LawSpecRuntime.integer64(now))")
+          (admit ++ "(symbols, " ++ numbers ++ ", state, LawSpecRuntime.integer64(now))") Nothing (waitCode (limitWait l)))
+      bulkhead <- forM (policyBulkhead policy) $ \b -> do
+        start <- evaluator (bulkheadStart b)
+        admit <- evaluator (bulkheadAdmit b)
+        release <- evaluator (bulkheadRelease b)
+        let n = integers [bulkheadLimit b]
+        pure (gate "bulkhead" (start ++ "(symbols, " ++ n ++ ", LawSpecRuntime.integer64(now))")
+          (admit ++ "(symbols, " ++ n ++ ", state, LawSpecRuntime.integer64(now))") (Just (release ++ "(symbols, state)")) (waitCode (bulkheadWait b)))
+      pure (maybe [] pure breaker ++ maybe [] pure limit ++ maybe [] pure bulkhead)
+    gate kind start admit finish wait = E.call "new LawSpecRuntime.Gate"
+      [E.quoted kind, D.text ("now -> " ++ start), D.text ("(state, now) -> " ++ admit),
+       D.text (maybe "null" ("(state, now, succeeded) -> " ++) finish), long wait]
+    integers numbers = intercalate ", " ["LawSpecRuntime.integer64(" ++ show n ++ ")" | n <- numbers]
+    waitCode wait = case wait of
+      Nothing -> -2
+      Just Nothing -> -1
+      Just (Just d') -> d'
     long n = D.text (show n ++ "L")
     jitterName j = case j of
       NoJitter -> "none"

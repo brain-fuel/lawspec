@@ -1,6 +1,7 @@
 module LawSpec.Parser (parseSource, parseSources, parseSourcesWith, sourceUnit) where
 
-import LawSpec.Core.Policy (StagePolicy(..), Retry(..), Strategy(..), Jitter(..), emptyPolicy)
+import LawSpec.Core.Policy (StagePolicy(..), Retry(..), Strategy(..), Jitter(..), Limit(..), Breaker(..), Bulkhead(..), emptyPolicy)
+import LawSpec.Resilience (resilienceName)
 import LawSpec.Collections (collectionsUnit, collectionsAlias)
 import LawSpec.Time (timeUnit, timeAlias, durationSuffixes, durationFactor, durationLimit, usesTime, timeTypes)
 import LawSpec.Flow (desugarFlows, flowTypeName)
@@ -159,11 +160,43 @@ workflowP = do
     keyword "end"
     pure (name, ty, stages)
   pure (Workflow name ty (map fst stages) range
-    [(index, foldl (flip ($)) (emptyPolicy "") policies) | (index, (_, policies)) <- zip [0 ..] stages, not (null policies)])
+    [(index, foldl (flip ($)) (emptyPolicy "") (map fst policies)) | (index, (_, policies)) <- zip [0 ..] stages, not (null policies)]
+    [(index, concatMap snd policies) | (index, (_, policies)) <- zip [0 ..] stages, any (not . null . snd) policies])
   where
-    -- A stage's policies follow it, each beginning with its keyword.
-    policyP = try retryP <|> try timeoutP
-    retryP = do
+    -- A stage's policies follow it, each beginning with its keyword. A
+    -- policy that can fail may name, after else, the value of a declared
+    -- error type its failure becomes.
+    policyP = choice [try retryP <|> try timeoutP, try rateLimitP, try breakerP, try bulkheadP, try cacheP]
+    plain p = (\f -> (f, [])) <$> p
+    elseP kind = maybe [] (\e -> [(kind, e)]) <$> optional (keyword "else" *> (constant <$> qualifiedName))
+    constant name = if startsUpper name then ConstructLit name [] else Var name
+    waitP = (Nothing <$ keyword "reject") <|> (keyword "wait" *> (Just <$> optional (keyword "max" *> durationP)))
+    rateLimitP = do
+      keyword "rateLimit"
+      kind <- choice [k <$ keyword k | k <- ["tokenBucket", "leakyBucket", "fixedWindow", "slidingWindow"]]
+      n <- count'
+      period <- durationP
+      wait <- waitP
+      failure <- elseP "RateLimited"
+      pure (\p -> p { policyLimit = Just (Limit kind n period wait (resilienceName (kind ++ "Start")) (resilienceName (kind ++ "Admit"))) }, failure)
+    breakerP = do
+      keyword "circuitBreaker"
+      failures <- count'
+      window <- durationP
+      keyword "cooldown"
+      cooldown <- durationP
+      failure <- elseP "CircuitOpen"
+      pure (\p -> p { policyBreaker = Just (Breaker failures window cooldown
+        (resilienceName "breakerStart") (resilienceName "breakerAdmit") (resilienceName "breakerRecord")) }, failure)
+    bulkheadP = do
+      keyword "bulkhead"
+      n <- count'
+      wait <- waitP
+      failure <- elseP "Saturated"
+      pure (\p -> p { policyBulkhead = Just (Bulkhead n wait
+        (resilienceName "bulkheadStart") (resilienceName "bulkheadAdmit") (resilienceName "bulkheadRelease")) }, failure)
+    cacheP = plain (keyword "cache" *> ((\ttl p -> p { policyCache = Just ttl }) <$> durationP))
+    retryP = plain $ do
       keyword "retry"
       (strategy, attempts) <- choice
         [ (,) Immediate <$> (keyword "immediate" *> count')
@@ -180,7 +213,8 @@ workflowP = do
     timeoutP = do
       keyword "timeout"
       d <- durationP
-      pure (\p -> p { policyTimeout = Just d })
+      failure <- elseP "TimedOut"
+      pure (\p -> p { policyTimeout = Just d }, failure)
     count' = lexeme L.decimal
     durationP = do
       e <- numeric
@@ -525,13 +559,14 @@ parseSource source = fst . fst <$> parseWith M.empty [] source
 -- arities of the units it imports, qualified by alias and unqualified for
 -- listed names; LawSpec.Imports resolves the names themselves.
 parseSources :: [Source] -> Either [Diagnostic] [(Unit, [Import])]
-parseSources = parseSourcesWith [] False
+parseSources = parseSourcesWith [] []
 
--- With the built-in collection types a program uses, and Duration when it uses
--- time: every other unit imports those it does not declare itself
--- (LawSpec.Collections, LawSpec.Time).
-parseSourcesWith :: [String] -> Bool -> [Source] -> Either [Diagnostic] [(Unit, [Import])]
-parseSourcesWith collections time sources = do
+-- With the built-in collection types a program uses, every other unit imports
+-- those it does not declare itself (LawSpec.Collections). Each other built-in
+-- unit (LawSpec.Time, LawSpec.Resilience) is imported, with its types, by the
+-- sources it says use it.
+parseSourcesWith :: [String] -> [(String, String, [String], String -> Bool)] -> [Source] -> Either [Diagnostic] [(Unit, [Import])]
+parseSourcesWith collections builtins sources = do
   mapM_ acyclic (M.keys graph)
   let names = [n | (_, n, _) <- preambles]
   forM_ names $ \n -> when (length (filter (== n) names) > 1)
@@ -549,16 +584,15 @@ parseSourcesWith collections time sources = do
     preambles = [(s, n, imports) | s <- sources, Right (n, imports) <- [preamble s]]
     preamble (Source p s) = implicit s <$> runReader (runParserT preambleP p s) M.empty
     implicit s (n, imports)
-      | n `elem` ["prelude", collectionsUnit, timeUnit] = (n, imports)
+      | n `elem` ("prelude" : collectionsUnit : [unit | (unit, _, _, _) <- builtins]) = (n, imports)
       | otherwise =
           let local = M.keys (headers s)
               builtin unit alias types =
                 let items = [t | t <- types, t `notElem` local]
                     origin = Location ("<" ++ unit ++ ">") 1 1
                 in [Import unit alias items (Span origin origin) | not (null items)]
-          -- Only a source that uses durations imports the time unit.
           in (n, imports ++ builtin collectionsUnit collectionsAlias collections ++
-               builtin timeUnit timeAlias [t | time, usesTime s, t <- timeTypes])
+               concat [builtin unit alias types | (unit, alias, types, uses) <- builtins, uses s])
     graph = M.fromList [(n, imports) | (_, n, imports) <- preambles]
     -- Exports are computed lazily in import order, so an exported declaration
     -- may itself use its unit's imports.

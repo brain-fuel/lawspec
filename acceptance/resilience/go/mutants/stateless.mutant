@@ -1,0 +1,6 @@
+@@ example/resilience/adapter.go
+<<<<<<<
+		_, admitted[i] = limits.LawSpecDefinitions.Limited(runtime.Context(nil), limits.Ticket{Number: 0}).Right()
+=======
+		_ = runtime; _, admitted[i] = limits.LawSpecDefinitions.Limited(limits.NewLawSpecWorkflowRuntime(clock, 0).Context(nil), limits.Ticket{Number: 0}).Right()
+>>>>>>>

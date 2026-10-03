@@ -14,6 +14,7 @@ import LawSpec.Model
 import LawSpec.Indexed (naturalRefinementName)
 import LawSpec.Collections (collectionsUnit, collectionsAlias, collectionOperation, internalConstructor)
 import LawSpec.Time (timeUnit, timeAlias, timeOperation, durationDefinitions)
+import LawSpec.Resilience (resilienceUnit, resilienceDefinitions)
 import Control.Monad (forM, forM_, unless, when)
 import Control.Monad.State.Strict (State, execState, modify)
 import Data.Char (toUpper)
@@ -97,7 +98,10 @@ resolveUnit visible table u imports = do
   let aliases = map importAlias imports
   forM_ imports $ \i -> when (length (filter (== importAlias i) aliases) > 1)
     (failAt i ("duplicate import alias: " ++ importAlias i))
-  forM_ imports $ \i -> when (length (filter ((== importUnit i) . importUnit) imports) > 1)
+  -- A built-in unit's implicit import (from "<unit>") may sit beside an
+  -- explicit import of it, under its own alias.
+  let explicit i = case importSpan i of Span (Location file _ _) _ -> take 1 file /= "<"
+  forM_ (filter explicit imports) $ \i -> when (length (filter ((== importUnit i) . importUnit) (filter explicit imports)) > 1)
     (failAt i ("unit imported more than once: " ++ importUnit i))
   scopes <- forM sources $ \(i, source) -> importScope u i (resolvedExports source)
   let scope = M.unionsWith (++) [M.map pure s | s <- scopes]
@@ -120,7 +124,10 @@ resolveUnit visible table u imports = do
       -- Arithmetic on durations elaborates to the time unit's definitions
       -- once types are known, so a unit importing it copies them all.
       timeSeeds = S.fromList [(ValueName, n) | i <- imports, importUnit i == timeUnit, d <- durationDefinitions,
-        Right n <- [lookupName ValueName (importAlias i ++ "." ++ d)]]
+        Right n <- [lookupName ValueName (importAlias i ++ "." ++ d)]] `S.union`
+        -- The workflow runtime drives the resilience unit's state machines.
+        S.fromList [(ValueName, n) | i <- imports, importUnit i == resilienceUnit, d <- resilienceDefinitions,
+          Right n <- [lookupName ValueName (importAlias i ++ "." ++ d)]]
       wanted = unitReferences renamed `S.union` timeSeeds
   copies <- closure origins wanted
   let (refinements', definitions', laws') = copies
@@ -168,7 +175,7 @@ importScope u i exports = do
         map refinementName (refinements u) ++ map fst (functions u) ++ map lawName (laws u)
   -- The implicit collections import leaves out what the unit declares, and
   -- the containers' constructors, which keep their items canonical.
-  let implicit = importUnit i `elem` [collectionsUnit, timeUnit]
+  let implicit = importUnit i `elem` [collectionsUnit, timeUnit, resilienceUnit]
       hidden = [c | Just c <- map internalConstructor (importItems i)]
   listed <- forM [item | item <- importItems i, not (implicit && unquote item `S.member` local)] $ \item -> do
     when (unquote item `S.member` local)

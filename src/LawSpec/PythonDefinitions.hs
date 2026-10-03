@@ -1,6 +1,7 @@
 -- Framework-independent total definitions with checked native Python APIs.
 module LawSpec.PythonDefinitions (emitPythonDefinitions, definitionCalls) where
 
+import Control.Monad (forM)
 import LawSpec.Core.Policy
 import LawSpec.Core
 import LawSpec.Core.DefinitionContracts (checkedDefinitionContracts)
@@ -9,7 +10,7 @@ import LawSpec.Common (Artifact(..))
 import qualified LawSpec.PythonData as Native
 import qualified LawSpec.PythonExpr as E
 import qualified LawSpec.Code.Doc as D
-import Data.List (nub, sort)
+import Data.List (nub, sort, intercalate)
 
 definitionCalls :: [Unit] -> [(Id,String)]
 definitionCalls units = [(declarationId (definitionDeclaration d), "_definitions.evaluate_" ++ show i)
@@ -74,8 +75,11 @@ emitPythonDefinitions layout bits declarations units = do
       body <- case definitionPolicy d of
         Nothing -> pure rendered
         Just policy -> do
-          config <- policyDoc policy
-          pure (E.call "ls.run_stage" [D.text "symbols", config, D.text "lambda: " <> rendered])
+          config <- policyDoc (idText (declarationId (definitionDeclaration d))) policy
+          let key = case arguments of
+                argument : _ -> D.text argument
+                [] -> D.text "None"
+          pure (E.call "ls.run_stage" [D.text "symbols", config, D.text "lambda: " <> rendered, key])
       -- Arguments and results were checked where they were built, decoded
       -- or drawn; the native wrappers check values crossing from adapters.
       let checks = []
@@ -104,7 +108,8 @@ emitPythonDefinitions layout bits declarations units = do
           statements)))
     evaluator identity = maybe (Left "unresolved Python policy definition") (Right . drop (length ("_definitions." :: String)))
       (lookup identity callees)
-    policyDoc policy = do
+    policyDoc key policy = do
+      gates <- policyGates policy
       retry <- case policyRetry policy of
         Nothing -> pure (D.text "None")
         Just r -> do
@@ -122,7 +127,41 @@ emitPythonDefinitions layout bits declarations units = do
             Nothing -> pure (D.text "None")
             Just p -> (\name -> D.text ("lambda error: " ++ name ++ "(symbols, error)")) <$> evaluator p
           pure (E.call "ls.Retry" [strategy, int (retryAttempts r), E.quoted (jitterName (retryJitter r)), condition])
-      pure (E.call "ls.StagePolicy" [E.quoted (policyStage policy), retry, maybe (D.text "None") int (policyTimeout policy)])
+      pure (E.call "ls.StagePolicy" [E.quoted (policyStage policy), retry, maybe (D.text "None") int (policyTimeout policy),
+        E.quoted key, tuple gates, maybe (D.text "None") int (policyCache policy),
+        D.text (if null (policyFailures policy) then "False" else "True")])
+    -- A gate's callbacks call the unit's copies of the resilience unit's
+    -- state machines, with the policy's numbers.
+    policyGates policy = do
+      breaker <- forM (policyBreaker policy) $ \b -> do
+        start <- evaluator (breakerStart b)
+        admit <- evaluator (breakerAdmit b)
+        record <- evaluator (breakerRecord b)
+        pure (E.call "ls.Gate" [E.quoted "breaker", lambda ["now"] (start ++ "(symbols, now)"),
+          lambda ["state", "now"] (admit ++ "(symbols, state, now)"),
+          lambda ["state", "now", "succeeded"] (record ++ "(symbols, " ++ show (breakerFailures b) ++ ", " ++ show (breakerWindow b) ++ ", " ++
+            show (breakerCooldown b) ++ ", state, now, succeeded)"), D.text "None"])
+      limit <- forM (policyLimit policy) $ \l -> do
+        start <- evaluator (limitStart l)
+        admit <- evaluator (limitAdmit l)
+        let numbers = show (limitCount l) ++ ", " ++ show (limitPeriod l)
+        pure (E.call "ls.Gate" [E.quoted "limit", lambda ["now"] (start ++ "(symbols, " ++ numbers ++ ", now)"),
+          lambda ["state", "now"] (admit ++ "(symbols, " ++ numbers ++ ", state, now)"), D.text "None", waitDoc (limitWait l)])
+      bulkhead <- forM (policyBulkhead policy) $ \b -> do
+        start <- evaluator (bulkheadStart b)
+        admit <- evaluator (bulkheadAdmit b)
+        release <- evaluator (bulkheadRelease b)
+        let n = show (bulkheadLimit b)
+        pure (E.call "ls.Gate" [E.quoted "bulkhead", lambda ["now"] (start ++ "(symbols, " ++ n ++ ", now)"),
+          lambda ["state", "now"] (admit ++ "(symbols, " ++ n ++ ", state, now)"),
+          lambda ["state", "now", "succeeded"] (release ++ "(symbols, state)"), waitDoc (bulkheadWait b)])
+      pure (maybe [] pure breaker ++ maybe [] pure limit ++ maybe [] pure bulkhead)
+    lambda parameters body = D.text ("lambda " ++ intercalate ", " parameters ++ ": " ++ body)
+    waitDoc wait = case wait of
+      Nothing -> D.text "None"
+      Just Nothing -> D.text "-1"
+      Just (Just d) -> int d
+    tuple [] = D.text "()"
     tuple items = D.text "(" <> D.joinWith (D.text ", ") items <> D.text ",)"
     int n = D.text (show n)
     jitterName j = case j of

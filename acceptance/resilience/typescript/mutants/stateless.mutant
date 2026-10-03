@@ -1,0 +1,6 @@
+@@ src/example/resilience.ts
+<<<<<<<
+    return workflows.limited(runtime.context(), new data.Ticket(0n)) instanceof data.Right;
+=======
+    return workflows.limited(new ls.WorkflowRuntime(clock).context(), new data.Ticket(0n)) instanceof data.Right;
+>>>>>>>

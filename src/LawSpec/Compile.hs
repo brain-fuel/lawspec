@@ -17,7 +17,8 @@ import LawSpec.Scalar
 import LawSpec.Parser
 import LawSpec.Imports (resolveImports)
 import LawSpec.Collections (usedCollections, collectionsSource)
-import LawSpec.Time (usesTime, timeSource)
+import LawSpec.Time (timeUnit, timeAlias, timeTypes, usesTime, timeSource)
+import LawSpec.Resilience (resilienceUnit, resilienceAlias, resilienceTypes, usesResilience, resilienceSource)
 import LawSpec.Refinement
 import LawSpec.Prelude
 import Control.Monad.State.Strict
@@ -201,10 +202,14 @@ compileWithImports visible bits settings sources = do
   -- Programs that use a collection get the built-in collections unit.
   -- Programs that use durations get the built-in time unit.
   let collections = usedCollections [text | Source _ text <- sources]
+      -- Programs whose workflows use stateful policies get the resilience unit.
       time = any usesTime [text | Source _ text <- sources]
+      resilience = any usesResilience [text | Source _ text <- sources]
       builtins = preludeSource : [Source "<lawspec.collections>" (collectionsSource collections) | not (null collections)] ++
-        [Source "<lawspec.time>" timeSource | time]
-  parsedUnits <- parseSourcesWith collections time (builtins ++ sources)
+        [Source "<lawspec.time>" timeSource | time] ++ [Source "<lawspec.resilience>" resilienceSource | resilience]
+      implicit = [(timeUnit, timeAlias, timeTypes, usesTime) | time] ++
+        [(resilienceUnit, resilienceAlias, resilienceTypes, usesResilience) | resilience]
+  parsedUnits <- parseSourcesWith collections implicit (builtins ++ sources)
   unless (length parsedUnits == length (nub (map (unitName . fst) parsedUnits))) (Left [Diagnostic "duplicate-unit" "unit names must be unique; prelude is reserved" Nothing])
   parsed <- resolveImports visible parsedUnits
   let imported = M.fromList [(unitName u ++ "::type::" ++ dataTypeName d, d{dataTypeConstructors=

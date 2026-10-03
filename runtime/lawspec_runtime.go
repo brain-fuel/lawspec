@@ -1574,12 +1574,16 @@ type LawSpecTraceEvent struct {
 	Succeeded   bool
 }
 
-// LawSpecWorkflowRuntime is what a workflow runs under.
+// LawSpecWorkflowRuntime is what a workflow runs under. Gates says whether
+// rate limits, breakers, bulkheads and caches apply; the runtime generated
+// tests install has them off, since a workflow law calls the workflow and
+// its composition, which would see each other's state.
 type LawSpecWorkflowRuntime struct {
 	Clock  LawSpecClock
 	Random LawSpecSplitMix64
 	Trace  []LawSpecTraceEvent
 	State  map[string]any
+	Gates  bool
 }
 
 // NewLawSpecWorkflowRuntime makes a runtime; a nil clock is real time.
@@ -1587,7 +1591,7 @@ func NewLawSpecWorkflowRuntime(clock LawSpecClock, seed uint64) *LawSpecWorkflow
 	if clock == nil {
 		clock = &LawSpecRealClock{time.Now()}
 	}
-	return &LawSpecWorkflowRuntime{Clock: clock, Random: LawSpecSplitMix64{seed}, State: map[string]any{}}
+	return &LawSpecWorkflowRuntime{Clock: clock, Random: LawSpecSplitMix64{seed}, State: map[string]any{}, Gates: true}
 }
 
 // Context returns a symbols map that runs workflows under this runtime.
@@ -1604,6 +1608,7 @@ var lsDefaultWorkflowRuntime *LawSpecWorkflowRuntime
 // LawSpecUseVirtualClock makes the default runtime virtual, as generated tests do.
 func LawSpecUseVirtualClock(seed uint64) {
 	lsDefaultWorkflowRuntime = NewLawSpecWorkflowRuntime(&LawSpecVirtualClock{}, seed)
+	lsDefaultWorkflowRuntime.Gates = false
 }
 
 func lsWorkflowRuntime(symbols map[string]*lawSpecSymbol) *LawSpecWorkflowRuntime {
@@ -1628,10 +1633,81 @@ type lawSpecRetry struct {
 	Decide                   func(attempt int64, failure LawSpecValue, previous int64) (int64, bool)
 }
 
+// lawSpecGate is a stateful policy: Start gives its state, Admit a Step of
+// the next state and a Gate (Admit, WaitFor or Reject), and Finish (when
+// set) the state after the call. Wait is -2 to fail at once when not
+// admitted, -1 to wait without bound, or the most it waits.
+type lawSpecGate struct {
+	Kind   string
+	Start  func(now int64) LawSpecValue
+	Admit  func(state LawSpecValue, now int64) LawSpecValue
+	Finish func(state LawSpecValue, now int64, succeeded bool) LawSpecValue
+	Wait   int64
+}
+
+// lawSpecStagePolicy: Key names the stage's state, Cache is how long a
+// success is reused (-1 for no cache), and Wraps says failures are
+// StageFailures.
 type lawSpecStagePolicy struct {
 	Stage   string
 	Retry   *lawSpecRetry
 	Timeout int64
+	Key     string
+	Gates   []lawSpecGate
+	Cache   int64
+	Wraps   bool
+	// Fail gives the stage's result for a policy failure, of its own type.
+	Fail func(kind string) LawSpecValue
+}
+
+type lawSpecCacheEntry struct {
+	key, value LawSpecValue
+	expires    int64
+}
+
+const lsStageFailure = "lawspec.resilience::type::StageFailure::"
+const lsGate = "lawspec.resilience::type::Gate::"
+
+func lsStageFailureValue(kind string) LawSpecValue {
+	return LawSpecValue{"Either", lawSpecData{"Either::Left", []LawSpecValue{
+		{"lawspec.resilience::type::StageFailure", lawSpecData{lsStageFailure + kind, nil}}}}}
+}
+
+// lsPassGate admits the call, or gives the failure to return instead.
+func lsPassGate(runtime *LawSpecWorkflowRuntime, policy lawSpecStagePolicy, gate lawSpecGate) string {
+	key := policy.Key + "/" + gate.Kind
+	waited := int64(0)
+	failure := map[string]string{"breaker": "CircuitOpen", "limit": "RateLimited", "bulkhead": "Saturated"}[gate.Kind]
+	for {
+		now := runtime.Clock.Now()
+		state, ok := runtime.State[key].(LawSpecValue)
+		if !ok {
+			state = gate.Start(now)
+		}
+		step := gate.Admit(state, now).Data.(lawSpecData)
+		runtime.State[key] = step.fields[0]
+		decision := step.fields[1].Data.(lawSpecData)
+		if decision.tag == lsGate+"Admit" {
+			return ""
+		}
+		if decision.tag == lsGate+"Reject" || gate.Wait == -2 {
+			return failure
+		}
+		delay := decision.fields[0].Data.(*big.Int).Int64()
+		if gate.Wait >= 0 && waited+delay > gate.Wait {
+			return failure
+		}
+		runtime.Trace = append(runtime.Trace, LawSpecTraceEvent{"wait", policy.Stage, delay, true})
+		runtime.Clock.Sleep(delay)
+		waited += delay
+	}
+}
+
+func lsFinishGate(runtime *LawSpecWorkflowRuntime, policy lawSpecStagePolicy, gate lawSpecGate, succeeded bool) {
+	if gate.Finish != nil {
+		key := policy.Key + "/" + gate.Kind
+		runtime.State[key] = gate.Finish(runtime.State[key].(LawSpecValue), runtime.Clock.Now(), succeeded)
+	}
 }
 
 func lsFibonacci(n int64) int64 {
@@ -1694,8 +1770,60 @@ func lsJittered(jitter string, delay, previous, base int64, random *LawSpecSplit
 }
 
 // lsRunStage runs a stage's attempts under its policy; a Left is a failure.
-func lsRunStage(symbols map[string]*lawSpecSymbol, policy lawSpecStagePolicy, attempt func() LawSpecValue) LawSpecValue {
+// key is the stage's input, for the cache.
+func lsRunStage(symbols map[string]*lawSpecSymbol, policy lawSpecStagePolicy, attempt func() LawSpecValue, key LawSpecValue) LawSpecValue {
 	runtime := lsWorkflowRuntime(symbols)
+	if policy.Key == "" {
+		policy.Key = policy.Stage
+	}
+	gates := policy.Gates
+	if !runtime.Gates {
+		gates = nil
+	}
+	cacheKey := policy.Key + "/cache"
+	// A cache of no time (or none, -1) caches nothing.
+	caching := policy.Cache > 0 && runtime.Gates
+	if caching {
+		now := runtime.Clock.Now()
+		entries, _ := runtime.State[cacheKey].([]lawSpecCacheEntry)
+		for _, entry := range entries {
+			if now < entry.expires && lsCompareValues(entry.key, key) == 0 {
+				runtime.Trace = append(runtime.Trace, LawSpecTraceEvent{"cached", policy.Stage, 0, true})
+				return entry.value
+			}
+		}
+	}
+	for i, gate := range gates {
+		if failure := lsPassGate(runtime, policy, gate); failure != "" {
+			for _, passed := range gates[:i] {
+				lsFinishGate(runtime, policy, passed, false)
+			}
+			if policy.Fail != nil {
+				return policy.Fail(failure)
+			}
+			return lsStageFailureValue(failure)
+		}
+	}
+	result := lsAttempts(runtime, policy, attempt)
+	data, isData := result.Data.(lawSpecData)
+	succeeded := !(isData && data.tag == "Either::Left")
+	for _, gate := range gates {
+		lsFinishGate(runtime, policy, gate, succeeded)
+	}
+	if caching && succeeded {
+		entries, _ := runtime.State[cacheKey].([]lawSpecCacheEntry)
+		kept := []lawSpecCacheEntry{}
+		for _, entry := range entries {
+			if lsCompareValues(entry.key, key) != 0 {
+				kept = append(kept, entry)
+			}
+		}
+		runtime.State[cacheKey] = append(kept, lawSpecCacheEntry{key, result, runtime.Clock.Now() + policy.Cache})
+	}
+	return result
+}
+
+func lsAttempts(runtime *LawSpecWorkflowRuntime, policy lawSpecStagePolicy, attempt func() LawSpecValue) LawSpecValue {
 	retry := policy.Retry
 	number, previous := int64(1), int64(0)
 	for {
@@ -1711,6 +1839,15 @@ func lsRunStage(symbols map[string]*lawSpecSymbol, policy lawSpecStagePolicy, at
 			return result
 		}
 		failure := data.fields[0]
+		if policy.Wraps {
+			// Only the step's own failures and timeouts are retried.
+			wrapped := failure.Data.(lawSpecData)
+			if wrapped.tag == lsStageFailure+"StepFailed" {
+				failure = wrapped.fields[0]
+			} else if wrapped.tag != lsStageFailure+"TimedOut" {
+				return result
+			}
+		}
 		if retry.When != nil && !retry.When(failure) {
 			return result
 		}

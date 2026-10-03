@@ -1,5 +1,7 @@
 // User-owned LawSpec adapter: the workflow runtime under test.
 import * as ls from '../lawspec_runtime.js';
+import * as data from '../lawspec_data.js';
+import * as workflows from '../lawspec_definitions/example/limits.js';
 
 export function runtimeExponentialDelay(value0: bigint, value1: bigint, value2: bigint): bigint {
   return ls.retryDelay(['exponential', value0, value1, null], value2);
@@ -36,4 +38,15 @@ export function retriedWaits(value0: number): Array<bigint> {
 
 export function rejectedWaits(value0: number): Array<bigint> {
   return waits(value0, () => false);
+}
+
+
+/** Calls the generated workflow at each time under one runtime. */
+export function limitedAt(value0: Array<bigint>): Array<boolean> {
+  const clock = new ls.VirtualClock();
+  const runtime = new ls.WorkflowRuntime(clock);
+  return value0.map(time => {
+    clock.time = time;
+    return workflows.limited(runtime.context(), new data.Ticket(0n)) instanceof data.Right;
+  });
 }

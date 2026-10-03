@@ -990,12 +990,21 @@ splitMix64 state =
 data TraceEvent = TraceEvent { traceKind :: String, traceStage :: String, traceNumber :: Integer, traceSucceeded :: Bool }
   deriving (Eq, Show)
 
+-- | runtimeGates: whether rate limits, breakers, bulkheads and caches apply.
+-- The runtime generated tests install has them off: a workflow law calls the
+-- workflow and its composition, which would see each other's state.
 data WorkflowRuntime = WorkflowRuntime
   { runtimeClock :: Clock, runtimeRandom :: IORef Word64
-  , runtimeTrace :: IORef [TraceEvent], runtimeState :: IORef [(String, Scalar)] }
+  , runtimeTrace :: IORef [TraceEvent], runtimeState :: IORef [(String, Scalar)]
+  , runtimeGates :: Bool, runtimeCache :: IORef [(String, [(Scalar, Scalar, Integer)])] }
 
 newWorkflowRuntime :: Clock -> Word64 -> IO WorkflowRuntime
-newWorkflowRuntime clock seed = WorkflowRuntime clock <$> newIORef seed <*> newIORef [] <*> newIORef []
+newWorkflowRuntime clock seed = do
+  random <- newIORef seed
+  trace <- newIORef []
+  state <- newIORef []
+  cache <- newIORef []
+  pure (WorkflowRuntime clock random trace state True cache)
 
 -- | Uniform in [0, bound); 0 when bound is 0.
 randomBelow :: WorkflowRuntime -> Integer -> IO Integer
@@ -1026,7 +1035,7 @@ useVirtualClock :: Word64 -> IO ()
 useVirtualClock seed = do
   (clock, _) <- virtualClock
   runtime <- newWorkflowRuntime clock seed
-  writeIORef defaultWorkflow (Just runtime)
+  writeIORef defaultWorkflow (Just runtime { runtimeGates = False })
 
 workflowRuntime :: SymbolContext -> IO WorkflowRuntime
 workflowRuntime (SymbolContext unique) = do
@@ -1048,7 +1057,23 @@ data Retry = Retry
   , retryWhen :: Maybe (Scalar -> Bool)
   , retryDecide :: Maybe (Integer -> Scalar -> Integer -> Maybe Integer) }
 
-data StagePolicy = StagePolicy { policyStage :: String, policyRetry :: Maybe Retry, policyTimeout :: Integer }
+-- | A stateful policy: gateStart gives its state, gateAdmit a Step of the
+-- next state and a Gate (Admit, WaitFor or Reject), and gateFinish (when
+-- set) the state after the call. gateWait is -2 to fail at once when not
+-- admitted, -1 to wait without bound, or the most it waits.
+data Gate = Gate
+  { gateKind :: String, gateStart :: Integer -> Scalar, gateAdmit :: Scalar -> Integer -> Scalar
+  , gateFinish :: Maybe (Scalar -> Integer -> Bool -> Scalar), gateWait :: Integer }
+
+-- | policyKey names the stage's state; policyCache is how long a success is
+-- reused (0 or less for none); policyWraps says failures are StageFailures.
+data StagePolicy = StagePolicy
+  { policyStage :: String, policyRetry :: Maybe Retry, policyTimeout :: Integer
+  , policyKey :: String, policyGates :: [Gate], policyCache :: Integer, policyWraps :: Bool }
+
+-- | A policy with only a stage name and retries, as built by hand.
+retryPolicy :: String -> Maybe Retry -> StagePolicy
+retryPolicy stage retry = StagePolicy stage retry (-1) stage [] (-1) False
 
 -- | The delay before attempt (2 or more), before jitter.
 retryDelay :: Retry -> Integer -> Integer
@@ -1077,21 +1102,108 @@ jittered runtime jitter delay previous base = case jitter of
     pure (min delay value)
   _ -> pure delay
 
--- | Runs a stage's attempts under its policy; a Left is a failure.
-{-# NOINLINE runStage #-}
-runStage :: SymbolContext -> StagePolicy -> (() -> Scalar) -> Scalar
-runStage symbols policy attempt = unsafePerformIO (workflowRuntime symbols >>= \runtime -> loop runtime 1 0)
+stageFailurePrefix :: String
+stageFailurePrefix = "lawspec.resilience::type::StageFailure::"
+
+gatePrefix :: String
+gatePrefix = "lawspec.resilience::type::Gate::"
+
+-- | Admits the call (Nothing) or gives the failure to return instead.
+passGate :: WorkflowRuntime -> StagePolicy -> Gate -> IO (Maybe String)
+passGate runtime policy gate = go 0
   where
+    key = policyKey policy ++ "/" ++ gateKind gate
+    failure = case gateKind gate of
+      "breaker" -> "CircuitOpen"
+      "limit" -> "RateLimited"
+      _ -> "Saturated"
+    go waited = do
+      now <- clockNow (runtimeClock runtime)
+      states <- readIORef (runtimeState runtime)
+      let state = maybe (gateStart gate now) id (lookup key states)
+      step <- evaluate (gateAdmit gate state now)
+      case step of
+        SData _ [next, SData decision fields] -> do
+          modifyIORef' (runtimeState runtime) (((key, next) :) . filter ((/= key) . fst))
+          case (decision, fields) of
+            _ | decision == gatePrefix ++ "Admit" -> pure Nothing
+              | decision == gatePrefix ++ "Reject" || gateWait gate == -2 -> pure (Just failure)
+            (_, [SInteger _ delay])
+              | gateWait gate >= 0 && waited + delay > gateWait gate -> pure (Just failure)
+              | otherwise -> do
+                  modifyIORef' (runtimeTrace runtime) (++ [TraceEvent "wait" (policyStage policy) delay True])
+                  clockSleep (runtimeClock runtime) delay
+                  go (waited + delay)
+            _ -> error "expected a Gate"
+        _ -> error "expected a Step"
+
+finishGate :: WorkflowRuntime -> StagePolicy -> Bool -> Gate -> IO ()
+finishGate runtime policy succeeded gate = case gateFinish gate of
+  Nothing -> pure ()
+  Just finish -> do
+    let key = policyKey policy ++ "/" ++ gateKind gate
+    now <- clockNow (runtimeClock runtime)
+    states <- readIORef (runtimeState runtime)
+    case lookup key states of
+      Just state -> do
+        next <- evaluate (finish state now succeeded)
+        modifyIORef' (runtimeState runtime) (((key, next) :) . filter ((/= key) . fst))
+      Nothing -> pure ()
+
+-- | Runs a stage's attempts under its policy; a Left is a failure. key is the
+-- stage's input, for the cache.
+{-# NOINLINE runStage #-}
+runStage :: SymbolContext -> StagePolicy -> (() -> Scalar) -> Scalar -> Scalar
+runStage symbols policy attempt key = unsafePerformIO $ do
+  runtime <- workflowRuntime symbols
+  let gates = if runtimeGates runtime then policyGates policy else []
+      cacheKey = policyKey policy ++ "/cache"
+      caching = policyCache policy > 0 && runtimeGates runtime
+  now <- clockNow (runtimeClock runtime)
+  entries <- maybe [] id . lookup cacheKey <$> readIORef (runtimeCache runtime)
+  case [value | caching, (entry, value, expires) <- entries, now < expires, entry == key] of
+    value : _ -> do
+      modifyIORef' (runtimeTrace runtime) (++ [TraceEvent "cached" (policyStage policy) 0 True])
+      pure value
+    [] -> gated runtime gates [] caching cacheKey
+  where
+    gated runtime (gate : rest) passed caching cacheKey = do
+      outcome <- passGate runtime policy gate
+      case outcome of
+        Just failure -> do
+          mapM_ (finishGate runtime policy False) passed
+          pure (SData "Either::Left" [SData (stageFailurePrefix ++ failure) []])
+        Nothing -> gated runtime rest (passed ++ [gate]) caching cacheKey
+    gated runtime [] passed caching cacheKey = do
+      result <- attempts runtime 1 0
+      let succeeded = case result of
+            SData "Either::Left" _ -> False
+            _ -> True
+      mapM_ (finishGate runtime policy succeeded) passed
+      when' (caching && succeeded) $ do
+        now <- clockNow (runtimeClock runtime)
+        modifyIORef' (runtimeCache runtime) $ \caches ->
+          let kept = [entry | entry@(entryKey, _, _) <- maybe [] id (lookup cacheKey caches), entryKey /= key]
+          in (cacheKey, kept ++ [(key, result, now + policyCache policy)]) : filter ((/= cacheKey) . fst) caches
+      pure result
+    when' condition action = if condition then action else pure ()
     event runtime kind number succeeded =
       modifyIORef' (runtimeTrace runtime) (++ [TraceEvent kind (policyStage policy) number succeeded])
-    loop runtime number previous = do
+    attempts runtime number previous = do
       event runtime "start" number False
       result <- evaluate (attempt ())
       let failure = case result of
             SData "Either::Left" [value] -> Just value
             _ -> Nothing
       event runtime "finish" number (failure == Nothing)
-      case (failure, policyRetry policy) of
+      -- Only the step's own failures and timeouts are retried.
+      let retried = case failure of
+            Just value | policyWraps policy -> case value of
+              SData tag [inner] | tag == stageFailurePrefix ++ "StepFailed" -> Just inner
+              SData tag [] | tag == stageFailurePrefix ++ "TimedOut" -> Just value
+              _ -> Nothing
+            other -> other
+      case (retried, policyRetry policy) of
         (Just value, Just retry)
           | retryAttempts retry > 0 && number >= retryAttempts retry -> pure result
           | maybe False (\when -> not (when value)) (retryWhen retry) -> pure result
@@ -1107,7 +1219,7 @@ runStage symbols policy attempt = unsafePerformIO (workflowRuntime symbols >>= \
                 Just delay -> do
                   event runtime "sleep" delay True
                   clockSleep (runtimeClock runtime) delay
-                  loop runtime next delay
+                  attempts runtime next delay
         _ -> pure result
 
 -- | A logical Duration of whole microseconds.

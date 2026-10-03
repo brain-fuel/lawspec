@@ -1,5 +1,7 @@
 // User-owned LawSpec adapter: the workflow runtime under test.
 import * as ls from '../lawspec_runtime.mjs';
+import * as data from '../lawspec_data.mjs';
+import * as workflows from '../lawspec_definitions/example/limits.mjs';
 
 export function runtimeExponentialDelay(value0, value1, value2) {
   return ls.retryDelay(['exponential', value0, value1, null], value2);
@@ -36,4 +38,15 @@ export function retriedWaits(value0) {
 
 export function rejectedWaits(value0) {
   return waits(value0, () => false);
+}
+
+
+/** Calls the generated workflow at each time under one runtime. */
+export function limitedAt(value0) {
+  const clock = new ls.VirtualClock();
+  const runtime = new ls.WorkflowRuntime(clock);
+  return value0.map(time => {
+    clock.time = time;
+    return workflows.limited(runtime.context(), new data.Ticket(0n)) instanceof data.Right;
+  });
 }

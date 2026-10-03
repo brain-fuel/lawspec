@@ -38,8 +38,12 @@ fn waits(attempts: i32, when: Option<fn(&mut ls::Context, ls::Value) -> ls::Resu
         stage: "stage",
         retry: Some(ls::Retry { strategy: "exponential", delay: 100000, step: 0, factor: 2, cap: -1, attempts: attempts.into(), jitter: "none", when, decide: None }),
         timeout: -1,
+        key: "stage",
+        gates: vec![],
+        cache: -1,
+        wraps: false,
     };
-    ls::run_stage(ctx, &policy, |_| Ok(ls::Value::Left(Box::new(ls::Value::Integer(0.into()))))).expect("the stage runs");
+    ls::run_stage(ctx, &policy, |_| Ok(ls::Value::Left(Box::new(ls::Value::Integer(0.into())))), ls::Value::Unit).expect("the stage runs");
     let runtime = ctx.workflow.as_ref().unwrap().lock().unwrap();
     runtime.trace.iter().filter(|event| event.kind == "sleep").map(|event| ls::Integer(event.number.into())).collect()
 }
@@ -50,4 +54,18 @@ pub fn retriedWaits(value0: i32) -> Vec<ls::Integer> {
 
 pub fn rejectedWaits(value0: i32) -> Vec<ls::Integer> {
     waits(value0, Some(|_: &mut ls::Context, _: ls::Value| -> ls::Result<bool> { Ok(false) }))
+}
+
+/// Calls the generated workflow at each time under one runtime.
+pub fn limitedAt(value0: Vec<ls::BigInt>) -> Vec<bool> {
+    let ctx = &mut ls::Context::with_workflow(ls::WorkflowRuntime::new(Box::new(ls::VirtualClock::default()), 0));
+    value0
+        .iter()
+        .map(|time| {
+            let runtime = ctx.workflow.clone().unwrap();
+            runtime.lock().unwrap().clock = Box::new(ls::VirtualClock { time: int(time) });
+            let result = crate::lawspec_definitions::example_limits::limited(ctx, crate::lawspec_data::Ticket { number: 0 });
+            matches!(result, Ok(ls::Either::Right(_)))
+        })
+        .collect()
 }

@@ -1,6 +1,7 @@
 -- Native public JS/TS entry points over framework-independent checked bodies.
 module LawSpec.WebDefinitions (emitWebDefinitions, definitionCalls) where
 
+import Control.Monad (forM)
 import LawSpec.Core.Policy
 import LawSpec.Core
 import LawSpec.Core.DefinitionContracts (checkedDefinitionContracts)
@@ -9,7 +10,7 @@ import LawSpec.Common (Artifact(..))
 import qualified LawSpec.WebData as Native
 import qualified LawSpec.WebExpr as E
 import qualified LawSpec.Code.Doc as D
-import Data.List (nub, sort)
+import Data.List (nub, sort, intercalate)
 
 definitionCalls :: [Unit] -> [(Id,String)]
 definitionCalls units = [(declarationId (definitionDeclaration d), "_definitions.evaluate" ++ show i)
@@ -82,8 +83,11 @@ emitWebDefinitions ts layout bits declarations units = do
       body <- case definitionPolicy d of
         Nothing -> pure rendered
         Just policy -> do
-          config <- policyDoc policy
-          pure (E.call "ls.runStage" [D.text "symbols", config, D.text "() => " <> rendered])
+          config <- policyDoc (idText (declarationId (definitionDeclaration d))) policy
+          let key = case definitionArguments d of
+                argument : _ -> D.text (local (binderId argument))
+                [] -> D.text "null"
+          pure (E.call "ls.runStage" [D.text "symbols", config, D.text "() => " <> rendered, key])
       -- Arguments and results were checked where they were built, decoded
       -- or drawn; the native wrappers check values crossing from adapters.
       let checks = []
@@ -112,7 +116,8 @@ emitWebDefinitions ts layout bits declarations units = do
           statements)))
     evaluator identity = maybe (Left "unresolved JS/TS policy definition") (Right . drop (length ("_definitions." :: String)))
       (lookup identity callees)
-    policyDoc policy = do
+    policyDoc key policy = do
+      gates <- policyGates policy
       retry <- case policyRetry policy of
         Nothing -> pure (D.text "null")
         Just r -> do
@@ -130,7 +135,42 @@ emitWebDefinitions ts layout bits declarations units = do
             Nothing -> pure (D.text "null")
             Just p -> (\name -> D.text ("(error) => " ++ name ++ "(symbols, error)")) <$> evaluator p
           pure (object [("strategy", strategy), ("attempts", big (retryAttempts r)), ("jitter", E.quoted (jitterName (retryJitter r))), ("when", condition)])
-      pure (object [("stage", E.quoted (policyStage policy)), ("retry", retry), ("timeout", maybe (D.text "null") big (policyTimeout policy))])
+      pure (object [("stage", E.quoted (policyStage policy)), ("retry", retry), ("timeout", maybe (D.text "null") big (policyTimeout policy)),
+        ("key", E.quoted key), ("gates", array gates), ("cache", maybe (D.text "null") big (policyCache policy)),
+        ("wraps", D.text (if null (policyFailures policy) then "false" else "true"))])
+    -- A gate's callbacks call the unit's copies of the resilience unit's
+    -- state machines, with the policy's numbers.
+    policyGates policy = do
+      breaker <- forM (policyBreaker policy) $ \b -> do
+        start <- evaluator (breakerStart b)
+        admit <- evaluator (breakerAdmit b)
+        record <- evaluator (breakerRecord b)
+        pure (object [("kind", E.quoted "breaker"), ("start", arrow ["now"] (start ++ "(symbols, now)")),
+          ("admit", arrow ["state", "now"] (admit ++ "(symbols, state, now)")),
+          ("finish", arrow ["state", "now", "succeeded"] (record ++ "(symbols, " ++ bigs [breakerFailures b, breakerWindow b, breakerCooldown b] ++ ", state, now, succeeded)")),
+          ("wait", D.text "null")])
+      limit <- forM (policyLimit policy) $ \l -> do
+        start <- evaluator (limitStart l)
+        admit <- evaluator (limitAdmit l)
+        let numbers = bigs [limitCount l, limitPeriod l]
+        pure (object [("kind", E.quoted "limit"), ("start", arrow ["now"] (start ++ "(symbols, " ++ numbers ++ ", now)")),
+          ("admit", arrow ["state", "now"] (admit ++ "(symbols, " ++ numbers ++ ", state, now)")),
+          ("finish", D.text "null"), ("wait", waitDoc (limitWait l))])
+      bulkhead <- forM (policyBulkhead policy) $ \b -> do
+        start <- evaluator (bulkheadStart b)
+        admit <- evaluator (bulkheadAdmit b)
+        release <- evaluator (bulkheadRelease b)
+        let n = bigs [bulkheadLimit b]
+        pure (object [("kind", E.quoted "bulkhead"), ("start", arrow ["now"] (start ++ "(symbols, " ++ n ++ ", now)")),
+          ("admit", arrow ["state", "now"] (admit ++ "(symbols, " ++ n ++ ", state, now)")),
+          ("finish", arrow ["state", "now", "succeeded"] (release ++ "(symbols, state)")), ("wait", waitDoc (bulkheadWait b))])
+      pure (maybe [] pure breaker ++ maybe [] pure limit ++ maybe [] pure bulkhead)
+    arrow parameters body = D.text ("(" ++ intercalate ", " [p ++ (if ts then ": any" else "") | p <- parameters] ++ ") => " ++ body)
+    bigs numbers = intercalate ", " [show n ++ "n" | n <- numbers]
+    waitDoc wait = case wait of
+      Nothing -> D.text "null"
+      Just Nothing -> D.text "-1n"
+      Just (Just d) -> big d
     array items = D.text "[" <> D.joinWith (D.text ", ") items <> D.text "]"
     object fields = D.text "{" <> D.joinWith (D.text ", ") [D.text (key ++ ": ") <> value | (key, value) <- fields] <> D.text "}"
     big n = D.text (show n ++ "n")

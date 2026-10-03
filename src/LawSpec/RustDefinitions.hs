@@ -2,6 +2,7 @@
 -- implementation bodies, and no dependency on a property-testing framework.
 module LawSpec.RustDefinitions (emitRustDefinitions, definitionNames, workflowAdapterUnits) where
 
+import Data.List (intercalate)
 import LawSpec.Core.Policy
 import Control.Monad (forM)
 import Data.Char (isAlphaNum)
@@ -70,7 +71,8 @@ emitRustDefinitions layout bits declarations units = do
            [D.text ("let native_result: " ++ resultType ++ " = ") <> called <> D.text ";",
             D.text "Ok(ls::IntoValue::into_value(native_result))"])))
     evaluator identity = maybe (Left "unresolved Rust policy definition") Right (lookup identity names)
-    policyDoc policy = do
+    policyDoc key policy = do
+      gates <- policyGates policy
       retry <- case policyRetry policy of
         Nothing -> pure (D.text "None")
         Just r -> do
@@ -99,7 +101,46 @@ emitRustDefinitions layout bits declarations units = do
       pure (D.text "ls::StagePolicy " <> D.block 4 (D.joinWith D.hardline
         [ D.text ("stage: " ++ show (policyStage policy) ++ ",")
         , D.text "retry: " <> retry <> D.text ","
-        , D.text ("timeout: " ++ show (maybe (-1) id (policyTimeout policy)) ++ ",") ]))
+        , D.text ("timeout: " ++ show (maybe (-1) id (policyTimeout policy)) ++ ",")
+        , D.text ("key: " ++ show key ++ ",")
+        , D.text "gates: vec!" <> D.delimitTrailing 4 "[" "]" gates <> D.text ","
+        , D.text ("cache: " ++ show (maybe (-1) id (policyCache policy)) ++ ",")
+        , D.text ("wraps: " ++ (if null (policyFailures policy) then "false" else "true") ++ ",") ]))
+    -- A gate's callbacks call the unit's copies of the resilience unit's
+    -- state machines, with the policy's numbers.
+    policyGates policy = do
+      breaker <- forM (policyBreaker policy) $ \b -> do
+        start <- evaluator (breakerStart b)
+        admit <- evaluator (breakerAdmit b)
+        record <- evaluator (breakerRecord b)
+        pure (gateDoc "breaker" (start ++ "(ctx, vec![" ++ nowValue ++ "])") (admit ++ "(ctx, vec![state, " ++ nowValue ++ "])")
+          (Just (record ++ "(ctx, vec![" ++ integers [breakerFailures b, breakerWindow b, breakerCooldown b] ++ ", state, " ++ nowValue ++ ", ls::Value::Bool(succeeded)])")) (-2))
+      limit <- forM (policyLimit policy) $ \l -> do
+        start <- evaluator (limitStart l)
+        admit <- evaluator (limitAdmit l)
+        let numbers = integers [limitCount l, limitPeriod l]
+        pure (gateDoc "limit" (start ++ "(ctx, vec![" ++ numbers ++ ", " ++ nowValue ++ "])")
+          (admit ++ "(ctx, vec![" ++ numbers ++ ", state, " ++ nowValue ++ "])") Nothing (waitCode (limitWait l)))
+      bulkhead <- forM (policyBulkhead policy) $ \b -> do
+        start <- evaluator (bulkheadStart b)
+        admit <- evaluator (bulkheadAdmit b)
+        release <- evaluator (bulkheadRelease b)
+        let n = integers [bulkheadLimit b]
+        pure (gateDoc "bulkhead" (start ++ "(ctx, vec![" ++ n ++ ", " ++ nowValue ++ "])")
+          (admit ++ "(ctx, vec![" ++ n ++ ", state, " ++ nowValue ++ "])") (Just (release ++ "(ctx, vec![state])")) (waitCode (bulkheadWait b)))
+      pure (maybe [] pure breaker ++ maybe [] pure limit ++ maybe [] pure bulkhead)
+    nowValue = "ls::Value::Integer(ls::BigInt::from(now))"
+    integers numbers = intercalate ", " ["ls::Value::Integer(ls::BigInt::from(" ++ show n ++ "i64))" | n <- numbers]
+    gateDoc kind start admit finish wait = D.text "ls::Gate " <> D.block 4 (D.joinWith D.hardline
+      [ D.text ("kind: " ++ show (kind :: String) ++ ",")
+      , D.text ("start: |ctx: &mut ls::Context, now: i64| -> ls::Result<ls::Value> { " ++ start ++ " },")
+      , D.text ("admit: |ctx: &mut ls::Context, state: ls::Value, now: i64| -> ls::Result<ls::Value> { " ++ admit ++ " },")
+      , D.text ("finish: " ++ maybe "None" (\f -> "Some(|ctx: &mut ls::Context, state: ls::Value, now: i64, succeeded: bool| -> ls::Result<ls::Value> { " ++ f ++ " })") finish ++ ",")
+      , D.text ("wait: " ++ show (wait :: Integer) ++ ",") ])
+    waitCode wait = case wait of
+      Nothing -> -2
+      Just Nothing -> -1
+      Just (Just d') -> d'
     jitterName j = case j of
       NoJitter -> "none" :: String
       FullJitter -> "full"
@@ -145,9 +186,12 @@ emitRustDefinitions layout bits declarations units = do
       body <- case definitionPolicy d of
         Nothing -> pure rendered
         Just policy -> do
-          config <- policyDoc policy
+          config <- policyDoc (idText (declarationId (definitionDeclaration d))) policy
+          let key = case locals of
+                (_, local) : _ -> D.text (local ++ ".clone()")
+                [] -> D.text "ls::Value::Unit"
           pure (E.call "ls::run_stage" [D.text "ctx", D.text "&" <> config,
-            D.text "|ctx: &mut ls::Context| -> ls::Result<ls::Value> " <> D.block 4 (D.text "Ok(" <> rendered <> D.text ")")] <> D.text "?")
+            D.text "|ctx: &mut ls::Context| -> ls::Result<ls::Value> " <> D.block 4 (D.text "Ok(" <> rendered <> D.text ")"), key] <> D.text "?")
       let arity = D.text ("if arguments.len() != " ++ show (length args) ++ " ") <>
             D.block 4 (D.text "return Err" <> D.delimitTrailing 4 "(" ")"
               [D.group (D.text (E.quoted

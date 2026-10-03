@@ -40,4 +40,14 @@ object Resilience {
     fun retriedWaits(value0: Int): List<BigInteger> = waits(value0, false)
 
     fun rejectedWaits(value0: Int): List<BigInteger> = waits(value0, true)
+
+    /** Calls the generated workflow at each time under one runtime. */
+    fun limitedAt(value0: List<BigInteger>): List<Boolean> {
+        val clock = LawSpecRuntime.VirtualClock()
+        val runtime = LawSpecRuntime.WorkflowRuntime(clock, 0)
+        return value0.map { time ->
+            clock.time = time.toLong()
+            lawspec.definitions.example.Limits.limited(runtime.context(HashMap()), lawspec.data.Ticket(0)) is LawSpecRuntime.Right
+        }
+    }
 }

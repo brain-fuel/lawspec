@@ -842,11 +842,16 @@ class SplitMix64:
 
 
 class WorkflowRuntime:
-    def __init__(self, clock=None, seed=0):
+    """gates: whether rate limits, breakers, bulkheads and caches apply. The
+    runtime generated tests install has them off: a workflow law calls the
+    workflow and its composition, which would see each other's state."""
+
+    def __init__(self, clock=None, seed=0, gates=True):
         self.clock = RealClock() if clock is None else clock
         self.random = SplitMix64(seed)
         self.trace = []
         self.state = {}
+        self.gates = gates
 
     def context(self, symbols=None):
         """A symbols context that runs workflows under this runtime."""
@@ -860,7 +865,7 @@ _default_runtime = [None]
 
 def use_virtual_clock(seed=0):
     """Make the default runtime virtual, as generated tests do."""
-    _default_runtime[0] = WorkflowRuntime(VirtualClock(), seed)
+    _default_runtime[0] = WorkflowRuntime(VirtualClock(), seed, gates=False)
 
 
 def workflow_runtime(symbols):
@@ -885,10 +890,29 @@ class Retry:
 
 
 @dataclass(frozen=True)
+class Gate:
+    """A stateful policy: start(now) gives its state, admit(state, now) a
+    Step of the next state and a Gate (Admit, WaitFor or Reject), and
+    finish(state, now, succeeded) the state after the call. wait is None to
+    fail at once when not admitted, or the most it waits (-1 for no bound)."""
+    kind: str
+    start: object
+    admit: object
+    finish: object
+    wait: object = None
+
+
+@dataclass(frozen=True)
 class StagePolicy:
     stage: str
     retry: object = None
     timeout: object = None
+    # The stage's state key, its gates (breaker, limit, bulkhead), how long
+    # a success is cached (or None), and whether failures are StageFailures.
+    key: str = ''
+    gates: tuple = ()
+    cache: object = None
+    wraps: bool = False
 
 
 def _fibonacci(n):
@@ -929,10 +953,78 @@ def jittered(jitter, delay, previous, base, random):
     return delay
 
 
-def run_stage(symbols, policy, attempt):
-    """Runs a stage's attempts under its policy. attempt() returns the stage's
-    Either; a Left is a failure."""
+_STAGE_FAILURE = 'lawspec.resilience::type::StageFailure::'
+_GATE = 'lawspec.resilience::type::Gate::'
+
+
+def stage_failure(kind):
+    return DataValue('Either::Left', (DataValue(_STAGE_FAILURE + kind, ()),))
+
+
+def _pass_gate(runtime, policy, gate):
+    """Admits the call or returns the failure to give instead."""
+    key = policy.key + '/' + gate.kind
+    waited = 0
+    while True:
+        now = runtime.clock.now()
+        state = runtime.state.get(key)
+        if state is None:
+            state = gate.start(now)
+        step = gate.admit(state, now)
+        runtime.state[key] = step.fields[0]
+        decision = step.fields[1]
+        if decision.tag == _GATE + 'Admit':
+            return None
+        failure = {'breaker': 'CircuitOpen', 'limit': 'RateLimited', 'bulkhead': 'Saturated'}[gate.kind]
+        if decision.tag == _GATE + 'Reject' or gate.wait is None:
+            return failure
+        delay = decision.fields[0]
+        if gate.wait >= 0 and waited + delay > gate.wait:
+            return failure
+        runtime.trace.append(('wait', policy.stage, delay))
+        runtime.clock.sleep(delay)
+        waited += delay
+
+
+def run_stage(symbols, policy, attempt, key=None):
+    """Runs a stage's attempts under its policy; a Left is a failure.
+    attempt() returns the stage's Either; key is its input, for the cache."""
     runtime = workflow_runtime(symbols)
+    gates = policy.gates if runtime.gates else ()
+    cached = runtime.state.setdefault(policy.key + '/cache', []) if policy.cache is not None and runtime.gates else None
+    if cached is not None:
+        now = runtime.clock.now()
+        for entry_key, value, expires in cached:
+            if now < expires and equal_values(entry_key, key):
+                runtime.trace.append(('cached', policy.stage, 0))
+                return value
+    for gate in gates:
+        failure = _pass_gate(runtime, policy, gate)
+        if failure is not None:
+            for passed in gates[:gates.index(gate)]:
+                _finish(runtime, policy, passed, False)
+            return stage_failure(failure)
+    result = _attempts(runtime, policy, attempt)
+    succeeded = not (isinstance(result, DataValue) and result.tag == 'Either::Left')
+    for gate in gates:
+        _finish(runtime, policy, gate, succeeded)
+    if cached is not None and succeeded:
+        cached[:] = [entry for entry in cached if not equal_values(entry[0], key)]
+        cached.append((key, result, runtime.clock.now() + policy.cache))
+    return result
+
+
+def _finish(runtime, policy, gate, succeeded):
+    if gate.finish is not None:
+        key = policy.key + '/' + gate.kind
+        runtime.state[key] = gate.finish(runtime.state[key], runtime.clock.now(), succeeded)
+
+
+def equal_values(a, b):
+    return a == b
+
+
+def _attempts(runtime, policy, attempt):
     retry = policy.retry
     number, previous = 1, 0
     while True:
@@ -945,6 +1037,12 @@ def run_stage(symbols, policy, attempt):
         if retry.attempts > 0 and number >= retry.attempts:
             return result
         error = result.fields[0]
+        if policy.wraps:
+            # Only the step's own failures and timeouts are retried.
+            if error.tag == _STAGE_FAILURE + 'StepFailed':
+                error = error.fields[0]
+            elif error.tag != _STAGE_FAILURE + 'TimedOut':
+                return result
         if retry.when is not None and not retry.when(error):
             return result
         number += 1

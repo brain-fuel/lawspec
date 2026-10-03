@@ -47,6 +47,9 @@ data Workflow = Workflow
   , workflowSpan :: Span
   -- The policies of each stage that has them, by stage position.
   , workflowPolicies :: [(Int, StagePolicy String)]
+  -- For a declared error type, the value each policy failure becomes
+  -- (RateLimited, CircuitOpen, Saturated, TimedOut), by stage position.
+  , workflowElse :: [(Int, [(String, Expr)])]
   } deriving (Eq, Show)
 
 -- The unwrapping definition for a wrapper, such as valueOfUnitQuantity.
@@ -181,8 +184,24 @@ elaborateWorkflow env0 definitions asyncNames taken0 w = do
       (Left (context ++ ": timeout needs an asynchronous step; " ++ f ++ " is synchronous, and a synchronous call cannot be interrupted"))
     let stageName = head [candidate | n <- [0 :: Int ..], let candidate = name ++ "Stage" ++ show (index + 1) ++ replicate n '_', candidate `notElem` taken0]
         input = head [candidate | n <- [0 :: Int ..], let candidate = "input" ++ replicate n '_', candidate /= f]
-    pure (index, stageName, FunctionDefinition stageName [(input, a)] r [] (Apply (Var f) (Var input)) (workflowSpan w), policy { policyStage = f })
+    -- A stage whose policies can fail fails with StageFailure: its step's
+    -- error in StepFailed, or the policy's own failure.
+    let kinds = policyFailures policy
+        elses = maybe [] id (lookup index (workflowElse w))
+    forM_ elses $ \(kind, _) -> unless (kind `elem` kinds)
+      (Left (context ++ ": " ++ f ++ " has an else value for " ++ kind ++ ", which its policies cannot cause"))
+    let stageFailure e = Applied "StageFailure" e
+        (stageResult, stageBody) = case (kinds, r) of
+          ([], _) -> (r, Apply (Var f) (Var input))
+          (_, Application "Either" [e, next]) ->
+            (Application "Either" [stageFailure e, next],
+             MatchExpr (Apply (Var f) (Var input))
+               [ MatchBranch "Either::Left" ["stepError"] (ConstructLit "Either::Left" [ConstructLit "lawspecResilience.StepFailed" [Var "stepError"]])
+               , MatchBranch "Either::Right" ["stepValue"] (ConstructLit "Either::Right" [Var "stepValue"]) ])
+          (_, _) -> (Application "Either" [stageFailure (Named "Unit"), r], ConstructLit "Either::Right" [Apply (Var f) (Var input)])
+    pure (index, stageName, FunctionDefinition stageName [(input, a)] stageResult [] stageBody (workflowSpan w), policy { policyStage = f })
   let env = env0 ++ [(functionName d, Arrow a r) | (_, _, d@(FunctionDefinition _ [(_, a)] r _ _ _), _) <- staged]
+      stagePolicies = [(show index, (stageName, policy)) | (index, stageName, _, policy) <- staged]
       taken = taken0 ++ [stageName | (_, stageName, _, _) <- staged]
       targetOf tag f = maybe f id (lookup tag [(show index, stageName) | (index, stageName, _, _) <- staged])
       typeOf f = maybe (Left (context ++ ": unknown function " ++ f)) Right (lookup f env)
@@ -231,9 +250,9 @@ elaborateWorkflow env0 definitions asyncNames taken0 w = do
           Generated _ -> do
             let constructor = capital stageName ++ "Failed"
             constructors' <- case lookup constructor constructors of
-              Just ty | ty /= mapped -> Left (context ++ ": " ++ constructor ++ " would hold two error types")
+              Just ty | ty /= [mapped] -> Left (context ++ ": " ++ constructor ++ " would hold two error types")
                       | otherwise -> pure constructors
-              Nothing -> pure (constructors ++ [(constructor, mapped)])
+              Nothing -> pure (constructors ++ [(constructor, [mapped])])
             pure (constructors', matchEither (mapping call') (tag ++ "i") (left . ConstructLit constructor . pure) right)
       -- Walk the stages, threading the state type, the generated
       -- constructors, and the composition so far (an Either when the
@@ -296,6 +315,46 @@ elaborateWorkflow env0 definitions asyncNames taken0 w = do
       -- Continue on success; a failure passes through unchanged.
       onSuccess body tag k = if fallibleWorkflow then matchEither body tag left k else k body
       bindState body tag k = matchEither body tag left k
+      stepStage f tag state constructors body maps
+        | Just (target, policy) <- lookup tag stagePolicies, not (null (policyFailures policy)) = do
+        (a, r) <- unary f
+        unless (a == state) (Left (context ++ ": step " ++ f ++ " expects " ++ prettyType a ++ " but receives " ++ prettyType state))
+        let kinds = policyFailures policy
+            elses = maybe [] id (lookup (read tag :: Int) (workflowElse w))
+            (stepError, next) = case r of
+              Application "Either" [e, n] -> (Just e, n)
+              _ -> (Nothing, r)
+        -- Each policy failure becomes a value of the workflow's error type.
+        values <- forM kinds $ \kind -> case failure of
+          Total -> Left (context ++ ": " ++ f ++ "'s policies can fail (" ++ kind ++ "), so the workflow must return Either")
+          Declared _ -> maybe (Left (context ++ ": " ++ f ++ "'s policies can fail with " ++ kind ++
+              "; name the workflow error it becomes with else"))
+            (\value -> pure (kind, value)) (lookup kind elses)
+          Generated n -> do
+            unless (null elses) (Left (context ++ ": else applies to a declared error type; " ++ n ++ " is generated"))
+            pure (kind, ConstructLit kind [])
+        let generatedKinds = case failure of
+              Generated _ -> [(kind, []) | kind <- kinds, kind `notElem` map fst constructors]
+              _ -> []
+        (cs, stepFailing) <- case stepError of
+          Just e -> failed f maps e (constructors ++ generatedKinds) tag (left (Var "__stepError"))
+          Nothing -> pure (constructors ++ generatedKinds, left (Var "__stepError"))
+        let failureVar = fresh ("stageFailure" ++ tag)
+            errorVar = fresh ("stepError" ++ tag)
+            valueVar = fresh ("stageValue" ++ tag)
+            -- StageFailure's constructors by the implicit import's alias: a
+            -- generated error type has constructors of the same names.
+            -- Failures the policies cannot cause never occur; the match covers
+            -- them with the first possible one.
+            unreachable = left (snd (head values))
+            branches = [MatchBranch "lawspecResilience.StepFailed" [errorVar]
+                          (maybe unreachable (const (replaceVar "__stepError" (Var errorVar) stepFailing)) stepError)] ++
+              [MatchBranch ("lawspecResilience." ++ kind) [] (maybe unreachable left (lookup kind values))
+              | kind <- ["RateLimited", "TimedOut", "CircuitOpen", "Saturated"]]
+            failing = MatchExpr (call target (Var "__state"))
+              [ MatchBranch "Either::Left" [failureVar] (MatchExpr (Var failureVar) branches)
+              , MatchBranch "Either::Right" [valueVar] (right (Var valueVar)) ]
+        pure (next, cs, bindState body tag (\v -> substitute v failing), f)
       stepStage f tag state constructors body maps = do
         (a, r) <- unary f
         unless (a == state) (Left (context ++ ": step " ++ f ++ " expects " ++ prettyType a ++ " but receives " ++ prettyType state))
@@ -343,7 +402,7 @@ elaborateWorkflow env0 definitions asyncNames taken0 w = do
   laws' <- sequence (shortCircuits ++ recoveryLaws)
   let generated = case failure of
         Generated n -> Just (DataTypeDeclaration n []
-          [ConstructorDeclaration c [("error", t)] (workflowSpan w) [] | (c, t) <- constructors] (workflowSpan w) Nothing)
+          [ConstructorDeclaration c [("error", t) | t <- ts] (workflowSpan w) [] | (c, ts) <- constructors] (workflowSpan w) Nothing)
         _ -> Nothing
   when (failure /= Total && null constructors && case failure of Generated _ -> True; _ -> False)
     (Left (context ++ ": no stage can fail, so the workflow returns " ++ prettyType output))
@@ -387,3 +446,18 @@ capital [] = []
 isCustom :: Strategy name -> Bool
 isCustom (Custom _) = True
 isCustom _ = False
+
+-- Replaces a variable in an expression that binds no variable of that name.
+replaceVar :: String -> Expr -> Expr -> Expr
+replaceVar name replacement = go
+  where
+    go expression = case expression of
+      Var n | n == name -> replacement
+      Located range a -> Located range (go a)
+      Apply a b -> Apply (go a) (go b)
+      ConstructLit n xs -> ConstructLit n (map go xs)
+      MatchExpr s bs -> MatchExpr (go s) [MatchBranch t ns (if name `elem` ns then b else go b) | MatchBranch t ns b <- bs]
+      Binary op a b -> Binary op (go a) (go b)
+      Unary op a -> Unary op (go a)
+      Annotate a t -> Annotate (go a) t
+      other -> other

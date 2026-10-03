@@ -184,9 +184,13 @@ impl Context {
     pub fn with_workflow(runtime: WorkflowRuntime) -> Context {
         Context { workflow: Some(Arc::new(std::sync::Mutex::new(runtime))), ..Context::default() }
     }
-    /// A context for a generated test: workflows wait on a virtual clock.
+    /// A context for a generated test: workflows wait on a virtual clock, and
+    /// gates are off (a workflow law calls the workflow and its composition,
+    /// which would see each other's state).
     pub fn testing() -> Context {
-        Context::with_workflow(WorkflowRuntime::new(Box::new(VirtualClock::default()), 0))
+        let mut runtime = WorkflowRuntime::new(Box::new(VirtualClock::default()), 0);
+        runtime.gates = false;
+        Context::with_workflow(runtime)
     }
     pub fn symbol(&mut self, id: &str, description: &str) -> Symbol {
         self.symbols
@@ -1888,6 +1892,9 @@ pub struct WorkflowRuntime {
     pub random: SplitMix64,
     pub trace: Vec<TraceEvent>,
     pub state: HashMap<String, Value>,
+    /// Whether rate limits, breakers, bulkheads and caches apply.
+    pub gates: bool,
+    cache: HashMap<String, Vec<(Value, Value, i64)>>,
 }
 impl std::fmt::Debug for WorkflowRuntime {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -1896,7 +1903,7 @@ impl std::fmt::Debug for WorkflowRuntime {
 }
 impl WorkflowRuntime {
     pub fn new(clock: Box<dyn Clock>, seed: u64) -> Self {
-        WorkflowRuntime { clock, random: SplitMix64::new(seed), trace: Vec::new(), state: HashMap::new() }
+        WorkflowRuntime { clock, random: SplitMix64::new(seed), trace: Vec::new(), state: HashMap::new(), gates: true, cache: HashMap::new() }
     }
 }
 
@@ -1925,10 +1932,87 @@ pub struct Retry {
     pub decide: Option<fn(&mut Context, i64, Value, i64) -> Result<Option<i64>>>,
 }
 
+/// A stateful policy: start gives its state, admit a Step of the next state
+/// and a Gate (Admit, WaitFor or Reject), and finish (when set) the state
+/// after the call. wait is -2 to fail at once when not admitted, -1 to wait
+/// without bound, or the most it waits.
+pub struct Gate {
+    pub kind: &'static str,
+    pub start: fn(&mut Context, i64) -> Result<Value>,
+    pub admit: fn(&mut Context, Value, i64) -> Result<Value>,
+    pub finish: Option<fn(&mut Context, Value, i64, bool) -> Result<Value>>,
+    pub wait: i64,
+}
+
+/// key names the stage's state; cache is how long a success is reused (0
+/// or less for none); wraps says failures are StageFailures.
 pub struct StagePolicy {
     pub stage: &'static str,
     pub retry: Option<Retry>,
     pub timeout: i64,
+    pub key: &'static str,
+    pub gates: Vec<Gate>,
+    pub cache: i64,
+    pub wraps: bool,
+}
+
+const STAGE_FAILURE: &str = "lawspec.resilience::type::StageFailure::";
+const GATE: &str = "lawspec.resilience::type::Gate::";
+
+fn stage_failure(kind: &str) -> Value {
+    Value::Left(Box::new(Value::Data(format!("{STAGE_FAILURE}{kind}"), vec![])))
+}
+
+fn gate_key(policy: &StagePolicy, gate: &Gate) -> String {
+    format!("{}/{}", if policy.key.is_empty() { policy.stage } else { policy.key }, gate.kind)
+}
+
+/// Admits the call (None) or gives the failure to return instead.
+fn pass_gate(ctx: &mut Context, runtime: &Arc<std::sync::Mutex<WorkflowRuntime>>, policy: &StagePolicy, gate: &Gate) -> Result<Option<&'static str>> {
+    let key = gate_key(policy, gate);
+    let failure = match gate.kind { "breaker" => "CircuitOpen", "limit" => "RateLimited", _ => "Saturated" };
+    let mut waited = 0i64;
+    loop {
+        let (now, state) = {
+            let guard = runtime.lock().unwrap();
+            (guard.clock.now(), guard.state.get(&key).cloned())
+        };
+        let state = match state { Some(state) => state, None => (gate.start)(ctx, now)? };
+        let Value::Data(_, mut step) = (gate.admit)(ctx, state, now)? else { return Err("expected a Step".into()) };
+        let decision = step.pop().unwrap();
+        runtime.lock().unwrap().state.insert(key.clone(), step.pop().unwrap());
+        let Value::Data(tag, fields) = decision else { return Err("expected a Gate".into()) };
+        if tag == format!("{GATE}Admit") {
+            return Ok(None);
+        }
+        if tag == format!("{GATE}Reject") || gate.wait == -2 {
+            return Ok(Some(failure));
+        }
+        let delay = match fields.first() {
+            Some(Value::Integer(n)) => n.to_i64().ok_or("wait outside i64")?,
+            _ => return Err("expected a wait".into()),
+        };
+        if gate.wait >= 0 && waited + delay > gate.wait {
+            return Ok(Some(failure));
+        }
+        let mut guard = runtime.lock().unwrap();
+        guard.trace.push(TraceEvent { kind: "wait", stage: policy.stage.into(), number: delay, succeeded: true });
+        guard.clock.sleep(delay);
+        waited += delay;
+    }
+}
+
+fn finish_gate(ctx: &mut Context, runtime: &Arc<std::sync::Mutex<WorkflowRuntime>>, policy: &StagePolicy, gate: &Gate, succeeded: bool) -> Result<()> {
+    if let Some(finish) = gate.finish {
+        let key = gate_key(policy, gate);
+        let (now, state) = {
+            let guard = runtime.lock().unwrap();
+            (guard.clock.now(), guard.state.get(&key).cloned().ok_or("missing gate state")?)
+        };
+        let next = finish(ctx, state, now, succeeded)?;
+        runtime.lock().unwrap().state.insert(key, next);
+    }
+    Ok(())
 }
 
 fn fibonacci(n: i64) -> i64 {
@@ -1980,13 +2064,59 @@ pub fn jittered(jitter: &str, delay: i64, previous: i64, base: i64, random: &mut
     }
 }
 
-/// Runs a stage's attempts under its policy; a Left is a failure.
+/// Runs a stage's attempts under its policy; a Left is a failure. key is the
+/// stage's input, for the cache.
 pub fn run_stage(
     ctx: &mut Context,
     policy: &StagePolicy,
-    mut attempt: impl FnMut(&mut Context) -> Result<Value>,
+    attempt: impl FnMut(&mut Context) -> Result<Value>,
+    key: Value,
 ) -> Result<Value> {
     let runtime = workflow_runtime(ctx);
+    let gating = runtime.lock().unwrap().gates;
+    let cache_key = format!("{}/cache", if policy.key.is_empty() { policy.stage } else { policy.key });
+    let caching = policy.cache > 0 && gating;
+    if caching {
+        let mut guard = runtime.lock().unwrap();
+        let now = guard.clock.now();
+        let hit = guard.cache.get(&cache_key).and_then(|entries| {
+            entries.iter().find(|(entry, _, expires)| now < *expires && equal(entry, &key).unwrap_or(false)).map(|(_, value, _)| value.clone())
+        });
+        if let Some(value) = hit {
+            guard.trace.push(TraceEvent { kind: "cached", stage: policy.stage.into(), number: 0, succeeded: true });
+            return Ok(value);
+        }
+    }
+    let gates: &[Gate] = if gating { &policy.gates } else { &[] };
+    for (i, gate) in gates.iter().enumerate() {
+        if let Some(failure) = pass_gate(ctx, &runtime, policy, gate)? {
+            for passed in &gates[..i] {
+                finish_gate(ctx, &runtime, policy, passed, false)?;
+            }
+            return Ok(stage_failure(failure));
+        }
+    }
+    let result = attempts(ctx, &runtime, policy, attempt)?;
+    let succeeded = !matches!(result, Value::Left(_));
+    for gate in gates {
+        finish_gate(ctx, &runtime, policy, gate, succeeded)?;
+    }
+    if caching && succeeded {
+        let mut guard = runtime.lock().unwrap();
+        let expires = guard.clock.now() + policy.cache;
+        let entries = guard.cache.entry(cache_key).or_default();
+        entries.retain(|(entry, _, _)| !equal(entry, &key).unwrap_or(false));
+        entries.push((key, result.clone(), expires));
+    }
+    Ok(result)
+}
+
+fn attempts(
+    ctx: &mut Context,
+    runtime: &Arc<std::sync::Mutex<WorkflowRuntime>>,
+    policy: &StagePolicy,
+    mut attempt: impl FnMut(&mut Context) -> Result<Value>,
+) -> Result<Value> {
     let event = |kind: &'static str, number: i64, succeeded: bool| TraceEvent { kind, stage: policy.stage.into(), number, succeeded };
     let (mut number, mut previous) = (1i64, 0i64);
     loop {
@@ -1997,9 +2127,19 @@ pub fn run_stage(
             _ => None,
         };
         runtime.lock().unwrap().trace.push(event("finish", number, failure.is_none()));
-        let (Some(failure), Some(retry)) = (failure, &policy.retry) else { return Ok(result) };
+        let (Some(mut failure), Some(retry)) = (failure, &policy.retry) else { return Ok(result) };
         if retry.attempts > 0 && number >= retry.attempts {
             return Ok(result);
+        }
+        if policy.wraps {
+            // Only the step's own failures and timeouts are retried.
+            match failure {
+                Value::Data(ref tag, ref mut fields) if *tag == format!("{STAGE_FAILURE}StepFailed") && fields.len() == 1 => {
+                    failure = fields.pop().unwrap();
+                }
+                Value::Data(ref tag, _) if *tag == format!("{STAGE_FAILURE}TimedOut") => {}
+                _ => return Ok(result),
+            }
         }
         if let Some(when) = retry.when {
             if !when(ctx, failure.clone())? {

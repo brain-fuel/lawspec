@@ -1,6 +1,7 @@
 -- Native Haskell functions over pure, checked total-definition implementations.
 module LawSpec.HaskellDefinitions (emitHaskellDefinitions, definitionCalls) where
 
+import Control.Monad (forM)
 import LawSpec.Core.Policy
 import LawSpec.Core
 import LawSpec.Core.DefinitionContracts (checkedDefinitionContracts)
@@ -72,7 +73,8 @@ emitHaskellDefinitions layout bits declarations units = do
       _ -> concatMap callsIn (children expression)
     moduleOf owner = intercalate "." (map modulePart (split '.' (idText owner)))
     evaluator localName identity = maybe (Left "unresolved Haskell policy definition") (Right . localName) (lookup identity names)
-    policyDoc localName policy = do
+    policyDoc localName key policy = do
+      gates <- policyGates localName policy
       retry <- case policyRetry policy of
         Nothing -> pure (text "P.Nothing")
         Just r -> do
@@ -93,7 +95,43 @@ emitHaskellDefinitions layout bits declarations units = do
             _ -> pure (text "P.Nothing")
           pure (E.apply "P.Just" [E.apply "LS.Retry" [E.quoted kind, number delay, number step, number factor, number cap,
             number (retryAttempts r), E.quoted (jitterName (retryJitter r)), condition, decide]])
-      pure (E.apply "LS.StagePolicy" [E.quoted (policyStage policy), retry, text (maybe "(-1)" show (policyTimeout policy))])
+      pure (E.apply "LS.StagePolicy" [E.quoted (policyStage policy), retry, text (maybe "(-1)" show (policyTimeout policy)),
+        E.quoted key, text "[" <> D.joinWith (text ", ") gates <> text "]", text (maybe "(-1)" show (policyCache policy)),
+        text (if null (policyFailures policy) then "P.False" else "P.True")])
+    -- A gate's callbacks call the unit's copies of the resilience unit's
+    -- state machines, with the policy's numbers.
+    policyGates localName policy = do
+      let checked call = "(P.either P.error P.id (" ++ call ++ "))"
+          integer n = "(LS.SInteger \"Integer\" " ++ (if n < 0 then "(" ++ show n ++ ")" else show (n :: Integer)) ++ ")"
+          integers = unwords . map integer
+          now = "(LS.SInteger \"Integer\" now)"
+          gate kind start admit finish wait = E.apply "LS.Gate" [E.quoted kind, text ("(\\now -> " ++ checked start ++ ")"),
+            text ("(\\state now -> " ++ checked admit ++ ")"),
+            text (maybe "P.Nothing" (\f -> "(P.Just (\\state now succeeded -> " ++ checked f ++ "))") finish), text ("(" ++ show (wait :: Integer) ++ ")")]
+          waitCode wait = case wait of
+            Nothing -> -2
+            Just Nothing -> -1
+            Just (Just d') -> d'
+      breaker <- forM (policyBreaker policy) $ \b -> do
+        start <- evaluator localName (breakerStart b)
+        admit <- evaluator localName (breakerAdmit b)
+        record <- evaluator localName (breakerRecord b)
+        pure (gate "breaker" (start ++ " symbols " ++ now) (admit ++ " symbols state " ++ now)
+          (Just (record ++ " symbols " ++ integers [breakerFailures b, breakerWindow b, breakerCooldown b] ++ " state " ++ now ++ " (LS.SBool succeeded)")) (-2))
+      limit <- forM (policyLimit policy) $ \l -> do
+        start <- evaluator localName (limitStart l)
+        admit <- evaluator localName (limitAdmit l)
+        let numbers = integers [limitCount l, limitPeriod l]
+        pure (gate "limit" (start ++ " symbols " ++ numbers ++ " " ++ now) (admit ++ " symbols " ++ numbers ++ " state " ++ now)
+          Nothing (waitCode (limitWait l)))
+      bulkhead <- forM (policyBulkhead policy) $ \b -> do
+        start <- evaluator localName (bulkheadStart b)
+        admit <- evaluator localName (bulkheadAdmit b)
+        release <- evaluator localName (bulkheadRelease b)
+        let n = integers [bulkheadLimit b]
+        pure (gate "bulkhead" (start ++ " symbols " ++ n ++ " " ++ now) (admit ++ " symbols " ++ n ++ " state " ++ now)
+          (Just (release ++ " symbols state")) (waitCode (bulkheadWait b)))
+      pure (maybe [] pure breaker ++ maybe [] pure limit ++ maybe [] pure bulkhead)
     jitterName j = case j of
       NoJitter -> "none" :: String
       FullJitter -> "full"
@@ -131,8 +169,11 @@ emitHaskellDefinitions layout bits declarations units = do
       body <- case definitionPolicy d of
         Nothing -> pure rendered
         Just policy -> do
-          config <- policyDoc localName policy
-          pure (E.apply "LS.runStage" [text "symbols", config, text "(\\() -> " <> rendered <> text ")"])
+          config <- policyDoc localName (idText (declarationId (definitionDeclaration d))) policy
+          let key = case arguments of
+                argument : _ -> text argument
+                [] -> text "(LS.SAbsent \"Unit\")"
+          pure (E.apply "LS.runStage" [text "symbols", config, text "(\\() -> " <> rendered <> text ")", key])
       let result = E.apply "P.pure" [text "result"]
       let evaluate = text "let result =" <> D.nest 6 (D.hardline <> body)
           checkedResult = D.group (E.apply "LS.forceScalar" [text "result"] <> text " `P.seq`" <>

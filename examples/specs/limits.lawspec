@@ -1,0 +1,13 @@
+unit example.limits
+
+-- A workflow with a rate limit, for the resilience suite: two calls per
+-- second, rejecting the rest. Its own unit, so the suite's checks can call it
+-- on every target (a Haskell workflow imports its steps' module).
+type Ticket is Ticket number :: Int64 end
+
+admitTicket :: Ticket -> Either Text Ticket
+
+workflow limited :: Ticket -> Either _ Ticket is
+  admitTicket :: Ticket -> Either Text Ticket
+    rateLimit tokenBucket 2 1s reject
+end

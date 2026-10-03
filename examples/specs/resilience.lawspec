@@ -1,5 +1,8 @@
 unit example.resilience
 
+import lawspec.resilience as r
+import example.limits as limits
+
 -- Conformance of each target's workflow runtime with a reference model.
 -- The adapters call the runtime; the checked definitions are the reference.
 -- Delays are whole microseconds.
@@ -106,5 +109,96 @@ law `a rejected error is not retried` is
   definition is
     `for all` (attempts :: Int8 where attempts >= 1 && attempts <= 6) .
       rejectedWaits (prelude.Int32 attempts) = []
+  end
+end
+
+-- Calls limited at each time (microseconds, in order) under one runtime
+-- with its gates on: whether each call was admitted.
+limitedAt :: List Integer -> List Bool
+
+definition admits (gate :: r.Gate) :: Bool is
+  match gate with
+  | Admit -> true
+  | WaitFor micros -> false
+  | Reject -> false
+  end
+end
+
+-- The reference: the resilience unit's token bucket, folded over the times.
+definition bucketRun (state :: r.TokenBucket) (times :: List Integer) :: List Bool is
+  match times with
+  | Nil -> Nil
+  | Cons t rest ->
+      match r.tokenBucketAdmit 2 1000000 state t with
+      | Step next gate -> Cons (admits gate) (bucketRun next rest)
+      end
+  end
+end
+
+-- Times a millisecond apart and more, as a list of gaps.
+definition timesFrom (start :: Integer) (gaps :: List UInt16) :: List Integer is
+  match gaps with
+  | Nil -> Nil
+  | Cons gap rest -> Cons start (timesFrom (start + prelude.Integer gap * 1000) rest)
+  end
+end
+
+law `the rate limit admits as the token bucket does` is
+  definition is
+    `for all` (gaps :: List UInt16) .
+      limitedAt (timesFrom 0 gaps) = bucketRun (r.tokenBucketStart 2 1000000 0) (timesFrom 0 gaps)
+  end
+  example `three calls at once` is
+    gaps = [0, 0, 0]
+    expect limitedAt (timesFrom 0 gaps) = [true, true, false]
+  end
+end
+
+-- The other state machines, which every target runs as generated code.
+law `an open breaker rejects until its cooldown ends` is
+  definition is
+    `for all` (t :: UInt16) .
+      r.breakerAdmit (r.Open 1000) (prelude.Integer t) =
+        prelude.select (prelude.Integer t >= 1000) (r.Step r.HalfOpen r.Admit) (r.Step (r.Open 1000) r.Reject)
+  end
+end
+
+law `a breaker opens after enough failures in its window` is
+  definition is
+    `for all` (gap :: UInt8) .
+      r.breakerRecord 2 1000 500 (r.breakerRecord 2 1000 500 (r.Closed []) 10 false) (10 + prelude.Integer gap) false =
+        r.Open (510 + prelude.Integer gap)
+  end
+end
+
+law `a breaker forgets failures outside its window` is
+  definition is
+    `for all` (gap :: UInt8) .
+      r.breakerRecord 2 100 500 (r.breakerRecord 2 100 500 (r.Closed []) 0 false) (200 + prelude.Integer gap) false =
+        r.Closed [200 + prelude.Integer gap]
+  end
+end
+
+law `a successful trial closes the breaker` is
+  definition is
+    `for all` (t :: UInt16) . r.breakerRecord 2 1000 500 r.HalfOpen (prelude.Integer t) true = r.Closed []
+  end
+end
+
+law `a bulkhead admits up to its limit` is
+  definition is
+    `for all` (running :: UInt8) .
+      r.bulkheadAdmit 4 (r.Bulkhead (prelude.Integer running)) 0 =
+        prelude.select (prelude.Integer running < 4)
+          (r.Step (r.Bulkhead (prelude.Integer running + 1)) r.Admit)
+          (r.Step (r.Bulkhead (prelude.Integer running)) (r.WaitFor 1000))
+  end
+end
+
+law `a sliding window admits n calls per period` is
+  definition is
+    `for all` (t :: UInt16) .
+      r.slidingWindowAdmit 2 1000 (r.SlidingWindow [prelude.Integer t, prelude.Integer t]) (prelude.Integer t + 1) =
+        r.Step (r.SlidingWindow [prelude.Integer t, prelude.Integer t]) (r.WaitFor 999)
   end
 end

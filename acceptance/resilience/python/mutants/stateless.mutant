@@ -1,0 +1,6 @@
+@@ src/example/resilience.py
+<<<<<<<
+        result = workflows.limited(runtime.context(), data.Ticket(0))
+=======
+        result = workflows.limited(ls.WorkflowRuntime(ls.VirtualClock()).context(), data.Ticket(0))
+>>>>>>>

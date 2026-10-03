@@ -1,6 +1,8 @@
 -- Go native entry points and checked bodies live in each unit's source package.
 module LawSpec.GoDefinitions (emitGoDefinitions, definitionCalls) where
 
+import LawSpec.Core.Stages (stageFailures)
+import Control.Monad (forM)
 import LawSpec.Core.Policy
 import LawSpec.Core
 import LawSpec.Core.DefinitionContracts (checkedDefinitionContracts)
@@ -10,7 +12,7 @@ import qualified LawSpec.GoData as Native
 import qualified LawSpec.GoExpr as E
 import qualified LawSpec.Code.Doc as D
 import Data.Char (toUpper)
-import Data.List (nub)
+import Data.List (nub, intercalate)
 
 definitionCalls :: [Unit] -> [(Id,String)]
 definitionCalls units = [(declarationId (definitionDeclaration d), "lawSpecEvaluate" ++ show i)
@@ -78,9 +80,18 @@ emitGoDefinitions layout bits declarations units = do
       body <- case definitionPolicy d of
         Nothing -> pure rendered
         Just policy -> do
-          config <- policyDoc policy
+          failures <- forM (stageFailures d) $ \(kind, value) ->
+            (\rendered' -> line ("case " ++ show kind ++ ": return ") <> rendered') <$>
+              E.renderExpression declarations bits schema local external value
+          let fail' = line "func(kind string) LawSpecValue " <> D.block 8 (D.joinWith D.hardline
+                ([line "switch kind " <> D.block 8 (D.joinWith D.hardline failures) | not (null failures)] ++
+                 [line "panic(\"unexpected stage failure: \" + kind)"]))
+          config <- policyDoc (idText (declarationId (definitionDeclaration d))) fail' policy
+          let key = case definitionArguments d of
+                argument : _ -> line (local (binderId argument))
+                [] -> line "LawSpecValue{}"
           pure (E.call "lsRunStage" [line "symbols", config,
-            line "func() LawSpecValue " <> D.block 8 (line "return " <> rendered)])
+            line "func() LawSpecValue " <> D.block 8 (line "return " <> rendered), key])
       -- Arguments and results were checked where they were built, decoded
       -- or drawn; the native wrappers check values crossing from adapters.
       let checks = []
@@ -108,7 +119,8 @@ emitGoDefinitions layout bits declarations units = do
         D.block 8 (contextual (declarationId (definitionDeclaration d)) "LawSpecValue"
           (D.joinWith D.hardline statements)))
     evaluator identity = maybe (Left "unresolved Go policy definition") Right (lookup identity callees)
-    policyDoc policy = do
+    policyDoc key fail' policy = do
+      gates <- policyGates policy
       retry <- case policyRetry policy of
         Nothing -> pure (line "nil")
         Just r -> do
@@ -136,7 +148,46 @@ emitGoDefinitions layout bits declarations units = do
       pure (line "lawSpecStagePolicy" <> D.block 8 (D.joinWith D.hardline
         [ line ("Stage: " ++ show (policyStage policy) ++ ",")
         , line "Retry: " <> retry <> line ","
-        , line ("Timeout: " ++ show (maybe (-1) id (policyTimeout policy)) ++ ",") ]))
+        , line ("Timeout: " ++ show (maybe (-1) id (policyTimeout policy)) ++ ",")
+        , line ("Key: " ++ show key ++ ",")
+        , line "Gates: []lawSpecGate" <> D.block 8 (D.joinWith D.hardline [gate <> line "," | gate <- gates]) <> line ","
+        , line ("Cache: " ++ show (maybe (-1) id (policyCache policy)) ++ ",")
+        , line ("Wraps: " ++ (if null (policyFailures policy) then "false" else "true") ++ ",")
+        , line "Fail: " <> fail' <> line "," ]))
+    -- A gate's callbacks call the unit's copies of the resilience unit's
+    -- state machines, with the policy's numbers.
+    policyGates policy = do
+      breaker <- forM (policyBreaker policy) $ \b -> do
+        start <- evaluator (breakerStart b)
+        admit <- evaluator (breakerAdmit b)
+        record <- evaluator (breakerRecord b)
+        pure (gateDoc "breaker" (start ++ "(symbols, lsInteger64(now))") (admit ++ "(symbols, state, lsInteger64(now))")
+          (Just (record ++ "(symbols, " ++ integers [breakerFailures b, breakerWindow b, breakerCooldown b] ++ ", state, lsInteger64(now), lsBool(succeeded))")) (-2))
+      limit <- forM (policyLimit policy) $ \l -> do
+        start <- evaluator (limitStart l)
+        admit <- evaluator (limitAdmit l)
+        let numbers = integers [limitCount l, limitPeriod l]
+        pure (gateDoc "limit" (start ++ "(symbols, " ++ numbers ++ ", lsInteger64(now))") (admit ++ "(symbols, " ++ numbers ++ ", state, lsInteger64(now))")
+          Nothing (waitCode (limitWait l)))
+      bulkhead <- forM (policyBulkhead policy) $ \b -> do
+        start <- evaluator (bulkheadStart b)
+        admit <- evaluator (bulkheadAdmit b)
+        release <- evaluator (bulkheadRelease b)
+        let n = integers [bulkheadLimit b]
+        pure (gateDoc "bulkhead" (start ++ "(symbols, " ++ n ++ ", lsInteger64(now))") (admit ++ "(symbols, " ++ n ++ ", state, lsInteger64(now))")
+          (Just (release ++ "(symbols, state)")) (waitCode (bulkheadWait b)))
+      pure (maybe [] pure breaker ++ maybe [] pure limit ++ maybe [] pure bulkhead)
+    gateDoc kind start admit finish wait = line "lawSpecGate" <> D.block 8 (D.joinWith D.hardline
+      [ line ("Kind: " ++ show (kind :: String) ++ ",")
+      , line ("Start: func(now int64) LawSpecValue { return " ++ start ++ " },")
+      , line ("Admit: func(state LawSpecValue, now int64) LawSpecValue { return " ++ admit ++ " },")
+      , line ("Finish: " ++ maybe "nil" (\f -> "func(state LawSpecValue, now int64, succeeded bool) LawSpecValue { return " ++ f ++ " }") finish ++ ",")
+      , line ("Wait: " ++ show (wait :: Integer) ++ ",") ])
+    integers numbers = intercalate ", " ["lsInteger64(" ++ show n ++ ")" | n <- numbers]
+    waitCode wait = case wait of
+      Nothing -> -2
+      Just Nothing -> -1
+      Just (Just d) -> d
     jitterName j = case j of
       NoJitter -> "none" :: String
       FullJitter -> "full"

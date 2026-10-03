@@ -1,1 +1,6 @@
-{ "specs": ["examples/specs/resilience.lawspec"] }
+{
+  "specs": [
+    "examples/specs/limits.lawspec",
+    "examples/specs/resilience.lawspec"
+  ]
+}

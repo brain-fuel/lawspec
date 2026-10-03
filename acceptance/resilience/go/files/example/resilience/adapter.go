@@ -1,7 +1,11 @@
 // User-owned LawSpec adapter: the workflow runtime under test.
 package resilience
 
-import "math/big"
+import (
+	"math/big"
+
+	"example.com/lawspec-example/example/limits"
+)
 
 // RuntimeExponentialDelay is the runtime's exponential delay.
 func RuntimeExponentialDelay(value0 *LawSpecBigInt, value1 *LawSpecBigInt, value2 *LawSpecBigInt) any {
@@ -42,7 +46,7 @@ func waits(attempts int32, when func(LawSpecValue) bool) []*LawSpecBigInt {
 	retry := &lawSpecRetry{Strategy: "exponential", Delay: 100000, Factor: 2, Cap: -1, Attempts: int64(attempts), Jitter: "none", When: when}
 	lsRunStage(runtime.Context(nil), lawSpecStagePolicy{Stage: "stage", Retry: retry, Timeout: -1}, func() LawSpecValue {
 		return LawSpecValue{"Either", lawSpecData{"Either::Left", []LawSpecValue{lsInteger64(0)}}}
-	})
+	}, LawSpecValue{})
 	result := []*LawSpecBigInt{}
 	for _, event := range runtime.Trace {
 		if event.Kind == "sleep" {
@@ -58,4 +62,16 @@ func RetriedWaits(value0 int32) []*LawSpecBigInt { return waits(value0, nil) }
 // RejectedWaits are the waits when the error is not retried.
 func RejectedWaits(value0 int32) []*LawSpecBigInt {
 	return waits(value0, func(LawSpecValue) bool { return false })
+}
+
+// LimitedAt calls the generated workflow at each time under one runtime.
+func LimitedAt(value0 []*LawSpecBigInt) []bool {
+	clock := &limits.LawSpecVirtualClock{}
+	runtime := limits.NewLawSpecWorkflowRuntime(clock, 0)
+	admitted := make([]bool, len(value0))
+	for i, time := range value0 {
+		clock.Time = time.Int64()
+		_, admitted[i] = limits.LawSpecDefinitions.Limited(runtime.Context(nil), limits.Ticket{Number: 0}).Right()
+	}
+	return admitted
 }
