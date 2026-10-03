@@ -141,8 +141,12 @@ A law runs again when anything its result depends on changes:
   did not generate, such as an adapter or a helper it imports.
 
 The generated files must be current; run `generate` first. A failing run
-records nothing for the laws it ran, so they run again next time. Results are
-kept in `.lawspec/results`.
+records nothing for the laws it ran, so they run again next time. A law is
+recorded as passing only if the runner's own report shows that its tests ran:
+a test filter that matches nothing makes many runners succeed without running
+anything, so a selected law with no executed test fails the run instead.
+Results are kept in `.lawspec/results`, and runner reports in
+`.lawspec/reports`; neither is committed.
 
 - `--fresh`: run every law's tests.
 - `--seed <n>`: the property tests' random seed. Without it, each run draws a

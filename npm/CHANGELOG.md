@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.17.5
+
+### `lawspec test` confirms that each law's tests ran
+
+- A test filter that matches nothing makes Go, Rust, Node, Kotest and hspec
+  report success without running anything. `lawspec test` now reads each
+  runner's own report (pytest and Node JUnit XML, `go test -json`, the
+  Surefire and Gradle reports, and Rust's and hspec's per-test output) and
+  records a law as passing only if at least one of its tests ran and was not
+  skipped. A selected law with no executed test fails the run, naming the law.
+- Results and runner reports live in `.lawspec/results` and `.lawspec/reports`,
+  each with its own `.gitignore`.
+
 ## 0.17.4
 
 ### `lawspec test`

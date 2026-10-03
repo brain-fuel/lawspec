@@ -8,7 +8,7 @@ import { generateExamples } from "../examples-command.mjs";
 import { showScalar } from "../scalars.mjs";
 import { doctor } from "../doctor.mjs";
 import { spawn } from "node:child_process";
-import { environmentDigest, invocations, lawKeys, projectDigest } from "../test-command.mjs";
+import { environmentDigest, executedTests, invocations, lawKeys, projectDigest } from "../test-command.mjs";
 import {
   readOptional,
   planWrites,
@@ -297,30 +297,62 @@ async function runTests(compiler, input, selected, roots, config) {
     const previous = JSON.parse((await readOptional(resultsFile)) ?? '{"version":1,"laws":{}}');
     const stale = planned.tests.filter((entry) => options.fresh || previous.laws[entry.law]?.key !== keys.get(entry.law));
     const passed = [];
+    const unrun = [];
     let failed = false;
-    for (const run of stale.length ? invocations(target, stale, { offline }) : []) {
-      const ok = await spawned(run.command, run.args, root, { ...process.env, ...run.env, LAWSPEC_SEED: seed, HSPEC_SEED: seed });
+    const scratch = path.join(configRoot, ".lawspec", "reports", target.language);
+    await rm(scratch, { recursive: true, force: true });
+    await mkdir(scratch, { recursive: true });
+    await writeFile(path.join(path.dirname(scratch), ".gitignore"), "*\n");
+    for (const run of stale.length ? invocations(target, stale, { offline, scratch }) : []) {
+      const since = Date.now() - 1000;
+      const { ok, output } = await spawned(run.command, run.args, root,
+        { ...process.env, ...run.env, LAWSPEC_SEED: seed, HSPEC_SEED: seed }, run.report?.kind === "go-json");
       if (!ok) { failed = true; break; }
-      passed.push(...run.laws);
+      // A runner whose filter matched nothing reports success, so a law
+      // counts as passed only if the runner's report shows its tests ran.
+      const executed = new Set((await executedTests(run.report, output, root, since)).flatMap(run.ran ?? (() => [])));
+      passed.push(...run.laws.filter((law) => executed.has(law)));
+      unrun.push(...run.laws.filter((law) => !executed.has(law)));
     }
+    if (unrun.length) failed = true;
     const laws = Object.fromEntries(planned.tests.filter((entry) => previous.laws[entry.law]).map((entry) => [entry.law, previous.laws[entry.law]]));
     for (const entry of passed) laws[entry.law] = { key: keys.get(entry.law), seed: Number(seed), passed: new Date().toISOString() };
     await mkdir(path.dirname(resultsFile), { recursive: true });
+    await writeFile(path.join(path.dirname(resultsFile), ".gitignore"), "*\n");
     await writeFile(resultsFile, JSON.stringify({ version: 1, laws }, null, 2) + "\n");
     summaries.push({ target: target.language, seed: Number(seed), ran: stale.map((e) => e.law),
-      unchanged: planned.tests.length - stale.length, ok: !failed });
+      unchanged: planned.tests.length - stale.length, ok: !failed,
+      ...(unrun.length ? { unrun: unrun.map((e) => e.law) } : {}) });
   }
   output(options.json ? summaries : summaries.map((s) =>
     `${s.target}: ${s.ran.length ? `ran ${s.ran.length} law(s) with seed ${s.seed}` : "nothing to run"}` +
-    `, ${s.unchanged} unchanged since their last passing run.${s.ok ? "" : " FAILED"}`).join("\n"));
+    `, ${s.unchanged} unchanged since their last passing run.${s.ok ? "" : " FAILED"}` +
+    (s.unrun ? `\nNo tests ran for ${s.unrun.join(", ")}; the runner matched none of their tests.` : "")).join("\n"));
   if (summaries.some((s) => !s.ok)) process.exitCode = 1;
 }
-// Run a native test command, its output going to ours (to stderr with --json).
-function spawned(command, args, cwd, env) {
+// Run a native test command, showing its output (on stderr with --json) and
+// keeping it. Go's JSON events are shown as the text they carry.
+function spawned(command, args, cwd, env, goJson = false) {
   return new Promise((resolve, reject) => {
-    const child = spawn(command, args, { cwd, env, stdio: ["ignore", options.json ? process.stderr : "inherit", "inherit"] });
+    const child = spawn(command, args, { cwd, env, stdio: ["ignore", "pipe", "pipe"] });
+    const shown = options.json ? process.stderr : process.stdout;
+    let output = "";
+    let pending = "";
+    child.stdout.on("data", (chunk) => {
+      const text = chunk.toString();
+      output += text;
+      if (!goJson) return shown.write(text);
+      pending += text;
+      const lines = pending.split("\n");
+      pending = lines.pop();
+      for (const line of lines) {
+        try { const event = JSON.parse(line); if (event.Output) shown.write(event.Output); }
+        catch { shown.write(line + "\n"); }
+      }
+    });
+    child.stderr.on("data", (chunk) => { output += chunk.toString(); process.stderr.write(chunk); });
     child.on("error", reject);
-    child.on("exit", (code) => resolve(code === 0));
+    child.on("close", (code) => resolve({ ok: code === 0, output }));
   });
 }
 async function readOptionalDirectory(folder) {

@@ -7,7 +7,7 @@ const law = (index, file, label = `example.unit::law ${index}`) =>
 
 test("selects whole test names, so law 1 never selects law 10", () => {
   const python = invocations({ language: "python" }, [law(1, "tests/test_example_unit_lawspec.py")]);
-  assert.deepEqual(python[0].args.slice(-2), ["-k", "test_law1_"]);
+  assert.deepEqual(python[0].args.slice(-3, -1), ["-k", "test_law1_"]);
   const go = invocations({ language: "go" }, [law(1, "example/unit/lawspec_test.go"), law(10, "example/unit/lawspec_test.go")]);
   assert.equal(go.length, 1);
   assert.match("TestLaw10Property", new RegExp(go[0].args.at(-1)));
@@ -55,4 +55,57 @@ test("a law's key changes with its adapters only when it calls them", () => {
   const before = keys("one"), after = keys("two");
   assert.notEqual(before.get(tests[0].law), after.get(tests[0].law));
   assert.equal(before.get(tests[1].law), after.get(tests[1].law));
+});
+
+import { mkdtemp, writeFile, rm } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { executedTests } from "../test-command.mjs";
+
+// What each runner reports, reduced to the laws whose tests actually ran.
+async function ranLaws(target, entries, report, output = "") {
+  const scratch = await mkdtemp(path.join(os.tmpdir(), "lawspec-report-"));
+  try {
+    const [run] = invocations(target, entries, { scratch }).filter((r) => r.laws.length);
+    if (report !== undefined) {
+      const file = run.report.files?.[0] ?? path.join(scratch, run.report.directory ?? "", "TEST-report.xml");
+      await import("node:fs/promises").then((fs) => fs.mkdir(path.dirname(file), { recursive: true }));
+      await writeFile(file, report);
+    }
+    const tests = await executedTests(run.report, output, scratch, 0);
+    return [...new Set(tests.flatMap(run.ran))].map((e) => e.index).sort();
+  } finally {
+    await rm(scratch, { recursive: true, force: true });
+  }
+}
+
+test("counts only the tests a runner reports as run", async () => {
+  const python = [law(0, "tests/t.py"), law(1, "tests/t.py")];
+  assert.deepEqual(await ranLaws({ language: "python" }, python,
+    '<testsuite><testcase classname="tests.t" name="test_law0_property"/>' +
+    '<testcase classname="tests.t" name="test_law1_example0"><skipped/></testcase></testsuite>'), [0]);
+  // Kotest skips what its filter excludes; a filter matching nothing skips all.
+  const kotlin = [law(0, "src/test/kotlin/example/UnitLawSpecTest.kt")];
+  assert.deepEqual(await ranLaws({ language: "kotlin" }, kotlin,
+    '<testsuite><testcase name="law0Property: example.unit::law 0" classname="example.UnitLawSpecTest"><skipped/></testcase></testsuite>'), []);
+  assert.deepEqual(await ranLaws({ language: "kotlin" }, kotlin,
+    '<testsuite><testcase name="law0Property: example.unit::law 0" classname="example.UnitLawSpecTest" time="0.1"></testcase></testsuite>'), [0]);
+  const java = [law(2, "src/test/java/example/UnitLawSpecTest.java")];
+  assert.deepEqual(await ranLaws({ language: "java" }, java,
+    '<testsuite><testcase name="law2Example0()" classname="example.UnitLawSpecTest"/></testsuite>'), [2]);
+  const js = [law(0, "test/u.lawspec.test.mjs", "example.unit::a & b")];
+  assert.deepEqual(await ranLaws({ language: "javascript" }, js,
+    '<testsuites><testcase name="example.unit::a &amp; b property" classname="test"/></testsuites>'), [0]);
+});
+
+test("reads Go events, Rust results and hspec examples", async () => {
+  const go = [law(0, "example/unit/lawspec_test.go"), law(1, "example/unit/lawspec_test.go")];
+  assert.deepEqual(await ranLaws({ language: "go" }, go, undefined,
+    '{"Action":"run","Test":"TestLaw1Property"}\n{"Action":"pass","Test":"TestLaw0Example0","Package":"p"}\n'), [0]);
+  const rust = [law(0, "tests/u_lawspec.rs"), law(3, "tests/u_lawspec.rs")];
+  assert.deepEqual(await ranLaws({ language: "rust" }, rust, undefined,
+    "running 1 test\ntest test_3 ... ok\n\ntest result: ok. 1 passed\n"), [3]);
+  const haskell = [law(0, "test/Example/UnitSpec.hs"), law(1, "test/Example/OtherSpec.hs")];
+  assert.deepEqual(await ranLaws({ language: "haskell" }, haskell, undefined,
+    "Example.Unit\n  law0Example0 [✔]\n  law0Property: example.unit::law 0 [✔]\nExample.Other\n\nFinished in 0.01 seconds\n2 examples, 0 failures\n"), [0]);
 });
