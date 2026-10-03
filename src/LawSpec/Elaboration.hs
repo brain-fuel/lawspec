@@ -3,6 +3,8 @@
 module LawSpec.Elaboration
   ( coreType, equation, elaborateExpression, elaborateResolved, elaborateResolvedWithData, equationWithData, binaryOp, elaborateDefinitionUnit, elaborateContract ) where
 
+import LawSpec.Time (timeUnit, durationType, durationArithmetic, durationValue)
+import LawSpec.Imports (importedDefinitionName)
 import LawSpec.Collections (collectionsUnit, internalConstructor)
 import qualified LawSpec.Model as S
 import qualified LawSpec.Inference as S
@@ -142,6 +144,7 @@ elaborateResolvedWithData dataTypes declarations bits origin resolve env source 
           case op of
             "&&" -> pure (node t (C.ShortCircuit C.And x y))
             "||" -> pure (node t (C.ShortCircuit C.Or x y))
+            _ | op `notElem` ["==","!="], any isDuration [x,y] -> durationBinary t op x y
             _ -> do
               operator <- binaryOp op
               evidence <- operationEvidence operator (C.expressionType x) (C.expressionType y)
@@ -186,8 +189,38 @@ elaborateResolvedWithData dataTypes declarations bits origin resolve env source 
           pure (node listType (C.Match x [C.MatchCase (C.Id (name ++ "::" ++ constructor)) [binder] (node listType (C.Local (C.binderId binder)))]))
     _ -> Left "collection helper requires a collection"
   builtinApplication e = case root e of S.Var n -> take 8 n == "prelude."; _ -> False
+  -- Arithmetic on durations calls the time unit's checked definitions, whose
+  -- preconditions keep results in range; comparisons compare microseconds.
+  isDuration e = C.expressionType e == C.Constructor durationType []
+  durationBinary t op x y = do
+    let integer = C.scalarType "Integer"
+        widen e = if C.expressionType e == integer then e else node integer (C.Convert C.Explicit integer e)
+        -- The importing unit's copies, which its own facts mention.
+        copy name = resolve (importedDefinitionName timeUnit name)
+        call name args = node t (C.ExternalCall (copy name) args)
+        -- A constructed duration, such as a literal, unwraps to its field.
+        unwrap e = case C.expressionNode e of
+          C.Construct _ [value] -> value
+          _ -> node integer (C.ExternalCall (copy durationValue) [e])
+        constant e = case C.expressionNode e of C.Construct _ [value] -> Just value; _ -> Nothing
+        scaled micros k = do
+          evidence <- operationEvidence C.Multiply integer integer
+          pure (call "microseconds" [node integer (C.Binary C.Multiply evidence micros (widen k))])
+    case durationArithmetic op of
+      Just name | op `elem` ["+","-"] -> pure (call name [x,y])
+                -- A constant duration scales linearly: 500ms * n is
+                -- microseconds (500000 * n), which the totality audit can bound.
+                | op == "*", Just micros <- constant x -> scaled micros y
+                | op == "*", Just micros <- constant y -> scaled micros x
+                | isDuration x -> pure (call name [x,widen y])
+                | otherwise -> pure (call name [y,widen x])
+      Nothing -> do
+        operator <- binaryOp op
+        evidence <- operationEvidence operator integer integer
+        pure (node t (C.Binary operator evidence (unwrap x) (unwrap y)))
   builtinNode t n xs
     | isNumeric n, [x] <- xs = pure (node t (C.Convert C.Explicit t x))
+    | n == "quot", [a,b] <- xs, isDuration a = durationBinary t n a b
     | n `elem` ["quot","rem","pow"], [a,b] <- xs = do
         op <- binaryOp n
         ev <- operationEvidence op (C.expressionType a) (C.expressionType b)

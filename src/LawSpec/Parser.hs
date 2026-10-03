@@ -1,6 +1,7 @@
 module LawSpec.Parser (parseSource, parseSources, parseSourcesWith, sourceUnit) where
 
 import LawSpec.Collections (collectionsUnit, collectionsAlias)
+import LawSpec.Time (timeUnit, timeAlias, durationSuffixes, durationFactor, durationLimit, usesTime)
 import LawSpec.Flow (desugarFlows, flowTypeName)
 import LawSpec.Model
 import LawSpec.Indexed
@@ -311,9 +312,17 @@ numeric = lexeme $ do
   powerToken <- optional (try (oneOf ['e','E'] *> L.signed (pure ()) L.decimal))
   let power = maybe 0 id powerToken
   let coefficient = read ((if sign == "+" then "" else sign) ++ ds ++ maybe "" id fraction)
-  pure $ case (fraction,powerToken) of
-    (Nothing,Nothing) -> Number coefficient
-    _ -> DecimalNumber coefficient (power - maybe 0 (fromIntegral . length) fraction)
+  -- A duration literal: a whole number of units, as in 250ms, is the constant
+  -- Duration of that many microseconds (LawSpec.Time).
+  unit <- optional (try (choice [constructor <$ (string suffix <* notFollowedBy (alphaNumChar <|> char '_'))
+    | (suffix, constructor) <- durationSuffixes]))
+  case (unit, sign, fraction, powerToken) of
+    (Just constructor, "", Nothing, Nothing)
+      | coefficient * durationFactor constructor <= durationLimit -> pure (ConstructLit "Duration" [Number (coefficient * durationFactor constructor)])
+      | otherwise -> fail ("a duration is at most " ++ show durationLimit ++ " microseconds")
+    (Just _, _, _, _) -> fail "a duration literal is a whole number of units, without a sign"
+    (Nothing, _, Nothing, Nothing) -> pure (Number coefficient)
+    _ -> pure (DecimalNumber coefficient (power - maybe 0 (fromIntegral . length) fraction))
 scalarP :: P Expr
 scalarP = ScalarLit <$> choice
   [ SAbsent "Unit" <$ keyword "unitValue", SAbsent "Null" <$ keyword "null", SAbsent "Undefined" <$ keyword "undefined"
@@ -382,7 +391,17 @@ literalP = constructorLiteral
           _ -> fail "expected concrete annotated literal"))
   <|> parens literalP
   <|> (BoolLiteral <$> boolP) <|> (TextLiteral <$> str)
-  <|> (do e <- numeric; case e of Number n -> pure (IntLiteral n); DecimalNumber c p -> pure (DecimalLiteral c p); ScalarLit v -> pure (ScalarLiteral v); _ -> fail "literal")
+  <|> numericLiteral
+  where
+    numericLiteral = do
+      e <- numeric
+      case e of
+        Number n -> pure (IntLiteral n)
+        DecimalNumber c p -> pure (DecimalLiteral c p)
+        ScalarLit v -> pure (ScalarLiteral v)
+        -- A duration literal, such as 250ms.
+        ConstructLit name [Number n] -> pure (ConstructorLiteral name [IntLiteral n])
+        _ -> fail "literal"
 
 block :: String -> P a -> P a
 block n p = keyword n *> keyword "is" *> p <* keyword "end"
@@ -478,12 +497,13 @@ parseSource source = fst . fst <$> parseWith M.empty [] source
 -- arities of the units it imports, qualified by alias and unqualified for
 -- listed names; LawSpec.Imports resolves the names themselves.
 parseSources :: [Source] -> Either [Diagnostic] [(Unit, [Import])]
-parseSources = parseSourcesWith []
+parseSources = parseSourcesWith [] False
 
--- With the built-in collection types a program uses: every other unit imports
--- those it does not declare itself (LawSpec.Collections).
-parseSourcesWith :: [String] -> [Source] -> Either [Diagnostic] [(Unit, [Import])]
-parseSourcesWith collections sources = do
+-- With the built-in collection types a program uses, and Duration when it uses
+-- time: every other unit imports those it does not declare itself
+-- (LawSpec.Collections, LawSpec.Time).
+parseSourcesWith :: [String] -> Bool -> [Source] -> Either [Diagnostic] [(Unit, [Import])]
+parseSourcesWith collections time sources = do
   mapM_ acyclic (M.keys graph)
   let names = [n | (_, n, _) <- preambles]
   forM_ names $ \n -> when (length (filter (== n) names) > 1)
@@ -501,12 +521,16 @@ parseSourcesWith collections sources = do
     preambles = [(s, n, imports) | s <- sources, Right (n, imports) <- [preamble s]]
     preamble (Source p s) = implicit s <$> runReader (runParserT preambleP p s) M.empty
     implicit s (n, imports)
-      | null collections || n `elem` ["prelude", collectionsUnit] = (n, imports)
+      | n `elem` ["prelude", collectionsUnit, timeUnit] = (n, imports)
       | otherwise =
           let local = M.keys (headers s)
-              items = [t | t <- collections, t `notElem` local]
-              origin = Location "<lawspec.collections>" 1 1
-          in (n, imports ++ [Import collectionsUnit collectionsAlias items (Span origin origin) | not (null items)])
+              builtin unit alias types =
+                let items = [t | t <- types, t `notElem` local]
+                    origin = Location ("<" ++ unit ++ ">") 1 1
+                in [Import unit alias items (Span origin origin) | not (null items)]
+          -- Only a source that uses durations imports the time unit.
+          in (n, imports ++ builtin collectionsUnit collectionsAlias collections ++
+               builtin timeUnit timeAlias ["Duration" | time, usesTime s])
     graph = M.fromList [(n, imports) | (_, n, imports) <- preambles]
     -- Exports are computed lazily in import order, so an exported declaration
     -- may itself use its unit's imports.

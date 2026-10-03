@@ -55,7 +55,7 @@ spec = describe "refined definition proof obligations" $ do
         invariant = T.ProofConstructorContract tag [field] [positive (T.Variable field)] []
         function body = T.ProofDefinition (Id "use") "use" Nothing [argument] body []
         check contracts body = T.auditWithConstructorContracts contracts [] [function body]
-        reciprocal x = T.Division False (n 1) x
+        reciprocal x = T.Division False Divide (n 1) x
     it "requires constructor arguments to establish their field predicates" $ do
       check [invariant] (T.Construct tag [n 1]) `shouldBe` Right ()
       check [invariant] (T.Construct tag [n 0]) `shouldSatisfy` isLeft
@@ -466,7 +466,7 @@ spec = describe "refined definition proof obligations" $ do
         one = T.Literal (SInteger "Int8" 1)
         zero = T.Literal (SInteger "Int8" 0)
         body = T.DataMatch (T.Variable input)
-          [(Id "Box::Box",[x],T.Division False one (T.Variable x))]
+          [(Id "Box::Box",[x],T.Division False Divide one (T.Variable x))]
         definition = T.ProofDefinition (Id "bad") "bad" Nothing [input,x] body
           [T.ExactComparison NotEqual (T.Variable x) zero]
     T.audit [definition] `shouldSatisfy` isLeft
@@ -501,7 +501,7 @@ spec = describe "refined definition proof obligations" $ do
         x = Id "x"
         one = T.Literal (SInteger "Integer" 1)
         body = T.ListMatch (T.Variable xs) one x (Id "rest")
-          (T.Division False one (T.Variable x))
+          (T.Division False Divide one (T.Variable x))
         definition = T.ProofDefinition (Id "bad") "bad" Nothing [xs,x] body
           [T.ExactComparison NotEqual (T.Variable x) (T.Literal (SInteger "Integer" 0))]
     T.audit [definition] `shouldSatisfy` isLeft

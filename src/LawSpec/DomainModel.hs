@@ -8,6 +8,7 @@ module LawSpec.DomainModel
   , wrapperValueName, elaborateDomain
   ) where
 
+import LawSpec.Scalar (isExact)
 import Control.Monad (foldM, forM, forM_, unless, when)
 import Data.Char (toUpper)
 import Data.List (nub)
@@ -100,11 +101,17 @@ wrapperDeclaration w = DataTypeDeclaration (wrapperName w) (wrapperParameters w)
   [ConstructorDeclaration (wrapperName w) [("value", field)] (wrapperSpan w) []] (wrapperSpan w) Nothing
   where field = maybe (wrapperBase w) (Refined "value" (wrapperBase w) . Just) (wrapperPredicate w)
 
+-- Over an exact number, its result carries the wrapper's constraint, so the
+-- totality audit knows an unwrapped value satisfies it.
 wrapperDefinition :: Wrapper -> FunctionDefinition
 wrapperDefinition w = FunctionDefinition (wrapperValueName (wrapperName w))
-  [("wrapped", wrapperType w)] (wrapperBase w) []
+  [("wrapped", wrapperType w)] result []
   (MatchExpr (Var "wrapped") [MatchBranch (wrapperName w) ["value"] (Var "value")])
   (wrapperSpan w)
+  where
+    result = case (wrapperBase w, wrapperPredicate w) of
+      (Named base, Just predicate) | isExact base -> Refined "value" (Named base) (Just predicate)
+      _ -> wrapperBase w
 
 -- Steps are ordinary adapter declarations. Restating an existing declaration
 -- with the same type shares it between workflows; a different type is an error.

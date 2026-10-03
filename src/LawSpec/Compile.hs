@@ -17,6 +17,7 @@ import LawSpec.Scalar
 import LawSpec.Parser
 import LawSpec.Imports (resolveImports)
 import LawSpec.Collections (usedCollections, collectionsSource)
+import LawSpec.Time (usesTime, timeSource)
 import LawSpec.Refinement
 import LawSpec.Prelude
 import Control.Monad.State.Strict
@@ -198,9 +199,12 @@ compileWithImports visible bits settings sources = do
   unless (all (>0) [cases settings,maxAttempts settings,maxShrinks settings,exhaustiveLimit settings]) (Left [Diagnostic "generation" "generation limits must be positive integers" Nothing])
   unless (bits `elem` [32,64]) (Left [Diagnostic "machineBits" "machineBits must be 32 or 64" Nothing])
   -- Programs that use a collection get the built-in collections unit.
+  -- Programs that use durations get the built-in time unit.
   let collections = usedCollections [text | Source _ text <- sources]
-      builtins = preludeSource : [Source "<lawspec.collections>" (collectionsSource collections) | not (null collections)]
-  parsedUnits <- parseSourcesWith collections (builtins ++ sources)
+      time = any usesTime [text | Source _ text <- sources]
+      builtins = preludeSource : [Source "<lawspec.collections>" (collectionsSource collections) | not (null collections)] ++
+        [Source "<lawspec.time>" timeSource | time]
+  parsedUnits <- parseSourcesWith collections time (builtins ++ sources)
   unless (length parsedUnits == length (nub (map (unitName . fst) parsedUnits))) (Left [Diagnostic "duplicate-unit" "unit names must be unique; prelude is reserved" Nothing])
   parsed <- resolveImports visible parsedUnits
   let imported = M.fromList [(unitName u ++ "::type::" ++ dataTypeName d, d{dataTypeConstructors=

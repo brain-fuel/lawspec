@@ -185,7 +185,7 @@ auditTemplates declarations bits unit templates = do
       _ -> lift (Left ("unknown total-definition helper: " ++ name))
     binary integers typed op left right
       | op `elem` [C.Divide,C.Quotient,C.Remainder] =
-          T.Division (S.expressionType typed `elem` map S.Named ["Float32","Float64","Complex64","Complex128"]) left right
+          T.Division (S.expressionType typed `elem` map S.Named ["Float32","Float64","Complex64","Complex128"]) op left right
       | op `elem` [C.Equal,C.NotEqual,C.Less,C.LessEqual,C.Greater,C.GreaterEqual] =
           (if all (exactType integers . effectiveType) (S.operands typed)
             then T.ExactComparison else T.Comparison) op left right

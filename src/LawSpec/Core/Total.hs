@@ -194,7 +194,7 @@ proofExpression schema bits = proof
         let ieee = case evidence of
               Numeric (Constructor name []) -> name `elem` ["Float32","Float64","Complex64","Complex128"]
               _ -> False
-        in T.Division ieee (proof left) (proof right)
+        in T.Division ieee op (proof left) (proof right)
       Binary op (Numeric (Constructor name [])) left right
         | isExact name, op `elem` [Equal,NotEqual,Less,LessEqual,Greater,GreaterEqual] ->
           T.ExactComparison op (proof left) (proof right)

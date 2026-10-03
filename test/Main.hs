@@ -18,6 +18,7 @@ import qualified CoreSpec
 import qualified IndexedSpec
 import qualified DomainModelSpec
 import qualified TargetNamesSpec
+import qualified TimeSpec
 import qualified ImportSpec
 import qualified DischargeSpec
 import qualified ApiContractSpec
@@ -51,6 +52,7 @@ main = hspec $ do
   IndexedSpec.spec
   DomainModelSpec.spec
   TargetNamesSpec.spec
+  TimeSpec.spec
   ImportSpec.spec
   DischargeSpec.spec
   ApiContractSpec.spec

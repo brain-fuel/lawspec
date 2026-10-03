@@ -1,0 +1,63 @@
+unit example.durations
+
+-- A Duration is a whole number of microseconds, from 0 to about 146 years.
+-- Literals name a unit (us, ms, s, min, h, d), prelude.milliseconds and its
+-- siblings build one from a number, and prelude.toMicroseconds reads one.
+-- +, -, comparisons, * and prelude.quot by whole numbers stay in range or
+-- fail, as division by zero does.
+
+-- A checked definition: the totality audit proves the result in range.
+definition timeoutFor (retries :: Int32 where retries >= 0 && retries <= 5) :: Duration is
+  2s + 500ms * retries
+end
+
+-- An adapter: the time left of a budget, never negative.
+remaining :: Duration -> Duration -> Duration
+
+law `units relate` is
+  definition is
+    `for all` (b :: Bool) . (1us * 1000 == 1ms && 1000ms == 1s && 60s == 1min && 60min == 1h && 24h == 1d) = true
+  end
+end
+
+law `subtraction undoes addition` is
+  definition is
+    `for all` (n :: Int32 where n >= 0) (m :: Int32 where m >= 0) .
+      prelude.milliseconds (prelude.Integer n) + prelude.milliseconds (prelude.Integer m) - prelude.milliseconds (prelude.Integer m) =
+        prelude.milliseconds (prelude.Integer n)
+  end
+end
+
+law `timeouts grow by half a second` is
+  definition is
+    `for all` (r :: Int32 where r >= 0 && r <= 4) . timeoutFor (r + 1) - timeoutFor r = 500ms
+  end
+  example `no retries` is
+    r = 0
+    expect prelude.toMicroseconds (timeoutFor r) = 2000000
+  end
+end
+
+law `spending everything leaves nothing` is
+  definition is
+    `for all` (d :: Duration) . remaining d d = 0us and remaining d 0us = d
+  end
+end
+
+law `what remains of a budget` is
+  definition is
+    `for all` (budget :: Duration) (spent :: Duration) .
+      prelude.toMicroseconds (remaining budget spent) =
+        prelude.select (spent <= budget) (prelude.toMicroseconds budget - prelude.toMicroseconds spent) 0
+  end
+  example `part of a second` is
+    budget = 1s
+    spent = 250ms
+    expect remaining budget spent = 750ms
+  end
+  example `an overrun leaves nothing` is
+    budget = 1s
+    spent = 2s
+    expect remaining budget spent = 0us
+  end
+end

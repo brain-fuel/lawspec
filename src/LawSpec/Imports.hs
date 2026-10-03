@@ -13,6 +13,7 @@ module LawSpec.Imports (resolveImports, importedDefinitionName) where
 import LawSpec.Model
 import LawSpec.Indexed (naturalRefinementName)
 import LawSpec.Collections (collectionsUnit, collectionsAlias, collectionOperation, internalConstructor)
+import LawSpec.Time (timeUnit, timeAlias, timeOperation, durationDefinitions)
 import Control.Monad (forM, forM_, unless, when)
 import Control.Monad.State.Strict (State, execState, modify)
 import Data.Char (toUpper)
@@ -116,7 +117,11 @@ resolveUnit visible table u imports = do
   renamed <- walkUnit names u
   -- Copy what the renamed unit uses, and what that uses in turn.
   let origins = [(resolvedUnit source, portable source) | (_, source) <- sources]
-      wanted = unitReferences renamed
+      -- Arithmetic on durations elaborates to the time unit's definitions
+      -- once types are known, so a unit importing it copies them all.
+      timeSeeds = S.fromList [(ValueName, n) | i <- imports, importUnit i == timeUnit, d <- durationDefinitions,
+        Right n <- [lookupName ValueName (importAlias i ++ "." ++ d)]]
+      wanted = unitReferences renamed `S.union` timeSeeds
   copies <- closure origins wanted
   let (refinements', definitions', laws') = copies
       natural = [r | r <- refinements', refinementName r == naturalRefinementName]
@@ -163,7 +168,7 @@ importScope u i exports = do
         map refinementName (refinements u) ++ map fst (functions u) ++ map lawName (laws u)
   -- The implicit collections import leaves out what the unit declares, and
   -- the containers' constructors, which keep their items canonical.
-  let implicit = importUnit i == collectionsUnit
+  let implicit = importUnit i `elem` [collectionsUnit, timeUnit]
       hidden = [c | Just c <- map internalConstructor (importItems i)]
   listed <- forM [item | item <- importItems i, not (implicit && unquote item `S.member` local)] $ \item -> do
     when (unquote item `S.member` local)
@@ -387,6 +392,9 @@ walkExpr names scope e = case e of
   -- prelude.<op> of a collection is a definition of the collections unit.
   Var n | n `notElem` scope, Just op <- stripPrefix "prelude." n, Just (definition, _) <- collectionOperation op ->
           Var <$> onValue names (collectionsAlias ++ "." ++ definition)
+  -- prelude.<op> of a duration is a definition of the time unit.
+  Var n | n `notElem` scope, Just op <- stripPrefix "prelude." n, Just definition <- timeOperation op ->
+          Var <$> onValue names (timeAlias ++ "." ++ definition)
   Var n | n `elem` scope || take 8 n == "prelude." -> pure (Var n)
         | otherwise -> Var <$> onValue names n
   Apply a b -> Apply <$> walkExpr names scope a <*> walkExpr names scope b

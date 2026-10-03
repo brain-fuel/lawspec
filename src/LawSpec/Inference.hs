@@ -3,6 +3,7 @@
 module LawSpec.Inference where
 
 import LawSpec.Collections (collectionsUnit)
+import LawSpec.Time (durationType)
 import Data.List (stripPrefix)
 import LawSpec.Model
 import LawSpec.Refinement (hasValueRefinements)
@@ -167,7 +168,15 @@ infer env (Unary "-" e) = do
 infer _ (Unary _ _) = throwC "unknown unary operation"
 infer env (Binary op a b) | op `elem` ["&&","||"] = checkExpr env (Named "Bool") a >> checkExpr env (Named "Bool") b >> pure (Named "Bool")
 infer env (Binary op a b) = do
-  (at,bt) <- operandTypes env a b
+  (at0,bt0) <- operandTypes env a b
+  -- Structural equality relates one type: Right 1 == positive x fixes the
+  -- error type of Right 1. Numbers keep their promotion rules.
+  let structural t = case t of
+        Named n -> not (isNumeric n) && take 1 n /= "@"
+        _ -> True
+  (at,bt) <- if op `elem` ["==","!="] && at0 /= bt0 && structural at0 && structural bt0
+    then unify at0 bt0 >> ((,) <$> resolve at0 <*> resolve bt0)
+    else pure (at0,bt0)
   case (at,bt) of
     _ | op `elem` ["==","!="], at == bt, not (case at of Named n -> isNumeric n; _ -> False) -> do
       modify (\s -> s{obligations=Capability "Eq" at:obligations s})
@@ -184,6 +193,15 @@ infer env (Binary op a b) = do
       require capability at
       require capability bt
       pure (Named (if comparison op then "Bool" else if op == "/" then "Rational" else "Integer"))
+    -- Durations add, subtract, scale and divide by whole numbers, and
+    -- compare; LawSpec.Time elaborates each to a checked definition.
+    (Named x,Named y) | durationType `elem` [x,y] -> case op of
+      _ | op `elem` ["+","-"], x == y -> pure (Named durationType)
+        | op == "*", x == durationType, isInteger y -> pure (Named durationType)
+        | op == "*", y == durationType, isInteger x -> pure (Named durationType)
+        | op == "quot", x == durationType, isInteger y -> pure (Named durationType)
+        | comparison op, x == y -> pure (Named "Bool")
+      _ -> throwC ("durations support +, - and comparisons with durations, and * and prelude.quot with whole numbers, not " ++ op ++ " on " ++ x ++ " and " ++ y)
     (Named x,Named y) -> do
       result <- lift (promote op x y)
       when (op `elem` ["<","<=",">",">="] && result `elem` ["Complex64","Complex128"]) (throwC "complex values are not ordered")

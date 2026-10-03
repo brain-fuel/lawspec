@@ -35,7 +35,7 @@ data Proof
   | Comparison BinaryOp Proof Proof
   | ExactComparison BinaryOp Proof Proof
   | ExactArithmetic BinaryOp Proof Proof
-  | Division Bool Proof Proof
+  | Division Bool BinaryOp Proof Proof
   | Conversion Bool Proof
   | NarrowInteger (Maybe Integer) (Maybe Integer) Proof
   | Integral Proof
@@ -98,7 +98,9 @@ auditDeferring constructors contracts definitions = do
         subject == argument]
       initialFacts = emptyFacts{constructorContracts=constructorTable,unfoldings=unfoldable,
         naturalMeasures=naturalFixpoint S.empty,
-        measureIds=M.fromListWith (++) [(templateName (proofName d),[proofId d]) | d <- definitions]}
+        measureIds=M.fromListWith (++) [(templateName (proofName d),[proofId d]) | d <- definitions],
+        guarantees=M.fromList [(contractOwner c,(parameters,contractResult c,postconditions c)) | c <- contracts,
+          not (null (postconditions c)), Just parameters <- [M.lookup (contractOwner c) signatures]]}
       -- A measure is natural when every branch is built from natural values:
       -- literals, its own calls, and calls of measures already known natural.
       naturalFixpoint known =
@@ -200,7 +202,7 @@ auditDeferring constructors contracts definitions = do
     nonlinearWith known expression = case expression of
       ExactArithmetic Multiply a b | constantFactor a == Nothing && constantFactor b == Nothing -> True
       ExactArithmetic Power _ _ -> True
-      Division False _ _ -> True
+      Division False _ _ _ -> True
       Call callee arguments -> callee `S.member` known || any (nonlinearWith known) arguments
       LetCall _ callee arguments body -> callee `S.member` known || any (nonlinearWith known) (body : arguments)
       _ -> any (nonlinearWith known) (children expression)
@@ -244,7 +246,7 @@ children expression = case expression of
   Comparison _ a b -> [a,b]
   ExactComparison _ a b -> [a,b]
   ExactArithmetic _ a b -> [a,b]
-  Division _ a b -> [a,b]
+  Division _ _ a b -> [a,b]
   Conversion _ value -> [value]
   NarrowInteger _ _ value -> [value]
   Integral value -> [value]
@@ -287,9 +289,12 @@ data Facts = Facts
   -- Definition identities by template name, so a sibling fact reaches every
   -- specialized instance of a family's index measure.
   , measureIds :: M.Map String [Id]
+  -- Each definition's parameters, result binder and postconditions: a call
+  -- a goal mentions satisfies its definition's postconditions.
+  , guarantees :: M.Map Id ([Id],Id,[Proof])
   }
 emptyFacts :: Facts
-emptyFacts = Facts S.empty S.empty [] [] [] S.empty [] [] M.empty [] M.empty S.empty M.empty S.empty M.empty
+emptyFacts = Facts S.empty S.empty [] [] [] S.empty [] [] M.empty [] M.empty S.empty M.empty S.empty M.empty M.empty
 
 -- Instances of one template share their recursion check.
 sameDefinition :: Id -> Id -> Bool
@@ -452,7 +457,7 @@ walk signatures contracts self provenance facts expression = case expression of
     unless (entails facts (ExactComparison GreaterEqual exponent (Literal (SInteger "Integer" 0))))
       (Left "pow requires a proven non-negative exponent")
     (++) <$> recur base <*> recur exponent
-  Division ieee left denominator -> do
+  Division ieee _ left denominator -> do
     unless (ieee || knownNonzero facts denominator)
       (Left "exact division/quotient/remainder requires a proven nonzero denominator")
     (++) <$> recur left <*> recur denominator
@@ -595,8 +600,17 @@ knownPresent facts expression =
     Literal (SPresent _ (Just _)) -> True
     _ -> False
 
+-- Assuming a fact also assumes what its calls and quotients guarantee (see
+-- derivedFacts). Assuming a fact derives from its parts too, so a derived
+-- fact already known is not assumed again; only faithful facts, which are
+-- remembered as known, are derived.
 assume :: Bool -> Proof -> Facts -> Facts
 assume truth expression facts =
+  foldl (flip (assumeOnce True)) (assumeOnce truth expression facts)
+    [fact | fact <- derivedFacts facts expression, faithful fact, fact `notElem` truths facts]
+
+assumeOnce :: Bool -> Proof -> Facts -> Facts
+assumeOnce truth expression facts =
   let tracked = facts{usedVariables=S.union (usedVariables facts) (S.fromList (allVariables expression))}
       remembered = if truth && faithful expression
         then tracked{truths=nub (expression : truths tracked)} else tracked
@@ -665,6 +679,9 @@ linear expression = case expression of
     -- makes x * y and y * x the same atom.
     | otherwise -> Just (R.variable (nonlinearAtom "*" (sortOn show (map unwrapped [a, b]))))
   ExactArithmetic Power a b -> Just (R.variable (nonlinearAtom "^" (map unwrapped [a, b])))
+  -- An exact quotient, integer quotient or remainder is a pure function of
+  -- its operands, so it is an atom too, named by its operator.
+  Division False op a b -> Just (R.variable (nonlinearAtom (show op) (map unwrapped [a, b])))
   NarrowInteger _ _ value -> linear value
   Integral value -> linear value
   Call callee arguments -> Just (R.variable (callAtom callee arguments))
@@ -722,8 +739,36 @@ entails facts expression
     IsPresent value -> knownPresent facts value
     Logical And a b -> entails facts a && entails facts b
     _ -> case predicate expression of
-      Just condition -> R.prove 10000 (constraints facts) condition == R.Proven
+      Just condition -> R.prove 10000 (constraints (foldl (flip (assumeOnce True)) facts (derivedFacts facts expression))) condition == R.Proven
       Nothing -> False
+
+-- Facts that hold of the terms an expression mentions, whatever it asserts:
+-- a call satisfies its definition's postconditions (checked definitions are
+-- pure, so the call stands for its result) and, on a known constructor,
+-- equals the selected branch; and an integer quotient of a
+-- non-negative dividend by a positive divisor lies between zero and the
+-- dividend.
+derivedFacts :: Facts -> Proof -> [Proof]
+derivedFacts facts expression = concatMap guarantee (nub calls') ++ concatMap unfolded (nub calls') ++ concatMap bound (nub quotients)
+  where
+    terms = universe expression
+    universe term = term : concatMap universe (children term)
+    calls' = [(callee, arguments) | Call callee arguments <- terms]
+    quotients = [(a, b) | Division False Quotient a b <- terms]
+    guarantee (callee, arguments) = case M.lookup callee (guarantees facts) of
+      Just (parameters, result, conditions) | length parameters == length arguments ->
+        let substitution = M.fromList ((result, Call callee arguments) : zip parameters arguments)
+        in map (substituteProof substitution) conditions
+      _ -> []
+    -- A call on a known constructor equals the selected branch.
+    unfolded (callee, arguments) = [ExactComparison Equal (Call callee arguments) value | Just value <- [unfold facts callee arguments]]
+    integer n = Literal (SInteger "Integer" n)
+    -- Quotient operands are integers, so a positive divisor is at least one.
+    bound (a, b)
+      | entails facts (ExactComparison GreaterEqual a (integer 0)) && entails facts (ExactComparison Greater b (integer 0)) =
+          let q = Division False Quotient a b
+          in [ExactComparison GreaterEqual q (integer 0), ExactComparison LessEqual q a]
+      | otherwise = []
 
 freeVariables :: Proof -> [Id]
 freeVariables expression = case expression of
@@ -771,7 +816,7 @@ substituteProof replacements expression = case expression of
   Comparison op a b -> Comparison op (recur a) (recur b)
   ExactComparison op a b -> ExactComparison op (recur a) (recur b)
   ExactArithmetic op a b -> ExactArithmetic op (recur a) (recur b)
-  Division ieee a b -> Division ieee (recur a) (recur b)
+  Division ieee op a b -> Division ieee op (recur a) (recur b)
   Conversion total value -> Conversion total (recur value)
   NarrowInteger lower upper value -> NarrowInteger lower upper (recur value)
   Integral value -> Integral (recur value)
@@ -826,8 +871,9 @@ elementFacts facts value member = foldl (flip (assume True)) facts
       Just identity <- [variableIdentity value], variableIdentity source == Just identity]
 
 -- Only remember Boolean expressions whose proof view preserves their identity.
--- Sequence/Match/Division are deliberately excluded: the proof extraction
--- erases runtime distinctions there (e.g. quotient versus exact division).
+-- Sequence/Match and IEEE division are deliberately excluded: the proof
+-- extraction erases runtime distinctions there. Exact division keeps its
+-- operator, so a quotient is not confused with an exact division.
 faithful :: Proof -> Bool
 faithful expression = case expression of
   ListNil -> True
@@ -841,6 +887,7 @@ faithful expression = case expression of
   Comparison _ a b -> faithful a && faithful b
   ExactComparison _ a b -> faithful a && faithful b
   ExactArithmetic _ a b -> faithful a && faithful b
+  Division False _ a b -> faithful a && faithful b
   Integral value -> faithful value
   IsPresent value -> faithful value
   PresentValue value -> faithful value
@@ -929,7 +976,7 @@ normalizeCalls scope expression = evalState (go expression pure)
       Comparison op a b -> pair (Comparison op) a b continuation
       ExactComparison op a b -> pair (ExactComparison op) a b continuation
       ExactArithmetic op a b -> pair (ExactArithmetic op) a b continuation
-      Division ieee a b -> pair (Division ieee) a b continuation
+      Division ieee op a b -> pair (Division ieee op) a b continuation
       Negated value -> go value (continuation . Negated)
       Conversion total value -> go value (continuation . Conversion total)
       NarrowInteger lo hi value -> go value (continuation . NarrowInteger lo hi)
@@ -962,7 +1009,30 @@ callResultFacts signatures contracts facts result callee arguments =
       evidence = equal existing : [equal unfolded | Just unfolded <- [unfold facts callee arguments]] ++
         [ExactComparison GreaterEqual (Variable result) (Literal (SInteger "Integer" 0))
           | callee `S.member` naturalMeasures facts]
-  in foldl (flip (assume True)) initial (map (expandKnown facts) guarantees ++ evidence)
+      -- A fact about the call is also a fact about its named result. The
+      -- linear solver relates the two through the equation above, but a
+      -- non-linear atom such as call * k is matched by its text, so facts are
+      -- restated with the result in place of the call.
+      restated = [abstractCall existing (Variable result) fact | fact <- truths facts, fact /= abstractCall existing (Variable result) fact]
+  in foldl (flip (assume True)) initial (map (expandKnown facts) guarantees ++ evidence ++ restated)
+
+-- Replaces a call in the arithmetic, comparison and logical structure of a
+-- fact. Calls are pure, so the replacement denotes the same value.
+abstractCall :: Proof -> Proof -> Proof -> Proof
+abstractCall call replacement = go
+  where
+    go term | term == call = replacement
+    go term = case term of
+      Logical op a b -> Logical op (go a) (go b)
+      Negated a -> Negated (go a)
+      Comparison op a b -> Comparison op (go a) (go b)
+      ExactComparison op a b -> ExactComparison op (go a) (go b)
+      ExactArithmetic op a b -> ExactArithmetic op (go a) (go b)
+      Division ieee op a b -> Division ieee op (go a) (go b)
+      Conversion exact a -> Conversion exact (go a)
+      NarrowInteger lo hi a -> NarrowInteger lo hi (go a)
+      Integral a -> Integral (go a)
+      _ -> term
 
 -- Expanding is bounded by the finite constructor terms and known constructor
 -- values it follows; each step removes one known constructor from an argument.

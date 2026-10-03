@@ -48,6 +48,7 @@ extra-source-files:
     examples/specs/currying.lawspec
     examples/specs/data_types.lawspec
     examples/specs/domain_modeling.lawspec
+    examples/specs/durations.lawspec
     examples/specs/equivalent.lawspec
     examples/specs/finite_data.lawspec
     examples/specs/flow_stack.lawspec
@@ -270,6 +271,7 @@ library
       LawSpec.TargetNames
       LawSpec.Testing
       LawSpec.TestManifest
+      LawSpec.Time
       LawSpec.WebData
       LawSpec.WebDefinitions
       LawSpec.WebExpr
@@ -431,6 +433,7 @@ test-suite lawspec-test
       StructuralSpec
       TargetNamesSpec
       TestManifestSpec
+      TimeSpec
       TotalSpec
       Paths_lawspec
   hs-source-dirs:
