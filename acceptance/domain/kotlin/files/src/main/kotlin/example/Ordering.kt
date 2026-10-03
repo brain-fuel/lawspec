@@ -26,10 +26,4 @@ object Ordering {
         if (total > 20000) return LawSpecRuntime.Left(OrderError.PriceTooHigh)
         return LawSpecRuntime.Right(PricedOrder(value0.id, value0.quantity, total))
     }
-
-    fun placeOrder(value0: UnvalidatedOrder): LawSpecRuntime.Either<OrderError, PricedOrder> {
-        val validated = validateOrder(value0)
-        if (validated is LawSpecRuntime.Left) return LawSpecRuntime.Left(validated.value())
-        return priceOrder((validated as LawSpecRuntime.Right).value())
-    }
 }

@@ -10,7 +10,7 @@ type Receipt is Receipt item :: Text total :: Int64 end
 type OrderProblem is | EmptyItem | BadQuantity end
 
 -- A workflow chains adapter steps. LawSpec checks that the steps fit
--- together and adds a law: checkout is validate followed by charge, and the
+-- together and generates checkout: validate followed by charge, where the
 -- first problem stops the chain.
 workflow checkout :: RawOrder -> Either OrderProblem Receipt is
   validate :: RawOrder -> Either OrderProblem ValidOrder

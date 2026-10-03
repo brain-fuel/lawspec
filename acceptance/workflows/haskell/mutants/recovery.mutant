@@ -1,0 +1,6 @@
+@@ src/Example/Workflows.hs
+<<<<<<<
+waitlist Data.SignupErrorUnavailable = Right (Data.Account (T.pack "waitlist") 18 0)
+=======
+waitlist Data.SignupErrorUnavailable = Right (Data.Account (T.pack "waitlist") 18 1)
+>>>>>>>

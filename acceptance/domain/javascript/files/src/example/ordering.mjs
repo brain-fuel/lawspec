@@ -18,8 +18,3 @@ export function priceOrder(value0) {
   return new data.Right(new data.PricedOrder(value0.id, value0.quantity, total));
 }
 
-export function placeOrder(value0) {
-  const validated = validateOrder(value0);
-  if (validated instanceof data.Left) return validated;
-  return priceOrder(validated.value);
-}

@@ -19,10 +19,15 @@ emitGoDefinitions :: D.Layout -> Int -> [DataDeclaration] -> [Unit] -> Either St
 emitGoDefinitions _ _ _ units | null (concatMap unitDefinitions units) = pure []
 emitGoDefinitions layout bits declarations units = do
   contracts <- checkedDefinitionContracts bits declarations units
-  bodies <- mapM (implementation contracts) (zip [0::Int ..] (concatMap unitDefinitions units))
-  mapM (unitFile bodies) units
+  bodies <- mapM (\(i, (owner, d)) -> (,) (owner, definitionOrchestrates d) <$> implementation contracts (i, d))
+    (zip [0::Int ..] [(unitId u, d) | u <- units, d <- unitDefinitions u])
+  -- A workflow calls its own package's adapters, so only that package has it.
+  mapM (\unit -> unitFile [body | ((owner, orchestrates), body) <- bodies, not orchestrates || owner == unitId unit] unit) units
   where
     callees = definitionCalls units
+    definitionIds = map (declarationId . definitionDeclaration) (concatMap unitDefinitions units)
+    adapters = [(declarationId d, (idText (unitId u), d)) | u <- units, d <- unitDeclarations u,
+      declarationId d `notElem` definitionIds]
     width = D.text (show bits)
     schema = "_lawSpecDefinitionSchema"
     symbols = D.text "symbols map[string]*LawSpecSymbol"
@@ -51,10 +56,22 @@ emitGoDefinitions layout bits declarations units = do
           local identity = maybe (error "unresolved Go local") id (lookup identity names)
           arguments = [line (local (binderId binder) ++ " LawSpecValue") | binder <- definitionArguments d]
           external term values = case expressionNode term of
-            ExternalCall identity _ -> do
-              name <- maybe (Left "unresolved Go total call") Right (lookup identity callees)
+            ExternalCall identity _ | Just name <- lookup identity callees ->
               pure (E.call name (line "symbols":values))
-            _ -> Left "expected Go definition call"
+            -- An orchestration calls an adapter of its own package natively:
+            -- the values cross to native and back through the codecs.
+            ExternalCall identity _ | Just (_, adapter) <- lookup identity adapters -> do
+              let (parameterTypes, resultType) = functionType (declarationType adapter)
+              codecs <- mapM (Native.goCodecWithContext "symbols" declarations) parameterTypes
+              resultCodec <- Native.goCodecWithContext "symbols" declarations resultType
+              let call = E.call (capitalize (declarationName adapter))
+                    [E.call ("codec" ++ show i ++ ".toNative") [value] | (i, value) <- zip [0::Int ..] values]
+                  awaited = if declarationAsync adapter then call <> line ".Await()" else call
+              pure (line "func() LawSpecValue " <> D.block 8 (D.joinWith D.hardline
+                ([line ("schema := " ++ schema), line ("bits := " ++ show bits), line "_ = bits"] ++
+                 [assign ("codec" ++ show i) (line codec) | (i, codec) <- zip [0::Int ..] codecs] ++
+                 [assign "resultCodec" (line resultCodec), line "return " <> E.call "resultCodec.fromNative" [awaited]])) <> line "()")
+            _ -> Left "unresolved Go total call"
       body <- E.renderExpression declarations bits schema local external (definitionBody d)
       -- Arguments and results were checked where they were built, decoded
       -- or drawn; the native wrappers check values crossing from adapters.

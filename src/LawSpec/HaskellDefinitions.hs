@@ -12,17 +12,27 @@ import qualified LawSpec.Code.Doc as D
 import Data.Char (toUpper)
 import Data.List (nub, intercalate)
 
+-- Workflows call adapters, so they live in LawSpecWorkflows, apart from the
+-- bodies adapters may import.
 definitionCalls :: [Unit] -> [(Id,String)]
-definitionCalls units = [(declarationId (definitionDeclaration d), "Definitions.evaluate" ++ show i)
+definitionCalls units = [(declarationId (definitionDeclaration d),
+  (if definitionOrchestrates d then "Workflows" else "Definitions") ++ ".evaluate" ++ show i)
   | (i,d) <- zip [0::Int ..] (concatMap unitDefinitions units)]
 
 emitHaskellDefinitions :: D.Layout -> Int -> [DataDeclaration] -> [Unit] -> Either String [Artifact]
 emitHaskellDefinitions _ _ _ units | null (concatMap unitDefinitions units) = pure []
 emitHaskellDefinitions layout bits declarations units = do
   contracts <- checkedDefinitionContracts bits declarations units
-  bodies <- mapM (implementation contracts) (zip [0::Int ..] (concatMap unitDefinitions units))
-  wrappers <- mapM nativeUnit (filter (not . null . unitDefinitions) units)
-  pure (file "LawSpecDefinitionBodies" [] bodies : wrappers)
+  let indexed = zip [0::Int ..] (concatMap unitDefinitions units)
+  bodies <- mapM (implementation contracts "Definitions") [x | x@(_, d) <- indexed, not (definitionOrchestrates d)]
+  workflows <- mapM (implementation contracts "Workflows") [x | x@(_, d) <- indexed, definitionOrchestrates d]
+  wrappers <- mapM (nativeUnit False) (filter (any (not . definitionOrchestrates) . unitDefinitions) units)
+  workflowWrappers <- mapM (nativeUnit True) (filter (any definitionOrchestrates . unitDefinitions) units)
+  let adapterImports = nub ["import qualified " ++ moduleOf owner | (_, (owner, _)) <- adapters]
+  pure (file "LawSpecDefinitionBodies" [] bodies :
+    [file "LawSpecWorkflows" ("import qualified LawSpecDefinitionBodies as Definitions" : adapterImports ++ "" : environment) workflows
+    | not (null workflows)] ++
+    wrappers ++ workflowWrappers)
   where
     names = definitionCalls units
     text = D.text
@@ -52,17 +62,38 @@ emitHaskellDefinitions layout bits declarations units = do
     validate ty value = do
       ref <- Native.haskellTypeReferenceDoc ty
       pure (E.apply "Schema.validateWith" [E.apply "P.Just" [text "symbols"],text "_lawspecSchema",ref,text "_lawspecBits",value])
-    implementation contracts (index,d) = do
+    adapters = [ (callee, (owner, adapter)) | d <- concatMap unitDefinitions units, definitionOrchestrates d
+               , callee <- callsIn (definitionBody d), Just (owner, adapter) <- [lookup callee adapterTable] ]
+    adapterTable = [(declarationId d, (unitId u, d)) | u <- units, d <- unitDeclarations u,
+      declarationId d `notElem` map (declarationId . definitionDeclaration) (concatMap unitDefinitions units)]
+    callsIn expression = case expressionNode expression of
+      ExternalCall callee arguments -> callee : concatMap callsIn arguments
+      _ -> concatMap callsIn (children expression)
+    moduleOf owner = intercalate "." (map modulePart (split '.' (idText owner)))
+    implementation contracts home (index,d) = do
       let binders = definitionArguments d ++ nestedBinders (definitionBody d)
           locals = zip (nub (map binderId binders)) ["value" ++ show i | i <- [0::Int ..]]
           local identity = maybe (error "unresolved Haskell local") id (lookup identity locals)
           arguments = map (local . binderId) (definitionArguments d)
           name = "evaluate" ++ show index
+          -- Calls within the same module are unqualified.
+          localName callee = case break (== '.') callee of
+            (prefix, '.' : rest) | prefix == home -> rest
+            _ -> callee
           external term values = case expressionNode term of
-            ExternalCall identity _ -> do
-              callee <- maybe (Left "unresolved Haskell total call") Right (lookup identity names)
-              pure (E.checked (E.apply (drop (length ("Definitions." :: String)) callee) (text "symbols":values)))
-            _ -> Left "expected Haskell definition call"
+            ExternalCall identity _ | Just callee <- lookup identity names ->
+              pure (E.checked (E.apply (localName callee) (text "symbols":values)))
+            -- A workflow calls an adapter natively, through the codecs.
+            ExternalCall identity _ | Just (owner, adapter) <- lookup identity adapterTable -> do
+              let (parameterTypes, resultType) = functionType (declarationType adapter)
+                  context' = E.apply "P.Just" [text "symbols"]
+              codecs <- mapM (Native.haskellCodecDocWithContext context' declarations "_lawspecSchema" "_lawspecBits") parameterTypes
+              resultCodec <- Native.haskellCodecDocWithContext context' declarations "_lawspecSchema" "_lawspecBits" resultType
+              let call = E.apply (moduleOf owner ++ "." ++ declarationName adapter)
+                    [E.checked (E.apply "Codec.decode" [codec, value]) | (codec, value) <- zip codecs values]
+                  awaited = if declarationAsync adapter then E.apply "LS.awaitTask" [call] else call
+              pure (E.checked (E.apply "Codec.encode" [resultCodec, awaited]))
+            _ -> Left "unresolved Haskell total call"
       -- Arguments and results were checked where they were built, decoded
       -- or drawn; the native wrappers check values crossing from adapters.
       let checks = []
@@ -96,10 +127,12 @@ emitHaskellDefinitions layout bits declarations units = do
       pure (signature name (text "LS.SymbolContext" : replicate (length arguments) (text "LS.Scalar") ++
           [text "P.Either P.String LS.Scalar"]) <> D.hardline <>
         binding name arguments (context (declarationId (definitionDeclaration d)) statements))
-    nativeUnit unit = do
-      methods <- mapM native (unitDefinitions unit)
-      let name = "LawSpecDefinitions." ++ intercalate "." (map modulePart (split '.' (idText (unitId unit))))
-      pure (file name ["import qualified LawSpecDefinitionBodies as Definitions"] methods)
+    nativeUnit workflows unit = do
+      methods <- mapM native [d | d <- unitDefinitions unit, definitionOrchestrates d == workflows]
+      let name = (if workflows then "LawSpecWorkflows." else "LawSpecDefinitions.") ++
+            intercalate "." (map modulePart (split '.' (idText (unitId unit))))
+      pure (file name [if workflows then "import qualified LawSpecWorkflows as Workflows"
+        else "import qualified LawSpecDefinitionBodies as Definitions"] methods)
     native d = do
       let declaration = definitionDeclaration d
           (args,result) = functionType (declarationType declaration)

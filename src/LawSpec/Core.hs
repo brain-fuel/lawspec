@@ -30,10 +30,17 @@ pattern Declaration identity name ty origin <- MkDeclaration identity name ty or
 -- A definition supplies a checked body rather than a user-owned adapter.
 -- Calls retain resolved declaration identities; the total-definition audit
 -- determines which declaration bodies may be invoked within this closed set.
-data Definition = Definition
+-- An orchestration is a definition that may call adapters: a workflow, whose
+-- composition LawSpec generates. It is run natively, never evaluated by the
+-- compiler. Definition builds an ordinary one.
+data Definition = MkDefinition
   { definitionDeclaration :: Declaration, definitionArguments :: [Binder]
-  , definitionBody :: Expr
+  , definitionBody :: Expr, definitionOrchestrates :: Bool
   } deriving (Eq, Show, Generic)
+pattern Definition :: Declaration -> [Binder] -> Expr -> Definition
+pattern Definition declaration arguments body <- MkDefinition declaration arguments body _
+  where Definition declaration arguments body = MkDefinition declaration arguments body False
+{-# COMPLETE Definition #-}
 -- Products are single-constructor declarations; sums retain the identity of
 -- each constructor even when their payloads have identical representations.
 data DataDeclaration = DataDeclaration

@@ -65,13 +65,44 @@ spec = describe "domain modeling" $ do
       rejects "duplicate data type: OrderError" "wrapper OrderError is Int32 end\n"
 
   describe "workflows" $ do
-    it "declare the steps and add a railway composition law" $
+    it "declare the steps, define the workflow and add its laws" $
       case compileOrders placeOrder of
         Left diagnostics -> expectationFailure (show diagnostics)
         Right (units, expanded) -> do
           map fst (functions (head units)) `shouldSatisfy`
-            (\names -> all (`elem` names) ["placeOrder", "validateOrder", "priceOrder"])
-          map name expanded `shouldContain` ["placeOrder composes its steps"]
+            (\names -> all (`elem` names) ["validateOrder", "priceOrder"])
+          map functionName (functionDefinitions (head units)) `shouldContain` ["placeOrder"]
+          orchestrations (head units) `shouldBe` ["placeOrder"]
+          map name expanded `shouldSatisfy` (\names -> all (`elem` names)
+            [ "placeOrder composes its stages", "placeOrder succeeds when every stage does"
+            , "placeOrder stops when validateOrder fails", "placeOrder stops when priceOrder fails" ])
+    it "generate an error type with a constructor per fallible step" $
+      case compileOrders (unlines
+        [ "workflow checkout :: UnvalidatedOrder -> Either _ PricedOrder is"
+        , "  validateOrder :: UnvalidatedOrder -> Either OrderError ValidatedOrder"
+        , "  priceOrder :: ValidatedOrder -> Either Text PricedOrder"
+        , "end" ]) of
+        Left diagnostics -> expectationFailure (show diagnostics)
+        Right (units, _) ->
+          [map dataConstructorName (dataTypeConstructors d) | d <- dataTypes (head units), dataTypeName d == "CheckoutError"]
+            `shouldBe` [["ValidateOrderFailed", "PriceOrderFailed"]]
+    it "map a step's error into a declared error type" $
+      compileOrders (unlines
+        [ "definition describe (t :: Text) :: OrderError is PriceTooHigh end"
+        , "workflow checkout :: UnvalidatedOrder -> Either OrderError PricedOrder is"
+        , "  validateOrder :: UnvalidatedOrder -> Either OrderError ValidatedOrder"
+        , "  priceOrder :: ValidatedOrder -> Either Text PricedOrder"
+        , "  mapError describe"
+        , "end" ]) `shouldSatisfy` either (const False) (const True)
+    it "add a recovery law for orElse" $
+      case compileOrders (unlines
+        [ "workflow checkout :: UnvalidatedOrder -> Either OrderError ValidatedOrder is"
+        , "  validateOrder :: UnvalidatedOrder -> Either OrderError ValidatedOrder"
+        , "  orElse retryOrder"
+        , "end"
+        , "retryOrder :: OrderError -> Either OrderError ValidatedOrder" ]) of
+        Left diagnostics -> expectationFailure (show diagnostics)
+        Right (_, expanded) -> map name expanded `shouldContain` ["checkout recovers with retryOrder"]
     it "compose total steps without Either" $
       compileOrders (unlines
         [ "workflow receipt :: PricedOrder -> Receipt is"
@@ -98,16 +129,29 @@ spec = describe "domain modeling" $ do
           , "  priceOrder :: UnvalidatedOrder -> Either OrderError PricedOrder"
           , "end" ])
       it "reject steps with different error types" $
-        rejects "fails with Text but earlier steps fail with" (unlines
+        rejects "priceOrder fails with Text but the workflow fails with OrderError; map it with mapError" (unlines
           [ "workflow placeOrder :: UnvalidatedOrder -> Either OrderError PricedOrder is"
           , "  validateOrder :: UnvalidatedOrder -> Either OrderError ValidatedOrder"
           , "  priceOrder :: ValidatedOrder -> Either Text PricedOrder"
           , "end" ])
-      it "reject a workflow whose result differs from its steps" $
-        rejects "but the workflow returns" (unlines
+      it "reject a total workflow with a fallible step" $
+        rejects "validateOrder can fail, so the workflow must return Either" (unlines
           [ "workflow placeOrder :: UnvalidatedOrder -> PricedOrder is"
           , "  validateOrder :: UnvalidatedOrder -> Either OrderError ValidatedOrder"
           , "  priceOrder :: ValidatedOrder -> Either OrderError PricedOrder"
+          , "end" ])
+      it "reject a workflow whose result differs from its stages" $
+        rejects "but the workflow returns" (unlines
+          [ "workflow placeOrder :: UnvalidatedOrder -> Either OrderError ValidatedOrder is"
+          , "  validateOrder :: UnvalidatedOrder -> Either OrderError ValidatedOrder"
+          , "  priceOrder :: ValidatedOrder -> Either OrderError PricedOrder"
+          , "end" ])
+      it "reject mapError before any fallible stage" $
+        rejects "must follow a stage that can fail" (unlines
+          [ "definition describe (t :: Text) :: OrderError is PriceTooHigh end"
+          , "workflow placeOrder :: UnvalidatedOrder -> Either OrderError ValidatedOrder is"
+          , "  mapError describe"
+          , "  validateOrder :: UnvalidatedOrder -> Either OrderError ValidatedOrder"
           , "end" ])
       it "reject steps with more than one input" $
         rejects "must take exactly one input" (unlines

@@ -1,0 +1,6 @@
+@@ src/main/java/example/Workflows.java
+<<<<<<<
+    if (value0.name().isEmpty()) return new LawSpecRuntime.Left<>(new SignupError.MissingName());
+=======
+    if (value0.name().isBlank() && false) return new LawSpecRuntime.Left<>(new SignupError.MissingName());
+>>>>>>>

@@ -18,7 +18,7 @@
 --   m <*> n  prelude.both m n         both successes as a Pair, else the first error
 --            prelude.ensure p e m     fail with e unless p holds of the value
 --            prelude.isLeft m, prelude.isRight m
-module LawSpec.Railway (railwayUnit, railwayExpr, railwayOperators, usesPair) where
+module LawSpec.Railway (railwayUnit, railwayLaw, railwayExpr, railwayOperators, usesPair) where
 
 import Control.Monad.State.Strict (State, evalState, get, put)
 import Data.List (isInfixOf)
@@ -32,6 +32,12 @@ railwayOperators = [">=>", "<$>", "<!>", "<*>", ">>=", "<|>", "??", "|>"]
 -- Whether a source uses pairs, which the collections unit provides.
 usesPair :: String -> Bool
 usesPair text = "<*>" `isInfixOf` text || "prelude.both" `isInfixOf` text
+
+railwayLaw :: Law -> Law
+railwayLaw l = case laws (railwayUnit emptyUnit { laws = [l] }) of
+  [rewritten] -> rewritten
+  _ -> l
+  where emptyUnit = Unit "" [] [] [] [] [] [] [] [] []
 
 railwayUnit :: Unit -> Unit
 railwayUnit u = u

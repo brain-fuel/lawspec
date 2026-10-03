@@ -470,8 +470,11 @@ validateDefinitionTypes :: [Core.DataDeclaration] -> Int -> Unit -> Either [Diag
 validateDefinitionTypes declarations bits unit = () <$ inferDefinitionTemplates declarations bits unit
 
 validateDefinitionTotality :: [Core.DataDeclaration] -> Int -> Unit -> Either [Diagnostic] ()
+-- An orchestration's body is type-checked like any definition, but calls
+-- adapters, so only the others are proved total.
 validateDefinitionTotality declarations bits unit =
   inferDefinitionTemplates declarations bits unit >>= auditTemplates declarations bits unit
+    . filter (\(d, _, _, _) -> functionName d `notElem` orchestrations unit)
 
 inferDefinitionTemplates :: [Core.DataDeclaration] -> Int -> Unit -> Either [Diagnostic] [(FunctionDefinition, TypedExpr, [TypedExpr], [TypedExpr])]
 inferDefinitionTemplates declarations bits unit = do

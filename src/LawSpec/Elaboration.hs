@@ -246,7 +246,7 @@ elaborateDefinitionUnit dataDeclarations bits u = do
     declaration <- case filter ((== did) . C.declarationId) ds of
       [value] -> Right value
       _ -> Left (name ++ ": missing or duplicate definition signature")
-    pure (C.Definition declaration arguments body)
+    pure (C.MkDefinition declaration arguments body (name `elem` S.orchestrations u))
   contracts <- mapM (elaborateContract dataDeclarations bits u)
     [contract | contract <- S.contracts u,
       S.contractName contract `elem` map S.functionName (S.functionDefinitions u)]

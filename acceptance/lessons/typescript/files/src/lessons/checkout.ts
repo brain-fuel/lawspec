@@ -1,12 +1,6 @@
 // User-owned LawSpec adapter.
 import * as data from '.././lawspec_data.js';
 
-export function checkout(value0: data.RawOrder): data.Either<data.OrderProblem, data.Receipt> {
-  const validated = validate(value0);
-  if (validated instanceof data.Left) return new data.Left(validated.value);
-  return new data.Right(charge(validated.value));
-}
-
 export function validate(value0: data.RawOrder): data.Either<data.OrderProblem, data.ValidOrder> {
   if (value0.item.length === 0) return new data.Left(new data.OrderProblemEmptyItem());
   if (value0.quantity < 1 || value0.quantity > 20) return new data.Left(new data.OrderProblemBadQuantity());

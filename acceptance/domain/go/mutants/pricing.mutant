@@ -1,0 +1,6 @@
+@@ example/ordering/adapter.go
+<<<<<<<
+	total := int64(value0.Quantity.Value) * 25
+=======
+	total := int64(value0.Quantity.Value) * 250
+>>>>>>>

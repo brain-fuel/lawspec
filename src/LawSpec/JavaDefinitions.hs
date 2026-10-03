@@ -1,8 +1,8 @@
 -- Native entry points and checked implementation helpers for total definitions.
-module LawSpec.JavaDefinitions (emitJavaDefinitions, emitJvmDefinitionBodies, definitionCalls) where
+module LawSpec.JavaDefinitions (emitJavaDefinitions, emitJvmDefinitionBodies, definitionCalls, orchestratedAdapters, kotlinAdapterBridge) where
 
 import Control.Monad (forM)
-import Data.Char (toUpper)
+import Data.Char (isAlphaNum, toUpper)
 import Data.List (intercalate)
 import LawSpec.Common
 import LawSpec.Core
@@ -11,6 +11,25 @@ import LawSpec.Core.Evidence (runtimePostconditions)
 import qualified LawSpec.JavaData as Native
 import qualified LawSpec.JavaExpr as E
 import qualified LawSpec.Code.Doc as D
+
+-- The adapters orchestrations call, with their units.
+orchestratedAdapters :: [Unit] -> [(Id, (Id, Declaration))]
+orchestratedAdapters units =
+  [ (callee, adapter)
+  | callee <- nubIds [c | d <- concatMap unitDefinitions units, definitionOrchestrates d, c <- calls (definitionBody d)]
+  , Just adapter <- [lookup callee table] ]
+  where
+    definitionIds = map (declarationId . definitionDeclaration) (concatMap unitDefinitions units)
+    table = [(declarationId d, (unitId u, d)) | u <- units, d <- unitDeclarations u, declarationId d `notElem` definitionIds]
+    calls expression = case expressionNode expression of
+      ExternalCall callee arguments -> callee : concatMap calls arguments
+      _ -> concatMap calls (children expression)
+    nubIds = foldr (\x acc -> if x `elem` acc then acc else x : acc) []
+
+-- The Kotlin bridge method through which shared JVM bodies call a Kotlin
+-- adapter.
+kotlinAdapterBridge :: Id -> String
+kotlinAdapterBridge identity = "call_" ++ map (\c -> if isAlphaNum c then c else '_') (idText identity)
 
 definitionCalls :: [Unit] -> [(Id,String)]
 definitionCalls units = [(declarationId (definitionDeclaration d),
@@ -90,10 +109,27 @@ emitDefinitions withNative layout bits declarations units = do
           names = [(binderId b,"value" ++ show i) | (i,b) <- zip [0::Int ..] binders]
           local identity = maybe (error "unbound Java definition binder") id (lookup identity names)
           external expression values = case expressionNode expression of
-            ExternalCall identity _ -> do
-              name <- maybe (Left "unknown Java definition") Right (lookup identity callees)
+            ExternalCall identity _ | Just name <- lookup identity callees ->
               pure (E.call name (D.text "symbols":values))
-            _ -> Left "expected resolved definition call"
+            -- An orchestration calls an adapter natively: Java directly, with
+            -- the codecs; Kotlin through its generated bridge.
+            ExternalCall identity _ | Just (owner, adapter) <- lookup identity (orchestratedAdapters units) ->
+              if not withNative
+                then if declarationAsync adapter
+                  then Left ("workflow " ++ declarationName (definitionDeclaration d) ++ ": Kotlin workflows cannot yet " ++
+                    "call the asynchronous adapter " ++ declarationName adapter)
+                  else pure (E.call ("lawspec.runtime.LawSpecKotlinAdapters." ++ kotlinAdapterBridge identity) (D.text "symbols" : values))
+                else do
+                  let (parameterTypes, resultType) = functionType (declarationType adapter)
+                      parts = split '.' (idText owner)
+                      cls = intercalate "." (init parts ++ [concatMap capitalize (split '_' (last parts))])
+                  codecs <- mapM (Native.javaCodecDocWithContext (D.text "symbols") declarations bits) parameterTypes
+                  resultCodec <- Native.javaCodecDocWithContext (D.text "symbols") declarations bits resultType
+                  let call = E.call (cls ++ "." ++ declarationName adapter)
+                        [codec <> D.text ".decode(" <> value <> D.text ")" | (codec, value) <- zip codecs values]
+                      awaited = if declarationAsync adapter then call <> D.text ".join()" else call
+                  pure (resultCodec <> D.text ".encode(" <> awaited <> D.text ")")
+            _ -> Left "unknown Java definition"
           signature = E.call ("public static Value evaluate" ++ show index)
             (D.text "Map<String, Object> symbols" : [D.text ("Value input" ++ show i) | i <- [0..length args-1]]) <> D.text " "
       -- Arguments and results were checked where they were built, decoded

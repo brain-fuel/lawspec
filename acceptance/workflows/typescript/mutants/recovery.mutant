@@ -1,0 +1,6 @@
+@@ src/example/workflows.ts
+<<<<<<<
+  if (value0 instanceof data.SignupErrorUnavailable) return new data.Right(new data.Account('waitlist', 18, 0));
+=======
+  if (value0 instanceof data.SignupErrorUnavailable) return new data.Right(new data.Account('waitlist', 18, 1));
+>>>>>>>

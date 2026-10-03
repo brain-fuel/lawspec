@@ -1,0 +1,6 @@
+@@ src/example/workflows.py
+<<<<<<<
+    if len(value0.name) == 0:
+=======
+    if len(value0.name) < 0:
+>>>>>>>

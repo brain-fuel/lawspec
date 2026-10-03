@@ -1,5 +1,5 @@
 -- User-owned LawSpec adapter.
-module Example.Ordering (firstLine, validateOrder, priceOrder, placeOrder) where
+module Example.Ordering (firstLine, validateOrder, priceOrder) where
 
 import qualified Data.Int as I
 import qualified Data.Text as T
@@ -20,8 +20,3 @@ priceOrder (Data.ValidatedOrder orderId quantity@(Data.UnitQuantity count))
   | total > 20000 = Left Data.OrderErrorPriceTooHigh
   | otherwise = Right (Data.PricedOrder orderId quantity total)
   where total = fromIntegral count * 25 :: I.Int64
-
-placeOrder :: Data.UnvalidatedOrder -> Either Data.OrderError Data.PricedOrder
-placeOrder input = case validateOrder input of
-  Left failure -> Left failure
-  Right order -> priceOrder order

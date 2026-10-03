@@ -1,0 +1,6 @@
+@@ src/example/ordering.ts
+<<<<<<<
+  const total = BigInt(value0.quantity.value) * 25n;
+=======
+  const total = BigInt(value0.quantity.value) * 250n;
+>>>>>>>

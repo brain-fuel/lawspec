@@ -1,6 +1,0 @@
-@@ src/example/ordering.py
-<<<<<<<
-        return validated
-=======
-        return _schema.Left(data.OrderErrorPriceTooHigh())
->>>>>>>

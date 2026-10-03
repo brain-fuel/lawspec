@@ -42,7 +42,8 @@ dischargeEvidence program = do
   registry <- either (Left . pure . (\m -> Diagnostic "generation" m Nothing)) Right
     (makeRegistry (programDataDeclarations program))
   let bits = programMachineBits program
-      definitions = concatMap unitDefinitions (programUnits program)
+      -- An orchestration calls adapters, so a law over one relies on them.
+      definitions = filter (not . definitionOrchestrates) (concatMap unitDefinitions (programUnits program))
       definitionIds = S.fromList (map (declarationId . definitionDeclaration) definitions)
   laws <- forM [(u, p) | u <- programUnits program, p <- unitProperties u] $ \(u, p) -> do
     let obligation status reason = Obligation (unitId u) (propertyId p) "law" (Just (lawClaim p)) status reason

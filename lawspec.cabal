@@ -71,6 +71,7 @@ extra-source-files:
     examples/specs/slug.lawspec
     examples/specs/sum_refinements.lawspec
     examples/specs/total_functions.lawspec
+    examples/specs/workflows.lawspec
     test/fixtures/constructor_boundaries.lawspec
     test/fixtures/constructor_fields.lawspec
     test/fixtures/constructor_properties.lawspec

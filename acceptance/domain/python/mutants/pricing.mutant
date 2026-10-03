@@ -1,0 +1,6 @@
+@@ src/example/ordering.py
+<<<<<<<
+    total = value0.quantity.value * 25
+=======
+    total = value0.quantity.value * 250
+>>>>>>>

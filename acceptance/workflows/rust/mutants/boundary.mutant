@@ -1,0 +1,6 @@
+@@ src/example/workflows.rs
+<<<<<<<
+    if value0.age < 18 {
+=======
+    if value0.age < 17 {
+>>>>>>>

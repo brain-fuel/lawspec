@@ -1,0 +1,6 @@
+@@ src/main/java/example/Ordering.java
+<<<<<<<
+    long total = (long) value0.quantity().value() * 25;
+=======
+    long total = (long) value0.quantity().value() * 250;
+>>>>>>>

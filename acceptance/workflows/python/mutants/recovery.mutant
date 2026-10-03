@@ -1,0 +1,6 @@
+@@ src/example/workflows.py
+<<<<<<<
+        return _schema.Right(data.Account("waitlist", 18, 0))
+=======
+        return _schema.Right(data.Account("waitlist", 18, 1))
+>>>>>>>

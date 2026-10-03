@@ -17,6 +17,7 @@ data Config = Config
   , awaitResult :: String -> D.Doc -> D.Doc
   , nativeGenerators :: Bool
   , hasDefinitions :: Bool
+  , hasWorkflows :: Bool
   , constructorContracts :: Bool
   -- Built-in collections need LawSpecCollectionCodecs (and containers).
   , usesCollections :: Bool
@@ -78,6 +79,7 @@ emitTests Config{..} unit laws = do
         "import LawSpecRuntime (Scalar(..))", "import qualified LawSpecRuntime as LS",
         "import qualified " ++ moduleName ++ " as Impl"] ++
         ["import qualified LawSpecDefinitionBodies as Definitions" | hasDefinitions] ++
+        ["import qualified LawSpecWorkflows as Workflows" | hasWorkflows] ++
         ["import qualified LawSpecNativeGenerators as NativeGenerators" | nativeGenerators] ++
         ["import qualified LawSpecSchema as Schema", "import qualified LawSpecDataSchema as DataSchema",
          "import qualified LawSpecCodecs as Codec", "import qualified LawSpecDataCodecs as Codecs",

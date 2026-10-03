@@ -1,0 +1,6 @@
+@@ src/example/ordering.rs
+<<<<<<<
+    let total = i64::from(count) * 25;
+=======
+    let total = i64::from(count) * 250;
+>>>>>>>

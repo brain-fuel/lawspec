@@ -1,6 +1,0 @@
-@@ src/Example/Ordering.hs
-<<<<<<<
-  Left failure -> Left failure
-=======
-  Left _ -> Left Data.OrderErrorPriceTooHigh
->>>>>>>

@@ -1,0 +1,6 @@
+@@ src/main/kotlin/example/Workflows.kt
+<<<<<<<
+        if (value0.age < 18) return LawSpecRuntime.Left("too young")
+=======
+        if (value0.age < 17) return LawSpecRuntime.Left("too young")
+>>>>>>>

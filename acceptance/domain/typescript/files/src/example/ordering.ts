@@ -18,8 +18,3 @@ export function priceOrder(value0: data.ValidatedOrder): data.Either<data.OrderE
   return new data.Right(new data.PricedOrder(value0.id, value0.quantity, total));
 }
 
-export function placeOrder(value0: data.UnvalidatedOrder): data.Either<data.OrderError, data.PricedOrder> {
-  const validated = validateOrder(value0);
-  if (validated instanceof data.Left) return validated as data.Either<data.OrderError, data.PricedOrder>;
-  return priceOrder(validated.value);
-}

@@ -1,0 +1,6 @@
+@@ example/workflows/adapter.go
+<<<<<<<
+		return LawSpecRight[SignupError, Account](Account{Name: "waitlist", Age: 18, Level: 0})
+=======
+		return LawSpecRight[SignupError, Account](Account{Name: "waitlist", Age: 18, Level: 1})
+>>>>>>>

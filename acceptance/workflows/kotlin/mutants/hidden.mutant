@@ -1,0 +1,6 @@
+@@ src/main/kotlin/example/Workflows.kt
+<<<<<<<
+        if (value0.name.isEmpty()) return LawSpecRuntime.Left(SignupError.MissingName)
+=======
+        if (value0.name.isEmpty() && false) return LawSpecRuntime.Left(SignupError.MissingName)
+>>>>>>>

@@ -1,0 +1,6 @@
+@@ example/workflows/adapter.go
+<<<<<<<
+	if value0.Age < 18 {
+=======
+	if value0.Age < 17 {
+>>>>>>>

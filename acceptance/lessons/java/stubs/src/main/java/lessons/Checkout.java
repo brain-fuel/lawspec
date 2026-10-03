@@ -5,14 +5,6 @@ import lawspec.runtime.LawSpecRuntime;
 
 public final class Checkout {
   // (lessons.checkout::type::RawOrder -> Either (lessons.checkout::type::OrderProblem)
-  // (lessons.checkout::type::Receipt))
-  public static LawSpecRuntime.Either<lawspec.data.OrderProblem, lawspec.data.Receipt>
-      checkout(lawspec.data.RawOrder value0) {
-    throw new UnsupportedOperationException(
-        "checkout -> Either (lessons.checkout::type::OrderProblem) (lessons.checkout::type::Receipt)");
-  }
-
-  // (lessons.checkout::type::RawOrder -> Either (lessons.checkout::type::OrderProblem)
   // (lessons.checkout::type::ValidOrder))
   public static LawSpecRuntime.Either<lawspec.data.OrderProblem, lawspec.data.ValidOrder>
       validate(lawspec.data.RawOrder value0) {

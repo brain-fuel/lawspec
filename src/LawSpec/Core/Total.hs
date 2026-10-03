@@ -52,7 +52,11 @@ deferProgramPostconditions program = do
   pure program { programUnits = [u { unitContracts = map replaced (unitContracts u) } | u <- programUnits program] }
 
 auditDefinitionContracts :: Int -> [DataDeclaration] -> [Definition] -> [Contract] -> Either [Diagnostic] [(Id, Int)]
-auditDefinitionContracts bits dataDeclarations definitions contracts = do
+auditDefinitionContracts bits dataDeclarations allDefinitions allContracts = do
+  -- Orchestrations call adapters; they are run natively, not proved.
+  let definitions = filter (not . definitionOrchestrates) allDefinitions
+      orchestrated = [declarationId (definitionDeclaration d) | d <- allDefinitions, definitionOrchestrates d]
+      contracts = [c | c <- allContracts, contractDeclaration c `notElem` orchestrated]
   registry <- diagnostic Nothing (Types.makeRegistry dataDeclarations)
   diagnostic Nothing $ unless (bits `elem` [32,64]) (Left "machineBits must be 32 or 64")
   let signatures = M.fromList [(declarationId d, declarationType d) |

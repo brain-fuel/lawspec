@@ -1,0 +1,6 @@
+@@ src/main/kotlin/example/Ordering.kt
+<<<<<<<
+        val total = value0.quantity.value.toLong() * 25
+=======
+        val total = value0.quantity.value.toLong() * 250
+>>>>>>>

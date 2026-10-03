@@ -1,0 +1,6 @@
+@@ src/example/workflows.ts
+<<<<<<<
+  if (value0.name.length === 0) return new data.Left(new data.SignupErrorMissingName());
+=======
+  if (value0.name.length < 0) return new data.Left(new data.SignupErrorMissingName());
+>>>>>>>

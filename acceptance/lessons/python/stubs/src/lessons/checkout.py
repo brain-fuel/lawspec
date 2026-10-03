@@ -7,15 +7,6 @@ import lawspec_runtime as ls
 
 # LawSpec argument 0: lessons.checkout::type::RawOrder
 # LawSpec result: Either (lessons.checkout::type::OrderProblem)
-# (lessons.checkout::type::Receipt)
-def checkout(
-    value0: data.RawOrder
-) -> _schema.Either[data.OrderProblem, data.Receipt]:
-    raise NotImplementedError("checkout")
-
-
-# LawSpec argument 0: lessons.checkout::type::RawOrder
-# LawSpec result: Either (lessons.checkout::type::OrderProblem)
 # (lessons.checkout::type::ValidOrder)
 def validate(
     value0: data.RawOrder

@@ -30,11 +30,4 @@ public final class Ordering {
     if (total > 20000) return new LawSpecRuntime.Left<>(new OrderError.PriceTooHigh());
     return new LawSpecRuntime.Right<>(new PricedOrder(value0.id(), value0.quantity(), total));
   }
-
-  public static LawSpecRuntime.Either<OrderError, PricedOrder> placeOrder(UnvalidatedOrder value0) {
-    return switch (validateOrder(value0)) {
-      case LawSpecRuntime.Left<OrderError, ValidatedOrder> failure -> new LawSpecRuntime.Left<>(failure.value());
-      case LawSpecRuntime.Right<OrderError, ValidatedOrder> order -> priceOrder(order.value());
-    };
-  }
 }

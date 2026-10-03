@@ -23,9 +23,9 @@ accepts a `ValidOrder`, so it never has to check its input again.
 
 The workflow `checkout` declares the pipeline. LawSpec checks that each step
 accepts what the previous step produces, and that failing steps share one
-error type. It then adds a law, `checkout composes its steps`: your `checkout`
-must behave exactly like `validate` followed by `charge`, stopping at the first
-problem.
+error type. You write only the steps: LawSpec generates `checkout` itself,
+`validate` followed by `charge`, stopping at the first problem, and adds laws
+that every target's `checkout` behaves that way.
 
 ## Implement the adapters
 
@@ -64,6 +64,6 @@ put examples at the edges of your own rules, as in
 
 - Wrappers make domain values distinct types with checked constructors.
 - Separate types for each stage make invalid transitions impossible.
-- A workflow checks that its steps fit and generates a composition law.
+- A workflow checks that its steps fit, and LawSpec generates it from them.
 
 Next: [sharing laws between units](07-imports.md).

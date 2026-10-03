@@ -66,7 +66,9 @@ data FunctionDefinition = FunctionDefinition
   } deriving (Eq, Show, Generic)
 -- asyncFunctions names the adapters declared `async`: their results arrive
 -- later, as each target's task, and tests await them where they are called.
-data Unit = Unit { unitName :: String, functions :: [(String, Type)], laws :: [Law], refinements :: [Refinement], contracts :: [Contract], declarationSpans :: [(String,Span)], dataTypes :: [DataTypeDeclaration], functionDefinitions :: [FunctionDefinition], asyncFunctions :: [String] } deriving (Eq, Show, Generic)
+-- orchestrations names the definitions that may call adapters: workflows,
+-- whose composition LawSpec generates and every target runs natively.
+data Unit = Unit { unitName :: String, functions :: [(String, Type)], laws :: [Law], refinements :: [Refinement], contracts :: [Contract], declarationSpans :: [(String,Span)], dataTypes :: [DataTypeDeclaration], functionDefinitions :: [FunctionDefinition], asyncFunctions :: [String], orchestrations :: [String] } deriving (Eq, Show, Generic)
 data Input = Input { inputName :: String, inputId :: String, inputType :: Type, inputRefinements :: [Expr] } deriving (Eq, Show, Generic)
 data Assertion = AssertEqual Expr Expr | AssertImplies Expr Assertion | AssertAll [Assertion] deriving (Eq, Show, Generic)
 instance ToJSON Assertion

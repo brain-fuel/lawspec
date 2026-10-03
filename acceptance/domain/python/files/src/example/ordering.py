@@ -22,10 +22,3 @@ def priceOrder(value0):
     if total > 20000:
         return _schema.Left(data.OrderErrorPriceTooHigh())
     return _schema.Right(data.PricedOrder(value0.id, value0.quantity, total))
-
-
-def placeOrder(value0):
-    validated = validateOrder(value0)
-    if isinstance(validated, _schema.Left):
-        return validated
-    return priceOrder(validated.value)

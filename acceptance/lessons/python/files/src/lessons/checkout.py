@@ -3,13 +3,6 @@ import lawspec_data as data
 import lawspec_schema as _schema
 
 
-def checkout(value0):
-    validated = validate(value0)
-    if isinstance(validated, _schema.Left):
-        return validated
-    return _schema.Right(charge(validated.value))
-
-
 def validate(value0):
     if len(value0.item) == 0:
         return _schema.Left(data.OrderProblemEmptyItem())

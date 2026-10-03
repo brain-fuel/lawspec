@@ -1,0 +1,6 @@
+@@ src/main/java/example/Workflows.java
+<<<<<<<
+      return new LawSpecRuntime.Right<>(new Account("waitlist", 18, 0));
+=======
+      return new LawSpecRuntime.Right<>(new Account("waitlist", 18, 1));
+>>>>>>>

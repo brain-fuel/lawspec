@@ -27,12 +27,3 @@ func PriceOrder(value0 ValidatedOrder) LawSpecEither[OrderError, PricedOrder] {
 	return LawSpecRight[OrderError, PricedOrder](PricedOrder{Id: value0.Id, Quantity: value0.Quantity, Total: total})
 }
 
-// PlaceOrder validates and then prices an order.
-func PlaceOrder(value0 UnvalidatedOrder) LawSpecEither[OrderError, PricedOrder] {
-	validated := ValidateOrder(value0)
-	if failure, ok := validated.Left(); ok {
-		return LawSpecLeft[OrderError, PricedOrder](failure)
-	}
-	order, _ := validated.Right()
-	return PriceOrder(order)
-}

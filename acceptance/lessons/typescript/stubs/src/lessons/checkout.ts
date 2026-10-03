@@ -4,15 +4,6 @@ import * as schema from '.././lawspec_schema.js';
 import * as ls from '../lawspec_runtime.js';
 // LawSpec argument 0: lessons.checkout::type::RawOrder
 // LawSpec result: Either (lessons.checkout::type::OrderProblem)
-// (lessons.checkout::type::Receipt)
-export function checkout(
-    value0: data.RawOrder
-): data.Either<data.OrderProblem, data.Receipt> {
-  throw new Error('checkout');
-}
-
-// LawSpec argument 0: lessons.checkout::type::RawOrder
-// LawSpec result: Either (lessons.checkout::type::OrderProblem)
 // (lessons.checkout::type::ValidOrder)
 export function validate(
     value0: data.RawOrder

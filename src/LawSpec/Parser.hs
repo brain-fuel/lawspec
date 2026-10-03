@@ -77,7 +77,11 @@ typeAtom = try (parens $ do
     n <- ident; void (symbol "::"); t <- typeP
     p <- optional (keyword "where" *> expr)
     pure (Refined n t p))
-  <|> parens typeP <|> do
+  <|> parens typeP
+  -- _ leaves a type for the compiler to fill: a workflow's Either _ T asks
+  -- for a generated error type.
+  <|> (Variable "_" <$ try (lexeme (char '_' <* notFollowedBy (alphaNumChar <|> char '_'))))
+  <|> do
     n <- qualifiedName
     headers <- asks (M.lookup n)
     case headers of
@@ -136,21 +140,36 @@ wrapperP = do
     pure (name, parameters, base, predicate)
   pure (Wrapper name parameters base predicate range)
 
--- workflow name :: Input -> Result is (step :: Type)+ end
+-- workflow name :: Input -> Result is stage+ end. A stage is a step, written
+-- `name :: Type` (an adapter it declares) or `then name` / `>>= name` (an
+-- existing function); `map f` / `<$> f`; `mapError f` / `<!> f`;
+-- `orElse f` / `recover f` / `<|> f`; `fallback f` / `?? f`; `tap f`; or
+-- `ensure p else f`.
 workflowP :: P Workflow
 workflowP = do
-  ((name, ty, steps), range) <- withSpan $ do
+  ((name, ty, stages), range) <- withSpan $ do
     keyword "workflow"
     name <- ident
     void (symbol "::")
     ty <- typeP
     keyword "is"
-    steps <- some $ do
-      ((step, stepTy), stepRange) <- withSpan ((,) <$> ident <* symbol "::" <*> typeP)
-      pure (WorkflowStep step stepTy stepRange)
+    stages <- some stageP
     keyword "end"
-    pure (name, ty, steps)
-  pure (Workflow name ty steps range)
+    pure (name, ty, stages)
+  pure (Workflow name ty stages range)
+  where
+    stageP = do
+      (stage, stageRange) <- withSpan $ choice
+        [ try (DeclaredStep <$> ident <* symbol "::" <*> typeP)
+        , try ((keyword "then" <|> void (symbol ">>=")) *> (DeclaredStep <$> ident <* symbol "::" <*> typeP))
+        , StepStage <$> ((keyword "then" <|> void (symbol ">>=")) *> qualifiedName)
+        , MapStage <$> ((keyword "map" <|> void (symbol "<$>")) *> qualifiedName)
+        , MapErrorStage <$> ((keyword "mapError" <|> void (symbol "<!>")) *> qualifiedName)
+        , OrElseStage <$> ((keyword "orElse" <|> keyword "recover" <|> void (symbol "<|>")) *> qualifiedName)
+        , FallbackStage <$> ((keyword "fallback" <|> void (symbol "??")) *> qualifiedName)
+        , TapStage <$> (keyword "tap" *> qualifiedName)
+        , EnsureStage <$> (keyword "ensure" *> qualifiedName) <*> (keyword "else" *> qualifiedName) ]
+      pure (WorkflowStage stage stageRange)
 
 -- Declarations with a Natural parameter or an index equation are indexed
 -- families; LawSpec.Indexed elaborates them after the unit is parsed.
@@ -449,7 +468,7 @@ unitP = do
         [((functionName d, foldr Arrow (functionResult d) (map snd (functionArguments d))), functionSpan d) | d <- definitions]
   pure (Unit n (map fst signatures) [l | LawMember l <- members]
     [r | RefinementMember r <- members] [] [(name,range) | ((name,_),range) <- signatures]
-    [d | DataMember d <- members] definitions [name | AsyncMember ((name, _), _) <- members], imports, [f | FamilyMember f <- members],
+    [d | DataMember d <- members] definitions [name | AsyncMember ((name, _), _) <- members] [], imports, [f | FamilyMember f <- members],
     [w | WrapperMember w <- members], [w | WorkflowMember w <- members])
 
 parseSource :: Source -> Either [Diagnostic] Unit

@@ -20,8 +20,9 @@ prepareDefinitions program = do
   registry <- either (Left . pure . (\message -> Diagnostic "core" message Nothing)) Right
     (makeRegistry (programDataDeclarations program))
   let bits = programMachineBits program
+      -- Orchestrations call adapters and are run natively, never here.
       definitions = M.fromList [(declarationId (definitionDeclaration d), d)
-        | u <- programUnits program, d <- unitDefinitions u]
+        | u <- programUnits program, d <- unitDefinitions u, not (definitionOrchestrates d)]
       contracts = M.fromList [(contractDeclaration c,c) | c <- boundaries]
       invoke name values = do
         definition <- maybe (Left ("unknown total definition: " ++ idText name)) Right

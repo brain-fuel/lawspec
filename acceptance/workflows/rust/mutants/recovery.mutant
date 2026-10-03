@@ -1,0 +1,6 @@
+@@ src/example/workflows.rs
+<<<<<<<
+        return ls::Either::Right(Account { name: "waitlist".to_string(), age: 18, level: 0 });
+=======
+        return ls::Either::Right(Account { name: "waitlist".to_string(), age: 18, level: 1 });
+>>>>>>>

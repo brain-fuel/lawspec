@@ -1,0 +1,6 @@
+@@ src/main/java/example/Workflows.java
+<<<<<<<
+    if (value0.age() < 18) return new LawSpecRuntime.Left<>("too young");
+=======
+    if (value0.age() < 17) return new LawSpecRuntime.Left<>("too young");
+>>>>>>>

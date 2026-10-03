@@ -31,9 +31,3 @@ pub fn priceOrder(value0: ValidatedOrder) -> ls::Either<OrderError, PricedOrder>
     ls::Either::Right(PricedOrder { id, quantity, total })
 }
 
-pub fn placeOrder(value0: UnvalidatedOrder) -> ls::Either<OrderError, PricedOrder> {
-    match validateOrder(value0) {
-        ls::Either::Left(failure) => ls::Either::Left(failure),
-        ls::Either::Right(order) => priceOrder(order),
-    }
-}

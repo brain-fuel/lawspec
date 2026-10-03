@@ -1,0 +1,6 @@
+@@ src/main/kotlin/example/Workflows.kt
+<<<<<<<
+        if (value0 == SignupError.Unavailable) return LawSpecRuntime.Right(Account("waitlist", 18, 0))
+=======
+        if (value0 == SignupError.Unavailable) return LawSpecRuntime.Right(Account("waitlist", 18, 1))
+>>>>>>>

@@ -481,10 +481,15 @@ emitRustWithBindings minify bindings Plan{..} = either (Left . pure . (\m -> Dia
             Doc.text "use crate::lawspec_runtime as ls;"] <>
             (if generatedAdapter && hasNativeTypes then Doc.hardline <> Doc.text "use crate::lawspec_native::*;" else mempty) <>
             (if null stubs then mempty else blank <> Doc.joinWith blank stubs) <> Doc.hardline
+          -- The definitions file calls workflow steps by their crate paths;
+          -- this unit's own module is already mounted as adapter.
+          workflowModules mount = [if owner == unitId unit then Doc.text ("use adapter as " ++ ident (idText owner) ++ ";") else mount owner
+            | hasDefinitions, owner <- Definitions.workflowAdapterUnits (map LawSpec.Testing.plannedUnit plannedUnits)]
           moduleDoc filename name = Doc.text ("#[path = " ++ q filename ++ "]") <> Doc.hardline <> Doc.text ("mod " ++ name ++ ";")
           localImports = [moduleDoc ("../src/" ++ modulePath ++ ".rs") "adapter"] ++
             [moduleDoc "../src/lawspec_data.rs" "lawspec_data" | not (null planDataDeclarations)] ++
             [moduleDoc "../src/lawspec_definitions.rs" "lawspec_definitions" | hasDefinitions] ++
+            workflowModules (\owner -> moduleDoc ("../src/" ++ map (\c -> if c == '.' then '/' else c) (idText owner) ++ ".rs") (ident (idText owner))) ++
             [moduleDoc "../src/lawspec_runtime.rs" "lawspec_runtime"] ++
             [moduleDoc "../src/lawspec_schema.rs" "lawspec_schema" | hasSchema] ++
             [moduleDoc "support/lawspec_strategies.rs" "ls_gen"]
@@ -493,6 +498,7 @@ emitRustWithBindings minify bindings Plan{..} = either (Left . pure . (\m -> Dia
             Just library -> [Doc.text ("use " ++ library ++ "::" ++ testName ++ " as adapter;")] ++
               [Doc.text ("use " ++ library ++ "::lawspec_data;") | not (null planDataDeclarations)] ++
               [moduleDoc "../src/lawspec_definitions.rs" "lawspec_definitions" | hasDefinitions] ++
+              workflowModules (\owner -> Doc.text ("use " ++ library ++ "::" ++ ident (idText owner) ++ ";")) ++
               [Doc.text ("use " ++ library ++ "::lawspec_runtime;")] ++
               [Doc.text ("use " ++ library ++ "::lawspec_native::*;") | hasNativeTypes] ++
               [Doc.text ("use " ++ library ++ "::lawspec_schema;") | hasSchema] ++

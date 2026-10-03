@@ -1,0 +1,6 @@
+@@ example/workflows/adapter.go
+<<<<<<<
+	if len(value0.Name) == 0 {
+=======
+	if len(value0.Name) < 0 {
+>>>>>>>

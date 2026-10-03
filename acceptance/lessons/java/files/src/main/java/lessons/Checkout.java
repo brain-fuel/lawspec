@@ -9,13 +9,6 @@ import lawspec.data.ValidOrder;
 import lawspec.runtime.LawSpecRuntime;
 
 public final class Checkout {
-  public static LawSpecRuntime.Either<OrderProblem, Receipt> checkout(RawOrder value0) {
-    return switch (validate(value0)) {
-      case LawSpecRuntime.Left<OrderProblem, ValidOrder> problem -> new LawSpecRuntime.Left<>(problem.value());
-      case LawSpecRuntime.Right<OrderProblem, ValidOrder> valid -> new LawSpecRuntime.Right<>(charge(valid.value()));
-    };
-  }
-
   public static LawSpecRuntime.Either<OrderProblem, ValidOrder> validate(RawOrder value0) {
     if (value0.item().isEmpty()) return new LawSpecRuntime.Left<>(new OrderProblem.EmptyItem());
     if (value0.quantity() < 1 || value0.quantity() > 20) return new LawSpecRuntime.Left<>(new OrderProblem.BadQuantity());

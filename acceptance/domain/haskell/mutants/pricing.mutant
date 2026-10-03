@@ -1,0 +1,6 @@
+@@ src/Example/Ordering.hs
+<<<<<<<
+  where total = fromIntegral count * 25 :: I.Int64
+=======
+  where total = fromIntegral count * 250 :: I.Int64
+>>>>>>>

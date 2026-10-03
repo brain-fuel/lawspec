@@ -97,7 +97,12 @@ constructor  = ["|"] name (name "::" type)*
                ["where" name "=" expression ("," name "=" expression)*]
 wrapper      = "wrapper" name ("(" name "::" "Type" ")")*
                "is" type ["where" expression] "end"
-workflow     = "workflow" name "::" type "is" (name "::" type)+ "end"
+workflow     = "workflow" name "::" type "is" stage+ "end"
+stage        = name "::" type
+             | ("then" | ">>=") name ["::" type]
+             | ("map" | "<$>" | "mapError" | "<!>" | "tap") name
+             | ("orElse" | "recover" | "<|>" | "fallback" | "??") name
+             | "ensure" name "else" name
 function     = "definition" name parameter+ "::" type requirements?
                "is" expression "end"
 type         = type-atom ["->" type]

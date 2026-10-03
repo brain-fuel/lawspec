@@ -1,0 +1,6 @@
+@@ src/Example/Workflows.hs
+<<<<<<<
+  | T.null name = Left Data.SignupErrorMissingName
+=======
+  | T.null name && False = Left Data.SignupErrorMissingName
+>>>>>>>
