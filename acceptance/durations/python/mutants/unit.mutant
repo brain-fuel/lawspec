@@ -1,0 +1,6 @@
+@@ src/example/durations.py
+<<<<<<<
+    return max(value0 - value1, timedelta(0))
+=======
+    return max(value0 - value1, timedelta(0)) + timedelta(microseconds=1) * (value1 > timedelta(0))
+>>>>>>>

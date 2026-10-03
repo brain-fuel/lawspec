@@ -1,0 +1,6 @@
+@@ src/Example/Durations.hs
+<<<<<<<
+  | otherwise = Data.Duration (budget - spent)
+=======
+  | otherwise = Data.Duration ((budget - spent) `div` 1000 * 1000)
+>>>>>>>

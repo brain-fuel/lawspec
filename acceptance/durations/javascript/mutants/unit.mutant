@@ -1,0 +1,6 @@
+@@ src/example/durations.mjs
+<<<<<<<
+  return new data.Duration(value0.value - value1.value);
+=======
+  return new data.Duration((value0.value - value1.value) / 1000n * 1000n);
+>>>>>>>

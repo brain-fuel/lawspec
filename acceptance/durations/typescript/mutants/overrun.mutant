@@ -1,0 +1,6 @@
+@@ src/example/durations.ts
+<<<<<<<
+  if (value1.value >= value0.value) return new data.Duration(0n);
+=======
+  if (value1.value >= value0.value) return new data.Duration(value1.value - value0.value);
+>>>>>>>

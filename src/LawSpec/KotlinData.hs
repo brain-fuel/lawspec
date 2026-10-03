@@ -14,6 +14,7 @@ import qualified Data.Text.Lazy.Encoding as T
 import qualified LawSpec.Core as C
 import LawSpec.Core.Types (makeRegistry, checkType, freeExistentials)
 import LawSpec.Collections (collectionContainer)
+import LawSpec.Time (isDurationType)
 import qualified LawSpec.Core.Schema as S
 import LawSpec.Common (Artifact(..))
 import LawSpec.RuntimeSources (runtimeSource)
@@ -62,6 +63,8 @@ typeDocWithNative :: [ResolvedTypeBinding] -> Names -> [(C.Id,String)] -> C.Type
 typeDocWithNative mappings names parameters ty = case ty of
   C.TypeVariable variable -> maybe (Left "unbound Kotlin data parameter")
     (Right . D.text) (lookup variable parameters)
+  -- A Duration is a kotlin.time.Duration (LawSpecKotlinCodecs' duration).
+  C.Constructor name [] | isDurationType name -> pure (D.text "kotlin.time.Duration")
   -- Built-in collections are native (LawSpecKotlinCodecs' set, keyVal, sequence).
   C.Constructor name arguments | Just short <- collectionContainer name -> do
     args <- mapM argument arguments
@@ -122,7 +125,7 @@ emitKotlinDataWithProfile bits layout declarations = do
   names <- namesFor declarations
   schema <- JVM.emitJavaSchema bits (D.Pretty 100) declarations
   codecs <- emitKotlinCodecs layout declarations
-  native <- forM [d | d <- declarations, collectionContainer (C.idText (C.dataId d)) == Nothing] $ \declaration -> do
+  native <- forM [d | d <- declarations, builtinFree d] $ \declaration -> do
     name <- maybe (Left "unplanned Kotlin data name") Right (lookup (C.dataId declaration) names)
     let parameters = zip (C.dataParameters declaration) [candidate | i <- [0::Int ..], let candidate = "T" ++ show i, candidate /= name]
         arguments = map (D.text . snd) parameters
@@ -220,6 +223,8 @@ codecDocUsingOwner :: String -> Maybe D.Doc -> Names -> [(C.Id, (String, String)
 codecDocUsingOwner owner context names parameters ty = case ty of
   C.TypeVariable variable -> maybe (Left "unbound Kotlin codec parameter")
     (Right . D.text . snd) (lookup variable parameters)
+  C.Constructor name [] | isDurationType name ->
+    pure (call "lawspec.runtime.LawSpecKotlinCodecs.duration" ([D.text "schema", D.text "bits"] ++ maybe [] pure context))
   C.Constructor name args | Just short <- collectionContainer name -> do
     children <- mapM (argument (codecDocUsingOwner owner context names parameters)) args
     let rest = maybe [] pure context
@@ -278,7 +283,7 @@ emitCodecs :: [ResolvedTypeBinding] -> String -> D.Layout -> [C.DataDeclaration]
 emitCodecs mappings owner layout declarations = do
   _ <- makeRegistry declarations
   names <- namesFor declarations
-  definitions' <- mapM (definition names) [d | d <- declarations, collectionContainer (C.idText (C.dataId d)) == Nothing]
+  definitions' <- mapM (definition names) [d | d <- declarations, builtinFree d]
   dynamicDispatch <- if owner == "LawSpecDataCodecs" && any existentialData declarations
     then (: []) <$> dynamicCodec names else pure []
   let definitions = definitions' ++ dynamicDispatch
@@ -475,3 +480,7 @@ requiresSchema declarations ty = case ty of
 
 kotlinTypeReferenceDoc :: C.Type -> Either String D.Doc
 kotlinTypeReferenceDoc = referenceDoc []
+
+-- Built-in collections and durations are Kotlin's own types, not generated ones.
+builtinFree :: C.DataDeclaration -> Bool
+builtinFree d = collectionContainer (C.idText (C.dataId d)) == Nothing && not (isDurationType (C.idText (C.dataId d)))

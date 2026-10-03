@@ -1,0 +1,6 @@
+@@ src/main/java/example/Durations.java
+<<<<<<<
+    return value0.minus(value1);
+=======
+    return value0.minus(value1).plusNanos(1);
+>>>>>>>

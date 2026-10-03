@@ -19,6 +19,8 @@ types, checked definitions, refinements and laws.
   deques, and the portable order of keys.
 - [Asynchronous functions](async-functions.md): adapters that return each
   target's task.
+- [Durations](durations.md): whole microseconds, their literals, arithmetic and
+  native types.
 - [Evidence and discharge](evidence-and-discharge.md): how each obligation is
   discharged.
 - [Domain modeling](domain-modeling.md): wrappers and workflows.

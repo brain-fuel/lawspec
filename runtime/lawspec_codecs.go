@@ -3,8 +3,14 @@ package RUNTIME_PACKAGE
 
 import (
 	"fmt"
+	"math/big"
 	"slices"
+	"time"
 )
+
+// LawSpecDuration is a Duration: a time.Duration of whole microseconds, from
+// 0 to about 146 years.
+type LawSpecDuration = time.Duration
 
 type lawSpecCodec[T any] struct {
 	typeRef    lawSpecTypeRef
@@ -257,5 +263,25 @@ func lsOptionalCodec[T any](schema *lawSpecSchema, bits int, element lawSpecCode
 			}
 			child := element.encode(value.Value, path)
 			return lsPresent(typeRef.key(), &child)
+		}, symbols)
+}
+
+// lsDurationCodec converts a Duration and a time.Duration. A time.Duration
+// that is negative or not a whole number of microseconds is not a Duration.
+func lsDurationCodec(schema *lawSpecSchema, bits int, contexts ...map[string]*lawSpecSymbol) lawSpecCodec[LawSpecDuration] {
+	symbols := lsSchemaSymbols(contexts)
+	typeRef := lsNamed("lawspec.time::type::Duration")
+	tag := typeRef.name + "::Duration"
+	return lsCodec(schema, bits, typeRef,
+		func(value LawSpecValue) LawSpecDuration {
+			micros := value.Data.(lawSpecData).fields[0].Data.(*big.Int)
+			return LawSpecDuration(micros.Int64()) * time.Microsecond
+		},
+		func(value LawSpecDuration, path lawSpecPath) LawSpecValue {
+			if value < 0 || value%time.Microsecond != 0 {
+				panic("a Duration is a non-negative whole number of microseconds")
+			}
+			micros := LawSpecValue{"Integer", big.NewInt(int64(value / time.Microsecond))}
+			return LawSpecValue{typeRef.key(), lawSpecData{tag, []LawSpecValue{micros}}}
 		}, symbols)
 }

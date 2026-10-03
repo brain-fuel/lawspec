@@ -87,6 +87,8 @@ or an annotation.
 - In a float context, a decimal token is a float directly. An explicitly
   constructed exact `Decimal` is never converted to a float implicitly.
 - A literal outside its contextual domain is a compile error.
+- A whole number followed by a unit, such as `250ms` or `2s`, is a
+  [duration](durations.md).
 
 Annotations choose a representation. They do not add a refinement: an inline
 `where` predicate in an expression annotation is rejected. Put refinements on

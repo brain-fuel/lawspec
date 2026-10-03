@@ -1,0 +1,6 @@
+@@ example/durations/adapter.go
+<<<<<<<
+	return value0 - value1
+=======
+	return value0 - value1 + time.Nanosecond
+>>>>>>>

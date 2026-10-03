@@ -81,6 +81,7 @@ a generic sum is a class with value equality, such as `Chain.Stop<T>()`.
 | `Integer` result | `Number`: any of `Int`, `Long`, `BigInteger`; non-integral values are rejected |
 | `Integer` argument | `BigInteger` |
 | `Decimal`, `Rational` | `BigDecimal`, `LawSpecRuntime.Ratio` |
+| `Duration` | `kotlin.time.Duration` of whole microseconds |
 | Complex | `LawSpecRuntime.Complex` |
 | `Char` | A one-scalar `String`, allowing supplementary characters |
 | `CodePoint`, `CodeUnit16` | `Int`, `Char` |

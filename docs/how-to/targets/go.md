@@ -99,6 +99,7 @@ func Echo(value0 Tree[int8]) Tree[int8] {
 | `BigInt`, `BigUInt`, `Rational` | `*LawSpecBigInt`, `*LawSpecRational` (aliases of `math/big` types) |
 | `Integer` result | Any signed or unsigned integer, or a `big.Int` value or pointer, through `any` |
 | Floats and complex values | `float32`, `float64`, `complex64`, `complex128` |
+| `Duration` | `time.Duration` of whole microseconds (`LawSpecDuration` in generated code) |
 | `Text` | A valid UTF-8 `string` |
 | `Bytes`, `Utf16Text` | `[]byte`, `[]uint16` |
 | `List a` | `[]T`; `nil` and empty slices are the same list |

@@ -1,5 +1,6 @@
 """LawSpec scalar runtime, independent of test frameworks."""
 from collections import deque  # noqa: F401  (native Queue, Stack, Deque)
+from datetime import timedelta  # noqa: F401  (native Duration)
 from dataclasses import dataclass
 from fractions import Fraction
 from decimal import Decimal

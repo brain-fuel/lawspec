@@ -10,7 +10,7 @@
 -- unit's definitions.
 module LawSpec.Time
   ( timeUnit, timeAlias, timeSource, usesTime, timeOperation, timeOperations
-  , durationType, durationLimit, durationSuffixes, durationFactor, durationArithmetic, durationValue, durationDefinitions
+  , durationType, isDurationType, durationLimit, durationSuffixes, durationFactor, durationArithmetic, durationValue, durationDefinitions
   ) where
 
 import Data.Char (isAlphaNum, isDigit)
@@ -26,9 +26,18 @@ timeAlias = "lawspecTime"
 durationType :: String
 durationType = timeUnit ++ "::type::Duration"
 
--- 2^62 - 1 nanoseconds, in whole microseconds.
+-- Targets with a native duration represent Duration by it, not by a
+-- generated class: Python timedelta, Go time.Duration, Java
+-- java.time.Duration, Kotlin kotlin.time.Duration and Rust
+-- std::time::Duration.
+isDurationType :: String -> Bool
+isDurationType = (== durationType)
+
+-- Kotlin's Duration keeps nanoseconds exactly up to Long.MAX_VALUE / 2 /
+-- 1000000 * 1000000 - 1 nanoseconds, and milliseconds beyond; this is that
+-- limit in whole microseconds. Every other target's native duration holds more.
 durationLimit :: Integer
-durationLimit = 4611686018427387
+durationLimit = 4611686018426999
 
 -- Literal suffixes, longest first, and the prelude constructor each names.
 durationSuffixes :: [(String, String)]

@@ -45,6 +45,7 @@ With a custom `sourceDir` or `testDir`, update pytest's `pythonpath` and
 | `Text`, `Char` | `str` |
 | `Bytes` | `bytes` |
 | `Decimal`, `Rational` | `Decimal`, `Fraction` |
+| `Duration` | `datetime.timedelta` of whole microseconds |
 | `Float32`, `Float64` | `float` |
 | `Complex64`, `Complex128` | `complex` |
 | `List a` | `list[A]` |

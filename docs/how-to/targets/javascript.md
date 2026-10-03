@@ -49,6 +49,7 @@ The runtime and data modules do not depend on fast-check.
 | `Bytes` | `Uint8Array` |
 | `Symbol` | `symbol` |
 | `Decimal`, `Rational`, complex, raw text | Runtime support classes |
+| `Duration` | The generated `Duration` class; its `value` is a `bigint` of microseconds |
 | `List a` | `Array` |
 | Products | A frozen class named after the type, from `lawspec_data` |
 | `Maybe a`, `Either a b` and sums | Named variant classes from `lawspec_data` |

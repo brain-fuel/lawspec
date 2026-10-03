@@ -862,6 +862,33 @@ public final class LawSpecSchema {
     return codec(type, bits, symbols, Function.identity(), Function.identity());
   }
 
+  private static final String DURATION = "lawspec.time::type::Duration";
+  private static final java.math.BigInteger MICROS_PER_SECOND = java.math.BigInteger.valueOf(1_000_000);
+
+  /**
+   * A Duration natively: a java.time.Duration of whole microseconds. One that
+   * is negative or has a fraction of a microsecond is not a Duration.
+   */
+  public Codec<java.time.Duration> duration(int bits, Map<String, Object> symbols) {
+    var type = new Named(DURATION);
+    return codec(
+        type,
+        bits,
+        symbols,
+        duration -> {
+          if (duration.isNegative() || duration.getNano() % 1000 != 0)
+            throw new IllegalArgumentException("a Duration is a non-negative whole number of microseconds");
+          var micros = java.math.BigInteger.valueOf(duration.getSeconds()).multiply(MICROS_PER_SECOND)
+              .add(java.math.BigInteger.valueOf(duration.getNano() / 1000));
+          return new Value(key(type), new Data(DURATION + "::Duration", List.of(new Value("Integer", micros))));
+        },
+        value -> {
+          var micros = (java.math.BigInteger) ((Data) value.data()).fields().get(0).data();
+          var parts = micros.divideAndRemainder(MICROS_PER_SECOND);
+          return java.time.Duration.ofSeconds(parts[0].longValueExact(), parts[1].longValueExact() * 1000);
+        });
+  }
+
   private static final String COLLECTIONS = "lawspec.collections::type::";
 
   /** Whether a type's values keep sorted, distinct items (a Set) or keys (a KeyVal). */

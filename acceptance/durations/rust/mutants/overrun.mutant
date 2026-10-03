@@ -1,0 +1,6 @@
+@@ src/example/durations.rs
+<<<<<<<
+    value0.saturating_sub(value1)
+=======
+    value0.abs_diff(value1)
+>>>>>>>

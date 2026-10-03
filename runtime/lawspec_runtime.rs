@@ -1801,6 +1801,34 @@ pub fn canonical_items(items: Vec<Value>, keyed: bool) -> Result<Vec<Value>> {
     Ok(result)
 }
 
+/// A Duration, whole microseconds from 0 to about 146 years, is natively a
+/// std::time::Duration. One with a fraction of a microsecond is not a
+/// Duration; IntoValue cannot fail, so converting one panics.
+pub const DURATION_TAG: &str = "lawspec.time::type::Duration::Duration";
+
+impl IntoValue for std::time::Duration {
+    fn into_value(self) -> Value {
+        assert!(
+            self.subsec_nanos() % 1000 == 0,
+            "a Duration is a non-negative whole number of microseconds"
+        );
+        Value::Data(DURATION_TAG.into(), vec![Value::Integer(BigInt::from(self.as_micros()))])
+    }
+}
+impl FromValue for std::time::Duration {
+    fn from_value(value: Value) -> Result<Self> {
+        match value {
+            Value::Data(tag, fields) if tag == DURATION_TAG && fields.len() == 1 => match &fields[0] {
+                Value::Integer(micros) => u64::try_from(micros)
+                    .map(std::time::Duration::from_micros)
+                    .map_err(|_| "Duration outside the native range".into()),
+                _ => Err("expected Duration microseconds".into()),
+            },
+            _ => Err("expected Duration".into()),
+        }
+    }
+}
+
 /// Built-in collections: natively a BTreeSet, a BTreeMap, a VecDeque (Queue
 /// and Deque) or a Vec whose top is last (Stack). Natives convert to plain
 /// lists; the schema retags them by the expected type.

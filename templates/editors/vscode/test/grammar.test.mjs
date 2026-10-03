@@ -72,6 +72,9 @@ test('primitives, scalar constructors, numbers, and operators', () => {
   for (const number of ['127', '18446744073709551615', '0.1', '1e-30', '2.5E+12']) {
     scopeAt(`x = -${number}`, number, 'constant.numeric');
   }
+  for (const duration of ['250ms', '2s', '5min', '3h', '7d', '10us']) {
+    scopeAt(`x = ${duration}`, duration, 'constant.numeric');
+  }
   for (const op of ['+', '-', '*', '/', '<=', '>=', '==', '!=', '<', '>', '&&', '||', '!', '.', '=']) {
     scopeAt(`x ${op} y`, op, 'keyword.operator');
   }

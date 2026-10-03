@@ -81,6 +81,7 @@ generated on their own.
 | `BigInt`, `BigUInt`, `Integer` argument | `Integer`, with domain checks |
 | `Integer` result | `LS.IntegerValue`, built from any `Integral` with `LS.integerValue` |
 | `Decimal` | `LS.Decimal`, an exact finite base-ten `Rational` |
+| `Duration` | The generated `Duration` record, holding an `Integer` of microseconds |
 | `Rational` | `Rational` |
 | `Complex64`, `Complex128` | `Complex Float`, `Complex Double` |
 | `CodePoint`, `CodeUnit16` | `Char` (including surrogates), `Word16` |

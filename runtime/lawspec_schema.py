@@ -162,6 +162,13 @@ _HASHABLE = frozenset(
      for width in (8, 16, 32, 64, 128, "Size")] + ["UIntPtr"])
 
 
+# A Duration, whole microseconds from 0 to about 146 years, is natively a
+# timedelta, which holds that range exactly.
+_DURATION = "lawspec.time::type::Duration"
+_DURATION_TAG = _DURATION + "::Duration"
+_DURATION_LIMIT = 4611686018426999
+
+
 def hashable(reference):
     """Whether Python compares this type's natives by value."""
     return isinstance(reference, Named) and not reference.arguments and (
@@ -328,8 +335,8 @@ class Schema:
                     raise ValueError(
                         "duplicate constructor: " + constructor.tag)
                 tags.add(constructor.tag)
-                if definition.name in COLLECTIONS:
-                    continue  # Native collections convert separately.
+                if definition.name in COLLECTIONS or definition.name == _DURATION:
+                    continue  # Native collections and durations convert separately.
                 if not isinstance(constructor.native, type):
                     raise TypeError("native constructor must be a class")
                 if constructor.native in native_classes:
@@ -634,6 +641,8 @@ class Schema:
             return self._codec_walk(reference, value, bits, mode, symbols)
         if mode in ("native", "logical") and reference.name in COLLECTIONS:
             return self._collection_walk(reference, value, bits, mode, symbols)
+        if mode in ("native", "logical") and reference.name == _DURATION:
+            return _duration_walk(value, mode)
         constructors = self.constructors(reference)
         if constructors is not None:
             if mode == "logical":
@@ -800,3 +809,17 @@ class Schema:
         index = 1 if left.tag == "Either::Right" else 0
         return self.equal(
             arguments[index], left.fields[0], right.fields[0], bits, symbols)
+
+
+def _duration_walk(value, mode):
+    if mode == "native":
+        if not isinstance(value, ls.DataValue) or value.tag != _DURATION_TAG:
+            raise TypeError("expected Duration")
+        return ls.timedelta(microseconds=value.fields[0])
+    if type(value) is not ls.timedelta:
+        raise TypeError("expected a timedelta for Duration")
+    micros = (value.days * 86400 + value.seconds) * 1000000 + value.microseconds
+    if not 0 <= micros <= _DURATION_LIMIT:
+        raise ValueError("Duration outside 0 to "
+                         + str(_DURATION_LIMIT) + " microseconds")
+    return ls.DataValue(_DURATION_TAG, (micros,))

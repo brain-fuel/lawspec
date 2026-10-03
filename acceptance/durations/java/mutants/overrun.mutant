@@ -1,0 +1,6 @@
+@@ src/main/java/example/Durations.java
+<<<<<<<
+    if (value1.compareTo(value0) >= 0) return Duration.ZERO;
+=======
+    if (value1.compareTo(value0) >= 0) return value1.minus(value0);
+>>>>>>>

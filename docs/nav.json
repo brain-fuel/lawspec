@@ -260,6 +260,10 @@
             "path": "reference/language/async-functions.md"
           },
           {
+            "title": "Durations",
+            "path": "reference/language/durations.md"
+          },
+          {
             "title": "Evidence and discharge",
             "path": "reference/language/evidence-and-discharge.md"
           },

@@ -38,7 +38,7 @@ function lawspec(hljs) {
       { scope: "title.function", begin: /`/, end: /`/ },
       hljs.QUOTE_STRING_MODE,
       { scope: "built_in", begin: /\bprelude\.[A-Za-z_][A-Za-z0-9_]*/ },
-      { scope: "number", begin: /\b\d+(\.\d+)?([eE][-+]?\d+)?\b/, relevance: 0 },
+      { scope: "number", begin: /\b\d+(min|ms|us|s|h|d)\b|\b\d+(\.\d+)?([eE][-+]?\d+)?\b/, relevance: 0 },
       { scope: "operator", begin: /::|->|==|!=|<=|>=|&&|\|\|/, relevance: 0 },
     ],
   };

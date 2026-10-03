@@ -68,6 +68,7 @@ Scalars use native Java types where they represent the whole domain:
   `long`; `UInt8`, `UInt16` and `UInt32` use the next wider primitive
   (`short`, `int`, `long`), and `UInt64` uses `BigInteger`;
 - arbitrary integers use `BigInteger`, and `Decimal` uses `BigDecimal`;
+- `Duration` uses `java.time.Duration`, of whole microseconds;
 - floats use `float` and `double`;
 - `Text` uses `String`, `Bytes` uses `byte[]`, and code points and UTF-16 units
   use their native representations;

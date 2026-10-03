@@ -1,0 +1,6 @@
+@@ src/main/kotlin/example/Durations.kt
+<<<<<<<
+        if (value1 >= value0) Duration.ZERO else value0 - value1
+=======
+        if (value1 >= value0) value1 - value0 else value0 - value1
+>>>>>>>

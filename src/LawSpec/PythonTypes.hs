@@ -6,6 +6,7 @@ import Control.Monad (unless)
 import Data.Char (isAscii, isAlphaNum, isLetter, toLower, ord)
 import Data.List (nub, stripPrefix)
 import LawSpec.Collections (collectionsUnit)
+import LawSpec.Time (isDurationType)
 import Numeric (showHex)
 import Data.Aeson (encode)
 import qualified Data.Text.Lazy as T
@@ -59,6 +60,8 @@ application name args = D.text name <> D.delimit 4 "[" "]" args
 typeDoc :: String -> Names -> [(C.Id,String)] -> C.Type -> Either String D.Doc
 typeDoc scope names parameters ty = case ty of
   C.TypeVariable variable -> maybe (Left "unbound Python data parameter") (Right . D.text) (lookup variable parameters)
+  -- A Duration is a timedelta: see runtime/lawspec_schema.py.
+  C.Constructor name [] | isDurationType name -> pure (D.text "ls.timedelta")
   -- Built-in collections are native: see runtime/lawspec_schema.py.
   C.Constructor name arguments | Just short <- collectionContainer name -> do
     args <- mapM argument arguments

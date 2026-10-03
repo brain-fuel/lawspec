@@ -57,6 +57,7 @@ or pointers; tests clone values where an input is used more than once.
 | `Integer` argument | `BigInt` |
 | `Integer` result | `Integer`, with lossless `From` implementations |
 | `Decimal`, `Rational` | Generated `Decimal`, `BigRational` |
+| `Duration` | `std::time::Duration` of whole microseconds |
 | `Float32`, `Float64` | `f32`, `f64` |
 | `Complex64`, `Complex128` | `Complex32`, `Complex64` from num-complex |
 | `Char`, `Text` | `char`, `String` |

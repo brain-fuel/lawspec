@@ -4,6 +4,8 @@ import lawspec.runtime.LawSpecKotlin as Native
 import lawspec.runtime.LawSpecRuntime as Runtime
 import lawspec.runtime.LawSpecSchema.Codec
 import lawspec.runtime.LawSpecSchema.Named
+import kotlin.time.toJavaDuration
+import kotlin.time.toKotlinDuration
 
 /** Framework-independent bridges for Kotlin-specific native representations. */
 object LawSpecKotlinCodecs {
@@ -62,6 +64,12 @@ object LawSpecKotlinCodecs {
     }
 
     /** A Set natively, in canonical order when LawSpec builds it. */
+    /** A Duration natively: a kotlin.time.Duration of whole microseconds. */
+    fun duration(schema: LawSpecSchema, bits: Int, symbols: MutableMap<String, Any> = mutableMapOf()): Codec<kotlin.time.Duration> {
+        val codec = schema.duration(bits, symbols)
+        return schema.codec(codec.type(), bits, symbols, { codec.encode(it.toJavaDuration()) }, { codec.decode(it).toKotlinDuration() })
+    }
+
     fun <T> set(schema: LawSpecSchema, bits: Int, element: Codec<T>, symbols: MutableMap<String, Any> = mutableMapOf()): Codec<Set<T>> {
         val codec = schema.set(element, bits, symbols)
         return schema.codec(codec.type(), bits, symbols, { codec.encode(it) }, { codec.decode(it) })

@@ -1,0 +1,6 @@
+@@ src/Example/Durations.hs
+<<<<<<<
+  | spent >= budget = Data.Duration 0
+=======
+  | spent >= budget = Data.Duration (spent - budget)
+>>>>>>>
