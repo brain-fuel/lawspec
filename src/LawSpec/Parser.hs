@@ -4,6 +4,7 @@ import LawSpec.Collections (collectionsUnit, collectionsAlias)
 import LawSpec.Flow (desugarFlows, flowTypeName)
 import LawSpec.Model
 import LawSpec.Indexed
+import LawSpec.Railway (railwayUnit)
 import LawSpec.DomainModel
 import LawSpec.Scalar
 import Control.Monad.Combinators.Expr
@@ -226,11 +227,27 @@ operatorExpr = located $ makeExprParser application
   , [InfixR (Compose <$ symbol ".")]
   , [InfixL (Binary "*" <$ symbol "*"), InfixL (Binary "/" <$ symbol "/")]
   , [InfixL (Binary "+" <$ symbol "+"), InfixL (Binary "-" <$ symbol "-")]
-  , [InfixN (Binary op <$ try (symbol op)) | op <- ["<=",">=","==","!=","<",">"]]
+  -- Railway combinators on Either (LawSpec.Railway), each also written as a
+  -- prelude name: >=> composes, <$> <!> <*> map and pair, >>= binds, <|> and
+  -- ?? recover, and |> applies.
+  , [InfixR (Binary ">=>" <$ operator ">=>")]
+  , [InfixL (Binary op <$ operator op) | op <- ["<$>","<!>","<*>"]]
+  , [InfixL (Binary ">>=" <$ operator ">>=")]
+  , [InfixL (Binary op <$ operator op) | op <- ["<|>","??"]]
+  , [InfixL (Binary "|>" <$ operator "|>")]
+  , [InfixN (Binary op <$ operator op) | op <- ["<=",">=","==","!=","<",">"]]
   , [InfixL (Binary "&&" <$ symbol "&&")]
   , [InfixL (Binary "||" <$ symbol "||")]
   ]
   where
+    -- An operator never matches the start of a longer one: < is not <$>
+    -- or <|>, > is not >>= or >=>, and >= is not >=>.
+    operator op = try (symbol op <* notFollowedBy (oneOf (longer op)))
+    longer op = case op of
+      "<" -> "$!*|=" :: String
+      ">" -> ">="
+      ">=" -> ">"
+      _ -> ""
     application = do
       terms <- some atom
       pure $ case terms of
@@ -513,7 +530,7 @@ parseWith extra importedFamilies (Source p s) = case runReader (runParserT unitP
   Left e -> Left [Diagnostic "parse" (errorBundlePretty e) Nothing]
   Right (u, imports, families, wrappers, workflows) -> do
     modeled <- either (\(at, message) -> Left [Diagnostic "domain" message at]) Right
-      (elaborateDomain wrappers workflows u)
+      (elaborateDomain wrappers workflows (railwayUnit u))
     (families', flowed) <- either (\(at, message) -> Left [Diagnostic "flow" message at]) Right
       (desugarFlows importedFamilies families modeled)
     elaborated <- either (\message -> Left [Diagnostic "indexed" (p ++ ": " ++ message) Nothing]) Right

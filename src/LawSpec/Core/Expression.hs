@@ -132,6 +132,8 @@ validateExpressionWithRegistry registry bits declarations scope expr@Expr{..} = 
     expressionTypeOf = LawSpec.Core.expressionType
     requireType n e = unless (expressionTypeOf e == scalarType n) (Left ("expected " ++ n))
     helperType Checked [_] = Right (scalarType "Bool")
+    helperType Select [c, a, b] | expressionTypeOf c == scalarType "Bool" && expressionTypeOf a == expressionTypeOf b =
+      Right (expressionTypeOf a)
     helperType Compare [a, b] | expressionTypeOf a == expressionTypeOf b = do
       Types.keyedRequirements registry (expressionTypeOf a) >>= \needed ->
         unless (null needed) (Left "compare requires a type with a portable order")
@@ -146,5 +148,5 @@ validateExpressionWithRegistry registry bits declarations scope expr@Expr{..} = 
       _ -> Left "complex component helper requires complex value"
     helperType b [a] | b `elem` [IsNaN,IsInfinite,IsFinite,IsNegativeZero], expressionTypeOf a `elem` map scalarType ["Float32","Float64"] = Right (scalarType "Bool")
     helperType RoundHalfEven [a,b] | Constructor n [] <- expressionTypeOf a, isExact n = requireType "Int32" b >> pure (scalarType "Decimal")
-    helperType _ _ = Left "invalid core helper arguments"
+    helperType b args = Left ("invalid arguments to " ++ builtinName b ++ ": " ++ show (map expressionTypeOf args))
 

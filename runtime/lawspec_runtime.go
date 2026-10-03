@@ -905,6 +905,11 @@ func lsHelper(n string, args []LawSpecValue, bits int) LawSpecValue {
 	switch n {
 	case "checked":
 		return lsBool(true)
+	case "select":
+		if lsTruth(args[0]) {
+			return args[1]
+		}
+		return args[2]
 	case "compare":
 		tag := [...]string{"Less", "Equal", "Greater"}[lsCompareValues(args[0], args[1])+1]
 		return LawSpecValue{lsOrdering, lawSpecData{lsOrdering + "::" + tag, nil}}

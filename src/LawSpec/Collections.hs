@@ -15,7 +15,7 @@ module LawSpec.Collections
   ) where
 
 import Data.Char (isAlphaNum)
-import Data.List (isPrefixOf, nub)
+import Data.List (isInfixOf, isPrefixOf, nub)
 
 collectionsUnit :: String
 collectionsUnit = "lawspec.collections"
@@ -25,7 +25,7 @@ collectionsAlias :: String
 collectionsAlias = "lawspecCollections"
 
 collectionTypes :: [String]
-collectionTypes = ["Set", "KeyVal", "Queue", "Stack", "Deque", "Entry", "Ordering"]
+collectionTypes = ["Set", "KeyVal", "Queue", "Stack", "Deque", "Entry", "Ordering", "Pair"]
 
 isCollectionsType :: String -> Bool
 isCollectionsType name = (collectionsUnit ++ "::type::") `isPrefixOf` name
@@ -79,7 +79,9 @@ usedCollections sources =
           declared = [name | (keyword, name) <- zip tokens (drop 1 tokens), keyword `elem` ["type", "wrapper"]]
           named = [t | t <- collectionTypes, t `elem` tokens]
           operated = [owner | t <- tokens, Just op <- [stripPrefix' "prelude." t], Just (_, owner) <- [collectionOperation op]] ++
-            ["Ordering" | "prelude.compare" `elem` tokens]
+            ["Ordering" | "prelude.compare" `elem` tokens] ++
+            -- The railway combinator both (<*>) pairs two results.
+            ["Pair" | "prelude.both" `elem` tokens || "<*>" `isInfixOf` stripComments text]
       in [t | t <- named ++ operated, t `notElem` declared]
     stripPrefix' prefix t = if prefix `isPrefixOf` t then Just (drop (length prefix) t) else Nothing
     stripComments = unlines . map (\line -> takeComment line) . lines
@@ -98,6 +100,7 @@ collectionsSource types = unlines $
     declarations =
       [ ("Ordering", ["type Ordering is", "  | Less", "  | Equal", "  | Greater", "end", ""])
       , ("Entry", ["type Entry (k :: Type) (v :: Type) is Entry key :: k value :: v end", ""])
+      , ("Pair", ["type Pair (a :: Type) (b :: Type) is Pair first :: a second :: b end", ""])
       , ("Set", ["type Set (a :: Type) is SetItems items :: List a end", ""])
       , ("KeyVal", ["type KeyVal (k :: Type) (v :: Type) is KeyValEntries entries :: List (Entry k v) end", ""])
       , ("Queue", ["type Queue (a :: Type) is QueueItems items :: List a end", ""])

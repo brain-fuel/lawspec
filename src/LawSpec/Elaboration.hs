@@ -40,8 +40,19 @@ equationWithData dataTypes declarations bits origin resolve env left right = do
         S.DecimalNumber _ _ -> True
         S.ScalarLit s -> scalarName s `elem` ["Null","Undefined","Nullable","Optional"]
         _ -> False
-      (a',b') | contextual a = (S.Annotate a (S.expressionType tb),b)
-              | contextual b = (a,S.Annotate b (S.expressionType ta))
+      -- A side whose type is still open, such as a select or match whose
+      -- branches leave an error type undetermined, takes the other side's.
+      open t = case t of
+        S.Variable _ -> True
+        S.Applied _ inner -> open inner
+        S.Application _ ts -> any open ts
+        S.Arrow x y -> open x || open y
+        S.Refined _ inner _ -> open inner
+        _ -> False
+      ta' = S.expressionType ta
+      tb' = S.expressionType tb
+      (a',b') | contextual a || (open ta' && not (open tb')) = (S.Annotate a tb',b)
+              | contextual b || (open tb' && not (open ta')) = (a,S.Annotate b ta')
               | otherwise = (a,b)
   x <- elaborateResolvedWithData dataTypes declarations bits origin resolve env a'
   y <- elaborateResolvedWithData dataTypes declarations bits origin resolve env b'
@@ -198,7 +209,7 @@ elaborateResolvedWithData dataTypes declarations bits origin resolve env source 
         builtin <- maybe (Left ("unknown resolved helper: " ++ n)) Right (lookup n
           [("length",C.Length),("isPresent",C.IsPresent),("presentValue",C.PresentValue),("real",C.RealPart),("imag",C.ImaginaryPart)
           ,("isNaN",C.IsNaN),("isInfinite",C.IsInfinite),("isFinite",C.IsFinite),("isNegativeZero",C.IsNegativeZero),("round",C.RoundHalfEven),("checked",C.Checked)
-          ,("compare",C.Compare)])
+          ,("compare",C.Compare),("select",C.Select)])
         args <- case (builtin,xs) of
           (C.RoundHalfEven,[a,b]) -> do
             let ty = C.scalarType "Int32"

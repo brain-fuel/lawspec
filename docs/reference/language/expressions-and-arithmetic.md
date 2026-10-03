@@ -11,6 +11,11 @@ means `(f x) y`. The other operators, from highest to lowest precedence:
 | Composition `.` | Right |
 | `*`, `/` | Left |
 | `+`, `-` | Left |
+| `>=>` | Right |
+| `<$>`, `<!>`, `<*>` | Left |
+| `>>=` | Left |
+| `<\|>`, `??` | Left |
+| `\|>` | Left |
 | `==`, `!=`, `<`, `<=`, `>`, `>=` | Do not chain |
 | `&&` | Left |
 | `\|\|` | Left |
@@ -23,6 +28,53 @@ A sign directly before a number is part of it: `f -42` applies `f` to negative
 `==`; `and` combines assertions, and parentheses set the scope of a shared
 guard. See [the prelude reference](../prelude-algebra.md#conjunction) for
 `and` and `implies`.
+
+## Railway combinators
+
+These operators work on `Either e a`, in laws and in checked definitions. Each
+symbol also has an English name, and some combinators have only a name:
+
+| Symbol | Name | Meaning |
+| --- | --- | --- |
+| `m >>= f` | `prelude.bind m f`, `prelude.then m f` | `f` applied to the success value; a failure passes through |
+| `f <$> m` | `prelude.map f m` | the success value mapped by `f` |
+| `g <!> m` | `prelude.mapError g m` | the error mapped by `g` |
+| `m <\|> h` | `prelude.orElse m h` | on failure, the result of `h` applied to the error |
+| `m ?? v` | `prelude.fallback m v`, `prelude.fromEither v m` | the success value, or `v` |
+| `(f >=> g) x` | `prelude.andThen f g x` | `f x >>= g` |
+| `x \|> f` | `prelude.pipe x f` | `f x` |
+| `m <*> n` | `prelude.both m n` | `Right (Pair a b)` when both succeed, else the first error |
+| | `prelude.ensure p e m` | the success value if `p` holds of it, else `Left e` |
+| | `prelude.isLeft m`, `prelude.isRight m` | which side `m` is |
+| | `prelude.select c a b` | `a` when `c` holds, else `b` |
+
+```lawspec
+unit guide.railway
+
+type Problem is | TooSmall | TooLarge end
+
+definition positive (x :: BigInt) :: Either Problem BigInt is
+  prelude.select (x > 0) (Right x) (Left TooSmall)
+end
+
+definition small (x :: BigInt) :: Either Problem BigInt is
+  prelude.select (x < 100) (Right x) (Left TooLarge)
+end
+
+definition twice (x :: BigInt) :: BigInt is x + x end
+
+law `a failure short-circuits` is
+  definition is
+    `for all` (x :: BigInt) . x <= 0 implies (twice <$> (positive x >>= small)) = Left TooSmall
+  end
+end
+```
+
+The functions given to a combinator are named definitions or adapters,
+partial applications, or compositions. The combinators are rewritten into
+`match` expressions, so every target runs them as ordinary matches. The
+prelude adds laws about them: `bind has a left identity`, `bind is
+associative`, `map fuses` and `recovery keeps successes`.
 
 ## Literals
 

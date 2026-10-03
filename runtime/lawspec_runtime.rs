@@ -1882,6 +1882,11 @@ impl<T: FromValue> FromValue for std::collections::VecDeque<T> {
 
 pub fn helper(name: &str, mut args: Vec<Value>) -> Result<Value> {
     use Value::*;
+    if name == "select" && args.len() == 3 {
+        let other = args.pop().unwrap();
+        let chosen = args.pop().unwrap();
+        return Ok(if matches!(args[0], Bool(true)) { chosen } else { other });
+    }
     if name == "compare" && args.len() == 2 {
         let tag = match compare_values(&args[0], &args[1])? {
             std::cmp::Ordering::Less => "Less",

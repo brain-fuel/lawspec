@@ -400,6 +400,8 @@ def helper(n, args, types, bits=64):
     x = args[0]
     if n == 'checked':
         return True
+    if n == 'select':
+        return args[1] if args[0] else args[2]
     if n == 'compare':
         order = compare_values(args[0], args[1])
         return DataValue(ORDERING + ('Less', 'Equal', 'Greater')[order + 1], ())

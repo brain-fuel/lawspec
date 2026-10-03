@@ -463,6 +463,7 @@ canonicalItems keyed values = foldr keepLast [] (sortBy order values)
 helper :: String -> [Scalar] -> Int -> Scalar
 helper n args bits = case (n,args) of
   ("checked",[v]) -> forceScalar v `seq` SBool True
+  ("select",[c,a,b]) -> if truth c then a else b
   ("compare",[x,y]) -> case compareValues x y of
     Right order -> SData ("lawspec.collections::type::Ordering::" ++
       case order of LT -> "Less"; EQ -> "Equal"; GT -> "Greater") []

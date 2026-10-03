@@ -664,6 +664,7 @@ public final class LawSpecRuntime {
 
   public static Value helper(String n, Value[] args, int bits) {
     if (n.equals("checked")) return bool(true);
+    if (n.equals("select")) return truth(args[0]) ? args[1] : args[2];
     if (n.equals("compare")) {
       var tag = new String[] {"Less", "Equal", "Greater"}[compareValues(args[0], args[1]) + 1];
       return new Value(ORDERING, new Data(ORDERING + "::" + tag, List.of()));

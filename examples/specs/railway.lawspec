@@ -1,0 +1,78 @@
+unit example.railway
+
+-- Railway combinators on Either. Each symbol has a prelude name, and both are
+-- rewritten into matches, so they work in laws and checked definitions alike.
+
+type Problem is | TooSmall | TooLarge | Odd end
+
+definition positive (x :: BigInt) :: Either Problem BigInt is
+  prelude.select (x > 0) (Right x) (Left TooSmall)
+end
+
+definition small (x :: BigInt) :: Either Problem BigInt is
+  prelude.select (x < 100) (Right x) (Left TooLarge)
+end
+
+definition even (x :: BigInt) :: Bool is prelude.rem x 2 == 0 end
+
+definition twice (x :: BigInt) :: BigInt is x + x end
+
+definition retry (p :: Problem) :: Either Problem BigInt is Right 1 end
+
+-- A checked pipeline written with symbols: positive, then small, then doubled.
+definition checked (x :: BigInt) :: Either Problem BigInt is
+  twice <$> (positive x >>= small)
+end
+
+-- The same pipeline in English.
+definition checkedInWords (x :: BigInt) :: Either Problem BigInt is
+  prelude.map twice (prelude.bind (positive x) small)
+end
+
+law `symbols and English agree` is
+  definition is `for all` (x :: BigInt) . checked x = checkedInWords x end
+end
+
+law `binding associates` is
+  definition is
+    `for all` (x :: BigInt) . ((positive x >>= small) >>= positive) = (positive x >>= (small >=> positive))
+  end
+end
+
+law `a failure short-circuits` is
+  definition is `for all` (x :: BigInt) . x <= 0 implies checked x = Left TooSmall end
+end
+
+law `recovery replaces a failure` is
+  definition is `for all` (x :: BigInt) . (positive x <|> retry) = prelude.select (x > 0) (Right x) (Right 1) end
+end
+
+law `ensure keeps even values` is
+  definition is
+    `for all` (x :: BigInt) .
+      prelude.ensure even Odd (positive x) = prelude.select (x > 0) (prelude.select (even x) (Right x) (Left Odd)) (Left TooSmall)
+  end
+end
+
+law `both pairs successes` is
+  definition is
+    `for all` (x :: BigInt) . prelude.isRight (positive x <*> small x) = (x > 0 && x < 100)
+  end
+end
+
+-- The prelude's railway laws, instantiated for these definitions.
+law `positive is a left identity case` is
+  definition is `bind has a left identity` positive end
+end
+
+law `positive, small and positive associate` is
+  definition is `bind is associative` positive small positive end
+end
+
+law `mapping twice fuses` is
+  definition is `map fuses` positive twice twice end
+end
+
+law `retry keeps successes` is
+  definition is `recovery keeps successes` positive retry end
+end

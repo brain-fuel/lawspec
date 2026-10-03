@@ -332,6 +332,12 @@ builtin env n args
   | n `elem` ["isPresent","presentValue"], [a] <- args = do
       t <- infer env a >>= resolve
       case t of Applied wrapper inner | wrapper `elem` ["Nullable","Optional"] -> pure (if n == "isPresent" then Named "Bool" else inner); _ -> throwC "presence helper requires Nullable or Optional"
+  -- select c a b is a when c holds and b otherwise; both are values.
+  | n == "select", [c,a,b] <- args = do
+      checkExpr env (Named "Bool") c
+      t <- infer env a >>= resolve
+      checkExpr env t b
+      pure t
   -- The portable total order, as the collections unit's Ordering.
   | n == "compare", [a,b] <- args = do
       t <- infer env a >>= resolve
@@ -428,6 +434,9 @@ typedExpressionWithSchemes declarations bits env e = do
         ListLit xs -> case t of
           Applied "List" element -> mapM (descend (Just element)) xs
           _ -> throwC "list literal requires a List type"
+        -- Both of select's values take its type, as a match's branches do.
+        Apply _ _ | (Var "prelude.select", [c,a,b]) <- application e ->
+          sequence [descend (Just (Named "Bool")) c, descend (Just t) a, descend (Just t) b]
         Apply _ _ | (Var n,args) <- application e, take 8 n == "prelude." -> mapM (descend Nothing) args
         -- With a numeric literal among its arguments, the function's
         -- expected type carries the argument's and the result's, so a

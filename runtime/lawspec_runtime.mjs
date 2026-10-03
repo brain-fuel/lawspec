@@ -519,6 +519,7 @@ export function compareValues(a, b) {
 export function helper(n, args, types, bits = 64) {
   const x = args[0];
   if (n === 'checked') return true;
+  if (n === 'select') return args[0] ? args[1] : args[2];
   if (n === 'compare')
     return new DataValue(ORDERING + ['Less', 'Equal', 'Greater'][compareValues(args[0], args[1]) + 1], []);
   if (n === 'length')
