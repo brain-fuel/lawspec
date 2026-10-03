@@ -79,4 +79,26 @@ public final class Resilience {
     for (var event : runtime.trace) if (event.kind().equals("compensate")) stages.add(event.stage());
     return stages;
   }
+
+  /** Quotes a ticket under a runtime with the real clock: whether it succeeded within 400ms, for ticket -2 through a hedged attempt. */
+  public static java.util.concurrent.CompletableFuture<Boolean> quoteHedged(long value0) {
+    return java.util.concurrent.CompletableFuture.supplyAsync(() -> {
+      Limits.resetQuotes();
+      var runtime = new LawSpecRuntime.WorkflowRuntime(null, 0);
+      long started = System.nanoTime();
+      var result = lawspec.definitions.example.Limits.hedged(runtime.context(new HashMap<>()), new lawspec.data.Ticket(value0));
+      boolean quick = System.nanoTime() - started < 400_000_000L;
+      boolean hedged = runtime.trace.stream().anyMatch(event -> event.kind().equals("hedge"));
+      return result instanceof LawSpecRuntime.Right<?, ?> && quick && (value0 != -2 || hedged);
+    });
+  }
+
+  /** Quotes a ticket under a runtime with the real clock: whether it timed out. */
+  public static java.util.concurrent.CompletableFuture<Boolean> quoteTimedOut(long value0) {
+    return java.util.concurrent.CompletableFuture.supplyAsync(() -> {
+      var runtime = new LawSpecRuntime.WorkflowRuntime(null, 0);
+      var result = lawspec.definitions.example.Limits.quoted(runtime.context(new HashMap<>()), new lawspec.data.Ticket(value0));
+      return result instanceof LawSpecRuntime.Left<?, ?> left && left.value() instanceof lawspec.data.QuotedError.QuotedTimedOut;
+    });
+  }
 }

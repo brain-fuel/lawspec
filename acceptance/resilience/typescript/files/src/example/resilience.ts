@@ -2,6 +2,7 @@
 import * as ls from '../lawspec_runtime.js';
 import * as data from '../lawspec_data.js';
 import * as workflows from '../lawspec_definitions/example/limits.js';
+import * as quotes from './limits.js';
 
 export function runtimeExponentialDelay(value0: bigint, value1: bigint, value2: bigint): bigint {
   return ls.retryDelay(['exponential', value0, value1, null], value2);
@@ -56,4 +57,22 @@ export function compensationsFor(value0: bigint): Array<string> {
   const runtime = new ls.WorkflowRuntime(new ls.VirtualClock());
   workflows.book(runtime.context(), new data.Ticket(value0));
   return runtime.trace.filter((event: any) => event[0] === 'compensate').map((event: any) => event[1]);
+}
+
+/** Quotes a ticket under a runtime with the real clock: whether it timed out. */
+export async function quoteTimedOut(value0: bigint): Promise<boolean> {
+  const runtime = new ls.WorkflowRuntime(new ls.RealClock());
+  const result = await workflows.quoted(runtime.context(), new data.Ticket(value0));
+  return result instanceof data.Left && result.value instanceof data.QuotedErrorQuotedTimedOut;
+}
+
+/** Quotes a ticket under a runtime with the real clock: whether it succeeded within 400ms, for ticket -2 through a hedged attempt. */
+export async function quoteHedged(value0: bigint): Promise<boolean> {
+  quotes.resetQuotes();
+  const runtime = new ls.WorkflowRuntime(new ls.RealClock());
+  const started = performance.now();
+  const result = await workflows.hedged(runtime.context(), new data.Ticket(value0));
+  const quick = performance.now() - started < 400;
+  const hedged = runtime.trace.some((event: any) => event[0] === 'hedge');
+  return result instanceof data.Right && quick && (value0 !== -2n || hedged);
 }

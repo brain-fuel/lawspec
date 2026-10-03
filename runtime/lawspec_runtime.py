@@ -348,13 +348,25 @@ def equal(a, b, ta, tb):
     return a == b
 
 
+def _run_blocking(main):
+    """Runs a coroutine to completion and returns its result. Called where an
+    event loop is already running (a synchronous definition called from an
+    asynchronous adapter), it runs on a thread of its own."""
+    import asyncio
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(main)
+    import concurrent.futures
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+        return pool.submit(asyncio.run, main).result()
+
+
 def await_task(task):
     """An async adapter's result: run its coroutine (or awaitable) to completion."""
-    import asyncio
-
     async def result():
         return await task
-    return asyncio.run(result())
+    return _run_blocking(result())
 
 
 ORDERING = 'lawspec.collections::type::Ordering::'
@@ -854,6 +866,11 @@ class WorkflowRuntime:
         self.gates = gates
         # A frame per running workflow: the undos of its completed stages.
         self.frames = []
+        # When the running attempt of a stage with a timeout must end
+        # (time.monotonic seconds), or None.
+        self.deadline = None
+        # The running attempt's stage and hedge (delay, most), or None.
+        self.hedge = None
 
     def context(self, symbols=None):
         """A symbols context that runs workflows under this runtime."""
@@ -917,6 +934,9 @@ class StagePolicy:
     wraps: bool = False
     # Undoes the stage's success value when its workflow fails.
     compensate: object = None
+    # (delay, most): when an attempt has not succeeded after delay, another
+    # starts beside it, up to most in all; the first success wins.
+    hedge: object = None
 
 
 def _fibonacci(n):
@@ -1048,12 +1068,90 @@ def equal_values(a, b):
     return a == b
 
 
+class StageTimedOut(Exception):
+    """An attempt outlived its stage's timeout."""
+
+
+def await_step(symbols, start, convert):
+    """An asynchronous step's logical result: start() begins the step and
+    convert turns its native result into a logical value. The step runs
+    within its stage's timeout and hedge, if any."""
+    runtime = workflow_runtime(symbols)
+    deadline, hedge = runtime.deadline, runtime.hedge
+    if deadline is None and hedge is None:
+        return convert(await_task(start()))
+    import asyncio
+
+    def left():
+        return None if deadline is None else max(0.0, deadline - _time.monotonic())
+
+    async def within():
+        return convert(await asyncio.wait_for(start(), left()))
+
+    async def hedged():
+        (stage, (delay, most)) = hedge
+        pending, started, last = set(), 0, None
+
+        def launch():
+            nonlocal started
+            started += 1
+            if started > 1:
+                runtime.trace.append(('hedge', stage, started))
+            pending.add(asyncio.ensure_future(start()))
+        launch()
+        try:
+            while True:
+                wait = delay / 1_000_000 if started < most else None
+                if deadline is not None:
+                    wait = left() if wait is None else min(wait, left())
+                done, _ = await asyncio.wait(pending, timeout=wait, return_when=asyncio.FIRST_COMPLETED)
+                for task in done:
+                    pending.discard(task)
+                    value = convert(task.result())
+                    if not (isinstance(value, DataValue) and value.tag == 'Either::Left'):
+                        return value
+                    last = value
+                if deadline is not None and _time.monotonic() >= deadline:
+                    raise asyncio.TimeoutError()
+                if pending and done:
+                    continue
+                if not pending and started >= most:
+                    return last
+                launch()
+        finally:
+            for task in pending:
+                task.cancel()
+    try:
+        return _run_blocking(within() if hedge is None else hedged())
+    except asyncio.TimeoutError:
+        raise StageTimedOut() from None
+
+
+def _scoped(runtime, policy, attempt):
+    """An attempt under its stage's timeout (failing with TimedOut when it
+    outlives it) and hedge. Under the runtime generated tests install (gates
+    off), both are off."""
+    timeout = policy.timeout is not None and policy.timeout > 0
+    if not runtime.gates or (not timeout and policy.hedge is None):
+        return attempt()
+    outer = (runtime.deadline, runtime.hedge)
+    if timeout:
+        runtime.deadline = _time.monotonic() + policy.timeout / 1_000_000
+    runtime.hedge = None if policy.hedge is None else (policy.stage, policy.hedge)
+    try:
+        return attempt()
+    except StageTimedOut:
+        return stage_failure('TimedOut')
+    finally:
+        (runtime.deadline, runtime.hedge) = outer
+
+
 def _attempts(runtime, policy, attempt):
     retry = policy.retry
     number, previous = 1, 0
     while True:
         runtime.trace.append(('start', policy.stage, number))
-        result = attempt()
+        result = _scoped(runtime, policy, attempt)
         failed = isinstance(result, DataValue) and result.tag == 'Either::Left'
         runtime.trace.append(('finish', policy.stage, number, not failed))
         if not failed or retry is None:

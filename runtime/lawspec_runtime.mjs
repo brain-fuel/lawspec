@@ -1052,6 +1052,8 @@ const MASK64 = (1n << 64n) - 1n;
 
 export class RealClock {
   now() { return BigInt(Math.round(performance.now() * 1000)); }
+  /** Waits without blocking, for asynchronous workflows. */
+  sleepAsync(micros) { return new Promise((resolve) => setTimeout(resolve, Number(micros) / 1000)); }
   sleep(micros) {
     const until = performance.now() + Number(micros) / 1000;
     while (performance.now() < until) { /* synchronous workflows block */ }
@@ -1064,6 +1066,7 @@ export class VirtualClock {
   constructor(start = 0n) { this.time = BigInt(start); }
   now() { return this.time; }
   sleep(micros) { this.time += BigInt(micros); }
+  sleepAsync(micros) { this.sleep(micros); return Promise.resolve(); }
 }
 
 /** The same sequence on every target for the same seed. */
@@ -1217,7 +1220,7 @@ export function runStage(symbols, given, attempt, ...input) {
   // The key is optional (a rest parameter keeps it so for TypeScript), and a
   // policy built by hand may leave out what it does not use.
   const key = input[0];
-  const policy = {key: given.stage, gates: [], cache: null, wraps: false, timeout: null, compensate: null, ...given};
+  const policy = {key: given.stage, gates: [], cache: null, wraps: false, timeout: null, compensate: null, hedge: null, ...given};
   const runtime = workflowRuntime(symbols);
   const gates = runtime.gates ? policy.gates : [];
   let cached = null;
@@ -1326,5 +1329,161 @@ function attempts(runtime, policy, attempt) {
 export function retryDecision(decision) {
   if (decision.tag !== 'lawspec.time::type::RetryDecision::RetryAfter') return null;
   return decision.fields[0].fields[0];
+}
+
+// Asynchronous workflows: the same, with stages that await their steps. A
+// stage's timeout races each attempt against a timer (real time; the
+// runtime generated tests install has timeouts off, as its gates are).
+
+async function sleepFor(clock, delay) {
+  await clock.sleepAsync(delay);
+}
+
+const TIMED_OUT = Symbol('timed out');
+
+async function timed(runtime, policy, attempt, control) {
+  if (policy.timeout === null || policy.timeout <= 0n || !runtime.gates) return attempt();
+  let timer;
+  const expiry = new Promise((resolve) => {
+    timer = setTimeout(() => resolve(TIMED_OUT), Number(policy.timeout) / 1000);
+  });
+  try {
+    const result = await Promise.race([attempt(), expiry]);
+    if (result !== TIMED_OUT) return result;
+    control.stopped = true;
+    return stageFailure('TimedOut');
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * A stage's hedge, [delay, most]: when an attempt has not succeeded after
+ * delay, another starts beside it, up to most in all. The first success
+ * wins; when every attempt fails, the last failure. Off where gates are.
+ */
+function hedged(runtime, policy, attempt, control) {
+  if (policy.hedge === null || !runtime.gates) return attempt();
+  const [delay, most] = policy.hedge;
+  return new Promise((resolve, reject) => {
+    let started = 0n, pending = 0, timer;
+    let finished = false;
+    const finish = (settle, value) => {
+      finished = true;
+      clearTimeout(timer);
+      settle(value);
+    };
+    const launch = () => {
+      if (finished || control.stopped) return;
+      started += 1n;
+      pending += 1;
+      if (started > 1n) runtime.trace.push(['hedge', policy.stage, started]);
+      clearTimeout(timer);
+      if (started < most) timer = setTimeout(launch, Number(delay) / 1000);
+      Promise.resolve().then(attempt).then((result) => {
+        pending -= 1;
+        if (finished) return;
+        if (!(result instanceof DataValue && result.tag === 'Either::Left')) finish(resolve, result);
+        else if (pending === 0 && started >= most) finish(resolve, result);
+        else if (pending === 0) launch();
+      }, (error) => {
+        if (!finished) finish(reject, error);
+      });
+    };
+    launch();
+  });
+}
+
+async function attemptsAsync(runtime, policy, attempt) {
+  const retry = policy.retry;
+  let number = 1n, previous = 0n;
+  for (;;) {
+    runtime.trace.push(['start', policy.stage, number]);
+    const control = {stopped: false};
+    const result = await timed(runtime, policy, () => hedged(runtime, policy, attempt, control), control);
+    const failed = result instanceof DataValue && result.tag === 'Either::Left';
+    runtime.trace.push(['finish', policy.stage, number, !failed]);
+    if (!failed || retry === null) return result;
+    if (retry.attempts > 0n && number >= retry.attempts) return result;
+    let error = result.fields[0];
+    if (policy.wraps) {
+      if (error.tag === STAGE_FAILURE + 'StepFailed') error = error.fields[0];
+      else if (error.tag !== STAGE_FAILURE + 'TimedOut') return result;
+    }
+    if (retry.when !== null && !retry.when(error)) return result;
+    number += 1n;
+    let delay;
+    if (retry.strategy[0] === 'custom') {
+      delay = retry.strategy[1](number, error, previous);
+      if (delay === null) return result;
+    } else {
+      const base = retry.strategy[0] === 'immediate' ? 0n : retryDelay(retry.strategy, 2n);
+      delay = jittered(retry.jitter, retryDelay(retry.strategy, number), previous, base, runtime.random);
+    }
+    runtime.trace.push(['sleep', policy.stage, delay]);
+    await sleepFor(runtime.clock, delay);
+    previous = delay;
+  }
+}
+
+/** runStage for an asynchronous stage: attempt() returns a promise. */
+export async function runStageAsync(symbols, given, attempt, ...input) {
+  const key = input[0];
+  const policy = {key: given.stage, gates: [], cache: null, wraps: false, timeout: null, compensate: null, hedge: null, ...given};
+  const runtime = workflowRuntime(symbols);
+  const gates = runtime.gates ? policy.gates : [];
+  let cached = null;
+  if (policy.cache !== null && runtime.gates) {
+    const cacheKey = policy.key + '/cache';
+    if (!runtime.state.has(cacheKey)) runtime.state.set(cacheKey, []);
+    cached = runtime.state.get(cacheKey);
+    const now = runtime.clock.now();
+    for (const [entry, value, expires] of cached) {
+      if (now < expires && equalValues(entry, key)) {
+        runtime.trace.push(['cached', policy.stage, 0n]);
+        return value;
+      }
+    }
+  }
+  for (let i = 0; i < gates.length; i++) {
+    const failure = passGate(runtime, policy, gates[i]);
+    if (failure !== null) {
+      for (const passed of gates.slice(0, i)) finishGate(runtime, policy, passed, false);
+      return stageFailure(failure);
+    }
+  }
+  const result = await attemptsAsync(runtime, policy, attempt);
+  const succeeded = !(result instanceof DataValue && result.tag === 'Either::Left');
+  for (const gate of gates) finishGate(runtime, policy, gate, succeeded);
+  if (succeeded && policy.compensate !== null && runtime.frames.length > 0) {
+    const value = result.fields[0];
+    runtime.frames[runtime.frames.length - 1].push([policy.stage, () => policy.compensate(value)]);
+  }
+  if (cached !== null && succeeded) {
+    const kept = cached.filter(([entry]) => !equalValues(entry, key));
+    cached.length = 0;
+    cached.push(...kept, [key, result, runtime.clock.now() + policy.cache]);
+  }
+  return result;
+}
+
+/** runWorkflow for an asynchronous workflow; undos may be asynchronous. */
+export async function runWorkflowAsync(symbols, attempt) {
+  const runtime = workflowRuntime(symbols);
+  const frame = [];
+  runtime.frames.push(frame);
+  let result;
+  try {
+    result = await attempt();
+  } finally {
+    runtime.frames.splice(runtime.frames.indexOf(frame), 1);
+  }
+  if (result instanceof DataValue && result.tag === 'Either::Left') {
+    for (const [stage, undo] of [...frame].reverse()) {
+      runtime.trace.push(['compensate', stage, 0n]);
+      await undo();
+    }
+  }
+  return result;
 }
 

@@ -43,6 +43,7 @@ fn waits(attempts: i32, when: Option<fn(&mut ls::Context, ls::Value) -> ls::Resu
         cache: -1,
         wraps: false,
         compensate: None,
+        hedge: None,
     };
     ls::run_stage(ctx, &policy, |_| Ok(ls::Value::Left(Box::new(ls::Value::Integer(0.into())))), ls::Value::Unit).expect("the stage runs");
     let runtime = ctx.workflow.as_ref().unwrap().lock().unwrap();
@@ -77,4 +78,23 @@ pub fn compensationsFor(value0: i64) -> Vec<String> {
     let _ = crate::lawspec_definitions::example_limits::book(ctx, crate::lawspec_data::Ticket { number: value0 });
     let runtime = ctx.workflow.as_ref().unwrap().lock().unwrap();
     runtime.trace.iter().filter(|event| event.kind == "compensate").map(|event| event.stage.clone()).collect()
+}
+
+/// Quotes a ticket under a runtime with the real clock: whether it timed out.
+pub async fn quoteTimedOut(value0: i64) -> bool {
+    let ctx = &mut ls::Context::with_workflow(ls::WorkflowRuntime::new(Box::new(ls::RealClock::default()), 0));
+    let result = crate::lawspec_definitions::example_limits::quoted(ctx, crate::lawspec_data::Ticket { number: value0 });
+    matches!(result, Ok(ls::Either::Left(crate::lawspec_data::QuotedError::QuotedTimedOut)))
+}
+
+/// Quotes a ticket under a runtime with the real clock: whether it succeeded
+/// within 400ms, for ticket -2 through a hedged attempt.
+pub async fn quoteHedged(value0: i64) -> bool {
+    crate::example_limits::reset_quotes();
+    let ctx = &mut ls::Context::with_workflow(ls::WorkflowRuntime::new(Box::new(ls::RealClock::default()), 0));
+    let started = std::time::Instant::now();
+    let result = crate::lawspec_definitions::example_limits::hedged(ctx, crate::lawspec_data::Ticket { number: value0 });
+    let quick = started.elapsed() < std::time::Duration::from_millis(400);
+    let hedged = ctx.workflow.as_ref().unwrap().lock().unwrap().trace.iter().any(|event| event.kind == "hedge");
+    matches!(result, Ok(ls::Either::Right(_))) && quick && (value0 != -2 || hedged)
 }

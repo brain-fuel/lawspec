@@ -39,7 +39,7 @@ A unit can contain:
 | Data type | `type Name ... is ... end` | [Types and data](types-and-data.md) |
 | Indexed family | `type Vec (n :: Natural) (a :: Type) is ... end` | [Indexed families](indexed-families.md) |
 | Wrapper | `wrapper Name is Type where ... end` | [Domain modeling](domain-modeling.md) |
-| Workflow | `workflow name :: A -> B is ... end` | [Domain modeling](domain-modeling.md) |
+| Workflow | `workflow name :: A -> B is ... end` | [Workflows](workflows.md) |
 | Checked definition | `definition name (x :: T) :: R is ... end` | [Definitions](definitions.md) |
 | Refinement | `refinement Name ... is ... end` | [Refinements](../refinements.md) |
 | Law | ``law `name` is ... end`` | [Laws and examples](laws-and-examples.md) |
@@ -104,12 +104,29 @@ constructor  = ["|"] name (name "::" type)*
                ["where" name "=" expression ("," name "=" expression)*]
 wrapper      = "wrapper" name ("(" name "::" "Type" ")")*
                "is" type ["where" expression] "end"
-workflow     = "workflow" name "::" type "is" stage+ "end"
+workflow     = "workflow" name "::" type "is" (stage policy*)+ "end"
 stage        = name "::" type
              | ("then" | ">>=") name ["::" type]
              | ("map" | "<$>" | "mapError" | "<!>" | "tap") name
              | ("orElse" | "recover" | "<|>" | "fallback" | "??") name
              | "ensure" name "else" name
+             | "all" ["accumulate"] (name "::" type | ("then" | ">>=") name)+
+               "end" "combine" name
+policy       = "retry" strategy ["jitter" ("full" | "equal" | "decorrelated")]
+               ["when" name]
+             | "timeout" duration ["else" name]
+             | "rateLimit" ("tokenBucket" | "leakyBucket" | "fixedWindow"
+               | "slidingWindow") count duration wait ["else" name]
+             | "circuitBreaker" count duration "cooldown" duration ["else" name]
+             | "bulkhead" count wait ["else" name]
+             | "cache" duration
+             | "compensate" name
+             | "hedge" duration ["max" count]
+strategy     = "immediate" count | "fixed" duration count
+             | "linear" duration duration count
+             | "exponential" duration count count ["max" duration]
+             | "fibonacci" duration count | "custom" name [count]
+wait         = "wait" ["max" duration] | "reject"
 function     = "definition" name parameter+ "::" type requirements?
                "is" expression "end"
 type         = type-atom ["->" type]

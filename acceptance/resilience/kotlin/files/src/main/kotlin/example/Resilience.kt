@@ -57,4 +57,23 @@ object Resilience {
         lawspec.definitions.example.Limits.book(runtime.context(HashMap()), lawspec.data.Ticket(value0))
         return runtime.trace.filter { it.kind() == "compensate" }.map { it.stage() }
     }
+
+    // Quotes a ticket under a runtime with the real clock: whether it succeeded
+    // within 400ms, for ticket -2 through a hedged attempt.
+    suspend fun quoteHedged(value0: Long): Boolean {
+        Limits.resetQuotes()
+        val runtime = LawSpecRuntime.WorkflowRuntime(null, 0)
+        val started = System.nanoTime()
+        val result = lawspec.definitions.example.Limits.hedged(runtime.context(HashMap()), lawspec.data.Ticket(value0))
+        val quick = System.nanoTime() - started < 400_000_000L
+        val hedged = runtime.trace.any { it.kind() == "hedge" }
+        return result is LawSpecRuntime.Right<*, *> && quick && (value0 != -2L || hedged)
+    }
+
+    // Quotes a ticket under a runtime with the real clock: whether it timed out.
+    suspend fun quoteTimedOut(value0: Long): Boolean {
+        val runtime = LawSpecRuntime.WorkflowRuntime(null, 0)
+        val result = lawspec.definitions.example.Limits.quoted(runtime.context(HashMap()), lawspec.data.Ticket(value0))
+        return result is LawSpecRuntime.Left<*, *> && result.value is lawspec.data.QuotedError.QuotedTimedOut
+    }
 }

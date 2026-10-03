@@ -1,6 +1,6 @@
 module LawSpec.Parser (parseSource, parseSources, parseSourcesWith, sourceUnit) where
 
-import LawSpec.Core.Policy (StagePolicy(..), Retry(..), Strategy(..), Jitter(..), Limit(..), Breaker(..), Bulkhead(..), emptyPolicy)
+import LawSpec.Core.Policy (StagePolicy(..), Retry(..), Strategy(..), Jitter(..), Limit(..), Breaker(..), Bulkhead(..), Hedge(..), emptyPolicy)
 import LawSpec.Resilience (resilienceName)
 import LawSpec.Collections (collectionsUnit, collectionsAlias)
 import LawSpec.Time (timeUnit, timeAlias, durationSuffixes, durationFactor, durationLimit, usesTime, timeTypes)
@@ -166,7 +166,12 @@ workflowP = do
     -- A stage's policies follow it, each beginning with its keyword. A
     -- policy that can fail may name, after else, the value of a declared
     -- error type its failure becomes.
-    policyP = choice [try retryP <|> try timeoutP, try rateLimitP, try breakerP, try bulkheadP, try cacheP, try compensateP]
+    policyP = choice [try retryP <|> try timeoutP, try rateLimitP, try breakerP, try bulkheadP, try cacheP, try compensateP, try hedgeP]
+    hedgeP = plain $ do
+      keyword "hedge"
+      d <- durationP
+      most <- option 2 (keyword "max" *> count')
+      pure (\p -> p { policyHedge = Just (Hedge d most) })
     compensateP = plain (keyword "compensate" *> ((\undo p -> p { policyCompensate = Just undo }) <$> qualifiedName))
     plain p = (\f -> (f, [])) <$> p
     elseP kind = maybe [] (\e -> [(kind, e)]) <$> optional (keyword "else" *> (constant <$> qualifiedName))

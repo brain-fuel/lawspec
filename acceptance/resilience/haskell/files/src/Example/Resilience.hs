@@ -9,6 +9,8 @@ import System.IO.Unsafe (unsafePerformIO)
 import qualified LawSpecRuntime as LS
 import qualified LawSpecData as Data
 import qualified LawSpecWorkflows.Example.Limits as Workflows
+import qualified Example.Limits as Quotes
+import GHC.Clock (getMonotonicTimeNSec)
 
 retry :: String -> Integer -> Integer -> Integer -> LS.Retry
 retry strategy delay step factor = LS.Retry strategy delay step factor (-1) 0 "none" Nothing Nothing
@@ -69,3 +71,28 @@ compensationsFor number = unsafePerformIO $ do
   _ <- pure $! Workflows.book symbols (Data.Ticket number)
   events <- readIORef (LS.runtimeTrace runtime)
   pure [T.pack (LS.traceStage event) | event <- events, LS.traceKind event == "compensate"]
+
+-- | Quotes a ticket under a runtime with the real clock: whether it timed out.
+quoteTimedOut :: I.Int64 -> IO Bool
+quoteTimedOut number = do
+  runtime <- LS.newWorkflowRuntime LS.realClock 0
+  symbols <- LS.workflowContext runtime
+  pure $! case Workflows.quoted symbols (Data.Ticket number) of
+    Right (Left Data.QuotedErrorQuotedTimedOut) -> True
+    _ -> False
+
+-- | Quotes a ticket under a runtime with the real clock: whether it succeeded
+-- within 400ms, for ticket -2 through a hedged attempt.
+quoteHedged :: I.Int64 -> IO Bool
+quoteHedged number = do
+  Quotes.resetQuotes
+  runtime <- LS.newWorkflowRuntime LS.realClock 0
+  symbols <- LS.workflowContext runtime
+  started <- getMonotonicTimeNSec
+  succeeded <- pure $! case Workflows.hedged symbols (Data.Ticket number) of
+    Right (Right _) -> True
+    _ -> False
+  finished <- getMonotonicTimeNSec
+  events <- readIORef (LS.runtimeTrace runtime)
+  let hedged = any ((== "hedge") . LS.traceKind) events
+  pure (succeeded && finished - started < 400000000 && (number /= -2 || hedged))

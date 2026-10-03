@@ -1192,6 +1192,11 @@ public final class LawSpecRuntime {
     public boolean gates = true;
     // A frame per running workflow: the undos of its completed stages.
     private final List<List<Map.Entry<String, Runnable>>> frames = new ArrayList<>();
+    // When the running attempt of a stage with a timeout must end
+    // (System.nanoTime), or null.
+    private Long deadline;
+    // The running attempt's hedge, or null.
+    private Hedge hedge;
 
     public WorkflowRuntime(Clock clock, long seed) {
       this.clock = clock == null ? new RealClock() : clock;
@@ -1253,11 +1258,17 @@ public final class LawSpecRuntime {
    */
   public record StagePolicy(
       String stage, Retry retry, long timeout, String key, List<Gate> gates, long cache, boolean wraps,
-      Function<String, Value> fail, java.util.function.Consumer<Value> compensate) {
+      Function<String, Value> fail, java.util.function.Consumer<Value> compensate, Hedge hedge) {
     public StagePolicy(String stage, Retry retry, long timeout) {
-      this(stage, retry, timeout, stage, List.of(), -1, false, null, null);
+      this(stage, retry, timeout, stage, List.of(), -1, false, null, null, null);
     }
   }
+
+  /**
+   * When an attempt has not succeeded after delay microseconds, another
+   * starts beside it, up to most in all; the first success wins.
+   */
+  public record Hedge(String stage, long delay, long most) {}
 
   /** Runs a workflow whose stages compensate: when it fails, its completed stages' undos run, last first. */
   public static Value runWorkflow(Map<String, Object> symbols, java.util.function.Supplier<Value> attempt) {
@@ -1413,12 +1424,103 @@ public final class LawSpecRuntime {
     return result;
   }
 
+  /** Raised by awaitWithin when an attempt outlives its stage's timeout. */
+  private static final class TimedOut extends RuntimeException {
+    TimedOut() { super("timed out", null, false, false); }
+  }
+
+  /**
+   * An asynchronous step's logical result: start begins the step and convert
+   * turns its native result into a logical value. The step runs within its
+   * stage's timeout and hedge, if any.
+   */
+  public static <T> Value awaitStep(
+      Map<String, Object> symbols, java.util.function.Supplier<java.util.concurrent.CompletableFuture<T>> start,
+      Function<T, Value> convert) {
+    WorkflowRuntime runtime = workflowRuntime(symbols);
+    Long deadline = runtime.deadline;
+    Hedge hedge = runtime.hedge;
+    if (deadline == null && hedge == null) return convert.apply(start.get().join());
+    long most = hedge == null ? 1 : hedge.most();
+    var pending = new ArrayList<java.util.concurrent.CompletableFuture<T>>();
+    long started = 0, next = Long.MAX_VALUE;
+    boolean launch = true;
+    try {
+      while (true) {
+        if (launch) {
+          started++;
+          if (started > 1) runtime.trace.add(new TraceEvent("hedge", hedge.stage(), started, true));
+          pending.add(start.get());
+          next = started < most ? System.nanoTime() + hedge.delay() * 1000 : Long.MAX_VALUE;
+          launch = false;
+        }
+        long until = Math.min(next, deadline == null ? Long.MAX_VALUE : deadline);
+        var any = java.util.concurrent.CompletableFuture.anyOf(pending.toArray(new java.util.concurrent.CompletableFuture<?>[0]));
+        try {
+          if (until == Long.MAX_VALUE) any.get();
+          else any.get(Math.max(0, until - System.nanoTime()), java.util.concurrent.TimeUnit.NANOSECONDS);
+        } catch (java.util.concurrent.TimeoutException | java.util.concurrent.ExecutionException e) {
+          // A failed step is raised below; a timer passing is handled below.
+        }
+        Value last = null;
+        for (var task : List.copyOf(pending)) {
+          if (!task.isDone()) continue;
+          pending.remove(task);
+          Value value = convert.apply(task.join());
+          if (!(value.data() instanceof Data data && data.tag().equals("Either::Left"))) return value;
+          last = value;
+        }
+        long now = System.nanoTime();
+        if (deadline != null && now >= deadline) throw new TimedOut();
+        if (pending.isEmpty()) {
+          if (started >= most) return last;
+          launch = true;
+        } else if (now >= next) {
+          launch = true;
+        }
+      }
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      throw new java.util.concurrent.CompletionException(e);
+    } finally {
+      for (var task : pending) task.cancel(true);
+    }
+  }
+
+  /**
+   * An attempt under its stage's timeout (failing with TimedOut when it
+   * outlives it) and hedge. Under the runtime generated tests install (gates
+   * off), both are off.
+   */
+  private static Value scoped(WorkflowRuntime runtime, StagePolicy policy, java.util.function.Supplier<Value> attempt) {
+    if (!runtime.gates || (policy.timeout() <= 0 && policy.hedge() == null)) return attempt.get();
+    Long outer = runtime.deadline;
+    Hedge outerHedge = runtime.hedge;
+    if (policy.timeout() > 0) runtime.deadline = System.nanoTime() + policy.timeout() * 1000;
+    if (policy.hedge() != null) runtime.hedge = new Hedge(policy.stage(), policy.hedge().delay(), policy.hedge().most());
+    try {
+      return attempt.get();
+    } catch (RuntimeException e) {
+      // Callers may have wrapped the timeout with context.
+      for (Throwable cause = e; cause != null; cause = cause.getCause()) {
+        if (cause instanceof TimedOut) {
+          return policy.fail() != null ? policy.fail().apply("TimedOut")
+              : new Value("Either", new Data("Either::Left", List.of(new Value(STAGE_FAILURE, new Data(STAGE_FAILURE + "TimedOut", List.of())))));
+        }
+      }
+      throw e;
+    } finally {
+      runtime.deadline = outer;
+      runtime.hedge = outerHedge;
+    }
+  }
+
   private static Value attempts(WorkflowRuntime runtime, StagePolicy policy, java.util.function.Supplier<Value> attempt) {
     Retry retry = policy.retry();
     long number = 1, previous = 0;
     while (true) {
       runtime.trace.add(new TraceEvent("start", policy.stage(), number, false));
-      Value result = attempt.get();
+      Value result = scoped(runtime, policy, attempt);
       boolean failed = result.data() instanceof Data data && data.tag().equals("Either::Left");
       runtime.trace.add(new TraceEvent("finish", policy.stage(), number, !failed));
       if (!failed || retry == null) return result;

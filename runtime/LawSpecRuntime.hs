@@ -2,8 +2,9 @@
 -- The portable scalar domain. No test framework or target runtime dependencies.
 module LawSpecRuntime where
 
-import Control.Exception (SomeException, catch, displayException, evaluate)
-import Control.Concurrent (threadDelay)
+import Control.Exception (SomeException, catch, displayException, evaluate, finally, throwIO, try)
+import Control.Concurrent (threadDelay, forkIO, killThread, newChan, readChan, writeChan)
+import System.Timeout (timeout)
 import Data.IORef (IORef, newIORef, readIORef, writeIORef, modifyIORef')
 import GHC.Clock (getMonotonicTimeNSec)
 import System.IO.Unsafe (unsafePerformIO)
@@ -998,7 +999,9 @@ data WorkflowRuntime = WorkflowRuntime
   , runtimeTrace :: IORef [TraceEvent], runtimeState :: IORef [(String, Scalar)]
   , runtimeGates :: Bool, runtimeCache :: IORef [(String, [(Scalar, Scalar, Integer)])]
   -- A frame per running workflow: the undos of its completed stages.
-  , runtimeFrames :: IORef [[(String, IO ())]] }
+  , runtimeFrames :: IORef [[(String, IO ())]]
+  -- The running attempt's stage and hedge (delay, most).
+  , runtimeHedge :: IORef (Maybe (String, Integer, Integer)) }
 
 newWorkflowRuntime :: Clock -> Word64 -> IO WorkflowRuntime
 newWorkflowRuntime clock seed = do
@@ -1007,7 +1010,8 @@ newWorkflowRuntime clock seed = do
   state <- newIORef []
   cache <- newIORef []
   frames <- newIORef []
-  pure (WorkflowRuntime clock random trace state True cache frames)
+  hedge <- newIORef Nothing
+  pure (WorkflowRuntime clock random trace state True cache frames hedge)
 
 -- | Uniform in [0, bound); 0 when bound is 0.
 randomBelow :: WorkflowRuntime -> Integer -> IO Integer
@@ -1073,11 +1077,14 @@ data Gate = Gate
 data StagePolicy = StagePolicy
   { policyStage :: String, policyRetry :: Maybe Retry, policyTimeout :: Integer
   , policyKey :: String, policyGates :: [Gate], policyCache :: Integer, policyWraps :: Bool
-  , policyCompensate :: Maybe (Scalar -> Scalar) }
+  , policyCompensate :: Maybe (Scalar -> Scalar)
+  -- (delay, most): when an attempt has not succeeded after delay, another
+  -- starts beside it, up to most in all; the first success wins.
+  , policyHedge :: Maybe (Integer, Integer) }
 
 -- | A policy with only a stage name and retries, as built by hand.
 retryPolicy :: String -> Maybe Retry -> StagePolicy
-retryPolicy stage retry = StagePolicy stage retry (-1) stage [] (-1) False Nothing
+retryPolicy stage retry = StagePolicy stage retry (-1) stage [] (-1) False Nothing Nothing
 
 -- | Runs a workflow whose stages compensate: when it fails, the undos of its
 -- completed stages run, last first.
@@ -1218,11 +1225,25 @@ runStage symbols policy attempt key = unsafePerformIO $ do
           in (cacheKey, kept ++ [(key, result, now + policyCache policy)]) : filter ((/= cacheKey) . fst) caches
       pure result
     when' condition action = if condition then action else pure ()
+    -- An attempt, evaluated in full under its stage's timeout (failing
+    -- with TimedOut when it outlives it) and hedge. Under the runtime
+    -- generated tests install (gates off), both are off.
+    timed runtime
+      | not (runtimeGates runtime) || (policyTimeout policy <= 0 && policyHedge policy == Nothing) = evaluate (attempt ())
+      | otherwise = do
+          outer <- readIORef (runtimeHedge runtime)
+          writeIORef (runtimeHedge runtime) ((\(delay, most) -> (policyStage policy, delay, most)) <$> policyHedge policy)
+          let full = do
+                result <- evaluate (attempt ())
+                result <$ evaluate (deepScalar result)
+              limited = if policyTimeout policy > 0 then timeout (fromInteger (policyTimeout policy)) full else Just <$> full
+          outcome <- limited `finally` writeIORef (runtimeHedge runtime) outer
+          pure (maybe (SData "Either::Left" [SData (stageFailurePrefix ++ "TimedOut") []]) id outcome)
     event runtime kind number succeeded =
       modifyIORef' (runtimeTrace runtime) (++ [TraceEvent kind (policyStage policy) number succeeded])
     attempts runtime number previous = do
       event runtime "start" number False
-      result <- evaluate (attempt ())
+      result <- timed runtime
       let failure = case result of
             SData "Either::Left" [value] -> Just value
             _ -> Nothing
@@ -1252,6 +1273,46 @@ runStage symbols policy attempt key = unsafePerformIO $ do
                   clockSleep (runtimeClock runtime) delay
                   attempts runtime next delay
         _ -> pure result
+
+-- | An asynchronous step's logical result: start runs the step and convert
+-- turns its native result into a logical value. Under a hedge, attempts run
+-- on threads of their own; the first success wins.
+{-# NOINLINE awaitStep #-}
+awaitStep :: SymbolContext -> IO a -> (a -> Scalar) -> Scalar
+awaitStep symbols start convert = unsafePerformIO $ do
+  runtime <- workflowRuntime symbols
+  hedge <- readIORef (runtimeHedge runtime)
+  case hedge of
+    Nothing -> convert <$> start
+    Just (stage, delay, most) -> do
+      results <- newChan
+      threads <- newIORef []
+      let launch number = do
+            if number > 1 then modifyIORef' (runtimeTrace runtime) (++ [TraceEvent "hedge" stage number True]) else pure ()
+            thread <- forkIO $ do
+              outcome <- try (start >>= \native -> let value = convert native in value <$ evaluate (deepScalar value))
+              writeChan results (outcome :: Either SomeException Scalar)
+            modifyIORef' threads (thread :)
+          loop started pending = do
+            outcome <- if started < most then timeout (fromInteger delay) (readChan results) else Just <$> readChan results
+            case outcome of
+              Nothing -> launch (started + 1) >> loop (started + 1) (pending + 1)
+              Just (Left failure) -> throwIO failure
+              Just (Right value@(SData "Either::Left" _))
+                | pending > (1 :: Integer) -> loop started (pending - 1)
+                | started >= most -> pure value
+                | otherwise -> launch (started + 1) >> loop (started + 1) 1
+              Just (Right value) -> pure value
+      (launch 1 >> loop 1 1) `finally` (readIORef threads >>= mapM_ killThread)
+
+-- | Evaluates a value in full.
+deepScalar :: Scalar -> ()
+deepScalar value = case value of
+  SComplex _ a b -> deepScalar a `seq` deepScalar b
+  SPresent _ (Just inner) -> deepScalar inner
+  SList items -> foldr (seq . deepScalar) () items
+  SData tag fields -> length tag `seq` foldr (seq . deepScalar) () fields
+  other -> other `seq` ()
 
 -- | A logical Duration of whole microseconds.
 durationScalar :: Integer -> Scalar

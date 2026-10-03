@@ -1,5 +1,5 @@
 -- Checked Core expression documents shared by JS/TS definitions and properties.
-module LawSpec.WebExpr (renderExpression, renderExpressionWithContext, literalValue, call, array, quoted, quotedValue) where
+module LawSpec.WebExpr (renderAsyncExpression, renderExpression, renderExpressionWithContext, literalValue, call, array, quoted, quotedValue) where
 
 import LawSpec.Core
 import qualified LawSpec.Backend as Backend
@@ -40,11 +40,24 @@ renderExpression :: Bool -> [DataDeclaration] -> Int -> (Id -> String)
 renderExpression ts declarations bits = renderExpressionWithContext ts declarations
   (D.text (show bits)) Native.webTypeReferenceDoc (pure . quoted . Backend.scalarTypeKey)
 
+-- In an async function: a match's branches are async, and the match is
+-- awaited, so a branch may await an asynchronous call.
+renderAsyncExpression :: Bool -> [DataDeclaration] -> Int -> (Id -> String)
+  -> (Expr -> [D.Doc] -> Either String D.Doc) -> Expr -> Either String D.Doc
+renderAsyncExpression ts declarations bits = renderWith True ts declarations
+  (D.text (show bits)) Native.webTypeReferenceDoc (pure . quoted . Backend.scalarTypeKey)
+
 renderExpressionWithContext :: Bool -> [DataDeclaration] -> D.Doc
   -> (Type -> Either String D.Doc) -> (Type -> Either String D.Doc)
   -> (Id -> String) -> (Expr -> [D.Doc] -> Either String D.Doc)
   -> Expr -> Either String D.Doc
-renderExpressionWithContext ts declarations width reference key local external = render
+renderExpressionWithContext = renderWith False
+
+renderWith :: Bool -> Bool -> [DataDeclaration] -> D.Doc
+  -> (Type -> Either String D.Doc) -> (Type -> Either String D.Doc)
+  -> (Id -> String) -> (Expr -> [D.Doc] -> Either String D.Doc)
+  -> Expr -> Either String D.Doc
+renderWith asynchronous ts declarations width reference key local external = render
   where
     runtime name = call ("ls." ++ name)
     schema name args = call ("_lawspec_schema." ++ name) (args ++ [D.text "symbols"])
@@ -87,7 +100,8 @@ renderExpressionWithContext ts declarations width reference key local external =
         argument <- render value
         cases <- mapM branch branches
         ref <- reference (expressionType value)
-        pure (schema "match" [ref,argument,array cases,width])
+        let matched = schema "match" [ref,argument,array cases,width]
+        pure (if asynchronous then D.text "(await " <> matched <> D.text ")" else matched)
       ExternalCall _ args -> mapM render args >>= external term
       Convert mode target value -> do
         argument <- render value
@@ -129,4 +143,4 @@ renderExpressionWithContext ts declarations width reference key local external =
       let parameters = [D.text (local (binderId binder)) <>
             (if ts then D.group (D.text ":" <> D.nest 4 (D.softline <> D.text "unknown")) else mempty) | binder <- caseBinders matched]
       pure (array [quoted (idText (caseConstructor matched)),
-        D.delimitTrailing 4 "(" ")" parameters <> D.text " => " <> body])
+        D.text (if asynchronous then "async " else "") <> D.delimitTrailing 4 "(" ")" parameters <> D.text " => " <> body])

@@ -1897,6 +1897,10 @@ pub struct WorkflowRuntime {
     cache: HashMap<String, Vec<(Value, Value, i64)>>,
     // A frame per running workflow: the undos of its completed stages.
     frames: Vec<Vec<(&'static str, Value, fn(&mut Context, Value) -> Result<Value>)>>,
+    // When the running attempt of a stage with a timeout must end.
+    deadline: Option<std::time::Instant>,
+    // The running attempt's stage and hedge (delay, most).
+    hedge: Option<(&'static str, (i64, i64))>,
 }
 impl std::fmt::Debug for WorkflowRuntime {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -1905,7 +1909,7 @@ impl std::fmt::Debug for WorkflowRuntime {
 }
 impl WorkflowRuntime {
     pub fn new(clock: Box<dyn Clock>, seed: u64) -> Self {
-        WorkflowRuntime { clock, random: SplitMix64::new(seed), trace: Vec::new(), state: HashMap::new(), gates: true, cache: HashMap::new(), frames: Vec::new() }
+        WorkflowRuntime { clock, random: SplitMix64::new(seed), trace: Vec::new(), state: HashMap::new(), gates: true, cache: HashMap::new(), frames: Vec::new(), deadline: None, hedge: None }
     }
 }
 
@@ -1958,6 +1962,9 @@ pub struct StagePolicy {
     pub wraps: bool,
     /// Undoes the stage's success value when its workflow fails.
     pub compensate: Option<fn(&mut Context, Value) -> Result<Value>>,
+    /// (delay, most): when an attempt has not succeeded after delay, another
+    /// starts beside it, up to most in all; the first success wins.
+    pub hedge: Option<(i64, i64)>,
 }
 
 /// Runs a workflow whose stages compensate: when it fails, the undos of its
@@ -2137,6 +2144,118 @@ pub fn run_stage(
     Ok(result)
 }
 
+// The error block_on_within gives when an attempt outlives its stage's
+// timeout; the stage turns it into TimedOut.
+const TIMED_OUT: &str = "\0lawspec: timed out";
+
+/// An async step's logical result: start begins the step and convert turns
+/// its native result into a logical value. The step runs within its stage's
+/// timeout and hedge, if any, polling its attempts on this thread.
+pub fn await_step<F: std::future::Future>(
+    ctx: &Context,
+    mut start: impl FnMut() -> F,
+    convert: impl Fn(F::Output) -> Value,
+) -> Result<Value> {
+    let runtime = workflow_runtime(ctx);
+    let (deadline, hedge) = {
+        let guard = runtime.lock().unwrap();
+        (guard.deadline, guard.hedge)
+    };
+    if deadline.is_none() && hedge.is_none() {
+        return Ok(convert(block_on(start())));
+    }
+    let (stage, delay, most) = match hedge {
+        Some((stage, (delay, most))) => (stage, std::time::Duration::from_micros(delay as u64), most),
+        None => ("", std::time::Duration::ZERO, 1),
+    };
+    struct Unpark(std::thread::Thread);
+    impl std::task::Wake for Unpark {
+        fn wake(self: Arc<Self>) {
+            self.0.unpark();
+        }
+    }
+    let waker = std::task::Waker::from(Arc::new(Unpark(std::thread::current())));
+    let mut context = std::task::Context::from_waker(&waker);
+    let mut pending: Vec<std::pin::Pin<Box<F>>> = Vec::new();
+    let (mut started, mut next, mut launch) = (0i64, None, true);
+    loop {
+        if launch {
+            started += 1;
+            if started > 1 {
+                runtime.lock().unwrap().trace.push(TraceEvent { kind: "hedge", stage: stage.into(), number: started, succeeded: true });
+            }
+            pending.push(Box::pin(start()));
+            next = if started < most { Some(std::time::Instant::now() + delay) } else { None };
+            launch = false;
+        }
+        let mut last = None;
+        let mut i = 0;
+        while i < pending.len() {
+            match pending[i].as_mut().poll(&mut context) {
+                std::task::Poll::Ready(output) => {
+                    pending.remove(i);
+                    let value = convert(output);
+                    if !matches!(value, Value::Left(_)) {
+                        return Ok(value);
+                    }
+                    last = Some(value);
+                }
+                std::task::Poll::Pending => i += 1,
+            }
+        }
+        let now = std::time::Instant::now();
+        if deadline.is_some_and(|deadline| now >= deadline) {
+            return Err(TIMED_OUT.into());
+        }
+        if pending.is_empty() {
+            if started >= most {
+                return Ok(last.expect("the last attempt failed"));
+            }
+            launch = true;
+        } else if next.is_some_and(|next| now >= next) {
+            launch = true;
+        } else {
+            match [deadline, next].into_iter().flatten().min() {
+                Some(until) => std::thread::park_timeout(until - now),
+                None => std::thread::park(),
+            }
+        }
+    }
+}
+
+/// An attempt under its stage's timeout (failing with TimedOut when it
+/// outlives it) and hedge. Under the runtime generated tests install (gates
+/// off), both are off.
+fn scoped(
+    ctx: &mut Context,
+    runtime: &Arc<std::sync::Mutex<WorkflowRuntime>>,
+    policy: &StagePolicy,
+    attempt: &mut impl FnMut(&mut Context) -> Result<Value>,
+) -> Result<Value> {
+    if !runtime.lock().unwrap().gates || (policy.timeout <= 0 && policy.hedge.is_none()) {
+        return attempt(ctx);
+    }
+    let outer = {
+        let mut guard = runtime.lock().unwrap();
+        let outer = (guard.deadline, guard.hedge);
+        if policy.timeout > 0 {
+            guard.deadline = Some(std::time::Instant::now() + std::time::Duration::from_micros(policy.timeout as u64));
+        }
+        guard.hedge = policy.hedge.map(|hedge| (policy.stage, hedge));
+        outer
+    };
+    let result = attempt(ctx);
+    {
+        let mut guard = runtime.lock().unwrap();
+        (guard.deadline, guard.hedge) = outer;
+    }
+    match result {
+        // Callers may have added context to the marker.
+        Err(error) if error.contains(TIMED_OUT) => Ok(stage_failure("TimedOut")),
+        other => other,
+    }
+}
+
 fn attempts(
     ctx: &mut Context,
     runtime: &Arc<std::sync::Mutex<WorkflowRuntime>>,
@@ -2147,7 +2266,7 @@ fn attempts(
     let (mut number, mut previous) = (1i64, 0i64);
     loop {
         runtime.lock().unwrap().trace.push(event("start", number, false));
-        let result = attempt(ctx)?;
+        let result = scoped(ctx, runtime, policy, &mut attempt)?;
         let failure = match &result {
             Value::Left(error) => Some((**error).clone()),
             _ => None,

@@ -63,13 +63,18 @@ emitRustDefinitions layout bits declarations units = do
       let decode n (ty, ref) = D.text ("let native_" ++ show n ++ " = ") <> E.call ("<" ++ ty ++ " as ls::FromValue>::from_value")
             [E.call "schema.native_value_with_context" [D.text ("arguments[" ++ show n ++ "].clone()"), D.text "&" <> ref, D.text (show bits), D.text "ctx"] <> D.text "?"] <> D.text "?;"
           call = E.call ("crate::" ++ ownerModule owner ++ "::" ++ declarationName a) [D.text ("native_" ++ show n) | n <- [0 .. length args - 1]]
-          called = if declarationAsync a then E.call "ls::block_on" [call] else call
+          -- An async step runs within its stage's timeout and hedge, when it
+          -- has them; each hedged attempt starts from copies of the inputs.
+          started = E.call ("crate::" ++ ownerModule owner ++ "::" ++ declarationName a) [D.text ("native_" ++ show n ++ ".clone()") | n <- [0 .. length args - 1]]
+          finish
+            | declarationAsync a = [E.call "ls::await_step" [D.text "ctx", D.text "|| " <> started,
+                D.text ("|native_result: " ++ resultType ++ "| ls::IntoValue::into_value(native_result)")]]
+            | otherwise = [D.text ("let native_result: " ++ resultType ++ " = ") <> call <> D.text ";",
+                D.text "Ok(ls::IntoValue::into_value(native_result))"]
       pure (D.text ("fn adapter_call_" ++ show i) <>
         D.delimitTrailing 4 "(" ")" [D.text "ctx: &mut ls::Context", D.text "arguments: Vec<ls::Value>"] <>
         D.text " -> ls::Result<ls::Value> " <> D.block 4 (D.joinWith D.hardline
-          ([D.text "let schema = crate::lawspec_schema::schema()?;"] ++ zipWith decode [0::Int ..] (zip types refs) ++
-           [D.text ("let native_result: " ++ resultType ++ " = ") <> called <> D.text ";",
-            D.text "Ok(ls::IntoValue::into_value(native_result))"])))
+          ([D.text "let schema = crate::lawspec_schema::schema()?;"] ++ zipWith decode [0::Int ..] (zip types refs) ++ finish)))
     evaluator identity = maybe (Left "unresolved Rust policy definition") Right (lookup identity names)
     policyDoc key policy = do
       gates <- policyGates policy
@@ -109,7 +114,8 @@ emitRustDefinitions layout bits declarations units = do
         , D.text "gates: vec!" <> D.delimitTrailing 4 "[" "]" gates <> D.text ","
         , D.text ("cache: " ++ show (maybe (-1) id (policyCache policy)) ++ ",")
         , D.text ("wraps: " ++ (if null (policyFailures policy) then "false" else "true") ++ ",")
-        , D.text "compensate: " <> compensate <> D.text "," ]))
+        , D.text "compensate: " <> compensate <> D.text ","
+        , D.text ("hedge: " ++ maybe "None" (\h -> "Some((" ++ show (hedgeDelay h) ++ ", " ++ show (hedgeMost h) ++ "))") (policyHedge policy) ++ ",") ]))
     -- A gate's callbacks call the unit's copies of the resilience unit's
     -- state machines, with the policy's numbers.
     policyGates policy = do

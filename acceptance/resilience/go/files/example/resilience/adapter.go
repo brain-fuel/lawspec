@@ -3,6 +3,7 @@ package resilience
 
 import (
 	"math/big"
+	"time"
 
 	"example.com/lawspec-example/example/limits"
 )
@@ -87,4 +88,35 @@ func CompensationsFor(value0 int64) []string {
 		}
 	}
 	return stages
+}
+
+// QuoteTimedOut quotes a ticket under a runtime with the real clock: whether
+// it timed out.
+func QuoteTimedOut(value0 int64) LawSpecTask[bool] {
+	return LawSpecGo(func() bool {
+		runtime := limits.NewLawSpecWorkflowRuntime(nil, 0)
+		failure, failed := limits.LawSpecDefinitions.Quoted(runtime.Context(nil), limits.Ticket{Number: value0}).Left()
+		if !failed {
+			return false
+		}
+		_, timedOut := failure.(limits.QuotedErrorQuotedTimedOut)
+		return timedOut
+	})
+}
+
+// QuoteHedged quotes a ticket under a runtime with the real clock: whether it
+// succeeded within 400ms, for ticket -2 through a hedged attempt.
+func QuoteHedged(value0 int64) LawSpecTask[bool] {
+	return LawSpecGo(func() bool {
+		limits.ResetQuotes()
+		runtime := limits.NewLawSpecWorkflowRuntime(nil, 0)
+		started := time.Now()
+		_, succeeded := limits.LawSpecDefinitions.Hedged(runtime.Context(nil), limits.Ticket{Number: value0}).Right()
+		quick := time.Since(started) < 400*time.Millisecond
+		hedged := false
+		for _, event := range runtime.Trace {
+			hedged = hedged || event.Kind == "hedge"
+		}
+		return succeeded && quick && (value0 != -2 || hedged)
+	})
 }

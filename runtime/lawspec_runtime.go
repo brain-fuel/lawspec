@@ -1586,6 +1586,124 @@ type LawSpecWorkflowRuntime struct {
 	Gates  bool
 	// A frame per running workflow: the undos of its completed stages.
 	frames [][]lawSpecUndo
+	// When the running attempt of a stage with a timeout must end, or zero.
+	deadline time.Time
+	// The running attempt's hedge, or nil.
+	hedge *lawSpecHedge
+}
+
+// lawSpecHedge: when an attempt has not succeeded after Delay microseconds,
+// another starts beside it, up to Most in all; the first success wins.
+type lawSpecHedge struct {
+	Stage       string
+	Delay, Most int64
+}
+
+// lawSpecTimedOut is raised by lsAwaitStep when an attempt outlives its
+// stage's timeout, and recovered by the stage.
+type lawSpecTimedOut struct{}
+
+// lsAwaitStep is an asynchronous step's logical result: start begins the
+// step and convert turns its native result into a logical value. The step
+// runs within its stage's timeout and hedge, if any.
+func lsAwaitStep[T any](symbols map[string]*lawSpecSymbol, start func() LawSpecTask[T], convert func(T) LawSpecValue) LawSpecValue {
+	runtime := lsWorkflowRuntime(symbols)
+	deadline, hedge := runtime.deadline, runtime.hedge
+	if deadline.IsZero() && hedge == nil {
+		return convert(start().Await())
+	}
+	var expiry <-chan time.Time
+	if !deadline.IsZero() {
+		timer := time.NewTimer(time.Until(deadline))
+		defer timer.Stop()
+		expiry = timer.C
+	}
+	most, delay := int64(1), time.Duration(0)
+	if hedge != nil {
+		most, delay = hedge.Most, time.Duration(hedge.Delay)*time.Microsecond
+	}
+	results := make(chan *lawSpecTaskState[T], most)
+	started, pending := int64(0), 0
+	var next <-chan time.Time
+	var nextTimer *time.Timer
+	defer func() {
+		if nextTimer != nil {
+			nextTimer.Stop()
+		}
+	}()
+	launch := func() {
+		started++
+		pending++
+		if started > 1 {
+			runtime.Trace = append(runtime.Trace, LawSpecTraceEvent{"hedge", hedge.Stage, started, true})
+		}
+		task := start()
+		go func() {
+			<-task.state.done
+			results <- task.state
+		}()
+		if nextTimer != nil {
+			nextTimer.Stop()
+		}
+		next = nil
+		if started < most {
+			nextTimer = time.NewTimer(delay)
+			next = nextTimer.C
+		}
+	}
+	launch()
+	for {
+		select {
+		case state := <-results:
+			pending--
+			if state.failure != nil {
+				panic(state.failure)
+			}
+			value := convert(state.value)
+			if data, ok := value.Data.(lawSpecData); !ok || data.tag != "Either::Left" || (pending == 0 && started >= most) {
+				return value
+			}
+			if pending == 0 {
+				launch()
+			}
+		case <-next:
+			launch()
+		case <-expiry:
+			panic(lawSpecTimedOut{})
+		}
+	}
+}
+
+// lsScoped runs an attempt under its stage's timeout (failing with TimedOut
+// when it outlives it) and hedge. Under the runtime generated tests install
+// (gates off), both are off.
+func lsScoped(runtime *LawSpecWorkflowRuntime, policy lawSpecStagePolicy, attempt func() LawSpecValue) (result LawSpecValue) {
+	if !runtime.Gates || (policy.Timeout <= 0 && policy.Hedge == nil) {
+		return attempt()
+	}
+	outerDeadline, outerHedge := runtime.deadline, runtime.hedge
+	if policy.Timeout > 0 {
+		runtime.deadline = time.Now().Add(time.Duration(policy.Timeout) * time.Microsecond)
+	}
+	if policy.Hedge != nil {
+		hedge := *policy.Hedge
+		hedge.Stage = policy.Stage
+		runtime.hedge = &hedge
+	}
+	defer func() {
+		runtime.deadline, runtime.hedge = outerDeadline, outerHedge
+		if failure := recover(); failure != nil {
+			if _, ok := failure.(lawSpecTimedOut); !ok {
+				panic(failure)
+			}
+			if policy.Fail != nil {
+				result = policy.Fail("TimedOut")
+			} else {
+				result = lsStageFailureValue("TimedOut")
+			}
+		}
+	}()
+	return attempt()
 }
 
 type lawSpecUndo struct {
@@ -1691,6 +1809,7 @@ type lawSpecStagePolicy struct {
 	Fail func(kind string) LawSpecValue
 	// Compensate undoes the stage's success value when its workflow fails.
 	Compensate func(value LawSpecValue)
+	Hedge      *lawSpecHedge
 }
 
 type lawSpecCacheEntry struct {
@@ -1866,7 +1985,7 @@ func lsAttempts(runtime *LawSpecWorkflowRuntime, policy lawSpecStagePolicy, atte
 	number, previous := int64(1), int64(0)
 	for {
 		runtime.Trace = append(runtime.Trace, LawSpecTraceEvent{"start", policy.Stage, number, false})
-		result := attempt()
+		result := lsScoped(runtime, policy, attempt)
 		data, isData := result.Data.(lawSpecData)
 		failed := isData && data.tag == "Either::Left"
 		runtime.Trace = append(runtime.Trace, LawSpecTraceEvent{"finish", policy.Stage, number, !failed})

@@ -100,7 +100,8 @@ emitHaskellDefinitions layout bits declarations units = do
             number (retryAttempts r), E.quoted (jitterName (retryJitter r)), condition, decide]])
       pure (E.apply "LS.StagePolicy" [E.quoted (policyStage policy), retry, text (maybe "(-1)" show (policyTimeout policy)),
         E.quoted key, text "[" <> D.joinWith (text ", ") gates <> text "]", text (maybe "(-1)" show (policyCache policy)),
-        text (if null (policyFailures policy) then "P.False" else "P.True"), compensate])
+        text (if null (policyFailures policy) then "P.False" else "P.True"), compensate,
+        text (maybe "P.Nothing" (\h -> "(P.Just (" ++ show (hedgeDelay h) ++ ", " ++ show (hedgeMost h) ++ "))") (policyHedge policy))])
     -- A gate's callbacks call the unit's copies of the resilience unit's
     -- state machines, with the policy's numbers.
     policyGates localName policy = do
@@ -161,8 +162,12 @@ emitHaskellDefinitions layout bits declarations units = do
               resultCodec <- Native.haskellCodecDocWithContext context' declarations "_lawspecSchema" "_lawspecBits" resultType
               let call = E.apply (moduleOf owner ++ "." ++ declarationName adapter)
                     [E.checked (E.apply "Codec.decode" [codec, value]) | (codec, value) <- zip codecs values]
-                  awaited = if declarationAsync adapter then E.apply "LS.awaitTask" [call] else call
-              pure (E.checked (E.apply "Codec.encode" [resultCodec, awaited]))
+              -- An async step runs within its stage's timeout and hedge,
+              -- when it has them.
+              pure $ if declarationAsync adapter
+                then E.apply "LS.awaitStep" [text "symbols", call,
+                  text "(\\_native -> " <> E.checked (E.apply "Codec.encode" [resultCodec, text "_native"]) <> text ")"]
+                else E.checked (E.apply "Codec.encode" [resultCodec, call])
             _ -> Left "unresolved Haskell total call"
       -- Arguments and results were checked where they were built, decoded
       -- or drawn; the native wrappers check values crossing from adapters.

@@ -67,13 +67,20 @@ emitGoDefinitions layout bits declarations units = do
               let (parameterTypes, resultType) = functionType (declarationType adapter)
               codecs <- mapM (Native.goCodecWithContext "symbols" declarations) parameterTypes
               resultCodec <- Native.goCodecWithContext "symbols" declarations resultType
+              nativeResult <- Native.goDataType declarations resultType
               let call = E.call (capitalize (declarationName adapter))
                     [E.call ("codec" ++ show i ++ ".toNative") [value] | (i, value) <- zip [0::Int ..] values]
-                  awaited = if declarationAsync adapter then call <> line ".Await()" else call
+                  -- Within its stage's timeout and hedge, when it has them.
+                  result
+                    | declarationAsync adapter = E.call "lsAwaitStep"
+                        [ line "symbols"
+                        , line ("func() LawSpecTask[" ++ nativeResult ++ "] ") <> D.block 8 (line "return " <> call)
+                        , line ("func(native " ++ nativeResult ++ ") LawSpecValue ") <> D.block 8 (line "return resultCodec.fromNative(native)") ]
+                    | otherwise = E.call "resultCodec.fromNative" [call]
               pure (line "func() LawSpecValue " <> D.block 8 (D.joinWith D.hardline
                 ([line ("schema := " ++ schema), line ("bits := " ++ show bits), line "_ = bits"] ++
                  [assign ("codec" ++ show i) (line codec) | (i, codec) <- zip [0::Int ..] codecs] ++
-                 [assign "resultCodec" (line resultCodec), line "return " <> E.call "resultCodec.fromNative" [awaited]])) <> line "()")
+                 [assign "resultCodec" (line resultCodec), line "return " <> result])) <> line "()")
             _ -> Left "unresolved Go total call"
       rendered <- E.renderExpression declarations bits schema local external (definitionBody d)
       -- A workflow stage with policies runs under the workflow runtime.
@@ -159,7 +166,8 @@ emitGoDefinitions layout bits declarations units = do
         , line ("Cache: " ++ show (maybe (-1) id (policyCache policy)) ++ ",")
         , line ("Wraps: " ++ (if null (policyFailures policy) then "false" else "true") ++ ",")
         , line "Fail: " <> fail' <> line ","
-        , line "Compensate: " <> compensate <> line "," ]))
+        , line "Compensate: " <> compensate <> line ","
+        , line ("Hedge: " ++ maybe "nil" (\h -> "&lawSpecHedge{Delay: " ++ show (hedgeDelay h) ++ ", Most: " ++ show (hedgeMost h) ++ "}") (policyHedge policy) ++ ",") ]))
     -- A gate's callbacks call the unit's copies of the resilience unit's
     -- state machines, with the policy's numbers.
     policyGates policy = do

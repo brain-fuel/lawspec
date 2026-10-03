@@ -4,7 +4,7 @@
 -- runtime (run_stage). Durations are whole microseconds. Names are surface
 -- names before elaboration and declaration identities after.
 module LawSpec.Core.Policy
-  ( StagePolicy(..), Retry(..), Strategy(..), Jitter(..), Limit(..), Breaker(..), Bulkhead(..), emptyPolicy
+  ( StagePolicy(..), Retry(..), Strategy(..), Jitter(..), Limit(..), Breaker(..), Bulkhead(..), Hedge(..), emptyPolicy
   , policyFailures
   ) where
 
@@ -24,6 +24,7 @@ data StagePolicy name = StagePolicy
   -- Set on a workflow whose stages compensate: it runs in a frame that
   -- undoes its completed stages, in reverse, when it fails.
   , policyFrame :: Bool
+  , policyHedge :: Maybe Hedge
   } deriving (Eq, Show, Generic, Functor, Foldable, Traversable)
 
 -- A rate limit: kind is tokenBucket, leakyBucket, fixedWindow or
@@ -42,6 +43,11 @@ data Breaker name = Breaker
   { breakerFailures :: Integer, breakerWindow :: Integer, breakerCooldown :: Integer
   , breakerStart :: name, breakerAdmit :: name, breakerRecord :: name
   } deriving (Eq, Show, Generic, Functor, Foldable, Traversable)
+
+-- When an attempt has not succeeded after delay, another starts beside it, up
+-- to most attempts in all; the first success wins.
+data Hedge = Hedge { hedgeDelay :: Integer, hedgeMost :: Integer }
+  deriving (Eq, Show, Generic)
 
 -- At most limit calls at once.
 data Bulkhead name = Bulkhead
@@ -71,7 +77,7 @@ data Jitter = NoJitter | FullJitter | EqualJitter | DecorrelatedJitter
   deriving (Eq, Show, Generic)
 
 emptyPolicy :: String -> StagePolicy name
-emptyPolicy stage = StagePolicy stage Nothing Nothing Nothing Nothing Nothing Nothing Nothing False
+emptyPolicy stage = StagePolicy stage Nothing Nothing Nothing Nothing Nothing Nothing Nothing False Nothing
 
 -- The failures a stage's policies can cause besides its step's: a limit or
 -- bulkhead that rejects or waits at most so long, a breaker, a timeout.

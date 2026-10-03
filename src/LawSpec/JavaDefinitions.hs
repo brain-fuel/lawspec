@@ -117,10 +117,7 @@ emitDefinitions withNative layout bits declarations units = do
             -- the codecs; Kotlin through its generated bridge.
             ExternalCall identity _ | Just (owner, adapter) <- lookup identity (orchestratedAdapters units) ->
               if not withNative
-                then if declarationAsync adapter
-                  then Left ("workflow " ++ declarationName (definitionDeclaration d) ++ ": Kotlin workflows cannot yet " ++
-                    "call the asynchronous adapter " ++ declarationName adapter)
-                  else pure (E.call ("lawspec.runtime.LawSpecKotlinAdapters." ++ kotlinAdapterBridge identity) (D.text "symbols" : values))
+                then pure (E.call ("lawspec.runtime.LawSpecKotlinAdapters." ++ kotlinAdapterBridge identity) (D.text "symbols" : values))
                 else do
                   let (parameterTypes, resultType) = functionType (declarationType adapter)
                       parts = split '.' (idText owner)
@@ -129,8 +126,11 @@ emitDefinitions withNative layout bits declarations units = do
                   resultCodec <- Native.javaCodecDocWithContext (D.text "symbols") declarations bits resultType
                   let call = E.call (cls ++ "." ++ declarationName adapter)
                         [codec <> D.text ".decode(" <> value <> D.text ")" | (codec, value) <- zip codecs values]
-                      awaited = if declarationAsync adapter then call <> D.text ".join()" else call
-                  pure (resultCodec <> D.text ".encode(" <> awaited <> D.text ")")
+                  -- Within its stage's timeout and hedge, when it has them.
+                  pure $ if declarationAsync adapter
+                    then E.call "LawSpecRuntime.awaitStep" [D.text "symbols", D.text "() -> " <> call,
+                      D.text "_native -> " <> resultCodec <> D.text ".encode(_native)"]
+                    else resultCodec <> D.text ".encode(" <> call <> D.text ")"
             _ -> Left "unknown Java definition"
           signature = E.call ("public static Value evaluate" ++ show index)
             (D.text "Map<String, Object> symbols" : [D.text ("Value input" ++ show i) | i <- [0..length args-1]]) <> D.text " "
@@ -203,7 +203,8 @@ emitDefinitions withNative layout bits declarations units = do
             [E.quoted kind, long delay, long step, long factor, long cap, long (retryAttempts r), E.quoted (jitterName (retryJitter r)), condition, decide])
       pure (E.call "new LawSpecRuntime.StagePolicy" [E.quoted (policyStage policy), retry, long (maybe (-1) id (policyTimeout policy)),
         E.quoted key, E.call "java.util.List.of" gates, long (maybe (-1) id (policyCache policy)),
-        D.text (if null (policyFailures policy) then "false" else "true"), fail', compensate])
+        D.text (if null (policyFailures policy) then "false" else "true"), fail', compensate,
+        maybe (D.text "null") (\h -> E.call "new LawSpecRuntime.Hedge" [E.quoted (policyStage policy), long (hedgeDelay h), long (hedgeMost h)]) (policyHedge policy)])
     -- A gate's callbacks call the unit's copies of the resilience unit's
     -- state machines, with the policy's numbers.
     policyGates policy = do

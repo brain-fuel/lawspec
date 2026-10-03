@@ -272,6 +272,10 @@
             "path": "reference/language/domain-modeling.md"
           },
           {
+            "title": "Workflows",
+            "path": "reference/language/workflows.md"
+          },
+          {
             "title": "Imports and packages",
             "path": "reference/language/imports-and-packages.md"
           },

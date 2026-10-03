@@ -59,3 +59,26 @@ def compensationsFor(value0):
     runtime = ls.WorkflowRuntime(ls.VirtualClock())
     workflows.book(runtime.context(), data.Ticket(value0))
     return [event[1] for event in runtime.trace if event[0] == 'compensate']
+
+
+async def quoteTimedOut(value0):
+    """Quotes a ticket under a runtime with the real clock: whether it timed out."""
+    import lawspec_definitions.example.limits as workflows
+    runtime = ls.WorkflowRuntime()
+    result = workflows.quoted(runtime.context(), data.Ticket(value0))
+    return isinstance(result, _schema.Left) and isinstance(result.value, data.QuotedErrorQuotedTimedOut)
+
+
+async def quoteHedged(value0):
+    """Quotes a ticket under a runtime with the real clock: whether it
+    succeeded within 400ms, for ticket -2 through a hedged attempt."""
+    import time
+    import example.limits as quotes
+    import lawspec_definitions.example.limits as workflows
+    quotes.resetQuotes()
+    runtime = ls.WorkflowRuntime()
+    started = time.monotonic()
+    result = workflows.hedged(runtime.context(), data.Ticket(value0))
+    quick = time.monotonic() - started < 0.4
+    hedged = any(event[0] == 'hedge' for event in runtime.trace)
+    return isinstance(result, _schema.Right) and quick and (value0 != -2 or hedged)

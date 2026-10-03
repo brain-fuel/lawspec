@@ -188,6 +188,10 @@ elaborateWorkflow env0 definitions asyncNames taken0 w = do
         (Left (context ++ ": " ++ f ++ " must be attempted at least once"))
     forM_ (policyTimeout policy) $ \_ -> unless (f `elem` asyncNames)
       (Left (context ++ ": timeout needs an asynchronous step; " ++ f ++ " is synchronous, and a synchronous call cannot be interrupted"))
+    forM_ (policyHedge policy) $ \hedge -> do
+      unless (f `elem` asyncNames)
+        (Left (context ++ ": hedge needs an asynchronous step; " ++ f ++ " is synchronous, and synchronous calls cannot run side by side"))
+      when (hedgeMost hedge < 2) (Left (context ++ ": hedge needs at least 2 attempts"))
     let stageName = head [candidate | n <- [0 :: Int ..], let candidate = name ++ "Stage" ++ show (index + 1) ++ replicate n '_', candidate `notElem` taken0]
         input = head [candidate | n <- [0 :: Int ..], let candidate = "input" ++ replicate n '_', candidate /= f]
     -- A stage whose policies can fail fails with StageFailure: its step's

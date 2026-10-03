@@ -10,11 +10,33 @@ import LawSpec.Common (Artifact(..))
 import qualified LawSpec.WebData as Native
 import qualified LawSpec.WebExpr as E
 import qualified LawSpec.Code.Doc as D
-import Data.List (nub, sort, intercalate)
+import Data.List (nub, sort, intercalate, stripPrefix, isPrefixOf)
 
+-- An asynchronous definition's call is marked "await ", so callers await it.
 definitionCalls :: [Unit] -> [(Id,String)]
-definitionCalls units = [(declarationId (definitionDeclaration d), "_definitions.evaluate" ++ show i)
-  | (i,d) <- zip [0::Int ..] (concatMap unitDefinitions units)]
+definitionCalls units = [(identity, (if identity `elem` waiting then "await " else "") ++ "_definitions.evaluate" ++ show i)
+  | (i,d) <- zip [0::Int ..] (concatMap unitDefinitions units), let identity = declarationId (definitionDeclaration d)]
+  where waiting = asyncDefinitions units
+
+-- Workflows (and their stages) that call an asynchronous adapter, directly or
+-- through another such definition, are async functions.
+asyncDefinitions :: [Unit] -> [Id]
+asyncDefinitions units = grow []
+  where
+    definitions = concatMap unitDefinitions units
+    definitionIds = map (declarationId . definitionDeclaration) definitions
+    asyncAdapters = [declarationId d | u <- units, d <- unitDeclarations u, declarationAsync d, declarationId d `notElem` definitionIds]
+    callsIn expression = case expressionNode expression of
+      ExternalCall callee arguments -> callee : concatMap callsIn arguments
+      _ -> concatMap callsIn (children expression)
+    grow known =
+      let next = nub [ declarationId (definitionDeclaration d) | d <- definitions, definitionOrchestrates d
+                     , any (\callee -> callee `elem` asyncAdapters || callee `elem` known) (callsIn (definitionBody d)) ]
+      in if sort next == sort known then known else grow next
+
+-- A definition call's function, without its await mark.
+plainCall :: String -> String
+plainCall name = maybe name id (stripPrefix "await " name)
 
 emitWebDefinitions :: Bool -> D.Layout -> Int -> [DataDeclaration] -> [Unit] -> Either String [Artifact]
 emitWebDefinitions _ _ _ _ units | null (concatMap unitDefinitions units) = pure []
@@ -64,31 +86,33 @@ emitWebDefinitions ts layout bits declarations units = do
           names = zip (nub (map binderId binders)) ["value" ++ show i | i <- [0::Int ..]]
           local identity = maybe (error "unresolved JS/TS local") id (lookup identity names)
           arguments = [D.text (local (binderId binder)) <> annotation (D.text "unknown") | binder <- definitionArguments d]
+          asynchronous = declarationId (definitionDeclaration d) `elem` asyncDefinitions units
+          awaitIf condition expression = if condition then D.text "(await " <> expression <> D.text ")" else expression
           external term values = case expressionNode term of
             ExternalCall identity _ | Just name <- lookup identity callees ->
-              pure (E.call (drop (length ("_definitions." :: String)) name) (D.text "symbols":values))
+              pure (awaitIf ("await " `isPrefixOf` name)
+                (E.call (drop (length ("_definitions." :: String)) (plainCall name)) (D.text "symbols":values)))
             -- An orchestration calls an adapter natively: the values cross
             -- to native and back through the schema, as in the tests.
             ExternalCall identity _ | Just (owner, adapter) <- lookup identity adapters -> do
-              if declarationAsync adapter
-                then Left ("workflow " ++ declarationName (definitionDeclaration d) ++ ": JavaScript and TypeScript " ++
-                  "workflows cannot yet call the asynchronous adapter " ++ declarationName adapter)
-                else pure ()
               let (parameterTypes, resultType) = functionType (declarationType adapter)
               nativeValues <- sequence [schemaCall "toNative" ty value | (ty, value) <- zip parameterTypes values]
-              schemaCall "fromNative" resultType (E.call (adapterAlias owner ++ "." ++ declarationName adapter) nativeValues)
+              schemaCall "fromNative" resultType
+                (awaitIf (declarationAsync adapter) (E.call (adapterAlias owner ++ "." ++ declarationName adapter) nativeValues))
             _ -> Left "unresolved JS/TS total call"
-      rendered <- E.renderExpression ts declarations bits local external (definitionBody d)
+      rendered <- (if asynchronous then E.renderAsyncExpression else E.renderExpression) ts declarations bits local external (definitionBody d)
       -- A workflow stage with policies runs under the workflow runtime.
       body <- case definitionPolicy d of
         Nothing -> pure rendered
-        Just policy | policyFrame policy -> pure (E.call "ls.runWorkflow" [D.text "symbols", D.text "() => " <> rendered])
+        Just policy | policyFrame policy -> pure (awaitIf asynchronous (E.call (if asynchronous then "ls.runWorkflowAsync" else "ls.runWorkflow")
+          [D.text "symbols", D.text (if asynchronous then "async () => " else "() => ") <> rendered]))
         Just policy -> do
           config <- policyDoc (idText (declarationId (definitionDeclaration d))) policy
           let key = case definitionArguments d of
                 argument : _ -> D.text (local (binderId argument))
                 [] -> D.text "null"
-          pure (E.call "ls.runStage" [D.text "symbols", config, D.text "() => " <> rendered, key])
+          pure (awaitIf asynchronous (E.call (if asynchronous then "ls.runStageAsync" else "ls.runStage")
+            [D.text "symbols", config, D.text (if asynchronous then "async () => " else "() => ") <> rendered, key]))
       -- Arguments and results were checked where they were built, decoded
       -- or drawn; the native wrappers check values crossing from adapters.
       let checks = []
@@ -111,11 +135,11 @@ emitWebDefinitions ts layout bits declarations units = do
           post <- mapM (require "postcondition") (runtimePostconditions c)
           pure (checks ++ pre ++ [assign "result" body,assign "checked_result" result] ++
             post ++ [D.text "return checked_result;"])
-      pure (D.text ("export function evaluate" ++ show index) <>
-        D.delimitTrailing 4 "(" ")" (symbols:arguments) <> annotation (D.text "unknown") <> D.text " " <>
+      pure (D.text ((if asynchronous then "export async function evaluate" else "export function evaluate") ++ show index) <>
+        D.delimitTrailing 4 "(" ")" (symbols:arguments) <> annotation (D.text (if asynchronous then "Promise<unknown>" else "unknown")) <> D.text " " <>
         D.block 2 (contextual (declarationId (definitionDeclaration d)) (D.joinWith D.hardline
           statements)))
-    evaluator identity = maybe (Left "unresolved JS/TS policy definition") (Right . drop (length ("_definitions." :: String)))
+    evaluator identity = maybe (Left "unresolved JS/TS policy definition") (Right . drop (length ("_definitions." :: String)) . plainCall)
       (lookup identity callees)
     policyDoc key policy = do
       gates <- policyGates policy
@@ -141,7 +165,8 @@ emitWebDefinitions ts layout bits declarations units = do
           pure (object [("strategy", strategy), ("attempts", big (retryAttempts r)), ("jitter", E.quoted (jitterName (retryJitter r))), ("when", condition)])
       pure (object [("stage", E.quoted (policyStage policy)), ("retry", retry), ("timeout", maybe (D.text "null") big (policyTimeout policy)),
         ("key", E.quoted key), ("gates", array gates), ("cache", maybe (D.text "null") big (policyCache policy)),
-        ("wraps", D.text (if null (policyFailures policy) then "false" else "true")), ("compensate", compensate)])
+        ("wraps", D.text (if null (policyFailures policy) then "false" else "true")), ("compensate", compensate),
+        ("hedge", maybe (D.text "null") (\h -> array [big (hedgeDelay h), big (hedgeMost h)]) (policyHedge policy))])
     -- A gate's callbacks call the unit's copies of the resilience unit's
     -- state machines, with the policy's numbers.
     policyGates policy = do
@@ -201,9 +226,11 @@ emitWebDefinitions ts layout bits declarations units = do
       output <- schemaCall "toNative" result (D.text "result")
       let parameters = symbols : [D.text value <> annotation ty | (value,ty) <- zip values types]
           inputs = [assign ("argument" ++ show i) value | (i,value) <- zip [0::Int ..] arguments]
-          invocation = E.call name (D.text "symbols" : [D.text ("argument" ++ show i) | i <- [0 .. length args - 1]])
-      pure (D.text ("export function " ++ declarationName declaration) <>
-        D.delimitTrailing 4 "(" ")" parameters <> annotation resultType <> D.text " " <>
+          waiting = "await " `isPrefixOf` name
+          invocation = (if waiting then D.text "await " else mempty) <>
+            E.call (plainCall name) (D.text "symbols" : [D.text ("argument" ++ show i) | i <- [0 .. length args - 1]])
+      pure (D.text ((if waiting then "export async function " else "export function ") ++ declarationName declaration) <>
+        D.delimitTrailing 4 "(" ")" parameters <> annotation (if waiting then D.text "Promise<" <> resultType <> D.text ">" else resultType) <> D.text " " <>
         D.block 2 (contextual (declarationId declaration) (D.joinWith D.hardline
           (inputs ++ [assign "result" invocation,D.text "return " <> output <> D.text ";"]))))
     nestedBinders expression = case expressionNode expression of

@@ -163,3 +163,31 @@ spec = describe "domain modeling" $ do
           [ "workflow other :: UnvalidatedOrder -> ValidatedOrder is"
           , "  validateOrder :: UnvalidatedOrder -> ValidatedOrder"
           , "end" ])
+      it "reject a timeout on a synchronous step" $
+        rejects "timeout needs an asynchronous step" (unlines
+          [ "workflow placeOrder :: UnvalidatedOrder -> Either _ ValidatedOrder is"
+          , "  validateOrder :: UnvalidatedOrder -> Either OrderError ValidatedOrder"
+          , "    timeout 2s"
+          , "end" ])
+      it "reject a hedge on a synchronous step" $
+        rejects "hedge needs an asynchronous step" (unlines
+          [ "workflow placeOrder :: UnvalidatedOrder -> Either _ ValidatedOrder is"
+          , "  validateOrder :: UnvalidatedOrder -> Either OrderError ValidatedOrder"
+          , "    hedge 50ms"
+          , "end" ])
+      it "reject a hedge of a single attempt" $
+        rejects "hedge needs at least 2 attempts" (unlines
+          [ "async validateOrder :: UnvalidatedOrder -> Either OrderError ValidatedOrder"
+          , "workflow placeOrder :: UnvalidatedOrder -> Either _ ValidatedOrder is"
+          , "  validateOrder :: UnvalidatedOrder -> Either OrderError ValidatedOrder"
+          , "    hedge 50ms max 1"
+          , "end" ])
+    it "hedge an asynchronous step" $
+      case compileOrders (unlines
+        [ "async validateOrder :: UnvalidatedOrder -> Either OrderError ValidatedOrder"
+        , "workflow placeOrder :: UnvalidatedOrder -> Either _ ValidatedOrder is"
+        , "  validateOrder :: UnvalidatedOrder -> Either OrderError ValidatedOrder"
+        , "    hedge 50ms max 3"
+        , "end" ]) of
+        Left diagnostics -> expectationFailure (show diagnostics)
+        Right _ -> pure ()

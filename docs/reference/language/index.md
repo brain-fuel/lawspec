@@ -24,6 +24,8 @@ types, checked definitions, refinements and laws.
 - [Evidence and discharge](evidence-and-discharge.md): how each obligation is
   discharged.
 - [Domain modeling](domain-modeling.md): wrappers and workflows.
+- [Workflows](workflows.md): stages, error types, and policies such as
+  retries, timeouts, rate limits, compensation and hedging.
 - [Imports and packages](imports-and-packages.md): sharing declarations between
   units and packages.
 - [Expressions and arithmetic](expressions-and-arithmetic.md): precedence,

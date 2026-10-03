@@ -15,7 +15,7 @@ import LawSpec.Scalar
 import Data.Aeson (encode, toJSON)
 import qualified Data.Text.Lazy as T
 import qualified Data.Text.Lazy.Encoding as T
-import Data.List (intercalate, isPrefixOf, isInfixOf)
+import Data.List (intercalate, isPrefixOf, isInfixOf, stripPrefix)
 import Control.Monad (unless, foldM)
 
 q :: String -> String
@@ -172,7 +172,7 @@ scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions 
       else Doc.delimitTrailing 4 "(" ")" parameters <> text " => " <> value
     -- JavaScript tests that call async adapters await them, so their test
     -- bodies, property callbacks and assertion thunks are async too.
-    asyncMode = not py && not (null (asyncFunctions u))
+    asyncMode = not py && (not (null (asyncFunctions u)) || any (isPrefixOf "await " . snd) definitions)
     asyncPrefix = text (if asyncMode then "async " else "")
     callback parameters body = asyncPrefix <> Doc.delimitTrailing 4 "(" ")" parameters <> text " => " <> Doc.block 2 body
     function name parameters body =
@@ -203,6 +203,8 @@ scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions 
         renderer = if py then PythonExpr.renderExpression else WebExpr.renderExpression ts
         external expression values = case C.expressionNode expression of
           C.ExternalCall decl args -> case lookup decl definitions of
+            -- An asynchronous definition (an async workflow) is awaited.
+            Just name | Just plain <- stripPrefix "await " name -> Right (text "(await " <> invoke plain (text "symbols":values) <> text ")")
             Just name -> Right (invoke name (text "symbols":values))
             Nothing ->
               let convertedValues = [converted (expressionType a) value | (a,value) <- zip args values]
@@ -327,11 +329,8 @@ scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions 
         pure (assign (inputId input) (method (text "_draw") "draw" [strategy])))
         (generationPlan e)
       let predicate = conjunction (map render (concatMap inputRefinements (inputs e)))
-      -- Solving an index table is a one-time cost of the first example, so
-      -- index-directed properties have no per-example deadline.
-      let deadline = [text "deadline=None" | any ((/= Nothing) . generatorIndex) (generationPlan e)]
       pure (pythonProperty prefix
-        [invoke "settings" (text ("max_examples=" ++ show (cases (generation e))) : deadline),
+        [pythonSettings (cases (generation e)),
          invoke "given" [invoke "st.data" []]] ["_draw"]
         (statements (freshSymbols : draws ++ [statement (invoke "assume" [predicate]),body])))
     contextStrategy e plan = do
@@ -419,10 +418,13 @@ scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions 
           assignments = [assign (inputId input) (text ("_values[" ++ show index ++ "]")) |
             (index,input) <- zip [0 :: Int ..] (inputs e)]
       in pure $ if py then pythonProperty prefix
-        [invoke "settings" [text ("max_examples=" ++ show (cases cfg))],invoke "given" [filtered]]
+        [pythonSettings (cases cfg),invoke "given" [filtered]]
         ["_case"] (statements ([text "_values, symbols = _case"] ++ assignments ++ [body]))
         else propertyInvocation label [filtered] [pattern] body
           [object [("numRuns",text (show (cases cfg))),("maxSkipsPerRun",text (show (maxAttempts cfg)))]]
+    -- No per-example deadline: adapters may do real work (I/O, timeouts),
+    -- and solving an index table is a one-time cost of the first example.
+    pythonSettings count = invoke "settings" [text ("max_examples=" ++ show count), text "deadline=None"]
     refinedProperty prefix label e body = do
       domains <- mapM (domainCode e) (zip [0 :: Int ..] (generationPlan e))
       let cfg = generation e
@@ -435,7 +437,7 @@ scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions 
              message (label ++ " | " ++ intercalate "; " (map prettyExpr (concatMap inputRefinements (inputs e))))])
           seededBody = statements [freshSymbols, (if py then Doc.hardline else mempty) <> check, run]
       pure $ if py then pythonProperty prefix
-        [invoke "settings" [text ("max_examples=" ++ show (cases cfg))],
+        [pythonSettings (cases cfg),
          invoke "given" [invoke "st.integers" [text "min_value=0",text "max_value=2147483647"]]]
         ["_seed"] seededBody
         else propertyInvocation label [invoke "fc.integer" [object [("min",text "0"),("max",text "2147483647")]]]

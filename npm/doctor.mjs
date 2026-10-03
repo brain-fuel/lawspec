@@ -398,7 +398,7 @@ export async function doctor(target, root, plannedArtifacts = []) {
         const init = path.join(tmp, "inspect.gradle");
         await writeFile(
           init,
-          `import groovy.json.JsonOutput\ngradle.projectsEvaluated {\n def p = gradle.rootProject\n p.tasks.register('lawspecEnvironmentReport') { doLast {\n def k = p.tasks.findByName('compileTestKotlin')\n def j = p.tasks.findByName('test')\n def plugin = p.plugins.findPlugin('org.jetbrains.kotlin.jvm')\n def kv = plugin.class.classLoader.loadClass('org.jetbrains.kotlin.gradle.plugin.KotlinPluginWrapperKt').getMethod('getKotlinPluginVersion', org.gradle.api.Project).invoke(null, p)\n def deps = p.configurations.testRuntimeClasspath.resolvedConfiguration.resolvedArtifacts.collect { [name: it.moduleVersion.id.group + ':' + it.name, version: it.moduleVersion.id.version] }\n new File(System.getenv('LAWSPEC_REPORT')).text = JsonOutput.toJson([kotlin: kv, gradle: gradle.gradleVersion, java: System.getProperty('java.version'), target: k?.compilerOptions?.jvmTarget?.get()?.target, testJava: j?.javaLauncher?.get()?.metadata?.languageVersion?.asInt(), runner: j?.options?.class?.name, enabled: j.enabled, includes: j.filter.includePatterns, excludes: j.filter.excludePatterns, sourceDirs: p.sourceSets.main.allSource.srcDirs.collect { it.canonicalPath }, testDirs: p.sourceSets.test.allSource.srcDirs.collect { it.canonicalPath }, dependencies: deps])\n } }\n}\n`,
+          `import groovy.json.JsonOutput\ngradle.projectsEvaluated {\n def p = gradle.rootProject\n p.tasks.register('lawspecEnvironmentReport') { doLast {\n def k = p.tasks.findByName('compileTestKotlin')\n def j = p.tasks.findByName('test')\n def plugin = p.plugins.findPlugin('org.jetbrains.kotlin.jvm')\n def kv = plugin.class.classLoader.loadClass('org.jetbrains.kotlin.gradle.plugin.KotlinPluginWrapperKt').getMethod('getKotlinPluginVersion', org.gradle.api.Project).invoke(null, p)\n def deps = p.configurations.testRuntimeClasspath.resolvedConfiguration.resolvedArtifacts.collect { [name: it.moduleVersion.id.group + ':' + it.name, version: it.moduleVersion.id.version] }\n def mainDeps = p.configurations.runtimeClasspath.resolvedConfiguration.resolvedArtifacts.collect { it.moduleVersion.id.group + ':' + it.name }\n new File(System.getenv('LAWSPEC_REPORT')).text = JsonOutput.toJson([kotlin: kv, gradle: gradle.gradleVersion, java: System.getProperty('java.version'), target: k?.compilerOptions?.jvmTarget?.get()?.target, testJava: j?.javaLauncher?.get()?.metadata?.languageVersion?.asInt(), runner: j?.options?.class?.name, enabled: j.enabled, includes: j.filter.includePatterns, excludes: j.filter.excludePatterns, sourceDirs: p.sourceSets.main.allSource.srcDirs.collect { it.canonicalPath }, testDirs: p.sourceSets.test.allSource.srcDirs.collect { it.canonicalPath }, dependencies: deps, mainDependencies: mainDeps])\n } }\n}\n`,
         );
         await run(
           command,
@@ -443,6 +443,11 @@ export async function doctor(target, root, plannedArtifacts = []) {
             ),
             `Missing ${dep}:5.9.1`,
           );
+        // Workflows block on asynchronous Kotlin steps with runBlocking.
+        requireThat(
+          (data.mainDependencies ?? []).includes("org.jetbrains.kotlinx:kotlinx-coroutines-core-jvm"),
+          "Missing org.jetbrains.kotlinx:kotlinx-coroutines-core (an implementation dependency, for workflows)",
+        );
         Object.assign(versions, data);
         requireThat(
           data.kotlin,

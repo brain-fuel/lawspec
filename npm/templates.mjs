@@ -93,11 +93,11 @@ const scaffolds = {
                     "kotlin": {
                       "readable": {
                         "settings.gradle.kts": "rootProject.name = \"lawspec-example\"\n",
-                        "build.gradle.kts": "plugins {\n    kotlin(\"jvm\") version \"2.3.21\"\n}\n\nrepositories {\n    mavenCentral()\n}\n\nkotlin {\n    jvmToolchain(25)\n}\n\ndependencies {\n    testImplementation(\"io.kotest:kotest-runner-junit5:5.9.1\")\n    testImplementation(\"io.kotest:kotest-assertions-core:5.9.1\")\n    testImplementation(\"io.kotest:kotest-property:5.9.1\")\n}\n\ntasks.test {\n    useJUnitPlatform()\n}\n"
+                        "build.gradle.kts": "plugins {\n    kotlin(\"jvm\") version \"2.3.21\"\n}\n\nrepositories {\n    mavenCentral()\n}\n\nkotlin {\n    jvmToolchain(25)\n}\n\ndependencies {\n    implementation(\"org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.0\")\n    testImplementation(\"io.kotest:kotest-runner-junit5:5.9.1\")\n    testImplementation(\"io.kotest:kotest-assertions-core:5.9.1\")\n    testImplementation(\"io.kotest:kotest-property:5.9.1\")\n}\n\ntasks.test {\n    useJUnitPlatform()\n}\n"
                       },
                       "compact": {
                         "settings.gradle.kts": "rootProject.name = \"lawspec-example\"\n",
-                        "build.gradle.kts": "plugins { kotlin(\"jvm\") version \"2.3.21\" }\nrepositories { mavenCentral() }\nkotlin { jvmToolchain(25) }\ndependencies { testImplementation(\"io.kotest:kotest-runner-junit5:5.9.1\"); testImplementation(\"io.kotest:kotest-assertions-core:5.9.1\"); testImplementation(\"io.kotest:kotest-property:5.9.1\") }\ntasks.test { useJUnitPlatform() }\n"
+                        "build.gradle.kts": "plugins { kotlin(\"jvm\") version \"2.3.21\" }\nrepositories { mavenCentral() }\nkotlin { jvmToolchain(25) }\ndependencies { implementation(\"org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.0\"); testImplementation(\"io.kotest:kotest-runner-junit5:5.9.1\"); testImplementation(\"io.kotest:kotest-assertions-core:5.9.1\"); testImplementation(\"io.kotest:kotest-property:5.9.1\") }\ntasks.test { useJUnitPlatform() }\n"
                       }
                     },
                     "rust": {

@@ -212,3 +212,34 @@ law `a failed booking releases its seat` is
       compensationsFor n = prelude.select (n < 0) ["reserveSeat"] []
   end
 end
+
+-- Quotes a ticket under a runtime with the real clock: whether it timed out.
+async quoteTimedOut :: Int64 -> Bool
+
+law `a slow quote times out` is
+  definition is
+    `for all` (n :: Int64) . quoteTimedOut n = (n == -1)
+  end
+  example `a slow quote` is
+    n = -1
+    expect quoteTimedOut n = true
+  end
+  example `a quick quote` is
+    n = 0
+    expect quoteTimedOut n = false
+  end
+end
+
+-- Quotes a ticket under a runtime with the real clock: whether it succeeded
+-- quickly (within 400ms), for ticket -2 through a hedged attempt.
+async quoteHedged :: Int64 -> Bool
+
+law `a stalled quote is hedged` is
+  definition is
+    `for all` (n :: Int64) . quoteHedged n = true
+  end
+  example `a stalled quote` is
+    n = -2
+    expect quoteHedged n = true
+  end
+end

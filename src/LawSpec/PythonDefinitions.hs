@@ -67,8 +67,12 @@ emitPythonDefinitions layout bits declarations units = do
               let (parameterTypes, resultType) = functionType (declarationType adapter)
               nativeValues <- sequence [schemaCall "to_native" ty value | (ty, value) <- zip parameterTypes values]
               let invocation = E.call ("_adapters(" ++ show owner ++ ")." ++ declarationName adapter) nativeValues
-                  awaited = if declarationAsync adapter then E.call "ls.await_task" [invocation] else invocation
-              schemaCall "from_native" resultType awaited
+              if declarationAsync adapter
+                then do
+                  -- Within its stage's timeout and hedge, when it has them.
+                  convert <- schemaCall "from_native" resultType (D.text "_native")
+                  pure (E.call "ls.await_step" [D.text "symbols", D.text "lambda: " <> invocation, D.text "lambda _native: " <> convert])
+                else schemaCall "from_native" resultType invocation
             _ -> Left "unresolved Python total call"
       rendered <- E.renderExpression declarations bits local external (definitionBody d)
       -- A workflow stage with policies runs under the workflow runtime.
@@ -133,7 +137,8 @@ emitPythonDefinitions layout bits declarations units = do
         Just undo -> (\name -> D.text ("lambda value: " ++ name ++ "(symbols, value)")) <$> evaluator undo
       pure (E.call "ls.StagePolicy" [E.quoted (policyStage policy), retry, maybe (D.text "None") int (policyTimeout policy),
         E.quoted key, tuple gates, maybe (D.text "None") int (policyCache policy),
-        D.text (if null (policyFailures policy) then "False" else "True"), compensate])
+        D.text (if null (policyFailures policy) then "False" else "True"), compensate,
+        maybe (D.text "None") (\h -> tuple [int (hedgeDelay h), int (hedgeMost h)]) (policyHedge policy)])
     -- A gate's callbacks call the unit's copies of the resilience unit's
     -- state machines, with the policy's numbers.
     policyGates policy = do
