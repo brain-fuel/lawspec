@@ -82,6 +82,7 @@ emitWebDefinitions ts layout bits declarations units = do
       -- A workflow stage with policies runs under the workflow runtime.
       body <- case definitionPolicy d of
         Nothing -> pure rendered
+        Just policy | policyFrame policy -> pure (E.call "ls.runWorkflow" [D.text "symbols", D.text "() => " <> rendered])
         Just policy -> do
           config <- policyDoc (idText (declarationId (definitionDeclaration d))) policy
           let key = case definitionArguments d of
@@ -118,6 +119,9 @@ emitWebDefinitions ts layout bits declarations units = do
       (lookup identity callees)
     policyDoc key policy = do
       gates <- policyGates policy
+      compensate <- case policyCompensate policy of
+        Nothing -> pure (D.text "null")
+        Just undo -> (\name -> arrow ["value"] (name ++ "(symbols, value)")) <$> evaluator undo
       retry <- case policyRetry policy of
         Nothing -> pure (D.text "null")
         Just r -> do
@@ -137,7 +141,7 @@ emitWebDefinitions ts layout bits declarations units = do
           pure (object [("strategy", strategy), ("attempts", big (retryAttempts r)), ("jitter", E.quoted (jitterName (retryJitter r))), ("when", condition)])
       pure (object [("stage", E.quoted (policyStage policy)), ("retry", retry), ("timeout", maybe (D.text "null") big (policyTimeout policy)),
         ("key", E.quoted key), ("gates", array gates), ("cache", maybe (D.text "null") big (policyCache policy)),
-        ("wraps", D.text (if null (policyFailures policy) then "false" else "true"))])
+        ("wraps", D.text (if null (policyFailures policy) then "false" else "true")), ("compensate", compensate)])
     -- A gate's callbacks call the unit's copies of the resilience unit's
     -- state machines, with the policy's numbers.
     policyGates policy = do

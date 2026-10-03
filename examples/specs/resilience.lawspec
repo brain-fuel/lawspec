@@ -202,3 +202,13 @@ law `a sliding window admits n calls per period` is
         r.Step (r.SlidingWindow [prelude.Integer t, prelude.Integer t]) (r.WaitFor 999)
   end
 end
+
+-- Books a ticket under a fresh runtime: the stages whose undos ran.
+compensationsFor :: Int64 -> List Text
+
+law `a failed booking releases its seat` is
+  definition is
+    `for all` (n :: Int64) .
+      compensationsFor n = prelude.select (n < 0) ["reserveSeat"] []
+  end
+end

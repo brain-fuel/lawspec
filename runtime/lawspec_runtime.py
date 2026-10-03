@@ -852,6 +852,8 @@ class WorkflowRuntime:
         self.trace = []
         self.state = {}
         self.gates = gates
+        # A frame per running workflow: the undos of its completed stages.
+        self.frames = []
 
     def context(self, symbols=None):
         """A symbols context that runs workflows under this runtime."""
@@ -913,6 +915,8 @@ class StagePolicy:
     gates: tuple = ()
     cache: object = None
     wraps: bool = False
+    # Undoes the stage's success value when its workflow fails.
+    compensate: object = None
 
 
 def _fibonacci(n):
@@ -1008,9 +1012,29 @@ def run_stage(symbols, policy, attempt, key=None):
     succeeded = not (isinstance(result, DataValue) and result.tag == 'Either::Left')
     for gate in gates:
         _finish(runtime, policy, gate, succeeded)
+    if succeeded and policy.compensate is not None and runtime.frames:
+        value = result.fields[0]
+        runtime.frames[-1].append((policy.stage, lambda: policy.compensate(value)))
     if cached is not None and succeeded:
         cached[:] = [entry for entry in cached if not equal_values(entry[0], key)]
         cached.append((key, result, runtime.clock.now() + policy.cache))
+    return result
+
+
+def run_workflow(symbols, attempt):
+    """Runs a workflow whose stages compensate: when it fails, the undos of
+    its completed stages run, last first."""
+    runtime = workflow_runtime(symbols)
+    frame = []
+    runtime.frames.append(frame)
+    try:
+        result = attempt()
+    finally:
+        runtime.frames.pop()
+    if isinstance(result, DataValue) and result.tag == 'Either::Left':
+        for stage, undo in reversed(frame):
+            runtime.trace.append(('compensate', stage, 0))
+            undo()
     return result
 
 

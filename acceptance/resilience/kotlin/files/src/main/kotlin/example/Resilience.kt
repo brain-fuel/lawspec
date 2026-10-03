@@ -50,4 +50,11 @@ object Resilience {
             lawspec.definitions.example.Limits.limited(runtime.context(HashMap()), lawspec.data.Ticket(0)) is LawSpecRuntime.Right
         }
     }
+
+    /** Books a ticket under a fresh runtime: the stages whose undos ran. */
+    fun compensationsFor(value0: Long): List<String> {
+        val runtime = LawSpecRuntime.WorkflowRuntime(LawSpecRuntime.VirtualClock(), 0)
+        lawspec.definitions.example.Limits.book(runtime.context(HashMap()), lawspec.data.Ticket(value0))
+        return runtime.trace.filter { it.kind() == "compensate" }.map { it.stage() }
+    }
 }

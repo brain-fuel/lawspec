@@ -141,6 +141,8 @@ emitDefinitions withNative layout bits declarations units = do
       -- A workflow stage with policies runs under the workflow runtime.
       body <- case definitionPolicy d of
         Nothing -> pure rendered
+        Just policy | policyFrame policy ->
+          pure (E.call "LawSpecRuntime.runWorkflow" [D.text "symbols", D.text "() -> " <> rendered])
         Just policy -> do
           failures <- forM (stageFailures d) $ \(kind, value) ->
             (\rendered' -> D.text ("case " ++ show kind ++ " -> ") <> rendered' <> D.text ";") <$>
@@ -177,6 +179,9 @@ emitDefinitions withNative layout bits declarations units = do
     evaluator identity = maybe (Left "unresolved Java policy definition") Right (lookup identity callees)
     policyDoc key fail' policy = do
       gates <- policyGates policy
+      compensate <- case policyCompensate policy of
+        Nothing -> pure (D.text "null")
+        Just undo -> (\name -> D.text ("value -> " ++ name ++ "(symbols, value)")) <$> evaluator undo
       retry <- case policyRetry policy of
         Nothing -> pure (D.text "null")
         Just r -> do
@@ -198,7 +203,7 @@ emitDefinitions withNative layout bits declarations units = do
             [E.quoted kind, long delay, long step, long factor, long cap, long (retryAttempts r), E.quoted (jitterName (retryJitter r)), condition, decide])
       pure (E.call "new LawSpecRuntime.StagePolicy" [E.quoted (policyStage policy), retry, long (maybe (-1) id (policyTimeout policy)),
         E.quoted key, E.call "java.util.List.of" gates, long (maybe (-1) id (policyCache policy)),
-        D.text (if null (policyFailures policy) then "false" else "true"), fail'])
+        D.text (if null (policyFailures policy) then "false" else "true"), fail', compensate])
     -- A gate's callbacks call the unit's copies of the resilience unit's
     -- state machines, with the policy's numbers.
     policyGates policy = do

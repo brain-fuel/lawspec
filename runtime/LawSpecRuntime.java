@@ -1190,6 +1190,8 @@ public final class LawSpecRuntime {
     public final List<TraceEvent> trace = new ArrayList<>();
     public final Map<String, Object> state = new java.util.HashMap<>();
     public boolean gates = true;
+    // A frame per running workflow: the undos of its completed stages.
+    private final List<List<Map.Entry<String, Runnable>>> frames = new ArrayList<>();
 
     public WorkflowRuntime(Clock clock, long seed) {
       this.clock = clock == null ? new RealClock() : clock;
@@ -1251,10 +1253,30 @@ public final class LawSpecRuntime {
    */
   public record StagePolicy(
       String stage, Retry retry, long timeout, String key, List<Gate> gates, long cache, boolean wraps,
-      Function<String, Value> fail) {
+      Function<String, Value> fail, java.util.function.Consumer<Value> compensate) {
     public StagePolicy(String stage, Retry retry, long timeout) {
-      this(stage, retry, timeout, stage, List.of(), -1, false, null);
+      this(stage, retry, timeout, stage, List.of(), -1, false, null, null);
     }
+  }
+
+  /** Runs a workflow whose stages compensate: when it fails, its completed stages' undos run, last first. */
+  public static Value runWorkflow(Map<String, Object> symbols, java.util.function.Supplier<Value> attempt) {
+    WorkflowRuntime runtime = workflowRuntime(symbols);
+    var frame = new ArrayList<Map.Entry<String, Runnable>>();
+    runtime.frames.add(frame);
+    Value result;
+    try {
+      result = attempt.get();
+    } finally {
+      runtime.frames.remove(runtime.frames.size() - 1);
+    }
+    if (result.data() instanceof Data data && data.tag().equals("Either::Left")) {
+      for (int i = frame.size() - 1; i >= 0; i--) {
+        runtime.trace.add(new TraceEvent("compensate", frame.get(i).getKey(), 0, true));
+        frame.get(i).getValue().run();
+      }
+    }
+    return result;
   }
 
   private record CacheEntry(Value key, Value value, long expires) {}
@@ -1377,6 +1399,10 @@ public final class LawSpecRuntime {
     Value result = attempts(runtime, policy, attempt);
     boolean succeeded = !(result.data() instanceof Data data && data.tag().equals("Either::Left"));
     for (var gate : gates) finishGate(runtime, policy, gate, succeeded);
+    if (succeeded && policy.compensate() != null && !runtime.frames.isEmpty()) {
+      Value value = ((Data) result.data()).fields().get(0);
+      runtime.frames.get(runtime.frames.size() - 1).add(Map.entry(policy.stage(), () -> policy.compensate().accept(value)));
+    }
     if (caching && succeeded) {
       var entries = new ArrayList<CacheEntry>();
       for (var entry : (List<CacheEntry>) runtime.state.getOrDefault(cacheKey, List.of()))

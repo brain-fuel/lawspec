@@ -51,3 +51,11 @@ def limitedAt(value0):
         result = workflows.limited(runtime.context(), data.Ticket(0))
         admitted.append(isinstance(result, _schema.Right))
     return admitted
+
+
+def compensationsFor(value0):
+    """Books a ticket under a fresh runtime: the stages whose undos ran."""
+    import lawspec_definitions.example.limits as workflows
+    runtime = ls.WorkflowRuntime(ls.VirtualClock())
+    workflows.book(runtime.context(), data.Ticket(value0))
+    return [event[1] for event in runtime.trace if event[0] == 'compensate']

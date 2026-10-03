@@ -50,3 +50,10 @@ export function limitedAt(value0) {
     return workflows.limited(runtime.context(), new data.Ticket(0n)) instanceof data.Right;
   });
 }
+
+/** Books a ticket under a fresh runtime: the stages whose undos ran. */
+export function compensationsFor(value0) {
+  const runtime = new ls.WorkflowRuntime(new ls.VirtualClock());
+  workflows.book(runtime.context(), new data.Ticket(value0));
+  return runtime.trace.filter((event) => event[0] === 'compensate').map((event) => event[1]);
+}

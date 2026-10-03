@@ -73,6 +73,9 @@ emitRustDefinitions layout bits declarations units = do
     evaluator identity = maybe (Left "unresolved Rust policy definition") Right (lookup identity names)
     policyDoc key policy = do
       gates <- policyGates policy
+      compensate <- case policyCompensate policy of
+        Nothing -> pure (D.text "None")
+        Just undo -> (\name -> D.text ("Some(|ctx: &mut ls::Context, value: ls::Value| -> ls::Result<ls::Value> { " ++ name ++ "(ctx, vec![value]) })")) <$> evaluator undo
       retry <- case policyRetry policy of
         Nothing -> pure (D.text "None")
         Just r -> do
@@ -105,7 +108,8 @@ emitRustDefinitions layout bits declarations units = do
         , D.text ("key: " ++ show key ++ ",")
         , D.text "gates: vec!" <> D.delimitTrailing 4 "[" "]" gates <> D.text ","
         , D.text ("cache: " ++ show (maybe (-1) id (policyCache policy)) ++ ",")
-        , D.text ("wraps: " ++ (if null (policyFailures policy) then "false" else "true") ++ ",") ]))
+        , D.text ("wraps: " ++ (if null (policyFailures policy) then "false" else "true") ++ ",")
+        , D.text "compensate: " <> compensate <> D.text "," ]))
     -- A gate's callbacks call the unit's copies of the resilience unit's
     -- state machines, with the policy's numbers.
     policyGates policy = do
@@ -185,6 +189,9 @@ emitRustDefinitions layout bits declarations units = do
       -- A workflow stage with policies runs under the workflow runtime.
       body <- case definitionPolicy d of
         Nothing -> pure rendered
+        Just policy | policyFrame policy ->
+          pure (E.call "ls::run_workflow" [D.text "ctx",
+            D.text "|ctx: &mut ls::Context| -> ls::Result<ls::Value> " <> D.block 4 (D.text "Ok(" <> rendered <> D.text ")")] <> D.text "?")
         Just policy -> do
           config <- policyDoc (idText (declarationId (definitionDeclaration d))) policy
           let key = case locals of

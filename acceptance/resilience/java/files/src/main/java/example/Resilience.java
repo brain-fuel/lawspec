@@ -70,4 +70,13 @@ public final class Resilience {
     }
     return admitted;
   }
+
+  /** Books a ticket under a fresh runtime: the stages whose undos ran. */
+  public static List<String> compensationsFor(long value0) {
+    var runtime = new LawSpecRuntime.WorkflowRuntime(new LawSpecRuntime.VirtualClock(), 0);
+    lawspec.definitions.example.Limits.book(runtime.context(new HashMap<>()), new lawspec.data.Ticket(value0));
+    var stages = new ArrayList<String>();
+    for (var event : runtime.trace) if (event.kind().equals("compensate")) stages.add(event.stage());
+    return stages;
+  }
 }

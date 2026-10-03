@@ -75,3 +75,16 @@ func LimitedAt(value0 []*LawSpecBigInt) []bool {
 	}
 	return admitted
 }
+
+// CompensationsFor books a ticket under a fresh runtime: the stages whose undos ran.
+func CompensationsFor(value0 int64) []string {
+	runtime := limits.NewLawSpecWorkflowRuntime(&limits.LawSpecVirtualClock{}, 0)
+	limits.LawSpecDefinitions.Book(runtime.Context(nil), limits.Ticket{Number: value0})
+	stages := []string{}
+	for _, event := range runtime.Trace {
+		if event.Kind == "compensate" {
+			stages = append(stages, event.Stage)
+		}
+	}
+	return stages
+}

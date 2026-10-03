@@ -205,7 +205,23 @@ elaborateWorkflow env0 definitions asyncNames taken0 w = do
                [ MatchBranch "Either::Left" ["stepError"] (ConstructLit "Either::Left" [ConstructLit "lawspecResilience.StepFailed" [Var "stepError"]])
                , MatchBranch "Either::Right" ["stepValue"] (ConstructLit "Either::Right" [Var "stepValue"]) ])
           (_, _) -> (Application "Either" [stageFailure (Named "Unit"), r], ConstructLit "Either::Right" [Apply (Var f) (Var input)])
-    pure (index, stageName, FunctionDefinition stageName [(input, a)] stageResult [] stageBody (workflowSpan w), policy { policyStage = f })
+    -- A compensated stage's undo runs as its own definition, on the stage's
+    -- success value.
+    let success = case r of Application "Either" [_, next] -> next; _ -> r
+    undoName <- forM (policyCompensate policy) $ \undo -> do
+      uty <- typeOf0 undo
+      case uty of
+        Arrow b _ | b == success -> pure ()
+        _ -> Left (context ++ ": compensate " ++ undo ++ " must take " ++ prettyType success ++ ", what " ++ f ++ " gives")
+      pure (head [candidate | n <- [0 :: Int ..], let candidate = name ++ "Undo" ++ show (index + 1) ++ replicate n '_', candidate `notElem` taken0])
+    pure (index, stageName, FunctionDefinition stageName [(input, a)] stageResult [] stageBody (workflowSpan w),
+      policy { policyStage = f, policyCompensate = undoName })
+  undos <- fmap concat $ forM staged $ \(index, _, _, policy) -> case (policyCompensate policy, lookup index (workflowPolicies w) >>= policyCompensate) of
+    (Just undoName, Just undo) -> do
+      uty <- typeOf0 undo
+      let (b, t) = case uty of Arrow x y -> (x, y); other -> (other, other)
+      pure [FunctionDefinition undoName [("value", b)] t [] (Apply (Var undo) (Var "value")) (workflowSpan w)]
+    _ -> pure []
   let env = env0 ++ [(functionName d, Arrow a r) | (_, _, d@(FunctionDefinition _ [(_, a)] r _ _ _), _) <- staged]
       stagePolicies = [(show index, (stageName, policy)) | (index, stageName, _, policy) <- staged]
       taken = taken0 ++ [stageName | (_, stageName, _, _) <- staged]
@@ -459,8 +475,10 @@ elaborateWorkflow env0 definitions asyncNames taken0 w = do
         _ -> Nothing
   when (failure /= Total && null constructors && case failure of Generated _ -> True; _ -> False)
     (Left (context ++ ": no stage can fail, so the workflow returns " ++ prettyType output))
+  -- A workflow with compensated stages runs in a frame that undoes them.
+  let frame = [(name, (emptyPolicy name) { policyFrame = True }) | not (null undos)]
   pure (Elaborated definition (map railwayLaw ([composition] ++ success ++ laws')) generated
-    [d | (_, _, d, _) <- staged] [(stageName, policy) | (_, stageName, _, policy) <- staged])
+    ([d | (_, _, d, _) <- staged] ++ undos) ([(stageName, policy) | (_, stageName, _, policy) <- staged] ++ frame))
   where
     isArrow (Arrow _ _) = True
     isArrow _ = False

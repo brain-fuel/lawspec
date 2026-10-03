@@ -1092,12 +1092,15 @@ export class WorkflowRuntime {
   trace;
   state;
   gates;
+  frames;
   constructor(clock = new RealClock(), seed = 0n, gates = true) {
     this.clock = clock;
     this.random = new SplitMix64(seed);
     this.trace = [];
     this.state = new Map();
     this.gates = gates;
+    // A frame per running workflow: the undos of its completed stages.
+    this.frames = [];
   }
   /** A symbols Map that runs workflows under this runtime. */
   context(symbols = new Map()) {
@@ -1214,7 +1217,7 @@ export function runStage(symbols, given, attempt, ...input) {
   // The key is optional (a rest parameter keeps it so for TypeScript), and a
   // policy built by hand may leave out what it does not use.
   const key = input[0];
-  const policy = {key: given.stage, gates: [], cache: null, wraps: false, timeout: null, ...given};
+  const policy = {key: given.stage, gates: [], cache: null, wraps: false, timeout: null, compensate: null, ...given};
   const runtime = workflowRuntime(symbols);
   const gates = runtime.gates ? policy.gates : [];
   let cached = null;
@@ -1240,10 +1243,37 @@ export function runStage(symbols, given, attempt, ...input) {
   const result = attempts(runtime, policy, attempt);
   const succeeded = !(result instanceof DataValue && result.tag === 'Either::Left');
   for (const gate of gates) finishGate(runtime, policy, gate, succeeded);
+  if (succeeded && policy.compensate !== null && runtime.frames.length > 0) {
+    const value = result.fields[0];
+    runtime.frames[runtime.frames.length - 1].push([policy.stage, () => policy.compensate(value)]);
+  }
   if (cached !== null && succeeded) {
     const kept = cached.filter(([entry]) => !equalValues(entry, key));
     cached.length = 0;
     cached.push(...kept, [key, result, runtime.clock.now() + policy.cache]);
+  }
+  return result;
+}
+
+/**
+ * Runs a workflow whose stages compensate: when it fails, the undos of its
+ * completed stages run, last first.
+ */
+export function runWorkflow(symbols, attempt) {
+  const runtime = workflowRuntime(symbols);
+  const frame = [];
+  runtime.frames.push(frame);
+  let result;
+  try {
+    result = attempt();
+  } finally {
+    runtime.frames.pop();
+  }
+  if (result instanceof DataValue && result.tag === 'Either::Left') {
+    for (const [stage, undo] of [...frame].reverse()) {
+      runtime.trace.push(['compensate', stage, 0n]);
+      undo();
+    }
   }
   return result;
 }

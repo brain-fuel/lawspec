@@ -11,3 +11,15 @@ workflow limited :: Ticket -> Either _ Ticket is
   admitTicket :: Ticket -> Either Text Ticket
     rateLimit tokenBucket 2 1s reject
 end
+
+-- A workflow that compensates: when charging fails, the reserved seat is
+-- released.
+reserveSeat :: Ticket -> Either Text Ticket
+chargeCard :: Ticket -> Either Text Ticket
+releaseSeat :: Ticket -> Bool
+
+workflow book :: Ticket -> Either _ Ticket is
+  reserveSeat :: Ticket -> Either Text Ticket
+    compensate releaseSeat
+  chargeCard :: Ticket -> Either Text Ticket
+end

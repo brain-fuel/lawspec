@@ -42,6 +42,7 @@ fn waits(attempts: i32, when: Option<fn(&mut ls::Context, ls::Value) -> ls::Resu
         gates: vec![],
         cache: -1,
         wraps: false,
+        compensate: None,
     };
     ls::run_stage(ctx, &policy, |_| Ok(ls::Value::Left(Box::new(ls::Value::Integer(0.into())))), ls::Value::Unit).expect("the stage runs");
     let runtime = ctx.workflow.as_ref().unwrap().lock().unwrap();
@@ -68,4 +69,12 @@ pub fn limitedAt(value0: Vec<ls::BigInt>) -> Vec<bool> {
             matches!(result, Ok(ls::Either::Right(_)))
         })
         .collect()
+}
+
+/// Books a ticket under a fresh runtime: the stages whose undos ran.
+pub fn compensationsFor(value0: i64) -> Vec<String> {
+    let ctx = &mut ls::Context::with_workflow(ls::WorkflowRuntime::new(Box::new(ls::VirtualClock::default()), 0));
+    let _ = crate::lawspec_definitions::example_limits::book(ctx, crate::lawspec_data::Ticket { number: value0 });
+    let runtime = ctx.workflow.as_ref().unwrap().lock().unwrap();
+    runtime.trace.iter().filter(|event| event.kind == "compensate").map(|event| event.stage.clone()).collect()
 }

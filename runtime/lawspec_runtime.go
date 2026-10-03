@@ -1584,6 +1584,37 @@ type LawSpecWorkflowRuntime struct {
 	Trace  []LawSpecTraceEvent
 	State  map[string]any
 	Gates  bool
+	// A frame per running workflow: the undos of its completed stages.
+	frames [][]lawSpecUndo
+}
+
+type lawSpecUndo struct {
+	stage string
+	undo  func()
+}
+
+// lsRunWorkflow runs a workflow whose stages compensate: when it fails, the
+// undos of its completed stages run, last first.
+func lsRunWorkflow(symbols map[string]*lawSpecSymbol, attempt func() LawSpecValue) LawSpecValue {
+	runtime := lsWorkflowRuntime(symbols)
+	runtime.frames = append(runtime.frames, nil)
+	depth := len(runtime.frames)
+	var frame []lawSpecUndo
+	result := func() LawSpecValue {
+		// The frame is taken back even when the workflow panics.
+		defer func() {
+			frame = runtime.frames[depth-1]
+			runtime.frames = runtime.frames[:depth-1]
+		}()
+		return attempt()
+	}()
+	if data, ok := result.Data.(lawSpecData); ok && data.tag == "Either::Left" {
+		for i := len(frame) - 1; i >= 0; i-- {
+			runtime.Trace = append(runtime.Trace, LawSpecTraceEvent{"compensate", frame[i].stage, 0, true})
+			frame[i].undo()
+		}
+	}
+	return result
 }
 
 // NewLawSpecWorkflowRuntime makes a runtime; a nil clock is real time.
@@ -1658,6 +1689,8 @@ type lawSpecStagePolicy struct {
 	Wraps   bool
 	// Fail gives the stage's result for a policy failure, of its own type.
 	Fail func(kind string) LawSpecValue
+	// Compensate undoes the stage's success value when its workflow fails.
+	Compensate func(value LawSpecValue)
 }
 
 type lawSpecCacheEntry struct {
@@ -1809,6 +1842,11 @@ func lsRunStage(symbols map[string]*lawSpecSymbol, policy lawSpecStagePolicy, at
 	succeeded := !(isData && data.tag == "Either::Left")
 	for _, gate := range gates {
 		lsFinishGate(runtime, policy, gate, succeeded)
+	}
+	if succeeded && policy.Compensate != nil && len(runtime.frames) > 0 {
+		value := data.fields[0]
+		last := len(runtime.frames) - 1
+		runtime.frames[last] = append(runtime.frames[last], lawSpecUndo{policy.Stage, func() { policy.Compensate(value) }})
 	}
 	if caching && succeeded {
 		entries, _ := runtime.State[cacheKey].([]lawSpecCacheEntry)

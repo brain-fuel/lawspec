@@ -75,6 +75,9 @@ emitHaskellDefinitions layout bits declarations units = do
     evaluator localName identity = maybe (Left "unresolved Haskell policy definition") (Right . localName) (lookup identity names)
     policyDoc localName key policy = do
       gates <- policyGates localName policy
+      compensate <- case policyCompensate policy of
+        Nothing -> pure (text "P.Nothing")
+        Just undo -> (\name -> text ("(P.Just (\\value -> P.either P.error P.id (" ++ name ++ " symbols value)))")) <$> evaluator localName undo
       retry <- case policyRetry policy of
         Nothing -> pure (text "P.Nothing")
         Just r -> do
@@ -97,7 +100,7 @@ emitHaskellDefinitions layout bits declarations units = do
             number (retryAttempts r), E.quoted (jitterName (retryJitter r)), condition, decide]])
       pure (E.apply "LS.StagePolicy" [E.quoted (policyStage policy), retry, text (maybe "(-1)" show (policyTimeout policy)),
         E.quoted key, text "[" <> D.joinWith (text ", ") gates <> text "]", text (maybe "(-1)" show (policyCache policy)),
-        text (if null (policyFailures policy) then "P.False" else "P.True")])
+        text (if null (policyFailures policy) then "P.False" else "P.True"), compensate])
     -- A gate's callbacks call the unit's copies of the resilience unit's
     -- state machines, with the policy's numbers.
     policyGates localName policy = do
@@ -168,6 +171,7 @@ emitHaskellDefinitions layout bits declarations units = do
       -- A workflow stage with policies runs under the workflow runtime.
       body <- case definitionPolicy d of
         Nothing -> pure rendered
+        Just policy | policyFrame policy -> pure (E.apply "LS.runWorkflow" [text "symbols", text "(\\() -> " <> rendered <> text ")"])
         Just policy -> do
           config <- policyDoc localName (idText (declarationId (definitionDeclaration d))) policy
           let key = case arguments of

@@ -166,7 +166,8 @@ workflowP = do
     -- A stage's policies follow it, each beginning with its keyword. A
     -- policy that can fail may name, after else, the value of a declared
     -- error type its failure becomes.
-    policyP = choice [try retryP <|> try timeoutP, try rateLimitP, try breakerP, try bulkheadP, try cacheP]
+    policyP = choice [try retryP <|> try timeoutP, try rateLimitP, try breakerP, try bulkheadP, try cacheP, try compensateP]
+    compensateP = plain (keyword "compensate" *> ((\undo p -> p { policyCompensate = Just undo }) <$> qualifiedName))
     plain p = (\f -> (f, [])) <$> p
     elseP kind = maybe [] (\e -> [(kind, e)]) <$> optional (keyword "else" *> (constant <$> qualifiedName))
     constant name = if startsUpper name then ConstructLit name [] else Var name

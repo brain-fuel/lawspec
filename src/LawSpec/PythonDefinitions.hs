@@ -74,6 +74,7 @@ emitPythonDefinitions layout bits declarations units = do
       -- A workflow stage with policies runs under the workflow runtime.
       body <- case definitionPolicy d of
         Nothing -> pure rendered
+        Just policy | policyFrame policy -> pure (E.call "ls.run_workflow" [D.text "symbols", D.text "lambda: " <> rendered])
         Just policy -> do
           config <- policyDoc (idText (declarationId (definitionDeclaration d))) policy
           let key = case arguments of
@@ -127,9 +128,12 @@ emitPythonDefinitions layout bits declarations units = do
             Nothing -> pure (D.text "None")
             Just p -> (\name -> D.text ("lambda error: " ++ name ++ "(symbols, error)")) <$> evaluator p
           pure (E.call "ls.Retry" [strategy, int (retryAttempts r), E.quoted (jitterName (retryJitter r)), condition])
+      compensate <- case policyCompensate policy of
+        Nothing -> pure (D.text "None")
+        Just undo -> (\name -> D.text ("lambda value: " ++ name ++ "(symbols, value)")) <$> evaluator undo
       pure (E.call "ls.StagePolicy" [E.quoted (policyStage policy), retry, maybe (D.text "None") int (policyTimeout policy),
         E.quoted key, tuple gates, maybe (D.text "None") int (policyCache policy),
-        D.text (if null (policyFailures policy) then "False" else "True")])
+        D.text (if null (policyFailures policy) then "False" else "True"), compensate])
     -- A gate's callbacks call the unit's copies of the resilience unit's
     -- state machines, with the policy's numbers.
     policyGates policy = do

@@ -1895,6 +1895,8 @@ pub struct WorkflowRuntime {
     /// Whether rate limits, breakers, bulkheads and caches apply.
     pub gates: bool,
     cache: HashMap<String, Vec<(Value, Value, i64)>>,
+    // A frame per running workflow: the undos of its completed stages.
+    frames: Vec<Vec<(&'static str, Value, fn(&mut Context, Value) -> Result<Value>)>>,
 }
 impl std::fmt::Debug for WorkflowRuntime {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -1903,7 +1905,7 @@ impl std::fmt::Debug for WorkflowRuntime {
 }
 impl WorkflowRuntime {
     pub fn new(clock: Box<dyn Clock>, seed: u64) -> Self {
-        WorkflowRuntime { clock, random: SplitMix64::new(seed), trace: Vec::new(), state: HashMap::new(), gates: true, cache: HashMap::new() }
+        WorkflowRuntime { clock, random: SplitMix64::new(seed), trace: Vec::new(), state: HashMap::new(), gates: true, cache: HashMap::new(), frames: Vec::new() }
     }
 }
 
@@ -1954,6 +1956,25 @@ pub struct StagePolicy {
     pub gates: Vec<Gate>,
     pub cache: i64,
     pub wraps: bool,
+    /// Undoes the stage's success value when its workflow fails.
+    pub compensate: Option<fn(&mut Context, Value) -> Result<Value>>,
+}
+
+/// Runs a workflow whose stages compensate: when it fails, the undos of its
+/// completed stages run, last first.
+pub fn run_workflow(ctx: &mut Context, mut attempt: impl FnMut(&mut Context) -> Result<Value>) -> Result<Value> {
+    let runtime = workflow_runtime(ctx);
+    runtime.lock().unwrap().frames.push(Vec::new());
+    let result = attempt(ctx);
+    let frame = runtime.lock().unwrap().frames.pop().unwrap_or_default();
+    let result = result?;
+    if matches!(result, Value::Left(_)) {
+        for (stage, value, undo) in frame.into_iter().rev() {
+            runtime.lock().unwrap().trace.push(TraceEvent { kind: "compensate", stage: stage.into(), number: 0, succeeded: true });
+            undo(ctx, value)?;
+        }
+    }
+    Ok(result)
 }
 
 const STAGE_FAILURE: &str = "lawspec.resilience::type::StageFailure::";
@@ -2100,6 +2121,11 @@ pub fn run_stage(
     let succeeded = !matches!(result, Value::Left(_));
     for gate in gates {
         finish_gate(ctx, &runtime, policy, gate, succeeded)?;
+    }
+    if let (Value::Right(value), Some(undo)) = (&result, policy.compensate) {
+        if let Some(frame) = runtime.lock().unwrap().frames.last_mut() {
+            frame.push((policy.stage, (**value).clone(), undo));
+        }
     }
     if caching && succeeded {
         let mut guard = runtime.lock().unwrap();

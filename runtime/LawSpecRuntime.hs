@@ -996,7 +996,9 @@ data TraceEvent = TraceEvent { traceKind :: String, traceStage :: String, traceN
 data WorkflowRuntime = WorkflowRuntime
   { runtimeClock :: Clock, runtimeRandom :: IORef Word64
   , runtimeTrace :: IORef [TraceEvent], runtimeState :: IORef [(String, Scalar)]
-  , runtimeGates :: Bool, runtimeCache :: IORef [(String, [(Scalar, Scalar, Integer)])] }
+  , runtimeGates :: Bool, runtimeCache :: IORef [(String, [(Scalar, Scalar, Integer)])]
+  -- A frame per running workflow: the undos of its completed stages.
+  , runtimeFrames :: IORef [[(String, IO ())]] }
 
 newWorkflowRuntime :: Clock -> Word64 -> IO WorkflowRuntime
 newWorkflowRuntime clock seed = do
@@ -1004,7 +1006,8 @@ newWorkflowRuntime clock seed = do
   trace <- newIORef []
   state <- newIORef []
   cache <- newIORef []
-  pure (WorkflowRuntime clock random trace state True cache)
+  frames <- newIORef []
+  pure (WorkflowRuntime clock random trace state True cache frames)
 
 -- | Uniform in [0, bound); 0 when bound is 0.
 randomBelow :: WorkflowRuntime -> Integer -> IO Integer
@@ -1069,11 +1072,32 @@ data Gate = Gate
 -- reused (0 or less for none); policyWraps says failures are StageFailures.
 data StagePolicy = StagePolicy
   { policyStage :: String, policyRetry :: Maybe Retry, policyTimeout :: Integer
-  , policyKey :: String, policyGates :: [Gate], policyCache :: Integer, policyWraps :: Bool }
+  , policyKey :: String, policyGates :: [Gate], policyCache :: Integer, policyWraps :: Bool
+  , policyCompensate :: Maybe (Scalar -> Scalar) }
 
 -- | A policy with only a stage name and retries, as built by hand.
 retryPolicy :: String -> Maybe Retry -> StagePolicy
-retryPolicy stage retry = StagePolicy stage retry (-1) stage [] (-1) False
+retryPolicy stage retry = StagePolicy stage retry (-1) stage [] (-1) False Nothing
+
+-- | Runs a workflow whose stages compensate: when it fails, the undos of its
+-- completed stages run, last first.
+{-# NOINLINE runWorkflow #-}
+runWorkflow :: SymbolContext -> (() -> Scalar) -> Scalar
+runWorkflow symbols attempt = unsafePerformIO $ do
+  runtime <- workflowRuntime symbols
+  modifyIORef' (runtimeFrames runtime) ([] :)
+  result <- evaluate (attempt ())
+  frames <- readIORef (runtimeFrames runtime)
+  let (frame, rest) = case frames of
+        top : others -> (top, others)
+        [] -> ([], [])
+  writeIORef (runtimeFrames runtime) rest
+  case result of
+    SData "Either::Left" _ -> mapM_ (\(stage, undo) -> do
+      modifyIORef' (runtimeTrace runtime) (++ [TraceEvent "compensate" stage 0 True])
+      undo) frame
+    _ -> pure ()
+  pure result
 
 -- | The delay before attempt (2 or more), before jitter.
 retryDelay :: Retry -> Integer -> Integer
@@ -1180,6 +1204,13 @@ runStage symbols policy attempt key = unsafePerformIO $ do
             SData "Either::Left" _ -> False
             _ -> True
       mapM_ (finishGate runtime policy succeeded) passed
+      case (result, policyCompensate policy) of
+        (SData "Either::Right" [value], Just undo) ->
+          -- The newest undo first, so a frame runs last-completed first.
+          modifyIORef' (runtimeFrames runtime) $ \frames -> case frames of
+            top : others -> ((policyStage policy, () <$ evaluate (undo value)) : top) : others
+            [] -> []
+        _ -> pure ()
       when' (caching && succeeded) $ do
         now <- clockNow (runtimeClock runtime)
         modifyIORef' (runtimeCache runtime) $ \caches ->

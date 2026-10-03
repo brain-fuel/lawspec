@@ -79,6 +79,8 @@ emitGoDefinitions layout bits declarations units = do
       -- A workflow stage with policies runs under the workflow runtime.
       body <- case definitionPolicy d of
         Nothing -> pure rendered
+        Just policy | policyFrame policy ->
+          pure (E.call "lsRunWorkflow" [line "symbols", line "func() LawSpecValue " <> D.block 8 (line "return " <> rendered)])
         Just policy -> do
           failures <- forM (stageFailures d) $ \(kind, value) ->
             (\rendered' -> line ("case " ++ show kind ++ ": return ") <> rendered') <$>
@@ -121,6 +123,9 @@ emitGoDefinitions layout bits declarations units = do
     evaluator identity = maybe (Left "unresolved Go policy definition") Right (lookup identity callees)
     policyDoc key fail' policy = do
       gates <- policyGates policy
+      compensate <- case policyCompensate policy of
+        Nothing -> pure (line "nil")
+        Just undo -> (\name -> line ("func(value LawSpecValue) { _ = " ++ name ++ "(symbols, value) }")) <$> evaluator undo
       retry <- case policyRetry policy of
         Nothing -> pure (line "nil")
         Just r -> do
@@ -153,7 +158,8 @@ emitGoDefinitions layout bits declarations units = do
         , line "Gates: []lawSpecGate" <> D.block 8 (D.joinWith D.hardline [gate <> line "," | gate <- gates]) <> line ","
         , line ("Cache: " ++ show (maybe (-1) id (policyCache policy)) ++ ",")
         , line ("Wraps: " ++ (if null (policyFailures policy) then "false" else "true") ++ ",")
-        , line "Fail: " <> fail' <> line "," ]))
+        , line "Fail: " <> fail' <> line ","
+        , line "Compensate: " <> compensate <> line "," ]))
     -- A gate's callbacks call the unit's copies of the resilience unit's
     -- state machines, with the policy's numbers.
     policyGates policy = do

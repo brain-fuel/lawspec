@@ -19,6 +19,11 @@ data StagePolicy name = StagePolicy
   , policyBulkhead :: Maybe (Bulkhead name)
   -- How long a stage's successful result is reused for the same input.
   , policyCache :: Maybe Integer
+  -- The definition undoing the stage's success, when a later stage fails.
+  , policyCompensate :: Maybe name
+  -- Set on a workflow whose stages compensate: it runs in a frame that
+  -- undoes its completed stages, in reverse, when it fails.
+  , policyFrame :: Bool
   } deriving (Eq, Show, Generic, Functor, Foldable, Traversable)
 
 -- A rate limit: kind is tokenBucket, leakyBucket, fixedWindow or
@@ -66,7 +71,7 @@ data Jitter = NoJitter | FullJitter | EqualJitter | DecorrelatedJitter
   deriving (Eq, Show, Generic)
 
 emptyPolicy :: String -> StagePolicy name
-emptyPolicy stage = StagePolicy stage Nothing Nothing Nothing Nothing Nothing Nothing
+emptyPolicy stage = StagePolicy stage Nothing Nothing Nothing Nothing Nothing Nothing Nothing False
 
 -- The failures a stage's policies can cause besides its step's: a limit or
 -- bulkhead that rejects or waits at most so long, a breaker, a timeout.

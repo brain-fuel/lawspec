@@ -3,6 +3,7 @@ module Example.Resilience where
 
 import Data.IORef (readIORef, writeIORef)
 import qualified Data.Int as I
+import qualified Data.Text as T
 import qualified Data.Word as W
 import System.IO.Unsafe (unsafePerformIO)
 import qualified LawSpecRuntime as LS
@@ -58,3 +59,13 @@ limitedAt times = unsafePerformIO $ do
     pure $! case Workflows.limited symbols (Data.Ticket 0) of
       Right (Right _) -> True
       _ -> False) times
+
+-- | Books a ticket under a fresh runtime: the stages whose undos ran.
+compensationsFor :: I.Int64 -> [T.Text]
+compensationsFor number = unsafePerformIO $ do
+  (clock, _) <- LS.virtualClock
+  runtime <- LS.newWorkflowRuntime clock 0
+  symbols <- LS.workflowContext runtime
+  _ <- pure $! Workflows.book symbols (Data.Ticket number)
+  events <- readIORef (LS.runtimeTrace runtime)
+  pure [T.pack (LS.traceStage event) | event <- events, LS.traceKind event == "compensate"]
