@@ -1060,6 +1060,7 @@ export class RealClock {
 
 /** Sleeping advances the clock and returns at once. */
 export class VirtualClock {
+  time;
   constructor(start = 0n) { this.time = BigInt(start); }
   now() { return this.time; }
   sleep(micros) { this.time += BigInt(micros); }
@@ -1067,6 +1068,7 @@ export class VirtualClock {
 
 /** The same sequence on every target for the same seed. */
 export class SplitMix64 {
+  state;
   constructor(seed = 0n) { this.state = BigInt(seed) & MASK64; }
   next() {
     this.state = (this.state + 0x9E3779B97F4A7C15n) & MASK64;
@@ -1080,6 +1082,10 @@ export class SplitMix64 {
 }
 
 export class WorkflowRuntime {
+  clock;
+  random;
+  trace;
+  state;
   constructor(clock = new RealClock(), seed = 0n) {
     this.clock = clock;
     this.random = new SplitMix64(seed);

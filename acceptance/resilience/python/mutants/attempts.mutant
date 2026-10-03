@@ -1,0 +1,6 @@
+@@ src/example/resilience.py
+<<<<<<<
+    retry = ls.Retry(('exponential', 100000, 2, None), attempts, 'none', when)
+=======
+    retry = ls.Retry(('exponential', 100000, 2, None), attempts + 1, 'none', when)
+>>>>>>>

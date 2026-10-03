@@ -1,0 +1,6 @@
+@@ src/example/resilience.py
+<<<<<<<
+    return ls.retry_delay(('exponential', value0, value1, None), value2)
+=======
+    return ls.retry_delay(('exponential', value0, value1 + 1, None), value2)
+>>>>>>>

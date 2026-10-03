@@ -1,0 +1,6 @@
+@@ src/main/java/example/Resilience.java
+<<<<<<<
+    var retry = new LawSpecRuntime.Retry("exponential", 100000, 0, 2, -1, attempts, "none", when, null);
+=======
+    var retry = new LawSpecRuntime.Retry("exponential", 100000, 0, 2, -1, attempts + 1, "none", when, null);
+>>>>>>>

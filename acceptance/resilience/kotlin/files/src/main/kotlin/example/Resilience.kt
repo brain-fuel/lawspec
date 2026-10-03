@@ -1,0 +1,43 @@
+// User-owned LawSpec adapter: the workflow runtime under test.
+package example
+
+import java.math.BigInteger
+import lawspec.runtime.LawSpecRuntime
+
+object Resilience {
+    private fun retry(strategy: String, delay: Long, step: Long, factor: Long) =
+        LawSpecRuntime.Retry(strategy, delay, step, factor, -1, 0, "none", null, null)
+
+    fun runtimeExponentialDelay(value0: BigInteger, value1: BigInteger, value2: BigInteger): Number =
+        BigInteger.valueOf(LawSpecRuntime.retryDelay(retry("exponential", value0.toLong(), 0, value1.toLong()), value2.toLong()))
+
+    fun runtimeLinearDelay(value0: BigInteger, value1: BigInteger, value2: BigInteger): Number =
+        BigInteger.valueOf(LawSpecRuntime.retryDelay(retry("linear", value0.toLong(), value1.toLong(), 0), value2.toLong()))
+
+    fun runtimeFibonacciDelay(value0: BigInteger, value1: BigInteger): Number =
+        BigInteger.valueOf(LawSpecRuntime.retryDelay(retry("fibonacci", value0.toLong(), 0, 0), value1.toLong()))
+
+    fun splitMix(value0: BigInteger, value1: Int): List<BigInteger> {
+        val random = LawSpecRuntime.SplitMix64(value0.toLong())
+        return List(value1) { BigInteger(java.lang.Long.toUnsignedString(random.next())) }
+    }
+
+    fun fullJitter(value0: BigInteger, value1: BigInteger): Number =
+        BigInteger.valueOf(LawSpecRuntime.jittered("full", value1.toLong(), 0, 0, LawSpecRuntime.SplitMix64(value0.toLong())))
+
+    private fun waits(attempts: Int, rejects: Boolean): List<BigInteger> {
+        val runtime = LawSpecRuntime.WorkflowRuntime(LawSpecRuntime.VirtualClock(), 0)
+        val retry = LawSpecRuntime.Retry(
+            "exponential", 100000, 0, 2, -1, attempts.toLong(), "none",
+            if (rejects) java.util.function.Function { _: LawSpecRuntime.Value -> false } else null, null,
+        )
+        LawSpecRuntime.runStage(runtime.context(HashMap()), LawSpecRuntime.StagePolicy("stage", retry, -1)) {
+            LawSpecRuntime.Value("Either", LawSpecRuntime.Data("Either::Left", listOf(LawSpecRuntime.integer64(0))))
+        }
+        return runtime.trace.filter { it.kind() == "sleep" }.map { BigInteger.valueOf(it.number()) }
+    }
+
+    fun retriedWaits(value0: Int): List<BigInteger> = waits(value0, false)
+
+    fun rejectedWaits(value0: Int): List<BigInteger> = waits(value0, true)
+}

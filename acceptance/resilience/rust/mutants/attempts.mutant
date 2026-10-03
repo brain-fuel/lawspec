@@ -1,0 +1,6 @@
+@@ src/example/resilience.rs
+<<<<<<<
+        retry: Some(ls::Retry { strategy: "exponential", delay: 100000, step: 0, factor: 2, cap: -1, attempts: attempts.into(), jitter: "none", when, decide: None }),
+=======
+        retry: Some(ls::Retry { strategy: "exponential", delay: 100000, step: 0, factor: 2, cap: -1, attempts: i64::from(attempts) + 1, jitter: "none", when, decide: None }),
+>>>>>>>

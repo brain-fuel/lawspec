@@ -1,0 +1,6 @@
+@@ src/example/resilience.mjs
+<<<<<<<
+  return ls.retryDelay(['exponential', value0, value1, null], value2);
+=======
+  return ls.retryDelay(['exponential', value0, value1 + 1n, null], value2);
+>>>>>>>

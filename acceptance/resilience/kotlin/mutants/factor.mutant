@@ -1,0 +1,6 @@
+@@ src/main/kotlin/example/Resilience.kt
+<<<<<<<
+        BigInteger.valueOf(LawSpecRuntime.retryDelay(retry("exponential", value0.toLong(), 0, value1.toLong()), value2.toLong()))
+=======
+        BigInteger.valueOf(LawSpecRuntime.retryDelay(retry("exponential", value0.toLong(), 0, value1.toLong() + 1), value2.toLong()))
+>>>>>>>

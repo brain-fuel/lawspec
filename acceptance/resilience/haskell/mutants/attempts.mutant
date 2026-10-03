@@ -1,0 +1,6 @@
+@@ src/Example/Resilience.hs
+<<<<<<<
+  let policy = LS.StagePolicy "stage" (Just (LS.Retry "exponential" 100000 0 2 (-1) (toInteger attempts) "none" when Nothing)) (-1)
+=======
+  let policy = LS.StagePolicy "stage" (Just (LS.Retry "exponential" 100000 0 2 (-1) (toInteger attempts + 1) "none" when Nothing)) (-1)
+>>>>>>>

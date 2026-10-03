@@ -1,0 +1,6 @@
+@@ src/example/resilience.mjs
+<<<<<<<
+  const retry = {strategy: ['exponential', 100000n, 2n, null], attempts: BigInt(attempts), jitter: 'none', when};
+=======
+  const retry = {strategy: ['exponential', 100000n, 2n, null], attempts: BigInt(attempts) + 1n, jitter: 'none', when};
+>>>>>>>

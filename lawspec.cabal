@@ -67,6 +67,7 @@ extra-source-files:
     examples/specs/recursive_refinements.lawspec
     examples/specs/refined_definitions.lawspec
     examples/specs/refinements.lawspec
+    examples/specs/resilience.lawspec
     examples/specs/scalar_adapters.lawspec
     examples/specs/scalar_catalog.lawspec
     examples/specs/scalars.lawspec

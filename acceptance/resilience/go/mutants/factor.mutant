@@ -1,0 +1,6 @@
+@@ example/resilience/adapter.go
+<<<<<<<
+	retry := &lawSpecRetry{Strategy: "exponential", Delay: value0.Int64(), Factor: value1.Int64(), Cap: -1}
+=======
+	retry := &lawSpecRetry{Strategy: "exponential", Delay: value0.Int64(), Factor: value1.Int64() + 1, Cap: -1}
+>>>>>>>

@@ -1,0 +1,6 @@
+@@ src/Example/Resilience.hs
+<<<<<<<
+runtimeExponentialDelay base factor attempt = LS.integerValue (LS.retryDelay (retry "exponential" base 0 factor) attempt)
+=======
+runtimeExponentialDelay base factor attempt = LS.integerValue (LS.retryDelay (retry "exponential" base 0 (factor + 1)) attempt)
+>>>>>>>

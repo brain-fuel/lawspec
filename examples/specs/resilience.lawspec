@@ -1,0 +1,110 @@
+unit example.resilience
+
+-- Conformance of each target's workflow runtime with a reference model.
+-- The adapters call the runtime; the checked definitions are the reference.
+-- Delays are whole microseconds.
+
+-- The delay before attempt k (2 or more) of each retry strategy.
+definition exponentialDelay (base :: Integer where base >= 0 && base <= 1000000)
+    (factor :: Integer where factor >= 1 && factor <= 4)
+    (attempt :: Integer where attempt >= 2 && attempt <= 10) :: Integer is
+  base * prelude.pow factor (attempt - 2)
+end
+
+definition linearDelay (base :: Integer where base >= 0 && base <= 1000000)
+    (step :: Integer where step >= 0 && step <= 1000000)
+    (attempt :: Integer where attempt >= 2 && attempt <= 10) :: Integer is
+  base + step * (attempt - 2)
+end
+
+runtimeExponentialDelay :: Integer -> Integer -> Integer -> Integer
+runtimeLinearDelay :: Integer -> Integer -> Integer -> Integer
+runtimeFibonacciDelay :: Integer -> Integer -> Integer
+
+-- The first outputs of SplitMix64 for a seed, and full jitter.
+splitMix :: UInt64 -> Int32 -> List UInt64
+fullJitter :: UInt64 -> Integer -> Integer
+
+-- A stage that always fails, retried exponentially from 100ms, doubling, for
+-- the given number of attempts: the waits the runtime makes.
+retriedWaits :: Int32 -> List Integer
+
+-- The same, with a when predicate that rejects the error: no waits.
+rejectedWaits :: Int32 -> List Integer
+
+-- Unrefined inputs are mapped into range, so every target generates them
+-- directly: a base up to 65535us, a factor of 1 to 4, and attempts 2 to 10.
+law `exponential delays match the reference` is
+  definition is
+    `for all` (base :: UInt16) (f :: UInt8) (a :: UInt8) .
+      runtimeExponentialDelay (prelude.Integer base) (1 + prelude.rem (prelude.Integer f) 4) (2 + prelude.rem (prelude.Integer a) 9) =
+        exponentialDelay (prelude.Integer base) (1 + prelude.rem (prelude.Integer f) 4) (2 + prelude.rem (prelude.Integer a) 9)
+  end
+end
+
+law `the fifth exponential attempt` is
+  definition is
+    `for all` (base :: Integer where base == 100000) . runtimeExponentialDelay base 2 5 = 800000
+  end
+end
+
+law `linear delays match the reference` is
+  definition is
+    `for all` (base :: UInt16) (step :: UInt16) (a :: UInt8) .
+      runtimeLinearDelay (prelude.Integer base) (prelude.Integer step) (2 + prelude.rem (prelude.Integer a) 9) =
+        linearDelay (prelude.Integer base) (prelude.Integer step) (2 + prelude.rem (prelude.Integer a) 9)
+  end
+end
+
+law `fibonacci delays add the two before` is
+  definition is
+    `for all` (base :: UInt16) (a :: UInt8) .
+      runtimeFibonacciDelay (prelude.Integer base) (4 + prelude.rem (prelude.Integer a) 27) =
+        runtimeFibonacciDelay (prelude.Integer base) (3 + prelude.rem (prelude.Integer a) 27) +
+        runtimeFibonacciDelay (prelude.Integer base) (2 + prelude.rem (prelude.Integer a) 27)
+  end
+end
+
+law `fibonacci delays start at the base` is
+  definition is
+    `for all` (base :: UInt16) .
+      runtimeFibonacciDelay (prelude.Integer base) 2 = prelude.Integer base and
+        runtimeFibonacciDelay (prelude.Integer base) 3 = prelude.Integer base
+  end
+end
+
+law `SplitMix64 is the same everywhere` is
+  definition is
+    `for all` (count :: Int8 where count >= 0 && count <= 3) .
+      prelude.length (splitMix 0 (prelude.Int32 count)) = prelude.Integer count
+  end
+  example `seed zero` is
+    count = 3
+    expect splitMix 0 (prelude.Int32 count) = [16294208416658607535, 7960286522194355700, 487617019471545679]
+  end
+end
+
+law `full jitter stays within the delay` is
+  definition is
+    `for all` (seed :: UInt64) (delay :: UInt32) .
+      (fullJitter seed (prelude.Integer delay) >= 0 && fullJitter seed (prelude.Integer delay) <= prelude.Integer delay) = true
+  end
+end
+
+law `a failing stage waits between its attempts` is
+  definition is
+    `for all` (attempts :: Int8 where attempts >= 1 && attempts <= 6) .
+      prelude.length (retriedWaits (prelude.Int32 attempts)) = prelude.Integer attempts - 1
+  end
+  example `four attempts` is
+    attempts = 4
+    expect retriedWaits (prelude.Int32 attempts) = [100000, 200000, 400000]
+  end
+end
+
+law `a rejected error is not retried` is
+  definition is
+    `for all` (attempts :: Int8 where attempts >= 1 && attempts <= 6) .
+      rejectedWaits (prelude.Int32 attempts) = []
+  end
+end
