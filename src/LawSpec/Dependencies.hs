@@ -119,7 +119,9 @@ declarationReferences owners d contract definition =
   typeRefs (declarationType d) ++
   maybe [] (\c -> concatMap (typeRefs . binderType) (contractArguments c ++ [contractResult c]) ++
     concatMap (exprRefs owners) (contractPreconditions c ++ contractPostconditions c ++ contractRuntimePostconditions c)) contract ++
-  maybe [] (\f -> concatMap (typeRefs . binderType) (definitionArguments f) ++ exprRefs owners (definitionBody f)) definition
+  maybe [] (\f -> concatMap (typeRefs . binderType) (definitionArguments f) ++ exprRefs owners (definitionBody f) ++
+    -- A stage's policy calls definitions, such as a retry's when predicate.
+    [DeclarationNode n | Just policy <- [definitionPolicy f], n <- foldr (:) [] policy]) definition
 
 typeRefs :: Type -> [Ref]
 typeRefs ty = case ty of

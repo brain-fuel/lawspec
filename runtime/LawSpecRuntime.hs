@@ -2,7 +2,10 @@
 -- The portable scalar domain. No test framework or target runtime dependencies.
 module LawSpecRuntime where
 
-import Control.Exception (SomeException, catch, displayException)
+import Control.Exception (SomeException, catch, displayException, evaluate)
+import Control.Concurrent (threadDelay)
+import Data.IORef (IORef, newIORef, readIORef, writeIORef, modifyIORef')
+import GHC.Clock (getMonotonicTimeNSec)
 import System.IO.Unsafe (unsafePerformIO)
 import Control.Monad (foldM)
 import Data.Unique (Unique, newUnique)
@@ -12,7 +15,7 @@ import Data.ByteString (ByteString)
 import qualified Data.ByteString as B
 import Data.Complex (Complex((:+)))
 import Data.Word
-import Data.Bits (finiteBitSize)
+import Data.Bits (finiteBitSize, shiftR, xor)
 import Data.Text (Text)
 import qualified Data.Text as T
 import Data.List (find, sortBy, stripPrefix)
@@ -953,3 +956,167 @@ forceScalar (SScopedSymbol scope ident description) =
   scope `seq` foldr seq () ident `seq` foldr seq () description
 forceScalar (SPresent _ (Just v)) = forceScalar v
 forceScalar _ = ()
+
+-- Workflow runtime. A workflow runs under a runtime: a clock, a seeded
+-- random source, a trace of what happened, and the state of stateful
+-- stages. A runtime is attached to a symbol context (workflowContext);
+-- without one, the default runtime applies (real time, unless the tests
+-- installed a virtual clock). Durations are Integer microseconds. Workflow
+-- bodies are pure, so a stage's waits run through unsafePerformIO.
+
+-- | Tells the time and waits, in microseconds.
+data Clock = Clock { clockNow :: IO Integer, clockSleep :: Integer -> IO () }
+
+realClock :: Clock
+realClock = Clock
+  { clockNow = (`div` 1000) . toInteger <$> getMonotonicTimeNSec
+  , clockSleep = \micros -> threadDelay (fromInteger micros) }
+
+-- | Advances when slept on and returns at once.
+virtualClock :: IO (Clock, IORef Integer)
+virtualClock = do
+  time <- newIORef 0
+  pure (Clock (readIORef time) (\micros -> modifyIORef' time (+ micros)), time)
+
+-- | The same sequence on every target for the same seed: (output, next state).
+splitMix64 :: Word64 -> (Word64, Word64)
+splitMix64 state =
+  let next = state + 0x9E3779B97F4A7C15
+      z1 = (next `xor` (next `shiftR` 30)) * 0xBF58476D1CE4E5B9
+      z2 = (z1 `xor` (z1 `shiftR` 27)) * 0x94D049BB133111EB
+  in (z2 `xor` (z2 `shiftR` 31), next)
+
+-- | A stage starting or finishing an attempt, or a wait.
+data TraceEvent = TraceEvent { traceKind :: String, traceStage :: String, traceNumber :: Integer, traceSucceeded :: Bool }
+  deriving (Eq, Show)
+
+data WorkflowRuntime = WorkflowRuntime
+  { runtimeClock :: Clock, runtimeRandom :: IORef Word64
+  , runtimeTrace :: IORef [TraceEvent], runtimeState :: IORef [(String, Scalar)] }
+
+newWorkflowRuntime :: Clock -> Word64 -> IO WorkflowRuntime
+newWorkflowRuntime clock seed = WorkflowRuntime clock <$> newIORef seed <*> newIORef [] <*> newIORef []
+
+-- | Uniform in [0, bound); 0 when bound is 0.
+randomBelow :: WorkflowRuntime -> Integer -> IO Integer
+randomBelow runtime bound
+  | bound <= 0 = pure 0
+  | otherwise = do
+      (value, next) <- splitMix64 <$> readIORef (runtimeRandom runtime)
+      writeIORef (runtimeRandom runtime) next
+      pure (toInteger value `mod` bound)
+
+{-# NOINLINE workflowTable #-}
+workflowTable :: IORef [(Unique, WorkflowRuntime)]
+workflowTable = unsafePerformIO (newIORef [])
+
+{-# NOINLINE defaultWorkflow #-}
+defaultWorkflow :: IORef (Maybe WorkflowRuntime)
+defaultWorkflow = unsafePerformIO (newIORef Nothing)
+
+-- | A symbol context whose workflows run under the runtime.
+workflowContext :: WorkflowRuntime -> IO SymbolContext
+workflowContext runtime = do
+  unique <- newUnique
+  modifyIORef' workflowTable ((unique, runtime) :)
+  pure (SymbolContext unique)
+
+-- | Makes the default runtime virtual, as generated tests do.
+useVirtualClock :: Word64 -> IO ()
+useVirtualClock seed = do
+  (clock, _) <- virtualClock
+  runtime <- newWorkflowRuntime clock seed
+  writeIORef defaultWorkflow (Just runtime)
+
+workflowRuntime :: SymbolContext -> IO WorkflowRuntime
+workflowRuntime (SymbolContext unique) = do
+  table <- readIORef workflowTable
+  case lookup unique table of
+    Just runtime -> pure runtime
+    Nothing -> readIORef defaultWorkflow >>= \current -> case current of
+      Just runtime -> pure runtime
+      Nothing -> do
+        runtime <- newWorkflowRuntime realClock 0
+        writeIORef defaultWorkflow (Just runtime)
+        pure runtime
+
+-- | retryStrategy is immediate, fixed, linear, exponential, fibonacci or
+-- custom; delay, step, factor and cap (negative for none) are its parameters.
+data Retry = Retry
+  { retryStrategy :: String, retryDelayOf :: Integer, retryStep :: Integer, retryFactor :: Integer, retryCap :: Integer
+  , retryAttempts :: Integer, retryJitter :: String
+  , retryWhen :: Maybe (Scalar -> Bool)
+  , retryDecide :: Maybe (Integer -> Scalar -> Integer -> Maybe Integer) }
+
+data StagePolicy = StagePolicy { policyStage :: String, policyRetry :: Maybe Retry, policyTimeout :: Integer }
+
+-- | The delay before attempt (2 or more), before jitter.
+retryDelay :: Retry -> Integer -> Integer
+retryDelay retry attempt = case retryStrategy retry of
+  "immediate" -> 0
+  "fixed" -> retryDelayOf retry
+  "linear" -> retryDelayOf retry + retryStep retry * (n - 1)
+  "exponential" ->
+    let delay = retryDelayOf retry * retryFactor retry ^ (n - 1)
+    in if retryCap retry >= 0 && delay > retryCap retry then retryCap retry else delay
+  "fibonacci" -> retryDelayOf retry * fibonacci n
+  other -> error ("unknown retry strategy: " ++ other)
+  where
+    n = attempt - 1
+    fibonacci k = fst (foldl (\(a, b) _ -> (b, a + b)) (1, 1) [2 .. k])
+
+-- | Full: [0, delay]; equal: delay/2 + [0, delay/2]; decorrelated:
+-- [base, previous * 3], capped at delay.
+jittered :: WorkflowRuntime -> String -> Integer -> Integer -> Integer -> IO Integer
+jittered runtime jitter delay previous base = case jitter of
+  "full" -> randomBelow runtime (delay + 1)
+  "equal" -> let half = delay `div` 2 in (half +) <$> randomBelow runtime (delay - half + 1)
+  "decorrelated" -> do
+    let high = max base (previous * 3)
+    value <- (base +) <$> randomBelow runtime (high - base + 1)
+    pure (min delay value)
+  _ -> pure delay
+
+-- | Runs a stage's attempts under its policy; a Left is a failure.
+{-# NOINLINE runStage #-}
+runStage :: SymbolContext -> StagePolicy -> (() -> Scalar) -> Scalar
+runStage symbols policy attempt = unsafePerformIO (workflowRuntime symbols >>= \runtime -> loop runtime 1 0)
+  where
+    event runtime kind number succeeded =
+      modifyIORef' (runtimeTrace runtime) (++ [TraceEvent kind (policyStage policy) number succeeded])
+    loop runtime number previous = do
+      event runtime "start" number False
+      result <- evaluate (attempt ())
+      let failure = case result of
+            SData "Either::Left" [value] -> Just value
+            _ -> Nothing
+      event runtime "finish" number (failure == Nothing)
+      case (failure, policyRetry policy) of
+        (Just value, Just retry)
+          | retryAttempts retry > 0 && number >= retryAttempts retry -> pure result
+          | maybe False (\when -> not (when value)) (retryWhen retry) -> pure result
+          | otherwise -> do
+              let next = number + 1
+              wait <- case retryStrategy retry of
+                "custom" -> pure (maybe Nothing (\decide -> decide next value previous) (retryDecide retry))
+                _ -> do
+                  let base = if retryStrategy retry == "immediate" then 0 else retryDelay retry 2
+                  Just <$> jittered runtime (retryJitter retry) (retryDelay retry next) previous base
+              case wait of
+                Nothing -> pure result
+                Just delay -> do
+                  event runtime "sleep" delay True
+                  clockSleep (runtimeClock runtime) delay
+                  loop runtime next delay
+        _ -> pure result
+
+-- | A logical Duration of whole microseconds.
+durationScalar :: Integer -> Scalar
+durationScalar micros = SData "lawspec.time::type::Duration::Duration" [SInteger "Integer" micros]
+
+-- | A RetryDecision's delay, or Nothing to stop.
+retryDecision :: Scalar -> Maybe Integer
+retryDecision decision = case decision of
+  SData "lawspec.time::type::RetryDecision::RetryAfter" [SData _ [SInteger _ micros]] -> Just micros
+  _ -> Nothing
+

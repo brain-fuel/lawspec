@@ -1040,3 +1040,151 @@ function eitherArguments(type) {
   }
   return args;
 }
+
+// Workflow runtime. A workflow runs under a runtime: a clock, a seeded
+// random source, a trace of what happened, and the state of stateful stages.
+// The runtime travels in the symbols Map every generated function takes;
+// without one, the default runtime applies (real time, unless the tests
+// installed a virtual clock). Durations are bigint microseconds.
+
+const WORKFLOW = '\0lawspec.workflow';
+const MASK64 = (1n << 64n) - 1n;
+
+export class RealClock {
+  now() { return BigInt(Math.round(performance.now() * 1000)); }
+  sleep(micros) {
+    const until = performance.now() + Number(micros) / 1000;
+    while (performance.now() < until) { /* synchronous workflows block */ }
+  }
+}
+
+/** Sleeping advances the clock and returns at once. */
+export class VirtualClock {
+  constructor(start = 0n) { this.time = BigInt(start); }
+  now() { return this.time; }
+  sleep(micros) { this.time += BigInt(micros); }
+}
+
+/** The same sequence on every target for the same seed. */
+export class SplitMix64 {
+  constructor(seed = 0n) { this.state = BigInt(seed) & MASK64; }
+  next() {
+    this.state = (this.state + 0x9E3779B97F4A7C15n) & MASK64;
+    let z = this.state;
+    z = ((z ^ (z >> 30n)) * 0xBF58476D1CE4E5B9n) & MASK64;
+    z = ((z ^ (z >> 27n)) * 0x94D049BB133111EBn) & MASK64;
+    return z ^ (z >> 31n);
+  }
+  /** Uniform in [0, bound); 0 when bound is 0. */
+  below(bound) { return bound > 0n ? this.next() % bound : 0n; }
+}
+
+export class WorkflowRuntime {
+  constructor(clock = new RealClock(), seed = 0n) {
+    this.clock = clock;
+    this.random = new SplitMix64(seed);
+    this.trace = [];
+    this.state = new Map();
+  }
+  /** A symbols Map that runs workflows under this runtime. */
+  context(symbols = new Map()) {
+    symbols.set(WORKFLOW, this);
+    return symbols;
+  }
+}
+
+let defaultRuntime = null;
+
+/** Make the default runtime virtual, as generated tests do. */
+export function useVirtualClock(seed = 0n) {
+  defaultRuntime = new WorkflowRuntime(new VirtualClock(), seed);
+}
+
+export function workflowRuntime(symbols) {
+  const runtime = symbols instanceof Map ? symbols.get(WORKFLOW) : undefined;
+  if (runtime !== undefined) return runtime;
+  if (defaultRuntime === null) defaultRuntime = new WorkflowRuntime();
+  return defaultRuntime;
+}
+
+function fibonacci(n) {
+  let a = 1n, b = 1n;
+  for (let i = 1n; i < n; i++) [a, b] = [b, a + b];
+  return a;
+}
+
+/**
+ * The delay before attempt (2 or more), before jitter. A strategy is
+ * ['immediate'], ['fixed', d], ['linear', d, step],
+ * ['exponential', d, factor, cap or null], ['fibonacci', d] or
+ * ['custom', decide], where decide(attempt, error, previous) returns a delay
+ * or null to stop.
+ */
+export function retryDelay(strategy, attempt) {
+  const n = BigInt(attempt) - 1n;
+  switch (strategy[0]) {
+    case 'immediate': return 0n;
+    case 'fixed': return strategy[1];
+    case 'linear': return strategy[1] + strategy[2] * (n - 1n);
+    case 'exponential': {
+      const delay = strategy[1] * strategy[2] ** (n - 1n);
+      return strategy[3] === null || delay < strategy[3] ? delay : strategy[3];
+    }
+    case 'fibonacci': return strategy[1] * fibonacci(n);
+    default: throw new Error('unknown retry strategy: ' + strategy[0]);
+  }
+}
+
+/**
+ * Full: [0, delay]; equal: delay/2 + [0, delay/2]; decorrelated:
+ * [base, previous * 3], capped at delay.
+ */
+export function jittered(jitter, delay, previous, base, random) {
+  if (jitter === 'full') return random.below(delay + 1n);
+  if (jitter === 'equal') {
+    const half = delay / 2n;
+    return half + random.below(delay - half + 1n);
+  }
+  if (jitter === 'decorrelated') {
+    const high = previous * 3n > base ? previous * 3n : base;
+    const value = base + random.below(high - base + 1n);
+    return value < delay ? value : delay;
+  }
+  return delay;
+}
+
+/** Runs a stage's attempts under its policy; a Left is a failure. */
+export function runStage(symbols, policy, attempt) {
+  const runtime = workflowRuntime(symbols);
+  const retry = policy.retry;
+  let number = 1n, previous = 0n;
+  for (;;) {
+    runtime.trace.push(['start', policy.stage, number]);
+    const result = attempt();
+    const failed = result instanceof DataValue && result.tag === 'Either::Left';
+    runtime.trace.push(['finish', policy.stage, number, !failed]);
+    if (!failed || retry === null) return result;
+    if (retry.attempts > 0n && number >= retry.attempts) return result;
+    const error = result.fields[0];
+    if (retry.when !== null && !retry.when(error)) return result;
+    number += 1n;
+    let delay;
+    if (retry.strategy[0] === 'custom') {
+      delay = retry.strategy[1](number, error, previous);
+      if (delay === null) return result;
+    } else {
+      const base = retry.strategy[0] === 'immediate' ? 0n : retryDelay(retry.strategy, 2n);
+      delay = jittered(retry.jitter, retryDelay(retry.strategy, number), previous, base, runtime.random);
+    }
+    runtime.trace.push(['sleep', policy.stage, delay]);
+    runtime.clock.sleep(delay);
+    previous = delay;
+  }
+}
+
+/** A RetryDecision's delay in microseconds, or null to stop. */
+export function retryDecision(decision) {
+  if (decision.tag !== 'lawspec.time::type::RetryDecision::RetryAfter') return null;
+  return decision.fields[0].fields[0];
+}
+

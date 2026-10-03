@@ -3,6 +3,7 @@
 -- no dependency on the surface syntax, inference, or a testing framework.
 module LawSpec.Core where
 
+import LawSpec.Core.Policy (StagePolicy)
 import GHC.Generics (Generic)
 import LawSpec.IndexTerm (FamilyIndex(..))
 import LawSpec.Common
@@ -36,10 +37,12 @@ pattern Declaration identity name ty origin <- MkDeclaration identity name ty or
 data Definition = MkDefinition
   { definitionDeclaration :: Declaration, definitionArguments :: [Binder]
   , definitionBody :: Expr, definitionOrchestrates :: Bool
+  -- A workflow stage's policies, which the target's workflow runtime applies.
+  , definitionPolicy :: Maybe (StagePolicy Id)
   } deriving (Eq, Show, Generic)
 pattern Definition :: Declaration -> [Binder] -> Expr -> Definition
-pattern Definition declaration arguments body <- MkDefinition declaration arguments body _
-  where Definition declaration arguments body = MkDefinition declaration arguments body False
+pattern Definition declaration arguments body <- MkDefinition declaration arguments body _ _
+  where Definition declaration arguments body = MkDefinition declaration arguments body False Nothing
 {-# COMPLETE Definition #-}
 -- Products are single-constructor declarations; sums retain the identity of
 -- each constructor even when their payloads have identical representations.

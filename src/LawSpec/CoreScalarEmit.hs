@@ -234,8 +234,10 @@ scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions 
     -- LAWSPEC_SEED fixes each property's random seed, so a run can be
     -- repeated exactly (lawspec test records the seed of every passing run).
     seedHelper = if py
-      then "\n\n\ndef _lawspec_seeded(test):\n    value = os.environ.get(\"LAWSPEC_SEED\")\n    return test if value is None else _lawspec_seed(int(value))(test)\n"
-      else "\nconst _lawspecSeed = globalThis.process?.env?.LAWSPEC_SEED;\nconst _lawspecSeeded = (options) => _lawspecSeed === undefined\n  ? options\n  : {...options, seed: Number(_lawspecSeed) | 0};\n"
+      then "\n\n\ndef _lawspec_seeded(test):\n    value = os.environ.get(\"LAWSPEC_SEED\")\n    return test if value is None else _lawspec_seed(int(value))(test)\n" ++
+        "\n\n# Workflows wait on a virtual clock under test.\nls.use_virtual_clock()\n"
+      else "\nconst _lawspecSeed = globalThis.process?.env?.LAWSPEC_SEED;\nconst _lawspecSeeded = (options) => _lawspecSeed === undefined\n  ? options\n  : {...options, seed: Number(_lawspecSeed) | 0};\n" ++
+        "\n// Workflows wait on a virtual clock under test.\nls.useVirtualClock();\n"
     propertyInvocation label generators parameters body options =
       let property = blockCall (if asyncMode then "fc.asyncProperty" else "fc.property") (generators ++ [callback parameters body])
           assertion = (if asyncMode then text "await " else mempty) <> blockCall "fc.assert" (property : map (\o -> invoke "_lawspecSeeded" [o]) (if null options then [text "{}"] else options))

@@ -180,5 +180,5 @@ spec = describe "generated code layout" $ do
           filter ((> if target == "rust" then 100 else 80) . length) (concatMap lines tests) `shouldBe` []
           case target of
             "python" -> concat tests `shouldSatisfy` isInfixOf "    symbols = {}"
-            "rust" -> concat tests `shouldSatisfy` isInfixOf "    let ctx = &mut ls::Context::default();"
+            "rust" -> concat tests `shouldSatisfy` isInfixOf "    let ctx = &mut ls::Context::testing();"
             _ -> concat tests `shouldSatisfy` isInfixOf ", () => {\n  const symbols = new Map();"

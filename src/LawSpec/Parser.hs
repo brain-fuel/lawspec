@@ -1,7 +1,8 @@
 module LawSpec.Parser (parseSource, parseSources, parseSourcesWith, sourceUnit) where
 
+import LawSpec.Core.Policy (StagePolicy(..), Retry(..), Strategy(..), Jitter(..), emptyPolicy)
 import LawSpec.Collections (collectionsUnit, collectionsAlias)
-import LawSpec.Time (timeUnit, timeAlias, durationSuffixes, durationFactor, durationLimit, usesTime)
+import LawSpec.Time (timeUnit, timeAlias, durationSuffixes, durationFactor, durationLimit, usesTime, timeTypes)
 import LawSpec.Flow (desugarFlows, flowTypeName)
 import LawSpec.Model
 import LawSpec.Indexed
@@ -154,11 +155,38 @@ workflowP = do
     void (symbol "::")
     ty <- typeP
     keyword "is"
-    stages <- some stageP
+    stages <- some (do stage <- stageP; policies <- many policyP; pure (stage, policies))
     keyword "end"
     pure (name, ty, stages)
-  pure (Workflow name ty stages range)
+  pure (Workflow name ty (map fst stages) range
+    [(index, foldl (flip ($)) (emptyPolicy "") policies) | (index, (_, policies)) <- zip [0 ..] stages, not (null policies)])
   where
+    -- A stage's policies follow it, each beginning with its keyword.
+    policyP = try retryP <|> try timeoutP
+    retryP = do
+      keyword "retry"
+      (strategy, attempts) <- choice
+        [ (,) Immediate <$> (keyword "immediate" *> count')
+        , (\d n -> (Fixed d, n)) <$> (keyword "fixed" *> durationP) <*> count'
+        , (\d s n -> (Linear d s, n)) <$> (keyword "linear" *> durationP) <*> durationP <*> count'
+        , (\d f n m -> (Exponential d f m, n)) <$> (keyword "exponential" *> durationP) <*> count' <*> count'
+            <*> optional (keyword "max" *> durationP)
+        , (\d n -> (Fibonacci d, n)) <$> (keyword "fibonacci" *> durationP) <*> count'
+        , (\f n -> (Custom f, maybe 0 id n)) <$> (keyword "custom" *> qualifiedName) <*> optional count' ]
+      jitter <- option NoJitter (keyword "jitter" *> choice
+        [FullJitter <$ keyword "full", EqualJitter <$ keyword "equal", DecorrelatedJitter <$ keyword "decorrelated"])
+      condition <- optional (keyword "when" *> qualifiedName)
+      pure (\p -> p { policyRetry = Just (Retry strategy attempts jitter condition) })
+    timeoutP = do
+      keyword "timeout"
+      d <- durationP
+      pure (\p -> p { policyTimeout = Just d })
+    count' = lexeme L.decimal
+    durationP = do
+      e <- numeric
+      case e of
+        ConstructLit "Duration" [Number micros] -> pure micros
+        _ -> fail "expected a duration, such as 250ms"
     stageP = do
       (stage, stageRange) <- withSpan $ choice
         [ try (DeclaredStep <$> ident <* symbol "::" <*> typeP)
@@ -487,7 +515,7 @@ unitP = do
         [((functionName d, foldr Arrow (functionResult d) (map snd (functionArguments d))), functionSpan d) | d <- definitions]
   pure (Unit n (map fst signatures) [l | LawMember l <- members]
     [r | RefinementMember r <- members] [] [(name,range) | ((name,_),range) <- signatures]
-    [d | DataMember d <- members] definitions [name | AsyncMember ((name, _), _) <- members] [], imports, [f | FamilyMember f <- members],
+    [d | DataMember d <- members] definitions [name | AsyncMember ((name, _), _) <- members] [] [], imports, [f | FamilyMember f <- members],
     [w | WrapperMember w <- members], [w | WorkflowMember w <- members])
 
 parseSource :: Source -> Either [Diagnostic] Unit
@@ -530,7 +558,7 @@ parseSourcesWith collections time sources = do
                 in [Import unit alias items (Span origin origin) | not (null items)]
           -- Only a source that uses durations imports the time unit.
           in (n, imports ++ builtin collectionsUnit collectionsAlias collections ++
-               builtin timeUnit timeAlias ["Duration" | time, usesTime s])
+               builtin timeUnit timeAlias [t | time, usesTime s, t <- timeTypes])
     graph = M.fromList [(n, imports) | (_, n, imports) <- preambles]
     -- Exports are computed lazily in import order, so an exported declaration
     -- may itself use its unit's imports.

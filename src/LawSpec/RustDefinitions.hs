@@ -2,6 +2,7 @@
 -- implementation bodies, and no dependency on a property-testing framework.
 module LawSpec.RustDefinitions (emitRustDefinitions, definitionNames, workflowAdapterUnits) where
 
+import LawSpec.Core.Policy
 import Control.Monad (forM)
 import Data.Char (isAlphaNum)
 import LawSpec.Core
@@ -68,6 +69,42 @@ emitRustDefinitions layout bits declarations units = do
           ([D.text "let schema = crate::lawspec_schema::schema()?;"] ++ zipWith decode [0::Int ..] (zip types refs) ++
            [D.text ("let native_result: " ++ resultType ++ " = ") <> called <> D.text ";",
             D.text "Ok(ls::IntoValue::into_value(native_result))"])))
+    evaluator identity = maybe (Left "unresolved Rust policy definition") Right (lookup identity names)
+    policyDoc policy = do
+      retry <- case policyRetry policy of
+        Nothing -> pure (D.text "None")
+        Just r -> do
+          let (kind, delay, step, factor, cap) = case retryStrategy r of
+                Immediate -> ("immediate", 0, 0, 0, -1)
+                Fixed d' -> ("fixed", d', 0, 0, -1)
+                Linear d' s -> ("linear", d', s, 0, -1)
+                Exponential d' f c -> ("exponential", d', 0, f, maybe (-1) id c)
+                Fibonacci d' -> ("fibonacci", d', 0, 0, -1)
+                Custom _ -> ("custom", 0, 0, 0, -1)
+          condition <- case retryWhen r of
+            Nothing -> pure (D.text "None")
+            Just p -> (\name -> D.text ("Some(|ctx: &mut ls::Context, failure: ls::Value| -> ls::Result<bool> { " ++ name ++
+              "(ctx, vec![failure])?.boolean() })")) <$> evaluator p
+          decide <- case retryStrategy r of
+            Custom f -> (\name -> D.text ("Some(|ctx: &mut ls::Context, attempt: i64, failure: ls::Value, previous: i64| -> ls::Result<Option<i64>> { " ++
+              "ls::retry_decision(" ++ name ++ "(ctx, vec![ls::Value::Integer(ls::BigInt::from(attempt)), failure, ls::duration(previous)])?) })")) <$> evaluator f
+            _ -> pure (D.text "None")
+          pure (D.text "Some(ls::Retry " <> D.block 4 (D.joinWith D.hardline
+            [ D.text ("strategy: " ++ show (kind :: String) ++ ",")
+            , D.text ("delay: " ++ show (delay :: Integer) ++ ", step: " ++ show (step :: Integer) ++ ", factor: " ++ show (factor :: Integer) ++ ", cap: " ++ show (cap :: Integer) ++ ",")
+            , D.text ("attempts: " ++ show (retryAttempts r) ++ ",")
+            , D.text ("jitter: " ++ show (jitterName (retryJitter r)) ++ ",")
+            , D.text "when: " <> condition <> D.text ","
+            , D.text "decide: " <> decide <> D.text "," ]) <> D.text ")")
+      pure (D.text "ls::StagePolicy " <> D.block 4 (D.joinWith D.hardline
+        [ D.text ("stage: " ++ show (policyStage policy) ++ ",")
+        , D.text "retry: " <> retry <> D.text ","
+        , D.text ("timeout: " ++ show (maybe (-1) id (policyTimeout policy)) ++ ",") ]))
+    jitterName j = case j of
+      NoJitter -> "none" :: String
+      FullJitter -> "full"
+      EqualJitter -> "equal"
+      DecorrelatedJitter -> "decorrelated"
     ownerModule = map (\c -> if isAlphaNum c || c == '_' then c else '_') . idText
     moduleName = map (\c -> if isAlphaNum c || c == '_' then c else '_') . idText . unitId
     nameFor d = maybe (Left "unresolved Rust total definition") Right
@@ -103,7 +140,14 @@ emitRustDefinitions layout bits declarations units = do
       -- Arguments and results were checked where they were built, decoded
       -- or drawn; the native wrappers check values crossing from adapters.
       let checks = [D.text ("let " ++ local ++ " = arguments.next().unwrap();") | (_,(_,local)) <- zip args locals]
-      body <- E.renderExpression declarations bits names locals (definitionBody d)
+      rendered <- E.renderExpression declarations bits names locals (definitionBody d)
+      -- A workflow stage with policies runs under the workflow runtime.
+      body <- case definitionPolicy d of
+        Nothing -> pure rendered
+        Just policy -> do
+          config <- policyDoc policy
+          pure (E.call "ls::run_stage" [D.text "ctx", D.text "&" <> config,
+            D.text "|ctx: &mut ls::Context| -> ls::Result<ls::Value> " <> D.block 4 (D.text "Ok(" <> rendered <> D.text ")")] <> D.text "?")
       let arity = D.text ("if arguments.len() != " ++ show (length args) ++ " ") <>
             D.block 4 (D.text "return Err" <> D.delimitTrailing 4 "(" ")"
               [D.group (D.text (E.quoted

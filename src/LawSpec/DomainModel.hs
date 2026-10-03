@@ -8,6 +8,7 @@ module LawSpec.DomainModel
   , wrapperValueName, elaborateDomain
   ) where
 
+import LawSpec.Core.Policy
 import LawSpec.Scalar (isExact)
 import Control.Monad (foldM, forM, forM_, unless, when)
 import Data.Char (toUpper)
@@ -44,6 +45,8 @@ data Workflow = Workflow
   , workflowType :: Type
   , workflowStages :: [WorkflowStage]
   , workflowSpan :: Span
+  -- The policies of each stage that has them, by stage position.
+  , workflowPolicies :: [(Int, StagePolicy String)]
   } deriving (Eq, Show)
 
 -- The unwrapping definition for a wrapper, such as valueOfUnitQuantity.
@@ -62,16 +65,17 @@ elaborateDomain wrappers workflows u = either (Left . (,) Nothing) Right (checkW
       env = map signature unwrap ++ declared
       definitionNames = map functionName (unwrap ++ functionDefinitions u)
       taken = map fst env ++ concatMap (map fst . functionArguments) (functionDefinitions u)
-  elaborated <- forM workflows (\w -> at w (elaborateWorkflow env definitionNames taken w))
-  let workflowDefinitions = [d | Elaborated d _ _ <- elaborated]
+  elaborated <- forM workflows (\w -> at w (elaborateWorkflow env definitionNames (asyncFunctions u) taken w))
+  let workflowDefinitions = [d | Elaborated d _ _ _ _ <- elaborated] ++ concat [ds | Elaborated _ _ _ ds _ <- elaborated]
   pure u
-    { dataTypes = map wrapperDeclaration wrappers ++ [t | Elaborated _ _ (Just t) <- elaborated] ++ dataTypes u
+    { dataTypes = map wrapperDeclaration wrappers ++ [t | Elaborated _ _ (Just t) _ _ <- elaborated] ++ dataTypes u
     , functions = map signature (unwrap ++ workflowDefinitions) ++ declared
     , functionDefinitions = unwrap ++ workflowDefinitions ++ functionDefinitions u
     , orchestrations = map functionName workflowDefinitions ++ orchestrations u
     , declarationSpans = [(functionName d, functionSpan d) | d <- unwrap ++ workflowDefinitions] ++
         [(name, range) | w <- workflows, WorkflowStage (DeclaredStep name _) range <- workflowStages w] ++ declarationSpans u
-    , laws = laws u ++ concat [ls | Elaborated _ ls _ <- elaborated]
+    , laws = laws u ++ concat [ls | Elaborated _ ls _ _ _ <- elaborated]
+    , policies = concat [ps | Elaborated _ _ _ _ ps <- elaborated] ++ policies u
     }
 
 checkWrappers :: [Wrapper] -> Unit -> Either String ()
@@ -134,12 +138,53 @@ data Failure = Total | Declared Type | Generated String
 
 -- An elaborated workflow: its definition, its laws, and a generated error
 -- type when it has one.
-data Elaborated = Elaborated FunctionDefinition [Law] (Maybe DataTypeDeclaration)
+-- A workflow's definition, its laws, its generated error type, and the stage
+-- definitions of steps with policies, with those policies.
+data Elaborated = Elaborated FunctionDefinition [Law] (Maybe DataTypeDeclaration) [FunctionDefinition] [(String, StagePolicy String)]
 
-elaborateWorkflow :: [(String, Type)] -> [String] -> [String] -> Workflow -> Either String Elaborated
-elaborateWorkflow env definitions taken w = do
+elaborateWorkflow :: [(String, Type)] -> [String] -> [String] -> [String] -> Workflow -> Either String Elaborated
+elaborateWorkflow env0 definitions asyncNames taken0 w = do
   let name = workflowName w
       context = "workflow " ++ name
+      typeOf0 f = maybe (Left (context ++ ": unknown function " ++ f)) Right (lookup f env0)
+  -- A step with policies is called through a stage definition, which the
+  -- target's workflow runtime runs under them.
+  staged <- forM (workflowPolicies w) $ \(index, policy) -> do
+    let WorkflowStage kind _ = workflowStages w !! index
+    f <- case kind of
+      DeclaredStep f _ -> Right f
+      StepStage f -> Right f
+      _ -> Left (context ++ ": policies apply to steps, so stage " ++ show (index + 1) ++ " cannot have one")
+    ty <- typeOf0 f
+    (a, r) <- case ty of
+      Arrow a r | not (isArrow r) -> Right (a, r)
+      _ -> Left (context ++ ": " ++ f ++ " must take exactly one input")
+    forM_ (policyRetry policy) $ \retry -> do
+      e <- case r of
+        Application "Either" [e, _] -> Right e
+        _ -> Left (context ++ ": " ++ f ++ " cannot fail, so it cannot be retried")
+      forM_ (retryWhen retry) $ \p -> do
+        unless (p `elem` definitions) (Left (context ++ ": retry's when " ++ p ++ " must be a checked definition"))
+        pty <- typeOf0 p
+        unless (pty == Arrow e (Named "Bool"))
+          (Left (context ++ ": retry's when " ++ p ++ " must take " ++ prettyType e ++ " to Bool"))
+      case retryStrategy retry of
+        Custom decide -> do
+          unless (decide `elem` definitions) (Left (context ++ ": retry custom " ++ decide ++ " must be a checked definition"))
+          dty <- typeOf0 decide
+          let expected = Arrow (Named "Integer") (Arrow e (Arrow (Named "Duration") (Named "RetryDecision")))
+          unless (dty == expected) (Left (context ++ ": retry custom " ++ decide ++ " must have type " ++ prettyType expected))
+        _ -> pure ()
+      when (retryAttempts retry < 1 && not (isCustom (retryStrategy retry)))
+        (Left (context ++ ": " ++ f ++ " must be attempted at least once"))
+    forM_ (policyTimeout policy) $ \_ -> unless (f `elem` asyncNames)
+      (Left (context ++ ": timeout needs an asynchronous step; " ++ f ++ " is synchronous, and a synchronous call cannot be interrupted"))
+    let stageName = head [candidate | n <- [0 :: Int ..], let candidate = name ++ "Stage" ++ show (index + 1) ++ replicate n '_', candidate `notElem` taken0]
+        input = head [candidate | n <- [0 :: Int ..], let candidate = "input" ++ replicate n '_', candidate /= f]
+    pure (index, stageName, FunctionDefinition stageName [(input, a)] r [] (Apply (Var f) (Var input)) (workflowSpan w), policy { policyStage = f })
+  let env = env0 ++ [(functionName d, Arrow a r) | (_, _, d@(FunctionDefinition _ [(_, a)] r _ _ _), _) <- staged]
+      taken = taken0 ++ [stageName | (_, stageName, _, _) <- staged]
+      targetOf tag f = maybe f id (lookup tag [(show index, stageName) | (index, stageName, _, _) <- staged])
       typeOf f = maybe (Left (context ++ ": unknown function " ++ f)) Right (lookup f env)
       unary f = typeOf f >>= \ty -> case ty of
         Arrow a r | not (isArrow r) -> Right (a, r)
@@ -256,9 +301,9 @@ elaborateWorkflow env definitions taken w = do
         unless (a == state) (Left (context ++ ": step " ++ f ++ " expects " ++ prettyType a ++ " but receives " ++ prettyType state))
         case r of
           Application "Either" [e, next] -> do
-            (cs, failing) <- failed f maps e constructors tag (call f (Var "__state"))
+            (cs, failing) <- failed f maps e constructors tag (call (targetOf tag f) (Var "__state"))
             pure (next, cs, bindState body tag (\v -> substitute v failing), f)
-          _ -> pure (r, constructors, onSuccess body tag (\v -> wrap (call f v)), "")
+          _ -> pure (r, constructors, onSuccess body tag (\v -> wrap (call (targetOf tag f) v)), "")
   (final, constructors, body, fallibleStages, recoveries) <- go (0 :: Int) input []
     (if failure == Total then Var subject else right (Var subject)) (workflowStages w)
   unless (final == output)
@@ -302,7 +347,8 @@ elaborateWorkflow env definitions taken w = do
         _ -> Nothing
   when (failure /= Total && null constructors && case failure of Generated _ -> True; _ -> False)
     (Left (context ++ ": no stage can fail, so the workflow returns " ++ prettyType output))
-  pure (Elaborated definition (map railwayLaw ([composition] ++ success ++ laws')) generated)
+  pure (Elaborated definition (map railwayLaw ([composition] ++ success ++ laws')) generated
+    [d | (_, _, d, _) <- staged] [(stageName, policy) | (_, stageName, _, policy) <- staged])
   where
     isArrow (Arrow _ _) = True
     isArrow _ = False
@@ -337,3 +383,7 @@ elaborateWorkflow env definitions taken w = do
 capital :: String -> String
 capital (c : rest) = toUpper c : rest
 capital [] = []
+
+isCustom :: Strategy name -> Bool
+isCustom (Custom _) = True
+isCustom _ = False

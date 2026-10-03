@@ -11,6 +11,7 @@ import Data.Binary (Binary)
 import LawSpec.Common
 import qualified LawSpec.Core as C
 import LawSpec.Core.Value (Value)
+import LawSpec.Core.Policy (StagePolicy, Retry, Strategy, Jitter)
 import LawSpec.IndexTerm
 import LawSpec.Scalar (Scalar)
 
@@ -31,6 +32,10 @@ instance Binary C.DataConstructor
 instance Binary C.DataDeclaration
 instance Binary C.Declaration
 instance Binary C.Definition
+instance Binary name => Binary (StagePolicy name)
+instance Binary name => Binary (Retry name)
+instance Binary name => Binary (Strategy name)
+instance Binary Jitter
 instance Binary C.Evidence
 instance Binary C.Example
 instance Binary C.Expr

@@ -1109,4 +1109,221 @@ public final class LawSpecRuntime {
     if (value.data instanceof Integer c) return BigInteger.valueOf(c);
     return value.data == null ? BigInteger.ZERO : BigInteger.ONE;
   }
+
+  // Workflow runtime. A workflow runs under a runtime: a clock, a seeded
+  // random source, a trace of what happened, and the state of stateful
+  // stages. The runtime travels in the symbols map every generated method
+  // takes; without one, the default runtime applies (real time, unless the
+  // tests installed a virtual clock). Durations are long microseconds.
+
+  private static final String WORKFLOW = "\0lawspec.workflow";
+
+  /** Tells the time and waits, in microseconds. */
+  public interface Clock {
+    long now();
+
+    void sleep(long micros);
+  }
+
+  /** Monotonic wall time. */
+  public static final class RealClock implements Clock {
+    public long now() {
+      return System.nanoTime() / 1000;
+    }
+
+    public void sleep(long micros) {
+      try {
+        Thread.sleep(micros / 1000, (int) (micros % 1000) * 1000);
+      } catch (InterruptedException error) {
+        Thread.currentThread().interrupt();
+        throw new IllegalStateException("workflow interrupted while waiting", error);
+      }
+    }
+  }
+
+  /** Advances when slept on and returns at once. */
+  public static final class VirtualClock implements Clock {
+    public long time;
+
+    public long now() {
+      return time;
+    }
+
+    public void sleep(long micros) {
+      time += micros;
+    }
+  }
+
+  /** The same sequence on every target for the same seed. */
+  public static final class SplitMix64 {
+    private long state;
+
+    public SplitMix64(long seed) {
+      state = seed;
+    }
+
+    public long next() {
+      state += 0x9E3779B97F4A7C15L;
+      long z = state;
+      z = (z ^ (z >>> 30)) * 0xBF58476D1CE4E5B9L;
+      z = (z ^ (z >>> 27)) * 0x94D049BB133111EBL;
+      return z ^ (z >>> 31);
+    }
+
+    /** Uniform in [0, bound); 0 when bound is 0. */
+    public long below(long bound) {
+      return bound <= 0 ? 0 : Long.remainderUnsigned(next(), bound);
+    }
+  }
+
+  /** A stage starting or finishing an attempt, or a wait. */
+  public record TraceEvent(String kind, String stage, long number, boolean succeeded) {}
+
+  public static final class WorkflowRuntime {
+    public final Clock clock;
+    public final SplitMix64 random;
+    public final List<TraceEvent> trace = new ArrayList<>();
+    public final Map<String, Object> state = new java.util.HashMap<>();
+
+    public WorkflowRuntime(Clock clock, long seed) {
+      this.clock = clock == null ? new RealClock() : clock;
+      this.random = new SplitMix64(seed);
+    }
+
+    /** A symbols map that runs workflows under this runtime. */
+    public Map<String, Object> context(Map<String, Object> symbols) {
+      symbols.put(WORKFLOW, this);
+      return symbols;
+    }
+  }
+
+  private static WorkflowRuntime defaultRuntime;
+
+  /** Makes the default runtime virtual, as generated tests do. */
+  public static synchronized void useVirtualClock(long seed) {
+    defaultRuntime = new WorkflowRuntime(new VirtualClock(), seed);
+  }
+
+  public static synchronized WorkflowRuntime workflowRuntime(Map<String, Object> symbols) {
+    if (symbols.get(WORKFLOW) instanceof WorkflowRuntime runtime) return runtime;
+    if (defaultRuntime == null) defaultRuntime = new WorkflowRuntime(null, 0);
+    return defaultRuntime;
+  }
+
+  /** What a custom strategy decides: a delay, or null to stop. */
+  public interface Decide {
+    Long decide(long attempt, Value failure, long previous);
+  }
+
+  /**
+   * strategy is immediate, fixed, linear, exponential, fibonacci or custom;
+   * delay, step, factor and cap (negative for none) are its parameters.
+   */
+  public record Retry(
+      String strategy, long delay, long step, long factor, long cap, long attempts, String jitter,
+      Function<Value, Boolean> when, Decide decide) {}
+
+  public record StagePolicy(String stage, Retry retry, long timeout) {}
+
+  private static long fibonacci(long n) {
+    long a = 1, b = 1;
+    for (long i = 1; i < n; i++) {
+      long next = a + b;
+      a = b;
+      b = next;
+    }
+    return a;
+  }
+
+  /** The delay before attempt (2 or more), before jitter. */
+  public static long retryDelay(Retry retry, long attempt) {
+    long n = attempt - 1;
+    switch (retry.strategy()) {
+      case "immediate":
+        return 0;
+      case "fixed":
+        return retry.delay();
+      case "linear":
+        return retry.delay() + retry.step() * (n - 1);
+      case "exponential": {
+        long delay = retry.delay();
+        for (long i = 1; i < n; i++) {
+          delay *= retry.factor();
+          if (retry.cap() >= 0 && delay >= retry.cap()) return retry.cap();
+        }
+        return retry.cap() >= 0 && delay > retry.cap() ? retry.cap() : delay;
+      }
+      case "fibonacci":
+        return retry.delay() * fibonacci(n);
+      default:
+        throw new IllegalArgumentException("unknown retry strategy: " + retry.strategy());
+    }
+  }
+
+  /** Full: [0, delay]; equal: delay/2 + [0, delay/2]; decorrelated: [base, previous * 3], capped at delay. */
+  public static long jittered(String jitter, long delay, long previous, long base, SplitMix64 random) {
+    switch (jitter) {
+      case "full":
+        return random.below(delay + 1);
+      case "equal": {
+        long half = delay / 2;
+        return half + random.below(delay - half + 1);
+      }
+      case "decorrelated": {
+        long high = Math.max(base, previous * 3);
+        return Math.min(delay, base + random.below(high - base + 1));
+      }
+      default:
+        return delay;
+    }
+  }
+
+  /** Runs a stage's attempts under its policy; a Left is a failure. */
+  public static Value runStage(Map<String, Object> symbols, StagePolicy policy, java.util.function.Supplier<Value> attempt) {
+    WorkflowRuntime runtime = workflowRuntime(symbols);
+    Retry retry = policy.retry();
+    long number = 1, previous = 0;
+    while (true) {
+      runtime.trace.add(new TraceEvent("start", policy.stage(), number, false));
+      Value result = attempt.get();
+      boolean failed = result.data() instanceof Data data && data.tag().equals("Either::Left");
+      runtime.trace.add(new TraceEvent("finish", policy.stage(), number, !failed));
+      if (!failed || retry == null) return result;
+      if (retry.attempts() > 0 && number >= retry.attempts()) return result;
+      Value failure = ((Data) result.data()).fields().get(0);
+      if (retry.when() != null && !retry.when().apply(failure)) return result;
+      number++;
+      long delay;
+      if (retry.strategy().equals("custom")) {
+        Long wait = retry.decide().decide(number, failure, previous);
+        if (wait == null) return result;
+        delay = wait;
+      } else {
+        long base = retry.strategy().equals("immediate") ? 0 : retryDelay(retry, 2);
+        delay = jittered(retry.jitter(), retryDelay(retry, number), previous, base, runtime.random);
+      }
+      runtime.trace.add(new TraceEvent("sleep", policy.stage(), delay, true));
+      runtime.clock.sleep(delay);
+      previous = delay;
+    }
+  }
+
+  /** A logical Duration of whole microseconds. */
+  public static Value duration(long micros) {
+    return new Value("lawspec.time::type::Duration",
+        new Data("lawspec.time::type::Duration::Duration", List.of(new Value("Integer", BigInteger.valueOf(micros)))));
+  }
+
+  /** A RetryDecision's delay, or null to stop. */
+  public static Long retryDecision(Value decision) {
+    Data data = (Data) decision.data();
+    if (!data.tag().equals("lawspec.time::type::RetryDecision::RetryAfter")) return null;
+    Data delay = (Data) data.fields().get(0).data();
+    return ((BigInteger) delay.fields().get(0).data()).longValueExact();
+  }
+
+  /** A logical Integer. */
+  public static Value integer64(long n) {
+    return new Value("Integer", BigInteger.valueOf(n));
+  }
 }

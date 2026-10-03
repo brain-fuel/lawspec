@@ -1,6 +1,7 @@
 -- Go native entry points and checked bodies live in each unit's source package.
 module LawSpec.GoDefinitions (emitGoDefinitions, definitionCalls) where
 
+import LawSpec.Core.Policy
 import LawSpec.Core
 import LawSpec.Core.DefinitionContracts (checkedDefinitionContracts)
 import LawSpec.Core.Evidence (runtimePostconditions)
@@ -72,7 +73,14 @@ emitGoDefinitions layout bits declarations units = do
                  [assign ("codec" ++ show i) (line codec) | (i, codec) <- zip [0::Int ..] codecs] ++
                  [assign "resultCodec" (line resultCodec), line "return " <> E.call "resultCodec.fromNative" [awaited]])) <> line "()")
             _ -> Left "unresolved Go total call"
-      body <- E.renderExpression declarations bits schema local external (definitionBody d)
+      rendered <- E.renderExpression declarations bits schema local external (definitionBody d)
+      -- A workflow stage with policies runs under the workflow runtime.
+      body <- case definitionPolicy d of
+        Nothing -> pure rendered
+        Just policy -> do
+          config <- policyDoc policy
+          pure (E.call "lsRunStage" [line "symbols", config,
+            line "func() LawSpecValue " <> D.block 8 (line "return " <> rendered)])
       -- Arguments and results were checked where they were built, decoded
       -- or drawn; the native wrappers check values crossing from adapters.
       let checks = []
@@ -99,6 +107,41 @@ emitGoDefinitions layout bits declarations units = do
         D.delimitTrailing 8 "(" ")" (symbols:arguments) <> line " LawSpecValue " <>
         D.block 8 (contextual (declarationId (definitionDeclaration d)) "LawSpecValue"
           (D.joinWith D.hardline statements)))
+    evaluator identity = maybe (Left "unresolved Go policy definition") Right (lookup identity callees)
+    policyDoc policy = do
+      retry <- case policyRetry policy of
+        Nothing -> pure (line "nil")
+        Just r -> do
+          let (kind, delay, step, factor, cap) = case retryStrategy r of
+                Immediate -> ("immediate", 0, 0, 0, -1)
+                Fixed d -> ("fixed", d, 0, 0, -1)
+                Linear d s -> ("linear", d, s, 0, -1)
+                Exponential d f c -> ("exponential", d, 0, f, maybe (-1) id c)
+                Fibonacci d -> ("fibonacci", d, 0, 0, -1)
+                Custom _ -> ("custom", 0, 0, 0, -1)
+          condition <- case retryWhen r of
+            Nothing -> pure (line "nil")
+            Just p -> (\name -> line ("func(failure LawSpecValue) bool { return lsTruth(" ++ name ++ "(symbols, failure)) }")) <$> evaluator p
+          decide <- case retryStrategy r of
+            Custom f -> (\name -> line ("func(attempt int64, failure LawSpecValue, previous int64) (int64, bool) { return lsRetryDecision(" ++
+              name ++ "(symbols, lsInteger64(attempt), failure, lsDuration(previous))) }")) <$> evaluator f
+            _ -> pure (line "nil")
+          pure (line "&lawSpecRetry" <> D.block 8 (D.joinWith D.hardline
+            [ line ("Strategy: " ++ show (kind :: String) ++ ",")
+            , line ("Delay: " ++ show (delay :: Integer) ++ ", Step: " ++ show (step :: Integer) ++ ", Factor: " ++ show (factor :: Integer) ++ ", Cap: " ++ show (cap :: Integer) ++ ",")
+            , line ("Attempts: " ++ show (retryAttempts r) ++ ",")
+            , line ("Jitter: " ++ show (jitterName (retryJitter r)) ++ ",")
+            , line "When: " <> condition <> line ","
+            , line "Decide: " <> decide <> line "," ]))
+      pure (line "lawSpecStagePolicy" <> D.block 8 (D.joinWith D.hardline
+        [ line ("Stage: " ++ show (policyStage policy) ++ ",")
+        , line "Retry: " <> retry <> line ","
+        , line ("Timeout: " ++ show (maybe (-1) id (policyTimeout policy)) ++ ",") ]))
+    jitterName j = case j of
+      NoJitter -> "none" :: String
+      FullJitter -> "full"
+      EqualJitter -> "equal"
+      DecorrelatedJitter -> "decorrelated"
     native d = do
       let declaration = definitionDeclaration d
           (args,result) = functionType (declarationType declaration)

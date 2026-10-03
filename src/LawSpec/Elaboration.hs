@@ -279,7 +279,9 @@ elaborateDefinitionUnit dataDeclarations bits u = do
     declaration <- case filter ((== did) . C.declarationId) ds of
       [value] -> Right value
       _ -> Left (name ++ ": missing or duplicate definition signature")
-    pure (C.MkDefinition declaration arguments body (name `elem` S.orchestrations u))
+    -- A stage's policy names checked definitions of this unit.
+    let policy = fmap (declarationId u) <$> lookup name (S.policies u)
+    pure (C.MkDefinition declaration arguments body (name `elem` S.orchestrations u) policy)
   contracts <- mapM (elaborateContract dataDeclarations bits u)
     [contract | contract <- S.contracts u,
       S.contractName contract `elem` map S.functionName (S.functionDefinitions u)]

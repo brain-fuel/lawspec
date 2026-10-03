@@ -89,7 +89,8 @@ emitTests Config{..} unit laws = do
     D.hardline <> D.hardline <> statements (map text imports) <> D.hardline <> D.hardline <>
     separate ([Helpers.schemaDoc,Helpers.assertionDoc,seedDoc] ++ map contract (contracts unit)) <>
     D.hardline <> D.hardline <> text "spec :: Spec" <> D.hardline <> text "spec = do" <>
-    D.nest 2 (D.hardline <> if null bodies then text "pure ()" else separate bodies) <> D.hardline
+    -- Workflows wait on a virtual clock under test.
+    D.nest 2 (D.hardline <> text "runIO (LS.useVirtualClock 0)" <> D.hardline <> (if null bodies then text "pure ()" else separate bodies)) <> D.hardline
   where
     -- LAWSPEC_SEED fixes the seed of properties checked directly with
     -- Hedgehog; hspec's HSPEC_SEED seeds the others. lawspec test sets both,

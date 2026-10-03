@@ -9,6 +9,7 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+	"time"
 	"unicode/utf8"
 )
 
@@ -20,7 +21,11 @@ type lawSpecDecimal struct {
 	coefficient *big.Int
 	exponent    int
 }
-type lawSpecSymbol struct{ description string }
+type lawSpecSymbol struct {
+	description string
+	// A workflow runtime travels in the symbols map under lsWorkflowKey.
+	workflow *LawSpecWorkflowRuntime
+}
 type lawSpecPresence struct{ value *LawSpecValue }
 
 // Named support types preserve scalar domains in native data fields.
@@ -345,7 +350,7 @@ func lsPointer(v LawSpecValue) *LawSpecValue           { return &v }
 func lsSymbol(id, d string, symbols map[string]*lawSpecSymbol) LawSpecValue {
 	s, ok := symbols[id]
 	if !ok {
-		s = &lawSpecSymbol{d}
+		s = &lawSpecSymbol{description: d}
 		symbols[id] = s
 	}
 	return LawSpecValue{"Symbol", s}
@@ -1028,7 +1033,7 @@ func lsSample(t string, seed int, bits int) LawSpecValue {
 		}
 		return lsComplex(t, lsSample(component, int(r.Int31()), bits), lsSample(component, int(r.Int31()), bits))
 	case "Symbol":
-		return LawSpecValue{t, &lawSpecSymbol{"same"}}
+		return LawSpecValue{t, &lawSpecSymbol{description: "same"}}
 	case "Unit", "Null", "Undefined":
 		return lsAbsent(t)
 	}
@@ -1516,3 +1521,234 @@ func lsComplexity(v LawSpecValue) *big.Int {
 	}
 	return big.NewInt(1)
 }
+
+// Workflow runtime. A workflow runs under a runtime: a clock, a seeded
+// random source, a trace of what happened, and the state of stateful stages.
+// The runtime travels in the symbols map every generated function takes;
+// without one, the default runtime applies (real time, unless the tests
+// installed a virtual clock). Durations are int64 microseconds.
+
+const lsWorkflowKey = "\x00lawspec.workflow"
+
+// LawSpecClock tells the time and waits, in microseconds.
+type LawSpecClock interface {
+	Now() int64
+	Sleep(micros int64)
+}
+
+// LawSpecRealClock is monotonic wall time.
+type LawSpecRealClock struct{ start time.Time }
+
+func (c *LawSpecRealClock) Now() int64        { return time.Since(c.start).Microseconds() }
+func (c *LawSpecRealClock) Sleep(micros int64) { time.Sleep(time.Duration(micros) * time.Microsecond) }
+
+// LawSpecVirtualClock advances when slept on and returns at once.
+type LawSpecVirtualClock struct{ Time int64 }
+
+func (c *LawSpecVirtualClock) Now() int64        { return c.Time }
+func (c *LawSpecVirtualClock) Sleep(micros int64) { c.Time += micros }
+
+// LawSpecSplitMix64 gives the same sequence on every target for a seed.
+type LawSpecSplitMix64 struct{ state uint64 }
+
+func (r *LawSpecSplitMix64) Next() uint64 {
+	r.state += 0x9E3779B97F4A7C15
+	z := r.state
+	z = (z ^ (z >> 30)) * 0xBF58476D1CE4E5B9
+	z = (z ^ (z >> 27)) * 0x94D049BB133111EB
+	return z ^ (z >> 31)
+}
+
+// Below is uniform in [0, bound); 0 when bound is 0.
+func (r *LawSpecSplitMix64) Below(bound uint64) uint64 {
+	if bound == 0 {
+		return 0
+	}
+	return r.Next() % bound
+}
+
+// LawSpecTraceEvent records a stage starting or finishing an attempt, or a wait.
+type LawSpecTraceEvent struct {
+	Kind, Stage string
+	Number      int64
+	Succeeded   bool
+}
+
+// LawSpecWorkflowRuntime is what a workflow runs under.
+type LawSpecWorkflowRuntime struct {
+	Clock  LawSpecClock
+	Random LawSpecSplitMix64
+	Trace  []LawSpecTraceEvent
+	State  map[string]any
+}
+
+// NewLawSpecWorkflowRuntime makes a runtime; a nil clock is real time.
+func NewLawSpecWorkflowRuntime(clock LawSpecClock, seed uint64) *LawSpecWorkflowRuntime {
+	if clock == nil {
+		clock = &LawSpecRealClock{time.Now()}
+	}
+	return &LawSpecWorkflowRuntime{Clock: clock, Random: LawSpecSplitMix64{seed}, State: map[string]any{}}
+}
+
+// Context returns a symbols map that runs workflows under this runtime.
+func (r *LawSpecWorkflowRuntime) Context(symbols map[string]*LawSpecSymbol) map[string]*LawSpecSymbol {
+	if symbols == nil {
+		symbols = map[string]*LawSpecSymbol{}
+	}
+	symbols[lsWorkflowKey] = &lawSpecSymbol{workflow: r}
+	return symbols
+}
+
+var lsDefaultWorkflowRuntime *LawSpecWorkflowRuntime
+
+// LawSpecUseVirtualClock makes the default runtime virtual, as generated tests do.
+func LawSpecUseVirtualClock(seed uint64) {
+	lsDefaultWorkflowRuntime = NewLawSpecWorkflowRuntime(&LawSpecVirtualClock{}, seed)
+}
+
+func lsWorkflowRuntime(symbols map[string]*lawSpecSymbol) *LawSpecWorkflowRuntime {
+	if entry, ok := symbols[lsWorkflowKey]; ok && entry.workflow != nil {
+		return entry.workflow
+	}
+	if lsDefaultWorkflowRuntime == nil {
+		lsDefaultWorkflowRuntime = NewLawSpecWorkflowRuntime(nil, 0)
+	}
+	return lsDefaultWorkflowRuntime
+}
+
+// lawSpecRetry: Strategy is immediate, fixed, linear, exponential, fibonacci
+// or custom; Delay, Step, Factor and Cap (negative for none) are its
+// parameters; Decide stops (false) or waits, for custom strategies.
+type lawSpecRetry struct {
+	Strategy                 string
+	Delay, Step, Factor, Cap int64
+	Attempts                 int64
+	Jitter                   string
+	When                     func(LawSpecValue) bool
+	Decide                   func(attempt int64, failure LawSpecValue, previous int64) (int64, bool)
+}
+
+type lawSpecStagePolicy struct {
+	Stage   string
+	Retry   *lawSpecRetry
+	Timeout int64
+}
+
+func lsFibonacci(n int64) int64 {
+	a, b := int64(1), int64(1)
+	for i := int64(1); i < n; i++ {
+		a, b = b, a+b
+	}
+	return a
+}
+
+// lsRetryDelay is the delay before attempt (2 or more), before jitter.
+func lsRetryDelay(retry *lawSpecRetry, attempt int64) int64 {
+	n := attempt - 1
+	switch retry.Strategy {
+	case "immediate":
+		return 0
+	case "fixed":
+		return retry.Delay
+	case "linear":
+		return retry.Delay + retry.Step*(n-1)
+	case "exponential":
+		delay := retry.Delay
+		for i := int64(1); i < n; i++ {
+			delay *= retry.Factor
+			if retry.Cap >= 0 && delay >= retry.Cap {
+				return retry.Cap
+			}
+		}
+		if retry.Cap >= 0 && delay > retry.Cap {
+			return retry.Cap
+		}
+		return delay
+	case "fibonacci":
+		return retry.Delay * lsFibonacci(n)
+	}
+	panic("unknown retry strategy: " + retry.Strategy)
+}
+
+// lsJittered: full is [0, delay]; equal is delay/2 + [0, delay/2];
+// decorrelated is [base, previous * 3], capped at delay.
+func lsJittered(jitter string, delay, previous, base int64, random *LawSpecSplitMix64) int64 {
+	switch jitter {
+	case "full":
+		return int64(random.Below(uint64(delay + 1)))
+	case "equal":
+		half := delay / 2
+		return half + int64(random.Below(uint64(delay-half+1)))
+	case "decorrelated":
+		high := previous * 3
+		if high < base {
+			high = base
+		}
+		value := base + int64(random.Below(uint64(high-base+1)))
+		if value > delay {
+			return delay
+		}
+		return value
+	}
+	return delay
+}
+
+// lsRunStage runs a stage's attempts under its policy; a Left is a failure.
+func lsRunStage(symbols map[string]*lawSpecSymbol, policy lawSpecStagePolicy, attempt func() LawSpecValue) LawSpecValue {
+	runtime := lsWorkflowRuntime(symbols)
+	retry := policy.Retry
+	number, previous := int64(1), int64(0)
+	for {
+		runtime.Trace = append(runtime.Trace, LawSpecTraceEvent{"start", policy.Stage, number, false})
+		result := attempt()
+		data, isData := result.Data.(lawSpecData)
+		failed := isData && data.tag == "Either::Left"
+		runtime.Trace = append(runtime.Trace, LawSpecTraceEvent{"finish", policy.Stage, number, !failed})
+		if !failed || retry == nil {
+			return result
+		}
+		if retry.Attempts > 0 && number >= retry.Attempts {
+			return result
+		}
+		failure := data.fields[0]
+		if retry.When != nil && !retry.When(failure) {
+			return result
+		}
+		number++
+		var delay int64
+		if retry.Strategy == "custom" {
+			wait, ok := retry.Decide(number, failure, previous)
+			if !ok {
+				return result
+			}
+			delay = wait
+		} else {
+			base := int64(0)
+			if retry.Strategy != "immediate" {
+				base = lsRetryDelay(retry, 2)
+			}
+			delay = lsJittered(retry.Jitter, lsRetryDelay(retry, number), previous, base, &runtime.Random)
+		}
+		runtime.Trace = append(runtime.Trace, LawSpecTraceEvent{"sleep", policy.Stage, delay, true})
+		runtime.Clock.Sleep(delay)
+		previous = delay
+	}
+}
+
+func lsInteger64(n int64) LawSpecValue { return LawSpecValue{"Integer", big.NewInt(n)} }
+
+// lsDuration is a logical Duration of whole microseconds.
+func lsDuration(micros int64) LawSpecValue {
+	return LawSpecValue{"lawspec.time::type::Duration", lawSpecData{"lawspec.time::type::Duration::Duration", []LawSpecValue{lsInteger64(micros)}}}
+}
+
+// lsRetryDecision reads a RetryDecision: RetryAfter's delay, or false to stop.
+func lsRetryDecision(decision LawSpecValue) (int64, bool) {
+	data := decision.Data.(lawSpecData)
+	if data.tag != "lawspec.time::type::RetryDecision::RetryAfter" {
+		return 0, false
+	}
+	delay := data.fields[0].Data.(lawSpecData).fields[0].Data.(*big.Int)
+	return delay.Int64(), true
+}
+

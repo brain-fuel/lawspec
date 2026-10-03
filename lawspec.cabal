@@ -185,6 +185,7 @@ library
       LawSpec.Core.Expression
       LawSpec.Core.Payload
       LawSpec.Core.PayloadPlan
+      LawSpec.Core.Policy
       LawSpec.Core.RefinementProof
       LawSpec.Core.Schema
       LawSpec.Core.Semantics

@@ -1,6 +1,7 @@
 -- Native Haskell functions over pure, checked total-definition implementations.
 module LawSpec.HaskellDefinitions (emitHaskellDefinitions, definitionCalls) where
 
+import LawSpec.Core.Policy
 import LawSpec.Core
 import LawSpec.Core.DefinitionContracts (checkedDefinitionContracts)
 import LawSpec.Core.Evidence (runtimePostconditions)
@@ -70,6 +71,34 @@ emitHaskellDefinitions layout bits declarations units = do
       ExternalCall callee arguments -> callee : concatMap callsIn arguments
       _ -> concatMap callsIn (children expression)
     moduleOf owner = intercalate "." (map modulePart (split '.' (idText owner)))
+    evaluator localName identity = maybe (Left "unresolved Haskell policy definition") (Right . localName) (lookup identity names)
+    policyDoc localName policy = do
+      retry <- case policyRetry policy of
+        Nothing -> pure (text "P.Nothing")
+        Just r -> do
+          let (kind, delay, step, factor, cap) = case retryStrategy r of
+                Immediate -> ("immediate", 0, 0, 0, -1)
+                Fixed d' -> ("fixed", d', 0, 0, -1)
+                Linear d' s' -> ("linear", d', s', 0, -1)
+                Exponential d' f c -> ("exponential", d', 0, f, maybe (-1) id c)
+                Fibonacci d' -> ("fibonacci", d', 0, 0, -1)
+                Custom _ -> ("custom", 0, 0, 0, -1)
+              number n = text (if n < 0 then "(" ++ show (n :: Integer) ++ ")" else show n)
+          condition <- case retryWhen r of
+            Nothing -> pure (text "P.Nothing")
+            Just p -> (\name -> text ("(P.Just (\\failure -> LS.truth (P.either P.error P.id (" ++ name ++ " symbols failure))))")) <$> evaluator localName p
+          decide <- case retryStrategy r of
+            Custom f -> (\name -> text ("(P.Just (\\attempt failure previous -> LS.retryDecision (P.either P.error P.id (" ++ name ++
+              " symbols (LS.SInteger \"Integer\" attempt) failure (LS.durationScalar previous)))))")) <$> evaluator localName f
+            _ -> pure (text "P.Nothing")
+          pure (E.apply "P.Just" [E.apply "LS.Retry" [E.quoted kind, number delay, number step, number factor, number cap,
+            number (retryAttempts r), E.quoted (jitterName (retryJitter r)), condition, decide]])
+      pure (E.apply "LS.StagePolicy" [E.quoted (policyStage policy), retry, text (maybe "(-1)" show (policyTimeout policy))])
+    jitterName j = case j of
+      NoJitter -> "none" :: String
+      FullJitter -> "full"
+      EqualJitter -> "equal"
+      DecorrelatedJitter -> "decorrelated"
     implementation contracts home (index,d) = do
       let binders = definitionArguments d ++ nestedBinders (definitionBody d)
           locals = zip (nub (map binderId binders)) ["value" ++ show i | i <- [0::Int ..]]
@@ -97,7 +126,13 @@ emitHaskellDefinitions layout bits declarations units = do
       -- Arguments and results were checked where they were built, decoded
       -- or drawn; the native wrappers check values crossing from adapters.
       let checks = []
-      body <- E.renderExpression declarations bits "_lawspecSchema" "symbols" local external (definitionBody d)
+      rendered <- E.renderExpression declarations bits "_lawspecSchema" "symbols" local external (definitionBody d)
+      -- A workflow stage with policies runs under the workflow runtime.
+      body <- case definitionPolicy d of
+        Nothing -> pure rendered
+        Just policy -> do
+          config <- policyDoc localName policy
+          pure (E.apply "LS.runStage" [text "symbols", config, text "(\\() -> " <> rendered <> text ")"])
       let result = E.apply "P.pure" [text "result"]
       let evaluate = text "let result =" <> D.nest 6 (D.hardline <> body)
           checkedResult = D.group (E.apply "LS.forceScalar" [text "result"] <> text " `P.seq`" <>

@@ -340,7 +340,8 @@ emitRustWithBindings minify bindings Plan{..} = either (Left . pure . (\m -> Dia
             label = propertyName p
             law = "law_" ++ show index
             args = Doc.text "ctx: &mut ls::Context" : [Doc.text (n ++ ": ls::Value") | (_,n) <- names]
-            context = Doc.text "let ctx = &mut ls::Context::default();"
+            -- Each case's workflows wait on their own virtual clock.
+            context = Doc.text "let ctx = &mut ls::Context::testing();"
         body <- proposition names label (propertyBody p)
         checkedInputs <- if null planDataDeclarations then pure [] else
           forM (zip (propertyInputs p) names) $ \(input,(_,name)) -> do

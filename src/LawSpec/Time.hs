@@ -9,7 +9,7 @@
 -- +, -, *, the comparisons and prelude.quot on durations elaborate to the
 -- unit's definitions.
 module LawSpec.Time
-  ( timeUnit, timeAlias, timeSource, usesTime, timeOperation, timeOperations
+  ( timeUnit, timeAlias, timeSource, timeTypes, usesTime, timeOperation, timeOperations
   , durationType, isDurationType, durationLimit, durationSuffixes, durationFactor, durationArithmetic, durationValue, durationDefinitions
   ) where
 
@@ -72,6 +72,10 @@ durationValue = "valueOfDuration"
 durationDefinitions :: [String]
 durationDefinitions = durationValue : "microseconds" : [name | op <- ["+", "-", "*", "quot"], Just name <- [durationArithmetic op]]
 
+-- The time unit's types, imported by every source that uses durations.
+timeTypes :: [String]
+timeTypes = ["Duration", "RetryDecision"]
+
 -- Whether a source uses durations: the type, a prelude constructor, or a
 -- literal such as 250ms. A source that declares its own Duration keeps it.
 usesTime :: String -> Bool
@@ -79,7 +83,7 @@ usesTime text =
   let code = stripComments text
       tokens = words (map (\c -> if isAlphaNum c || c `elem` ("._" :: String) then c else ' ') code)
       declared = or [keyword `elem` ["type", "wrapper"] && name == "Duration" | (keyword, name) <- zip tokens (drop 1 tokens)]
-  in not declared && ("Duration" `elem` tokens || any (`elem` tokens) ["prelude." ++ op | (op, _) <- timeOperations] || any literal tokens)
+  in not declared && (any (`elem` tokens) timeTypes || any (`elem` tokens) ["prelude." ++ op | (op, _) <- timeOperations] || any literal tokens)
   where
     literal token = case span isDigit token of
       ("", _) -> False
@@ -96,6 +100,9 @@ timeSource = unlines
   [ "unit " ++ timeUnit
   , ""
   , "wrapper Duration is Integer where value >= 0 && value <= " ++ limit ++ " end"
+  , ""
+  -- What a custom retry strategy decides after a failure.
+  , "type RetryDecision is | Stop | RetryAfter delay :: Duration end"
   , ""
   , unlines [constructor name factor | (name, factor) <- factors]
   , "definition durationPlus (a :: Duration) (b :: Duration where valueOfDuration a + valueOfDuration b <= " ++ limit ++ ")"

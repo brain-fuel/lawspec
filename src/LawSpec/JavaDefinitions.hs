@@ -1,6 +1,7 @@
 -- Native entry points and checked implementation helpers for total definitions.
 module LawSpec.JavaDefinitions (emitJavaDefinitions, emitJvmDefinitionBodies, definitionCalls, orchestratedAdapters, kotlinAdapterBridge) where
 
+import LawSpec.Core.Policy
 import Control.Monad (forM)
 import Data.Char (isAlphaNum, toUpper)
 import Data.List (intercalate)
@@ -135,7 +136,13 @@ emitDefinitions withNative layout bits declarations units = do
       -- Arguments and results were checked where they were built, decoded
       -- or drawn; the native wrappers check values crossing from adapters.
       let checks = [assign (local (binderId b)) (D.text ("input" ++ show i)) | (i,b) <- zip [0::Int ..] args]
-      body <- E.renderExpression declarations bits local external (definitionBody d)
+      rendered <- E.renderExpression declarations bits local external (definitionBody d)
+      -- A workflow stage with policies runs under the workflow runtime.
+      body <- case definitionPolicy d of
+        Nothing -> pure rendered
+        Just policy -> do
+          config <- policyDoc policy
+          pure (E.call "LawSpecRuntime.runStage" [D.text "symbols", config, D.text "() -> " <> rendered])
       ref <- E.reference (expressionType (definitionBody d))
       let contract = lookup (declarationId (definitionDeclaration d)) [(contractDeclaration c,c) | c <- contracts]
           validated = const (D.text "result") ref
@@ -158,6 +165,34 @@ emitDefinitions withNative layout bits declarations units = do
             post ++ [D.text "return checkedResult;"])
       pure (signature <> D.block 2 (contextual (declarationId (definitionDeclaration d))
         (D.joinWith D.hardline statements)))
+    evaluator identity = maybe (Left "unresolved Java policy definition") Right (lookup identity callees)
+    policyDoc policy = do
+      retry <- case policyRetry policy of
+        Nothing -> pure (D.text "null")
+        Just r -> do
+          let (kind, delay, step, factor, cap) = case retryStrategy r of
+                Immediate -> ("immediate", 0, 0, 0, -1)
+                Fixed d' -> ("fixed", d', 0, 0, -1)
+                Linear d' s -> ("linear", d', s, 0, -1)
+                Exponential d' f c -> ("exponential", d', 0, f, maybe (-1) id c)
+                Fibonacci d' -> ("fibonacci", d', 0, 0, -1)
+                Custom _ -> ("custom", 0, 0, 0, -1)
+          condition <- case retryWhen r of
+            Nothing -> pure (D.text "null")
+            Just p -> (\name -> D.text ("failure -> LawSpecRuntime.truth(" ++ name ++ "(symbols, failure))")) <$> evaluator p
+          decide <- case retryStrategy r of
+            Custom f -> (\name -> D.text ("(attempt, failure, previous) -> LawSpecRuntime.retryDecision(" ++ name ++
+              "(symbols, LawSpecRuntime.integer64(attempt), failure, LawSpecRuntime.duration(previous)))")) <$> evaluator f
+            _ -> pure (D.text "null")
+          pure (E.call "new LawSpecRuntime.Retry"
+            [E.quoted kind, long delay, long step, long factor, long cap, long (retryAttempts r), E.quoted (jitterName (retryJitter r)), condition, decide])
+      pure (E.call "new LawSpecRuntime.StagePolicy" [E.quoted (policyStage policy), retry, long (maybe (-1) id (policyTimeout policy))])
+    long n = D.text (show n ++ "L")
+    jitterName j = case j of
+      NoJitter -> "none"
+      FullJitter -> "full"
+      EqualJitter -> "equal"
+      DecorrelatedJitter -> "decorrelated"
     nestedBinders expression = case expressionNode expression of
       AllElements value binder predicate -> nestedBinders value ++ [binder] ++ nestedBinders predicate
       AllPayloads value predicates -> nestedBinders value ++ concat

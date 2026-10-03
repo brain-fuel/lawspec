@@ -1,6 +1,7 @@
 -- Native public JS/TS entry points over framework-independent checked bodies.
 module LawSpec.WebDefinitions (emitWebDefinitions, definitionCalls) where
 
+import LawSpec.Core.Policy
 import LawSpec.Core
 import LawSpec.Core.DefinitionContracts (checkedDefinitionContracts)
 import LawSpec.Core.Evidence (runtimePostconditions)
@@ -76,7 +77,13 @@ emitWebDefinitions ts layout bits declarations units = do
               nativeValues <- sequence [schemaCall "toNative" ty value | (ty, value) <- zip parameterTypes values]
               schemaCall "fromNative" resultType (E.call (adapterAlias owner ++ "." ++ declarationName adapter) nativeValues)
             _ -> Left "unresolved JS/TS total call"
-      body <- E.renderExpression ts declarations bits local external (definitionBody d)
+      rendered <- E.renderExpression ts declarations bits local external (definitionBody d)
+      -- A workflow stage with policies runs under the workflow runtime.
+      body <- case definitionPolicy d of
+        Nothing -> pure rendered
+        Just policy -> do
+          config <- policyDoc policy
+          pure (E.call "ls.runStage" [D.text "symbols", config, D.text "() => " <> rendered])
       -- Arguments and results were checked where they were built, decoded
       -- or drawn; the native wrappers check values crossing from adapters.
       let checks = []
@@ -103,6 +110,35 @@ emitWebDefinitions ts layout bits declarations units = do
         D.delimitTrailing 4 "(" ")" (symbols:arguments) <> annotation (D.text "unknown") <> D.text " " <>
         D.block 2 (contextual (declarationId (definitionDeclaration d)) (D.joinWith D.hardline
           statements)))
+    evaluator identity = maybe (Left "unresolved JS/TS policy definition") (Right . drop (length ("_definitions." :: String)))
+      (lookup identity callees)
+    policyDoc policy = do
+      retry <- case policyRetry policy of
+        Nothing -> pure (D.text "null")
+        Just r -> do
+          strategy <- case retryStrategy r of
+            Immediate -> pure (array [E.quoted "immediate"])
+            Fixed delay -> pure (array [E.quoted "fixed", big delay])
+            Linear delay step -> pure (array [E.quoted "linear", big delay, big step])
+            Exponential delay factor cap -> pure (array [E.quoted "exponential", big delay, big factor, maybe (D.text "null") big cap])
+            Fibonacci delay -> pure (array [E.quoted "fibonacci", big delay])
+            Custom decide -> do
+              name <- evaluator decide
+              pure (array [E.quoted "custom", D.text ("(attempt, error, previous) => ls.retryDecision(" ++ name ++
+                "(symbols, attempt, error, new ls.DataValue('lawspec.time::type::Duration::Duration', [previous])))")])
+          condition <- case retryWhen r of
+            Nothing -> pure (D.text "null")
+            Just p -> (\name -> D.text ("(error) => " ++ name ++ "(symbols, error)")) <$> evaluator p
+          pure (object [("strategy", strategy), ("attempts", big (retryAttempts r)), ("jitter", E.quoted (jitterName (retryJitter r))), ("when", condition)])
+      pure (object [("stage", E.quoted (policyStage policy)), ("retry", retry), ("timeout", maybe (D.text "null") big (policyTimeout policy))])
+    array items = D.text "[" <> D.joinWith (D.text ", ") items <> D.text "]"
+    object fields = D.text "{" <> D.joinWith (D.text ", ") [D.text (key ++ ": ") <> value | (key, value) <- fields] <> D.text "}"
+    big n = D.text (show n ++ "n")
+    jitterName j = case j of
+      NoJitter -> "none"
+      FullJitter -> "full"
+      EqualJitter -> "equal"
+      DecorrelatedJitter -> "decorrelated"
     nativeUnit unit = do
       wrappers <- mapM native (unitDefinitions unit)
       let unitName = idText (unitId unit)

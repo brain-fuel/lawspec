@@ -788,3 +788,182 @@ def integer_literal(value):
 def bytes_literal(values):
     """Construct octets without text encoding or replacement."""
     return bytes(values)
+
+
+# Workflow runtime. A workflow runs under a runtime: a clock, a seeded
+# random source, a trace of what happened, and the state of stateful stages.
+# The runtime travels in the symbols context every generated function takes;
+# without one, the default runtime applies (real time, unless the tests
+# installed a virtual clock). Durations are whole microseconds.
+
+import time as _time
+
+_WORKFLOW = '\x00lawspec.workflow'
+_MASK64 = (1 << 64) - 1
+
+
+class RealClock:
+    def now(self):
+        return _time.monotonic_ns() // 1000
+
+    def sleep(self, micros):
+        _time.sleep(micros / 1_000_000)
+
+
+class VirtualClock:
+    """Sleeping advances the clock and returns at once."""
+
+    def __init__(self, start=0):
+        self.time = start
+
+    def now(self):
+        return self.time
+
+    def sleep(self, micros):
+        self.time += micros
+
+
+class SplitMix64:
+    """The same sequence on every target for the same seed."""
+
+    def __init__(self, seed=0):
+        self.state = seed & _MASK64
+
+    def next(self):
+        self.state = (self.state + 0x9E3779B97F4A7C15) & _MASK64
+        z = self.state
+        z = ((z ^ (z >> 30)) * 0xBF58476D1CE4E5B9) & _MASK64
+        z = ((z ^ (z >> 27)) * 0x94D049BB133111EB) & _MASK64
+        return z ^ (z >> 31)
+
+    def below(self, bound):
+        """Uniform in [0, bound); 0 when bound is 0."""
+        return self.next() % bound if bound > 0 else 0
+
+
+class WorkflowRuntime:
+    def __init__(self, clock=None, seed=0):
+        self.clock = RealClock() if clock is None else clock
+        self.random = SplitMix64(seed)
+        self.trace = []
+        self.state = {}
+
+    def context(self, symbols=None):
+        """A symbols context that runs workflows under this runtime."""
+        symbols = {} if symbols is None else symbols
+        symbols[_WORKFLOW] = self
+        return symbols
+
+
+_default_runtime = [None]
+
+
+def use_virtual_clock(seed=0):
+    """Make the default runtime virtual, as generated tests do."""
+    _default_runtime[0] = WorkflowRuntime(VirtualClock(), seed)
+
+
+def workflow_runtime(symbols):
+    runtime = symbols.get(_WORKFLOW) if isinstance(symbols, dict) else None
+    if runtime is not None:
+        return runtime
+    if _default_runtime[0] is None:
+        _default_runtime[0] = WorkflowRuntime()
+    return _default_runtime[0]
+
+
+@dataclass(frozen=True)
+class Retry:
+    # ('immediate',), ('fixed', d), ('linear', d, step),
+    # ('exponential', d, factor, cap or None), ('fibonacci', d) or
+    # ('custom', decide), where decide(attempt, error, previous) returns a
+    # delay in microseconds or None to stop.
+    strategy: tuple
+    attempts: int
+    jitter: str
+    when: object = None
+
+
+@dataclass(frozen=True)
+class StagePolicy:
+    stage: str
+    retry: object = None
+    timeout: object = None
+
+
+def _fibonacci(n):
+    a, b = 1, 1
+    for _ in range(n - 1):
+        a, b = b, a + b
+    return a
+
+
+def retry_delay(strategy, attempt):
+    """The delay before attempt (2 or more), before jitter."""
+    kind, n = strategy[0], attempt - 1
+    if kind == 'immediate':
+        return 0
+    if kind == 'fixed':
+        return strategy[1]
+    if kind == 'linear':
+        return strategy[1] + strategy[2] * (n - 1)
+    if kind == 'exponential':
+        delay = strategy[1] * strategy[2] ** (n - 1)
+        return delay if strategy[3] is None else min(delay, strategy[3])
+    if kind == 'fibonacci':
+        return strategy[1] * _fibonacci(n)
+    raise ValueError('unknown retry strategy: ' + kind)
+
+
+def jittered(jitter, delay, previous, base, random):
+    """Full: [0, delay]; equal: delay/2 + [0, delay/2]; decorrelated:
+    [base, previous * 3], capped at delay."""
+    if jitter == 'full':
+        return random.below(delay + 1)
+    if jitter == 'equal':
+        half = delay // 2
+        return half + random.below(delay - half + 1)
+    if jitter == 'decorrelated':
+        high = max(base, previous * 3)
+        return min(delay, base + random.below(high - base + 1))
+    return delay
+
+
+def run_stage(symbols, policy, attempt):
+    """Runs a stage's attempts under its policy. attempt() returns the stage's
+    Either; a Left is a failure."""
+    runtime = workflow_runtime(symbols)
+    retry = policy.retry
+    number, previous = 1, 0
+    while True:
+        runtime.trace.append(('start', policy.stage, number))
+        result = attempt()
+        failed = isinstance(result, DataValue) and result.tag == 'Either::Left'
+        runtime.trace.append(('finish', policy.stage, number, not failed))
+        if not failed or retry is None:
+            return result
+        if retry.attempts > 0 and number >= retry.attempts:
+            return result
+        error = result.fields[0]
+        if retry.when is not None and not retry.when(error):
+            return result
+        number += 1
+        if retry.strategy[0] == 'custom':
+            delay = retry.strategy[1](number, error, previous)
+            if delay is None:
+                return result
+        else:
+            base = retry_delay(retry.strategy, 2) if retry.strategy[0] != 'immediate' else 0
+            delay = jittered(retry.jitter, retry_delay(retry.strategy, number),
+                             previous, base, runtime.random)
+        runtime.trace.append(('sleep', policy.stage, delay))
+        runtime.clock.sleep(delay)
+        previous = delay
+
+
+def retry_decision(decision):
+    """A RetryDecision's delay in microseconds, or None to stop."""
+    if decision.tag != 'lawspec.time::type::RetryDecision::RetryAfter':
+        return None
+    return decision.fields[0].fields[0]
+

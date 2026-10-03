@@ -176,8 +176,18 @@ impl Eq for Symbol {}
 #[derive(Clone, Debug, Default)]
 pub struct Context {
     symbols: HashMap<String, Symbol>,
+    /// The workflow runtime this call runs under; None is the default one.
+    pub workflow: Option<Arc<std::sync::Mutex<WorkflowRuntime>>>,
 }
 impl Context {
+    /// A context whose workflows run under the given runtime.
+    pub fn with_workflow(runtime: WorkflowRuntime) -> Context {
+        Context { workflow: Some(Arc::new(std::sync::Mutex::new(runtime))), ..Context::default() }
+    }
+    /// A context for a generated test: workflows wait on a virtual clock.
+    pub fn testing() -> Context {
+        Context::with_workflow(WorkflowRuntime::new(Box::new(VirtualClock::default()), 0))
+    }
     pub fn symbol(&mut self, id: &str, description: &str) -> Symbol {
         self.symbols
             .entry(id.into())
@@ -1799,6 +1809,241 @@ pub fn canonical_items(items: Vec<Value>, keyed: bool) -> Result<Vec<Value>> {
         result.push(item);
     }
     Ok(result)
+}
+
+// Workflow runtime. A workflow runs under a runtime: a clock, a seeded
+// random source, a trace of what happened, and the state of stateful stages.
+// The runtime travels in the Context every generated function takes; without
+// one, the default runtime applies (real time). Durations are i64
+// microseconds.
+
+/// Tells the time and waits, in microseconds.
+pub trait Clock: Send {
+    fn now(&self) -> i64;
+    fn sleep(&mut self, micros: i64);
+}
+
+/// Monotonic wall time.
+pub struct RealClock(std::time::Instant);
+impl Default for RealClock {
+    fn default() -> Self {
+        RealClock(std::time::Instant::now())
+    }
+}
+impl Clock for RealClock {
+    fn now(&self) -> i64 {
+        self.0.elapsed().as_micros() as i64
+    }
+    fn sleep(&mut self, micros: i64) {
+        std::thread::sleep(std::time::Duration::from_micros(micros.max(0) as u64));
+    }
+}
+
+/// Advances when slept on and returns at once.
+#[derive(Default)]
+pub struct VirtualClock {
+    pub time: i64,
+}
+impl Clock for VirtualClock {
+    fn now(&self) -> i64 {
+        self.time
+    }
+    fn sleep(&mut self, micros: i64) {
+        self.time += micros;
+    }
+}
+
+/// The same sequence on every target for the same seed.
+pub struct SplitMix64 {
+    state: u64,
+}
+impl SplitMix64 {
+    pub fn new(seed: u64) -> Self {
+        SplitMix64 { state: seed }
+    }
+    pub fn next(&mut self) -> u64 {
+        self.state = self.state.wrapping_add(0x9E3779B97F4A7C15);
+        let mut z = self.state;
+        z = (z ^ (z >> 30)).wrapping_mul(0xBF58476D1CE4E5B9);
+        z = (z ^ (z >> 27)).wrapping_mul(0x94D049BB133111EB);
+        z ^ (z >> 31)
+    }
+    /// Uniform in [0, bound); 0 when bound is 0.
+    pub fn below(&mut self, bound: u64) -> u64 {
+        if bound == 0 { 0 } else { self.next() % bound }
+    }
+}
+
+/// A stage starting or finishing an attempt, or a wait.
+#[derive(Clone, Debug, PartialEq)]
+pub struct TraceEvent {
+    pub kind: &'static str,
+    pub stage: String,
+    pub number: i64,
+    pub succeeded: bool,
+}
+
+pub struct WorkflowRuntime {
+    pub clock: Box<dyn Clock>,
+    pub random: SplitMix64,
+    pub trace: Vec<TraceEvent>,
+    pub state: HashMap<String, Value>,
+}
+impl std::fmt::Debug for WorkflowRuntime {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "WorkflowRuntime {{ trace: {:?} }}", self.trace)
+    }
+}
+impl WorkflowRuntime {
+    pub fn new(clock: Box<dyn Clock>, seed: u64) -> Self {
+        WorkflowRuntime { clock, random: SplitMix64::new(seed), trace: Vec::new(), state: HashMap::new() }
+    }
+}
+
+static DEFAULT_RUNTIME: std::sync::OnceLock<Arc<std::sync::Mutex<WorkflowRuntime>>> = std::sync::OnceLock::new();
+
+fn workflow_runtime(ctx: &Context) -> Arc<std::sync::Mutex<WorkflowRuntime>> {
+    match &ctx.workflow {
+        Some(runtime) => runtime.clone(),
+        None => DEFAULT_RUNTIME
+            .get_or_init(|| Arc::new(std::sync::Mutex::new(WorkflowRuntime::new(Box::new(RealClock::default()), 0))))
+            .clone(),
+    }
+}
+
+/// strategy is immediate, fixed, linear, exponential, fibonacci or custom;
+/// delay, step, factor and cap (negative for none) are its parameters.
+pub struct Retry {
+    pub strategy: &'static str,
+    pub delay: i64,
+    pub step: i64,
+    pub factor: i64,
+    pub cap: i64,
+    pub attempts: i64,
+    pub jitter: &'static str,
+    pub when: Option<fn(&mut Context, Value) -> Result<bool>>,
+    pub decide: Option<fn(&mut Context, i64, Value, i64) -> Result<Option<i64>>>,
+}
+
+pub struct StagePolicy {
+    pub stage: &'static str,
+    pub retry: Option<Retry>,
+    pub timeout: i64,
+}
+
+fn fibonacci(n: i64) -> i64 {
+    let (mut a, mut b) = (1i64, 1i64);
+    for _ in 1..n {
+        let next = a + b;
+        a = b;
+        b = next;
+    }
+    a
+}
+
+/// The delay before attempt (2 or more), before jitter.
+pub fn retry_delay(retry: &Retry, attempt: i64) -> i64 {
+    let n = attempt - 1;
+    match retry.strategy {
+        "immediate" => 0,
+        "fixed" => retry.delay,
+        "linear" => retry.delay + retry.step * (n - 1),
+        "exponential" => {
+            let mut delay = retry.delay;
+            for _ in 1..n {
+                delay *= retry.factor;
+                if retry.cap >= 0 && delay >= retry.cap {
+                    return retry.cap;
+                }
+            }
+            if retry.cap >= 0 && delay > retry.cap { retry.cap } else { delay }
+        }
+        "fibonacci" => retry.delay * fibonacci(n),
+        other => panic!("unknown retry strategy: {other}"),
+    }
+}
+
+/// Full: [0, delay]; equal: delay/2 + [0, delay/2]; decorrelated:
+/// [base, previous * 3], capped at delay.
+pub fn jittered(jitter: &str, delay: i64, previous: i64, base: i64, random: &mut SplitMix64) -> i64 {
+    match jitter {
+        "full" => random.below((delay + 1) as u64) as i64,
+        "equal" => {
+            let half = delay / 2;
+            half + random.below((delay - half + 1) as u64) as i64
+        }
+        "decorrelated" => {
+            let high = base.max(previous * 3);
+            delay.min(base + random.below((high - base + 1) as u64) as i64)
+        }
+        _ => delay,
+    }
+}
+
+/// Runs a stage's attempts under its policy; a Left is a failure.
+pub fn run_stage(
+    ctx: &mut Context,
+    policy: &StagePolicy,
+    mut attempt: impl FnMut(&mut Context) -> Result<Value>,
+) -> Result<Value> {
+    let runtime = workflow_runtime(ctx);
+    let event = |kind: &'static str, number: i64, succeeded: bool| TraceEvent { kind, stage: policy.stage.into(), number, succeeded };
+    let (mut number, mut previous) = (1i64, 0i64);
+    loop {
+        runtime.lock().unwrap().trace.push(event("start", number, false));
+        let result = attempt(ctx)?;
+        let failure = match &result {
+            Value::Left(error) => Some((**error).clone()),
+            _ => None,
+        };
+        runtime.lock().unwrap().trace.push(event("finish", number, failure.is_none()));
+        let (Some(failure), Some(retry)) = (failure, &policy.retry) else { return Ok(result) };
+        if retry.attempts > 0 && number >= retry.attempts {
+            return Ok(result);
+        }
+        if let Some(when) = retry.when {
+            if !when(ctx, failure.clone())? {
+                return Ok(result);
+            }
+        }
+        number += 1;
+        let delay = if retry.strategy == "custom" {
+            match (retry.decide.expect("a custom strategy decides"))(ctx, number, failure, previous)? {
+                Some(delay) => delay,
+                None => return Ok(result),
+            }
+        } else {
+            let base = if retry.strategy == "immediate" { 0 } else { retry_delay(retry, 2) };
+            let mut guard = runtime.lock().unwrap();
+            jittered(retry.jitter, retry_delay(retry, number), previous, base, &mut guard.random)
+        };
+        let mut guard = runtime.lock().unwrap();
+        guard.trace.push(event("sleep", delay, true));
+        guard.clock.sleep(delay);
+        previous = delay;
+    }
+}
+
+/// A logical Duration of whole microseconds.
+pub fn duration(micros: i64) -> Value {
+    Value::Data(DURATION_TAG.into(), vec![Value::Integer(BigInt::from(micros))])
+}
+
+/// A RetryDecision's delay, or None to stop.
+pub fn retry_decision(decision: Value) -> Result<Option<i64>> {
+    match decision {
+        Value::Data(tag, mut fields) if tag == "lawspec.time::type::RetryDecision::RetryAfter" && fields.len() == 1 => {
+            match fields.pop().unwrap() {
+                Value::Data(_, mut micros) if micros.len() == 1 => match micros.pop().unwrap() {
+                    Value::Integer(n) => n.to_i64().map(Some).ok_or_else(|| "delay outside i64".into()),
+                    _ => Err("expected Duration microseconds".into()),
+                },
+                _ => Err("expected a Duration".into()),
+            }
+        }
+        Value::Data(..) => Ok(None),
+        _ => Err("expected a RetryDecision".into()),
+    }
 }
 
 /// A Duration, whole microseconds from 0 to about 146 years, is natively a

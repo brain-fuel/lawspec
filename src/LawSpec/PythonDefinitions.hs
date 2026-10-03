@@ -1,6 +1,7 @@
 -- Framework-independent total definitions with checked native Python APIs.
 module LawSpec.PythonDefinitions (emitPythonDefinitions, definitionCalls) where
 
+import LawSpec.Core.Policy
 import LawSpec.Core
 import LawSpec.Core.DefinitionContracts (checkedDefinitionContracts)
 import LawSpec.Core.Evidence (runtimePostconditions)
@@ -68,7 +69,13 @@ emitPythonDefinitions layout bits declarations units = do
                   awaited = if declarationAsync adapter then E.call "ls.await_task" [invocation] else invocation
               schemaCall "from_native" resultType awaited
             _ -> Left "unresolved Python total call"
-      body <- E.renderExpression declarations bits local external (definitionBody d)
+      rendered <- E.renderExpression declarations bits local external (definitionBody d)
+      -- A workflow stage with policies runs under the workflow runtime.
+      body <- case definitionPolicy d of
+        Nothing -> pure rendered
+        Just policy -> do
+          config <- policyDoc policy
+          pure (E.call "ls.run_stage" [D.text "symbols", config, D.text "lambda: " <> rendered])
       -- Arguments and results were checked where they were built, decoded
       -- or drawn; the native wrappers check values crossing from adapters.
       let checks = []
@@ -95,6 +102,34 @@ emitPythonDefinitions layout bits declarations units = do
         D.delimitTrailing 4 "(" ")" (map D.text ("symbols":arguments)))
         (contextual (declarationId (definitionDeclaration d)) (D.joinWith D.hardline
           statements)))
+    evaluator identity = maybe (Left "unresolved Python policy definition") (Right . drop (length ("_definitions." :: String)))
+      (lookup identity callees)
+    policyDoc policy = do
+      retry <- case policyRetry policy of
+        Nothing -> pure (D.text "None")
+        Just r -> do
+          strategy <- case retryStrategy r of
+            Immediate -> pure (tuple [E.quoted "immediate"])
+            Fixed delay -> pure (tuple [E.quoted "fixed", int delay])
+            Linear delay step -> pure (tuple [E.quoted "linear", int delay, int step])
+            Exponential delay factor cap -> pure (tuple [E.quoted "exponential", int delay, int factor, maybe (D.text "None") int cap])
+            Fibonacci delay -> pure (tuple [E.quoted "fibonacci", int delay])
+            Custom decide -> do
+              name <- evaluator decide
+              pure (tuple [E.quoted "custom", D.text ("lambda attempt, error, previous: ls.retry_decision(" ++ name ++
+                "(symbols, attempt, error, ls.DataValue(\"lawspec.time::type::Duration::Duration\", (previous,))))")])
+          condition <- case retryWhen r of
+            Nothing -> pure (D.text "None")
+            Just p -> (\name -> D.text ("lambda error: " ++ name ++ "(symbols, error)")) <$> evaluator p
+          pure (E.call "ls.Retry" [strategy, int (retryAttempts r), E.quoted (jitterName (retryJitter r)), condition])
+      pure (E.call "ls.StagePolicy" [E.quoted (policyStage policy), retry, maybe (D.text "None") int (policyTimeout policy)])
+    tuple items = D.text "(" <> D.joinWith (D.text ", ") items <> D.text ",)"
+    int n = D.text (show n)
+    jitterName j = case j of
+      NoJitter -> "none"
+      FullJitter -> "full"
+      EqualJitter -> "equal"
+      DecorrelatedJitter -> "decorrelated"
     nativeUnit unit = do
       wrappers <- mapM native (unitDefinitions unit)
       let path = "src/lawspec_definitions/" ++ map (\c -> if c == '.' then '/' else c) (idText (unitId unit)) ++ ".py"

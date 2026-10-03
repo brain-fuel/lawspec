@@ -39,6 +39,7 @@ waitlist :: SignupError -> Either SignupError Account
 -- SignupError; checkAge fails with a reason, which mapError turns into one.
 workflow register :: Signup -> Either SignupError Account is
   checkName :: Signup -> Either SignupError Signup
+    retry exponential 100ms 2 3 max 1s jitter full
   then checkAge :: Signup -> Either Text Signup
   mapError explain
   then openAccount :: Signup -> Either SignupError Account

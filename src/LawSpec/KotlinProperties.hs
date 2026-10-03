@@ -69,7 +69,8 @@ emitTests Config{..} unit laws = do
     separate ([seedDoc, Helpers.assertionDoc, Helpers.dataHelpersDoc machineBits generator] ++
       map contract (contracts unit)) <> D.hardline <> D.hardline <>
     text ("class " ++ className ++ "LawSpecTest : StringSpec(") <>
-    block (separate bodies) <> text ")" <> D.hardline
+    -- Workflows wait on a virtual clock under test.
+    block (separate (text "lawspec.runtime.LawSpecRuntime.useVirtualClock(0)" : bodies)) <> text ")" <> D.hardline
   where
     -- LAWSPEC_SEED fixes Kotest's seed, so a run can be repeated exactly
     -- (lawspec test records the seed of every passing run).
