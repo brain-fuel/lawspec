@@ -2402,78 +2402,71 @@ public final class LawSpecRuntime {
     }
   }
 
-  // Parallel runs of a shared model. A case is a sequential prefix and two
-  // branches, generated so that the model allows every interleaving of the
-  // branches. The system runs the branches at the same time, recording when
-  // each call starts and returns; the history must be linearizable: some
-  // interleaving that keeps every call after those that returned before it
-  // started must give every result the model gives, and leave the state the
-  // model leaves. A race breaks this for some schedules, so each case runs
-  // several times.
+  // Parallel runs of a shared model. A case is a sequential prefix and one
+  // branch per thread, generated so that the model allows every interleaving
+  // of the branches (a search over each thread's position and the model
+  // state, memoized). The system runs the branches at the same time, each
+  // call's start and return recorded on one counter, with random yields and
+  // short sleeps around calls to shake out rare schedules. The history must
+  // be linearizable: some interleaving that keeps every call after those that
+  // returned before it started must give every result the model gives and
+  // leave the state it leaves (a Wing-Gong search, memoized on the same
+  // positions and model state). Each case runs several times.
 
-  /** A step of a branch: the branch and the step's position in it. */
-  private record BranchStep(int branch, int step) {}
+  private static final int THREADS = 3;
+  private static final int BRANCH = 5;
 
   private record ParallelCase(ModelRun prefix, List<List<ModelStep>> branches) {}
 
   /** When a branch's call started and returned, and what it returned. */
   private record Call(long called, long returned, Value result) {}
 
-  /** Every merge of two sequences of branch steps, a first. */
-  private static List<List<BranchStep>> interleavings(List<BranchStep> a, List<BranchStep> b) {
-    var out = new ArrayList<List<BranchStep>>();
-    if (a.isEmpty()) {
-      out.add(new ArrayList<BranchStep>(b));
-      return out;
-    }
-    if (b.isEmpty()) {
-      out.add(new ArrayList<BranchStep>(a));
-      return out;
-    }
-    for (var rest : interleavings(a.subList(1, a.size()), b)) {
-      var order = new ArrayList<BranchStep>();
-      order.add(a.get(0));
-      order.addAll(rest);
-      out.add(order);
-    }
-    for (var rest : interleavings(a, b.subList(1, b.size()))) {
-      var order = new ArrayList<BranchStep>();
-      order.add(b.get(0));
-      order.addAll(rest);
-      out.add(order);
-    }
-    return out;
+  private static String searchKey(int[] positions, Value state) {
+    return Arrays.toString(positions) + "|" + render(state);
   }
 
-  private static List<List<BranchStep>> branchOrders(List<List<ModelStep>> branches) {
-    var ops = new ArrayList<List<BranchStep>>();
-    for (int i = 0; i < branches.size(); i++) {
-      var op = new ArrayList<BranchStep>();
-      for (int k = 0; k < branches.get(i).size(); k++) op.add(new BranchStep(i, k));
-      ops.add(op);
-    }
-    return interleavings(ops.get(0), ops.get(1));
+  private static int[] advanced(int[] positions, int i) {
+    var next = positions.clone();
+    next[i]++;
+    return next;
   }
 
   /** Whether the model allows the prefix then every interleaving. */
   private static boolean parallelAllowed(
       Model model, ModelRun prefix, List<List<ModelStep>> branches) {
     Map<String, Object> symbols = new java.util.HashMap<String, Object>();
-    List<Value> states;
+    Value state;
     try {
-      states = simulate(model, symbols, prefix);
+      var states = simulate(model, symbols, prefix);
+      state = states.get(states.size() - 1);
     } catch (InvalidStep e) {
       return false;
     }
-    for (var order : branchOrders(branches)) {
-      var state = states.get(states.size() - 1);
-      try {
-        for (var o : order) {
-          var s = branches.get(o.branch()).get(o.step());
-          state = stepModel(model.commands.get(s.index()), symbols, s.args(), state).state();
+    return allowedFrom(
+        model, symbols, branches, new int[branches.size()], state, new java.util.HashSet<String>());
+  }
+
+  private static boolean allowedFrom(
+      Model model,
+      Map<String, Object> symbols,
+      List<List<ModelStep>> branches,
+      int[] positions,
+      Value state,
+      java.util.Set<String> seen) {
+    if (!seen.add(searchKey(positions, state))) return true;
+    for (int i = 0; i < branches.size(); i++) {
+      var branch = branches.get(i);
+      int k = positions[i];
+      if (k < branch.size()) {
+        var s = branch.get(k);
+        Value after;
+        try {
+          after = stepModel(model.commands.get(s.index()), symbols, s.args(), state).state();
+        } catch (InvalidStep e) {
+          return false;
         }
-      } catch (InvalidStep e) {
-        return false;
+        if (!allowedFrom(model, symbols, branches, advanced(positions, i), after, seen))
+          return false;
       }
     }
     return true;
@@ -2497,25 +2490,39 @@ public final class LawSpecRuntime {
     return steps;
   }
 
-  private static ParallelCase generateParallel(Model model, SplitMix64 random, long size) {
+  private static ParallelCase generateParallel(
+      Model model, SplitMix64 random, long size, int threads, int branchLength) {
     var prefix = generateRun(model, random, random.below(4), size);
     Value state;
     try {
       var states = simulate(model, new java.util.HashMap<String, Object>(), prefix);
       state = states.get(states.size() - 1);
     } catch (InvalidStep e) {
-      return new ParallelCase(prefix, List.of(List.of(), List.of()));
+      var empty = new ArrayList<List<ModelStep>>();
+      for (int i = 0; i < threads; i++) empty.add(List.of());
+      return new ParallelCase(prefix, empty);
     }
     var branches = new ArrayList<List<ModelStep>>();
-    for (int i = 0; i < 2; i++)
-      branches.add(generateBranch(model, random, state, 1 + random.below(4), size));
-    // Drop the last steps until every interleaving is allowed.
+    for (int i = 0; i < threads; i++)
+      branches.add(generateBranch(model, random, state, 1 + random.below(branchLength), size));
+    // Drop the last step of the longest branch (the first, among equals)
+    // until every interleaving is allowed.
     while (!parallelAllowed(model, prefix, branches)) {
-      int longest = branches.get(1).size() > branches.get(0).size() ? 1 : 0;
+      int longest = 0;
+      for (int i = 1; i < threads; i++)
+        if (branches.get(i).size() > branches.get(longest).size()) longest = i;
       var b = branches.get(longest);
-      branches.set(longest, b.subList(0, b.size() - 1));
+      branches.set(longest, b.subList(0, Math.max(0, b.size() - 1)));
     }
     return new ParallelCase(prefix, branches);
+  }
+
+  /** Nothing, a yield, or a sleep of 10 or 100 microseconds. */
+  private static void perturb(SplitMix64 random) {
+    long choice = random.below(4);
+    if (choice == 1) Thread.yield();
+    else if (choice >= 2)
+      java.util.concurrent.locks.LockSupport.parkNanos(choice == 2 ? 10_000L : 100_000L);
   }
 
   private static String raised(Exception e) {
@@ -2523,8 +2530,12 @@ public final class LawSpecRuntime {
     return "raised " + e.getClass().getSimpleName() + ": " + (message == null ? "" : message);
   }
 
+  private static String branchName(int i) {
+    return String.valueOf((char) ('A' + i));
+  }
+
   /** null when the history is linearizable; otherwise what went wrong. */
-  private static String executeParallel(Model model, ParallelCase c) {
+  private static String executeParallel(Model model, ParallelCase c, long shake) {
     var prefix = c.prefix();
     var branches = c.branches();
     Map<String, Object> symbols = new java.util.HashMap<String, Object>();
@@ -2549,6 +2560,7 @@ public final class LawSpecRuntime {
     var threads = new ArrayList<Thread>();
     for (int i = 0; i < branches.size(); i++) {
       final int branch = i;
+      final var random = new SplitMix64(shake ^ ((long) (i + 1) * 0x9E3779B97F4A7C15L));
       threads.add(
           new Thread(
               () -> {
@@ -2564,6 +2576,7 @@ public final class LawSpecRuntime {
                   var command = model.commands.get(s.index());
                   var full = new ArrayList<Value>(s.args());
                   full.add(command.state, state);
+                  perturb(random);
                   long called = clock.incrementAndGet();
                   Value result;
                   try {
@@ -2573,6 +2586,7 @@ public final class LawSpecRuntime {
                     result = null;
                   }
                   history.get(branch)[k] = new Call(called, clock.incrementAndGet(), result);
+                  perturb(random);
                 }
               }));
     }
@@ -2595,16 +2609,21 @@ public final class LawSpecRuntime {
     var expected = states.get(states.size() - 1);
     var finalState =
         model.abstractState != null ? model.abstractState.apply(symbols, List.of(state)) : null;
-    for (var order : branchOrders(branches)) {
-      if (!respectsTime(order, history)) continue;
-      if (linearizes(model, symbols, branches, history, order, expected, finalState, state))
-        return null;
-    }
+    if (linearizable(
+        model,
+        symbols,
+        branches,
+        history,
+        new int[branches.size()],
+        expected,
+        finalState,
+        state,
+        new java.util.HashSet<String>())) return null;
     var observed = new ArrayList<String>();
     for (int i = 0; i < branches.size(); i++)
       for (int k = 0; k < branches.get(i).size(); k++)
         observed.add(
-            "AB".charAt(i)
+            branchName(i)
                 + ": "
                 + model.commands.get(branches.get(i).get(k).index()).name
                 + "() returned "
@@ -2614,51 +2633,70 @@ public final class LawSpecRuntime {
         + ")";
   }
 
-  /** No call is placed before one that returned before it started. */
-  private static boolean respectsTime(List<BranchStep> order, List<Call[]> history) {
-    for (int x = 0; x < order.size(); x++)
-      for (int y = x + 1; y < order.size(); y++) {
-        var a = order.get(x);
-        var b = order.get(y);
-        if (history.get(b.branch())[b.step()].returned()
-            < history.get(a.branch())[a.step()].called()) return false;
-      }
-    return true;
-  }
-
-  private static boolean linearizes(
+  /**
+   * A Wing-Gong search: linearize, next, a call no pending call on another
+   * thread returned before; memoized on positions and the model state.
+   */
+  private static boolean linearizable(
       Model model,
       Map<String, Object> symbols,
       List<List<ModelStep>> branches,
       List<Call[]> history,
-      List<BranchStep> order,
-      Value expected,
+      int[] positions,
+      Value modelState,
       Value finalState,
-      Value state) {
-    try {
-      for (var o : order) {
-        var s = branches.get(o.branch()).get(o.step());
-        var command = model.commands.get(s.index());
-        var stepped = stepModel(command, symbols, s.args(), expected);
-        expected = stepped.state();
-        if (!command.unit
-            && compareValues(history.get(o.branch())[o.step()].result(), stepped.result()) != 0)
-          return false;
+      Value state,
+      java.util.Set<String> seen) {
+    if (!seen.add(searchKey(positions, modelState))) return false;
+    boolean done = true;
+    for (int i = 0; i < branches.size(); i++)
+      if (positions[i] != branches.get(i).size()) done = false;
+    if (done) {
+      if (finalState != null && compareValues(finalState, modelState) != 0) return false;
+      for (int k = 0; k < model.invariants.size(); k++) {
+        var subject = model.invariantKinds.get(k).equals("model") ? modelState : state;
+        if (!truth(model.invariants.get(k).apply(symbols, List.of(subject)))) return false;
       }
-    } catch (InvalidStep e) {
-      return false;
+      return true;
     }
-    if (finalState != null && compareValues(finalState, expected) != 0) return false;
-    for (int k = 0; k < model.invariants.size(); k++) {
-      var subject = model.invariantKinds.get(k).equals("model") ? expected : state;
-      if (!truth(model.invariants.get(k).apply(symbols, List.of(subject)))) return false;
+    for (int i = 0; i < branches.size(); i++) {
+      var branch = branches.get(i);
+      int k = positions[i];
+      if (k == branch.size()) continue;
+      long called = history.get(i)[k].called();
+      boolean blocked = false;
+      for (int j = 0; j < branches.size(); j++)
+        if (j != i
+            && positions[j] < branches.get(j).size()
+            && history.get(j)[positions[j]].returned() < called) blocked = true;
+      if (blocked) continue;
+      var s = branch.get(k);
+      var command = model.commands.get(s.index());
+      Stepped stepped;
+      try {
+        stepped = stepModel(command, symbols, s.args(), modelState);
+      } catch (InvalidStep e) {
+        continue;
+      }
+      if (!command.unit && compareValues(history.get(i)[k].result(), stepped.result()) != 0)
+        continue;
+      if (linearizable(
+          model,
+          symbols,
+          branches,
+          history,
+          advanced(positions, i),
+          stepped.state(),
+          finalState,
+          state,
+          seen)) return true;
     }
-    return true;
+    return false;
   }
 
-  private static String parallelFails(Model model, ParallelCase c, int repeats) {
-    for (int n = 0; n < repeats; n++) {
-      var failure = executeParallel(model, c);
+  private static String parallelFails(Model model, ParallelCase c, int repeats, long shake) {
+    for (int attempt = 0; attempt < repeats; attempt++) {
+      var failure = executeParallel(model, c, shake + attempt);
       if (failure != null) return failure;
     }
     return null;
@@ -2673,14 +2711,15 @@ public final class LawSpecRuntime {
   private record ShrunkParallel(ParallelCase c, String failure) {}
 
   private static ShrunkParallel shrinkParallel(
-      Model model, ParallelCase c, String failure, int repeats, int budget) {
+      Model model, ParallelCase c, String failure, int repeats, int budget, long shake) {
     while (budget > 0) {
       var prefix = c.prefix();
       var branches = c.branches();
       var candidates = new ArrayList<ParallelCase>();
       var steps = prefix.steps();
       for (int k = 0; k < steps.size(); k++)
-        candidates.add(new ParallelCase(new ModelRun(prefix.startArgs(), without(steps, k)), branches));
+        candidates.add(
+            new ParallelCase(new ModelRun(prefix.startArgs(), without(steps, k)), branches));
       for (int i = 0; i < branches.size(); i++)
         for (int k = 0; k < branches.get(i).size(); k++) {
           var shorter = new ArrayList<List<ModelStep>>(branches);
@@ -2695,7 +2734,7 @@ public final class LawSpecRuntime {
           break;
         }
         if (!parallelAllowed(model, candidate.prefix(), candidate.branches())) continue;
-        var found = parallelFails(model, candidate, repeats);
+        var found = parallelFails(model, candidate, repeats, shake);
         if (found != null) {
           c = candidate;
           failure = found;
@@ -2716,11 +2755,15 @@ public final class LawSpecRuntime {
   }
 
   private static String describeParallel(Model model, ParallelCase c) {
+    var parts = new ArrayList<String>();
+    var branches = c.branches();
+    for (int i = 0; i < branches.size(); i++)
+      parts.add(branchName(i) + ": " + describeBranch(model, branches.get(i)));
     return describeRun(model, c.prefix())
-        + ", then A: "
-        + describeBranch(model, c.branches().get(0))
-        + " and B: "
-        + describeBranch(model, c.branches().get(1))
+        + ", then "
+        + String.join(", ", parts.subList(0, parts.size() - 1))
+        + " and "
+        + parts.get(parts.size() - 1)
         + " at the same time";
   }
 
@@ -2730,17 +2773,31 @@ public final class LawSpecRuntime {
    */
   public static void checkModelParallel(Model model) {
     String text = System.getenv("LAWSPEC_SEED");
-    checkModelParallel(model, 50, 20, 200, text == null ? 0 : Long.parseUnsignedLong(text.trim()));
+    checkModelParallel(
+        model, 50, 10, 300, text == null ? 0 : Long.parseUnsignedLong(text.trim()), THREADS, BRANCH);
   }
 
   public static void checkModelParallel(
       Model model, int cases, int repeats, int maxShrinks, long seed) {
+    checkModelParallel(model, cases, repeats, maxShrinks, seed, THREADS, BRANCH);
+  }
+
+  public static void checkModelParallel(
+      Model model,
+      int cases,
+      int repeats,
+      int maxShrinks,
+      long seed,
+      int threads,
+      int branchLength) {
     var random = new SplitMix64(seed ^ 0x5BD1E995L);
     for (int n = 0; n < cases; n++) {
-      var c = generateParallel(model, random, 1 + n % 8);
-      var failure = parallelFails(model, c, repeats);
+      var c = generateParallel(model, random, 1 + n % 8, threads, branchLength);
+      long shake = random.next();
+      var failure = parallelFails(model, c, repeats, shake);
       if (failure != null) {
-        var shrunk = shrinkParallel(model, c, failure, Math.max(2, repeats / 2), maxShrinks);
+        var shrunk =
+            shrinkParallel(model, c, failure, Math.max(2, repeats / 2), maxShrinks, shake);
         throw new AssertionError(
             "model "
                 + model.name

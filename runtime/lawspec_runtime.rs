@@ -3297,15 +3297,20 @@ pub fn check_model(model: &Model) -> std::result::Result<(), String> {
     Ok(())
 }
 
-// Parallel runs of a shared model. A case is a sequential prefix and two
-// branches, generated so that the model allows every interleaving of the
-// branches. The system runs the branches at the same time, each on its own
-// thread, recording when each call starts and returns; the history must be
-// linearizable: some interleaving that keeps every call after those that
-// returned before it started must give every result the model gives, and
-// leave the state the model leaves. A race breaks this for some schedules,
-// so each case runs several times. The draws, candidate order and messages
-// follow the Python reference.
+// Parallel runs of a shared model. A case is a sequential prefix and one
+// branch per thread, generated so that the model allows every interleaving
+// of the branches (a search over each thread's position and the model
+// state, memoized). The system runs the branches at the same time, each
+// call's start and return recorded on one counter, with random yields and
+// short sleeps around calls to shake out rare schedules. The history must
+// be linearizable: some interleaving that keeps every call after those that
+// returned before it started must give every result the model gives and
+// leave the state it leaves (a Wing-Gong search, memoized on the same
+// positions and model state). Each case runs several times. The draws,
+// candidate order and messages follow the Python reference.
+
+const PARALLEL_THREADS: usize = 3;
+const PARALLEL_BRANCH: u64 = 5;
 
 // A branch: each command's index and arguments.
 type ModelBranch = Vec<(usize, Vec<Value>)>;
@@ -3313,45 +3318,25 @@ type ParallelCase = (ModelRun, Vec<ModelBranch>);
 // One call of a branch: when it started, when it returned, and its result.
 type ParallelCall = (u64, u64, Value);
 
-// Every merge of two sequences of branch steps, a first.
-fn interleavings<T: Clone>(a: &[T], b: &[T]) -> Vec<Vec<T>> {
-    if a.is_empty() {
-        return vec![b.to_vec()];
-    }
-    if b.is_empty() {
-        return vec![a.to_vec()];
-    }
-    let mut out = Vec::new();
-    for rest in interleavings(&a[1..], b) {
-        let mut order = vec![a[0].clone()];
-        order.extend(rest);
-        out.push(order);
-    }
-    for rest in interleavings(a, &b[1..]) {
-        let mut order = vec![b[0].clone()];
-        order.extend(rest);
-        out.push(order);
-    }
-    out
+fn branch_name(i: usize) -> char {
+    (b'A' + i as u8) as char
 }
 
-fn branch_orders(branches: &[ModelBranch]) -> Vec<Vec<(usize, usize)>> {
-    let ops: Vec<Vec<(usize, usize)>> =
-        branches.iter().enumerate().map(|(i, b)| (0..b.len()).map(|k| (i, k)).collect()).collect();
-    interleavings(&ops[0], &ops[1])
+// Positions with thread i's moved one step on.
+fn advanced(positions: &[usize], i: usize) -> Vec<usize> {
+    let mut next = positions.to_vec();
+    next[i] += 1;
+    next
 }
 
-// No call is placed before one that returned before it started.
-fn respects_time(order: &[(usize, usize)], history: &[Vec<ParallelCall>]) -> bool {
-    for x in 0..order.len() {
-        for y in x + 1..order.len() {
-            let ((i, k), (j, l)) = (order[x], order[y]);
-            if history[j][l].1 < history[i][k].0 {
-                return false;
-            }
-        }
+/// Nothing, a yield, or a sleep of 10 or 100 microseconds.
+fn perturb(random: &mut SplitMix64) {
+    match random.below(4) {
+        0 => {}
+        1 => std::thread::yield_now(),
+        2 => std::thread::sleep(std::time::Duration::from_micros(10)),
+        _ => std::thread::sleep(std::time::Duration::from_micros(100)),
     }
-    true
 }
 
 impl<'a> Machine<'a> {
@@ -3380,14 +3365,32 @@ impl<'a> Machine<'a> {
         let Some(start) = self.simulate_state(&mut ctx, prefix) else {
             return false;
         };
-        for order in branch_orders(branches) {
-            let mut state = start.clone();
-            for (i, k) in order {
-                let (index, args) = &branches[i][k];
-                match step_model(&self.commands[*index], &mut ctx, args, state) {
-                    Ok((next, _)) => state = next,
+        let mut seen = std::collections::HashSet::new();
+        self.allowed_from(&mut ctx, branches, &mut seen, vec![0; branches.len()], start)
+    }
+
+    fn allowed_from(
+        &self,
+        ctx: &mut Context,
+        branches: &[ModelBranch],
+        seen: &mut std::collections::HashSet<(Vec<usize>, String)>,
+        positions: Vec<usize>,
+        state: Value,
+    ) -> bool {
+        if !seen.insert((positions.clone(), render(&state))) {
+            return true;
+        }
+        for (i, branch) in branches.iter().enumerate() {
+            let k = positions[i];
+            if k < branch.len() {
+                let (index, args) = &branch[k];
+                let after = match step_model(&self.commands[*index], ctx, args, state.clone()) {
+                    Ok((next, _)) => next,
                     Err(ModelFault::Invalid) => return false,
                     Err(ModelFault::Error(e)) => panic!("model {}: {e}", self.name),
+                };
+                if !self.allowed_from(ctx, branches, seen, advanced(&positions, i), after) {
+                    return false;
                 }
             }
         }
@@ -3411,27 +3414,33 @@ impl<'a> Machine<'a> {
         steps
     }
 
-    fn generate_parallel(&self, random: &mut SplitMix64, size: i64) -> ParallelCase {
+    fn generate_parallel(&self, random: &mut SplitMix64, size: i64, threads: usize, branch_length: u64) -> ParallelCase {
         let length = random.below(4);
         let prefix = self.generate_run(random, length, size);
         let Some(state) = self.simulate_state(&mut Context::testing(), &prefix) else {
-            return (prefix, vec![Vec::new(), Vec::new()]);
+            return (prefix, vec![Vec::new(); threads]);
         };
         let mut branches = Vec::new();
-        for _ in 0..2 {
-            let length = 1 + random.below(4);
+        for _ in 0..threads {
+            let length = 1 + random.below(branch_length);
             branches.push(self.generate_branch(random, state.clone(), length, size));
         }
-        // Drop the last steps until every interleaving is allowed.
+        // Drop the last step of the longest branch (the first, among equals)
+        // until every interleaving is allowed.
         while !self.parallel_allowed(&prefix, &branches) {
-            let longest = if branches[1].len() > branches[0].len() { 1 } else { 0 };
+            let mut longest = 0;
+            for i in 1..threads {
+                if branches[i].len() > branches[longest].len() {
+                    longest = i;
+                }
+            }
             branches[longest].pop();
         }
         (prefix, branches)
     }
 
     /// None when the history is linearizable; otherwise what went wrong.
-    fn execute_parallel(&self, case: &ParallelCase) -> Option<String> {
+    fn execute_parallel(&self, case: &ParallelCase, shake: u64) -> Option<String> {
         let (prefix, branches) = case;
         let mut ctx = Context::testing();
         let state = match self.run_prefix(&mut ctx, prefix) {
@@ -3460,12 +3469,15 @@ impl<'a> Machine<'a> {
         let history: Vec<Vec<ParallelCall>> = std::thread::scope(|scope| {
             let handles: Vec<_> = calls
                 .into_iter()
-                .map(|branch| {
+                .enumerate()
+                .map(|(i, branch)| {
                     let (tick, errors) = (&tick, &errors);
                     scope.spawn(move || {
                         let mut own = Context::testing();
+                        let mut random = SplitMix64::new(shake ^ ((i as u64 + 1).wrapping_mul(0x9E3779B97F4A7C15)));
                         let mut out = Vec::new();
                         for (run, name, full) in branch {
+                            perturb(&mut random);
                             let called = tick();
                             let result = match run(&mut own, full) {
                                 Ok(result) => result,
@@ -3475,6 +3487,7 @@ impl<'a> Machine<'a> {
                                 }
                             };
                             out.push((called, tick(), result));
+                            perturb(&mut random);
                         }
                         out
                     })
@@ -3493,20 +3506,17 @@ impl<'a> Machine<'a> {
             },
             None => None,
         };
-        for order in branch_orders(branches) {
-            if !respects_time(&order, &history) {
-                continue;
-            }
-            if self.linearizes(&mut ctx, branches, &history, &order, expected.clone(), fin.as_ref(), &state) {
-                return None;
-            }
+        let mut seen = std::collections::HashSet::new();
+        let positions = vec![0; branches.len()];
+        if self.linearizes(&mut ctx, branches, &history, &mut seen, positions, expected, fin.as_ref(), &state) {
+            return None;
         }
         let mut observed = Vec::new();
         for (i, branch) in branches.iter().enumerate() {
             for (k, (index, _)) in branch.iter().enumerate() {
                 observed.push(format!(
                     "{}: {}() returned {}",
-                    ["A", "B"][i],
+                    branch_name(i),
                     self.commands[*index].name,
                     render(&history[i][k].2)
                 ));
@@ -3527,51 +3537,76 @@ impl<'a> Machine<'a> {
         Ok(state)
     }
 
+    /// A Wing-Gong search: linearize, next, a call no pending call on
+    /// another thread returned before; memoized on positions and the model
+    /// state.
     #[allow(clippy::too_many_arguments)]
     fn linearizes(
         &self,
         ctx: &mut Context,
         branches: &[ModelBranch],
         history: &[Vec<ParallelCall>],
-        order: &[(usize, usize)],
-        mut expected: Value,
+        seen: &mut std::collections::HashSet<(Vec<usize>, String)>,
+        positions: Vec<usize>,
+        model_state: Value,
         fin: Option<&Value>,
         state: &Value,
     ) -> bool {
-        for &(i, k) in order {
-            let (index, args) = &branches[i][k];
-            let command = &self.commands[*index];
-            let wanted = match step_model(command, ctx, args, expected) {
-                Ok((next, wanted)) => {
-                    expected = next;
-                    wanted
+        if !seen.insert((positions.clone(), render(&model_state))) {
+            return false;
+        }
+        if positions.iter().zip(branches).all(|(k, b)| *k == b.len()) {
+            if let Some(fin) = fin {
+                if !matches!(compare_values(fin, &model_state), Ok(std::cmp::Ordering::Equal)) {
+                    return false;
                 }
-                Err(ModelFault::Invalid) => return false,
+            }
+            for (kind, invariant) in &self.invariants {
+                let subject = if kind == "model" { &model_state } else { state };
+                if !matches!(invariant(ctx, vec![subject.clone()]).and_then(|v| v.boolean()), Ok(true)) {
+                    return false;
+                }
+            }
+            return true;
+        }
+        for (i, branch) in branches.iter().enumerate() {
+            let k = positions[i];
+            if k == branch.len() {
+                continue;
+            }
+            let called = history[i][k].0;
+            if (0..branches.len()).any(|j| j != i && positions[j] < branches[j].len() && history[j][positions[j]].1 < called) {
+                continue;
+            }
+            let (index, args) = &branch[k];
+            let command = &self.commands[*index];
+            let (after, wanted) = match step_model(command, ctx, args, model_state.clone()) {
+                Ok(stepped) => stepped,
+                Err(ModelFault::Invalid) => continue,
                 Err(ModelFault::Error(e)) => panic!("model {}: {e}", self.name),
             };
             if !command.unit && !matches!(compare_values(&history[i][k].2, &wanted), Ok(std::cmp::Ordering::Equal)) {
-                return false;
+                continue;
+            }
+            if self.linearizes(ctx, branches, history, seen, advanced(&positions, i), after, fin, state) {
+                return true;
             }
         }
-        if let Some(fin) = fin {
-            if !matches!(compare_values(fin, &expected), Ok(std::cmp::Ordering::Equal)) {
-                return false;
-            }
-        }
-        for (kind, invariant) in &self.invariants {
-            let subject = if kind == "model" { &expected } else { state };
-            if !matches!(invariant(ctx, vec![subject.clone()]).and_then(|v| v.boolean()), Ok(true)) {
-                return false;
-            }
-        }
-        true
+        false
     }
 
-    fn parallel_fails(&self, case: &ParallelCase, repeats: u64) -> Option<String> {
-        (0..repeats).find_map(|_| self.execute_parallel(case))
+    fn parallel_fails(&self, case: &ParallelCase, repeats: u64, shake: u64) -> Option<String> {
+        (0..repeats).find_map(|attempt| self.execute_parallel(case, shake.wrapping_add(attempt)))
     }
 
-    fn shrink_parallel(&self, mut case: ParallelCase, mut failure: String, repeats: u64, mut budget: i64) -> (ParallelCase, String) {
+    fn shrink_parallel(
+        &self,
+        mut case: ParallelCase,
+        mut failure: String,
+        repeats: u64,
+        mut budget: i64,
+        shake: u64,
+    ) -> (ParallelCase, String) {
         'shrinking: while budget > 0 {
             let (prefix, branches) = &case;
             let mut candidates: Vec<ParallelCase> = Vec::new();
@@ -3596,7 +3631,7 @@ impl<'a> Machine<'a> {
                 if !self.parallel_allowed(&candidate.0, &candidate.1) {
                     continue;
                 }
-                if let Some(found) = self.parallel_fails(&candidate, repeats) {
+                if let Some(found) = self.parallel_fails(&candidate, repeats, shake) {
                     case = candidate;
                     failure = found;
                     improved = true;
@@ -3621,27 +3656,38 @@ impl<'a> Machine<'a> {
                 .join("; ");
             if text.is_empty() { "nothing".to_string() } else { text }
         };
-        format!(
-            "{}, then A: {} and B: {} at the same time",
-            self.describe_run(&case.0),
-            describe(&case.1[0]),
-            describe(&case.1[1])
-        )
+        let parts: Vec<String> =
+            case.1.iter().enumerate().map(|(i, b)| format!("{}: {}", branch_name(i), describe(b))).collect();
+        let (last, rest) = parts.split_last().map(|(l, r)| (l.as_str(), r)).unwrap_or(("", &[]));
+        format!("{}, then {} and {} at the same time", self.describe_run(&case.0), rest.join(", "), last)
     }
 }
 
-/// Checks a shared model's histories under concurrency (50 cases, each run
-/// 20 times, seeded by LAWSPEC_SEED); a failure names the smallest failing
-/// case found.
+/// Checks a shared model's histories under concurrency (50 cases of three
+/// branches, each case run 10 times, seeded by LAWSPEC_SEED); a failure
+/// names the smallest failing case found.
 pub fn check_model_parallel(model: &Model) -> std::result::Result<(), String> {
-    let (cases, repeats, max_shrinks) = (50u64, 20u64, 200i64);
     let seed = std::env::var("LAWSPEC_SEED").ok().and_then(|s| s.trim().parse::<u64>().ok()).unwrap_or(0);
+    check_model_parallel_with(model, 50, 10, 300, seed, PARALLEL_THREADS, PARALLEL_BRANCH)
+}
+
+/// check_model_parallel with every parameter given.
+pub fn check_model_parallel_with(
+    model: &Model,
+    cases: u64,
+    repeats: u64,
+    max_shrinks: i64,
+    seed: u64,
+    threads: usize,
+    branch_length: u64,
+) -> std::result::Result<(), String> {
     let machine = Machine::new(model);
     let mut random = SplitMix64::new(seed ^ 0x5BD1E995);
     for case_number in 0..cases {
-        let case = machine.generate_parallel(&mut random, 1 + (case_number % 8) as i64);
-        if let Some(failure) = machine.parallel_fails(&case, repeats) {
-            let (case, failure) = machine.shrink_parallel(case, failure, (repeats / 2).max(2), max_shrinks);
+        let case = machine.generate_parallel(&mut random, 1 + (case_number % 8) as i64, threads, branch_length);
+        let shake = random.next();
+        if let Some(failure) = machine.parallel_fails(&case, repeats, shake) {
+            let (case, failure) = machine.shrink_parallel(case, failure, (repeats / 2).max(2), max_shrinks, shake);
             return Err(format!(
                 "model {} is not linearizable: {}: {}",
                 machine.name,

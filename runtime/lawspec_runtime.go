@@ -8,6 +8,7 @@ import (
 	"math/rand"
 	"os"
 	"reflect"
+	goruntime "runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -2950,18 +2951,25 @@ func lsCheckModel(model LawSpecModel, cases, maxLength, maxShrinks int, seed uin
 	return nil
 }
 
-// Parallel runs of a shared model. A case is a sequential prefix and two
-// branches, generated so that the model allows every interleaving of the
-// branches. The system runs the branches at the same time, recording when
-// each call starts and returns; the history must be linearizable: some
-// interleaving that keeps every call after those that returned before it
-// started must give every result the model gives, and leave the state the
-// model leaves. A race breaks this for some schedules, so each case runs
-// several times.
+// Parallel runs of a shared model. A case is a sequential prefix and one
+// branch per thread, generated so that the model allows every interleaving
+// of the branches (a search over each thread's position and the model state,
+// memoized). The system runs the branches at the same time, each call's start
+// and return recorded on one counter, with random yields and short sleeps
+// around calls to shake out rare schedules. The history must be
+// linearizable: some interleaving that keeps every call after those that
+// returned before it started must give every result the model gives and
+// leave the state it leaves (a Wing-Gong search, memoized on the same
+// positions and model state). Each case runs several times.
+
+const (
+	lawSpecParallelThreads = 3
+	lawSpecParallelBranch  = 5
+)
 
 type lawSpecParallelCase struct {
 	prefix   lawSpecModelRun
-	branches [2][]lawSpecModelStep
+	branches [][]lawSpecModelStep
 }
 
 // lawSpecCall is a branch call's history: when it started and returned on
@@ -2969,34 +2977,6 @@ type lawSpecParallelCase struct {
 type lawSpecCall struct {
 	called, returned int64
 	result           LawSpecValue
-}
-
-// lsInterleavings is every merge of two sequences of branch steps, a first.
-func lsInterleavings(a, b [][2]int) [][][2]int {
-	if len(a) == 0 {
-		return [][][2]int{append([][2]int{}, b...)}
-	}
-	if len(b) == 0 {
-		return [][][2]int{append([][2]int{}, a...)}
-	}
-	out := [][][2]int{}
-	for _, rest := range lsInterleavings(a[1:], b) {
-		out = append(out, append([][2]int{a[0]}, rest...))
-	}
-	for _, rest := range lsInterleavings(a, b[1:]) {
-		out = append(out, append([][2]int{b[0]}, rest...))
-	}
-	return out
-}
-
-func lsBranchOrders(branches [2][]lawSpecModelStep) [][][2]int {
-	ops := [2][][2]int{}
-	for i, b := range branches {
-		for k := range b {
-			ops[i] = append(ops[i], [2]int{i, k})
-		}
-	}
-	return lsInterleavings(ops[0], ops[1])
 }
 
 // simulateState is the model's state after the run, panicking lawSpecInvalid
@@ -3015,6 +2995,18 @@ func (m *lawSpecMachine) simulateState(symbols map[string]*LawSpecSymbol, run la
 	return state
 }
 
+// lsAdvanced is the positions with thread i one step further.
+func lsAdvanced(positions []int, i int) []int {
+	next := append([]int{}, positions...)
+	next[i]++
+	return next
+}
+
+// lsPositionsKey is the memo key of the threads' positions and a model state.
+func lsPositionsKey(positions []int, state LawSpecValue) string {
+	return fmt.Sprint(positions) + "|" + lsRender(state)
+}
+
 // parallelAllowed is whether the model allows the prefix then every
 // interleaving of the branches.
 func (m *lawSpecMachine) parallelAllowed(c lawSpecParallelCase) bool {
@@ -3023,18 +3015,30 @@ func (m *lawSpecMachine) parallelAllowed(c lawSpecParallelCase) bool {
 	if !lsAllowed(func() { start = m.simulateState(symbols, c.prefix) }) {
 		return false
 	}
-	for _, order := range lsBranchOrders(c.branches) {
-		state := start
-		if !lsAllowed(func() {
-			for _, ik := range order {
-				step := c.branches[ik[0]][ik[1]]
-				state, _ = lsStepModel(&m.commands[step.index], symbols, step.args, state)
-			}
-		}) {
-			return false
+	seen := map[string]bool{}
+	var visit func(positions []int, state LawSpecValue) bool
+	visit = func(positions []int, state LawSpecValue) bool {
+		key := lsPositionsKey(positions, state)
+		if seen[key] {
+			return true
 		}
+		seen[key] = true
+		for i, branch := range c.branches {
+			k := positions[i]
+			if k < len(branch) {
+				step := branch[k]
+				var after LawSpecValue
+				if !lsAllowed(func() { after, _ = lsStepModel(&m.commands[step.index], symbols, step.args, state) }) {
+					return false
+				}
+				if !visit(lsAdvanced(positions, i), after) {
+					return false
+				}
+			}
+		}
+		return true
 	}
-	return true
+	return visit(make([]int, len(c.branches)), start)
 }
 
 func (m *lawSpecMachine) generateBranch(random *LawSpecSplitMix64, state LawSpecValue, length, size int64) []lawSpecModelStep {
@@ -3055,21 +3059,27 @@ func (m *lawSpecMachine) generateBranch(random *LawSpecSplitMix64, state LawSpec
 	return steps
 }
 
-func (m *lawSpecMachine) generateParallel(random *LawSpecSplitMix64, size int64) lawSpecParallelCase {
+func (m *lawSpecMachine) generateParallel(random *LawSpecSplitMix64, size int64, threads, branchLength int) lawSpecParallelCase {
 	prefix := m.generateRun(random, int64(random.Below(4)), size)
-	c := lawSpecParallelCase{prefix: prefix, branches: [2][]lawSpecModelStep{{}, {}}}
+	c := lawSpecParallelCase{prefix: prefix, branches: make([][]lawSpecModelStep, threads)}
+	for i := range c.branches {
+		c.branches[i] = []lawSpecModelStep{}
+	}
 	var state LawSpecValue
 	if !lsAllowed(func() { state = m.simulateState(map[string]*LawSpecSymbol{}, prefix) }) {
 		return c
 	}
 	for i := range c.branches {
-		c.branches[i] = m.generateBranch(random, state, 1+int64(random.Below(4)), size)
+		c.branches[i] = m.generateBranch(random, state, 1+int64(random.Below(uint64(branchLength))), size)
 	}
-	// Drop the last steps until every interleaving is allowed.
+	// Drop the last step of the longest branch (the first, among equals)
+	// until every interleaving is allowed.
 	for !m.parallelAllowed(c) {
 		longest := 0
-		if len(c.branches[1]) > len(c.branches[0]) {
-			longest = 1
+		for i := range c.branches {
+			if len(c.branches[i]) > len(c.branches[longest]) {
+				longest = i
+			}
 		}
 		c.branches[longest] = c.branches[longest][:len(c.branches[longest])-1]
 	}
@@ -3081,9 +3091,21 @@ func lsWithState(c *lawSpecModelCommand, args []LawSpecValue, state LawSpecValue
 	return append(full, args[c.state:]...)
 }
 
+// lsPerturb is nothing, a yield, or a sleep of 10 or 100 microseconds.
+func lsPerturb(random *LawSpecSplitMix64) {
+	switch random.Below(4) {
+	case 1:
+		goruntime.Gosched()
+	case 2:
+		time.Sleep(10 * time.Microsecond)
+	case 3:
+		time.Sleep(100 * time.Microsecond)
+	}
+}
+
 // executeParallel is what went wrong, or failed false when the history is
 // linearizable.
-func (m *lawSpecMachine) executeParallel(pc lawSpecParallelCase) (message string, failed bool) {
+func (m *lawSpecMachine) executeParallel(pc lawSpecParallelCase, shake uint64) (message string, failed bool) {
 	symbols := map[string]*LawSpecSymbol{}
 	var state LawSpecValue
 	prefixFailure := func() (message string) {
@@ -3104,7 +3126,7 @@ func (m *lawSpecMachine) executeParallel(pc lawSpecParallelCase) (message string
 	}
 	var clock int64
 	var lock sync.Mutex
-	history := [2][]lawSpecCall{}
+	history := make([][]lawSpecCall, len(pc.branches))
 	errors := []string{}
 	var group sync.WaitGroup
 	for i := range pc.branches {
@@ -3113,9 +3135,11 @@ func (m *lawSpecMachine) executeParallel(pc lawSpecParallelCase) (message string
 		go func(i int) {
 			defer group.Done()
 			own := map[string]*LawSpecSymbol{}
+			random := &LawSpecSplitMix64{shake ^ (uint64(i+1) * 0x9E3779B97F4A7C15)}
 			for k, s := range pc.branches[i] {
 				c := &m.commands[s.index]
 				full := lsWithState(c, s.args, state)
+				lsPerturb(random)
 				called := atomic.AddInt64(&clock, 1)
 				result := func() (result LawSpecValue) {
 					defer func() {
@@ -3129,6 +3153,7 @@ func (m *lawSpecMachine) executeParallel(pc lawSpecParallelCase) (message string
 					return c.run(own, full)
 				}()
 				history[i][k] = lawSpecCall{called, atomic.AddInt64(&clock, 1), result}
+				lsPerturb(random)
 			}
 		}(i)
 	}
@@ -3142,81 +3167,102 @@ func (m *lawSpecMachine) executeParallel(pc lawSpecParallelCase) (message string
 		actual := m.abstract(symbols, []LawSpecValue{state})
 		final = &actual
 	}
-	for _, order := range lsBranchOrders(pc.branches) {
-		if !lsRespectsTime(order, history) {
-			continue
-		}
-		if m.linearizes(symbols, pc.branches, history, order, expected, final, state) {
-			return "", false
-		}
+	if m.linearizable(symbols, pc.branches, history, expected, final, state) {
+		return "", false
 	}
 	observed := []string{}
 	for i := range pc.branches {
 		for k, s := range pc.branches[i] {
-			observed = append(observed, fmt.Sprintf("%s: %s() returned %s", string("AB"[i]), m.commands[s.index].name, lsRender(history[i][k].result)))
+			observed = append(observed, fmt.Sprintf("%s: %s() returned %s", lsBranchName(i), m.commands[s.index].name, lsRender(history[i][k].result)))
 		}
 	}
 	return "no order of the parallel calls agrees with the model (" + strings.Join(observed, "; ") + ")", true
 }
 
-// lsRespectsTime is whether no call is placed before one that returned
-// before it started.
-func lsRespectsTime(order [][2]int, history [2][]lawSpecCall) bool {
-	for x := range order {
-		for y := x + 1; y < len(order); y++ {
-			a, b := order[x], order[y]
-			if history[b[0]][b[1]].returned < history[a[0]][a[1]].called {
-				return false
-			}
-		}
-	}
-	return true
+func lsBranchName(i int) string {
+	return string(rune('A' + i))
 }
 
-func (m *lawSpecMachine) linearizes(symbols map[string]*LawSpecSymbol, branches [2][]lawSpecModelStep, history [2][]lawSpecCall, order [][2]int, expected LawSpecValue, final *LawSpecValue, state LawSpecValue) bool {
-	agrees := true
-	if !lsAllowed(func() {
-		for _, ik := range order {
-			step := branches[ik[0]][ik[1]]
-			c := &m.commands[step.index]
-			var wanted LawSpecValue
-			expected, wanted = lsStepModel(c, symbols, step.args, expected)
-			if !c.unit && lsCompareValues(history[ik[0]][ik[1]].result, wanted) != 0 {
-				agrees = false
-				return
-			}
-		}
-	}) || !agrees {
-		return false
-	}
-	if final != nil && lsCompareValues(*final, expected) != 0 {
-		return false
-	}
-	for i, kind := range m.invariantKinds {
-		if i >= len(m.invariants) {
-			break
-		}
-		subject := state
-		if kind == "model" {
-			subject = expected
-		}
-		if !lsTruth(m.invariants[i](symbols, []LawSpecValue{subject})) {
+// linearizable is a Wing-Gong search: linearize, next, a call no pending
+// call on another thread returned before; memoized on positions and the
+// model state.
+func (m *lawSpecMachine) linearizable(symbols map[string]*LawSpecSymbol, branches [][]lawSpecModelStep, history [][]lawSpecCall, expected LawSpecValue, final *LawSpecValue, state LawSpecValue) bool {
+	seen := map[string]bool{}
+	var visit func(positions []int, model LawSpecValue) bool
+	visit = func(positions []int, model LawSpecValue) bool {
+		key := lsPositionsKey(positions, model)
+		if seen[key] {
 			return false
 		}
+		seen[key] = true
+		done := true
+		for i := range branches {
+			if positions[i] < len(branches[i]) {
+				done = false
+			}
+		}
+		if done {
+			if final != nil && lsCompareValues(*final, model) != 0 {
+				return false
+			}
+			for i, kind := range m.invariantKinds {
+				if i >= len(m.invariants) {
+					break
+				}
+				subject := state
+				if kind == "model" {
+					subject = model
+				}
+				if !lsTruth(m.invariants[i](symbols, []LawSpecValue{subject})) {
+					return false
+				}
+			}
+			return true
+		}
+		for i, branch := range branches {
+			k := positions[i]
+			if k == len(branch) {
+				continue
+			}
+			called := history[i][k].called
+			blocked := false
+			for j := range branches {
+				if j != i && positions[j] < len(branches[j]) && history[j][positions[j]].returned < called {
+					blocked = true
+					break
+				}
+			}
+			if blocked {
+				continue
+			}
+			step := branch[k]
+			c := &m.commands[step.index]
+			var after, wanted LawSpecValue
+			if !lsAllowed(func() { after, wanted = lsStepModel(c, symbols, step.args, model) }) {
+				continue
+			}
+			if !c.unit && lsCompareValues(history[i][k].result, wanted) != 0 {
+				continue
+			}
+			if visit(lsAdvanced(positions, i), after) {
+				return true
+			}
+		}
+		return false
 	}
-	return true
+	return visit(make([]int, len(branches)), expected)
 }
 
-func (m *lawSpecMachine) parallelFails(c lawSpecParallelCase, repeats int) (string, bool) {
-	for r := 0; r < repeats; r++ {
-		if message, failed := m.executeParallel(c); failed {
+func (m *lawSpecMachine) parallelFails(c lawSpecParallelCase, repeats int, shake uint64) (string, bool) {
+	for attempt := 0; attempt < repeats; attempt++ {
+		if message, failed := m.executeParallel(c, shake+uint64(attempt)); failed {
 			return message, true
 		}
 	}
 	return "", false
 }
 
-func (m *lawSpecMachine) shrinkParallel(pc lawSpecParallelCase, failure string, repeats, budget int) (lawSpecParallelCase, string) {
+func (m *lawSpecMachine) shrinkParallel(pc lawSpecParallelCase, failure string, repeats, budget int, shake uint64) (lawSpecParallelCase, string) {
 	for budget > 0 {
 		candidates := []lawSpecParallelCase{}
 		steps := pc.prefix.steps
@@ -3226,7 +3272,7 @@ func (m *lawSpecMachine) shrinkParallel(pc lawSpecParallelCase, failure string, 
 		}
 		for i := range pc.branches {
 			for k := range pc.branches[i] {
-				shorter := pc.branches
+				shorter := append([][]lawSpecModelStep{}, pc.branches...)
 				b := pc.branches[i]
 				shorter[i] = append(append([]lawSpecModelStep{}, b[:k]...), b[k+1:]...)
 				candidates = append(candidates, lawSpecParallelCase{pc.prefix, shorter})
@@ -3242,7 +3288,7 @@ func (m *lawSpecMachine) shrinkParallel(pc lawSpecParallelCase, failure string, 
 			if !m.parallelAllowed(candidate) {
 				continue
 			}
-			if message, failed := m.parallelFails(candidate, repeats); failed {
+			if message, failed := m.parallelFails(candidate, repeats, shake); failed {
 				pc, failure, exhausted = candidate, message, false
 				break
 			}
@@ -3269,12 +3315,18 @@ func (m *lawSpecMachine) describeParallel(pc lawSpecParallelCase) string {
 		}
 		return strings.Join(parts, "; ")
 	}
-	return fmt.Sprintf("%s, then A: %s and B: %s at the same time", m.describeRun(pc.prefix), describe(pc.branches[0]), describe(pc.branches[1]))
+	parts := make([]string, len(pc.branches))
+	for i, b := range pc.branches {
+		parts[i] = lsBranchName(i) + ": " + describe(b)
+	}
+	last := len(parts) - 1
+	return fmt.Sprintf("%s, then %s and %s at the same time", m.describeRun(pc.prefix), strings.Join(parts[:last], ", "), parts[last])
 }
 
 // LawSpecCheckModelParallel checks a shared model's histories under
-// concurrency (50 cases, each run 20 times, seeded from LAWSPEC_SEED); a
-// failure is an error naming the smallest failing case found.
+// concurrency (50 cases of 3 threads, each run 10 times, seeded from
+// LAWSPEC_SEED); a failure is an error naming the smallest failing case
+// found.
 func LawSpecCheckModelParallel(model LawSpecModel) error {
 	var seed uint64
 	if text := os.Getenv("LAWSPEC_SEED"); text != "" {
@@ -3284,16 +3336,17 @@ func LawSpecCheckModelParallel(model LawSpecModel) error {
 		}
 		seed = parsed
 	}
-	return lsCheckModelParallel(model, 50, 20, 200, seed)
+	return lsCheckModelParallel(model, 50, 10, 300, lawSpecParallelThreads, lawSpecParallelBranch, seed)
 }
 
-func lsCheckModelParallel(model LawSpecModel, cases, repeats, maxShrinks int, seed uint64) error {
+func lsCheckModelParallel(model LawSpecModel, cases, repeats, maxShrinks, threads, branchLength int, seed uint64) error {
 	m := lsNewMachine(model)
 	random := &LawSpecSplitMix64{seed ^ 0x5BD1E995}
 	for n := 0; n < cases; n++ {
-		c := m.generateParallel(random, int64(1+n%8))
-		if failure, failed := m.parallelFails(c, repeats); failed {
-			c, failure = m.shrinkParallel(c, failure, max(2, repeats/2), maxShrinks)
+		c := m.generateParallel(random, int64(1+n%8), threads, branchLength)
+		shake := random.Next()
+		if failure, failed := m.parallelFails(c, repeats, shake); failed {
+			c, failure = m.shrinkParallel(c, failure, max(2, repeats/2), maxShrinks, shake)
 			return fmt.Errorf("model %s is not linearizable: %s: %s", m.name, m.describeParallel(c), failure)
 		}
 	}

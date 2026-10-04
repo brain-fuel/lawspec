@@ -81,7 +81,9 @@ usedCollections sources =
           operated = [owner | t <- tokens, Just op <- [stripPrefix' "prelude." t], Just (_, owner) <- [collectionOperation op]] ++
             ["Ordering" | "prelude.compare" `elem` tokens] ++
             -- The railway combinator both (<*>) pairs two results.
-            ["Pair" | "prelude.both" `elem` tokens || "<*>" `isInfixOf` stripComments text]
+            ["Pair" | "prelude.both" `elem` tokens || "<*>" `isInfixOf` stripComments text] ++
+            -- A model that behaves like a collection gets references over pairs.
+            ["Pair" | "behaves" `elem` tokens]
       in [t | t <- named ++ operated, t `notElem` declared]
     stripPrefix' prefix t = if prefix `isPrefixOf` t then Just (drop (length prefix) t) else Nothing
     stripComments = unlines . map (\line -> takeComment line) . lines

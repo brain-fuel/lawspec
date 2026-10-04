@@ -28,6 +28,9 @@ data Machine name = Machine
   , machineAbstract :: Maybe name
   , machineAbstractRun :: Maybe name
   , machineInvariants :: [Invariant name]
+  -- Whether each command touches one key of a set or map, so a parallel
+  -- history can be checked key by key.
+  , machinePerKey :: Bool
   } deriving (Eq, Show, Generic, Functor, Foldable, Traversable)
 
 -- The command that makes the first state, and the definition giving the
@@ -59,6 +62,9 @@ data Command name = Command
   , commandReturnsUnit :: Bool
   , commandNeeds :: [Need]
   , commandShifts :: [Shift]
+  -- Which of the command's other arguments is the key it touches, for a
+  -- model that behaves like a set or map.
+  , commandKey :: Maybe Int
   } deriving (Eq, Show, Generic, Functor, Foldable, Traversable)
 
 data Need = AtLeast Integer | Exactly Integer

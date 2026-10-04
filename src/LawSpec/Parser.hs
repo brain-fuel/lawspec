@@ -261,25 +261,28 @@ modelP = do
     void (symbol "::")
     shared <- option False (True <$ keyword "shared")
     state <- typeP
-    keyword "by"
+    behaves <- (False <$ keyword "by") <|> (True <$ (keyword "behaves" *> keyword "like"))
     model <- typeP
     keyword "is"
     items <- many item
     keyword "end"
-    pure (name, shared, state, model, items)
-  pure (ModelDeclaration name shared state model
+    pure (name, (shared, behaves), state, model, items)
+  let (sharedModel, behavesLike) = shared
+  pure (ModelDeclaration name sharedModel state model
     (case [s | Left (Left s) <- items] of s : _ -> Just s; [] -> Nothing)
     [c | Right (Left c) <- items]
     (case [a | Left (Right (Left a)) <- items] of a : _ -> Just a; [] -> Nothing)
-    [i | Left (Right (Right i)) <- items] range)
+    [i | Left (Right (Right i)) <- items] range behavesLike)
   where
     modelledBy = void (symbol "~") <|> keyword "by"
     item = choice
-      [ (\f e -> Left (Left (f, e))) <$> (keyword "start" *> ident) <*> (modelledBy *> value)
+      -- A collection model's start may leave its state out: it is empty.
+      [ (\f e -> Left (Left (f, e))) <$> (keyword "start" *> ident) <*> option (Var "") (modelledBy *> value)
       , Left . Right . Left <$> (keyword "abstract" *> qualifiedName)
       , Left . Right . Right <$> (keyword "invariant" *> qualifiedName)
-      , (\c r w -> Right (Left (ModelCommand c r w))) <$> try (ident <* modelledBy) <*> qualifiedName
-          <*> optional (keyword "when" *> qualifiedName) ]
+      , (\c r w -> Right (Left (ModelCommand c r w False))) <$> try (ident <* modelledBy) <*> qualifiedName
+          <*> optional (keyword "when" *> qualifiedName)
+      , (\c op -> Right (Left (ModelCommand c op Nothing True))) <$> try (ident <* keyword "as") <*> ident ]
     -- A model value: a literal, a name or a parenthesized expression, so it
     -- cannot run into the next line.
     value = parens expr

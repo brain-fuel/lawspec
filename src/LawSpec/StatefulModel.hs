@@ -16,6 +16,7 @@ import LawSpec.Core.Machine
 import LawSpec.Flow (flowTypeName)
 import LawSpec.Indexed (indexedRefinementName)
 import LawSpec.Model
+import LawSpec.Scalar (isInteger)
 
 data ModelDeclaration = ModelDeclaration
   { modelName :: String
@@ -30,10 +31,16 @@ data ModelDeclaration = ModelDeclaration
   , modelAbstract :: Maybe String
   , modelInvariants :: [String]
   , modelSpan :: Span
+  -- `behaves like C`: modelBy is the built-in collection type C, and each
+  -- command names the collection operation it implements.
+  , modelBehaves :: Bool
   } deriving (Eq, Show)
 
 data ModelCommand = ModelCommand
   { modelCommand :: String, modelReference :: String, modelWhen :: Maybe String
+  -- Whether modelReference names a collection operation (`as`) rather than
+  -- a reference definition (`by`).
+  , modelAs :: Bool
   } deriving (Eq, Show)
 
 type Failure = (Maybe Span, String)
@@ -46,14 +53,22 @@ elaborateModels declarations u = do
   let names = map modelName declarations
   forM_ declarations $ \m -> when (length (filter (== modelName m) names) > 1)
     (Left (Just (modelSpan m), "model " ++ modelName m ++ " is declared twice"))
-  results <- forM declarations (elaborateModel u)
+  expanded <- forM declarations (behaviour u)
+  let behaviours = concat [ds | (_, ds, _) <- expanded]
+      signatureOf d = (functionName d, foldr Arrow (functionResult d) (map snd (functionArguments d)))
+      u' = u { functionDefinitions = functionDefinitions u ++ behaviours, functions = functions u ++ map signatureOf behaviours }
+  results <- forM [(m, keys) | (m, _, keys) <- expanded] $ \(m, keys) -> do
+    (machine, start) <- elaborateModel u' m
+    let keyed = [c { commandKey = maybe Nothing id (lookup (commandName c) keys) } | c <- machineCommands machine]
+        perKey = modelBehaves m && not (null keyed) && all ((/= Nothing) . commandKey) keyed
+    pure (machine { machineCommands = keyed, machinePerKey = perKey }, start)
   -- Generated names (start states and the bridges that call adapters) must
   -- not clash with declared ones.
   let taken = map fst (functions u)
   forM_ (zip declarations results) $ \(m, (machine, start)) ->
     forM_ (generatedNames machine ++ maybe [] (pure . functionName) start) $ \n -> when (n `elem` taken)
       (Left (Just (modelSpan m), "model " ++ modelName m ++ " generates " ++ n ++ ", which is already declared; rename one"))
-  let starts = [d | (_, Just d) <- results]
+  let starts = [d | (_, Just d) <- results] ++ behaviours
       signature d = (functionName d, foldr Arrow (functionResult d) (map snd (functionArguments d)))
   pure u
     { machines = machines u ++ map fst results
@@ -112,7 +127,7 @@ elaborateModel u m = do
     reference ("command " ++ name ++ "'s reference") (modelReference c) expected
     forM_ (modelWhen c) $ \p -> reference ("command " ++ name ++ "'s precondition") p (Arrow modelType (Named "Bool"))
     pure (Command name name (bridge ("Run" ++ capitalize name)) (modelReference c) (modelWhen c)
-      [i | (i, _) <- zip [0 ..] args, i /= position] position unit needs shifts)
+      [i | (i, _) <- zip [0 ..] args, i /= position] position unit needs shifts Nothing)
   forM_ (modelAbstract m) $ \f -> do
     ty <- maybe (failing ("abstract " ++ f ++ " has no signature")) pure (signatureOf f)
     case arguments ty of
@@ -147,7 +162,7 @@ elaborateModel u m = do
   let abstractRun = case modelAbstract m of
         Just f | null (definitionOf f) -> Just (bridge "Abstract")
         other -> other
-  pure (Machine (modelName m) (modelShared m) family (length indexVariables) start commands (modelAbstract m) abstractRun invariants, startDefinition)
+  pure (Machine (modelName m) (modelShared m) family (length indexVariables) start commands (modelAbstract m) abstractRun invariants False, startDefinition)
   where
     -- A generated bridge's name: the model's, then its role.
     bridge role = modelName m ++ role
@@ -232,6 +247,8 @@ isUnitType t = unrefinedType t == Named "Unit"
 -- A type's shape for comparison: refinements, qualifiers and indices erased.
 shape :: Type -> Type
 shape ty = case unrefinedType ty of
+  -- Results compare by value, so integer types are interchangeable.
+  Named n | isInteger n -> Named "Integer"
   Arrow a b -> Arrow (shape a) (shape b)
   Applied n t -> Applied n (shape t)
   Application n ts -> Application n (map shape ts)
@@ -273,3 +290,98 @@ capitalize [] = []
 generatedNames :: Machine String -> [String]
 generatedNames machine = map commandRun (machineCommands machine) ++ maybe [] (pure . startRun) (machineStart machine) ++
   [r | Just r <- [machineAbstractRun machine], Just r /= machineAbstract machine]
+
+-- A `behaves like` model's reference definitions, generated from the
+-- collection's operations, and the key argument of each command (for sets
+-- and maps). Other models pass through unchanged.
+behaviour :: Unit -> ModelDeclaration -> Either Failure (ModelDeclaration, [FunctionDefinition], [(String, Maybe Int)])
+behaviour u m
+  | not (modelBehaves m) = do
+      forM_ (modelCommands m) $ \c -> when (modelAs c)
+        (failing ("command " ++ modelCommand c ++ " uses `as`, which needs `behaves like` a collection"))
+      pure (m, [], [])
+  | otherwise = do
+      (kind, elements) <- maybe (failing ("behaves like needs Set, KeyVal, Queue, Stack or Deque, not " ++ prettyType (modelBy m))) pure
+        (collection (modelBy m))
+      generated <- forM (modelCommands m) $ \c -> do
+        unless (modelAs c) (failing ("command " ++ modelCommand c ++ " must name the " ++ kind ++ " operation it implements with `as`"))
+        (inputs, result, body, key) <- maybe
+          (failing ("command " ++ modelCommand c ++ ": " ++ kind ++ " has no operation " ++ modelReference c ++
+            "; it has " ++ unwords (operations kind)))
+          pure (operation kind elements (modelReference c))
+        let name = modelName m ++ capitalize (modelCommand c) ++ "Reference"
+            parameters = [("argument" ++ show i, t) | (i, t) <- zip [0 :: Int ..] inputs] ++ [("state", modelBy m)]
+            resultType = maybe (modelBy m) (\r -> Application "Pair" [r, modelBy m]) result
+        pure (c { modelReference = name, modelAs = False },
+          FunctionDefinition name parameters resultType [] body (modelSpan m), (modelCommand c, key))
+      let start = case modelStart m of
+            Just (f, Var "") -> Just (f, Apply (Var ("prelude." ++ constructorOf kind)) (ListLit []))
+            other -> other
+      pure (m { modelCommands = [c | (c, _, _) <- generated], modelStart = start },
+        [d | (_, d, _) <- generated], [(n, k) | (_, _, (n, k)) <- generated])
+  where
+    failing message = Left (Just (modelSpan m), "model " ++ modelName m ++ ": " ++ message)
+    _ = u
+
+-- A collection type's kind and element types.
+collection :: Type -> Maybe (String, [Type])
+collection ty = case unrefinedType ty of
+  Applied n t | n `elem` ["Set", "Queue", "Stack", "Deque"] -> Just (n, [t])
+  Application n [k, v] | n == "KeyVal" -> Just (n, [k, v])
+  Application n [t] | n `elem` ["Set", "Queue", "Stack", "Deque"] -> Just (n, [t])
+  _ -> Nothing
+
+constructorOf :: String -> String
+constructorOf kind = case kind of
+  "Set" -> "setOf"
+  "KeyVal" -> "keyValOf"
+  "Queue" -> "queueOf"
+  "Stack" -> "stackOf"
+  _ -> "dequeOf"
+
+operations :: String -> [String]
+operations kind = case kind of
+  "Queue" -> ["offer", "poll", "peek", "size", "isEmpty"]
+  "Stack" -> ["push", "pop", "peek", "size", "isEmpty"]
+  "Deque" -> ["pushFront", "pushBack", "popFront", "popBack", "peekFront", "peekBack", "size", "isEmpty"]
+  "Set" -> ["add", "remove", "contains", "size", "isEmpty"]
+  _ -> ["put", "get", "remove", "putIfAbsent", "containsKey", "size", "isEmpty"]
+
+-- An operation's other arguments, its result (Nothing for Unit), its body
+-- over `state` and `argument<i>`, and which argument is its key.
+operation :: String -> [Type] -> String -> Maybe ([Type], Maybe Type, Expr, Maybe Int)
+operation kind elements op = case (kind, elements, op) of
+  (_, _, "size") -> Just ([], Just (Named "Integer"), pair (call "size" [s]) s, Nothing)
+  (_, _, "isEmpty") -> Just ([], Just (Named "Bool"), pair (call "isEmpty" [s]) s, Nothing)
+  ("Queue", [t], "offer") -> Just ([t], Nothing, call "enqueue" [a 0, s], Nothing)
+  ("Queue", [t], "poll") -> Just ([], Just (maybeOf t), pair (call "front" [s]) (call "dequeue" [s]), Nothing)
+  ("Queue", [t], "peek") -> Just ([], Just (maybeOf t), pair (call "front" [s]) s, Nothing)
+  ("Stack", [t], "push") -> Just ([t], Nothing, call "push" [a 0, s], Nothing)
+  ("Stack", [t], "pop") -> Just ([], Just (maybeOf t), pair (call "peek" [s]) (call "pop" [s]), Nothing)
+  ("Stack", [t], "peek") -> Just ([], Just (maybeOf t), pair (call "peek" [s]) s, Nothing)
+  ("Deque", [t], "pushFront") -> Just ([t], Nothing, call "pushFront" [a 0, s], Nothing)
+  ("Deque", [t], "pushBack") -> Just ([t], Nothing, call "pushBack" [a 0, s], Nothing)
+  ("Deque", [t], "popFront") -> Just ([], Just (maybeOf t), pair (call "peekFront" [s]) (call "popFront" [s]), Nothing)
+  ("Deque", [t], "popBack") -> Just ([], Just (maybeOf t), pair (call "peekBack" [s]) (call "popBack" [s]), Nothing)
+  ("Deque", [t], "peekFront") -> Just ([], Just (maybeOf t), pair (call "peekFront" [s]) s, Nothing)
+  ("Deque", [t], "peekBack") -> Just ([], Just (maybeOf t), pair (call "peekBack" [s]) s, Nothing)
+  ("Set", [t], "add") -> Just ([t], Just (Named "Bool"),
+    pair (call "select" [call "member" [a 0, s], BoolLit False, BoolLit True]) (call "insert" [a 0, s]), Just 0)
+  ("Set", [t], "remove") -> Just ([t], Just (Named "Bool"), pair (call "member" [a 0, s]) (call "remove" [a 0, s]), Just 0)
+  ("Set", [t], "contains") -> Just ([t], Just (Named "Bool"), pair (call "member" [a 0, s]) s, Just 0)
+  ("KeyVal", [k, v], "put") -> Just ([k, v], Just (maybeOf v), pair (call "lookup" [a 0, s]) (call "put" [a 0, a 1, s]), Just 0)
+  ("KeyVal", [k, _], "get") -> Just ([k], Just (maybeOf (elements !! 1)), pair (call "lookup" [a 0, s]) s, Just 0)
+  ("KeyVal", [k, v], "remove") -> Just ([k], Just (maybeOf v), pair (call "lookup" [a 0, s]) (call "delete" [a 0, s]), Just 0)
+  ("KeyVal", [k, v], "putIfAbsent") -> Just ([k, v], Just (maybeOf v),
+    pair (call "lookup" [a 0, s]) (absent (call "put" [a 0, a 1, s]) s), Just 0)
+  ("KeyVal", [k, _], "containsKey") -> Just ([k], Just (Named "Bool"), pair (absent (BoolLit False) (BoolLit True)) s, Just 0)
+  _ -> Nothing
+  where
+    s = Var "state"
+    a i = Var ("argument" ++ show (i :: Int))
+    call f args = foldl Apply (Var ("prelude." ++ f)) args
+    pair x y = ConstructLit "Pair" [x, y]
+    maybeOf t = Applied "Maybe" t
+    -- The first value when the key is absent, the second when present.
+    absent none some = MatchExpr (call "lookup" [a 0, s])
+      [MatchBranch "Nothing" [] none, MatchBranch "Just" ["present"] some]
