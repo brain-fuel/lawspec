@@ -1,0 +1,129 @@
+unit example.generation
+
+-- Conformance of every target's portable generator with the same vectors:
+-- the values generated from a type descriptor and a SplitMix64 seed, and the
+-- shrink candidates of the first, rendered canonically.
+
+generated :: Text -> UInt64 -> Int32 -> Int32 -> List Text
+shrunk :: Text -> UInt64 -> Int32 -> List Text
+
+law `int8` is
+  definition is
+    `for all` (seed :: UInt64) . prelude.length (generated "(int Int8 -128 127)" seed 4 5) = 5
+  end
+  example `seed 42` is
+    seed = 42
+    expect generated "(int Int8 -128 127)" seed 4 5 = ["-125", "20", "0", "36", "46"]
+    expect shrunk "(int Int8 -128 127)" seed 4 = ["0", "-63", "-124"]
+  end
+end
+
+law `unbounded integers` is
+  definition is
+    `for all` (seed :: UInt64) . prelude.length (generated "(int Integer _ _)" seed 4 4) = 4
+  end
+  example `seed 7` is
+    seed = 7
+    expect generated "(int Integer _ _)" seed 4 4 = ["-653071", "196343", "-29128", "80327"]
+    expect shrunk "(int Integer _ _)" seed 4 = ["0", "-326536", "-653070"]
+  end
+end
+
+law `a lower bound` is
+  definition is
+    `for all` (seed :: UInt64) . prelude.length (generated "(int Int32 5 _)" seed 4 4) = 4
+  end
+  example `seed 7` is
+    seed = 7
+    expect generated "(int Int32 5 _)" seed 4 4 = ["346934", "1196348", "970877", "1080332"]
+    expect shrunk "(int Int32 5 _)" seed 4 = ["5", "173470", "346933"]
+  end
+end
+
+law `the full UInt64 range` is
+  definition is
+    `for all` (seed :: UInt64) . prelude.length (generated "(int UInt64 0 18446744073709551615)" seed 4 3) = 3
+  end
+  example `seed 1` is
+    seed = 1
+    expect generated "(int UInt64 0 18446744073709551615)" seed 4 3 = ["13757245211066428519", "1", "0"]
+    expect shrunk "(int UInt64 0 18446744073709551615)" seed 4 = ["0", "6878622605533214260", "13757245211066428518"]
+  end
+end
+
+law `booleans` is
+  definition is
+    `for all` (seed :: UInt64) . prelude.length (generated "(bool)" seed 4 6) = 6
+  end
+  example `seed 3` is
+    seed = 3
+    expect generated "(bool)" seed 4 6 = ["true", "true", "true", "true", "false", "true"]
+    expect shrunk "(bool)" seed 4 = ["false"]
+  end
+end
+
+law `text` is
+  definition is
+    `for all` (seed :: UInt64) . prelude.length (generated "(text)" seed 6 3) = 3
+  end
+  example `seed 9` is
+    seed = 9
+    expect generated "(text)" seed 6 3 = ["\"I(\"", "\"\"", "\"4<*6F\""]
+    expect shrunk "(text)" seed 6 = ["\"\"", "\"I\"", "\"(\""]
+  end
+end
+
+law `unit` is
+  definition is
+    `for all` (seed :: UInt64) . prelude.length (generated "(unit)" seed 1 2) = 2
+  end
+  example `seed 1` is
+    seed = 1
+    expect generated "(unit)" seed 1 2 = ["()", "()"]
+    expect shrunk "(unit)" seed 1 = []
+  end
+end
+
+law `lists` is
+  definition is
+    `for all` (seed :: UInt64) . prelude.length (generated "(list (int Int32 0 _))" seed 4 3) = 3
+  end
+  example `seed 42` is
+    seed = 42
+    expect generated "(list (int Int32 0 _))" seed 4 3 = ["[0, 1745563, 275752]", "[1325093, 742426, 493279]", "[2000000]"]
+    expect shrunk "(list (int Int32 0 _))" seed 4 = ["[]", "[0]", "[1745563, 275752]", "[0, 275752]", "[0, 1745563]", "[0, 0, 275752]", "[0, 872782, 275752]", "[0, 1745562, 275752]", "[0, 1745563, 0]", "[0, 1745563, 137876]", "[0, 1745563, 275751]"]
+  end
+end
+
+law `maybe` is
+  definition is
+    `for all` (seed :: UInt64) . prelude.length (generated "(maybe (bool))" seed 4 4) = 4
+  end
+  example `seed 5` is
+    seed = 5
+    expect generated "(maybe (bool))" seed 4 4 = ["Just(false)", "Just(true)", "Just(false)", "Just(true)"]
+    expect shrunk "(maybe (bool))" seed 4 = ["Nothing"]
+  end
+end
+
+law `either` is
+  definition is
+    `for all` (seed :: UInt64) . prelude.length (generated "(either (text) (int Int8 -128 127))" seed 4 4) = 4
+  end
+  example `seed 11` is
+    seed = 11
+    expect generated "(either (text) (int Int8 -128 127))" seed 4 4 = ["Right(-19)", "Left(\"\\\"{U\")", "Left(\"j\")", "Right(1)"]
+    expect shrunk "(either (text) (int Int8 -128 127))" seed 4 = ["Right(0)", "Right(-10)", "Right(-18)"]
+  end
+end
+
+law `a recursive tree` is
+  definition is
+    `for all` (seed :: UInt64) . prelude.length (generated "(data Tree (ctor t::type::Tree::Leaf) (ctor t::type::Tree::Node (ref Tree) (int Int8 -128 127) (ref Tree))) (ref Tree)" seed 3 2) = 2
+  end
+  example `seed 13` is
+    seed = 13
+    expect generated "(data Tree (ctor t::type::Tree::Leaf) (ctor t::type::Tree::Node (ref Tree) (int Int8 -128 127) (ref Tree))) (ref Tree)" seed 3 2 = ["Node(Node(Leaf, -29, Leaf), -44, Node(Node(Leaf, -110, Leaf), 58, Leaf))", "Leaf"]
+    expect shrunk "(data Tree (ctor t::type::Tree::Leaf) (ctor t::type::Tree::Node (ref Tree) (int Int8 -128 127) (ref Tree))) (ref Tree)" seed 3 = ["Leaf", "Node(Leaf, -29, Leaf)", "Node(Node(Leaf, -110, Leaf), 58, Leaf)", "Node(Leaf, -44, Node(Node(Leaf, -110, Leaf), 58, Leaf))", "Node(Node(Leaf, 0, Leaf), -44, Node(Node(Leaf, -110, Leaf), 58, Leaf))", "Node(Node(Leaf, -15, Leaf), -44, Node(Node(Leaf, -110, Leaf), 58, Leaf))", "Node(Node(Leaf, -28, Leaf), -44, Node(Node(Leaf, -110, Leaf), 58, Leaf))", "Node(Node(Leaf, -29, Leaf), 0, Node(Node(Leaf, -110, Leaf), 58, Leaf))", "Node(Node(Leaf, -29, Leaf), -22, Node(Node(Leaf, -110, Leaf), 58, Leaf))", "Node(Node(Leaf, -29, Leaf), -43, Node(Node(Leaf, -110, Leaf), 58, Leaf))", "Node(Node(Leaf, -29, Leaf), -44, Leaf)", "Node(Node(Leaf, -29, Leaf), -44, Node(Leaf, -110, Leaf))", "Node(Node(Leaf, -29, Leaf), -44, Node(Leaf, 58, Leaf))", "Node(Node(Leaf, -29, Leaf), -44, Node(Node(Leaf, 0, Leaf), 58, Leaf))", "Node(Node(Leaf, -29, Leaf), -44, Node(Node(Leaf, -55, Leaf), 58, Leaf))", "Node(Node(Leaf, -29, Leaf), -44, Node(Node(Leaf, -109, Leaf), 58, Leaf))", "Node(Node(Leaf, -29, Leaf), -44, Node(Node(Leaf, -110, Leaf), 0, Leaf))", "Node(Node(Leaf, -29, Leaf), -44, Node(Node(Leaf, -110, Leaf), 29, Leaf))", "Node(Node(Leaf, -29, Leaf), -44, Node(Node(Leaf, -110, Leaf), 57, Leaf))"]
+  end
+end

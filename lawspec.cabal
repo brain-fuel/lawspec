@@ -53,6 +53,7 @@ extra-source-files:
     examples/specs/finite_data.lawspec
     examples/specs/flow_stack.lawspec
     examples/specs/gadt_expressions.lawspec
+    examples/specs/generation.lawspec
     examples/specs/indexed_arithmetic.lawspec
     examples/specs/indexed_families.lawspec
     examples/specs/keywords.lawspec

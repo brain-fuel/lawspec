@@ -1,0 +1,6 @@
+@@ example/generation/adapter.go
+<<<<<<<
+	return LawSpecGenerated(value0, value1, int64(value2), int64(value3))
+=======
+	return LawSpecGenerated(value0, value1+1, int64(value2), int64(value3))
+>>>>>>>

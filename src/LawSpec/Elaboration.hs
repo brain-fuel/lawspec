@@ -9,6 +9,7 @@ import LawSpec.Collections (collectionsUnit, internalConstructor)
 import qualified LawSpec.Model as S
 import qualified LawSpec.Inference as S
 import qualified LawSpec.Core as C
+import qualified LawSpec.Core.Machine as C
 import LawSpec.Core.Validate (operationEvidenceWithRegistry)
 import LawSpec.Core.Types (makeRegistry, builtinDataDeclarations)
 import LawSpec.Core.Semantics (convertValue)
@@ -285,8 +286,32 @@ elaborateDefinitionUnit dataDeclarations bits u = do
   contracts <- mapM (elaborateContract dataDeclarations bits u)
     [contract | contract <- S.contracts u,
       S.contractName contract `elem` map S.functionName (S.functionDefinitions u)]
-  pure (C.Unit (C.Id (S.unitName u)) ds contracts [] definitions (map (fmap (declarationId u)) (S.machines u)))
+  let machines = map (fmap (declarationId u)) (S.machines u)
+  bridges <- concat <$> mapM (machineBridges ds) machines
+  pure (C.Unit (C.Id (S.unitName u)) (ds ++ map C.definitionDeclaration bridges) contracts [] (definitions ++ bridges) machines)
   where declarationId unit n = C.Id (S.unitName unit ++ "::" ++ n)
+
+-- A model's commands, start and abstraction are adapters; the model runtime
+-- calls each through a generated orchestration definition of the same type,
+-- which converts logical values to native ones and back like any definition
+-- that calls an adapter.
+machineBridges :: [C.Declaration] -> C.Machine C.Id -> Either String [C.Definition]
+machineBridges ds machine = mapM bridge
+  ([(C.commandRun c, C.commandSystem c) | c <- C.machineCommands machine] ++
+   [(C.startRun s, C.startSystem s) | Just s <- [C.machineStart machine]] ++
+   [(run, f) | (Just run, Just f) <- [(C.machineAbstractRun machine, C.machineAbstract machine)], run /= f])
+  where
+    bridge (run, target) = do
+      adapter <- case filter ((== target) . C.declarationId) ds of
+        [d] -> Right d
+        _ -> Left ("model " ++ C.machineName machine ++ ": " ++ C.idText target ++ " is not an adapter")
+      let ty = C.declarationType adapter
+          (args, result) = C.functionType ty
+          origin = C.GeneratedFrom target
+          binders = [C.Binder (C.Id (C.idText run ++ "::argument::" ++ show i)) ("argument" ++ show i) t | (i, t) <- zip [0 :: Int ..] args]
+          call = C.Expr result (C.ExternalCall target [C.Expr (C.binderType b) (C.Local (C.binderId b)) origin | b <- binders]) origin
+          name = reverse (takeWhile (/= ':') (reverse (C.idText run)))
+      pure (C.MkDefinition (C.Declaration run name ty origin) binders call True Nothing)
 
 
 -- Closed fixture evaluation and final frontend elaboration must preserve the

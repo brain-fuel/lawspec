@@ -1,0 +1,6 @@
+@@ src/example/generation.mjs
+<<<<<<<
+  return ls.generated(value0, value1, value2, value3);
+=======
+  return ls.generated(value0, value1 + 1n, value2, value3);
+>>>>>>>

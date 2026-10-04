@@ -8,9 +8,9 @@ import System.Timeout (timeout)
 import Data.IORef (IORef, newIORef, readIORef, writeIORef, modifyIORef')
 import GHC.Clock (getMonotonicTimeNSec)
 import System.IO.Unsafe (unsafePerformIO)
-import Control.Monad (foldM)
+import Control.Monad (foldM, replicateM)
 import Data.Unique (Unique, newUnique)
-import Data.Char (ord, chr)
+import Data.Char (ord, chr, isDigit)
 import Data.Int
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as B
@@ -1324,3 +1324,242 @@ retryDecision decision = case decision of
   SData "lawspec.time::type::RetryDecision::RetryAfter" [SData _ [SInteger _ micros]] -> Just micros
   _ -> Nothing
 
+
+-- Portable generation for stateful models. A type descriptor is an
+-- s-expression: (int T lo hi) with _ for no bound, (bool), (text), (unit),
+-- (list D), (maybe D), (either L R), (data NAME (ctor TAG D...) ...) and
+-- (ref NAME) for a data type declared in the model's table. Every target
+-- generates, shrinks and renders the same values for the same seed.
+
+-- | A descriptor form: a list, an integer, a symbol or string, or _.
+data Descriptor = DescList [Descriptor] | DescInteger Integer | DescAtom String | DescNone
+  deriving (Eq, Show)
+
+-- | Parses s-expressions: lists, integers, strings, symbols and _.
+readDescriptor :: String -> [Descriptor]
+readDescriptor = forms . skipBlank where
+  skipBlank = dropWhile (`elem` " \t\r\n")
+  forms "" = []
+  forms text = let (form, rest) = item text in form : forms (skipBlank rest)
+  item ('(' : rest) = list [] (skipBlank rest)
+  item ('"' : rest) = quoted [] rest
+  item text =
+    let (atom, rest) = break (`elem` " \t\r\n()") text
+        digits = dropWhile (== '-') atom
+    in (if atom == "_" then DescNone
+        else if not (null digits) && all isDigit digits
+          then DescInteger (read (if take 1 atom == "-" then '-' : digits else digits))
+          else DescAtom atom, rest)
+  list acc (')' : rest) = (DescList (reverse acc), rest)
+  list acc text = let (form, rest) = item text in list (form : acc) (skipBlank rest)
+  quoted acc ('"' : rest) = (DescAtom (reverse acc), rest)
+  quoted acc ('\\' : c : rest) = quoted (c : acc) rest
+  quoted acc (c : rest) = quoted (c : acc) rest
+  quoted _ [] = error "unterminated descriptor string"
+
+-- | A descriptor atom's text.
+descriptorName :: Descriptor -> String
+descriptorName (DescAtom s) = s
+descriptorName (DescInteger n) = show n
+descriptorName DescNone = "None"
+descriptorName (DescList _) = error "descriptor name expected"
+
+-- | The data types of a descriptor text, by name.
+type DataTable = [(String, Descriptor)]
+
+-- | SplitMix64 draws threaded through a generation.
+newtype Draw a = Draw { runDraw :: Word64 -> (a, Word64) }
+instance Functor Draw where
+  fmap f (Draw g) = Draw (\s -> let (a, s') = g s in (f a, s'))
+instance Applicative Draw where
+  pure a = Draw (\s -> (a, s))
+  Draw f <*> Draw g = Draw (\s -> let (h, s1) = f s; (a, s2) = g s1 in (h a, s2))
+instance Monad Draw where
+  Draw g >>= k = Draw (\s -> let (a, s1) = g s in runDraw (k a) s1)
+
+-- | Uniform in [0, bound); 0, with no draw, when bound is 0.
+drawBelow :: Integer -> Draw Integer
+drawBelow bound
+  | bound <= 0 = pure 0
+  | otherwise = Draw (\s -> let (value, next) = splitMix64 s in (toInteger value `mod` bound, next))
+
+resolveDescriptor :: DataTable -> Descriptor -> Descriptor
+resolveDescriptor table (DescList [DescAtom "ref", name]) =
+  case lookup (descriptorName name) (reverse table) of
+    Just d -> d
+    Nothing -> error ("unknown data type " ++ descriptorName name)
+resolveDescriptor _ d = d
+
+unboundedRange :: Integer
+unboundedRange = 1000000
+
+-- | An integer's range: a missing bound is 1,000,000 from zero, or
+-- 2,000,000 from the other bound when that is beyond it.
+descriptorBounds :: Descriptor -> (Integer, Integer)
+descriptorBounds (DescList (_ : _ : lo : hi : _)) = case (lo, hi) of
+  (DescNone, DescNone) -> (negate unboundedRange, unboundedRange)
+  (DescNone, DescInteger h) -> (min (negate unboundedRange) (h - 2 * unboundedRange), h)
+  (DescInteger l, DescNone) -> (l, max unboundedRange (l + 2 * unboundedRange))
+  (DescInteger l, DescInteger h) -> (l, h)
+  _ -> error "invalid integer bounds"
+descriptorBounds d = error ("invalid integer descriptor " ++ show d)
+
+-- | The constructors of a data descriptor.
+constructorsOf :: Descriptor -> [Descriptor]
+constructorsOf (DescList (_ : _ : ctors)) = ctors
+constructorsOf d = error ("invalid data descriptor " ++ show d)
+
+-- | A constructor's tag and field descriptors.
+constructorParts :: Descriptor -> (String, [Descriptor])
+constructorParts (DescList (_ : tag : fields)) = (descriptorName tag, fields)
+constructorParts d = error ("invalid constructor descriptor " ++ show d)
+
+-- | The constructors whose fields mention no data type.
+baseConstructors :: Descriptor -> [Descriptor]
+baseConstructors d =
+  let ctors = constructorsOf d
+      found = [c | c <- ctors, not (any mentionsData (snd (constructorParts c)))]
+  in if null found then ctors else found
+
+mentionsData :: Descriptor -> Bool
+mentionsData (DescList (kind : rest)) = kind `elem` [DescAtom "ref", DescAtom "data"] || any mentionsData rest
+mentionsData _ = False
+
+descriptorKind :: Descriptor -> String
+descriptorKind (DescList (DescAtom kind : _)) = kind
+descriptorKind d = error ("unknown descriptor " ++ show d)
+
+descriptorArgument :: Int -> Descriptor -> Descriptor
+descriptorArgument i (DescList xs) | i < length xs = xs !! i
+descriptorArgument _ d = error ("invalid descriptor " ++ show d)
+
+generateValue :: DataTable -> Descriptor -> Integer -> Draw Scalar
+generateValue table d0 size = case descriptorKind d of
+  "int" -> do
+    let (lo, hi) = descriptorBounds d
+    special <- drawBelow 10
+    if special < 2
+      then do
+        i <- drawBelow 4
+        pure (SInteger t ([lo, hi, min (max 0 lo) hi, min (max 1 lo) hi] !! fromInteger i))
+      else SInteger t . (lo +) <$> drawBelow (hi - lo + 1)
+  "bool" -> SBool . (== 1) <$> drawBelow 2
+  "text" -> do
+    n <- drawBelow (size + 1)
+    SSequence "Text" <$> replicateM (fromInteger n) ((fromInteger . (32 +)) <$> drawBelow 95)
+  "unit" -> pure (SAbsent "Unit")
+  "list" -> do
+    n <- drawBelow (size + 1)
+    SList <$> replicateM (fromInteger n) (generateValue table (arg 1) size)
+  "maybe" -> do
+    r <- drawBelow 4
+    if r == 0 then pure (SData "Maybe::Nothing" [])
+      else (\v -> SData "Maybe::Just" [v]) <$> generateValue table (arg 1) size
+  "either" -> do
+    r <- drawBelow 2
+    if r == 0 then (\v -> SData "Either::Left" [v]) <$> generateValue table (arg 1) size
+      else (\v -> SData "Either::Right" [v]) <$> generateValue table (arg 2) size
+  "data" -> do
+    let choices = if size <= 0 then baseConstructors d else constructorsOf d
+    i <- drawBelow (toInteger (length choices))
+    let (tag, fields) = constructorParts (choices !! fromInteger i)
+    SData tag <$> mapM (\f -> generateValue table f (max (size - 1) 0)) fields
+  _ -> error ("unknown descriptor " ++ show d)
+  where d = resolveDescriptor table d0
+        t = descriptorName (arg 1)
+        arg i = descriptorArgument i d
+
+minimalValue :: DataTable -> Descriptor -> Scalar
+minimalValue table d0 = case descriptorKind d of
+  "int" -> let (lo, hi) = descriptorBounds d in SInteger (descriptorName (arg 1)) (min (max 0 lo) hi)
+  "bool" -> SBool False
+  "text" -> SSequence "Text" []
+  "unit" -> SAbsent "Unit"
+  "list" -> SList []
+  "maybe" -> SData "Maybe::Nothing" []
+  "either" -> SData "Either::Left" [minimalValue table (arg 1)]
+  _ -> case baseConstructors d of
+    ctor : _ -> let (tag, fields) = constructorParts ctor in SData tag (map (minimalValue table) fields)
+    [] -> error ("data type without constructors " ++ show d)
+  where d = resolveDescriptor table d0
+        arg i = descriptorArgument i d
+
+-- | Toward zero integer division.
+towardZero :: Integer -> Integer -> Integer
+towardZero n divisor = let q = abs n `div` divisor in if n >= 0 then q else negate q
+
+-- | The empty sequence, the first half, then each with one item removed.
+halfAndRemovals :: [a] -> [[a]]
+halfAndRemovals xs = [] : take (length xs `div` 2) xs : [take i xs ++ drop (i + 1) xs | i <- [0 .. length xs - 1]]
+
+-- | Smaller candidates for a value, most aggressive first.
+shrinkValue :: DataTable -> Descriptor -> Scalar -> [Scalar]
+shrinkValue table d0 v = uniqueRendered $ case (descriptorKind d, v) of
+  ("int", SInteger t n) -> case minimalValue table d of
+    SInteger _ target | n /= target ->
+      map (SInteger t) [target, n - towardZero (n - target) 2, n - (if n > target then 1 else -1)]
+    _ -> []
+  ("bool", SBool True) -> [SBool False]
+  ("text", SSequence t xs) | not (null xs) -> map (SSequence t) (halfAndRemovals xs)
+  ("list", SList xs) | not (null xs) ->
+    map SList (halfAndRemovals xs)
+      ++ concat [[SList (take i xs ++ [c] ++ drop (i + 1) xs) | c <- shrinkValue table (arg 1) x]
+                | (i, x) <- zip [0 ..] xs]
+  ("maybe", SData "Maybe::Just" [x]) ->
+    SData "Maybe::Nothing" [] : [SData "Maybe::Just" [c] | c <- shrinkValue table (arg 1) x]
+  ("either", SData tag [x]) ->
+    [SData tag [c] | c <- shrinkValue table (arg (if tag == "Either::Left" then 1 else 2)) x]
+  ("data", SData tag fields) ->
+    let ctorFields = case find ((== tag) . fst) (map constructorParts (constructorsOf d)) of
+          Just (_, fs) -> fs
+          Nothing -> error ("unknown constructor " ++ tag)
+        pairs = zip fields ctorFields
+    in minimalValue table d
+         -- A field of the same type is a smaller value of it.
+         : [f | (f, fd) <- pairs, fd == DescList [DescAtom "ref", arg 1]]
+         ++ concat [[SData tag (take i fields ++ [c] ++ drop (i + 1) fields) | c <- shrinkValue table fd field]
+                   | (i, (field, fd)) <- zip [0 ..] pairs]
+  _ -> []
+  where d = resolveDescriptor table d0
+        arg i = descriptorArgument i d
+        uniqueRendered candidates = go [renderValue v] candidates
+        go _ [] = []
+        go seen (c : cs) = let r = renderValue c in
+          if r `elem` seen then go seen cs else c : go (r : seen) cs
+
+-- | A value's canonical text, the same on every target.
+renderValue :: Scalar -> String
+renderValue value = case value of
+  SBool b -> if b then "true" else "false"
+  SInteger _ n -> show n
+  SSequence _ xs -> '"' : concatMap escape (map chr xs) ++ "\""
+  SAbsent _ -> "()"
+  SList xs -> "[" ++ commas xs ++ "]"
+  SData tag fields ->
+    let name = T.unpack (last (T.splitOn (T.pack "::") (T.pack tag)))
+    in if null fields then name else name ++ "(" ++ commas fields ++ ")"
+  other -> show other
+  where escape c = if c == '\\' || c == '"' then ['\\', c] else [c]
+        commas xs = foldr1' (map renderValue xs)
+        foldr1' [] = ""
+        foldr1' parts = foldr1 (\a b -> a ++ ", " ++ b) parts
+
+-- | A descriptor text's data types and its last form, the one generated.
+valuesFrom :: String -> (DataTable, Descriptor)
+valuesFrom text =
+  let forms = readDescriptor text
+      table = [(descriptorName name, f) | f@(DescList (DescAtom "data" : name : _)) <- forms]
+  in (table, last forms)
+
+-- | count values generated from one SplitMix64 seed, rendered.
+generatedValues :: String -> Word64 -> Integer -> Integer -> [String]
+generatedValues text seed size count =
+  let (table, d) = valuesFrom text
+  in map renderValue (fst (runDraw (replicateM (fromInteger count) (generateValue table d size)) seed))
+
+-- | The shrink candidates of the first value generated, rendered.
+shrunkValues :: String -> Word64 -> Integer -> [String]
+shrunkValues text seed size =
+  let (table, d) = valuesFrom text
+      first = fst (runDraw (generateValue table d size) seed)
+  in map renderValue (shrinkValue table d first)

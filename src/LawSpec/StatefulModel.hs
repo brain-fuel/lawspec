@@ -9,6 +9,7 @@ module LawSpec.StatefulModel
   ) where
 
 import Control.Monad (forM, forM_, unless, when)
+import Data.Char (toUpper)
 import Data.List (nub)
 import LawSpec.Common (Span(..))
 import LawSpec.Core.Machine
@@ -46,6 +47,12 @@ elaborateModels declarations u = do
   forM_ declarations $ \m -> when (length (filter (== modelName m) names) > 1)
     (Left (Just (modelSpan m), "model " ++ modelName m ++ " is declared twice"))
   results <- forM declarations (elaborateModel u)
+  -- Generated names (start states and the bridges that call adapters) must
+  -- not clash with declared ones.
+  let taken = map fst (functions u)
+  forM_ (zip declarations results) $ \(m, (machine, start)) ->
+    forM_ (generatedNames machine ++ maybe [] (pure . functionName) start) $ \n -> when (n `elem` taken)
+      (Left (Just (modelSpan m), "model " ++ modelName m ++ " generates " ++ n ++ ", which is already declared; rename one"))
   let starts = [d | (_, Just d) <- results]
       signature d = (functionName d, foldr Arrow (functionResult d) (map snd (functionArguments d)))
   pure u
@@ -104,7 +111,8 @@ elaborateModel u m = do
         expected = foldr Arrow (if unit then modelType else Application "Pair" [result, modelType]) (others ++ [modelType])
     reference ("command " ++ name ++ "'s reference") (modelReference c) expected
     forM_ (modelWhen c) $ \p -> reference ("command " ++ name ++ "'s precondition") p (Arrow modelType (Named "Bool"))
-    pure (Command name name (modelReference c) (modelWhen c) [i | (i, _) <- zip [0 ..] args, i /= position] position unit needs shifts)
+    pure (Command name name (bridge ("Run" ++ capitalize name)) (modelReference c) (modelWhen c)
+      [i | (i, _) <- zip [0 ..] args, i /= position] position unit needs shifts)
   forM_ (modelAbstract m) $ \f -> do
     ty <- maybe (failing ("abstract " ++ f ++ " has no signature")) pure (signatureOf f)
     case arguments ty of
@@ -134,10 +142,15 @@ elaborateModel u m = do
       unless (all isUnitType args) $ case stripLocation initial of
         Var g -> reference ("start " ++ f ++ "'s model state") g (foldr Arrow modelType args)
         _ -> failing ("start " ++ f ++ " takes arguments, so its model state must be a definition taking the same arguments")
-      pure (Just (MachineStart f generated fixed),
+      pure (Just (MachineStart f generated fixed (bridge "Begin")),
         Just (FunctionDefinition generated (if null parameters then [("input", Named "Unit")] else parameters) modelType [] body (modelSpan m)))
-  pure (Machine (modelName m) (modelShared m) family (length indexVariables) start commands (modelAbstract m) invariants, startDefinition)
+  let abstractRun = case modelAbstract m of
+        Just f | null (definitionOf f) -> Just (bridge "Abstract")
+        other -> other
+  pure (Machine (modelName m) (modelShared m) family (length indexVariables) start commands (modelAbstract m) abstractRun invariants, startDefinition)
   where
+    -- A generated bridge's name: the model's, then its role.
+    bridge role = modelName m ++ role
     flowOfList t = maybe [] (const [()]) (flowOf t)
 
 -- What each index must be before a command, and how the command changes it:
@@ -252,3 +265,11 @@ mentions vs ty = case unrefinedType ty of
       Binary _ a b -> exprVariables a ++ exprVariables b
       Apply a b -> exprVariables a ++ exprVariables b
       _ -> []
+
+capitalize :: String -> String
+capitalize (c : cs) = toUpper c : cs
+capitalize [] = []
+
+generatedNames :: Machine String -> [String]
+generatedNames machine = map commandRun (machineCommands machine) ++ maybe [] (pure . startRun) (machineStart machine) ++
+  [r | Just r <- [machineAbstractRun machine], Just r /= machineAbstract machine]

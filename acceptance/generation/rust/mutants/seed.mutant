@@ -1,0 +1,6 @@
+@@ src/example/generation.rs
+<<<<<<<
+    ls::generated(&value0, value1, value2.into(), value3.into())
+=======
+    ls::generated(&value0, value1.wrapping_add(1), value2.into(), value3.into())
+>>>>>>>

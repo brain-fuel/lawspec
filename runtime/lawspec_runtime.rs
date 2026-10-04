@@ -2500,6 +2500,398 @@ pub fn helper(name: &str, mut args: Vec<Value>) -> Result<Value> {
     })
 }
 
+// Portable generation for stateful models. A type descriptor is an
+// s-expression: (int T lo hi) with _ for no bound, (bool), (text), (unit),
+// (list D), (maybe D), (either L R), (data NAME (ctor TAG D...) ...) and
+// (ref NAME) for a data type declared in the model's table. Every target
+// generates, shrinks and renders the same values for the same seed, so the
+// draws, candidate order and rendering below follow the Python reference.
+
+/// A descriptor form. Quoted strings and symbols are one atom: the reference
+/// compares them as equal strings.
+#[derive(Clone, Debug, PartialEq)]
+pub enum Sexp {
+    List(Vec<Sexp>),
+    Int(BigInt),
+    Atom(String),
+    Blank,
+}
+
+impl Sexp {
+    fn items(&self) -> &[Sexp] {
+        match self {
+            Sexp::List(items) => items,
+            other => panic!("expected a descriptor form, got {other:?}"),
+        }
+    }
+
+    fn kind(&self) -> &str {
+        match self.items().first() {
+            Some(Sexp::Atom(kind)) => kind,
+            _ => "",
+        }
+    }
+
+    fn name(&self) -> String {
+        match self {
+            Sexp::Atom(s) => s.clone(),
+            Sexp::Int(n) => n.to_string(),
+            Sexp::Blank => "None".into(),
+            Sexp::List(_) => format!("{self:?}"),
+        }
+    }
+
+    fn bound(&self) -> Option<BigInt> {
+        match self {
+            Sexp::Int(n) => Some(n.clone()),
+            Sexp::Blank => None,
+            other => panic!("expected an integer bound, got {other:?}"),
+        }
+    }
+}
+
+/// Parses s-expressions: lists, integers, strings, symbols and _ (Blank).
+pub fn read_descriptor(text: &str) -> Vec<Sexp> {
+    let chars: Vec<char> = text.chars().collect();
+    let space = |c: char| matches!(c, ' ' | '\t' | '\r' | '\n');
+    fn skip(chars: &[char], at: &mut usize, space: &dyn Fn(char) -> bool) {
+        while *at < chars.len() && space(chars[*at]) {
+            *at += 1;
+        }
+    }
+    fn item(chars: &[char], at: &mut usize, space: &dyn Fn(char) -> bool) -> Sexp {
+        skip(chars, at, space);
+        match chars[*at] {
+            '(' => {
+                *at += 1;
+                let mut items = Vec::new();
+                skip(chars, at, space);
+                while chars[*at] != ')' {
+                    items.push(item(chars, at, space));
+                    skip(chars, at, space);
+                }
+                *at += 1;
+                Sexp::List(items)
+            }
+            '"' => {
+                *at += 1;
+                let mut out = String::new();
+                while chars[*at] != '"' {
+                    if chars[*at] == '\\' {
+                        *at += 1;
+                    }
+                    out.push(chars[*at]);
+                    *at += 1;
+                }
+                *at += 1;
+                Sexp::Atom(out)
+            }
+            _ => {
+                let start = *at;
+                while *at < chars.len() && !space(chars[*at]) && chars[*at] != '(' && chars[*at] != ')' {
+                    *at += 1;
+                }
+                let atom: String = chars[start..*at].iter().collect();
+                let digits = atom.trim_start_matches('-');
+                if atom == "_" {
+                    Sexp::Blank
+                } else if !digits.is_empty() && digits.chars().all(|c| c.is_ascii_digit()) {
+                    atom.parse::<BigInt>().map(Sexp::Int).unwrap_or(Sexp::Atom(atom))
+                } else {
+                    Sexp::Atom(atom)
+                }
+            }
+        }
+    }
+    let mut at = 0;
+    let mut forms = Vec::new();
+    skip(&chars, &mut at, &space);
+    while at < chars.len() {
+        forms.push(item(&chars, &mut at, &space));
+        skip(&chars, &mut at, &space);
+    }
+    forms
+}
+
+const UNBOUNDED: i64 = 1_000_000;
+
+// Uniform in [0, bound) like SplitMix64::below, but for any bound: a range
+// such as UInt64's is 2^64 wide.
+fn below_big(random: &mut SplitMix64, bound: &BigInt) -> BigInt {
+    if bound.is_positive() { BigInt::from(random.next()) % bound } else { BigInt::zero() }
+}
+
+fn below_len(random: &mut SplitMix64, bound: i64) -> usize {
+    if bound > 0 { random.below(bound as u64) as usize } else { 0 }
+}
+
+/// Generation, shrinking and rendering over a table of data types.
+#[derive(Clone, Debug)]
+pub struct Values {
+    pub table: HashMap<String, Sexp>,
+}
+
+impl Values {
+    pub fn new(table: HashMap<String, Sexp>) -> Self {
+        Values { table }
+    }
+
+    pub fn resolve<'a>(&'a self, d: &'a Sexp) -> &'a Sexp {
+        if d.kind() == "ref" {
+            let name = d.items()[1].name();
+            self.table.get(&name).unwrap_or_else(|| panic!("unknown data type {name}"))
+        } else {
+            d
+        }
+    }
+
+    /// An integer's range: a missing bound is 1,000,000 from zero, or
+    /// 2,000,000 from the other bound when that is beyond it.
+    pub fn bounds(&self, d: &Sexp) -> (BigInt, BigInt) {
+        let items = d.items();
+        let far = BigInt::from(UNBOUNDED);
+        match (items[2].bound(), items[3].bound()) {
+            (None, None) => (-far.clone(), far),
+            (None, Some(hi)) => ((-far.clone()).min(&hi - 2 * &far), hi),
+            (Some(lo), None) => (lo.clone(), far.clone().max(&lo + 2 * &far)),
+            (Some(lo), Some(hi)) => (lo, hi),
+        }
+    }
+
+    /// The constructors whose fields mention no data type.
+    pub fn base<'a>(&self, d: &'a Sexp) -> Vec<&'a Sexp> {
+        let ctors = &d.items()[2..];
+        let found: Vec<&Sexp> = ctors.iter().filter(|c| !c.items()[2..].iter().any(mentions_data)).collect();
+        if found.is_empty() { ctors.iter().collect() } else { found }
+    }
+
+    pub fn generate(&self, d: &Sexp, random: &mut SplitMix64, size: i64) -> Value {
+        let d = self.resolve(d);
+        let items = d.items();
+        match d.kind() {
+            "int" => {
+                let (lo, hi) = self.bounds(d);
+                if random.below(10) < 2 {
+                    let specials = [lo.clone(), hi.clone(), clamp(0, &lo, &hi), clamp(1, &lo, &hi)];
+                    return Value::Integer(specials[random.below(4) as usize].clone());
+                }
+                let offset = below_big(random, &(&hi - &lo + 1));
+                Value::Integer(lo + offset)
+            }
+            "bool" => Value::Bool(random.below(2) == 1),
+            "text" => {
+                let n = below_len(random, size + 1);
+                Value::Text((0..n).map(|_| char::from(32 + random.below(95) as u8)).collect())
+            }
+            "unit" => Value::Unit,
+            "list" => {
+                let n = below_len(random, size + 1);
+                Value::List((0..n).map(|_| self.generate(&items[1], random, size)).collect())
+            }
+            "maybe" => {
+                if random.below(4) == 0 {
+                    return Value::Maybe(None);
+                }
+                Value::Maybe(Some(Box::new(self.generate(&items[1], random, size))))
+            }
+            "either" => {
+                if random.below(2) == 0 {
+                    return Value::Left(Box::new(self.generate(&items[1], random, size)));
+                }
+                Value::Right(Box::new(self.generate(&items[2], random, size)))
+            }
+            "data" => {
+                let choices: Vec<&Sexp> = if size <= 0 { self.base(d) } else { items[2..].iter().collect() };
+                let ctor = choices[random.below(choices.len() as u64) as usize].items();
+                let fields = ctor[2..].iter().map(|f| self.generate(f, random, (size - 1).max(0))).collect();
+                Value::Data(ctor[1].name(), fields)
+            }
+            _ => panic!("unknown descriptor {d:?}"),
+        }
+    }
+
+    pub fn minimal(&self, d: &Sexp) -> Value {
+        let d = self.resolve(d);
+        let items = d.items();
+        match d.kind() {
+            "int" => {
+                let (lo, hi) = self.bounds(d);
+                Value::Integer(clamp(0, &lo, &hi))
+            }
+            "bool" => Value::Bool(false),
+            "text" => Value::Text(String::new()),
+            "unit" => Value::Unit,
+            "list" => Value::List(Vec::new()),
+            "maybe" => Value::Maybe(None),
+            "either" => Value::Left(Box::new(self.minimal(&items[1]))),
+            _ => {
+                let ctor = self.base(d)[0].items();
+                Value::Data(ctor[1].name(), ctor[2..].iter().map(|f| self.minimal(f)).collect())
+            }
+        }
+    }
+
+    /// Smaller candidates for v, most aggressive first.
+    pub fn shrink(&self, d: &Sexp, v: &Value) -> Vec<Value> {
+        let d = self.resolve(d);
+        let items = d.items();
+        let mut out: Vec<Value> = Vec::new();
+        match (d.kind(), v) {
+            ("int", Value::Integer(n)) => {
+                let target = match self.minimal(d) {
+                    Value::Integer(t) => t,
+                    _ => unreachable!(),
+                };
+                if *n != target {
+                    let step = if *n > target { BigInt::one() } else { -BigInt::one() };
+                    out = vec![
+                        Value::Integer(target.clone()),
+                        Value::Integer(n - toward_zero(&(n - &target), 2)),
+                        Value::Integer(n - step),
+                    ];
+                }
+            }
+            ("bool", Value::Bool(b)) => {
+                if *b {
+                    out = vec![Value::Bool(false)];
+                }
+            }
+            ("text", Value::Text(s)) => {
+                let cs: Vec<char> = s.chars().collect();
+                if !cs.is_empty() {
+                    out.push(Value::Text(String::new()));
+                    out.push(Value::Text(cs[..cs.len() / 2].iter().collect()));
+                    for i in 0..cs.len() {
+                        out.push(Value::Text(cs[..i].iter().chain(&cs[i + 1..]).collect()));
+                    }
+                }
+            }
+            ("list", Value::List(xs)) => {
+                if !xs.is_empty() {
+                    out.push(Value::List(Vec::new()));
+                    out.push(Value::List(xs[..xs.len() / 2].to_vec()));
+                    for i in 0..xs.len() {
+                        out.push(Value::List(xs[..i].iter().chain(&xs[i + 1..]).cloned().collect()));
+                    }
+                    for (i, x) in xs.iter().enumerate() {
+                        for c in self.shrink(&items[1], x) {
+                            let mut ys = xs.clone();
+                            ys[i] = c;
+                            out.push(Value::List(ys));
+                        }
+                    }
+                }
+            }
+            ("maybe", Value::Maybe(Some(x))) => {
+                out.push(Value::Maybe(None));
+                out.extend(self.shrink(&items[1], x).into_iter().map(|c| Value::Maybe(Some(Box::new(c)))));
+            }
+            ("either", Value::Left(x)) => {
+                out = self.shrink(&items[1], x).into_iter().map(|c| Value::Left(Box::new(c))).collect();
+            }
+            ("either", Value::Right(x)) => {
+                out = self.shrink(&items[2], x).into_iter().map(|c| Value::Right(Box::new(c))).collect();
+            }
+            ("data", Value::Data(tag, fields)) => {
+                let ctor = items[2..]
+                    .iter()
+                    .find(|c| c.items()[1].name() == *tag)
+                    .unwrap_or_else(|| panic!("no constructor {tag}"))
+                    .items();
+                let own = Sexp::List(vec![Sexp::Atom("ref".into()), items[1].clone()]);
+                out.push(self.minimal(d));
+                // A field of the same type is a smaller value of it.
+                out.extend(fields.iter().zip(&ctor[2..]).filter(|(_, fd)| **fd == own).map(|(f, _)| f.clone()));
+                for (i, (field, fd)) in fields.iter().zip(&ctor[2..]).enumerate() {
+                    for c in self.shrink(fd, field) {
+                        let mut fs = fields.clone();
+                        fs[i] = c;
+                        out.push(Value::Data(tag.clone(), fs));
+                    }
+                }
+            }
+            _ => {}
+        }
+        let own = render(v);
+        let mut seen: Vec<String> = Vec::new();
+        let mut unique = Vec::new();
+        for c in out {
+            let text = render(&c);
+            if text != own && !seen.contains(&text) {
+                seen.push(text);
+                unique.push(c);
+            }
+        }
+        unique
+    }
+}
+
+fn clamp(n: i64, lo: &BigInt, hi: &BigInt) -> BigInt {
+    BigInt::from(n).max(lo.clone()).min(hi.clone())
+}
+
+fn toward_zero(n: &BigInt, d: i64) -> BigInt {
+    let q = n.abs() / d;
+    if n.is_negative() { -q } else { q }
+}
+
+fn mentions_data(d: &Sexp) -> bool {
+    match d {
+        Sexp::List(items) => {
+            matches!(items.first(), Some(Sexp::Atom(k)) if k == "ref" || k == "data")
+                || items.iter().skip(1).any(mentions_data)
+        }
+        _ => false,
+    }
+}
+
+/// A value's canonical text, the same on every target.
+pub fn render(v: &Value) -> String {
+    let all = |xs: &[Value]| xs.iter().map(render).collect::<Vec<_>>().join(", ");
+    match v {
+        Value::Bool(b) => (if *b { "true" } else { "false" }).into(),
+        Value::Integer(n) => n.to_string(),
+        Value::Text(s) => format!("\"{}\"", s.replace('\\', "\\\\").replace('"', "\\\"")),
+        Value::Unit => "()".into(),
+        Value::List(xs) => format!("[{}]", all(xs)),
+        Value::Maybe(None) => "Nothing".into(),
+        Value::Maybe(Some(x)) => format!("Just({})", render(x)),
+        Value::Left(x) => format!("Left({})", render(x)),
+        Value::Right(x) => format!("Right({})", render(x)),
+        Value::Data(tag, fields) => {
+            let name = tag.rsplit("::").next().unwrap_or(tag);
+            if fields.is_empty() { name.into() } else { format!("{name}({})", all(fields)) }
+        }
+        other => format!("{other:?}"),
+    }
+}
+
+/// A descriptor text's data types and its last form, the one generated.
+pub fn values_from(text: &str) -> (Values, Sexp) {
+    let mut forms = read_descriptor(text);
+    let table = forms
+        .iter()
+        .filter(|f| matches!(f, Sexp::List(_)) && f.kind() == "data")
+        .map(|f| (f.items()[1].name(), f.clone()))
+        .collect();
+    let last = forms.pop().expect("a descriptor");
+    (Values::new(table), last)
+}
+
+/// count values generated from one SplitMix64 seed, rendered.
+pub fn generated(text: &str, seed: u64, size: i64, count: i64) -> Vec<String> {
+    let (values, d) = values_from(text);
+    let mut random = SplitMix64::new(seed);
+    (0..count).map(|_| render(&values.generate(&d, &mut random, size))).collect()
+}
+
+/// The shrink candidates of the first value generated, rendered.
+pub fn shrunk(text: &str, seed: u64, size: i64) -> Vec<String> {
+    let (values, d) = values_from(text);
+    let first = values.generate(&d, &mut SplitMix64::new(seed), size);
+    values.shrink(&d, &first).iter().map(render).collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

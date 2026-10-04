@@ -1174,6 +1174,12 @@ public final class LawSpecRuntime {
     public long below(long bound) {
       return bound <= 0 ? 0 : Long.remainderUnsigned(next(), bound);
     }
+
+    /** Uniform in [0, bound) for any bound up to 2^64; 0 when bound is 0. */
+    public BigInteger below(BigInteger bound) {
+      if (bound.signum() <= 0) return BigInteger.ZERO;
+      return new BigInteger(Long.toUnsignedString(next())).mod(bound);
+    }
   }
 
   /** A stage starting or finishing an attempt, or a wait. */
@@ -1566,5 +1572,423 @@ public final class LawSpecRuntime {
   /** A logical Integer. */
   public static Value integer64(long n) {
     return new Value("Integer", BigInteger.valueOf(n));
+  }
+
+  // Portable generation for stateful models. A type descriptor is an
+  // s-expression: (int T lo hi) with _ for no bound, (bool), (text), (unit),
+  // (list D), (maybe D), (either L R), (data NAME (ctor TAG D...) ...) and
+  // (ref NAME) for a data type declared in the model's table. Every target
+  // generates, shrinks and renders the same values for the same seed.
+
+  /** A string atom of a descriptor. */
+  public record Quoted(String text) {}
+
+  /**
+   * Parses s-expressions: lists (List), integers (BigInteger), strings
+   * (Quoted), symbols (String) and _ (null).
+   */
+  public static List<Object> readDescriptor(String text) {
+    var position = new int[] {0};
+    var items = new ArrayList<Object>();
+    skipBlank(text, position);
+    while (position[0] < text.length()) {
+      items.add(descriptorItem(text, position));
+      skipBlank(text, position);
+    }
+    return items;
+  }
+
+  private static void skipBlank(String text, int[] position) {
+    while (position[0] < text.length() && " \t\r\n".indexOf(text.charAt(position[0])) >= 0)
+      position[0]++;
+  }
+
+  private static Object descriptorItem(String text, int[] position) {
+    skipBlank(text, position);
+    char c = text.charAt(position[0]);
+    if (c == '(') {
+      position[0]++;
+      var items = new ArrayList<Object>();
+      skipBlank(text, position);
+      while (text.charAt(position[0]) != ')') {
+        items.add(descriptorItem(text, position));
+        skipBlank(text, position);
+      }
+      position[0]++;
+      return items;
+    }
+    if (c == '"') {
+      position[0]++;
+      var out = new StringBuilder();
+      while (text.charAt(position[0]) != '"') {
+        if (text.charAt(position[0]) == '\\') position[0]++;
+        out.append(text.charAt(position[0]));
+        position[0]++;
+      }
+      position[0]++;
+      return new Quoted(out.toString());
+    }
+    int start = position[0];
+    while (position[0] < text.length() && " \t\r\n()".indexOf(text.charAt(position[0])) < 0)
+      position[0]++;
+    String atom = text.substring(start, position[0]);
+    if (atom.equals("_")) return null;
+    String digits = atom.replaceFirst("^-+", "");
+    if (!digits.isEmpty() && digits.chars().allMatch(d -> d >= '0' && d <= '9'))
+      return new BigInteger(atom);
+    return atom;
+  }
+
+  /** An atom's text: a symbol, a string or an integer. */
+  private static String atomText(Object atom) {
+    return atom instanceof Quoted q ? q.text() : String.valueOf(atom);
+  }
+
+  private static boolean sameAtom(Object a, Object b) {
+    boolean textA = a instanceof String || a instanceof Quoted;
+    boolean textB = b instanceof String || b instanceof Quoted;
+    if (textA || textB) return textA && textB && atomText(a).equals(atomText(b));
+    return Objects.equals(a, b);
+  }
+
+  @SuppressWarnings("unchecked")
+  private static List<Object> form(Object d) {
+    return (List<Object>) d;
+  }
+
+  private static final BigInteger UNBOUNDED = BigInteger.valueOf(1_000_000);
+
+  /** Generation, shrinking and rendering over a table of data types. */
+  public static final class Values {
+    public final Map<String, List<Object>> table;
+
+    public Values(Map<String, List<Object>> table) {
+      this.table = table;
+    }
+
+    public List<Object> resolve(Object d) {
+      var f = form(d);
+      return atomText(f.get(0)).equals("ref") ? table.get(atomText(f.get(1))) : f;
+    }
+
+    /**
+     * An integer's range: a missing bound is 1,000,000 from zero, or
+     * 2,000,000 from the other bound when that is beyond it.
+     */
+    public BigInteger[] bounds(List<Object> d) {
+      var lo = (BigInteger) d.get(2);
+      var hi = (BigInteger) d.get(3);
+      var twice = UNBOUNDED.shiftLeft(1);
+      if (lo == null && hi == null) return new BigInteger[] {UNBOUNDED.negate(), UNBOUNDED};
+      if (lo == null) return new BigInteger[] {UNBOUNDED.negate().min(hi.subtract(twice)), hi};
+      if (hi == null) return new BigInteger[] {lo, UNBOUNDED.max(lo.add(twice))};
+      return new BigInteger[] {lo, hi};
+    }
+
+    /** The constructors whose fields mention no data type. */
+    public List<Object> base(List<Object> d) {
+      var all = d.subList(2, d.size());
+      var found = new ArrayList<Object>();
+      for (var c : all) {
+        var ctor = form(c);
+        boolean mentions = false;
+        for (var f : ctor.subList(2, ctor.size())) mentions |= mentionsData(f);
+        if (!mentions) found.add(c);
+      }
+      return found.isEmpty() ? all : found;
+    }
+
+    /** The logical type name of a descriptor's values. */
+    public String typeName(Object descriptor) {
+      var d = form(descriptor);
+      return switch (atomText(d.get(0))) {
+        case "int" -> atomText(d.get(1));
+        case "bool" -> "Bool";
+        case "text" -> "Text";
+        case "unit" -> "Unit";
+        case "list" -> "List " + typeName(d.get(1));
+        case "maybe" -> "Maybe " + typeName(d.get(1));
+        case "either" -> "Either (" + typeName(d.get(1)) + ") (" + typeName(d.get(2)) + ")";
+        default -> atomText(d.get(1));
+      };
+    }
+
+    private static Value text(List<Integer> units) {
+      return new Value("Text", List.copyOf(units));
+    }
+
+    private static Value data(String type, String tag, List<Value> fields) {
+      return new Value(type, new Data(tag, fields));
+    }
+
+    public Value generate(Object descriptor, SplitMix64 random, long size) {
+      var d = resolve(descriptor);
+      var type = typeName(d);
+      switch (atomText(d.get(0))) {
+        case "int" -> {
+          var b = bounds(d);
+          var lo = b[0];
+          var hi = b[1];
+          if (random.below(10) < 2) {
+            var specials =
+                List.of(
+                    lo,
+                    hi,
+                    BigInteger.ZERO.max(lo).min(hi),
+                    BigInteger.ONE.max(lo).min(hi));
+            return new Value(type, specials.get((int) random.below(4)));
+          }
+          return new Value(type, lo.add(random.below(hi.subtract(lo).add(BigInteger.ONE))));
+        }
+        case "bool" -> {
+          return bool(random.below(2) == 1);
+        }
+        case "text" -> {
+          long n = random.below(size + 1);
+          var units = new ArrayList<Integer>();
+          for (long i = 0; i < n; i++) units.add(32 + (int) random.below(95));
+          return text(units);
+        }
+        case "unit" -> {
+          return absent("Unit");
+        }
+        case "list" -> {
+          long n = random.below(size + 1);
+          var items = new ArrayList<Value>();
+          for (long i = 0; i < n; i++) items.add(generate(d.get(1), random, size));
+          return new Value(type, List.copyOf(items));
+        }
+        case "maybe" -> {
+          if (random.below(4) == 0) return data(type, "Maybe::Nothing", List.of());
+          return data(type, "Maybe::Just", List.of(generate(d.get(1), random, size)));
+        }
+        case "either" -> {
+          if (random.below(2) == 0)
+            return data(type, "Either::Left", List.of(generate(d.get(1), random, size)));
+          return data(type, "Either::Right", List.of(generate(d.get(2), random, size)));
+        }
+        case "data" -> {
+          var choices = size <= 0 ? base(d) : d.subList(2, d.size());
+          var ctor = form(choices.get((int) random.below(choices.size())));
+          var fields = new ArrayList<Value>();
+          for (var f : ctor.subList(2, ctor.size()))
+            fields.add(generate(f, random, Math.max(size - 1, 0)));
+          return data(type, atomText(ctor.get(1)), fields);
+        }
+        default -> throw new IllegalArgumentException("unknown descriptor " + d);
+      }
+    }
+
+    public Value minimal(Object descriptor) {
+      var d = resolve(descriptor);
+      var type = typeName(d);
+      switch (atomText(d.get(0))) {
+        case "int" -> {
+          var b = bounds(d);
+          return new Value(type, BigInteger.ZERO.max(b[0]).min(b[1]));
+        }
+        case "bool" -> {
+          return bool(false);
+        }
+        case "text" -> {
+          return text(List.of());
+        }
+        case "unit" -> {
+          return absent("Unit");
+        }
+        case "list" -> {
+          return new Value(type, List.of());
+        }
+        case "maybe" -> {
+          return data(type, "Maybe::Nothing", List.of());
+        }
+        case "either" -> {
+          return data(type, "Either::Left", List.of(minimal(d.get(1))));
+        }
+        default -> {
+          var ctor = form(base(d).get(0));
+          var fields = new ArrayList<Value>();
+          for (var f : ctor.subList(2, ctor.size())) fields.add(minimal(f));
+          return data(type, atomText(ctor.get(1)), fields);
+        }
+      }
+    }
+
+    /** Smaller candidates for v, most aggressive first. */
+    @SuppressWarnings("unchecked")
+    public List<Value> shrink(Object descriptor, Value v) {
+      var d = resolve(descriptor);
+      var type = typeName(d);
+      var out = new ArrayList<Value>();
+      switch (atomText(d.get(0))) {
+        case "int" -> {
+          var target = (BigInteger) minimal(d).data();
+          var n = (BigInteger) v.data();
+          if (!n.equals(target)) {
+            out.add(new Value(type, target));
+            out.add(new Value(type, n.subtract(n.subtract(target).divide(BigInteger.TWO))));
+            out.add(
+                new Value(type, n.subtract(n.compareTo(target) > 0 ? BigInteger.ONE : BigInteger.ONE.negate())));
+          }
+        }
+        case "bool" -> {
+          if ((Boolean) v.data()) out.add(bool(false));
+        }
+        case "text" -> {
+          var units = (List<Integer>) v.data();
+          if (!units.isEmpty()) {
+            out.add(text(List.of()));
+            out.add(text(units.subList(0, units.size() / 2)));
+            for (int i = 0; i < units.size(); i++) {
+              var without = new ArrayList<>(units);
+              without.remove(i);
+              out.add(text(without));
+            }
+          }
+        }
+        case "list" -> {
+          var items = (List<Value>) v.data();
+          if (!items.isEmpty()) {
+            out.add(new Value(type, List.of()));
+            out.add(new Value(type, List.copyOf(items.subList(0, items.size() / 2))));
+            for (int i = 0; i < items.size(); i++) {
+              var without = new ArrayList<>(items);
+              without.remove(i);
+              out.add(new Value(type, List.copyOf(without)));
+            }
+            for (int i = 0; i < items.size(); i++) {
+              for (var c : shrink(d.get(1), items.get(i))) {
+                var replaced = new ArrayList<>(items);
+                replaced.set(i, c);
+                out.add(new Value(type, List.copyOf(replaced)));
+              }
+            }
+          }
+        }
+        case "maybe" -> {
+          var value = (Data) v.data();
+          if (value.tag().equals("Maybe::Just")) {
+            out.add(data(type, "Maybe::Nothing", List.of()));
+            for (var c : shrink(d.get(1), value.fields().get(0)))
+              out.add(data(type, "Maybe::Just", List.of(c)));
+          }
+        }
+        case "either" -> {
+          var value = (Data) v.data();
+          var inner = value.tag().equals("Either::Left") ? d.get(1) : d.get(2);
+          for (var c : shrink(inner, value.fields().get(0)))
+            out.add(data(type, value.tag(), List.of(c)));
+        }
+        case "data" -> {
+          var value = (Data) v.data();
+          List<Object> ctor = null;
+          for (var c : d.subList(2, d.size()))
+            if (atomText(form(c).get(1)).equals(value.tag())) {
+              ctor = form(c);
+              break;
+            }
+          if (ctor == null) throw new IllegalArgumentException("unknown constructor " + value.tag());
+          var fieldTypes = ctor.subList(2, ctor.size());
+          int count = Math.min(value.fields().size(), fieldTypes.size());
+          out.add(minimal(d));
+          // A field of the same type is a smaller value of it.
+          for (int i = 0; i < count; i++) {
+            if (fieldTypes.get(i) instanceof List<?> fd
+                && fd.size() == 2
+                && sameAtom(fd.get(0), "ref")
+                && sameAtom(fd.get(1), d.get(1))) out.add(value.fields().get(i));
+          }
+          for (int i = 0; i < count; i++) {
+            for (var c : shrink(fieldTypes.get(i), value.fields().get(i))) {
+              var replaced = new ArrayList<>(value.fields());
+              replaced.set(i, c);
+              out.add(data(type, value.tag(), replaced));
+            }
+          }
+        }
+        default -> {}
+      }
+      var original = render(v);
+      var seen = new java.util.HashSet<String>();
+      var unique = new ArrayList<Value>();
+      for (var c : out) {
+        var text = render(c);
+        if (!text.equals(original) && seen.add(text)) unique.add(c);
+      }
+      return unique;
+    }
+  }
+
+  private static boolean mentionsData(Object d) {
+    if (!(d instanceof List<?> f)) return false;
+    var head = atomText(f.get(0));
+    if (head.equals("ref") || head.equals("data")) return true;
+    for (var x : f.subList(1, f.size())) if (mentionsData(x)) return true;
+    return false;
+  }
+
+  /** A value's canonical text, the same on every target. */
+  public static String render(Value v) {
+    Object data = v.data();
+    if (data instanceof Boolean b) return b ? "true" : "false";
+    if (data instanceof BigInteger n) return n.toString();
+    if (v.type().equals("Text") && data instanceof List<?> units) {
+      var out = new StringBuilder("\"");
+      for (Object unit : units) {
+        int c = (Integer) unit;
+        if (c == '\\') out.append("\\\\");
+        else if (c == '"') out.append("\\\"");
+        else out.appendCodePoint(c);
+      }
+      return out.append('"').toString();
+    }
+    if (data == null) return "()";
+    if (data instanceof List<?> items) {
+      var parts = new ArrayList<String>();
+      for (Object item : items) parts.add(render((Value) item));
+      return "[" + String.join(", ", parts) + "]";
+    }
+    if (data instanceof Data value) {
+      String tag = value.tag();
+      int cut = tag.lastIndexOf("::");
+      String name = cut < 0 ? tag : tag.substring(cut + 2);
+      if (value.fields().isEmpty()) return name;
+      var parts = new ArrayList<String>();
+      for (Value field : value.fields()) parts.add(render(field));
+      return name + "(" + String.join(", ", parts) + ")";
+    }
+    return String.valueOf(data);
+  }
+
+  /** A descriptor text's data types and its last form, the one generated. */
+  public record Described(Values values, Object descriptor) {}
+
+  public static Described valuesFrom(String text) {
+    var forms = readDescriptor(text);
+    var table = new java.util.HashMap<String, List<Object>>();
+    for (var f : forms)
+      if (f instanceof List<?> && atomText(form(f).get(0)).equals("data"))
+        table.put(atomText(form(f).get(1)), form(f));
+    return new Described(new Values(table), forms.getLast());
+  }
+
+  /** count values generated from one SplitMix64 seed, rendered. */
+  public static List<String> generated(String text, long seed, long size, long count) {
+    var described = valuesFrom(text);
+    var random = new SplitMix64(seed);
+    var result = new ArrayList<String>();
+    for (long i = 0; i < count; i++)
+      result.add(render(described.values().generate(described.descriptor(), random, size)));
+    return result;
+  }
+
+  /** The shrink candidates of the first value generated, rendered. */
+  public static List<String> shrunk(String text, long seed, long size) {
+    var described = valuesFrom(text);
+    var values = described.values();
+    var first = values.generate(described.descriptor(), new SplitMix64(seed), size);
+    var result = new ArrayList<String>();
+    for (var c : values.shrink(described.descriptor(), first)) result.add(render(c));
+    return result;
   }
 }

@@ -1,0 +1,6 @@
+@@ src/Example/Generation.hs
+<<<<<<<
+generated descriptor seed size count = map T.pack (LS.generatedValues (T.unpack descriptor) seed (toInteger size) (toInteger count))
+=======
+generated descriptor seed size count = map T.pack (LS.generatedValues (T.unpack descriptor) (seed + 1) (toInteger size) (toInteger count))
+>>>>>>>

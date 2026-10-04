@@ -23,8 +23,10 @@ data Machine name = Machine
   , machineIndices :: Int
   , machineStart :: Maybe (MachineStart name)
   , machineCommands :: [Command name]
-  -- The system state's abstraction to the model state, when given.
+  -- The system state's abstraction to the model state, when given, and
+  -- the definition that calls it.
   , machineAbstract :: Maybe name
+  , machineAbstractRun :: Maybe name
   , machineInvariants :: [Invariant name]
   } deriving (Eq, Show, Generic, Functor, Foldable, Traversable)
 
@@ -33,6 +35,8 @@ data Machine name = Machine
 -- its type fixes them.
 data MachineStart name = MachineStart
   { startSystem :: name, startModel :: name, startIndices :: Maybe [Integer]
+  -- The definition that calls the start command.
+  , startRun :: name
   } deriving (Eq, Show, Generic, Functor, Foldable, Traversable)
 
 -- A command: the adapter that runs it, its reference definition over the
@@ -43,6 +47,9 @@ data MachineStart name = MachineStart
 data Command name = Command
   { commandName :: String
   , commandSystem :: name
+  -- The generated definition that calls the command's adapter, so the model
+  -- runtime calls it with logical values like any definition.
+  , commandRun :: name
   , commandReference :: name
   , commandWhen :: Maybe name
   -- The positions of the command's arguments other than the state.

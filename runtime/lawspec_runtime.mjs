@@ -1487,3 +1487,245 @@ export async function runWorkflowAsync(symbols, attempt) {
   return result;
 }
 
+
+// Portable generation for stateful models. A type descriptor is an
+// s-expression: (int T lo hi) with _ for no bound, (bool), (text), (unit),
+// (list D), (maybe D), (either L R), (data NAME (ctor TAG D...) ...) and
+// (ref NAME) for a data type declared in the model's table. Every target
+// generates, shrinks and renders the same values for the same seed.
+
+/** Parses s-expressions: lists, integers (bigint), strings, symbols and _ (null). */
+export function readDescriptor(text) {
+  let position = 0;
+  const skip = () => {
+    while (position < text.length && ' \t\r\n'.includes(text[position])) position++;
+  };
+  const item = () => {
+    skip();
+    const c = text[position];
+    if (c === '(') {
+      position++;
+      const items = [];
+      skip();
+      while (text[position] !== ')') {
+        items.push(item());
+        skip();
+      }
+      position++;
+      return items;
+    }
+    if (c === '"') {
+      position++;
+      let out = '';
+      while (text[position] !== '"') {
+        if (text[position] === '\\') position++;
+        out += text[position];
+        position++;
+      }
+      position++;
+      return out;
+    }
+    const start = position;
+    while (position < text.length && !' \t\r\n()'.includes(text[position])) position++;
+    const atom = text.slice(start, position);
+    if (atom === '_') return null;
+    if (/^-*[0-9]+$/.test(atom)) return BigInt(atom);
+    return atom;
+  };
+  const items = [];
+  skip();
+  while (position < text.length) {
+    items.push(item());
+    skip();
+  }
+  return items;
+}
+
+const UNBOUNDED = 1000000n;
+const bigMin = (a, b) => (a < b ? a : b);
+const bigMax = (a, b) => (a > b ? a : b);
+const isRef = (fd, name) =>
+  Array.isArray(fd) && fd.length === 2 && fd[0] === 'ref' && fd[1] === name;
+
+function mentionsData(d) {
+  return Array.isArray(d) &&
+    (d[0] === 'ref' || d[0] === 'data' || d.slice(1).some(mentionsData));
+}
+
+/** Generation, shrinking and rendering over a table of data types. */
+export class Values {
+  table;
+  constructor(table) { this.table = table; }
+  resolve(d) { return d[0] === 'ref' ? this.table.get(d[1]) : d; }
+  /**
+   * An integer's range: a missing bound is 1,000,000 from zero, or
+   * 2,000,000 from the other bound when that is beyond it.
+   */
+  bounds(d) {
+    const lo = d[2], hi = d[3];
+    if (lo === null && hi === null) return [-UNBOUNDED, UNBOUNDED];
+    if (lo === null) return [bigMin(-UNBOUNDED, hi - 2n * UNBOUNDED), hi];
+    if (hi === null) return [lo, bigMax(UNBOUNDED, lo + 2n * UNBOUNDED)];
+    return [lo, hi];
+  }
+  /** The constructors whose fields mention no data type. */
+  base(d) {
+    const found = d.slice(2).filter((c) => !c.slice(2).some(mentionsData));
+    return found.length ? found : d.slice(2);
+  }
+  generate(d, random, size) {
+    d = this.resolve(d);
+    const n = BigInt(size);
+    switch (d[0]) {
+      case 'int': {
+        const [lo, hi] = this.bounds(d);
+        if (random.below(10n) < 2n) {
+          const specials = [lo, hi, bigMin(bigMax(0n, lo), hi), bigMin(bigMax(1n, lo), hi)];
+          return specials[Number(random.below(4n))];
+        }
+        return lo + random.below(hi - lo + 1n);
+      }
+      case 'bool':
+        return random.below(2n) === 1n;
+      case 'text': {
+        let out = '';
+        for (let i = random.below(n + 1n); i > 0n; i--)
+          out += String.fromCharCode(32 + Number(random.below(95n)));
+        return out;
+      }
+      case 'unit':
+        return UNIT;
+      case 'list': {
+        const out = [];
+        for (let i = random.below(n + 1n); i > 0n; i--) out.push(this.generate(d[1], random, n));
+        return out;
+      }
+      case 'maybe':
+        if (random.below(4n) === 0n) return new DataValue('Maybe::Nothing', []);
+        return new DataValue('Maybe::Just', [this.generate(d[1], random, n)]);
+      case 'either':
+        if (random.below(2n) === 0n) return new DataValue('Either::Left', [this.generate(d[1], random, n)]);
+        return new DataValue('Either::Right', [this.generate(d[2], random, n)]);
+      case 'data': {
+        const choices = n <= 0n ? this.base(d) : d.slice(2);
+        const ctor = choices[Number(random.below(BigInt(choices.length)))];
+        const smaller = bigMax(n - 1n, 0n);
+        return new DataValue(String(ctor[1]), ctor.slice(2).map((f) => this.generate(f, random, smaller)));
+      }
+    }
+    throw new TypeError('unknown descriptor ' + render(d));
+  }
+  minimal(d) {
+    d = this.resolve(d);
+    switch (d[0]) {
+      case 'int': {
+        const [lo, hi] = this.bounds(d);
+        return bigMin(bigMax(0n, lo), hi);
+      }
+      case 'bool': return false;
+      case 'text': return '';
+      case 'unit': return UNIT;
+      case 'list': return [];
+      case 'maybe': return new DataValue('Maybe::Nothing', []);
+      case 'either': return new DataValue('Either::Left', [this.minimal(d[1])]);
+    }
+    const ctor = this.base(d)[0];
+    return new DataValue(String(ctor[1]), ctor.slice(2).map((f) => this.minimal(f)));
+  }
+  /** Smaller candidates for v, most aggressive first. */
+  shrink(d, v) {
+    d = this.resolve(d);
+    let out = [];
+    // Removals and halvings of a sequence, as arrays of its elements.
+    const smaller = (items) => [
+      [], items.slice(0, Math.floor(items.length / 2)),
+      ...items.map((_, i) => [...items.slice(0, i), ...items.slice(i + 1)]),
+    ];
+    switch (d[0]) {
+      case 'int': {
+        const target = this.minimal(d);
+        // bigint division truncates toward zero.
+        if (v !== target) out = [target, v - (v - target) / 2n, v - (v > target ? 1n : -1n)];
+        break;
+      }
+      case 'bool':
+        out = v ? [false] : [];
+        break;
+      case 'text':
+        if (v) out = smaller([...v]).map((cs) => cs.join(''));
+        break;
+      case 'list':
+        if (v.length) {
+          out = smaller(v);
+          v.forEach((item, i) => {
+            for (const c of this.shrink(d[1], item)) out.push([...v.slice(0, i), c, ...v.slice(i + 1)]);
+          });
+        }
+        break;
+      case 'maybe':
+        if (v.tag === 'Maybe::Just')
+          out = [new DataValue('Maybe::Nothing', []),
+            ...this.shrink(d[1], v.fields[0]).map((c) => new DataValue('Maybe::Just', [c]))];
+        break;
+      case 'either': {
+        const inner = v.tag === 'Either::Left' ? d[1] : d[2];
+        out = this.shrink(inner, v.fields[0]).map((c) => new DataValue(v.tag, [c]));
+        break;
+      }
+      case 'data': {
+        const fields = d.slice(2).find((c) => String(c[1]) === v.tag).slice(2);
+        out = [this.minimal(d)];
+        // A field of the same type is a smaller value of it.
+        v.fields.forEach((f, i) => { if (i < fields.length && isRef(fields[i], d[1])) out.push(f); });
+        v.fields.forEach((field, i) => {
+          if (i >= fields.length) return;
+          for (const c of this.shrink(fields[i], field))
+            out.push(new DataValue(v.tag, [...v.fields.slice(0, i), c, ...v.fields.slice(i + 1)]));
+        });
+        break;
+      }
+    }
+    const seen = new Set([render(v)]);
+    return out.filter((c) => {
+      const text = render(c);
+      if (seen.has(text)) return false;
+      seen.add(text);
+      return true;
+    });
+  }
+}
+
+/** A value's canonical text, the same on every target. */
+export function render(v) {
+  if (typeof v === 'boolean') return v ? 'true' : 'false';
+  if (typeof v === 'bigint' || typeof v === 'number') return String(v);
+  if (typeof v === 'string') return '"' + v.replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"';
+  if (v === UNIT) return '()';
+  if (Array.isArray(v)) return '[' + v.map(render).join(', ') + ']';
+  if (v instanceof DataValue) {
+    const name = v.tag.split('::').pop();
+    return v.fields.length ? name + '(' + v.fields.map(render).join(', ') + ')' : name;
+  }
+  return String(v);
+}
+
+/** A descriptor text's data types and its last form, the one generated. */
+export function valuesFrom(text) {
+  const forms = readDescriptor(text);
+  const table = new Map(
+      forms.filter((f) => Array.isArray(f) && f[0] === 'data').map((f) => [String(f[1]), f]));
+  return [new Values(table), forms[forms.length - 1]];
+}
+
+/** count values generated from one SplitMix64 seed, rendered. */
+export function generated(text, seed, size, count) {
+  const [values, d] = valuesFrom(text);
+  const random = new SplitMix64(BigInt(seed));
+  return Array.from({length: Number(count)}, () => render(values.generate(d, random, size)));
+}
+
+/** The shrink candidates of the first value generated, rendered. */
+export function shrunk(text, seed, size) {
+  const [values, d] = valuesFrom(text);
+  return values.shrink(d, values.generate(d, new SplitMix64(BigInt(seed)), size)).map(render);
+}

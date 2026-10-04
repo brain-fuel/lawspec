@@ -2046,3 +2046,474 @@ func lsRetryDecision(decision LawSpecValue) (int64, bool) {
 	return delay.Int64(), true
 }
 
+// Portable generation for stateful models. A type descriptor is an
+// s-expression: (int T lo hi) with _ for no bound, (bool), (text), (unit),
+// (list D), (maybe D), (either L R), (data NAME (ctor TAG D...) ...) and
+// (ref NAME) for a data type declared in the model's table. Every target
+// generates, shrinks and renders the same values for the same seed. Values
+// are logical: a data type's value has its NAME as Type.
+
+// lawSpecQuoted is a string atom of a descriptor; a bare atom is a string.
+type lawSpecQuoted string
+
+// lsReadDescriptor parses s-expressions: lists ([]any), integers (*big.Int),
+// strings, symbols and _ (nil).
+func lsReadDescriptor(source string) []any {
+	text := []rune(source)
+	position := 0
+	space := func(c rune) bool { return c == ' ' || c == '\t' || c == '\r' || c == '\n' }
+	skip := func() {
+		for position < len(text) && space(text[position]) {
+			position++
+		}
+	}
+	var item func() any
+	item = func() any {
+		skip()
+		c := text[position]
+		if c == '(' {
+			position++
+			items := []any{}
+			skip()
+			for text[position] != ')' {
+				items = append(items, item())
+				skip()
+			}
+			position++
+			return items
+		}
+		if c == '"' {
+			position++
+			out := []rune{}
+			for text[position] != '"' {
+				if text[position] == '\\' {
+					position++
+				}
+				out = append(out, text[position])
+				position++
+			}
+			position++
+			return lawSpecQuoted(string(out))
+		}
+		start := position
+		for position < len(text) && !space(text[position]) && text[position] != '(' && text[position] != ')' {
+			position++
+		}
+		atom := string(text[start:position])
+		if atom == "_" {
+			return nil
+		}
+		if digits := strings.TrimLeft(atom, "-"); digits != "" && strings.Trim(digits, "0123456789") == "" {
+			return lsInt(atom)
+		}
+		return atom
+	}
+	items := []any{}
+	skip()
+	for position < len(text) {
+		items = append(items, item())
+		skip()
+	}
+	return items
+}
+
+// lsAtom is an atom's text, quoted or not.
+func lsAtom(x any) string {
+	switch x := x.(type) {
+	case string:
+		return x
+	case lawSpecQuoted:
+		return string(x)
+	}
+	return fmt.Sprint(x)
+}
+
+// lsBelowBig is SplitMix64's Below for any bound, 2^64 (the full UInt64
+// range) included: the raw draw modulo the bound.
+func lsBelowBig(random *LawSpecSplitMix64, bound *big.Int) *big.Int {
+	if bound.Sign() <= 0 {
+		return new(big.Int)
+	}
+	draw := new(big.Int).SetUint64(random.Next())
+	return draw.Mod(draw, bound)
+}
+
+// lsBelowCount is Below for a signed count; nothing is drawn below 1.
+func lsBelowCount(random *LawSpecSplitMix64, bound int64) int64 {
+	if bound <= 0 {
+		return 0
+	}
+	return int64(random.Below(uint64(bound)))
+}
+
+const lsUnbounded = 1_000_000
+
+// lawSpecValues generates, shrinks and renders over a table of data types.
+type lawSpecValues struct{ table map[string][]any }
+
+func (s lawSpecValues) resolve(d any) []any {
+	form := d.([]any)
+	if lsAtom(form[0]) == "ref" {
+		return s.table[lsAtom(form[1])]
+	}
+	return form
+}
+
+// typeOf is the logical type name the runtime's codecs give such a value.
+func (s lawSpecValues) typeOf(d any) string {
+	form := s.resolve(d)
+	switch lsAtom(form[0]) {
+	case "int":
+		return lsAtom(form[1])
+	case "bool":
+		return "Bool"
+	case "text":
+		return "Text"
+	case "unit":
+		return "Unit"
+	case "list":
+		return "List " + s.typeOf(form[1])
+	case "maybe":
+		return "Maybe " + s.typeOf(form[1])
+	case "either":
+		return "Either (" + s.typeOf(form[1]) + ") (" + s.typeOf(form[2]) + ")"
+	}
+	return lsAtom(form[1])
+}
+
+// bounds is an integer's range: a missing bound is 1,000,000 from zero, or
+// 2,000,000 from the other bound when that is beyond it.
+func (s lawSpecValues) bounds(d []any) (*big.Int, *big.Int) {
+	unbounded, twice := big.NewInt(lsUnbounded), big.NewInt(2*lsUnbounded)
+	lo, _ := d[2].(*big.Int)
+	hi, _ := d[3].(*big.Int)
+	switch {
+	case lo == nil && hi == nil:
+		return new(big.Int).Neg(unbounded), unbounded
+	case lo == nil:
+		low := new(big.Int).Sub(hi, twice)
+		if minus := new(big.Int).Neg(unbounded); minus.Cmp(low) < 0 {
+			low = minus
+		}
+		return low, hi
+	case hi == nil:
+		high := new(big.Int).Add(lo, twice)
+		if unbounded.Cmp(high) > 0 {
+			high = unbounded
+		}
+		return lo, high
+	}
+	return lo, hi
+}
+
+// lsClamp is min(max(n, lo), hi).
+func lsClamp(n int64, lo, hi *big.Int) *big.Int {
+	x := big.NewInt(n)
+	if x.Cmp(lo) < 0 {
+		x = lo
+	}
+	if x.Cmp(hi) > 0 {
+		x = hi
+	}
+	return new(big.Int).Set(x)
+}
+
+func lsMentionsData(d any) bool {
+	form, ok := d.([]any)
+	if !ok {
+		return false
+	}
+	if kind := lsAtom(form[0]); kind == "ref" || kind == "data" {
+		return true
+	}
+	for _, x := range form[1:] {
+		if lsMentionsData(x) {
+			return true
+		}
+	}
+	return false
+}
+
+// base is the constructors whose fields mention no data type.
+func (s lawSpecValues) base(d []any) []any {
+	found := []any{}
+	for _, c := range d[2:] {
+		mentions := false
+		for _, f := range c.([]any)[2:] {
+			mentions = mentions || lsMentionsData(f)
+		}
+		if !mentions {
+			found = append(found, c)
+		}
+	}
+	if len(found) == 0 {
+		return d[2:]
+	}
+	return found
+}
+
+func lsSum(t, tag string, fields ...LawSpecValue) LawSpecValue {
+	if len(fields) == 0 {
+		fields = nil
+	}
+	return LawSpecValue{t, lawSpecData{tag, fields}}
+}
+
+func (s lawSpecValues) generate(d any, random *LawSpecSplitMix64, size int64) LawSpecValue {
+	form := s.resolve(d)
+	t := s.typeOf(form)
+	switch lsAtom(form[0]) {
+	case "int":
+		lo, hi := s.bounds(form)
+		if random.Below(10) < 2 {
+			specials := []*big.Int{lo, hi, lsClamp(0, lo, hi), lsClamp(1, lo, hi)}
+			return LawSpecValue{t, new(big.Int).Set(specials[random.Below(4)])}
+		}
+		span := new(big.Int).Sub(hi, lo)
+		offset := lsBelowBig(random, span.Add(span, big.NewInt(1)))
+		return LawSpecValue{t, offset.Add(offset, lo)}
+	case "bool":
+		return lsBool(random.Below(2) == 1)
+	case "text":
+		units := []int{}
+		for n := lsBelowCount(random, size+1); n > 0; n-- {
+			units = append(units, 32+int(random.Below(95)))
+		}
+		return LawSpecValue{t, units}
+	case "unit":
+		return LawSpecValue{t, nil}
+	case "list":
+		items := []LawSpecValue{}
+		for n := lsBelowCount(random, size+1); n > 0; n-- {
+			items = append(items, s.generate(form[1], random, size))
+		}
+		return LawSpecValue{t, items}
+	case "maybe":
+		if random.Below(4) == 0 {
+			return lsSum(t, "Maybe::Nothing")
+		}
+		return lsSum(t, "Maybe::Just", s.generate(form[1], random, size))
+	case "either":
+		if random.Below(2) == 0 {
+			return lsSum(t, "Either::Left", s.generate(form[1], random, size))
+		}
+		return lsSum(t, "Either::Right", s.generate(form[2], random, size))
+	case "data":
+		choices := form[2:]
+		if size <= 0 {
+			choices = s.base(form)
+		}
+		ctor := choices[random.Below(uint64(len(choices)))].([]any)
+		fields := []LawSpecValue{}
+		for _, f := range ctor[2:] {
+			fields = append(fields, s.generate(f, random, max(size-1, 0)))
+		}
+		return lsSum(t, lsAtom(ctor[1]), fields...)
+	}
+	panic("unknown descriptor " + fmt.Sprint(form))
+}
+
+func (s lawSpecValues) minimal(d any) LawSpecValue {
+	form := s.resolve(d)
+	t := s.typeOf(form)
+	switch lsAtom(form[0]) {
+	case "int":
+		lo, hi := s.bounds(form)
+		return LawSpecValue{t, lsClamp(0, lo, hi)}
+	case "bool":
+		return lsBool(false)
+	case "text":
+		return LawSpecValue{t, []int{}}
+	case "unit":
+		return LawSpecValue{t, nil}
+	case "list":
+		return LawSpecValue{t, []LawSpecValue{}}
+	case "maybe":
+		return lsSum(t, "Maybe::Nothing")
+	case "either":
+		return lsSum(t, "Either::Left", s.minimal(form[1]))
+	}
+	ctor := s.base(form)[0].([]any)
+	fields := []LawSpecValue{}
+	for _, f := range ctor[2:] {
+		fields = append(fields, s.minimal(f))
+	}
+	return lsSum(t, lsAtom(ctor[1]), fields...)
+}
+
+// lsSplice is items with index i replaced by the given values (or removed).
+func lsSplice[T any](items []T, i int, with ...T) []T {
+	out := append([]T{}, items[:i]...)
+	out = append(out, with...)
+	return append(out, items[i+1:]...)
+}
+
+// shrink is smaller candidates for v, most aggressive first.
+func (s lawSpecValues) shrink(d any, v LawSpecValue) []LawSpecValue {
+	form := s.resolve(d)
+	t := s.typeOf(form)
+	out := []LawSpecValue{}
+	switch lsAtom(form[0]) {
+	case "int":
+		target := s.minimal(form)
+		x, goal := v.Data.(*big.Int), target.Data.(*big.Int)
+		if x.Cmp(goal) != 0 {
+			// big.Int's Quo truncates toward zero.
+			half := new(big.Int).Quo(new(big.Int).Sub(x, goal), big.NewInt(2))
+			step := big.NewInt(-1)
+			if x.Cmp(goal) > 0 {
+				step = big.NewInt(1)
+			}
+			out = []LawSpecValue{target, {t, half.Sub(x, half)}, {t, step.Sub(x, step)}}
+		}
+	case "bool":
+		if v.Data.(bool) {
+			out = []LawSpecValue{lsBool(false)}
+		}
+	case "text":
+		units := v.Data.([]int)
+		if len(units) > 0 {
+			out = []LawSpecValue{{t, []int{}}, {t, append([]int{}, units[:len(units)/2]...)}}
+			for i := range units {
+				out = append(out, LawSpecValue{t, lsSplice(units, i)})
+			}
+		}
+	case "list":
+		items := v.Data.([]LawSpecValue)
+		if len(items) > 0 {
+			out = []LawSpecValue{{t, []LawSpecValue{}}, {t, append([]LawSpecValue{}, items[:len(items)/2]...)}}
+			for i := range items {
+				out = append(out, LawSpecValue{t, lsSplice(items, i)})
+			}
+			for i, item := range items {
+				for _, c := range s.shrink(form[1], item) {
+					out = append(out, LawSpecValue{t, lsSplice(items, i, c)})
+				}
+			}
+		}
+	case "maybe":
+		data := v.Data.(lawSpecData)
+		if data.tag == "Maybe::Just" {
+			out = []LawSpecValue{lsSum(t, "Maybe::Nothing")}
+			for _, c := range s.shrink(form[1], data.fields[0]) {
+				out = append(out, lsSum(t, "Maybe::Just", c))
+			}
+		}
+	case "either":
+		data := v.Data.(lawSpecData)
+		inner := form[2]
+		if data.tag == "Either::Left" {
+			inner = form[1]
+		}
+		for _, c := range s.shrink(inner, data.fields[0]) {
+			out = append(out, lsSum(t, data.tag, c))
+		}
+	case "data":
+		data := v.Data.(lawSpecData)
+		var ctor []any
+		for _, c := range form[2:] {
+			if lsAtom(c.([]any)[1]) == data.tag {
+				ctor = c.([]any)
+				break
+			}
+		}
+		out = []LawSpecValue{s.minimal(form)}
+		// A field of the same type is a smaller value of it.
+		for i, fd := range ctor[2:] {
+			if ref, ok := fd.([]any); ok && len(ref) == 2 && lsAtom(ref[0]) == "ref" && lsAtom(ref[1]) == lsAtom(form[1]) {
+				out = append(out, data.fields[i])
+			}
+		}
+		for i, fd := range ctor[2:] {
+			for _, c := range s.shrink(fd, data.fields[i]) {
+				out = append(out, lsSum(t, data.tag, lsSplice(data.fields, i, c)...))
+			}
+		}
+	}
+	// Candidates are distinct by rendered text, and none is v itself.
+	seen := map[string]bool{lsRender(v): true}
+	unique := []LawSpecValue{}
+	for _, c := range out {
+		if text := lsRender(c); !seen[text] {
+			seen[text] = true
+			unique = append(unique, c)
+		}
+	}
+	return unique
+}
+
+// lsRender is a value's canonical text, the same on every target.
+func lsRender(v LawSpecValue) string {
+	switch x := v.Data.(type) {
+	case bool:
+		return strconv.FormatBool(x)
+	case *big.Int:
+		return x.String()
+	case []int:
+		var b strings.Builder
+		b.WriteByte('"')
+		for _, c := range x {
+			if c == '\\' || c == '"' {
+				b.WriteByte('\\')
+			}
+			b.WriteRune(rune(c))
+		}
+		b.WriteByte('"')
+		return b.String()
+	case nil:
+		return "()"
+	case []LawSpecValue:
+		parts := make([]string, len(x))
+		for i, item := range x {
+			parts[i] = lsRender(item)
+		}
+		return "[" + strings.Join(parts, ", ") + "]"
+	case lawSpecData:
+		segments := strings.Split(x.tag, "::")
+		name := segments[len(segments)-1]
+		if len(x.fields) == 0 {
+			return name
+		}
+		parts := make([]string, len(x.fields))
+		for i, field := range x.fields {
+			parts[i] = lsRender(field)
+		}
+		return name + "(" + strings.Join(parts, ", ") + ")"
+	}
+	return fmt.Sprint(v.Data)
+}
+
+// lsValuesFrom is a descriptor text's data types and its last form, the one
+// generated.
+func lsValuesFrom(text string) (lawSpecValues, any) {
+	forms := lsReadDescriptor(text)
+	table := map[string][]any{}
+	for _, f := range forms {
+		if form, ok := f.([]any); ok && lsAtom(form[0]) == "data" {
+			table[lsAtom(form[1])] = form
+		}
+	}
+	return lawSpecValues{table}, forms[len(forms)-1]
+}
+
+// LawSpecGenerated is count values generated from one SplitMix64 seed, rendered.
+func LawSpecGenerated(text string, seed uint64, size int64, count int64) []string {
+	values, d := lsValuesFrom(text)
+	random := LawSpecSplitMix64{seed}
+	result := []string{}
+	for ; count > 0; count-- {
+		result = append(result, lsRender(values.generate(d, &random, size)))
+	}
+	return result
+}
+
+// LawSpecShrunk is the shrink candidates of the first value generated, rendered.
+func LawSpecShrunk(text string, seed uint64, size int64) []string {
+	values, d := lsValuesFrom(text)
+	random := LawSpecSplitMix64{seed}
+	result := []string{}
+	for _, c := range values.shrink(d, values.generate(d, &random, size)) {
+		result = append(result, lsRender(c))
+	}
+	return result
+}

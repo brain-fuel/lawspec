@@ -1187,3 +1187,233 @@ def retry_decision(decision):
         return None
     return decision.fields[0].fields[0]
 
+
+
+# Portable generation for stateful models. A type descriptor is an
+# s-expression: (int T lo hi) with _ for no bound, (bool), (text), (unit),
+# (list D), (maybe D), (either L R), (data NAME (ctor TAG D...) ...) and
+# (ref NAME) for a data type declared in the model's table. Every target
+# generates, shrinks and renders the same values for the same seed.
+
+class Quoted(str):
+    """A string atom of a descriptor."""
+
+
+def read_descriptor(text):
+    """Parses s-expressions: lists, integers, strings, symbols and _ (None)."""
+    position = [0]
+
+    def skip():
+        while position[0] < len(text) and text[position[0]] in ' \t\r\n':
+            position[0] += 1
+
+    def item():
+        skip()
+        c = text[position[0]]
+        if c == '(':
+            position[0] += 1
+            items = []
+            skip()
+            while text[position[0]] != ')':
+                items.append(item())
+                skip()
+            position[0] += 1
+            return items
+        if c == '"':
+            position[0] += 1
+            out = []
+            while text[position[0]] != '"':
+                if text[position[0]] == '\\':
+                    position[0] += 1
+                out.append(text[position[0]])
+                position[0] += 1
+            position[0] += 1
+            return Quoted(''.join(out))
+        start = position[0]
+        while position[0] < len(text) and text[position[0]] not in ' \t\r\n()':
+            position[0] += 1
+        atom = text[start:position[0]]
+        if atom == '_':
+            return None
+        if atom.lstrip('-').isdigit():
+            return int(atom)
+        return atom
+
+    items = []
+    skip()
+    while position[0] < len(text):
+        items.append(item())
+        skip()
+    return items
+
+
+_UNBOUNDED = 1_000_000
+
+
+class Values:
+    """Generation, shrinking and rendering over a table of data types."""
+
+    def __init__(self, table):
+        self.table = table
+
+    def resolve(self, d):
+        return self.table[d[1]] if d[0] == 'ref' else d
+
+    def bounds(self, d):
+        """An integer's range: a missing bound is 1,000,000 from zero, or
+        2,000,000 from the other bound when that is beyond it."""
+        lo, hi = d[2], d[3]
+        if lo is None and hi is None:
+            return -_UNBOUNDED, _UNBOUNDED
+        if lo is None:
+            return min(-_UNBOUNDED, hi - 2 * _UNBOUNDED), hi
+        if hi is None:
+            return lo, max(_UNBOUNDED, lo + 2 * _UNBOUNDED)
+        return lo, hi
+
+    def base(self, d):
+        """The constructors whose fields mention no data type."""
+        found = [c for c in d[2:] if not any(_mentions_data(f) for f in c[2:])]
+        return found or d[2:]
+
+    def generate(self, d, random, size):
+        d = self.resolve(d)
+        kind = d[0]
+        if kind == 'int':
+            lo, hi = self.bounds(d)
+            if random.below(10) < 2:
+                specials = [lo, hi, min(max(0, lo), hi), min(max(1, lo), hi)]
+                return specials[random.below(4)]
+            return lo + random.below(hi - lo + 1)
+        if kind == 'bool':
+            return random.below(2) == 1
+        if kind == 'text':
+            return ''.join(chr(32 + random.below(95)) for _ in range(random.below(size + 1)))
+        if kind == 'unit':
+            return UNIT
+        if kind == 'list':
+            return [self.generate(d[1], random, size) for _ in range(random.below(size + 1))]
+        if kind == 'maybe':
+            if random.below(4) == 0:
+                return DataValue('Maybe::Nothing', ())
+            return DataValue('Maybe::Just', (self.generate(d[1], random, size),))
+        if kind == 'either':
+            if random.below(2) == 0:
+                return DataValue('Either::Left', (self.generate(d[1], random, size),))
+            return DataValue('Either::Right', (self.generate(d[2], random, size),))
+        if kind == 'data':
+            choices = self.base(d) if size <= 0 else d[2:]
+            ctor = choices[random.below(len(choices))]
+            return DataValue(str(ctor[1]), tuple(self.generate(f, random, max(size - 1, 0)) for f in ctor[2:]))
+        raise ValueError('unknown descriptor ' + str(d))
+
+    def minimal(self, d):
+        d = self.resolve(d)
+        kind = d[0]
+        if kind == 'int':
+            lo, hi = self.bounds(d)
+            return min(max(0, lo), hi)
+        if kind == 'bool':
+            return False
+        if kind == 'text':
+            return ''
+        if kind == 'unit':
+            return UNIT
+        if kind == 'list':
+            return []
+        if kind == 'maybe':
+            return DataValue('Maybe::Nothing', ())
+        if kind == 'either':
+            return DataValue('Either::Left', (self.minimal(d[1]),))
+        ctor = self.base(d)[0]
+        return DataValue(str(ctor[1]), tuple(self.minimal(f) for f in ctor[2:]))
+
+    def shrink(self, d, v):
+        """Smaller candidates for v, most aggressive first."""
+        d = self.resolve(d)
+        kind = d[0]
+        out = []
+        if kind == 'int':
+            target = self.minimal(d)
+            if v != target:
+                out = [target, v - _toward_zero(v - target, 2), v - (1 if v > target else -1)]
+        elif kind == 'bool':
+            out = [False] if v else []
+        elif kind == 'text':
+            if v:
+                out = [''] + [v[:len(v) // 2]] + [v[:i] + v[i + 1:] for i in range(len(v))]
+        elif kind == 'list':
+            if v:
+                out = [[]] + [v[:len(v) // 2]] + [v[:i] + v[i + 1:] for i in range(len(v))]
+                for i, item in enumerate(v):
+                    out += [v[:i] + [c] + v[i + 1:] for c in self.shrink(d[1], item)]
+        elif kind == 'maybe':
+            if v.tag == 'Maybe::Just':
+                out = [DataValue('Maybe::Nothing', ())] + [DataValue('Maybe::Just', (c,)) for c in self.shrink(d[1], v.fields[0])]
+        elif kind == 'either':
+            inner = d[1] if v.tag == 'Either::Left' else d[2]
+            out = [DataValue(v.tag, (c,)) for c in self.shrink(inner, v.fields[0])]
+        elif kind == 'data':
+            ctor = next(c for c in d[2:] if str(c[1]) == v.tag)
+            out = [self.minimal(d)]
+            # A field of the same type is a smaller value of it.
+            out += [f for f, fd in zip(v.fields, ctor[2:]) if fd == ['ref', d[1]]]
+            for i, (field, fd) in enumerate(zip(v.fields, ctor[2:])):
+                out += [DataValue(v.tag, v.fields[:i] + (c,) + v.fields[i + 1:]) for c in self.shrink(fd, field)]
+        seen, unique = [], []
+        for c in out:
+            if not _same(c, v) and not any(_same(c, s) for s in seen):
+                seen.append(c)
+                unique.append(c)
+        return unique
+
+
+def _toward_zero(n, d):
+    q = abs(n) // d
+    return q if n >= 0 else -q
+
+
+def _mentions_data(d):
+    return isinstance(d, list) and (d[0] in ('ref', 'data') or any(_mentions_data(x) for x in d[1:]))
+
+
+def _same(a, b):
+    return render(a) == render(b)
+
+
+def render(v):
+    """A value's canonical text, the same on every target."""
+    if isinstance(v, bool):
+        return 'true' if v else 'false'
+    if isinstance(v, int):
+        return str(v)
+    if isinstance(v, str):
+        return '"' + v.replace('\\', '\\\\').replace('"', '\\"') + '"'
+    if v is UNIT:
+        return '()'
+    if isinstance(v, (list, tuple)):
+        return '[' + ', '.join(render(x) for x in v) + ']'
+    if isinstance(v, DataValue):
+        name = v.tag.split('::')[-1]
+        return name if not v.fields else name + '(' + ', '.join(render(x) for x in v.fields) + ')'
+    return str(v)
+
+
+def values_from(text):
+    """A descriptor text's data types and its last form, the one generated."""
+    forms = read_descriptor(text)
+    table = {str(f[1]): f for f in forms if isinstance(f, list) and f[0] == 'data'}
+    return Values(table), forms[-1]
+
+
+def generated(text, seed, size, count):
+    """count values generated from one SplitMix64 seed, rendered."""
+    values, d = values_from(text)
+    random = SplitMix64(seed)
+    return [render(values.generate(d, random, size)) for _ in range(count)]
+
+
+def shrunk(text, seed, size):
+    """The shrink candidates of the first value generated, rendered."""
+    values, d = values_from(text)
+    return [render(c) for c in values.shrink(d, values.generate(d, SplitMix64(seed), size))]
