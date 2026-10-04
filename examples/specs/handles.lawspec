@@ -1,0 +1,20 @@
+unit example.handles
+
+-- A handle is a value only adapters create, such as a library's concurrent
+-- queue. LawSpec passes it along unopened: it never generates, builds or
+-- looks inside one, and two handles are equal only when they are the same.
+-- Here the queue is the target's own concurrent queue, bound directly where
+-- the target has one (see each target's bindings) and wrapped elsewhere.
+handle Jobs
+
+newJobs :: Unit -> Jobs
+submit :: Jobs -> Int32 -> Unit
+take :: Jobs -> Maybe Int32
+pending :: Jobs -> Int32
+
+model jobs :: shared Jobs behaves like Queue Int32 is
+  start newJobs
+  submit as offer
+  take as poll
+  pending as size
+end

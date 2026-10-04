@@ -87,7 +87,8 @@ escapeDeclaration :: String -> C.Declaration -> C.Declaration
 escapeDeclaration target d = d { C.declarationName = nativeName target (C.declarationName d) }
 
 escapeBindings :: String -> NB.BindingPlan -> NB.BindingPlan
-escapeBindings target b = b { NB.bindingFunctions = [(escapeDeclaration target d, r) | (d, r) <- NB.bindingFunctions b] }
+escapeBindings target b = b { NB.bindingFunctions = [(escapeDeclaration target d, r) | (d, r) <- NB.bindingFunctions b]
+                             , NB.bindingCalls = [(escapeDeclaration target d, c) | (d, c) <- NB.bindingCalls b] }
 
 emitPlanFormatted :: Bool -> String -> Plan -> Either [Diagnostic] [Artifact]
 emitPlanFormatted _ target plan

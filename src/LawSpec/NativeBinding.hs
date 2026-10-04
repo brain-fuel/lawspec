@@ -7,7 +7,7 @@ module LawSpec.NativeBinding
   , ResolvedGeneratorBinding(..), resolveBindings, usesMachineRepresentation, reachableGeneratorTypes
   ) where
 
-import Control.Monad (unless, forM)
+import Control.Monad (unless, forM, when)
 import Data.Char (isAscii, isAlpha, isAlphaNum)
 import Data.List (nub, find)
 import qualified LawSpec.Core as C
@@ -76,7 +76,10 @@ resolveBindings declarations Bindings{..} = do
       value <- declaration boundType
       reference nativeType
       let constructors = C.dataConstructors value
-      unless (not (null constructors)) (Left "cannot bind an uninhabited type")
+      -- A handle binds to its native class alone: LawSpec never builds one.
+      when (C.dataHandle value && (not (null boundConstructors) || boundCodec /= Nothing))
+        (Left "a handle binds only to a native type, without constructors or a codec")
+      unless (not (null constructors) || C.dataHandle value) (Left "cannot bind an uninhabited type")
       mappings <- case boundCodec of
         Just CodecBinding{..} -> do
           unless (null boundConstructors) (Left "codec hooks and constructor mappings are mutually exclusive")

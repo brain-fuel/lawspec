@@ -37,7 +37,13 @@ lowerUnitWith imported u = do
   let active = [c | c <- cs, not (null (contractPreconditions c) && null (contractPostconditions c))]
       checks = map refinementCheck rs
   checks' <- mapM (lowerLaw structures table) checks
-  pure u{functions=map (\(n,t) -> (n,baseType t)) fs, contracts=active, laws=ls ++ map contractLaw active ++ checks', dataTypes=ds, functionDefinitions=definitions}
+  -- A handle cannot be generated, so an adapter taking or returning one
+  -- keeps its contract (checked at each call) but gets no contract law.
+  let handleNames = handles u ++ [n | (n, d) <- M.toList imported, null (dataTypeConstructors d)]
+      mentionsHandle t = any (\n -> n `elem` handleNames || any (\h -> ("::type::" ++ n) `isSuffixOf'` h) handleNames) (typeNames t)
+      generated c = not (any (mentionsHandle . snd) (contractArguments c ++ [contractResult c]))
+      isSuffixOf' a b = reverse a == take (length a) (reverse b)
+  pure u{functions=map (\(n,t) -> (n,baseType t)) fs, contracts=active, laws=ls ++ map contractLaw (filter generated active) ++ checks', dataTypes=ds, functionDefinitions=definitions}
 
 validateDeclaration :: M.Map String DataTypeDeclaration -> M.Map String Refinement -> Refinement -> Either String ()
 validateDeclaration structures table r = do

@@ -37,7 +37,7 @@ railwayLaw :: Law -> Law
 railwayLaw l = case laws (railwayUnit emptyUnit { laws = [l] }) of
   [rewritten] -> rewritten
   _ -> l
-  where emptyUnit = Unit "" [] [] [] [] [] [] [] [] [] [] []
+  where emptyUnit = Unit "" [] [] [] [] [] [] [] [] [] [] [] []
 
 railwayUnit :: Unit -> Unit
 railwayUnit u = u

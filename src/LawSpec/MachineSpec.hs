@@ -6,7 +6,7 @@
 -- order the spec lists them.
 module LawSpec.MachineSpec (machineSpec) where
 
-import Control.Monad (forM, unless)
+import Control.Monad (forM, unless, when)
 import qualified LawSpec.Core as C
 import LawSpec.Core.Machine
 import LawSpec.Scalar (Scalar(..), integerBounds, isInteger)
@@ -130,6 +130,8 @@ describe bits datas table ty = case ty of
   C.Constructor n []
     | Just _ <- lookup n table -> pure ("(ref " ++ n ++ ")", table)
     | [d] <- [d | d <- datas, C.idText (C.dataId d) == n] -> do
+        when (C.dataHandle d) (Left ("a model command's argument cannot be the handle " ++ C.dataName d ++
+          ": LawSpec cannot generate one; only the model's start makes handles"))
         unless (null (C.dataParameters d)) (unsupported "a generic data type")
         unless (all (null . C.constructorPredicates) (C.dataConstructors d) && all (null . C.constructorEquations) (C.dataConstructors d)
             && C.dataIndex d == Nothing)

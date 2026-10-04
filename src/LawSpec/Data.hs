@@ -86,7 +86,8 @@ elaborateDataDeclarationsWithProfile bits units = do
       -- Index tables are keyed by source constructor name until here.
       let index = fmap (\i -> i { familyIndexConstructors =
             [(C.idText identity ++ "::" ++ tag, c) | (tag, c) <- familyIndexConstructors i] }) (S.dataTypeIndex d)
-      pure (C.DataDeclaration identity name (map parameter (S.dataTypeParameters d)) constructors (C.SourceSpan (S.dataTypeSpan d)) index)
+      pure (C.MkDataDeclaration identity name (map parameter (S.dataTypeParameters d)) constructors (C.SourceSpan (S.dataTypeSpan d)) index
+        (name `elem` S.handles u))
     typeIdentity u name = C.Id (S.unitName u ++ "::type::" ++ name)
     contextual range = either (Left . pure . (\message -> Diagnostic "data-type" message (Just (spanStart range)))) Right
 

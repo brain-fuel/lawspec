@@ -47,12 +47,20 @@ pattern Definition declaration arguments body <- MkDefinition declaration argume
 {-# COMPLETE Definition #-}
 -- Products are single-constructor declarations; sums retain the identity of
 -- each constructor even when their payloads have identical representations.
-data DataDeclaration = DataDeclaration
+data DataDeclaration = MkDataDeclaration
   { dataId :: Id, dataName :: String, dataParameters :: [Id]
   , dataConstructors :: [DataConstructor], dataOrigin :: Origin
   -- An indexed family's erased index table, keyed by constructor identity.
   , dataIndex :: Maybe FamilyIndex
+  -- A handle: a type whose values only adapters create. LawSpec passes them
+  -- along unopened; it never generates, builds or inspects one, and two are
+  -- equal only when they are the same value.
+  , dataHandle :: Bool
   } deriving (Eq, Show, Generic)
+pattern DataDeclaration :: Id -> String -> [Id] -> [DataConstructor] -> Origin -> Maybe FamilyIndex -> DataDeclaration
+pattern DataDeclaration identity name parameters constructors origin index <- MkDataDeclaration identity name parameters constructors origin index _
+  where DataDeclaration identity name parameters constructors origin index = MkDataDeclaration identity name parameters constructors origin index False
+{-# COMPLETE DataDeclaration #-}
 -- A GADT constructor's equations fix declaration parameters to types over its
 -- existentials: a value of T args uses the constructor only where each
 -- equation matches its argument, which also determines the existentials.

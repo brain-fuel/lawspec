@@ -47,7 +47,7 @@ spec = describe "async adapters" $ do
   it "cannot bind a native function yet" $ do
     let Right compiled = program orders
         request = emptyNativeRequest { requestFunctions =
-          [FunctionBinding (C.Id "example.orders::price") (NativeRef ["pricing", "price"])] }
+          [FunctionBinding (C.Id "example.orders::price") (StaticCall (NativeRef ["pricing", "price"]))] }
     resolveNativeRequest compiled request `shouldSatisfy` isLeft
   describe "scaffolds each target's task" $
     forM_ [ ("python", "async def price"), ("javascript", "export async function price")

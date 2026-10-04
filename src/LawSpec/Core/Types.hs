@@ -347,7 +347,20 @@ equalityRequirements = storedRequirements "structural equality"
 -- derivations follow stored fields, including parameter transformations in
 -- recursive declarations; neither acquires support for function-valued fields.
 generationRequirements :: TypeRegistry -> Type -> Either String [Id]
-generationRequirements = storedRequirements "generation"
+generationRequirements registry ty = do
+  forM_ (handleIn registry ty) $ \name ->
+    Left (name ++ " is a handle: LawSpec cannot generate one, since only adapters create them")
+  storedRequirements "generation" registry ty
+
+-- The first handle a type mentions: equality between handles is identity,
+-- but they have no generator and no portable order.
+handleIn :: TypeRegistry -> Type -> Maybe String
+handleIn registry ty = case ty of
+  Constructor name arguments
+    | Just declaration <- M.lookup (Id name) (declarations registry), dataHandle declaration -> Just (dataName declaration)
+    | otherwise -> foldr (\a found -> maybe (case a of TypeArgument t -> handleIn registry t; _ -> Nothing) Just found) Nothing arguments
+  Arrow a b -> maybe (handleIn registry b) Just (handleIn registry a)
+  _ -> Nothing
 
 storedRequirements :: String -> TypeRegistry -> Type -> Either String [Id]
 storedRequirements capability registry ty = do
@@ -359,5 +372,7 @@ storedRequirements capability registry ty = do
 keyedRequirements :: TypeRegistry -> Type -> Either String [Id]
 keyedRequirements registry ty = do
   checkType registry ty
+  forM_ (handleIn registry ty) $ \name ->
+    Left (name ++ " is a handle, which has no portable order")
   maybe (Left ("type has no portable order: " ++ show ty)) Right
     (storedFieldNeeds keyedPrimitive (declarations registry) (keyedFieldRules registry) ty)

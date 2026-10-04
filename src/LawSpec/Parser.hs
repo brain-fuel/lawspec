@@ -253,6 +253,10 @@ workflowP = do
 -- model name :: [shared] S by M is ... end: commands paired with reference
 -- definitions over the model state M. Each line is a command, `start`,
 -- `abstract` or `invariant`; `~` and `by` both read "modelled by".
+-- A name that starts with an uppercase letter, as a type's does.
+upper :: String -> P ()
+upper n = unless (maybe False (isUpper . fst) (uncons n)) (fail "expected a type name")
+
 modelP :: P ModelDeclaration
 modelP = do
   ((name, shared, state, model, items), range) <- withSpan $ do
@@ -559,6 +563,7 @@ functionDefinitionP = do
 
 data UnitMember = DataMember DataTypeDeclaration | FamilyMember IndexedFamily | RefinementMember Refinement
   | WrapperMember Wrapper | WorkflowMember Workflow | ModelMember ModelDeclaration
+  | HandleMember (String, Span)
   | SignatureMember ((String, Type), Span) | AsyncMember ((String, Type), Span) | LawMember Law
   | DefinitionMember FunctionDefinition
 
@@ -591,6 +596,8 @@ unitP = do
   members <- many ((either FamilyMember DataMember <$> declarationP)
     <|> (WrapperMember <$> wrapperP)
     <|> (WorkflowMember <$> workflowP)
+    -- handle Name: a type whose values only adapters create.
+    <|> (HandleMember <$> (try (lookAhead (keyword "handle" *> ident >>= upper)) *> withSpan (keyword "handle" *> ident)))
     -- `model` begins a model only before a name; it may name a function.
     <|> (ModelMember <$> (try (lookAhead (keyword "model" *> ident)) *> modelP))
     <|> (RefinementMember <$> refinementP)
@@ -607,7 +614,8 @@ unitP = do
         [((functionName d, foldr Arrow (functionResult d) (map snd (functionArguments d))), functionSpan d) | d <- definitions]
   pure (Unit n (map fst signatures) [l | LawMember l <- members]
     [r | RefinementMember r <- members] [] [(name,range) | ((name,_),range) <- signatures]
-    [d | DataMember d <- members] definitions [name | AsyncMember ((name, _), _) <- members] [] [] [], imports, [f | FamilyMember f <- members],
+    ([d | DataMember d <- members] ++ [DataTypeDeclaration name [] [] range Nothing | HandleMember (name, range) <- members])
+    definitions [name | AsyncMember ((name, _), _) <- members] [] [] [] [name | HandleMember (name, _) <- members], imports, [f | FamilyMember f <- members],
     [w | WrapperMember w <- members], [w | WorkflowMember w <- members], [m | ModelMember m <- members])
 
 parseSource :: Source -> Either [Diagnostic] Unit
@@ -715,6 +723,7 @@ headers source = M.fromList (scan tokens) where
   scan ("refinement":n:rest) = let (ks,remaining) = parametersH rest in (n,RefinementHeader ks):scan remaining
   scan ("type":n:rest) = let (ks,remaining) = parametersH rest in (n,DataHeader ks):scan remaining
   scan ("wrapper":n:rest) = let (ks,remaining) = parametersH rest in (n,DataHeader ks):scan remaining
+  scan ("handle":n:rest) | maybe False (isUpper . fst) (uncons n) = (n,DataHeader []):scan rest
   scan (_:rest) = scan rest
   scan [] = []
   dropUnit (".":_:rest) = dropUnit rest

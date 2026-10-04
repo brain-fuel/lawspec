@@ -15,6 +15,7 @@
 --   <target>/files/<path>          adapters replacing generated user-owned stubs
 --   <target>/stubs/<path>          the stub an adapter was written against (optional)
 --   <target>/mutants/<name>.mutant search/replace edits, one mutant per file
+--   <target>/bindings.json         native bindings, as in lawspec.json (optional)
 --
 -- A package directory holds lawspec-package.json ({"name", "version",
 -- "sources": [directories or files], "dependencies"}); its sources are sent
@@ -91,7 +92,12 @@ main = do
       profile = (if bits == 32 then "32" else "") ++ (if minify then "-compact" else "")
   forM_ targets $ \target -> do
     let project = ".artifacts" </> (suite ++ profile) </> target
-    generated <- plan extra (sources ++ vectors) target bits minify
+        bindingsFile = "acceptance" </> suite </> target </> "bindings.json"
+    -- A target's native bindings, sent as the CLI sends lawspec.json's.
+    hasBindings <- doesFileExist bindingsFile
+    bound <- if hasBindings then decode <$> BL.readFile bindingsFile else pure Nothing
+    let native = maybe [] (\b -> [("nativeBindings", b), ("schemaVersion", toJSON (4 :: Int))]) bound
+    generated <- plan (extra ++ native) (sources ++ vectors) target bits minify
     if check then checkDisk project generated else do
       writeProject suite target project (bits == 64 && not minify) minify generated
       mismatch <- if architecture then architectureMismatch target bits else pure False

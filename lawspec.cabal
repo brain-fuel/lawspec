@@ -55,6 +55,7 @@ extra-source-files:
     examples/specs/flow_stack.lawspec
     examples/specs/gadt_expressions.lawspec
     examples/specs/generation.lawspec
+    examples/specs/handles.lawspec
     examples/specs/indexed_arithmetic.lawspec
     examples/specs/indexed_families.lawspec
     examples/specs/keywords.lawspec
