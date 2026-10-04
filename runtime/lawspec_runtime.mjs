@@ -1750,6 +1750,7 @@ class ModelCommand {
   unit;
   needs;
   shifts;
+  key;
   run;
   reference;
   when;
@@ -1761,6 +1762,9 @@ class ModelCommand {
     this.unit = fields.get('unit')[0] === 'true';
     this.needs = fields.get('needs');
     this.shifts = fields.get('shifts');
+    // The argument naming the key the command touches, for per-key checks.
+    const key = (fields.get('key') ?? ['none'])[0];
+    this.key = key === 'none' ? null : Number(key);
     [this.run, this.reference, this.when] = callbacks;
   }
   admits(indices) {
@@ -1791,6 +1795,7 @@ export class Model {
   commands;
   abstract;
   invariants;
+  perKey;
   constructor(spec, start, commands, abstract = null, invariants = []) {
     const forms = readDescriptor(spec).filter(Array.isArray);
     this.name = String(forms[0][1]);
@@ -1806,6 +1811,7 @@ export class Model {
     this.abstract = abstract ?? null;
     const kinds = forms.find((f) => f[0] === 'invariants').slice(1);
     this.invariants = kinds.slice(0, invariants.length).map((k, i) => [k, invariants[i]]);
+    this.perKey = forms.some((f) => f[0] === 'perkey' && f[1] === 'true');
   }
 }
 
@@ -2180,21 +2186,53 @@ async function executeParallel(model, testCase, shake) {
 const branchName = (i) => String.fromCharCode(65 + i);
 
 /**
- * A Wing-Gong search: linearize, next, a call no pending call on another
- * thread returned before; memoized on positions and the model state.
+ * Whether the history linearizes, with the final state and invariants the
+ * model gives. For a set or map whose every call touches one key, each
+ * key's calls are linearized separately (the keys are independent), one
+ * group after another; otherwise all calls at once.
  */
 async function linearizable(model, symbols, branches, history, expected, final, state) {
+  const finish = async (modelState) => {
+    if (final !== null && compareValues(final, modelState) !== 0) return false;
+    for (const [kind, invariant] of model.invariants)
+      if (!(await invariant(symbols, kind === 'model' ? modelState : state))) return false;
+    return true;
+  };
+  if (!model.perKey) return linearize(model, symbols, branches, history, expected, finish);
+  const groups = new Map();
+  branches.forEach((branch, i) => branch.forEach(([index, args], k) => {
+    const key = render(args[model.commands[index].key]);
+    if (!groups.has(key)) groups.set(key, branches.map(() => []));
+    groups.get(key)[i].push([branch[k], history[i][k]]);
+  }));
+  let modelState = expected;
+  const keys = [...groups.keys()].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+  for (const key of keys) {
+    const parts = groups.get(key);
+    const ends = [];
+    const found = await linearize(model, symbols, parts.map((p) => p.map(([s]) => s)),
+      parts.map((p) => p.map(([, h]) => h)), modelState, async (end) => {
+        ends.push(end);
+        return true;
+      });
+    if (!found) return false;
+    modelState = ends[0];
+  }
+  return finish(modelState);
+}
+
+/**
+ * A Wing-Gong search: linearize, next, a call no pending call on another
+ * thread returned before; memoized on positions and the model state.
+ * finish judges each complete order's final model state.
+ */
+async function linearize(model, symbols, branches, history, expected, finish) {
   const seen = new Set();
   const visit = async (positions, modelState) => {
     const key = positionKey(positions, modelState);
     if (seen.has(key)) return false;
     seen.add(key);
-    if (positions.every((k, i) => k === branches[i].length)) {
-      if (final !== null && compareValues(final, modelState) !== 0) return false;
-      for (const [kind, invariant] of model.invariants)
-        if (!(await invariant(symbols, kind === 'model' ? modelState : state))) return false;
-      return true;
-    }
+    if (positions.every((k, i) => k === branches[i].length)) return finish(modelState);
     for (let i = 0; i < branches.length; i++) {
       const k = positions[i];
       if (k === branches[i].length) continue;
@@ -2241,6 +2279,17 @@ async function shrinkParallel(model, testCase, failure, repeats, budget, shake) 
     for (let i = 0; i < branches.length; i++)
       for (let k = 0; k < branches[i].length; k++)
         candidates.push([prefix, branches.map((b, j) => (j !== i ? b : [...b.slice(0, k), ...b.slice(k + 1)]))]);
+    // Then smaller arguments, branch by branch, step by step.
+    for (let i = 0; i < branches.length; i++)
+      branches[i].forEach(([index, args], k) => {
+        const command = model.commands[index];
+        const n = Math.min(command.arguments.length, args.length);
+        for (let a = 0; a < n; a++)
+          for (const c of model.values.shrink(command.arguments[a], args[a])) {
+            const step = [index, [...args.slice(0, a), c, ...args.slice(a + 1)]];
+            candidates.push([prefix, branches.map((b, j) => (j !== i ? b : [...b.slice(0, k), step, ...b.slice(k + 1)]))]);
+          }
+      });
     let improved = false;
     for (const candidate of candidates) {
       budget -= 1;

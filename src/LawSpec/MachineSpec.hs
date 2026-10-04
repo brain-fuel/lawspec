@@ -9,24 +9,28 @@ module LawSpec.MachineSpec (machineSpec) where
 import Control.Monad (forM, unless)
 import qualified LawSpec.Core as C
 import LawSpec.Core.Machine
-import LawSpec.Scalar (integerBounds, isInteger)
+import LawSpec.Scalar (Scalar(..), integerBounds, isInteger)
 
 -- The spec of a machine, given the program's data types and the unit's
 -- declarations.
-machineSpec :: Int -> [C.DataDeclaration] -> [C.Declaration] -> Machine C.Id -> Either String String
-machineSpec bits datas declarations machine = do
+machineSpec :: Int -> [C.DataDeclaration] -> [C.Declaration] -> [C.Contract] -> Machine C.Id -> Either String String
+machineSpec bits datas declarations contracts machine = do
   let typeOf name = case filter ((== name) . C.declarationId) declarations of
         [d] -> Right (C.declarationType d)
         _ -> Left ("model " ++ machineName machine ++ ": no declaration for " ++ C.idText name)
-      describeAll types = foldr (\t acc -> do (ds, table) <- acc; (d, table') <- describe bits datas table t; pure (d : ds, table'))
+      describeAll types = foldr (\(t, range) acc -> do (ds, table) <- acc; (d, table') <- describe bits datas table t; pure (narrow range d : ds, table'))
         (Right ([], [])) types
+      -- An argument's integer bounds from its adapter's preconditions.
+      rangeOf name i = case [c | c <- contracts, C.contractDeclaration c == name] of
+        [c] | i < length (C.contractArguments c) -> bounds (C.binderId (C.contractArguments c !! i)) (C.contractPreconditions c)
+        _ -> (Nothing, Nothing)
   start <- forM (machineStart machine) $ \s -> do
     ty <- typeOf (startSystem s)
-    pure (s, fst (C.functionType ty))
+    pure (s, [(t, rangeOf (startSystem s) i) | (i, t) <- zip [0 ..] (fst (C.functionType ty))])
   commands <- forM (machineCommands machine) $ \c -> do
     ty <- typeOf (commandSystem c)
     let (args, _) = C.functionType ty
-    pure (c, [args !! i | i <- commandArguments c])
+    pure (c, [(args !! i, rangeOf (commandSystem c) i) | i <- commandArguments c])
   -- One table of data types across the start and every command.
   (descriptors, table) <- describeAll (concat (maybe [] snd start : map snd commands))
   let (startDescriptors, rest) = splitAt (maybe 0 (length . snd) start) descriptors
@@ -40,7 +44,8 @@ machineSpec bits datas declarations machine = do
         " (unit " ++ bool (commandReturnsUnit c) ++ ")" ++
         " (when " ++ bool (commandWhen c /= Nothing) ++ ")" ++
         " (needs" ++ concatMap ((' ' :) . need) (commandNeeds c) ++ ")" ++
-        " (shifts" ++ concatMap ((' ' :) . shift) (commandShifts c) ++ "))"
+        " (shifts" ++ concatMap ((' ' :) . shift) (commandShifts c) ++ ")" ++
+        " (key " ++ maybe "none" show (commandKey c) ++ "))"
       invariant (OnModel _) = "model"
       invariant (OnState _) = "state"
   unless (maybe False (const True) start) $
@@ -51,7 +56,8 @@ machineSpec bits datas declarations machine = do
      [startForm] ++
      zipWith commandForm commands commandDescriptors ++
      [ "(abstract " ++ bool (machineAbstractRun machine /= Nothing) ++ ")"
-     , "(invariants" ++ concatMap ((' ' :) . invariant) (machineInvariants machine) ++ ")" ]))
+     , "(invariants" ++ concatMap ((' ' :) . invariant) (machineInvariants machine) ++ ")"
+     , "(perkey " ++ bool (machinePerKey machine) ++ ")" ]))
   where
     bool b = if b then "true" else "false"
     need (AtLeast k) = "(atleast " ++ show k ++ ")"
@@ -60,6 +66,55 @@ machineSpec bits datas declarations machine = do
     shift (To k) = "(to " ++ show k ++ ")"
     splitPlaces [] _ = []
     splitPlaces (n : ns) xs = let (a, b) = splitAt n xs in a : splitPlaces ns b
+
+-- The tightest constant bounds a precondition conjunction puts on a binder.
+bounds :: C.Id -> [C.Expr] -> (Maybe Integer, Maybe Integer)
+bounds binder = foldl tighten (Nothing, Nothing) . concatMap conjuncts
+  where
+    conjuncts e = case C.expressionNode e of
+      C.ShortCircuit C.And a b -> conjuncts a ++ conjuncts b
+      _ -> [e]
+    tighten (lo, hi) e = case C.expressionNode e of
+      C.Binary op _ a b -> case (local a, constant b, constant a, local b) of
+        (True, Just n, _, _) -> apply op n (lo, hi)
+        (_, _, Just n, True) -> apply (flipped op) n (lo, hi)
+        _ -> (lo, hi)
+      _ -> (lo, hi)
+    local e = case C.expressionNode e of
+      C.Local i -> i == binder
+      C.Convert _ _ inner -> local inner
+      _ -> False
+    constant e = case C.expressionNode e of
+      C.Constant (SInteger _ n) -> Just n
+      C.Convert _ _ inner -> constant inner
+      _ -> Nothing
+    apply op n (lo, hi) = case op of
+      C.GreaterEqual -> (Just (maybe n (max n) lo), hi)
+      C.Greater -> (Just (maybe (n + 1) (max (n + 1)) lo), hi)
+      C.LessEqual -> (lo, Just (maybe n (min n) hi))
+      C.Less -> (lo, Just (maybe (n - 1) (min (n - 1)) hi))
+      C.Equal -> (Just n, Just n)
+      _ -> (lo, hi)
+    flipped op = case op of
+      C.GreaterEqual -> C.LessEqual
+      C.Greater -> C.Less
+      C.LessEqual -> C.GreaterEqual
+      C.Less -> C.Greater
+      other -> other
+
+-- An integer descriptor narrowed to a refinement's bounds.
+narrow :: (Maybe Integer, Maybe Integer) -> String -> String
+narrow (Nothing, Nothing) d = d
+narrow (lo, hi) d = case words (filter (`notElem` ("()" :: String)) d) of
+  ["int", t, l, h] | take 5 d == "(int " ->
+    "(int " ++ t ++ " " ++ tighter max lo l ++ " " ++ tighter min hi h ++ ")"
+  _ -> d
+  where
+    -- A bound replaces the type's own when it is tighter; _ is no bound.
+    tighter f new old = case (new, reads old :: [(Integer, String)]) of
+      (Just n, [(o, "")]) -> show (f n o)
+      (Just n, _) -> show n
+      (Nothing, _) -> old
 
 -- A type's descriptor, adding the data types it reaches to the table (each
 -- once, by name, so recursion goes through (ref NAME)).

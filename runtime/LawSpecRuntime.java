@@ -2015,6 +2015,8 @@ public final class LawSpecRuntime {
     final boolean unit;
     final List<Object> needs;
     final List<Object> shifts;
+    /** The argument naming the key the command touches, for per-key checks; -1 for none. */
+    final int key;
     final ModelCallback run;
     final ModelCallback reference;
     final ModelCallback when;
@@ -2031,6 +2033,8 @@ public final class LawSpecRuntime {
       unit = atomText(fields.get("unit").get(0)).equals("true");
       needs = fields.get("needs");
       shifts = fields.get("shifts");
+      var keyField = fields.getOrDefault("key", List.of("none"));
+      key = keyField.get(0) instanceof BigInteger k ? k.intValueExact() : -1;
       run = callbacks[0];
       reference = callbacks[1];
       when = callbacks.length > 2 ? callbacks[2] : null;
@@ -2074,6 +2078,7 @@ public final class LawSpecRuntime {
     final ModelCallback abstractState;
     final List<String> invariantKinds;
     final List<ModelCallback> invariants;
+    final boolean perKey;
 
     /**
      * start: run, model; each command: run, reference, when (null when
@@ -2093,6 +2098,7 @@ public final class LawSpecRuntime {
       List<Object> startForm = null;
       List<Object> invariantForm = null;
       var commandForms = new ArrayList<List<Object>>();
+      boolean keyed = false;
       for (var f : forms) {
         var item = form(f);
         switch (atomText(item.get(0))) {
@@ -2103,6 +2109,9 @@ public final class LawSpecRuntime {
           case "command" -> commandForms.add(item);
           case "invariants" -> {
             if (invariantForm == null) invariantForm = item;
+          }
+          case "perkey" -> {
+            if (item.size() > 1 && atomText(item.get(1)).equals("true")) keyed = true;
           }
           default -> {}
         }
@@ -2134,6 +2143,7 @@ public final class LawSpecRuntime {
       }
       invariantKinds = kinds;
       this.invariants = checks;
+      perKey = keyed;
     }
   }
 
@@ -2609,16 +2619,7 @@ public final class LawSpecRuntime {
     var expected = states.get(states.size() - 1);
     var finalState =
         model.abstractState != null ? model.abstractState.apply(symbols, List.of(state)) : null;
-    if (linearizable(
-        model,
-        symbols,
-        branches,
-        history,
-        new int[branches.size()],
-        expected,
-        finalState,
-        state,
-        new java.util.HashSet<String>())) return null;
+    if (linearizable(model, symbols, branches, history, expected, finalState, state)) return null;
     var observed = new ArrayList<String>();
     for (int i = 0; i < branches.size(); i++)
       for (int k = 0; k < branches.get(i).size(); k++)
@@ -2634,31 +2635,101 @@ public final class LawSpecRuntime {
   }
 
   /**
-   * A Wing-Gong search: linearize, next, a call no pending call on another
-   * thread returned before; memoized on positions and the model state.
+   * Whether the history linearizes, with the final state and invariants the model gives. For a set
+   * or map whose every call touches one key, each key's calls are linearized separately (the keys
+   * are independent), one group after another; otherwise all calls at once.
    */
   private static boolean linearizable(
       Model model,
       Map<String, Object> symbols,
       List<List<ModelStep>> branches,
       List<Call[]> history,
+      Value expected,
+      Value finalState,
+      Value state) {
+    java.util.function.Predicate<Value> finish =
+        modelState -> {
+          if (finalState != null && compareValues(finalState, modelState) != 0) return false;
+          for (int k = 0; k < model.invariants.size(); k++) {
+            var subject = model.invariantKinds.get(k).equals("model") ? modelState : state;
+            if (!truth(model.invariants.get(k).apply(symbols, List.of(subject)))) return false;
+          }
+          return true;
+        };
+    if (!model.perKey)
+      return linearize(
+          model,
+          symbols,
+          branches,
+          history,
+          new int[branches.size()],
+          expected,
+          finish,
+          new java.util.HashSet<String>());
+    // Each key's calls, branch by branch, in order of the rendered key.
+    var stepGroups = new java.util.TreeMap<String, List<List<ModelStep>>>();
+    var callGroups = new java.util.HashMap<String, List<List<Call>>>();
+    for (int i = 0; i < branches.size(); i++) {
+      var branch = branches.get(i);
+      for (int k = 0; k < branch.size(); k++) {
+        var s = branch.get(k);
+        String key = render(s.args().get(model.commands.get(s.index()).key));
+        if (!stepGroups.containsKey(key)) {
+          var steps = new ArrayList<List<ModelStep>>();
+          var calls = new ArrayList<List<Call>>();
+          for (int j = 0; j < branches.size(); j++) {
+            steps.add(new ArrayList<ModelStep>());
+            calls.add(new ArrayList<Call>());
+          }
+          stepGroups.put(key, steps);
+          callGroups.put(key, calls);
+        }
+        stepGroups.get(key).get(i).add(s);
+        callGroups.get(key).get(i).add(history.get(i)[k]);
+      }
+    }
+    Value modelState = expected;
+    for (var entry : stepGroups.entrySet()) {
+      var parts = entry.getValue();
+      var calls = new ArrayList<Call[]>();
+      for (var c : callGroups.get(entry.getKey())) calls.add(c.toArray(new Call[0]));
+      var ends = new ArrayList<Value>();
+      if (!linearize(
+          model,
+          symbols,
+          parts,
+          calls,
+          new int[parts.size()],
+          modelState,
+          end -> {
+            ends.add(end);
+            return true;
+          },
+          new java.util.HashSet<String>())) return false;
+      modelState = ends.get(0);
+    }
+    return finish.test(modelState);
+  }
+
+  /**
+   * A Wing-Gong search: linearize, next, a call no pending call on another thread returned before;
+   * memoized on positions and the model state. finish judges each complete order's final model
+   * state.
+   */
+  private static boolean linearize(
+      Model model,
+      Map<String, Object> symbols,
+      List<List<ModelStep>> branches,
+      List<Call[]> history,
       int[] positions,
       Value modelState,
-      Value finalState,
-      Value state,
+      java.util.function.Predicate<Value> finish,
       java.util.Set<String> seen) {
     if (!seen.add(searchKey(positions, modelState))) return false;
     boolean done = true;
     for (int i = 0; i < branches.size(); i++)
       if (positions[i] != branches.get(i).size()) done = false;
-    if (done) {
-      if (finalState != null && compareValues(finalState, modelState) != 0) return false;
-      for (int k = 0; k < model.invariants.size(); k++) {
-        var subject = model.invariantKinds.get(k).equals("model") ? modelState : state;
-        if (!truth(model.invariants.get(k).apply(symbols, List.of(subject)))) return false;
-      }
-      return true;
-    }
+    if (done) return finish.test(modelState);
     for (int i = 0; i < branches.size(); i++) {
       var branch = branches.get(i);
       int k = positions[i];
@@ -2680,15 +2751,14 @@ public final class LawSpecRuntime {
       }
       if (!command.unit && compareValues(history.get(i)[k].result(), stepped.result()) != 0)
         continue;
-      if (linearizable(
+      if (linearize(
           model,
           symbols,
           branches,
           history,
           advanced(positions, i),
           stepped.state(),
-          finalState,
-          state,
+          finish,
           seen)) return true;
     }
     return false;
@@ -2725,6 +2795,20 @@ public final class LawSpecRuntime {
           var shorter = new ArrayList<List<ModelStep>>(branches);
           shorter.set(i, without(branches.get(i), k));
           candidates.add(new ParallelCase(prefix, shorter));
+        }
+      // Then smaller arguments, branch by branch, step by step.
+      for (int i = 0; i < branches.size(); i++)
+        for (int k = 0; k < branches.get(i).size(); k++) {
+          var s = branches.get(i).get(k);
+          var command = model.commands.get(s.index());
+          int m = Math.min(command.arguments.size(), s.args().size());
+          for (int a = 0; a < m; a++)
+            for (var smaller : model.values.shrink(command.arguments.get(a), s.args().get(a))) {
+              var changed = new ArrayList<List<ModelStep>>(branches);
+              var step = new ModelStep(s.index(), replaced(s.args(), a, smaller));
+              changed.set(i, replaced(branches.get(i), k, step));
+              candidates.add(new ParallelCase(prefix, changed));
+            }
         }
       boolean improved = false;
       for (var candidate : candidates) {

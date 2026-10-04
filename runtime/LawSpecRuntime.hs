@@ -20,7 +20,7 @@ import Data.Word
 import Data.Bits (finiteBitSize, shiftR, xor)
 import Data.Text (Text)
 import qualified Data.Text as T
-import Data.List (find, intercalate, sortBy, stripPrefix)
+import Data.List (find, intercalate, nub, sort, sortBy, stripPrefix)
 import Data.Ratio
 import GHC.Float
   ( castFloatToWord32, castDoubleToWord64, castWord32ToFloat
@@ -1597,6 +1597,8 @@ data ModelCommand = ModelCommand
   , mcUnit :: Bool
   , mcNeeds :: [(String, Integer)]
   , mcShifts :: [(String, Integer)]
+  -- | The argument naming the key the command touches, for per-key checks.
+  , mcKey :: Maybe Int
   , mcRun :: ModelCallback
   , mcReference :: ModelCallback
   , mcWhen :: Maybe ModelCallback
@@ -1613,6 +1615,7 @@ data ModelPlan = ModelPlan
   , planCommands :: [ModelCommand]
   , planAbstract :: Maybe ModelCallback
   , planInvariants :: [(String, ModelCallback)]
+  , planPerKey :: Bool
   }
 
 -- | Start arguments, then each step's command index and arguments.
@@ -1634,6 +1637,7 @@ modelPlan model = ModelPlan
   , planCommands = zipWith command [rest | DescList (DescAtom "command" : rest) <- forms] (modelCommands model)
   , planAbstract = modelAbstract model
   , planInvariants = zip kinds (modelInvariants model)
+  , planPerKey = not (null [() | DescList [DescAtom "perkey", DescAtom "true"] <- forms])
   }
   where
     forms = readDescriptor (modelSpec model)
@@ -1662,6 +1666,9 @@ modelPlan model = ModelPlan
       , mcUnit = field "unit" fs == [DescAtom "true"]
       , mcNeeds = map pair (field "needs" fs)
       , mcShifts = map pair (field "shifts" fs)
+      , mcKey = case field "key" fs of
+          [DescInteger k] -> Just (fromInteger k)
+          _ -> Nothing
       , mcRun = run
       , mcReference = reference
       , mcWhen = precondition
@@ -2081,20 +2088,46 @@ executeParallel plan (prefix@(startArgs, steps), branches) shake = do
               pure (if found then Nothing
                 else Just ("no order of the parallel calls agrees with the model (" ++ observed ++ ")"))
 
--- | A Wing-Gong search: linearize, next, a call no pending call on another
--- thread returned before; memoized on positions and the model state.
+-- | Whether the history linearizes, with the final state and invariants the
+-- model gives. For a set or map whose every call touches one key, each key's
+-- calls are linearized separately (the keys are independent), one group
+-- after another; otherwise all calls at once.
 linearizable :: ModelPlan -> SymbolContext -> [[(Int, [Scalar])]] -> [[(Int, Int, Scalar)]]
              -> Scalar -> Maybe Scalar -> Scalar -> IO Bool
-linearizable plan symbols branches history expected0 final state = do
+linearizable plan symbols branches history expected0 final state
+  | not (planPerKey plan) = linearize plan symbols branches history expected0 finish
+  | otherwise = groups keys expected0
+  where
+    finish modelState =
+      if maybe False (\actual -> compareValues actual modelState /= Right EQ) final then pure False
+      else allM (\(kind, invariant) -> do
+        holds <- callModel invariant symbols [if kind == "model" then modelState else state]
+        pure (case holds of Right (SBool True) -> True; _ -> False)) (planInvariants plan)
+    keyOf (index, args) = case mcKey (planCommands plan !! index) of
+      Just a -> renderValue (args !! a)
+      Nothing -> error "per-key model command without a key"
+    calls = [zip branch h | (branch, h) <- zip branches history]
+    keys = sort (nub [keyOf step | branch <- branches, step <- branch])
+    groups [] modelState = finish modelState
+    groups (key : rest) modelState = do
+      let parts = [[c | c@(step, _) <- branch, keyOf step == key] | branch <- calls]
+      ends <- newIORef Nothing
+      found <- linearize plan symbols (map (map fst) parts) (map (map snd) parts) modelState
+        (\end -> writeIORef ends (Just end) >> pure True)
+      if not found then pure False else do
+        end <- readIORef ends
+        maybe (pure False) (groups rest) end
+
+-- | A Wing-Gong search: linearize, next, a call no pending call on another
+-- thread returned before; memoized on positions and the model state. The
+-- last argument judges each complete order's final model state.
+linearize :: ModelPlan -> SymbolContext -> [[(Int, [Scalar])]] -> [[(Int, Int, Scalar)]]
+              -> Scalar -> (Scalar -> IO Bool) -> IO Bool
+linearize plan symbols branches history expected0 finish = do
   seen <- newIORef []
   let threads = length branches
       lengths = map length branches
       returnedAt j k = let (_, r, _) = history !! j !! k in r
-      finish modelState =
-        if maybe False (\actual -> compareValues actual modelState /= Right EQ) final then pure False
-        else allM (\(kind, invariant) -> do
-          holds <- callModel invariant symbols [if kind == "model" then modelState else state]
-          pure (case holds of Right (SBool True) -> True; _ -> False)) (planInvariants plan)
       visit positions modelState = do
         old <- seenBefore seen (positions, renderValue modelState)
         if old then pure False
@@ -2130,18 +2163,25 @@ parallelFails plan parallelCase repeats shake = go 0
             Just _ -> pure failure
             Nothing -> go (attempt + 1)
 
--- | Smaller cases: dropping each prefix step, then each branch step.
-parallelCandidates :: ParallelCase -> [ParallelCase]
-parallelCandidates (prefix@(startArgs, steps), branches) =
+-- | Smaller cases: dropping each prefix step, then each branch step, then
+-- smaller arguments, branch by branch, step by step.
+parallelCandidates :: ModelPlan -> ParallelCase -> [ParallelCase]
+parallelCandidates plan (prefix@(startArgs, steps), branches) =
   [ ((startArgs, dropAt k steps), branches) | k <- [0 .. length steps - 1] ]
   ++ [ (prefix, [if j == i then dropAt k b else b | (j, b) <- zip [0 :: Int ..] branches])
      | (i, branch) <- zip [0 ..] branches, k <- [0 .. length branch - 1] ]
+  ++ [ (prefix, [if j == i then replace k (index, replace a c args) b else b | (j, b) <- zip [0 :: Int ..] branches])
+     | (i, branch) <- zip [0 ..] branches
+     , (k, (index, args)) <- zip [0 ..] branch
+     , (a, (d, arg)) <- zip [0 ..] (zip (mcArguments (planCommands plan !! index)) args)
+     , c <- shrinkValue (planTable plan) d arg ]
   where dropAt k xs = take k xs ++ drop (k + 1) xs
+        replace k x xs = take k xs ++ [x] ++ drop (k + 1) xs
 
 shrinkParallel :: ModelPlan -> ParallelCase -> String -> Int -> Int -> Word64 -> IO (ParallelCase, String)
 shrinkParallel plan parallelCase failure repeats budget shake
   | budget <= 0 = pure (parallelCase, failure)
-  | otherwise = go (parallelCandidates parallelCase) budget
+  | otherwise = go (parallelCandidates plan parallelCase) budget
   where
     go [] _ = pure (parallelCase, failure)
     go (candidate : rest) b = do

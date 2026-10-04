@@ -1,0 +1,9 @@
+@@ src/example/concurrent.rs
+<<<<<<<
+    entries.insert(value1, value2);
+    previous
+=======
+    entries.insert(value1, value2);
+    let _ = previous;
+    Some(value2)
+>>>>>>>

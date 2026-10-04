@@ -1438,6 +1438,9 @@ class ModelCommand:
         self.unit = fields['unit'][0] == 'true'
         self.needs = fields['needs']
         self.shifts = fields['shifts']
+        # The argument naming the key the command touches, for per-key checks.
+        key = fields.get('key', ['none'])[0]
+        self.key = None if key == 'none' else key
         self.run, self.reference, self.when = callbacks
 
     def admits(self, indices):
@@ -1462,6 +1465,7 @@ class Model:
         self.abstract = abstract
         kinds = next(f for f in forms if f[0] == 'invariants')[1:]
         self.invariants = list(zip(kinds, invariants))
+        self.per_key = any(f[0] == 'perkey' and f[1] == 'true' for f in forms)
 
 
 class _Invalid(Exception):
@@ -1782,8 +1786,39 @@ def _branch_name(i):
 
 
 def _linearizable(model, symbols, branches, history, expected, final, state):
+    """Whether the history linearizes, with the final state and invariants
+    the model gives. For a set or map whose every call touches one key, each
+    key's calls are linearized separately (the keys are independent), one
+    group after another; otherwise all calls at once."""
+    def finish(model_state):
+        if final is not None and compare_values(final, model_state) != 0:
+            return False
+        for kind, invariant in model.invariants:
+            if not invariant(symbols, model_state if kind == 'model' else state):
+                return False
+        return True
+    if not model.per_key:
+        return _linearize(model, symbols, branches, history, expected, finish)
+    groups = {}
+    for i, branch in enumerate(branches):
+        for k, (index, args) in enumerate(branch):
+            key = render(args[model.commands[index].key])
+            groups.setdefault(key, [[] for _ in branches])[i].append((branch[k], history[i][k]))
+    model_state = expected
+    for key in sorted(groups):
+        parts = groups[key]
+        ends = []
+        if not _linearize(model, symbols, [[s for s, _ in p] for p in parts], [[h for _, h in p] for p in parts],
+                          model_state, lambda end: ends.append(end) or True):
+            return False
+        model_state = ends[0]
+    return finish(model_state)
+
+
+def _linearize(model, symbols, branches, history, expected, finish):
     """A Wing-Gong search: linearize, next, a call no pending call on another
-    thread returned before; memoized on positions and the model state."""
+    thread returned before; memoized on positions and the model state.
+    finish judges each complete order's final model state."""
     seen = set()
 
     def visit(positions, model_state):
@@ -1792,12 +1827,7 @@ def _linearizable(model, symbols, branches, history, expected, final, state):
             return False
         seen.add(key)
         if all(k == len(b) for k, b in zip(positions, branches)):
-            if final is not None and compare_values(final, model_state) != 0:
-                return False
-            for kind, invariant in model.invariants:
-                if not invariant(symbols, model_state if kind == 'model' else state):
-                    return False
-            return True
+            return finish(model_state)
         for i, branch in enumerate(branches):
             k = positions[i]
             if k == len(branch):
@@ -1839,6 +1869,15 @@ def _shrink_parallel(model, case, failure, repeats, budget, shake):
             for k in range(len(branches[i])):
                 shorter = [b if j != i else b[:k] + b[k + 1:] for j, b in enumerate(branches)]
                 candidates.append((prefix, shorter))
+        # Then smaller arguments, branch by branch, step by step.
+        for i in range(len(branches)):
+            for k, (index, args) in enumerate(branches[i]):
+                command = model.commands[index]
+                for a, (d, arg) in enumerate(zip(command.arguments, args)):
+                    for c in model.values.shrink(d, arg):
+                        step = (index, args[:a] + [c] + args[a + 1:])
+                        changed = [b if j != i else b[:k] + [step] + b[k + 1:] for j, b in enumerate(branches)]
+                        candidates.append((prefix, changed))
         for candidate in candidates:
             budget -= 1
             if budget <= 0:

@@ -1,0 +1,10 @@
+@@ src/main/java/example/Concurrent.java
+<<<<<<<
+    return CompletableFuture.supplyAsync(() -> set(value0).add(value1));
+=======
+    return CompletableFuture.supplyAsync(
+        () -> {
+          set(value0).add(value1);
+          return true;
+        });
+>>>>>>>

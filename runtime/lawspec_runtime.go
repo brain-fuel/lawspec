@@ -9,6 +9,7 @@ import (
 	"os"
 	"reflect"
 	goruntime "runtime"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -2553,6 +2554,7 @@ type lawSpecModelCommand struct {
 	state                int
 	unit                 bool
 	needs, shifts        [][2]any
+	key                  int // the argument naming the key it touches, for per-key checks; -1 when none
 	run, reference, when LawSpecModelCallback
 }
 
@@ -2568,6 +2570,7 @@ type lawSpecMachine struct {
 	abstract       LawSpecModelCallback
 	invariantKinds []string
 	invariants     []LawSpecModelCallback
+	perKey         bool
 }
 
 type lawSpecModelStep struct {
@@ -2649,6 +2652,12 @@ func lsNewMachine(model LawSpecModel) *lawSpecMachine {
 			fields := lsFormFields(form[2:])
 			callbacks := model.Commands[commandIndex]
 			commandIndex++
+			key := -1
+			if k, ok := fields["key"]; ok && len(k) > 0 {
+				if n, isNumber := k[0].(*big.Int); isNumber {
+					key = int(n.Int64())
+				}
+			}
 			m.commands = append(m.commands, lawSpecModelCommand{
 				name:      lsAtom(form[1]),
 				arguments: fields["arguments"],
@@ -2656,12 +2665,15 @@ func lsNewMachine(model LawSpecModel) *lawSpecMachine {
 				unit:      lsAtom(fields["unit"][0]) == "true",
 				needs:     lsPairs(fields["needs"]),
 				shifts:    lsPairs(fields["shifts"]),
+				key:       key,
 				run:       callbacks[0], reference: callbacks[1], when: callbacks[2],
 			})
 		case "invariants":
 			for _, k := range form[1:] {
 				m.invariantKinds = append(m.invariantKinds, lsAtom(k))
 			}
+		case "perkey":
+			m.perKey = len(form) > 1 && lsAtom(form[1]) == "true"
 		}
 	}
 	m.values = lawSpecValues{table}
@@ -3183,10 +3195,76 @@ func lsBranchName(i int) string {
 	return string(rune('A' + i))
 }
 
-// linearizable is a Wing-Gong search: linearize, next, a call no pending
-// call on another thread returned before; memoized on positions and the
-// model state.
+// linearizable is whether the history linearizes, with the final state and
+// invariants the model gives. For a set or map whose every call touches one
+// key, each key's calls are linearized separately (the keys are
+// independent), one group after another in the order of their rendered keys;
+// otherwise all calls at once.
 func (m *lawSpecMachine) linearizable(symbols map[string]*LawSpecSymbol, branches [][]lawSpecModelStep, history [][]lawSpecCall, expected LawSpecValue, final *LawSpecValue, state LawSpecValue) bool {
+	finish := func(model LawSpecValue) bool {
+		if final != nil && lsCompareValues(*final, model) != 0 {
+			return false
+		}
+		for i, kind := range m.invariantKinds {
+			if i >= len(m.invariants) {
+				break
+			}
+			subject := state
+			if kind == "model" {
+				subject = model
+			}
+			if !lsTruth(m.invariants[i](symbols, []LawSpecValue{subject})) {
+				return false
+			}
+		}
+		return true
+	}
+	if !m.perKey {
+		return m.linearize(symbols, branches, history, expected, finish)
+	}
+	type group struct {
+		branches [][]lawSpecModelStep
+		history  [][]lawSpecCall
+	}
+	groups := map[string]*group{}
+	keys := []string{}
+	for i, branch := range branches {
+		for k, step := range branch {
+			key := lsRender(step.args[m.commands[step.index].key])
+			g, ok := groups[key]
+			if !ok {
+				g = &group{make([][]lawSpecModelStep, len(branches)), make([][]lawSpecCall, len(branches))}
+				groups[key] = g
+				keys = append(keys, key)
+			}
+			g.branches[i] = append(g.branches[i], step)
+			g.history[i] = append(g.history[i], history[i][k])
+		}
+	}
+	sort.Strings(keys)
+	model := expected
+	for _, key := range keys {
+		g := groups[key]
+		var end LawSpecValue
+		found := false
+		record := func(state LawSpecValue) bool {
+			if !found {
+				end, found = state, true
+			}
+			return true
+		}
+		if !m.linearize(symbols, g.branches, g.history, model, record) {
+			return false
+		}
+		model = end
+	}
+	return finish(model)
+}
+
+// linearize is a Wing-Gong search: linearize, next, a call no pending call
+// on another thread returned before; memoized on positions and the model
+// state. finish judges each complete order's final model state.
+func (m *lawSpecMachine) linearize(symbols map[string]*LawSpecSymbol, branches [][]lawSpecModelStep, history [][]lawSpecCall, expected LawSpecValue, finish func(LawSpecValue) bool) bool {
 	seen := map[string]bool{}
 	var visit func(positions []int, model LawSpecValue) bool
 	visit = func(positions []int, model LawSpecValue) bool {
@@ -3202,22 +3280,7 @@ func (m *lawSpecMachine) linearizable(symbols map[string]*LawSpecSymbol, branche
 			}
 		}
 		if done {
-			if final != nil && lsCompareValues(*final, model) != 0 {
-				return false
-			}
-			for i, kind := range m.invariantKinds {
-				if i >= len(m.invariants) {
-					break
-				}
-				subject := state
-				if kind == "model" {
-					subject = model
-				}
-				if !lsTruth(m.invariants[i](symbols, []LawSpecValue{subject})) {
-					return false
-				}
-			}
-			return true
+			return finish(model)
 		}
 		for i, branch := range branches {
 			k := positions[i]
@@ -3276,6 +3339,23 @@ func (m *lawSpecMachine) shrinkParallel(pc lawSpecParallelCase, failure string, 
 				b := pc.branches[i]
 				shorter[i] = append(append([]lawSpecModelStep{}, b[:k]...), b[k+1:]...)
 				candidates = append(candidates, lawSpecParallelCase{pc.prefix, shorter})
+			}
+		}
+		// Then smaller arguments, branch by branch, step by step.
+		for i := range pc.branches {
+			for k, s := range pc.branches[i] {
+				c := &m.commands[s.index]
+				for a := 0; a < len(c.arguments) && a < len(s.args); a++ {
+					for _, candidate := range m.values.shrink(c.arguments[a], s.args[a]) {
+						args := append([]LawSpecValue{}, s.args...)
+						args[a] = candidate
+						changed := append([][]lawSpecModelStep{}, pc.branches...)
+						b := append([]lawSpecModelStep{}, pc.branches[i]...)
+						b[k] = lawSpecModelStep{s.index, args}
+						changed[i] = b
+						candidates = append(candidates, lawSpecParallelCase{pc.prefix, changed})
+					}
+				}
 			}
 		}
 		exhausted := true

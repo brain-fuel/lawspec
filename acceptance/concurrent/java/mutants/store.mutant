@@ -1,0 +1,10 @@
+@@ src/main/java/example/Concurrent.java
+<<<<<<<
+    return CompletableFuture.supplyAsync(() -> maybe(map(value0).put(value1, value2)));
+=======
+    return CompletableFuture.supplyAsync(
+        () -> {
+          map(value0).put(value1, value2);
+          return maybe(value2);
+        });
+>>>>>>>

@@ -287,7 +287,7 @@ scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions 
     -- the reference definitions.
     modelTest machine = do
       spec <- either (\m -> Left [Diagnostic "model" m Nothing]) Right
-        (machineSpec bits declarations (C.unitDeclarations u) machine)
+        (machineSpec bits declarations (C.unitDeclarations u) (C.unitContracts u) machine)
       let call identity = case lookup identity definitions of
             Just name -> Right (text (maybe name id (stripPrefix "await " name)))
             Nothing -> Left [Diagnostic "model" ("model " ++ C.machineName machine ++ ": " ++ C.idText identity ++ " is not a checked definition") Nothing]

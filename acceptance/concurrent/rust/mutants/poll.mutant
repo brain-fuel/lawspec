@@ -1,0 +1,11 @@
+@@ src/example/concurrent.rs
+<<<<<<<
+    let items = get(&QUEUES, value0.id);
+    items.lock().unwrap().pop_front()
+=======
+    let items = get(&QUEUES, value0.id);
+    let front = items.lock().unwrap().front().copied();
+    std::thread::sleep(std::time::Duration::from_millis(1));
+    items.lock().unwrap().pop_front();
+    front
+>>>>>>>

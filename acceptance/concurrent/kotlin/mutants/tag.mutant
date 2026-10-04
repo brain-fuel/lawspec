@@ -1,0 +1,9 @@
+@@ src/main/kotlin/example/Concurrent.kt
+<<<<<<<
+    suspend fun tag(value0: Tags, value1: Int): Boolean = set(value0).add(value1)
+=======
+    suspend fun tag(value0: Tags, value1: Int): Boolean {
+        set(value0).add(value1)
+        return true
+    }
+>>>>>>>

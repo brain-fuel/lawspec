@@ -1,0 +1,8 @@
+@@ src/example/concurrent.ts
+<<<<<<<
+  entries.set(value1, value2);
+  return maybe(previous);
+=======
+  entries.set(value1, value2);
+  return maybe(value2);
+>>>>>>>

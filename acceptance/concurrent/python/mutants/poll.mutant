@@ -1,0 +1,17 @@
+@@ src/example/concurrent.py
+<<<<<<<
+    lock, items = _get(_queues, value0.id, collections.deque)
+    with lock:
+        return _schema.Just(items.popleft()) if items else _schema.Nothing()
+=======
+    import asyncio
+    lock, items = _get(_queues, value0.id, collections.deque)
+    if not items:
+        return _schema.Nothing()
+    front = items[0]
+    await asyncio.sleep(0.001)
+    with lock:
+        if items:
+            items.popleft()
+    return _schema.Just(front)
+>>>>>>>

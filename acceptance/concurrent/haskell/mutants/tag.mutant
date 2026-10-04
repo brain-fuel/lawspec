@@ -1,0 +1,6 @@
+@@ src/Example/Concurrent.hs
+<<<<<<<
+  let added = not (Set.member value items)
+=======
+  let added = True
+>>>>>>>

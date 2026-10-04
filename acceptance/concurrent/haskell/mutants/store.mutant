@@ -1,0 +1,7 @@
+@@ src/Example/Concurrent.hs
+<<<<<<<
+  let previous = Map.lookup key entries
+  in (Map.insert key value entries, previous)
+=======
+  (Map.insert key value entries, Just value)
+>>>>>>>

@@ -1,0 +1,10 @@
+@@ src/main/kotlin/example/Concurrent.kt
+<<<<<<<
+    suspend fun store(value0: Cache, value1: Byte, value2: Long): LawSpecRuntime.Maybe<Long> =
+        maybe(map(value0).put(value1, value2))
+=======
+    suspend fun store(value0: Cache, value1: Byte, value2: Long): LawSpecRuntime.Maybe<Long> {
+        map(value0).put(value1, value2)
+        return maybe(value2)
+    }
+>>>>>>>

@@ -45,6 +45,7 @@ extra-source-files:
     examples/specs/boolean_flags.lawspec
     examples/specs/canonical_url.lawspec
     examples/specs/collections.lawspec
+    examples/specs/concurrent_collections.lawspec
     examples/specs/currying.lawspec
     examples/specs/data_types.lawspec
     examples/specs/domain_modeling.lawspec

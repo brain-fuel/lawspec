@@ -67,12 +67,16 @@ emitPythonDefinitions layout bits declarations units = do
               let (parameterTypes, resultType) = functionType (declarationType adapter)
               nativeValues <- sequence [schemaCall "to_native" ty value | (ty, value) <- zip parameterTypes values]
               let invocation = E.call ("_adapters(" ++ show owner ++ ")." ++ declarationName adapter) nativeValues
+              -- A Unit adapter returns None, which is the Unit value.
+              let fromNative value
+                    | resultType == Constructor "Unit" [] = pure (E.call "ls.unit_result" [value])
+                    | otherwise = schemaCall "from_native" resultType value
               if declarationAsync adapter
                 then do
                   -- Within its stage's timeout and hedge, when it has them.
-                  convert <- schemaCall "from_native" resultType (D.text "_native")
+                  convert <- fromNative (D.text "_native")
                   pure (E.call "ls.await_step" [D.text "symbols", D.text "lambda: " <> invocation, D.text "lambda _native: " <> convert])
-                else schemaCall "from_native" resultType invocation
+                else fromNative invocation
             _ -> Left "unresolved Python total call"
       rendered <- E.renderExpression declarations bits local external (definitionBody d)
       -- A workflow stage with policies runs under the workflow runtime.

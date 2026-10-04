@@ -1,0 +1,6 @@
+@@ example/concurrent/adapter.go
+<<<<<<<
+		added := !s.items[value1]
+=======
+		added := true
+>>>>>>>

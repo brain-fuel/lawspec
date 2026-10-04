@@ -1,0 +1,6 @@
+@@ src/example/concurrent.rs
+<<<<<<<
+    let added = !items.contains(&value1);
+=======
+    let added = true;
+>>>>>>>

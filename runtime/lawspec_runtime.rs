@@ -2933,6 +2933,8 @@ struct ModelCommand {
     unit: bool,
     needs: Vec<ModelNeed>,
     shifts: Vec<ModelShift>,
+    // The argument naming the key the command touches, for per-key checks.
+    key: Option<usize>,
     run: ModelCallback,
     reference: ModelCallback,
     when: Option<ModelCallback>,
@@ -2975,6 +2977,10 @@ impl ModelCommand {
                     (_, k) => ModelShift::To(k),
                 })
                 .collect(),
+            key: match fields.get("key").and_then(|k| k.first()) {
+                Some(Sexp::Int(n)) => Some(n.to_usize().unwrap_or_else(|| panic!("key {n} out of range"))),
+                _ => None,
+            },
             run: callbacks.0,
             reference: callbacks.1,
             when: callbacks.2,
@@ -3019,6 +3025,7 @@ struct Machine<'a> {
     start_arguments: Vec<Sexp>,
     commands: Vec<ModelCommand>,
     invariants: Vec<(String, ModelCallback)>,
+    per_key: bool,
 }
 
 impl<'a> Machine<'a> {
@@ -3047,6 +3054,7 @@ impl<'a> Machine<'a> {
                 .map(|(f, c)| ModelCommand::new(f, c))
                 .collect(),
             invariants: kinds.iter().map(Sexp::name).zip(model.invariants.iter().copied()).collect(),
+            per_key: forms.iter().any(|f| f.kind() == "perkey" && f.items().get(1).map(Sexp::name).as_deref() == Some("true")),
         }
     }
 
@@ -3506,9 +3514,7 @@ impl<'a> Machine<'a> {
             },
             None => None,
         };
-        let mut seen = std::collections::HashSet::new();
-        let positions = vec![0; branches.len()];
-        if self.linearizes(&mut ctx, branches, &history, &mut seen, positions, expected, fin.as_ref(), &state) {
+        if self.linearizable(&mut ctx, branches, &history, expected, fin.as_ref(), &state) {
             return None;
         }
         let mut observed = Vec::new();
@@ -3537,11 +3543,81 @@ impl<'a> Machine<'a> {
         Ok(state)
     }
 
+    /// Whether the history linearizes, with the final state and invariants
+    /// the model gives. For a set or map whose every call touches one key,
+    /// each key's calls are linearized separately (the keys are
+    /// independent), one group after another; otherwise all calls at once.
+    fn linearizable(
+        &self,
+        ctx: &mut Context,
+        branches: &[ModelBranch],
+        history: &[Vec<ParallelCall>],
+        expected: Value,
+        fin: Option<&Value>,
+        state: &Value,
+    ) -> bool {
+        let finish = |ctx: &mut Context, model_state: &Value| -> bool {
+            if let Some(fin) = fin {
+                if !matches!(compare_values(fin, model_state), Ok(std::cmp::Ordering::Equal)) {
+                    return false;
+                }
+            }
+            for (kind, invariant) in &self.invariants {
+                let subject = if kind == "model" { model_state } else { state };
+                if !matches!(invariant(ctx, vec![subject.clone()]).and_then(|v| v.boolean()), Ok(true)) {
+                    return false;
+                }
+            }
+            true
+        };
+        if !self.per_key {
+            return self.linearize(ctx, branches, history, expected, &mut |c, s| finish(c, s));
+        }
+        // Each key's calls, thread by thread, ordered by the rendered key.
+        let mut groups: std::collections::BTreeMap<String, Vec<(ModelBranch, Vec<ParallelCall>)>> =
+            std::collections::BTreeMap::new();
+        for (i, branch) in branches.iter().enumerate() {
+            for (k, (index, args)) in branch.iter().enumerate() {
+                let position = self.commands[*index].key.expect("a per-key command names its key");
+                let parts = groups
+                    .entry(render(&args[position]))
+                    .or_insert_with(|| vec![(Vec::new(), Vec::new()); branches.len()]);
+                parts[i].0.push(branch[k].clone());
+                parts[i].1.push(history[i][k].clone());
+            }
+        }
+        let mut model_state = expected;
+        for parts in groups.values() {
+            let (steps, calls): (Vec<ModelBranch>, Vec<Vec<ParallelCall>>) = parts.iter().cloned().unzip();
+            let mut ends = Vec::new();
+            if !self.linearize(ctx, &steps, &calls, model_state, &mut |_, end| {
+                ends.push(end.clone());
+                true
+            }) {
+                return false;
+            }
+            model_state = ends.swap_remove(0);
+        }
+        finish(ctx, &model_state)
+    }
+
     /// A Wing-Gong search: linearize, next, a call no pending call on
     /// another thread returned before; memoized on positions and the model
-    /// state.
+    /// state. finish judges each complete order's final model state.
+    fn linearize(
+        &self,
+        ctx: &mut Context,
+        branches: &[ModelBranch],
+        history: &[Vec<ParallelCall>],
+        expected: Value,
+        finish: &mut dyn FnMut(&mut Context, &Value) -> bool,
+    ) -> bool {
+        let mut seen = std::collections::HashSet::new();
+        self.visit(ctx, branches, history, &mut seen, vec![0; branches.len()], expected, finish)
+    }
+
     #[allow(clippy::too_many_arguments)]
-    fn linearizes(
+    fn visit(
         &self,
         ctx: &mut Context,
         branches: &[ModelBranch],
@@ -3549,25 +3625,13 @@ impl<'a> Machine<'a> {
         seen: &mut std::collections::HashSet<(Vec<usize>, String)>,
         positions: Vec<usize>,
         model_state: Value,
-        fin: Option<&Value>,
-        state: &Value,
+        finish: &mut dyn FnMut(&mut Context, &Value) -> bool,
     ) -> bool {
         if !seen.insert((positions.clone(), render(&model_state))) {
             return false;
         }
         if positions.iter().zip(branches).all(|(k, b)| *k == b.len()) {
-            if let Some(fin) = fin {
-                if !matches!(compare_values(fin, &model_state), Ok(std::cmp::Ordering::Equal)) {
-                    return false;
-                }
-            }
-            for (kind, invariant) in &self.invariants {
-                let subject = if kind == "model" { &model_state } else { state };
-                if !matches!(invariant(ctx, vec![subject.clone()]).and_then(|v| v.boolean()), Ok(true)) {
-                    return false;
-                }
-            }
-            return true;
+            return finish(ctx, &model_state);
         }
         for (i, branch) in branches.iter().enumerate() {
             let k = positions[i];
@@ -3588,7 +3652,7 @@ impl<'a> Machine<'a> {
             if !command.unit && !matches!(compare_values(&history[i][k].2, &wanted), Ok(std::cmp::Ordering::Equal)) {
                 continue;
             }
-            if self.linearizes(ctx, branches, history, seen, advanced(&positions, i), after, fin, state) {
+            if self.visit(ctx, branches, history, seen, advanced(&positions, i), after, finish) {
                 return true;
             }
         }
@@ -3620,6 +3684,19 @@ impl<'a> Machine<'a> {
                     let mut shorter = branches.clone();
                     shorter[i].remove(k);
                     candidates.push((prefix.clone(), shorter));
+                }
+            }
+            // Then smaller arguments, branch by branch, step by step.
+            for i in 0..branches.len() {
+                for (k, (index, args)) in branches[i].iter().enumerate() {
+                    let command = &self.commands[*index];
+                    for (a, (d, arg)) in command.arguments.iter().zip(args).enumerate() {
+                        for c in self.values.shrink(d, arg) {
+                            let mut changed = branches.clone();
+                            changed[i][k].1[a] = c;
+                            candidates.push((prefix.clone(), changed));
+                        }
+                    }
                 }
             }
             let mut improved = false;

@@ -1,0 +1,8 @@
+@@ src/example/concurrent.py
+<<<<<<<
+        entries[value1] = value2
+        return _maybe(previous)
+=======
+        entries[value1] = value2
+        return _maybe(value2)
+>>>>>>>

@@ -1,0 +1,9 @@
+@@ example/concurrent/adapter.go
+<<<<<<<
+		previous, present := c.entries[value1]
+		c.entries[value1] = value2
+		return optional(previous, present)
+=======
+		c.entries[value1] = value2
+		return optional(value2, true)
+>>>>>>>

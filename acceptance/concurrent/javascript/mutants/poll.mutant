@@ -1,0 +1,12 @@
+@@ src/example/concurrent.mjs
+<<<<<<<
+  const items = get(queues, value0.id, () => []);
+  return items.length > 0 ? new data.Just(items.shift()) : new data.Nothing();
+=======
+  const items = get(queues, value0.id, () => []);
+  if (items.length === 0) return new data.Nothing();
+  const front = items[0];
+  await new Promise((r) => setTimeout(r, 1));
+  if (items.length > 0) items.shift();
+  return new data.Just(front);
+>>>>>>>

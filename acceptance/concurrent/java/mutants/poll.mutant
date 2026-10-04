@@ -1,0 +1,16 @@
+@@ src/main/java/example/Concurrent.java
+<<<<<<<
+          var q = queue(value0);
+          return maybe(q.poll());
+=======
+          var q = queue(value0);
+          var front = q.peek();
+          if (front == null) return new LawSpecRuntime.Nothing<Integer>();
+          try {
+            Thread.sleep(1);
+          } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+          }
+          q.remove(front);
+          return new LawSpecRuntime.Just<>(front);
+>>>>>>>

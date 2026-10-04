@@ -1,0 +1,40 @@
+@@ example/concurrent/adapter.go
+<<<<<<<
+import (
+	"sync"
+	"sync/atomic"
+)
+=======
+import (
+	"sync"
+	"sync/atomic"
+	"time"
+)
+>>>>>>>
+<<<<<<<
+		q := queueOf(value0.Id)
+		q.lock.Lock()
+		defer q.lock.Unlock()
+		if len(q.items) == 0 {
+			return LawSpecNothing[int32]()
+		}
+		front := q.items[0]
+		q.items = q.items[1:]
+		return LawSpecJust(front)
+=======
+		q := queueOf(value0.Id)
+		q.lock.Lock()
+		if len(q.items) == 0 {
+			q.lock.Unlock()
+			return LawSpecNothing[int32]()
+		}
+		front := q.items[0]
+		q.lock.Unlock()
+		time.Sleep(time.Millisecond)
+		q.lock.Lock()
+		if len(q.items) > 0 {
+			q.items = q.items[1:]
+		}
+		q.lock.Unlock()
+		return LawSpecJust(front)
+>>>>>>>

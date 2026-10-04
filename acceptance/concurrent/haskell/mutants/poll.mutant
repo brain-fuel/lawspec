@@ -1,0 +1,22 @@
+@@ src/Example/Concurrent.hs
+<<<<<<<
+import Control.Concurrent.MVar (MVar, modifyMVar, newMVar, readMVar)
+=======
+import Control.Concurrent (threadDelay)
+import Control.Concurrent.MVar (MVar, modifyMVar, newMVar, readMVar)
+>>>>>>>
+<<<<<<<
+poll (Data.WorkQueue identity) = with queues identity Seq.empty $ \items -> case viewl items of
+  front :< rest -> (rest, Just front)
+  EmptyL -> (items, Nothing)
+=======
+poll (Data.WorkQueue identity) = do
+  box <- get queues identity Seq.empty
+  items <- readMVar box
+  case viewl items of
+    EmptyL -> pure Nothing
+    front :< _ -> do
+      threadDelay 1000
+      with queues identity Seq.empty $ \now -> (Seq.drop 1 now, ())
+      pure (Just front)
+>>>>>>>

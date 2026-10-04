@@ -97,8 +97,11 @@ emitWebDefinitions ts layout bits declarations units = do
             ExternalCall identity _ | Just (owner, adapter) <- lookup identity adapters -> do
               let (parameterTypes, resultType) = functionType (declarationType adapter)
               nativeValues <- sequence [schemaCall "toNative" ty value | (ty, value) <- zip parameterTypes values]
-              schemaCall "fromNative" resultType
-                (awaitIf (declarationAsync adapter) (E.call (adapterAlias owner ++ "." ++ declarationName adapter) nativeValues))
+              let called = awaitIf (declarationAsync adapter) (E.call (adapterAlias owner ++ "." ++ declarationName adapter) nativeValues)
+              -- A Unit adapter returns undefined, which is the Unit value.
+              if resultType == Constructor "Unit" []
+                then pure (E.call "ls.unitResult" [called])
+                else schemaCall "fromNative" resultType called
             _ -> Left "unresolved JS/TS total call"
       rendered <- (if asynchronous then E.renderAsyncExpression else E.renderExpression) ts declarations bits local external (definitionBody d)
       -- A workflow stage with policies runs under the workflow runtime.

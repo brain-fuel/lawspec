@@ -1,0 +1,11 @@
+@@ src/main/kotlin/example/Concurrent.kt
+<<<<<<<
+        val q = queue(value0)
+        return maybe(q.poll())
+=======
+        val q = queue(value0)
+        val front = q.peek() ?: return LawSpecRuntime.Nothing()
+        kotlinx.coroutines.delay(1)
+        q.remove(front)
+        return LawSpecRuntime.Just(front)
+>>>>>>>

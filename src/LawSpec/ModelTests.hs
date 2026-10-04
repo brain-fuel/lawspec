@@ -23,7 +23,7 @@ data Callbacks = Callbacks
 -- Each machine's spec and callbacks, wrapped by the target's lambda.
 prepare :: Int -> [C.DataDeclaration] -> [(C.Id, String)] -> C.Unit -> (String -> Int -> String) -> Machine C.Id -> Either [Diagnostic] (String, Callbacks)
 prepare bits datas calls u wrap machine = do
-  spec <- failing (machineSpec bits datas (C.unitDeclarations u) machine)
+  spec <- failing (machineSpec bits datas (C.unitDeclarations u) (C.unitContracts u) machine)
   let arity identity = case [d | d <- C.unitDefinitions u, C.declarationId (C.definitionDeclaration d) == identity] of
         [d] -> Right (length (C.definitionArguments d))
         _ -> Left [Diagnostic "model" ("model " ++ machineName machine ++ ": " ++ C.idText identity ++ " is not a definition of this unit") Nothing]
