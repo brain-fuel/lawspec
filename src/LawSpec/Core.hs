@@ -4,6 +4,7 @@
 module LawSpec.Core where
 
 import LawSpec.Core.Policy (StagePolicy)
+import LawSpec.Core.Machine (Machine)
 import GHC.Generics (Generic)
 import LawSpec.IndexTerm (FamilyIndex(..))
 import LawSpec.Common
@@ -108,7 +109,9 @@ data Property = Property
   , propertyDescription :: String, propertyRationale :: String
   , propertyReferences :: [String], propertyTrace :: [String]
   } deriving (Eq, Show, Generic)
-data Unit = Unit { unitId :: Id, unitDeclarations :: [Declaration], unitContracts :: [Contract], unitProperties :: [Property], unitDefinitions :: [Definition] } deriving (Eq, Show, Generic)
+-- unitMachines are the unit's stateful models, which each target's model
+-- runtime runs against its adapters.
+data Unit = Unit { unitId :: Id, unitDeclarations :: [Declaration], unitContracts :: [Contract], unitProperties :: [Property], unitDefinitions :: [Definition], unitMachines :: [Machine Id] } deriving (Eq, Show, Generic)
 data Program = Program
   { programMachineBits :: Int, programDataDeclarations :: [DataDeclaration]
   , programUnits :: [Unit]

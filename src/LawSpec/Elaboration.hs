@@ -285,7 +285,7 @@ elaborateDefinitionUnit dataDeclarations bits u = do
   contracts <- mapM (elaborateContract dataDeclarations bits u)
     [contract | contract <- S.contracts u,
       S.contractName contract `elem` map S.functionName (S.functionDefinitions u)]
-  pure (C.Unit (C.Id (S.unitName u)) ds contracts [] definitions)
+  pure (C.Unit (C.Id (S.unitName u)) ds contracts [] definitions (map (fmap (declarationId u)) (S.machines u)))
   where declarationId unit n = C.Id (S.unitName unit ++ "::" ++ n)
 
 

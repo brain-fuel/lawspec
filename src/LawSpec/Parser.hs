@@ -9,6 +9,7 @@ import LawSpec.Model
 import LawSpec.Indexed
 import LawSpec.Railway (railwayUnit)
 import LawSpec.DomainModel
+import LawSpec.StatefulModel (ModelDeclaration(..), ModelCommand(..), elaborateModels)
 import LawSpec.Scalar
 import Control.Monad.Combinators.Expr
 import Control.Monad (void, unless, when, forM_)
@@ -248,6 +249,43 @@ workflowP = do
             AllStage accumulate steps <$> qualifiedName
         , EnsureStage <$> (keyword "ensure" *> qualifiedName) <*> (keyword "else" *> qualifiedName) ]
       pure (WorkflowStage stage stageRange)
+
+-- model name :: [shared] S by M is ... end: commands paired with reference
+-- definitions over the model state M. Each line is a command, `start`,
+-- `abstract` or `invariant`; `~` and `by` both read "modelled by".
+modelP :: P ModelDeclaration
+modelP = do
+  ((name, shared, state, model, items), range) <- withSpan $ do
+    keyword "model"
+    name <- ident
+    void (symbol "::")
+    shared <- option False (True <$ keyword "shared")
+    state <- typeP
+    keyword "by"
+    model <- typeP
+    keyword "is"
+    items <- many item
+    keyword "end"
+    pure (name, shared, state, model, items)
+  pure (ModelDeclaration name shared state model
+    (case [s | Left (Left s) <- items] of s : _ -> Just s; [] -> Nothing)
+    [c | Right (Left c) <- items]
+    (case [a | Left (Right (Left a)) <- items] of a : _ -> Just a; [] -> Nothing)
+    [i | Left (Right (Right i)) <- items] range)
+  where
+    modelledBy = void (symbol "~") <|> keyword "by"
+    item = choice
+      [ (\f e -> Left (Left (f, e))) <$> (keyword "start" *> ident) <*> (modelledBy *> value)
+      , Left . Right . Left <$> (keyword "abstract" *> qualifiedName)
+      , Left . Right . Right <$> (keyword "invariant" *> qualifiedName)
+      , (\c r w -> Right (Left (ModelCommand c r w))) <$> try (ident <* modelledBy) <*> qualifiedName
+          <*> optional (keyword "when" *> qualifiedName) ]
+    -- A model value: a literal, a name or a parenthesized expression, so it
+    -- cannot run into the next line.
+    value = parens expr
+      <|> (ListLit <$> between (symbol "[") (symbol "]") (expr `sepBy` symbol ","))
+      <|> try numeric <|> (StringLit <$> str) <|> (BoolLit <$> boolP)
+      <|> ((\n -> if maybe False (isUpper . fst) (uncons n) then ConstructLit n [] else Var n) <$> qualifiedName)
 
 -- Declarations with a Natural parameter or an index equation are indexed
 -- families; LawSpec.Indexed elaborates them after the unit is parsed.
@@ -517,7 +555,7 @@ functionDefinitionP = do
   pure (FunctionDefinition name arguments result requirements body range)
 
 data UnitMember = DataMember DataTypeDeclaration | FamilyMember IndexedFamily | RefinementMember Refinement
-  | WrapperMember Wrapper | WorkflowMember Workflow
+  | WrapperMember Wrapper | WorkflowMember Workflow | ModelMember ModelDeclaration
   | SignatureMember ((String, Type), Span) | AsyncMember ((String, Type), Span) | LawMember Law
   | DefinitionMember FunctionDefinition
 
@@ -544,12 +582,14 @@ preambleP = do
   imports <- many (try importP)
   pure (n, imports)
 
-unitP :: P (Unit, [Import], [IndexedFamily], [Wrapper], [Workflow])
+unitP :: P (Unit, [Import], [IndexedFamily], [Wrapper], [Workflow], [ModelDeclaration])
 unitP = do
   (n, imports) <- preambleP
   members <- many ((either FamilyMember DataMember <$> declarationP)
     <|> (WrapperMember <$> wrapperP)
     <|> (WorkflowMember <$> workflowP)
+    -- `model` begins a model only before a name; it may name a function.
+    <|> (ModelMember <$> (try (lookAhead (keyword "model" *> ident)) *> modelP))
     <|> (RefinementMember <$> refinementP)
     <|> (DefinitionMember <$> functionDefinitionP)
     <|> (AsyncMember <$> try (keyword "async" *> withSpan ((,) <$> ident <* symbol "::" <*> typeP)))
@@ -564,8 +604,8 @@ unitP = do
         [((functionName d, foldr Arrow (functionResult d) (map snd (functionArguments d))), functionSpan d) | d <- definitions]
   pure (Unit n (map fst signatures) [l | LawMember l <- members]
     [r | RefinementMember r <- members] [] [(name,range) | ((name,_),range) <- signatures]
-    [d | DataMember d <- members] definitions [name | AsyncMember ((name, _), _) <- members] [] [], imports, [f | FamilyMember f <- members],
-    [w | WrapperMember w <- members], [w | WorkflowMember w <- members])
+    [d | DataMember d <- members] definitions [name | AsyncMember ((name, _), _) <- members] [] [] [], imports, [f | FamilyMember f <- members],
+    [w | WrapperMember w <- members], [w | WorkflowMember w <- members], [m | ModelMember m <- members])
 
 parseSource :: Source -> Either [Diagnostic] Unit
 parseSource source = fst . fst <$> parseWith M.empty [] source
@@ -648,9 +688,12 @@ sourceExports extra (Source _ s) =
 parseWith :: M.Map String Header -> [IndexedFamily] -> Source -> Either [Diagnostic] ((Unit, [Import]), [IndexedFamily])
 parseWith extra importedFamilies (Source p s) = case runReader (runParserT unitP p s) (literalHeaders s (M.union (headers s) extra)) of
   Left e -> Left [Diagnostic "parse" (errorBundlePretty e) Nothing]
-  Right (u, imports, families, wrappers, workflows) -> do
-    modeled <- either (\(at, message) -> Left [Diagnostic "domain" message at]) Right
+  Right (u, imports, families, wrappers, workflows, models) -> do
+    domained <- either (\(at, message) -> Left [Diagnostic "domain" message at]) Right
       (elaborateDomain wrappers workflows (railwayUnit u))
+    -- Models read typestate from flow parameters, so they come first.
+    modeled <- either (\(at, message) -> Left [Diagnostic "model" message (spanStart <$> at)]) Right
+      (elaborateModels models domained)
     (families', flowed) <- either (\(at, message) -> Left [Diagnostic "flow" message at]) Right
       (desugarFlows importedFamilies families modeled)
     elaborated <- either (\message -> Left [Diagnostic "indexed" (p ++ ": " ++ message) Nothing]) Right

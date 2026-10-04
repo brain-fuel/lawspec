@@ -131,7 +131,7 @@ spec = describe "refined definition proof obligations" $ do
           (Declaration (Id "reciprocal") "reciprocal" (Arrow ty (scalarType "Rational")) origin)
           [argument] body
         program declarations functions = Program 64 declarations
-          [Unit (Id "typed-fields") (map definitionDeclaration functions) [] [] functions]
+          [Unit (Id "typed-fields") (map definitionDeclaration functions) [] [] functions []]
         boxed n = DataValue ty tag [ScalarValue (SInteger "Int8" n)]
         ready p action = case prepareDefinitions p of
           Left diagnostics -> expectationFailure (show diagnostics)
@@ -227,7 +227,7 @@ spec = describe "refined definition proof obligations" $ do
           declaration = datatype [circular]
           property = Property (Id "cycle-property") "cycle" (Location "cycle" 1 1) []
             (Equation (Structural ty) literal literal) [] defaultGeneration "" "" [] []
-          p = Program 64 [declaration] [Unit (Id "cycle") [] [] [property] []]
+          p = Program 64 [declaration] [Unit (Id "cycle") [] [] [property] [] []]
       validateProgram p `shouldSatisfy` isLeft
     it "preserves declared parameters in generic constructor-predicate matches" $ do
       let source = Source "generic-match.lawspec" $ unlines
@@ -322,7 +322,7 @@ spec = describe "refined definition proof obligations" $ do
   it "keeps adapter contracts outside the closed definition proof audit" $ do
     let adapter = Declaration (Id "adapter") "adapter" (Arrow int int) origin
         c = contract "adapter" int [] [operation Greater (value "result" int) (number 0)]
-        program = Program 64 [] [Unit (Id "unit") [adapter] [c] [] []]
+        program = Program 64 [] [Unit (Id "unit") [adapter] [c] [] [] []]
     validateProgram program `shouldBe` Right ()
     case prepareDefinitions program of
       Left diagnostics -> expectationFailure (show diagnostics)
@@ -330,7 +330,7 @@ spec = describe "refined definition proof obligations" $ do
   it "enforces closed definition preconditions before returning a value" $ do
     let d = definition "identity" (value "x" int)
         c = contract "identity" int [operation Greater (value "argument" int) (number 0)] []
-        program = Program 64 [] [Unit (Id "unit") [definitionDeclaration d] [c] [] [d]]
+        program = Program 64 [] [Unit (Id "unit") [definitionDeclaration d] [c] [] [d] []]
     case prepareDefinitions program of
       Left diagnostics -> expectationFailure (show diagnostics)
       Right run -> do
@@ -341,7 +341,7 @@ spec = describe "refined definition proof obligations" $ do
         nonzero = operation NotEqual (value "argument" int) (number 0)
         positiveReciprocal = operation Greater (operation Divide (number 1) (value "argument" int)) (number 0)
         c = contract "identity" int [nonzero,positiveReciprocal] []
-        program = Program 64 [] [Unit (Id "unit") [definitionDeclaration d] [c] [] [d]]
+        program = Program 64 [] [Unit (Id "unit") [definitionDeclaration d] [c] [] [d] []]
     case prepareDefinitions program of
       Left diagnostics -> expectationFailure (show diagnostics)
       Right run -> do
@@ -351,7 +351,7 @@ spec = describe "refined definition proof obligations" $ do
     let d = definition "next" (operation Add (value "x" int) (number 1))
         post = operation Equal (value "result" integer) (operation Add (value "argument" int) (number 1))
         c = contract "next" integer [] [post]
-        program = Program 64 [] [Unit (Id "unit") [definitionDeclaration d] [c] [] [d]]
+        program = Program 64 [] [Unit (Id "unit") [definitionDeclaration d] [c] [] [d] []]
     case prepareDefinitions program of
       Left diagnostics -> expectationFailure (show diagnostics)
       Right run -> run (Id "next") [ScalarValue (SInteger "Int8" 127)] `shouldBe` Right (ScalarValue (SInteger "Integer" 128))
@@ -359,7 +359,7 @@ spec = describe "refined definition proof obligations" $ do
     let d = definition "identity" (value "x" int)
         c = contract "identity" int [] []
         wrong = c{contractPostconditions=[operation Less (value "result" int) (number 0)]}
-        program cs = Program 64 [] [Unit (Id "unit") [definitionDeclaration d] cs [] [d]]
+        program cs = Program 64 [] [Unit (Id "unit") [definitionDeclaration d] cs [] [d] []]
     isLeft (prepareDefinitions (program [c,c])) `shouldBe` True
     isLeft (prepareDefinitions (program [wrong])) `shouldBe` True
   it "does not merge sibling field domains when Core reuses a branch-local identity" $ do

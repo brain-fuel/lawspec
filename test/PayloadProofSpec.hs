@@ -79,7 +79,7 @@ spec = describe "recursive payload proof rules" $ do
     let f = reciprocal n
         declaration = definitionDeclaration f
         program = Program 64 [tree]
-          [Unit (Id "proof") [declaration] [law f] [] [f]]
+          [Unit (Id "proof") [declaration] [law f] [] [f] []]
         leaf value = DataValue ty (Id "Tree::Leaf")
           [ScalarValue (SInteger "Int8" value),ScalarValue (SInteger "Int8" 0)]
         value = DataValue ty (Id "Tree::Forest") [listValue ty

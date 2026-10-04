@@ -45,7 +45,7 @@ fixture =
       contracts = [nextBoundary,boundary reciprocal [nonzero] [],
         boundary ordered [nonzero,op Greater (op Divide (number 1) arg) (number 0)] [],
         boundary narrow [op Less arg (number 127)] [],boundary caller [positive] []]
-      unit cs = Unit (Id "fixture") (map definitionDeclaration definitions) cs [] definitions
+      unit cs = Unit (Id "fixture") (map definitionDeclaration definitions) cs [] definitions []
       wrong = nextBoundary{contractPostconditions=[op Less (local "contractResult" integer) (number 0)]}
   in ([unit contracts], [[unit (contracts ++ [nextBoundary])], [unit (wrong : drop 1 contracts)]])
 

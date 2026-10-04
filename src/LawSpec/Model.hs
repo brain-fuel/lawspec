@@ -1,6 +1,7 @@
 module LawSpec.Model (module LawSpec.Model, module LawSpec.Common) where
 
 import LawSpec.Core.Policy (StagePolicy)
+import LawSpec.Core.Machine (Machine)
 import LawSpec.Common
 
 import Data.Aeson hiding (Number)
@@ -69,7 +70,7 @@ data FunctionDefinition = FunctionDefinition
 -- later, as each target's task, and tests await them where they are called.
 -- orchestrations names the definitions that may call adapters: workflows,
 -- whose composition LawSpec generates and every target runs natively.
-data Unit = Unit { unitName :: String, functions :: [(String, Type)], laws :: [Law], refinements :: [Refinement], contracts :: [Contract], declarationSpans :: [(String,Span)], dataTypes :: [DataTypeDeclaration], functionDefinitions :: [FunctionDefinition], asyncFunctions :: [String], orchestrations :: [String], policies :: [(String, StagePolicy String)] } deriving (Eq, Show, Generic)
+data Unit = Unit { unitName :: String, functions :: [(String, Type)], laws :: [Law], refinements :: [Refinement], contracts :: [Contract], declarationSpans :: [(String,Span)], dataTypes :: [DataTypeDeclaration], functionDefinitions :: [FunctionDefinition], asyncFunctions :: [String], orchestrations :: [String], policies :: [(String, StagePolicy String)], machines :: [Machine String] } deriving (Eq, Show, Generic)
 data Input = Input { inputName :: String, inputId :: String, inputType :: Type, inputRefinements :: [Expr] } deriving (Eq, Show, Generic)
 data Assertion = AssertEqual Expr Expr | AssertImplies Expr Assertion | AssertAll [Assertion] deriving (Eq, Show, Generic)
 instance ToJSON Assertion

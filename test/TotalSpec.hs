@@ -159,7 +159,7 @@ spec = describe "checked Core total definitions" $ do
   it "audits total bodies and ownership at the program validation boundary" $ do
     let bad = definition "bad" [("xs",list)] (call "bad" [local "xs" list])
         good = lengthDef (call "length" [local "tail" list])
-        program d declarations = Program 64 [] [Unit (Id "unit") declarations [] [] [d]]
+        program d declarations = Program 64 [] [Unit (Id "unit") declarations [] [] [d] []]
     validateProgram (program bad [definitionDeclaration bad]) `shouldSatisfy` isLeft
     validateProgram (program good []) `shouldSatisfy` isLeft
     validateProgram (program good [definitionDeclaration good]) `shouldBe` Right ()

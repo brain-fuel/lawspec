@@ -115,7 +115,7 @@ spec = describe "recursive parameter payload traversal" $ do
         definition = S.FunctionDefinition "identity" [("tree",refined "tree")]
           (refined "result") [] (S.Var "tree") span
         unit = S.Unit "surface" [("identity",S.Arrow (refined "tree") (refined "result"))]
-          [] [] [] [] [] [definition] [] [] []
+          [] [] [] [] [] [definition] [] [] [] []
         invalid = unit {S.functionDefinitions=[definition {S.functionBody=
           S.ConstructLit "Tree::Leaf" [S.Number 0,S.Number 0]}]}
     forM_ [32,64] $ \bits -> do
@@ -328,7 +328,7 @@ spec = describe "recursive parameter payload traversal" $ do
           property = Property (Id "payload::law::payload") "payload" (Location "payload" 1 1)
             [Quantifier (Binder rootId "tree" treeType) [] []]
             (Equation (Structural boolean) body truth) [] defaultGeneration "" "" [] []
-          unit = Unit (Id "payload") [] [] [property] []
+          unit = Unit (Id "payload") [] [] [property] [] []
           plan = Testing.Plan 64 [tree]
             [Testing.PlannedUnit unit [Testing.PlannedProperty property Nothing [] []]]
       forM_ targets $ \target ->

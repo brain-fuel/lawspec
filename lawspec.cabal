@@ -62,6 +62,7 @@ extra-source-files:
     examples/specs/lists.lawspec
     examples/specs/matching.lawspec
     examples/specs/mixed_inputs.lawspec
+    examples/specs/models.lawspec
     examples/specs/parse_port.lawspec
     examples/specs/payments.lawspec
     examples/specs/railway.lawspec
@@ -185,6 +186,7 @@ library
       LawSpec.Core.Eval
       LawSpec.Core.Evidence
       LawSpec.Core.Expression
+      LawSpec.Core.Machine
       LawSpec.Core.Payload
       LawSpec.Core.PayloadPlan
       LawSpec.Core.Policy
@@ -273,6 +275,7 @@ library
       LawSpec.Scaffold
       LawSpec.Scalar
       LawSpec.SpecializeDefinitions
+      LawSpec.StatefulModel
       LawSpec.TargetNames
       LawSpec.Testing
       LawSpec.TestManifest
@@ -435,6 +438,7 @@ test-suite lawspec-test
       RailwaySpec
       RefinementProofSpec
       SourceDataSpec
+      StatefulModelSpec
       StructuralSpec
       TargetNamesSpec
       TestManifestSpec

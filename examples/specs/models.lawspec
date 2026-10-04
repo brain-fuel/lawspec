@@ -1,0 +1,69 @@
+unit example.models
+
+-- A stateful model pairs a system's commands with reference definitions over
+-- a simpler model state. LawSpec generates runs of commands, runs them
+-- against the adapters, and checks each result and state against the model.
+
+-- A linear model: the stack's size is in its type, so a run never pops an
+-- empty stack.
+type Stack (n :: Natural) is
+  | Empty where n = 0
+  | Push top :: Int8 rest :: Stack m where n = m + 1
+end
+
+empty :: Unit -> Stack 0
+push :: (x :: Int8) -> Stack n / Stack (n + 1) -> Unit
+pop :: Stack (n + 1) / Stack n -> Int8
+peek :: Stack (n + 1) / Stack (n + 1) -> Int8
+
+definition modelPush (x :: Int8) (xs :: List Int8) :: List Int8 is Cons x xs end
+
+definition modelPop (xs :: List Int8) :: Pair Int8 (List Int8) is
+  match xs with
+  | Nil -> Pair 0 Nil
+  | Cons x rest -> Pair x rest
+  end
+end
+
+definition modelPeek (xs :: List Int8) :: Pair Int8 (List Int8) is
+  match xs with
+  | Nil -> Pair 0 Nil
+  | Cons x rest -> Pair x xs
+  end
+end
+
+definition toList (s :: Stack n) :: List Int8 is
+  match s with
+  | Empty -> Nil
+  | Push top rest -> Cons top (toList rest)
+  end
+end
+
+model stack :: Stack n by List Int8 is
+  start empty by Nil
+  push by modelPush
+  pop by modelPop
+  peek by modelPeek
+  abstract toList
+end
+
+-- A shared model: commands take one counter, whose type never changes, and
+-- may run at the same time. The counter must be atomic.
+type Counter is Counter id :: Int32 end
+
+newCounter :: Unit -> Counter
+increment :: Counter -> Int64
+decrement :: Counter -> Int64
+read :: Counter -> Int64
+
+definition modelIncrement (n :: Int64 where n >= 0 && n <= 1000000) :: Pair Int64 Int64 is Pair (n + 1) (n + 1) end
+definition modelDecrement (n :: Int64 where n >= 0 && n <= 1000000) :: Pair Int64 Int64 is Pair (n - 1) (n - 1) end
+definition modelRead (n :: Int64) :: Pair Int64 Int64 is Pair n n end
+definition positive (n :: Int64) :: Bool is n > 0 end
+
+model counter :: shared Counter by Int64 is
+  start newCounter ~ 0
+  increment ~ modelIncrement
+  decrement ~ modelDecrement when positive
+  read ~ modelRead
+end
