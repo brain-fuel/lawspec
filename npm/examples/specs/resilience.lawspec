@@ -1,0 +1,245 @@
+unit example.resilience
+
+import lawspec.resilience as r
+import example.limits as limits
+
+-- Conformance of each target's workflow runtime with a reference model.
+-- The adapters call the runtime; the checked definitions are the reference.
+-- Delays are whole microseconds.
+
+-- The delay before attempt k (2 or more) of each retry strategy.
+definition exponentialDelay (base :: Integer where base >= 0 && base <= 1000000)
+    (factor :: Integer where factor >= 1 && factor <= 4)
+    (attempt :: Integer where attempt >= 2 && attempt <= 10) :: Integer is
+  base * prelude.pow factor (attempt - 2)
+end
+
+definition linearDelay (base :: Integer where base >= 0 && base <= 1000000)
+    (step :: Integer where step >= 0 && step <= 1000000)
+    (attempt :: Integer where attempt >= 2 && attempt <= 10) :: Integer is
+  base + step * (attempt - 2)
+end
+
+runtimeExponentialDelay :: Integer -> Integer -> Integer -> Integer
+runtimeLinearDelay :: Integer -> Integer -> Integer -> Integer
+runtimeFibonacciDelay :: Integer -> Integer -> Integer
+
+-- The first outputs of SplitMix64 for a seed, and full jitter.
+splitMix :: UInt64 -> Int32 -> List UInt64
+fullJitter :: UInt64 -> Integer -> Integer
+
+-- A stage that always fails, retried exponentially from 100ms, doubling, for
+-- the given number of attempts: the waits the runtime makes.
+retriedWaits :: Int32 -> List Integer
+
+-- The same, with a when predicate that rejects the error: no waits.
+rejectedWaits :: Int32 -> List Integer
+
+-- Unrefined inputs are mapped into range, so every target generates them
+-- directly: a base up to 65535us, a factor of 1 to 4, and attempts 2 to 10.
+law `exponential delays match the reference` is
+  definition is
+    `for all` (base :: UInt16) (f :: UInt8) (a :: UInt8) .
+      runtimeExponentialDelay (prelude.Integer base) (1 + prelude.rem (prelude.Integer f) 4) (2 + prelude.rem (prelude.Integer a) 9) =
+        exponentialDelay (prelude.Integer base) (1 + prelude.rem (prelude.Integer f) 4) (2 + prelude.rem (prelude.Integer a) 9)
+  end
+end
+
+law `the fifth exponential attempt` is
+  definition is
+    `for all` (base :: Integer where base == 100000) . runtimeExponentialDelay base 2 5 = 800000
+  end
+end
+
+law `linear delays match the reference` is
+  definition is
+    `for all` (base :: UInt16) (step :: UInt16) (a :: UInt8) .
+      runtimeLinearDelay (prelude.Integer base) (prelude.Integer step) (2 + prelude.rem (prelude.Integer a) 9) =
+        linearDelay (prelude.Integer base) (prelude.Integer step) (2 + prelude.rem (prelude.Integer a) 9)
+  end
+end
+
+law `fibonacci delays add the two before` is
+  definition is
+    `for all` (base :: UInt16) (a :: UInt8) .
+      runtimeFibonacciDelay (prelude.Integer base) (4 + prelude.rem (prelude.Integer a) 27) =
+        runtimeFibonacciDelay (prelude.Integer base) (3 + prelude.rem (prelude.Integer a) 27) +
+        runtimeFibonacciDelay (prelude.Integer base) (2 + prelude.rem (prelude.Integer a) 27)
+  end
+end
+
+law `fibonacci delays start at the base` is
+  definition is
+    `for all` (base :: UInt16) .
+      runtimeFibonacciDelay (prelude.Integer base) 2 = prelude.Integer base and
+        runtimeFibonacciDelay (prelude.Integer base) 3 = prelude.Integer base
+  end
+end
+
+law `SplitMix64 is the same everywhere` is
+  definition is
+    `for all` (count :: Int8 where count >= 0 && count <= 3) .
+      prelude.length (splitMix 0 (prelude.Int32 count)) = prelude.Integer count
+  end
+  example `seed zero` is
+    count = 3
+    expect splitMix 0 (prelude.Int32 count) = [16294208416658607535, 7960286522194355700, 487617019471545679]
+  end
+end
+
+law `full jitter stays within the delay` is
+  definition is
+    `for all` (seed :: UInt64) (delay :: UInt32) .
+      (fullJitter seed (prelude.Integer delay) >= 0 && fullJitter seed (prelude.Integer delay) <= prelude.Integer delay) = true
+  end
+end
+
+law `a failing stage waits between its attempts` is
+  definition is
+    `for all` (attempts :: Int8 where attempts >= 1 && attempts <= 6) .
+      prelude.length (retriedWaits (prelude.Int32 attempts)) = prelude.Integer attempts - 1
+  end
+  example `four attempts` is
+    attempts = 4
+    expect retriedWaits (prelude.Int32 attempts) = [100000, 200000, 400000]
+  end
+end
+
+law `a rejected error is not retried` is
+  definition is
+    `for all` (attempts :: Int8 where attempts >= 1 && attempts <= 6) .
+      rejectedWaits (prelude.Int32 attempts) = []
+  end
+end
+
+-- Calls limited at each time (microseconds, in order) under one runtime
+-- with its gates on: whether each call was admitted.
+limitedAt :: List Integer -> List Bool
+
+definition admits (gate :: r.Gate) :: Bool is
+  match gate with
+  | Admit -> true
+  | WaitFor micros -> false
+  | Reject -> false
+  end
+end
+
+-- The reference: the resilience unit's token bucket, folded over the times.
+definition bucketRun (state :: r.TokenBucket) (times :: List Integer) :: List Bool is
+  match times with
+  | Nil -> Nil
+  | Cons t rest ->
+      match r.tokenBucketAdmit 2 1000000 state t with
+      | Step next gate -> Cons (admits gate) (bucketRun next rest)
+      end
+  end
+end
+
+-- Times a millisecond apart and more, as a list of gaps.
+definition timesFrom (start :: Integer) (gaps :: List UInt16) :: List Integer is
+  match gaps with
+  | Nil -> Nil
+  | Cons gap rest -> Cons start (timesFrom (start + prelude.Integer gap * 1000) rest)
+  end
+end
+
+law `the rate limit admits as the token bucket does` is
+  definition is
+    `for all` (gaps :: List UInt16) .
+      limitedAt (timesFrom 0 gaps) = bucketRun (r.tokenBucketStart 2 1000000 0) (timesFrom 0 gaps)
+  end
+  example `three calls at once` is
+    gaps = [0, 0, 0]
+    expect limitedAt (timesFrom 0 gaps) = [true, true, false]
+  end
+end
+
+-- The other state machines, which every target runs as generated code.
+law `an open breaker rejects until its cooldown ends` is
+  definition is
+    `for all` (t :: UInt16) .
+      r.breakerAdmit (r.Open 1000) (prelude.Integer t) =
+        prelude.select (prelude.Integer t >= 1000) (r.Step r.HalfOpen r.Admit) (r.Step (r.Open 1000) r.Reject)
+  end
+end
+
+law `a breaker opens after enough failures in its window` is
+  definition is
+    `for all` (gap :: UInt8) .
+      r.breakerRecord 2 1000 500 (r.breakerRecord 2 1000 500 (r.Closed []) 10 false) (10 + prelude.Integer gap) false =
+        r.Open (510 + prelude.Integer gap)
+  end
+end
+
+law `a breaker forgets failures outside its window` is
+  definition is
+    `for all` (gap :: UInt8) .
+      r.breakerRecord 2 100 500 (r.breakerRecord 2 100 500 (r.Closed []) 0 false) (200 + prelude.Integer gap) false =
+        r.Closed [200 + prelude.Integer gap]
+  end
+end
+
+law `a successful trial closes the breaker` is
+  definition is
+    `for all` (t :: UInt16) . r.breakerRecord 2 1000 500 r.HalfOpen (prelude.Integer t) true = r.Closed []
+  end
+end
+
+law `a bulkhead admits up to its limit` is
+  definition is
+    `for all` (running :: UInt8) .
+      r.bulkheadAdmit 4 (r.Bulkhead (prelude.Integer running)) 0 =
+        prelude.select (prelude.Integer running < 4)
+          (r.Step (r.Bulkhead (prelude.Integer running + 1)) r.Admit)
+          (r.Step (r.Bulkhead (prelude.Integer running)) (r.WaitFor 1000))
+  end
+end
+
+law `a sliding window admits n calls per period` is
+  definition is
+    `for all` (t :: UInt16) .
+      r.slidingWindowAdmit 2 1000 (r.SlidingWindow [prelude.Integer t, prelude.Integer t]) (prelude.Integer t + 1) =
+        r.Step (r.SlidingWindow [prelude.Integer t, prelude.Integer t]) (r.WaitFor 999)
+  end
+end
+
+-- Books a ticket under a fresh runtime: the stages whose undos ran.
+compensationsFor :: Int64 -> List Text
+
+law `a failed booking releases its seat` is
+  definition is
+    `for all` (n :: Int64) .
+      compensationsFor n = prelude.select (n < 0) ["reserveSeat"] []
+  end
+end
+
+-- Quotes a ticket under a runtime with the real clock: whether it timed out.
+async quoteTimedOut :: Int64 -> Bool
+
+law `a slow quote times out` is
+  definition is
+    `for all` (n :: Int64) . quoteTimedOut n = (n == -1)
+  end
+  example `a slow quote` is
+    n = -1
+    expect quoteTimedOut n = true
+  end
+  example `a quick quote` is
+    n = 0
+    expect quoteTimedOut n = false
+  end
+end
+
+-- Quotes a ticket under a runtime with the real clock: whether it succeeded
+-- quickly (within 400ms), for ticket -2 through a hedged attempt.
+async quoteHedged :: Int64 -> Bool
+
+law `a stalled quote is hedged` is
+  definition is
+    `for all` (n :: Int64) . quoteHedged n = true
+  end
+  example `a stalled quote` is
+    n = -2
+    expect quoteHedged n = true
+  end
+end

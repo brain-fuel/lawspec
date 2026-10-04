@@ -1,5 +1,78 @@
 # Changelog
 
+## 0.18.0
+
+### Railway combinators
+
+- `>>=`, `<$>`, `<!>`, `<|>`, `??`, `>=>`, `|>` and `<*>`, and the prelude
+  names `bind`, `then`, `map`, `mapError`, `orElse`, `fallback`, `fromEither`,
+  `andThen`, `pipe`, `both`, `ensure`, `isLeft` and `isRight`, sequence, map
+  and recover `Either` values in laws and checked definitions on every target.
+  See [expressions](docs/reference/language/expressions-and-arithmetic.md).
+- `Pair` joins the built-in collections unit, and `prelude.select` chooses
+  between two values.
+
+### Generated workflows
+
+- LawSpec now generates each `workflow` on every target from its stages:
+  steps, `then`, `map`, `mapError`, `tap`, `ensure`, `orElse`, `fallback`, and
+  `all` groups whose results `combine` joins. With `accumulate`, an `all`
+  group reports every failing step's error. See
+  [workflows](docs/reference/language/workflows.md).
+- Steps may fail with different error types. A declared error type takes them
+  through `mapError`; with `Either _ T`, LawSpec generates an error type named
+  after the workflow, with a constructor per failing step
+  (`PlaceOrderValidateOrderFailed`).
+- Generated laws check that each workflow composes its stages, succeeds when
+  every stage does, stops when a step fails, and recovers with each handler.
+- **Migration:** hand-written workflow adapters are no longer called. Remove
+  them, and move any behaviour they had into the steps.
+
+### Policies
+
+- A step can run under `retry` (immediate, fixed, linear, exponential,
+  fibonacci or custom, with optional jitter and a `when` predicate),
+  `timeout`, `rateLimit` (token bucket, leaky bucket, fixed or sliding
+  window; wait or reject), `circuitBreaker`, `bulkhead`, `cache`,
+  `compensate` and `hedge`. A policy failure becomes a constructor of a
+  generated error type, or the value a declared error type names with `else`.
+- Workflows run under a workflow runtime: a real or virtual clock, a SplitMix64
+  random source identical on every target, a trace, and the state of
+  limiters, breakers, bulkheads and caches. Callers create one to give a
+  workflow its own state or a virtual clock; otherwise a shared runtime is used.
+- The rate limits, breaker and bulkhead are written once, as checked
+  definitions of a built-in unit, `lawspec.resilience`, so they behave the same
+  on every target. A new resilience acceptance suite checks each target's
+  runtime against them.
+- Generated tests run workflows on a virtual clock with stateful policies,
+  timeouts and hedges off; retries still apply.
+
+### Durations
+
+- `Duration` is a whole number of microseconds, exact on every target, with
+  literals (`250ms`, `2s`, `5min`), arithmetic, comparisons and native types
+  (`timedelta`, `time.Duration`, `java.time.Duration`,
+  `kotlin.time.Duration`, `std::time::Duration`). See
+  [durations](docs/reference/language/durations.md).
+- The totality audit proves more: products and quotients are atoms, quotients
+  are bounded, calls satisfy their definitions' postconditions, and unwrapped
+  wrapper values satisfy their constraints.
+
+### Other changes
+
+- A definition or adapter named with a target keyword is emitted with a
+  leading underscore on that target (`class` is `_class` in Python); such names
+  were rejected or broke the build before.
+- On JavaScript and TypeScript, a checked definition that calls an `async`
+  adapter, directly or through another definition, is itself `async`.
+- Kotlin workflows can call `suspend` adapters. The Kotlin scaffold depends on
+  `kotlinx-coroutines-core`, and `lawspec doctor` reports it missing.
+- Python: a synchronous definition called from inside a running event loop
+  (from an `async` adapter) awaits its asynchronous steps on a thread of its
+  own instead of failing.
+- Python property tests have no per-example deadline, since adapters may do
+  real work.
+
 ## 0.17.5
 
 ### `lawspec test` confirms that each law's tests ran

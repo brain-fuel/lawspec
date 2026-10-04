@@ -30,7 +30,7 @@ Node 22+ and the selected target's build tools are required. No Haskell
 toolchain is needed. The reference platforms are macOS and Linux.
 
 ```sh
-npm install --save-dev lawspec@0.17.5
+npm install --save-dev lawspec@0.18.0
 npx lawspec --version
 ```
 
@@ -40,8 +40,8 @@ LawSpec can create `package.json` and its test script:
 ```sh
 mkdir lawspec-example
 cd lawspec-example
-npm exec --package=lawspec@0.17.5 -- lawspec init --target javascript
-npm install --save-dev lawspec@0.17.5
+npm exec --package=lawspec@0.18.0 -- lawspec init --target javascript
+npm install --save-dev lawspec@0.18.0
 npx lawspec check
 npx lawspec explain 'example.atoi_codec::itoa and then atoi yields a'
 npx lawspec doctor

@@ -13,8 +13,8 @@
 ## Create the project
 
 ```sh
-npm exec --package=lawspec@0.17.5 -- lawspec init --target typescript
-npm install --save-dev lawspec@0.17.5
+npm exec --package=lawspec@0.18.0 -- lawspec init --target typescript
+npm install --save-dev lawspec@0.18.0
 npx lawspec doctor
 npx lawspec generate
 npm test
