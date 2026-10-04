@@ -4,6 +4,7 @@ import LawSpec.Core
 import LawSpec.Core.Total (constructorProofContracts)
 import qualified LawSpec.RustExpr as Expression
 import qualified LawSpec.RustDefinitions as Definitions
+import qualified LawSpec.ModelTests as ModelTests
 import qualified LawSpec.Core.Schema as Schema
 import qualified LawSpec.Backend as Presentation
 import LawSpec.Common
@@ -334,6 +335,9 @@ emitRustWithBindings minify bindings Plan{..} = either (Left . pure . (\m -> Dia
            [binding ("arg_" ++ show i) (Doc.text ("args[" ++ show i ++ "].clone()")) | i <- [0..length args-1]] ++
            pre ++ [binding ("native_arg_" ++ show i) value | (i,value) <- zip [0::Int ..] args'] ++
            [binding "native_result" called,binding "result" checkedResult] ++ post ++ [Doc.text "Ok(result)"])))
+      -- A model's test hands its spec and callbacks to the model runtime.
+      modelTests <- map (reverse . dropWhile (== '\n') . reverse) <$>
+        either (Left . concatMap message) Right (ModelTests.rustModelTests planMachineBits planDataDeclarations definitionNames unit)
       tests <- forM (zip [0::Int ..] plannedProperties) $ \(index,pp) -> do
         let p = plannedProperty pp
             names = localNames p
@@ -510,7 +514,7 @@ emitRustWithBindings minify bindings Plan{..} = either (Left . pure . (\m -> Dia
             blank <> Doc.text ("type ValueStrategy = proptest::strategy::BoxedStrategy<" ++ (if hasFieldContracts then "ls::Result<ls::Value>" else "ls::Value") ++ ">;") <>
             (if hasNativeGenerators then blank <> generatorSupport else mempty) <>
             blank <> seedDoc <>
-            blank <> Doc.joinWith blank (wrappers ++ tests) <> Doc.hardline
+            blank <> Doc.joinWith blank (wrappers ++ tests ++ map Doc.text modelTests) <> Doc.hardline
           -- LAWSPEC_SEED fixes proptest's seed, so a run can be repeated
           -- exactly (lawspec test records the seed of every passing run).
           -- Without it, proptest's own default applies, PROPTEST_RNG_SEED included.

@@ -1,0 +1,6 @@
+@@ src/example/models.rs
+<<<<<<<
+        Stack::Push { top, rest } => PopFlow { result: top, state: *rest },
+=======
+        Stack::Push { top, rest } => PopFlow { result: top, state: Stack::Push { top, rest } },
+>>>>>>>

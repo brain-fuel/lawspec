@@ -1,0 +1,6 @@
+@@ src/example/models.py
+<<<<<<<
+        _counters[value0.id] -= 1
+=======
+        _counters[value0.id] -= 1 if _counters[value0.id] < 3 else 2
+>>>>>>>

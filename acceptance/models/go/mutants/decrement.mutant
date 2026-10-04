@@ -1,0 +1,9 @@
+@@ example/models/adapter.go
+<<<<<<<
+	counters[value0.Id]--
+=======
+	if counters[value0.Id] >= 3 {
+		counters[value0.Id]--
+	}
+	counters[value0.Id]--
+>>>>>>>

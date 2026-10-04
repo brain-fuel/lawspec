@@ -68,8 +68,11 @@ emitGoDefinitions layout bits declarations units = do
               codecs <- mapM (Native.goCodecWithContext "symbols" declarations) parameterTypes
               resultCodec <- Native.goCodecWithContext "symbols" declarations resultType
               nativeResult <- Native.goDataType declarations resultType
+              -- A Unit argument is passed as its logical value, as the
+              -- adapter stub declares it.
               let call = E.call (capitalize (declarationName adapter))
-                    [E.call ("codec" ++ show i ++ ".toNative") [value] | (i, value) <- zip [0::Int ..] values]
+                    [if ty == Constructor "Unit" [] then value else E.call ("codec" ++ show i ++ ".toNative") [value]
+                    | (i, (ty, value)) <- zip [0::Int ..] (zip parameterTypes values)]
                   -- Within its stage's timeout and hedge, when it has them.
                   result
                     | declarationAsync adapter = E.call "lsAwaitStep"
@@ -79,7 +82,7 @@ emitGoDefinitions layout bits declarations units = do
                     | otherwise = E.call "resultCodec.fromNative" [call]
               pure (line "func() LawSpecValue " <> D.block 8 (D.joinWith D.hardline
                 ([line ("schema := " ++ schema), line ("bits := " ++ show bits), line "_ = bits"] ++
-                 [assign ("codec" ++ show i) (line codec) | (i, codec) <- zip [0::Int ..] codecs] ++
+                 [assign ("codec" ++ show i) (line codec) | (i, (ty, codec)) <- zip [0::Int ..] (zip parameterTypes codecs), ty /= Constructor "Unit" []] ++
                  [assign "resultCodec" (line resultCodec), line "return " <> result])) <> line "()")
             _ -> Left "unresolved Go total call"
       rendered <- E.renderExpression declarations bits schema local external (definitionBody d)

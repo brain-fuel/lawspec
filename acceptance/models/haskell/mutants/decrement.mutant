@@ -1,0 +1,7 @@
+@@ src/Example/Models.hs
+<<<<<<<
+  let count = Map.findWithDefault 0 identity counts + by
+=======
+  let current = Map.findWithDefault 0 identity counts
+      count = current + (if by < 0 && current >= 3 then by - 1 else by)
+>>>>>>>

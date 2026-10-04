@@ -1,4 +1,5 @@
 module LawSpec.CoreNativeScalarEmit (nativeScalarEmit, nativeScalarEmitWithData, nativeScalarEmitWithDefinitions, nativeScalarEmitWithFormat, nativeScalarEmitWithNativeGenerators, nativeScalarEmitWithAdapterBindings, dataBudget) where
+import LawSpec.ModelTests (modelTestArtifacts)
 import LawSpec.Collections (isCollectionsType)
 import qualified LawSpec.JavaData as JavaData
 import qualified LawSpec.JavaExpr as JavaExpr
@@ -70,7 +71,8 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
           ("test","lawspec_data_strategies_test.go","go-data-strategies")]])
     else pure []
   let completeHeader = if go || kt || hs || target == "java" then "" else if hs then replace "spec :: Spec" (wrappers ++ "spec :: Spec") testHeader else if kt then replace "class " (wrappers ++ "class ") testHeader else (if go && not goSchemaNeeded && not ("rapid.Check" `isInfixOf` tests) then replace "; \"pgregory.net/rapid\"" "" testHeader else testHeader) ++ wrappers
-  pure (goFiles ++ [Artifact stubPath stub "user" "source", Artifact testPath (completeHeader ++ tests ++ (if hs || go || kt || target == "java" then "" else if kt then "})\n" else "}\n")) "generated" "test"] ++ [Artifact (intercalate "/" parts ++ "/lawspec_runtime.go") (replace "RUNTIME_PACKAGE" (last parts) (runtimeSource "go")) "generated" "source" | go])
+  models <- modelTestArtifacts target bits dataDeclarations definitions u
+  pure (goFiles ++ models ++ [Artifact stubPath stub "user" "source", Artifact testPath (completeHeader ++ tests ++ (if hs || go || kt || target == "java" then "" else if kt then "})\n" else "}\n")) "generated" "test"] ++ [Artifact (intercalate "/" parts ++ "/lawspec_runtime.go") (replace "RUNTIME_PACKAGE" (last parts) (runtimeSource "go")) "generated" "source" | go])
   where
     adapterFunctions = [(C.declarationName d,C.declarationType d) | d <- C.unitDeclarations u,
       C.declarationId d `notElem` map fst definitions]

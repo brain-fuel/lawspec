@@ -1,0 +1,9 @@
+@@ src/main/kotlin/example/Models.kt
+<<<<<<<
+    fun decrement(value0: Counter): Long = counters.getValue(value0.id).decrementAndGet()
+=======
+    fun decrement(value0: Counter): Long {
+        val count = counters.getValue(value0.id)
+        return if (count.get() >= 3) count.addAndGet(-2) else count.decrementAndGet()
+    }
+>>>>>>>

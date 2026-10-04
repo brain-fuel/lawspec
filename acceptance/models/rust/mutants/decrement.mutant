@@ -1,0 +1,6 @@
+@@ src/example/models.rs
+<<<<<<<
+    change(value0.id, -1)
+=======
+    if change(value0.id, 0) >= 3 { change(value0.id, -2) } else { change(value0.id, -1) }
+>>>>>>>

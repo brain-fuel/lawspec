@@ -247,8 +247,10 @@ library
       LawSpec.KotlinNativeBinding
       LawSpec.KotlinProperties
       LawSpec.KotlinTestHelpers
+      LawSpec.MachineSpec
       LawSpec.Memo
       LawSpec.Model
+      LawSpec.ModelTests
       LawSpec.NativeBinding
       LawSpec.NativeRequest
       LawSpec.Packages

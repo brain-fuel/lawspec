@@ -12,6 +12,8 @@ import qualified LawSpec.Code.Doc as Doc
 import qualified LawSpec.PortableGenerator as Generator
 import qualified LawSpec.PortableTestHelpers as Helpers
 import LawSpec.Scalar
+import LawSpec.MachineSpec (machineSpec)
+import qualified LawSpec.Core.Machine as C
 import Data.Aeson (encode, toJSON)
 import qualified Data.Text.Lazy as T
 import qualified Data.Text.Lazy.Encoding as T
@@ -33,7 +35,9 @@ scalarEmitWithFormat = scalarEmitWithNativeGenerators False
 scalarEmitWithNativeGenerators :: Bool -> Bool -> [C.DataDeclaration] -> [(C.Id,String)] -> Int -> String -> Unit -> [Expanded] -> Either [Diagnostic] [Artifact]
 scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions bits target u allLaws = do
   unless (target `elem` ["python","javascript","typescript"]) (Left [Diagnostic "target-runtime" ("portable scalar runtime is not implemented for " ++ target) Nothing])
-  tests <- concat <$> mapM lawTests (zip [0 :: Int ..] ls)
+  lawTexts <- concat <$> mapM lawTests (zip [0 :: Int ..] ls)
+  modelTexts <- concat <$> mapM modelTest (C.unitMachines u)
+  let tests = lawTexts ++ modelTexts
   wrappers <- concat <$> mapM contractWrapper (contracts u)
   let completeHeader = if py || hasData || "fc." `isInfixOf` tests then testHeader else unlines (filter (/= "import fc from 'fast-check';") (lines testHeader))
   pure [Artifact stubPath stub "user" "source",Artifact testPath (finish (completeHeader ++ dataHelpers ++ testHelpers ++ wrappers ++ tests)) "generated" "test"]
@@ -278,6 +282,31 @@ scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions 
             [if needsContext then contextual else if any (not . null . inputRefinements) (inputs e) || propertyKind e == "contract" then refined else ordinary]
       pure (Doc.render outputLayout (metadataDocument (if py then 72 else 80) (if py then "#" else "//") e) ++
         concatMap renderDocument (examples' ++ boundaries' ++ properties))
+    -- A stateful model's test: the model runtime generates runs, executes
+    -- them through the generated bridge definitions and checks them against
+    -- the reference definitions.
+    modelTest machine = do
+      spec <- either (\m -> Left [Diagnostic "model" m Nothing]) Right
+        (machineSpec bits declarations (C.unitDeclarations u) machine)
+      let call identity = case lookup identity definitions of
+            Just name -> Right (text (maybe name id (stripPrefix "await " name)))
+            Nothing -> Left [Diagnostic "model" ("model " ++ C.machineName machine ++ ": " ++ C.idText identity ++ " is not a checked definition") Nothing]
+          optional = maybe (pure (text (if py then "None" else "null"))) call
+      start <- case C.machineStart machine of
+        Just s -> (\r m -> array [r, m]) <$> call (C.startRun s) <*> call (C.startModel s)
+        Nothing -> pure (text (if py then "None" else "null"))
+      commands <- mapM (\c -> (\r f w -> array [r, f, w]) <$> call (C.commandRun c) <*> call (C.commandReference c) <*> optional (C.commandWhen c))
+        (C.machineCommands machine)
+      abstract <- optional (C.machineAbstractRun machine)
+      invariants <- mapM (\i -> call (case i of C.OnModel f -> f; C.OnState f -> f)) (C.machineInvariants machine)
+      let model = invoke (if py then "ls.Model" else "new ls.Model") [quoted spec, start, array commands, abstract, array invariants]
+          label = unitName u ++ "::model " ++ C.machineName machine
+          -- JavaScript callbacks may be async definitions, so the model
+          -- runtime awaits each one.
+          check = statement (if py then runtime "check_model" [model] else text "await " <> runtime "checkModelAsync" [model])
+          block = if py then function ("test_model_" ++ C.machineName machine) [] check
+            else text "test(" <> message label <> text ", async () => " <> Doc.block 2 check <> text ");"
+      pure (renderDocument block)
     -- An async adapter's task is awaited where it is called.
     awaited name call
       | name `notElem` asyncFunctions u = call

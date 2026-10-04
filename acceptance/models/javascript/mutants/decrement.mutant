@@ -1,0 +1,6 @@
+@@ src/example/models.mjs
+<<<<<<<
+  counters.set(value0.id, counters.get(value0.id) - 1n);
+=======
+  counters.set(value0.id, counters.get(value0.id) - (counters.get(value0.id) < 3n ? 1n : 2n));
+>>>>>>>

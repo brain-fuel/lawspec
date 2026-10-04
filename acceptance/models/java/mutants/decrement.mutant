@@ -1,0 +1,7 @@
+@@ src/main/java/example/Models.java
+<<<<<<<
+    return counters.get(value0.id()).decrementAndGet();
+=======
+    var count = counters.get(value0.id());
+    return count.get() >= 3 ? count.addAndGet(-2) : count.decrementAndGet();
+>>>>>>>
