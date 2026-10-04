@@ -1,7 +1,7 @@
 {-# OPTIONS_GHC -fno-cse -fno-full-laziness #-}
 -- User-owned LawSpec adapter: a stack and an atomic counter. The counter's
--- commands change shared state, so they run their effects with
--- unsafePerformIO; each call is its own effect.
+-- commands are async, so they run their effects in IO; newCounter is sync,
+-- so it runs its effect with unsafePerformIO, each call its own effect.
 module Example.Models (empty, push, pop, peek, newCounter, increment, decrement, read) where
 
 import Prelude hiding (read)
@@ -36,17 +36,16 @@ newCounter () = unsafePerformIO $ atomicModifyIORef' counters $ \(next, counts) 
   ((next + 1, Map.insert (next + 1) 0 counts), Data.Counter (next + 1))
 
 -- Changes a counter atomically.
-{-# NOINLINE change #-}
-change :: I.Int64 -> Data.Counter -> I.Int64
-change by (Data.Counter identity) = unsafePerformIO $ atomicModifyIORef' counters $ \(next, counts) ->
+change :: I.Int64 -> Data.Counter -> IO I.Int64
+change by (Data.Counter identity) = atomicModifyIORef' counters $ \(next, counts) ->
   let count = Map.findWithDefault 0 identity counts + by
   in ((next, Map.insert identity count counts), count)
 
-increment :: Data.Counter -> I.Int64
+increment :: Data.Counter -> IO I.Int64
 increment = change 1
 
-decrement :: Data.Counter -> I.Int64
+decrement :: Data.Counter -> IO I.Int64
 decrement = change (-1)
 
-read :: Data.Counter -> I.Int64
+read :: Data.Counter -> IO I.Int64
 read = change 0

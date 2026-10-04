@@ -26,16 +26,16 @@ export function newCounter(value0) {
   return new data.Counter(id);
 }
 
-export function increment(value0) {
+export async function increment(value0) {
   counters.set(value0.id, counters.get(value0.id) + 1n);
   return counters.get(value0.id);
 }
 
-export function decrement(value0) {
+export async function decrement(value0) {
   counters.set(value0.id, counters.get(value0.id) - 1n);
   return counters.get(value0.id);
 }
 
-export function read(value0) {
+export async function read(value0) {
   return counters.get(value0.id);
 }

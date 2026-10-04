@@ -2401,4 +2401,354 @@ public final class LawSpecRuntime {
       }
     }
   }
+
+  // Parallel runs of a shared model. A case is a sequential prefix and two
+  // branches, generated so that the model allows every interleaving of the
+  // branches. The system runs the branches at the same time, recording when
+  // each call starts and returns; the history must be linearizable: some
+  // interleaving that keeps every call after those that returned before it
+  // started must give every result the model gives, and leave the state the
+  // model leaves. A race breaks this for some schedules, so each case runs
+  // several times.
+
+  /** A step of a branch: the branch and the step's position in it. */
+  private record BranchStep(int branch, int step) {}
+
+  private record ParallelCase(ModelRun prefix, List<List<ModelStep>> branches) {}
+
+  /** When a branch's call started and returned, and what it returned. */
+  private record Call(long called, long returned, Value result) {}
+
+  /** Every merge of two sequences of branch steps, a first. */
+  private static List<List<BranchStep>> interleavings(List<BranchStep> a, List<BranchStep> b) {
+    var out = new ArrayList<List<BranchStep>>();
+    if (a.isEmpty()) {
+      out.add(new ArrayList<BranchStep>(b));
+      return out;
+    }
+    if (b.isEmpty()) {
+      out.add(new ArrayList<BranchStep>(a));
+      return out;
+    }
+    for (var rest : interleavings(a.subList(1, a.size()), b)) {
+      var order = new ArrayList<BranchStep>();
+      order.add(a.get(0));
+      order.addAll(rest);
+      out.add(order);
+    }
+    for (var rest : interleavings(a, b.subList(1, b.size()))) {
+      var order = new ArrayList<BranchStep>();
+      order.add(b.get(0));
+      order.addAll(rest);
+      out.add(order);
+    }
+    return out;
+  }
+
+  private static List<List<BranchStep>> branchOrders(List<List<ModelStep>> branches) {
+    var ops = new ArrayList<List<BranchStep>>();
+    for (int i = 0; i < branches.size(); i++) {
+      var op = new ArrayList<BranchStep>();
+      for (int k = 0; k < branches.get(i).size(); k++) op.add(new BranchStep(i, k));
+      ops.add(op);
+    }
+    return interleavings(ops.get(0), ops.get(1));
+  }
+
+  /** Whether the model allows the prefix then every interleaving. */
+  private static boolean parallelAllowed(
+      Model model, ModelRun prefix, List<List<ModelStep>> branches) {
+    Map<String, Object> symbols = new java.util.HashMap<String, Object>();
+    List<Value> states;
+    try {
+      states = simulate(model, symbols, prefix);
+    } catch (InvalidStep e) {
+      return false;
+    }
+    for (var order : branchOrders(branches)) {
+      var state = states.get(states.size() - 1);
+      try {
+        for (var o : order) {
+          var s = branches.get(o.branch()).get(o.step());
+          state = stepModel(model.commands.get(s.index()), symbols, s.args(), state).state();
+        }
+      } catch (InvalidStep e) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  private static List<ModelStep> generateBranch(
+      Model model, SplitMix64 random, Value state, long length, long size) {
+    Map<String, Object> symbols = new java.util.HashMap<String, Object>();
+    var steps = new ArrayList<ModelStep>();
+    for (long n = 0; n < length; n++) {
+      int index = (int) random.below(model.commands.size());
+      var command = model.commands.get(index);
+      var args = generateAll(model.values, command.arguments, random, size);
+      try {
+        state = stepModel(command, symbols, args, state).state();
+      } catch (InvalidStep e) {
+        continue;
+      }
+      steps.add(new ModelStep(index, args));
+    }
+    return steps;
+  }
+
+  private static ParallelCase generateParallel(Model model, SplitMix64 random, long size) {
+    var prefix = generateRun(model, random, random.below(4), size);
+    Value state;
+    try {
+      var states = simulate(model, new java.util.HashMap<String, Object>(), prefix);
+      state = states.get(states.size() - 1);
+    } catch (InvalidStep e) {
+      return new ParallelCase(prefix, List.of(List.of(), List.of()));
+    }
+    var branches = new ArrayList<List<ModelStep>>();
+    for (int i = 0; i < 2; i++)
+      branches.add(generateBranch(model, random, state, 1 + random.below(4), size));
+    // Drop the last steps until every interleaving is allowed.
+    while (!parallelAllowed(model, prefix, branches)) {
+      int longest = branches.get(1).size() > branches.get(0).size() ? 1 : 0;
+      var b = branches.get(longest);
+      branches.set(longest, b.subList(0, b.size() - 1));
+    }
+    return new ParallelCase(prefix, branches);
+  }
+
+  private static String raised(Exception e) {
+    String message = e.getMessage();
+    return "raised " + e.getClass().getSimpleName() + ": " + (message == null ? "" : message);
+  }
+
+  /** null when the history is linearizable; otherwise what went wrong. */
+  private static String executeParallel(Model model, ParallelCase c) {
+    var prefix = c.prefix();
+    var branches = c.branches();
+    Map<String, Object> symbols = new java.util.HashMap<String, Object>();
+    Value started;
+    try {
+      started = model.startRun.apply(symbols, prefix.startArgs());
+      for (var s : prefix.steps()) {
+        var command = model.commands.get(s.index());
+        var full = new ArrayList<Value>(s.args());
+        full.add(command.state, started);
+        command.run.apply(symbols, full);
+      }
+    } catch (Exception e) {
+      return "the prefix " + raised(e);
+    }
+    final Value state = started;
+    var clock = new java.util.concurrent.atomic.AtomicLong();
+    var history = new ArrayList<Call[]>();
+    for (var b : branches) history.add(new Call[b.size()]);
+    var errors = Collections.synchronizedList(new ArrayList<String>());
+    var ready = new java.util.concurrent.CountDownLatch(1);
+    var threads = new ArrayList<Thread>();
+    for (int i = 0; i < branches.size(); i++) {
+      final int branch = i;
+      threads.add(
+          new Thread(
+              () -> {
+                Map<String, Object> own = new java.util.HashMap<String, Object>();
+                try {
+                  ready.await();
+                } catch (InterruptedException e) {
+                  Thread.currentThread().interrupt();
+                }
+                var steps = branches.get(branch);
+                for (int k = 0; k < steps.size(); k++) {
+                  var s = steps.get(k);
+                  var command = model.commands.get(s.index());
+                  var full = new ArrayList<Value>(s.args());
+                  full.add(command.state, state);
+                  long called = clock.incrementAndGet();
+                  Value result;
+                  try {
+                    result = command.run.apply(own, full);
+                  } catch (Exception e) {
+                    errors.add(command.name + " " + raised(e));
+                    result = null;
+                  }
+                  history.get(branch)[k] = new Call(called, clock.incrementAndGet(), result);
+                }
+              }));
+    }
+    for (var t : threads) t.start();
+    ready.countDown();
+    for (var t : threads) {
+      boolean interrupted = false;
+      while (true) {
+        try {
+          t.join();
+          break;
+        } catch (InterruptedException e) {
+          interrupted = true;
+        }
+      }
+      if (interrupted) Thread.currentThread().interrupt();
+    }
+    if (!errors.isEmpty()) return errors.get(0);
+    var states = simulate(model, symbols, prefix);
+    var expected = states.get(states.size() - 1);
+    var finalState =
+        model.abstractState != null ? model.abstractState.apply(symbols, List.of(state)) : null;
+    for (var order : branchOrders(branches)) {
+      if (!respectsTime(order, history)) continue;
+      if (linearizes(model, symbols, branches, history, order, expected, finalState, state))
+        return null;
+    }
+    var observed = new ArrayList<String>();
+    for (int i = 0; i < branches.size(); i++)
+      for (int k = 0; k < branches.get(i).size(); k++)
+        observed.add(
+            "AB".charAt(i)
+                + ": "
+                + model.commands.get(branches.get(i).get(k).index()).name
+                + "() returned "
+                + render(history.get(i)[k].result()));
+    return "no order of the parallel calls agrees with the model ("
+        + String.join("; ", observed)
+        + ")";
+  }
+
+  /** No call is placed before one that returned before it started. */
+  private static boolean respectsTime(List<BranchStep> order, List<Call[]> history) {
+    for (int x = 0; x < order.size(); x++)
+      for (int y = x + 1; y < order.size(); y++) {
+        var a = order.get(x);
+        var b = order.get(y);
+        if (history.get(b.branch())[b.step()].returned()
+            < history.get(a.branch())[a.step()].called()) return false;
+      }
+    return true;
+  }
+
+  private static boolean linearizes(
+      Model model,
+      Map<String, Object> symbols,
+      List<List<ModelStep>> branches,
+      List<Call[]> history,
+      List<BranchStep> order,
+      Value expected,
+      Value finalState,
+      Value state) {
+    try {
+      for (var o : order) {
+        var s = branches.get(o.branch()).get(o.step());
+        var command = model.commands.get(s.index());
+        var stepped = stepModel(command, symbols, s.args(), expected);
+        expected = stepped.state();
+        if (!command.unit
+            && compareValues(history.get(o.branch())[o.step()].result(), stepped.result()) != 0)
+          return false;
+      }
+    } catch (InvalidStep e) {
+      return false;
+    }
+    if (finalState != null && compareValues(finalState, expected) != 0) return false;
+    for (int k = 0; k < model.invariants.size(); k++) {
+      var subject = model.invariantKinds.get(k).equals("model") ? expected : state;
+      if (!truth(model.invariants.get(k).apply(symbols, List.of(subject)))) return false;
+    }
+    return true;
+  }
+
+  private static String parallelFails(Model model, ParallelCase c, int repeats) {
+    for (int n = 0; n < repeats; n++) {
+      var failure = executeParallel(model, c);
+      if (failure != null) return failure;
+    }
+    return null;
+  }
+
+  private static <T> List<T> without(List<T> xs, int at) {
+    var out = new ArrayList<T>(xs.subList(0, at));
+    out.addAll(xs.subList(at + 1, xs.size()));
+    return out;
+  }
+
+  private record ShrunkParallel(ParallelCase c, String failure) {}
+
+  private static ShrunkParallel shrinkParallel(
+      Model model, ParallelCase c, String failure, int repeats, int budget) {
+    while (budget > 0) {
+      var prefix = c.prefix();
+      var branches = c.branches();
+      var candidates = new ArrayList<ParallelCase>();
+      var steps = prefix.steps();
+      for (int k = 0; k < steps.size(); k++)
+        candidates.add(new ParallelCase(new ModelRun(prefix.startArgs(), without(steps, k)), branches));
+      for (int i = 0; i < branches.size(); i++)
+        for (int k = 0; k < branches.get(i).size(); k++) {
+          var shorter = new ArrayList<List<ModelStep>>(branches);
+          shorter.set(i, without(branches.get(i), k));
+          candidates.add(new ParallelCase(prefix, shorter));
+        }
+      boolean improved = false;
+      for (var candidate : candidates) {
+        budget--;
+        if (budget <= 0) {
+          improved = true;
+          break;
+        }
+        if (!parallelAllowed(model, candidate.prefix(), candidate.branches())) continue;
+        var found = parallelFails(model, candidate, repeats);
+        if (found != null) {
+          c = candidate;
+          failure = found;
+          improved = true;
+          break;
+        }
+      }
+      if (!improved) break;
+    }
+    return new ShrunkParallel(c, failure);
+  }
+
+  private static String describeBranch(Model model, List<ModelStep> steps) {
+    var parts = new ArrayList<String>();
+    for (var s : steps)
+      parts.add(model.commands.get(s.index()).name + "(" + renderAll(s.args()) + ")");
+    return parts.isEmpty() ? "nothing" : String.join("; ", parts);
+  }
+
+  private static String describeParallel(Model model, ParallelCase c) {
+    return describeRun(model, c.prefix())
+        + ", then A: "
+        + describeBranch(model, c.branches().get(0))
+        + " and B: "
+        + describeBranch(model, c.branches().get(1))
+        + " at the same time";
+  }
+
+  /**
+   * Checks a shared model's histories under concurrency; a failure throws
+   * AssertionError naming the smallest failing case found.
+   */
+  public static void checkModelParallel(Model model) {
+    String text = System.getenv("LAWSPEC_SEED");
+    checkModelParallel(model, 50, 20, 200, text == null ? 0 : Long.parseUnsignedLong(text.trim()));
+  }
+
+  public static void checkModelParallel(
+      Model model, int cases, int repeats, int maxShrinks, long seed) {
+    var random = new SplitMix64(seed ^ 0x5BD1E995L);
+    for (int n = 0; n < cases; n++) {
+      var c = generateParallel(model, random, 1 + n % 8);
+      var failure = parallelFails(model, c, repeats);
+      if (failure != null) {
+        var shrunk = shrinkParallel(model, c, failure, Math.max(2, repeats / 2), maxShrinks);
+        throw new AssertionError(
+            "model "
+                + model.name
+                + " is not linearizable: "
+                + describeParallel(model, shrunk.c())
+                + ": "
+                + shrunk.failure());
+      }
+    }
+  }
 }

@@ -46,14 +46,14 @@ pub fn newCounter(value0: ()) -> Counter {
     Counter { id }
 }
 
-pub fn increment(value0: Counter) -> i64 {
+pub async fn increment(value0: Counter) -> i64 {
     change(value0.id, 1)
 }
 
-pub fn decrement(value0: Counter) -> i64 {
+pub async fn decrement(value0: Counter) -> i64 {
     change(value0.id, -1)
 }
 
-pub fn read(value0: Counter) -> i64 {
+pub async fn read(value0: Counter) -> i64 {
     change(value0.id, 0)
 }

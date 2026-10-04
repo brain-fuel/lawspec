@@ -29,16 +29,16 @@ export function newCounter(value0: unknown): data.Counter {
   return new data.Counter(id);
 }
 
-export function increment(value0: data.Counter): bigint {
+export async function increment(value0: data.Counter): Promise<bigint> {
   counters.set(value0.id, counters.get(value0.id)! + 1n);
   return counters.get(value0.id)!;
 }
 
-export function decrement(value0: data.Counter): bigint {
+export async function decrement(value0: data.Counter): Promise<bigint> {
   counters.set(value0.id, counters.get(value0.id)! - 1n);
   return counters.get(value0.id)!;
 }
 
-export function read(value0: data.Counter): bigint {
+export async function read(value0: data.Counter): Promise<bigint> {
   return counters.get(value0.id)!;
 }

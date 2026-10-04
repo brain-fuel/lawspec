@@ -1,0 +1,14 @@
+@@ src/example/models.rs
+<<<<<<<
+pub async fn increment(value0: Counter) -> i64 {
+    change(value0.id, 1)
+}
+=======
+pub async fn increment(value0: Counter) -> i64 {
+    let count = change(value0.id, 0);
+    std::thread::sleep(std::time::Duration::from_millis(1));
+    let mut guard = COUNTERS.lock().unwrap();
+    guard.1.get_or_insert_with(HashMap::new).insert(value0.id, count + 1);
+    count + 1
+}
+>>>>>>>

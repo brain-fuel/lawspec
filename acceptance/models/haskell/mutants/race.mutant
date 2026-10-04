@@ -1,0 +1,20 @@
+@@ src/Example/Models.hs
+<<<<<<<
+import Data.IORef (IORef, atomicModifyIORef', newIORef)
+=======
+import Control.Concurrent (threadDelay)
+import Data.IORef (IORef, atomicModifyIORef', newIORef, readIORef)
+>>>>>>>
+<<<<<<<
+increment :: Data.Counter -> IO I.Int64
+increment = change 1
+=======
+increment :: Data.Counter -> IO I.Int64
+increment (Data.Counter identity) = do
+  (_, counts) <- readIORef counters
+  let count = Map.findWithDefault 0 identity counts
+  threadDelay 1000
+  atomicModifyIORef' counters $ \(next, counts') ->
+    ((next, Map.insert identity (count + 1) counts'), ())
+  pure (count + 1)
+>>>>>>>

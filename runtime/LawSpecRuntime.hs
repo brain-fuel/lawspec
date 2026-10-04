@@ -3,13 +3,13 @@
 module LawSpecRuntime where
 
 import Control.Exception (ErrorCall(..), Exception, SomeException(..), catch, displayException, evaluate, finally, fromException, throwIO, try)
-import Control.Concurrent (threadDelay, forkIO, killThread, newChan, readChan, writeChan)
+import Control.Concurrent (threadDelay, forkIO, killThread, newChan, readChan, writeChan, newEmptyMVar, putMVar, takeMVar)
 import System.Timeout (timeout)
-import Data.IORef (IORef, newIORef, readIORef, writeIORef, modifyIORef')
+import Data.IORef (IORef, newIORef, readIORef, writeIORef, modifyIORef', atomicModifyIORef')
 import GHC.Clock (getMonotonicTimeNSec)
 import System.IO.Unsafe (unsafePerformIO)
 import System.Environment (lookupEnv)
-import Control.Monad (foldM, replicateM)
+import Control.Monad (foldM, forM, replicateM)
 import Data.Unique (Unique, newUnique)
 import Data.Char (ord, chr, isDigit)
 import Data.Int
@@ -20,7 +20,7 @@ import Data.Word
 import Data.Bits (finiteBitSize, shiftR, xor)
 import Data.Text (Text)
 import qualified Data.Text as T
-import Data.List (find, sortBy, stripPrefix)
+import Data.List (find, intercalate, sortBy, stripPrefix)
 import Data.Ratio
 import GHC.Float
   ( castFloatToWord32, castDoubleToWord64, castWord32ToFloat
@@ -1721,20 +1721,26 @@ stepModel command symbols args state = do
 
 -- | Whether the model allows every step of a run.
 simulateRun :: ModelPlan -> ModelRun -> IO Bool
-simulateRun plan (startArgs, steps) = do
+simulateRun plan run = do
   symbols <- newSymbolContext
+  maybe False (const True) <$> simulateFinal plan symbols run
+
+-- | The model state after a run, or Nothing when the model does not allow
+-- every step of it.
+simulateFinal :: ModelPlan -> SymbolContext -> ModelRun -> IO (Maybe Scalar)
+simulateFinal plan symbols (startArgs, steps) = do
   started <- callModel (planStartModel plan) symbols startArgs
   case started of
-    Left _ -> pure False
+    Left _ -> pure Nothing
     Right state0 -> do
-      let go _ _ [] = pure True
+      let go state _ [] = pure (Just state)
           go state indices ((index, args) : rest) = do
             let command = planCommands plan !! index
-            if not (admits command indices) then pure False else do
+            if not (admits command indices) then pure Nothing else do
               stepped <- try (stepModel command symbols args state)
               case stepped of
-                Left ModelInvalid -> pure False
-                Left (ModelRaised _) -> pure False
+                Left ModelInvalid -> pure Nothing
+                Left (ModelRaised _) -> pure Nothing
                 Right (next, _) -> go next (shifted command indices) rest
       go state0 (planStartIndices plan) steps
 
@@ -1900,4 +1906,249 @@ checkModelWith cases maxLength maxShrinks seedOverride model = do
                 (run', (step, message)) <- shrinkRun plan run found maxShrinks
                 pure (Just ("model " ++ planName plan ++ " fails at step " ++ show step ++ " of "
                   ++ describeRun plan run' ++ ": " ++ message))
+  loop 0
+
+-- Parallel runs of a shared model. A case is a sequential prefix and two
+-- branches, generated so that the model allows every interleaving of the
+-- branches. The system runs the branches at the same time, each in its own
+-- thread, recording when each call starts and returns; the history must be
+-- linearizable: some interleaving that keeps every call after those that
+-- returned before it started must give every result the model gives, and
+-- leave the state the model leaves. A race breaks this for some schedules,
+-- so each case runs several times.
+
+-- | A sequential prefix, then the two branches' steps.
+type ParallelCase = (ModelRun, [[(Int, [Scalar])]])
+
+-- | Every merge of two sequences of branch steps, a first.
+interleavings :: [a] -> [a] -> [[a]]
+interleavings [] b = [b]
+interleavings a [] = [a]
+interleavings a@(x : xs) b@(y : ys) = map (x :) (interleavings xs b) ++ map (y :) (interleavings a ys)
+
+-- | Every interleaving of the branches' (branch, step) positions.
+branchOrders :: [[b]] -> [[(Int, Int)]]
+branchOrders branches = case [[(i, k) | k <- [0 .. length b - 1]] | (i, b) <- zip [0 ..] branches] of
+  [a, b] -> interleavings a b
+  _ -> error "a parallel case has two branches"
+
+allM :: (a -> IO Bool) -> [a] -> IO Bool
+allM _ [] = pure True
+allM p (x : xs) = p x >>= \ok -> if ok then allM p xs else pure False
+
+anyM :: (a -> IO Bool) -> [a] -> IO Bool
+anyM _ [] = pure False
+anyM p (x : xs) = p x >>= \ok -> if ok then pure True else anyM p xs
+
+-- | Whether the model allows the prefix then every interleaving.
+parallelAllowed :: ModelPlan -> ParallelCase -> IO Bool
+parallelAllowed plan (prefix, branches) = do
+  symbols <- newSymbolContext
+  final <- simulateFinal plan symbols prefix
+  case final of
+    Nothing -> pure False
+    Just state0 -> do
+      let go _ [] = pure True
+          go state ((i, k) : rest) = do
+            let (index, args) = branches !! i !! k
+            stepped <- try (stepModel (planCommands plan !! index) symbols args state)
+            case stepped of
+              Left ModelInvalid -> pure False
+              Left (ModelRaised _) -> pure False
+              Right (next, _) -> go next rest
+      allM (go state0) (branchOrders branches)
+
+generateBranch :: ModelPlan -> IORef Word64 -> Scalar -> Integer -> Integer -> IO [(Int, [Scalar])]
+generateBranch plan source state0 len size = do
+  symbols <- newSymbolContext
+  let go 0 _ acc = pure (reverse acc)
+      go n state acc = do
+        pick <- drawIO source (drawBelow (toInteger (length (planCommands plan))))
+        let index = fromInteger pick
+            command = planCommands plan !! index
+        args <- mapM (\d -> drawIO source (generateValue (planTable plan) d size)) (mcArguments command)
+        stepped <- try (stepModel command symbols args state)
+        case stepped of
+          Left ModelInvalid -> go (n - 1) state acc
+          Left (ModelRaised _) -> go (n - 1) state acc
+          Right (next, _) -> go (n - 1) next ((index, args) : acc)
+  go len state0 []
+
+generateParallel :: ModelPlan -> IORef Word64 -> Integer -> IO ParallelCase
+generateParallel plan source size = do
+  prefixLength <- drawIO source (drawBelow 4)
+  prefix <- generateRun plan source prefixLength size
+  symbols <- newSymbolContext
+  final <- simulateFinal plan symbols prefix
+  case final of
+    Nothing -> pure (prefix, [[], []])
+    Just state -> do
+      branches <- forM [0, 1 :: Int] $ \_ -> do
+        n <- drawIO source (drawBelow 4)
+        generateBranch plan source state (1 + n) size
+      -- Drop the last steps until every interleaving is allowed.
+      let trim bs = do
+            allowed <- parallelAllowed plan (prefix, bs)
+            if allowed then pure (prefix, bs) else case bs of
+              [a, b] -> trim (if length a >= length b then [init a, b] else [a, init b])
+              _ -> error "a parallel case has two branches"
+      trim branches
+
+-- | Nothing when the history is linearizable; otherwise what went wrong.
+executeParallel :: ModelPlan -> ParallelCase -> IO (Maybe String)
+executeParallel plan (prefix@(startArgs, steps), branches) = do
+  symbols <- newSymbolContext
+  let withState command state args = take (mcState command) args ++ [state] ++ drop (mcState command) args
+  prepared <- try (do
+    state <- callOrRaise (planStartRun plan) symbols startArgs
+    mapM_ (\(index, args) -> let command = planCommands plan !! index
+      in callOrRaise (mcRun command) symbols (withState command state args)) steps
+    pure state)
+  case prepared of
+    Left e -> pure (Just ("the prefix raised error: " ++ case fromException e of
+      Just (ModelRaised message) -> message
+      _ -> exceptionText e))
+    Right state -> do
+      clock <- newIORef (0 :: Int)
+      errors <- newIORef []
+      let tick = atomicModifyIORef' clock (\c -> (c + 1, c + 1))
+          branch steps' = do
+            own <- newSymbolContext
+            forM steps' $ \(index, args) -> do
+              let command = planCommands plan !! index
+              called <- tick
+              -- callModel forces the result in full, so the effect happens here.
+              out <- callModel (mcRun command) own (withState command state args)
+              result <- case out of
+                Left message -> do
+                  atomicModifyIORef' errors (\es -> (es ++ [mcName command ++ " raised error: " ++ message], ()))
+                  pure (SAbsent "Unit")
+                Right value -> pure value
+              returned <- tick
+              pure (called, returned, result)
+      dones <- forM branches $ \steps' -> do
+        done <- newEmptyMVar
+        _ <- forkIO (try (branch steps') >>= putMVar done)
+        pure done
+      outcomes <- mapM takeMVar dones
+      raised <- readIORef errors
+      case (raised, [e | Left e <- outcomes]) of
+        (message : _, _) -> pure (Just message)
+        ([], e : _) -> pure (Just ("raised error: " ++ exceptionText e))
+        ([], []) -> do
+          let history = [h | Right h <- outcomes]
+          expectedFinal <- simulateFinal plan symbols prefix
+          final <- case planAbstract plan of
+            Nothing -> pure (Right Nothing)
+            Just abstract -> fmap Just <$> callModel abstract symbols [state]
+          case (expectedFinal, final) of
+            (Nothing, _) -> pure (Just "the model does not allow this step")
+            (_, Left message) -> pure (Just ("raised error: " ++ message))
+            (Just expected, Right actual) -> do
+              found <- anyM (linearizes plan symbols branches history expected actual state)
+                (filter (respectsTime history) (branchOrders branches))
+              let observed = intercalate "; "
+                    [ ["A", "B"] !! i ++ ": " ++ mcName (planCommands plan !! fst (branches !! i !! k))
+                      ++ "() returned " ++ renderValue result
+                    | (i, h) <- zip [0 ..] history, (k, (_, _, result)) <- zip [0 ..] h ]
+              pure (if found then Nothing
+                else Just ("no order of the parallel calls agrees with the model (" ++ observed ++ ")"))
+
+-- | No call is placed before one that returned before it started.
+respectsTime :: [[(Int, Int, Scalar)]] -> [(Int, Int)] -> Bool
+respectsTime history order = and
+  [ not (returned (j, l) < called (i, k))
+  | (x, (i, k)) <- zip [0 :: Int ..] order, (j, l) <- drop (x + 1) order ]
+  where called (i, k) = let (c, _, _) = history !! i !! k in c
+        returned (i, k) = let (_, r, _) = history !! i !! k in r
+
+linearizes :: ModelPlan -> SymbolContext -> [[(Int, [Scalar])]] -> [[(Int, Int, Scalar)]]
+           -> Scalar -> Maybe Scalar -> Scalar -> [(Int, Int)] -> IO Bool
+linearizes plan symbols branches history expected0 final state = go expected0
+  where
+    go expected [] =
+      if maybe False (\actual -> compareValues actual expected /= Right EQ) final then pure False
+      else allM (\(kind, invariant) -> do
+        holds <- callModel invariant symbols [if kind == "model" then expected else state]
+        pure (case holds of Right (SBool True) -> True; _ -> False)) (planInvariants plan)
+    go expected ((i, k) : rest) = do
+      let (index, args) = branches !! i !! k
+          command = planCommands plan !! index
+          (_, _, result) = history !! i !! k
+      stepped <- try (stepModel command symbols args expected)
+      case stepped of
+        Left ModelInvalid -> pure False
+        Left (ModelRaised _) -> pure False
+        Right (next, wanted)
+          | not (mcUnit command) && compareValues result wanted /= Right EQ -> pure False
+          | otherwise -> go next rest
+
+parallelFails :: ModelPlan -> ParallelCase -> Int -> IO (Maybe String)
+parallelFails plan parallelCase repeats
+  | repeats <= 0 = pure Nothing
+  | otherwise = do
+      failure <- executeParallel plan parallelCase
+      case failure of
+        Just _ -> pure failure
+        Nothing -> parallelFails plan parallelCase (repeats - 1)
+
+-- | Smaller cases: dropping each prefix step, then each branch step.
+parallelCandidates :: ParallelCase -> [ParallelCase]
+parallelCandidates (prefix@(startArgs, steps), branches) =
+  [ ((startArgs, dropAt k steps), branches) | k <- [0 .. length steps - 1] ]
+  ++ [ (prefix, [if j == i then dropAt k b else b | (j, b) <- zip [0 :: Int ..] branches])
+     | (i, branch) <- zip [0 ..] branches, k <- [0 .. length branch - 1] ]
+  where dropAt k xs = take k xs ++ drop (k + 1) xs
+
+shrinkParallel :: ModelPlan -> ParallelCase -> String -> Int -> Int -> IO (ParallelCase, String)
+shrinkParallel plan parallelCase failure repeats budget
+  | budget <= 0 = pure (parallelCase, failure)
+  | otherwise = go (parallelCandidates parallelCase) budget
+  where
+    go [] _ = pure (parallelCase, failure)
+    go (candidate : rest) b = do
+      let b' = b - 1
+      if b' <= 0 then pure (parallelCase, failure) else do
+        allowed <- parallelAllowed plan candidate
+        if not allowed then go rest b' else do
+          found <- parallelFails plan candidate repeats
+          case found of
+            Just failure' -> shrinkParallel plan candidate failure' repeats b'
+            Nothing -> go rest b'
+
+describeParallel :: ModelPlan -> ParallelCase -> String
+describeParallel plan (prefix, branches) =
+  let call (i, args) = mcName (planCommands plan !! i) ++ "(" ++ intercalate ", " (map renderValue args) ++ ")"
+      describe steps = if null steps then "nothing" else intercalate "; " (map call steps)
+      (a, b) = case branches of
+        [x, y] -> (x, y)
+        _ -> error "a parallel case has two branches"
+  in describeRun plan prefix ++ ", then A: " ++ describe a ++ " and B: " ++ describe b ++ " at the same time"
+
+-- | Checks a shared model's histories under concurrency: Nothing, or the
+-- failure naming the smallest failing case found. 50 cases, each run 20
+-- times, 200 shrinks, seeded from LAWSPEC_SEED or 0.
+checkModelParallel :: Model -> IO (Maybe String)
+checkModelParallel = checkModelParallelWith 50 20 200 Nothing
+
+-- | checkModelParallel with the number of cases, the runs of each case, the
+-- shrink budget and the seed (Nothing: LAWSPEC_SEED, else 0).
+checkModelParallelWith :: Int -> Int -> Int -> Maybe Word64 -> Model -> IO (Maybe String)
+checkModelParallelWith cases repeats maxShrinks seedOverride model = do
+  seed <- case seedOverride of
+    Just s -> pure s
+    Nothing -> maybe 0 (fromInteger . read) <$> lookupEnv "LAWSPEC_SEED"
+  source <- newIORef (seed `xor` 0x5BD1E995)
+  let plan = modelPlan model
+      loop c
+        | c >= cases = pure Nothing
+        | otherwise = do
+            parallelCase <- generateParallel plan source (1 + toInteger (c `mod` 8))
+            failure <- parallelFails plan parallelCase repeats
+            case failure of
+              Nothing -> loop (c + 1)
+              Just found -> do
+                (parallelCase', message) <- shrinkParallel plan parallelCase found (max 2 (repeats `div` 2)) maxShrinks
+                pure (Just ("model " ++ planName plan ++ " is not linearizable: "
+                  ++ describeParallel plan parallelCase' ++ ": " ++ message))
   loop 0

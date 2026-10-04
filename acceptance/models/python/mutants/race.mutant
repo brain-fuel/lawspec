@@ -1,0 +1,14 @@
+@@ src/example/models.py
+<<<<<<<
+async def increment(value0):
+    with _lock:
+        _counters[value0.id] += 1
+        return _counters[value0.id]
+=======
+async def increment(value0):
+    import asyncio
+    count = _counters[value0.id]
+    await asyncio.sleep(0.001)
+    _counters[value0.id] = count + 1
+    return count + 1
+>>>>>>>

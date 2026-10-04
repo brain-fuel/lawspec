@@ -1,6 +1,10 @@
 @@ src/example/models.rs
 <<<<<<<
+pub async fn decrement(value0: Counter) -> i64 {
     change(value0.id, -1)
+}
 =======
+pub async fn decrement(value0: Counter) -> i64 {
     if change(value0.id, 0) >= 3 { change(value0.id, -2) } else { change(value0.id, -1) }
+}
 >>>>>>>

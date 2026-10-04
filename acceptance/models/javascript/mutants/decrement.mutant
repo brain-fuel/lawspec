@@ -1,6 +1,8 @@
 @@ src/example/models.mjs
 <<<<<<<
+export async function decrement(value0) {
   counters.set(value0.id, counters.get(value0.id) - 1n);
 =======
+export async function decrement(value0) {
   counters.set(value0.id, counters.get(value0.id) - (counters.get(value0.id) < 3n ? 1n : 2n));
 >>>>>>>

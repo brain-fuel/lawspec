@@ -1631,3 +1631,216 @@ def check_model(model, cases=100, max_length=20, max_shrinks=2000, seed=None):
             run, (step, message) = _shrink_run(model, run, failure, max_shrinks)
             raise AssertionError(f'model {model.name} fails at step {step} of '
                                  f'{_describe_run(model, run)}: {message}')
+
+
+# Parallel runs of a shared model. A case is a sequential prefix and two
+# branches, generated so that the model allows every interleaving of the
+# branches. The system runs the branches at the same time, recording when
+# each call starts and returns; the history must be linearizable: some
+# interleaving that keeps every call after those that returned before it
+# started must give every result the model gives, and leave the state the
+# model leaves. A race breaks this for some schedules, so each case runs
+# several times.
+
+def _interleavings(a, b):
+    """Every merge of two sequences of branch steps, a first."""
+    if not a:
+        yield list(b)
+        return
+    if not b:
+        yield list(a)
+        return
+    for rest in _interleavings(a[1:], b):
+        yield [a[0]] + rest
+    for rest in _interleavings(a, b[1:]):
+        yield [b[0]] + rest
+
+
+def _parallel_allowed(model, prefix, branches):
+    """Whether the model allows the prefix then every interleaving."""
+    symbols = {}
+    try:
+        states = _simulate(model, symbols, prefix)
+    except _Invalid:
+        return False
+    for order in _interleavings(*[[(i, k) for k in range(len(b))] for i, b in enumerate(branches)]):
+        state = states[-1]
+        try:
+            for i, k in order:
+                index, args = branches[i][k]
+                state, _ = _step_model(model.commands[index], symbols, args, state)
+        except _Invalid:
+            return False
+    return True
+
+
+def _generate_branch(model, random, state, length, size):
+    symbols = {}
+    steps = []
+    for _ in range(length):
+        index = random.below(len(model.commands))
+        command = model.commands[index]
+        args = [model.values.generate(d, random, size) for d in command.arguments]
+        try:
+            state, _ = _step_model(command, symbols, args, state)
+        except _Invalid:
+            continue
+        steps.append((index, args))
+    return steps
+
+
+def _generate_parallel(model, random, size):
+    prefix = _generate_run(model, random, random.below(4), size)
+    try:
+        state = _simulate(model, {}, prefix)[-1]
+    except _Invalid:
+        return prefix, [[], []]
+    branches = [_generate_branch(model, random, state, 1 + random.below(4), size) for _ in range(2)]
+    # Drop the last steps until every interleaving is allowed.
+    while not _parallel_allowed(model, prefix, branches):
+        longest = max(range(2), key=lambda i: (len(branches[i]), -i))
+        branches[longest] = branches[longest][:-1]
+    return prefix, branches
+
+
+def _execute_parallel(model, case):
+    """None when the history is linearizable; otherwise what went wrong."""
+    import threading
+    prefix, branches = case
+    start_args, steps = prefix
+    symbols = {}
+    try:
+        state = model.start_run(symbols, *start_args)
+        for index, args in steps:
+            command = model.commands[index]
+            full = list(args)
+            full.insert(command.state, state)
+            command.run(symbols, *full)
+    except Exception as error:
+        return f'the prefix raised {type(error).__name__}: {error}'
+    clock = [0]
+    lock = threading.Lock()
+    history = [[None] * len(b) for b in branches]
+    errors = []
+
+    def tick():
+        with lock:
+            clock[0] += 1
+            return clock[0]
+
+    def branch(i):
+        own = {}
+        for k, (index, args) in enumerate(branches[i]):
+            command = model.commands[index]
+            full = list(args)
+            full.insert(command.state, state)
+            called = tick()
+            try:
+                result = command.run(own, *full)
+            except Exception as error:
+                errors.append(f'{command.name} raised {type(error).__name__}: {error}')
+                result = None
+            history[i][k] = (called, tick(), result)
+
+    threads = [threading.Thread(target=branch, args=(i,)) for i in range(len(branches))]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    if errors:
+        return errors[0]
+    expected = _simulate(model, symbols, prefix)[-1]
+    final = model.abstract(symbols, state) if model.abstract is not None else None
+    ops = [[(i, k) for k in range(len(b))] for i, b in enumerate(branches)]
+    for order in _interleavings(*ops):
+        if not _respects_time(order, history):
+            continue
+        if _linearizes(model, symbols, branches, history, order, expected, final, state):
+            return None
+    observed = '; '.join(
+        f'{"AB"[i]}: {model.commands[branches[i][k][0]].name}() returned {render(history[i][k][2])}'
+        for i in range(len(branches)) for k in range(len(branches[i])))
+    return f'no order of the parallel calls agrees with the model ({observed})'
+
+
+def _respects_time(order, history):
+    """No call is placed before one that returned before it started."""
+    for x in range(len(order)):
+        for y in range(x + 1, len(order)):
+            (i, k), (j, l) = order[x], order[y]
+            if history[j][l][1] < history[i][k][0]:
+                return False
+    return True
+
+
+def _linearizes(model, symbols, branches, history, order, expected, final, state):
+    try:
+        for i, k in order:
+            index, args = branches[i][k]
+            command = model.commands[index]
+            expected, wanted = _step_model(command, symbols, args, expected)
+            if not command.unit and compare_values(history[i][k][2], wanted) != 0:
+                return False
+    except _Invalid:
+        return False
+    if final is not None and compare_values(final, expected) != 0:
+        return False
+    for kind, invariant in model.invariants:
+        if not invariant(symbols, expected if kind == 'model' else state):
+            return False
+    return True
+
+
+def _parallel_fails(model, case, repeats):
+    for _ in range(repeats):
+        failure = _execute_parallel(model, case)
+        if failure is not None:
+            return failure
+    return None
+
+
+def _shrink_parallel(model, case, failure, repeats, budget):
+    while budget > 0:
+        prefix, branches = case
+        candidates = []
+        start_args, steps = prefix
+        for k in range(len(steps)):
+            candidates.append(((start_args, steps[:k] + steps[k + 1:]), branches))
+        for i in range(len(branches)):
+            for k in range(len(branches[i])):
+                shorter = [b if j != i else b[:k] + b[k + 1:] for j, b in enumerate(branches)]
+                candidates.append((prefix, shorter))
+        for candidate in candidates:
+            budget -= 1
+            if budget <= 0:
+                break
+            if not _parallel_allowed(model, *candidate):
+                continue
+            found = _parallel_fails(model, candidate, repeats)
+            if found is not None:
+                case, failure = candidate, found
+                break
+        else:
+            break
+    return case, failure
+
+
+def _describe_parallel(model, case):
+    prefix, branches = case
+    describe = lambda steps: '; '.join(model.commands[i].name + '(' + ', '.join(render(a) for a in args) + ')' for i, args in steps)
+    return f'{_describe_run(model, prefix)}, then A: {describe(branches[0]) or "nothing"} and B: {describe(branches[1]) or "nothing"} at the same time'
+
+
+def check_model_parallel(model, cases=50, repeats=20, max_shrinks=200, seed=None):
+    """Checks a shared model's histories under concurrency; a failure
+    raises AssertionError naming the smallest failing case found."""
+    import os
+    if seed is None:
+        seed = int(os.environ.get('LAWSPEC_SEED', '0'))
+    random = SplitMix64(seed ^ 0x5BD1E995)
+    for case_number in range(cases):
+        case = _generate_parallel(model, random, 1 + case_number % 8)
+        failure = _parallel_fails(model, case, repeats)
+        if failure is not None:
+            case, failure = _shrink_parallel(model, case, failure, max(2, repeats // 2), max_shrinks)
+            raise AssertionError(f'model {model.name} is not linearizable: {_describe_parallel(model, case)}: {failure}')

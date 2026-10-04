@@ -1,0 +1,24 @@
+@@ example/models/adapter.go
+<<<<<<<
+import "sync"
+=======
+import (
+	"sync"
+	"time"
+)
+>>>>>>>
+<<<<<<<
+		lock.Lock()
+		defer lock.Unlock()
+		counters[value0.Id]++
+		return counters[value0.Id]
+=======
+		lock.Lock()
+		count := counters[value0.Id]
+		lock.Unlock()
+		time.Sleep(time.Millisecond)
+		lock.Lock()
+		counters[value0.Id] = count + 1
+		lock.Unlock()
+		return count + 1
+>>>>>>>

@@ -2010,3 +2010,241 @@ export async function checkModelAsync(model, options = {}) {
     }
   }
 }
+
+// Parallel runs of a shared model. A case is a sequential prefix and two
+// branches, generated so that the model allows every interleaving of the
+// branches. The system runs the branches at the same time, as concurrent
+// async calls that interleave where they await, recording when each call
+// starts and returns; the history must be linearizable: some interleaving
+// that keeps every call after those that returned before it started must
+// give every result the model gives, and leave the state the model leaves.
+// A race breaks this for some schedules, so each case runs several times.
+
+/** Every merge of two sequences of branch steps, a first. */
+function* interleavings(a, b) {
+  if (!a.length) {
+    yield [...b];
+    return;
+  }
+  if (!b.length) {
+    yield [...a];
+    return;
+  }
+  for (const rest of interleavings(a.slice(1), b)) yield [a[0], ...rest];
+  for (const rest of interleavings(a, b.slice(1))) yield [b[0], ...rest];
+}
+
+const branchSteps = (branches) => branches.map((b, i) => b.map((_, k) => [i, k]));
+
+/** Whether the model allows the prefix then every interleaving. */
+async function parallelAllowed(model, prefix, branches) {
+  const symbols = new Map();
+  let states;
+  try {
+    states = await simulate(model, symbols, prefix);
+  } catch (error) {
+    if (error instanceof Invalid) return false;
+    throw error;
+  }
+  for (const order of interleavings(...branchSteps(branches))) {
+    let state = states[states.length - 1];
+    try {
+      for (const [i, k] of order) {
+        const [index, args] = branches[i][k];
+        [state] = await stepModel(model.commands[index], symbols, args, state);
+      }
+    } catch (error) {
+      if (error instanceof Invalid) return false;
+      throw error;
+    }
+  }
+  return true;
+}
+
+async function generateBranch(model, random, state, length, size) {
+  const symbols = new Map();
+  const steps = [];
+  for (let n = 0; n < length; n++) {
+    const index = Number(random.below(BigInt(model.commands.length)));
+    const command = model.commands[index];
+    const args = command.arguments.map((d) => model.values.generate(d, random, size));
+    try {
+      [state] = await stepModel(command, symbols, args, state);
+    } catch (error) {
+      if (error instanceof Invalid) continue;
+      throw error;
+    }
+    steps.push([index, args]);
+  }
+  return steps;
+}
+
+async function generateParallel(model, random, size) {
+  const prefix = await generateRun(model, random, Number(random.below(4n)), size);
+  let state;
+  try {
+    const states = await simulate(model, new Map(), prefix);
+    state = states[states.length - 1];
+  } catch (error) {
+    if (error instanceof Invalid) return [prefix, [[], []]];
+    throw error;
+  }
+  const branches = [];
+  for (let b = 0; b < 2; b++)
+    branches.push(await generateBranch(model, random, state, 1 + Number(random.below(4n)), size));
+  // Drop the last steps until every interleaving is allowed.
+  while (!(await parallelAllowed(model, prefix, branches))) {
+    const longest = branches[0].length >= branches[1].length ? 0 : 1;
+    branches[longest] = branches[longest].slice(0, -1);
+  }
+  return [prefix, branches];
+}
+
+/** null when the history is linearizable; otherwise what went wrong. */
+async function executeParallel(model, testCase) {
+  const [prefix, branches] = testCase;
+  const [startArgs, steps] = prefix;
+  const symbols = new Map();
+  let state;
+  try {
+    state = await model.startRun(symbols, ...startArgs);
+    for (const [index, args] of steps) {
+      const command = model.commands[index];
+      const full = [...args];
+      full.splice(command.state, 0, state);
+      await command.run(symbols, ...full);
+    }
+  } catch (error) {
+    return `the prefix raised ${errorName(error)}: ${errorMessage(error)}`;
+  }
+  let clock = 0;
+  const tick = () => ++clock;
+  const history = branches.map((b) => b.map(() => null));
+  const errors = [];
+  const branch = async (i) => {
+    const own = new Map();
+    for (let k = 0; k < branches[i].length; k++) {
+      const [index, args] = branches[i][k];
+      const command = model.commands[index];
+      const full = [...args];
+      full.splice(command.state, 0, state);
+      const called = tick();
+      let result;
+      try {
+        result = await command.run(own, ...full);
+      } catch (error) {
+        errors.push(`${command.name} raised ${errorName(error)}: ${errorMessage(error)}`);
+        result = null;
+      }
+      history[i][k] = [called, tick(), result];
+    }
+  };
+  await Promise.all(branches.map((_, i) => branch(i)));
+  if (errors.length) return errors[0];
+  const states = await simulate(model, symbols, prefix);
+  const expected = states[states.length - 1];
+  const final = model.abstract !== null ? await model.abstract(symbols, state) : null;
+  for (const order of interleavings(...branchSteps(branches))) {
+    if (!respectsTime(order, history)) continue;
+    if (await linearizes(model, symbols, branches, history, order, expected, final, state)) return null;
+  }
+  const observed = [];
+  branches.forEach((b, i) => b.forEach(([index], k) =>
+    observed.push(`${'AB'[i]}: ${model.commands[index].name}() returned ${render(history[i][k][2])}`)));
+  return `no order of the parallel calls agrees with the model (${observed.join('; ')})`;
+}
+
+/** No call is placed before one that returned before it started. */
+function respectsTime(order, history) {
+  for (let x = 0; x < order.length; x++)
+    for (let y = x + 1; y < order.length; y++) {
+      const [i, k] = order[x], [j, l] = order[y];
+      if (history[j][l][1] < history[i][k][0]) return false;
+    }
+  return true;
+}
+
+async function linearizes(model, symbols, branches, history, order, expected, final, state) {
+  try {
+    for (const [i, k] of order) {
+      const [index, args] = branches[i][k];
+      const command = model.commands[index];
+      let wanted;
+      [expected, wanted] = await stepModel(command, symbols, args, expected);
+      if (!command.unit && compareValues(history[i][k][2], wanted) !== 0) return false;
+    }
+  } catch (error) {
+    if (error instanceof Invalid) return false;
+    throw error;
+  }
+  if (final !== null && compareValues(final, expected) !== 0) return false;
+  for (const [kind, invariant] of model.invariants)
+    if (!(await invariant(symbols, kind === 'model' ? expected : state))) return false;
+  return true;
+}
+
+async function parallelFails(model, testCase, repeats) {
+  for (let r = 0; r < repeats; r++) {
+    const failure = await executeParallel(model, testCase);
+    if (failure !== null) return failure;
+  }
+  return null;
+}
+
+async function shrinkParallel(model, testCase, failure, repeats, budget) {
+  while (budget > 0) {
+    const [prefix, branches] = testCase;
+    const [startArgs, steps] = prefix;
+    const candidates = [];
+    for (let k = 0; k < steps.length; k++)
+      candidates.push([[startArgs, [...steps.slice(0, k), ...steps.slice(k + 1)]], branches]);
+    for (let i = 0; i < branches.length; i++)
+      for (let k = 0; k < branches[i].length; k++)
+        candidates.push([prefix, branches.map((b, j) => (j !== i ? b : [...b.slice(0, k), ...b.slice(k + 1)]))]);
+    let improved = false;
+    for (const candidate of candidates) {
+      budget -= 1;
+      if (budget <= 0) {
+        improved = true; // stops like Python's break out of for-else
+        break;
+      }
+      if (!(await parallelAllowed(model, ...candidate))) continue;
+      const found = await parallelFails(model, candidate, repeats);
+      if (found !== null) {
+        testCase = candidate;
+        failure = found;
+        improved = true;
+        break;
+      }
+    }
+    if (!improved) break;
+  }
+  return [testCase, failure];
+}
+
+function describeParallel(model, testCase) {
+  const [prefix, branches] = testCase;
+  const describe = (steps) => steps.map(([i, args]) =>
+    model.commands[i].name + '(' + args.map(render).join(', ') + ')').join('; ');
+  return `${describeRun(model, prefix)}, then A: ${describe(branches[0]) || 'nothing'} and B: ` +
+    `${describe(branches[1]) || 'nothing'} at the same time`;
+}
+
+/**
+ * Checks a shared model's histories under concurrency; a failure throws an
+ * Error naming the smallest failing case found.
+ */
+export async function checkModelParallelAsync(model, options = {}) {
+  const {cases = 50, repeats = 20, maxShrinks = 200} = options;
+  let seed = options.seed;
+  if (seed === undefined || seed === null) seed = BigInt(globalThis.process?.env?.LAWSPEC_SEED ?? '0');
+  const random = new SplitMix64(BigInt(seed) ^ 0x5BD1E995n);
+  for (let c = 0; c < cases; c++) {
+    let testCase = await generateParallel(model, random, 1 + c % 8);
+    let failure = await parallelFails(model, testCase, repeats);
+    if (failure !== null) {
+      [testCase, failure] = await shrinkParallel(model, testCase, failure, Math.max(2, Math.floor(repeats / 2)), maxShrinks);
+      throw new Error(`model ${model.name} is not linearizable: ${describeParallel(model, testCase)}: ${failure}`);
+    }
+  }
+}

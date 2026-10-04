@@ -3297,6 +3297,362 @@ pub fn check_model(model: &Model) -> std::result::Result<(), String> {
     Ok(())
 }
 
+// Parallel runs of a shared model. A case is a sequential prefix and two
+// branches, generated so that the model allows every interleaving of the
+// branches. The system runs the branches at the same time, each on its own
+// thread, recording when each call starts and returns; the history must be
+// linearizable: some interleaving that keeps every call after those that
+// returned before it started must give every result the model gives, and
+// leave the state the model leaves. A race breaks this for some schedules,
+// so each case runs several times. The draws, candidate order and messages
+// follow the Python reference.
+
+// A branch: each command's index and arguments.
+type ModelBranch = Vec<(usize, Vec<Value>)>;
+type ParallelCase = (ModelRun, Vec<ModelBranch>);
+// One call of a branch: when it started, when it returned, and its result.
+type ParallelCall = (u64, u64, Value);
+
+// Every merge of two sequences of branch steps, a first.
+fn interleavings<T: Clone>(a: &[T], b: &[T]) -> Vec<Vec<T>> {
+    if a.is_empty() {
+        return vec![b.to_vec()];
+    }
+    if b.is_empty() {
+        return vec![a.to_vec()];
+    }
+    let mut out = Vec::new();
+    for rest in interleavings(&a[1..], b) {
+        let mut order = vec![a[0].clone()];
+        order.extend(rest);
+        out.push(order);
+    }
+    for rest in interleavings(a, &b[1..]) {
+        let mut order = vec![b[0].clone()];
+        order.extend(rest);
+        out.push(order);
+    }
+    out
+}
+
+fn branch_orders(branches: &[ModelBranch]) -> Vec<Vec<(usize, usize)>> {
+    let ops: Vec<Vec<(usize, usize)>> =
+        branches.iter().enumerate().map(|(i, b)| (0..b.len()).map(|k| (i, k)).collect()).collect();
+    interleavings(&ops[0], &ops[1])
+}
+
+// No call is placed before one that returned before it started.
+fn respects_time(order: &[(usize, usize)], history: &[Vec<ParallelCall>]) -> bool {
+    for x in 0..order.len() {
+        for y in x + 1..order.len() {
+            let ((i, k), (j, l)) = (order[x], order[y]);
+            if history[j][l].1 < history[i][k].0 {
+                return false;
+            }
+        }
+    }
+    true
+}
+
+impl<'a> Machine<'a> {
+    /// The model state after a run, or None when the model does not allow it.
+    fn simulate_state(&self, ctx: &mut Context, run: &ModelRun) -> Option<Value> {
+        let mut state = (self.model.start[1])(ctx, run.0.clone()).ok()?;
+        let mut indices = self.start_indices.clone();
+        for (index, args) in &run.1 {
+            let command = &self.commands[*index];
+            if !command.admits(&indices) {
+                return None;
+            }
+            match step_model(command, ctx, args, state) {
+                Ok((next, _)) => state = next,
+                Err(ModelFault::Invalid) => return None,
+                Err(ModelFault::Error(e)) => panic!("model {}: {e}", self.name),
+            }
+            indices = command.shifted(&indices);
+        }
+        Some(state)
+    }
+
+    /// Whether the model allows the prefix then every interleaving.
+    fn parallel_allowed(&self, prefix: &ModelRun, branches: &[ModelBranch]) -> bool {
+        let mut ctx = Context::testing();
+        let Some(start) = self.simulate_state(&mut ctx, prefix) else {
+            return false;
+        };
+        for order in branch_orders(branches) {
+            let mut state = start.clone();
+            for (i, k) in order {
+                let (index, args) = &branches[i][k];
+                match step_model(&self.commands[*index], &mut ctx, args, state) {
+                    Ok((next, _)) => state = next,
+                    Err(ModelFault::Invalid) => return false,
+                    Err(ModelFault::Error(e)) => panic!("model {}: {e}", self.name),
+                }
+            }
+        }
+        true
+    }
+
+    fn generate_branch(&self, random: &mut SplitMix64, mut state: Value, length: u64, size: i64) -> ModelBranch {
+        let mut ctx = Context::testing();
+        let mut steps = Vec::new();
+        for _ in 0..length {
+            let index = random.below(self.commands.len() as u64) as usize;
+            let command = &self.commands[index];
+            let args: Vec<Value> = command.arguments.iter().map(|d| self.values.generate(d, random, size)).collect();
+            match step_model(command, &mut ctx, &args, state.clone()) {
+                Ok((next, _)) => state = next,
+                Err(ModelFault::Invalid) => continue,
+                Err(ModelFault::Error(e)) => panic!("model {}: {e}", self.name),
+            }
+            steps.push((index, args));
+        }
+        steps
+    }
+
+    fn generate_parallel(&self, random: &mut SplitMix64, size: i64) -> ParallelCase {
+        let length = random.below(4);
+        let prefix = self.generate_run(random, length, size);
+        let Some(state) = self.simulate_state(&mut Context::testing(), &prefix) else {
+            return (prefix, vec![Vec::new(), Vec::new()]);
+        };
+        let mut branches = Vec::new();
+        for _ in 0..2 {
+            let length = 1 + random.below(4);
+            branches.push(self.generate_branch(random, state.clone(), length, size));
+        }
+        // Drop the last steps until every interleaving is allowed.
+        while !self.parallel_allowed(&prefix, &branches) {
+            let longest = if branches[1].len() > branches[0].len() { 1 } else { 0 };
+            branches[longest].pop();
+        }
+        (prefix, branches)
+    }
+
+    /// None when the history is linearizable; otherwise what went wrong.
+    fn execute_parallel(&self, case: &ParallelCase) -> Option<String> {
+        let (prefix, branches) = case;
+        let mut ctx = Context::testing();
+        let state = match self.run_prefix(&mut ctx, prefix) {
+            Ok(state) => state,
+            Err(e) => return Some(format!("the prefix raised error: {e}")),
+        };
+        // What each thread needs: the call, the command's name and the full
+        // arguments, all Send.
+        let calls: Vec<Vec<(ModelCallback, String, Vec<Value>)>> = branches
+            .iter()
+            .map(|branch| {
+                branch
+                    .iter()
+                    .map(|(index, args)| {
+                        let command = &self.commands[*index];
+                        let mut full = args.clone();
+                        full.insert(command.state, state.clone());
+                        (command.run, command.name.clone(), full)
+                    })
+                    .collect()
+            })
+            .collect();
+        let clock = std::sync::atomic::AtomicU64::new(0);
+        let errors = std::sync::Mutex::new(Vec::<String>::new());
+        let tick = || clock.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
+        let history: Vec<Vec<ParallelCall>> = std::thread::scope(|scope| {
+            let handles: Vec<_> = calls
+                .into_iter()
+                .map(|branch| {
+                    let (tick, errors) = (&tick, &errors);
+                    scope.spawn(move || {
+                        let mut own = Context::testing();
+                        let mut out = Vec::new();
+                        for (run, name, full) in branch {
+                            let called = tick();
+                            let result = match run(&mut own, full) {
+                                Ok(result) => result,
+                                Err(e) => {
+                                    errors.lock().unwrap_or_else(|p| p.into_inner()).push(format!("{name} raised error: {e}"));
+                                    Value::Unit
+                                }
+                            };
+                            out.push((called, tick(), result));
+                        }
+                        out
+                    })
+                })
+                .collect();
+            handles.into_iter().map(|h| h.join().unwrap_or_else(|p| std::panic::resume_unwind(p))).collect()
+        });
+        if let Some(error) = errors.into_inner().unwrap_or_else(|p| p.into_inner()).into_iter().next() {
+            return Some(error);
+        }
+        let expected = self.simulate_state(&mut ctx, prefix).expect("the model allows the prefix");
+        let fin = match self.model.abstract_state {
+            Some(abstraction) => match abstraction(&mut ctx, vec![state.clone()]) {
+                Ok(v) => Some(v),
+                Err(e) => return Some(format!("raised error: {e}")),
+            },
+            None => None,
+        };
+        for order in branch_orders(branches) {
+            if !respects_time(&order, &history) {
+                continue;
+            }
+            if self.linearizes(&mut ctx, branches, &history, &order, expected.clone(), fin.as_ref(), &state) {
+                return None;
+            }
+        }
+        let mut observed = Vec::new();
+        for (i, branch) in branches.iter().enumerate() {
+            for (k, (index, _)) in branch.iter().enumerate() {
+                observed.push(format!(
+                    "{}: {}() returned {}",
+                    ["A", "B"][i],
+                    self.commands[*index].name,
+                    render(&history[i][k].2)
+                ));
+            }
+        }
+        Some(format!("no order of the parallel calls agrees with the model ({})", observed.join("; ")))
+    }
+
+    // Starts the system and runs the prefix's commands, giving the state.
+    fn run_prefix(&self, ctx: &mut Context, prefix: &ModelRun) -> Result<Value> {
+        let state = (self.model.start[0])(ctx, prefix.0.clone())?;
+        for (index, args) in &prefix.1 {
+            let command = &self.commands[*index];
+            let mut full = args.clone();
+            full.insert(command.state, state.clone());
+            (command.run)(ctx, full)?;
+        }
+        Ok(state)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn linearizes(
+        &self,
+        ctx: &mut Context,
+        branches: &[ModelBranch],
+        history: &[Vec<ParallelCall>],
+        order: &[(usize, usize)],
+        mut expected: Value,
+        fin: Option<&Value>,
+        state: &Value,
+    ) -> bool {
+        for &(i, k) in order {
+            let (index, args) = &branches[i][k];
+            let command = &self.commands[*index];
+            let wanted = match step_model(command, ctx, args, expected) {
+                Ok((next, wanted)) => {
+                    expected = next;
+                    wanted
+                }
+                Err(ModelFault::Invalid) => return false,
+                Err(ModelFault::Error(e)) => panic!("model {}: {e}", self.name),
+            };
+            if !command.unit && !matches!(compare_values(&history[i][k].2, &wanted), Ok(std::cmp::Ordering::Equal)) {
+                return false;
+            }
+        }
+        if let Some(fin) = fin {
+            if !matches!(compare_values(fin, &expected), Ok(std::cmp::Ordering::Equal)) {
+                return false;
+            }
+        }
+        for (kind, invariant) in &self.invariants {
+            let subject = if kind == "model" { &expected } else { state };
+            if !matches!(invariant(ctx, vec![subject.clone()]).and_then(|v| v.boolean()), Ok(true)) {
+                return false;
+            }
+        }
+        true
+    }
+
+    fn parallel_fails(&self, case: &ParallelCase, repeats: u64) -> Option<String> {
+        (0..repeats).find_map(|_| self.execute_parallel(case))
+    }
+
+    fn shrink_parallel(&self, mut case: ParallelCase, mut failure: String, repeats: u64, mut budget: i64) -> (ParallelCase, String) {
+        'shrinking: while budget > 0 {
+            let (prefix, branches) = &case;
+            let mut candidates: Vec<ParallelCase> = Vec::new();
+            for k in 0..prefix.1.len() {
+                let mut steps = prefix.1.clone();
+                steps.remove(k);
+                candidates.push(((prefix.0.clone(), steps), branches.clone()));
+            }
+            for i in 0..branches.len() {
+                for k in 0..branches[i].len() {
+                    let mut shorter = branches.clone();
+                    shorter[i].remove(k);
+                    candidates.push((prefix.clone(), shorter));
+                }
+            }
+            let mut improved = false;
+            for candidate in candidates {
+                budget -= 1;
+                if budget <= 0 {
+                    break 'shrinking;
+                }
+                if !self.parallel_allowed(&candidate.0, &candidate.1) {
+                    continue;
+                }
+                if let Some(found) = self.parallel_fails(&candidate, repeats) {
+                    case = candidate;
+                    failure = found;
+                    improved = true;
+                    break;
+                }
+            }
+            if !improved {
+                break;
+            }
+        }
+        (case, failure)
+    }
+
+    fn describe_parallel(&self, case: &ParallelCase) -> String {
+        let describe = |steps: &ModelBranch| {
+            let text = steps
+                .iter()
+                .map(|(i, args)| {
+                    format!("{}({})", self.commands[*i].name, args.iter().map(render).collect::<Vec<_>>().join(", "))
+                })
+                .collect::<Vec<_>>()
+                .join("; ");
+            if text.is_empty() { "nothing".to_string() } else { text }
+        };
+        format!(
+            "{}, then A: {} and B: {} at the same time",
+            self.describe_run(&case.0),
+            describe(&case.1[0]),
+            describe(&case.1[1])
+        )
+    }
+}
+
+/// Checks a shared model's histories under concurrency (50 cases, each run
+/// 20 times, seeded by LAWSPEC_SEED); a failure names the smallest failing
+/// case found.
+pub fn check_model_parallel(model: &Model) -> std::result::Result<(), String> {
+    let (cases, repeats, max_shrinks) = (50u64, 20u64, 200i64);
+    let seed = std::env::var("LAWSPEC_SEED").ok().and_then(|s| s.trim().parse::<u64>().ok()).unwrap_or(0);
+    let machine = Machine::new(model);
+    let mut random = SplitMix64::new(seed ^ 0x5BD1E995);
+    for case_number in 0..cases {
+        let case = machine.generate_parallel(&mut random, 1 + (case_number % 8) as i64);
+        if let Some(failure) = machine.parallel_fails(&case, repeats) {
+            let (case, failure) = machine.shrink_parallel(case, failure, (repeats / 2).max(2), max_shrinks);
+            return Err(format!(
+                "model {} is not linearizable: {}: {}",
+                machine.name,
+                machine.describe_parallel(&case),
+                failure
+            ));
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

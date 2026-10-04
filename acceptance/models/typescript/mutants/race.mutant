@@ -1,0 +1,14 @@
+@@ src/example/models.ts
+<<<<<<<
+export async function increment(value0: data.Counter): Promise<bigint> {
+  counters.set(value0.id, counters.get(value0.id)! + 1n);
+  return counters.get(value0.id)!;
+}
+=======
+export async function increment(value0: data.Counter): Promise<bigint> {
+  const count = counters.get(value0.id)!;
+  await new Promise((r) => setTimeout(r, 1));
+  counters.set(value0.id, count + 1n);
+  return count + 1n;
+}
+>>>>>>>

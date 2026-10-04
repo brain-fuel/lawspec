@@ -32,18 +32,18 @@ def newCounter(value0):
     return data.Counter(identity)
 
 
-def increment(value0):
+async def increment(value0):
     with _lock:
         _counters[value0.id] += 1
         return _counters[value0.id]
 
 
-def decrement(value0):
+async def decrement(value0):
     with _lock:
         _counters[value0.id] -= 1
         return _counters[value0.id]
 
 
-def read(value0):
+async def read(value0):
     with _lock:
         return _counters[value0.id]

@@ -306,7 +306,12 @@ scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions 
           check = statement (if py then runtime "check_model" [model] else text "await " <> runtime "checkModelAsync" [model])
           block = if py then function ("test_model_" ++ C.machineName machine) [] check
             else text "test(" <> message label <> text ", async () => " <> Doc.block 2 check <> text ");"
-      pure (renderDocument block)
+          -- A shared model's commands also run at the same time; every
+          -- history must be linearizable.
+          parallel = statement (if py then runtime "check_model_parallel" [model] else text "await " <> runtime "checkModelParallelAsync" [model])
+          parallelBlock = if py then function ("test_model_" ++ C.machineName machine ++ "_parallel") [] parallel
+            else text "test(" <> message (label ++ " in parallel") <> text ", async () => " <> Doc.block 2 parallel <> text ");"
+      pure (renderDocument block ++ (if C.machineShared machine then renderDocument parallelBlock else ""))
     -- An async adapter's task is awaited where it is called.
     awaited name call
       | name `notElem` asyncFunctions u = call

@@ -40,25 +40,31 @@ func NewCounter(value0 LawSpecValue) Counter {
 	return Counter{Id: ids}
 }
 
-// Increment adds one, atomically.
-func Increment(value0 Counter) int64 {
-	lock.Lock()
-	defer lock.Unlock()
-	counters[value0.Id]++
-	return counters[value0.Id]
+// Increment adds one, atomically, in a goroutine.
+func Increment(value0 Counter) LawSpecTask[int64] {
+	return LawSpecGo(func() int64 {
+		lock.Lock()
+		defer lock.Unlock()
+		counters[value0.Id]++
+		return counters[value0.Id]
+	})
 }
 
-// Decrement subtracts one, atomically.
-func Decrement(value0 Counter) int64 {
-	lock.Lock()
-	defer lock.Unlock()
-	counters[value0.Id]--
-	return counters[value0.Id]
+// Decrement subtracts one, atomically, in a goroutine.
+func Decrement(value0 Counter) LawSpecTask[int64] {
+	return LawSpecGo(func() int64 {
+		lock.Lock()
+		defer lock.Unlock()
+		counters[value0.Id]--
+		return counters[value0.Id]
+	})
 }
 
-// Read reads the count.
-func Read(value0 Counter) int64 {
-	lock.Lock()
-	defer lock.Unlock()
-	return counters[value0.Id]
+// Read reads the count in a goroutine.
+func Read(value0 Counter) LawSpecTask[int64] {
+	return LawSpecGo(func() int64 {
+		lock.Lock()
+		defer lock.Unlock()
+		return counters[value0.Id]
+	})
 }

@@ -35,9 +35,9 @@ object Models {
         return Counter(id)
     }
 
-    fun increment(value0: Counter): Long = counters.getValue(value0.id).incrementAndGet()
+    suspend fun increment(value0: Counter): Long = counters.getValue(value0.id).incrementAndGet()
 
-    fun decrement(value0: Counter): Long = counters.getValue(value0.id).decrementAndGet()
+    suspend fun decrement(value0: Counter): Long = counters.getValue(value0.id).decrementAndGet()
 
-    fun read(value0: Counter): Long = counters.getValue(value0.id).get()
+    suspend fun read(value0: Counter): Long = counters.getValue(value0.id).get()
 }

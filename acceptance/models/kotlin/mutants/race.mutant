@@ -1,0 +1,12 @@
+@@ src/main/kotlin/example/Models.kt
+<<<<<<<
+    suspend fun increment(value0: Counter): Long = counters.getValue(value0.id).incrementAndGet()
+=======
+    suspend fun increment(value0: Counter): Long {
+        val count = counters.getValue(value0.id)
+        val seen = count.get()
+        kotlinx.coroutines.delay(1)
+        count.set(seen + 1)
+        return seen + 1
+    }
+>>>>>>>

@@ -1,6 +1,7 @@
 // User-owned LawSpec adapter: a stack and an atomic counter.
 package example;
 
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
@@ -40,15 +41,15 @@ public final class Models {
     return new Counter(id);
   }
 
-  public static long increment(Counter value0) {
-    return counters.get(value0.id()).incrementAndGet();
+  public static CompletableFuture<Long> increment(Counter value0) {
+    return CompletableFuture.supplyAsync(() -> counters.get(value0.id()).incrementAndGet());
   }
 
-  public static long decrement(Counter value0) {
-    return counters.get(value0.id()).decrementAndGet();
+  public static CompletableFuture<Long> decrement(Counter value0) {
+    return CompletableFuture.supplyAsync(() -> counters.get(value0.id()).decrementAndGet());
   }
 
-  public static long read(Counter value0) {
-    return counters.get(value0.id()).get();
+  public static CompletableFuture<Long> read(Counter value0) {
+    return CompletableFuture.supplyAsync(() -> counters.get(value0.id()).get());
   }
 }
