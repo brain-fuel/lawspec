@@ -1,0 +1,6 @@
+@@ example/sessions/adapter.go
+<<<<<<<
+	end3.Send(int64(a) + int64(b))
+=======
+	end3.Send(int64(a) + int64(b) + 1)
+>>>>>>>
