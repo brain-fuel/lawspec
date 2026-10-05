@@ -5,6 +5,7 @@ import Data.Aeson
 import qualified Data.Aeson.KeyMap as KM
 import qualified Data.ByteString.Lazy as BL
 import Data.Foldable (toList)
+import qualified Data.Text as T
 import LawSpec.Api (dispatch)
 import LawSpec.Common
 
@@ -289,3 +290,30 @@ spec = describe "native binding requests" $ do
     result "rust" (object ["toNative" .= (["crate","decode"] :: [String])]) `shouldBe` [String "request"]
     result "rust" (object ["toNative" .= ("crate::decode" :: String),
       "fromNative" .= (["crate","encode"] :: [String])]) `shouldBe` [String "request"]
+
+  it "bridges Rust handle methods and constructors to a bound native type" $ do
+    source <- readFile "examples/specs/handles.lawspec"
+    let method name native = object ["declaration" .= ("example.handles::" ++ name :: String), "method" .= (native :: String)]
+        request types = object
+          [ "schemaVersion" .= (4 :: Int), "method" .= ("planGeneration" :: String)
+          , "target" .= ("rust" :: String), "sources" .= [Source "handles.lawspec" source]
+          , "nativeBindings" .= object ["rustCrate" .= ("application" :: String),
+              "types" .= types,
+              "functions" .= [object ["declaration" .= ("example.handles::newJobs" :: String),
+                  "constructor" .= (["crate","jobs","JobQueue","new"] :: [String])],
+                method "submit" "offer", method "take" "poll", method "pending" "size"]]
+          ]
+        response types = either error id (eitherDecode (dispatch (encode (request types))))
+        bridge value = concat [T.unpack s | Object o <- [value], Just (Array files) <- [KM.lookup "files" o],
+          Object f <- toList files, KM.lookup "path" f == Just (String "src/example/handles.rs"),
+          Just (String s) <- [KM.lookup "content" f]]
+        bound = response [object ["type" .= ("example.handles::type::Jobs" :: String),
+          "native" .= (["crate","jobs","JobQueue"] :: [String])]]
+    codes bound `shouldBe` []
+    let text = bridge bound
+    text `shouldContain` "ls::Handle::new(_native_result)"
+    text `shouldContain` "_native_self.poll()"
+    -- A Unit result discards whatever the native method returns.
+    text `shouldContain` "_native_self.offer(_native_arg1);"
+    -- A method needs to know the native type it calls.
+    codes (response ([] :: [Value])) `shouldBe` [String "rust"]

@@ -131,6 +131,12 @@ emitRustData layout declarations = do
       | owner == name = True
       | name `elem` visited = False
       | otherwise = any (reaches owner (name:visited)) (dependencies name)
+    -- A handle type is the runtime's handle: adapters make one around their
+    -- own native value, and LawSpec never builds or opens it.
+    definition names _ declaration | C.dataHandle declaration = do
+      name <- maybe (Left "unplanned Rust declaration") Right (lookup (C.idText (C.dataId declaration)) names)
+      pure (D.text ("/// A handle: only adapters create one, with ls::Handle::new.") <> D.hardline <>
+        D.text ("pub type " ++ name ++ " = ls::Handle;"))
     definition names ordered declaration = do
       name <- maybe (Left "unplanned Rust declaration") Right (lookup (C.idText (C.dataId declaration)) names)
       let parameters = zip (C.dataParameters declaration) [candidate | n <- [0::Int ..], let candidate = "T" ++ show n, candidate `notElem` map snd names]
