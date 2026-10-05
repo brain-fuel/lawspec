@@ -1,0 +1,8 @@
+expect: this end was already used
+@@ src/main/kotlin/example/Sessions.kt
+<<<<<<<
+        val afterB = afterA.send(b)
+=======
+        afterA.send(b)
+        val afterB = afterA.send(b)
+>>>>>>>

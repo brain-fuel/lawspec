@@ -3284,4 +3284,119 @@ public final class LawSpecRuntime {
         throw new AssertionError("scenario " + outcome.title() + " fails: " + outcome.failure());
     }
   }
+
+  // Sessions: typed channel ends for implementation code (lawspec.sessions,
+  // generated from a unit's protocols). An end's send and receive go through a
+  // Channel; spawn and par run the processes that hold the ends.
+
+  /**
+   * A two-sided channel: side 0 holds a protocol's first end, side 1 its
+   * second. A networked transport can implement it too.
+   */
+  public interface Channel {
+    /** Sends a value from the given side to the other. */
+    void send(int side, Object value);
+
+    /** Blocks until the other side has sent a value to the given side. */
+    Object receive(int side);
+  }
+
+  /** A fresh in-memory channel: one queue per direction. */
+  public static Channel channel() {
+    return new LocalChannel();
+  }
+
+  private static final class LocalChannel implements Channel {
+    // A box, so that a null value can travel through the queue.
+    private record Message(Object value) {}
+
+    @SuppressWarnings("unchecked")
+    private final java.util.concurrent.LinkedBlockingQueue<Message>[] inboxes =
+        new java.util.concurrent.LinkedBlockingQueue[] {
+          new java.util.concurrent.LinkedBlockingQueue<Message>(),
+          new java.util.concurrent.LinkedBlockingQueue<Message>()
+        };
+
+    @Override
+    public void send(int side, Object value) {
+      inboxes[1 - side].add(new Message(value));
+    }
+
+    @Override
+    public Object receive(int side) {
+      try {
+        return inboxes[side].take().value();
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+        throw new IllegalStateException("interrupted while receiving", e);
+      }
+    }
+  }
+
+  /** What a receive returns: the value and the end's next step. */
+  public record Received<T, Next>(T value, Next next) {}
+
+  /**
+   * Claims a single-use end: the first claim succeeds, any later one throws.
+   */
+  public static void claimEnd(java.util.concurrent.atomic.AtomicBoolean used) {
+    if (used.getAndSet(true))
+      throw new IllegalStateException(
+          "this end was already used; use the end its last step returned");
+  }
+
+  /** A process started by spawn. */
+  public static final class Spawned<T> {
+    private final java.util.concurrent.FutureTask<T> task;
+
+    private Spawned(java.util.concurrent.FutureTask<T> task) {
+      this.task = task;
+    }
+
+    /** Waits for the process and returns its result, rethrowing its failure. */
+    public T join() {
+      try {
+        return task.get();
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+        throw new IllegalStateException("interrupted while joining", e);
+      } catch (java.util.concurrent.ExecutionException e) {
+        var cause = e.getCause();
+        if (cause instanceof RuntimeException runtime) throw runtime;
+        if (cause instanceof Error error) throw error;
+        throw new IllegalStateException(cause);
+      }
+    }
+  }
+
+  /** Runs a process on its own (virtual) thread. */
+  public static <T> Spawned<T> spawn(java.util.concurrent.Callable<T> process) {
+    var task = new java.util.concurrent.FutureTask<>(process);
+    Thread.ofVirtual().start(task);
+    return new Spawned<>(task);
+  }
+
+  /** Runs a process that returns nothing on its own (virtual) thread. */
+  public static Spawned<Void> spawn(Runnable process) {
+    return spawn(
+        () -> {
+          process.run();
+          return null;
+        });
+  }
+
+  /** Runs processes at the same time and waits for all; rethrows the first failure. */
+  public static void par(Runnable... processes) {
+    var spawned = new ArrayList<Spawned<Void>>();
+    for (var process : processes) spawned.add(spawn(process));
+    RuntimeException failure = null;
+    for (var process : spawned) {
+      try {
+        process.join();
+      } catch (RuntimeException e) {
+        if (failure == null) failure = e;
+      }
+    }
+    if (failure != null) throw failure;
+  }
 }

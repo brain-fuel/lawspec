@@ -1,0 +1,8 @@
+expect: this end was already used
+@@ src/main/java/example/Sessions.java
+<<<<<<<
+    var afterB = afterA.send(b);
+=======
+    afterA.send(b);
+    var afterB = afterA.send(b);
+>>>>>>>
