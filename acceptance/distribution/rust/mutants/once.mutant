@@ -1,0 +1,7 @@
+@@ src/example/distribution.rs
+<<<<<<<
+    tally.add(value0).unwrap();
+    let total = tally.add(value0).unwrap();
+=======
+    let total = tally.add(value0).unwrap();
+>>>>>>>

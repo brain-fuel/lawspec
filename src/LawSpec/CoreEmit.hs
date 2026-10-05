@@ -29,6 +29,7 @@ import qualified LawSpec.GoDefinitions as GoDefinitions
 import qualified LawSpec.PythonData as PythonData
 import qualified LawSpec.PythonNativeBinding as PythonNativeBinding
 import qualified LawSpec.PythonDefinitions as PythonDefinitions
+import qualified LawSpec.RustDefinitions as RustDefinitions
 import qualified LawSpec.WebData as WebData
 import qualified LawSpec.WebNativeBinding as WebNativeBinding
 import qualified LawSpec.WebDefinitions as WebDefinitions
@@ -475,5 +476,6 @@ storedLength (Stored _ c _ _ canonical) = T.length c + maybe 0 T.length canonica
 remoteCalls :: String -> Plan -> [(C.Id, String)]
 remoteCalls target plan = case target of
   "python" -> PythonDefinitions.definitionCalls units
+  "rust" -> [(i, "crate::lawspec_definitions::" ++ n) | (i, n) <- RustDefinitions.definitionNames units]
   _ -> []
   where units = map plannedUnit (plannedUnits plan)

@@ -1,0 +1,19 @@
+@@ src/example/consistency.rs
+<<<<<<<
+pub fn hit(value0: Views) -> i64 {
+    let mut replicas = REPLICAS.lock().unwrap();
+    let mine = replicas[value0.id as usize].entry(std::thread::current().id()).or_insert(0);
+    *mine += 1;
+    *mine
+}
+=======
+pub fn hit(value0: Views) -> i64 {
+    let seen: i64 = REPLICAS.lock().unwrap()[value0.id as usize].values().sum();
+    std::thread::sleep(std::time::Duration::from_millis(1));
+    let mut replicas = REPLICAS.lock().unwrap();
+    let mine = &mut replicas[value0.id as usize];
+    mine.clear();
+    mine.insert(std::thread::current().id(), seen + 1);
+    seen + 1
+}
+>>>>>>>
