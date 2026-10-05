@@ -32,7 +32,10 @@ emitBindings minify plan testing files = do
   -- Method and constructor bindings call through Java, which can name a
   -- generic native class raw: one static method each, taking and returning
   -- Object.
-  calls <- forM (zip [0::Int ..] (bindingCalls plan)) $ \(index,(d,nativeCall)) -> do
+  -- An async method is a suspend function, which Kotlin calls itself.
+  let javaCalls = [c | c@(d,nativeCall) <- bindingCalls plan,
+        not (C.declarationAsync d && case nativeCall of MethodCall _ -> True; _ -> False)]
+  calls <- forM (zip [0::Int ..] javaCalls) $ \(index,(d,nativeCall)) -> do
     let (args,_) = C.functionType (C.declarationType d)
     casts <- mapM javaCast args
     let parameters = ["java.lang.Object value" ++ show i | i <- [0 .. length args - 1]]
@@ -89,9 +92,18 @@ emitBindings minify plan testing files = do
             pure $ if result == C.scalarType "Unit" then application <> D.hardline <> D.text "Unit" else
               D.text "val result = " <> application <> D.hardline <> returned
           _ -> do
-            helper <- maybe (Left "unplanned native call") Right
-              (lookup (C.declarationId d) [(identity,name) | (identity,name,_) <- calls])
-            let application = E.call ("lawspec.runtime.LawSpecNativeCalls." ++ helper) converted
+            application <- case ref of
+              MethodCall name | C.declarationAsync d -> case lookup True [(isHandle t,i) | (i,t) <- zip [0::Int ..] args] of
+                Just i -> do
+                  receiver <- javaCast (args !! i) >>= maybe (Left ("an async method binding needs a bound handle type: " ++
+                    C.idText (C.declarationId d))) Right
+                  pure (D.text "(" <> converted !! i <> D.text " as " <> D.text receiver <> D.text ")" <>
+                    E.call ("." ++ name) [v | (j,v) <- zip [0..] converted, j /= i])
+                Nothing -> Left ("method binding without a handle argument: " ++ C.idText (C.declarationId d))
+              _ -> do
+                helper <- maybe (Left "unplanned native call") Right
+                  (lookup (C.declarationId d) [(identity,name) | (identity,name,_) <- calls])
+                pure (E.call ("lawspec.runtime.LawSpecNativeCalls." ++ helper) converted)
             pure $ if result == C.scalarType "Unit" then application <> D.hardline <> D.text "Unit"
               -- A method's null is Nothing; anything else is Just.
               else case maybeElement of
@@ -99,7 +111,8 @@ emitBindings minify plan testing files = do
                   D.text "val result: " <> nativeResultType <> D.text " = if (found == null) LawSpecRuntime.Nothing() else " <>
                     D.text "LawSpecRuntime.Just(found as " <> element <> D.text ")" <> D.hardline <> returned
                 Nothing -> D.text "val result = " <> application <> D.text " as " <> nativeResultType <> D.hardline <> returned
-        pure (D.text "fun " <> E.call (C.declarationName d) [v <> D.text ": " <> t | (t,v) <- zip argTypes values] <>
+        -- An async adapter's bridge suspends on its native call; a constructor completes at once.
+        pure (D.text (if C.declarationAsync d then "suspend fun " else "fun ") <> E.call (C.declarationName d) [v <> D.text ": " <> t | (t,v) <- zip argTypes values] <>
           D.text ": " <> resultType <> D.text " " <> D.block 4
           (D.text "val symbols = mutableMapOf<String, Any>()" <> D.hardline <>
            D.text "return try " <> D.block 4 resultBody <> D.text " catch (error: RuntimeException) " <>

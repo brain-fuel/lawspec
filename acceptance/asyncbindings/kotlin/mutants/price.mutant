@@ -1,0 +1,6 @@
+@@ src/main/kotlin/warehouse/Stock.kt
+<<<<<<<
+        return price(sku)
+=======
+        return price(sku) + 1
+>>>>>>>

@@ -1,0 +1,6 @@
+@@ src/main/kotlin/warehouse/Stock.kt
+<<<<<<<
+                total += amount
+=======
+                total += if (amount < 50) amount else amount - 1
+>>>>>>>
