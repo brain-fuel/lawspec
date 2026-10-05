@@ -56,6 +56,7 @@ end
 | `command arguments` | Runs a command, ignoring the result. |
 | `send c value` | Sends a value, or a channel end the process holds, on `c`. |
 | `receive c x` | Receives from `c` into `x`. |
+| `receive c x or else ... end` | As above, but if the process at the other end has failed, the statements between `or else` and `end` run instead of the rest of this process. |
 | `par ... with ... end` | Runs its branches at the same time. |
 | `expect x = value` | `x` must equal the constant on every schedule. |
 
@@ -75,6 +76,39 @@ These checks run when the scenario compiles:
 - **A channel end has one owner.** Sending it gives it up, and using it
   afterwards is an error. Data is copied.
 
+## When a process fails
+
+A process can fail: a command raises, or it stops part way. The channel
+ends it still holds are then given up, including ends on their way to it,
+and LawSpec treats every channel as **affine** (usable at most once, with
+no promise that it finishes):
+
+- A `receive` from a process that has failed gets everything sent before
+  the failure, then fails instead of waiting. The receiving process fails
+  too, unless the receive has an `or else`.
+- A process whose par branch fails also fails.
+- `or else` runs instead of the rest of the process. It cannot use the
+  value that never arrived, and channel ends it leaves unfinished are
+  given up in turn.
+
+```lawspec fragment
+scenario `a receipt, or the balance if the teller fails` in account is
+  channel receipt :: Receipt
+  par
+    n <- deposit 5
+    send receipt n
+  with
+    receive receipt m or else
+      balance
+    end
+    expect m = 5
+  end
+end
+```
+
+So a failure can stop processes, but never leaves one waiting forever:
+deadlock freedom holds with failures too.
+
 A channel end only travels over a channel, which joins its sender and its
 receiver. So delegation keeps the processes a tree. Together these make a
 scenario deadlock-free and race-free by construction. This is the
@@ -89,6 +123,9 @@ On every target, a scenario runs 30 times by default:
 
 - Processes run on the target's own concurrency (threads, goroutines, async
   tasks or `forkIO`), with random yields around each call and send.
+- Every third run crashes one process of a `par` at a random point. In
+  those runs the processes that depend on it may fail, but none may block,
+  and what did run must still agree with the model.
 - Every model command's call and return are recorded.
 - The history must be linearizable against the model, and every `expect`
   must hold.
@@ -121,6 +158,11 @@ For `protocol Serve is receive Int32 . receive Int32 . send Int64 end`:
   unused.
 - Each runtime also has `spawn` (a process you can join) and `par` (run
   several at once and join them), on the target's own concurrency.
+- An end has `abandon()`, which gives up the conversation. A receive whose
+  other end was abandoned, or whose process failed, gets what was sent
+  before, then fails with `PeerFailed`. Catch it to handle the failure, as
+  `or else` does. Rust and Go also have `try_receive` / `TryReceive`, and
+  Haskell has `tryReceive`, which return the failure instead.
 - Channels go through a small send and receive interface, which a networked
   transport can implement as well.
 

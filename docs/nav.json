@@ -284,6 +284,10 @@
             "path": "reference/language/scenarios.md"
           },
           {
+            "title": "Actors and supervisors",
+            "path": "reference/language/actors.md"
+          },
+          {
             "title": "Imports and packages",
             "path": "reference/language/imports-and-packages.md"
           },

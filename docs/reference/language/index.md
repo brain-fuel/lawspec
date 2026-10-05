@@ -29,7 +29,10 @@ types, checked definitions, refinements and laws.
 - [Stateful models](models.md): commands checked against a reference model,
   in sequence and in parallel, collections and handles.
 - [Protocols and scenarios](scenarios.md): channels between processes, proved
-  free of deadlocks and races, and run on many schedules.
+  free of deadlocks and races, and run on many schedules, with failures.
+- [Actors and supervisors](actors.md): processes that own a state and handle
+  one message at a time, checked with crashes, and supervisors that restart
+  them.
 - [Imports and packages](imports-and-packages.md): sharing declarations between
   units and packages.
 - [Expressions and arithmetic](expressions-and-arithmetic.md): precedence,
