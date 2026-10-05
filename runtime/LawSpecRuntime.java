@@ -31,6 +31,66 @@ public final class LawSpecRuntime {
 
   public record Complex(double real, double imaginary) {}
 
+  /**
+   * A handle's logical data: the native object an adapter made, passed along unopened. Two handles
+   * are equal only when they hold the same object; they have no portable order.
+   */
+  public static final class Handle {
+    private final Object target;
+
+    public Handle(Object target) {
+      this.target = Objects.requireNonNull(target, "a handle cannot be null");
+    }
+
+    public Object target() {
+      return target;
+    }
+
+    @Override
+    public boolean equals(Object other) {
+      return other instanceof Handle handle && handle.target == target;
+    }
+
+    @Override
+    public int hashCode() {
+      return System.identityHashCode(target);
+    }
+
+    @Override
+    public String toString() {
+      return "Handle[" + target.getClass().getName() + "]";
+    }
+  }
+
+  /** A handle's logical value, carrying its native object. */
+  public static Value handle(String type, Object target) {
+    return new Value(type, new Handle(target));
+  }
+
+  /** The native object a handle's logical value carries. */
+  public static Object handleTarget(Value value) {
+    if (!(value.data() instanceof Handle handle))
+      throw new IllegalArgumentException("handle required: " + value.type());
+    return handle.target();
+  }
+
+  private static final Map<Object, Integer> HANDLE_LABELS = new java.util.IdentityHashMap<>();
+  private static final Map<String, Integer> HANDLE_COUNTS = new java.util.HashMap<>();
+
+  /** A handle's stable label, such as Jobs#1: its type's name, numbered by first appearance. */
+  private static String handleLabel(String type, Object target) {
+    int cut = type.lastIndexOf("::");
+    String name = cut < 0 ? type : type.substring(cut + 2);
+    synchronized (HANDLE_LABELS) {
+      Integer number = HANDLE_LABELS.get(target);
+      if (number == null) {
+        number = HANDLE_COUNTS.merge(name, 1, Integer::sum);
+        HANDLE_LABELS.put(target, number);
+      }
+      return name + "#" + number;
+    }
+  }
+
   public record SymbolValue(String description) {}
 
   public record Presence(boolean present, Value value) {}
@@ -581,6 +641,7 @@ public final class LawSpecRuntime {
   }
 
   public static boolean equal(Value a, Value b) {
+    if (a.data instanceof Handle || b.data instanceof Handle) return Objects.equals(a.data, b.data);
     if (sumType(a.type) || sumType(b.type)) {
       if (!sumType(a.type) || !sumType(b.type)) return false;
       var left = dataValue(a);
@@ -628,6 +689,10 @@ public final class LawSpecRuntime {
    * by constructor identity, then fields left to right.
    */
   public static int compareValues(Value a, Value b) {
+    if (a.data instanceof Handle x && b.data instanceof Handle y) {
+      if (x.target == y.target) return 0;
+      throw new IllegalArgumentException("handles have no portable order: " + a.type);
+    }
     if (a.data == null && b.data == null) return 0;
     if (a.data instanceof Boolean x && b.data instanceof Boolean y) return Boolean.compare(x, y);
     if (exactType(a.type) && exactType(b.type)) {
@@ -1932,6 +1997,7 @@ public final class LawSpecRuntime {
     Object data = v.data();
     if (data instanceof Boolean b) return b ? "true" : "false";
     if (data instanceof BigInteger n) return n.toString();
+    if (data instanceof Handle h) return handleLabel(v.type(), h.target());
     if (v.type().equals("Text") && data instanceof List<?> units) {
       var out = new StringBuilder("\"");
       for (Object unit : units) {

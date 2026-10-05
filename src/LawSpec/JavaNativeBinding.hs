@@ -17,16 +17,22 @@ import LawSpec.Scalar (nativeRepresentation)
 import qualified LawSpec.JavaDefinitions as Definitions
 import qualified LawSpec.CoreNativeScalarEmit as Scalar
 import LawSpec.RuntimeSources (runtimeSource)
+import LawSpec.Collections (collectionContainer)
+import LawSpec.Time (isDurationType)
 
 emitBindings :: Bool -> BindingPlan -> Plan -> [Artifact] -> Either String [Artifact]
 emitBindings minify plan testing files = do
   unless (bindingRustCrate plan == Nothing) (Left "rustCrate is only valid for Rust bindings")
-  unless (null mappings || not (null (bindingFunctions plan)) || not (null generators)) (Left "native types require function or generator bindings")
+  unless (null mappings || not (null (bindingFunctions plan)) || not (null (bindingCalls plan)) || not (null generators))
+    (Left "native types require function or generator bindings")
+  mapM_ J.identifier [name | (_,MethodCall name) <- bindingCalls plan]
   mapM_ (mapM_ J.identifier . referenceParts) ([ref | (_,ref) <- bindingFunctions plan] ++
+    [r | (_,ConstructorCall r) <- bindingCalls plan] ++
     [resolvedNativeType m | m <- mappings] ++ [resolvedNativeConstructor c | m <- mappings,c <- resolvedConstructors m] ++
     [ref | m <- mappings, Just hook <- [resolvedCodec m], ref <- [codecToNative hook, codecFromNative hook]])
   mapM_ (J.identifier . snd) [f | m <- mappings,c <- resolvedConstructors m,f <- resolvedFields c]
-  methods <- mapM codecMethod (zip [0::Int ..] declarations)
+  -- Built-in collections and durations use the schema's own codecs.
+  methods <- mapM codecMethod [(i,d) | (i,d) <- zip [0::Int ..] declarations, builtin (C.idText (C.dataId d)) == Nothing]
   let support = Artifact "src/main/java/lawspec/runtime/LawSpecNativeCodecs.java"
         (render (D.text "package lawspec.runtime;" <> D.hardline <> D.hardline <>
           D.text "public final class LawSpecNativeCodecs " <> D.block 2
@@ -36,7 +42,8 @@ emitBindings minify plan testing files = do
     let unit = plannedUnit p
         definitions = map (C.declarationId . C.definitionDeclaration) (C.unitDefinitions unit)
         adapters = [d | d <- C.unitDeclarations unit,C.declarationId d `notElem` definitions]
-        bound d = lookup (C.declarationId d) [(C.declarationId a,r) | (a,r) <- bindingFunctions plan]
+        bound d = lookup (C.declarationId d) ([(C.declarationId a,StaticCall r) | (a,r) <- bindingFunctions plan] ++
+          [(C.declarationId a,c) | (a,c) <- bindingCalls plan])
     mapM_ J.identifier (split '.' (unitName unit))
     if not (any (maybe False (const True) . bound) adapters) then pure [] else do
       unless (all (maybe False (const True) . bound) adapters) (Left "a Java bound unit must map every adapter")
@@ -49,12 +56,36 @@ emitBindings minify plan testing files = do
         native <- mapM (codec [] (D.text "_schema") (D.text (show bits))) args
         canonicalResult <- J.javaCodecDocWithContext (D.text "symbols") declarations bits result
         nativeResult <- codec [] (D.text "_schema") (D.text (show bits)) result
+        nativeResultType <- nativeType [] result
         let values = [D.text ("value" ++ show i) | i <- [0::Int ..length args-1]]
             converted = [method n "decode" [method c "encode" [v]] | (n,c,v) <- zip3 native canonical values]
-            application = call (reference ref) converted
-            resultBody = if result == C.scalarType "Unit" then application <> D.text ";" else
-              D.text "var result = " <> application <> D.text ";" <> D.hardline <>
-              D.text "return " <> method canonicalResult "decode" [method nativeResult "encode" [D.text "result"]] <> D.text ";"
+            handleArgument = lookup True [(isHandle t,i) | (i,t) <- zip [0::Int ..] args]
+        application <- case ref of
+          StaticCall r -> pure (call (reference r) converted)
+          -- A method of the first handle argument, given the rest.
+          MethodCall name -> case handleArgument of
+            Just i -> do
+              receiverType <- nativeType [] (args !! i)
+              pure (D.text "((" <> receiverType <> D.text ") " <> converted !! i <> D.text ")" <>
+                call ("." ++ name) [v | (j,v) <- zip [0..] converted, j /= i])
+            Nothing -> Left ("method binding without a handle argument: " ++ C.idText (C.declarationId d))
+          ConstructorCall r -> pure (call ("new " ++ reference r)
+            [v | (t,v) <- zip args converted, t /= C.scalarType "Unit"])
+        let static = case ref of StaticCall _ -> True; _ -> False
+            returned = D.text "return " <> method canonicalResult "decode" [method nativeResult "encode" [D.text "result"]] <> D.text ";"
+        maybeElement <- case result of
+          C.Constructor "Maybe" [C.TypeArgument element] | not static -> Just <$> nativeType [] element
+          _ -> pure Nothing
+        let resultBody
+              | result == C.scalarType "Unit" = application <> D.text ";"
+              | static = D.text "var result = " <> application <> D.text ";" <> D.hardline <> returned
+              -- A method's null is Nothing; anything else is Just.
+              | Just element <- maybeElement =
+                  D.text "java.lang.Object found = " <> application <> D.text ";" <> D.hardline <>
+                  nativeResultType <> D.text " result = found == null" <> D.nest 4 (D.hardline <>
+                    D.text "? new lawspec.runtime.LawSpecRuntime.Nothing<>()" <> D.hardline <>
+                    D.text ": new lawspec.runtime.LawSpecRuntime.Just<>((" <> element <> D.text ") found);") <> D.hardline <> returned
+              | otherwise = nativeResultType <> D.text " result = (" <> nativeResultType <> D.text ") " <> application <> D.text ";" <> D.hardline <> returned
         pure (D.text "public static " <> (if result == C.scalarType "Unit" then D.text "void" else resultType) <>
           D.text " " <> call (C.declarationName d) [t <> D.text " " <> v | (t,v) <- zip argTypes values] <>
           D.text " " <> D.block 2 (D.text "var symbols = new java.util.HashMap<String, Object>();" <> D.hardline <>
@@ -148,15 +179,28 @@ emitBindings minify plan testing files = do
     applied name args = D.group (D.text (name ++ "<") <>
       D.nest 8 (D.softbreak <> D.group (D.commaSep args)) <> D.text ">")
     mapping d = find ((== C.dataId d) . C.dataId . resolvedDeclaration) mappings
-    nativeName d = maybe (J.javaDataName declarations (C.dataId d)) (Right . reference . resolvedNativeType) (mapping d)
+    nativeName d = maybe (if C.dataHandle d then Right "java.lang.Object" else J.javaDataName declarations (C.dataId d))
+      (Right . reference . resolvedNativeType) (mapping d)
+    isHandle (C.Constructor name []) = any (\d -> C.dataHandle d && C.dataId d == C.Id name) declarations
+    isHandle _ = False
     variable ps v = maybe (Left "unbound native codec parameter") Right (lookup v ps)
     argument f (C.TypeArgument ty) = f ty
     argument _ _ = Left "indexed native codec arguments are unsupported"
     ref ps (C.TypeVariable v) = (\(_,c) -> D.text (c ++ ".type()")) <$> variable ps v
     ref ps (C.Constructor name args) = call "new LawSpecSchema.Named" . (E.quoted name :) <$> mapM (argument (ref ps)) args
     ref _ _ = Left "function cannot cross native codec"
+    builtin name
+      | isDurationType name = Just "Duration"
+      | otherwise = collectionContainer name
     nativeType ps ty = case ty of
       C.TypeVariable v -> D.text . fst <$> variable ps v
+      C.Constructor name args | Just short <- builtin name -> do
+        children <- mapM (argument (nativeType ps)) args
+        pure $ case short of
+          "Duration" -> D.text "java.time.Duration"
+          "Set" -> applied "java.util.Set" children
+          "KeyVal" -> applied "java.util.Map" children
+          _ -> applied "java.util.ArrayDeque" children
       C.Constructor name args -> do
         children <- mapM (argument (nativeType ps)) args
         case find ((== C.Id name) . C.dataId) declarations of
@@ -179,6 +223,7 @@ emitBindings minify plan testing files = do
             let relative = drop (length prefix) (artifactPath file)]
           application = [classPath (referenceParts ref) | ref <-
             map resolvedNativeType mappings ++ map resolvedNativeConstructor (concatMap resolvedConstructors mappings)] ++
+            [classPath (referenceParts r) | (_,ConstructorCall r) <- bindingCalls plan] ++
             [classPath (init parts) | ref <- map snd (bindingFunctions plan) ++
               [ref | mapping <- mappings, Just hook <- [resolvedCodec mapping], ref <- [codecToNative hook,codecFromNative hook]],
               let parts = referenceParts ref, length parts >= 2]
@@ -223,6 +268,13 @@ emitBindings minify plan testing files = do
               D.joinWith (D.hardline <> D.hardline) bodies) <> D.hardline)) "user" "test")
     codec ps schema width ty = case ty of
       C.TypeVariable v -> D.text . snd <$> variable ps v
+      C.Constructor name args | Just short <- builtin name -> do
+        children <- mapM (argument (codec ps schema width)) args
+        pure $ case short of
+          "Duration" -> method schema "duration" [width,D.text "symbols"]
+          "Set" -> method schema "set" (children ++ [width,D.text "symbols"])
+          "KeyVal" -> method schema "keyVal" (children ++ [width,D.text "symbols"])
+          _ -> method schema "sequence" (D.text (show short) : children ++ [width,D.text "symbols"])
       C.Constructor name args -> do
         children <- mapM (argument (codec ps schema width)) args
         case lookup (C.Id name) [(C.dataId d,i) | (i,d) <- zip [0::Int ..] declarations] of
@@ -236,6 +288,17 @@ emitBindings minify plan testing files = do
             native <- nativeType ps ty
             pure (method schema "scalar" [E.quoted name,width,native <> D.text ".class"])
       _ -> Left "function cannot cross native codec"
+    -- A handle's native codec passes its native object through, both ways.
+    codecMethod (i,d) | C.dataHandle d = do
+      native <- nativeName d
+      pure (D.text "public static " <> applied "LawSpecSchema.Codec" [D.text native] <> D.text " " <>
+        call ("type" ++ show i) [D.text "LawSpecSchema schema",D.text "int bits",D.text "java.util.Map<String, Object> symbols"] <>
+        D.text " " <> D.block 2 (D.text ("var type = new LawSpecSchema.Named(" ++ D.render D.Compact (E.quoted (C.idText (C.dataId d))) ++ ");") <> D.hardline <>
+          D.text "return schema.codec(" <> D.nest 4
+            (D.hardline <> D.joinWith (D.text "," <> D.hardline)
+              [D.text "type",D.text "bits",D.text "symbols",
+               D.text "value -> LawSpecRuntime.handle(LawSpecSchema.key(type), value)",
+               D.text ("value -> (" ++ native ++ ") LawSpecRuntime.handleTarget(value)")]) <> D.text ");"))
     codecMethod (i,d) = do
       let ps = zip (C.dataParameters d) [("T" ++ show n,"type" ++ show n) | n <- [0::Int ..]]
           args = [D.text t | (_,(t,_)) <- ps]
