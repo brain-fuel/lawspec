@@ -18,6 +18,7 @@ import qualified CoreSpec
 import qualified IndexedSpec
 import qualified DomainModelSpec
 import qualified StatefulModelSpec
+import qualified ScenarioSpec
 import qualified TargetNamesSpec
 import qualified TimeSpec
 import qualified ImportSpec
@@ -53,6 +54,7 @@ main = hspec $ do
   IndexedSpec.spec
   DomainModelSpec.spec
   StatefulModelSpec.spec
+  ScenarioSpec.spec
   TargetNamesSpec.spec
   TimeSpec.spec
   ImportSpec.spec

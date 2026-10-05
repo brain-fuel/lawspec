@@ -279,6 +279,7 @@ library
       LawSpec.RustNativeGenerators
       LawSpec.Scaffold
       LawSpec.Scalar
+      LawSpec.Scenario
       LawSpec.SpecializeDefinitions
       LawSpec.StatefulModel
       LawSpec.TargetNames
@@ -442,6 +443,7 @@ test-suite lawspec-test
       PayloadSpec
       RailwaySpec
       RefinementProofSpec
+      ScenarioSpec
       SourceDataSpec
       StatefulModelSpec
       StructuralSpec

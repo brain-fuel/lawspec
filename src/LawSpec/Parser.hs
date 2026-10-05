@@ -10,6 +10,7 @@ import LawSpec.Indexed
 import LawSpec.Railway (railwayUnit)
 import LawSpec.DomainModel
 import LawSpec.StatefulModel (ModelDeclaration(..), ModelCommand(..), elaborateModels)
+import LawSpec.Scenario (Protocol(..), Scenario(..), Statement(..), Step(..), Argument(..), checkScenarios)
 import LawSpec.Scalar
 import Control.Monad.Combinators.Expr
 import Control.Monad (void, unless, when, forM_)
@@ -253,6 +254,77 @@ workflowP = do
 -- model name :: [shared] S by M is ... end: commands paired with reference
 -- definitions over the model state M. Each line is a command, `start`,
 -- `abstract` or `invariant`; `~` and `by` both read "modelled by".
+-- protocol Name is (send T | receive T | ! T | ? T)* end: what one end of a
+-- channel sends and receives, in order. `.` may separate steps.
+protocolP :: P Protocol
+protocolP = do
+  ((name, steps), range) <- withSpan $ do
+    keyword "protocol"
+    name <- ident
+    keyword "is"
+    steps <- many (step <* optional (symbol "."))
+    keyword "end"
+    pure (name, steps)
+  pure (Protocol name steps range)
+  where
+    step = (Send <$> ((keyword "send" <|> void (symbol "!")) *> typeAtom))
+      <|> (Receive <$> ((keyword "receive" <|> void (symbol "?")) *> typeAtom))
+
+-- scenario `name` in model is (channel c :: Protocol)* statement* end. A
+-- command's arguments are on its own line.
+scenarioP :: P Scenario
+scenarioP = do
+  ((name, model, channels, body), range) <- withSpan $ do
+    keyword "scenario"
+    name <- quoted
+    keyword "in"
+    model <- ident
+    keyword "is"
+    channels <- many $ do
+      ((c, p), at) <- withSpan ((,) <$> (keyword "channel" *> ident) <*> (symbol "::" *> ident))
+      pure (c, p, at)
+    body <- statements
+    keyword "end"
+    pure (name, model, channels, body)
+  pure (Scenario name model channels body range)
+  where
+    statements = many statement
+    statement = choice [parallel, sending, receiving, expecting, try binding, calling]
+    parallel = do
+      ((branches), at) <- withSpan $ do
+        keyword "par"
+        first <- statements
+        rest <- many (keyword "with" *> statements)
+        keyword "end"
+        pure (first : rest)
+      pure (Par branches at)
+    sending = do
+      ((c, v), at) <- withSpan ((,) <$> (keyword "send" *> ident) <*> argument)
+      pure (SendTo c v at)
+    receiving = do
+      ((c, x), at) <- withSpan ((,) <$> (keyword "receive" *> ident) <*> ident)
+      pure (ReceiveFrom c x at)
+    expecting = do
+      ((x, v), at) <- withSpan ((,) <$> (keyword "expect" *> ident) <*> (symbol "=" *> constant))
+      pure (Expect x v at)
+    binding = do
+      ((x, (command, args)), at) <- withSpan ((,) <$> (ident <* symbol "<-") <*> invocation)
+      pure (Bind x command args at)
+    calling = do
+      ((command, args), at) <- withSpan invocation
+      pure (Call command args at)
+    invocation = do
+      line <- sourceLine <$> getSourcePos
+      command <- ident
+      args <- many (try (do
+        here <- sourceLine <$> getSourcePos
+        unless (here == line) (fail "a command's arguments are on its line")
+        argument))
+      pure (command, args)
+    argument = (Given <$> (char '~' *> ident)) <|> (Constant <$> constant) <|> (Held <$> ident)
+    constant = parens expr <|> try numeric <|> (StringLit <$> str) <|> (BoolLit <$> boolP)
+      <|> ((\n -> ConstructLit n []) <$> try (ident >>= \n -> upper n >> pure n))
+
 -- A name that starts with an uppercase letter, as a type's does.
 upper :: String -> P ()
 upper n = unless (maybe False (isUpper . fst) (uncons n)) (fail "expected a type name")
@@ -563,7 +635,7 @@ functionDefinitionP = do
 
 data UnitMember = DataMember DataTypeDeclaration | FamilyMember IndexedFamily | RefinementMember Refinement
   | WrapperMember Wrapper | WorkflowMember Workflow | ModelMember ModelDeclaration
-  | HandleMember (String, Span)
+  | HandleMember (String, Span) | ProtocolMember Protocol | ScenarioMember Scenario
   | SignatureMember ((String, Type), Span) | AsyncMember ((String, Type), Span) | LawMember Law
   | DefinitionMember FunctionDefinition
 
@@ -590,12 +662,14 @@ preambleP = do
   imports <- many (try importP)
   pure (n, imports)
 
-unitP :: P (Unit, [Import], [IndexedFamily], [Wrapper], [Workflow], [ModelDeclaration])
+unitP :: P (Unit, [Import], [IndexedFamily], [Wrapper], [Workflow], [ModelDeclaration], ([Protocol], [Scenario]))
 unitP = do
   (n, imports) <- preambleP
   members <- many ((either FamilyMember DataMember <$> declarationP)
     <|> (WrapperMember <$> wrapperP)
     <|> (WorkflowMember <$> workflowP)
+    <|> (ProtocolMember <$> (try (lookAhead (keyword "protocol" *> ident >>= upper)) *> protocolP))
+    <|> (ScenarioMember <$> (try (lookAhead (keyword "scenario" *> quoted)) *> scenarioP))
     -- handle Name: a type whose values only adapters create.
     <|> (HandleMember <$> (try (lookAhead (keyword "handle" *> ident >>= upper)) *> withSpan (keyword "handle" *> ident)))
     -- `model` begins a model only before a name; it may name a function.
@@ -616,7 +690,8 @@ unitP = do
     [r | RefinementMember r <- members] [] [(name,range) | ((name,_),range) <- signatures]
     ([d | DataMember d <- members] ++ [DataTypeDeclaration name [] [] range Nothing | HandleMember (name, range) <- members])
     definitions [name | AsyncMember ((name, _), _) <- members] [] [] [] [name | HandleMember (name, _) <- members], imports, [f | FamilyMember f <- members],
-    [w | WrapperMember w <- members], [w | WorkflowMember w <- members], [m | ModelMember m <- members])
+    [w | WrapperMember w <- members], [w | WorkflowMember w <- members], [m | ModelMember m <- members],
+    ([p | ProtocolMember p <- members], [s | ScenarioMember s <- members]))
 
 parseSource :: Source -> Either [Diagnostic] Unit
 parseSource source = fst . fst <$> parseWith M.empty [] source
@@ -699,12 +774,14 @@ sourceExports extra (Source _ s) =
 parseWith :: M.Map String Header -> [IndexedFamily] -> Source -> Either [Diagnostic] ((Unit, [Import]), [IndexedFamily])
 parseWith extra importedFamilies (Source p s) = case runReader (runParserT unitP p s) (literalHeaders s (M.union (headers s) extra)) of
   Left e -> Left [Diagnostic "parse" (errorBundlePretty e) Nothing]
-  Right (u, imports, families, wrappers, workflows, models) -> do
+  Right (u, imports, families, wrappers, workflows, models, (protocols, scenarios)) -> do
     domained <- either (\(at, message) -> Left [Diagnostic "domain" message at]) Right
       (elaborateDomain wrappers workflows (railwayUnit u))
     -- Models read typestate from flow parameters, so they come first.
     modeled <- either (\(at, message) -> Left [Diagnostic "model" message (spanStart <$> at)]) Right
       (elaborateModels models domained)
+    either (\(at, message) -> Left [Diagnostic "scenario" message (spanStart <$> at)]) Right
+      (checkScenarios protocols scenarios modeled)
     (families', flowed) <- either (\(at, message) -> Left [Diagnostic "flow" message at]) Right
       (desugarFlows importedFamilies families modeled)
     elaborated <- either (\message -> Left [Diagnostic "indexed" (p ++ ": " ++ message) Nothing]) Right
