@@ -31,8 +31,9 @@ emit _ _ bits datas units = do
     else do
       -- A protocol whose steps have wire descriptors can also run between
       -- nodes: listen and dial. A step sending another protocol's end
-      -- carries a relay's address ((end)), so that protocol must run
-      -- between nodes too.
+      -- ((end)) carries the address the receiver takes the end over from
+      -- (or a relay's, for a local end), so that protocol must run between
+      -- nodes too.
       let wired (table, acc) (m, s) = case foldM step (table, []) (C.sessionSteps s) of
             Right (table', ds) | not (null ds) -> (table', acc ++ [(m, ds)])
             _ -> (table, acc)
@@ -101,7 +102,7 @@ protocolModule datas modules wire name session = do
              , ""
              , "    /// The first end of a channel named name on node, which another node"
              , "    /// dials at <node address>/name. An end sent over it to another node"
-             , "    /// is relayed by this node."
+             , "    /// moves there (a local end stays and is relayed by this node)."
              , "    pub fn listen(node: &ls::net::Node, name: &str) -> ls::Result<first::Start> {"
              , "        let (steps, codecs) = wire();"
              , "        let end = node.listen(name, steps, super::wire_types(), std::time::Duration::from_secs(5))?;"
