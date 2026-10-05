@@ -13,6 +13,7 @@ import qualified LawSpec.Actors.Python as Python
 import qualified LawSpec.Actors.Go as Go
 import qualified LawSpec.Actors.Web as Web
 import qualified LawSpec.Actors.Jvm as Jvm
+import qualified LawSpec.Actors.Rust as Rust
 
 actorArtifacts :: Bool -> String -> Plan -> Either [Diagnostic] [Artifact]
 actorArtifacts minify target plan = case concatMap actorsOf units of
@@ -29,5 +30,6 @@ actorArtifacts minify target plan = case concatMap actorsOf units of
       "typescript" -> Web.emit t
       "java" -> Jvm.emit t
       "kotlin" -> Jvm.emit t
+      "rust" -> Rust.emit t
       _ -> \_ _ _ _ -> Right []
 

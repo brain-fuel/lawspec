@@ -1,0 +1,6 @@
+@@ src/example/actors.rs
+<<<<<<<
+    let after = value0.balance + i64::from(value1);
+=======
+    let after = value0.balance + i64::from(value1) + if value1 == 7 { 1 } else { 0 };
+>>>>>>>

@@ -3132,6 +3132,36 @@ struct Machine<'a> {
     commands: Vec<ModelCommand>,
     invariants: Vec<(String, ModelCallback)>,
     per_key: bool,
+    // An actor model: the start's state runs inside an actor, and each
+    // command's handler bridge runs inside it in turn.
+    actor: bool,
+}
+
+// Calls a command: on an actor, its handler bridge (the state first,
+// returning Pair reply state, or the state alone for a Unit reply) runs in
+// the actor's turn, on this thread, so it can use this thread's Context.
+fn call_command(actor: bool, run: ModelCallback, unit: bool, ctx: &mut Context, mut full: Vec<Value>) -> Result<Value> {
+    if !actor {
+        return run(ctx, full);
+    }
+    let Some(Value::Handle(handle)) = full.first().cloned() else {
+        return Err("an actor's command was not given its actor".into());
+    };
+    handle.native::<actors::Actor<Value>>()?.call(|state| {
+        full[0] = state;
+        let out = run(ctx, full)?;
+        if unit {
+            return Ok((Value::Unit, out));
+        }
+        match out {
+            Value::Data(_, fields) if fields.len() == 2 => {
+                let mut fields = fields.into_iter();
+                let reply = fields.next().unwrap();
+                Ok((reply, fields.next().unwrap()))
+            }
+            other => Err(format!("a handler returned {}, not a reply and a state", render(&other))),
+        }
+    })
 }
 
 impl<'a> Machine<'a> {
@@ -3161,6 +3191,26 @@ impl<'a> Machine<'a> {
                 .collect(),
             invariants: kinds.iter().map(Sexp::name).zip(model.invariants.iter().copied()).collect(),
             per_key: forms.iter().any(|f| f.kind() == "perkey" && f.items().get(1).map(Sexp::name).as_deref() == Some("true")),
+            actor: forms.iter().any(|f| f.kind() == "actor" && f.items().get(1).map(Sexp::name).as_deref() == Some("true")),
+        }
+    }
+
+    /// Starts the system: an actor model's start state runs in a new actor.
+    fn start_system(&self, ctx: &mut Context, args: Vec<Value>) -> Result<Value> {
+        let state = (self.model.start[0])(ctx, args)?;
+        Ok(if self.actor { Value::Handle(Handle::new(actors::Actor::new(state))) } else { state })
+    }
+
+    fn run_command(&self, command: &ModelCommand, ctx: &mut Context, full: Vec<Value>) -> Result<Value> {
+        call_command(self.actor, command.run, command.unit, ctx, full)
+    }
+
+    /// The system state the abstraction and invariants see: an actor's own
+    /// state, read between messages.
+    fn system_state(&self, state: &Value) -> Result<Value> {
+        match (self.actor, state) {
+            (true, Value::Handle(handle)) => handle.native::<actors::Actor<Value>>()?.state(),
+            _ => Ok(state.clone()),
         }
     }
 
@@ -3227,7 +3277,7 @@ impl<'a> Machine<'a> {
 
     fn execute_steps(&self, run: &ModelRun, step: &mut usize) -> std::result::Result<Option<String>, ModelFault> {
         let mut ctx = Context::testing();
-        let mut state = (self.model.start[0])(&mut ctx, run.0.clone()).map_err(ModelFault::Error)?;
+        let mut state = self.start_system(&mut ctx, run.0.clone()).map_err(ModelFault::Error)?;
         let mut expected = (self.model.start[1])(&mut ctx, run.0.clone()).map_err(ModelFault::Error)?;
         if let Some(failure) = self.check_state(&mut ctx, &state, &expected)? {
             return Ok(Some(failure));
@@ -3237,7 +3287,7 @@ impl<'a> Machine<'a> {
             let command = &self.commands[*index];
             let mut full = args.clone();
             full.insert(command.state, state.clone());
-            let out = (command.run)(&mut ctx, full).map_err(ModelFault::Error)?;
+            let out = self.run_command(command, &mut ctx, full).map_err(ModelFault::Error)?;
             let result = if self.shared {
                 out
             } else {
@@ -3271,6 +3321,7 @@ impl<'a> Machine<'a> {
         state: &Value,
         expected: &Value,
     ) -> std::result::Result<Option<String>, ModelFault> {
+        let state = &self.system_state(state).map_err(ModelFault::Error)?;
         if let Some(abstraction) = self.model.abstract_state {
             let actual = abstraction(ctx, vec![state.clone()]).map_err(ModelFault::Error)?;
             if compare_values(&actual, expected).map_err(ModelFault::Error)? != std::cmp::Ordering::Equal {
@@ -3563,7 +3614,7 @@ impl<'a> Machine<'a> {
         };
         // What each thread needs: the call, the command's name and the full
         // arguments, all Send.
-        let calls: Vec<Vec<(ModelCallback, String, Vec<Value>)>> = branches
+        let calls: Vec<Vec<(ModelCallback, bool, String, Vec<Value>)>> = branches
             .iter()
             .map(|branch| {
                 branch
@@ -3572,13 +3623,14 @@ impl<'a> Machine<'a> {
                         let command = &self.commands[*index];
                         let mut full = args.clone();
                         full.insert(command.state, state.clone());
-                        (command.run, command.name.clone(), full)
+                        (command.run, command.unit, command.name.clone(), full)
                     })
                     .collect()
             })
             .collect();
         let clock = std::sync::atomic::AtomicU64::new(0);
         let errors = std::sync::Mutex::new(Vec::<String>::new());
+        let actor = self.actor;
         let tick = || clock.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
         let history: Vec<Vec<ParallelCall>> = std::thread::scope(|scope| {
             let handles: Vec<_> = calls
@@ -3590,10 +3642,10 @@ impl<'a> Machine<'a> {
                         let mut own = Context::testing();
                         let mut random = SplitMix64::new(shake ^ ((i as u64 + 1).wrapping_mul(0x9E3779B97F4A7C15)));
                         let mut out = Vec::new();
-                        for (run, name, full) in branch {
+                        for (run, unit, name, full) in branch {
                             perturb(&mut random);
                             let called = tick();
-                            let result = match run(&mut own, full) {
+                            let result = match call_command(actor, run, unit, &mut own, full) {
                                 Ok(result) => result,
                                 Err(e) => {
                                     errors.lock().unwrap_or_else(|p| p.into_inner()).push(format!("{name} raised error: {e}"));
@@ -3613,6 +3665,10 @@ impl<'a> Machine<'a> {
             return Some(error);
         }
         let expected = self.simulate_state(&mut ctx, prefix).expect("the model allows the prefix");
+        let state = match self.system_state(&state) {
+            Ok(state) => state,
+            Err(e) => return Some(format!("raised error: {e}")),
+        };
         let fin = match self.model.abstract_state {
             Some(abstraction) => match abstraction(&mut ctx, vec![state.clone()]) {
                 Ok(v) => Some(v),
@@ -3639,12 +3695,12 @@ impl<'a> Machine<'a> {
 
     // Starts the system and runs the prefix's commands, giving the state.
     fn run_prefix(&self, ctx: &mut Context, prefix: &ModelRun) -> Result<Value> {
-        let state = (self.model.start[0])(ctx, prefix.0.clone())?;
+        let state = self.start_system(ctx, prefix.0.clone())?;
         for (index, args) in &prefix.1 {
             let command = &self.commands[*index];
             let mut full = args.clone();
             full.insert(command.state, state.clone());
-            (command.run)(ctx, full)?;
+            self.run_command(command, ctx, full)?;
         }
         Ok(state)
     }
@@ -4010,7 +4066,7 @@ impl<'m> ScenarioRun<'m> {
                     full.insert(command.state, self.state.clone());
                     perturb(random);
                     let called = self.tick();
-                    let result = match (command.run)(&mut own, full) {
+                    let result = match self.machine.run_command(command, &mut own, full) {
                         Ok(result) => result,
                         Err(e) => return self.fail(format!("{} raised error: {e}", command.name)),
                     };
@@ -4132,7 +4188,7 @@ fn run_scenario(machine: &Machine, spec: &str, shake: u64) -> (String, Option<St
     let body = forms.iter().find(|f| f.kind() == "process").map(|f| &f.items()[1..]).unwrap_or(&[]);
     let mut symbols = Context::testing();
     let start_args: Vec<Value> = machine.start_arguments.iter().map(|d| machine.values.minimal(d)).collect();
-    let state = match (machine.model.start[0])(&mut symbols, start_args.clone()) {
+    let state = match machine.start_system(&mut symbols, start_args.clone()) {
         Ok(state) => state,
         Err(e) => return (title, Some(format!("the start raised error: {e}"))),
     };
@@ -4157,6 +4213,10 @@ fn run_scenario(machine: &Machine, spec: &str, shake: u64) -> (String, Option<St
         return (title, Some(failure));
     }
     let history = run.history.into_inner().unwrap_or_else(|p| p.into_inner());
+    let state = match machine.system_state(&state) {
+        Ok(state) => state,
+        Err(e) => return (title, Some(format!("raised error: {e}"))),
+    };
     let fin = match machine.model.abstract_state {
         Some(abstraction) => match abstraction(&mut symbols, vec![state.clone()]) {
             Ok(v) => Some(v),
@@ -5329,6 +5389,303 @@ pub mod sessions {
             let right = right.join().unwrap_or_else(|panic| std::panic::resume_unwind(panic));
             (left, right)
         })
+    }
+}
+
+// Actors. An actor owns a state and handles one message at a time, in the
+// order they arrive. It is not a thread: each message takes a ticket when it
+// is sent, and runs when the actor's turn reaches it. A call runs its handler
+// on the caller's own thread once its turn comes, so it may borrow from the
+// caller (the model runner's Context, say) and costs no thread handoff; a
+// tell is queued, and a worker thread runs while there are queued tells and
+// stops when there are none, so an idle actor costs only its state.
+pub mod actors {
+    use std::collections::VecDeque;
+    use std::sync::{Arc, Condvar, Mutex, MutexGuard};
+
+    type Tell<S> = Box<dyn FnOnce(S) -> super::Result<S> + Send>;
+
+    /// An actor over a state S. Clones share the actor.
+    pub struct Actor<S> {
+        inner: Arc<Inner<S>>,
+    }
+
+    impl<S> Clone for Actor<S> {
+        fn clone(&self) -> Self {
+            Actor { inner: self.inner.clone() }
+        }
+    }
+
+    struct Inner<S> {
+        lock: Mutex<Turns<S>>,
+        changed: Condvar,
+    }
+
+    struct Turns<S> {
+        // The state between messages; None while a handler holds it, or once
+        // a handler has failed.
+        state: Option<S>,
+        next_ticket: u64,
+        serving: u64,
+        tells: VecDeque<(u64, Tell<S>)>,
+        draining: bool,
+        stopped: bool,
+        failed: Option<String>,
+    }
+
+    impl<S: Send + 'static> Actor<S> {
+        /// Starts an actor owning `state`.
+        pub fn new(state: S) -> Self {
+            Actor {
+                inner: Arc::new(Inner {
+                    lock: Mutex::new(Turns {
+                        state: Some(state),
+                        next_ticket: 0,
+                        serving: 0,
+                        tells: VecDeque::new(),
+                        draining: false,
+                        stopped: false,
+                        failed: None,
+                    }),
+                    changed: Condvar::new(),
+                }),
+            }
+        }
+
+        fn turns(&self) -> MutexGuard<'_, Turns<S>> {
+            self.inner.lock.lock().unwrap_or_else(|e| e.into_inner())
+        }
+
+        fn ticket(&self) -> super::Result<u64> {
+            let mut turns = self.turns();
+            if turns.stopped {
+                return Err("the actor has stopped".into());
+            }
+            let ticket = turns.next_ticket;
+            turns.next_ticket += 1;
+            Ok(ticket)
+        }
+
+        /// Waits for `ticket`'s turn and takes the state (None when a
+        /// handler failed).
+        fn take(&self, ticket: u64) -> std::result::Result<S, String> {
+            let mut turns = self.turns();
+            while turns.serving != ticket {
+                turns = self.inner.changed.wait(turns).unwrap_or_else(|e| e.into_inner());
+            }
+            match turns.state.take() {
+                Some(state) => Ok(state),
+                None => Err(format!("the actor failed: {}", turns.failed.clone().unwrap_or_default())),
+            }
+        }
+
+        /// Ends the current turn, leaving `state` (or recording a failure).
+        fn finish(&self, outcome: std::result::Result<S, String>) {
+            let mut turns = self.turns();
+            match outcome {
+                Ok(state) => turns.state = Some(state),
+                Err(e) => {
+                    if turns.failed.is_none() {
+                        turns.failed = Some(e);
+                    }
+                }
+            }
+            turns.serving += 1;
+            self.inner.changed.notify_all();
+        }
+
+        /// Runs handler(state) -> (reply, next state) in turn and returns the
+        /// reply. A handler that fails (or panics) fails the actor: later
+        /// messages report the failure.
+        pub fn call<R>(&self, handler: impl FnOnce(S) -> super::Result<(R, S)>) -> super::Result<R> {
+            let ticket = self.ticket()?;
+            let state = match self.take(ticket) {
+                Ok(state) => state,
+                Err(e) => {
+                    self.finish(Err(e.clone()));
+                    return Err(e);
+                }
+            };
+            // A panicking handler still ends its turn.
+            struct Guard<'a, S: Send + 'static>(&'a Actor<S>, bool);
+            impl<S: Send + 'static> Drop for Guard<'_, S> {
+                fn drop(&mut self) {
+                    if !self.1 {
+                        self.0.finish(Err("a handler panicked".into()));
+                    }
+                }
+            }
+            let mut guard = Guard(self, false);
+            let outcome = handler(state);
+            guard.1 = true;
+            match outcome {
+                Ok((reply, next)) => {
+                    self.finish(Ok(next));
+                    Ok(reply)
+                }
+                Err(e) => {
+                    self.finish(Err(e.clone()));
+                    Err(e)
+                }
+            }
+        }
+
+        /// Queues handler(state) -> (reply, next state) without waiting; the
+        /// reply is dropped.
+        pub fn tell<R>(&self, handler: impl FnOnce(S) -> super::Result<(R, S)> + Send + 'static) -> super::Result<()> {
+            let ticket = self.ticket()?;
+            let start = {
+                let mut turns = self.turns();
+                turns.tells.push_back((ticket, Box::new(move |s| handler(s).map(|(_, next)| next))));
+                !std::mem::replace(&mut turns.draining, true)
+            };
+            if start {
+                let actor = self.clone();
+                std::thread::spawn(move || actor.drain());
+            }
+            Ok(())
+        }
+
+        fn drain(&self) {
+            loop {
+                let (ticket, handler) = {
+                    let mut turns = self.turns();
+                    match turns.tells.pop_front() {
+                        Some(next) => next,
+                        None => {
+                            turns.draining = false;
+                            return;
+                        }
+                    }
+                };
+                match self.take(ticket) {
+                    Ok(state) => {
+                        let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| handler(state)))
+                            .unwrap_or_else(|_| Err("a handler panicked".into()));
+                        self.finish(outcome);
+                    }
+                    Err(e) => self.finish(Err(e)),
+                }
+            }
+        }
+
+        /// Refuses further messages; those already sent are still handled.
+        pub fn stop(&self) {
+            self.turns().stopped = true;
+        }
+    }
+
+    impl<S: Clone + Send + 'static> Actor<S> {
+        /// The state after every message sent before this call.
+        pub fn state(&self) -> super::Result<S> {
+            self.call(|s: S| Ok((s.clone(), s)))
+        }
+    }
+
+    /// A queue with many senders and one receiver: the channel form of an
+    /// actor. A process that loops over receive and answers each message is
+    /// an actor written by hand; send never waits. Clones share the mailbox.
+    pub struct Mailbox<T> {
+        inner: Arc<(Mutex<(VecDeque<T>, bool)>, Condvar)>,
+    }
+
+    impl<T> Clone for Mailbox<T> {
+        fn clone(&self) -> Self {
+            Mailbox { inner: self.inner.clone() }
+        }
+    }
+
+    impl<T> Default for Mailbox<T> {
+        fn default() -> Self {
+            Mailbox { inner: Arc::new((Mutex::new((VecDeque::new(), false)), Condvar::new())) }
+        }
+    }
+
+    impl<T> Mailbox<T> {
+        pub fn new() -> Self {
+            Self::default()
+        }
+
+        /// Sends a message; fails once the mailbox is closed.
+        pub fn send(&self, value: T) -> super::Result<()> {
+            let mut items = self.inner.0.lock().unwrap_or_else(|e| e.into_inner());
+            if items.1 {
+                return Err("the mailbox is closed".into());
+            }
+            items.0.push_back(value);
+            self.inner.1.notify_one();
+            Ok(())
+        }
+
+        /// The next message, waiting up to `timeout` (forever when None);
+        /// fails on timing out, or once closed and empty.
+        pub fn receive(&self, timeout: Option<std::time::Duration>) -> super::Result<T> {
+            let deadline = timeout.map(|t| std::time::Instant::now() + t);
+            let mut items = self.inner.0.lock().unwrap_or_else(|e| e.into_inner());
+            loop {
+                if let Some(value) = items.0.pop_front() {
+                    return Ok(value);
+                }
+                if items.1 {
+                    return Err("the mailbox is closed".into());
+                }
+                items = match deadline {
+                    None => self.inner.1.wait(items).unwrap_or_else(|e| e.into_inner()),
+                    Some(at) => {
+                        let now = std::time::Instant::now();
+                        if now >= at {
+                            return Err("no message arrived in time".into());
+                        }
+                        self.inner.1.wait_timeout(items, at - now).unwrap_or_else(|e| e.into_inner()).0
+                    }
+                };
+            }
+        }
+
+        /// Refuses further messages; those already sent can still be received.
+        pub fn close(&self) {
+            self.inner.0.lock().unwrap_or_else(|e| e.into_inner()).1 = true;
+            self.inner.1.notify_all();
+        }
+    }
+}
+
+#[cfg(test)]
+mod actor_tests {
+    use super::actors::{Actor, Mailbox};
+
+    #[test]
+    fn calls_run_one_at_a_time_in_order() {
+        let actor = Actor::new(0i64);
+        let threads: Vec<_> = (0..4)
+            .map(|_| {
+                let a = actor.clone();
+                std::thread::spawn(move || {
+                    for _ in 0..100 {
+                        a.call(|s| Ok(((), s + 1))).unwrap();
+                    }
+                })
+            })
+            .collect();
+        for t in threads {
+            t.join().unwrap();
+        }
+        actor.tell(|s| Ok(((), s * 2))).unwrap();
+        assert_eq!(actor.state().unwrap(), 800);
+        actor.stop();
+        assert!(actor.call(|s| Ok(((), s))).is_err());
+    }
+
+    #[test]
+    fn mailboxes_deliver_in_order_and_close() {
+        let m = Mailbox::new();
+        m.send(1).unwrap();
+        m.send(2).unwrap();
+        m.close();
+        assert_eq!(m.receive(None).unwrap(), 1);
+        assert_eq!(m.receive(None).unwrap(), 2);
+        assert!(m.receive(None).is_err());
+        assert!(m.send(3).is_err());
     }
 }
 

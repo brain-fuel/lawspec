@@ -181,6 +181,7 @@ library
       LawSpec.Actors.Go
       LawSpec.Actors.Jvm
       LawSpec.Actors.Python
+      LawSpec.Actors.Rust
       LawSpec.Actors.Types
       LawSpec.Actors.Web
       LawSpec.Api
