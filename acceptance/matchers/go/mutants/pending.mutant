@@ -1,0 +1,7 @@
+expect: shipping gives a shipped order
+@@ example/matchers/adapter.go
+<<<<<<<
+	return OrderShipped{Id: value0, Carrier: "post"}
+=======
+	return OrderPending{Id: value0}
+>>>>>>>

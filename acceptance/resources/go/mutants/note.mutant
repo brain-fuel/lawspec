@@ -1,0 +1,7 @@
+expect: a note reads back
+@@ example/resources/adapter.go
+<<<<<<<
+[]byte(strconv.Itoa(int(value1)))
+=======
+[]byte(strconv.Itoa(int(value1)+1))
+>>>>>>>

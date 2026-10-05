@@ -1,0 +1,7 @@
+expect: sorting keeps every item example
+@@ example/matchers/adapter.go
+<<<<<<<
+	sort.Slice(items, func(i, j int) bool { return items[i] < items[j] })
+=======
+	sort.Slice(items, func(i, j int) bool { return items[i] > items[j] })
+>>>>>>>

@@ -1,0 +1,15 @@
+expect: every case gets an empty store
+@@ example/resources/adapter.go
+<<<<<<<
+	return &store{items: map[int32]int32{}, open: true}
+=======
+	return &store{items: shared, open: true}
+>>>>>>>
+@@ example/resources/adapter.go
+<<<<<<<
+var openCount = 0
+=======
+var openCount = 0
+
+var shared = map[int32]int32{}
+>>>>>>>

@@ -1,0 +1,7 @@
+expect: the average lies between the two
+@@ example/matchers/adapter.go
+<<<<<<<
+	return (float64(value0) + float64(value1)) / 2
+=======
+	return (float64(value0)+float64(value1))/2 + 1
+>>>>>>>

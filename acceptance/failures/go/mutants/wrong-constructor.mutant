@@ -1,0 +1,7 @@
+expect: negative amounts are blocked
+@@ example/failures/adapter.go
+<<<<<<<
+		return DecisionBlock{}
+=======
+		return DecisionDecline{Reason: "negative"}
+>>>>>>>

@@ -5,6 +5,7 @@ import (
 	"bytes"
 	cryptorand "crypto/rand"
 	"encoding/binary"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -14,6 +15,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"path/filepath"
 	"reflect"
 	goruntime "runtime"
 	"sort"
@@ -1150,6 +1152,26 @@ func lsSign(n int) int {
 
 func lsHelper(n string, args []LawSpecValue, bits int) LawSpecValue {
 	switch n {
+	case "startsWith", "endsWith", "textContains":
+		text, part := lsCodePointsText(args[0].Data.([]int)), lsCodePointsText(args[1].Data.([]int))
+		switch n {
+		case "startsWith":
+			return lsBool(strings.HasPrefix(text, part))
+		case "endsWith":
+			return lsBool(strings.HasSuffix(text, part))
+		}
+		return lsBool(strings.Contains(text, part))
+	case "regexMatches":
+		return lsBool(LsRegexMatches(lsCodePointsText(args[0].Data.([]int)), args[1].Data.([]int)))
+	case "recorded":
+		return lsBool(lsRecorded(lsCodePointsText(args[0].Data.([]int)), args[1]))
+	case "acquireResource":
+		return LawSpecValue{"Text", lsTextUnits(lsAcquireResource(lsCodePointsText(args[0].Data.([]int))))}
+	case "releaseResource":
+		lsReleaseResource(lsCodePointsText(args[0].Data.([]int)), lsCodePointsText(args[1].Data.([]int)))
+		return lsBool(true)
+	case "freePort":
+		return lsInteger("Int32", strconv.Itoa(lsFreePort()))
 	case "checked":
 		return lsBool(true)
 	case "select":
@@ -2709,6 +2731,460 @@ func (s lawSpecValues) shrink(d any, v LawSpecValue) []LawSpecValue {
 		}
 	}
 	return unique
+}
+
+// lsCodePointsText is the text of a Text value's code points.
+func lsCodePointsText(units []int) string {
+	runes := make([]rune, len(units))
+	for i, c := range units {
+		runes[i] = rune(c)
+	}
+	return string(runes)
+}
+
+// Portable regular expressions (see LawSpec.Regex): the subset of RE2 and
+// ECMAScript that means the same in both, matched against a whole text, code
+// point by code point. The compiler has checked every pattern; a pattern
+// that is not portable panics here too.
+type lsRegexItem struct {
+	negated bool
+	ranges  [][2]int
+}
+
+type lsRegexNode struct {
+	kind     byte // 's' set, 'q' sequence, 'a' alternatives, 'r' repeat
+	negated  bool
+	items    []lsRegexItem
+	children []*lsRegexNode
+	low      int
+	high     int // -1 when unbounded
+}
+
+var (
+	lsRegexDigits = [][2]int{{48, 57}}
+	lsRegexWord   = [][2]int{{48, 57}, {65, 90}, {95, 95}, {97, 122}}
+	lsRegexSpace  = [][2]int{{9, 13}, {32, 32}}
+	lsRegexCache  sync.Map
+)
+
+func lsRegexParse(pattern string) *lsRegexNode {
+	cs := []rune(pattern)
+	n := len(cs)
+	pos := 0
+	peek := func() rune {
+		if pos < n {
+			return cs[pos]
+		}
+		return -1
+	}
+	fail := func(message string) {
+		panic(fmt.Sprintf("regex %q is not portable: %s", pattern, message))
+	}
+	escape := func() lsRegexItem {
+		pos++
+		c := peek()
+		if c < 0 {
+			fail("the regex ends with a lone \\")
+		}
+		pos++
+		switch c {
+		case 'd':
+			return lsRegexItem{false, lsRegexDigits}
+		case 'D':
+			return lsRegexItem{true, lsRegexDigits}
+		case 'w':
+			return lsRegexItem{false, lsRegexWord}
+		case 'W':
+			return lsRegexItem{true, lsRegexWord}
+		case 's':
+			return lsRegexItem{false, lsRegexSpace}
+		case 'S':
+			return lsRegexItem{true, lsRegexSpace}
+		case 'n':
+			return lsRegexItem{false, [][2]int{{10, 10}}}
+		case 't':
+			return lsRegexItem{false, [][2]int{{9, 9}}}
+		case 'r':
+			return lsRegexItem{false, [][2]int{{13, 13}}}
+		case 'f':
+			return lsRegexItem{false, [][2]int{{12, 12}}}
+		case 'v':
+			return lsRegexItem{false, [][2]int{{11, 11}}}
+		}
+		if strings.ContainsRune("\\.^$|?*+()[]{}-/", c) {
+			return lsRegexItem{false, [][2]int{{int(c), int(c)}}}
+		}
+		fail("\\" + string(c) + " is not a portable escape")
+		return lsRegexItem{}
+	}
+	literal := func() lsRegexItem {
+		c := peek()
+		if c == '[' {
+			fail("write \\[ for the character inside a class")
+		}
+		pos++
+		return lsRegexItem{false, [][2]int{{int(c), int(c)}}}
+	}
+	single := func(item lsRegexItem) bool {
+		return !item.negated && len(item.ranges) == 1 && item.ranges[0][0] == item.ranges[0][1]
+	}
+	charClass := func() *lsRegexNode {
+		pos++
+		negated := peek() == '^'
+		if negated {
+			pos++
+		}
+		items := []lsRegexItem{}
+		first := true
+		for {
+			c := peek()
+			if c < 0 {
+				fail("a [ is never closed")
+			}
+			if c == ']' {
+				if first {
+					fail("an empty class is not portable")
+				}
+				pos++
+				return &lsRegexNode{kind: 's', negated: negated, items: items}
+			}
+			first = false
+			var item lsRegexItem
+			if c == '\\' {
+				item = escape()
+			} else {
+				item = literal()
+			}
+			if single(item) && peek() == '-' && pos+1 < n && cs[pos+1] != ']' {
+				pos++
+				var high lsRegexItem
+				if peek() == '\\' {
+					high = escape()
+				} else {
+					high = literal()
+				}
+				if !single(high) {
+					fail("a range ends with one character")
+				}
+				if high.ranges[0][0] < item.ranges[0][0] {
+					fail("a range must run from low to high")
+				}
+				items = append(items, lsRegexItem{false, [][2]int{{item.ranges[0][0], high.ranges[0][0]}}})
+			} else {
+				items = append(items, item)
+			}
+		}
+	}
+	digits := func() string {
+		start := pos
+		for peek() >= '0' && peek() <= '9' {
+			pos++
+		}
+		return string(cs[start:pos])
+	}
+	var alternatives func() *lsRegexNode
+	atom := func() *lsRegexNode {
+		c := peek()
+		switch {
+		case c == '(':
+			pos++
+			if peek() == '?' {
+				if pos+1 < n && cs[pos+1] == ':' {
+					pos += 2
+				} else {
+					fail("only (?: ...) groups are portable")
+				}
+			}
+			node := alternatives()
+			if peek() != ')' {
+				fail("a ( is never closed")
+			}
+			pos++
+			return node
+		case c == '[':
+			return charClass()
+		case c == '.':
+			pos++
+			return &lsRegexNode{kind: 's', negated: true, items: []lsRegexItem{{false, [][2]int{{10, 10}}}}}
+		case c == '\\':
+			return &lsRegexNode{kind: 's', items: []lsRegexItem{escape()}}
+		case strings.ContainsRune("*+?{^$]}", c):
+			fail("unexpected " + string(c))
+		}
+		pos++
+		return &lsRegexNode{kind: 's', items: []lsRegexItem{{false, [][2]int{{int(c), int(c)}}}}}
+	}
+	quantifier := func(c rune) bool { return c >= 0 && strings.ContainsRune("*+?{", c) }
+	quantified := func(node *lsRegexNode) *lsRegexNode {
+		c := peek()
+		if !quantifier(c) {
+			return node
+		}
+		pos++
+		switch c {
+		case '*':
+			node = &lsRegexNode{kind: 'r', children: []*lsRegexNode{node}, low: 0, high: -1}
+		case '+':
+			node = &lsRegexNode{kind: 'r', children: []*lsRegexNode{node}, low: 1, high: -1}
+		case '?':
+			node = &lsRegexNode{kind: 'r', children: []*lsRegexNode{node}, low: 0, high: 1}
+		default:
+			lowText := digits()
+			highText, bounded := "", true
+			if peek() == '}' {
+				highText = lowText
+			} else if peek() == ',' {
+				pos++
+				highText = digits()
+				bounded = highText != ""
+				if peek() != '}' {
+					fail("a repetition is {n}, {n,} or {n,m}")
+				}
+			} else {
+				fail("a repetition is {n}, {n,} or {n,m}")
+			}
+			pos++
+			if lowText == "" {
+				fail("a repetition is {n}, {n,} or {n,m}")
+			}
+			low, _ := strconv.Atoi(lowText)
+			high := -1
+			if bounded {
+				high, _ = strconv.Atoi(highText)
+			}
+			if low > 1000 || (bounded && (high > 1000 || high < low)) {
+				fail("a repetition count is at most 1000, and n must not exceed m")
+			}
+			node = &lsRegexNode{kind: 'r', children: []*lsRegexNode{node}, low: low, high: high}
+		}
+		if quantifier(peek()) {
+			fail("a repetition cannot itself be repeated")
+		}
+		return node
+	}
+	sequence := func() *lsRegexNode {
+		items := []*lsRegexNode{}
+		for peek() >= 0 && peek() != '|' && peek() != ')' {
+			items = append(items, quantified(atom()))
+		}
+		return &lsRegexNode{kind: 'q', children: items}
+	}
+	alternatives = func() *lsRegexNode {
+		branches := []*lsRegexNode{sequence()}
+		for peek() == '|' {
+			pos++
+			branches = append(branches, sequence())
+		}
+		if len(branches) == 1 {
+			return branches[0]
+		}
+		return &lsRegexNode{kind: 'a', children: branches}
+	}
+	node := alternatives()
+	if pos != n {
+		fail("a ) has no ( before it")
+	}
+	return node
+}
+
+func lsRegexReach(node *lsRegexNode, text []int, positions []bool) []bool {
+	next := make([]bool, len(text)+1)
+	switch node.kind {
+	case 's':
+		for p, at := range positions {
+			if !at || p >= len(text) {
+				continue
+			}
+			c := text[p]
+			inside := false
+			for _, item := range node.items {
+				in := false
+				for _, r := range item.ranges {
+					if r[0] <= c && c <= r[1] {
+						in = true
+						break
+					}
+				}
+				if in != item.negated {
+					inside = true
+					break
+				}
+			}
+			if inside != node.negated {
+				next[p+1] = true
+			}
+		}
+		return next
+	case 'q':
+		for _, child := range node.children {
+			positions = lsRegexReach(child, text, positions)
+		}
+		return positions
+	case 'a':
+		for _, child := range node.children {
+			for p, at := range lsRegexReach(child, text, positions) {
+				if at {
+					next[p] = true
+				}
+			}
+		}
+		return next
+	}
+	body := node.children[0]
+	for i := 0; i < node.low; i++ {
+		positions = lsRegexReach(body, text, positions)
+	}
+	seen := append([]bool(nil), positions...)
+	frontier := positions
+	limit := -1
+	if node.high >= 0 {
+		limit = node.high - node.low
+	}
+	for limit != 0 {
+		reached := lsRegexReach(body, text, frontier)
+		frontier = make([]bool, len(text)+1)
+		any := false
+		for p, at := range reached {
+			if at && !seen[p] {
+				frontier[p], seen[p], any = true, true, true
+			}
+		}
+		if !any {
+			break
+		}
+		if limit > 0 {
+			limit--
+		}
+	}
+	return seen
+}
+
+// LsRegexMatches reports whether the portable regex matches all of text,
+// given as code points.
+func LsRegexMatches(pattern string, text []int) bool {
+	cached, ok := lsRegexCache.Load(pattern)
+	if !ok {
+		cached, _ = lsRegexCache.LoadOrStore(pattern, lsRegexParse(pattern))
+	}
+	start := make([]bool, len(text)+1)
+	start[0] = true
+	return lsRegexReach(cached.(*lsRegexNode), text, start)[len(text)]
+}
+
+// Recorded values: a law compares a value's portable rendering with the
+// text stored under recorded/<unit>/<name> in the project. LAWSPEC_RECORDED
+// names the folder; otherwise it is recorded/ in the nearest folder, from
+// the working one up, that holds lawspec.json or recorded/. With
+// LAWSPEC_UPDATE_RECORDED=1 (lawspec test --update-recorded) a law records
+// the value instead.
+func lsRecordedRoot() string {
+	if given := os.Getenv("LAWSPEC_RECORDED"); given != "" {
+		return given
+	}
+	start, _ := os.Getwd()
+	folder := start
+	for {
+		if _, err := os.Stat(filepath.Join(folder, "lawspec.json")); err == nil {
+			return filepath.Join(folder, "recorded")
+		}
+		if info, err := os.Stat(filepath.Join(folder, "recorded")); err == nil && info.IsDir() {
+			return filepath.Join(folder, "recorded")
+		}
+		parent := filepath.Dir(folder)
+		if parent == folder {
+			return filepath.Join(start, "recorded")
+		}
+		folder = parent
+	}
+}
+
+func lsRecorded(key string, value LawSpecValue) bool {
+	text := lsRender(value)
+	path := filepath.Join(append([]string{lsRecordedRoot()}, strings.Split(key, "/")...)...)
+	if os.Getenv("LAWSPEC_UPDATE_RECORDED") == "1" {
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			panic(err)
+		}
+		if err := os.WriteFile(path, []byte(text+"\n"), 0o644); err != nil {
+			panic(err)
+		}
+		return true
+	}
+	stored, err := os.ReadFile(path)
+	if err != nil {
+		panic("no recording recorded/" + key + "; run lawspec test --update-recorded to record " + text)
+	}
+	if storedText := strings.TrimSuffix(string(stored), "\n"); storedText != text {
+		panic("recorded/" + key + " differs: expected " + storedText + ", actual " + text +
+			" (lawspec test --update-recorded records the new value)")
+	}
+	return true
+}
+
+// Built-in resources (see LawSpec.Resources): a law acquires them before
+// each case and releases them after it.
+func lsAcquireResource(kind string) string {
+	switch kind {
+	case "temporaryDirectory":
+		dir, err := os.MkdirTemp("", "lawspec-")
+		if err != nil {
+			panic(err)
+		}
+		return dir
+	case "temporaryFile":
+		file, err := os.CreateTemp("", "lawspec-")
+		if err != nil {
+			panic(err)
+		}
+		file.Close()
+		return file.Name()
+	case "environment":
+		saved := map[string]string{}
+		for _, entry := range os.Environ() {
+			if i := strings.IndexByte(entry, '='); i > 0 {
+				saved[entry[:i]] = entry[i+1:]
+			}
+		}
+		text, _ := json.Marshal(saved)
+		return string(text)
+	}
+	panic("unknown resource kind " + kind)
+}
+
+func lsReleaseResource(kind, value string) {
+	switch kind {
+	case "temporaryDirectory", "temporaryFile":
+		os.RemoveAll(value)
+	case "environment":
+		saved := map[string]string{}
+		if err := json.Unmarshal([]byte(value), &saved); err != nil {
+			panic(err)
+		}
+		for _, entry := range os.Environ() {
+			if i := strings.IndexByte(entry, '='); i > 0 {
+				if _, kept := saved[entry[:i]]; !kept {
+					os.Unsetenv(entry[:i])
+				}
+			}
+		}
+		for name, text := range saved {
+			if current, set := os.LookupEnv(name); !set || current != text {
+				os.Setenv(name, text)
+			}
+		}
+	default:
+		panic("unknown resource kind " + kind)
+	}
+}
+
+// lsFreePort is a TCP port on the local host that is free now.
+func lsFreePort() int {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		panic(err)
+	}
+	defer listener.Close()
+	return listener.Addr().(*net.TCPAddr).Port
 }
 
 // lsRender is a value's canonical text, the same on every target.

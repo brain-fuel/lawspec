@@ -1,0 +1,8 @@
+expect: too many open stores
+@@ example/resources/adapter.go
+<<<<<<<
+		s.open = false
+		openCount--
+=======
+		s.open = false
+>>>>>>>
