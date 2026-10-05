@@ -226,7 +226,7 @@ spec = describe "refined definition proof obligations" $ do
           circular = Expr boolean (Binary Equal (Structural ty) literal literal) origin
           declaration = datatype [circular]
           property = Property (Id "cycle-property") "cycle" (Location "cycle" 1 1) []
-            (Equation (Structural ty) literal literal) [] defaultGeneration "" "" [] []
+            (Equation (Structural ty) literal literal) [] defaultGeneration "" "" [] [] []
           p = Program 64 [declaration] [Unit (Id "cycle") [] [] [property] [] []]
       validateProgram p `shouldSatisfy` isLeft
     it "preserves declared parameters in generic constructor-predicate matches" $ do

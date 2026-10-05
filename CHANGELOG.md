@@ -2,6 +2,36 @@
 
 ## Unreleased
 
+- Abilities. `ability Gateway is authorize :: Card -> Payment ... laws ... end`
+  names a dependency's operations and the laws every handler of it keeps.
+  `uses Gateway, Clock` after a signature says what it uses; a native adapter
+  gets one handler per ability before its arguments. A checked definition may
+  use abilities, and its ability row is inferred; a definition that lists its
+  abilities must list at least those.
+- Handlers. `handler fakeGateway for Gateway is authorize c is ... end ... end`
+  is a spec handler; each clause is a checked definition. `with state s :: S
+  start e` keeps a state, updated with `~s := e;`. Each ability's native
+  production handler is written by hand (`GatewayHandler`), or bound under
+  `handlers` in `lawspec.json`.
+- A law holds for every lawful handler. `using h` names a handler only when
+  it is part of the claim; otherwise the law runs under each lawful handler in
+  turn, one law per choice. `using recording Gateway` records calls, which a
+  law counts with `calls of capture` and `calls of capture with (cents)`.
+- Each ability law is one obligation per handler. For a spec handler without
+  state the compiler proves it, or checks every case of a finite domain, so a
+  handler that breaks it is a compile error; native handlers are
+  property-tested.
+- `fails with E` is short for `uses Fail E`. `raise e` aborts with a failure,
+  and `prelude.attempt e` in a law gives `Right` of the value or `Left` of the
+  failure.
+- Core has `Perform`, `Handle` and `Calls`. Every target passes handlers in
+  the context it gives every definition (evidence passing), and generates a
+  native interface per ability: a Python `Protocol`, a TypeScript interface, a
+  Go interface, a Java or Kotlin interface, a Rust trait, a Haskell record of
+  `IO` operations; with spec handler and recording classes beside it.
+- New acceptance suite `abilities`, with mutants: an adapter that calls its
+  dependency twice, and native handlers that break an ability law.
+
 ## 0.20.0
 
 - An `all` group with an asynchronous step runs its steps at the same time,
