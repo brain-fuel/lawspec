@@ -2083,7 +2083,7 @@ public final class LawSpecRuntime {
     final List<Object> shifts;
     /** The argument naming the key the command touches, for per-key checks; -1 for none. */
     final int key;
-    final ModelCallback run;
+    ModelCallback run;
     final ModelCallback reference;
     final ModelCallback when;
 
@@ -2165,6 +2165,7 @@ public final class LawSpecRuntime {
       List<Object> invariantForm = null;
       var commandForms = new ArrayList<List<Object>>();
       boolean keyed = false;
+      boolean actor = false;
       for (var f : forms) {
         var item = form(f);
         switch (atomText(item.get(0))) {
@@ -2179,6 +2180,9 @@ public final class LawSpecRuntime {
           case "perkey" -> {
             if (item.size() > 1 && atomText(item.get(1)).equals("true")) keyed = true;
           }
+          case "actor" -> {
+            if (item.size() > 1 && atomText(item.get(1)).equals("true")) actor = true;
+          }
           default -> {}
         }
       }
@@ -2192,25 +2196,69 @@ public final class LawSpecRuntime {
       for (var i : startFields.getOrDefault("indices", List.of())) indices.add((BigInteger) i);
       startIndices = indices;
       startArguments = startFields.getOrDefault("arguments", List.of());
-      startRun = start[0];
+      // An actor model's start and handlers run inside an actor; the
+      // abstraction and state invariants read its state between messages.
+      startRun = actor ? actorStart(start[0]) : start[0];
       startModel = start[1];
       var built = new ArrayList<ModelCommand>();
       for (int k = 0; k < Math.min(commandForms.size(), commands.length); k++)
         built.add(new ModelCommand(commandForms.get(k), commands[k]));
+      if (actor) for (var c : built) c.run = actorCommand(c.run, c.unit);
       this.commands = built;
-      this.abstractState = abstractState;
+      this.abstractState =
+          actor && abstractState != null ? actorRead(abstractState) : abstractState;
       var kinds = new ArrayList<String>();
       var checks = new ArrayList<ModelCallback>();
       var invariantList = invariants == null ? new ModelCallback[0] : invariants;
       int n = Math.min(invariantForm.size() - 1, invariantList.length);
       for (int k = 0; k < n; k++) {
         kinds.add(atomText(invariantForm.get(k + 1)));
-        checks.add(invariantList[k]);
+        boolean onState = !atomText(invariantForm.get(k + 1)).equals("model");
+        checks.add(actor && onState ? actorRead(invariantList[k]) : invariantList[k]);
       }
       invariantKinds = kinds;
       this.invariants = checks;
       perKey = keyed;
     }
+  }
+
+  private static final String ACTOR_HANDLE = "lawspec.actor";
+
+  @SuppressWarnings("unchecked")
+  private static Actor<Value> actorOf(Value handle) {
+    return (Actor<Value>) handleTarget(handle);
+  }
+
+  /** A start bridge whose state an actor then owns. */
+  private static ModelCallback actorStart(ModelCallback run) {
+    return (symbols, args) -> handle(ACTOR_HANDLE, new Actor<Value>(run.apply(symbols, args)));
+  }
+
+  /**
+   * A handler bridge (the state first, returning Pair reply state, or the state alone for a Unit
+   * reply) as a command on an actor.
+   */
+  private static ModelCallback actorCommand(ModelCallback run, boolean unit) {
+    return (symbols, args) ->
+        actorOf(args.get(0))
+            .call(
+                state -> {
+                  var full = new ArrayList<Value>(args);
+                  full.set(0, state);
+                  var out = run.apply(symbols, full);
+                  if (unit) return new Next<>(absent("Unit"), out);
+                  var pair = (Data) out.data();
+                  return new Next<>(pair.fields().get(0), pair.fields().get(1));
+                });
+  }
+
+  /** A callback over the system state that reads an actor's state instead. */
+  private static ModelCallback actorRead(ModelCallback callback) {
+    return (symbols, args) -> {
+      var full = new ArrayList<Value>(args);
+      full.set(0, actorOf(args.get(0)).state());
+      return callback.apply(symbols, full);
+    };
   }
 
   /** A command the model does not allow here. */
@@ -3398,5 +3446,156 @@ public final class LawSpecRuntime {
       }
     }
     if (failure != null) throw failure;
+  }
+
+  // Actors. An actor owns a state and handles one message at a time, in the
+  // order they arrive. It is not a thread: a message sent to an idle actor
+  // starts a virtual thread that drains its mailbox and then ends, so an idle
+  // actor costs only its state and queue.
+
+  /** A message sent to an actor or mailbox that has stopped. */
+  public static final class ActorStopped extends IllegalStateException {
+    public ActorStopped(String message) {
+      super(message);
+    }
+  }
+
+  /** What a handler returns: its reply and the actor's next state. */
+  public record Next<R, S>(R reply, S state) {}
+
+  /** An actor owning a state of type S. */
+  public static final class Actor<S> {
+    private record Message<S>(
+        Function<S, ? extends Next<?, S>> handler,
+        java.util.concurrent.CompletableFuture<Object> reply) {}
+
+    private S state;
+    private final java.util.ArrayDeque<Message<S>> mailbox = new java.util.ArrayDeque<>();
+    private boolean draining;
+    private boolean stopped;
+
+    public Actor(S state) {
+      this.state = state;
+    }
+
+    private void post(Message<S> message) {
+      synchronized (mailbox) {
+        if (stopped) throw new ActorStopped("the actor has stopped");
+        mailbox.add(message);
+        if (draining) return;
+        draining = true;
+      }
+      Thread.ofVirtual().start(this::drain);
+    }
+
+    private void drain() {
+      while (true) {
+        Message<S> message;
+        synchronized (mailbox) {
+          message = mailbox.poll();
+          if (message == null) {
+            draining = false;
+            return;
+          }
+        }
+        try {
+          var next = message.handler().apply(state);
+          state = next.state();
+          if (message.reply() != null) message.reply().complete(next.reply());
+        } catch (Throwable error) {
+          if (message.reply() != null) message.reply().completeExceptionally(error);
+        }
+      }
+    }
+
+    /**
+     * Runs the handler on the state in turn and returns its reply, rethrowing what the handler
+     * threw.
+     */
+    @SuppressWarnings("unchecked")
+    public <R> R call(Function<S, Next<R, S>> handler) {
+      var reply = new java.util.concurrent.CompletableFuture<Object>();
+      post(new Message<S>(handler, reply));
+      try {
+        return (R) reply.join();
+      } catch (java.util.concurrent.CompletionException e) {
+        var cause = e.getCause();
+        if (cause instanceof RuntimeException runtime) throw runtime;
+        if (cause instanceof Error error) throw error;
+        throw new IllegalStateException(cause);
+      }
+    }
+
+    /** Queues the handler without waiting for its reply. */
+    public void cast(Function<S, ? extends Next<?, S>> handler) {
+      post(new Message<S>(handler, null));
+    }
+
+    /** The state after every message sent before this call. */
+    public S state() {
+      return call(s -> new Next<S, S>(s, s));
+    }
+
+    /** Refuses further messages; those already queued still run. */
+    public void stop() {
+      synchronized (mailbox) {
+        stopped = true;
+      }
+    }
+  }
+
+  /**
+   * A queue with many senders and one receiver: the channel form of an actor. A process that loops
+   * over receive and answers each message is an actor written by hand; send never waits.
+   */
+  public static final class Mailbox<T> {
+    private record Box<T>(T value) {}
+
+    private final java.util.ArrayDeque<Box<T>> items = new java.util.ArrayDeque<>();
+    private boolean closed;
+
+    /** Sends a message; throws ActorStopped once the mailbox is closed. */
+    public synchronized void send(T value) {
+      if (closed) throw new ActorStopped("the mailbox is closed");
+      items.add(new Box<>(value));
+      notifyAll();
+    }
+
+    /** Waits for the next message, forever. */
+    public T receive() {
+      return receive(null);
+    }
+
+    /**
+     * Waits up to timeout (forever when null) for the next message; throws
+     * java.util.concurrent.TimeoutException wrapped in an IllegalStateException on timeout, and
+     * ActorStopped once closed and empty.
+     */
+    public synchronized T receive(java.time.Duration timeout) {
+      long deadline = timeout == null ? 0 : System.nanoTime() + timeout.toNanos();
+      try {
+        while (items.isEmpty() && !closed) {
+          if (timeout == null) wait();
+          else {
+            long left = deadline - System.nanoTime();
+            if (left <= 0)
+              throw new IllegalStateException(
+                  new java.util.concurrent.TimeoutException("no message arrived in time"));
+            wait(left / 1_000_000, (int) (left % 1_000_000));
+          }
+        }
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+        throw new IllegalStateException("interrupted while receiving", e);
+      }
+      if (items.isEmpty()) throw new ActorStopped("the mailbox is closed");
+      return items.poll().value();
+    }
+
+    /** Refuses further messages; those already sent can still be received. */
+    public synchronized void close() {
+      closed = true;
+      notifyAll();
+    }
   }
 }

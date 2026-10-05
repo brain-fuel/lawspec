@@ -1,0 +1,6 @@
+@@ src/main/java/example/Actors.java
+<<<<<<<
+    long after = value0.balance() + value1;
+=======
+    long after = value0.balance() + value1 + (value1 == 7 ? 1 : 0);
+>>>>>>>

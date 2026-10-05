@@ -178,6 +178,7 @@ extra-source-files:
 library
   exposed-modules:
       LawSpec.Actors
+      LawSpec.Actors.Jvm
       LawSpec.Actors.Python
       LawSpec.Actors.Types
       LawSpec.Api
