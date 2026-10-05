@@ -3662,9 +3662,11 @@ class Node:
         self._seen = {}
         self._ids = iter(range(1, 1 << 62))
         self._lock = threading.Lock()
+        self.closed = False
         transport.start(self._deliver)
 
     def close(self):
+        self.closed = True
         self.transport.close()
 
     def _next_id(self):
@@ -3674,6 +3676,14 @@ class Node:
     def _send(self, address, kind, payload, ident=0):
         node, name = _split_address(address)
         self.transport.send(node, _frame_encode(kind, name, self.address, ident, payload))
+
+    def _forward(self, address, kind, source, ident, payload):
+        """Passes a frame on to address unchanged, keeping its source."""
+        node, name = _split_address(address)
+        try:
+            self.transport.send(node, _frame_encode(kind, name, source, ident, payload))
+        except Unreachable:
+            pass
 
     def _register(self, name, entity):
         if '/' in name or not name:
@@ -3802,6 +3812,16 @@ class Node:
         endpoint._connect(address)
         return endpoint
 
+    def take(self, address, steps, values=_NO_TYPES, deadline=5.0):
+        """Takes over a channel end another node moves here: address is
+        <old address>?take=<token>, as that node offered it. Returns once the
+        end's state has arrived and its peer has been told (or after the
+        deadline; the old node then forwards to the end)."""
+        endpoint = _NetEndpoint(self, steps, values, 0, deadline)
+        endpoint.address = self._register(f'end-{self._next_id()}', endpoint)
+        endpoint._take_over(address)
+        return endpoint
+
 
 def _reply_value(status, body, values, d):
     if status == 0:
@@ -3916,12 +3936,55 @@ class _DefinitionEntity:
             node._reply(source, ident, 1, f'{type(error).__name__}: {error}')
 
 
+_SEQ = ['int', 'Int64', None, None]
+_TEXT = ['text']
+_BYTES = ['bytes']
+
+
+def _put_texts(out, texts):
+    _put_varint(out, len(texts))
+    for t in texts:
+        _wire_put(_NO_TYPES, _TEXT, t, out)
+
+
+def _get_texts(buf, pos):
+    count, pos = _get_varint(buf, pos)
+    texts = []
+    for _ in range(count):
+        t, pos = _wire_get(_NO_TYPES, _TEXT, buf, pos)
+        texts.append(t)
+    return texts, pos
+
+
+def _put_numbered(out, items):
+    _put_varint(out, len(items))
+    for seq, body in items:
+        _wire_put(_NO_TYPES, _SEQ, seq, out)
+        _wire_put(_NO_TYPES, _BYTES, body, out)
+
+
+def _get_numbered(buf, pos):
+    count, pos = _get_varint(buf, pos)
+    items = []
+    for _ in range(count):
+        seq, pos = _wire_get(_NO_TYPES, _SEQ, buf, pos)
+        body, pos = _wire_get(_NO_TYPES, _BYTES, buf, pos)
+        items.append((seq, bytes(body)))
+    return items, pos
+
+
 class _NetEndpoint:
     """One end of a channel between nodes, with the Channel interface
     (send(side, value), receive(side)). Each value travels in a numbered
     frame that is sent again until acknowledged, so loss, duplication and
     reordering are repaired; a peer silent for deadline seconds is treated
-    as failed (PeerFailed). Order is kept within the channel."""
+    as failed (PeerFailed). Order is kept within the channel.
+
+    An unused end can move to another node: offer() gives the address the
+    new node takes it over from (<address>?take=<token>). On a take frame
+    with that token, this end hands its state over (a state frame) and from
+    then on forwards every frame it gets to the new end; the new end tells
+    the peer (a moved frame) so the peer sends to it directly."""
 
     def __init__(self, node, steps, values, side, deadline):
         import queue
@@ -3938,6 +4001,19 @@ class _NetEndpoint:
         self._lock = threading.Lock()
         self._step = 0
         self._gone = False
+        self._failure = None
+        # Moving: the addresses this end had before (oldest first), the
+        # token a taker must show, where the end went and the state frame
+        # it was given, and, on the new node, the takeover in progress.
+        self._history = []
+        self._token = None
+        self._moved_to = None
+        self._state = None
+        self._taking = None
+        self._taken = threading.Event()
+        self._announcing = False
+        self._announced_at = 0.0
+        self._confirmed = threading.Event()
         threading.Thread(target=self._resend, daemon=True).start()
 
     def _connect(self, address):
@@ -3946,16 +4022,19 @@ class _NetEndpoint:
         self._peer_known.set()
         self._transmit(-1, b'hello')
 
+    def _frame(self, seq, body):
+        payload = bytearray()
+        _wire_put(_NO_TYPES, _SEQ, seq, payload)
+        _wire_put(_NO_TYPES, _TEXT, self.address, payload)
+        payload.extend(body)
+        return bytes(payload)
+
     def _transmit(self, seq, body):
         """Sends a numbered frame (seq -1 is the hello) until it is acked."""
         import time
-        payload = bytearray()
-        _wire_put(_NO_TYPES, ['int', 'Int64', None, None], seq, payload)
-        _wire_put(_NO_TYPES, ['text'], self.address, payload)
-        payload.extend(body)
-        payload = bytes(payload)
+        payload = self._frame(seq, body)
         with self._lock:
-            self._unacked[seq] = [payload, time.monotonic(), time.monotonic()]
+            self._unacked[seq] = [payload, time.monotonic(), time.monotonic(), body]
             peer = self._peer
         if peer is not None:
             try:
@@ -3965,18 +4044,34 @@ class _NetEndpoint:
 
     def _resend(self):
         import time
-        while not self._gone:
+        while not self._gone and not self._node.closed:
             time.sleep(0.02)
             now = time.monotonic()
             with self._lock:
+                if self._moved_to is not None:
+                    return
+                if self._taking is not None and not self._taken.is_set():
+                    continue
                 peer = self._peer
                 due = [(seq, entry) for seq, entry in self._unacked.items() if now - entry[2] > 0.05]
                 stale = any(now - entry[1] > self._deadline for _, entry in due)
+                announce = (self._announcing and peer is not None and not self._confirmed.is_set()
+                            and now - self._announced_at > 0.05)
+                if announce:
+                    self._announced_at = now
+                    moved = bytearray()
+                    _put_texts(moved, self._history)
+                    _wire_put(_NO_TYPES, _TEXT, self.address, moved)
             if stale:
                 self._fail('the other end did not answer in time (unreachable)')
                 return
             if peer is None:
                 continue
+            if announce:
+                try:
+                    self._node._send(peer, 'moved', bytes(moved))
+                except Unreachable:
+                    pass
             for seq, entry in due:
                 entry[2] = now
                 try:
@@ -3989,42 +4084,195 @@ class _NetEndpoint:
             if self._gone:
                 return
             self._gone = True
+            self._failure = reason
             self._unacked.clear()
-        self._inbox.put((_ABANDONED, reason))
+            self._inbox.put((_ABANDONED, reason))
 
     def _receive(self, node, kind, source, ident, payload):
+        if kind == 'take':
+            self._give(payload)
+            return
+        with self._lock:
+            forward = self._moved_to
+            waiting = self._taking is not None and not self._taken.is_set()
+        if forward is not None:
+            self._node._forward(forward, kind, source, ident, payload)
+            return
+        if waiting:
+            # Until the state arrives, frames are dropped: their senders send
+            # them again.
+            if kind == 'state':
+                self._install(payload)
+            return
         if kind == 'ack':
-            seq, _ = _wire_get(_NO_TYPES, ['int', 'Int64', None, None], payload, 0)
+            seq, _ = _wire_get(_NO_TYPES, _SEQ, payload, 0)
             with self._lock:
                 self._unacked.pop(seq, None)
             return
+        if kind == 'moved':
+            self._peer_moved(payload)
+            return
+        if kind == 'moved-ack':
+            to, _ = _wire_get(_NO_TYPES, _TEXT, payload, 0)
+            if to == self.address:
+                self._confirmed.set()
+            return
         if kind != 'chan':
             return
-        seq, pos = _wire_get(_NO_TYPES, ['int', 'Int64', None, None], payload, 0)
-        sender, pos = _wire_get(_NO_TYPES, ['text'], payload, pos)
+        seq, pos = _wire_get(_NO_TYPES, _SEQ, payload, 0)
+        sender, pos = _wire_get(_NO_TYPES, _TEXT, payload, pos)
         body = payload[pos:]
+        with self._lock:
+            forward = self._moved_to
+            if forward is None:
+                if seq == -1:
+                    if self._peer is None:
+                        self._peer = sender
+                    self._peer_known.set()
+                elif seq >= self._expected and seq not in self._early:
+                    self._early[seq] = body
+                    while self._expected in self._early:
+                        self._inbox.put((None, self._early.pop(self._expected)))
+                        self._expected += 1
+        if forward is not None:
+            # Moved meanwhile: the new end acknowledges it.
+            self._node._forward(forward, kind, source, ident, payload)
+            return
         ack = bytearray()
-        _wire_put(_NO_TYPES, ['int', 'Int64', None, None], seq, ack)
+        _wire_put(_NO_TYPES, _SEQ, seq, ack)
         try:
             self._node._send(sender, 'ack', bytes(ack))
         except Unreachable:
             pass
-        if seq == -1:
-            with self._lock:
-                if self._peer is None:
-                    self._peer = sender
-            self._peer_known.set()
+
+    # Moving an end to another node.
+    def _offer(self):
+        """The address another node takes this unused end over from."""
+        import secrets
+        with self._lock:
+            if self._token is None:
+                self._token = secrets.token_hex(16)
+            return f'{self.address}?take={self._token}'
+
+    def _give(self, payload):
+        """A take frame: hands the state over once, to the first taker with
+        the token, and answers that taker's repeats with the same state."""
+        try:
+            token, pos = _wire_get(_NO_TYPES, _TEXT, payload, 0)
+            taker, _ = _wire_get(_NO_TYPES, _TEXT, payload, pos)
+        except WireError:
             return
         with self._lock:
-            if seq < self._expected or seq in self._early:
+            if self._token is None or token != self._token:
                 return
-            self._early[seq] = body
-            ready = []
-            while self._expected in self._early:
-                ready.append(self._early.pop(self._expected))
-                self._expected += 1
-        for body in ready:
-            self._inbox.put((None, body))
+            if self._moved_to is None:
+                received = [body for marker, body in list(self._inbox.queue) if marker is None]
+                state = bytearray()
+                _wire_put(_NO_TYPES, _TEXT, token, state)
+                _wire_put(_NO_TYPES, _TEXT, self._failure or '', state)
+                _wire_put(_NO_TYPES, _TEXT, self._peer or '', state)
+                _put_texts(state, self._history + [self.address])
+                _wire_put(_NO_TYPES, _SEQ, self._out, state)
+                _wire_put(_NO_TYPES, _SEQ, self._expected, state)
+                _put_numbered(state, sorted((seq, entry[3]) for seq, entry in self._unacked.items()))
+                _put_numbered(state, sorted(self._early.items()))
+                _put_varint(state, len(received))
+                for body in received:
+                    _wire_put(_NO_TYPES, _BYTES, body, state)
+                self._moved_to, self._state = taker, bytes(state)
+                self._unacked.clear()
+                self._early.clear()
+            elif self._moved_to != taker:
+                return
+            state = self._state
+        try:
+            self._node._send(taker, 'state', state)
+        except Unreachable:
+            pass
+
+    def _take_over(self, address):
+        """Takes over the end offered at address (<old address>?take=<token>):
+        asks for its state until it comes, then tells the peer where the end
+        is now. Returns once the peer knows, or after the deadline (the old
+        node then keeps forwarding to this end, as a relay would)."""
+        import time
+        old, _, query = address.partition('?')
+        token = query[len('take='):]
+        with self._lock:
+            self._taking = (old, token)
+        request = bytearray()
+        _wire_put(_NO_TYPES, _TEXT, token, request)
+        _wire_put(_NO_TYPES, _TEXT, self.address, request)
+        give_up = time.monotonic() + self._deadline
+        while not self._taken.is_set():
+            try:
+                self._node._send(old, 'take', bytes(request))
+            except Unreachable:
+                pass
+            if self._taken.wait(0.05):
+                break
+            if time.monotonic() >= give_up:
+                with self._lock:
+                    self._taking = None
+                self._fail('the node the end came from did not hand it over in time (unreachable)')
+                return
+        self._confirmed.wait(max(0.0, give_up - time.monotonic()))
+
+    def _install(self, payload):
+        import time
+        try:
+            token, pos = _wire_get(_NO_TYPES, _TEXT, payload, 0)
+            failure, pos = _wire_get(_NO_TYPES, _TEXT, payload, pos)
+            peer, pos = _wire_get(_NO_TYPES, _TEXT, payload, pos)
+            history, pos = _get_texts(payload, pos)
+            out, pos = _wire_get(_NO_TYPES, _SEQ, payload, pos)
+            expected, pos = _wire_get(_NO_TYPES, _SEQ, payload, pos)
+            unacked, pos = _get_numbered(payload, pos)
+            early, pos = _get_numbered(payload, pos)
+            count, pos = _get_varint(payload, pos)
+            received = []
+            for _ in range(count):
+                body, pos = _wire_get(_NO_TYPES, _BYTES, payload, pos)
+                received.append(bytes(body))
+        except WireError:
+            return
+        now = time.monotonic()
+        with self._lock:
+            if self._taking is None or token != self._taking[1] or self._taken.is_set():
+                return
+            self._peer = peer or None
+            self._history = history
+            self._out, self._expected = out, expected
+            # Sent again from here at once, under this end's address.
+            self._unacked = {seq: [self._frame(seq, body), now, 0.0, body] for seq, body in unacked}
+            self._early = dict(early)
+            for body in received:
+                self._inbox.put((None, body))
+            self._announcing = True
+            self._taken.set()
+        if peer:
+            self._peer_known.set()
+        if failure:
+            self._fail(failure)
+
+    def _peer_moved(self, payload):
+        """The peer moved: from now on send to its new address."""
+        try:
+            history, pos = _get_texts(payload, 0)
+            to, _ = _wire_get(_NO_TYPES, _TEXT, payload, pos)
+        except WireError:
+            return
+        with self._lock:
+            if self._peer is None or self._peer in history:
+                self._peer = to
+            known = self._peer == to
+        if known:
+            answer = bytearray()
+            _wire_put(_NO_TYPES, _TEXT, to, answer)
+            try:
+                self._node._send(to, 'moved-ack', bytes(answer))
+            except Unreachable:
+                pass
 
     def _step_descriptor(self, sends):
         if self._step >= len(self._steps):
@@ -4080,8 +4328,9 @@ class EndPart:
 class NativeChannel:
     """A network channel end seen through native values: each step's part
     converts its value with the schema (None needs no conversion), or, for
-    an EndPart, sends a channel end by the address of a relay on this node
-    and receives one by dialing that address."""
+    an EndPart, sends a channel end and receives one. A network end moves
+    to the receiving node (the value is <address>?take=<token>); a local
+    end stays here behind a relay (the value is the relay's address)."""
 
     def __init__(self, endpoint, parts, schema=None):
         self._endpoint, self._parts, self._schema = endpoint, parts, schema
@@ -4096,7 +4345,7 @@ class NativeChannel:
     def send(self, side, value):
         part = self._part()
         if isinstance(part, EndPart):
-            value = _relay_end(self._endpoint._node, self._endpoint._values, value, part, self._schema)
+            value = _offer_end(self._endpoint._node, self._endpoint._values, value, part, self._schema)
         elif part is not None:
             value = self._schema.from_native(part, value)
         self._endpoint.send(side, value)
@@ -4106,7 +4355,11 @@ class NativeChannel:
         value = self._endpoint.receive(side)
         if isinstance(part, EndPart):
             steps, parts = part.wire()
-            endpoint = self._endpoint._node.dial(value, steps, self._endpoint._values)
+            node = self._endpoint._node
+            if '?take=' in value:
+                endpoint = node.take(value, steps, self._endpoint._values)
+            else:
+                endpoint = node.dial(value, steps, self._endpoint._values)
             return part.start()(NativeChannel(endpoint, parts, self._schema), 0)
         return value if part is None else self._schema.to_native(part, value)
 
@@ -4114,13 +4367,22 @@ class NativeChannel:
         self._endpoint.abandon(side)
 
 
-def _relay_end(node, values, end, part, schema):
-    """Offers an unused channel end to another node: a relay on node listens
+def _offer_end(node, values, end, part, schema):
+    """The text that gives an unused channel end to another node. An end
+    that is itself between nodes moves there; a local end stays here and a
+    relay on node carries its conversation."""
+    channel, side = end._take(), end._side
+    if isinstance(channel, NativeChannel) and channel._step == 0:
+        return channel._endpoint._offer()
+    return _relay_end(node, values, channel, side, part, schema)
+
+
+def _relay_end(node, values, channel, side, part, schema):
+    """Offers a local channel end to another node: a relay on node listens
     for the receiver and passes each step between it and the end, which
     stays here. Returns the relay's address. A failure on either side gives
     up the other."""
     steps, parts = part.wire()
-    channel, side = end._take(), end._side
     relay = node.listen(f'relay-{node._next_id()}', [(not s, d) for s, d in steps], values)
     relayed = NativeChannel(relay, parts, schema)
 

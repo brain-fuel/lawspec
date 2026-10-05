@@ -39,12 +39,10 @@ pythonSessionsWith bits datas units = do
   if length (nub names) /= length names
     then Left ("two protocols share a Python name: " ++ unwords names)
     else pure ()
-  -- A protocol whose steps have wire descriptors (and delegate no ends)
-  -- can also run between nodes: listen and dial.
   -- A protocol can also run between nodes (listen and dial) when every
   -- step's type has a wire descriptor; a step sending another protocol's
-  -- end carries the address of a relay, so that protocol must run between
-  -- nodes too.
+  -- end carries the address the receiver takes the end over from (or a
+  -- relay's, for a local end), so that protocol must run between nodes too.
   let wired (table, acc) s = case foldM step (table, []) (C.sessionSteps s) of
         Right (table', ds) -> (table', acc ++ [(C.sessionName s, ds)])
         _ -> (table, acc)
@@ -126,8 +124,8 @@ protocol datas sessions wire session = do
            , "    @staticmethod"
            , "    def listen(node: ls.Node, name: str) -> " ++ firstStart ++ ":"
            , "        \"\"\"The first end of a channel named name on node, which another node"
-           , "        dials at <node address>/name. An end sent over it to another node is"
-           , "        relayed by this node.\"\"\""
+           , "        dials at <node address>/name. An end sent over it to another node"
+           , "        moves there (a local end stays and is relayed by this node).\"\"\""
            , "        steps, parts = " ++ name ++ "._wire()"
            , "        return " ++ firstStart ++ "(ls.NativeChannel(node.listen(name, steps, _TYPES), parts, _SCHEMA), 0)"
            , ""
