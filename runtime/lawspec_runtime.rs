@@ -3142,6 +3142,19 @@ struct Machine<'a> {
     // An actor's restart command (restart from), whose run and reference an
     // injected crash uses; without one, a crash restarts from the start.
     restart: Option<(ModelCallback, ModelCallback)>,
+    // What histories must agree with the model by: linearizable,
+    // sequential, causal or eventual.
+    consistency: String,
+}
+
+/// How a history that is not consistent is described.
+fn consistent_words(consistency: &str) -> &'static str {
+    match consistency {
+        "sequential" => "sequentially consistent",
+        "causal" => "causally consistent",
+        "eventual" => "eventually consistent",
+        _ => "linearizable",
+    }
 }
 
 // Calls a command: on an actor, its handler bridge (the state first,
@@ -3201,6 +3214,11 @@ impl<'a> Machine<'a> {
             invariants: kinds.iter().map(Sexp::name).zip(model.invariants.iter().copied()).collect(),
             per_key: forms.iter().any(|f| f.kind() == "perkey" && f.items().get(1).map(Sexp::name).as_deref() == Some("true")),
             actor: forms.iter().any(|f| f.kind() == "actor" && f.items().get(1).map(Sexp::name).as_deref() == Some("true")),
+            consistency: forms
+                .iter()
+                .find(|f| f.kind() == "consistency")
+                .and_then(|f| f.items().get(1).map(Sexp::name))
+                .unwrap_or_else(|| "linearizable".into()),
         }
     }
 
@@ -3836,6 +3854,26 @@ impl<'a> Machine<'a> {
         expected: Value,
         finish: &mut dyn FnMut(&mut Context, &Value) -> bool,
     ) -> bool {
+        // Causal: threads that never message each other see only their own
+        // calls, so each thread's results replay alone.
+        if self.consistency == "causal" {
+            for (i, branch) in branches.iter().enumerate() {
+                let mut state = expected.clone();
+                for (k, (index, args)) in branch.iter().enumerate() {
+                    let command = &self.commands[*index];
+                    let (after, wanted) = match step_model(command, ctx, args, state) {
+                        Ok(stepped) => stepped,
+                        Err(ModelFault::Invalid) => return false,
+                        Err(ModelFault::Error(e)) => panic!("model {}: {e}", self.name),
+                    };
+                    if !command.unit && !matches!(compare_values(&history[i][k].2, &wanted), Ok(std::cmp::Ordering::Equal)) {
+                        return false;
+                    }
+                    state = after;
+                }
+            }
+            return true;
+        }
         let mut seen = std::collections::HashSet::new();
         self.visit(ctx, branches, history, &mut seen, vec![0; branches.len()], expected, finish)
     }
@@ -3863,7 +3901,11 @@ impl<'a> Machine<'a> {
                 continue;
             }
             let called = history[i][k].0;
-            if (0..branches.len()).any(|j| j != i && positions[j] < branches[j].len() && history[j][positions[j]].1 < called) {
+            // Sequential and eventual drop real time; each thread's own
+            // order remains.
+            if self.consistency == "linearizable"
+                && (0..branches.len()).any(|j| j != i && positions[j] < branches[j].len() && history[j][positions[j]].1 < called)
+            {
                 continue;
             }
             let (index, args) = &branch[k];
@@ -3873,7 +3915,10 @@ impl<'a> Machine<'a> {
                 Err(ModelFault::Invalid) => continue,
                 Err(ModelFault::Error(e)) => panic!("model {}: {e}", self.name),
             };
-            if !command.unit && !matches!(compare_values(&history[i][k].2, &wanted), Ok(std::cmp::Ordering::Equal)) {
+            if self.consistency != "eventual"
+                && !command.unit
+                && !matches!(compare_values(&history[i][k].2, &wanted), Ok(std::cmp::Ordering::Equal))
+            {
                 continue;
             }
             if self.visit(ctx, branches, history, seen, advanced(&positions, i), after, finish) {
@@ -3990,8 +4035,9 @@ pub fn check_model_parallel_with(
         if let Some(failure) = machine.parallel_fails(&case, repeats, shake) {
             let (case, failure) = machine.shrink_parallel(case, failure, (repeats / 2).max(2), max_shrinks, shake);
             return Err(format!(
-                "model {} is not linearizable: {}: {}",
+                "model {} is not {}: {}: {}",
                 machine.name,
+                consistent_words(&machine.consistency),
                 machine.describe_parallel(&case),
                 failure
             ));
@@ -4027,19 +4073,36 @@ struct ScenarioQueues {
 struct ScenarioChannel {
     state: std::sync::Mutex<ScenarioQueues>,
     ready: std::sync::Condvar,
+    // In a network run: the channel's two sides as ends on two nodes of a
+    // faulty in-memory network, instead of the queues.
+    net: Option<NetChannel>,
 }
+
+struct NetChannel {
+    nodes: [net::Node; 2],
+    ends: [net::NetEndpoint; 2],
+    done: [std::sync::atomic::AtomicBool; 2],
+}
+
+// A vector clock: each process's count of its own events.
+type VectorClock = HashMap<usize, u64>;
 
 // A channel end a process holds: the channel's number and its side.
 type ScenarioEnds = HashMap<String, (usize, usize)>;
 // One call: the command, its arguments, its result, when it started and
-// when it returned.
-type ScenarioCall = (usize, Vec<Value>, Value, u64, u64);
+// when it returned, its process, and its process's clock at the call and
+// at the return.
+type ScenarioCall = (usize, Vec<Value>, Value, u64, u64, usize, VectorClock, VectorClock);
 
 struct ScenarioRun<'m> {
     machine: &'m Machine<'m>,
     commands: HashMap<String, usize>,
     channels: Vec<ScenarioChannel>,
     channel_numbers: HashMap<String, usize>,
+    channel_names: Vec<String>,
+    // Each value sent carries its sender's clock, kept here in order per
+    // channel and sending side.
+    stamps: std::sync::Mutex<HashMap<(usize, usize), std::collections::VecDeque<VectorClock>>>,
     state: Value,
     shake: u64,
     clock: std::sync::atomic::AtomicU64,
@@ -4138,6 +4201,19 @@ impl<'m> ScenarioRun<'m> {
     /// Sends from side; a channel end sent to a process that has ended is
     /// given up.
     fn send_on(&self, channel: usize, side: usize, value: Carried) {
+        if let Some(net) = &self.channels[channel].net {
+            let value = match value {
+                Carried::End(c, s) => Value::Text(format!("{}#{s}", self.channel_names[c])),
+                Carried::Value(v) => v,
+                Carried::Gone => return,
+            };
+            if let Err(e) = net.ends[side].send(&value) {
+                if !net::is_peer_failed(&e) {
+                    self.fail(format!("a send failed: {e}"));
+                }
+            }
+            return;
+        }
         let mut queues = self.queues(channel);
         if let (true, Carried::End(c, s)) = (queues.ended[1 - side], &value) {
             let (c, s) = (*c, *s);
@@ -4152,6 +4228,12 @@ impl<'m> ScenarioRun<'m> {
     /// nothing more fail instead of waiting, and channel ends on their way
     /// to side are given up too.
     fn gone(&self, channel: usize, side: usize) {
+        if let Some(net) = &self.channels[channel].net {
+            if !net.done[side].swap(true, std::sync::atomic::Ordering::SeqCst) {
+                net.ends[side].abandon();
+            }
+            return;
+        }
         let mut stranded = Vec::new();
         {
             let mut queues = self.queues(channel);
@@ -4177,6 +4259,56 @@ impl<'m> ScenarioRun<'m> {
         }
     }
 
+    /// The next thing side receives on channel: None when nothing came in
+    /// time.
+    fn receive_on(&self, channel: usize, side: usize) -> Option<Carried> {
+        if let Some(net) = &self.channels[channel].net {
+            return match net.ends[side].receive(Some(std::time::Duration::from_secs(5))) {
+                Ok(Value::Text(t)) => match t.rsplit_once('#').and_then(|(c, s)| Some((self.channel_numbers.get(c)?, s.parse::<usize>().ok()?))) {
+                    Some((c, s)) => Some(Carried::End(*c, s)),
+                    None => Some(Carried::Value(Value::Text(t))),
+                },
+                Ok(v) => Some(Carried::Value(v)),
+                Err(e) if net::is_peer_failed(&e) => Some(Carried::Gone),
+                Err(_) => None,
+            };
+        }
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        let mut waiting = self.queues(channel);
+        loop {
+            if let Some(v) = waiting.queues[1 - side].pop_front() {
+                if let Carried::Gone = v {
+                    waiting.queues[1 - side].push_back(Carried::Gone);
+                }
+                return Some(v);
+            }
+            let now = std::time::Instant::now();
+            if now >= deadline {
+                return None;
+            }
+            waiting = self.channels[channel].ready.wait_timeout(waiting, deadline - now).unwrap_or_else(|p| p.into_inner()).0;
+        }
+    }
+
+    fn stamp(&self, channel: usize, side: usize, clock: &VectorClock) {
+        self.stamps.lock().unwrap_or_else(|p| p.into_inner()).entry((channel, side)).or_default().push_back(clock.clone());
+    }
+
+    fn unstamp(&self, channel: usize, side: usize, clock: &mut VectorClock, me: usize) {
+        let sent = self
+            .stamps
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .get_mut(&(channel, 1 - side))
+            .and_then(|q| q.pop_front())
+            .unwrap_or_default();
+        for (p, n) in sent {
+            let mine = clock.entry(p).or_insert(0);
+            *mine = (*mine).max(n);
+        }
+        *clock.entry(me).or_insert(0) += 1;
+    }
+
     /// Runs a process: true when it finished, false when it failed; either
     /// way, the ends it still holds are given up.
     fn process(
@@ -4186,8 +4318,9 @@ impl<'m> ScenarioRun<'m> {
         ends: &mut ScenarioEnds,
         random: &mut SplitMix64,
         identity: usize,
+        clock: &mut VectorClock,
     ) -> bool {
-        let done = self.steps(acts, env, ends, random, identity);
+        let done = self.steps(acts, env, ends, random, identity, clock, identity);
         for (channel, side) in ends.drain().map(|(_, end)| end).collect::<Vec<_>>() {
             self.gone(channel, side);
         }
@@ -4201,6 +4334,8 @@ impl<'m> ScenarioRun<'m> {
         ends: &mut ScenarioEnds,
         random: &mut SplitMix64,
         identity: usize,
+        clock: &mut VectorClock,
+        me: usize,
     ) -> bool {
         let mut own = Context::testing();
         for (index, act) in acts.iter().enumerate() {
@@ -4229,6 +4364,8 @@ impl<'m> ScenarioRun<'m> {
                     let mut full = args.clone();
                     full.insert(command.state, self.state.clone());
                     perturb(random);
+                    *clock.entry(me).or_insert(0) += 1;
+                    let at_call = clock.clone();
                     let called = self.tick();
                     let result = match self.machine.run_command(command, &mut own, full) {
                         Ok(result) => result,
@@ -4238,7 +4375,17 @@ impl<'m> ScenarioRun<'m> {
                         }
                     };
                     let returned = self.tick();
-                    self.history.lock().unwrap_or_else(|p| p.into_inner()).push((command_index, args, result.clone(), called, returned));
+                    *clock.entry(me).or_insert(0) += 1;
+                    self.history.lock().unwrap_or_else(|p| p.into_inner()).push((
+                        command_index,
+                        args,
+                        result.clone(),
+                        called,
+                        returned,
+                        me,
+                        at_call,
+                        clock.clone(),
+                    ));
                     if items[2] != Sexp::Blank {
                         env.insert(items[2].name(), result);
                     }
@@ -4258,31 +4405,17 @@ impl<'m> ScenarioRun<'m> {
                         },
                     };
                     perturb(random);
+                    *clock.entry(me).or_insert(0) += 1;
+                    self.stamp(channel, side, clock);
                     self.send_on(channel, side, value);
                 }
                 "receive" | "receiveor" => {
                     let name = items[1].name();
                     let Some((channel, side)) = self.end(&name, ends) else { return false };
-                    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
-                    let mut waiting = self.queues(channel);
-                    let value = loop {
-                        if let Some(v) = waiting.queues[1 - side].pop_front() {
-                            if let Carried::Gone = v {
-                                waiting.queues[1 - side].push_back(Carried::Gone);
-                            }
-                            break Some(v);
-                        }
-                        let now = std::time::Instant::now();
-                        if now >= deadline {
-                            break None;
-                        }
-                        waiting = self.channels[channel]
-                            .ready
-                            .wait_timeout(waiting, deadline - now)
-                            .unwrap_or_else(|p| p.into_inner())
-                            .0;
-                    };
-                    drop(waiting);
+                    let value = self.receive_on(channel, side);
+                    if !matches!(value, None | Some(Carried::Gone)) {
+                        self.unstamp(channel, side, clock, me);
+                    }
                     match value {
                         None => {
                             self.fail(format!("a receive on {name} waited too long: the processes are blocked"));
@@ -4295,7 +4428,7 @@ impl<'m> ScenarioRun<'m> {
                                 return false;
                             }
                             ends.remove(&name);
-                            return self.steps(&items[3].items()[1..], env, ends, random, usize::MAX);
+                            return self.steps(&items[3].items()[1..], env, ends, random, usize::MAX, clock, me);
                         }
                         Some(Carried::End(c, s)) => {
                             ends.insert(items[2].name(), (c, s));
@@ -4337,23 +4470,35 @@ impl<'m> ScenarioRun<'m> {
                         }
                         handed.push(mine);
                     }
-                    let finished: Vec<bool> = std::thread::scope(|scope| {
+                    let parent = clock.clone();
+                    let outcomes: Vec<(bool, VectorClock)> = std::thread::scope(|scope| {
                         let running: Vec<_> = items[1..]
                             .iter()
                             .zip(handed)
                             .enumerate()
                             .map(|(i, (branch, mut mine))| {
                                 let mut env = env.clone();
+                                let mut child = parent.clone();
                                 let mut random =
                                     SplitMix64::new(self.shake ^ ((i as u64 + 1).wrapping_mul(0x9E3779B97F4A7C15)));
                                 let identity = branch as *const Sexp as usize;
                                 scope.spawn(move || {
-                                    self.process(&branch.items()[1..], &mut env, &mut mine, &mut random, identity)
+                                    let done = self.process(&branch.items()[1..], &mut env, &mut mine, &mut random, identity, &mut child);
+                                    (done, child)
                                 })
                             })
                             .collect();
-                        running.into_iter().map(|t| t.join().unwrap_or(false)).collect()
+                        running.into_iter().map(|t| t.join().unwrap_or((false, VectorClock::new()))).collect()
                     });
+                    let mut finished = Vec::new();
+                    for (done, child) in outcomes {
+                        finished.push(done);
+                        for (p, n) in child {
+                            let mine = clock.entry(p).or_insert(0);
+                            *mine = (*mine).max(n);
+                        }
+                    }
+                    *clock.entry(me).or_insert(0) += 1;
                     // A failed branch fails the process that ran the par.
                     if finished.contains(&false) {
                         return false;
@@ -4380,7 +4525,7 @@ impl<'m> ScenarioRun<'m> {
 }
 
 // One run of a scenario: its title, and what went wrong if anything did.
-fn run_scenario(machine: &Machine, spec: &str, shake: u64, crash: bool) -> (String, Option<String>) {
+fn run_scenario(machine: &Machine, spec: &str, shake: u64, crash: bool, network: bool) -> (String, Option<String>) {
     let forms = read_descriptor(spec);
     let title = forms[0].items()[1].name();
     let names: Vec<String> = forms
@@ -4410,18 +4555,48 @@ fn run_scenario(machine: &Machine, spec: &str, shake: u64, crash: bool) -> (Stri
     } else {
         None
     };
-    let new_channel = || ScenarioChannel {
-        state: std::sync::Mutex::new(ScenarioQueues {
-            queues: [std::collections::VecDeque::new(), std::collections::VecDeque::new()],
-            ended: [false, false],
-        }),
-        ready: std::sync::Condvar::new(),
+    // Network runs: loss, duplication and delay (which reorders); the
+    // channels' numbered, acknowledged frames must hide them all.
+    let wire = forms.iter().find(|f| f.kind() == "wire").filter(|_| network);
+    let faulty = wire.map(|_| net::MemoryNetwork::new(shake ^ 0x7F4A7C159E3779B9, 0.1, 0.1, std::time::Duration::from_millis(2)));
+    let types = Values::new(
+        wire.map(|w| w.items()[1..].iter().filter(|f| f.kind() == "data").map(|f| (f.items()[1].name(), f.clone())).collect())
+            .unwrap_or_default(),
+    );
+    let new_channel = |name: &String| {
+        let net = match (&faulty, wire) {
+            (Some(network), Some(w)) => w.items()[1..].iter().find(|f| f.kind() == "channel" && f.items()[1].name() == *name).map(|f| {
+                let steps: Vec<(bool, Sexp)> = f.items()[2..].iter().map(|s| (s.kind() == "send", s.items()[1].clone())).collect();
+                let nodes = [net::Node::new(network.transport(&format!("{name}-0"))), net::Node::new(network.transport(&format!("{name}-1")))];
+                let deadline = std::time::Duration::from_secs(5);
+                let first = nodes[0].listen(name, steps.clone(), types.clone(), deadline).expect("a fresh node");
+                let second = nodes[1]
+                    .dial(&first.address(), steps.into_iter().map(|(s, d)| (!s, d)).collect(), types.clone(), deadline)
+                    .expect("a fresh node");
+                NetChannel {
+                    nodes,
+                    ends: [first, second],
+                    done: [std::sync::atomic::AtomicBool::new(false), std::sync::atomic::AtomicBool::new(false)],
+                }
+            }),
+            _ => None,
+        };
+        ScenarioChannel {
+            state: std::sync::Mutex::new(ScenarioQueues {
+                queues: [std::collections::VecDeque::new(), std::collections::VecDeque::new()],
+                ended: [false, false],
+            }),
+            ready: std::sync::Condvar::new(),
+            net,
+        }
     };
     let run = ScenarioRun {
         machine,
         commands: machine.commands.iter().enumerate().map(|(i, c)| (c.name.clone(), i)).collect(),
-        channels: names.iter().map(|_| new_channel()).collect(),
+        channels: names.iter().map(new_channel).collect(),
         channel_numbers: names.iter().enumerate().map(|(i, n)| (n.clone(), i)).collect(),
+        channel_names: names.clone(),
+        stamps: std::sync::Mutex::new(HashMap::new()),
         state: state.clone(),
         shake,
         clock: std::sync::atomic::AtomicU64::new(0),
@@ -4429,7 +4604,14 @@ fn run_scenario(machine: &Machine, spec: &str, shake: u64, crash: bool) -> (Stri
         failures: std::sync::Mutex::new(Vec::new()),
         victim,
     };
-    let finished = run.process(body, &mut HashMap::new(), &mut ScenarioEnds::new(), &mut SplitMix64::new(shake), 0);
+    let finished = run.process(body, &mut HashMap::new(), &mut ScenarioEnds::new(), &mut SplitMix64::new(shake), 0, &mut VectorClock::new());
+    for channel in &run.channels {
+        if let Some(net) = &channel.net {
+            for node in &net.nodes {
+                node.close();
+            }
+        }
+    }
     if let Some(failure) = run.failures.into_inner().unwrap_or_else(|p| p.into_inner()).into_iter().next() {
         let crashed = if victim.is_some() { " (with a process crashed)" } else { "" };
         return (title, Some(format!("{failure}{crashed}")));
@@ -4454,7 +4636,7 @@ fn run_scenario(machine: &Machine, spec: &str, shake: u64, crash: bool) -> (Stri
         ordered.sort_by_key(|h| h.3);
         let observed: Vec<String> = ordered
             .iter()
-            .map(|(index, args, result, _, _)| {
+            .map(|(index, args, result, ..)| {
                 format!(
                     "{}({}) returned {}",
                     machine.commands[*index].name,
@@ -4463,16 +4645,31 @@ fn run_scenario(machine: &Machine, spec: &str, shake: u64, crash: bool) -> (Stri
                 )
             })
             .collect();
-        return (title, Some(format!("no order of the calls agrees with the model ({})", observed.join("; "))));
+        return (
+            title,
+            Some(format!(
+                "the calls are not {} with the model ({})",
+                consistent_words(&machine.consistency),
+                observed.join("; ")
+            )),
+        );
     }
     (title, None)
 }
 
+// Whether call a returned before call b began, as far as messages tell:
+// a's return clock is at or below b's call clock everywhere.
+fn happened_before(a: &ScenarioCall, b: &ScenarioCall) -> bool {
+    a.7.iter().all(|(p, n)| b.6.get(p).copied().unwrap_or(0) >= *n)
+}
+
 impl<'a> Machine<'a> {
-    /// A Wing-Gong search over any real-time order: next, a call that no
-    /// pending call returned before; memoized on the calls done and the
-    /// state. A complete order must leave the final state and invariants
-    /// the model gives.
+    /// A Wing-Gong search over the scenario's calls, memoized on the calls
+    /// done and the state. Linearizable: next, a call no pending call
+    /// returned before (real time). Sequential: next, a call every call that
+    /// happened before it (its process's order, and messages) is done.
+    /// Causal: each process's results from an order of what happened before
+    /// them. Eventual: no results, only the final state.
     fn scenario_linearizes(
         &self,
         ctx: &mut Context,
@@ -4481,8 +4678,38 @@ impl<'a> Machine<'a> {
         fin: Option<&Value>,
         state: &Value,
     ) -> bool {
+        let everything: Vec<usize> = (0..history.len()).collect();
+        if self.consistency == "causal" {
+            let mut processes: Vec<usize> = history.iter().map(|h| h.5).collect();
+            processes.sort_unstable();
+            processes.dedup();
+            for process in processes {
+                let own: Vec<usize> = everything.iter().copied().filter(|i| history[*i].5 == process).collect();
+                let members: Vec<usize> = everything
+                    .iter()
+                    .copied()
+                    .filter(|j| own.contains(j) || own.iter().any(|i| i != j && happened_before(&history[*j], &history[*i])))
+                    .collect();
+                let checked: std::collections::HashSet<usize> = own.into_iter().collect();
+                let mut seen = std::collections::HashSet::new();
+                if !self.scenario_visit(ctx, history, &members, &checked, false, &mut seen, Vec::new(), expected.clone(), fin, state) {
+                    return false;
+                }
+            }
+            return true;
+        }
+        let checked: std::collections::HashSet<usize> =
+            if self.consistency == "eventual" { Default::default() } else { everything.iter().copied().collect() };
         let mut seen = std::collections::HashSet::new();
-        self.scenario_visit(ctx, history, &mut seen, vec![false; history.len()], expected, fin, state)
+        self.scenario_visit(ctx, history, &everything, &checked, true, &mut seen, Vec::new(), expected, fin, state)
+    }
+
+    fn before(&self, history: &[ScenarioCall], j: usize, i: usize) -> bool {
+        if self.consistency == "linearizable" {
+            history[j].4 < history[i].3
+        } else {
+            happened_before(&history[j], &history[i])
+        }
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -4490,16 +4717,24 @@ impl<'a> Machine<'a> {
         &self,
         ctx: &mut Context,
         history: &[ScenarioCall],
-        seen: &mut std::collections::HashSet<(Vec<bool>, String)>,
-        done: Vec<bool>,
+        members: &[usize],
+        checked: &std::collections::HashSet<usize>,
+        judge_final: bool,
+        seen: &mut std::collections::HashSet<(Vec<usize>, String)>,
+        done: Vec<usize>,
         model_state: Value,
         fin: Option<&Value>,
         state: &Value,
     ) -> bool {
-        if !seen.insert((done.clone(), render(&model_state))) {
+        let mut key = done.clone();
+        key.sort_unstable();
+        if !seen.insert((key, render(&model_state))) {
             return false;
         }
-        if done.iter().all(|d| *d) {
+        if done.len() == members.len() {
+            if !judge_final {
+                return true;
+            }
             if let Some(fin) = fin {
                 if !matches!(compare_values(fin, &model_state), Ok(std::cmp::Ordering::Equal)) {
                     return false;
@@ -4510,25 +4745,26 @@ impl<'a> Machine<'a> {
                 matches!(invariant(ctx, vec![subject.clone()]).and_then(|v| v.boolean()), Ok(true))
             });
         }
-        for (i, (index, args, result, called, _)) in history.iter().enumerate() {
-            if done[i] {
+        for &i in members {
+            if done.contains(&i) {
                 continue;
             }
-            if (0..history.len()).any(|j| j != i && !done[j] && history[j].4 < *called) {
+            if members.iter().any(|&j| j != i && !done.contains(&j) && self.before(history, j, i)) {
                 continue;
             }
+            let (index, args, result) = (&history[i].0, &history[i].1, &history[i].2);
             let command = &self.commands[*index];
             let (after, wanted) = match step_model(command, ctx, args, model_state.clone()) {
                 Ok(stepped) => stepped,
                 Err(ModelFault::Invalid) => continue,
                 Err(ModelFault::Error(e)) => panic!("model {}: {e}", self.name),
             };
-            if !command.unit && !matches!(compare_values(result, &wanted), Ok(std::cmp::Ordering::Equal)) {
+            if checked.contains(&i) && !command.unit && !matches!(compare_values(result, &wanted), Ok(std::cmp::Ordering::Equal)) {
                 continue;
             }
             let mut next = done.clone();
-            next[i] = true;
-            if self.scenario_visit(ctx, history, seen, next, after, fin, state) {
+            next.push(i);
+            if self.scenario_visit(ctx, history, members, checked, judge_final, seen, next, after, fin, state) {
                 return true;
             }
         }
@@ -4543,8 +4779,9 @@ pub fn check_scenario(model: &Model, spec: &str) -> std::result::Result<(), Stri
     let machine = Machine::new(model);
     let mut random = SplitMix64::new(seed ^ 0x2545F4914F6CDD1D);
     for run in 0..30 {
-        // Every third run crashes one process of a par at a random point.
-        let (title, failure) = run_scenario(&machine, spec, random.next(), run % 3 == 2);
+        // Every third run crashes one process of a par at a random point, and
+        // every third other one sends each channel over a faulty network.
+        let (title, failure) = run_scenario(&machine, spec, random.next(), run % 3 == 2, run % 3 == 1);
         if let Some(failure) = failure {
             return Err(format!("scenario {title} fails: {failure}"));
         }
@@ -5577,6 +5814,12 @@ pub mod sessions {
                 Endpoint { transport: transport.clone(), side: Side::First },
                 Endpoint { transport, side: Side::Second },
             )
+        }
+
+        /// One end of a channel over the given transport, such as a
+        /// network channel end's (see net::NetSession).
+        pub fn on(transport: Arc<dyn Transport>, side: Side) -> Endpoint {
+            Endpoint { transport, side }
         }
 
         pub fn send<T: Any + Send>(&self, value: T) {
@@ -6637,5 +6880,1558 @@ mod session_tests {
             move || std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| second.receive::<i32>())),
         );
         assert!(outcome.is_err());
+    }
+}
+
+/// A descriptor text's data types, for decoding and encoding values whose
+/// descriptors name them.
+pub fn values_table(text: &str) -> Values {
+    Values::new(
+        read_descriptor(text)
+            .into_iter()
+            .filter(|f| matches!(f, Sexp::List(_)) && f.kind() == "data")
+            .map(|f| (f.items()[1].name(), f))
+            .collect(),
+    )
+}
+
+/// The first form of a descriptor text.
+pub fn descriptor(text: &str) -> Sexp {
+    read_descriptor(text).into_iter().next().expect("a descriptor")
+}
+
+// Distribution. Values cross the network in a canonical binary encoding
+// driven by their type descriptor (the same descriptors as generation), so
+// no tags are sent and every target writes the same bytes:
+//   int: zigzag LEB128 of the integer (any size)      bool: 0 or 1
+//   text, bytes: LEB128 length, then UTF-8 or raw     unit: nothing
+//   list: LEB128 count, then items                     maybe: 0, or 1 then the value
+//   either: 0 then left, or 1 then right               data: LEB128 constructor index, then fields
+// A node sends frames over a Transport (in memory, TCP or HTTP): kind,
+// entity name, the sender's address, an id and a payload. The protocol and
+// the bytes follow the Python reference, so nodes on different targets
+// interoperate.
+pub mod net {
+    use super::{BigInt, Result, SplitMix64, Sexp, Value, Values, actors, read_descriptor, render, values_from};
+    use num_traits::{One, Signed, ToPrimitive, Zero};
+    use std::collections::{HashMap, HashSet, VecDeque};
+    use std::io::{Read, Write};
+    use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+    use std::sync::{Arc, Condvar, Mutex, MutexGuard, Weak};
+    use std::time::{Duration, Instant};
+
+    /// The start of the error of a node that could not be reached, or did
+    /// not answer in time.
+    pub const UNREACHABLE: &str = "unreachable: ";
+    /// The start of the error of a channel end whose other end failed.
+    pub const PEER_FAILED: &str = "peer failed: ";
+    /// The start of the error of bytes that are not a value of the type.
+    pub const WIRE: &str = "wire: ";
+
+    pub fn is_unreachable(error: &str) -> bool {
+        error.starts_with(UNREACHABLE)
+    }
+
+    pub fn is_peer_failed(error: &str) -> bool {
+        error.starts_with(PEER_FAILED)
+    }
+
+    fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
+        m.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    fn wire_error<T>(message: impl std::fmt::Display) -> Result<T> {
+        Err(format!("{WIRE}{message}"))
+    }
+
+    fn put_varint(out: &mut Vec<u8>, n: &BigInt) {
+        let mut n = n.clone();
+        let mask = BigInt::from(0x7F);
+        loop {
+            let byte = (&n & &mask).to_u8().unwrap_or(0);
+            n >>= 7;
+            if n.is_zero() {
+                out.push(byte);
+                return;
+            }
+            out.push(byte | 0x80);
+        }
+    }
+
+    fn get_varint(buf: &[u8], pos: &mut usize) -> Result<BigInt> {
+        let mut result = BigInt::zero();
+        let mut shift = 0usize;
+        loop {
+            let Some(&byte) = buf.get(*pos) else {
+                return wire_error("the bytes end in the middle of a value");
+            };
+            *pos += 1;
+            result |= BigInt::from(byte & 0x7F) << shift;
+            if byte < 0x80 {
+                return Ok(result);
+            }
+            shift += 7;
+        }
+    }
+
+    fn put_len(out: &mut Vec<u8>, n: usize) {
+        put_varint(out, &BigInt::from(n));
+    }
+
+    fn get_len(buf: &[u8], pos: &mut usize) -> Result<usize> {
+        match get_varint(buf, pos)?.to_usize() {
+            Some(n) => Ok(n),
+            None => wire_error("a length too large"),
+        }
+    }
+
+    fn kind(d: &Sexp) -> &str {
+        d.kind()
+    }
+
+    /// Appends the encoding of v, a value of descriptor d.
+    pub fn wire_put(values: &Values, d: &Sexp, v: &Value, out: &mut Vec<u8>) -> Result<()> {
+        let d = values.resolve(d);
+        let items = d.items();
+        match (kind(d), v) {
+            ("int", Value::Integer(n)) => {
+                let below = items[2].bound().is_some_and(|lo| *n < lo);
+                let above = items[3].bound().is_some_and(|hi| *n > hi);
+                if below || above {
+                    return wire_error(format!("{n} is not a {}", items[1].name()));
+                }
+                let z = if n.is_negative() { -n * 2 - 1 } else { n * 2 };
+                put_varint(out, &z);
+            }
+            ("bool", Value::Bool(b)) => out.push(u8::from(*b)),
+            ("text" | "end", Value::Text(s)) => {
+                put_len(out, s.len());
+                out.extend_from_slice(s.as_bytes());
+            }
+            ("bytes", Value::Bytes(b)) => {
+                put_len(out, b.len());
+                out.extend_from_slice(b);
+            }
+            ("unit", _) => {}
+            ("list", Value::List(xs)) => {
+                put_len(out, xs.len());
+                for x in xs {
+                    wire_put(values, &items[1], x, out)?;
+                }
+            }
+            ("maybe", Value::Maybe(None)) => out.push(0),
+            ("maybe", Value::Maybe(Some(x))) => {
+                out.push(1);
+                wire_put(values, &items[1], x, out)?;
+            }
+            ("either", Value::Left(x)) => {
+                out.push(0);
+                wire_put(values, &items[1], x, out)?;
+            }
+            ("either", Value::Right(x)) => {
+                out.push(1);
+                wire_put(values, &items[2], x, out)?;
+            }
+            ("data", Value::Data(tag, fields)) => {
+                let Some(index) = items[2..].iter().position(|c| c.items()[1].name() == *tag) else {
+                    return wire_error(format!("{tag} is not a constructor of {}", items[1].name()));
+                };
+                put_len(out, index);
+                for (field, fd) in fields.iter().zip(&items[2 + index].items()[2..]) {
+                    wire_put(values, fd, field, out)?;
+                }
+            }
+            (k, other) => return wire_error(format!("{} is not a {k}", render(other))),
+        }
+        Ok(())
+    }
+
+    /// The value of descriptor d encoded at pos, moving pos past it.
+    pub fn wire_get(values: &Values, d: &Sexp, buf: &[u8], pos: &mut usize) -> Result<Value> {
+        let d = values.resolve(d);
+        let items = d.items();
+        let flag = |pos: &mut usize, what: &str| -> Result<bool> {
+            match buf.get(*pos) {
+                Some(b) if *b <= 1 => {
+                    *pos += 1;
+                    Ok(*b == 1)
+                }
+                _ => wire_error(format!("not a {what}")),
+            }
+        };
+        Ok(match kind(d) {
+            "int" => {
+                let z = get_varint(buf, pos)?;
+                let two = BigInt::from(2);
+                let v = if (&z % &two).is_zero() { &z / &two } else { -((&z + BigInt::one()) / &two) };
+                let below = items[2].bound().is_some_and(|lo| v < lo);
+                let above = items[3].bound().is_some_and(|hi| v > hi);
+                if below || above {
+                    return wire_error(format!("{v} is out of range for {}", items[1].name()));
+                }
+                Value::Integer(v)
+            }
+            "bool" => Value::Bool(flag(pos, "Bool")?),
+            k @ ("text" | "bytes" | "end") => {
+                let n = get_len(buf, pos)?;
+                if *pos + n > buf.len() {
+                    return wire_error("the bytes end in the middle of a value");
+                }
+                let raw = buf[*pos..*pos + n].to_vec();
+                *pos += n;
+                if k == "bytes" {
+                    Value::Bytes(raw)
+                } else {
+                    match String::from_utf8(raw) {
+                        Ok(s) => Value::Text(s),
+                        Err(_) => return wire_error("text that is not UTF-8"),
+                    }
+                }
+            }
+            "unit" => Value::Unit,
+            "list" => {
+                let n = get_len(buf, pos)?;
+                let mut xs = Vec::new();
+                for _ in 0..n {
+                    xs.push(wire_get(values, &items[1], buf, pos)?);
+                }
+                Value::List(xs)
+            }
+            "maybe" => {
+                if flag(pos, "Maybe")? {
+                    Value::Maybe(Some(Box::new(wire_get(values, &items[1], buf, pos)?)))
+                } else {
+                    Value::Maybe(None)
+                }
+            }
+            "either" => {
+                if flag(pos, "Either")? {
+                    Value::Right(Box::new(wire_get(values, &items[2], buf, pos)?))
+                } else {
+                    Value::Left(Box::new(wire_get(values, &items[1], buf, pos)?))
+                }
+            }
+            "data" => {
+                let index = get_len(buf, pos)?;
+                let ctors = &items[2..];
+                let Some(ctor) = ctors.get(index) else {
+                    return wire_error(format!("no constructor {index} in {}", items[1].name()));
+                };
+                let mut fields = Vec::new();
+                for fd in &ctor.items()[2..] {
+                    fields.push(wire_get(values, fd, buf, pos)?);
+                }
+                Value::Data(ctor.items()[1].name(), fields)
+            }
+            other => return wire_error(format!("unknown descriptor {other}")),
+        })
+    }
+
+    /// The value's canonical bytes.
+    pub fn wire_encode(values: &Values, d: &Sexp, v: &Value) -> Result<Vec<u8>> {
+        let mut out = Vec::new();
+        wire_put(values, d, v, &mut out)?;
+        Ok(out)
+    }
+
+    /// The value encoded by exactly these bytes.
+    pub fn wire_decode(values: &Values, d: &Sexp, data: &[u8]) -> Result<Value> {
+        let mut pos = 0;
+        let v = wire_get(values, d, data, &mut pos)?;
+        if pos != data.len() {
+            return wire_error("extra bytes after the value");
+        }
+        Ok(v)
+    }
+
+    fn hex(bytes: &[u8]) -> String {
+        bytes.iter().map(|b| format!("{b:02x}")).collect()
+    }
+
+    /// count values generated from one seed, encoded, in hexadecimal.
+    pub fn wire_encoded(text: &str, seed: u64, size: i64, count: i64) -> Vec<String> {
+        let (values, d) = values_from(text);
+        let mut random = SplitMix64::new(seed);
+        (0..count)
+            .map(|_| {
+                let v = values.generate(&d, &mut random, size);
+                hex(&wire_encode(&values, &d, &v).unwrap_or_else(|e| panic!("{e}")))
+            })
+            .collect()
+    }
+
+    /// Whether count generated values decode to themselves.
+    pub fn wire_round_trips(text: &str, seed: u64, size: i64, count: i64) -> bool {
+        let (values, d) = values_from(text);
+        let mut random = SplitMix64::new(seed);
+        (0..count).all(|_| {
+            let v = values.generate(&d, &mut random, size);
+            match wire_encode(&values, &d, &v).and_then(|bytes| wire_decode(&values, &d, &bytes)) {
+                Ok(back) => render(&back) == render(&v),
+                Err(_) => false,
+            }
+        })
+    }
+
+    fn text_d() -> Sexp {
+        Sexp::List(vec![Sexp::Atom("text".into())])
+    }
+
+    fn seq_d() -> Sexp {
+        Sexp::List(vec![Sexp::Atom("int".into()), Sexp::Atom("Int64".into()), Sexp::Blank, Sexp::Blank])
+    }
+
+    fn id_d() -> Sexp {
+        Sexp::List(vec![Sexp::Atom("int".into()), Sexp::Atom("UInt64".into()), Sexp::Int(BigInt::zero()), Sexp::Blank])
+    }
+
+    fn bytes_d() -> Sexp {
+        Sexp::List(vec![Sexp::Atom("bytes".into())])
+    }
+
+    fn no_types() -> Values {
+        Values::new(HashMap::new())
+    }
+
+    fn put_text(out: &mut Vec<u8>, s: &str) {
+        put_len(out, s.len());
+        out.extend_from_slice(s.as_bytes());
+    }
+
+    fn get_text(buf: &[u8], pos: &mut usize) -> Result<String> {
+        match wire_get(&no_types(), &text_d(), buf, pos)? {
+            Value::Text(s) => Ok(s),
+            _ => wire_error("not text"),
+        }
+    }
+
+    fn put_seq(out: &mut Vec<u8>, seq: i64) {
+        let _ = wire_put(&no_types(), &seq_d(), &Value::Integer(seq.into()), out);
+    }
+
+    fn get_seq(buf: &[u8], pos: &mut usize) -> Result<i64> {
+        match wire_get(&no_types(), &seq_d(), buf, pos)? {
+            Value::Integer(n) => n.to_i64().map_or_else(|| wire_error("a sequence number too large"), Ok),
+            _ => wire_error("not a sequence number"),
+        }
+    }
+
+    fn frame_encode(kind: &str, to: &str, source: &str, id: u64, payload: &[u8]) -> Vec<u8> {
+        let mut out = Vec::new();
+        put_text(&mut out, kind);
+        put_text(&mut out, to);
+        put_text(&mut out, source);
+        let _ = wire_put(&no_types(), &id_d(), &Value::Integer(id.into()), &mut out);
+        put_len(&mut out, payload.len());
+        out.extend_from_slice(payload);
+        out
+    }
+
+    struct Frame {
+        kind: String,
+        to: String,
+        source: String,
+        id: u64,
+        payload: Vec<u8>,
+    }
+
+    fn frame_decode(data: &[u8]) -> Result<Frame> {
+        let mut pos = 0;
+        let kind = get_text(data, &mut pos)?;
+        let to = get_text(data, &mut pos)?;
+        let source = get_text(data, &mut pos)?;
+        let id = match wire_get(&no_types(), &id_d(), data, &mut pos)? {
+            Value::Integer(n) => n.to_u64().unwrap_or(0),
+            _ => 0,
+        };
+        let payload = match wire_get(&no_types(), &bytes_d(), data, &mut pos)? {
+            Value::Bytes(b) => b,
+            _ => Vec::new(),
+        };
+        if pos != data.len() {
+            return wire_error("extra bytes after a frame");
+        }
+        Ok(Frame { kind, to, source, id, payload })
+    }
+
+    /// "tcp://host:port/name" as ("tcp://host:port", "name").
+    fn split_address(address: &str) -> Result<(String, String)> {
+        match address.rsplit_once('/') {
+            Some((node, name)) if node.contains("://") && !node.ends_with(':') && !node.ends_with('/') => {
+                Ok((node.to_string(), name.to_string()))
+            }
+            _ => Err(format!("{address:?} is not an address such as tcp://127.0.0.1:7000/name")),
+        }
+    }
+
+    /// What a transport calls with each frame that arrives.
+    pub type Deliver = Arc<dyn Fn(Vec<u8>) + Send + Sync>;
+
+    /// Moves frames between nodes: start begins calling deliver for every
+    /// frame that arrives; send sends one to the node at that address, best
+    /// effort (an error starting UNREACHABLE when it cannot); close stops.
+    pub trait Transport: Send + Sync {
+        fn address(&self) -> String;
+        fn start(&self, deliver: Deliver);
+        fn send(&self, node: &str, frame: Vec<u8>) -> Result<()>;
+        fn close(&self);
+    }
+
+    /// Nodes in one process, with faults for testing: each frame may be lost
+    /// or duplicated, and is delayed by up to delay (so frames can overtake
+    /// each other); partition cuts nodes off until heal. Clones share it.
+    #[derive(Clone)]
+    pub struct MemoryNetwork {
+        inner: Arc<NetworkInner>,
+    }
+
+    struct NetworkInner {
+        state: Mutex<NetworkState>,
+        loss: f64,
+        duplicate: f64,
+        delay: Duration,
+    }
+
+    struct NetworkState {
+        random: SplitMix64,
+        nodes: HashMap<String, Deliver>,
+        groups: Option<Vec<HashSet<String>>>,
+    }
+
+    impl MemoryNetwork {
+        pub fn new(seed: u64, loss: f64, duplicate: f64, delay: Duration) -> Self {
+            MemoryNetwork {
+                inner: Arc::new(NetworkInner {
+                    state: Mutex::new(NetworkState { random: SplitMix64::new(seed), nodes: HashMap::new(), groups: None }),
+                    loss,
+                    duplicate,
+                    delay,
+                }),
+            }
+        }
+
+        /// A network without faults.
+        pub fn reliable() -> Self {
+            Self::new(0, 0.0, 0.0, Duration::ZERO)
+        }
+
+        /// A transport for a node named name, at mem://name.
+        pub fn transport(&self, name: &str) -> Arc<dyn Transport> {
+            Arc::new(MemoryTransport { network: self.clone(), address: format!("mem://{name}") })
+        }
+
+        /// Only nodes named in the same group reach each other.
+        pub fn partition(&self, groups: &[&[&str]]) {
+            lock(&self.inner.state).groups =
+                Some(groups.iter().map(|g| g.iter().map(|n| format!("mem://{n}")).collect()).collect());
+        }
+
+        pub fn heal(&self) {
+            lock(&self.inner.state).groups = None;
+        }
+
+        fn send(&self, source: &str, node: &str, frame: Vec<u8>) -> Result<()> {
+            let (deliver, delays) = {
+                let mut state = lock(&self.inner.state);
+                let Some(deliver) = state.nodes.get(node).cloned() else {
+                    return Err(format!("{UNREACHABLE}no node at {node}"));
+                };
+                if let Some(groups) = &state.groups {
+                    if !groups.iter().any(|g| g.contains(source) && g.contains(node)) {
+                        return Ok(());
+                    }
+                }
+                let chance = |random: &mut SplitMix64, p: f64| p > 0.0 && (random.below(1 << 30) as f64) < p * (1u64 << 30) as f64;
+                if chance(&mut state.random, self.inner.loss) {
+                    return Ok(());
+                }
+                let copies = if chance(&mut state.random, self.inner.duplicate) { 2 } else { 1 };
+                let delays: Vec<Duration> =
+                    (0..copies).map(|_| self.inner.delay.mul_f64(state.random.below(1001) as f64 / 1000.0)).collect();
+                (deliver, delays)
+            };
+            for wait in delays {
+                let (deliver, frame) = (deliver.clone(), frame.clone());
+                std::thread::spawn(move || {
+                    if !wait.is_zero() {
+                        std::thread::sleep(wait);
+                    }
+                    deliver(frame);
+                });
+            }
+            Ok(())
+        }
+    }
+
+    struct MemoryTransport {
+        network: MemoryNetwork,
+        address: String,
+    }
+
+    impl Transport for MemoryTransport {
+        fn address(&self) -> String {
+            self.address.clone()
+        }
+
+        fn start(&self, deliver: Deliver) {
+            lock(&self.network.inner.state).nodes.insert(self.address.clone(), deliver);
+        }
+
+        fn send(&self, node: &str, frame: Vec<u8>) -> Result<()> {
+            self.network.send(&self.address, node, frame)
+        }
+
+        fn close(&self) {
+            lock(&self.network.inner.state).nodes.remove(&self.address);
+        }
+    }
+
+    // A listening socket polled until closed, so close needs no wake-up.
+    struct Listener {
+        socket: std::net::TcpListener,
+        closed: Arc<AtomicBool>,
+        accepted: Arc<Mutex<Vec<std::net::TcpStream>>>,
+    }
+
+    impl Listener {
+        fn bind(host: &str, port: u16) -> Result<(Listener, u16)> {
+            let socket = std::net::TcpListener::bind((host, port)).map_err(|e| format!("cannot listen on {host}:{port}: {e}"))?;
+            let port = socket.local_addr().map_err(|e| e.to_string())?.port();
+            socket.set_nonblocking(true).map_err(|e| e.to_string())?;
+            Ok((Listener { socket, closed: Arc::new(AtomicBool::new(false)), accepted: Arc::new(Mutex::new(Vec::new())) }, port))
+        }
+
+        // Accepts connections until closed, handing each to serve on its own thread.
+        fn run(&self, serve: Arc<dyn Fn(std::net::TcpStream) + Send + Sync>) {
+            let socket = match self.socket.try_clone() {
+                Ok(socket) => socket,
+                Err(_) => return,
+            };
+            let (closed, accepted) = (self.closed.clone(), self.accepted.clone());
+            std::thread::spawn(move || {
+                while !closed.load(Ordering::SeqCst) {
+                    match socket.accept() {
+                        Ok((stream, _)) => {
+                            let _ = stream.set_nonblocking(false);
+                            if let Ok(copy) = stream.try_clone() {
+                                lock(&accepted).push(copy);
+                            }
+                            let serve = serve.clone();
+                            std::thread::spawn(move || serve(stream));
+                        }
+                        Err(_) => std::thread::sleep(Duration::from_millis(5)),
+                    }
+                }
+            });
+        }
+
+        fn close(&self) {
+            self.closed.store(true, Ordering::SeqCst);
+            for stream in lock(&self.accepted).drain(..) {
+                let _ = stream.shutdown(std::net::Shutdown::Both);
+            }
+        }
+    }
+
+    fn read_exactly(stream: &mut std::net::TcpStream, n: usize) -> Option<Vec<u8>> {
+        let mut data = vec![0u8; n];
+        stream.read_exact(&mut data).ok()?;
+        Some(data)
+    }
+
+    fn host_port(rest: &str) -> Result<(String, u16)> {
+        let rest = rest.split('/').next().unwrap_or(rest);
+        match rest.rsplit_once(':') {
+            Some((host, port)) => Ok((host.to_string(), port.parse().map_err(|_| format!("{UNREACHABLE}bad port in {rest}"))?)),
+            None => Err(format!("{UNREACHABLE}no port in {rest}")),
+        }
+    }
+
+    fn connect(host: &str, port: u16) -> std::io::Result<std::net::TcpStream> {
+        use std::net::ToSocketAddrs;
+        let mut last = std::io::Error::other("no address");
+        for address in (host, port).to_socket_addrs()? {
+            match std::net::TcpStream::connect_timeout(&address, Duration::from_secs(5)) {
+                Ok(stream) => {
+                    let _ = stream.set_nodelay(true);
+                    return Ok(stream);
+                }
+                Err(e) => last = e,
+            }
+        }
+        Err(last)
+    }
+
+    /// Frames over TCP, each a 4-byte big-endian length then the frame.
+    /// Port 0 picks a free port; the address is tcp://host:port.
+    pub struct TcpTransport {
+        listener: Listener,
+        address: String,
+        connections: Mutex<HashMap<String, std::net::TcpStream>>,
+    }
+
+    impl TcpTransport {
+        pub fn new(host: &str, port: u16) -> Result<Arc<dyn Transport>> {
+            let (listener, port) = Listener::bind(host, port)?;
+            Ok(Arc::new(TcpTransport { listener, address: format!("tcp://{host}:{port}"), connections: Mutex::new(HashMap::new()) }))
+        }
+
+        /// On 127.0.0.1, at a free port.
+        pub fn local() -> Result<Arc<dyn Transport>> {
+            Self::new("127.0.0.1", 0)
+        }
+    }
+
+    impl Transport for TcpTransport {
+        fn address(&self) -> String {
+            self.address.clone()
+        }
+
+        fn start(&self, deliver: Deliver) {
+            self.listener.run(Arc::new(move |mut stream: std::net::TcpStream| {
+                while let Some(header) = read_exactly(&mut stream, 4) {
+                    let n = u32::from_be_bytes([header[0], header[1], header[2], header[3]]) as usize;
+                    let Some(frame) = read_exactly(&mut stream, n) else { return };
+                    deliver(frame);
+                }
+            }));
+        }
+
+        fn send(&self, node: &str, frame: Vec<u8>) -> Result<()> {
+            let (host, port) = host_port(node.trim_start_matches("tcp://"))?;
+            let mut data = (frame.len() as u32).to_be_bytes().to_vec();
+            data.extend_from_slice(&frame);
+            let mut connections = lock(&self.connections);
+            for attempt in 0..2 {
+                let stream = match connections.get_mut(node) {
+                    Some(stream) => stream,
+                    None => match connect(&host, port) {
+                        Ok(stream) => connections.entry(node.to_string()).or_insert(stream),
+                        Err(e) if attempt == 1 => return Err(format!("{UNREACHABLE}cannot reach {node}: {e}")),
+                        Err(_) => continue,
+                    },
+                };
+                match stream.write_all(&data) {
+                    Ok(()) => return Ok(()),
+                    Err(e) => {
+                        connections.remove(node);
+                        if attempt == 1 {
+                            return Err(format!("{UNREACHABLE}cannot reach {node}: {e}"));
+                        }
+                    }
+                }
+            }
+            Ok(())
+        }
+
+        fn close(&self) {
+            self.listener.close();
+            for (_, stream) in lock(&self.connections).drain() {
+                let _ = stream.shutdown(std::net::Shutdown::Both);
+            }
+        }
+    }
+
+    /// Frames as HTTP POST bodies to /lawspec; the address is http://host:port.
+    pub struct HttpTransport {
+        listener: Listener,
+        address: String,
+    }
+
+    impl HttpTransport {
+        pub fn new(host: &str, port: u16) -> Result<Arc<dyn Transport>> {
+            let (listener, port) = Listener::bind(host, port)?;
+            Ok(Arc::new(HttpTransport { listener, address: format!("http://{host}:{port}") }))
+        }
+
+        /// On 127.0.0.1, at a free port.
+        pub fn local() -> Result<Arc<dyn Transport>> {
+            Self::new("127.0.0.1", 0)
+        }
+    }
+
+    // An HTTP/1.1 message's head (start line and headers) and its body.
+    fn read_http(stream: &mut std::net::TcpStream) -> Option<(String, Vec<u8>)> {
+        let mut head = Vec::new();
+        let mut byte = [0u8; 1];
+        while !head.ends_with(b"\r\n\r\n") {
+            if stream.read(&mut byte).ok()? == 0 {
+                return None;
+            }
+            head.push(byte[0]);
+            if head.len() > 65536 {
+                return None;
+            }
+        }
+        let head = String::from_utf8_lossy(&head).to_string();
+        let length = head
+            .lines()
+            .filter_map(|l| l.split_once(':'))
+            .find(|(k, _)| k.trim().eq_ignore_ascii_case("content-length"))
+            .and_then(|(_, v)| v.trim().parse::<usize>().ok())
+            .unwrap_or(0);
+        let body = read_exactly(stream, length)?;
+        Some((head, body))
+    }
+
+    impl Transport for HttpTransport {
+        fn address(&self) -> String {
+            self.address.clone()
+        }
+
+        fn start(&self, deliver: Deliver) {
+            self.listener.run(Arc::new(move |mut stream: std::net::TcpStream| {
+                while let Some((head, body)) = read_http(&mut stream) {
+                    let first = head.lines().next().unwrap_or("").to_string();
+                    let ours = first.starts_with("POST /lawspec ");
+                    let status = if ours { "204 No Content" } else { "404 Not Found" };
+                    if stream.write_all(format!("HTTP/1.1 {status}\r\nContent-Length: 0\r\n\r\n").as_bytes()).is_err() {
+                        return;
+                    }
+                    if ours {
+                        deliver(body);
+                    }
+                    if head.to_ascii_lowercase().contains("connection: close") {
+                        return;
+                    }
+                }
+            }));
+        }
+
+        fn send(&self, node: &str, frame: Vec<u8>) -> Result<()> {
+            let (host, port) = host_port(node.trim_start_matches("http://"))?;
+            let unreachable = |e: &dyn std::fmt::Display| format!("{UNREACHABLE}cannot reach {node}: {e}");
+            let mut stream = connect(&host, port).map_err(|e| unreachable(&e))?;
+            let _ = stream.set_read_timeout(Some(Duration::from_secs(5)));
+            let request = format!(
+                "POST /lawspec HTTP/1.1\r\nHost: {host}:{port}\r\nContent-Type: application/octet-stream\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                frame.len()
+            );
+            stream.write_all(request.as_bytes()).map_err(|e| unreachable(&e))?;
+            stream.write_all(&frame).map_err(|e| unreachable(&e))?;
+            let (head, _) = read_http(&mut stream).ok_or_else(|| unreachable(&"no answer"))?;
+            let status = head.split_whitespace().nth(1).unwrap_or("");
+            if status.starts_with('2') { Ok(()) } else { Err(unreachable(&format!("HTTP {status}"))) }
+        }
+
+        fn close(&self) {
+            self.listener.close();
+        }
+    }
+
+    // Something a node names: it handles the frames sent to it.
+    trait Entity: Send + Sync {
+        fn receive(&self, node: &Node, kind: &str, source: &str, id: u64, payload: Vec<u8>);
+    }
+
+    struct Slot {
+        reply: Mutex<Option<Vec<u8>>>,
+        ready: Condvar,
+    }
+
+    /// A process's presence on a network: it names local mailboxes, actors,
+    /// channel ends and definitions, so other nodes can reach them at
+    /// <node address>/<name>, and it sends to theirs. Order is kept within one
+    /// channel; a mailbox send is best effort, and a request is sent again
+    /// until answered (the receiver runs it once), failing with UNREACHABLE
+    /// after its timeout. Clones share the node.
+    #[derive(Clone)]
+    pub struct Node {
+        inner: Arc<NodeInner>,
+    }
+
+    struct NodeInner {
+        transport: Arc<dyn Transport>,
+        address: String,
+        entities: Mutex<HashMap<String, Arc<dyn Entity>>>,
+        pending: Mutex<HashMap<u64, Arc<Slot>>>,
+        // Requests seen, by sender and id, with their reply once sent.
+        seen: Mutex<(HashMap<(String, u64), Option<Vec<u8>>>, VecDeque<(String, u64)>)>,
+        ids: AtomicU64,
+        closed: AtomicBool,
+    }
+
+    impl Node {
+        pub fn new(transport: Arc<dyn Transport>) -> Node {
+            let inner = Arc::new(NodeInner {
+                address: transport.address(),
+                transport: transport.clone(),
+                entities: Mutex::new(HashMap::new()),
+                pending: Mutex::new(HashMap::new()),
+                seen: Mutex::new((HashMap::new(), VecDeque::new())),
+                ids: AtomicU64::new(1),
+                closed: AtomicBool::new(false),
+            });
+            let weak: Weak<NodeInner> = Arc::downgrade(&inner);
+            transport.start(Arc::new(move |frame| {
+                if let Some(inner) = weak.upgrade() {
+                    Node { inner }.deliver(frame);
+                }
+            }));
+            Node { inner }
+        }
+
+        pub fn address(&self) -> String {
+            self.inner.address.clone()
+        }
+
+        pub fn close(&self) {
+            self.inner.closed.store(true, Ordering::SeqCst);
+            self.inner.transport.close();
+        }
+
+        fn closed(&self) -> bool {
+            self.inner.closed.load(Ordering::SeqCst)
+        }
+
+        fn next_id(&self) -> u64 {
+            self.inner.ids.fetch_add(1, Ordering::SeqCst)
+        }
+
+        fn send_frame(&self, address: &str, kind: &str, payload: &[u8], id: u64) -> Result<()> {
+            let (node, name) = split_address(address)?;
+            self.inner.transport.send(&node, frame_encode(kind, &name, &self.inner.address, id, payload))
+        }
+
+        fn register(&self, name: &str, entity: Arc<dyn Entity>) -> Result<String> {
+            if name.is_empty() || name.contains('/') {
+                return Err(format!("{name:?} is not a name: use letters, digits and dashes"));
+            }
+            let mut entities = lock(&self.inner.entities);
+            if entities.contains_key(name) {
+                return Err(format!("{name} is already registered on {}", self.inner.address));
+            }
+            entities.insert(name.to_string(), entity);
+            Ok(format!("{}/{name}", self.inner.address))
+        }
+
+        fn deliver(&self, frame: Vec<u8>) {
+            let Ok(Frame { kind, to, source, id, payload }) = frame_decode(&frame) else { return };
+            if kind == "reply" {
+                if let Some(slot) = lock(&self.inner.pending).remove(&id) {
+                    *lock(&slot.reply) = Some(payload);
+                    slot.ready.notify_all();
+                }
+                return;
+            }
+            let entity = lock(&self.inner.entities).get(&to).cloned();
+            let Some(entity) = entity else {
+                if id != 0 {
+                    self.reply(&source, id, 3, format!("nothing is registered as {to} on {}", self.inner.address).as_bytes());
+                }
+                return;
+            };
+            if id != 0 {
+                let key = (source.clone(), id);
+                let mut seen = lock(&self.inner.seen);
+                if let Some(answer) = seen.0.get(&key) {
+                    if let Some(answer) = answer.clone() {
+                        let node = self.clone();
+                        std::thread::spawn(move || {
+                            let _ = node.send_frame(&format!("{source}/"), "reply", &answer, id);
+                        });
+                    }
+                    return;
+                }
+                seen.0.insert(key.clone(), None);
+                seen.1.push_back(key);
+                while seen.1.len() > 10000 {
+                    if let Some(old) = seen.1.pop_front() {
+                        seen.0.remove(&old);
+                    }
+                }
+            }
+            // Handled off the transport's thread, so a slow handler does not
+            // hold up other frames.
+            let node = self.clone();
+            std::thread::spawn(move || entity.receive(&node, &kind, &source, id, payload));
+        }
+
+        fn reply(&self, source: &str, id: u64, status: u8, body: &[u8]) {
+            let mut payload = vec![status];
+            payload.extend_from_slice(body);
+            {
+                let mut seen = lock(&self.inner.seen);
+                if let Some(answer) = seen.0.get_mut(&(source.to_string(), id)) {
+                    *answer = Some(payload.clone());
+                }
+            }
+            let _ = self.send_frame(&format!("{source}/"), "reply", &payload, id);
+        }
+
+        /// Sends a request again until answered: (status, body).
+        fn request(&self, address: &str, kind: &str, payload: &[u8], timeout: Duration) -> Result<(u8, Vec<u8>)> {
+            let id = self.next_id();
+            let slot = Arc::new(Slot { reply: Mutex::new(None), ready: Condvar::new() });
+            lock(&self.inner.pending).insert(id, slot.clone());
+            let give_up = Instant::now() + timeout;
+            loop {
+                if let Err(e) = self.send_frame(address, kind, payload, id) {
+                    if !is_unreachable(&e) {
+                        lock(&self.inner.pending).remove(&id);
+                        return Err(e);
+                    }
+                }
+                let now = Instant::now();
+                let wait = Duration::from_millis(100).min(give_up.saturating_duration_since(now));
+                let mut reply = lock(&slot.reply);
+                if reply.is_none() {
+                    reply = slot.ready.wait_timeout(reply, wait).unwrap_or_else(|e| e.into_inner()).0;
+                }
+                if let Some(answer) = reply.take() {
+                    if answer.is_empty() {
+                        return Err(format!("{UNREACHABLE}an empty reply from {address}"));
+                    }
+                    return Ok((answer[0], answer[1..].to_vec()));
+                }
+                drop(reply);
+                if Instant::now() >= give_up {
+                    lock(&self.inner.pending).remove(&id);
+                    return Err(format!("{UNREACHABLE}{address} did not answer within {:?}", timeout));
+                }
+            }
+        }
+
+        // Mailboxes: values of one type sent by any node.
+
+        /// A local mailbox that other nodes send to at <address>/name.
+        pub fn mailbox(&self, name: &str, descriptor: Sexp, values: Values) -> Result<actors::Mailbox<Value>> {
+            let mailbox = actors::Mailbox::new();
+            self.register(name, Arc::new(MailEntity { mailbox: mailbox.clone(), descriptor, values }))?;
+            Ok(mailbox)
+        }
+
+        pub fn remote_mailbox(&self, address: &str, descriptor: Sexp, values: Values) -> RemoteMailbox {
+            RemoteMailbox { node: self.clone(), address: address.to_string(), descriptor, values }
+        }
+
+        // Actors: calls by message name, with each message's types.
+
+        /// Lets other nodes call handlers at <address>/name; returns that
+        /// address. Each handler takes the message's logical arguments and
+        /// gives its logical reply (typically by calling a local actor).
+        pub fn serve(&self, name: &str, handlers: Vec<RemoteHandler>, values: Values) -> Result<String> {
+            self.register(name, Arc::new(ActorEntity { handlers, values }))
+        }
+
+        /// A proxy calling the actor at address.
+        pub fn remote_actor(&self, address: &str, signatures: Vec<Signature>, values: Values, timeout: Duration) -> RemoteActor {
+            RemoteActor { node: self.clone(), address: address.to_string(), signatures, values, timeout }
+        }
+
+        // Definitions, by content hash.
+
+        /// Lets other nodes evaluate definitions, by content hash.
+        pub fn serve_definitions(&self, table: Vec<RemoteDefinition>, values: Values, name: &str) -> Result<String> {
+            self.register(name, Arc::new(DefinitionEntity { table, values }))
+        }
+
+        /// Evaluates the definition with this content hash on another node.
+        #[allow(clippy::too_many_arguments)]
+        pub fn evaluate(
+            &self,
+            node: &str,
+            digest: &str,
+            args: &[Value],
+            arguments: &[Sexp],
+            result: &Sexp,
+            values: &Values,
+            timeout: Duration,
+            name: &str,
+        ) -> Result<Value> {
+            let mut payload = Vec::new();
+            put_text(&mut payload, digest);
+            for (d, v) in arguments.iter().zip(args) {
+                wire_put(values, d, v, &mut payload)?;
+            }
+            let (status, body) = self.request(&format!("{node}/{name}"), "eval", &payload, timeout)?;
+            reply_value(status, &body, values, result)
+        }
+
+        // Channels: one side here, the other on any node.
+
+        /// The first end of a channel named name here; its other end is
+        /// dialed from any node. steps: (sends, descriptor) per step, from
+        /// this end's side.
+        pub fn listen(&self, name: &str, steps: Vec<(bool, Sexp)>, values: Values, deadline: Duration) -> Result<NetEndpoint> {
+            let endpoint = NetEndpoint::new(self, steps, values, deadline);
+            let address = self.register(name, endpoint.inner.clone())?;
+            *lock(&endpoint.inner.address) = address;
+            Ok(endpoint)
+        }
+
+        /// The second end of the channel listening at address; steps are
+        /// from this end's side.
+        pub fn dial(&self, address: &str, steps: Vec<(bool, Sexp)>, values: Values, deadline: Duration) -> Result<NetEndpoint> {
+            let endpoint = NetEndpoint::new(self, steps, values, deadline);
+            let own = self.register(&format!("end-{}", self.next_id()), endpoint.inner.clone())?;
+            *lock(&endpoint.inner.address) = own;
+            endpoint.connect(address);
+            Ok(endpoint)
+        }
+    }
+
+    fn reply_value(status: u8, body: &[u8], values: &Values, d: &Sexp) -> Result<Value> {
+        let message = String::from_utf8_lossy(body).to_string();
+        match status {
+            0 => wire_decode(values, d, body),
+            1 if message.starts_with(actors::CRASHED) => Err(message),
+            1 => Err(format!("{}{message}", actors::CRASHED)),
+            2 => Err(actors::STOPPED.to_string()),
+            _ if is_unreachable(&message) => Err(message),
+            _ => Err(format!("{UNREACHABLE}{message}")),
+        }
+    }
+
+    struct MailEntity {
+        mailbox: actors::Mailbox<Value>,
+        descriptor: Sexp,
+        values: Values,
+    }
+
+    impl Entity for MailEntity {
+        fn receive(&self, _: &Node, kind: &str, _: &str, _: u64, payload: Vec<u8>) {
+            if kind == "mail" {
+                if let Ok(value) = wire_decode(&self.values, &self.descriptor, &payload) {
+                    let _ = self.mailbox.send(value);
+                }
+            }
+        }
+    }
+
+    /// Sends to a mailbox on another node; send never waits for it.
+    pub struct RemoteMailbox {
+        node: Node,
+        pub address: String,
+        descriptor: Sexp,
+        values: Values,
+    }
+
+    impl RemoteMailbox {
+        pub fn send(&self, value: &Value) -> Result<()> {
+            let bytes = wire_encode(&self.values, &self.descriptor, value)?;
+            self.node.send_frame(&self.address, "mail", &bytes, 0)
+        }
+    }
+
+    /// A served message: its name, argument and reply descriptors, and
+    /// what handles it (logical arguments in, logical reply out).
+    pub type RemoteHandler = (String, Vec<Sexp>, Sexp, Arc<dyn Fn(Vec<Value>) -> Result<Value> + Send + Sync>);
+    /// A message's name, argument descriptors and reply descriptor.
+    pub type Signature = (String, Vec<Sexp>, Sexp);
+    /// A definition other nodes evaluate: its content hash, the function
+    /// (logical arguments in, logical result out), and its descriptors.
+    pub type RemoteDefinition = (String, Arc<dyn Fn(Vec<Value>) -> Result<Value> + Send + Sync>, Vec<Sexp>, Sexp);
+
+    struct ActorEntity {
+        handlers: Vec<RemoteHandler>,
+        values: Values,
+    }
+
+    impl Entity for ActorEntity {
+        fn receive(&self, node: &Node, kind: &str, source: &str, id: u64, payload: Vec<u8>) {
+            if kind != "call" {
+                return;
+            }
+            let mut pos = 0;
+            let decoded = get_text(&payload, &mut pos).and_then(|message| {
+                let handler = self.handlers.iter().find(|h| h.0 == message).ok_or_else(|| format!("no message {message}"))?;
+                let mut args = Vec::new();
+                for d in &handler.1 {
+                    args.push(wire_get(&self.values, d, &payload, &mut pos)?);
+                }
+                if pos != payload.len() {
+                    return wire_error("extra bytes after the arguments");
+                }
+                Ok((handler, args))
+            });
+            let (handler, args) = match decoded {
+                Ok(found) => found,
+                Err(e) => return node.reply(source, id, 3, format!("not a message this actor handles: {e}").as_bytes()),
+            };
+            match (handler.3)(args).and_then(|reply| wire_encode(&self.values, &handler.2, &reply)) {
+                Ok(bytes) => node.reply(source, id, 0, &bytes),
+                Err(e) if actors::is_stopped(&e) => node.reply(source, id, 2, e.as_bytes()),
+                Err(e) if actors::is_crashed(&e) => node.reply(source, id, 1, e.as_bytes()),
+                Err(e) => node.reply(source, id, 1, format!("{}{e}", actors::CRASHED).as_bytes()),
+            }
+        }
+    }
+
+    /// Calls an actor on another node: call sends the message and waits for
+    /// the reply, failing with UNREACHABLE after the timeout, or as the
+    /// actor's call failed (crashed, stopped).
+    pub struct RemoteActor {
+        node: Node,
+        pub address: String,
+        signatures: Vec<Signature>,
+        values: Values,
+        pub timeout: Duration,
+    }
+
+    impl RemoteActor {
+        pub fn call(&self, message: &str, args: &[Value]) -> Result<Value> {
+            let (_, arguments, reply) =
+                self.signatures.iter().find(|s| s.0 == message).ok_or_else(|| format!("no message {message}"))?;
+            let mut payload = Vec::new();
+            put_text(&mut payload, message);
+            for (d, v) in arguments.iter().zip(args) {
+                wire_put(&self.values, d, v, &mut payload)?;
+            }
+            let (status, body) = self.node.request(&self.address, "call", &payload, self.timeout)?;
+            reply_value(status, &body, &self.values, reply)
+        }
+    }
+
+    struct DefinitionEntity {
+        table: Vec<RemoteDefinition>,
+        values: Values,
+    }
+
+    impl Entity for DefinitionEntity {
+        fn receive(&self, node: &Node, kind: &str, source: &str, id: u64, payload: Vec<u8>) {
+            if kind != "eval" {
+                return;
+            }
+            let mut pos = 0;
+            let decoded = get_text(&payload, &mut pos).and_then(|digest| {
+                let entry = self.table.iter().find(|e| e.0 == digest).ok_or_else(|| "no such definition".to_string())?;
+                let mut args = Vec::new();
+                for d in &entry.2 {
+                    args.push(wire_get(&self.values, d, &payload, &mut pos)?);
+                }
+                Ok((entry, args))
+            });
+            let (entry, args) = match decoded {
+                Ok(found) => found,
+                Err(_) => return node.reply(source, id, 3, b"this node has no definition with that content hash"),
+            };
+            match (entry.1)(args).and_then(|result| wire_encode(&self.values, &entry.3, &result)) {
+                Ok(bytes) => node.reply(source, id, 0, &bytes),
+                Err(e) => node.reply(source, id, 1, e.as_bytes()),
+            }
+        }
+    }
+
+    enum Inbox {
+        Value(Vec<u8>),
+        Failed(String),
+    }
+
+    struct Unacked {
+        payload: Vec<u8>,
+        first: Instant,
+        last: Instant,
+    }
+
+    struct EndpointState {
+        peer: Option<String>,
+        out: i64,
+        unacked: HashMap<i64, Unacked>,
+        expected: i64,
+        early: HashMap<i64, Vec<u8>>,
+        step: usize,
+        gone: bool,
+    }
+
+    struct EndpointInner {
+        node: Node,
+        steps: Vec<(bool, Sexp)>,
+        values: Values,
+        deadline: Duration,
+        address: Mutex<String>,
+        state: Mutex<EndpointState>,
+        inbox: Mutex<VecDeque<Inbox>>,
+        arrived: Condvar,
+    }
+
+    /// One end of a channel between nodes. Each value travels in a numbered
+    /// frame that is sent again until acknowledged, so loss, duplication
+    /// and reordering are repaired; a peer silent past the deadline fails
+    /// the end (PEER_FAILED). Order is kept within the channel. Clones share
+    /// the end.
+    #[derive(Clone)]
+    pub struct NetEndpoint {
+        inner: Arc<EndpointInner>,
+    }
+
+    impl NetEndpoint {
+        fn new(node: &Node, steps: Vec<(bool, Sexp)>, values: Values, deadline: Duration) -> NetEndpoint {
+            let inner = Arc::new(EndpointInner {
+                node: node.clone(),
+                steps,
+                values,
+                deadline,
+                address: Mutex::new(String::new()),
+                state: Mutex::new(EndpointState {
+                    peer: None,
+                    out: 0,
+                    unacked: HashMap::new(),
+                    expected: 0,
+                    early: HashMap::new(),
+                    step: 0,
+                    gone: false,
+                }),
+                inbox: Mutex::new(VecDeque::new()),
+                arrived: Condvar::new(),
+            });
+            let weak = Arc::downgrade(&inner);
+            std::thread::spawn(move || resend(weak));
+            NetEndpoint { inner }
+        }
+
+        /// This end's address.
+        pub fn address(&self) -> String {
+            lock(&self.inner.address).clone()
+        }
+
+        fn connect(&self, address: &str) {
+            lock(&self.inner.state).peer = Some(address.to_string());
+            self.inner.transmit(-1, b"hello".to_vec());
+        }
+
+        fn step_descriptor(&self, sends: bool) -> Result<Sexp> {
+            let mut state = lock(&self.inner.state);
+            let Some((step_sends, d)) = self.inner.steps.get(state.step) else {
+                return Err("this channel's protocol has ended".into());
+            };
+            if *step_sends != sends {
+                return Err(format!("this step {}", if *step_sends { "sends" } else { "receives" }));
+            }
+            state.step += 1;
+            Ok(d.clone())
+        }
+
+        /// Sends the next step's value.
+        pub fn send(&self, value: &Value) -> Result<()> {
+            if lock(&self.inner.state).gone {
+                return Err(format!("{PEER_FAILED}the other end has failed"));
+            }
+            let d = self.step_descriptor(true)?;
+            let mut body = vec![0u8];
+            wire_put(&self.inner.values, &d, value, &mut body)?;
+            let seq = {
+                let mut state = lock(&self.inner.state);
+                state.out += 1;
+                state.out - 1
+            };
+            self.inner.transmit(seq, body);
+            Ok(())
+        }
+
+        /// The next step's value, waiting up to timeout (forever when None);
+        /// fails with PEER_FAILED once the other end gave up or failed.
+        pub fn receive(&self, timeout: Option<Duration>) -> Result<Value> {
+            let d = self.step_descriptor(false)?;
+            let until = timeout.map(|t| Instant::now() + t);
+            let mut inbox = lock(&self.inner.inbox);
+            let item = loop {
+                if let Some(item) = inbox.pop_front() {
+                    break item;
+                }
+                inbox = match until {
+                    None => self.inner.arrived.wait(inbox).unwrap_or_else(|e| e.into_inner()),
+                    Some(at) => {
+                        let now = Instant::now();
+                        if now >= at {
+                            return Err("no message arrived in time".into());
+                        }
+                        self.inner.arrived.wait_timeout(inbox, at - now).unwrap_or_else(|e| e.into_inner()).0
+                    }
+                };
+            };
+            match item {
+                Inbox::Failed(reason) => {
+                    inbox.push_front(Inbox::Failed(reason.clone()));
+                    Err(format!("{PEER_FAILED}{reason}"))
+                }
+                Inbox::Value(body) => {
+                    drop(inbox);
+                    if body.first() == Some(&1) {
+                        self.inner.fail("the other end gave up the conversation");
+                        return Err(format!(
+                            "{PEER_FAILED}the other end gave up the conversation (its process failed or abandoned it)"
+                        ));
+                    }
+                    wire_decode(&self.inner.values, &d, body.get(1..).unwrap_or(&[]))
+                }
+            }
+        }
+
+        /// Gives up: the other end's receives fail after what was sent.
+        pub fn abandon(&self) {
+            let seq = {
+                let mut state = lock(&self.inner.state);
+                state.out += 1;
+                state.out - 1
+            };
+            self.inner.transmit(seq, vec![1]);
+        }
+    }
+
+    impl EndpointInner {
+        fn transmit(&self, seq: i64, body: Vec<u8>) {
+            let mut payload = Vec::new();
+            put_seq(&mut payload, seq);
+            put_text(&mut payload, &lock(&self.address));
+            payload.extend_from_slice(&body);
+            let peer = {
+                let mut state = lock(&self.state);
+                let now = Instant::now();
+                state.unacked.insert(seq, Unacked { payload: payload.clone(), first: now, last: now });
+                state.peer.clone()
+            };
+            if let Some(peer) = peer {
+                let _ = self.node.send_frame(&peer, "chan", &payload, 0);
+            }
+        }
+
+        fn fail(&self, reason: &str) {
+            {
+                let mut state = lock(&self.state);
+                if state.gone {
+                    return;
+                }
+                state.gone = true;
+                state.unacked.clear();
+            }
+            lock(&self.inbox).push_back(Inbox::Failed(reason.to_string()));
+            self.arrived.notify_all();
+        }
+    }
+
+    // Sends unacknowledged frames again until the end fails or goes away.
+    fn resend(weak: Weak<EndpointInner>) {
+        loop {
+            std::thread::sleep(Duration::from_millis(20));
+            let Some(inner) = weak.upgrade() else { return };
+            if inner.node.closed() {
+                return;
+            }
+            let now = Instant::now();
+            let (peer, due, stale) = {
+                let mut state = lock(&inner.state);
+                if state.gone {
+                    return;
+                }
+                let stale = state.unacked.values().any(|u| now.duration_since(u.last) > Duration::from_millis(50) && now.duration_since(u.first) > inner.deadline);
+                let mut due = Vec::new();
+                for u in state.unacked.values_mut() {
+                    if now.duration_since(u.last) > Duration::from_millis(50) {
+                        u.last = now;
+                        due.push(u.payload.clone());
+                    }
+                }
+                (state.peer.clone(), due, stale)
+            };
+            if stale {
+                inner.fail("the other end did not answer in time (unreachable)");
+                return;
+            }
+            if let Some(peer) = peer {
+                for payload in due {
+                    let _ = inner.node.send_frame(&peer, "chan", &payload, 0);
+                }
+            }
+        }
+    }
+
+    impl Entity for EndpointInner {
+        fn receive(&self, node: &Node, kind: &str, _: &str, _: u64, payload: Vec<u8>) {
+            let mut pos = 0;
+            if kind == "ack" {
+                if let Ok(seq) = get_seq(&payload, &mut pos) {
+                    lock(&self.state).unacked.remove(&seq);
+                }
+                return;
+            }
+            if kind != "chan" {
+                return;
+            }
+            let Ok(seq) = get_seq(&payload, &mut pos) else { return };
+            let Ok(sender) = get_text(&payload, &mut pos) else { return };
+            let body = payload[pos..].to_vec();
+            let mut ack = Vec::new();
+            put_seq(&mut ack, seq);
+            let _ = node.send_frame(&sender, "ack", &ack, 0);
+            let ready = {
+                let mut state = lock(&self.state);
+                if seq == -1 {
+                    if state.peer.is_none() {
+                        state.peer = Some(sender);
+                    }
+                    return;
+                }
+                if seq < state.expected || state.early.contains_key(&seq) {
+                    return;
+                }
+                state.early.insert(seq, body);
+                let mut ready = Vec::new();
+                loop {
+                    let next = state.expected;
+                    match state.early.remove(&next) {
+                        Some(body) => {
+                            ready.push(body);
+                            state.expected += 1;
+                        }
+                        None => break,
+                    }
+                }
+                ready
+            };
+            if !ready.is_empty() {
+                lock(&self.inbox).extend(ready.into_iter().map(Inbox::Value));
+                self.arrived.notify_all();
+            }
+        }
+    }
+
+    /// Converts one session step's native value to and from its logical
+    /// form, for typed ends over a network.
+    pub struct StepCodec {
+        to_logical: Box<dyn Fn(super::sessions::Message) -> Value + Send + Sync>,
+        from_logical: Box<dyn Fn(Value) -> Result<super::sessions::Message> + Send + Sync>,
+    }
+
+    /// The codec of a step whose native type is T.
+    pub fn step_codec<T: super::IntoValue + super::FromValue + Send + 'static>() -> StepCodec {
+        StepCodec {
+            to_logical: Box::new(|message| match message.downcast::<T>() {
+                Ok(value) => super::IntoValue::into_value(*value),
+                Err(_) => panic!("a session sent a value of an unexpected type"),
+            }),
+            from_logical: Box::new(|value| {
+                let native: T = super::FromValue::from_value(value)?;
+                Ok(Box::new(native) as super::sessions::Message)
+            }),
+        }
+    }
+
+    /// A typed session end's transport over a network channel end: values
+    /// are converted step by step, natively on this side.
+    pub struct NetSession {
+        endpoint: NetEndpoint,
+        codecs: Vec<StepCodec>,
+        step: AtomicU64,
+    }
+
+    impl NetSession {
+        pub fn new(endpoint: NetEndpoint, codecs: Vec<StepCodec>) -> Arc<NetSession> {
+            Arc::new(NetSession { endpoint, codecs, step: AtomicU64::new(0) })
+        }
+
+        fn codec(&self) -> &StepCodec {
+            let step = self.step.fetch_add(1, Ordering::SeqCst) as usize;
+            self.codecs.get(step).unwrap_or_else(|| panic!("this channel's protocol has ended"))
+        }
+    }
+
+    impl super::sessions::Transport for NetSession {
+        fn send(&self, _: super::sessions::Side, message: super::sessions::Message) {
+            let value = (self.codec().to_logical)(message);
+            if let Err(e) = self.endpoint.send(&value) {
+                if !is_peer_failed(&e) {
+                    panic!("{e}");
+                }
+            }
+        }
+
+        fn receive(&self, _: super::sessions::Side) -> std::result::Result<super::sessions::Message, super::sessions::PeerFailed> {
+            let codec = self.codec();
+            match self.endpoint.receive(None) {
+                Ok(value) => Ok((codec.from_logical)(value).unwrap_or_else(|e| panic!("{e}"))),
+                Err(e) if is_peer_failed(&e) => Err(super::sessions::PeerFailed),
+                Err(e) => panic!("{e}"),
+            }
+        }
+
+        fn close(&self, _: super::sessions::Side) {
+            self.endpoint.abandon();
+        }
+    }
+
+    // Keeps descriptor helpers reachable for generated code.
+    pub fn parse(text: &str) -> Sexp {
+        read_descriptor(text).into_iter().next().expect("a descriptor")
+    }
+}
+
+#[cfg(test)]
+mod net_tests {
+    use super::net::*;
+    use super::*;
+    use std::sync::Arc;
+    use std::time::Duration;
+
+    fn int64() -> Sexp {
+        descriptor("(int Int64 _ _)")
+    }
+
+    #[test]
+    fn wire_vectors_match_python() {
+        assert_eq!(wire_encoded("(int Integer _ _)", 7, 4, 4), vec!["9ddc4f", "eefb17", "8fc703", "8ee709"]);
+        assert_eq!(wire_encoded("(int Int8 -128 127)", 42, 4, 5), vec!["f901", "28", "00", "48", "5c"]);
+        assert_eq!(wire_encoded("(text)", 3, 4, 3), vec!["037b5b2c", "0134", "024d54"]);
+        assert_eq!(wire_encoded("(list (maybe (bool)))", 5, 3, 3), vec!["02000101", "0100", "010100"]);
+        assert_eq!(wire_encoded("(either (int UInt8 0 255) (text))", 9, 3, 4), vec!["00ec02", "0000", "00d201", "0100"]);
+        let shape = "(data Shape (ctor Shape::Circle (int Int32 0 100)) (ctor Shape::Box (int Int32 0 100) (int Int32 0 100)) (ctor Shape::Group (list (ref Shape))))";
+        assert_eq!(wire_encoded(shape, 11, 3, 3), vec!["0030", "020201b80100015ac801", "014808"]);
+        for seed in 0..20 {
+            assert!(wire_round_trips(shape, seed, 5, 10));
+        }
+    }
+
+    fn exercise(a: Arc<dyn Transport>, b: Arc<dyn Transport>, lossy: bool) {
+        let (here, there) = (Node::new(a), Node::new(b));
+        let counter = actors::Actor::new(BigInt::from(0));
+        let served = counter.clone();
+        let handler: Arc<dyn Fn(Vec<Value>) -> Result<Value> + Send + Sync> = Arc::new(move |args| {
+            let n = args[0].integer()?;
+            served.call(|s: BigInt| {
+                let next = s + n;
+                Ok((Value::Integer(next.clone()), next))
+            })
+        });
+        let address = there.serve("counter", vec![("add".into(), vec![int64()], int64(), handler)], values_table("")).unwrap();
+        let remote = here.remote_actor(&address, vec![("add".into(), vec![int64()], int64())], values_table(""), Duration::from_secs(3));
+        let replies: Vec<String> = (1..=3).map(|n| render(&remote.call("add", &[Value::Integer(n.into())]).unwrap())).collect();
+        assert_eq!(replies, vec!["1", "3", "6"]);
+        let double: Arc<dyn Fn(Vec<Value>) -> Result<Value> + Send + Sync> =
+            Arc::new(|args| Ok(Value::Integer(args[0].integer()? * 2)));
+        there.serve_definitions(vec![("h".into(), double, vec![int64()], int64())], values_table(""), "definitions").unwrap();
+        let got = here
+            .evaluate(&there.address(), "h", &[Value::Integer(21.into())], &[int64()], &int64(), &values_table(""), Duration::from_secs(3), "definitions")
+            .unwrap();
+        assert_eq!(render(&got), "42");
+        if !lossy {
+            let box_ = there.mailbox("jobs", int64(), values_table("")).unwrap();
+            here.remote_mailbox(&format!("{}/jobs", there.address()), int64(), values_table("")).send(&Value::Integer(41.into())).unwrap();
+            assert_eq!(render(&box_.receive(Some(Duration::from_secs(3))).unwrap()), "41");
+        }
+        let steps = vec![(true, int64()), (false, descriptor("(text)")), (true, int64())];
+        let listener = there.listen("chat", steps.clone(), values_table(""), Duration::from_secs(5)).unwrap();
+        let dialer = here
+            .dial(&format!("{}/chat", there.address()), steps.iter().map(|(s, d)| (!s, d.clone())).collect(), values_table(""), Duration::from_secs(5))
+            .unwrap();
+        let worker = std::thread::spawn(move || {
+            listener.send(&Value::Integer(10.into())).unwrap();
+            let said = listener.receive(Some(Duration::from_secs(5))).unwrap();
+            listener.send(&Value::Integer(20.into())).unwrap();
+            said
+        });
+        assert_eq!(render(&dialer.receive(Some(Duration::from_secs(5))).unwrap()), "10");
+        dialer.send(&Value::Text("hi".into())).unwrap();
+        assert_eq!(render(&dialer.receive(Some(Duration::from_secs(5))).unwrap()), "20");
+        assert_eq!(render(&worker.join().unwrap()), "\"hi\"");
+        here.close();
+        there.close();
+    }
+
+    #[test]
+    fn nodes_over_memory_tcp_and_http() {
+        let net = MemoryNetwork::new(3, 0.2, 0.2, Duration::from_millis(10));
+        exercise(net.transport("a"), net.transport("b"), true);
+        exercise(TcpTransport::local().unwrap(), TcpTransport::local().unwrap(), false);
+        exercise(HttpTransport::local().unwrap(), HttpTransport::local().unwrap(), false);
     }
 }

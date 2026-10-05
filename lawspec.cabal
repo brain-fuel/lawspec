@@ -189,6 +189,7 @@ library
       LawSpec.Actors.Web
       LawSpec.Api
       LawSpec.Backend
+      LawSpec.Bounds
       LawSpec.Capabilities
       LawSpec.Code.Doc
       LawSpec.Code.JavaScript

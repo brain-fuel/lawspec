@@ -29,6 +29,7 @@ import qualified LawSpec.GoDefinitions as GoDefinitions
 import qualified LawSpec.PythonData as PythonData
 import qualified LawSpec.PythonNativeBinding as PythonNativeBinding
 import qualified LawSpec.PythonDefinitions as PythonDefinitions
+import qualified LawSpec.RustDefinitions as RustDefinitions
 import qualified LawSpec.WebData as WebData
 import qualified LawSpec.WebNativeBinding as WebNativeBinding
 import qualified LawSpec.WebDefinitions as WebDefinitions
@@ -477,5 +478,6 @@ remoteCalls target plan = case target of
   "python" -> PythonDefinitions.definitionCalls units
   "go" -> GoDefinitions.definitionCalls units
   t | t `elem` ["java", "kotlin"] -> JavaDefinitions.definitionCalls units
+  "rust" -> [(i, "crate::lawspec_definitions::" ++ n) | (i, n) <- RustDefinitions.definitionNames units]
   _ -> []
   where units = map plannedUnit (plannedUnits plan)
