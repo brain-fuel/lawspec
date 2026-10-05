@@ -37,13 +37,53 @@ end
 
 | Form | Meaning |
 | --- | --- |
-| `A / A'` | a flow parameter; legal only as a signature argument, at most one per function |
+| `A / A'` | a flow parameter; legal only as a signature argument. A function may take several |
 | `~s` | pass the state `s` to a flow parameter, and rebind `s` to the state the call leaves |
 | `e1; e2` | evaluate `e1`, then `e2`; the value is `e2`'s |
-| `~s := e` | in a definition, update its flow parameter `s` |
+| `~s := e` | in a definition, update its flow parameter `s` (any of them, when it has several) |
 
 A plain `s` reads the current state. `(push x ~s; nOfStack s) = n + 1` reads
 the stack after the push.
+
+A function with several flow parameters takes a state for each, and the call
+rebinds each one:
+
+```lawspec fragment
+definition pushBoth (x :: Int8) (a :: Stack n / Stack (n + 1)) (b :: Stack m / Stack (m + 1)) :: Unit is
+  ~a := Push x a; ~b := Push x b
+end
+
+law `both stacks get the value` is
+  definition is
+    `for all` (x :: Int8) (a :: Stack n) (b :: Stack m) . (pushBoth x ~a ~b; pop ~a; pop ~b) = x
+  end
+end
+```
+
+A state has one owner, so the same state cannot be passed to two flow
+parameters of one call. A model's command still takes the model's state as
+its one flow parameter.
+
+## Flow calls in branches
+
+A flow call may sit in a branch of an `if` or a `match`. Only the branch taken
+runs, and the state continues from whichever branch ran:
+
+```lawspec fragment
+law `a push in each branch` is
+  definition is
+    `for all` (x :: Int8) (s :: Stack n) .
+      ((if x > 0 then push x ~s else push 0 ~s); pop ~s) = (if x > 0 then x else 0)
+  end
+end
+```
+
+Every branch must leave the state at the same type for it to be used after
+the branches. Here both push once, so `s` is a `Stack (n + 1)` afterwards and
+`pop` can take it. If one branch pushed and the other did not, using `s`
+afterwards is rejected: `after these branches, s is Stack (n + 1) in the then
+branch, but Stack n in the else branch`. Using it only inside the branches is
+fine.
 
 ## Typestate
 
@@ -61,7 +101,10 @@ Errors:
 - a flow parameter given a plain value (`write ~s`);
 - `~` on an argument that is not a flow parameter, or on a name that is not a
   quantified variable or parameter;
-- a flow call inside a match branch, or after `&&` or `||`;
+- a flow call after `&&` or `||`, or in an all-elements predicate, where it
+  may not run;
+- the same state passed to two flow parameters of one call;
+- a state used after branches that leave it at different types;
 - `~`, `;` or `:=` outside a law clause or definition body, such as in a
   refinement;
 - a flow call in an implication's guard.
@@ -73,7 +116,9 @@ variables.
 
 Each flow function returns a generated product named after it: `PushFlow` with
 a `state` field, and `PopFlow` with `result` and `state` fields (a `Unit`
-result has no field). Its index is the output state's, so an adapter that
+result has no field). A function with several flow parameters has a field per
+state: `state1`, `state2`, and so on, in argument order. Branches that call
+flow functions join their value and states in a generated `FlowJoinN`. Its index is the output state's, so an adapter that
 leaves the wrong stack fails its postcondition (`RUNTIME CHECKED`). A
 definition such as `pushed` returns its product too, and the index prover
 checks it.
