@@ -69,6 +69,7 @@ instance Binary C.Quantifier
 instance Binary C.Type
 instance Binary C.UnaryOp
 instance Binary C.Unit
+instance Binary C.Session
 instance Binary ConstructorIndex
 instance Binary FamilyIndex
 instance Binary IndexGuard

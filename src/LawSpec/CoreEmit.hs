@@ -1,4 +1,5 @@
 module LawSpec.CoreEmit (emitPlan, emitPlanWithFormat, emitPlanWithLayout, emitPlanWithOptions, emitPlanWithNativeOptions, targets) where
+import LawSpec.Sessions (sessionArtifacts)
 import LawSpec.Backend
 import LawSpec.Common
 import LawSpec.Testing
@@ -63,7 +64,10 @@ emitPlan = emitPlanWithFormat False
 emitPlanWithFormat :: Bool -> String -> Plan -> Either [Diagnostic] [Artifact]
 emitPlanWithFormat minify target original = do
   let plan = escapePlan target (witnessPlan original)
-  files <- emitPlanFormatted minify target plan
+  emittedFiles <- emitPlanFormatted minify target plan
+  -- Typed channel ends for the unit's protocols, for implementation code.
+  sessions <- sessionArtifacts minify target plan
+  let files = emittedFiles ++ sessions
   canonical <- if minify then emitPlanFormatted False target plan else pure files
   let references = [(artifactPath a, artifactContent a) | a <- canonical, ownership a == "user"]
   mapM (\artifact -> if ownership artifact /= "user" then pure artifact else

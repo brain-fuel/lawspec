@@ -119,7 +119,20 @@ data Property = Property
   } deriving (Eq, Show, Generic)
 -- unitMachines are the unit's stateful models, which each target's model
 -- runtime runs against its adapters.
-data Unit = Unit { unitId :: Id, unitDeclarations :: [Declaration], unitContracts :: [Contract], unitProperties :: [Property], unitDefinitions :: [Definition], unitMachines :: [Machine Id] } deriving (Eq, Show, Generic)
+data Unit = MkUnit { unitId :: Id, unitDeclarations :: [Declaration], unitContracts :: [Contract], unitProperties :: [Property], unitDefinitions :: [Definition], unitMachines :: [Machine Id]
+  -- The unit's protocols, from which each target generates typed channel ends.
+  , unitSessions :: [Session] } deriving (Eq, Show, Generic)
+pattern Unit :: Id -> [Declaration] -> [Contract] -> [Property] -> [Definition] -> [Machine Id] -> Unit
+pattern Unit identity declarations contracts properties definitions machines <- MkUnit identity declarations contracts properties definitions machines _
+  where Unit identity declarations contracts properties definitions machines = MkUnit identity declarations contracts properties definitions machines []
+{-# COMPLETE Unit #-}
+
+-- A protocol: what its first end sends (True) and receives (False), in
+-- order; the second end does the reverse. A step's type naming another
+-- protocol (a Constructor with no arguments whose name is a session) sends
+-- that protocol's first end, unused.
+data Session = Session { sessionId :: Id, sessionName :: String, sessionSteps :: [(Bool, Type)] }
+  deriving (Eq, Show, Generic)
 data Program = Program
   { programMachineBits :: Int, programDataDeclarations :: [DataDeclaration]
   , programUnits :: [Unit]

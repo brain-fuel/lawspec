@@ -288,8 +288,18 @@ elaborateDefinitionUnit dataDeclarations bits u = do
       S.contractName contract `elem` map S.functionName (S.functionDefinitions u)]
   let machines = map (fmap (declarationId u)) (S.machines u)
   bridges <- concat <$> mapM (machineBridges ds) machines
-  pure (C.Unit (C.Id (S.unitName u)) (ds ++ map C.definitionDeclaration bridges) contracts [] (definitions ++ bridges) machines)
-  where declarationId unit n = C.Id (S.unitName unit ++ "::" ++ n)
+  sessions <- mapM session (S.protocols u)
+  pure (C.MkUnit (C.Id (S.unitName u)) (ds ++ map C.definitionDeclaration bridges) contracts [] (definitions ++ bridges) machines sessions)
+  where
+    declarationId unit n = C.Id (S.unitName unit ++ "::" ++ n)
+    sessionIdentity n = C.Id (S.unitName u ++ "::session::" ++ n)
+    -- A step naming another protocol sends that protocol's first end.
+    session p = C.Session (sessionIdentity (S.protocolName p)) (S.protocolName p) <$> mapM step (S.protocolSteps p)
+    step (S.Send t) = (,) True <$> stepType t
+    step (S.Receive t) = (,) False <$> stepType t
+    stepType t = case t of
+      S.Named n | n `elem` map S.protocolName (S.protocols u) -> pure (C.Constructor (C.idText (sessionIdentity n)) [])
+      _ -> coreType t
 
 -- A model's commands, start and abstraction are adapters; the model runtime
 -- calls each through a generated orchestration definition of the same type,

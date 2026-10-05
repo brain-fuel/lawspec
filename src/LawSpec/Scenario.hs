@@ -26,12 +26,6 @@ import LawSpec.Core.Machine (Machine(..), Command(..))
 import qualified LawSpec.Core.Program as P
 import LawSpec.Model
 
-data Step = Send Type | Receive Type
-  deriving (Eq, Show)
-
-data Protocol = Protocol
-  { protocolName :: String, protocolSteps :: [Step], protocolSpan :: Span }
-  deriving (Eq, Show)
 
 -- A command or message argument: a variable the process holds (given up
 -- when written ~x), or a constant.

@@ -691,7 +691,8 @@ unitP = do
   pure (Unit n (map fst signatures) [l | LawMember l <- members]
     [r | RefinementMember r <- members] [] [(name,range) | ((name,_),range) <- signatures]
     ([d | DataMember d <- members] ++ [DataTypeDeclaration name [] [] range Nothing | HandleMember (name, range) <- members])
-    definitions [name | AsyncMember ((name, _), _) <- members] [] [] [] [name | HandleMember (name, _) <- members], imports, [f | FamilyMember f <- members],
+    definitions [name | AsyncMember ((name, _), _) <- members] [] [] [] [name | HandleMember (name, _) <- members]
+    [p | ProtocolMember p <- members], imports, [f | FamilyMember f <- members],
     [w | WrapperMember w <- members], [w | WorkflowMember w <- members], [m | ModelMember m <- members],
     ([p | ProtocolMember p <- members], [s | ScenarioMember s <- members]))
 
