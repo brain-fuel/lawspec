@@ -1,0 +1,10 @@
+expect: charge captures once
+@@ src/example/abilities.rs
+<<<<<<<
+        crate::lawspec_data::Payment::Approved { cents } => gateway.capture(cents).cents == value0,
+=======
+        crate::lawspec_data::Payment::Approved { cents } => {
+            gateway.capture(cents);
+            gateway.capture(cents).cents == value0
+        }
+>>>>>>>

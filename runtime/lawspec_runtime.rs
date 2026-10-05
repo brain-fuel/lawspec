@@ -178,6 +178,8 @@ pub struct Context {
     symbols: HashMap<String, Symbol>,
     /// The workflow runtime this call runs under; None is the default one.
     pub workflow: Option<Arc<std::sync::Mutex<WorkflowRuntime>>>,
+    /// The handler installed for each ability, by its key (evidence passing).
+    pub handlers: HashMap<String, Installed>,
 }
 impl Context {
     /// A context whose workflows run under the given runtime.
@@ -9148,5 +9150,131 @@ mod net_tests {
         exercise(net.transport("a"), net.transport("b"), true);
         exercise(TcpTransport::local().unwrap(), TcpTransport::local().unwrap(), false);
         exercise(HttpTransport::local().unwrap(), HttpTransport::local().unwrap(), false);
+    }
+}
+
+
+// Abilities (docs/explanation/abilities.md). Handlers travel in the Context
+// generated code passes to every definition: that context is the evidence of
+// evidence-passing compilation. A law installs one handler per ability; an
+// operation's bridge finds the handler of its ability there. The Fail
+// ability's handlers abort, so raise panics with a Failure and attempt
+// catches it.
+
+/// A handler installed for an ability: an `Arc<dyn Trait>`, and its calls
+/// when it records them.
+#[derive(Clone)]
+pub struct Installed {
+    pub handler: Arc<dyn std::any::Any + Send + Sync>,
+    pub calls: Option<Calls>,
+}
+impl std::fmt::Debug for Installed {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(if self.calls.is_some() { "<recording handler>" } else { "<handler>" })
+    }
+}
+
+/// The calls a recording handler has seen.
+#[derive(Clone, Default, Debug)]
+pub struct Calls(Arc<std::sync::Mutex<Vec<(String, Vec<Value>)>>>);
+impl Calls {
+    pub fn record(&self, operation: &str, arguments: Vec<Value>) {
+        self.0.lock().unwrap().push((operation.to_string(), arguments));
+    }
+}
+
+pub fn installed<H: Send + Sync + 'static>(handler: H) -> Installed {
+    Installed { handler: Arc::new(handler), calls: None }
+}
+pub fn installed_recording<H: Send + Sync + 'static>(handler: H, calls: Calls) -> Installed {
+    Installed { handler: Arc::new(handler), calls: Some(calls) }
+}
+
+impl Context {
+    pub fn install_handlers(&mut self, handlers: Vec<(String, Installed)>) {
+        for (key, handler) in handlers {
+            self.handlers.insert(key, handler);
+        }
+    }
+    /// The handler installed for an ability, as the type its bridge needs.
+    pub fn handler<H: Clone + 'static>(&self, ability: &str) -> Result<H> {
+        let installed = self.handlers.get(ability).ok_or_else(|| {
+            format!("no handler for the ability {ability}: a law names one with `using`, or runs under each lawful handler")
+        })?;
+        installed.handler.downcast_ref::<H>().cloned()
+            .ok_or_else(|| format!("the handler for {ability} has another type"))
+    }
+}
+
+/// A failure raised with the Fail ability.
+#[derive(Debug)]
+pub struct Failure {
+    pub ability: String,
+    pub value: Value,
+}
+
+fn quiet_failures() {
+    static HOOK: std::sync::Once = std::sync::Once::new();
+    HOOK.call_once(|| {
+        let previous = std::panic::take_hook();
+        std::panic::set_hook(Box::new(move |info| {
+            if info.payload().downcast_ref::<Failure>().is_none() {
+                previous(info);
+            }
+        }));
+    });
+}
+
+pub fn raise_failure(ability: &str, value: Value) -> Value {
+    quiet_failures();
+    std::panic::panic_any(Failure { ability: ability.to_string(), value })
+}
+
+/// Right of the body, or Left of the failure it raised with this ability.
+pub fn attempt(
+    ctx: &mut Context,
+    ability: &str,
+    body: impl FnOnce(&mut Context) -> Result<Value>,
+    right: impl FnOnce(Value) -> Result<Value>,
+    left: impl FnOnce(Value) -> Result<Value>,
+) -> Result<Value> {
+    quiet_failures();
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| body(ctx))) {
+        Ok(result) => right(result?),
+        Err(payload) => match payload.downcast::<Failure>() {
+            Ok(failure) if failure.ability == ability => left(failure.value),
+            Ok(failure) => std::panic::panic_any(*failure),
+            Err(other) => std::panic::resume_unwind(other),
+        },
+    }
+}
+
+/// How many times a recording handler saw an operation (with arguments).
+pub fn count_calls(
+    ctx: &Context,
+    ability: &str,
+    operation: &str,
+    matches: Option<&dyn Fn(&[Value]) -> Result<bool>>,
+) -> Result<Value> {
+    let installed = ctx.handlers.get(ability).ok_or_else(|| format!("no handler for the ability {ability}"))?;
+    let calls = installed.calls.as_ref().ok_or("calls of needs a recording handler: `using recording`")?;
+    let recorded = calls.0.lock().unwrap().clone();
+    let mut count = 0i64;
+    for (name, arguments) in recorded {
+        if name == operation && match matches { None => true, Some(test) => test(&arguments)? } {
+            count += 1;
+        }
+    }
+    Ok(Value::Integer(BigInt::from(count)))
+}
+
+/// A Pair's two fields: a stateful handler clause's result and next state.
+pub fn pair_fields(pair: Value) -> Result<(Value, Value)> {
+    match pair {
+        Value::Data(_, fields) if fields.len() == 2 => {
+            let mut fields = fields.into_iter();
+            Ok((fields.next().unwrap(), fields.next().unwrap()))
+        }
+        _ => Err("a handler clause must give Pair result state".into()),
     }
 }

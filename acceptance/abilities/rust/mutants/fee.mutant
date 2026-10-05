@@ -1,0 +1,7 @@
+expect: the fee is never negative [native]
+@@ src/example/abilities.rs
+<<<<<<<
+        25
+=======
+        -25
+>>>>>>>

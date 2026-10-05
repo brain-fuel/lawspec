@@ -32,4 +32,6 @@ abilityArtifacts minify target plan
       "java" -> Java.emit minify bits datas units
       "kotlin" -> Kotlin.emit minify bits datas units
       "haskell" -> Haskell.emit minify bits datas units
+      -- Rust's are part of its crate's modules (LawSpec.RustEmit).
+      "rust" -> Right []
       _ -> Left ("abilities are not generated for " ++ t ++ " yet")

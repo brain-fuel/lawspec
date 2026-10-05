@@ -403,7 +403,7 @@ unitOperations u = do
         ref <- abilityReference u t
         operations <- forM (S.abilityOperations a) $ \(op, _) ->
           maybe (Left ("missing operation " ++ op)) (fmap ((,) op) . coreType) (lookup op (S.functions u))
-        pure (Just (C.Ability (C.abilityRefId ref) (S.abilityName a) [] operations (C.SourceSpan (S.abilitySpan a)), ref))
+        pure (Just (C.Ability (C.abilityRefId ref) (S.abilityName a) [] operations (C.SourceSpan (S.abilitySpan a)) (C.abilityRefArguments ref), ref))
   let present = [x | Just x <- found]
   pure (map fst present, M.fromList
     [ (C.Id (S.unitName u ++ "::" ++ op), C.Operation ref op)

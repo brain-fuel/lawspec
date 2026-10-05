@@ -1,6 +1,6 @@
 -- Reusable generated definitions: native public signatures, checked logical
 -- implementation bodies, and no dependency on a property-testing framework.
-module LawSpec.RustDefinitions (emitRustDefinitions, definitionNames, workflowAdapterUnits) where
+module LawSpec.RustDefinitions (operationBridges, abilityTrait, emitRustDefinitions, definitionNames, workflowAdapterUnits) where
 
 import Data.List (intercalate)
 import LawSpec.Core.Policy
@@ -36,6 +36,20 @@ workflowAdapterUnits :: [Unit] -> [Id]
 workflowAdapterUnits units = foldr (\x acc -> if x `elem` acc then acc else x : acc) []
   [owner | (_, (owner, _)) <- adapterCallsOf units]
 
+-- The bridge of each ability operation (LawSpec.AbilityEmit.Rust), by
+-- identity, from the crate root.
+operationBridges :: [Unit] -> [(Id, String)]
+operationBridges units =
+  [ (operationId (Operation (abilityInstance a) op), "lawspec_abilities::" ++ moduleOf u ++ "::perform_" ++ op)
+  | u <- units, a <- unitAbilities u, (op, _) <- abilityOperations a ]
+  where moduleOf = map (\c -> if isAlphaNum c || c == '_' then c else '_') . idText . unitId
+
+-- An ability's trait, from the crate root.
+abilityTrait :: [Unit] -> AbilityRef -> String
+abilityTrait units ref = case [(u, a) | u <- units, a <- unitAbilities u, abilityId a == abilityRefId ref] of
+  (u, a) : _ -> "lawspec_abilities::" ++ map (\c -> if isAlphaNum c || c == '_' then c else '_') (idText (unitId u)) ++ "::" ++ abilityName a
+  [] -> "std::any::Any"
+
 emitRustDefinitions :: D.Layout -> Int -> [DataDeclaration] -> [Unit] -> Either String String
 emitRustDefinitions layout bits declarations units = do
   contracts <- checkedDefinitionContracts bits declarations units
@@ -54,7 +68,9 @@ emitRustDefinitions layout bits declarations units = do
     -- Workflows call adapters natively, each through a bridge that converts
     -- checked values to native ones and back.
     adapterCalls = adapterCallsOf units
-    names = definitionNames units ++ [(declarationId a, "adapter_call_" ++ show i) | (i, (_, a)) <- adapterCalls]
+    names = definitionNames units ++ [(declarationId a, "adapter_call_" ++ show i) | (i, (_, a)) <- adapterCalls] ++
+      -- Each operation's bridge finds the handler installed in the context.
+      [(identity, "crate::" ++ path) | (identity, path) <- operationBridges units]
     bridge (i, (owner, a)) = do
       let (args,result) = functionType (declarationType a)
       types <- mapM (Native.rustDataType declarations) args
@@ -62,7 +78,10 @@ emitRustDefinitions layout bits declarations units = do
       refs <- mapM E.reference args
       let decode n (ty, ref) = D.text ("let native_" ++ show n ++ " = ") <> E.call ("<" ++ ty ++ " as ls::FromValue>::from_value")
             [E.call "schema.native_value_with_context" [D.text ("arguments[" ++ show n ++ "].clone()"), D.text "&" <> ref, D.text (show bits), D.text "ctx"] <> D.text "?"] <> D.text "?;"
-          call = E.call ("crate::" ++ ownerModule owner ++ "::" ++ declarationName a) [D.text ("native_" ++ show n) | n <- [0 .. length args - 1]]
+          -- An adapter that uses abilities gets their handlers first.
+          handlers = [D.text ("&*ctx.handler::<std::sync::Arc<dyn crate::" ++ abilityTrait units ability ++ ">>(" ++ show (abilityKey ability) ++ ")?")
+            | ability <- declarationUses a, not (isFail ability)]
+          call = E.call ("crate::" ++ ownerModule owner ++ "::" ++ declarationName a) (handlers ++ [D.text ("native_" ++ show n) | n <- [0 .. length args - 1]])
           -- An async step runs within its stage's timeout and hedge, when it
           -- has them; each hedged attempt starts from copies of the inputs.
           started = E.call ("crate::" ++ ownerModule owner ++ "::" ++ declarationName a) [D.text ("native_" ++ show n ++ ".clone()") | n <- [0 .. length args - 1]]

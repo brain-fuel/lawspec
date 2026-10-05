@@ -190,6 +190,7 @@ library
       LawSpec.AbilityEmit.Java
       LawSpec.AbilityEmit.Kotlin
       LawSpec.AbilityEmit.Python
+      LawSpec.AbilityEmit.Rust
       LawSpec.AbilityEmit.Web
       LawSpec.AbilityNames
       LawSpec.Actors

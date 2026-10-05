@@ -227,6 +227,41 @@ renderExpressionWithContext declarations bits schema typeReference typeKey calle
           D.text "let result = " <> call name [D.text "ctx",D.text "arguments"] <> D.text ";" <> D.hardline <>
           D.text "let context = " <> stringLiteral (idText identity) <> D.text ";" <> D.hardline <>
           D.text "result.map_err(|error| format!(\"{context}: {error}\"))?"))
+      -- raise aborts to the nearest attempt of its Fail ability (a panic).
+      Perform op [value] | isFail (operationAbility op) -> do
+        argument <- render names value
+        pure (D.block 4 (D.hang 4 (D.text "let value =") argument <> D.text ";" <> D.hardline <>
+          call "ls::raise_failure" [D.text (quoted (abilityKey (operationAbility op))),D.text "value"]))
+      -- An operation goes to its bridge, which finds the handler installed
+      -- in the context for its ability.
+      Perform op args -> do
+        name <- maybe (Left ("no Rust bridge for the operation " ++ operationName op)) Right (lookup (operationId op) callees)
+        values <- mapM (render names) args
+        let arguments = ["perform_argument_" ++ show i | i <- [0 .. length values - 1]]
+            bindings = [D.hang 4 (D.text ("let " ++ argument ++ " =")) value <> D.text ";" | (argument,value) <- zip arguments values]
+        pure (D.block 4 (D.joinWith D.hardline (bindings ++
+          [D.text "let arguments = " <> vector (map D.text arguments) <> D.text ";"]) <> D.hardline <>
+          D.text "let result = " <> call name [D.text "ctx",D.text "arguments"] <> D.text ";" <> D.hardline <>
+          D.text "let context = " <> stringLiteral (operationName op) <> D.text ";" <> D.hardline <>
+          D.text "result.map_err(|error| format!(\"{context}: {error}\"))?"))
+      Handle (CatchFailure ability) body -> do
+        inner <- render names body
+        pure (call "ls::attempt" [D.text "ctx",D.text (quoted (abilityKey ability)),
+          D.text "|ctx: &mut ls::Context| -> ls::Result<ls::Value> " <> D.block 4 (D.hang 4 (D.text "let value =") inner <> D.text ";" <> D.hardline <> D.text "Ok(value)"),
+          D.text "|value| ls::construct(\"Either::Right\", vec![value])",
+          D.text "|value| ls::construct(\"Either::Left\", vec![value])"] <> D.text "?")
+      Handle _ _ -> Left "unknown Rust handling"
+      Calls op args -> do
+        values <- mapM (render names) (maybe [] id args)
+        let expected = ["expected_" ++ show i | i <- [0 .. length values - 1]]
+            bindings = [D.hang 4 (D.text ("let " ++ e ++ " =")) value <> D.text ";" | (e,value) <- zip expected values]
+            matcher = case args of
+              Nothing -> D.text "None"
+              Just _ -> D.text "Some(&|recorded: &[ls::Value]| -> ls::Result<bool> " <> D.block 4
+                (D.text ("Ok(" ++ intercalate " && " (["true" | null expected] ++
+                  ["ls::equal(&recorded[" ++ show i ++ "], &" ++ e ++ ")?" | (i,e) <- zip [0 :: Int ..] expected]) ++ ")")) <> D.text ")"
+        pure (D.block 4 (D.joinWith D.hardline (bindings ++
+          [call "ls::count_calls" [D.text "ctx",D.text (quoted (abilityKey (operationAbility op))),D.text (quoted (operationName op)),matcher] <> D.text "?"])))
       Binary op evidence a b -> do
         left <- render names a
         right <- render names b
