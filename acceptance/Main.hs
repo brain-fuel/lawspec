@@ -18,6 +18,8 @@
 --                                  (a "rejected-at: compile" header line marks
 --                                  one the target's compiler must reject)
 --   <target>/bindings.json         native bindings, as in lawspec.json (optional)
+--   <target>/native/<path>         application code those bindings call, copied
+--                                  as is (bound units have no adapters)
 --
 -- A package directory holds lawspec-package.json ({"name", "version",
 -- "sources": [directories or files], "dependencies"}); its sources are sent
@@ -179,6 +181,8 @@ writeProject suite target project defaultProfile minify generated = do
     unless (relative `elem` [generatedPath g | g <- generated, generatedOwnership g == "user"])
       (die (target ++ ": adapter " ++ relative ++ " does not replace a generated user-owned file"))
     readFile source >>= writeAt (project </> relative)
+  natives <- suiteDirectory suite target "native"
+  forM_ natives $ \(relative, source) -> readFile source >>= writeAt (project </> relative)
   -- Stubs depend on the profile, so they are compared in the default one.
   when defaultProfile $ forM_ adapters $ \(relative, _) -> do
     let recorded = "acceptance" </> suite </> target </> "stubs" </> relative
@@ -207,7 +211,8 @@ runSuite suite target project mutate = do
   putStrLn passed
   mutants <- if mutate then suiteMutants suite target else pure []
   stubs <- if mutate then suiteStubs suite target else pure []
-  adapters <- suiteFiles suite target
+  -- Mutants edit adapters, or the native code a bound unit calls.
+  adapters <- (++) <$> suiteFiles suite target <*> suiteDirectory suite target "native"
   let restore = forM_ adapters $ \(relative, source) -> readFile source >>= writeAt (project </> relative)
   rejected <- flip finally restore $ forM (stubs ++ mutants) $ \mutant -> do
     restore
@@ -252,8 +257,11 @@ runTool tool args project = do
   pure (code, out ++ err ++ extra)
 
 suiteFiles :: String -> String -> IO [(FilePath, FilePath)]
-suiteFiles suite target = do
-  let base = "acceptance" </> suite </> target </> "files"
+suiteFiles suite target = suiteDirectory suite target "files"
+
+suiteDirectory :: String -> String -> FilePath -> IO [(FilePath, FilePath)]
+suiteDirectory suite target folder = do
+  let base = "acceptance" </> suite </> target </> folder
   exists <- doesDirectoryExist base
   if not exists then pure [] else map (\path -> (dropBase base path, path)) <$> walk base
   where dropBase base path = fromMaybe path (stripPrefix (base ++ "/") path)

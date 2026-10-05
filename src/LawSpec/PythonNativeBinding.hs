@@ -94,19 +94,26 @@ emitBindings minify bindings plan files = do
           -- A native constructor, given the arguments that are not Unit.
           ConstructorCall ref -> pure (reference ref <> D.delimitTrailing 4 "(" ")"
             [value | (ty,value) <- zip args converted, not (isUnit ty)])
+        -- An async adapter's native returns an awaitable; a constructor's
+        -- result is ready at once.
+        let awaited doc = case call of
+              ConstructorCall _ | C.declarationAsync decl -> doc
+              _ | C.declarationAsync decl -> D.text "await " <> doc
+              _ -> doc
+            application' = awaited application
         resultBody <- case (call, result) of
-          _ | isUnit result -> pure [application, D.text "return None"]
+          _ | isUnit result -> pure [application', D.text "return None"]
           -- A method or constructor's absent value (None) is Nothing.
-          (StaticCall _, _) -> pure [D.text "result = " <> application,
+          (StaticCall _, _) -> pure [D.text "result = " <> application',
             D.text "return " <> resultOf resultRef (D.text "result")]
           (_, C.Constructor "Maybe" [C.TypeArgument element]) -> do
             elementRef <- Data.pythonTypeReferenceDoc element
-            pure [D.text "result = " <> application,
+            pure [D.text "result = " <> application',
               P.suite (D.text "if result is None") (D.text "return _schema.Nothing()"),
               D.text "return _schema.Just" <> D.delimitTrailing 4 "(" ")" [resultOf elementRef (D.text "result")]]
-          _ -> pure [D.text "result = " <> application,
+          _ -> pure [D.text "result = " <> application',
             D.text "return " <> resultOf resultRef (D.text "result")]
-        let signature = D.text ("def " ++ C.declarationName decl) <>
+        let signature = D.text ((if C.declarationAsync decl then "async def " else "def ") ++ C.declarationName decl) <>
               D.delimitTrailing 4 "(" ")" [value <> D.text ": " <> ty | (value,ty) <- zip values argTypes] <>
               D.text " -> " <> (if result == C.scalarType "Unit" then D.text "None" else resultType)
         pure (P.suite signature (D.text "symbols = {}" <> D.hardline <>

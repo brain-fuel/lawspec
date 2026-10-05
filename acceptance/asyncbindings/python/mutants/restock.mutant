@@ -1,0 +1,6 @@
+@@ src/warehouse/native.py
+<<<<<<<
+            self._total += amount
+=======
+            self._total += amount if amount < 50 else amount - 1
+>>>>>>>

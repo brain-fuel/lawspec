@@ -79,10 +79,10 @@ resolveNativeRequest program NativeRequest{..} = do
           validIdentifier name
           unless (any isHandle arguments)
             (Left (context ++ ": a method binding needs a handle argument to call it on"))
-      -- Native function bridges are synchronous; an async adapter keeps its
-      -- scaffolded stub.
-      when (C.declarationAsync declaration)
-        (Left ("async adapter " ++ C.idText functionDeclaration ++ " cannot bind a native function yet"))
+      -- An async adapter binds a native function or method returning the
+      -- target's asynchronous type; its bridge stays asynchronous and
+      -- converts the result once it completes. A constructor is called at
+      -- once, and its bridge returns a completed task.
       pure (declaration,functionNative)
 
 isStatic :: NativeCall -> Bool
