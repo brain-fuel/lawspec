@@ -123,6 +123,10 @@ data Ability = Ability
   -- The type arguments the unit uses the ability at (its operation types
   -- are already instantiated at them).
   , abilityArguments :: [Type]
+  -- The production handler's native constructor when lawspec.json binds
+  -- one (handlers), set for the target being emitted; otherwise the tests
+  -- use the hand-written <Ability>Handler in the unit's adapter module.
+  , abilityNative :: Maybe [String]
   } deriving (Eq, Show, Generic)
 
 -- A unit's ability, as its operations refer to it.
@@ -146,7 +150,7 @@ failAbilityId = Id "lawspec::ability::Fail"
 failAbility :: Ability
 failAbility = Ability failAbilityId "Fail" [Id "Fail::e"]
   [("raise", Arrow (TypeVariable (Id "Fail::e")) (TypeVariable (Id "Fail::raise::a")))]
-  (GeneratedFrom failAbilityId) []
+  (GeneratedFrom failAbilityId) [] Nothing
 
 -- A stable key for an ability instance, the same on every target: its
 -- identity, then its type arguments' keys in parentheses.

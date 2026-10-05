@@ -605,6 +605,13 @@ def attempt(ability, body, right, left):
     return right(value)
 
 
+def native_handler(module, name):
+    """A production handler bound in lawspec.json: its class (or function of
+    no arguments), called."""
+    import importlib
+    return getattr(importlib.import_module(module), name)()
+
+
 def count_calls(recording, operation, matches=None):
     calls = getattr(recording, "calls", None)
     if calls is None:

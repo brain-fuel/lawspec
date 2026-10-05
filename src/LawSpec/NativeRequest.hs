@@ -1,6 +1,6 @@
 -- Public binding configuration is resolved before entering target emission.
 module LawSpec.NativeRequest
-  ( NativeRequest(..), FunctionBinding(..), NativeCall(..), GoImport(..), BindingPlan(..)
+  ( NativeRequest(..), FunctionBinding(..), NativeCall(..), GoImport(..), BindingPlan(..), HandlerBinding(..)
   , emptyNativeRequest, emptyBindingPlan, resolveNativeRequest, hasBindings
   ) where
 
@@ -18,7 +18,13 @@ import LawSpec.NativeBinding
 data NativeRequest = NativeRequest
   { requestBindings :: Bindings, requestFunctions :: [FunctionBinding]
   , requestRustCrate :: Maybe String, requestGoImports :: [GoImport]
+  -- The production handler of each ability, by "<unit>::<Ability>".
+  , requestHandlers :: [HandlerBinding]
   } deriving (Eq, Show)
+-- handlers: [{"ability": "payments::Gateway", "native": [...]}]: a native
+-- constructor (a class, or a function of no arguments; an IO action in
+-- Haskell) that makes the production handler.
+data HandlerBinding = HandlerBinding { boundAbility :: String, boundNative :: NativeRef } deriving (Eq, Show)
 data GoImport = GoImport { goImportAlias :: String, goImportPath :: String } deriving (Eq, Show)
 data FunctionBinding = FunctionBinding
   { functionDeclaration :: C.Id, functionNative :: NativeCall } deriving (Eq, Show)
@@ -34,13 +40,17 @@ data BindingPlan = BindingPlan
   , bindingFunctions :: [(C.Declaration, NativeRef)]
   , bindingCalls :: [(C.Declaration, NativeCall)]
   , bindingRustCrate :: Maybe String, bindingGoImports :: [GoImport]
+  -- Each bound ability's production handler, by the ability's identity.
+  , bindingHandlers :: [(C.Id, NativeRef)]
   } deriving (Eq, Show)
 emptyNativeRequest :: NativeRequest
-emptyNativeRequest = NativeRequest emptyBindings [] Nothing []
+emptyNativeRequest = NativeRequest emptyBindings [] Nothing [] []
 emptyBindingPlan :: BindingPlan
-emptyBindingPlan = BindingPlan (ResolvedBindings [] []) [] [] Nothing []
+emptyBindingPlan = BindingPlan (ResolvedBindings [] []) [] [] Nothing [] []
+-- Whether anything besides handlers is bound: handler bindings only change
+-- how the tests make production handlers.
 hasBindings :: BindingPlan -> Bool
-hasBindings plan = plan /= emptyBindingPlan
+hasBindings plan = plan { bindingHandlers = [] } /= emptyBindingPlan
 
 resolveNativeRequest :: C.Program -> NativeRequest -> Either String BindingPlan
 resolveNativeRequest program NativeRequest{..} = do
@@ -54,14 +64,22 @@ resolveNativeRequest program NativeRequest{..} = do
   unless (length requestGoImports == length (nub (map goImportPath requestGoImports)))
     (Left "duplicate Go import path")
   mapM_ validateGoImport requestGoImports
+  handlers <- mapM handler requestHandlers
+  unless (length handlers == length (nub (map fst handlers))) (Left "duplicate native handler binding")
   pure (BindingPlan representations [(d, ref) | (d, StaticCall ref) <- functions]
-    [(d, call) | (d, call) <- functions, not (isStatic call)] requestRustCrate requestGoImports)
+    [(d, call) | (d, call) <- functions, not (isStatic call)] requestRustCrate requestGoImports handlers)
   where
     definitions = [C.declarationId (C.definitionDeclaration d) |
       u <- C.programUnits program, d <- C.unitDefinitions u]
     declarations = [d | u <- C.programUnits program, d <- C.unitDeclarations u,
       C.declarationId d `notElem` definitions]
     handles = [C.idText (C.dataId d) | d <- C.programDataDeclarations program, C.dataHandle d]
+    abilities = [(C.idText (C.unitId u) ++ "::" ++ C.abilityName a, C.abilityId a) | u <- C.programUnits program, a <- C.unitAbilities u]
+    handler HandlerBinding{..} = do
+      identity <- maybe (Left ("unknown ability in a handler binding: " ++ boundAbility ++ " (write <unit>::<Ability>)")) Right
+        (lookup boundAbility abilities)
+      validReference boundNative
+      pure (identity, boundNative)
     isHandle ty = case ty of
       C.Constructor name [] -> name `elem` handles
       _ -> False
@@ -157,8 +175,12 @@ instance FromJSON GoImport where
     value <- GoImport <$> o .: "alias" <*> o .: "path"
     either fail pure (validateGoImport value)
     pure value
+instance FromJSON HandlerBinding where
+  parseJSON = strict "native handler" ["ability","native"] $ \o ->
+    HandlerBinding <$> o .: "ability" <*> o .: "native"
 instance FromJSON NativeRequest where
-  parseJSON = strict "nativeBindings" ["types","generators","functions","rustCrate","goImports"] $ \o -> do
+  parseJSON = strict "nativeBindings" ["types","generators","functions","rustCrate","goImports","handlers"] $ \o -> do
     types <- o .:? "types" .!= []
     generators <- o .:? "generators" .!= []
     NativeRequest (Bindings types generators) <$> o .:? "functions" .!= [] <*> o .:? "rustCrate" <*> o .:? "goImports" .!= []
+      <*> o .:? "handlers" .!= []

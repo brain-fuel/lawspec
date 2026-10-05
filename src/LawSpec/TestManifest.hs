@@ -24,12 +24,18 @@ testManifest :: String -> Maybe String -> Program -> [TestEntry]
 testManifest target testDir program =
   [ TestEntry (propertyId p) unit (unit ++ "::" ++ propertyName p) index
       (relocated (unitTestPath target unit)) (keyOf graph (show (programMachineBits program, p)) (lawReferences graph p))
-      (any (`S.notMember` definitions) (concatMap callees (propertyExpressions p)))
+      (any (`S.notMember` definitions) (concatMap callees (propertyExpressions p)) ||
+        -- A native production handler is native code too.
+        any (native . snd) [h | h@(a, _) <- propertyHandlers p, not (isFail a)])
   | u <- programUnits program
   , let unit = idText (unitId u)
   , (index, p) <- zip [0 ..] (unitProperties u) ]
   where
     graph = dependencyGraph (programDataDeclarations program) (programUnits program)
+    native h = case h of
+      ProductionHandler -> True
+      RecordingHandler inner -> native inner
+      SpecHandler _ -> False
     definitions = S.fromList [declarationId (definitionDeclaration d) | u <- programUnits program, d <- unitDefinitions u]
     -- A custom test directory replaces the default one, as the emitters' layout does.
     relocated path = case testDir of

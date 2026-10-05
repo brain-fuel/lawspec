@@ -19,7 +19,7 @@ import qualified LawSpec.Core.Machine as C
 import Data.Aeson (encode, toJSON)
 import qualified Data.Text.Lazy as T
 import qualified Data.Text.Lazy.Encoding as T
-import Data.List (intercalate, isPrefixOf, isInfixOf, stripPrefix)
+import Data.List (intercalate, isPrefixOf, isInfixOf, stripPrefix, nub)
 import Control.Monad (unless, foldM)
 import Data.Char (toLower)
 import qualified LawSpec.AbilityEmit.Python as PythonAbilities
@@ -95,7 +95,8 @@ scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions 
       then (if null definitions then "" else "import lawspec_definition_bodies as _definitions\n") ++ dataImports ++ "import json\nimport os\nfrom hypothesis import assume, given, settings, strategies as st\nfrom hypothesis import seed as _lawspec_seed\n" ++ (if null adapterFunctions && null (C.unitAbilities u) then "" else "import " ++ unitName u ++ " as impl\n") ++
         (if null (C.unitAbilities u) then "" else "import " ++ PythonAbilities.moduleName u ++ " as _abilities\n")
       else (if null definitions then "" else "import * as _definitions from '../src/lawspec_definition_bodies." ++ (if ts then "js" else "mjs") ++ "';\n") ++ webImports "../src/" ++ "import {test} from 'node:test';\nimport assert from 'node:assert/strict';\nimport fc from 'fast-check';\nimport * as impl from '../src/" ++ slash ++ (if ts then ".js" else ".mjs") ++ "';\n" ++
-        (if null (C.unitAbilities u) then "" else "import * as _abilities from '../src/lawspec_abilities/" ++ slash ++ (if ts then ".js" else ".mjs") ++ "';\n")
+        (if null (C.unitAbilities u) then "" else "import * as _abilities from '../src/lawspec_abilities/" ++ slash ++ (if ts then ".js" else ".mjs") ++ "';\n") ++
+        concat ["import {" ++ last parts ++ " as " ++ boundAlias parts ++ "} from '../src/" ++ intercalate "/" (init parts) ++ (if ts then ".js" else ".mjs") ++ "';\n" | parts <- boundHandlers]
     testHelpers = (if hasData then "" else if py then "\n\n" else "\n") ++
       Doc.render outputLayout (Helpers.assertionHelperDoc py) ++ seedHelper ++
       (if asyncMode then "\n\n" ++ Doc.render outputLayout (Helpers.asyncAssertionHelpersDoc bits) else "") ++
@@ -241,7 +242,11 @@ scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions 
       chosen -> [statement (runtime (if py then "install_handlers" else "installHandlers") [text "symbols", Doc.delimitTrailing indentation "{" "}"
         [quoted (C.abilityKey ability) <> text ": " <> construct ability choice | (ability, choice) <- chosen]])]
     construct ability choice = case choice of
-      C.ProductionHandler -> invoke ((if py then "impl." else "new impl.") ++ maybe "Unknown" productionName (abilityNamed ability)) []
+      C.ProductionHandler -> case abilityNamed ability >>= C.abilityNative of
+        -- A production handler bound in lawspec.json.
+        Just parts | py -> runtime "native_handler" [quoted (intercalate "." (init parts)), quoted (last parts)]
+                   | otherwise -> invoke ("new " ++ boundAlias parts) []
+        Nothing -> invoke ((if py then "impl." else "new impl.") ++ maybe "Unknown" productionName (abilityNamed ability)) []
       C.SpecHandler h -> invoke ((if py then "_abilities." else "new _abilities.") ++ maybe "Unknown" specName
         (lookup h [(C.handlerId x, x) | x <- C.unitHandlers u])) [text "symbols"]
       C.RecordingHandler inner -> invoke ((if py then "_abilities." else "new _abilities.") ++ maybe "Unknown" recordingName (abilityNamed ability))
@@ -249,6 +254,8 @@ scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions 
     handlerParameter ability = case maybe "handler" C.abilityName (abilityNamed ability) of
       c : rest -> toLower c : rest
       [] -> "handler"
+    boundHandlers = nub [parts | a <- C.unitAbilities u, Just parts <- [C.abilityNative a]]
+    boundAlias parts = "_lawspecHandler" ++ show (length (takeWhile (/= parts) boundHandlers))
     abilityNamed ability = lookup (C.abilityRefId ability) [(C.abilityId a, a) | a <- C.unitAbilities u]
     fresh e = statements (freshSymbols : installs e)
     render term = either error id (renderer declarations bits localName external term)

@@ -259,7 +259,7 @@ emitRustWithBindings minify bindings plan@Plan{..} = either (Left . pure . (\m -
     handlerInstalls p = case [(a, c) | (a, c) <- propertyHandlers p, not (isFail a)] of
       [] -> []
       chosen -> [Doc.text "ctx.install_handlers(vec![" <> Doc.nest 4 (Doc.hardline <> Doc.joinWith Doc.hardline
-        [Doc.text ("(" ++ q (abilityKey a) ++ ".to_string(), " ++ Abilities.handlerConstruction allUnits a c ++ "),") | (a, c) <- chosen]) <>
+        [Doc.text ("(" ++ q (abilityKey a) ++ ".to_string(), " ++ Abilities.handlerConstruction (NR.bindingRustCrate bindings) allUnits a c ++ "),") | (a, c) <- chosen]) <>
         Doc.hardline <> Doc.text "]);"]
     hasSchema = hasNativeGenerators || not (null planDataDeclarations) || hasDefinitions ||
       any (any containsPayload . propertyExpressions . plannedProperty)

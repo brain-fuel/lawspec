@@ -35,8 +35,8 @@ traitPath units ref = case [(u, a) | u <- units, a <- C.unitAbilities u, C.abili
 
 -- How a test makes the handler a law chose for an ability, as an
 -- ls::Installed; root is "" in a test crate and "crate::" in the library.
-handlerConstruction :: [C.Unit] -> C.AbilityRef -> C.HandlerRef -> String
-handlerConstruction units ref choice = case choice of
+handlerConstruction :: Maybe String -> [C.Unit] -> C.AbilityRef -> C.HandlerRef -> String
+handlerConstruction library units ref choice = case choice of
   C.RecordingHandler inner ->
     "{ let recording = " ++ base ++ recordingFor ++ "::new(" ++ handle inner ++ "); let calls = recording.calls.clone(); " ++
     "ls::installed_recording(std::sync::Arc::new(recording) as std::sync::Arc<dyn " ++ trait ++ ">, calls) }"
@@ -50,9 +50,14 @@ handlerConstruction units ref choice = case choice of
       a : _ -> recordingName a
       [] -> "Unknown"
     handle c = case c of
+      C.ProductionHandler | Just parts <- native ->
+        "std::sync::Arc::new(" ++ intercalate "::" [if p == "crate" then maybe p id library else p | p <- parts] ++ "()) as std::sync::Arc<dyn " ++ trait ++ ">"
       C.ProductionHandler -> "std::sync::Arc::new(adapter::" ++ productionFor ++ "::default()) as std::sync::Arc<dyn " ++ trait ++ ">"
       C.SpecHandler h -> "std::sync::Arc::new(" ++ base ++ maybe "Unknown" specName (specHandlerOf units h) ++ "::new(ctx)) as std::sync::Arc<dyn " ++ trait ++ ">"
       C.RecordingHandler inner -> handle inner
+    native = case [a | u <- units, a <- C.unitAbilities u, C.abilityId a == C.abilityRefId ref] of
+      a : _ -> C.abilityNative a
+      [] -> Nothing
     productionFor = case [a | u <- units, a <- C.unitAbilities u, C.abilityId a == C.abilityRefId ref] of
       a : _ -> productionName a
       [] -> "Unknown"

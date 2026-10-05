@@ -365,6 +365,7 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
       chosen -> [KotlinExpr.call "LawSpecRuntime.installHandlers" [Doc.text "symbols", KotlinExpr.call "mapOf"
         [KotlinExpr.quoted (C.abilityKey a) <> Doc.text (" to " ++ ktConstructHandler a c) | (a, c) <- chosen]]]
     ktConstructHandler a c = case c of
+      C.ProductionHandler | Just parts <- abilityNamed a >>= C.abilityNative -> intercalate "." parts ++ "()"
       C.ProductionHandler -> cls ++ "." ++ maybe "Unknown" productionName (abilityNamed a) ++ "()"
       C.SpecHandler h -> KotlinAbilities.abilitiesObject u ++ "." ++ maybe "Unknown" specName (specNamed h) ++ "(symbols)"
       C.RecordingHandler inner -> KotlinAbilities.abilitiesObject u ++ "." ++ maybe "Unknown" recordingName (abilityNamed a) ++
@@ -472,6 +473,7 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
         Doc.text ("(Handlers." ++ maybe "undefined" HaskellAbilities.recordingFunction (abilityNamed a) ++ " symbols =<< ") <> hsMake a inner <> Doc.text ")"]
       _ -> HaskellExpr.apply "P.fmap" [HaskellExpr.apply "LS.installed" [HaskellExpr.quoted (C.abilityKey a)], hsMake a c]
     hsMake a c = case c of
+      C.ProductionHandler | Just parts <- abilityNamed a >>= C.abilityNative -> Doc.text (intercalate "." parts)
       C.ProductionHandler -> Doc.text ("Impl." ++ maybe "undefined" HaskellAbilities.productionFunction (abilityNamed a))
       C.SpecHandler h -> Doc.text ("(Handlers." ++ maybe "undefined" HaskellAbilities.handlerFunction (specNamed h) ++ " symbols)")
       C.RecordingHandler inner -> hsMake a inner
@@ -558,6 +560,7 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
       , HaskellProperties.handlerInstalls = hsInstalls
       , HaskellProperties.abilityModules = if null (C.unitAbilities u) then Nothing
           else Just (HaskellAbilities.typesModule u, HaskellAbilities.handlersModule u)
+      , HaskellProperties.nativeImports = [intercalate "." (init parts) | a <- C.unitAbilities u, Just parts <- [C.abilityNative a]]
       }
     goChecked ty value
       | goCustom ty = GoExpr.call "_lawspecSchema.validate" [Doc.text (goRef ty),value,Doc.text (show bits),Doc.text "symbols"]
@@ -637,6 +640,7 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
       chosen -> [Doc.text "lsInstallHandlers(symbols, map[string]any{" <> Doc.joinWith (Doc.text ", ")
         [GoExpr.quoted (C.abilityKey a) <> Doc.text (": " ++ goConstructHandler a c) | (a, c) <- chosen] <> Doc.text "})"]
     goConstructHandler a c = case c of
+      C.ProductionHandler | Just parts <- abilityNamed a >>= C.abilityNative -> last parts ++ "()"
       C.ProductionHandler -> "New" ++ maybe "Unknown" productionName (abilityNamed a) ++ "()"
       C.SpecHandler h -> "New" ++ maybe "Unknown" specName (specNamed h) ++ "(symbols)"
       C.RecordingHandler inner -> "New" ++ maybe "Unknown" recordingName (abilityNamed a) ++ "(" ++ goConstructHandler a inner ++ ", symbols)"
@@ -759,6 +763,7 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
       chosen -> [javaRuntime "installHandlers" [Doc.text "symbols", JavaExpr.call "java.util.Map.of"
         (concat [[JavaExpr.quoted (C.abilityKey a), Doc.text (javaConstructHandler a c)] | (a, c) <- chosen])] <> Doc.text ";"]
     javaConstructHandler a c = case c of
+      C.ProductionHandler | Just parts <- abilityNamed a >>= C.abilityNative -> "new " ++ intercalate "." parts ++ "()"
       C.ProductionHandler -> "new " ++ cls ++ "." ++ maybe "Unknown" productionName (abilityNamed a) ++ "()"
       C.SpecHandler h -> "new " ++ JavaAbilities.abilitiesClass u ++ "." ++ maybe "Unknown" specName (specNamed h) ++ "(symbols)"
       C.RecordingHandler inner -> "new " ++ JavaAbilities.abilitiesClass u ++ "." ++ maybe "Unknown" recordingName (abilityNamed a) ++

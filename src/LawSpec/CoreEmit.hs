@@ -94,6 +94,15 @@ companionArtifacts minify target plan = do
   abilities <- abilityArtifacts minify target plan
   pure (sessions ++ actors ++ mailboxes ++ abilities ++ remoteArtifacts target (remoteCalls target plan) plan)
 
+-- Each bound ability's production handler, for the target being emitted.
+boundHandlers :: NB.BindingPlan -> Plan -> Plan
+boundHandlers bindings plan
+  | null (NB.bindingHandlers bindings) = plan
+  | otherwise = plan { plannedUnits = [u { plannedUnit = bind (plannedUnit u) } | u <- plannedUnits plan] }
+  where
+    bind unit = unit { C.unitAbilities = [a { C.abilityNative = Binding.referenceParts <$> lookup (C.abilityId a) (NB.bindingHandlers bindings) }
+      | a <- C.unitAbilities unit] }
+
 -- Each scenario's channel types, for its runs over a network. A scenario
 -- whose types have no wire descriptor yet runs only in memory.
 wirePlan :: Plan -> Plan
@@ -352,7 +361,7 @@ emitPlanWithNativeOptions minify target sourceDir testDir unescaped unwitnessed 
     then either (Left . pure . (\m -> Diagnostic "native-binding" m Nothing)) Right
       (GoNativeBinding.preparePlan bindings originalPlan)
     else Right originalPlan
-  let plan = if target == "kotlin" then nativeHandles bindings prepared else prepared
+  let plan = boundHandlers bindings (if target == "kotlin" then nativeHandles bindings prepared else prepared)
   unless (target `elem` ["rust","haskell","python","javascript","typescript","java","kotlin","go"] || all ((== Nothing) . Binding.resolvedCodec)
     (Binding.resolvedTypes (NB.bindingRepresentations bindings)))
     (Left [Diagnostic "native-binding" ("codec hook emission is not implemented for " ++ target) Nothing])
