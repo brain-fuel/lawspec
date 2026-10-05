@@ -117,3 +117,66 @@ func remoteDoubling(value0 int32) int64 {
 	<-done
 	return result
 }
+
+// RemoteLedger sends x twice to a mailbox on another node and sums what
+// the mailbox received.
+func RemoteLedger(value0 int32) LawSpecTask[int64] {
+	return LawSpecGo(func() int64 { return remoteLedger(value0) })
+}
+
+func remoteLedger(value0 int32) int64 {
+	here, there := tcpNode(), tcpNode()
+	defer here.Close()
+	defer there.Close()
+	ledger, err := ServeLedgerMailbox(there, "ledger")
+	if err != nil {
+		panic(err)
+	}
+	sender := ConnectLedgerMailbox(here, there.Address()+"/ledger", 5*time.Second)
+	for i := 0; i < 2; i++ {
+		if err := sender.Send(int64(value0)); err != nil {
+			panic(err)
+		}
+	}
+	a, err := ledger.Receive(5 * time.Second)
+	if err != nil {
+		panic(err)
+	}
+	b, err := ledger.Receive(5 * time.Second)
+	if err != nil {
+		panic(err)
+	}
+	return a + b
+}
+
+// RemoteHandoff hands a local channel end to another node, which uses it
+// through this node's relay.
+func RemoteHandoff(value0 int32) LawSpecTask[int64] {
+	return LawSpecGo(func() int64 { return remoteHandoff(value0) })
+}
+
+func remoteHandoff(value0 int32) int64 {
+	here, there := tcpNode(), tcpNode()
+	defer there.Close()
+	defer here.Close()
+	first, second := OpenDoubling()
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		x, reply := second.Receive()
+		reply.Send(2 * int64(x))
+	}()
+	giving, err := ListenHandoff(here, "handoff")
+	if err != nil {
+		panic(err)
+	}
+	taking, err := DialHandoff(there, here.Address()+"/handoff")
+	if err != nil {
+		panic(err)
+	}
+	giving.Send(first)
+	end, _ := taking.Receive()
+	result, _ := end.Send(value0).Receive()
+	<-done
+	return result
+}
