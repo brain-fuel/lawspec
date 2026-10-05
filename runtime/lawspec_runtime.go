@@ -2,11 +2,16 @@
 package RUNTIME_PACKAGE
 
 import (
+	"bytes"
+	"encoding/binary"
 	"errors"
 	"fmt"
+	"io"
 	"math"
 	"math/big"
 	"math/rand"
+	"net"
+	"net/http"
 	"os"
 	"reflect"
 	goruntime "runtime"
@@ -2800,6 +2805,9 @@ type lawSpecMachine struct {
 	invariantKinds []string
 	invariants     []LawSpecModelCallback
 	perKey         bool
+	// consistency is what histories are checked by: linearizable,
+	// sequential, causal or eventual.
+	consistency string
 	// steps is the commands a sequential run may take: an actor's also end
 	// with an injected crash.
 	steps []lawSpecModelCommand
@@ -2869,7 +2877,7 @@ func (c *lawSpecModelCommand) shifted(indices []int64) []int64 {
 func lsNewMachine(model LawSpecModel) *lawSpecMachine {
 	forms := lsReadDescriptor(model.Spec)
 	head := forms[0].([]any)
-	m := &lawSpecMachine{name: lsAtom(head[1]), shared: lsAtom(head[2]) == "shared"}
+	m := &lawSpecMachine{name: lsAtom(head[1]), shared: lsAtom(head[2]) == "shared", consistency: "linearizable"}
 	table := map[string][]any{}
 	commandIndex := 0
 	actor := false
@@ -2911,6 +2919,10 @@ func lsNewMachine(model LawSpecModel) *lawSpecMachine {
 			}
 		case "perkey":
 			m.perKey = len(form) > 1 && lsAtom(form[1]) == "true"
+		case "consistency":
+			if len(form) > 1 {
+				m.consistency = lsAtom(form[1])
+			}
 		case "actor":
 			actor = len(form) > 1 && lsAtom(form[1]) == "true"
 		}
@@ -4354,7 +4366,33 @@ func (m *lawSpecMachine) linearizable(symbols map[string]*LawSpecSymbol, branche
 // linearize is a Wing-Gong search: linearize, next, a call no pending call
 // on another thread returned before; memoized on positions and the model
 // state. finish judges each complete order's final model state.
+// lsConsistent names each consistency for failure messages.
+var lsConsistent = map[string]string{"linearizable": "linearizable", "sequential": "sequentially consistent",
+	"causal": "causally consistent", "eventual": "eventually consistent"}
+
+// linearize is a Wing-Gong search; with weaker consistency, sequential drops
+// real time (each thread's own order remains), causal checks each thread's
+// results alone (threads that never message each other see only their own
+// calls), and eventual checks no results, only the final state.
 func (m *lawSpecMachine) linearize(symbols map[string]*LawSpecSymbol, branches [][]lawSpecModelStep, history [][]lawSpecCall, expected LawSpecValue, finish func(LawSpecValue) bool) bool {
+	mode := m.consistency
+	if mode == "causal" {
+		for i, branch := range branches {
+			state := expected
+			for k, step := range branch {
+				c := &m.commands[step.index]
+				var after, wanted LawSpecValue
+				if !lsAllowed(func() { after, wanted = lsStepModel(c, symbols, step.args, state) }) {
+					return false
+				}
+				if !c.unit && lsCompareValues(history[i][k].result, wanted) != 0 {
+					return false
+				}
+				state = after
+			}
+		}
+		return true
+	}
 	seen := map[string]bool{}
 	var visit func(positions []int, model LawSpecValue) bool
 	visit = func(positions []int, model LawSpecValue) bool {
@@ -4380,6 +4418,9 @@ func (m *lawSpecMachine) linearize(symbols map[string]*LawSpecSymbol, branches [
 			called := history[i][k].called
 			blocked := false
 			for j := range branches {
+				if mode != "linearizable" {
+					break
+				}
 				if j != i && positions[j] < len(branches[j]) && history[j][positions[j]].returned < called {
 					blocked = true
 					break
@@ -4394,7 +4435,7 @@ func (m *lawSpecMachine) linearize(symbols map[string]*LawSpecSymbol, branches [
 			if !lsAllowed(func() { after, wanted = lsStepModel(c, symbols, step.args, model) }) {
 				continue
 			}
-			if !c.unit && lsCompareValues(history[i][k].result, wanted) != 0 {
+			if mode != "eventual" && !c.unit && lsCompareValues(history[i][k].result, wanted) != 0 {
 				continue
 			}
 			if visit(lsAdvanced(positions, i), after) {
@@ -4517,7 +4558,7 @@ func lsCheckModelParallel(model LawSpecModel, cases, repeats, maxShrinks, thread
 		shake := random.Next()
 		if failure, failed := m.parallelFails(c, repeats, shake); failed {
 			c, failure = m.shrinkParallel(c, failure, max(2, repeats/2), maxShrinks, shake)
-			return fmt.Errorf("model %s is not linearizable: %s: %s", m.name, m.describeParallel(c), failure)
+			return fmt.Errorf("model %s is not %s: %s: %s", m.name, lsConsistent[m.consistency], m.describeParallel(c), failure)
 		}
 	}
 	return nil
@@ -4531,10 +4572,32 @@ func lsCheckModelParallel(model LawSpecModel, cases, repeats, maxShrinks, thread
 // call and return are stamped on one counter; the history must linearize
 // against the model, and every expect must hold, on each of many schedules.
 
+// lawSpecScenarioChannel is a scenario channel: in memory, or two
+// endpoints on a faulty network.
+type lawSpecScenarioChannel interface {
+	send(side int, value any)
+	// receive is the next value for side, lawSpecGone{} once the other side
+	// has ended, or ok false after waiting too long.
+	receive(side int) (value any, ok bool)
+	gone(side int)
+}
+
 type lawSpecChannel struct {
 	queues [2]chan any
 	mu     sync.Mutex
 	ended  [2]bool
+}
+
+func (c *lawSpecChannel) receive(side int) (any, bool) {
+	select {
+	case value := <-c.queues[1-side]:
+		if _, gone := value.(lawSpecGone); gone {
+			c.queues[1-side] <- value
+		}
+		return value, true
+	case <-time.After(5 * time.Second):
+		return nil, false
+	}
 }
 
 func lsNewChannel() *lawSpecChannel {
@@ -4608,8 +4671,88 @@ func lsScenarioProcesses(acts []any, found [][]any) [][]any {
 
 // lawSpecEnd is a channel end in transit or held by a process.
 type lawSpecEnd struct {
-	channel *lawSpecChannel
+	channel lawSpecScenarioChannel
 	side    int
+}
+
+// lawSpecNetScenarioChannel is a scenario channel whose two sides are
+// endpoints on two nodes of a faulty in-memory network. A channel end sent
+// over it travels as its name, and the receiver uses the end where it is
+// (its owner).
+type lawSpecNetScenarioChannel struct {
+	name     string
+	nodes    [2]*LawSpecNode
+	ends     [2]*LawSpecNetEndpoint
+	mu       sync.Mutex
+	done     [2]bool
+	registry map[string]*lawSpecNetScenarioChannel
+}
+
+func lsNewNetScenarioChannel(network *LawSpecMemoryNetwork, name string, steps []LawSpecWireStep, values lawSpecValues, registry map[string]*lawSpecNetScenarioChannel) *lawSpecNetScenarioChannel {
+	c := &lawSpecNetScenarioChannel{name: name, registry: registry}
+	wire := func(flip bool) []LawSpecWireStep {
+		out := []LawSpecWireStep{}
+		for _, s := range steps {
+			d := s.Descriptor
+			if form, ok := d.([]any); ok && lsAtom(form[0]) == "end" {
+				d = []any{"text"}
+			}
+			out = append(out, LawSpecWireStep{s.Sends != flip, d})
+		}
+		return out
+	}
+	for side := 0; side < 2; side++ {
+		c.nodes[side] = NewLawSpecNode(network.Transport(fmt.Sprintf("%s-%d", name, side)))
+	}
+	c.ends[0], _ = c.nodes[0].Listen(name, wire(false), values, 5*time.Second)
+	c.ends[1], _ = c.nodes[1].Dial(c.nodes[0].Address()+"/"+name, wire(true), values, 5*time.Second)
+	registry[name] = c
+	return c
+}
+
+func (c *lawSpecNetScenarioChannel) send(side int, value any) {
+	if end, ok := value.(lawSpecEnd); ok {
+		net := end.channel.(*lawSpecNetScenarioChannel)
+		value = LawSpecValue{"Text", lsTextUnits(fmt.Sprintf("%s#%d", net.name, end.side))}
+	}
+	c.ends[side].Send(side, value)
+}
+
+func (c *lawSpecNetScenarioChannel) receive(side int) (any, bool) {
+	value, err := c.ends[side].ReceiveWithin(5 * time.Second)
+	if errors.Is(err, LawSpecPeerFailed) {
+		return lawSpecGone{}, true
+	}
+	if err != nil {
+		return nil, false
+	}
+	if units, ok := value.Data.([]int); ok && value.Type == "Text" {
+		text, _ := lsUnitsText(units)
+		if i := strings.LastIndex(text, "#"); i >= 0 {
+			if owner, known := c.registry[text[:i]]; known {
+				which, _ := strconv.Atoi(text[i+1:])
+				return lawSpecEnd{owner, which}, true
+			}
+		}
+	}
+	return value, true
+}
+
+func (c *lawSpecNetScenarioChannel) gone(side int) {
+	c.mu.Lock()
+	already := c.done[side]
+	c.done[side] = true
+	c.mu.Unlock()
+	if !already {
+		c.ends[side].Abandon(side)
+	}
+}
+
+func (c *lawSpecNetScenarioChannel) close() {
+	for side := 0; side < 2; side++ {
+		c.ends[side].Close()
+		c.nodes[side].Close()
+	}
 }
 
 type lawSpecScenarioCall struct {
@@ -4617,6 +4760,10 @@ type lawSpecScenarioCall struct {
 	args             []LawSpecValue
 	result           LawSpecValue
 	called, returned int64
+	// The process that made the call, and its vector clock when the call
+	// began and when it returned.
+	process          string
+	atCall, atReturn map[string]int64
 }
 
 // lsActsChannels is the names an act list sends, receives or sends away,
@@ -4666,11 +4813,11 @@ func lsScenarioConstant(form []any) LawSpecValue {
 	return LawSpecValue{t, lawSpecData{tag, nil}}
 }
 
-func lsRunScenario(model LawSpecModel, spec string, shake uint64, crash bool) (string, string, bool) {
+func lsRunScenario(model LawSpecModel, spec string, shake uint64, crash, network bool) (string, string, bool) {
 	m := lsNewMachine(model)
 	forms := lsReadDescriptor(spec)
 	title := lsAtom(forms[0].([]any)[1])
-	var names, body []any
+	var names, body, wire []any
 	for _, f := range forms {
 		form := f.([]any)
 		switch lsAtom(form[0]) {
@@ -4682,11 +4829,39 @@ func lsRunScenario(model LawSpecModel, spec string, shake uint64, crash bool) (s
 			if body == nil {
 				body = form[1:]
 			}
+		case "wire":
+			wire = form
 		}
 	}
-	channels := map[string]*lawSpecChannel{}
-	for _, name := range names {
-		channels[lsAtom(name)] = lsNewChannel()
+	channels := map[string]lawSpecScenarioChannel{}
+	if network && wire != nil {
+		// Loss, duplication and delay (which reorders); the channels'
+		// numbered, acknowledged frames must hide them all.
+		net := NewLawSpecMemoryNetwork(shake^0x7F4A7C159E3779B9, 0.1, 0.1, 2*time.Millisecond)
+		table := map[string][]any{}
+		steps := map[string][]LawSpecWireStep{}
+		for _, f := range wire[1:] {
+			form := f.([]any)
+			switch lsAtom(form[0]) {
+			case "data":
+				table[lsAtom(form[1])] = form
+			case "channel":
+				for _, s := range form[2:] {
+					st := s.([]any)
+					steps[lsAtom(form[1])] = append(steps[lsAtom(form[1])], LawSpecWireStep{lsAtom(st[0]) == "send", st[1]})
+				}
+			}
+		}
+		registry := map[string]*lawSpecNetScenarioChannel{}
+		for _, name := range names {
+			c := lsNewNetScenarioChannel(net, lsAtom(name), steps[lsAtom(name)], lawSpecValues{table}, registry)
+			defer c.close()
+			channels[lsAtom(name)] = c
+		}
+	} else {
+		for _, name := range names {
+			channels[lsAtom(name)] = lsNewChannel()
+		}
 	}
 	commands := map[string]*lawSpecModelCommand{}
 	for i := range m.commands {
@@ -4700,7 +4875,7 @@ func lsRunScenario(model LawSpecModel, spec string, shake uint64, crash bool) (s
 	state := m.startRun(symbols, startArgs)
 	expected := m.startModel(symbols, startArgs)
 	var lock sync.Mutex
-	var clock int64
+	var ticks int64
 	history := []lawSpecScenarioCall{}
 	failures := []string{}
 	fail := func(message string) {
@@ -4722,18 +4897,54 @@ func lsRunScenario(model LawSpecModel, spec string, shake uint64, crash bool) (s
 		victim = &branch[0]
 		victimAct = int(chooser.Below(uint64(len(branch) - 1 + 1)))
 	}
-	var process, steps func(acts []any, env map[string]LawSpecValue, ends map[string]lawSpecEnd, random *LawSpecSplitMix64, identity *any) bool
+	// Vector clocks: each value sent carries its sender's clock (kept here,
+	// in order per channel direction), so calls can be ordered by what
+	// happened before what.
+	type stampKey struct {
+		channel lawSpecScenarioChannel
+		side    int
+	}
+	stamps := map[stampKey][]map[string]int64{}
+	copyClock := func(clock map[string]int64) map[string]int64 {
+		out := map[string]int64{}
+		for k, v := range clock {
+			out[k] = v
+		}
+		return out
+	}
+	stamp := func(end lawSpecEnd, clock map[string]int64) {
+		lock.Lock()
+		key := stampKey{end.channel, end.side}
+		stamps[key] = append(stamps[key], copyClock(clock))
+		lock.Unlock()
+	}
+	unstamp := func(end lawSpecEnd, clock map[string]int64, me string) {
+		lock.Lock()
+		key := stampKey{end.channel, 1 - end.side}
+		var sent map[string]int64
+		if queue := stamps[key]; len(queue) > 0 {
+			sent, stamps[key] = queue[0], queue[1:]
+		}
+		lock.Unlock()
+		for p, n := range sent {
+			if n > clock[p] {
+				clock[p] = n
+			}
+		}
+		clock[me]++
+	}
+	var process, steps func(acts []any, env map[string]LawSpecValue, ends map[string]lawSpecEnd, random *LawSpecSplitMix64, identity *any, clock map[string]int64, me string) bool
 	// process is false when the process failed; either way, the ends it
 	// still holds are given up.
-	process = func(acts []any, env map[string]LawSpecValue, ends map[string]lawSpecEnd, random *LawSpecSplitMix64, identity *any) bool {
+	process = func(acts []any, env map[string]LawSpecValue, ends map[string]lawSpecEnd, random *LawSpecSplitMix64, identity *any, clock map[string]int64, me string) bool {
 		defer func() {
 			for _, end := range ends {
 				end.channel.gone(end.side)
 			}
 		}()
-		return steps(acts, env, ends, random, identity)
+		return steps(acts, env, ends, random, identity, clock, me)
 	}
-	steps = func(acts []any, env map[string]LawSpecValue, ends map[string]lawSpecEnd, random *LawSpecSplitMix64, identity *any) bool {
+	steps = func(acts []any, env map[string]LawSpecValue, ends map[string]lawSpecEnd, random *LawSpecSplitMix64, identity *any, clock map[string]int64, me string) bool {
 		own := map[string]*LawSpecSymbol{}
 		for index, a := range acts {
 			if failed() {
@@ -4764,7 +4975,9 @@ func lsRunScenario(model LawSpecModel, spec string, shake uint64, crash bool) (s
 				}
 				full := lsWithState(command, args, state)
 				lsPerturb(random)
-				called := atomic.AddInt64(&clock, 1)
+				clock[me]++
+				atCall := copyClock(clock)
+				called := atomic.AddInt64(&ticks, 1)
 				result, ok := func() (result LawSpecValue, ok bool) {
 					defer func() {
 						if r := recover(); r != nil {
@@ -4777,9 +4990,10 @@ func lsRunScenario(model LawSpecModel, spec string, shake uint64, crash bool) (s
 				if !ok {
 					return false
 				}
-				returned := atomic.AddInt64(&clock, 1)
+				returned := atomic.AddInt64(&ticks, 1)
+				clock[me]++
 				lock.Lock()
-				history = append(history, lawSpecScenarioCall{command, args, result, called, returned})
+				history = append(history, lawSpecScenarioCall{command, args, result, called, returned, me, atCall, copyClock(clock)})
 				lock.Unlock()
 				if act[2] != nil && lsAtom(act[2]) != "_" {
 					env[lsAtom(act[2])] = result
@@ -4797,27 +5011,27 @@ func lsRunScenario(model LawSpecModel, spec string, shake uint64, crash bool) (s
 					value = lsScenarioConstant(operand)
 				}
 				lsPerturb(random)
+				clock[me]++
+				stamp(end, clock)
 				end.channel.send(end.side, value)
 			case "receive", "receiveor":
 				name := lsAtom(act[1])
 				end := ends[name]
-				var value any
-				select {
-				case value = <-end.channel.queues[1-end.side]:
-				case <-time.After(5 * time.Second):
+				value, ok := end.channel.receive(end.side)
+				if !ok {
 					fail(fmt.Sprintf("a receive on %s waited too long: the processes are blocked", name))
 					return false
 				}
 				if _, gone := value.(lawSpecGone); gone {
 					// The other process ended: or else runs instead of the
 					// rest; without it, this process fails too.
-					end.channel.queues[1-end.side] <- value
 					if lsAtom(act[0]) == "receive" {
 						return false
 					}
 					delete(ends, name)
-					return steps(act[3].([]any)[1:], env, ends, random, nil)
+					return steps(act[3].([]any)[1:], env, ends, random, nil, clock, me)
 				}
+				unstamp(end, clock, me)
 				if held, isEnd := value.(lawSpecEnd); isEnd {
 					ends[lsAtom(act[2])] = held
 				} else {
@@ -4843,6 +5057,7 @@ func lsRunScenario(model LawSpecModel, spec string, shake uint64, crash bool) (s
 				}
 				var group sync.WaitGroup
 				outcomes := make([]bool, len(branches))
+				clocks := make([]map[string]int64, len(branches))
 				for i, branch := range branches {
 					mine := map[string]lawSpecEnd{}
 					for _, name := range order {
@@ -4863,13 +5078,22 @@ func lsRunScenario(model LawSpecModel, spec string, shake uint64, crash bool) (s
 						copied[k] = v
 					}
 					random := &LawSpecSplitMix64{shake ^ (uint64(i+1) * 0x9E3779B97F4A7C15)}
+					clocks[i] = copyClock(clock)
 					group.Add(1)
 					go func(i int, branch []any) {
 						defer group.Done()
-						outcomes[i] = process(branch[1:], copied, mine, random, &branch[0])
+						outcomes[i] = process(branch[1:], copied, mine, random, &branch[0], clocks[i], fmt.Sprintf("%p", &branch[0]))
 					}(i, branch)
 				}
 				group.Wait()
+				for _, child := range clocks {
+					for p, n := range child {
+						if n > clock[p] {
+							clock[p] = n
+						}
+					}
+				}
+				clock[me]++
 				// A failed branch fails the process that ran the par.
 				for _, ok := range outcomes {
 					if !ok {
@@ -4895,7 +5119,7 @@ func lsRunScenario(model LawSpecModel, spec string, shake uint64, crash bool) (s
 		}
 		return true
 	}
-	outcome := process(body, map[string]LawSpecValue{}, map[string]lawSpecEnd{}, &LawSpecSplitMix64{shake}, nil)
+	outcome := process(body, map[string]LawSpecValue{}, map[string]lawSpecEnd{}, &LawSpecSplitMix64{shake}, nil, map[string]int64{}, "root")
 	if len(failures) > 0 {
 		if victim != nil {
 			return title, failures[0] + " (with a process crashed)", true
@@ -4921,7 +5145,7 @@ func lsRunScenario(model LawSpecModel, spec string, shake uint64, crash bool) (s
 			}
 			observed = append(observed, fmt.Sprintf("%s(%s) returned %s", h.command.name, strings.Join(args, ", "), lsRender(h.result)))
 		}
-		return title, "no order of the calls agrees with the model (" + strings.Join(observed, "; ") + ")", true
+		return title, "the calls are not " + lsConsistent[m.consistency] + " with the model (" + strings.Join(observed, "; ") + ")", true
 	}
 	return title, "", false
 }
@@ -4937,70 +5161,134 @@ func lsScenarioEqual(a, b LawSpecValue) (equal bool) {
 	return lsCompareValues(a, b) == 0
 }
 
-// linearizesHistory is a Wing-Gong search over any real-time order: next, a
-// call that no pending call returned before; memoized on the calls done and
-// the state.
-func (m *lawSpecMachine) linearizesHistory(symbols map[string]*LawSpecSymbol, history []lawSpecScenarioCall, expected LawSpecValue, final *LawSpecValue, state LawSpecValue) bool {
-	seen := map[string]bool{}
-	count := len(history)
-	done := make([]byte, count)
-	var visit func(remaining int, model LawSpecValue) bool
-	visit = func(remaining int, model LawSpecValue) bool {
-		key := string(done) + "|" + lsRender(model)
-		if seen[key] {
+// lsHappenedBefore is whether call a returned before call b began, as far
+// as messages tell: a's return clock is at or below b's call clock
+// everywhere.
+func lsHappenedBefore(a, b lawSpecScenarioCall) bool {
+	for p, n := range a.atReturn {
+		if b.atCall[p] < n {
 			return false
 		}
-		seen[key] = true
-		if remaining == 0 {
-			if final != nil && lsCompareValues(*final, model) != 0 {
+	}
+	return true
+}
+
+// linearizesHistory is a Wing-Gong search over the scenario's calls,
+// memoized on the calls done and the state. Linearizable: next, a call no
+// pending call returned before (real time). Sequential: next, a call every
+// call that happened before it (its process's order, and messages) is done.
+// Causal: each process's results from an order of what happened before
+// them. Eventual: no results, only the final state.
+func (m *lawSpecMachine) linearizesHistory(symbols map[string]*LawSpecSymbol, history []lawSpecScenarioCall, expected LawSpecValue, final *LawSpecValue, state LawSpecValue) bool {
+	mode := m.consistency
+	before := func(j, i int) bool {
+		if mode == "linearizable" {
+			return history[j].returned < history[i].called
+		}
+		return lsHappenedBefore(history[j], history[i])
+	}
+	search := func(members []int, checked map[int]bool, judgeFinal bool) bool {
+		seen := map[string]bool{}
+		done := make([]byte, len(history))
+		var visit func(remaining int, model LawSpecValue) bool
+		visit = func(remaining int, model LawSpecValue) bool {
+			key := string(done) + "|" + lsRender(model)
+			if seen[key] {
 				return false
 			}
-			for i, kind := range m.invariantKinds {
-				if i >= len(m.invariants) {
-					break
+			seen[key] = true
+			if remaining == 0 {
+				if !judgeFinal {
+					return true
 				}
-				subject := state
-				if kind == "model" {
-					subject = model
-				}
-				if !lsTruth(m.invariants[i](symbols, []LawSpecValue{subject})) {
+				if final != nil && lsCompareValues(*final, model) != 0 {
 					return false
 				}
-			}
-			return true
-		}
-		for i := range history {
-			if done[i] == 1 {
-				continue
-			}
-			blocked := false
-			for j := range history {
-				if j != i && done[j] == 0 && history[j].returned < history[i].called {
-					blocked = true
-					break
+				for i, kind := range m.invariantKinds {
+					if i >= len(m.invariants) {
+						break
+					}
+					subject := state
+					if kind == "model" {
+						subject = model
+					}
+					if !lsTruth(m.invariants[i](symbols, []LawSpecValue{subject})) {
+						return false
+					}
 				}
-			}
-			if blocked {
-				continue
-			}
-			call := history[i]
-			var after, wanted LawSpecValue
-			if !lsAllowed(func() { after, wanted = lsStepModel(call.command, symbols, call.args, model) }) {
-				continue
-			}
-			if !call.command.unit && !lsScenarioEqual(call.result, wanted) {
-				continue
-			}
-			done[i] = 1
-			ok := visit(remaining-1, after)
-			done[i] = 0
-			if ok {
 				return true
 			}
+			for _, i := range members {
+				if done[i] == 1 {
+					continue
+				}
+				blocked := false
+				for _, j := range members {
+					if j != i && done[j] == 0 && before(j, i) {
+						blocked = true
+						break
+					}
+				}
+				if blocked {
+					continue
+				}
+				call := history[i]
+				var after, wanted LawSpecValue
+				if !lsAllowed(func() { after, wanted = lsStepModel(call.command, symbols, call.args, model) }) {
+					continue
+				}
+				if checked[i] && !call.command.unit && !lsScenarioEqual(call.result, wanted) {
+					continue
+				}
+				done[i] = 1
+				ok := visit(remaining-1, after)
+				done[i] = 0
+				if ok {
+					return true
+				}
+			}
+			return false
 		}
-		return false
+		return visit(len(members), expected)
 	}
-	return visit(count, expected)
+	everything := []int{}
+	all := map[int]bool{}
+	for i := range history {
+		everything = append(everything, i)
+		all[i] = true
+	}
+	if mode == "causal" {
+		processes := map[string]bool{}
+		for _, h := range history {
+			processes[h.process] = true
+		}
+		for process := range processes {
+			own := map[int]bool{}
+			for i, h := range history {
+				if h.process == process {
+					own[i] = true
+				}
+			}
+			members := []int{}
+			for j := range history {
+				include := own[j]
+				for i := range own {
+					include = include || (j != i && lsHappenedBefore(history[j], history[i]))
+				}
+				if include {
+					members = append(members, j)
+				}
+			}
+			if !search(members, own, false) {
+				return false
+			}
+		}
+		return true
+	}
+	if mode == "eventual" {
+		return search(everything, map[int]bool{}, true)
+	}
+	return search(everything, all, true)
 }
 
 // LawSpecCheckScenario runs a scenario on many schedules; a failure is an
@@ -5020,10 +5308,1442 @@ func LawSpecCheckScenario(model LawSpecModel, spec string) error {
 func lsCheckScenario(model LawSpecModel, spec string, runs int, seed uint64) error {
 	random := &LawSpecSplitMix64{seed ^ 0x2545F4914F6CDD1D}
 	for n := 0; n < runs; n++ {
-		// Every third run crashes one process of a par at a random point.
-		if title, failure, failed := lsRunScenario(model, spec, random.Next(), n%3 == 2); failed {
+		// Every third run crashes one process of a par at a random point, and
+		// every third other one sends each channel over a faulty network.
+		if title, failure, failed := lsRunScenario(model, spec, random.Next(), n%3 == 2, n%3 == 1); failed {
 			return fmt.Errorf("scenario %s fails: %s", title, failure)
 		}
 	}
 	return nil
+}
+
+// Distribution. Values cross the network in a canonical binary encoding
+// driven by their type descriptor (the same descriptors as generation), so
+// no tags are sent and every target writes the same bytes:
+//   int: zigzag LEB128 of the integer (any size)      bool: 0 or 1
+//   text: LEB128 length, then UTF-8                   unit: nothing
+//   list: LEB128 count, then items                     maybe: 0, or 1 then the value
+//   either: 0 then left, or 1 then right               data: LEB128 constructor index, then fields
+// A node sends frames over a transport (in memory, TCP or HTTP): kind,
+// entity name, the sender's address, an id and a payload.
+
+// LawSpecWireError is bytes that are not an encoding of a value of the
+// expected type.
+type LawSpecWireError struct{ Message string }
+
+func (e LawSpecWireError) Error() string { return e.Message }
+
+// LawSpecUnreachable is the error of a node that could not be reached, or
+// did not answer in time; errors.Is finds it in a wrapped error.
+var LawSpecUnreachable = errors.New("unreachable")
+
+func lsUnreachable(message string) error { return fmt.Errorf("%w: %s", LawSpecUnreachable, message) }
+
+func lsPutUvarint(out []byte, n uint64) []byte {
+	for {
+		b := byte(n & 0x7F)
+		n >>= 7
+		if n != 0 {
+			out = append(out, b|0x80)
+		} else {
+			return append(out, b)
+		}
+	}
+}
+
+func lsPutBigUvarint(out []byte, n *big.Int) []byte {
+	z := new(big.Int).Set(n)
+	mask := big.NewInt(0x7F)
+	for {
+		b := byte(new(big.Int).And(z, mask).Int64())
+		z.Rsh(z, 7)
+		if z.Sign() != 0 {
+			out = append(out, b|0x80)
+		} else {
+			return append(out, b)
+		}
+	}
+}
+
+func lsGetBigUvarint(buf []byte, pos int) (*big.Int, int, error) {
+	result := new(big.Int)
+	shift := uint(0)
+	for {
+		if pos >= len(buf) {
+			return nil, pos, LawSpecWireError{"the bytes end in the middle of a value"}
+		}
+		b := buf[pos]
+		pos++
+		result.Or(result, new(big.Int).Lsh(big.NewInt(int64(b&0x7F)), shift))
+		if b < 0x80 {
+			return result, pos, nil
+		}
+		shift += 7
+	}
+}
+
+func lsGetUvarint(buf []byte, pos int) (uint64, int, error) {
+	n, pos, err := lsGetBigUvarint(buf, pos)
+	if err != nil {
+		return 0, pos, err
+	}
+	if !n.IsUint64() {
+		return 0, pos, LawSpecWireError{"a count too large"}
+	}
+	return n.Uint64(), pos, nil
+}
+
+func lsZigzag(n *big.Int) *big.Int {
+	if n.Sign() >= 0 {
+		return new(big.Int).Lsh(n, 1)
+	}
+	z := new(big.Int).Lsh(new(big.Int).Neg(n), 1)
+	return z.Sub(z, big.NewInt(1))
+}
+
+func lsUnzigzag(z *big.Int) *big.Int {
+	if z.Bit(0) == 0 {
+		return new(big.Int).Rsh(z, 1)
+	}
+	n := new(big.Int).Add(z, big.NewInt(1))
+	n.Rsh(n, 1)
+	return n.Neg(n)
+}
+
+func lsPutText(out []byte, text string) []byte {
+	out = lsPutUvarint(out, uint64(len(text)))
+	return append(out, text...)
+}
+
+func lsGetText(buf []byte, pos int) (string, int, error) {
+	raw, pos, err := lsGetRaw(buf, pos)
+	if err != nil {
+		return "", pos, err
+	}
+	if !utf8.Valid(raw) {
+		return "", pos, LawSpecWireError{"text that is not UTF-8"}
+	}
+	return string(raw), pos, nil
+}
+
+func lsGetRaw(buf []byte, pos int) ([]byte, int, error) {
+	n, pos, err := lsGetUvarint(buf, pos)
+	if err != nil {
+		return nil, pos, err
+	}
+	if uint64(len(buf)-pos) < n {
+		return nil, pos, LawSpecWireError{"the bytes end in the middle of a value"}
+	}
+	return buf[pos : pos+int(n)], pos + int(n), nil
+}
+
+func lsUnitsText(units []int) (string, error) {
+	var b strings.Builder
+	for _, c := range units {
+		if c < 0 || c > 0x10FFFF || (c >= 0xD800 && c <= 0xDFFF) {
+			return "", LawSpecWireError{"text with a code point that UTF-8 cannot hold"}
+		}
+		b.WriteRune(rune(c))
+	}
+	return b.String(), nil
+}
+
+func lsTextUnits(text string) []int {
+	units := []int{}
+	for _, c := range text {
+		units = append(units, int(c))
+	}
+	return units
+}
+
+func lsWirePut(values lawSpecValues, d any, v LawSpecValue, out []byte) ([]byte, error) {
+	form := values.resolve(d)
+	switch lsAtom(form[0]) {
+	case "int":
+		n, ok := v.Data.(*big.Int)
+		if !ok {
+			return out, LawSpecWireError{fmt.Sprintf("%s is not a %s", lsRender(v), lsAtom(form[1]))}
+		}
+		lo, _ := form[2].(*big.Int)
+		hi, _ := form[3].(*big.Int)
+		if (lo != nil && n.Cmp(lo) < 0) || (hi != nil && n.Cmp(hi) > 0) {
+			return out, LawSpecWireError{fmt.Sprintf("%s is not a %s", n, lsAtom(form[1]))}
+		}
+		return lsPutBigUvarint(out, lsZigzag(n)), nil
+	case "bool":
+		b, ok := v.Data.(bool)
+		if !ok {
+			return out, LawSpecWireError{"not a Bool"}
+		}
+		if b {
+			return append(out, 1), nil
+		}
+		return append(out, 0), nil
+	case "text", "end":
+		units, ok := v.Data.([]int)
+		if !ok {
+			return out, LawSpecWireError{"not a Text"}
+		}
+		text, err := lsUnitsText(units)
+		if err != nil {
+			return out, err
+		}
+		return lsPutText(out, text), nil
+	case "unit":
+		return out, nil
+	case "list":
+		items, ok := v.Data.([]LawSpecValue)
+		if !ok {
+			return out, LawSpecWireError{"not a List"}
+		}
+		out = lsPutUvarint(out, uint64(len(items)))
+		for _, item := range items {
+			var err error
+			if out, err = lsWirePut(values, form[1], item, out); err != nil {
+				return out, err
+			}
+		}
+		return out, nil
+	case "maybe", "either":
+		data, ok := v.Data.(lawSpecData)
+		if !ok {
+			return out, LawSpecWireError{"not a " + lsAtom(form[0])}
+		}
+		if lsAtom(form[0]) == "maybe" {
+			if strings.HasSuffix(data.tag, "Nothing") {
+				return append(out, 0), nil
+			}
+			return lsWirePut(values, form[1], data.fields[0], append(out, 1))
+		}
+		if strings.HasSuffix(data.tag, "Left") {
+			return lsWirePut(values, form[1], data.fields[0], append(out, 0))
+		}
+		return lsWirePut(values, form[2], data.fields[0], append(out, 1))
+	case "data":
+		data, ok := v.Data.(lawSpecData)
+		if !ok {
+			return out, LawSpecWireError{"not a " + lsAtom(form[1])}
+		}
+		for index, c := range form[2:] {
+			ctor := c.([]any)
+			if lsAtom(ctor[1]) != data.tag {
+				continue
+			}
+			out = lsPutUvarint(out, uint64(index))
+			for k, fd := range ctor[2:] {
+				var err error
+				if out, err = lsWirePut(values, fd, data.fields[k], out); err != nil {
+					return out, err
+				}
+			}
+			return out, nil
+		}
+		return out, LawSpecWireError{data.tag + " is not a constructor of " + lsAtom(form[1])}
+	}
+	return out, LawSpecWireError{"unknown descriptor " + fmt.Sprint(form)}
+}
+
+func lsWireGet(values lawSpecValues, d any, buf []byte, pos int) (LawSpecValue, int, error) {
+	form := values.resolve(d)
+	switch lsAtom(form[0]) {
+	case "int":
+		z, next, err := lsGetBigUvarint(buf, pos)
+		if err != nil {
+			return LawSpecValue{}, next, err
+		}
+		n := lsUnzigzag(z)
+		lo, _ := form[2].(*big.Int)
+		hi, _ := form[3].(*big.Int)
+		if (lo != nil && n.Cmp(lo) < 0) || (hi != nil && n.Cmp(hi) > 0) {
+			return LawSpecValue{}, next, LawSpecWireError{fmt.Sprintf("%s is out of range for %s", n, lsAtom(form[1]))}
+		}
+		return LawSpecValue{values.typeOf(form), n}, next, nil
+	case "bool":
+		if pos >= len(buf) || buf[pos] > 1 {
+			return LawSpecValue{}, pos, LawSpecWireError{"not a Bool"}
+		}
+		return lsBool(buf[pos] == 1), pos + 1, nil
+	case "text", "end":
+		text, next, err := lsGetText(buf, pos)
+		if err != nil {
+			return LawSpecValue{}, next, err
+		}
+		return LawSpecValue{"Text", lsTextUnits(text)}, next, nil
+	case "unit":
+		return LawSpecValue{"Unit", nil}, pos, nil
+	case "list":
+		n, next, err := lsGetUvarint(buf, pos)
+		if err != nil {
+			return LawSpecValue{}, next, err
+		}
+		pos = next
+		items := []LawSpecValue{}
+		for ; n > 0; n-- {
+			var item LawSpecValue
+			if item, pos, err = lsWireGet(values, form[1], buf, pos); err != nil {
+				return LawSpecValue{}, pos, err
+			}
+			items = append(items, item)
+		}
+		return LawSpecValue{values.typeOf(form), items}, pos, nil
+	case "maybe", "either":
+		if pos >= len(buf) || buf[pos] > 1 {
+			return LawSpecValue{}, pos, LawSpecWireError{"not a " + lsAtom(form[0])}
+		}
+		which := buf[pos]
+		pos++
+		t := values.typeOf(form)
+		if lsAtom(form[0]) == "maybe" {
+			if which == 0 {
+				return lsSum(t, "Maybe::Nothing"), pos, nil
+			}
+			v, next, err := lsWireGet(values, form[1], buf, pos)
+			return lsSum(t, "Maybe::Just", v), next, err
+		}
+		if which == 0 {
+			v, next, err := lsWireGet(values, form[1], buf, pos)
+			return lsSum(t, "Either::Left", v), next, err
+		}
+		v, next, err := lsWireGet(values, form[2], buf, pos)
+		return lsSum(t, "Either::Right", v), next, err
+	case "data":
+		index, next, err := lsGetUvarint(buf, pos)
+		if err != nil {
+			return LawSpecValue{}, next, err
+		}
+		ctors := form[2:]
+		if index >= uint64(len(ctors)) {
+			return LawSpecValue{}, next, LawSpecWireError{fmt.Sprintf("no constructor %d in %s", index, lsAtom(form[1]))}
+		}
+		ctor := ctors[index].([]any)
+		pos = next
+		fields := []LawSpecValue{}
+		for _, fd := range ctor[2:] {
+			var v LawSpecValue
+			if v, pos, err = lsWireGet(values, fd, buf, pos); err != nil {
+				return LawSpecValue{}, pos, err
+			}
+			fields = append(fields, v)
+		}
+		return lsSum(values.typeOf(form), lsAtom(ctor[1]), fields...), pos, nil
+	}
+	return LawSpecValue{}, pos, LawSpecWireError{"unknown descriptor " + fmt.Sprint(form)}
+}
+
+// LawSpecTypes is the data types of a descriptor text, for the wire.
+func LawSpecTypes(text string) lawSpecValues {
+	table := map[string][]any{}
+	for _, f := range lsReadDescriptor(text) {
+		if form, ok := f.([]any); ok && lsAtom(form[0]) == "data" {
+			table[lsAtom(form[1])] = form
+		}
+	}
+	return lawSpecValues{table}
+}
+
+// LawSpecDescriptor is the first descriptor in a text.
+func LawSpecDescriptor(text string) any { return lsReadDescriptor(text)[0] }
+
+// LawSpecWireEncode is a value's canonical bytes.
+func LawSpecWireEncode(values lawSpecValues, d any, v LawSpecValue) ([]byte, error) {
+	return lsWirePut(values, d, v, nil)
+}
+
+// LawSpecWireDecode is the value encoded by exactly these bytes.
+func LawSpecWireDecode(values lawSpecValues, d any, data []byte) (LawSpecValue, error) {
+	v, pos, err := lsWireGet(values, d, data, 0)
+	if err != nil {
+		return LawSpecValue{}, err
+	}
+	if pos != len(data) {
+		return LawSpecValue{}, LawSpecWireError{"extra bytes after the value"}
+	}
+	return v, nil
+}
+
+// LawSpecWireEncoded is count values generated from one seed, encoded, in
+// hexadecimal.
+func LawSpecWireEncoded(text string, seed uint64, size int64, count int64) []string {
+	values, d := lsValuesFrom(text)
+	random := LawSpecSplitMix64{seed}
+	result := []string{}
+	for ; count > 0; count-- {
+		encoded, err := LawSpecWireEncode(values, d, values.generate(d, &random, size))
+		if err != nil {
+			panic(err)
+		}
+		result = append(result, fmt.Sprintf("%x", encoded))
+	}
+	return result
+}
+
+// LawSpecWireRoundTrips is whether count generated values decode to
+// themselves.
+func LawSpecWireRoundTrips(text string, seed uint64, size int64, count int64) bool {
+	values, d := lsValuesFrom(text)
+	random := LawSpecSplitMix64{seed}
+	for ; count > 0; count-- {
+		v := values.generate(d, &random, size)
+		encoded, err := LawSpecWireEncode(values, d, v)
+		if err != nil {
+			return false
+		}
+		back, err := LawSpecWireDecode(values, d, encoded)
+		if err != nil || lsRender(back) != lsRender(v) {
+			return false
+		}
+	}
+	return true
+}
+
+// lsInt64Bytes encodes a signed integer as (int Int64 _ _) does.
+func lsInt64Bytes(out []byte, n int64) []byte {
+	return lsPutBigUvarint(out, lsZigzag(big.NewInt(n)))
+}
+
+func lsGetInt64(buf []byte, pos int) (int64, int, error) {
+	z, pos, err := lsGetBigUvarint(buf, pos)
+	if err != nil {
+		return 0, pos, err
+	}
+	n := lsUnzigzag(z)
+	if !n.IsInt64() {
+		return 0, pos, LawSpecWireError{"an integer out of range"}
+	}
+	return n.Int64(), pos, nil
+}
+
+func lsFrameEncode(kind, to, source string, id uint64, payload []byte) []byte {
+	out := lsPutText(nil, kind)
+	out = lsPutText(out, to)
+	out = lsPutText(out, source)
+	out = lsPutBigUvarint(out, lsZigzag(new(big.Int).SetUint64(id)))
+	out = lsPutUvarint(out, uint64(len(payload)))
+	return append(out, payload...)
+}
+
+func lsFrameDecode(frame []byte) (kind, to, source string, id uint64, payload []byte, err error) {
+	pos := 0
+	if kind, pos, err = lsGetText(frame, pos); err != nil {
+		return
+	}
+	if to, pos, err = lsGetText(frame, pos); err != nil {
+		return
+	}
+	if source, pos, err = lsGetText(frame, pos); err != nil {
+		return
+	}
+	var z *big.Int
+	if z, pos, err = lsGetBigUvarint(frame, pos); err != nil {
+		return
+	}
+	n := lsUnzigzag(z)
+	if n.Sign() < 0 || !n.IsUint64() {
+		err = LawSpecWireError{"a frame id out of range"}
+		return
+	}
+	id = n.Uint64()
+	if payload, pos, err = lsGetRaw(frame, pos); err != nil {
+		return
+	}
+	if pos != len(frame) {
+		err = LawSpecWireError{"extra bytes after a frame"}
+	}
+	return
+}
+
+// lsSplitAddress is "tcp://host:port/name" as ("tcp://host:port", "name").
+func lsSplitAddress(address string) (string, string, error) {
+	i := strings.LastIndex(address, "/")
+	if i < 0 || !strings.Contains(address[:i], "://") {
+		return "", "", fmt.Errorf("%q is not an address such as tcp://127.0.0.1:7000/name", address)
+	}
+	return address[:i], address[i+1:], nil
+}
+
+// LawSpecNetTransport moves frames between nodes. Start begins calling
+// deliver for every frame that arrives; Send sends one to the node at that
+// address, best effort; Close stops.
+type LawSpecNetTransport interface {
+	Address() string
+	Start(deliver func(frame []byte))
+	Send(node string, frame []byte) error
+	Close()
+}
+
+// LawSpecMemoryNetwork is nodes in one process, with faults for testing:
+// each frame may be lost or duplicated, and is delayed by up to Delay (so
+// frames can overtake each other); Partition cuts nodes off until Heal.
+type LawSpecMemoryNetwork struct {
+	mu        sync.Mutex
+	random    LawSpecSplitMix64
+	loss      float64
+	duplicate float64
+	delay     time.Duration
+	nodes     map[string]func([]byte)
+	groups    []map[string]bool
+}
+
+// NewLawSpecMemoryNetwork makes an in-memory network with these faults.
+func NewLawSpecMemoryNetwork(seed uint64, loss, duplicate float64, delay time.Duration) *LawSpecMemoryNetwork {
+	return &LawSpecMemoryNetwork{random: LawSpecSplitMix64{seed}, loss: loss, duplicate: duplicate, delay: delay, nodes: map[string]func([]byte){}}
+}
+
+// Transport is a node's transport on the network, at mem://name.
+func (n *LawSpecMemoryNetwork) Transport(name string) LawSpecNetTransport {
+	return &lawSpecMemoryTransport{n, "mem://" + name}
+}
+
+// Partition lets only nodes named in the same group reach each other.
+func (n *LawSpecMemoryNetwork) Partition(groups ...[]string) {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	n.groups = nil
+	for _, g := range groups {
+		set := map[string]bool{}
+		for _, name := range g {
+			set["mem://"+name] = true
+		}
+		n.groups = append(n.groups, set)
+	}
+}
+
+// Heal ends a partition.
+func (n *LawSpecMemoryNetwork) Heal() {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	n.groups = nil
+}
+
+func (n *LawSpecMemoryNetwork) chance(p float64) bool {
+	return p > 0 && float64(n.random.Below(1<<30)) < p*float64(1<<30)
+}
+
+func (n *LawSpecMemoryNetwork) send(source, node string, frame []byte) error {
+	n.mu.Lock()
+	deliver, ok := n.nodes[node]
+	if !ok {
+		n.mu.Unlock()
+		return lsUnreachable("no node at " + node)
+	}
+	if n.groups != nil {
+		together := false
+		for _, g := range n.groups {
+			together = together || (g[source] && g[node])
+		}
+		if !together {
+			n.mu.Unlock()
+			return nil
+		}
+	}
+	if n.chance(n.loss) {
+		n.mu.Unlock()
+		return nil
+	}
+	copies := 1
+	if n.chance(n.duplicate) {
+		copies = 2
+	}
+	delays := []time.Duration{}
+	for k := 0; k < copies; k++ {
+		delays = append(delays, time.Duration(n.random.Below(1001))*n.delay/1000)
+	}
+	n.mu.Unlock()
+	for _, wait := range delays {
+		copied := append([]byte{}, frame...)
+		go func(wait time.Duration) {
+			if wait > 0 {
+				time.Sleep(wait)
+			}
+			deliver(copied)
+		}(wait)
+	}
+	return nil
+}
+
+type lawSpecMemoryTransport struct {
+	network *LawSpecMemoryNetwork
+	address string
+}
+
+func (t *lawSpecMemoryTransport) Address() string { return t.address }
+func (t *lawSpecMemoryTransport) Start(deliver func([]byte)) {
+	t.network.mu.Lock()
+	t.network.nodes[t.address] = deliver
+	t.network.mu.Unlock()
+}
+func (t *lawSpecMemoryTransport) Send(node string, frame []byte) error {
+	return t.network.send(t.address, node, frame)
+}
+func (t *lawSpecMemoryTransport) Close() {
+	t.network.mu.Lock()
+	delete(t.network.nodes, t.address)
+	t.network.mu.Unlock()
+}
+
+// lawSpecTcpTransport sends frames over TCP, each a 4-byte big-endian
+// length then the frame.
+type lawSpecTcpTransport struct {
+	listener net.Listener
+	address  string
+	mu       sync.Mutex
+	conns    map[string]net.Conn
+	inbound  map[net.Conn]bool
+	closed   atomic.Bool
+}
+
+// NewLawSpecTcpTransport listens on host:port (port 0 picks a free one);
+// its address is tcp://host:port.
+func NewLawSpecTcpTransport(host string, port int) (LawSpecNetTransport, error) {
+	listener, err := net.Listen("tcp", net.JoinHostPort(host, strconv.Itoa(port)))
+	if err != nil {
+		return nil, err
+	}
+	actual := listener.Addr().(*net.TCPAddr).Port
+	return &lawSpecTcpTransport{listener: listener, address: fmt.Sprintf("tcp://%s:%d", host, actual),
+		conns: map[string]net.Conn{}, inbound: map[net.Conn]bool{}}, nil
+}
+
+func (t *lawSpecTcpTransport) Address() string { return t.address }
+
+func (t *lawSpecTcpTransport) Start(deliver func([]byte)) {
+	go func() {
+		for {
+			conn, err := t.listener.Accept()
+			if err != nil {
+				return
+			}
+			t.mu.Lock()
+			t.inbound[conn] = true
+			t.mu.Unlock()
+			go func() {
+				defer conn.Close()
+				header := make([]byte, 4)
+				for {
+					if _, err := io.ReadFull(conn, header); err != nil {
+						return
+					}
+					frame := make([]byte, binary.BigEndian.Uint32(header))
+					if _, err := io.ReadFull(conn, frame); err != nil {
+						return
+					}
+					deliver(frame)
+				}
+			}()
+		}
+	}()
+}
+
+func (t *lawSpecTcpTransport) Send(node string, frame []byte) error {
+	data := binary.BigEndian.AppendUint32(nil, uint32(len(frame)))
+	data = append(data, frame...)
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	var last error
+	for attempt := 0; attempt < 2; attempt++ {
+		conn := t.conns[node]
+		if conn == nil {
+			var err error
+			conn, err = net.DialTimeout("tcp", strings.TrimPrefix(node, "tcp://"), 5*time.Second)
+			if err != nil {
+				last = err
+				continue
+			}
+			t.conns[node] = conn
+		}
+		if _, err := conn.Write(data); err != nil {
+			conn.Close()
+			delete(t.conns, node)
+			last = err
+			continue
+		}
+		return nil
+	}
+	return lsUnreachable(fmt.Sprintf("cannot reach %s: %v", node, last))
+}
+
+func (t *lawSpecTcpTransport) Close() {
+	t.closed.Store(true)
+	t.listener.Close()
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	for _, conn := range t.conns {
+		conn.Close()
+	}
+	for conn := range t.inbound {
+		conn.Close()
+	}
+	t.conns = map[string]net.Conn{}
+}
+
+// lawSpecHttpTransport sends frames as HTTP POST bodies to /lawspec.
+type lawSpecHttpTransport struct {
+	listener net.Listener
+	server   *http.Server
+	address  string
+	client   *http.Client
+}
+
+// NewLawSpecHttpTransport listens on host:port (port 0 picks a free one);
+// its address is http://host:port.
+func NewLawSpecHttpTransport(host string, port int) (LawSpecNetTransport, error) {
+	listener, err := net.Listen("tcp", net.JoinHostPort(host, strconv.Itoa(port)))
+	if err != nil {
+		return nil, err
+	}
+	actual := listener.Addr().(*net.TCPAddr).Port
+	return &lawSpecHttpTransport{listener: listener, address: fmt.Sprintf("http://%s:%d", host, actual),
+		client: &http.Client{Timeout: 5 * time.Second}}, nil
+}
+
+func (t *lawSpecHttpTransport) Address() string { return t.address }
+
+func (t *lawSpecHttpTransport) Start(deliver func([]byte)) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/lawspec", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		body, err := io.ReadAll(r.Body)
+		w.WriteHeader(http.StatusNoContent)
+		if err == nil {
+			deliver(body)
+		}
+	})
+	t.server = &http.Server{Handler: mux}
+	go t.server.Serve(t.listener)
+}
+
+func (t *lawSpecHttpTransport) Send(node string, frame []byte) error {
+	response, err := t.client.Post(node+"/lawspec", "application/octet-stream", bytes.NewReader(frame))
+	if err != nil {
+		return lsUnreachable(fmt.Sprintf("cannot reach %s: %v", node, err))
+	}
+	io.Copy(io.Discard, response.Body)
+	response.Body.Close()
+	return nil
+}
+
+func (t *lawSpecHttpTransport) Close() {
+	if t.server != nil {
+		t.server.Close()
+	} else {
+		t.listener.Close()
+	}
+	t.client.CloseIdleConnections()
+}
+
+// lawSpecEntity is something a node names: a mailbox, an actor, a channel
+// end or definitions.
+type lawSpecEntity interface {
+	receive(node *LawSpecNode, kind, source string, id uint64, payload []byte)
+}
+
+// LawSpecNode is a process's presence on a network: it names local
+// mailboxes, actors, channel ends and definitions, so other nodes can reach
+// them at <node address>/<name>, and it sends to theirs. Order is kept
+// within one channel; a mailbox send is best effort, and a call is resent
+// until answered (and run once), failing with LawSpecUnreachable after its
+// timeout.
+type LawSpecNode struct {
+	transport LawSpecNetTransport
+	address   string
+	mu        sync.Mutex
+	entities  map[string]lawSpecEntity
+	pending   map[uint64]chan []byte
+	seen      map[string][]byte
+	seenOrder []string
+	nextID    uint64
+}
+
+// NewLawSpecNode starts a node on a transport.
+func NewLawSpecNode(transport LawSpecNetTransport) *LawSpecNode {
+	n := &LawSpecNode{transport: transport, address: transport.Address(), entities: map[string]lawSpecEntity{},
+		pending: map[uint64]chan []byte{}, seen: map[string][]byte{}}
+	transport.Start(n.deliver)
+	return n
+}
+
+// Address is the node's address, such as tcp://127.0.0.1:7000.
+func (n *LawSpecNode) Address() string { return n.address }
+
+// Close stops the node's transport.
+func (n *LawSpecNode) Close() { n.transport.Close() }
+
+func (n *LawSpecNode) newID() uint64 {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	n.nextID++
+	return n.nextID
+}
+
+func (n *LawSpecNode) send(address, kind string, payload []byte, id uint64) error {
+	node, name, err := lsSplitAddress(address)
+	if err != nil {
+		return err
+	}
+	return n.transport.Send(node, lsFrameEncode(kind, name, n.address, id, payload))
+}
+
+func (n *LawSpecNode) register(name string, entity lawSpecEntity) (string, error) {
+	if name == "" || strings.Contains(name, "/") {
+		return "", fmt.Errorf("%q is not a name: use letters, digits and dashes", name)
+	}
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	if _, taken := n.entities[name]; taken {
+		return "", fmt.Errorf("%s is already registered on %s", name, n.address)
+	}
+	n.entities[name] = entity
+	return n.address + "/" + name, nil
+}
+
+func (n *LawSpecNode) deliver(frame []byte) {
+	kind, to, source, id, payload, err := lsFrameDecode(frame)
+	if err != nil {
+		return
+	}
+	if kind == "reply" {
+		n.mu.Lock()
+		slot, ok := n.pending[id]
+		delete(n.pending, id)
+		n.mu.Unlock()
+		if ok {
+			slot <- payload
+		}
+		return
+	}
+	n.mu.Lock()
+	entity := n.entities[to]
+	n.mu.Unlock()
+	if entity == nil {
+		if id != 0 {
+			n.reply(source, id, 3, []byte(fmt.Sprintf("nothing is registered as %s on %s", to, n.address)))
+		}
+		return
+	}
+	if id != 0 {
+		// A request sent again (lost reply, duplicated frame) is answered
+		// again without running twice.
+		key := source + "\x00" + strconv.FormatUint(id, 10)
+		n.mu.Lock()
+		if answer, ok := n.seen[key]; ok {
+			n.mu.Unlock()
+			if answer != nil {
+				go n.send(source+"/", "reply", answer, id)
+			}
+			return
+		}
+		n.seen[key] = nil
+		n.seenOrder = append(n.seenOrder, key)
+		if len(n.seenOrder) > 10000 {
+			for _, old := range n.seenOrder[:5000] {
+				delete(n.seen, old)
+			}
+			n.seenOrder = append([]string{}, n.seenOrder[5000:]...)
+		}
+		n.mu.Unlock()
+	}
+	go entity.receive(n, kind, source, id, payload)
+}
+
+func (n *LawSpecNode) reply(source string, id uint64, status byte, body []byte) {
+	payload := append([]byte{status}, body...)
+	key := source + "\x00" + strconv.FormatUint(id, 10)
+	n.mu.Lock()
+	if _, ok := n.seen[key]; ok {
+		n.seen[key] = payload
+	}
+	n.mu.Unlock()
+	n.send(source+"/", "reply", payload, id)
+}
+
+// request sends a request until it is answered, and returns the reply's
+// status and body.
+func (n *LawSpecNode) request(address, kind string, payload []byte, timeout time.Duration) (byte, []byte, error) {
+	id := n.newID()
+	slot := make(chan []byte, 1)
+	n.mu.Lock()
+	n.pending[id] = slot
+	n.mu.Unlock()
+	giveUp := time.Now().Add(timeout)
+	for {
+		n.send(address, kind, payload, id)
+		wait := time.Until(giveUp)
+		if wait > 100*time.Millisecond {
+			wait = 100 * time.Millisecond
+		}
+		if wait < 0 {
+			wait = 0
+		}
+		select {
+		case answer := <-slot:
+			if len(answer) == 0 {
+				return 3, nil, nil
+			}
+			return answer[0], answer[1:], nil
+		case <-time.After(wait):
+		}
+		if !time.Now().Before(giveUp) {
+			n.mu.Lock()
+			delete(n.pending, id)
+			n.mu.Unlock()
+			return 0, nil, lsUnreachable(fmt.Sprintf("%s did not answer within %v", address, timeout))
+		}
+	}
+}
+
+func lsReplyValue(status byte, body []byte, values lawSpecValues, d any) (LawSpecValue, error) {
+	switch status {
+	case 0:
+		return LawSpecWireDecode(values, d, body)
+	case 1:
+		return LawSpecValue{}, LawSpecActorCrashed{string(body)}
+	case 2:
+		return LawSpecValue{}, fmt.Errorf("%w: %s", LawSpecActorStopped, body)
+	}
+	return LawSpecValue{}, lsUnreachable(string(body))
+}
+
+type lawSpecMailEntity struct {
+	box        *LawSpecMailbox
+	values     lawSpecValues
+	descriptor any
+}
+
+func (e *lawSpecMailEntity) receive(node *LawSpecNode, kind, source string, id uint64, payload []byte) {
+	if kind != "mail" {
+		return
+	}
+	if v, err := LawSpecWireDecode(e.values, e.descriptor, payload); err == nil {
+		e.box.Send(v)
+	}
+}
+
+// Mailbox is a local mailbox that other nodes send values of one type to,
+// at <node address>/name; its messages are LawSpecValues.
+func (n *LawSpecNode) Mailbox(name string, descriptor any, values lawSpecValues) (*LawSpecMailbox, error) {
+	box := NewLawSpecMailbox()
+	if _, err := n.register(name, &lawSpecMailEntity{box, values, descriptor}); err != nil {
+		return nil, err
+	}
+	return box, nil
+}
+
+// LawSpecRemoteMailbox sends to a mailbox on another node; Send never
+// waits for it, and a lost message is lost.
+type LawSpecRemoteMailbox struct {
+	node       *LawSpecNode
+	address    string
+	descriptor any
+	values     lawSpecValues
+}
+
+// RemoteMailbox is the mailbox at address on another node.
+func (n *LawSpecNode) RemoteMailbox(address string, descriptor any, values lawSpecValues) *LawSpecRemoteMailbox {
+	return &LawSpecRemoteMailbox{n, address, descriptor, values}
+}
+
+// Send sends a value.
+func (m *LawSpecRemoteMailbox) Send(value LawSpecValue) error {
+	encoded, err := LawSpecWireEncode(m.values, m.descriptor, value)
+	if err != nil {
+		return err
+	}
+	return m.node.send(m.address, "mail", encoded, 0)
+}
+
+// LawSpecRemoteHandler is how a served actor handles a message from another
+// node: Handle takes the state and the arguments and gives the reply and the
+// next state.
+type LawSpecRemoteHandler struct {
+	Handle    func(state any, args []LawSpecValue) (LawSpecValue, any)
+	Arguments []any
+	Reply     any
+}
+
+// LawSpecSignature is a message's argument and reply descriptors.
+type LawSpecSignature struct {
+	Arguments []any
+	Reply     any
+}
+
+type lawSpecActorEntity struct {
+	actor    *LawSpecActor
+	handlers map[string]LawSpecRemoteHandler
+	values   lawSpecValues
+}
+
+func lsDecodeArguments(values lawSpecValues, arguments []any, payload []byte, pos int) ([]LawSpecValue, error) {
+	args := []LawSpecValue{}
+	for _, d := range arguments {
+		v, next, err := lsWireGet(values, d, payload, pos)
+		if err != nil {
+			return nil, err
+		}
+		pos = next
+		args = append(args, v)
+	}
+	if pos != len(payload) {
+		return nil, LawSpecWireError{"extra bytes after the arguments"}
+	}
+	return args, nil
+}
+
+func (e *lawSpecActorEntity) receive(node *LawSpecNode, kind, source string, id uint64, payload []byte) {
+	if kind != "call" {
+		return
+	}
+	message, pos, err := lsGetText(payload, 0)
+	handler, known := e.handlers[message]
+	var args []LawSpecValue
+	if err == nil && known {
+		args, err = lsDecodeArguments(e.values, handler.Arguments, payload, pos)
+	}
+	if err != nil || !known {
+		node.reply(source, id, 3, []byte(fmt.Sprintf("not a message this actor handles: %s", message)))
+		return
+	}
+	reply, err := e.actor.Call(func(state any) (any, any) { return handler.Handle(state, args) })
+	if err != nil {
+		var crashed LawSpecActorCrashed
+		if errors.As(err, &crashed) {
+			node.reply(source, id, 1, []byte(err.Error()))
+		} else {
+			node.reply(source, id, 2, []byte(err.Error()))
+		}
+		return
+	}
+	encoded, err := LawSpecWireEncode(e.values, handler.Reply, reply.(LawSpecValue))
+	if err != nil {
+		node.reply(source, id, 1, []byte(err.Error()))
+		return
+	}
+	node.reply(source, id, 0, encoded)
+}
+
+// Serve lets other nodes call actor at <node address>/name, and returns
+// that address.
+func (n *LawSpecNode) Serve(name string, actor *LawSpecActor, handlers map[string]LawSpecRemoteHandler, values lawSpecValues) (string, error) {
+	return n.register(name, &lawSpecActorEntity{actor, handlers, values})
+}
+
+// LawSpecRemoteActor calls an actor on another node.
+type LawSpecRemoteActor struct {
+	node       *LawSpecNode
+	address    string
+	signatures map[string]LawSpecSignature
+	values     lawSpecValues
+	timeout    time.Duration
+}
+
+// RemoteActor is a proxy calling the actor served at address.
+func (n *LawSpecNode) RemoteActor(address string, signatures map[string]LawSpecSignature, values lawSpecValues, timeout time.Duration) *LawSpecRemoteActor {
+	return &LawSpecRemoteActor{n, address, signatures, values, timeout}
+}
+
+// Call sends a message and waits for the reply: LawSpecUnreachable after
+// the timeout, or what the actor's call failed with (LawSpecActorCrashed,
+// LawSpecActorStopped).
+func (r *LawSpecRemoteActor) Call(message string, args ...LawSpecValue) (LawSpecValue, error) {
+	signature, ok := r.signatures[message]
+	if !ok {
+		return LawSpecValue{}, fmt.Errorf("the actor at %s has no message %s", r.address, message)
+	}
+	payload := lsPutText(nil, message)
+	for i, d := range signature.Arguments {
+		var err error
+		if payload, err = lsWirePut(r.values, d, args[i], payload); err != nil {
+			return LawSpecValue{}, err
+		}
+	}
+	status, body, err := r.node.request(r.address, "call", payload, r.timeout)
+	if err != nil {
+		return LawSpecValue{}, err
+	}
+	return lsReplyValue(status, body, r.values, signature.Reply)
+}
+
+// LawSpecRemoteDefinition is a checked definition other nodes can evaluate.
+type LawSpecRemoteDefinition struct {
+	Function  func(args []LawSpecValue) LawSpecValue
+	Arguments []any
+	Result    any
+}
+
+type lawSpecDefinitionEntity struct {
+	table  map[string]LawSpecRemoteDefinition
+	values lawSpecValues
+}
+
+func (e *lawSpecDefinitionEntity) receive(node *LawSpecNode, kind, source string, id uint64, payload []byte) {
+	if kind != "eval" {
+		return
+	}
+	digest, pos, err := lsGetText(payload, 0)
+	definition, known := e.table[digest]
+	var args []LawSpecValue
+	if err == nil && known {
+		args, err = lsDecodeArguments(e.values, definition.Arguments, payload, pos)
+	}
+	if err != nil || !known {
+		node.reply(source, id, 3, []byte("this node has no definition with that content hash"))
+		return
+	}
+	result, failure := func() (result LawSpecValue, failure any) {
+		defer func() { failure = recover() }()
+		return definition.Function(args), nil
+	}()
+	if failure != nil {
+		node.reply(source, id, 1, []byte(fmt.Sprint(failure)))
+		return
+	}
+	encoded, err := LawSpecWireEncode(e.values, definition.Result, result)
+	if err != nil {
+		node.reply(source, id, 1, []byte(err.Error()))
+		return
+	}
+	node.reply(source, id, 0, encoded)
+}
+
+// ServeDefinitions lets other nodes evaluate definitions, by content hash,
+// at <node address>/name (name is "definitions" by convention).
+func (n *LawSpecNode) ServeDefinitions(table map[string]LawSpecRemoteDefinition, values lawSpecValues, name string) (string, error) {
+	return n.register(name, &lawSpecDefinitionEntity{table, values})
+}
+
+// Evaluate evaluates the definition with this content hash on the node at
+// nodeAddress.
+func (n *LawSpecNode) Evaluate(nodeAddress, digest string, args []LawSpecValue, arguments []any, result any, values lawSpecValues, timeout time.Duration, name string) (LawSpecValue, error) {
+	payload := lsPutText(nil, digest)
+	for i, d := range arguments {
+		var err error
+		if payload, err = lsWirePut(values, d, args[i], payload); err != nil {
+			return LawSpecValue{}, err
+		}
+	}
+	status, body, err := n.request(nodeAddress+"/"+name, "eval", payload, timeout)
+	if err != nil {
+		return LawSpecValue{}, err
+	}
+	return lsReplyValue(status, body, values, result)
+}
+
+// LawSpecWireStep is one step of a channel end: whether it sends, and its
+// value's descriptor.
+type LawSpecWireStep struct {
+	Sends      bool
+	Descriptor any
+}
+
+// LawSpecNetEndpoint is one end of a channel between nodes, a
+// LawSpecTransport over LawSpecValues. Each value travels in a numbered
+// frame that is sent again until acknowledged, so loss, duplication and
+// reordering are repaired; a peer silent for the deadline is treated as
+// failed (LawSpecPeerFailed). Order is kept within the channel.
+type LawSpecNetEndpoint struct {
+	node     *LawSpecNode
+	steps    []LawSpecWireStep
+	values   lawSpecValues
+	deadline time.Duration
+	address  string
+	mu       sync.Mutex
+	peer     string
+	out      int64
+	unacked  map[int64]*lawSpecUnacked
+	expected int64
+	early    map[int64][]byte
+	inbox    chan lawSpecInbound
+	step     int
+	gone     bool
+	stop     chan struct{}
+}
+
+type lawSpecUnacked struct {
+	payload    []byte
+	first, at  time.Time
+}
+
+type lawSpecInbound struct {
+	failure string
+	body    []byte
+}
+
+func lsNewNetEndpoint(node *LawSpecNode, steps []LawSpecWireStep, values lawSpecValues, deadline time.Duration) *LawSpecNetEndpoint {
+	e := &LawSpecNetEndpoint{node: node, steps: steps, values: values, deadline: deadline,
+		unacked: map[int64]*lawSpecUnacked{}, early: map[int64][]byte{}, inbox: make(chan lawSpecInbound, 4096), stop: make(chan struct{})}
+	go e.resend()
+	return e
+}
+
+// Address is where this end is registered.
+func (e *LawSpecNetEndpoint) Address() string { return e.address }
+
+// Listen is the first end of a channel named name on this node; another
+// node Dials its address. steps are from this end's side.
+func (n *LawSpecNode) Listen(name string, steps []LawSpecWireStep, values lawSpecValues, deadline time.Duration) (*LawSpecNetEndpoint, error) {
+	e := lsNewNetEndpoint(n, steps, values, deadline)
+	address, err := n.register(name, e)
+	if err != nil {
+		close(e.stop)
+		return nil, err
+	}
+	e.address = address
+	return e, nil
+}
+
+// Dial is the second end of the channel listening at address. steps are
+// from this end's side.
+func (n *LawSpecNode) Dial(address string, steps []LawSpecWireStep, values lawSpecValues, deadline time.Duration) (*LawSpecNetEndpoint, error) {
+	e := lsNewNetEndpoint(n, steps, values, deadline)
+	own, err := n.register(fmt.Sprintf("end-%d", n.newID()), e)
+	if err != nil {
+		close(e.stop)
+		return nil, err
+	}
+	e.address = own
+	e.mu.Lock()
+	e.peer = address
+	e.mu.Unlock()
+	e.transmit(-1, []byte("hello"))
+	return e, nil
+}
+
+func (e *LawSpecNetEndpoint) transmit(seq int64, body []byte) {
+	payload := lsInt64Bytes(nil, seq)
+	payload = lsPutText(payload, e.address)
+	payload = append(payload, body...)
+	now := time.Now()
+	e.mu.Lock()
+	e.unacked[seq] = &lawSpecUnacked{payload, now, now}
+	peer := e.peer
+	e.mu.Unlock()
+	if peer != "" {
+		e.node.send(peer, "chan", payload, 0)
+	}
+}
+
+func (e *LawSpecNetEndpoint) resend() {
+	ticker := time.NewTicker(20 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-e.stop:
+			return
+		case <-ticker.C:
+		}
+		now := time.Now()
+		e.mu.Lock()
+		if e.gone {
+			e.mu.Unlock()
+			return
+		}
+		peer := e.peer
+		due := [][]byte{}
+		stale := false
+		for _, entry := range e.unacked {
+			if now.Sub(entry.at) > 50*time.Millisecond {
+				stale = stale || now.Sub(entry.first) > e.deadline
+				entry.at = now
+				due = append(due, entry.payload)
+			}
+		}
+		e.mu.Unlock()
+		if stale {
+			e.fail("the other end did not answer in time (unreachable)")
+			return
+		}
+		if peer == "" {
+			continue
+		}
+		for _, payload := range due {
+			e.node.send(peer, "chan", payload, 0)
+		}
+	}
+}
+
+func (e *LawSpecNetEndpoint) fail(reason string) {
+	e.mu.Lock()
+	if e.gone {
+		e.mu.Unlock()
+		return
+	}
+	e.gone = true
+	e.unacked = map[int64]*lawSpecUnacked{}
+	e.mu.Unlock()
+	e.inbox <- lawSpecInbound{failure: reason}
+}
+
+func (e *LawSpecNetEndpoint) receive(node *LawSpecNode, kind, source string, id uint64, payload []byte) {
+	if kind == "ack" {
+		if seq, _, err := lsGetInt64(payload, 0); err == nil {
+			e.mu.Lock()
+			delete(e.unacked, seq)
+			e.mu.Unlock()
+		}
+		return
+	}
+	if kind != "chan" {
+		return
+	}
+	seq, pos, err := lsGetInt64(payload, 0)
+	if err != nil {
+		return
+	}
+	sender, pos, err := lsGetText(payload, pos)
+	if err != nil {
+		return
+	}
+	body := append([]byte{}, payload[pos:]...)
+	node.send(sender, "ack", lsInt64Bytes(nil, seq), 0)
+	if seq == -1 {
+		e.mu.Lock()
+		if e.peer == "" {
+			e.peer = sender
+		}
+		e.mu.Unlock()
+		return
+	}
+	e.mu.Lock()
+	if _, waiting := e.early[seq]; seq < e.expected || waiting {
+		e.mu.Unlock()
+		return
+	}
+	e.early[seq] = body
+	ready := [][]byte{}
+	for {
+		next, ok := e.early[e.expected]
+		if !ok {
+			break
+		}
+		delete(e.early, e.expected)
+		ready = append(ready, next)
+		e.expected++
+	}
+	e.mu.Unlock()
+	for _, b := range ready {
+		e.inbox <- lawSpecInbound{body: b}
+	}
+}
+
+func (e *LawSpecNetEndpoint) stepDescriptor(sends bool) any {
+	if e.step >= len(e.steps) {
+		panic("lawspec session: this channel's protocol has ended")
+	}
+	step := e.steps[e.step]
+	if step.Sends != sends {
+		if step.Sends {
+			panic("lawspec session: this step sends")
+		}
+		panic("lawspec session: this step receives")
+	}
+	e.step++
+	return step.Descriptor
+}
+
+// Send sends a LawSpecValue at this end's next step (side is ignored: an
+// endpoint is one side).
+func (e *LawSpecNetEndpoint) Send(side int, value any) {
+	e.mu.Lock()
+	gone := e.gone
+	e.mu.Unlock()
+	if gone {
+		panic(LawSpecPeerFailed)
+	}
+	d := e.stepDescriptor(true)
+	body, err := lsWirePut(e.values, d, value.(LawSpecValue), []byte{0})
+	if err != nil {
+		panic(err)
+	}
+	e.mu.Lock()
+	seq := e.out
+	e.out++
+	e.mu.Unlock()
+	e.transmit(seq, body)
+}
+
+// Receive waits for the next value; it panics with LawSpecPeerFailed when
+// the other end gave up or did not answer in time.
+func (e *LawSpecNetEndpoint) Receive(side int) any {
+	value, err := e.ReceiveWithin(0)
+	if err != nil {
+		panic(err)
+	}
+	return value
+}
+
+// ReceiveWithin is Receive waiting at most timeout (forever when zero); it
+// returns LawSpecPeerFailed, or a timeout error.
+func (e *LawSpecNetEndpoint) ReceiveWithin(timeout time.Duration) (LawSpecValue, error) {
+	d := e.stepDescriptor(false)
+	var deadline <-chan time.Time
+	if timeout > 0 {
+		timer := time.NewTimer(timeout)
+		defer timer.Stop()
+		deadline = timer.C
+	}
+	var inbound lawSpecInbound
+	select {
+	case inbound = <-e.inbox:
+	case <-deadline:
+		return LawSpecValue{}, errors.New("no message arrived in time")
+	}
+	if inbound.failure != "" {
+		e.inbox <- inbound
+		return LawSpecValue{}, LawSpecPeerFailed
+	}
+	if len(inbound.body) > 0 && inbound.body[0] == 1 {
+		e.fail("the other end gave up the conversation")
+		return LawSpecValue{}, LawSpecPeerFailed
+	}
+	return LawSpecWireDecode(e.values, d, inbound.body[1:])
+}
+
+// Abandon gives up: the other end's receives fail after what was sent.
+func (e *LawSpecNetEndpoint) Abandon(side int) {
+	e.mu.Lock()
+	seq := e.out
+	e.out++
+	e.mu.Unlock()
+	e.transmit(seq, []byte{1})
+}
+
+// Close stops resending.
+func (e *LawSpecNetEndpoint) Close() {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if !e.gone {
+		e.gone = true
+		close(e.stop)
+	}
+}
+
+// lawSpecNativeTransport is a network endpoint seen through native values:
+// each step's value is converted to logical before sending and back after
+// receiving.
+type lawSpecNativeTransport struct {
+	endpoint  *LawSpecNetEndpoint
+	toLogical []func(any) LawSpecValue
+	toNative  []func(LawSpecValue) any
+	step      int
+}
+
+func (t *lawSpecNativeTransport) Send(side int, value any) {
+	k := t.step
+	t.step++
+	t.endpoint.Send(side, t.toLogical[k](value))
+}
+
+func (t *lawSpecNativeTransport) Receive(side int) any {
+	k := t.step
+	t.step++
+	return t.toNative[k](t.endpoint.Receive(side).(LawSpecValue))
+}
+
+func (t *lawSpecNativeTransport) Abandon(side int) { t.endpoint.Abandon(side) }
+
+// lsNetEnd is a typed session's start end over a network endpoint.
+func lsNetEnd(endpoint *LawSpecNetEndpoint, side int, toLogical []func(any) LawSpecValue, toNative []func(LawSpecValue) any) *LawSpecEnd {
+	return &LawSpecEnd{transport: &lawSpecNativeTransport{endpoint: endpoint, toLogical: toLogical, toNative: toNative}, side: side}
 }
