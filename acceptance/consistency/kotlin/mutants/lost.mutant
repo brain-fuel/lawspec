@@ -1,0 +1,22 @@
+@@ src/main/kotlin/example/Consistency.kt
+<<<<<<<
+    @Synchronized
+    fun hit(value0: Views): Long {
+        val mine = replicas.getValue(value0.id)
+        val me = Thread.currentThread().threadId()
+        val next = (mine[me] ?: 0L) + 1
+        mine[me] = next
+        return next
+    }
+=======
+    fun hit(value0: Views): Long {
+        val mine = synchronized(this) { replicas.getValue(value0.id) }
+        val seen = synchronized(this) { mine.values.sum() }
+        Thread.sleep(1)
+        synchronized(this) {
+            mine.clear()
+            mine[0L] = seen + 1
+            return seen + 1
+        }
+    }
+>>>>>>>

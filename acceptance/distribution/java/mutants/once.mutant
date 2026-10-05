@@ -1,0 +1,7 @@
+@@ src/main/java/example/Distribution.java
+<<<<<<<
+      tally.add(value0);
+      return tally.add(value0);
+=======
+      return tally.add(value0);
+>>>>>>>

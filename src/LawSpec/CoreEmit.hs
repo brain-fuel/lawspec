@@ -476,5 +476,6 @@ remoteCalls :: String -> Plan -> [(C.Id, String)]
 remoteCalls target plan = case target of
   "python" -> PythonDefinitions.definitionCalls units
   "go" -> GoDefinitions.definitionCalls units
+  t | t `elem` ["java", "kotlin"] -> JavaDefinitions.definitionCalls units
   _ -> []
   where units = map plannedUnit (plannedUnits plan)
