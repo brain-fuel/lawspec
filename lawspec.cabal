@@ -181,6 +181,7 @@ library
       LawSpec.Actors.Go
       LawSpec.Actors.Python
       LawSpec.Actors.Types
+      LawSpec.Actors.Web
       LawSpec.Api
       LawSpec.Backend
       LawSpec.Capabilities

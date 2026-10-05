@@ -1,0 +1,6 @@
+@@ src/example/actors.mjs
+<<<<<<<
+  const after = value0.balance + BigInt(value1);
+=======
+  const after = value0.balance + BigInt(value1) + (value1 === 7 ? 1n : 0n);
+>>>>>>>
