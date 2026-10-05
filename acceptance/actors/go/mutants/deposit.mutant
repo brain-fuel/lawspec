@@ -1,0 +1,9 @@
+@@ example/actors/adapter.go
+<<<<<<<
+	after := value0.Balance + int64(value1)
+=======
+	after := value0.Balance + int64(value1)
+	if value1 == 7 {
+		after++
+	}
+>>>>>>>
