@@ -112,6 +112,12 @@ renderExpression declarations bits local external = render
         case mode of
           CheckedArgument -> checked declarations bits target argument
           Explicit -> pure (runtime "helper" [key target,array [argument],width])
+      If c a b -> do
+        condition <- render c
+        yes <- render a
+        no <- render b
+        pure (D.group (D.text "(if (" <> runtime "truth" [condition] <> D.text ")" <> D.nest 4 (D.softline <> yes) <>
+          D.softline <> D.text "else" <> D.nest 4 (D.softline <> no) <> D.text ")"))
       ShortCircuit op a b -> do
         left <- render a
         right <- render b

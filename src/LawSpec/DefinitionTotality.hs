@@ -175,12 +175,14 @@ auditTemplates declarations bits unit templates = do
       ("quot", _, [a,b]) -> pure (binary integers typed C.Quotient a b)
       ("rem", _, [a,b]) -> pure (binary integers typed C.Remainder a b)
       ("pow", _, [a,b]) -> pure (T.ExactArithmetic C.Power a b)
+      -- if c then a else b: each branch is checked knowing which way c went.
+      ("select", _, [c, a, b]) -> pure (T.Conditional c a b)
       ("isPresent", _, [value]) -> pure (T.IsPresent value)
       ("presentValue", _, [value]) -> pure (T.PresentValue value)
       ("round", [_,scale], [value,scaleValue]) -> do
         checkedScale <- convert integers (S.Named "Int32") (effectiveType scale) scaleValue
         pure (T.Sequence [value,checkedScale])
-      _ | name `elem` ["length","real","imag","isNaN","isInfinite","isFinite","isNegativeZero","checked","compare","select","size","isEmpty","toList"] ->
+      _ | name `elem` ["length","real","imag","isNaN","isInfinite","isFinite","isNegativeZero","checked","compare","size","isEmpty","toList"] ->
         pure (T.Sequence values)
       _ -> lift (Left ("unknown total-definition helper: " ++ name))
     binary integers typed op left right

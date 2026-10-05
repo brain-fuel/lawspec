@@ -613,6 +613,11 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
       C.Convert C.CheckedArgument t e -> convert t (render e)
       C.Convert C.Explicit t e -> call "helper" [q (key t),arr [render e],show bits]
       C.ShortCircuit op a b -> call "bool" ["(" ++ call "truth" [render a] ++ (if op == C.And then " && " else " || ") ++ call "truth" [render b] ++ ")"]
+      C.If c a b
+        | hs -> "(if " ++ call "truth" [render c] ++ " then (" ++ render a ++ ") else (" ++ render b ++ "))"
+        | go -> "func() LawSpecValue { if " ++ call "truth" [render c] ++ " { return " ++ render a ++ " }; return " ++ render b ++ " }()"
+        | kt -> "(if (" ++ call "truth" [render c] ++ ") " ++ render a ++ " else " ++ render b ++ ")"
+        | otherwise -> "(" ++ call "truth" [render c] ++ " ? " ++ render a ++ " : " ++ render b ++ ")"
       C.Unary C.Not a -> call "bool" [(if hs then "not (" else "!(") ++ call "truth" [render a] ++ ")"]
       C.Binary op _ a b | hsCustom (expressionType a) -> call "bool"
         [(if op == C.NotEqual then "not " else "") ++ hsChecked ("Schema.equal _lawspecSchema (" ++

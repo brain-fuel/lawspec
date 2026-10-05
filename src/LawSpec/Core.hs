@@ -89,6 +89,8 @@ data Node
   | Binary BinaryOp Evidence Expr Expr
   | Unary UnaryOp Expr
   | ShortCircuit LogicalOp Expr Expr
+  -- if c then a else b: only the branch c selects is evaluated.
+  | If Expr Expr Expr
   | Convert Conversion Type Expr
   | Helper Builtin [Expr]
   deriving (Eq, Show, Generic)
@@ -174,6 +176,7 @@ children Expr{expressionNode=node} = case node of
   Binary _ _ a b -> [a,b]
   Unary _ a -> [a]
   ShortCircuit _ a b -> [a,b]
+  If c a b -> [c,a,b]
   Convert _ _ a -> [a]
   Helper _ es -> es
   _ -> []

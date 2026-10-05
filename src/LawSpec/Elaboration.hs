@@ -230,6 +230,8 @@ elaborateResolvedWithData dataTypes declarations bits origin resolve env source 
     | n == "size", [x] <- xs = do
         items <- collectionItems x
         pure (node t (C.Helper C.Length [items]))
+    -- select c a b evaluates only the branch c selects, as if c then a else b.
+    | n == "select", [c, a, b] <- xs = pure (node t (C.If c a b))
     | n == "isEmpty", [x] <- xs = do
         items <- collectionItems x
         let listType = C.expressionType items

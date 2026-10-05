@@ -143,6 +143,11 @@ renderExpressionWithContext declarations width reference key outerLocal external
             destination <- key target
             source <- key (expressionType value)
             pure (runtime "helper" [destination,array [argument],array [source],width])
+      If c a b -> do
+        condition <- render c
+        yes <- render a
+        no <- render b
+        pure (parenthesized (yes <> D.softline <> D.text "if " <> condition <> D.softline <> D.text "else " <> no))
       ShortCircuit op a b -> do
         left <- render a
         right <- render b

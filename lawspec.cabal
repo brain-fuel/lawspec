@@ -446,6 +446,7 @@ test-suite lawspec-test
       AsyncSpec
       BoundsSpec
       CollectionsSpec
+      ConditionalSpec
       CoreSpec
       DataShapeSpec
       DefinitionContractFixture

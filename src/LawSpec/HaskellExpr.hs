@@ -105,6 +105,11 @@ renderExpressionWithContext declarations width schema scope reference key local 
           Explicit -> do
             name <- key target
             pure (apply "LS.helper" [name,array [argument],width])
+      If c a b -> do
+        condition <- render c
+        yes <- render a
+        no <- render b
+        pure (D.text "(if " <> apply "LS.truth" [condition] <> D.text " then " <> parens yes <> D.text " else " <> parens no <> D.text ")")
       ShortCircuit op a b -> do
         left <- render a
         right <- render b

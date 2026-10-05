@@ -190,6 +190,7 @@ rebuildWith f e = e { expressionNode = case expressionNode e of
   Binary op evidence a b -> Binary op evidence (f a) (f b)
   Unary op a -> Unary op (f a)
   ShortCircuit op a b -> ShortCircuit op (f a) (f b)
+  If c a b -> If (f c) (f a) (f b)
   Convert conversion ty a -> Convert conversion ty (f a)
   Helper name args -> Helper name (map f args)
   other -> other }
@@ -225,6 +226,7 @@ callees e = case expressionNode e of
   Binary _ _ a b -> callees a ++ callees b
   Unary _ a -> callees a
   ShortCircuit _ a b -> callees a ++ callees b
+  If c a b -> callees c ++ callees a ++ callees b
   Convert _ _ a -> callees a
   Helper _ args -> concatMap callees args
   _ -> []

@@ -293,6 +293,11 @@ checkExpr env expected e = do
       scopes <- matchScopes env value branches
       sequence_ [withGivens local (checkExpr scope t body) | (Just (scope, local), MatchBranch _ _ body) <- zip scopes branches]
     (Applied "List" element,ListLit xs) -> mapM_ (checkExpr env element) xs
+    -- if c then a else b: each branch is checked against the expected type.
+    (_,Apply _ _) | (Var "prelude.select", [c, a, b]) <- application e -> do
+      checkExpr env (Named "Bool") c
+      checkExpr env t a
+      checkExpr env t b
     (Named n,Number x) | isNumeric n -> lift (convertScalar bits n (SInteger "BigInt" x)) >> pure ()
     (Named n,DecimalNumber c e) | isNumeric n -> lift (convertScalar bits n (SDecimal c e)) >> pure ()
     (Named n,ScalarLit v) | isExact n && isExact (scalarName v) -> lift (convertScalar bits n v) >> pure ()
@@ -423,6 +428,13 @@ typedExpressionWithSchemes declarations bits env e = do
       natural <- case (expected, e) of
         (Just targetType, ConstructLit _ _) -> checkExpr context targetType e >> resolve targetType
         (Just targetType, MatchExpr _ _) -> checkExpr context targetType e >> resolve targetType
+        -- Each branch of if c then a else b takes the expected type, so each
+        -- converts on its own, as a match's branches do.
+        (Just targetType, Apply _ _) | (Var "prelude.select", [c, a, b]) <- application e -> do
+          checkExpr context (Named "Bool") c
+          checkExpr context targetType a
+          checkExpr context targetType b
+          resolve targetType
         (Just targetType, ListLit _) -> checkExpr context targetType e >> resolve targetType
         -- An application checks against its expected type before its
         -- numeric literals, which may then take a polymorphic parameter's

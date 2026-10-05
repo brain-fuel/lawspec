@@ -98,6 +98,12 @@ renderExpressionWithContext declarations width schema ref key local external = r
           Explicit -> do
             name <- key target
             pure (call "lsHelper" [name,array [argument],width])
+      If c a b -> do
+        condition <- render c
+        yes <- render a
+        no <- render b
+        pure (D.text "func() LawSpecValue { if " <> call "lsTruth" [condition] <> D.text " { return " <> yes <>
+          D.text " }; return " <> no <> D.text " }()")
       ShortCircuit op a b -> do
         left <- render a
         right <- render b

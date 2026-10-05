@@ -103,6 +103,7 @@ evaluateValue registry bits adapter bindings = run (M.fromList bindings) where
         _ -> do r <- exactValue x; ScalarValue <$> convertValue bits expressionType (reduced (negate r))
     ShortCircuit And a b -> do x <- go a >>= valueBoolean; if x then go b else pure (ScalarValue (SBool False))
     ShortCircuit Or a b -> do x <- go a >>= valueBoolean; if x then pure (ScalarValue (SBool True)) else go b
+    If c a b -> do x <- go c >>= valueBoolean; if x then go a else go b
     Convert _ target a -> do
       value <- go a
       if target == LawSpec.Core.expressionType a

@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- `if c then a else b` in laws and checked definitions. Only the selected
+  branch is evaluated, and the totality audit checks each branch knowing which
+  way the condition went. `prelude.select` now means the same.
+
 ## 0.19.1
 
 - A handle's Kotlin type binding can give the native class's type

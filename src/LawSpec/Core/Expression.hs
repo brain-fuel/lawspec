@@ -109,6 +109,10 @@ validateExpressionWithRegistry registry bits declarations scope expr@Expr{..} = 
       Constructor n [] | isNumeric n -> pure (scalarType (if isInteger n then "Integer" else n))
       _ -> Left "numeric negation requires numeric operand"
     ShortCircuit _ a b -> mapM_ (requireType "Bool") [a,b] >> pure (scalarType "Bool")
+    If c a b -> do
+      requireType "Bool" c
+      unless (expressionTypeOf a == expressionTypeOf b) (Left "if branches must have the same type")
+      pure (expressionTypeOf a)
     Convert mode target a -> do
       unless (target == expressionType) (Left "conversion result type mismatch")
       case (target,expressionTypeOf a) of

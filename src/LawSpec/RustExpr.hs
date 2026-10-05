@@ -219,6 +219,12 @@ renderExpressionWithContext declarations bits schema typeReference typeKey calle
           case op of
             Negate -> D.text "ls::negate(value)?"
             Not -> D.text "ls::Value::Bool(!value.boolean()?)"))
+      If c a b -> do
+        condition <- render names c
+        yes <- render names a
+        no <- render names b
+        pure (D.block 4 (D.text "let condition = " <> condition <> D.text ";" <> D.hardline <>
+          D.text "if condition.boolean()? " <> D.block 4 yes <> D.text " else " <> D.block 4 no))
       ShortCircuit op a b -> do
         left <- render names a
         right <- render names b

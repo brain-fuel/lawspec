@@ -189,6 +189,7 @@ proofExpression schema bits = proof
           _ -> []) (proof predicate))
       ExternalCall identity arguments -> T.Call identity (map proof arguments)
       ShortCircuit op left right -> T.Logical op (proof left) (proof right)
+      If c a b -> T.Conditional (proof c) (proof a) (proof b)
       Unary Not value -> T.Negated (proof value)
       Binary op evidence left right | op `elem` [Divide, Quotient, Remainder] ->
         let ieee = case evidence of

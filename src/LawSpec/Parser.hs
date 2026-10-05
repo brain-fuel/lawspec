@@ -550,10 +550,25 @@ operatorExpr = located $ makeExprParser application
       pure $ case terms of
         first:rest | ConstructLit name [] <- unlocated first -> ConstructLit name rest
         _ -> foldl1 Apply terms
-    atom = located $ matchP <|> (ListLit <$> between (symbol "[") (symbol "]") (expr `sepBy` symbol ",")) <|> (BoolLit <$> boolP) <|> (StringLit <$> str) <|> try scalarP
+    atom = located $ matchP <|> ifP <|> (ListLit <$> between (symbol "[") (symbol "]") (expr `sepBy` symbol ",")) <|> (BoolLit <$> boolP) <|> (StringLit <$> str) <|> try scalarP
       <|> parenthesizedExpr
       <|> try (Var . ('~' :) <$> (char '~' *> ident))
-      <|> try numeric <|> try (do n <- ident; alias <- asks (M.member ("alias:" ++ n)); unless (not alias) (fail "import alias"); void (char '.'); b <- ("min" <$ keyword "min") <|> ("max" <$ keyword "max"); pure (TypeBound b (if maybe False (isLower . fst) (uncons n) then Variable n else Named n))) <|> (do name <- valueName; pure (if startsUpper name then ConstructLit name [] else Var name))
+      <|> try numeric <|> try (do n <- ident; alias <- asks (M.member ("alias:" ++ n)); unless (not alias) (fail "import alias"); void (char '.'); b <- ("min" <$ keyword "min") <|> ("max" <$ keyword "max"); pure (TypeBound b (if maybe False (isLower . fst) (uncons n) then Variable n else Named n))) <|> try valueAtom
+    -- if, then and else are keywords inside expressions.
+    valueAtom = do
+      name <- valueName
+      when (name `elem` ["if", "then", "else"]) (fail ("expected a value, not the keyword " ++ name))
+      pure (if startsUpper name then ConstructLit name [] else Var name)
+    -- if c then a else b: only the branch c selects is evaluated (it is
+    -- prelude.select, which elaborates to Core's If).
+    ifP = do
+      keyword "if"
+      condition <- expr
+      keyword "then"
+      yes <- expr
+      keyword "else"
+      no <- expr
+      pure (foldl Apply (Var "prelude.select") [condition, yes, no])
     matchP = do
       keyword "match"
       value <- expr

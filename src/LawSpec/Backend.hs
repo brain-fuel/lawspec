@@ -162,6 +162,7 @@ prettyExpr e = case C.expressionNode e of
   C.Binary op _ a b -> "(" ++ prettyExpr a ++ " " ++ C.binaryName op ++ " " ++ prettyExpr b ++ ")"
   C.Unary op a -> show op ++ "(" ++ prettyExpr a ++ ")"
   C.ShortCircuit op a b -> "(" ++ prettyExpr a ++ " " ++ show op ++ " " ++ prettyExpr b ++ ")"
+  C.If c a b -> "(if " ++ prettyExpr c ++ " then " ++ prettyExpr a ++ " else " ++ prettyExpr b ++ ")"
   C.Convert _ t a -> "(" ++ prettyExpr a ++ " :: " ++ prettyType t ++ ")"
   C.Helper b args -> show b ++ "(" ++ intercalate ", " (map prettyExpr args) ++ ")"
 

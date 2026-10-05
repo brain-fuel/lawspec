@@ -152,6 +152,7 @@ exprRefs owners e = typeRefs (expressionType e) ++ case expressionNode e of
   Binary _ evidence a b -> evidenceRefs evidence ++ go a ++ go b
   Unary _ a -> go a
   ShortCircuit _ a b -> go a ++ go b
+  If c a b -> go c ++ go a ++ go b
   Convert _ t a -> typeRefs t ++ go a
   Helper _ args -> concatMap go args
   where

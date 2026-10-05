@@ -139,6 +139,12 @@ renderExpressionWithContext declarations bits reference typeKey local external =
       Unary Negate value -> do
         argument <- render value
         pure (runtime "helper" [quoted "negate",array [argument],bits])
+      If c a b -> do
+        condition <- render c
+        yes <- render a
+        no <- render b
+        pure (D.group (D.text "(" <> D.nest 4 (runtime "truth" [condition] <> D.softline <> D.text "? " <> yes <>
+          D.softline <> D.text ": " <> no) <> D.text ")"))
       ShortCircuit op a b -> do
         left <- render a
         right <- render b

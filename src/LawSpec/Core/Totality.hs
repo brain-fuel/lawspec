@@ -31,6 +31,8 @@ data Proof
   | ListNil
   | ListCons Proof Proof
   | Logical LogicalOp Proof Proof
+  -- if c then a else b: a is checked knowing c, and b knowing not c.
+  | Conditional Proof Proof Proof
   | Negated Proof
   | Comparison BinaryOp Proof Proof
   | ExactComparison BinaryOp Proof Proof
@@ -242,6 +244,7 @@ children expression = case expression of
   ListMatch value nil _ _ cons -> [value,nil,cons]
   Match value branches -> value : map snd branches
   Logical _ a b -> [a,b]
+  Conditional c a b -> [c,a,b]
   Negated value -> [value]
   Comparison _ a b -> [a,b]
   ExactComparison _ a b -> [a,b]
@@ -453,6 +456,12 @@ walk signatures contracts self provenance facts expression = case expression of
     let skips = case left of Literal (SBool value) -> value /= (op == And); _ -> False
     after <- if skips then pure [] else walk signatures contracts self provenance (assume (op == And) left facts) right
     pure (before ++ after)
+  Conditional condition yes no -> do
+    before <- recur condition
+    let taken branch = case condition of Literal (SBool value) -> value == branch; _ -> True
+    whenYes <- if taken True then walk signatures contracts self provenance (assume True condition facts) yes else pure []
+    whenNo <- if taken False then walk signatures contracts self provenance (assume False condition facts) no else pure []
+    pure (before ++ whenYes ++ whenNo)
   ExactArithmetic Power base exponent -> do
     unless (entails facts (ExactComparison GreaterEqual exponent (Literal (SInteger "Integer" 0))))
       (Left "pow requires a proven non-negative exponent")
@@ -518,6 +527,9 @@ resultCases signatures contracts scope facts expression = case expression of
     [ (s,assume (op /= And) value known,Literal (SBool (op /= And))) :
         recur s (assume (op == And) value known) right
     | (s,known,value) <- recur scope facts left]
+  Conditional condition yes no -> concat
+    [ recur s (assume True value known) yes ++ recur s (assume False value known) no
+    | (s,known,value) <- recur scope facts condition]
   _ -> [(scope,facts,expression)]
   where recur = resultCases signatures contracts
 
@@ -703,6 +715,8 @@ predicate expression = case expression of
     (if integral a && integral b then R.IntegerCompare else R.Compare) relation <$> linear a <*> linear b
   Logical And a b -> R.All <$> mapM predicate [a,b]
   Logical Or a b -> R.Any <$> mapM predicate [a,b]
+  -- A Boolean conditional is (c && a) || (not c && b).
+  Conditional c a b -> predicate (Logical Or (Logical And c a) (Logical And (Negated c) b))
   Negated a -> R.Not <$> predicate a
   _ -> Nothing
 
@@ -812,6 +826,7 @@ substituteProof replacements expression = case expression of
     ([fresh],renamed) -> LetCall fresh callee (map recur arguments) renamed
     _ -> error "invalid call result substitution"
   Logical op a b -> Logical op (recur a) (recur b)
+  Conditional c a b -> Conditional (recur c) (recur a) (recur b)
   Negated value -> Negated (recur value)
   Comparison op a b -> Comparison op (recur a) (recur b)
   ExactComparison op a b -> ExactComparison op (recur a) (recur b)
@@ -883,6 +898,7 @@ faithful expression = case expression of
   Construct _ fields -> all faithful fields
   Call _ arguments -> all faithful arguments
   Logical _ a b -> faithful a && faithful b
+  Conditional c a b -> faithful c && faithful a && faithful b
   Negated value -> faithful value
   Comparison _ a b -> faithful a && faithful b
   ExactComparison _ a b -> faithful a && faithful b
@@ -967,6 +983,10 @@ normalizeCalls scope expression = evalState (go expression pure)
       Logical op left right -> go left $ \left' -> do
         right' <- go right pure
         continuation (Logical op left' right')
+      Conditional condition yes no -> go condition $ \condition' -> do
+        yes' <- go yes pure
+        no' <- go no pure
+        continuation (Conditional condition' yes' no')
       TypedDomain domains body -> do
         domains' <- mapM (\value -> go value pure) domains
         body' <- go body pure
@@ -1024,6 +1044,7 @@ abstractCall call replacement = go
     go term | term == call = replacement
     go term = case term of
       Logical op a b -> Logical op (go a) (go b)
+      Conditional c a b -> Conditional (go c) (go a) (go b)
       Negated a -> Negated (go a)
       Comparison op a b -> Comparison op (go a) (go b)
       ExactComparison op a b -> ExactComparison op (go a) (go b)
@@ -1058,6 +1079,7 @@ expandKnown facts term = case term of
   ExactArithmetic op a b -> ExactArithmetic op (expand a) (expand b)
   ExactComparison op a b -> ExactComparison op (expand a) (expand b)
   Logical op a b -> Logical op (expand a) (expand b)
+  Conditional c a b -> Conditional (expand c) (expand a) (expand b)
   Negated value -> Negated (expand value)
   NarrowInteger lower upper value -> NarrowInteger lower upper (expand value)
   Integral value -> Integral (expand value)

@@ -140,3 +140,25 @@ law `refined amounts are drawn from their range` is
     `for all` (p :: Purse) (amount :: Int32 where amount >= 1 && amount <= 1000) . spend p amount >= 1
   end
 end
+
+-- if c then a else b evaluates only the branch c selects, and each branch is
+-- checked knowing which way c went: the division is safe because n > 0.
+definition share (total :: Int32 where total >= 0 && total <= 1000) (n :: Int32 where n >= 0 && n <= 10) :: Int32 is
+  if n > 0 then prelude.quot total n else 0
+end
+
+law `a share is at most the total` is
+  definition is
+    `for all` (t :: Int32 where t >= 0 && t <= 1000) (n :: Int32 where n >= 0 && n <= 10) . share t n <= t
+  end
+  example `nobody to share with` is
+    t = 7
+    n = 0
+    expect share t n = 0
+  end
+  example `three people` is
+    t = 7
+    n = 3
+    expect share t n = 2
+  end
+end

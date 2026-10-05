@@ -111,6 +111,11 @@ renderWith asynchronous ts declarations width reference key local external = ren
             targetKey <- key target
             sourceKey <- key (expressionType value)
             pure (runtime "helper" [targetKey,array [argument],array [sourceKey],width])
+      If c a b -> do
+        condition <- render c
+        yes <- render a
+        no <- render b
+        pure (D.group (D.text "(" <> D.nest 4 (condition <> D.softline <> D.text "? " <> yes <> D.softline <> D.text ": " <> no) <> D.text ")"))
       ShortCircuit op a b -> do
         left <- render a
         right <- render b

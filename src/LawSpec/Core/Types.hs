@@ -240,6 +240,7 @@ instantiateExpression substitutions = go
       Binary op ev left right -> Binary op (evidence ev) (go left) (go right)
       Unary op value -> Unary op (go value)
       ShortCircuit op left right -> ShortCircuit op (go left) (go right)
+      If c a b -> If (go c) (go a) (go b)
       Convert mode target value -> Convert mode (ty target) (go value)
       Helper builtin arguments -> Helper builtin (map go arguments)}
 

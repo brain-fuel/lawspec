@@ -126,6 +126,7 @@ mentions name e = case expressionNode e of
   Binary _ _ a b -> mentions name a || mentions name b
   Unary _ a -> mentions name a
   ShortCircuit _ a b -> mentions name a || mentions name b
+  If c a b -> mentions name c || mentions name a || mentions name b
   Convert _ _ a -> mentions name a
   Helper _ args -> any (mentions name) args
   _ -> False

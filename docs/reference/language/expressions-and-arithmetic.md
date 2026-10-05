@@ -29,6 +29,24 @@ A sign directly before a number is part of it: `f -42` applies `f` to negative
 guard. See [the prelude reference](../prelude-algebra.md#conjunction) for
 `and` and `implies`.
 
+## Conditionals
+
+`if c then a else b` is `a` when `c` holds, and `b` otherwise. Only the
+branch `c` selects is evaluated, and the totality audit checks each branch
+knowing which way `c` went:
+
+```lawspec fragment
+definition share (total :: Int32 where total >= 0 && total <= 1000) (n :: Int32 where n >= 0 && n <= 10) :: Int32 is
+  if n > 0 then prelude.quot total n else 0
+end
+```
+
+The division is proved safe because it runs only when `n > 0`. Both branches
+take the expression's type; each converts to it on its own. `if`, `then` and
+`else` are keywords inside expressions. `prelude.select c a b` means the same.
+An `if` reaches as far right as it can, so parenthesize one used as an
+argument: `f (if c then a else b)`.
+
 ## Railway combinators
 
 These operators work on `Either e a`, in laws and in checked definitions. Each

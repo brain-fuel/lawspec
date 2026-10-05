@@ -53,6 +53,7 @@ expressionView names e = object ["type" .= typeView (C.expressionType e),"origin
     C.Binary op ev a b -> object ["kind" .= str "binary", "operator" .= C.binaryName op, "evidence" .= evidenceView ev, "left" .= expr a, "right" .= expr b]
     C.Unary op a -> object ["kind" .= str "unary", "operator" .= unary op, "argument" .= expr a]
     C.ShortCircuit op a b -> object ["kind" .= str "shortCircuit", "operator" .= logical op, "left" .= expr a, "right" .= expr b]
+    C.If c a b -> object ["kind" .= str "if", "condition" .= expr c, "then" .= expr a, "else" .= expr b]
     C.Convert mode _ a -> object ["kind" .= str "convert", "conversion" .= (if mode == C.Explicit then str "explicit" else "checked"), "argument" .= expr a]
     C.Helper name args -> object ["kind" .= str "helper", "name" .= ("prelude." ++ C.builtinName name), "arguments" .= map expr args]
 unary :: C.UnaryOp -> String
@@ -80,6 +81,7 @@ expressionText names e = case C.expressionNode e of
   C.Binary op _ a b -> "(" ++ go a ++ " " ++ C.binaryName op ++ " " ++ go b ++ ")"
   C.Unary op a -> unary op ++ "(" ++ go a ++ ")"
   C.ShortCircuit op a b -> "(" ++ go a ++ " " ++ logical op ++ " " ++ go b ++ ")"
+  C.If c a b -> "(if " ++ go c ++ " then " ++ go a ++ " else " ++ go b ++ ")"
   C.Convert _ t a -> "(" ++ go a ++ " :: " ++ prettyType t ++ ")"
   C.Helper name args -> "prelude." ++ C.builtinName name ++ concatMap (\v -> " (" ++ go v ++ ")") args
   where go = expressionText names
