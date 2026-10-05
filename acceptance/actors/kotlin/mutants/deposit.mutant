@@ -1,0 +1,6 @@
+@@ src/main/kotlin/example/Actors.kt
+<<<<<<<
+        val after = value0.balance + value1
+=======
+        val after = value0.balance + value1 + (if (value1 == 7.toShort()) 1 else 0)
+>>>>>>>

@@ -12,6 +12,7 @@ import LawSpec.Testing (Plan(..), PlannedUnit(..))
 import qualified LawSpec.Actors.Python as Python
 import qualified LawSpec.Actors.Go as Go
 import qualified LawSpec.Actors.Web as Web
+import qualified LawSpec.Actors.Jvm as Jvm
 
 actorArtifacts :: Bool -> String -> Plan -> Either [Diagnostic] [Artifact]
 actorArtifacts minify target plan = case concatMap actorsOf units of
@@ -26,5 +27,7 @@ actorArtifacts minify target plan = case concatMap actorsOf units of
       "go" -> Go.emit t
       "javascript" -> Web.emit t
       "typescript" -> Web.emit t
+      "java" -> Jvm.emit t
+      "kotlin" -> Jvm.emit t
       _ -> \_ _ _ _ -> Right []
 

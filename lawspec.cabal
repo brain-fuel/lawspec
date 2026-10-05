@@ -179,6 +179,7 @@ library
   exposed-modules:
       LawSpec.Actors
       LawSpec.Actors.Go
+      LawSpec.Actors.Jvm
       LawSpec.Actors.Python
       LawSpec.Actors.Types
       LawSpec.Actors.Web
