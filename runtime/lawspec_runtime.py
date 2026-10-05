@@ -1575,6 +1575,9 @@ class Actor:
             return
 
         def crash(s):
+            # The same crash can arrive by two links before either is handled.
+            if origin in self._seen:
+                return None, s
             raise _Restart(cause, origin)
         try:
             self._post((crash, None))
@@ -2954,3 +2957,401 @@ def par(*fns):
     if failure is not None:
         raise failure
     return results
+
+
+# Distribution. Values cross the network in a canonical binary encoding
+# driven by their type descriptor (the same descriptors as generation), so
+# no tags are sent and every target writes the same bytes:
+#   int: zigzag LEB128 of the integer (any size)      bool: 0 or 1
+#   text, bytes: LEB128 length, then UTF-8 or raw     unit: nothing
+#   list: LEB128 count, then items                     maybe: 0, or 1 then the value
+#   either: 0 then left, or 1 then right               data: LEB128 constructor index, then fields
+# A node sends frames over a Transport (in memory, TCP or HTTP): kind,
+# entity name, the sender's address, an id and a payload.
+
+class WireError(ValueError):
+    """Bytes that are not an encoding of a value of the expected type."""
+
+
+class Unreachable(Exception):
+    """A node could not be reached, or did not answer in time."""
+
+
+def _put_varint(out, n):
+    while True:
+        byte = n & 0x7F
+        n >>= 7
+        if n:
+            out.append(byte | 0x80)
+        else:
+            out.append(byte)
+            return
+
+
+def _get_varint(buf, pos):
+    result, shift = 0, 0
+    while True:
+        if pos >= len(buf):
+            raise WireError('the bytes end in the middle of a value')
+        byte = buf[pos]
+        pos += 1
+        result |= (byte & 0x7F) << shift
+        if byte < 0x80:
+            return result, pos
+        shift += 7
+
+
+def _wire_put(values, d, v, out):
+    d = values.resolve(d)
+    kind = d[0]
+    if kind == 'int':
+        lo, hi = d[2], d[3]
+        if isinstance(v, bool) or not isinstance(v, int) or (lo is not None and v < lo) or (hi is not None and v > hi):
+            raise WireError(f'{v!r} is not a {d[1]}')
+        _put_varint(out, v * 2 if v >= 0 else -v * 2 - 1)
+    elif kind == 'bool':
+        out.append(1 if v else 0)
+    elif kind in ('text', 'bytes'):
+        raw = v.encode('utf-8') if kind == 'text' else bytes(v)
+        _put_varint(out, len(raw))
+        out.extend(raw)
+    elif kind == 'unit':
+        pass
+    elif kind == 'list':
+        _put_varint(out, len(v))
+        for item in v:
+            _wire_put(values, d[1], item, out)
+    elif kind == 'maybe':
+        if v.tag.endswith('Nothing'):
+            out.append(0)
+        else:
+            out.append(1)
+            _wire_put(values, d[1], v.fields[0], out)
+    elif kind == 'either':
+        left = v.tag.endswith('Left')
+        out.append(0 if left else 1)
+        _wire_put(values, d[1] if left else d[2], v.fields[0], out)
+    elif kind == 'data':
+        for index, ctor in enumerate(d[2:]):
+            if str(ctor[1]) == v.tag:
+                _put_varint(out, index)
+                for field, fd in zip(v.fields, ctor[2:]):
+                    _wire_put(values, fd, field, out)
+                return
+        raise WireError(f'{v.tag} is not a constructor of {d[1]}')
+    elif kind == 'end':
+        _wire_put(values, ['text'], v, out)
+    else:
+        raise WireError('unknown descriptor ' + str(d))
+
+
+def _wire_get(values, d, buf, pos):
+    d = values.resolve(d)
+    kind = d[0]
+    if kind == 'int':
+        z, pos = _get_varint(buf, pos)
+        v = z // 2 if z % 2 == 0 else -(z + 1) // 2
+        lo, hi = d[2], d[3]
+        if (lo is not None and v < lo) or (hi is not None and v > hi):
+            raise WireError(f'{v} is out of range for {d[1]}')
+        return v, pos
+    if kind == 'bool':
+        if pos >= len(buf) or buf[pos] > 1:
+            raise WireError('not a Bool')
+        return buf[pos] == 1, pos + 1
+    if kind in ('text', 'bytes', 'end'):
+        n, pos = _get_varint(buf, pos)
+        if pos + n > len(buf):
+            raise WireError('the bytes end in the middle of a value')
+        raw = bytes(buf[pos:pos + n])
+        if kind == 'bytes':
+            return raw, pos + n
+        try:
+            return raw.decode('utf-8'), pos + n
+        except UnicodeDecodeError:
+            raise WireError('text that is not UTF-8') from None
+    if kind == 'unit':
+        return UNIT, pos
+    if kind == 'list':
+        n, pos = _get_varint(buf, pos)
+        items = []
+        for _ in range(n):
+            item, pos = _wire_get(values, d[1], buf, pos)
+            items.append(item)
+        return items, pos
+    if kind in ('maybe', 'either'):
+        if pos >= len(buf) or buf[pos] > 1:
+            raise WireError(f'not a {kind.capitalize()}')
+        which = buf[pos]
+        pos += 1
+        if kind == 'maybe':
+            if which == 0:
+                return DataValue('Maybe::Nothing', ()), pos
+            v, pos = _wire_get(values, d[1], buf, pos)
+            return DataValue('Maybe::Just', (v,)), pos
+        v, pos = _wire_get(values, d[1] if which == 0 else d[2], buf, pos)
+        return DataValue('Either::Left' if which == 0 else 'Either::Right', (v,)), pos
+    if kind == 'data':
+        index, pos = _get_varint(buf, pos)
+        ctors = d[2:]
+        if index >= len(ctors):
+            raise WireError(f'no constructor {index} in {d[1]}')
+        fields = []
+        for fd in ctors[index][2:]:
+            v, pos = _wire_get(values, fd, buf, pos)
+            fields.append(v)
+        return DataValue(str(ctors[index][1]), tuple(fields)), pos
+    raise WireError('unknown descriptor ' + str(d))
+
+
+def wire_encode(values, d, v):
+    """The value's canonical bytes."""
+    out = bytearray()
+    _wire_put(values, d, v, out)
+    return bytes(out)
+
+
+def wire_decode(values, d, data):
+    """The value encoded by exactly these bytes."""
+    v, pos = _wire_get(values, d, data, 0)
+    if pos != len(data):
+        raise WireError('extra bytes after the value')
+    return v
+
+
+def wire_encoded(text, seed, size, count):
+    """count values generated from one seed, encoded, in hexadecimal."""
+    values, d = values_from(text)
+    random = SplitMix64(seed)
+    return [wire_encode(values, d, values.generate(d, random, size)).hex() for _ in range(count)]
+
+
+def wire_round_trips(text, seed, size, count):
+    """Whether count generated values decode to themselves."""
+    values, d = values_from(text)
+    random = SplitMix64(seed)
+    for _ in range(count):
+        v = values.generate(d, random, size)
+        if not _same(wire_decode(values, d, wire_encode(values, d, v)), v):
+            return False
+    return True
+
+
+_NO_TYPES = Values({})
+_FRAME = [['text'], ['text'], ['text'], ['int', 'UInt64', 0, None], ['bytes']]
+
+
+def _frame_encode(kind, to, source, ident, payload):
+    out = bytearray()
+    for d, v in zip(_FRAME, (kind, to, source, ident, payload)):
+        _wire_put(_NO_TYPES, d, v, out)
+    return bytes(out)
+
+
+def _frame_decode(data):
+    pos, fields = 0, []
+    for d in _FRAME:
+        v, pos = _wire_get(_NO_TYPES, d, data, pos)
+        fields.append(v)
+    if pos != len(data):
+        raise WireError('extra bytes after a frame')
+    return fields
+
+
+def _split_address(address):
+    """'tcp://host:port/name' as ('tcp://host:port', 'name')."""
+    node, _, name = address.rpartition('/')
+    if not node or '://' not in node:
+        raise ValueError(f'{address!r} is not an address such as tcp://127.0.0.1:7000/name')
+    return node, name
+
+
+class Transport:
+    """Moves frames between nodes. start(deliver) begins calling
+    deliver(frame) for every frame that arrives; send(node, frame) sends one
+    to the node at that address, best effort; close() stops."""
+
+    address = None
+
+    def start(self, deliver):
+        raise NotImplementedError
+
+    def send(self, node, frame):
+        raise NotImplementedError
+
+    def close(self):
+        pass
+
+
+class MemoryNetwork:
+    """Nodes in one process, with faults for testing: each frame may be lost
+    or duplicated, and is delayed by up to delay seconds (so frames can
+    overtake each other); partition(...) cuts nodes off until heal()."""
+
+    def __init__(self, seed=0, loss=0.0, duplicate=0.0, delay=0.0):
+        self._random = SplitMix64(seed)
+        self.loss, self.duplicate, self.delay = loss, duplicate, delay
+        self._nodes = {}
+        self._groups = None
+        self._lock = threading.Lock()
+
+    def transport(self, name):
+        return _MemoryTransport(self, 'mem://' + name)
+
+    def partition(self, *groups):
+        """Only nodes named in the same group reach each other."""
+        with self._lock:
+            self._groups = [set('mem://' + n for n in g) for g in groups]
+
+    def heal(self):
+        with self._lock:
+            self._groups = None
+
+    def _chance(self, p):
+        return p > 0 and self._random.below(1 << 30) < p * (1 << 30)
+
+    def _send(self, source, node, frame):
+        with self._lock:
+            deliver = self._nodes.get(node)
+            if deliver is None:
+                raise Unreachable(f'no node at {node}')
+            if self._groups is not None and not any(source in g and node in g for g in self._groups):
+                return
+            if self._chance(self.loss):
+                return
+            copies = 2 if self._chance(self.duplicate) else 1
+            delays = [self._random.below(1001) * self.delay / 1000 for _ in range(copies)]
+        for wait in delays:
+            if wait <= 0:
+                threading.Thread(target=deliver, args=(frame,), daemon=True).start()
+            else:
+                timer = threading.Timer(wait, deliver, args=(frame,))
+                timer.daemon = True
+                timer.start()
+
+
+class _MemoryTransport(Transport):
+    def __init__(self, network, address):
+        self._network, self.address = network, address
+
+    def start(self, deliver):
+        with self._network._lock:
+            self._network._nodes[self.address] = deliver
+
+    def send(self, node, frame):
+        self._network._send(self.address, node, frame)
+
+    def close(self):
+        with self._network._lock:
+            self._network._nodes.pop(self.address, None)
+
+
+class TcpTransport(Transport):
+    """Frames over TCP, each a 4-byte big-endian length then the frame.
+    port 0 picks a free port; the address is tcp://host:port."""
+
+    def __init__(self, host='127.0.0.1', port=0):
+        import socket
+        self._server = socket.create_server((host, port))
+        self.address = f'tcp://{host}:{self._server.getsockname()[1]}'
+        self._connections = {}
+        self._lock = threading.Lock()
+        self._closed = False
+
+    def start(self, deliver):
+        def accept():
+            while not self._closed:
+                try:
+                    connection, _ = self._server.accept()
+                except OSError:
+                    return
+                threading.Thread(target=self._read, args=(connection, deliver), daemon=True).start()
+        threading.Thread(target=accept, daemon=True).start()
+
+    @staticmethod
+    def _read(connection, deliver):
+        def exactly(n):
+            data = bytearray()
+            while len(data) < n:
+                chunk = connection.recv(n - len(data))
+                if not chunk:
+                    return None
+                data.extend(chunk)
+            return bytes(data)
+        with connection:
+            while True:
+                header = exactly(4)
+                if header is None:
+                    return
+                frame = exactly(int.from_bytes(header, 'big'))
+                if frame is None:
+                    return
+                deliver(frame)
+
+    def send(self, node, frame):
+        import socket
+        host, _, port = node[len('tcp://'):].rpartition(':')
+        data = len(frame).to_bytes(4, 'big') + frame
+        with self._lock:
+            for attempt in range(2):
+                connection = self._connections.get(node)
+                try:
+                    if connection is None:
+                        connection = socket.create_connection((host, int(port)), timeout=5)
+                        self._connections[node] = connection
+                    connection.sendall(data)
+                    return
+                except OSError as error:
+                    self._connections.pop(node, None)
+                    if attempt == 1:
+                        raise Unreachable(f'cannot reach {node}: {error}') from None
+
+    def close(self):
+        self._closed = True
+        self._server.close()
+        with self._lock:
+            for connection in self._connections.values():
+                connection.close()
+            self._connections.clear()
+
+
+class HttpTransport(Transport):
+    """Frames as HTTP POST bodies to /lawspec; the address is http://host:port."""
+
+    def __init__(self, host='127.0.0.1', port=0):
+        from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+        transport = self
+
+        class Handler(BaseHTTPRequestHandler):
+            def do_POST(self):
+                body = self.rfile.read(int(self.headers.get('Content-Length', '0')))
+                self.send_response(204 if self.path == '/lawspec' else 404)
+                self.end_headers()
+                if self.path == '/lawspec' and transport._deliver is not None:
+                    transport._deliver(body)
+
+            def log_message(self, *args):
+                pass
+
+        self._server = ThreadingHTTPServer((host, port), Handler)
+        self._server.daemon_threads = True
+        self.address = f'http://{host}:{self._server.server_address[1]}'
+        self._deliver = None
+
+    def start(self, deliver):
+        self._deliver = deliver
+        threading.Thread(target=self._server.serve_forever, daemon=True).start()
+
+    def send(self, node, frame):
+        import urllib.request
+        request = urllib.request.Request(node + '/lawspec', data=frame, method='POST',
+                                         headers={'Content-Type': 'application/octet-stream'})
+        try:
+            with urllib.request.urlopen(request, timeout=5):
+                pass
+        except OSError as error:
+            raise Unreachable(f'cannot reach {node}: {error}') from None
+
+    def close(self):
+        self._server.shutdown()
+        self._server.server_close()
