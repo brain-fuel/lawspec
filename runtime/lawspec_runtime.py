@@ -1518,6 +1518,11 @@ class Actor:
         """Queues handler(state) -> (result, next state) without waiting."""
         self._post((handler, None))
 
+    def restart(self, restart):
+        """Crashes the actor between messages: its state is replaced by
+        restart(last state), and later messages see the new state."""
+        self.call(lambda s: (None, restart(s)))
+
     def state(self):
         """The state after every message sent before this call."""
         return self.call(lambda s: (s, s))
@@ -1562,6 +1567,38 @@ class Mailbox:
             self._ready.notify_all()
 
 
+class _Crash:
+    """An injected crash of an actor model, as a step with no arguments."""
+    name = 'crash'
+    arguments = []
+    state = 0
+    unit = True
+    when = None
+    key = None
+    restart = False
+
+    def __init__(self, start_run, start_model, restart):
+        self._start_run, self._start_model, self._restart = start_run, start_model, restart
+
+    def admits(self, indices):
+        return True
+
+    def shifted(self, indices):
+        return indices
+
+    def run(self, symbols, actor):
+        if self._restart is not None:
+            actor.restart(lambda s: self._restart.run(symbols, s))
+        else:
+            actor.restart(lambda s: self._start_run(symbols, *symbols['_lawspec_start']))
+        return UNIT
+
+    def reference(self, symbols, state):
+        if self._restart is not None:
+            return self._restart.reference(symbols, state)
+        return self._start_model(symbols, *symbols['_lawspec_start'])
+
+
 class _Reply(list):
     def __init__(self):
         super().__init__()
@@ -1598,6 +1635,7 @@ class ModelCommand:
         # The argument naming the key the command touches, for per-key checks.
         key = fields.get('key', ['none'])[0]
         self.key = None if key == 'none' else key
+        self.restart = fields.get('restart', ['false'])[0] == 'true'
         self.run, self.reference, self.when = callbacks
 
     def admits(self, indices):
@@ -1625,11 +1663,27 @@ class Model:
         self.per_key = any(f[0] == 'perkey' and f[1] == 'true' for f in forms)
         # An actor model's start and handlers run inside an actor; the
         # abstraction and state invariants read its state between messages.
+        # Sequential runs of an actor also inject crashes: the actor restarts
+        # from its last state (restart from) or its start, and the model
+        # follows the restart's reference (or the start's model state).
+        restarts = [c for c in self.commands if c.restart]
+        self.commands = [c for c in self.commands if not c.restart]
+        self.steps = self.commands
         if any(f[0] == 'actor' and f[1] == 'true' for f in forms):
-            run = self.start_run
-            self.start_run = lambda symbols, *args: Actor(run(symbols, *args))
+            run, begin = self.start_run, self.start_model
+
+            def start_run(symbols, *args):
+                symbols['_lawspec_start'] = args
+                return Actor(run(symbols, *args))
+
+            def start_model(symbols, *args):
+                symbols['_lawspec_start'] = args
+                return begin(symbols, *args)
+
+            self.start_run, self.start_model = start_run, start_model
             for c in self.commands:
                 c.run = _actor_command(c.run, c.unit)
+            self.steps = self.commands + [_Crash(run, begin, restarts[0] if restarts else None)]
             if abstract is not None:
                 self.abstract = lambda symbols, actor: abstract(symbols, actor.state())
             self.invariants = [(k, (lambda p: lambda symbols, s: p(symbols, s.state()))(p) if k == 'state' else p)
@@ -1650,7 +1704,7 @@ def _simulate(model, symbols, run):
     indices = list(model.start_indices)
     states = [state]
     for index, args in steps:
-        command = model.commands[index]
+        command = model.steps[index]
         if not command.admits(indices):
             raise _Invalid()
         state, _ = _step_model(command, symbols, args, state)
@@ -1673,7 +1727,7 @@ def _step_model(command, symbols, args, state):
     return out.fields[1], out.fields[0]
 
 
-def _generate_run(model, random, length, size):
+def _generate_run(model, random, length, size, crashes=False):
     symbols = {}
     start_args = [model.values.generate(d, random, size) for d in model.start_arguments]
     try:
@@ -1687,7 +1741,10 @@ def _generate_run(model, random, length, size):
         if not allowed:
             break
         index = allowed[random.below(len(allowed))]
-        command = model.commands[index]
+        # One step in eight of an actor's run is a crash.
+        if crashes and len(model.steps) > len(model.commands) and random.below(8) == 0:
+            index = len(model.commands)
+        command = model.steps[index]
         args = [model.values.generate(d, random, size) for d in command.arguments]
         try:
             state, _ = _step_model(command, symbols, args, state)
@@ -1712,7 +1769,7 @@ def _execute(model, run):
             return step, failure
         for index, args in steps:
             step += 1
-            command = model.commands[index]
+            command = model.steps[index]
             full = list(args)
             full.insert(command.state, state)
             out = command.run(symbols, *full)
@@ -1754,7 +1811,7 @@ def _shrink_candidates(model, run):
             yield (start_args, steps[:begin] + steps[begin + size:])
         size //= 2
     for k, (index, args) in enumerate(steps):
-        command = model.commands[index]
+        command = model.steps[index]
         for j, (d, arg) in enumerate(zip(command.arguments, args)):
             for c in model.values.shrink(d, arg):
                 yield (start_args, steps[:k] + [(index, args[:j] + [c] + args[j + 1:])] + steps[k + 1:])
@@ -1785,7 +1842,7 @@ def _shrink_run(model, run, failure, budget):
 def _describe_run(model, run):
     start_args, steps = run
     parts = ['start(' + ', '.join(render(a) for a in start_args) + ')']
-    parts += [model.commands[i].name + '(' + ', '.join(render(a) for a in args) + ')' for i, args in steps]
+    parts += [model.steps[i].name + '(' + ', '.join(render(a) for a in args) + ')' for i, args in steps]
     return '; '.join(parts)
 
 
@@ -1797,7 +1854,7 @@ def check_model(model, cases=100, max_length=20, max_shrinks=2000, seed=None):
         seed = int(os.environ.get('LAWSPEC_SEED', '0'))
     random = SplitMix64(seed)
     for case in range(cases):
-        run = _generate_run(model, random, random.below(max_length + 1), 1 + case % 8)
+        run = _generate_run(model, random, random.below(max_length + 1), 1 + case % 8, crashes=True)
         failure = _execute(model, run)
         if failure is not None:
             run, (step, message) = _shrink_run(model, run, failure, max_shrinks)

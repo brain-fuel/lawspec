@@ -4,7 +4,9 @@ unit example.actors
 -- they arrive. Its handlers are plain functions from the state (and the
 -- message's arguments) to a reply and the next state; LawSpec runs them
 -- inside an actor and checks every reply against the model, in sequence and
--- from several callers at once.
+-- from several callers at once. Runs also crash the actor between
+-- messages: it restarts from its last state by reopen, and the model's state
+-- follows modelReopen.
 type Account is Account balance :: Int64 end
 
 openAccount :: Unit -> Account
@@ -12,6 +14,8 @@ deposit :: Account -> UInt8 -> Pair Int64 Account
 withdrawAll :: Account -> Pair Int64 Account
 balance :: Account -> Pair Int64 Account
 close :: Account -> Account
+-- After a crash, the account reopens with the balance it had.
+reopen :: Account -> Account
 
 definition modelDeposit (amount :: UInt8) (n :: Int64 where n >= 0 && n <= 1000000) :: Pair Int64 Int64 is
   Pair (n + amount) (n + amount)
@@ -21,10 +25,12 @@ definition modelWithdrawAll (n :: Int64) :: Pair Int64 Int64 is Pair n 0 end
 
 definition modelBalance (n :: Int64) :: Pair Int64 Int64 is Pair n n end
 definition modelClose (n :: Int64) :: Int64 is 0 end
+definition modelReopen (n :: Int64) :: Int64 is n end
 definition solvent (n :: Int64) :: Bool is n >= 0 end
 
 actor account :: Account by Int64 is
   start openAccount by 0
+  restart from reopen by modelReopen
   on deposit by modelDeposit
   on withdrawAll by modelWithdrawAll
   on balance by modelBalance

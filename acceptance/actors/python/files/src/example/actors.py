@@ -37,3 +37,7 @@ def depositTwice(value0):
     total = account.balance()
     account.stop()
     return total
+
+
+def reopen(value0):
+    return data.Account(value0.balance)

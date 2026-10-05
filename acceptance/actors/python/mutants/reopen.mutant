@@ -1,0 +1,8 @@
+@@ src/example/actors.py
+<<<<<<<
+def reopen(value0):
+    return data.Account(value0.balance)
+=======
+def reopen(value0):
+    return data.Account(0)
+>>>>>>>

@@ -45,7 +45,8 @@ machineSpec bits datas declarations contracts machine = do
         " (when " ++ bool (commandWhen c /= Nothing) ++ ")" ++
         " (needs" ++ concatMap ((' ' :) . need) (commandNeeds c) ++ ")" ++
         " (shifts" ++ concatMap ((' ' :) . shift) (commandShifts c) ++ ")" ++
-        " (key " ++ maybe "none" show (commandKey c) ++ "))"
+        " (key " ++ maybe "none" show (commandKey c) ++ ")" ++
+        " (restart " ++ bool (commandRestart c) ++ "))"
       invariant (OnModel _) = "model"
       invariant (OnState _) = "state"
   unless (maybe False (const True) start) $

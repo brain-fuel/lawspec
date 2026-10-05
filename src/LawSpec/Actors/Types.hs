@@ -31,7 +31,7 @@ data Handler = Handler
 actorsOf :: C.Unit -> [Actor]
 actorsOf u =
   [ Actor u (machineName m) (lastSegment (machineState m)) own start (named start)
-      [Handler (commandName c) d (drop 1 (named d)) (reply own d) | c <- machineCommands m, Just d <- [declaration (commandSystem c)]]
+      [Handler (commandName c) d (drop 1 (named d)) (reply own d) | c <- machineCommands m, not (commandRestart c), Just d <- [declaration (commandSystem c)]]
   | m <- C.unitMachines u, machineActor m
   , Just s <- [machineStart m], Just start <- [declaration (startSystem s)]
   , let own = snd (arrows (C.declarationType start)) ]

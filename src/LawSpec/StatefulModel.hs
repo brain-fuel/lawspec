@@ -37,8 +37,9 @@ data ModelDeclaration = ModelDeclaration
   -- An actor's own state type: its handlers take it first and return it
   -- with their result; the model's state type is the actor's handle.
   , modelActor :: Maybe Type
-  -- The definition giving a restarted actor's state from its last one.
-  , modelRestart :: Maybe String
+  -- The adapter giving a restarted actor's state from its last one, and
+  -- the reference giving the model's.
+  , modelRestart :: Maybe (String, String)
   } deriving (Eq, Show)
 
 data ModelCommand = ModelCommand
@@ -156,7 +157,18 @@ elaborateModel u m = do
     reference ("command " ++ name ++ "'s reference") (modelReference c) expected
     forM_ (modelWhen c) $ \p -> reference ("command " ++ name ++ "'s precondition") p (Arrow modelType (Named "Bool"))
     pure (Command name name (bridge ("Run" ++ capitalize name)) (modelReference c) (modelWhen c)
-      [i | (i, _) <- zip [0 ..] args, i /= position] position unit needs shifts Nothing)
+      [i | (i, _) <- zip [0 ..] args, i /= position] position unit needs shifts Nothing False)
+  -- An actor restarted after a crash: f makes the system's state from the
+  -- last one, and the reference g the model's.
+  restart <- forM (modelRestart m) $ \(f, g) -> do
+    own <- maybe (failing "only an actor can restart") pure (modelActor m)
+    ty <- maybe (failing ("restart from " ++ f ++ ": " ++ f ++ " has no signature")) pure (signatureOf f)
+    when (f `elem` map functionName (functionDefinitions u))
+      (failing ("restart from " ++ f ++ ": " ++ f ++ " is a checked definition; it should be an adapter, as handlers are"))
+    unless (shape ty == shape (Arrow own own))
+      (failing ("restart from " ++ f ++ ": " ++ f ++ " must have type " ++ prettyType (Arrow own own)))
+    reference ("restart from " ++ f ++ "'s reference") g (Arrow modelType modelType)
+    pure (Command "restart" f (bridge "Restart") g Nothing [] 0 True [] [] Nothing True)
   forM_ (modelAbstract m) $ \f -> do
     ty <- maybe (failing ("abstract " ++ f ++ " has no signature")) pure (signatureOf f)
     case arguments ty of
@@ -192,7 +204,7 @@ elaborateModel u m = do
   let abstractRun = case modelAbstract m of
         Just f | null (definitionOf f) -> Just (bridge "Abstract")
         other -> other
-  pure (Machine (modelName m) (modelShared m) family (length indexVariables) start commands (modelAbstract m) abstractRun invariants False [] (modelActor m /= Nothing), startDefinition)
+  pure (Machine (modelName m) (modelShared m) family (length indexVariables) start (commands ++ maybe [] pure restart) (modelAbstract m) abstractRun invariants False [] (modelActor m /= Nothing), startDefinition)
   where
     -- A generated bridge's name: the model's, then its role.
     bridge role = modelName m ++ role

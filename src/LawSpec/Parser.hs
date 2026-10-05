@@ -371,8 +371,8 @@ modelP = do
 -- actor name :: State by Model is ... end: a process owning a State that
 -- handles one message at a time. `on message by reference [when p]` pairs a
 -- handler (an adapter State -> args -> Pair Result State) with its
--- reference; `start f [by value]` makes the state; `restart from f` gives a
--- restarted actor's state from its last one. Its handle type is the actor's
+-- reference; `start f [by value]` makes the state; `restart from f by g`
+-- gives a restarted actor's state from its last one (g, the model's). Its handle type is the actor's
 -- name, capitalized, then Actor: actor account has an AccountActor.
 actorP :: P ModelDeclaration
 actorP = do
@@ -403,7 +403,7 @@ actorP = do
       [ (\f e -> Left (Left (f, e))) <$> (keyword "start" *> ident) <*> option (Var "") (modelledBy *> value)
       , Left . Right . Left <$> (keyword "abstract" *> qualifiedName)
       , Left . Right . Right <$> (keyword "invariant" *> qualifiedName)
-      , Right . Right <$> (keyword "restart" *> keyword "from" *> qualifiedName)
+      , (\f g -> Right (Right (f, g))) <$> (keyword "restart" *> keyword "from" *> qualifiedName) <*> (modelledBy *> qualifiedName)
       , (\c r w -> Right (Left (ModelCommand c r w False))) <$> (keyword "on" *> ident) <*> (modelledBy *> qualifiedName)
           <*> optional (keyword "when" *> qualifiedName) ]
     value = parens expr

@@ -179,7 +179,7 @@ checkScenario protocols u s = do
             pure holding
     call machine holding command args at = do
       c <- maybe (failing at ("there is no command " ++ command ++ " in model " ++ machineName machine)) pure
-        (lookup command [(commandName c, c) | c <- machineCommands machine])
+        (lookup command [(commandName c, c) | c <- machineCommands machine, not (commandRestart c)])
       ty <- maybe (failing at ("command " ++ command ++ " has no signature")) pure (lookup command (functions u))
       let (parameters, result) = split ty
           others = [p | (i, p) <- zip [0 :: Int ..] parameters, i /= commandStatePosition c]

@@ -72,6 +72,10 @@ data Command name = Command
   -- Which of the command's other arguments is the key it touches, for a
   -- model that behaves like a set or map.
   , commandKey :: Maybe Int
+  -- An actor's restart: its adapter makes the restarted state from the
+  -- last one, and its reference does the same for the model. It is never
+  -- generated as a step; injected crashes run it.
+  , commandRestart :: Bool
   } deriving (Eq, Show, Generic, Functor, Foldable, Traversable)
 
 data Need = AtLeast Integer | Exactly Integer
