@@ -4,6 +4,7 @@ package RUNTIME_PACKAGE
 import (
 	"fmt"
 	"math/big"
+	"reflect"
 	"slices"
 	"time"
 )
@@ -62,6 +63,55 @@ func lsLogicalCodec(schema *lawSpecSchema, bits int, typeRef lawSpecTypeRef, con
 	return lsCodec(schema, bits, typeRef,
 		func(value LawSpecValue) LawSpecValue { return value },
 		func(value LawSpecValue, path lawSpecPath) LawSpecValue { return value }, contexts...)
+}
+
+// lsHandleCodec passes a handle's native value through both ways.
+func lsHandleCodec[T any](schema *lawSpecSchema, bits int, name string, contexts ...map[string]*lawSpecSymbol) lawSpecCodec[T] {
+	typeRef := lsNamed(name)
+	return lsCodec(schema, bits, typeRef,
+		func(value LawSpecValue) T {
+			handle, ok := value.Data.(lawSpecHandle)
+			if !ok {
+				panic("expected a handle for " + name)
+			}
+			if handle.native == nil {
+				var none T
+				return none
+			}
+			native, ok := handle.native.(T)
+			if !ok {
+				panic(fmt.Sprintf("handle %s holds %T", name, handle.native))
+			}
+			return native
+		},
+		func(value T, path lawSpecPath) LawSpecValue {
+			return LawSpecValue{typeRef.key(), lawSpecHandle{any(value)}}
+		}, contexts...)
+}
+
+// lsNativeMaybe is a native result as a Maybe: nil (a nil pointer or
+// interface) is Nothing, anything else Just, through a pointer when the
+// native returns one.
+func lsNativeMaybe[T any](value any) LawSpecMaybe[T] {
+	if value == nil {
+		return LawSpecNothing[T]()
+	}
+	reflected := reflect.ValueOf(value)
+	switch reflected.Kind() {
+	case reflect.Pointer, reflect.Interface, reflect.Map, reflect.Slice, reflect.Func, reflect.Chan:
+		if reflected.IsNil() {
+			return LawSpecNothing[T]()
+		}
+	}
+	if native, ok := value.(T); ok {
+		return LawSpecJust(native)
+	}
+	if reflected.Kind() == reflect.Pointer {
+		if native, ok := reflected.Elem().Interface().(T); ok {
+			return LawSpecJust(native)
+		}
+	}
+	panic(fmt.Sprintf("native result %T is not a Maybe value", value))
 }
 
 func lsScalarCodec[T any](schema *lawSpecSchema, bits int, name string) lawSpecCodec[T] {

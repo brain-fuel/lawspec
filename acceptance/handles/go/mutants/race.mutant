@@ -1,0 +1,34 @@
+@@ example/handles/adapter.go
+<<<<<<<
+import "sync"
+=======
+import (
+	"sync"
+	"time"
+)
+>>>>>>>
+<<<<<<<
+	queue.lock.Lock()
+	defer queue.lock.Unlock()
+	if len(queue.items) == 0 {
+		return LawSpecNothing[int32]()
+	}
+	front := queue.items[0]
+	queue.items = queue.items[1:]
+	return LawSpecJust(front)
+=======
+	queue.lock.Lock()
+	if len(queue.items) == 0 {
+		queue.lock.Unlock()
+		return LawSpecNothing[int32]()
+	}
+	front := queue.items[0]
+	queue.lock.Unlock()
+	time.Sleep(time.Millisecond)
+	queue.lock.Lock()
+	if len(queue.items) > 0 {
+		queue.items = queue.items[1:]
+	}
+	queue.lock.Unlock()
+	return LawSpecJust(front)
+>>>>>>>

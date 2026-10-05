@@ -655,6 +655,10 @@ func (s *lawSpecSchema) validateValue(t lawSpecTypeRef, value LawSpecValue, bits
 		panic("invalid representation for " + t.key())
 	}
 	constructors, custom := s.constructors(t)
+	// A handle is passed unopened.
+	if _, handle := value.Data.(lawSpecHandle); handle && custom && len(s.definitions[t.name].constructors) == 0 {
+		return value
+	}
 	if !custom {
 		switch t.name {
 		case "List":
