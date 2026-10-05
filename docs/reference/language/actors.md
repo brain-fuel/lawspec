@@ -99,6 +99,13 @@ In Haskell, the handlers come in a record (`accountHandlers`, from
 `LawSpecActors.<Unit>.Adapters`), so the adapter module can use its own
 actors without an import cycle.
 
+### Actors on other nodes
+
+`serve(node, name)` lets other nodes call an actor, and
+`AccountActor.connect(node, address)` gives a proxy with the same handler
+methods. A call that gets no reply within the timeout fails with
+`Unreachable`. See [distribution](distribution.md).
+
 ### Mailboxes
 
 Each runtime also has a `Mailbox`, a queue with many senders and one

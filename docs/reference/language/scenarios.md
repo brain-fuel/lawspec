@@ -126,6 +126,10 @@ On every target, a scenario runs 30 times by default:
 - Every third run crashes one process of a `par` at a random point. In
   those runs the processes that depend on it may fail, but none may block,
   and what did run must still agree with the model.
+- Every third run sends each channel between two nodes of a faulty
+  in-memory network that loses, duplicates and delays messages (see
+  [distribution](distribution.md)). Channel ends sent over a channel go by
+  address. The channels must hide every fault.
 - Every model command's call and return are recorded.
 - The history must be linearizable against the model, and every `expect`
   must hold.
@@ -165,6 +169,10 @@ For `protocol Serve is receive Int32 . receive Int32 . send Int64 end`:
   Haskell has `tryReceive`, which return the failure instead.
 - Channels go through a small send and receive interface, which a networked
   transport can implement as well.
+
+A protocol's channel can also join two nodes: `P.listen(node, name)` gives
+the first end and `P.dial(node, address)` gives the second, on another node
+(see [distribution](distribution.md)).
 
 The [sessions example](../../../examples/specs/sessions.lawspec) adds two
 numbers through a server process, and through a worker that is handed the

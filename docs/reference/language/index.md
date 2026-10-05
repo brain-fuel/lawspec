@@ -33,6 +33,8 @@ types, checked definitions, refinements and laws.
 - [Actors and supervisors](actors.md): processes that own a state and handle
   one message at a time, checked with crashes, and supervisors that restart
   them.
+- [Distribution](distribution.md): nodes, transports, the wire encoding,
+  and testing over a faulty network.
 - [Imports and packages](imports-and-packages.md): sharing declarations between
   units and packages.
 - [Expressions and arithmetic](expressions-and-arithmetic.md): precedence,

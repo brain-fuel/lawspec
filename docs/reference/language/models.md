@@ -33,6 +33,7 @@ end
 | `when p` | The command runs only when `p model` holds. |
 | `abstract f` | `f` turns the system state into a model state, and must equal the model's at every step. |
 | `invariant p` | `p` holds of the model state, or of the system state, after every step. |
+| `consistency c` | How a shared model's parallel histories must agree with the model: `linearizable` (the default), `sequential`, `causal` or `eventual`. See [consistency](#consistency). |
 
 `~` reads the same as `by`.
 
@@ -88,6 +89,36 @@ calls agrees with the model (A: increment() returned 1; B: increment() returned 
 
 Generation, shrinking and the order of the cases are identical on every
 target for the same seed (`LAWSPEC_SEED`).
+
+## Consistency
+
+Replicated and distributed systems often promise less than
+linearizability. A shared model can say what it promises:
+
+```lawspec fragment
+model views :: shared Views by Int64 is
+  consistency eventual
+  start newViews ~ 0
+  hit ~ modelHit
+  abstract total
+end
+```
+
+| Consistency | Every history must have... |
+| --- | --- |
+| `linearizable` (the default) | one order of all the calls that keeps real time (a call comes after every call that returned before it began) and gives every result the model gives. |
+| `sequential` | one order that keeps each thread's own order, and what its messages carried, and gives every result. Real time between threads does not count. |
+| `causal` | for each thread, an order of what it could have seen (its own calls, and those that happened before them, through its own order or messages) that gives that thread's results. Different threads may see different orders. |
+| `eventual` | once every call is done, the abstracted state of some order of all the calls. Results are not checked. Use `abstract`, so there is a state to compare. |
+
+Each is weaker than the one above it. In a [scenario](scenarios.md), "happened
+before" follows messages: a call before a send happened before every call
+after the matching receive.
+
+The [consistency example](../../../examples/specs/consistency.lawspec) has
+a page-view counter with one replica per caller. Callers see stale counts,
+so it is neither linearizable nor causal, but every hit is counted in the
+end: it is eventually consistent. A version that loses hits is rejected.
 
 ## Collections
 
@@ -148,8 +179,8 @@ return value. A `Maybe` result treats the target's null value as `Nothing`.
 ## Evidence
 
 `lawspec evidence` lists each model as property-tested against its
-reference, and a shared model's histories as property-tested for
-linearizability.
+reference, and a shared model's histories as property-tested for its
+consistency.
 
 The [models example](../../../examples/specs/models.lawspec) has a linear
 stack and a shared counter. The [concurrent collections

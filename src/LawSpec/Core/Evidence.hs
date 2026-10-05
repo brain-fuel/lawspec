@@ -12,7 +12,7 @@ module LawSpec.Core.Evidence
 
 import qualified Data.Set as S
 import LawSpec.Core
-import LawSpec.Core.Machine (Machine(..), Supervisor(..))
+import LawSpec.Core.Machine (Machine(..), Supervisor(..), Consistency(..))
 import qualified LawSpec.Core.Program as P
 
 -- Strongest first.
@@ -71,8 +71,15 @@ programEvidence program =
       let named role = Id (idText owner ++ "::model::" ++ machineName machine ++ role)
       in [ Obligation owner (named "") "model" Nothing PropertyTested
              "the system runs generated command sequences and must agree with the reference model at every step" ] ++
-         [ Obligation owner (named "") "linearizable" Nothing PropertyTested
-             "commands run at the same time on several threads; every history must linearize against the model"
+         [ case machineConsistency machine of
+             Linearizable -> Obligation owner (named "") "linearizable" Nothing PropertyTested
+               "commands run at the same time on several threads; every history must linearize against the model"
+             Sequential -> Obligation owner (named "") "sequentially consistent" Nothing PropertyTested
+               "commands run at the same time on several threads; some order keeping each thread's own order must give every result"
+             Causal -> Obligation owner (named "") "causally consistent" Nothing PropertyTested
+               "commands run at the same time on several threads; each thread's results must follow from what happened before them"
+             Eventual -> Obligation owner (named "") "eventually consistent" Nothing PropertyTested
+               "commands run at the same time on several threads; once all are done, the state must be that of some order of them"
          | machineShared machine ] ++
          [ Obligation owner (named "") "restart" Nothing PropertyTested
              "runs crash the actor between messages; after each restart it must agree with the model's restart"

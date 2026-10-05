@@ -288,6 +288,10 @@
             "path": "reference/language/actors.md"
           },
           {
+            "title": "Distribution",
+            "path": "reference/language/distribution.md"
+          },
+          {
             "title": "Imports and packages",
             "path": "reference/language/imports-and-packages.md"
           },
