@@ -43,8 +43,8 @@ emit target _ bits declarations units = do
         _ -> D.render (D.Pretty 80) <$> webDataTypeDocWith declarations [] ty
   -- A protocol can also run between nodes (listen and dial) when every
   -- step's type has a wire descriptor; a step sending another protocol's
-  -- end carries the address of a relay, so that protocol must run between
-  -- nodes too.
+  -- end carries the address the receiver takes the end over from (or a
+  -- relay's, for a local end), so that protocol must run between nodes too.
   let wired (table, acc) s = case foldM step (table, []) (C.sessionSteps s) of
         Right (table', ds) -> (table', acc ++ [(C.sessionName s, ds)])
         _ -> (table, acc)
@@ -191,7 +191,8 @@ protocol ts native wire unit session = do
         , ""
         , "  /**"
         , "   * The first end of a channel named name on node, which another node dials at"
-        , "   * <node address>/name. An end sent over it to another node is relayed by this node."
+        , "   * <node address>/name. An end sent over it to another node moves there (a local"
+        , "   * end stays and is relayed by this node)."
         , "   */"
         , "  export function listen(node: ls.Node, name: string): " ++ startOf first ++ " {"
         , "    const [steps, parts] = _wire();"
@@ -217,7 +218,8 @@ protocol ts native wire unit session = do
         , "  _wire: () => [" ++ steps False ws ++ ", " ++ refs ws ++ "],"
         , "  /**"
         , "   * The first end of a channel named name on node, which another node dials at"
-        , "   * <node address>/name. An end sent over it to another node is relayed by this node."
+        , "   * <node address>/name. An end sent over it to another node moves there (a local"
+        , "   * end stays and is relayed by this node)."
         , "   */"
         , "  listen: (node, name) => {"
         , "    const [steps, parts] = " ++ name ++ "._wire();"
