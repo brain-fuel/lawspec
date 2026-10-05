@@ -1,0 +1,6 @@
+@@ src/example/handles.py
+<<<<<<<
+        return len(value0.items)
+=======
+        return len(value0.items) - (1 if len(value0.items) >= 2 else 0)
+>>>>>>>

@@ -1,0 +1,7 @@
+@@ src/example/handles.ts
+<<<<<<<
+  return (value0 as number[]).length;
+=======
+  const jobs = value0 as number[];
+  return jobs.length >= 2 ? jobs.length - 1 : jobs.length;
+>>>>>>>

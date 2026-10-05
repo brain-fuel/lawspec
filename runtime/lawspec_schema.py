@@ -96,6 +96,9 @@ class Definition:
     name: str
     parameters: int
     constructors: tuple
+    # A handle has no constructors: its values are adapters' own objects,
+    # passed along unopened and equal only to themselves.
+    handle: bool = False
 
     def __post_init__(self):
         object.__setattr__(self, "constructors", tuple(self.constructors))
@@ -637,6 +640,9 @@ class Schema:
         return ls.DataValue(tag, (items,))
 
     def _walk(self, reference, value, bits, mode, symbols):
+        definition = self._definitions.get(reference.name)
+        if definition is not None and definition.handle:
+            return ls.handle(value, reference.name)
         if mode in ("native", "logical") and reference.name in self._native_codecs:
             return self._codec_walk(reference, value, bits, mode, symbols)
         if mode in ("native", "logical") and reference.name in COLLECTIONS:
@@ -781,6 +787,9 @@ class Schema:
         symbols = {} if symbols is None else symbols
         left = self.validate(reference, left, bits, symbols)
         right = self.validate(reference, right, bits, symbols)
+        definition = self._definitions.get(reference.name)
+        if definition is not None and definition.handle:
+            return left is right
         constructors = self.constructors(reference)
         if constructors is not None:
             if left.tag != right.tag:

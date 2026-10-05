@@ -21,9 +21,11 @@ import LawSpec.RuntimeSources (runtimeSource)
 emitBindings :: Bool -> Bool -> BindingPlan -> Plan -> [Artifact] -> Either String [Artifact]
 emitBindings ts minify bindings plan files = do
   unless (bindingRustCrate bindings == Nothing) (Left "rustCrate is only valid for Rust bindings")
-  unless (null mappings || not (null functions) || not (null generators))
+  unless (null mappings || not (null functions) || not (null calls) || not (null generators))
     (Left "native type mappings require a function or generator binding")
-  let refs = nub (map snd functions ++ [resolvedNativeConstructor c | m <- mappings, c <- resolvedConstructors m] ++
+  let constructed = [ref | (_, ConstructorCall ref) <- calls]
+      handleNatives = [resolvedNativeType m | m <- mappings, C.dataHandle (resolvedDeclaration m)]
+      refs = nub (map snd functions ++ constructed ++ handleNatives ++ [resolvedNativeConstructor c | m <- mappings, c <- resolvedConstructors m] ++
         [ref | m <- mappings, Just hook <- [resolvedCodec m],
           ref <- [resolvedNativeType m, codecToNative hook, codecFromNative hook]])
       alias ref = "native" ++ show (length (takeWhile (/=ref) refs))
@@ -44,35 +46,60 @@ emitBindings ts minify bindings plan files = do
          D.text "export const native = canonical.withNativeBindings(" <>
           D.nest 4 (D.softbreak <> E.call ("new Map" ++ mapType) [E.array entries] <> D.text "," <>
             D.softbreak <> E.call ("new Map" ++ hookType) [E.array hooks]) <> D.softbreak <> D.text ");"] ++
-        [D.text ("export {" ++ intercalate ", " (nub (map (alias . snd) functions)) ++ "};") | not (null functions)])
+        [D.text ("export {" ++ intercalate ", " exported ++ "};") | not (null exported)])
+      exported = nub (map alias (map snd functions ++ constructed ++ handleNatives))
       support = Artifact ("src/lawspec_native." ++ ext) (render supportBody) "generated" "source"
   mapM_ (W.identifier False . snd) [field | m <- mappings, c <- resolvedConstructors m, field <- resolvedFields c]
   bridges <- fmap concat $ forM (plannedUnits plan) $ \planned -> do
     let unit = plannedUnit planned
         definitions = map (C.declarationId . C.definitionDeclaration) (C.unitDefinitions unit)
         adapters = [d | d <- C.unitDeclarations unit, C.declarationId d `notElem` definitions]
-        bound d = lookup (C.declarationId d) [(C.declarationId decl,ref) | (decl,ref) <- functions]
+        bound d = lookup (C.declarationId d) ([(C.declarationId decl,StaticCall ref) | (decl,ref) <- functions] ++
+          [(C.declarationId decl,call) | (decl,call) <- calls])
+        -- A bound handle is typed by its native class.
+        handleTypes = [(C.dataId (resolvedDeclaration m), D.text ("bridge." ++ alias (resolvedNativeType m))) |
+          m <- mappings, C.dataHandle (resolvedDeclaration m)]
+        typeOf = Data.webDataTypeDocWith (planDataDeclarations plan) handleTypes
         depth = length (filter (== '.') (unitName unit))
         root = if depth == 0 then "./" else concat (replicate depth "../")
     if not (any (maybe False (const True) . bound) adapters) then pure [] else do
       unless (all (maybe False (const True) . bound) adapters) (Left "a web bound unit must map every adapter")
       bodies <- forM adapters $ \decl -> do
         let (args,result) = C.functionType (C.declarationType decl)
-        argTypes <- mapM (Data.webDataTypeDoc (planDataDeclarations plan)) args
-        resultType <- Data.webDataTypeDoc (planDataDeclarations plan) result
+        argTypes <- mapM typeOf args
+        resultType <- typeOf result
         argRefs <- mapM Data.webTypeReferenceDoc args
         resultRef <- Data.webTypeReferenceDoc result
         let values = [D.text ("value" ++ show i) | i <- [0::Int ..length args-1]]
             bits = D.text (show (planMachineBits plan))
             convert schema method ty value = E.call ("bridge." ++ schema ++ "." ++ method) [ty,value,bits,D.text "symbols"]
             arguments = [convert "native" "toNative" ty (convert "canonical" "fromNative" ty value) | (ty,value) <- zip argRefs values]
-            Just ref = bound decl
-            application = E.call ("bridge." ++ alias ref) arguments
-            resultBody = if result == C.scalarType "Unit" then application <> D.text ";"
-              else D.text "const result = " <> application <> D.text ";" <> D.hardline <>
-                D.text "return " <> convert "canonical" "toNative" resultRef
-                  (convert "native" "fromNative" resultRef (D.text "result")) <> D.text ";"
-            signature = D.text ("export function " ++ C.declarationName decl) <>
+            isUnit ty = ty == C.scalarType "Unit"
+            resultOf ref value = convert "canonical" "toNative" ref (convert "native" "fromNative" ref value)
+            returned = D.text "return " <> resultOf resultRef (D.text "result") <> D.text ";"
+        call <- maybe (Left "unbound adapter") Right (bound decl)
+        application <- case call of
+          StaticCall ref -> pure (E.call ("bridge." ++ alias ref) arguments)
+          -- A method of the first handle argument, given the others.
+          MethodCall name -> case [i | (i,ty) <- zip [0::Int ..] args, isHandle ty] of
+            h : _ -> pure (D.text "(" <> arguments !! h <> D.text ")" <>
+              E.call ("." ++ name) [value | (i,value) <- zip [0..] arguments, i /= h])
+            [] -> Left ("method binding " ++ C.idText (C.declarationId decl) ++ " has no handle argument")
+          -- A native constructor, given the arguments that are not Unit.
+          ConstructorCall ref -> pure (E.call ("new bridge." ++ alias ref)
+            [value | (ty,value) <- zip args arguments, not (isUnit ty)])
+        resultBody <- case (call, result) of
+          _ | isUnit result -> pure (application <> D.text ";")
+          (StaticCall _, _) -> pure (D.text "const result = " <> application <> D.text ";" <> D.hardline <> returned)
+          -- A method or constructor's absent value (null or undefined) is Nothing.
+          (_, C.Constructor "Maybe" [C.TypeArgument element]) -> do
+            elementRef <- Data.webTypeReferenceDoc element
+            pure (D.text "const result = " <> application <> D.text ";" <> D.hardline <>
+              D.text "return result === null || result === undefined" <>
+              D.nest 4 (D.softline <> D.text "? new data.Nothing()" <> D.softline <> D.text ": " <>
+                E.call "new data.Just" [resultOf elementRef (D.text "result")]) <> D.text ";")
+          _ -> pure (D.text "const result = " <> application <> D.text ";" <> D.hardline <> returned)
+        let signature = D.text ("export function " ++ C.declarationName decl) <>
               D.delimitTrailing 4 "(" ")" [value <> if ts then D.text ": " <> ty else mempty | (value,ty) <- zip values argTypes] <>
               (if ts then D.text ": " <> (if result == C.scalarType "Unit" then D.text "void" else resultType) else mempty)
         pure (signature <> D.text " " <> D.block 2 (D.text "const symbols = new Map();" <> D.hardline <>
@@ -131,6 +158,11 @@ emitBindings ts minify bindings plan files = do
     representations = bindingRepresentations bindings
     mappings = resolvedTypes representations
     functions = bindingFunctions bindings
+    calls = bindingCalls bindings
+    handles = [C.dataId d | d <- planDataDeclarations plan, C.dataHandle d]
+    isHandle ty = case ty of
+      C.Constructor name [] -> C.Id name `elem` handles
+      _ -> False
     generators = resolvedGenerators representations
     target = if ts then "typescript" else "javascript"
     ext = if ts then "ts" else "mjs"

@@ -21,9 +21,10 @@ emitBindings :: Bool -> BindingPlan -> Plan -> [Artifact] -> Either String [Arti
 emitBindings minify bindings plan files = do
   unless (bindingRustCrate bindings == Nothing)
     (Left "rustCrate is only valid for Rust native bindings")
-  unless (null mappings || not (null functions) || not (null generators))
+  unless (null mappings || not (null functions) || not (null calls) || not (null generators))
     (Left "native type mappings require a function or generator binding")
-  let refs = nub (map snd functions ++
+  let refs = nub (map snd functions ++ [ref | (_, ConstructorCall ref) <- calls] ++
+        [resolvedNativeType mapping | mapping <- mappings, C.dataHandle (resolvedDeclaration mapping)] ++
         [ref | mapping <- mappings, Just hook <- [resolvedCodec mapping],
           ref <- [resolvedNativeType mapping, codecToNative hook, codecFromNative hook]] ++
         [resolvedNativeConstructor constructor | mapping <- mappings,
@@ -58,14 +59,19 @@ emitBindings minify bindings plan files = do
     let unit = plannedUnit planned
         definitions = map (C.declarationId . C.definitionDeclaration) (C.unitDefinitions unit)
         adapters = [d | d <- C.unitDeclarations unit, C.declarationId d `notElem` definitions]
-        bound d = lookup (C.declarationId d) [(C.declarationId decl,ref) | (decl,ref) <- functions]
+        bound d = lookup (C.declarationId d) ([(C.declarationId decl,StaticCall ref) | (decl,ref) <- functions] ++
+          [(C.declarationId decl,call) | (decl,call) <- calls])
+        -- A bound handle is annotated with its native type.
+        handleTypes = [(C.dataId (resolvedDeclaration mapping), reference (resolvedNativeType mapping)) |
+          mapping <- mappings, C.dataHandle (resolvedDeclaration mapping)]
+        typeOf = Data.pythonDataTypeDocWith (planDataDeclarations plan) handleTypes
     if not (any (maybe False (const True) . bound) adapters) then pure [] else do
       unless (all (maybe False (const True) . bound) adapters)
         (Left "a Python bound unit must map every adapter")
       bodies <- forM adapters $ \decl -> do
         let (args,result) = C.functionType (C.declarationType decl)
-        argTypes <- mapM (Data.pythonDataTypeDoc (planDataDeclarations plan)) args
-        resultType <- Data.pythonDataTypeDoc (planDataDeclarations plan) result
+        argTypes <- mapM typeOf args
+        resultType <- typeOf result
         refs' <- mapM Data.pythonTypeReferenceDoc args
         resultRef <- Data.pythonTypeReferenceDoc result
         let values = [D.text ("value" ++ show i) | i <- [0::Int ..length args-1]]
@@ -73,14 +79,34 @@ emitBindings minify bindings plan files = do
             convert schema method ref value = P.invoke (schema ++ "." ++ method) [ref,value,bits,D.text "symbols"]
             converted = [convert "bridge._native" "to_native" ty
               (convert "bridge._canonical" "from_native" ty value) | (ty,value) <- zip refs' values]
-            Just ref = bound decl
-            application = reference ref <> D.delimitTrailing 4 "(" ")" converted
-            resultBody = if result == C.scalarType "Unit"
-              then [application, D.text "return None"]
-              else [D.text "result = " <> application,
-                D.text "return " <> convert "bridge._canonical" "to_native" resultRef
-                  (convert "bridge._native" "from_native" resultRef (D.text "result"))]
-            signature = D.text ("def " ++ C.declarationName decl) <>
+            handleAt = [i | (i,ty) <- zip [0::Int ..] args, isHandle ty]
+            isUnit ty = ty == C.scalarType "Unit"
+            resultOf ref value = convert "bridge._canonical" "to_native" ref
+              (convert "bridge._native" "from_native" ref value)
+        call <- maybe (Left "unbound adapter") Right (bound decl)
+        application <- case call of
+          StaticCall ref -> pure (reference ref <> D.delimitTrailing 4 "(" ")" converted)
+          -- A method of the first handle argument, given the others.
+          MethodCall name -> case handleAt of
+            h : _ -> pure (D.text "(" <> converted !! h <> D.text (")." ++ name) <>
+              D.delimitTrailing 4 "(" ")" [value | (i,value) <- zip [0..] converted, i /= h])
+            [] -> Left ("method binding " ++ C.idText (C.declarationId decl) ++ " has no handle argument")
+          -- A native constructor, given the arguments that are not Unit.
+          ConstructorCall ref -> pure (reference ref <> D.delimitTrailing 4 "(" ")"
+            [value | (ty,value) <- zip args converted, not (isUnit ty)])
+        resultBody <- case (call, result) of
+          _ | isUnit result -> pure [application, D.text "return None"]
+          -- A method or constructor's absent value (None) is Nothing.
+          (StaticCall _, _) -> pure [D.text "result = " <> application,
+            D.text "return " <> resultOf resultRef (D.text "result")]
+          (_, C.Constructor "Maybe" [C.TypeArgument element]) -> do
+            elementRef <- Data.pythonTypeReferenceDoc element
+            pure [D.text "result = " <> application,
+              P.suite (D.text "if result is None") (D.text "return _schema.Nothing()"),
+              D.text "return _schema.Just" <> D.delimitTrailing 4 "(" ")" [resultOf elementRef (D.text "result")]]
+          _ -> pure [D.text "result = " <> application,
+            D.text "return " <> resultOf resultRef (D.text "result")]
+        let signature = D.text ("def " ++ C.declarationName decl) <>
               D.delimitTrailing 4 "(" ")" [value <> D.text ": " <> ty | (value,ty) <- zip values argTypes] <>
               D.text " -> " <> (if result == C.scalarType "Unit" then D.text "None" else resultType)
         pure (P.suite signature (D.text "symbols = {}" <> D.hardline <>
@@ -137,6 +163,11 @@ emitBindings minify bindings plan files = do
     representations = bindingRepresentations bindings
     mappings = resolvedTypes representations
     functions = bindingFunctions bindings
+    calls = bindingCalls bindings
+    handles = [C.dataId d | d <- planDataDeclarations plan, C.dataHandle d]
+    isHandle ty = case ty of
+      C.Constructor name [] -> C.Id name `elem` handles
+      _ -> False
     generators = resolvedGenerators representations
     layout = D.selectLayout minify (D.Pretty 79)
     render doc = D.render layout (doc <> D.hardline)

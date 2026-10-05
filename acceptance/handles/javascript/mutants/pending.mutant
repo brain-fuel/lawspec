@@ -1,0 +1,6 @@
+@@ src/example/handles.mjs
+<<<<<<<
+  return value0.length;
+=======
+  return value0.length >= 2 ? value0.length - 1 : value0.length;
+>>>>>>>

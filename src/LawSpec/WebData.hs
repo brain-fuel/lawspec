@@ -1,5 +1,5 @@
 -- Native JS classes and TS generic unions rendered from checked Core.
-module LawSpec.WebData (emitWebData, emitWebDataWithProfile, webDataType, webTypeReference, webDataTypeDoc, webTypeReferenceDoc, requiresSchema) where
+module LawSpec.WebData (emitWebData, emitWebDataWithProfile, webDataType, webTypeReference, webDataTypeDoc, webDataTypeDocWith, webTypeReferenceDoc, requiresSchema) where
 
 import Control.Monad (unless, forM)
 import Data.List (nub, intercalate, isPrefixOf)
@@ -57,7 +57,9 @@ emitWebDataWithProfile ts bits layout declarations = do
         ("_fields","ReadonlyArray<unknown>"),("bits","number"),("symbols","Map<string, symbol>")]) <>
       D.text " " <> D.block 2 (D.text "return " <> body <>
         (if ts then D.text " as boolean" else mempty) <> D.text ";"))
-  classes <- concat <$> mapM (definition names) [d | d <- declarations, collectionContainer (C.idText (C.dataId d)) == Nothing]
+  -- A handle has no class: its values are the adapters' own objects.
+  classes <- concat <$> mapM (definition names) [d | d <- declarations, collectionContainer (C.idText (C.dataId d)) == Nothing,
+    not (C.dataHandle d)]
   metadata <- mapM (definitionSchema names bindings) schemas
   let extension = if ts then "ts" else "mjs"
       importExtension = if ts then "js" else "mjs"
@@ -87,6 +89,7 @@ emitWebDataWithProfile ts bits layout declarations = do
   pure [Artifact ("src/lawspec_data." ++ extension) (D.render layout source) "generated" "source",
         Artifact ("src/lawspec_schema." ++ extension) runtime "generated" "source"]
   where
+    handles = handleTypes declarations
     nestedIds expression = (case C.expressionNode expression of
       C.AllElements _ binder _ -> [C.binderId binder]
       C.AllPayloads _ predicates -> map (C.binderId . fst) predicates
@@ -146,12 +149,12 @@ emitWebDataWithProfile ts bits layout declarations = do
         fields <- forM (C.constructorFields constructor) $ \field -> do
           identifier False (C.binderName field)
           unless (C.binderName field /= "_lawspecBrand") (Left "reserved TypeScript data field: _lawspecBrand")
-          ty <- typeDoc "" names scope (C.binderType field)
+          ty <- typeDocWith handles "" names scope (C.binderType field)
           pure (C.binderName field,ty)
         -- Each field-only existential's type travels as a witness string.
         let fields' = fields ++ [(S.witnessFieldName (length free) k, D.text "string") | k <- [0 .. length free - 1]]
         member <- if not ts || null equations then pure (application native (map D.text classArgs)) else do
-          patterns <- mapM (\(p, ty) -> typeDoc "" names [(e, "infer " ++ v) | (e, v) <- existentials] ty >>= \pattern ->
+          patterns <- mapM (\(p, ty) -> typeDocWith handles "" names [(e, "infer " ++ v) | (e, v) <- existentials] ty >>= \pattern ->
             pure (maybe (D.text "never") D.text (lookup p parameters), pattern)) equations
           pure (D.text "([" <> D.commaSep (map fst patterns) <> D.text "] extends [" <> D.commaSep (map snd patterns) <>
             D.text "] ? " <> application native (map D.text classArgs) <> D.text " : never)")
@@ -180,4 +183,5 @@ emitWebDataWithProfile ts bits layout declarations = do
              , S.constructorExistentials constructor > 0
              , not (null (S.constructorWitnesses constructor)) ]))
       pure (invoke "new schema.Definition"
-        [D.text (q (S.typeName schema)),D.text (show (S.parameterCount schema)),array variants])
+        ([D.text (q (S.typeName schema)),D.text (show (S.parameterCount schema)),array variants] ++
+         [D.text "true" | S.typeName schema `elem` [C.idText (C.dataId d) | d <- declarations, C.dataHandle d]]))
