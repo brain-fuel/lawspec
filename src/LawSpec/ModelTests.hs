@@ -155,7 +155,12 @@ modelTestArtifacts target bits datas calls u
                  concat [ [ "    scenarioFailure" ++ show i ++ " <- LS.checkScenario model " ++ quoted (programSpec p)
                           , "    maybe (pure ()) expectationFailure scenarioFailure" ++ show i ]
                         | (i, p) <- zip [0 :: Int ..] (machineScenarios m) ]
-               | (m, (spec, cs)) <- prepared ]
+               | (m, (spec, cs)) <- prepared ] ++
+        -- A unit with supervisors also checks the runtime's supervision.
+        [ l | not (null (C.unitSupervisors u)), l <-
+          [ "  it \"supervision\" $ do"
+          , "    failure <- LS.checkSupervision"
+          , "    maybe (pure ()) expectationFailure failure" ] ]
 
 -- Rust test functions for a unit's models, calling the mounted definitions
 -- module's evaluators, which already take a context and a list of values.

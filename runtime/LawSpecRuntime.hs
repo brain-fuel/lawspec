@@ -2,14 +2,14 @@
 -- The portable scalar domain. No test framework or target runtime dependencies.
 module LawSpecRuntime where
 
-import Control.Exception (ErrorCall(..), Exception, SomeException(..), catch, displayException, evaluate, finally, fromException, throwIO, try)
-import Control.Concurrent (Chan, threadDelay, yield, forkIO, killThread, newChan, readChan, writeChan, newEmptyMVar, putMVar, takeMVar, MVar, readMVar, newMVar, modifyMVar)
+import Control.Exception (ErrorCall(..), Exception, SomeException(..), catch, displayException, evaluate, finally, fromException, throwIO, toException, try)
+import Control.Concurrent (Chan, threadDelay, yield, forkIO, killThread, newChan, readChan, writeChan, newEmptyMVar, putMVar, takeMVar, tryPutMVar, MVar, readMVar, newMVar, modifyMVar)
 import System.Timeout (timeout)
 import Data.IORef (IORef, newIORef, readIORef, writeIORef, modifyIORef', atomicModifyIORef')
 import GHC.Clock (getMonotonicTimeNSec)
 import System.IO.Unsafe (unsafePerformIO)
 import System.Environment (lookupEnv)
-import Control.Monad (foldM, forM, replicateM)
+import Control.Monad (foldM, forM, forM_, replicateM)
 import Data.Unique (Unique, newUnique, hashUnique)
 import Data.Dynamic (Dynamic, toDyn, fromDynamic, dynTypeRep)
 import Data.Typeable (Typeable, typeRep, Proxy(..))
@@ -1644,6 +1644,15 @@ data ModelCommand = ModelCommand
   , mcRun :: ModelCallback
   , mcReference :: ModelCallback
   , mcWhen :: Maybe ModelCallback
+  -- | An actor's restart: never a generated step; injected crashes run it.
+  , mcRestart :: Bool
+  }
+
+-- | An injected crash of an actor model, given the run's start arguments:
+-- restarting the system's actor, and the model state after the restart.
+data CrashStep = CrashStep
+  { crashSystem :: [Scalar] -> SymbolContext -> Scalar -> IO ()
+  , crashModel :: [Scalar] -> SymbolContext -> Scalar -> IO Scalar
   }
 
 data ModelPlan = ModelPlan
@@ -1658,6 +1667,8 @@ data ModelPlan = ModelPlan
   , planAbstract :: Maybe ModelCallback
   , planInvariants :: [(String, ModelCallback)]
   , planPerKey :: Bool
+  -- | An actor model's crash step, numbered after the commands.
+  , planCrash :: Maybe CrashStep
   }
 
 -- | Start arguments, then each step's command index and arguments.
@@ -1676,12 +1687,15 @@ modelPlan model = asActor $ ModelPlan
   , planStartArguments = field "arguments" startFields
   , planStartRun = fst (modelStart model)
   , planStartModel = snd (modelStart model)
-  , planCommands = zipWith command [rest | DescList (DescAtom "command" : rest) <- forms] (modelCommands model)
+  , planCommands = filter (not . mcRestart) allCommands
   , planAbstract = modelAbstract model
   , planInvariants = zip kinds (modelInvariants model)
   , planPerKey = not (null [() | DescList [DescAtom "perkey", DescAtom "true"] <- forms])
+  , planCrash = Nothing
   }
   where
+    allCommands = zipWith command [rest | DescList (DescAtom "command" : rest) <- forms] (modelCommands model)
+    restart = find mcRestart allCommands
     -- An actor model's start and handlers run inside an actor; the
     -- abstraction and state invariants read its state between messages.
     actor = not (null [() | DescList [DescAtom "actor", DescAtom "true"] <- forms])
@@ -1689,6 +1703,7 @@ modelPlan model = asActor $ ModelPlan
       | not actor = plan
       | otherwise = plan
           { planStartRun = actorStartCallback (planStartRun plan)
+          , planCrash = Just (actorCrashStep (planStartRun plan) (planStartModel plan) restart)
           , planCommands = [c { mcRun = actorCommandCallback (mcUnit c) (mcRun c) } | c <- planCommands plan]
           , planAbstract = fmap actorStateCallback (planAbstract plan)
           , planInvariants = [(k, if k == "model" then p else actorStateCallback p) | (k, p) <- planInvariants plan] }
@@ -1724,8 +1739,25 @@ modelPlan model = asActor $ ModelPlan
       , mcRun = run
       , mcReference = reference
       , mcWhen = precondition
+      , mcRestart = field "restart" fs == [DescAtom "true"]
       }
     command [] _ = error "invalid command form"
+
+-- | Whether a step index is an actor's injected crash.
+isCrashStep :: ModelPlan -> Int -> Bool
+isCrashStep plan index = index >= length (planCommands plan)
+
+stepName :: ModelPlan -> Int -> String
+stepName plan index = if isCrashStep plan index then "crash" else mcName (planCommands plan !! index)
+
+stepArguments :: ModelPlan -> Int -> [Descriptor]
+stepArguments plan index = if isCrashStep plan index then [] else mcArguments (planCommands plan !! index)
+
+-- | The model state after an injected crash, or ModelInvalid.
+crashModelState :: ModelPlan -> [Scalar] -> SymbolContext -> Scalar -> IO Scalar
+crashModelState plan startArgs symbols state = case planCrash plan of
+  Just crash -> crashModel crash startArgs symbols state
+  Nothing -> throwIO ModelInvalid
 
 admits :: ModelCommand -> [Integer] -> Bool
 admits command indices = and (zipWith needs (mcNeeds command) indices)
@@ -1793,6 +1825,11 @@ simulateFinal plan symbols (startArgs, steps) = do
     Left _ -> pure Nothing
     Right state0 -> do
       let go state _ [] = pure (Just state)
+          go state indices ((index, _) : rest) | isCrashStep plan index = do
+            stepped <- try (crashModelState plan startArgs symbols state)
+            case stepped of
+              Left (_ :: ModelStop) -> pure Nothing
+              Right next -> go next indices rest
           go state indices ((index, args) : rest) = do
             let command = planCommands plan !! index
             if not (admits command indices) then pure Nothing else do
@@ -1811,7 +1848,12 @@ drawIO source draw = do
   pure value
 
 generateRun :: ModelPlan -> IORef Word64 -> Integer -> Integer -> IO ModelRun
-generateRun plan source len size = do
+generateRun plan = generateRunWith False plan
+
+-- | A generated run; with crashes, one step in eight of an actor's run is
+-- an injected crash (drawn right after the command, as on every target).
+generateRunWith :: Bool -> ModelPlan -> IORef Word64 -> Integer -> Integer -> IO ModelRun
+generateRunWith crashes plan source len size = do
   symbols <- newSymbolContext
   startArgs <- mapM (\d -> drawIO source (generateValue (planTable plan) d size)) (planStartArguments plan)
   started <- callModel (planStartModel plan) symbols startArgs
@@ -1823,14 +1865,23 @@ generateRun plan source len size = do
             let allowed = [i | (i, c) <- zip [0 ..] (planCommands plan), admits c indices]
             if null allowed then pure (reverse acc) else do
               pick <- drawIO source (drawBelow (toInteger (length allowed)))
+              crash <- case planCrash plan of
+                Just _ | crashes -> (== 0) <$> drawIO source (drawBelow 8)
+                _ -> pure False
               let index = allowed !! fromInteger pick
                   command = planCommands plan !! index
-              args <- mapM (\d -> drawIO source (generateValue (planTable plan) d size)) (mcArguments command)
-              stepped <- try (stepModel command symbols args state)
-              case stepped of
-                Left ModelInvalid -> go (n - 1) state indices acc
-                Left (ModelRaised _) -> go (n - 1) state indices acc
-                Right (next, _) -> go (n - 1) next (shifted command indices) ((index, args) : acc)
+              if crash then do
+                stepped <- try (crashModelState plan startArgs symbols state)
+                case stepped of
+                  Left (_ :: ModelStop) -> go (n - 1) state indices acc
+                  Right next -> go (n - 1) next indices ((length (planCommands plan), []) : acc)
+              else do
+               args <- mapM (\d -> drawIO source (generateValue (planTable plan) d size)) (mcArguments command)
+               stepped <- try (stepModel command symbols args state)
+               case stepped of
+                 Left ModelInvalid -> go (n - 1) state indices acc
+                 Left (ModelRaised _) -> go (n - 1) state indices acc
+                 Right (next, _) -> go (n - 1) next (shifted command indices) ((index, args) : acc)
       steps <- go len state0 (planStartIndices plan) []
       pure (startArgs, steps)
 
@@ -1848,6 +1899,14 @@ executeRun plan (startArgs, steps) = do
       Just failure -> pure (Just failure)
       Nothing -> do
         let go _ _ [] = pure Nothing
+            go state expected ((index, _) : rest) | isCrashStep plan index = do
+              modifyIORef' stepRef (+ 1)
+              forM_ (planCrash plan) (\crash -> crashSystem crash startArgs symbols state)
+              expected' <- crashModelState plan startArgs symbols expected
+              failure <- checkModelState plan symbols state expected'
+              case failure of
+                Just _ -> pure failure
+                Nothing -> go state expected' rest
             go state expected ((index, args) : rest) = do
               modifyIORef' stepRef (+ 1)
               let command = planCommands plan !! index
@@ -1906,7 +1965,7 @@ runCandidates plan (startArgs, steps) =
   | size <- takeWhile (>= 1) (iterate (`div` 2) (n `div` 2)), begin <- [0, size .. n - 1] ]
   ++ [ (startArgs, take k steps ++ [(index, replace j c args)] ++ drop (k + 1) steps)
      | (k, (index, args)) <- zip [0 ..] steps
-     , (j, (d, arg)) <- zip [0 ..] (zip (mcArguments (planCommands plan !! index)) args)
+     , (j, (d, arg)) <- zip [0 ..] (zip (stepArguments plan index) args)
      , c <- shrinkValue (planTable plan) d arg ]
   ++ [ (replace j c startArgs, steps)
      | (j, (d, arg)) <- zip [0 ..] (zip (planStartArguments plan) startArgs)
@@ -1935,7 +1994,7 @@ describeRun plan (startArgs, steps) =
   let call name args = name ++ "(" ++ joinComma (map renderValue args) ++ ")"
       joinComma [] = ""
       joinComma texts = foldr1 (\a b -> a ++ ", " ++ b) texts
-      parts = call "start" startArgs : [call (mcName (planCommands plan !! i)) args | (i, args) <- steps]
+      parts = call "start" startArgs : [call (stepName plan i) args | (i, args) <- steps]
   in foldr1 (\a b -> a ++ "; " ++ b) parts
 
 -- | Checks the system against its model on generated runs: Nothing, or the
@@ -1957,7 +2016,7 @@ checkModelWith cases maxLength maxShrinks seedOverride model = do
         | c >= cases = pure Nothing
         | otherwise = do
             len <- drawIO source (drawBelow (toInteger maxLength + 1))
-            run <- generateRun plan source len (1 + toInteger (c `mod` 8))
+            run <- generateRunWith True plan source len (1 + toInteger (c `mod` 8))
             failure <- executeRun plan run
             case failure of
               Nothing -> loop (c + 1)
@@ -2292,15 +2351,84 @@ checkModelParallelWith cases repeats maxShrinks threads branchLength seedOverrid
 -- A channel end sent over a channel moves to the receiver. Every command's
 -- call and return are stamped on one counter; the history must linearize
 -- against the model, and every expect must hold, on each of many schedules.
+-- A process that ends, or fails, gives up the ends it still holds (and ends
+-- on their way to it): the other side's receives then fail instead of
+-- waiting, unless written with or else. Every third run crashes one
+-- process of a par at a random point.
 
--- | A channel: side s sends on queue s and receives from queue 1 - s.
-data ScenarioChannel = ScenarioChannel (Chan ScenarioItem) (Chan ScenarioItem)
+-- | A blocking queue with one reader at a time.
+data ScenarioQueue = ScenarioQueue (MVar ([ScenarioItem], [ScenarioItem])) (MVar ())
 
--- | A value or a channel end, in transit.
-data ScenarioItem = ScenarioValue Scalar | ScenarioEnd (ScenarioChannel, Int)
+newScenarioQueue :: IO ScenarioQueue
+newScenarioQueue = ScenarioQueue <$> newMVar ([], []) <*> newEmptyMVar
 
-scenarioQueue :: ScenarioChannel -> Int -> Chan ScenarioItem
-scenarioQueue (ScenarioChannel first second) side = if side == 0 then first else second
+pushQueue :: ScenarioQueue -> ScenarioItem -> IO ()
+pushQueue (ScenarioQueue items signal) item = do
+  modifyMVar items (\(front, back) -> pure ((front, item : back), ()))
+  _ <- tryPutMVar signal ()
+  pure ()
+
+tryPopQueue :: ScenarioQueue -> IO (Maybe ScenarioItem)
+tryPopQueue (ScenarioQueue items _) = modifyMVar items (\(front, back) -> pure (case front of
+  x : rest -> ((rest, back), Just x)
+  [] -> case reverse back of
+    x : rest -> ((rest, []), Just x)
+    [] -> (([], []), Nothing)))
+
+-- | The next item, waiting up to the given microseconds.
+popQueue :: ScenarioQueue -> Int -> IO (Maybe ScenarioItem)
+popQueue queue@(ScenarioQueue _ signal) micros = do
+  item <- tryPopQueue queue
+  case item of
+    Just x -> pure (Just x)
+    Nothing -> do
+      woke <- timeout micros (takeMVar signal)
+      case woke of
+        Nothing -> tryPopQueue queue
+        Just () -> popQueue queue micros
+
+-- | A channel: side s sends on queue s and receives from queue 1 - s; and
+-- whether each side's process has ended.
+data ScenarioChannel = ScenarioChannel ScenarioQueue ScenarioQueue (MVar (Bool, Bool))
+
+-- | A value, a channel end in transit, or the mark that the sender ended.
+data ScenarioItem = ScenarioValue Scalar | ScenarioEnd (ScenarioChannel, Int) | ScenarioGone
+
+newScenarioChannel :: IO ScenarioChannel
+newScenarioChannel = ScenarioChannel <$> newScenarioQueue <*> newScenarioQueue <*> newMVar (False, False)
+
+scenarioQueue :: ScenarioChannel -> Int -> ScenarioQueue
+scenarioQueue (ScenarioChannel first second _) side = if side == 0 then first else second
+
+sideEnded :: (Bool, Bool) -> Int -> Bool
+sideEnded (a, b) side = if side == 0 then a else b
+
+-- | Sends from side; a channel end sent to a process that has ended is
+-- given up.
+scenarioSend :: ScenarioChannel -> Int -> ScenarioItem -> IO ()
+scenarioSend channel@(ScenarioChannel _ _ ended) side item = do
+  stranded <- modifyMVar ended (\flags -> case item of
+    ScenarioEnd end | sideEnded flags (1 - side) -> pure (flags, Just end)
+    _ -> pushQueue (scenarioQueue channel side) item >> pure (flags, Nothing))
+  forM_ stranded (\(c, s) -> scenarioGone c s)
+
+-- | side's process has ended: the other side's receives that find nothing
+-- more fail instead of waiting, and channel ends on their way to side are
+-- given up too.
+scenarioGone :: ScenarioChannel -> Int -> IO ()
+scenarioGone channel@(ScenarioChannel _ _ ended) side = do
+  stranded <- modifyMVar ended (\flags -> if sideEnded flags side then pure (flags, []) else do
+    pushQueue (scenarioQueue channel side) ScenarioGone
+    let drain acc = do
+          item <- tryPopQueue (scenarioQueue channel (1 - side))
+          case item of
+            Nothing -> pure acc
+            Just (ScenarioEnd end) -> drain (end : acc)
+            Just ScenarioGone -> pushQueue (scenarioQueue channel (1 - side)) ScenarioGone >> pure acc
+            Just _ -> drain acc
+    found <- drain []
+    pure (if side == 0 then (True, snd flags) else (fst flags, True), reverse found))
+  mapM_ (\(c, s) -> scenarioGone c s) stranded
 
 -- | The names an act list sends, receives or sends away, with nested pars.
 actsChannels :: [Descriptor] -> [String]
@@ -2311,8 +2439,36 @@ actsChannels = concatMap names
         DescList [DescAtom "var", x] -> [descriptorName x]
         _ -> []
       DescList (DescAtom "receive" : c : _) -> [descriptorName c]
-      DescList (DescAtom "par" : branches) -> concat [actsChannels acts | DescList (_ : acts) <- branches]
+      DescList [DescAtom "receiveor", c, _, DescList (_ : handler)] -> descriptorName c : actsChannels handler
+      DescList (DescAtom "par" : branches) -> concat [actsChannels (branchActs b) | b <- branches]
       _ -> []
+
+-- | A par branch's acts (numbered branches carry their number first).
+branchActs :: Descriptor -> [Descriptor]
+branchActs form = case form of
+  DescList (_ : DescInteger _ : acts) -> acts
+  DescList (_ : acts) -> acts
+  _ -> []
+
+-- | Numbers every par branch, outermost and first first (not inside or
+-- else), as (process n acts...); and how many acts each has.
+numberBranches :: [Descriptor] -> ([Descriptor], [Int])
+numberBranches body = let (acts, (_, lengths)) = goActs body (0, []) in (acts, reverse lengths)
+  where
+    goActs [] st = ([], st)
+    goActs (act : rest) st =
+      let (act', st') = goAct act st
+          (rest', st'') = goActs rest st'
+      in (act' : rest', st'')
+    goAct (DescList (DescAtom "par" : branches)) st =
+      let step (acc, s) (DescList (h : acts)) =
+            let (n, ls) = s
+                (acts', s') = goActs acts (n + 1, length acts : ls)
+            in (acc ++ [DescList (h : DescInteger (toInteger n) : acts')], s')
+          step (acc, s) other = (acc ++ [other], s)
+          (branches', st') = foldl step ([], st) branches
+      in (DescList (DescAtom "par" : branches'), st')
+    goAct other st = (other, st)
 
 scenarioConstant :: Descriptor -> Scalar
 scenarioConstant form = case form of
@@ -2327,18 +2483,28 @@ type ScenarioCall = (ModelCommand, [Scalar], Scalar, Int, Int)
 
 -- | The scenario's title and its failure on one schedule, if any.
 runScenario :: Model -> String -> Word64 -> IO (String, Maybe String)
-runScenario model spec shake = do
+runScenario model spec shake = runScenarioWith False model spec shake
+
+-- | runScenario, with crash: one process of a par crashes before a random act.
+runScenarioWith :: Bool -> Model -> String -> Word64 -> IO (String, Maybe String)
+runScenarioWith crash model spec shake = do
   let forms = readDescriptor spec
       title = case forms of
         DescList (_ : t : _) : _ -> descriptorName t
         _ -> error "invalid scenario spec"
       names = concat (take 1 [map descriptorName rest | DescList (DescAtom "channels" : rest) <- forms])
-      body = concat (take 1 [rest | DescList (DescAtom "process" : rest) <- forms])
+      (body, lengths) = numberBranches (concat (take 1 [rest | DescList (DescAtom "process" : rest) <- forms]))
       plan = modelPlan model
       commandNamed n = case find ((== n) . mcName) (planCommands plan) of
         Just command -> command
         Nothing -> error ("unknown command " ++ n)
-  channels <- forM names $ \n -> (,) n <$> (ScenarioChannel <$> newChan <*> newChan)
+  victim <- if crash && not (null lengths) then do
+      chooser <- newIORef (shake `xor` 0xC3A5C85C97CB3127)
+      branch <- drawIO chooser (drawBelow (toInteger (length lengths)))
+      at <- drawIO chooser (drawBelow (toInteger (lengths !! fromInteger branch) + 1))
+      pure (Just (fromInteger branch :: Int, fromInteger at :: Int))
+    else pure Nothing
+  channels <- forM names $ \n -> (,) n <$> newScenarioChannel
   symbols <- newSymbolContext
   let startArgs = map (minimalValue (planTable plan)) (planStartArguments plan)
   outcome <- try $ do
@@ -2348,7 +2514,7 @@ runScenario model spec shake = do
     history <- newIORef ([] :: [ScenarioCall])
     failures <- newIORef ([] :: [String])
     let tick = atomicModifyIORef' clock (\c -> (c + 1, c + 1))
-        failWith message = atomicModifyIORef' failures (\fs -> (fs ++ [message], ()))
+        failWith message = atomicModifyIORef' failures (\fs -> (fs ++ [message], ())) >> pure False
         bind name value pairs = (name, value) : filter ((/= name) . fst) pairs
         valueOf env operand = case operand of
           DescList [DescAtom "var", x] -> case lookup (descriptorName x) env of
@@ -2358,15 +2524,31 @@ runScenario model spec shake = do
         endOf ends c = case lookup (descriptorName c) ends of
           Just end -> end
           Nothing -> error ("no end of channel " ++ descriptorName c)
-        process acts env0 ends0 source = do
+        -- True when the process finished, False when it failed; either way
+        -- the ends it still holds are given up.
+        process acts env0 ends0 source identity = do
+          held <- newIORef ends0
+          done <- (steps acts env0 ends0 source identity held
+            `catch` \(e :: SomeException) -> failWith ("raised error: " ++ exceptionText e))
+            `finally` (readIORef held >>= mapM_ (\(_, (c, s)) -> scenarioGone c s))
+          pure done
+        steps acts env0 ends0 source identity held = do
           own <- newSymbolContext
-          let go [] _ _ = pure ()
-              go (act : rest) env ends = do
+          let crashesAt index = case (victim, identity) of
+                (Just v, Just i) -> v == (i, index)
+                _ -> False
+              go index [] _ ends = writeIORef held ends >> pure (not (crashesAt index))
+              go index (act : rest) env ends = do
+                writeIORef held ends
                 failed <- not . null <$> readIORef failures
-                if failed then pure () else case act of
+                if failed || crashesAt index then pure False else case act of
                   DescList (DescAtom "call" : nameForm : bound : operands) -> do
                     let command = commandNamed (descriptorName nameForm)
-                        args = map (valueOf env) operands
+                        -- An integer constant takes the argument's own type.
+                        typed d value = case (d, value) of
+                          (DescList (DescAtom "int" : t : _), SInteger _ n) -> SInteger (descriptorName t) n
+                          _ -> value
+                        args = zipWith typed (mcArguments command ++ repeat DescNone) (map (valueOf env) operands)
                         position = mcState command
                         full = take position args ++ [state] ++ drop position args
                     perturb source
@@ -2386,7 +2568,7 @@ runScenario model spec shake = do
                               DescNone -> env
                               DescAtom "_" -> env
                               _ -> bind (descriptorName bound) result env
-                        go rest env' ends
+                        go (index + 1) rest env' ends
                   DescList [DescAtom "send", c, operand] -> do
                     let (channel, side) = endOf ends c
                         (item, ends') = case operand of
@@ -2394,37 +2576,58 @@ runScenario model spec shake = do
                             (ScenarioEnd end, filter ((/= descriptorName x) . fst) ends)
                           _ -> (ScenarioValue (valueOf env operand), ends)
                     perturb source
-                    writeChan (scenarioQueue channel side) item
-                    go rest env ends'
-                  DescList [DescAtom "receive", c, x] -> do
+                    writeIORef held ends'
+                    scenarioSend channel side item
+                    go (index + 1) rest env ends'
+                  DescList (DescAtom kind : c : x : handler) | kind == "receive" || kind == "receiveor" -> do
                     let (channel, side) = endOf ends c
-                    got <- timeout 5000000 (readChan (scenarioQueue channel (1 - side)))
+                        queue = scenarioQueue channel (1 - side)
+                    got <- popQueue queue 5000000
                     case got of
                       Nothing -> failWith ("a receive on " ++ descriptorName c
                         ++ " waited too long: the processes are blocked")
-                      Just (ScenarioEnd end) -> go rest env (bind (descriptorName x) end ends)
-                      Just (ScenarioValue value) -> go rest (bind (descriptorName x) value env) ends
+                      -- The other process ended: or else runs instead of the
+                      -- rest; without it, this process fails too.
+                      Just ScenarioGone -> do
+                        pushQueue queue ScenarioGone
+                        case handler of
+                          [DescList (_ : handlerActs)] | kind == "receiveor" -> do
+                            let ends' = filter ((/= descriptorName c) . fst) ends
+                            writeIORef held ends'
+                            steps handlerActs env ends' source Nothing held
+                          _ -> pure False
+                      Just (ScenarioEnd end) -> go (index + 1) rest env (bind (descriptorName x) end ends)
+                      Just (ScenarioValue value) -> go (index + 1) rest (bind (descriptorName x) value env) ends
                   DescList (DescAtom "par" : branchForms) -> do
-                    let branches = [acts | DescList (_ : acts) <- branchForms]
+                    let branches = [ case form of
+                                       DescList (_ : DescInteger n : acts) -> (Just (fromInteger n), acts)
+                                       _ -> (Nothing, branchActs form)
+                                   | form <- branchForms ]
                         addUser owned (name, i) = case lookup name owned of
                           Nothing -> owned ++ [(name, [i])]
                           Just users
                             | i `elem` users -> owned
                             | otherwise -> [(n, if n == name then us ++ [i] else us) | (n, us) <- owned]
-                        owned = foldl addUser [] [(name, i) | (i, b) <- zip [0 :: Int ..] branches, name <- actsChannels b]
+                        owned = foldl addUser [] [(name, i) | (i, (_, b)) <- zip [0 :: Int ..] branches, name <- actsChannels b]
                         mine i = [ (name, end) | (name, users) <- owned, i `elem` users
                                  , end <- case lookup name ends of
-                                     Just held -> [held]
+                                     Just held' -> [held']
                                      Nothing -> case lookup name channels of
                                        Just channel -> [(channel, length (takeWhile (/= i) users))]
                                        Nothing -> [] ]
-                    dones <- forM (zip [0 :: Int ..] branches) $ \(i, b) -> do
-                      done <- newEmptyMVar
+                        -- Ends handed to the branches are theirs now.
+                        ends' = filter ((`notElem` map fst owned) . fst) ends
+                    writeIORef held ends'
+                    dones <- forM (zip [0 :: Int ..] branches) $ \(i, (n, b)) -> do
+                      finished <- newEmptyMVar
                       branchSource <- newIORef (shake `xor` (fromIntegral (i + 1) * 0x9E3779B97F4A7C15))
-                      _ <- forkIO (process b env (mine i) branchSource `finally` putMVar done ())
-                      pure done
-                    mapM_ takeMVar dones
-                    go rest env ends
+                      _ <- forkIO (do
+                        ok <- process b env (mine i) branchSource n `catch` \(_ :: SomeException) -> pure False
+                        putMVar finished ok)
+                      pure finished
+                    results <- mapM takeMVar dones
+                    -- A failed branch fails the process that ran the par.
+                    if and results then go (index + 1) rest env ends' else pure False
                   DescList [DescAtom "expect", x, c] -> do
                     let name = descriptorName x
                         wanted = scenarioConstant c
@@ -2432,14 +2635,15 @@ runScenario model spec shake = do
                     if maybe True (\a -> compareValues a wanted /= Right EQ) actual
                       then failWith ("expect " ++ name ++ " = " ++ renderValue wanted ++ " failed: "
                         ++ name ++ " is " ++ maybe "None" renderValue actual)
-                      else go rest env ends
+                      else go (index + 1) rest env ends
                   _ -> error ("unknown scenario act " ++ show act)
-          go acts env0 ends0 `catch` \(e :: SomeException) -> failWith ("raised error: " ++ exceptionText e)
+          go (0 :: Int) acts env0 ends0
     root <- newIORef shake
-    process body [] [] root
+    finished <- process body [] [] root Nothing
     found <- readIORef failures
     case found of
-      failure : _ -> pure (Just failure)
+      failure : _ -> pure (Just (failure ++ (if victim /= Nothing then " (with a process crashed)" else "")))
+      [] | not finished && victim == Nothing -> pure (Just "a process failed")
       [] -> do
         final <- case planAbstract plan of
           Nothing -> pure Nothing
@@ -2500,7 +2704,8 @@ checkScenario model spec = do
         | run >= 30 = pure Nothing
         | otherwise = do
             shake <- drawIO source (Draw splitMix64)
-            (title, failure) <- runScenario model spec shake
+            -- Every third run crashes one process of a par at a random point.
+            (title, failure) <- runScenarioWith (run `mod` 3 == 2) model spec shake
             case failure of
               Just message -> pure (Just ("scenario " ++ title ++ " fails: " ++ message))
               Nothing -> loop (run + 1)
@@ -2509,69 +2714,555 @@ checkScenario model spec = do
 -- Actors. An actor owns a state and handles one message at a time, in the
 -- order they arrive. It is not a thread: a message sent to an idle actor
 -- forks a short-lived worker that drains its mailbox and then stops, so an
--- idle actor costs only its state and queue.
+-- idle actor costs only its state and queue. A handler that throws crashes
+-- the actor: the caller gets ActorCrashed, and a supervised actor restarts
+-- in place (keeping its address and the messages waiting for it) while any
+-- other stops.
 
 -- | A message sent to an actor (or mailbox) that has stopped.
 data ActorStopped = ActorStopped deriving Show
 instance Exception ActorStopped
 
-data Actor s = Actor (IORef s) (MVar (ActorBox s))
+-- | A handler failed, so the actor crashed; the cause is what it threw.
+newtype ActorCrashed = ActorCrashed SomeException deriving Show
+instance Exception ActorCrashed
+
+-- | Why an actor or supervisor exited, as its monitors hear it.
+data Exit = Crashed String | Stopped deriving (Eq, Show)
+
+-- | What a message does to the actor: the next state, or a crash with its
+-- cause and the crash it started from (so a crash crosses each link once).
+data Outcome s = Next s | Crash String Integer
+
+-- | A queued message, and how to refuse it once the actor has stopped.
+data Message s = Message (s -> IO (Outcome s)) (IO ())
+
+data Actor s = Actor
+  { actorRef :: IORef s
+  , actorBox :: MVar (ActorBox s)
+  , actorRestartWith :: Maybe (s -> IO s)
+  , actorSupervisor :: IORef (Maybe Supervisor)
+  , actorMonitors :: IORef [Exit -> IO ()]
+  , actorLinks :: IORef [String -> Integer -> IO ()]
+  , actorSeen :: IORef [Integer]
+  , actorKey :: Unique
+  }
 
 -- | Queued messages (front, then back reversed), whether a worker is
 -- draining them, and whether the actor has stopped.
-data ActorBox s = ActorBox [s -> IO s] [s -> IO s] Bool Bool
+data ActorBox s = ActorBox [Message s] [Message s] Bool Bool
 
--- | An actor owning the given state.
+crashCounter :: IORef Integer
+crashCounter = unsafePerformIO (newIORef 0)
+{-# NOINLINE crashCounter #-}
+
+nextCrash :: IO Integer
+nextCrash = atomicModifyIORef' crashCounter (\n -> (n + 1, n + 1))
+
+-- | An actor owning the given state; a crash stops it.
 newActor :: s -> IO (Actor s)
-newActor state = Actor <$> newIORef state <*> newMVar (ActorBox [] [] False False)
+newActor = newActorWith Nothing
 
-postActor :: Actor s -> (s -> IO s) -> IO ()
-postActor actor@(Actor _ box) message = do
-  start <- modifyMVar box (\(ActorBox front back draining stopped) ->
+-- | An actor whose state after a crash is restart (last state), so a
+-- supervisor can restart it.
+newRestartableActor :: (s -> IO s) -> s -> IO (Actor s)
+newRestartableActor restart = newActorWith (Just restart)
+
+newActorWith :: Maybe (s -> IO s) -> s -> IO (Actor s)
+newActorWith restart state = Actor <$> newIORef state <*> newMVar (ActorBox [] [] False False) <*> pure restart
+  <*> newIORef Nothing <*> newIORef [] <*> newIORef [] <*> newIORef [] <*> newUnique
+
+postActor :: Actor s -> Message s -> IO ()
+postActor actor message = do
+  start <- modifyMVar (actorBox actor) (\(ActorBox front back draining stopped) ->
     if stopped then throwIO ActorStopped
     else pure (ActorBox front (message : back) True stopped, not draining))
   if start then () <$ forkIO (drainActor actor) else pure ()
 
+-- | Posts a message, ignoring an actor that has stopped.
+postQuietly :: Actor s -> Message s -> IO ()
+postQuietly actor message = postActor actor message `catch` \ActorStopped -> pure ()
+
 drainActor :: Actor s -> IO ()
-drainActor (Actor ref box) = loop
+drainActor actor = loop
   where
     loop = do
-      next <- modifyMVar box (\(ActorBox front back _ stopped) -> pure (case front of
+      next <- modifyMVar (actorBox actor) (\(ActorBox front back _ stopped) -> pure (case front of
         m : rest -> (ActorBox rest back True stopped, Just m)
         [] -> case reverse back of
           m : rest -> (ActorBox rest [] True stopped, Just m)
           [] -> (ActorBox [] [] False stopped, Nothing)))
       case next of
         Nothing -> pure ()
-        Just message -> do
-          readIORef ref >>= message >>= writeIORef ref
+        Just (Message run _) -> do
+          outcome <- readIORef (actorRef actor) >>= run
+          case outcome of
+            Next state -> writeIORef (actorRef actor) state
+            Crash cause origin -> actorCrashed actor cause origin
           loop
 
+-- | On the actor's turn: restart or stop, then tell monitors and links.
+actorCrashed :: Actor s -> String -> Integer -> IO ()
+actorCrashed actor cause origin = do
+  modifyIORef' (actorSeen actor) (origin :)
+  supervisor <- readIORef (actorSupervisor actor)
+  restarted <- case (supervisor, actorRestartWith actor) of
+    (Just s, Just _) -> supervisorChildCrashed s (actorChild actor) cause
+    _ -> pure False
+  if restarted then pure () else haltActor actor
+  readIORef (actorMonitors actor) >>= mapM_ ($ Crashed cause)
+  readIORef (actorLinks actor) >>= mapM_ (\crash -> crash cause origin)
+
+-- | On the actor's turn: the restarted state from the last one; a restart
+-- that throws stops the actor.
+restartNow :: Actor s -> IO ()
+restartNow actor = case actorRestartWith actor of
+  Nothing -> haltActor actor
+  Just restart -> do
+    outcome <- try (readIORef (actorRef actor) >>= restart >>= evaluate)
+    case outcome of
+      Right state -> writeIORef (actorRef actor) state
+      Left (_ :: SomeException) -> haltActor actor
+
+-- | A restart a supervisor asks of a sibling, in mailbox order.
+restartLater :: Actor s -> IO ()
+restartLater actor = case actorRestartWith actor of
+  Nothing -> pure ()
+  Just restart -> postQuietly actor (Message (\state -> do
+    outcome <- try (restart state >>= evaluate)
+    pure (either (\e -> Crash (exceptionText e) 0) Next outcome)) (pure ()))
+
+-- | Stops the actor; messages still waiting fail with ActorStopped.
+haltActor :: Actor s -> IO ()
+haltActor actor = do
+  waiting <- modifyMVar (actorBox actor) (\(ActorBox front back draining _) ->
+    pure (ActorBox [] [] draining True, front ++ reverse back))
+  mapM_ (\(Message _ refuse) -> refuse) waiting
+
 -- | Runs handler state -> (reply, next state) in turn and returns the
--- reply, rethrowing what the handler threw (the state is then unchanged).
+-- reply. A handler that throws crashes the actor, and callActor throws
+-- ActorCrashed.
 callActor :: Actor s -> (s -> IO (r, s)) -> IO r
 callActor actor handler = do
   reply <- newEmptyMVar
-  postActor actor (\state -> do
+  postActor actor (Message (\state -> do
     outcome <- try (handler state >>= \(r, next) -> next `seq` pure (r, next))
     case outcome of
-      Left e -> putMVar reply (Left (e :: SomeException)) >> pure state
-      Right (r, next) -> putMVar reply (Right r) >> pure next)
+      Left e -> do
+        origin <- nextCrash
+        putMVar reply (Left (toException (ActorCrashed e)))
+        pure (Crash (exceptionText e) origin)
+      Right (r, next) -> putMVar reply (Right r) >> pure (Next next))
+    (putMVar reply (Left (toException ActorStopped))))
   takeMVar reply >>= either throwIO pure
 
--- | Queues handler state -> (reply, next state) without waiting.
+-- | Queues handler state -> (reply, next state) without waiting; a handler
+-- that throws crashes the actor.
 castActor :: Actor s -> (s -> IO (r, s)) -> IO ()
-castActor actor handler = postActor actor (\state -> do
-  outcome <- try (handler state)
-  pure (either (\e -> const state (e :: SomeException)) snd outcome))
+castActor actor handler = postActor actor (Message (\state -> do
+  outcome <- try (handler state >>= \(r, next) -> next `seq` pure (r, next))
+  case outcome of
+    Left e -> Crash (exceptionText (e :: SomeException)) <$> nextCrash
+    Right (_, next) -> pure (Next next)) (pure ()))
+
+-- | Crashes the actor once the messages before this one are handled, as a
+-- failing handler would: for testing supervision.
+crashActor :: Actor s -> String -> IO ()
+crashActor actor cause = do
+  origin <- nextCrash
+  reply <- newEmptyMVar
+  postActor actor (Message (\_ -> putMVar reply (Right ()) >> pure (Crash cause origin))
+    (putMVar reply (Left (toException ActorStopped))))
+  takeMVar reply >>= either throwIO pure
+
+-- | Replaces the state by restart (last state) between messages, as a
+-- supervised restart does (crash injection in model runs).
+restartActor :: Actor s -> (s -> IO s) -> IO ()
+restartActor actor restart = callActor actor (\state -> (,) () <$> restart state)
 
 -- | The state after every message sent before this call.
 actorState :: Actor s -> IO s
 actorState actor = callActor actor (\s -> pure (s, s))
 
--- | Refuses further messages; those already queued still run.
+-- | Calls notify with Crashed cause after each crash, and Stopped once the
+-- actor stops.
+monitorActor :: Actor s -> (Exit -> IO ()) -> IO ()
+monitorActor actor notify = modifyIORef' (actorMonitors actor) (++ [notify])
+
+-- | Links two actors: when either crashes, the other crashes too.
+linkActors :: Actor a -> Actor b -> IO ()
+linkActors = link
+
+linkCrash :: Actor s -> String -> Integer -> IO ()
+linkCrash actor cause origin = do
+  seen <- readIORef (actorSeen actor)
+  if origin `elem` seen then pure ()
+    -- Checked again on the actor's turn: another link may have brought the
+    -- same crash first.
+    else postQuietly actor (Message (\state -> do
+      again <- readIORef (actorSeen actor)
+      pure (if origin `elem` again then Next state else Crash cause origin)) (pure ()))
+
+-- | Refuses further messages; those already queued still run. A permanent
+-- child of a supervisor restarts instead.
 stopActor :: Actor s -> IO ()
-stopActor (Actor _ box) = modifyMVar box (\(ActorBox front back draining _) -> pure (ActorBox front back draining True, ()))
+stopActor actor = do
+  supervisor <- readIORef (actorSupervisor actor)
+  restarted <- maybe (pure False) (\s -> supervisorChildStopped s (actorChild actor)) supervisor
+  if restarted then pure () else do
+    already <- modifyMVar (actorBox actor) (\(ActorBox front back draining stopped) ->
+      pure (ActorBox front back draining True, stopped))
+    if already then pure () else readIORef (actorMonitors actor) >>= mapM_ ($ Stopped)
+
+-- Supervision.
+
+data SupervisionStrategy = OneForOne | OneForAll | RestForOne deriving (Eq, Show)
+data Lifetime = Permanent | Transient | Temporary deriving (Eq, Show)
+
+-- | What a supervisor needs of a child, actor or supervisor.
+data SupervisedChild = SupervisedChild
+  { childKey :: Unique
+  , childRestartNow :: IO ()
+  , childRestartLater :: IO ()
+  , childHalt :: IO ()
+  , childStop :: IO ()
+  , childAdopt :: Maybe Supervisor -> IO ()
+  }
+
+actorChild :: Actor s -> SupervisedChild
+actorChild actor = SupervisedChild (actorKey actor) (restartNow actor) (restartLater actor)
+  (haltActor actor) (stopActor actor) (writeIORef (actorSupervisor actor))
+
+supervisorChild :: Supervisor -> SupervisedChild
+supervisorChild s = SupervisedChild (supervisorKey s) (pure ()) (supervisorRestartLater s)
+  (stopSupervisor s) (stopSupervisor s) (writeIORef (supervisorParent s))
+
+-- | Starts children (actors or supervisors) and restarts them after a
+-- crash. OneForOne restarts the child that crashed, OneForAll every child,
+-- RestForOne it and those added after it. A Permanent child restarts after
+-- a crash or a stop, a Transient one only after a crash, a Temporary one
+-- never. More restarts than allowed within the period is the supervisor's
+-- own crash: its supervisor restarts all of its children, or, at the top,
+-- every child stops.
+data Supervisor = Supervisor
+  { supervisorStrategy :: SupervisionStrategy
+  , supervisorMaxRestarts :: Int
+  , supervisorPeriodMicros :: Integer
+  , supervisorLock :: MVar ()
+  , supervisorChildren :: IORef [(SupervisedChild, Lifetime)]
+  , supervisorRestarts :: IORef [Word64]
+  , supervisorParent :: IORef (Maybe Supervisor)
+  , supervisorStopped :: IORef Bool
+  , supervisorMonitors :: IORef [Exit -> IO ()]
+  , supervisorKey :: Unique
+  }
+
+-- | A supervisor with a strategy, allowing at most so many restarts within
+-- a period in microseconds.
+newSupervisor :: SupervisionStrategy -> Int -> Integer -> IO Supervisor
+newSupervisor strategy maxRestarts period = Supervisor strategy maxRestarts period <$> newMVar ()
+  <*> newIORef [] <*> newIORef [] <*> newIORef Nothing <*> newIORef False <*> newIORef [] <*> newUnique
+
+-- | Adds a started child.
+supervise :: Supervisor -> SupervisedChild -> Lifetime -> IO ()
+supervise s child lifetime = withMVar' (supervisorLock s) $ do
+  childAdopt child (Just s)
+  modifyIORef' (supervisorChildren s) (++ [(child, lifetime)])
+
+-- | Adds a started actor.
+superviseActor :: Supervisor -> Actor a -> Lifetime -> IO ()
+superviseActor s actor = supervise s (actorChild actor)
+
+-- | Adds a started supervisor.
+superviseSupervisor :: Supervisor -> Supervisor -> Lifetime -> IO ()
+superviseSupervisor s child = supervise s (supervisorChild child)
+
+withMVar' :: MVar () -> IO a -> IO a
+withMVar' lock action = modifyMVar lock (\() -> (,) () <$> action)
+
+allowRestart :: Supervisor -> IO Bool
+allowRestart s = do
+  now <- getMonotonicTimeNSec
+  let window = fromInteger (supervisorPeriodMicros s * 1000)
+  recent <- filter (\t -> now - t <= window) <$> readIORef (supervisorRestarts s)
+  if length recent >= supervisorMaxRestarts s
+    then writeIORef (supervisorRestarts s) recent >> pure False
+    else writeIORef (supervisorRestarts s) (recent ++ [now]) >> pure True
+
+-- | Under the lock: the children to restart for a child's crash, or
+-- Nothing when the supervisor gives up.
+restarting :: Supervisor -> Unique -> String -> IO (Maybe [SupervisedChild])
+restarting s key cause = do
+  allowed <- allowRestart s
+  children <- readIORef (supervisorChildren s)
+  if allowed then pure (Just (case supervisorStrategy s of
+      OneForOne -> [c | (c, _) <- children, childKey c == key]
+      OneForAll -> map fst children
+      RestForOne -> map fst (dropWhile ((/= key) . childKey . fst) children)))
+  else do
+    parent <- readIORef (supervisorParent s)
+    escalated <- maybe (pure False) (\p -> supervisorChildFailed p (supervisorChild s) cause) parent
+    if escalated
+      then writeIORef (supervisorRestarts s) [] >> pure (Just (map fst children))
+      else failSupervisor s key cause >> pure Nothing
+
+-- | The child's entry, unless the supervisor stopped; a Temporary child is
+-- dropped and gets nothing.
+entryOf :: Supervisor -> Unique -> IO (Maybe Lifetime)
+entryOf s key = do
+  stopped <- readIORef (supervisorStopped s)
+  children <- readIORef (supervisorChildren s)
+  case lookup key [(childKey c, l) | (c, l) <- children] of
+    Just lifetime | not stopped -> pure (Just lifetime)
+    _ -> pure Nothing
+
+dropChild :: Supervisor -> Unique -> IO ()
+dropChild s key = modifyIORef' (supervisorChildren s) (filter ((/= key) . childKey . fst))
+
+-- | On the child's turn: True when it restarts now.
+supervisorChildCrashed :: Supervisor -> SupervisedChild -> String -> IO Bool
+supervisorChildCrashed s child cause = do
+  group <- withMVar' (supervisorLock s) $ do
+    entry <- entryOf s (childKey child)
+    case entry of
+      Nothing -> pure Nothing
+      Just Temporary -> dropChild s (childKey child) >> pure Nothing
+      Just _ -> restarting s (childKey child) cause
+  case group of
+    Nothing -> pure False
+    Just children -> do
+      mapM_ childRestartLater [c | c <- children, childKey c /= childKey child]
+      childRestartNow child
+      pure True
+
+-- | A child supervisor gave up: True when it may restart its children.
+supervisorChildFailed :: Supervisor -> SupervisedChild -> String -> IO Bool
+supervisorChildFailed s child cause = do
+  group <- withMVar' (supervisorLock s) $ do
+    entry <- entryOf s (childKey child)
+    case entry of
+      Nothing -> pure Nothing
+      Just Temporary -> dropChild s (childKey child) >> pure Nothing
+      Just _ -> restarting s (childKey child) cause
+  case group of
+    Nothing -> pure False
+    Just children -> do
+      mapM_ childRestartLater [c | c <- children, childKey c /= childKey child]
+      pure True
+
+-- | True when a stopped child is Permanent and restarts instead.
+supervisorChildStopped :: Supervisor -> SupervisedChild -> IO Bool
+supervisorChildStopped s child = do
+  group <- withMVar' (supervisorLock s) $ do
+    entry <- entryOf s (childKey child)
+    case entry of
+      Just Permanent -> restarting s (childKey child) "stopped"
+      Just _ -> dropChild s (childKey child) >> pure Nothing
+      Nothing -> pure Nothing
+  case group of
+    Nothing -> pure False
+    Just children -> mapM_ childRestartLater children >> pure True
+
+-- | Under the lock: every child but the one crashing (which stops itself)
+-- stops, and so does the supervisor.
+failSupervisor :: Supervisor -> Unique -> String -> IO ()
+failSupervisor s crashed cause = do
+  children <- readIORef (supervisorChildren s)
+  writeIORef (supervisorChildren s) []
+  writeIORef (supervisorStopped s) True
+  forM_ (reverse children) $ \(c, _) -> do
+    childAdopt c Nothing
+    if childKey c == crashed then pure () else childHalt c
+  readIORef (supervisorMonitors s) >>= mapM_ ($ Crashed cause)
+
+-- | Restarted by its own supervisor: every child restarts.
+supervisorRestartLater :: Supervisor -> IO ()
+supervisorRestartLater s = do
+  children <- withMVar' (supervisorLock s) $ do
+    writeIORef (supervisorRestarts s) []
+    readIORef (supervisorChildren s)
+  mapM_ (childRestartLater . fst) children
+
+-- | Calls notify with Crashed cause when it passes its restart limit, and
+-- Stopped once stopped.
+monitorSupervisor :: Supervisor -> (Exit -> IO ()) -> IO ()
+monitorSupervisor s notify = modifyIORef' (supervisorMonitors s) (++ [notify])
+
+-- | Stops every child, last added first, without restarting them.
+stopSupervisor :: Supervisor -> IO ()
+stopSupervisor s = do
+  children <- withMVar' (supervisorLock s) $ do
+    stopped <- readIORef (supervisorStopped s)
+    if stopped then pure Nothing else do
+      writeIORef (supervisorStopped s) True
+      children <- readIORef (supervisorChildren s)
+      writeIORef (supervisorChildren s) []
+      pure (Just children)
+  case children of
+    Nothing -> pure ()
+    Just cs -> do
+      forM_ (reverse cs) $ \(c, _) -> childAdopt c Nothing >> childStop c
+      readIORef (supervisorMonitors s) >>= mapM_ ($ Stopped)
+
+-- | Anything a supervisor can supervise: actors, supervisors, and the
+-- generated typed actors and supervisors.
+class Supervisable t where
+  asChild :: t -> SupervisedChild
+
+instance Supervisable (Actor s) where
+  asChild = actorChild
+
+instance Supervisable Supervisor where
+  asChild = supervisorChild
+
+-- | Adds a started child (an actor or a supervisor) to a supervisor.
+superviseChild :: Supervisable t => Supervisor -> t -> Lifetime -> IO ()
+superviseChild s child = supervise s (asChild child)
+
+-- | Where a crash arrives for an actor that is linked to: its links, and
+-- how to crash it.
+data LinkPoint = LinkPoint (IORef [String -> Integer -> IO ()]) (String -> Integer -> IO ())
+
+-- | Anything that can be linked: actors and the generated typed actors.
+class Linkable t where
+  linkPoint :: t -> LinkPoint
+
+instance Linkable (Actor s) where
+  linkPoint actor = LinkPoint (actorLinks actor) (linkCrash actor)
+
+-- | Links two actors: when either crashes, the other crashes too.
+link :: (Linkable a, Linkable b) => a -> b -> IO ()
+link a b = do
+  let LinkPoint linksA crashA = linkPoint a
+      LinkPoint linksB crashB = linkPoint b
+  modifyIORef' linksA (++ [crashB])
+  modifyIORef' linksB (++ [crashA])
+
+-- | Anything whose exits can be watched.
+class Monitorable t where
+  -- | Calls notify with Crashed cause after each crash (for a supervisor,
+  -- when it passes its restart limit), and Stopped once it stops.
+  monitor :: t -> (Exit -> IO ()) -> IO ()
+
+instance Monitorable (Actor s) where
+  monitor = monitorActor
+
+instance Monitorable Supervisor where
+  monitor = monitorSupervisor
+
+-- | The runtime's own check of crashes, links, monitors and supervision:
+-- every strategy, lifetime, the restart limit and escalation. Nothing, or
+-- the first behaviour that differs.
+checkSupervision :: IO (Maybe String)
+checkSupervision = do
+  outcome <- try checks
+  pure (case outcome of
+    Right () -> Nothing
+    Left (ErrorCall message) -> Just message)
+  where
+    counter = newRestartableActor (\_ -> pure (0 :: Int)) 0
+    bump a = callActor a (\s -> pure (s + 1, s + 1))
+    failing a = do
+      outcome <- try (callActor a (\s -> if s >= 0 then throwIO (ErrorCall "a failing handler") else pure ((), s)))
+      case outcome of
+        Left (ActorCrashed _) -> pure ()
+        Right () -> throwIO (ErrorCall "a failing handler did not throw ActorCrashed")
+    stopped a what = do
+      outcome <- try (actorState a)
+      case outcome of
+        Left ActorStopped -> pure ()
+        Right _ -> throwIO (ErrorCall (what ++ " should have stopped"))
+    expect :: (Eq a, Show a) => a -> a -> String -> IO ()
+    expect actual wanted what = if actual == wanted then pure ()
+      else throwIO (ErrorCall (what ++ ": got " ++ show actual ++ ", expected " ++ show wanted))
+    under s lifetime = do
+      a <- counter
+      superviseActor s a lifetime
+      pure a
+    waitFor condition = loop (100 :: Int)
+      where loop n = do
+              ok <- condition
+              if ok || n <= 0 then pure () else threadDelay 10000 >> loop (n - 1)
+    checks = do
+      a <- counter
+      _ <- bump a
+      failing a
+      stopped a "an unsupervised actor that crashed"
+      s1 <- newSupervisor OneForOne 3 5000000
+      x1 <- under s1 Permanent
+      y1 <- under s1 Permanent
+      _ <- bump x1 >> bump y1 >> bump y1
+      failing x1
+      states1 <- (,) <$> actorState x1 <*> actorState y1
+      expect states1 (0, 2) "one for one restarts only the crashed child"
+      s2 <- newSupervisor OneForAll 3 5000000
+      x2 <- under s2 Permanent
+      y2 <- under s2 Permanent
+      _ <- bump x2 >> bump y2
+      failing x2
+      states2 <- (,) <$> actorState x2 <*> actorState y2
+      expect states2 (0, 0) "one for all restarts every child"
+      s3 <- newSupervisor RestForOne 3 5000000
+      x3 <- under s3 Permanent
+      y3 <- under s3 Permanent
+      z3 <- under s3 Permanent
+      _ <- bump x3 >> bump y3 >> bump z3
+      failing y3
+      states3 <- (,,) <$> actorState x3 <*> actorState y3 <*> actorState z3
+      expect states3 (1, 0, 0) "rest for one restarts the child and later ones"
+      s4 <- newSupervisor OneForOne 3 5000000
+      t4 <- under s4 Temporary
+      failing t4
+      stopped t4 "a temporary child that crashed"
+      s5 <- newSupervisor OneForOne 3 5000000
+      p5 <- under s5 Permanent
+      q5 <- under s5 Transient
+      _ <- bump p5
+      stopActor p5
+      state5 <- actorState p5
+      expect state5 0 "a permanent child restarts after a stop"
+      stopActor q5
+      stopped q5 "a transient child that was stopped"
+      events <- newIORef []
+      s6 <- newSupervisor OneForOne 2 10000000
+      monitorSupervisor s6 (\e -> modifyIORef' events (++ [e]))
+      x6 <- under s6 Permanent
+      y6 <- under s6 Permanent
+      failing x6 >> failing x6 >> failing x6
+      stopped y6 "a child of a supervisor past its restart limit"
+      heard <- map (\e -> case e of Crashed _ -> "crashed"; Stopped -> "stopped") <$> readIORef events
+      expect heard ["crashed"] "a supervisor past its limit tells its monitors"
+      outer <- newSupervisor OneForOne 5 10000000
+      inner <- newSupervisor OneForOne 1 10000000
+      superviseSupervisor outer inner Permanent
+      x7 <- under inner Permanent
+      y7 <- under inner Permanent
+      _ <- bump y7
+      failing x7 >> failing x7
+      states7 <- (,) <$> actorState x7 <*> actorState y7
+      expect states7 (0, 0) "a supervisor past its limit is restarted by its own"
+      seen <- newIORef []
+      a8 <- counter
+      b8 <- counter
+      linkActors a8 b8
+      monitorActor b8 (\e -> modifyIORef' seen (++ [e]))
+      failing a8
+      waitFor (not . null <$> readIORef seen)
+      stopped b8 "an unsupervised actor linked to one that crashed"
+      heard8 <- map (\e -> case e of Crashed _ -> "crashed"; Stopped -> "stopped") <$> readIORef seen
+      expect heard8 ["crashed"] "a monitor hears of a crash"
+      s9 <- newSupervisor OneForOne 10 5000000
+      a9 <- under s9 Permanent
+      b9 <- under s9 Permanent
+      c9 <- under s9 Permanent
+      linkActors a9 b9 >> linkActors b9 c9 >> linkActors c9 a9
+      _ <- bump a9 >> bump b9 >> bump c9
+      failing a9
+      waitFor ((>= 3) . length <$> readIORef (supervisorRestarts s9))
+      threadDelay 50000
+      states9 <- (,,) <$> actorState a9 <*> actorState b9 <*> actorState c9
+      restarts9 <- length <$> readIORef (supervisorRestarts s9)
+      expect (states9, restarts9) ((0, 0, 0), 3) "a crash crosses each link once"
 
 -- | A queue with many senders and one receiver: the channel form of an
 -- actor. A process that loops over receiveMailbox and answers each message
@@ -2631,10 +3322,29 @@ actorCommandCallback unit run symbols args = case args of
     pure (case outcome of
       Right reply -> Right reply
       Left e -> Left (case fromException e of
-        Just (ModelRaised message) -> message
+        Just (ActorCrashed cause) -> case fromException cause of
+          Just (ModelRaised message) -> message
+          _ -> exceptionText cause
         _ -> exceptionText e)))
   _ -> Left "an actor command needs its actor first"
 {-# NOINLINE actorCommandCallback #-}
+
+-- | An actor model's crash step: the actor restarts from the restart
+-- command (its run on the system, its reference on the model) or, without
+-- one, from the start with the run's start arguments.
+actorCrashStep :: ModelCallback -> ModelCallback -> Maybe ModelCommand -> CrashStep
+actorCrashStep startRun startModel restart = CrashStep system model
+  where
+    system startArgs symbols handleValue = case handleValue of
+      SHandle _ h -> restartActor (fromHandle h :: Actor Scalar) (\state ->
+        either (throwIO . ModelRaised) (\v -> evaluate (deepScalar v) >> pure v)
+          (case restart of
+            Just r -> mcRun r symbols [state]
+            Nothing -> startRun symbols startArgs))
+      _ -> throwIO (ModelRaised "an actor crash needs its actor")
+    model startArgs symbols state = do
+      out <- callModel (maybe (\s _ -> startModel s startArgs) mcReference restart) symbols [state]
+      either (const (throwIO ModelInvalid)) pure out
 
 actorStateCallback :: ModelCallback -> ModelCallback
 actorStateCallback f symbols args = case args of
@@ -2652,15 +3362,34 @@ actorStateCallback f symbols args = case args of
 -- sides in process; a network transport could implement the same record.
 data ChannelSide = ChannelSide
   { sideSend :: Dynamic -> IO ()
+  -- | The next value; throws PeerFailed once the other side has given up
+  -- and nothing it sent is left.
   , sideReceive :: IO Dynamic
+  -- | Gives up: the other side's receives fail after the values already sent.
+  , sideAbandon :: IO ()
   }
+
+-- | A receive whose other end gave up: its process failed, or it called
+-- abandon. Catch it (or use tryReceive) to handle the failure; otherwise
+-- this process fails too.
+data PeerFailed = PeerFailed deriving Show
+instance Exception PeerFailed
+
+-- The mark a side that gave up leaves for the other.
+data Abandoned = Abandoned
 
 -- | Two connected sides, with one queue per direction.
 localChannel :: IO (ChannelSide, ChannelSide)
 localChannel = do
   forward <- newChan
   backward <- newChan
-  pure (ChannelSide (writeChan forward) (readChan backward), ChannelSide (writeChan backward) (readChan forward))
+  let receiving chan = do
+        message <- readChan chan
+        case fromDynamic message of
+          Just Abandoned -> writeChan chan message >> throwIO PeerFailed
+          Nothing -> pure message
+  pure ( ChannelSide (writeChan forward) (receiving backward) (writeChan forward (toDyn Abandoned))
+       , ChannelSide (writeChan backward) (receiving forward) (writeChan backward (toDyn Abandoned)) )
 
 -- | A channel side at one step of a protocol, usable once: each step returns
 -- a fresh end for the next.
@@ -2705,9 +3434,25 @@ class Send end message next | end -> message next where
   send :: end -> message -> IO next
 
 -- | An end whose next step receives a message, returned with the end that
--- follows.
+-- follows. receive throws PeerFailed when the other end gave up and nothing
+-- it sent is left.
 class Receive end message next | end -> message next where
   receive :: end -> IO (message, next)
+
+-- | receive, with the other end's failure as a Left.
+tryReceive :: Receive end message next => end -> IO (Either PeerFailed (message, next))
+tryReceive end = try (receive end)
+
+-- | An end that can give up its conversation: the other end's receives then
+-- fail with PeerFailed, after the values already sent. A process that fails
+-- while holding an end should abandon it (with finally or bracket), so the
+-- other process does not wait for ever.
+class Abandon end where
+  abandon :: end -> IO ()
+
+-- | Gives up the channel an end belongs to.
+abandonEnd :: SessionEnd -> IO ()
+abandonEnd end = useEnd end >>= sideAbandon
 
 -- | A running thread whose result join waits for.
 newtype Process a = Process (MVar (Either SomeException a))

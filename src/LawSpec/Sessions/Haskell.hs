@@ -37,6 +37,8 @@ unitModule datas units unit = do
         , "-- Each end of a protocol has a type per step: 'LS.send' or 'LS.receive' on"
         , "-- it returns the end for the next step, so steps out of order do not"
         , "-- compile. Every end is single use: using one twice fails at run time."
+        , "-- A receive whose other end gave up ('LS.abandon') throws 'LS.PeerFailed'"
+        , "-- after the values already sent; 'LS.tryReceive' returns it as a Left."
         , "module " ++ moduleName ]
         ++ exportList
         ++ [ "  ) where"
@@ -52,7 +54,7 @@ unitModule datas units unit = do
     -- Sections of exports, each under a Haddock heading.
     sections =
       [ (C.sessionName s, endTypes First s ++ endTypes Second s ++ ["open" ++ C.sessionName s]) | s <- sessions ]
-      ++ [ ("Using ends", ["LS.Send(..)", "LS.Receive(..)"])
+      ++ [ ("Using ends", ["LS.Send(..)", "LS.Receive(..)", "LS.tryReceive", "LS.Abandon(..)", "LS.PeerFailed(..)"])
          , ("Processes", ["LS.Process", "LS.spawn", "LS.join", "LS.par"]) ]
     exportList = concat
       [ ["    -- * " ++ heading | i > 0] ++
@@ -106,7 +108,10 @@ protocolSource datas units unit session = do
           , "newtype " ++ this ++ " = " ++ this ++ " LS.SessionEnd"
           , ""
           , "instance LS." ++ verb ++ " " ++ this ++ " " ++ parenthesize message ++ " " ++ next ++ " where"
-          , "  " ++ method ])) steps
+          , "  " ++ method
+          , ""
+          , "instance LS.Abandon " ++ this ++ " where"
+          , "  abandon (" ++ this ++ " end) = LS.abandonEnd end" ])) steps
       let done = doneName end session
       pure (declarations, concatMap snd declarations ++
         [ "", "-- | " ++ name ++ "'s " ++ endWord end ++ " end after its last step."

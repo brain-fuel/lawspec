@@ -1,0 +1,6 @@
+@@ src/Example/Actors.hs
+<<<<<<<
+reopen (Data.Account current) = Data.Account current
+=======
+reopen (Data.Account _) = Data.Account 0
+>>>>>>>
