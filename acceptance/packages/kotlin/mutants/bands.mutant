@@ -1,0 +1,6 @@
+@@ src/main/kotlin/shop/Orders.kt
+<<<<<<<
+value0 < 10000L
+=======
+value0 < 100000L
+>>>>>>>

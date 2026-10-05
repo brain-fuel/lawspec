@@ -1,0 +1,6 @@
+@@ shop/orders/adapter.go
+<<<<<<<
+value0 < 10000 {
+=======
+value0 < 100000 {
+>>>>>>>

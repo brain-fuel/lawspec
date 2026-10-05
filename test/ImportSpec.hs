@@ -101,6 +101,40 @@ spec = describe "cross-unit imports" $ do
     rejects "unknown" [base, middle, top "law `one` is definition is `for all` (x :: Int32) . a.one x = 1 end end\n"]
     rejects "b does not export one" [base, middle, "unit c\nimport b (one)\n"]
 
+  it "re-exports imported names from a facade, keeping the original identity" $ do
+    let facade = unlines
+          [ "unit shop.facade", "import shop.money as money (Money, Cents, `commutative`)"
+          , "export Money, Cents, money.centsOf, money.Currency, `commutative`" ]
+        client body = unlines ["unit app", "import shop.facade (Money, Cents, centsOf, Currency, `commutative`)"] ++ body
+        program = compileUnits [money, facade, client $ unlines
+          [ "total :: Money -> Money -> Money"
+          , "law `total commutes` is definition is `for all` (a :: Money) (b :: Money) . total a b = total b a end end"
+          , "law `cents` is definition is `for all` (m :: Money) . centsOf m >= 0 end"
+          , "  example `usd` is m = Money Usd 5 expect centsOf m = 5 end end" ]]
+    program `shouldSatisfy` isRight
+    case program of
+      Right core -> do
+        -- One Money: the facade's Money is shop.money's, not a copy.
+        let types = [C.idText (C.dataId d) | d <- C.programDataDeclarations core]
+        types `shouldContain` ["shop.money::type::Money"]
+        filter ("Money" `isInfixOf`) types `shouldBe` ["shop.money::type::Money"]
+        forM_ targets $ \target -> (planTesting core >>= emitPlan target) `shouldSatisfy` isRight
+      Left _ -> pure ()
+    -- Qualified through the facade's alias works too.
+    accepts [money, facade, "unit app\nimport shop.facade as s\nf :: s.Money -> s.Cents\n"]
+    -- A facade of a facade still reaches the one declaration.
+    accepts [money, facade, "unit shop.outer\nimport shop.facade as f\nexport f.Money, f.centsOf\n",
+      "unit app\nimport shop.outer (Money, centsOf)\nf :: Money -> Money\n" ++
+      "law `kept` is definition is `for all` (m :: Money) . centsOf (f m) = centsOf m end end\n"]
+    rejects "import cycle" ["unit a\nimport b\nexport b.one\n", "unit b\nimport a\ndefinition one (x :: Int32) :: Int32 is 1 end\n"]
+    rejects "export names Pounds, which shop.facade does not import" [money, "unit shop.facade\nimport shop.money (Money)\nexport Pounds\n"]
+    rejects "export names centsOf, which shop.facade does not import" [money, "unit shop.facade\nimport shop.money (Money)\nexport centsOf\n"]
+    rejects "export lists Money, which shop.facade also declares"
+      [money, "unit shop.facade\nimport shop.money as m\nexport m.Money\ntype Money is | Free end\n"]
+    rejects "export lists size twice"
+      [ "unit p\ndefinition size (x :: Int32) :: Int32 is 1 end\n", "unit q\ndefinition size (x :: Int32) :: Int32 is 2 end\n"
+      , "unit r\nimport p\nimport q\nexport p.size, q.size\n" ]
+
   it "keeps two units' same-named definitions apart" $
     accepts
       [ "unit p\ndefinition size (x :: Int32) :: Int32 is 1 end\n"
@@ -188,6 +222,60 @@ spec = describe "cross-unit imports" $ do
                 , packaged "shop.money" "1.0.0" [] ]) ]
             [("orders.lawspec", orders "")]
       diagnosticText hidden `shouldSatisfy` isInfixOf "is supplied but not required"
+    it "builds several versions of one package side by side" $ do
+      let moneyAt version = object
+            [ "name" .= ("shop.money" :: String), "version" .= (version :: String)
+            , "sources" .= [object ["path" .= ("money.lawspec" :: String), "content" .= money]] ]
+          report = object
+            [ "name" .= ("shop.report" :: String), "version" .= ("1.0.0" :: String)
+            , "dependencies" .= M.fromList [("shop.money" :: String, "^2.0.0" :: String)]
+            , "sources" .= [object ["path" .= ("report.lawspec" :: String), "content" .= unlines
+                [ "unit shop.report", "import shop.money (Money)"
+                , "definition kept (m :: Money) :: Money is m end" ]]] ]
+          buildWith extra body = request
+            [ ("dependencies", object ["shop.money" .= ("^1.0.0" :: String), "shop.report" .= ("^1.0.0" :: String)])
+            , ("packages", toList ([moneyAt "1.4.0", moneyAt "2.1.0", report] ++ extra)) ]
+            [("orders.lawspec", unlines ["unit shop.orders", "import shop.money (Money)", "import shop.report"] ++ body)]
+          build = buildWith []
+          fine = build "same :: Money -> Money\nlaw `same` is definition is `for all` (m :: Money) . same m = m end end\n"
+      diagnosticText fine `shouldBe` "Array []"
+      show fine `shouldSatisfy` isInfixOf "shop.money.v1x4x0"
+      show fine `shouldSatisfy` isInfixOf "shop.money.v2x1x0"
+      -- 1.2.0 is supplied, but no range selects it over 1.4.0.
+      diagnosticText (buildWith [moneyAt "1.2.0"] "") `shouldSatisfy`
+        isInfixOf "package shop.money 1.2.0 is supplied but not required"
+      diagnosticText (buildWith [moneyAt "1.4.0"] "") `shouldSatisfy` isInfixOf "supplied more than once: shop.money 1.4.0"
+      let crossed = build "same :: Money -> Money\nlaw `crossed` is definition is `for all` (m :: Money) . report.kept m = same m end end\n"
+      diagnosticText crossed `shouldSatisfy` isInfixOf
+        "type mismatch: shop.money::type::Money (shop.money 2.1.0) and shop.money::type::Money (shop.money 1.4.0)"
+
+    it "keeps versions apart whose numbers would run together" $ do
+      let moneyAt version = object
+            [ "name" .= ("shop.money" :: String), "version" .= (version :: String)
+            , "sources" .= [object ["path" .= ("money.lawspec" :: String), "content" .= money]] ]
+          report = object
+            [ "name" .= ("shop.report" :: String), "version" .= ("1.0.0" :: String)
+            , "dependencies" .= M.fromList [("shop.money" :: String, "^11.0.0" :: String)]
+            , "sources" .= [object ["path" .= ("report.lawspec" :: String), "content" .= unlines
+                [ "unit shop.report", "import shop.money (Money)"
+                , "definition kept (m :: Money) :: Money is m end" ]]] ]
+          generate versions = request
+            [ ("dependencies", object ["shop.money" .= ("^1.0.0" :: String), "shop.report" .= ("^1.0.0" :: String)])
+            , ("packages", toList (map moneyAt versions ++ [report]))
+            , ("method", String "planGeneration"), ("target", String "go") ]
+            [("orders.lawspec", unlines ["unit shop.orders", "import shop.money (Money)", "import shop.report"
+              , "same :: Money -> Money", "law `same` is definition is `for all` (m :: Money) . same m = m end end"])]
+          -- 1.10.0 and 11.0.0 would both be V1100 without a separator.
+          both = generate ["1.10.0", "11.0.0"]
+      diagnosticText both `shouldBe` "Array []"
+      forM_ ["shop.money.v1x10x0", "shop.money.v11x0x0", "ShopMoneyV1x10x0Money", "ShopMoneyV11x0x0Money"] $ \name ->
+        show both `shouldSatisfy` isInfixOf name
+      -- Prerelease tags are free text; versions that would still share names are refused.
+      let clash = request
+            [ ("dependencies", object ["shop.money" .= (">=1.0.0-a.b <2.0.0" :: String)])
+            , ("packages", toList [moneyAt "1.0.0-a.b", moneyAt "1.0.0-a-b"]) ] [("a.lawspec", "unit a\n")]
+      diagnosticText clash `shouldSatisfy` isInfixOf "package shop.money versions 1.0.0-a.b and 1.0.0-a-b would share generated names"
+
     it "orders and matches semantic versions" $ do
       let holds range version = either (const False) id (satisfies <$> parseRange range <*> parseVersion version)
       holds "^1.2.3" "1.9.0" `shouldBe` True

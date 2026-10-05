@@ -30,3 +30,15 @@ func Cheaper(value0 int64, value1 int64) int64 {
 func RoundDown(value0 int64) int64 {
 	return value0 - value0%100
 }
+
+// Classify uses version 2 of shop.tax: no tax on nothing, the high band from
+// 100.00.
+func Classify(value0 int64) ShopTaxV2x0x0RatesBand {
+	if value0 <= 0 {
+		return ShopTaxV2x0x0RatesBandZero{}
+	}
+	if value0 < 10000 {
+		return ShopTaxV2x0x0RatesBandLow{}
+	}
+	return ShopTaxV2x0x0RatesBandHigh{}
+}

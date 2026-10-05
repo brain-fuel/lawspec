@@ -3,9 +3,12 @@
     "examples/packages/orders/orders.lawspec"
   ],
   "packages": [
-    "examples/packages/shop-domain"
+    "examples/packages/shop-domain",
+    "examples/packages/shop-tax-1",
+    "examples/packages/shop-tax-2"
   ],
   "dependencies": {
-    "shop.domain": "^1.0.0"
+    "shop.domain": "^1.0.0",
+    "shop.tax": "^2.0.0"
   }
 }

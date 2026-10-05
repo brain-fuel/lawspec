@@ -51,7 +51,5 @@ The following are not part of the language:
 - binding an asynchronous adapter to an existing native function;
 - several flow parameters in one function, and flow calls inside match
   branches;
-- re-exports of imported names, and several versions of one package in one
-  build.
 
 See the [roadmap](../../explanation/roadmap.md) for what is planned.

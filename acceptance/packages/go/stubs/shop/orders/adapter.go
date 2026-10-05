@@ -20,3 +20,8 @@ func Cheaper(value0 int64, value1 int64) int64 {
 func RoundDown(value0 int64) int64 {
 	panic("roundDown")
 }
+
+// Classify implements classify :: (Int64 -> shop.tax.v2x0x0.rates::type::Band).
+func Classify(value0 int64) ShopTaxV2x0x0RatesBand {
+	panic("classify")
+}

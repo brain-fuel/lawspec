@@ -28,6 +28,15 @@
   form a cycle when no process can wait for another in a cycle, and names the
   waits when one could. Scenarios with mailboxes or `or else` keep the tree
   rule.
+- A unit can re-export names it imports with an `export` line after its
+  imports (`export Band, rates.rateOf`), so a package can offer one facade
+  unit. Re-exported names are the original declarations, not copies.
+- A build can hold several versions of one package. Each unit sees the version
+  its own package's range selects (the highest supplied version the range
+  accepts), and each version's units are compiled under names with the
+  version after the package name (`shop.tax.v2x0x0.api`), so their types and
+  native names stay apart. A mismatch between two versions' types names both
+  versions. A package supplied in one version is unchanged.
 
 ## 0.19.1
 

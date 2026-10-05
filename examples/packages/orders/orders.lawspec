@@ -1,5 +1,8 @@
 unit shop.orders
 import shop.domain as domain (Money, Cents, `commutative`, `idempotent`)
+-- shop.domain uses version 1 of shop.tax; this project's range selects
+-- version 2. Both are in the build, and their Bands are different types.
+import shop.tax.api as tax (Band)
 
 -- Constructor names are scoped to their unit: this Usd is not domain.Usd.
 type Currency is | Usd | Gbp end
@@ -12,6 +15,7 @@ lineTotal :: Line -> Money
 -- any Int64; the last law restricts its inputs to Cents.
 cheaper :: Int64 -> Int64 -> Int64
 roundDown :: Int64 -> Int64
+classify :: Int64 -> Band
 
 law `dollars settle in dollars` is
   definition is
@@ -53,5 +57,26 @@ end
 law `rounding down never raises a price` is
   definition is
     `for all` (c :: Cents) . roundDown c <= c
+  end
+end
+
+law `prices are classified into version 2 bands` is
+  definition is
+    `for all` (c :: Cents) . tax.rateOf (classify c) <= 25
+  end
+  example `nothing` is c = 0 expect classify c = Zero end
+  example `small` is c = 9999 expect classify c = Low end
+  example `large` is c = 10000 expect classify c = High end
+end
+
+law `shop.domain keeps version 1 of the bands` is
+  definition is
+    domain.dutyOf domain.High = 20
+  end
+end
+
+law `this project sees version 2 of the bands` is
+  definition is
+    tax.rateOf High = 25
   end
 end
