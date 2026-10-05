@@ -1,5 +1,7 @@
 module LawSpec.CoreNativeScalarEmit (nativeScalarEmit, nativeScalarEmitWithData, nativeScalarEmitWithDefinitions, nativeScalarEmitWithFormat, nativeScalarEmitWithNativeGenerators, nativeScalarEmitWithAdapterBindings, dataBudget) where
 import LawSpec.Bounds (inputRange)
+import LawSpec.AbilityNames (interfaceName, productionName, specName, recordingName)
+import qualified LawSpec.AbilityEmit.Go as GoAbilities
 import LawSpec.ModelTests (modelTestArtifacts)
 import LawSpec.Collections (isCollectionsType)
 import qualified LawSpec.JavaData as JavaData
@@ -31,6 +33,7 @@ import Data.Aeson (encode)
 import qualified Data.Text.Lazy as T
 import qualified Data.Text.Lazy.Encoding as T
 import Data.List (intercalate, isPrefixOf, isInfixOf, find)
+import Data.Char (toLower)
 
 q :: String -> String
 q = T.unpack . T.decodeUtf8 . encode
@@ -138,7 +141,8 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
     stub | go = Doc.render (Doc.selectLayout minify (Doc.PrettyTabs 100)) $
            Doc.text "// User-owned LawSpec adapter." <> Doc.hardline <>
            Doc.text ("package " ++ last parts) <> Doc.hardline <>
-           mconcat [Doc.hardline <> goStubFn n t | (n,t) <- adapterFunctions]
+           mconcat [Doc.hardline <> goStubFn n t | (n,t) <- adapterFunctions] <>
+           mconcat [Doc.text (java (GoAbilities.productionStub dataDeclarations a)) | a <- C.unitAbilities u]
          | hs = Doc.render (Doc.selectLayout minify (Doc.Pretty 80)) $
            Doc.text ("-- User-owned LawSpec adapter.\n" ++ header ++ "\n" ++ hsImports) <>
            Doc.hardline <> Doc.joinWith (Doc.hardline <> Doc.hardline)
@@ -210,7 +214,8 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
       | otherwise = call <> Doc.text ".join()"
     goStubFn n t =
       let (args,result) = functionType t
-          params = [Doc.text ("value" ++ show i ++ " " ++ nativeArg a) | (i,a) <- zip [0::Int ..] args]
+          params = [Doc.text (handlerParameter ability ++ " " ++ maybe "any" interfaceName (abilityNamed ability)) | ability <- usesOf n] ++
+            [Doc.text ("value" ++ show i ++ " " ++ nativeArg a) | (i,a) <- zip [0::Int ..] args]
           returnType = if n `elem` asyncFunctions u then " LawSpecTask[" ++ (if result == Named "Unit" then "LawSpecUnit" else native result) ++ "]"
             else if result == Named "Unit" then "" else " " ++ native result
       in Doc.lineComment 100 "// " (cap n ++ " implements " ++ n ++ " :: " ++ prettyType t ++ ".") <>
@@ -506,9 +511,60 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
       , GoProperties.nativeFunction = goAdapterName
       , GoProperties.nativeArgument = goNativeArgument
       , GoProperties.nativeResult = goNativeResult
+      , GoProperties.handlerInstalls = goInstalls
       }
+    -- Abilities: the unit's own, its spec handlers, and the handlers a law
+    -- installs (Fail's are built in, so none is installed for it).
+    abilityNamed ability = lookup (C.abilityRefId ability) [(C.abilityId a, a) | a <- C.unitAbilities u]
+    specNamed h = lookup h [(C.handlerId x, x) | x <- C.unitHandlers u]
+    chosenHandlers e = [(a, c) | (a, c) <- C.propertyHandlers (original e), not (C.isFail a)]
+    -- The abilities an adapter gets handlers for, first, in its uses order.
+    usesOf n = [a | d <- C.unitDeclarations u, C.declarationName d == n, a <- C.declarationUses d, not (C.isFail a)]
+    handlerParameter ability = case maybe "handler" C.abilityName (abilityNamed ability) of
+      c : rest -> toLower c : rest
+      [] -> "handler"
     goAdapterName n = maybe (cap n) id (lookup (C.Id (unitName u ++ "::" ++ n)) adapterBindings)
+    -- A handler as the ability's Go interface.
+    goHandler ability = Doc.text ("lsHandler(symbols, " ++ q (C.abilityKey ability) ++ ").(" ++
+      maybe "any" interfaceName (abilityNamed ability) ++ ")")
+    goConstruct' ty tag fields
+      | goCustom ty = GoExpr.call "_lawspecSchema.construct" [Doc.text (goRef ty),GoExpr.quoted tag,GoExpr.array fields,Doc.text (show bits),Doc.text "symbols"]
+      | otherwise = GoExpr.call "lsConstruct" [GoExpr.quoted (key ty),GoExpr.quoted tag,GoExpr.array fields]
+    goEqual ty a b
+      | goCustom ty = GoExpr.call "_lawspecSchema.equal" [Doc.text (goRef ty),a,b,Doc.text (show bits),Doc.text "symbols"]
+      | otherwise = GoExpr.call "lsTruth" [GoExpr.call "lsBinary" [GoExpr.quoted "==",a,b]]
+    goInstalls e = case chosenHandlers e of
+      [] -> []
+      chosen -> [Doc.text "lsInstallHandlers(symbols, map[string]any{" <> Doc.joinWith (Doc.text ", ")
+        [GoExpr.quoted (C.abilityKey a) <> Doc.text (": " ++ goConstructHandler a c) | (a, c) <- chosen] <> Doc.text "})"]
+    goConstructHandler a c = case c of
+      C.ProductionHandler -> "New" ++ maybe "Unknown" productionName (abilityNamed a) ++ "()"
+      C.SpecHandler h -> "New" ++ maybe "Unknown" specName (specNamed h) ++ "(symbols)"
+      C.RecordingHandler inner -> "New" ++ maybe "Unknown" recordingName (abilityNamed a) ++ "(" ++ goConstructHandler a inner ++ ", symbols)"
     goExternal term values = case C.expressionNode term of
+      -- raise aborts to the nearest attempt of its Fail ability.
+      C.Perform op [_] | C.isFail (C.operationAbility op) ->
+        Right (GoExpr.call "lsRaiseFailure" (GoExpr.quoted (C.abilityKey (C.operationAbility op)) : values))
+      -- An operation goes to the handler the law installed for its ability.
+      C.Perform op args ->
+        let typed = zip (map expressionType args) values
+        in Right (goNativeResult (expressionType term) (GoExpr.call (Doc.render Doc.Compact (goHandler (C.operationAbility op)) ++ "." ++ GoAbilities.methodName (C.operationName op))
+          [goNativeArgument ty v | (ty,v) <- typed]))
+      C.Handle (C.CatchFailure ability) _ -> case (expressionType term, values) of
+        (C.Constructor "Either" [C.TypeArgument failure, C.TypeArgument result], [body]) ->
+          let side tag ty = Doc.text "func(_value LawSpecValue) LawSpecValue " <> Doc.block 8
+                (Doc.text "return " <> goConstruct' (expressionType term) tag [goChecked ty (Doc.text "_value")])
+          in Right (GoExpr.call "lsAttempt" [GoExpr.quoted (C.abilityKey ability),
+            Doc.text "func() LawSpecValue " <> Doc.block 8 (Doc.text "return " <> body),
+            side "Either::Right" result, side "Either::Left" failure])
+        _ -> Left "attempt gives an Either"
+      C.Calls op args ->
+        let matches = case args of
+              Nothing -> Doc.text "nil"
+              Just xs -> Doc.text "func(_recorded []LawSpecValue) bool " <> Doc.block 8 (Doc.text "return " <>
+                Doc.joinWith (Doc.text " && ") [goEqual (expressionType a) (Doc.text ("_recorded[" ++ show i ++ "]")) v | (i,(a,v)) <- zip [0 :: Int ..] (zip xs values)])
+        in Right (GoExpr.call "lsCountCalls" [Doc.text ("lsHandler(symbols, " ++ q (C.abilityKey (C.operationAbility op)) ++ ")"),
+          GoExpr.quoted (C.operationName op), matches])
       C.ExternalCall identity _ | Just evaluator <- lookup identity definitions ->
         Right (GoExpr.call evaluator (Doc.text "symbols" : values))
       C.ExternalCall identity args ->
@@ -516,7 +572,8 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
             typed = zip (map expressionType args) values
         in Right $ if n `elem` map contractName (contracts u)
           then GoExpr.call ("_lawspec_call_" ++ n) (Doc.text "symbols" : [goChecked ty v | (ty,v) <- typed])
-          else goNativeResult (expressionType term) (awaitFor n (GoExpr.call (goAdapterName n) [goNativeArgument ty v | (ty,v) <- typed]))
+          else goNativeResult (expressionType term) (awaitFor n (GoExpr.call (goAdapterName n)
+            (map goHandler (usesOf n) ++ [goNativeArgument ty v | (ty,v) <- typed])))
       _ -> Left "expected checked Go external call"
     javaDocument = Doc.render (Doc.selectLayout minify (Doc.Pretty 100))
     javaRender term = java (JavaExpr.renderExpression dataDeclarations bits localName javaExternal term)

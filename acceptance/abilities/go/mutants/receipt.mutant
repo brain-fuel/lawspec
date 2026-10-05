@@ -1,0 +1,10 @@
+expect-any: a receipt is for the amount captured [native] | [recording native]
+@@ example/abilities/adapter.go
+<<<<<<<
+	return Receipt{Cents: value0}
+=======
+	if value0 >= 1000 {
+		return Receipt{Cents: value0 - 1}
+	}
+	return Receipt{Cents: value0}
+>>>>>>>

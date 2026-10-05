@@ -23,6 +23,10 @@ type lawSpecCodec[T any] struct {
 func lsNativeContext[T any](context string, operation func() T) (result T) {
 	defer func() {
 		if problem := recover(); problem != nil {
+			// A Fail ability's failure passes through to its attempt.
+			if failure, ok := problem.(*LawSpecFailure); ok {
+				panic(failure)
+			}
 			message := fmt.Sprintf("%s: %v", context, problem)
 			if _, rejected := problem.(lawSpecRefinementViolation); rejected {
 				panic(lawSpecRefinementViolation{message})

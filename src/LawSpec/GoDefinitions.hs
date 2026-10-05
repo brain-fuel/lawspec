@@ -66,6 +66,26 @@ emitGoDefinitionsWithCalls bound layout bits declarations units = do
           external term values = case expressionNode term of
             ExternalCall identity _ | Just name <- lookup identity callees ->
               pure (E.call name (line "symbols":values))
+            -- raise aborts to the nearest attempt of its Fail ability.
+            Perform op [_] | isFail (operationAbility op) ->
+              pure (E.call "lsRaiseFailure" (E.quoted (abilityKey (operationAbility op)) : values))
+            -- An operation goes to the handler the law installed in symbols
+            -- for its ability (evidence passing), through the codecs.
+            Perform op args -> do
+              let parameterTypes = map expressionType args
+                  resultType = expressionType term
+              codecs <- mapM (Native.goCodecWithContext "symbols" declarations) parameterTypes
+              resultCodec <- Native.goCodecWithContext "symbols" declarations resultType
+              let call = E.call (handlerOf (operationAbility op) ++ "." ++ capitalize (operationName op))
+                    [E.call ("codec" ++ show i ++ ".toNative") [value] | (i, value) <- zip [0::Int ..] values]
+                  result
+                    | resultType == Constructor "Unit" [] =
+                        line "func() LawSpecValue " <> D.block 8 (call <> D.hardline <> line "return resultCodec.fromNative(LawSpecUnit{})") <> line "()"
+                    | otherwise = E.call "resultCodec.fromNative" [call]
+              pure (line "func() LawSpecValue " <> D.block 8 (D.joinWith D.hardline
+                ([line ("schema := " ++ schema), line ("bits := " ++ show bits), line "_, _ = schema, bits"] ++
+                 [assign ("codec" ++ show i) (line codec) | (i, codec) <- zip [0::Int ..] codecs] ++
+                 [assign "resultCodec" (line resultCodec), line "return " <> result])) <> line "()")
             -- An orchestration calls an adapter of its own package natively:
             -- the values cross to native and back through the codecs.
             ExternalCall identity _ | Just (_, adapter) <- lookup identity adapters -> do
@@ -76,7 +96,9 @@ emitGoDefinitionsWithCalls bound layout bits declarations units = do
               -- A Unit argument is passed as its logical value, as the
               -- adapter stub declares it.
               let bridge = lookup (declarationId adapter) bound
-                  call = E.call (maybe (capitalize (declarationName adapter)) id bridge)
+                  -- An adapter that uses abilities gets their handlers first.
+                  call = E.call (maybe (capitalize (declarationName adapter)) id bridge) $
+                    [line (handlerOf a) | a <- declarationUses adapter, not (isFail a)] ++
                     [if ty == Constructor "Unit" [] && bridge == Nothing then value else E.call ("codec" ++ show i ++ ".toNative") [value]
                     | (i, (ty, value)) <- zip [0::Int ..] (zip parameterTypes values)]
                   -- Within its stage's timeout and hedge, when it has them.
@@ -248,3 +270,6 @@ emitGoDefinitionsWithCalls bound layout bits declarations units = do
       _ -> concatMap nestedBinders (children expression)
     capitalize [] = []
     capitalize (c:cs) = toUpper c:cs
+    -- A handler from symbols, as its ability's interface.
+    handlerOf ability = "lsHandler(symbols, " ++ show (abilityKey ability) ++ ").(" ++
+      maybe "any" abilityName (lookup (abilityRefId ability) [(abilityId a, a) | u <- units, a <- unitAbilities u]) ++ ")"

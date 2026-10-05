@@ -11,6 +11,7 @@ import LawSpec.Testing (Plan(..), PlannedUnit(..))
 import LawSpec.AbilityNames (unitAbilityPieces)
 import qualified LawSpec.AbilityEmit.Python as Python
 import qualified LawSpec.AbilityEmit.Web as Web
+import qualified LawSpec.AbilityEmit.Go as Go
 
 abilityArtifacts :: Bool -> String -> Plan -> Either [Diagnostic] [Artifact]
 abilityArtifacts minify target plan
@@ -24,4 +25,5 @@ abilityArtifacts minify target plan
       "python" -> Python.emit minify bits datas units
       "javascript" -> Web.emit False minify bits datas units
       "typescript" -> Web.emit True minify bits datas units
+      "go" -> Go.emit minify bits datas units
       _ -> Left ("abilities are not generated for " ++ t ++ " yet")

@@ -37,6 +37,8 @@ type lawSpecSymbol struct {
 	description string
 	// A workflow runtime travels in the symbols map under lsWorkflowKey.
 	workflow *LawSpecWorkflowRuntime
+	// So do a law's handlers, by ability, under lsHandlersKey.
+	handlers map[string]any
 }
 type lawSpecPresence struct{ value *LawSpecValue }
 
@@ -284,6 +286,9 @@ func lsAllElements(value LawSpecValue, predicate func(LawSpecValue) LawSpecValue
 	index := 0
 	defer func() {
 		if failure := recover(); failure != nil {
+			if raised, ok := failure.(*LawSpecFailure); ok {
+				panic(raised)
+			}
 			panic(fmt.Sprintf("List element %d: %v", index, failure))
 		}
 	}()
@@ -7470,4 +7475,101 @@ func lsFlipSteps(steps []LawSpecWireStep) []LawSpecWireStep {
 		out = append(out, LawSpecWireStep{!s.Sends, s.Descriptor})
 	}
 	return out
+}
+
+// Abilities (docs/explanation/abilities.md). Handlers travel in the symbols
+// map generated code passes to every definition: that map is the evidence of
+// evidence-passing compilation. A law installs one handler per ability; an
+// operation finds the handler of its ability there. The Fail ability's
+// handlers abort, so raise panics with a *LawSpecFailure and attempt
+// recovers it.
+const lsHandlersKey = "\x00lawspec.handlers"
+
+// LawSpecFailure is a failure raised with the Fail ability.
+type LawSpecFailure struct {
+	Ability string
+	Value   LawSpecValue
+}
+
+func (failure *LawSpecFailure) Error() string {
+	return fmt.Sprintf("failed with %v (%s)", failure.Value, failure.Ability)
+}
+
+func lsInstallHandlers(symbols map[string]*lawSpecSymbol, handlers map[string]any) {
+	table := map[string]any{}
+	if entry, ok := symbols[lsHandlersKey]; ok {
+		for key, handler := range entry.handlers {
+			table[key] = handler
+		}
+	}
+	for key, handler := range handlers {
+		table[key] = handler
+	}
+	symbols[lsHandlersKey] = &lawSpecSymbol{handlers: table}
+}
+
+func lsHandler(symbols map[string]*lawSpecSymbol, ability string) any {
+	if entry, ok := symbols[lsHandlersKey]; ok {
+		if handler, found := entry.handlers[ability]; found {
+			return handler
+		}
+	}
+	panic("no handler for the ability " + ability + ": a law names one with `using`, or runs under each lawful handler")
+}
+
+func lsRaiseFailure(ability string, value LawSpecValue) LawSpecValue {
+	panic(&LawSpecFailure{Ability: ability, Value: value})
+}
+
+func lsAttempt(ability string, body func() LawSpecValue, right, left func(LawSpecValue) LawSpecValue) LawSpecValue {
+	var value LawSpecValue
+	var failure *LawSpecFailure
+	func() {
+		defer func() {
+			if problem := recover(); problem != nil {
+				if caught, ok := problem.(*LawSpecFailure); ok && caught.Ability == ability {
+					failure = caught
+					return
+				}
+				panic(problem)
+			}
+		}()
+		value = body()
+	}()
+	if failure != nil {
+		return left(failure.Value)
+	}
+	return right(value)
+}
+
+// LawSpecCall is one call a recording handler saw.
+type LawSpecCall struct {
+	Operation string
+	Arguments []LawSpecValue
+}
+
+type lawSpecRecording interface{ lawSpecCalls() []LawSpecCall }
+
+func lsCountCalls(recording any, operation string, matches func([]LawSpecValue) bool) LawSpecValue {
+	recorded, ok := recording.(lawSpecRecording)
+	if !ok {
+		panic("calls of needs a recording handler: `using recording`")
+	}
+	count := int64(0)
+	for _, call := range recorded.lawSpecCalls() {
+		if call.Operation == operation && (matches == nil || matches(call.Arguments)) {
+			count++
+		}
+	}
+	return lsInteger64(count)
+}
+
+// lsPairFields is a Pair's two fields: a stateful handler clause's result
+// and the state it leaves.
+func lsPairFields(pair LawSpecValue) (LawSpecValue, LawSpecValue) {
+	data, ok := pair.Data.(lawSpecData)
+	if !ok || len(data.fields) != 2 {
+		panic("a handler clause must give Pair result state")
+	}
+	return data.fields[0], data.fields[1]
 }

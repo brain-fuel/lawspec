@@ -1,0 +1,8 @@
+expect: charge captures once
+@@ example/abilities/adapter.go
+<<<<<<<
+		return gateway.Capture(approved.Cents).Cents == value0
+=======
+		gateway.Capture(approved.Cents)
+		return gateway.Capture(approved.Cents).Cents == value0
+>>>>>>>

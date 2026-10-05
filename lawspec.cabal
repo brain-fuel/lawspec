@@ -185,6 +185,7 @@ library
   exposed-modules:
       LawSpec.Abilities
       LawSpec.AbilityEmit
+      LawSpec.AbilityEmit.Go
       LawSpec.AbilityEmit.Python
       LawSpec.AbilityEmit.Web
       LawSpec.AbilityNames

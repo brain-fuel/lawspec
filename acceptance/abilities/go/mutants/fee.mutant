@@ -1,0 +1,7 @@
+expect: the fee is never negative [native]
+@@ example/abilities/adapter.go
+<<<<<<<
+	return 25
+=======
+	return -25
+>>>>>>>
