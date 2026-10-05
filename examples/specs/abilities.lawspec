@@ -1,0 +1,103 @@
+unit example.abilities
+
+-- Dependencies are abilities. An ability names operations, the way a
+-- signature names a function; a handler gives them meaning. Code that uses
+-- Gateway says so, and every law about it holds for every lawful handler:
+-- the native one written by hand, and each spec handler below.
+
+type Payment is | Approved cents :: Int32 | Declined end
+type Receipt is Receipt cents :: Int32 end
+type PaymentError is | Refused | TooLarge end
+
+-- A payment gateway. Its laws are obligations on every handler.
+ability Gateway is
+  authorize :: Int32 -> Payment
+  capture :: Int32 -> Receipt
+  fee :: Int32
+laws
+  law `a receipt is for the amount captured` is
+    definition is `for all` (cents :: Int32) . capture cents = Receipt cents end
+  end
+  law `an approval is for the amount asked` is
+    definition is
+      `for all` (cents :: Int32) .
+        (match authorize cents with
+         | Approved approved -> approved == cents
+         | Declined -> true
+         end) = true
+    end
+  end
+  law `the fee is never negative` is
+    definition is fee >= 0 end
+  end
+end
+
+-- A fake for tests: it approves small amounts.
+handler fakeGateway for Gateway is
+  authorize cents is if cents <= 10000 then Approved cents else Declined end
+  capture cents is Receipt cents end
+  fee is 30 end
+end
+
+-- A handler with state: it keeps every amount it captured.
+handler keepingGateway for Gateway with state captured :: List Int32 start [] is
+  authorize cents is Approved cents end
+  capture cents is ~captured := Cons cents captured; Receipt cents end
+  fee is 0 end
+end
+
+-- A checked definition that uses Gateway. Its row, {Gateway}, is inferred.
+definition checkout (cents :: Int32) :: Bool is
+  match authorize cents with
+  | Approved amount -> (match capture amount with | Receipt paid -> paid == cents end)
+  | Declined -> false
+  end
+end
+
+-- A native adapter that uses Gateway: it gets a handler as its first
+-- argument.
+charge :: Int32 -> Bool uses Gateway
+
+-- A definition that can fail says what it fails with.
+definition pay (cents :: Int32) :: Receipt uses Gateway fails with PaymentError is
+  if cents > 100000 then raise TooLarge else
+    match authorize cents with
+    | Approved amount -> capture amount
+    | Declined -> raise Refused
+    end
+end
+
+-- Counting calls is part of the claim, so the law names a recording
+-- handler. Which gateway it records is left to the harness: each lawful one.
+law `checkout captures once, and only when it succeeds` using recording Gateway is
+  definition is
+    `for all` (cents :: Int32) .
+      (if checkout cents then calls of capture with (cents) == 1 else calls of capture == 0) = true
+  end
+end
+
+law `charge captures once, and only when it succeeds` using recording Gateway is
+  definition is
+    `for all` (cents :: Int32) .
+      (if charge cents then calls of capture with (cents) == 1 else calls of capture == 0) = true
+  end
+end
+
+-- This law needs the fake's limit, so the fake is part of the claim.
+law `large payments fail` using fakeGateway is
+  definition is
+    `for all` (cents :: Int32 where cents > 100000) . prelude.attempt (pay cents) = Left TooLarge
+  end
+end
+
+law `a declined payment is refused` using fakeGateway is
+  definition is
+    `for all` (cents :: Int32 where cents > 10000 && cents <= 100000) .
+      prelude.attempt (pay cents) = Left Refused
+  end
+end
+
+-- Without `using`, a law runs under each lawful handler in turn.
+law `the fee is small` is
+  definition is fee <= 100 end
+end

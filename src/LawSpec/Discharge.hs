@@ -22,7 +22,7 @@ import qualified Data.Set as S
 import LawSpec.Common
 import LawSpec.Core
 import LawSpec.Core.DefinitionContracts (definitionContracts)
-import LawSpec.Core.Definitions (prepareDefinitions)
+import LawSpec.Core.Definitions (prepareResolvingDefinitions)
 import LawSpec.Core.Eval (evaluateValueProposition)
 import LawSpec.Core.Evidence
 import LawSpec.Core.Total (validateDefinitionContracts)
@@ -37,7 +37,7 @@ import LawSpec.Testing (PlannedProperty(..), lawPlanner)
 -- definitions whose finite domain contains a counterexample is refuted here.
 dischargeEvidence :: Program -> Either [Diagnostic] [Obligation]
 dischargeEvidence program = do
-  invoke <- prepareDefinitions program
+  resolving <- prepareResolvingDefinitions program
   plan <- lawPlanner program
   registry <- either (Left . pure . (\m -> Diagnostic "generation" m Nothing)) Right
     (makeRegistry (programDataDeclarations program))
@@ -45,10 +45,23 @@ dischargeEvidence program = do
       -- An orchestration calls adapters, so a law over one relies on them.
       definitions = filter (not . definitionOrchestrates) (concatMap unitDefinitions (programUnits program))
       definitionIds = S.fromList (map (declarationId . definitionDeclaration) definitions)
-  laws <- forM [(u, p) | u <- programUnits program, p <- unitProperties u] $ \(u, p) -> do
-    let obligation status reason = Obligation (unitId u) (propertyId p) "law" (Just (lawClaim p)) status reason
+  laws <- forM [(u, p) | u <- programUnits program, p <- unitProperties u] $ \(u, original) -> do
+    -- Under a spec handler without state, an operation is a call of its
+    -- clause, so the law is over checked definitions only: the compiler can
+    -- prove it, or evaluate a finite domain. Other operations stay opaque,
+    -- which proofs allow (a law proved for an opaque operation holds for
+    -- every handler) and evaluation does not.
+    let resolver = specResolver program original
+        p = resolvePerforms resolver original
+        invoke = resolving (`M.lookup` resolver)
+        obligation status reason = Obligation (unitId u) (propertyId p) "law" (Just (lawClaim original)) status reason
         called = S.fromList (concatMap callees (propertyExpressions p))
         adapters = S.toList (S.difference called definitionIds)
+        reached = reachableDefinitions definitions (S.toList called)
+        effects = any effectful (propertyExpressions p) ||
+          any (\op -> M.notMember (operationId op) resolver) (concatMap (performed . definitionBody) reached)
+        natives = [ability | (ability, choice) <- propertyHandlers p, not (isFail ability), production choice]
+        relying adapters' = relyingOn (adapters' ++ [Id ("the native " ++ abilityKey a ++ " handler") | a <- natives])
         closed = null adapters
         count n noun = show n ++ " " ++ noun ++ (if n == 1 then "" else "s")
         settings = propertyGeneration p
@@ -59,7 +72,7 @@ dischargeEvidence program = do
       Right planned
         | closed, Right () <- proves program definitions p -> pure (obligation Proved
             "proved statically from its input refinements and the definitions it calls")
-        | closed, Just tuples <- finiteCases planned -> do
+        | closed, not effects, Just tuples <- finiteCases planned -> do
             mapM_ (refute registry bits invoke p) tuples
             pure (obligation ExhaustivelyChecked ("the compiler evaluated " ++ every tuples ++
               "; the generated tests check " ++ (if length tuples == 1 then "it" else "them") ++ " again natively"))
@@ -71,8 +84,17 @@ dischargeEvidence program = do
              count (length (propertyExamples p)) "example" ++ relying adapters))
   pure (laws ++ programEvidence program)
   where
-    relying [] = ""
-    relying adapters = "; relies on " ++ intercalate ", " (map idText adapters)
+    relyingOn [] = ""
+    relyingOn adapters = "; relies on " ++ intercalate ", " (map idText adapters)
+    production choice = case choice of
+      ProductionHandler -> True
+      RecordingHandler inner -> production inner
+      SpecHandler _ -> False
+    effectful e = case expressionNode e of
+      Perform _ _ -> True
+      Handle _ _ -> True
+      Calls _ _ -> True
+      _ -> any effectful (children e)
     refute registry bits invoke p values = do
       let env = zip (map (binderId . quantifiedBinder) (propertyInputs p)) values
           at = Just (propertyLocation p)
@@ -83,6 +105,50 @@ dischargeEvidence program = do
         Right False -> Left [Diagnostic "refuted" ("law " ++ propertyName p ++ " is false" ++ input) at]
         Left message -> Left [Diagnostic "refuted" ("law " ++ propertyName p ++ " fails" ++ input ++ ": " ++ message) at]
 
+-- Each operation a law's stateless spec handlers answer, by the clause that
+-- answers it.
+specResolver :: Program -> Property -> M.Map Id Id
+specResolver program p = M.fromList
+  [ (operationId (Operation ability op), clause)
+  | (ability, choice) <- propertyHandlers p, Just h <- [spec choice], Nothing <- [handlerState h]
+  , (op, clause) <- handlerClauses h ]
+  where
+    handlers = M.fromList [(handlerId h, h) | u <- programUnits program, h <- unitHandlers u]
+    spec choice = case choice of
+      SpecHandler h -> M.lookup h handlers
+      RecordingHandler inner -> spec inner
+      ProductionHandler -> Nothing
+
+-- A law's operations its spec handlers answer, as calls of their clauses.
+resolvePerforms :: M.Map Id Id -> Property -> Property
+resolvePerforms resolver p
+  | M.null resolver = p
+  | otherwise = p
+      { propertyInputs = [q { quantifiedPredicates = map go (quantifiedPredicates q)
+                            , quantifiedBounds = [(o, go e) | (o, e) <- quantifiedBounds q] } | q <- propertyInputs p]
+      , propertyBody = proposition (propertyBody p)
+      , propertyExamples = [x { exampleBindings = [(i, go v) | (i, v) <- exampleBindings x]
+                              , exampleExpectations = map proposition (exampleExpectations x) } | x <- propertyExamples p] }
+  where
+    proposition (Equation ev a b) = Equation ev (go a) (go b)
+    proposition (Implication g body) = Implication (go g) (proposition body)
+    proposition (Conjunction ps) = Conjunction (map proposition ps)
+    go e = case expressionNode e of
+      Perform op args | Just clause <- M.lookup (operationId op) resolver ->
+        e { expressionNode = ExternalCall clause (if null args then [unit (expressionOrigin e)] else map go args) }
+      _ -> mapChildren go e
+    unit = Expr (scalarType "Unit") (Constant (SAbsent "Unit"))
+
+-- The definitions some calls reach.
+reachableDefinitions :: [Definition] -> [Id] -> [Definition]
+reachableDefinitions definitions = go S.empty
+  where
+    table = M.fromList [(declarationId (definitionDeclaration d), d) | d <- definitions]
+    go _ [] = []
+    go seen (n : rest)
+      | n `S.member` seen = go seen rest
+      | Just d <- M.lookup n table = d : go (S.insert n seen) (callees (definitionBody d) ++ rest)
+      | otherwise = go (S.insert n seen) rest
 -- The law as a Boolean claim over its inputs: implications become disjunctions.
 -- `p = true` is shown as p; other equations are shown as written.
 lawClaim :: Property -> Expr
@@ -181,19 +247,7 @@ rebuild _ _ (Just replaced) = replaced
 rebuild f e Nothing = rebuildWith f e
 
 rebuildWith :: (Expr -> Expr) -> Expr -> Expr
-rebuildWith f e = e { expressionNode = case expressionNode e of
-  Construct n args -> Construct n (map f args)
-  Match value cases -> Match (f value) [c { caseBody = f (caseBody c) } | c <- cases]
-  AllElements value binder body -> AllElements (f value) binder (f body)
-  AllPayloads value predicates -> AllPayloads (f value) [(b, f x) | (b, x) <- predicates]
-  ExternalCall n args -> ExternalCall n (map f args)
-  Binary op evidence a b -> Binary op evidence (f a) (f b)
-  Unary op a -> Unary op (f a)
-  ShortCircuit op a b -> ShortCircuit op (f a) (f b)
-  If c a b -> If (f c) (f a) (f b)
-  Convert conversion ty a -> Convert conversion ty (f a)
-  Helper name args -> Helper name (map f args)
-  other -> other }
+rebuildWith = mapChildren
 
 -- Native bindings of a generation request.
 bindingEvidence :: BindingPlan -> [Obligation]
@@ -229,7 +283,7 @@ callees e = case expressionNode e of
   If c a b -> callees c ++ callees a ++ callees b
   Convert _ _ a -> callees a
   Helper _ args -> concatMap callees args
-  _ -> []
+  _ -> concatMap callees (children e)
 
 showValue :: Value -> String
 showValue (ScalarValue s) = prettyScalar s

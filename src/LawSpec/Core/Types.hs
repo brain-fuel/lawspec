@@ -242,7 +242,12 @@ instantiateExpression substitutions = go
       ShortCircuit op left right -> ShortCircuit op (go left) (go right)
       If c a b -> If (go c) (go a) (go b)
       Convert mode target value -> Convert mode (ty target) (go value)
-      Helper builtin arguments -> Helper builtin (map go arguments)}
+      Helper builtin arguments -> Helper builtin (map go arguments)
+      Perform (Operation (AbilityRef identity types) name) arguments ->
+        Perform (Operation (AbilityRef identity (map ty types)) name) (map go arguments)
+      Handle (CatchFailure (AbilityRef identity types)) body -> Handle (CatchFailure (AbilityRef identity (map ty types))) (go body)
+      Calls (Operation (AbilityRef identity types) name) arguments ->
+        Calls (Operation (AbilityRef identity (map ty types)) name) (map go <$> arguments)}
 
 typeVariables :: Type -> [Id]
 typeVariables (TypeVariable n) = [n]

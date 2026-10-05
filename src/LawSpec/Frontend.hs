@@ -6,7 +6,7 @@ import qualified LawSpec.Compile as S
 import qualified LawSpec.Core as C
 import LawSpec.Common
 import LawSpec.Data (elaborateDataDeclarationsWithProfile)
-import LawSpec.Elaboration (coreType, elaborateExpression, elaborateResolvedWithData, equationWithData, binaryOp, elaborateDefinitionUnit, elaborateContract)
+import LawSpec.Elaboration (coreType, elaborateExpression, elaborateResolvedWithData, equationWithData, binaryOp, elaborateDefinitionUnit, elaborateContract, abilityReference, unitOperations, performOperations)
 import LawSpec.Core.Validate (validateProgram)
 import LawSpec.Core.Total (deferProgramPostconditions)
 import Control.Monad (forM)
@@ -38,7 +38,14 @@ elaborate bits units properties = do
             (digestHex (digestString (show (bits, dataDigest, S.unitName u, S.functions u, p))))
             (property dataDeclarations u p)
       ps <- mapM elaborated (filter ((== S.unitName u) . S.owner) properties)
-      pure closed{C.unitContracts=cs,C.unitProperties=ps}
+      -- Calls to ability operations are Perform; each law gets the handlers
+      -- the abilities pass chose for it.
+      (_, operations) <- unitOperations u
+      handled <- forM ps $ \p -> do
+        assignment <- forM (maybe [] id (lookup (C.propertyName p) (S.lawAssignments u))) $ \(ability, choice) ->
+          (,) <$> abilityReference u ability <*> pure (handlerRef u choice)
+        pure (mapProperty (performOperations operations) p) { C.propertyHandlers = assignment }
+      pure closed{C.unitContracts=cs,C.unitProperties=handled}
     declarationId u n = C.Id (S.unitName u ++ "::" ++ n)
     property dataDeclarations u p = do
       let pid = C.Id (S.unitName u ++ "::law::" ++ escapeIdentity (S.name p))
@@ -72,8 +79,27 @@ elaborate bits units properties = do
         , C.propertyInputs=qs, C.propertyBody=body, C.propertyExamples=examples
         , C.propertyGeneration=S.generation p, C.propertyDescription=S.description original
         , C.propertyRationale=S.rationale original, C.propertyReferences=S.references original
-        , C.propertyTrace=S.trace p }
+        , C.propertyTrace=S.trace p, C.propertyHandlers=[] }
     contextual at = either (Left . pure . (\msg -> Diagnostic "elaboration" msg at)) Right
+
+handlerRef :: S.Unit -> S.HandlerChoice -> C.HandlerRef
+handlerRef u choice = case choice of
+  S.ChooseProduction -> C.ProductionHandler
+  S.ChooseSpec h -> C.SpecHandler (C.Id (S.unitName u ++ "::handler::" ++ h))
+  S.ChooseRecording c -> C.RecordingHandler (handlerRef u c)
+
+-- Every expression of a property.
+mapProperty :: (C.Expr -> C.Expr) -> C.Property -> C.Property
+mapProperty f p = p
+  { C.propertyInputs = [q { C.quantifiedPredicates = map f (C.quantifiedPredicates q)
+                          , C.quantifiedBounds = [(op, f e) | (op, e) <- C.quantifiedBounds q] } | q <- C.propertyInputs p]
+  , C.propertyBody = proposition (C.propertyBody p)
+  , C.propertyExamples = [e { C.exampleBindings = [(i, f v) | (i, v) <- C.exampleBindings e]
+                            , C.exampleExpectations = map proposition (C.exampleExpectations e) } | e <- C.propertyExamples p] }
+  where
+    proposition (C.Equation ev a b) = C.Equation ev (f a) (f b)
+    proposition (C.Implication g body) = C.Implication (f g) (proposition body)
+    proposition (C.Conjunction ps) = C.Conjunction (map proposition ps)
 
 -- Quoted law names may contain separators. Escape them before composing IDs so
 -- a display name cannot masquerade as a binder segment in target accessors.

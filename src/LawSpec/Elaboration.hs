@@ -1,7 +1,11 @@
 -- Lower typed surface expressions once. Law expansion and fixture checking
 -- both use this bridge; no backend reinterprets surface syntax.
 module LawSpec.Elaboration
-  ( coreType, equation, elaborateExpression, elaborateResolved, elaborateResolvedWithData, equationWithData, binaryOp, elaborateDefinitionUnit, elaborateContract ) where
+  ( coreType, equation, elaborateExpression, elaborateResolved, elaborateResolvedWithData, equationWithData, binaryOp, elaborateDefinitionUnit, elaborateContract
+  , abilityReference, unitOperations, performOperations ) where
+
+import LawSpec.Abilities (clauseDefinitionName, abilityArguments)
+import qualified Data.Map.Strict as M
 
 import LawSpec.Time (timeUnit, durationType, durationArithmetic, durationValue)
 import LawSpec.Imports (importedDefinitionName)
@@ -232,6 +236,19 @@ elaborateResolvedWithData dataTypes declarations bits origin resolve env source 
         pure (node t (C.Helper C.Length [items]))
     -- select c a b evaluates only the branch c selects, as if c then a else b.
     | n == "select", [c, a, b] <- xs = pure (node t (C.If c a b))
+    -- raise e performs the Fail ability's operation at e's type.
+    | n == "raise", [e] <- xs = pure (node t (C.Perform (C.Operation (C.AbilityRef C.failAbilityId [C.expressionType e]) "raise") [e]))
+    -- attempt e handles Fail E around e, giving Either E A.
+    | n == "attempt", [e] <- xs = case t of
+        C.Constructor "Either" [C.TypeArgument failure, _] ->
+          pure (node t (C.Handle (C.CatchFailure (C.AbilityRef C.failAbilityId [failure])) e))
+        _ -> Left "prelude.attempt gives an Either"
+    -- calls of op: the operation is resolved with the unit's abilities
+    -- (performOperations); op itself was lowered as a call without values.
+    | n == "calls", (op : rest) <- xs = case C.expressionNode op of
+        C.ExternalCall identity [] -> pure (node t (C.Calls (C.Operation (C.AbilityRef (C.Id "") []) (C.idText identity))
+          (if null rest then Nothing else Just rest)))
+        _ -> Left "calls of names an ability operation"
     | n == "isEmpty", [x] <- xs = do
         items <- collectionItems x
         let listType = C.expressionType items
@@ -263,9 +280,14 @@ binaryOp op = maybe (Left ("unknown binary operation: " ++ op)) Right (lookup op
 -- closed definition execution on the same typed Core path as generated code.
 elaborateDefinitionUnit :: [C.DataDeclaration] -> Int -> S.Unit -> Either String C.Unit
 elaborateDefinitionUnit dataDeclarations bits u = do
-  ds <- forM (S.functions u) $ \(n,t) -> (\ty -> C.MkDeclaration (declarationId u n) n ty
-    (maybe (C.GeneratedFrom (declarationId u n)) C.SourceSpan (lookup n (S.declarationSpans u)))
-    (n `elem` S.asyncFunctions u)) <$> coreType t
+  -- Ability operations are not declarations: handlers answer them.
+  ds <- forM [f | f@(n,_) <- S.functions u, n `notElem` S.operationNames u] $ \(n,t) -> do
+    ty <- coreType t
+    uses <- mapM (abilityReference u) (maybe [] id (lookup n (S.abilityRows u)))
+    pure (C.MkDeclaration (declarationId u n) n ty
+      (maybe (C.GeneratedFrom (declarationId u n)) C.SourceSpan (lookup n (S.declarationSpans u)))
+      (n `elem` S.asyncFunctions u) uses)
+  (abilities, operations) <- unitOperations u
   definitions <- forM (S.functionDefinitions u) $ \d -> do
     let name = S.functionName d
         did = declarationId u name
@@ -277,7 +299,7 @@ elaborateDefinitionUnit dataDeclarations bits u = do
     -- Parameter names have lexical precedence over top-level declarations.
     let visible = [declarationId u n | (n,_) <- S.functions u, n `notElem` map fst parameters]
     arguments <- forM parameters $ \(n,t) -> C.Binder (resolve n) n <$> coreType t
-    body <- elaborateResolvedWithData dataDeclarations visible bits did resolve env
+    body <- performOperations operations <$> elaborateResolvedWithData dataDeclarations visible bits did resolve env
       (S.Annotate (S.functionBody d) (S.functionResult d))
     declaration <- case filter ((== did) . C.declarationId) ds of
       [value] -> Right value
@@ -292,7 +314,18 @@ elaborateDefinitionUnit dataDeclarations bits u = do
   bridges <- concat <$> mapM (machineBridges ds) machines
   sessions <- mapM session (S.protocols u)
   mailboxes <- mapM (\(n, t, _) -> C.Mailbox n <$> coreType t) (S.mailboxes u)
-  pure (C.MkUnit (C.Id (S.unitName u)) (ds ++ map C.definitionDeclaration bridges) contracts [] (definitions ++ bridges) machines sessions (S.supervisors u) mailboxes)
+  handlers <- forM (S.handlerDeclarations u) $ \h -> do
+    ability <- abilityReference u (S.handlerAbility h)
+    let identity = C.Id (S.unitName u ++ "::handler::" ++ S.handlerName h)
+        clauses = [(op, declarationId u (clauseDefinitionName (S.handlerName h) op)) | (op, _) <- C.abilityOperations
+          (maybe C.failAbility id (lookup (C.abilityRefId ability) [(C.abilityId a, a) | a <- abilities]))]
+        visible = [declarationId u n | (n,_) <- S.functions u]
+    state <- forM (S.handlerState h) $ \(_, ty, start) -> do
+      t <- coreType ty
+      value <- elaborateResolvedWithData dataDeclarations visible bits identity (declarationId u) (S.functions u) (S.Annotate start ty)
+      pure (t, value)
+    pure (C.Handler identity (S.handlerName h) ability clauses state (C.SourceSpan (S.handlerSpan h)))
+  pure (C.MkUnit (C.Id (S.unitName u)) (ds ++ map C.definitionDeclaration bridges) contracts [] (definitions ++ bridges) machines sessions (S.supervisors u) mailboxes abilities handlers)
   where
     declarationId unit n = C.Id (S.unitName unit ++ "::" ++ n)
     sessionIdentity n = C.Id (S.unitName u ++ "::session::" ++ n)
@@ -342,3 +375,62 @@ elaborateContract dataDeclarations bits u c = do
   let (n,t) = S.contractResult c
   result <- C.Binder (resolve n) n <$> coreType t
   C.Contract cid args result <$> mapM term (S.contractPreconditions c) <*> mapM term (S.contractPostconditions c) <*> pure []
+
+
+-- An ability type of a unit, as Core refers to it: Gateway is
+-- <unit>::ability::Gateway, and Fail E the built-in Fail at E.
+abilityReference :: S.Unit -> S.Type -> Either String C.AbilityRef
+abilityReference u t = do
+  arguments <- mapM coreType (abilityArguments t)
+  let name = S.abilityTypeName t
+  pure (if name == S.failAbilityName then C.AbilityRef C.failAbilityId arguments
+        else C.AbilityRef (C.Id (S.unitName u ++ "::ability::" ++ name)) arguments)
+
+-- A unit's abilities at the type it uses each one, and its operations by the
+-- identity a call to one elaborates to (<unit>::<op>).
+unitOperations :: S.Unit -> Either String ([C.Ability], M.Map C.Id C.Operation)
+unitOperations u = do
+  let mentioned = concatMap snd (S.abilityRows u) ++ map S.handlerAbility (S.handlerDeclarations u) ++
+        concatMap (map fst . snd) (S.lawAssignments u)
+  found <- forM (S.abilities u) $ \a -> do
+    let instance' = if null (S.abilityParameters a) then Just (S.Named (S.abilityName a))
+          else case [t | t <- mentioned, S.abilityTypeName t == S.abilityName a] of
+            t : _ -> Just t
+            [] -> Nothing
+    case instance' of
+      Nothing -> pure Nothing
+      Just t -> do
+        ref <- abilityReference u t
+        operations <- forM (S.abilityOperations a) $ \(op, _) ->
+          maybe (Left ("missing operation " ++ op)) (fmap ((,) op) . coreType) (lookup op (S.functions u))
+        pure (Just (C.Ability (C.abilityRefId ref) (S.abilityName a) [] operations (C.SourceSpan (S.abilitySpan a)), ref))
+  let present = [x | Just x <- found]
+  pure (map fst present, M.fromList
+    [ (C.Id (S.unitName u ++ "::" ++ op), C.Operation ref op)
+    | (ability, ref) <- present, (op, _) <- C.abilityOperations ability ])
+
+-- Calls to ability operations become Perform; `calls of` names its
+-- operation.
+performOperations :: M.Map C.Id C.Operation -> C.Expr -> C.Expr
+performOperations operations = go
+  where
+    go e = e { C.expressionNode = case C.expressionNode e of
+      C.ExternalCall identity args | Just op <- M.lookup identity operations -> C.Perform op (map go args)
+      C.ExternalCall identity args -> C.ExternalCall identity (map go args)
+      C.Calls (C.Operation (C.AbilityRef (C.Id "") []) name) args
+        | Just op <- M.lookup (C.Id name) operations -> C.Calls op (map go <$> args)
+      C.Calls op args -> C.Calls op (map go <$> args)
+      C.Perform op args -> C.Perform op (map go args)
+      C.Handle handling body -> C.Handle handling (go body)
+      C.Constant v -> C.Constant v
+      C.Construct tag fields -> C.Construct tag (map go fields)
+      C.Match value cases -> C.Match (go value) [c { C.caseBody = go (C.caseBody c) } | c <- cases]
+      C.AllElements value binder predicate -> C.AllElements (go value) binder (go predicate)
+      C.AllPayloads value predicates -> C.AllPayloads (go value) [(b, go p) | (b, p) <- predicates]
+      C.Local identity -> C.Local identity
+      C.Binary op ev a b -> C.Binary op ev (go a) (go b)
+      C.Unary op a -> C.Unary op (go a)
+      C.ShortCircuit op a b -> C.ShortCircuit op (go a) (go b)
+      C.If c a b -> C.If (go c) (go a) (go b)
+      C.Convert mode ty a -> C.Convert mode ty (go a)
+      C.Helper builtin args -> C.Helper builtin (map go args) }

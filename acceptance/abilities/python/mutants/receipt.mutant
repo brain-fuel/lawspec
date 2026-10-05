@@ -1,0 +1,7 @@
+expect-any: a receipt is for the amount captured [native] | [recording native]
+@@ src/example/abilities.py
+<<<<<<<
+        return data.Receipt(value0)
+=======
+        return data.Receipt(value0 if value0 < 1000 else value0 - 1)
+>>>>>>>

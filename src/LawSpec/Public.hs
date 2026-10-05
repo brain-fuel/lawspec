@@ -2,6 +2,7 @@
 -- no internal AST or IR datatype is serialized with genericToJSON.
 module LawSpec.Public (programView, typeView, expressionView) where
 import Data.Aeson
+import Data.List (intercalate)
 import qualified LawSpec.Core as C
 import LawSpec.Core.Evidence (Obligation(..), statusName)
 import qualified LawSpec.Model as S
@@ -56,6 +57,9 @@ expressionView names e = object ["type" .= typeView (C.expressionType e),"origin
     C.If c a b -> object ["kind" .= str "if", "condition" .= expr c, "then" .= expr a, "else" .= expr b]
     C.Convert mode _ a -> object ["kind" .= str "convert", "conversion" .= (if mode == C.Explicit then str "explicit" else "checked"), "argument" .= expr a]
     C.Helper name args -> object ["kind" .= str "helper", "name" .= ("prelude." ++ C.builtinName name), "arguments" .= map expr args]
+    C.Perform op args -> object ["kind" .= str "perform", "ability" .= C.abilityKey (C.operationAbility op), "operation" .= C.operationName op, "arguments" .= map expr args]
+    C.Handle (C.CatchFailure ability) body -> object ["kind" .= str "handle", "handling" .= str "catchFailure", "ability" .= C.abilityKey ability, "body" .= expr body]
+    C.Calls op args -> object ["kind" .= str "calls", "ability" .= C.abilityKey (C.operationAbility op), "operation" .= C.operationName op, "arguments" .= fmap (map expr) args]
 unary :: C.UnaryOp -> String
 unary C.Negate = "-"
 unary C.Not = "!"
@@ -84,6 +88,9 @@ expressionText names e = case C.expressionNode e of
   C.If c a b -> "(if " ++ go c ++ " then " ++ go a ++ " else " ++ go b ++ ")"
   C.Convert _ t a -> "(" ++ go a ++ " :: " ++ prettyType t ++ ")"
   C.Helper name args -> "prelude." ++ C.builtinName name ++ concatMap (\v -> " (" ++ go v ++ ")") args
+  C.Perform op args -> unwords (C.operationName op : map ((\v -> "(" ++ go v ++ ")")) args)
+  C.Handle _ body -> "prelude.attempt (" ++ go body ++ ")"
+  C.Calls op args -> "calls of " ++ C.operationName op ++ maybe "" (\xs -> " with (" ++ intercalate ", " (map go xs) ++ ")") args
   where go = expressionText names
 
 propositionView :: Names -> C.Proposition -> Value
@@ -124,7 +131,17 @@ programView settings surface expansions artifacts evidence C.Program{..} = objec
           , "origin" .= originView (C.constructorOrigin constructor)
           ] | constructor <- C.dataConstructors declaration]
       ]
-    unitView u = object ["id" .= C.idText (C.unitId u), "declarations" .= [object (["id" .= C.idText (C.declarationId d),"name" .= C.declarationName d,"type" .= typeView (C.declarationType d),"origin" .= originView (C.declarationOrigin d)] ++ ["async" .= True | C.declarationAsync d]) | d <- C.unitDeclarations u]]
+    unitView u = object (["id" .= C.idText (C.unitId u), "declarations" .= [object (["id" .= C.idText (C.declarationId d),"name" .= C.declarationName d,"type" .= typeView (C.declarationType d),"origin" .= originView (C.declarationOrigin d)] ++ ["async" .= True | C.declarationAsync d] ++
+        -- Its ability row, declared or inferred.
+        ["uses" .= map C.abilityKey (C.declarationUses d) | not (null (C.declarationUses d))]) | d <- C.unitDeclarations u]] ++
+      ["abilities" .= [object ["id" .= C.idText (C.abilityId a), "name" .= C.abilityName a
+          , "operations" .= [object ["name" .= op, "type" .= typeView t] | (op, t) <- C.abilityOperations a]
+          , "origin" .= originView (C.abilityOrigin a)] | a <- C.unitAbilities u] | not (null (C.unitAbilities u))] ++
+      ["handlers" .= [object ["id" .= C.idText (C.handlerId h), "name" .= C.handlerName h
+          , "ability" .= C.abilityKey (C.handlerAbility h)
+          , "clauses" .= [object ["operation" .= op, "definition" .= C.idText d] | (op, d) <- C.handlerClauses h]
+          , "state" .= fmap (typeView . fst) (C.handlerState h)
+          , "origin" .= originView (C.handlerOrigin h)] | h <- C.unitHandlers u] | not (null (C.unitHandlers u))])
     propertyView owner p =
       let names = [(C.binderId b,C.binderName b) | q <- C.propertyInputs p, let b = C.quantifiedBinder q]
           expr = expressionView names
@@ -140,7 +157,13 @@ programView settings surface expansions artifacts evidence C.Program{..} = objec
         ,"inputs" .= map input (C.propertyInputs p), "assertion" .= propositionView names (C.propertyBody p)
         ,"examples" .= map example (C.propertyExamples p), "description" .= C.propertyDescription p
         ,"rationale" .= C.propertyRationale p, "references" .= C.propertyReferences p
-        ,"location" .= C.propertyLocation p, "trace" .= C.propertyTrace p, "generation" .= C.propertyGeneration p]
+        ,"location" .= C.propertyLocation p, "trace" .= C.propertyTrace p, "generation" .= C.propertyGeneration p
+        -- The handler the law runs under for each ability it uses.
+        ,"handlers" .= [object ["ability" .= C.abilityKey a, "handler" .= handlerText h] | (a, h) <- C.propertyHandlers p]]
+    handlerText h = case h of
+      C.ProductionHandler -> "native"
+      C.SpecHandler i -> reverse (takeWhile (/= ':') (reverse (C.idText i)))
+      C.RecordingHandler inner -> "recording " ++ handlerText inner
     evidenceView o = object
       [ "owner" .= C.idText (obligationUnit o), "declaration" .= C.idText (obligationDeclaration o)
       , "stage" .= obligationStage o, "status" .= statusName (obligationStatus o)

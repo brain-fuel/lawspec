@@ -171,8 +171,12 @@ validateUnit dataTypes u = either (Left . pure . (\m -> Diagnostic "declaration"
   forM_ (functions u) $ \(n,t) -> do
     unless (maybe False (isLower . fst) (uncons n)) (Left "function names must start with a lowercase letter")
     let (args,result) = functionType t
-    unless (not (null args) && all (if n `elem` map functionName (functionDefinitions u) then valueType dataTypes else concreteValue dataTypes) (result:args))
-      (Left (n ++ ": functions require one or more concrete value inputs and a value result"))
+    -- An ability operation may take no values (now :: Instant).
+    if n `elem` operationNames u
+      then unless (all (concreteValue dataTypes) (result:args))
+        (Left (n ++ ": an ability operation takes and gives concrete values"))
+      else unless (not (null args) && all (if n `elem` map functionName (functionDefinitions u) then valueType dataTypes else concreteValue dataTypes) (result:args))
+        (Left (n ++ ": functions require one or more concrete value inputs and a value result"))
   forM_ (laws u) $ \l -> do
     mapM_ (metadataText (map fst (parameters l ++ functions u))) [description l, rationale l]
     forM_ (examples l) $ \ex ->

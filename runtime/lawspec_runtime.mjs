@@ -641,6 +641,67 @@ function exactFloat(r, t) {
   return view.getFloat64(0);
 }
 
+// Abilities (docs/explanation/abilities.md). Handlers travel in the symbols
+// Map generated code passes to every definition: that Map is the evidence of
+// evidence-passing compilation. A law installs one handler per ability; an
+// operation finds the handler of its ability there. The Fail ability's
+// handlers abort, so raise throws a Failure and attempt catches it.
+const HANDLERS = '_lawspec_handlers';
+
+export class Failure extends Error {
+  constructor(ability, value) {
+    super(`failed with ${String(value)} (${ability})`);
+    this.ability = ability;
+    this.value = value;
+  }
+}
+
+export function installHandlers(symbols, handlers) {
+  const table = new Map(symbols.get(HANDLERS) ?? []);
+  for (const [key, value] of Object.entries(handlers)) table.set(key, value);
+  symbols.set(HANDLERS, table);
+  return symbols;
+}
+
+export function handler(symbols, ability) {
+  const table = symbols instanceof Map ? symbols.get(HANDLERS) : undefined;
+  if (table === undefined || !table.has(ability))
+    throw new Error(`no handler for the ability ${ability}: a law names one with \`using\`, or runs under each lawful handler`);
+  return table.get(ability);
+}
+
+export function raiseFailure(ability, value) {
+  throw new Failure(ability, value);
+}
+
+export function attempt(ability, body, right, left) {
+  let value;
+  try {
+    value = body();
+  } catch (error) {
+    if (error instanceof Failure && error.ability === ability) return left(error.value);
+    throw error;
+  }
+  return right(value);
+}
+
+export async function attemptAsync(ability, body, right, left) {
+  let value;
+  try {
+    value = await body();
+  } catch (error) {
+    if (error instanceof Failure && error.ability === ability) return left(error.value);
+    throw error;
+  }
+  return right(value);
+}
+
+export function countCalls(recording, operation, matches = null) {
+  if (recording === null || typeof recording !== 'object' || !Array.isArray(recording.calls))
+    throw new TypeError('calls of needs a recording handler: `using recording`');
+  return recording.calls.filter(([name, args]) => name === operation && (matches === null || matches(args))).length;
+}
+
 export function unitResult(value) {
   return value === undefined ? UNIT : validate(value, 'Unit');
 }

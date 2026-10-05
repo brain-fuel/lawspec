@@ -130,8 +130,7 @@ mentions name e = case expressionNode e of
   ShortCircuit _ a b -> mentions name a || mentions name b
   If c a b -> mentions name c || mentions name a || mentions name b
   Convert _ _ a -> mentions name a
-  Helper _ args -> any (mentions name) args
-  _ -> False
+  _ -> any (mentions name) (children e)
 
 -- Definition emitters call this for the result checks they generate. Proved
 -- postconditions need none; deferred non-linear claims are checked.

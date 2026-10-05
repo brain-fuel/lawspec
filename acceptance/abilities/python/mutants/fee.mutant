@@ -1,0 +1,7 @@
+expect: the fee is never negative [native]
+@@ src/example/abilities.py
+<<<<<<<
+        return 25
+=======
+        return -25
+>>>>>>>

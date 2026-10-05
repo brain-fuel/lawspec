@@ -109,6 +109,10 @@ evaluateValue registry bits adapter bindings = run (M.fromList bindings) where
       if target == LawSpec.Core.expressionType a
         then validateValueWithContracts registry bits target value
         else fromScalarValue target <$> (toScalarValue value >>= convertValue bits target)
+    -- An operation goes to the handler the caller installed in the hook.
+    Perform op args -> mapM go args >>= adapter (operationId op) >>= validateValueWithContracts registry bits expressionType
+    Handle _ _ -> Left "a failure is caught when the law runs, not by the compiler"
+    Calls _ _ -> Left "calls are counted when the law runs, not by the compiler"
     Helper Unreachable _ -> Left "a branch the indices rule out was reached"
     Helper builtin args -> mapM go args >>= helper builtin
   helper Length [value@(DataValue (Constructor "List" [_]) _ _)] =

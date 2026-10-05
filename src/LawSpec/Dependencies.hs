@@ -32,11 +32,15 @@ data Graph = Graph
   , graphData :: M.Map Id DataDeclaration
   , graphDefinitions :: M.Map Id Definition
   , graphOwners :: M.Map Id Id
+  -- Each spec handler's clause definitions: a law run under a handler
+  -- reaches them.
+  , graphHandlers :: M.Map Id [Id]
   }
 
 dependencyGraph :: [DataDeclaration] -> [Unit] -> Graph
-dependencyGraph dataDeclarations units = Graph edges digests dataTable definitionTable owners
+dependencyGraph dataDeclarations units = Graph edges digests dataTable definitionTable owners handlerTable
   where
+    handlerTable = M.fromList [(handlerId h, map snd (handlerClauses h)) | u <- units, h <- unitHandlers u]
     dataTable = M.fromList [(dataId d, d) | d <- dataDeclarations]
     definitionTable = M.fromList [(declarationId (definitionDeclaration d), d) | u <- units, d <- unitDefinitions u]
     contractTable = M.fromList [(contractDeclaration c, c) | u <- units, c <- unitContracts u]
@@ -97,8 +101,15 @@ lawReferences graph p = references graph $
            concatMap (exprRefs owners . snd) (quantifiedBounds q) | q <- propertyInputs p ] ++
   propositionRefs owners (propertyBody p) ++
   concat [ concatMap (exprRefs owners . snd) (exampleBindings e) ++ concatMap (propositionRefs owners) (exampleExpectations e)
-         | e <- propertyExamples p ]
-  where owners = graphOwners graph
+         | e <- propertyExamples p ] ++
+  [ DeclarationNode clause | (_, choice) <- propertyHandlers p, h <- specHandlers choice
+  , clause <- M.findWithDefault [] h (graphHandlers graph) ]
+  where
+    owners = graphOwners graph
+    specHandlers choice = case choice of
+      SpecHandler h -> [h]
+      RecordingHandler inner -> specHandlers inner
+      ProductionHandler -> []
 
 -- What a unit's declarations, contracts, definitions and laws reference.
 unitReferences :: Graph -> Unit -> [Ref]
@@ -155,6 +166,10 @@ exprRefs owners e = typeRefs (expressionType e) ++ case expressionNode e of
   If c a b -> go c ++ go a ++ go b
   Convert _ t a -> typeRefs t ++ go a
   Helper _ args -> concatMap go args
+  Perform op args -> abilityRefs (operationAbility op) ++ concatMap go args
+  Handle (CatchFailure ability) body -> abilityRefs ability ++ go body
+  Calls op args -> abilityRefs (operationAbility op) ++ concatMap go (maybe [] id args)
   where
     go = exprRefs owners
+    abilityRefs ability = concatMap typeRefs (abilityRefArguments ability)
     owner c = maybe [] (pure . TypeNode) (M.lookup c owners)

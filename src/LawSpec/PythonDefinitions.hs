@@ -59,6 +59,17 @@ emitPythonDefinitions layout bits declarations units = do
           local identity = maybe (error "unresolved Python local") id (lookup identity names)
           arguments = map (local . binderId) (definitionArguments d)
           external term values = case expressionNode term of
+            -- raise aborts to the nearest attempt of its Fail ability.
+            Perform op [_] | isFail (operationAbility op) ->
+              pure (E.call "ls.raise_failure" (E.quoted (abilityKey (operationAbility op)) : values))
+            -- An operation goes to the handler the law installed in symbols
+            -- for its ability (evidence passing).
+            Perform op args -> do
+              nativeValues <- sequence [schemaCall "to_native" (expressionType a) value | (a, value) <- zip args values]
+              let invocation = E.call ("ls.handler(symbols, " ++ show (abilityKey (operationAbility op)) ++ ")." ++ operationName op) nativeValues
+              if expressionType term == Constructor "Unit" []
+                then pure (E.call "ls.unit_result" [invocation])
+                else schemaCall "from_native" (expressionType term) invocation
             ExternalCall declaration _ | Just name <- lookup declaration callees ->
               pure (E.call (drop (length ("_definitions." :: String)) name) (D.text "symbols":values))
             -- An orchestration calls an adapter natively: the values cross
@@ -66,7 +77,9 @@ emitPythonDefinitions layout bits declarations units = do
             ExternalCall declaration _ | Just (owner, adapter) <- lookup declaration adapters -> do
               let (parameterTypes, resultType) = functionType (declarationType adapter)
               nativeValues <- sequence [schemaCall "to_native" ty value | (ty, value) <- zip parameterTypes values]
-              let invocation = E.call ("_adapters(" ++ show owner ++ ")." ++ declarationName adapter) nativeValues
+              -- An adapter that uses abilities gets their handlers first.
+              let handlers = [D.text ("ls.handler(symbols, " ++ show (abilityKey a) ++ ")") | a <- declarationUses adapter, not (isFail a)]
+                  invocation = E.call ("_adapters(" ++ show owner ++ ")." ++ declarationName adapter) (handlers ++ nativeValues)
               -- A Unit adapter returns None, which is the Unit value.
               let fromNative value
                     | resultType == Constructor "Unit" [] = pure (E.call "ls.unit_result" [value])

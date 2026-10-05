@@ -70,7 +70,65 @@ data FunctionDefinition = FunctionDefinition
 -- later, as each target's task, and tests await them where they are called.
 -- orchestrations names the definitions that may call adapters: workflows,
 -- whose composition LawSpec generates and every target runs natively.
-data Unit = Unit { unitName :: String, functions :: [(String, Type)], laws :: [Law], refinements :: [Refinement], contracts :: [Contract], declarationSpans :: [(String,Span)], dataTypes :: [DataTypeDeclaration], functionDefinitions :: [FunctionDefinition], asyncFunctions :: [String], orchestrations :: [String], policies :: [(String, StagePolicy String)], machines :: [Machine String], handles :: [String], protocols :: [Protocol], supervisors :: [Supervisor], mailboxes :: [(String, Type, Span)] } deriving (Eq, Show, Generic)
+data Unit = Unit { unitName :: String, functions :: [(String, Type)], laws :: [Law], refinements :: [Refinement], contracts :: [Contract], declarationSpans :: [(String,Span)], dataTypes :: [DataTypeDeclaration], functionDefinitions :: [FunctionDefinition], asyncFunctions :: [String], orchestrations :: [String], policies :: [(String, StagePolicy String)], machines :: [Machine String], handles :: [String], protocols :: [Protocol], supervisors :: [Supervisor], mailboxes :: [(String, Type, Span)]
+  -- Abilities (LawSpec.Abilities): what the unit declares, and what the
+  -- abilities pass derives from it. See docs/explanation/abilities.md.
+  , abilities :: [AbilityDeclaration], handlerDeclarations :: [HandlerDeclaration]
+  -- The abilities each signature or definition says it uses (`uses A, B`,
+  -- `fails with E`), by name; a definition may leave its list out.
+  , declaredUses :: [(String, [Type])]
+  -- The handlers each law names with `using`, by law name.
+  , lawHandlers :: [(String, [HandlerUse])]
+  -- Derived: every function's ability row (declared, or inferred for a
+  -- definition), and the handler each law runs under for each ability.
+  , abilityRows :: [(String, [Type])]
+  , lawAssignments :: [(String, [(Type, HandlerChoice)])] } deriving (Eq, Show, Generic)
+
+-- ability Name (a :: Type)* is (op :: Type)* [laws law*] end. Operations are
+-- written like signatures; the laws are obligations on every handler.
+data AbilityDeclaration = AbilityDeclaration
+  { abilityName :: String, abilityParameters :: [String]
+  , abilityOperations :: [(String, Type)], abilityLaws :: [Law], abilitySpan :: Span }
+  deriving (Eq, Show, Generic)
+
+-- handler name for Ability [with state s :: S start e] is clause* end. A
+-- clause is `op x y is body end`; in a handler with state, the body may
+-- update it with `~s := e;` before giving the result.
+data HandlerDeclaration = HandlerDeclaration
+  { handlerName :: String, handlerAbility :: Type
+  , handlerState :: Maybe (String, Type, Expr)
+  , handlerClauses :: [HandlerClause], handlerSpan :: Span }
+  deriving (Eq, Show, Generic)
+
+data HandlerClause = HandlerClause
+  { clauseOperation :: String, clauseParameters :: [String], clauseBody :: Expr, clauseSpan :: Span }
+  deriving (Eq, Show, Generic)
+
+-- What a law's `using` names: a spec handler, an ability (whichever lawful
+-- handler the harness picks), or a recording of either.
+data HandlerUse = UseHandler String | UseAbility String | UseRecording HandlerUse
+  deriving (Eq, Show, Generic)
+
+-- The handler a law runs under for one ability: the native production
+-- handler, a spec handler, or a recording of one.
+data HandlerChoice = ChooseProduction | ChooseSpec String | ChooseRecording HandlerChoice
+  deriving (Eq, Ord, Show, Generic)
+
+-- The built-in failure ability: `fails with E` is `uses Fail E`.
+failAbilityName :: String
+failAbilityName = "Fail"
+
+-- An ability's name, without its type arguments.
+abilityTypeName :: Type -> String
+abilityTypeName t = case t of
+  Named n -> n
+  Applied n _ -> n
+  Application n _ -> n
+  _ -> prettyType t
+
+-- The names of a unit's ability operations.
+operationNames :: Unit -> [String]
+operationNames u = [op | a <- abilities u, (op, _) <- abilityOperations a]
 
 -- A protocol: what one end of a channel sends and receives, in order (see
 -- LawSpec.Scenario).

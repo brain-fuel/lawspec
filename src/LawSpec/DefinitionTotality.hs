@@ -35,6 +35,7 @@ auditTemplates declarations bits unit templates = do
         parent (S.Application name _) = name
         parent _ = "invalid-constructor"
     identity name = C.Id (S.unitName unit ++ "::" ++ name)
+    operations = S.operationNames unit
     lower (definition, body, preconditions, postconditions) = either
       (Left . pure . (\message -> Diagnostic "total"
         (S.functionName definition ++ ": " ++ message)
@@ -70,6 +71,8 @@ auditTemplates declarations bits unit templates = do
         S.BoolLit value -> pure (T.Literal (SBool value))
         S.StringLit value -> pure (T.Literal (textScalar value))
         S.TypeBound _ _ -> pure (T.Sequence [])
+        -- An ability operation is an opaque call: its handler answers it.
+        S.Var name | M.notMember name scope, name `elem` operations -> pure (T.Sequence [])
         S.Var name -> pure $ maybe (T.Call (identity name) []) T.Variable (M.lookup name scope)
         S.Annotate _ _ -> case operands of
           [value] -> recur value
@@ -152,6 +155,8 @@ auditTemplates declarations bits unit templates = do
           (S.Var name, arguments) | Just builtin <- stripPrefix "prelude." name -> do
             values <- mapM recur operands
             helper typed integers builtin operands values
+          (S.Var name, arguments) | name `elem` operations, M.notMember name scope ->
+            T.Sequence <$> mapM recur arguments
           (S.Var name, arguments) -> do
             when (M.member name scope) (lift (Left "higher-order call in a total definition"))
             T.Call (identity name) <$> mapM recur arguments
@@ -178,6 +183,10 @@ auditTemplates declarations bits unit templates = do
       -- if c then a else b: each branch is checked knowing which way c went.
       ("select", _, [c, a, b]) -> pure (T.Conditional c a b)
       ("concurrently", _, [value]) -> pure value
+      -- raise aborts to Fail's handler: an opaque value of any type.
+      ("raise", _, _) -> pure (T.Sequence values)
+      ("attempt", _, _) -> pure (T.Sequence values)
+      ("calls", _, _) -> pure (T.Sequence [])
       ("unreachable", [message], _) | Just name <- literalText (S.expression message) -> pure (T.Absurd name)
       ("unreachable", _, _) -> pure (T.Absurd "a constructor")
       ("isPresent", _, [value]) -> pure (T.IsPresent value)

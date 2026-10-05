@@ -557,6 +557,62 @@ def unit_result(value):
     return UNIT if value is None else validate(value, 'Unit')
 
 
+# Abilities (docs/explanation/abilities.md). Handlers travel in the symbols
+# context generated code passes to every definition: that context is the
+# evidence of evidence-passing compilation. A law installs one handler per
+# ability; an operation finds the handler of its ability there. The Fail
+# ability's handlers abort, so raise is an exception and attempt catches it.
+_HANDLERS = "_lawspec_handlers"
+
+
+class Failure(Exception):
+    """A failure raised with the Fail ability, aborting to the nearest
+    attempt of the same ability."""
+
+    def __init__(self, ability, value):
+        super().__init__(f"failed with {value!r} ({ability})")
+        self.ability = ability
+        self.value = value
+
+
+def install_handlers(symbols, handlers):
+    table = dict(symbols.get(_HANDLERS, {}))
+    table.update(handlers)
+    symbols[_HANDLERS] = table
+    return symbols
+
+
+def handler(symbols, ability):
+    table = symbols.get(_HANDLERS) if isinstance(symbols, dict) else None
+    if not table or ability not in table:
+        raise LookupError(f"no handler for the ability {ability}: a law "
+                          "names one with `using`, or runs under each "
+                          "lawful handler")
+    return table[ability]
+
+
+def raise_failure(ability, value):
+    raise Failure(ability, value)
+
+
+def attempt(ability, body, right, left):
+    try:
+        value = body()
+    except Failure as failure:
+        if failure.ability != ability:
+            raise
+        return left(failure.value)
+    return right(value)
+
+
+def count_calls(recording, operation, matches=None):
+    calls = getattr(recording, "calls", None)
+    if calls is None:
+        raise TypeError("calls of needs a recording handler: `using recording`")
+    return sum(1 for (name, arguments) in calls
+               if name == operation and (matches is None or matches(arguments)))
+
+
 # Dependent-domain operations are independent of test frameworks.
 def sample(t, seed, bits=64):
     import random

@@ -40,6 +40,7 @@ extra-source-files:
     runtime/lawspec_schema.go
     runtime/rust/Cargo.toml
     runtime/rust/Cargo.lock
+    examples/specs/abilities.lawspec
     examples/specs/actors.lawspec
     examples/specs/algebra.lawspec
     examples/specs/approvals.lawspec
@@ -182,6 +183,11 @@ extra-source-files:
 
 library
   exposed-modules:
+      LawSpec.Abilities
+      LawSpec.AbilityEmit
+      LawSpec.AbilityEmit.Python
+      LawSpec.AbilityEmit.Web
+      LawSpec.AbilityNames
       LawSpec.Actors
       LawSpec.Actors.Go
       LawSpec.Actors.Haskell

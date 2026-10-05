@@ -87,7 +87,9 @@ usedCollections sources =
             -- The railway combinator both (<*>) pairs two results.
             ["Pair" | "prelude.both" `elem` tokens || "<*>" `isInfixOf` stripComments text] ++
             -- A model that behaves like a collection gets references over pairs.
-            ["Pair" | "behaves" `elem` tokens]
+            ["Pair" | "behaves" `elem` tokens] ++
+            -- A handler with state gives Pair result state from each clause.
+            ["Pair" | "handler" `elem` tokens && "state" `elem` tokens]
       in [t | t <- named ++ operated, t `notElem` declared]
     stripPrefix' prefix t = if prefix `isPrefixOf` t then Just (drop (length prefix) t) else Nothing
     stripComments = unlines . map (\line -> takeComment line) . lines

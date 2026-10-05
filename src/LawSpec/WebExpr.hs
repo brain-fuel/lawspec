@@ -112,6 +112,10 @@ renderWith asynchronous ts declarations width reference key local external = ren
         let matched = schema "match" [ref,argument,array cases,width]
         pure (if asynchronous then D.text "(await " <> matched <> D.text ")" else matched)
       ExternalCall _ args -> mapM render args >>= external term
+      -- Ability nodes go to the caller, which knows where handlers are.
+      Perform _ args -> mapM render args >>= external term
+      Handle _ body -> render body >>= external term . pure
+      Calls _ args -> mapM render (maybe [] id args) >>= external term
       Convert mode target value -> do
         argument <- render value
         case mode of

@@ -75,6 +75,12 @@ instance Binary C.UnaryOp
 instance Binary C.Unit
 instance Binary C.Session
 instance Binary C.Mailbox
+instance Binary C.AbilityRef
+instance Binary C.Operation
+instance Binary C.Handling
+instance Binary C.Ability
+instance Binary C.Handler
+instance Binary C.HandlerRef
 instance Binary ConstructorIndex
 instance Binary FamilyIndex
 instance Binary IndexGuard

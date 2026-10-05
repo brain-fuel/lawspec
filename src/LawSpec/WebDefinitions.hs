@@ -1,5 +1,5 @@
 -- Native public JS/TS entry points over framework-independent checked bodies.
-module LawSpec.WebDefinitions (emitWebDefinitions, definitionCalls) where
+module LawSpec.WebDefinitions (emitWebDefinitions, definitionCalls, plainCall) where
 
 import Control.Monad (forM)
 import LawSpec.Core.Policy
@@ -71,9 +71,10 @@ emitWebDefinitions ts layout bits declarations units = do
       D.hardline <> D.hardline <> D.text "const _lawspec_schema = data.makeSchema();" <>
       D.hardline <> D.hardline <>
       D.joinWith (D.hardline <> D.hardline) bodies <> D.hardline)) "generated" "source"
+    -- A failure raised with Fail passes through, to the attempt that awaits it.
     contextual identity body = D.text "try " <> D.block 2 body <>
       D.text " catch (error) " <> D.block 2
-        (D.text "throw " <> E.call "new globalThis.Error"
+        (D.text "if (error instanceof ls.Failure) throw error;" <> D.hardline <> D.text "throw " <> E.call "new globalThis.Error"
           [D.group (E.quotedValue (idText identity ++ ": ") <> D.text " +" <>
             D.nest 4 (D.softline <> E.call "globalThis.String" [D.text "error"])),D.text "{cause: error}"] <> D.text ";")
     assign name value = D.text ("const " ++ name ++ " = ") <> value <> D.text ";"
@@ -89,6 +90,17 @@ emitWebDefinitions ts layout bits declarations units = do
           asynchronous = declarationId (definitionDeclaration d) `elem` asyncDefinitions units
           awaitIf condition expression = if condition then D.text "(await " <> expression <> D.text ")" else expression
           external term values = case expressionNode term of
+            -- raise aborts to the nearest attempt of its Fail ability.
+            Perform op [_] | isFail (operationAbility op) ->
+              pure (E.call "ls.raiseFailure" (E.quoted (abilityKey (operationAbility op)) : values))
+            -- An operation goes to the handler installed in symbols for its
+            -- ability (evidence passing).
+            Perform op args -> do
+              nativeValues <- sequence [schemaCall "toNative" (expressionType a) value | (a, value) <- zip args values]
+              let invocation = E.call ("ls.handler(symbols, " ++ show (abilityKey (operationAbility op)) ++ ")." ++ operationName op) nativeValues
+              if expressionType term == Constructor "Unit" []
+                then pure (E.call "ls.unitResult" [invocation])
+                else schemaCall "fromNative" (expressionType term) invocation
             ExternalCall identity _ | Just name <- lookup identity callees ->
               pure (awaitIf ("await " `isPrefixOf` name)
                 (E.call (drop (length ("_definitions." :: String)) (plainCall name)) (D.text "symbols":values)))
@@ -97,7 +109,9 @@ emitWebDefinitions ts layout bits declarations units = do
             ExternalCall identity _ | Just (owner, adapter) <- lookup identity adapters -> do
               let (parameterTypes, resultType) = functionType (declarationType adapter)
               nativeValues <- sequence [schemaCall "toNative" ty value | (ty, value) <- zip parameterTypes values]
-              let called = awaitIf (declarationAsync adapter) (E.call (adapterAlias owner ++ "." ++ declarationName adapter) nativeValues)
+              -- An adapter that uses abilities gets their handlers first.
+              let handlers = [D.text ("ls.handler(symbols, " ++ show (abilityKey a) ++ ")") | a <- declarationUses adapter, not (isFail a)]
+                  called = awaitIf (declarationAsync adapter) (E.call (adapterAlias owner ++ "." ++ declarationName adapter) (handlers ++ nativeValues))
               -- A Unit adapter returns undefined, which is the Unit value.
               if resultType == Constructor "Unit" []
                 then pure (E.call "ls.unitResult" [called])

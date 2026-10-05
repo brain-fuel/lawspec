@@ -32,3 +32,8 @@ instance Binary S.TypedExpr
 instance Binary S.Unit
 instance Binary S.Protocol
 instance Binary S.Step
+instance Binary S.AbilityDeclaration
+instance Binary S.HandlerDeclaration
+instance Binary S.HandlerClause
+instance Binary S.HandlerUse
+instance Binary S.HandlerChoice

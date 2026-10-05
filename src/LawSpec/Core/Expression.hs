@@ -120,6 +120,18 @@ validateExpressionWithRegistry registry bits declarations scope expr@Expr{..} = 
           unless (mode == Explicit || isExact n && isExact m) (Left "checked adapter bridge requires exact operands")
         _ -> unless (target == expressionTypeOf a) (Left "invalid conversion types")
       pure target
+    -- An operation's types come from its ability (checked where the unit's
+    -- abilities are known); raise's result takes whatever type it needs.
+    Perform _ args -> do
+      mapM_ (validateExpressionWithRegistry registry bits declarations scope) args
+      pure expressionType
+    Handle (CatchFailure (AbilityRef _ [failure])) body -> do
+      validateExpressionWithRegistry registry bits declarations scope body
+      pure (Constructor "Either" [TypeArgument failure, TypeArgument (expressionTypeOf body)])
+    Handle _ _ -> Left "a handled failure names its type"
+    Calls _ args -> do
+      mapM_ (validateExpressionWithRegistry registry bits declarations scope) (maybe [] id args)
+      pure (scalarType "Int64")
     -- An unreachable branch takes whatever type its context needs.
     Helper Unreachable [_] -> pure expressionType
     Helper builtin args -> helperType builtin args

@@ -29,6 +29,15 @@ validateProgram program = do
   checked (mapM_ concrete [term | unit <- programUnits program,
     property <- unitProperties unit, term <- propertyExpressions property])
 
+-- How a row violation reads: raise names the failure's type.
+describe :: AbilityRef -> String -> String
+describe ability through
+  | isFail ability, through == "raise" = "it raises a failure of type " ++ concatMap show' (abilityRefArguments ability)
+  | otherwise = "it uses " ++ abilityKey ability ++ " (through " ++ through ++ ")"
+  where show' t = case t of
+          Constructor n _ -> reverse (takeWhile (/= ':') (reverse n))
+          _ -> show t
+
 validateProgramWith :: Types.TypeRegistry -> Program -> Either String ()
 validateProgramWith registry Program{..} = do
   unless (programMachineBits `elem` [32,64]) (Left "machineBits must be 32 or 64")
@@ -46,6 +55,8 @@ validateProgramWith registry Program{..} = do
       | u <- programUnits, d <- unitDefinitions u]
     closedPredicate e = case expressionNode e of
       ExternalCall name arguments -> Set.member name definitions && all closedPredicate arguments
+      Perform _ _ -> False
+      Calls _ _ -> False
       _ -> all closedPredicate (children e)
     expression = validateExpressionWithRegistry registry programMachineBits
     extend scope b = do
@@ -70,6 +81,20 @@ validateProgramWith registry Program{..} = do
       let own = unitDeclarations u
       mapM_ (\definition -> unless (definitionDeclaration definition `elem` own)
         (Left "total definition must have a matching declaration in its owning unit")) (unitDefinitions u)
+      -- A definition's row covers every operation it performs and every row
+      -- of what it calls.
+      let rows = M.fromList [(declarationId d, declarationUses d) | d <- declarations]
+          declarations = concatMap unitDeclarations programUnits
+      mapM_ (\definition -> do
+        let declaration = definitionDeclaration definition
+            row = declarationUses declaration
+            needs e = case expressionNode e of
+              Perform op args -> (operationAbility op, operationName op) : concatMap needs args
+              ExternalCall callee args -> [(a, idText callee) | a <- M.findWithDefault [] callee rows] ++ concatMap needs args
+              _ -> concatMap needs (children e)
+        mapM_ (\(ability, through) -> unless (ability `elem` row)
+          (Left (declarationName declaration ++ ": " ++ describe ability through ++ ", but its row is " ++
+            (if null row then "empty" else unwords (map abilityKey row))))) (needs (definitionBody definition))) (unitDefinitions u)
       mapM_ (validateProperty ds) (unitProperties u)
       mapM_ (validateContract ds) (unitContracts u)
     validateProperty ds p = do

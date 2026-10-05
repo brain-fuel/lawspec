@@ -5,6 +5,7 @@ import LawSpec.Resilience (resilienceName)
 import LawSpec.Collections (collectionsUnit, collectionsAlias)
 import LawSpec.Time (timeUnit, timeAlias, durationSuffixes, durationFactor, durationLimit, usesTime, timeTypes)
 import LawSpec.Flow (desugarFlows, flowTypeName)
+import LawSpec.Abilities (elaborateAbilities)
 import LawSpec.Model
 import LawSpec.Indexed
 import LawSpec.Railway (railwayUnit)
@@ -98,7 +99,7 @@ typeAtom = try (parens $ do
         | and kinds -> application n <$> mapM (const typeAtom) kinds
         | otherwise -> RefinementApp (indexedRefinementName n) <$> mapM indexArgument kinds
       Nothing | n == naturalRefinementName -> pure (RefinementApp n [])
-              | n `elem` ["Nullable","Optional","List","Maybe"] -> Applied n <$> typeAtom
+              | n `elem` ["Nullable","Optional","List","Maybe",failAbilityName] -> Applied n <$> typeAtom
               | n == "Either" -> Application n <$> sequence [typeAtom, typeAtom]
               | '.' `elem` n -> pure (Named n)
               | otherwise -> pure (if maybe False (isLower . fst) (uncons n) then Variable n else Named n)
@@ -550,7 +551,7 @@ operatorExpr = located $ makeExprParser application
       pure $ case terms of
         first:rest | ConstructLit name [] <- unlocated first -> ConstructLit name rest
         _ -> foldl1 Apply terms
-    atom = located $ matchP <|> ifP <|> (ListLit <$> between (symbol "[") (symbol "]") (expr `sepBy` symbol ",")) <|> (BoolLit <$> boolP) <|> (StringLit <$> str) <|> try scalarP
+    atom = located $ matchP <|> ifP <|> raiseP <|> callsP <|> (ListLit <$> between (symbol "[") (symbol "]") (expr `sepBy` symbol ",")) <|> (BoolLit <$> boolP) <|> (StringLit <$> str) <|> try scalarP
       <|> parenthesizedExpr
       <|> try (Var . ('~' :) <$> (char '~' *> ident))
       <|> try numeric <|> try (do n <- ident; alias <- asks (M.member ("alias:" ++ n)); unless (not alias) (fail "import alias"); void (char '.'); b <- ("min" <$ keyword "min") <|> ("max" <$ keyword "max"); pure (TypeBound b (if maybe False (isLower . fst) (uncons n) then Variable n else Named n))) <|> try valueAtom
@@ -559,6 +560,18 @@ operatorExpr = located $ makeExprParser application
       name <- valueName
       when (name `elem` ["if", "then", "else"]) (fail ("expected a value, not the keyword " ++ name))
       pure (if startsUpper name then ConstructLit name [] else Var name)
+    -- raise e: the Fail ability's operation. It aborts to the nearest
+    -- handler of Fail, so its value may have any type.
+    raiseP = do
+      keyword "raise"
+      Apply (Var "prelude.raise") <$> operatorExpr
+    -- calls of op [with (a, b)]: in a law using a recording handler, how
+    -- many times op was called (with those arguments).
+    callsP = do
+      try (keyword "calls" *> keyword "of")
+      op <- ident
+      arguments <- optional (keyword "with" *> parens (expr `sepBy1` symbol ","))
+      pure (foldl Apply (Var "prelude.calls") (Var op : maybe [] id arguments))
     -- if c then a else b: only the branch c selects is evaluated (it is
     -- prelude.select, which elaborates to Core's If).
     ifP = do
@@ -698,12 +711,17 @@ literalP = constructorLiteral
 block :: String -> P a -> P a
 block n p = keyword n *> keyword "is" *> p <* keyword "end"
 lawP :: P Law
-lawP = do
+lawP = fst <$> lawUsingP
+
+-- law `name` params [requires ...] [using h, recording A, ...] is ... end
+lawUsingP :: P (Law, [HandlerUse])
+lawUsingP = do
   pos <- getSourcePos
   keyword "law"
   n <- quoted
   ps <- many param
   req <- constraintsP
+  using <- option [] (keyword "using" *> (handlerUseP `sepBy1` symbol ","))
   keyword "is"
   d <- block "definition" defP
   desc <- option "" (block "description" str)
@@ -715,7 +733,70 @@ lawP = do
     keyword "end"; pure (Example en bs checks)
   refs <- option [] (keyword "references" *> keyword "are" *> some str <* keyword "end")
   keyword "end"
-  pure (Law n ps req d desc why ex refs (Location (sourceName pos) (unPos (sourceLine pos)) (unPos (sourceColumn pos))))
+  pure (Law n ps req d desc why ex refs (Location (sourceName pos) (unPos (sourceLine pos)) (unPos (sourceColumn pos))), using)
+
+-- A handler a law names: a spec handler, an ability (any lawful handler of
+-- it), or `recording` of either.
+handlerUseP :: P HandlerUse
+handlerUseP = (keyword "recording" *> (UseRecording <$> handlerUseP))
+  <|> ((\n -> if startsUpper n then UseAbility n else UseHandler n) <$> ident)
+
+-- uses A, B [fails with E], or fails with E alone: a signature's abilities.
+usesP :: P [Type]
+usesP = do
+  used <- option [] (keyword "uses" *> (typeP `sepBy1` symbol ","))
+  failure <- optional (try (keyword "fails" *> keyword "with") *> typeP)
+  pure (used ++ [Applied failAbilityName t | Just t <- [failure]])
+
+-- ability Name (a :: Type)* is (op :: Type)* [laws law*] end
+abilityP :: P AbilityDeclaration
+abilityP = do
+  ((name, parameters, operations, abilityLaws'), range) <- withSpan $ do
+    keyword "ability"
+    name <- ident
+    upper name
+    parameters <- many $ parens $ do
+      parameter <- ident
+      unless (maybe False (isLower . fst) (uncons parameter)) (fail "type parameters must start with a lowercase letter")
+      void (symbol "::")
+      keyword "Type"
+      pure parameter
+    keyword "is"
+    operations <- many (do op <- try (ident <* symbol "::"); ty <- typeP; pure (op, ty))
+    abilityLaws' <- option [] (keyword "laws" *> many lawP)
+    keyword "end"
+    pure (name, parameters, operations, abilityLaws')
+  pure (AbilityDeclaration name parameters operations abilityLaws' range)
+
+-- handler name for Ability [with state s :: S start e] is (op x* is e end)* end
+handlerP :: P HandlerDeclaration
+handlerP = do
+  ((name, ability, state, clauses), range) <- withSpan $ do
+    keyword "handler"
+    name <- ident
+    keyword "for"
+    ability <- typeP
+    state <- optional $ do
+      try (keyword "with" *> keyword "state")
+      s <- ident
+      void (symbol "::")
+      ty <- typeP
+      keyword "start"
+      start <- expr
+      pure (s, ty, start)
+    keyword "is"
+    clauses <- many $ do
+      ((op, parameters, body), at) <- withSpan $ do
+        op <- ident
+        parameters <- many ident
+        keyword "is"
+        body <- expr
+        keyword "end"
+        pure (op, parameters, body)
+      pure (HandlerClause op parameters body at)
+    keyword "end"
+    pure (name, ability, state, clauses)
+  pure (HandlerDeclaration name ability state clauses range)
 -- Unit definitions have explicit parameter and result types. Law definitions
 -- remain proposition blocks and are parsed separately by lawP.
 functionDefinitionP :: P FunctionDefinition
@@ -731,13 +812,29 @@ functionDefinitionP = do
     pure (name, arguments, result, requirements, body)
   pure (FunctionDefinition name arguments result requirements body range)
 
+-- A definition with the abilities it says it uses, if it says.
+definitionUsesP :: P (FunctionDefinition, Maybe [Type])
+definitionUsesP = do
+  ((name, arguments, result, requirements, used, body), range) <- withSpan $ do
+    keyword "definition"
+    name <- ident
+    arguments <- some param
+    void (symbol "::")
+    result <- typeP
+    requirements <- constraintsP
+    used <- optional (lookAhead (keyword "uses" <|> keyword "fails") *> usesP)
+    body <- keyword "is" *> expr <* keyword "end"
+    pure (name, arguments, result, requirements, used, body)
+  pure (FunctionDefinition name arguments result requirements body range, used)
+
 data UnitMember = DataMember DataTypeDeclaration | FamilyMember IndexedFamily | RefinementMember Refinement
   | WrapperMember Wrapper | WorkflowMember Workflow | ModelMember ModelDeclaration
   | SupervisorMember Supervisor
   | MailboxMember (String, Type, Span)
   | HandleMember (String, Span) | ProtocolMember Protocol | ScenarioMember Scenario
-  | SignatureMember ((String, Type), Span) | AsyncMember ((String, Type), Span) | LawMember Law
-  | DefinitionMember FunctionDefinition
+  | SignatureMember ((String, Type), Span) [Type] | AsyncMember ((String, Type), Span) [Type] | LawMember (Law, [HandlerUse])
+  | DefinitionMember (FunctionDefinition, Maybe [Type])
+  | AbilityMember AbilityDeclaration | HandlerMember HandlerDeclaration
 
 unitNameP :: P String
 unitNameP = foldr1 (\a b -> a ++ "." ++ b) <$>
@@ -799,22 +896,30 @@ unitP = do
     <|> (MailboxMember <$> (try (lookAhead (keyword "mailbox" *> ident *> keyword "of")) *>
           ((\((n, t), at) -> (n, t, at)) <$> withSpan ((,) <$> (keyword "mailbox" *> ident) <*> (keyword "of" *> typeP)))))
     <|> (RefinementMember <$> refinementP)
-    <|> (DefinitionMember <$> functionDefinitionP)
-    <|> (AsyncMember <$> try (keyword "async" *> withSpan ((,) <$> ident <* symbol "::" <*> typeP)))
-    <|> (SignatureMember <$> try (withSpan ((,) <$> ident <* symbol "::" <*> typeP)))
-    <|> (LawMember <$> lawP))
+    -- ability Name ... and handler name for Ability ... (LawSpec.Abilities).
+    <|> (AbilityMember <$> (try (lookAhead (keyword "ability" *> ident >>= upper)) *> abilityP))
+    <|> (HandlerMember <$> (try (lookAhead (keyword "handler" *> ident *> keyword "for")) *> handlerP))
+    <|> (DefinitionMember <$> definitionUsesP)
+    <|> try (AsyncMember <$> (keyword "async" *> withSpan ((,) <$> ident <* symbol "::" <*> typeP)) <*> usesP)
+    <|> try (SignatureMember <$> withSpan ((,) <$> ident <* symbol "::" <*> typeP) <*> usesP)
+    <|> (LawMember <$> lawUsingP))
   eof
-  let definitions = [d | DefinitionMember d <- members]
+  let definitions = [d | DefinitionMember (d, _) <- members]
       signatures = [signature | member <- members, signature <- case member of
-          SignatureMember s -> [s]
-          AsyncMember s -> [s]
+          SignatureMember s _ -> [s]
+          AsyncMember s _ -> [s]
           _ -> []] ++
         [((functionName d, foldr Arrow (functionResult d) (map snd (functionArguments d))), functionSpan d) | d <- definitions]
-  pure (Unit n (map fst signatures) [l | LawMember l <- members]
+  pure (Unit n (map fst signatures) [l | LawMember (l, _) <- members]
     [r | RefinementMember r <- members] [] [(name,range) | ((name,_),range) <- signatures]
     ([d | DataMember d <- members] ++ [DataTypeDeclaration name [] [] range Nothing | HandleMember (name, range) <- members])
-    definitions [name | AsyncMember ((name, _), _) <- members] [] [] [] [name | HandleMember (name, _) <- members]
-    [p | ProtocolMember p <- members] [s | SupervisorMember s <- members] [m | MailboxMember m <- members], imports, [f | FamilyMember f <- members],
+    definitions [name | AsyncMember ((name, _), _) _ <- members] [] [] [] [name | HandleMember (name, _) <- members]
+    [p | ProtocolMember p <- members] [s | SupervisorMember s <- members] [m | MailboxMember m <- members]
+    [a | AbilityMember a <- members] [h | HandlerMember h <- members]
+    ([(name, used) | SignatureMember ((name, _), _) used <- members, not (null used)] ++
+     [(name, used) | AsyncMember ((name, _), _) used <- members, not (null used)] ++
+     [(functionName d, used) | DefinitionMember (d, Just used) <- members])
+    [(lawName l, using) | LawMember (l, using) <- members, not (null using)] [] [], imports, [f | FamilyMember f <- members],
     [w | WrapperMember w <- members], [w | WorkflowMember w <- members], [m | ModelMember m <- members],
     ([p | ProtocolMember p <- members], [s | ScenarioMember s <- members]))
 
@@ -927,8 +1032,11 @@ parseWith extra importedFamilies (Source p s) = case runReader (runParserT unitP
       (checkScenarios protocols scenarios modeled >>= \cyclic -> mapM (uncurry (toProgram modeled)) (zip cyclic scenarios))
     let scenarioed = modeled { machines = [m { machineScenarios = [p | p <- programs, programMachine p == machineName m] }
                                           | m <- machines modeled] }
+    -- Abilities before flows: a handler clause's `~s := e;` is its own.
+    abled <- either (\(at, message) -> Left [Diagnostic "ability" message at]) Right
+      (elaborateAbilities scenarioed)
     (families', flowed) <- either (\(at, message) -> Left [Diagnostic "flow" message at]) Right
-      (desugarFlows importedFamilies families scenarioed)
+      (desugarFlows importedFamilies families abled)
     elaborated <- either (\message -> Left [Diagnostic "indexed" (p ++ ": " ++ message) Nothing]) Right
       (elaborateFamiliesWith importedFamilies families' flowed)
     pure ((elaborated, imports), families')
@@ -946,6 +1054,7 @@ headers source = M.fromList (scan tokens) where
   scan ("type":n:rest) = let (ks,remaining) = parametersH rest in (n,DataHeader ks):scan remaining
   scan ("wrapper":n:rest) = let (ks,remaining) = parametersH rest in (n,DataHeader ks):scan remaining
   scan ("handle":n:rest) | maybe False (isUpper . fst) (uncons n) = (n,DataHeader []):scan rest
+  scan ("ability":n:rest) | maybe False (isUpper . fst) (uncons n) = let (ks,remaining) = parametersH rest in (n,DataHeader ks):scan remaining
   scan (_:rest) = scan rest
   scan [] = []
   dropUnit (".":_:rest) = dropUnit rest

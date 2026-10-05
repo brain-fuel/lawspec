@@ -1,0 +1,7 @@
+expect-any: a receipt is for the amount captured [native] | [recording native]
+@@ src/example/abilities.mjs
+<<<<<<<
+    return new data.Receipt(value0);
+=======
+    return new data.Receipt(value0 < 1000 ? value0 : value0 - 1);
+>>>>>>>

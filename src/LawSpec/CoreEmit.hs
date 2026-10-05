@@ -1,5 +1,6 @@
 module LawSpec.CoreEmit (emitPlan, emitPlanWithFormat, emitPlanWithLayout, emitPlanWithOptions, emitPlanWithNativeOptions, targets) where
 import LawSpec.Sessions (sessionArtifacts)
+import LawSpec.AbilityEmit (abilityArtifacts)
 import LawSpec.Actors (actorArtifacts)
 import LawSpec.MachineSpec (scenarioWire)
 import LawSpec.Remote (remoteArtifacts)
@@ -90,7 +91,8 @@ companionArtifacts minify target plan = do
   sessions <- sessionArtifacts minify target plan
   actors <- actorArtifacts minify target plan
   mailboxes <- mailboxArtifacts target plan
-  pure (sessions ++ actors ++ mailboxes ++ remoteArtifacts target (remoteCalls target plan) plan)
+  abilities <- abilityArtifacts minify target plan
+  pure (sessions ++ actors ++ mailboxes ++ abilities ++ remoteArtifacts target (remoteCalls target plan) plan)
 
 -- Each scenario's channel types, for its runs over a network. A scenario
 -- whose types have no wire descriptor yet runs only in memory.
@@ -274,6 +276,8 @@ emitPlanFormatted minify target Plan{..} = do
       C.AllPayloads _ _ -> True
       _ -> any payloadExpression (C.children term)
     portableSchemaNeeded = not (null definitionCalls) || not (null planDataDeclarations) ||
+      -- Ability modules convert operation values through the schema.
+      any (not . null . C.unitAbilities . plannedUnit) plannedUnits ||
       any (requiresSchema planDataDeclarations . snd)
         (concatMap (functions . plannedUnit) plannedUnits) ||
       any (any (requiresSchema planDataDeclarations . inputType) . inputs)

@@ -77,5 +77,4 @@ witnessPlan plan@Plan{..}
       ShortCircuit op a b -> e { expressionNode = ShortCircuit op (expr a) (expr b) }
       If c a b -> e { expressionNode = If (expr c) (expr a) (expr b) }
       Convert conversion ty a -> e { expressionNode = Convert conversion ty (expr a) }
-      Helper builtin args -> e { expressionNode = Helper builtin (map expr args) }
-      _ -> e
+      _ -> mapChildren expr e

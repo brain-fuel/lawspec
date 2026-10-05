@@ -1,0 +1,8 @@
+expect: charge captures once
+@@ src/example/abilities.ts
+<<<<<<<
+    return gateway.capture(payment.cents).cents === value0;
+=======
+    gateway.capture(payment.cents);
+    return gateway.capture(payment.cents).cents === value0;
+>>>>>>>

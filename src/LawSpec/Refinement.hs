@@ -33,7 +33,8 @@ lowerUnitWith imported u = do
       fields <- mapM (\(n,t) -> (,) n <$> expandType structures table [] M.empty M.empty t) (dataConstructorFields c)
       pure c{dataConstructorFields=fields}) (dataTypeConstructors d)
     pure d{dataTypeConstructors=constructors}) (dataTypes u)
-  cs <- mapM contractFor [(n,t) | (n,t) <- fs, n `notElem` map functionName definitions]
+  -- Ability operations are answered by handlers, not adapters: no contract.
+  cs <- mapM contractFor [(n,t) | (n,t) <- fs, n `notElem` map functionName definitions, n `notElem` operationNames u]
   let active = [c | c <- cs, not (null (contractPreconditions c) && null (contractPostconditions c))]
       checks = map refinementCheck rs
   checks' <- mapM (lowerLaw structures table) checks

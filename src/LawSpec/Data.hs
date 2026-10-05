@@ -108,6 +108,13 @@ qualifyDataNames unit = unit
   -- Protocol steps and mailboxes name data types too.
   , S.protocols = [p {S.protocolSteps = map step (S.protocolSteps p)} | p <- S.protocols unit]
   , S.mailboxes = [(n, ty t, at) | (n, t, at) <- S.mailboxes unit]
+  -- So do ability instances, handler states and operation types.
+  , S.abilities = [a {S.abilityOperations = map pair (S.abilityOperations a), S.abilityLaws = map law (S.abilityLaws a)} | a <- S.abilities unit]
+  , S.handlerDeclarations = [h {S.handlerAbility = ty (S.handlerAbility h),
+      S.handlerState = (\(n, t, e) -> (n, ty t, expr e)) <$> S.handlerState h} | h <- S.handlerDeclarations unit]
+  , S.declaredUses = [(n, map ty ts) | (n, ts) <- S.declaredUses unit]
+  , S.abilityRows = [(n, map ty ts) | (n, ts) <- S.abilityRows unit]
+  , S.lawAssignments = [(n, [(ty t, c) | (t, c) <- a]) | (n, a) <- S.lawAssignments unit]
   , S.contracts = [c {S.contractArguments = map pair (S.contractArguments c),
       S.contractResult = pair (S.contractResult c),
       S.contractPreconditions = map expr (S.contractPreconditions c),

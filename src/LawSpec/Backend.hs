@@ -165,6 +165,9 @@ prettyExpr e = case C.expressionNode e of
   C.If c a b -> "(if " ++ prettyExpr c ++ " then " ++ prettyExpr a ++ " else " ++ prettyExpr b ++ ")"
   C.Convert _ t a -> "(" ++ prettyExpr a ++ " :: " ++ prettyType t ++ ")"
   C.Helper b args -> show b ++ "(" ++ intercalate ", " (map prettyExpr args) ++ ")"
+  C.Perform op args -> unwords (C.operationName op : map ((\s -> "(" ++ s ++ ")") . prettyExpr) args)
+  C.Handle _ body -> "attempt (" ++ prettyExpr body ++ ")"
+  C.Calls op args -> "calls of " ++ C.operationName op ++ maybe "" (\xs -> " with (" ++ intercalate ", " (map prettyExpr xs) ++ ")") args
 
 prettyExpanded :: Expanded -> String
 prettyExpanded e | propertyKind e == "contract" = description (original e)

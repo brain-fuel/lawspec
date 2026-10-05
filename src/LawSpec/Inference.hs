@@ -362,6 +362,24 @@ builtin env n args
       Variable . ("unreachable:" ++) <$> fresh
   -- concurrently v is v: an all group's steps, evaluated at the same time.
   | n == "concurrently", [a] <- args = infer env a >>= resolve
+  -- raise e is the Fail ability's operation: it aborts to the nearest
+  -- handler of Fail, so it may stand for a value of any type.
+  | n == "raise", [a] <- args = do
+      _ <- infer env a
+      Variable . ("raise:" ++) <$> fresh
+  -- attempt e is Right e, or Left err when e raises err.
+  | n == "attempt", [a] <- args = do
+      t <- infer env a >>= resolve
+      failure <- Variable . ("attempt:" ++) <$> fresh
+      pure (Application "Either" [failure, t])
+  -- calls of op [with (a, b)]: how many times a recording handler saw op.
+  | n == "calls", (op : rest) <- args = do
+      t <- infer env op >>= resolve
+      let (parameters, _) = functionType t
+      unless (null rest || length rest == length parameters)
+        (throwC "calls of op with (...) needs one value for each of op's arguments")
+      zipWithM_ (checkExpr env) parameters rest
+      pure (Named "Int64")
   -- select c a b is a when c holds and b otherwise; both are values.
   | n == "select", [c,a,b] <- args = do
       checkExpr env (Named "Bool") c
