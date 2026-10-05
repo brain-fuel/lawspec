@@ -2958,4 +2958,330 @@ public final class LawSpecRuntime {
       }
     }
   }
+
+  // Scenarios: processes that drive a shared model's commands at the same time
+  // and talk over channels (see LawSpec.Core.Program for the spec). Each
+  // channel has a queue per direction; a process holds an end of a channel as
+  // (channel, side), the first branch of a par to use a channel taking side 0.
+  // A channel end sent over a channel moves to the receiver. Every command's
+  // call and return are stamped on one counter; the history must linearize
+  // against the model, and every expect must hold, on each of many schedules.
+
+  private static final class ScenarioChannel {
+    @SuppressWarnings("unchecked")
+    final java.util.concurrent.LinkedBlockingQueue<Object>[] queues =
+        new java.util.concurrent.LinkedBlockingQueue[] {
+          new java.util.concurrent.LinkedBlockingQueue<Object>(),
+          new java.util.concurrent.LinkedBlockingQueue<Object>()
+        };
+  }
+
+  /** A channel end in transit or held by a process. */
+  private record ScenarioEnd(ScenarioChannel channel, int side) {}
+
+  private record ScenarioCall(
+      ModelCommand command, List<Value> args, Value result, long called, long returned) {}
+
+  private static final class ScenarioRun {
+    final Model model;
+    final Map<String, ScenarioChannel> channels = new java.util.HashMap<>();
+    final Map<String, ModelCommand> commands = new java.util.HashMap<>();
+    final java.util.concurrent.atomic.AtomicLong clock = new java.util.concurrent.atomic.AtomicLong();
+    final List<ScenarioCall> history = Collections.synchronizedList(new ArrayList<ScenarioCall>());
+    final List<String> failures = new java.util.concurrent.CopyOnWriteArrayList<String>();
+    final long shake;
+    Value state;
+
+    ScenarioRun(Model model, long shake) {
+      this.model = model;
+      this.shake = shake;
+    }
+  }
+
+  /** The names an act list sends, receives or sends away, with nested pars. */
+  private static List<String> actsChannels(List<Object> acts) {
+    var names = new ArrayList<String>();
+    for (var a : acts) {
+      var act = form(a);
+      switch (atomText(act.get(0))) {
+        case "send" -> {
+          names.add(atomText(act.get(1)));
+          var operand = form(act.get(2));
+          if (atomText(operand.get(0)).equals("var")) names.add(atomText(operand.get(1)));
+        }
+        case "receive" -> names.add(atomText(act.get(1)));
+        case "par" -> {
+          for (var branch : act.subList(1, act.size())) {
+            var b = form(branch);
+            names.addAll(actsChannels(b.subList(1, b.size())));
+          }
+        }
+        default -> {}
+      }
+    }
+    return names;
+  }
+
+  private static Value scenarioConstant(List<Object> form) {
+    return switch (atomText(form.get(0))) {
+      case "int" -> new Value("Integer", (BigInteger) form.get(1));
+      case "text" -> sequence("Text", atomText(form.get(1)).codePoints().toArray());
+      case "bool" -> bool(atomText(form.get(1)).equals("true"));
+      default -> {
+        String tag = atomText(form.get(1));
+        yield new Value(tag, new Data(tag, List.of()));
+      }
+    };
+  }
+
+  private static Value scenarioOperand(Object o, Map<String, Value> env) {
+    var operand = form(o);
+    if (atomText(operand.get(0)).equals("var")) {
+      String name = atomText(operand.get(1));
+      if (!env.containsKey(name)) throw new IllegalStateException("unbound variable " + name);
+      return env.get(name);
+    }
+    return scenarioConstant(operand);
+  }
+
+  private static void scenarioProcess(
+      ScenarioRun run,
+      List<Object> acts,
+      Map<String, Value> env,
+      Map<String, ScenarioEnd> ends,
+      SplitMix64 random) {
+    Map<String, Object> own = new java.util.HashMap<String, Object>();
+    for (var a : acts) {
+      if (!run.failures.isEmpty()) return;
+      var act = form(a);
+      switch (atomText(act.get(0))) {
+        case "call" -> {
+          var command = run.commands.get(atomText(act.get(1)));
+          var args = new ArrayList<Value>();
+          for (var o : act.subList(3, act.size())) args.add(scenarioOperand(o, env));
+          var full = new ArrayList<Value>(args);
+          full.add(command.state, run.state);
+          perturb(random);
+          long called = run.clock.incrementAndGet();
+          Value result;
+          try {
+            result = command.run.apply(own, full);
+          } catch (Exception e) {
+            run.failures.add(command.name + " " + raised(e));
+            return;
+          }
+          long returned = run.clock.incrementAndGet();
+          run.history.add(new ScenarioCall(command, args, result, called, returned));
+          if (act.get(2) != null) env.put(atomText(act.get(2)), result);
+        }
+        case "send" -> {
+          var end = ends.get(atomText(act.get(1)));
+          var operand = form(act.get(2));
+          Object value;
+          if (atomText(operand.get(0)).equals("var") && ends.containsKey(atomText(operand.get(1))))
+            value = ends.remove(atomText(operand.get(1)));
+          else value = scenarioOperand(operand, env);
+          perturb(random);
+          end.channel().queues[end.side()].add(value);
+        }
+        case "receive" -> {
+          var end = ends.get(atomText(act.get(1)));
+          Object value;
+          try {
+            value =
+                end.channel()
+                    .queues[1 - end.side()]
+                    .poll(5, java.util.concurrent.TimeUnit.SECONDS);
+          } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            value = null;
+          }
+          if (value == null) {
+            run.failures.add(
+                "a receive on " + atomText(act.get(1)) + " waited too long: the processes are blocked");
+            return;
+          }
+          if (value instanceof ScenarioEnd received) ends.put(atomText(act.get(2)), received);
+          else env.put(atomText(act.get(2)), (Value) value);
+        }
+        case "par" -> {
+          var branches = new ArrayList<List<Object>>();
+          for (var b : act.subList(1, act.size())) {
+            var branch = form(b);
+            branches.add(branch.subList(1, branch.size()));
+          }
+          var owned = new java.util.LinkedHashMap<String, List<Integer>>();
+          for (int i = 0; i < branches.size(); i++)
+            for (var name : actsChannels(branches.get(i))) {
+              var users = owned.computeIfAbsent(name, k -> new ArrayList<Integer>());
+              if (!users.contains(i)) users.add(i);
+            }
+          var threads = new ArrayList<Thread>();
+          for (int i = 0; i < branches.size(); i++) {
+            var mine = new java.util.HashMap<String, ScenarioEnd>();
+            for (var entry : owned.entrySet()) {
+              var users = entry.getValue();
+              if (!users.contains(i)) continue;
+              String name = entry.getKey();
+              if (ends.containsKey(name)) mine.put(name, ends.get(name));
+              else if (run.channels.containsKey(name))
+                mine.put(name, new ScenarioEnd(run.channels.get(name), users.indexOf(i)));
+            }
+            final var branch = branches.get(i);
+            final var copy = new java.util.HashMap<String, Value>(env);
+            final var branchRandom =
+                new SplitMix64(run.shake ^ ((long) (threads.size() + 1) * 0x9E3779B97F4A7C15L));
+            threads.add(new Thread(() -> scenarioProcess(run, branch, copy, mine, branchRandom)));
+          }
+          for (var t : threads) t.start();
+          for (var t : threads) {
+            boolean interrupted = false;
+            while (true) {
+              try {
+                t.join();
+                break;
+              } catch (InterruptedException e) {
+                interrupted = true;
+              }
+            }
+            if (interrupted) Thread.currentThread().interrupt();
+          }
+        }
+        case "expect" -> {
+          String name = atomText(act.get(1));
+          Value actual = env.get(name);
+          Value wanted = scenarioConstant(form(act.get(2)));
+          if (actual == null || compareValues(actual, wanted) != 0) {
+            run.failures.add(
+                "expect "
+                    + name
+                    + " = "
+                    + render(wanted)
+                    + " failed: "
+                    + name
+                    + " is "
+                    + (actual == null ? "None" : render(actual)));
+            return;
+          }
+        }
+        default -> {}
+      }
+    }
+  }
+
+  private record ScenarioOutcome(String title, String failure) {}
+
+  private static ScenarioOutcome runScenario(Model model, String spec, long shake) {
+    var forms = readDescriptor(spec);
+    String title = atomText(form(forms.get(0)).get(1));
+    List<Object> channelNames = null;
+    List<Object> body = null;
+    for (var f : forms) {
+      var item = form(f);
+      String head = atomText(item.get(0));
+      if (head.equals("channels") && channelNames == null) channelNames = item.subList(1, item.size());
+      if (head.equals("process") && body == null) body = item.subList(1, item.size());
+    }
+    var run = new ScenarioRun(model, shake);
+    for (var c : channelNames) run.channels.put(atomText(c), new ScenarioChannel());
+    for (var c : model.commands) run.commands.put(c.name, c);
+    Map<String, Object> symbols = new java.util.HashMap<String, Object>();
+    var startArgs = new ArrayList<Value>();
+    for (var d : model.startArguments) startArgs.add(model.values.minimal(d));
+    run.state = model.startRun.apply(symbols, startArgs);
+    var expected = model.startModel.apply(symbols, startArgs);
+    scenarioProcess(
+        run,
+        body,
+        new java.util.HashMap<String, Value>(),
+        new java.util.HashMap<String, ScenarioEnd>(),
+        new SplitMix64(shake));
+    if (!run.failures.isEmpty()) return new ScenarioOutcome(title, run.failures.get(0));
+    var finalState =
+        model.abstractState != null ? model.abstractState.apply(symbols, List.of(run.state)) : null;
+    var history = new ArrayList<ScenarioCall>(run.history);
+    if (!linearizesHistory(model, symbols, history, expected, finalState, run.state)) {
+      var sorted = new ArrayList<ScenarioCall>(history);
+      sorted.sort((x, y) -> Long.compare(x.called(), y.called()));
+      var observed = new ArrayList<String>();
+      for (var c : sorted)
+        observed.add(
+            c.command().name + "(" + renderAll(c.args()) + ") returned " + render(c.result()));
+      return new ScenarioOutcome(
+          title, "no order of the calls agrees with the model (" + String.join("; ", observed) + ")");
+    }
+    return new ScenarioOutcome(title, null);
+  }
+
+  /**
+   * A Wing-Gong search over any real-time order: next, a call that no pending call returned
+   * before; memoized on the calls done and the state.
+   */
+  private static boolean linearizesHistory(
+      Model model,
+      Map<String, Object> symbols,
+      List<ScenarioCall> history,
+      Value expected,
+      Value finalState,
+      Value state) {
+    return visitHistory(
+        model, symbols, history, finalState, state, new java.util.BitSet(), expected,
+        new java.util.HashSet<String>());
+  }
+
+  private static boolean visitHistory(
+      Model model,
+      Map<String, Object> symbols,
+      List<ScenarioCall> history,
+      Value finalState,
+      Value state,
+      java.util.BitSet done,
+      Value modelState,
+      java.util.Set<String> seen) {
+    if (!seen.add(done + "|" + render(modelState))) return false;
+    int count = history.size();
+    if (done.cardinality() == count) {
+      if (finalState != null && compareValues(finalState, modelState) != 0) return false;
+      for (int k = 0; k < model.invariants.size(); k++) {
+        var subject = model.invariantKinds.get(k).equals("model") ? modelState : state;
+        if (!truth(model.invariants.get(k).apply(symbols, List.of(subject)))) return false;
+      }
+      return true;
+    }
+    for (int i = 0; i < count; i++) {
+      if (done.get(i)) continue;
+      var call = history.get(i);
+      boolean blocked = false;
+      for (int j = 0; j < count; j++)
+        if (j != i && !done.get(j) && history.get(j).returned() < call.called()) blocked = true;
+      if (blocked) continue;
+      Stepped stepped;
+      try {
+        stepped = stepModel(call.command(), symbols, call.args(), modelState);
+      } catch (InvalidStep e) {
+        continue;
+      }
+      if (!call.command().unit && compareValues(call.result(), stepped.result()) != 0) continue;
+      var next = (java.util.BitSet) done.clone();
+      next.set(i);
+      if (visitHistory(model, symbols, history, finalState, state, next, stepped.state(), seen))
+        return true;
+    }
+    return false;
+  }
+
+  /** Runs a scenario on many schedules; a failure throws AssertionError. */
+  public static void checkScenario(Model model, String spec) {
+    String text = System.getenv("LAWSPEC_SEED");
+    checkScenario(model, spec, 30, text == null ? 0 : Long.parseUnsignedLong(text.trim()));
+  }
+
+  public static void checkScenario(Model model, String spec, int runs, long seed) {
+    var random = new SplitMix64(seed ^ 0x2545F4914F6CDD1DL);
+    for (int n = 0; n < runs; n++) {
+      var outcome = runScenario(model, spec, random.next());
+      if (outcome.failure() != null)
+        throw new AssertionError("scenario " + outcome.title() + " fails: " + outcome.failure());
+    }
+  }
 }

@@ -3,7 +3,7 @@
 module LawSpecRuntime where
 
 import Control.Exception (ErrorCall(..), Exception, SomeException(..), catch, displayException, evaluate, finally, fromException, throwIO, try)
-import Control.Concurrent (threadDelay, yield, forkIO, killThread, newChan, readChan, writeChan, newEmptyMVar, putMVar, takeMVar)
+import Control.Concurrent (Chan, threadDelay, yield, forkIO, killThread, newChan, readChan, writeChan, newEmptyMVar, putMVar, takeMVar)
 import System.Timeout (timeout)
 import Data.IORef (IORef, newIORef, readIORef, writeIORef, modifyIORef', atomicModifyIORef')
 import GHC.Clock (getMonotonicTimeNSec)
@@ -19,7 +19,7 @@ import Data.ByteString (ByteString)
 import qualified Data.ByteString as B
 import Data.Complex (Complex((:+)))
 import Data.Word
-import Data.Bits (finiteBitSize, shiftR, xor)
+import Data.Bits (bit, finiteBitSize, setBit, shiftR, testBit, xor)
 import Data.Text (Text)
 import qualified Data.Text as T
 import Data.List (find, intercalate, nub, sort, sortBy, stripPrefix)
@@ -2273,4 +2273,225 @@ checkModelParallelWith cases repeats maxShrinks threads branchLength seedOverrid
                 (parallelCase', message) <- shrinkParallel plan parallelCase found (max 2 (repeats `div` 2)) maxShrinks shake
                 pure (Just ("model " ++ planName plan ++ " is not linearizable: "
                   ++ describeParallel plan parallelCase' ++ ": " ++ message))
+  loop 0
+
+-- Scenarios: processes that drive a shared model's commands at the same time
+-- and talk over channels (see LawSpec.Core.Program for the spec). Each
+-- channel has a queue per direction; a process holds an end of a channel as
+-- (channel, side), the first branch of a par to use a channel taking side 0.
+-- A channel end sent over a channel moves to the receiver. Every command's
+-- call and return are stamped on one counter; the history must linearize
+-- against the model, and every expect must hold, on each of many schedules.
+
+-- | A channel: side s sends on queue s and receives from queue 1 - s.
+data ScenarioChannel = ScenarioChannel (Chan ScenarioItem) (Chan ScenarioItem)
+
+-- | A value or a channel end, in transit.
+data ScenarioItem = ScenarioValue Scalar | ScenarioEnd (ScenarioChannel, Int)
+
+scenarioQueue :: ScenarioChannel -> Int -> Chan ScenarioItem
+scenarioQueue (ScenarioChannel first second) side = if side == 0 then first else second
+
+-- | The names an act list sends, receives or sends away, with nested pars.
+actsChannels :: [Descriptor] -> [String]
+actsChannels = concatMap names
+  where
+    names act = case act of
+      DescList [DescAtom "send", c, operand] -> descriptorName c : case operand of
+        DescList [DescAtom "var", x] -> [descriptorName x]
+        _ -> []
+      DescList (DescAtom "receive" : c : _) -> [descriptorName c]
+      DescList (DescAtom "par" : branches) -> concat [actsChannels acts | DescList (_ : acts) <- branches]
+      _ -> []
+
+scenarioConstant :: Descriptor -> Scalar
+scenarioConstant form = case form of
+  DescList [DescAtom "int", DescInteger n] -> SInteger "Integer" n
+  DescList [DescAtom "text", t] -> textScalar (descriptorName t)
+  DescList [DescAtom "bool", b] -> SBool (descriptorName b == "true")
+  DescList [_, t] -> SData (descriptorName t) []
+  _ -> error ("invalid scenario constant " ++ show form)
+
+-- | A call in a scenario's history: command, arguments, result, called, returned.
+type ScenarioCall = (ModelCommand, [Scalar], Scalar, Int, Int)
+
+-- | The scenario's title and its failure on one schedule, if any.
+runScenario :: Model -> String -> Word64 -> IO (String, Maybe String)
+runScenario model spec shake = do
+  let forms = readDescriptor spec
+      title = case forms of
+        DescList (_ : t : _) : _ -> descriptorName t
+        _ -> error "invalid scenario spec"
+      names = concat (take 1 [map descriptorName rest | DescList (DescAtom "channels" : rest) <- forms])
+      body = concat (take 1 [rest | DescList (DescAtom "process" : rest) <- forms])
+      plan = modelPlan model
+      commandNamed n = case find ((== n) . mcName) (planCommands plan) of
+        Just command -> command
+        Nothing -> error ("unknown command " ++ n)
+  channels <- forM names $ \n -> (,) n <$> (ScenarioChannel <$> newChan <*> newChan)
+  symbols <- newSymbolContext
+  let startArgs = map (minimalValue (planTable plan)) (planStartArguments plan)
+  outcome <- try $ do
+    state <- callOrRaise (planStartRun plan) symbols startArgs
+    expected <- callOrRaise (planStartModel plan) symbols startArgs
+    clock <- newIORef (0 :: Int)
+    history <- newIORef ([] :: [ScenarioCall])
+    failures <- newIORef ([] :: [String])
+    let tick = atomicModifyIORef' clock (\c -> (c + 1, c + 1))
+        failWith message = atomicModifyIORef' failures (\fs -> (fs ++ [message], ()))
+        bind name value pairs = (name, value) : filter ((/= name) . fst) pairs
+        valueOf env operand = case operand of
+          DescList [DescAtom "var", x] -> case lookup (descriptorName x) env of
+            Just value -> value
+            Nothing -> error ("unbound scenario variable " ++ descriptorName x)
+          _ -> scenarioConstant operand
+        endOf ends c = case lookup (descriptorName c) ends of
+          Just end -> end
+          Nothing -> error ("no end of channel " ++ descriptorName c)
+        process acts env0 ends0 source = do
+          own <- newSymbolContext
+          let go [] _ _ = pure ()
+              go (act : rest) env ends = do
+                failed <- not . null <$> readIORef failures
+                if failed then pure () else case act of
+                  DescList (DescAtom "call" : nameForm : bound : operands) -> do
+                    let command = commandNamed (descriptorName nameForm)
+                        args = map (valueOf env) operands
+                        position = mcState command
+                        full = take position args ++ [state] ++ drop position args
+                    perturb source
+                    called <- tick
+                    -- The result is forced in full here, so the effect (or its
+                    -- error) happens between the call and return stamps.
+                    let run symbols' args' = case mcRun command symbols' args' of
+                          Right value -> forceScalar value `seq` Right value
+                          failure -> failure
+                    out <- callModel run own full
+                    case out of
+                      Left message -> failWith (mcName command ++ " raised error: " ++ message)
+                      Right result -> do
+                        returned <- tick
+                        atomicModifyIORef' history (\h -> (h ++ [(command, args, result, called, returned)], ()))
+                        let env' = case bound of
+                              DescNone -> env
+                              DescAtom "_" -> env
+                              _ -> bind (descriptorName bound) result env
+                        go rest env' ends
+                  DescList [DescAtom "send", c, operand] -> do
+                    let (channel, side) = endOf ends c
+                        (item, ends') = case operand of
+                          DescList [DescAtom "var", x] | Just end <- lookup (descriptorName x) ends ->
+                            (ScenarioEnd end, filter ((/= descriptorName x) . fst) ends)
+                          _ -> (ScenarioValue (valueOf env operand), ends)
+                    perturb source
+                    writeChan (scenarioQueue channel side) item
+                    go rest env ends'
+                  DescList [DescAtom "receive", c, x] -> do
+                    let (channel, side) = endOf ends c
+                    got <- timeout 5000000 (readChan (scenarioQueue channel (1 - side)))
+                    case got of
+                      Nothing -> failWith ("a receive on " ++ descriptorName c
+                        ++ " waited too long: the processes are blocked")
+                      Just (ScenarioEnd end) -> go rest env (bind (descriptorName x) end ends)
+                      Just (ScenarioValue value) -> go rest (bind (descriptorName x) value env) ends
+                  DescList (DescAtom "par" : branchForms) -> do
+                    let branches = [acts | DescList (_ : acts) <- branchForms]
+                        addUser owned (name, i) = case lookup name owned of
+                          Nothing -> owned ++ [(name, [i])]
+                          Just users
+                            | i `elem` users -> owned
+                            | otherwise -> [(n, if n == name then us ++ [i] else us) | (n, us) <- owned]
+                        owned = foldl addUser [] [(name, i) | (i, b) <- zip [0 :: Int ..] branches, name <- actsChannels b]
+                        mine i = [ (name, end) | (name, users) <- owned, i `elem` users
+                                 , end <- case lookup name ends of
+                                     Just held -> [held]
+                                     Nothing -> case lookup name channels of
+                                       Just channel -> [(channel, length (takeWhile (/= i) users))]
+                                       Nothing -> [] ]
+                    dones <- forM (zip [0 :: Int ..] branches) $ \(i, b) -> do
+                      done <- newEmptyMVar
+                      branchSource <- newIORef (shake `xor` (fromIntegral (i + 1) * 0x9E3779B97F4A7C15))
+                      _ <- forkIO (process b env (mine i) branchSource `finally` putMVar done ())
+                      pure done
+                    mapM_ takeMVar dones
+                    go rest env ends
+                  DescList [DescAtom "expect", x, c] -> do
+                    let name = descriptorName x
+                        wanted = scenarioConstant c
+                        actual = lookup name env
+                    if maybe True (\a -> compareValues a wanted /= Right EQ) actual
+                      then failWith ("expect " ++ name ++ " = " ++ renderValue wanted ++ " failed: "
+                        ++ name ++ " is " ++ maybe "None" renderValue actual)
+                      else go rest env ends
+                  _ -> error ("unknown scenario act " ++ show act)
+          go acts env0 ends0 `catch` \(e :: SomeException) -> failWith ("raised error: " ++ exceptionText e)
+    root <- newIORef shake
+    process body [] [] root
+    found <- readIORef failures
+    case found of
+      failure : _ -> pure (Just failure)
+      [] -> do
+        final <- case planAbstract plan of
+          Nothing -> pure Nothing
+          Just abstract -> Just <$> callOrRaise abstract symbols [state]
+        calls <- readIORef history
+        linearizes <- linearizesHistory plan symbols calls expected final state
+        let calledAt (_, _, _, c, _) = c
+            observed = intercalate "; "
+              [ mcName command ++ "(" ++ intercalate ", " (map renderValue args) ++ ") returned " ++ renderValue result
+              | (command, args, result, _, _) <- sortBy (\a b -> compare (calledAt a) (calledAt b)) calls ]
+        pure (if linearizes then Nothing
+          else Just ("no order of the calls agrees with the model (" ++ observed ++ ")"))
+  pure (title, case outcome of
+    Right failure -> failure
+    Left e -> Just ("raised error: " ++ case fromException e of
+      Just (ModelRaised message) -> message
+      _ -> exceptionText e))
+
+-- | A Wing-Gong search over any real-time order: next, a call that no
+-- pending call returned before; memoized on the calls done and the state.
+linearizesHistory :: ModelPlan -> SymbolContext -> [ScenarioCall] -> Scalar -> Maybe Scalar -> Scalar -> IO Bool
+linearizesHistory plan symbols calls expected final state = do
+  seen <- newIORef ([] :: [(Integer, String)])
+  let indexed = zip [0 ..] calls
+      complete = bit (length calls) - 1 :: Integer
+      visit done modelState = do
+        let key = (done, renderValue modelState)
+        keys <- readIORef seen
+        if key `elem` keys then pure False else do
+          writeIORef seen (key : keys)
+          if done == complete then finish modelState else anyM (next done modelState) indexed
+      next done modelState (i, (command, args, result, called, _))
+        | testBit done i = pure False
+        | or [ not (testBit done j) && returned < called
+             | (j, (_, _, _, _, returned)) <- indexed, j /= i ] = pure False
+        | otherwise = do
+            stepped <- try (stepModel command symbols args modelState)
+            case stepped of
+              Left (_ :: ModelStop) -> pure False
+              Right (after, wanted)
+                | not (mcUnit command) && compareValues result wanted /= Right EQ -> pure False
+                | otherwise -> visit (setBit done i) after
+      finish modelState
+        | maybe False (\actual -> compareValues actual modelState /= Right EQ) final = pure False
+        | otherwise = allM (\(kind, invariant) -> do
+            holds <- callModel invariant symbols [if kind == "model" then modelState else state]
+            pure (case holds of Right (SBool True) -> True; _ -> False)) (planInvariants plan)
+  visit 0 expected
+
+-- | Runs a scenario on 30 schedules, seeded from LAWSPEC_SEED or 0: Nothing,
+-- or the first failure.
+checkScenario :: Model -> String -> IO (Maybe String)
+checkScenario model spec = do
+  seed <- maybe 0 (fromInteger . read) <$> lookupEnv "LAWSPEC_SEED"
+  source <- newIORef (seed `xor` 0x2545F4914F6CDD1D)
+  let loop :: Int -> IO (Maybe String)
+      loop run
+        | run >= 30 = pure Nothing
+        | otherwise = do
+            shake <- drawIO source (Draw splitMix64)
+            (title, failure) <- runScenario model spec shake
+            case failure of
+              Just message -> pure (Just ("scenario " ++ title ++ " fails: " ++ message))
+              Nothing -> loop (run + 1)
   loop 0

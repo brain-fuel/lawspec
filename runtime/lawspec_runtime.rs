@@ -3882,6 +3882,391 @@ pub fn check_model_parallel_with(
     Ok(())
 }
 
+// Scenarios: processes that drive a shared model's commands at the same time
+// and talk over channels (see LawSpec.Core.Program for the spec). Each
+// channel has a queue per direction; a process holds an end of a channel as
+// (channel, side), the first branch of a par to use a channel taking side 0.
+// A channel end sent over a channel moves to the receiver. Every command's
+// call and return are stamped on one counter; the history must linearize
+// against the model, and every expect must hold, on each of many schedules.
+// The draws, search order and messages follow the Python reference.
+
+// What travels over a channel: a value, or a channel end (channel, side).
+enum Carried {
+    Value(Value),
+    End(usize, usize),
+}
+
+// A queue per direction: side s sends on queues[s] and receives on
+// queues[1 - s].
+struct ScenarioChannel {
+    queues: [(std::sync::Mutex<std::collections::VecDeque<Carried>>, std::sync::Condvar); 2],
+}
+
+// A channel end a process holds: the channel's number and its side.
+type ScenarioEnds = HashMap<String, (usize, usize)>;
+// One call: the command, its arguments, its result, when it started and
+// when it returned.
+type ScenarioCall = (usize, Vec<Value>, Value, u64, u64);
+
+struct ScenarioRun<'m> {
+    machine: &'m Machine<'m>,
+    commands: HashMap<String, usize>,
+    channels: Vec<ScenarioChannel>,
+    channel_numbers: HashMap<String, usize>,
+    state: Value,
+    shake: u64,
+    clock: std::sync::atomic::AtomicU64,
+    history: std::sync::Mutex<Vec<ScenarioCall>>,
+    failures: std::sync::Mutex<Vec<String>>,
+}
+
+/// The names an act list sends, receives or sends away, with nested pars.
+fn scenario_channels(acts: &[Sexp]) -> Vec<String> {
+    let mut names = Vec::new();
+    for act in acts {
+        let items = act.items();
+        match act.kind() {
+            "send" => {
+                names.push(items[1].name());
+                if items[2].kind() == "var" {
+                    names.push(items[2].items()[1].name());
+                }
+            }
+            "receive" => names.push(items[1].name()),
+            "par" => {
+                for branch in &items[1..] {
+                    names.extend(scenario_channels(&branch.items()[1..]));
+                }
+            }
+            _ => {}
+        }
+    }
+    names
+}
+
+fn scenario_constant(form: &Sexp) -> Value {
+    let items = form.items();
+    match form.kind() {
+        "int" => match &items[1] {
+            Sexp::Int(n) => Value::Integer(n.clone()),
+            other => Value::Integer(other.name().parse().unwrap_or_else(|_| panic!("expected an integer, got {other:?}"))),
+        },
+        "text" => Value::Text(items[1].name()),
+        "bool" => Value::Bool(items[1].name() == "true"),
+        _ => Value::Data(items[1].name(), Vec::new()),
+    }
+}
+
+impl<'m> ScenarioRun<'m> {
+    fn fail(&self, message: String) {
+        self.failures.lock().unwrap_or_else(|p| p.into_inner()).push(message);
+    }
+
+    fn failed(&self) -> bool {
+        !self.failures.lock().unwrap_or_else(|p| p.into_inner()).is_empty()
+    }
+
+    fn tick(&self) -> u64 {
+        self.clock.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1
+    }
+
+    fn operand(&self, operand: &Sexp, env: &HashMap<String, Value>) -> Option<Value> {
+        if operand.kind() == "var" {
+            env.get(&operand.items()[1].name()).cloned()
+        } else {
+            Some(scenario_constant(operand))
+        }
+    }
+
+    fn end(&self, name: &str, ends: &ScenarioEnds) -> Option<(usize, usize)> {
+        let found = ends.get(name).copied();
+        if found.is_none() {
+            self.fail(format!("{name} is not a channel end this process holds"));
+        }
+        found
+    }
+
+    fn process(&self, acts: &[Sexp], env: &mut HashMap<String, Value>, ends: &mut ScenarioEnds, random: &mut SplitMix64) {
+        let mut own = Context::testing();
+        for act in acts {
+            if self.failed() {
+                return;
+            }
+            let items = act.items();
+            match act.kind() {
+                "call" => {
+                    let name = items[1].name();
+                    let index = *self.commands.get(&name).unwrap_or_else(|| panic!("no command {name}"));
+                    let command = &self.machine.commands[index];
+                    let mut args = Vec::new();
+                    for o in &items[3..] {
+                        match self.operand(o, env) {
+                            Some(v) => args.push(v),
+                            None => return self.fail(format!("{} is not bound", o.items()[1].name())),
+                        }
+                    }
+                    let mut full = args.clone();
+                    full.insert(command.state, self.state.clone());
+                    perturb(random);
+                    let called = self.tick();
+                    let result = match (command.run)(&mut own, full) {
+                        Ok(result) => result,
+                        Err(e) => return self.fail(format!("{} raised error: {e}", command.name)),
+                    };
+                    let returned = self.tick();
+                    self.history.lock().unwrap_or_else(|p| p.into_inner()).push((index, args, result.clone(), called, returned));
+                    if items[2] != Sexp::Blank {
+                        env.insert(items[2].name(), result);
+                    }
+                }
+                "send" => {
+                    let Some((channel, side)) = self.end(&items[1].name(), ends) else { return };
+                    let operand = &items[2];
+                    let held = if operand.kind() == "var" { ends.remove(&operand.items()[1].name()) } else { None };
+                    let value = match held {
+                        Some((c, s)) => Carried::End(c, s),
+                        None => match self.operand(operand, env) {
+                            Some(v) => Carried::Value(v),
+                            None => return self.fail(format!("{} is not bound", operand.items()[1].name())),
+                        },
+                    };
+                    perturb(random);
+                    let (queue, ready) = &self.channels[channel].queues[side];
+                    queue.lock().unwrap_or_else(|p| p.into_inner()).push_back(value);
+                    ready.notify_all();
+                }
+                "receive" => {
+                    let name = items[1].name();
+                    let Some((channel, side)) = self.end(&name, ends) else { return };
+                    let (queue, ready) = &self.channels[channel].queues[1 - side];
+                    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+                    let mut waiting = queue.lock().unwrap_or_else(|p| p.into_inner());
+                    let value = loop {
+                        if let Some(v) = waiting.pop_front() {
+                            break Some(v);
+                        }
+                        let now = std::time::Instant::now();
+                        if now >= deadline {
+                            break None;
+                        }
+                        waiting = ready.wait_timeout(waiting, deadline - now).unwrap_or_else(|p| p.into_inner()).0;
+                    };
+                    drop(waiting);
+                    match value {
+                        None => {
+                            return self.fail(format!("a receive on {name} waited too long: the processes are blocked"));
+                        }
+                        Some(Carried::End(c, s)) => {
+                            ends.insert(items[2].name(), (c, s));
+                        }
+                        Some(Carried::Value(v)) => {
+                            env.insert(items[2].name(), v);
+                        }
+                    }
+                }
+                "par" => {
+                    let branches: Vec<&[Sexp]> = items[1..].iter().map(|b| &b.items()[1..]).collect();
+                    // Each name's users, in branch order.
+                    let mut owned: Vec<(String, Vec<usize>)> = Vec::new();
+                    for (i, branch) in branches.iter().enumerate() {
+                        for name in scenario_channels(branch) {
+                            let at = match owned.iter().position(|(n, _)| *n == name) {
+                                Some(at) => at,
+                                None => {
+                                    owned.push((name, Vec::new()));
+                                    owned.len() - 1
+                                }
+                            };
+                            if !owned[at].1.contains(&i) {
+                                owned[at].1.push(i);
+                            }
+                        }
+                    }
+                    std::thread::scope(|scope| {
+                        for (i, branch) in branches.iter().enumerate() {
+                            let mut mine = ScenarioEnds::new();
+                            for (name, users) in &owned {
+                                if let Some(side) = users.iter().position(|u| *u == i) {
+                                    if let Some(end) = ends.get(name) {
+                                        mine.insert(name.clone(), *end);
+                                    } else if let Some(channel) = self.channel_numbers.get(name) {
+                                        mine.insert(name.clone(), (*channel, side));
+                                    }
+                                }
+                            }
+                            let mut env = env.clone();
+                            let mut random =
+                                SplitMix64::new(self.shake ^ ((i as u64 + 1).wrapping_mul(0x9E3779B97F4A7C15)));
+                            scope.spawn(move || self.process(branch, &mut env, &mut mine, &mut random));
+                        }
+                    });
+                }
+                "expect" => {
+                    let name = items[1].name();
+                    let wanted = scenario_constant(&items[2]);
+                    let actual = env.get(&name);
+                    let agrees = actual
+                        .map(|a| matches!(compare_values(a, &wanted), Ok(std::cmp::Ordering::Equal)))
+                        .unwrap_or(false);
+                    if !agrees {
+                        let shown = actual.map(render).unwrap_or_else(|| "None".into());
+                        return self.fail(format!("expect {name} = {} failed: {name} is {shown}", render(&wanted)));
+                    }
+                }
+                other => panic!("unknown scenario act {other}"),
+            }
+        }
+    }
+}
+
+// One run of a scenario: its title, and what went wrong if anything did.
+fn run_scenario(machine: &Machine, spec: &str, shake: u64) -> (String, Option<String>) {
+    let forms = read_descriptor(spec);
+    let title = forms[0].items()[1].name();
+    let names: Vec<String> = forms
+        .iter()
+        .find(|f| f.kind() == "channels")
+        .map(|f| f.items()[1..].iter().map(Sexp::name).collect())
+        .unwrap_or_default();
+    let body = forms.iter().find(|f| f.kind() == "process").map(|f| &f.items()[1..]).unwrap_or(&[]);
+    let mut symbols = Context::testing();
+    let start_args: Vec<Value> = machine.start_arguments.iter().map(|d| machine.values.minimal(d)).collect();
+    let state = match (machine.model.start[0])(&mut symbols, start_args.clone()) {
+        Ok(state) => state,
+        Err(e) => return (title, Some(format!("the start raised error: {e}"))),
+    };
+    let expected = match (machine.model.start[1])(&mut symbols, start_args) {
+        Ok(expected) => expected,
+        Err(e) => return (title, Some(format!("the start raised error: {e}"))),
+    };
+    let new_queue = || (std::sync::Mutex::new(std::collections::VecDeque::new()), std::sync::Condvar::new());
+    let run = ScenarioRun {
+        machine,
+        commands: machine.commands.iter().enumerate().map(|(i, c)| (c.name.clone(), i)).collect(),
+        channels: names.iter().map(|_| ScenarioChannel { queues: [new_queue(), new_queue()] }).collect(),
+        channel_numbers: names.iter().enumerate().map(|(i, n)| (n.clone(), i)).collect(),
+        state: state.clone(),
+        shake,
+        clock: std::sync::atomic::AtomicU64::new(0),
+        history: std::sync::Mutex::new(Vec::new()),
+        failures: std::sync::Mutex::new(Vec::new()),
+    };
+    run.process(body, &mut HashMap::new(), &mut ScenarioEnds::new(), &mut SplitMix64::new(shake));
+    if let Some(failure) = run.failures.into_inner().unwrap_or_else(|p| p.into_inner()).into_iter().next() {
+        return (title, Some(failure));
+    }
+    let history = run.history.into_inner().unwrap_or_else(|p| p.into_inner());
+    let fin = match machine.model.abstract_state {
+        Some(abstraction) => match abstraction(&mut symbols, vec![state.clone()]) {
+            Ok(v) => Some(v),
+            Err(e) => return (title, Some(format!("raised error: {e}"))),
+        },
+        None => None,
+    };
+    if !machine.scenario_linearizes(&mut symbols, &history, expected, fin.as_ref(), &state) {
+        let mut ordered: Vec<&ScenarioCall> = history.iter().collect();
+        ordered.sort_by_key(|h| h.3);
+        let observed: Vec<String> = ordered
+            .iter()
+            .map(|(index, args, result, _, _)| {
+                format!(
+                    "{}({}) returned {}",
+                    machine.commands[*index].name,
+                    args.iter().map(render).collect::<Vec<_>>().join(", "),
+                    render(result)
+                )
+            })
+            .collect();
+        return (title, Some(format!("no order of the calls agrees with the model ({})", observed.join("; "))));
+    }
+    (title, None)
+}
+
+impl<'a> Machine<'a> {
+    /// A Wing-Gong search over any real-time order: next, a call that no
+    /// pending call returned before; memoized on the calls done and the
+    /// state. A complete order must leave the final state and invariants
+    /// the model gives.
+    fn scenario_linearizes(
+        &self,
+        ctx: &mut Context,
+        history: &[ScenarioCall],
+        expected: Value,
+        fin: Option<&Value>,
+        state: &Value,
+    ) -> bool {
+        let mut seen = std::collections::HashSet::new();
+        self.scenario_visit(ctx, history, &mut seen, vec![false; history.len()], expected, fin, state)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn scenario_visit(
+        &self,
+        ctx: &mut Context,
+        history: &[ScenarioCall],
+        seen: &mut std::collections::HashSet<(Vec<bool>, String)>,
+        done: Vec<bool>,
+        model_state: Value,
+        fin: Option<&Value>,
+        state: &Value,
+    ) -> bool {
+        if !seen.insert((done.clone(), render(&model_state))) {
+            return false;
+        }
+        if done.iter().all(|d| *d) {
+            if let Some(fin) = fin {
+                if !matches!(compare_values(fin, &model_state), Ok(std::cmp::Ordering::Equal)) {
+                    return false;
+                }
+            }
+            return self.invariants.iter().all(|(kind, invariant)| {
+                let subject = if kind == "model" { &model_state } else { state };
+                matches!(invariant(ctx, vec![subject.clone()]).and_then(|v| v.boolean()), Ok(true))
+            });
+        }
+        for (i, (index, args, result, called, _)) in history.iter().enumerate() {
+            if done[i] {
+                continue;
+            }
+            if (0..history.len()).any(|j| j != i && !done[j] && history[j].4 < *called) {
+                continue;
+            }
+            let command = &self.commands[*index];
+            let (after, wanted) = match step_model(command, ctx, args, model_state.clone()) {
+                Ok(stepped) => stepped,
+                Err(ModelFault::Invalid) => continue,
+                Err(ModelFault::Error(e)) => panic!("model {}: {e}", self.name),
+            };
+            if !command.unit && !matches!(compare_values(result, &wanted), Ok(std::cmp::Ordering::Equal)) {
+                continue;
+            }
+            let mut next = done.clone();
+            next[i] = true;
+            if self.scenario_visit(ctx, history, seen, next, after, fin, state) {
+                return true;
+            }
+        }
+        false
+    }
+}
+
+/// Runs a scenario on many schedules (30 runs, seeded by LAWSPEC_SEED);
+/// a failure names the scenario and what went wrong.
+pub fn check_scenario(model: &Model, spec: &str) -> std::result::Result<(), String> {
+    let seed = std::env::var("LAWSPEC_SEED").ok().and_then(|s| s.trim().parse::<u64>().ok()).unwrap_or(0);
+    let machine = Machine::new(model);
+    let mut random = SplitMix64::new(seed ^ 0x2545F4914F6CDD1D);
+    for _ in 0..30 {
+        let (title, failure) = run_scenario(&machine, spec, random.next());
+        if let Some(failure) = failure {
+            return Err(format!("scenario {title} fails: {failure}"));
+        }
+    }
+    Ok(())
+}
+
+
 #[cfg(test)]
 mod tests {
     use super::*;

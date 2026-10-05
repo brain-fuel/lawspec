@@ -3503,3 +3503,377 @@ func lsCheckModelParallel(model LawSpecModel, cases, repeats, maxShrinks, thread
 	}
 	return nil
 }
+
+// Scenarios: processes that drive a shared model's commands at the same time
+// and talk over channels (see LawSpec.Core.Program for the spec). Each
+// channel has a queue per direction; a process holds an end of a channel as
+// (channel, side), the first branch of a par to use a channel taking side 0.
+// A channel end sent over a channel moves to the receiver. Every command's
+// call and return are stamped on one counter; the history must linearize
+// against the model, and every expect must hold, on each of many schedules.
+
+type lawSpecChannel struct{ queues [2]chan any }
+
+func lsNewChannel() *lawSpecChannel {
+	return &lawSpecChannel{[2]chan any{make(chan any, 4096), make(chan any, 4096)}}
+}
+
+// lawSpecEnd is a channel end in transit or held by a process.
+type lawSpecEnd struct {
+	channel *lawSpecChannel
+	side    int
+}
+
+type lawSpecScenarioCall struct {
+	command          *lawSpecModelCommand
+	args             []LawSpecValue
+	result           LawSpecValue
+	called, returned int64
+}
+
+// lsActsChannels is the names an act list sends, receives or sends away,
+// with nested pars.
+func lsActsChannels(acts []any) []string {
+	names := []string{}
+	for _, a := range acts {
+		act := a.([]any)
+		switch lsAtom(act[0]) {
+		case "send":
+			names = append(names, lsAtom(act[1]))
+			if operand := act[2].([]any); lsAtom(operand[0]) == "var" {
+				names = append(names, lsAtom(operand[1]))
+			}
+		case "receive":
+			names = append(names, lsAtom(act[1]))
+		case "par":
+			for _, branch := range act[1:] {
+				names = append(names, lsActsChannels(branch.([]any)[1:])...)
+			}
+		}
+	}
+	return names
+}
+
+func lsScenarioConstant(form []any) LawSpecValue {
+	switch lsAtom(form[0]) {
+	case "int":
+		return LawSpecValue{"Integer", new(big.Int).Set(form[1].(*big.Int))}
+	case "text":
+		units := []int{}
+		for _, c := range lsAtom(form[1]) {
+			units = append(units, int(c))
+		}
+		return LawSpecValue{"Text", units}
+	case "bool":
+		return lsBool(lsAtom(form[1]) == "true")
+	}
+	tag := lsAtom(form[1])
+	t := tag
+	if i := strings.LastIndex(tag, "::"); i >= 0 {
+		t = tag[:i]
+	}
+	return LawSpecValue{t, lawSpecData{tag, nil}}
+}
+
+func lsRunScenario(model LawSpecModel, spec string, shake uint64) (string, string, bool) {
+	m := lsNewMachine(model)
+	forms := lsReadDescriptor(spec)
+	title := lsAtom(forms[0].([]any)[1])
+	var names, body []any
+	for _, f := range forms {
+		form := f.([]any)
+		switch lsAtom(form[0]) {
+		case "channels":
+			if names == nil {
+				names = form[1:]
+			}
+		case "process":
+			if body == nil {
+				body = form[1:]
+			}
+		}
+	}
+	channels := map[string]*lawSpecChannel{}
+	for _, name := range names {
+		channels[lsAtom(name)] = lsNewChannel()
+	}
+	commands := map[string]*lawSpecModelCommand{}
+	for i := range m.commands {
+		commands[m.commands[i].name] = &m.commands[i]
+	}
+	symbols := map[string]*LawSpecSymbol{}
+	startArgs := []LawSpecValue{}
+	for _, d := range m.startArguments {
+		startArgs = append(startArgs, m.values.minimal(d))
+	}
+	state := m.startRun(symbols, startArgs)
+	expected := m.startModel(symbols, startArgs)
+	var lock sync.Mutex
+	var clock int64
+	history := []lawSpecScenarioCall{}
+	failures := []string{}
+	fail := func(message string) {
+		lock.Lock()
+		failures = append(failures, message)
+		lock.Unlock()
+	}
+	failed := func() bool {
+		lock.Lock()
+		defer lock.Unlock()
+		return len(failures) > 0
+	}
+	var process func(acts []any, env map[string]LawSpecValue, ends map[string]lawSpecEnd, random *LawSpecSplitMix64)
+	process = func(acts []any, env map[string]LawSpecValue, ends map[string]lawSpecEnd, random *LawSpecSplitMix64) {
+		own := map[string]*LawSpecSymbol{}
+		for _, a := range acts {
+			if failed() {
+				return
+			}
+			act := a.([]any)
+			switch lsAtom(act[0]) {
+			case "call":
+				command := commands[lsAtom(act[1])]
+				args := []LawSpecValue{}
+				for _, o := range act[3:] {
+					operand := o.([]any)
+					if lsAtom(operand[0]) == "var" {
+						args = append(args, env[lsAtom(operand[1])])
+					} else {
+						args = append(args, lsScenarioConstant(operand))
+					}
+				}
+				full := lsWithState(command, args, state)
+				lsPerturb(random)
+				called := atomic.AddInt64(&clock, 1)
+				result, ok := func() (result LawSpecValue, ok bool) {
+					defer func() {
+						if r := recover(); r != nil {
+							fail(fmt.Sprintf("%s raised panic: %v", command.name, r))
+							ok = false
+						}
+					}()
+					return command.run(own, full), true
+				}()
+				if !ok {
+					return
+				}
+				returned := atomic.AddInt64(&clock, 1)
+				lock.Lock()
+				history = append(history, lawSpecScenarioCall{command, args, result, called, returned})
+				lock.Unlock()
+				if act[2] != nil && lsAtom(act[2]) != "_" {
+					env[lsAtom(act[2])] = result
+				}
+			case "send":
+				end := ends[lsAtom(act[1])]
+				operand := act[2].([]any)
+				var value any
+				if held, isEnd := ends[lsAtom(operand[1])]; lsAtom(operand[0]) == "var" && isEnd {
+					delete(ends, lsAtom(operand[1]))
+					value = held
+				} else if lsAtom(operand[0]) == "var" {
+					value = env[lsAtom(operand[1])]
+				} else {
+					value = lsScenarioConstant(operand)
+				}
+				lsPerturb(random)
+				end.channel.queues[end.side] <- value
+			case "receive":
+				end := ends[lsAtom(act[1])]
+				var value any
+				select {
+				case value = <-end.channel.queues[1-end.side]:
+				case <-time.After(5 * time.Second):
+					fail(fmt.Sprintf("a receive on %s waited too long: the processes are blocked", lsAtom(act[1])))
+					return
+				}
+				if held, isEnd := value.(lawSpecEnd); isEnd {
+					ends[lsAtom(act[2])] = held
+				} else {
+					env[lsAtom(act[2])] = value.(LawSpecValue)
+				}
+			case "par":
+				branches := [][]any{}
+				for _, b := range act[1:] {
+					branches = append(branches, b.([]any)[1:])
+				}
+				owned := map[string][]int{}
+				order := []string{}
+				for i, branch := range branches {
+					for _, name := range lsActsChannels(branch) {
+						users, seen := owned[name]
+						if !seen {
+							order = append(order, name)
+						}
+						if len(users) == 0 || users[len(users)-1] != i {
+							owned[name] = append(users, i)
+						}
+					}
+				}
+				var group sync.WaitGroup
+				for i, branch := range branches {
+					mine := map[string]lawSpecEnd{}
+					for _, name := range order {
+						for side, user := range owned[name] {
+							if user != i {
+								continue
+							}
+							if held, ok := ends[name]; ok {
+								mine[name] = held
+							} else if channel, ok := channels[name]; ok {
+								mine[name] = lawSpecEnd{channel, side}
+							}
+						}
+					}
+					copied := map[string]LawSpecValue{}
+					for k, v := range env {
+						copied[k] = v
+					}
+					random := &LawSpecSplitMix64{shake ^ (uint64(i+1) * 0x9E3779B97F4A7C15)}
+					group.Add(1)
+					go func(branch []any) {
+						defer group.Done()
+						process(branch, copied, mine, random)
+					}(branch)
+				}
+				group.Wait()
+			case "expect":
+				name := lsAtom(act[1])
+				wanted := lsScenarioConstant(act[2].([]any))
+				actual, bound := env[name]
+				if !bound || !lsScenarioEqual(actual, wanted) {
+					rendered := "None"
+					if bound {
+						rendered = lsRender(actual)
+					}
+					fail(fmt.Sprintf("expect %s = %s failed: %s is %s", name, lsRender(wanted), name, rendered))
+					return
+				}
+			}
+		}
+	}
+	process(body, map[string]LawSpecValue{}, map[string]lawSpecEnd{}, &LawSpecSplitMix64{shake})
+	if len(failures) > 0 {
+		return title, failures[0], true
+	}
+	var final *LawSpecValue
+	if m.abstract != nil {
+		actual := m.abstract(symbols, []LawSpecValue{state})
+		final = &actual
+	}
+	if !m.linearizesHistory(symbols, history, expected, final, state) {
+		sorted := append([]lawSpecScenarioCall{}, history...)
+		sort.SliceStable(sorted, func(a, b int) bool { return sorted[a].called < sorted[b].called })
+		observed := []string{}
+		for _, h := range sorted {
+			args := []string{}
+			for _, a := range h.args {
+				args = append(args, lsRender(a))
+			}
+			observed = append(observed, fmt.Sprintf("%s(%s) returned %s", h.command.name, strings.Join(args, ", "), lsRender(h.result)))
+		}
+		return title, "no order of the calls agrees with the model (" + strings.Join(observed, "; ") + ")", true
+	}
+	return title, "", false
+}
+
+// lsScenarioEqual is whether lsCompareValues finds the values equal; values
+// with no common order are unequal.
+func lsScenarioEqual(a, b LawSpecValue) (equal bool) {
+	defer func() {
+		if recover() != nil {
+			equal = false
+		}
+	}()
+	return lsCompareValues(a, b) == 0
+}
+
+// linearizesHistory is a Wing-Gong search over any real-time order: next, a
+// call that no pending call returned before; memoized on the calls done and
+// the state.
+func (m *lawSpecMachine) linearizesHistory(symbols map[string]*LawSpecSymbol, history []lawSpecScenarioCall, expected LawSpecValue, final *LawSpecValue, state LawSpecValue) bool {
+	seen := map[string]bool{}
+	count := len(history)
+	done := make([]byte, count)
+	var visit func(remaining int, model LawSpecValue) bool
+	visit = func(remaining int, model LawSpecValue) bool {
+		key := string(done) + "|" + lsRender(model)
+		if seen[key] {
+			return false
+		}
+		seen[key] = true
+		if remaining == 0 {
+			if final != nil && lsCompareValues(*final, model) != 0 {
+				return false
+			}
+			for i, kind := range m.invariantKinds {
+				if i >= len(m.invariants) {
+					break
+				}
+				subject := state
+				if kind == "model" {
+					subject = model
+				}
+				if !lsTruth(m.invariants[i](symbols, []LawSpecValue{subject})) {
+					return false
+				}
+			}
+			return true
+		}
+		for i := range history {
+			if done[i] == 1 {
+				continue
+			}
+			blocked := false
+			for j := range history {
+				if j != i && done[j] == 0 && history[j].returned < history[i].called {
+					blocked = true
+					break
+				}
+			}
+			if blocked {
+				continue
+			}
+			call := history[i]
+			var after, wanted LawSpecValue
+			if !lsAllowed(func() { after, wanted = lsStepModel(call.command, symbols, call.args, model) }) {
+				continue
+			}
+			if !call.command.unit && !lsScenarioEqual(call.result, wanted) {
+				continue
+			}
+			done[i] = 1
+			ok := visit(remaining-1, after)
+			done[i] = 0
+			if ok {
+				return true
+			}
+		}
+		return false
+	}
+	return visit(count, expected)
+}
+
+// LawSpecCheckScenario runs a scenario on many schedules; a failure is an
+// error.
+func LawSpecCheckScenario(model LawSpecModel, spec string) error {
+	var seed uint64
+	if text := os.Getenv("LAWSPEC_SEED"); text != "" {
+		parsed, err := strconv.ParseUint(text, 10, 64)
+		if err != nil {
+			return fmt.Errorf("invalid LAWSPEC_SEED %q", text)
+		}
+		seed = parsed
+	}
+	return lsCheckScenario(model, spec, 30, seed)
+}
+
+func lsCheckScenario(model LawSpecModel, spec string, runs int, seed uint64) error {
+	random := &LawSpecSplitMix64{seed ^ 0x2545F4914F6CDD1D}
+	for n := 0; n < runs; n++ {
+		if title, failure, failed := lsRunScenario(model, spec, random.Next()); failed {
+			return fmt.Errorf("scenario %s fails: %s", title, failure)
+		}
+	}
+	return nil
+}
