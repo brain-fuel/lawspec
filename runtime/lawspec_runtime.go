@@ -903,12 +903,23 @@ func (t LawSpecTask[T]) Await() T {
 
 // LawSpecTransport carries a session's values between its two ends: side 0
 // is the first end, side 1 the second. Send queues a value from one side;
-// Receive waits for the next value the other side sent. LawSpecNewChannel is
-// the in-process transport; a networked one implements the same two methods.
+// Receive waits for the next value the other side sent, and panics with
+// LawSpecPeerFailed once the other side has given up and nothing is left;
+// Abandon gives a side up. LawSpecNewChannel is the in-process transport; a
+// networked one implements the same three methods.
 type LawSpecTransport interface {
 	Send(side int, value any)
 	Receive(side int) any
+	Abandon(side int)
 }
+
+// LawSpecPeerFailed is the failure of a receive whose other end gave up: its
+// process failed, or it called Abandon. Receive panics with it, failing this
+// process too; TryReceive returns it instead (or else).
+var LawSpecPeerFailed = errors.New("the other end gave up the conversation (its process failed or abandoned it)")
+
+// lawSpecAbandoned follows the last value an abandoned side sent.
+type lawSpecAbandoned struct{}
 
 // lawSpecSessionChannel is a buffered Go channel per direction: toward[side] holds
 // the values sent to that side.
@@ -917,11 +928,27 @@ type lawSpecSessionChannel struct{ toward [2]chan any }
 // LawSpecNewChannel makes an in-process transport whose sends do not block
 // until buffer values wait in one direction.
 func LawSpecNewChannel(buffer int) LawSpecTransport {
-	return &lawSpecSessionChannel{[2]chan any{make(chan any, buffer), make(chan any, buffer)}}
+	return &lawSpecSessionChannel{[2]chan any{make(chan any, buffer+1), make(chan any, buffer+1)}}
 }
 
 func (c *lawSpecSessionChannel) Send(side int, value any) { c.toward[1-side] <- value }
-func (c *lawSpecSessionChannel) Receive(side int) any     { return <-c.toward[side] }
+
+func (c *lawSpecSessionChannel) Receive(side int) any {
+	value := <-c.toward[side]
+	if _, gone := value.(lawSpecAbandoned); gone {
+		c.toward[side] <- value
+		panic(LawSpecPeerFailed)
+	}
+	return value
+}
+
+func (c *lawSpecSessionChannel) Abandon(side int) {
+	select {
+	case c.toward[1-side] <- lawSpecAbandoned{}:
+	default:
+		go func() { c.toward[1-side] <- lawSpecAbandoned{} }()
+	}
+}
 
 // LawSpecEnd is one end of a session at one step. Generated session types
 // wrap it; each is used once, and its Send or Receive returns the end for the
@@ -961,6 +988,29 @@ func (e *LawSpecEnd) Send(value any) *LawSpecEnd {
 func (e *LawSpecEnd) Receive() (any, *LawSpecEnd) {
 	next := e.use()
 	return e.transport.Receive(e.side), next
+}
+
+// TryReceive is Receive, but returns LawSpecPeerFailed instead of panicking
+// when the other end gave up.
+func (e *LawSpecEnd) TryReceive() (value any, next *LawSpecEnd, err error) {
+	next = e.use()
+	defer func() {
+		if r := recover(); r != nil {
+			if r == LawSpecPeerFailed {
+				err = LawSpecPeerFailed
+				return
+			}
+			panic(r)
+		}
+	}()
+	return e.transport.Receive(e.side), next, nil
+}
+
+// Abandon gives up the conversation: the other end's receives fail with
+// LawSpecPeerFailed once it has received what was already sent.
+func (e *LawSpecEnd) Abandon() {
+	e.use()
+	e.transport.Abandon(e.side)
 }
 
 // HandOver spends the end so that it can be sent to another process: the
@@ -2733,6 +2783,7 @@ type lawSpecModelCommand struct {
 	unit                 bool
 	needs, shifts        [][2]any
 	key                  int // the argument naming the key it touches, for per-key checks; -1 when none
+	restart              bool
 	run, reference, when LawSpecModelCallback
 }
 
@@ -2749,6 +2800,12 @@ type lawSpecMachine struct {
 	invariantKinds []string
 	invariants     []LawSpecModelCallback
 	perKey         bool
+	// steps is the commands a sequential run may take: an actor's also end
+	// with an injected crash.
+	steps []lawSpecModelCommand
+	// lastStart is the start arguments of the run being simulated or
+	// executed, for a crash that restarts from the start.
+	lastStart []LawSpecValue
 }
 
 type lawSpecModelStep struct {
@@ -2845,6 +2902,7 @@ func lsNewMachine(model LawSpecModel) *lawSpecMachine {
 				needs:     lsPairs(fields["needs"]),
 				shifts:    lsPairs(fields["shifts"]),
 				key:       key,
+				restart:   len(fields["restart"]) > 0 && lsAtom(fields["restart"][0]) == "true",
 				run:       callbacks[0], reference: callbacks[1], when: callbacks[2],
 			})
 		case "invariants":
@@ -2861,21 +2919,66 @@ func lsNewMachine(model LawSpecModel) *lawSpecMachine {
 	m.startRun, m.startModel = model.Start[0], model.Start[1]
 	m.abstract = model.Abstract
 	m.invariants = model.Invariants
+	// A restart command is never a step; an actor's injected crashes run it.
+	restarts, commands := []lawSpecModelCommand{}, []lawSpecModelCommand{}
+	for _, c := range m.commands {
+		if c.restart {
+			restarts = append(restarts, c)
+		} else {
+			commands = append(commands, c)
+		}
+	}
+	m.commands = commands
+	m.steps = m.commands
 	if actor {
-		lsActorMachine(m)
+		lsActorMachine(m, restarts)
 	}
 	return m
 }
 
 // lsActorMachine runs an actor model's start and handlers inside an actor;
 // the abstraction and state invariants read its state between messages.
-func lsActorMachine(m *lawSpecMachine) {
-	start := m.startRun
+func lsActorMachine(m *lawSpecMachine, restarts []lawSpecModelCommand) {
+	start, begin := m.startRun, m.startModel
 	if start != nil {
 		m.startRun = func(symbols map[string]*LawSpecSymbol, args []LawSpecValue) LawSpecValue {
+			m.lastStart = args
 			return LawSpecValue{"actor", lawSpecHandle{NewLawSpecActor(start(symbols, args))}}
 		}
 	}
+	if begin != nil {
+		m.startModel = func(symbols map[string]*LawSpecSymbol, args []LawSpecValue) LawSpecValue {
+			m.lastStart = args
+			return begin(symbols, args)
+		}
+	}
+	// Sequential runs also inject crashes: the actor restarts from its last
+	// state (restart from) or its start, and the model follows the restart's
+	// reference (or the start's model state).
+	var restart *lawSpecModelCommand
+	if len(restarts) > 0 {
+		restart = &restarts[0]
+	}
+	crash := lawSpecModelCommand{name: "crash", unit: true, key: -1}
+	crash.run = func(symbols map[string]*LawSpecSymbol, args []LawSpecValue) LawSpecValue {
+		err := lsActorOf(args[0]).Restart(func(state any) any {
+			if restart != nil {
+				return restart.run(symbols, []LawSpecValue{state.(LawSpecValue)})
+			}
+			return start(symbols, m.lastStart)
+		})
+		if err != nil {
+			panic(err.Error())
+		}
+		return lsAbsent("Unit")
+	}
+	crash.reference = func(symbols map[string]*LawSpecSymbol, args []LawSpecValue) LawSpecValue {
+		if restart != nil {
+			return restart.reference(symbols, args[len(args)-1:])
+		}
+		return begin(symbols, m.lastStart)
+	}
+	defer func() { m.steps = append(append([]lawSpecModelCommand{}, m.commands...), crash) }()
 	for i := range m.commands {
 		run, unit := m.commands[i].run, m.commands[i].unit
 		m.commands[i].run = func(symbols map[string]*LawSpecSymbol, args []LawSpecValue) LawSpecValue {
@@ -2924,15 +3027,31 @@ func lsActorOf(v LawSpecValue) *LawSpecActor {
 // Actors. An actor owns a state and handles one message at a time, in the
 // order they arrive. It is not a goroutine: a message sent to an idle actor
 // starts a goroutine that drains its mailbox and then exits, so an idle
-// actor costs only its state and queue.
+// actor costs only its state and queue. A handler that panics crashes the
+// actor: the caller gets a LawSpecActorCrashed error, a supervised actor
+// restarts in place (keeping its address and the messages waiting for it)
+// and any other actor stops.
 
 // LawSpecActorStopped is the error of a message sent to a stopped actor, or
 // received from a closed, empty mailbox.
 var LawSpecActorStopped = errors.New("the actor has stopped")
 
+// LawSpecActorCrashed is the error of a call whose handler failed; Cause is
+// what the handler panicked with.
+type LawSpecActorCrashed struct{ Cause any }
+
+func (e LawSpecActorCrashed) Error() string { return fmt.Sprintf("the actor crashed: %v", e.Cause) }
+
 // LawSpecActorHandler takes the actor's state and gives the reply and the
-// next state; a panic in it is returned to the caller as an error.
+// next state; a panic in it crashes the actor.
 type LawSpecActorHandler func(state any) (reply, next any)
+
+// LawSpecExit is what a monitor hears: "crashed" with the cause, or
+// "stopped".
+type LawSpecExit struct {
+	Reason string
+	Cause  any
+}
 
 type lawSpecActorMessage struct {
 	handler LawSpecActorHandler
@@ -2944,17 +3063,51 @@ type lawSpecActorReply struct {
 	err   error
 }
 
-// LawSpecActor is a running actor.
-type LawSpecActor struct {
-	mu       sync.Mutex
-	state    any
-	mailbox  []lawSpecActorMessage
-	draining bool
-	stopped  bool
+// lawSpecRestart is panicked by a message that crashes the actor on
+// purpose (Crash, links); origin names the first crash.
+type lawSpecRestart struct {
+	cause  any
+	origin uint64
 }
 
-// NewLawSpecActor starts an actor owning state.
-func NewLawSpecActor(state any) *LawSpecActor { return &LawSpecActor{state: state} }
+var lawSpecCrashes atomic.Uint64
+
+// lawSpecChild is an actor or a supervisor under a supervisor.
+type lawSpecChild interface {
+	restartLater()
+	halt()
+	setSupervisor(*LawSpecSupervisor)
+	Stop()
+}
+
+// LawSpecActor is a running actor.
+type LawSpecActor struct {
+	mu         sync.Mutex
+	state      any
+	restart    func(any) any
+	mailbox    []lawSpecActorMessage
+	draining   bool
+	stopped    bool
+	supervisor *LawSpecSupervisor
+	monitors   []func(LawSpecExit)
+	links      []*LawSpecActor
+	seen       map[uint64]bool
+}
+
+// NewLawSpecActor starts an actor owning state; a crash stops it.
+func NewLawSpecActor(state any) *LawSpecActor { return &LawSpecActor{state: state, seen: map[uint64]bool{}} }
+
+// NewLawSpecActorWithRestart starts an actor owning state; restart gives its
+// state after a crash from the last one, when a supervisor restarts it.
+func NewLawSpecActorWithRestart(state any, restart func(any) any) *LawSpecActor {
+	return &LawSpecActor{state: state, restart: restart, seen: map[uint64]bool{}}
+}
+
+func (a *LawSpecActor) setSupervisor(s *LawSpecSupervisor) {
+	a.mu.Lock()
+	a.supervisor = s
+	a.mu.Unlock()
+}
 
 func (a *LawSpecActor) post(message lawSpecActorMessage) error {
 	a.mu.Lock()
@@ -2993,17 +3146,91 @@ func (a *LawSpecActor) drain() {
 
 // handle runs one message; only the draining goroutine touches the state.
 func (a *LawSpecActor) handle(handler LawSpecActorHandler) (outcome lawSpecActorReply) {
-	defer func() {
-		if problem := recover(); problem != nil {
-			outcome = lawSpecActorReply{nil, fmt.Errorf("%v", problem)}
-		}
+	crashed, cause, origin := false, any(nil), uint64(0)
+	func() {
+		defer func() {
+			if problem := recover(); problem != nil {
+				crashed = true
+				if r, ok := problem.(lawSpecRestart); ok {
+					// A linked crash already handled here is not handled again.
+					a.mu.Lock()
+					crashed = !a.seen[r.origin]
+					a.mu.Unlock()
+					cause, origin = r.cause, r.origin
+					outcome = lawSpecActorReply{nil, nil}
+				} else {
+					cause, origin = problem, lawSpecCrashes.Add(1)
+					outcome = lawSpecActorReply{nil, LawSpecActorCrashed{problem}}
+				}
+			}
+		}()
+		reply, next := handler(a.state)
+		a.state = next
+		outcome = lawSpecActorReply{reply, nil}
 	}()
-	reply, next := handler(a.state)
-	a.state = next
-	return lawSpecActorReply{reply, nil}
+	if crashed {
+		a.crashed(cause, origin)
+	}
+	return outcome
 }
 
-// Call sends a message and waits for its reply.
+// crashed runs on the actor's turn: restart or stop, then tell monitors and
+// links. origin names the first crash, so a crash crosses each link once.
+func (a *LawSpecActor) crashed(cause any, origin uint64) {
+	a.mu.Lock()
+	a.seen[origin] = true
+	supervisor := a.supervisor
+	monitors := append([]func(LawSpecExit){}, a.monitors...)
+	links := append([]*LawSpecActor{}, a.links...)
+	a.mu.Unlock()
+	restarted := supervisor != nil && a.restart != nil && supervisor.childCrashed(a, cause)
+	if !restarted {
+		a.halt()
+	}
+	for _, m := range monitors {
+		m(LawSpecExit{"crashed", cause})
+	}
+	for _, other := range links {
+		other.linkCrash(cause, origin)
+	}
+}
+
+func (a *LawSpecActor) restartNow() { a.state = a.restart(a.state) }
+
+// restartLater is a restart a supervisor asks of a sibling, in mailbox order.
+func (a *LawSpecActor) restartLater() {
+	if a.restart == nil {
+		return
+	}
+	_ = a.post(lawSpecActorMessage{func(state any) (any, any) { return nil, a.restart(state) }, nil})
+}
+
+func (a *LawSpecActor) linkCrash(cause any, origin uint64) {
+	a.mu.Lock()
+	seen := a.seen[origin]
+	a.mu.Unlock()
+	if seen {
+		return
+	}
+	_ = a.post(lawSpecActorMessage{func(any) (any, any) { panic(lawSpecRestart{cause, origin}) }, nil})
+}
+
+// halt stops the actor; messages still waiting fail with LawSpecActorStopped.
+func (a *LawSpecActor) halt() {
+	a.mu.Lock()
+	a.stopped = true
+	waiting := a.mailbox
+	a.mailbox = nil
+	a.mu.Unlock()
+	for _, m := range waiting {
+		if m.reply != nil {
+			m.reply <- lawSpecActorReply{nil, LawSpecActorStopped}
+		}
+	}
+}
+
+// Call sends a message and waits for its reply. A handler that panics
+// crashes the actor, and Call returns a LawSpecActorCrashed error.
 func (a *LawSpecActor) Call(handler LawSpecActorHandler) (any, error) {
 	reply := make(chan lawSpecActorReply, 1)
 	if err := a.post(lawSpecActorMessage{handler, reply}); err != nil {
@@ -3018,16 +3245,450 @@ func (a *LawSpecActor) Cast(handler LawSpecActorHandler) error {
 	return a.post(lawSpecActorMessage{handler, nil})
 }
 
+// Crash crashes the actor once the messages before it are handled, as a
+// failing handler would: for testing supervision.
+func (a *LawSpecActor) Crash(cause any) error {
+	origin := lawSpecCrashes.Add(1)
+	_, err := a.Call(func(any) (any, any) { panic(lawSpecRestart{cause, origin}) })
+	return err
+}
+
+// Restart replaces the state by restart(last state) between messages, as a
+// supervised restart does.
+func (a *LawSpecActor) Restart(restart func(any) any) error {
+	_, err := a.Call(func(state any) (any, any) { return nil, restart(state) })
+	return err
+}
+
 // State is the state after every message sent before this call.
 func (a *LawSpecActor) State() (any, error) {
 	return a.Call(func(state any) (any, any) { return state, state })
 }
 
-// Stop refuses further messages; those already sent are still handled.
+// Monitor calls notify with "crashed" after each crash, and "stopped" once
+// the actor stops.
+func (a *LawSpecActor) Monitor(notify func(LawSpecExit)) {
+	a.mu.Lock()
+	a.monitors = append(a.monitors, notify)
+	a.mu.Unlock()
+}
+
+// Link links two actors: when either crashes, the other crashes too.
+func (a *LawSpecActor) Link(other *LawSpecActor) {
+	a.mu.Lock()
+	a.links = append(a.links, other)
+	a.mu.Unlock()
+	other.mu.Lock()
+	other.links = append(other.links, a)
+	other.mu.Unlock()
+}
+
+// Stop refuses further messages; those already sent are still handled. A
+// permanent child of a supervisor restarts instead.
 func (a *LawSpecActor) Stop() {
 	a.mu.Lock()
-	a.stopped = true
+	supervisor := a.supervisor
 	a.mu.Unlock()
+	if supervisor != nil && supervisor.childStopped(a) {
+		return
+	}
+	a.mu.Lock()
+	already := a.stopped
+	a.stopped = true
+	monitors := append([]func(LawSpecExit){}, a.monitors...)
+	a.mu.Unlock()
+	if !already {
+		for _, m := range monitors {
+			m(LawSpecExit{"stopped", nil})
+		}
+	}
+}
+
+// Supervision strategies and lifetimes.
+const (
+	LawSpecOneForOne  = "one_for_one"
+	LawSpecOneForAll  = "one_for_all"
+	LawSpecRestForOne = "rest_for_one"
+	LawSpecPermanent  = "permanent"
+	LawSpecTransient  = "transient"
+	LawSpecTemporary  = "temporary"
+)
+
+type lawSpecSupervised struct {
+	child    lawSpecChild
+	lifetime string
+}
+
+// LawSpecSupervisor starts children (actors or supervisors) and restarts
+// them after a crash: LawSpecOneForOne restarts the child that crashed,
+// LawSpecOneForAll every child, LawSpecRestForOne it and those added after
+// it. A child's lifetime: permanent restarts after a crash or a stop,
+// transient only after a crash, temporary never. More than maxRestarts
+// within period is the supervisor's own crash: its supervisor restarts all
+// of its children, or, at the top, every child stops.
+type LawSpecSupervisor struct {
+	mu          sync.Mutex
+	strategy    string
+	maxRestarts int
+	period      time.Duration
+	children    []*lawSpecSupervised
+	restarts    []time.Time
+	supervisor  *LawSpecSupervisor
+	stopped     bool
+	monitors    []func(LawSpecExit)
+}
+
+// NewLawSpecSupervisor makes a supervisor with no children.
+func NewLawSpecSupervisor(strategy string, maxRestarts int, period time.Duration) *LawSpecSupervisor {
+	if strategy != LawSpecOneForOne && strategy != LawSpecOneForAll && strategy != LawSpecRestForOne {
+		panic(fmt.Sprintf("unknown supervision strategy %q", strategy))
+	}
+	return &LawSpecSupervisor{strategy: strategy, maxRestarts: maxRestarts, period: period}
+}
+
+// SuperviseActor adds a started actor, and returns it.
+func (s *LawSpecSupervisor) SuperviseActor(child *LawSpecActor, lifetime string) *LawSpecActor {
+	s.supervise(child, lifetime)
+	return child
+}
+
+// SuperviseSupervisor adds a started supervisor, and returns it.
+func (s *LawSpecSupervisor) SuperviseSupervisor(child *LawSpecSupervisor, lifetime string) *LawSpecSupervisor {
+	s.supervise(child, lifetime)
+	return child
+}
+
+func (s *LawSpecSupervisor) supervise(child lawSpecChild, lifetime string) {
+	if lifetime != LawSpecPermanent && lifetime != LawSpecTransient && lifetime != LawSpecTemporary {
+		panic(fmt.Sprintf("unknown lifetime %q", lifetime))
+	}
+	child.setSupervisor(s)
+	s.mu.Lock()
+	s.children = append(s.children, &lawSpecSupervised{child, lifetime})
+	s.mu.Unlock()
+}
+
+func (s *LawSpecSupervisor) setSupervisor(parent *LawSpecSupervisor) {
+	s.mu.Lock()
+	s.supervisor = parent
+	s.mu.Unlock()
+}
+
+func (s *LawSpecSupervisor) allowRestart() bool {
+	now := time.Now()
+	for len(s.restarts) > 0 && now.Sub(s.restarts[0]) > s.period {
+		s.restarts = s.restarts[1:]
+	}
+	if len(s.restarts) >= s.maxRestarts {
+		return false
+	}
+	s.restarts = append(s.restarts, now)
+	return true
+}
+
+func (s *LawSpecSupervisor) entry(child lawSpecChild) int {
+	for i, e := range s.children {
+		if e.child == child {
+			return i
+		}
+	}
+	return -1
+}
+
+func (s *LawSpecSupervisor) remove(index int) {
+	s.children = append(append([]*lawSpecSupervised{}, s.children[:index]...), s.children[index+1:]...)
+}
+
+// restarting (under the lock) is the children to restart for the crash of
+// the child at index, or nil when the supervisor gives up.
+func (s *LawSpecSupervisor) restarting(index int, cause any, crashed lawSpecChild) []*lawSpecSupervised {
+	if s.allowRestart() {
+		switch s.strategy {
+		case LawSpecOneForAll:
+			return append([]*lawSpecSupervised{}, s.children...)
+		case LawSpecRestForOne:
+			return append([]*lawSpecSupervised{}, s.children[index:]...)
+		}
+		return []*lawSpecSupervised{s.children[index]}
+	}
+	if s.supervisor != nil && s.supervisor.childFailed(s, cause) {
+		s.restarts = nil
+		return append([]*lawSpecSupervised{}, s.children...)
+	}
+	s.fail(crashed, cause)
+	return nil
+}
+
+// childCrashed runs on the child's turn: true when it restarts now.
+func (s *LawSpecSupervisor) childCrashed(child *LawSpecActor, cause any) bool {
+	s.mu.Lock()
+	index := s.entry(child)
+	if s.stopped || index < 0 {
+		s.mu.Unlock()
+		return false
+	}
+	if s.children[index].lifetime == LawSpecTemporary {
+		s.remove(index)
+		s.mu.Unlock()
+		return false
+	}
+	group := s.restarting(index, cause, child)
+	s.mu.Unlock()
+	if group == nil {
+		return false
+	}
+	for _, e := range group {
+		if e.child != lawSpecChild(child) {
+			e.child.restartLater()
+		}
+	}
+	child.restartNow()
+	return true
+}
+
+// childFailed: a child supervisor gave up; true when it may restart its
+// children.
+func (s *LawSpecSupervisor) childFailed(child *LawSpecSupervisor, cause any) bool {
+	s.mu.Lock()
+	index := s.entry(child)
+	if s.stopped || index < 0 {
+		s.mu.Unlock()
+		return false
+	}
+	if s.children[index].lifetime == LawSpecTemporary {
+		s.remove(index)
+		s.mu.Unlock()
+		return false
+	}
+	group := s.restarting(index, cause, child)
+	s.mu.Unlock()
+	if group == nil {
+		return false
+	}
+	for _, e := range group {
+		if e.child != lawSpecChild(child) {
+			e.child.restartLater()
+		}
+	}
+	return true
+}
+
+// childStopped is true when a stopped child is permanent and restarts
+// instead.
+func (s *LawSpecSupervisor) childStopped(child lawSpecChild) bool {
+	s.mu.Lock()
+	index := s.entry(child)
+	if index < 0 || s.stopped {
+		s.mu.Unlock()
+		return false
+	}
+	if s.children[index].lifetime != LawSpecPermanent {
+		s.remove(index)
+		s.mu.Unlock()
+		return false
+	}
+	group := s.restarting(index, "stopped", child)
+	s.mu.Unlock()
+	if group == nil {
+		return false
+	}
+	for _, e := range group {
+		e.child.restartLater()
+	}
+	return true
+}
+
+// fail (under the lock): every child but the one crashing (which stops
+// itself) stops, and so does the supervisor.
+func (s *LawSpecSupervisor) fail(crashed lawSpecChild, cause any) {
+	children := s.children
+	s.children = nil
+	s.stopped = true
+	for i := len(children) - 1; i >= 0; i-- {
+		other := children[i].child
+		other.setSupervisor(nil)
+		if other != crashed {
+			other.halt()
+		}
+	}
+	for _, m := range s.monitors {
+		m(LawSpecExit{"crashed", cause})
+	}
+}
+
+// restartLater: restarted by its own supervisor, every child restarts.
+func (s *LawSpecSupervisor) restartLater() {
+	s.mu.Lock()
+	s.restarts = nil
+	children := append([]*lawSpecSupervised{}, s.children...)
+	s.mu.Unlock()
+	for _, e := range children {
+		e.child.restartLater()
+	}
+}
+
+func (s *LawSpecSupervisor) halt() { s.Stop() }
+
+// Monitor calls notify with "crashed" when the supervisor passes its
+// restart limit, and "stopped" once stopped.
+func (s *LawSpecSupervisor) Monitor(notify func(LawSpecExit)) {
+	s.mu.Lock()
+	s.monitors = append(s.monitors, notify)
+	s.mu.Unlock()
+}
+
+// Stop stops every child, last added first, without restarting them.
+func (s *LawSpecSupervisor) Stop() {
+	s.mu.Lock()
+	if s.stopped {
+		s.mu.Unlock()
+		return
+	}
+	s.stopped = true
+	children := s.children
+	s.children = nil
+	monitors := append([]func(LawSpecExit){}, s.monitors...)
+	s.mu.Unlock()
+	for i := len(children) - 1; i >= 0; i-- {
+		children[i].child.setSupervisor(nil)
+		children[i].child.Stop()
+	}
+	for _, m := range monitors {
+		m(LawSpecExit{"stopped", nil})
+	}
+}
+
+// LawSpecCheckSupervision is the runtime's own check of crashes, links,
+// monitors and supervision: every strategy, lifetime, the restart limit and
+// escalation. It returns an error naming the first behaviour that differs.
+func LawSpecCheckSupervision() (failure error) {
+	type problem struct{ message string }
+	defer func() {
+		if r := recover(); r != nil {
+			if p, ok := r.(problem); ok {
+				failure = errors.New(p.message)
+				return
+			}
+			panic(r)
+		}
+	}()
+	counter := func() *LawSpecActor {
+		return NewLawSpecActorWithRestart(int64(0), func(any) any { return int64(0) })
+	}
+	bump := func(a *LawSpecActor) {
+		if _, err := a.Call(func(s any) (any, any) { return s.(int64) + 1, s.(int64) + 1 }); err != nil {
+			panic(problem{"a call failed: " + err.Error()})
+		}
+	}
+	fail := func(a *LawSpecActor) {
+		_, err := a.Call(func(any) (any, any) { panic("division by zero") })
+		var crashed LawSpecActorCrashed
+		if !errors.As(err, &crashed) {
+			panic(problem{"a failing handler did not give LawSpecActorCrashed"})
+		}
+	}
+	state := func(a *LawSpecActor) any {
+		s, err := a.State()
+		if err != nil {
+			return err
+		}
+		return s
+	}
+	stopped := func(a *LawSpecActor, what string) {
+		if _, err := a.State(); !errors.Is(err, LawSpecActorStopped) {
+			panic(problem{what + " should have stopped"})
+		}
+	}
+	expect := func(actual, wanted []any, what string) {
+		if fmt.Sprint(actual) != fmt.Sprint(wanted) {
+			panic(problem{fmt.Sprintf("%s: got %v, expected %v", what, actual, wanted)})
+		}
+	}
+	zero, one, two := int64(0), int64(1), int64(2)
+	a := counter()
+	bump(a)
+	fail(a)
+	stopped(a, "an unsupervised actor that crashed")
+	sup := NewLawSpecSupervisor(LawSpecOneForOne, 3, 5*time.Second)
+	x, y := sup.SuperviseActor(counter(), LawSpecPermanent), sup.SuperviseActor(counter(), LawSpecPermanent)
+	bump(x)
+	bump(y)
+	bump(y)
+	fail(x)
+	expect([]any{state(x), state(y)}, []any{zero, two}, "one for one restarts only the crashed child")
+	sup = NewLawSpecSupervisor(LawSpecOneForAll, 3, 5*time.Second)
+	x, y = sup.SuperviseActor(counter(), LawSpecPermanent), sup.SuperviseActor(counter(), LawSpecPermanent)
+	bump(x)
+	bump(y)
+	fail(x)
+	expect([]any{state(x), state(y)}, []any{zero, zero}, "one for all restarts every child")
+	sup = NewLawSpecSupervisor(LawSpecRestForOne, 3, 5*time.Second)
+	x, y = sup.SuperviseActor(counter(), LawSpecPermanent), sup.SuperviseActor(counter(), LawSpecPermanent)
+	z := sup.SuperviseActor(counter(), LawSpecPermanent)
+	bump(x)
+	bump(y)
+	bump(z)
+	fail(y)
+	expect([]any{state(x), state(y), state(z)}, []any{one, zero, zero}, "rest for one restarts the child and later ones")
+	sup = NewLawSpecSupervisor(LawSpecOneForOne, 3, 5*time.Second)
+	t := sup.SuperviseActor(counter(), LawSpecTemporary)
+	fail(t)
+	stopped(t, "a temporary child that crashed")
+	sup = NewLawSpecSupervisor(LawSpecOneForOne, 3, 5*time.Second)
+	p, q := sup.SuperviseActor(counter(), LawSpecPermanent), sup.SuperviseActor(counter(), LawSpecTransient)
+	bump(p)
+	p.Stop()
+	expect([]any{state(p)}, []any{zero}, "a permanent child restarts after a stop")
+	q.Stop()
+	stopped(q, "a transient child that was stopped")
+	var eventsMu sync.Mutex
+	events := []string{}
+	sup = NewLawSpecSupervisor(LawSpecOneForOne, 2, 10*time.Second)
+	sup.Monitor(func(e LawSpecExit) { eventsMu.Lock(); events = append(events, e.Reason); eventsMu.Unlock() })
+	x, y = sup.SuperviseActor(counter(), LawSpecPermanent), sup.SuperviseActor(counter(), LawSpecPermanent)
+	fail(x)
+	fail(x)
+	fail(x)
+	stopped(y, "a child of a supervisor past its restart limit")
+	eventsMu.Lock()
+	expect([]any{strings.Join(events, ",")}, []any{"crashed"}, "a supervisor past its limit tells its monitors")
+	eventsMu.Unlock()
+	outer := NewLawSpecSupervisor(LawSpecOneForOne, 5, 10*time.Second)
+	inner := outer.SuperviseSupervisor(NewLawSpecSupervisor(LawSpecOneForOne, 1, 10*time.Second), LawSpecPermanent)
+	x, y = inner.SuperviseActor(counter(), LawSpecPermanent), inner.SuperviseActor(counter(), LawSpecPermanent)
+	bump(y)
+	fail(x)
+	fail(x)
+	expect([]any{state(x), state(y)}, []any{zero, zero}, "a supervisor past its limit is restarted by its own")
+	seen := make(chan string, 4)
+	a, b := counter(), counter()
+	a.Link(b)
+	b.Monitor(func(e LawSpecExit) { seen <- e.Reason })
+	fail(a)
+	select {
+	case reason := <-seen:
+		expect([]any{reason}, []any{"crashed"}, "a monitor hears of a crash")
+	case <-time.After(time.Second):
+		panic(problem{"a monitor heard nothing of a linked crash"})
+	}
+	stopped(b, "an unsupervised actor linked to one that crashed")
+	sup = NewLawSpecSupervisor(LawSpecOneForOne, 10, 5*time.Second)
+	a, b = sup.SuperviseActor(counter(), LawSpecPermanent), sup.SuperviseActor(counter(), LawSpecPermanent)
+	c := sup.SuperviseActor(counter(), LawSpecPermanent)
+	a.Link(b)
+	b.Link(c)
+	c.Link(a)
+	bump(a)
+	bump(b)
+	bump(c)
+	fail(a)
+	restarts := func() int { sup.mu.Lock(); defer sup.mu.Unlock(); return len(sup.restarts) }
+	for i := 0; i < 100 && restarts() < 3; i++ {
+		time.Sleep(10 * time.Millisecond)
+	}
+	time.Sleep(50 * time.Millisecond)
+	expect([]any{state(a), state(b), state(c), restarts()}, []any{zero, zero, zero, 3}, "a crash crosses each link once")
+	return nil
 }
 
 // LawSpecMailbox is a queue with many senders and one receiver: the channel
@@ -3164,7 +3825,7 @@ func (m *lawSpecMachine) simulate(run lawSpecModelRun) bool {
 		state := m.startState(symbols, run.start)
 		indices := append([]int64{}, m.startIndices...)
 		for _, step := range run.steps {
-			c := &m.commands[step.index]
+			c := &m.steps[step.index]
 			if !c.admits(indices) {
 				panic(lawSpecInvalid{})
 			}
@@ -3174,7 +3835,7 @@ func (m *lawSpecMachine) simulate(run lawSpecModelRun) bool {
 	})
 }
 
-func (m *lawSpecMachine) generateRun(random *LawSpecSplitMix64, length, size int64) lawSpecModelRun {
+func (m *lawSpecMachine) generateRun(random *LawSpecSplitMix64, length, size int64, crashes bool) lawSpecModelRun {
 	symbols := map[string]*LawSpecSymbol{}
 	start := []LawSpecValue{}
 	for _, d := range m.startArguments {
@@ -3197,7 +3858,11 @@ func (m *lawSpecMachine) generateRun(random *LawSpecSplitMix64, length, size int
 			break
 		}
 		index := allowed[random.Below(uint64(len(allowed)))]
-		c := &m.commands[index]
+		// One step in eight of an actor's run is a crash.
+		if crashes && len(m.steps) > len(m.commands) && random.Below(8) == 0 {
+			index = len(m.commands)
+		}
+		c := &m.steps[index]
 		args := []LawSpecValue{}
 		for _, d := range c.arguments {
 			args = append(args, m.values.generate(d, random, size))
@@ -3232,7 +3897,7 @@ func (m *lawSpecMachine) execute(run lawSpecModelRun) (step int, message string,
 	}
 	for _, s := range run.steps {
 		step++
-		c := &m.commands[s.index]
+		c := &m.steps[s.index]
 		full := append(append([]LawSpecValue{}, s.args[:c.state]...), state)
 		full = append(full, s.args[c.state:]...)
 		out := c.run(symbols, full)
@@ -3296,7 +3961,7 @@ func (m *lawSpecMachine) shrinkCandidates(run lawSpecModelRun, yield func(lawSpe
 		}
 	}
 	for k, s := range steps {
-		c := &m.commands[s.index]
+		c := &m.steps[s.index]
 		for j := 0; j < len(c.arguments) && j < len(s.args); j++ {
 			for _, candidate := range m.values.shrink(c.arguments[j], s.args[j]) {
 				args := append([]LawSpecValue{}, s.args...)
@@ -3354,7 +4019,7 @@ func (m *lawSpecMachine) describeRun(run lawSpecModelRun) string {
 	}
 	parts := []string{"start(" + render(run.start) + ")"}
 	for _, s := range run.steps {
-		parts = append(parts, m.commands[s.index].name+"("+render(s.args)+")")
+		parts = append(parts, m.steps[s.index].name+"("+render(s.args)+")")
 	}
 	return strings.Join(parts, "; ")
 }
@@ -3379,7 +4044,7 @@ func lsCheckModel(model LawSpecModel, cases, maxLength, maxShrinks int, seed uin
 	random := &LawSpecSplitMix64{seed}
 	for c := 0; c < cases; c++ {
 		length := int64(random.Below(uint64(maxLength + 1)))
-		run := m.generateRun(random, length, int64(1+c%8))
+		run := m.generateRun(random, length, int64(1+c%8), true)
 		if step, message, failed := m.execute(run); failed {
 			run, step, message = m.shrinkRun(run, step, message, maxShrinks)
 			return fmt.Errorf("model %s fails at step %d of %s: %s", m.name, step, m.describeRun(run), message)
@@ -3497,7 +4162,7 @@ func (m *lawSpecMachine) generateBranch(random *LawSpecSplitMix64, state LawSpec
 }
 
 func (m *lawSpecMachine) generateParallel(random *LawSpecSplitMix64, size int64, threads, branchLength int) lawSpecParallelCase {
-	prefix := m.generateRun(random, int64(random.Below(4)), size)
+	prefix := m.generateRun(random, int64(random.Below(4)), size, false)
 	c := lawSpecParallelCase{prefix: prefix, branches: make([][]lawSpecModelStep, threads)}
 	for i := range c.branches {
 		c.branches[i] = []lawSpecModelStep{}
@@ -3866,10 +4531,79 @@ func lsCheckModelParallel(model LawSpecModel, cases, repeats, maxShrinks, thread
 // call and return are stamped on one counter; the history must linearize
 // against the model, and every expect must hold, on each of many schedules.
 
-type lawSpecChannel struct{ queues [2]chan any }
+type lawSpecChannel struct {
+	queues [2]chan any
+	mu     sync.Mutex
+	ended  [2]bool
+}
 
 func lsNewChannel() *lawSpecChannel {
-	return &lawSpecChannel{[2]chan any{make(chan any, 4096), make(chan any, 4096)}}
+	return &lawSpecChannel{queues: [2]chan any{make(chan any, 4096), make(chan any, 4096)}}
+}
+
+// lawSpecGone follows the last value a process that has ended sent.
+type lawSpecGone struct{}
+
+// send queues value from side; a channel end sent to a process that has
+// ended is given up.
+func (c *lawSpecChannel) send(side int, value any) {
+	c.mu.Lock()
+	end, isEnd := value.(lawSpecEnd)
+	if !(c.ended[1-side] && isEnd) {
+		c.queues[side] <- value
+		c.mu.Unlock()
+		return
+	}
+	c.mu.Unlock()
+	end.channel.gone(end.side)
+}
+
+// gone: side's process has ended. The other side's receives that find
+// nothing more fail instead of waiting, and channel ends on their way to
+// side are given up too.
+func (c *lawSpecChannel) gone(side int) {
+	stranded := []lawSpecEnd{}
+	c.mu.Lock()
+	if c.ended[side] {
+		c.mu.Unlock()
+		return
+	}
+	c.ended[side] = true
+	c.queues[side] <- lawSpecGone{}
+drain:
+	for {
+		select {
+		case value := <-c.queues[1-side]:
+			if end, ok := value.(lawSpecEnd); ok {
+				stranded = append(stranded, end)
+			} else if _, ok := value.(lawSpecGone); ok {
+				c.queues[1-side] <- value
+				break drain
+			}
+		default:
+			break drain
+		}
+	}
+	c.mu.Unlock()
+	for _, end := range stranded {
+		end.channel.gone(end.side)
+	}
+}
+
+// lsScenarioProcesses is every process of a par (by its form), outermost
+// and first first, not counting or else.
+func lsScenarioProcesses(acts []any, found [][]any) [][]any {
+	for _, a := range acts {
+		act := a.([]any)
+		if lsAtom(act[0]) == "par" {
+			for _, b := range act[1:] {
+				branch := b.([]any)
+				found = append(found, branch)
+				found = lsScenarioProcesses(branch[1:], found)
+			}
+		}
+	}
+	return found
 }
 
 // lawSpecEnd is a channel end in transit or held by a process.
@@ -3899,6 +4633,9 @@ func lsActsChannels(acts []any) []string {
 			}
 		case "receive":
 			names = append(names, lsAtom(act[1]))
+		case "receiveor":
+			names = append(names, lsAtom(act[1]))
+			names = append(names, lsActsChannels(act[3].([]any)[1:])...)
 		case "par":
 			for _, branch := range act[1:] {
 				names = append(names, lsActsChannels(branch.([]any)[1:])...)
@@ -3929,7 +4666,7 @@ func lsScenarioConstant(form []any) LawSpecValue {
 	return LawSpecValue{t, lawSpecData{tag, nil}}
 }
 
-func lsRunScenario(model LawSpecModel, spec string, shake uint64) (string, string, bool) {
+func lsRunScenario(model LawSpecModel, spec string, shake uint64, crash bool) (string, string, bool) {
 	m := lsNewMachine(model)
 	forms := lsReadDescriptor(spec)
 	title := lsAtom(forms[0].([]any)[1])
@@ -3976,24 +4713,53 @@ func lsRunScenario(model LawSpecModel, spec string, shake uint64) (string, strin
 		defer lock.Unlock()
 		return len(failures) > 0
 	}
-	var process func(acts []any, env map[string]LawSpecValue, ends map[string]lawSpecEnd, random *LawSpecSplitMix64)
-	process = func(acts []any, env map[string]LawSpecValue, ends map[string]lawSpecEnd, random *LawSpecSplitMix64) {
+	// The crashed process (a par's branch) and the act it crashes before.
+	var victim *any
+	victimAct := -1
+	if processes := lsScenarioProcesses(body, nil); crash && len(processes) > 0 {
+		chooser := &LawSpecSplitMix64{shake ^ 0xC3A5C85C97CB3127}
+		branch := processes[chooser.Below(uint64(len(processes)))]
+		victim = &branch[0]
+		victimAct = int(chooser.Below(uint64(len(branch) - 1 + 1)))
+	}
+	var process, steps func(acts []any, env map[string]LawSpecValue, ends map[string]lawSpecEnd, random *LawSpecSplitMix64, identity *any) bool
+	// process is false when the process failed; either way, the ends it
+	// still holds are given up.
+	process = func(acts []any, env map[string]LawSpecValue, ends map[string]lawSpecEnd, random *LawSpecSplitMix64, identity *any) bool {
+		defer func() {
+			for _, end := range ends {
+				end.channel.gone(end.side)
+			}
+		}()
+		return steps(acts, env, ends, random, identity)
+	}
+	steps = func(acts []any, env map[string]LawSpecValue, ends map[string]lawSpecEnd, random *LawSpecSplitMix64, identity *any) bool {
 		own := map[string]*LawSpecSymbol{}
-		for _, a := range acts {
+		for index, a := range acts {
 			if failed() {
-				return
+				return false
+			}
+			if victim != nil && identity == victim && index == victimAct {
+				return false
 			}
 			act := a.([]any)
 			switch lsAtom(act[0]) {
 			case "call":
 				command := commands[lsAtom(act[1])]
 				args := []LawSpecValue{}
-				for _, o := range act[3:] {
+				for j, o := range act[3:] {
 					operand := o.([]any)
 					if lsAtom(operand[0]) == "var" {
 						args = append(args, env[lsAtom(operand[1])])
 					} else {
-						args = append(args, lsScenarioConstant(operand))
+						// An integer constant takes the argument's integer type.
+						value := lsScenarioConstant(operand)
+						if value.Type == "Integer" && j < len(command.arguments) {
+							if form := m.values.resolve(command.arguments[j]); lsAtom(form[0]) == "int" {
+								value = LawSpecValue{m.values.typeOf(form), value.Data}
+							}
+						}
+						args = append(args, value)
 					}
 				}
 				full := lsWithState(command, args, state)
@@ -4009,7 +4775,7 @@ func lsRunScenario(model LawSpecModel, spec string, shake uint64) (string, strin
 					return command.run(own, full), true
 				}()
 				if !ok {
-					return
+					return false
 				}
 				returned := atomic.AddInt64(&clock, 1)
 				lock.Lock()
@@ -4031,15 +4797,26 @@ func lsRunScenario(model LawSpecModel, spec string, shake uint64) (string, strin
 					value = lsScenarioConstant(operand)
 				}
 				lsPerturb(random)
-				end.channel.queues[end.side] <- value
-			case "receive":
-				end := ends[lsAtom(act[1])]
+				end.channel.send(end.side, value)
+			case "receive", "receiveor":
+				name := lsAtom(act[1])
+				end := ends[name]
 				var value any
 				select {
 				case value = <-end.channel.queues[1-end.side]:
 				case <-time.After(5 * time.Second):
-					fail(fmt.Sprintf("a receive on %s waited too long: the processes are blocked", lsAtom(act[1])))
-					return
+					fail(fmt.Sprintf("a receive on %s waited too long: the processes are blocked", name))
+					return false
+				}
+				if _, gone := value.(lawSpecGone); gone {
+					// The other process ended: or else runs instead of the
+					// rest; without it, this process fails too.
+					end.channel.queues[1-end.side] <- value
+					if lsAtom(act[0]) == "receive" {
+						return false
+					}
+					delete(ends, name)
+					return steps(act[3].([]any)[1:], env, ends, random, nil)
 				}
 				if held, isEnd := value.(lawSpecEnd); isEnd {
 					ends[lsAtom(act[2])] = held
@@ -4049,12 +4826,12 @@ func lsRunScenario(model LawSpecModel, spec string, shake uint64) (string, strin
 			case "par":
 				branches := [][]any{}
 				for _, b := range act[1:] {
-					branches = append(branches, b.([]any)[1:])
+					branches = append(branches, b.([]any))
 				}
 				owned := map[string][]int{}
 				order := []string{}
 				for i, branch := range branches {
-					for _, name := range lsActsChannels(branch) {
+					for _, name := range lsActsChannels(branch[1:]) {
 						users, seen := owned[name]
 						if !seen {
 							order = append(order, name)
@@ -4065,6 +4842,7 @@ func lsRunScenario(model LawSpecModel, spec string, shake uint64) (string, strin
 					}
 				}
 				var group sync.WaitGroup
+				outcomes := make([]bool, len(branches))
 				for i, branch := range branches {
 					mine := map[string]lawSpecEnd{}
 					for _, name := range order {
@@ -4074,6 +4852,7 @@ func lsRunScenario(model LawSpecModel, spec string, shake uint64) (string, strin
 							}
 							if held, ok := ends[name]; ok {
 								mine[name] = held
+								delete(ends, name)
 							} else if channel, ok := channels[name]; ok {
 								mine[name] = lawSpecEnd{channel, side}
 							}
@@ -4085,12 +4864,18 @@ func lsRunScenario(model LawSpecModel, spec string, shake uint64) (string, strin
 					}
 					random := &LawSpecSplitMix64{shake ^ (uint64(i+1) * 0x9E3779B97F4A7C15)}
 					group.Add(1)
-					go func(branch []any) {
+					go func(i int, branch []any) {
 						defer group.Done()
-						process(branch, copied, mine, random)
-					}(branch)
+						outcomes[i] = process(branch[1:], copied, mine, random, &branch[0])
+					}(i, branch)
 				}
 				group.Wait()
+				// A failed branch fails the process that ran the par.
+				for _, ok := range outcomes {
+					if !ok {
+						return false
+					}
+				}
 			case "expect":
 				name := lsAtom(act[1])
 				wanted := lsScenarioConstant(act[2].([]any))
@@ -4101,14 +4886,24 @@ func lsRunScenario(model LawSpecModel, spec string, shake uint64) (string, strin
 						rendered = lsRender(actual)
 					}
 					fail(fmt.Sprintf("expect %s = %s failed: %s is %s", name, lsRender(wanted), name, rendered))
-					return
+					return false
 				}
 			}
 		}
+		if victim != nil && identity == victim && victimAct == len(acts) {
+			return false
+		}
+		return true
 	}
-	process(body, map[string]LawSpecValue{}, map[string]lawSpecEnd{}, &LawSpecSplitMix64{shake})
+	outcome := process(body, map[string]LawSpecValue{}, map[string]lawSpecEnd{}, &LawSpecSplitMix64{shake}, nil)
 	if len(failures) > 0 {
+		if victim != nil {
+			return title, failures[0] + " (with a process crashed)", true
+		}
 		return title, failures[0], true
+	}
+	if !outcome && victim == nil {
+		return title, "a process failed", true
 	}
 	var final *LawSpecValue
 	if m.abstract != nil {
@@ -4225,7 +5020,8 @@ func LawSpecCheckScenario(model LawSpecModel, spec string) error {
 func lsCheckScenario(model LawSpecModel, spec string, runs int, seed uint64) error {
 	random := &LawSpecSplitMix64{seed ^ 0x2545F4914F6CDD1D}
 	for n := 0; n < runs; n++ {
-		if title, failure, failed := lsRunScenario(model, spec, random.Next()); failed {
+		// Every third run crashes one process of a par at a random point.
+		if title, failure, failed := lsRunScenario(model, spec, random.Next(), n%3 == 2); failed {
 			return fmt.Errorf("scenario %s fails: %s", title, failure)
 		}
 	}

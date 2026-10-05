@@ -36,6 +36,8 @@ unitSessions datas u = do
       , "// Typed channel ends for this unit's protocols. Each end's type names the"
       , "// step it is at; Send or Receive returns the end for the next step, so steps"
       , "// out of order do not compile. Each end is used once: using it again panics."
+      , "// A receive whose other end gave up (Abandon, or its process failed) panics"
+      , "// with LawSpecPeerFailed; TryReceive returns it as an error instead."
       ]
 
 data End = First | Second deriving (Eq, Show)
@@ -128,6 +130,10 @@ protocol datas sessions s = do
         , "// " ++ name ++ " is protocol " ++ C.sessionName s ++ "'s " ++ endWord end ++ " end at step " ++ show (k + 1) ++ " of " ++ show count ++ ": it"
         , "// " ++ heading ++ description ++ "."
         , "type " ++ name ++ " struct{ end *LawSpecEnd }"
+        , ""
+        , "// Abandon gives up the conversation: the other end's receives fail with"
+        , "// LawSpecPeerFailed once it has received what was already sent."
+        , "func (e " ++ name ++ ") Abandon() { e.end.Abandon() }"
         , "" ] ++
         (if sends end first then
           [ "// Send sends " ++ description ++ " and returns " ++ nextWord k ++ "." ] ++
@@ -138,9 +144,21 @@ protocol datas sessions s = do
           , "}" ]
         else
           [ "// Receive waits for " ++ description ++ " and returns it with " ++ nextWord k ++ "."
+          , "// It panics with LawSpecPeerFailed when the other end gave up."
           , "func (e " ++ name ++ ") Receive() (" ++ goType ++ ", " ++ endType s end (k + 1) ++ ") {"
           , "\tvalue, " ++ bind ++ " := e.end.Receive()"
           , "\treturn value.(" ++ goType ++ "), " ++ next
+          , "}"
+          , ""
+          , "// TryReceive is Receive, but returns LawSpecPeerFailed when the other end"
+          , "// gave up, instead of panicking."
+          , "func (e " ++ name ++ ") TryReceive() (" ++ goType ++ ", " ++ endType s end (k + 1) ++ ", error) {"
+          , "\tvalue, " ++ bind ++ ", err := e.end.TryReceive()"
+          , "\tif err != nil {"
+          , "\t\tvar zero " ++ goType
+          , "\t\treturn zero, " ++ endType s end (k + 1) ++ "{}, err"
+          , "\t}"
+          , "\treturn value.(" ++ goType ++ "), " ++ next ++ ", nil"
           , "}" ])
 
 capitalize :: String -> String

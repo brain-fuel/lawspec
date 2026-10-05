@@ -1,0 +1,6 @@
+@@ example/actors/adapter.go
+<<<<<<<
+	return Account{Balance: value0.Balance}
+=======
+	return Account{Balance: 0}
+>>>>>>>
