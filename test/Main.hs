@@ -29,6 +29,7 @@ import qualified GadtSpec
 import qualified FlowSpec
 import qualified CollectionsSpec
 import qualified AsyncSpec
+import qualified BoundsSpec
 import qualified IncrementalSpec
 import qualified TestManifestSpec
 import qualified RailwaySpec
@@ -66,6 +67,7 @@ main = hspec $ do
   FlowSpec.spec
   CollectionsSpec.spec
   AsyncSpec.spec
+  BoundsSpec.spec
   IncrementalSpec.spec
   TestManifestSpec.spec
   RailwaySpec.spec

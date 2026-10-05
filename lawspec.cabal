@@ -444,6 +444,7 @@ test-suite lawspec-test
   other-modules:
       ApiContractSpec
       AsyncSpec
+      BoundsSpec
       CollectionsSpec
       CoreSpec
       DataShapeSpec

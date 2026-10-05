@@ -35,6 +35,21 @@ rejects fragment extra = case checks extra of
 
 spec :: Spec
 spec = describe "scenarios" $ do
+  it "accept a mailbox with two senders" $
+    checks (unlines
+      [ "scenario `two report` in counter is"
+      , "  mailbox reports of Int64"
+      , "  par"
+      , "    n <- increment"
+      , "    send reports n"
+      , "  with"
+      , "    k <- increment"
+      , "    send reports k"
+      , "  with"
+      , "    receive reports a"
+      , "    receive reports b"
+      , "  end"
+      , "end" ]) `shouldBe` Right ()
   it "accept a reply over a channel" $
     checks (unlines
       [ "scenario `a count is passed on` in counter is"
@@ -77,6 +92,47 @@ spec = describe "scenarios" $ do
         , "  with"
         , "    receive trade m"
         , "    send trade m"
+        , "  end"
+        , "end" ])
+    it "a mailbox received from by two processes" $
+      rejects "a mailbox has one receiver" (unlines
+        [ "scenario `x` in counter is"
+        , "  mailbox m of Int64"
+        , "  par"
+        , "    n <- increment"
+        , "    send m n"
+        , "    k <- increment"
+        , "    send m k"
+        , "  with"
+        , "    receive m a"
+        , "  with"
+        , "    receive m b"
+        , "  end"
+        , "end" ])
+    it "a mailbox message never received" $
+      rejects "every message sent must be received" (unlines
+        [ "scenario `x` in counter is"
+        , "  mailbox m of Int64"
+        , "  par"
+        , "    n <- increment"
+        , "    send m n"
+        , "    send m n"
+        , "  with"
+        , "    receive m a"
+        , "  end"
+        , "end" ])
+    it "a mailbox closing a cycle with a channel" $
+      rejects "closes a cycle between processes" (unlines
+        [ "scenario `x` in counter is"
+        , "  mailbox m of Int64"
+        , "  channel a :: Reply"
+        , "  par"
+        , "    receive m x"
+        , "    n <- increment"
+        , "    send a n"
+        , "  with"
+        , "    receive a y"
+        , "    send m y"
         , "  end"
         , "end" ])
     it "a cycle between processes" $
