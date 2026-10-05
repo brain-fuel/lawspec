@@ -1,0 +1,8 @@
+expect: this end was already used
+@@ src/example/sessions.ts
+<<<<<<<
+  const waiting = afterA.send(b);
+=======
+  afterA.send(b);
+  const waiting = afterA.send(b);
+>>>>>>>

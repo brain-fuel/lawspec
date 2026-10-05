@@ -2614,3 +2614,113 @@ export async function checkScenarioAsync(model, spec, options = {}) {
     if (failure !== null) throw new Error(`scenario ${title} fails: ${failure}`);
   }
 }
+
+// Sessions: the runtime behind the typed channel ends generated for
+// implementation code (src/lawspec_sessions.*, see LawSpec.Sessions). A
+// channel carries values both ways between its two ends, side 0 (a
+// protocol's first end) and side 1 (its second). Generated ends talk to a
+// channel only through send(side, value), receive(side) and
+// receiveNow(side), so a networked transport can stand in for it.
+
+const SPENT_END = 'this end was already used; use the end its last step returned';
+
+/** An in-process channel: one queue per direction; a receive awaits a send. */
+export class SessionChannel {
+  #queues = [[], []];
+  #waiters = [[], []];
+
+  /** Sends a value from the given side to the other side. */
+  send(side, value) {
+    const to = 1 - side;
+    const waiter = this.#waiters[to].shift();
+    if (waiter !== undefined) waiter(value);
+    else this.#queues[to].push(value);
+  }
+
+  /** Resolves to the next value sent to the given side, waiting for it. */
+  receive(side) {
+    if (this.#queues[side].length) return Promise.resolve(this.#queues[side].shift());
+    return new Promise((resolve) => this.#waiters[side].push(resolve));
+  }
+
+  /** The next value already sent to the given side, without waiting. */
+  receiveNow(side) {
+    if (!this.#queues[side].length)
+      throw new Error('nothing has been sent to this end yet; await receive() instead');
+    return this.#queues[side].shift();
+  }
+}
+
+/** A fresh in-process channel. */
+export function channel() {
+  return new SessionChannel();
+}
+
+/**
+ * One end of a channel at one step of a protocol. Each end is used once:
+ * its send or receive returns the end for the next step.
+ */
+export class SessionEnd {
+  #channel;
+  #side;
+  #used = false;
+
+  constructor(channel, side) {
+    this.#channel = channel;
+    this.#side = side;
+  }
+
+  /** Marks this end used, giving its channel and side. */
+  use() {
+    if (this.#used) throw new Error(SPENT_END);
+    this.#used = true;
+    return [this.#channel, this.#side];
+  }
+}
+
+/** A value to send: an end sent over a channel moves to the receiver. */
+function sendable(value) {
+  if (!(value instanceof SessionEnd)) return value;
+  const [channel, side] = value.use();
+  return new value.constructor(channel, side);
+}
+
+/** Sends value on end, returning the next end, an instance of Next. */
+export function sendOn(end, value, Next) {
+  const [channel, side] = end.use();
+  channel.send(side, sendable(value));
+  return new Next(channel, side);
+}
+
+/** Resolves to [value, next end] once the other end has sent the value. */
+export async function receiveOn(end, Next) {
+  const [channel, side] = end.use();
+  const value = await channel.receive(side);
+  return [value, new Next(channel, side)];
+}
+
+/** [value, next end] for a value already sent; throws if none was sent yet. */
+export function receiveNowOn(end, Next) {
+  const [channel, side] = end.use();
+  return [channel.receiveNow(side), new Next(channel, side)];
+}
+
+/** A new channel's two ends, of the protocol's First and Second start classes. */
+export function openSession(First, Second, transport = channel()) {
+  return [new First(transport, 0), new Second(transport, 1)];
+}
+
+/**
+ * Starts fn(...args) as its own process. join() resolves to its result or
+ * rejects with its error; a failure not joined is not reported.
+ */
+export function spawn(fn, ...args) {
+  const result = Promise.resolve().then(() => fn(...args));
+  result.catch(() => {});
+  return Object.freeze({join: () => result});
+}
+
+/** Runs async functions at once; resolves to their results, or rejects with the first failure. */
+export function par(...fns) {
+  return Promise.all(fns.map((fn) => Promise.resolve().then(fn)));
+}
