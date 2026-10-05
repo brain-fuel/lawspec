@@ -2,6 +2,7 @@
 package RUNTIME_PACKAGE
 
 import (
+	"errors"
 	"fmt"
 	"math"
 	"math/big"
@@ -2814,6 +2815,7 @@ func lsNewMachine(model LawSpecModel) *lawSpecMachine {
 	m := &lawSpecMachine{name: lsAtom(head[1]), shared: lsAtom(head[2]) == "shared"}
 	table := map[string][]any{}
 	commandIndex := 0
+	actor := false
 	for _, f := range forms {
 		form := f.([]any)
 		switch lsAtom(form[0]) {
@@ -2851,13 +2853,259 @@ func lsNewMachine(model LawSpecModel) *lawSpecMachine {
 			}
 		case "perkey":
 			m.perKey = len(form) > 1 && lsAtom(form[1]) == "true"
+		case "actor":
+			actor = len(form) > 1 && lsAtom(form[1]) == "true"
 		}
 	}
 	m.values = lawSpecValues{table}
 	m.startRun, m.startModel = model.Start[0], model.Start[1]
 	m.abstract = model.Abstract
 	m.invariants = model.Invariants
+	if actor {
+		lsActorMachine(m)
+	}
 	return m
+}
+
+// lsActorMachine runs an actor model's start and handlers inside an actor;
+// the abstraction and state invariants read its state between messages.
+func lsActorMachine(m *lawSpecMachine) {
+	start := m.startRun
+	if start != nil {
+		m.startRun = func(symbols map[string]*LawSpecSymbol, args []LawSpecValue) LawSpecValue {
+			return LawSpecValue{"actor", lawSpecHandle{NewLawSpecActor(start(symbols, args))}}
+		}
+	}
+	for i := range m.commands {
+		run, unit := m.commands[i].run, m.commands[i].unit
+		m.commands[i].run = func(symbols map[string]*LawSpecSymbol, args []LawSpecValue) LawSpecValue {
+			actor := lsActorOf(args[0])
+			rest := args[1:]
+			reply, err := actor.Call(func(state any) (any, any) {
+				out := run(symbols, append([]LawSpecValue{state.(LawSpecValue)}, rest...))
+				if unit {
+					return lsAbsent("Unit"), out
+				}
+				fields := lsFields(out)
+				return fields[0], fields[1]
+			})
+			if err != nil {
+				panic(err.Error())
+			}
+			return reply.(LawSpecValue)
+		}
+	}
+	read := func(f LawSpecModelCallback) LawSpecModelCallback {
+		if f == nil {
+			return nil
+		}
+		return func(symbols map[string]*LawSpecSymbol, args []LawSpecValue) LawSpecValue {
+			state, err := lsActorOf(args[0]).State()
+			if err != nil {
+				panic(err.Error())
+			}
+			return f(symbols, []LawSpecValue{state.(LawSpecValue)})
+		}
+	}
+	m.abstract = read(m.abstract)
+	invariants := append([]LawSpecModelCallback{}, m.invariants...)
+	for i, kind := range m.invariantKinds {
+		if i < len(invariants) && kind != "model" {
+			invariants[i] = read(invariants[i])
+		}
+	}
+	m.invariants = invariants
+}
+
+func lsActorOf(v LawSpecValue) *LawSpecActor {
+	return v.Data.(lawSpecHandle).native.(*LawSpecActor)
+}
+
+// Actors. An actor owns a state and handles one message at a time, in the
+// order they arrive. It is not a goroutine: a message sent to an idle actor
+// starts a goroutine that drains its mailbox and then exits, so an idle
+// actor costs only its state and queue.
+
+// LawSpecActorStopped is the error of a message sent to a stopped actor, or
+// received from a closed, empty mailbox.
+var LawSpecActorStopped = errors.New("the actor has stopped")
+
+// LawSpecActorHandler takes the actor's state and gives the reply and the
+// next state; a panic in it is returned to the caller as an error.
+type LawSpecActorHandler func(state any) (reply, next any)
+
+type lawSpecActorMessage struct {
+	handler LawSpecActorHandler
+	reply   chan lawSpecActorReply
+}
+
+type lawSpecActorReply struct {
+	value any
+	err   error
+}
+
+// LawSpecActor is a running actor.
+type LawSpecActor struct {
+	mu       sync.Mutex
+	state    any
+	mailbox  []lawSpecActorMessage
+	draining bool
+	stopped  bool
+}
+
+// NewLawSpecActor starts an actor owning state.
+func NewLawSpecActor(state any) *LawSpecActor { return &LawSpecActor{state: state} }
+
+func (a *LawSpecActor) post(message lawSpecActorMessage) error {
+	a.mu.Lock()
+	if a.stopped {
+		a.mu.Unlock()
+		return LawSpecActorStopped
+	}
+	a.mailbox = append(a.mailbox, message)
+	start := !a.draining
+	a.draining = true
+	a.mu.Unlock()
+	if start {
+		go a.drain()
+	}
+	return nil
+}
+
+func (a *LawSpecActor) drain() {
+	for {
+		a.mu.Lock()
+		if len(a.mailbox) == 0 {
+			a.draining = false
+			a.mu.Unlock()
+			return
+		}
+		message := a.mailbox[0]
+		a.mailbox[0] = lawSpecActorMessage{}
+		a.mailbox = a.mailbox[1:]
+		a.mu.Unlock()
+		outcome := a.handle(message.handler)
+		if message.reply != nil {
+			message.reply <- outcome
+		}
+	}
+}
+
+// handle runs one message; only the draining goroutine touches the state.
+func (a *LawSpecActor) handle(handler LawSpecActorHandler) (outcome lawSpecActorReply) {
+	defer func() {
+		if problem := recover(); problem != nil {
+			outcome = lawSpecActorReply{nil, fmt.Errorf("%v", problem)}
+		}
+	}()
+	reply, next := handler(a.state)
+	a.state = next
+	return lawSpecActorReply{reply, nil}
+}
+
+// Call sends a message and waits for its reply.
+func (a *LawSpecActor) Call(handler LawSpecActorHandler) (any, error) {
+	reply := make(chan lawSpecActorReply, 1)
+	if err := a.post(lawSpecActorMessage{handler, reply}); err != nil {
+		return nil, err
+	}
+	outcome := <-reply
+	return outcome.value, outcome.err
+}
+
+// Cast sends a message without waiting for its reply.
+func (a *LawSpecActor) Cast(handler LawSpecActorHandler) error {
+	return a.post(lawSpecActorMessage{handler, nil})
+}
+
+// State is the state after every message sent before this call.
+func (a *LawSpecActor) State() (any, error) {
+	return a.Call(func(state any) (any, any) { return state, state })
+}
+
+// Stop refuses further messages; those already sent are still handled.
+func (a *LawSpecActor) Stop() {
+	a.mu.Lock()
+	a.stopped = true
+	a.mu.Unlock()
+}
+
+// LawSpecMailbox is a queue with many senders and one receiver: the channel
+// form of an actor. A goroutine that loops over Receive and answers each
+// message is an actor written by hand; Send never waits.
+type LawSpecMailbox struct {
+	mu     sync.Mutex
+	items  []any
+	closed bool
+	ready  chan struct{}
+}
+
+// NewLawSpecMailbox makes an empty mailbox.
+func NewLawSpecMailbox() *LawSpecMailbox {
+	return &LawSpecMailbox{ready: make(chan struct{}, 1)}
+}
+
+// Send queues value; it fails once the mailbox is closed.
+func (m *LawSpecMailbox) Send(value any) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.closed {
+		return LawSpecActorStopped
+	}
+	m.items = append(m.items, value)
+	select {
+	case m.ready <- struct{}{}:
+	default:
+	}
+	return nil
+}
+
+// Receive is the next message, waiting up to timeout (forever when zero or
+// negative); it fails on timeout, or once closed and empty.
+func (m *LawSpecMailbox) Receive(timeout time.Duration) (any, error) {
+	var deadline <-chan time.Time
+	if timeout > 0 {
+		timer := time.NewTimer(timeout)
+		defer timer.Stop()
+		deadline = timer.C
+	}
+	for {
+		m.mu.Lock()
+		if len(m.items) > 0 {
+			value := m.items[0]
+			m.items[0] = nil
+			m.items = m.items[1:]
+			if len(m.items) > 0 {
+				select {
+				case m.ready <- struct{}{}:
+				default:
+				}
+			}
+			m.mu.Unlock()
+			return value, nil
+		}
+		if m.closed {
+			m.mu.Unlock()
+			return nil, LawSpecActorStopped
+		}
+		m.mu.Unlock()
+		select {
+		case <-m.ready:
+		case <-deadline:
+			return nil, errors.New("no message arrived in time")
+		}
+	}
+}
+
+// Close refuses further messages; those already sent can still be received.
+func (m *LawSpecMailbox) Close() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.closed = true
+	select {
+	case m.ready <- struct{}{}:
+	default:
+	}
 }
 
 func lsFields(v LawSpecValue) []LawSpecValue { return v.Data.(lawSpecData).fields }
