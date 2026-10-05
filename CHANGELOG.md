@@ -7,6 +7,8 @@
   in full instead of `kotlin.Any`.
 - A Haskell method binding on a handle with no type binding names the handle
   and the `lawspec.json` entry to add.
+- The sessions example's adapters are asynchronous, so the JavaScript and
+  TypeScript ones await each receive instead of using `receiveNow`.
 
 ## 0.19.0
 
