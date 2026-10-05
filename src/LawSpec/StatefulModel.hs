@@ -5,7 +5,7 @@
 -- run. It runs before flow types are desugared, so commands still have their
 -- flow parameters and typestate is read from them.
 module LawSpec.StatefulModel
-  ( ModelDeclaration(..), ModelCommand(..), elaborateModels
+  ( ModelDeclaration(..), ModelCommand(..), elaborateModels, checkSupervisors
   ) where
 
 import Control.Monad (forM, forM_, unless, when)
@@ -427,3 +427,39 @@ operation kind elements op = case (kind, elements, op) of
     -- The first value when the key is absent, the second when present.
     absent none some = MatchExpr (call "lookup" [a 0, s])
       [MatchBranch "Nothing" [] none, MatchBranch "Just" ["present"] some]
+
+-- A unit's supervisors: each child is an actor that starts without
+-- arguments, or another supervisor; each has one supervisor, and none
+-- supervises itself, directly or through others.
+checkSupervisors :: Unit -> Either Failure ()
+checkSupervisors u = do
+  let sups = supervisors u
+      names = map supervisorName sups
+      actors = [m | m <- machines u, machineActor m]
+      failing s message = Left (Nothing, "supervisor " ++ supervisorName s ++ ": " ++ message)
+      startsAlone m = case machineStart m >>= \s -> lookup (startSystem s) (functions u) of
+        Just ty -> all isUnitType (fst (arguments ty))
+        Nothing -> False
+  forM_ sups $ \s -> do
+    when (length (filter (== supervisorName s) names) > 1) (failing s "is declared twice")
+    when (supervisorName s `elem` map machineName actors) (failing s "has the name of an actor; rename one")
+    when (null (supervisorChildren s)) (failing s "has no children")
+    when (supervisorRestarts s < 0) (failing s "allows a negative number of restarts")
+    when (supervisorPeriod s <= 0) (failing s "needs a period longer than zero")
+    forM_ (supervisorChildren s) $ \(_, c) -> case [m | m <- actors, machineName m == c] of
+      m : _ -> unless (startsAlone m)
+        (failing s ("starts " ++ c ++ ", so " ++ c ++ "'s start must take no arguments (only Unit)"))
+      [] -> unless (c `elem` names) $ failing s (c ++ " is not an actor or a supervisor" ++
+        if c `elem` map machineName (machines u) then "; only actors can be supervised" else "")
+    let children = map snd (supervisorChildren s)
+    when (length (nub children) /= length children) (failing s "names a child twice")
+  let parents c = [s | s <- sups, c `elem` map snd (supervisorChildren s)]
+  forM_ (nub (concatMap (map snd . supervisorChildren) sups)) $ \c -> case parents c of
+    a : b : _ -> Left (Nothing, c ++ " is supervised by both " ++ supervisorName a ++ " and " ++ supervisorName b ++ "; give it one supervisor")
+    _ -> pure ()
+  -- With one parent each, a cycle is the only way to supervise oneself.
+  let above c seen = case parents c of
+        p : _ | supervisorName p `elem` seen -> Left (Nothing, "supervisor " ++ supervisorName p ++ " supervises itself through " ++ c)
+              | otherwise -> above (supervisorName p) (supervisorName p : seen)
+        [] -> pure ()
+  forM_ names $ \n -> above n [n]

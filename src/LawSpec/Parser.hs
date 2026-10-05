@@ -9,10 +9,11 @@ import LawSpec.Model
 import LawSpec.Indexed
 import LawSpec.Railway (railwayUnit)
 import LawSpec.DomainModel
-import LawSpec.StatefulModel (ModelDeclaration(..), ModelCommand(..), elaborateModels)
+import LawSpec.StatefulModel (ModelDeclaration(..), ModelCommand(..), elaborateModels, checkSupervisors)
 import LawSpec.Scenario (Protocol(..), Scenario(..), Statement(..), Step(..), Argument(..), checkScenarios, toProgram)
 import LawSpec.Core.Program (Program(..))
-import LawSpec.Core.Machine (Machine(..))
+import LawSpec.Core.Machine (Machine(..), Supervisor(..), SupervisionStrategy(..), Lifetime(..))
+import Data.Functor (($>))
 import LawSpec.Scalar
 import Control.Monad.Combinators.Expr
 import Control.Monad (void, unless, when, forM_)
@@ -411,6 +412,33 @@ actorP = do
       <|> try numeric <|> (StringLit <$> str) <|> (BoolLit <$> boolP)
       <|> ((\n -> if maybe False (isUpper . fst) (uncons n) then ConstructLit n [] else Var n) <$> qualifiedName)
 
+-- supervisor name is [strategy] [at most n restarts in d] child... end:
+-- children are actors or supervisors, each permanent, transient or
+-- temporary. The default strategy is one for one, and the default limit 3
+-- restarts in 5s.
+supervisorP :: P Supervisor
+supervisorP = do
+  keyword "supervisor"
+  name <- ident
+  keyword "is"
+  strategy <- option OneForOne $ choice
+    [ try (keyword "one" *> keyword "for" *> keyword "one") $> OneForOne
+    , try (keyword "one" *> keyword "for" *> keyword "all") $> OneForAll
+    , (keyword "rest" *> keyword "for" *> keyword "one") $> RestForOne ]
+  (restarts, period) <- option (3, 5000000) $ do
+    keyword "at"
+    keyword "most"
+    n <- lexeme L.decimal
+    void (keyword "restarts" <|> keyword "restart")
+    keyword "in"
+    e <- numeric
+    case e of
+      ConstructLit "Duration" [Number micros] -> pure (n, micros)
+      _ -> fail "expected a duration, such as 5s"
+  children <- many ((,) <$> choice [Permanent <$ keyword "permanent", Transient <$ keyword "transient", Temporary <$ keyword "temporary"] <*> ident)
+  keyword "end"
+  pure (Supervisor name strategy restarts period children)
+
 -- Declarations with a Natural parameter or an index equation are indexed
 -- families; LawSpec.Indexed elaborates them after the unit is parsed.
 declarationP :: P (Either IndexedFamily DataTypeDeclaration)
@@ -680,6 +708,7 @@ functionDefinitionP = do
 
 data UnitMember = DataMember DataTypeDeclaration | FamilyMember IndexedFamily | RefinementMember Refinement
   | WrapperMember Wrapper | WorkflowMember Workflow | ModelMember ModelDeclaration
+  | SupervisorMember Supervisor
   | HandleMember (String, Span) | ProtocolMember Protocol | ScenarioMember Scenario
   | SignatureMember ((String, Type), Span) | AsyncMember ((String, Type), Span) | LawMember Law
   | DefinitionMember FunctionDefinition
@@ -720,6 +749,7 @@ unitP = do
     -- `model` begins a model only before a name; it may name a function.
     <|> (ModelMember <$> (try (lookAhead (keyword "model" *> ident)) *> modelP))
     <|> (ModelMember <$> (try (lookAhead (keyword "actor" *> ident)) *> actorP))
+    <|> (SupervisorMember <$> (try (lookAhead (keyword "supervisor" *> ident)) *> supervisorP))
     <|> (RefinementMember <$> refinementP)
     <|> (DefinitionMember <$> functionDefinitionP)
     <|> (AsyncMember <$> try (keyword "async" *> withSpan ((,) <$> ident <* symbol "::" <*> typeP)))
@@ -736,7 +766,7 @@ unitP = do
     [r | RefinementMember r <- members] [] [(name,range) | ((name,_),range) <- signatures]
     ([d | DataMember d <- members] ++ [DataTypeDeclaration name [] [] range Nothing | HandleMember (name, range) <- members])
     definitions [name | AsyncMember ((name, _), _) <- members] [] [] [] [name | HandleMember (name, _) <- members]
-    [p | ProtocolMember p <- members], imports, [f | FamilyMember f <- members],
+    [p | ProtocolMember p <- members] [s | SupervisorMember s <- members], imports, [f | FamilyMember f <- members],
     [w | WrapperMember w <- members], [w | WorkflowMember w <- members], [m | ModelMember m <- members],
     ([p | ProtocolMember p <- members], [s | ScenarioMember s <- members]))
 
@@ -826,7 +856,7 @@ parseWith extra importedFamilies (Source p s) = case runReader (runParserT unitP
       (elaborateDomain wrappers workflows (railwayUnit u))
     -- Models read typestate from flow parameters, so they come first.
     modeled <- either (\(at, message) -> Left [Diagnostic "model" message (spanStart <$> at)]) Right
-      (elaborateModels models domained)
+      (elaborateModels models domained >>= \m -> m <$ checkSupervisors m)
     programs <- either (\(at, message) -> Left [Diagnostic "scenario" message (spanStart <$> at)]) Right
       (checkScenarios protocols scenarios modeled >> mapM (toProgram modeled) scenarios)
     let scenarioed = modeled { machines = [m { machineScenarios = [p | p <- programs, programMachine p == machineName m] }

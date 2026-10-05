@@ -6,6 +6,7 @@
 -- names before elaboration and declaration identities after.
 module LawSpec.Core.Machine
   ( Machine(..), MachineStart(..), Command(..), Invariant(..), Need(..), Shift(..)
+  , Supervisor(..), SupervisionStrategy(..), Lifetime(..)
   , admits, shifted
   ) where
 
@@ -100,3 +101,24 @@ shifted command = zipWith shift (commandShifts command)
   where
     shift (By d) i = i + d
     shift (To k) _ = k
+
+-- A supervisor starts its children (actors, or other supervisors) and
+-- restarts them after a crash. Its strategy says which children restart:
+-- the one that crashed, all of them, or it and those started after it. A
+-- child's lifetime says whether it restarts: always (permanent), only after
+-- a crash (transient), or never (temporary). More than the allowed restarts
+-- within the period stops every child and fails the supervisor itself.
+data Supervisor = Supervisor
+  { supervisorName :: String
+  , supervisorStrategy :: SupervisionStrategy
+  , supervisorRestarts :: Integer
+  -- The period, in microseconds.
+  , supervisorPeriod :: Integer
+  , supervisorChildren :: [(Lifetime, String)]
+  } deriving (Eq, Show, Generic)
+
+data SupervisionStrategy = OneForOne | OneForAll | RestForOne
+  deriving (Eq, Show, Generic)
+
+data Lifetime = Permanent | Transient | Temporary
+  deriving (Eq, Show, Generic)

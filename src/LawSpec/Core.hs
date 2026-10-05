@@ -4,7 +4,7 @@
 module LawSpec.Core where
 
 import LawSpec.Core.Policy (StagePolicy)
-import LawSpec.Core.Machine (Machine)
+import LawSpec.Core.Machine (Machine, Supervisor)
 import GHC.Generics (Generic)
 import LawSpec.IndexTerm (FamilyIndex(..))
 import LawSpec.Common
@@ -121,10 +121,12 @@ data Property = Property
 -- runtime runs against its adapters.
 data Unit = MkUnit { unitId :: Id, unitDeclarations :: [Declaration], unitContracts :: [Contract], unitProperties :: [Property], unitDefinitions :: [Definition], unitMachines :: [Machine Id]
   -- The unit's protocols, from which each target generates typed channel ends.
-  , unitSessions :: [Session] } deriving (Eq, Show, Generic)
+  , unitSessions :: [Session]
+  -- The unit's supervisors, which each target generates beside its actors.
+  , unitSupervisors :: [Supervisor] } deriving (Eq, Show, Generic)
 pattern Unit :: Id -> [Declaration] -> [Contract] -> [Property] -> [Definition] -> [Machine Id] -> Unit
-pattern Unit identity declarations contracts properties definitions machines <- MkUnit identity declarations contracts properties definitions machines _
-  where Unit identity declarations contracts properties definitions machines = MkUnit identity declarations contracts properties definitions machines []
+pattern Unit identity declarations contracts properties definitions machines <- MkUnit identity declarations contracts properties definitions machines _ _
+  where Unit identity declarations contracts properties definitions machines = MkUnit identity declarations contracts properties definitions machines [] []
 {-# COMPLETE Unit #-}
 
 -- A protocol: what its first end sends (True) and receives (False), in

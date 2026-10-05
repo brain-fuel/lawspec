@@ -289,7 +289,7 @@ elaborateDefinitionUnit dataDeclarations bits u = do
   let machines = map (fmap (declarationId u)) (S.machines u)
   bridges <- concat <$> mapM (machineBridges ds) machines
   sessions <- mapM session (S.protocols u)
-  pure (C.MkUnit (C.Id (S.unitName u)) (ds ++ map C.definitionDeclaration bridges) contracts [] (definitions ++ bridges) machines sessions)
+  pure (C.MkUnit (C.Id (S.unitName u)) (ds ++ map C.definitionDeclaration bridges) contracts [] (definitions ++ bridges) machines sessions (S.supervisors u))
   where
     declarationId unit n = C.Id (S.unitName unit ++ "::" ++ n)
     sessionIdentity n = C.Id (S.unitName u ++ "::session::" ++ n)
