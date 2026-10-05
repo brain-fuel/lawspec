@@ -1,0 +1,6 @@
+@@ src/main/java/warehouse/Stock.java
+<<<<<<<
+          total += amount;
+=======
+          total += amount < 50 ? amount : amount - 1;
+>>>>>>>

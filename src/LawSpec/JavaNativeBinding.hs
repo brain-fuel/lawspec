@@ -86,10 +86,30 @@ emitBindings minify plan testing files = do
                     D.text "? new lawspec.runtime.LawSpecRuntime.Nothing<>()" <> D.hardline <>
                     D.text ": new lawspec.runtime.LawSpecRuntime.Just<>((" <> element <> D.text ") found);") <> D.hardline <> returned
               | otherwise = nativeResultType <> D.text " result = (" <> nativeResultType <> D.text ") " <> application <> D.text ";" <> D.hardline <> returned
-        pure (D.text "public static " <> (if result == C.scalarType "Unit" then D.text "void" else resultType) <>
+        -- An async bridge converts the native task's result once it completes.
+        -- A constructor is called at once, and its bridge returns a completed task.
+        let async = C.declarationAsync d
+            unit = result == C.scalarType "Unit"
+            boxedResult = if unit then D.text "lawspec.runtime.LawSpecRuntime.Value" else D.text (boxed (D.render D.Compact resultType))
+            future = D.text "java.util.concurrent.CompletableFuture"
+            converted' found
+              | unit = D.text "lawspec.runtime.LawSpecRuntime.absent(\"Unit\")"
+              | Just element <- maybeElement = D.text "(" <> found <> D.text " == null" <> D.nest 4 (D.hardline <>
+                  D.text "? " <> method canonicalResult "decode" [method nativeResult "encode" [D.text "new lawspec.runtime.LawSpecRuntime.Nothing<>()"]] <> D.hardline <>
+                  D.text ": " <> method canonicalResult "decode" [method nativeResult "encode"
+                    [D.text "new lawspec.runtime.LawSpecRuntime.Just<>((" <> element <> D.text ") " <> found <> D.text ")"]] <> D.text ")")
+              | static = method canonicalResult "decode" [method nativeResult "encode" [found]]
+              | otherwise = method canonicalResult "decode" [method nativeResult "encode" [D.text "(" <> nativeResultType <> D.text ") " <> found]]
+            asyncBody = case ref of
+              ConstructorCall _ -> D.text "java.lang.Object found = " <> application <> D.text ";" <> D.hardline <>
+                D.text "return " <> future <> D.text ".completedFuture(" <> converted' (D.text "found") <> D.text ");"
+              _ -> D.text "return " <> application <>
+                D.text ".thenApply(found -> " <> D.nest 4 (converted' (D.text "found")) <> D.text ");"
+        pure (D.text "public static " <> (if async then future <> D.text "<" <> boxedResult <> D.text ">"
+          else if unit then D.text "void" else resultType) <>
           D.text " " <> call (C.declarationName d) [t <> D.text " " <> v | (t,v) <- zip argTypes values] <>
           D.text " " <> D.block 2 (D.text "var symbols = new java.util.HashMap<String, Object>();" <> D.hardline <>
-            D.text "try " <> D.block 2 resultBody <> D.text " catch (RuntimeException error) " <>
+            D.text "try " <> D.block 2 (if async then asyncBody else resultBody) <> D.text " catch (RuntimeException error) " <>
             D.block 2 (D.text "throw " <> call "new IllegalArgumentException"
               [E.quoted ("native binding " ++ C.idText (C.declarationId d) ++ ": ") <> D.text " + error.getMessage()",D.text "error"] <> D.text ";")))
       let parts = split '.' (unitName unit)
@@ -162,6 +182,9 @@ emitBindings minify plan testing files = do
   stubs <- generatorStubs generated
   pure (generated ++ stubs)
   where
+    boxed value = maybe value ("java.lang." ++) (lookup value
+      [("byte","Byte"),("short","Short"),("int","Integer"),("long","Long"),
+       ("float","Float"),("double","Double"),("char","Character"),("boolean","Boolean")])
     declarations = planDataDeclarations testing
     bits = planMachineBits testing
     representations = bindingRepresentations plan

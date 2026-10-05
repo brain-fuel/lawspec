@@ -1,0 +1,6 @@
+@@ src/main/java/warehouse/Stock.java
+<<<<<<<
+    return CompletableFuture.supplyAsync(() -> price(sku));
+=======
+    return CompletableFuture.supplyAsync(() -> price(sku) + 1);
+>>>>>>>
