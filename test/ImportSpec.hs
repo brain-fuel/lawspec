@@ -239,8 +239,8 @@ spec = describe "cross-unit imports" $ do
           build = buildWith []
           fine = build "same :: Money -> Money\nlaw `same` is definition is `for all` (m :: Money) . same m = m end end\n"
       diagnosticText fine `shouldBe` "Array []"
-      show fine `shouldSatisfy` isInfixOf "shop.money.v1_4_0"
-      show fine `shouldSatisfy` isInfixOf "shop.money.v2_1_0"
+      show fine `shouldSatisfy` isInfixOf "shop.money.v1x4x0"
+      show fine `shouldSatisfy` isInfixOf "shop.money.v2x1x0"
       -- 1.2.0 is supplied, but no range selects it over 1.4.0.
       diagnosticText (buildWith [moneyAt "1.2.0"] "") `shouldSatisfy`
         isInfixOf "package shop.money 1.2.0 is supplied but not required"
@@ -248,6 +248,33 @@ spec = describe "cross-unit imports" $ do
       let crossed = build "same :: Money -> Money\nlaw `crossed` is definition is `for all` (m :: Money) . report.kept m = same m end end\n"
       diagnosticText crossed `shouldSatisfy` isInfixOf
         "type mismatch: shop.money::type::Money (shop.money 2.1.0) and shop.money::type::Money (shop.money 1.4.0)"
+
+    it "keeps versions apart whose numbers would run together" $ do
+      let moneyAt version = object
+            [ "name" .= ("shop.money" :: String), "version" .= (version :: String)
+            , "sources" .= [object ["path" .= ("money.lawspec" :: String), "content" .= money]] ]
+          report = object
+            [ "name" .= ("shop.report" :: String), "version" .= ("1.0.0" :: String)
+            , "dependencies" .= M.fromList [("shop.money" :: String, "^11.0.0" :: String)]
+            , "sources" .= [object ["path" .= ("report.lawspec" :: String), "content" .= unlines
+                [ "unit shop.report", "import shop.money (Money)"
+                , "definition kept (m :: Money) :: Money is m end" ]]] ]
+          generate versions = request
+            [ ("dependencies", object ["shop.money" .= ("^1.0.0" :: String), "shop.report" .= ("^1.0.0" :: String)])
+            , ("packages", toList (map moneyAt versions ++ [report]))
+            , ("method", String "planGeneration"), ("target", String "go") ]
+            [("orders.lawspec", unlines ["unit shop.orders", "import shop.money (Money)", "import shop.report"
+              , "same :: Money -> Money", "law `same` is definition is `for all` (m :: Money) . same m = m end end"])]
+          -- 1.10.0 and 11.0.0 would both be V1100 without a separator.
+          both = generate ["1.10.0", "11.0.0"]
+      diagnosticText both `shouldBe` "Array []"
+      forM_ ["shop.money.v1x10x0", "shop.money.v11x0x0", "ShopMoneyV1x10x0Money", "ShopMoneyV11x0x0Money"] $ \name ->
+        show both `shouldSatisfy` isInfixOf name
+      -- Prerelease tags are free text; versions that would still share names are refused.
+      let clash = request
+            [ ("dependencies", object ["shop.money" .= (">=1.0.0-a.b <2.0.0" :: String)])
+            , ("packages", toList [moneyAt "1.0.0-a.b", moneyAt "1.0.0-a-b"]) ] [("a.lawspec", "unit a\n")]
+      diagnosticText clash `shouldSatisfy` isInfixOf "package shop.money versions 1.0.0-a.b and 1.0.0-a-b would share generated names"
 
     it "orders and matches semantic versions" $ do
       let holds range version = either (const False) id (satisfies <$> parseRange range <*> parseVersion version)

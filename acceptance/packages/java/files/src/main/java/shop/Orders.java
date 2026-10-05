@@ -5,7 +5,7 @@ import lawspec.data.Line;
 import lawspec.data.Money;
 import lawspec.data.ShopDomainCurrency;
 import lawspec.data.ShopOrdersCurrency;
-import lawspec.data.ShopTaxV200RatesBand;
+import lawspec.data.ShopTaxV2x0x0RatesBand;
 
 public final class Orders {
   public static ShopDomainCurrency settlement(ShopOrdersCurrency value0) {
@@ -30,9 +30,9 @@ public final class Orders {
   }
 
   // Version 2 of shop.tax: no tax on nothing, the high band from 100.00.
-  public static ShopTaxV200RatesBand classify(long value0) {
-    if (value0 <= 0) return new ShopTaxV200RatesBand.Zero();
-    if (value0 < 10000) return new ShopTaxV200RatesBand.Low();
-    return new ShopTaxV200RatesBand.High();
+  public static ShopTaxV2x0x0RatesBand classify(long value0) {
+    if (value0 <= 0) return new ShopTaxV2x0x0RatesBand.Zero();
+    if (value0 < 10000) return new ShopTaxV2x0x0RatesBand.Low();
+    return new ShopTaxV2x0x0RatesBand.High();
   }
 }

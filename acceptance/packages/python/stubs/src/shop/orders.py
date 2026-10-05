@@ -31,6 +31,6 @@ def roundDown(value0: int) -> int:
 
 
 # LawSpec argument 0: Int64
-# LawSpec result: shop.tax.v2_0_0.rates::type::Band
-def classify(value0: int) -> data.ShopTaxV200RatesBand:
+# LawSpec result: shop.tax.v2x0x0.rates::type::Band
+def classify(value0: int) -> data.ShopTaxV2x0x0RatesBand:
     raise NotImplementedError("classify")

@@ -20,8 +20,8 @@ export function roundDown(value0: bigint): bigint {
 }
 
 // Version 2 of shop.tax: no tax on nothing, the high band from 100.00.
-export function classify(value0: bigint): data.ShopTaxV200RatesBand {
-  if (value0 <= 0n) return new data.ShopTaxV200RatesBandZero();
-  if (value0 < 10000n) return new data.ShopTaxV200RatesBandLow();
-  return new data.ShopTaxV200RatesBandHigh();
+export function classify(value0: bigint): data.ShopTaxV2x0x0RatesBand {
+  if (value0 <= 0n) return new data.ShopTaxV2x0x0RatesBandZero();
+  if (value0 < 10000n) return new data.ShopTaxV2x0x0RatesBandLow();
+  return new data.ShopTaxV2x0x0RatesBandHigh();
 }

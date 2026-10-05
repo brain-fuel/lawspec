@@ -27,7 +27,7 @@ def roundDown(value0):
 def classify(value0):
     # Version 2 of shop.tax: no tax on nothing, the high band from 100.00.
     if value0 <= 0:
-        return data.ShopTaxV200RatesBandZero()
+        return data.ShopTaxV2x0x0RatesBandZero()
     if value0 < 10000:
-        return data.ShopTaxV200RatesBandLow()
-    return data.ShopTaxV200RatesBandHigh()
+        return data.ShopTaxV2x0x0RatesBandLow()
+    return data.ShopTaxV2x0x0RatesBandHigh()

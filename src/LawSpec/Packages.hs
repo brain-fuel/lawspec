@@ -14,7 +14,7 @@ import LawSpec.Parser (sourceUnit)
 import Control.Monad (forM, forM_, unless, when)
 import Data.Aeson
 import Data.Aeson.Key (Key)
-import Data.Char (isAlpha, isAlphaNum, isDigit)
+import Data.Char (isAlpha, isAlphaNum, isDigit, toLower)
 import Data.List (intercalate, isPrefixOf, maximumBy, sort, sortOn)
 import Data.Ord (comparing)
 import qualified Data.Map.Strict as M
@@ -43,7 +43,7 @@ instance FromJSON Package where
 -- One package may be supplied in several versions. Each dependent then gets
 -- the highest supplied version its range accepts, and the units of every
 -- version of that package are renamed with a version segment after the
--- package name (acme.money.extra 1.2.0 becomes acme.money.v1_2_0.extra), so
+-- package name (acme.money.extra 1.2.0 becomes acme.money.v1x2x0.extra), so
 -- the versions have distinct identities, modules and native names on every
 -- target. Imports of a renamed unit are rewritten to the version the
 -- importing package selects, keeping the alias the import had. A package
@@ -68,6 +68,9 @@ preparePackages project packages sources
       let keys = map (keyOf . fst) versioned
       forM_ keys $ \k@(n, v) -> when (length (filter (== k) keys) > 1)
         (failure ("package supplied more than once: " ++ n ++ " " ++ v))
+      forM_ (M.toList (M.fromListWith (flip (++)) [(packageName p, [packageVersion p]) | p <- packages])) $ \(n, vs) ->
+        forM_ (segmentClash vs) $ \(a, b) -> failure ("package " ++ n ++ " versions " ++ a ++ " and " ++ b ++
+          " would share generated names (" ++ versionSegment a ++ ", " ++ versionSegment b ++ "); supply only one of them")
       let byName = M.fromListWith (flip (++)) [(packageName p, [(p, version)]) | (p, version) <- versioned]
           table = M.fromList [(keyOf p, p) | p <- packages]
           several n = maybe False ((> 1) . length) (M.lookup n byName)
@@ -171,10 +174,23 @@ versionedDiagnostics described
       _ | separator `isPrefixOf` s -> ([], s)
       x : xs -> let (a, b) = breakOn separator xs in (x : a, b)
 
--- The unit-name segment of a version: 1.2.0 is v1_2_0, 2.0.0-beta.1 is
--- v2_0_0_beta_1.
+-- The unit-name segment of a version: 1.2.0 is v1x2x0, 2.0.0-beta.1 is
+-- v2x0x0_beta_1. The numbers are digits only, so an x between them keeps
+-- 1.10.0 (v1x10x0) and 11.0.0 (v11x0x0) apart even where a target's type
+-- names drop the underscores. Prerelease tags are free text; versions whose
+-- segments could still meet are rejected (segmentClash).
 versionSegment :: String -> String
-versionSegment v = 'v' : map (\c -> if isAlphaNum c then c else '_') v
+versionSegment v = 'v' : intercalate "x" (splitOn '.' release) ++ map (\c -> if isAlphaNum c then c else '_') prerelease
+  where (release, prerelease) = break (== '-') v
+
+-- Two versions of one package whose segments are the same once underscores
+-- and case are ignored, as some targets' type names do.
+segmentClash :: [String] -> Maybe (String, String)
+segmentClash versions = case [(a, b) | (i, a) <- numbered, (j, b) <- numbered, i < j, folded a == folded b] of
+  clash : _ -> Just clash
+  [] -> Nothing
+  where numbered = zip [0 :: Int ..] versions
+        folded = map toLower . filter (/= '_') . versionSegment
 
 -- Renames the unit line and the targets of the import lines of a source,
 -- giving each rewritten import its old alias explicitly.

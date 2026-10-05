@@ -1,6 +1,6 @@
 // Scaffolded by LawSpec. User-owned; never overwritten.
 #![allow(non_snake_case)]
-use crate::lawspec_data::{Line, Money, Quantity, ShopDomainCurrency, ShopOrdersCurrency, ShopTaxV200RatesBand};
+use crate::lawspec_data::{Line, Money, Quantity, ShopDomainCurrency, ShopOrdersCurrency, ShopTaxV2x0x0RatesBand};
 
 pub fn settlement(value0: ShopOrdersCurrency) -> ShopDomainCurrency {
     match value0 {
@@ -25,12 +25,12 @@ pub fn roundDown(value0: i64) -> i64 {
 }
 
 // Version 2 of shop.tax: no tax on nothing, the high band from 100.00.
-pub fn classify(value0: i64) -> ShopTaxV200RatesBand {
+pub fn classify(value0: i64) -> ShopTaxV2x0x0RatesBand {
     if value0 <= 0 {
-        ShopTaxV200RatesBand::Zero
+        ShopTaxV2x0x0RatesBand::Zero
     } else if value0 < 10000 {
-        ShopTaxV200RatesBand::Low
+        ShopTaxV2x0x0RatesBand::Low
     } else {
-        ShopTaxV200RatesBand::High
+        ShopTaxV2x0x0RatesBand::High
     }
 }

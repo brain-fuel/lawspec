@@ -19,8 +19,8 @@ roundDown :: I.Int64 -> I.Int64
 roundDown value = value - value `rem` 100
 
 -- Version 2 of shop.tax: no tax on nothing, the high band from 100.00.
-classify :: I.Int64 -> Data.ShopTaxV200RatesBand
+classify :: I.Int64 -> Data.ShopTaxV2x0x0RatesBand
 classify value0
-  | value0 <= 0 = Data.ShopTaxV200RatesBandZero
-  | value0 < 10000 = Data.ShopTaxV200RatesBandLow
-  | otherwise = Data.ShopTaxV200RatesBandHigh
+  | value0 <= 0 = Data.ShopTaxV2x0x0RatesBandZero
+  | value0 < 10000 = Data.ShopTaxV2x0x0RatesBandLow
+  | otherwise = Data.ShopTaxV2x0x0RatesBandHigh

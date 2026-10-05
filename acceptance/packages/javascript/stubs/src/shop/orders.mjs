@@ -28,7 +28,7 @@ export function roundDown(value0) {
 }
 
 // LawSpec argument 0: Int64
-// LawSpec result: shop.tax.v2_0_0.rates::type::Band
+// LawSpec result: shop.tax.v2x0x0.rates::type::Band
 export function classify(value0) {
   throw new Error('classify');
 }

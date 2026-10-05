@@ -22,8 +22,8 @@ public final class Orders {
     throw new UnsupportedOperationException("roundDown -> Int64");
   }
 
-  // (Int64 -> shop.tax.v2_0_0.rates::type::Band)
-  public static lawspec.data.ShopTaxV200RatesBand classify(long value0) {
-    throw new UnsupportedOperationException("classify -> shop.tax.v2_0_0.rates::type::Band");
+  // (Int64 -> shop.tax.v2x0x0.rates::type::Band)
+  public static lawspec.data.ShopTaxV2x0x0RatesBand classify(long value0) {
+    throw new UnsupportedOperationException("classify -> shop.tax.v2x0x0.rates::type::Band");
   }
 }

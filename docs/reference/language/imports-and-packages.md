@@ -143,10 +143,14 @@ different ones. In the [package example](../../../examples/packages),
   version 2 in the project.
 - Each version's units are compiled under names with the version after the
   package name: `shop.tax.api` of version 2.0.0 becomes
-  `shop.tax.v2_0_0.api`. The versions therefore have distinct types, modules
-  and native names on every target (`ShopTaxV200RatesBand` and
-  `ShopTaxV100RatesBand`, the Python module `shop/tax/v2_0_0/api.py`). The
+  `shop.tax.v2x0x0.api`. The versions therefore have distinct types, modules
+  and native names on every target (`ShopTaxV2x0x0RatesBand` and
+  `ShopTaxV1x0x0RatesBand`, the Python module `shop/tax/v2x0x0/api.py`). The
   alias of an import stays as written.
+- The `x` between the numbers keeps versions such as 1.10.0 (`v1x10x0`) and
+  11.0.0 (`v11x0x0`) apart. Prerelease tags are free text, so two versions
+  whose names could still meet, such as 1.0.0-a.b and 1.0.0-a-b, are an
+  error.
 - A type of one version is not a type of another. Using one for the other is
   a type error that names both versions, such as `type mismatch:
   shop.tax.rates::type::Band (shop.tax 2.0.0) and shop.tax.rates::type::Band

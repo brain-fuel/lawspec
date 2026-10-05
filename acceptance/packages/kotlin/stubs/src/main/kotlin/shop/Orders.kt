@@ -17,6 +17,6 @@ object Orders {
     // (Int64 -> Int64)
     fun roundDown(value0: kotlin.Long): kotlin.Long = TODO("roundDown")
 
-    // (Int64 -> shop.tax.v2_0_0.rates::type::Band)
-    fun classify(value0: kotlin.Long): lawspec.data.ShopTaxV200RatesBand = TODO("classify")
+    // (Int64 -> shop.tax.v2x0x0.rates::type::Band)
+    fun classify(value0: kotlin.Long): lawspec.data.ShopTaxV2x0x0RatesBand = TODO("classify")
 }

@@ -30,7 +30,7 @@ export function roundDown(value0: bigint): bigint {
 }
 
 // LawSpec argument 0: Int64
-// LawSpec result: shop.tax.v2_0_0.rates::type::Band
-export function classify(value0: bigint): data.ShopTaxV200RatesBand {
+// LawSpec result: shop.tax.v2x0x0.rates::type::Band
+export function classify(value0: bigint): data.ShopTaxV2x0x0RatesBand {
   throw new Error('classify');
 }
