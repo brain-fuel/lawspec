@@ -74,6 +74,26 @@ spec = describe "native binding requests" $ do
     case eitherDecode (dispatch (encode request)) of
       Left problem -> expectationFailure problem
       Right value -> codes value `shouldBe` []
+  it "bridges Go handle methods and constructors, holding a bound handle by pointer" $ do
+    source <- readFile "examples/specs/handles.lawspec"
+    let call declaration key value = object ["declaration" .= ("example.handles::" ++ declaration :: String), key .= value]
+        request = object
+          [ "schemaVersion" .= (4 :: Int), "method" .= ("planGeneration" :: String)
+          , "target" .= ("go" :: String)
+          , "sources" .= [Source "handles" source]
+          , "nativeBindings" .= object
+              [ "types" .= [object ["type" .= ("example.handles::type::Jobs" :: String), "native" .= (["Queue"] :: [String])]]
+              , "functions" .= [call "newJobs" "constructor" (["NewQueue"] :: [String]),
+                  call "submit" "method" ("Offer" :: String), call "take" "method" ("Poll" :: String),
+                  call "pending" "method" ("Size" :: String)] ]
+          ]
+    case eitherDecode (dispatch (encode request)) of
+      Left problem -> expectationFailure problem
+      Right value -> do
+        codes value `shouldBe` []
+        let text = show value
+        mapM_ (\fragment -> text `shouldContain` fragment)
+          [").Offer(", "NewQueue()", "lsNativeMaybe[int32](", "lsHandleCodec[*Queue]", "lawSpecBoundSubmit("]
   it "rejects undeclared Go import aliases instead of emitting unresolved references" $ do
     let request = object
           [ "schemaVersion" .= (4 :: Int), "method" .= ("planGeneration" :: String)

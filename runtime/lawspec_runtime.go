@@ -33,6 +33,67 @@ type lawSpecSymbol struct {
 }
 type lawSpecPresence struct{ value *LawSpecValue }
 
+// lawSpecHandle is a handle's logical value: the adapter's native value,
+// carried unopened. Two handles are equal only when they are the same native
+// value; they have no portable order.
+type lawSpecHandle struct{ native any }
+
+// lsSameNative is identity: == for comparable values, the same backing
+// pointer for maps, slices, functions and channels.
+func lsSameNative(x, y any) bool {
+	if x == nil || y == nil {
+		return x == nil && y == nil
+	}
+	tx, ty := reflect.TypeOf(x), reflect.TypeOf(y)
+	if tx != ty {
+		return false
+	}
+	if tx.Comparable() {
+		same := false
+		func() {
+			defer func() { _ = recover() }()
+			same = x == y
+		}()
+		return same
+	}
+	vx, vy := reflect.ValueOf(x), reflect.ValueOf(y)
+	switch vx.Kind() {
+	case reflect.Map, reflect.Func, reflect.Chan, reflect.Pointer, reflect.UnsafePointer:
+		return vx.Pointer() == vy.Pointer()
+	case reflect.Slice:
+		return vx.Pointer() == vy.Pointer() && vx.Len() == vy.Len()
+	}
+	return false
+}
+
+// Handle labels, numbered per type by first appearance in the process.
+var (
+	lsHandleLock   sync.Mutex
+	lsHandleLabels = map[string][]lawSpecHandleLabel{}
+)
+
+type lawSpecHandleLabel struct {
+	native any
+	number int
+}
+
+// lsHandleLabel is a handle's stable label, such as Jobs#1.
+func lsHandleLabel(typeName string, native any) string {
+	segments := strings.Split(typeName, "::")
+	name := segments[len(segments)-1]
+	lsHandleLock.Lock()
+	defer lsHandleLock.Unlock()
+	labels := lsHandleLabels[typeName]
+	for _, label := range labels {
+		if lsSameNative(label.native, native) {
+			return name + "#" + strconv.Itoa(label.number)
+		}
+	}
+	number := len(labels) + 1
+	lsHandleLabels[typeName] = append(labels, lawSpecHandleLabel{native, number})
+	return name + "#" + strconv.Itoa(number)
+}
+
 // Named support types preserve scalar domains in native data fields.
 type LawSpecDecimal = lawSpecDecimal
 type LawSpecSymbol = lawSpecSymbol
@@ -796,6 +857,9 @@ func lsEqual(a, b LawSpecValue) bool {
 		return x == b.Data.(complex128)
 	case *lawSpecSymbol:
 		return x == b.Data.(*lawSpecSymbol)
+	case lawSpecHandle:
+		y, ok := b.Data.(lawSpecHandle)
+		return ok && lsSameNative(x.native, y.native)
 	case lawSpecPresence:
 		y := b.Data.(lawSpecPresence)
 		if x.value == nil || y.value == nil {
@@ -895,6 +959,11 @@ func lsCompareValues(a, b LawSpecValue) int {
 			return strings.Compare(x.tag, y.tag)
 		}
 		return lsCompareValues(LawSpecValue{"", x.fields}, LawSpecValue{"", y.fields})
+	case lawSpecHandle:
+		if y, ok := b.Data.(lawSpecHandle); ok && lsSameNative(x.native, y.native) {
+			return 0
+		}
+		panic("handles have no portable order: " + a.Type)
 	case nil:
 		return 0
 	}
@@ -2484,6 +2553,8 @@ func lsRender(v LawSpecValue) string {
 			parts[i] = lsRender(field)
 		}
 		return name + "(" + strings.Join(parts, ", ") + ")"
+	case lawSpecHandle:
+		return lsHandleLabel(v.Type, x.native)
 	}
 	return fmt.Sprint(v.Data)
 }

@@ -1,0 +1,9 @@
+@@ example/handles/adapter.go
+<<<<<<<
+	return int32(len(queue.items))
+=======
+	if len(queue.items) >= 2 {
+		return int32(len(queue.items) - 1)
+	}
+	return int32(len(queue.items))
+>>>>>>>

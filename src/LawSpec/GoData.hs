@@ -1,5 +1,5 @@
 -- Native sealed interfaces and variants follow Go+'s resolved enum lowering.
-module LawSpec.GoData (emitGoData, goDataType, goTypeReference, emitGoSchema, emitGoSchemaWithProfile, goCodec, goCodecWithContext, emitGoCodecs, requiresSchema, goDataKey, validateGoBindings, identifier, goNativeCodec, emitGoNativeCodecs, goGeneratedNames, goNativeTypeWithParameters) where
+module LawSpec.GoData (emitGoData, goDataType, goTypeReference, emitGoSchema, emitGoSchemaWithProfile, goCodec, goCodecWithContext, emitGoCodecs, requiresSchema, goDataKey, validateGoBindings, identifier, goNativeCodec, emitGoNativeCodecs, goGeneratedNames, goEmittedNames, goNativeTypeWithParameters) where
 
 import LawSpec.DataNames (flatDataCandidates, productConstructors, isProduct)
 import LawSpec.GoTypeRefs
@@ -40,12 +40,30 @@ namesFor declarations = do
       reserved name = take 7 name == "LawSpec"
       qualified = flatDataCandidates capitalize reserved declarations
       names = [(identity, if duplicate name qualified || reserved name then "Data" ++ name ++ "_" ++ concatMap (\c -> showHex (ord c) "_") (C.idText identity) else name) | (identity,name) <- qualified]
-  mapM_ (identifier . snd) names
-  unless (length names == length (nub (map (map toLower . snd) names))) (Left "conflicting Go data identities")
-  pure (names ++ productConstructors declarations names)
+      -- A handle has no generated type: its native type is any (or its
+      -- bound native type), and its codec passes the native value through.
+      handles = [C.dataId d | d <- declarations, C.dataHandle d]
+      planned = [(identity, if identity `elem` handles then handleType else name) | (identity,name) <- names]
+      owned = [entry | entry@(identity,_) <- names, identity `notElem` handles]
+  mapM_ (identifier . snd) owned
+  unless (length owned == length (nub (map (map toLower . snd) owned))) (Left "conflicting Go data identities")
+  pure (planned ++ productConstructors declarations names)
+
+-- A handle's native type where it is not bound: never a generated name, which
+-- is capitalized.
+handleType :: String
+handleType = "any"
 
 goGeneratedNames :: [C.DataDeclaration] -> Either String [String]
 goGeneratedNames declarations = map snd <$> namesFor declarations
+
+-- Each declaration Go emits a type for, with the names of its type and
+-- constructors.
+goEmittedNames :: [C.DataDeclaration] -> Either String [(C.DataDeclaration,[String])]
+goEmittedNames declarations = do
+  names <- namesFor declarations
+  pure [(d,[name | identity <- C.dataId d : map C.constructorId (C.dataConstructors d), Just name <- [lookup identity names]])
+    | d <- declarations, native d]
 
 applied :: String -> [String] -> String
 applied name [] = name
@@ -258,6 +276,8 @@ codecUsing prefix nativeNames context names parameters codecs ty = case ty of
         else pure (head children)
       pure (invoke "lsCollectionCodec" (["schema", "bits", q short, typeRefs, item] ++ maybe [] pure context))
      Nothing -> case lookup (C.Id name) names of
+      Just dataName | dataName == handleType ->
+        pure (invoke ("lsHandleCodec[" ++ native ++ "]") (["schema","bits",q name] ++ maybe [] pure context))
       Just dataName -> pure (invoke (prefix ++ dataName ++ "Codec") (["schema","bits"] ++ children ++ maybe [] pure context))
       Nothing -> case name of
         "List" -> pure (invoke "lsListCodec" (["schema","bits"] ++ children ++ maybe [] pure context))
@@ -287,8 +307,12 @@ nativeNamesFor :: Names -> [ResolvedTypeBinding] -> Names
 nativeNamesFor names mappings = [(identity, maybe name (intercalate "." . referenceParts)
   (lookup identity references)) | (identity,name) <- names]
   where
-    references = [(C.dataId (resolvedDeclaration m), resolvedNativeType m) | m <- mappings] ++
+    -- A bound handle is held by pointer to its native type, as Go's
+    -- constructors return one: identity is pointer equality.
+    references = [(C.dataId (resolvedDeclaration m), pointer m (resolvedNativeType m)) | m <- mappings] ++
       [(C.constructorId (resolvedConstructor c), resolvedNativeConstructor c) | m <- mappings, c <- resolvedConstructors m]
+    pointer m (NativeRef parts) | C.dataHandle (resolvedDeclaration m), (first:rest) <- parts = NativeRef (('*':first):rest)
+    pointer _ ref = ref
 
 emitGoNativeCodecs :: D.Layout -> String -> [(String,String)] -> [C.DataDeclaration] -> [ResolvedTypeBinding] -> [C.Id] -> Either String String
 emitGoNativeCodecs layout packageName imports declarations mappings needed =
@@ -438,4 +462,5 @@ replaceKeys keys text = case text of
 
 -- Built-in collections and durations are Go's own types, not generated ones.
 native :: C.DataDeclaration -> Bool
-native d = collectionContainer (C.idText (C.dataId d)) == Nothing && not (isDurationType (C.idText (C.dataId d)))
+native d = collectionContainer (C.idText (C.dataId d)) == Nothing && not (isDurationType (C.idText (C.dataId d))) &&
+  not (C.dataHandle d)

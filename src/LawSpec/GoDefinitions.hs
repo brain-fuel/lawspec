@@ -1,5 +1,5 @@
 -- Go native entry points and checked bodies live in each unit's source package.
-module LawSpec.GoDefinitions (emitGoDefinitions, definitionCalls) where
+module LawSpec.GoDefinitions (emitGoDefinitions, emitGoDefinitionsWithCalls, definitionCalls) where
 
 import LawSpec.Core.Stages (stageFailures)
 import Control.Monad (forM)
@@ -19,8 +19,13 @@ definitionCalls units = [(declarationId (definitionDeclaration d), "lawSpecEvalu
   | (i,d) <- zip [0::Int ..] (concatMap unitDefinitions units)]
 
 emitGoDefinitions :: D.Layout -> Int -> [DataDeclaration] -> [Unit] -> Either String [Artifact]
-emitGoDefinitions _ _ _ units | null (concatMap unitDefinitions units) = pure []
-emitGoDefinitions layout bits declarations units = do
+emitGoDefinitions = emitGoDefinitionsWithCalls []
+
+-- With native bindings, an orchestration calls each bound adapter's bridge
+-- (bound), which takes every argument natively, Units too.
+emitGoDefinitionsWithCalls :: [(Id,String)] -> D.Layout -> Int -> [DataDeclaration] -> [Unit] -> Either String [Artifact]
+emitGoDefinitionsWithCalls _ _ _ _ units | null (concatMap unitDefinitions units) = pure []
+emitGoDefinitionsWithCalls bound layout bits declarations units = do
   contracts <- checkedDefinitionContracts bits declarations units
   bodies <- mapM (\(i, (owner, d)) -> (,) (owner, definitionOrchestrates d) <$> implementation contracts (i, d))
     (zip [0::Int ..] [(unitId u, d) | u <- units, d <- unitDefinitions u])
@@ -70,8 +75,9 @@ emitGoDefinitions layout bits declarations units = do
               nativeResult <- Native.goDataType declarations resultType
               -- A Unit argument is passed as its logical value, as the
               -- adapter stub declares it.
-              let call = E.call (capitalize (declarationName adapter))
-                    [if ty == Constructor "Unit" [] then value else E.call ("codec" ++ show i ++ ".toNative") [value]
+              let bridge = lookup (declarationId adapter) bound
+                  call = E.call (maybe (capitalize (declarationName adapter)) id bridge)
+                    [if ty == Constructor "Unit" [] && bridge == Nothing then value else E.call ("codec" ++ show i ++ ".toNative") [value]
                     | (i, (ty, value)) <- zip [0::Int ..] (zip parameterTypes values)]
                   -- Within its stage's timeout and hedge, when it has them.
                   result
@@ -79,10 +85,13 @@ emitGoDefinitions layout bits declarations units = do
                         [ line "symbols"
                         , line ("func() LawSpecTask[" ++ nativeResult ++ "] ") <> D.block 8 (line "return " <> call)
                         , line ("func(native " ++ nativeResult ++ ") LawSpecValue ") <> D.block 8 (line "return resultCodec.fromNative(native)") ]
+                    -- A Unit adapter returns nothing natively.
+                    | resultType == Constructor "Unit" [] =
+                        line "func() LawSpecValue " <> D.block 8 (call <> D.hardline <> line "return resultCodec.fromNative(LawSpecUnit{})") <> line "()"
                     | otherwise = E.call "resultCodec.fromNative" [call]
               pure (line "func() LawSpecValue " <> D.block 8 (D.joinWith D.hardline
                 ([line ("schema := " ++ schema), line ("bits := " ++ show bits), line "_ = bits"] ++
-                 [assign ("codec" ++ show i) (line codec) | (i, (ty, codec)) <- zip [0::Int ..] (zip parameterTypes codecs), ty /= Constructor "Unit" []] ++
+                 [assign ("codec" ++ show i) (line codec) | (i, (ty, codec)) <- zip [0::Int ..] (zip parameterTypes codecs), ty /= Constructor "Unit" [] || bridge /= Nothing] ++
                  [assign "resultCodec" (line resultCodec), line "return " <> result])) <> line "()")
             _ -> Left "unresolved Go total call"
       rendered <- E.renderExpression declarations bits schema local external (definitionBody d)
