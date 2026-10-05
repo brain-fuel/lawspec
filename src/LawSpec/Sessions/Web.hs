@@ -41,14 +41,30 @@ emit target _ bits declarations units = do
         C.Constructor name [] | Just other <- sessionTail name ->
           maybe (Left ("unknown protocol " ++ other)) Right (delegated other)
         _ -> D.render (D.Pretty 80) <$> webDataTypeDocWith declarations [] ty
-  -- A protocol whose steps have wire descriptors (and delegate no ends)
-  -- can also run between nodes: listen and dial.
+  -- A protocol can also run between nodes (listen and dial) when every
+  -- step's type has a wire descriptor; a step sending another protocol's
+  -- end carries the address of a relay, so that protocol must run between
+  -- nodes too.
   let wired (table, acc) s = case foldM step (table, []) (C.sessionSteps s) of
-        Right (table', ds) | not (any (delegatedStep . snd) (C.sessionSteps s)) -> (table', acc ++ [(C.sessionName s, ds)])
+        Right (table', ds) -> (table', acc ++ [(C.sessionName s, ds)])
         _ -> (table, acc)
-      step (t, ds) (sends, ty) = (\(d, t') -> (t', ds ++ [(sends, d, ty)])) <$> describe bits declarations t ty
-      (types, wires) = foldl wired ([], []) (map snd sessions)
-      reference ty = if requiresSchema declarations ty then either (const "null") (D.render (D.Pretty 1000)) (webTypeReferenceDoc ty) else "null"
+      step (t, ds) (sends, ty)
+        | delegatedStep ty = Right (t, ds ++ [(sends, "(end)", ty)])
+        | otherwise = (\(d, t') -> (t', ds ++ [(sends, d, ty)])) <$> describe bits declarations t ty
+      (types, described) = foldl wired ([], []) (map snd sessions)
+      protocolOf ty = case ty of
+        C.Constructor n [] | Just other <- sessionTail n ->
+          case [s | (_, s) <- sessions, sessionTail (C.idText (C.sessionId s)) == Just other || C.sessionName s == other] of
+            s : _ -> Just (C.sessionName s)
+            [] -> Just other
+        _ -> Nothing
+      settle ws = let kept = [w | w@(_, ss) <- ws, all (\(_, _, t) -> maybe True (`elem` map fst ws) (protocolOf t)) ss]
+                  in if length kept == length ws then ws else settle kept
+      wires = settle described
+      reference ty = case protocolOf ty of
+        Just q | Just startName <- delegated q ->
+          "new ls.EndPart(() => " ++ startName ++ ", () => " ++ q ++ "._wire())"
+        _ -> if requiresSchema declarations ty then either (const "null") (D.render (D.Pretty 1000)) (webTypeReferenceDoc ty) else "null"
   protocols <- forM sessions $ \(unit, session) -> protocol ts native (fmap (map (\(s, d, t) -> (s, d, reference t))) (lookup (C.sessionName session) wires)) unit session
   let body = concat protocols
       usesSchema = any (any (\(_, _, t) -> requiresSchema declarations t) . snd) wires
@@ -168,14 +184,24 @@ protocol ts native wire unit session = do
       , "    return ls.openSession(" ++ startOf first ++ ", " ++ startOf second ++ ") as [" ++ startOf first ++ ", " ++ startOf second ++ "];"
       , "  }" ] ++ concat
       [ [ ""
-        , "  /** The first end of a channel named name on node, which another node dials at <node address>/name. */"
+        , "  /** Each step's wire descriptor and conversion, from the first end. */"
+        , "  export function _wire(): [any[], any[]] {"
+        , "    return [" ++ steps False ws ++ ", " ++ refs ws ++ "];"
+        , "  }"
+        , ""
+        , "  /**"
+        , "   * The first end of a channel named name on node, which another node dials at"
+        , "   * <node address>/name. An end sent over it to another node is relayed by this node."
+        , "   */"
         , "  export function listen(node: ls.Node, name: string): " ++ startOf first ++ " {"
-        , "    return new " ++ startOf first ++ "(new ls.NativeChannel(node.listen(name, " ++ steps False ws ++ ", _TYPES), " ++ refs ws ++ ", _SCHEMA), 0);"
+        , "    const [steps, parts] = _wire();"
+        , "    return new " ++ startOf first ++ "(new ls.NativeChannel(node.listen(name, steps, _TYPES), parts, _SCHEMA), 0);"
         , "  }"
         , ""
         , "  /** The second end of the channel listening at address on another node. */"
         , "  export function dial(node: ls.Node, address: string): " ++ startOf second ++ " {"
-        , "    return new " ++ startOf second ++ "(new ls.NativeChannel(node.dial(address, " ++ steps True ws ++ ", _TYPES), " ++ refs ws ++ ", _SCHEMA), 1);"
+        , "    const [steps, parts] = _wire();"
+        , "    return new " ++ startOf second ++ "(new ls.NativeChannel(node.dial(address, steps.map(([s, d]: any) => [!s, d]), _TYPES), parts, _SCHEMA), 1);"
         , "  }" ]
       | Just ws <- [wire] ] ++
       [ "}" ]
@@ -187,10 +213,21 @@ protocol ts native wire unit session = do
       , "   */"
       , "  open: () => ls.openSession(" ++ jsClass first (startClass first) ++ ", " ++ jsClass second (startClass second) ++ "),"
       ] ++ concat
-      [ [ "  /** The first end of a channel named name on node, which another node dials at <node address>/name. */"
-        , "  listen: (node, name) => new " ++ jsClass first (startClass first) ++ "(new ls.NativeChannel(node.listen(name, " ++ steps False ws ++ ", _TYPES), " ++ refs ws ++ ", _SCHEMA), 0),"
+      [ [ "  /** Each step's wire descriptor and conversion, from the first end. */"
+        , "  _wire: () => [" ++ steps False ws ++ ", " ++ refs ws ++ "],"
+        , "  /**"
+        , "   * The first end of a channel named name on node, which another node dials at"
+        , "   * <node address>/name. An end sent over it to another node is relayed by this node."
+        , "   */"
+        , "  listen: (node, name) => {"
+        , "    const [steps, parts] = " ++ name ++ "._wire();"
+        , "    return new " ++ jsClass first (startClass first) ++ "(new ls.NativeChannel(node.listen(name, steps, _TYPES), parts, _SCHEMA), 0);"
+        , "  },"
         , "  /** The second end of the channel listening at address on another node. */"
-        , "  dial: (node, address) => new " ++ jsClass second (startClass second) ++ "(new ls.NativeChannel(node.dial(address, " ++ steps True ws ++ ", _TYPES), " ++ refs ws ++ ", _SCHEMA), 1)," ]
+        , "  dial: (node, address) => {"
+        , "    const [steps, parts] = " ++ name ++ "._wire();"
+        , "    return new " ++ jsClass second (startClass second) ++ "(new ls.NativeChannel(node.dial(address, steps.map(([s, d]) => [!s, d]), _TYPES), parts, _SCHEMA), 1);"
+        , "  }," ]
       | Just ws <- [wire] ] ++
       [ "  /** The first end: " ++ summaryOf first ++ ". */"
       , "  First: Object.freeze({" ++ intercalate ", " [c ++ ": " ++ jsClass first c | c <- endClasses first] ++ "}),"
