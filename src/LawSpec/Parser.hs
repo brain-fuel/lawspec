@@ -10,7 +10,9 @@ import LawSpec.Indexed
 import LawSpec.Railway (railwayUnit)
 import LawSpec.DomainModel
 import LawSpec.StatefulModel (ModelDeclaration(..), ModelCommand(..), elaborateModels)
-import LawSpec.Scenario (Protocol(..), Scenario(..), Statement(..), Step(..), Argument(..), checkScenarios)
+import LawSpec.Scenario (Protocol(..), Scenario(..), Statement(..), Step(..), Argument(..), checkScenarios, toProgram)
+import LawSpec.Core.Program (Program(..))
+import LawSpec.Core.Machine (Machine(..))
 import LawSpec.Scalar
 import Control.Monad.Combinators.Expr
 import Control.Monad (void, unless, when, forM_)
@@ -780,10 +782,12 @@ parseWith extra importedFamilies (Source p s) = case runReader (runParserT unitP
     -- Models read typestate from flow parameters, so they come first.
     modeled <- either (\(at, message) -> Left [Diagnostic "model" message (spanStart <$> at)]) Right
       (elaborateModels models domained)
-    either (\(at, message) -> Left [Diagnostic "scenario" message (spanStart <$> at)]) Right
-      (checkScenarios protocols scenarios modeled)
+    programs <- either (\(at, message) -> Left [Diagnostic "scenario" message (spanStart <$> at)]) Right
+      (checkScenarios protocols scenarios modeled >> mapM (toProgram modeled) scenarios)
+    let scenarioed = modeled { machines = [m { machineScenarios = [p | p <- programs, programMachine p == machineName m] }
+                                          | m <- machines modeled] }
     (families', flowed) <- either (\(at, message) -> Left [Diagnostic "flow" message at]) Right
-      (desugarFlows importedFamilies families modeled)
+      (desugarFlows importedFamilies families scenarioed)
     elaborated <- either (\message -> Left [Diagnostic "indexed" (p ++ ": " ++ message) Nothing]) Right
       (elaborateFamiliesWith importedFamilies families' flowed)
     pure ((elaborated, imports), families')

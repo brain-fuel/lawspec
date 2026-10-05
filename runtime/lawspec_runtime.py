@@ -1915,3 +1915,201 @@ def check_model_parallel(model, cases=50, repeats=10, max_shrinks=300, seed=None
         if failure is not None:
             case, failure = _shrink_parallel(model, case, failure, max(2, repeats // 2), max_shrinks, shake)
             raise AssertionError(f'model {model.name} is not linearizable: {_describe_parallel(model, case)}: {failure}')
+
+
+# Scenarios: processes that drive a shared model's commands at the same time
+# and talk over channels (see LawSpec.Core.Program for the spec). Each
+# channel has a queue per direction; a process holds an end of a channel as
+# (channel, side), the first branch of a par to use a channel taking side 0.
+# A channel end sent over a channel moves to the receiver. Every command's
+# call and return are stamped on one counter; the history must linearize
+# against the model, and every expect must hold, on each of many schedules.
+
+class _Channel:
+    def __init__(self):
+        import queue
+        self.queues = (queue.Queue(), queue.Queue())
+
+
+class _End:
+    """A channel end in transit or held by a process."""
+
+    def __init__(self, channel, side):
+        self.channel, self.side = channel, side
+
+
+def _acts_channels(acts):
+    """The names an act list sends, receives or sends away, with nested pars."""
+    names = []
+    for act in acts:
+        if act[0] == 'send':
+            names.append(str(act[1]))
+            if act[2][0] == 'var':
+                names.append(str(act[2][1]))
+        elif act[0] == 'receive':
+            names.append(str(act[1]))
+        elif act[0] == 'par':
+            for branch in act[1:]:
+                names += _acts_channels(branch[1:])
+    return names
+
+
+def _constant(form):
+    kind = form[0]
+    if kind == 'int':
+        return form[1]
+    if kind == 'text':
+        return str(form[1])
+    if kind == 'bool':
+        return form[1] == 'true'
+    return DataValue(str(form[1]), ())
+
+
+def _run_scenario(model, spec, shake):
+    import threading
+    forms = read_descriptor(spec)
+    title = str(forms[0][1])
+    names = [str(c) for c in next(f for f in forms if f[0] == 'channels')[1:]]
+    body = next(f for f in forms if f[0] == 'process')[1:]
+    channels = {name: _Channel() for name in names}
+    commands = {c.name: c for c in model.commands}
+    symbols = {}
+    start_args = [model.values.minimal(d) for d in model.start_arguments]
+    state = model.start_run(symbols, *start_args)
+    expected = model.start_model(symbols, *start_args)
+    lock = threading.Lock()
+    clock = [0]
+    history = []
+    failures = []
+
+    def tick():
+        with lock:
+            clock[0] += 1
+            return clock[0]
+
+    def process(acts, env, ends, random):
+        own = {}
+        for act in acts:
+            if failures:
+                return
+            kind = act[0]
+            if kind == 'call':
+                command = commands[str(act[1])]
+                args = [env[str(o[1])] if o[0] == 'var' else _constant(o) for o in act[3:]]
+                full = list(args)
+                full.insert(command.state, state)
+                _perturb(random)
+                called = tick()
+                try:
+                    result = command.run(own, *full)
+                except Exception as error:
+                    failures.append(f'{command.name} raised {type(error).__name__}: {error}')
+                    return
+                with lock:
+                    history.append((command, args, result, called, tick()))
+                if act[2] != '_':
+                    env[str(act[2])] = result
+            elif kind == 'send':
+                channel, side = ends[str(act[1])]
+                operand = act[2]
+                if operand[0] == 'var' and str(operand[1]) in ends:
+                    value = _End(*ends.pop(str(operand[1])))
+                else:
+                    value = env[str(operand[1])] if operand[0] == 'var' else _constant(operand)
+                _perturb(random)
+                channel.queues[side].put(value)
+            elif kind == 'receive':
+                channel, side = ends[str(act[1])]
+                try:
+                    value = channel.queues[1 - side].get(timeout=5)
+                except Exception:
+                    failures.append(f'a receive on {act[1]} waited too long: the processes are blocked')
+                    return
+                if isinstance(value, _End):
+                    ends[str(act[2])] = (value.channel, value.side)
+                else:
+                    env[str(act[2])] = value
+            elif kind == 'par':
+                branches = [b[1:] for b in act[1:]]
+                owned = {}
+                for i, branch in enumerate(branches):
+                    for name in _acts_channels(branch):
+                        if name not in owned:
+                            owned[name] = []
+                        if i not in owned[name]:
+                            owned[name].append(i)
+                threads = []
+                for i, branch in enumerate(branches):
+                    mine = {}
+                    for name, users in owned.items():
+                        if i in users:
+                            if name in ends:
+                                mine[name] = ends[name]
+                            elif name in channels:
+                                mine[name] = (channels[name], users.index(i))
+                    threads.append(threading.Thread(target=process, args=(
+                        branch, dict(env), mine, SplitMix64(shake ^ ((len(threads) + 1) * 0x9E3779B97F4A7C15)))))
+                for t in threads:
+                    t.start()
+                for t in threads:
+                    t.join()
+            elif kind == 'expect':
+                actual, wanted = env.get(str(act[1])), _constant(act[2])
+                if actual is None or compare_values(actual, wanted) != 0:
+                    failures.append(f'expect {act[1]} = {render(wanted)} failed: {act[1]} is {render(actual)}')
+                    return
+
+    process(body, {}, {}, SplitMix64(shake))
+    if failures:
+        return title, failures[0]
+    final = model.abstract(symbols, state) if model.abstract is not None else None
+    if not _linearizes_history(model, symbols, history, expected, final, state):
+        observed = '; '.join(f'{c.name}({", ".join(render(a) for a in args)}) returned {render(r)}'
+                             for c, args, r, _, _ in sorted(history, key=lambda h: h[3]))
+        return title, f'no order of the calls agrees with the model ({observed})'
+    return title, None
+
+
+def _linearizes_history(model, symbols, history, expected, final, state):
+    """A Wing-Gong search over any real-time order: next, a call that no
+    pending call returned before; memoized on the calls done and the state."""
+    seen = set()
+    count = len(history)
+
+    def visit(done, model_state):
+        key = (done, render(model_state))
+        if key in seen:
+            return False
+        seen.add(key)
+        if done == (1 << count) - 1:
+            if final is not None and compare_values(final, model_state) != 0:
+                return False
+            return all(invariant(symbols, model_state if kind == 'model' else state)
+                       for kind, invariant in model.invariants)
+        for i, (command, args, result, called, _) in enumerate(history):
+            if done & (1 << i):
+                continue
+            if any(not done & (1 << j) and history[j][4] < called for j in range(count) if j != i):
+                continue
+            try:
+                after, wanted = _step_model(command, symbols, args, model_state)
+            except _Invalid:
+                continue
+            if not command.unit and compare_values(result, wanted) != 0:
+                continue
+            if visit(done | (1 << i), after):
+                return True
+        return False
+    return visit(0, expected)
+
+
+def check_scenario(model, spec, runs=30, seed=None):
+    """Runs a scenario on many schedules; a failure raises AssertionError."""
+    import os
+    if seed is None:
+        seed = int(os.environ.get('LAWSPEC_SEED', '0'))
+    random = SplitMix64(seed ^ 0x2545F4914F6CDD1D)
+    for _ in range(runs):
+        title, failure = _run_scenario(model, spec, random.next())
+        if failure is not None:
+            raise AssertionError(f'scenario {title} fails: {failure}')

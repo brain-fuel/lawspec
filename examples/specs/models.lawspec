@@ -68,3 +68,54 @@ model counter :: shared Counter by Int64 is
   decrement ~ modelDecrement when positive
   read ~ modelRead
 end
+
+-- A protocol lists what one end of a channel sends and receives; the other
+-- end does the reverse. Scenarios run a shared model's commands from
+-- processes that run at the same time and talk over channels; LawSpec checks
+-- that they cannot deadlock or race, then runs them on many schedules, and
+-- each run must agree with the model.
+protocol Report is
+  send Int64
+end
+
+protocol Request is
+  send Report
+end
+
+scenario `a count is passed on` in counter is
+  channel report :: Report
+  par
+    n <- increment
+    send report n
+  with
+    receive report m
+    expect m = 1
+  end
+end
+
+-- The asker hands its end of the answer channel to a worker, which replies
+-- to the listener directly.
+scenario `a reply is delegated` in counter is
+  channel ask :: Request
+  channel answer :: Report
+  par
+    send ask answer
+  with
+    receive ask reply
+    n <- increment
+    send reply n
+  with
+    receive answer m
+    expect m = 1
+  end
+end
+
+scenario `two counts at once` in counter is
+  par
+    a <- increment
+  with
+    b <- increment
+  end
+  total <- read
+  expect total = 2
+end

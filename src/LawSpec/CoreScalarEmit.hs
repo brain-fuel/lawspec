@@ -13,6 +13,7 @@ import qualified LawSpec.PortableGenerator as Generator
 import qualified LawSpec.PortableTestHelpers as Helpers
 import LawSpec.Scalar
 import LawSpec.MachineSpec (machineSpec)
+import LawSpec.Core.Program (Program(..), programSpec)
 import qualified LawSpec.Core.Machine as C
 import Data.Aeson (encode, toJSON)
 import qualified Data.Text.Lazy as T
@@ -311,7 +312,14 @@ scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions 
           parallel = statement (if py then runtime "check_model_parallel" [model] else text "await " <> runtime "checkModelParallelAsync" [model])
           parallelBlock = if py then function ("test_model_" ++ C.machineName machine ++ "_parallel") [] parallel
             else text "test(" <> message (label ++ " in parallel") <> text ", async () => " <> Doc.block 2 parallel <> text ");"
-      pure (renderDocument block ++ (if C.machineShared machine then renderDocument parallelBlock else ""))
+          -- Each scenario of the model runs on many schedules.
+          scenario (i, program) =
+            let run = statement (if py then runtime "check_scenario" [model, quoted (programSpec program)]
+                  else text "await " <> runtime "checkScenarioAsync" [model, quoted (programSpec program)])
+            in if py then function ("test_model_" ++ C.machineName machine ++ "_scenario" ++ show (i :: Int)) [] run
+               else text "test(" <> message (unitName u ++ "::scenario " ++ programTitle program) <> text ", async () => " <> Doc.block 2 run <> text ");"
+      pure (renderDocument block ++ (if C.machineShared machine then renderDocument parallelBlock else "") ++
+        concatMap (renderDocument . scenario) (zip [0 ..] (C.machineScenarios machine)))
     -- An async adapter's task is awaited where it is called.
     awaited name call
       | name `notElem` asyncFunctions u = call

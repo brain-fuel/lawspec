@@ -10,6 +10,7 @@ module LawSpec.Core.Machine
   ) where
 
 import GHC.Generics (Generic)
+import LawSpec.Core.Program (Program)
 
 -- A linear machine threads a flow-typed state through its commands and runs
 -- sequentially; a shared machine's commands take one handle, whose type
@@ -31,6 +32,8 @@ data Machine name = Machine
   -- Whether each command touches one key of a set or map, so a parallel
   -- history can be checked key by key.
   , machinePerKey :: Bool
+  -- The scenarios that run this model.
+  , machineScenarios :: [Program]
   } deriving (Eq, Show, Generic, Functor, Foldable, Traversable)
 
 -- The command that makes the first state, and the definition giving the

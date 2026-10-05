@@ -193,6 +193,7 @@ library
       LawSpec.Core.Payload
       LawSpec.Core.PayloadPlan
       LawSpec.Core.Policy
+      LawSpec.Core.Program
       LawSpec.Core.RefinementProof
       LawSpec.Core.Schema
       LawSpec.Core.Semantics

@@ -15,7 +15,7 @@
 -- receiver, so delegation keeps the processes a tree.
 module LawSpec.Scenario
   ( Step(..), Protocol(..), Statement(..), Scenario(..), Argument(..)
-  , checkScenarios, dual, channelsIn
+  , checkScenarios, dual, channelsIn, toProgram
   ) where
 
 import Control.Monad (foldM, forM, forM_, unless, when)
@@ -23,6 +23,7 @@ import Data.List (nub)
 import qualified Data.Map.Strict as M
 import LawSpec.Common (Span(..))
 import LawSpec.Core.Machine (Machine(..), Command(..))
+import qualified LawSpec.Core.Program as P
 import LawSpec.Model
 
 data Step = Send Type | Receive Type
@@ -225,3 +226,32 @@ channelsIn = nub . concatMap go
     go (ReceiveFrom c _ _) = [c]
     go (Par branches _) = concatMap channelsIn branches
     go _ = []
+
+-- A checked scenario as its runtime program, with constants resolved:
+-- constructor names become tags qualified by their data type.
+toProgram :: Unit -> Scenario -> Either Failure P.Program
+toProgram u s = P.Program (scenarioName s) (scenarioModel s) [c | (c, _, _) <- scenarioChannels s] <$> mapM act (scenarioBody s)
+  where
+    act st = case st of
+      Bind x command args at -> P.Invoke command (Just x) <$> mapM (operand at) args
+      Call command args at -> P.Invoke command Nothing <$> mapM (operand at) args
+      SendTo c v at -> P.Deliver c <$> operand at v
+      ReceiveFrom c x _ -> pure (P.Accept c x)
+      Par branches _ -> P.Fork <$> mapM (mapM act) branches
+      Expect x e at -> P.Assert x <$> constant at e
+    operand _ (Held x) = pure (P.Variable x)
+    operand _ (Given x) = pure (P.Variable x)
+    operand at (Constant e) = P.Literal <$> constant at e
+    constant at e = case e of
+      Located _ inner -> constant at inner
+      Number n -> pure (P.IntConst n)
+      Unary "-" inner | Number n <- strip inner -> pure (P.IntConst (negate n))
+      StringLit t -> pure (P.TextConst t)
+      BoolLit b -> pure (P.BoolConst b)
+      ConstructLit n [] -> case [unitName u ++ "::type::" ++ dataTypeName d ++ "::" ++ n
+                                | d <- dataTypes u, c <- dataTypeConstructors d, dataConstructorName c == n] of
+        [tag] -> pure (P.TagConst tag)
+        _ -> Left (Just at, "scenario " ++ show (scenarioName s) ++ ": " ++ n ++ " is not a constructor of this unit")
+      _ -> Left (Just at, "scenario " ++ show (scenarioName s) ++ ": a scenario's constants are numbers, text, true, false or constructors without fields")
+    strip (Located _ inner) = strip inner
+    strip other = other

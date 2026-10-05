@@ -13,6 +13,7 @@ import qualified LawSpec.Core as C
 import LawSpec.Core.Value (Value)
 import LawSpec.Core.Policy (StagePolicy, Retry, Strategy, Jitter, Limit, Breaker, Bulkhead, Hedge)
 import LawSpec.Core.Machine (Machine, MachineStart, Command, Invariant, Need, Shift)
+import LawSpec.Core.Program (Program, Act, Operand, Constant)
 import LawSpec.IndexTerm
 import LawSpec.Scalar (Scalar)
 
@@ -45,6 +46,10 @@ instance Binary name => Binary (Machine name)
 instance Binary name => Binary (MachineStart name)
 instance Binary name => Binary (Command name)
 instance Binary name => Binary (Invariant name)
+instance Binary Program
+instance Binary Act
+instance Binary Operand
+instance Binary Constant
 instance Binary Need
 instance Binary Shift
 instance Binary C.Evidence

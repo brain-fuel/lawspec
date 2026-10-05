@@ -162,7 +162,7 @@ elaborateModel u m = do
   let abstractRun = case modelAbstract m of
         Just f | null (definitionOf f) -> Just (bridge "Abstract")
         other -> other
-  pure (Machine (modelName m) (modelShared m) family (length indexVariables) start commands (modelAbstract m) abstractRun invariants False, startDefinition)
+  pure (Machine (modelName m) (modelShared m) family (length indexVariables) start commands (modelAbstract m) abstractRun invariants False [], startDefinition)
   where
     -- A generated bridge's name: the model's, then its role.
     bridge role = modelName m ++ role
