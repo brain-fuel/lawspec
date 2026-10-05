@@ -1,0 +1,7 @@
+@@ src/example/distribution.py
+<<<<<<<
+        tally.add(value0)
+        return tally.add(value0)
+=======
+        return tally.add(value0)
+>>>>>>>

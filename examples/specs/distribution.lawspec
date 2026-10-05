@@ -1,0 +1,87 @@
+unit example.distribution
+
+-- Distribution. Nodes reach each other's actors, channels and checked
+-- definitions over a transport: in memory (with faults, for testing), TCP or
+-- HTTP. Values cross in the canonical wire encoding, the same bytes on every
+-- target, so a node on one target can talk to a node on another.
+
+-- The wire encoding's conformance vectors: values generated from a type
+-- descriptor and a seed, then encoded, in hexadecimal.
+encoded :: Text -> UInt64 -> Int32 -> Int32 -> List Text
+roundTrips :: Text -> UInt64 -> Int32 -> Int32 -> Bool
+
+law `integers on the wire` is
+  definition is
+    `for all` (seed :: UInt64) . prelude.length (encoded "(int Integer _ _)" seed 4 4) = 4
+  end
+  example `seed 7` is
+    seed = 7
+    expect encoded "(int Integer _ _)" seed 4 4 = ["9ddc4f", "eefb17", "8fc703", "8ee709"]
+    expect encoded "(int Int8 -128 127)" 42 4 5 = ["f901", "28", "00", "48", "5c"]
+  end
+end
+
+law `text, lists, Maybe and Either on the wire` is
+  definition is
+    `for all` (seed :: UInt64) . roundTrips "(list (maybe (either (int UInt8 0 255) (text))))" seed 4 8 = true
+  end
+  example `vectors` is
+    seed = 3
+    expect encoded "(text)" seed 4 3 = ["037b5b2c", "0134", "024d54"]
+    expect encoded "(list (maybe (bool)))" 5 3 3 = ["02000101", "0100", "010100"]
+    expect encoded "(either (int UInt8 0 255) (text))" 9 3 4 = ["00ec02", "0000", "00d201", "0100"]
+  end
+end
+
+law `data types on the wire` is
+  definition is
+    `for all` (seed :: UInt64) . roundTrips "(data Shape (ctor Shape::Circle (int Int32 0 100)) (ctor Shape::Box (int Int32 0 100) (int Int32 0 100)) (ctor Shape::Group (list (ref Shape))))" seed 4 8 = true
+  end
+  example `vectors` is
+    seed = 11
+    expect encoded "(data Shape (ctor Shape::Circle (int Int32 0 100)) (ctor Shape::Box (int Int32 0 100) (int Int32 0 100)) (ctor Shape::Group (list (ref Shape))))" seed 3 3 = ["0030", "020201b80100015ac801", "014808"]
+  end
+end
+
+-- A checked definition that another node evaluates by its content hash.
+definition shifted (x :: Int32) :: Int64 is x + 1000 end
+
+remoteShifted :: Int32 -> Int64
+
+law `a definition evaluated on another node` is
+  definition is `for all` (x :: Int32) . remoteShifted x = shifted x end
+end
+
+-- An actor served on one node and called from another.
+type Tally is Tally count :: Int64 end
+
+openTally :: Unit -> Tally
+add :: Tally -> UInt8 -> Pair Int64 Tally
+
+definition modelAdd (n :: UInt8) (total :: Int64 where total >= 0 && total <= 1000000) :: Pair Int64 Int64 is
+  Pair (total + n) (total + n)
+end
+
+actor tally :: Tally by Int64 is
+  start openTally by 0
+  on add by modelAdd
+end
+
+remoteAdds :: UInt8 -> Int64
+
+law `two calls from another node` is
+  definition is `for all` (x :: UInt8) . remoteAdds x = 2 * x end
+end
+
+-- A protocol between two nodes: the first end sends a number and receives
+-- its double.
+protocol Doubling is
+  send Int32
+  receive Int64
+end
+
+remoteDoubling :: Int32 -> Int64
+
+law `a conversation between nodes` is
+  definition is `for all` (x :: Int32) . remoteDoubling x = 2 * x end
+end

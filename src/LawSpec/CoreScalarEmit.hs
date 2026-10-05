@@ -247,7 +247,7 @@ scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions 
     -- LAWSPEC_SEED fixes each property's random seed, so a run can be
     -- repeated exactly (lawspec test records the seed of every passing run).
     seedHelper = if py
-      then "\n\n\ndef _lawspec_seeded(test):\n    value = os.environ.get(\"LAWSPEC_SEED\")\n    return test if value is None else _lawspec_seed(int(value))(test)\n" ++
+      then "\n\n\n# Adapters may be slow (networks, timers): no per-example deadline.\nsettings.register_profile(\"lawspec\", deadline=None)\nsettings.load_profile(\"lawspec\")\n\n\ndef _lawspec_seeded(test):\n    value = os.environ.get(\"LAWSPEC_SEED\")\n    return test if value is None else _lawspec_seed(int(value))(test)\n" ++
         "\n\n# Workflows wait on a virtual clock under test.\nls.use_virtual_clock()\n"
       else "\nconst _lawspecSeed = globalThis.process?.env?.LAWSPEC_SEED;\nconst _lawspecSeeded = (options) => _lawspecSeed === undefined\n  ? options\n  : {...options, seed: Number(_lawspecSeed) | 0};\n" ++
         "\n// Workflows wait on a virtual clock under test.\nls.useVirtualClock();\n"

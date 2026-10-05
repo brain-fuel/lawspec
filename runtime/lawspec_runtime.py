@@ -3487,7 +3487,7 @@ class HttpTransport(Transport):
 
     def start(self, deliver):
         self._deliver = deliver
-        threading.Thread(target=self._server.serve_forever, daemon=True).start()
+        threading.Thread(target=self._server.serve_forever, kwargs={'poll_interval': 0.05}, daemon=True).start()
 
     def send(self, node, frame):
         import urllib.request
