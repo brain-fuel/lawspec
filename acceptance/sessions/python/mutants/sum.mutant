@@ -1,0 +1,6 @@
+@@ src/example/sessions.py
+<<<<<<<
+    server.send(a + b)
+=======
+    server.send(a + b + 1)
+>>>>>>>
