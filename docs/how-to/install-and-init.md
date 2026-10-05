@@ -14,7 +14,7 @@ Install [LawSpec from npm](https://www.npmjs.com/package/lawspec) as a
 development dependency, and run the local CLI with `npx`:
 
 ```sh
-npm install --save-dev lawspec@0.19.0
+npm install --save-dev lawspec@0.19.1
 npx lawspec --version
 ```
 
@@ -26,8 +26,8 @@ LawSpec can create `package.json` and its test script:
 ```sh
 mkdir lawspec-example
 cd lawspec-example
-npm exec --package=lawspec@0.19.0 -- lawspec init --target javascript
-npm install --save-dev lawspec@0.19.0
+npm exec --package=lawspec@0.19.1 -- lawspec init --target javascript
+npm install --save-dev lawspec@0.19.1
 npx lawspec check
 npx lawspec explain 'example.atoi_codec::itoa and then atoi yields a'
 npx lawspec doctor
@@ -71,7 +71,7 @@ shrinking and failure reporting.
 Install LawSpec first, then run `init` in the project:
 
 ```sh
-npm install --save-dev lawspec@0.19.0
+npm install --save-dev lawspec@0.19.1
 npx lawspec init --target javascript
 ```
 

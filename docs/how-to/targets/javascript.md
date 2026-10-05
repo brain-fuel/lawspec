@@ -9,8 +9,8 @@
 ## Create the project
 
 ```sh
-npm exec --package=lawspec@0.19.0 -- lawspec init --target javascript
-npm install --save-dev lawspec@0.19.0
+npm exec --package=lawspec@0.19.1 -- lawspec init --target javascript
+npm install --save-dev lawspec@0.19.1
 npx lawspec doctor
 npx lawspec generate
 npm test

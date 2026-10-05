@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.19.1
+
 - A handle's Kotlin type binding can give the native class's type
   `arguments` (`["kotlin.Int"]`), so generated Kotlin names the handle's type
   in full instead of `kotlin.Any`.
