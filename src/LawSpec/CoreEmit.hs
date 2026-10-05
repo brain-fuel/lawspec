@@ -72,15 +72,8 @@ emitPlanWithFormat :: Bool -> String -> Plan -> Either [Diagnostic] [Artifact]
 emitPlanWithFormat minify target original = do
   let plan = wirePlan (escapePlan target (witnessPlan original))
   emittedFiles <- emitPlanFormatted minify target plan
-  -- Typed channel ends for the unit's protocols, for implementation code.
-  sessions <- sessionArtifacts minify target plan
-  -- Typed actors, for implementation code.
-  actors <- actorArtifacts minify target plan
-  -- Typed mailboxes.
-  mailboxes <- mailboxArtifacts target plan
-  -- Definitions other nodes can evaluate, by content hash.
-  let remote = remoteArtifacts target (remoteCalls target plan) plan
-      files = emittedFiles ++ sessions ++ actors ++ mailboxes ++ remote
+  extras <- companionArtifacts minify target plan
+  let files = emittedFiles ++ extras
   canonical <- if minify then emitPlanFormatted False target plan else pure files
   let references = [(artifactPath a, artifactContent a) | a <- canonical, ownership a == "user"]
   mapM (\artifact -> if ownership artifact /= "user" then pure artifact else
@@ -88,6 +81,16 @@ emitPlanWithFormat minify target original = do
       Nothing -> Left [Diagnostic "target" "formatted adapter has no canonical reference" Nothing]
       Just reference -> pure (AdapterArtifact (artifactPath artifact) (artifactContent artifact)
         (ownership artifact) (artifactPlacement artifact) reference)) files
+
+-- Code beside the units: typed channel ends for the units' protocols, typed
+-- actors and mailboxes, and the definitions other nodes can evaluate by
+-- content hash.
+companionArtifacts :: Bool -> String -> Plan -> Either [Diagnostic] [Artifact]
+companionArtifacts minify target plan = do
+  sessions <- sessionArtifacts minify target plan
+  actors <- actorArtifacts minify target plan
+  mailboxes <- mailboxArtifacts target plan
+  pure (sessions ++ actors ++ mailboxes ++ remoteArtifacts target (remoteCalls target plan) plan)
 
 -- Each scenario's channel types, for its runs over a network. A scenario
 -- whose types have no wire descriptor yet runs only in memory.
@@ -352,7 +355,9 @@ emitPlanWithNativeOptions minify target sourceDir testDir unescaped unwitnessed 
   unless (target == "go" || null (NB.bindingGoImports bindings))
     (Left [Diagnostic "native-binding" "goImports is only valid for Go bindings" Nothing])
   emitted <- if not (NB.hasBindings bindings) then emitPlanWithFormat minify target plan
-    else if target == "rust" then emitRustWithBindings minify bindings plan
+    -- Rust emits bound units itself, so it adds the companion code here.
+    else if target == "rust" then (++) <$> emitRustWithBindings minify bindings plan
+      <*> companionArtifacts minify target (wirePlan (escapePlan target (witnessPlan plan)))
     else if target == "python" then do
       ordinary <- emitPlanWithFormat minify target plan
       either (Left . pure . (\m -> Diagnostic "native-binding" m Nothing)) Right

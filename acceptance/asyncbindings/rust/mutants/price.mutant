@@ -1,0 +1,8 @@
+@@ src/warehouse_native.rs
+<<<<<<<
+    std::future::ready(()).await;
+    price(&sku)
+=======
+    std::future::ready(()).await;
+    price(&sku) + 1
+>>>>>>>

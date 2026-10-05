@@ -199,8 +199,11 @@ emitCall declarations plan declaration native = do
   types <- mapM (nativeTypeName env [] . snd) passed
   let locals = receiving ++ [D.text ("let _native_arg" ++ show i ++ ": " ++ ty ++ " = ") <> value <> D.text ";" |
         ((i,_),(ty,value)) <- zip passed (zip types values)]
-      invoked = target <> D.delimitTrailing 4 "(" ")" [D.text ("_native_arg" ++ show i) | (i,_) <- passed]
       static = case native of StaticCall _ -> True; _ -> False
+      -- An async adapter awaits its native future; a constructor is called at once.
+      awaited = C.declarationAsync declaration && case native of ConstructorCall _ -> False; _ -> True
+      invoked = target <> D.delimitTrailing 4 "(" ")" [D.text ("_native_arg" ++ show i) | (i,_) <- passed] <>
+        (if awaited then D.text ".await" else mempty)
   case () of
     -- A method or constructor's Unit result discards the native return.
     _ | not static && isUnit result ->

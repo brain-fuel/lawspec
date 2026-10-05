@@ -1,0 +1,13 @@
+{
+  "rustCrate": "lawspec_example",
+  "types": [
+    {"type": "example.warehouse::type::Shelf", "native": ["crate", "warehouse_native", "Shelf"]}
+  ],
+  "functions": [
+    {"declaration": "example.warehouse::priceOf", "native": ["crate", "warehouse_native", "price_of"]},
+    {"declaration": "example.warehouse::quoteOf", "native": ["crate", "warehouse_native", "quote_of"]},
+    {"declaration": "example.warehouse::newShelf", "constructor": ["crate", "warehouse_native", "Shelf", "new"]},
+    {"declaration": "example.warehouse::restock", "method": "restock"},
+    {"declaration": "example.warehouse::count", "method": "count"}
+  ]
+}

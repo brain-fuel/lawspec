@@ -1,0 +1,6 @@
+@@ src/warehouse_native.rs
+<<<<<<<
+        *self.total.lock().unwrap() += amount as i64;
+=======
+        *self.total.lock().unwrap() += if amount < 50 { amount as i64 } else { amount as i64 - 1 };
+>>>>>>>
