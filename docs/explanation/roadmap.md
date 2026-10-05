@@ -101,12 +101,48 @@ documentation pages in the Folio; Keep a Changelog; and less duplication.
 Every canonical comment, decision, reference and page is reviewed and
 signed off.
 
-### 0.21: more target languages
+### 0.21: test harness
 
-Erlang, Elixir, Gleam, C# and F# join the eight existing targets, with
-generated tests, runtimes, native bindings and the same acceptance suites.
+What real test suites need, on every target and in each target's own test
+framework:
 
-### 0.22: stub simulation
+- fixtures with setup and teardown per test, group, unit or run, and
+  temporary directories, files, ports and environment variables;
+- groups, tags, skip, pending and expected failures, with selection by tag;
+- example tables;
+- matchers with structured diffs: collections, approximate numbers,
+  patterns, text and snapshots;
+- assertions on errors and their messages, on messages received within a
+  time, and on what happens eventually or never;
+- adapter doubles: fakes, stubs and spies, with checks on how they were
+  called;
+- a virtual clock and seeded randomness for adapters, and a scheduler
+  that replays by seed;
+- generator weighting, labels, coverage requirements, targeted search and
+  a database of failures;
+- timeouts, repeats, retries for flaky tests, random order and
+  parallelism per unit;
+- JUnit XML reports and coverage, doctests and benchmarks.
+
+### 0.22: BEAM targets
+
+Erlang, Elixir and Gleam join the targets, with actors on real processes
+and OTP supervisors.
+
+### 0.23: JVM and .NET targets
+
+Scala, Groovy, Clojure, C# and F#.
+
+### 0.24: Prolog, configuration and documents
+
+Prolog joins as a program target. HCL and YAML become configuration
+targets: types become Terraform variables with validation and YAML
+schemas, and values become checked configuration. ANTLR (grammars for the
+text form of data), Make (build and test pipelines) and Folio
+(documentation pages) complete the list, so every language canon reads is
+a target.
+
+### 0.25: stub simulation
 
 Simulated external dependencies, so a system can be modelled and tested
 against what it depends on:
@@ -116,4 +152,5 @@ against what it depends on:
 - then: wide-column stores (Cassandra, ScyllaDB), document stores (MongoDB,
   DynamoDB), search (Elasticsearch, OpenSearch), gRPC, SMTP, and identity
   (OAuth, OIDC);
-- and the network around them: virtual networks, subnets and load balancers.
+- and the network around them: virtual networks, subnets and load balancers,
+  emitted as Terraform and Pulumi YAML.
