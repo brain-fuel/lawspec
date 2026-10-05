@@ -263,12 +263,20 @@ emitBindings minify plan testing files = do
           encodeResult = D.group (D.text "nativeResult `P.seq`" <> D.nest 2 (D.softline <>
             if discards then E.apply "Codec.encode" [resultNative,D.text "()"]
             else E.apply "Codec.encode" [resultNative,D.text "nativeResult"]))
-          body = E.apply "Codec.context" [E.quoted ("native binding " ++ C.idText (C.declarationId declaration))] <>
-            D.text " P.$ do" <> D.nest 2 (D.hardline <> D.joinWith D.hardline
-              (argumentChecks ++ [resultBinding,bind "logicalResult" encodeResult,
-                E.apply "Codec.decode" [resultCanonical,D.text "logicalResult"]]))
+          context = E.apply "Codec.context" [E.quoted ("native binding " ++ C.idText (C.declarationId declaration))]
+          convertResult = [bind "logicalResult" encodeResult, E.apply "Codec.decode" [resultCanonical,D.text "logicalResult"]]
+          -- An async adapter's bridge is the native IO action, its result
+          -- converted when it has run.
+          converted = context <> D.text " P.$ do" <> D.nest 2 (D.hardline <> D.joinWith D.hardline convertResult)
+          convert = D.text "\\nativeResult -> " <> E.apply "P.either P.error P.id" [E.parens converted]
+          asyncResult = E.apply "P.pure" [E.parens (E.apply "P.fmap" [E.parens convert, E.parens call'])]
+          body = context <> D.text " P.$ do" <> D.nest 2 (D.hardline <> D.joinWith D.hardline
+              (argumentChecks ++ if async then [asyncResult] else resultBinding : convertResult))
+          async = C.declarationAsync declaration
+          signature = map D.text (init types) ++ [D.text ((if async then "P.IO " else "") ++ wrap (last types))]
+          wrap t = if async && ' ' `elem` t then "(" ++ t ++ ")" else t
       pure (D.group (D.text (C.declarationName declaration ++ " ::") <> D.nest 2 (D.softline <>
-          D.joinWith (D.text " ->" <> D.softline) (D.text "LS.SymbolContext" : map D.text types))) <>
+          D.joinWith (D.text " ->" <> D.softline) (D.text "LS.SymbolContext" : signature))) <>
         D.hardline <> D.text (unwords (C.declarationName declaration : "symbols" : values) ++ " =") <>
         D.nest 2 (D.hardline <> E.apply "P.either P.error P.id" [E.parens body]))
 

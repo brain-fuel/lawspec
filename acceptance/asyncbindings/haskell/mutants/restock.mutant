@@ -1,0 +1,6 @@
+@@ src/Warehouse/Native.hs
+<<<<<<<
+restock (Shelf total) amount = modifyMVar_ total (pure . (+ fromIntegral amount))
+=======
+restock (Shelf total) amount = modifyMVar_ total (pure . (+ fromIntegral (if amount < 50 then amount else amount - 1)))
+>>>>>>>

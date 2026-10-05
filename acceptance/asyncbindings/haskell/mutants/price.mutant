@@ -1,0 +1,6 @@
+@@ src/Warehouse/Native.hs
+<<<<<<<
+priceOf sku = pure (price sku)
+=======
+priceOf sku = pure (price sku + 1)
+>>>>>>>
