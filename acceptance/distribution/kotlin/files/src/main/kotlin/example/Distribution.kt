@@ -9,8 +9,10 @@ import lawspec.data.Tally
 import lawspec.remote.LawSpecRemote
 import lawspec.runtime.LawSpecRuntime
 import lawspec.mailboxes.LedgerMailbox
+import lawspec.sessions.Answering
 import lawspec.sessions.Doubling
 import lawspec.sessions.Handoff
+import lawspec.sessions.Passing
 
 object Distribution {
     fun encoded(value0: String, value1: BigInteger, value2: Int, value3: Int): List<String> =
@@ -112,6 +114,33 @@ object Distribution {
         } finally {
             there.close()
             here.close()
+        }
+    }
+
+    suspend fun remoteHandoffOnward(value0: Int): Long {
+        val network = LawSpecRuntime.MemoryNetwork((value0 and 0xFFFF).toLong(), 0.1, 0.1, 0.005)
+        val (a, b, c, d) = listOf("a", "b", "c", "d").map { LawSpecRuntime.Node(network.transport(it)) }
+        try {
+            // A conversation between A and C, which sends at once; A's end moves to B, then
+            // to D, and answers from there.
+            val first = Answering.listen(a, "answering")
+            val second = Answering.dial(c, a.address + "/answering").send(value0)
+            val toB = Passing.listen(a, "to-b")
+            val atB = Passing.dial(b, a.address + "/to-b")
+            toB.send(first)
+            val moved = atB.receive().value()
+            val toD = Passing.listen(b, "to-d")
+            val atD = Passing.dial(d, b.address + "/to-d")
+            toD.send(moved)
+            val end = atD.receive().value()
+            // The end no longer needs A or B.
+            a.close()
+            b.close()
+            val got = end.receive()
+            got.next().send(2L * got.value())
+            return second.receive().value()
+        } finally {
+            for (node in listOf(a, b, c, d)) node.close()
         }
     }
 }

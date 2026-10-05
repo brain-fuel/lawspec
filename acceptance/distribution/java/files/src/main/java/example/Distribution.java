@@ -11,8 +11,10 @@ import lawspec.data.Tally;
 import lawspec.remote.LawSpecRemote;
 import lawspec.runtime.LawSpecRuntime;
 import lawspec.mailboxes.LedgerMailbox;
+import lawspec.sessions.Answering;
 import lawspec.sessions.Doubling;
 import lawspec.sessions.Handoff;
+import lawspec.sessions.Passing;
 
 public final class Distribution {
   public static List<String> encoded(String value0, BigInteger value1, int value2, int value3) {
@@ -144,6 +146,40 @@ public final class Distribution {
     } finally {
       there.close();
       here.close();
+    }
+  }
+
+  public static CompletableFuture<Long> remoteHandoffOnward(int value0) {
+    return CompletableFuture.supplyAsync(() -> remoteHandoffOnwardNow(value0));
+  }
+
+  private static long remoteHandoffOnwardNow(int value0) {
+    var network = new LawSpecRuntime.MemoryNetwork(value0 & 0xFFFF, 0.1, 0.1, 0.005);
+    var a = new LawSpecRuntime.Node(network.transport("a"));
+    var b = new LawSpecRuntime.Node(network.transport("b"));
+    var c = new LawSpecRuntime.Node(network.transport("c"));
+    var d = new LawSpecRuntime.Node(network.transport("d"));
+    try {
+      // A conversation between A and C, which sends at once; A's end moves to B, then to D, and
+      // answers from there.
+      var first = Answering.listen(a, "answering");
+      var second = Answering.dial(c, a.address + "/answering").send(value0);
+      var toB = Passing.listen(a, "to-b");
+      var atB = Passing.dial(b, a.address + "/to-b");
+      toB.send(first);
+      var moved = atB.receive().value();
+      var toD = Passing.listen(b, "to-d");
+      var atD = Passing.dial(d, b.address + "/to-d");
+      toD.send(moved);
+      var end = atD.receive().value();
+      // The end no longer needs A or B.
+      a.close();
+      b.close();
+      var got = end.receive();
+      got.next().send(2L * got.value());
+      return second.receive().value();
+    } finally {
+      for (var node : List.of(a, b, c, d)) node.close();
     }
   }
 }
