@@ -1,5 +1,5 @@
 -- Native Haskell functions over pure, checked total-definition implementations.
-module LawSpec.HaskellDefinitions (emitHaskellDefinitions, definitionCalls) where
+module LawSpec.HaskellDefinitions (emitHaskellDefinitions, emitHaskellDefinitionsWithBindings, definitionCalls) where
 
 import Control.Monad (forM)
 import LawSpec.Core.Policy
@@ -22,8 +22,12 @@ definitionCalls units = [(declarationId (definitionDeclaration d),
   | (i,d) <- zip [0::Int ..] (concatMap unitDefinitions units)]
 
 emitHaskellDefinitions :: D.Layout -> Int -> [DataDeclaration] -> [Unit] -> Either String [Artifact]
-emitHaskellDefinitions _ _ _ units | null (concatMap unitDefinitions units) = pure []
-emitHaskellDefinitions layout bits declarations units = do
+emitHaskellDefinitions = emitHaskellDefinitionsWithBindings []
+
+-- Bound adapters are native bridges, which take the symbol context first.
+emitHaskellDefinitionsWithBindings :: [Id] -> D.Layout -> Int -> [DataDeclaration] -> [Unit] -> Either String [Artifact]
+emitHaskellDefinitionsWithBindings _ _ _ _ units | null (concatMap unitDefinitions units) = pure []
+emitHaskellDefinitionsWithBindings bound layout bits declarations units = do
   contracts <- checkedDefinitionContracts bits declarations units
   let indexed = zip [0::Int ..] (concatMap unitDefinitions units)
   bodies <- mapM (implementation contracts "Definitions") [x | x@(_, d) <- indexed, not (definitionOrchestrates d)]
@@ -161,7 +165,8 @@ emitHaskellDefinitions layout bits declarations units = do
               codecs <- mapM (Native.haskellCodecDocWithContext context' declarations "_lawspecSchema" "_lawspecBits") parameterTypes
               resultCodec <- Native.haskellCodecDocWithContext context' declarations "_lawspecSchema" "_lawspecBits" resultType
               let call = E.apply (moduleOf owner ++ "." ++ declarationName adapter)
-                    [E.checked (E.apply "Codec.decode" [codec, value]) | (codec, value) <- zip codecs values]
+                    ([text "symbols" | identity `elem` bound] ++
+                     [E.checked (E.apply "Codec.decode" [codec, value]) | (codec, value) <- zip codecs values])
               -- An async step runs within its stage's timeout and hedge,
               -- when it has them.
               pure $ if declarationAsync adapter

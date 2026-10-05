@@ -6,6 +6,8 @@ import qualified Data.Aeson.KeyMap as KM
 import qualified Data.ByteString.Lazy as BL
 import Data.Foldable (toList)
 import qualified Data.Text as T
+import Data.List (isInfixOf)
+import qualified Data.ByteString.Lazy.Char8 as BC
 import LawSpec.Api (dispatch)
 import LawSpec.Common
 
@@ -162,6 +164,35 @@ spec = describe "native binding requests" $ do
     case eitherDecode (dispatch (encode request)) of
       Left problem -> expectationFailure problem
       Right value -> codes value `shouldBe` []
+
+  it "bridges Haskell method and constructor bindings of a handle" $ do
+    source <- readFile "examples/specs/handles.lawspec"
+    let call name form = object ["declaration" .= ("example.handles::" ++ name :: String), form]
+        request types = object
+          [ "schemaVersion" .= (4 :: Int), "method" .= ("planGeneration" :: String)
+          , "target" .= ("haskell" :: String), "sources" .= [Source "handles" source]
+          , "nativeBindings" .= object
+            [ "types" .= types
+            , "functions" .= [call "newJobs" ("constructor" .= (["JobQueue", "new"] :: [String])),
+                call "submit" ("method" .= ("push" :: String)), call "take" ("method" .= ("pop" :: String)),
+                call "pending" ("method" .= ("size" :: String))]
+            ]
+          ]
+        bound = [object ["type" .= ("example.handles::type::Jobs" :: String), "native" .= (["JobQueue", "Queue"] :: [String])]]
+        response = dispatch (encode (request bound))
+        text = BC.unpack response
+    case eitherDecode response of
+      Left problem -> expectationFailure problem
+      Right value -> codes value `shouldBe` []
+    -- Methods are called on the handle argument, and run as IO actions.
+    text `shouldSatisfy` isInfixOf "LS.awaitTask ((NativeModule0.push (argument0) (argument1)))"
+    text `shouldSatisfy` isInfixOf "LS.awaitTask ((NativeModule0.new))"
+    -- A Unit result discards the native one.
+    text `shouldSatisfy` isInfixOf "nativeResult `P.seq` Codec.encode ((Codec.unitCodec _lawspecSchema 64 :: Codec.Codec ())) (())"
+    -- A method needs the handle bound, since the method lives in its module.
+    case eitherDecode (dispatch (encode (request ([] :: [Value])))) of
+      Left problem -> expectationFailure problem
+      Right value -> codes value `shouldBe` [String "native-binding"]
 
   it "accepts Python application codec hooks without constructor mappings" $ do
     let source = "unit sample\ntype Value is Value item :: Int8 end\nf :: Value -> Value"

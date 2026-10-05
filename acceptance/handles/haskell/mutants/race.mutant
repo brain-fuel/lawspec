@@ -1,0 +1,21 @@
+@@ src/Example/Handles.hs
+<<<<<<<
+import Control.Concurrent.MVar (MVar, modifyMVar, modifyMVar_, newMVar, readMVar)
+=======
+import Control.Concurrent (threadDelay)
+import Control.Concurrent.MVar (MVar, modifyMVar, modifyMVar_, newMVar, readMVar)
+>>>>>>>
+<<<<<<<
+take jobs = unsafePerformIO $ modifyMVar (queue jobs) $ \items -> pure $ case viewl items of
+  EmptyL -> (items, Nothing)
+  job :< rest -> (rest, Just job)
+=======
+take jobs = unsafePerformIO $ do
+  items <- readMVar (queue jobs)
+  case viewl items of
+    EmptyL -> pure Nothing
+    job :< _ -> do
+      threadDelay 1000
+      modifyMVar_ (queue jobs) (pure . Seq.drop 1)
+      pure (Just job)
+>>>>>>>
