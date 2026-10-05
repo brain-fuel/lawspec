@@ -2,6 +2,7 @@ module LawSpec.CoreEmit (emitPlan, emitPlanWithFormat, emitPlanWithLayout, emitP
 import LawSpec.Sessions (sessionArtifacts)
 import LawSpec.Actors (actorArtifacts)
 import LawSpec.MachineSpec (scenarioWire)
+import LawSpec.Remote (remoteArtifacts)
 import LawSpec.Core.Machine (Machine(..))
 import LawSpec.Core.Program (Program(..))
 import LawSpec.Backend
@@ -73,7 +74,9 @@ emitPlanWithFormat minify target original = do
   sessions <- sessionArtifacts minify target plan
   -- Typed actors, for implementation code.
   actors <- actorArtifacts minify target plan
-  let files = emittedFiles ++ sessions ++ actors
+  -- Definitions other nodes can evaluate, by content hash.
+  let remote = remoteArtifacts target (remoteCalls target plan) plan
+      files = emittedFiles ++ sessions ++ actors ++ remote
   canonical <- if minify then emitPlanFormatted False target plan else pure files
   let references = [(artifactPath a, artifactContent a) | a <- canonical, ownership a == "user"]
   mapM (\artifact -> if ownership artifact /= "user" then pure artifact else
@@ -467,3 +470,10 @@ unstore (Stored p c o l (Just canonical)) = AdapterArtifact (T.unpack p) (T.unpa
 
 storedLength :: Stored -> Int
 storedLength (Stored _ c _ _ canonical) = T.length c + maybe 0 T.length canonical
+
+-- How each target calls a checked definition on logical values.
+remoteCalls :: String -> Plan -> [(C.Id, String)]
+remoteCalls target plan = case target of
+  "python" -> PythonDefinitions.definitionCalls units
+  _ -> []
+  where units = map plannedUnit (plannedUnits plan)

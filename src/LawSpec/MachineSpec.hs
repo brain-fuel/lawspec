@@ -4,7 +4,7 @@
 -- typestate and flags. Callbacks (the bridge definitions, references,
 -- preconditions, abstraction and invariants) are passed beside it, in the
 -- order the spec lists them.
-module LawSpec.MachineSpec (machineSpec, scenarioWire) where
+module LawSpec.MachineSpec (machineSpec, scenarioWire, describe) where
 
 import Control.Monad (foldM, forM, unless, when)
 import Data.List (isInfixOf)

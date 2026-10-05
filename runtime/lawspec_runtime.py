@@ -3918,3 +3918,32 @@ class _NetEndpoint:
             seq = self._out
             self._out += 1
         self._transmit(seq, b'\x01')
+
+
+class NativeChannel:
+    """A network channel end seen through native values: each step's value
+    is converted with the schema (references None need no conversion)."""
+
+    def __init__(self, endpoint, references, schema=None):
+        self._endpoint, self._references, self._schema = endpoint, references, schema
+        self._step = 0
+        self.address = endpoint.address
+
+    def _reference(self):
+        reference = self._references[self._step] if self._step < len(self._references) else None
+        self._step += 1
+        return reference
+
+    def send(self, side, value):
+        reference = self._reference()
+        if reference is not None:
+            value = self._schema.from_native(reference, value)
+        self._endpoint.send(side, value)
+
+    def receive(self, side):
+        reference = self._reference()
+        value = self._endpoint.receive(side)
+        return value if reference is None else self._schema.to_native(reference, value)
+
+    def abandon(self, side):
+        self._endpoint.abandon(side)
