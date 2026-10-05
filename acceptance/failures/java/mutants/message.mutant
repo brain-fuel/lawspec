@@ -1,0 +1,7 @@
+expect: odd amounts are declined, and say why
+@@ src/main/java/example/Failures.java
+<<<<<<<
+"an odd amount"
+=======
+"an uneven amount"
+>>>>>>>

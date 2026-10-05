@@ -60,6 +60,12 @@ export function isOpen(value0) {
   return value0.open;
 }
 
+// LawSpec argument 0: example.resources::type::Store
+// LawSpec result: Int32
+export function size(value0) {
+  return value0.items.size;
+}
+
 // LawSpec argument 0: Text
 // LawSpec argument 1: Int32
 // LawSpec result: Unit

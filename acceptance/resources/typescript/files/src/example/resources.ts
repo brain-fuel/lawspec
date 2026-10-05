@@ -64,6 +64,12 @@ export function isOpen(value0: unknown): boolean {
   return (value0 as Store).open;
 }
 
+// LawSpec argument 0: example.resources::type::Store
+// LawSpec result: Int32
+export function size(value0: unknown): number {
+  return (value0 as Store).items.size;
+}
+
 // LawSpec argument 0: Text
 // LawSpec argument 1: Int32
 // LawSpec result: Unit

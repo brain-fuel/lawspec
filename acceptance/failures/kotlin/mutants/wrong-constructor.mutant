@@ -1,0 +1,7 @@
+expect: negative amounts are blocked
+@@ src/main/kotlin/example/Failures.kt
+<<<<<<<
+            value0 < 0 -> lawspec.data.Decision.Block
+=======
+            value0 < 0 -> lawspec.data.Decision.Decline("negative")
+>>>>>>>

@@ -1,0 +1,7 @@
+expect: odd amounts are declined, and say why
+@@ src/main/kotlin/example/Failures.kt
+<<<<<<<
+"an odd amount"
+=======
+"an uneven amount"
+>>>>>>>

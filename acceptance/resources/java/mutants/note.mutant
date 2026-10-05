@@ -1,0 +1,7 @@
+expect: a note reads back
+@@ src/main/java/example/Resources.java
+<<<<<<<
+Integer.toString(value1));
+=======
+Integer.toString(value1 + 1));
+>>>>>>>

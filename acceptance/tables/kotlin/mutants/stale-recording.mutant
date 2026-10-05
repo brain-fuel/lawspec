@@ -1,0 +1,7 @@
+expect: recorded/example.tables/first label differs
+@@ src/main/kotlin/example/Tables.kt
+<<<<<<<
+= "parcel $value0"
+=======
+= if (value0 == 1) "parcel one" else "parcel $value0"
+>>>>>>>

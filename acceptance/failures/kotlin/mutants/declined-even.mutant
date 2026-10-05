@@ -1,0 +1,8 @@
+expect: even amounts go through
+@@ src/main/kotlin/example/Failures.kt
+<<<<<<<
+            else -> lawspec.data.Decision.Approve
+=======
+            value0 > 50000 -> lawspec.data.Decision.Decline("even")
+            else -> lawspec.data.Decision.Approve
+>>>>>>>

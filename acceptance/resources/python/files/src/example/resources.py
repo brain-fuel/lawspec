@@ -70,6 +70,12 @@ def isOpen(value0: _builtins.object) -> bool:
     return value0.open
 
 
+# LawSpec argument 0: example.resources::type::Store
+# LawSpec result: Int32
+def size(value0: _builtins.object) -> int:
+    return len(value0.items)
+
+
 # LawSpec argument 0: Text
 # LawSpec argument 1: Int32
 # LawSpec result: Unit

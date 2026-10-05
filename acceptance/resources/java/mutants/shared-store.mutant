@@ -1,0 +1,8 @@
+expect: every case gets an empty store
+@@ src/main/java/example/Resources.java
+<<<<<<<
+    Map<Integer, Integer> items = new HashMap<>();
+=======
+    static final Map<Integer, Integer> SHARED = new HashMap<>();
+    Map<Integer, Integer> items = SHARED;
+>>>>>>>

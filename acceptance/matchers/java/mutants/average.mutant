@@ -1,0 +1,7 @@
+expect: the average lies between the two
+@@ src/main/java/example/Matchers.java
+<<<<<<<
+    return ((double) value0 + (double) value1) / 2;
+=======
+    return ((double) value0 + (double) value1) / 2 + 1;
+>>>>>>>

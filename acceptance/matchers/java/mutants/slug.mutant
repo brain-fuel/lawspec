@@ -1,0 +1,7 @@
+expect: a slug is lowercase words joined by dashes
+@@ src/main/java/example/Matchers.java
+<<<<<<<
+    return String.join("-", words);
+=======
+    return String.join("_", words);
+>>>>>>>

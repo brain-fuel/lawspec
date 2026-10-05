@@ -1,0 +1,7 @@
+expect: example row 3: 2, 10, 30
+@@ src/main/kotlin/example/Tables.kt
+<<<<<<<
+= value0 * value1 + 5 * value0
+=======
+= value0 * value1 + 5 * value0 + (if (value0 == 2) 5 else 0)
+>>>>>>>

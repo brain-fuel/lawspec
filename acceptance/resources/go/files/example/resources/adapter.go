@@ -66,6 +66,11 @@ func IsOpen(value0 any) bool {
 	return value0.(*store).open
 }
 
+// Size implements size :: (example.resources::type::Store -> Int32).
+func Size(value0 any) int32 {
+	return int32(len(value0.(*store).items))
+}
+
 // WriteNote implements writeNote :: (Text -> (Int32 -> Unit)).
 func WriteNote(value0 string, value1 int32) {
 	if err := os.WriteFile(filepath.Join(value0, "note.txt"), []byte(strconv.Itoa(int(value1))), 0o644); err != nil {

@@ -1,0 +1,7 @@
+expect: the carrier is never empty
+@@ src/main/kotlin/example/Matchers.kt
+<<<<<<<
+lawspec.data.Order.Shipped(value0, "post")
+=======
+lawspec.data.Order.Shipped(value0, "")
+>>>>>>>

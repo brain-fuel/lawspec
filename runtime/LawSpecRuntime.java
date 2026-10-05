@@ -728,6 +728,19 @@ public final class LawSpecRuntime {
   }
 
   public static Value helper(String n, Value[] args, int bits) {
+    switch (n) {
+      case "startsWith": return bool(codePointsText(args[0]).startsWith(codePointsText(args[1])));
+      case "endsWith": return bool(codePointsText(args[0]).endsWith(codePointsText(args[1])));
+      case "textContains": return bool(codePointsText(args[0]).contains(codePointsText(args[1])));
+      case "regexMatches": return bool(regexMatches(codePointsText(args[0]), codePoints(args[1])));
+      case "recorded": return bool(recorded(codePointsText(args[0]), args[1]));
+      case "acquireResource": return textValue(acquireResource(codePointsText(args[0])));
+      case "releaseResource":
+        releaseResource(codePointsText(args[0]), codePointsText(args[1]));
+        return bool(true);
+      case "freePort": return integer("Int32", Integer.toString(freePort()));
+      default: break;
+    }
     if (n.equals("checked")) return bool(true);
     if (n.equals("select")) return truth(args[0]) ? args[1] : args[2];
     if (n.equals("compare")) {
@@ -2022,6 +2035,384 @@ public final class LawSpecRuntime {
   }
 
   /** A value's canonical text, the same on every target. */
+  /** A Text value's code points. */
+  static int[] codePoints(Value v) {
+    List<?> units = (List<?>) v.data();
+    int[] points = new int[units.size()];
+    for (int i = 0; i < points.length; i++) points[i] = (Integer) units.get(i);
+    return points;
+  }
+
+  /** The text of a Text value's code points. */
+  static String codePointsText(Value v) {
+    int[] points = codePoints(v);
+    return new String(points, 0, points.length);
+  }
+
+  // Portable regular expressions (see LawSpec.Regex): the subset of RE2 and
+  // ECMAScript that means the same in both, matched against a whole text,
+  // code point by code point. The compiler has checked every pattern; a
+  // pattern that is not portable throws here too.
+  private record RegexItem(boolean negated, int[][] ranges) {}
+
+  private static final class RegexNode {
+    final char kind; // 's' set, 'q' sequence, 'a' alternatives, 'r' repeat
+    boolean negated;
+    List<RegexItem> items = List.of();
+    List<RegexNode> children = List.of();
+    int low;
+    int high = -1; // -1 when unbounded
+
+    RegexNode(char kind) {
+      this.kind = kind;
+    }
+  }
+
+  private static final int[][] REGEX_DIGITS = {{48, 57}};
+  private static final int[][] REGEX_WORD = {{48, 57}, {65, 90}, {95, 95}, {97, 122}};
+  private static final int[][] REGEX_SPACE = {{9, 13}, {32, 32}};
+  private static final java.util.concurrent.ConcurrentHashMap<String, RegexNode> REGEX_CACHE =
+      new java.util.concurrent.ConcurrentHashMap<>();
+
+  private static final class RegexParser {
+    final String pattern;
+    final int[] cs;
+    int pos = 0;
+
+    RegexParser(String pattern) {
+      this.pattern = pattern;
+      this.cs = pattern.codePoints().toArray();
+    }
+
+    int peek() {
+      return pos < cs.length ? cs[pos] : -1;
+    }
+
+    RuntimeException fail(String message) {
+      return new IllegalArgumentException("regex \"" + pattern + "\" is not portable: " + message);
+    }
+
+    RegexItem escape() {
+      pos++;
+      int c = peek();
+      if (c < 0) throw fail("the regex ends with a lone \\");
+      pos++;
+      switch (c) {
+        case 'd': return new RegexItem(false, REGEX_DIGITS);
+        case 'D': return new RegexItem(true, REGEX_DIGITS);
+        case 'w': return new RegexItem(false, REGEX_WORD);
+        case 'W': return new RegexItem(true, REGEX_WORD);
+        case 's': return new RegexItem(false, REGEX_SPACE);
+        case 'S': return new RegexItem(true, REGEX_SPACE);
+        case 'n': return new RegexItem(false, new int[][] {{10, 10}});
+        case 't': return new RegexItem(false, new int[][] {{9, 9}});
+        case 'r': return new RegexItem(false, new int[][] {{13, 13}});
+        case 'f': return new RegexItem(false, new int[][] {{12, 12}});
+        case 'v': return new RegexItem(false, new int[][] {{11, 11}});
+        default: break;
+      }
+      if ("\\.^$|?*+()[]{}-/".indexOf(c) >= 0) return new RegexItem(false, new int[][] {{c, c}});
+      throw fail("\\" + new String(Character.toChars(c)) + " is not a portable escape");
+    }
+
+    RegexItem literal() {
+      int c = peek();
+      if (c == '[') throw fail("write \\[ for the character inside a class");
+      pos++;
+      return new RegexItem(false, new int[][] {{c, c}});
+    }
+
+    static boolean single(RegexItem item) {
+      return !item.negated() && item.ranges().length == 1 && item.ranges()[0][0] == item.ranges()[0][1];
+    }
+
+    RegexNode charClass() {
+      pos++;
+      boolean negated = peek() == '^';
+      if (negated) pos++;
+      var items = new ArrayList<RegexItem>();
+      boolean first = true;
+      while (true) {
+        int c = peek();
+        if (c < 0) throw fail("a [ is never closed");
+        if (c == ']') {
+          if (first) throw fail("an empty class is not portable");
+          pos++;
+          var node = new RegexNode('s');
+          node.negated = negated;
+          node.items = items;
+          return node;
+        }
+        first = false;
+        RegexItem item = c == '\\' ? escape() : literal();
+        if (single(item) && peek() == '-' && pos + 1 < cs.length && cs[pos + 1] != ']') {
+          pos++;
+          RegexItem high = peek() == '\\' ? escape() : literal();
+          if (!single(high)) throw fail("a range ends with one character");
+          if (high.ranges()[0][0] < item.ranges()[0][0]) throw fail("a range must run from low to high");
+          items.add(new RegexItem(false, new int[][] {{item.ranges()[0][0], high.ranges()[0][0]}}));
+        } else items.add(item);
+      }
+    }
+
+    String digits() {
+      int start = pos;
+      while (peek() >= '0' && peek() <= '9') pos++;
+      return new String(cs, start, pos - start);
+    }
+
+    static RegexNode set(boolean negated, RegexItem item) {
+      var node = new RegexNode('s');
+      node.negated = negated;
+      node.items = List.of(item);
+      return node;
+    }
+
+    RegexNode atom() {
+      int c = peek();
+      if (c == '(') {
+        pos++;
+        if (peek() == '?') {
+          if (pos + 1 < cs.length && cs[pos + 1] == ':') pos += 2;
+          else throw fail("only (?: ...) groups are portable");
+        }
+        RegexNode node = alternatives();
+        if (peek() != ')') throw fail("a ( is never closed");
+        pos++;
+        return node;
+      }
+      if (c == '[') return charClass();
+      if (c == '.') {
+        pos++;
+        return set(true, new RegexItem(false, new int[][] {{10, 10}}));
+      }
+      if (c == '\\') return set(false, escape());
+      if ("*+?{^$]}".indexOf(c) >= 0) throw fail("unexpected " + new String(Character.toChars(c)));
+      pos++;
+      return set(false, new RegexItem(false, new int[][] {{c, c}}));
+    }
+
+    static boolean quantifier(int c) {
+      return c >= 0 && "*+?{".indexOf(c) >= 0;
+    }
+
+    RegexNode quantified(RegexNode node) {
+      int c = peek();
+      if (!quantifier(c)) return node;
+      pos++;
+      var repeat = new RegexNode('r');
+      repeat.children = List.of(node);
+      if (c == '*') repeat.low = 0;
+      else if (c == '+') repeat.low = 1;
+      else if (c == '?') {
+        repeat.low = 0;
+        repeat.high = 1;
+      } else {
+        String lowText = digits();
+        String highText = null;
+        boolean bounded = true;
+        if (peek() == '}') highText = lowText;
+        else if (peek() == ',') {
+          pos++;
+          highText = digits();
+          bounded = !highText.isEmpty();
+          if (peek() != '}') throw fail("a repetition is {n}, {n,} or {n,m}");
+        } else throw fail("a repetition is {n}, {n,} or {n,m}");
+        pos++;
+        if (lowText.isEmpty()) throw fail("a repetition is {n}, {n,} or {n,m}");
+        repeat.low = Integer.parseInt(lowText);
+        repeat.high = bounded ? Integer.parseInt(highText) : -1;
+        if (repeat.low > 1000 || (bounded && (repeat.high > 1000 || repeat.high < repeat.low)))
+          throw fail("a repetition count is at most 1000, and n must not exceed m");
+      }
+      if (quantifier(peek())) throw fail("a repetition cannot itself be repeated");
+      return repeat;
+    }
+
+    RegexNode sequence() {
+      var items = new ArrayList<RegexNode>();
+      while (peek() >= 0 && peek() != '|' && peek() != ')') items.add(quantified(atom()));
+      var node = new RegexNode('q');
+      node.children = items;
+      return node;
+    }
+
+    RegexNode alternatives() {
+      var branches = new ArrayList<RegexNode>();
+      branches.add(sequence());
+      while (peek() == '|') {
+        pos++;
+        branches.add(sequence());
+      }
+      if (branches.size() == 1) return branches.get(0);
+      var node = new RegexNode('a');
+      node.children = branches;
+      return node;
+    }
+
+    RegexNode parse() {
+      RegexNode node = alternatives();
+      if (pos != cs.length) throw fail("a ) has no ( before it");
+      return node;
+    }
+  }
+
+  private static boolean[] regexReach(RegexNode node, int[] text, boolean[] positions) {
+    var next = new boolean[text.length + 1];
+    switch (node.kind) {
+      case 's' -> {
+        for (int p = 0; p < text.length; p++) {
+          if (!positions[p]) continue;
+          int c = text[p];
+          boolean inside = false;
+          for (RegexItem item : node.items) {
+            boolean in = false;
+            for (int[] r : item.ranges()) if (r[0] <= c && c <= r[1]) { in = true; break; }
+            if (in != item.negated()) { inside = true; break; }
+          }
+          if (inside != node.negated) next[p + 1] = true;
+        }
+        return next;
+      }
+      case 'q' -> {
+        for (RegexNode child : node.children) positions = regexReach(child, text, positions);
+        return positions;
+      }
+      case 'a' -> {
+        for (RegexNode child : node.children) {
+          boolean[] reached = regexReach(child, text, positions);
+          for (int p = 0; p < reached.length; p++) if (reached[p]) next[p] = true;
+        }
+        return next;
+      }
+      default -> {
+        RegexNode body = node.children.get(0);
+        for (int i = 0; i < node.low; i++) positions = regexReach(body, text, positions);
+        boolean[] seen = positions.clone();
+        boolean[] frontier = positions;
+        int limit = node.high >= 0 ? node.high - node.low : -1;
+        while (limit != 0) {
+          boolean[] reached = regexReach(body, text, frontier);
+          frontier = new boolean[text.length + 1];
+          boolean any = false;
+          for (int p = 0; p < reached.length; p++)
+            if (reached[p] && !seen[p]) { frontier[p] = true; seen[p] = true; any = true; }
+          if (!any) break;
+          if (limit > 0) limit--;
+        }
+        return seen;
+      }
+    }
+  }
+
+  /** Whether the portable regex matches all of text, given as code points. */
+  public static boolean regexMatches(String pattern, int[] text) {
+    RegexNode node = REGEX_CACHE.computeIfAbsent(pattern, p -> new RegexParser(p).parse());
+    var start = new boolean[text.length + 1];
+    start[0] = true;
+    return regexReach(node, text, start)[text.length];
+  }
+
+  // Recorded values: a law compares a value's portable rendering with the
+  // text stored under recorded/<unit>/<name> in the project. LAWSPEC_RECORDED
+  // names the folder; otherwise it is recorded/ in the nearest folder, from
+  // the working one up, that holds lawspec.json or recorded/. With
+  // LAWSPEC_UPDATE_RECORDED=1 (lawspec test --update-recorded) a law records
+  // the value instead.
+  static java.nio.file.Path recordedRoot() {
+    String given = System.getenv("LAWSPEC_RECORDED");
+    if (given != null && !given.isEmpty()) return java.nio.file.Path.of(given);
+    java.nio.file.Path start = java.nio.file.Path.of("").toAbsolutePath();
+    for (java.nio.file.Path folder = start; folder != null; folder = folder.getParent()) {
+      if (java.nio.file.Files.exists(folder.resolve("lawspec.json"))
+          || java.nio.file.Files.isDirectory(folder.resolve("recorded")))
+        return folder.resolve("recorded");
+    }
+    return start.resolve("recorded");
+  }
+
+  public static boolean recorded(String key, Value value) {
+    String text = render(value);
+    java.nio.file.Path path = recordedRoot();
+    for (String part : key.split("/")) path = path.resolve(part);
+    try {
+      if ("1".equals(System.getenv("LAWSPEC_UPDATE_RECORDED"))) {
+        java.nio.file.Files.createDirectories(path.getParent());
+        java.nio.file.Files.writeString(path, text + "\n");
+        return true;
+      }
+      if (!java.nio.file.Files.exists(path))
+        throw new AssertionError("no recording recorded/" + key
+            + "; run lawspec test --update-recorded to record " + text);
+      String stored = java.nio.file.Files.readString(path);
+      if (stored.endsWith("\n")) stored = stored.substring(0, stored.length() - 1);
+      if (!stored.equals(text))
+        throw new AssertionError("recorded/" + key + " differs: expected " + stored + ", actual " + text
+            + " (lawspec test --update-recorded records the new value)");
+      return true;
+    } catch (java.io.IOException e) {
+      throw new java.io.UncheckedIOException(e);
+    }
+  }
+
+  // Built-in resources (see LawSpec.Resources): a law acquires them before
+  // each case and releases them after it. A JVM cannot change its process
+  // environment, so the environment it saves and restores is its system
+  // properties.
+  static String acquireResource(String kind) {
+    try {
+      switch (kind) {
+        case "temporaryDirectory":
+          return java.nio.file.Files.createTempDirectory("lawspec-").toString();
+        case "temporaryFile":
+          return java.nio.file.Files.createTempFile("lawspec-", "").toString();
+        case "environment": {
+          var saved = new java.util.TreeMap<String, String>();
+          for (String name : System.getProperties().stringPropertyNames()) saved.put(name, System.getProperty(name));
+          var out = new StringBuilder();
+          for (var entry : saved.entrySet())
+            out.append(entry.getKey()).append('\0').append(entry.getValue()).append('\0');
+          return out.toString();
+        }
+        default:
+          throw new IllegalArgumentException("unknown resource kind " + kind);
+      }
+    } catch (java.io.IOException e) {
+      throw new java.io.UncheckedIOException(e);
+    }
+  }
+
+  static void releaseResource(String kind, String value) {
+    switch (kind) {
+      case "temporaryDirectory", "temporaryFile" -> {
+        try (var paths = java.nio.file.Files.walk(java.nio.file.Path.of(value))) {
+          paths.sorted(java.util.Comparator.reverseOrder()).forEach(p -> p.toFile().delete());
+        } catch (java.io.IOException e) {
+          // Already gone.
+        }
+      }
+      case "environment" -> {
+        var saved = new java.util.HashMap<String, String>();
+        String[] parts = value.split("\0", -1);
+        for (int i = 0; i + 1 < parts.length; i += 2) saved.put(parts[i], parts[i + 1]);
+        for (String name : System.getProperties().stringPropertyNames())
+          if (!saved.containsKey(name)) System.clearProperty(name);
+        for (var entry : saved.entrySet())
+          if (!entry.getValue().equals(System.getProperty(entry.getKey()))) System.setProperty(entry.getKey(), entry.getValue());
+      }
+      default -> throw new IllegalArgumentException("unknown resource kind " + kind);
+    }
+  }
+
+  /** A TCP port on the local host that is free now. */
+  static int freePort() {
+    try (var socket = new java.net.ServerSocket(0, 1, java.net.InetAddress.getLoopbackAddress())) {
+      return socket.getLocalPort();
+    } catch (java.io.IOException e) {
+      throw new java.io.UncheckedIOException(e);
+    }
+  }
+
   public static String render(Value v) {
     Object data = v.data();
     if (data instanceof Boolean b) return b ? "true" : "false";

@@ -1,0 +1,8 @@
+expect: too many open stores
+@@ src/main/kotlin/example/Resources.kt
+<<<<<<<
+                open = false
+                openCount--
+=======
+                open = false
+>>>>>>>

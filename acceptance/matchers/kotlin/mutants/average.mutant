@@ -1,0 +1,7 @@
+expect: the average lies between the two
+@@ src/main/kotlin/example/Matchers.kt
+<<<<<<<
+(value0.toDouble() + value1.toDouble()) / 2
+=======
+(value0.toDouble() + value1.toDouble()) / 2 + 1
+>>>>>>>

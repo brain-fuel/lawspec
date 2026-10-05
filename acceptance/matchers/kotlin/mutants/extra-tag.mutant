@@ -1,0 +1,7 @@
+expect: unique tags come from the input
+@@ src/main/kotlin/example/Matchers.kt
+<<<<<<<
+        value0.distinct()
+=======
+        value0.distinct() + "extra"
+>>>>>>>

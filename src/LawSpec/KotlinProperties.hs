@@ -103,20 +103,28 @@ emitTests Config{..} unit laws = do
       in call ("private fun _lawspec_call_" ++ contractName c) params <> text ": LawSpecRuntime.Value " <>
         block (statements [require "precondition" (contractPreconditions c),
           bind rn (nativeResult rt invocation),require "postcondition" (contractPostconditions c),text "return " <> text rn])
+    -- A law's resources: each case acquires them, then runs, then releases
+    -- them, the last first, even when the case fails.
+    bracketed e docs = foldr wrap (statements docs) (C.propertyResources (original e))
+      where
+        wrap r inner =
+          let local = localName (C.binderId (C.resourceBinder r))
+          in statements [bind local (expr (C.resourceAcquire r)),
+            text "try " <> block inner <> text " finally " <> block (expr (C.resourceRelease r))]
     law (index,e) = do
       let label = owner e ++ "::" ++ name e
           fn = "law" ++ show index
       exampleDocs <- mapM (\(i,ex) -> pure $ testFunction (fn ++ "Example" ++ show i) $ statements
         ([symbols] ++ handlerInstalls e ++ [bind n (expr v) | (n,v) <- bindings ex] ++
-        map (assertionDoc (label ++ " example " ++ exampleName ex)) (expectations ex) ++
-        [assertionDoc label (assertion e)])) (zip [0::Int ..] (examples (original e)))
+        [bracketed e (map (assertionDoc (label ++ " example " ++ exampleName ex)) (expectations ex) ++
+          [assertionDoc label (assertion e)])])) (zip [0::Int ..] (examples (original e)))
       boundaryDocs <- mapM (\(i,vs) -> do
         values <- mapM literal vs
         pure $ testFunction (fn ++ "Boundary" ++ show i) $ statements
           ([symbols] ++ handlerInstalls e ++ [bind (inputId inp) (checked (inputType inp) v) | (inp,v) <- zip (inputs e) values] ++
-          [assertionDoc (label ++ " boundary " ++ show i) (assertion e)]))
+          [bracketed e [assertionDoc (label ++ " boundary " ++ show i) (assertion e)]]))
         (zip [0::Int ..] (maybe (boundaryCases e) id (finiteCases e)))
-      let check = assertionDoc (label ++ " property") (assertion e)
+      let check = bracketed e [assertionDoc (label ++ " property") (assertion e)]
       property <- if finiteCases e /= Nothing then pure []
         else if constructorContracts || nativeGenerators || any (maybe False (const True) . generatorIndex) (generationPlan e)
           then (:[]) <$> contextualProperty fn label e check

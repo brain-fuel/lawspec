@@ -1,0 +1,7 @@
+expect: a note reads back
+@@ src/main/kotlin/example/Resources.kt
+<<<<<<<
+Path.of(value0, "note.txt"), value1.toString())
+=======
+Path.of(value0, "note.txt"), (value1 + 1).toString())
+>>>>>>>

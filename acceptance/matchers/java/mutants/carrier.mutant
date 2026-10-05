@@ -1,0 +1,7 @@
+expect: the carrier is never empty
+@@ src/main/java/example/Matchers.java
+<<<<<<<
+    return new lawspec.data.Order.Shipped(value0, "post");
+=======
+    return new lawspec.data.Order.Shipped(value0, "");
+>>>>>>>
