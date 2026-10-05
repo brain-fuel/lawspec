@@ -3355,3 +3355,415 @@ class HttpTransport(Transport):
     def close(self):
         self._server.shutdown()
         self._server.server_close()
+
+
+class Node:
+    """A process's presence on a network: it names local mailboxes, actors,
+    channel ends and definitions, so other nodes can reach them at
+    <node address>/<name>, and it sends to theirs.
+
+    Order is kept within one channel; a mailbox or an actor call is best
+    effort: a lost call fails with Unreachable after its timeout."""
+
+    def __init__(self, transport):
+        self.transport = transport
+        self.address = transport.address
+        self._entities = {}
+        self._pending = {}
+        # Requests already seen, by sender and id, with their reply once
+        # sent: a request sent again (lost reply, duplicated frame) is
+        # answered again without running twice.
+        self._seen = {}
+        self._ids = iter(range(1, 1 << 62))
+        self._lock = threading.Lock()
+        transport.start(self._deliver)
+
+    def close(self):
+        self.transport.close()
+
+    def _next_id(self):
+        with self._lock:
+            return next(self._ids)
+
+    def _send(self, address, kind, payload, ident=0):
+        node, name = _split_address(address)
+        self.transport.send(node, _frame_encode(kind, name, self.address, ident, payload))
+
+    def _register(self, name, entity):
+        if '/' in name or not name:
+            raise ValueError(f'{name!r} is not a name: use letters, digits and dashes')
+        with self._lock:
+            if name in self._entities:
+                raise ValueError(f'{name} is already registered on {self.address}')
+            self._entities[name] = entity
+        return f'{self.address}/{name}'
+
+    def _deliver(self, frame):
+        try:
+            kind, to, source, ident, payload = _frame_decode(frame)
+        except WireError:
+            return
+        if kind == 'reply':
+            with self._lock:
+                slot = self._pending.pop(ident, None)
+            if slot is not None:
+                slot.append(payload)
+                slot.event.set()
+            return
+        entity = self._entities.get(to)
+        if entity is None:
+            if ident:
+                self._reply(source, ident, 3, f'nothing is registered as {to} on {self.address}')
+            return
+        if ident:
+            key = (source, ident)
+            with self._lock:
+                if key in self._seen:
+                    answer = self._seen[key]
+                    if answer is not None:
+                        threading.Thread(target=self._send, args=(source + '/', 'reply', answer, ident), daemon=True).start()
+                    return
+                self._seen[key] = None
+                if len(self._seen) > 10000:
+                    for old in list(self._seen)[:5000]:
+                        del self._seen[old]
+        # Handled off the transport's thread, so a slow handler does not
+        # hold up other frames.
+        threading.Thread(target=entity._receive, args=(self, kind, source, ident, payload), daemon=True).start()
+
+    def _reply(self, source, ident, status, body):
+        payload = bytes([status]) + (body if isinstance(body, bytes) else body.encode('utf-8'))
+        with self._lock:
+            if (source, ident) in self._seen:
+                self._seen[(source, ident)] = payload
+        try:
+            self._send(source + '/', 'reply', payload, ident)
+        except Unreachable:
+            pass
+
+    def _request(self, address, kind, payload, timeout):
+        """Sends a request and waits for its reply: (status, body)."""
+        ident = self._next_id()
+        slot = _Reply()
+        with self._lock:
+            self._pending[ident] = slot
+        import time
+        # Sent again until answered: the receiver runs it once.
+        give_up = time.monotonic() + timeout
+        while True:
+            try:
+                self._send(address, kind, payload, ident)
+            except Unreachable:
+                pass
+            if slot.event.wait(min(0.1, max(0.0, give_up - time.monotonic()))):
+                return slot[0][0], slot[0][1:]
+            if time.monotonic() >= give_up:
+                with self._lock:
+                    self._pending.pop(ident, None)
+                raise Unreachable(f'{address} did not answer within {timeout}s')
+
+    # Mailboxes: values of one type sent by any node.
+    def mailbox(self, name, descriptor, values=_NO_TYPES):
+        """A local Mailbox that other nodes send to at <address>/name."""
+        box = Mailbox()
+        self._register(name, _MailEntity(box, values, descriptor))
+        return box
+
+    def remote_mailbox(self, address, descriptor, values=_NO_TYPES):
+        return RemoteMailbox(self, address, descriptor, values)
+
+    # Actors: calls by message name, with each message's types.
+    def serve(self, name, actor, handlers, values=_NO_TYPES):
+        """Lets other nodes call actor at <address>/name. handlers maps a
+        message name to (handler(state, *args) -> (reply, state), argument
+        descriptors, reply descriptor)."""
+        return self._register(name, _ActorEntity(actor, handlers, values))
+
+    def remote_actor(self, address, signatures, values=_NO_TYPES, timeout=5.0):
+        """A proxy calling the actor at address; signatures maps a message
+        name to (argument descriptors, reply descriptor)."""
+        return RemoteActor(self, address, signatures, values, timeout)
+
+    # Definitions, by content hash.
+    def serve_definitions(self, table, values=_NO_TYPES, name='definitions'):
+        """Lets other nodes evaluate definitions: table maps a content hash
+        to (function, argument descriptors, result descriptor)."""
+        return self._register(name, _DefinitionEntity(table, values))
+
+    def evaluate(self, node, digest, args, arguments, result, values=_NO_TYPES, timeout=5.0, name='definitions'):
+        """Evaluates the definition with this content hash on another node."""
+        payload = bytearray()
+        _wire_put(_NO_TYPES, ['text'], digest, payload)
+        for d, v in zip(arguments, args):
+            _wire_put(values, d, v, payload)
+        status, body = self._request(f'{node}/{name}', 'eval', bytes(payload), timeout)
+        return _reply_value(status, body, values, result)
+
+    # Channels: one side here, the other on any node.
+    def listen(self, name, steps, values=_NO_TYPES, deadline=5.0):
+        """The first end of a channel named name here; its other end is
+        dial(...)ed from any node. steps: (sends, descriptor) per step, from
+        this end's side."""
+        endpoint = _NetEndpoint(self, steps, values, 0, deadline)
+        endpoint.address = self._register(name, endpoint)
+        return endpoint
+
+    def dial(self, address, steps, values=_NO_TYPES, deadline=5.0):
+        """The second end of the channel listening at address. steps are from
+        this end's side."""
+        endpoint = _NetEndpoint(self, steps, values, 1, deadline)
+        endpoint.address = self._register(f'end-{self._next_id()}', endpoint)
+        endpoint._connect(address)
+        return endpoint
+
+
+def _reply_value(status, body, values, d):
+    if status == 0:
+        return wire_decode(values, d, body)
+    message = body.decode('utf-8', 'replace')
+    if status == 1:
+        raise ActorCrashed(message)
+    if status == 2:
+        raise ActorStopped(message)
+    raise Unreachable(message)
+
+
+class _MailEntity:
+    def __init__(self, box, values, descriptor):
+        self.box, self.values, self.descriptor = box, values, descriptor
+
+    def _receive(self, node, kind, source, ident, payload):
+        if kind == 'mail':
+            try:
+                self.box.send(wire_decode(self.values, self.descriptor, payload))
+            except (WireError, ActorStopped):
+                pass
+
+
+class RemoteMailbox:
+    """Sends to a mailbox on another node; send never waits for it."""
+
+    def __init__(self, node, address, descriptor, values):
+        self._node, self.address, self._descriptor, self._values = node, address, descriptor, values
+
+    def send(self, value):
+        self._node._send(self.address, 'mail', wire_encode(self._values, self._descriptor, value))
+
+
+class _ActorEntity:
+    def __init__(self, actor, handlers, values):
+        self.actor, self.handlers, self.values = actor, handlers, values
+
+    def _receive(self, node, kind, source, ident, payload):
+        if kind != 'call':
+            return
+        try:
+            message, pos = _wire_get(_NO_TYPES, ['text'], payload, 0)
+            handler, arguments, reply = self.handlers[message]
+            args = []
+            for d in arguments:
+                v, pos = _wire_get(self.values, d, payload, pos)
+                args.append(v)
+            if pos != len(payload):
+                raise WireError('extra bytes after the arguments')
+        except (WireError, KeyError) as error:
+            node._reply(source, ident, 3, f'not a message this actor handles: {error}')
+            return
+        try:
+            result = self.actor.call(lambda s: handler(s, *args))
+            node._reply(source, ident, 0, wire_encode(self.values, reply, result))
+        except ActorCrashed as error:
+            node._reply(source, ident, 1, str(error))
+        except ActorStopped as error:
+            node._reply(source, ident, 2, str(error))
+
+
+class RemoteActor:
+    """Calls an actor on another node: call(message, *args) sends the
+    message and waits for the reply, raising Unreachable after the timeout,
+    or what the actor's call raised (ActorCrashed, ActorStopped)."""
+
+    def __init__(self, node, address, signatures, values, timeout):
+        self._node, self.address = node, address
+        self._signatures, self._values, self.timeout = signatures, values, timeout
+
+    def call(self, message, *args):
+        arguments, reply = self._signatures[message]
+        payload = bytearray()
+        _wire_put(_NO_TYPES, ['text'], message, payload)
+        for d, v in zip(arguments, args):
+            _wire_put(self._values, d, v, payload)
+        status, body = self._node._request(self.address, 'call', bytes(payload), self.timeout)
+        return _reply_value(status, body, self._values, reply)
+
+
+class _DefinitionEntity:
+    def __init__(self, table, values):
+        self.table, self.values = table, values
+
+    def _receive(self, node, kind, source, ident, payload):
+        if kind != 'eval':
+            return
+        try:
+            digest, pos = _wire_get(_NO_TYPES, ['text'], payload, 0)
+            function, arguments, result = self.table[digest]
+            args = []
+            for d in arguments:
+                v, pos = _wire_get(self.values, d, payload, pos)
+                args.append(v)
+        except (WireError, KeyError):
+            node._reply(source, ident, 3, 'this node has no definition with that content hash')
+            return
+        try:
+            node._reply(source, ident, 0, wire_encode(self.values, result, function(*args)))
+        except Exception as error:  # noqa: BLE001 - reported to the caller
+            node._reply(source, ident, 1, f'{type(error).__name__}: {error}')
+
+
+class _NetEndpoint:
+    """One end of a channel between nodes, with the Channel interface
+    (send(side, value), receive(side)). Each value travels in a numbered
+    frame that is sent again until acknowledged, so loss, duplication and
+    reordering are repaired; a peer silent for deadline seconds is treated
+    as failed (PeerFailed). Order is kept within the channel."""
+
+    def __init__(self, node, steps, values, side, deadline):
+        import queue
+        self._node, self._steps, self._values, self.side = node, steps, values, side
+        self._deadline = deadline
+        self.address = None
+        self._peer = None
+        self._peer_known = threading.Event()
+        self._out = 0
+        self._unacked = {}
+        self._expected = 0
+        self._early = {}
+        self._inbox = queue.Queue()
+        self._lock = threading.Lock()
+        self._step = 0
+        self._gone = False
+        threading.Thread(target=self._resend, daemon=True).start()
+
+    def _connect(self, address):
+        with self._lock:
+            self._peer = address
+        self._peer_known.set()
+        self._transmit(-1, b'hello')
+
+    def _transmit(self, seq, body):
+        """Sends a numbered frame (seq -1 is the hello) until it is acked."""
+        import time
+        payload = bytearray()
+        _wire_put(_NO_TYPES, ['int', 'Int64', None, None], seq, payload)
+        _wire_put(_NO_TYPES, ['text'], self.address, payload)
+        payload.extend(body)
+        payload = bytes(payload)
+        with self._lock:
+            self._unacked[seq] = [payload, time.monotonic(), time.monotonic()]
+            peer = self._peer
+        if peer is not None:
+            try:
+                self._node._send(peer, 'chan', payload)
+            except Unreachable:
+                pass
+
+    def _resend(self):
+        import time
+        while not self._gone:
+            time.sleep(0.02)
+            now = time.monotonic()
+            with self._lock:
+                peer = self._peer
+                due = [(seq, entry) for seq, entry in self._unacked.items() if now - entry[2] > 0.05]
+                stale = any(now - entry[1] > self._deadline for _, entry in due)
+            if stale:
+                self._fail('the other end did not answer in time (unreachable)')
+                return
+            if peer is None:
+                continue
+            for seq, entry in due:
+                entry[2] = now
+                try:
+                    self._node._send(peer, 'chan', entry[0])
+                except Unreachable:
+                    pass
+
+    def _fail(self, reason):
+        with self._lock:
+            if self._gone:
+                return
+            self._gone = True
+            self._unacked.clear()
+        self._inbox.put((_ABANDONED, reason))
+
+    def _receive(self, node, kind, source, ident, payload):
+        if kind == 'ack':
+            seq, _ = _wire_get(_NO_TYPES, ['int', 'Int64', None, None], payload, 0)
+            with self._lock:
+                self._unacked.pop(seq, None)
+            return
+        if kind != 'chan':
+            return
+        seq, pos = _wire_get(_NO_TYPES, ['int', 'Int64', None, None], payload, 0)
+        sender, pos = _wire_get(_NO_TYPES, ['text'], payload, pos)
+        body = payload[pos:]
+        ack = bytearray()
+        _wire_put(_NO_TYPES, ['int', 'Int64', None, None], seq, ack)
+        try:
+            self._node._send(sender, 'ack', bytes(ack))
+        except Unreachable:
+            pass
+        if seq == -1:
+            with self._lock:
+                if self._peer is None:
+                    self._peer = sender
+            self._peer_known.set()
+            return
+        with self._lock:
+            if seq < self._expected or seq in self._early:
+                return
+            self._early[seq] = body
+            ready = []
+            while self._expected in self._early:
+                ready.append(self._early.pop(self._expected))
+                self._expected += 1
+        for body in ready:
+            self._inbox.put((None, body))
+
+    def _step_descriptor(self, sends):
+        if self._step >= len(self._steps):
+            raise SessionError('this channel\'s protocol has ended')
+        step_sends, d = self._steps[self._step]
+        if step_sends != sends:
+            raise SessionError('this step ' + ('receives' if step_sends == 0 or not step_sends else 'sends'))
+        self._step += 1
+        return d
+
+    def send(self, side, value):
+        if self._gone:
+            raise PeerFailed('the other end has failed')
+        d = self._step_descriptor(True)
+        body = bytearray([0])
+        _wire_put(self._values, d, value, body)
+        with self._lock:
+            seq = self._out
+            self._out += 1
+        self._transmit(seq, bytes(body))
+
+    def receive(self, side):
+        d = self._step_descriptor(False)
+        marker, body = self._inbox.get()
+        if marker is _ABANDONED:
+            self._inbox.put((marker, body))
+            raise PeerFailed(body)
+        if body[0] == 1:
+            self._fail('the other end gave up the conversation')
+            raise PeerFailed('the other end gave up the conversation (its process failed or abandoned it)')
+        return wire_decode(self._values, d, bytes(body[1:]))
+
+    def abandon(self, side):
+        """Gives up: the other end's receives fail after what was sent."""
+        with self._lock:
+            seq = self._out
+            self._out += 1
+        self._transmit(seq, b'\x01')
