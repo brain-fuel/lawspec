@@ -4,6 +4,7 @@ module LawSpec.RustNativeBinding (emitConversions, emitCall, rustReference, nati
 
 import Control.Monad (forM, unless)
 import Data.List (find, intercalate)
+import Data.Maybe (listToMaybe)
 import qualified LawSpec.Core as C
 import qualified LawSpec.RustExpr as E
 import qualified LawSpec.Code.Doc as D
@@ -47,6 +48,13 @@ convert env@(declarations,_) parameters owner outward ty value
       C.TypeVariable identity -> case lookup identity parameters of
         Just (_,_,converter) -> pure (call converter [value])
         Nothing -> Left "unresolved native conversion parameter"
+      -- A bound handle holds its native value: a native argument is a clone
+      -- of it, and a native result becomes a new handle.
+      C.Constructor name [] | Just (_,binding) <- findBinding env name, C.dataHandle (resolvedDeclaration binding) -> do
+        native <- rustReference (resolvedNativeType binding)
+        pure (if outward
+          then D.text "(" <> value <> D.text (").native::<" ++ native ++ ">().unwrap_or_else(|error| panic!(\"{}\", error)).clone()")
+          else call "ls::Handle::new" [value])
       C.Constructor name args | Just (index,_) <- findBinding env name -> do
         converters <- forM args $ \case
           C.TypeArgument child -> do
@@ -102,7 +110,9 @@ nativeTypeName env parameters ty = case ty of
 
 emitConversions :: [C.DataDeclaration] -> BindingPlan -> Either String D.Doc
 emitConversions declarations plan = do
-  let env@(_,bindings) = environment declarations plan
+  let env@(_,allBindings) = environment declarations plan
+      -- A handle needs no helpers: conversions wrap or open it in place.
+      bindings = [b | b@(_,binding) <- allBindings, not (C.dataHandle (resolvedDeclaration binding))]
   definitions <- forM bindings $ \(index,binding) -> do
     let declaration = resolvedDeclaration binding
         parameters = [(identity,("_T" ++ show i,"_N" ++ show i,"_convert" ++ show i)) |
@@ -157,20 +167,53 @@ emitConversions declarations plan = do
     pure (D.joinWith (D.hardline <> D.hardline) functions)
   pure (D.joinWith (D.hardline <> D.hardline) definitions)
 
-emitCall :: [C.DataDeclaration] -> BindingPlan -> C.Declaration -> NativeRef -> Either String D.Doc
-emitCall declarations plan declaration reference = do
+emitCall :: [C.DataDeclaration] -> BindingPlan -> C.Declaration -> NativeCall -> Either String D.Doc
+emitCall declarations plan declaration native = do
   let env = environment declarations plan
       (arguments,result) = C.functionType (C.declarationType declaration)
-  destination <- rustReference reference
-  values <- mapM (\(i,ty) -> convert env [] Nothing True ty (D.text ("value" ++ show i))) (zip [0::Int ..] arguments)
-  types <- mapM (nativeTypeName env []) arguments
-  nativeResult <- nativeTypeName env [] result
-  converted <- convert env [] Nothing False result (D.text "_native_result")
-  let locals = [D.text ("let _native_arg" ++ show i ++ ": " ++ ty ++ " = ") <> value <> D.text ";" |
-        (i,(ty,value)) <- zip [0::Int ..] (zip types values)]
-      invocation = D.text ("let _native_result: " ++ nativeResult ++ " = ") <>
-        call destination [D.text ("_native_arg" ++ show i) | i <- [0..length values-1]] <> D.text ";"
-  pure (D.joinWith D.hardline (locals ++ [invocation,converted]))
+      context = C.idText (C.declarationId declaration)
+      indexed = zip [0::Int ..] arguments
+      isUnit ty = ty == C.Constructor "Unit" []
+      handleType ty = case ty of
+        C.Constructor name [] -> find ((== C.Id name) . C.dataId) declarations >>= \d -> if C.dataHandle d then Just d else Nothing
+        _ -> Nothing
+      boundHandle d = snd <$> findBinding env (C.idText (C.dataId d))
+  -- The native function, and the adapter's arguments it takes.
+  (receiving, target, passed) <- case native of
+    StaticCall reference -> (\destination -> ([], D.text destination, indexed)) <$> rustReference reference
+    -- A constructor takes no Unit arguments.
+    ConstructorCall reference -> (\destination -> ([], D.text destination, [a | a@(_,ty) <- indexed, not (isUnit ty)])) <$> rustReference reference
+    -- A method is called on the first handle argument, with the rest.
+    MethodCall name -> do
+      (receiver,handle) <- maybe (Left (context ++ ": a method binding needs a handle argument")) Right
+        (listToMaybe [(i,d) | (i,ty) <- indexed, Just d <- [handleType ty]])
+      binding <- maybe (Left (context ++ ": a method binding in Rust needs its handle type " ++
+        C.dataName handle ++ " bound to a native type")) Right (boundHandle handle)
+      receiverType <- rustReference (resolvedNativeType binding)
+      method <- rustReference (NativeRef [name])
+      -- The handle lends its native value; a method never takes it over.
+      pure ([D.group (D.text ("let _native_self: &" ++ receiverType ++ " = value" ++ show receiver ++ ".native()") <>
+          D.nest 4 (D.softbreak <> D.text ".unwrap_or_else(|error| panic!(\"{}\", error));"))],
+        D.text ("_native_self." ++ method), [a | a@(i,_) <- indexed, i /= receiver])
+  values <- mapM (\(i,ty) -> convert env [] Nothing True ty (D.text ("value" ++ show i))) passed
+  types <- mapM (nativeTypeName env [] . snd) passed
+  let locals = receiving ++ [D.text ("let _native_arg" ++ show i ++ ": " ++ ty ++ " = ") <> value <> D.text ";" |
+        ((i,_),(ty,value)) <- zip passed (zip types values)]
+      invoked = target <> D.delimitTrailing 4 "(" ")" [D.text ("_native_arg" ++ show i) | (i,_) <- passed]
+      static = case native of StaticCall _ -> True; _ -> False
+  case () of
+    -- A method or constructor's Unit result discards the native return.
+    _ | not static && isUnit result ->
+          pure (D.joinWith D.hardline (locals ++ [invoked <> D.text ";", D.text "()"]))
+    -- A constructor of an unbound handle wraps whatever it returns.
+      | ConstructorCall _ <- native, Just d <- handleType result, Nothing <- boundHandle d ->
+          pure (D.joinWith D.hardline (locals ++ [D.text "let _native_result = " <> invoked <> D.text ";",
+            D.text "ls::Handle::new(_native_result)"]))
+      | otherwise -> do
+          nativeResult <- nativeTypeName env [] result
+          converted <- convert env [] Nothing False result (D.text "_native_result")
+          pure (D.joinWith D.hardline (locals ++
+            [D.text ("let _native_result: " ++ nativeResult ++ " = ") <> invoked <> D.text ";", converted]))
 
 -- Framework helpers reuse the same source-side codecs; validation remains in
 -- the schema runtime on both sides of a native generator or adapter call.

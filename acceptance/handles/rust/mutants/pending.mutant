@@ -1,0 +1,7 @@
+@@ src/example/handles.rs
+<<<<<<<
+    queue(&value0).lock().unwrap().len() as i32
+=======
+    let size = queue(&value0).lock().unwrap().len() as i32;
+    if size >= 2 { size - 1 } else { size }
+>>>>>>>

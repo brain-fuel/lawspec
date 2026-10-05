@@ -230,7 +230,89 @@ pub enum Value {
     // The compiler supplies unit-qualified constructor identities. Payloads are
     // checked by the generated typed bridges, preserving nested sum states.
     Data(String, Vec<Value>),
+    // A value only adapters create, passed along unopened.
+    Handle(Handle),
 }
+
+/// A handle: a value only adapters create, such as a concurrent queue.
+/// LawSpec never builds, generates or looks inside one; two handles are equal
+/// only when they are the same, and they have no portable order. Clones share
+/// the native value, so a handle stays itself however often it is passed.
+#[derive(Clone)]
+pub struct Handle(Arc<HandleCell>);
+
+struct HandleCell {
+    value: Box<dyn std::any::Any + Send + Sync>,
+    // The handle type's name, recorded when a schema first checks it, and
+    // its number among that type's handles, given when it is first shown.
+    name: std::sync::OnceLock<&'static str>,
+    number: std::sync::OnceLock<u64>,
+}
+
+impl Handle {
+    /// A new handle around a native value.
+    pub fn new<T: std::any::Any + Send + Sync>(value: T) -> Self {
+        Handle(Arc::new(HandleCell {
+            value: Box::new(value),
+            name: std::sync::OnceLock::new(),
+            number: std::sync::OnceLock::new(),
+        }))
+    }
+
+    /// The native value, when it is a T.
+    pub fn downcast_ref<T: std::any::Any>(&self) -> Option<&T> {
+        self.0.value.downcast_ref::<T>()
+    }
+
+    /// The native value as a T, or an error naming both.
+    pub fn native<T: std::any::Any>(&self) -> Result<&T> {
+        self.downcast_ref::<T>()
+            .ok_or_else(|| format!("handle {} does not hold a {}", self.label(), std::any::type_name::<T>()))
+    }
+
+    /// Whether two handles are the same one.
+    pub fn same(&self, other: &Handle) -> bool {
+        Arc::ptr_eq(&self.0, &other.0)
+    }
+
+    fn named(&self, name: &'static str) {
+        let _ = self.0.name.set(name);
+    }
+
+    /// A stable label, such as Jobs#1: the type's name, then the handle's
+    /// number among that type's handles in order of first appearance.
+    pub fn label(&self) -> String {
+        use std::sync::{Mutex, OnceLock};
+        static COUNTS: OnceLock<Mutex<HashMap<&'static str, u64>>> = OnceLock::new();
+        let full = self.0.name.get().copied().unwrap_or("Handle");
+        let name = full.rsplit("::").next().unwrap_or(full);
+        let number = *self.0.number.get_or_init(|| {
+            let mut counts = COUNTS.get_or_init(|| Mutex::new(HashMap::new())).lock().unwrap_or_else(|e| e.into_inner());
+            let count = counts.entry(name).or_insert(0);
+            *count += 1;
+            *count
+        });
+        format!("{name}#{number}")
+    }
+}
+
+impl PartialEq for Handle {
+    fn eq(&self, other: &Self) -> bool {
+        self.same(other)
+    }
+}
+impl Eq for Handle {}
+impl std::hash::Hash for Handle {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        (Arc::as_ptr(&self.0) as *const () as usize).hash(state);
+    }
+}
+impl std::fmt::Debug for Handle {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.label())
+    }
+}
+
 impl Value {
     pub fn exact(&self) -> Result<BigRational> {
         match self {
@@ -592,6 +674,7 @@ native!(char, Char);
 native!(String, Text);
 
 native!(Symbol, Symbol);
+native!(Handle, Handle);
 impl IntoValue for Integer {
     fn into_value(self) -> Value {
         Value::Integer(self.0)
@@ -897,6 +980,8 @@ pub struct Schema {
     // Existentials only a value determines (parameter numbers), by tag; their
     // types travel as the trailing Text witness fields.
     witnesses: HashMap<&'static str, &'static [usize]>,
+    // Handle types: their values are handles, passed along unopened.
+    handles: std::collections::HashSet<&'static str>,
 }
 
 /// Types a generator may choose for an existential that only a value fixes.
@@ -1081,6 +1166,16 @@ impl Schema {
         self
     }
 
+    /// Mark handle types, whose values are handles rather than data.
+    pub fn with_handles(mut self, handles: &[&'static str]) -> Self {
+        for name in handles {
+            if self.definitions.get(name).is_some_and(|d| d.constructors.is_empty()) {
+                self.handles.insert(*name);
+            }
+        }
+        self
+    }
+
     /// Attach constructors' witnessed existentials (parameter numbers).
     pub fn with_witnesses(mut self, witnesses: &[(&'static str, &'static [usize])]) -> Self {
         self.witnesses.extend(witnesses.iter().copied());
@@ -1217,6 +1312,7 @@ impl Schema {
             contracts: predicates,
             indices: HashMap::new(),
             witnesses: HashMap::new(),
+            handles: std::collections::HashSet::new(),
             refinements: refinements
                 .into_iter()
                 .map(|(tag, patterns, existentials)| (tag, (patterns, existentials)))
@@ -1495,6 +1591,13 @@ impl Schema {
             }
             (_, value) => value,
         };
+        if self.handles.contains(name) {
+            let Value::Handle(handle) = value else {
+                return Err(format!("expected a handle of type {name}").into());
+            };
+            handle.named(name);
+            return Ok(Value::Handle(handle));
+        }
         if let Some(definition) = self.definitions.get(name) {
             let Value::Data(tag, fields) = value else {
                 return Err(format!("expected data value of type {name}").into());
@@ -1777,6 +1880,8 @@ pub fn compare_values(a: &Value, b: &Value) -> Result<std::cmp::Ordering> {
         (List(x), List(y)) => items(x, y)?,
         (Data(s, x), Data(t, y)) if s == t => items(x, y)?,
         (Data(s, _), Data(t, _)) => s.cmp(t),
+        (Handle(x), Handle(y)) if x == y => Equal,
+        (Handle(_), Handle(_)) => return Err("handles have no portable order".into()),
         _ => return Err("values have no portable order".into()),
     })
 }
@@ -2862,6 +2967,7 @@ pub fn render(v: &Value) -> String {
             let name = tag.rsplit("::").next().unwrap_or(tag);
             if fields.is_empty() { name.into() } else { format!("{name}({})", all(fields)) }
         }
+        Value::Handle(h) => h.label(),
         other => format!("{other:?}"),
     }
 }
@@ -4145,6 +4251,39 @@ pub fn native_value(value: Value, name: &str) -> Result<Value> {
     match (value, name) {
         (Value::CodeUnit16(x), "CodeUnit16") => Ok(Value::Integer(x.into())),
         (v, _) => Ok(v),
+    }
+}
+
+#[cfg(test)]
+mod handle_tests {
+    use super::*;
+
+    #[test]
+    fn handles_are_equal_by_identity_and_have_no_order() {
+        let a = Value::Handle(Handle::new(std::sync::Mutex::new(vec![1i32])));
+        let b = Value::Handle(Handle::new(std::sync::Mutex::new(vec![1i32])));
+        assert!(equal(&a, &a.clone()).unwrap());
+        assert!(!equal(&a, &b).unwrap());
+        assert_eq!(compare_values(&a, &a.clone()).unwrap(), std::cmp::Ordering::Equal);
+        assert!(compare_values(&a, &b).unwrap_err().contains("no portable order"));
+        fn send<T: Send + Sync>(_: &T) {}
+        send(&a);
+    }
+
+    #[test]
+    fn a_schema_names_and_passes_handles() {
+        let schema = Schema::new(vec![DataSchema { name: "unit::type::Jobs", parameters: 0, constructors: vec![] }])
+            .unwrap()
+            .with_handles(&["unit::type::Jobs"]);
+        let ty = TypeRef::named("unit::type::Jobs", vec![]);
+        let handle = Handle::new(7i32);
+        let checked = schema.validate(Value::Handle(handle.clone()), &ty, 64).unwrap();
+        assert_eq!(checked, Value::Handle(handle.clone()));
+        assert!(render(&checked).starts_with("Jobs#"));
+        assert_eq!(render(&checked), render(&Value::Handle(handle.clone())));
+        assert_eq!(*handle.native::<i32>().unwrap(), 7);
+        assert!(handle.native::<String>().is_err());
+        assert!(schema.validate(Value::Unit, &ty, 64).is_err());
     }
 }
 
