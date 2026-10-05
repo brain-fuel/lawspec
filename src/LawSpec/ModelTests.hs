@@ -13,6 +13,7 @@ import qualified LawSpec.Core as C
 import LawSpec.Core.Machine
 import LawSpec.Common (Artifact(..), Diagnostic(..))
 import LawSpec.MachineSpec (machineSpec)
+import LawSpec.Core.Program (programSpec)
 
 data Callbacks = Callbacks
   { startCallbacks :: Maybe (String, String)
@@ -97,6 +98,10 @@ modelTestArtifacts target bits datas calls u
                    [ "\tif err := LawSpecCheckModelParallel(model); err != nil {"
                    , "\t\tt.Fatal(err)"
                    , "\t}" ] ] ++
+                 -- Each scenario of the model runs on many schedules.
+                 concat [ [ "\tif err := LawSpecCheckScenario(model, " ++ quoted (programSpec p) ++ "); err != nil {"
+                          , "\t\tt.Fatal(err)"
+                          , "\t}" ] | p <- machineScenarios m ] ++
                  [ "}", "" ]
                | (m, (spec, cs)) <- prepared ]
       "java" -> unlines $
@@ -111,6 +116,7 @@ modelTestArtifacts target bits datas calls u
                  , "        new LawSpecRuntime.ModelCallback[] {" ++ intercalate ", " (invariantCallbacks cs) ++ "});"
                  , "    LawSpecRuntime.checkModel(model);" ] ++
                  [ "    LawSpecRuntime.checkModelParallel(model);" | machineShared m ] ++
+                 [ "    LawSpecRuntime.checkScenario(model, " ++ quoted (programSpec p) ++ ");" | p <- machineScenarios m ] ++
                  [ "  }" ]
                | (m, (spec, cs)) <- prepared ] ++ [ "}" ]
       "kotlin" -> unlines $
@@ -125,6 +131,7 @@ modelTestArtifacts target bits datas calls u
                  , "            arrayOf(" ++ intercalate ", " (invariantCallbacks cs) ++ "))"
                  , "        LawSpecRuntime.checkModel(model)" ] ++
                  [ "        LawSpecRuntime.checkModelParallel(model)" | machineShared m ] ++
+                 [ "        LawSpecRuntime.checkScenario(model, " ++ kotlinQuoted (programSpec p) ++ ")" | p <- machineScenarios m ] ++
                  [ "    }" ]
                | (m, (spec, cs)) <- prepared ] ++ [ "})" ]
       _ -> unlines $
@@ -144,7 +151,10 @@ modelTestArtifacts target bits datas calls u
                  , "    maybe (pure ()) expectationFailure failure" ] ++
                  [ l | machineShared m, l <-
                    [ "    parallelFailure <- LS.checkModelParallel model"
-                   , "    maybe (pure ()) expectationFailure parallelFailure" ] ]
+                   , "    maybe (pure ()) expectationFailure parallelFailure" ] ] ++
+                 concat [ [ "    scenarioFailure" ++ show i ++ " <- LS.checkScenario model " ++ quoted (programSpec p)
+                          , "    maybe (pure ()) expectationFailure scenarioFailure" ++ show i ]
+                        | (i, p) <- zip [0 :: Int ..] (machineScenarios m) ]
                | (m, (spec, cs)) <- prepared ]
 
 -- Rust test functions for a unit's models, calling the mounted definitions
@@ -166,7 +176,8 @@ rustModelTests bits datas calls u = mapM test (C.unitMachines u)
         , "        invariants: vec![" ++ intercalate ", " (invariantCallbacks cs) ++ "],"
         , "    };"
         , "    if let Err(message) = ls::with_stack(move || ls::check_model(&model)" ++
-            (if machineShared m then ".and_then(|_| ls::check_model_parallel(&model))" else "") ++ ") {"
+            (if machineShared m then ".and_then(|_| ls::check_model_parallel(&model))" else "") ++
+            concat [".and_then(|_| ls::check_scenario(&model, " ++ show (programSpec p) ++ "))" | p <- machineScenarios m] ++ ") {"
         , "        panic!(\"{}\", message);"
         , "    }"
         , "}" ]
@@ -185,3 +196,7 @@ capitalize [] = []
 
 hsPart :: String -> String
 hsPart = concatMap capitalize . splitOn '_'
+
+-- A Kotlin string literal: as Haskell's, with $ escaped.
+kotlinQuoted :: String -> String
+kotlinQuoted = concatMap (\c -> if c == '$' then "\\$" else [c]) . show

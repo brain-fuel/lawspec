@@ -2375,3 +2375,242 @@ export async function checkModelParallelAsync(model, options = {}) {
     }
   }
 }
+
+// Scenarios: processes that drive a shared model's commands at the same time
+// and talk over channels (see LawSpec.Core.Program for the spec). Each
+// channel has a queue per direction; a process holds an end of a channel as
+// [channel, side], the first branch of a par to use a channel taking side 0.
+// A channel end sent over a channel moves to the receiver. Every command's
+// call and return are stamped on one counter; the history must linearize
+// against the model, and every expect must hold, on each of many schedules.
+// Processes are async functions run together; a receive awaits the send.
+
+const RECEIVE_TIMEOUT = 5000;
+const TIMED_OUT_RECEIVE = Symbol('receive timed out');
+
+/** A queue whose get awaits a put, or gives up after a timeout. */
+class AsyncQueue {
+  items = [];
+  waiters = [];
+  put(value) {
+    const waiter = this.waiters.shift();
+    if (waiter !== undefined) waiter(value);
+    else this.items.push(value);
+  }
+  get(timeout) {
+    if (this.items.length) return Promise.resolve(this.items.shift());
+    return new Promise((resolve) => {
+      const waiter = (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      };
+      const timer = setTimeout(() => {
+        const at = this.waiters.indexOf(waiter);
+        if (at >= 0) this.waiters.splice(at, 1);
+        resolve(TIMED_OUT_RECEIVE);
+      }, timeout);
+      this.waiters.push(waiter);
+    });
+  }
+}
+
+class Channel {
+  queues = [new AsyncQueue(), new AsyncQueue()];
+}
+
+/** A channel end in transit or held by a process. */
+class End {
+  channel;
+  side;
+  constructor(channel, side) {
+    this.channel = channel;
+    this.side = side;
+  }
+}
+
+/** The names an act list sends, receives or sends away, with nested pars. */
+function actsChannels(acts) {
+  const names = [];
+  for (const act of acts) {
+    if (act[0] === 'send') {
+      names.push(String(act[1]));
+      if (act[2][0] === 'var') names.push(String(act[2][1]));
+    } else if (act[0] === 'receive') {
+      names.push(String(act[1]));
+    } else if (act[0] === 'par') {
+      for (const branch of act.slice(1)) names.push(...actsChannels(branch.slice(1)));
+    }
+  }
+  return names;
+}
+
+function constant(form) {
+  const kind = form[0];
+  if (kind === 'int') return form[1];
+  if (kind === 'text') return String(form[1]);
+  if (kind === 'bool') return form[1] === 'true';
+  return new DataValue(String(form[1]), []);
+}
+
+async function runScenario(model, spec, shake) {
+  const forms = readDescriptor(spec);
+  const title = String(forms[0][1]);
+  const names = forms.find((f) => f[0] === 'channels').slice(1).map(String);
+  const body = forms.find((f) => f[0] === 'process').slice(1);
+  const channels = new Map(names.map((name) => [name, new Channel()]));
+  const commands = new Map(model.commands.map((c) => [c.name, c]));
+  const symbols = new Map();
+  const startArgs = model.startArguments.map((d) => model.values.minimal(d));
+  const state = await model.startRun(symbols, ...startArgs);
+  const expected = await model.startModel(symbols, ...startArgs);
+  let clock = 0;
+  const tick = () => ++clock;
+  const history = [];
+  const failures = [];
+
+  const runProcess = async (acts, env, ends, random) => {
+    const own = new Map();
+    for (const act of acts) {
+      if (failures.length) return;
+      const kind = act[0];
+      if (kind === 'call') {
+        const command = commands.get(String(act[1]));
+        const args = act.slice(3).map((o) => (o[0] === 'var' ? env.get(String(o[1])) : constant(o)));
+        const full = [...args];
+        full.splice(command.state, 0, state);
+        const pause = perturb(random);
+        if (pause !== null) await pause;
+        const called = tick();
+        let result;
+        try {
+          result = await command.run(own, ...full);
+        } catch (error) {
+          failures.push(`${command.name} raised ${errorName(error)}: ${errorMessage(error)}`);
+          return;
+        }
+        const returned = tick();
+        history.push([command, args, result, called, returned]);
+        if (act[2] !== null && act[2] !== '_') env.set(String(act[2]), result);
+      } else if (kind === 'send') {
+        const [channel, side] = ends.get(String(act[1]));
+        const operand = act[2];
+        let value;
+        if (operand[0] === 'var' && ends.has(String(operand[1]))) {
+          const name = String(operand[1]);
+          value = new End(...ends.get(name));
+          ends.delete(name);
+        } else {
+          value = operand[0] === 'var' ? env.get(String(operand[1])) : constant(operand);
+        }
+        const pause = perturb(random);
+        if (pause !== null) await pause;
+        channel.queues[side].put(value);
+      } else if (kind === 'receive') {
+        const [channel, side] = ends.get(String(act[1]));
+        const value = await channel.queues[1 - side].get(RECEIVE_TIMEOUT);
+        if (value === TIMED_OUT_RECEIVE) {
+          failures.push(`a receive on ${act[1]} waited too long: the processes are blocked`);
+          return;
+        }
+        if (value instanceof End) ends.set(String(act[2]), [value.channel, value.side]);
+        else env.set(String(act[2]), value);
+      } else if (kind === 'par') {
+        const branches = act.slice(1).map((b) => b.slice(1));
+        const owned = new Map();
+        branches.forEach((branch, i) => {
+          for (const name of actsChannels(branch)) {
+            if (!owned.has(name)) owned.set(name, []);
+            if (!owned.get(name).includes(i)) owned.get(name).push(i);
+          }
+        });
+        const running = branches.map((branch, i) => {
+          const mine = new Map();
+          for (const [name, users] of owned) {
+            if (!users.includes(i)) continue;
+            if (ends.has(name)) mine.set(name, ends.get(name));
+            else if (channels.has(name)) mine.set(name, [channels.get(name), users.indexOf(i)]);
+          }
+          return runProcess(branch, new Map(env), mine,
+            new SplitMix64(shake ^ ((BigInt(i + 1) * 0x9E3779B97F4A7C15n) & MASK64)));
+        });
+        const settled = await Promise.allSettled(running);
+        const rejected = settled.find((s) => s.status === 'rejected');
+        if (rejected !== undefined) throw rejected.reason;
+      } else if (kind === 'expect') {
+        const name = String(act[1]);
+        const actual = env.get(name), wanted = constant(act[2]);
+        if (actual === undefined || actual === null || compareValues(actual, wanted) !== 0) {
+          failures.push(`expect ${name} = ${render(wanted)} failed: ${name} is ${render(actual)}`);
+          return;
+        }
+      }
+    }
+  };
+
+  await runProcess(body, new Map(), new Map(), new SplitMix64(shake));
+  if (failures.length) return [title, failures[0]];
+  const final = model.abstract !== null ? await model.abstract(symbols, state) : null;
+  if (!(await linearizesHistory(model, symbols, history, expected, final, state))) {
+    const observed = [...history].sort((a, b) => a[3] - b[3])
+      .map(([c, args, r]) => `${c.name}(${args.map(render).join(', ')}) returned ${render(r)}`)
+      .join('; ');
+    return [title, `no order of the calls agrees with the model (${observed})`];
+  }
+  return [title, null];
+}
+
+/**
+ * A Wing-Gong search over any real-time order: next, a call that no pending
+ * call returned before; memoized on the calls done and the state.
+ */
+async function linearizesHistory(model, symbols, history, expected, final, state) {
+  const seen = new Set();
+  const count = history.length;
+  const all = (1n << BigInt(count)) - 1n;
+  const bit = (i) => 1n << BigInt(i);
+  const visit = async (done, modelState) => {
+    const key = `${done}|${render(modelState)}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    if (done === all) {
+      if (final !== null && compareValues(final, modelState) !== 0) return false;
+      for (const [kind, invariant] of model.invariants)
+        if (!(await invariant(symbols, kind === 'model' ? modelState : state))) return false;
+      return true;
+    }
+    for (let i = 0; i < count; i++) {
+      if (done & bit(i)) continue;
+      const [command, args, result, called] = history[i];
+      let blocked = false;
+      for (let j = 0; j < count; j++)
+        if (j !== i && !(done & bit(j)) && history[j][4] < called) {
+          blocked = true;
+          break;
+        }
+      if (blocked) continue;
+      let after, wanted;
+      try {
+        [after, wanted] = await stepModel(command, symbols, args, modelState);
+      } catch (error) {
+        if (error instanceof Invalid) continue;
+        throw error;
+      }
+      if (!command.unit && compareValues(result, wanted) !== 0) continue;
+      if (await visit(done | bit(i), after)) return true;
+    }
+    return false;
+  };
+  return visit(0n, expected);
+}
+
+/** Runs a scenario on many schedules; a failure throws an Error. */
+export async function checkScenarioAsync(model, spec, options = {}) {
+  const {runs = 30} = options;
+  let seed = options.seed;
+  if (seed === undefined || seed === null) seed = BigInt(globalThis.process?.env?.LAWSPEC_SEED ?? '0');
+  const random = new SplitMix64(BigInt(seed) ^ 0x2545F4914F6CDD1Dn);
+  for (let r = 0; r < runs; r++) {
+    const [title, failure] = await runScenario(model, spec, random.next());
+    if (failure !== null) throw new Error(`scenario ${title} fails: ${failure}`);
+  }
+}

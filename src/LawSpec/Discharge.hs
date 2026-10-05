@@ -210,7 +210,10 @@ bindingEvidence plan =
   | generator <- resolvedGenerators (bindingRepresentations plan) ] ++
   [ Obligation (declarationId declaration) (declarationId declaration) "native-function" Nothing Assumed
       "external native function taken on trust; tested by the laws that call it"
-  | (declaration, _) <- bindingFunctions plan ]
+  | (declaration, _) <- bindingFunctions plan ] ++
+  [ Obligation (declarationId declaration) (declarationId declaration) "native-function" Nothing Assumed
+      "external native method or constructor taken on trust; tested by the laws and models that call it"
+  | (declaration, _) <- bindingCalls plan ]
 
 callees :: Expr -> [Id]
 callees e = case expressionNode e of

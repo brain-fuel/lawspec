@@ -12,6 +12,8 @@ module LawSpec.Core.Evidence
 
 import qualified Data.Set as S
 import LawSpec.Core
+import LawSpec.Core.Machine (Machine(..))
+import qualified LawSpec.Core.Program as P
 
 -- Strongest first.
 data Status = Proved | ExhaustivelyChecked | PropertyTested | RuntimeChecked | Assumed
@@ -58,7 +60,25 @@ programEvidence program =
       let definitions = S.fromList [declarationId (definitionDeclaration d) | d <- unitDefinitions unit]
       in concatMap (contractEvidence (unitId unit) definitions) (unitContracts unit) ++
          [ Obligation (unitId unit) (declarationId adapter) "adapter" Nothing Assumed (adapterReason unit adapter)
-         | adapter <- adapterDeclarations unit ]
+         | adapter <- adapterDeclarations unit ] ++
+         concatMap (machineEvidence (unitId unit)) (unitMachines unit)
+    -- A model is tested against its reference; a shared one's histories
+    -- must also linearize. A scenario's shape is proved when it compiles.
+    machineEvidence owner machine =
+      let named role = Id (idText owner ++ "::model::" ++ machineName machine ++ role)
+      in [ Obligation owner (named "") "model" Nothing PropertyTested
+             "the system runs generated command sequences and must agree with the reference model at every step" ] ++
+         [ Obligation owner (named "") "linearizable" Nothing PropertyTested
+             "commands run at the same time on several threads; every history must linearize against the model"
+         | machineShared machine ] ++
+         concat
+         [ [ Obligation owner scenario "deadlock-free" Nothing Proved
+               "its channels join the processes as a tree, and a tree of sessions cannot deadlock (checked when compiled)"
+           , Obligation owner scenario "race-free" Nothing Proved
+               "every channel end has one owner and sending it gives it up; shared state is reached only through the model's commands (checked when compiled)"
+           , Obligation owner scenario "scenario" Nothing PropertyTested
+               "runs on many schedules; every history must linearize against the model and every expect must hold" ]
+         | program <- machineScenarios machine, let scenario = named ("::scenario::" ++ P.programTitle program) ]
     contractEvidence owner definitions contract
       | contractDeclaration contract `S.member` definitions =
           [ obligation "precondition" claim RuntimeChecked "checked before a native caller's arguments reach the definition"
