@@ -8,6 +8,11 @@
 - `SizedStack n a` and `SizedQueue n a` are stacks and queues indexed by their
   size: `prelude.sizedPop`, `sizedTop`, `sizedDequeue` and `sizedFront` take a
   non-empty one by type.
+- A function may take several flow parameters (`A / A'`); a call passes a
+  state to each (`pushBoth x ~a ~b`), and a definition may update each.
+- Flow calls may sit in the branches of an `if` or a `match`. A state the
+  branches leave at different types cannot be used afterwards, and the error
+  names each branch's type.
 - `if c then a else b` in laws and checked definitions. Only the selected
   branch is evaluated, and the totality audit checks each branch knowing which
   way the condition went. `prelude.select` now means the same.

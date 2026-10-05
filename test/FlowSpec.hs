@@ -63,14 +63,27 @@ spec = describe "flow typing" $ do
       rejects "does not take a flow parameter" [law "`for all` (x :: Int8) (s :: Stack n) . (push ~x ~s; size s) = 1"]
     it "rejects ~ on a name that is not a quantified variable" $
       rejects "is not a quantified variable" [law "`for all` (s :: Stack (k + 1)) . pop ~t = 0"]
-    it "rejects a flow call inside a match branch" $
-      rejects "cannot appear inside a match branch"
-        [law "`for all` (x :: Int8) (s :: Stack n) . (match s with | Empty -> 0 | Push t r -> (push x ~s; pop ~s) end) = 0"]
+    it "accepts a flow call in each branch of an if that leaves the state at one type" $
+      accepts [law "`for all` (x :: Int8) (s :: Stack n) . ((if x > 0 then push x ~s else push 0 ~s); pop ~s) = x"]
+    it "accepts flow calls in a match branch that leave the state where they found it" $
+      accepts [law "`for all` (x :: Int8) (s :: Stack n) . (match s with | Empty -> prelude.Int8 0 | Push t r -> (push x ~s; pop ~s) end) = 0"]
+    it "rejects using a state the branches left at different types, naming each branch" $
+      rejects "is Stack (n + 1) in the then branch, but Stack n in the else branch"
+        [law "`for all` (x :: Int8) (s :: Stack n) . ((if x > 0 then push x ~s else unitValue); pop ~s) = x"]
+    it "rejects a flow call after && where it may not run" $
+      rejects "cannot appear after && / ||"
+        [law "`for all` (x :: Int8) (s :: Stack (k + 1)) . (x > 0 && pop ~s == x) = true"]
     it "rejects ~ outside a call" $
       rejects "allowed only as an argument" ["f :: (n :: Int8 where ~n > 0) -> Int8"]
   describe "signatures" $ do
-    it "rejects two flow parameters" $
-      rejects "more than one flow parameter" ["swap :: Stack n / Stack n -> Stack m / Stack m -> Unit"]
+    it "accepts several flow parameters, each rebound by its own state" $
+      accepts
+        [ "definition pushBoth (x :: Int8) (a :: Stack n / Stack (n + 1)) (b :: Stack m / Stack (m + 1)) :: Unit is ~a := Push x a; ~b := Push x b end"
+        , law "`for all` (x :: Int8) (a :: Stack n) (b :: Stack m) . (pushBoth x ~a ~b; pop ~a; pop ~b) = x" ]
+    it "rejects passing one state to two flow parameters" $
+      rejects "given the same state twice"
+        [ "swap :: Stack n / Stack n -> Stack m / Stack m -> Unit"
+        , law "`for all` (s :: Stack n) . (swap ~s ~s; size s) = 0" ]
     it "rejects a flow type outside an argument" $
       rejects "legal only as" ["make :: Int8 -> Stack n / Stack n"]
   describe "desugaring" $ do
@@ -91,5 +104,5 @@ spec = describe "flow typing" $ do
         Left _ -> pure ()
         Right _ -> expectationFailure "expected the unchanged stack to be rejected"
     it "updates only its own flow parameter" $
-      rejects "updates only the definition's own flow parameter"
+      rejects "updates only one of the definition's own flow parameters"
         ["definition other (x :: Int8) (s :: Stack n / Stack (n + 1)) :: Unit is ~t := Push x s end"]

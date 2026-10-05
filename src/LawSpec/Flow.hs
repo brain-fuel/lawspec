@@ -19,11 +19,12 @@
 -- adapter's output index is runtime checked like any indexed result.
 module LawSpec.Flow (desugarFlows, flowTypeName) where
 
-import Control.Monad (forM, unless, when, foldM)
-import Control.Monad.State.Strict (StateT, evalStateT, get, put, modify, lift)
+import Control.Monad (forM, forM_, unless, when, foldM)
+import Control.Monad.State.Strict (StateT, runStateT, get, put, modify, lift)
 import Data.Char (toUpper)
-import Data.List (isInfixOf, nub)
+import Data.List (intercalate, isInfixOf, nub)
 import qualified Data.Map.Strict as M
+import qualified Data.Set as S
 import LawSpec.Indexed (IndexedFamily(..), IndexedConstructor(..), indexedRefinementName)
 import LawSpec.Model
 import LawSpec.Scalar (Scalar(..))
@@ -36,13 +37,30 @@ flowTypeName = "Flow#"
 
 data FlowSignature = FlowSignature
   { flowName :: String
-  , flowPosition :: Int
   , flowArguments :: [Type]
-  , flowInput :: Type
-  , flowOutput :: Type
+  -- Each flow parameter, in argument order.
+  , flowParameters :: [FlowParameter]
   , flowResult :: Type
   , flowProduct :: String
   }
+
+-- A flow parameter A / A': its argument position, and the state's type
+-- before and after the call.
+data FlowParameter = FlowParameter
+  { parameterPosition :: Int
+  , parameterInput :: Type
+  , parameterOutput :: Type
+  }
+
+flowPositions :: FlowSignature -> [Int]
+flowPositions = map parameterPosition . flowParameters
+
+-- The product's field for each state: state, or state1, state2, ... when a
+-- function has several.
+stateFields :: FlowSignature -> [String]
+stateFields s = case flowParameters s of
+  [_] -> ["state"]
+  ps -> ["state" ++ show k | (k, _) <- zip [1 :: Int ..] ps]
 
 -- Desugar a unit's flow signatures, law clauses and definitions; the new
 -- products join the unit's indexed families (or plain data types).
@@ -65,9 +83,15 @@ desugarFlows imported families u
       functions' <- forM (functions u) $ \(name, ty) -> case M.lookup name flows of
         Just s -> (,) name <$> productSignature table s
         Nothing -> pure (name, ty)
-      laws' <- mapM (flowLaw table flows) (laws u)
-      definitions' <- mapM (flowDefinition table flows) (functionDefinitions u)
-      let u' = u { functions = functions', laws = laws', functionDefinitions = definitions', dataTypes = dataTypes u ++ newTypes }
+      lawResults <- mapM (flowLaw table flows) (laws u)
+      definitionResults <- mapM (flowDefinition table flows) (functionDefinitions u)
+      let laws' = map fst lawResults
+          definitions' = map fst definitionResults
+          arities = S.toList (S.unions (map snd lawResults ++ map snd definitionResults))
+          joins = [joinType k | k <- arities]
+      forM_' joins $ \j -> when (dataTypeName j `elem` taken)
+        (Left (Nothing, "the generated type " ++ dataTypeName j ++ " clashes with a declared type"))
+      let u' = u { functions = functions', laws = laws', functionDefinitions = definitions', dataTypes = dataTypes u ++ newTypes ++ joins }
           leftover = show (functions u', laws u', functionDefinitions u', contracts u', refinements u')
       when ("Var \"~" `isInfixOf` leftover)
         (Left (Nothing, "~s is allowed only as an argument to a flow parameter, in a law or definition"))
@@ -76,6 +100,15 @@ desugarFlows imported families u
       when (("Application " ++ show flowTypeName) `isInfixOf` leftover)
         (Left (Nothing, "a flow type A / A' is legal only as a signature argument"))
       pure (families ++ newFamilies, u')
+
+-- A branch join: a branch's value and the states it leaves.
+joinType :: Int -> DataTypeDeclaration
+joinType k =
+  let origin = Span (Location "<flow>" 0 0) (Location "<flow>" 0 0)
+      name = "FlowJoin" ++ show k
+      variables = ["a" ++ show i | i <- [1 .. k]]
+  in DataTypeDeclaration name variables
+       [ConstructorDeclaration name [("field" ++ show i, Variable v) | (i, v) <- zip [1 :: Int ..] variables] origin []] origin Nothing
 
 forM_' :: [a] -> (a -> Either Failure ()) -> Either Failure ()
 forM_' xs f = mapM_ f xs
@@ -106,11 +139,10 @@ flowSignature name ty = do
       positions = [(i, a, b) | (i, arg) <- zip [0 ..] args, Just (a, b) <- [isFlow arg]]
   case positions of
     [] -> pure Nothing
-    [(i, a, b)] -> do
+    _ -> do
       when (show flowTypeName `isInfixOf` show (unrefined result))
         (Left (Nothing, name ++ ": a flow type A / A' is legal only as an argument"))
-      pure (Just (FlowSignature name i args a b result (capitalize name ++ "Flow")))
-    _ -> Left (Nothing, name ++ " takes more than one flow parameter; 0.16 supports one")
+      pure (Just (FlowSignature name args [FlowParameter i a b | (i, a, b) <- positions] result (capitalize name ++ "Flow")))
 
 -- A state type's head family and its arguments.
 stateShape :: Type -> Maybe (String, [RefinementArgument])
@@ -143,36 +175,44 @@ isUnit t = case unrefined t of
 -- indices, generic in the type variables of the result and state.
 flowProductType :: M.Map String IndexedFamily -> FlowSignature -> Either Failure (Either IndexedFamily DataTypeDeclaration)
 flowProductType _ s = do
-  let output = unrefined (flowOutput s)
+  let outputs = [unrefined (parameterOutput p) | p <- flowParameters s]
       result = unrefined (flowResult s)
-      variables = nub (typeVariables result ++ typeVariables output)
+      variables = nub (typeVariables result ++ concatMap typeVariables outputs)
       resultField = [("result", result) | not (isUnit result)]
       origin = Span (Location "<flow>" 0 0) (Location "<flow>" 0 0)
-  case stateShape output of
-    Just (family, args) -> do
-      let indexed = [(i, e) | (i, ValueArgument e) <- zip [0 :: Int ..] args]
-          names = [("i" ++ show i, "m" ++ show i) | (i, _) <- indexed]
-          stateArgs = [case arg of
-                         ValueArgument _ -> ValueArgument (Var ("m" ++ show i))
-                         TypeArgument t -> TypeArgument t
-                      | (i, arg) <- zip [0 :: Int ..] args]
-          state = RefinementApp (indexedRefinementName family) stateArgs
-          constructor = ConstructorDeclaration (flowProduct s) (resultField ++ [("state", state)]) origin []
-      pure (Left (IndexedFamily (flowProduct s)
-        ([(i, False) | (i, _) <- names] ++ [(v, True) | v <- variables])
-        [IndexedConstructor constructor [(i, Var m) | (i, m) <- names]] origin))
-    Nothing -> pure (Right (DataTypeDeclaration (flowProduct s) variables
-      [ConstructorDeclaration (flowProduct s) (resultField ++ [("state", output)]) origin []] origin Nothing))
+      single = length outputs == 1
+      -- Each indexed state's index variables, named per state when there
+      -- are several (i0, or i1_0, i2_0, ...).
+      indexName k i = if single then "i" ++ show i else "i" ++ show k ++ "_" ++ show i
+      boundName k i = if single then "m" ++ show i else "m" ++ show k ++ "_" ++ show i
+      stateField (k, output) = case stateShape output of
+        Just (family, args) ->
+          ( [(indexName k i, boundName k i) | (i, ValueArgument _) <- zip [0 :: Int ..] args]
+          , RefinementApp (indexedRefinementName family)
+              [case arg of
+                 ValueArgument _ -> ValueArgument (Var (boundName k i))
+                 TypeArgument t -> TypeArgument t
+              | (i, arg) <- zip [0 :: Int ..] args] )
+        Nothing -> ([], output)
+      fields = map stateField (zip [1 :: Int ..] outputs)
+      names = concatMap fst fields
+      constructor = ConstructorDeclaration (flowProduct s) (resultField ++ zip (stateFields s) (map snd fields)) origin []
+  if any ((/= Nothing) . stateShape) outputs
+    then pure (Left (IndexedFamily (flowProduct s)
+      ([(i, False) | (i, _) <- names] ++ [(v, True) | v <- variables])
+      [IndexedConstructor constructor [(i, Var m) | (i, m) <- names]] origin))
+    else pure (Right (DataTypeDeclaration (flowProduct s) variables [constructor] origin Nothing))
 
 -- The product type a call returns, at the output state's arguments.
 productType :: FlowSignature -> Type
 productType s =
-  let output = unrefined (flowOutput s)
-      variables = nub (typeVariables (unrefined (flowResult s)) ++ typeVariables output)
-  in case stateShape output of
-    Just (_, args) -> RefinementApp (indexedRefinementName (flowProduct s))
-      ([ValueArgument e | ValueArgument e <- args] ++ [TypeArgument (Variable v) | v <- variables])
-    Nothing -> case variables of
+  let outputs = [unrefined (parameterOutput p) | p <- flowParameters s]
+      variables = nub (typeVariables (unrefined (flowResult s)) ++ concatMap typeVariables outputs)
+      shapes = [shape | Just shape <- map stateShape outputs]
+  in if not (null shapes)
+    then RefinementApp (indexedRefinementName (flowProduct s))
+      ([ValueArgument e | (_, args) <- shapes, ValueArgument e <- args] ++ [TypeArgument (Variable v) | v <- variables])
+    else case variables of
       [] -> Named (flowProduct s)
       [v] -> Applied (flowProduct s) (Variable v)
       vs -> Application (flowProduct s) (map Variable vs)
@@ -182,7 +222,7 @@ productType s =
 productSignature :: M.Map String IndexedFamily -> FlowSignature -> Either Failure Type
 productSignature _ s =
   pure (foldr Arrow (productType s)
-    [if i == flowPosition s then flowInput s else a | (i, a) <- zip [0 ..] (flowArguments s)])
+    [maybe a parameterInput (lookup i [(parameterPosition p, p) | p <- flowParameters s]) | (i, a) <- zip [0 ..] (flowArguments s)])
 
 -- Linear natural index terms: coefficients by variable, and a constant.
 data Linear = Linear (M.Map String Integer) Integer deriving (Eq, Show)
@@ -226,6 +266,11 @@ data Flow = Flow
   , flowFacts :: M.Map String Integer
   , flowFresh :: Int
   , flowChecked :: Bool
+  -- States whose branches left them at different types: using one again is
+  -- an error, with this message.
+  , flowPoisoned :: M.Map String String
+  -- The arities of the branch joins (FlowJoinN) the desugaring used.
+  , flowJoins :: S.Set Int
   }
 
 type Binding = (Expr, String, [String])
@@ -255,12 +300,12 @@ lowerBound bounds (Linear xs c) = c + sum [k * M.findWithDefault 0 v bounds | (v
 bindAll :: [(String, Type)] -> M.Map String (Type, Expr)
 bindAll params = M.fromList [(n, (t, Var n)) | (n, t) <- params]
 
-flowLaw :: M.Map String IndexedFamily -> M.Map String FlowSignature -> Law -> Either Failure Law
+flowLaw :: M.Map String IndexedFamily -> M.Map String FlowSignature -> Law -> Either Failure (Law, S.Set Int)
 flowLaw _ flows law = do
   let at = Just (location law)
-      start = Flow (bindAll (parameters law)) (facts (parameters law)) 0 True
-  d <- evalStateT (proposition at flows (definition law)) start
-  pure law { definition = d }
+      start = Flow (bindAll (parameters law)) (facts (parameters law)) 0 True M.empty S.empty
+  (d, end) <- runStateT (proposition at flows (definition law)) start
+  pure (law { definition = d }, flowJoins end)
 
 proposition :: Maybe Location -> M.Map String FlowSignature -> Definition -> F Definition
 proposition at flows d = case d of
@@ -319,32 +364,49 @@ rewrite at flows sequential expression = case expression of
     pure (Binary op a' (wrap bs b'), as)
   Var ('~' : name) -> failAt at ("~" ++ name ++ " is passed to something that does not take a flow parameter")
   Var v -> do
+    poisoned <- flowPoisoned <$> get
+    maybe (pure ()) (failAt at) (M.lookup v poisoned)
     states <- flowStates <$> get
     pure (maybe (Var v) snd (M.lookup v states), [])
+  -- if c then a else b (prelude.select): its branches may call flow
+  -- functions, as a match's may.
+  Apply _ _ | (Var "prelude.select", [c, a, b]) <- spine expression -> do
+    (c', cs) <- rewrite at flows sequential c
+    (value, bindings) <- branching at flows sequential
+      [("then", [], a), ("else", [], b)]
+      (\bodies -> foldl Apply (Var "prelude.select") (c' : bodies))
+    pure (value, cs ++ bindings)
   Apply _ _ | (Var f, args) <- spine expression, Just s <- M.lookup f flows -> do
-    unless sequential (failAt at ("the flow call " ++ f ++ " cannot appear inside a match branch or after && / ||; sequence it before"))
+    unless sequential (failAt at ("the flow call " ++ f ++ " cannot appear after && / || or in an all-elements predicate, where it may not run; sequence it before"))
     unless (length args == length (flowArguments s))
       (failAt at (f ++ " takes " ++ show (length (flowArguments s)) ++ " arguments"))
+    let positions = flowPositions s
     (args', bindings) <- foldM (\(done, bs) (i, arg) ->
-      if i == flowPosition s then pure (done ++ [arg], bs) else do
+      if i `elem` positions then pure (done ++ [arg], bs) else do
         (arg', bs') <- rewrite at flows sequential arg
         pure (done ++ [arg'], bs ++ bs')) ([], []) (zip [0 ..] args)
-    variable <- case unlocated (args' !! flowPosition s) of
+    variables <- forM positions $ \i -> case unlocated (args' !! i) of
       Var ('~' : name) -> pure name
       _ -> failAt at (f ++ " takes a flow parameter here: write ~s for a state s")
+    unless (length (nub variables) == length variables)
+      (failAt at (f ++ " is given the same state twice; each flow parameter takes its own state"))
+    poisoned <- flowPoisoned <$> get
+    forM_ variables $ \v -> maybe (pure ()) (failAt at) (M.lookup v poisoned)
     states <- flowStates <$> get
-    (current, currentValue) <- maybe (failAt at ("~" ++ variable ++ " is not a quantified variable or parameter")) pure
-      (M.lookup variable states)
+    currents <- forM variables $ \v -> maybe (failAt at ("~" ++ v ++ " is not a quantified variable or parameter")) pure
+      (M.lookup v states)
     checked <- flowChecked <$> get
-    next <- if checked
-      then transition at f s current [(t, a) | (i, t, a) <- zip3 [0 ..] (flowArguments s) args', i /= flowPosition s]
-      else pure current
-    stateName <- fresh variable
+    let others = [(t, a) | (i, t, a) <- zip3 [0 ..] (flowArguments s) args', i `notElem` positions]
+    nexts <- forM (zip (flowParameters s) currents) $ \(parameter, (current, _)) ->
+      if checked then transition at f parameter current others else pure current
+    stateNames <- mapM fresh variables
     resultName <- fresh "result"
-    let call = foldl Apply (Var f) [if i == flowPosition s then currentValue else a | (i, a) <- zip [0 :: Int ..] args']
+    let values = M.fromList (zip positions (map snd currents))
+        call = foldl Apply (Var f) [M.findWithDefault a i values | (i, a) <- zip [0 :: Int ..] args']
         unitResult = isUnit (flowResult s)
-        names = [resultName | not unitResult] ++ [stateName]
-    modify (\st -> st { flowStates = M.insert variable (next, Var stateName) (flowStates st) })
+        names = [resultName | not unitResult] ++ stateNames
+    modify (\st -> st { flowStates = foldr (\(v, (next, n)) -> M.insert v (next, Var n)) (flowStates st)
+                                        (zip variables (zip nexts stateNames)) })
     pure (if unitResult then ScalarLit (SAbsent "Unit") else Var resultName, bindings ++ [(call, flowProduct s, names)])
   Apply a b -> two Apply a b
   Compose a b -> two Compose a b
@@ -359,10 +421,10 @@ rewrite at flows sequential expression = case expression of
     pure (ConstructLit n (map fst results), concatMap snd results)
   MatchExpr value branches -> do
     (value', vs) <- rewrite at flows sequential value
-    branches' <- forM branches $ \(MatchBranch tag names body) -> do
-      body' <- shadowed names (rewrite at flows False body)
-      pure (MatchBranch tag names body')
-    pure (MatchExpr value' branches', vs)
+    (result, bindings) <- branching at flows sequential
+      [(lastSegment tag, names, body) | MatchBranch tag names body <- branches]
+      (\bodies -> MatchExpr value' [MatchBranch tag names body | (MatchBranch tag names _, body) <- zip branches bodies])
+    pure (result, vs ++ bindings)
   AllElementsExpr xs n p -> do
     (xs', bs) <- rewrite at flows sequential xs
     p' <- shadowed [n] (rewrite at flows False p)
@@ -381,6 +443,55 @@ rewrite at flows sequential expression = case expression of
       put saved
       pure (wrap bs body)
 
+-- The branches of a match or an if. Without flow calls in them, each branch
+-- keeps its own bindings. With some, the whole branching becomes one
+-- binding: every branch returns its value and the states it leaves in a
+-- FlowJoinN, and the states are rebound to the join's fields after it. A
+-- state the branches leave at different types cannot be used afterwards.
+branching :: Maybe Location -> M.Map String FlowSignature -> Bool -> [(String, [String], Expr)]
+          -> ([Expr] -> Expr) -> F (Expr, [Binding])
+branching at flows sequential branches rebuild = do
+  saved <- get
+  results <- forM branches $ \(label, names, body) -> do
+    current <- get
+    put saved { flowStates = foldr M.delete (flowStates saved) names, flowFresh = flowFresh current, flowJoins = flowJoins current }
+    (body', bs) <- rewrite at flows sequential body
+    after <- get
+    pure (label, names, body', bs, after)
+  final <- get
+  put saved { flowFresh = flowFresh final, flowJoins = flowJoins final }
+  if all (\(_, _, _, bs, _) -> null bs) results
+    then pure (rebuild [body | (_, _, body, _, _) <- results], [])
+    else do
+      let original v = M.lookup v (flowStates saved)
+          leaves v (_, _, _, _, after) = maybe (original v) Just (M.lookup v (flowStates after))
+          moved v r = fmap (show . snd) (leaves v r) /= fmap (show . snd) (original v)
+          changed = [v | v <- M.keys (flowStates saved), any (moved v) results]
+      checked <- flowChecked <$> get
+      forM_ changed $ \v -> do
+        let types = [(label, maybe "" (showType . fst) (leaves v r)) | r@(label, _, _, _, _) <- results]
+        when (checked && length (nub (map snd types)) > 1) $ modify (\st -> st { flowPoisoned = M.insert v
+          ("after these branches, " ++ v ++ " is " ++ intercalate ", but " [t ++ " in the " ++ label ++ " branch" | (label, t) <- types] ++
+           "; use " ++ v ++ " only inside the branches, or bring every branch to the same state") (flowPoisoned st) })
+      let arity = 1 + length changed
+          join = "FlowJoin" ++ show arity
+      resultName <- fresh "branch"
+      newNames <- mapM fresh changed
+      let body (_, _, body', bs, after) = wrap bs (ConstructLit join (body' :
+            [maybe (Var v) snd (maybe (original v) Just (M.lookup v (flowStates after))) | v <- changed]))
+          firstType v = case results of
+            r : _ -> maybe (Named "Unit") fst (leaves v r)
+            [] -> Named "Unit"
+      modify (\st -> st { flowJoins = S.insert arity (flowJoins st)
+                         , flowStates = foldr (\(v, n) -> M.insert v (firstType v, Var n)) (flowStates st) (zip changed newNames) })
+      unless sequential (failAt at "a branch calls a flow function where it may not run (after && / ||); sequence it before")
+      pure (Var resultName, [(rebuild (map body results), join, resultName : newNames)])
+
+lastSegment :: String -> String
+lastSegment n = case break (== ':') n of
+  (_, ':' : ':' : rest) -> lastSegment rest
+  (whole, _) -> whole
+
 spine :: Expr -> (Expr, [Expr])
 spine e = case unlocated e of
   Apply f a -> let (h, as) = spine f in (h, as ++ [a])
@@ -388,9 +499,9 @@ spine e = case unlocated e of
 
 -- Check a flow call against the current state type and return the state it
 -- leaves: invert the input pattern, prove its side condition, substitute.
-transition :: Maybe Location -> String -> FlowSignature -> Type -> [(Type, Expr)] -> F Type
+transition :: Maybe Location -> String -> FlowParameter -> Type -> [(Type, Expr)] -> F Type
 transition at f s current others = do
-  let pattern = unrefined (flowInput s)
+  let pattern = unrefined (parameterInput s)
       state = unrefined current
   bounds <- flowFacts <$> get
   -- A dependent value argument fixes its index variable, when it is linear.
@@ -408,11 +519,11 @@ transition at f s current others = do
     (Nothing, Nothing) | showType pattern == showType state || not (null (typeVariables pattern)) ->
       pure (fixed, bindType M.empty pattern state)
     _ -> failAt at (f ++ " needs " ++ showType pattern ++ "; the state is " ++ showType current)
-  substituteState at f indices types (unrefined (flowOutput s))
+  substituteState at f indices types (unrefined (parameterOutput s))
   where
     invert bounds σ pl@(Linear pxs k) al = case M.toList pxs of
       [] -> do
-        unless (al == pl) (failAt at (f ++ " needs " ++ showType (unrefined (flowInput s)) ++ "; the state is " ++ showType current))
+        unless (al == pl) (failAt at (f ++ " needs " ++ showType (unrefined (parameterInput s)) ++ "; the state is " ++ showType current))
         pure σ
       [(v, 1)] -> do
         let rest = minus al k
@@ -420,7 +531,7 @@ transition at f s current others = do
           Just previous | previous /= rest -> failAt at (f ++ ": the state's indices disagree")
           _ -> pure ()
         when (lowerBound bounds al < k)
-          (failAt at (f ++ " needs " ++ showType (unrefined (flowInput s)) ++ "; the state is " ++ showType current ++
+          (failAt at (f ++ " needs " ++ showType (unrefined (parameterInput s)) ++ "; the state is " ++ showType current ++
             "; add `where " ++ showExpr (render al) ++ " >= " ++ show k ++
             "` to a quantifier, or quantify the state at an index of the form m + " ++ show k))
         pure (M.insert v rest σ)
@@ -472,36 +583,38 @@ showExpr e = case unlocated e of
 -- the product of the final result and state. Calls to other flow functions
 -- thread states as in laws. Inference and the index prover check the
 -- desugared body, so there is no separate typestate check here.
-flowDefinition :: M.Map String IndexedFamily -> M.Map String FlowSignature -> FunctionDefinition -> Either Failure FunctionDefinition
+flowDefinition :: M.Map String IndexedFamily -> M.Map String FlowSignature -> FunctionDefinition -> Either Failure (FunctionDefinition, S.Set Int)
 flowDefinition _ flows d = case M.lookup (functionName d) flows of
   Nothing
-    | uses -> evalStateT (do
-        (body, bindings) <- statements Nothing (functionBody d)
-        pure d { functionBody = wrap bindings body }) start
-    | otherwise -> pure d
+    | uses -> run (do
+        (body, bindings) <- statements [] (functionBody d)
+        pure d { functionBody = wrap bindings body })
+    | otherwise -> pure (d, S.empty)
   Just s -> do
-    let stateName = fst (functionArguments d !! flowPosition s)
-        arguments' = [if i == flowPosition s then (n, flowInput s) else (n, t) | (i, (n, t)) <- zip [0 :: Int ..] (functionArguments d)]
-    evalStateT (do
-      (body, bindings) <- statements (Just stateName) (functionBody d)
+    let inputs = M.fromList [(parameterPosition p, parameterInput p) | p <- flowParameters s]
+        stateNames = [fst (functionArguments d !! i) | i <- flowPositions s]
+        arguments' = [(n, M.findWithDefault t i inputs) | (i, (n, t)) <- zip [0 :: Int ..] (functionArguments d)]
+    run (do
+      (body, bindings) <- statements stateNames (functionBody d)
       states <- flowStates <$> get
-      let final = maybe (Var stateName) snd (M.lookup stateName states)
+      let finals = [maybe (Var n) snd (M.lookup n states) | n <- stateNames]
           resultPart = [body | not (isUnit (flowResult s))]
       pure d { functionArguments = arguments', functionResult = productType s
-             , functionBody = wrap bindings (ConstructLit (flowProduct s) (resultPart ++ [final])) }) start
+             , functionBody = wrap bindings (ConstructLit (flowProduct s) (resultPart ++ finals)) })
   where
     at = Just (spanStart (functionSpan d))
     uses = any (`isInfixOf` show (functionBody d)) ["Var \"~", "Binary \";\"", "Binary \":=\""]
-    start = Flow (bindAll (functionArguments d)) M.empty 0 False
+    start = Flow (bindAll (functionArguments d)) M.empty 0 False M.empty S.empty
+    run action = (\(value, end) -> (value, flowJoins end)) <$> runStateT action start
     statements owned e = case unlocated e of
       Binary ";" a b -> do
         (_, as) <- statements owned a
         (b', bs) <- statements owned b
         pure (b', as ++ bs)
       Binary ":=" target value -> case unlocated target of
-        Var ('~' : name) | Just name == owned -> do
+        Var ('~' : name) | name `elem` owned -> do
           (value', vs) <- rewrite at flows True value
           modify (\f -> f { flowStates = M.adjust (\(t, _) -> (t, value')) name (flowStates f) })
           pure (ScalarLit (SAbsent "Unit"), vs)
-        _ -> lift (Left (at, "~s := e updates only the definition's own flow parameter s"))
+        _ -> lift (Left (at, "~s := e updates only one of the definition's own flow parameters"))
       _ -> rewrite at flows True e

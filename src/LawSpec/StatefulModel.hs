@@ -147,6 +147,7 @@ elaborateModel u m = do
         [] -> context ("must take the shared " ++ family ++ " as an argument")
         _ -> context ("takes " ++ family ++ " more than once")
       else case [(i, a, b) | (i, arg) <- zip [0 ..] args, Just (a, b) <- [flowOf arg]] of
+        _ : _ : _ -> context "takes several flow parameters; a model command takes the model's state as its one flow parameter"
         [(i, a, b)] -> do
           unless (isState a && isState b) (context ("must take the state as a flow parameter " ++ family ++ " ... / " ++ family ++ " ..."))
           (ns, ss) <- typestate (\message -> (Just (modelSpan m), "model " ++ modelName m ++ ": command " ++ name ++ " changes the state's index " ++ message)) indexVariables a b
