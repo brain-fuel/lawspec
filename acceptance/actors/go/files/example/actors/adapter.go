@@ -50,3 +50,26 @@ func DepositTwice(value0 uint8) int64 {
 	}
 	return total
 }
+
+// Reopen restarts a crashed account with the balance it had.
+func Reopen(value0 Account) Account {
+	return Account{Balance: value0.Balance}
+}
+
+// SurvivesCrash starts the bank, deposits, crashes the account and reads its
+// balance through the same handle.
+func SurvivesCrash(value0 uint8) int64 {
+	bank := StartBankSupervisor()
+	defer bank.Stop()
+	if _, err := bank.Account.Deposit(value0); err != nil {
+		panic(err)
+	}
+	if err := bank.Account.Crash(); err != nil {
+		panic(err)
+	}
+	total, err := bank.Account.Balance()
+	if err != nil {
+		panic(err)
+	}
+	return total
+}
