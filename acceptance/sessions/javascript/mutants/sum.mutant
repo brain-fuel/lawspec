@@ -1,0 +1,6 @@
+@@ src/example/sessions.mjs
+<<<<<<<
+  reply.send(BigInt(a) + BigInt(b));
+=======
+  reply.send(BigInt(a) + BigInt(b) + 1n);
+>>>>>>>
