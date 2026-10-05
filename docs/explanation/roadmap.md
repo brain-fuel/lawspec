@@ -13,7 +13,7 @@ patch (0.x.y). This page records what has shipped and what comes next.
 | 0.15 | Evidence and discharge: every obligation reports how it is checked | — |
 | 0.16 | More dependent types: GADTs, index arithmetic, shared indices and the core of flow typing | Several flow parameters per function; flow calls inside match branches |
 | 0.17 | Portable collections and asynchronous functions | Size-indexed queues and stacks; native bindings for asynchronous adapters |
-| 0.18 | Railway-oriented workflows and resilience policies | `all` groups run their steps in turn, not concurrently |
+| 0.18 | Railway-oriented workflows and resilience policies | — |
 | 0.19 | Stateful models, protocols, actors, supervision and distribution | Deadlock freedom beyond tree-shaped connections; channel ends move between nodes by relay, not migration |
 
 0.16 in detail:

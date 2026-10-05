@@ -89,6 +89,17 @@ renderExpressionWithContext declarations bits reference typeKey local external =
     checked ty value = do
       key <- typeKey ty
       pure (runtime "convert" [key,value,bits])
+    render term
+      -- An all group's steps run side by side, each on a virtual thread.
+      | Just (fields,binders,body) <- concurrentGroup term = do
+          steps <- mapM render fields
+          inner <- render body
+          let resultsName = "_group" ++ show (length (show term))
+              bindings = [D.text ("var " ++ local (binderId binder) ++ " = " ++ resultsName ++ ".get(" ++ show i ++ ");")
+                | (i,binder) <- zip [0::Int ..] binders]
+          pure (runtime "concurrently" ((D.text (resultsName ++ " -> ") <>
+            D.block 2 (D.joinWith D.hardline (bindings ++ [D.text "return " <> inner <> D.text ";"]))) :
+            [D.group (D.text "() ->" <> D.nest 4 (D.softline <> step)) | step <- steps]))
     render term = case expressionNode term of
       AllPayloads value predicates -> do
         argument <- render value
@@ -150,6 +161,7 @@ renderExpressionWithContext declarations bits reference typeKey local external =
         right <- render b
         pure (runtime "bool" [D.group (D.nest 4 (runtime "truth" [left]) <>
           D.nest 4 (D.softline <> D.text (if op == And then "&& " else "|| ") <> runtime "truth" [right]))])
+      Helper Concurrently [value] -> render value
       Helper builtin args -> do
         values <- mapM render args
         pure (runtime "helper" [quoted (builtinName builtin),array values,bits])

@@ -58,8 +58,8 @@ Errors name the stage and the mismatched types.
 ### All groups
 
 An `all` group lists steps, each written `f :: A -> B` or `then f`. Every step
-takes the same state, and the steps run in turn. `combine f` receives their results in order, so
-`combine` takes one argument per step:
+takes the same state. `combine f` receives their results in the order the steps
+are declared, so `combine` takes one argument per step:
 
 ```lawspec fragment
 definition firstName (a :: Signup) (b :: Signup) :: Text is nameOf a end
@@ -77,6 +77,21 @@ Without `accumulate`, the group fails with its first failing step's error.
 With `accumulate`, every step runs, and the group fails with all of their
 errors. With a generated error type, those errors go into a `<Workflow>Failures`
 constructor, which holds a list of the workflow's errors (`VetFailures`).
+
+When a group has an [asynchronous](async-functions.md) step, its steps run at the same
+time, so the group takes as long as its slowest step rather than all of them
+together. Each target uses its own concurrency: threads in Python, `Promise`s
+in JavaScript and TypeScript, goroutines in Go, virtual threads in Java and
+Kotlin, scoped threads in Rust and `forkIO` in Haskell. Results and errors keep
+the order of declaration, not the order the steps finish in. Every step
+finishes before the group reports a failure, and without `accumulate` that
+failure is the first failing step's in declaration order.
+
+A group whose steps are all synchronous runs them in turn. A synchronous call
+blocks the thread that makes it, so running such steps side by side would put
+each on a thread of its own, and every adapter would have to be safe to call
+from any thread. The [approvals example](../../../examples/specs/approvals.lawspec)
+checks that two slow checks take as long as the slower one.
 
 ## Error types
 

@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- An `all` group with an asynchronous step runs its steps at the same time,
+  on each target's own concurrency, so it takes as long as its slowest step.
+  Results and accumulated errors keep the order of declaration, and every
+  step finishes before the group fails. Groups of synchronous steps still run
+  in turn.
 - `lawspec.json` can bind an `async` adapter to native code returning the
   target's task: a coroutine, `Promise`, `CompletableFuture`, `suspend fun`,
   `LawSpecTask`, Rust future or `IO` action. The bridge stays asynchronous

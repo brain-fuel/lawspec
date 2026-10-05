@@ -1,0 +1,6 @@
+@@ src/Example/Approvals.hs
+<<<<<<<
+  length messages `seq` pure messages
+=======
+  if length messages > 0 then readIORef Checks.finished else pure messages
+>>>>>>>

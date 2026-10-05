@@ -1,0 +1,6 @@
+@@ src/example/approvals.mjs
+<<<<<<<
+  return result.value.error.map((failure) => failure.error);
+=======
+  return [...checks.finished];
+>>>>>>>

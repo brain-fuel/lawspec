@@ -245,7 +245,7 @@ elaborateResolvedWithData dataTypes declarations bits origin resolve env source 
         builtin <- maybe (Left ("unknown resolved helper: " ++ n)) Right (lookup n
           [("length",C.Length),("isPresent",C.IsPresent),("presentValue",C.PresentValue),("real",C.RealPart),("imag",C.ImaginaryPart)
           ,("isNaN",C.IsNaN),("isInfinite",C.IsInfinite),("isFinite",C.IsFinite),("isNegativeZero",C.IsNegativeZero),("round",C.RoundHalfEven),("checked",C.Checked)
-          ,("compare",C.Compare),("select",C.Select),("unreachable",C.Unreachable)])
+          ,("compare",C.Compare),("select",C.Select),("unreachable",C.Unreachable),("concurrently",C.Concurrently)])
         args <- case (builtin,xs) of
           (C.RoundHalfEven,[a,b]) -> do
             let ty = C.scalarType "Int32"

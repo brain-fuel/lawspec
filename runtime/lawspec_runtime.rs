@@ -2256,6 +2256,20 @@ const TIMED_OUT: &str = "\0lawspec: timed out";
 /// An async step's logical result: start begins the step and convert turns
 /// its native result into a logical value. The step runs within its stage's
 /// timeout and hedge, if any, polling its attempts on this thread.
+/// An all group's step results, joined from their scoped threads, in
+/// declaration order. Every step has finished; the first failure (or panic),
+/// in declaration order, is the group's.
+pub fn joined(results: Vec<std::thread::Result<Result<Value>>>) -> Result<Vec<Value>> {
+    let mut values = Vec::with_capacity(results.len());
+    for result in results {
+        match result {
+            Ok(value) => values.push(value?),
+            Err(panic) => std::panic::resume_unwind(panic),
+        }
+    }
+    Ok(values)
+}
+
 pub fn await_step<F: std::future::Future>(
     ctx: &Context,
     mut start: impl FnMut() -> F,

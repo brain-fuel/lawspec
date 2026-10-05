@@ -79,6 +79,17 @@ renderExpression declarations bits local external = render
     width = D.text (show bits)
     key = quoted . Java.javaDataKey
     runtime name = call ("LawSpecRuntime." ++ name)
+    render term
+      -- An all group's steps run side by side, each on a virtual thread.
+      | Just (fields,binders,body) <- concurrentGroup term = do
+          steps <- mapM render fields
+          inner <- render body
+          let resultsName = "group" ++ show (length (show term))
+              bindings = [D.text ("val " ++ local (binderId binder) ++ " = " ++ resultsName ++ "[" ++ show i ++ "]")
+                | (i,binder) <- zip [0::Int ..] binders]
+          pure (runtime "concurrently" ((D.text ("{ " ++ resultsName ++ " ->") <>
+            D.nest 4 (D.hardline <> D.joinWith D.hardline (bindings ++ [inner])) <> D.hardline <> D.text "}") :
+            [D.text "{" <> D.nest 4 (D.softline <> step) <> D.softline <> D.text "}" | step <- steps]))
     render term = case expressionNode term of
       AllPayloads value predicates -> do
         argument <- render value
@@ -138,6 +149,7 @@ renderExpression declarations bits local external = render
           pure (runtime "bool" [(if op == NotEqual then D.text "!" else mempty) <>
             call "_schema.equal" [ref,left,right,width,D.text "symbols"]])
         else pure (runtime "binary" [quoted (binaryName op),left,right])
+      Helper Concurrently [value] -> render value
       Helper builtin args -> do
         values <- mapM render args
         pure (runtime "helper" [quoted (builtinName builtin),array values,width])

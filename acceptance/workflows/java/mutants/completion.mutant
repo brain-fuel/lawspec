@@ -1,0 +1,8 @@
+@@ src/main/java/example/Approvals.java
+<<<<<<<
+      return messages;
+    });
+=======
+      return new ArrayList<>(Workflows.finished);
+    });
+>>>>>>>

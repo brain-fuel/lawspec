@@ -1,0 +1,6 @@
+@@ src/example/approvals.ts
+<<<<<<<
+  return (result.value as data.ApproveErrorApproveFailures).error.map((failure: any) => failure.error);
+=======
+  return [...checks.finished];
+>>>>>>>

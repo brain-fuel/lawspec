@@ -71,6 +71,15 @@ renderExpressionWithContext declarations width schema scope reference key local 
     validate ty value = do
       ref <- reference ty
       pure (checked (apply "Schema.validateWith" [scope,D.text schema,ref,width,value]))
+    render term
+      -- An all group's steps run side by side, each on a thread of its own.
+      | Just (fields,binders,body) <- concurrentGroup term = do
+          steps <- mapM render fields
+          inner <- render body
+          pure (D.group (D.text "(case " <> apply "LS.concurrently" [array steps] <> D.text " of {" <>
+            D.nest 2 (D.softline <> array (map (D.text . local . binderId) binders) <> D.text " ->" <>
+              D.nest 2 (D.softline <> inner) <> D.text ";" <> D.softline <>
+              D.text "_ -> P.error \"invalid all group\"") <> D.softline <> D.text "})"))
     render term = case expressionNode term of
       AllPayloads value predicates -> do
         argument <- render value
@@ -129,6 +138,7 @@ renderExpressionWithContext declarations width schema scope reference key local 
           let equality = checked (apply "Schema.equalWith" [scope,D.text schema,ref,width,left,right])
           pure (apply "SBool" [if op == NotEqual then apply "P.not" [equality] else equality])
         else pure (apply "LS.binary" [D.text (show (binaryName op)),left,right])
+      Helper Concurrently [value] -> render value
       Helper builtin args -> do
         values <- mapM render args
         pure (apply "LS.helper" [D.text (show (builtinName builtin)),array values,width])

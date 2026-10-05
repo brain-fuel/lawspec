@@ -70,6 +70,15 @@ renderWith asynchronous ts declarations width reference key local external = ren
       | otherwise = do
           target <- key ty
           pure (runtime "convert" [value,target,width])
+    render term
+      -- In an async function, an all group's steps run side by side.
+      | asynchronous, Just (fields,binders,body) <- concurrentGroup term = do
+          steps <- mapM render fields
+          inner <- render body
+          let parameters = D.text "[" <> D.joinWith (D.text ", ") [D.text (local (binderId binder)) | binder <- binders] <>
+                D.text "]" <> (if ts then D.text ": unknown[]" else mempty)
+          pure (D.text "(await (async (" <> parameters <> D.text ") => " <> inner <> D.text ")(await " <>
+            runtime "concurrently" [array [D.text "async () => " <> step | step <- steps]] <> D.text "))")
     render term = case expressionNode term of
       AllPayloads value predicates -> do
         argument <- render value
@@ -139,6 +148,7 @@ renderWith asynchronous ts declarations width reference key local external = ren
           leftKey <- key (expressionType a)
           rightKey <- key (expressionType b)
           pure (runtime "binary" [quoted (binaryName op),left,right,leftKey,rightKey])
+      Helper Concurrently [value] -> render value
       Helper builtin args -> do
         values <- mapM render args
         keys <- mapM (key . expressionType) args

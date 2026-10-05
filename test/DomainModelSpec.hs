@@ -182,6 +182,35 @@ spec = describe "domain modeling" $ do
           , "  validateOrder :: UnvalidatedOrder -> Either OrderError ValidatedOrder"
           , "    hedge 50ms max 1"
           , "end" ])
+    describe "all groups" $ do
+      let group prefix = unlines
+            [ prefix ++ "checkId :: UnvalidatedOrder -> Either Text UnvalidatedOrder"
+            , prefix ++ "checkQuantity :: UnvalidatedOrder -> Either Text UnvalidatedOrder"
+            , "definition firstOrder (a :: UnvalidatedOrder) (b :: UnvalidatedOrder) :: UnvalidatedOrder is a end"
+            , "workflow check :: UnvalidatedOrder -> Either _ UnvalidatedOrder is"
+            , "  all accumulate"
+            , "    then checkId"
+            , "    then checkQuantity"
+            , "  end"
+            , "  combine firstOrder"
+            , "end" ]
+          elaborated prefix = case compileOrders (group prefix) of
+            Left diagnostics -> Left (show diagnostics)
+            Right (units, _) -> Right (head units)
+          body u = concat [show (functionBody d) | d <- functionDefinitions u, functionName d == "check"]
+      it "run asynchronous steps at the same time, as one group value matched in order" $
+        case elaborated "async " of
+          Left message -> expectationFailure message
+          Right u -> do
+            [map dataConstructorName (dataTypeConstructors d) | d <- dataTypes u, dataTypeName d == "CheckGroup1"]
+              `shouldBe` [["CheckGroup1"]]
+            body u `shouldSatisfy` isInfixOf "prelude.concurrently"
+      it "run synchronous steps in turn" $
+        case elaborated "" of
+          Left message -> expectationFailure message
+          Right u -> do
+            [d | d <- dataTypes u, dataTypeName d == "CheckGroup1"] `shouldBe` []
+            body u `shouldNotSatisfy` isInfixOf "prelude.concurrently"
     it "hedge an asynchronous step" $
       case compileOrders (unlines
         [ "async validateOrder :: UnvalidatedOrder -> Either OrderError ValidatedOrder"

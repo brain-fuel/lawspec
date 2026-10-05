@@ -118,6 +118,7 @@ evaluateValue registry bits adapter bindings = run (M.fromList bindings) where
   helper PresentValue [PresenceValue _ (Just value)] = Right value
   helper PresentValue [PresenceValue _ Nothing] = Left "presentValue requires a present value"
   helper Checked [_] = Right (ScalarValue (SBool True))
+  helper Concurrently [value] = Right value
   helper Select [ScalarValue (SBool c), a, b] = Right (if c then a else b)
   helper Compare [a, b] = do
     order <- compareValues a b

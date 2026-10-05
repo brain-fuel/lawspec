@@ -177,6 +177,7 @@ auditTemplates declarations bits unit templates = do
       ("pow", _, [a,b]) -> pure (T.ExactArithmetic C.Power a b)
       -- if c then a else b: each branch is checked knowing which way c went.
       ("select", _, [c, a, b]) -> pure (T.Conditional c a b)
+      ("concurrently", _, [value]) -> pure value
       ("unreachable", [message], _) | Just name <- literalText (S.expression message) -> pure (T.Absurd name)
       ("unreachable", _, _) -> pure (T.Absurd "a constructor")
       ("isPresent", _, [value]) -> pure (T.IsPresent value)

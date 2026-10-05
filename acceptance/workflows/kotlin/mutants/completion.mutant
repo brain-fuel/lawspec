@@ -1,0 +1,7 @@
+@@ src/main/kotlin/example/Approvals.kt
+<<<<<<<
+        return failures.mapNotNull {
+=======
+        if (failures.isNotEmpty()) return Workflows.finished.toList()
+        return failures.mapNotNull {
+>>>>>>>
