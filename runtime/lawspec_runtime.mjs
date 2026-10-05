@@ -1790,22 +1790,74 @@ export class ActorStopped extends Error {
   }
 }
 
+/**
+ * A handler failed, so the actor crashed; cause is what the handler threw.
+ * A supervised actor restarts; any other stops.
+ */
+export class ActorCrashed extends Error {
+  constructor(cause) {
+    super(`the actor crashed: ${cause instanceof Error ? cause.message : String(cause)}`);
+    this.name = 'ActorCrashed';
+    this.cause = cause;
+  }
+}
+
+/** A message that crashes the actor on purpose (crash, links). */
+class RestartSignal {
+  constructor(cause, origin) {
+    this.cause = cause;
+    this.origin = origin;
+  }
+}
+
+let crashIds = 0;
+const nextCrash = () => ++crashIds;
+
+/**
+ * An actor: a state, a mailbox, and one message handled at a time. Each
+ * message runs after the previous one settles, on a promise chain, so an
+ * idle actor costs only its state. options.restart(last state) gives the
+ * state after a crash; without it, a crash stops the actor even under a
+ * supervisor. A supervised actor restarts in place: it keeps its address and
+ * the messages waiting for it.
+ */
 export class Actor {
   #state;
+  #restartState;
   #tail = Promise.resolve();
   #pending = 0;
   #stopped = false;
-  constructor(state) {
+  #halted = false;
+  #monitors = [];
+  #links = [];
+  #seen = new Set();
+  _supervisor = null;
+  constructor(state, options = {}) {
     this.#state = state;
+    this.#restartState = options.restart ?? null;
+  }
+  get _restartable() {
+    return this.#restartState !== null;
   }
   #post(handler) {
-    if (this.#stopped) throw new ActorStopped('the actor has stopped');
+    if (this.#stopped || this.#halted) throw new ActorStopped('the actor has stopped');
     this.#pending += 1;
     const reply = this.#tail.then(async () => {
       try {
-        const [result, next] = await handler(this.#state);
-        this.#state = next;
-        return result;
+        if (this.#halted) throw new ActorStopped('the actor has stopped');
+        let out;
+        try {
+          out = await handler(this.#state);
+        } catch (error) {
+          if (error instanceof RestartSignal) {
+            await this.#crashed(error.cause, error.origin);
+            return undefined;
+          }
+          await this.#crashed(error, nextCrash());
+          throw new ActorCrashed(error);
+        }
+        this.#state = out[1];
+        return out[0];
       } finally {
         this.#pending -= 1;
       }
@@ -1814,20 +1866,82 @@ export class Actor {
     return reply;
   }
   /**
+   * On the actor's turn: restart or stop, then tell monitors and links.
+   * origin names the first crash, so a crash crosses each link once. With a
+   * synchronous restart function it completes synchronously.
+   */
+  async #crashed(cause, origin) {
+    this.#seen.add(origin);
+    const restarted = this._supervisor !== null && this.#restartState !== null &&
+      this._supervisor._childCrashed(this, cause);
+    if (restarted) {
+      const pending = this._restartNow();
+      if (pending !== undefined) await pending;
+    } else {
+      this._halt();
+    }
+    for (const monitor of [...this.#monitors]) monitor(['crashed', cause]);
+    for (const other of [...this.#links]) other._linkCrash(cause, origin);
+  }
+  /** On the actor's turn: the restarted state from the last one. */
+  _restartNow() {
+    const next = this.#restartState(this.#state);
+    if (next instanceof Promise) return next.then((s) => { this.#state = s; });
+    this.#state = next;
+    return undefined;
+  }
+  /** A restart a supervisor asks of a sibling, in mailbox order. */
+  _restartLater() {
+    try {
+      this.#post(async (s) => [undefined, await this.#restartState(s)]).catch(() => {});
+    } catch (error) {
+      if (!(error instanceof ActorStopped)) throw error;
+    }
+  }
+  _linkCrash(cause, origin) {
+    if (this.#seen.has(origin)) return;
+    try {
+      // Checked again on its turn: the same crash may arrive by two links.
+      this.#post((s) => {
+        if (this.#seen.has(origin)) return [undefined, s];
+        throw new RestartSignal(cause, origin);
+      }).catch(() => {});
+    } catch (error) {
+      if (!(error instanceof ActorStopped)) throw error;
+    }
+  }
+  /** Stops the actor; messages still waiting fail with ActorStopped. */
+  _halt() {
+    this.#stopped = true;
+    this.#halted = true;
+  }
+  /**
    * Synchronous code's fast path: runs a synchronous handler at once and
    * returns its result. The actor must be idle, with no message waiting;
-   * otherwise this throws, and the caller should await call instead.
+   * otherwise this throws, and the caller should await call instead. A
+   * handler that throws crashes the actor, as with call.
    */
   callNow(handler) {
-    if (this.#stopped) throw new ActorStopped('the actor has stopped');
+    if (this.#stopped || this.#halted) throw new ActorStopped('the actor has stopped');
     if (this.#pending > 0) throw new Error('the actor has messages waiting; await the call instead');
-    const [result, next] = handler(this.#state);
-    this.#state = next;
-    return result;
+    let out;
+    try {
+      out = handler(this.#state);
+    } catch (error) {
+      if (error instanceof RestartSignal) {
+        this.#crashed(error.cause, error.origin);
+        return undefined;
+      }
+      this.#crashed(error, nextCrash());
+      throw new ActorCrashed(error);
+    }
+    this.#state = out[1];
+    return out[0];
   }
   /**
    * Runs handler(state) -> [result, next state] (or a promise of it) in turn;
-   * resolves to the result, or rejects with what the handler threw.
+   * resolves to the result. A handler that throws crashes the actor, and the
+   * call rejects with ActorCrashed.
    */
   call(handler) {
     try {
@@ -1840,14 +1954,282 @@ export class Actor {
   cast(handler) {
     this.#post(handler).catch(() => {});
   }
+  /**
+   * Crashes the actor once the messages before this one are handled, as a
+   * failing handler would: for testing supervision.
+   */
+  crash(cause = 'crashed on purpose') {
+    const origin = nextCrash();
+    return this.call(() => { throw new RestartSignal(cause, origin); });
+  }
+  /** crash for synchronous code: the actor must have no messages waiting. */
+  crashNow(cause = 'crashed on purpose') {
+    const origin = nextCrash();
+    this.callNow(() => { throw new RestartSignal(cause, origin); });
+  }
+  /**
+   * Replaces the state by restart(last state) between messages, as a
+   * supervised restart does (crash injection in model runs).
+   */
+  restart(restart) {
+    return this.call(async (s) => [undefined, await restart(s)]);
+  }
   /** The state after every message sent before this call. */
   state() {
     return this.call((s) => [s, s]);
   }
-  /** Refuses further messages; those already queued still run. */
-  stop() {
-    this.#stopped = true;
+  /** notify(['crashed', cause]) after each crash, and notify(['stopped', null]) once it stops. */
+  monitor(notify) {
+    this.#monitors.push(notify);
   }
+  /** Links two actors: when either crashes, the other crashes too. */
+  link(other) {
+    this.#links.push(other);
+    other.#links.push(this);
+  }
+  /**
+   * Refuses further messages; those already queued still run. A permanent
+   * child of a supervisor restarts instead.
+   */
+  stop() {
+    if (this._supervisor !== null && this._supervisor._childStopped(this)) return;
+    const already = this.#stopped;
+    this.#stopped = true;
+    if (!already) for (const monitor of [...this.#monitors]) monitor(['stopped', null]);
+  }
+}
+
+const STRATEGIES = ['one_for_one', 'one_for_all', 'rest_for_one'];
+const LIFETIMES = ['permanent', 'transient', 'temporary'];
+
+/**
+ * Starts children (actors or supervisors) and restarts them after a crash.
+ * strategy 'one_for_one' restarts the child that crashed, 'one_for_all'
+ * every child, 'rest_for_one' it and those added after it. A child's
+ * lifetime: 'permanent' restarts after a crash or a stop, 'transient' only
+ * after a crash, 'temporary' never. More than maxRestarts within period
+ * seconds is the supervisor's own crash: its supervisor restarts all of its
+ * children, or, at the top, every child stops.
+ */
+export class Supervisor {
+  _supervisor = null;
+  #children = [];
+  #restarts = [];
+  #stopped = false;
+  #monitors = [];
+  constructor(strategy = 'one_for_one', maxRestarts = 3, period = 5) {
+    if (!STRATEGIES.includes(strategy)) throw new Error(`unknown strategy ${strategy}`);
+    this.strategy = strategy;
+    this.maxRestarts = maxRestarts;
+    this.period = period;
+  }
+  /** Adds a started child, and returns it. */
+  supervise(child, lifetime = 'permanent') {
+    if (!LIFETIMES.includes(lifetime)) throw new Error(`unknown lifetime ${lifetime}`);
+    child._supervisor = this;
+    this.#children.push([child, lifetime]);
+    return child;
+  }
+  children() {
+    return this.#children.map(([c]) => c);
+  }
+  get _restartCount() {
+    return this.#restarts.length;
+  }
+  #allowRestart() {
+    const now = (globalThis.performance?.now?.() ?? Date.now()) / 1000;
+    while (this.#restarts.length && now - this.#restarts[0] > this.period) this.#restarts.shift();
+    if (this.#restarts.length >= this.maxRestarts) return false;
+    this.#restarts.push(now);
+    return true;
+  }
+  #entry(child) {
+    return this.#children.find((e) => e[0] === child);
+  }
+  /** The children to restart for entry's crash, or null when it gives up. */
+  #restarting(entry, cause, crashed) {
+    if (this.#allowRestart()) {
+      const index = this.#children.indexOf(entry);
+      if (this.strategy === 'one_for_one') return [entry];
+      if (this.strategy === 'one_for_all') return [...this.#children];
+      return this.#children.slice(index);
+    }
+    const parent = this._supervisor;
+    if (parent !== null && parent._childFailed(this, cause)) {
+      this.#restarts = [];
+      return [...this.#children];
+    }
+    this.#fail(crashed, cause);
+    return null;
+  }
+  #removeTemporary(entry) {
+    if (entry[1] !== 'temporary') return false;
+    this.#children.splice(this.#children.indexOf(entry), 1);
+    return true;
+  }
+  /** On child's turn: true when it restarts now. */
+  _childCrashed(child, cause) {
+    const entry = this.#entry(child);
+    if (this.#stopped || entry === undefined || this.#removeTemporary(entry)) return false;
+    const group = this.#restarting(entry, cause, child);
+    if (group === null) return false;
+    for (const [other] of group) if (other !== child) other._restartLater();
+    return true;
+  }
+  /** A child supervisor gave up: true when it may restart its children. */
+  _childFailed(child, cause) {
+    const entry = this.#entry(child);
+    if (this.#stopped || entry === undefined || this.#removeTemporary(entry)) return false;
+    const group = this.#restarting(entry, cause, child);
+    if (group === null) return false;
+    for (const [other] of group) if (other !== child) other._restartLater();
+    return true;
+  }
+  /** True when a stopped child is permanent and restarts instead. */
+  _childStopped(child) {
+    const entry = this.#entry(child);
+    if (entry === undefined || this.#stopped) return false;
+    if (entry[1] !== 'permanent') {
+      this.#children.splice(this.#children.indexOf(entry), 1);
+      return false;
+    }
+    const group = this.#restarting(entry, 'stopped', child);
+    if (group === null) return false;
+    for (const [other] of group) other._restartLater();
+    return true;
+  }
+  /** Every child but the one crashing (which stops itself) stops, and so does the supervisor. */
+  #fail(crashed, cause) {
+    const children = this.#children;
+    this.#children = [];
+    this.#stopped = true;
+    for (const [other] of [...children].reverse()) {
+      other._supervisor = null;
+      if (other !== crashed) other._halt();
+    }
+    for (const monitor of [...this.#monitors]) monitor(['crashed', cause]);
+  }
+  /** Restarted by its own supervisor: every child restarts. */
+  _restartLater() {
+    this.#restarts = [];
+    for (const [child] of [...this.#children]) child._restartLater();
+  }
+  _halt() {
+    this.stop();
+  }
+  /** notify(['crashed', cause]) when it gives up, and notify(['stopped', null]) once stopped. */
+  monitor(notify) {
+    this.#monitors.push(notify);
+  }
+  /** Stops every child, last added first, without restarting them. */
+  stop() {
+    if (this.#stopped) return;
+    this.#stopped = true;
+    const children = this.#children;
+    this.#children = [];
+    for (const [child] of [...children].reverse()) {
+      child._supervisor = null;
+      child.stop();
+    }
+    for (const monitor of [...this.#monitors]) monitor(['stopped', null]);
+  }
+}
+
+/**
+ * The runtime's own check of crashes, links, monitors and supervision:
+ * every strategy, lifetime, the restart limit and escalation. Rejects with
+ * an Error naming the first behaviour that differs.
+ */
+export async function checkSupervisionAsync() {
+  const pause = () => new Promise((resolve) => setTimeout(resolve, 10));
+  const counter = () => new Actor(0, {restart: () => 0});
+  const bump = (a) => a.call((s) => [s + 1, s + 1]);
+  const fail = async (a) => {
+    try {
+      await a.call(() => { throw new Error('division by zero'); });
+    } catch (error) {
+      if (error instanceof ActorCrashed) return;
+      throw error;
+    }
+    throw new Error('a failing handler did not reject with ActorCrashed');
+  };
+  const stopped = async (a, what) => {
+    try {
+      await a.state();
+    } catch (error) {
+      if (error instanceof ActorStopped) return;
+      throw error;
+    }
+    throw new Error(`${what} should have stopped`);
+  };
+  const expect = (actual, wanted, what) => {
+    if (JSON.stringify(actual) !== JSON.stringify(wanted))
+      throw new Error(`${what}: got ${JSON.stringify(actual)}, expected ${JSON.stringify(wanted)}`);
+  };
+  const states = (...actors) => Promise.all(actors.map((a) => a.state()));
+
+  let a = counter();
+  await bump(a);
+  await fail(a);
+  await stopped(a, 'an unsupervised actor that crashed');
+  let sup = new Supervisor('one_for_one');
+  let x = sup.supervise(counter()), y = sup.supervise(counter());
+  await bump(x); await bump(y); await bump(y);
+  await fail(x);
+  expect(await states(x, y), [0, 2], 'one for one restarts only the crashed child');
+  sup = new Supervisor('one_for_all');
+  x = sup.supervise(counter()); y = sup.supervise(counter());
+  await bump(x); await bump(y);
+  await fail(x);
+  expect(await states(x, y), [0, 0], 'one for all restarts every child');
+  sup = new Supervisor('rest_for_one');
+  let z;
+  [x, y, z] = [sup.supervise(counter()), sup.supervise(counter()), sup.supervise(counter())];
+  await bump(x); await bump(y); await bump(z);
+  await fail(y);
+  expect(await states(x, y, z), [1, 0, 0], 'rest for one restarts the child and later ones');
+  sup = new Supervisor();
+  const t = sup.supervise(counter(), 'temporary');
+  await fail(t);
+  await stopped(t, 'a temporary child that crashed');
+  sup = new Supervisor();
+  const p = sup.supervise(counter(), 'permanent'), q = sup.supervise(counter(), 'transient');
+  await bump(p);
+  p.stop();
+  expect(await p.state(), 0, 'a permanent child restarts after a stop');
+  q.stop();
+  await stopped(q, 'a transient child that was stopped');
+  const events = [];
+  sup = new Supervisor('one_for_one', 2, 10);
+  sup.monitor((e) => events.push(e));
+  x = sup.supervise(counter()); y = sup.supervise(counter());
+  await fail(x); await fail(x); await fail(x);
+  await stopped(y, 'a child of a supervisor past its restart limit');
+  expect(events.map((e) => e[0]), ['crashed'], 'a supervisor past its limit tells its monitors');
+  const outer = new Supervisor('one_for_one', 5, 10);
+  const inner = outer.supervise(new Supervisor('one_for_one', 1, 10));
+  x = inner.supervise(counter()); y = inner.supervise(counter());
+  await bump(y);
+  await fail(x); await fail(x);
+  expect(await states(x, y), [0, 0], 'a supervisor past its limit is restarted by its own');
+  const seen = [];
+  a = counter();
+  let b = counter();
+  a.link(b);
+  b.monitor((e) => seen.push(e));
+  await fail(a);
+  for (let i = 0; i < 100 && !seen.length; i++) await pause();
+  await stopped(b, 'an unsupervised actor linked to one that crashed');
+  expect(seen.map((e) => e[0]), ['crashed'], 'a monitor hears of a crash');
+  sup = new Supervisor('one_for_one', 10);
+  let c;
+  [a, b, c] = [sup.supervise(counter()), sup.supervise(counter()), sup.supervise(counter())];
+  a.link(b); b.link(c); c.link(a);
+  await bump(a); await bump(b); await bump(c);
+  await fail(a);
+  for (let i = 0; i < 100 && sup._restartCount < 3; i++) await pause();
+  await pause();
+  expect([...(await states(a, b, c)), sup._restartCount], [0, 0, 0, 3], 'a crash crosses each link once');
 }
 
 /**
@@ -1927,6 +2309,7 @@ class ModelCommand {
     // The argument naming the key the command touches, for per-key checks.
     const key = (fields.get('key') ?? ['none'])[0];
     this.key = key === 'none' ? null : Number(key);
+    this.restart = (fields.get('restart') ?? ['false'])[0] === 'true';
     [this.run, this.reference, this.when] = callbacks;
   }
   admits(indices) {
@@ -1974,16 +2357,64 @@ export class Model {
     const kinds = forms.find((f) => f[0] === 'invariants').slice(1);
     this.invariants = kinds.slice(0, invariants.length).map((k, i) => [k, invariants[i]]);
     this.perKey = forms.some((f) => f[0] === 'perkey' && f[1] === 'true');
+    // Sequential runs of an actor also inject crashes: the actor restarts
+    // from its last state (restart from) or its start, and the model follows
+    // the restart's reference (or the start's model state).
+    const restarts = this.commands.filter((c) => c.restart);
+    this.commands = this.commands.filter((c) => !c.restart);
+    this.steps = this.commands;
     // An actor model's start and handlers run inside an actor; the
     // abstraction and state invariants read its state between messages.
     if (forms.some((f) => f[0] === 'actor' && f[1] === 'true')) {
-      const run = this.startRun;
-      this.startRun = async (symbols, ...args) => new Actor(await run(symbols, ...args));
+      const run = this.startRun, begin = this.startModel;
+      this.startRun = async (symbols, ...args) => {
+        symbols.set('_lawspec_start', args);
+        return new Actor(await run(symbols, ...args));
+      };
+      this.startModel = async (symbols, ...args) => {
+        symbols.set('_lawspec_start', args);
+        return begin(symbols, ...args);
+      };
       for (const c of this.commands) c.run = actorCommand(c.run, c.unit);
+      this.steps = [...this.commands, new Crash(run, begin, restarts[0] ?? null)];
       if (abstract != null) this.abstract = async (symbols, actor) => abstract(symbols, await actor.state());
       this.invariants = this.invariants.map(([k, p]) =>
         [k, k === 'state' ? async (symbols, actor) => p(symbols, await actor.state()) : p]);
     }
+  }
+}
+
+/** An injected crash of an actor model, as a step with no arguments. */
+class Crash {
+  name = 'crash';
+  arguments = [];
+  state = 0;
+  unit = true;
+  when = null;
+  key = null;
+  restart = false;
+  #startRun;
+  #startModel;
+  #restart;
+  constructor(startRun, startModel, restart) {
+    this.#startRun = startRun;
+    this.#startModel = startModel;
+    this.#restart = restart;
+  }
+  admits() {
+    return true;
+  }
+  shifted(indices) {
+    return indices;
+  }
+  async run(symbols, actor) {
+    if (this.#restart !== null) await actor.restart((s) => this.#restart.run(symbols, s));
+    else await actor.restart(() => this.#startRun(symbols, ...symbols.get('_lawspec_start')));
+    return UNIT;
+  }
+  reference(symbols, state) {
+    if (this.#restart !== null) return this.#restart.reference(symbols, state);
+    return this.#startModel(symbols, ...symbols.get('_lawspec_start'));
   }
 }
 
@@ -2002,7 +2433,7 @@ async function simulate(model, symbols, run) {
   let indices = [...model.startIndices];
   const states = [state];
   for (const [index, args] of steps) {
-    const command = model.commands[index];
+    const command = model.steps[index];
     if (!command.admits(indices)) throw new Invalid();
     [state] = await stepModel(command, symbols, args, state);
     indices = command.shifted(indices);
@@ -2025,7 +2456,7 @@ async function stepModel(command, symbols, args, state) {
   return [out.fields[1], out.fields[0]];
 }
 
-async function generateRun(model, random, length, size) {
+async function generateRun(model, random, length, size, crashes = false) {
   const symbols = new Map();
   const startArgs = model.startArguments.map((d) => model.values.generate(d, random, size));
   let state;
@@ -2040,8 +2471,11 @@ async function generateRun(model, random, length, size) {
     const allowed = [];
     model.commands.forEach((c, i) => { if (c.admits(indices)) allowed.push(i); });
     if (!allowed.length) break;
-    const index = allowed[Number(random.below(BigInt(allowed.length)))];
-    const command = model.commands[index];
+    let index = allowed[Number(random.below(BigInt(allowed.length)))];
+    // One step in eight of an actor's run is a crash.
+    if (crashes && model.steps.length > model.commands.length && random.below(8n) === 0n)
+      index = model.commands.length;
+    const command = model.steps[index];
     const args = command.arguments.map((d) => model.values.generate(d, random, size));
     try {
       [state] = await stepModel(command, symbols, args, state);
@@ -2075,7 +2509,7 @@ async function execute(model, run) {
     if (failure) return [step, failure];
     for (const [index, args] of steps) {
       step += 1;
-      const command = model.commands[index];
+      const command = model.steps[index];
       const full = [...args];
       full.splice(command.state, 0, state);
       const out = await command.run(symbols, ...full);
@@ -2120,7 +2554,7 @@ function* shrinkCandidates(model, run) {
       yield [startArgs, [...steps.slice(0, begin), ...steps.slice(begin + size)]];
   for (let k = 0; k < n; k++) {
     const [index, args] = steps[k];
-    const command = model.commands[index];
+    const command = model.steps[index];
     const m = Math.min(command.arguments.length, args.length);
     for (let j = 0; j < m; j++)
       for (const c of model.values.shrink(command.arguments[j], args[j]))
@@ -2164,7 +2598,7 @@ async function shrinkRun(model, run, failure, budget) {
 function describeRun(model, run) {
   const [startArgs, steps] = run;
   const parts = ['start(' + startArgs.map(render).join(', ') + ')',
-    ...steps.map(([i, args]) => model.commands[i].name + '(' + args.map(render).join(', ') + ')')];
+    ...steps.map(([i, args]) => model.steps[i].name + '(' + args.map(render).join(', ') + ')')];
   return parts.join('; ');
 }
 
@@ -2179,7 +2613,7 @@ export async function checkModelAsync(model, options = {}) {
   const random = new SplitMix64(BigInt(seed));
   for (let c = 0; c < cases; c++) {
     const length = Number(random.below(BigInt(maxLength) + 1n));
-    let run = await generateRun(model, random, length, 1 + c % 8);
+    let run = await generateRun(model, random, length, 1 + c % 8, true);
     const failure = await execute(model, run);
     if (failure !== null) {
       let step, message;
@@ -2551,8 +2985,48 @@ class AsyncQueue {
   }
 }
 
+const GONE = Symbol('the other process ended');
+
 class Channel {
   queues = [new AsyncQueue(), new AsyncQueue()];
+  ended = [false, false];
+  /** A channel end sent to a process that has ended is given up. */
+  send(side, value) {
+    if (this.ended[1 - side] && value instanceof End) value.channel.gone(value.side);
+    else this.queues[side].put(value);
+  }
+  /**
+   * side's process has ended: the other side's receives that find nothing
+   * more fail instead of waiting, and channel ends on their way to side are
+   * given up too.
+   */
+  gone(side) {
+    if (this.ended[side]) return;
+    this.ended[side] = true;
+    this.queues[side].put(GONE);
+    const incoming = this.queues[1 - side].items;
+    const stranded = [];
+    while (incoming.length) {
+      const value = incoming.shift();
+      if (value instanceof End) stranded.push(value);
+      else if (value === GONE) {
+        incoming.unshift(value);
+        break;
+      }
+    }
+    for (const end of stranded) end.channel.gone(end.side);
+  }
+}
+
+/** Every process of a par, outermost and first first (not or else). */
+function scenarioProcesses(acts, found) {
+  for (const act of acts)
+    if (act[0] === 'par')
+      for (const branch of act.slice(1)) {
+        found.push(branch);
+        scenarioProcesses(branch.slice(1), found);
+      }
+  return found;
 }
 
 /** A channel end in transit or held by a process. */
@@ -2574,6 +3048,9 @@ function actsChannels(acts) {
       if (act[2][0] === 'var') names.push(String(act[2][1]));
     } else if (act[0] === 'receive') {
       names.push(String(act[1]));
+    } else if (act[0] === 'receiveor') {
+      names.push(String(act[1]));
+      names.push(...actsChannels(act[3].slice(1)));
     } else if (act[0] === 'par') {
       for (const branch of act.slice(1)) names.push(...actsChannels(branch.slice(1)));
     }
@@ -2589,7 +3066,7 @@ function constant(form) {
   return new DataValue(String(form[1]), []);
 }
 
-async function runScenario(model, spec, shake) {
+async function runScenario(model, spec, shake, crash = false) {
   const forms = readDescriptor(spec);
   const title = String(forms[0][1]);
   const names = forms.find((f) => f[0] === 'channels').slice(1).map(String);
@@ -2604,11 +3081,31 @@ async function runScenario(model, spec, shake) {
   const tick = () => ++clock;
   const history = [];
   const failures = [];
+  // The crashed process (a par's branch) and the act it crashes before.
+  const processes = scenarioProcesses(body, []);
+  let victim = null;
+  if (crash && processes.length) {
+    const chooser = new SplitMix64(shake ^ 0xC3A5C85C97CB3127n);
+    const branch = processes[Number(chooser.below(BigInt(processes.length)))];
+    victim = [branch, Number(chooser.below(BigInt(branch.length - 1 + 1)))];
+  }
+  const crashesAt = (identity, index) => victim !== null && victim[0] === identity && victim[1] === index;
 
-  const runProcess = async (acts, env, ends, random) => {
+  // 'done' or 'failed'; either way, the ends still held are given up.
+  const runProcess = async (acts, env, ends, random, identity = null) => {
+    try {
+      return await steps(acts, env, ends, random, identity);
+    } finally {
+      for (const [channel, side] of ends.values()) channel.gone(side);
+    }
+  };
+
+  const steps = async (acts, env, ends, random, identity) => {
     const own = new Map();
-    for (const act of acts) {
-      if (failures.length) return;
+    for (let index = 0; index < acts.length; index++) {
+      const act = acts[index];
+      if (failures.length) return 'failed';
+      if (crashesAt(identity, index)) return 'failed';
       const kind = act[0];
       if (kind === 'call') {
         const command = commands.get(String(act[1]));
@@ -2623,7 +3120,7 @@ async function runScenario(model, spec, shake) {
           result = await command.run(own, ...full);
         } catch (error) {
           failures.push(`${command.name} raised ${errorName(error)}: ${errorMessage(error)}`);
-          return;
+          return 'failed';
         }
         const returned = tick();
         history.push([command, args, result, called, returned]);
@@ -2641,21 +3138,29 @@ async function runScenario(model, spec, shake) {
         }
         const pause = perturb(random);
         if (pause !== null) await pause;
-        channel.queues[side].put(value);
-      } else if (kind === 'receive') {
+        channel.send(side, value);
+      } else if (kind === 'receive' || kind === 'receiveor') {
         const [channel, side] = ends.get(String(act[1]));
         const value = await channel.queues[1 - side].get(RECEIVE_TIMEOUT);
         if (value === TIMED_OUT_RECEIVE) {
           failures.push(`a receive on ${act[1]} waited too long: the processes are blocked`);
-          return;
+          return 'failed';
+        }
+        if (value === GONE) {
+          // The other process ended: or else runs instead of the rest;
+          // without it, this process fails too.
+          channel.queues[1 - side].put(GONE);
+          if (kind === 'receive') return 'failed';
+          ends.delete(String(act[1]));
+          return steps(act[3].slice(1), env, ends, random, null);
         }
         if (value instanceof End) ends.set(String(act[2]), [value.channel, value.side]);
         else env.set(String(act[2]), value);
       } else if (kind === 'par') {
-        const branches = act.slice(1).map((b) => b.slice(1));
+        const branches = act.slice(1);
         const owned = new Map();
         branches.forEach((branch, i) => {
-          for (const name of actsChannels(branch)) {
+          for (const name of actsChannels(branch.slice(1))) {
             if (!owned.has(name)) owned.set(name, []);
             if (!owned.get(name).includes(i)) owned.get(name).push(i);
           }
@@ -2664,28 +3169,37 @@ async function runScenario(model, spec, shake) {
           const mine = new Map();
           for (const [name, users] of owned) {
             if (!users.includes(i)) continue;
-            if (ends.has(name)) mine.set(name, ends.get(name));
-            else if (channels.has(name)) mine.set(name, [channels.get(name), users.indexOf(i)]);
+            if (ends.has(name)) {
+              mine.set(name, ends.get(name));
+              ends.delete(name);
+            } else if (channels.has(name)) {
+              mine.set(name, [channels.get(name), users.indexOf(i)]);
+            }
           }
-          return runProcess(branch, new Map(env), mine,
-            new SplitMix64(shake ^ ((BigInt(i + 1) * 0x9E3779B97F4A7C15n) & MASK64)));
+          return runProcess(branch.slice(1), new Map(env), mine,
+            new SplitMix64(shake ^ ((BigInt(i + 1) * 0x9E3779B97F4A7C15n) & MASK64)), branch);
         });
         const settled = await Promise.allSettled(running);
         const rejected = settled.find((s) => s.status === 'rejected');
         if (rejected !== undefined) throw rejected.reason;
+        // A failed branch fails the process that ran the par.
+        if (settled.some((s) => s.value === 'failed')) return 'failed';
       } else if (kind === 'expect') {
         const name = String(act[1]);
         const actual = env.get(name), wanted = constant(act[2]);
         if (actual === undefined || actual === null || compareValues(actual, wanted) !== 0) {
           failures.push(`expect ${name} = ${render(wanted)} failed: ${name} is ${render(actual)}`);
-          return;
+          return 'failed';
         }
       }
     }
+    if (crashesAt(identity, acts.length)) return 'failed';
+    return 'done';
   };
 
-  await runProcess(body, new Map(), new Map(), new SplitMix64(shake));
-  if (failures.length) return [title, failures[0]];
+  const outcome = await runProcess(body, new Map(), new Map(), new SplitMix64(shake));
+  if (failures.length) return [title, failures[0] + (victim !== null ? ' (with a process crashed)' : '')];
+  if (outcome === 'failed' && victim === null) return [title, 'a process failed'];
   const final = model.abstract !== null ? await model.abstract(symbols, state) : null;
   if (!(await linearizesHistory(model, symbols, history, expected, final, state))) {
     const observed = [...history].sort((a, b) => a[3] - b[3])
@@ -2747,7 +3261,8 @@ export async function checkScenarioAsync(model, spec, options = {}) {
   if (seed === undefined || seed === null) seed = BigInt(globalThis.process?.env?.LAWSPEC_SEED ?? '0');
   const random = new SplitMix64(BigInt(seed) ^ 0x2545F4914F6CDD1Dn);
   for (let r = 0; r < runs; r++) {
-    const [title, failure] = await runScenario(model, spec, random.next());
+    // Every third run crashes one process of a par at a random point.
+    const [title, failure] = await runScenario(model, spec, random.next(), r % 3 === 2);
     if (failure !== null) throw new Error(`scenario ${title} fails: ${failure}`);
   }
 }
@@ -2760,6 +3275,20 @@ export async function checkScenarioAsync(model, spec, options = {}) {
 // receiveNow(side), so a networked transport can stand in for it.
 
 const SPENT_END = 'this end was already used; use the end its last step returned';
+
+/**
+ * A receive whose other end gave up: its process failed, or it called
+ * abandon(). Catch it to handle the failure (or else); otherwise this
+ * process fails too.
+ */
+export class PeerFailed extends Error {
+  constructor(message = 'the other end gave up the conversation (its process failed or abandoned it)') {
+    super(message);
+    this.name = 'PeerFailed';
+  }
+}
+
+const ABANDONED = Symbol('abandoned');
 
 /** An in-process channel: one queue per direction; a receive awaits a send. */
 export class SessionChannel {
@@ -2774,17 +3303,42 @@ export class SessionChannel {
     else this.#queues[to].push(value);
   }
 
-  /** Resolves to the next value sent to the given side, waiting for it. */
+  /**
+   * Resolves to the next value sent to the given side, waiting for it;
+   * rejects with PeerFailed once the other side has given up and nothing
+   * is left.
+   */
   receive(side) {
-    if (this.#queues[side].length) return Promise.resolve(this.#queues[side].shift());
-    return new Promise((resolve) => this.#waiters[side].push(resolve));
+    const take = (value) => {
+      if (value !== ABANDONED) return value;
+      this.#queues[side].unshift(ABANDONED);
+      throw new PeerFailed();
+    };
+    if (this.#queues[side].length) {
+      try {
+        return Promise.resolve(take(this.#queues[side].shift()));
+      } catch (error) {
+        return Promise.reject(error);
+      }
+    }
+    return new Promise((resolve) => this.#waiters[side].push(resolve)).then(take);
   }
 
   /** The next value already sent to the given side, without waiting. */
   receiveNow(side) {
     if (!this.#queues[side].length)
       throw new Error('nothing has been sent to this end yet; await receive() instead');
-    return this.#queues[side].shift();
+    const value = this.#queues[side].shift();
+    if (value === ABANDONED) {
+      this.#queues[side].unshift(ABANDONED);
+      throw new PeerFailed();
+    }
+    return value;
+  }
+
+  /** side gives up: the other side's receives fail after the values already sent. */
+  abandon(side) {
+    this.send(side, ABANDONED);
   }
 }
 
@@ -2812,6 +3366,20 @@ export class SessionEnd {
     if (this.#used) throw new Error(SPENT_END);
     this.#used = true;
     return [this.#channel, this.#side];
+  }
+
+  /**
+   * Gives up the conversation: the other end's receives fail with
+   * PeerFailed once it has received what was already sent.
+   */
+  abandon() {
+    const [channel, side] = this.use();
+    channel.abandon(side);
+  }
+
+  /** A failed process gives up the ends it was given, used or not. */
+  _giveUp() {
+    this.#channel.abandon(this.#side);
   }
 }
 
@@ -2853,7 +3421,10 @@ export function openSession(First, Second, transport = channel()) {
  */
 export function spawn(fn, ...args) {
   const result = Promise.resolve().then(() => fn(...args));
-  result.catch(() => {});
+  // A failed process gives up the channel ends it was given.
+  result.catch(() => {
+    for (const arg of args) if (arg instanceof SessionEnd) arg._giveUp();
+  });
   return Object.freeze({join: () => result});
 }
 

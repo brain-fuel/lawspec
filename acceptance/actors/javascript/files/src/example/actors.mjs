@@ -1,6 +1,6 @@
 // User-owned LawSpec adapter: an account's handlers, run inside an actor.
 import * as data from '.././lawspec_data.mjs';
-import {AccountActor} from '../lawspec_actors.mjs';
+import {AccountActor, BankSupervisor} from '../lawspec_actors.mjs';
 
 export function openAccount(value0) {
   return new data.Account(0n);
@@ -32,5 +32,21 @@ export function depositTwice(value0) {
   account.depositNow(value0);
   const total = account.balanceNow();
   account.stop();
+  return total;
+}
+
+export function reopen(value0) {
+  return new data.Account(value0.balance);
+}
+
+// survivesCrash starts the bank, deposits, crashes the account, and reads
+// its balance through the same handle: the supervisor restarted it from its
+// last balance.
+export function survivesCrash(value0) {
+  const bank = BankSupervisor.start();
+  bank.account.depositNow(value0);
+  bank.account.crashNow();
+  const total = bank.account.balanceNow();
+  bank.stop();
   return total;
 }

@@ -16,11 +16,12 @@ import qualified LawSpec.Code.Doc as D
 import LawSpec.Common (Artifact(..))
 import LawSpec.Backend (adapterName, unitName)
 import LawSpec.WebTypes (webDataTypeDocWith)
-import LawSpec.Actors.Types (Actor(..), Handler(..), Supervision)
+import LawSpec.Actors.Types (Actor(..), Handler(..), Supervision(..), Child(..))
+import LawSpec.Core.Machine (SupervisionStrategy(..), Lifetime(..))
 
 emit :: String -> Bool -> Int -> [C.DataDeclaration] -> [Actor] -> [Supervision] -> Either String [Artifact]
-emit target _ _ datas actors _ = do
-  classes <- mapM (actorClassText ts datas) actors
+emit target _ _ datas actors supervisions = do
+  classes <- (++ map (supervisorClassText ts supervisions) supervisions) <$> mapM (actorClassText ts datas) actors
   let modules = nub (map (unitName . actorUnit) actors)
       body = concatMap ("\n" ++) classes
       header =
@@ -28,7 +29,12 @@ emit target _ _ datas actors _ = do
         , "// for implementation code. Each class runs one actor: start(...) makes its"
         , "// state and returns the actor. Each handler method sends a message and"
         , "// resolves to the reply; tell<Handler> sends it without waiting. Messages"
-        , "// are handled one at a time, in the order they arrive."
+        , "// are handled one at a time, in the order they arrive. A handler that"
+        , "// throws crashes the actor: the call rejects with ls.ActorCrashed, and a"
+        , "// supervised actor restarts (from its restart adapter, or its start) while"
+        , "// any other stops. start's last argument may be {supervisor, lifetime}."
+        , "// Each supervisor class starts its children and restarts them after a"
+        , "// crash; its children are properties named as in the specification."
         , importLine "ls" "lawspec_runtime" ] ++
         [ importLine "data" "lawspec_data" | "data." `isInfixOf` body ] ++
         [ importLine (alias m) (map (\c -> if c == '.' then '/' else c) m) | m <- modules ]
@@ -43,7 +49,7 @@ alias m = "_adapters_" ++ map (\c -> if c == '.' then '_' else c) m
 actorClassText :: Bool -> [C.DataDeclaration] -> Actor -> Either String String
 actorClassText ts datas a = do
   let names = map handlerName (actorHandlers a)
-  forM_' names $ \n -> when (n `elem` ["start", "stop", "constructor"] || ("tell" ++ capital n) `elem` names || (n ++ "Now") `elem` names)
+  forM_' names $ \n -> when (n `elem` ["start", "stop", "constructor", "crash", "crashNow", "monitor", "link"] || ("tell" ++ capital n) `elem` names || (n ++ "Now") `elem` names)
     (Left ("actor " ++ actorName a ++ "'s handler " ++ n ++ " clashes with a method of its generated class"))
   startArgs <- mapM argument (actorStartArguments a)
   methods <- forM (actorHandlers a) handler
@@ -51,6 +57,11 @@ actorClassText ts datas a = do
       startParams = [arg | arg@(_, (t, _)) <- startArgs, not (unit t)]
       startValues = [if unit t then "ls.UNIT" else p | (p, (t, _)) <- startArgs]
       field = if ts then "  readonly #actor: ls.Actor;" else "  #actor;"
+      startCall = impl (actorStart a) ++ "(" ++ intercalate ", " startValues ++ ")"
+      restart = case actorRestart a of
+        Just d -> asyncWord d ++ "(s" ++ typed "any" ++ ") => " ++ awaited d (impl d ++ "(s)")
+        Nothing -> asyncWord (actorStart a) ++ "() => " ++ awaited (actorStart a) startCall
+      options = "options" ++ typed "{supervisor?: ls.Supervisor, lifetime?: string}" ++ " = {}"
   pure $ unlines $
     [ "/** Actor " ++ actorName a ++ ": owns its state and handles one message at a time. */"
     , "export class " ++ cls ++ " {"
@@ -60,13 +71,43 @@ actorClassText ts datas a = do
     , "    this.#actor = actor;"
     , "  }"
     , ""
-    , "  /** Makes the actor's state with " ++ C.declarationName (actorStart a) ++ " and starts the actor. */"
-    , "  static " ++ asyncWord (actorStart a) ++ "start(" ++ intercalate ", " (map param startParams) ++ ")" ++
+    , "  /**"
+    , "   * Makes the actor's state with " ++ C.declarationName (actorStart a) ++ " and starts the actor, under"
+    , "   * options.supervisor when given, with options.lifetime ('permanent' by default)."
+    , "   */"
+    , "  static " ++ asyncWord (actorStart a) ++ "start(" ++ intercalate ", " (map param startParams ++ [options]) ++ ")" ++
         typed (promised (actorStart a) cls) ++ " {"
-    , "    return new " ++ cls ++ "(new ls.Actor(" ++ awaited (actorStart a) (impl (actorStart a) ++ "(" ++ intercalate ", " startValues ++ ")") ++ "));"
+    , "    const actor = new ls.Actor(" ++ awaited (actorStart a) startCall ++ ", {restart: " ++ restart ++ "});"
+    , "    if (options.supervisor !== undefined) options.supervisor.supervise(actor, options.lifetime ?? 'permanent');"
+    , "    return new " ++ cls ++ "(actor);"
     , "  }"
     ] ++ concatMap ("" :) methods ++
     [ ""
+    , "  /** Crashes the actor as a failing handler would, after the messages already sent: for testing how it restarts. */"
+    , "  crash()" ++ typed "Promise<void>" ++ " {"
+    , "    return this.#actor.crash();"
+    , "  }"
+    , ""
+    , "  /** crash for synchronous code; the actor must have no messages waiting. */"
+    , "  crashNow()" ++ typed "void" ++ " {"
+    , "    this.#actor.crashNow();"
+    , "  }"
+    , ""
+    , "  /** notify(['crashed', cause]) after each crash, and notify(['stopped', null]) once it stops. */"
+    , "  monitor(notify" ++ typed "(event: [string, unknown]) => void" ++ ")" ++ typed "void" ++ " {"
+    , "    this.#actor.monitor(notify);"
+    , "  }"
+    , ""
+    , "  /** When either actor crashes, the other crashes too. */"
+    , "  link(other" ++ typed "{readonly actor: ls.Actor}" ++ ")" ++ typed "void" ++ " {"
+    , "    this.#actor.link(other.actor);"
+    , "  }"
+    , ""
+    , "  /** The runtime actor, for links and supervision. */"
+    , "  get actor()" ++ typed "ls.Actor" ++ " {"
+    , "    return this.#actor;"
+    , "  }"
+    , ""
     , "  /** Refuses further messages; those already sent are still handled. */"
     , "  stop()" ++ typed "void" ++ " {"
     , "    this.#actor.stop();"
@@ -119,3 +160,80 @@ actorClassText ts datas a = do
         , "  tell" ++ capital name ++ "(" ++ params ++ ")" ++ typed "void" ++ " {"
         , "    this.#actor.cast(" ++ step ++ ");"
         , "  }" ]
+
+-- A supervisor's class: start() makes the runtime supervisor and starts each
+-- child under it, in order; each child is a property. start is async when a
+-- child's start is.
+supervisorClassText :: Bool -> [Supervision] -> Supervision -> String
+supervisorClassText ts all' s = unlines $
+  [ "/** Supervisor " ++ supervisionName s ++ ": " ++ strategyText ++ ", at most " ++
+      show (supervisionRestarts s) ++ " restarts in " ++ seconds ++ "s. */"
+  , "export class " ++ cls ++ " {"
+  , if ts then "  readonly #supervisor: ls.Supervisor;" else "  #supervisor;" ] ++
+  [ "  " ++ (if ts then "readonly " ++ name ++ ": " ++ childClass child else name) ++ ";" | (_, name, child) <- children ] ++
+  [ ""
+  , "  constructor(supervisor" ++ typed "ls.Supervisor" ++ concatMap (\(_, name, child) -> ", " ++ name ++ typed (childClass child)) children ++ ") {"
+  , "    this.#supervisor = supervisor;" ] ++
+  [ "    this." ++ name ++ " = " ++ name ++ ";" | (_, name, _) <- children ] ++
+  [ "  }"
+  , ""
+  , "  /** Starts the supervisor and its children, under options.supervisor when given. */"
+  , "  static " ++ (if isAsync then "async " else "") ++ "start(options" ++
+      typed "{supervisor?: ls.Supervisor, lifetime?: string}" ++ " = {})" ++
+      typed (if isAsync then "Promise<" ++ cls ++ ">" else cls) ++ " {"
+  , "    const own = new ls.Supervisor('" ++ strategyName ++ "', " ++ show (supervisionRestarts s) ++ ", " ++ seconds ++ ");" ] ++
+  [ "    const " ++ name ++ " = " ++ (if childAsync child then "await " else "") ++ childClass child ++
+      ".start(" ++ startArgs child ++ "{supervisor: own, lifetime: '" ++ lifetimeName l ++ "'});"
+  | (l, name, child) <- children ] ++
+  [ "    if (options.supervisor !== undefined) options.supervisor.supervise(own, options.lifetime ?? 'permanent');"
+  , "    return new " ++ cls ++ "(own" ++ concatMap (\(_, name, _) -> ", " ++ name) children ++ ");"
+  , "  }"
+  , ""
+  , "  /** notify(['crashed', cause]) when it passes its restart limit, and notify(['stopped', null]) once stopped. */"
+  , "  monitor(notify" ++ typed "(event: [string, unknown]) => void" ++ ")" ++ typed "void" ++ " {"
+  , "    this.#supervisor.monitor(notify);"
+  , "  }"
+  , ""
+  , "  /** Stops every child, last started first, without restarting them. */"
+  , "  stop()" ++ typed "void" ++ " {"
+  , "    this.#supervisor.stop();"
+  , "  }"
+  , ""
+  , "  /** The runtime supervisor, for nesting. */"
+  , "  get supervisor()" ++ typed "ls.Supervisor" ++ " {"
+  , "    return this.#supervisor;"
+  , "  }"
+  , "}" ]
+  where
+    cls = supervisionClass s
+    children = supervisionChildren s
+    typed t = if ts then ": " ++ t else ""
+    childClass c = case c of
+      ActorChild a -> actorClass a
+      SupervisorChild n -> n
+    -- Supervisors start actors without arguments (only Unit ones).
+    startArgs _ = ""
+    childAsync c = case c of
+      ActorChild a -> C.declarationAsync (actorStart a)
+      SupervisorChild n -> supervisorAsync n
+    supervisorAsync n = or [any (childAsyncOf . thd) (supervisionChildren t) | t <- all', supervisionClass t == n]
+    childAsyncOf c = case c of
+      ActorChild a -> C.declarationAsync (actorStart a)
+      SupervisorChild n -> supervisorAsync n
+    thd (_, _, c) = c
+    isAsync = any (childAsync . thd) children
+    strategyName = case supervisionStrategy s of
+      OneForOne -> "one_for_one" :: String
+      OneForAll -> "one_for_all"
+      RestForOne -> "rest_for_one"
+    strategyText = case supervisionStrategy s of
+      OneForOne -> "one for one" :: String
+      OneForAll -> "one for all"
+      RestForOne -> "rest for one"
+    lifetimeName l = case l of
+      Permanent -> "permanent" :: String
+      Transient -> "transient"
+      Temporary -> "temporary"
+    seconds = let (whole, micros) = supervisionPeriod s `divMod` 1000000
+              in show whole ++ (if micros == 0 then "" else "." ++ reverse (dropWhile (== '0') (reverse (pad (show micros)))))
+    pad m = replicate (6 - length m) '0' ++ m

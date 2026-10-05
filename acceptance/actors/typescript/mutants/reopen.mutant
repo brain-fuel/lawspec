@@ -1,0 +1,12 @@
+@@ src/example/actors.ts
+<<<<<<<
+  return new data.Account(value0.balance);
+}
+
+// survivesCrash
+=======
+  return new data.Account(0n);
+}
+
+// survivesCrash
+>>>>>>>
