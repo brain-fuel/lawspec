@@ -30,3 +30,15 @@ spec = describe "if then else" $ do
   it "parses a conditional whose branches are a literal and a variable" $
     isRight (compiles (unlines
       [ "definition next (x :: Int32 where x >= 0 && x <= 10) :: Int32 is if x == 0 then 1 else x end" ])) `shouldBe` True
+
+  describe "products of bounded integers" $ do
+    it "fit the type their factors' bounds allow" $ do
+      compiles "definition square (x :: Int16) :: Int64 is x * x end\n" `shouldBe` Right ()
+      compiles (unlines
+        [ "definition area (w :: Int32 where w >= 0 && w <= 1000) (h :: Int32 where h >= 0 && h <= 1000) :: Int32 is w * h end" ])
+        `shouldBe` Right ()
+    it "are rejected when the bounds allow a value the type cannot hold" $ do
+      either (isInfixOf "conversion range") (const False) (compiles "definition costly (x :: Int32) :: Int32 is x * x end\n") `shouldBe` True
+      either (isInfixOf "conversion range") (const False) (compiles (unlines
+        [ "definition big (w :: Int32 where w >= 0 && w <= 100000) (h :: Int32 where h >= 0 && h <= 100000) :: Int32 is w * h end" ]))
+        `shouldBe` True

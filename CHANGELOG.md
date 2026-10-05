@@ -5,6 +5,8 @@
 - `if c then a else b` in laws and checked definitions. Only the selected
   branch is evaluated, and the totality audit checks each branch knowing which
   way the condition went. `prelude.select` now means the same.
+- The totality audit bounds products: `x * x` for an `Int16` `x` fits `Int64`,
+  and factors with known bounds give their product's bounds.
 - Scenarios may close cycles between processes: LawSpec accepts channels that
   form a cycle when no process can wait for another in a cycle, and names the
   waits when one could. Scenarios with mailboxes or `or else` keep the tree

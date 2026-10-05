@@ -50,6 +50,14 @@ runs only on the guarded branch. Without the guard, it is rejected, because
 `127 + 1` is outside `Int8`. Range bounds alone do not prove that a `Rational`
 or `Decimal` has no fractional part.
 
+In `if c then a else b`, `a` is checked knowing `c` holds and `b` knowing it
+does not, so `if n > 0 then prelude.quot total n else 0` is safe.
+
+A product of integers with known bounds lies between the products of their
+bounds. An `Int16` `x` makes `x * x` fit `Int64`, and two factors from 0 to
+1000 make a product that fits `Int32`. Products whose bounds could leave the
+type are rejected.
+
 Pattern matching keeps the primitive range of each extracted field inside its
 branch. An `Int8` list head still makes `head + 129` positive; that fact does
 not carry over to another branch.

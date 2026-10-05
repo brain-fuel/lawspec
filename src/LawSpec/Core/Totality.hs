@@ -764,8 +764,16 @@ entails facts expression
 -- dividend.
 derivedFacts :: Facts -> Proof -> [Proof]
 derivedFacts facts expression = concatMap guarantee (nub calls') ++ concatMap unfolded (nub calls') ++ concatMap bound (nub quotients)
+  ++ concatMap productBounds (nub products)
   where
     terms = universe expression
+    products = [term | term@(ExactArithmetic Multiply _ _) <- terms]
+    -- A product of bounded factors lies between the least and greatest of
+    -- the products of their bounds (interval arithmetic), which the linear
+    -- prover cannot see for itself.
+    productBounds term = case interval facts term of
+      Just (lo, hi) -> [ExactComparison GreaterEqual term (integer lo), ExactComparison LessEqual term (integer hi)]
+      Nothing -> []
     universe term = term : concatMap universe (children term)
     calls' = [(callee, arguments) | Call callee arguments <- terms]
     quotients = [(a, b) | Division False Quotient a b <- terms]
@@ -783,6 +791,76 @@ derivedFacts facts expression = concatMap guarantee (nub calls') ++ concatMap un
           let q = Division False Quotient a b
           in [ExactComparison GreaterEqual q (integer 0), ExactComparison LessEqual q a]
       | otherwise = []
+
+-- The closed range an integer term lies in, from its constants, the
+-- constant bounds known of its variables, and interval arithmetic for +, -
+-- and *. Nothing when a bound is unknown.
+interval :: Facts -> Proof -> Maybe (Integer, Integer)
+interval facts term = case term of
+  Literal (SInteger _ n) -> Just (n, n)
+  Integral value -> interval facts value
+  Conversion _ value -> interval facts value
+  NarrowInteger lower upper value ->
+    let known = interval facts value
+        lo = maximum (concat [[l | Just l <- [lower]], [l | Just (l, _) <- [known]]])
+        hi = minimum (concat [[h | Just h <- [upper]], [h | Just (_, h) <- [known]]])
+    in if (lower /= Nothing || known /= Nothing) && (upper /= Nothing || known /= Nothing) then Just (lo, hi) else Nothing
+  ExactArithmetic Add a b -> do
+    (al, ah) <- interval facts a
+    (bl, bh) <- interval facts b
+    pure (al + bl, ah + bh)
+  ExactArithmetic Subtract a b -> do
+    (al, ah) <- interval facts a
+    (bl, bh) <- interval facts b
+    pure (al - bh, ah - bl)
+  ExactArithmetic Multiply a b -> do
+    (al, ah) <- interval facts a
+    (bl, bh) <- interval facts b
+    let corners = [al * bl, al * bh, ah * bl, ah * bh]
+    pure (minimum corners, maximum corners)
+  _ -> do
+    let known = concatMap conjuncts (truths facts)
+        lows = [n | t <- known, Just (n, True) <- [boundOf t]]
+        highs = [n | t <- known, Just (n, False) <- [boundOf t]]
+    if null lows || null highs then Nothing else Just (maximum lows, minimum highs)
+  where
+    conjuncts fact = case fact of
+      Logical And a b -> conjuncts a ++ conjuncts b
+      TypedDomain domains body -> concatMap conjuncts domains ++ conjuncts body
+      _ -> [fact]
+    -- A known comparison of exactly this term with a constant: (n, True)
+    -- for a lower bound, (n, False) for an upper one.
+    boundOf fact = case fact of
+      ExactComparison op a b -> compareWith op a b
+      Comparison op a b -> compareWith op a b
+      _ -> Nothing
+    compareWith op a b
+      | same a, Just n <- constant b = side op n
+      | same b, Just n <- constant a = side (flipped op) n
+      | otherwise = Nothing
+    -- A side that is one constant, however converted.
+    constant t = case strip t of
+      Literal (SInteger _ n) -> Just n
+      NarrowInteger _ _ inner -> constant inner
+      _ -> Nothing
+    same t = strip t == strip term
+    strip t = case t of
+      Integral inner -> strip inner
+      Conversion _ inner -> strip inner
+      NarrowInteger _ _ inner -> strip inner
+      _ -> t
+    side op n = case op of
+      GreaterEqual -> Just (n, True)
+      Greater -> Just (n + 1, True)
+      LessEqual -> Just (n, False)
+      Less -> Just (n - 1, False)
+      _ -> Nothing
+    flipped op = case op of
+      GreaterEqual -> LessEqual
+      Greater -> Less
+      LessEqual -> GreaterEqual
+      Less -> Greater
+      other -> other
 
 freeVariables :: Proof -> [Id]
 freeVariables expression = case expression of
