@@ -1,0 +1,7 @@
+expect: a note reads back
+@@ src/example/resources.ts
+<<<<<<<
+String(value1));
+=======
+String(value1 + 1));
+>>>>>>>

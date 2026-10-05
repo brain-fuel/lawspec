@@ -1,0 +1,14 @@
+expect: every case gets an empty store
+@@ src/example/resources.mjs
+<<<<<<<
+    this.items = new Map();
+=======
+    this.items = shared;
+>>>>>>>
+@@ src/example/resources.mjs
+<<<<<<<
+let openCount = 0;
+=======
+let openCount = 0;
+const shared = new Map();
+>>>>>>>

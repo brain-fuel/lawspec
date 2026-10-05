@@ -1,0 +1,7 @@
+expect: sorting keeps every item
+@@ src/example/matchers.ts
+<<<<<<<
+  return [...value0].sort((a, b) => a - b);
+=======
+  return [...new Set(value0)].sort((a, b) => a - b);
+>>>>>>>

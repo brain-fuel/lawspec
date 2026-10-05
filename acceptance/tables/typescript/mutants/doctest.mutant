@@ -1,0 +1,7 @@
+expect: description example 1
+@@ src/example/tables.ts
+<<<<<<<
+  return `parcel ${value0}`;
+=======
+  return value0 === 7 ? 'parcel seven' : `parcel ${value0}`;
+>>>>>>>

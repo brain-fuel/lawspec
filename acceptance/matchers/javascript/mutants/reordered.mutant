@@ -1,0 +1,7 @@
+expect: sorting keeps every item example
+@@ src/example/matchers.mjs
+<<<<<<<
+  return [...value0].sort((a, b) => a - b);
+=======
+  return [...value0].sort((a, b) => b - a);
+>>>>>>>

@@ -255,7 +255,7 @@ elaborateResolvedWithData dataTypes declarations bits origin resolve env source 
         C.Constructor "Text" [] -> pure (node t (C.Helper C.TextContains [whole, part]))
         C.Constructor "List" [C.TypeArgument element] -> do
           -- Not every item differs from part.
-          let binder = C.Binder (C.Id (C.idText origin ++ "::contains::" ++ take 12 (digestHex (digestString (show (whole, part)))))) "item" element
+          let binder = C.Binder (C.Id (C.idText origin ++ "::match::contains" ++ take 12 (digestHex (digestString (show (whole, part)))) ++ "::element::item")) "item" element
           evidence <- operationEvidence C.NotEqual element (C.expressionType part)
           let differs = node t (C.Binary C.NotEqual evidence (node element (C.Local (C.binderId binder))) part)
           pure (node t (C.Unary C.Not (node t (C.AllElements whole binder differs))))
@@ -293,8 +293,8 @@ elaborateResolvedWithData dataTypes declarations bits origin resolve env source 
                 C.Constructor name args -> C.Constructor name [case a of C.TypeArgument inner -> C.TypeArgument (instantiate inner); other -> other | a <- args]
                 C.Arrow a b -> C.Arrow (instantiate a) (instantiate b)
               bool b = node (C.scalarType "Bool") (C.Constant (SBool b))
-          cases <- forM (C.dataConstructors declaration) $ \c -> do
-            let binders = [C.Binder (C.Id (C.idText origin ++ "::message::" ++ C.idText (C.constructorId c) ++ "::" ++ show i))
+          cases <- forM (zip [0 :: Int ..] (C.dataConstructors declaration)) $ \(k, c) -> do
+            let binders = [C.Binder (C.Id (C.idText origin ++ "::match::message" ++ show k ++ "::" ++ show i))
                   (C.binderName f) (instantiate (C.binderType f)) | (i, f) <- zip [0 :: Int ..] (C.constructorFields c)]
                 body = case [b | b <- binders, C.binderName b == "message", C.binderType b == C.scalarType "Text"] of
                   b : _ -> node t (C.Helper C.TextContains [node (C.binderType b) (C.Local (C.binderId b)), text])

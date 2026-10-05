@@ -1,0 +1,7 @@
+expect: the carrier is never empty
+@@ src/example/matchers.mjs
+<<<<<<<
+  return new data.OrderShipped(value0, 'post');
+=======
+  return new data.OrderShipped(value0, '');
+>>>>>>>

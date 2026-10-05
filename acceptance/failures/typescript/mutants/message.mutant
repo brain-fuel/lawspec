@@ -1,0 +1,7 @@
+expect: odd amounts are declined, and say why
+@@ src/example/failures.ts
+<<<<<<<
+new data.DecisionDecline('an odd amount');
+=======
+new data.DecisionDecline('an uneven amount');
+>>>>>>>

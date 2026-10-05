@@ -552,6 +552,14 @@ export function compareValues(a, b) {
 
 export function helper(n, args, types, bits = 64) {
   const x = args[0];
+  if (n === 'startsWith') return args[0].startsWith(args[1]);
+  if (n === 'endsWith') return args[0].endsWith(args[1]);
+  if (n === 'textContains') return args[0].includes(args[1]);
+  if (n === 'regexMatches') return regexMatches(args[0], args[1]);
+  if (n === 'recorded') return recorded(args[0], args[1]);
+  if (n === 'acquireResource') return acquireResource(args[0]);
+  if (n === 'releaseResource') return releaseResource(args[0], args[1]);
+  if (n === 'freePort') return freePort();
   if (n === 'checked') return true;
   if (n === 'select') return args[0] ? args[1] : args[2];
   if (n === 'compare')
@@ -1813,6 +1821,264 @@ export function render(v) {
     return v.fields.length ? name + '(' + v.fields.map(render).join(', ') + ')' : name;
   }
   return String(v);
+}
+
+// Portable regular expressions (see LawSpec.Regex): the subset of RE2 and
+// ECMAScript that means the same in both, matched against a whole text, code
+// point by code point. The compiler has checked every pattern; a pattern
+// that is not portable throws here too.
+const REGEX_DIGITS = [[48, 57]];
+const REGEX_WORD = [[48, 57], [65, 90], [95, 95], [97, 122]];
+const REGEX_SPACE = [[9, 13], [32, 32]];
+const regexCache = new Map();
+
+function regexParse(pattern) {
+  const cs = [...pattern].map((c) => c.codePointAt(0));
+  const n = cs.length;
+  let pos = 0;
+  const peek = () => (pos < n ? cs[pos] : undefined);
+  const fail = (message) => { throw new Error(`regex ${JSON.stringify(pattern)} is not portable: ${message}`); };
+  const code = (c) => c.codePointAt(0);
+  const escape = () => {
+    pos += 1;
+    const c = peek();
+    if (c === undefined) fail('the regex ends with a lone \\');
+    pos += 1;
+    const ch = String.fromCodePoint(c);
+    const classes = { d: [false, REGEX_DIGITS], D: [true, REGEX_DIGITS], w: [false, REGEX_WORD],
+      W: [true, REGEX_WORD], s: [false, REGEX_SPACE], S: [true, REGEX_SPACE] };
+    if (ch in classes) return classes[ch];
+    const controls = { n: 10, t: 9, r: 13, f: 12, v: 11 };
+    if (ch in controls) return [false, [[controls[ch], controls[ch]]]];
+    if ('\\.^$|?*+()[]{}-/'.includes(ch)) return [false, [[c, c]]];
+    return fail(`\\${ch} is not a portable escape`);
+  };
+  const literal = () => {
+    const c = peek();
+    if (c === code('[')) fail('write \\[ for the character inside a class');
+    pos += 1;
+    return [false, [[c, c]]];
+  };
+  const single = (item) => !item[0] && item[1].length === 1 && item[1][0][0] === item[1][0][1];
+  const charClass = () => {
+    pos += 1;
+    const negated = peek() === code('^');
+    if (negated) pos += 1;
+    const items = [];
+    let first = true;
+    for (;;) {
+      const c = peek();
+      if (c === undefined) fail('a [ is never closed');
+      if (c === code(']')) {
+        if (first) fail('an empty class is not portable');
+        pos += 1;
+        return ['set', negated, items];
+      }
+      first = false;
+      const item = c === code('\\') ? escape() : literal();
+      if (single(item) && peek() === code('-') && pos + 1 < n && cs[pos + 1] !== code(']')) {
+        pos += 1;
+        const high = peek() === code('\\') ? escape() : literal();
+        if (!single(high)) fail('a range ends with one character');
+        if (high[1][0][0] < item[1][0][0]) fail('a range must run from low to high');
+        items.push([false, [[item[1][0][0], high[1][0][0]]]]);
+      } else items.push(item);
+    }
+  };
+  const digits = () => {
+    const start = pos;
+    while (peek() !== undefined && peek() >= 48 && peek() <= 57) pos += 1;
+    return cs.slice(start, pos).map((c) => String.fromCodePoint(c)).join('');
+  };
+  let alternatives;
+  const atom = () => {
+    const c = peek();
+    if (c === code('(')) {
+      pos += 1;
+      if (peek() === code('?')) {
+        if (pos + 1 < n && cs[pos + 1] === code(':')) pos += 2;
+        else fail('only (?: ...) groups are portable');
+      }
+      const node = alternatives();
+      if (peek() !== code(')')) fail('a ( is never closed');
+      pos += 1;
+      return node;
+    }
+    if (c === code('[')) return charClass();
+    if (c === code('.')) { pos += 1; return ['set', true, [[false, [[10, 10]]]]]; }
+    if (c === code('\\')) return ['set', false, [escape()]];
+    if ('*+?{^$]}'.includes(String.fromCodePoint(c))) fail(`unexpected ${String.fromCodePoint(c)}`);
+    pos += 1;
+    return ['set', false, [[false, [[c, c]]]]];
+  };
+  const quantifier = (c) => c !== undefined && '*+?{'.includes(String.fromCodePoint(c));
+  const quantified = (node) => {
+    const c = peek();
+    if (!quantifier(c)) return node;
+    pos += 1;
+    if (c === code('*')) node = ['repeat', node, 0, null];
+    else if (c === code('+')) node = ['repeat', node, 1, null];
+    else if (c === code('?')) node = ['repeat', node, 0, 1];
+    else {
+      const lowText = digits();
+      let highText = null;
+      if (peek() === code('}')) highText = lowText;
+      else if (peek() === code(',')) {
+        pos += 1;
+        highText = digits() || null;
+        if (peek() !== code('}')) fail('a repetition is {n}, {n,} or {n,m}');
+      } else fail('a repetition is {n}, {n,} or {n,m}');
+      pos += 1;
+      if (!lowText) fail('a repetition is {n}, {n,} or {n,m}');
+      const low = Number(lowText);
+      const high = highText === null ? null : Number(highText);
+      if (low > 1000 || (high !== null && (high > 1000 || high < low)))
+        fail('a repetition count is at most 1000, and n must not exceed m');
+      node = ['repeat', node, low, high];
+    }
+    if (quantifier(peek())) fail('a repetition cannot itself be repeated');
+    return node;
+  };
+  const sequence = () => {
+    const items = [];
+    while (peek() !== undefined && peek() !== code('|') && peek() !== code(')')) items.push(quantified(atom()));
+    return ['seq', items];
+  };
+  alternatives = () => {
+    const branches = [sequence()];
+    while (peek() === code('|')) { pos += 1; branches.push(sequence()); }
+    return branches.length === 1 ? branches[0] : ['alt', branches];
+  };
+  const node = alternatives();
+  if (pos !== n) fail('a ) has no ( before it');
+  return node;
+}
+
+function regexReach(node, text, positions) {
+  const kind = node[0];
+  if (kind === 'set') {
+    const [, negated, items] = node;
+    const result = new Set();
+    for (const p of positions) {
+      if (p < text.length) {
+        const c = text[p];
+        const inside = items.some(([itemNegated, ranges]) => itemNegated !== ranges.some(([lo, hi]) => lo <= c && c <= hi));
+        if (inside !== negated) result.add(p + 1);
+      }
+    }
+    return result;
+  }
+  if (kind === 'seq') {
+    for (const item of node[1]) positions = regexReach(item, text, positions);
+    return positions;
+  }
+  if (kind === 'alt') {
+    const result = new Set();
+    for (const branch of node[1]) for (const p of regexReach(branch, text, positions)) result.add(p);
+    return result;
+  }
+  const [, body, low, high] = node;
+  for (let i = 0; i < low; i++) positions = regexReach(body, text, positions);
+  const seen = new Set(positions);
+  let frontier = new Set(positions);
+  let limit = high === null ? null : high - low;
+  while (frontier.size && limit !== 0) {
+    frontier = new Set([...regexReach(body, text, frontier)].filter((p) => !seen.has(p)));
+    for (const p of frontier) seen.add(p);
+    if (limit !== null) limit -= 1;
+  }
+  return seen;
+}
+
+/** Whether the portable regex matches the whole text. */
+export function regexMatches(pattern, text) {
+  let node = regexCache.get(pattern);
+  if (node === undefined) { node = regexParse(pattern); regexCache.set(pattern, node); }
+  const points = [...text].map((c) => c.codePointAt(0));
+  return regexReach(node, points, new Set([0])).has(points.length);
+}
+
+const nodeModule = (name) => globalThis.process.getBuiltinModule(name);
+
+// Recorded values: a law compares a value's portable rendering with the
+// text stored under recorded/<unit>/<name> in the project. LAWSPEC_RECORDED
+// names the folder; otherwise it is recorded/ in the nearest folder, from
+// the working one up, that holds lawspec.json or recorded/. With
+// LAWSPEC_UPDATE_RECORDED=1 (lawspec test --update-recorded) a law records
+// the value instead.
+export function recordedRoot() {
+  const fs = nodeModule('node:fs');
+  const path = nodeModule('node:path');
+  const given = globalThis.process.env.LAWSPEC_RECORDED;
+  if (given) return given;
+  let folder = path.resolve(globalThis.process.cwd());
+  for (;;) {
+    if (fs.existsSync(path.join(folder, 'lawspec.json')) || fs.existsSync(path.join(folder, 'recorded')))
+      return path.join(folder, 'recorded');
+    const parent = path.dirname(folder);
+    if (parent === folder) return path.join(path.resolve(globalThis.process.cwd()), 'recorded');
+    folder = parent;
+  }
+}
+
+export function recorded(key, value) {
+  const fs = nodeModule('node:fs');
+  const path = nodeModule('node:path');
+  const text = render(value);
+  const file = path.join(recordedRoot(), ...key.split('/'));
+  if (globalThis.process.env.LAWSPEC_UPDATE_RECORDED === '1') {
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, text + '\n', 'utf8');
+    return true;
+  }
+  if (!fs.existsSync(file))
+    throw new Error(`no recording recorded/${key}; run lawspec test --update-recorded to record ${text}`);
+  let stored = fs.readFileSync(file, 'utf8');
+  if (stored.endsWith('\n')) stored = stored.slice(0, -1);
+  if (stored !== text)
+    throw new Error(`recorded/${key} differs: expected ${stored}, actual ${text} (lawspec test --update-recorded records the new value)`);
+  return true;
+}
+
+// Built-in resources (see LawSpec.Resources): a law acquires them before
+// each case and releases them after it.
+export function acquireResource(kind) {
+  const fs = nodeModule('node:fs');
+  const os = nodeModule('node:os');
+  const path = nodeModule('node:path');
+  if (kind === 'temporaryDirectory') return fs.mkdtempSync(path.join(os.tmpdir(), 'lawspec-'));
+  if (kind === 'temporaryFile') {
+    const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'lawspec-'));
+    const file = path.join(folder, 'file');
+    fs.writeFileSync(file, '');
+    return file;
+  }
+  if (kind === 'environment') {
+    const env = globalThis.process.env;
+    return JSON.stringify(Object.fromEntries(Object.keys(env).sort().map((k) => [k, env[k]])));
+  }
+  throw new Error(`unknown resource kind ${kind}`);
+}
+
+export function releaseResource(kind, value) {
+  const fs = nodeModule('node:fs');
+  const path = nodeModule('node:path');
+  if (kind === 'temporaryDirectory') fs.rmSync(value, { recursive: true, force: true });
+  else if (kind === 'temporaryFile') fs.rmSync(path.dirname(value), { recursive: true, force: true });
+  else if (kind === 'environment') {
+    const saved = JSON.parse(value);
+    const env = globalThis.process.env;
+    for (const name of Object.keys(env)) if (!(name in saved)) delete env[name];
+    for (const [name, text] of Object.entries(saved)) if (env[name] !== text) env[name] = text;
+  } else throw new Error(`unknown resource kind ${kind}`);
+  return true;
+}
+
+/** A TCP port on the local host that is free now. */
+export function freePort() {
+  const { execFileSync } = nodeModule('node:child_process');
+  const script = "const s=require('net').createServer();s.listen(0,'127.0.0.1',()=>{process.stdout.write(String(s.address().port));s.close();});";
+  return Number(execFileSync(globalThis.process.execPath, ['-e', script], { encoding: 'utf8' }));
 }
 
 /** A descriptor text's data types and its last form, the one generated. */
