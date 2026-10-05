@@ -12,7 +12,7 @@ import LawSpec.DomainModel
 import LawSpec.StatefulModel (ModelDeclaration(..), ModelCommand(..), elaborateModels, checkSupervisors)
 import LawSpec.Scenario (Protocol(..), Scenario(..), Statement(..), Step(..), Argument(..), checkScenarios, toProgram)
 import LawSpec.Core.Program (Program(..))
-import LawSpec.Core.Machine (Machine(..), Supervisor(..), SupervisionStrategy(..), Lifetime(..))
+import LawSpec.Core.Machine (Machine(..), Supervisor(..), SupervisionStrategy(..), Lifetime(..), Consistency(..))
 import Data.Functor (($>))
 import LawSpec.Scalar
 import Control.Monad.Combinators.Expr
@@ -354,7 +354,8 @@ modelP = do
     (case [s | Left (Left s) <- items] of s : _ -> Just s; [] -> Nothing)
     [c | Right (Left c) <- items]
     (case [a | Left (Right (Left a)) <- items] of a : _ -> Just a; [] -> Nothing)
-    [i | Left (Right (Right i)) <- items] range behavesLike Nothing Nothing)
+    [i | Left (Right (Right i)) <- items] range behavesLike Nothing Nothing
+    (case [c | Right (Right c) <- items] of c : _ -> Just c; [] -> Nothing))
   where
     modelledBy = void (symbol "~") <|> keyword "by"
     item = choice
@@ -364,7 +365,10 @@ modelP = do
       , Left . Right . Right <$> (keyword "invariant" *> qualifiedName)
       , (\c r w -> Right (Left (ModelCommand c r w False))) <$> try (ident <* modelledBy) <*> qualifiedName
           <*> optional (keyword "when" *> qualifiedName)
-      , (\c op -> Right (Left (ModelCommand c op Nothing True))) <$> try (ident <* keyword "as") <*> ident ]
+      , (\c op -> Right (Left (ModelCommand c op Nothing True))) <$> try (ident <* keyword "as") <*> ident
+      , Right . Right <$> (keyword "consistency" *> choice
+          [ Linearizable <$ keyword "linearizable", Sequential <$ keyword "sequential"
+          , Causal <$ keyword "causal", Eventual <$ keyword "eventual" ]) ]
     -- A model value: a literal, a name or a parenthesized expression, so it
     -- cannot run into the next line.
     value = parens expr
@@ -400,7 +404,7 @@ actorP = do
     [c | Right (Left c) <- items]
     (first [a | Left (Right (Left a)) <- items])
     [i | Left (Right (Right i)) <- items] range False (Just own)
-    (first [r | Right (Right r) <- items]))
+    (first [r | Right (Right r) <- items]) Nothing)
   where
     modelledBy = void (symbol "~") <|> keyword "by"
     item = choice

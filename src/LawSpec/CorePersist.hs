@@ -12,7 +12,7 @@ import LawSpec.Common
 import qualified LawSpec.Core as C
 import LawSpec.Core.Value (Value)
 import LawSpec.Core.Policy (StagePolicy, Retry, Strategy, Jitter, Limit, Breaker, Bulkhead, Hedge)
-import LawSpec.Core.Machine (Machine, MachineStart, Command, Invariant, Need, Shift, Supervisor, SupervisionStrategy, Lifetime)
+import LawSpec.Core.Machine (Machine, MachineStart, Command, Invariant, Need, Shift, Supervisor, SupervisionStrategy, Lifetime, Consistency)
 import LawSpec.Core.Program (Program, Act, Operand, Constant)
 import LawSpec.IndexTerm
 import LawSpec.Scalar (Scalar)
@@ -48,6 +48,7 @@ instance Binary name => Binary (Command name)
 instance Binary Supervisor
 instance Binary SupervisionStrategy
 instance Binary Lifetime
+instance Binary Consistency
 instance Binary name => Binary (Invariant name)
 instance Binary Program
 instance Binary Act

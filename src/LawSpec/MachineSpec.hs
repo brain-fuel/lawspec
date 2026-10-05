@@ -49,6 +49,11 @@ machineSpec bits datas declarations contracts machine = do
         " (shifts" ++ concatMap ((' ' :) . shift) (commandShifts c) ++ ")" ++
         " (key " ++ maybe "none" show (commandKey c) ++ ")" ++
         " (restart " ++ bool (commandRestart c) ++ "))"
+      consistency c = case c of
+        Linearizable -> "linearizable"
+        Sequential -> "sequential"
+        Causal -> "causal"
+        Eventual -> "eventual"
       invariant (OnModel _) = "model"
       invariant (OnState _) = "state"
   unless (maybe False (const True) start) $
@@ -61,7 +66,8 @@ machineSpec bits datas declarations contracts machine = do
      [ "(abstract " ++ bool (machineAbstractRun machine /= Nothing) ++ ")"
      , "(invariants" ++ concatMap ((' ' :) . invariant) (machineInvariants machine) ++ ")"
      , "(perkey " ++ bool (machinePerKey machine) ++ ")"
-     , "(actor " ++ bool (machineActor machine) ++ ")" ]))
+     , "(actor " ++ bool (machineActor machine) ++ ")"
+     , "(consistency " ++ consistency (machineConsistency machine) ++ ")" ]))
   where
     bool b = if b then "true" else "false"
     need (AtLeast k) = "(atleast " ++ show k ++ ")"

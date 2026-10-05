@@ -40,6 +40,9 @@ data ModelDeclaration = ModelDeclaration
   -- The adapter giving a restarted actor's state from its last one, and
   -- the reference giving the model's.
   , modelRestart :: Maybe (String, String)
+  -- What its histories must agree with the model by; linearizable when
+  -- not said.
+  , modelConsistency :: Maybe Consistency
   } deriving (Eq, Show)
 
 data ModelCommand = ModelCommand
@@ -204,7 +207,13 @@ elaborateModel u m = do
   let abstractRun = case modelAbstract m of
         Just f | null (definitionOf f) -> Just (bridge "Abstract")
         other -> other
-  pure (Machine (modelName m) (modelShared m) family (length indexVariables) start (commands ++ maybe [] pure restart) (modelAbstract m) abstractRun invariants False [] (modelActor m /= Nothing), startDefinition)
+  consistency <- case modelConsistency m of
+    Nothing -> pure Linearizable
+    Just c | modelActor m /= Nothing, c /= Linearizable ->
+      failing "an actor handles one message at a time, so it is always linearizable"
+    Just c | not (modelShared m) -> failing ("a linear model runs in sequence, so it has no " ++ show c ++ " consistency to check")
+    Just c -> pure c
+  pure (Machine (modelName m) (modelShared m) family (length indexVariables) start (commands ++ maybe [] pure restart) (modelAbstract m) abstractRun invariants False [] (modelActor m /= Nothing) consistency, startDefinition)
   where
     -- A generated bridge's name: the model's, then its role.
     bridge role = modelName m ++ role

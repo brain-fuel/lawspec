@@ -2030,6 +2030,7 @@ class Model:
         kinds = next(f for f in forms if f[0] == 'invariants')[1:]
         self.invariants = list(zip(kinds, invariants))
         self.per_key = any(f[0] == 'perkey' and f[1] == 'true' for f in forms)
+        self.consistency = next((str(f[1]) for f in forms if f[0] == 'consistency'), 'linearizable')
         # An actor model's start and handlers run inside an actor; the
         # abstraction and state invariants read its state between messages.
         # Sequential runs of an actor also inject crashes: the actor restarts
@@ -2409,10 +2410,32 @@ def _linearizable(model, symbols, branches, history, expected, final, state):
     return finish(model_state)
 
 
+_CONSISTENT = {'linearizable': 'linearizable', 'sequential': 'sequentially consistent',
+               'causal': 'causally consistent', 'eventual': 'eventually consistent'}
+
+
 def _linearize(model, symbols, branches, history, expected, finish):
     """A Wing-Gong search: linearize, next, a call no pending call on another
     thread returned before; memoized on positions and the model state.
-    finish judges each complete order's final model state."""
+    finish judges each complete order's final model state.
+
+    With weaker consistency: sequential drops real time (each thread's own
+    order remains); causal checks each thread's results alone, since threads
+    that never message each other see only their own calls; eventual checks
+    no results, only the final state."""
+    mode = model.consistency
+    if mode == 'causal':
+        for i, branch in enumerate(branches):
+            state = expected
+            for k, (index, args) in enumerate(branch):
+                command = model.commands[index]
+                try:
+                    state, wanted = _step_model(command, symbols, args, state)
+                except _Invalid:
+                    return False
+                if not command.unit and compare_values(history[i][k][2], wanted) != 0:
+                    return False
+        return True
     seen = set()
 
     def visit(positions, model_state):
@@ -2427,8 +2450,8 @@ def _linearize(model, symbols, branches, history, expected, finish):
             if k == len(branch):
                 continue
             called = history[i][k][0]
-            if any(positions[j] < len(branches[j]) and history[j][positions[j]][1] < called
-                   for j in range(len(branches)) if j != i):
+            if mode == 'linearizable' and any(positions[j] < len(branches[j]) and history[j][positions[j]][1] < called
+                                              for j in range(len(branches)) if j != i):
                 continue
             index, args = branch[k]
             command = model.commands[index]
@@ -2436,7 +2459,7 @@ def _linearize(model, symbols, branches, history, expected, finish):
                 after, wanted = _step_model(command, symbols, args, model_state)
             except _Invalid:
                 continue
-            if not command.unit and compare_values(history[i][k][2], wanted) != 0:
+            if mode != 'eventual' and not command.unit and compare_values(history[i][k][2], wanted) != 0:
                 continue
             if visit(positions[:i] + (k + 1,) + positions[i + 1:], after):
                 return True
@@ -2508,7 +2531,7 @@ def check_model_parallel(model, cases=50, repeats=10, max_shrinks=300, seed=None
         failure = _parallel_fails(model, case, repeats, shake)
         if failure is not None:
             case, failure = _shrink_parallel(model, case, failure, max(2, repeats // 2), max_shrinks, shake)
-            raise AssertionError(f'model {model.name} is not linearizable: {_describe_parallel(model, case)}: {failure}')
+            raise AssertionError(f'model {model.name} is not {_CONSISTENT[model.consistency]}: {_describe_parallel(model, case)}: {failure}')
 
 
 # Scenarios: processes that drive a shared model's commands at the same time
@@ -2695,15 +2718,33 @@ def _run_scenario(model, spec, shake, crash=False, network=False):
             clock[0] += 1
             return clock[0]
 
-    def process(acts, env, ends, random, identity=None):
+    # Vector clocks: each value sent carries its sender's clock (kept here,
+    # in order per channel direction), so calls can be ordered by what
+    # happened before what.
+    stamps = {}
+
+    def stamp(channel, side, clock):
+        with lock:
+            stamps.setdefault((id(channel), side), deque()).append(dict(clock))
+
+    def unstamp(channel, side, clock, me):
+        with lock:
+            queue_ = stamps.get((id(channel), 1 - side))
+            sent = queue_.popleft() if queue_ else {}
+        for p, n in sent.items():
+            clock[p] = max(clock.get(p, 0), n)
+        clock[me] = clock.get(me, 0) + 1
+
+    def process(acts, env, ends, random, identity=None, clock=None):
         """'done' or 'failed'; either way, the ends still held are given up."""
+        clock = {} if clock is None else clock
         try:
-            return steps(acts, env, ends, random, identity)
+            return steps(acts, env, ends, random, identity, clock, 'root' if identity is None else identity)
         finally:
             for channel, side in ends.values():
                 channel.gone(side)
 
-    def steps(acts, env, ends, random, identity):
+    def steps(acts, env, ends, random, identity, clock, me):
         own = {}
         for index, act in enumerate(acts):
             if failures:
@@ -2717,6 +2758,8 @@ def _run_scenario(model, spec, shake, crash=False, network=False):
                 full = list(args)
                 full.insert(command.state, state)
                 _perturb(random)
+                clock[me] = clock.get(me, 0) + 1
+                at_call = dict(clock)
                 called = tick()
                 try:
                     result = command.run(own, *full)
@@ -2724,8 +2767,9 @@ def _run_scenario(model, spec, shake, crash=False, network=False):
                     failures.append(f'{command.name} raised {type(error).__name__}: {error}')
                     return 'failed'
                 returned = tick()
+                clock[me] += 1
                 with lock:
-                    history.append((command, args, result, called, returned))
+                    history.append((command, args, result, called, returned, me, at_call, dict(clock)))
                 if act[2] != '_':
                     env[str(act[2])] = result
             elif kind == 'send':
@@ -2736,6 +2780,8 @@ def _run_scenario(model, spec, shake, crash=False, network=False):
                 else:
                     value = env[str(operand[1])] if operand[0] == 'var' else _constant(operand)
                 _perturb(random)
+                clock[me] = clock.get(me, 0) + 1
+                stamp(channel, side, clock)
                 channel.send(side, value)
             elif kind in ('receive', 'receiveor'):
                 channel, side = ends[str(act[1])]
@@ -2750,7 +2796,8 @@ def _run_scenario(model, spec, shake, crash=False, network=False):
                     if kind == 'receive':
                         return 'failed'
                     del ends[str(act[1])]
-                    return steps(act[3][1:], env, ends, random, None)
+                    return steps(act[3][1:], env, ends, random, None, clock, me)
+                unstamp(channel, side, clock, me)
                 if isinstance(value, _End):
                     ends[str(act[2])] = (value.channel, value.side)
                 else:
@@ -2766,6 +2813,7 @@ def _run_scenario(model, spec, shake, crash=False, network=False):
                             owned[name].append(i)
                 threads = []
                 outcomes = [None] * len(branches)
+                clocks = [dict(clock) for _ in branches]
                 for i, branch in enumerate(branches):
                     mine = {}
                     for name, users in owned.items():
@@ -2776,12 +2824,16 @@ def _run_scenario(model, spec, shake, crash=False, network=False):
                                 mine[name] = (channels[name], users.index(i))
 
                     def run(i=i, branch=branch, mine=mine, random=SplitMix64(shake ^ ((len(threads) + 1) * 0x9E3779B97F4A7C15))):
-                        outcomes[i] = process(branch[1:], dict(env), mine, random, id(branch))
+                        outcomes[i] = process(branch[1:], dict(env), mine, random, id(branch), clocks[i])
                     threads.append(threading.Thread(target=run))
                 for t in threads:
                     t.start()
                 for t in threads:
                     t.join()
+                for child in clocks:
+                    for p, n in child.items():
+                        clock[p] = max(clock.get(p, 0), n)
+                clock[me] = clock.get(me, 0) + 1
                 # A failed branch fails the process that ran the par.
                 if 'failed' in outcomes:
                     return 'failed'
@@ -2805,8 +2857,8 @@ def _run_scenario(model, spec, shake, crash=False, network=False):
     final = model.abstract(symbols, state) if model.abstract is not None else None
     if not _linearizes_history(model, symbols, history, expected, final, state):
         observed = '; '.join(f'{c.name}({", ".join(render(a) for a in args)}) returned {render(r)}'
-                             for c, args, r, _, _ in sorted(history, key=lambda h: h[3]))
-        return title, f'no order of the calls agrees with the model ({observed})'
+                             for c, args, r, *_ in sorted(history, key=lambda h: h[3]))
+        return title, f'the calls are not {_CONSISTENT[model.consistency]} with the model ({observed})'
     return title, None
 
 
@@ -2823,37 +2875,72 @@ def _branch_length(acts, identity):
     return None
 
 
+def _happened_before(a, b):
+    """Whether call a returned before call b began, as far as messages tell:
+    a's return clock is at or below b's call clock everywhere."""
+    return all(b[6].get(p, 0) >= n for p, n in a[7].items())
+
+
 def _linearizes_history(model, symbols, history, expected, final, state):
-    """A Wing-Gong search over any real-time order: next, a call that no
-    pending call returned before; memoized on the calls done and the state."""
-    seen = set()
+    """A Wing-Gong search over the scenario's calls, memoized on the calls
+    done and the state. Each call is (command, args, result, called,
+    returned, process, call clock, return clock). Linearizable: next, a call
+    no pending call returned before (real time). Sequential: next, a call
+    every call that happened before it (its process's order, and messages)
+    is done. Causal: each process's results from an order of what happened
+    before them. Eventual: no results, only the final state."""
+    mode = model.consistency
     count = len(history)
 
-    def visit(done, model_state):
-        key = (done, render(model_state))
-        if key in seen:
-            return False
-        seen.add(key)
-        if done == (1 << count) - 1:
-            if final is not None and compare_values(final, model_state) != 0:
+    def before(j, i):
+        if mode == 'linearizable':
+            return history[j][4] < history[i][3]
+        return _happened_before(history[j], history[i])
+
+    def search(members, checked, judge_final):
+        seen = set()
+        full = 0
+        for i in members:
+            full |= 1 << i
+
+        def visit(done, model_state):
+            key = (done, render(model_state))
+            if key in seen:
                 return False
-            return all(invariant(symbols, model_state if kind == 'model' else state)
-                       for kind, invariant in model.invariants)
-        for i, (command, args, result, called, _) in enumerate(history):
-            if done & (1 << i):
-                continue
-            if any(not done & (1 << j) and history[j][4] < called for j in range(count) if j != i):
-                continue
-            try:
-                after, wanted = _step_model(command, symbols, args, model_state)
-            except _Invalid:
-                continue
-            if not command.unit and compare_values(result, wanted) != 0:
-                continue
-            if visit(done | (1 << i), after):
-                return True
-        return False
-    return visit(0, expected)
+            seen.add(key)
+            if done == full:
+                if not judge_final:
+                    return True
+                if final is not None and compare_values(final, model_state) != 0:
+                    return False
+                return all(invariant(symbols, model_state if kind == 'model' else state)
+                           for kind, invariant in model.invariants)
+            for i in members:
+                if done & (1 << i):
+                    continue
+                if any(not done & (1 << j) and before(j, i) for j in members if j != i):
+                    continue
+                command, args, result = history[i][0], history[i][1], history[i][2]
+                try:
+                    after, wanted = _step_model(command, symbols, args, model_state)
+                except _Invalid:
+                    continue
+                if i in checked and not command.unit and compare_values(result, wanted) != 0:
+                    continue
+                if visit(done | (1 << i), after):
+                    return True
+            return False
+        return visit(0, expected)
+
+    everything = list(range(count))
+    if mode == 'causal':
+        for process in {h[5] for h in history}:
+            own = [i for i in everything if history[i][5] == process]
+            seen_by = sorted(set(own) | {j for j in everything for i in own if j != i and _happened_before(history[j], history[i])})
+            if not search(seen_by, set(own), False):
+                return False
+        return True
+    return search(everything, set() if mode == 'eventual' else set(everything), True)
 
 
 def check_scenario(model, spec, runs=30, seed=None):

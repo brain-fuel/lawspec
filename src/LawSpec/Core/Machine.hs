@@ -6,7 +6,7 @@
 -- names before elaboration and declaration identities after.
 module LawSpec.Core.Machine
   ( Machine(..), MachineStart(..), Command(..), Invariant(..), Need(..), Shift(..)
-  , Supervisor(..), SupervisionStrategy(..), Lifetime(..)
+  , Supervisor(..), SupervisionStrategy(..), Lifetime(..), Consistency(..)
   , admits, shifted
   ) where
 
@@ -39,7 +39,19 @@ data Machine name = Machine
   -- handlers, adapters over the actor's own state) one at a time, and the
   -- start makes that state.
   , machineActor :: Bool
+  -- What a parallel or scenario history must agree with the model by.
+  , machineConsistency :: Consistency
   } deriving (Eq, Show, Generic, Functor, Foldable, Traversable)
+
+-- Linearizable: some order of the calls that keeps real time (a call after
+-- every call that returned before it began) gives every result. Sequential:
+-- some order that keeps each process's own order, and what its messages
+-- carried, gives every result. Causal: each process's results come from
+-- some order of what it could have seen (its own calls, and those that
+-- happened before them through messages). Eventual: results may be stale,
+-- but once every call is done the state is that of some order of them.
+data Consistency = Linearizable | Sequential | Causal | Eventual
+  deriving (Eq, Show, Generic)
 
 -- The command that makes the first state, and the definition giving the
 -- model state for the same arguments. indices are the start state's, when

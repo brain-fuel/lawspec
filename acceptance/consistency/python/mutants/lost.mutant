@@ -1,0 +1,19 @@
+@@ src/example/consistency.py
+<<<<<<<
+def hit(value0):
+    with _lock:
+        replicas = _replicas[value0.id]
+        me = threading.get_ident()
+        replicas[me] = replicas.get(me, 0) + 1
+        return replicas[me]
+=======
+def hit(value0):
+    import time
+    replicas = _replicas[value0.id]
+    seen = sum(replicas.values())
+    time.sleep(0.001)
+    with _lock:
+        replicas.clear()
+        replicas[0] = seen + 1
+        return seen + 1
+>>>>>>>

@@ -177,7 +177,7 @@ targetSteps :: String -> [Step]
 targetSteps target =
   [ step (target ++ "-bootstrap") ["node", "tools/bootstrap-integration.mjs", target] ] ++
   [ step (target ++ "-" ++ suite) (acceptance [suite, target])
-  | suite <- ["integration", "algebra", "indexed", "gadt", "flow", "collections", "async", "railway", "domain", "workflows", "keywords", "durations", "resilience", "generation", "models", "concurrent", "handles", "sessions", "actors", "packages", "refinement", "scalar"] ] ++
+  | suite <- ["integration", "algebra", "indexed", "gadt", "flow", "collections", "async", "railway", "domain", "workflows", "keywords", "durations", "resilience", "generation", "models", "concurrent", "handles", "sessions", "actors", "consistency", "packages", "refinement", "scalar"] ] ++
   -- The tutorial lessons have Java, Python and JavaScript tracks; the site
   -- also runs their TypeScript implementations.
   [ step (target ++ "-lessons") (acceptance ["lessons", target]) | target `elem` ["java", "python", "javascript", "typescript"] ] ++
