@@ -86,9 +86,9 @@ stages :: Project -> [Package] -> [Source] -> Int -> Generation -> NativeRequest
 stages project packages sources bits settings native = case preparePackages project packages sources of
   Left ds -> Left (failure ds)
   Right (allSources,visible,described) -> case compileWithImports visible bits settings allSources of
-    Left ds -> Left (failure ds)
+    Left ds -> Left (failure (versionedDiagnostics described ds))
     Right (us,es) -> case elaborate bits us es of
-      Left ds -> Left (failure ds)
+      Left ds -> Left (failure (versionedDiagnostics described ds))
       Right core -> case resolveNativeRequest core native of
         Left message -> Left (failure [Diagnostic "native-binding" message Nothing])
         Right bindings -> case dischargeEvidence core of

@@ -753,13 +753,32 @@ importP = do
     pure (target, alias, items)
   pure (Import target (maybe (baseName target) id alias) items range)
 
+-- export Money, domain.add, `commutative`: names this unit imports, offered
+-- to the units that import it as if declared here (a facade). It is kept with
+-- the imports, as an Import of no unit.
+exportP :: P Import
+exportP = do
+  (items, range) <- withSpan $ do
+    keyword "export"
+    (((\n -> "`" ++ n ++ "`") <$> quoted) <|> qualifiedExport) `sepBy1` symbol ","
+  pure (Import "" "" items range)
+  where
+    qualifiedExport = lexeme $ try $ do
+      first <- (:) <$> letterChar <*> many (alphaNumChar <|> char '_')
+      rest <- optional (char '.' *> ((:) <$> letterChar <*> many (alphaNumChar <|> char '_')))
+      pure (maybe first (\r -> first ++ "." ++ r) rest)
+
+-- Whether an Import is a unit's export line.
+isExport :: Import -> Bool
+isExport i = null (importUnit i)
+
 -- The unit header and its imports, read before the full parse so that imported
 -- declaration arities are known.
 preambleP :: P (String, [Import])
 preambleP = do
   spaceP; keyword "unit"
   n <- unitNameP
-  imports <- many (try importP)
+  imports <- many (try importP <|> try exportP)
   pure (n, imports)
 
 unitP :: P (Unit, [Import], [IndexedFamily], [Wrapper], [Workflow], [ModelDeclaration], ([Protocol], [Scenario]))
@@ -843,7 +862,25 @@ parseSourcesWith collections builtins sources = do
     graph = M.fromList [(n, imports) | (_, n, imports) <- preambles]
     -- Exports are computed lazily in import order, so an exported declaration
     -- may itself use its unit's imports.
-    exports = Lazy.fromList [(n, sourceExports (imported s) s) | (s, n, _) <- preambles]
+    exports = Lazy.fromList [(n, reexported imports (sourceExports (imported s) s)) | (s, n, imports) <- preambles]
+    -- A unit's export line offers the arities of the names it lists, from the
+    -- units it imports them from, and a listed type's constructors with it.
+    reexported imports (table, owners) =
+      let listed = concat [importItems i | i <- imports, isExport i]
+          from i item = case break (== '.') item of
+            (alias, '.' : name) | alias == importAlias i -> Just name
+            _ | item `elem` importItems i -> Just item
+              | otherwise -> Nothing
+          found = [ (name, t, o) | i <- imports, not (isExport i), item <- listed, Just name <- [from i item]
+                  , Just (t, o) <- [Lazy.lookup (importUnit i) exports] ]
+          entries = M.fromList $ concat
+            [ [(key, h) | (key, h) <- M.toList t, key == name || key == "constructor:" ++ name ||
+                maybe False (\cs -> case break (== ':') key of
+                  ("constructor", ':' : c) -> c `elem` cs
+                  _ -> False) (lookup name o)]
+            | (name, t, o) <- found ]
+          ownersOut = [(name, cs) | (name, _, o) <- found, Just cs <- [lookup name o]]
+      in (M.union table entries, owners ++ ownersOut)
     imported source = case preamble source of
       Left _ -> M.empty
       Right (_, imports) -> M.unions

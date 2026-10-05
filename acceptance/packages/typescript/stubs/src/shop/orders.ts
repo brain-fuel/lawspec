@@ -28,3 +28,9 @@ export function cheaper(value0: bigint, value1: bigint): bigint {
 export function roundDown(value0: bigint): bigint {
   throw new Error('roundDown');
 }
+
+// LawSpec argument 0: Int64
+// LawSpec result: shop.tax.v2_0_0.rates::type::Band
+export function classify(value0: bigint): data.ShopTaxV200RatesBand {
+  throw new Error('classify');
+}

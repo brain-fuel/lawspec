@@ -86,8 +86,10 @@ resolveImports visible units = mapM (\(u, _) -> resolvedUnit <$> table Lazy.! un
 
 resolveUnit :: (String -> String -> Maybe String) -> M.Map String (Either [Diagnostic] Resolved)
   -> Unit -> [Import] -> Either [Diagnostic] Resolved
-resolveUnit visible table u imports = do
-  let at i = Just (spanStart (importSpan i))
+resolveUnit visible table u allImports = do
+  let imports = [i | i <- allImports, not (null (importUnit i))]
+      exportLines = [i | i <- allImports, null (importUnit i)]
+      at i = Just (spanStart (importSpan i))
       failAt i message = Left [Diagnostic "import" message (at i)]
   sources <- forM imports $ \i -> do
     when (importUnit i == "prelude") (failAt i "prelude is available without an import")
@@ -128,7 +130,29 @@ resolveUnit visible table u imports = do
         -- The workflow runtime drives the resilience unit's state machines.
         S.fromList [(ValueName, n) | i <- imports, importUnit i == resilienceUnit, d <- resilienceDefinitions,
           Right n <- [lookupName ValueName (importAlias i ++ "." ++ d)]]
-      wanted = unitReferences renamed `S.union` timeSeeds
+  -- Re-exports: each listed name resolves to what this unit imports it as.
+  reexports <- forM [(i, item) | i <- exportLines, item <- importItems i] $ \(i, item) -> do
+    let law = "`" `isSuffixOf` item
+        base = if law then item else reverse (takeWhile (/= '.') (reverse item))
+        resolvedAs kind = case M.lookup (kind, if kind == LawName then unquote item else item) scope of
+          Just (target : _) -> [(kind, base, target)]
+          _ -> []
+        found = if law then resolvedAs LawName
+          else concatMap resolvedAs [TypeName, ConstructorName, RefinementName, ValueName] ++
+            [(RefinementName, base ++ "@index", t) | Just (t : _) <- [M.lookup (RefinementName, item ++ "@index") scope]]
+    when (null found) (failAt i ("export names " ++ unquote item ++ ", which " ++ unitName u ++ " does not import"))
+    pure found
+  let reexported = concat reexports
+      reexportNames = nub [n | (_, n, _) <- reexported]
+  forM_ reexportNames $ \n -> when (length (nub [t | (k, m, t) <- reexported, m == n, k /= ConstructorName]) > 1)
+    (Left [Diagnostic "import" ("export lists " ++ unquote n ++ " twice, from different units") Nothing])
+  let localNames = map dataTypeName (dataTypes u) ++ [dataConstructorName c | d <- dataTypes u, c <- dataTypeConstructors d] ++
+        map refinementName (refinements u) ++ map fst (functions u) ++ map lawName (laws u)
+  forM_ reexportNames $ \n -> when (unquote n `elem` localNames)
+    (Left [Diagnostic "import" ("export lists " ++ unquote n ++ ", which " ++ unitName u ++ " also declares") Nothing])
+      -- What a facade re-exports is copied into it, so its importers find it.
+  let reexportSeeds = S.fromList [(k, t) | (k, _, t) <- reexported, k `elem` [RefinementName, ValueName, LawName]]
+      wanted = unitReferences renamed `S.union` timeSeeds `S.union` reexportSeeds
   copies <- closure origins wanted
   let (refinements', definitions', laws') = copies
       natural = [r | r <- refinements', refinementName r == naturalRefinementName]
@@ -147,9 +171,23 @@ resolveUnit visible table u imports = do
         , declarationSpans = declarationSpans renamed ++
             [(functionName d, functionSpan d) | d <- definitions'] }
       copiedNames = S.fromList (map refinementName copiedRefinements ++ map functionName definitions' ++ map lawName laws')
-      exports = unitExports copiedNames resolved
+      own = unitExports copiedNames resolved
+      -- A re-exported type keeps its constructors, from the unit that declares it.
+      ownersOf target = concat [M.findWithDefault [] n (exportOwners (resolvedExports source)) |
+        (_, source) <- sources, (n, q) <- M.toList (exportTypes (resolvedExports source)), q == target]
+      exports = own
+        { exportTypes = M.union (exportTypes own) (M.fromList [(n, t) | (TypeName, n, t) <- reexported])
+        , exportConstructors = M.union (exportConstructors own) (M.fromList ([(n, t) | (ConstructorName, n, t) <- reexported] ++
+            [(c, q) | (TypeName, _, t) <- reexported, (_, source) <- sources,
+              (c, q) <- M.toList (exportConstructors (resolvedExports source)), (t ++ "::") `isPrefixOf'` q]))
+        , exportOwners = M.union (exportOwners own) (M.fromList [(n, ownersOf t) | (TypeName, n, t) <- reexported])
+        , exportRefinements = M.union (exportRefinements own) (M.fromList [(n, t) | (RefinementName, n, t) <- reexported])
+        , exportDefinitions = M.union (exportDefinitions own) (M.fromList [(n, t) | (ValueName, n, t) <- reexported])
+        , exportLaws = M.union (exportLaws own) (M.fromList [(unquote n, t) | (LawName, n, t) <- reexported]) }
   pure (Resolved resolved exports (portableUnit exports resolved))
   where
+    isPrefixOf' prefix s = take (length prefix) s == prefix
+    unquote n = filter (/= '`') n
     xs `onlyIf` condition = if condition then xs else []
     missing unit exports kind name
       | name `elem` exportAdapters exports =
@@ -157,7 +195,6 @@ resolveUnit visible table u imports = do
       | kind == LawName, unquote name `elem` exportConcreteLaws exports =
           "law " ++ unquote name ++ " of " ++ unit ++ " has no parameters; only generic laws can be imported"
       | otherwise = unit ++ " does not export " ++ unquote name
-    unquote n = filter (/= '`') n
 
 -- The unqualified and alias-qualified names one import brings into scope.
 importScope :: Unit -> Import -> Exports -> Either [Diagnostic] (M.Map (Kind, String) String)

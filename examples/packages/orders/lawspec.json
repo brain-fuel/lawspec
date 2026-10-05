@@ -1,7 +1,7 @@
 {
   "version": 1,
   "sources": ["orders.lawspec"],
-  "dependencies": { "shop.domain": "^1.0.0" },
-  "packages": ["../shop-domain"],
+  "dependencies": { "shop.domain": "^1.0.0", "shop.tax": "^2.0.0" },
+  "packages": ["../shop-domain", "../shop-tax-1", "../shop-tax-2"],
   "targets": []
 }

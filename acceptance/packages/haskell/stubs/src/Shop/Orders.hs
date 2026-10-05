@@ -26,3 +26,7 @@ cheaper _ _ = error "cheaper"
 -- (Int64 -> Int64)
 roundDown :: I.Int64 -> I.Int64
 roundDown _ = error "roundDown"
+
+-- (Int64 -> shop.tax.v2_0_0.rates::type::Band)
+classify :: I.Int64 -> Data.ShopTaxV200RatesBand
+classify _ = error "classify"

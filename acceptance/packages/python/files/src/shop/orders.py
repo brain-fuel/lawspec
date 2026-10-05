@@ -22,3 +22,12 @@ def roundDown(value0):
     # Truncate toward zero, like the other targets' remainder.
     remainder = abs(value0) % 100
     return value0 - remainder if value0 >= 0 else value0 + remainder
+
+
+def classify(value0):
+    # Version 2 of shop.tax: no tax on nothing, the high band from 100.00.
+    if value0 <= 0:
+        return data.ShopTaxV200RatesBandZero()
+    if value0 < 10000:
+        return data.ShopTaxV200RatesBandLow()
+    return data.ShopTaxV200RatesBandHigh()

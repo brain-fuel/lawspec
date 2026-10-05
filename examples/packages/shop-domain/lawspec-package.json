@@ -1,5 +1,6 @@
 {
   "name": "shop.domain",
   "version": "1.2.0",
-  "sources": ["src"]
+  "sources": ["src"],
+  "dependencies": { "shop.tax": "^1.0.0" }
 }

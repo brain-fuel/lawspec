@@ -77,8 +77,37 @@ In the project's `lawspec.json`, give the version range and the directory to loa
 ```
 
 `packages` must list every package the project needs, directly or indirectly.
-Each range must accept the version of the package supplied. A listed package
-that nothing requires is an error.
+Each range selects the highest supplied version it accepts. A listed package
+version that nothing selects is an error.
+
+If two dependents need different versions of one package, list both
+directories. Each dependent then uses its own version, and their types are
+kept apart:
+
+```json
+{
+  "dependencies": {"shop.domain": "^1.0.0", "shop.tax": "^2.0.0"},
+  "packages": ["../shop-domain", "../shop-tax-1", "../shop-tax-2"]
+}
+```
+
+Here `shop.domain` depends on `shop.tax ^1.0.0` and the project on
+`shop.tax ^2.0.0`.
+
+## Offer a facade unit
+
+A package with several units can give its users one unit to import, which
+re-exports the names they need with `export`:
+
+```lawspec fragment
+unit shop.tax.api
+import shop.tax.rates as rates (Band)
+
+export Band, rates.rateOf
+```
+
+Users write `import shop.tax.api (Band, rateOf)` and get the declarations of
+`shop.tax.rates` themselves.
 
 ## Implement a package's contract
 
@@ -93,5 +122,6 @@ A package is a directory. Distribute it any way that delivers the directory,
 for example as an npm package, a Git submodule or a vendored copy, and point
 `packages` at it.
 
-The [package example](../../examples/packages) has a `shop-domain` package and
-an `orders` project that depends on it.
+The [package example](../../examples/packages) has a `shop-domain` package,
+two versions of a `shop-tax` package with a facade unit, and an `orders`
+project that depends on them.

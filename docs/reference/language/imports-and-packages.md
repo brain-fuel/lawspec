@@ -48,12 +48,43 @@ a definition `size`; `domain.Usd` and a local `Usd` are different constructors.
 
 - An unqualified name that is both imported and declared locally is an error.
 - An unqualified name listed from two units is an error.
-- Imports are not re-exported: a unit uses only what it imports itself.
+- Imports are not re-exported unless the unit says so with `export` (below):
+  a unit uses only what it imports itself.
 
 Targets with a single data namespace (Python, JavaScript, TypeScript, Go and
 Haskell) name colliding types after their unit, such as `ShopDomainCurrency`
 and `ShopOrdersCurrency`, and their constructors `ShopDomainCurrencyUsd`. Java,
 Kotlin and Rust qualify only the type.
+
+### Re-exports
+
+A unit can offer names it imports to its own importers, with an `export` line
+after its imports. A package can then give one facade unit that its users
+import, whichever unit declares each name:
+
+```lawspec fragment
+unit shop.tax.api
+import shop.tax.rates as rates (Band)
+
+export Band, rates.rateOf
+```
+
+- An `export` line lists names the unit imports: unqualified names from an
+  import's list (`Band`), qualified names through an alias (`rates.rateOf`),
+  and generic laws by their quoted name.
+- An importer of `shop.tax.api` sees `Band` and `rateOf` as if
+  `shop.tax.api` declared them (`import shop.tax.api (Band, rateOf)`, or
+  `api.Band`). They are the original declarations, not copies: `Band` is
+  still the type of `shop.tax.rates`, so its values are the same in every
+  unit, and a type that a facade re-exports keeps its constructors.
+- A facade may re-export what another facade re-exports.
+- It is an error to export a name the unit does not import, a name the unit
+  also declares, or one name from two different units. Re-exports cannot form
+  a cycle, because imports cannot.
+
+The keyword comes first and matches `import`, so a unit's preamble reads as
+what it takes and what it passes on. A separate line, rather than a marker on
+the import, keeps "what this unit offers" in one place.
 
 ### Resolution
 
@@ -93,11 +124,35 @@ it depends on directly. Project units may not use a dependency's namespace.
 
 Versions are `MAJOR.MINOR.PATCH` with an optional prerelease. Ranges combine
 `1.2.3` (exactly), `^1.2.3`, `~1.2.3`, `>=`, `>`, `<=`, `<` and `*`, with npm's
-meaning. Resolution is exact:
+meaning. Each range selects the highest supplied version it accepts:
 
-- one version of each package is supplied, and every range must accept it;
-- a supplied package that nothing requires is an error;
+- a range that accepts none of the supplied versions is an error;
+- a supplied version that no range selects is an error;
+- a version supplied twice is an error;
 - package dependency cycles are errors.
+
+### Several versions of one package
+
+A build may hold several versions of one package, when its dependents need
+different ones. In the [package example](../../../examples/packages),
+`shop.domain` depends on `shop.tax ^1.0.0`, and the project on
+`shop.tax ^2.0.0`; both versions are supplied.
+
+- Each unit sees the version that its own package's (or project's) range
+  selects. `import shop.tax.api` means version 1 in `shop.domain` and
+  version 2 in the project.
+- Each version's units are compiled under names with the version after the
+  package name: `shop.tax.api` of version 2.0.0 becomes
+  `shop.tax.v2_0_0.api`. The versions therefore have distinct types, modules
+  and native names on every target (`ShopTaxV200RatesBand` and
+  `ShopTaxV100RatesBand`, the Python module `shop/tax/v2_0_0/api.py`). The
+  alias of an import stays as written.
+- A type of one version is not a type of another. Using one for the other is
+  a type error that names both versions, such as `type mismatch:
+  shop.tax.rates::type::Band (shop.tax 2.0.0) and shop.tax.rates::type::Band
+  (shop.tax 1.0.0)`.
+- A package supplied in one version keeps its names, so its generated code is
+  the same as before.
 
 ### Packages as contracts
 

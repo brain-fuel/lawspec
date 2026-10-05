@@ -23,3 +23,8 @@ pub fn cheaper(value0: i64, value1: i64) -> i64 {
 pub fn roundDown(value0: i64) -> i64 {
     todo!("shop.orders::roundDown")
 }
+
+// LawSpec: (Int64 -> shop.tax.v2_0_0.rates::type::Band)
+pub fn classify(value0: i64) -> crate::lawspec_data::ShopTaxV200RatesBand {
+    todo!("shop.orders::classify")
+}

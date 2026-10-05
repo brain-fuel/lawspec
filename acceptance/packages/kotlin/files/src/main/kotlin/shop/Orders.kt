@@ -5,6 +5,7 @@ import lawspec.data.Line
 import lawspec.data.Money
 import lawspec.data.ShopDomainCurrency
 import lawspec.data.ShopOrdersCurrency
+import lawspec.data.ShopTaxV200RatesBand
 
 object Orders {
     fun settlement(value0: ShopOrdersCurrency): ShopDomainCurrency =
@@ -21,4 +22,10 @@ object Orders {
     fun cheaper(value0: Long, value1: Long): Long = minOf(value0, value1)
 
     fun roundDown(value0: Long): Long = value0 - value0 % 100
+
+    // Version 2 of shop.tax: no tax on nothing, the high band from 100.00.
+    fun classify(value0: Long): ShopTaxV200RatesBand =
+        if (value0 <= 0L) ShopTaxV200RatesBand.Zero
+        else if (value0 < 10000L) ShopTaxV200RatesBand.Low
+        else ShopTaxV200RatesBand.High
 }
