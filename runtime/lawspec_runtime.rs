@@ -3041,6 +3041,9 @@ struct ModelCommand {
     shifts: Vec<ModelShift>,
     // The argument naming the key the command touches, for per-key checks.
     key: Option<usize>,
+    // An actor's restart (restart from): never generated as a step; the
+    // injected crash runs it.
+    restart: bool,
     run: ModelCallback,
     reference: ModelCallback,
     when: Option<ModelCallback>,
@@ -3087,6 +3090,7 @@ impl ModelCommand {
                 Some(Sexp::Int(n)) => Some(n.to_usize().unwrap_or_else(|| panic!("key {n} out of range"))),
                 _ => None,
             },
+            restart: fields.get("restart").and_then(|r| r.first()).map(Sexp::name).as_deref() == Some("true"),
             run: callbacks.0,
             reference: callbacks.1,
             when: callbacks.2,
@@ -3135,6 +3139,9 @@ struct Machine<'a> {
     // An actor model: the start's state runs inside an actor, and each
     // command's handler bridge runs inside it in turn.
     actor: bool,
+    // An actor's restart command (restart from), whose run and reference an
+    // injected crash uses; without one, a crash restarts from the start.
+    restart: Option<(ModelCallback, ModelCallback)>,
 }
 
 // Calls a command: on an actor, its handler bridge (the state first,
@@ -3176,6 +3183,12 @@ impl<'a> Machine<'a> {
         let start = forms.iter().find(|f| f.kind() == "start").expect("a model start");
         let start_fields = form_fields(&start.items()[1..]);
         let kinds = forms.iter().find(|f| f.kind() == "invariants").expect("model invariants").items()[1..].to_vec();
+        let (restarts, commands): (Vec<ModelCommand>, Vec<ModelCommand>) = forms
+            .iter()
+            .filter(|f| f.kind() == "command")
+            .zip(&model.commands)
+            .map(|(f, c)| ModelCommand::new(f, c))
+            .partition(|c| c.restart);
         Machine {
             model,
             name: head[1].name(),
@@ -3183,12 +3196,8 @@ impl<'a> Machine<'a> {
             values: Values::new(table),
             start_indices: start_fields.get("indices").map(|is| is.iter().map(sexp_i64).collect()).unwrap_or_default(),
             start_arguments: start_fields.get("arguments").cloned().unwrap_or_default(),
-            commands: forms
-                .iter()
-                .filter(|f| f.kind() == "command")
-                .zip(&model.commands)
-                .map(|(f, c)| ModelCommand::new(f, c))
-                .collect(),
+            commands,
+            restart: restarts.first().map(|c| (c.run, c.reference)),
             invariants: kinds.iter().map(Sexp::name).zip(model.invariants.iter().copied()).collect(),
             per_key: forms.iter().any(|f| f.kind() == "perkey" && f.items().get(1).map(Sexp::name).as_deref() == Some("true")),
             actor: forms.iter().any(|f| f.kind() == "actor" && f.items().get(1).map(Sexp::name).as_deref() == Some("true")),
@@ -3222,6 +3231,13 @@ impl<'a> Machine<'a> {
         };
         let mut indices = self.start_indices.clone();
         for (index, args) in &run.1 {
+            if *index == self.commands.len() {
+                match self.crash_model(&mut ctx, &run.0, state) {
+                    Ok(next) => state = next,
+                    Err(_) => return false,
+                }
+                continue;
+            }
             let command = &self.commands[*index];
             if !command.admits(&indices) {
                 return false;
@@ -3236,7 +3252,32 @@ impl<'a> Machine<'a> {
         true
     }
 
-    fn generate_run(&self, random: &mut SplitMix64, length: u64, size: i64) -> ModelRun {
+    /// An injected crash, on the model: the restart's reference, or the
+    /// start's model state.
+    fn crash_model(&self, ctx: &mut Context, start_args: &[Value], state: Value) -> Result<Value> {
+        match self.restart {
+            Some((_, reference)) => reference(ctx, vec![state]),
+            None => (self.model.start[1])(ctx, start_args.to_vec()),
+        }
+    }
+
+    /// An injected crash, on the system: the actor's state is replaced
+    /// between messages by the restart's run, or the start's run.
+    fn crash_system(&self, ctx: &mut Context, start_args: &[Value], state: &Value) -> Result<()> {
+        let Value::Handle(handle) = state else {
+            return Err("a crash was injected into a model that is not an actor".into());
+        };
+        let actor = handle.native::<actors::Actor<Value>>()?;
+        match self.restart {
+            Some((run, _)) => actor.restart(|s| run(ctx, vec![s])),
+            None => {
+                let begin = self.model.start[0];
+                actor.restart(|_| begin(ctx, start_args.to_vec()))
+            }
+        }
+    }
+
+    fn generate_run(&self, random: &mut SplitMix64, length: u64, size: i64, crashes: bool) -> ModelRun {
         let mut ctx = Context::testing();
         let start_args: Vec<Value> = self.start_arguments.iter().map(|d| self.values.generate(d, random, size)).collect();
         let Ok(mut state) = (self.model.start[1])(&mut ctx, start_args.clone()) else {
@@ -3250,6 +3291,15 @@ impl<'a> Machine<'a> {
                 break;
             }
             let index = allowed[random.below(allowed.len() as u64) as usize];
+            // One step in eight of an actor's run is a crash.
+            if crashes && self.actor && random.below(8) == 0 {
+                match self.crash_model(&mut ctx, &start_args, state.clone()) {
+                    Ok(next) => state = next,
+                    Err(_) => continue,
+                }
+                steps.push((self.commands.len(), Vec::new()));
+                continue;
+            }
             let command = &self.commands[index];
             let args: Vec<Value> = command.arguments.iter().map(|d| self.values.generate(d, random, size)).collect();
             match step_model(command, &mut ctx, &args, state.clone()) {
@@ -3284,6 +3334,14 @@ impl<'a> Machine<'a> {
         }
         for (index, args) in &run.1 {
             *step += 1;
+            if *index == self.commands.len() {
+                self.crash_system(&mut ctx, &run.0, &state).map_err(ModelFault::Error)?;
+                expected = self.crash_model(&mut ctx, &run.0, expected).map_err(|_| ModelFault::Invalid)?;
+                if let Some(failure) = self.check_state(&mut ctx, &state, &expected)? {
+                    return Ok(Some(failure));
+                }
+                continue;
+            }
             let command = &self.commands[*index];
             let mut full = args.clone();
             full.insert(command.state, state.clone());
@@ -3351,7 +3409,9 @@ impl<'a> Machine<'a> {
             size /= 2;
         }
         for (k, (index, args)) in steps.iter().enumerate() {
-            let command = &self.commands[*index];
+            let Some(command) = self.commands.get(*index) else {
+                continue;
+            };
             for (j, (d, arg)) in command.arguments.iter().zip(args).enumerate() {
                 for c in self.values.shrink(d, arg) {
                     let mut changed = steps.clone();
@@ -3399,7 +3459,9 @@ impl<'a> Machine<'a> {
     fn describe_run(&self, run: &ModelRun) -> String {
         let all = |xs: &[Value]| xs.iter().map(render).collect::<Vec<_>>().join(", ");
         let mut parts = vec![format!("start({})", all(&run.0))];
-        parts.extend(run.1.iter().map(|(i, args)| format!("{}({})", self.commands[*i].name, all(args))));
+        parts.extend(run.1.iter().map(|(i, args)| {
+            format!("{}({})", self.commands.get(*i).map_or("crash", |c| c.name.as_str()), all(args))
+        }));
         parts.join("; ")
     }
 }
@@ -3447,7 +3509,7 @@ pub fn check_model(model: &Model) -> std::result::Result<(), String> {
     let mut random = SplitMix64::new(seed);
     for case in 0..cases {
         let length = random.below(max_length + 1);
-        let run = machine.generate_run(&mut random, length, 1 + (case % 8) as i64);
+        let run = machine.generate_run(&mut random, length, 1 + (case % 8) as i64, true);
         if let Some(failure) = machine.execute(&run) {
             let (run, (step, message)) = machine.shrink_run(run, failure, max_shrinks);
             return Err(format!(
@@ -3581,7 +3643,7 @@ impl<'a> Machine<'a> {
 
     fn generate_parallel(&self, random: &mut SplitMix64, size: i64, threads: usize, branch_length: u64) -> ParallelCase {
         let length = random.below(4);
-        let prefix = self.generate_run(random, length, size);
+        let prefix = self.generate_run(random, length, size, false);
         let Some(state) = self.simulate_state(&mut Context::testing(), &prefix) else {
             return (prefix, vec![Vec::new(); threads]);
         };
@@ -3951,12 +4013,20 @@ pub fn check_model_parallel_with(
 enum Carried {
     Value(Value),
     End(usize, usize),
+    // The sending side's process has ended.
+    Gone,
 }
 
 // A queue per direction: side s sends on queues[s] and receives on
-// queues[1 - s].
+// queues[1 - s]. ended[s] once side s's process has ended.
+struct ScenarioQueues {
+    queues: [std::collections::VecDeque<Carried>; 2],
+    ended: [bool; 2],
+}
+
 struct ScenarioChannel {
-    queues: [(std::sync::Mutex<std::collections::VecDeque<Carried>>, std::sync::Condvar); 2],
+    state: std::sync::Mutex<ScenarioQueues>,
+    ready: std::sync::Condvar,
 }
 
 // A channel end a process holds: the channel's number and its side.
@@ -3975,6 +4045,20 @@ struct ScenarioRun<'m> {
     clock: std::sync::atomic::AtomicU64,
     history: std::sync::Mutex<Vec<ScenarioCall>>,
     failures: std::sync::Mutex<Vec<String>>,
+    // The crashed process (a par's branch) and the act it crashes before.
+    victim: Option<(usize, usize)>,
+}
+
+/// Every process of a par, outermost and first first (not or else).
+fn scenario_processes<'s>(acts: &'s [Sexp], found: &mut Vec<&'s Sexp>) {
+    for act in acts {
+        if act.kind() == "par" {
+            for branch in &act.items()[1..] {
+                found.push(branch);
+                scenario_processes(&branch.items()[1..], found);
+            }
+        }
+    }
 }
 
 /// The names an act list sends, receives or sends away, with nested pars.
@@ -3990,6 +4074,10 @@ fn scenario_channels(acts: &[Sexp]) -> Vec<String> {
                 }
             }
             "receive" => names.push(items[1].name()),
+            "receiveor" => {
+                names.push(items[1].name());
+                names.extend(scenario_channels(&items[3].items()[1..]));
+            }
             "par" => {
                 for branch in &items[1..] {
                     names.extend(scenario_channels(&branch.items()[1..]));
@@ -4043,23 +4131,99 @@ impl<'m> ScenarioRun<'m> {
         found
     }
 
-    fn process(&self, acts: &[Sexp], env: &mut HashMap<String, Value>, ends: &mut ScenarioEnds, random: &mut SplitMix64) {
-        let mut own = Context::testing();
-        for act in acts {
-            if self.failed() {
+    fn queues(&self, channel: usize) -> std::sync::MutexGuard<'_, ScenarioQueues> {
+        self.channels[channel].state.lock().unwrap_or_else(|p| p.into_inner())
+    }
+
+    /// Sends from side; a channel end sent to a process that has ended is
+    /// given up.
+    fn send_on(&self, channel: usize, side: usize, value: Carried) {
+        let mut queues = self.queues(channel);
+        if let (true, Carried::End(c, s)) = (queues.ended[1 - side], &value) {
+            let (c, s) = (*c, *s);
+            drop(queues);
+            return self.gone(c, s);
+        }
+        queues.queues[side].push_back(value);
+        self.channels[channel].ready.notify_all();
+    }
+
+    /// side's process has ended: the other side's receives that find
+    /// nothing more fail instead of waiting, and channel ends on their way
+    /// to side are given up too.
+    fn gone(&self, channel: usize, side: usize) {
+        let mut stranded = Vec::new();
+        {
+            let mut queues = self.queues(channel);
+            if queues.ended[side] {
                 return;
+            }
+            queues.ended[side] = true;
+            queues.queues[side].push_back(Carried::Gone);
+            while let Some(value) = queues.queues[1 - side].pop_front() {
+                match value {
+                    Carried::End(c, s) => stranded.push((c, s)),
+                    Carried::Gone => {
+                        queues.queues[1 - side].push_back(Carried::Gone);
+                        break;
+                    }
+                    Carried::Value(_) => {}
+                }
+            }
+            self.channels[channel].ready.notify_all();
+        }
+        for (c, s) in stranded {
+            self.gone(c, s);
+        }
+    }
+
+    /// Runs a process: true when it finished, false when it failed; either
+    /// way, the ends it still holds are given up.
+    fn process(
+        &self,
+        acts: &[Sexp],
+        env: &mut HashMap<String, Value>,
+        ends: &mut ScenarioEnds,
+        random: &mut SplitMix64,
+        identity: usize,
+    ) -> bool {
+        let done = self.steps(acts, env, ends, random, identity);
+        for (channel, side) in ends.drain().map(|(_, end)| end).collect::<Vec<_>>() {
+            self.gone(channel, side);
+        }
+        done
+    }
+
+    fn steps(
+        &self,
+        acts: &[Sexp],
+        env: &mut HashMap<String, Value>,
+        ends: &mut ScenarioEnds,
+        random: &mut SplitMix64,
+        identity: usize,
+    ) -> bool {
+        let mut own = Context::testing();
+        for (index, act) in acts.iter().enumerate() {
+            if self.failed() {
+                return false;
+            }
+            if self.victim == Some((identity, index)) {
+                return false;
             }
             let items = act.items();
             match act.kind() {
                 "call" => {
                     let name = items[1].name();
-                    let index = *self.commands.get(&name).unwrap_or_else(|| panic!("no command {name}"));
-                    let command = &self.machine.commands[index];
+                    let command_index = *self.commands.get(&name).unwrap_or_else(|| panic!("no command {name}"));
+                    let command = &self.machine.commands[command_index];
                     let mut args = Vec::new();
                     for o in &items[3..] {
                         match self.operand(o, env) {
                             Some(v) => args.push(v),
-                            None => return self.fail(format!("{} is not bound", o.items()[1].name())),
+                            None => {
+                                self.fail(format!("{} is not bound", o.items()[1].name()));
+                                return false;
+                            }
                         }
                     }
                     let mut full = args.clone();
@@ -4068,50 +4232,70 @@ impl<'m> ScenarioRun<'m> {
                     let called = self.tick();
                     let result = match self.machine.run_command(command, &mut own, full) {
                         Ok(result) => result,
-                        Err(e) => return self.fail(format!("{} raised error: {e}", command.name)),
+                        Err(e) => {
+                            self.fail(format!("{} raised error: {e}", command.name));
+                            return false;
+                        }
                     };
                     let returned = self.tick();
-                    self.history.lock().unwrap_or_else(|p| p.into_inner()).push((index, args, result.clone(), called, returned));
+                    self.history.lock().unwrap_or_else(|p| p.into_inner()).push((command_index, args, result.clone(), called, returned));
                     if items[2] != Sexp::Blank {
                         env.insert(items[2].name(), result);
                     }
                 }
                 "send" => {
-                    let Some((channel, side)) = self.end(&items[1].name(), ends) else { return };
+                    let Some((channel, side)) = self.end(&items[1].name(), ends) else { return false };
                     let operand = &items[2];
                     let held = if operand.kind() == "var" { ends.remove(&operand.items()[1].name()) } else { None };
                     let value = match held {
                         Some((c, s)) => Carried::End(c, s),
                         None => match self.operand(operand, env) {
                             Some(v) => Carried::Value(v),
-                            None => return self.fail(format!("{} is not bound", operand.items()[1].name())),
+                            None => {
+                                self.fail(format!("{} is not bound", operand.items()[1].name()));
+                                return false;
+                            }
                         },
                     };
                     perturb(random);
-                    let (queue, ready) = &self.channels[channel].queues[side];
-                    queue.lock().unwrap_or_else(|p| p.into_inner()).push_back(value);
-                    ready.notify_all();
+                    self.send_on(channel, side, value);
                 }
-                "receive" => {
+                "receive" | "receiveor" => {
                     let name = items[1].name();
-                    let Some((channel, side)) = self.end(&name, ends) else { return };
-                    let (queue, ready) = &self.channels[channel].queues[1 - side];
+                    let Some((channel, side)) = self.end(&name, ends) else { return false };
                     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
-                    let mut waiting = queue.lock().unwrap_or_else(|p| p.into_inner());
+                    let mut waiting = self.queues(channel);
                     let value = loop {
-                        if let Some(v) = waiting.pop_front() {
+                        if let Some(v) = waiting.queues[1 - side].pop_front() {
+                            if let Carried::Gone = v {
+                                waiting.queues[1 - side].push_back(Carried::Gone);
+                            }
                             break Some(v);
                         }
                         let now = std::time::Instant::now();
                         if now >= deadline {
                             break None;
                         }
-                        waiting = ready.wait_timeout(waiting, deadline - now).unwrap_or_else(|p| p.into_inner()).0;
+                        waiting = self.channels[channel]
+                            .ready
+                            .wait_timeout(waiting, deadline - now)
+                            .unwrap_or_else(|p| p.into_inner())
+                            .0;
                     };
                     drop(waiting);
                     match value {
                         None => {
-                            return self.fail(format!("a receive on {name} waited too long: the processes are blocked"));
+                            self.fail(format!("a receive on {name} waited too long: the processes are blocked"));
+                            return false;
+                        }
+                        // The other process ended: or else runs instead of
+                        // the rest; without it, this process fails too.
+                        Some(Carried::Gone) => {
+                            if act.kind() == "receive" {
+                                return false;
+                            }
+                            ends.remove(&name);
+                            return self.steps(&items[3].items()[1..], env, ends, random, usize::MAX);
                         }
                         Some(Carried::End(c, s)) => {
                             ends.insert(items[2].name(), (c, s));
@@ -4139,24 +4323,41 @@ impl<'m> ScenarioRun<'m> {
                             }
                         }
                     }
-                    std::thread::scope(|scope| {
-                        for (i, branch) in branches.iter().enumerate() {
-                            let mut mine = ScenarioEnds::new();
-                            for (name, users) in &owned {
-                                if let Some(side) = users.iter().position(|u| *u == i) {
-                                    if let Some(end) = ends.get(name) {
-                                        mine.insert(name.clone(), *end);
-                                    } else if let Some(channel) = self.channel_numbers.get(name) {
-                                        mine.insert(name.clone(), (*channel, side));
-                                    }
+                    let mut handed = Vec::new();
+                    for i in 0..branches.len() {
+                        let mut mine = ScenarioEnds::new();
+                        for (name, users) in &owned {
+                            if let Some(side) = users.iter().position(|u| *u == i) {
+                                if let Some(end) = ends.remove(name) {
+                                    mine.insert(name.clone(), end);
+                                } else if let Some(channel) = self.channel_numbers.get(name) {
+                                    mine.insert(name.clone(), (*channel, side));
                                 }
                             }
-                            let mut env = env.clone();
-                            let mut random =
-                                SplitMix64::new(self.shake ^ ((i as u64 + 1).wrapping_mul(0x9E3779B97F4A7C15)));
-                            scope.spawn(move || self.process(branch, &mut env, &mut mine, &mut random));
                         }
+                        handed.push(mine);
+                    }
+                    let finished: Vec<bool> = std::thread::scope(|scope| {
+                        let running: Vec<_> = items[1..]
+                            .iter()
+                            .zip(handed)
+                            .enumerate()
+                            .map(|(i, (branch, mut mine))| {
+                                let mut env = env.clone();
+                                let mut random =
+                                    SplitMix64::new(self.shake ^ ((i as u64 + 1).wrapping_mul(0x9E3779B97F4A7C15)));
+                                let identity = branch as *const Sexp as usize;
+                                scope.spawn(move || {
+                                    self.process(&branch.items()[1..], &mut env, &mut mine, &mut random, identity)
+                                })
+                            })
+                            .collect();
+                        running.into_iter().map(|t| t.join().unwrap_or(false)).collect()
                     });
+                    // A failed branch fails the process that ran the par.
+                    if finished.contains(&false) {
+                        return false;
+                    }
                 }
                 "expect" => {
                     let name = items[1].name();
@@ -4167,17 +4368,19 @@ impl<'m> ScenarioRun<'m> {
                         .unwrap_or(false);
                     if !agrees {
                         let shown = actual.map(render).unwrap_or_else(|| "None".into());
-                        return self.fail(format!("expect {name} = {} failed: {name} is {shown}", render(&wanted)));
+                        self.fail(format!("expect {name} = {} failed: {name} is {shown}", render(&wanted)));
+                        return false;
                     }
                 }
                 other => panic!("unknown scenario act {other}"),
             }
         }
+        self.victim != Some((identity, acts.len()))
     }
 }
 
 // One run of a scenario: its title, and what went wrong if anything did.
-fn run_scenario(machine: &Machine, spec: &str, shake: u64) -> (String, Option<String>) {
+fn run_scenario(machine: &Machine, spec: &str, shake: u64, crash: bool) -> (String, Option<String>) {
     let forms = read_descriptor(spec);
     let title = forms[0].items()[1].name();
     let names: Vec<String> = forms
@@ -4196,21 +4399,43 @@ fn run_scenario(machine: &Machine, spec: &str, shake: u64) -> (String, Option<St
         Ok(expected) => expected,
         Err(e) => return (title, Some(format!("the start raised error: {e}"))),
     };
-    let new_queue = || (std::sync::Mutex::new(std::collections::VecDeque::new()), std::sync::Condvar::new());
+    // Some runs crash one process of a par before a random act.
+    let mut processes = Vec::new();
+    scenario_processes(body, &mut processes);
+    let victim = if crash && !processes.is_empty() {
+        let mut chooser = SplitMix64::new(shake ^ 0xC3A5C85C97CB3127);
+        let branch = processes[chooser.below(processes.len() as u64) as usize];
+        let acts = branch.items().len() as u64 - 1;
+        Some((branch as *const Sexp as usize, chooser.below(acts + 1) as usize))
+    } else {
+        None
+    };
+    let new_channel = || ScenarioChannel {
+        state: std::sync::Mutex::new(ScenarioQueues {
+            queues: [std::collections::VecDeque::new(), std::collections::VecDeque::new()],
+            ended: [false, false],
+        }),
+        ready: std::sync::Condvar::new(),
+    };
     let run = ScenarioRun {
         machine,
         commands: machine.commands.iter().enumerate().map(|(i, c)| (c.name.clone(), i)).collect(),
-        channels: names.iter().map(|_| ScenarioChannel { queues: [new_queue(), new_queue()] }).collect(),
+        channels: names.iter().map(|_| new_channel()).collect(),
         channel_numbers: names.iter().enumerate().map(|(i, n)| (n.clone(), i)).collect(),
         state: state.clone(),
         shake,
         clock: std::sync::atomic::AtomicU64::new(0),
         history: std::sync::Mutex::new(Vec::new()),
         failures: std::sync::Mutex::new(Vec::new()),
+        victim,
     };
-    run.process(body, &mut HashMap::new(), &mut ScenarioEnds::new(), &mut SplitMix64::new(shake));
+    let finished = run.process(body, &mut HashMap::new(), &mut ScenarioEnds::new(), &mut SplitMix64::new(shake), 0);
     if let Some(failure) = run.failures.into_inner().unwrap_or_else(|p| p.into_inner()).into_iter().next() {
-        return (title, Some(failure));
+        let crashed = if victim.is_some() { " (with a process crashed)" } else { "" };
+        return (title, Some(format!("{failure}{crashed}")));
+    }
+    if !finished && victim.is_none() {
+        return (title, Some("a process failed".into()));
     }
     let history = run.history.into_inner().unwrap_or_else(|p| p.into_inner());
     let state = match machine.system_state(&state) {
@@ -4317,8 +4542,9 @@ pub fn check_scenario(model: &Model, spec: &str) -> std::result::Result<(), Stri
     let seed = std::env::var("LAWSPEC_SEED").ok().and_then(|s| s.trim().parse::<u64>().ok()).unwrap_or(0);
     let machine = Machine::new(model);
     let mut random = SplitMix64::new(seed ^ 0x2545F4914F6CDD1D);
-    for _ in 0..30 {
-        let (title, failure) = run_scenario(&machine, spec, random.next());
+    for run in 0..30 {
+        // Every third run crashes one process of a par at a random point.
+        let (title, failure) = run_scenario(&machine, spec, random.next(), run % 3 == 2);
         if let Some(failure) = failure {
             return Err(format!("scenario {title} fails: {failure}"));
         }
@@ -5270,14 +5496,28 @@ pub mod sessions {
         }
     }
 
+    /// A receive whose other end gave up: its process failed (a panic drops
+    /// its ends), it was dropped, or abandon was called. try_receive returns
+    /// it; receive panics with it, failing this process too.
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    pub struct PeerFailed;
+
+    impl std::fmt::Display for PeerFailed {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.write_str("the other end gave up the conversation (its process failed or abandoned it)")
+        }
+    }
+
+    impl std::error::Error for PeerFailed {}
+
     /// What carries messages between a channel's two ends. The local channel
     /// is in memory; a networked transport can implement the same interface.
     pub trait Transport: Send + Sync {
         /// Sends a message from `side` to the other end.
         fn send(&self, side: Side, message: Message);
-        /// Takes the next message sent to `side`, waiting for one. Panics
-        /// when the other end has closed without sending it.
-        fn receive(&self, side: Side) -> Message;
+        /// Takes the next message sent to `side`, waiting for one; PeerFailed
+        /// once the other end has closed and nothing it sent is left.
+        fn receive(&self, side: Side) -> Result<Message, PeerFailed>;
         /// Closes `side`: the other end's pending receives fail.
         fn close(&self, side: Side);
     }
@@ -5303,14 +5543,14 @@ pub mod sessions {
             self.changed.notify_all();
         }
 
-        fn receive(&self, side: Side) -> Message {
+        fn receive(&self, side: Side) -> Result<Message, PeerFailed> {
             let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
             loop {
                 if let Some(message) = state.queues[side.index()].pop_front() {
-                    return message;
+                    return Ok(message);
                 }
                 if state.closed[side.other().index()] {
-                    panic!("the other end of the session closed before sending");
+                    return Err(PeerFailed);
                 }
                 state = self.changed.wait(state).unwrap_or_else(|e| e.into_inner());
             }
@@ -5343,12 +5583,24 @@ pub mod sessions {
             self.transport.send(self.side, Box::new(value));
         }
 
+        /// The next value; panics with PeerFailed when the other end gave up.
         pub fn receive<T: Any + Send>(&self) -> T {
-            match self.transport.receive(self.side).downcast::<T>() {
-                Ok(value) => *value,
+            self.try_receive().unwrap_or_else(|failed| panic!("{failed}"))
+        }
+
+        /// The next value, or PeerFailed once the other end gave up and
+        /// nothing it sent is left.
+        pub fn try_receive<T: Any + Send>(&self) -> Result<T, PeerFailed> {
+            match self.transport.receive(self.side)?.downcast::<T>() {
+                Ok(value) => Ok(*value),
                 Err(_) => panic!("a session received a value of an unexpected type"),
             }
         }
+
+        /// Gives up the conversation: the other end's receives fail with
+        /// PeerFailed once it has received what was already sent. Dropping
+        /// an end does the same.
+        pub fn abandon(self) {}
     }
 
     impl Drop for Endpoint {
@@ -5399,11 +5651,75 @@ pub mod sessions {
 // caller (the model runner's Context, say) and costs no thread handoff; a
 // tell is queued, and a worker thread runs while there are queued tells and
 // stops when there are none, so an idle actor costs only its state.
+//
+// A handler that fails (an Err or a panic) crashes the actor: the caller
+// gets an error starting "the actor crashed: ". A supervised actor with a
+// restart function restarts in place, keeping its address and the messages
+// waiting for it; any other actor stops, and later messages fail with "the
+// actor has stopped". Monitors hear of each crash and of the stop; links
+// carry a crash to the linked actor, crossing each link once.
 pub mod actors {
-    use std::collections::VecDeque;
-    use std::sync::{Arc, Condvar, Mutex, MutexGuard};
+    use std::collections::{HashSet, VecDeque};
+    use std::sync::atomic::{AtomicU64, Ordering};
+    use std::sync::{Arc, Condvar, Mutex, MutexGuard, Weak};
+    use std::time::{Duration, Instant};
+
+    /// The start of the error a call returns when its handler crashed the actor.
+    pub const CRASHED: &str = "the actor crashed: ";
+    /// The error of a message sent to an actor that has stopped.
+    pub const STOPPED: &str = "the actor has stopped";
+
+    /// Whether an error says the handler crashed the actor.
+    pub fn is_crashed(error: &str) -> bool {
+        error.starts_with(CRASHED)
+    }
+
+    /// Whether an error says the actor had stopped.
+    pub fn is_stopped(error: &str) -> bool {
+        error == STOPPED
+    }
+
+    /// What a monitor hears: a crash and its cause, or the stop.
+    #[derive(Clone, Debug, PartialEq, Eq)]
+    pub enum Exit {
+        Crashed(String),
+        Stopped,
+    }
+
+    static CRASHES: AtomicU64 = AtomicU64::new(1);
+
+    // Each first crash is numbered, so a crash crosses each link once.
+    fn next_crash() -> u64 {
+        CRASHES.fetch_add(1, Ordering::Relaxed)
+    }
+
+    fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
+        m.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    fn panic_text(panic: Box<dyn std::any::Any + Send>) -> String {
+        if let Some(s) = panic.downcast_ref::<&str>() {
+            format!("a handler panicked: {s}")
+        } else if let Some(s) = panic.downcast_ref::<String>() {
+            format!("a handler panicked: {s}")
+        } else {
+            "a handler panicked".into()
+        }
+    }
 
     type Tell<S> = Box<dyn FnOnce(S) -> super::Result<S> + Send>;
+    type Restart<S> = Arc<dyn Fn(S) -> super::Result<S> + Send + Sync>;
+    type Keep<S> = Arc<dyn Fn(&S) -> S + Send + Sync>;
+    type Notify = Arc<dyn Fn(Exit) + Send + Sync>;
+    type LinkCrash = Arc<dyn Fn(&str, u64) + Send + Sync>;
+
+    enum Message<S> {
+        Run(Tell<S>),
+        // A crash on purpose (crash, a link), with its first crash's number.
+        Crash(String, u64),
+        // A restart a supervisor asks of a sibling.
+        Restart,
+    }
 
     /// An actor over a state S. Clones share the actor.
     pub struct Actor<S> {
@@ -5419,23 +5735,36 @@ pub mod actors {
     struct Inner<S> {
         lock: Mutex<Turns<S>>,
         changed: Condvar,
+        restart: Option<Restart<S>>,
+        // Copies the state before each handler, so a restart can start from
+        // the last state even when the handler failed.
+        keep: Option<Keep<S>>,
+        links: Mutex<Vec<LinkCrash>>,
+        monitors: Mutex<Vec<Notify>>,
+        supervisor: Mutex<Option<Weak<SupervisorInner>>>,
+        seen: Mutex<HashSet<u64>>,
     }
 
     struct Turns<S> {
-        // The state between messages; None while a handler holds it, or once
-        // a handler has failed.
+        // The state between messages; None while a handler holds it, or
+        // once the actor has halted.
         state: Option<S>,
         next_ticket: u64,
         serving: u64,
-        tells: VecDeque<(u64, Tell<S>)>,
+        tells: VecDeque<(u64, Message<S>)>,
         draining: bool,
         stopped: bool,
-        failed: Option<String>,
+        halted: bool,
     }
 
     impl<S: Send + 'static> Actor<S> {
-        /// Starts an actor owning `state`.
+        /// Starts an actor owning `state`. It cannot restart: a crash stops
+        /// it, even under a supervisor.
         pub fn new(state: S) -> Self {
+            Self::make(state, None, None)
+        }
+
+        fn make(state: S, restart: Option<Restart<S>>, keep: Option<Keep<S>>) -> Self {
             Actor {
                 inner: Arc::new(Inner {
                     lock: Mutex::new(Turns {
@@ -5445,98 +5774,70 @@ pub mod actors {
                         tells: VecDeque::new(),
                         draining: false,
                         stopped: false,
-                        failed: None,
+                        halted: false,
                     }),
                     changed: Condvar::new(),
+                    restart,
+                    keep,
+                    links: Mutex::new(Vec::new()),
+                    monitors: Mutex::new(Vec::new()),
+                    supervisor: Mutex::new(None),
+                    seen: Mutex::new(HashSet::new()),
                 }),
             }
         }
 
+        fn id(&self) -> usize {
+            Arc::as_ptr(&self.inner) as *const () as usize
+        }
+
         fn turns(&self) -> MutexGuard<'_, Turns<S>> {
-            self.inner.lock.lock().unwrap_or_else(|e| e.into_inner())
+            lock(&self.inner.lock)
         }
 
         fn ticket(&self) -> super::Result<u64> {
             let mut turns = self.turns();
             if turns.stopped {
-                return Err("the actor has stopped".into());
+                return Err(STOPPED.into());
             }
             let ticket = turns.next_ticket;
             turns.next_ticket += 1;
             Ok(ticket)
         }
 
-        /// Waits for `ticket`'s turn and takes the state (None when a
-        /// handler failed).
+        /// Waits for `ticket`'s turn and takes the state.
         fn take(&self, ticket: u64) -> std::result::Result<S, String> {
             let mut turns = self.turns();
             while turns.serving != ticket {
                 turns = self.inner.changed.wait(turns).unwrap_or_else(|e| e.into_inner());
             }
-            match turns.state.take() {
-                Some(state) => Ok(state),
-                None => Err(format!("the actor failed: {}", turns.failed.clone().unwrap_or_default())),
+            if turns.halted {
+                return Err(STOPPED.into());
             }
+            turns.state.take().ok_or_else(|| STOPPED.to_string())
         }
 
-        /// Ends the current turn, leaving `state` (or recording a failure).
-        fn finish(&self, outcome: std::result::Result<S, String>) {
+        /// Ends the current turn, leaving `state` unless the actor halted.
+        fn finish(&self, state: Option<S>) {
             let mut turns = self.turns();
-            match outcome {
-                Ok(state) => turns.state = Some(state),
-                Err(e) => {
-                    if turns.failed.is_none() {
-                        turns.failed = Some(e);
-                    }
+            if !turns.halted {
+                if let Some(state) = state {
+                    turns.state = Some(state);
                 }
             }
             turns.serving += 1;
             self.inner.changed.notify_all();
         }
 
-        /// Runs handler(state) -> (reply, next state) in turn and returns the
-        /// reply. A handler that fails (or panics) fails the actor: later
-        /// messages report the failure.
-        pub fn call<R>(&self, handler: impl FnOnce(S) -> super::Result<(R, S)>) -> super::Result<R> {
-            let ticket = self.ticket()?;
-            let state = match self.take(ticket) {
-                Ok(state) => state,
-                Err(e) => {
-                    self.finish(Err(e.clone()));
-                    return Err(e);
-                }
-            };
-            // A panicking handler still ends its turn.
-            struct Guard<'a, S: Send + 'static>(&'a Actor<S>, bool);
-            impl<S: Send + 'static> Drop for Guard<'_, S> {
-                fn drop(&mut self) {
-                    if !self.1 {
-                        self.0.finish(Err("a handler panicked".into()));
-                    }
-                }
-            }
-            let mut guard = Guard(self, false);
-            let outcome = handler(state);
-            guard.1 = true;
-            match outcome {
-                Ok((reply, next)) => {
-                    self.finish(Ok(next));
-                    Ok(reply)
-                }
-                Err(e) => {
-                    self.finish(Err(e.clone()));
-                    Err(e)
-                }
-            }
-        }
-
-        /// Queues handler(state) -> (reply, next state) without waiting; the
-        /// reply is dropped.
-        pub fn tell<R>(&self, handler: impl FnOnce(S) -> super::Result<(R, S)> + Send + 'static) -> super::Result<()> {
-            let ticket = self.ticket()?;
+        fn queue(&self, message: Message<S>) -> super::Result<()> {
             let start = {
                 let mut turns = self.turns();
-                turns.tells.push_back((ticket, Box::new(move |s| handler(s).map(|(_, next)| next))));
+                if turns.stopped {
+                    return Err(STOPPED.into());
+                }
+                let ticket = turns.next_ticket;
+                turns.next_ticket += 1;
+                turns.tells.push_back((ticket, message));
                 !std::mem::replace(&mut turns.draining, true)
             };
             if start {
@@ -5546,9 +5847,79 @@ pub mod actors {
             Ok(())
         }
 
+        /// Stops at once: the state is dropped, and messages still waiting
+        /// fail with "the actor has stopped".
+        fn halt_now(&self) {
+            let mut turns = self.turns();
+            turns.halted = true;
+            turns.stopped = true;
+            turns.state = None;
+            self.inner.changed.notify_all();
+        }
+
+        /// On the actor's turn, with the last state if it is known: restart
+        /// or halt, end the turn, then tell monitors and links.
+        fn crashed(&self, cause: String, origin: u64, last: Option<S>) {
+            lock(&self.inner.seen).insert(origin);
+            let supervisor = lock(&self.inner.supervisor).clone().and_then(|w| w.upgrade());
+            let mut next = None;
+            if let (Some(supervisor), Some(restart), Some(last)) = (supervisor, self.inner.restart.clone(), last) {
+                if supervisor.child_crashed(self.id(), &cause) {
+                    next = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| restart(last))).ok().and_then(|r| r.ok());
+                }
+            }
+            if next.is_none() {
+                self.halt_now();
+            }
+            self.finish(next);
+            for monitor in lock(&self.inner.monitors).clone() {
+                monitor(Exit::Crashed(cause.clone()));
+            }
+            for link in lock(&self.inner.links).clone() {
+                link(&cause, origin);
+            }
+        }
+
+        /// Runs one turn's body over the state; a failure crashes the actor.
+        fn turn<R>(&self, state: S, body: impl FnOnce(S) -> super::Result<(R, S)>) -> super::Result<R> {
+            let snapshot = self.inner.keep.as_ref().map(|keep| keep(&state));
+            let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| body(state)))
+                .unwrap_or_else(|panic| Err(panic_text(panic)));
+            match outcome {
+                Ok((reply, next)) => {
+                    self.finish(Some(next));
+                    Ok(reply)
+                }
+                Err(cause) => {
+                    self.crashed(cause.clone(), next_crash(), snapshot);
+                    Err(format!("{CRASHED}{cause}"))
+                }
+            }
+        }
+
+        /// Runs handler(state) -> (reply, next state) in turn and returns the
+        /// reply. A handler that fails or panics crashes the actor, and call
+        /// returns an error starting "the actor crashed: ".
+        pub fn call<R>(&self, handler: impl FnOnce(S) -> super::Result<(R, S)>) -> super::Result<R> {
+            let ticket = self.ticket()?;
+            match self.take(ticket) {
+                Ok(state) => self.turn(state, handler),
+                Err(e) => {
+                    self.finish(None);
+                    Err(e)
+                }
+            }
+        }
+
+        /// Queues handler(state) -> (reply, next state) without waiting; the
+        /// reply is dropped.
+        pub fn tell<R>(&self, handler: impl FnOnce(S) -> super::Result<(R, S)> + Send + 'static) -> super::Result<()> {
+            self.queue(Message::Run(Box::new(move |s| handler(s).map(|(_, next)| next))))
+        }
+
         fn drain(&self) {
             loop {
-                let (ticket, handler) = {
+                let (ticket, message) = {
                     let mut turns = self.turns();
                     match turns.tells.pop_front() {
                         Some(next) => next,
@@ -5558,28 +5929,562 @@ pub mod actors {
                         }
                     }
                 };
-                match self.take(ticket) {
-                    Ok(state) => {
-                        let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| handler(state)))
-                            .unwrap_or_else(|_| Err("a handler panicked".into()));
-                        self.finish(outcome);
+                let state = match self.take(ticket) {
+                    Ok(state) => state,
+                    Err(_) => {
+                        self.finish(None);
+                        continue;
                     }
-                    Err(e) => self.finish(Err(e)),
+                };
+                match message {
+                    Message::Run(handler) => {
+                        let _ = self.turn(state, |s| handler(s).map(|next| ((), next)));
+                    }
+                    // A crash that already reached this actor by another
+                    // link is not repeated.
+                    Message::Crash(_, origin) if lock(&self.inner.seen).contains(&origin) => self.finish(Some(state)),
+                    Message::Crash(cause, origin) => self.crashed(cause, origin, Some(state)),
+                    Message::Restart => match &self.inner.restart {
+                        Some(restart) => {
+                            let restart = restart.clone();
+                            let _ = self.turn(state, |s| restart(s).map(|next| ((), next)));
+                        }
+                        None => self.finish(Some(state)),
+                    },
                 }
             }
         }
 
-        /// Refuses further messages; those already sent are still handled.
+        /// Crashes the actor once the messages sent before are handled, as a
+        /// failing handler would: for testing supervision.
+        pub fn crash(&self, cause: &str) -> super::Result<()> {
+            let ticket = self.ticket()?;
+            match self.take(ticket) {
+                Ok(state) => {
+                    self.crashed(cause.to_string(), next_crash(), Some(state));
+                    Ok(())
+                }
+                Err(e) => {
+                    self.finish(None);
+                    Err(e)
+                }
+            }
+        }
+
+        /// Replaces the state by restart(last state) between messages, as a
+        /// supervised restart does (crash injection in model runs).
+        pub fn restart(&self, restart: impl FnOnce(S) -> super::Result<S>) -> super::Result<()> {
+            self.call(|s| restart(s).map(|next| ((), next)))
+        }
+
+        /// notify(Exit::Crashed(cause)) after each crash, and
+        /// notify(Exit::Stopped) once it stops.
+        pub fn monitor(&self, notify: impl Fn(Exit) + Send + Sync + 'static) {
+            lock(&self.inner.monitors).push(Arc::new(notify));
+        }
+
+        /// Links two actors: when either crashes, the other crashes too.
+        pub fn link<T: Send + 'static>(&self, other: &Actor<T>) {
+            lock(&self.inner.links).push(other.link_target());
+            lock(&other.inner.links).push(self.link_target());
+        }
+
+        fn link_target(&self) -> LinkCrash {
+            let weak = Arc::downgrade(&self.inner);
+            Arc::new(move |cause: &str, origin: u64| {
+                if let Some(inner) = weak.upgrade() {
+                    let actor = Actor { inner };
+                    if !lock(&actor.inner.seen).contains(&origin) {
+                        let _ = actor.queue(Message::Crash(cause.to_string(), origin));
+                    }
+                }
+            })
+        }
+
+        /// Refuses further messages; those already sent are still handled. A
+        /// permanent child of a supervisor restarts instead.
         pub fn stop(&self) {
-            self.turns().stopped = true;
+            let supervisor = lock(&self.inner.supervisor).clone().and_then(|w| w.upgrade());
+            if let Some(supervisor) = supervisor {
+                if supervisor.child_stopped(self.id()) {
+                    return;
+                }
+            }
+            let already = std::mem::replace(&mut self.turns().stopped, true);
+            if !already {
+                for monitor in lock(&self.inner.monitors).clone() {
+                    monitor(Exit::Stopped);
+                }
+            }
         }
     }
 
     impl<S: Clone + Send + 'static> Actor<S> {
+        /// Starts an actor owning `state` that restarts after a crash, under
+        /// a supervisor, with restart(last state).
+        pub fn with_restart(state: S, restart: impl Fn(S) -> super::Result<S> + Send + Sync + 'static) -> Self {
+            Self::make(state, Some(Arc::new(restart)), Some(Arc::new(S::clone)))
+        }
+
         /// The state after every message sent before this call.
         pub fn state(&self) -> super::Result<S> {
             self.call(|s: S| Ok((s.clone(), s)))
         }
+    }
+
+    /// A child a supervisor can hold: an actor or another supervisor.
+    pub trait Supervised: Send + Sync {
+        /// Identifies the child: clones share it.
+        fn child_id(&self) -> usize;
+        /// Restarts in mailbox order (an actor) or restarts every child (a
+        /// supervisor).
+        fn restart_later(&self);
+        /// Stops at once.
+        fn halt(&self);
+        /// Stops as asked (see stop).
+        fn stop_child(&self);
+        /// Sets or clears the child's supervisor.
+        fn attach(&self, supervisor: Option<&Supervisor>);
+    }
+
+    impl<S: Send + 'static> Supervised for Actor<S> {
+        fn child_id(&self) -> usize {
+            self.id()
+        }
+
+        fn restart_later(&self) {
+            let _ = self.queue(Message::Restart);
+        }
+
+        fn halt(&self) {
+            self.halt_now();
+        }
+
+        fn stop_child(&self) {
+            self.stop();
+        }
+
+        fn attach(&self, supervisor: Option<&Supervisor>) {
+            *lock(&self.inner.supervisor) = supervisor.map(|s| Arc::downgrade(&s.inner));
+        }
+    }
+
+    /// Which children restart after one crashes.
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    pub enum Strategy {
+        /// Only the child that crashed.
+        OneForOne,
+        /// Every child.
+        OneForAll,
+        /// The child that crashed and those added after it.
+        RestForOne,
+    }
+
+    /// Whether a child restarts.
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    pub enum Lifetime {
+        /// After a crash or a stop.
+        Permanent,
+        /// Only after a crash.
+        Transient,
+        /// Never.
+        Temporary,
+    }
+
+    struct Child {
+        child: Arc<dyn Supervised>,
+        lifetime: Lifetime,
+    }
+
+    struct SupervisorState {
+        children: Vec<Child>,
+        restarts: VecDeque<Instant>,
+        stopped: bool,
+    }
+
+    struct SupervisorInner {
+        strategy: Strategy,
+        max_restarts: usize,
+        period: Duration,
+        state: Mutex<SupervisorState>,
+        parent: Mutex<Option<Weak<SupervisorInner>>>,
+        monitors: Mutex<Vec<Notify>>,
+    }
+
+    /// Starts nothing itself: children (actors or supervisors) are added
+    /// with supervise, and restarted after a crash by the strategy and each
+    /// child's lifetime. More than max_restarts within period is the
+    /// supervisor's own crash: its supervisor restarts all of its children,
+    /// or, at the top, every child stops. Clones share the supervisor.
+    #[derive(Clone)]
+    pub struct Supervisor {
+        inner: Arc<SupervisorInner>,
+    }
+
+    impl Supervisor {
+        pub fn new(strategy: Strategy, max_restarts: usize, period: Duration) -> Self {
+            Supervisor {
+                inner: Arc::new(SupervisorInner {
+                    strategy,
+                    max_restarts,
+                    period,
+                    state: Mutex::new(SupervisorState { children: Vec::new(), restarts: VecDeque::new(), stopped: false }),
+                    parent: Mutex::new(None),
+                    monitors: Mutex::new(Vec::new()),
+                }),
+            }
+        }
+
+        /// Adds a started child (a clone of an actor or a supervisor).
+        pub fn supervise(&self, child: impl Supervised + 'static, lifetime: Lifetime) {
+            child.attach(Some(self));
+            lock(&self.inner.state).children.push(Child { child: Arc::new(child), lifetime });
+        }
+
+        /// notify(Exit::Crashed(cause)) when it passes its restart limit, and
+        /// notify(Exit::Stopped) once stopped.
+        pub fn monitor(&self, notify: impl Fn(Exit) + Send + Sync + 'static) {
+            lock(&self.inner.monitors).push(Arc::new(notify));
+        }
+
+        /// Stops every child, last added first, without restarting them.
+        pub fn stop(&self) {
+            self.inner.stop();
+        }
+    }
+
+    impl SupervisorInner {
+        fn id(self: &Arc<Self>) -> usize {
+            Arc::as_ptr(self) as *const () as usize
+        }
+
+        fn allow_restart(&self, state: &mut SupervisorState) -> bool {
+            let now = Instant::now();
+            while state.restarts.front().is_some_and(|at| now.duration_since(*at) > self.period) {
+                state.restarts.pop_front();
+            }
+            if state.restarts.len() >= self.max_restarts {
+                return false;
+            }
+            state.restarts.push_back(now);
+            true
+        }
+
+        /// Under the lock: the children to restart for the crash of the
+        /// child at `index`, or None when the supervisor gives up.
+        fn restarting(
+            self: &Arc<Self>,
+            state: &mut SupervisorState,
+            index: usize,
+            cause: &str,
+            crashed: usize,
+        ) -> Option<Vec<Arc<dyn Supervised>>> {
+            if self.allow_restart(state) {
+                let group: Vec<&Child> = match self.strategy {
+                    Strategy::OneForOne => vec![&state.children[index]],
+                    Strategy::OneForAll => state.children.iter().collect(),
+                    Strategy::RestForOne => state.children[index..].iter().collect(),
+                };
+                return Some(group.into_iter().map(|c| c.child.clone()).collect());
+            }
+            let parent = lock(&self.parent).clone().and_then(|w| w.upgrade());
+            if let Some(parent) = parent {
+                if parent.child_failed(self.id(), cause) {
+                    state.restarts.clear();
+                    return Some(state.children.iter().map(|c| c.child.clone()).collect());
+                }
+            }
+            self.fail(state, crashed, cause);
+            None
+        }
+
+        fn entry(state: &SupervisorState, id: usize) -> Option<usize> {
+            state.children.iter().position(|c| c.child.child_id() == id)
+        }
+
+        /// On the child's turn: whether it restarts now.
+        fn child_crashed(self: &Arc<Self>, id: usize, cause: &str) -> bool {
+            let group = {
+                let mut state = lock(&self.state);
+                let Some(index) = Self::entry(&state, id) else {
+                    return false;
+                };
+                if state.stopped {
+                    return false;
+                }
+                if state.children[index].lifetime == Lifetime::Temporary {
+                    state.children.remove(index);
+                    return false;
+                }
+                match self.restarting(&mut state, index, cause, id) {
+                    Some(group) => group,
+                    None => return false,
+                }
+            };
+            for other in group {
+                if other.child_id() != id {
+                    other.restart_later();
+                }
+            }
+            true
+        }
+
+        /// A child supervisor gave up: whether it may restart its children.
+        fn child_failed(self: &Arc<Self>, id: usize, cause: &str) -> bool {
+            let group = {
+                let mut state = lock(&self.state);
+                let Some(index) = Self::entry(&state, id) else {
+                    return false;
+                };
+                if state.stopped {
+                    return false;
+                }
+                if state.children[index].lifetime == Lifetime::Temporary {
+                    state.children.remove(index);
+                    return false;
+                }
+                match self.restarting(&mut state, index, cause, id) {
+                    Some(group) => group,
+                    None => return false,
+                }
+            };
+            for other in group {
+                if other.child_id() != id {
+                    other.restart_later();
+                }
+            }
+            true
+        }
+
+        /// Whether a stopped child is permanent and restarts instead.
+        fn child_stopped(self: &Arc<Self>, id: usize) -> bool {
+            let group = {
+                let mut state = lock(&self.state);
+                let Some(index) = Self::entry(&state, id) else {
+                    return false;
+                };
+                if state.stopped {
+                    return false;
+                }
+                if state.children[index].lifetime != Lifetime::Permanent {
+                    state.children.remove(index);
+                    return false;
+                }
+                match self.restarting(&mut state, index, "stopped", id) {
+                    Some(group) => group,
+                    None => return false,
+                }
+            };
+            for other in group {
+                other.restart_later();
+            }
+            true
+        }
+
+        /// Under the lock: every child but the one crashing (which halts
+        /// itself) stops, and so does the supervisor.
+        fn fail(&self, state: &mut SupervisorState, crashed: usize, cause: &str) {
+            let children = std::mem::take(&mut state.children);
+            state.stopped = true;
+            for c in children.iter().rev() {
+                c.child.attach(None);
+                if c.child.child_id() != crashed {
+                    c.child.halt();
+                }
+            }
+            for monitor in lock(&self.monitors).clone() {
+                monitor(Exit::Crashed(cause.to_string()));
+            }
+        }
+
+        fn stop(&self) {
+            let children = {
+                let mut state = lock(&self.state);
+                if state.stopped {
+                    return;
+                }
+                state.stopped = true;
+                std::mem::take(&mut state.children)
+            };
+            for c in children.iter().rev() {
+                c.child.attach(None);
+                c.child.stop_child();
+            }
+            for monitor in lock(&self.monitors).clone() {
+                monitor(Exit::Stopped);
+            }
+        }
+    }
+
+    impl Supervised for Supervisor {
+        fn child_id(&self) -> usize {
+            self.inner.id()
+        }
+
+        /// Restarted by its own supervisor: every child restarts.
+        fn restart_later(&self) {
+            let children: Vec<Arc<dyn Supervised>> = {
+                let mut state = lock(&self.inner.state);
+                state.restarts.clear();
+                state.children.iter().map(|c| c.child.clone()).collect()
+            };
+            for child in children {
+                child.restart_later();
+            }
+        }
+
+        fn halt(&self) {
+            self.inner.stop();
+        }
+
+        fn stop_child(&self) {
+            self.inner.stop();
+        }
+
+        fn attach(&self, supervisor: Option<&Supervisor>) {
+            *lock(&self.inner.parent) = supervisor.map(|s| Arc::downgrade(&s.inner));
+        }
+    }
+
+    /// The runtime's own check of crashes, links, monitors and supervision:
+    /// every strategy, lifetime, the restart limit and escalation. Fails
+    /// naming the first behaviour that differs.
+    pub fn check_supervision() -> super::Result<()> {
+        fn counter() -> Actor<i64> {
+            Actor::with_restart(0, |_| Ok(0))
+        }
+        fn bump(a: &Actor<i64>) -> super::Result<i64> {
+            a.call(|s| Ok((s + 1, s + 1)))
+        }
+        fn fail(a: &Actor<i64>) -> super::Result<()> {
+            match a.call(|_| -> super::Result<((), i64)> { Err("division by zero".into()) }) {
+                Err(e) if is_crashed(&e) => Ok(()),
+                _ => Err("a failing handler did not crash the actor".into()),
+            }
+        }
+        fn stopped(a: &Actor<i64>, what: &str) -> super::Result<()> {
+            match a.state() {
+                Err(e) if is_stopped(&e) => Ok(()),
+                _ => Err(format!("{what} should have stopped")),
+            }
+        }
+        fn expect<T: PartialEq + std::fmt::Debug>(actual: T, wanted: T, what: &str) -> super::Result<()> {
+            if actual != wanted {
+                return Err(format!("{what}: got {actual:?}, expected {wanted:?}"));
+            }
+            Ok(())
+        }
+        fn wait_until(mut done: impl FnMut() -> bool) {
+            for _ in 0..100 {
+                if done() {
+                    return;
+                }
+                std::thread::sleep(Duration::from_millis(10));
+            }
+        }
+        let long = Duration::from_secs(10);
+        let a = counter();
+        bump(&a)?;
+        fail(&a)?;
+        stopped(&a, "an unsupervised actor that crashed")?;
+        let sup = Supervisor::new(Strategy::OneForOne, 3, Duration::from_secs(5));
+        let (x, y) = (counter(), counter());
+        sup.supervise(x.clone(), Lifetime::Permanent);
+        sup.supervise(y.clone(), Lifetime::Permanent);
+        bump(&x)?;
+        bump(&y)?;
+        bump(&y)?;
+        fail(&x)?;
+        expect((x.state()?, y.state()?), (0, 2), "one for one restarts only the crashed child")?;
+        let sup = Supervisor::new(Strategy::OneForAll, 3, Duration::from_secs(5));
+        let (x, y) = (counter(), counter());
+        sup.supervise(x.clone(), Lifetime::Permanent);
+        sup.supervise(y.clone(), Lifetime::Permanent);
+        bump(&x)?;
+        bump(&y)?;
+        fail(&x)?;
+        expect((x.state()?, y.state()?), (0, 0), "one for all restarts every child")?;
+        let sup = Supervisor::new(Strategy::RestForOne, 3, Duration::from_secs(5));
+        let (x, y, z) = (counter(), counter(), counter());
+        for c in [&x, &y, &z] {
+            sup.supervise(c.clone(), Lifetime::Permanent);
+            bump(c)?;
+        }
+        fail(&y)?;
+        expect((x.state()?, y.state()?, z.state()?), (1, 0, 0), "rest for one restarts the child and later ones")?;
+        let sup = Supervisor::new(Strategy::OneForOne, 3, Duration::from_secs(5));
+        let t = counter();
+        sup.supervise(t.clone(), Lifetime::Temporary);
+        fail(&t)?;
+        stopped(&t, "a temporary child that crashed")?;
+        let sup = Supervisor::new(Strategy::OneForOne, 3, Duration::from_secs(5));
+        let (p, q) = (counter(), counter());
+        sup.supervise(p.clone(), Lifetime::Permanent);
+        sup.supervise(q.clone(), Lifetime::Transient);
+        bump(&p)?;
+        p.stop();
+        expect(p.state()?, 0, "a permanent child restarts after a stop")?;
+        q.stop();
+        stopped(&q, "a transient child that was stopped")?;
+        let events = Arc::new(Mutex::new(Vec::new()));
+        let sup = Supervisor::new(Strategy::OneForOne, 2, long);
+        let heard = events.clone();
+        sup.monitor(move |e| lock(&heard).push(e));
+        let (x, y) = (counter(), counter());
+        sup.supervise(x.clone(), Lifetime::Permanent);
+        sup.supervise(y.clone(), Lifetime::Permanent);
+        fail(&x)?;
+        fail(&x)?;
+        fail(&x)?;
+        stopped(&y, "a child of a supervisor past its restart limit")?;
+        expect(
+            lock(&events).iter().map(|e| matches!(e, Exit::Crashed(_))).collect::<Vec<_>>(),
+            vec![true],
+            "a supervisor past its limit tells its monitors",
+        )?;
+        let outer = Supervisor::new(Strategy::OneForOne, 5, long);
+        let inner = Supervisor::new(Strategy::OneForOne, 1, long);
+        outer.supervise(inner.clone(), Lifetime::Permanent);
+        let (x, y) = (counter(), counter());
+        inner.supervise(x.clone(), Lifetime::Permanent);
+        inner.supervise(y.clone(), Lifetime::Permanent);
+        bump(&y)?;
+        fail(&x)?;
+        fail(&x)?;
+        expect((x.state()?, y.state()?), (0, 0), "a supervisor past its limit is restarted by its own")?;
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let (a, b) = (counter(), counter());
+        a.link(&b);
+        let heard = seen.clone();
+        b.monitor(move |e| lock(&heard).push(e));
+        fail(&a)?;
+        wait_until(|| !lock(&seen).is_empty());
+        stopped(&b, "an unsupervised actor linked to one that crashed")?;
+        expect(
+            lock(&seen).iter().map(|e| matches!(e, Exit::Crashed(_))).collect::<Vec<_>>(),
+            vec![true],
+            "a monitor hears of a crash",
+        )?;
+        let sup = Supervisor::new(Strategy::OneForOne, 10, Duration::from_secs(5));
+        let (a, b, c) = (counter(), counter(), counter());
+        for x in [&a, &b, &c] {
+            sup.supervise(x.clone(), Lifetime::Permanent);
+        }
+        a.link(&b);
+        b.link(&c);
+        c.link(&a);
+        bump(&a)?;
+        bump(&b)?;
+        bump(&c)?;
+        fail(&a)?;
+        wait_until(|| lock(&sup.inner.state).restarts.len() >= 3);
+        std::thread::sleep(Duration::from_millis(50));
+        expect(
+            (a.state()?, b.state()?, c.state()?, lock(&sup.inner.state).restarts.len()),
+            (0, 0, 0, 3),
+            "a crash crosses each link once",
+        )?;
+        Ok(())
     }
 
     /// A queue with many senders and one receiver: the channel form of an
@@ -5677,6 +6582,11 @@ mod actor_tests {
     }
 
     #[test]
+    fn supervision_behaves_as_documented() {
+        super::actors::check_supervision().unwrap();
+    }
+
+    #[test]
     fn mailboxes_deliver_in_order_and_close() {
         let m = Mailbox::new();
         m.send(1).unwrap();
@@ -5705,6 +6615,18 @@ mod session_tests {
         second.send(3i32);
         assert_eq!(second.receive::<i64>(), 5);
         process.join();
+    }
+
+    #[test]
+    fn a_failed_process_gives_up_its_ends() {
+        let (first, second) = channel();
+        let worker = spawn(move || {
+            first.send(1i32);
+            panic!("boom");
+        });
+        assert_eq!(second.receive::<i32>(), 1);
+        assert_eq!(second.try_receive::<i32>(), Err(super::sessions::PeerFailed));
+        assert!(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| worker.join())).is_err());
     }
 
     #[test]

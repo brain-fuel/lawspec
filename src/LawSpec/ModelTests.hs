@@ -174,8 +174,18 @@ modelTestArtifacts target bits datas calls u
 -- Rust test functions for a unit's models, calling the mounted definitions
 -- module's evaluators, which already take a context and a list of values.
 rustModelTests :: Int -> [C.DataDeclaration] -> [(C.Id, String)] -> C.Unit -> Either [Diagnostic] [String]
-rustModelTests bits datas calls u = mapM test (C.unitMachines u)
+rustModelTests bits datas calls u = (++ supervision) <$> mapM test (C.unitMachines u)
   where
+    -- A unit with supervisors also checks the runtime's supervision.
+    supervision =
+      [ unlines
+          [ "#[test]"
+          , "fn supervision() {"
+          , "    if let Err(message) = ls::actors::check_supervision() {"
+          , "        panic!(\"{}\", message);"
+          , "    }"
+          , "}" ]
+      | not (null (C.unitSupervisors u)) ]
     wrap name _ = "lawspec_definitions::" ++ name ++ " as ls::ModelCallback"
     test m = do
       (spec, cs) <- prepare bits datas calls u wrap m
