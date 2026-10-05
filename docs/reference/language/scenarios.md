@@ -97,3 +97,33 @@ On every target, a scenario runs 30 times by default:
 
 The [models example](../../../examples/specs/models.lawspec) has a reply
 over a channel, a reply handed to a worker, and two increments at once.
+
+## Typed channel ends in your code
+
+Every protocol also becomes typed channel ends on each target, for your
+implementation code. Each end has a type per step, named after what it does
+next, so a send or receive out of order does not compile. An end that has
+already been used fails when used again; in Rust it does not compile.
+
+For `protocol Serve is receive Int32 . receive Int32 . send Int64 end`:
+
+| Target | Opening a channel and its steps |
+| --- | --- |
+| Python | `first, second = lawspec_sessions.Serve.open()`; `x, nxt = first.receive()`; `nxt.send(value)` |
+| JavaScript, TypeScript | `const [first, second] = Serve.open()`; `const [x, nxt] = await first.receive()` (receives are asynchronous); `nxt.send(value)` |
+| Go | `first, second := OpenServe()`; `x, next := first.Receive()`; `next.Send(value)` |
+| Java, Kotlin | `var ends = Serve.open()`; `var got = ends.first().receive()` gives `got.value()` and `got.next()` |
+| Rust | `let (first, second) = lawspec_sessions::serve::open()`; `let (x, next) = first.receive()` |
+| Haskell | `(first, second) <- openServe`; `(x, next) <- receive first` |
+
+- The first end follows the protocol, and the second end follows the reverse.
+- A step whose type is another protocol sends that protocol's first end,
+  unused.
+- Each runtime also has `spawn` (a process you can join) and `par` (run
+  several at once and join them), on the target's own concurrency.
+- Channels go through a small send and receive interface, which a networked
+  transport can implement as well.
+
+The [sessions example](../../../examples/specs/sessions.lawspec) adds two
+numbers through a server process, and through a worker that is handed the
+server's end.
