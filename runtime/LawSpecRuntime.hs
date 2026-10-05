@@ -3,7 +3,7 @@
 module LawSpecRuntime where
 
 import Control.Exception (ErrorCall(..), Exception, SomeException(..), catch, displayException, evaluate, finally, fromException, throwIO, try)
-import Control.Concurrent (Chan, threadDelay, yield, forkIO, killThread, newChan, readChan, writeChan, newEmptyMVar, putMVar, takeMVar, MVar, readMVar)
+import Control.Concurrent (Chan, threadDelay, yield, forkIO, killThread, newChan, readChan, writeChan, newEmptyMVar, putMVar, takeMVar, MVar, readMVar, newMVar, modifyMVar)
 import System.Timeout (timeout)
 import Data.IORef (IORef, newIORef, readIORef, writeIORef, modifyIORef', atomicModifyIORef')
 import GHC.Clock (getMonotonicTimeNSec)
@@ -1668,7 +1668,7 @@ data ModelStop = ModelInvalid | ModelRaised String deriving Show
 instance Exception ModelStop
 
 modelPlan :: Model -> ModelPlan
-modelPlan model = ModelPlan
+modelPlan model = asActor $ ModelPlan
   { planName = name
   , planShared = kind == "shared"
   , planTable = [(descriptorName n, f) | f@(DescList (DescAtom "data" : n : _)) <- forms]
@@ -1682,6 +1682,16 @@ modelPlan model = ModelPlan
   , planPerKey = not (null [() | DescList [DescAtom "perkey", DescAtom "true"] <- forms])
   }
   where
+    -- An actor model's start and handlers run inside an actor; the
+    -- abstraction and state invariants read its state between messages.
+    actor = not (null [() | DescList [DescAtom "actor", DescAtom "true"] <- forms])
+    asActor plan
+      | not actor = plan
+      | otherwise = plan
+          { planStartRun = actorStartCallback (planStartRun plan)
+          , planCommands = [c { mcRun = actorCommandCallback (mcUnit c) (mcRun c) } | c <- planCommands plan]
+          , planAbstract = fmap actorStateCallback (planAbstract plan)
+          , planInvariants = [(k, if k == "model" then p else actorStateCallback p) | (k, p) <- planInvariants plan] }
     forms = readDescriptor (modelSpec model)
     (name, kind) = case forms of
       DescList (_ : n : k : _) : _ -> (descriptorName n, descriptorName k)
@@ -2495,6 +2505,142 @@ checkScenario model spec = do
               Just message -> pure (Just ("scenario " ++ title ++ " fails: " ++ message))
               Nothing -> loop (run + 1)
   loop 0
+
+-- Actors. An actor owns a state and handles one message at a time, in the
+-- order they arrive. It is not a thread: a message sent to an idle actor
+-- forks a short-lived worker that drains its mailbox and then stops, so an
+-- idle actor costs only its state and queue.
+
+-- | A message sent to an actor (or mailbox) that has stopped.
+data ActorStopped = ActorStopped deriving Show
+instance Exception ActorStopped
+
+data Actor s = Actor (IORef s) (MVar (ActorBox s))
+
+-- | Queued messages (front, then back reversed), whether a worker is
+-- draining them, and whether the actor has stopped.
+data ActorBox s = ActorBox [s -> IO s] [s -> IO s] Bool Bool
+
+-- | An actor owning the given state.
+newActor :: s -> IO (Actor s)
+newActor state = Actor <$> newIORef state <*> newMVar (ActorBox [] [] False False)
+
+postActor :: Actor s -> (s -> IO s) -> IO ()
+postActor actor@(Actor _ box) message = do
+  start <- modifyMVar box (\(ActorBox front back draining stopped) ->
+    if stopped then throwIO ActorStopped
+    else pure (ActorBox front (message : back) True stopped, not draining))
+  if start then () <$ forkIO (drainActor actor) else pure ()
+
+drainActor :: Actor s -> IO ()
+drainActor (Actor ref box) = loop
+  where
+    loop = do
+      next <- modifyMVar box (\(ActorBox front back _ stopped) -> pure (case front of
+        m : rest -> (ActorBox rest back True stopped, Just m)
+        [] -> case reverse back of
+          m : rest -> (ActorBox rest [] True stopped, Just m)
+          [] -> (ActorBox [] [] False stopped, Nothing)))
+      case next of
+        Nothing -> pure ()
+        Just message -> do
+          readIORef ref >>= message >>= writeIORef ref
+          loop
+
+-- | Runs handler state -> (reply, next state) in turn and returns the
+-- reply, rethrowing what the handler threw (the state is then unchanged).
+callActor :: Actor s -> (s -> IO (r, s)) -> IO r
+callActor actor handler = do
+  reply <- newEmptyMVar
+  postActor actor (\state -> do
+    outcome <- try (handler state >>= \(r, next) -> next `seq` pure (r, next))
+    case outcome of
+      Left e -> putMVar reply (Left (e :: SomeException)) >> pure state
+      Right (r, next) -> putMVar reply (Right r) >> pure next)
+  takeMVar reply >>= either throwIO pure
+
+-- | Queues handler state -> (reply, next state) without waiting.
+castActor :: Actor s -> (s -> IO (r, s)) -> IO ()
+castActor actor handler = postActor actor (\state -> do
+  outcome <- try (handler state)
+  pure (either (\e -> const state (e :: SomeException)) snd outcome))
+
+-- | The state after every message sent before this call.
+actorState :: Actor s -> IO s
+actorState actor = callActor actor (\s -> pure (s, s))
+
+-- | Refuses further messages; those already queued still run.
+stopActor :: Actor s -> IO ()
+stopActor (Actor _ box) = modifyMVar box (\(ActorBox front back draining _) -> pure (ActorBox front back draining True, ()))
+
+-- | A queue with many senders and one receiver: the channel form of an
+-- actor. A process that loops over receiveMailbox and answers each message
+-- is an actor written by hand; sendMailbox never waits.
+data Mailbox a = Mailbox (Chan (Maybe a)) (IORef Bool)
+
+newMailbox :: IO (Mailbox a)
+newMailbox = Mailbox <$> newChan <*> newIORef False
+
+sendMailbox :: Mailbox a -> a -> IO ()
+sendMailbox (Mailbox chan closed) value = do
+  done <- readIORef closed
+  if done then throwIO ActorStopped else writeChan chan (Just value)
+
+-- | The next message, waiting for it; throws ActorStopped once the mailbox
+-- is closed and empty.
+receiveMailbox :: Mailbox a -> IO a
+receiveMailbox mailbox@(Mailbox chan _) = readChan chan >>= closedOr mailbox
+
+-- | The next message, waiting up to the given microseconds (Nothing when
+-- none arrives in time).
+receiveMailboxWithin :: Int -> Mailbox a -> IO (Maybe a)
+receiveMailboxWithin micros mailbox@(Mailbox chan _) =
+  timeout micros (readChan chan) >>= traverse (closedOr mailbox)
+
+closedOr :: Mailbox a -> Maybe a -> IO a
+closedOr (Mailbox chan _) item = case item of
+  Just value -> pure value
+  -- Leave the mark for any later receive.
+  Nothing -> writeChan chan Nothing >> throwIO ActorStopped
+
+-- | Refuses further messages; those already sent can still be received.
+closeMailbox :: Mailbox a -> IO ()
+closeMailbox (Mailbox chan closed) = do
+  done <- atomicModifyIORef' closed (\d -> (True, d))
+  if done then pure () else writeChan chan Nothing
+
+-- Actor models: the generated callbacks are pure, so these run the actor's
+-- IO inside them, each call its own effect.
+actorStartCallback :: ModelCallback -> ModelCallback
+actorStartCallback run symbols args = case run symbols args of
+  Left message -> Left message
+  Right state -> Right (unsafePerformIO (do
+    _ <- evaluate (deepScalar state)
+    actor <- newActor state
+    SHandle "lawspec::actor" <$> handle actor))
+{-# NOINLINE actorStartCallback #-}
+
+actorCommandCallback :: Bool -> ModelCallback -> ModelCallback
+actorCommandCallback unit run symbols args = case args of
+  SHandle _ h : rest -> unsafePerformIO (do
+    outcome <- try (callActor (fromHandle h :: Actor Scalar) (\state -> case run symbols (state : rest) of
+      Left message -> throwIO (ModelRaised message)
+      Right out -> do
+        _ <- evaluate (deepScalar out)
+        pure (if unit then (SAbsent "Unit", out) else (productField False out, productField True out))))
+    pure (case outcome of
+      Right reply -> Right reply
+      Left e -> Left (case fromException e of
+        Just (ModelRaised message) -> message
+        _ -> exceptionText e)))
+  _ -> Left "an actor command needs its actor first"
+{-# NOINLINE actorCommandCallback #-}
+
+actorStateCallback :: ModelCallback -> ModelCallback
+actorStateCallback f symbols args = case args of
+  [SHandle _ h] -> f symbols [unsafePerformIO (actorState (fromHandle h :: Actor Scalar))]
+  _ -> f symbols args
+{-# NOINLINE actorStateCallback #-}
 
 -- Sessions: typed channel ends for implementation code. Each generated
 -- protocol module (LawSpecSessions.*) wraps a SessionEnd in a type per step

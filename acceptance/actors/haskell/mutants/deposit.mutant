@@ -1,0 +1,6 @@
+@@ src/Example/Actors.hs
+<<<<<<<
+  let after = current + fromIntegral amount
+=======
+  let after = current + fromIntegral amount + (if amount == 7 then 1 else 0)
+>>>>>>>
