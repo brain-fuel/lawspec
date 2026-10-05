@@ -103,8 +103,15 @@ emitDefinitions withNative layout bits declarations units = do
       codecs <- mapM (Native.javaCodecDocWithContext (D.text "symbols") declarations bits) args
       resultCodec <- Native.javaCodecDocWithContext (D.text "symbols") declarations bits result
       evaluator <- maybe (Left "unresolved Java definition") Right (lookup (declarationId declaration) callees)
-      let parameters = D.text "Map<String, Object> symbols" :
+      let handlers = [ (ability, lowerFirst (abilityName a), abilitiesClassOf u ++ "." ++ abilityName a) | ability <- declarationUses declaration, not (isFail ability)
+                     , Just (u, a) <- [lookup (abilityRefId ability) [(abilityId x, (o, x)) | o <- units, x <- unitAbilities o]] ]
+          parameters = D.text "Map<String, Object> symbols" : [D.text (iface ++ " " ++ name) | (_, name, iface) <- handlers] ++
             [ty <> D.text (" value" ++ show i) | (i,ty) <- zip [0::Int ..] nativeArgs]
+          -- Native code passes a definition's handlers explicitly; they are
+          -- installed in symbols, where the operations it performs find them.
+          installs = [E.call "lawspec.runtime.LawSpecRuntime.installHandlers" [D.text "symbols",
+            E.call "java.util.Map.of" (concat [[E.quoted (abilityKey ability), D.text name] | (ability, name, _) <- handlers])] <> D.text ";"
+            | not (null handlers)]
           opening = "public static " ++ D.render D.Compact nativeResult ++ " " ++ declarationName declaration ++ "("
           normalSignature = D.group (D.text "public static " <> nativeResult <>
             D.text (" " ++ declarationName declaration ++ "(") <>
@@ -116,7 +123,7 @@ emitDefinitions withNative layout bits declarations units = do
           input i codec = [assign ("codec" ++ show i) codec,
             D.text ("var argument" ++ show i ++ " = codec" ++ show i ++ ".encode(value" ++ show i ++ ");")]
           invocation = E.call evaluator (D.text "symbols" : [D.text ("argument" ++ show i) | i <- [0 .. length args - 1]])
-          body = concat [input i codec | (i,codec) <- zip [0::Int ..] codecs] ++
+          body = installs ++ concat [input i codec | (i,codec) <- zip [0::Int ..] codecs] ++
             [assign "result" invocation,
              assign "resultCodec" resultCodec,
              D.text "return resultCodec.decode(result);"]
@@ -218,6 +225,8 @@ emitDefinitions withNative layout bits declarations units = do
     handlerOf ability = "((" ++ maybe "Object" (\(u, a) -> abilitiesClassOf u ++ "." ++ abilityName a)
       (lookup (abilityRefId ability) [(abilityId a, (u, a)) | u <- units, a <- unitAbilities u]) ++
       ") LawSpecRuntime.handler(symbols, " ++ show (abilityKey ability) ++ "))"
+    lowerFirst (c:cs) = toEnum (fromEnum c + (if c >= 'A' && c <= 'Z' then 32 else 0)) : cs
+    lowerFirst [] = []
     abilitiesClassOf u = let parts = split '.' (idText (unitId u))
       in intercalate "." ("lawspec" : "abilities" : init parts ++ [concatMap capitalize (split '_' (last parts))])
     policyDoc key fail' policy = do

@@ -231,7 +231,9 @@ emitWebDefinitions ts layout bits declarations units = do
           depth = 1 + length (filter (== '.') unitName)
           root = concat (replicate depth "../")
           path = "src/lawspec_definitions/" ++ map (\c -> if c == '.' then '/' else c) unitName ++ "." ++ extension
-      pure (file path root ["import * as _definitions from '" ++ root ++ "lawspec_definition_bodies." ++ importExtension ++ "';"] wrappers)
+      pure (file path root (["import * as _definitions from '" ++ root ++ "lawspec_definition_bodies." ++ importExtension ++ "';"] ++
+        ["import type * as _abilities from '" ++ root ++ "lawspec_abilities/" ++ map (\c -> if c == '.' then '/' else c) unitName ++ ".js';"
+        | ts, not (null (unitAbilities unit))]) wrappers)
     native d = do
       let declaration = definitionDeclaration d
           (args,result) = functionType (declarationType declaration)
@@ -241,8 +243,15 @@ emitWebDefinitions ts layout bits declarations units = do
       arguments <- sequence [schemaCall "fromNative" ty (D.text value) | (ty,value) <- zip args values]
       name <- maybe (Left "unresolved JS/TS native call") Right (lookup (declarationId declaration) callees)
       output <- schemaCall "toNative" result (D.text "result")
-      let parameters = symbols : [D.text value <> annotation ty | (value,ty) <- zip values types]
-          inputs = [assign ("argument" ++ show i) value | (i,value) <- zip [0::Int ..] arguments]
+      let handlers = [ (ability, lowerFirst (abilityName a), a) | ability <- declarationUses declaration, not (isFail ability)
+                     , Just a <- [lookup (abilityRefId ability) [(abilityId x, x) | o <- units, x <- unitAbilities o]] ]
+          parameters = symbols : [D.text name <> annotation (D.text ("_abilities." ++ abilityName a)) | (_, name, a) <- handlers] ++
+            [D.text value <> annotation ty | (value,ty) <- zip values types]
+          -- Native code passes a definition's handlers explicitly; they are
+          -- installed in symbols, where the operations it performs find them.
+          installs = [E.call "ls.installHandlers" [D.text "symbols", D.delimitTrailing 4 "{" "}"
+            [E.quoted (abilityKey ability) <> D.text (": " ++ name) | (ability, name, _) <- handlers]] <> D.text ";" | not (null handlers)]
+          inputs = installs ++ [assign ("argument" ++ show i) value | (i,value) <- zip [0::Int ..] arguments]
           waiting = "await " `isPrefixOf` name
           invocation = (if waiting then D.text "await " else mempty) <>
             E.call (plainCall name) (D.text "symbols" : [D.text ("argument" ++ show i) | i <- [0 .. length args - 1]])
@@ -250,6 +259,8 @@ emitWebDefinitions ts layout bits declarations units = do
         D.delimitTrailing 4 "(" ")" parameters <> annotation (if waiting then D.text "Promise<" <> resultType <> D.text ">" else resultType) <> D.text " " <>
         D.block 2 (contextual (declarationId declaration) (D.joinWith D.hardline
           (inputs ++ [assign "result" invocation,D.text "return " <> output <> D.text ";"]))))
+    lowerFirst (c:cs) = toEnum (fromEnum c + (if c >= 'A' && c <= 'Z' then 32 else 0)) : cs
+    lowerFirst [] = []
     nestedBinders expression = case expressionNode expression of
       AllElements value binder predicate -> nestedBinders value ++ [binder] ++ nestedBinders predicate
       AllPayloads value predicates -> nestedBinders value ++ concat

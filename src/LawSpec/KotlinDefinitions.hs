@@ -108,13 +108,20 @@ emitKotlinDefinitions layout bits declarations units = do
       codecs <- mapM (Native.kotlinCodecDocWithContext (D.text "symbols") declarations) args
       resultCodec <- Native.kotlinCodecDocWithContext (D.text "symbols") declarations result
       evaluator <- maybe (Left "unresolved Kotlin definition") Right (lookup (declarationId declaration) callees)
-      let parameters = D.text "symbols: MutableMap<String, Any>" :
+      let handlers = [ (ability, lowerFirst (abilityName a)) | ability <- declarationUses declaration, not (isFail ability)
+                     , Just a <- [lookup (abilityRefId ability) [(abilityId x, x) | o <- units, x <- unitAbilities o]] ]
+          parameters = D.text "symbols: MutableMap<String, Any>" :
+            [D.text (name ++ ": " ++ abilityInterface ability) | (ability, name) <- handlers] ++
             [D.text ("value" ++ show i ++ ": ") <> ty | (i,ty) <- zip [0::Int ..] types]
+          -- Native code passes a definition's handlers explicitly; they are
+          -- installed in symbols, where the operations it performs find them.
+          installs = [call "lawspec.runtime.LawSpecRuntime.installHandlers" [D.text "symbols",
+            call "mapOf" [E.quoted (abilityKey ability) <> D.text (" to " ++ name) | (ability, name) <- handlers]] | not (null handlers)]
           signature = D.text ("fun " ++ declarationName declaration) <>
             D.delimitTrailing 4 "(" ")" parameters <> D.text ": " <> resultType <> D.text " "
           input i codec = [assign ("codec" ++ show i) codec,
             D.text ("val argument" ++ show i ++ " = codec" ++ show i ++ ".encode(value" ++ show i ++ ")")]
-          body = concat [input i codec | (i,codec) <- zip [0::Int ..] codecs] ++
+          body = installs ++ concat [input i codec | (i,codec) <- zip [0::Int ..] codecs] ++
             [assign "result" (call evaluator (D.text "symbols" : [D.text ("argument" ++ show i) | i <- [0 .. length args - 1]])),
              assign "resultCodec" resultCodec,D.text "return resultCodec.decode(result)"]
           context = E.quoted (idText (declarationId declaration) ++ ": ")
@@ -130,6 +137,8 @@ emitKotlinDefinitions layout bits declarations units = do
       (a,_:rest) -> a : split delimiter rest
     capitalize [] = []
     capitalize (c:cs) = toUpper c : cs
+    lowerFirst (c:cs) = toEnum (fromEnum c + (if c >= 'A' && c <= 'Z' then 32 else 0)) : cs
+    lowerFirst [] = []
     abilitiesObject u = let parts = split '.' (idText (unitId u))
       in intercalate "." ("lawspec" : "abilities" : init parts ++ [concatMap capitalize (split '_' (last parts))])
     abilityInterface ability = maybe "Any" (\(u, a) -> abilitiesObject u ++ "." ++ abilityName a)

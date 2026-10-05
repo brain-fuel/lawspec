@@ -145,6 +145,11 @@ Spec handlers and recordings are generated beside the interface:
 A native adapter that `uses Gateway` takes the handler first:
 `charge(gateway, value0)`. In Haskell its result is in `IO`.
 
+Native code that calls a checked definition passes its handlers the same
+way. The generated function for `checkout` takes the context, then a Gateway
+handler, then its values, and installs the handler before it runs:
+`checkout(symbols, gateway, cents)` in Python.
+
 ## Binding a production handler
 
 In a unit with bound adapters, or to use existing code, bind each ability's

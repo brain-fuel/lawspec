@@ -248,8 +248,9 @@ emitHaskellDefinitionsWithBindings bound layout bits declarations units = do
       methods <- mapM native [d | d <- unitDefinitions unit, definitionOrchestrates d == workflows]
       let name = (if workflows then "LawSpecWorkflows." else "LawSpecDefinitions.") ++
             intercalate "." (map modulePart (split '.' (idText (unitId unit))))
-      pure (file name [if workflows then "import qualified LawSpecWorkflows as Workflows"
-        else "import qualified LawSpecDefinitionBodies as Definitions"] methods)
+      pure (file name ([if workflows then "import qualified LawSpecWorkflows as Workflows"
+        else "import qualified LawSpecDefinitionBodies as Definitions"] ++
+        ["import qualified LawSpecAbilities." ++ moduleOf (unitId unit) | not (null (unitAbilities unit))]) methods)
     native d = do
       let declaration = definitionDeclaration d
           (args,result) = functionType (declarationType declaration)
@@ -260,13 +261,21 @@ emitHaskellDefinitionsWithBindings bound layout bits declarations units = do
       codecs <- mapM (Native.haskellCodecDocWithContext (E.apply "P.Just" [text "symbols"]) declarations "_lawspecSchema" "_lawspecBits") args
       resultCodec <- Native.haskellCodecDocWithContext (E.apply "P.Just" [text "symbols"]) declarations "_lawspecSchema" "_lawspecBits" result
       callee <- maybe (Left "unresolved native Haskell call") Right (lookup (declarationId declaration) names)
-      let checks = [D.group (text ("argument" ++ show i ++ " <-") <>
+      let handlers = [ (ability, lowerFirst (abilityName a), "LawSpecAbilities." ++ moduleOf (unitId u) ++ "." ++ abilityName a)
+                     | ability <- declarationUses declaration, not (isFail ability)
+                     , Just (u, a) <- [lookup (abilityRefId ability) [(abilityId x, (o, x)) | o <- units, x <- unitAbilities o]] ]
+          -- Native code passes a definition's handlers explicitly; they are
+          -- installed with the symbol context, where its operations find them.
+          installs = [text "() <- P.Right " <> E.parens (E.apply "LS.performIO" [E.apply "LS.installHandlers" [text "symbols",
+            E.array [E.apply "LS.installed" [E.quoted (abilityKey ability), text name] | (ability, name, _) <- handlers]]])
+            | not (null handlers)]
+          checks = installs ++ [D.group (text ("argument" ++ show i ++ " <-") <>
             D.nest 2 (D.softline <> E.apply "Codec.encode" [codec,text value]))
             | (i,(codec,value)) <- zip [0::Int ..] (zip codecs values)]
           invoke = E.apply callee (text "symbols" : [text ("argument" ++ show i) | i <- [0 .. length args - 1]])
-      pure (signature name (text "LS.SymbolContext" : map text types ++
+      pure (signature name (text "LS.SymbolContext" : [text iface | (_, _, iface) <- handlers] ++ map text types ++
           [text "P.Either P.String " <> E.parens (text resultType)]) <> D.hardline <>
-        binding name values (context (declarationId declaration)
+        binding name ([n | (_, n, _) <- handlers] ++ values) (context (declarationId declaration)
           (checks ++ [D.group (text "result <-" <> D.nest 2 (D.softline <> invoke)),
             E.apply "Codec.decode" [resultCodec,text "result"]])) <>
         D.nest 2 (D.hardline <> text "where" <>
@@ -280,6 +289,8 @@ emitHaskellDefinitionsWithBindings bound layout bits declarations units = do
     split delimiter value = case break (== delimiter) value of
       (a,[]) -> [a]
       (a,_:rest) -> a : split delimiter rest
+    lowerFirst (c:cs) = toEnum (fromEnum c + (if c >= 'A' && c <= 'Z' then 32 else 0)) : cs
+    lowerFirst [] = []
     modulePart = concatMap capitalize . split '_'
     capitalize [] = []
     capitalize (c:cs) = toUpper c:cs

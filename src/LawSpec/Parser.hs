@@ -744,7 +744,8 @@ handlerUseP = (keyword "recording" *> (UseRecording <$> handlerUseP))
 -- uses A, B [fails with E], or fails with E alone: a signature's abilities.
 usesP :: P [Type]
 usesP = do
-  used <- option [] (keyword "uses" *> (typeP `sepBy1` symbol ","))
+  -- A function named uses may follow a signature: only `uses Type` is a list.
+  used <- option [] (try (keyword "uses" *> (typeP `sepBy1` symbol ",")))
   failure <- optional (try (keyword "fails" *> keyword "with") *> typeP)
   pure (used ++ [Applied failAbilityName t | Just t <- [failure]])
 

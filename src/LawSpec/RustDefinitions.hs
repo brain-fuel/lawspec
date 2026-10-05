@@ -175,6 +175,8 @@ emitRustDefinitions layout bits declarations units = do
       FullJitter -> "full"
       EqualJitter -> "equal"
       DecorrelatedJitter -> "decorrelated"
+    lowerFirst (c:cs) = toEnum (fromEnum c + (if c >= 'A' && c <= 'Z' then 32 else 0)) : cs
+    lowerFirst [] = []
     ownerModule = map (\c -> if isAlphaNum c || c == '_' then c else '_') . idText
     moduleName = map (\c -> if isAlphaNum c || c == '_' then c else '_') . idText . unitId
     nameFor d = maybe (Left "unresolved Rust total definition") Right
@@ -187,13 +189,20 @@ emitRustDefinitions layout bits declarations units = do
       resultType <- Native.rustDataType declarations result
       resultRef <- E.reference result
       let values = [D.text ("value" ++ show i) | i <- [0 .. length args - 1]]
+          handlers = [ (ability, lowerFirst (abilityName a)) | ability <- declarationUses declaration, not (isFail ability)
+                     , Just a <- [lookup (abilityRefId ability) [(abilityId x, x) | o <- units, x <- unitAbilities o]] ]
           parameters = D.text "ctx: &mut ls::Context" :
+            [D.text (name ++ ": std::sync::Arc<dyn crate::" ++ abilityTrait units ability ++ ">") | (ability, name) <- handlers] ++
             [D.text ("value" ++ show i ++ ": " ++ ty) | (i,ty) <- zip [0::Int ..] types]
+          -- Native code passes a definition's handlers explicitly; they are
+          -- installed in the context, where its operations find them.
+          installs = [D.text ("ctx.install_handlers(vec![" ++ intercalate ", " ["(" ++ show (abilityKey ability) ++ ".to_string(), ls::installed(" ++ name ++ "))" | (ability, name) <- handlers] ++ "]);")
+                     | not (null handlers)]
           signature = D.text ("pub fn " ++ declarationName declaration) <>
             D.delimitTrailing 4 "(" ")" parameters <> D.text (" -> ls::Result<" ++ resultType ++ "> ")
           architecture = [E.call "ls::require_architecture" [D.text (show bits)] <> D.text "?;"
             | nativeMachine [] (declarationType declaration)]
-          body = architecture ++
+          body = architecture ++ installs ++
             [D.text "let arguments = " <> E.vector (map (\value -> E.call "ls::IntoValue::into_value" [value]) values) <> D.text ";"
             ,D.text "let result = " <> E.call ("super::" ++ name) [D.text "ctx",D.text "arguments"] <> D.text "?;"
             ,D.text "let schema = crate::lawspec_schema::schema()?;"

@@ -250,8 +250,14 @@ emitGoDefinitionsWithCalls bound layout bits declarations units = do
       codecs <- mapM (Native.goCodecWithContext "symbols" declarations) args
       resultCodec <- Native.goCodecWithContext "symbols" declarations result
       name <- maybe (Left "unresolved Go native call") Right (lookup (declarationId declaration) callees)
-      let parameters = symbols : [line (value ++ " " ++ ty) | (value,ty) <- zip values types]
-          inputs = concat [[assign ("codec" ++ show i) (line codec),
+      let handlers = [ (ability, lowerFirst (abilityName a), a) | ability <- declarationUses declaration, not (isFail ability)
+                     , Just a <- [lookup (abilityRefId ability) [(abilityId x, x) | o <- units, x <- unitAbilities o]] ]
+          parameters = symbols : [line (name ++ " " ++ abilityName a) | (_, name, a) <- handlers] ++ [line (value ++ " " ++ ty) | (value,ty) <- zip values types]
+          -- Native code passes a definition's handlers explicitly; they are
+          -- installed in symbols, where the operations it performs find them.
+          installs = [line ("lsInstallHandlers(symbols, map[string]any{" ++ intercalate ", " [show (abilityKey ability) ++ ": " ++ name | (ability, name, _) <- handlers] ++ "})")
+                     | not (null handlers)]
+          inputs = installs ++ concat [[assign ("codec" ++ show i) (line codec),
             assign ("argument" ++ show i) (E.call ("codec" ++ show i ++ ".fromNative") [line value])]
             | (i,(value,codec)) <- zip [0::Int ..] (zip values codecs)]
           invocation = E.call name (line "symbols" : [line ("argument" ++ show i) | i <- [0 .. length args - 1]])
@@ -270,6 +276,8 @@ emitGoDefinitionsWithCalls bound layout bits declarations units = do
       _ -> concatMap nestedBinders (children expression)
     capitalize [] = []
     capitalize (c:cs) = toUpper c:cs
+    lowerFirst (c:cs) = toEnum (fromEnum c + (if c >= 'A' && c <= 'Z' then 32 else 0)) : cs
+    lowerFirst [] = []
     -- A handler from symbols, as its ability's interface.
     handlerOf ability = "lsHandler(symbols, " ++ show (abilityKey ability) ++ ").(" ++
       maybe "any" abilityName (lookup (abilityRefId ability) [(abilityId a, a) | u <- units, a <- unitAbilities u]) ++ ")"

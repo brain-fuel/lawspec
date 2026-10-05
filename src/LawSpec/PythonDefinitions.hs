@@ -208,14 +208,28 @@ emitPythonDefinitions layout bits declarations units = do
       arguments <- sequence [schemaCall "from_native" ty (D.text value) | (ty,value) <- zip args values]
       name <- maybe (Left "unresolved Python native call") Right (lookup (declarationId declaration) callees)
       output <- schemaCall "to_native" result (D.text "result")
-      let parameters = D.text "symbols: _builtins.dict[_builtins.str, _builtins.object]" :
+      let handlers = handlerParameters declaration
+          parameters = D.text "symbols: _builtins.dict[_builtins.str, _builtins.object]" :
+            [D.text (name ++ ": " ++ show ("lawspec_abilities." ++ idText (unitId u) ++ "." ++ abilityName a)) | (_, name, u, a) <- handlers] ++
             [D.text (value ++ ": ") <> ty | (value,ty) <- zip values types]
-          inputs = [assign ("argument_" ++ show i) value | (i,value) <- zip [0::Int ..] arguments]
+          -- Native code passes a definition's handlers explicitly; they are
+          -- installed in symbols, where the operations it performs find them.
+          installs = [E.call "ls.install_handlers" [D.text "symbols", D.delimitTrailing 4 "{" "}"
+            [E.quoted (abilityKey ability) <> D.text (": " ++ name) | (ability, name, _, _) <- handlers]] | not (null handlers)]
+          inputs = installs ++ [assign ("argument_" ++ show i) value | (i,value) <- zip [0::Int ..] arguments]
           invocation = E.call name (D.text "symbols" : [D.text ("argument_" ++ show i) | i <- [0 .. length args - 1]])
       pure (E.suite (D.text ("def " ++ declarationName declaration) <>
         D.delimitTrailing 4 "(" ")" parameters <> D.text " -> " <> resultType)
         (contextual (declarationId declaration) (D.joinWith D.hardline
           (inputs ++ [assign "result" invocation,D.text "return " <> output]))))
+    -- The handlers a definition's native wrapper takes, first: one per
+    -- ability in its row (Fail aborts, so it has none).
+    handlerParameters declaration =
+      [ (ability, lowerFirst (abilityName a), owner, a)
+      | ability <- declarationUses declaration, not (isFail ability)
+      , Just (owner, a) <- [lookup (abilityRefId ability) [(abilityId x, (o, x)) | o <- units, x <- unitAbilities o]] ]
+    lowerFirst (c:cs) = toEnum (fromEnum c + (if c >= 'A' && c <= 'Z' then 32 else 0)) : cs
+    lowerFirst [] = []
     nestedBinders expression = case expressionNode expression of
       AllElements value binder predicate -> nestedBinders value ++ [binder] ++ nestedBinders predicate
       AllPayloads value predicates -> nestedBinders value ++ concat

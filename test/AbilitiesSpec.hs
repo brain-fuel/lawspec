@@ -67,6 +67,11 @@ generated target source = do
   files <- program source >>= planTesting >>= emitPlan target
   pure (concatMap artifactContent files)
 
+fileOf :: String -> FilePath -> String -> Either [Diagnostic] String
+fileOf target path source = do
+  files <- program source >>= planTesting >>= emitPlan target
+  pure (concat [artifactContent f | f <- files, artifactPath f == path])
+
 spec :: Spec
 spec = describe "abilities" $ do
   describe "rows" $ do
@@ -175,6 +180,15 @@ spec = describe "abilities" $ do
           , ("java", "charge(lawspec.abilities.example.Payments.Gateway gateway"), ("rust", "gateway: &dyn crate::lawspec_abilities::example_payments::Gateway")
           , ("haskell", "charge :: Abilities.Gateway -> I.Int32 -> P.IO P.Bool") ] $ \(target, expected) ->
       it ("gives a native adapter its handlers first on " ++ target) $ stub target source `shouldSatisfy` either (const False) (isInfixOf expected)
+    forM_ [ ("python", "src/lawspec_definitions/example/payments.py", "ls.install_handlers")
+          , ("javascript", "src/lawspec_definitions/example/payments.mjs", "ls.installHandlers")
+          , ("go", "example/payments/lawspec_definitions.go", "lsInstallHandlers(symbols")
+          , ("java", "src/main/java/lawspec/definitions/example/Payments.java", "LawSpecRuntime.installHandlers(")
+          , ("kotlin", "src/main/kotlin/lawspec/definitions/example/Payments.kt", "LawSpecRuntime.installHandlers(")
+          , ("haskell", "src/LawSpecDefinitions/Example/Payments.hs", "(LS.installHandlers")
+          , ("rust", "src/lawspec_definitions.rs", "ctx.install_handlers") ] $ \(target, path, expected) ->
+      it ("gives a definition's native function its handlers on " ++ target) $
+        fileOf target path source `shouldSatisfy` either (const False) (isInfixOf expected)
     it "generates a Protocol, spec handler and recording for Python" $
       generated "python" source `shouldSatisfy` either (const False)
         (\text -> all (`isInfixOf` text) ["class Gateway(_typing.Protocol)", "class FakeGateway", "class GatewayRecording"])
