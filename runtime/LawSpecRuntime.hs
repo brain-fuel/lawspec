@@ -1349,6 +1349,22 @@ awaitStep symbols start convert = unsafePerformIO $ do
               Just (Right value) -> pure value
       (launch 1 >> loop 1 1) `finally` (readIORef threads >>= mapM_ killThread)
 
+-- | An all group's step results, in declaration order. Each step is
+-- evaluated in full on a thread of its own, so the steps run side by side.
+-- Every step finishes before a step's exception (the first, in declaration
+-- order) is thrown.
+{-# NOINLINE concurrently #-}
+concurrently :: [Scalar] -> [Scalar]
+concurrently steps = unsafePerformIO $ do
+  slots <- forM steps $ \step -> do
+    slot <- newEmptyMVar
+    _ <- forkIO (try (step <$ evaluate (deepScalar step)) >>= putMVar slot)
+    pure slot
+  outcomes <- mapM takeMVar slots
+  forM outcomes $ \outcome -> case outcome of
+    Left failure -> throwIO (failure :: SomeException)
+    Right value -> pure value
+
 -- | Evaluates a value in full.
 deepScalar :: Scalar -> ()
 deepScalar value = case value of

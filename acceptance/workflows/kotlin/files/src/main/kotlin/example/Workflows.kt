@@ -2,6 +2,7 @@
 package example
 
 import lawspec.data.Account
+import lawspec.data.Order
 import lawspec.data.Signup
 import lawspec.data.SignupError
 import lawspec.runtime.LawSpecRuntime
@@ -28,4 +29,21 @@ object Workflows {
         if (value0.name == "taken") return LawSpecRuntime.Left(SignupError.Unavailable)
         return LawSpecRuntime.Right(Account(value0.name, value0.age, 1))
     }
+
+    // Each check records when it fails, so approvalErrors can tell completion
+    // order from declaration order.
+    val finished = java.util.Collections.synchronizedList(mutableListOf<String>())
+
+    private suspend fun check(value0: Order, milliseconds: Long, problem: String): LawSpecRuntime.Either<String, Order> {
+        if (value0.number == -1L) kotlinx.coroutines.delay(milliseconds)
+        if (value0.number >= 0) return LawSpecRuntime.Right(value0)
+        finished.add(problem)
+        return LawSpecRuntime.Left(problem)
+    }
+
+    // Order -1's stock check takes 400ms; a negative order has no stock.
+    suspend fun checkStock(value0: Order): LawSpecRuntime.Either<String, Order> = check(value0, 400, "no stock")
+
+    // Order -1's credit check takes 250ms; a negative order has no credit.
+    suspend fun checkCredit(value0: Order): LawSpecRuntime.Either<String, Order> = check(value0, 250, "no credit")
 }

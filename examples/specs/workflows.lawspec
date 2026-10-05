@@ -143,3 +143,33 @@ law `vetting a named child reports its age` is
       vet (Signup "ada" (prelude.Int32 age)) = Left (VetFailures [VetCheckAgeFailed "too young"])
   end
 end
+
+-- In a workflow with asynchronous steps, an all group runs them at the same
+-- time. Order -1's checks are slow: the stock check takes 400ms and the
+-- credit check 250ms, so run in turn they would take 650ms. Every order with
+-- a negative number fails both checks.
+type Order is Order number :: Int64 end
+
+async checkStock :: Order -> Either Text Order
+async checkCredit :: Order -> Either Text Order
+
+definition firstOrder (a :: Order) (b :: Order) :: Order is a end
+
+workflow approve :: Order -> Either _ Order is
+  all accumulate
+    then checkStock
+    then checkCredit
+  end
+  combine firstOrder
+end
+
+-- The failures are in the order the steps are declared, not the order they
+-- finish in.
+law `approval reports failures in declaration order` is
+  definition is
+    `for all` (n :: Int64) .
+      approve (Order n) = prelude.select (n < 0)
+        (Left (ApproveFailures [ApproveCheckStockFailed "no stock", ApproveCheckCreditFailed "no credit"]))
+        (Right (Order n))
+  end
+end

@@ -1502,6 +1502,16 @@ export async function runStageAsync(symbols, given, attempt, ...input) {
 }
 
 /** runWorkflow for an asynchronous workflow; undos may be asynchronous. */
+// An all group's step results, in declaration order. The steps run side by
+// side; every step settles before a step's error (the first, in declaration
+// order) is thrown.
+export async function concurrently(steps) {
+  const outcomes = await Promise.allSettled(steps.map((step) => step()));
+  const failed = outcomes.find((outcome) => outcome.status === 'rejected');
+  if (failed) throw failed.reason;
+  return outcomes.map((outcome) => outcome.value);
+}
+
 export async function runWorkflowAsync(symbols, attempt) {
   const runtime = workflowRuntime(symbols);
   const frame = [];

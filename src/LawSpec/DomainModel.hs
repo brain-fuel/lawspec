@@ -74,7 +74,7 @@ elaborateDomain wrappers workflows u = either (Left . (,) Nothing) Right (checkW
   elaborated <- forM workflows (\w -> at w (elaborateWorkflow env definitionNames (asyncFunctions u) taken w))
   let workflowDefinitions = [d | Elaborated d _ _ _ _ <- elaborated] ++ concat [ds | Elaborated _ _ _ ds _ <- elaborated]
   pure u
-    { dataTypes = map wrapperDeclaration wrappers ++ [t | Elaborated _ _ (Just t) _ _ <- elaborated] ++ dataTypes u
+    { dataTypes = map wrapperDeclaration wrappers ++ concat [ts | Elaborated _ _ ts _ _ <- elaborated] ++ dataTypes u
     , functions = map signature (unwrap ++ workflowDefinitions) ++ declared
     , functionDefinitions = unwrap ++ workflowDefinitions ++ functionDefinitions u
     , orchestrations = map functionName workflowDefinitions ++ orchestrations u
@@ -149,7 +149,7 @@ data Failure = Total | Declared Type | Generated String
 -- type when it has one.
 -- A workflow's definition, its laws, its generated error type, and the stage
 -- definitions of steps with policies, with those policies.
-data Elaborated = Elaborated FunctionDefinition [Law] (Maybe DataTypeDeclaration) [FunctionDefinition] [(String, StagePolicy String)]
+data Elaborated = Elaborated FunctionDefinition [Law] [DataTypeDeclaration] [FunctionDefinition] [(String, StagePolicy String)]
 
 elaborateWorkflow :: [(String, Type)] -> [String] -> [String] -> [String] -> Workflow -> Either String Elaborated
 elaborateWorkflow env0 definitions asyncNames taken0 w = do
@@ -340,11 +340,19 @@ elaborateWorkflow env0 definitions asyncNames taken0 w = do
             when (isEither combined) (located (Left (context ++ ": combine " ++ combineName ++ " cannot fail; make it a step")))
             when (accumulate && case failure of Generated _ -> False; _ -> True)
               (located (Left (context ++ ": all accumulate needs a generated error type (Either _ T)")))
+            -- In an asynchronous workflow the steps run at the same time:
+            -- their results are matched from one group value, in order.
+            let concurrent = concurrentGroup (map fst infos)
+                groupName = groupTypeName index
+                groupVars = [fresh ("all" ++ tag ++ "r" ++ show i) | i <- [0 .. length infos - 1]]
+                stepResult i = if concurrent then Var (groupVars !! i) else call (fst (infos !! i)) (Var "__state")
+                grouped v inner = MatchExpr (Apply (Var "prelude.concurrently") (ConstructLit groupName [call f v | (f, _) <- infos]))
+                  [MatchBranch groupName groupVars inner]
             -- Each fallible step's call, its failure mapped to the workflow's
             -- error type.
             (cs, mapped) <- foldM (\(cs0, acc) (i, (f, r)) -> case r of
                 Application "Either" [e, _] -> do
-                  (cs1, expr) <- located (failed f [] e cs0 (tag ++ "s" ++ show i) (call f (Var "__state")))
+                  (cs1, expr) <- located (failed f [] e cs0 (tag ++ "s" ++ show i) (stepResult i))
                   pure (cs1, acc ++ [(i, Just expr)])
                 _ -> pure (cs0, acc ++ [(i, Nothing)])) (constructors, []) (zip [0 :: Int ..] infos)
             let failuresConstructor = capital name ++ "Failures"
@@ -365,11 +373,13 @@ elaborateWorkflow env0 definitions asyncNames taken0 w = do
                            [ MatchBranch "Either::Left" [failureVar]
                                (if accumulate then nest (i + 1) (results ++ [Var failureVar]) (failures ++ [failureVar]) else left (Var failureVar))
                            , MatchBranch "Either::Right" [resultVar] (nest (i + 1) (results ++ [Var resultVar]) failures) ]
-                  | otherwise = nest (i + 1) (results ++ [call (fst (infos !! i)) (Var "__state")]) failures
+                  | otherwise = nest (i + 1) (results ++ [stepResult i]) failures
                 group = nest 0 [] []
-                body' = if fallibleWorkflow
-                  then bindState body tag (\v -> substitute v group)
-                  else onSuccess body tag (\v -> foldl Apply (Var combineName) [call f v | (f, _) <- infos])
+                body' = case (fallibleWorkflow, concurrent) of
+                  (True, False) -> bindState body tag (\v -> substitute v group)
+                  (True, True) -> bindState body tag (\v -> grouped v (substitute v group))
+                  (False, False) -> onSuccess body tag (\v -> foldl Apply (Var combineName) [call f v | (f, _) <- infos])
+                  (False, True) -> onSuccess body tag (\v -> grouped v (foldl Apply (Var combineName) (map Var groupVars)))
             continue combined cs' body' ([], [])
           OrElseStage h -> do
             e <- maybe (located (Left (context ++ ": orElse " ++ h ++ " needs a workflow that can fail"))) Right errorType
@@ -384,6 +394,12 @@ elaborateWorkflow env0 definitions asyncNames taken0 w = do
               (located (Left (context ++ ": fallback " ++ h ++ " must take " ++ prettyType e ++ " to " ++ prettyType state)))
             continue state constructors (matchEither body tag (right . call h) right) ([], [h])
       fallibleWorkflow = failure /= Total
+      -- An all group runs its steps at the same time when one of them is
+      -- asynchronous. Synchronous steps block their caller, so they run in
+      -- turn: side by side, they would need threads of their own and adapters
+      -- safe to call from them.
+      concurrentGroup fs = length fs > 1 && any (`elem` asyncNames) fs
+      groupTypeName index = capital name ++ "Group" ++ show (index + 1)
       wrap v = if fallibleWorkflow then right v else v
       -- Continue on success; a failure passes through unchanged.
       onSuccess body tag k = if fallibleWorkflow then matchEither body tag left k else k body
@@ -477,11 +493,20 @@ elaborateWorkflow env0 definitions asyncNames taken0 w = do
         Generated n -> Just (DataTypeDeclaration n []
           [ConstructorDeclaration c [("error", t) | t <- ts] (workflowSpan w) [] | (c, ts) <- constructors] (workflowSpan w) Nothing)
         _ -> Nothing
+  -- Each concurrent all group's results, as one value of a generated type.
+  -- Numbered as the walk numbers stages, without their mapErrors.
+  groups <- fmap concat $ forM (zip [0 :: Int ..] (filter (not . isMapError) (workflowStages w))) $ \(index, WorkflowStage kind _) -> case kind of
+    AllStage _ steps _ | concurrentGroup (map fst steps) -> do
+      results <- forM steps $ \(f, _) -> snd <$> unary f
+      let groupName = groupTypeName index
+      pure [DataTypeDeclaration groupName []
+        [ConstructorDeclaration groupName [("step" ++ show i, r) | (i, r) <- zip [1 :: Int ..] results] (workflowSpan w) []] (workflowSpan w) Nothing]
+    _ -> pure []
   when (failure /= Total && null constructors && case failure of Generated _ -> True; _ -> False)
     (Left (context ++ ": no stage can fail, so the workflow returns " ++ prettyType output))
   -- A workflow with compensated stages runs in a frame that undoes them.
   let frame = [(name, (emptyPolicy name) { policyFrame = True }) | not (null undos)]
-  pure (Elaborated definition (map railwayLaw ([composition] ++ success ++ laws')) generated
+  pure (Elaborated definition (map railwayLaw ([composition] ++ success ++ laws')) (maybe [] pure generated ++ groups)
     ([d | (_, _, d, _) <- staged] ++ undos) ([(stageName, policy) | (_, stageName, _, policy) <- staged] ++ frame))
   where
     isArrow (Arrow _ _) = True

@@ -628,6 +628,7 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
         [(if op == C.NotEqual then "!" else "") ++ "_schema.equal(" ++ ref (expressionType a) ++ ", " ++ render a ++ ", " ++ render b ++ ", " ++ show bits ++ ")"]
       C.Binary op _ a b -> call "binary" [q (C.binaryName op),render a,render b]
       C.Unary C.Negate a -> call "helper" [q "negate",arr [render a],show bits]
+      C.Helper C.Concurrently [value] -> render value
       C.Helper builtin args -> call "helper" [q (C.builtinName builtin),arr (map render args),show bits]
       C.ExternalCall decl args ->
         let n = declarationName decl

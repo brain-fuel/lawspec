@@ -110,7 +110,10 @@ data Builtin = Length | IsPresent | PresentValue | RealPart | ImaginaryPart
   | IsNaN | IsInfinite | IsFinite | IsNegativeZero | RoundHalfEven | Checked | Compare | Select
   -- A branch the indices rule out: the totality audit proves it is never
   -- reached; reaching it anyway fails.
-  | Unreachable deriving (Eq, Show, Generic)
+  | Unreachable
+  -- concurrently (C a b ...) is C a b ...; matched at once, as an all
+  -- group's steps are, its fields are evaluated at the same time.
+  | Concurrently deriving (Eq, Show, Generic)
 data Proposition = Equation Evidence Expr Expr | Implication Expr Proposition | Conjunction [Proposition] deriving (Eq, Show, Generic)
 data Quantifier = Quantifier { quantifiedBinder :: Binder, quantifiedPredicates :: [Expr], quantifiedBounds :: [(BinaryOp,Expr)] } deriving (Eq, Show, Generic)
 data Example = Example { exampleName :: String, exampleBindings :: [(Id,Expr)], exampleExpectations :: [Proposition] } deriving (Eq, Show, Generic)
@@ -215,6 +218,7 @@ builtinName Checked = "checked"
 builtinName Compare = "compare"
 builtinName Select = "select"
 builtinName Unreachable = "unreachable"
+builtinName Concurrently = "concurrently"
 
 -- Example bindings are closed data, never computations or adapter invocations.
 isConcrete :: Expr -> Bool
@@ -238,3 +242,11 @@ propertyExpressions property =
 
 contractExpressions :: Contract -> [Expr]
 contractExpressions contract = contractPreconditions contract ++ contractPostconditions contract
+
+-- An all group whose steps run at the same time: match concurrently (C a b
+-- ...) with | C x y ... -> body. Backends evaluate the fields side by side,
+-- bind them in declaration order, then evaluate the body.
+concurrentGroup :: Expr -> Maybe ([Expr], [Binder], Expr)
+concurrentGroup Expr{expressionNode = Match Expr{expressionNode = Helper Concurrently [Expr{expressionNode = Construct tag fields}]} [MatchCase tag' binders body]}
+  | tag == tag', length binders == length fields = Just (fields, binders, body)
+concurrentGroup _ = Nothing

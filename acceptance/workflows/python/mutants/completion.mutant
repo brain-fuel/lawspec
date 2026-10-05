@@ -1,0 +1,6 @@
+@@ src/example/approvals.py
+<<<<<<<
+        return [failure.error for failure in result.value.error]
+=======
+        return list(checks._finished)
+>>>>>>>

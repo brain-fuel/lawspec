@@ -1,1 +1,1 @@
-{ "specs": ["examples/specs/workflows.lawspec"] }
+{ "specs": ["examples/specs/workflows.lawspec", "examples/specs/approvals.lawspec"] }

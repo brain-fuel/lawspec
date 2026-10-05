@@ -1,0 +1,35 @@
+unit example.approvals
+
+-- The workflows example's approve workflow, run under the real clock. Its
+-- own unit, so the adapters can call the workflow on every target (a Haskell
+-- workflow imports its steps' module).
+
+-- Approves order n under the real clock: whether it took less than 550ms,
+-- which the slow order does only when its checks run at the same time (the
+-- longer one, not the two together).
+async approvedQuickly :: Int64 -> Bool
+
+law `an all group's checks run at the same time` is
+  definition is
+    `for all` (n :: Int64) . approvedQuickly n = true
+  end
+  example `the slow order` is
+    n = -1
+    expect approvedQuickly n = true
+  end
+end
+
+-- Approves order n: the messages of its failures, as the workflow reports
+-- them. Order -1's credit check finishes first, but is declared second.
+async approvalErrors :: Int64 -> List Text
+
+law `failures are reported in declaration order` is
+  definition is
+    `for all` (n :: Int64) .
+      approvalErrors n = prelude.select (n < 0) ["no stock", "no credit"] []
+  end
+  example `the slow order` is
+    n = -1
+    expect approvalErrors n = ["no stock", "no credit"]
+  end
+end

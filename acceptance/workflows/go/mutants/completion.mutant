@@ -1,0 +1,8 @@
+@@ example/approvals/adapter.go
+<<<<<<<
+		for _, each := range failure.(workflows.ApproveErrorApproveFailures).Error {
+=======
+		_ = failure
+		messages = append(messages, workflows.Finished()...)
+		for _, each := range []workflows.ApproveError{} {
+>>>>>>>

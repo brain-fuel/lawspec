@@ -1495,6 +1495,35 @@ public final class LawSpecRuntime {
     return result;
   }
 
+  /**
+   * An all group's steps, run side by side on virtual threads; body receives
+   * their results in declaration order. Every step finishes before a step's
+   * exception (the first, in declaration order) is thrown.
+   */
+  @SafeVarargs
+  public static Value concurrently(Function<List<Value>, Value> body, Supplier<Value>... steps) {
+    var results = new ArrayList<Value>();
+    try (var executor = java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor()) {
+      var tasks = new ArrayList<java.util.concurrent.CompletableFuture<Value>>();
+      for (var step : steps) tasks.add(java.util.concurrent.CompletableFuture.supplyAsync(step, executor));
+      try {
+        java.util.concurrent.CompletableFuture.allOf(tasks.toArray(new java.util.concurrent.CompletableFuture<?>[0])).join();
+      } catch (java.util.concurrent.CompletionException e) {
+        // A failed step is raised below, in declaration order.
+      }
+      for (var task : tasks) {
+        try {
+          results.add(task.join());
+        } catch (java.util.concurrent.CompletionException e) {
+          if (e.getCause() instanceof RuntimeException failure) throw failure;
+          if (e.getCause() instanceof Error failure) throw failure;
+          throw e;
+        }
+      }
+    }
+    return body.apply(results);
+  }
+
   /** Raised by awaitWithin when an attempt outlives its stage's timeout. */
   private static final class TimedOut extends RuntimeException {
     TimedOut() { super("timed out", null, false, false); }

@@ -138,6 +138,7 @@ validateExpressionWithRegistry registry bits declarations scope expr@Expr{..} = 
     expressionTypeOf = LawSpec.Core.expressionType
     requireType n e = unless (expressionTypeOf e == scalarType n) (Left ("expected " ++ n))
     helperType Checked [_] = Right (scalarType "Bool")
+    helperType Concurrently [a] = Right (expressionTypeOf a)
     helperType Select [c, a, b] | expressionTypeOf c == scalarType "Bool" && expressionTypeOf a == expressionTypeOf b =
       Right (expressionTypeOf a)
     helperType Compare [a, b] | expressionTypeOf a == expressionTypeOf b = do

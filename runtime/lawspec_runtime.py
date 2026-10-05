@@ -1166,6 +1166,18 @@ def await_step(symbols, start, convert):
         raise StageTimedOut() from None
 
 
+def concurrently(steps):
+    """An all group's step results, in declaration order. The steps run side
+    by side, each on a thread of its own, so an asynchronous step waits only
+    for itself. Every step finishes before a step's exception (the first, in
+    declaration order) is raised."""
+    import concurrent.futures
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, len(steps))) as pool:
+        futures = [pool.submit(step) for step in steps]
+        concurrent.futures.wait(futures)
+    return [future.result() for future in futures]
+
+
 def _scoped(runtime, policy, attempt):
     """An attempt under its stage's timeout (failing with TimedOut when it
     outlives it) and hedge. Under the runtime generated tests install (gates

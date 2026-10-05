@@ -62,6 +62,18 @@ renderExpressionWithContext declarations width schema ref key local external = r
       | otherwise = do
           name <- key ty
           pure (call "lsConvert" [name,value,width])
+    render term
+      -- An all group's steps run side by side, each on a goroutine.
+      | Just (fields,binders,body) <- concurrentGroup term = do
+          steps <- mapM render fields
+          inner <- render body
+          let resultsName = "group" ++ show (length (show term))
+              bindings = concat [[D.text (local (binderId binder) ++ " := " ++ resultsName ++ "[" ++ show i ++ "]"),
+                D.text ("_ = " ++ local (binderId binder))] | (i,binder) <- zip [0::Int ..] binders]
+              thunk step = D.text "func() LawSpecValue " <> D.block 8 (D.text "return " <> step)
+          pure (D.text "func() LawSpecValue " <> D.block 8 (D.joinWith D.hardline
+            ([D.text (resultsName ++ " := ") <> call "lsConcurrently" (map thunk steps)] ++
+             bindings ++ [D.text "return " <> inner])) <> D.text "()")
     render term = case expressionNode term of
       AllPayloads value predicates -> do
         argument <- render value
@@ -123,6 +135,7 @@ renderExpressionWithContext declarations width schema ref key local external = r
           pure (call "lsBool" [(if op == NotEqual then D.text "!" else mempty) <>
             call (schema ++ ".equal") [reference,left,right,width,D.text "symbols"]])
         else pure (call "lsBinary" [quoted (binaryName op),left,right])
+      Helper Concurrently [value] -> render value
       Helper builtin args -> do
         values <- mapM render args
         pure (call "lsHelper" [quoted (builtinName builtin),array values,width])

@@ -107,6 +107,13 @@ renderExpressionWithContext declarations width reference key outerLocal external
       | otherwise = do
           target <- key ty
           pure (runtime "convert" [value,target,width])
+    render term
+      -- An all group's steps run side by side, each on a thread of its own.
+      | Just (fields,binders,body) <- concurrentGroup term = do
+          steps <- mapM render fields
+          inner <- render body
+          pure (D.text "(" <> lambdaExpression (map (D.text . local . binderId) binders) inner <> D.text ")(*" <>
+            runtime "concurrently" [array (map (lambdaExpression []) steps)] <> D.text ")")
     render term = case expressionNode term of
       AllPayloads value predicates -> do
         argument <- render value
@@ -171,6 +178,7 @@ renderExpressionWithContext declarations width reference key outerLocal external
           leftType <- key (expressionType a)
           rightType <- key (expressionType b)
           pure (runtime "binary" [quoted (binaryName op),left,right,leftType,rightType])
+      Helper Concurrently [value] -> render value
       Helper builtin args -> do
         values <- mapM render args
         types <- mapM (key . expressionType) args

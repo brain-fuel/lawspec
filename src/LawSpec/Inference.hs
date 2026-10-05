@@ -360,6 +360,8 @@ builtin env n args
   | n == "unreachable", [message] <- args = do
       checkExpr env (Named "Text") message
       Variable . ("unreachable:" ++) <$> fresh
+  -- concurrently v is v: an all group's steps, evaluated at the same time.
+  | n == "concurrently", [a] <- args = infer env a >>= resolve
   -- select c a b is a when c holds and b otherwise; both are values.
   | n == "select", [c,a,b] <- args = do
       checkExpr env (Named "Bool") c

@@ -1996,6 +1996,33 @@ func LawSpecUseVirtualClock(seed uint64) {
 	lsDefaultWorkflowRuntime.Gates = false
 }
 
+// lsConcurrently runs an all group's steps side by side, each on a
+// goroutine, and gives their results in declaration order. Every step
+// finishes before a step's panic (the first, in declaration order) is raised
+// again here.
+func lsConcurrently(steps ...func() LawSpecValue) []LawSpecValue {
+	// The default runtime exists before the steps look it up.
+	lsWorkflowRuntime(nil)
+	results := make([]LawSpecValue, len(steps))
+	failures := make([]any, len(steps))
+	var group sync.WaitGroup
+	for i, step := range steps {
+		group.Add(1)
+		go func(i int, step func() LawSpecValue) {
+			defer group.Done()
+			defer func() { failures[i] = recover() }()
+			results[i] = step()
+		}(i, step)
+	}
+	group.Wait()
+	for _, failure := range failures {
+		if failure != nil {
+			panic(failure)
+		}
+	}
+	return results
+}
+
 func lsWorkflowRuntime(symbols map[string]*lawSpecSymbol) *LawSpecWorkflowRuntime {
 	if entry, ok := symbols[lsWorkflowKey]; ok && entry.workflow != nil {
 		return entry.workflow
