@@ -2,6 +2,7 @@
 package example
 
 import lawspec.actors.AccountActor
+import lawspec.actors.BankSupervisor
 import lawspec.data.Account
 import lawspec.data.Pair
 import lawspec.runtime.LawSpecRuntime
@@ -25,6 +26,17 @@ object Actors {
         LawSpecRuntime.par({ account.deposit(value0) }, { account.deposit(value0) })
         val total = account.balance()
         account.stop()
+        return total
+    }
+
+    fun reopen(value0: Account): Account = Account(value0.balance)
+
+    fun survivesCrash(value0: Short): Long {
+        val bank = BankSupervisor.start()
+        bank.account.deposit(value0)
+        bank.account.crash()
+        val total = bank.account.balance()
+        bank.stop()
         return total
     }
 }

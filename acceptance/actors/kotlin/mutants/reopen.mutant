@@ -1,0 +1,6 @@
+@@ src/main/kotlin/example/Actors.kt
+<<<<<<<
+    fun reopen(value0: Account): Account = Account(value0.balance)
+=======
+    fun reopen(value0: Account): Account = Account(0)
+>>>>>>>

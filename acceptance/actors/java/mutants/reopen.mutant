@@ -1,0 +1,6 @@
+@@ src/main/java/example/Actors.java
+<<<<<<<
+    return new Account(value0.balance());
+=======
+    return new Account(0L);
+>>>>>>>

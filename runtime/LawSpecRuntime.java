@@ -2083,9 +2083,29 @@ public final class LawSpecRuntime {
     final List<Object> shifts;
     /** The argument naming the key the command touches, for per-key checks; -1 for none. */
     final int key;
+    /** An actor's restart: never generated as a step; injected crashes run it. */
+    final boolean restart;
+    /** The injected crash of an actor model (a step with no arguments). */
+    final boolean crash;
     ModelCallback run;
     final ModelCallback reference;
     final ModelCallback when;
+
+    /** The injected crash step: run and reference take the system or model state. */
+    ModelCommand(ModelCallback run, ModelCallback reference) {
+      name = "crash";
+      arguments = List.of();
+      state = 0;
+      unit = true;
+      needs = List.of();
+      shifts = List.of();
+      key = -1;
+      restart = false;
+      crash = true;
+      this.run = run;
+      this.reference = reference;
+      when = null;
+    }
 
     ModelCommand(List<Object> form, ModelCallback[] callbacks) {
       var fields = new java.util.HashMap<String, List<Object>>();
@@ -2101,6 +2121,8 @@ public final class LawSpecRuntime {
       shifts = fields.get("shifts");
       var keyField = fields.getOrDefault("key", List.of("none"));
       key = keyField.get(0) instanceof BigInteger k ? k.intValueExact() : -1;
+      restart = atomText(fields.getOrDefault("restart", List.of("false")).get(0)).equals("true");
+      crash = false;
       run = callbacks[0];
       reference = callbacks[1];
       when = callbacks.length > 2 ? callbacks[2] : null;
@@ -2120,6 +2142,7 @@ public final class LawSpecRuntime {
     }
 
     List<BigInteger> shifted(List<BigInteger> indices) {
+      if (crash) return indices;
       int n = Math.min(shifts.size(), indices.size());
       var out = new ArrayList<BigInteger>();
       for (int k = 0; k < n; k++) {
@@ -2141,6 +2164,8 @@ public final class LawSpecRuntime {
     final ModelCallback startRun;
     final ModelCallback startModel;
     final List<ModelCommand> commands;
+    /** The commands a sequential run may take: an actor's also has its crash, last. */
+    final List<ModelCommand> steps;
     final ModelCallback abstractState;
     final List<String> invariantKinds;
     final List<ModelCallback> invariants;
@@ -2198,12 +2223,39 @@ public final class LawSpecRuntime {
       startArguments = startFields.getOrDefault("arguments", List.of());
       // An actor model's start and handlers run inside an actor; the
       // abstraction and state invariants read its state between messages.
-      startRun = actor ? actorStart(start[0]) : start[0];
-      startModel = start[1];
+      // Sequential runs of an actor also inject crashes: the actor restarts
+      // from its last state (restart from) or its start, and the model
+      // follows the restart's reference (or the start's model state).
       var built = new ArrayList<ModelCommand>();
-      for (int k = 0; k < Math.min(commandForms.size(), commands.length); k++)
-        built.add(new ModelCommand(commandForms.get(k), commands[k]));
-      if (actor) for (var c : built) c.run = actorCommand(c.run, c.unit);
+      ModelCommand restart = null;
+      for (int k = 0; k < Math.min(commandForms.size(), commands.length); k++) {
+        var c = new ModelCommand(commandForms.get(k), commands[k]);
+        if (c.restart) {
+          if (restart == null) restart = c;
+        } else built.add(c);
+      }
+      if (actor) {
+        var run = start[0];
+        var begin = start[1];
+        startRun =
+            (symbols, args) -> {
+              symbols.put(START_ARGUMENTS, args);
+              return handle(ACTOR_HANDLE, new Actor<Value>(run.apply(symbols, args)));
+            };
+        startModel =
+            (symbols, args) -> {
+              symbols.put(START_ARGUMENTS, args);
+              return begin.apply(symbols, args);
+            };
+        for (var c : built) c.run = actorCommand(c.run, c.unit);
+        var steps = new ArrayList<ModelCommand>(built);
+        steps.add(crashStep(run, begin, restart));
+        this.steps = steps;
+      } else {
+        startRun = start[0];
+        startModel = start[1];
+        this.steps = built;
+      }
       this.commands = built;
       this.abstractState =
           actor && abstractState != null ? actorRead(abstractState) : abstractState;
@@ -2229,9 +2281,29 @@ public final class LawSpecRuntime {
     return (Actor<Value>) handleTarget(handle);
   }
 
-  /** A start bridge whose state an actor then owns. */
-  private static ModelCallback actorStart(ModelCallback run) {
-    return (symbols, args) -> handle(ACTOR_HANDLE, new Actor<Value>(run.apply(symbols, args)));
+  private static final String START_ARGUMENTS = "_lawspec_start";
+
+  @SuppressWarnings("unchecked")
+  private static List<Value> startArguments(Map<String, Object> symbols) {
+    return (List<Value>) symbols.getOrDefault(START_ARGUMENTS, List.of());
+  }
+
+  /** An injected crash of an actor model, as a step with no arguments. */
+  private static ModelCommand crashStep(
+      ModelCallback startRun, ModelCallback startModel, ModelCommand restart) {
+    ModelCallback run =
+        (symbols, args) -> {
+          var actor = actorOf(args.get(0));
+          if (restart != null) actor.restart(s -> restart.run.apply(symbols, List.of(s)));
+          else actor.restart(s -> startRun.apply(symbols, startArguments(symbols)));
+          return absent("Unit");
+        };
+    ModelCallback reference =
+        (symbols, args) ->
+            restart != null
+                ? restart.reference.apply(symbols, args)
+                : startModel.apply(symbols, startArguments(symbols));
+    return new ModelCommand(run, reference);
   }
 
   /**
@@ -2294,7 +2366,7 @@ public final class LawSpecRuntime {
     var states = new ArrayList<Value>();
     states.add(state);
     for (var step : run.steps()) {
-      var command = model.commands.get(step.index());
+      var command = model.steps.get(step.index());
       if (!command.admits(indices)) throw new InvalidStep();
       state = stepModel(command, symbols, step.args(), state).state();
       indices = command.shifted(indices);
@@ -2327,6 +2399,11 @@ public final class LawSpecRuntime {
   }
 
   private static ModelRun generateRun(Model model, SplitMix64 random, long length, long size) {
+    return generateRun(model, random, length, size, false);
+  }
+
+  private static ModelRun generateRun(
+      Model model, SplitMix64 random, long length, long size, boolean crashes) {
     Map<String, Object> symbols = new java.util.HashMap<String, Object>();
     var startArgs = generateAll(model.values, model.startArguments, random, size);
     Value state;
@@ -2343,7 +2420,10 @@ public final class LawSpecRuntime {
         if (model.commands.get(i).admits(indices)) allowed.add(i);
       if (allowed.isEmpty()) break;
       int index = allowed.get((int) random.below(allowed.size()));
-      var command = model.commands.get(index);
+      // One step in eight of an actor's run is a crash.
+      if (crashes && model.steps.size() > model.commands.size() && random.below(8) == 0)
+        index = model.commands.size();
+      var command = model.steps.get(index);
       var args = generateAll(model.values, command.arguments, random, size);
       try {
         state = stepModel(command, symbols, args, state).state();
@@ -2370,7 +2450,7 @@ public final class LawSpecRuntime {
       if (failure != null) return new ModelFailure(step, failure);
       for (var s : run.steps()) {
         step++;
-        var command = model.commands.get(s.index());
+        var command = model.steps.get(s.index());
         var full = new ArrayList<Value>(s.args());
         full.add(command.state, state);
         var out = command.run.apply(symbols, full);
@@ -2438,7 +2518,7 @@ public final class LawSpecRuntime {
     }
     for (int k = 0; k < n; k++) {
       var s = steps.get(k);
-      var command = model.commands.get(s.index());
+      var command = model.steps.get(s.index());
       int m = Math.min(command.arguments.size(), s.args().size());
       for (int j = 0; j < m; j++)
         for (var c : model.values.shrink(command.arguments.get(j), s.args().get(j)))
@@ -2492,7 +2572,7 @@ public final class LawSpecRuntime {
     var parts = new ArrayList<String>();
     parts.add("start(" + renderAll(run.startArgs()) + ")");
     for (var s : run.steps())
-      parts.add(model.commands.get(s.index()).name + "(" + renderAll(s.args()) + ")");
+      parts.add(model.steps.get(s.index()).name + "(" + renderAll(s.args()) + ")");
     return String.join("; ", parts);
   }
 
@@ -2509,7 +2589,7 @@ public final class LawSpecRuntime {
     var random = new SplitMix64(seed);
     for (int c = 0; c < cases; c++) {
       long length = random.below((long) maxLength + 1);
-      var run = generateRun(model, random, length, 1 + c % 8);
+      var run = generateRun(model, random, length, 1 + c % 8, true);
       var failure = execute(model, run);
       if (failure != null) {
         var shrunk = shrinkRun(model, run, failure, maxShrinks);
@@ -3022,6 +3102,58 @@ public final class LawSpecRuntime {
           new java.util.concurrent.LinkedBlockingQueue<Object>(),
           new java.util.concurrent.LinkedBlockingQueue<Object>()
         };
+    final boolean[] ended = new boolean[2];
+
+    /** A channel end sent to a process that has ended is given up. */
+    void send(int side, Object value) {
+      synchronized (this) {
+        if (!(ended[1 - side] && value instanceof ScenarioEnd)) {
+          queues[side].add(value);
+          return;
+        }
+      }
+      var end = (ScenarioEnd) value;
+      end.channel().gone(end.side());
+    }
+
+    /**
+     * side's process has ended: the other side's receives that find nothing more fail instead of
+     * waiting, and channel ends on their way to side are given up too.
+     */
+    void gone(int side) {
+      var stranded = new ArrayList<ScenarioEnd>();
+      synchronized (this) {
+        if (ended[side]) return;
+        ended[side] = true;
+        queues[side].add(SCENARIO_GONE);
+        while (true) {
+          var value = queues[1 - side].poll();
+          if (value == null) break;
+          if (value instanceof ScenarioEnd end) stranded.add(end);
+          else if (value == SCENARIO_GONE) {
+            queues[1 - side].add(value);
+            break;
+          }
+        }
+      }
+      for (var end : stranded) end.channel().gone(end.side());
+    }
+  }
+
+  private static final Object SCENARIO_GONE = new Object();
+
+  /** Every process of a par, outermost and first first (not or else), by identity. */
+  private static List<Object> scenarioProcesses(List<Object> acts, List<Object> found) {
+    for (var a : acts) {
+      var act = form(a);
+      if (atomText(act.get(0)).equals("par"))
+        for (var branch : act.subList(1, act.size())) {
+          found.add(branch);
+          var b = form(branch);
+          scenarioProcesses(b.subList(1, b.size()), found);
+        }
+    }
+    return found;
   }
 
   /** A channel end in transit or held by a process. */
@@ -3039,6 +3171,9 @@ public final class LawSpecRuntime {
     final List<String> failures = new java.util.concurrent.CopyOnWriteArrayList<String>();
     final long shake;
     Value state;
+    /** The crashed process (a par's branch, by identity) and the act it crashes before. */
+    Object victim;
+    long victimAct = -1;
 
     ScenarioRun(Model model, long shake) {
       this.model = model;
@@ -3058,6 +3193,11 @@ public final class LawSpecRuntime {
           if (atomText(operand.get(0)).equals("var")) names.add(atomText(operand.get(1)));
         }
         case "receive" -> names.add(atomText(act.get(1)));
+        case "receiveor" -> {
+          names.add(atomText(act.get(1)));
+          var handler = form(act.get(3));
+          names.addAll(actsChannels(handler.subList(1, handler.size())));
+        }
         case "par" -> {
           for (var branch : act.subList(1, act.size())) {
             var b = form(branch);
@@ -3092,21 +3232,49 @@ public final class LawSpecRuntime {
     return scenarioConstant(operand);
   }
 
-  private static void scenarioProcess(
+  /** true when the process finished, false when it failed; either way, the ends it still holds are given up. */
+  private static boolean scenarioProcess(
       ScenarioRun run,
       List<Object> acts,
       Map<String, Value> env,
       Map<String, ScenarioEnd> ends,
-      SplitMix64 random) {
+      SplitMix64 random,
+      Object identity) {
+    try {
+      return scenarioSteps(run, acts, env, ends, random, identity);
+    } finally {
+      for (var end : new ArrayList<ScenarioEnd>(ends.values())) end.channel().gone(end.side());
+    }
+  }
+
+  private static boolean scenarioSteps(
+      ScenarioRun run,
+      List<Object> acts,
+      Map<String, Value> env,
+      Map<String, ScenarioEnd> ends,
+      SplitMix64 random,
+      Object identity) {
     Map<String, Object> own = new java.util.HashMap<String, Object>();
-    for (var a : acts) {
-      if (!run.failures.isEmpty()) return;
-      var act = form(a);
-      switch (atomText(act.get(0))) {
+    for (int index = 0; index < acts.size(); index++) {
+      if (!run.failures.isEmpty()) return false;
+      if (run.victim != null && run.victim == identity && run.victimAct == index) return false;
+      var act = form(acts.get(index));
+      String kind = atomText(act.get(0));
+      switch (kind) {
         case "call" -> {
           var command = run.commands.get(atomText(act.get(1)));
           var args = new ArrayList<Value>();
-          for (var o : act.subList(3, act.size())) args.add(scenarioOperand(o, env));
+          var operands = act.subList(3, act.size());
+          for (int j = 0; j < operands.size(); j++) {
+            var value = scenarioOperand(operands.get(j), env);
+            // An integer constant takes the argument's integer type.
+            if (value.type().equals("Integer") && j < command.arguments.size()) {
+              var d = form(command.arguments.get(j));
+              if (atomText(d.get(0)).equals("int"))
+                value = new Value(run.model.values.typeName(d), value.data());
+            }
+            args.add(value);
+          }
           var full = new ArrayList<Value>(args);
           full.add(command.state, run.state);
           perturb(random);
@@ -3116,7 +3284,7 @@ public final class LawSpecRuntime {
             result = command.run.apply(own, full);
           } catch (Exception e) {
             run.failures.add(command.name + " " + raised(e));
-            return;
+            return false;
           }
           long returned = run.clock.incrementAndGet();
           run.history.add(new ScenarioCall(command, args, result, called, returned));
@@ -3130,10 +3298,11 @@ public final class LawSpecRuntime {
             value = ends.remove(atomText(operand.get(1)));
           else value = scenarioOperand(operand, env);
           perturb(random);
-          end.channel().queues[end.side()].add(value);
+          end.channel().send(end.side(), value);
         }
-        case "receive" -> {
-          var end = ends.get(atomText(act.get(1)));
+        case "receive", "receiveor" -> {
+          String name = atomText(act.get(1));
+          var end = ends.get(name);
           Object value;
           try {
             value =
@@ -3146,15 +3315,25 @@ public final class LawSpecRuntime {
           }
           if (value == null) {
             run.failures.add(
-                "a receive on " + atomText(act.get(1)) + " waited too long: the processes are blocked");
-            return;
+                "a receive on " + name + " waited too long: the processes are blocked");
+            return false;
+          }
+          if (value == SCENARIO_GONE) {
+            // The other process ended: or else runs instead of the rest;
+            // without it, this process fails too.
+            end.channel().queues[1 - end.side()].add(SCENARIO_GONE);
+            if (kind.equals("receive")) return false;
+            ends.remove(name);
+            var handler = form(act.get(3));
+            return scenarioSteps(run, handler.subList(1, handler.size()), env, ends, random, null);
           }
           if (value instanceof ScenarioEnd received) ends.put(atomText(act.get(2)), received);
           else env.put(atomText(act.get(2)), (Value) value);
         }
         case "par" -> {
+          var forms = act.subList(1, act.size());
           var branches = new ArrayList<List<Object>>();
-          for (var b : act.subList(1, act.size())) {
+          for (var b : forms) {
             var branch = form(b);
             branches.add(branch.subList(1, branch.size()));
           }
@@ -3165,21 +3344,28 @@ public final class LawSpecRuntime {
               if (!users.contains(i)) users.add(i);
             }
           var threads = new ArrayList<Thread>();
+          var outcomes = new boolean[branches.size()];
           for (int i = 0; i < branches.size(); i++) {
             var mine = new java.util.HashMap<String, ScenarioEnd>();
             for (var entry : owned.entrySet()) {
               var users = entry.getValue();
               if (!users.contains(i)) continue;
               String name = entry.getKey();
-              if (ends.containsKey(name)) mine.put(name, ends.get(name));
+              if (ends.containsKey(name)) mine.put(name, ends.remove(name));
               else if (run.channels.containsKey(name))
                 mine.put(name, new ScenarioEnd(run.channels.get(name), users.indexOf(i)));
             }
+            final int slot = i;
             final var branch = branches.get(i);
+            final var branchIdentity = forms.get(i);
             final var copy = new java.util.HashMap<String, Value>(env);
             final var branchRandom =
                 new SplitMix64(run.shake ^ ((long) (threads.size() + 1) * 0x9E3779B97F4A7C15L));
-            threads.add(new Thread(() -> scenarioProcess(run, branch, copy, mine, branchRandom)));
+            threads.add(
+                new Thread(
+                    () ->
+                        outcomes[slot] =
+                            scenarioProcess(run, branch, copy, mine, branchRandom, branchIdentity)));
           }
           for (var t : threads) t.start();
           for (var t : threads) {
@@ -3194,6 +3380,8 @@ public final class LawSpecRuntime {
             }
             if (interrupted) Thread.currentThread().interrupt();
           }
+          // A failed branch fails the process that ran the par.
+          for (var ok : outcomes) if (!ok) return false;
         }
         case "expect" -> {
           String name = atomText(act.get(1));
@@ -3209,17 +3397,19 @@ public final class LawSpecRuntime {
                     + name
                     + " is "
                     + (actual == null ? "None" : render(actual)));
-            return;
+            return false;
           }
         }
         default -> {}
       }
     }
+    if (run.victim != null && run.victim == identity && run.victimAct == acts.size()) return false;
+    return true;
   }
 
   private record ScenarioOutcome(String title, String failure) {}
 
-  private static ScenarioOutcome runScenario(Model model, String spec, long shake) {
+  private static ScenarioOutcome runScenario(Model model, String spec, long shake, boolean crash) {
     var forms = readDescriptor(spec);
     String title = atomText(form(forms.get(0)).get(1));
     List<Object> channelNames = null;
@@ -3238,13 +3428,24 @@ public final class LawSpecRuntime {
     for (var d : model.startArguments) startArgs.add(model.values.minimal(d));
     run.state = model.startRun.apply(symbols, startArgs);
     var expected = model.startModel.apply(symbols, startArgs);
-    scenarioProcess(
-        run,
-        body,
-        new java.util.HashMap<String, Value>(),
-        new java.util.HashMap<String, ScenarioEnd>(),
-        new SplitMix64(shake));
-    if (!run.failures.isEmpty()) return new ScenarioOutcome(title, run.failures.get(0));
+    var processes = scenarioProcesses(body, new ArrayList<Object>());
+    if (crash && !processes.isEmpty()) {
+      var chooser = new SplitMix64(shake ^ 0xC3A5C85C97CB3127L);
+      run.victim = processes.get((int) chooser.below(processes.size()));
+      run.victimAct = chooser.below(form(run.victim).size() - 1 + 1);
+    }
+    boolean finished =
+        scenarioProcess(
+            run,
+            body,
+            new java.util.HashMap<String, Value>(),
+            new java.util.HashMap<String, ScenarioEnd>(),
+            new SplitMix64(shake),
+            null);
+    if (!run.failures.isEmpty())
+      return new ScenarioOutcome(
+          title, run.failures.get(0) + (run.victim != null ? " (with a process crashed)" : ""));
+    if (!finished && run.victim == null) return new ScenarioOutcome(title, "a process failed");
     var finalState =
         model.abstractState != null ? model.abstractState.apply(symbols, List.of(run.state)) : null;
     var history = new ArrayList<ScenarioCall>(run.history);
@@ -3327,7 +3528,8 @@ public final class LawSpecRuntime {
   public static void checkScenario(Model model, String spec, int runs, long seed) {
     var random = new SplitMix64(seed ^ 0x2545F4914F6CDD1DL);
     for (int n = 0; n < runs; n++) {
-      var outcome = runScenario(model, spec, random.next());
+      // Every third run crashes one process of a par at a random point.
+      var outcome = runScenario(model, spec, random.next(), n % 3 == 2);
       if (outcome.failure() != null)
         throw new AssertionError("scenario " + outcome.title() + " fails: " + outcome.failure());
     }
@@ -3345,8 +3547,26 @@ public final class LawSpecRuntime {
     /** Sends a value from the given side to the other. */
     void send(int side, Object value);
 
-    /** Blocks until the other side has sent a value to the given side. */
+    /**
+     * Blocks until the other side has sent a value to the given side; throws PeerFailed once the
+     * other side has given up and nothing is left.
+     */
     Object receive(int side);
+
+    /** The given side gives up: the other side's receives fail after the values already sent. */
+    default void abandon(int side) {
+      throw new UnsupportedOperationException("this channel cannot be abandoned");
+    }
+  }
+
+  /**
+   * A receive whose other end gave up: its process failed, or it called abandon(). Catch it to
+   * handle the failure (or else); otherwise this process fails too.
+   */
+  public static final class PeerFailed extends IllegalStateException {
+    public PeerFailed(String message) {
+      super(message);
+    }
   }
 
   /** A fresh in-memory channel: one queue per direction. */
@@ -3373,12 +3593,25 @@ public final class LawSpecRuntime {
     @Override
     public Object receive(int side) {
       try {
-        return inboxes[side].take().value();
+        var message = inboxes[side].take();
+        if (message == ABANDONED) {
+          inboxes[side].add(message);
+          throw new PeerFailed(
+              "the other end gave up the conversation (its process failed or abandoned it)");
+        }
+        return message.value();
       } catch (InterruptedException e) {
         Thread.currentThread().interrupt();
         throw new IllegalStateException("interrupted while receiving", e);
       }
     }
+
+    @Override
+    public void abandon(int side) {
+      inboxes[1 - side].add(ABANDONED);
+    }
+
+    private static final Message ABANDONED = new Message(null);
   }
 
   /** What a receive returns: the value and the end's next step. */
@@ -3460,22 +3693,74 @@ public final class LawSpecRuntime {
     }
   }
 
+  /**
+   * A handler failed, so the actor crashed; the cause is what the handler threw. A supervised
+   * actor restarts; any other stops.
+   */
+  public static final class ActorCrashed extends IllegalStateException {
+    public ActorCrashed(Throwable cause) {
+      super("the actor crashed: " + cause, cause);
+    }
+  }
+
+  /** A message that crashes an actor on purpose (crash, links). */
+  private static final class RestartSignal extends RuntimeException {
+    final Object reason;
+    final long origin;
+
+    RestartSignal(Object reason, long origin) {
+      super(null, null, false, false);
+      this.reason = reason;
+      this.origin = origin;
+    }
+  }
+
+  private static final java.util.concurrent.atomic.AtomicLong CRASH_IDS =
+      new java.util.concurrent.atomic.AtomicLong();
+
+  private static long nextCrash() {
+    return CRASH_IDS.incrementAndGet();
+  }
+
+  /**
+   * How an actor or supervisor ended, as monitors hear it: kind "crashed" (with the cause) or
+   * "stopped" (cause null).
+   */
+  public record Exit(String kind, Object cause) {}
+
   /** What a handler returns: its reply and the actor's next state. */
   public record Next<R, S>(R reply, S state) {}
 
-  /** An actor owning a state of type S. */
+  /**
+   * An actor owning a state of type S, handling one message at a time.
+   *
+   * <p>restart (the last state to the state after a crash) lets a supervisor restart it; without
+   * it, a crash stops the actor even under a supervisor. A supervised actor restarts in place: it
+   * keeps its address and the messages waiting for it.
+   */
   public static final class Actor<S> {
     private record Message<S>(
         Function<S, ? extends Next<?, S>> handler,
         java.util.concurrent.CompletableFuture<Object> reply) {}
 
     private S state;
+    private final Function<S, S> restartState;
     private final java.util.ArrayDeque<Message<S>> mailbox = new java.util.ArrayDeque<>();
     private boolean draining;
     private boolean stopped;
+    private volatile Supervisor supervisor;
+    private final List<java.util.function.Consumer<Exit>> monitors =
+        new java.util.concurrent.CopyOnWriteArrayList<>();
+    private final List<Actor<?>> links = new java.util.concurrent.CopyOnWriteArrayList<>();
+    private final java.util.Set<Long> seen = java.util.concurrent.ConcurrentHashMap.newKeySet();
 
     public Actor(S state) {
+      this(state, null);
+    }
+
+    public Actor(S state, Function<S, S> restart) {
       this.state = state;
+      this.restartState = restart;
     }
 
     private void post(Message<S> message) {
@@ -3498,19 +3783,88 @@ public final class LawSpecRuntime {
             return;
           }
         }
+        Object reply = null;
+        Throwable failure = null;
         try {
           var next = message.handler().apply(state);
           state = next.state();
-          if (message.reply() != null) message.reply().complete(next.reply());
+          reply = next.reply();
+        } catch (RestartSignal crash) {
+          // A crash that already reached this actor (through another link) is not repeated.
+          if (!seen.contains(crash.origin)) crashed(crash.reason, crash.origin);
         } catch (Throwable error) {
-          if (message.reply() != null) message.reply().completeExceptionally(error);
+          failure = new ActorCrashed(error);
+          crashed(error, nextCrash());
+        }
+        if (message.reply() != null) {
+          if (failure != null) message.reply().completeExceptionally(failure);
+          else message.reply().complete(reply);
         }
       }
     }
 
     /**
-     * Runs the handler on the state in turn and returns its reply, rethrowing what the handler
-     * threw.
+     * On the actor's turn: restart or stop, then tell monitors and links. origin names the first
+     * crash, so a crash crosses each link once.
+     */
+    private void crashed(Object cause, long origin) {
+      seen.add(origin);
+      var parent = supervisor;
+      boolean restarted =
+          parent != null && restartState != null && parent.childCrashed(this, cause);
+      if (!restarted) halt();
+      for (var monitor : monitors) monitor.accept(new Exit("crashed", cause));
+      for (var other : links) other.linkCrash(cause, origin);
+    }
+
+    /** On the actor's turn: the restarted state from the last one. */
+    void restartNow() {
+      state = restartState.apply(state);
+    }
+
+    /** A restart a supervisor asks of a sibling, in mailbox order. */
+    void restartLater() {
+      if (restartState == null) return;
+      try {
+        post(new Message<S>(s -> new Next<Object, S>(null, restartState.apply(s)), null));
+      } catch (ActorStopped e) {
+        // already stopped
+      }
+    }
+
+    private void linkCrash(Object cause, long origin) {
+      if (seen.contains(origin)) return;
+      try {
+        post(
+            new Message<S>(
+                s -> {
+                  throw new RestartSignal(cause, origin);
+                },
+                null));
+      } catch (ActorStopped e) {
+        // already stopped
+      }
+    }
+
+    /** Stops the actor; messages still waiting fail with ActorStopped. */
+    void halt() {
+      List<Message<S>> waiting;
+      synchronized (mailbox) {
+        stopped = true;
+        waiting = new ArrayList<>(mailbox);
+        mailbox.clear();
+      }
+      for (var m : waiting)
+        if (m.reply() != null) m.reply().completeExceptionally(new ActorStopped("the actor has stopped"));
+    }
+
+    void setSupervisor(Supervisor parent) {
+      supervisor = parent;
+    }
+
+    /**
+     * Runs the handler on the state in turn and returns its reply. A handler that throws crashes
+     * the actor, and call throws ActorCrashed.
      */
     @SuppressWarnings("unchecked")
     public <R> R call(Function<S, Next<R, S>> handler) {
@@ -3531,16 +3885,421 @@ public final class LawSpecRuntime {
       post(new Message<S>(handler, null));
     }
 
+    /**
+     * Crashes the actor once the messages before this one are handled, as a failing handler
+     * would: for testing supervision.
+     */
+    public void crash() {
+      crash("crashed on purpose");
+    }
+
+    public void crash(Object cause) {
+      long origin = nextCrash();
+      call(
+          s -> {
+            throw new RestartSignal(cause, origin);
+          });
+    }
+
+    /**
+     * Replaces the state by restart(last state) between messages, as a supervised restart does
+     * (crash injection in model runs).
+     */
+    public void restart(Function<S, S> restart) {
+      call(s -> new Next<Object, S>(null, restart.apply(s)));
+    }
+
     /** The state after every message sent before this call. */
     public S state() {
       return call(s -> new Next<S, S>(s, s));
     }
 
-    /** Refuses further messages; those already queued still run. */
+    /** notify gets Exit("crashed", cause) after each crash, and Exit("stopped", null) once. */
+    public void monitor(java.util.function.Consumer<Exit> notify) {
+      monitors.add(notify);
+    }
+
+    /** Links two actors: when either crashes, the other crashes too. */
+    public void link(Actor<?> other) {
+      links.add(other);
+      other.links.add(this);
+    }
+
+    /**
+     * Refuses further messages; those already queued still run. A permanent child of a supervisor
+     * restarts instead.
+     */
     public void stop() {
+      var parent = supervisor;
+      if (parent != null && parent.childStopped(this)) return;
+      boolean already;
       synchronized (mailbox) {
+        already = stopped;
         stopped = true;
       }
+      if (!already) for (var monitor : monitors) monitor.accept(new Exit("stopped", null));
+    }
+  }
+
+  /**
+   * Starts children (actors or supervisors) and restarts them after a crash. Strategy
+   * "one_for_one" restarts the child that crashed, "one_for_all" every child, "rest_for_one" it and
+   * those added after it. A child's lifetime: "permanent" restarts after a crash or a stop,
+   * "transient" only after a crash, "temporary" never. More than maxRestarts within period seconds
+   * is the supervisor's own crash: its supervisor restarts all of its children, or, at the top,
+   * every child stops.
+   */
+  public static final class Supervisor {
+    public static final String ONE_FOR_ONE = "one_for_one";
+    public static final String ONE_FOR_ALL = "one_for_all";
+    public static final String REST_FOR_ONE = "rest_for_one";
+    public static final String PERMANENT = "permanent";
+    public static final String TRANSIENT = "transient";
+    public static final String TEMPORARY = "temporary";
+
+    private static final class Entry {
+      final Object child;
+      final String lifetime;
+
+      Entry(Object child, String lifetime) {
+        this.child = child;
+        this.lifetime = lifetime;
+      }
+    }
+
+    private final String strategy;
+    private final int maxRestarts;
+    private final long periodNanos;
+    private List<Entry> children = new ArrayList<>();
+    private final java.util.ArrayDeque<Long> restarts = new java.util.ArrayDeque<>();
+    private volatile Supervisor supervisor;
+    private boolean stopped;
+    private final List<java.util.function.Consumer<Exit>> monitors =
+        new java.util.concurrent.CopyOnWriteArrayList<>();
+
+    public Supervisor() {
+      this(ONE_FOR_ONE, 3, 5.0);
+    }
+
+    public Supervisor(String strategy) {
+      this(strategy, 3, 5.0);
+    }
+
+    public Supervisor(String strategy, int maxRestarts, double periodSeconds) {
+      if (!List.of(ONE_FOR_ONE, ONE_FOR_ALL, REST_FOR_ONE).contains(strategy))
+        throw new IllegalArgumentException("unknown strategy " + strategy);
+      this.strategy = strategy;
+      this.maxRestarts = maxRestarts;
+      this.periodNanos = (long) (periodSeconds * 1e9);
+    }
+
+    /** Adds a started child (an Actor or a Supervisor), and returns it. */
+    public <C> C supervise(C child) {
+      return supervise(child, PERMANENT);
+    }
+
+    public synchronized <C> C supervise(C child, String lifetime) {
+      if (!List.of(PERMANENT, TRANSIENT, TEMPORARY).contains(lifetime))
+        throw new IllegalArgumentException("unknown lifetime " + lifetime);
+      setParent(child, this);
+      children.add(new Entry(child, lifetime));
+      return child;
+    }
+
+    public synchronized List<Object> children() {
+      var out = new ArrayList<Object>();
+      for (var e : children) out.add(e.child);
+      return out;
+    }
+
+    /** How many restarts are counted in the current period (for the runtime's own check). */
+    synchronized int restartCount() {
+      return restarts.size();
+    }
+
+    private static void setParent(Object child, Supervisor parent) {
+      if (child instanceof Actor<?> a) a.setSupervisor(parent);
+      else if (child instanceof Supervisor s) s.supervisor = parent;
+      else throw new IllegalArgumentException("a supervisor's child is an Actor or a Supervisor");
+    }
+
+    private static void restartLater(Object child) {
+      if (child instanceof Actor<?> a) a.restartLater();
+      else ((Supervisor) child).restartLater();
+    }
+
+    private static void halt(Object child) {
+      if (child instanceof Actor<?> a) a.halt();
+      else ((Supervisor) child).stop();
+    }
+
+    private static void stopChild(Object child) {
+      if (child instanceof Actor<?> a) a.stop();
+      else ((Supervisor) child).stop();
+    }
+
+    private boolean allowRestart() {
+      long now = System.nanoTime();
+      while (!restarts.isEmpty() && now - restarts.peekFirst() > periodNanos) restarts.pollFirst();
+      if (restarts.size() >= maxRestarts) return false;
+      restarts.addLast(now);
+      return true;
+    }
+
+    private Entry entry(Object child) {
+      for (var e : children) if (e.child == child) return e;
+      return null;
+    }
+
+    /** Under the lock: the children to restart for entry's crash, or null when it gives up. */
+    private List<Entry> restarting(Entry entry, Object cause, Object crashed) {
+      if (allowRestart()) {
+        int index = children.indexOf(entry);
+        return switch (strategy) {
+          case ONE_FOR_ALL -> new ArrayList<>(children);
+          case REST_FOR_ONE -> new ArrayList<>(children.subList(index, children.size()));
+          default -> List.of(entry);
+        };
+      }
+      var parent = supervisor;
+      if (parent != null && parent.childFailed(this, cause)) {
+        restarts.clear();
+        return new ArrayList<>(children);
+      }
+      fail(crashed, cause);
+      return null;
+    }
+
+    /** On child's turn: true when it restarts now. */
+    boolean childCrashed(Actor<?> child, Object cause) {
+      List<Entry> group;
+      synchronized (this) {
+        var entry = entry(child);
+        if (stopped || entry == null) return false;
+        if (entry.lifetime.equals(TEMPORARY)) {
+          children.remove(entry);
+          return false;
+        }
+        group = restarting(entry, cause, child);
+        if (group == null) return false;
+      }
+      for (var other : group) if (other.child != child) restartLater(other.child);
+      child.restartNow();
+      return true;
+    }
+
+    /** A child supervisor gave up: true when it may restart its children. */
+    boolean childFailed(Supervisor child, Object cause) {
+      List<Entry> group;
+      synchronized (this) {
+        var entry = entry(child);
+        if (stopped || entry == null) return false;
+        if (entry.lifetime.equals(TEMPORARY)) {
+          children.remove(entry);
+          return false;
+        }
+        group = restarting(entry, cause, child);
+        if (group == null) return false;
+      }
+      for (var other : group) if (other.child != child) restartLater(other.child);
+      return true;
+    }
+
+    /** True when a stopped child is permanent and restarts instead. */
+    boolean childStopped(Object child) {
+      List<Entry> group;
+      synchronized (this) {
+        var entry = entry(child);
+        if (entry == null || stopped) return false;
+        if (!entry.lifetime.equals(PERMANENT)) {
+          children.remove(entry);
+          return false;
+        }
+        group = restarting(entry, "stopped", child);
+        if (group == null) return false;
+      }
+      for (var other : group) restartLater(other.child);
+      return true;
+    }
+
+    /** Under the lock: every child but the crashing one (which stops itself) stops, and so does the supervisor. */
+    private void fail(Object crashed, Object cause) {
+      var all = children;
+      children = new ArrayList<>();
+      stopped = true;
+      for (int k = all.size() - 1; k >= 0; k--) {
+        var other = all.get(k).child;
+        setParent(other, null);
+        if (other != crashed) halt(other);
+      }
+      for (var monitor : monitors) monitor.accept(new Exit("crashed", cause));
+    }
+
+    /** Restarted by its own supervisor: every child restarts. */
+    private void restartLater() {
+      List<Entry> all;
+      synchronized (this) {
+        restarts.clear();
+        all = new ArrayList<>(children);
+      }
+      for (var e : all) restartLater(e.child);
+    }
+
+    /** notify gets Exit("crashed", cause) when it passes its restart limit, and Exit("stopped", null) once stopped. */
+    public void monitor(java.util.function.Consumer<Exit> notify) {
+      monitors.add(notify);
+    }
+
+    /** Stops every child, last added first, without restarting them. */
+    public void stop() {
+      List<Entry> all;
+      synchronized (this) {
+        if (stopped) return;
+        stopped = true;
+        all = children;
+        children = new ArrayList<>();
+      }
+      for (int k = all.size() - 1; k >= 0; k--) {
+        var child = all.get(k).child;
+        setParent(child, null);
+        stopChild(child);
+      }
+      for (var monitor : monitors) monitor.accept(new Exit("stopped", null));
+    }
+  }
+
+  /**
+   * The runtime's own check of crashes, links, monitors and supervision: every strategy, lifetime,
+   * the restart limit and escalation. Throws AssertionError naming the first behaviour that
+   * differs.
+   */
+  public static void checkSupervision() {
+    java.util.function.Supplier<Actor<Long>> counter = () -> new Actor<Long>(0L, s -> 0L);
+    java.util.function.Consumer<Actor<Long>> bump = a -> a.call(s -> new Next<Long, Long>(s + 1, s + 1));
+    java.util.function.Consumer<Actor<Long>> fail =
+        a -> {
+          try {
+            a.call(
+                s -> {
+                  throw new ArithmeticException("/ by zero");
+                });
+          } catch (ActorCrashed e) {
+            return;
+          }
+          throw new AssertionError("a failing handler did not throw ActorCrashed");
+        };
+    java.util.function.BiConsumer<Actor<Long>, String> stopped =
+        (a, what) -> {
+          try {
+            a.state();
+          } catch (ActorStopped e) {
+            return;
+          }
+          throw new AssertionError(what + " should have stopped");
+        };
+    var a = counter.get();
+    bump.accept(a);
+    fail.accept(a);
+    stopped.accept(a, "an unsupervised actor that crashed");
+    var sup = new Supervisor(Supervisor.ONE_FOR_ONE);
+    var x = sup.supervise(counter.get());
+    var y = sup.supervise(counter.get());
+    bump.accept(x);
+    bump.accept(y);
+    bump.accept(y);
+    fail.accept(x);
+    expectSupervision(List.of(x.state(), y.state()), List.of(0L, 2L), "one for one restarts only the crashed child");
+    sup = new Supervisor(Supervisor.ONE_FOR_ALL);
+    x = sup.supervise(counter.get());
+    y = sup.supervise(counter.get());
+    bump.accept(x);
+    bump.accept(y);
+    fail.accept(x);
+    expectSupervision(List.of(x.state(), y.state()), List.of(0L, 0L), "one for all restarts every child");
+    sup = new Supervisor(Supervisor.REST_FOR_ONE);
+    x = sup.supervise(counter.get());
+    y = sup.supervise(counter.get());
+    var z = sup.supervise(counter.get());
+    bump.accept(x);
+    bump.accept(y);
+    bump.accept(z);
+    fail.accept(y);
+    expectSupervision(
+        List.of(x.state(), y.state(), z.state()), List.of(1L, 0L, 0L), "rest for one restarts the child and later ones");
+    sup = new Supervisor();
+    var t = sup.supervise(counter.get(), Supervisor.TEMPORARY);
+    fail.accept(t);
+    stopped.accept(t, "a temporary child that crashed");
+    sup = new Supervisor();
+    var p = sup.supervise(counter.get(), Supervisor.PERMANENT);
+    var q = sup.supervise(counter.get(), Supervisor.TRANSIENT);
+    bump.accept(p);
+    p.stop();
+    expectSupervision(p.state(), 0L, "a permanent child restarts after a stop");
+    q.stop();
+    stopped.accept(q, "a transient child that was stopped");
+    var events = new java.util.concurrent.CopyOnWriteArrayList<Exit>();
+    sup = new Supervisor(Supervisor.ONE_FOR_ONE, 2, 10);
+    sup.monitor(events::add);
+    x = sup.supervise(counter.get());
+    y = sup.supervise(counter.get());
+    fail.accept(x);
+    fail.accept(x);
+    fail.accept(x);
+    stopped.accept(y, "a child of a supervisor past its restart limit");
+    expectSupervision(kinds(events), List.of("crashed"), "a supervisor past its limit tells its monitors");
+    var outer = new Supervisor(Supervisor.ONE_FOR_ONE, 5, 10);
+    var inner = outer.supervise(new Supervisor(Supervisor.ONE_FOR_ONE, 1, 10));
+    x = inner.supervise(counter.get());
+    y = inner.supervise(counter.get());
+    bump.accept(y);
+    fail.accept(x);
+    fail.accept(x);
+    expectSupervision(List.of(x.state(), y.state()), List.of(0L, 0L), "a supervisor past its limit is restarted by its own");
+    var seen = new java.util.concurrent.CopyOnWriteArrayList<Exit>();
+    a = counter.get();
+    var b = counter.get();
+    a.link(b);
+    b.monitor(seen::add);
+    fail.accept(a);
+    for (int k = 0; k < 100 && seen.isEmpty(); k++) sleepQuietly(10);
+    stopped.accept(b, "an unsupervised actor linked to one that crashed");
+    expectSupervision(kinds(seen), List.of("crashed"), "a monitor hears of a crash");
+    sup = new Supervisor(Supervisor.ONE_FOR_ONE, 10, 5.0);
+    a = sup.supervise(counter.get());
+    b = sup.supervise(counter.get());
+    var c = sup.supervise(counter.get());
+    a.link(b);
+    b.link(c);
+    c.link(a);
+    bump.accept(a);
+    bump.accept(b);
+    bump.accept(c);
+    fail.accept(a);
+    for (int k = 0; k < 100 && sup.restartCount() < 3; k++) sleepQuietly(10);
+    sleepQuietly(50);
+    expectSupervision(
+        List.of(a.state(), b.state(), c.state(), (long) sup.restartCount()),
+        List.of(0L, 0L, 0L, 3L),
+        "a crash crosses each link once");
+  }
+
+  private static List<String> kinds(List<Exit> exits) {
+    var out = new ArrayList<String>();
+    for (var e : exits) out.add(e.kind());
+    return out;
+  }
+
+  private static void expectSupervision(Object actual, Object wanted, String what) {
+    if (!actual.equals(wanted))
+      throw new AssertionError(what + ": got " + actual + ", expected " + wanted);
+  }
+
+  private static void sleepQuietly(long millis) {
+    try {
+      Thread.sleep(millis);
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
     }
   }
 

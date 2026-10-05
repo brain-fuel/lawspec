@@ -2,6 +2,7 @@
 package example;
 
 import lawspec.actors.AccountActor;
+import lawspec.actors.BankSupervisor;
 import lawspec.data.Account;
 import lawspec.data.Pair;
 import lawspec.runtime.LawSpecRuntime;
@@ -34,6 +35,19 @@ public final class Actors {
     LawSpecRuntime.par(() -> account.deposit(value0), () -> account.deposit(value0));
     long total = account.balance();
     account.stop();
+    return total;
+  }
+
+  public static Account reopen(Account value0) {
+    return new Account(value0.balance());
+  }
+
+  public static long survivesCrash(short value0) {
+    var bank = BankSupervisor.start();
+    bank.account.deposit(value0);
+    bank.account.crash();
+    long total = bank.account.balance();
+    bank.stop();
     return total;
   }
 }
