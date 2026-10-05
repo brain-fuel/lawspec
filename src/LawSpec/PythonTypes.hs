@@ -57,8 +57,18 @@ application :: String -> [D.Doc] -> D.Doc
 application name [] = D.text name
 application name args = D.text name <> D.delimit 4 "[" "]" args
 
+-- A handle's native type: its bound native type, or any object.
+type Handles = [(C.Id,D.Doc)]
+
+handleTypes :: [C.DataDeclaration] -> Handles
+handleTypes declarations = [(C.dataId d, D.text "_builtins.object") | d <- declarations, C.dataHandle d]
+
 typeDoc :: String -> Names -> [(C.Id,String)] -> C.Type -> Either String D.Doc
-typeDoc scope names parameters ty = case ty of
+typeDoc = typeDocWith []
+
+typeDocWith :: Handles -> String -> Names -> [(C.Id,String)] -> C.Type -> Either String D.Doc
+typeDocWith handles scope names parameters ty = case ty of
+  C.Constructor name [] | Just native <- lookup (C.Id name) handles -> pure native
   C.TypeVariable variable -> maybe (Left "unbound Python data parameter") (Right . D.text) (lookup variable parameters)
   -- A Duration is a timedelta: see runtime/lawspec_schema.py.
   C.Constructor name [] | isDurationType name -> pure (D.text "ls.timedelta")
@@ -86,7 +96,7 @@ typeDoc scope names parameters ty = case ty of
         _ -> Left ("no Python representation for " ++ show ty)
   _ -> Left ("no Python data representation for " ++ show ty)
   where
-    argument (C.TypeArgument value) = typeDoc scope names parameters value
+    argument (C.TypeArgument value) = typeDocWith handles scope names parameters value
     argument _ = Left "indexed Python data is not supported"
     nativeScalar name
       | isInteger name || name `elem` ["CodePoint","CodeUnit16"] = Right "_builtins.int"
@@ -121,11 +131,15 @@ pythonDataType :: [C.DataDeclaration] -> C.Type -> Either String String
 pythonDataType declarations ty = D.render (D.Pretty 79) <$> pythonDataTypeDoc declarations ty
 
 pythonDataTypeDoc :: [C.DataDeclaration] -> C.Type -> Either String D.Doc
-pythonDataTypeDoc declarations ty = do
+pythonDataTypeDoc declarations = pythonDataTypeDocWith declarations []
+
+-- Bound handles name their native types; other handles are any object.
+pythonDataTypeDocWith :: [C.DataDeclaration] -> Handles -> C.Type -> Either String D.Doc
+pythonDataTypeDocWith declarations bound ty = do
   registry <- makeRegistry declarations
   checkType registry ty
   names <- namesFor declarations
-  typeDoc "data." names [] ty
+  typeDocWith (bound ++ handleTypes declarations) "data." names [] ty
 
 reference :: S.TypeRef -> D.Doc
 reference (S.Parameter n) = D.text ("_schema.Parameter(" ++ show n ++ ")")

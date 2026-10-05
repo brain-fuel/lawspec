@@ -6,6 +6,7 @@ from fractions import Fraction
 from decimal import Decimal
 import math
 import struct
+import threading
 
 
 @dataclass(frozen=True)
@@ -322,7 +323,40 @@ def binary(op, a, b, ta, tb):
     return convert(v, t)
 
 
+# Handles are values only adapters create, passed along unopened. The schema
+# registers each one as it crosses into LawSpec, so the runtime knows it: it
+# is equal only to itself, has no portable order, and renders as a stable
+# label numbered by first appearance in the process (Jobs#1).
+_handles = {}
+_handle_counts = {}
+_handle_lock = threading.Lock()
+
+
+def handle(value, name):
+    """Registers a handle of the named type; returns it unchanged."""
+    if id(value) not in _handles:
+        with _handle_lock:
+            if id(value) not in _handles:
+                short = name.rsplit('::', 1)[-1]
+                count = _handle_counts.get(short, 0) + 1
+                _handle_counts[short] = count
+                # The entry keeps the value alive, so its id stays its own.
+                _handles[id(value)] = (value, short + '#' + str(count))
+    return value
+
+
+def is_handle(value):
+    entry = _handles.get(id(value))
+    return entry is not None and entry[0] is value
+
+
+def handle_label(value):
+    return _handles[id(value)][1]
+
+
 def equal(a, b, ta, tb):
+    if is_handle(a) or is_handle(b):
+        return a is b
     if ta.startswith('Either ') and tb.startswith('Either '):
         if a.tag != b.tag:
             return False
@@ -378,7 +412,12 @@ def compare_values(a, b):
     Exact numbers by value, text and raw sequences by unit, False before True,
     absence before presence, lists element by element, Nothing before Just,
     and other data by constructor identity, then fields left to right.
+    Handles have no order: one equals only itself.
     """
+    if is_handle(a) and is_handle(b):
+        if a is b:
+            return 0
+        raise TypeError('handles have no portable order')
     if isinstance(a, bool) and isinstance(b, bool):
         return (a > b) - (a < b)
     if isinstance(a, (int, Fraction, Decimal)) and not isinstance(a, bool):
@@ -1383,6 +1422,8 @@ def _same(a, b):
 
 def render(v):
     """A value's canonical text, the same on every target."""
+    if is_handle(v):
+        return handle_label(v)
     if isinstance(v, bool):
         return 'true' if v else 'false'
     if isinstance(v, int):

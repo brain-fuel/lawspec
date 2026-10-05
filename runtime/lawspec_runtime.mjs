@@ -412,7 +412,36 @@ function compare(op, a, b) {
             ? a > b
             : a >= b;
 }
+// Handles are values only adapters create, passed along unopened. The schema
+// registers each one as it crosses into LawSpec, so the runtime knows it: it
+// is equal only to itself, has no portable order, and renders as a stable
+// label numbered by first appearance in the process (Jobs#1).
+const handleLabels = new WeakMap();
+const primitiveHandleLabels = new Map();
+const handleCounts = new Map();
+const handleTable = (value) =>
+  (typeof value === 'object' && value !== null) || typeof value === 'function'
+    ? handleLabels
+    : primitiveHandleLabels;
+
+/** Registers a handle of the named type; returns it unchanged. */
+export function handle(value, name) {
+  const table = handleTable(value);
+  if (!table.has(value)) {
+    const short = name.split('::').pop();
+    const count = (handleCounts.get(short) ?? 0) + 1;
+    handleCounts.set(short, count);
+    table.set(value, short + '#' + count);
+  }
+  return value;
+}
+
+export function isHandle(value) {
+  return handleTable(value).has(value);
+}
+
 export function equal(a, b, ta, tb) {
+  if (isHandle(a) || isHandle(b)) return a === b;
   if (ta.startsWith('Either ') && tb.startsWith('Either ')) {
     if (a.tag !== b.tag) return false;
     const index = a.tag === 'Either::Left' ? 0 : 1;
@@ -480,6 +509,11 @@ const sign = (x) => (x > 0 ? 1 : x < 0 ? -1 : 0);
 // lists element by element, Nothing before Just, and other data by
 // constructor identity, then fields left to right.
 export function compareValues(a, b) {
+  // Handles have no order: one equals only itself.
+  if (isHandle(a) && isHandle(b)) {
+    if (a === b) return 0;
+    throw new TypeError('handles have no portable order');
+  }
   if (typeof a === 'boolean' && typeof b === 'boolean') return sign(Number(a) - Number(b));
   if (typeof a === 'string' && typeof b === 'string') {
     const x = [...a], y = [...b];
@@ -1697,6 +1731,7 @@ export class Values {
 
 /** A value's canonical text, the same on every target. */
 export function render(v) {
+  if (isHandle(v)) return handleTable(v).get(v);
   if (typeof v === 'boolean') return v ? 'true' : 'false';
   if (typeof v === 'bigint' || typeof v === 'number') return String(v);
   if (typeof v === 'string') return '"' + v.replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"';

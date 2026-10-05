@@ -93,10 +93,13 @@ export class Constructor {
 }
 
 export class Definition {
-  constructor(name, parameters, constructors) {
+  // A handle has no constructors: its values are adapters' own objects,
+  // passed along unopened and equal only to themselves.
+  constructor(name, parameters, constructors, handle = false) {
     this.name = name;
     this.parameters = parameters;
     this.constructors = Object.freeze([...constructors]);
+    this.handle = handle;
     Object.freeze(this);
   }
 }
@@ -465,6 +468,7 @@ export class Schema {
                       constructor.indices,
                   );
                 }),
+                definition.handle,
             ),
     );
     if (remaining.size) {
@@ -762,6 +766,9 @@ export class Schema {
   }
 
   #walk(type, value, bits, mode, symbols) {
+    if (this.#definitions.get(type.name)?.handle) {
+      return ls.handle(value, type.name);
+    }
     if ((mode === 'native' || mode === 'logical') && this.#nativeCodecs.has(type.name)) {
       return this.#codecWalk(type, value, bits, mode, symbols);
     }
@@ -1001,6 +1008,7 @@ export class Schema {
   equal(type, left, right, bits = 64, symbols = new Map()) {
     left = this.validate(type, left, bits, symbols);
     right = this.validate(type, right, bits, symbols);
+    if (this.#definitions.get(type.name)?.handle) return left === right;
     const constructors = this.constructors(type);
     if (constructors !== null) {
       if (left.tag !== right.tag) return false;

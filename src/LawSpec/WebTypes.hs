@@ -47,8 +47,18 @@ application :: String -> [D.Doc] -> D.Doc
 application name [] = D.text name
 application name args = D.text name <> D.delimitTrailing 4 "<" ">" args
 
+-- A handle's native type: its bound native type, or unknown.
+type Handles = [(C.Id,D.Doc)]
+
+handleTypes :: [C.DataDeclaration] -> Handles
+handleTypes declarations = [(C.dataId d, D.text "unknown") | d <- declarations, C.dataHandle d]
+
 typeDoc :: String -> Names -> [(C.Id,String)] -> C.Type -> Either String D.Doc
-typeDoc scope names parameters ty = case ty of
+typeDoc = typeDocWith []
+
+typeDocWith :: Handles -> String -> Names -> [(C.Id,String)] -> C.Type -> Either String D.Doc
+typeDocWith handles scope names parameters ty = case ty of
+  C.Constructor name [] | Just native <- lookup (C.Id name) handles -> pure native
   C.TypeVariable variable -> maybe (Left "unbound TypeScript data parameter") (Right . D.text) (lookup variable parameters)
   -- Built-in collections are native: see runtime/lawspec_schema.mjs.
   C.Constructor name arguments | Just short <- collectionContainer name -> do
@@ -75,7 +85,7 @@ typeDoc scope names parameters ty = case ty of
         _ -> Left ("no TypeScript representation for " ++ show ty)
   _ -> Left ("no TypeScript data representation for " ++ show ty)
   where
-    argument (C.TypeArgument value) = typeDoc scope names parameters value
+    argument (C.TypeArgument value) = typeDocWith handles scope names parameters value
     argument _ = Left "indexed JavaScript data is not supported"
     nativeScalar name
       | name `elem` ["Int8","Int16","Int32","UInt8","UInt16","UInt32","CodePoint","CodeUnit16","Float32","Float64"] = Right "number"
@@ -109,11 +119,15 @@ webDataType :: [C.DataDeclaration] -> C.Type -> Either String String
 webDataType declarations ty = D.render (D.Pretty 80) <$> webDataTypeDoc declarations ty
 
 webDataTypeDoc :: [C.DataDeclaration] -> C.Type -> Either String D.Doc
-webDataTypeDoc declarations ty = do
+webDataTypeDoc declarations = webDataTypeDocWith declarations []
+
+-- Bound handles name their native types; other handles are unknown.
+webDataTypeDocWith :: [C.DataDeclaration] -> Handles -> C.Type -> Either String D.Doc
+webDataTypeDocWith declarations bound ty = do
   registry <- makeRegistry declarations
   checkType registry ty
   names <- namesFor declarations
-  typeDoc "data." names [] ty
+  typeDocWith (bound ++ handleTypes declarations) "data." names [] ty
 
 reference :: S.TypeRef -> D.Doc
 reference (S.Parameter n) = D.text ("new schema.Parameter(" ++ show n ++ ")")
