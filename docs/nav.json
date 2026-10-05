@@ -276,6 +276,14 @@
             "path": "reference/language/workflows.md"
           },
           {
+            "title": "Stateful models",
+            "path": "reference/language/models.md"
+          },
+          {
+            "title": "Protocols and scenarios",
+            "path": "reference/language/scenarios.md"
+          },
+          {
             "title": "Imports and packages",
             "path": "reference/language/imports-and-packages.md"
           },

@@ -26,6 +26,10 @@ types, checked definitions, refinements and laws.
 - [Domain modeling](domain-modeling.md): wrappers and workflows.
 - [Workflows](workflows.md): stages, error types, and policies such as
   retries, timeouts, rate limits, compensation and hedging.
+- [Stateful models](models.md): commands checked against a reference model,
+  in sequence and in parallel, collections and handles.
+- [Protocols and scenarios](scenarios.md): channels between processes, proved
+  free of deadlocks and races, and run on many schedules.
 - [Imports and packages](imports-and-packages.md): sharing declarations between
   units and packages.
 - [Expressions and arithmetic](expressions-and-arithmetic.md): precedence,
