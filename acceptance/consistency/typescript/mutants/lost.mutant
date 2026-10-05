@@ -1,0 +1,7 @@
+@@ src/example/consistency.ts
+<<<<<<<
+  counts.set(value0.id, after);
+=======
+  // A lost update: the third hit is counted, then forgotten.
+  if (after !== 3n) counts.set(value0.id, after);
+>>>>>>>

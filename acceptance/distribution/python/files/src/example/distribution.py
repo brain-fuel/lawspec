@@ -12,7 +12,7 @@ def roundTrips(value0, value1, value2, value3):
     return ls.wire_round_trips(value0, value1, value2, value3)
 
 
-def remoteShifted(value0):
+async def remoteShifted(value0):
     import lawspec_remote
 
     network = ls.MemoryNetwork(seed=value0 & 0xFFFF, loss=0.2, duplicate=0.2)
@@ -30,7 +30,7 @@ def add(value0, value1):
     return data.Pair(after, data.Tally(after))
 
 
-def remoteAdds(value0):
+async def remoteAdds(value0):
     from lawspec_actors import TallyActor
 
     server, client = ls.Node(ls.TcpTransport()), ls.Node(ls.TcpTransport())
@@ -44,7 +44,7 @@ def remoteAdds(value0):
         server.close()
 
 
-def remoteDoubling(value0):
+async def remoteDoubling(value0):
     from lawspec_sessions import Doubling
 
     server, client = ls.Node(ls.HttpTransport()), ls.Node(ls.HttpTransport())
