@@ -1,11 +1,39 @@
 {
   "types": [
-    {"type": "example.handles::type::Jobs", "native": ["java", "util", "concurrent", "ConcurrentLinkedQueue"]}
+    {
+      "type": "example.handles::type::Jobs",
+      "native": [
+        "java",
+        "util",
+        "concurrent",
+        "ConcurrentLinkedQueue"
+      ],
+      "arguments": [
+        "kotlin.Int"
+      ]
+    }
   ],
   "functions": [
-    {"declaration": "example.handles::newJobs", "constructor": ["java", "util", "concurrent", "ConcurrentLinkedQueue"]},
-    {"declaration": "example.handles::submit", "method": "offer"},
-    {"declaration": "example.handles::take", "method": "poll"},
-    {"declaration": "example.handles::pending", "method": "size"}
+    {
+      "declaration": "example.handles::newJobs",
+      "constructor": [
+        "java",
+        "util",
+        "concurrent",
+        "ConcurrentLinkedQueue"
+      ]
+    },
+    {
+      "declaration": "example.handles::submit",
+      "method": "offer"
+    },
+    {
+      "declaration": "example.handles::take",
+      "method": "poll"
+    },
+    {
+      "declaration": "example.handles::pending",
+      "method": "size"
+    }
   ]
 }

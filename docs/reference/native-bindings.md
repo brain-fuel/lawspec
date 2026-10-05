@@ -25,6 +25,12 @@ a schema-4 compiler request (`nativeBindings`). The fields are `types`,
   file becomes a generated bridge.
 - Generic generator factories are resolved with one argument per type
   parameter.
+- A [handle](language/models.md#handles)'s type binding may give
+  `arguments`: the native class's type arguments, written in Kotlin, such as
+  `["kotlin.Int"]`, or `[]` for a class that is not generic. Generated
+  Kotlin then names the handle's type in full, as in
+  `ConcurrentLinkedQueue<kotlin.Int>`, instead of `kotlin.Any`. Other
+  targets ignore it; Java keeps `Object`.
 
 ## Validation
 
@@ -35,6 +41,7 @@ a schema-4 compiler request (`nativeBindings`). The fields are `types`,
 - a `record` style on a type with several constructors, or fields on a `unit`
   constructor;
 - incompatible type arities;
+- `arguments` on a type that is not a handle, or an empty argument;
 - malformed native references;
 - unknown configuration fields.
 

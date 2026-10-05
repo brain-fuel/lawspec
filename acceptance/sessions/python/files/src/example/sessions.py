@@ -25,7 +25,7 @@ def _manage(manager):
     _serve(server)
 
 
-def add(value0, value1):
+async def add(value0, value1):
     server, client = sessions.Serve.open()
     process = ls.spawn(_serve, server)
     total = _ask(client, value0, value1)
@@ -33,7 +33,7 @@ def add(value0, value1):
     return total
 
 
-def addHired(value0, value1):
+async def addHired(value0, value1):
     boss, manager = sessions.Hire.open()
     server, client = sessions.Serve.open()
     process = ls.spawn(_manage, manager)

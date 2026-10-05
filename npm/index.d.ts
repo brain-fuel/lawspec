@@ -186,6 +186,7 @@ export interface NativeTypeBinding {
   native: NativeReference;
   constructors?: NativeConstructorBinding[];
   codec?: NativeCodecBinding;
+  arguments?: string[];
 }
 
 export interface NativeGeneratorBinding {
@@ -196,7 +197,9 @@ export interface NativeGeneratorBinding {
 
 export interface NativeFunctionBinding {
   declaration: string;
-  native: NativeReference;
+  native?: NativeReference;
+  method?: string;
+  constructor?: NativeReference;
 }
 
 export interface NativeGoImport {

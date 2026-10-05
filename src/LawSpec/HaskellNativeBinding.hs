@@ -217,7 +217,11 @@ emitBindings minify plan testing files = do
         owner <- case args !! position of
           C.Constructor handleName [] | Just m <- find ((== C.Id handleName) . C.dataId . resolvedDeclaration) mappings ->
             pure (resolvedNativeType m)
-          _ -> Left (context ++ ": a Haskell method binding needs its handle bound to a native type, whose module holds the method")
+          C.Constructor handleName [] -> Left (context ++ " is bound to the method " ++ name ++ " of its handle " ++
+            lastPart handleName ++ ", but " ++ lastPart handleName ++ " has no type binding. Haskell finds " ++ name ++
+            " in the module of the handle's native type, so add {\"type\": \"" ++ handleName ++
+            "\", \"native\": [\"Module\", \"Type\"]} to nativeBindings.types in lawspec.json")
+          _ -> Left (context ++ ": a method binding needs a handle argument")
         pure (Method position (NativeRef (init (referenceParts owner) ++ [name])))
     isHandle ty = case ty of
       C.Constructor name [] -> any (\d -> C.dataHandle d && C.dataId d == C.Id name) declarations
@@ -275,3 +279,14 @@ callRef :: Bridge -> NativeRef
 callRef (Static ref) = ref
 callRef (Method _ ref) = ref
 callRef (Construct ref) = ref
+
+-- A qualified identity's last segment: example.handles::type::Jobs is Jobs.
+lastPart :: String -> String
+lastPart s = case breakOn s of
+  (_, Just rest) -> lastPart rest
+  (whole, Nothing) -> whole
+  where
+    breakOn str = go "" str
+    go acc (':' : ':' : rest) = (reverse acc, Just rest)
+    go acc (c : rest) = go (c : acc) rest
+    go acc [] = (reverse acc, Nothing)

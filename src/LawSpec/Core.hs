@@ -56,10 +56,13 @@ data DataDeclaration = MkDataDeclaration
   -- along unopened; it never generates, builds or inspects one, and two are
   -- equal only when they are the same value.
   , dataHandle :: Bool
+  -- A bound handle's native type, written for the target being emitted
+  -- (set from the target's type binding when it names the type in full).
+  , dataNative :: Maybe String
   } deriving (Eq, Show, Generic)
 pattern DataDeclaration :: Id -> String -> [Id] -> [DataConstructor] -> Origin -> Maybe FamilyIndex -> DataDeclaration
-pattern DataDeclaration identity name parameters constructors origin index <- MkDataDeclaration identity name parameters constructors origin index _
-  where DataDeclaration identity name parameters constructors origin index = MkDataDeclaration identity name parameters constructors origin index False
+pattern DataDeclaration identity name parameters constructors origin index <- MkDataDeclaration identity name parameters constructors origin index _ _
+  where DataDeclaration identity name parameters constructors origin index = MkDataDeclaration identity name parameters constructors origin index False Nothing
 {-# COMPLETE DataDeclaration #-}
 -- A GADT constructor's equations fix declaration parameters to types over its
 -- existentials: a value of T args uses the constructor only where each

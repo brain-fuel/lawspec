@@ -322,10 +322,16 @@ interface NativeTypeBinding {
     fields?: {field: string; native: string}[];
   }[];
   codec?: {toNative: NativeReference; fromNative: NativeReference};
+  arguments?: string[];                               // a handle's Kotlin type arguments
 }
 
 interface NativeGeneratorBinding { type: string; factory: NativeReference; stub?: boolean }
-interface NativeFunctionBinding { declaration: string; native: NativeReference }
+interface NativeFunctionBinding {
+  declaration: string;
+  native?: NativeReference;                           // a function
+  method?: string;                                    // a method of the handle argument
+  constructor?: NativeReference;                      // a constructor making a handle
+}
 ```
 
 Unknown fields are rejected. A type binding has either `constructors` or

@@ -77,14 +77,15 @@ javaDataTypeDoc declarations ty = do
 
 -- The identities of handle declarations: their values are adapters' native
 -- objects, an Object in generated code.
-type Handles = [String]
+-- Each handle, with its native type when its binding names it in full.
+type Handles = [(String, Maybe String)]
 
 handlesOf :: [C.DataDeclaration] -> Handles
-handlesOf declarations = [C.idText (C.dataId d) | d <- declarations, C.dataHandle d]
+handlesOf declarations = [(C.idText (C.dataId d), C.dataNative d) | d <- declarations, C.dataHandle d]
 
 typeDoc :: Handles -> Names -> [(C.Id, String)] -> C.Type -> Either String D.Doc
 typeDoc handles names parameters ty = case ty of
-  C.Constructor name [] | name `elem` handles -> pure (D.text "java.lang.Object")
+  C.Constructor name [] | Just native <- lookup name handles -> pure (D.text (maybe "java.lang.Object" id native))
   C.TypeVariable variable -> maybe (Left "unbound Java data parameter")
     (Right . D.text) (lookup variable parameters)
   -- A Duration is a java.time.Duration (LawSpecSchema's duration).
@@ -303,7 +304,7 @@ renderSchemaWith handles layout callbacks bindings schemas = D.render layout $
     definition value = call "new Definition"
       ([quoted (Schema.typeName value), D.text (show (Schema.parameterCount value)),
         list (map constructor (Schema.constructors value))] ++
-       [D.text "true" | Schema.typeName value `elem` handles])
+       [D.text "true" | Schema.typeName value `elem` map fst handles])
     constructor value = call "new Constructor"
       ([quoted (Schema.constructorTag value), list (map field (Schema.fields value))] ++
        [list [D.text ("LawSpecDataSchema::" ++ name) | (tag,name) <- bindings,

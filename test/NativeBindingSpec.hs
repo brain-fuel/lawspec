@@ -24,7 +24,7 @@ ref name = NativeRef ["app",name]
 money :: TypeBinding
 money = TypeBinding (C.Id "domain::type::Money") (ref "Price")
   [ConstructorBinding "Money" (ref "Price") RecordConstructor
-    [FieldBinding "currency" "unit", FieldBinding "amount" "major"]] Nothing
+    [FieldBinding "currency" "unit", FieldBinding "amount" "major"]] Nothing Nothing
 
 resolve :: Bindings -> Either String ResolvedBindings
 resolve bindings = case compileCore 64 defaultGeneration [Source "native" source] of
@@ -109,7 +109,7 @@ spec = describe "native binding resolution" $ do
   it "rejects record encodings of sums and payloads on unit constructors" $ do
     let currency = TypeBinding (C.Id "domain::type::Currency") (ref "Code")
           [ConstructorBinding "USD" (ref "Dollars") RecordConstructor [],
-           ConstructorBinding "EUR" (ref "Euros") UnitConstructor []] Nothing
+           ConstructorBinding "EUR" (ref "Euros") UnitConstructor []] Nothing Nothing
     resolve (Bindings [currency] []) `shouldSatisfy` isLeft
     let constructor = head (boundConstructors money)
     resolve (Bindings [money {boundConstructors=[constructor {constructorStyle=UnitConstructor}]}] []) `shouldSatisfy` isLeft

@@ -341,10 +341,11 @@ emitPlanWithNativeOptions minify target sourceDir testDir unescaped unwitnessed 
   unless (target `elem` ["python","rust","javascript","typescript","java","kotlin","go","haskell"] || not (any Binding.resolvedGeneratorStub
     (Binding.resolvedGenerators (NB.bindingRepresentations bindings))))
     (Left [Diagnostic "native-binding" ("generator scaffolds are not implemented for " ++ target) Nothing])
-  plan <- if target == "go" && NB.hasBindings bindings
+  prepared <- if target == "go" && NB.hasBindings bindings
     then either (Left . pure . (\m -> Diagnostic "native-binding" m Nothing)) Right
       (GoNativeBinding.preparePlan bindings originalPlan)
     else Right originalPlan
+  let plan = if target == "kotlin" then nativeHandles bindings prepared else prepared
   unless (target `elem` ["rust","haskell","python","javascript","typescript","java","kotlin","go"] || all ((== Nothing) . Binding.resolvedCodec)
     (Binding.resolvedTypes (NB.bindingRepresentations bindings)))
     (Left [Diagnostic "native-binding" ("codec hook emission is not implemented for " ++ target) Nothing])
@@ -489,3 +490,16 @@ remoteCalls target plan = case target of
   "haskell" -> HaskellDefinitions.definitionCalls units
   _ -> []
   where units = map plannedUnit (plannedUnits plan)
+
+-- A Kotlin handle whose binding names its type arguments gets its native
+-- type on its declaration, so generated Kotlin names it in full everywhere
+-- (adapters, actors, sessions) instead of Any. Java keeps Object, which its
+-- native calls already cast.
+nativeHandles :: NB.BindingPlan -> Plan -> Plan
+nativeHandles bindings plan = plan { planDataDeclarations = map typed (planDataDeclarations plan) }
+  where
+    typed d = case [b | b <- Binding.resolvedTypes (NB.bindingRepresentations bindings), C.dataId (Binding.resolvedDeclaration b) == C.dataId d] of
+      b : _ | C.dataHandle d, Just arguments <- Binding.resolvedArguments b ->
+        d { C.dataNative = Just (intercalate "." (Binding.referenceParts (Binding.resolvedNativeType b)) ++
+              (if null arguments then "" else "<" ++ intercalate ", " arguments ++ ">")) }
+      _ -> d

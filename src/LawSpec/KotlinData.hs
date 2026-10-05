@@ -52,12 +52,13 @@ applied name args = D.group (D.text (name ++ "<") <>
   D.nest 4 (D.softbreak <> D.commaSep args) <> D.text ">")
 
 -- The identities of handle declarations: their values are adapters' native
--- objects, a kotlin.Any in generated code (a bound native class may be
--- generic, which Kotlin cannot name raw; the native call casts it).
-handlesOf :: [C.DataDeclaration] -> [String]
-handlesOf declarations = [C.idText (C.dataId d) | d <- declarations, C.dataHandle d]
+-- objects, a kotlin.Any in generated code unless the handle's binding names
+-- its native type in full (a bound class may be generic, which Kotlin cannot
+-- name raw; the native call casts it).
+handlesOf :: [C.DataDeclaration] -> [(String, Maybe String)]
+handlesOf declarations = [(C.idText (C.dataId d), C.dataNative d) | d <- declarations, C.dataHandle d]
 
-typeDoc :: [String] -> Names -> [(C.Id, String)] -> C.Type -> Either String D.Doc
+typeDoc :: [(String, Maybe String)] -> Names -> [(C.Id, String)] -> C.Type -> Either String D.Doc
 typeDoc handles = typeDocWithNative handles []
 
 kotlinNativeTypeDoc :: [C.DataDeclaration] -> [ResolvedTypeBinding] -> [(C.Id,String)] -> C.Type -> Either String D.Doc
@@ -65,9 +66,9 @@ kotlinNativeTypeDoc declarations mappings parameters ty = do
   names <- namesFor declarations
   typeDocWithNative (handlesOf declarations) mappings names parameters ty
 
-typeDocWithNative :: [String] -> [ResolvedTypeBinding] -> Names -> [(C.Id,String)] -> C.Type -> Either String D.Doc
+typeDocWithNative :: [(String, Maybe String)] -> [ResolvedTypeBinding] -> Names -> [(C.Id,String)] -> C.Type -> Either String D.Doc
 typeDocWithNative handles mappings names parameters ty = case ty of
-  C.Constructor name [] | name `elem` handles -> pure (D.text "kotlin.Any")
+  C.Constructor name [] | Just native <- lookup name handles -> pure (D.text (maybe "kotlin.Any" id native))
   C.TypeVariable variable -> maybe (Left "unbound Kotlin data parameter")
     (Right . D.text) (lookup variable parameters)
   -- A Duration is a kotlin.time.Duration (LawSpecKotlinCodecs' duration).
@@ -348,12 +349,14 @@ emitCodecs mappings owner layout declarations = do
       name <- maybe (Left "unplanned Kotlin codec") Right (lookup (C.dataId declaration) names)
       pure (D.group (D.text "fun " <> call (codecName name)
           [D.text "schema: LawSpecSchema", D.text "bits: Int", D.text "symbols: MutableMap<String, Any> = mutableMapOf()"] <>
-          D.text ": Codec<kotlin.Any>") <> D.text " " <> D.block 4
+          D.text (": Codec<" ++ handleType ++ ">")) <> D.text " " <> D.block 4
         (D.text "val type = " <> call "LawSpecSchema.Named" [quoted (C.idText (C.dataId declaration))] <> D.hardline <>
-         D.text "return schema.codec<kotlin.Any>(" <> D.nest 4 (D.hardline <> D.joinWith (D.text "," <> D.hardline)
+         D.text ("return schema.codec<" ++ handleType ++ ">(") <> D.nest 4 (D.hardline <> D.joinWith (D.text "," <> D.hardline)
            [D.text "type", D.text "bits", D.text "symbols",
             D.text "{ value -> LawSpecRuntime.handle(LawSpecSchema.key(type), value) }",
-            D.text "{ value -> LawSpecRuntime.handleTarget(value) }"] <> D.text ",") <> D.hardline <> D.text ")"))
+            D.text ("{ value -> LawSpecRuntime.handleTarget(value)" ++ (if handleType == "kotlin.Any" then "" else " as " ++ handleType) ++ " }")] <>
+            D.text ",") <> D.hardline <> D.text ")"))
+      where handleType = maybe "kotlin.Any" id (C.dataNative declaration)
     definition names declaration = do
       name <- maybe (Left "unplanned Kotlin codec") Right (lookup (C.dataId declaration) names)
       let parameters = zip (C.dataParameters declaration)

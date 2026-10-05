@@ -18,11 +18,12 @@ protocol Hire is
   send Serve
 end
 
--- Adds through a server process.
-add :: Int32 -> Int32 -> Integer
+-- Adds through a server process. Processes that talk over channels wait for
+-- each other, so these adapters are asynchronous.
+async add :: Int32 -> Int32 -> Integer
 
 -- Adds through a worker that is handed the server's end over a Hire channel.
-addHired :: Int32 -> Int32 -> Integer
+async addHired :: Int32 -> Int32 -> Integer
 
 law `a server adds` is
   definition is

@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- A handle's Kotlin type binding can give the native class's type
+  `arguments` (`["kotlin.Int"]`), so generated Kotlin names the handle's type
+  in full instead of `kotlin.Any`.
+- A Haskell method binding on a handle with no type binding names the handle
+  and the `lawspec.json` entry to add.
+
 ## 0.19.0
 
 ### Stateful models

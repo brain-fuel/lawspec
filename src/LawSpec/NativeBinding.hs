@@ -31,6 +31,10 @@ data CodecBinding = CodecBinding
 data TypeBinding = TypeBinding
   { boundType :: C.Id, nativeType :: NativeRef
   , boundConstructors :: [ConstructorBinding], boundCodec :: Maybe CodecBinding
+  -- A handle's native type arguments, written for Kotlin ("kotlin.Int",
+  -- "*"): with them, Kotlin names the handle's type in full; [] says the
+  -- class is not generic; absent, the type stays kotlin.Any.
+  , boundArguments :: Maybe [String]
   } deriving (Eq, Show)
 data GeneratorBinding = GeneratorBinding
   { generatorType :: C.Id, generatorFactory :: NativeRef, generatorStub :: Bool } deriving (Eq, Show)
@@ -47,6 +51,7 @@ data ResolvedBindings = ResolvedBindings
 data ResolvedTypeBinding = ResolvedTypeBinding
   { resolvedDeclaration :: C.DataDeclaration, resolvedNativeType :: NativeRef
   , resolvedConstructors :: [ResolvedConstructorBinding], resolvedCodec :: Maybe CodecBinding
+  , resolvedArguments :: Maybe [String]
   } deriving (Eq, Show)
 data ResolvedConstructorBinding = ResolvedConstructorBinding
   { resolvedConstructor :: C.DataConstructor
@@ -97,7 +102,10 @@ resolveBindings declarations Bindings{..} = do
               (find ((== C.constructorName constructor) . boundConstructor) boundConstructors)
             resolveConstructor (length constructors) constructor binding
           pure mappings
-      pure (ResolvedTypeBinding value nativeType mappings boundCodec)
+      when (boundArguments /= Nothing && not (C.dataHandle value))
+        (Left "arguments name a handle's native type arguments; this type is not a handle")
+      when (any null (maybe [] id boundArguments)) (Left "a native type argument is empty")
+      pure (ResolvedTypeBinding value nativeType mappings boundCodec boundArguments)
     resolveConstructor count constructor ConstructorBinding{..} = contextual boundConstructor $ do
       reference nativeConstructor
       let fields = C.constructorFields constructor

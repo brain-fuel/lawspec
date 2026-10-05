@@ -133,9 +133,9 @@ declarations = joinWith (softbreak <> softbreak)
       (fields [("constructor", "string"), ("native", "NativeReference"), ("fields?", "NativeFieldBinding[]")] ++
        [("style", union (map quoted ["record", "variant", "unit"]))])
   , interface "NativeCodecBinding" (fields [("toNative", "NativeReference"), ("fromNative", "NativeReference")])
-  , interface "NativeTypeBinding" (fields [("type", "string"), ("native", "NativeReference"), ("constructors?", "NativeConstructorBinding[]"), ("codec?", "NativeCodecBinding")])
+  , interface "NativeTypeBinding" (fields [("type", "string"), ("native", "NativeReference"), ("constructors?", "NativeConstructorBinding[]"), ("codec?", "NativeCodecBinding"), ("arguments?", "string[]")])
   , interface "NativeGeneratorBinding" (fields [("type", "string"), ("factory", "NativeReference"), ("stub?", "boolean")])
-  , interface "NativeFunctionBinding" (fields [("declaration", "string"), ("native", "NativeReference")])
+  , interface "NativeFunctionBinding" (fields [("declaration", "string"), ("native?", "NativeReference"), ("method?", "string"), ("constructor?", "NativeReference")])
   , interface "NativeGoImport" (fields [("alias", "string"), ("path", "string")])
   , interface "NativeBindings" (fields [("types?", "NativeTypeBinding[]"), ("generators?", "NativeGeneratorBinding[]"),
       ("functions?", "NativeFunctionBinding[]"), ("rustCrate?", "string"), ("goImports?", "NativeGoImport[]")])

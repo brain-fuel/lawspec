@@ -125,8 +125,8 @@ instance FromJSON CodecBinding where
   parseJSON = strict "native codec" ["toNative","fromNative"] $ \o ->
     CodecBinding <$> o .: "toNative" <*> o .: "fromNative"
 instance FromJSON TypeBinding where
-  parseJSON = strict "native type" ["type","native","constructors","codec"] $ \o ->
-    TypeBinding <$> (C.Id <$> o .: "type") <*> o .: "native" <*> o .:? "constructors" .!= [] <*> o .:? "codec"
+  parseJSON = strict "native type" ["type","native","constructors","codec","arguments"] $ \o ->
+    TypeBinding <$> (C.Id <$> o .: "type") <*> o .: "native" <*> o .:? "constructors" .!= [] <*> o .:? "codec" <*> o .:? "arguments"
 instance FromJSON GeneratorBinding where
   parseJSON = strict "native generator" ["type","factory","stub"] $ \o ->
     GeneratorBinding <$> (C.Id <$> o .: "type") <*> o .: "factory" <*> o .:? "stub" .!= False
