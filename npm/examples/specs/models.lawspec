@@ -1,0 +1,121 @@
+unit example.models
+
+-- A stateful model pairs a system's commands with reference definitions over
+-- a simpler model state. LawSpec generates runs of commands, runs them
+-- against the adapters, and checks each result and state against the model.
+
+-- A linear model: the stack's size is in its type, so a run never pops an
+-- empty stack.
+type Stack (n :: Natural) is
+  | Empty where n = 0
+  | Push top :: Int8 rest :: Stack m where n = m + 1
+end
+
+empty :: Unit -> Stack 0
+push :: (x :: Int8) -> Stack n / Stack (n + 1) -> Unit
+pop :: Stack (n + 1) / Stack n -> Int8
+peek :: Stack (n + 1) / Stack (n + 1) -> Int8
+
+definition modelPush (x :: Int8) (xs :: List Int8) :: List Int8 is Cons x xs end
+
+definition modelPop (xs :: List Int8) :: Pair Int8 (List Int8) is
+  match xs with
+  | Nil -> Pair 0 Nil
+  | Cons x rest -> Pair x rest
+  end
+end
+
+definition modelPeek (xs :: List Int8) :: Pair Int8 (List Int8) is
+  match xs with
+  | Nil -> Pair 0 Nil
+  | Cons x rest -> Pair x xs
+  end
+end
+
+definition toList (s :: Stack n) :: List Int8 is
+  match s with
+  | Empty -> Nil
+  | Push top rest -> Cons top (toList rest)
+  end
+end
+
+model stack :: Stack n by List Int8 is
+  start empty by Nil
+  push by modelPush
+  pop by modelPop
+  peek by modelPeek
+  abstract toList
+end
+
+-- A shared model: commands take one counter, whose type never changes, and
+-- may run at the same time, so each must be atomic. LawSpec also runs them
+-- in parallel and checks that every history is linearizable.
+type Counter is Counter id :: Int32 end
+
+newCounter :: Unit -> Counter
+async increment :: Counter -> Int64
+async decrement :: Counter -> Int64
+async read :: Counter -> Int64
+
+definition modelIncrement (n :: Int64 where n >= 0 && n <= 1000000) :: Pair Int64 Int64 is Pair (n + 1) (n + 1) end
+definition modelDecrement (n :: Int64 where n >= 0 && n <= 1000000) :: Pair Int64 Int64 is Pair (n - 1) (n - 1) end
+definition modelRead (n :: Int64) :: Pair Int64 Int64 is Pair n n end
+definition positive (n :: Int64) :: Bool is n > 0 end
+
+model counter :: shared Counter by Int64 is
+  start newCounter ~ 0
+  increment ~ modelIncrement
+  decrement ~ modelDecrement when positive
+  read ~ modelRead
+end
+
+-- A protocol lists what one end of a channel sends and receives; the other
+-- end does the reverse. Scenarios run a shared model's commands from
+-- processes that run at the same time and talk over channels; LawSpec checks
+-- that they cannot deadlock or race, then runs them on many schedules, and
+-- each run must agree with the model.
+protocol Report is
+  send Int64
+end
+
+protocol Request is
+  send Report
+end
+
+scenario `a count is passed on` in counter is
+  channel report :: Report
+  par
+    n <- increment
+    send report n
+  with
+    receive report m
+    expect m = 1
+  end
+end
+
+-- The asker hands its end of the answer channel to a worker, which replies
+-- to the listener directly.
+scenario `a reply is delegated` in counter is
+  channel ask :: Request
+  channel answer :: Report
+  par
+    send ask answer
+  with
+    receive ask reply
+    n <- increment
+    send reply n
+  with
+    receive answer m
+    expect m = 1
+  end
+end
+
+scenario `two counts at once` in counter is
+  par
+    a <- increment
+  with
+    b <- increment
+  end
+  total <- read
+  expect total = 2
+end

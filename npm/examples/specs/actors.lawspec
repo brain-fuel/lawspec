@@ -1,0 +1,100 @@
+unit example.actors
+
+-- An actor owns a state and handles one message at a time, in the order
+-- they arrive. Its handlers are plain functions from the state (and the
+-- message's arguments) to a reply and the next state; LawSpec runs them
+-- inside an actor and checks every reply against the model, in sequence and
+-- from several callers at once. Runs also crash the actor between
+-- messages: it restarts from its last state by reopen, and the model's state
+-- follows modelReopen.
+type Account is Account balance :: Int64 end
+
+openAccount :: Unit -> Account
+deposit :: Account -> UInt8 -> Pair Int64 Account
+withdrawAll :: Account -> Pair Int64 Account
+balance :: Account -> Pair Int64 Account
+close :: Account -> Account
+-- After a crash, the account reopens with the balance it had.
+reopen :: Account -> Account
+
+definition modelDeposit (amount :: UInt8) (n :: Int64 where n >= 0 && n <= 1000000) :: Pair Int64 Int64 is
+  Pair (n + amount) (n + amount)
+end
+
+definition modelWithdrawAll (n :: Int64) :: Pair Int64 Int64 is Pair n 0 end
+
+definition modelBalance (n :: Int64) :: Pair Int64 Int64 is Pair n n end
+definition modelClose (n :: Int64) :: Int64 is 0 end
+definition modelReopen (n :: Int64) :: Int64 is n end
+definition solvent (n :: Int64) :: Bool is n >= 0 end
+
+actor account :: Account by Int64 is
+  start openAccount by 0
+  restart from reopen by modelReopen
+  on deposit by modelDeposit
+  on withdrawAll by modelWithdrawAll
+  on balance by modelBalance
+  on close by modelClose
+  invariant solvent
+end
+
+-- Implementation code uses the generated typed actor: depositTwice starts an
+-- account and deposits from two callers at once.
+depositTwice :: UInt8 -> Int64
+
+law `two callers' deposits both land` is
+  definition is `for all` (x :: UInt8) . depositTwice x = 2 * x end
+end
+
+-- A supervisor starts its actors and restarts them after a crash: one for
+-- one restarts only the actor that crashed. The account restarts from its
+-- last balance (restart from reopen).
+supervisor bank is
+  one for one
+  at most 3 restarts in 5s
+  permanent account
+end
+
+-- survivesCrash starts the bank, deposits, crashes the account, and reads
+-- its balance through the same handle.
+survivesCrash :: UInt8 -> Int64
+
+law `a crashed account keeps its balance` is
+  definition is `for all` (x :: UInt8) . survivesCrash x = x end
+end
+
+-- A scenario runs the actor's messages from processes that talk over
+-- channels. Some runs crash one process at a random point: a receive from a
+-- process that failed runs its or else instead of waiting forever.
+protocol Receipt is
+  send Int64
+end
+
+scenario `a deposit's receipt, or the balance if the teller fails` in account is
+  channel receipt :: Receipt
+  par
+    n <- deposit 5
+    send receipt n
+  with
+    receive receipt m or else
+      balance
+    end
+    expect m = 5
+  end
+end
+
+-- A mailbox has many senders and one receiver: two tellers report their
+-- deposits to one auditor, who receives both reports.
+scenario `two tellers report to one auditor` in account is
+  mailbox reports of Int64
+  par
+    n <- deposit 3
+    send reports n
+  with
+    m <- deposit 4
+    send reports m
+  with
+    receive reports first
+    receive reports second
+  end
+end

@@ -1,0 +1,48 @@
+unit example.concurrent
+
+-- Concurrent collections checked against the built-in ones they behave
+-- like. Each adapter uses its target's own concurrent structures; LawSpec
+-- runs the commands in sequence and at the same time, and every history
+-- must be linearizable. Sets and maps are checked key by key.
+
+type WorkQueue is WorkQueue id :: Int32 end
+
+newQueue :: Unit -> WorkQueue
+async offer :: WorkQueue -> Int32 -> Unit
+async poll :: WorkQueue -> Maybe Int32
+async queueSize :: WorkQueue -> Int64
+
+model queue :: shared WorkQueue behaves like Queue Int32 is
+  start newQueue
+  offer as offer
+  poll as poll
+  queueSize as size
+end
+
+type Tags is Tags id :: Int32 end
+
+newTags :: Unit -> Tags
+async tag :: Tags -> Int32 -> Bool
+async untag :: Tags -> Int32 -> Bool
+async tagged :: Tags -> Int32 -> Bool
+
+model tags :: shared Tags behaves like Set Int32 is
+  start newTags
+  tag as add
+  untag as remove
+  tagged as contains
+end
+
+type Cache is Cache id :: Int32 end
+
+newCache :: Unit -> Cache
+async store :: Cache -> Int8 -> Int64 -> Maybe Int64
+async fetch :: Cache -> Int8 -> Maybe Int64
+async evict :: Cache -> Int8 -> Maybe Int64
+
+model cache :: shared Cache behaves like KeyVal Int8 Int64 is
+  start newCache
+  store as put
+  fetch as get
+  evict as remove
+end

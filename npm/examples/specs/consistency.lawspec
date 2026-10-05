@@ -1,0 +1,21 @@
+unit example.consistency
+
+-- Weaker consistency for replicated state. A page-view counter keeps one
+-- replica per caller: a hit counts on the caller's replica and returns what
+-- that replica has seen, so callers see stale totals, and the total is the
+-- sum of the replicas. Its histories are not linearizable, but once every
+-- hit is done the total must count them all: it is eventually consistent.
+type Views is Views id :: Int32 end
+
+newViews :: Unit -> Views
+hit :: Views -> Int64
+total :: Views -> Int64
+
+definition modelHit (n :: Int64 where n >= 0 && n <= 1000000) :: Pair Int64 Int64 is Pair (n + 1) (n + 1) end
+
+model views :: shared Views by Int64 is
+  consistency eventual
+  start newViews ~ 0
+  hit ~ modelHit
+  abstract total
+end
