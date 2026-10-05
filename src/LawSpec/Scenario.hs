@@ -13,12 +13,19 @@
 --
 -- A channel end only travels over a channel, which joins the sender and the
 -- receiver, so delegation keeps the processes a tree.
+--
+-- A tree is the simple case. Channels may also close a cycle between
+-- processes, when no process can wait for another in a cycle: sends never
+-- wait, and a scenario is a straight line of acts, so its waits form a graph
+-- of acts that can be checked exactly (waitsInOrder).
 module LawSpec.Scenario
   ( Step(..), Protocol(..), Statement(..), Scenario(..), Argument(..)
   , checkScenarios, dual, channelsIn, toProgram
   ) where
 
 import Control.Monad (foldM, forM, forM_, unless, when)
+import Control.Monad.State.Strict (State, gets, modify', runState)
+import Data.Maybe (mapMaybe)
 import Data.List (nub, nubBy)
 import qualified Data.Map.Strict as M
 import LawSpec.Common (Span(..))
@@ -60,18 +67,20 @@ dual = map flipped
     flipped (Receive t) = Send t
 
 -- Checks every scenario against the unit's protocols, models and signatures.
-checkScenarios :: [Protocol] -> [Scenario] -> Unit -> Either Failure ()
+-- For each scenario, whether its channels close a cycle (accepted because
+-- no process can wait for another in a cycle) rather than form a tree.
+checkScenarios :: [Protocol] -> [Scenario] -> Unit -> Either Failure [Bool]
 checkScenarios protocols scenarios u = do
   let names = map protocolName protocols
   forM_ protocols $ \p -> when (length (filter (== protocolName p) names) > 1)
     (Left (Just (protocolSpan p), "protocol " ++ protocolName p ++ " is declared twice"))
-  mapM_ (checkScenario protocols u) scenarios
+  mapM (checkScenario protocols u) scenarios
 
 -- What a process holds: its variables' types and, for each channel end it
 -- holds, the steps left.
 data Holding = Holding { values :: M.Map String Type, ends :: M.Map String [Step] }
 
-checkScenario :: [Protocol] -> Unit -> Scenario -> Either Failure ()
+checkScenario :: [Protocol] -> Unit -> Scenario -> Either Failure Bool
 checkScenario protocols u s = do
   machine <- maybe (failing (scenarioSpan s) ("there is no model " ++ scenarioModel s)) pure
     (lookup (scenarioModel s) [(machineName m, m) | m <- machines u])
@@ -88,9 +97,18 @@ checkScenario protocols u s = do
     when (length [() | (d, _, _) <- scenarioMailboxes s, d == m] > 1) (failing at ("mailbox " ++ m ++ " is declared twice"))
     when (m `elem` [c | (c, _, _) <- channels]) (failing at (m ++ " is declared as both a channel and a mailbox"))
   edges <- concat <$> mapM (mailboxEdges (located (scenarioBody s))) (scenarioMailboxes s)
-  forest ([("channel " ++ c, at, a, b) | (c, at, a, b) <- joins] ++ edges)
   _ <- run machine [(c, steps) | (c, steps, _) <- channels] (Holding M.empty M.empty) (scenarioBody s)
-  pure ()
+  -- A cycle is accepted when no process waits for another in a cycle. That
+  -- is checked exactly only for channels: a mailbox's receiver may take its
+  -- messages in any order, and an or else runs only when a process fails,
+  -- so a scenario with either keeps the tree rule (conservatively).
+  let handlers = not (null [() | (_, _, ReceiveFrom _ _ (Just _) _) <- located (scenarioBody s)])
+  case forest ([("channel " ++ c, at, a, b) | (c, at, a, b) <- joins] ++ edges) of
+    Right () -> pure False
+    Left failure
+      | null (scenarioMailboxes s) && not handlers ->
+          either (failing (scenarioSpan s)) (const (pure True)) (waitsInOrder [c | (c, _, _) <- channels] (scenarioBody s))
+      | otherwise -> Left failure
   where
     failing :: Span -> String -> Either Failure a
     failing at message = Left (Just at, "scenario " ++ show (scenarioName s) ++ ": " ++ message)
@@ -146,7 +164,7 @@ checkScenario protocols u s = do
         add parents (c, at, a, b) = do
           let (ra, rb) = (root parents a, root parents b)
           when (ra == rb) (failing at (c ++ " closes a cycle between processes, which could deadlock; " ++
-            "LawSpec accepts only tree-shaped connections for now: reply on a channel that came with the request"))
+            "with a mailbox or an or else, LawSpec accepts only tree-shaped connections: reply on a channel that came with the request"))
           pure (M.insert ra rb parents)
 
     -- Runs one process's statements over what it holds.
@@ -274,9 +292,9 @@ channelsIn = nub . concatMap go
 
 -- A checked scenario as its runtime program, with constants resolved:
 -- constructor names become tags qualified by their data type.
-toProgram :: Unit -> Scenario -> Either Failure P.Program
-toProgram u s = (\acts -> P.Program (scenarioName s) (scenarioModel s) [c | (c, _, _) <- scenarioChannels s] acts
-    [p | (_, p, _) <- scenarioChannels s] "" [(m, prettyType t) | (m, t, _) <- scenarioMailboxes s]) <$> mapM act (scenarioBody s)
+toProgram :: Unit -> Bool -> Scenario -> Either Failure P.Program
+toProgram u cyclic s = (\acts -> P.Program (scenarioName s) (scenarioModel s) [c | (c, _, _) <- scenarioChannels s] acts
+    [p | (_, p, _) <- scenarioChannels s] "" [(m, prettyType t) | (m, t, _) <- scenarioMailboxes s] cyclic) <$> mapM act (scenarioBody s)
   where
     act st = case st of
       Bind x command args at -> P.Invoke command (Just x) <$> mapM (operand at) args
@@ -339,3 +357,146 @@ statementSpan st = case st of
   ReceiveFrom _ _ _ at -> at
   Par _ at -> at
   Expect _ _ at -> at
+
+-- The exact deadlock check. Every act of the scenario is a node; an edge
+-- from a to b says b cannot happen before a:
+--
+--   * acts of one process follow each other;
+--   * a par's branches start after the acts before it, and the acts after
+--     it wait for every branch;
+--   * the k-th receive on a channel's side waits for the k-th send to it.
+--
+-- Sends never wait, so the processes can only be stuck forever when these
+-- waits form a cycle. An end received under a new name is the same channel
+-- and side as the one sent, so delegated ends are followed to their
+-- channel. The protocol checks already make every receive's send exist.
+data Ref = Fixed String Int | Received Int
+  deriving (Eq, Show)
+
+data Kind = KSend Ref (Maybe Ref) | KReceive Ref | KOther
+  deriving (Show)
+
+data Walk = Walk
+  { nextEvent :: Int, nextProcess :: Int
+  , walkEvents :: M.Map Int (Int, Kind), walkEdges :: [(Int, Int)] }
+
+waitsInOrder :: [String] -> [Statement] -> Either String ()
+waitsInOrder declared body = case findCycle edges of
+  Nothing -> Right ()
+  Just cycle' -> Left (describe cycle')
+  where
+    (_, walk) = runState (process 0 M.empty body) (Walk 0 1 M.empty [])
+    events = walkEvents walk
+    eventOf e = M.lookup e events
+    sendsOn key = [e | (e, (_, KSend r _)) <- M.toList events, resolve 0 r == Just key]
+    receivesOn key = [e | (e, (_, KReceive r)) <- M.toList events, resolve 0 r == Just key]
+    -- A channel side named by a reference, following delegated ends.
+    resolve :: Int -> Ref -> Maybe (String, Int)
+    resolve _ (Fixed c side) = Just (c, side)
+    resolve depth (Received e)
+      | depth > 64 = Nothing
+      | otherwise = do
+          (_, kind) <- eventOf e
+          channel <- case kind of
+            KReceive r -> resolve (depth + 1) r
+            _ -> Nothing
+          let (c, side) = channel
+              mine = [x | (x, (_, KReceive r)) <- M.toList events, resolve (depth + 1) r == Just channel]
+          k <- lookup e (zip mine [0 :: Int ..])
+          case drop k [x | (x, (_, KSend r _)) <- M.toList events, resolve (depth + 1) r == Just (c, 1 - side)] of
+            sent : _ -> case eventOf sent of
+              Just (_, KSend _ (Just payload)) -> resolve (depth + 1) payload
+              _ -> Nothing
+            [] -> Nothing
+    sides = nubOrd (mapMaybe (\(_, (_, kind)) -> case kind of KSend r _ -> resolve 0 r; _ -> Nothing) (M.toList events))
+    communication = concat [zip (sendsOn (c, side)) (receivesOn (c, 1 - side)) | (c, side) <- sides]
+    edges = walkEdges walk ++ communication
+    nubOrd = foldr (\x acc -> if x `elem` acc then acc else x : acc) []
+
+    -- Walks one process's statements; the first and last act's events.
+    process :: Int -> M.Map String Ref -> [Statement] -> State Walk (Maybe Int, Maybe Int)
+    process me env sts = do
+      (_, first, lastE) <- foldM (\(e, f, l) st -> do
+          (e', f', l') <- statement me e st
+          case (l, f') of
+            (Just a, Just b) -> link a b
+            _ -> pure ()
+          pure (e', maybe f' Just f, maybe l Just l')) (env, Nothing, Nothing) sts
+      pure (first, lastE)
+    statement :: Int -> M.Map String Ref -> Statement -> State Walk (M.Map String Ref, Maybe Int, Maybe Int)
+    statement me env st = case st of
+      SendTo c value _ | Just r <- M.lookup c env -> do
+        let payload = case value of
+              Held x -> M.lookup x env
+              Given x -> M.lookup x env
+              Constant _ -> Nothing
+        e <- event me (KSend r payload)
+        pure (env, Just e, Just e)
+      ReceiveFrom c x _ _ | Just r <- M.lookup c env -> do
+        e <- event me (KReceive r)
+        pure (M.insert x (Received e) env, Just e, Just e)
+      Par branches _ -> do
+        fork <- event me KOther
+        join <- event me KOther
+        let firstUser c = head ([n | (n, b) <- zip [0 :: Int ..] branches, c `elem` channelsIn b] ++ [0])
+        forM_ (zip [0 ..] branches) $ \(n, branch) -> do
+          child <- gets nextProcess
+          modify' (\w -> w { nextProcess = child + 1 })
+          let assigned = M.fromList [(c, Fixed c (if firstUser c == n then 0 else 1))
+                                    | c <- declared, c `elem` channelsIn branch, not (M.member c env)]
+          (f, l) <- process child (M.union env assigned) branch
+          maybe (link fork join) (\x -> link fork x) f
+          maybe (pure ()) (\x -> link x join) l
+        pure (env, Just fork, Just join)
+      _ -> do
+        e <- event me KOther
+        pure (env, Just e, Just e)
+    event :: Int -> Kind -> State Walk Int
+    event me kind = do
+      e <- gets nextEvent
+      modify' (\w -> w { nextEvent = e + 1, walkEvents = M.insert e (me, kind) (walkEvents w) })
+      pure e
+    link :: Int -> Int -> State Walk ()
+    link a b = modify' (\w -> w { walkEdges = (a, b) : walkEdges w })
+
+    -- A cycle of waits, in plain words: each process in it waits to receive
+    -- on one channel before it sends on another.
+    describe cycle' =
+      let waits = [ (p, channelOf r, channelOf s)
+                  | (r, s) <- segments cycle'
+                  , Just (p, _) <- [eventOf r] ]
+          channelOf e = case eventOf e of
+            Just (_, KReceive ref) -> maybe "a channel" fst (resolve 0 ref)
+            Just (_, KSend ref _) -> maybe "a channel" fst (resolve 0 ref)
+            _ -> "a channel"
+          name p = if p == 0 then "the scenario's own process" else "process " ++ show p
+          phrase (p, r, s) = name p ++ " waits to receive on " ++ r ++ " before it sends on " ++ s
+      in case waits of
+        [] -> "its processes wait for each other in a cycle, which deadlocks"
+        _ -> intercalate' ", and " (map phrase waits) ++ ", so none of them can go on: a deadlock"
+    -- Within the cycle, each process is entered by a receive (from another
+    -- process's send) and left by a send.
+    segments cycle' =
+      let ring = cycle' ++ take 1 cycle'
+          enters = [b | (a, b) <- zip ring (drop 1 ring), (a, b) `elem` communication]
+          leaves = [a | (a, b) <- zip ring (drop 1 ring), (a, b) `elem` communication]
+      in zip enters (drop 1 leaves ++ take 1 leaves)
+    intercalate' sep = foldr1 (\a b -> a ++ sep ++ b)
+
+-- A cycle in a directed graph, as its nodes in order.
+findCycle :: [(Int, Int)] -> Maybe [Int]
+findCycle edges = go (M.keys adjacency) M.empty
+  where
+    adjacency = M.fromListWith (++) ([(a, [b]) | (a, b) <- edges] ++ [(b, []) | (_, b) <- edges])
+    go [] _ = Nothing
+    go (n : rest) colours = case visit [] colours n of
+      Left found -> Just found
+      Right colours' -> go rest colours'
+    -- 1: on the current path, 2: done.
+    visit :: [Int] -> M.Map Int Int -> Int -> Either [Int] (M.Map Int Int)
+    visit path colours n = case M.lookup n colours of
+      Just 2 -> Right colours
+      Just _ -> Left (reverse (n : takeWhile (/= n) path))
+      Nothing -> do
+        colours' <- foldM (visit (n : path)) (M.insert n 1 colours) (M.findWithDefault [] n adjacency)
+        pure (M.insert n 2 colours')

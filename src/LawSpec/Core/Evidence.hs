@@ -86,7 +86,9 @@ programEvidence program =
          | machineActor machine ] ++
          concat
          [ [ Obligation owner scenario "deadlock-free" Nothing Proved
-               "its channels join the processes as a tree, and a tree of sessions cannot deadlock (checked when compiled)"
+               (if P.programCyclic program
+                  then "no process waits for another in a cycle (checked when compiled)"
+                  else "its channels join the processes as a tree, and a tree of sessions cannot deadlock (checked when compiled)")
            , Obligation owner scenario "race-free" Nothing Proved
                "every channel end has one owner and sending it gives it up; shared state is reached only through the model's commands (checked when compiled)"
            , Obligation owner scenario "scenario" Nothing PropertyTested

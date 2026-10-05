@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Scenarios may close cycles between processes: LawSpec accepts channels that
+  form a cycle when no process can wait for another in a cycle, and names the
+  waits when one could. Scenarios with mailboxes or `or else` keep the tree
+  rule.
+
 ## 0.19.1
 
 - A handle's Kotlin type binding can give the native class's type
