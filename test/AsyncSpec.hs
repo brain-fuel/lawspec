@@ -1,7 +1,7 @@
 module AsyncSpec (spec) where
 
 import Control.Monad (forM_)
-import Data.Either (isLeft)
+import Data.Either (isRight)
 import Data.List (isInfixOf)
 import Test.Hspec
 import qualified LawSpec.Core as C
@@ -44,11 +44,12 @@ spec = describe "async adapters" $ do
     let Right obligations = program orders >>= dischargeEvidence
     [obligationReason o | o <- obligations, obligationStage o == "adapter", "price" `isInfixOf` C.idText (obligationDeclaration o)]
       `shouldSatisfy` all ("asynchronous" `isInfixOf`)
-  it "cannot bind a native function yet" $ do
+  it "binds a native function returning the target's task" $ do
     let Right compiled = program orders
         request = emptyNativeRequest { requestFunctions =
-          [FunctionBinding (C.Id "example.orders::price") (StaticCall (NativeRef ["pricing", "price"]))] }
-    resolveNativeRequest compiled request `shouldSatisfy` isLeft
+          [FunctionBinding (C.Id "example.orders::price") (StaticCall (NativeRef ["pricing", "price"])),
+           FunctionBinding (C.Id "example.orders::quote") (StaticCall (NativeRef ["pricing", "quote"]))] }
+    resolveNativeRequest compiled request `shouldSatisfy` isRight
   describe "scaffolds each target's task" $
     forM_ [ ("python", "async def price"), ("javascript", "export async function price")
           , ("typescript", "export async function price"), ("java", "CompletableFuture<java.lang.Integer> price")

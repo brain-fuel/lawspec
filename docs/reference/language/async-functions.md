@@ -51,10 +51,12 @@ name elsewhere.
 - The evidence report gives an asynchronous adapter's obligations the stage
   `adapter`, with the reason "asynchronous adapter ...".
 
+An asynchronous adapter can also be bound to existing native code that
+returns the target's task; see
+[native bindings](../native-bindings.md#async-adapters).
+
 ## Limits
 
-- An asynchronous adapter cannot yet be bound to an existing native function
-  (`async adapter price cannot bind a native function yet`).
 - Calls in one clause are awaited one after another; they do not yet overlap.
 - Long-lived concurrent components (actors, processes and supervision) are a
   separate, later feature.

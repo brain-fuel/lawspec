@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- `lawspec.json` can bind an `async` adapter to native code returning the
+  target's task: a coroutine, `Promise`, `CompletableFuture`, `suspend fun`,
+  `LawSpecTask`, Rust future or `IO` action. The bridge stays asynchronous
+  and converts the result once the task completes.
+- A Rust unit with native bindings keeps its generated remote, session, actor
+  and mailbox code.
 - A match may leave out constructors that the value's index rules out: taking
   the head of a `Vec (n + 1) a` needs no `VNil` branch. The compiler proves
   each one impossible, and names a constructor the index allows.

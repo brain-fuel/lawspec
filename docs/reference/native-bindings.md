@@ -32,6 +32,27 @@ a schema-4 compiler request (`nativeBindings`). The fields are `types`,
   `ConcurrentLinkedQueue<kotlin.Int>`, instead of `kotlin.Any`. Other
   targets ignore it; Java keeps `Object`.
 
+## Async adapters
+
+An [async adapter](language/async-functions.md) may be bound like any other. Its
+native function or method returns the target's own task, and the bridge
+stays asynchronous: it converts the result once the task completes.
+
+| Target | The native returns | The bridge |
+| --- | --- | --- |
+| Python | a coroutine (`async def`) | `async def`, awaiting it |
+| JavaScript, TypeScript | a `Promise` | `async function`, awaiting it |
+| Java | a `CompletableFuture` of the boxed type | converts with `thenApply` |
+| Kotlin | from a `suspend fun` | a `suspend fun` |
+| Go | a `LawSpecTask[T]` | a `LawSpecTask`, awaiting it in a goroutine |
+| Rust | a future (`async fn`) | `async fn`, with `.await` |
+| Haskell | an `IO` action | `IO`, converting with `fmap` |
+
+A Unit result is `LawSpecRuntime.Value` in Java's future, and `LawSpecUnit` in
+Go's task. A constructor bound to an async adapter is called at once, and its
+bridge returns a task that is already done. On Kotlin, an async method binding
+needs its handle's type binding, since Kotlin calls the method itself.
+
 ## Validation
 
 `check` resolves bindings once, against the typed declarations, and rejects:

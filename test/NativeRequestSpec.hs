@@ -77,6 +77,25 @@ spec = describe "native binding requests" $ do
     case eitherDecode (dispatch (encode request)) of
       Left problem -> expectationFailure problem
       Right value -> codes value `shouldBe` []
+  -- Each target's async bridge awaits the native task, then converts its
+  -- result; the bindings are the asyncbindings acceptance suite's.
+  describe "bridges async adapters to native tasks" $
+    mapM_ (\(target,fragments) -> it target $ do
+      source <- readFile "examples/specs/async_bindings.lawspec"
+      bindings <- either error id . eitherDecode <$> BL.readFile ("acceptance/asyncbindings/" ++ target ++ "/bindings.json")
+      let request = object
+            [ "schemaVersion" .= (4 :: Int), "method" .= ("planGeneration" :: String)
+            , "target" .= (target :: String), "sources" .= [Source "warehouse" source]
+            , "nativeBindings" .= (bindings :: Value) ]
+      case eitherDecode (dispatch (encode request)) of
+        Left problem -> expectationFailure problem
+        Right value -> do
+          codes value `shouldBe` []
+          mapM_ (show value `shouldContain`) fragments)
+      [ ("python", ["async def priceOf(", "await "]), ("javascript", ["export async function priceOf(", "await "])
+      , ("typescript", ["Promise<number>", "await "]), ("java", [".thenApply(found ->", "CompletableFuture<java.lang.Long> count("])
+      , ("kotlin", ["suspend fun priceOf("]), ("go", ["LawSpecTask[int32]", ".Await()"])
+      , ("rust", [".await"]), ("haskell", ["P.IO I.Int32", "P.fmap"]) ]
   it "bridges Go handle methods and constructors, holding a bound handle by pointer" $ do
     source <- readFile "examples/specs/handles.lawspec"
     let call declaration key value = object ["declaration" .= ("example.handles::" ++ declaration :: String), key .= value]
