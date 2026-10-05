@@ -1,0 +1,7 @@
+@@ src/Example/Distribution.hs
+<<<<<<<
+    _ <- remoteTallyAdd remote n
+    remoteTallyAdd remote n) `finally` (LS.closeNode client >> LS.closeNode server)
+=======
+    remoteTallyAdd remote n) `finally` (LS.closeNode client >> LS.closeNode server)
+>>>>>>>

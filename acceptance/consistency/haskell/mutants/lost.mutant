@@ -1,0 +1,20 @@
+@@ src/Example/Consistency.hs
+<<<<<<<
+import Control.Concurrent (myThreadId)
+=======
+import Control.Concurrent (myThreadId, threadDelay)
+>>>>>>>
+<<<<<<<
+  me <- show <$> myThreadId
+  atomicModifyIORef' replicas $ \(next, all') ->
+    let own = Map.findWithDefault Map.empty identity all'
+        count = Map.findWithDefault 0 me own + 1
+    in ((next, Map.insert identity (Map.insert me count own) all'), count)
+=======
+  _ <- myThreadId
+  (_, before) <- readIORef replicas
+  let seen = sum (Map.elems (Map.findWithDefault Map.empty identity before))
+  threadDelay 1000
+  atomicModifyIORef' replicas $ \(next, all') ->
+    ((next, Map.insert identity (Map.singleton "shared" (seen + 1)) all'), seen + 1)
+>>>>>>>

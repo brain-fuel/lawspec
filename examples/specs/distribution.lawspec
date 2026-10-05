@@ -46,7 +46,7 @@ end
 -- A checked definition that another node evaluates by its content hash.
 definition shifted (x :: Int32) :: Int64 is x + 1000 end
 
-remoteShifted :: Int32 -> Int64
+async remoteShifted :: Int32 -> Int64
 
 law `a definition evaluated on another node` is
   definition is `for all` (x :: Int32) . remoteShifted x = shifted x end
@@ -67,7 +67,7 @@ actor tally :: Tally by Int64 is
   on add by modelAdd
 end
 
-remoteAdds :: UInt8 -> Int64
+async remoteAdds :: UInt8 -> Int64
 
 law `two calls from another node` is
   definition is `for all` (x :: UInt8) . remoteAdds x = 2 * x end
@@ -80,7 +80,7 @@ protocol Doubling is
   receive Int64
 end
 
-remoteDoubling :: Int32 -> Int64
+async remoteDoubling :: Int32 -> Int64
 
 law `a conversation between nodes` is
   definition is `for all` (x :: Int32) . remoteDoubling x = 2 * x end
