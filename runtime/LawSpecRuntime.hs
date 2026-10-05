@@ -4768,3 +4768,91 @@ endConversion unwrap wrap (steps, conversions) = (sending, receiving)
         side <- netChannelSide remote conversions
         toDyn . wrap <$> sessionEnd side
       _ -> throwIO (ErrorCall "a channel end's address is not text")
+
+-- Abilities (docs/explanation/abilities.md). Handlers travel with the symbol
+-- context that generated code passes to every definition: that context is
+-- the evidence of evidence-passing compilation. A law installs one handler
+-- per ability (a record of IO operations); a performed operation finds the
+-- handler of its ability with handlerOf and runs with performIO. The Fail
+-- ability's handlers abort, so raise throws a Failure and attempt catches it.
+
+-- | A handler installed for an ability, with its calls when it records them.
+data Installed = Installed String Dynamic (Maybe Calls)
+
+-- | The calls a recording handler has seen.
+newtype Calls = Calls (IORef [(String, [Scalar])])
+
+newCalls :: IO Calls
+newCalls = Calls <$> newIORef []
+
+recordCall :: Calls -> String -> [Scalar] -> IO ()
+recordCall (Calls ref) operation arguments = atomicModifyIORef' ref (\calls -> (calls ++ [(operation, arguments)], ()))
+
+-- | A handler clause's codec and evaluation errors, as IO errors.
+runClause :: Either String a -> IO a
+runClause = either (throwIO . ErrorCall) pure
+
+installed :: Typeable h => String -> h -> Installed
+installed key handler = Installed key (toDyn handler) Nothing
+
+installedRecording :: Typeable h => String -> (h, Calls) -> Installed
+installedRecording key (handler, calls) = Installed key (toDyn handler) (Just calls)
+
+{-# NOINLINE handlerTable #-}
+handlerTable :: IORef [(Unique, [Installed])]
+handlerTable = unsafePerformIO (newIORef [])
+
+installHandlers :: SymbolContext -> [Installed] -> IO ()
+installHandlers (SymbolContext unique) handlers = atomicModifyIORef' handlerTable
+  (\table -> ((unique, handlers ++ maybe [] id (lookup unique table)) : filter ((/= unique) . fst) table, ()))
+
+installedFor :: SymbolContext -> String -> Installed
+installedFor (SymbolContext unique) key = unsafePerformIO $ do
+  table <- readIORef handlerTable
+  case [i | Just handlers <- [lookup unique table], i@(Installed k _ _) <- handlers, k == key] of
+    i : _ -> pure i
+    [] -> throwIO (ErrorCall ("no handler for the ability " ++ key ++ ": a law names one with `using`, or runs under each lawful handler"))
+{-# NOINLINE installedFor #-}
+
+-- | The handler installed for an ability, at the type its operation needs.
+handlerOf :: forall h. Typeable h => SymbolContext -> String -> h
+handlerOf symbols key = case installedFor symbols key of
+  Installed _ value _ -> maybe (error ("the handler for " ++ key ++ " is a " ++ show (dynTypeRep value) ++ ", not a " ++ show (typeRep (Proxy :: Proxy h)))) id (fromDynamic value)
+
+-- | An operation's result, where generated code needs a value.
+performIO :: IO a -> a
+performIO = unsafePerformIO
+{-# NOINLINE performIO #-}
+
+-- | A failure raised with the Fail ability.
+data Failure = Failure String Scalar deriving Show
+instance Exception Failure
+
+raiseFailure :: String -> Scalar -> a
+raiseFailure ability value = throw' (Failure ability value)
+  where throw' failure = unsafePerformIO (throwIO failure)
+
+-- | Right of the body, or Left of the failure it raised with this ability.
+attempt :: String -> Scalar -> (Scalar -> Scalar) -> (Scalar -> Scalar) -> Scalar
+attempt ability body right left = unsafePerformIO $ do
+  outcome <- try (evaluate (forceScalar body `seq` body))
+  case outcome of
+    Right value -> pure (right value)
+    Left failure@(Failure raised value)
+      | raised == ability -> pure (left value)
+      | otherwise -> throwIO failure
+{-# NOINLINE attempt #-}
+
+-- | How many times a recording handler saw an operation (with arguments).
+countCalls :: SymbolContext -> String -> String -> Maybe ([Scalar] -> Bool) -> Scalar
+countCalls symbols key operation matches = unsafePerformIO $ case installedFor symbols key of
+  Installed _ _ (Just (Calls ref)) -> do
+    calls <- readIORef ref
+    pure (SInteger "Int64" (fromIntegral (length [() | (name, arguments) <- calls, name == operation, maybe True ($ arguments) matches])))
+  _ -> throwIO (ErrorCall "calls of needs a recording handler: `using recording`")
+{-# NOINLINE countCalls #-}
+
+-- | A Pair's two fields: a stateful handler clause's result and next state.
+pairFields :: Scalar -> (Scalar, Scalar)
+pairFields (SData _ [result, next]) = (result, next)
+pairFields _ = error "a handler clause must give Pair result state"

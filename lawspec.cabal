@@ -186,6 +186,7 @@ library
       LawSpec.Abilities
       LawSpec.AbilityEmit
       LawSpec.AbilityEmit.Go
+      LawSpec.AbilityEmit.Haskell
       LawSpec.AbilityEmit.Java
       LawSpec.AbilityEmit.Kotlin
       LawSpec.AbilityEmit.Python

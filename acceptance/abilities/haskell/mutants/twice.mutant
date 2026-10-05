@@ -1,0 +1,8 @@
+expect: charge captures once
+@@ src/Example/Abilities.hs
+<<<<<<<
+      receipt <- Abilities.capture gateway cents
+=======
+      _ <- Abilities.capture gateway cents
+      receipt <- Abilities.capture gateway cents
+>>>>>>>

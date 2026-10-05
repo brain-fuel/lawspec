@@ -104,6 +104,10 @@ renderExpressionWithContext declarations width schema scope reference key local 
         ref <- reference (expressionType term)
         pure (checked (apply "Schema.constructWith" [scope,D.text schema,ref,width,quoted (idText tag),array values]))
       ExternalCall _ args -> mapM render args >>= external term
+      -- Ability nodes go to the caller, which knows where handlers are.
+      Perform _ args -> mapM render args >>= external term
+      Handle _ body -> render body >>= external term . pure
+      Calls _ args -> mapM render (maybe [] id args) >>= external term
       Convert mode target value -> do
         argument <- render value
         case mode of
