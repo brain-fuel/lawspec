@@ -4275,6 +4275,11 @@ export class Node {
     const [node, name] = splitAddress(address);
     await this.transport.send(node, frameEncode(kind, name, this.address, ident, payload));
   }
+  /** Passes a frame on to address unchanged, keeping its source. */
+  forward(address, kind, source, ident, payload) {
+    const [node, name] = splitAddress(address);
+    this.quietly(this.transport.send(node, frameEncode(kind, name, source, ident, payload)));
+  }
   quietly(promise) {
     promise.catch(() => {});
   }
@@ -4390,6 +4395,18 @@ export class Node {
     const endpoint = new NetEndpoint(this, steps, values, 1, deadline);
     endpoint.address = this.register(`end-${this.nextId()}`, endpoint);
     endpoint.connect(address);
+    return endpoint;
+  }
+  /**
+   * Takes over a channel end another node moves here: address is <old
+   * address>?take=<token>, as that node offered it. Resolves once the end's
+   * state has arrived and its peer has been told (or after the deadline; the
+   * old node then forwards to the end).
+   */
+  async take(address, steps, values = NO_TYPES, deadline = 5) {
+    const endpoint = new NetEndpoint(this, steps, values, 0, deadline);
+    endpoint.address = this.register(`end-${this.nextId()}`, endpoint);
+    await endpoint.takeOver(address);
     return endpoint;
   }
 }
@@ -4554,6 +4571,47 @@ class DefinitionEntity {
 }
 
 const NET_ABANDONED = Symbol('the other end gave up');
+const D_BYTES = ['bytes'];
+
+function putTexts(out, texts) {
+  putVarint(out, BigInt(texts.length));
+  for (const t of texts) wirePut(NO_TYPES, D_TEXT, t, out);
+}
+
+function getTexts(buf, pos) {
+  let count;
+  [count, pos] = getVarint(buf, pos);
+  const texts = [];
+  for (let i = 0n; i < count; i++) {
+    let t;
+    [t, pos] = wireGet(NO_TYPES, D_TEXT, buf, pos);
+    texts.push(t);
+  }
+  return [texts, pos];
+}
+
+function putNumbered(out, items) {
+  putVarint(out, BigInt(items.length));
+  for (const [seq, body] of items) {
+    wirePut(NO_TYPES, D_SEQ, seq, out);
+    wirePut(NO_TYPES, D_BYTES, body, out);
+  }
+}
+
+function getNumbered(buf, pos) {
+  let count;
+  [count, pos] = getVarint(buf, pos);
+  const items = [];
+  for (let i = 0n; i < count; i++) {
+    let seq, body;
+    [seq, pos] = wireGet(NO_TYPES, D_SEQ, buf, pos);
+    [body, pos] = wireGet(NO_TYPES, D_BYTES, buf, pos);
+    items.push([seq, Uint8Array.from(body)]);
+  }
+  return [items, pos];
+}
+
+const bySeq = (x, y) => (x[0] < y[0] ? -1 : x[0] > y[0] ? 1 : 0);
 
 /**
  * One end of a channel between nodes, with the channel interface
@@ -4561,6 +4619,12 @@ const NET_ABANDONED = Symbol('the other end gave up');
  * that is sent again until acknowledged, so loss, duplication and
  * reordering are repaired; a peer silent for deadline seconds is treated as
  * failed (PeerFailed). Order is kept within the channel.
+ *
+ * An unused end can move to another node: offer() gives the address the new
+ * node takes it over from (<address>?take=<token>). On a take frame with
+ * that token, this end hands its state over (a state frame) and from then on
+ * forwards every frame it gets to the new end; the new end tells the peer (a
+ * moved frame) so the peer sends to it directly.
  */
 class NetEndpoint {
   node;
@@ -4577,7 +4641,20 @@ class NetEndpoint {
   inbox;
   step;
   gone;
+  failure;
   timer;
+  // Moving: the addresses this end had before (oldest first), the token a
+  // taker must show, where the end went and the state frame it was given,
+  // and, on the new node, the takeover in progress.
+  history;
+  token;
+  movedTo;
+  state;
+  taking;
+  taken;
+  announcing;
+  announcedAt;
+  confirmed;
   constructor(node, steps, values, side, deadline) {
     this.node = node;
     this.steps = steps;
@@ -4593,6 +4670,16 @@ class NetEndpoint {
     this.inbox = new AsyncQueue();
     this.step = 0;
     this.gone = false;
+    this.failure = null;
+    this.history = [];
+    this.token = null;
+    this.movedTo = null;
+    this.state = null;
+    this.taking = null;
+    this.taken = new Signal();
+    this.announcing = false;
+    this.announcedAt = 0;
+    this.confirmed = new Signal();
     node.endpoints.add(this);
     this.timer = setInterval(() => this.resend(), 20);
     this.timer.unref?.();
@@ -4604,20 +4691,24 @@ class NetEndpoint {
     this.peer = address;
     this.transmit(-1n, UTF8.encode('hello'));
   }
-  transmit(seq, body) {
+  frame(seq, body) {
     const head = [];
     wirePut(NO_TYPES, D_SEQ, seq, head);
     wirePut(NO_TYPES, D_TEXT, this.address, head);
-    const payload = concatBytes(Uint8Array.from(head), body);
+    return concatBytes(Uint8Array.from(head), body);
+  }
+  transmit(seq, body) {
+    const payload = this.frame(seq, body);
     const now = Date.now();
-    this.unacked.set(seq, [payload, now, now]);
+    this.unacked.set(seq, [payload, now, now, body]);
     if (this.peer !== null) this.node.quietly(this.node.send(this.peer, 'chan', payload));
   }
   resend() {
-    if (this.gone) {
+    if (this.gone || this.movedTo !== null) {
       this.stop();
       return;
     }
+    if (this.taking !== null && !this.taken.done) return;
     const now = Date.now();
     const due = [...this.unacked.values()].filter((entry) => now - entry[2] > 50);
     if (due.some((entry) => now - entry[1] > this.deadline)) {
@@ -4625,6 +4716,13 @@ class NetEndpoint {
       return;
     }
     if (this.peer === null) return;
+    if (this.announcing && !this.confirmed.done && now - this.announcedAt > 50) {
+      this.announcedAt = now;
+      const moved = [];
+      putTexts(moved, this.history);
+      wirePut(NO_TYPES, D_TEXT, this.address, moved);
+      this.node.quietly(this.node.send(this.peer, 'moved', Uint8Array.from(moved)));
+    }
     for (const entry of due) {
       entry[2] = now;
       this.node.quietly(this.node.send(this.peer, 'chan', entry[0]));
@@ -4633,14 +4731,37 @@ class NetEndpoint {
   fail(reason) {
     if (this.gone) return;
     this.gone = true;
+    this.failure = reason;
     this.unacked.clear();
     this.stop();
     this.inbox.put([NET_ABANDONED, reason]);
   }
   onFrame(node, kind, source, ident, payload) {
+    if (kind === 'take') {
+      this.give(payload);
+      return;
+    }
+    if (this.movedTo !== null) {
+      node.forward(this.movedTo, kind, source, ident, payload);
+      return;
+    }
+    if (this.taking !== null && !this.taken.done) {
+      // Until the state arrives, frames are dropped: their senders send them again.
+      if (kind === 'state') this.install(payload);
+      return;
+    }
     if (kind === 'ack') {
       const [seq] = wireGet(NO_TYPES, D_SEQ, payload, 0);
       this.unacked.delete(seq);
+      return;
+    }
+    if (kind === 'moved') {
+      this.peerMoved(payload);
+      return;
+    }
+    if (kind === 'moved-ack') {
+      const [to] = wireGet(NO_TYPES, D_TEXT, payload, 0);
+      if (to === this.address) this.confirmed.set();
       return;
     }
     if (kind !== 'chan') return;
@@ -4661,6 +4782,129 @@ class NetEndpoint {
       this.inbox.put([null, this.early.get(this.expected)]);
       this.early.delete(this.expected);
       this.expected += 1n;
+    }
+  }
+  /** The address another node takes this unused end over from. */
+  offer() {
+    if (this.token === null) {
+      const random = new Uint8Array(16);
+      globalThis.crypto.getRandomValues(random);
+      this.token = [...random].map((b) => b.toString(16).padStart(2, '0')).join('');
+    }
+    return `${this.address}?take=${this.token}`;
+  }
+  /**
+   * A take frame: hands the state over once, to the first taker with the
+   * token, and answers that taker's repeats with the same state.
+   */
+  give(payload) {
+    let token, taker, pos;
+    try {
+      [token, pos] = wireGet(NO_TYPES, D_TEXT, payload, 0);
+      [taker, pos] = wireGet(NO_TYPES, D_TEXT, payload, pos);
+    } catch {
+      return;
+    }
+    if (this.token === null || token !== this.token) return;
+    if (this.movedTo === null) {
+      const received = this.inbox.items.filter(([marker]) => marker === null).map(([, body]) => body);
+      const state = [];
+      wirePut(NO_TYPES, D_TEXT, token, state);
+      wirePut(NO_TYPES, D_TEXT, this.failure ?? '', state);
+      wirePut(NO_TYPES, D_TEXT, this.peer ?? '', state);
+      putTexts(state, [...this.history, this.address]);
+      wirePut(NO_TYPES, D_SEQ, this.out, state);
+      wirePut(NO_TYPES, D_SEQ, this.expected, state);
+      putNumbered(state, [...this.unacked].map(([seq, entry]) => [seq, entry[3]]).sort(bySeq));
+      putNumbered(state, [...this.early].sort(bySeq));
+      putVarint(state, BigInt(received.length));
+      for (const body of received) wirePut(NO_TYPES, D_BYTES, body, state);
+      this.movedTo = taker;
+      this.state = Uint8Array.from(state);
+      this.unacked.clear();
+      this.early.clear();
+      this.stop();
+    } else if (this.movedTo !== taker) {
+      return;
+    }
+    this.node.quietly(this.node.send(taker, 'state', this.state));
+  }
+  /**
+   * Takes over the end offered at address (<old address>?take=<token>):
+   * asks for its state until it comes, then tells the peer where the end is
+   * now. Resolves once the peer knows, or after the deadline (the old node
+   * then keeps forwarding to this end, as a relay would).
+   */
+  async takeOver(address) {
+    const at = address.indexOf('?');
+    const old = address.slice(0, at), token = address.slice(at + 1).slice('take='.length);
+    this.taking = [old, token];
+    const request = [];
+    wirePut(NO_TYPES, D_TEXT, token, request);
+    wirePut(NO_TYPES, D_TEXT, this.address, request);
+    const giveUp = Date.now() + this.deadline;
+    while (!this.taken.done) {
+      this.node.quietly(this.node.send(old, 'take', Uint8Array.from(request)));
+      await Promise.race([this.taken.promise, sleep(50)]);
+      if (this.taken.done) break;
+      if (Date.now() >= giveUp) {
+        this.taking = null;
+        this.fail('the node the end came from did not hand it over in time (unreachable)');
+        return;
+      }
+    }
+    const left = giveUp - Date.now();
+    if (left > 0) await Promise.race([this.confirmed.promise, sleep(left)]);
+  }
+  install(payload) {
+    let token, failure, peer, history, out, expected, unacked, early, count, pos;
+    const received = [];
+    try {
+      [token, pos] = wireGet(NO_TYPES, D_TEXT, payload, 0);
+      [failure, pos] = wireGet(NO_TYPES, D_TEXT, payload, pos);
+      [peer, pos] = wireGet(NO_TYPES, D_TEXT, payload, pos);
+      [history, pos] = getTexts(payload, pos);
+      [out, pos] = wireGet(NO_TYPES, D_SEQ, payload, pos);
+      [expected, pos] = wireGet(NO_TYPES, D_SEQ, payload, pos);
+      [unacked, pos] = getNumbered(payload, pos);
+      [early, pos] = getNumbered(payload, pos);
+      [count, pos] = getVarint(payload, pos);
+      for (let i = 0n; i < count; i++) {
+        let body;
+        [body, pos] = wireGet(NO_TYPES, D_BYTES, payload, pos);
+        received.push(Uint8Array.from(body));
+      }
+    } catch {
+      return;
+    }
+    if (this.taking === null || token !== this.taking[1] || this.taken.done) return;
+    const now = Date.now();
+    this.peer = peer === '' ? null : peer;
+    this.history = history;
+    this.out = out;
+    this.expected = expected;
+    // Sent again from here at once, under this end's address.
+    this.unacked = new Map(unacked.map(([seq, body]) => [seq, [this.frame(seq, body), now, 0, body]]));
+    this.early = new Map(early);
+    for (const body of received) this.inbox.put([null, body]);
+    this.announcing = true;
+    this.taken.set();
+    if (failure !== '') this.fail(failure);
+  }
+  /** The peer moved: from now on send to its new address. */
+  peerMoved(payload) {
+    let history, to, pos;
+    try {
+      [history, pos] = getTexts(payload, 0);
+      [to, pos] = wireGet(NO_TYPES, D_TEXT, payload, pos);
+    } catch {
+      return;
+    }
+    if (this.peer === null || history.includes(this.peer)) this.peer = to;
+    if (this.peer === to) {
+      const answer = [];
+      wirePut(NO_TYPES, D_TEXT, to, answer);
+      this.node.quietly(this.node.send(to, 'moved-ack', Uint8Array.from(answer)));
     }
   }
   stepDescriptor(sends) {
@@ -4706,6 +4950,20 @@ class NetEndpoint {
   }
 }
 
+/** A one-time event: set() resolves promise; done says whether it has. */
+class Signal {
+  done = false;
+  promise;
+  resolve;
+  constructor() {
+    this.promise = new Promise((resolve) => { this.resolve = resolve; });
+  }
+  set() {
+    this.done = true;
+    this.resolve();
+  }
+}
+
 const NUMBER_INTEGERS = new Set(['Int8', 'Int16', 'Int32', 'UInt8', 'UInt16', 'UInt32', 'CodePoint', 'CodeUnit16']);
 
 /**
@@ -4738,8 +4996,9 @@ export class EndPart {
 /**
  * A network channel end seen through native values: each step's part
  * converts its value with the schema (null needs no conversion), or, for an
- * EndPart, sends a channel end by the address of a relay on this node and
- * receives one by dialing that address.
+ * EndPart, sends a channel end and receives one. A network end moves to the
+ * receiving node (the value is <address>?take=<token>); a local end stays
+ * here behind a relay (the value is the relay's address).
  */
 export class NativeChannel {
   endpoint;
@@ -4762,7 +5021,7 @@ export class NativeChannel {
   send(side, value) {
     const reference = this.reference();
     if (reference instanceof EndPart) {
-      this.endpoint.send(side, relayEnd(this.endpoint.node, this.endpoint.values, value, reference, this.schema));
+      this.endpoint.send(side, offerEnd(this.endpoint.node, this.endpoint.values, value, reference, this.schema));
       return;
     }
     this.endpoint.send(side, reference === null ? value : this.schema.fromNative(reference, value));
@@ -4772,7 +5031,10 @@ export class NativeChannel {
     const value = await this.endpoint.receive(side);
     if (reference instanceof EndPart) {
       const [steps, parts] = reference.wire();
-      const endpoint = this.endpoint.node.dial(value, steps, this.endpoint.values);
+      const node = this.endpoint.node;
+      const endpoint = value.includes('?take=')
+        ? await node.take(value, steps, this.endpoint.values)
+        : node.dial(value, steps, this.endpoint.values);
       const Start = reference.start();
       return new Start(new NativeChannel(endpoint, parts, this.schema), 0);
     }
@@ -4788,14 +5050,24 @@ export class NativeChannel {
 }
 
 /**
- * Offers an unused channel end to another node: a relay on node listens for
+ * The text that gives an unused channel end to another node. An end that is
+ * itself between nodes moves there; a local end stays here and a relay on
+ * node carries its conversation.
+ */
+function offerEnd(node, values, end, part, schema) {
+  const [channel, side] = end.use();
+  if (channel instanceof NativeChannel && channel.step === 0) return channel.endpoint.offer();
+  return relayEnd(node, values, channel, side, part, schema);
+}
+
+/**
+ * Offers a local channel end to another node: a relay on node listens for
  * the receiver and passes each step between it and the end, which stays
  * here. Returns the relay's address. A failure on either side gives up the
  * other.
  */
-function relayEnd(node, values, end, part, schema) {
+function relayEnd(node, values, channel, side, part, schema) {
   const [steps, parts] = part.wire();
-  const [channel, side] = end.use();
   const relay = node.listen(`relay-${node.nextId()}`, steps.map(([s, d]) => [!s, d]), values);
   const relayed = new NativeChannel(relay, parts, schema);
   (async () => {

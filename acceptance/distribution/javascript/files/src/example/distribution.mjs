@@ -103,3 +103,32 @@ export async function remoteHandoff(value0) {
     await here.close();
   }
 }
+
+export async function remoteHandoffOnward(value0) {
+  const {Answering, Passing} = await import('../lawspec_sessions.mjs');
+  const network = new ls.MemoryNetwork({seed: BigInt(value0) & 0xFFFFn, loss: 0.1, duplicate: 0.1, delay: 0.005});
+  const [a, b, c, d] = ['a', 'b', 'c', 'd'].map((n) => new ls.Node(network.transport(n)));
+  try {
+    // A conversation between A and C, which sends at once; A's end moves to
+    // B, then to D, and answers from there.
+    const first = Answering.listen(a, 'answering');
+    const second = Answering.dial(c, a.address + '/answering').send(value0);
+    const toB = Passing.listen(a, 'to-b');
+    const atB = Passing.dial(b, a.address + '/to-b');
+    toB.send(first);
+    const [moved] = await atB.receive();
+    const toD = Passing.listen(b, 'to-d');
+    const atD = Passing.dial(d, b.address + '/to-d');
+    toD.send(moved);
+    const [end] = await atD.receive();
+    // The end no longer needs A or B.
+    await a.close();
+    await b.close();
+    const [x, reply] = await end.receive();
+    reply.send(2n * BigInt(x));
+    const [result] = await second.receive();
+    return result;
+  } finally {
+    for (const node of [a, b, c, d]) await node.close();
+  }
+}

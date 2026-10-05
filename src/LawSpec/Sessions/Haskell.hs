@@ -73,8 +73,8 @@ unitModule bits datas units unit = do
     sessions = C.unitSessions unit
     -- A protocol can also run between nodes (listen and dial) when every
     -- step's type has a wire descriptor and a codec; a step sending another
-    -- protocol's end (of this unit) relays it, so that protocol must run
-    -- between nodes too.
+    -- protocol's end (of this unit) moves it, or relays a local end, so that
+    -- protocol must run between nodes too.
     wired (table, acc) s = case foldM step (table, []) (C.sessionSteps s) of
       Right (table', ds) -> (table', acc ++ [(C.sessionName s, ds)])
       _ -> (table, acc)
@@ -135,15 +135,15 @@ protocolSource datas units unit wire session = do
           let wire = "_lawspecWire" ++ name
           in [ ""
              , "-- " ++ name ++ "'s steps between nodes, from its first end: each step's"
-             , "-- descriptor and how its value crosses (a channel end goes by a relay)."
+             , "-- descriptor and how its value crosses (a channel end moves, or goes by a relay)."
              , wire ++ " :: ([(P.Bool, LS.Descriptor)], [LS.Conversion])"
              , wire ++ " ="
              , "  ( [" ++ intercalate ", " ["(" ++ (if s then "P.True" else "P.False") ++ ", _lawspecDescriptor " ++ show d ++ ")" | (s, d, _) <- steps] ++ "]"
              , "  , [" ++ intercalate ", " [c | (_, _, c) <- steps] ++ "] )"
              , ""
              , "-- | The first end of a " ++ name ++ " channel named name on a node, which another"
-             , "-- node dials at <node address>/name. An end sent over it to another node is"
-             , "-- relayed by this node."
+             , "-- node dials at <node address>/name. An end sent over it to another node moves"
+             , "-- there (a local end stays and is relayed by this node)."
              , "listen" ++ name ++ " :: LS.Node -> P.String -> P.IO " ++ start First
              , "listen" ++ name ++ " node channel = do"
              , "  endpoint <- LS.listenOn node channel (P.fst " ++ wire ++ ") _lawspecTypes"

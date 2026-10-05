@@ -29,7 +29,7 @@ emit target _ bits datas units = concat <$> mapM artifact sessions
     sessions = concatMap C.unitSessions units
     -- Protocols that can run between nodes: every value step has a wire
     -- descriptor and a conversion, and every protocol whose end a step sends
-    -- can too (and has steps, so its end has a channel to relay).
+    -- can too (and has steps, so its end has a channel to send).
     described = [s | s <- sessions, Right _ <- [networkParts target bits datas sessions s]]
     settle ws = let kept = [s | s <- ws, all (\(_, t) -> maybe True (\q -> C.sessionName q `elem` map C.sessionName ws && not (null (C.sessionSteps q))) (sessionOf sessions t)) (C.sessionSteps s)]
                 in if length kept == length ws then ws else settle kept
@@ -104,7 +104,7 @@ shortName datas n = maybe lastSegment id (lookup n [(C.idText (C.dataId d), C.da
 -- the runtime, a data value through its codec (Java's, or for Kotlin a
 -- generated Kotlin object, since Kotlin's codecs are Kotlin objects), and a
 -- step sending another protocol's end is an EndPart (the end goes by the
--- address of a relay on the sending node).
+-- address the receiver takes it over from, or a relay's for a local end).
 data Part = Scalar String | Codec String | EndOf C.Session
 
 networkParts :: String -> Int -> [C.DataDeclaration] -> [C.Session] -> C.Session -> Either String ([(Bool, String, Part)], [(String, String)])
@@ -133,7 +133,7 @@ networkSource target bits datas sessions session = do
         Codec _ | kotlin -> name ++ "Conversions.conversion" ++ show i ++ "()"
                 | otherwise -> "LawSpecRuntime.conversion(codec" ++ show i ++ "::encode, codec" ++ show i ++ "::decode)"
         EndOf q -> let start = firstStart datas sessions q in
-          "new LawSpecRuntime.EndPart(c -> new " ++ start ++ "(c), e -> ((" ++ start ++ ") e).relayChannel(), " ++ C.sessionName q ++ "::wire)"
+          "new LawSpecRuntime.EndPart(c -> new " ++ start ++ "(c), e -> ((" ++ start ++ ") e).handOver(), " ++ C.sessionName q ++ "::wire)"
       first = startClass datas sessions session True
       second = startClass datas sessions session False
   kotlinFile <- if kotlin && not (null codecs)
@@ -157,7 +157,8 @@ networkSource target bits datas sessions session = do
     , ""
     , "  /**"
     , "   * The first end of a channel named name on node, which another node dials at {node"
-    , "   * address}/name. An end sent over it to another node is relayed by this node."
+    , "   * address}/name. An end sent over it to another node moves there (a local end stays and is"
+    , "   * relayed by this node)."
     , "   */"
     , "  public static First." ++ first ++ " listen(LawSpecRuntime.Node node, String name) {"
     , "    var w = wire();"
@@ -253,8 +254,8 @@ protocolSource datas sessions network session = do
             , "        return new " ++ cls ++ "(channel);"
             , "      }"
             , ""
-            , "      /** This unused end's channel, for a relay to another node; this object becomes used. */"
-            , "      LawSpecRuntime.Channel relayChannel() {"
+            , "      /** This unused end's channel, to send to another node; this object becomes used. */"
+            , "      LawSpecRuntime.Channel handOver() {"
             , "        LawSpecRuntime.claimEnd(used);"
             , "        return channel;"
             , "      }" ]

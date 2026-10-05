@@ -5719,6 +5719,28 @@ public final class LawSpecRuntime {
       endpoint.connect(address);
       return endpoint;
     }
+
+    /**
+     * Takes over a channel end another node moves here: address is {old address}?take={token}, as
+     * that node offered it. Returns once the end's state has arrived and its peer has been told (or
+     * after the deadline; the old node then forwards to the end).
+     */
+    public NetEndpoint take(String address, List<Step> steps, Values values) {
+      var endpoint = new NetEndpoint(this, steps, values, 5.0);
+      endpoint.address = register("end-" + nextId(), endpoint);
+      endpoint.takeOver(address);
+      return endpoint;
+    }
+
+    /** Passes a frame on to address unchanged, keeping its source. */
+    void forward(String address, String kind, String source, long id, byte[] payload) {
+      try {
+        var parts = splitAddress(address);
+        transport.send(parts[0], frameEncode(kind, parts[1], source, id, payload));
+      } catch (RuntimeException e) {
+        // The sender sends again.
+      }
+    }
   }
 
   /** A protocol step: whether this end sends, and the value's descriptor. */
@@ -5800,6 +5822,11 @@ public final class LawSpecRuntime {
    * One end of a channel between nodes, as a Channel. Each value travels in a numbered frame that
    * is sent again until acknowledged, so loss, duplication and reordering are repaired; a peer
    * silent for the deadline is treated as failed (PeerFailed). Order is kept within the channel.
+   *
+   * <p>An unused end can move to another node: offer() gives the address the new node takes it
+   * over from ({address}?take={token}). On a take frame with that token, this end hands its state
+   * over (a state frame) and from then on forwards every frame it gets to the new end; the new end
+   * tells the peer (a moved frame) so the peer sends to it directly.
    */
   public static final class NetEndpoint implements Channel, Entity {
     private final Node node;
@@ -5816,6 +5843,19 @@ public final class LawSpecRuntime {
         new java.util.concurrent.LinkedBlockingQueue<>();
     private int step;
     private volatile boolean gone;
+    private String failure = "";
+    // Moving: the addresses this end had before (oldest first), the token a taker must show, where
+    // the end went and the state frame it was given, and, on the new node, the takeover in
+    // progress.
+    private List<String> history = new ArrayList<>();
+    private String token;
+    private String movedTo;
+    private byte[] state;
+    private String takeToken;
+    private final java.util.concurrent.CountDownLatch taken = new java.util.concurrent.CountDownLatch(1);
+    private boolean announcing;
+    private long announcedAt;
+    private final java.util.concurrent.CountDownLatch confirmed = new java.util.concurrent.CountDownLatch(1);
 
     NetEndpoint(Node node, List<Step> steps, Values values, double deadline) {
       this.node = node;
@@ -5829,6 +5869,49 @@ public final class LawSpecRuntime {
       putVarint(out, zigzag(BigInteger.valueOf(seq)));
     }
 
+    private static long getSeq(Reader in) {
+      return unzigzag(in.varint()).longValueExact();
+    }
+
+    private static void putBytes(java.io.ByteArrayOutputStream out, byte[] bytes) {
+      putVarint(out, BigInteger.valueOf(bytes.length));
+      out.writeBytes(bytes);
+    }
+
+    private static byte[] getBytes(Reader in) {
+      return in.take(in.varint().intValueExact());
+    }
+
+    private static void putTexts(java.io.ByteArrayOutputStream out, List<String> texts) {
+      putVarint(out, BigInteger.valueOf(texts.size()));
+      for (var t : texts) putText(out, t);
+    }
+
+    private static List<String> getTexts(Reader in) {
+      int count = in.varint().intValueExact();
+      var texts = new ArrayList<String>();
+      for (int i = 0; i < count; i++) texts.add(getText(in));
+      return texts;
+    }
+
+    private static void putNumbered(java.io.ByteArrayOutputStream out, java.util.SortedMap<Long, byte[]> items) {
+      putVarint(out, BigInteger.valueOf(items.size()));
+      for (var item : items.entrySet()) {
+        putSeq(out, item.getKey());
+        putBytes(out, item.getValue());
+      }
+    }
+
+    private static java.util.SortedMap<Long, byte[]> getNumbered(Reader in) {
+      int count = in.varint().intValueExact();
+      var items = new java.util.TreeMap<Long, byte[]>();
+      for (int i = 0; i < count; i++) {
+        long seq = getSeq(in);
+        items.put(seq, getBytes(in));
+      }
+      return items;
+    }
+
     void connect(String address) {
       synchronized (this) {
         peer = address;
@@ -5836,26 +5919,32 @@ public final class LawSpecRuntime {
       transmit(-1, utf8("hello"));
     }
 
-    /** Sends a numbered frame (seq -1 is the hello) until it is acked. */
-    private void transmit(long seq, byte[] body) {
+    private byte[] frame(long seq, byte[] body) {
       var buffer = new java.io.ByteArrayOutputStream();
       putSeq(buffer, seq);
       putText(buffer, address);
       buffer.writeBytes(body);
-      var payload = buffer.toByteArray();
+      return buffer.toByteArray();
+    }
+
+    private void quietly(String target, String kind, byte[] payload) {
+      try {
+        node.send(target, kind, payload, 0);
+      } catch (RuntimeException e) {
+        // Sent again later, or by the other side.
+      }
+    }
+
+    /** Sends a numbered frame (seq -1 is the hello) until it is acked. */
+    private void transmit(long seq, byte[] body) {
+      var payload = frame(seq, body);
       String target;
       synchronized (this) {
         long now = System.nanoTime();
-        unacked.put(seq, new Object[] {payload, now, now});
+        unacked.put(seq, new Object[] {payload, now, now, body});
         target = peer;
       }
-      if (target != null) {
-        try {
-          node.send(target, "chan", payload, 0);
-        } catch (RuntimeException e) {
-          // Sent again by resend.
-        }
-      }
+      if (target != null) quietly(target, "chan", payload);
     }
 
     private void resend() {
@@ -5869,26 +5958,33 @@ public final class LawSpecRuntime {
         String target;
         var due = new ArrayList<Object[]>();
         boolean stale = false;
+        byte[] moved = null;
         synchronized (this) {
+          if (movedTo != null) return;
+          if (takeToken != null && taken.getCount() > 0) continue;
           target = peer;
           for (var entry : unacked.values())
             if (now - (long) entry[2] > 50_000_000L) {
               due.add(entry);
               if (now - (long) entry[1] > (long) (deadline * 1e9)) stale = true;
             }
+          if (announcing && target != null && confirmed.getCount() > 0 && now - announcedAt > 50_000_000L) {
+            announcedAt = now;
+            var buffer = new java.io.ByteArrayOutputStream();
+            putTexts(buffer, history);
+            putText(buffer, address);
+            moved = buffer.toByteArray();
+          }
         }
         if (stale) {
           fail("the other end did not answer in time (unreachable)");
           return;
         }
         if (target == null) continue;
+        if (moved != null) quietly(target, "moved", moved);
         for (var entry : due) {
           entry[2] = now;
-          try {
-            node.send(target, "chan", (byte[]) entry[0], 0);
-          } catch (RuntimeException e) {
-            // Sent again next time.
-          }
+          quietly(target, "chan", (byte[]) entry[0]);
         }
       }
     }
@@ -5897,44 +5993,218 @@ public final class LawSpecRuntime {
       synchronized (this) {
         if (gone) return;
         gone = true;
+        failure = reason;
         unacked.clear();
+        inbox.add(new Object[] {NET_ABANDONED, reason});
       }
-      inbox.add(new Object[] {NET_ABANDONED, reason});
     }
 
     @Override
     public void receive(Node node, String kind, String source, long id, byte[] payload) {
-      var in = new Reader(payload, 0);
-      long seq = unzigzag(in.varint()).longValueExact();
-      if (kind.equals("ack")) {
-        synchronized (this) {
-          unacked.remove(seq);
-        }
+      try {
+        handle(node, kind, source, id, payload);
+      } catch (RuntimeException e) {
+        // A malformed frame is dropped.
+      }
+    }
+
+    private void handle(Node node, String kind, String source, long id, byte[] payload) {
+      if (kind.equals("take")) {
+        give(payload);
         return;
       }
-      if (!kind.equals("chan")) return;
+      String forward;
+      boolean waiting;
+      synchronized (this) {
+        forward = movedTo;
+        waiting = takeToken != null && taken.getCount() > 0;
+      }
+      if (forward != null) {
+        node.forward(forward, kind, source, id, payload);
+        return;
+      }
+      if (waiting) {
+        // Until the state arrives, frames are dropped: their senders send them again.
+        if (kind.equals("state")) install(payload);
+        return;
+      }
+      var in = new Reader(payload, 0);
+      switch (kind) {
+        case "ack" -> {
+          long seq = getSeq(in);
+          synchronized (this) {
+            unacked.remove(seq);
+          }
+          return;
+        }
+        case "moved" -> {
+          peerMoved(in);
+          return;
+        }
+        case "moved-ack" -> {
+          if (getText(in).equals(address)) confirmed.countDown();
+          return;
+        }
+        case "chan" -> {}
+        default -> {
+          return;
+        }
+      }
+      long seq = getSeq(in);
       String sender = getText(in);
       var body = Arrays.copyOfRange(payload, in.pos, payload.length);
-      var ack = new java.io.ByteArrayOutputStream();
-      putSeq(ack, seq);
-      try {
-        node.send(sender, "ack", ack.toByteArray(), 0);
-      } catch (RuntimeException e) {
-        // The sender sends again.
-      }
-      if (seq == -1) {
-        synchronized (this) {
-          if (peer == null) peer = sender;
+      synchronized (this) {
+        forward = movedTo;
+        if (forward == null) {
+          if (seq == -1) {
+            if (peer == null) peer = sender;
+          } else if (seq >= expected && !early.containsKey(seq)) {
+            early.put(seq, body);
+            while (early.containsKey(expected)) inbox.add(new Object[] {null, early.remove(expected++)});
+          }
         }
+      }
+      if (forward != null) {
+        // Moved meanwhile: the new end acknowledges it.
+        node.forward(forward, kind, source, id, payload);
         return;
       }
-      var ready = new ArrayList<byte[]>();
-      synchronized (this) {
-        if (seq < expected || early.containsKey(seq)) return;
-        early.put(seq, body);
-        while (early.containsKey(expected)) ready.add(early.remove(expected++));
+      var ack = new java.io.ByteArrayOutputStream();
+      putSeq(ack, seq);
+      quietly(sender, "ack", ack.toByteArray());
+    }
+
+    /** The address another node takes this unused end over from. */
+    synchronized String offer() {
+      if (token == null) {
+        var random = new byte[16];
+        new java.security.SecureRandom().nextBytes(random);
+        var hex = new StringBuilder();
+        for (byte b : random) hex.append(String.format("%02x", b & 0xFF));
+        token = hex.toString();
       }
-      for (var b : ready) inbox.add(new Object[] {null, b});
+      return address + "?take=" + token;
+    }
+
+    /**
+     * A take frame: hands the state over once, to the first taker with the token, and answers that
+     * taker's repeats with the same state.
+     */
+    private void give(byte[] payload) {
+      var in = new Reader(payload, 0);
+      String offered = getText(in);
+      String taker = getText(in);
+      byte[] answer;
+      synchronized (this) {
+        if (token == null || !offered.equals(token)) return;
+        if (movedTo == null) {
+          var buffer = new java.io.ByteArrayOutputStream();
+          putText(buffer, token);
+          putText(buffer, failure);
+          putText(buffer, peer == null ? "" : peer);
+          var former = new ArrayList<>(history);
+          former.add(address);
+          putTexts(buffer, former);
+          putSeq(buffer, out);
+          putSeq(buffer, expected);
+          var waiting = new java.util.TreeMap<Long, byte[]>();
+          for (var entry : unacked.entrySet()) waiting.put(entry.getKey(), (byte[]) entry.getValue()[3]);
+          putNumbered(buffer, waiting);
+          putNumbered(buffer, new java.util.TreeMap<>(early));
+          var received = new ArrayList<byte[]>();
+          for (var item : inbox) if (item[0] == null) received.add((byte[]) item[1]);
+          putVarint(buffer, BigInteger.valueOf(received.size()));
+          for (var body : received) putBytes(buffer, body);
+          movedTo = taker;
+          state = buffer.toByteArray();
+          unacked.clear();
+          early.clear();
+        } else if (!movedTo.equals(taker)) {
+          return;
+        }
+        answer = state;
+      }
+      quietly(taker, "state", answer);
+    }
+
+    /**
+     * Takes over the end offered at address ({old address}?take={token}): asks for its state until
+     * it comes, then tells the peer where the end is now. Returns once the peer knows, or after the
+     * deadline (the old node then keeps forwarding to this end, as a relay would).
+     */
+    void takeOver(String offered) {
+      int cut = offered.indexOf('?');
+      String old = offered.substring(0, cut);
+      String wanted = offered.substring(cut + 1).substring("take=".length());
+      synchronized (this) {
+        takeToken = wanted;
+      }
+      var request = new java.io.ByteArrayOutputStream();
+      putText(request, wanted);
+      putText(request, address);
+      long giveUp = System.nanoTime() + (long) (deadline * 1e9);
+      try {
+        quietly(old, "take", request.toByteArray());
+        while (!taken.await(50, java.util.concurrent.TimeUnit.MILLISECONDS)) {
+          if (System.nanoTime() >= giveUp) {
+            synchronized (this) {
+              takeToken = null;
+            }
+            fail("the node the end came from did not hand it over in time (unreachable)");
+            return;
+          }
+          quietly(old, "take", request.toByteArray());
+        }
+        confirmed.await(Math.max(0, giveUp - System.nanoTime()), java.util.concurrent.TimeUnit.NANOSECONDS);
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+      }
+    }
+
+    private void install(byte[] payload) {
+      var in = new Reader(payload, 0);
+      String offered = getText(in);
+      String reason = getText(in);
+      String from = getText(in);
+      var former = getTexts(in);
+      long next = getSeq(in);
+      long wanted = getSeq(in);
+      var waiting = getNumbered(in);
+      var arrived = getNumbered(in);
+      int count = in.varint().intValueExact();
+      var received = new ArrayList<byte[]>();
+      for (int i = 0; i < count; i++) received.add(getBytes(in));
+      synchronized (this) {
+        if (takeToken == null || !offered.equals(takeToken) || taken.getCount() == 0) return;
+        peer = from.isEmpty() ? null : from;
+        history = former;
+        out = next;
+        expected = wanted;
+        // Sent again from here at once, under this end's address.
+        for (var item : waiting.entrySet())
+          unacked.put(item.getKey(), new Object[] {frame(item.getKey(), item.getValue()), System.nanoTime(), 0L, item.getValue()});
+        early.putAll(arrived);
+        for (var body : received) inbox.add(new Object[] {null, body});
+        announcing = true;
+        taken.countDown();
+      }
+      if (!reason.isEmpty()) fail(reason);
+    }
+
+    /** The peer moved: from now on send to its new address. */
+    private void peerMoved(Reader in) {
+      var former = getTexts(in);
+      String to = getText(in);
+      boolean known;
+      synchronized (this) {
+        if (peer == null || former.contains(peer)) peer = to;
+        known = peer.equals(to);
+      }
+      if (known) {
+        var answer = new java.io.ByteArrayOutputStream();
+        putText(answer, to);
+        quietly(to, "moved-ack", answer.toByteArray());
+      }
     }
 
     private Object stepDescriptor(boolean sends) {
@@ -6071,8 +6341,9 @@ public final class LawSpecRuntime {
 
   /**
    * A network channel end seen through native values: each step's part converts its value, or, for
-   * an EndPart, sends a channel end by the address of a relay on this node and receives one by
-   * dialing that address.
+   * an EndPart, sends a channel end and receives one. A network end moves to the receiving node
+   * (the value is {address}?take={token}); a local end stays here behind a relay (the value is the
+   * relay's address).
    */
   public static final class NativeChannel implements Channel {
     private final NetEndpoint endpoint;
@@ -6084,6 +6355,10 @@ public final class LawSpecRuntime {
       this.parts = parts;
     }
 
+    synchronized boolean unused() {
+      return step == 0;
+    }
+
     private synchronized Object part() {
       var c = step < parts.size() ? parts.get(step) : null;
       step++;
@@ -6093,7 +6368,7 @@ public final class LawSpecRuntime {
     @Override
     public void send(int side, Object value) {
       var part = part();
-      if (part instanceof EndPart end) value = textValue(relayEnd(endpoint.node, value, end));
+      if (part instanceof EndPart end) value = textValue(offerEnd(endpoint.node, value, end));
       else if (part instanceof Conversion c) value = c.toLogical(value);
       endpoint.send(side, value);
     }
@@ -6104,8 +6379,12 @@ public final class LawSpecRuntime {
       var value = (Value) endpoint.receive(side);
       if (part instanceof EndPart end) {
         var wire = end.wire().get();
-        var dialed = endpoint.node.dial(textOf(value), wire.steps(), wire.values());
-        return end.start().apply(new NativeChannel(dialed, wire.parts()));
+        var address = textOf(value);
+        var taken =
+            address.contains("?take=")
+                ? endpoint.node.take(address, wire.steps(), wire.values())
+                : endpoint.node.dial(address, wire.steps(), wire.values());
+        return end.start().apply(new NativeChannel(taken, wire.parts()));
       }
       return part instanceof Conversion c ? c.toNative(value) : value;
     }
@@ -6117,13 +6396,22 @@ public final class LawSpecRuntime {
   }
 
   /**
-   * Offers an unused channel end to another node: a relay on node listens for the receiver and
+   * The text that gives an unused channel end to another node. An end that is itself between nodes
+   * moves there; a local end stays here and a relay on node carries its conversation.
+   */
+  static String offerEnd(Node node, Object end, EndPart part) {
+    var channel = part.channelOf().apply(end);
+    if (channel instanceof NativeChannel network && network.unused()) return network.endpoint.offer();
+    return relayEnd(node, channel, part);
+  }
+
+  /**
+   * Offers a local channel end to another node: a relay on node listens for the receiver and
    * passes each step between it and the end, which stays here. Returns the relay's address. A
    * failure on either side gives up the other.
    */
-  static String relayEnd(Node node, Object end, EndPart part) {
+  static String relayEnd(Node node, Channel channel, EndPart part) {
     var wire = part.wire().get();
-    var channel = part.channelOf().apply(end);
     var flipped = new ArrayList<Step>();
     for (var s : wire.steps()) flipped.add(new Step(!s.sends(), s.descriptor()));
     var relay = node.listen("relay-" + node.nextId(), flipped, wire.values());

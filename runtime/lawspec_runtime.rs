@@ -5998,6 +5998,12 @@ pub mod sessions {
         fn receive(&self, side: Side) -> Result<Message, PeerFailed>;
         /// Closes `side`: the other end's pending receives fail.
         fn close(&self, side: Side);
+        /// For an unused network channel end, the address another node
+        /// takes it over from (closing it afterwards does not give it up);
+        /// None for a local channel.
+        fn hand_over(&self) -> Option<String> {
+            None
+        }
     }
 
     /// An in-memory channel: one queue per direction.
@@ -6094,6 +6100,12 @@ pub mod sessions {
         /// The next value, still boxed (a relay passing one step on).
         pub fn receive_message(&self) -> Result<Message, PeerFailed> {
             self.transport.receive(self.side)
+        }
+
+        /// For an unused end between nodes, the address another node takes
+        /// it over from; None for a local end.
+        pub fn hand_over(&self) -> Option<String> {
+            self.transport.hand_over()
         }
     }
 
@@ -8125,6 +8137,25 @@ pub mod net {
             endpoint.connect(address);
             Ok(endpoint)
         }
+
+        /// Takes over a channel end another node moves here: address is
+        /// <old address>?take=<token>, as that node offered it. Returns once
+        /// the end's state has arrived and its peer has been told (or after
+        /// the deadline; the old node then forwards to the end).
+        pub fn take(&self, address: &str, steps: Vec<(bool, Sexp)>, values: Values, deadline: Duration) -> Result<NetEndpoint> {
+            let endpoint = NetEndpoint::new(self, steps, values, deadline);
+            let own = self.register(&format!("end-{}", self.next_id()), endpoint.inner.clone())?;
+            *lock(&endpoint.inner.address) = own;
+            endpoint.take_over(address);
+            Ok(endpoint)
+        }
+
+        /// Passes a frame on to address unchanged, keeping its source.
+        fn forward(&self, address: &str, kind: &str, source: &str, id: u64, payload: &[u8]) {
+            if let Ok((node, name)) = split_address(address) {
+                let _ = self.inner.transport.send(&node, frame_encode(kind, &name, source, id, payload));
+            }
+        }
     }
 
     fn reply_value(status: u8, body: &[u8], values: &Values, d: &Sexp) -> Result<Value> {
@@ -8295,6 +8326,7 @@ pub mod net {
         payload: Vec<u8>,
         first: Instant,
         last: Instant,
+        body: Vec<u8>,
     }
 
     struct EndpointState {
@@ -8305,6 +8337,19 @@ pub mod net {
         early: HashMap<i64, Vec<u8>>,
         step: usize,
         gone: bool,
+        failure: String,
+        // Moving: the addresses this end had before (oldest first), the
+        // token a taker must show, where the end went and the state frame it
+        // was given, and, on the new node, the takeover in progress.
+        history: Vec<String>,
+        token: Option<String>,
+        moved_to: Option<String>,
+        handed: Vec<u8>,
+        taking: Option<String>,
+        taken: bool,
+        announcing: bool,
+        announced_at: Option<Instant>,
+        confirmed: bool,
     }
 
     struct EndpointInner {
@@ -8314,6 +8359,7 @@ pub mod net {
         deadline: Duration,
         address: Mutex<String>,
         state: Mutex<EndpointState>,
+        changed: Condvar,
         inbox: Mutex<VecDeque<Inbox>>,
         arrived: Condvar,
     }
@@ -8323,6 +8369,12 @@ pub mod net {
     /// and reordering are repaired; a peer silent past the deadline fails
     /// the end (PEER_FAILED). Order is kept within the channel. Clones share
     /// the end.
+    ///
+    /// An unused end can move to another node: offer gives the address the
+    /// new node takes it over from (<address>?take=<token>). On a take frame
+    /// with that token, this end hands its state over (a state frame) and
+    /// from then on forwards every frame it gets to the new end; the new end
+    /// tells the peer (a moved frame) so the peer sends to it directly.
     #[derive(Clone)]
     pub struct NetEndpoint {
         inner: Arc<EndpointInner>,
@@ -8344,7 +8396,18 @@ pub mod net {
                     early: HashMap::new(),
                     step: 0,
                     gone: false,
+                    failure: String::new(),
+                    history: Vec::new(),
+                    token: None,
+                    moved_to: None,
+                    handed: Vec::new(),
+                    taking: None,
+                    taken: false,
+                    announcing: false,
+                    announced_at: None,
+                    confirmed: false,
                 }),
+                changed: Condvar::new(),
                 inbox: Mutex::new(VecDeque::new()),
                 arrived: Condvar::new(),
             });
@@ -8440,18 +8503,115 @@ pub mod net {
             };
             self.inner.transmit(seq, vec![1]);
         }
+
+        /// The address another node takes this unused end over from.
+        fn offer(&self) -> String {
+            let mut state = lock(&self.inner.state);
+            let token = state.token.get_or_insert_with(|| {
+                use std::hash::{BuildHasher, Hasher};
+                let mut text = String::new();
+                for _ in 0..2 {
+                    let mut hasher = std::collections::hash_map::RandomState::new().build_hasher();
+                    hasher.write_u128(std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_nanos()));
+                    text.push_str(&format!("{:016x}", hasher.finish()));
+                }
+                text
+            });
+            format!("{}?take={token}", lock(&self.inner.address))
+        }
+
+        /// Takes over the end offered at address (<old address>?take=<token>):
+        /// asks for its state until it comes, then tells the peer where the
+        /// end is now. Returns once the peer knows, or after the deadline (the
+        /// old node then keeps forwarding to this end, as a relay would).
+        fn take_over(&self, address: &str) {
+            let (old, query) = address.split_once('?').unwrap_or((address, ""));
+            let token = query.strip_prefix("take=").unwrap_or(query).to_string();
+            lock(&self.inner.state).taking = Some(token.clone());
+            let mut request = Vec::new();
+            put_text(&mut request, &token);
+            put_text(&mut request, &self.address());
+            let give_up = Instant::now() + self.inner.deadline;
+            loop {
+                let _ = self.inner.node.send_frame(old, "take", &request, 0);
+                let state = lock(&self.inner.state);
+                let (state, _) = self
+                    .inner
+                    .changed
+                    .wait_timeout_while(state, Duration::from_millis(50), |s| !s.taken)
+                    .unwrap_or_else(|e| e.into_inner());
+                if state.taken {
+                    break;
+                }
+                drop(state);
+                if Instant::now() >= give_up {
+                    lock(&self.inner.state).taking = None;
+                    self.inner.fail("the node the end came from did not hand it over in time (unreachable)");
+                    return;
+                }
+            }
+            let state = lock(&self.inner.state);
+            let _ = self
+                .inner
+                .changed
+                .wait_timeout_while(state, give_up.saturating_duration_since(Instant::now()), |s| !s.confirmed)
+                .unwrap_or_else(|e| e.into_inner());
+        }
+    }
+
+    fn put_texts(out: &mut Vec<u8>, texts: &[String]) {
+        put_len(out, texts.len());
+        for t in texts {
+            put_text(out, t);
+        }
+    }
+
+    fn get_texts(buf: &[u8], pos: &mut usize) -> Result<Vec<String>> {
+        let count = get_len(buf, pos)?;
+        (0..count).map(|_| get_text(buf, pos)).collect()
+    }
+
+    fn put_bytes(out: &mut Vec<u8>, bytes: &[u8]) {
+        put_len(out, bytes.len());
+        out.extend_from_slice(bytes);
+    }
+
+    fn get_bytes(buf: &[u8], pos: &mut usize) -> Result<Vec<u8>> {
+        match wire_get(&no_types(), &bytes_d(), buf, pos)? {
+            Value::Bytes(b) => Ok(b),
+            _ => wire_error("not bytes"),
+        }
+    }
+
+    fn put_numbered(out: &mut Vec<u8>, mut items: Vec<(i64, Vec<u8>)>) {
+        items.sort_by_key(|(seq, _)| *seq);
+        put_len(out, items.len());
+        for (seq, body) in items {
+            put_seq(out, seq);
+            put_bytes(out, &body);
+        }
+    }
+
+    fn get_numbered(buf: &[u8], pos: &mut usize) -> Result<Vec<(i64, Vec<u8>)>> {
+        let count = get_len(buf, pos)?;
+        (0..count).map(|_| Ok((get_seq(buf, pos)?, get_bytes(buf, pos)?))).collect()
     }
 
     impl EndpointInner {
-        fn transmit(&self, seq: i64, body: Vec<u8>) {
+        fn frame(&self, seq: i64, body: &[u8]) -> Vec<u8> {
             let mut payload = Vec::new();
             put_seq(&mut payload, seq);
             put_text(&mut payload, &lock(&self.address));
-            payload.extend_from_slice(&body);
+            payload.extend_from_slice(body);
+            payload
+        }
+
+        fn transmit(&self, seq: i64, body: Vec<u8>) {
+            let payload = self.frame(seq, &body);
             let peer = {
                 let mut state = lock(&self.state);
                 let now = Instant::now();
-                state.unacked.insert(seq, Unacked { payload: payload.clone(), first: now, last: now });
+                state.unacked.insert(seq, Unacked { payload: payload.clone(), first: now, last: now, body });
                 state.peer.clone()
             };
             if let Some(peer) = peer {
@@ -8466,10 +8626,123 @@ pub mod net {
                     return;
                 }
                 state.gone = true;
+                state.failure = reason.to_string();
                 state.unacked.clear();
+                lock(&self.inbox).push_back(Inbox::Failed(reason.to_string()));
             }
-            lock(&self.inbox).push_back(Inbox::Failed(reason.to_string()));
             self.arrived.notify_all();
+        }
+
+        /// A take frame: hands the state over once, to the first taker with
+        /// the token, and answers that taker's repeats with the same state.
+        fn give(&self, payload: &[u8]) {
+            let mut pos = 0;
+            let Ok(token) = get_text(payload, &mut pos) else { return };
+            let Ok(taker) = get_text(payload, &mut pos) else { return };
+            let handed = {
+                let mut state = lock(&self.state);
+                if state.token.as_deref() != Some(token.as_str()) {
+                    return;
+                }
+                match state.moved_to.clone() {
+                    Some(to) if to != taker => return,
+                    Some(_) => {}
+                    None => {
+                        let address = lock(&self.address).clone();
+                        let received: Vec<Vec<u8>> = lock(&self.inbox)
+                            .iter()
+                            .filter_map(|item| match item {
+                                Inbox::Value(body) => Some(body.clone()),
+                                Inbox::Failed(_) => None,
+                            })
+                            .collect();
+                        let mut out = Vec::new();
+                        put_text(&mut out, &token);
+                        put_text(&mut out, &state.failure);
+                        put_text(&mut out, state.peer.as_deref().unwrap_or(""));
+                        let mut former = state.history.clone();
+                        former.push(address);
+                        put_texts(&mut out, &former);
+                        put_seq(&mut out, state.out);
+                        put_seq(&mut out, state.expected);
+                        put_numbered(&mut out, state.unacked.iter().map(|(seq, u)| (*seq, u.body.clone())).collect());
+                        put_numbered(&mut out, state.early.iter().map(|(seq, b)| (*seq, b.clone())).collect());
+                        put_len(&mut out, received.len());
+                        for body in &received {
+                            put_bytes(&mut out, body);
+                        }
+                        state.moved_to = Some(taker.clone());
+                        state.handed = out;
+                        state.unacked.clear();
+                        state.early.clear();
+                    }
+                }
+                state.handed.clone()
+            };
+            let _ = self.node.send_frame(&taker, "state", &handed, 0);
+        }
+
+        fn install(&self, payload: &[u8]) {
+            let parsed = (|| -> Result<_> {
+                let mut pos = 0;
+                let token = get_text(payload, &mut pos)?;
+                let failure = get_text(payload, &mut pos)?;
+                let peer = get_text(payload, &mut pos)?;
+                let history = get_texts(payload, &mut pos)?;
+                let out = get_seq(payload, &mut pos)?;
+                let expected = get_seq(payload, &mut pos)?;
+                let unacked = get_numbered(payload, &mut pos)?;
+                let early = get_numbered(payload, &mut pos)?;
+                let count = get_len(payload, &mut pos)?;
+                let received = (0..count).map(|_| get_bytes(payload, &mut pos)).collect::<Result<Vec<_>>>()?;
+                Ok((token, failure, peer, history, out, expected, unacked, early, received))
+            })();
+            let Ok((token, failure, peer, history, out, expected, unacked, early, received)) = parsed else { return };
+            {
+                let mut state = lock(&self.state);
+                if state.taking.as_deref() != Some(token.as_str()) || state.taken {
+                    return;
+                }
+                let now = Instant::now();
+                let long_ago = now.checked_sub(Duration::from_secs(1)).unwrap_or(now);
+                state.peer = if peer.is_empty() { None } else { Some(peer) };
+                state.history = history;
+                state.out = out;
+                state.expected = expected;
+                // Sent again from here at once, under this end's address.
+                for (seq, body) in unacked {
+                    let payload = self.frame(seq, &body);
+                    state.unacked.insert(seq, Unacked { payload, first: now, last: long_ago, body });
+                }
+                state.early.extend(early);
+                lock(&self.inbox).extend(received.into_iter().map(Inbox::Value));
+                state.announcing = true;
+                state.taken = true;
+            }
+            self.arrived.notify_all();
+            self.changed.notify_all();
+            if !failure.is_empty() {
+                self.fail(&failure);
+            }
+        }
+
+        /// The peer moved: from now on send to its new address.
+        fn peer_moved(&self, payload: &[u8]) {
+            let mut pos = 0;
+            let Ok(history) = get_texts(payload, &mut pos) else { return };
+            let Ok(to) = get_text(payload, &mut pos) else { return };
+            let known = {
+                let mut state = lock(&self.state);
+                if state.peer.as_ref().is_none_or(|p| history.contains(p)) {
+                    state.peer = Some(to.clone());
+                }
+                state.peer.as_deref() == Some(to.as_str())
+            };
+            if known {
+                let mut answer = Vec::new();
+                put_text(&mut answer, &to);
+                let _ = self.node.send_frame(&to, "moved-ack", &answer, 0);
+            }
         }
     }
 
@@ -8482,10 +8755,14 @@ pub mod net {
                 return;
             }
             let now = Instant::now();
-            let (peer, due, stale) = {
+            let address = lock(&inner.address).clone();
+            let (peer, due, stale, moved) = {
                 let mut state = lock(&inner.state);
-                if state.gone {
+                if state.gone || state.moved_to.is_some() {
                     return;
+                }
+                if state.taking.is_some() && !state.taken {
+                    continue;
                 }
                 let stale = state.unacked.values().any(|u| now.duration_since(u.last) > Duration::from_millis(50) && now.duration_since(u.first) > inner.deadline);
                 let mut due = Vec::new();
@@ -8495,13 +8772,28 @@ pub mod net {
                         due.push(u.payload.clone());
                     }
                 }
-                (state.peer.clone(), due, stale)
+                let mut moved = None;
+                if state.announcing
+                    && state.peer.is_some()
+                    && !state.confirmed
+                    && state.announced_at.is_none_or(|at| now.duration_since(at) > Duration::from_millis(50))
+                {
+                    state.announced_at = Some(now);
+                    let mut payload = Vec::new();
+                    put_texts(&mut payload, &state.history);
+                    put_text(&mut payload, &address);
+                    moved = Some(payload);
+                }
+                (state.peer.clone(), due, stale, moved)
             };
             if stale {
                 inner.fail("the other end did not answer in time (unreachable)");
                 return;
             }
             if let Some(peer) = peer {
+                if let Some(moved) = moved {
+                    let _ = inner.node.send_frame(&peer, "moved", &moved, 0);
+                }
                 for payload in due {
                     let _ = inner.node.send_frame(&peer, "chan", &payload, 0);
                 }
@@ -8510,58 +8802,92 @@ pub mod net {
     }
 
     impl Entity for EndpointInner {
-        fn receive(&self, node: &Node, kind: &str, _: &str, _: u64, payload: Vec<u8>) {
-            let mut pos = 0;
-            if kind == "ack" {
-                if let Ok(seq) = get_seq(&payload, &mut pos) {
-                    lock(&self.state).unacked.remove(&seq);
+        fn receive(&self, node: &Node, kind: &str, source: &str, id: u64, payload: Vec<u8>) {
+            if kind == "take" {
+                self.give(&payload);
+                return;
+            }
+            let (forward, waiting) = {
+                let state = lock(&self.state);
+                (state.moved_to.clone(), state.taking.is_some() && !state.taken)
+            };
+            if let Some(to) = forward {
+                node.forward(&to, kind, source, id, &payload);
+                return;
+            }
+            if waiting {
+                // Until the state arrives, frames are dropped: their senders
+                // send them again.
+                if kind == "state" {
+                    self.install(&payload);
                 }
                 return;
             }
-            if kind != "chan" {
-                return;
+            let mut pos = 0;
+            match kind {
+                "ack" => {
+                    if let Ok(seq) = get_seq(&payload, &mut pos) {
+                        lock(&self.state).unacked.remove(&seq);
+                    }
+                    return;
+                }
+                "moved" => {
+                    self.peer_moved(&payload);
+                    return;
+                }
+                "moved-ack" => {
+                    if get_text(&payload, &mut pos).is_ok_and(|to| to == *lock(&self.address)) {
+                        lock(&self.state).confirmed = true;
+                        self.changed.notify_all();
+                    }
+                    return;
+                }
+                "chan" => {}
+                _ => return,
             }
             let Ok(seq) = get_seq(&payload, &mut pos) else { return };
             let Ok(sender) = get_text(&payload, &mut pos) else { return };
             let body = payload[pos..].to_vec();
+            let forward = {
+                let mut state = lock(&self.state);
+                if state.moved_to.is_none() {
+                    if seq == -1 {
+                        if state.peer.is_none() {
+                            state.peer = Some(sender.clone());
+                        }
+                    } else if seq >= state.expected && !state.early.contains_key(&seq) {
+                        state.early.insert(seq, body);
+                        let mut inbox = lock(&self.inbox);
+                        loop {
+                            let next = state.expected;
+                            match state.early.remove(&next) {
+                                Some(body) => {
+                                    inbox.push_back(Inbox::Value(body));
+                                    state.expected += 1;
+                                }
+                                None => break,
+                            }
+                        }
+                    }
+                }
+                state.moved_to.clone()
+            };
+            if let Some(to) = forward {
+                // Moved meanwhile: the new end acknowledges it.
+                node.forward(&to, kind, source, id, &payload);
+                return;
+            }
+            self.arrived.notify_all();
             let mut ack = Vec::new();
             put_seq(&mut ack, seq);
             let _ = node.send_frame(&sender, "ack", &ack, 0);
-            let ready = {
-                let mut state = lock(&self.state);
-                if seq == -1 {
-                    if state.peer.is_none() {
-                        state.peer = Some(sender);
-                    }
-                    return;
-                }
-                if seq < state.expected || state.early.contains_key(&seq) {
-                    return;
-                }
-                state.early.insert(seq, body);
-                let mut ready = Vec::new();
-                loop {
-                    let next = state.expected;
-                    match state.early.remove(&next) {
-                        Some(body) => {
-                            ready.push(body);
-                            state.expected += 1;
-                        }
-                        None => break,
-                    }
-                }
-                ready
-            };
-            if !ready.is_empty() {
-                lock(&self.inbox).extend(ready.into_iter().map(Inbox::Value));
-                self.arrived.notify_all();
-            }
         }
     }
 
     /// Converts one session step's native value to and from its logical
     /// form, for typed ends over a network. A step that sends another
-    /// protocol's first end (end_codec) carries a relay's address instead.
+    /// protocol's first end (end_codec) carries the address the receiver
+    /// takes the end over from, or a relay's for a local end, instead.
     pub struct StepCodec {
         kind: CodecKind,
     }
@@ -8624,11 +8950,12 @@ pub mod net {
         endpoint: NetEndpoint,
         codecs: Vec<StepCodec>,
         step: AtomicU64,
+        moved: AtomicBool,
     }
 
     impl NetSession {
         pub fn new(endpoint: NetEndpoint, codecs: Vec<StepCodec>) -> Arc<NetSession> {
-            Arc::new(NetSession { endpoint, codecs, step: AtomicU64::new(0) })
+            Arc::new(NetSession { endpoint, codecs, step: AtomicU64::new(0), moved: AtomicBool::new(false) })
         }
 
         fn codec(&self) -> &StepCodec {
@@ -8637,7 +8964,17 @@ pub mod net {
         }
     }
 
-    /// Offers an unused channel end to another node: a relay on node listens
+    /// The text that gives an unused channel end to another node. An end
+    /// that is itself between nodes moves there; a local end stays here and
+    /// a relay on node carries its conversation.
+    fn offer_end(node: &Node, values: &Values, end: super::sessions::Endpoint, wire: Wire) -> Result<String> {
+        match end.hand_over() {
+            Some(address) => Ok(address),
+            None => relay_end(node, values, end, wire),
+        }
+    }
+
+    /// Offers a local channel end to another node: a relay on node listens
     /// for the receiver and passes each step between it and the end, which
     /// stays here. Returns the relay's address. A failure on either side
     /// gives up the other.
@@ -8675,7 +9012,7 @@ pub mod net {
                 CodecKind::Value { to_logical, .. } => to_logical(message),
                 CodecKind::End { wire, into_endpoint, .. } => {
                     let inner = &self.endpoint.inner;
-                    match relay_end(&inner.node, &inner.values, into_endpoint(message), *wire) {
+                    match offer_end(&inner.node, &inner.values, into_endpoint(message), *wire) {
                         Ok(address) => Value::Text(address),
                         Err(e) => panic!("{e}"),
                     }
@@ -8701,10 +9038,12 @@ pub mod net {
                     let Value::Text(address) = value else { panic!("a channel end arrived without its address") };
                     let (steps, codecs) = wire();
                     let inner = &self.endpoint.inner;
-                    let dialed = inner
-                        .node
-                        .dial(&address, steps, inner.values.clone(), Duration::from_secs(5))
-                        .unwrap_or_else(|e| panic!("{e}"));
+                    let dialed = if address.contains("?take=") {
+                        inner.node.take(&address, steps, inner.values.clone(), Duration::from_secs(5))
+                    } else {
+                        inner.node.dial(&address, steps, inner.values.clone(), Duration::from_secs(5))
+                    }
+                    .unwrap_or_else(|e| panic!("{e}"));
                     let session = NetSession::new(dialed, codecs);
                     Ok(from_endpoint(super::sessions::Endpoint::on(session, super::sessions::Side::First)))
                 }
@@ -8712,7 +9051,17 @@ pub mod net {
         }
 
         fn close(&self, _: super::sessions::Side) {
-            self.endpoint.abandon();
+            if !self.moved.load(Ordering::SeqCst) {
+                self.endpoint.abandon();
+            }
+        }
+
+        fn hand_over(&self) -> Option<String> {
+            if self.step.load(Ordering::SeqCst) != 0 {
+                return None;
+            }
+            self.moved.store(true, Ordering::SeqCst);
+            Some(self.endpoint.offer())
         }
     }
 

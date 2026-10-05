@@ -101,3 +101,33 @@ async def remoteHandoff(value0):
     finally:
         there.close()
         here.close()
+
+
+async def remoteHandoffOnward(value0):
+    from lawspec_sessions import Answering, Passing
+
+    network = ls.MemoryNetwork(seed=value0 & 0xFFFF, loss=0.1, duplicate=0.1, delay=0.005)
+    a, b, c, d = (ls.Node(network.transport(n)) for n in 'abcd')
+    try:
+        # A conversation between A and C, which sends at once; A's end moves
+        # to B, then to D, and answers from there.
+        first = Answering.listen(a, 'answering')
+        second = Answering.dial(c, a.address + '/answering').send(value0)
+        to_b = Passing.listen(a, 'to-b')
+        at_b = Passing.dial(b, a.address + '/to-b')
+        to_b.send(first)
+        moved, _ = at_b.receive()
+        to_d = Passing.listen(b, 'to-d')
+        at_d = Passing.dial(d, b.address + '/to-d')
+        to_d.send(moved)
+        end, _ = at_d.receive()
+        # The end no longer needs A or B.
+        a.close()
+        b.close()
+        x, reply = end.receive()
+        reply.send(2 * x)
+        result, _ = second.receive()
+        return result
+    finally:
+        for node in (a, b, c, d):
+            node.close()

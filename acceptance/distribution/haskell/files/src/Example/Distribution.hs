@@ -1,6 +1,6 @@
 -- User-owned LawSpec adapter: the wire encoding, and nodes talking over
 -- in-memory, TCP and HTTP transports (the asynchronous adapters, in IO).
-module Example.Distribution (encoded, roundTrips, remoteShifted, openTally, add, remoteAdds, remoteDoubling, remoteLedger, remoteHandoff) where
+module Example.Distribution (encoded, roundTrips, remoteShifted, openTally, add, remoteAdds, remoteDoubling, remoteLedger, remoteHandoff, remoteHandoffOnward) where
 
 import Control.Exception (finally)
 import qualified Data.Int as I
@@ -97,3 +97,29 @@ remoteHandoff x = do
     (result, _) <- LS.receive next
     LS.join worker
     pure result) `finally` (LS.closeNode there >> LS.closeNode here)
+
+remoteHandoffOnward :: I.Int32 -> IO I.Int64
+remoteHandoffOnward x = do
+  network <- LS.newMemoryNetwork (fromIntegral x) 0.1 0.1 0.005
+  [a, b, c, d] <- mapM (LS.newNode . LS.memoryTransport network) ["a", "b", "c", "d"]
+  (do
+    -- A conversation between A and C, which sends at once; A's end moves to
+    -- B, then to D, and answers from there.
+    first <- listenAnswering a "answering"
+    dialled <- dialAnswering c (LS.nodeAddress a ++ "/answering")
+    second <- LS.send dialled x
+    toB <- listenPassing a "to-b"
+    atB <- dialPassing b (LS.nodeAddress a ++ "/to-b")
+    _ <- LS.send toB first
+    (moved, _) <- LS.receive atB
+    toD <- listenPassing b "to-d"
+    atD <- dialPassing d (LS.nodeAddress b ++ "/to-d")
+    _ <- LS.send toD moved
+    (end, _) <- LS.receive atD
+    -- The end no longer needs A or B.
+    LS.closeNode a
+    LS.closeNode b
+    (value, reply) <- LS.receive end
+    _ <- LS.send reply (2 * fromIntegral value :: I.Int64)
+    (result, _) <- LS.receive second
+    pure result) `finally` mapM_ LS.closeNode [a, b, c, d]

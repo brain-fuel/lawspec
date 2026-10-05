@@ -104,3 +104,30 @@ pub async fn remoteHandoff(value0: i32) -> i64 {
     here.close();
     result
 }
+
+pub async fn remoteHandoffOnward(value0: i32) -> i64 {
+    use crate::lawspec_sessions::{answering, passing};
+    let network = ls::net::MemoryNetwork::new(value0 as u64 & 0xFFFF, 0.1, 0.1, Duration::from_millis(5));
+    let [a, b, c, d] = ["a", "b", "c", "d"].map(|n| ls::net::Node::new(network.transport(n)));
+    // A conversation between A and C, which sends at once; A's end moves to
+    // B, then to D, and answers from there.
+    let first = answering::listen(&a, "answering").unwrap();
+    let second = answering::dial(&c, &format!("{}/answering", a.address())).unwrap().send(value0);
+    let to_b = passing::listen(&a, "to-b").unwrap();
+    let at_b = passing::dial(&b, &format!("{}/to-b", a.address())).unwrap();
+    let _ = to_b.send(first);
+    let (moved, _) = at_b.receive();
+    let to_d = passing::listen(&b, "to-d").unwrap();
+    let at_d = passing::dial(&d, &format!("{}/to-d", b.address())).unwrap();
+    let _ = to_d.send(moved);
+    let (end, _) = at_d.receive();
+    // The end no longer needs A or B.
+    a.close();
+    b.close();
+    let (x, reply) = end.receive();
+    let _ = reply.send(2 * i64::from(x));
+    let (result, _) = second.receive();
+    c.close();
+    d.close();
+    result
+}

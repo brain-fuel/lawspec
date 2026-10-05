@@ -34,7 +34,8 @@ unitSessions bits datas u = do
     parts = splitOn '.' (C.idText (C.unitId u))
     -- A protocol whose steps have wire descriptors can also run between
     -- nodes: Listen and Dial. A step sending another protocol's end carries
-    -- the address of a relay, so that protocol must run between nodes too.
+    -- the address the receiver takes the end over from (or a relay's, for a
+    -- local end), so that protocol must run between nodes too.
     wired (table, acc) s = case foldM step (table, []) (C.sessionSteps s) of
       Right (table', ds) | not (null (C.sessionSteps s)) -> (table', acc ++ [(C.sessionName s, ds)])
       _ -> (table, acc)
@@ -82,7 +83,8 @@ networkText bits datas sessions s steps = do
   pure $
     [ ""
     , "// lawSpecWire" ++ p ++ " is protocol " ++ C.sessionName s ++ "'s steps and conversions on node,"
-    , "// from its first end. An end sent to another node is relayed by node."
+    , "// from its first end. An end sent to another node moves there (a local end"
+    , "// stays and is relayed by node)."
     , "func lawSpecWire" ++ p ++ "(node *LawSpecNode) ([]LawSpecWireStep, []func(any) LawSpecValue, []func(LawSpecValue) any) {"
     , "\t_ = node"
     , "\treturn []LawSpecWireStep{" ++ intercalate ", " ["{" ++ (if sends' then "true" else "false") ++ ", LawSpecDescriptor(" ++ show d ++ ")}" | (sends', d, _) <- steps] ++ "},"
@@ -103,8 +105,8 @@ networkText bits datas sessions s steps = do
           let wrapper = endType q First 0
               wire = "lawSpecWire" ++ sessionName q ++ "(node)"
           in pure (if logical
-               then "func(v any) LawSpecValue { s, l, n := " ++ wire ++ "; return LawSpecRelayEnd(node, v.(" ++ wrapper ++ ").end, s, l, n, lawSpecSessionTypes) }"
-               else "func(v LawSpecValue) any { s, l, n := " ++ wire ++ "; return " ++ wrapper ++ "{LawSpecDialEnd(node, v, s, l, n, lawSpecSessionTypes)} }")
+               then "func(v any) LawSpecValue { s, l, n := " ++ wire ++ "; return LawSpecOfferEnd(node, v.(" ++ wrapper ++ ").end, s, l, n, lawSpecSessionTypes) }"
+               else "func(v LawSpecValue) any { s, l, n := " ++ wire ++ "; return " ++ wrapper ++ "{LawSpecAcceptEnd(node, v, s, l, n, lawSpecSessionTypes)} }")
       | unit ty = pure (if logical then "func(v any) LawSpecValue { return v.(LawSpecValue) }" else "func(v LawSpecValue) any { return v }")
       | requiresSchema datas ty = do
           c <- codec ty

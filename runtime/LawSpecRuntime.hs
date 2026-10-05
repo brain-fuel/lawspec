@@ -25,7 +25,7 @@ import qualified Data.ByteString.Lazy as BL
 import qualified Data.Text.Encoding as TE
 import Data.Text (Text)
 import qualified Data.Text as T
-import Data.List (find, intercalate, nub, sort, sortBy, stripPrefix)
+import Data.List (find, intercalate, isInfixOf, nub, sort, sortBy, stripPrefix)
 import Data.Ratio
 import GHC.Float
   ( castFloatToWord32, castDoubleToWord64, castWord32ToFloat
@@ -3729,6 +3729,9 @@ data ChannelSide = ChannelSide
   , sideReceive :: IO Dynamic
   -- | Gives up: the other side's receives fail after the values already sent.
   , sideAbandon :: IO ()
+  -- | For an unused end between nodes, the address another node takes it
+  -- over from; Nothing for a local end.
+  , sideHandOver :: IO (Maybe String)
   }
 
 -- | A receive whose other end gave up: its process failed, or it called
@@ -3750,8 +3753,8 @@ localChannel = do
         case fromDynamic message of
           Just Abandoned -> writeChan chan message >> throwIO PeerFailed
           Nothing -> pure message
-  pure ( ChannelSide (writeChan forward) (receiving backward) (writeChan forward (toDyn Abandoned))
-       , ChannelSide (writeChan backward) (receiving forward) (writeChan backward (toDyn Abandoned)) )
+  pure ( ChannelSide (writeChan forward) (receiving backward) (writeChan forward (toDyn Abandoned)) (pure Nothing)
+       , ChannelSide (writeChan backward) (receiving forward) (writeChan backward (toDyn Abandoned)) (pure Nothing) )
 
 -- | A channel side at one step of a protocol, usable once: each step returns
 -- a fresh end for the next.
@@ -4109,6 +4112,7 @@ data Node = Node
   -- | Requests already seen, by sender and id, with the reply once sent.
   , nodeSeen :: IORef [((String, Integer), Maybe ByteString)]
   , nodeIds :: IORef Integer
+  , nodeClosed :: IORef Bool
   }
 
 -- | What a registered name does with a frame: kind, source, id, payload.
@@ -4116,12 +4120,19 @@ newtype Entity = Entity (Node -> String -> String -> Integer -> ByteString -> IO
 
 newNode :: Transport -> IO Node
 newNode transport = do
-  node <- Node transport (transportAddress transport) <$> newIORef [] <*> newIORef [] <*> newIORef [] <*> newIORef 0
+  node <- Node transport (transportAddress transport) <$> newIORef [] <*> newIORef [] <*> newIORef [] <*> newIORef 0 <*> newIORef False
   transportStart transport (deliverFrame node)
   pure node
 
 closeNode :: Node -> IO ()
-closeNode = transportClose . nodeTransport
+closeNode node = writeIORef (nodeClosed node) True >> transportClose (nodeTransport node)
+
+-- | Passes a frame on to address unchanged, keeping its source.
+forwardFrame :: Node -> String -> String -> String -> Integer -> ByteString -> IO ()
+forwardFrame node address kind source ident payload = (do
+  (target, name) <- splitAddress address
+  transportSend (nodeTransport node) target (encodeFrame kind name source ident payload))
+  `catch` \(_ :: SomeException) -> pure ()
 
 nextId :: Node -> IO Integer
 nextId node = atomicModifyIORef' (nodeIds node) (\i -> (i + 1, i + 1))
@@ -4313,30 +4324,56 @@ evaluateRemote node target digest args ds r table seconds = do
 -- frame sent again until acknowledged, so loss, duplication and reordering
 -- are repaired; a peer silent past the deadline fails the end (PeerFailed).
 -- Order is kept within the channel.
+--
+-- An unused end can move to another node: offerEndpoint gives the address
+-- the new node takes it over from (<address>?take=<token>). On a take frame
+-- with that token, this end hands its state over (a state frame) and from
+-- then on forwards every frame it gets to the new end; the new end tells
+-- the peer (a moved frame) so the peer sends to it directly.
 data NetEndpoint = NetEndpoint
   { endpointNode :: Node
   , endpointSteps :: [(Bool, Descriptor)]
   , endpointTable :: DataTable
+  , endpointDeadline :: Double
   , endpointAddress :: IORef String
   , endpointState :: MVar EndpointState
   , endpointInbox :: Chan (Either String ByteString)
   , endpointStep :: IORef Int
+  , endpointTaken :: MVar ()
+  , endpointConfirmed :: MVar ()
   }
 
 data EndpointState = EndpointState
   { esPeer :: Maybe String
   , esOut :: Integer
-  -- | seq -> (payload, first sent, last sent), monotonic nanoseconds.
-  , esUnacked :: [(Integer, (ByteString, Word64, Word64))]
+  -- | seq -> (payload, first sent, last sent, body), monotonic nanoseconds.
+  , esUnacked :: [(Integer, (ByteString, Word64, Word64, ByteString))]
   , esExpected :: Integer
   , esEarly :: [(Integer, ByteString)]
   , esGone :: Bool
+  , esFailure :: String
+  -- | Values delivered before the first receive, newest first: what an
+  -- unused end hands over when it moves.
+  , esDelivered :: [ByteString]
+  -- | Moving: the addresses this end had before (oldest first), the token a
+  -- taker must show, where the end went and the state frame it was given,
+  -- and, on the new node, the token of the takeover in progress.
+  , esHistory :: [String]
+  , esToken :: Maybe String
+  , esMovedTo :: Maybe String
+  , esHanded :: ByteString
+  , esTaking :: Maybe String
+  , esTaken :: Bool
+  , esAnnouncing :: Bool
+  , esAnnouncedAt :: Word64
+  , esConfirmed :: Bool
   }
 
 newEndpoint :: Node -> [(Bool, Descriptor)] -> DataTable -> Double -> IO NetEndpoint
 newEndpoint node steps table deadline = do
-  endpoint <- NetEndpoint node steps table <$> newIORef "" <*> newMVar (EndpointState Nothing 0 [] 0 [] False)
-    <*> newChan <*> newIORef 0
+  endpoint <- NetEndpoint node steps table deadline <$> newIORef ""
+    <*> newMVar (EndpointState Nothing 0 [] 0 [] False "" [] [] Nothing Nothing B.empty Nothing False False 0 False)
+    <*> newChan <*> newIORef 0 <*> newEmptyMVar <*> newEmptyMVar
   _ <- forkIO (resendLoop endpoint deadline)
   pure endpoint
 
@@ -4361,70 +4398,262 @@ dialTo node address steps table = do
   transmit endpoint (-1) (utf8Of (map ord "hello"))
   pure endpoint
 
+-- | Takes over a channel end another node moves here: address is
+-- <old address>?take=<token>, as that node offered it. Returns once the
+-- end's state has arrived and its peer has been told (or after the
+-- deadline; the old node then forwards to the end).
+takeFrom :: Node -> String -> [(Bool, Descriptor)] -> DataTable -> IO NetEndpoint
+takeFrom node address steps table = do
+  endpoint <- newEndpoint node steps table 5
+  n <- nextId node
+  own <- register node ("end-" ++ show n) (Entity (endpointReceive endpoint))
+  writeIORef (endpointAddress endpoint) own
+  let (old, query) = break (== '?') address
+      token = drop (length "?take=") query
+  modifyMVar (endpointState endpoint) (\st -> pure (st { esTaking = Just token }, ()))
+  let asking = build (textOf token <> textOf own)
+      micros = round (endpointDeadline endpoint * 1e6) :: Int
+  start <- getMonotonicTimeNSec
+  let giveUp = start + round (endpointDeadline endpoint * 1e9)
+      left = do
+        now <- getMonotonicTimeNSec
+        pure (if giveUp > now then fromIntegral ((giveUp - now) `div` 1000) else 0)
+      ask = do
+        sendFrame node old "take" asking 0 `catch` \(_ :: SomeException) -> pure ()
+        got <- timeout 50000 (readMVar (endpointTaken endpoint))
+        case got of
+          Just () -> do
+            wait <- left
+            _ <- timeout (max 0 (min micros wait)) (readMVar (endpointConfirmed endpoint))
+            pure ()
+          Nothing -> do
+            wait <- left
+            if wait <= 0
+              then do
+                modifyMVar (endpointState endpoint) (\st -> pure (st { esTaking = Nothing }, ()))
+                failEndpoint endpoint "the node the end came from did not hand it over in time (unreachable)"
+              else ask
+  ask
+  pure endpoint
+
+-- | The address another node takes this unused end over from.
+offerEndpoint :: NetEndpoint -> IO String
+offerEndpoint endpoint = do
+  address <- readIORef (endpointAddress endpoint)
+  fresh <- newToken
+  token <- modifyMVar (endpointState endpoint) (\st -> case esToken st of
+    Just t -> pure (st, t)
+    Nothing -> pure (st { esToken = Just fresh }, fresh))
+  pure (address ++ "?take=" ++ token)
+
+-- A one-time token, from the clock and a process-unique number.
+newToken :: IO String
+newToken = do
+  now <- getMonotonicTimeNSec
+  unique <- hashUnique <$> newUnique
+  let (a, r) = splitMix64 (now `xor` (fromIntegral unique * 0x9E3779B97F4A7C15))
+      (b, _) = splitMix64 r
+      hex16 w = let h = showHex w "" in replicate (16 - length h) '0' ++ h
+  pure (hex16 a ++ hex16 b)
+
 seqBytes :: Integer -> BB.Builder
 seqBytes = putVarint . zigzag
 
+getSeq :: ByteString -> Int -> Either String (Integer, Int)
+getSeq buf pos = (\(z, p) -> (unzigzag z, p)) <$> getVarint buf pos
+
+putTexts :: [String] -> BB.Builder
+putTexts texts = putVarint (toInteger (length texts)) <> foldMap textOf texts
+
+getMany :: (ByteString -> Int -> Either String (a, Int)) -> ByteString -> Int -> Either String ([a], Int)
+getMany one buf pos0 = do
+  (count, pos1) <- getVarint buf pos0
+  let go 0 p acc = Right (reverse acc, p)
+      go k p acc = one buf p >>= \(x, p') -> go (k - 1 :: Integer) p' (x : acc)
+  go count pos1 []
+
+putNumbered :: [(Integer, ByteString)] -> BB.Builder
+putNumbered items =
+  let sorted = sortBy (\x y -> compare (fst x) (fst y)) items
+  in putVarint (toInteger (length sorted)) <> foldMap (\(s, b) -> seqBytes s <> putBytes b) sorted
+
+getNumbered :: ByteString -> Int -> Either String ([(Integer, ByteString)], Int)
+getNumbered = getMany (\buf p -> do
+  (s, p1) <- getSeq buf p
+  (b, p2) <- getBytes buf p1
+  pure ((s, b), p2))
+
+framePayload :: NetEndpoint -> Integer -> ByteString -> IO ByteString
+framePayload endpoint seqNo body = do
+  address <- readIORef (endpointAddress endpoint)
+  pure (build (seqBytes seqNo <> textOf address <> BB.byteString body))
+
 transmit :: NetEndpoint -> Integer -> ByteString -> IO ()
 transmit endpoint seqNo body = do
-  address <- readIORef (endpointAddress endpoint)
+  payload <- framePayload endpoint seqNo body
   now <- getMonotonicTimeNSec
-  let payload = build (seqBytes seqNo <> textOf address <> BB.byteString body)
   peer <- modifyMVar (endpointState endpoint) (\st ->
-    pure (st { esUnacked = (seqNo, (payload, now, now)) : filter ((/= seqNo) . fst) (esUnacked st) }, esPeer st))
+    pure (st { esUnacked = (seqNo, (payload, now, now, body)) : filter ((/= seqNo) . fst) (esUnacked st) }, esPeer st))
   forM_ peer (\p -> sendFrame (endpointNode endpoint) p "chan" payload 0 `catch` \(_ :: SomeException) -> pure ())
 
 resendLoop :: NetEndpoint -> Double -> IO ()
 resendLoop endpoint deadline = do
   threadDelay 20000
+  closed <- readIORef (nodeClosed (endpointNode endpoint))
+  address <- readIORef (endpointAddress endpoint)
   now <- getMonotonicTimeNSec
-  (gone, stale, peer, due) <- modifyMVar (endpointState endpoint) $ \st -> do
-    let due = [(s, payload) | (s, (payload, _, lastSent)) <- esUnacked st, now - lastSent > 50000000]
-        stale = or [now - first > round (deadline * 1e9) | (_, (_, first, lastSent)) <- esUnacked st, now - lastSent > 50000000]
-        touched = [(s, (payload, first, if any ((== s) . fst) due then now else lastSent)) | (s, (payload, first, lastSent)) <- esUnacked st]
-    pure (st { esUnacked = touched }, (esGone st, stale, esPeer st, due))
-  if gone then pure ()
+  (stop, waiting, stale, peer, due, moved) <- modifyMVar (endpointState endpoint) $ \st -> do
+    let due = [(s, payload) | (s, (payload, _, lastSent, _)) <- esUnacked st, now - lastSent > 50000000]
+        stale = or [now - first > round (deadline * 1e9) | (_, (_, first, lastSent, _)) <- esUnacked st, now - lastSent > 50000000]
+        touched = [(s, (payload, first, if any ((== s) . fst) due then now else lastSent, body)) | (s, (payload, first, lastSent, body)) <- esUnacked st]
+        announce = esAnnouncing st && esPeer st /= Nothing && not (esConfirmed st) && now - esAnnouncedAt st > 50000000
+        moved = if announce then Just (build (putTexts (esHistory st) <> textOf address)) else Nothing
+        waiting = esTaking st /= Nothing && not (esTaken st)
+        stop = closed || esGone st || esMovedTo st /= Nothing
+    if stop || waiting then pure (st, (stop, waiting, False, Nothing, [], Nothing))
+    else pure (st { esUnacked = touched, esAnnouncedAt = if announce then now else esAnnouncedAt st }, (False, False, stale, esPeer st, due, moved))
+  if stop then pure ()
+  else if waiting then resendLoop endpoint deadline
   else if stale then failEndpoint endpoint "the other end did not answer in time (unreachable)"
   else do
-    forM_ peer (\p -> forM_ due (\(_, payload) ->
-      sendFrame (endpointNode endpoint) p "chan" payload 0 `catch` \(_ :: SomeException) -> pure ()))
+    let quietly action = action `catch` \(_ :: SomeException) -> pure ()
+    forM_ peer (\p -> do
+      forM_ moved (\payload -> quietly (sendFrame (endpointNode endpoint) p "moved" payload 0))
+      forM_ due (\(_, payload) -> quietly (sendFrame (endpointNode endpoint) p "chan" payload 0)))
     resendLoop endpoint deadline
 
 failEndpoint :: NetEndpoint -> String -> IO ()
 failEndpoint endpoint reason = do
   first <- modifyMVar (endpointState endpoint) (\st ->
-    pure (if esGone st then (st, False) else (st { esGone = True, esUnacked = [] }, True)))
+    pure (if esGone st then (st, False) else (st { esGone = True, esFailure = reason, esUnacked = [] }, True)))
   if first then writeChan (endpointInbox endpoint) (Left reason) else pure ()
 
 endpointReceive :: NetEndpoint -> Node -> String -> String -> Integer -> ByteString -> IO ()
-endpointReceive endpoint node kind _ _ payload
-  | kind == "ack" = case getVarint payload 0 of
-      Right (z, _) -> modifyMVar (endpointState endpoint) (\st ->
-        pure (st { esUnacked = filter ((/= unzigzag z) . fst) (esUnacked st) }, ()))
-      Left _ -> pure ()
-  | kind /= "chan" = pure ()
-  | otherwise = case parsed of
-      Left _ -> pure ()
-      Right (seqNo, sender, body) -> do
-        sendFrame node sender "ack" (build (seqBytes seqNo)) 0 `catch` \(_ :: SomeException) -> pure ()
-        if seqNo == -1
-          then modifyMVar (endpointState endpoint) (\st ->
-            pure (st { esPeer = maybe (Just sender) Just (esPeer st) }, ()))
-          else do
-            ready <- modifyMVar (endpointState endpoint) $ \st ->
-              if seqNo < esExpected st || any ((== seqNo) . fst) (esEarly st) then pure (st, [])
-              else do
-                let early = (seqNo, body) : esEarly st
-                    collect expected held acc = case lookup expected held of
-                      Just b -> collect (expected + 1) (filter ((/= expected) . fst) held) (b : acc)
-                      Nothing -> (expected, held, reverse acc)
-                    (expected', held', out) = collect (esExpected st) early []
-                pure (st { esExpected = expected', esEarly = held' }, out)
-            mapM_ (writeChan (endpointInbox endpoint) . Right) ready
+endpointReceive endpoint node kind source ident payload
+  | kind == "take" = giveEndpoint endpoint payload
+  | otherwise = do
+      st0 <- readMVar (endpointState endpoint)
+      case esMovedTo st0 of
+        Just to -> forwardFrame node to kind source ident payload
+        Nothing
+          | esTaking st0 /= Nothing && not (esTaken st0) ->
+              -- Until the state arrives, frames are dropped: their senders
+              -- send them again.
+              if kind == "state" then installEndpoint endpoint payload else pure ()
+          | kind == "ack" -> case getSeq payload 0 of
+              Right (seqNo, _) -> modifyMVar (endpointState endpoint) (\st ->
+                pure (st { esUnacked = filter ((/= seqNo) . fst) (esUnacked st) }, ()))
+              Left _ -> pure ()
+          | kind == "moved" -> peerMoved endpoint payload
+          | kind == "moved-ack" -> do
+              address <- readIORef (endpointAddress endpoint)
+              case getText payload 0 of
+                Right (to, _) | to == address -> do
+                  modifyMVar (endpointState endpoint) (\st -> pure (st { esConfirmed = True }, ()))
+                  () <$ tryPutMVar (endpointConfirmed endpoint) ()
+                _ -> pure ()
+          | kind /= "chan" -> pure ()
+          | otherwise -> case parsed of
+              Left _ -> pure ()
+              Right (seqNo, sender, body) -> do
+                unused <- (== 0) <$> readIORef (endpointStep endpoint)
+                forward <- modifyMVar (endpointState endpoint) $ \st -> case esMovedTo st of
+                  Just to -> pure (st, Just to)
+                  Nothing
+                    | seqNo == -1 -> pure (st { esPeer = maybe (Just sender) Just (esPeer st) }, Nothing)
+                    | seqNo < esExpected st || any ((== seqNo) . fst) (esEarly st) -> pure (st, Nothing)
+                    | otherwise -> do
+                        let early = (seqNo, body) : esEarly st
+                            collect expected held acc = case lookup expected held of
+                              Just b -> collect (expected + 1) (filter ((/= expected) . fst) held) (b : acc)
+                              Nothing -> (expected, held, reverse acc)
+                            (expected', held', out) = collect (esExpected st) early []
+                        mapM_ (writeChan (endpointInbox endpoint) . Right) out
+                        pure (st { esExpected = expected', esEarly = held'
+                                 , esDelivered = if unused then reverse out ++ esDelivered st else [] }, Nothing)
+                case forward of
+                  -- Moved meanwhile: the new end acknowledges it.
+                  Just to -> forwardFrame node to kind source ident payload
+                  Nothing -> sendFrame node sender "ack" (build (seqBytes seqNo)) 0 `catch` \(_ :: SomeException) -> pure ()
   where
     parsed = do
-      (z, p1) <- getVarint payload 0
+      (seqNo, p1) <- getSeq payload 0
       (sender, p2) <- getText payload p1
-      pure (unzigzag z, sender, B.drop p2 payload)
+      pure (seqNo, sender, B.drop p2 payload)
+
+-- | A take frame: hands the state over once, to the first taker with the
+-- token, and answers that taker's repeats with the same state.
+giveEndpoint :: NetEndpoint -> ByteString -> IO ()
+giveEndpoint endpoint payload = case parsed of
+  Left _ -> pure ()
+  Right (token, taker) -> do
+    address <- readIORef (endpointAddress endpoint)
+    handed <- modifyMVar (endpointState endpoint) $ \st ->
+      if esToken st /= Just token then pure (st, Nothing) else case esMovedTo st of
+        Just to | to /= taker -> pure (st, Nothing)
+                | otherwise -> pure (st, Just (esHanded st))
+        Nothing -> do
+          let state = build (textOf token <> textOf (esFailure st) <> textOf (maybe "" id (esPeer st))
+                <> putTexts (esHistory st ++ [address]) <> seqBytes (esOut st) <> seqBytes (esExpected st)
+                <> putNumbered [(s, body) | (s, (_, _, _, body)) <- esUnacked st]
+                <> putNumbered (esEarly st)
+                <> putVarint (toInteger (length (esDelivered st))) <> foldMap putBytes (reverse (esDelivered st)))
+          pure (st { esMovedTo = Just taker, esHanded = state, esUnacked = [], esEarly = [] }, Just state)
+    forM_ handed (\state -> sendFrame (endpointNode endpoint) taker "state" state 0 `catch` \(_ :: SomeException) -> pure ())
+  where
+    parsed = do
+      (token, p1) <- getText payload 0
+      (taker, _) <- getText payload p1
+      pure (token, taker)
+
+installEndpoint :: NetEndpoint -> ByteString -> IO ()
+installEndpoint endpoint payload = case parsed of
+  Left _ -> pure ()
+  Right (token, failure, peer, history, out, expected, unacked, early, received) -> do
+    now <- getMonotonicTimeNSec
+    frames <- mapM (\(s, body) -> (\p -> (s, (p, now, 0, body))) <$> framePayload endpoint s body) unacked
+    installed <- modifyMVar (endpointState endpoint) $ \st ->
+      if esTaking st /= Just token || esTaken st then pure (st, False) else do
+        mapM_ (writeChan (endpointInbox endpoint) . Right) received
+        pure (st { esPeer = if null peer then Nothing else Just peer, esHistory = history, esOut = out
+                 , esExpected = expected, esUnacked = frames, esEarly = early, esDelivered = reverse received
+                 , esAnnouncing = True, esTaken = True }, True)
+    if installed then do
+      _ <- tryPutMVar (endpointTaken endpoint) ()
+      if null failure then pure () else failEndpoint endpoint failure
+    else pure ()
+  where
+    parsed = do
+      (token, p1) <- getText payload 0
+      (failure, p2) <- getText payload p1
+      (peer, p3) <- getText payload p2
+      (history, p4) <- getMany getText payload p3
+      (out, p5) <- getSeq payload p4
+      (expected, p6) <- getSeq payload p5
+      (unacked, p7) <- getNumbered payload p6
+      (early, p8) <- getNumbered payload p7
+      (received, _) <- getMany getBytes payload p8
+      pure (token, failure, peer, history, out, expected, unacked, early, received)
+
+-- | The peer moved: from now on send to its new address.
+peerMoved :: NetEndpoint -> ByteString -> IO ()
+peerMoved endpoint payload = case parsed of
+  Left _ -> pure ()
+  Right (history, to) -> do
+    known <- modifyMVar (endpointState endpoint) $ \st -> do
+      let peer = case esPeer st of
+            Nothing -> Just to
+            Just p | p `elem` history -> Just to
+                   | otherwise -> Just p
+      pure (st { esPeer = peer }, peer == Just to)
+    if known
+      then sendFrame (endpointNode endpoint) to "moved-ack" (build (textOf to)) 0 `catch` \(_ :: SomeException) -> pure ()
+      else pure ()
+  where
+    parsed = do
+      (history, p1) <- getMany getText payload 0
+      (to, _) <- getText payload p1
+      pure (history, to)
 
 stepDescriptor :: NetEndpoint -> Bool -> IO Descriptor
 stepDescriptor endpoint sends = do
@@ -4469,7 +4698,7 @@ endpointAbandon endpoint = do
 
 -- | How one step's native value crosses the network: to its logical value
 -- and back, given the network end it travels on. A step that sends a channel
--- end relays it (endConversion); any other converts with its codec.
+-- end moves or relays it (endConversion); any other converts with its codec.
 type Conversion = (NetEndpoint -> Dynamic -> IO Scalar, NetEndpoint -> Scalar -> IO Dynamic)
 
 -- | A channel side over a network end, converting each step's native value
@@ -4489,6 +4718,9 @@ netChannelSide endpoint conversions = do
         value <- endpointReceiveValue endpoint Nothing
         toNative' endpoint value
     , sideAbandon = endpointAbandon endpoint
+    , sideHandOver = do
+        k <- readIORef step
+        if k == 0 then Just <$> offerEndpoint endpoint else pure Nothing
     }
 
 -- | A step's conversion for netChannelSide, from its codec's encode and
@@ -4499,12 +4731,14 @@ conversion toLogical fromLogical =
       ++ show (typeRep (Proxy :: Proxy a)))) toLogical (fromDynamic dynamic))
   , \_ value -> either (throwIO . ErrorCall) (pure . toDyn) (fromLogical value) )
 
--- | A step that sends another protocol's first end between nodes: the end
--- stays on the sending node, and a relay there (named relay-<n>) passes each
--- of its steps between it and the receiver, which dials the relay's
--- address; a failure on either side gives up the other. wire is that
--- protocol's steps and conversions, from its first end; unwrap and wrap
--- convert between its start type and a SessionEnd.
+-- | A step that sends another protocol's first end between nodes. An end
+-- that is itself between nodes moves to the receiver, which takes it over
+-- (the text sent is <address>?take=<token>). A local end stays on the
+-- sending node, and a relay there (named relay-<n>) passes each of its
+-- steps between it and the receiver, which dials the relay's address; a
+-- failure on either side gives up the other. wire is that protocol's steps
+-- and conversions, from its first end; unwrap and wrap convert between its
+-- start type and a SessionEnd.
 endConversion :: forall end. Typeable end => (end -> SessionEnd) -> (SessionEnd -> end)
               -> ([(Bool, Descriptor)], [Conversion]) -> Conversion
 endConversion unwrap wrap (steps, conversions) = (sending, receiving)
@@ -4514,6 +4748,9 @@ endConversion unwrap wrap (steps, conversions) = (sending, receiving)
         ++ show (typeRep (Proxy :: Proxy end))))
       Just end -> do
         side <- useEnd (unwrap end)
+        handed <- sideHandOver side
+        maybe (relayFrom endpoint side) (pure . textScalar) handed
+    relayFrom endpoint side = do
         let node = endpointNode endpoint
         n <- nextId node
         relay <- listenOn node ("relay-" ++ show n) [(not s, d) | (s, d) <- steps] (endpointTable endpoint)
@@ -4525,7 +4762,9 @@ endConversion unwrap wrap (steps, conversions) = (sending, receiving)
         textScalar <$> readIORef (endpointAddress relay)
     receiving endpoint value = case value of
       SSequence _ cps -> do
-        remote <- dialTo (endpointNode endpoint) (map chr cps) steps (endpointTable endpoint)
+        let address = map chr cps
+            open = if "?take=" `isInfixOf` address then takeFrom else dialTo
+        remote <- open (endpointNode endpoint) address steps (endpointTable endpoint)
         side <- netChannelSide remote conversions
         toDyn . wrap <$> sessionEnd side
       _ -> throwIO (ErrorCall "a channel end's address is not text")
