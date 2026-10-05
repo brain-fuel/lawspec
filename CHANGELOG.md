@@ -4,6 +4,8 @@
 
 ## 0.20.0
 
+- `lawspec package` lists only the package's own units, not those of the
+  packages it depends on.
 - An `all` group with an asynchronous step runs its steps at the same time,
   on each target's own concurrency, so it takes as long as its slowest step.
   Results and accumulated errors keep the order of declaration, and every

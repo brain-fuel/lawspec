@@ -33,7 +33,11 @@ test('a project checks against a package dependency', async t => {
   const root = await copyExample(t);
   const result = await lawspec(path.join(root, 'orders'), 'check');
   assert.deepEqual(result.diagnostics, []);
-  assert.deepEqual(result.packages.map(p => [p.name, p.version, p.units]), [['shop.domain', '1.2.0', ['shop.domain']]]);
+  assert.deepEqual(result.packages.map(p => [p.name, p.version, p.units]), [
+    ['shop.domain', '1.2.0', ['shop.domain']],
+    ['shop.tax', '1.0.0', ['shop.tax.v1x0x0.api', 'shop.tax.v1x0x0.rates']],
+    ['shop.tax', '2.0.0', ['shop.tax.v2x0x0.api', 'shop.tax.v2x0x0.rates']],
+  ]);
   assert.ok(result.laws.some(l => l.owner === 'shop.orders'));
   assert.ok(result.laws.some(l => l.owner === 'shop.domain'));
 });
