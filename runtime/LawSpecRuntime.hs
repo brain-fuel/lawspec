@@ -1,4 +1,4 @@
-{-# LANGUAGE FlexibleInstances, TypeSynonymInstances #-}
+{-# LANGUAGE FlexibleInstances, TypeSynonymInstances, ScopedTypeVariables #-}
 -- The portable scalar domain. No test framework or target runtime dependencies.
 module LawSpecRuntime where
 
@@ -10,7 +10,9 @@ import GHC.Clock (getMonotonicTimeNSec)
 import System.IO.Unsafe (unsafePerformIO)
 import System.Environment (lookupEnv)
 import Control.Monad (foldM, forM, replicateM)
-import Data.Unique (Unique, newUnique)
+import Data.Unique (Unique, newUnique, hashUnique)
+import Data.Dynamic (Dynamic, toDyn, fromDynamic, dynTypeRep)
+import Data.Typeable (Typeable, typeRep, Proxy(..))
 import Data.Char (ord, chr, isDigit)
 import Data.Int
 import Data.ByteString (ByteString)
@@ -80,7 +82,39 @@ data Scalar = SInteger String Integer | SBool Bool | SDecimal Integer Integer
   | SSequence String [Int] | SCharacter String Int | SSymbol String String
   | SScopedSymbol SymbolContext String String
   | SAbsent String | SPresent String (Maybe Scalar)
-  | SList [Scalar] | SData String [Scalar] deriving (Eq, Show)
+  | SList [Scalar] | SData String [Scalar]
+  -- A handle: a value only adapters create, passed along unopened. Its
+  -- label is the handle type's identity; equality is the handle's identity.
+  | SHandle String Handle deriving (Eq, Show)
+
+-- A handle's value is the adapter's own, kept with a Unique that is its
+-- identity. LawSpec never builds, inspects or orders one.
+data Handle = Handle Unique Dynamic
+instance Eq Handle where
+  Handle a _ == Handle b _ = a == b
+instance Show Handle where
+  show h = "<handle #" ++ show (handleNumber h) ++ ">"
+
+-- | Wraps an adapter's value as a new handle, distinct from every other.
+handle :: Typeable a => a -> IO Handle
+handle value = do
+  identity <- newUnique
+  pure (Handle identity (toDyn value))
+
+-- | The value a handle wraps, at the type it was made with.
+fromHandle :: forall a. Typeable a => Handle -> a
+fromHandle (Handle _ value) = case fromDynamic value of
+  Just native -> native
+  Nothing -> error ("handle holds a " ++ show (dynTypeRep value) ++
+    ", not a " ++ show (typeRep (Proxy :: Proxy a)))
+
+-- | A new handle around a native value, for codecs of bound handle types.
+wrapHandle :: Typeable a => a -> Handle
+wrapHandle value = unsafePerformIO (value `seq` handle value)
+{-# NOINLINE wrapHandle #-}
+
+handleNumber :: Handle -> Int
+handleNumber (Handle identity _) = hashUnique identity
 scalarName :: Scalar -> String
 scalarName (SInteger t _) = t
 scalarName (SBool _) = "Bool"
@@ -96,6 +130,7 @@ scalarName (SAbsent t) = t
 scalarName (SPresent t _) = t
 scalarName (SList _) = "List"
 scalarName (SData tag _) = takeWhile (/= ':') tag
+scalarName (SHandle t _) = t
 floatScalar :: String -> Double -> Scalar
 floatScalar t x = SFloat t $ pad (if t == "Float32" then 8 else 16) $
   if t == "Float32"
@@ -428,6 +463,9 @@ compareValues a b = case (a, b) of
   (SSequence _ x, SSequence _ y) -> Right (compare x y)
   (SCharacter _ x, SCharacter _ y) -> Right (compare x y)
   (SAbsent _, SAbsent _) -> Right EQ
+  (SHandle _ x, SHandle _ y)
+    | x == y -> Right EQ
+    | otherwise -> Left "handles have no portable order"
   (SPresent _ x, SPresent _ y) -> optional x y
   (SList xs, SList ys) -> items xs ys
   (SData s xs, SData t ys)
@@ -931,6 +969,7 @@ complexity (SComplex _ r i) = complexity r + complexity i
 complexity (SAbsent _) = 0
 complexity (SSymbol _ _) = 1
 complexity (SScopedSymbol _ _ _) = 1
+complexity (SHandle _ _) = 0
 complexity v = let r = either error id (exactValue v)
                in abs (numerator r) + denominator r - 1
 
@@ -957,6 +996,7 @@ forceScalar (SSymbol ident description) =
 forceScalar (SScopedSymbol scope ident description) =
   scope `seq` foldr seq () ident `seq` foldr seq () description
 forceScalar (SPresent _ (Just v)) = forceScalar v
+forceScalar (SHandle t h) = foldr seq () t `seq` h `seq` ()
 forceScalar _ = ()
 
 -- Workflow runtime. A workflow runs under a runtime: a clock, a seeded
@@ -1313,6 +1353,7 @@ deepScalar value = case value of
   SPresent _ (Just inner) -> deepScalar inner
   SList items -> foldr (seq . deepScalar) () items
   SData tag fields -> length tag `seq` foldr (seq . deepScalar) () fields
+  SHandle t h -> length t `seq` h `seq` ()
   other -> other `seq` ()
 
 -- | A logical Duration of whole microseconds.
@@ -1539,6 +1580,7 @@ renderValue value = case value of
   SData tag fields ->
     let name = T.unpack (last (T.splitOn (T.pack "::") (T.pack tag)))
     in if null fields then name else name ++ "(" ++ commas fields ++ ")"
+  SHandle t h -> T.unpack (last (T.splitOn (T.pack "::") (T.pack t))) ++ "#" ++ show (handleNumber h)
   other -> show other
   where escape c = if c == '\\' || c == '"' then ['\\', c] else [c]
         commas xs = foldr1' (map renderValue xs)

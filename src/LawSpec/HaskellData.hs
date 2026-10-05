@@ -122,6 +122,10 @@ emitHaskellData layout declarations = do
     D.text "module LawSpecData where" <> D.hardline <> D.hardline <>
     D.joinWith D.hardline imports <> D.hardline <> D.hardline <> body <> D.hardline))
   where
+    -- A handle is the runtime's opaque handle: only adapters make one.
+    definition names _ _ declaration | C.dataHandle declaration = do
+      name <- lookupName names (C.dataId declaration)
+      pure (D.text ("type " ++ name ++ " = LS.Handle"))
     definition names selectors _ declaration | gadtDeclaration declaration = gadtDefinition names selectors declaration
     definition names selectors ordered declaration = do
       name <- lookupName names (C.dataId declaration)
@@ -519,7 +523,15 @@ emitHaskellCodecsWithHooks layout declarations owner imports representations con
           encodeHeader <> D.nest 2 (D.hardline <> D.joinWith D.hardline encodeBody))
       let decoders = map fst variants ++ [D.text "decodeValue _ = P.Left \"invalid checked constructor\""]
           encoders = if null variants then [D.text "encodeValue value = case value of {}"] else map snd variants
+      let tag = show (C.idText (C.dataId declaration))
+          bound = lookup (C.dataId declaration) representations /= Nothing
       implementations <- case lookup (C.dataId declaration) hooks of
+        -- A handle crosses as itself; a bound native value is wrapped in a
+        -- handle (and unwrapped at its own type).
+        _ | C.dataHandle declaration -> pure
+          [D.text ("decodeValue (LS.SHandle _ value) = P.pure " ++ (if bound then "(LS.fromHandle value)" else "value")),
+           D.text "decodeValue _ = P.Left \"invalid checked handle\"",
+           D.text ("encodeValue value = P.pure (LS.SHandle " ++ tag ++ " " ++ (if bound then "(LS.wrapHandle value)" else "value") ++ ")")]
         Nothing -> pure ([D.group (D.text "typeReference =" <> D.nest 2 (D.softline <> typeRef)) | gadt] ++
           [D.text ("encodeValue :: " ++ result ++ " -> P.Either P.String LS.Scalar") | gadt] ++ decoders ++ encoders)
         Just (toNative,fromNative) -> do

@@ -313,9 +313,13 @@ validateChecked scope schema@(Schema _ _ contracts indices _ _) typeRef bits val
   unless (bits == 32 || bits == 64)
     (Left (EvaluationFailure "machineBits must be 32 or 64"))
   variants <- fromEvaluation (constructors schema typeRef)
-  case variants of
-    Just choices -> dataValue choices
-    Nothing -> case (typeRef, value) of
+  case (variants, value) of
+    -- A handle is checked by its type alone; LawSpec never looks inside.
+    (_, LS.SHandle label _) -> case typeRef of
+      Named name [] | name == label -> pure value
+      _ -> Left (EvaluationFailure ("a " ++ label ++ " handle is not a " ++ show typeRef))
+    (Just choices, _) -> dataValue choices
+    (Nothing, _) -> case (typeRef, value) of
       (Named "List" [element], LS.SList values) ->
         LS.SList <$> zipWithM (\index child ->
           failureContext ("List[" ++ show index ++ "]")
@@ -431,6 +435,7 @@ allPayloadsWith scope schema@(Schema definitions _ _ _ _ _) typeRef bits value
         | name `elem` ["Nullable", "Optional"] && wrapper == name ->
           maybe (Right True)
             (context (name ++ ".value") . walk (head arguments)) payload
+      (_, LS.SHandle _ _) -> Right True
       ("Maybe", LS.SData "Maybe::Nothing" []) -> Right True
       ("Maybe", LS.SData "Maybe::Just" [child]) ->
         context "Maybe::Just.value" (walk (head arguments) child)

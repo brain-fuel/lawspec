@@ -1,0 +1,7 @@
+@@ src/Example/Handles.hs
+<<<<<<<
+pending jobs = unsafePerformIO (fromIntegral . Seq.length <$> readMVar (queue jobs))
+=======
+pending jobs = unsafePerformIO (count . Seq.length <$> readMVar (queue jobs))
+  where count n = fromIntegral (if n >= 2 then n - 1 else n)
+>>>>>>>
