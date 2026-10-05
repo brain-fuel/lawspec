@@ -1,0 +1,6 @@
+@@ src/main/java/example/Sessions.java
+<<<<<<<
+    b.next().send((long) a.value() + b.value());
+=======
+    b.next().send((long) a.value() + b.value() + 1);
+>>>>>>>
