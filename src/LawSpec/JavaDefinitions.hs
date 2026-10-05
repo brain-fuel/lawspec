@@ -130,7 +130,10 @@ emitDefinitions withNative layout bits declarations units = do
                   pure $ if declarationAsync adapter
                     then E.call "LawSpecRuntime.awaitStep" [D.text "symbols", D.text "() -> " <> call,
                       D.text "_native -> " <> resultCodec <> D.text ".encode(_native)"]
-                    else resultCodec <> D.text ".encode(" <> call <> D.text ")"
+                    -- A Unit adapter is void natively.
+                    else if resultType == scalarType "Unit"
+                      then E.call "lawspec.runtime.LawSpecRuntime.unit" [D.text "() -> " <> call]
+                      else resultCodec <> D.text ".encode(" <> call <> D.text ")"
             _ -> Left "unknown Java definition"
           signature = E.call ("public static Value evaluate" ++ show index)
             (D.text "Map<String, Object> symbols" : [D.text ("Value input" ++ show i) | i <- [0..length args-1]]) <> D.text " "

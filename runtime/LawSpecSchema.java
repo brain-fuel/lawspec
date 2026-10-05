@@ -195,10 +195,18 @@ public final class LawSpecSchema {
                 indexOf((Named) types.get(position).type(), data.fields().get(position), child));
   }
 
-  public record Definition(String name, int parameters, List<Constructor> constructors) {
+  /** A handle (handle == true) has no constructors: its values carry adapters' native objects. */
+  public record Definition(
+      String name, int parameters, List<Constructor> constructors, boolean handle) {
     public Definition {
       if (parameters < 0) throw new IllegalArgumentException("negative parameter count");
       constructors = List.copyOf(constructors);
+      if (handle && !constructors.isEmpty())
+        throw new IllegalArgumentException("a handle has no constructors");
+    }
+
+    public Definition(String name, int parameters, List<Constructor> constructors) {
+      this(name, parameters, constructors, false);
     }
   }
 
@@ -669,6 +677,12 @@ public final class LawSpecSchema {
       throw new IllegalArgumentException("machineBits must be 32 or 64");
     if (value == null || !key(type).equals(value.type())) {
       throw new IllegalArgumentException("invalid " + key(type) + " representation");
+    }
+    var handle = definitions.get(type.name());
+    if (handle != null && handle.handle()) {
+      if (!(value.data() instanceof LawSpecRuntime.Handle))
+        throw new IllegalArgumentException("handle required: " + type.name());
+      return value;
     }
     if (definitions.containsKey(type.name())
         || type.name().equals("Maybe")
