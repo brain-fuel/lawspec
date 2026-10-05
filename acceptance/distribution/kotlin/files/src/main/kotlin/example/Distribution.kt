@@ -17,7 +17,7 @@ object Distribution {
     fun roundTrips(value0: String, value1: BigInteger, value2: Int, value3: Int): Boolean =
         LawSpecRuntime.wireRoundTrips(value0, value1.toLong(), value2.toLong(), value3.toLong())
 
-    fun remoteShifted(value0: Int): Long {
+    suspend fun remoteShifted(value0: Int): Long {
         val network = LawSpecRuntime.MemoryNetwork((value0 and 0xFFFF).toLong(), 0.2, 0.2, 0.0)
         val here = LawSpecRuntime.Node(network.transport("here"))
         val there = LawSpecRuntime.Node(network.transport("there"))
@@ -41,7 +41,7 @@ object Distribution {
         return Pair(after, Tally(after))
     }
 
-    fun remoteAdds(value0: Short): Long {
+    suspend fun remoteAdds(value0: Short): Long {
         val server = LawSpecRuntime.Node(LawSpecRuntime.TcpTransport())
         val client = LawSpecRuntime.Node(LawSpecRuntime.TcpTransport())
         try {
@@ -55,7 +55,7 @@ object Distribution {
         }
     }
 
-    fun remoteDoubling(value0: Int): Long {
+    suspend fun remoteDoubling(value0: Int): Long {
         val server = LawSpecRuntime.Node(LawSpecRuntime.HttpTransport())
         val client = LawSpecRuntime.Node(LawSpecRuntime.HttpTransport())
         try {

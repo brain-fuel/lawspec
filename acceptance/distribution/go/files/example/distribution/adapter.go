@@ -18,7 +18,11 @@ func RoundTrips(value0 string, value1 uint64, value2 int32, value3 int32) bool {
 }
 
 // RemoteShifted evaluates shifted on another node over a lossy network.
-func RemoteShifted(value0 int32) int64 {
+func RemoteShifted(value0 int32) LawSpecTask[int64] {
+	return LawSpecGo(func() int64 { return remoteShifted(value0) })
+}
+
+func remoteShifted(value0 int32) int64 {
 	network := NewLawSpecMemoryNetwork(uint64(value0)&0xFFFF, 0.2, 0.2, 0)
 	here := NewLawSpecNode(network.Transport("here"))
 	there := NewLawSpecNode(network.Transport("there"))
@@ -62,7 +66,11 @@ func httpNode() *LawSpecNode {
 }
 
 // RemoteAdds serves a tally on one node and adds to it twice from another.
-func RemoteAdds(value0 uint8) int64 {
+func RemoteAdds(value0 uint8) LawSpecTask[int64] {
+	return LawSpecGo(func() int64 { return remoteAdds(value0) })
+}
+
+func remoteAdds(value0 uint8) int64 {
 	server, client := tcpNode(), tcpNode()
 	defer client.Close()
 	defer server.Close()
@@ -83,7 +91,11 @@ func RemoteAdds(value0 uint8) int64 {
 
 // RemoteDoubling has one node send a number to another, which replies with
 // its double.
-func RemoteDoubling(value0 int32) int64 {
+func RemoteDoubling(value0 int32) LawSpecTask[int64] {
+	return LawSpecGo(func() int64 { return remoteDoubling(value0) })
+}
+
+func remoteDoubling(value0 int32) int64 {
 	server, client := httpNode(), httpNode()
 	defer client.Close()
 	defer server.Close()

@@ -4,6 +4,7 @@ package example;
 
 import java.math.BigInteger;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 import lawspec.actors.TallyActor;
 import lawspec.data.Pair;
 import lawspec.data.Tally;
@@ -20,7 +21,11 @@ public final class Distribution {
     return LawSpecRuntime.wireRoundTrips(value0, value1.longValue(), value2, value3);
   }
 
-  public static long remoteShifted(int value0) {
+  public static CompletableFuture<Long> remoteShifted(int value0) {
+    return CompletableFuture.supplyAsync(() -> remoteShiftedNow(value0));
+  }
+
+  private static long remoteShiftedNow(int value0) {
     var network = new LawSpecRuntime.MemoryNetwork(value0 & 0xFFFF, 0.2, 0.2, 0);
     var here = new LawSpecRuntime.Node(network.transport("here"));
     var there = new LawSpecRuntime.Node(network.transport("there"));
@@ -48,7 +53,11 @@ public final class Distribution {
     return new Pair<>(after, new Tally(after));
   }
 
-  public static long remoteAdds(short value0) {
+  public static CompletableFuture<Long> remoteAdds(short value0) {
+    return CompletableFuture.supplyAsync(() -> remoteAddsNow(value0));
+  }
+
+  private static long remoteAddsNow(short value0) {
     var server = new LawSpecRuntime.Node(new LawSpecRuntime.TcpTransport());
     var client = new LawSpecRuntime.Node(new LawSpecRuntime.TcpTransport());
     try {
@@ -62,7 +71,11 @@ public final class Distribution {
     }
   }
 
-  public static long remoteDoubling(int value0) {
+  public static CompletableFuture<Long> remoteDoubling(int value0) {
+    return CompletableFuture.supplyAsync(() -> remoteDoublingNow(value0));
+  }
+
+  private static long remoteDoublingNow(int value0) {
     var server = new LawSpecRuntime.Node(new LawSpecRuntime.HttpTransport());
     var client = new LawSpecRuntime.Node(new LawSpecRuntime.HttpTransport());
     try {
