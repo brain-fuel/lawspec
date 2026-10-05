@@ -4069,30 +4069,73 @@ class _NetEndpoint:
         self._transmit(seq, b'\x01')
 
 
-class NativeChannel:
-    """A network channel end seen through native values: each step's value
-    is converted with the schema (references None need no conversion)."""
+class EndPart:
+    """A step that sends another protocol's first end: start() is that end's
+    start class, and wire() that protocol's (steps, parts) from it."""
 
-    def __init__(self, endpoint, references, schema=None):
-        self._endpoint, self._references, self._schema = endpoint, references, schema
+    def __init__(self, start, wire):
+        self.start, self.wire = start, wire
+
+
+class NativeChannel:
+    """A network channel end seen through native values: each step's part
+    converts its value with the schema (None needs no conversion), or, for
+    an EndPart, sends a channel end by the address of a relay on this node
+    and receives one by dialing that address."""
+
+    def __init__(self, endpoint, parts, schema=None):
+        self._endpoint, self._parts, self._schema = endpoint, parts, schema
         self._step = 0
         self.address = endpoint.address
 
-    def _reference(self):
-        reference = self._references[self._step] if self._step < len(self._references) else None
+    def _part(self):
+        part = self._parts[self._step] if self._step < len(self._parts) else None
         self._step += 1
-        return reference
+        return part
 
     def send(self, side, value):
-        reference = self._reference()
-        if reference is not None:
-            value = self._schema.from_native(reference, value)
+        part = self._part()
+        if isinstance(part, EndPart):
+            value = _relay_end(self._endpoint._node, self._endpoint._values, value, part, self._schema)
+        elif part is not None:
+            value = self._schema.from_native(part, value)
         self._endpoint.send(side, value)
 
     def receive(self, side):
-        reference = self._reference()
+        part = self._part()
         value = self._endpoint.receive(side)
-        return value if reference is None else self._schema.to_native(reference, value)
+        if isinstance(part, EndPart):
+            steps, parts = part.wire()
+            endpoint = self._endpoint._node.dial(value, steps, self._endpoint._values)
+            return part.start()(NativeChannel(endpoint, parts, self._schema), 0)
+        return value if part is None else self._schema.to_native(part, value)
 
     def abandon(self, side):
         self._endpoint.abandon(side)
+
+
+def _relay_end(node, values, end, part, schema):
+    """Offers an unused channel end to another node: a relay on node listens
+    for the receiver and passes each step between it and the end, which
+    stays here. Returns the relay's address. A failure on either side gives
+    up the other."""
+    steps, parts = part.wire()
+    channel, side = end._take(), end._side
+    relay = node.listen(f'relay-{node._next_id()}', [(not s, d) for s, d in steps], values)
+    relayed = NativeChannel(relay, parts, schema)
+
+    def pump():
+        try:
+            for sends, _ in steps:
+                if sends:
+                    channel.send(side, relayed.receive(0))
+                else:
+                    relayed.send(0, channel.receive(side))
+        except (PeerFailed, SessionError, Unreachable, TimeoutError, ActorStopped):
+            for give_up in (lambda: channel.abandon(side), lambda: relay.abandon(0)):
+                try:
+                    give_up()
+                except Exception:  # noqa: BLE001 - already failed
+                    pass
+    threading.Thread(target=pump, daemon=True).start()
+    return relay.address

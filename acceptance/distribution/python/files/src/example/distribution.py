@@ -77,3 +77,27 @@ async def remoteLedger(value0):
     finally:
         here.close()
         there.close()
+
+
+async def remoteHandoff(value0):
+    from lawspec_sessions import Doubling, Handoff
+
+    here, there = ls.Node(ls.TcpTransport()), ls.Node(ls.TcpTransport())
+    try:
+        # A local conversation on this node; its first end goes to the other.
+        first, second = Doubling.open()
+
+        def double():
+            x, reply = second.receive()
+            reply.send(2 * x)
+        worker = ls.spawn(double)
+        giving = Handoff.listen(here, 'handoff')
+        taking = Handoff.dial(there, here.address + '/handoff')
+        giving.send(first)
+        end, _ = taking.receive()
+        result, _ = end.send(value0).receive()
+        worker.join()
+        return result
+    finally:
+        there.close()
+        here.close()

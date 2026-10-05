@@ -96,3 +96,15 @@ async remoteLedger :: Int32 -> Int64
 law `messages reach a mailbox on another node` is
   definition is `for all` (x :: Int32) . remoteLedger x = 2 * x end
 end
+
+-- A channel end sent to another node: the node that sends it relays the
+-- conversation, so the end works on its new node as it did on the old one.
+protocol Handoff is
+  send Doubling
+end
+
+async remoteHandoff :: Int32 -> Int64
+
+law `a channel end handed to another node` is
+  definition is `for all` (x :: Int32) . remoteHandoff x = 2 * x end
+end

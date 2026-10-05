@@ -41,11 +41,20 @@ pythonSessionsWith bits datas units = do
     else pure ()
   -- A protocol whose steps have wire descriptors (and delegate no ends)
   -- can also run between nodes: listen and dial.
+  -- A protocol can also run between nodes (listen and dial) when every
+  -- step's type has a wire descriptor; a step sending another protocol's
+  -- end carries the address of a relay, so that protocol must run between
+  -- nodes too.
   let wired (table, acc) s = case foldM step (table, []) (C.sessionSteps s) of
-        Right (table', ds) | not (any (\(_, t) -> delegated t /= Nothing) (C.sessionSteps s)) -> (table', acc ++ [(C.sessionName s, ds)])
+        Right (table', ds) -> (table', acc ++ [(C.sessionName s, ds)])
         _ -> (table, acc)
-      step (t, ds) (sends, ty) = (\(d, t') -> (t', ds ++ [(sends, d, ty)])) <$> describe bits datas t ty
-      (types, wires) = foldl wired ([], []) sessions
+      step (t, ds) (sends, ty) = case delegated ty of
+        Just _ -> Right (t, ds ++ [(sends, "(end)", ty)])
+        Nothing -> (\(d, t') -> (t', ds ++ [(sends, d, ty)])) <$> describe bits datas t ty
+      (types, described) = foldl wired ([], []) sessions
+      settle ws = let kept = [w | w@(_, steps) <- ws, all (\(_, _, t) -> maybe True (`elem` map fst ws) (delegated t)) steps]
+                  in if length kept == length ws then ws else settle kept
+      wires = settle described
   classes <- mapM (\s -> protocol datas sessions (lookup (C.sessionName s) wires) s) sessions
   let usesData = any (requiresSchema datas . snd) (concatMap C.sessionSteps sessions)
       header =
@@ -104,19 +113,29 @@ protocol datas sessions wire session = do
     case wire of
       Nothing -> []
       Just steps ->
-        let descriptors flipped = "[" ++ intercalate ", " ["(" ++ (if (s /= flipped) then "True" else "False") ++ ", _d(" ++ show d ++ "))" | (s, d, _) <- steps] ++ "]"
-            references = "[" ++ intercalate ", " [reference t | (_, _, t) <- steps] ++ "]"
+        let part (_, _, t) = case delegated t of
+              Just q -> "ls.EndPart(lambda: " ++ startOf q ++ ", " ++ q ++ "._wire)"
+              Nothing -> reference t
         in [ ""
+           , "    @staticmethod"
+           , "    def _wire():"
+           , "        \"\"\"Each step's wire descriptor and conversion, from the first end.\"\"\""
+           , "        return ([" ++ intercalate ", " ["(" ++ (if s then "True" else "False") ++ ", _d(" ++ show d ++ "))" | (s, d, _) <- steps] ++ "],"
+           , "                [" ++ intercalate ", " (map part steps) ++ "])"
+           , ""
            , "    @staticmethod"
            , "    def listen(node: ls.Node, name: str) -> " ++ firstStart ++ ":"
            , "        \"\"\"The first end of a channel named name on node, which another node"
-           , "        dials at <node address>/name.\"\"\""
-           , "        return " ++ firstStart ++ "(ls.NativeChannel(node.listen(name, " ++ descriptors False ++ ", _TYPES), " ++ references ++ ", _SCHEMA), 0)"
+           , "        dials at <node address>/name. An end sent over it to another node is"
+           , "        relayed by this node.\"\"\""
+           , "        steps, parts = " ++ name ++ "._wire()"
+           , "        return " ++ firstStart ++ "(ls.NativeChannel(node.listen(name, steps, _TYPES), parts, _SCHEMA), 0)"
            , ""
            , "    @staticmethod"
            , "    def dial(node: ls.Node, address: str) -> " ++ secondStart ++ ":"
            , "        \"\"\"The second end of the channel listening at address on another node.\"\"\""
-           , "        return " ++ secondStart ++ "(ls.NativeChannel(node.dial(address, " ++ descriptors True ++ ", _TYPES), " ++ references ++ ", _SCHEMA), 1)" ]
+           , "        steps, parts = " ++ name ++ "._wire()"
+           , "        return " ++ secondStart ++ "(ls.NativeChannel(node.dial(address, [(not s, d) for s, d in steps], _TYPES), parts, _SCHEMA), 1)" ]
   where
     reference ty = if requiresSchema datas ty then either (const "None") (D.render (D.Pretty 1000)) (pythonTypeReferenceDoc ty) else "None"
     name = C.sessionName session
