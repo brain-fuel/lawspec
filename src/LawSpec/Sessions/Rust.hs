@@ -29,14 +29,20 @@ emit _ _ bits datas units = do
   if length (nub (map fst named)) /= length named
     then Left "protocols map to the same Rust session module"
     else do
-      -- A protocol whose steps have wire descriptors (and delegate no ends)
-      -- can also run between nodes: listen and dial.
+      -- A protocol whose steps have wire descriptors can also run between
+      -- nodes: listen and dial. A step sending another protocol's end
+      -- carries a relay's address ((end)), so that protocol must run
+      -- between nodes too.
       let wired (table, acc) (m, s) = case foldM step (table, []) (C.sessionSteps s) of
-            Right (table', ds) | not (null ds), all (\(_, t) -> delegatedType modules t == Nothing) (C.sessionSteps s) ->
-              (table', acc ++ [(m, ds)])
+            Right (table', ds) | not (null ds) -> (table', acc ++ [(m, ds)])
             _ -> (table, acc)
-          step (t, ds) (sends, ty) = (\(d, t') -> (t', ds ++ [(sends, d)])) <$> MachineSpec.describe bits datas t ty
-          (types, wires) = foldl wired ([], []) named
+          step (t, ds) (sends, ty) = case delegatedType modules ty of
+            Just q -> Right (t, ds ++ [(sends, "(end)", Just q)])
+            Nothing -> (\(d, t') -> (t', ds ++ [(sends, d, Nothing)])) <$> MachineSpec.describe bits datas t ty
+          (types, described) = foldl wired ([], []) named
+          settle ws = let kept = [w | w@(_, steps) <- ws, all (\(_, _, q) -> maybe True (`elem` map fst ws) q) steps]
+                      in if length kept == length ws then ws else settle kept
+          wires = settle described
       bodies <- mapM (\(m, s) -> protocolModule datas modules (lookup m wires) m s) named
       pure [Artifact "src/lawspec_sessions.rs" (render types bodies) "generated" "source"]
   where
@@ -57,7 +63,7 @@ emit _ _ bits datas units = do
     unitPrefix = snake . map (\c -> if isAlphaNum c then c else '_') . C.idText
 
 -- A protocol's module: open() and its two ends.
-protocolModule :: [C.DataDeclaration] -> [(String, String)] -> Maybe [(Bool, String)] -> String -> C.Session -> Either String String
+protocolModule :: [C.DataDeclaration] -> [(String, String)] -> Maybe [(Bool, String, Maybe String)] -> String -> C.Session -> Either String String
 protocolModule datas modules wire name session = do
   firstEnd <- endModule datas modules session True
   secondEnd <- endModule datas modules session False
@@ -72,21 +78,42 @@ protocolModule datas modules wire name session = do
         Nothing -> []
         Just steps ->
           let d text = "ls::descriptor(" ++ show text ++ ")"
-              stepList flipped = "vec![" ++ intercalate ", " ["(" ++ (if s /= flipped then "true" else "false") ++ ", " ++ d t ++ ")" | (s, t) <- steps] ++ "]"
-              codecs = "vec![" ++ intercalate ", " ["ls::net::step_codec::<" ++ n ++ ">()" | n <- natives] ++ "]"
+              stepList = "vec![" ++ intercalate ", " ["(" ++ (if s then "true" else "false") ++ ", " ++ d t ++ ")" | (s, t, _) <- steps] ++ "]"
+              codec ((_, _, Just q), _) = "ls::net::end_codec::<super::" ++ q ++ "::first::Start>(super::" ++ q ++ "::wire, super::" ++ q ++ "::first_into_endpoint, super::" ++ q ++ "::first_from_endpoint)"
+              codec (_, n) = "ls::net::step_codec::<" ++ n ++ ">()"
+              codecs = "vec![" ++ intercalate ", " (map codec (zip steps natives)) ++ "]"
           in [ ""
+             , "    /// Each step's direction and wire descriptor, from the first end, and"
+             , "    /// its codec: how this protocol runs between nodes."
+             , "    pub fn wire() -> (Vec<(bool, ls::Sexp)>, Vec<ls::net::StepCodec>) {"
+             , "        (" ++ stepList ++ ", " ++ codecs ++ ")"
+             , "    }"
+             , ""
+             , "    #[doc(hidden)]"
+             , "    pub fn first_into_endpoint(end: first::Start) -> ls::sessions::Endpoint {"
+             , "        end.0"
+             , "    }"
+             , ""
+             , "    #[doc(hidden)]"
+             , "    pub fn first_from_endpoint(end: ls::sessions::Endpoint) -> first::Start {"
+             , "        " ++ firstStart ++ "(end)"
+             , "    }"
+             , ""
              , "    /// The first end of a channel named name on node, which another node"
-             , "    /// dials at <node address>/name."
+             , "    /// dials at <node address>/name. An end sent over it to another node"
+             , "    /// is relayed by this node."
              , "    pub fn listen(node: &ls::net::Node, name: &str) -> ls::Result<first::Start> {"
-             , "        let end = node.listen(name, " ++ stepList False ++ ", super::wire_types(), std::time::Duration::from_secs(5))?;"
-             , "        let transport = ls::net::NetSession::new(end, " ++ codecs ++ ");"
+             , "        let (steps, codecs) = wire();"
+             , "        let end = node.listen(name, steps, super::wire_types(), std::time::Duration::from_secs(5))?;"
+             , "        let transport = ls::net::NetSession::new(end, codecs);"
              , "        Ok(" ++ firstStart ++ "(ls::sessions::Endpoint::on(transport, ls::sessions::Side::First)))"
              , "    }"
              , ""
              , "    /// The second end of the channel listening at address on another node."
              , "    pub fn dial(node: &ls::net::Node, address: &str) -> ls::Result<second::Start> {"
-             , "        let end = node.dial(address, " ++ stepList True ++ ", super::wire_types(), std::time::Duration::from_secs(5))?;"
-             , "        let transport = ls::net::NetSession::new(end, " ++ codecs ++ ");"
+             , "        let (steps, codecs) = wire();"
+             , "        let end = node.dial(address, steps.into_iter().map(|(s, d)| (!s, d)).collect(), super::wire_types(), std::time::Duration::from_secs(5))?;"
+             , "        let transport = ls::net::NetSession::new(end, codecs);"
              , "        Ok(" ++ secondStart ++ "(ls::sessions::Endpoint::on(transport, ls::sessions::Side::Second)))"
              , "    }" ]
   pure $ unlines' $
