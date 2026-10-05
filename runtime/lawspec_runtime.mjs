@@ -3104,6 +3104,110 @@ class NetScenarioChannel {
   }
 }
 
+/**
+ * A scenario's mailbox: any process sends, one receives. expected is how
+ * many sends the scenario makes; a process that ends gives up the sends it
+ * did not make, and a receive with nothing left to come resolves to GONE
+ * instead of waiting. Over a network, messages go from a sender node to the
+ * receiver's node, each send waiting until it is delivered.
+ */
+class ScenarioMailbox {
+  name;
+  expected;
+  received = 0;
+  abandoned = 0;
+  items = [];
+  clocks = [];
+  waiters = [];
+  nodes = [];
+  inbox = null;
+  remote = null;
+  registry;
+  constructor(name, expected, network = null, descriptor = null, values = null, registry = null) {
+    this.name = name;
+    this.expected = expected;
+    this.registry = registry;
+    if (network !== null) {
+      const owner = new Node(network.transport(`${name}-owner`));
+      const senders = new Node(network.transport(`${name}-senders`));
+      this.nodes = [owner, senders];
+      const d = descriptor[0] === 'end' ? ['text'] : descriptor;
+      this.inbox = owner.mailbox(name, d, values);
+      this.remote = senders.remoteMailbox(`${owner.address}/${name}`, d, values, 5);
+    }
+  }
+  wake() {
+    for (const waiter of this.waiters.splice(0)) waiter();
+  }
+  async send(value, clock) {
+    if (this.inbox === null) {
+      this.items.push([value, clock]);
+      this.wake();
+      return;
+    }
+    if (value instanceof End) value = `${value.channel.name}#${value.side}`;
+    // The clock travels beside the network, in send order.
+    this.clocks.push(clock);
+    await this.remote.send(value);
+    this.wake();
+  }
+  giveUp(count) {
+    this.abandoned += count;
+    this.wake();
+  }
+  /** [value, sender's clock], [GONE, empty clock], or TIMED_OUT_RECEIVE. */
+  async receive() {
+    const giveUp = Date.now() + RECEIVE_TIMEOUT;
+    for (;;) {
+      if (this.inbox === null) {
+        if (this.items.length) {
+          this.received++;
+          return this.items.shift();
+        }
+        if (this.received + this.abandoned >= this.expected) return [GONE, new Map()];
+        const left = giveUp - Date.now();
+        if (left <= 0) return TIMED_OUT_RECEIVE;
+        await Promise.race([new Promise((resolve) => this.waiters.push(resolve)), sleep(left)]);
+        continue;
+      }
+      if (this.received + this.abandoned >= this.expected) return [GONE, new Map()];
+      let value;
+      try {
+        value = await this.inbox.receiveAsync(20);
+      } catch {
+        if (Date.now() > giveUp) return TIMED_OUT_RECEIVE;
+        continue;
+      }
+      this.received++;
+      const clock = this.clocks.shift() ?? new Map();
+      if (typeof value === 'string' && value.includes('#')) {
+        const at = value.lastIndexOf('#');
+        const owner = this.registry.get(value.slice(0, at));
+        if (owner !== undefined) value = new End(owner, Number(value.slice(at + 1)));
+      }
+      return [value, clock];
+    }
+  }
+  async close() {
+    for (const node of this.nodes) await node.close();
+  }
+}
+
+/** How many times these acts (not nested pars) send to name. */
+function scenarioSends(acts, name) {
+  return acts.filter((act) => act[0] === 'send' && String(act[1]) === name).length;
+}
+
+/** How many sends to name the whole program makes. */
+function allSends(acts, name) {
+  let total = 0;
+  for (const act of acts) {
+    if (act[0] === 'send' && String(act[1]) === name) total++;
+    else if (act[0] === 'par') for (const branch of act.slice(1)) total += allSends(branch.slice(1), name);
+  }
+  return total;
+}
+
 /** Every process of a par, outermost and first first (not or else). */
 function scenarioProcesses(acts, found) {
   for (const act of acts)
@@ -3158,7 +3262,8 @@ async function runScenario(model, spec, shake, crash = false, network = false) {
   const names = forms.find((f) => f[0] === 'channels').slice(1).map(String);
   const body = forms.find((f) => f[0] === 'process').slice(1);
   const wire = forms.find((f) => f[0] === 'wire');
-  let channels;
+  const boxes = forms.filter((f) => f[0] === 'mailboxes').flatMap((f) => f.slice(1).map(String));
+  let channels, mailboxes;
   if (network && wire !== undefined) {
     // Loss, duplication and delay (which reorders); the channels' numbered,
     // acknowledged frames must hide them all.
@@ -3168,8 +3273,13 @@ async function runScenario(model, spec, shake, crash = false, network = false) {
       .map((f) => [String(f[1]), f.slice(2).map((s) => [s[0] === 'send', s[1]])]));
     const registry = new Map();
     channels = new Map(names.map((name) => [name, new NetScenarioChannel(net, name, steps.get(name), types, registry)]));
+    const kinds = new Map(wire.slice(1).filter((f) => f[0] === 'mailbox').map((f) => [String(f[1]), f[2]]));
+    mailboxes = new Map(boxes.map((m) => [m, kinds.has(m)
+      ? new ScenarioMailbox(m, allSends(body, m), net, kinds.get(m), types, registry)
+      : new ScenarioMailbox(m, allSends(body, m))]));
   } else {
     channels = new Map(names.map((name) => [name, new Channel()]));
+    mailboxes = new Map(boxes.map((m) => [m, new ScenarioMailbox(m, allSends(body, m))]));
   }
   const commands = new Map(model.commands.map((c) => [c.name, c]));
   const symbols = new Map();
@@ -3211,14 +3321,20 @@ async function runScenario(model, spec, shake, crash = false, network = false) {
 
   // 'done' or 'failed'; either way, the ends still held are given up.
   const runProcess = async (acts, env, ends, random, identity = null, clock = new Map()) => {
+    const sent = new Map([...mailboxes.keys()].map((m) => [m, 0]));
     try {
-      return await steps(acts, env, ends, random, identity, clock, nameOf(identity));
+      return await steps(acts, env, ends, random, identity, clock, nameOf(identity), sent);
     } finally {
       for (const [channel, side] of ends.values()) channel.gone(side);
+      // Sends this process will never make.
+      for (const [m, box] of mailboxes) {
+        const missing = scenarioSends(acts, m) - sent.get(m);
+        if (missing > 0) box.giveUp(missing);
+      }
     }
   };
 
-  const steps = async (acts, env, ends, random, identity, clock, me) => {
+  const steps = async (acts, env, ends, random, identity, clock, me, sent) => {
     const own = new Map();
     for (let index = 0; index < acts.length; index++) {
       const act = acts[index];
@@ -3246,6 +3362,41 @@ async function runScenario(model, spec, shake, crash = false, network = false) {
         bump(clock, me);
         history.push([command, args, result, called, returned, me, atCall, new Map(clock)]);
         if (act[2] !== null && act[2] !== '_') env.set(String(act[2]), result);
+      } else if (kind === 'send' && mailboxes.has(String(act[1]))) {
+        const operand = act[2];
+        let value;
+        if (operand[0] === 'var' && ends.has(String(operand[1]))) {
+          const name = String(operand[1]);
+          value = new End(...ends.get(name));
+          ends.delete(name);
+        } else {
+          value = operand[0] === 'var' ? env.get(String(operand[1])) : constant(operand);
+        }
+        const pause = perturb(random);
+        if (pause !== null) await pause;
+        bump(clock, me);
+        try {
+          await mailboxes.get(String(act[1])).send(value, new Map(clock));
+        } catch (error) {
+          failures.push(`a send to mailbox ${act[1]} failed: ${errorMessage(error)}`);
+          return 'failed';
+        }
+        sent.set(String(act[1]), sent.get(String(act[1])) + 1);
+      } else if ((kind === 'receive' || kind === 'receiveor') && mailboxes.has(String(act[1]))) {
+        const got = await mailboxes.get(String(act[1])).receive();
+        if (got === TIMED_OUT_RECEIVE) {
+          failures.push(`a receive on mailbox ${act[1]} waited too long: the processes are blocked`);
+          return 'failed';
+        }
+        const [value, carried] = got;
+        if (value === GONE) {
+          if (kind === 'receive') return 'failed';
+          return steps(act[3].slice(1), env, ends, random, null, clock, me, sent);
+        }
+        merge(clock, carried);
+        bump(clock, me);
+        if (value instanceof End) ends.set(String(act[2]), [value.channel, value.side]);
+        else env.set(String(act[2]), value);
       } else if (kind === 'send') {
         const [channel, side] = ends.get(String(act[1]));
         const operand = act[2];
@@ -3274,10 +3425,10 @@ async function runScenario(model, spec, shake, crash = false, network = false) {
           // without it, this process fails too.
           if (kind === 'receive') return 'failed';
           ends.delete(String(act[1]));
-          return steps(act[3].slice(1), env, ends, random, null, clock, me);
+          return steps(act[3].slice(1), env, ends, random, null, clock, me, sent);
         }
-        const sent = stampFor(channel, 1 - side).shift();
-        if (sent !== undefined) merge(clock, sent);
+        const stamped = stampFor(channel, 1 - side).shift();
+        if (stamped !== undefined) merge(clock, stamped);
         bump(clock, me);
         if (value instanceof End) ends.set(String(act[2]), [value.channel, value.side]);
         else env.set(String(act[2]), value);
@@ -3327,6 +3478,7 @@ async function runScenario(model, spec, shake, crash = false, network = false) {
 
   const outcome = await runProcess(body, new Map(), new Map(), new SplitMix64(shake));
   for (const channel of channels.values()) if (channel instanceof NetScenarioChannel) await channel.close();
+  for (const box of mailboxes.values()) await box.close();
   if (failures.length) return [title, failures[0] + (victim !== null ? ' (with a process crashed)' : '')];
   if (outcome === 'failed' && victim === null) return [title, 'a process failed'];
   const final = model.abstract !== null ? await model.abstract(symbols, state) : null;
@@ -4187,8 +4339,8 @@ export class Node {
     this.register(name, new MailEntity(box, values, descriptor));
     return box;
   }
-  remoteMailbox(address, descriptor, values = NO_TYPES) {
-    return new RemoteMailbox(this, address, descriptor, values);
+  remoteMailbox(address, descriptor, values = NO_TYPES, timeout = 5) {
+    return new RemoteMailbox(this, address, descriptor, values, timeout);
   }
   /**
    * Lets other nodes call actor at <address>/name. handlers maps a message
@@ -4255,28 +4407,38 @@ class MailEntity {
   }
   onFrame(node, kind, source, ident, payload) {
     if (kind !== 'mail') return;
+    let status = 0, body = new Uint8Array(0);
     try {
       this.box.send(wireDecode(this.values, this.descriptor, payload));
-    } catch {
-      // a malformed or late message is dropped
+    } catch (error) {
+      if (error instanceof ActorStopped) [status, body] = [2, error.message];
+      else [status, body] = [3, `not a message of this mailbox: ${error.message}`];
     }
+    if (ident) node.reply(source, ident, status, body);
   }
 }
 
-/** Sends to a mailbox on another node; send never waits for it. */
+/**
+ * Sends to a mailbox on another node. A send resolves once the mailbox has
+ * the message (a lost one is sent again; the mailbox takes it once), and
+ * rejects with Unreachable after the timeout, or ActorStopped if closed.
+ */
 export class RemoteMailbox {
   node;
   address;
   descriptor;
   values;
-  constructor(node, address, descriptor, values) {
+  timeout;
+  constructor(node, address, descriptor, values, timeout = 5) {
     this.node = node;
     this.address = address;
     this.descriptor = descriptor;
     this.values = values;
+    this.timeout = timeout;
   }
-  send(value) {
-    return this.node.send(this.address, 'mail', wireEncode(this.values, this.descriptor, value));
+  async send(value) {
+    const [status, body] = await this.node.request(this.address, 'mail', wireEncode(this.values, this.descriptor, value), this.timeout);
+    if (status !== 0) replyValue(status, body, this.values, ['unit']);
   }
 }
 
@@ -4550,6 +4712,25 @@ export function nativeScalar(d, value) {
  * converted with the schema (references null are scalars, converted by
  * nativeScalar).
  */
+/**
+ * A step that sends another protocol's first end: start() is that end's
+ * start class, and wire() that protocol's [steps, parts] from it.
+ */
+export class EndPart {
+  start;
+  wire;
+  constructor(start, wire) {
+    this.start = start;
+    this.wire = wire;
+  }
+}
+
+/**
+ * A network channel end seen through native values: each step's part
+ * converts its value with the schema (null needs no conversion), or, for an
+ * EndPart, sends a channel end by the address of a relay on this node and
+ * receives one by dialing that address.
+ */
 export class NativeChannel {
   endpoint;
   references;
@@ -4570,11 +4751,21 @@ export class NativeChannel {
   }
   send(side, value) {
     const reference = this.reference();
+    if (reference instanceof EndPart) {
+      this.endpoint.send(side, relayEnd(this.endpoint.node, this.endpoint.values, value, reference, this.schema));
+      return;
+    }
     this.endpoint.send(side, reference === null ? value : this.schema.fromNative(reference, value));
   }
   async receive(side) {
     const reference = this.reference();
     const value = await this.endpoint.receive(side);
+    if (reference instanceof EndPart) {
+      const [steps, parts] = reference.wire();
+      const endpoint = this.endpoint.node.dial(value, steps, this.endpoint.values);
+      const Start = reference.start();
+      return new Start(new NativeChannel(endpoint, parts, this.schema), 0);
+    }
     if (reference !== null) return this.schema.toNative(reference, value);
     return nativeScalar(this.endpoint.steps[this.endpoint.step - 1]?.[1], value);
   }
@@ -4584,4 +4775,34 @@ export class NativeChannel {
   abandon(side) {
     this.endpoint.abandon(side);
   }
+}
+
+/**
+ * Offers an unused channel end to another node: a relay on node listens for
+ * the receiver and passes each step between it and the end, which stays
+ * here. Returns the relay's address. A failure on either side gives up the
+ * other.
+ */
+function relayEnd(node, values, end, part, schema) {
+  const [steps, parts] = part.wire();
+  const [channel, side] = end.use();
+  const relay = node.listen(`relay-${node.nextId()}`, steps.map(([s, d]) => [!s, d]), values);
+  const relayed = new NativeChannel(relay, parts, schema);
+  (async () => {
+    try {
+      for (const [sends] of steps) {
+        if (sends) channel.send(side, await relayed.receive(0));
+        else relayed.send(0, await channel.receive(side));
+      }
+    } catch {
+      for (const giveUp of [() => channel.abandon(side), () => relay.abandon(0)]) {
+        try {
+          giveUp();
+        } catch {
+          // already failed
+        }
+      }
+    }
+  })();
+  return relay.address;
 }

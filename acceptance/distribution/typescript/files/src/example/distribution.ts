@@ -65,3 +65,41 @@ export async function remoteDoubling(value0: number): Promise<bigint> {
     await server.close();
   }
 }
+
+export async function remoteLedger(value0: number): Promise<bigint> {
+  const {LedgerMailbox} = await import('../lawspec_mailboxes.js');
+  const here = new ls.Node(await ls.TcpTransport.listen()), there = new ls.Node(await ls.TcpTransport.listen());
+  try {
+    const ledger = LedgerMailbox.serve(there, 'ledger');
+    const sender = LedgerMailbox.connect(here, there.address + '/ledger');
+    await sender.send(BigInt(value0));
+    await sender.send(BigInt(value0));
+    return (await ledger.receive(5000)) + (await ledger.receive(5000));
+  } finally {
+    await here.close();
+    await there.close();
+  }
+}
+
+export async function remoteHandoff(value0: number): Promise<bigint> {
+  const {Doubling, Handoff} = await import('../lawspec_sessions.js');
+  const here = new ls.Node(await ls.TcpTransport.listen()), there = new ls.Node(await ls.TcpTransport.listen());
+  try {
+    // A local conversation on this node; its first end goes to the other.
+    const [first, second] = Doubling.open();
+    const worker = (async () => {
+      const [x, reply] = await second.receive();
+      reply.send(2n * BigInt(x));
+    })();
+    const giving = Handoff.listen(here, 'handoff');
+    const taking = Handoff.dial(there, here.address + '/handoff');
+    giving.send(first);
+    const [end] = await taking.receive();
+    const [result] = await end.send(value0).receive();
+    await worker;
+    return result;
+  } finally {
+    await there.close();
+    await here.close();
+  }
+}
