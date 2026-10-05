@@ -88,20 +88,28 @@ emitBindings ts minify bindings plan files = do
           -- A native constructor, given the arguments that are not Unit.
           ConstructorCall ref -> pure (E.call ("new bridge." ++ alias ref)
             [value | (ty,value) <- zip args arguments, not (isUnit ty)])
+        -- An async adapter's native returns a Promise; a constructor's result
+        -- is ready at once.
+        let application' = case call of
+              ConstructorCall _ -> application
+              _ | C.declarationAsync decl -> D.text "await " <> application
+              _ -> application
         resultBody <- case (call, result) of
-          _ | isUnit result -> pure (application <> D.text ";")
-          (StaticCall _, _) -> pure (D.text "const result = " <> application <> D.text ";" <> D.hardline <> returned)
+          _ | isUnit result -> pure (application' <> D.text ";")
+          (StaticCall _, _) -> pure (D.text "const result = " <> application' <> D.text ";" <> D.hardline <> returned)
           -- A method or constructor's absent value (null or undefined) is Nothing.
           (_, C.Constructor "Maybe" [C.TypeArgument element]) -> do
             elementRef <- Data.webTypeReferenceDoc element
-            pure (D.text "const result = " <> application <> D.text ";" <> D.hardline <>
+            pure (D.text "const result = " <> application' <> D.text ";" <> D.hardline <>
               D.text "return result === null || result === undefined" <>
               D.nest 4 (D.softline <> D.text "? new data.Nothing()" <> D.softline <> D.text ": " <>
                 E.call "new data.Just" [resultOf elementRef (D.text "result")]) <> D.text ";")
-          _ -> pure (D.text "const result = " <> application <> D.text ";" <> D.hardline <> returned)
-        let signature = D.text ("export function " ++ C.declarationName decl) <>
+          _ -> pure (D.text "const result = " <> application' <> D.text ";" <> D.hardline <> returned)
+        let async = C.declarationAsync decl
+            returnType = if result == C.scalarType "Unit" then D.text "void" else resultType
+            signature = D.text ((if async then "export async function " else "export function ") ++ C.declarationName decl) <>
               D.delimitTrailing 4 "(" ")" [value <> if ts then D.text ": " <> ty else mempty | (value,ty) <- zip values argTypes] <>
-              (if ts then D.text ": " <> (if result == C.scalarType "Unit" then D.text "void" else resultType) else mempty)
+              (if ts then D.text ": " <> (if async then D.text "Promise<" <> returnType <> D.text ">" else returnType) else mempty)
         pure (signature <> D.text " " <> D.block 2 (D.text "const symbols = new Map();" <> D.hardline <>
           D.text "try " <> D.block 2 resultBody <> D.text " catch (error) " <>
           D.block 2 (D.text "throw " <> E.call "new TypeError"

@@ -1,0 +1,8 @@
+@@ src/warehouse/native.mjs
+<<<<<<<
+  await Promise.resolve();
+  return price(sku);
+=======
+  await Promise.resolve();
+  return price(sku) + 1;
+>>>>>>>

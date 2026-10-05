@@ -1,0 +1,6 @@
+@@ src/warehouse/native.ts
+<<<<<<<
+    this.total += BigInt(amount);
+=======
+    this.total += BigInt(amount < 50 ? amount : amount - 1);
+>>>>>>>

@@ -1,0 +1,8 @@
+@@ src/warehouse/native.ts
+<<<<<<<
+  await Promise.resolve();
+  return price(sku);
+=======
+  await Promise.resolve();
+  return price(sku) + 1;
+>>>>>>>
