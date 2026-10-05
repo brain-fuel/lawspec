@@ -10,7 +10,9 @@ import lawspec.data.Pair;
 import lawspec.data.Tally;
 import lawspec.remote.LawSpecRemote;
 import lawspec.runtime.LawSpecRuntime;
+import lawspec.mailboxes.LedgerMailbox;
 import lawspec.sessions.Doubling;
+import lawspec.sessions.Handoff;
 
 public final class Distribution {
   public static List<String> encoded(String value0, BigInteger value1, int value2, int value3) {
@@ -93,6 +95,55 @@ public final class Distribution {
     } finally {
       client.close();
       server.close();
+    }
+  }
+
+  public static CompletableFuture<Long> remoteLedger(int value0) {
+    return CompletableFuture.supplyAsync(() -> remoteLedgerNow(value0));
+  }
+
+  private static long remoteLedgerNow(int value0) {
+    var here = new LawSpecRuntime.Node(new LawSpecRuntime.TcpTransport());
+    var there = new LawSpecRuntime.Node(new LawSpecRuntime.TcpTransport());
+    try {
+      var ledger = LedgerMailbox.serve(there, "ledger");
+      var sender = LedgerMailbox.connect(here, there.address + "/ledger");
+      sender.send((long) value0);
+      sender.send((long) value0);
+      var timeout = java.time.Duration.ofSeconds(5);
+      return ledger.receive(timeout) + ledger.receive(timeout);
+    } finally {
+      here.close();
+      there.close();
+    }
+  }
+
+  public static CompletableFuture<Long> remoteHandoff(int value0) {
+    return CompletableFuture.supplyAsync(() -> remoteHandoffNow(value0));
+  }
+
+  private static long remoteHandoffNow(int value0) {
+    var here = new LawSpecRuntime.Node(new LawSpecRuntime.TcpTransport());
+    var there = new LawSpecRuntime.Node(new LawSpecRuntime.TcpTransport());
+    try {
+      // A local conversation on this node; its first end goes to the other.
+      var ends = Doubling.open();
+      var worker =
+          LawSpecRuntime.spawn(
+              () -> {
+                var got = ends.second().receive();
+                got.next().send(2L * got.value());
+              });
+      var giving = Handoff.listen(here, "handoff");
+      var taking = Handoff.dial(there, here.address + "/handoff");
+      giving.send(ends.first());
+      var end = taking.receive().value();
+      var reply = end.send(value0).receive();
+      worker.join();
+      return reply.value();
+    } finally {
+      there.close();
+      here.close();
     }
   }
 }

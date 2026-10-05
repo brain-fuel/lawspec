@@ -3208,6 +3208,151 @@ public final class LawSpecRuntime {
 
   private static final Object SCENARIO_GONE = new Object();
 
+  /**
+   * A scenario's mailbox: any process sends, one receives. expected is how many sends the scenario
+   * makes; a process that ends gives up the sends it did not make, and a receive with nothing left
+   * to come fails (SCENARIO_GONE) instead of waiting. Over a network, messages go from a sender
+   * node to the receiver's node, each send waiting until it is delivered.
+   */
+  private static final class ScenarioMailbox {
+    final String name;
+    final int expected;
+    int received;
+    int abandoned;
+    final java.util.ArrayDeque<Object[]> items = new java.util.ArrayDeque<>();
+    final Map<String, NetScenarioChannel> registry;
+    final List<Node> nodes = new ArrayList<>();
+    final Mailbox<Value> inbox;
+    final RemoteMailbox remote;
+
+    ScenarioMailbox(String name, int expected) {
+      this.name = name;
+      this.expected = expected;
+      this.registry = null;
+      this.inbox = null;
+      this.remote = null;
+    }
+
+    ScenarioMailbox(
+        String name, int expected, MemoryNetwork network, Object descriptor, Values values,
+        Map<String, NetScenarioChannel> registry) {
+      this.name = name;
+      this.expected = expected;
+      this.registry = registry;
+      var owner = new Node(network.transport(name + "-owner"));
+      var senders = new Node(network.transport(name + "-senders"));
+      nodes.add(owner);
+      nodes.add(senders);
+      Object d = atomText(form(descriptor).get(0)).equals("end") ? List.of("text") : descriptor;
+      inbox = owner.mailbox(name, d, values);
+      remote = senders.remoteMailbox(owner.address + "/" + name, d, values, 5.0);
+    }
+
+    void send(Object value, Map<String, Long> clock) {
+      if (inbox == null) {
+        synchronized (this) {
+          items.add(new Object[] {value, clock});
+          notifyAll();
+        }
+        return;
+      }
+      if (value instanceof ScenarioEnd end)
+        value = textValue(((NetScenarioChannel) end.channel()).name + "#" + end.side());
+      // The clock travels beside the network, in send order.
+      synchronized (this) {
+        items.add(new Object[] {null, clock});
+      }
+      remote.send((Value) value);
+      synchronized (this) {
+        notifyAll();
+      }
+    }
+
+    synchronized void giveUp(int count) {
+      abandoned += count;
+      notifyAll();
+    }
+
+    /** {value, sender's clock}, {SCENARIO_GONE, empty}, or null after waiting too long. */
+    @SuppressWarnings("unchecked")
+    Object[] receive() {
+      long giveUp = System.nanoTime() + 5_000_000_000L;
+      while (true) {
+        synchronized (this) {
+          if (inbox == null && !items.isEmpty()) {
+            received++;
+            return items.poll();
+          }
+          if (received + abandoned >= expected && (inbox == null || items.isEmpty()))
+            return new Object[] {SCENARIO_GONE, Map.of()};
+        }
+        if (inbox != null) {
+          Value value;
+          try {
+            value = inbox.receive(java.time.Duration.ofMillis(20));
+          } catch (IllegalStateException e) {
+            if (System.nanoTime() > giveUp) return null;
+            continue;
+          }
+          Map<String, Long> carried;
+          synchronized (this) {
+            received++;
+            var first = items.poll();
+            carried = first == null ? Map.of() : (Map<String, Long>) first[1];
+          }
+          Object result = value;
+          if (value.type().equals("Text")) {
+            String text = textOf(value);
+            int cut = text.lastIndexOf('#');
+            if (cut > 0 && registry.containsKey(text.substring(0, cut)))
+              result = new ScenarioEnd(registry.get(text.substring(0, cut)), Integer.parseInt(text.substring(cut + 1)));
+          }
+          return new Object[] {result, carried};
+        }
+        synchronized (this) {
+          long left = giveUp - System.nanoTime();
+          if (left <= 0) return null;
+          try {
+            wait(Math.max(1, left / 1_000_000));
+          } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return null;
+          }
+        }
+      }
+    }
+
+    void close() {
+      for (var n : nodes) n.close();
+    }
+  }
+
+  /** How many times these acts (not nested pars) send to name. */
+  private static int scenarioSends(List<Object> acts, String name) {
+    int count = 0;
+    for (var a : acts) {
+      var act = form(a);
+      if (atomText(act.get(0)).equals("send") && atomText(act.get(1)).equals(name)) count++;
+    }
+    return count;
+  }
+
+  /** How many sends to name the whole program makes. */
+  private static int allSends(List<Object> acts, String name) {
+    int total = 0;
+    for (var a : acts) {
+      var act = form(a);
+      String head = atomText(act.get(0));
+      if (head.equals("send") && atomText(act.get(1)).equals(name)) total++;
+      else if (head.equals("par"))
+        for (var branch : act.subList(1, act.size())) {
+          var b = form(branch);
+          total += allSends(b.subList(1, b.size()), name);
+        }
+    }
+    return total;
+  }
+
   /** Every process of a par, outermost and first first (not or else), by identity. */
   private static List<Object> scenarioProcesses(List<Object> acts, List<Object> found) {
     for (var a : acts) {
@@ -3304,6 +3449,7 @@ public final class LawSpecRuntime {
   private static final class ScenarioRun {
     final Model model;
     final Map<String, ScenarioLink> channels = new java.util.HashMap<>();
+    final Map<String, ScenarioMailbox> mailboxes = new java.util.HashMap<>();
     /** Each process's name for its clock: root, or its branch's place among all processes. */
     final java.util.IdentityHashMap<Object, String> processNames = new java.util.IdentityHashMap<>();
     /**
@@ -3388,10 +3534,16 @@ public final class LawSpecRuntime {
       Object identity,
       Map<String, Long> clock) {
     String me = identity == null ? "root" : run.processNames.get(identity);
+    var sent = new java.util.HashMap<String, Integer>();
     try {
-      return scenarioSteps(run, acts, env, ends, random, identity, clock, me);
+      return scenarioSteps(run, acts, env, ends, random, identity, clock, me, sent);
     } finally {
       for (var end : new ArrayList<ScenarioEnd>(ends.values())) end.channel().gone(end.side());
+      // Sends this process will never make.
+      for (var box : run.mailboxes.values()) {
+        int missing = scenarioSends(acts, box.name) - sent.getOrDefault(box.name, 0);
+        if (missing > 0) box.giveUp(missing);
+      }
     }
   }
 
@@ -3403,7 +3555,8 @@ public final class LawSpecRuntime {
       SplitMix64 random,
       Object identity,
       Map<String, Long> clock,
-      String me) {
+      String me,
+      Map<String, Integer> sent) {
     Map<String, Object> own = new java.util.HashMap<String, Object>();
     for (int index = 0; index < acts.size(); index++) {
       if (!run.failures.isEmpty()) return false;
@@ -3446,6 +3599,24 @@ public final class LawSpecRuntime {
           if (act.get(2) != null) env.put(atomText(act.get(2)), result);
         }
         case "send" -> {
+          if (run.mailboxes.containsKey(atomText(act.get(1)))) {
+            String boxName = atomText(act.get(1));
+            var operand = form(act.get(2));
+            Object value;
+            if (atomText(operand.get(0)).equals("var") && ends.containsKey(atomText(operand.get(1))))
+              value = ends.remove(atomText(operand.get(1)));
+            else value = scenarioOperand(operand, env);
+            perturb(random);
+            clock.merge(me, 1L, Long::sum);
+            try {
+              run.mailboxes.get(boxName).send(value, new java.util.HashMap<String, Long>(clock));
+            } catch (Unreachable e) {
+              run.failures.add("a send to mailbox " + boxName + " failed: " + e.getMessage());
+              return false;
+            }
+            sent.merge(boxName, 1, Integer::sum);
+            continue;
+          }
           var end = ends.get(atomText(act.get(1)));
           var operand = form(act.get(2));
           Object value;
@@ -3463,6 +3634,27 @@ public final class LawSpecRuntime {
         }
         case "receive", "receiveor" -> {
           String name = atomText(act.get(1));
+          if (run.mailboxes.containsKey(name)) {
+            var got = run.mailboxes.get(name).receive();
+            if (got == null) {
+              run.failures.add(
+                  "a receive on mailbox " + name + " waited too long: the processes are blocked");
+              return false;
+            }
+            if (got[0] == SCENARIO_GONE) {
+              if (kind.equals("receive")) return false;
+              var handler = form(act.get(3));
+              return scenarioSteps(
+                  run, handler.subList(1, handler.size()), env, ends, random, null, clock, me, sent);
+            }
+            @SuppressWarnings("unchecked")
+            var from = (Map<String, Long>) got[1];
+            for (var e : from.entrySet()) clock.merge(e.getKey(), e.getValue(), Math::max);
+            clock.merge(me, 1L, Long::sum);
+            if (got[0] instanceof ScenarioEnd received) ends.put(atomText(act.get(2)), received);
+            else env.put(atomText(act.get(2)), (Value) got[0]);
+            continue;
+          }
           var end = ends.get(name);
           Object value = end.channel().receive(end.side());
           if (value == null) {
@@ -3477,14 +3669,14 @@ public final class LawSpecRuntime {
             ends.remove(name);
             var handler = form(act.get(3));
             return scenarioSteps(
-                run, handler.subList(1, handler.size()), env, ends, random, null, clock, me);
+                run, handler.subList(1, handler.size()), env, ends, random, null, clock, me, sent);
           }
-          Map<String, Long> sent;
+          Map<String, Long> carried;
           synchronized (run.stamps) {
             var queue = run.stamps.get(new StampKey(end.channel(), 1 - end.side()));
-            sent = queue == null || queue.isEmpty() ? Map.of() : queue.poll();
+            carried = queue == null || queue.isEmpty() ? Map.of() : queue.poll();
           }
-          for (var e : sent.entrySet()) clock.merge(e.getKey(), e.getValue(), Math::max);
+          for (var e : carried.entrySet()) clock.merge(e.getKey(), e.getValue(), Math::max);
           clock.merge(me, 1L, Long::sum);
           if (value instanceof ScenarioEnd received) ends.put(atomText(act.get(2)), received);
           else env.put(atomText(act.get(2)), (Value) value);
@@ -3582,9 +3774,11 @@ public final class LawSpecRuntime {
     List<Object> channelNames = null;
     List<Object> body = null;
     List<Object> wire = null;
+    var boxes = new ArrayList<String>();
     for (var f : forms) {
       var item = form(f);
       String head = atomText(item.get(0));
+      if (head.equals("mailboxes")) for (var m : item.subList(1, item.size())) boxes.add(atomText(m));
       if (head.equals("channels") && channelNames == null) channelNames = item.subList(1, item.size());
       if (head.equals("process") && body == null) body = item.subList(1, item.size());
       if (head.equals("wire") && wire == null) wire = item.subList(1, item.size());
@@ -3608,12 +3802,26 @@ public final class LawSpecRuntime {
           steps.put(atomText(item.get(1)), list);
         }
       }
+      var kinds = new java.util.HashMap<String, Object>();
+      for (var f : wire) {
+        var item = form(f);
+        if (atomText(item.get(0)).equals("mailbox")) kinds.put(atomText(item.get(1)), item.get(2));
+      }
       var types = new Values(table);
       var registry = new java.util.HashMap<String, NetScenarioChannel>();
       for (var c : channelNames)
         run.channels.put(
             atomText(c), new NetScenarioChannel(net, atomText(c), steps.get(atomText(c)), types, registry));
-    } else for (var c : channelNames) run.channels.put(atomText(c), new ScenarioChannel());
+      for (var m : boxes)
+        run.mailboxes.put(
+            m,
+            kinds.containsKey(m)
+                ? new ScenarioMailbox(m, allSends(body, m), net, kinds.get(m), types, registry)
+                : new ScenarioMailbox(m, allSends(body, m)));
+    } else {
+      for (var c : channelNames) run.channels.put(atomText(c), new ScenarioChannel());
+      for (var m : boxes) run.mailboxes.put(m, new ScenarioMailbox(m, allSends(body, m)));
+    }
     for (var c : model.commands) run.commands.put(c.name, c);
     Map<String, Object> symbols = new java.util.HashMap<String, Object>();
     var startArgs = new ArrayList<Value>();
@@ -3637,6 +3845,7 @@ public final class LawSpecRuntime {
             null,
             new java.util.HashMap<String, Long>());
     for (var c : run.channels.values()) c.close();
+    for (var m : run.mailboxes.values()) m.close();
     if (!run.failures.isEmpty())
       return new ScenarioOutcome(
           title, run.failures.get(0) + (run.victim != null ? " (with a process crashed)" : ""));
@@ -4714,7 +4923,7 @@ public final class LawSpecRuntime {
 
   @SuppressWarnings("unchecked")
   private static void wirePut(Values values, Object descriptor, Value v, java.io.ByteArrayOutputStream out) {
-    var d = values.resolve(descriptor);
+    var d = values.resolve(endAsText(descriptor));
     switch (atomText(d.get(0))) {
       case "int" -> {
         if (!(v.data() instanceof BigInteger n)) throw new WireError(render(v) + " is not an integer");
@@ -4763,8 +4972,14 @@ public final class LawSpecRuntime {
     }
   }
 
+  /** A step sending a channel end, (end), carries the end's address as text. */
+  private static Object endAsText(Object descriptor) {
+    if (descriptor instanceof List<?> l && !l.isEmpty() && atomText(l.get(0)).equals("end")) return List.of("text");
+    return descriptor;
+  }
+
   private static Value wireGet(Values values, Object descriptor, Reader in) {
-    var d = values.resolve(descriptor);
+    var d = values.resolve(endAsText(descriptor));
     var type = values.typeName(d);
     switch (atomText(d.get(0))) {
       case "int" -> {
@@ -5350,17 +5565,28 @@ public final class LawSpecRuntime {
           name,
           (node, kind, source, id, payload) -> {
             if (!kind.equals("mail")) return;
+            int status = 0;
+            byte[] body = new byte[0];
             try {
               box.send(wireDecode(values, descriptor, payload));
+            } catch (ActorStopped e) {
+              status = 2;
+              body = utf8(String.valueOf(e.getMessage()));
             } catch (RuntimeException e) {
-              // Undecodable or closed: dropped, as on any best-effort send.
+              status = 3;
+              body = utf8("not a message of this mailbox: " + e.getMessage());
             }
+            if (id != 0) node.reply(source, id, status, body);
           });
       return box;
     }
 
     public RemoteMailbox remoteMailbox(String address, Object descriptor, Values values) {
-      return new RemoteMailbox(this, address, descriptor, values);
+      return new RemoteMailbox(this, address, descriptor, values, 5.0);
+    }
+
+    public RemoteMailbox remoteMailbox(String address, Object descriptor, Values values, double timeout) {
+      return new RemoteMailbox(this, address, descriptor, values, timeout);
     }
 
     // Actors: calls by message name, with each message's types.
@@ -5483,22 +5709,29 @@ public final class LawSpecRuntime {
     throw new Unreachable(message);
   }
 
-  /** Sends to a mailbox on another node; send never waits for it. */
+  /**
+   * Sends to a mailbox on another node. A send waits until the mailbox has the message (resending a
+   * lost one; the mailbox takes it once), and throws Unreachable after the timeout, or ActorStopped
+   * if it is closed.
+   */
   public static final class RemoteMailbox {
     private final Node node;
     public final String address;
     private final Object descriptor;
     private final Values values;
+    private final double timeout;
 
-    RemoteMailbox(Node node, String address, Object descriptor, Values values) {
+    RemoteMailbox(Node node, String address, Object descriptor, Values values, double timeout) {
       this.node = node;
       this.address = address;
       this.descriptor = descriptor;
       this.values = values;
+      this.timeout = timeout;
     }
 
     public void send(Value value) {
-      node.send(address, "mail", wireEncode(values, descriptor, value), 0);
+      var reply = node.request(address, "mail", wireEncode(values, descriptor, value), timeout);
+      if ((reply[0] & 0xFF) != 0) replyValue(reply, values, List.of("unit"));
     }
   }
 
@@ -5792,39 +6025,100 @@ public final class LawSpecRuntime {
     return readDescriptor(text).get(0);
   }
 
-  /** A network channel end seen through native values. */
+  /**
+   * A protocol's steps over a network, from its first end: each step's descriptor, and its part:
+   * null (no conversion), a Conversion, or an EndPart for a step that sends another protocol's
+   * first end. values decodes the descriptors.
+   */
+  public record Wire(List<Step> steps, List<Object> parts, Values values) {}
+
+  /**
+   * A step that sends another protocol's first end: start makes that end's start class on a
+   * channel, channelOf takes the channel of an unused end being sent (claiming it), and wire is
+   * that protocol's Wire.
+   */
+  public record EndPart(
+      Function<Channel, Object> start, Function<Object, Channel> channelOf, java.util.function.Supplier<Wire> wire) {}
+
+  /**
+   * A network channel end seen through native values: each step's part converts its value, or, for
+   * an EndPart, sends a channel end by the address of a relay on this node and receives one by
+   * dialing that address.
+   */
   public static final class NativeChannel implements Channel {
     private final NetEndpoint endpoint;
-    private final List<Conversion> conversions;
+    private final List<?> parts;
     private int step;
 
-    public NativeChannel(NetEndpoint endpoint, List<Conversion> conversions) {
+    public NativeChannel(NetEndpoint endpoint, List<?> parts) {
       this.endpoint = endpoint;
-      this.conversions = conversions;
+      this.parts = parts;
     }
 
-    private synchronized Conversion conversion() {
-      var c = step < conversions.size() ? conversions.get(step) : null;
+    private synchronized Object part() {
+      var c = step < parts.size() ? parts.get(step) : null;
       step++;
       return c;
     }
 
     @Override
     public void send(int side, Object value) {
-      var c = conversion();
-      endpoint.send(side, c == null ? value : c.toLogical(value));
+      var part = part();
+      if (part instanceof EndPart end) value = textValue(relayEnd(endpoint.node, value, end));
+      else if (part instanceof Conversion c) value = c.toLogical(value);
+      endpoint.send(side, value);
     }
 
     @Override
     public Object receive(int side) {
-      var c = conversion();
+      var part = part();
       var value = (Value) endpoint.receive(side);
-      return c == null ? value : c.toNative(value);
+      if (part instanceof EndPart end) {
+        var wire = end.wire().get();
+        var dialed = endpoint.node.dial(textOf(value), wire.steps(), wire.values());
+        return end.start().apply(new NativeChannel(dialed, wire.parts()));
+      }
+      return part instanceof Conversion c ? c.toNative(value) : value;
     }
 
     @Override
     public void abandon(int side) {
       endpoint.abandon(side);
     }
+  }
+
+  /**
+   * Offers an unused channel end to another node: a relay on node listens for the receiver and
+   * passes each step between it and the end, which stays here. Returns the relay's address. A
+   * failure on either side gives up the other.
+   */
+  static String relayEnd(Node node, Object end, EndPart part) {
+    var wire = part.wire().get();
+    var channel = part.channelOf().apply(end);
+    var flipped = new ArrayList<Step>();
+    for (var s : wire.steps()) flipped.add(new Step(!s.sends(), s.descriptor()));
+    var relay = node.listen("relay-" + node.nextId(), flipped, wire.values());
+    var relayed = new NativeChannel(relay, wire.parts());
+    startDaemon(
+        () -> {
+          try {
+            for (var s : wire.steps()) {
+              if (s.sends()) channel.send(0, relayed.receive(0));
+              else relayed.send(0, channel.receive(0));
+            }
+          } catch (RuntimeException e) {
+            try {
+              channel.abandon(0);
+            } catch (RuntimeException ignored) {
+              // Already failed.
+            }
+            try {
+              relay.abandon(0);
+            } catch (RuntimeException ignored) {
+              // Already failed.
+            }
+          }
+        });
+    return relay.address;
   }
 }

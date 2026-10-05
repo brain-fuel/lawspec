@@ -8,7 +8,9 @@ import lawspec.data.Pair
 import lawspec.data.Tally
 import lawspec.remote.LawSpecRemote
 import lawspec.runtime.LawSpecRuntime
+import lawspec.mailboxes.LedgerMailbox
 import lawspec.sessions.Doubling
+import lawspec.sessions.Handoff
 
 object Distribution {
     fun encoded(value0: String, value1: BigInteger, value2: Int, value3: Int): List<String> =
@@ -71,6 +73,45 @@ object Distribution {
         } finally {
             client.close()
             server.close()
+        }
+    }
+
+    suspend fun remoteLedger(value0: Int): Long {
+        val here = LawSpecRuntime.Node(LawSpecRuntime.TcpTransport())
+        val there = LawSpecRuntime.Node(LawSpecRuntime.TcpTransport())
+        try {
+            val ledger = LedgerMailbox.serve(there, "ledger")
+            val sender = LedgerMailbox.connect(here, there.address + "/ledger")
+            sender.send(value0.toLong())
+            sender.send(value0.toLong())
+            val timeout = java.time.Duration.ofSeconds(5)
+            return ledger.receive(timeout) + ledger.receive(timeout)
+        } finally {
+            here.close()
+            there.close()
+        }
+    }
+
+    suspend fun remoteHandoff(value0: Int): Long {
+        val here = LawSpecRuntime.Node(LawSpecRuntime.TcpTransport())
+        val there = LawSpecRuntime.Node(LawSpecRuntime.TcpTransport())
+        try {
+            // A local conversation on this node; its first end goes to the other.
+            val ends = Doubling.open()
+            val worker = LawSpecRuntime.spawn(Runnable {
+                val got = ends.second().receive()
+                got.next().send(2L * got.value())
+            })
+            val giving = Handoff.listen(here, "handoff")
+            val taking = Handoff.dial(there, here.address + "/handoff")
+            giving.send(ends.first())
+            val end = taking.receive().value()
+            val reply = end.send(value0).receive()
+            worker.join()
+            return reply.value()
+        } finally {
+            there.close()
+            here.close()
         }
     }
 }

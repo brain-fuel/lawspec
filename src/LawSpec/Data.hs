@@ -105,6 +105,9 @@ qualifyDataNames unit = unit
       , S.functionRequirements = map constraint (S.functionRequirements d)
       , S.functionBody = expr (S.functionBody d)} | d <- S.functionDefinitions unit]
   , S.laws = map law (S.laws unit)
+  -- Protocol steps and mailboxes name data types too.
+  , S.protocols = [p {S.protocolSteps = map step (S.protocolSteps p)} | p <- S.protocols unit]
+  , S.mailboxes = [(n, ty t, at) | (n, t, at) <- S.mailboxes unit]
   , S.contracts = [c {S.contractArguments = map pair (S.contractArguments c),
       S.contractResult = pair (S.contractResult c),
       S.contractPreconditions = map expr (S.contractPreconditions c),
@@ -121,6 +124,8 @@ qualifyDataNames unit = unit
     change (S.Application name args) = S.Application (qualify types name) args
     change t = t
     pair (name,t) = (name,ty t)
+    step (S.Send t) = S.Send (ty t)
+    step (S.Receive t) = S.Receive (ty t)
     constraint (S.Capability name t) = S.Capability name (ty t)
     expr e = case e of
       S.Located range value -> S.Located range (expr value)

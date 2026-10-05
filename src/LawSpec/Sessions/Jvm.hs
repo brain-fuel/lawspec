@@ -13,24 +13,35 @@ module LawSpec.Sessions.Jvm (emit) where
 
 import Control.Monad (foldM)
 import Data.Char (isAlphaNum, toUpper)
-import Data.List (intercalate, stripPrefix)
+import Data.List (intercalate, isInfixOf, stripPrefix)
 import qualified LawSpec.Code.Doc as D
 import qualified LawSpec.Core as C
 import LawSpec.Common (Artifact(..))
 import LawSpec.JavaData (javaDataType, identifier, javaCodecDocWithContext)
+import LawSpec.KotlinData (kotlinCodecDocWithContext, kotlinDataType)
 import LawSpec.MachineSpec (describe)
 import LawSpec.Scalar (isInteger)
 
 -- The session library for the given target, for every unit's protocols.
 emit :: String -> Bool -> Int -> [C.DataDeclaration] -> [C.Unit] -> Either String [Artifact]
-emit target _ bits datas units = mapM artifact sessions
+emit target _ bits datas units = concat <$> mapM artifact sessions
   where
     sessions = concatMap C.unitSessions units
+    -- Protocols that can run between nodes: every value step has a wire
+    -- descriptor and a conversion, and every protocol whose end a step sends
+    -- can too (and has steps, so its end has a channel to relay).
+    described = [s | s <- sessions, Right _ <- [networkParts target bits datas sessions s]]
+    settle ws = let kept = [s | s <- ws, all (\(_, t) -> maybe True (\q -> C.sessionName q `elem` map C.sessionName ws && not (null (C.sessionSteps q))) (sessionOf sessions t)) (C.sessionSteps s)]
+                in if length kept == length ws then ws else settle kept
+    wired = map C.sessionName (settle described)
     artifact s = do
       identifier (C.sessionName s)
-      network <- either (const (pure [])) pure (networkSource target bits datas sessions s)
+      (network, kotlin) <- if C.sessionName s `elem` wired
+        then networkSource target bits datas sessions s
+        else pure ([], Nothing)
       source <- protocolSource datas sessions network s
-      pure (Artifact ("src/main/java/lawspec/sessions/" ++ C.sessionName s ++ ".java") source "generated" "source")
+      pure ([Artifact ("src/main/java/lawspec/sessions/" ++ C.sessionName s ++ ".java") source "generated" "source"] ++
+            [Artifact ("src/main/kotlin/lawspec/sessions/" ++ C.sessionName s ++ "Conversions.kt") k "generated" "source" | Just k <- [kotlin]])
 
 -- A step as one end sees it: its number, whether this end sends, its type.
 data Step = Step { stepNumber :: Int, stepSends :: Bool, stepType :: C.Type }
@@ -88,50 +99,102 @@ shortName :: [C.DataDeclaration] -> String -> String
 shortName datas n = maybe lastSegment id (lookup n [(C.idText (C.dataId d), C.dataName d) | d <- datas])
   where lastSegment = reverse (takeWhile (\c -> c /= ':' && c /= '.') (reverse n))
 
--- listen and dial: a protocol's ends over a network, when its steps have
--- wire descriptors and delegate no ends. Scalar steps convert through the
--- runtime; a data step through the Java codec (Java projects only, since
--- Kotlin's codecs are Kotlin objects).
-networkSource :: String -> Int -> [C.DataDeclaration] -> [C.Session] -> C.Session -> Either String [String]
+-- listen and dial: a protocol's ends over a network. wire() lists each
+-- step's descriptor and part from the first end: a scalar converts through
+-- the runtime, a data value through its codec (Java's, or for Kotlin a
+-- generated Kotlin object, since Kotlin's codecs are Kotlin objects), and a
+-- step sending another protocol's end is an EndPart (the end goes by the
+-- address of a relay on the sending node).
+data Part = Scalar String | Codec String | EndOf C.Session
+
+networkParts :: String -> Int -> [C.DataDeclaration] -> [C.Session] -> C.Session -> Either String ([(Bool, String, Part)], [(String, String)])
+networkParts target bits datas sessions session = do
+  (table, parts) <- foldM part ([], []) (C.sessionSteps session)
+  pure (parts, table)
+  where
+    part (t, acc) (sends, ty) = case sessionOf sessions ty of
+      Just q -> pure (t, acc ++ [(sends, "(end)", EndOf q)])
+      Nothing -> do
+        (d, t') <- describe bits datas t ty
+        p <- case ty of
+          C.Constructor n [] | isInteger n || n `elem` ["Bool", "Text"] -> pure (Scalar n)
+          _ | target == "java" -> Codec . D.render (D.Pretty 1000) <$> javaCodecDocWithContext (D.text "symbols") datas bits ty
+            | otherwise -> Codec . D.render (D.Pretty 1000) <$> kotlinCodecDocWithContext (D.text "symbols") datas ty
+        pure (t', acc ++ [(sends, d, p)])
+
+networkSource :: String -> Int -> [C.DataDeclaration] -> [C.Session] -> C.Session -> Either String ([String], Maybe String)
 networkSource target bits datas sessions session = do
-  let steps = C.sessionSteps session
-  if any (\(_, t) -> sessionOf sessions t /= Nothing) steps then Left "delegates" else pure ()
-  (table, ds) <- foldM (\(t, acc) (_, ty) -> (\(d, t') -> (t', acc ++ [d])) <$> describe bits datas t ty) ([], []) steps
-  conversions <- mapM conversion (zip [0 :: Int ..] (map snd steps))
-  let codecs = [c | (Just c, _) <- conversions]
-      stepList first = "java.util.List.of(" ++ intercalate ", "
-        ["new LawSpecRuntime.Step(" ++ (if (if first then sends else not sends) then "true" else "false") ++ ", LawSpecRuntime.descriptor(" ++ show d ++ "))"
-        | ((sends, _), d) <- zip steps ds] ++ ")"
+  (parts, table) <- networkParts target bits datas sessions session
+  let name = C.sessionName session
+      codecs = [(i, c, t) | (i, (_, _, Codec c), (_, t)) <- zip3 [0 :: Int ..] parts (C.sessionSteps session)]
+      kotlin = target == "kotlin"
+      partDoc (i, (_, _, p)) = case p of
+        Scalar n -> "LawSpecRuntime.scalarConversion(" ++ show n ++ ", " ++ show bits ++ ")"
+        Codec _ | kotlin -> name ++ "Conversions.conversion" ++ show i ++ "()"
+                | otherwise -> "LawSpecRuntime.conversion(codec" ++ show i ++ "::encode, codec" ++ show i ++ "::decode)"
+        EndOf q -> let start = firstStart datas sessions q in
+          "new LawSpecRuntime.EndPart(c -> new " ++ start ++ "(c), e -> ((" ++ start ++ ") e).relayChannel(), " ++ C.sessionName q ++ "::wire)"
       first = startClass datas sessions session True
       second = startClass datas sessions session False
-  pure $
+  kotlinFile <- if kotlin && not (null codecs)
+    then Just <$> kotlinConversions name codecs
+    else pure Nothing
+  pure (
     [ "" ] ++
-    [ l | not (null codecs), l <- ["  private static final lawspec.runtime.LawSpecSchema _schema =", "      lawspec.runtime.LawSpecDataSchema.create();", ""] ] ++
+    [ l | not (null codecs), not kotlin, l <- ["  private static final lawspec.runtime.LawSpecSchema _schema =", "      lawspec.runtime.LawSpecDataSchema.create();", ""] ] ++
     [ "  private static final LawSpecRuntime.Values TYPES = LawSpecRuntime.valuesOf(" ++ show (unwords (map snd (reverse table))) ++ ");"
     , ""
-    , "  private static java.util.List<LawSpecRuntime.Conversion> conversions() {"
+    , "  /** Each step's descriptor and conversion, from the first end. */"
+    , "  static LawSpecRuntime.Wire wire() {"
     , "    var symbols = new java.util.HashMap<String, Object>();" ] ++
-    [ "    var codec" ++ show i ++ " = " ++ c ++ ";" | (i, (Just c, _)) <- zip [0 :: Int ..] conversions ] ++
-    [ "    return java.util.List.of(" ++ intercalate ", " (map snd conversions) ++ ");"
+    [ "    var codec" ++ show i ++ " = " ++ c ++ ";" | not kotlin, (i, c, _) <- codecs ] ++
+    [ "    return new LawSpecRuntime.Wire("
+    , "        java.util.List.of(" ++ intercalate ", "
+        ["new LawSpecRuntime.Step(" ++ (if sends then "true" else "false") ++ ", LawSpecRuntime.descriptor(" ++ show d ++ "))" | (sends, d, _) <- parts] ++ "),"
+    , "        java.util.Arrays.<Object>asList(" ++ intercalate ", " (map partDoc (zip [0 ..] parts)) ++ "),"
+    , "        TYPES);"
     , "  }"
     , ""
-    , "  /** The first end of a channel named name on node, which another node dials at {node address}/name. */"
+    , "  /**"
+    , "   * The first end of a channel named name on node, which another node dials at {node"
+    , "   * address}/name. An end sent over it to another node is relayed by this node."
+    , "   */"
     , "  public static First." ++ first ++ " listen(LawSpecRuntime.Node node, String name) {"
-    , "    return new First." ++ first ++ "(new LawSpecRuntime.NativeChannel(node.listen(name, " ++ stepList True ++ ", TYPES), conversions()));"
+    , "    var w = wire();"
+    , "    return new First." ++ first ++ "(new LawSpecRuntime.NativeChannel(node.listen(name, w.steps(), w.values()), w.parts()));"
     , "  }"
     , ""
     , "  /** The second end of the channel listening at address on another node. */"
     , "  public static Second." ++ second ++ " dial(LawSpecRuntime.Node node, String address) {"
-    , "    return new Second." ++ second ++ "(new LawSpecRuntime.NativeChannel(node.dial(address, " ++ stepList False ++ ", TYPES), conversions()));"
-    , "  }" ]
+    , "    var w = wire();"
+    , "    var steps = new java.util.ArrayList<LawSpecRuntime.Step>();"
+    , "    for (var s : w.steps()) steps.add(new LawSpecRuntime.Step(!s.sends(), s.descriptor()));"
+    , "    return new Second." ++ second ++ "(new LawSpecRuntime.NativeChannel(node.dial(address, steps, w.values()), w.parts()));"
+    , "  }" ], kotlinFile)
   where
-    conversion (i, ty) = case ty of
-      C.Constructor n [] | isInteger n || n `elem` ["Bool", "Text"] ->
-        pure (Nothing, "LawSpecRuntime.scalarConversion(" ++ show n ++ ", " ++ show bits ++ ")")
-      _ | target == "java" -> do
-        c <- D.render (D.Pretty 1000) <$> javaCodecDocWithContext (D.text "symbols") datas bits ty
-        pure (Just c, "LawSpecRuntime.conversion(codec" ++ show i ++ "::encode, codec" ++ show i ++ "::decode)")
-      _ -> Left "a Kotlin protocol's data steps have no Java codec"
+    kotlinConversions name codecs = do
+      functions <- mapM (\(i, c, t) -> do
+        native <- kotlinDataType datas t
+        pure [ ""
+             , "    @JvmStatic"
+             , "    fun conversion" ++ show i ++ "(): LawSpecRuntime.Conversion {"
+             , "        val symbols = mutableMapOf<String, Any>()"
+             , "        val codec = " ++ c
+             , "        return LawSpecRuntime.conversion<" ++ native ++ ">({ codec.encode(it) }, { codec.decode(it) })"
+             , "    }" ]) codecs
+      let body = unlines (concat functions)
+          imports = [ "import lawspec.runtime." ++ x | x <- ["LawSpecDataCodecs", "LawSpecKotlinCodecs"], (x ++ ".") `isInfixOf` body ] ++
+                    [ "import lawspec.runtime.LawSpecDataSchema" ]
+      pure $ unlines $
+        [ "// Generated by LawSpec from protocol " ++ name ++ ". Do not edit."
+        , "package lawspec.sessions"
+        , ""
+        , "import lawspec.runtime.LawSpecRuntime" ] ++ imports ++
+        [ ""
+        , "/** Conversions of protocol " ++ name ++ "'s data steps, for its ends between nodes. */"
+        , "object " ++ name ++ "Conversions {"
+        , "    private val schema = LawSpecDataSchema.create()"
+        , "    private const val bits = " ++ show bits ] ++ concat functions ++ [ "}" ]
 
 protocolSource :: [C.DataDeclaration] -> [C.Session] -> [String] -> C.Session -> Either String String
 protocolSource datas sessions network session = do
@@ -188,6 +251,12 @@ protocolSource datas sessions network session = do
             , "      " ++ cls ++ " moved() {"
             , "        LawSpecRuntime.claimEnd(used);"
             , "        return new " ++ cls ++ "(channel);"
+            , "      }"
+            , ""
+            , "      /** This unused end's channel, for a relay to another node; this object becomes used. */"
+            , "      LawSpecRuntime.Channel relayChannel() {"
+            , "        LawSpecRuntime.claimEnd(used);"
+            , "        return channel;"
             , "      }" ]
           header doc =
             [ "    /** " ++ doc ++ " */"
