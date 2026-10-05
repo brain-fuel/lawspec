@@ -4087,6 +4087,51 @@ struct NetChannel {
 // A vector clock: each process's count of its own events.
 type VectorClock = HashMap<usize, u64>;
 
+// A scenario's mailbox: any process sends, one receives. expected is how
+// many sends the scenario makes; a process that ends gives up the sends it
+// did not make, and a receive with nothing left to come finds Gone instead
+// of waiting. Over a network, messages go from a sender node to the
+// receiver's node, each send waiting until it is delivered; the senders'
+// clocks travel beside the network, in send order.
+struct ScenarioMailbox {
+    expected: usize,
+    state: std::sync::Mutex<MailboxState>,
+    ready: std::sync::Condvar,
+    net: Option<NetMailbox>,
+}
+
+#[derive(Default)]
+struct MailboxState {
+    items: std::collections::VecDeque<(Carried, VectorClock)>,
+    clocks: std::collections::VecDeque<VectorClock>,
+    received: usize,
+    abandoned: usize,
+}
+
+struct NetMailbox {
+    nodes: [net::Node; 2],
+    inbox: actors::Mailbox<Value>,
+    remote: net::RemoteMailbox,
+}
+
+/// How many times these acts (not nested pars) send to name.
+fn scenario_sends(acts: &[Sexp], name: &str) -> usize {
+    acts.iter().filter(|a| a.kind() == "send" && a.items()[1].name() == name).count()
+}
+
+/// How many sends to name the whole program makes.
+fn all_sends(acts: &[Sexp], name: &str) -> usize {
+    let mut total = 0;
+    for act in acts {
+        if act.kind() == "send" && act.items()[1].name() == name {
+            total += 1;
+        } else if act.kind() == "par" {
+            total += act.items()[1..].iter().map(|b| all_sends(&b.items()[1..], name)).sum::<usize>();
+        }
+    }
+    total
+}
+
 // A channel end a process holds: the channel's number and its side.
 type ScenarioEnds = HashMap<String, (usize, usize)>;
 // One call: the command, its arguments, its result, when it started and
@@ -4110,6 +4155,7 @@ struct ScenarioRun<'m> {
     failures: std::sync::Mutex<Vec<String>>,
     // The crashed process (a par's branch) and the act it crashes before.
     victim: Option<(usize, usize)>,
+    mailboxes: HashMap<String, ScenarioMailbox>,
 }
 
 /// Every process of a par, outermost and first first (not or else).
@@ -4290,6 +4336,86 @@ impl<'m> ScenarioRun<'m> {
         }
     }
 
+    fn mailbox_send(&self, name: &str, value: Carried, clock: VectorClock) -> bool {
+        let mailbox = &self.mailboxes[name];
+        match &mailbox.net {
+            None => {
+                mailbox.state.lock().unwrap_or_else(|p| p.into_inner()).items.push_back((value, clock));
+                mailbox.ready.notify_all();
+                true
+            }
+            Some(net) => {
+                let value = match value {
+                    Carried::End(c, s) => Value::Text(format!("{}#{s}", self.channel_names[c])),
+                    Carried::Value(v) => v,
+                    Carried::Gone => return true,
+                };
+                mailbox.state.lock().unwrap_or_else(|p| p.into_inner()).clocks.push_back(clock);
+                if let Err(e) = net.remote.send(&value) {
+                    self.fail(format!("a send to mailbox {name} failed: {e}"));
+                    return false;
+                }
+                mailbox.ready.notify_all();
+                true
+            }
+        }
+    }
+
+    fn mailbox_give_up(&self, name: &str, count: usize) {
+        let mailbox = &self.mailboxes[name];
+        mailbox.state.lock().unwrap_or_else(|p| p.into_inner()).abandoned += count;
+        mailbox.ready.notify_all();
+    }
+
+    /// The next message and its sender's clock, Gone when no message is
+    /// left to come, or None when nothing came in time.
+    fn mailbox_receive(&self, name: &str) -> Option<(Carried, VectorClock)> {
+        let mailbox = &self.mailboxes[name];
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        loop {
+            {
+                let mut state = mailbox.state.lock().unwrap_or_else(|p| p.into_inner());
+                if mailbox.net.is_none() {
+                    if let Some(item) = state.items.pop_front() {
+                        state.received += 1;
+                        return Some(item);
+                    }
+                }
+                if state.received + state.abandoned >= mailbox.expected {
+                    return Some((Carried::Gone, VectorClock::new()));
+                }
+                if mailbox.net.is_none() {
+                    let now = std::time::Instant::now();
+                    if now >= deadline {
+                        return None;
+                    }
+                    drop(mailbox.ready.wait_timeout(state, (deadline - now).min(std::time::Duration::from_millis(50))));
+                    continue;
+                }
+            }
+            let net = mailbox.net.as_ref().expect("a network mailbox");
+            match net.inbox.receive(Some(std::time::Duration::from_millis(20))) {
+                Ok(value) => {
+                    let clock = {
+                        let mut state = mailbox.state.lock().unwrap_or_else(|p| p.into_inner());
+                        state.received += 1;
+                        state.clocks.pop_front().unwrap_or_default()
+                    };
+                    let carried = match value {
+                        Value::Text(t) => match t.rsplit_once('#').and_then(|(c, s)| Some((self.channel_numbers.get(c)?, s.parse::<usize>().ok()?))) {
+                            Some((c, s)) => Carried::End(*c, s),
+                            None => Carried::Value(Value::Text(t)),
+                        },
+                        other => Carried::Value(other),
+                    };
+                    return Some((carried, clock));
+                }
+                Err(_) if std::time::Instant::now() >= deadline => return None,
+                Err(_) => {}
+            }
+        }
+    }
+
     fn stamp(&self, channel: usize, side: usize, clock: &VectorClock) {
         self.stamps.lock().unwrap_or_else(|p| p.into_inner()).entry((channel, side)).or_default().push_back(clock.clone());
     }
@@ -4320,9 +4446,17 @@ impl<'m> ScenarioRun<'m> {
         identity: usize,
         clock: &mut VectorClock,
     ) -> bool {
-        let done = self.steps(acts, env, ends, random, identity, clock, identity);
+        let mut sent: HashMap<String, usize> = self.mailboxes.keys().map(|m| (m.clone(), 0)).collect();
+        let done = self.steps(acts, env, ends, random, identity, clock, identity, &mut sent);
         for (channel, side) in ends.drain().map(|(_, end)| end).collect::<Vec<_>>() {
             self.gone(channel, side);
+        }
+        // Sends this process will never make.
+        for (name, count) in &sent {
+            let missing = scenario_sends(acts, name).saturating_sub(*count);
+            if missing > 0 {
+                self.mailbox_give_up(name, missing);
+            }
         }
         done
     }
@@ -4336,6 +4470,7 @@ impl<'m> ScenarioRun<'m> {
         identity: usize,
         clock: &mut VectorClock,
         me: usize,
+        sent: &mut HashMap<String, usize>,
     ) -> bool {
         let mut own = Context::testing();
         for (index, act) in acts.iter().enumerate() {
@@ -4390,6 +4525,58 @@ impl<'m> ScenarioRun<'m> {
                         env.insert(items[2].name(), result);
                     }
                 }
+                "send" if self.mailboxes.contains_key(&items[1].name()) => {
+                    let name = items[1].name();
+                    let operand = &items[2];
+                    let held = if operand.kind() == "var" { ends.remove(&operand.items()[1].name()) } else { None };
+                    let value = match held {
+                        Some((c, s)) => Carried::End(c, s),
+                        None => match self.operand(operand, env) {
+                            Some(v) => Carried::Value(v),
+                            None => {
+                                self.fail(format!("{} is not bound", operand.items()[1].name()));
+                                return false;
+                            }
+                        },
+                    };
+                    perturb(random);
+                    *clock.entry(me).or_insert(0) += 1;
+                    if !self.mailbox_send(&name, value, clock.clone()) {
+                        return false;
+                    }
+                    *sent.entry(name).or_insert(0) += 1;
+                }
+                "receive" | "receiveor" if self.mailboxes.contains_key(&items[1].name()) => {
+                    let name = items[1].name();
+                    match self.mailbox_receive(&name) {
+                        None => {
+                            self.fail(format!("a receive on mailbox {name} waited too long: the processes are blocked"));
+                            return false;
+                        }
+                        Some((Carried::Gone, _)) => {
+                            if act.kind() == "receive" {
+                                return false;
+                            }
+                            return self.steps(&items[3].items()[1..], env, ends, random, usize::MAX, clock, me, sent);
+                        }
+                        Some((value, carried)) => {
+                            for (p, n) in carried {
+                                let mine = clock.entry(p).or_insert(0);
+                                *mine = (*mine).max(n);
+                            }
+                            *clock.entry(me).or_insert(0) += 1;
+                            match value {
+                                Carried::End(c, s) => {
+                                    ends.insert(items[2].name(), (c, s));
+                                }
+                                Carried::Value(v) => {
+                                    env.insert(items[2].name(), v);
+                                }
+                                Carried::Gone => {}
+                            }
+                        }
+                    }
+                }
                 "send" => {
                     let Some((channel, side)) = self.end(&items[1].name(), ends) else { return false };
                     let operand = &items[2];
@@ -4428,7 +4615,7 @@ impl<'m> ScenarioRun<'m> {
                                 return false;
                             }
                             ends.remove(&name);
-                            return self.steps(&items[3].items()[1..], env, ends, random, usize::MAX, clock, me);
+                            return self.steps(&items[3].items()[1..], env, ends, random, usize::MAX, clock, me, sent);
                         }
                         Some(Carried::End(c, s)) => {
                             ends.insert(items[2].name(), (c, s));
@@ -4590,7 +4777,40 @@ fn run_scenario(machine: &Machine, spec: &str, shake: u64, crash: bool, network:
             net,
         }
     };
+    let boxes: Vec<String> = forms
+        .iter()
+        .filter(|f| f.kind() == "mailboxes")
+        .flat_map(|f| f.items()[1..].iter().map(Sexp::name).collect::<Vec<_>>())
+        .collect();
+    let new_mailbox = |name: &String| {
+        let net = match (&faulty, wire) {
+            (Some(network), Some(w)) => w.items()[1..].iter().find(|f| f.kind() == "mailbox" && f.items()[1].name() == *name).map(|f| {
+                let d = f.items()[2].clone();
+                let d = if d.kind() == "end" { descriptor("(text)") } else { d };
+                let nodes = [
+                    net::Node::new(network.transport(&format!("{name}-owner"))),
+                    net::Node::new(network.transport(&format!("{name}-senders"))),
+                ];
+                let inbox = nodes[0].mailbox(name, d.clone(), types.clone()).expect("a fresh node");
+                let remote = nodes[1].remote_mailbox_within(
+                    &format!("{}/{name}", nodes[0].address()),
+                    d,
+                    types.clone(),
+                    std::time::Duration::from_secs(5),
+                );
+                NetMailbox { nodes, inbox, remote }
+            }),
+            _ => None,
+        };
+        ScenarioMailbox {
+            expected: all_sends(body, name),
+            state: std::sync::Mutex::new(MailboxState::default()),
+            ready: std::sync::Condvar::new(),
+            net,
+        }
+    };
     let run = ScenarioRun {
+        mailboxes: boxes.iter().map(|m| (m.clone(), new_mailbox(m))).collect(),
         machine,
         commands: machine.commands.iter().enumerate().map(|(i, c)| (c.name.clone(), i)).collect(),
         channels: names.iter().map(new_channel).collect(),
@@ -4607,6 +4827,13 @@ fn run_scenario(machine: &Machine, spec: &str, shake: u64, crash: bool, network:
     let finished = run.process(body, &mut HashMap::new(), &mut ScenarioEnds::new(), &mut SplitMix64::new(shake), 0, &mut VectorClock::new());
     for channel in &run.channels {
         if let Some(net) = &channel.net {
+            for node in &net.nodes {
+                node.close();
+            }
+        }
+    }
+    for mailbox in run.mailboxes.values() {
+        if let Some(net) = &mailbox.net {
             for node in &net.nodes {
                 node.close();
             }
@@ -5844,6 +6071,16 @@ pub mod sessions {
         /// PeerFailed once it has received what was already sent. Dropping
         /// an end does the same.
         pub fn abandon(self) {}
+
+        /// Sends a value already boxed (a relay passing one step on).
+        pub fn send_message(&self, message: Message) {
+            self.transport.send(self.side, message);
+        }
+
+        /// The next value, still boxed (a relay passing one step on).
+        pub fn receive_message(&self) -> Result<Message, PeerFailed> {
+            self.transport.receive(self.side)
+        }
     }
 
     impl Drop for Endpoint {
@@ -7802,7 +8039,12 @@ pub mod net {
         }
 
         pub fn remote_mailbox(&self, address: &str, descriptor: Sexp, values: Values) -> RemoteMailbox {
-            RemoteMailbox { node: self.clone(), address: address.to_string(), descriptor, values }
+            self.remote_mailbox_within(address, descriptor, values, Duration::from_secs(5))
+        }
+
+        /// A remote mailbox whose sends wait up to timeout for delivery.
+        pub fn remote_mailbox_within(&self, address: &str, descriptor: Sexp, values: Values, timeout: Duration) -> RemoteMailbox {
+            RemoteMailbox { node: self.clone(), address: address.to_string(), descriptor, values, timeout }
         }
 
         // Actors: calls by message name, with each message's types.
@@ -7890,27 +8132,44 @@ pub mod net {
     }
 
     impl Entity for MailEntity {
-        fn receive(&self, _: &Node, kind: &str, _: &str, _: u64, payload: Vec<u8>) {
-            if kind == "mail" {
-                if let Ok(value) = wire_decode(&self.values, &self.descriptor, &payload) {
-                    let _ = self.mailbox.send(value);
-                }
+        fn receive(&self, node: &Node, kind: &str, source: &str, id: u64, payload: Vec<u8>) {
+            if kind != "mail" {
+                return;
+            }
+            let (status, body) = match wire_decode(&self.values, &self.descriptor, &payload) {
+                Ok(value) => match self.mailbox.send(value) {
+                    Ok(()) => (0u8, Vec::new()),
+                    Err(e) => (2, e.into_bytes()),
+                },
+                Err(e) => (3, format!("not a message of this mailbox: {e}").into_bytes()),
+            };
+            if id != 0 {
+                node.reply(source, id, status, &body);
             }
         }
     }
 
-    /// Sends to a mailbox on another node; send never waits for it.
+    /// Sends to a mailbox on another node. A send waits until the mailbox
+    /// has the message (resending a lost one; the mailbox takes it once),
+    /// and fails with UNREACHABLE after the timeout, or as stopped if the
+    /// mailbox is closed.
     pub struct RemoteMailbox {
         node: Node,
         pub address: String,
         descriptor: Sexp,
         values: Values,
+        pub timeout: Duration,
     }
 
     impl RemoteMailbox {
         pub fn send(&self, value: &Value) -> Result<()> {
             let bytes = wire_encode(&self.values, &self.descriptor, value)?;
-            self.node.send_frame(&self.address, "mail", &bytes, 0)
+            let (status, body) = self.node.request(&self.address, "mail", &bytes, self.timeout)?;
+            if status == 0 {
+                Ok(())
+            } else {
+                reply_value(status, &body, &self.values, &Sexp::List(vec![Sexp::Atom("unit".into())])).map(|_| ())
+            }
         }
     }
 
@@ -8287,23 +8546,61 @@ pub mod net {
     }
 
     /// Converts one session step's native value to and from its logical
-    /// form, for typed ends over a network.
+    /// form, for typed ends over a network. A step that sends another
+    /// protocol's first end (end_codec) carries a relay's address instead.
     pub struct StepCodec {
-        to_logical: Box<dyn Fn(super::sessions::Message) -> Value + Send + Sync>,
-        from_logical: Box<dyn Fn(Value) -> Result<super::sessions::Message> + Send + Sync>,
+        kind: CodecKind,
+    }
+
+    /// A protocol's wire form from its first end: each step's direction and
+    /// descriptor, and its codec.
+    pub type Wire = fn() -> (Vec<(bool, Sexp)>, Vec<StepCodec>);
+
+    enum CodecKind {
+        Value {
+            to_logical: Box<dyn Fn(super::sessions::Message) -> Value + Send + Sync>,
+            from_logical: Box<dyn Fn(Value) -> Result<super::sessions::Message> + Send + Sync>,
+        },
+        End {
+            wire: Wire,
+            into_endpoint: Box<dyn Fn(super::sessions::Message) -> super::sessions::Endpoint + Send + Sync>,
+            from_endpoint: Box<dyn Fn(super::sessions::Endpoint) -> super::sessions::Message + Send + Sync>,
+        },
     }
 
     /// The codec of a step whose native type is T.
     pub fn step_codec<T: super::IntoValue + super::FromValue + Send + 'static>() -> StepCodec {
         StepCodec {
-            to_logical: Box::new(|message| match message.downcast::<T>() {
-                Ok(value) => super::IntoValue::into_value(*value),
-                Err(_) => panic!("a session sent a value of an unexpected type"),
-            }),
-            from_logical: Box::new(|value| {
-                let native: T = super::FromValue::from_value(value)?;
-                Ok(Box::new(native) as super::sessions::Message)
-            }),
+            kind: CodecKind::Value {
+                to_logical: Box::new(|message| match message.downcast::<T>() {
+                    Ok(value) => super::IntoValue::into_value(*value),
+                    Err(_) => panic!("a session sent a value of an unexpected type"),
+                }),
+                from_logical: Box::new(|value| {
+                    let native: T = super::FromValue::from_value(value)?;
+                    Ok(Box::new(native) as super::sessions::Message)
+                }),
+            },
+        }
+    }
+
+    /// The codec of a step that sends another protocol's first end E: wire
+    /// is that protocol's wire form, and into/from turn E into its untyped
+    /// endpoint and back.
+    pub fn end_codec<E: Send + 'static>(
+        wire: Wire,
+        into: fn(E) -> super::sessions::Endpoint,
+        from: fn(super::sessions::Endpoint) -> E,
+    ) -> StepCodec {
+        StepCodec {
+            kind: CodecKind::End {
+                wire,
+                into_endpoint: Box::new(move |message| match message.downcast::<E>() {
+                    Ok(end) => into(*end),
+                    Err(_) => panic!("a session sent a channel end of an unexpected protocol"),
+                }),
+                from_endpoint: Box::new(move |endpoint| Box::new(from(endpoint)) as super::sessions::Message),
+            },
         }
     }
 
@@ -8326,9 +8623,50 @@ pub mod net {
         }
     }
 
+    /// Offers an unused channel end to another node: a relay on node listens
+    /// for the receiver and passes each step between it and the end, which
+    /// stays here. Returns the relay's address. A failure on either side
+    /// gives up the other.
+    fn relay_end(node: &Node, values: &Values, end: super::sessions::Endpoint, wire: Wire) -> Result<String> {
+        let (steps, codecs) = wire();
+        let relay = node.listen(
+            &format!("relay-{}", node.next_id()),
+            steps.iter().map(|(s, d)| (!s, d.clone())).collect(),
+            values.clone(),
+            Duration::from_secs(5),
+        )?;
+        let address = relay.address();
+        let relayed = NetSession::new(relay, codecs);
+        let directions: Vec<bool> = steps.iter().map(|(s, _)| *s).collect();
+        std::thread::spawn(move || {
+            use super::sessions::{Side, Transport};
+            for sends in directions {
+                let passed = if sends {
+                    relayed.receive(Side::First).map(|m| end.send_message(m))
+                } else {
+                    end.receive_message().map(|m| relayed.send(Side::First, m))
+                };
+                if passed.is_err() {
+                    relayed.close(Side::First);
+                    return;
+                }
+            }
+        });
+        Ok(address)
+    }
+
     impl super::sessions::Transport for NetSession {
         fn send(&self, _: super::sessions::Side, message: super::sessions::Message) {
-            let value = (self.codec().to_logical)(message);
+            let value = match &self.codec().kind {
+                CodecKind::Value { to_logical, .. } => to_logical(message),
+                CodecKind::End { wire, into_endpoint, .. } => {
+                    let inner = &self.endpoint.inner;
+                    match relay_end(&inner.node, &inner.values, into_endpoint(message), *wire) {
+                        Ok(address) => Value::Text(address),
+                        Err(e) => panic!("{e}"),
+                    }
+                }
+            };
             if let Err(e) = self.endpoint.send(&value) {
                 if !is_peer_failed(&e) {
                     panic!("{e}");
@@ -8338,10 +8676,24 @@ pub mod net {
 
         fn receive(&self, _: super::sessions::Side) -> std::result::Result<super::sessions::Message, super::sessions::PeerFailed> {
             let codec = self.codec();
-            match self.endpoint.receive(None) {
-                Ok(value) => Ok((codec.from_logical)(value).unwrap_or_else(|e| panic!("{e}"))),
-                Err(e) if is_peer_failed(&e) => Err(super::sessions::PeerFailed),
+            let value = match self.endpoint.receive(None) {
+                Ok(value) => value,
+                Err(e) if is_peer_failed(&e) => return Err(super::sessions::PeerFailed),
                 Err(e) => panic!("{e}"),
+            };
+            match &codec.kind {
+                CodecKind::Value { from_logical, .. } => Ok(from_logical(value).unwrap_or_else(|e| panic!("{e}"))),
+                CodecKind::End { wire, from_endpoint, .. } => {
+                    let Value::Text(address) = value else { panic!("a channel end arrived without its address") };
+                    let (steps, codecs) = wire();
+                    let inner = &self.endpoint.inner;
+                    let dialed = inner
+                        .node
+                        .dial(&address, steps, inner.values.clone(), Duration::from_secs(5))
+                        .unwrap_or_else(|e| panic!("{e}"));
+                    let session = NetSession::new(dialed, codecs);
+                    Ok(from_endpoint(super::sessions::Endpoint::on(session, super::sessions::Side::First)))
+                }
             }
         }
 

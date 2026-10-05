@@ -69,3 +69,38 @@ pub async fn remoteDoubling(value0: i32) -> i64 {
     server.close();
     result
 }
+
+pub async fn remoteLedger(value0: i32) -> i64 {
+    use crate::lawspec_mailboxes::LedgerMailbox;
+    let here = ls::net::Node::new(ls::net::TcpTransport::local().unwrap());
+    let there = ls::net::Node::new(ls::net::TcpTransport::local().unwrap());
+    let ledger = LedgerMailbox::serve(&there, "ledger").unwrap();
+    let sender = LedgerMailbox::connect(&here, &format!("{}/ledger", there.address()), Duration::from_secs(5));
+    sender.send(i64::from(value0)).unwrap();
+    sender.send(i64::from(value0)).unwrap();
+    let total = ledger.receive(Some(Duration::from_secs(5))).unwrap() + ledger.receive(Some(Duration::from_secs(5))).unwrap();
+    here.close();
+    there.close();
+    total
+}
+
+pub async fn remoteHandoff(value0: i32) -> i64 {
+    use crate::lawspec_sessions::{doubling, handoff};
+    let here = ls::net::Node::new(ls::net::TcpTransport::local().unwrap());
+    let there = ls::net::Node::new(ls::net::TcpTransport::local().unwrap());
+    // A local conversation on this node; its first end goes to the other.
+    let (first, second) = doubling::open();
+    let worker = std::thread::spawn(move || {
+        let (x, reply) = second.receive();
+        let _ = reply.send(2 * i64::from(x));
+    });
+    let giving = handoff::listen(&here, "handoff").unwrap();
+    let taking = handoff::dial(&there, &format!("{}/handoff", here.address())).unwrap();
+    let _ = giving.send(first);
+    let (end, _) = taking.receive();
+    let (result, _) = end.send(value0).receive();
+    worker.join().unwrap();
+    there.close();
+    here.close();
+    result
+}
