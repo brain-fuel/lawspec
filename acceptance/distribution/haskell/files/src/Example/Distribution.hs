@@ -1,6 +1,6 @@
 -- User-owned LawSpec adapter: the wire encoding, and nodes talking over
 -- in-memory, TCP and HTTP transports (the asynchronous adapters, in IO).
-module Example.Distribution (encoded, roundTrips, remoteShifted, openTally, add, remoteAdds, remoteDoubling) where
+module Example.Distribution (encoded, roundTrips, remoteShifted, openTally, add, remoteAdds, remoteDoubling, remoteLedger, remoteHandoff) where
 
 import Control.Exception (finally)
 import qualified Data.Int as I
@@ -12,6 +12,7 @@ import qualified LawSpecRuntime as LS
 import LawSpecTransports (httpTransport, tcpTransport)
 import LawSpecActors.Example.Distribution
 import LawSpecSessions.Example.Distribution
+import LawSpecMailboxes.Example.Distribution
 
 encoded :: T.Text -> W.Word64 -> I.Int32 -> I.Int32 -> [T.Text]
 encoded descriptor seed size count =
@@ -63,3 +64,36 @@ remoteDoubling x = do
     (result, _) <- LS.receive next
     LS.join worker
     pure result) `finally` (LS.closeNode client >> LS.closeNode server)
+
+remoteLedger :: I.Int32 -> IO I.Int64
+remoteLedger x = do
+  here <- LS.newNode =<< tcpTransport "127.0.0.1" 0
+  there <- LS.newNode =<< tcpTransport "127.0.0.1" 0
+  (do
+    ledger <- serveLedger there "ledger"
+    let sender = connectLedger here (LS.nodeAddress there ++ "/ledger")
+    sendLedgerTo sender (fromIntegral x)
+    sendLedgerTo sender (fromIntegral x)
+    a <- receiveLedger ledger
+    b <- receiveLedger ledger
+    pure (a + b)) `finally` (LS.closeNode here >> LS.closeNode there)
+
+remoteHandoff :: I.Int32 -> IO I.Int64
+remoteHandoff x = do
+  here <- LS.newNode =<< tcpTransport "127.0.0.1" 0
+  there <- LS.newNode =<< tcpTransport "127.0.0.1" 0
+  (do
+    -- A local conversation on this node; its first end goes to the other.
+    (first, second) <- openDoubling
+    worker <- LS.spawn (do
+      (value, reply) <- LS.receive second
+      _ <- LS.send reply (2 * fromIntegral value :: I.Int64)
+      pure ())
+    giving <- listenHandoff here "handoff"
+    taking <- dialHandoff there (LS.nodeAddress here ++ "/handoff")
+    _ <- LS.send giving first
+    (end, _) <- LS.receive taking
+    next <- LS.send end x
+    (result, _) <- LS.receive next
+    LS.join worker
+    pure result) `finally` (LS.closeNode there >> LS.closeNode here)
