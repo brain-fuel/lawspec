@@ -172,7 +172,7 @@ protocolSource datas sessions session = do
                     , "      }" ]
                 | otherwise =
                     [ ""
-                    , "      /** Receives " ++ described ++ " (blocking), with the next end. */"
+                    , "      /** Receives " ++ described ++ " (blocking), with the next end; throws PeerFailed if the other end gave up. */"
                     ] ++ [ "      @SuppressWarnings(\"unchecked\")" | '<' `elem` boxed ] ++
                     [ "      public LawSpecRuntime.Received<" ++ boxed ++ ", " ++ next ++ "> receive() {"
                     , "        LawSpecRuntime.claimEnd(used);"
@@ -181,7 +181,14 @@ protocolSource datas sessions session = do
                     , "      }" ]
               doc = "The " ++ label ++ " end before step " ++ show (stepNumber s) ++ ": it " ++
                 (if stepSends s then "sends " else "receives ") ++ described ++ "."
-          pure (header doc ++ body ++ moved ++ ["    }"])
+              abandon =
+                [ ""
+                , "      /** Gives up the conversation: the other end's receives throw PeerFailed after what was sent. */"
+                , "      public void abandon() {"
+                , "        LawSpecRuntime.claimEnd(used);"
+                , "        channel.abandon(" ++ show side ++ ");"
+                , "      }" ]
+          pure (header doc ++ body ++ abandon ++ moved ++ ["    }"])
 
     -- A step's value as a type argument and as a send parameter, and what a
     -- send puts on the channel. A delegated end is sent unused.
