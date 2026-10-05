@@ -66,4 +66,49 @@ patch (0.x.y). This page records what has shipped and what comes next.
 
 ## Planned
 
-Later releases will be planned here.
+### 0.19.1: fixes
+
+- A bound handle's Kotlin type is its native class, not `Any`.
+- A method bound on a Haskell handle with no type binding is a clear
+  compile error.
+- JavaScript and TypeScript session adapters await receives instead of
+  using the synchronous shortcut.
+
+### 0.20: concurrency and language completeness
+
+- `if c then a else b` in checked definitions, with each branch's
+  condition known to the totality audit.
+- Proofs about multiplication of bounded integers.
+- Deadlock freedom beyond tree-shaped connections: priorities on channel
+  steps allow cycles that cannot deadlock.
+- Channel ends that move to another node, instead of being relayed.
+- `all` groups in workflows run their steps at the same time.
+- Size-indexed queues and stacks.
+- Native bindings for asynchronous adapters.
+- Several flow parameters per function, and flow calls inside `match`
+  branches.
+- Re-exports of imported names, and several versions of one package in one
+  build.
+
+### 0.20.1: canonical format
+
+The repository moves to the canon
+rules: one canonical home for every decision, reference and document;
+documentation pages in the Folio; Keep a Changelog; and less duplication.
+
+### 0.20.2: vetting
+
+Every canonical comment, decision, reference and page is reviewed and
+signed off.
+
+### 0.21: stub simulation
+
+Simulated external dependencies, so a system can be modelled and tested
+against what it depends on:
+
+- first: SQL (PostgreSQL), HTTP (REST and OpenAPI), key-value stores (Redis,
+  Valkey), blob storage (S3), streams (Kafka) and queues (SQS, RabbitMQ);
+- then: wide-column stores (Cassandra, ScyllaDB), document stores (MongoDB,
+  DynamoDB), search (Elasticsearch, OpenSearch), gRPC, SMTP, and identity
+  (OAuth, OIDC);
+- and the network around them: virtual networks, subnets and load balancers.
