@@ -2357,6 +2357,7 @@ export class Model {
     const kinds = forms.find((f) => f[0] === 'invariants').slice(1);
     this.invariants = kinds.slice(0, invariants.length).map((k, i) => [k, invariants[i]]);
     this.perKey = forms.some((f) => f[0] === 'perkey' && f[1] === 'true');
+    this.consistency = String(forms.find((f) => f[0] === 'consistency')?.[1] ?? 'linearizable');
     // Sequential runs of an actor also inject crashes: the actor restarts
     // from its last state (restart from) or its start, and the model follows
     // the restart's reference (or the start's model state).
@@ -2827,12 +2828,41 @@ async function linearizable(model, symbols, branches, history, expected, final, 
   return finish(modelState);
 }
 
+const CONSISTENT = {
+  linearizable: 'linearizable', sequential: 'sequentially consistent',
+  causal: 'causally consistent', eventual: 'eventually consistent',
+};
+
 /**
  * A Wing-Gong search: linearize, next, a call no pending call on another
  * thread returned before; memoized on positions and the model state.
  * finish judges each complete order's final model state.
+ *
+ * With weaker consistency: sequential drops real time (each thread's own
+ * order remains); causal checks each thread's results alone, since threads
+ * that never message each other see only their own calls; eventual checks
+ * no results, only the final state.
  */
 async function linearize(model, symbols, branches, history, expected, finish) {
+  const mode = model.consistency;
+  if (mode === 'causal') {
+    for (let i = 0; i < branches.length; i++) {
+      let state = expected;
+      for (let k = 0; k < branches[i].length; k++) {
+        const [index, args] = branches[i][k];
+        const command = model.commands[index];
+        let wanted;
+        try {
+          [state, wanted] = await stepModel(command, symbols, args, state);
+        } catch (error) {
+          if (error instanceof Invalid) return false;
+          throw error;
+        }
+        if (!command.unit && compareValues(history[i][k][2], wanted) !== 0) return false;
+      }
+    }
+    return true;
+  }
   const seen = new Set();
   const visit = async (positions, modelState) => {
     const key = positionKey(positions, modelState);
@@ -2844,7 +2874,7 @@ async function linearize(model, symbols, branches, history, expected, finish) {
       if (k === branches[i].length) continue;
       const called = history[i][k][0];
       let blocked = false;
-      for (let j = 0; j < branches.length; j++)
+      if (mode === 'linearizable') for (let j = 0; j < branches.length; j++)
         if (j !== i && positions[j] < branches[j].length && history[j][positions[j]][1] < called) {
           blocked = true;
           break;
@@ -2859,7 +2889,7 @@ async function linearize(model, symbols, branches, history, expected, finish) {
         if (error instanceof Invalid) continue;
         throw error;
       }
-      if (!command.unit && compareValues(history[i][k][2], wanted) !== 0) continue;
+      if (mode !== 'eventual' && !command.unit && compareValues(history[i][k][2], wanted) !== 0) continue;
       if (await visit(advanced(positions, i), after)) return true;
     }
     return false;
@@ -2942,7 +2972,7 @@ export async function checkModelParallelAsync(model, options = {}) {
     if (failure !== null) {
       [testCase, failure] = await shrinkParallel(model, testCase, failure,
         Math.max(2, Math.floor(repeats / 2)), maxShrinks, shake);
-      throw new Error(`model ${model.name} is not linearizable: ${describeParallel(model, testCase)}: ${failure}`);
+      throw new Error(`model ${model.name} is not ${CONSISTENT[model.consistency]}: ${describeParallel(model, testCase)}: ${failure}`);
     }
   }
 }
@@ -2990,6 +3020,12 @@ const GONE = Symbol('the other process ended');
 class Channel {
   queues = [new AsyncQueue(), new AsyncQueue()];
   ended = [false, false];
+  /** The next value for side: GONE once the other side has ended, or TIMED_OUT_RECEIVE. */
+  async receive(side) {
+    const value = await this.queues[1 - side].get(RECEIVE_TIMEOUT);
+    if (value === GONE) this.queues[1 - side].put(GONE);
+    return value;
+  }
   /** A channel end sent to a process that has ended is given up. */
   send(side, value) {
     if (this.ended[1 - side] && value instanceof End) value.channel.gone(value.side);
@@ -3015,6 +3051,56 @@ class Channel {
       }
     }
     for (const end of stranded) end.channel.gone(end.side);
+  }
+}
+
+/**
+ * A scenario channel whose two sides are endpoints on two nodes of a faulty
+ * in-memory network. A channel end sent over it travels as its name, and
+ * the receiver uses the end where it is (its owner).
+ */
+class NetScenarioChannel {
+  name;
+  registry;
+  nodes;
+  ends;
+  done;
+  constructor(network, name, steps, values, registry) {
+    this.name = name;
+    this.registry = registry;
+    this.nodes = [0, 1].map((side) => new Node(network.transport(`${name}-${side}`)));
+    const wire = (sends, d) => [sends, d[0] === 'end' ? ['text'] : d];
+    this.ends = [this.nodes[0].listen(name, steps.map(([s, d]) => wire(s, d)), values)];
+    this.ends.push(this.nodes[1].dial(`${this.nodes[0].address}/${name}`, steps.map(([s, d]) => wire(!s, d)), values));
+    this.done = [false, false];
+    registry.set(name, this);
+  }
+  send(side, value) {
+    if (value instanceof End) value = `${value.channel.name}#${value.side}`;
+    this.ends[side].send(side, value);
+  }
+  async receive(side) {
+    let value;
+    try {
+      value = await this.ends[side].receive(side, RECEIVE_TIMEOUT);
+    } catch (error) {
+      if (error instanceof PeerFailed) return GONE;
+      return TIMED_OUT_RECEIVE;
+    }
+    if (typeof value === 'string' && value.includes('#')) {
+      const at = value.lastIndexOf('#');
+      const owner = this.registry.get(value.slice(0, at));
+      if (owner !== undefined) return new End(owner, Number(value.slice(at + 1)));
+    }
+    return value;
+  }
+  gone(side) {
+    if (this.done[side]) return;
+    this.done[side] = true;
+    this.ends[side].abandon(side);
+  }
+  async close() {
+    for (const node of this.nodes) await node.close();
   }
 }
 
@@ -3066,12 +3152,25 @@ function constant(form) {
   return new DataValue(String(form[1]), []);
 }
 
-async function runScenario(model, spec, shake, crash = false) {
+async function runScenario(model, spec, shake, crash = false, network = false) {
   const forms = readDescriptor(spec);
   const title = String(forms[0][1]);
   const names = forms.find((f) => f[0] === 'channels').slice(1).map(String);
   const body = forms.find((f) => f[0] === 'process').slice(1);
-  const channels = new Map(names.map((name) => [name, new Channel()]));
+  const wire = forms.find((f) => f[0] === 'wire');
+  let channels;
+  if (network && wire !== undefined) {
+    // Loss, duplication and delay (which reorders); the channels' numbered,
+    // acknowledged frames must hide them all.
+    const net = new MemoryNetwork({seed: (BigInt(shake) ^ 0x7F4A7C159E3779B9n) & MASK64, loss: 0.1, duplicate: 0.1, delay: 0.002});
+    const types = new Values(new Map(wire.slice(1).filter((f) => f[0] === 'data').map((f) => [String(f[1]), f])));
+    const steps = new Map(wire.slice(1).filter((f) => f[0] === 'channel')
+      .map((f) => [String(f[1]), f.slice(2).map((s) => [s[0] === 'send', s[1]])]));
+    const registry = new Map();
+    channels = new Map(names.map((name) => [name, new NetScenarioChannel(net, name, steps.get(name), types, registry)]));
+  } else {
+    channels = new Map(names.map((name) => [name, new Channel()]));
+  }
   const commands = new Map(model.commands.map((c) => [c.name, c]));
   const symbols = new Map();
   const startArgs = model.startArguments.map((d) => model.values.minimal(d));
@@ -3091,16 +3190,35 @@ async function runScenario(model, spec, shake, crash = false) {
   }
   const crashesAt = (identity, index) => victim !== null && victim[0] === identity && victim[1] === index;
 
+  // Vector clocks: each value sent carries its sender's clock (kept here, in
+  // order per channel direction), so calls can be ordered by what happened
+  // before what. A process is named by its par branch (the root is 'root').
+  const stamps = new Map();
+  const processNames = new Map();
+  const nameOf = (identity) => {
+    if (identity === null) return 'root';
+    if (!processNames.has(identity)) processNames.set(identity, `p${processNames.size}`);
+    return processNames.get(identity);
+  };
+  const bump = (clock, me) => clock.set(me, (clock.get(me) ?? 0) + 1);
+  const stampFor = (channel, side) => {
+    if (!stamps.has(channel)) stamps.set(channel, [[], []]);
+    return stamps.get(channel)[side];
+  };
+  const merge = (clock, other) => {
+    for (const [p, n] of other) clock.set(p, Math.max(clock.get(p) ?? 0, n));
+  };
+
   // 'done' or 'failed'; either way, the ends still held are given up.
-  const runProcess = async (acts, env, ends, random, identity = null) => {
+  const runProcess = async (acts, env, ends, random, identity = null, clock = new Map()) => {
     try {
-      return await steps(acts, env, ends, random, identity);
+      return await steps(acts, env, ends, random, identity, clock, nameOf(identity));
     } finally {
       for (const [channel, side] of ends.values()) channel.gone(side);
     }
   };
 
-  const steps = async (acts, env, ends, random, identity) => {
+  const steps = async (acts, env, ends, random, identity, clock, me) => {
     const own = new Map();
     for (let index = 0; index < acts.length; index++) {
       const act = acts[index];
@@ -3114,6 +3232,8 @@ async function runScenario(model, spec, shake, crash = false) {
         full.splice(command.state, 0, state);
         const pause = perturb(random);
         if (pause !== null) await pause;
+        bump(clock, me);
+        const atCall = new Map(clock);
         const called = tick();
         let result;
         try {
@@ -3123,7 +3243,8 @@ async function runScenario(model, spec, shake, crash = false) {
           return 'failed';
         }
         const returned = tick();
-        history.push([command, args, result, called, returned]);
+        bump(clock, me);
+        history.push([command, args, result, called, returned, me, atCall, new Map(clock)]);
         if (act[2] !== null && act[2] !== '_') env.set(String(act[2]), result);
       } else if (kind === 'send') {
         const [channel, side] = ends.get(String(act[1]));
@@ -3138,10 +3259,12 @@ async function runScenario(model, spec, shake, crash = false) {
         }
         const pause = perturb(random);
         if (pause !== null) await pause;
+        bump(clock, me);
+        stampFor(channel, side).push(new Map(clock));
         channel.send(side, value);
       } else if (kind === 'receive' || kind === 'receiveor') {
         const [channel, side] = ends.get(String(act[1]));
-        const value = await channel.queues[1 - side].get(RECEIVE_TIMEOUT);
+        const value = await channel.receive(side);
         if (value === TIMED_OUT_RECEIVE) {
           failures.push(`a receive on ${act[1]} waited too long: the processes are blocked`);
           return 'failed';
@@ -3149,11 +3272,13 @@ async function runScenario(model, spec, shake, crash = false) {
         if (value === GONE) {
           // The other process ended: or else runs instead of the rest;
           // without it, this process fails too.
-          channel.queues[1 - side].put(GONE);
           if (kind === 'receive') return 'failed';
           ends.delete(String(act[1]));
-          return steps(act[3].slice(1), env, ends, random, null);
+          return steps(act[3].slice(1), env, ends, random, null, clock, me);
         }
+        const sent = stampFor(channel, 1 - side).shift();
+        if (sent !== undefined) merge(clock, sent);
+        bump(clock, me);
         if (value instanceof End) ends.set(String(act[2]), [value.channel, value.side]);
         else env.set(String(act[2]), value);
       } else if (kind === 'par') {
@@ -3165,6 +3290,7 @@ async function runScenario(model, spec, shake, crash = false) {
             if (!owned.get(name).includes(i)) owned.get(name).push(i);
           }
         });
+        const clocks = branches.map(() => new Map(clock));
         const running = branches.map((branch, i) => {
           const mine = new Map();
           for (const [name, users] of owned) {
@@ -3177,9 +3303,11 @@ async function runScenario(model, spec, shake, crash = false) {
             }
           }
           return runProcess(branch.slice(1), new Map(env), mine,
-            new SplitMix64(shake ^ ((BigInt(i + 1) * 0x9E3779B97F4A7C15n) & MASK64)), branch);
+            new SplitMix64(shake ^ ((BigInt(i + 1) * 0x9E3779B97F4A7C15n) & MASK64)), branch, clocks[i]);
         });
         const settled = await Promise.allSettled(running);
+        for (const child of clocks) merge(clock, child);
+        bump(clock, me);
         const rejected = settled.find((s) => s.status === 'rejected');
         if (rejected !== undefined) throw rejected.reason;
         // A failed branch fails the process that ran the par.
@@ -3198,6 +3326,7 @@ async function runScenario(model, spec, shake, crash = false) {
   };
 
   const outcome = await runProcess(body, new Map(), new Map(), new SplitMix64(shake));
+  for (const channel of channels.values()) if (channel instanceof NetScenarioChannel) await channel.close();
   if (failures.length) return [title, failures[0] + (victim !== null ? ' (with a process crashed)' : '')];
   if (outcome === 'failed' && victim === null) return [title, 'a process failed'];
   const final = model.abstract !== null ? await model.abstract(symbols, state) : null;
@@ -3205,53 +3334,78 @@ async function runScenario(model, spec, shake, crash = false) {
     const observed = [...history].sort((a, b) => a[3] - b[3])
       .map(([c, args, r]) => `${c.name}(${args.map(render).join(', ')}) returned ${render(r)}`)
       .join('; ');
-    return [title, `no order of the calls agrees with the model (${observed})`];
+    return [title, `the calls are not ${CONSISTENT[model.consistency]} with the model (${observed})`];
   }
   return [title, null];
 }
 
 /**
- * A Wing-Gong search over any real-time order: next, a call that no pending
- * call returned before; memoized on the calls done and the state.
+ * Whether call a returned before call b began, as far as messages tell: a's
+ * return clock is at or below b's call clock everywhere.
+ */
+function happenedBefore(a, b) {
+  for (const [p, n] of a[7]) if ((b[6].get(p) ?? 0) < n) return false;
+  return true;
+}
+
+/**
+ * A Wing-Gong search over the scenario's calls, memoized on the calls done
+ * and the state. Each call is [command, args, result, called, returned,
+ * process, call clock, return clock]. Linearizable: next, a call no pending
+ * call returned before (real time). Sequential: next, a call every call that
+ * happened before it (its process's order, and messages) is done. Causal:
+ * each process's results from an order of what happened before them.
+ * Eventual: no results, only the final state.
  */
 async function linearizesHistory(model, symbols, history, expected, final, state) {
-  const seen = new Set();
+  const mode = model.consistency;
   const count = history.length;
-  const all = (1n << BigInt(count)) - 1n;
+  const before = (j, i) => (mode === 'linearizable' ? history[j][4] < history[i][3] : happenedBefore(history[j], history[i]));
   const bit = (i) => 1n << BigInt(i);
-  const visit = async (done, modelState) => {
-    const key = `${done}|${render(modelState)}`;
-    if (seen.has(key)) return false;
-    seen.add(key);
-    if (done === all) {
-      if (final !== null && compareValues(final, modelState) !== 0) return false;
-      for (const [kind, invariant] of model.invariants)
-        if (!(await invariant(symbols, kind === 'model' ? modelState : state))) return false;
-      return true;
-    }
-    for (let i = 0; i < count; i++) {
-      if (done & bit(i)) continue;
-      const [command, args, result, called] = history[i];
-      let blocked = false;
-      for (let j = 0; j < count; j++)
-        if (j !== i && !(done & bit(j)) && history[j][4] < called) {
-          blocked = true;
-          break;
-        }
-      if (blocked) continue;
-      let after, wanted;
-      try {
-        [after, wanted] = await stepModel(command, symbols, args, modelState);
-      } catch (error) {
-        if (error instanceof Invalid) continue;
-        throw error;
+  const search = async (members, checked, judgeFinal) => {
+    const seen = new Set();
+    let full = 0n;
+    for (const i of members) full |= bit(i);
+    const visit = async (done, modelState) => {
+      const key = `${done}|${render(modelState)}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      if (done === full) {
+        if (!judgeFinal) return true;
+        if (final !== null && compareValues(final, modelState) !== 0) return false;
+        for (const [kind, invariant] of model.invariants)
+          if (!(await invariant(symbols, kind === 'model' ? modelState : state))) return false;
+        return true;
       }
-      if (!command.unit && compareValues(result, wanted) !== 0) continue;
-      if (await visit(done | bit(i), after)) return true;
-    }
-    return false;
+      for (const i of members) {
+        if (done & bit(i)) continue;
+        if (members.some((j) => j !== i && !(done & bit(j)) && before(j, i))) continue;
+        const [command, args, result] = history[i];
+        let after, wanted;
+        try {
+          [after, wanted] = await stepModel(command, symbols, args, modelState);
+        } catch (error) {
+          if (error instanceof Invalid) continue;
+          throw error;
+        }
+        if (checked.has(i) && !command.unit && compareValues(result, wanted) !== 0) continue;
+        if (await visit(done | bit(i), after)) return true;
+      }
+      return false;
+    };
+    return visit(0n, expected);
   };
-  return visit(0n, expected);
+  const everything = history.map((_, i) => i);
+  if (mode === 'causal') {
+    for (const process of new Set(history.map((h) => h[5]))) {
+      const own = everything.filter((i) => history[i][5] === process);
+      const seenBy = everything.filter((j) => own.includes(j) ||
+        own.some((i) => i !== j && happenedBefore(history[j], history[i])));
+      if (!(await search(seenBy, new Set(own), false))) return false;
+    }
+    return true;
+  }
+  return search(everything, mode === 'eventual' ? new Set() : new Set(everything), true);
 }
 
 /** Runs a scenario on many schedules; a failure throws an Error. */
@@ -3261,8 +3415,9 @@ export async function checkScenarioAsync(model, spec, options = {}) {
   if (seed === undefined || seed === null) seed = BigInt(globalThis.process?.env?.LAWSPEC_SEED ?? '0');
   const random = new SplitMix64(BigInt(seed) ^ 0x2545F4914F6CDD1Dn);
   for (let r = 0; r < runs; r++) {
-    // Every third run crashes one process of a par at a random point.
-    const [title, failure] = await runScenario(model, spec, random.next(), r % 3 === 2);
+    // Every third run crashes one process of a par at a random point, and
+    // every third other one sends each channel over a faulty network.
+    const [title, failure] = await runScenario(model, spec, random.next(), r % 3 === 2, r % 3 === 1);
     if (failure !== null) throw new Error(`scenario ${title} fails: ${failure}`);
   }
 }
@@ -3431,4 +3586,1002 @@ export function spawn(fn, ...args) {
 /** Runs async functions at once; resolves to their results, or rejects with the first failure. */
 export function par(...fns) {
   return Promise.all(fns.map((fn) => Promise.resolve().then(fn)));
+}
+
+// Distribution. Values cross the network in a canonical binary encoding
+// driven by their type descriptor (the same descriptors as generation), so
+// no tags are sent and every target writes the same bytes:
+//   int: zigzag LEB128 of the integer (any size)      bool: 0 or 1
+//   text, bytes: LEB128 length, then UTF-8 or raw     unit: nothing
+//   list: LEB128 count, then items                     maybe: 0, or 1 then the value
+//   either: 0 then left, or 1 then right               data: LEB128 constructor index, then fields
+// A node sends frames over a Transport (in memory, TCP or HTTP): kind,
+// entity name, the sender's address, an id and a payload. Everything that
+// waits on the network returns a Promise.
+
+/** Bytes that are not an encoding of a value of the expected type. */
+export class WireError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = 'WireError';
+  }
+}
+
+/** A node could not be reached, or did not answer in time. */
+export class Unreachable extends Error {
+  constructor(message) {
+    super(message);
+    this.name = 'Unreachable';
+  }
+}
+
+const UTF8 = new TextEncoder();
+const STRICT_UTF8 = new TextDecoder('utf-8', {fatal: true});
+
+function putVarint(out, n) {
+  for (;;) {
+    const byte = Number(n & 0x7Fn);
+    n >>= 7n;
+    if (n) out.push(byte | 0x80);
+    else {
+      out.push(byte);
+      return;
+    }
+  }
+}
+
+function getVarint(buf, pos) {
+  let result = 0n, shift = 0n;
+  for (;;) {
+    if (pos >= buf.length) throw new WireError('the bytes end in the middle of a value');
+    const byte = buf[pos++];
+    result |= BigInt(byte & 0x7F) << shift;
+    if (byte < 0x80) return [result, pos];
+    shift += 7n;
+  }
+}
+
+const asBig = (v) => (typeof v === 'number' && Number.isInteger(v) ? BigInt(v) : v);
+
+function wirePut(values, d, v, out) {
+  d = values.resolve(d);
+  switch (d[0]) {
+    case 'int': {
+      v = asBig(v);
+      const lo = d[2], hi = d[3];
+      if (typeof v !== 'bigint' || (lo !== null && lo !== undefined && v < lo) || (hi !== null && hi !== undefined && v > hi))
+        throw new WireError(`${render(v)} is not a ${d[1]}`);
+      putVarint(out, v >= 0n ? v * 2n : -v * 2n - 1n);
+      return;
+    }
+    case 'bool':
+      out.push(v ? 1 : 0);
+      return;
+    case 'text':
+    case 'end':
+    case 'bytes': {
+      const raw = d[0] === 'bytes' ? v : UTF8.encode(v);
+      putVarint(out, BigInt(raw.length));
+      for (const b of raw) out.push(b);
+      return;
+    }
+    case 'unit':
+      return;
+    case 'list':
+      putVarint(out, BigInt(v.length));
+      for (const item of v) wirePut(values, d[1], item, out);
+      return;
+    case 'maybe':
+      if (v.tag.endsWith('Nothing')) out.push(0);
+      else {
+        out.push(1);
+        wirePut(values, d[1], v.fields[0], out);
+      }
+      return;
+    case 'either': {
+      const left = v.tag.endsWith('Left');
+      out.push(left ? 0 : 1);
+      wirePut(values, left ? d[1] : d[2], v.fields[0], out);
+      return;
+    }
+    case 'data': {
+      const ctors = d.slice(2);
+      const index = ctors.findIndex((c) => String(c[1]) === v.tag);
+      if (index < 0) throw new WireError(`${v.tag} is not a constructor of ${d[1]}`);
+      putVarint(out, BigInt(index));
+      ctors[index].slice(2).forEach((fd, i) => wirePut(values, fd, v.fields[i], out));
+      return;
+    }
+  }
+  throw new WireError('unknown descriptor ' + render(d));
+}
+
+function wireGet(values, d, buf, pos) {
+  d = values.resolve(d);
+  switch (d[0]) {
+    case 'int': {
+      let z;
+      [z, pos] = getVarint(buf, pos);
+      const v = z % 2n === 0n ? z / 2n : -(z + 1n) / 2n;
+      const lo = d[2], hi = d[3];
+      if ((lo !== null && lo !== undefined && v < lo) || (hi !== null && hi !== undefined && v > hi))
+        throw new WireError(`${v} is out of range for ${d[1]}`);
+      return [v, pos];
+    }
+    case 'bool':
+      if (pos >= buf.length || buf[pos] > 1) throw new WireError('not a Bool');
+      return [buf[pos] === 1, pos + 1];
+    case 'text':
+    case 'end':
+    case 'bytes': {
+      let n;
+      [n, pos] = getVarint(buf, pos);
+      const end = pos + Number(n);
+      if (end > buf.length) throw new WireError('the bytes end in the middle of a value');
+      const raw = buf.slice(pos, end);
+      if (d[0] === 'bytes') return [raw, end];
+      try {
+        return [STRICT_UTF8.decode(raw), end];
+      } catch {
+        throw new WireError('text that is not UTF-8');
+      }
+    }
+    case 'unit':
+      return [UNIT, pos];
+    case 'list': {
+      let n;
+      [n, pos] = getVarint(buf, pos);
+      const items = [];
+      for (let i = 0n; i < n; i++) {
+        let item;
+        [item, pos] = wireGet(values, d[1], buf, pos);
+        items.push(item);
+      }
+      return [items, pos];
+    }
+    case 'maybe':
+    case 'either': {
+      if (pos >= buf.length || buf[pos] > 1) throw new WireError(`not a ${d[0] === 'maybe' ? 'Maybe' : 'Either'}`);
+      const which = buf[pos++];
+      if (d[0] === 'maybe') {
+        if (which === 0) return [new DataValue('Maybe::Nothing', []), pos];
+        const [v, next] = wireGet(values, d[1], buf, pos);
+        return [new DataValue('Maybe::Just', [v]), next];
+      }
+      const [v, next] = wireGet(values, which === 0 ? d[1] : d[2], buf, pos);
+      return [new DataValue(which === 0 ? 'Either::Left' : 'Either::Right', [v]), next];
+    }
+    case 'data': {
+      let index;
+      [index, pos] = getVarint(buf, pos);
+      const ctors = d.slice(2);
+      if (index >= BigInt(ctors.length)) throw new WireError(`no constructor ${index} in ${d[1]}`);
+      const fields = [];
+      for (const fd of ctors[Number(index)].slice(2)) {
+        let v;
+        [v, pos] = wireGet(values, fd, buf, pos);
+        fields.push(v);
+      }
+      return [new DataValue(String(ctors[Number(index)][1]), fields), pos];
+    }
+  }
+  throw new WireError('unknown descriptor ' + render(d));
+}
+
+/** The value's canonical bytes. */
+export function wireEncode(values, d, v) {
+  const out = [];
+  wirePut(values, d, v, out);
+  return Uint8Array.from(out);
+}
+
+/** The value encoded by exactly these bytes. */
+export function wireDecode(values, d, data) {
+  const [v, pos] = wireGet(values, d, data, 0);
+  if (pos !== data.length) throw new WireError('extra bytes after the value');
+  return v;
+}
+
+const hex = (bytes) => Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+
+/** count values generated from one seed, encoded, in hexadecimal. */
+export function wireEncoded(text, seed, size, count) {
+  const [values, d] = valuesFrom(text);
+  const random = new SplitMix64(BigInt(seed));
+  return Array.from({length: Number(count)}, () => hex(wireEncode(values, d, values.generate(d, random, size))));
+}
+
+/** Whether count generated values decode to themselves. */
+export function wireRoundTrips(text, seed, size, count) {
+  const [values, d] = valuesFrom(text);
+  const random = new SplitMix64(BigInt(seed));
+  for (let i = 0; i < Number(count); i++) {
+    const v = values.generate(d, random, size);
+    if (render(wireDecode(values, d, wireEncode(values, d, v))) !== render(v)) return false;
+  }
+  return true;
+}
+
+const NO_TYPES = new Values(new Map());
+const D_TEXT = ['text'];
+const D_ID = ['int', 'UInt64', 0n, null];
+const D_SEQ = ['int', 'Int64', null, null];
+const FRAME = [D_TEXT, D_TEXT, D_TEXT, D_ID, ['bytes']];
+
+function concatBytes(...parts) {
+  const total = parts.reduce((n, p) => n + p.length, 0);
+  const out = new Uint8Array(total);
+  let at = 0;
+  for (const p of parts) {
+    out.set(p, at);
+    at += p.length;
+  }
+  return out;
+}
+
+function frameEncode(kind, to, source, ident, payload) {
+  const out = [];
+  [kind, to, source, BigInt(ident), payload].forEach((v, i) => wirePut(NO_TYPES, FRAME[i], v, out));
+  return Uint8Array.from(out);
+}
+
+function frameDecode(data) {
+  let pos = 0;
+  const fields = FRAME.map((d) => {
+    let v;
+    [v, pos] = wireGet(NO_TYPES, d, data, pos);
+    return v;
+  });
+  if (pos !== data.length) throw new WireError('extra bytes after a frame');
+  return fields;
+}
+
+/** 'tcp://host:port/name' as ['tcp://host:port', 'name']. */
+function splitAddress(address) {
+  const at = address.lastIndexOf('/');
+  const node = address.slice(0, at), name = address.slice(at + 1);
+  if (at < 0 || !node.includes('://')) throw new Error(`${address} is not an address such as tcp://127.0.0.1:7000/name`);
+  return [node, name];
+}
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * Moves frames between nodes. start(deliver) begins calling deliver(frame)
+ * for every frame that arrives; send(node, frame) sends one to the node at
+ * that address, best effort (a Promise, rejecting with Unreachable); close()
+ * stops.
+ */
+export class Transport {
+  address = null;
+  start(deliver) { throw new Error('not implemented'); }
+  async send(node, frame) { throw new Error('not implemented'); }
+  async close() {}
+}
+
+/**
+ * Nodes in one process, with faults for testing: each frame may be lost or
+ * duplicated, and is delayed by up to delay seconds (so frames can overtake
+ * each other); partition(...) cuts nodes off until heal().
+ */
+export class MemoryNetwork {
+  random;
+  loss;
+  duplicate;
+  delay;
+  nodes;
+  groups;
+  constructor({seed = 0n, loss = 0, duplicate = 0, delay = 0} = {}) {
+    this.random = new SplitMix64(BigInt(seed));
+    this.loss = loss;
+    this.duplicate = duplicate;
+    this.delay = delay;
+    this.nodes = new Map();
+    this.groups = null;
+  }
+  transport(name) {
+    return new MemoryTransport(this, 'mem://' + name);
+  }
+  /** Only nodes named in the same group reach each other. */
+  partition(...groups) {
+    this.groups = groups.map((g) => new Set(g.map((n) => 'mem://' + n)));
+  }
+  heal() {
+    this.groups = null;
+  }
+  chance(p) {
+    return p > 0 && Number(this.random.below(1n << 30n)) < p * 2 ** 30;
+  }
+  async send(source, node, frame) {
+    const deliver = this.nodes.get(node);
+    if (deliver === undefined) throw new Unreachable(`no node at ${node}`);
+    if (this.groups !== null && !this.groups.some((g) => g.has(source) && g.has(node))) return;
+    if (this.chance(this.loss)) return;
+    const copies = this.chance(this.duplicate) ? 2 : 1;
+    for (let i = 0; i < copies; i++) {
+      const wait = Number(this.random.below(1001n)) * this.delay;
+      setTimeout(() => deliver(frame), wait);
+    }
+  }
+}
+
+class MemoryTransport extends Transport {
+  network;
+  constructor(network, address) {
+    super();
+    this.network = network;
+    this.address = address;
+  }
+  start(deliver) {
+    this.network.nodes.set(this.address, deliver);
+  }
+  send(node, frame) {
+    return this.network.send(this.address, node, frame);
+  }
+  async close() {
+    this.network.nodes.delete(this.address);
+  }
+}
+
+/**
+ * Frames over TCP, each a 4-byte big-endian length then the frame. port 0
+ * picks a free port; the address is tcp://host:port. Create one with
+ * `await TcpTransport.listen(host, port)`.
+ */
+export class TcpTransport extends Transport {
+  net;
+  deliver;
+  connections;
+  sockets;
+  server;
+  static async listen(host = '127.0.0.1', port = 0) {
+    const net = await import('node:net');
+    const transport = new TcpTransport();
+    transport.net = net;
+    transport.deliver = null;
+    transport.connections = new Map();
+    transport.sockets = new Set();
+    transport.server = net.createServer((socket) => transport.read(socket));
+    await new Promise((resolve, reject) => {
+      transport.server.once('error', reject);
+      transport.server.listen(port, host, resolve);
+    });
+    transport.address = `tcp://${host}:${transport.server.address().port}`;
+    return transport;
+  }
+  read(socket) {
+    this.sockets.add(socket);
+    let buffer = new Uint8Array(0);
+    socket.on('data', (chunk) => {
+      buffer = concatBytes(buffer, chunk);
+      while (buffer.length >= 4) {
+        const n = new DataView(buffer.buffer, buffer.byteOffset, 4).getUint32(0);
+        if (buffer.length < 4 + n) break;
+        const frame = buffer.slice(4, 4 + n);
+        buffer = buffer.slice(4 + n);
+        if (this.deliver !== null) this.deliver(frame);
+      }
+    });
+    socket.on('error', () => {});
+    socket.on('close', () => this.sockets.delete(socket));
+  }
+  start(deliver) {
+    this.deliver = deliver;
+  }
+  connect(node) {
+    let pending = this.connections.get(node);
+    if (pending === undefined) {
+      const rest = node.slice('tcp://'.length);
+      const at = rest.lastIndexOf(':');
+      pending = new Promise((resolve, reject) => {
+        const socket = this.net.createConnection({host: rest.slice(0, at), port: Number(rest.slice(at + 1))});
+        const timer = setTimeout(() => {
+          socket.destroy();
+          reject(new Unreachable(`cannot reach ${node}: no connection in time`));
+        }, 5000);
+        timer.unref?.();
+        socket.once('connect', () => {
+          clearTimeout(timer);
+          this.sockets.add(socket);
+          resolve(socket);
+        });
+        socket.on('error', (error) => {
+          clearTimeout(timer);
+          this.connections.delete(node);
+          reject(new Unreachable(`cannot reach ${node}: ${error.message}`));
+        });
+        socket.on('close', () => this.connections.delete(node));
+      });
+      pending.catch(() => {});
+      this.connections.set(node, pending);
+    }
+    return pending;
+  }
+  async send(node, frame) {
+    const header = new Uint8Array(4);
+    new DataView(header.buffer).setUint32(0, frame.length);
+    const socket = await this.connect(node);
+    socket.write(concatBytes(header, frame));
+  }
+  async close() {
+    for (const socket of this.sockets) socket.destroy();
+    await new Promise((resolve) => this.server.close(() => resolve()));
+  }
+}
+
+/**
+ * Frames as HTTP POST bodies to /lawspec; the address is http://host:port.
+ * Create one with `await HttpTransport.listen(host, port)`.
+ */
+export class HttpTransport extends Transport {
+  http;
+  deliver;
+  agent;
+  server;
+  static async listen(host = '127.0.0.1', port = 0) {
+    const http = await import('node:http');
+    const transport = new HttpTransport();
+    transport.http = http;
+    transport.deliver = null;
+    transport.agent = new http.Agent({keepAlive: true});
+    transport.server = http.createServer((request, response) => {
+      const chunks = [];
+      request.on('data', (chunk) => chunks.push(chunk));
+      request.on('end', () => {
+        const ok = request.method === 'POST' && request.url === '/lawspec';
+        response.writeHead(ok ? 204 : 404);
+        response.end();
+        if (ok && transport.deliver !== null) transport.deliver(new Uint8Array(concatBytes(...chunks)));
+      });
+    });
+    await new Promise((resolve, reject) => {
+      transport.server.once('error', reject);
+      transport.server.listen(port, host, resolve);
+    });
+    transport.address = `http://${host}:${transport.server.address().port}`;
+    return transport;
+  }
+  start(deliver) {
+    this.deliver = deliver;
+  }
+  send(node, frame) {
+    return new Promise((resolve, reject) => {
+      const request = this.http.request(node + '/lawspec', {
+        method: 'POST', agent: this.agent, timeout: 5000,
+        headers: {'Content-Type': 'application/octet-stream', 'Content-Length': frame.length},
+      }, (response) => {
+        response.resume();
+        response.on('end', resolve);
+      });
+      request.on('timeout', () => request.destroy(new Error('no answer in time')));
+      request.on('error', (error) => reject(new Unreachable(`cannot reach ${node}: ${error.message}`)));
+      request.end(frame);
+    });
+  }
+  async close() {
+    this.agent.destroy();
+    this.server.closeAllConnections?.();
+    await new Promise((resolve) => this.server.close(() => resolve()));
+  }
+}
+
+class ReplySlot {
+  promise;
+  resolve;
+  constructor() {
+    this.promise = new Promise((resolve) => { this.resolve = resolve; });
+  }
+}
+
+/**
+ * A process's presence on a network: it names local mailboxes, actors,
+ * channel ends and definitions, so other nodes can reach them at
+ * <node address>/<name>, and it sends to theirs.
+ *
+ * Order is kept within one channel; a mailbox or an actor call is best
+ * effort: a lost call fails with Unreachable after its timeout.
+ */
+export class Node {
+  transport;
+  address;
+  entities;
+  pending;
+  seen;
+  ids;
+  endpoints;
+  constructor(transport) {
+    this.transport = transport;
+    this.address = transport.address;
+    this.entities = new Map();
+    this.pending = new Map();
+    // Requests already seen, by sender and id, with their reply once sent:
+    // a request sent again (lost reply, duplicated frame) is answered again
+    // without running twice.
+    this.seen = new Map();
+    this.ids = 0;
+    this.endpoints = new Set();
+    transport.start((frame) => this.deliver(frame));
+  }
+  async close() {
+    for (const endpoint of this.endpoints) endpoint.stop();
+    await this.transport.close();
+  }
+  nextId() {
+    return ++this.ids;
+  }
+  async send(address, kind, payload, ident = 0) {
+    const [node, name] = splitAddress(address);
+    await this.transport.send(node, frameEncode(kind, name, this.address, ident, payload));
+  }
+  quietly(promise) {
+    promise.catch(() => {});
+  }
+  register(name, entity) {
+    if (!name || name.includes('/')) throw new Error(`${name} is not a name: use letters, digits and dashes`);
+    if (this.entities.has(name)) throw new Error(`${name} is already registered on ${this.address}`);
+    this.entities.set(name, entity);
+    return `${this.address}/${name}`;
+  }
+  deliver(frame) {
+    let kind, to, source, ident, payload;
+    try {
+      [kind, to, source, ident, payload] = frameDecode(frame);
+    } catch {
+      return;
+    }
+    ident = Number(ident);
+    if (kind === 'reply') {
+      const slot = this.pending.get(ident);
+      if (slot !== undefined) {
+        this.pending.delete(ident);
+        slot.resolve(payload);
+      }
+      return;
+    }
+    const entity = this.entities.get(to);
+    if (entity === undefined) {
+      if (ident) this.reply(source, ident, 3, `nothing is registered as ${to} on ${this.address}`);
+      return;
+    }
+    if (ident) {
+      const key = `${source}|${ident}`;
+      if (this.seen.has(key)) {
+        const answer = this.seen.get(key);
+        if (answer !== null) this.quietly(this.send(source + '/', 'reply', answer, ident));
+        return;
+      }
+      this.seen.set(key, null);
+      if (this.seen.size > 10000) for (const old of [...this.seen.keys()].slice(0, 5000)) this.seen.delete(old);
+    }
+    Promise.resolve().then(() => entity.onFrame(this, kind, source, ident, payload)).catch(() => {});
+  }
+  reply(source, ident, status, body) {
+    const payload = concatBytes(Uint8Array.of(status), typeof body === 'string' ? UTF8.encode(body) : body);
+    const key = `${source}|${ident}`;
+    if (this.seen.has(key)) this.seen.set(key, payload);
+    this.quietly(this.send(source + '/', 'reply', payload, ident));
+  }
+  /** Sends a request, again every 100ms until answered: [status, body]. */
+  async request(address, kind, payload, timeout) {
+    const ident = this.nextId();
+    const slot = new ReplySlot();
+    this.pending.set(ident, slot);
+    const giveUp = Date.now() + timeout * 1000;
+    let answered = null;
+    slot.promise.then((p) => { answered = p; });
+    for (;;) {
+      this.quietly(this.send(address, kind, payload, ident));
+      const wait = Math.max(0, Math.min(100, giveUp - Date.now()));
+      await Promise.race([slot.promise, sleep(wait)]);
+      if (answered !== null) return [answered[0], answered.slice(1)];
+      if (Date.now() >= giveUp) {
+        this.pending.delete(ident);
+        throw new Unreachable(`${address} did not answer within ${timeout}s`);
+      }
+    }
+  }
+
+  /** A local Mailbox that other nodes send to at <address>/name. */
+  mailbox(name, descriptor, values = NO_TYPES) {
+    const box = new Mailbox();
+    this.register(name, new MailEntity(box, values, descriptor));
+    return box;
+  }
+  remoteMailbox(address, descriptor, values = NO_TYPES) {
+    return new RemoteMailbox(this, address, descriptor, values);
+  }
+  /**
+   * Lets other nodes call actor at <address>/name. handlers maps a message
+   * name to [handler(state, ...args) -> [reply, state], argument
+   * descriptors, reply descriptor].
+   */
+  serve(name, actor, handlers, values = NO_TYPES) {
+    return this.register(name, new ActorEntity(actor, handlers, values));
+  }
+  /** A proxy calling the actor at address; signatures maps a message name to [argument descriptors, reply descriptor]. */
+  remoteActor(address, signatures, values = NO_TYPES, timeout = 5) {
+    return new RemoteActor(this, address, signatures, values, timeout);
+  }
+  /** Lets other nodes evaluate definitions: table maps a content hash to [function, argument descriptors, result descriptor]. */
+  serveDefinitions(table, values = NO_TYPES, name = 'definitions') {
+    return this.register(name, new DefinitionEntity(table, values));
+  }
+  /** Evaluates the definition with this content hash on another node. */
+  async evaluate(node, digest, args, argumentDescriptors, result, values = NO_TYPES, timeout = 5, name = 'definitions') {
+    const out = [];
+    wirePut(NO_TYPES, D_TEXT, digest, out);
+    argumentDescriptors.forEach((d, i) => wirePut(values, d, args[i], out));
+    const [status, body] = await this.request(`${node}/${name}`, 'eval', Uint8Array.from(out), timeout);
+    return replyValue(status, body, values, result);
+  }
+  /**
+   * The first end of a channel named name here; its other end is dial(...)ed
+   * from any node. steps: [sends, descriptor] per step, from this end's side.
+   */
+  listen(name, steps, values = NO_TYPES, deadline = 5) {
+    const endpoint = new NetEndpoint(this, steps, values, 0, deadline);
+    endpoint.address = this.register(name, endpoint);
+    return endpoint;
+  }
+  /** The second end of the channel listening at address; steps are from this end's side. */
+  dial(address, steps, values = NO_TYPES, deadline = 5) {
+    const endpoint = new NetEndpoint(this, steps, values, 1, deadline);
+    endpoint.address = this.register(`end-${this.nextId()}`, endpoint);
+    endpoint.connect(address);
+    return endpoint;
+  }
+}
+
+function replyValue(status, body, values, d) {
+  if (status === 0) return wireDecode(values, d, body);
+  const message = new TextDecoder().decode(body);
+  if (status === 1) {
+    const error = new ActorCrashed(message);
+    error.message = message;
+    throw error;
+  }
+  if (status === 2) throw new ActorStopped(message);
+  throw new Unreachable(message);
+}
+
+class MailEntity {
+  box;
+  values;
+  descriptor;
+  constructor(box, values, descriptor) {
+    this.box = box;
+    this.values = values;
+    this.descriptor = descriptor;
+  }
+  onFrame(node, kind, source, ident, payload) {
+    if (kind !== 'mail') return;
+    try {
+      this.box.send(wireDecode(this.values, this.descriptor, payload));
+    } catch {
+      // a malformed or late message is dropped
+    }
+  }
+}
+
+/** Sends to a mailbox on another node; send never waits for it. */
+export class RemoteMailbox {
+  node;
+  address;
+  descriptor;
+  values;
+  constructor(node, address, descriptor, values) {
+    this.node = node;
+    this.address = address;
+    this.descriptor = descriptor;
+    this.values = values;
+  }
+  send(value) {
+    return this.node.send(this.address, 'mail', wireEncode(this.values, this.descriptor, value));
+  }
+}
+
+class ActorEntity {
+  actor;
+  handlers;
+  values;
+  constructor(actor, handlers, values) {
+    this.actor = actor;
+    this.handlers = handlers;
+    this.values = values;
+  }
+  async onFrame(node, kind, source, ident, payload) {
+    if (kind !== 'call') return;
+    let handler, reply, args;
+    try {
+      let message, pos;
+      [message, pos] = wireGet(NO_TYPES, D_TEXT, payload, 0);
+      const entry = this.handlers[message];
+      if (entry === undefined) throw new WireError(`no message ${message}`);
+      let argumentDescriptors;
+      [handler, argumentDescriptors, reply] = entry;
+      args = argumentDescriptors.map((d) => {
+        let v;
+        [v, pos] = wireGet(this.values, d, payload, pos);
+        return v;
+      });
+      if (pos !== payload.length) throw new WireError('extra bytes after the arguments');
+    } catch (error) {
+      node.reply(source, ident, 3, `not a message this actor handles: ${error.message}`);
+      return;
+    }
+    try {
+      const result = await this.actor.call((s) => handler(s, ...args));
+      node.reply(source, ident, 0, wireEncode(this.values, reply, result));
+    } catch (error) {
+      if (error instanceof ActorStopped) node.reply(source, ident, 2, error.message);
+      else node.reply(source, ident, 1, error.message);
+    }
+  }
+}
+
+/**
+ * Calls an actor on another node: call(message, ...args) sends the message
+ * and resolves to the reply, rejecting with Unreachable after the timeout,
+ * or with what the actor's call threw (ActorCrashed, ActorStopped).
+ */
+export class RemoteActor {
+  node;
+  address;
+  signatures;
+  values;
+  timeout;
+  constructor(node, address, signatures, values, timeout) {
+    this.node = node;
+    this.address = address;
+    this.signatures = signatures;
+    this.values = values;
+    this.timeout = timeout;
+  }
+  async call(message, ...args) {
+    const [argumentDescriptors, reply] = this.signatures[message];
+    const out = [];
+    wirePut(NO_TYPES, D_TEXT, message, out);
+    argumentDescriptors.forEach((d, i) => wirePut(this.values, d, args[i], out));
+    const [status, body] = await this.node.request(this.address, 'call', Uint8Array.from(out), this.timeout);
+    return replyValue(status, body, this.values, reply);
+  }
+}
+
+class DefinitionEntity {
+  table;
+  values;
+  constructor(table, values) {
+    this.table = table;
+    this.values = values;
+  }
+  async onFrame(node, kind, source, ident, payload) {
+    if (kind !== 'eval') return;
+    let fn, result, args;
+    try {
+      let digest, pos;
+      [digest, pos] = wireGet(NO_TYPES, D_TEXT, payload, 0);
+      const entry = this.table[digest];
+      if (entry === undefined) throw new WireError('unknown hash');
+      let argumentDescriptors;
+      [fn, argumentDescriptors, result] = entry;
+      args = argumentDescriptors.map((d) => {
+        let v;
+        [v, pos] = wireGet(this.values, d, payload, pos);
+        return v;
+      });
+    } catch {
+      node.reply(source, ident, 3, 'this node has no definition with that content hash');
+      return;
+    }
+    try {
+      node.reply(source, ident, 0, wireEncode(this.values, result, await fn(...args)));
+    } catch (error) {
+      node.reply(source, ident, 1, `${errorName(error)}: ${errorMessage(error)}`);
+    }
+  }
+}
+
+const NET_ABANDONED = Symbol('the other end gave up');
+
+/**
+ * One end of a channel between nodes, with the channel interface
+ * (send(side, value), receive(side)). Each value travels in a numbered frame
+ * that is sent again until acknowledged, so loss, duplication and
+ * reordering are repaired; a peer silent for deadline seconds is treated as
+ * failed (PeerFailed). Order is kept within the channel.
+ */
+class NetEndpoint {
+  node;
+  steps;
+  values;
+  side;
+  deadline;
+  address;
+  peer;
+  out;
+  unacked;
+  expected;
+  early;
+  inbox;
+  step;
+  gone;
+  timer;
+  constructor(node, steps, values, side, deadline) {
+    this.node = node;
+    this.steps = steps;
+    this.values = values;
+    this.side = side;
+    this.deadline = deadline * 1000;
+    this.address = null;
+    this.peer = null;
+    this.out = 0n;
+    this.unacked = new Map();
+    this.expected = 0n;
+    this.early = new Map();
+    this.inbox = new AsyncQueue();
+    this.step = 0;
+    this.gone = false;
+    node.endpoints.add(this);
+    this.timer = setInterval(() => this.resend(), 20);
+    this.timer.unref?.();
+  }
+  stop() {
+    clearInterval(this.timer);
+  }
+  connect(address) {
+    this.peer = address;
+    this.transmit(-1n, UTF8.encode('hello'));
+  }
+  transmit(seq, body) {
+    const head = [];
+    wirePut(NO_TYPES, D_SEQ, seq, head);
+    wirePut(NO_TYPES, D_TEXT, this.address, head);
+    const payload = concatBytes(Uint8Array.from(head), body);
+    const now = Date.now();
+    this.unacked.set(seq, [payload, now, now]);
+    if (this.peer !== null) this.node.quietly(this.node.send(this.peer, 'chan', payload));
+  }
+  resend() {
+    if (this.gone) {
+      this.stop();
+      return;
+    }
+    const now = Date.now();
+    const due = [...this.unacked.values()].filter((entry) => now - entry[2] > 50);
+    if (due.some((entry) => now - entry[1] > this.deadline)) {
+      this.fail('the other end did not answer in time (unreachable)');
+      return;
+    }
+    if (this.peer === null) return;
+    for (const entry of due) {
+      entry[2] = now;
+      this.node.quietly(this.node.send(this.peer, 'chan', entry[0]));
+    }
+  }
+  fail(reason) {
+    if (this.gone) return;
+    this.gone = true;
+    this.unacked.clear();
+    this.stop();
+    this.inbox.put([NET_ABANDONED, reason]);
+  }
+  onFrame(node, kind, source, ident, payload) {
+    if (kind === 'ack') {
+      const [seq] = wireGet(NO_TYPES, D_SEQ, payload, 0);
+      this.unacked.delete(seq);
+      return;
+    }
+    if (kind !== 'chan') return;
+    let seq, sender, pos;
+    [seq, pos] = wireGet(NO_TYPES, D_SEQ, payload, 0);
+    [sender, pos] = wireGet(NO_TYPES, D_TEXT, payload, pos);
+    const body = payload.slice(pos);
+    const ack = [];
+    wirePut(NO_TYPES, D_SEQ, seq, ack);
+    node.quietly(node.send(sender, 'ack', Uint8Array.from(ack)));
+    if (seq === -1n) {
+      if (this.peer === null) this.peer = sender;
+      return;
+    }
+    if (seq < this.expected || this.early.has(seq)) return;
+    this.early.set(seq, body);
+    while (this.early.has(this.expected)) {
+      this.inbox.put([null, this.early.get(this.expected)]);
+      this.early.delete(this.expected);
+      this.expected += 1n;
+    }
+  }
+  stepDescriptor(sends) {
+    if (this.step >= this.steps.length) throw new Error("this channel's protocol has ended");
+    const [stepSends, d] = this.steps[this.step];
+    if (Boolean(stepSends) !== sends) throw new Error('this step ' + (stepSends ? 'sends' : 'receives'));
+    this.step += 1;
+    return d;
+  }
+  send(side, value) {
+    if (this.gone) throw new PeerFailed('the other end has failed');
+    const d = this.stepDescriptor(true);
+    const body = [0];
+    wirePut(this.values, d, value, body);
+    const seq = this.out;
+    this.out += 1n;
+    this.transmit(seq, Uint8Array.from(body));
+  }
+  /** Resolves to the next value; rejects with PeerFailed, or a timeout error after timeout ms. */
+  async receive(side, timeout = undefined) {
+    const d = this.stepDescriptor(false);
+    const got = await this.inbox.get(timeout === undefined ? 2 ** 31 - 1 : timeout);
+    if (got === TIMED_OUT_RECEIVE) throw new Error('no message arrived in time');
+    const [marker, body] = got;
+    if (marker === NET_ABANDONED) {
+      this.inbox.items.unshift(got);
+      throw new PeerFailed(body);
+    }
+    if (body[0] === 1) {
+      this.fail('the other end gave up the conversation');
+      throw new PeerFailed();
+    }
+    return wireDecode(this.values, d, body.slice(1));
+  }
+  receiveNow() {
+    throw new Error('a channel between nodes has no immediate receive; await receive() instead');
+  }
+  /** Gives up: the other end's receives fail after what was sent. */
+  abandon(side) {
+    const seq = this.out;
+    this.out += 1n;
+    this.transmit(seq, Uint8Array.of(1));
+  }
+}
+
+const NUMBER_INTEGERS = new Set(['Int8', 'Int16', 'Int32', 'UInt8', 'UInt16', 'UInt32', 'CodePoint', 'CodeUnit16']);
+
+/**
+ * A logical scalar as its native value: integers of 32 bits or fewer are
+ * numbers in JavaScript, wider ones bigints. Other values are unchanged.
+ */
+export function nativeScalar(d, value) {
+  return d !== undefined && d[0] === 'int' && typeof value === 'bigint' && NUMBER_INTEGERS.has(String(d[1]))
+    ? Number(value) : value;
+}
+
+/**
+ * A network channel end seen through native values: each step's value is
+ * converted with the schema (references null are scalars, converted by
+ * nativeScalar).
+ */
+export class NativeChannel {
+  endpoint;
+  references;
+  schema;
+  step;
+  address;
+  constructor(endpoint, references, schema = null) {
+    this.endpoint = endpoint;
+    this.references = references;
+    this.schema = schema;
+    this.step = 0;
+    this.address = endpoint.address;
+  }
+  reference() {
+    const reference = this.step < this.references.length ? this.references[this.step] : null;
+    this.step += 1;
+    return reference;
+  }
+  send(side, value) {
+    const reference = this.reference();
+    this.endpoint.send(side, reference === null ? value : this.schema.fromNative(reference, value));
+  }
+  async receive(side) {
+    const reference = this.reference();
+    const value = await this.endpoint.receive(side);
+    if (reference !== null) return this.schema.toNative(reference, value);
+    return nativeScalar(this.endpoint.steps[this.endpoint.step - 1]?.[1], value);
+  }
+  receiveNow() {
+    return this.endpoint.receiveNow();
+  }
+  abandon(side) {
+    this.endpoint.abandon(side);
+  }
 }

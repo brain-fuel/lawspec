@@ -1,0 +1,7 @@
+@@ src/example/distribution.ts
+<<<<<<<
+    await tally.add(value0);
+    return await tally.add(value0);
+=======
+    return await tally.add(value0);
+>>>>>>>

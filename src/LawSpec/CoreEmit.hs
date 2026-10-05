@@ -479,5 +479,7 @@ remoteCalls target plan = case target of
   "go" -> GoDefinitions.definitionCalls units
   t | t `elem` ["java", "kotlin"] -> JavaDefinitions.definitionCalls units
   "rust" -> [(i, "crate::lawspec_definitions::" ++ n) | (i, n) <- RustDefinitions.definitionNames units]
+  "javascript" -> WebDefinitions.definitionCalls units
+  "typescript" -> WebDefinitions.definitionCalls units
   _ -> []
   where units = map plannedUnit (plannedUnits plan)
