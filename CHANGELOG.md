@@ -1,5 +1,80 @@
 # Changelog
 
+## 0.19.0
+
+### Stateful models
+
+- A `model` pairs a system's commands with a reference: a model state and a
+  checked definition per command. LawSpec generates runs of commands from the
+  model, runs them against the adapters, and checks every result, abstracted
+  state and invariant. See [models](docs/reference/language/models.md).
+- **Linear** models thread a flow-typed state, and each command's typestate
+  comes from its flow signature, so runs never take a step the types forbid.
+  **Shared** models share one handle; `when` preconditions come from the
+  model state.
+- Generation and shrinking are portable: a SplitMix64 generator over type
+  descriptors gives the same runs and the same shrinks on every target for
+  the same seed. A failing run is shrunk by dropping commands and shrinking
+  arguments.
+- Shared models also run in parallel: a short prefix, then a branch per
+  thread, run at the same time with random yields, repeated, and each history
+  must be linearizable. Sets and maps are checked key by key.
+- `consistency sequential`, `causal` or `eventual` relaxes what a shared
+  model's histories must satisfy, for replicated systems.
+- `behaves like Queue a` (and `Stack`, `Deque`, `Set`, `KeyVal`) checks a
+  model against a built-in collection, with no reference definitions to write.
+- `handle Name` declares a type only adapters create. With native bindings,
+  a handle can be a target's own class, such as a concurrent queue, and
+  commands can call its methods and constructors directly.
+
+### Protocols, scenarios and typed channels
+
+- A `protocol` lists what one end of a channel sends and receives. A
+  `scenario` runs a shared model's commands from processes (`par ... with ...
+  end`) that talk over channels (`send`, `receive`, `expect`). LawSpec proves
+  each scenario deadlock-free (its channels form a tree) and race-free (every
+  channel end has one owner; sending it gives it up), then runs it on many
+  schedules. See [scenarios](docs/reference/language/scenarios.md).
+- Every protocol becomes typed channel ends on every target, for
+  implementation code: a type per step, so an out-of-order send does not
+  compile. A used end fails if used again (in Rust, it does not compile).
+  `spawn` and `par` run processes on the target's own concurrency.
+
+### Actors and supervision
+
+- An `actor` owns a state and handles one message at a time. Handlers are
+  plain functions from the state to a reply and the next state. Actors are
+  checked like shared models, with injected crashes, and generated as typed
+  actor classes on every target. See
+  [actors](docs/reference/language/actors.md).
+- A failing handler crashes the actor. `restart from f by g` says how it
+  restarts. A `supervisor` restarts its children one for one, one for all or
+  rest for one. Children are permanent, transient or temporary, within a
+  restart limit that escalates to the parent supervisor. Actors also have
+  links and monitors.
+- Failures are affine in scenarios: a receive from a failed process fails,
+  or runs its `or else`, instead of blocking. One run in three crashes a
+  process. Typed channel ends raise `PeerFailed` when the other end gives up.
+
+### Distribution
+
+- Nodes talk over a transport: in memory (with loss, duplication, delay and
+  partitions, for testing), TCP or HTTP. Actors can be served and called
+  across nodes, protocols can listen and dial, and checked definitions can be
+  evaluated on another node by content hash. See
+  [distribution](docs/reference/language/distribution.md).
+- Values cross the network in one canonical encoding, the same bytes on every
+  target, checked against shared vectors.
+- Calls across nodes are resent until answered and run once. Channels number,
+  acknowledge and resend their messages, so loss, duplication and reordering
+  are repaired.
+- One scenario run in three sends every channel over a faulty network.
+
+### Evidence
+
+- `lawspec evidence` lists models, consistency, restarts and supervision as
+  property-tested, and each scenario as proved deadlock-free and race-free.
+
 ## 0.18.0
 
 ### Railway combinators

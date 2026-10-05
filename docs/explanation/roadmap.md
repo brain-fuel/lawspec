@@ -14,6 +14,7 @@ patch (0.x.y). This page records what has shipped and what comes next.
 | 0.16 | More dependent types: GADTs, index arithmetic, shared indices and the core of flow typing | Several flow parameters per function; flow calls inside match branches |
 | 0.17 | Portable collections and asynchronous functions | Size-indexed queues and stacks; native bindings for asynchronous adapters |
 | 0.18 | Railway-oriented workflows and resilience policies | `all` groups run their steps in turn, not concurrently |
+| 0.19 | Stateful models, protocols, actors, supervision and distribution | Delegating channel ends between nodes in implementation code; deadlock freedom beyond tree-shaped connections |
 
 0.16 in detail:
 
@@ -48,17 +49,21 @@ patch (0.x.y). This page records what has shipped and what comes next.
 - [Durations](../reference/language/durations.md) with literals such as
   `250ms`, exact on every target.
 
+0.19 in detail:
+
+- [Stateful models](../reference/language/models.md): commands checked
+  against a reference model in sequence and in parallel, with portable
+  generation and shrinking, `behaves like` collections, handles and native
+  method bindings, and consistency models.
+- [Protocols and scenarios](../reference/language/scenarios.md), proved
+  deadlock-free and race-free, run on many schedules, with failures and over
+  a faulty network; typed channel ends on every target.
+- [Actors and supervisors](../reference/language/actors.md) with restarts,
+  links and monitors, checked with injected crashes.
+- [Distribution](../reference/language/distribution.md): nodes, transports
+  (in memory, TCP, HTTP), a canonical wire encoding, and remote evaluation by
+  content hash.
+
 ## Planned
 
-### 0.19: Stateful models
-
-State machines over the flow typing of 0.16:
-
-- commands are flow functions over one model state;
-- generated command sequences stay well-typed, because each command's typestate
-  is checked as in a law;
-- shrinking removes commands while keeping the sequence well-typed.
-
-Actors, processes and supervision are a separate, later feature: long-lived
-concurrent components in the style of OTP, beyond 0.17's one-shot asynchronous
-calls.
+Later releases will be planned here.
