@@ -39,6 +39,7 @@ extra-source-files:
     runtime/lawspec_schema.go
     runtime/rust/Cargo.toml
     runtime/rust/Cargo.lock
+    examples/specs/actors.lawspec
     examples/specs/algebra.lawspec
     examples/specs/async_fetch.lawspec
     examples/specs/atoi_codec.lawspec
@@ -176,6 +177,9 @@ extra-source-files:
 
 library
   exposed-modules:
+      LawSpec.Actors
+      LawSpec.Actors.Python
+      LawSpec.Actors.Types
       LawSpec.Api
       LawSpec.Backend
       LawSpec.Capabilities
