@@ -2155,3 +2155,124 @@ def check_scenario(model, spec, runs=30, seed=None):
         title, failure = _run_scenario(model, spec, random.next())
         if failure is not None:
             raise AssertionError(f'scenario {title} fails: {failure}')
+
+
+# Sessions: typed channel ends for implementation code. The generated
+# lawspec_sessions module gives every protocol step its own class; these are
+# the pieces those classes share.
+
+class SessionError(Exception):
+    """An end of a session channel was used wrongly."""
+
+
+class Channel:
+    """A two-way channel between side 0 and side 1, one queue per direction.
+
+    Ends talk to it only through send(side, value) and receive(side), so a
+    network transport can stand in for it by providing the same two methods.
+    """
+
+    def __init__(self):
+        import queue
+        self._queues = (queue.Queue(), queue.Queue())
+
+    def send(self, side, value):
+        """Sends value from side to the other side."""
+        self._queues[side].put(value)
+
+    def receive(self, side):
+        """Waits for the next value the other side sent to side."""
+        return self._queues[1 - side].get()
+
+
+class SessionEnd:
+    """One end of a channel, before one step of its protocol. An end can be
+    used once: each send or receive returns the end for the next step."""
+
+    def __init__(self, channel, side):
+        self._channel = channel
+        self._side = side
+        self._used = False
+        self._lock = threading.Lock()
+
+    def _take(self):
+        with self._lock:
+            if self._used:
+                raise SessionError(
+                    f'{type(self).__qualname__}: this end was already used; '
+                    'use the end its last step returned')
+            self._used = True
+        return self._channel
+
+    def _send(self, value, after):
+        channel = self._take()
+        channel.send(self._side, value)
+        return after(channel, self._side)
+
+    def _send_end(self, end, start, after):
+        """Sends end, which must be an unused start end of class start; the
+        receiver gets it, and this side must not use it any more."""
+        if not isinstance(end, start):
+            raise TypeError(f'{type(self).__qualname__}.send expects a '
+                            f'{start.__qualname__}, not {type(end).__qualname__}')
+        moved = start(end._take(), end._side)
+        return self._send(moved, after)
+
+    def _receive(self, after):
+        channel = self._take()
+        value = channel.receive(self._side)
+        return value, after(channel, self._side)
+
+
+def check_send(value, t):
+    """Checks that value is a native value of the scalar type t."""
+    try:
+        validate(value, t)
+    except (TypeError, ValueError) as error:
+        raise TypeError(f'cannot send {value!r} as {t}: {error}') from None
+    return value
+
+
+class Spawned:
+    """A function running in its own thread; join() waits for it."""
+
+    def __init__(self, fn, args):
+        self._result = None
+        self._error = None
+
+        def run():
+            try:
+                self._result = fn(*args)
+            except BaseException as error:  # re-raised by join()
+                self._error = error
+        self._thread = threading.Thread(target=run, daemon=True)
+        self._thread.start()
+
+    def join(self):
+        """Waits for the function; returns its result or raises its error."""
+        self._thread.join()
+        if self._error is not None:
+            raise self._error
+        return self._result
+
+
+def spawn(fn, *args):
+    """Runs fn(*args) in a new thread and returns a handle with join()."""
+    return Spawned(fn, args)
+
+
+def par(*fns):
+    """Runs the functions at once, waits for all of them and returns their
+    results in order; if any fails, raises the first failure."""
+    handles = [spawn(fn) for fn in fns]
+    results, failure = [], None
+    for handle in handles:
+        try:
+            results.append(handle.join())
+        except BaseException as error:
+            if failure is None:
+                failure = error
+            results.append(None)
+    if failure is not None:
+        raise failure
+    return results

@@ -453,6 +453,7 @@ test-suite lawspec-test
       RailwaySpec
       RefinementProofSpec
       ScenarioSpec
+      SessionsPythonSpec
       SourceDataSpec
       StatefulModelSpec
       StructuralSpec

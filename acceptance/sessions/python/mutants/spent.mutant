@@ -1,0 +1,8 @@
+@@ src/example/sessions.py
+<<<<<<<
+    client = client.send(a)
+    client = client.send(b)
+=======
+    client.send(a)
+    client = client.send(b)
+>>>>>>>

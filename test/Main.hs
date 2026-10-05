@@ -32,6 +32,7 @@ import qualified AsyncSpec
 import qualified IncrementalSpec
 import qualified TestManifestSpec
 import qualified RailwaySpec
+import qualified SessionsPythonSpec
 import LawSpec.Compile
 import LawSpec.Model
 import qualified LawSpec.Domain as D
@@ -68,6 +69,7 @@ main = hspec $ do
   IncrementalSpec.spec
   TestManifestSpec.spec
   RailwaySpec.spec
+  SessionsPythonSpec.spec
   PayloadSpec.spec
   PayloadProofSpec.spec
   DocumentSpec.spec
