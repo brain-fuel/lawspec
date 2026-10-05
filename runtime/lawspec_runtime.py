@@ -2005,8 +2005,9 @@ def _run_scenario(model, spec, shake):
                 except Exception as error:
                     failures.append(f'{command.name} raised {type(error).__name__}: {error}')
                     return
+                returned = tick()
                 with lock:
-                    history.append((command, args, result, called, tick()))
+                    history.append((command, args, result, called, returned))
                 if act[2] != '_':
                     env[str(act[2])] = result
             elif kind == 'send':
