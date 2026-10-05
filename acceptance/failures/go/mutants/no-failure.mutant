@@ -3,5 +3,5 @@ expect: odd amounts are declined, and say why
 <<<<<<<
 	if value0%2 == 1 {
 =======
-	if value0%2 == 1 && value0 > 50 {
+	if value0%2 == 1 && value0 > 50000 {
 >>>>>>>

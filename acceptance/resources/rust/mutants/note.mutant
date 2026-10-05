@@ -1,0 +1,7 @@
+expect: a note reads back
+@@ src/example/resources.rs
+<<<<<<<
+value1.to_string()).unwrap();
+=======
+(value1 + 1).to_string()).unwrap();
+>>>>>>>

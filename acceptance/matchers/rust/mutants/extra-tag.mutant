@@ -1,0 +1,10 @@
+expect: unique tags come from the input
+@@ src/example/matchers.rs
+<<<<<<<
+    tags
+}
+=======
+    tags.push("extra".into());
+    tags
+}
+>>>>>>>

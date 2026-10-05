@@ -1,0 +1,7 @@
+expect: sorting keeps every item example
+@@ src/example/matchers.rs
+<<<<<<<
+    items.sort();
+=======
+    items.sort_by(|a, b| b.cmp(a));
+>>>>>>>

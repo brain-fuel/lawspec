@@ -1,0 +1,7 @@
+expect: the average lies between the two
+@@ src/example/matchers.rs
+<<<<<<<
+    (value0 as f64 + value1 as f64) / 2.0
+=======
+    (value0 as f64 + value1 as f64) / 2.0 + 1.0
+>>>>>>>

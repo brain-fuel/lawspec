@@ -1,0 +1,12 @@
+expect: unique tags keep each tag
+@@ src/example/matchers.rs
+<<<<<<<
+    tags
+}
+=======
+    if !tags.is_empty() {
+        tags.remove(0);
+    }
+    tags
+}
+>>>>>>>
