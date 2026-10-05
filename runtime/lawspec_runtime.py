@@ -2526,6 +2526,13 @@ class _Channel:
         self.ended = [False, False]
         self.lock = threading.Lock()
 
+    def receive(self, side):
+        """The next value for side, _GONE once the other side has ended."""
+        value = self.queues[1 - side].get(timeout=5)
+        if value is _GONE:
+            self.queues[1 - side].put(_GONE)
+        return value
+
     def send(self, side, value):
         """A channel end sent to a process that has ended is given up."""
         with self.lock:
@@ -2536,8 +2543,8 @@ class _Channel:
 
     def gone(self, side):
         """side's process has ended: the other side's receives that find
-        nothing more fail instead of waiting, and channel ends on their way
-        to side are given up too."""
+        nothing more fail instead of waiting (again and again), and channel
+        ends on their way to side are given up too."""
         import queue
         stranded = []
         with self.lock:
@@ -2560,6 +2567,46 @@ class _Channel:
 
 
 _GONE = object()
+
+
+class _NetScenarioChannel:
+    """A scenario channel whose two sides are endpoints on two nodes of a
+    faulty in-memory network. A channel end sent over it travels as its
+    name, and the receiver uses the end where it is (its owner)."""
+
+    def __init__(self, network, name, steps, values, registry):
+        self.name, self.registry = name, registry
+        self.nodes = [Node(network.transport(f'{name}-{side}')) for side in (0, 1)]
+        def wire(sends, d):
+            return (sends, ['text'] if d == ['end'] else d)
+        self.ends = [self.nodes[0].listen(name, [wire(s, d) for s, d in steps], values)]
+        self.ends.append(self.nodes[1].dial(f'{self.nodes[0].address}/{name}', [wire(not s, d) for s, d in steps], values))
+        self.done = [False, False]
+        registry[name] = self
+
+    def send(self, side, value):
+        if isinstance(value, _End):
+            value = f'{value.channel.name}#{value.side}'
+        self.ends[side].send(side, value)
+
+    def receive(self, side):
+        try:
+            value = self.ends[side].receive(side, timeout=5)
+        except PeerFailed:
+            return _GONE
+        if isinstance(value, str) and '#' in value and value.rpartition('#')[0] in self.registry:
+            owner, _, which = value.rpartition('#')
+            return _End(self.registry[owner], int(which))
+        return value
+
+    def gone(self, side):
+        if not self.done[side]:
+            self.done[side] = True
+            self.ends[side].abandon(side)
+
+    def close(self):
+        for node in self.nodes:
+            node.close()
 
 
 def _scenario_processes(acts, found):
@@ -2609,13 +2656,23 @@ def _constant(form):
     return DataValue(str(form[1]), ())
 
 
-def _run_scenario(model, spec, shake, crash=False):
+def _run_scenario(model, spec, shake, crash=False, network=False):
     import threading
     forms = read_descriptor(spec)
     title = str(forms[0][1])
     names = [str(c) for c in next(f for f in forms if f[0] == 'channels')[1:]]
     body = next(f for f in forms if f[0] == 'process')[1:]
-    channels = {name: _Channel() for name in names}
+    wire = next((f for f in forms if f[0] == 'wire'), None)
+    if network and wire is not None:
+        # Loss, duplication and delay (which reorders); the channels'
+        # numbered, acknowledged frames must hide them all.
+        net = MemoryNetwork(seed=shake ^ 0x7F4A7C159E3779B9, loss=0.1, duplicate=0.1, delay=0.002)
+        types = Values({str(f[1]): f for f in wire[1:] if f[0] == 'data'})
+        steps = {str(f[1]): [(s[0] == 'send', s[1]) for s in f[2:]] for f in wire[1:] if f[0] == 'channel'}
+        registry = {}
+        channels = {name: _NetScenarioChannel(net, name, steps[name], types, registry) for name in names}
+    else:
+        channels = {name: _Channel() for name in names}
     commands = {c.name: c for c in model.commands}
     symbols = {}
     start_args = [model.values.minimal(d) for d in model.start_arguments]
@@ -2683,14 +2740,13 @@ def _run_scenario(model, spec, shake, crash=False):
             elif kind in ('receive', 'receiveor'):
                 channel, side = ends[str(act[1])]
                 try:
-                    value = channel.queues[1 - side].get(timeout=5)
+                    value = channel.receive(side)
                 except Exception:
                     failures.append(f'a receive on {act[1]} waited too long: the processes are blocked')
                     return 'failed'
                 if value is _GONE:
                     # The other process ended: or else runs instead of the
                     # rest; without it, this process fails too.
-                    channel.queues[1 - side].put(_GONE)
                     if kind == 'receive':
                         return 'failed'
                     del ends[str(act[1])]
@@ -2739,6 +2795,9 @@ def _run_scenario(model, spec, shake, crash=False):
         return 'done'
 
     outcome = process(body, {}, {}, SplitMix64(shake))
+    for channel in channels.values():
+        if isinstance(channel, _NetScenarioChannel):
+            channel.close()
     if failures:
         return title, failures[0] + (' (with a process crashed)' if victim is not None else '')
     if outcome == 'failed' and victim is None:
@@ -2804,8 +2863,9 @@ def check_scenario(model, spec, runs=30, seed=None):
         seed = int(os.environ.get('LAWSPEC_SEED', '0'))
     random = SplitMix64(seed ^ 0x2545F4914F6CDD1D)
     for run in range(runs):
-        # Every third run crashes one process of a par at a random point.
-        title, failure = _run_scenario(model, spec, random.next(), crash=run % 3 == 2)
+        # Every third run crashes one process of a par at a random point, and
+        # every third other one sends each channel over a faulty network.
+        title, failure = _run_scenario(model, spec, random.next(), crash=run % 3 == 2, network=run % 3 == 1)
         if failure is not None:
             raise AssertionError(f'scenario {title} fails: {failure}')
 
@@ -3750,9 +3810,13 @@ class _NetEndpoint:
             self._out += 1
         self._transmit(seq, bytes(body))
 
-    def receive(self, side):
+    def receive(self, side, timeout=None):
+        import queue
         d = self._step_descriptor(False)
-        marker, body = self._inbox.get()
+        try:
+            marker, body = self._inbox.get(timeout=timeout)
+        except queue.Empty:
+            raise TimeoutError('no message arrived in time') from None
         if marker is _ABANDONED:
             self._inbox.put((marker, body))
             raise PeerFailed(body)

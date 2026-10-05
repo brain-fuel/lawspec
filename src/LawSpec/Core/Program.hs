@@ -11,6 +11,11 @@ import GHC.Generics (Generic)
 data Program = Program
   { programTitle :: String, programMachine :: String
   , programChannels :: [String], programActs :: [Act]
+  -- The protocol each channel follows, in the order of programChannels.
+  , programProtocols :: [String]
+  -- Each channel's step types as descriptors, for runs whose channels
+  -- cross a network: filled in when the program is emitted.
+  , programWire :: String
   } deriving (Eq, Show, Generic)
 
 data Act
@@ -34,7 +39,8 @@ programSpec :: Program -> String
 programSpec p = unwords
   [ "(scenario " ++ quote (programTitle p) ++ " " ++ programMachine p ++ ")"
   , "(channels" ++ concatMap (' ' :) (programChannels p) ++ ")"
-  , "(process" ++ concatMap ((' ' :) . act) (programActs p) ++ ")" ]
+  , "(process" ++ concatMap ((' ' :) . act) (programActs p) ++ ")" ] ++
+  (if null (programWire p) then "" else " " ++ programWire p)
   where
     act a = case a of
       Invoke command bound operands -> "(call " ++ command ++ " " ++ maybe "_" id bound ++ concatMap ((' ' :) . operand) operands ++ ")"

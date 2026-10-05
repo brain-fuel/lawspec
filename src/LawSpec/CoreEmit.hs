@@ -1,6 +1,9 @@
 module LawSpec.CoreEmit (emitPlan, emitPlanWithFormat, emitPlanWithLayout, emitPlanWithOptions, emitPlanWithNativeOptions, targets) where
 import LawSpec.Sessions (sessionArtifacts)
 import LawSpec.Actors (actorArtifacts)
+import LawSpec.MachineSpec (scenarioWire)
+import LawSpec.Core.Machine (Machine(..))
+import LawSpec.Core.Program (Program(..))
 import LawSpec.Backend
 import LawSpec.Common
 import LawSpec.Testing
@@ -64,7 +67,7 @@ emitPlan = emitPlanWithFormat False
 -- Legacy runtime/test templates are still being migrated to structured Docs.
 emitPlanWithFormat :: Bool -> String -> Plan -> Either [Diagnostic] [Artifact]
 emitPlanWithFormat minify target original = do
-  let plan = escapePlan target (witnessPlan original)
+  let plan = wirePlan (escapePlan target (witnessPlan original))
   emittedFiles <- emitPlanFormatted minify target plan
   -- Typed channel ends for the unit's protocols, for implementation code.
   sessions <- sessionArtifacts minify target plan
@@ -78,6 +81,15 @@ emitPlanWithFormat minify target original = do
       Nothing -> Left [Diagnostic "target" "formatted adapter has no canonical reference" Nothing]
       Just reference -> pure (AdapterArtifact (artifactPath artifact) (artifactContent artifact)
         (ownership artifact) (artifactPlacement artifact) reference)) files
+
+-- Each scenario's channel types, for its runs over a network. A scenario
+-- whose types have no wire descriptor yet runs only in memory.
+wirePlan :: Plan -> Plan
+wirePlan plan = plan { plannedUnits = [u { plannedUnit = wired (plannedUnit u) } | u <- plannedUnits plan] }
+  where
+    wired unit = unit { C.unitMachines = [m { machineScenarios = map (program unit) (machineScenarios m) } | m <- C.unitMachines unit] }
+    program unit p = p { programWire = either (const "") id
+      (scenarioWire (planMachineBits plan) (planDataDeclarations plan) (C.unitSessions unit) p) }
 
 -- A declaration named with a keyword of the target is emitted with a leading
 -- underscore (LawSpec.TargetNames). Escaping is idempotent, and identities are

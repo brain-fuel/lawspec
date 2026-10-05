@@ -4,11 +4,13 @@
 -- typestate and flags. Callbacks (the bridge definitions, references,
 -- preconditions, abstraction and invariants) are passed beside it, in the
 -- order the spec lists them.
-module LawSpec.MachineSpec (machineSpec) where
+module LawSpec.MachineSpec (machineSpec, scenarioWire) where
 
-import Control.Monad (forM, unless, when)
+import Control.Monad (foldM, forM, unless, when)
+import Data.List (isInfixOf)
 import qualified LawSpec.Core as C
 import LawSpec.Core.Machine
+import qualified LawSpec.Core.Program as P
 import LawSpec.Scalar (Scalar(..), integerBounds, isInteger)
 
 -- The spec of a machine, given the program's data types and the unit's
@@ -161,3 +163,24 @@ describe bits datas table ty = case ty of
       (ds, table') <- foldl (\acc t -> do (done, current) <- acc; (d, current') <- describe bits datas current t; pure (done ++ [d], current'))
         (Right ([], table)) ts
       pure ("(" ++ kind ++ concatMap (' ' :) ds ++ ")", table')
+
+-- A scenario's channels for network runs: (wire (data ...)... (channel c
+-- (send D) (receive D) ...) ...), each step from the protocol's first end.
+-- A step sending a channel end is (end): its address travels as text.
+scenarioWire :: Int -> [C.DataDeclaration] -> [C.Session] -> P.Program -> Either String String
+scenarioWire bits datas sessions program = do
+  let protocol p = [s | s <- sessions, C.sessionName s == p]
+      step table (sends, ty) = case ty of
+        C.Constructor n [] | "::session::" `isInfixOf` n -> pure ("(" ++ verb sends ++ " (end))", table)
+        _ -> do
+          (d, table') <- describe bits datas table ty
+          pure ("(" ++ verb sends ++ " " ++ d ++ ")", table')
+      channel table (c, p) = case protocol p of
+        s : _ -> do
+          (steps, table') <- foldM (\(acc, t) st -> (\(d, t') -> (acc ++ [d], t')) <$> step t st) ([], table) (C.sessionSteps s)
+          pure ("(channel " ++ c ++ concatMap (' ' :) steps ++ ")", table')
+        [] -> Left ("scenario " ++ P.programTitle program ++ ": no protocol " ++ p)
+      verb sends = if sends then "send" else "receive"
+  (forms, table) <- foldM (\(acc, t) cp -> (\(f, t') -> (acc ++ [f], t')) <$> channel t cp) ([], [])
+    (zip (P.programChannels program) (P.programProtocols program))
+  pure ("(wire" ++ concatMap ((' ' :) . snd) (reverse table) ++ concatMap (' ' :) forms ++ ")")

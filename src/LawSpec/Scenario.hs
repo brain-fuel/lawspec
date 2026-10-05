@@ -240,7 +240,8 @@ channelsIn = nub . concatMap go
 -- A checked scenario as its runtime program, with constants resolved:
 -- constructor names become tags qualified by their data type.
 toProgram :: Unit -> Scenario -> Either Failure P.Program
-toProgram u s = P.Program (scenarioName s) (scenarioModel s) [c | (c, _, _) <- scenarioChannels s] <$> mapM act (scenarioBody s)
+toProgram u s = (\acts -> P.Program (scenarioName s) (scenarioModel s) [c | (c, _, _) <- scenarioChannels s] acts
+    [p | (_, p, _) <- scenarioChannels s] "") <$> mapM act (scenarioBody s)
   where
     act st = case st of
       Bind x command args at -> P.Invoke command (Just x) <$> mapM (operand at) args
