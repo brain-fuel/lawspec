@@ -1,0 +1,10 @@
+@@ example/warehouse/native.go
+<<<<<<<
+		s.total += int64(amount)
+=======
+		if amount < 50 {
+			s.total += int64(amount)
+		} else {
+			s.total += int64(amount - 1)
+		}
+>>>>>>>

@@ -126,14 +126,23 @@ emitBindings minify plan testing files = do
           (StaticCall _,_) -> pure Nothing
           (_,C.Constructor "Maybe" [C.TypeArgument inner]) -> Just <$> G.goNativeTypeWithParameters declarations usedMappings [] inner
           _ -> pure Nothing
-        let nativeValue = maybe invocation (\inner -> E.call ("lsNativeMaybe[" ++ inner ++ "]") [invocation]) nativeMaybe
-            body = if result == unit then invocation <> D.hardline <> D.text "return LawSpecUnit{}"
+        -- An async bridge is a task that awaits the native task and converts its
+        -- result; a constructor is called at once, and its task is already done.
+        let async = C.declarationAsync d
+            constructor = case call of ConstructorCall _ -> True; _ -> False
+            awaited = if async && not constructor then invocation <> D.text ".Await()" else invocation
+            nativeValue = maybe awaited (\inner -> E.call ("lsNativeMaybe[" ++ inner ++ "]") [awaited]) nativeMaybe
+            body = if result == unit then awaited <> D.hardline <> D.text "return LawSpecUnit{}"
               else D.text "return " <> E.call (canonicalResult ++ ".toNative") [E.call (nativeResult ++ ".fromNative") [nativeValue]]
             bridge = E.call "lsNativeContext" [E.quoted ("native binding " ++ C.idText (C.declarationId d)),
               D.text ("func() " ++ resultType ++ " ") <> D.block 8 body]
-            resultStatement = (if result == C.scalarType "Unit" then D.text "_ = " else D.text "return ") <> bridge
+            resultStatement
+              | async && constructor = D.text "done := " <> bridge <> D.hardline <>
+                  D.text ("return LawSpecGo(func() " ++ resultType ++ " { return done })")
+              | async = D.text ("return LawSpecGo(func() " ++ resultType ++ " ") <> D.block 8 (D.text "return " <> bridge) <> D.text ")"
+              | otherwise = (if result == C.scalarType "Unit" then D.text "_ = " else D.text "return ") <> bridge
         pure (D.text "func " <> E.call (name d) [v <> D.text (" " ++ t) | (t,v) <- zip types values] <>
-          D.text (if result == C.scalarType "Unit" then " " else " " ++ resultType ++ " ") <> D.block 8
+          D.text (if async then " LawSpecTask[" ++ resultType ++ "] " else if result == C.scalarType "Unit" then " " else " " ++ resultType ++ " ") <> D.block 8
           (D.text "schema := lawSpecDataSchemaRegistry()" <> D.hardline <>
            D.text ("bits := " ++ show bits) <> D.hardline <>
            D.text "symbols := map[string]*lawSpecSymbol{}" <> D.hardline <>

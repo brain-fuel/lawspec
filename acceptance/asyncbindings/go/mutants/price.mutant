@@ -1,0 +1,6 @@
+@@ example/warehouse/native.go
+<<<<<<<
+	return LawSpecGo(func() int32 { return price(sku) })
+=======
+	return LawSpecGo(func() int32 { return price(sku) + 1 })
+>>>>>>>
