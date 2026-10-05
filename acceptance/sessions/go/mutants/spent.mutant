@@ -1,0 +1,7 @@
+@@ example/sessions/adapter.go
+<<<<<<<
+	sum, _ := end.Send(a).Send(b).Receive()
+=======
+	sum, _ := end.Send(a).Send(b).Receive()
+	end.Send(a)
+>>>>>>>

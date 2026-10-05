@@ -900,6 +900,112 @@ func (t LawSpecTask[T]) Await() T {
 	return t.state.value
 }
 
+// LawSpecTransport carries a session's values between its two ends: side 0
+// is the first end, side 1 the second. Send queues a value from one side;
+// Receive waits for the next value the other side sent. LawSpecNewChannel is
+// the in-process transport; a networked one implements the same two methods.
+type LawSpecTransport interface {
+	Send(side int, value any)
+	Receive(side int) any
+}
+
+// lawSpecSessionChannel is a buffered Go channel per direction: toward[side] holds
+// the values sent to that side.
+type lawSpecSessionChannel struct{ toward [2]chan any }
+
+// LawSpecNewChannel makes an in-process transport whose sends do not block
+// until buffer values wait in one direction.
+func LawSpecNewChannel(buffer int) LawSpecTransport {
+	return &lawSpecSessionChannel{[2]chan any{make(chan any, buffer), make(chan any, buffer)}}
+}
+
+func (c *lawSpecSessionChannel) Send(side int, value any) { c.toward[1-side] <- value }
+func (c *lawSpecSessionChannel) Receive(side int) any     { return <-c.toward[side] }
+
+// LawSpecEnd is one end of a session at one step. Generated session types
+// wrap it; each is used once, and its Send or Receive returns the end for the
+// next step.
+type LawSpecEnd struct {
+	transport LawSpecTransport
+	side      int
+	used      atomic.Bool
+}
+
+// LawSpecOpenEnds returns the first and second ends of a session over a
+// transport.
+func LawSpecOpenEnds(transport LawSpecTransport) (*LawSpecEnd, *LawSpecEnd) {
+	return &LawSpecEnd{transport: transport, side: 0}, &LawSpecEnd{transport: transport, side: 1}
+}
+
+// use spends the end and returns the end for its next step.
+func (e *LawSpecEnd) use() *LawSpecEnd {
+	if e == nil {
+		panic("lawspec session: this end was never opened; ends come from the protocol's Open function")
+	}
+	if !e.used.CompareAndSwap(false, true) {
+		panic("lawspec session: this end was already used; use the end its last step returned")
+	}
+	return &LawSpecEnd{transport: e.transport, side: e.side}
+}
+
+// Send sends a value and returns the end for the next step.
+func (e *LawSpecEnd) Send(value any) *LawSpecEnd {
+	next := e.use()
+	e.transport.Send(e.side, value)
+	return next
+}
+
+// Receive waits for the other end's next value and returns it with the end
+// for the next step.
+func (e *LawSpecEnd) Receive() (any, *LawSpecEnd) {
+	next := e.use()
+	return e.transport.Receive(e.side), next
+}
+
+// HandOver spends the end so that it can be sent to another process: the
+// returned end is the receiver's, at the same step.
+func (e *LawSpecEnd) HandOver() *LawSpecEnd { return e.use() }
+
+// LawSpecProcess is a goroutine started by LawSpecSpawn.
+type LawSpecProcess struct {
+	done    chan struct{}
+	failure any
+}
+
+// LawSpecSpawn runs work in a goroutine.
+func LawSpecSpawn(work func()) *LawSpecProcess {
+	process := &LawSpecProcess{done: make(chan struct{})}
+	go func() {
+		defer close(process.done)
+		defer func() { process.failure = recover() }()
+		work()
+	}()
+	return process
+}
+
+// Join waits for the process to finish and raises its panic again, if any.
+func (p *LawSpecProcess) Join() {
+	<-p.done
+	if p.failure != nil {
+		panic(p.failure)
+	}
+}
+
+// LawSpecPar runs each function in its own goroutine, waits for all of them
+// and then raises the first one's panic (in argument order), if any.
+func LawSpecPar(work ...func()) {
+	processes := make([]*LawSpecProcess, len(work))
+	for i, w := range work {
+		processes[i] = LawSpecSpawn(w)
+	}
+	for _, p := range processes {
+		<-p.done
+	}
+	for _, p := range processes {
+		p.Join()
+	}
+}
+
 const lsOrdering = "lawspec.collections::type::Ordering"
 
 // lsCompareValues is the portable total order: -1, 0 or 1. Exact numbers by
