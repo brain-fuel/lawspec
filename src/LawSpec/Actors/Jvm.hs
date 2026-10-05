@@ -16,10 +16,10 @@ import LawSpec.Common (Artifact(..))
 import LawSpec.Backend (adapterName, unitName)
 import LawSpec.JavaData (javaDataType, identifier)
 import LawSpec.KotlinData (kotlinDataType)
-import LawSpec.Actors.Types (Actor(..), Handler(..))
+import LawSpec.Actors.Types (Actor(..), Handler(..), Supervision)
 
-emit :: String -> Bool -> Int -> [C.DataDeclaration] -> [Actor] -> Either String [Artifact]
-emit target _ _ datas = mapM artifact
+emit :: String -> Bool -> Int -> [C.DataDeclaration] -> [Actor] -> [Supervision] -> Either String [Artifact]
+emit target _ _ datas actors _ = mapM artifact actors
   where
     kotlin = target == "kotlin"
     artifact a = do

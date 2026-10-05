@@ -14,13 +14,13 @@ module LawSpec.Actors.Haskell (emit) where
 import Data.Char (isAlphaNum, toUpper)
 import Data.List (intercalate, isPrefixOf, nub, sort)
 import qualified LawSpec.Core as C
-import LawSpec.Actors.Types (Actor(..), Handler(..))
+import LawSpec.Actors.Types (Actor(..), Handler(..), Supervision)
 import LawSpec.Backend (adapterName)
 import LawSpec.Common (Artifact(..))
 import LawSpec.HaskellData (haskellNativeTypeWithParameters)
 
-emit :: String -> Bool -> Int -> [C.DataDeclaration] -> [Actor] -> Either String [Artifact]
-emit _ _ _ datas actors = concat <$> mapM unitModules units
+emit :: String -> Bool -> Int -> [C.DataDeclaration] -> [Actor] -> [Supervision] -> Either String [Artifact]
+emit _ _ _ datas actors _ = concat <$> mapM unitModules units
   where
     units = nub [C.idText (C.unitId (actorUnit a)) | a <- actors]
     unitModules unit = do

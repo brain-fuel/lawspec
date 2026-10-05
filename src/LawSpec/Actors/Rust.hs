@@ -14,10 +14,10 @@ import qualified LawSpec.Core as C
 import LawSpec.Common (Artifact(..))
 import LawSpec.Backend (adapterName, unitName)
 import LawSpec.RustData (rustDataType)
-import LawSpec.Actors.Types (Actor(..), Handler(..))
+import LawSpec.Actors.Types (Actor(..), Handler(..), Supervision)
 
-emit :: String -> Bool -> Int -> [C.DataDeclaration] -> [Actor] -> Either String [Artifact]
-emit _ _ _ datas actors = do
+emit :: String -> Bool -> Int -> [C.DataDeclaration] -> [Actor] -> [Supervision] -> Either String [Artifact]
+emit _ _ _ datas actors _ = do
   structs <- mapM (actorStruct datas) actors
   let modules = nub (map (unitName . actorUnit) actors)
       header =

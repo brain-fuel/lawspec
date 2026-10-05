@@ -7,12 +7,14 @@ import LawSpec.Sessions.Python (pythonSessions)
 
 -- Serve: receive two Int32s, send an Int64; Hire: send Serve's first end.
 unit :: C.Unit
-unit = C.MkUnit (C.Id "example.sessions") [] [] [] [] [] []
-  [ C.Session (C.Id "example.sessions::session::Serve") "Serve"
-      [(False, int32), (False, int32), (True, C.scalarType "Int64")]
-  , C.Session (C.Id "example.sessions::session::Hire") "Hire"
-      [(True, C.scalarType "example.sessions::session::Serve")] ]
-  where int32 = C.scalarType "Int32"
+unit = C.MkUnit (C.Id "example.sessions") [] [] [] [] [] sessions []
+  where
+    sessions =
+      [ C.Session (C.Id "example.sessions::session::Serve") "Serve"
+          [(False, int32), (False, int32), (True, C.scalarType "Int64")]
+      , C.Session (C.Id "example.sessions::session::Hire") "Hire"
+          [(True, C.scalarType "example.sessions::session::Serve")] ]
+    int32 = C.scalarType "Int32"
 
 spec :: Spec
 spec = describe "Python sessions" $ do

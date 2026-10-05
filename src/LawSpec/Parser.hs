@@ -304,9 +304,12 @@ scenarioP = do
     sending = do
       ((c, v), at) <- withSpan ((,) <$> (keyword "send" *> ident) <*> argument)
       pure (SendTo c v at)
+    -- receive c x [or else statements end]: the statements run instead of
+    -- the rest of the process when c's other process has failed.
     receiving = do
-      ((c, x), at) <- withSpan ((,) <$> (keyword "receive" *> ident) <*> ident)
-      pure (ReceiveFrom c x at)
+      ((c, x, handler), at) <- withSpan ((,,) <$> (keyword "receive" *> ident) <*> ident
+        <*> optional (try (keyword "or" *> keyword "else") *> statements <* keyword "end"))
+      pure (ReceiveFrom c x handler at)
     expecting = do
       ((x, v), at) <- withSpan ((,) <$> (keyword "expect" *> ident) <*> (symbol "=" *> constant))
       pure (Expect x v at)

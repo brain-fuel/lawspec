@@ -16,7 +16,8 @@ data Program = Program
 data Act
   = Invoke String (Maybe String) [Operand]   -- command, the variable bound
   | Deliver String Operand                   -- send on a channel
-  | Accept String String                     -- receive from a channel into a variable
+  | Accept String String (Maybe [Act])       -- receive from a channel into a variable;
+                                             -- or else these acts, when its other process failed
   | Fork [[Act]]                             -- par: processes at once
   | Assert String Constant                   -- expect variable = constant
   deriving (Eq, Show, Generic)
@@ -38,7 +39,8 @@ programSpec p = unwords
     act a = case a of
       Invoke command bound operands -> "(call " ++ command ++ " " ++ maybe "_" id bound ++ concatMap ((' ' :) . operand) operands ++ ")"
       Deliver c o -> "(send " ++ c ++ " " ++ operand o ++ ")"
-      Accept c x -> "(receive " ++ c ++ " " ++ x ++ ")"
+      Accept c x Nothing -> "(receive " ++ c ++ " " ++ x ++ ")"
+      Accept c x (Just handler) -> "(receiveor " ++ c ++ " " ++ x ++ " (process" ++ concatMap ((' ' :) . act) handler ++ "))"
       Fork branches -> "(par " ++ unwords ["(process" ++ concatMap ((' ' :) . act) b ++ ")" | b <- branches] ++ ")"
       Assert x c -> "(expect " ++ x ++ " " ++ constant c ++ ")"
     operand (Variable x) = "(var " ++ x ++ ")"

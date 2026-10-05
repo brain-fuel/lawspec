@@ -16,10 +16,10 @@ import qualified LawSpec.Code.Doc as D
 import LawSpec.Common (Artifact(..))
 import LawSpec.Backend (adapterName, unitName)
 import LawSpec.WebTypes (webDataTypeDocWith)
-import LawSpec.Actors.Types (Actor(..), Handler(..))
+import LawSpec.Actors.Types (Actor(..), Handler(..), Supervision)
 
-emit :: String -> Bool -> Int -> [C.DataDeclaration] -> [Actor] -> Either String [Artifact]
-emit target _ _ datas actors = do
+emit :: String -> Bool -> Int -> [C.DataDeclaration] -> [Actor] -> [Supervision] -> Either String [Artifact]
+emit target _ _ datas actors _ = do
   classes <- mapM (actorClassText ts datas) actors
   let modules = nub (map (unitName . actorUnit) actors)
       body = concatMap ("\n" ++) classes

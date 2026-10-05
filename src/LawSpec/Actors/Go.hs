@@ -14,10 +14,10 @@ import qualified LawSpec.Core as C
 import LawSpec.Common (Artifact(..))
 import LawSpec.Backend (unitName)
 import LawSpec.GoData (goDataType)
-import LawSpec.Actors.Types (Actor(..), Handler(..))
+import LawSpec.Actors.Types (Actor(..), Handler(..), Supervision)
 
-emit :: String -> Bool -> Int -> [C.DataDeclaration] -> [Actor] -> Either String [Artifact]
-emit _ _ _ datas actors = mapM unitFile (nub (map (unitName . actorUnit) actors))
+emit :: String -> Bool -> Int -> [C.DataDeclaration] -> [Actor] -> [Supervision] -> Either String [Artifact]
+emit _ _ _ datas actors _ = mapM unitFile (nub (map (unitName . actorUnit) actors))
   where
     unitFile u = do
       let mine = [a | a <- actors, unitName (actorUnit a) == u]

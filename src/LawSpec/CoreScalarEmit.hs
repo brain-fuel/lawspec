@@ -38,7 +38,13 @@ scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions 
   unless (target `elem` ["python","javascript","typescript"]) (Left [Diagnostic "target-runtime" ("portable scalar runtime is not implemented for " ++ target) Nothing])
   lawTexts <- concat <$> mapM lawTests (zip [0 :: Int ..] ls)
   modelTexts <- concat <$> mapM modelTest (C.unitMachines u)
-  let tests = lawTexts ++ modelTexts
+  -- A unit with supervisors also checks the runtime's supervision.
+  let supervision
+        | null (C.unitSupervisors u) = ""
+        | py = renderDocument (function "test_supervision" [] (statement (runtime "check_supervision" [])))
+        | otherwise = renderDocument (text "test(" <> message (unitName u ++ "::supervision") <> text ", async () => " <>
+            Doc.block 2 (statement (text "await " <> runtime "checkSupervisionAsync" [])) <> text ");")
+      tests = lawTexts ++ modelTexts ++ supervision
   wrappers <- concat <$> mapM contractWrapper (contracts u)
   let completeHeader = if py || hasData || "fc." `isInfixOf` tests then testHeader else unlines (filter (/= "import fc from 'fast-check';") (lines testHeader))
   pure [Artifact stubPath stub "user" "source",Artifact testPath (finish (completeHeader ++ dataHelpers ++ testHelpers ++ wrappers ++ tests)) "generated" "test"]

@@ -45,3 +45,40 @@ depositTwice :: UInt8 -> Int64
 law `two callers' deposits both land` is
   definition is `for all` (x :: UInt8) . depositTwice x = 2 * x end
 end
+
+-- A supervisor starts its actors and restarts them after a crash: one for
+-- one restarts only the actor that crashed. The account restarts from its
+-- last balance (restart from reopen).
+supervisor bank is
+  one for one
+  at most 3 restarts in 5s
+  permanent account
+end
+
+-- survivesCrash starts the bank, deposits, crashes the account, and reads
+-- its balance through the same handle.
+survivesCrash :: UInt8 -> Int64
+
+law `a crashed account keeps its balance` is
+  definition is `for all` (x :: UInt8) . survivesCrash x = x end
+end
+
+-- A scenario runs the actor's messages from processes that talk over
+-- channels. Some runs crash one process at a random point: a receive from a
+-- process that failed runs its or else instead of waiting forever.
+protocol Receipt is
+  send Int64
+end
+
+scenario `a deposit's receipt, or the balance if the teller fails` in account is
+  channel receipt :: Receipt
+  par
+    n <- deposit 5
+    send receipt n
+  with
+    receive receipt m or else
+      balance
+    end
+    expect m = 5
+  end
+end

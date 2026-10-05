@@ -1469,13 +1469,50 @@ class ActorStopped(Exception):
     """A message sent to an actor that has stopped."""
 
 
+class ActorCrashed(Exception):
+    """A handler failed, so the actor crashed; the cause is the handler's
+    exception. A supervised actor restarts; any other stops."""
+
+    def __init__(self, cause):
+        super().__init__(f'the actor crashed: {cause!r}')
+        self.cause = cause
+
+
+class _Restart(Exception):
+    """A message that crashes the actor on purpose (crash, links)."""
+
+    def __init__(self, cause, origin):
+        super().__init__(cause)
+        self.cause, self.origin = cause, origin
+
+
+_crash_ids = iter(range(1, 1 << 62))
+_crash_lock = threading.Lock()
+
+
+def _next_crash():
+    with _crash_lock:
+        return next(_crash_ids)
+
+
 class Actor:
-    def __init__(self, state):
+    """An actor: a state, a mailbox, and one message handled at a time.
+
+    restart(last state) gives the state after a crash; without it, a crash
+    stops the actor even under a supervisor. A supervised actor restarts in
+    place: it keeps its address and the messages waiting for it."""
+
+    def __init__(self, state, restart=None):
         self._state = state
+        self._restart_state = restart
         self._mailbox = deque()
         self._lock = threading.Lock()
         self._draining = False
         self._stopped = False
+        self._supervisor = None
+        self._monitors = []
+        self._links = []
+        self._seen = set()
 
     def _post(self, message):
         with self._lock:
@@ -1497,15 +1534,67 @@ class Actor:
             try:
                 result, self._state = handler(self._state)
                 outcome = (True, result)
-            except BaseException as error:  # noqa: BLE001 - returned to the caller
-                outcome = (False, error)
+            except _Restart as crash:
+                outcome = (True, None)
+                self._crashed(crash.cause, crash.origin)
+            except BaseException as error:  # noqa: BLE001 - the actor crashes
+                outcome = (False, ActorCrashed(error))
+                self._crashed(error, _next_crash())
             if reply is not None:
                 reply.append(outcome)
                 reply.event.set()
 
+    def _crashed(self, cause, origin):
+        """Runs on the actor's turn: restart or stop, then tell monitors and
+        links. origin names the first crash, so a crash crosses each link once."""
+        self._seen.add(origin)
+        restarted = self._supervisor is not None and self._restart_state is not None and \
+            self._supervisor._child_crashed(self, cause)
+        if not restarted:
+            self._halt()
+        for monitor in list(self._monitors):
+            monitor(('crashed', cause))
+        for other in list(self._links):
+            other._link_crash(cause, origin)
+
+    def _restart_now(self):
+        """On the actor's turn: the restarted state from the last one."""
+        self._state = self._restart_state(self._state)
+
+    def _restart_later(self):
+        """A restart a supervisor asks of a sibling, in mailbox order."""
+        def restart(s):
+            return None, self._restart_state(s)
+        try:
+            self._post((restart, None))
+        except ActorStopped:
+            pass
+
+    def _link_crash(self, cause, origin):
+        if origin in self._seen:
+            return
+
+        def crash(s):
+            raise _Restart(cause, origin)
+        try:
+            self._post((crash, None))
+        except ActorStopped:
+            pass
+
+    def _halt(self):
+        """Stops the actor; messages still waiting fail with ActorStopped."""
+        with self._lock:
+            self._stopped = True
+            waiting, self._mailbox = list(self._mailbox), deque()
+        for _, reply in waiting:
+            if reply is not None:
+                reply.append((False, ActorStopped('the actor has stopped')))
+                reply.event.set()
+
     def call(self, handler):
         """Runs handler(state) -> (result, next state) in turn and returns
-        the result, raising what the handler raised."""
+        the result. A handler that raises crashes the actor, and call raises
+        ActorCrashed."""
         reply = _Reply()
         self._post((handler, reply))
         reply.event.wait()
@@ -1518,19 +1607,296 @@ class Actor:
         """Queues handler(state) -> (result, next state) without waiting."""
         self._post((handler, None))
 
+    def crash(self, cause='crashed on purpose'):
+        """Crashes the actor once the messages before this one are handled,
+        as a failing handler would: for testing supervision."""
+        origin = _next_crash()
+
+        def crash(s):
+            raise _Restart(cause, origin)
+        self.call(crash)
+
     def restart(self, restart):
-        """Crashes the actor between messages: its state is replaced by
-        restart(last state), and later messages see the new state."""
+        """Replaces the state by restart(last state) between messages, as a
+        supervised restart does (crash injection in model runs)."""
         self.call(lambda s: (None, restart(s)))
 
     def state(self):
         """The state after every message sent before this call."""
         return self.call(lambda s: (s, s))
 
+    def monitor(self, notify):
+        """notify(('crashed', cause)) after each crash, and
+        notify(('stopped', None)) once it stops."""
+        self._monitors.append(notify)
+
+    def link(self, other):
+        """Links two actors: when either crashes, the other crashes too."""
+        self._links.append(other)
+        other._links.append(self)
+
     def stop(self):
-        """Refuses further messages; those already queued still run."""
+        """Refuses further messages; those already queued still run. A
+        permanent child of a supervisor restarts instead."""
+        if self._supervisor is not None and self._supervisor._child_stopped(self):
+            return
         with self._lock:
+            already = self._stopped
             self._stopped = True
+        if not already:
+            for monitor in list(self._monitors):
+                monitor(('stopped', None))
+
+
+class Supervisor:
+    """Starts children (actors or supervisors) and restarts them after a
+    crash. strategy 'one_for_one' restarts the child that crashed,
+    'one_for_all' every child, 'rest_for_one' it and those added after it.
+    A child's lifetime: 'permanent' restarts after a crash or a stop,
+    'transient' only after a crash, 'temporary' never. More than
+    max_restarts within period seconds is the supervisor's own crash: its
+    supervisor restarts all of its children, or, at the top, every child
+    stops."""
+
+    def __init__(self, strategy='one_for_one', max_restarts=3, period=5.0):
+        if strategy not in ('one_for_one', 'one_for_all', 'rest_for_one'):
+            raise ValueError(f'unknown strategy {strategy!r}')
+        self.strategy, self.max_restarts, self.period = strategy, max_restarts, period
+        self._children = []
+        self._restarts = deque()
+        self._lock = threading.RLock()
+        self._supervisor = None
+        self._stopped = False
+        self._monitors = []
+
+    def supervise(self, child, lifetime='permanent'):
+        """Adds a started child, and returns it."""
+        if lifetime not in ('permanent', 'transient', 'temporary'):
+            raise ValueError(f'unknown lifetime {lifetime!r}')
+        with self._lock:
+            child._supervisor = self
+            self._children.append([child, lifetime])
+        return child
+
+    def children(self):
+        return [c for c, _ in self._children]
+
+    def _allow_restart(self):
+        import time
+        now = time.monotonic()
+        while self._restarts and now - self._restarts[0] > self.period:
+            self._restarts.popleft()
+        if len(self._restarts) >= self.max_restarts:
+            return False
+        self._restarts.append(now)
+        return True
+
+    def _entry(self, child):
+        return next((e for e in self._children if e[0] is child), None)
+
+    def _restarting(self, entry, cause, crashed):
+        """Under the lock: the children to restart for entry's crash, or
+        None when the supervisor gives up."""
+        if self._allow_restart():
+            index = self._children.index(entry)
+            return {'one_for_one': [entry], 'one_for_all': list(self._children),
+                    'rest_for_one': self._children[index:]}[self.strategy]
+        parent = self._supervisor
+        if parent is not None and parent._child_failed(self, cause):
+            self._restarts.clear()
+            return list(self._children)
+        self._fail(crashed, cause)
+        return None
+
+    def _child_crashed(self, child, cause):
+        """On child's turn: True when it restarts now."""
+        with self._lock:
+            entry = self._entry(child)
+            if self._stopped or entry is None:
+                return False
+            if entry[1] == 'temporary':
+                self._children.remove(entry)
+                return False
+            group = self._restarting(entry, cause, child)
+            if group is None:
+                return False
+        for other, _ in group:
+            if other is not child:
+                other._restart_later()
+        child._restart_now()
+        return True
+
+    def _child_failed(self, child, cause):
+        """A child supervisor gave up: True when it may restart its children."""
+        with self._lock:
+            entry = self._entry(child)
+            if self._stopped or entry is None:
+                return False
+            if entry[1] == 'temporary':
+                self._children.remove(entry)
+                return False
+            group = self._restarting(entry, cause, child)
+            if group is None:
+                return False
+        for other, _ in group:
+            if other is not child:
+                other._restart_later()
+        return True
+
+    def _child_stopped(self, child):
+        """True when a stopped child is permanent and restarts instead."""
+        with self._lock:
+            entry = self._entry(child)
+            if entry is None or self._stopped:
+                return False
+            if entry[1] != 'permanent':
+                self._children.remove(entry)
+                return False
+            group = self._restarting(entry, 'stopped', child)
+            if group is None:
+                return False
+        for other, _ in group:
+            other._restart_later()
+        return True
+
+    def _fail(self, crashed, cause):
+        """Under the lock: every child but the one crashing (which stops
+        itself) stops, and so does the supervisor."""
+        children, self._children = self._children, []
+        self._stopped = True
+        for other, _ in reversed(children):
+            other._supervisor = None
+            if other is not crashed:
+                other._halt()
+        for monitor in list(self._monitors):
+            monitor(('crashed', cause))
+
+    def _restart_later(self):
+        """Restarted by its own supervisor: every child restarts."""
+        with self._lock:
+            self._restarts.clear()
+            children = list(self._children)
+        for child, _ in children:
+            child._restart_later()
+
+    def _halt(self):
+        self.stop()
+
+    def monitor(self, notify):
+        """notify(('crashed', cause)) when it gives up, and
+        notify(('stopped', None)) once stopped."""
+        self._monitors.append(notify)
+
+    def stop(self):
+        """Stops every child, last added first, without restarting them."""
+        with self._lock:
+            if self._stopped:
+                return
+            self._stopped = True
+            children, self._children = list(self._children), []
+        for child, _ in reversed(children):
+            child._supervisor = None
+            child.stop()
+        for monitor in list(self._monitors):
+            monitor(('stopped', None))
+
+
+def check_supervision():
+    """The runtime's own check of crashes, links, monitors and supervision:
+    every strategy, lifetime, the restart limit and escalation. Raises
+    AssertionError naming the first behaviour that differs."""
+    import time
+
+    def counter():
+        return Actor(0, restart=lambda s: 0)
+
+    def bump(a):
+        return a.call(lambda s: (s + 1, s + 1))
+
+    def fail(a):
+        try:
+            a.call(lambda s: 1 // 0)
+        except ActorCrashed:
+            return
+        raise AssertionError('a failing handler did not raise ActorCrashed')
+
+    def stopped(a, what):
+        try:
+            a.state()
+        except ActorStopped:
+            return
+        raise AssertionError(what + ' should have stopped')
+
+    def expect(actual, wanted, what):
+        if actual != wanted:
+            raise AssertionError(f'{what}: got {actual!r}, expected {wanted!r}')
+
+    a = counter()
+    bump(a)
+    fail(a)
+    stopped(a, 'an unsupervised actor that crashed')
+    sup = Supervisor('one_for_one')
+    x, y = sup.supervise(counter()), sup.supervise(counter())
+    bump(x), bump(y), bump(y)
+    fail(x)
+    expect((x.state(), y.state()), (0, 2), 'one for one restarts only the crashed child')
+    sup = Supervisor('one_for_all')
+    x, y = sup.supervise(counter()), sup.supervise(counter())
+    bump(x), bump(y)
+    fail(x)
+    expect((x.state(), y.state()), (0, 0), 'one for all restarts every child')
+    sup = Supervisor('rest_for_one')
+    x, y, z = [sup.supervise(counter()) for _ in range(3)]
+    bump(x), bump(y), bump(z)
+    fail(y)
+    expect((x.state(), y.state(), z.state()), (1, 0, 0), 'rest for one restarts the child and later ones')
+    sup = Supervisor()
+    t = sup.supervise(counter(), 'temporary')
+    fail(t)
+    stopped(t, 'a temporary child that crashed')
+    sup = Supervisor()
+    p, q = sup.supervise(counter(), 'permanent'), sup.supervise(counter(), 'transient')
+    bump(p)
+    p.stop()
+    expect(p.state(), 0, 'a permanent child restarts after a stop')
+    q.stop()
+    stopped(q, 'a transient child that was stopped')
+    events = []
+    sup = Supervisor('one_for_one', max_restarts=2, period=10)
+    sup.monitor(events.append)
+    x, y = sup.supervise(counter()), sup.supervise(counter())
+    fail(x), fail(x), fail(x)
+    stopped(y, 'a child of a supervisor past its restart limit')
+    expect([e[0] for e in events], ['crashed'], 'a supervisor past its limit tells its monitors')
+    outer = Supervisor('one_for_one', max_restarts=5, period=10)
+    inner = outer.supervise(Supervisor('one_for_one', max_restarts=1, period=10))
+    x, y = inner.supervise(counter()), inner.supervise(counter())
+    bump(y)
+    fail(x), fail(x)
+    expect((x.state(), y.state()), (0, 0), 'a supervisor past its limit is restarted by its own')
+    seen = []
+    a, b = counter(), counter()
+    a.link(b)
+    b.monitor(seen.append)
+    fail(a)
+    for _ in range(100):
+        if seen:
+            break
+        time.sleep(0.01)
+    stopped(b, 'an unsupervised actor linked to one that crashed')
+    expect([e[0] for e in seen], ['crashed'], 'a monitor hears of a crash')
+    sup = Supervisor(max_restarts=10)
+    a, b, c = [sup.supervise(counter()) for _ in range(3)]
+    a.link(b), b.link(c), c.link(a)
+    bump(a), bump(b), bump(c)
+    fail(a)
+    for _ in range(100):
+        if len(sup._restarts) >= 3:
+            break
+        time.sleep(0.01)
+    time.sleep(0.05)
+    expect((a.state(), b.state(), c.state(), len(sup._restarts)), (0, 0, 0, 3),
+           'a crash crosses each link once')
 
 
 class Mailbox:
@@ -2154,6 +2520,53 @@ class _Channel:
     def __init__(self):
         import queue
         self.queues = (queue.Queue(), queue.Queue())
+        self.ended = [False, False]
+        self.lock = threading.Lock()
+
+    def send(self, side, value):
+        """A channel end sent to a process that has ended is given up."""
+        with self.lock:
+            if not (self.ended[1 - side] and isinstance(value, _End)):
+                self.queues[side].put(value)
+                return
+        value.channel.gone(value.side)
+
+    def gone(self, side):
+        """side's process has ended: the other side's receives that find
+        nothing more fail instead of waiting, and channel ends on their way
+        to side are given up too."""
+        import queue
+        stranded = []
+        with self.lock:
+            if self.ended[side]:
+                return
+            self.ended[side] = True
+            self.queues[side].put(_GONE)
+            while True:
+                try:
+                    value = self.queues[1 - side].get_nowait()
+                except queue.Empty:
+                    break
+                if isinstance(value, _End):
+                    stranded.append(value)
+                elif value is _GONE:
+                    self.queues[1 - side].put(value)
+                    break
+        for end in stranded:
+            end.channel.gone(end.side)
+
+
+_GONE = object()
+
+
+def _scenario_processes(acts, found):
+    """Every process of a par, outermost and first first (not or else)."""
+    for act in acts:
+        if act[0] == 'par':
+            for branch in act[1:]:
+                found.append(id(branch))
+                _scenario_processes(branch[1:], found)
+    return found
 
 
 class _End:
@@ -2173,6 +2586,9 @@ def _acts_channels(acts):
                 names.append(str(act[2][1]))
         elif act[0] == 'receive':
             names.append(str(act[1]))
+        elif act[0] == 'receiveor':
+            names.append(str(act[1]))
+            names += _acts_channels(act[3][1:])
         elif act[0] == 'par':
             for branch in act[1:]:
                 names += _acts_channels(branch[1:])
@@ -2190,7 +2606,7 @@ def _constant(form):
     return DataValue(str(form[1]), ())
 
 
-def _run_scenario(model, spec, shake):
+def _run_scenario(model, spec, shake, crash=False):
     import threading
     forms = read_descriptor(spec)
     title = str(forms[0][1])
@@ -2206,17 +2622,34 @@ def _run_scenario(model, spec, shake):
     clock = [0]
     history = []
     failures = []
+    # The crashed process (a par's branch) and the act it crashes before.
+    processes = _scenario_processes(body, [])
+    victim = None
+    if crash and processes:
+        chooser = SplitMix64(shake ^ 0xC3A5C85C97CB3127)
+        branch = processes[chooser.below(len(processes))]
+        victim = (branch, chooser.below(_branch_length(body, branch) + 1))
 
     def tick():
         with lock:
             clock[0] += 1
             return clock[0]
 
-    def process(acts, env, ends, random):
+    def process(acts, env, ends, random, identity=None):
+        """'done' or 'failed'; either way, the ends still held are given up."""
+        try:
+            return steps(acts, env, ends, random, identity)
+        finally:
+            for channel, side in ends.values():
+                channel.gone(side)
+
+    def steps(acts, env, ends, random, identity):
         own = {}
-        for act in acts:
+        for index, act in enumerate(acts):
             if failures:
-                return
+                return 'failed'
+            if victim is not None and victim == (identity, index):
+                return 'failed'
             kind = act[0]
             if kind == 'call':
                 command = commands[str(act[1])]
@@ -2229,7 +2662,7 @@ def _run_scenario(model, spec, shake):
                     result = command.run(own, *full)
                 except Exception as error:
                     failures.append(f'{command.name} raised {type(error).__name__}: {error}')
-                    return
+                    return 'failed'
                 returned = tick()
                 with lock:
                     history.append((command, args, result, called, returned))
@@ -2243,57 +2676,89 @@ def _run_scenario(model, spec, shake):
                 else:
                     value = env[str(operand[1])] if operand[0] == 'var' else _constant(operand)
                 _perturb(random)
-                channel.queues[side].put(value)
-            elif kind == 'receive':
+                channel.send(side, value)
+            elif kind in ('receive', 'receiveor'):
                 channel, side = ends[str(act[1])]
                 try:
                     value = channel.queues[1 - side].get(timeout=5)
                 except Exception:
                     failures.append(f'a receive on {act[1]} waited too long: the processes are blocked')
-                    return
+                    return 'failed'
+                if value is _GONE:
+                    # The other process ended: or else runs instead of the
+                    # rest; without it, this process fails too.
+                    channel.queues[1 - side].put(_GONE)
+                    if kind == 'receive':
+                        return 'failed'
+                    del ends[str(act[1])]
+                    return steps(act[3][1:], env, ends, random, None)
                 if isinstance(value, _End):
                     ends[str(act[2])] = (value.channel, value.side)
                 else:
                     env[str(act[2])] = value
             elif kind == 'par':
-                branches = [b[1:] for b in act[1:]]
+                branches = act[1:]
                 owned = {}
                 for i, branch in enumerate(branches):
-                    for name in _acts_channels(branch):
+                    for name in _acts_channels(branch[1:]):
                         if name not in owned:
                             owned[name] = []
                         if i not in owned[name]:
                             owned[name].append(i)
                 threads = []
+                outcomes = [None] * len(branches)
                 for i, branch in enumerate(branches):
                     mine = {}
                     for name, users in owned.items():
                         if i in users:
                             if name in ends:
-                                mine[name] = ends[name]
+                                mine[name] = ends.pop(name)
                             elif name in channels:
                                 mine[name] = (channels[name], users.index(i))
-                    threads.append(threading.Thread(target=process, args=(
-                        branch, dict(env), mine, SplitMix64(shake ^ ((len(threads) + 1) * 0x9E3779B97F4A7C15)))))
+
+                    def run(i=i, branch=branch, mine=mine, random=SplitMix64(shake ^ ((len(threads) + 1) * 0x9E3779B97F4A7C15))):
+                        outcomes[i] = process(branch[1:], dict(env), mine, random, id(branch))
+                    threads.append(threading.Thread(target=run))
                 for t in threads:
                     t.start()
                 for t in threads:
                     t.join()
+                # A failed branch fails the process that ran the par.
+                if 'failed' in outcomes:
+                    return 'failed'
             elif kind == 'expect':
                 actual, wanted = env.get(str(act[1])), _constant(act[2])
                 if actual is None or compare_values(actual, wanted) != 0:
                     failures.append(f'expect {act[1]} = {render(wanted)} failed: {act[1]} is {render(actual)}')
-                    return
+                    return 'failed'
+        if victim is not None and victim == (identity, len(acts)):
+            return 'failed'
+        return 'done'
 
-    process(body, {}, {}, SplitMix64(shake))
+    outcome = process(body, {}, {}, SplitMix64(shake))
     if failures:
-        return title, failures[0]
+        return title, failures[0] + (' (with a process crashed)' if victim is not None else '')
+    if outcome == 'failed' and victim is None:
+        return title, 'a process failed'
     final = model.abstract(symbols, state) if model.abstract is not None else None
     if not _linearizes_history(model, symbols, history, expected, final, state):
         observed = '; '.join(f'{c.name}({", ".join(render(a) for a in args)}) returned {render(r)}'
                              for c, args, r, _, _ in sorted(history, key=lambda h: h[3]))
         return title, f'no order of the calls agrees with the model ({observed})'
     return title, None
+
+
+def _branch_length(acts, identity):
+    """How many acts the branch with this identity has."""
+    for act in acts:
+        if act[0] == 'par':
+            for branch in act[1:]:
+                if id(branch) == identity:
+                    return len(branch) - 1
+                found = _branch_length(branch[1:], identity)
+                if found is not None:
+                    return found
+    return None
 
 
 def _linearizes_history(model, symbols, history, expected, final, state):
@@ -2335,8 +2800,9 @@ def check_scenario(model, spec, runs=30, seed=None):
     if seed is None:
         seed = int(os.environ.get('LAWSPEC_SEED', '0'))
     random = SplitMix64(seed ^ 0x2545F4914F6CDD1D)
-    for _ in range(runs):
-        title, failure = _run_scenario(model, spec, random.next())
+    for run in range(runs):
+        # Every third run crashes one process of a par at a random point.
+        title, failure = _run_scenario(model, spec, random.next(), crash=run % 3 == 2)
         if failure is not None:
             raise AssertionError(f'scenario {title} fails: {failure}')
 
@@ -2365,8 +2831,27 @@ class Channel:
         self._queues[side].put(value)
 
     def receive(self, side):
-        """Waits for the next value the other side sent to side."""
-        return self._queues[1 - side].get()
+        """Waits for the next value the other side sent to side; raises
+        PeerFailed once the other side has given up and nothing is left."""
+        value = self._queues[1 - side].get()
+        if value is _ABANDONED:
+            self._queues[1 - side].put(value)
+            raise PeerFailed('the other end gave up the conversation (its process failed or abandoned it)')
+        return value
+
+    def abandon(self, side):
+        """side gives up: the other side's receives fail after the values
+        already sent."""
+        self._queues[side].put(_ABANDONED)
+
+
+_ABANDONED = object()
+
+
+class PeerFailed(Exception):
+    """A receive whose other end gave up: its process failed, or it called
+    abandon(). Catch it to handle the failure (or else); otherwise this
+    process fails too."""
 
 
 class SessionEnd:
@@ -2407,6 +2892,11 @@ class SessionEnd:
         value = channel.receive(self._side)
         return value, after(channel, self._side)
 
+    def abandon(self):
+        """Gives up the conversation: the other end's receives fail with
+        PeerFailed once it has received what was already sent."""
+        self._take().abandon(self._side)
+
 
 def check_send(value, t):
     """Checks that value is a native value of the scalar type t."""
@@ -2429,6 +2919,10 @@ class Spawned:
                 self._result = fn(*args)
             except BaseException as error:  # re-raised by join()
                 self._error = error
+                # A failed process gives up the channel ends it was given.
+                for arg in args:
+                    if isinstance(arg, SessionEnd):
+                        arg._channel.abandon(arg._side)
         self._thread = threading.Thread(target=run, daemon=True)
         self._thread.start()
 

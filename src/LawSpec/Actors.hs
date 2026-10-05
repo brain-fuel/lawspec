@@ -6,7 +6,7 @@
 -- handlers are the user's own adapters, called with native values.
 module LawSpec.Actors (actorArtifacts) where
 
-import LawSpec.Actors.Types (actorsOf)
+import LawSpec.Actors.Types (actorsOf, supervisionsOf)
 import LawSpec.Common (Artifact(..), Diagnostic(..))
 import LawSpec.Testing (Plan(..), PlannedUnit(..))
 import qualified LawSpec.Actors.Python as Python
@@ -19,7 +19,8 @@ import qualified LawSpec.Actors.Haskell as Haskell
 actorArtifacts :: Bool -> String -> Plan -> Either [Diagnostic] [Artifact]
 actorArtifacts minify target plan = case concatMap actorsOf units of
   [] -> Right []
-  actors -> either (\message -> Left [Diagnostic "actors" message Nothing]) Right (emitter target minify bits datas actors)
+  actors -> either (\message -> Left [Diagnostic "actors" message Nothing]) Right
+    (emitter target minify bits datas actors (concatMap supervisionsOf units))
   where
     units = map plannedUnit (plannedUnits plan)
     datas = planDataDeclarations plan
@@ -33,5 +34,5 @@ actorArtifacts minify target plan = case concatMap actorsOf units of
       "kotlin" -> Jvm.emit t
       "rust" -> Rust.emit t
       "haskell" -> Haskell.emit t
-      _ -> \_ _ _ _ -> Right []
+      _ -> \_ _ _ _ _ -> Right []
 

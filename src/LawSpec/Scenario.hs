@@ -36,7 +36,8 @@ data Statement
   = Bind String String [Argument] Span    -- x <- command args
   | Call String [Argument] Span           -- command args
   | SendTo String Argument Span           -- send channel value
-  | ReceiveFrom String String Span        -- receive channel x
+  | ReceiveFrom String String (Maybe [Statement]) Span
+                                          -- receive channel x [or else ...]
   | Par [[Statement]] Span                -- par ... with ... end
   | Expect String Expr Span               -- expect x = value
   deriving (Eq, Show)
@@ -133,8 +134,16 @@ checkScenario protocols u s = do
           pure held { ends = M.insert c more (ends held) }
         Just (Receive expected : _) -> failing at ("channel " ++ c ++ " must receive " ++ prettyType expected ++ " here, not send" ++ sides)
         Just [] -> failing at ("channel " ++ c ++ "'s protocol has ended; nothing more may be sent")
-      ReceiveFrom c x at -> case M.lookup c (ends holding) of
+      ReceiveFrom c x handler at -> case M.lookup c (ends holding) of
         Nothing -> failing at ("this process does not hold an end of channel " ++ c)
+        -- When c's other process has failed, the handler runs instead of
+        -- the rest of this process, without c; ends it still holds after
+        -- are given up, so their other processes' receives fail too.
+        Just steps@(Receive _ : _) | Just h <- handler -> do
+          when (x `elem` concatMap mentioned h)
+            (failing at ("the or else of receive " ++ c ++ " " ++ x ++ " runs when nothing was received, so it cannot use " ++ x))
+          _ <- run machine channels holding { ends = M.delete c (ends holding) } h
+          statement machine channels holding (ReceiveFrom c x Nothing at) <* pure steps
         -- Receiving a channel end (a protocol's type) delegates it here,
         -- from its start; any other value is held as a variable.
         Just (Receive t : more) -> pure $ case protocolOf t of
@@ -181,7 +190,13 @@ checkScenario protocols u s = do
       c <- maybe (failing at ("there is no command " ++ command ++ " in model " ++ machineName machine)) pure
         (lookup command [(commandName c, c) | c <- machineCommands machine, not (commandRestart c)])
       ty <- maybe (failing at ("command " ++ command ++ " has no signature")) pure (lookup command (functions u))
-      let (parameters, result) = split ty
+      let (parameters, full) = split ty
+          -- An actor's handler returns its reply with the next state.
+          result
+            | machineActor machine = case bare full of
+                Application "Pair" [r, _] -> r
+                _ -> Named "Unit"
+            | otherwise = full
           others = [p | (i, p) <- zip [0 :: Int ..] parameters, i /= commandStatePosition c]
       unless (length others == length args)
         (failing at ("command " ++ command ++ " takes " ++ show (length others) ++ " arguments here; the model's handle is passed for you"))
@@ -207,6 +222,7 @@ collectPars :: [Statement] -> [(Span, [[Statement]])]
 collectPars = concatMap go
   where
     go (Par branches at) = (at, branches) : concatMap collectPars branches
+    go (ReceiveFrom _ _ (Just handler) _) = collectPars handler
     go _ = []
 
 -- The channels a list of statements uses, directly or in nested pars.
@@ -217,7 +233,7 @@ channelsIn = nub . concatMap go
     go (SendTo c (Held x) _) = [c, x]
     go (SendTo c (Given x) _) = [c, x]
     go (SendTo c _ _) = [c]
-    go (ReceiveFrom c _ _) = [c]
+    go (ReceiveFrom c _ handler _) = c : maybe [] channelsIn handler
     go (Par branches _) = concatMap channelsIn branches
     go _ = []
 
@@ -230,7 +246,7 @@ toProgram u s = P.Program (scenarioName s) (scenarioModel s) [c | (c, _, _) <- s
       Bind x command args at -> P.Invoke command (Just x) <$> mapM (operand at) args
       Call command args at -> P.Invoke command Nothing <$> mapM (operand at) args
       SendTo c v at -> P.Deliver c <$> operand at v
-      ReceiveFrom c x _ -> pure (P.Accept c x)
+      ReceiveFrom c x handler _ -> P.Accept c x <$> traverse (mapM act) handler
       Par branches _ -> P.Fork <$> mapM (mapM act) branches
       Expect x e at -> P.Assert x <$> constant at e
     operand _ (Held x) = pure (P.Variable x)
@@ -249,3 +265,18 @@ toProgram u s = P.Program (scenarioName s) (scenarioModel s) [c | (c, _, _) <- s
       _ -> Left (Just at, "scenario " ++ show (scenarioName s) ++ ": a scenario's constants are numbers, text, true, false or constructors without fields")
     strip (Located _ inner) = strip inner
     strip other = other
+
+-- The variables a list of statements uses.
+mentioned :: Statement -> [String]
+mentioned st = case st of
+  Bind _ _ args _ -> concatMap argument args
+  Call _ args _ -> concatMap argument args
+  SendTo _ v _ -> argument v
+  ReceiveFrom _ _ handler _ -> maybe [] (concatMap mentioned) handler
+  Par branches _ -> concatMap (concatMap mentioned) branches
+  Expect x _ _ -> [x]
+  where
+    argument a = case a of
+      Held x -> [x]
+      Given x -> [x]
+      Constant _ -> []

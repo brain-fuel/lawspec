@@ -41,3 +41,14 @@ def depositTwice(value0):
 
 def reopen(value0):
     return data.Account(value0.balance)
+
+
+def survivesCrash(value0):
+    from lawspec_actors import BankSupervisor
+
+    bank = BankSupervisor.start()
+    bank.account.deposit(value0)
+    bank.account.crash()
+    total = bank.account.balance()
+    bank.stop()
+    return total

@@ -1,7 +1,8 @@
 -- What an actor's typed class on a target is made from (see LawSpec.Actors).
-module LawSpec.Actors.Types (Actor(..), Handler(..), actorsOf) where
+module LawSpec.Actors.Types (Actor(..), Handler(..), Supervision(..), Child(..), actorsOf, supervisionsOf) where
 
 import qualified LawSpec.Core as C
+import Data.Char (toUpper)
 import LawSpec.Core.Machine
 
 -- What a target needs of one actor.
@@ -16,7 +17,26 @@ data Actor = Actor
   -- The start adapter's arguments, named.
   , actorStartArguments :: [(String, C.Type)]
   , actorHandlers :: [Handler]
+  -- The adapter giving the state after a crash from the last one (restart
+  -- from); without it the actor restarts from its start.
+  , actorRestart :: Maybe C.Declaration
   }
+
+-- What a target needs of one supervisor.
+data Supervision = Supervision
+  { supervisionUnit :: C.Unit
+  , supervisionName :: String
+  -- The generated class's name, such as BankSupervisor.
+  , supervisionClass :: String
+  , supervisionStrategy :: SupervisionStrategy
+  , supervisionRestarts :: Integer
+  -- The period, in microseconds.
+  , supervisionPeriod :: Integer
+  -- In start order: a child is an actor or another supervisor.
+  , supervisionChildren :: [(Lifetime, String, Child)]
+  }
+
+data Child = ActorChild Actor | SupervisorChild String
 
 data Handler = Handler
   { handlerName :: String
@@ -32,6 +52,9 @@ actorsOf :: C.Unit -> [Actor]
 actorsOf u =
   [ Actor u (machineName m) (lastSegment (machineState m)) own start (named start)
       [Handler (commandName c) d (drop 1 (named d)) (reply own d) | c <- machineCommands m, not (commandRestart c), Just d <- [declaration (commandSystem c)]]
+      (case [d | c <- machineCommands m, commandRestart c, Just d <- [declaration (commandSystem c)]] of
+        d : _ -> Just d
+        [] -> Nothing)
   | m <- C.unitMachines u, machineActor m
   , Just s <- [machineStart m], Just start <- [declaration (startSystem s)]
   , let own = snd (arrows (C.declarationType start)) ]
@@ -47,6 +70,24 @@ actorsOf u =
       result | result == own -> Nothing
       C.Constructor n [C.TypeArgument r, C.TypeArgument _] | lastSegment n == "Pair" -> Just r
       _ -> Nothing
+
+-- The unit's supervisors, each child resolved to an actor or a supervisor's
+-- class name.
+supervisionsOf :: C.Unit -> [Supervision]
+supervisionsOf u =
+  [ Supervision u (supervisorName s) (supervisorClassName (supervisorName s)) (supervisorStrategy s)
+      (supervisorRestarts s) (supervisorPeriod s)
+      [ (lifetime, c, maybe (SupervisorChild (supervisorClassName c)) ActorChild (lookup c actors))
+      | (lifetime, c) <- supervisorChildren s ]
+  | s <- C.unitSupervisors u ]
+  where
+    actors = [(actorName a, a) | a <- actorsOf u]
+
+-- bank's class is BankSupervisor.
+supervisorClassName :: String -> String
+supervisorClassName n = case n of
+  c : cs -> toUpper c : cs ++ "Supervisor"
+  [] -> "Supervisor"
 
 arrows :: C.Type -> ([C.Type], C.Type)
 arrows (C.Arrow a b) = let (as, r) = arrows b in (a : as, r)

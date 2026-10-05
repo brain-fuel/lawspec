@@ -115,7 +115,7 @@ spec = describe "recursive parameter payload traversal" $ do
         definition = S.FunctionDefinition "identity" [("tree",refined "tree")]
           (refined "result") [] (S.Var "tree") span
         unit = S.Unit "surface" [("identity",S.Arrow (refined "tree") (refined "result"))]
-          [] [] [] [] [] [definition] [] [] [] [] [] []
+          [] [] [] [] [] [definition] [] [] [] [] [] [] []
         invalid = unit {S.functionDefinitions=[definition {S.functionBody=
           S.ConstructLit "Tree::Leaf" [S.Number 0,S.Number 0]}]}
     forM_ [32,64] $ \bits -> do
