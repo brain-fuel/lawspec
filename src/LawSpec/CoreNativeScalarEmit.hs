@@ -2,6 +2,7 @@ module LawSpec.CoreNativeScalarEmit (nativeScalarEmit, nativeScalarEmitWithData,
 import LawSpec.Bounds (inputRange)
 import LawSpec.AbilityNames (interfaceName, productionName, specName, recordingName)
 import qualified LawSpec.AbilityEmit.Go as GoAbilities
+import qualified LawSpec.AbilityEmit.Java as JavaAbilities
 import LawSpec.ModelTests (modelTestArtifacts)
 import LawSpec.Collections (isCollectionsType)
 import qualified LawSpec.JavaData as JavaData
@@ -156,8 +157,9 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
             then Doc.text "import lawspec.runtime.LawSpecRuntime.Value;" <> Doc.hardline <> Doc.hardline
            else if any (javaUses "LawSpecRuntime.") (adapterFunctions) then Doc.hardline else mempty) <>
            Doc.text ("public final class " ++ cls ++ " ") <>
-           (if null (adapterFunctions) then Doc.text "{}" else
-             Doc.block 2 (Doc.joinWith (Doc.hardline <> Doc.hardline) [javaStubFn n t | (n,t) <- adapterFunctions])) <> Doc.hardline
+           (if null adapterFunctions && null (C.unitAbilities u) then Doc.text "{}" else
+             Doc.block 2 (Doc.joinWith (Doc.hardline <> Doc.hardline) ([javaStubFn n t | (n,t) <- adapterFunctions] ++
+               [java (JavaAbilities.productionStub dataDeclarations u a) | a <- C.unitAbilities u]))) <> Doc.hardline
          | otherwise = Doc.render (Doc.selectLayout minify (Doc.Pretty 100)) $
            Doc.text "// User-owned LawSpec adapter." <> Doc.hardline <>
            (if null pkg then mempty else Doc.text ("package " ++ pkg) <> Doc.hardline <> Doc.hardline) <>
@@ -228,7 +230,8 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
       in any (isInfixOf needle) (native result : map nativeArg args)
     javaStubFn n t =
       let (args,result) = functionType t
-          params = [Doc.group (javaTypeDoc True False 8 a <> Doc.nest 4 (Doc.softline <> Doc.text ("value" ++ show i))) | (i,a) <- zip [0::Int ..] args]
+          params = [Doc.text (JavaAbilities.abilitiesClass u ++ "." ++ maybe "Object" interfaceName (abilityNamed ability) ++ " " ++ handlerParameter ability) | ability <- usesOf n] ++
+            [Doc.group (javaTypeDoc True False 8 a <> Doc.nest 4 (Doc.softline <> Doc.text ("value" ++ show i))) | (i,a) <- zip [0::Int ..] args]
           asyncStub = n `elem` asyncFunctions u
           resultText = if asyncStub then "java.util.concurrent.CompletableFuture<" ++ boxed (native result) ++ ">" else native result
           flatHeader = "public static " ++ resultText ++ " " ++ n ++ "("
@@ -644,16 +647,56 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
       , JavaProperties.generatorWithin = \within -> JavaTestHelpers.generatorDocWithin within bits javaDataBudget (cls ++ "LawSpecTest") custom (java . JavaExpr.reference) key
       , JavaProperties.nativeArgument = javaNativeArgument
       , JavaProperties.nativeResult = javaNativeResult
+      , JavaProperties.handlerInstalls = javaInstalls
       }
+    -- A handler as the ability's Java interface.
+    javaHandler ability = Doc.text ("((" ++ JavaAbilities.abilitiesClass u ++ "." ++ maybe "Object" interfaceName (abilityNamed ability) ++
+      ") LawSpecRuntime.handler(symbols, " ++ q (C.abilityKey ability) ++ "))")
+    javaConstruct' ty tag fields
+      | custom ty = JavaExpr.call "_schema.construct" [javaRef ty,JavaExpr.quoted tag,JavaExpr.call "java.util.List.of" fields,Doc.text (show bits),Doc.text "symbols"]
+      | otherwise = javaRuntime "construct" [JavaExpr.quoted (key ty),JavaExpr.quoted tag,JavaExpr.array fields]
+    javaEqual ty a b
+      | custom ty = JavaExpr.call "_schema.equal" [javaRef ty,a,b,Doc.text (show bits),Doc.text "symbols"]
+      | otherwise = javaRuntime "truth" [javaRuntime "binary" [JavaExpr.quoted "==",a,b]]
+    javaInstalls e = case chosenHandlers e of
+      [] -> []
+      chosen -> [javaRuntime "installHandlers" [Doc.text "symbols", JavaExpr.call "java.util.Map.of"
+        (concat [[JavaExpr.quoted (C.abilityKey a), Doc.text (javaConstructHandler a c)] | (a, c) <- chosen])] <> Doc.text ";"]
+    javaConstructHandler a c = case c of
+      C.ProductionHandler -> "new " ++ cls ++ "." ++ maybe "Unknown" productionName (abilityNamed a) ++ "()"
+      C.SpecHandler h -> "new " ++ JavaAbilities.abilitiesClass u ++ "." ++ maybe "Unknown" specName (specNamed h) ++ "(symbols)"
+      C.RecordingHandler inner -> "new " ++ JavaAbilities.abilitiesClass u ++ "." ++ maybe "Unknown" recordingName (abilityNamed a) ++
+        "(" ++ javaConstructHandler a inner ++ ", symbols)"
     javaExternal term values = case C.expressionNode term of
       C.ExternalCall identity _ | Just evaluator <- lookup identity definitions ->
         Right (JavaExpr.call evaluator (Doc.text "symbols" : values))
+      -- raise aborts to the nearest attempt of its Fail ability.
+      C.Perform op [_] | C.isFail (C.operationAbility op) ->
+        Right (javaRuntime "raiseFailure" (JavaExpr.quoted (C.abilityKey (C.operationAbility op)) : values))
+      -- An operation goes to the handler the law installed for its ability.
+      C.Perform op args ->
+        Right (javaNativeResult (expressionType term) (javaHandler (C.operationAbility op) <> JavaExpr.call ("." ++ C.operationName op)
+          [javaNativeArgument ty v | (ty,v) <- zip (map expressionType args) values]))
+      C.Handle (C.CatchFailure ability) _ -> case (expressionType term, values) of
+        (C.Constructor "Either" [C.TypeArgument failure, C.TypeArgument result], [body]) ->
+          let side tag ty = Doc.text "_value -> " <> javaConstruct' (expressionType term) tag [javaChecked ty (Doc.text "_value")]
+          in Right (javaRuntime "attempt" [JavaExpr.quoted (C.abilityKey ability), Doc.text "() -> " <> body,
+            side "Either::Right" result, side "Either::Left" failure])
+        _ -> Left "attempt gives an Either"
+      C.Calls op args ->
+        let matches = case args of
+              Nothing -> Doc.text "null"
+              Just xs -> Doc.text "_recorded -> " <> Doc.joinWith (Doc.text " && ")
+                [javaEqual (expressionType a) (Doc.text ("_recorded.get(" ++ show i ++ ")")) v | (i,(a,v)) <- zip [0 :: Int ..] (zip xs values)]
+        in Right (javaRuntime "countCalls" [Doc.text ("LawSpecRuntime.handler(symbols, " ++ q (C.abilityKey (C.operationAbility op)) ++ ")"),
+          JavaExpr.quoted (C.operationName op), matches])
       C.ExternalCall identity args ->
         let n = declarationName identity
             typed = zip (map expressionType args) values
         in Right $ if n `elem` map contractName (contracts u)
           then JavaExpr.call ("_lawspec_call_" ++ n) (Doc.text "symbols" : [javaChecked ty v | (ty,v) <- typed])
-          else javaNativeResult (expressionType term) (awaitFor (adapterName u identity) (JavaExpr.call (cls ++ "." ++ adapterName u identity) [javaNativeArgument ty v | (ty,v) <- typed]))
+          else javaNativeResult (expressionType term) (awaitFor (adapterName u identity) (JavaExpr.call (cls ++ "." ++ adapterName u identity)
+            (map javaHandler (usesOf n) ++ [javaNativeArgument ty v | (ty,v) <- typed])))
       _ -> Left "expected checked Java external call"
     renderLegacy term = case C.expressionNode term of
       C.Local n -> localName n

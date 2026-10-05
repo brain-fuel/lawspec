@@ -34,6 +34,8 @@ data Config = Config
   , generatorWithin :: Maybe (Integer, Integer) -> Type -> D.Doc
   , nativeArgument :: Type -> D.Doc -> D.Doc
   , nativeResult :: Type -> D.Doc -> D.Doc
+  -- The statements that install a law's handlers in symbols, for each case.
+  , handlerInstalls :: Expanded -> [D.Doc]
   }
 
 text = D.text
@@ -111,13 +113,13 @@ emitTests Config{..} unit laws = do
       let label = owner e ++ "::" ++ name e
           fn = "law" ++ show index
       exampleDocs <- mapM (\(i,ex) -> pure $ testFunction (fn ++ "Example" ++ show i) $ statements
-        ([symbols] ++ [bind n (expr v) | (n,v) <- bindings ex] ++
+        ([symbols] ++ handlerInstalls e ++ [bind n (expr v) | (n,v) <- bindings ex] ++
         map (assertionDoc (label ++ " example " ++ exampleName ex)) (expectations ex) ++
         [assertionDoc label (assertion e)])) (zip [0::Int ..] (examples (original e)))
       boundaryDocs <- mapM (\(i,vs) -> do
         values <- mapM literal vs
         pure $ testFunction (fn ++ "Boundary" ++ show i) $ statements
-          ([symbols] ++ [bind (inputId inp) (checked (inputType inp) v) | (inp,v) <- zip (inputs e) values] ++
+          ([symbols] ++ handlerInstalls e ++ [bind (inputId inp) (checked (inputType inp) v) | (inp,v) <- zip (inputs e) values] ++
           [assertionDoc (label ++ " boundary " ++ show i) (assertion e)]))
         (zip [0::Int ..] (maybe (boundaryCases e) id (finiteCases e)))
       let check = assertionDoc (label ++ " property") (assertion e)
@@ -126,7 +128,7 @@ emitTests Config{..} unit laws = do
         else if any (not . null . inputRefinements) (inputs e) || propertyKind e == "contract"
           then (:[]) <$> refinedProperty fn label e check
           else pure [testFunction (fn ++ "Property") $ statement $ call "_lawspecChecker().forAll"
-            [text "Generator.integers()",closure "seed" $ statements ([symbols] ++
+            [text "Generator.integers()",closure "seed" $ statements ([symbols] ++ handlerInstalls e ++
               [bind (inputId inp) (runtime "sample" [quoted (typeKey (inputType inp)),
                 text ("seed + " ++ show i),number machineBits]) | (i,inp) <- zip [0::Int ..] (inputs e)] ++
               [check,returned (text "true")])]]
@@ -153,7 +155,7 @@ emitTests Config{..} unit laws = do
             [closure inputName (statements
               ([text "if (_captured.error() != null) return true;" | nativeGenerators] ++
                unpack ++ [bindingsDoc,returned (conjunction (map (truth . expr) predicates))]))])]
-          callback = closure inputName (statements (unpack ++ [bindingsDoc,check,returned (text "true")]))
+          callback = closure inputName (statements (unpack ++ [bindingsDoc] ++ handlerInstalls e ++ [check,returned (text "true")]))
       -- Keep JetCheck's native tree shrinking and its growing list budget.
       let invocation count size = statement $ chain (text "_lawspecChecker()")
             [("withIterationCount",[number count]),
@@ -243,7 +245,7 @@ emitTests Config{..} unit laws = do
     refinedProperty fn label e check = do
       domains <- mapM (domain e) (zip [0::Int ..] (generationPlan e))
       let cfg = generation e
-          callback = closure "_values" (statements [fromValues (inputs e),check])
+          callback = closure "_values" (statements ([fromValues (inputs e)] ++ handlerInstalls e ++ [check]))
           invocation = runtime "refinedCase" [array "LawSpecRuntime.Domain" domains,
             text "seed",number (maxAttempts cfg),number (maxShrinks cfg),callback,
             quoted (label ++ " | " ++ intercalate "; " (map prettyExpr (concatMap inputRefinements (inputs e))))]

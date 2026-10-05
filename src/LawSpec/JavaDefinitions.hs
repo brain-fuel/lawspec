@@ -1,5 +1,5 @@
 -- Native entry points and checked implementation helpers for total definitions.
-module LawSpec.JavaDefinitions (emitJavaDefinitions, emitJvmDefinitionBodies, definitionCalls, orchestratedAdapters, kotlinAdapterBridge) where
+module LawSpec.JavaDefinitions (emitJavaDefinitions, emitJvmDefinitionBodies, definitionCalls, orchestratedAdapters, kotlinAdapterBridge, kotlinOperationBridge, performedOperations) where
 
 import LawSpec.Core.Stages (stageFailures)
 import LawSpec.Core.Policy
@@ -33,6 +33,20 @@ orchestratedAdapters units =
 kotlinAdapterBridge :: Id -> String
 kotlinAdapterBridge identity = "call_" ++ map (\c -> if isAlphaNum c then c else '_') (idText identity)
 
+-- The Kotlin bridge method through which shared JVM bodies perform a Kotlin
+-- handler's operation.
+kotlinOperationBridge :: Operation -> String
+kotlinOperationBridge op = "perform_" ++ map (\c -> if isAlphaNum c then c else '_') (idText (operationId op))
+
+-- The operations checked definitions perform, other than raise.
+performedOperations :: [Unit] -> [Operation]
+performedOperations units = foldr (\x acc -> if x `elem` acc then acc else x : acc) []
+  [op | d <- concatMap unitDefinitions units, op <- performs (definitionBody d), not (isFail (operationAbility op))]
+  where
+    performs expression = case expressionNode expression of
+      Perform op arguments -> op : concatMap performs arguments
+      _ -> concatMap performs (children expression)
+
 definitionCalls :: [Unit] -> [(Id,String)]
 definitionCalls units = [(declarationId (definitionDeclaration d),
   "lawspec.runtime.LawSpecDefinitionBodies.evaluate" ++ show i)
@@ -57,6 +71,8 @@ emitDefinitions withNative layout bits declarations units = do
     assign name value = D.group (D.text ("var " ++ name ++ " =") <>
       D.nest 4 (D.softline <> value) <> D.text ";")
     contextual identity body = D.text "try " <> D.block 2 body <>
+      -- A Fail ability's failure passes through, to the attempt that awaits it.
+      D.text " catch (lawspec.runtime.LawSpecRuntime.Failure failure) " <> D.block 2 (D.text "throw failure;") <>
       D.text " catch (RuntimeException error) " <>
       D.block 2 (assign "context" (E.quoted (idText identity ++ ": ")) <> D.hardline <>
         D.text "throw " <> E.call "new IllegalArgumentException"
@@ -113,6 +129,22 @@ emitDefinitions withNative layout bits declarations units = do
           external expression values = case expressionNode expression of
             ExternalCall identity _ | Just name <- lookup identity callees ->
               pure (E.call name (D.text "symbols":values))
+            -- raise aborts to the nearest attempt of its Fail ability.
+            Perform op [_] | isFail (operationAbility op) ->
+              pure (E.call "LawSpecRuntime.raiseFailure" (E.quoted (abilityKey (operationAbility op)) : values))
+            -- An operation goes to the handler installed in symbols for its
+            -- ability: Java directly, through the codecs; Kotlin through its
+            -- generated bridge.
+            Perform op args
+              | not withNative -> pure (E.call ("lawspec.runtime.LawSpecKotlinAdapters." ++ kotlinOperationBridge op) (D.text "symbols" : values))
+              | otherwise -> do
+                  codecs <- mapM (Native.javaCodecDocWithContext (D.text "symbols") declarations bits . expressionType) args
+                  resultCodec <- Native.javaCodecDocWithContext (D.text "symbols") declarations bits (expressionType expression)
+                  let call = E.call (handlerOf (operationAbility op) ++ "." ++ operationName op)
+                        [codec <> D.text ".decode(" <> value <> D.text ")" | (codec, value) <- zip codecs values]
+                  pure $ if expressionType expression == scalarType "Unit"
+                    then E.call "lawspec.runtime.LawSpecRuntime.unit" [D.text "() -> " <> call]
+                    else resultCodec <> D.text ".encode(" <> call <> D.text ")"
             -- An orchestration calls an adapter natively: Java directly, with
             -- the codecs; Kotlin through its generated bridge.
             ExternalCall identity _ | Just (owner, adapter) <- lookup identity (orchestratedAdapters units) ->
@@ -124,8 +156,10 @@ emitDefinitions withNative layout bits declarations units = do
                       cls = intercalate "." (init parts ++ [concatMap capitalize (split '_' (last parts))])
                   codecs <- mapM (Native.javaCodecDocWithContext (D.text "symbols") declarations bits) parameterTypes
                   resultCodec <- Native.javaCodecDocWithContext (D.text "symbols") declarations bits resultType
+                  -- An adapter that uses abilities gets their handlers first.
                   let call = E.call (cls ++ "." ++ declarationName adapter)
-                        [codec <> D.text ".decode(" <> value <> D.text ")" | (codec, value) <- zip codecs values]
+                        ([D.text (handlerOf a) | a <- declarationUses adapter, not (isFail a)] ++
+                         [codec <> D.text ".decode(" <> value <> D.text ")" | (codec, value) <- zip codecs values])
                   -- Within its stage's timeout and hedge, when it has them.
                   pure $ if declarationAsync adapter
                     then E.call "LawSpecRuntime.awaitStep" [D.text "symbols", D.text "() -> " <> call,
@@ -180,6 +214,12 @@ emitDefinitions withNative layout bits declarations units = do
       pure (signature <> D.block 2 (contextual (declarationId (definitionDeclaration d))
         (D.joinWith D.hardline statements)))
     evaluator identity = maybe (Left "unresolved Java policy definition") Right (lookup identity callees)
+    -- A handler from symbols, as its ability's Java interface.
+    handlerOf ability = "((" ++ maybe "Object" (\(u, a) -> abilitiesClassOf u ++ "." ++ abilityName a)
+      (lookup (abilityRefId ability) [(abilityId a, (u, a)) | u <- units, a <- unitAbilities u]) ++
+      ") LawSpecRuntime.handler(symbols, " ++ show (abilityKey ability) ++ "))"
+    abilitiesClassOf u = let parts = split '.' (idText (unitId u))
+      in intercalate "." ("lawspec" : "abilities" : init parts ++ [concatMap capitalize (split '_' (last parts))])
     policyDoc key fail' policy = do
       gates <- policyGates policy
       compensate <- case policyCompensate policy of

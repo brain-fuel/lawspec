@@ -1,0 +1,7 @@
+expect: the fee is never negative [native]
+@@ src/main/java/example/Abilities.java
+<<<<<<<
+      return 25;
+=======
+      return -25;
+>>>>>>>

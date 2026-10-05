@@ -6438,4 +6438,78 @@ public final class LawSpecRuntime {
         });
     return relay.address;
   }
+
+  // Abilities (docs/explanation/abilities.md). Handlers travel in the symbols
+  // map generated code passes to every definition: that map is the evidence
+  // of evidence-passing compilation. A law installs one handler per ability;
+  // an operation finds the handler of its ability there. The Fail ability's
+  // handlers abort, so raise throws a Failure and attempt catches it.
+  private static final String HANDLERS = "\0lawspec.handlers";
+
+  /** A failure raised with the Fail ability. */
+  public static final class Failure extends RuntimeException {
+    public final String ability;
+    public final transient Value value;
+
+    public Failure(String ability, Value value) {
+      super("failed with " + value + " (" + ability + ")", null, false, false);
+      this.ability = ability;
+      this.value = value;
+    }
+  }
+
+  /** One call a recording handler saw. */
+  public record RecordedCall(String operation, List<Value> arguments) {}
+
+  /** A recording handler: the calls it has seen. */
+  public interface Recorded {
+    List<RecordedCall> lawSpecCalls();
+  }
+
+  @SuppressWarnings("unchecked")
+  public static void installHandlers(Map<String, Object> symbols, Map<String, Object> handlers) {
+    var table = new java.util.HashMap<String, Object>();
+    if (symbols.get(HANDLERS) instanceof Map<?, ?> existing) table.putAll((Map<String, Object>) existing);
+    table.putAll(handlers);
+    symbols.put(HANDLERS, table);
+  }
+
+  public static Object handler(Map<String, Object> symbols, String ability) {
+    if (symbols.get(HANDLERS) instanceof Map<?, ?> table && table.containsKey(ability)) return table.get(ability);
+    throw new IllegalStateException("no handler for the ability " + ability
+        + ": a law names one with `using`, or runs under each lawful handler");
+  }
+
+  public static Value raiseFailure(String ability, Value value) {
+    throw new Failure(ability, value);
+  }
+
+  public static Value attempt(String ability, java.util.function.Supplier<Value> body,
+      java.util.function.UnaryOperator<Value> right, java.util.function.UnaryOperator<Value> left) {
+    Value value;
+    try {
+      value = body.get();
+    } catch (Failure failure) {
+      if (!failure.ability.equals(ability)) throw failure;
+      return left.apply(failure.value);
+    }
+    return right.apply(value);
+  }
+
+  public static Value countCalls(Object recording, String operation,
+      java.util.function.Predicate<List<Value>> matches) {
+    if (!(recording instanceof Recorded recorded))
+      throw new IllegalStateException("calls of needs a recording handler: `using recording`");
+    long count = recorded.lawSpecCalls().stream()
+        .filter(call -> call.operation().equals(operation) && (matches == null || matches.test(call.arguments())))
+        .count();
+    return integer64(count);
+  }
+
+  /** A Pair's two fields: a stateful handler clause's result and next state. */
+  public static List<Value> pairFields(Value pair) {
+    if (!(pair.data() instanceof Data data) || data.fields().size() != 2)
+      throw new IllegalStateException("a handler clause must give Pair result state");
+    return data.fields();
+  }
 }
