@@ -13,6 +13,7 @@ import qualified LawSpec.PortableGenerator as Generator
 import qualified LawSpec.PortableTestHelpers as Helpers
 import LawSpec.Scalar
 import LawSpec.MachineSpec (machineSpec)
+import LawSpec.Bounds (inputRange)
 import LawSpec.Core.Program (Program(..), programSpec)
 import qualified LawSpec.Core.Machine as C
 import Data.Aeson (encode, toJSON)
@@ -450,7 +451,9 @@ scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions 
           _ -> []
     nativeRefinedProperty prefix label e body =
       let names = map (text . inputId) (inputs e)
-          generators = map (generatorDoc . inputType) (inputs e)
+          -- An integer input draws from its refinement's constant range;
+          -- the filter still checks every refinement.
+          generators = [Generator.generatorDocWithin py bits usesData referenceDoc (inputRange bits input) (inputType input) | input <- inputs e]
           predicate = conjunction (map render (concatMap inputRefinements (inputs e)))
           cfg = generation e
           tuple = invoke (if py then "st.tuples" else "fc.tuple") generators

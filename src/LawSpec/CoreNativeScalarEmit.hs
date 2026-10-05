@@ -1,4 +1,5 @@
 module LawSpec.CoreNativeScalarEmit (nativeScalarEmit, nativeScalarEmitWithData, nativeScalarEmitWithDefinitions, nativeScalarEmitWithFormat, nativeScalarEmitWithNativeGenerators, nativeScalarEmitWithAdapterBindings, dataBudget) where
+import LawSpec.Bounds (inputRange)
 import LawSpec.ModelTests (modelTestArtifacts)
 import LawSpec.Collections (isCollectionsType)
 import qualified LawSpec.JavaData as JavaData
@@ -372,6 +373,7 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
       , KotlinProperties.reference = java . KotlinExpr.reference
       , KotlinProperties.typeKey = key
       , KotlinProperties.generator = kotlinGeneratorDoc
+      , KotlinProperties.generatorWithin = \within -> KotlinTestHelpers.generatorDocWithin within bits javaDataBudget ktCustom (java . KotlinExpr.reference) key
       , KotlinProperties.nativeArgument = ktNativeArgument
       , KotlinProperties.nativeResult = ktNativeResult
       }
@@ -448,6 +450,7 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
       , HaskellProperties.structural = containsStructural
       , HaskellProperties.typeKey = key
       , HaskellProperties.generator = hsGeneratorDoc
+      , HaskellProperties.generatorWithin = \within -> HaskellTestHelpers.generatorDocWithin within bits javaDataBudget hsCustom (java . HaskellData.haskellTypeReferenceDoc) key
       , HaskellProperties.nativeArgument = hsNativeArgument
       , HaskellProperties.nativeCall = hsNativeCall
       , HaskellProperties.nativeResult = hsNativeResult
@@ -499,6 +502,7 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
       , GoProperties.reference = Doc.text . goRef
       , GoProperties.typeKey = key
       , GoProperties.generator = goGeneratorDoc
+      , GoProperties.generatorWithin = \within -> GoTestHelpers.generatorDocWithin within bits javaDataBudget goCustom (Doc.text . goRef)
       , GoProperties.nativeFunction = goAdapterName
       , GoProperties.nativeArgument = goNativeArgument
       , GoProperties.nativeResult = goNativeResult
@@ -580,6 +584,7 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
       , JavaProperties.reference = javaRef
       , JavaProperties.typeKey = key
       , JavaProperties.generator = javaGeneratorDoc
+      , JavaProperties.generatorWithin = \within -> JavaTestHelpers.generatorDocWithin within bits javaDataBudget (cls ++ "LawSpecTest") custom (java . JavaExpr.reference) key
       , JavaProperties.nativeArgument = javaNativeArgument
       , JavaProperties.nativeResult = javaNativeResult
       }
@@ -834,10 +839,11 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
     -- Legacy compatibility templates retain inline parentheses; the main
     -- property document emitter consumes hsGeneratorDoc directly.
     hsGenerator = Doc.render Doc.Compact . HaskellExpr.parens . hsGeneratorDoc
+    hsGeneratorWithin within = Doc.render Doc.Compact . HaskellExpr.parens . HaskellTestHelpers.generatorDocWithin within bits javaDataBudget hsCustom (java . HaskellData.haskellTypeReferenceDoc) key
     hsStructuralProperty label e check =
       let names = arr (map inputId (inputs e))
           predicates = [call "truth" [render predicate] | input <- inputs e, predicate <- inputRefinements input]
-          base = "fmap (map (LS.scopeSymbols symbols)) (sequence " ++ arr (map (hsGenerator . inputType) (inputs e)) ++ ")"
+          base = "fmap (map (LS.scopeSymbols symbols)) (sequence " ++ arr [hsGeneratorWithin (inputRange bits input) (inputType input) | input <- inputs e] ++ ")"
           gen = if null predicates then base else "Gen.filter (\\" ++ names ++ " -> " ++ conjunction predicates ++ ") (" ++ base ++ ")"
       in "  modifyMaxSuccess (const " ++ show (cases (generation e)) ++ ") $ it " ++ q (label ++ " property") ++ " $ hedgehog $ do\n" ++
          "    symbols <- evalIO LS.newSymbolContext\n    " ++ names ++ " <- forAll (" ++ gen ++ ")\n    footnote " ++ q label ++ "\n    evalIO $ do\n" ++
@@ -845,8 +851,9 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
     goDocument = Doc.render (Doc.selectLayout minify (Doc.PrettyTabs 100))
     goGeneratorDoc = GoTestHelpers.generatorDoc bits javaDataBudget goCustom (Doc.text . goRef)
     goGenerator = goDocument . goGeneratorDoc
+    goGeneratorWithin within = goDocument . GoTestHelpers.generatorDocWithin within bits javaDataBudget goCustom (Doc.text . goRef)
     goStructuralProperty fn label e check =
-      let draws = concat ["      " ++ inputId input ++ " := " ++ goGenerator (inputType input) ++ ".Draw(t, " ++ q (inputId input) ++ ");\n" | input <- inputs e]
+      let draws = concat ["      " ++ inputId input ++ " := " ++ goGeneratorWithin (inputRange bits input) (inputType input) ++ ".Draw(t, " ++ q (inputId input) ++ ");\n" | input <- inputs e]
           names = arr (map inputId (inputs e))
           bindings' = concat ["    " ++ inputId input ++ " := _values[" ++ show i ++ "]; _ = " ++ inputId input ++ ";\n" | (i,input) <- zip [0::Int ..] (inputs e)]
           predicates = [call "truth" [render p] | input <- inputs e, p <- inputRefinements input]
@@ -856,10 +863,11 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
          "    _values := " ++ generator ++ ".Draw(t, " ++ q label ++ ")\n" ++ bindings' ++ check ++ "  })\n}\n"
     kotlinGeneratorDoc = KotlinTestHelpers.generatorDoc bits javaDataBudget ktCustom (java . KotlinExpr.reference) key
     kotlinGenerator = ktDocument . kotlinGeneratorDoc
+    kotlinGeneratorWithin within = ktDocument . KotlinTestHelpers.generatorDocWithin within bits javaDataBudget ktCustom (java . KotlinExpr.reference) key
     kotlinStructuralProperty label e check =
       let bindings' = concat ["    val " ++ inputId input ++ " = _inputs.first[" ++ show i ++ "]\n" | (i,input) <- zip [0::Int ..] (inputs e)]
           predicates = [call "truth" [render p] | input <- inputs e, p <- inputRefinements input]
-          tuple = foldl (\prior input -> "Arb.bind(" ++ prior ++ ", " ++ kotlinGenerator (inputType input) ++ ") { _values, _value -> _values + _value }")
+          tuple = foldl (\prior input -> "Arb.bind(" ++ prior ++ ", " ++ kotlinGeneratorWithin (inputRange bits input) (inputType input) ++ ") { _values, _value -> _values + _value }")
             "Arb.constant(emptyList<LawSpecRuntime.Value>())" (inputs e)
           generator = tuple ++ ".map { _values -> Pair(_values, mutableMapOf<String, Any>()) }" ++
             (if null predicates then "" else ".filter { _inputs -> val symbols = _inputs.second\n" ++ bindings' ++ "    " ++ conjunction predicates ++ "\n }")
@@ -869,10 +877,11 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
     javaGeneratorDoc = JavaTestHelpers.generatorDoc bits javaDataBudget (cls ++ "LawSpecTest") custom
       (java . JavaExpr.reference) key
     javaGenerator = Doc.render (Doc.selectLayout minify (Doc.Pretty 100)) . javaGeneratorDoc
+    javaGeneratorWithin within = Doc.render (Doc.selectLayout minify (Doc.Pretty 100)) . JavaTestHelpers.generatorDocWithin within bits javaDataBudget (cls ++ "LawSpecTest") custom (java . JavaExpr.reference) key
     javaStructuralProperty fn e check =
       let bindings' = concat ["    var " ++ inputId input ++ " = _inputs.values().get(" ++ show i ++ ");\n" | (i,input) <- zip [0::Int ..] (inputs e)]
           predicates = [call "truth" [render p] | input <- inputs e, p <- inputRefinements input]
-          values = "java.util.List.of(" ++ intercalate ", " ["_environment.<Value>generate(" ++ javaGenerator (inputType input) ++ ")" | input <- inputs e] ++ ")"
+          values = "java.util.List.of(" ++ intercalate ", " ["_environment.<Value>generate(" ++ javaGeneratorWithin (inputRange bits input) (inputType input) ++ ")" | input <- inputs e] ++ ")"
           generator = "Generator.from(_environment -> new _LawSpecInputs(" ++ values ++ ", new HashMap<String,Object>()))" ++
             (if null predicates then "" else ".suchThat(_inputs -> { var symbols = _inputs.symbols();\n" ++ bindings' ++ "    return " ++ conjunction predicates ++ "; })")
       -- JetCheck deduplicates generation trees. Its default size hint cycles at

@@ -1,6 +1,7 @@
 -- Go test scaffolding consumes checked propositions and generation plans.
 module LawSpec.GoProperties (Config(..), emitTests) where
 
+import LawSpec.Bounds (inputRange)
 import LawSpec.Backend
 import LawSpec.Common
 import LawSpec.Testing
@@ -27,6 +28,8 @@ data Config = Config
   , reference :: Type -> D.Doc
   , typeKey :: Type -> String
   , generator :: Type -> D.Doc
+  -- A generator drawing a top-level integer from a refinement's range.
+  , generatorWithin :: Maybe (Integer, Integer) -> Type -> D.Doc
   , nativeFunction :: String -> String
   , nativeArgument :: Type -> D.Doc -> D.Doc
   , nativeResult :: Type -> D.Doc -> D.Doc
@@ -169,7 +172,7 @@ emitTests Config{..} unit laws = do
             case C.expressionNode value of C.Constant _ -> True; C.Local _ -> True; _ -> False]
           _ -> []
     structuralProperty fn label e check =
-      let draws = [bind (inputId inp) (generator (inputType inp) <> text ".Draw(t, " <> quoted (inputId inp) <> text ")") | inp <- inputs e]
+      let draws = [bind (inputId inp) (generatorWithin (inputRange machineBits inp) (inputType inp) <> text ".Draw(t, " <> quoted (inputId inp) <> text ")") | inp <- inputs e]
           base = call "rapid.Custom" [closure "t *rapid.T" "[]LawSpecValue" $
             statements (draws ++ [returned (E.array (map (text . inputId) (inputs e)))])]
           predicates = concatMap inputRefinements (inputs e)

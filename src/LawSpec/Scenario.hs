@@ -19,7 +19,7 @@ module LawSpec.Scenario
   ) where
 
 import Control.Monad (foldM, forM, forM_, unless, when)
-import Data.List (nub)
+import Data.List (nub, nubBy)
 import qualified Data.Map.Strict as M
 import LawSpec.Common (Span(..))
 import LawSpec.Core.Machine (Machine(..), Command(..))
@@ -45,7 +45,9 @@ data Statement
 data Scenario = Scenario
   { scenarioName :: String, scenarioModel :: String
   , scenarioChannels :: [(String, String, Span)]
-  , scenarioBody :: [Statement], scenarioSpan :: Span }
+  , scenarioBody :: [Statement], scenarioSpan :: Span
+  -- mailbox m of T: any process sends, one receives.
+  , scenarioMailboxes :: [(String, Type, Span)] }
   deriving (Eq, Show)
 
 type Failure = (Maybe Span, String)
@@ -82,12 +84,17 @@ checkScenario protocols u s = do
   forM_ channels $ \(c, _, at) -> when (length [() | (d, _, _) <- channels, d == c] > 1)
     (failing at ("channel " ++ c ++ " is declared twice"))
   joins <- concat <$> mapM (joinOf (scenarioBody s)) channels
-  forest joins
+  forM_ (scenarioMailboxes s) $ \(m, _, at) -> do
+    when (length [() | (d, _, _) <- scenarioMailboxes s, d == m] > 1) (failing at ("mailbox " ++ m ++ " is declared twice"))
+    when (m `elem` [c | (c, _, _) <- channels]) (failing at (m ++ " is declared as both a channel and a mailbox"))
+  edges <- concat <$> mapM (mailboxEdges (located (scenarioBody s))) (scenarioMailboxes s)
+  forest ([("channel " ++ c, at, a, b) | (c, at, a, b) <- joins] ++ edges)
   _ <- run machine [(c, steps) | (c, steps, _) <- channels] (Holding M.empty M.empty) (scenarioBody s)
   pure ()
   where
     failing :: Span -> String -> Either Failure a
     failing at message = Left (Just at, "scenario " ++ show (scenarioName s) ++ ": " ++ message)
+    mailboxTypes = M.fromList [(m, t) | (m, t, _) <- scenarioMailboxes s]
 
     -- The two branches a channel joins; it must be used by exactly two
     -- branches of exactly one par.
@@ -110,13 +117,35 @@ checkScenario protocols u s = do
       ((_, branches) : _) -> [k | (k, p) <- zip [0 :: Int ..] pars, k > j, p `elem` concatMap collectPars branches]
       [] -> []
 
+    -- A mailbox has one receiving process, and every message sent to it is
+    -- received. Each process that sends to it is joined to the receiver,
+    -- as by a channel: sends never wait, but the receiver waits for them.
+    mailboxEdges located' (m, _, declared) = do
+      let uses = [(p, h, st) | (p, h, st) <- located', case st of
+                    SendTo c _ _ -> c == m
+                    ReceiveFrom c _ _ _ -> c == m
+                    _ -> False]
+          sends = [(p, at) | (p, _, SendTo _ _ at) <- uses]
+          receives = [(p, at) | (p, _, ReceiveFrom _ _ _ at) <- uses]
+      forM_ [st | (_, True, st) <- uses] $ \st ->
+        failing (statementSpan st) ("mailbox " ++ m ++ " is used inside an or else; a mailbox's sends and receives must each happen exactly once")
+      when (null uses) (failing declared ("mailbox " ++ m ++ " is never used"))
+      owner <- case nub (map fst receives) of
+        [p] -> pure p
+        [] -> failing declared ("mailbox " ++ m ++ " is sent to but never received from")
+        _ -> failing (snd (last receives)) ("mailbox " ++ m ++ " is received from by more than one process; a mailbox has one receiver")
+      unless (length sends == length receives)
+        (failing declared ("mailbox " ++ m ++ " is sent " ++ show (length sends) ++ " messages but receives " ++ show (length receives) ++
+          "; every message sent must be received"))
+      pure [("mailbox " ++ m, at, p, owner) | (p, at) <- nubBy (\a b -> fst a == fst b) sends, p /= owner]
+
     -- The joins between processes form a forest; a cycle could deadlock.
     forest joins = foldM add M.empty joins >> pure ()
       where
         root parents x = maybe x (root parents) (M.lookup x parents)
         add parents (c, at, a, b) = do
           let (ra, rb) = (root parents a, root parents b)
-          when (ra == rb) (failing at ("channel " ++ c ++ " closes a cycle between processes, which could deadlock; " ++
+          when (ra == rb) (failing at (c ++ " closes a cycle between processes, which could deadlock; " ++
             "LawSpec accepts only tree-shaped connections for now: reply on a channel that came with the request"))
           pure (M.insert ra rb parents)
 
@@ -127,6 +156,7 @@ checkScenario protocols u s = do
         (held, result) <- call machine holding command args at
         pure held { values = M.insert x result (values held) }
       Call command args at -> fst <$> call machine holding command args at
+      SendTo c value at | Just t <- M.lookup c mailboxTypes -> give holding value t at
       SendTo c value at -> case M.lookup c (ends holding) of
         Nothing -> failing at ("this process does not hold an end of channel " ++ c)
         Just (Send expected : more) -> do
@@ -134,6 +164,11 @@ checkScenario protocols u s = do
           pure held { ends = M.insert c more (ends held) }
         Just (Receive expected : _) -> failing at ("channel " ++ c ++ " must receive " ++ prettyType expected ++ " here, not send" ++ sides)
         Just [] -> failing at ("channel " ++ c ++ "'s protocol has ended; nothing more may be sent")
+      ReceiveFrom c x handler _ | Just t <- M.lookup c mailboxTypes -> do
+        forM_ handler $ \h -> run machine channels holding h
+        pure $ case protocolOf t of
+          Just steps -> holding { ends = M.insert x steps (ends holding) }
+          Nothing -> holding { values = M.insert x t (values holding) }
       ReceiveFrom c x handler at -> case M.lookup c (ends holding) of
         Nothing -> failing at ("this process does not hold an end of channel " ++ c)
         -- When c's other process has failed, the handler runs instead of
@@ -241,7 +276,7 @@ channelsIn = nub . concatMap go
 -- constructor names become tags qualified by their data type.
 toProgram :: Unit -> Scenario -> Either Failure P.Program
 toProgram u s = (\acts -> P.Program (scenarioName s) (scenarioModel s) [c | (c, _, _) <- scenarioChannels s] acts
-    [p | (_, p, _) <- scenarioChannels s] "") <$> mapM act (scenarioBody s)
+    [p | (_, p, _) <- scenarioChannels s] "" [(m, prettyType t) | (m, t, _) <- scenarioMailboxes s]) <$> mapM act (scenarioBody s)
   where
     act st = case st of
       Bind x command args at -> P.Invoke command (Just x) <$> mapM (operand at) args
@@ -281,3 +316,26 @@ mentioned st = case st of
       Held x -> [x]
       Given x -> [x]
       Constant _ -> []
+
+-- Every statement with the process that runs it, and whether it is inside
+-- an or else: (-1, 0) is the scenario's own process, and (i, n) is branch n
+-- of the i-th par, numbered as collectPars lists them.
+located :: [Statement] -> [((Int, Int), Bool, Statement)]
+located body = fst (go (-1, 0) False body 0)
+  where
+    go p h sts k = foldl (\(acc, k') st -> let (more, k'') = one p h st k' in (acc ++ more, k'')) ([], k) sts
+    one p h st k = case st of
+      Par branches _ ->
+        let (inner, k') = foldl (\(acc, kk) (n, b) -> let (more, kk') = go (k, n) h b kk in (acc ++ more, kk')) ([], k + 1) (zip [0 ..] branches)
+        in ((p, h, st) : inner, k')
+      ReceiveFrom _ _ (Just handler) _ -> let (inner, k') = go p True handler k in ((p, h, st) : inner, k')
+      _ -> ([(p, h, st)], k)
+
+statementSpan :: Statement -> Span
+statementSpan st = case st of
+  Bind _ _ _ at -> at
+  Call _ _ at -> at
+  SendTo _ _ at -> at
+  ReceiveFrom _ _ _ at -> at
+  Par _ at -> at
+  Expect _ _ at -> at

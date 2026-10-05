@@ -51,5 +51,7 @@ inputRange bits q = case C.binderType (C.quantifiedBinder q) of
     let typed = integerBounds bits n
         low = maximum (concat [[l | Just l <- [lo]], [fst t | Just t <- [typed]], [-2 ^ (256 :: Int) | lo == Nothing && typed == Nothing && n /= "BigUInt"], [0 | n `elem` ["BigUInt", "Natural"], lo == Nothing]])
         high = minimum (concat [[h | Just h <- [hi]], [snd t | Just t <- [typed]], [2 ^ (256 :: Int) | hi == Nothing && typed == Nothing]])
-    in if low <= high then Just (low, high) else Nothing
+    -- Native generators draw 64-bit integers; a wider range filters.
+    in if low <= high && low >= -(2 ^ (63 :: Int)) && high <= 2 ^ (64 :: Int) - 1 && (low >= 0 || high < 2 ^ (63 :: Int))
+         then Just (low, high) else Nothing
   _ -> Nothing

@@ -472,3 +472,13 @@ checkSupervisors u = do
               | otherwise -> above (supervisorName p) (supervisorName p : seen)
         [] -> pure ()
   forM_ names $ \n -> above n [n]
+  -- Mailboxes: each name once, and its class (jobs: JobsMailbox) not a
+  -- declared type.
+  let boxes = mailboxes u
+      declared = map dataTypeName (dataTypes u)
+  forM_ boxes $ \(m, _, range) -> do
+    when (length [() | (n, _, _) <- boxes, n == m] > 1) (Left (Just range, "mailbox " ++ m ++ " is declared twice"))
+    let cls = case m of
+          c : cs -> toUpper c : cs ++ "Mailbox"
+          [] -> "Mailbox"
+    when (cls `elem` declared) (Left (Just range, "mailbox " ++ m ++ "'s class is " ++ cls ++ ", which is already declared as a type; rename one"))

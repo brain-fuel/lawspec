@@ -70,7 +70,7 @@ data FunctionDefinition = FunctionDefinition
 -- later, as each target's task, and tests await them where they are called.
 -- orchestrations names the definitions that may call adapters: workflows,
 -- whose composition LawSpec generates and every target runs natively.
-data Unit = Unit { unitName :: String, functions :: [(String, Type)], laws :: [Law], refinements :: [Refinement], contracts :: [Contract], declarationSpans :: [(String,Span)], dataTypes :: [DataTypeDeclaration], functionDefinitions :: [FunctionDefinition], asyncFunctions :: [String], orchestrations :: [String], policies :: [(String, StagePolicy String)], machines :: [Machine String], handles :: [String], protocols :: [Protocol], supervisors :: [Supervisor] } deriving (Eq, Show, Generic)
+data Unit = Unit { unitName :: String, functions :: [(String, Type)], laws :: [Law], refinements :: [Refinement], contracts :: [Contract], declarationSpans :: [(String,Span)], dataTypes :: [DataTypeDeclaration], functionDefinitions :: [FunctionDefinition], asyncFunctions :: [String], orchestrations :: [String], policies :: [(String, StagePolicy String)], machines :: [Machine String], handles :: [String], protocols :: [Protocol], supervisors :: [Supervisor], mailboxes :: [(String, Type, Span)] } deriving (Eq, Show, Generic)
 
 -- A protocol: what one end of a channel sends and receives, in order (see
 -- LawSpec.Scenario).

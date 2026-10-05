@@ -1,6 +1,6 @@
 -- Native Hypothesis/fast-check generators from resolved scalar/container types.
 -- Documents retain legal call, object, and collection breaks for test emitters.
-module LawSpec.PortableGenerator (generatorDoc) where
+module LawSpec.PortableGenerator (generatorDoc, generatorDocWithin) where
 
 import LawSpec.Backend
 import qualified LawSpec.Core as C
@@ -13,7 +13,12 @@ import qualified Data.Text.Lazy as T
 import qualified Data.Text.Lazy.Encoding as T
 
 generatorDoc :: Bool -> Int -> (Type -> Bool) -> (Type -> D.Doc) -> Type -> D.Doc
-generatorDoc py bits structural reference = generate
+generatorDoc py bits structural reference = generatorDocWithin py bits structural reference Nothing
+
+-- The generator, with an integer drawn from a refinement's range when one
+-- is given.
+generatorDocWithin :: Bool -> Int -> (Type -> Bool) -> (Type -> D.Doc) -> Maybe (Integer, Integer) -> Type -> D.Doc
+generatorDocWithin py bits structural reference within = generate
   where
     quote = if py then Python.quoted else Web.quoted
     number :: Show a => a -> D.Doc
@@ -68,7 +73,7 @@ generatorDoc py bits structural reference = generate
         [quote n,text (if py then "True" else "true"),text "x"])]
     generate t@(Named n)
       | isInteger n =
-          let bounds = integerBounds bits n
+          let bounds = maybe (integerBounds bits n) Just within
               low = maybe (if n == "BigUInt" then 0 else -2^(256::Int)) fst bounds
               high = maybe (2^(256::Int)) snd bounds
           in if py then call "st.integers"

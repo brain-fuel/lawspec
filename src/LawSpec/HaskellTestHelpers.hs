@@ -1,5 +1,5 @@
 -- Native Hedgehog strategies and Hspec assertions downstream of checked Core.
-module LawSpec.HaskellTestHelpers (generatorDoc, assertionDoc, schemaDoc) where
+module LawSpec.HaskellTestHelpers (generatorDoc, generatorDocWithin, assertionDoc, schemaDoc) where
 
 import qualified LawSpec.Core as C
 import LawSpec.Scalar
@@ -39,7 +39,20 @@ assertionDoc = statements
 -- Preserve Hedgehog's native list/maybe/choice trees and integral shrinking.
 generatorDoc :: Int -> Integer -> (C.Type -> Bool) -> (C.Type -> D.Doc)
   -> (C.Type -> String) -> C.Type -> D.Doc
-generatorDoc bits budget structural reference key = gen
+generatorDoc bits budget structural reference key = generatorDocBounded (integerBounds bits) bits budget structural reference key
+
+-- The generator, with a top-level integer drawn from a refinement's range.
+generatorDocWithin :: Maybe (Integer, Integer) -> Int -> Integer -> (C.Type -> Bool) -> (C.Type -> D.Doc)
+  -> (C.Type -> String) -> C.Type -> D.Doc
+generatorDocWithin within bits budget structural reference key ty = generatorDocBounded boundsOf bits budget structural reference key ty
+  where
+    boundsOf name = case (within, ty) of
+      (Just range, C.Constructor top []) | top == name -> Just range
+      _ -> integerBounds bits name
+
+generatorDocBounded :: (String -> Maybe (Integer, Integer)) -> Int -> Integer -> (C.Type -> Bool) -> (C.Type -> D.Doc)
+  -> (C.Type -> String) -> C.Type -> D.Doc
+generatorDocBounded boundsOf bits budget structural reference key = gen
   where
     gen ty | structural ty = E.checked (apply "Strategies.strategy"
       [text "_lawspecSchema",reference ty,number bits,number budget,
@@ -54,9 +67,9 @@ generatorDoc bits budget structural reference key = gen
     gen (C.Constructor wrapper [C.TypeArgument inner]) =
       infixDoc (apply "SPresent" [quoted wrapper]) "<$>" (apply "Gen.maybe" [gen inner])
     gen (C.Constructor name []) | isInteger name =
-      let (lo,hi) = maybe (if name == "BigUInt" then (0,2^(256::Int)) else (-2^(256::Int),2^(256::Int))) id (integerBounds bits name)
+      let (lo,hi) = maybe (if name == "BigUInt" then (0,2^(256::Int)) else (-2^(256::Int),2^(256::Int))) id (boundsOf name)
       in infixDoc (apply "SInteger" [quoted name]) "<$>"
-        (apply "Gen.integral" [apply "Range.linearFrom" [text "0",E.integerLiteral lo,E.integerLiteral hi]])
+        (apply "Gen.integral" [apply "Range.linearFrom" [E.integerLiteral (max lo (min hi 0)),E.integerLiteral lo,E.integerLiteral hi]])
     gen (C.Constructor "Bool" []) = infixDoc (text "SBool") "<$>" (text "Gen.bool")
     gen ty = E.checked (apply "Strategies.primitiveStrategy" [number bits,quoted (key ty)])
     sumGen tag inner = infixDoc (parens (text "\\value -> " <> apply "SData" [quoted tag,E.array [text "value"]])) "<$>" (gen inner)

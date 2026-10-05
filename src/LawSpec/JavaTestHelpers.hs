@@ -1,5 +1,5 @@
 -- Framework-specific Java generators downstream of checked Core.
-module LawSpec.JavaTestHelpers (generatorDoc, scalarHelpersDoc, dataHelpersDoc) where
+module LawSpec.JavaTestHelpers (generatorDoc, generatorDocWithin, scalarHelpersDoc, dataHelpersDoc) where
 
 import qualified LawSpec.Core as C
 import LawSpec.Scalar
@@ -28,7 +28,20 @@ custom env body = call "Generator.from" [D.multiline (text (env ++ " -> ") <> bl
 -- the native JetCheck generation tree and its shrinker.
 generatorDoc :: Int -> Integer -> String -> (C.Type -> Bool) -> (C.Type -> D.Doc)
   -> (C.Type -> String) -> C.Type -> D.Doc
-generatorDoc bits budget className structural reference key = gen 0
+generatorDoc bits budget className structural reference key = generatorDocBounded (integerBounds bits) bits budget className structural reference key
+
+-- The generator, with a top-level integer drawn from a refinement's range.
+generatorDocWithin :: Maybe (Integer, Integer) -> Int -> Integer -> String -> (C.Type -> Bool) -> (C.Type -> D.Doc)
+  -> (C.Type -> String) -> C.Type -> D.Doc
+generatorDocWithin within bits budget className structural reference key ty = generatorDocBounded boundsOf bits budget className structural reference key ty
+  where
+    boundsOf name = case (within, ty) of
+      (Just range, C.Constructor top []) | top == name -> Just range
+      _ -> integerBounds bits name
+
+generatorDocBounded :: (String -> Maybe (Integer, Integer)) -> Int -> Integer -> String -> (C.Type -> Bool) -> (C.Type -> D.Doc)
+  -> (C.Type -> String) -> C.Type -> D.Doc
+generatorDocBounded boundsOf bits budget className structural reference key = gen 0
   where
     gen depth ty = renderGenerator (generatorChain depth ty)
     renderGenerator (base,[]) = base
@@ -37,7 +50,7 @@ generatorDoc bits budget className structural reference key = gen 0
     generatorChain depth ty@(C.Constructor "List" [C.TypeArgument inner]) =
       (call "Generator.listsOf" [gen (depth+1) inner],
        [("map",[lambda "_values" (runtime "list" [quoted (key ty),text "_values"])])])
-    generatorChain _ (C.Constructor name []) | Just (lo,hi) <- integerBounds bits name,
+    generatorChain _ (C.Constructor name []) | Just (lo,hi) <- boundsOf name,
       lo >= -2147483648 && hi <= 2147483647 =
       (call "Generator.integers" [number lo,number hi],
        [("map",[lambda "_number" (runtime "integer" [quoted name,text "_number.toString()"])])])
@@ -64,7 +77,7 @@ generatorDoc bits budget className structural reference key = gen 0
       in custom env [text ("if (" ++ env ++ ".generate(Generator.booleans())) ") <>
           block (returned (runtime "present" [quoted (key ty),call (env ++ ".generate") [gen (depth+1) inner]])),
         returned (runtime "present" [quoted (key ty),text "null"])]
-    baseGenerator depth (C.Constructor name []) | Just (lo,hi) <- integerBounds bits name =
+    baseGenerator depth (C.Constructor name []) | Just (lo,hi) <- boundsOf name =
       let width = byteWidth hi in integerGen depth name width width (lo < 0)
     baseGenerator depth (C.Constructor name []) | name `elem` ["BigInt","BigUInt","Integer"] =
       integerGen depth name 0 32 (name /= "BigUInt")

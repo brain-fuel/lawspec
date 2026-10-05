@@ -82,3 +82,19 @@ scenario `a deposit's receipt, or the balance if the teller fails` in account is
     expect m = 5
   end
 end
+
+-- A mailbox has many senders and one receiver: two tellers report their
+-- deposits to one auditor, who receives both reports.
+scenario `two tellers report to one auditor` in account is
+  mailbox reports of Int64
+  par
+    n <- deposit 3
+    send reports n
+  with
+    m <- deposit 4
+    send reports m
+  with
+    receive reports first
+    receive reports second
+  end
+end

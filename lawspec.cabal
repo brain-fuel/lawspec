@@ -264,6 +264,7 @@ library
       LawSpec.KotlinProperties
       LawSpec.KotlinTestHelpers
       LawSpec.MachineSpec
+      LawSpec.Mailboxes
       LawSpec.Memo
       LawSpec.Model
       LawSpec.ModelTests

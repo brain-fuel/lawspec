@@ -62,3 +62,18 @@ async def remoteDoubling(value0):
     finally:
         client.close()
         server.close()
+
+
+async def remoteLedger(value0):
+    from lawspec_mailboxes import LedgerMailbox
+
+    here, there = ls.Node(ls.TcpTransport()), ls.Node(ls.TcpTransport())
+    try:
+        ledger = LedgerMailbox.serve(there, 'ledger')
+        sender = LedgerMailbox.connect(here, there.address + '/ledger')
+        sender.send(value0)
+        sender.send(value0)
+        return ledger.receive(5) + ledger.receive(5)
+    finally:
+        here.close()
+        there.close()

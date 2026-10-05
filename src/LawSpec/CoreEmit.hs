@@ -3,6 +3,7 @@ import LawSpec.Sessions (sessionArtifacts)
 import LawSpec.Actors (actorArtifacts)
 import LawSpec.MachineSpec (scenarioWire)
 import LawSpec.Remote (remoteArtifacts)
+import LawSpec.Mailboxes (mailboxArtifacts)
 import LawSpec.Core.Machine (Machine(..))
 import LawSpec.Core.Program (Program(..))
 import LawSpec.Backend
@@ -75,9 +76,11 @@ emitPlanWithFormat minify target original = do
   sessions <- sessionArtifacts minify target plan
   -- Typed actors, for implementation code.
   actors <- actorArtifacts minify target plan
+  -- Typed mailboxes.
+  mailboxes <- mailboxArtifacts target plan
   -- Definitions other nodes can evaluate, by content hash.
   let remote = remoteArtifacts target (remoteCalls target plan) plan
-      files = emittedFiles ++ sessions ++ actors ++ remote
+      files = emittedFiles ++ sessions ++ actors ++ mailboxes ++ remote
   canonical <- if minify then emitPlanFormatted False target plan else pure files
   let references = [(artifactPath a, artifactContent a) | a <- canonical, ownership a == "user"]
   mapM (\artifact -> if ownership artifact /= "user" then pure artifact else

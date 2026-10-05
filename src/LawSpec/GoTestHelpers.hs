@@ -1,5 +1,5 @@
 -- Framework-specific generator documents, downstream of checked Core.
-module LawSpec.GoTestHelpers (generatorDoc, assertionDoc, dataHelpersDoc) where
+module LawSpec.GoTestHelpers (generatorDoc, generatorDocWithin, assertionDoc, dataHelpersDoc) where
 
 import LawSpec.Core (Type(..), Argument(..), scalarType)
 import LawSpec.Scalar
@@ -34,7 +34,18 @@ draw generator name = generator <> line ".Draw(t, " <> quoted name <> line ")"
 -- These domains and Rapid combinators are shared by structural test generation
 -- and the scalar registry consumed by schema strategies.
 generatorDoc :: Int -> Integer -> (Type -> Bool) -> (Type -> D.Doc) -> Type -> D.Doc
-generatorDoc bits budget structural reference = gen
+generatorDoc bits budget structural reference = generatorDocBounded (integerBounds bits) bits budget structural reference
+
+-- The generator, with a top-level integer drawn from a refinement's range.
+generatorDocWithin :: Maybe (Integer, Integer) -> Int -> Integer -> (Type -> Bool) -> (Type -> D.Doc) -> Type -> D.Doc
+generatorDocWithin within bits budget structural reference ty = generatorDocBounded boundsOf bits budget structural reference ty
+  where
+    boundsOf name = case (within, ty) of
+      (Just range, Constructor top []) | top == name -> Just range
+      _ -> integerBounds bits name
+
+generatorDocBounded :: (String -> Maybe (Integer, Integer)) -> Int -> Integer -> (Type -> Bool) -> (Type -> D.Doc) -> Type -> D.Doc
+generatorDocBounded boundsOf bits budget structural reference = gen
   where
     width = line (show bits)
     key = quoted . Native.goDataKey
@@ -53,8 +64,8 @@ generatorDoc bits budget structural reference = gen
       [line "if rapid.Bool().Draw(t, \"present\") " <> block (statements
         [bind "value" (draw (gen inner) "payload"),returned (call "lsPresent" [key ty,value "&value"])]),
        returned (call "lsPresent" [key ty,value "nil"])]
-    gen (Constructor name []) | Just (lo,hi) <- integerBounds bits name =
-      let signed = lo < 0
+    gen (Constructor name []) | Just (lo,hi) <- boundsOf name =
+      let signed = maybe (lo < 0) ((< 0) . fst) (integerBounds bits name)
       in mapped (call (if signed then "rapid.Int64Range" else "rapid.Uint64Range") [line (show lo),line (show hi)])
         (if signed then "int64" else "uint64")
         (call (if signed then "lsSignedInteger" else "lsUnsignedInteger") [quoted name,value "value"])

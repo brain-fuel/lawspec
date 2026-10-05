@@ -1,5 +1,5 @@
 -- Framework-specific Kotlin generators downstream of checked Core.
-module LawSpec.KotlinTestHelpers (generatorDoc, assertionDoc, dataHelpersDoc) where
+module LawSpec.KotlinTestHelpers (generatorDoc, generatorDocWithin, assertionDoc, dataHelpersDoc) where
 
 import qualified LawSpec.Core as C
 import LawSpec.Scalar
@@ -25,7 +25,20 @@ mapped source name body = D.multiline (source <> text ".map" <> lambda name body
 -- Keep native Kotest choices, binding, list budgets and shrinkers unchanged.
 generatorDoc :: Int -> Integer -> (C.Type -> Bool) -> (C.Type -> D.Doc)
   -> (C.Type -> String) -> C.Type -> D.Doc
-generatorDoc bits budget structural reference key = gen
+generatorDoc bits budget structural reference key = generatorDocBounded (integerBounds bits) bits budget structural reference key
+
+-- The generator, with a top-level integer drawn from a refinement's range.
+generatorDocWithin :: Maybe (Integer, Integer) -> Int -> Integer -> (C.Type -> Bool) -> (C.Type -> D.Doc)
+  -> (C.Type -> String) -> C.Type -> D.Doc
+generatorDocWithin within bits budget structural reference key ty = generatorDocBounded boundsOf bits budget structural reference key ty
+  where
+    boundsOf name = case (within, ty) of
+      (Just range, C.Constructor top []) | top == name -> Just range
+      _ -> integerBounds bits name
+
+generatorDocBounded :: (String -> Maybe (Integer, Integer)) -> Int -> Integer -> (C.Type -> Bool) -> (C.Type -> D.Doc)
+  -> (C.Type -> String) -> C.Type -> D.Doc
+generatorDocBounded boundsOf bits budget structural reference key = gen
   where
     gen ty | structural ty = call "LawSpecKotlinStrategies.generator"
       [text "_schema",reference ty,number bits,number budget,text "::_lawspecScalarGenerator"]
@@ -40,7 +53,7 @@ generatorDoc bits budget structural reference key = gen
     gen ty@(C.Constructor _ [C.TypeArgument inner]) = call "lawspecChoice"
       [call "Arb.constant" [runtime "present" [quoted (key ty),text "null"]],
        mapped (gen inner) "_value" (runtime "present" [quoted (key ty),text "_value"])]
-    gen (C.Constructor name []) | Just (lo,hi) <- integerBounds bits name =
+    gen (C.Constructor name []) | Just (lo,hi) <- boundsOf name =
       if lo >= -2147483648 && hi <= 2147483647
       then mapped (call "Arb.int" [text (show lo ++ ".." ++ show hi)]) "_number"
         (runtime "integer" [quoted name,text "_number.toString()"])

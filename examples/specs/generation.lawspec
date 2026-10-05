@@ -127,3 +127,16 @@ law `a recursive tree` is
     expect shrunk "(data Tree (ctor t::type::Tree::Leaf) (ctor t::type::Tree::Node (ref Tree) (int Int8 -128 127) (ref Tree))) (ref Tree)" seed 3 = ["Leaf", "Node(Leaf, -29, Leaf)", "Node(Node(Leaf, -110, Leaf), 58, Leaf)", "Node(Leaf, -44, Node(Node(Leaf, -110, Leaf), 58, Leaf))", "Node(Node(Leaf, 0, Leaf), -44, Node(Node(Leaf, -110, Leaf), 58, Leaf))", "Node(Node(Leaf, -15, Leaf), -44, Node(Node(Leaf, -110, Leaf), 58, Leaf))", "Node(Node(Leaf, -28, Leaf), -44, Node(Node(Leaf, -110, Leaf), 58, Leaf))", "Node(Node(Leaf, -29, Leaf), 0, Node(Node(Leaf, -110, Leaf), 58, Leaf))", "Node(Node(Leaf, -29, Leaf), -22, Node(Node(Leaf, -110, Leaf), 58, Leaf))", "Node(Node(Leaf, -29, Leaf), -43, Node(Node(Leaf, -110, Leaf), 58, Leaf))", "Node(Node(Leaf, -29, Leaf), -44, Leaf)", "Node(Node(Leaf, -29, Leaf), -44, Node(Leaf, -110, Leaf))", "Node(Node(Leaf, -29, Leaf), -44, Node(Leaf, 58, Leaf))", "Node(Node(Leaf, -29, Leaf), -44, Node(Node(Leaf, 0, Leaf), 58, Leaf))", "Node(Node(Leaf, -29, Leaf), -44, Node(Node(Leaf, -55, Leaf), 58, Leaf))", "Node(Node(Leaf, -29, Leaf), -44, Node(Node(Leaf, -109, Leaf), 58, Leaf))", "Node(Node(Leaf, -29, Leaf), -44, Node(Node(Leaf, -110, Leaf), 0, Leaf))", "Node(Node(Leaf, -29, Leaf), -44, Node(Node(Leaf, -110, Leaf), 29, Leaf))", "Node(Node(Leaf, -29, Leaf), -44, Node(Node(Leaf, -110, Leaf), 57, Leaf))"]
   end
 end
+
+-- A refinement's bounds narrow generation: an amount from 1 to 1000 is
+-- drawn from that range, not filtered out of every Int32, alongside a value
+-- of a data type.
+type Purse is Purse coins :: Int64 end
+
+definition spend (p :: Purse) (amount :: Int32 where amount >= 1 && amount <= 1000) :: Int32 is amount end
+
+law `refined amounts are drawn from their range` is
+  definition is
+    `for all` (p :: Purse) (amount :: Int32 where amount >= 1 && amount <= 1000) . spend p amount >= 1
+  end
+end

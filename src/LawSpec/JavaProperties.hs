@@ -1,6 +1,7 @@
 -- Java property scaffolding consumes checked propositions and generation plans.
 module LawSpec.JavaProperties (Config(..), emitTests) where
 
+import LawSpec.Bounds (inputRange)
 import qualified LawSpec.Core as C
 import LawSpec.Backend
 import LawSpec.Common
@@ -29,6 +30,8 @@ data Config = Config
   , reference :: Type -> D.Doc
   , typeKey :: Type -> String
   , generator :: Type -> D.Doc
+  -- A generator drawing a top-level integer from a refinement's range.
+  , generatorWithin :: Maybe (Integer, Integer) -> Type -> D.Doc
   , nativeArgument :: Type -> D.Doc -> D.Doc
   , nativeResult :: Type -> D.Doc -> D.Doc
   }
@@ -132,7 +135,7 @@ emitTests Config{..} unit laws = do
       strategies <- mapM (contextualStrategy (generation e)) (generationPlan e)
       let predicatesFor inp = concatMap conjuncts (inputRefinements inp)
           generate inp = call "_environment.<Value>generate"
-            [maybe (generator (inputType inp)) id (lookup (inputId inp) strategies)]
+            [maybe (generatorWithin (inputRange machineBits inp) (inputType inp)) id (lookup (inputId inp) strategies)]
           prepare inp | nativeGenerators = generate inp
           prepare inp = prepareElements (C.binderId (C.quantifiedBinder inp))
             (predicatesFor inp) (generate inp)
@@ -187,7 +190,7 @@ emitTests Config{..} unit laws = do
                  text (className ++ "LawSpecTest::_lawspecScalarGenerator")] ++
                 [call "lawspec.testing.LawSpecNativeGenerators.factories" [] | nativeGenerators]))
               [("map",[D.group (text "lawspec.testing.LawSpecDataStrategies.Checked" <> D.nest 4 (D.softbreak <> text "::requireValue"))])]
-            [] -> generator ty
+            [] -> generatorWithin (inputRange machineBits input) ty
       pure (inputId input,strategy)
     equationsDoc equations = call "java.util.Map.ofEntries"
       [call "java.util.Map.entry" [quoted (C.idText tag), call "java.util.List.of" (map quoted texts)]

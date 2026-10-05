@@ -1,6 +1,7 @@
 -- Hspec/Hedgehog documents over checked propositions and generation plans.
 module LawSpec.HaskellProperties (Config(..), emitTests) where
 
+import LawSpec.Bounds (inputRange)
 import LawSpec.Backend
 import LawSpec.Common
 import LawSpec.Testing
@@ -30,6 +31,8 @@ data Config = Config
   , structural :: Type -> Bool
   , typeKey :: Type -> String
   , generator :: Type -> D.Doc
+  -- A generator drawing a top-level integer from a refinement's range.
+  , generatorWithin :: Maybe (Integer, Integer) -> Type -> D.Doc
   , nativeArgument :: Type -> D.Doc -> D.Doc
   , nativeCall :: String -> [D.Doc] -> D.Doc
   , nativeResult :: Type -> D.Doc -> D.Doc
@@ -214,7 +217,7 @@ emitTests Config{..} unit laws = do
       let names = E.array (map (text . inputId) (inputs e))
           predicates = concatMap inputRefinements (inputs e)
           base = apply "fmap" [apply "map" [apply "LS.scopeSymbols" [text "symbols"]],
-            apply "sequence" [E.array (map (generator . inputType) (inputs e))]]
+            apply "sequence" [E.array [generatorWithin (inputRange machineBits inp) (inputType inp) | inp <- inputs e]]]
           strategy = if null predicates then base else apply "Gen.filter"
             [D.group (text "\\" <> names <> text " ->" <> D.nest 2
               (D.softline <> conjunction (map (truth . expr) predicates))),base]

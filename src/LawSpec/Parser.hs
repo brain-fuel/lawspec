@@ -283,13 +283,16 @@ scenarioP = do
     keyword "in"
     model <- ident
     keyword "is"
-    channels <- many $ do
-      ((c, p), at) <- withSpan ((,) <$> (keyword "channel" *> ident) <*> (symbol "::" *> ident))
-      pure (c, p, at)
+    -- channel c :: Protocol, or mailbox m of Type: many senders, one receiver.
+    declared <- many $ choice
+      [ do ((c, p), at) <- withSpan ((,) <$> (keyword "channel" *> ident) <*> (symbol "::" *> ident))
+           pure (Left (c, p, at))
+      , do ((m, t), at) <- withSpan ((,) <$> (keyword "mailbox" *> ident) <*> (keyword "of" *> typeP))
+           pure (Right (m, t, at)) ]
     body <- statements
     keyword "end"
-    pure (name, model, channels, body)
-  pure (Scenario name model channels body range)
+    pure (name, model, declared, body)
+  pure (Scenario name model [c | Left c <- channels] body range [m | Right m <- channels])
   where
     statements = many statement
     statement = choice [parallel, sending, receiving, expecting, try binding, calling]
@@ -716,6 +719,7 @@ functionDefinitionP = do
 data UnitMember = DataMember DataTypeDeclaration | FamilyMember IndexedFamily | RefinementMember Refinement
   | WrapperMember Wrapper | WorkflowMember Workflow | ModelMember ModelDeclaration
   | SupervisorMember Supervisor
+  | MailboxMember (String, Type, Span)
   | HandleMember (String, Span) | ProtocolMember Protocol | ScenarioMember Scenario
   | SignatureMember ((String, Type), Span) | AsyncMember ((String, Type), Span) | LawMember Law
   | DefinitionMember FunctionDefinition
@@ -757,6 +761,9 @@ unitP = do
     <|> (ModelMember <$> (try (lookAhead (keyword "model" *> ident)) *> modelP))
     <|> (ModelMember <$> (try (lookAhead (keyword "actor" *> ident)) *> actorP))
     <|> (SupervisorMember <$> (try (lookAhead (keyword "supervisor" *> ident)) *> supervisorP))
+    -- mailbox jobs of Job: a typed queue with many senders and one receiver.
+    <|> (MailboxMember <$> (try (lookAhead (keyword "mailbox" *> ident *> keyword "of")) *>
+          ((\((n, t), at) -> (n, t, at)) <$> withSpan ((,) <$> (keyword "mailbox" *> ident) <*> (keyword "of" *> typeP)))))
     <|> (RefinementMember <$> refinementP)
     <|> (DefinitionMember <$> functionDefinitionP)
     <|> (AsyncMember <$> try (keyword "async" *> withSpan ((,) <$> ident <* symbol "::" <*> typeP)))
@@ -773,7 +780,7 @@ unitP = do
     [r | RefinementMember r <- members] [] [(name,range) | ((name,_),range) <- signatures]
     ([d | DataMember d <- members] ++ [DataTypeDeclaration name [] [] range Nothing | HandleMember (name, range) <- members])
     definitions [name | AsyncMember ((name, _), _) <- members] [] [] [] [name | HandleMember (name, _) <- members]
-    [p | ProtocolMember p <- members] [s | SupervisorMember s <- members], imports, [f | FamilyMember f <- members],
+    [p | ProtocolMember p <- members] [s | SupervisorMember s <- members] [m | MailboxMember m <- members], imports, [f | FamilyMember f <- members],
     [w | WrapperMember w <- members], [w | WorkflowMember w <- members], [m | ModelMember m <- members],
     ([p | ProtocolMember p <- members], [s | ScenarioMember s <- members]))
 

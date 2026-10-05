@@ -123,10 +123,15 @@ data Unit = MkUnit { unitId :: Id, unitDeclarations :: [Declaration], unitContra
   -- The unit's protocols, from which each target generates typed channel ends.
   , unitSessions :: [Session]
   -- The unit's supervisors, which each target generates beside its actors.
-  , unitSupervisors :: [Supervisor] } deriving (Eq, Show, Generic)
+  , unitSupervisors :: [Supervisor]
+  -- The unit's mailboxes (mailbox jobs of Job): typed queues with many
+  -- senders and one receiver, generated on each target.
+  , unitMailboxes :: [Mailbox] } deriving (Eq, Show, Generic)
+
+data Mailbox = Mailbox { mailboxName :: String, mailboxType :: Type } deriving (Eq, Show, Generic)
 pattern Unit :: Id -> [Declaration] -> [Contract] -> [Property] -> [Definition] -> [Machine Id] -> Unit
-pattern Unit identity declarations contracts properties definitions machines <- MkUnit identity declarations contracts properties definitions machines _ _
-  where Unit identity declarations contracts properties definitions machines = MkUnit identity declarations contracts properties definitions machines [] []
+pattern Unit identity declarations contracts properties definitions machines <- MkUnit identity declarations contracts properties definitions machines _ _ _
+  where Unit identity declarations contracts properties definitions machines = MkUnit identity declarations contracts properties definitions machines [] [] []
 {-# COMPLETE Unit #-}
 
 -- A protocol: what its first end sends (True) and receives (False), in

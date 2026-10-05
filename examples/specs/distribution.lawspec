@@ -86,3 +86,13 @@ async remoteDoubling :: Int32 -> Int64
 law `a conversation between nodes` is
   definition is `for all` (x :: Int32) . remoteDoubling x = 2 * x end
 end
+
+-- A mailbox offered on one node and sent to from another: each send waits
+-- until the mailbox has the message.
+mailbox ledger of Int64
+
+async remoteLedger :: Int32 -> Int64
+
+law `messages reach a mailbox on another node` is
+  definition is `for all` (x :: Int32) . remoteLedger x = 2 * x end
+end

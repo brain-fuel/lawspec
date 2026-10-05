@@ -12,6 +12,7 @@ import qualified LawSpec.Core as C
 import LawSpec.Core.Machine
 import qualified LawSpec.Core.Program as P
 import LawSpec.Scalar (Scalar(..), integerBounds, isInteger)
+import LawSpec.Bounds (bounds)
 
 -- The spec of a machine, given the program's data types and the unit's
 -- declarations.
@@ -76,41 +77,6 @@ machineSpec bits datas declarations contracts machine = do
     shift (To k) = "(to " ++ show k ++ ")"
     splitPlaces [] _ = []
     splitPlaces (n : ns) xs = let (a, b) = splitAt n xs in a : splitPlaces ns b
-
--- The tightest constant bounds a precondition conjunction puts on a binder.
-bounds :: C.Id -> [C.Expr] -> (Maybe Integer, Maybe Integer)
-bounds binder = foldl tighten (Nothing, Nothing) . concatMap conjuncts
-  where
-    conjuncts e = case C.expressionNode e of
-      C.ShortCircuit C.And a b -> conjuncts a ++ conjuncts b
-      _ -> [e]
-    tighten (lo, hi) e = case C.expressionNode e of
-      C.Binary op _ a b -> case (local a, constant b, constant a, local b) of
-        (True, Just n, _, _) -> apply op n (lo, hi)
-        (_, _, Just n, True) -> apply (flipped op) n (lo, hi)
-        _ -> (lo, hi)
-      _ -> (lo, hi)
-    local e = case C.expressionNode e of
-      C.Local i -> i == binder
-      C.Convert _ _ inner -> local inner
-      _ -> False
-    constant e = case C.expressionNode e of
-      C.Constant (SInteger _ n) -> Just n
-      C.Convert _ _ inner -> constant inner
-      _ -> Nothing
-    apply op n (lo, hi) = case op of
-      C.GreaterEqual -> (Just (maybe n (max n) lo), hi)
-      C.Greater -> (Just (maybe (n + 1) (max (n + 1)) lo), hi)
-      C.LessEqual -> (lo, Just (maybe n (min n) hi))
-      C.Less -> (lo, Just (maybe (n - 1) (min (n - 1)) hi))
-      C.Equal -> (Just n, Just n)
-      _ -> (lo, hi)
-    flipped op = case op of
-      C.GreaterEqual -> C.LessEqual
-      C.Greater -> C.Less
-      C.LessEqual -> C.GreaterEqual
-      C.Less -> C.Greater
-      other -> other
 
 -- An integer descriptor narrowed to a refinement's bounds.
 narrow :: (Maybe Integer, Maybe Integer) -> String -> String
@@ -189,4 +155,21 @@ scenarioWire bits datas sessions program = do
       verb sends = if sends then "send" else "receive"
   (forms, table) <- foldM (\(acc, t) cp -> (\(f, t') -> (acc ++ [f], t')) <$> channel t cp) ([], [])
     (zip (P.programChannels program) (P.programProtocols program))
-  pure ("(wire" ++ concatMap ((' ' :) . snd) (reverse table) ++ concatMap (' ' :) forms ++ ")")
+  -- A mailbox's message type, from its written form; one this cannot read
+  -- keeps that mailbox in memory in network runs.
+  let resolve text = case words (filter (`notElem` ("()" :: String)) text) of
+        [n] | n `elem` map C.sessionName sessions -> Just (Left ())
+            | otherwise -> Right <$> named n
+        ["List", n] -> (\t -> Right (C.Constructor "List" [C.TypeArgument t])) <$> named n
+        ["Maybe", n] -> (\t -> Right (C.Constructor "Maybe" [C.TypeArgument t])) <$> named n
+        _ -> Nothing
+      named n
+        | isInteger n || n `elem` ["Bool", "Text", "Unit"] = Just (C.Constructor n [])
+        | (d : _) <- [d | d <- datas, C.dataName d == n] = Just (C.Constructor (C.idText (C.dataId d)) [])
+        | otherwise = Nothing
+      mailbox (acc, t) (m, text) = case resolve text of
+        Just (Left ()) -> (acc ++ ["(mailbox " ++ m ++ " (end))"], t)
+        Just (Right ty) | Right (d, t') <- describe bits datas t ty -> (acc ++ ["(mailbox " ++ m ++ " " ++ d ++ ")"], t')
+        _ -> (acc, t)
+      (boxes, table') = foldl mailbox ([], table) (P.programMailboxes program)
+  pure ("(wire" ++ concatMap ((' ' :) . snd) (reverse table') ++ concatMap (' ' :) (forms ++ boxes) ++ ")")

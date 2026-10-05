@@ -1,6 +1,7 @@
 -- Kotlin test documents consume checked propositions and native generation plans.
 module LawSpec.KotlinProperties (Config(..), emitTests) where
 
+import LawSpec.Bounds (inputRange)
 import qualified LawSpec.Core as C
 import Control.Monad (foldM)
 import LawSpec.Backend
@@ -28,6 +29,8 @@ data Config = Config
   , reference :: Type -> D.Doc
   , typeKey :: Type -> String
   , generator :: Type -> D.Doc
+  -- A generator drawing a top-level integer from a refinement's range.
+  , generatorWithin :: Maybe (Integer, Integer) -> Type -> D.Doc
   , nativeArgument :: Type -> D.Doc -> D.Doc
   , nativeResult :: Type -> D.Doc -> D.Doc
   }
@@ -180,7 +183,7 @@ emitTests Config{..} unit laws = do
               _ -> False]
           _ -> []
     nativeProperty fn label e check =
-      let tuple = foldl (\prior inp -> trailing (call "Arb.bind" [prior,generator (inputType inp)])
+      let tuple = foldl (\prior inp -> trailing (call "Arb.bind" [prior,generatorWithin (inputRange machineBits inp) (inputType inp)])
             "_values, _value" (text "_values + _value"))
             (text "Arb.constant(emptyList<LawSpecRuntime.Value>())") (inputs e)
           base = trailing (tuple <> text ".map") "_values"

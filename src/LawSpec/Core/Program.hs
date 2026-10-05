@@ -16,6 +16,8 @@ data Program = Program
   -- Each channel's step types as descriptors, for runs whose channels
   -- cross a network: filled in when the program is emitted.
   , programWire :: String
+  -- Each mailbox, with its message type as written.
+  , programMailboxes :: [(String, String)]
   } deriving (Eq, Show, Generic)
 
 data Act
@@ -39,6 +41,7 @@ programSpec :: Program -> String
 programSpec p = unwords
   [ "(scenario " ++ quote (programTitle p) ++ " " ++ programMachine p ++ ")"
   , "(channels" ++ concatMap (' ' :) (programChannels p) ++ ")"
+  , "(mailboxes" ++ concatMap ((' ' :) . fst) (programMailboxes p) ++ ")"
   , "(process" ++ concatMap ((' ' :) . act) (programActs p) ++ ")" ] ++
   (if null (programWire p) then "" else " " ++ programWire p)
   where

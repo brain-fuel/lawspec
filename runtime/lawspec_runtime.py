@@ -2632,6 +2632,101 @@ class _NetScenarioChannel:
             node.close()
 
 
+class _ScenarioMailbox:
+    """A scenario's mailbox: any process sends, one receives. expected is
+    how many sends the scenario makes; a process that ends gives up the
+    sends it did not make, and a receive with nothing left to come fails
+    (_GONE) instead of waiting. Over a network, messages go from a sender
+    node to the receiver's node, each send waiting until it is delivered."""
+
+    def __init__(self, name, expected, network=None, descriptor=None, values=None, registry=None):
+        self.name, self.expected = name, expected
+        self.received, self.abandoned = 0, 0
+        self.ready = threading.Condition()
+        self.items = deque()
+        self.registry = registry
+        self.nodes = []
+        if network is not None:
+            owner, senders = Node(network.transport(f'{name}-owner')), Node(network.transport(f'{name}-senders'))
+            self.nodes = [owner, senders]
+            d = ['text'] if descriptor == ['end'] else descriptor
+            self.inbox = owner.mailbox(name, d, values)
+            self.remote = senders.remote_mailbox(f'{owner.address}/{name}', d, values, timeout=5.0)
+        else:
+            self.inbox = None
+
+    def send(self, value, clock):
+        if self.inbox is None:
+            with self.ready:
+                self.items.append((value, clock))
+                self.ready.notify_all()
+            return
+        if isinstance(value, _End):
+            value = f'{value.channel.name}#{value.side}'
+        # The clock travels beside the network, in send order.
+        with self.ready:
+            self.items.append((None, clock))
+        self.remote.send(value)
+        with self.ready:
+            self.ready.notify_all()
+
+    def give_up(self, count):
+        with self.ready:
+            self.abandoned += count
+            self.ready.notify_all()
+
+    def receive(self):
+        """(value, sender's clock), or (_GONE, {})."""
+        import time
+        give_up = time.monotonic() + 5
+        while True:
+            with self.ready:
+                if self.inbox is None and self.items:
+                    self.received += 1
+                    return self.items.popleft()
+                if self.received + self.abandoned >= self.expected and (self.inbox is None or not self.items):
+                    return _GONE, {}
+            if self.inbox is not None:
+                try:
+                    value = self.inbox.receive(timeout=0.02)
+                except TimeoutError:
+                    value = None
+                    if time.monotonic() > give_up:
+                        raise TimeoutError('a mailbox receive waited too long')
+                else:
+                    with self.ready:
+                        self.received += 1
+                        clock = self.items.popleft()[1] if self.items else {}
+                    if isinstance(value, str) and '#' in value and value.rpartition('#')[0] in self.registry:
+                        owner, _, which = value.rpartition('#')
+                        value = _End(self.registry[owner], int(which))
+                    return value, clock
+            else:
+                with self.ready:
+                    if not self.ready.wait(timeout=max(0.0, give_up - time.monotonic())):
+                        raise TimeoutError('a mailbox receive waited too long')
+
+    def close(self):
+        for node in self.nodes:
+            node.close()
+
+
+def _scenario_sends(acts, name):
+    """How many times these acts (not nested pars) send to name."""
+    return sum(1 for act in acts if act[0] == 'send' and str(act[1]) == name)
+
+
+def _all_sends(acts, name):
+    """How many sends to name the whole program makes."""
+    total = 0
+    for act in acts:
+        if act[0] == 'send' and str(act[1]) == name:
+            total += 1
+        elif act[0] == 'par':
+            total += sum(_all_sends(branch[1:], name) for branch in act[1:])
+    return total
+
+
 def _scenario_processes(acts, found):
     """Every process of a par, outermost and first first (not or else)."""
     for act in acts:
@@ -2686,16 +2781,21 @@ def _run_scenario(model, spec, shake, crash=False, network=False):
     names = [str(c) for c in next(f for f in forms if f[0] == 'channels')[1:]]
     body = next(f for f in forms if f[0] == 'process')[1:]
     wire = next((f for f in forms if f[0] == 'wire'), None)
+    boxes = [str(m) for f in forms if f[0] == 'mailboxes' for m in f[1:]]
     if network and wire is not None:
         # Loss, duplication and delay (which reorders); the channels'
         # numbered, acknowledged frames must hide them all.
         net = MemoryNetwork(seed=shake ^ 0x7F4A7C159E3779B9, loss=0.1, duplicate=0.1, delay=0.002)
         types = Values({str(f[1]): f for f in wire[1:] if f[0] == 'data'})
         steps = {str(f[1]): [(s[0] == 'send', s[1]) for s in f[2:]] for f in wire[1:] if f[0] == 'channel'}
+        kinds = {str(f[1]): f[2] for f in wire[1:] if f[0] == 'mailbox'}
         registry = {}
         channels = {name: _NetScenarioChannel(net, name, steps[name], types, registry) for name in names}
+        mailboxes = {m: _ScenarioMailbox(m, _all_sends(body, m), net, kinds[m], types, registry) if m in kinds
+                     else _ScenarioMailbox(m, _all_sends(body, m)) for m in boxes}
     else:
         channels = {name: _Channel() for name in names}
+        mailboxes = {m: _ScenarioMailbox(m, _all_sends(body, m)) for m in boxes}
     commands = {c.name: c for c in model.commands}
     symbols = {}
     start_args = [model.values.minimal(d) for d in model.start_arguments]
@@ -2738,13 +2838,19 @@ def _run_scenario(model, spec, shake, crash=False, network=False):
     def process(acts, env, ends, random, identity=None, clock=None):
         """'done' or 'failed'; either way, the ends still held are given up."""
         clock = {} if clock is None else clock
+        sent = {m: 0 for m in mailboxes}
         try:
-            return steps(acts, env, ends, random, identity, clock, 'root' if identity is None else identity)
+            return steps(acts, env, ends, random, identity, clock, 'root' if identity is None else identity, sent)
         finally:
             for channel, side in ends.values():
                 channel.gone(side)
+            # Sends this process will never make.
+            for m, box in mailboxes.items():
+                missing = _scenario_sends(acts, m) - sent[m]
+                if missing > 0:
+                    box.give_up(missing)
 
-    def steps(acts, env, ends, random, identity, clock, me):
+    def steps(acts, env, ends, random, identity, clock, me, sent):
         own = {}
         for index, act in enumerate(acts):
             if failures:
@@ -2772,6 +2878,37 @@ def _run_scenario(model, spec, shake, crash=False, network=False):
                     history.append((command, args, result, called, returned, me, at_call, dict(clock)))
                 if act[2] != '_':
                     env[str(act[2])] = result
+            elif kind == 'send' and str(act[1]) in mailboxes:
+                operand = act[2]
+                if operand[0] == 'var' and str(operand[1]) in ends:
+                    value = _End(*ends.pop(str(operand[1])))
+                else:
+                    value = env[str(operand[1])] if operand[0] == 'var' else _constant(operand)
+                _perturb(random)
+                clock[me] = clock.get(me, 0) + 1
+                try:
+                    mailboxes[str(act[1])].send(value, dict(clock))
+                except Unreachable as error:
+                    failures.append(f'a send to mailbox {act[1]} failed: {error}')
+                    return 'failed'
+                sent[str(act[1])] += 1
+            elif kind in ('receive', 'receiveor') and str(act[1]) in mailboxes:
+                try:
+                    value, carried = mailboxes[str(act[1])].receive()
+                except TimeoutError:
+                    failures.append(f'a receive on mailbox {act[1]} waited too long: the processes are blocked')
+                    return 'failed'
+                if value is _GONE:
+                    if kind == 'receive':
+                        return 'failed'
+                    return steps(act[3][1:], env, ends, random, None, clock, me, sent)
+                for p, n in carried.items():
+                    clock[p] = max(clock.get(p, 0), n)
+                clock[me] = clock.get(me, 0) + 1
+                if isinstance(value, _End):
+                    ends[str(act[2])] = (value.channel, value.side)
+                else:
+                    env[str(act[2])] = value
             elif kind == 'send':
                 channel, side = ends[str(act[1])]
                 operand = act[2]
@@ -2796,7 +2933,7 @@ def _run_scenario(model, spec, shake, crash=False, network=False):
                     if kind == 'receive':
                         return 'failed'
                     del ends[str(act[1])]
-                    return steps(act[3][1:], env, ends, random, None, clock, me)
+                    return steps(act[3][1:], env, ends, random, None, clock, me, sent)
                 unstamp(channel, side, clock, me)
                 if isinstance(value, _End):
                     ends[str(act[2])] = (value.channel, value.side)
@@ -2850,6 +2987,8 @@ def _run_scenario(model, spec, shake, crash=False, network=False):
     for channel in channels.values():
         if isinstance(channel, _NetScenarioChannel):
             channel.close()
+    for box in mailboxes.values():
+        box.close()
     if failures:
         return title, failures[0] + (' (with a process crashed)' if victim is not None else '')
     if outcome == 'failed' and victim is None:
@@ -3616,8 +3755,8 @@ class Node:
         self._register(name, _MailEntity(box, values, descriptor))
         return box
 
-    def remote_mailbox(self, address, descriptor, values=_NO_TYPES):
-        return RemoteMailbox(self, address, descriptor, values)
+    def remote_mailbox(self, address, descriptor, values=_NO_TYPES, timeout=5.0):
+        return RemoteMailbox(self, address, descriptor, values, timeout)
 
     # Actors: calls by message name, with each message's types.
     def serve(self, name, actor, handlers, values=_NO_TYPES):
@@ -3683,18 +3822,28 @@ class _MailEntity:
         if kind == 'mail':
             try:
                 self.box.send(wire_decode(self.values, self.descriptor, payload))
-            except (WireError, ActorStopped):
-                pass
+                status, body = 0, b''
+            except WireError as error:
+                status, body = 3, f'not a message of this mailbox: {error}'
+            except ActorStopped as error:
+                status, body = 2, str(error)
+            if ident:
+                node._reply(source, ident, status, body)
 
 
 class RemoteMailbox:
-    """Sends to a mailbox on another node; send never waits for it."""
+    """Sends to a mailbox on another node. A send waits until the mailbox
+    has the message (resending a lost one; the mailbox takes it once), and
+    raises Unreachable after the timeout, or ActorStopped if it is closed."""
 
-    def __init__(self, node, address, descriptor, values):
+    def __init__(self, node, address, descriptor, values, timeout=5.0):
         self._node, self.address, self._descriptor, self._values = node, address, descriptor, values
+        self.timeout = timeout
 
     def send(self, value):
-        self._node._send(self.address, 'mail', wire_encode(self._values, self._descriptor, value))
+        status, body = self._node._request(self.address, 'mail', wire_encode(self._values, self._descriptor, value), self.timeout)
+        if status != 0:
+            _reply_value(status, body, self._values, ['unit'])
 
 
 class _ActorEntity:
