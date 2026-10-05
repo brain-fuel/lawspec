@@ -3,6 +3,7 @@
 package example;
 
 import java.math.BigInteger;
+import java.util.concurrent.CompletableFuture;
 import lawspec.runtime.LawSpecRuntime;
 import lawspec.sessions.Hire;
 import lawspec.sessions.Serve;
@@ -22,7 +23,11 @@ public final class Sessions {
     return afterB.receive().value();
   }
 
-  public static Number add(int value0, int value1) {
+  public static CompletableFuture<Number> add(int value0, int value1) {
+    return CompletableFuture.supplyAsync(() -> addNow(value0, value1));
+  }
+
+  private static Number addNow(int value0, int value1) {
     var ends = Serve.open();
     var server = LawSpecRuntime.spawn(() -> serve(ends.first()));
     long sum = ask(ends.second(), value0, value1);
@@ -31,7 +36,11 @@ public final class Sessions {
   }
 
   // A manager is handed the server's end over a Hire channel and serves it.
-  public static Number addHired(int value0, int value1) {
+  public static CompletableFuture<Number> addHired(int value0, int value1) {
+    return CompletableFuture.supplyAsync(() -> addHiredNow(value0, value1));
+  }
+
+  private static Number addHiredNow(int value0, int value1) {
     var serve = Serve.open();
     var hire = Hire.open();
     var manager = LawSpecRuntime.spawn(() -> serve(hire.second().receive().value()));

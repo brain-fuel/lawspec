@@ -1,11 +1,9 @@
-{-# OPTIONS_GHC -fno-cse -fno-full-laziness #-}
 -- User-owned LawSpec adapter: adds through a server process, talking to it
 -- through the generated Serve ends, directly or through a hired manager. The
--- adapters are pure, so each call runs its processes with unsafePerformIO.
+-- adapters are asynchronous: they run their processes in IO.
 module Example.Sessions (add, addHired) where
 
 import qualified Data.Int as I
-import System.IO.Unsafe (unsafePerformIO)
 import qualified LawSpecRuntime as LS
 import LawSpecSessions.Example.Sessions
 
@@ -31,18 +29,16 @@ manager hired = do
   _ <- server serving
   pure ()
 
-{-# NOINLINE add #-}
-add :: I.Int32 -> I.Int32 -> LS.IntegerValue
-add a b = unsafePerformIO $ do
+add :: I.Int32 -> I.Int32 -> IO LS.IntegerValue
+add a b = do
   (serving, asking) <- openServe
   worker <- spawn (server serving)
   total <- client a b asking
   _ <- join worker
   pure (LS.integerValue total)
 
-{-# NOINLINE addHired #-}
-addHired :: I.Int32 -> I.Int32 -> LS.IntegerValue
-addHired a b = unsafePerformIO $ do
+addHired :: I.Int32 -> I.Int32 -> IO LS.IntegerValue
+addHired a b = do
   (serving, asking) <- openServe
   (hiring, hired) <- openHire
   worker <- spawn (manager hired)

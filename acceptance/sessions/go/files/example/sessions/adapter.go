@@ -15,8 +15,12 @@ func ask(end ServeSecondSendInt32Step1, a, b int32) int64 {
 	return sum
 }
 
-// Add implements add :: (Int32 -> (Int32 -> Integer)).
-func Add(value0 int32, value1 int32) any {
+// Add implements add :: (Int32 -> (Int32 -> Integer)), asynchronously.
+func Add(value0 int32, value1 int32) LawSpecTask[any] {
+	return LawSpecGo(func() any { return add(value0, value1) })
+}
+
+func add(value0 int32, value1 int32) any {
 	server, client := OpenServe()
 	var sum int64
 	LawSpecPar(
@@ -26,8 +30,12 @@ func Add(value0 int32, value1 int32) any {
 	return new(LawSpecBigInt).SetInt64(sum)
 }
 
-// AddHired implements addHired :: (Int32 -> (Int32 -> Integer)).
-func AddHired(value0 int32, value1 int32) any {
+// AddHired implements addHired :: (Int32 -> (Int32 -> Integer)), asynchronously.
+func AddHired(value0 int32, value1 int32) LawSpecTask[any] {
+	return LawSpecGo(func() any { return addHired(value0, value1) })
+}
+
+func addHired(value0 int32, value1 int32) any {
 	boss, manager := OpenHire()
 	server, client := OpenServe()
 	worker := LawSpecSpawn(func() {

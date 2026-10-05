@@ -20,7 +20,7 @@ fn ask(end: serve::second::Start, a: i32, b: i32) -> i64 {
 }
 
 // LawSpec: (Int32 -> (Int32 -> Integer))
-pub fn add(value0: i32, value1: i32) -> ls::Integer {
+pub async fn add(value0: i32, value1: i32) -> ls::Integer {
     let (server, client) = serve::open();
     let process = spawn(move || run_server(server));
     let sum = ask(client, value0, value1);
@@ -29,7 +29,7 @@ pub fn add(value0: i32, value1: i32) -> ls::Integer {
 }
 
 // LawSpec: (Int32 -> (Int32 -> Integer))
-pub fn addHired(value0: i32, value1: i32) -> ls::Integer {
+pub async fn addHired(value0: i32, value1: i32) -> ls::Integer {
     let (server, client) = serve::open();
     let (hirer, manager) = hire::open();
     let (sum, ()) = par(

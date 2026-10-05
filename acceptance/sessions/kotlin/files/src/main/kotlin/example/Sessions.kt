@@ -22,7 +22,7 @@ object Sessions {
         return afterB.receive().value
     }
 
-    fun add(value0: kotlin.Int, value1: kotlin.Int): Number {
+    suspend fun add(value0: kotlin.Int, value1: kotlin.Int): Number {
         val ends = Serve.open()
         val server = LawSpecRuntime.spawn { serve(ends.first) }
         val sum = ask(ends.second, value0, value1)
@@ -31,7 +31,7 @@ object Sessions {
     }
 
     // A manager is handed the server's end over a Hire channel and serves it.
-    fun addHired(value0: kotlin.Int, value1: kotlin.Int): Number {
+    suspend fun addHired(value0: kotlin.Int, value1: kotlin.Int): Number {
         val serve = Serve.open()
         val hire = Hire.open()
         val manager = LawSpecRuntime.spawn { serve(hire.second.receive().value) }
