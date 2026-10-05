@@ -241,6 +241,8 @@ emitPlanFormatted minify target Plan{..} = do
         [Artifact ("test/lawspec_data_strategies." ++ if target == "typescript" then "ts" else "mjs")
           ((if target == "typescript" then "// @ts-nocheck\n" else "") ++ webStrategies) "generated" "test" | target `elem` ["javascript","typescript"] && not (null dataFiles)] ++ [runtime | needsRuntime && target /= "go"] ++
         [Artifact "src/test/kotlin/lawspec/testing/LawSpecKotlinStrategies.kt" (runtimeSource "kotlin-data-strategies") "generated" "test" | needsRuntime && target == "kotlin"] ++
+        -- TCP and HTTP transports for nodes (the network package).
+        [Artifact "src/LawSpecTransports.hs" (runtimeSource "haskell-transports") "generated" "source" | needsRuntime && target == "haskell"] ++
         [Artifact "src/test/kotlin/lawspec/testing/LawSpecStrategies.kt" (runtimeSource "kotlin-strategies") "generated" "test" | needsRuntime && target == "kotlin"]
   unless (target `notElem` ["python","javascript","typescript"] || all
     (\u -> map toLower (head (split '.' (unitName u))) `notElem`
@@ -484,5 +486,6 @@ remoteCalls target plan = case target of
   "rust" -> [(i, "crate::lawspec_definitions::" ++ n) | (i, n) <- RustDefinitions.definitionNames units]
   "javascript" -> WebDefinitions.definitionCalls units
   "typescript" -> WebDefinitions.definitionCalls units
+  "haskell" -> HaskellDefinitions.definitionCalls units
   _ -> []
   where units = map plannedUnit (plannedUnits plan)

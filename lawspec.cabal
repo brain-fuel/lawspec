@@ -26,6 +26,7 @@ extra-source-files:
     runtime/LawSpecDataStrategies.hs
     runtime/LawSpecRuntime.hs
     runtime/LawSpecSchema.hs
+    runtime/LawSpecTransports.hs
     runtime/LawSpecDataStrategies.java
     runtime/LawSpecRuntime.java
     runtime/LawSpecSchema.java

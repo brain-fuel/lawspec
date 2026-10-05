@@ -19,6 +19,7 @@ runtimeFiles =
   , ("go-data-strategies", "lawspec_data_strategies.go"), ("haskell", "LawSpecRuntime.hs")
   , ("haskell-schema", "LawSpecSchema.hs"), ("haskell-codecs", "LawSpecCodecs.hs")
   , ("haskell-collection-codecs", "LawSpecCollectionCodecs.hs")
+  , ("haskell-transports", "LawSpecTransports.hs")
   , ("haskell-data-strategies", "LawSpecDataStrategies.hs"), ("rust", "lawspec_runtime.rs")
   , ("rust-strategies", "lawspec_strategies.rs"), ("kotlin-strategies", "LawSpecStrategies.kt")
   , ("kotlin-native", "LawSpecKotlin.kt"), ("kotlin-codecs", "LawSpecKotlinCodecs.kt")

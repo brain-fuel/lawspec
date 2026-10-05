@@ -19,7 +19,10 @@ import Data.ByteString (ByteString)
 import qualified Data.ByteString as B
 import Data.Complex (Complex((:+)))
 import Data.Word
-import Data.Bits (bit, finiteBitSize, setBit, shiftR, testBit, xor)
+import Data.Bits (bit, finiteBitSize, setBit, shiftL, shiftR, testBit, xor, (.&.), (.|.))
+import qualified Data.ByteString.Builder as BB
+import qualified Data.ByteString.Lazy as BL
+import qualified Data.Text.Encoding as TE
 import Data.Text (Text)
 import qualified Data.Text as T
 import Data.List (find, intercalate, nub, sort, sortBy, stripPrefix)
@@ -1669,6 +1672,8 @@ data ModelPlan = ModelPlan
   , planPerKey :: Bool
   -- | An actor model's crash step, numbered after the commands.
   , planCrash :: Maybe CrashStep
+  -- | linearizable, sequential, causal or eventual.
+  , planConsistency :: String
   }
 
 -- | Start arguments, then each step's command index and arguments.
@@ -1692,6 +1697,9 @@ modelPlan model = asActor $ ModelPlan
   , planInvariants = zip kinds (modelInvariants model)
   , planPerKey = not (null [() | DescList [DescAtom "perkey", DescAtom "true"] <- forms])
   , planCrash = Nothing
+  , planConsistency = case [descriptorName c | DescList [DescAtom "consistency", c] <- forms] of
+      c : _ -> c
+      [] -> "linearizable"
   }
   where
     allCommands = zipWith command [rest | DescList (DescAtom "command" : rest) <- forms] (modelCommands model)
@@ -2234,7 +2242,30 @@ linearizable plan symbols branches history expected0 final state
 -- last argument judges each complete order's final model state.
 linearize :: ModelPlan -> SymbolContext -> [[(Int, [Scalar])]] -> [[(Int, Int, Scalar)]]
               -> Scalar -> (Scalar -> IO Bool) -> IO Bool
-linearize plan symbols branches history expected0 finish = do
+linearize plan symbols branches history expected0 finish
+  -- Threads that never message each other see only their own calls.
+  | mode == "causal" = allM replay (zip branches history)
+  | otherwise = search
+  where
+    mode = planConsistency plan
+    replay (branch, calls) = go expected0 (zip branch calls)
+      where
+        go _ [] = pure True
+        go state (((index, args), (_, _, result)) : rest) = do
+          let command = planCommands plan !! index
+          stepped <- try (stepModel command symbols args state)
+          case stepped of
+            Left (_ :: ModelStop) -> pure False
+            Right (after, wanted)
+              | not (mcUnit command) && compareValues result wanted /= Right EQ -> pure False
+              | otherwise -> go after rest
+    search = searchOrders plan symbols branches history expected0 finish
+
+-- | The Wing-Gong search itself, by the plan's consistency: sequential
+-- drops real time, eventual checks no results.
+searchOrders :: ModelPlan -> SymbolContext -> [[(Int, [Scalar])]] -> [[(Int, Int, Scalar)]]
+              -> Scalar -> (Scalar -> IO Bool) -> IO Bool
+searchOrders plan symbols branches history expected0 finish = do
   seen <- newIORef []
   let threads = length branches
       lengths = map length branches
@@ -2248,8 +2279,9 @@ linearize plan symbols branches history expected0 finish = do
         let k = positions !! i
         if k == lengths !! i then pure False else do
           let (called, _, result) = history !! i !! k
-              blocked = or [ positions !! j < lengths !! j && returnedAt j (positions !! j) < called
-                           | j <- [0 .. threads - 1], j /= i ]
+              blocked = planConsistency plan == "linearizable" &&
+                or [ positions !! j < lengths !! j && returnedAt j (positions !! j) < called
+                   | j <- [0 .. threads - 1], j /= i ]
           if blocked then pure False else do
             let (index, args) = branches !! i !! k
                 command = planCommands plan !! index
@@ -2258,9 +2290,17 @@ linearize plan symbols branches history expected0 finish = do
               Left ModelInvalid -> pure False
               Left (ModelRaised _) -> pure False
               Right (after, wanted)
-                | not (mcUnit command) && compareValues result wanted /= Right EQ -> pure False
+                | planConsistency plan /= "eventual" && not (mcUnit command) && compareValues result wanted /= Right EQ -> pure False
                 | otherwise -> visit (advanceAt i positions) after
   visit (map (const 0) branches) expected0
+
+-- | How a failure names a consistency model.
+consistentWord :: String -> String
+consistentWord mode = case mode of
+  "sequential" -> "sequentially consistent"
+  "causal" -> "causally consistent"
+  "eventual" -> "eventually consistent"
+  _ -> "linearizable"
 
 -- | The first failure of repeated runs, run k shaken with shake + k.
 parallelFails :: ModelPlan -> ParallelCase -> Int -> Word64 -> IO (Maybe String)
@@ -2340,7 +2380,7 @@ checkModelParallelWith cases repeats maxShrinks threads branchLength seedOverrid
               Nothing -> loop (c + 1)
               Just found -> do
                 (parallelCase', message) <- shrinkParallel plan parallelCase found (max 2 (repeats `div` 2)) maxShrinks shake
-                pure (Just ("model " ++ planName plan ++ " is not linearizable: "
+                pure (Just ("model " ++ planName plan ++ " is not " ++ consistentWord (planConsistency plan) ++ ": "
                   ++ describeParallel plan parallelCase' ++ ": " ++ message))
   loop 0
 
@@ -2387,18 +2427,49 @@ popQueue queue@(ScenarioQueue _ signal) micros = do
         Nothing -> tryPopQueue queue
         Just () -> popQueue queue micros
 
--- | A channel: side s sends on queue s and receives from queue 1 - s; and
--- whether each side's process has ended.
-data ScenarioChannel = ScenarioChannel ScenarioQueue ScenarioQueue (MVar (Bool, Bool))
+-- | A scenario channel: its number and name, then either two queues (side
+-- s sends on queue s and receives from queue 1 - s) and whether each side's
+-- process has ended, or, in a network run, an end per side on two nodes of
+-- a faulty in-memory network, with the run's channels by name (a channel end
+-- sent over the network travels as "<name>#<side>").
+data ScenarioChannel = ScenarioChannel
+  { channelNumber :: Int
+  , channelName :: String
+  , channelKind :: ChannelKind
+  }
+
+data ChannelKind
+  = LocalChannel ScenarioQueue ScenarioQueue (MVar (Bool, Bool))
+  | NetChannel [Node] [NetEndpoint] (MVar (Bool, Bool)) (IORef [(String, ScenarioChannel)])
 
 -- | A value, a channel end in transit, or the mark that the sender ended.
 data ScenarioItem = ScenarioValue Scalar | ScenarioEnd (ScenarioChannel, Int) | ScenarioGone
 
-newScenarioChannel :: IO ScenarioChannel
-newScenarioChannel = ScenarioChannel <$> newScenarioQueue <*> newScenarioQueue <*> newMVar (False, False)
+newScenarioChannel :: Int -> String -> IO ScenarioChannel
+newScenarioChannel n name = ScenarioChannel n name <$> (LocalChannel <$> newScenarioQueue <*> newScenarioQueue <*> newMVar (False, False))
+
+-- | A channel whose sides are ends on two nodes of the network.
+newNetScenarioChannel :: MemoryNetwork -> IORef [(String, ScenarioChannel)] -> DataTable -> [(Bool, Descriptor)]
+                      -> Int -> String -> IO ScenarioChannel
+newNetScenarioChannel network registry table steps n name = do
+  let wire (sends, d) = (sends, if d == DescList [DescAtom "end"] then DescList [DescAtom "text"] else d)
+  first <- newNode (memoryTransport network (name ++ "-0"))
+  second <- newNode (memoryTransport network (name ++ "-1"))
+  listener <- listenOn first name (map wire steps) table
+  dialer <- dialTo second (nodeAddress first ++ "/" ++ name) [wire (not s, d) | (s, d) <- steps] table
+  channel <- ScenarioChannel n name <$> (NetChannel [first, second] [listener, dialer] <$> newMVar (False, False) <*> pure registry)
+  atomicModifyIORef' registry (\r -> ((name, channel) : r, ()))
+  pure channel
+
+closeScenarioChannel :: ScenarioChannel -> IO ()
+closeScenarioChannel channel = case channelKind channel of
+  NetChannel nodes _ _ _ -> mapM_ closeNode nodes
+  _ -> pure ()
 
 scenarioQueue :: ScenarioChannel -> Int -> ScenarioQueue
-scenarioQueue (ScenarioChannel first second _) side = if side == 0 then first else second
+scenarioQueue channel side = case channelKind channel of
+  LocalChannel first second _ -> if side == 0 then first else second
+  _ -> error "a network channel has no queues"
 
 sideEnded :: (Bool, Bool) -> Int -> Bool
 sideEnded (a, b) side = if side == 0 then a else b
@@ -2406,29 +2477,65 @@ sideEnded (a, b) side = if side == 0 then a else b
 -- | Sends from side; a channel end sent to a process that has ended is
 -- given up.
 scenarioSend :: ScenarioChannel -> Int -> ScenarioItem -> IO ()
-scenarioSend channel@(ScenarioChannel _ _ ended) side item = do
-  stranded <- modifyMVar ended (\flags -> case item of
-    ScenarioEnd end | sideEnded flags (1 - side) -> pure (flags, Just end)
-    _ -> pushQueue (scenarioQueue channel side) item >> pure (flags, Nothing))
-  forM_ stranded (\(c, s) -> scenarioGone c s)
+scenarioSend channel side item = case channelKind channel of
+  LocalChannel _ _ ended -> do
+    stranded <- modifyMVar ended (\flags -> case item of
+      ScenarioEnd end | sideEnded flags (1 - side) -> pure (flags, Just end)
+      _ -> pushQueue (scenarioQueue channel side) item >> pure (flags, Nothing))
+    forM_ stranded (\(c, s) -> scenarioGone c s)
+  NetChannel _ ends _ _ -> case item of
+    ScenarioValue v -> endpointSend (ends !! side) v
+    ScenarioEnd (c, s) -> endpointSend (ends !! side) (textScalar (channelName c ++ "#" ++ show s))
+    ScenarioGone -> pure ()
+
+-- | The next item for side, waiting up to the given microseconds (Nothing
+-- when none arrives); once the other side has ended, ScenarioGone, again
+-- and again.
+scenarioReceive :: ScenarioChannel -> Int -> Int -> IO (Maybe ScenarioItem)
+scenarioReceive channel side micros = case channelKind channel of
+  LocalChannel {} -> do
+    let queue = scenarioQueue channel (1 - side)
+    got <- popQueue queue micros
+    case got of
+      Just ScenarioGone -> pushQueue queue ScenarioGone >> pure (Just ScenarioGone)
+      other -> pure other
+  NetChannel _ ends _ registry -> do
+    got <- try (endpointReceiveValue (ends !! side) (Just micros))
+    case got of
+      Left e | Just PeerFailed <- fromException e -> pure (Just ScenarioGone)
+             | otherwise -> pure Nothing
+      Right value@(SSequence _ cps) -> do
+        let text = map chr cps
+            (sideRev, rest) = break (== '#') (reverse text)
+            owner = reverse (drop 1 rest)
+        known <- lookup owner <$> readIORef registry
+        pure (Just (case known of
+          Just c | not (null rest), all isDigit sideRev, not (null sideRev) -> ScenarioEnd (c, read (reverse sideRev))
+          _ -> ScenarioValue value))
+      Right value -> pure (Just (ScenarioValue value))
 
 -- | side's process has ended: the other side's receives that find nothing
 -- more fail instead of waiting, and channel ends on their way to side are
 -- given up too.
 scenarioGone :: ScenarioChannel -> Int -> IO ()
-scenarioGone channel@(ScenarioChannel _ _ ended) side = do
-  stranded <- modifyMVar ended (\flags -> if sideEnded flags side then pure (flags, []) else do
-    pushQueue (scenarioQueue channel side) ScenarioGone
-    let drain acc = do
-          item <- tryPopQueue (scenarioQueue channel (1 - side))
-          case item of
-            Nothing -> pure acc
-            Just (ScenarioEnd end) -> drain (end : acc)
-            Just ScenarioGone -> pushQueue (scenarioQueue channel (1 - side)) ScenarioGone >> pure acc
-            Just _ -> drain acc
-    found <- drain []
-    pure (if side == 0 then (True, snd flags) else (fst flags, True), reverse found))
-  mapM_ (\(c, s) -> scenarioGone c s) stranded
+scenarioGone channel side = case channelKind channel of
+  LocalChannel _ _ ended -> do
+    stranded <- modifyMVar ended (\flags -> if sideEnded flags side then pure (flags, []) else do
+      pushQueue (scenarioQueue channel side) ScenarioGone
+      let drain acc = do
+            item <- tryPopQueue (scenarioQueue channel (1 - side))
+            case item of
+              Nothing -> pure acc
+              Just (ScenarioEnd end) -> drain (end : acc)
+              Just ScenarioGone -> pushQueue (scenarioQueue channel (1 - side)) ScenarioGone >> pure acc
+              Just _ -> drain acc
+      found <- drain []
+      pure (if side == 0 then (True, snd flags) else (fst flags, True), reverse found))
+    mapM_ (\(c, s) -> scenarioGone c s) stranded
+  NetChannel _ ends ended _ -> do
+    first <- modifyMVar ended (\flags -> pure (if sideEnded flags side then (flags, False)
+      else (if side == 0 then (True, snd flags) else (fst flags, True), True)))
+    if first then endpointAbandon (ends !! side) else pure ()
 
 -- | The names an act list sends, receives or sends away, with nested pars.
 actsChannels :: [Descriptor] -> [String]
@@ -2478,16 +2585,29 @@ scenarioConstant form = case form of
   DescList [_, t] -> SData (descriptorName t) []
   _ -> error ("invalid scenario constant " ++ show form)
 
--- | A call in a scenario's history: command, arguments, result, called, returned.
-type ScenarioCall = (ModelCommand, [Scalar], Scalar, Int, Int)
+-- | A call in a scenario's history: command, arguments, result, called,
+-- returned, its process, and the process's vector clock at the call and at
+-- the return.
+type ScenarioCall = (ModelCommand, [Scalar], Scalar, Int, Int, String, VectorClock, VectorClock)
+
+-- | Each process's count of its events, as far as this process knows.
+type VectorClock = [(String, Int)]
+
+tickClock :: String -> VectorClock -> VectorClock
+tickClock me clock = (me, maybe 1 (+ 1) (lookup me clock)) : filter ((/= me) . fst) clock
+
+mergeClock :: VectorClock -> VectorClock -> VectorClock
+mergeClock a b = [(p, max (maybe 0 id (lookup p a)) (maybe 0 id (lookup p b))) | p <- nub (map fst a ++ map fst b)]
 
 -- | The scenario's title and its failure on one schedule, if any.
 runScenario :: Model -> String -> Word64 -> IO (String, Maybe String)
-runScenario model spec shake = runScenarioWith False model spec shake
+runScenario model spec shake = runScenarioWith False False model spec shake
 
 -- | runScenario, with crash: one process of a par crashes before a random act.
-runScenarioWith :: Bool -> Model -> String -> Word64 -> IO (String, Maybe String)
-runScenarioWith crash model spec shake = do
+-- With network, each channel's two sides are ends on two nodes of a
+-- faulty in-memory network (when the spec gives the channels' types).
+runScenarioWith :: Bool -> Bool -> Model -> String -> Word64 -> IO (String, Maybe String)
+runScenarioWith crash network model spec shake = do
   let forms = readDescriptor spec
       title = case forms of
         DescList (_ : t : _) : _ -> descriptorName t
@@ -2504,7 +2624,19 @@ runScenarioWith crash model spec shake = do
       at <- drawIO chooser (drawBelow (toInteger (lengths !! fromInteger branch) + 1))
       pure (Just (fromInteger branch :: Int, fromInteger at :: Int))
     else pure Nothing
-  channels <- forM names $ \n -> (,) n <$> newScenarioChannel
+  let wire = concat (take 1 [rest | DescList (DescAtom "wire" : rest) <- forms])
+      wireTable = [(descriptorName n, f) | f@(DescList (DescAtom "data" : n : _)) <- wire]
+      wireSteps = [ (descriptorName c, [(descriptorName k == "send", d) | DescList [k, d] <- steps])
+                  | DescList (DescAtom "channel" : c : steps) <- wire ]
+  channels <- if network && not (null [() | DescList (DescAtom "wire" : _) <- forms])
+    then do
+      -- Loss, duplication and delay (which reorders); the channels'
+      -- numbered, acknowledged frames must hide them all.
+      net <- newMemoryNetwork (shake `xor` 0x7F4A7C159E3779B9) 0.1 0.1 0.002
+      registry <- newIORef []
+      forM (zip [0 ..] names) $ \(i, n) ->
+        (,) n <$> newNetScenarioChannel net registry wireTable (maybe [] id (lookup n wireSteps)) i n
+    else forM (zip [0 ..] names) $ \(i, n) -> (,) n <$> newScenarioChannel i n
   symbols <- newSymbolContext
   let startArgs = map (minimalValue (planTable plan)) (planStartArguments plan)
   outcome <- try $ do
@@ -2512,6 +2644,7 @@ runScenarioWith crash model spec shake = do
     expected <- callOrRaise (planStartModel plan) symbols startArgs
     clock <- newIORef (0 :: Int)
     history <- newIORef ([] :: [ScenarioCall])
+    stamps <- newIORef ([] :: [((Int, Int), [VectorClock])])
     failures <- newIORef ([] :: [String])
     let tick = atomicModifyIORef' clock (\c -> (c + 1, c + 1))
         failWith message = atomicModifyIORef' failures (\fs -> (fs ++ [message], ())) >> pure False
@@ -2526,13 +2659,25 @@ runScenarioWith crash model spec shake = do
           Nothing -> error ("no end of channel " ++ descriptorName c)
         -- True when the process finished, False when it failed; either way
         -- the ends it still holds are given up.
-        process acts env0 ends0 source identity = do
+        -- Vector clocks: each value sent carries its sender's clock (kept
+        -- here, in order per channel direction), so calls can be ordered by
+        -- what happened before what.
+        stamp channel side clock = atomicModifyIORef' stamps (\st ->
+          let key = (channelNumber channel, side) in ((key, maybe [] id (lookup key st) ++ [clock]) : filter ((/= key) . fst) st, ()))
+        unstamp channel side clockRef me = do
+          sent <- atomicModifyIORef' stamps (\st ->
+            let key = (channelNumber channel, 1 - side) in case lookup key st of
+              Just (c : rest) -> ((key, rest) : filter ((/= key) . fst) st, c)
+              _ -> (st, []))
+          modifyIORef' clockRef (tickClock me . mergeClock sent)
+        process acts env0 ends0 source identity clockRef = do
           held <- newIORef ends0
-          done <- (steps acts env0 ends0 source identity held
+          let me = maybe "root" show identity
+          done <- (steps acts env0 ends0 source identity held clockRef me
             `catch` \(e :: SomeException) -> failWith ("raised error: " ++ exceptionText e))
             `finally` (readIORef held >>= mapM_ (\(_, (c, s)) -> scenarioGone c s))
           pure done
-        steps acts env0 ends0 source identity held = do
+        steps acts env0 ends0 source identity held clockRef me = do
           own <- newSymbolContext
           let crashesAt index = case (victim, identity) of
                 (Just v, Just i) -> v == (i, index)
@@ -2552,6 +2697,8 @@ runScenarioWith crash model spec shake = do
                         position = mcState command
                         full = take position args ++ [state] ++ drop position args
                     perturb source
+                    modifyIORef' clockRef (tickClock me)
+                    atCall <- readIORef clockRef
                     called <- tick
                     -- The result is forced in full here, so the effect (or its
                     -- error) happens between the call and return stamps.
@@ -2563,7 +2710,9 @@ runScenarioWith crash model spec shake = do
                       Left message -> failWith (mcName command ++ " raised error: " ++ message)
                       Right result -> do
                         returned <- tick
-                        atomicModifyIORef' history (\h -> (h ++ [(command, args, result, called, returned)], ()))
+                        modifyIORef' clockRef (tickClock me)
+                        atReturn <- readIORef clockRef
+                        atomicModifyIORef' history (\h -> (h ++ [(command, args, result, called, returned, me, atCall, atReturn)], ()))
                         let env' = case bound of
                               DescNone -> env
                               DescAtom "_" -> env
@@ -2577,27 +2726,31 @@ runScenarioWith crash model spec shake = do
                           _ -> (ScenarioValue (valueOf env operand), ends)
                     perturb source
                     writeIORef held ends'
+                    modifyIORef' clockRef (tickClock me)
+                    readIORef clockRef >>= stamp channel side
                     scenarioSend channel side item
                     go (index + 1) rest env ends'
                   DescList (DescAtom kind : c : x : handler) | kind == "receive" || kind == "receiveor" -> do
                     let (channel, side) = endOf ends c
-                        queue = scenarioQueue channel (1 - side)
-                    got <- popQueue queue 5000000
+                    got <- scenarioReceive channel side 5000000
                     case got of
                       Nothing -> failWith ("a receive on " ++ descriptorName c
                         ++ " waited too long: the processes are blocked")
                       -- The other process ended: or else runs instead of the
                       -- rest; without it, this process fails too.
-                      Just ScenarioGone -> do
-                        pushQueue queue ScenarioGone
+                      Just ScenarioGone ->
                         case handler of
                           [DescList (_ : handlerActs)] | kind == "receiveor" -> do
                             let ends' = filter ((/= descriptorName c) . fst) ends
                             writeIORef held ends'
-                            steps handlerActs env ends' source Nothing held
+                            steps handlerActs env ends' source Nothing held clockRef me
                           _ -> pure False
-                      Just (ScenarioEnd end) -> go (index + 1) rest env (bind (descriptorName x) end ends)
-                      Just (ScenarioValue value) -> go (index + 1) rest (bind (descriptorName x) value env) ends
+                      Just (ScenarioEnd end) -> do
+                        unstamp channel side clockRef me
+                        go (index + 1) rest env (bind (descriptorName x) end ends)
+                      Just (ScenarioValue value) -> do
+                        unstamp channel side clockRef me
+                        go (index + 1) rest (bind (descriptorName x) value env) ends
                   DescList (DescAtom "par" : branchForms) -> do
                     let branches = [ case form of
                                        DescList (_ : DescInteger n : acts) -> (Just (fromInteger n), acts)
@@ -2618,14 +2771,18 @@ runScenarioWith crash model spec shake = do
                         -- Ends handed to the branches are theirs now.
                         ends' = filter ((`notElem` map fst owned) . fst) ends
                     writeIORef held ends'
-                    dones <- forM (zip [0 :: Int ..] branches) $ \(i, (n, b)) -> do
+                    parent <- readIORef clockRef
+                    clocks <- mapM (const (newIORef parent)) branches
+                    dones <- forM (zip3 [0 :: Int ..] branches clocks) $ \(i, (n, b), branchClock) -> do
                       finished <- newEmptyMVar
                       branchSource <- newIORef (shake `xor` (fromIntegral (i + 1) * 0x9E3779B97F4A7C15))
                       _ <- forkIO (do
-                        ok <- process b env (mine i) branchSource n `catch` \(_ :: SomeException) -> pure False
+                        ok <- process b env (mine i) branchSource n branchClock `catch` \(_ :: SomeException) -> pure False
                         putMVar finished ok)
                       pure finished
                     results <- mapM takeMVar dones
+                    children <- mapM readIORef clocks
+                    writeIORef clockRef (tickClock me (foldr mergeClock parent children))
                     -- A failed branch fails the process that ran the par.
                     if and results then go (index + 1) rest env ends' else pure False
                   DescList [DescAtom "expect", x, c] -> do
@@ -2639,7 +2796,8 @@ runScenarioWith crash model spec shake = do
                   _ -> error ("unknown scenario act " ++ show act)
           go (0 :: Int) acts env0 ends0
     root <- newIORef shake
-    finished <- process body [] [] root Nothing
+    rootClock <- newIORef []
+    finished <- process body [] [] root Nothing rootClock `finally` mapM_ (closeScenarioChannel . snd) channels
     found <- readIORef failures
     case found of
       failure : _ -> pure (Just (failure ++ (if victim /= Nothing then " (with a process crashed)" else "")))
@@ -2650,48 +2808,75 @@ runScenarioWith crash model spec shake = do
           Just abstract -> Just <$> callOrRaise abstract symbols [state]
         calls <- readIORef history
         linearizes <- linearizesHistory plan symbols calls expected final state
-        let calledAt (_, _, _, c, _) = c
+        let calledAt (_, _, _, c, _, _, _, _) = c
             observed = intercalate "; "
               [ mcName command ++ "(" ++ intercalate ", " (map renderValue args) ++ ") returned " ++ renderValue result
-              | (command, args, result, _, _) <- sortBy (\a b -> compare (calledAt a) (calledAt b)) calls ]
+              | (command, args, result, _, _, _, _, _) <- sortBy (\a b -> compare (calledAt a) (calledAt b)) calls ]
         pure (if linearizes then Nothing
-          else Just ("no order of the calls agrees with the model (" ++ observed ++ ")"))
+          else Just ("the calls are not " ++ consistentWord (planConsistency plan) ++ " with the model (" ++ observed ++ ")"))
   pure (title, case outcome of
     Right failure -> failure
     Left e -> Just ("raised error: " ++ case fromException e of
       Just (ModelRaised message) -> message
       _ -> exceptionText e))
 
--- | A Wing-Gong search over any real-time order: next, a call that no
--- pending call returned before; memoized on the calls done and the state.
+-- | Whether call a returned before call b began, as far as messages tell:
+-- a's return clock is at or below b's call clock everywhere.
+happenedBefore :: ScenarioCall -> ScenarioCall -> Bool
+happenedBefore (_, _, _, _, _, _, _, returnedA) (_, _, _, _, _, _, calledB, _) =
+  and [maybe 0 id (lookup p calledB) >= n | (p, n) <- returnedA]
+
+-- | A Wing-Gong search over the scenario's calls, memoized on the calls done
+-- and the state. Linearizable: next, a call no pending call returned before
+-- (real time). Sequential: next, a call every call that happened before it
+-- (its process's order, and messages) is done. Causal: each process's
+-- results from an order of what happened before them. Eventual: no
+-- results, only the final state.
 linearizesHistory :: ModelPlan -> SymbolContext -> [ScenarioCall] -> Scalar -> Maybe Scalar -> Scalar -> IO Bool
-linearizesHistory plan symbols calls expected final state = do
-  seen <- newIORef ([] :: [(Integer, String)])
-  let indexed = zip [0 ..] calls
-      complete = bit (length calls) - 1 :: Integer
-      visit done modelState = do
-        let key = (done, renderValue modelState)
-        keys <- readIORef seen
-        if key `elem` keys then pure False else do
-          writeIORef seen (key : keys)
-          if done == complete then finish modelState else anyM (next done modelState) indexed
-      next done modelState (i, (command, args, result, called, _))
-        | testBit done i = pure False
-        | or [ not (testBit done j) && returned < called
-             | (j, (_, _, _, _, returned)) <- indexed, j /= i ] = pure False
-        | otherwise = do
-            stepped <- try (stepModel command symbols args modelState)
-            case stepped of
-              Left (_ :: ModelStop) -> pure False
-              Right (after, wanted)
-                | not (mcUnit command) && compareValues result wanted /= Right EQ -> pure False
-                | otherwise -> visit (setBit done i) after
-      finish modelState
-        | maybe False (\actual -> compareValues actual modelState /= Right EQ) final = pure False
-        | otherwise = allM (\(kind, invariant) -> do
-            holds <- callModel invariant symbols [if kind == "model" then modelState else state]
-            pure (case holds of Right (SBool True) -> True; _ -> False)) (planInvariants plan)
-  visit 0 expected
+linearizesHistory plan symbols calls expected final state = case mode of
+  "causal" -> allM (\process -> do
+      let own = [i | (i, c) <- indexed, processOf c == process]
+          seenBy = nub (sort (own ++ [j | (j, cj) <- indexed, i <- own, j /= i, happenedBefore cj (calls !! i)]))
+      search seenBy own False) (nub (map processOf calls))
+  "eventual" -> search everything [] True
+  _ -> search everything everything True
+  where
+    mode = planConsistency plan
+    indexed = zip [0 :: Int ..] calls
+    everything = map fst indexed
+    processOf (_, _, _, _, _, p, _, _) = p
+    before j i
+      | mode == "linearizable" = let (_, _, _, _, returned, _, _, _) = calls !! j
+                                     (_, _, _, called, _, _, _, _) = calls !! i
+                                 in returned < called
+      | otherwise = happenedBefore (calls !! j) (calls !! i)
+    search members checked judgeFinal = do
+      seen <- newIORef ([] :: [(Integer, String)])
+      let complete = foldl setBit (0 :: Integer) members
+          visit done modelState = do
+            let key = (done, renderValue modelState)
+            keys <- readIORef seen
+            if key `elem` keys then pure False else do
+              writeIORef seen (key : keys)
+              if done == complete then (if judgeFinal then finish modelState else pure True)
+              else anyM (next done modelState) members
+          next done modelState i
+            | testBit done i = pure False
+            | or [not (testBit done j) && before j i | j <- members, j /= i] = pure False
+            | otherwise = do
+                let (command, args, result, _, _, _, _, _) = calls !! i
+                stepped <- try (stepModel command symbols args modelState)
+                case stepped of
+                  Left (_ :: ModelStop) -> pure False
+                  Right (after, wanted)
+                    | i `elem` checked && not (mcUnit command) && compareValues result wanted /= Right EQ -> pure False
+                    | otherwise -> visit (setBit done i) after
+      visit 0 expected
+    finish modelState
+      | maybe False (\actual -> compareValues actual modelState /= Right EQ) final = pure False
+      | otherwise = allM (\(kind, invariant) -> do
+          holds <- callModel invariant symbols [if kind == "model" then modelState else state]
+          pure (case holds of Right (SBool True) -> True; _ -> False)) (planInvariants plan)
 
 -- | Runs a scenario on 30 schedules, seeded from LAWSPEC_SEED or 0: Nothing,
 -- or the first failure.
@@ -2704,8 +2889,10 @@ checkScenario model spec = do
         | run >= 30 = pure Nothing
         | otherwise = do
             shake <- drawIO source (Draw splitMix64)
-            -- Every third run crashes one process of a par at a random point.
-            (title, failure) <- runScenarioWith (run `mod` 3 == 2) model spec shake
+            -- Every third run crashes one process of a par at a random
+            -- point, and every third other one sends each channel over a
+            -- faulty network.
+            (title, failure) <- runScenarioWith (run `mod` 3 == 2) (run `mod` 3 == 1) model spec shake
             case failure of
               Just message -> pure (Just ("scenario " ++ title ++ " fails: " ++ message))
               Nothing -> loop (run + 1)
@@ -3472,3 +3659,653 @@ join (Process result) = readMVar result >>= either throwIO pure
 -- failure in list order.
 par :: [IO ()] -> IO ()
 par actions = mapM spawn actions >>= mapM_ join
+
+-- Distribution. Values cross the network in a canonical binary encoding
+-- driven by their type descriptor (the same descriptors as generation), so
+-- no tags are sent and every target writes the same bytes:
+--   int: zigzag LEB128 of the integer (any size)      bool: 0 or 1
+--   text, bytes: LEB128 length, then UTF-8 or raw     unit: nothing
+--   list: LEB128 count, then items                     maybe: 0, or 1 then the value
+--   either: 0 then left, or 1 then right               data: LEB128 constructor index, then fields
+-- A node sends frames over a Transport (in memory, TCP or HTTP; TCP and
+-- HTTP are in LawSpecTransports): kind, entity name, the sender's address,
+-- an id and a payload.
+
+-- | Bytes that are not an encoding of a value of the expected type.
+newtype WireError = WireError String deriving Show
+instance Exception WireError
+
+-- | A node could not be reached, or did not answer in time.
+newtype Unreachable = Unreachable String deriving Show
+instance Exception Unreachable
+
+putVarint :: Integer -> BB.Builder
+putVarint n =
+  let low = fromInteger (n .&. 0x7F) :: Word8
+      rest = n `shiftR` 7
+  in if rest /= 0 then BB.word8 (low .|. 0x80) <> putVarint rest else BB.word8 low
+
+getVarint :: ByteString -> Int -> Either String (Integer, Int)
+getVarint buf = go 0 0
+  where
+    go acc shift pos
+      | pos >= B.length buf = Left "the bytes end in the middle of a value"
+      | otherwise =
+          let byte = B.index buf pos
+              acc' = acc .|. (toInteger (byte .&. 0x7F) `shiftL` shift)
+          in if byte < 0x80 then Right (acc', pos + 1) else go acc' (shift + 7) (pos + 1)
+
+zigzag :: Integer -> Integer
+zigzag v = if v >= 0 then v * 2 else negate v * 2 - 1
+
+unzigzag :: Integer -> Integer
+unzigzag z = if even z then z `div` 2 else negate ((z + 1) `div` 2)
+
+putBytes :: ByteString -> BB.Builder
+putBytes raw = putVarint (toInteger (B.length raw)) <> BB.byteString raw
+
+getBytes :: ByteString -> Int -> Either String (ByteString, Int)
+getBytes buf pos = do
+  (n, pos') <- getVarint buf pos
+  let end = pos' + fromInteger n
+  if end > B.length buf then Left "the bytes end in the middle of a value"
+    else Right (B.take (fromInteger n) (B.drop pos' buf), end)
+
+-- An integer descriptor's declared bounds (None: no bound).
+declaredBounds :: Descriptor -> (Maybe Integer, Maybe Integer)
+declaredBounds (DescList (_ : _ : lo : hi : _)) = (bound lo, bound hi)
+  where bound b = case b of DescInteger k -> Just k; _ -> Nothing
+declaredBounds _ = (Nothing, Nothing)
+
+utf8Of :: [Int] -> ByteString
+utf8Of = TE.encodeUtf8 . T.pack . map chr
+
+wirePut :: DataTable -> Descriptor -> Scalar -> Either String BB.Builder
+wirePut table d0 v = case (descriptorKind d, v) of
+  ("int", SInteger _ n) -> do
+    let (lo, hi) = declaredBounds d
+    if maybe False (n <) lo || maybe False (n >) hi
+      then Left (show n ++ " is not a " ++ descriptorName (arg 1)) else Right (putVarint (zigzag n))
+  ("bool", SBool b) -> Right (BB.word8 (if b then 1 else 0))
+  (kind, SSequence _ cps) | kind `elem` ["text", "end"] -> Right (putBytes (utf8Of cps))
+  ("unit", _) -> Right mempty
+  ("list", SList xs) -> (putVarint (toInteger (length xs)) <>) . mconcat <$> mapM (wirePut table (arg 1)) xs
+  ("maybe", SData "Maybe::Nothing" []) -> Right (BB.word8 0)
+  ("maybe", SData "Maybe::Just" [x]) -> (BB.word8 1 <>) <$> wirePut table (arg 1) x
+  ("either", SData "Either::Left" [x]) -> (BB.word8 0 <>) <$> wirePut table (arg 1) x
+  ("either", SData "Either::Right" [x]) -> (BB.word8 1 <>) <$> wirePut table (arg 2) x
+  ("data", SData tag fields) ->
+    case [(i, fs) | (i, c) <- zip [0 :: Integer ..] (constructorsOf d), let (t, fs) = constructorParts c, t == tag] of
+      (i, fs) : _ -> (putVarint i <>) . mconcat <$> sequence (zipWith (wirePut table) fs fields)
+      [] -> Left (tag ++ " is not a constructor of " ++ descriptorName (arg 1))
+  (kind, _) -> Left (renderValue v ++ " is not a value of " ++ kind)
+  where d = resolveDescriptor table d0
+        arg i = descriptorArgument i d
+
+wireGet :: DataTable -> Descriptor -> ByteString -> Int -> Either String (Scalar, Int)
+wireGet table d0 buf pos = case descriptorKind d of
+  "int" -> do
+    (z, pos') <- getVarint buf pos
+    let n = unzigzag z
+        (lo, hi) = declaredBounds d
+    if maybe False (n <) lo || maybe False (n >) hi
+      then Left (show n ++ " is out of range for " ++ descriptorName (arg 1))
+      else Right (SInteger (descriptorName (arg 1)) n, pos')
+  "bool" -> case byteAt pos of
+    Just b | b <= 1 -> Right (SBool (b == 1), pos + 1)
+    _ -> Left "not a Bool"
+  kind | kind `elem` ["text", "end"] -> do
+    (raw, pos') <- getBytes buf pos
+    case TE.decodeUtf8' raw of
+      Right t -> Right (SSequence "Text" (map ord (T.unpack t)), pos')
+      Left _ -> Left "text that is not UTF-8"
+  "unit" -> Right (SAbsent "Unit", pos)
+  "list" -> do
+    (n, pos') <- getVarint buf pos
+    let items 0 p acc = Right (SList (reverse acc), p)
+        items k p acc = do
+          (x, p') <- wireGet table (arg 1) buf p
+          items (k - 1 :: Integer) p' (x : acc)
+    items n pos' []
+  "maybe" -> case byteAt pos of
+    Just 0 -> Right (SData "Maybe::Nothing" [], pos + 1)
+    Just 1 -> (\(x, p) -> (SData "Maybe::Just" [x], p)) <$> wireGet table (arg 1) buf (pos + 1)
+    _ -> Left "not a Maybe"
+  "either" -> case byteAt pos of
+    Just 0 -> (\(x, p) -> (SData "Either::Left" [x], p)) <$> wireGet table (arg 1) buf (pos + 1)
+    Just 1 -> (\(x, p) -> (SData "Either::Right" [x], p)) <$> wireGet table (arg 2) buf (pos + 1)
+    _ -> Left "not an Either"
+  "data" -> do
+    (i, pos') <- getVarint buf pos
+    let ctors = constructorsOf d
+    if i >= toInteger (length ctors) then Left ("no constructor " ++ show i ++ " in " ++ descriptorName (arg 1)) else do
+      let (tag, fs) = constructorParts (ctors !! fromInteger i)
+          fields [] p acc = Right (SData tag (reverse acc), p)
+          fields (f : rest) p acc = do
+            (x, p') <- wireGet table f buf p
+            fields rest p' (x : acc)
+      fields fs pos' []
+  kind -> Left ("unknown descriptor " ++ kind)
+  where d = resolveDescriptor table d0
+        arg i = descriptorArgument i d
+        byteAt p = if p < B.length buf then Just (B.index buf p) else Nothing
+
+-- | The value's canonical bytes.
+wireEncode :: DataTable -> Descriptor -> Scalar -> Either String ByteString
+wireEncode table d v = BL.toStrict . BB.toLazyByteString <$> wirePut table d v
+
+-- | The value encoded by exactly these bytes.
+wireDecode :: DataTable -> Descriptor -> ByteString -> Either String Scalar
+wireDecode table d bytes = do
+  (v, pos) <- wireGet table d bytes 0
+  if pos /= B.length bytes then Left "extra bytes after the value" else Right v
+
+hexOf :: ByteString -> String
+hexOf = concatMap (\w -> let h = showHex w "" in if length h < 2 then '0' : h else h) . B.unpack
+
+-- | count values generated from one seed, encoded, in hexadecimal.
+wireEncoded :: String -> Word64 -> Integer -> Integer -> [String]
+wireEncoded text seed size count =
+  let (table, d) = valuesFrom text
+      values = fst (runDraw (replicateM (fromInteger count) (generateValue table d size)) seed)
+  in map (either error hexOf . wireEncode table d) values
+
+-- | Whether count generated values decode to themselves.
+wireRoundTrips :: String -> Word64 -> Integer -> Integer -> Bool
+wireRoundTrips text seed size count =
+  let (table, d) = valuesFrom text
+      values = fst (runDraw (replicateM (fromInteger count) (generateValue table d size)) seed)
+  in all (\v -> fmap renderValue (wireEncode table d v >>= wireDecode table d) == Right (renderValue v)) values
+
+orWire :: Either String a -> IO a
+orWire = either (throwIO . WireError) pure
+
+textOf :: String -> BB.Builder
+textOf = putBytes . TE.encodeUtf8 . T.pack
+
+getText :: ByteString -> Int -> Either String (String, Int)
+getText buf pos = do
+  (raw, pos') <- getBytes buf pos
+  either (const (Left "text that is not UTF-8")) (\t -> Right (T.unpack t, pos')) (TE.decodeUtf8' raw)
+
+build :: BB.Builder -> ByteString
+build = BL.toStrict . BB.toLazyByteString
+
+-- | A frame: kind, entity name, the sender's address, an id, a payload.
+encodeFrame :: String -> String -> String -> Integer -> ByteString -> ByteString
+encodeFrame kind to source ident payload =
+  build (textOf kind <> textOf to <> textOf source <> putVarint (zigzag ident) <> putBytes payload)
+
+decodeFrame :: ByteString -> Either String (String, String, String, Integer, ByteString)
+decodeFrame buf = do
+  (kind, p1) <- getText buf 0
+  (to, p2) <- getText buf p1
+  (source, p3) <- getText buf p2
+  (z, p4) <- getVarint buf p3
+  (payload, p5) <- getBytes buf p4
+  if p5 /= B.length buf then Left "extra bytes after a frame" else Right (kind, to, source, unzigzag z, payload)
+
+-- | 'tcp://host:port/name' as ('tcp://host:port', 'name').
+splitAddress :: String -> IO (String, String)
+splitAddress address =
+  let (nameRev, rest) = break (== '/') (reverse address)
+      node = reverse (drop 1 rest)
+  in if null rest || not (T.isInfixOf (T.pack "://") (T.pack node))
+       then throwIO (ErrorCall (show address ++ " is not an address such as tcp://127.0.0.1:7000/name"))
+       else pure (node, reverse nameRev)
+
+-- | Moves frames between nodes: start begins delivering every frame that
+-- arrives; send sends one to the node at an address, best effort (throwing
+-- Unreachable when it cannot); close stops.
+data Transport = Transport
+  { transportAddress :: String
+  , transportStart :: (ByteString -> IO ()) -> IO ()
+  , transportSend :: String -> ByteString -> IO ()
+  , transportClose :: IO ()
+  }
+
+-- | Nodes in one process, with faults for testing: each frame may be lost
+-- or duplicated, and is delayed by up to the delay (so frames overtake each
+-- other); partitionNetwork cuts nodes off until healNetwork.
+data MemoryNetwork = MemoryNetwork
+  { networkState :: MVar (Word64, [(String, ByteString -> IO ())], Maybe [[String]])
+  , networkLoss :: Double
+  , networkDuplicate :: Double
+  -- | The longest delay, in seconds.
+  , networkDelay :: Double
+  }
+
+newMemoryNetwork :: Word64 -> Double -> Double -> Double -> IO MemoryNetwork
+newMemoryNetwork seed loss duplicate delay = do
+  state <- newMVar (seed, [], Nothing)
+  pure (MemoryNetwork state loss duplicate delay)
+
+memoryTransport :: MemoryNetwork -> String -> Transport
+memoryTransport network name = Transport
+  { transportAddress = address
+  , transportStart = \deliver -> modifyMVar (networkState network) (\(r, nodes, groups) ->
+      pure ((r, (address, deliver) : filter ((/= address) . fst) nodes, groups), ()))
+  , transportSend = memorySend network address
+  , transportClose = modifyMVar (networkState network) (\(r, nodes, groups) ->
+      pure ((r, filter ((/= address) . fst) nodes, groups), ()))
+  }
+  where address = "mem://" ++ name
+
+-- | Only nodes named in the same group reach each other.
+partitionNetwork :: MemoryNetwork -> [[String]] -> IO ()
+partitionNetwork network groups = modifyMVar (networkState network) (\(r, nodes, _) ->
+  pure ((r, nodes, Just (map (map ("mem://" ++)) groups)), ()))
+
+healNetwork :: MemoryNetwork -> IO ()
+healNetwork network = modifyMVar (networkState network) (\(r, nodes, _) -> pure ((r, nodes, Nothing), ()))
+
+memorySend :: MemoryNetwork -> String -> String -> ByteString -> IO ()
+memorySend network source node frame = do
+  plan <- modifyMVar (networkState network) $ \(r0, nodes, groups) -> case lookup node nodes of
+    Nothing -> pure ((r0, nodes, groups), Left ())
+    Just deliver
+      | maybe False (\gs -> not (any (\g -> source `elem` g && node `elem` g) gs)) groups -> pure ((r0, nodes, groups), Right [])
+      | otherwise -> do
+          let below k r = let (x, r') = splitMix64 r in (toInteger x `mod` k, r')
+              chance p r = if p <= 0 then (False, r) else
+                let (x, r') = below (bit 30) r in (fromInteger x < p * 2 ^ (30 :: Int), r')
+              (lost, r1) = chance (networkLoss network) r0
+              (twice, r2) = chance (networkDuplicate network) r1
+              copies = if twice then 2 else 1 :: Int
+              (delays, r3) = foldl (\(acc, r) _ -> let (k, r') = below 1001 r in (acc ++ [k], r')) ([], r2) [1 .. copies]
+          pure ((r3, nodes, groups), Right (if lost then [] else [(deliver, k) | k <- delays]))
+  case plan of
+    Left () -> throwIO (Unreachable ("no node at " ++ node))
+    Right sends -> forM_ sends $ \(deliver, k) -> forkIO (do
+      let micros = round (fromInteger k * networkDelay network * 1000) :: Int
+      if micros > 0 then threadDelay micros else yield
+      deliver frame `catch` \(_ :: SomeException) -> pure ())
+
+-- | A process's presence on a network: it names local mailboxes, actors,
+-- channel ends and definitions, so other nodes reach them at
+-- <node address>/<name>, and sends to theirs. Order is kept within one
+-- channel; an actor call or an evaluation is sent again until answered
+-- (the receiver runs it once), failing with Unreachable after its timeout.
+data Node = Node
+  { nodeTransport :: Transport
+  , nodeAddress :: String
+  , nodeEntities :: IORef [(String, Entity)]
+  , nodePending :: IORef [(Integer, MVar ByteString)]
+  -- | Requests already seen, by sender and id, with the reply once sent.
+  , nodeSeen :: IORef [((String, Integer), Maybe ByteString)]
+  , nodeIds :: IORef Integer
+  }
+
+-- | What a registered name does with a frame: kind, source, id, payload.
+newtype Entity = Entity (Node -> String -> String -> Integer -> ByteString -> IO ())
+
+newNode :: Transport -> IO Node
+newNode transport = do
+  node <- Node transport (transportAddress transport) <$> newIORef [] <*> newIORef [] <*> newIORef [] <*> newIORef 0
+  transportStart transport (deliverFrame node)
+  pure node
+
+closeNode :: Node -> IO ()
+closeNode = transportClose . nodeTransport
+
+nextId :: Node -> IO Integer
+nextId node = atomicModifyIORef' (nodeIds node) (\i -> (i + 1, i + 1))
+
+sendFrame :: Node -> String -> String -> ByteString -> Integer -> IO ()
+sendFrame node address kind payload ident = do
+  (target, name) <- splitAddress address
+  transportSend (nodeTransport node) target (encodeFrame kind name (nodeAddress node) ident payload)
+
+register :: Node -> String -> Entity -> IO String
+register node name entity = do
+  if null name || '/' `elem` name then throwIO (ErrorCall (show name ++ " is not a name: use letters, digits and dashes")) else pure ()
+  taken <- atomicModifyIORef' (nodeEntities node) (\es -> case lookup name es of
+    Just _ -> (es, True)
+    Nothing -> ((name, entity) : es, False))
+  if taken then throwIO (ErrorCall (name ++ " is already registered on " ++ nodeAddress node)) else pure ()
+  pure (nodeAddress node ++ "/" ++ name)
+
+deliverFrame :: Node -> ByteString -> IO ()
+deliverFrame node frame = case decodeFrame frame of
+  Left _ -> pure ()
+  Right (kind, to, source, ident, payload)
+    | kind == "reply" -> do
+        slot <- atomicModifyIORef' (nodePending node) (\ps -> (filter ((/= ident) . fst) ps, lookup ident ps))
+        forM_ slot (\s -> tryPutMVar s payload)
+    | otherwise -> do
+        entities <- readIORef (nodeEntities node)
+        case lookup to entities of
+          Nothing -> if ident /= 0 then replyTo node source ident 3 (utf8Of (map ord ("nothing is registered as " ++ to ++ " on " ++ nodeAddress node))) else pure ()
+          Just (Entity receive) -> do
+            fresh <- if ident == 0 then pure True else do
+              let key = (source, ident)
+              found <- atomicModifyIORef' (nodeSeen node) (\seen -> case lookup key seen of
+                Just answer -> (seen, Just answer)
+                Nothing -> (take 4000 ((key, Nothing) : seen), Nothing))
+              case found of
+                Just (Just answer) -> forkIO (sendFrame node (source ++ "/") "reply" answer ident
+                  `catch` \(_ :: SomeException) -> pure ()) >> pure False
+                Just Nothing -> pure False
+                Nothing -> pure True
+            -- Handled off the transport's thread, so a slow handler does
+            -- not hold up other frames.
+            if fresh then () <$ forkIO (receive node kind source ident payload `catch` \(_ :: SomeException) -> pure ()) else pure ()
+
+replyTo :: Node -> String -> Integer -> Word8 -> ByteString -> IO ()
+replyTo node source ident status body = do
+  let payload = B.cons status body
+  atomicModifyIORef' (nodeSeen node) (\seen -> ([(k, if k == (source, ident) then Just payload else a) | (k, a) <- seen], ()))
+  sendFrame node (source ++ "/") "reply" payload ident `catch` \(_ :: SomeException) -> pure ()
+
+-- | Sends a request until its reply arrives: (status, body).
+request :: Node -> String -> String -> ByteString -> Double -> IO (Word8, ByteString)
+request node address kind payload seconds = do
+  ident <- nextId node
+  slot <- newEmptyMVar
+  atomicModifyIORef' (nodePending node) (\ps -> ((ident, slot) : ps, ()))
+  start <- getMonotonicTimeNSec
+  let deadline = start + round (seconds * 1e9)
+      loop = do
+        sendFrame node address kind payload ident `catch` \(_ :: SomeException) -> pure ()
+        now <- getMonotonicTimeNSec
+        let left = if deadline > now then fromIntegral ((deadline - now) `div` 1000) else 0
+        got <- timeout (max 1 (min 100000 left)) (readMVar slot)
+        case got of
+          Just answer -> pure (B.head answer, B.tail answer)
+          Nothing -> do
+            now' <- getMonotonicTimeNSec
+            if now' >= deadline then do
+              atomicModifyIORef' (nodePending node) (\ps -> (filter ((/= ident) . fst) ps, ()))
+              throwIO (Unreachable (address ++ " did not answer within " ++ show seconds ++ "s"))
+            else loop
+  loop
+
+replyValue :: DataTable -> Descriptor -> (Word8, ByteString) -> IO Scalar
+replyValue table d (status, body) = case status of
+  0 -> orWire (wireDecode table d body)
+  1 -> throwIO (ActorCrashed (toException (ErrorCall message)))
+  2 -> throwIO ActorStopped
+  _ -> throwIO (Unreachable message)
+  where message = either (const "") T.unpack (TE.decodeUtf8' body)
+
+encodeAll :: DataTable -> [Descriptor] -> [Scalar] -> Either String BB.Builder
+encodeAll table ds vs
+  | length ds /= length vs = Left "wrong number of arguments"
+  | otherwise = mconcat <$> sequence (zipWith (wirePut table) ds vs)
+
+decodeAll :: DataTable -> [Descriptor] -> ByteString -> Int -> Either String [Scalar]
+decodeAll table ds buf pos0 = go ds pos0 []
+  where
+    go [] p acc = if p /= B.length buf then Left "extra bytes after the arguments" else Right (reverse acc)
+    go (d : rest) p acc = do
+      (v, p') <- wireGet table d buf p
+      go rest p' (v : acc)
+
+-- | A local mailbox that other nodes send to at <address>/name (best effort).
+nodeMailbox :: Node -> String -> DataTable -> Descriptor -> IO (Mailbox Scalar)
+nodeMailbox node name table d = do
+  box <- newMailbox
+  _ <- register node name (Entity (\_ kind _ _ payload ->
+    if kind == "mail" then either (const (pure ())) (\v -> sendMailbox box v `catch` \ActorStopped -> pure ()) (wireDecode table d payload)
+    else pure ()))
+  pure box
+
+-- | Sends to a mailbox on another node; never waits.
+data RemoteMailbox = RemoteMailbox Node String DataTable Descriptor
+
+remoteMailbox :: Node -> String -> DataTable -> Descriptor -> RemoteMailbox
+remoteMailbox = RemoteMailbox
+
+sendRemote :: RemoteMailbox -> Scalar -> IO ()
+sendRemote (RemoteMailbox node address table d) v = do
+  payload <- orWire (wireEncode table d v)
+  sendFrame node address "mail" payload 0
+
+-- | A message an actor serves to other nodes: its name, argument and reply
+-- descriptors, and the handler on logical values (state first).
+type ServedMessage s = (String, [Descriptor], Descriptor, s -> [Scalar] -> IO (Scalar, s))
+
+-- | Lets other nodes call an actor at <address>/name; returns that address.
+serveActor :: Node -> String -> Actor s -> DataTable -> [ServedMessage s] -> IO String
+serveActor node name actor table messages = register node name (Entity receive)
+  where
+    receive _ kind source ident payload
+      | kind /= "call" = pure ()
+      | otherwise = case getText payload 0 of
+          Left e -> replyTo node source ident 3 (utf8Of (map ord e))
+          Right (message, pos) -> case [m | m@(n, _, _, _) <- messages, n == message] of
+            [] -> replyTo node source ident 3 (utf8Of (map ord ("not a message this actor handles: " ++ message)))
+            (_, ds, r, handler) : _ -> case decodeAll table ds payload pos of
+              Left e -> replyTo node source ident 3 (utf8Of (map ord ("not a message this actor handles: " ++ e)))
+              Right args -> do
+                outcome <- try (callActor actor (\state -> handler state args))
+                case outcome of
+                  Right value -> case wireEncode table r value of
+                    Right bytes -> replyTo node source ident 0 bytes
+                    Left e -> replyTo node source ident 1 (utf8Of (map ord e))
+                  Left e -> case fromException e of
+                    Just ActorStopped -> replyTo node source ident 2 (utf8Of (map ord "the actor has stopped"))
+                    Nothing -> replyTo node source ident 1 (utf8Of (map ord (exceptionText e)))
+
+-- | An actor on another node: each call sends its message and waits for the
+-- reply, throwing Unreachable after the timeout (seconds), or what the
+-- actor's call threw (ActorCrashed, ActorStopped).
+data RemoteActor = RemoteActor Node String DataTable [(String, ([Descriptor], Descriptor))] Double
+
+remoteActor :: Node -> String -> DataTable -> [(String, ([Descriptor], Descriptor))] -> Double -> RemoteActor
+remoteActor = RemoteActor
+
+callRemote :: RemoteActor -> String -> [Scalar] -> IO Scalar
+callRemote (RemoteActor node address table signatures seconds) message args = case lookup message signatures of
+  Nothing -> throwIO (ErrorCall ("no message " ++ message))
+  Just (ds, r) -> do
+    payload <- build . (textOf message <>) <$> orWire (encodeAll table ds args)
+    request node address "call" payload seconds >>= replyValue table r
+
+-- | Lets other nodes evaluate definitions, each by its content hash:
+-- (hash, function, argument descriptors, result descriptor).
+serveDefinitions :: Node -> DataTable -> [(String, [Scalar] -> IO Scalar, [Descriptor], Descriptor)] -> IO String
+serveDefinitions node table definitions = register node "definitions" (Entity receive)
+  where
+    receive _ kind source ident payload
+      | kind /= "eval" = pure ()
+      | otherwise = case getText payload 0 of
+          Right (digest, pos) | ((_, f, ds, r) : _) <- [x | x@(h, _, _, _) <- definitions, h == digest]
+                              , Right args <- decodeAll table ds payload pos -> do
+            outcome <- try (f args >>= \v -> evaluate (deepScalar v) >> pure v)
+            case outcome of
+              Right value -> either (\e -> replyTo node source ident 1 (utf8Of (map ord e))) (replyTo node source ident 0) (wireEncode table r value)
+              Left e -> replyTo node source ident 1 (utf8Of (map ord (exceptionText e)))
+          _ -> replyTo node source ident 3 (utf8Of (map ord "this node has no definition with that content hash"))
+
+-- | Evaluates the definition with this content hash on another node.
+evaluateRemote :: Node -> String -> String -> [Scalar] -> [Descriptor] -> Descriptor -> DataTable -> Double -> IO Scalar
+evaluateRemote node target digest args ds r table seconds = do
+  payload <- build . (textOf digest <>) <$> orWire (encodeAll table ds args)
+  request node (target ++ "/definitions") "eval" payload seconds >>= replyValue table r
+
+-- | One end of a channel between nodes. Each value travels in a numbered
+-- frame sent again until acknowledged, so loss, duplication and reordering
+-- are repaired; a peer silent past the deadline fails the end (PeerFailed).
+-- Order is kept within the channel.
+data NetEndpoint = NetEndpoint
+  { endpointNode :: Node
+  , endpointSteps :: [(Bool, Descriptor)]
+  , endpointTable :: DataTable
+  , endpointAddress :: IORef String
+  , endpointState :: MVar EndpointState
+  , endpointInbox :: Chan (Either String ByteString)
+  , endpointStep :: IORef Int
+  }
+
+data EndpointState = EndpointState
+  { esPeer :: Maybe String
+  , esOut :: Integer
+  -- | seq -> (payload, first sent, last sent), monotonic nanoseconds.
+  , esUnacked :: [(Integer, (ByteString, Word64, Word64))]
+  , esExpected :: Integer
+  , esEarly :: [(Integer, ByteString)]
+  , esGone :: Bool
+  }
+
+newEndpoint :: Node -> [(Bool, Descriptor)] -> DataTable -> Double -> IO NetEndpoint
+newEndpoint node steps table deadline = do
+  endpoint <- NetEndpoint node steps table <$> newIORef "" <*> newMVar (EndpointState Nothing 0 [] 0 [] False)
+    <*> newChan <*> newIORef 0
+  _ <- forkIO (resendLoop endpoint deadline)
+  pure endpoint
+
+-- | The first end of a channel named name here; its other end is dialed
+-- from any node. steps: (sends, descriptor) per step, from this end's side.
+listenOn :: Node -> String -> [(Bool, Descriptor)] -> DataTable -> IO NetEndpoint
+listenOn node name steps table = do
+  endpoint <- newEndpoint node steps table 5
+  address <- register node name (Entity (endpointReceive endpoint))
+  writeIORef (endpointAddress endpoint) address
+  pure endpoint
+
+-- | The second end of the channel listening at address; steps are from
+-- this end's side.
+dialTo :: Node -> String -> [(Bool, Descriptor)] -> DataTable -> IO NetEndpoint
+dialTo node address steps table = do
+  endpoint <- newEndpoint node steps table 5
+  n <- nextId node
+  own <- register node ("end-" ++ show n) (Entity (endpointReceive endpoint))
+  writeIORef (endpointAddress endpoint) own
+  modifyMVar (endpointState endpoint) (\st -> pure (st { esPeer = Just address }, ()))
+  transmit endpoint (-1) (utf8Of (map ord "hello"))
+  pure endpoint
+
+seqBytes :: Integer -> BB.Builder
+seqBytes = putVarint . zigzag
+
+transmit :: NetEndpoint -> Integer -> ByteString -> IO ()
+transmit endpoint seqNo body = do
+  address <- readIORef (endpointAddress endpoint)
+  now <- getMonotonicTimeNSec
+  let payload = build (seqBytes seqNo <> textOf address <> BB.byteString body)
+  peer <- modifyMVar (endpointState endpoint) (\st ->
+    pure (st { esUnacked = (seqNo, (payload, now, now)) : filter ((/= seqNo) . fst) (esUnacked st) }, esPeer st))
+  forM_ peer (\p -> sendFrame (endpointNode endpoint) p "chan" payload 0 `catch` \(_ :: SomeException) -> pure ())
+
+resendLoop :: NetEndpoint -> Double -> IO ()
+resendLoop endpoint deadline = do
+  threadDelay 20000
+  now <- getMonotonicTimeNSec
+  (gone, stale, peer, due) <- modifyMVar (endpointState endpoint) $ \st -> do
+    let due = [(s, payload) | (s, (payload, _, lastSent)) <- esUnacked st, now - lastSent > 50000000]
+        stale = or [now - first > round (deadline * 1e9) | (_, (_, first, lastSent)) <- esUnacked st, now - lastSent > 50000000]
+        touched = [(s, (payload, first, if any ((== s) . fst) due then now else lastSent)) | (s, (payload, first, lastSent)) <- esUnacked st]
+    pure (st { esUnacked = touched }, (esGone st, stale, esPeer st, due))
+  if gone then pure ()
+  else if stale then failEndpoint endpoint "the other end did not answer in time (unreachable)"
+  else do
+    forM_ peer (\p -> forM_ due (\(_, payload) ->
+      sendFrame (endpointNode endpoint) p "chan" payload 0 `catch` \(_ :: SomeException) -> pure ()))
+    resendLoop endpoint deadline
+
+failEndpoint :: NetEndpoint -> String -> IO ()
+failEndpoint endpoint reason = do
+  first <- modifyMVar (endpointState endpoint) (\st ->
+    pure (if esGone st then (st, False) else (st { esGone = True, esUnacked = [] }, True)))
+  if first then writeChan (endpointInbox endpoint) (Left reason) else pure ()
+
+endpointReceive :: NetEndpoint -> Node -> String -> String -> Integer -> ByteString -> IO ()
+endpointReceive endpoint node kind _ _ payload
+  | kind == "ack" = case getVarint payload 0 of
+      Right (z, _) -> modifyMVar (endpointState endpoint) (\st ->
+        pure (st { esUnacked = filter ((/= unzigzag z) . fst) (esUnacked st) }, ()))
+      Left _ -> pure ()
+  | kind /= "chan" = pure ()
+  | otherwise = case parsed of
+      Left _ -> pure ()
+      Right (seqNo, sender, body) -> do
+        sendFrame node sender "ack" (build (seqBytes seqNo)) 0 `catch` \(_ :: SomeException) -> pure ()
+        if seqNo == -1
+          then modifyMVar (endpointState endpoint) (\st ->
+            pure (st { esPeer = maybe (Just sender) Just (esPeer st) }, ()))
+          else do
+            ready <- modifyMVar (endpointState endpoint) $ \st ->
+              if seqNo < esExpected st || any ((== seqNo) . fst) (esEarly st) then pure (st, [])
+              else do
+                let early = (seqNo, body) : esEarly st
+                    collect expected held acc = case lookup expected held of
+                      Just b -> collect (expected + 1) (filter ((/= expected) . fst) held) (b : acc)
+                      Nothing -> (expected, held, reverse acc)
+                    (expected', held', out) = collect (esExpected st) early []
+                pure (st { esExpected = expected', esEarly = held' }, out)
+            mapM_ (writeChan (endpointInbox endpoint) . Right) ready
+  where
+    parsed = do
+      (z, p1) <- getVarint payload 0
+      (sender, p2) <- getText payload p1
+      pure (unzigzag z, sender, B.drop p2 payload)
+
+stepDescriptor :: NetEndpoint -> Bool -> IO Descriptor
+stepDescriptor endpoint sends = do
+  k <- readIORef (endpointStep endpoint)
+  if k >= length (endpointSteps endpoint) then throwIO (ErrorCall "this channel's protocol has ended") else do
+    let (stepSends, d) = endpointSteps endpoint !! k
+    if stepSends /= sends then throwIO (ErrorCall (if stepSends then "this step sends" else "this step receives")) else do
+      writeIORef (endpointStep endpoint) (k + 1)
+      pure d
+
+-- | Sends the next step's value.
+endpointSend :: NetEndpoint -> Scalar -> IO ()
+endpointSend endpoint value = do
+  gone <- esGone <$> readMVar (endpointState endpoint)
+  if gone then throwIO PeerFailed else do
+    d <- stepDescriptor endpoint True
+    bytes <- orWire (wireEncode (endpointTable endpoint) d value)
+    seqNo <- modifyMVar (endpointState endpoint) (\st -> pure (st { esOut = esOut st + 1 }, esOut st))
+    transmit endpoint seqNo (B.cons 0 bytes)
+
+-- | Receives the next step's value, waiting up to the given microseconds
+-- (forever when Nothing); throws PeerFailed when the other end gave up or
+-- failed, after what it sent.
+endpointReceiveValue :: NetEndpoint -> Maybe Int -> IO Scalar
+endpointReceiveValue endpoint micros = do
+  d <- stepDescriptor endpoint False
+  item <- maybe (Just <$> readChan (endpointInbox endpoint)) (\m -> timeout m (readChan (endpointInbox endpoint))) micros
+  case item of
+    Nothing -> throwIO (ErrorCall "no message arrived in time")
+    Just (Left reason) -> writeChan (endpointInbox endpoint) (Left reason) >> throwIO PeerFailed
+    Just (Right body)
+      | B.null body || B.head body == 1 -> do
+          failEndpoint endpoint "the other end gave up the conversation"
+          throwIO PeerFailed
+      | otherwise -> orWire (wireDecode (endpointTable endpoint) d (B.tail body))
+
+-- | Gives up: the other end's receives fail after what was sent.
+endpointAbandon :: NetEndpoint -> IO ()
+endpointAbandon endpoint = do
+  seqNo <- modifyMVar (endpointState endpoint) (\st -> pure (st { esOut = esOut st + 1 }, esOut st))
+  transmit endpoint seqNo (B.singleton 1)
+
+-- | A channel side over a network end, converting each step's native value
+-- (in order) with the given conversions, for typed sessions.
+netChannelSide :: NetEndpoint -> [(Dynamic -> Either String Scalar, Scalar -> Either String Dynamic)] -> IO ChannelSide
+netChannelSide endpoint conversions = do
+  step <- newIORef (0 :: Int)
+  let conversion = do
+        k <- atomicModifyIORef' step (\i -> (i + 1, i))
+        if k < length conversions then pure (conversions !! k) else throwIO (ErrorCall "this channel's protocol has ended")
+  pure ChannelSide
+    { sideSend = \dynamic -> do
+        (toLogical, _) <- conversion
+        either (throwIO . ErrorCall) (endpointSend endpoint) (toLogical dynamic)
+    , sideReceive = do
+        (_, toNative') <- conversion
+        value <- endpointReceiveValue endpoint Nothing
+        either (throwIO . ErrorCall) pure (toNative' value)
+    , sideAbandon = endpointAbandon endpoint
+    }
+
+-- | A step's conversions for netChannelSide, from its codec's encode and
+-- decode.
+conversion :: forall a. Typeable a => (a -> Either String Scalar) -> (Scalar -> Either String a)
+           -> (Dynamic -> Either String Scalar, Scalar -> Either String Dynamic)
+conversion toLogical fromLogical =
+  ( \dynamic -> maybe (Left ("a session sent " ++ show (dynTypeRep dynamic) ++ " where it expected "
+      ++ show (typeRep (Proxy :: Proxy a)))) toLogical (fromDynamic dynamic)
+  , fmap toDyn . fromLogical )

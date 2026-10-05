@@ -240,6 +240,11 @@ export async function doctor(target, root, plannedArtifacts = []) {
         "hspec-discover",
       ])
         requireThat(versions[dep], `Stack test plan is missing ${dep}`);
+      // Nodes reach each other over TCP and HTTP with the network package.
+      requireThat(
+        versions.network,
+        "Stack plan is missing network (a library dependency, for distribution)",
+      );
       requireThat(
         /^2\.11\./.test(versions.hspec) &&
           /^1\./.test(versions.hedgehog) &&
