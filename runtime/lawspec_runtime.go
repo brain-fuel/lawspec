@@ -4755,6 +4755,155 @@ func (c *lawSpecNetScenarioChannel) close() {
 	}
 }
 
+// lawSpecScenarioMailbox is a scenario's mailbox: any process sends, one
+// receives. expected is how many sends the scenario makes; a process that
+// ends gives up the sends it did not make, and a receive with nothing left
+// to come fails (lawSpecGone) instead of waiting. Over a network, messages
+// go from a sender node to the receiver's node, each send waiting until it
+// is delivered.
+type lawSpecScenarioMailbox struct {
+	name                          string
+	expected, received, abandoned int
+	mu                            sync.Mutex
+	items                         []lawSpecMail
+	inbox                         *LawSpecMailbox
+	remote                        *LawSpecRemoteMailbox
+	nodes                         []*LawSpecNode
+	registry                      map[string]*lawSpecNetScenarioChannel
+}
+
+type lawSpecMail struct {
+	value any
+	clock map[string]int64
+}
+
+func lsNewScenarioMailbox(name string, expected int, network *LawSpecMemoryNetwork, descriptor any, values lawSpecValues, registry map[string]*lawSpecNetScenarioChannel) *lawSpecScenarioMailbox {
+	box := &lawSpecScenarioMailbox{name: name, expected: expected, registry: registry}
+	if network != nil {
+		owner := NewLawSpecNode(network.Transport(name + "-owner"))
+		senders := NewLawSpecNode(network.Transport(name + "-senders"))
+		box.nodes = []*LawSpecNode{owner, senders}
+		if form, ok := descriptor.([]any); ok && lsAtom(form[0]) == "end" {
+			descriptor = []any{"text"}
+		}
+		box.inbox, _ = owner.Mailbox(name, descriptor, values)
+		box.remote = senders.RemoteMailbox(owner.Address()+"/"+name, descriptor, values, 5*time.Second)
+	}
+	return box
+}
+
+func (b *lawSpecScenarioMailbox) send(value any, clock map[string]int64) error {
+	if b.inbox == nil {
+		b.mu.Lock()
+		b.items = append(b.items, lawSpecMail{value, clock})
+		b.mu.Unlock()
+		return nil
+	}
+	if end, ok := value.(lawSpecEnd); ok {
+		net := end.channel.(*lawSpecNetScenarioChannel)
+		value = LawSpecValue{"Text", lsTextUnits(fmt.Sprintf("%s#%d", net.name, end.side))}
+	}
+	// The clock travels beside the network, in send order.
+	b.mu.Lock()
+	b.items = append(b.items, lawSpecMail{nil, clock})
+	b.mu.Unlock()
+	return b.remote.Send(value.(LawSpecValue))
+}
+
+func (b *lawSpecScenarioMailbox) giveUp(count int) {
+	b.mu.Lock()
+	b.abandoned += count
+	b.mu.Unlock()
+}
+
+// receive is the next message and its sender's clock, lawSpecGone{} when
+// nothing is left to come, or ok false after waiting too long.
+func (b *lawSpecScenarioMailbox) receive() (any, map[string]int64, bool) {
+	giveUp := time.Now().Add(5 * time.Second)
+	for {
+		b.mu.Lock()
+		if b.inbox == nil && len(b.items) > 0 {
+			mail := b.items[0]
+			b.items = b.items[1:]
+			b.received++
+			b.mu.Unlock()
+			return mail.value, mail.clock, true
+		}
+		if b.received+b.abandoned >= b.expected && (b.inbox == nil || len(b.items) == 0) {
+			b.mu.Unlock()
+			return lawSpecGone{}, map[string]int64{}, true
+		}
+		b.mu.Unlock()
+		if time.Now().After(giveUp) {
+			return nil, nil, false
+		}
+		if b.inbox == nil {
+			time.Sleep(time.Millisecond)
+			continue
+		}
+		value, err := b.inbox.Receive(20 * time.Millisecond)
+		if err != nil {
+			continue
+		}
+		b.mu.Lock()
+		b.received++
+		clock := map[string]int64{}
+		if len(b.items) > 0 {
+			clock, b.items = b.items[0].clock, b.items[1:]
+		}
+		b.mu.Unlock()
+		v := value.(LawSpecValue)
+		if units, ok := v.Data.([]int); ok && v.Type == "Text" {
+			text, _ := lsUnitsText(units)
+			if i := strings.LastIndex(text, "#"); i >= 0 {
+				if owner, known := b.registry[text[:i]]; known {
+					which, _ := strconv.Atoi(text[i+1:])
+					return lawSpecEnd{owner, which}, clock, true
+				}
+			}
+		}
+		return v, clock, true
+	}
+}
+
+func (b *lawSpecScenarioMailbox) close() {
+	for _, node := range b.nodes {
+		node.Close()
+	}
+}
+
+// lsScenarioSends is how many times these acts (not nested pars) send to
+// name.
+func lsScenarioSends(acts []any, name string) int {
+	count := 0
+	for _, a := range acts {
+		act := a.([]any)
+		if lsAtom(act[0]) == "send" && lsAtom(act[1]) == name {
+			count++
+		}
+	}
+	return count
+}
+
+// lsAllSends is how many sends to name the whole program makes.
+func lsAllSends(acts []any, name string) int {
+	count := 0
+	for _, a := range acts {
+		act := a.([]any)
+		switch lsAtom(act[0]) {
+		case "send":
+			if lsAtom(act[1]) == name {
+				count++
+			}
+		case "par":
+			for _, branch := range act[1:] {
+				count += lsAllSends(branch.([]any)[1:], name)
+			}
+		}
+	}
+	return count
+}
+
 type lawSpecScenarioCall struct {
 	command          *lawSpecModelCommand
 	args             []LawSpecValue
@@ -4817,7 +4966,7 @@ func lsRunScenario(model LawSpecModel, spec string, shake uint64, crash, network
 	m := lsNewMachine(model)
 	forms := lsReadDescriptor(spec)
 	title := lsAtom(forms[0].([]any)[1])
-	var names, body, wire []any
+	var names, body, wire, boxNames []any
 	for _, f := range forms {
 		form := f.([]any)
 		switch lsAtom(form[0]) {
@@ -4825,6 +4974,8 @@ func lsRunScenario(model LawSpecModel, spec string, shake uint64, crash, network
 			if names == nil {
 				names = form[1:]
 			}
+		case "mailboxes":
+			boxNames = form[1:]
 		case "process":
 			if body == nil {
 				body = form[1:]
@@ -4834,6 +4985,7 @@ func lsRunScenario(model LawSpecModel, spec string, shake uint64, crash, network
 		}
 	}
 	channels := map[string]lawSpecScenarioChannel{}
+	mailboxes := map[string]*lawSpecScenarioMailbox{}
 	if network && wire != nil {
 		// Loss, duplication and delay (which reorders); the channels'
 		// numbered, acknowledged frames must hide them all.
@@ -4858,9 +5010,28 @@ func lsRunScenario(model LawSpecModel, spec string, shake uint64, crash, network
 			defer c.close()
 			channels[lsAtom(name)] = c
 		}
+		kinds := map[string]any{}
+		for _, f := range wire[1:] {
+			if form := f.([]any); lsAtom(form[0]) == "mailbox" {
+				kinds[lsAtom(form[1])] = form[2]
+			}
+		}
+		for _, n := range boxNames {
+			name := lsAtom(n)
+			if d, ok := kinds[name]; ok {
+				mailboxes[name] = lsNewScenarioMailbox(name, lsAllSends(body, name), net, d, lawSpecValues{table}, registry)
+			} else {
+				mailboxes[name] = lsNewScenarioMailbox(name, lsAllSends(body, name), nil, nil, lawSpecValues{}, nil)
+			}
+			defer mailboxes[name].close()
+		}
 	} else {
 		for _, name := range names {
 			channels[lsAtom(name)] = lsNewChannel()
+		}
+		for _, n := range boxNames {
+			name := lsAtom(n)
+			mailboxes[name] = lsNewScenarioMailbox(name, lsAllSends(body, name), nil, nil, lawSpecValues{}, nil)
 		}
 	}
 	commands := map[string]*lawSpecModelCommand{}
@@ -4933,18 +5104,25 @@ func lsRunScenario(model LawSpecModel, spec string, shake uint64, crash, network
 		}
 		clock[me]++
 	}
-	var process, steps func(acts []any, env map[string]LawSpecValue, ends map[string]lawSpecEnd, random *LawSpecSplitMix64, identity *any, clock map[string]int64, me string) bool
+	var process func(acts []any, env map[string]LawSpecValue, ends map[string]lawSpecEnd, random *LawSpecSplitMix64, identity *any, clock map[string]int64, me string) bool
+	var steps func(acts []any, env map[string]LawSpecValue, ends map[string]lawSpecEnd, random *LawSpecSplitMix64, identity *any, clock map[string]int64, me string, sent map[string]int) bool
 	// process is false when the process failed; either way, the ends it
-	// still holds are given up.
+	// still holds are given up, and so are the mailbox sends it did not make.
 	process = func(acts []any, env map[string]LawSpecValue, ends map[string]lawSpecEnd, random *LawSpecSplitMix64, identity *any, clock map[string]int64, me string) bool {
+		sent := map[string]int{}
 		defer func() {
 			for _, end := range ends {
 				end.channel.gone(end.side)
 			}
+			for name, box := range mailboxes {
+				if missing := lsScenarioSends(acts, name) - sent[name]; missing > 0 {
+					box.giveUp(missing)
+				}
+			}
 		}()
-		return steps(acts, env, ends, random, identity, clock, me)
+		return steps(acts, env, ends, random, identity, clock, me, sent)
 	}
-	steps = func(acts []any, env map[string]LawSpecValue, ends map[string]lawSpecEnd, random *LawSpecSplitMix64, identity *any, clock map[string]int64, me string) bool {
+	steps = func(acts []any, env map[string]LawSpecValue, ends map[string]lawSpecEnd, random *LawSpecSplitMix64, identity *any, clock map[string]int64, me string, sent map[string]int) bool {
 		own := map[string]*LawSpecSymbol{}
 		for index, a := range acts {
 			if failed() {
@@ -4999,6 +5177,26 @@ func lsRunScenario(model LawSpecModel, spec string, shake uint64, crash, network
 					env[lsAtom(act[2])] = result
 				}
 			case "send":
+				if box, isBox := mailboxes[lsAtom(act[1])]; isBox {
+					operand := act[2].([]any)
+					var value any
+					if held, isEnd := ends[lsAtom(operand[1])]; lsAtom(operand[0]) == "var" && isEnd {
+						delete(ends, lsAtom(operand[1]))
+						value = held
+					} else if lsAtom(operand[0]) == "var" {
+						value = env[lsAtom(operand[1])]
+					} else {
+						value = lsScenarioConstant(operand)
+					}
+					lsPerturb(random)
+					clock[me]++
+					if err := box.send(value, copyClock(clock)); err != nil {
+						fail(fmt.Sprintf("a send to mailbox %s failed: %v", lsAtom(act[1]), err))
+						return false
+					}
+					sent[lsAtom(act[1])]++
+					continue
+				}
 				end := ends[lsAtom(act[1])]
 				operand := act[2].([]any)
 				var value any
@@ -5016,6 +5214,31 @@ func lsRunScenario(model LawSpecModel, spec string, shake uint64, crash, network
 				end.channel.send(end.side, value)
 			case "receive", "receiveor":
 				name := lsAtom(act[1])
+				if box, isBox := mailboxes[name]; isBox {
+					value, carried, ok := box.receive()
+					if !ok {
+						fail(fmt.Sprintf("a receive on mailbox %s waited too long: the processes are blocked", name))
+						return false
+					}
+					if _, gone := value.(lawSpecGone); gone {
+						if lsAtom(act[0]) == "receive" {
+							return false
+						}
+						return steps(act[3].([]any)[1:], env, ends, random, nil, clock, me, sent)
+					}
+					for p, n := range carried {
+						if n > clock[p] {
+							clock[p] = n
+						}
+					}
+					clock[me]++
+					if held, isEnd := value.(lawSpecEnd); isEnd {
+						ends[lsAtom(act[2])] = held
+					} else {
+						env[lsAtom(act[2])] = value.(LawSpecValue)
+					}
+					continue
+				}
 				end := ends[name]
 				value, ok := end.channel.receive(end.side)
 				if !ok {
@@ -5029,7 +5252,7 @@ func lsRunScenario(model LawSpecModel, spec string, shake uint64, crash, network
 						return false
 					}
 					delete(ends, name)
-					return steps(act[3].([]any)[1:], env, ends, random, nil, clock, me)
+					return steps(act[3].([]any)[1:], env, ends, random, nil, clock, me, sent)
 				}
 				unstamp(end, clock, me)
 				if held, isEnd := value.(lawSpecEnd); isEnd {
@@ -6216,8 +6439,14 @@ func (e *lawSpecMailEntity) receive(node *LawSpecNode, kind, source string, id u
 	if kind != "mail" {
 		return
 	}
-	if v, err := LawSpecWireDecode(e.values, e.descriptor, payload); err == nil {
-		e.box.Send(v)
+	status, body := byte(0), []byte{}
+	if v, err := LawSpecWireDecode(e.values, e.descriptor, payload); err != nil {
+		status, body = 3, []byte("not a message of this mailbox: "+err.Error())
+	} else if err := e.box.Send(v); err != nil {
+		status, body = 2, []byte(err.Error())
+	}
+	if id != 0 {
+		node.reply(source, id, status, body)
 	}
 }
 
@@ -6231,27 +6460,43 @@ func (n *LawSpecNode) Mailbox(name string, descriptor any, values lawSpecValues)
 	return box, nil
 }
 
-// LawSpecRemoteMailbox sends to a mailbox on another node; Send never
-// waits for it, and a lost message is lost.
+// LawSpecRemoteMailbox sends to a mailbox on another node. A send waits
+// until the mailbox has the message (resending a lost one; the mailbox
+// takes it once), and fails with LawSpecUnreachable after the timeout, or
+// LawSpecActorStopped if the mailbox is closed.
 type LawSpecRemoteMailbox struct {
 	node       *LawSpecNode
 	address    string
 	descriptor any
 	values     lawSpecValues
+	timeout    time.Duration
 }
 
-// RemoteMailbox is the mailbox at address on another node.
-func (n *LawSpecNode) RemoteMailbox(address string, descriptor any, values lawSpecValues) *LawSpecRemoteMailbox {
-	return &LawSpecRemoteMailbox{n, address, descriptor, values}
+// RemoteMailbox is the mailbox at address on another node; a zero timeout
+// means 5 seconds.
+func (n *LawSpecNode) RemoteMailbox(address string, descriptor any, values lawSpecValues, timeout ...time.Duration) *LawSpecRemoteMailbox {
+	wait := 5 * time.Second
+	if len(timeout) > 0 && timeout[0] > 0 {
+		wait = timeout[0]
+	}
+	return &LawSpecRemoteMailbox{n, address, descriptor, values, wait}
 }
 
-// Send sends a value.
+// Send sends a value and waits until the mailbox has it.
 func (m *LawSpecRemoteMailbox) Send(value LawSpecValue) error {
 	encoded, err := LawSpecWireEncode(m.values, m.descriptor, value)
 	if err != nil {
 		return err
 	}
-	return m.node.send(m.address, "mail", encoded, 0)
+	status, body, err := m.node.request(m.address, "mail", encoded, m.timeout)
+	if err != nil {
+		return err
+	}
+	if status != 0 {
+		_, err := lsReplyValue(status, body, m.values, []any{"unit"})
+		return err
+	}
+	return nil
 }
 
 // LawSpecRemoteHandler is how a served actor handles a message from another
@@ -6746,4 +6991,63 @@ func (t *lawSpecNativeTransport) Abandon(side int) { t.endpoint.Abandon(side) }
 // lsNetEnd is a typed session's start end over a network endpoint.
 func lsNetEnd(endpoint *LawSpecNetEndpoint, side int, toLogical []func(any) LawSpecValue, toNative []func(LawSpecValue) any) *LawSpecEnd {
 	return &LawSpecEnd{transport: &lawSpecNativeTransport{endpoint: endpoint, toLogical: toLogical, toNative: toNative}, side: side}
+}
+
+// LawSpecRelayEnd offers an unused channel end to another node: a relay on
+// node listens for the receiver and passes each step between it and the
+// end, which stays here. steps and the conversions are the end's protocol
+// from the end itself. It returns the relay's address, which is what
+// travels. A failure on either side gives up the other.
+func LawSpecRelayEnd(node *LawSpecNode, end *LawSpecEnd, steps []LawSpecWireStep, toLogical []func(any) LawSpecValue, toNative []func(LawSpecValue) any, values lawSpecValues) LawSpecValue {
+	flipped := []LawSpecWireStep{}
+	for _, s := range steps {
+		flipped = append(flipped, LawSpecWireStep{!s.Sends, s.Descriptor})
+	}
+	relay, err := node.Listen(fmt.Sprintf("relay-%d", node.newID()), flipped, values, 5*time.Second)
+	if err != nil {
+		panic(err)
+	}
+	relayed := &lawSpecNativeTransport{endpoint: relay, toLogical: toLogical, toNative: toNative}
+	go func() {
+		defer func() {
+			if recover() != nil {
+				func() {
+					defer func() { recover() }()
+					end.transport.Abandon(end.side)
+				}()
+				func() {
+					defer func() { recover() }()
+					relay.Abandon(0)
+				}()
+			}
+		}()
+		for _, s := range steps {
+			if s.Sends {
+				end.transport.Send(end.side, relayed.Receive(0))
+			} else {
+				relayed.Send(0, end.transport.Receive(end.side))
+			}
+		}
+	}()
+	return LawSpecValue{"Text", lsTextUnits(relay.Address())}
+}
+
+// LawSpecDialEnd is the channel end relayed at address (as LawSpecRelayEnd
+// sent it), on node: steps and the conversions are from that end.
+func LawSpecDialEnd(node *LawSpecNode, address LawSpecValue, steps []LawSpecWireStep, toLogical []func(any) LawSpecValue, toNative []func(LawSpecValue) any, values lawSpecValues) *LawSpecEnd {
+	text, _ := lsUnitsText(address.Data.([]int))
+	endpoint, err := node.Dial(text, steps, values, 5*time.Second)
+	if err != nil {
+		panic(err)
+	}
+	return lsNetEnd(endpoint, 0, toLogical, toNative)
+}
+
+// lsFlipSteps is the steps seen from the other end.
+func lsFlipSteps(steps []LawSpecWireStep) []LawSpecWireStep {
+	out := []LawSpecWireStep{}
+	for _, s := range steps {
+		out = append(out, LawSpecWireStep{!s.Sends, s.Descriptor})
+	}
+	return out
 }
