@@ -119,3 +119,24 @@ scenario `two counts at once` in counter is
   total <- read
   expect total = 2
 end
+
+-- Two channels between the same two processes close a cycle. That is
+-- accepted when no process waits for another in a cycle: here the first
+-- process sends before it waits, so the echo can always answer.
+protocol Echo is
+  receive Int64
+end
+
+scenario `a count is echoed back` in counter is
+  channel out :: Report
+  channel back :: Echo
+  par
+    n <- increment
+    send out n
+    receive back m
+    expect m = 1
+  with
+    receive out k
+    send back k
+  end
+end

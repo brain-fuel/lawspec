@@ -887,7 +887,7 @@ parseWith extra importedFamilies (Source p s) = case runReader (runParserT unitP
     modeled <- either (\(at, message) -> Left [Diagnostic "model" message (spanStart <$> at)]) Right
       (elaborateModels models domained >>= \m -> m <$ checkSupervisors m)
     programs <- either (\(at, message) -> Left [Diagnostic "scenario" message (spanStart <$> at)]) Right
-      (checkScenarios protocols scenarios modeled >> mapM (toProgram modeled) scenarios)
+      (checkScenarios protocols scenarios modeled >>= \cyclic -> mapM (uncurry (toProgram modeled)) (zip cyclic scenarios))
     let scenarioed = modeled { machines = [m { machineScenarios = [p | p <- programs, programMachine p == machineName m] }
                                           | m <- machines modeled] }
     (families', flowed) <- either (\(at, message) -> Left [Diagnostic "flow" message at]) Right

@@ -69,13 +69,51 @@ other branch follows the reverse.
 These checks run when the scenario compiles:
 
 - **Each channel joins exactly two processes**: the branches of one `par`.
-- **The channels form a tree** over the processes. A cycle is an error naming
-  the channel that closes it, since processes waiting on each other in a
-  cycle could deadlock.
+- **No process waits for another in a cycle.** In the simple case the
+  channels form a tree over the processes, and a tree cannot deadlock.
+  Channels may also close a cycle, as long as the waits do not: see
+  [cycles](#cycles).
 - **Each end follows its protocol**, step by step, to the end. A step out of
   order, or a protocol left unfinished, is an error.
 - **A channel end has one owner.** Sending it gives it up, and using it
   afterwards is an error. Data is copied.
+
+### Cycles
+
+Sends never wait, and a scenario runs each process's statements in order.
+So LawSpec can check exactly whether processes could ever wait for each
+other in a cycle. Two channels between the same two processes are fine
+when one of them sends before it waits:
+
+```lawspec fragment
+scenario `a count is echoed back` in counter is
+  channel out :: Report
+  channel back :: Echo
+  par
+    n <- increment
+    send out n
+    receive back m
+    expect m = 1
+  with
+    receive out k
+    send back k
+  end
+end
+```
+
+If each process waits first, the scenario cannot run, and the error says
+why:
+
+```text
+process 2 waits to receive on out before it sends on back, and process 1
+waits to receive on back before it sends on out, so none of them can go on:
+a deadlock
+```
+
+A channel end delegated to another process is followed to its channel.
+A scenario with a mailbox or an `or else` keeps the tree rule, since a
+mailbox's messages arrive in any order, and an `or else` runs only after a
+failure.
 
 ## When a process fails
 

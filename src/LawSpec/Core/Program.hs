@@ -18,6 +18,9 @@ data Program = Program
   , programWire :: String
   -- Each mailbox, with its message type as written.
   , programMailboxes :: [(String, String)]
+  -- Whether its channels close a cycle between processes (accepted because
+  -- no process can wait for another in a cycle) rather than form a tree.
+  , programCyclic :: Bool
   } deriving (Eq, Show, Generic)
 
 data Act

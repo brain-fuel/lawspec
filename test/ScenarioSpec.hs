@@ -19,6 +19,9 @@ counter = unlines
   , "protocol Reply is"
   , "  send Int64"
   , "end"
+  , "protocol Back is"
+  , "  receive Int64"
+  , "end"
   , "protocol Request is"
   , "  send Reply"
   , "end" ]
@@ -48,6 +51,20 @@ spec = describe "scenarios" $ do
       , "  with"
       , "    receive reports a"
       , "    receive reports b"
+      , "  end"
+      , "end" ]) `shouldBe` Right ()
+  it "accept two channels between the same processes when neither waits for the other in a cycle" $
+    checks (unlines
+      [ "scenario `echo` in counter is"
+      , "  channel a :: Reply"
+      , "  channel b :: Back"
+      , "  par"
+      , "    n <- increment"
+      , "    send a n"
+      , "    receive b k"
+      , "  with"
+      , "    receive a m"
+      , "    send b m"
       , "  end"
       , "end" ]) `shouldBe` Right ()
   it "accept a reply over a channel" $
@@ -135,18 +152,18 @@ spec = describe "scenarios" $ do
         , "    send m y"
         , "  end"
         , "end" ])
-    it "a cycle between processes" $
-      rejects "closes a cycle between processes" (unlines
+    it "processes that wait for each other in a cycle" $
+      rejects "waits to receive on b before it sends on a" (unlines
         [ "scenario `x` in counter is"
         , "  channel a :: Reply"
-        , "  channel b :: Reply"
+        , "  channel b :: Back"
         , "  par"
+        , "    receive b k"
         , "    n <- increment"
         , "    send a n"
-        , "    send b n"
         , "  with"
         , "    receive a m"
-        , "    receive b k"
+        , "    send b m"
         , "  end"
         , "end" ])
     it "a step out of order" $

@@ -5,6 +5,10 @@
 - `if c then a else b` in laws and checked definitions. Only the selected
   branch is evaluated, and the totality audit checks each branch knowing which
   way the condition went. `prelude.select` now means the same.
+- Scenarios may close cycles between processes: LawSpec accepts channels that
+  form a cycle when no process can wait for another in a cycle, and names the
+  waits when one could. Scenarios with mailboxes or `or else` keep the tree
+  rule.
 
 ## 0.19.1
 
