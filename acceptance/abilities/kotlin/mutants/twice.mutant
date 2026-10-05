@@ -1,0 +1,8 @@
+expect: charge captures once
+@@ src/main/kotlin/example/Abilities.kt
+<<<<<<<
+        return if (payment is lawspec.data.Payment.Approved) gateway.capture(payment.cents).cents == value0 else false
+=======
+        if (payment is lawspec.data.Payment.Approved) gateway.capture(payment.cents)
+        return if (payment is lawspec.data.Payment.Approved) gateway.capture(payment.cents).cents == value0 else false
+>>>>>>>

@@ -40,10 +40,27 @@ emitKotlinDefinitions layout bits declarations units = do
   where
     -- Kotlin adapters, called from the shared JVM bodies through Kotlin
     -- codecs.
-    adapterBridge = case Jvm.orchestratedAdapters units of
-      [] -> pure []
-      adapters -> do
-        methods <- forM adapters $ \(identity, (owner, adapter)) -> do
+    adapterBridge = case (Jvm.orchestratedAdapters units, Jvm.performedOperations units) of
+      ([], []) -> pure []
+      (adapters, operations) -> do
+        -- An operation the shared bodies perform: its handler, from symbols,
+        -- through Kotlin codecs.
+        performs <- forM operations $ \op -> do
+          ability <- maybe (Left ("unknown ability " ++ abilityKey (operationAbility op))) Right
+            (lookup (abilityRefId (operationAbility op)) [(abilityId a, (u, a)) | u <- units, a <- unitAbilities u])
+          let (owner, declared) = ability
+              (args, result) = maybe ([], scalarType "Unit") functionType (lookup (operationName op) (abilityOperations declared))
+              interface = abilitiesObject owner ++ "." ++ abilityName declared
+          codecs <- mapM (Native.kotlinCodecDocWithContext (D.text "symbols") declarations) args
+          resultCodec <- Native.kotlinCodecDocWithContext (D.text "symbols") declarations result
+          let parameters = D.text "symbols: MutableMap<String, Any>" :
+                [D.text ("value" ++ show i ++ ": LawSpecRuntime.Value") | i <- [0 .. length args - 1]]
+              invocation = call ("(LawSpecRuntime.handler(symbols, " ++ show (abilityKey (operationAbility op)) ++ ") as " ++ interface ++ ")." ++ operationName op)
+                [codec <> D.text (".decode(value" ++ show i ++ ")") | (i, codec) <- zip [0::Int ..] codecs]
+          pure (D.text "@JvmStatic" <> D.hardline <> D.text ("fun " ++ Jvm.kotlinOperationBridge op) <>
+            D.delimitTrailing 4 "(" ")" parameters <> D.text ": LawSpecRuntime.Value = " <>
+            resultCodec <> D.text ".encode(" <> invocation <> D.text ")")
+        methods <- fmap (++ performs) $ forM adapters $ \(identity, (owner, adapter)) -> do
           let (args, result) = functionType (declarationType adapter)
               parts = split '.' (idText owner)
               cls = intercalate "." (init parts ++ [concatMap capitalize (split '_' (last parts))])
@@ -51,8 +68,11 @@ emitKotlinDefinitions layout bits declarations units = do
           resultCodec <- Native.kotlinCodecDocWithContext (D.text "symbols") declarations result
           let parameters = D.text "symbols: MutableMap<String, Any>" :
                 [D.text ("value" ++ show i ++ ": LawSpecRuntime.Value") | i <- [0 .. length args - 1]]
+              -- An adapter that uses abilities gets their handlers first.
+              handlers = [D.text ("(LawSpecRuntime.handler(symbols, " ++ show (abilityKey a) ++ ") as " ++ abilityInterface a ++ ")")
+                | a <- declarationUses adapter, not (isFail a)]
               invocation = call (cls ++ "." ++ declarationName adapter)
-                [codec <> D.text (".decode(value" ++ show i ++ ")") | (i, codec) <- zip [0::Int ..] codecs]
+                (handlers ++ [codec <> D.text (".decode(value" ++ show i ++ ")") | (i, codec) <- zip [0::Int ..] codecs])
               -- A suspending adapter runs as a coroutine the workflow awaits,
               -- within its stage's timeout and hedge when it has them.
               body
@@ -98,7 +118,9 @@ emitKotlinDefinitions layout bits declarations units = do
             [assign "result" (call evaluator (D.text "symbols" : [D.text ("argument" ++ show i) | i <- [0 .. length args - 1]])),
              assign "resultCodec" resultCodec,D.text "return resultCodec.decode(result)"]
           context = E.quoted (idText (declarationId declaration) ++ ": ")
+          -- A Fail ability's failure passes through, to the attempt that awaits it.
           guarded = D.text "try " <> D.block 4 (D.joinWith D.hardline body) <>
+            D.text " catch (failure: lawspec.runtime.LawSpecRuntime.Failure) " <> D.block 4 (D.text "throw failure") <>
             D.text " catch (error: RuntimeException) " <> D.block 4
               (D.text "throw " <> call "IllegalArgumentException"
                 [D.group (context <> D.text " +" <> D.nest 4 (D.softline <> D.text "error.message")),D.text "error"])
@@ -108,3 +130,7 @@ emitKotlinDefinitions layout bits declarations units = do
       (a,_:rest) -> a : split delimiter rest
     capitalize [] = []
     capitalize (c:cs) = toUpper c : cs
+    abilitiesObject u = let parts = split '.' (idText (unitId u))
+      in intercalate "." ("lawspec" : "abilities" : init parts ++ [concatMap capitalize (split '_' (last parts))])
+    abilityInterface ability = maybe "Any" (\(u, a) -> abilitiesObject u ++ "." ++ abilityName a)
+      (lookup (abilityRefId ability) [(abilityId a, (u, a)) | u <- units, a <- unitAbilities u])

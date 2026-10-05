@@ -1,0 +1,7 @@
+expect-any: a receipt is for the amount captured [native] | [recording native]
+@@ src/main/kotlin/example/Abilities.kt
+<<<<<<<
+        override fun capture(value0: kotlin.Int): lawspec.data.Receipt = lawspec.data.Receipt(value0)
+=======
+        override fun capture(value0: kotlin.Int): lawspec.data.Receipt = lawspec.data.Receipt(if (value0 < 1000) value0 else value0 - 1)
+>>>>>>>

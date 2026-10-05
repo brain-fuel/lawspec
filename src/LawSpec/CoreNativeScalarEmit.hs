@@ -3,6 +3,7 @@ import LawSpec.Bounds (inputRange)
 import LawSpec.AbilityNames (interfaceName, productionName, specName, recordingName)
 import qualified LawSpec.AbilityEmit.Go as GoAbilities
 import qualified LawSpec.AbilityEmit.Java as JavaAbilities
+import qualified LawSpec.AbilityEmit.Kotlin as KotlinAbilities
 import LawSpec.ModelTests (modelTestArtifacts)
 import LawSpec.Collections (isCollectionsType)
 import qualified LawSpec.JavaData as JavaData
@@ -166,7 +167,8 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
            Doc.text "import lawspec.runtime.LawSpecRuntime" <> Doc.hardline <> Doc.hardline <>
            Doc.text ("object " ++ cls ++ " ") <>
            Doc.block 4 (Doc.joinWith (Doc.hardline <> Doc.hardline)
-             [kotlinStubFn n t | (n,t) <- adapterFunctions]) <> Doc.hardline
+             ([kotlinStubFn n t | (n,t) <- adapterFunctions] ++
+              [java (KotlinAbilities.productionStub dataDeclarations u a) | a <- C.unitAbilities u])) <> Doc.hardline
     native t | kt = java (KotlinData.kotlinDataType dataDeclarations t)
     native t | hs = java (HaskellData.haskellDataType dataDeclarations t)
     native t | goCustom t = java (GoData.goDataType dataDeclarations t)
@@ -270,7 +272,8 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
     kotlinStubFn n t =
       let (args,result) = functionType t
           typeDoc = java . KotlinData.kotlinDataTypeDoc dataDeclarations
-          arguments = [Doc.text ("value" ++ show i ++ ": ") <> typeDoc ty |
+          arguments = [Doc.text (handlerParameter ability ++ ": " ++ KotlinAbilities.abilitiesObject u ++ "." ++ maybe "Any" interfaceName (abilityNamed ability)) | ability <- usesOf n] ++
+            [Doc.text ("value" ++ show i ++ ": ") <> typeDoc ty |
             (i,ty) <- zip [0::Int ..] args]
           signature = Doc.text ((if n `elem` asyncFunctions u then "suspend fun " else "fun ") ++ n) <> Doc.delimitTrailing 4 "(" ")" arguments <>
             Doc.text ": " <> (if towerResult result then Doc.text (stubResult result) else typeDoc result)
@@ -342,9 +345,46 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
       [Doc.text (q "Integer"),value,Doc.text (show bits)]
     ktNativeResult ty value = java (KotlinExpr.codec dataDeclarations bits ty) <>
       Doc.text ".encode" <> Doc.delimitTrailing 4 "(" ")" [value]
+    ktHandler ability = Doc.text ("(LawSpecRuntime.handler(symbols, " ++ quote (C.abilityKey ability) ++ ") as " ++
+      KotlinAbilities.abilitiesObject u ++ "." ++ maybe "Any" interfaceName (abilityNamed ability) ++ ")")
+    ktConstruct' ty tag fields
+      | ktCustom ty = KotlinExpr.call "LawSpecKotlinCodecs.construct" [Doc.text "_schema",java (KotlinExpr.reference ty),KotlinExpr.quoted tag,KotlinExpr.call "listOf" fields,Doc.text (show bits),Doc.text "symbols"]
+      | otherwise = KotlinExpr.call "LawSpecRuntime.construct" [KotlinExpr.quoted (key ty),KotlinExpr.quoted tag,KotlinExpr.call "arrayOf" fields]
+    ktEqual ty a b
+      | ktCustom ty = KotlinExpr.call "_schema.equal" [java (KotlinExpr.reference ty),a,b,Doc.text (show bits),Doc.text "symbols"]
+      | otherwise = KotlinExpr.call "LawSpecRuntime.truth" [KotlinExpr.call "LawSpecRuntime.binary" [KotlinExpr.quoted "==",a,b]]
+    ktInstalls e = case chosenHandlers e of
+      [] -> []
+      chosen -> [KotlinExpr.call "LawSpecRuntime.installHandlers" [Doc.text "symbols", KotlinExpr.call "mapOf"
+        [KotlinExpr.quoted (C.abilityKey a) <> Doc.text (" to " ++ ktConstructHandler a c) | (a, c) <- chosen]]]
+    ktConstructHandler a c = case c of
+      C.ProductionHandler -> cls ++ "." ++ maybe "Unknown" productionName (abilityNamed a) ++ "()"
+      C.SpecHandler h -> KotlinAbilities.abilitiesObject u ++ "." ++ maybe "Unknown" specName (specNamed h) ++ "(symbols)"
+      C.RecordingHandler inner -> KotlinAbilities.abilitiesObject u ++ "." ++ maybe "Unknown" recordingName (abilityNamed a) ++
+        "(" ++ ktConstructHandler a inner ++ ", symbols)"
     ktExternal term values = case C.expressionNode term of
       C.ExternalCall identity _ | Just evaluator <- lookup identity definitions ->
         Right (KotlinExpr.call evaluator (Doc.text "symbols" : values))
+      -- raise aborts to the nearest attempt of its Fail ability.
+      C.Perform op [_] | C.isFail (C.operationAbility op) ->
+        Right (KotlinExpr.call "LawSpecRuntime.raiseFailure" (KotlinExpr.quoted (C.abilityKey (C.operationAbility op)) : values))
+      -- An operation goes to the handler the law installed for its ability.
+      C.Perform op args ->
+        Right (ktNativeResult (expressionType term) (ktHandler (C.operationAbility op) <> KotlinExpr.call ("." ++ C.operationName op)
+          [ktNativeArgument ty v | (ty,v) <- zip (map expressionType args) values]))
+      C.Handle (C.CatchFailure ability) _ -> case (expressionType term, values) of
+        (C.Constructor "Either" [C.TypeArgument failure, C.TypeArgument result], [body]) ->
+          let side tag ty = Doc.text "{ _value -> " <> ktConstruct' (expressionType term) tag [ktChecked ty (Doc.text "_value")] <> Doc.text " }"
+          in Right (KotlinExpr.call "LawSpecRuntime.attempt" [KotlinExpr.quoted (C.abilityKey ability), Doc.text "{ " <> body <> Doc.text " }",
+            side "Either::Right" result, side "Either::Left" failure])
+        _ -> Left "attempt gives an Either"
+      C.Calls op args ->
+        let matches = case args of
+              Nothing -> Doc.text "null"
+              Just xs -> Doc.text "{ _recorded -> " <> Doc.joinWith (Doc.text " && ")
+                [ktEqual (expressionType a) (Doc.text ("_recorded[" ++ show i ++ "]")) v | (i,(a,v)) <- zip [0 :: Int ..] (zip xs values)] <> Doc.text " }"
+        in Right (KotlinExpr.call "LawSpecRuntime.countCalls" [Doc.text ("LawSpecRuntime.handler(symbols, " ++ quote (C.abilityKey (C.operationAbility op)) ++ ")"),
+          KotlinExpr.quoted (C.operationName op), matches])
       C.ExternalCall identity args ->
         let name = declarationName identity
             typed = zip (map expressionType args) values
@@ -352,7 +392,7 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
           then KotlinExpr.call ("_lawspec_call_" ++ name)
             (Doc.text "symbols" : [ktChecked ty value | (ty,value) <- typed])
           else ktNativeResult (expressionType term) (awaitFor (adapterName u identity) (KotlinExpr.call (cls ++ "." ++ adapterName u identity)
-            [ktNativeArgument ty value | (ty,value) <- typed]))
+            (map ktHandler (usesOf name) ++ [ktNativeArgument ty value | (ty,value) <- typed])))
       _ -> Left "expected checked Kotlin external call"
     ktValueLiteral value = case value of
       V.ScalarValue scalarValue -> either (Left . pure . (\message -> Diagnostic "target" message Nothing)) Right
@@ -384,6 +424,7 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
       , KotlinProperties.generatorWithin = \within -> KotlinTestHelpers.generatorDocWithin within bits javaDataBudget ktCustom (java . KotlinExpr.reference) key
       , KotlinProperties.nativeArgument = ktNativeArgument
       , KotlinProperties.nativeResult = ktNativeResult
+      , KotlinProperties.handlerInstalls = ktInstalls
       }
     hsRender = java . HaskellExpr.renderExpression dataDeclarations bits "_lawspecSchema" "symbols" localName hsExternal
     hsScope = HaskellExpr.apply "P.Just" [Doc.text "symbols"]

@@ -1,0 +1,7 @@
+expect: the fee is never negative [native]
+@@ src/main/kotlin/example/Abilities.kt
+<<<<<<<
+        override fun fee(): kotlin.Int = 25
+=======
+        override fun fee(): kotlin.Int = -25
+>>>>>>>

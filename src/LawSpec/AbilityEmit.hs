@@ -13,6 +13,7 @@ import qualified LawSpec.AbilityEmit.Python as Python
 import qualified LawSpec.AbilityEmit.Web as Web
 import qualified LawSpec.AbilityEmit.Go as Go
 import qualified LawSpec.AbilityEmit.Java as Java
+import qualified LawSpec.AbilityEmit.Kotlin as Kotlin
 
 abilityArtifacts :: Bool -> String -> Plan -> Either [Diagnostic] [Artifact]
 abilityArtifacts minify target plan
@@ -28,4 +29,5 @@ abilityArtifacts minify target plan
       "typescript" -> Web.emit True minify bits datas units
       "go" -> Go.emit minify bits datas units
       "java" -> Java.emit minify bits datas units
+      "kotlin" -> Kotlin.emit minify bits datas units
       _ -> Left ("abilities are not generated for " ++ t ++ " yet")

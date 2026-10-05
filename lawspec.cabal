@@ -187,6 +187,7 @@ library
       LawSpec.AbilityEmit
       LawSpec.AbilityEmit.Go
       LawSpec.AbilityEmit.Java
+      LawSpec.AbilityEmit.Kotlin
       LawSpec.AbilityEmit.Python
       LawSpec.AbilityEmit.Web
       LawSpec.AbilityNames
