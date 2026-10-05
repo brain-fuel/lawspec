@@ -1778,6 +1778,133 @@ export function shrunk(text, seed, size) {
 
 const fieldsOf = (forms) => new Map(forms.map((f) => [f[0], f.slice(1)]));
 
+// Actors. An actor owns a state and handles one message at a time, in the
+// order they arrive: each message runs after the previous one settles, on a
+// promise chain, so an idle actor costs only its state.
+
+/** A message sent to an actor or mailbox that has stopped. */
+export class ActorStopped extends Error {
+  constructor(message) {
+    super(message);
+    this.name = 'ActorStopped';
+  }
+}
+
+export class Actor {
+  #state;
+  #tail = Promise.resolve();
+  #pending = 0;
+  #stopped = false;
+  constructor(state) {
+    this.#state = state;
+  }
+  #post(handler) {
+    if (this.#stopped) throw new ActorStopped('the actor has stopped');
+    this.#pending += 1;
+    const reply = this.#tail.then(async () => {
+      try {
+        const [result, next] = await handler(this.#state);
+        this.#state = next;
+        return result;
+      } finally {
+        this.#pending -= 1;
+      }
+    });
+    this.#tail = reply.catch(() => {});
+    return reply;
+  }
+  /**
+   * Synchronous code's fast path: runs a synchronous handler at once and
+   * returns its result. The actor must be idle, with no message waiting;
+   * otherwise this throws, and the caller should await call instead.
+   */
+  callNow(handler) {
+    if (this.#stopped) throw new ActorStopped('the actor has stopped');
+    if (this.#pending > 0) throw new Error('the actor has messages waiting; await the call instead');
+    const [result, next] = handler(this.#state);
+    this.#state = next;
+    return result;
+  }
+  /**
+   * Runs handler(state) -> [result, next state] (or a promise of it) in turn;
+   * resolves to the result, or rejects with what the handler threw.
+   */
+  call(handler) {
+    try {
+      return this.#post(handler);
+    } catch (error) {
+      return Promise.reject(error);
+    }
+  }
+  /** Queues handler(state) -> [result, next state] without waiting. */
+  cast(handler) {
+    this.#post(handler).catch(() => {});
+  }
+  /** The state after every message sent before this call. */
+  state() {
+    return this.call((s) => [s, s]);
+  }
+  /** Refuses further messages; those already queued still run. */
+  stop() {
+    this.#stopped = true;
+  }
+}
+
+/**
+ * A queue with many senders and one receiver: the channel form of an actor.
+ * A process that loops over receiveAsync() and answers each message is an
+ * actor written by hand; send() never waits.
+ */
+export class Mailbox {
+  #items = [];
+  #waiters = [];
+  #closed = false;
+  send(value) {
+    if (this.#closed) throw new ActorStopped('the mailbox is closed');
+    const waiter = this.#waiters.shift();
+    if (waiter) waiter.resolve(value);
+    else this.#items.push(value);
+  }
+  /**
+   * The next message; waits up to timeoutMs (forever when omitted) and
+   * rejects with a timeout error, or ActorStopped once closed and empty.
+   */
+  receiveAsync(timeoutMs) {
+    if (this.#items.length > 0) return Promise.resolve(this.#items.shift());
+    if (this.#closed) return Promise.reject(new ActorStopped('the mailbox is closed'));
+    return new Promise((resolve, reject) => {
+      const waiter = {resolve, reject};
+      if (timeoutMs !== undefined) {
+        const timer = setTimeout(() => {
+          const at = this.#waiters.indexOf(waiter);
+          if (at >= 0) this.#waiters.splice(at, 1);
+          reject(new Error('no message arrived in time'));
+        }, timeoutMs);
+        waiter.resolve = (value) => { clearTimeout(timer); resolve(value); };
+        waiter.reject = (error) => { clearTimeout(timer); reject(error); };
+      }
+      this.#waiters.push(waiter);
+    });
+  }
+  /** Refuses further messages; those already sent can still be received. */
+  close() {
+    this.#closed = true;
+    for (const waiter of this.#waiters.splice(0)) waiter.reject(new ActorStopped('the mailbox is closed'));
+  }
+}
+
+/**
+ * A handler bridge (state first, returning Pair result state, or the state
+ * alone for a Unit result) as a command on an actor.
+ */
+function actorCommand(run, unit) {
+  if (unit) return (symbols, actor, ...args) => actor.call(async (s) => [UNIT, await run(symbols, s, ...args)]);
+  return (symbols, actor, ...args) => actor.call(async (s) => {
+    const out = await run(symbols, s, ...args);
+    return [out.fields[0], out.fields[1]];
+  });
+}
+
 class ModelCommand {
   name;
   arguments;
@@ -1847,6 +1974,16 @@ export class Model {
     const kinds = forms.find((f) => f[0] === 'invariants').slice(1);
     this.invariants = kinds.slice(0, invariants.length).map((k, i) => [k, invariants[i]]);
     this.perKey = forms.some((f) => f[0] === 'perkey' && f[1] === 'true');
+    // An actor model's start and handlers run inside an actor; the
+    // abstraction and state invariants read its state between messages.
+    if (forms.some((f) => f[0] === 'actor' && f[1] === 'true')) {
+      const run = this.startRun;
+      this.startRun = async (symbols, ...args) => new Actor(await run(symbols, ...args));
+      for (const c of this.commands) c.run = actorCommand(c.run, c.unit);
+      if (abstract != null) this.abstract = async (symbols, actor) => abstract(symbols, await actor.state());
+      this.invariants = this.invariants.map(([k, p]) =>
+        [k, k === 'state' ? async (symbols, actor) => p(symbols, await actor.state()) : p]);
+    }
   }
 }
 

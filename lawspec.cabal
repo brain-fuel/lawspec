@@ -180,6 +180,7 @@ library
       LawSpec.Actors
       LawSpec.Actors.Python
       LawSpec.Actors.Types
+      LawSpec.Actors.Web
       LawSpec.Api
       LawSpec.Backend
       LawSpec.Capabilities

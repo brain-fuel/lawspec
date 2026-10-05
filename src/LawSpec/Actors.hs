@@ -10,6 +10,7 @@ import LawSpec.Actors.Types (actorsOf)
 import LawSpec.Common (Artifact(..), Diagnostic(..))
 import LawSpec.Testing (Plan(..), PlannedUnit(..))
 import qualified LawSpec.Actors.Python as Python
+import qualified LawSpec.Actors.Web as Web
 
 actorArtifacts :: Bool -> String -> Plan -> Either [Diagnostic] [Artifact]
 actorArtifacts minify target plan = case concatMap actorsOf units of
@@ -21,5 +22,7 @@ actorArtifacts minify target plan = case concatMap actorsOf units of
     bits = planMachineBits plan
     emitter t = case t of
       "python" -> Python.emit t
+      "javascript" -> Web.emit t
+      "typescript" -> Web.emit t
       _ -> \_ _ _ _ -> Right []
 
