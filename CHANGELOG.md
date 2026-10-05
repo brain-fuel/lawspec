@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- A channel end that already talks across the network now moves when it is
+  sent to another node, instead of being relayed. The old node hands the
+  end's state over (sequence numbers, unacknowledged values, values received
+  but not yet used), forwards anything still in flight, and the peer is told
+  the new address, so the old node can stop once the receive returns. Ends
+  can move on again, and a peer that does not answer the move is still
+  reached through the old node. Local ends are relayed as before. New frames:
+  `take`, `state`, `moved` and `moved-ack`.
+- A node's channel ends stop resending once the node closes (Python, Go,
+  Haskell).
 - `lawspec.json` can bind an `async` adapter to native code returning the
   target's task: a coroutine, `Promise`, `CompletableFuture`, `suspend fun`,
   `LawSpecTask`, Rust future or `IO` action. The bridge stays asynchronous

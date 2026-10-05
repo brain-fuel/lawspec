@@ -81,7 +81,9 @@ patch (0.x.y). This page records what has shipped and what comes next.
 - Proofs about multiplication of bounded integers.
 - Deadlock freedom beyond tree-shaped connections: priorities on channel
   steps allow cycles that cannot deadlock.
-- Channel ends that move to another node, instead of being relayed.
+- Channel ends that move to another node, instead of being relayed: the
+  end's state moves and its peer is told the new address; local ends are
+  still relayed.
 - `all` groups in workflows run their steps at the same time.
 - Size-indexed queues and stacks.
 - Native bindings for asynchronous adapters.
