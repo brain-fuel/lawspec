@@ -57,12 +57,12 @@ public final class NativeGeneratorContractsTest {
   @Test
   void refinedScalarUsesConfiguredFactory() {
     PaymentGenerators.byteSamples.set(0);
-    new ShapesLawSpecTest().law5Property();
+    new ShapesLawSpecTest().lawRefinementsRetainTheSelectedGenerator_property();
     assertTrue(PaymentGenerators.byteSamples.get() > 0);
   }
 
   @Test
   void finiteSealDoesNotSample() {
-    new ShapesLawSpecTest().law4Boundary0();
+    new ShapesLawSpecTest().lawEmptyRecord_boundary0();
   }
 }

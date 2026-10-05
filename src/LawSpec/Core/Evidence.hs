@@ -15,8 +15,12 @@ import LawSpec.Core
 import LawSpec.Core.Machine (Machine(..), Supervisor(..), Consistency(..))
 import qualified LawSpec.Core.Program as P
 
--- Strongest first.
+-- Strongest first. The last three come from the harness plane: a law its
+-- harness skips, or marks as known to fail, is still an obligation; flaky
+-- is a run's outcome (a test that failed, then passed on a retry), which
+-- lawspec evidence reads from the last run.
 data Status = Proved | ExhaustivelyChecked | PropertyTested | RuntimeChecked | Assumed
+  | KnownFailing | Flaky | Skipped
   deriving (Eq, Ord, Show, Enum, Bounded)
 
 statuses :: [Status]
@@ -28,6 +32,9 @@ statusName ExhaustivelyChecked = "exhaustively-checked"
 statusName PropertyTested = "property-tested"
 statusName RuntimeChecked = "runtime-checked"
 statusName Assumed = "assumed"
+statusName KnownFailing = "known-failing"
+statusName Flaky = "flaky"
+statusName Skipped = "skipped"
 
 data Obligation = Obligation
   { obligationUnit :: Id

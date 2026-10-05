@@ -1,0 +1,71 @@
+unit example.harness
+
+-- The laws of a small shop. How they are tested (which inputs, which
+-- handlers, how many cases are enough) is not said here: that is the
+-- harness's business, in harness_testing.lawspec.
+
+-- An order: how many items it has, and its total in cents.
+type Order is Order items :: Int32 total :: Int32 end
+
+definition itemsOf (order :: Order) :: Int32 is match order with | Order items total -> items end end
+definition totalOf (order :: Order) :: Int32 is match order with | Order items total -> total end end
+definition isEmpty (order :: Order) :: Bool is itemsOf order == 0 end
+
+-- The discount an order gets, and a price rounded to tens of cents.
+discount :: Order -> Int32
+roundCents :: Int32 -> Int32
+
+law `a discount is never more than the total` is
+  definition is
+    `for all` (order :: Order where itemsOf order >= 0 && totalOf order >= 0) .
+      (discount order <= totalOf order) = true
+  end
+end
+
+law `rounding is idempotent` is
+  definition is
+    `for all` (cents :: Int32 where cents >= 0 && cents <= 1000000) .
+      roundCents (roundCents cents) = roundCents cents
+  end
+end
+
+law `rounding never lowers a price` is
+  definition is
+    `for all` (cents :: Int32 where cents >= 0 && cents <= 1000000) .
+      (roundCents cents >= cents) = true
+  end
+end
+
+-- A ledger records payments. Every law about booking holds for every
+-- lawful ledger; the harness chooses which ones the tests use.
+ability Ledger is
+  accept :: Int32 -> Bool
+laws
+  law `positive amounts are accepted` is
+    definition is `for all` (cents :: Int32 where cents > 0) . accept cents = true end
+  end
+end
+
+handler fakeLedger for Ledger is
+  accept cents is cents > 0 end
+end
+
+book :: Int32 -> Bool uses Ledger
+
+law `booking a positive amount succeeds` is
+  definition is
+    `for all` (cents :: Int32 where cents > 0) . book cents = true
+  end
+end
+
+law `a refund is never booked twice` is
+  definition is
+    `for all` (cents :: Int32 where cents > 0) . book cents = book cents
+  end
+end
+
+-- A scratch area the laws may use; it can be emptied between laws.
+resource Scratch is
+  acquire 0
+  reset 0
+end

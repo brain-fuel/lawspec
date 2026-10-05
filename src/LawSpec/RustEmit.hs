@@ -3,6 +3,7 @@ module LawSpec.RustEmit (emitRust, emitRustWithFormat, emitRustWithBindings, rus
 import LawSpec.Core
 import LawSpec.Core.Total (constructorProofContracts)
 import LawSpec.Core.Machine (machineActor)
+import LawSpec.TestNames (unitTestNames)
 import qualified LawSpec.RustExpr as Expression
 import qualified LawSpec.RustDefinitions as Definitions
 import qualified LawSpec.AbilityEmit.Rust as Abilities
@@ -381,6 +382,7 @@ emitRustWithBindings minify bindings plan@Plan{..} = either (Left . pure . (\m -
       -- A model's test hands its spec and callbacks to the model runtime.
       modelTests <- map (reverse . dropWhile (== '\n') . reverse) <$>
         either (Left . concatMap message) Right (ModelTests.rustModelTests planMachineBits planDataDeclarations definitionNames unit)
+      let testNames = unitTestNames "rust" (map (propertyName . plannedProperty) plannedProperties)
       tests <- forM (zip [0::Int ..] plannedProperties) $ \(index,pp) -> do
         let p = plannedProperty pp
             names = localNames p
@@ -520,7 +522,7 @@ emitRustWithBindings minify bindings plan@Plan{..} = either (Left . pure . (\m -
           blank <> function predicateFn args "ls::Result<bool>" (statements (valid ++ [Doc.text "Ok(true)"])) <>
           -- Deep generated values need more stack than a test thread has.
           blank <> Doc.text "#[test]" <> Doc.hardline <>
-          function ("test_" ++ show index) [] "ls::Result<()>"
+          function (testNames !! index) [] "ls::Result<()>"
             (invoke "ls::with_stack" [Doc.text ("run_" ++ show index)]) <>
           blank <> function ("run_" ++ show index) [] "ls::Result<()>"
             (statements ([context] ++ fixed ++ examples ++ random ++ [Doc.text "Ok(())"])))

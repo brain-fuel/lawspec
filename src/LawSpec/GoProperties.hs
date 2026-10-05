@@ -4,6 +4,7 @@ module LawSpec.GoProperties (Config(..), emitTests) where
 import LawSpec.Bounds (inputRange)
 import LawSpec.Backend
 import LawSpec.Common
+import LawSpec.TestNames (unitTestNames)
 import LawSpec.Testing
 import qualified LawSpec.Core as C
 import qualified LawSpec.Core.Value as V
@@ -60,7 +61,8 @@ fromValues xs = statements [assign (inputId input) (text ("_values[" ++ show ind
 
 emitTests :: Config -> Unit -> [Expanded] -> Either [Diagnostic] D.Doc
 emitTests Config{..} unit laws = do
-  bodies <- mapM law (zip [0::Int ..] laws)
+  let testNames = unitTestNames "go" (map name laws)
+  bodies <- mapM (law testNames) (zip [0::Int ..] laws)
   let needsRapid = schemaNeeded || any ((== Nothing) . finiteCases) laws
       importDoc = text "import (" <> D.nest 8 (D.hardline <>
         statements ([quoted "flag" | needsRapid] ++ [quoted "fmt" | schemaNeeded] ++ [quoted "os" | needsRapid] ++
@@ -99,16 +101,16 @@ emitTests Config{..} unit laws = do
       in text ("func _lawspec_call_" ++ contractName c ++ "(" ++ params ++ ") LawSpecValue ") <>
         block (statements [require "precondition" (contractPreconditions c),
           bind rn (nativeResult rt invocation),require "postcondition" (contractPostconditions c),returned (text rn)])
-    law (index,e) = do
+    law testNames (index,e) = do
       let label = owner e ++ "::" ++ name e
-          fn = "Law" ++ show index
-      exampleDocs <- mapM (\(i,ex) -> pure $ testFunction (fn ++ "Example" ++ show i) $ statements
+          fn = drop 4 (testNames !! index)
+      exampleDocs <- mapM (\(i,ex) -> pure $ testFunction (fn ++ "_Example" ++ show i) $ statements
         ([symbols] ++ handlerInstalls e ++ [assign n (expr v) | (n,v) <- bindings ex] ++
         map (assertionDoc (label ++ " example " ++ exampleName ex)) (expectations ex) ++
         [assertionDoc label (assertion e)])) (zip [0::Int ..] (examples (original e)))
       boundaryDocs <- mapM (\(i,vs) -> do
         values <- mapM literal vs
-        pure $ testFunction (fn ++ "Boundary" ++ show i) $ statements
+        pure $ testFunction (fn ++ "_Boundary" ++ show i) $ statements
           ([symbols] ++ handlerInstalls e ++ [assign (inputId inp) (checked (inputType inp) v) | (inp,v) <- zip (inputs e) values] ++
           [assertionDoc (label ++ " boundary " ++ show i) (assertion e)]))
         (zip [0::Int ..] (maybe (boundaryCases e) id (finiteCases e)))
@@ -119,7 +121,7 @@ emitTests Config{..} unit laws = do
         else if any (structural . inputType) (inputs e) then pure [structuralProperty fn label e check]
         else if any (not . null . inputRefinements) (inputs e) || propertyKind e == "contract"
           then (:[]) <$> refinedProperty fn label e check
-          else pure [testFunction (fn ++ "Property") $ call "rapid.Check" [text "t",
+          else pure [testFunction (fn ++ "_Property") $ call "rapid.Check" [text "t",
             closure "t *rapid.T" "" $ statements ([assign "seed" (text "rapid.Int32().Draw(t, \"seed\")"),symbols] ++ handlerInstalls e ++
               [assign (inputId inp) (call "lsSample" [quoted (typeKey (inputType inp)),
                 text ("int(seed)+" ++ show i),number machineBits]) | (i,inp) <- zip [0::Int ..] (inputs e)] ++ [check])]]
@@ -156,7 +158,7 @@ emitTests Config{..} unit laws = do
             [base,number (maxAttempts (generation e)),
              closure "_values []LawSpecValue" "bool" (statements
                [fromValues (inputs e),returned (conjunction (map (truth . expr) predicates))])]
-      pure $ testFunction (fn ++ "Property") $ call "lsRapidCheck" [text "t",number (cases (generation e)),
+      pure $ testFunction (fn ++ "_Property") $ call "lsRapidCheck" [text "t",number (cases (generation e)),
         closure "t *rapid.T" "" $ statements ([symbols,
           bind "_values" (strategy <> text ".Draw(t, " <> quoted label <> text ")"),
           fromValues (inputs e)] ++ handlerInstalls e ++ [check])]
@@ -182,7 +184,7 @@ emitTests Config{..} unit laws = do
             [base,number (maxAttempts (generation e)),
              closure "_values []LawSpecValue" "bool" (statements
                [fromValues (inputs e),returned (conjunction (map (truth . expr) predicates))])]
-      in testFunction (fn ++ "Property") $ call "lsRapidCheck" [text "t",number (cases (generation e)),
+      in testFunction (fn ++ "_Property") $ call "lsRapidCheck" [text "t",number (cases (generation e)),
         closure "t *rapid.T" "" $ statements ([symbols,
           bind "_values" (strategy <> text ".Draw(t, " <> quoted label <> text ")"),fromValues (inputs e)] ++ handlerInstalls e ++ [check])]
     domain e (index,plan) = do
@@ -205,7 +207,7 @@ emitTests Config{..} unit laws = do
           invocation = call "lsRefinedCase" [text "[]lawSpecDomain{" <> D.joinWith (text ", ") domains <> text "}",
             text "seed",number (maxAttempts cfg),number (maxShrinks cfg),callback,
             quoted (label ++ " | " ++ intercalate "; " (map prettyExpr (concatMap inputRefinements (inputs e))))]
-      pure $ testFunction (fn ++ "Property") $ statements
+      pure $ testFunction (fn ++ "_Property") $ statements
         [text "defer " <> closure "" "" (text "if err := recover(); err != nil " <>
           block (text "t.Fatalf(\"%v\", err)")) <> text "()",
          text ("for seed := 0; seed < " ++ show (cases cfg) ++ "; seed++ ") <>

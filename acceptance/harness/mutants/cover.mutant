@@ -1,0 +1,7 @@
+expect: cover 60% "empty order" was not met
+@@ examples/specs/harness_testing.lawspec
+<<<<<<<
+    cover 10% "empty order" when isEmpty order
+=======
+    cover 60% "empty order" when isEmpty order
+>>>>>>>

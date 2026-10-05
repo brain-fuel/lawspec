@@ -4,6 +4,7 @@ module LawSpec.HaskellProperties (Config(..), emitTests) where
 import LawSpec.Bounds (inputRange)
 import LawSpec.Backend
 import LawSpec.Common
+import LawSpec.TestNames (unitTestNames)
 import LawSpec.Testing
 import qualified LawSpec.Core as C
 import qualified LawSpec.Core.Value as V
@@ -72,7 +73,8 @@ testFunction name body = apply "it" [quoted name] <> text " $ do" <>
 
 emitTests :: Config -> Unit -> [Expanded] -> Either [Diagnostic] D.Doc
 emitTests Config{..} unit laws = do
-  bodies <- mapM law (zip [0::Int ..] laws)
+  let testNames = unitTestNames "haskell" (map name laws)
+  bodies <- mapM (law testNames) (zip [0::Int ..] laws)
   let imports = ["import qualified Prelude as P", "import Prelude", "import Test.Hspec",
         "import Control.Exception (SomeException, catch, displayException, evaluate)",
         "import Test.Hspec.Hedgehog (hedgehog, modifyMaxSuccess)",
@@ -141,16 +143,16 @@ emitTests Config{..} unit laws = do
             (D.softline <> D.joinWith (text " ->" <> D.softline) (replicate (length args + 1) (text "Scalar"))))
       in signature <> D.hardline <> text (unwords (name : "symbols" : map fst args) ++ " =") <>
         D.nest 2 (D.hardline <> body)
-    law (index,e) = do
+    law testNames (index,e) = do
       let label = owner e ++ "::" ++ name e
-          fn = "law" ++ show index
-      exampleDocs <- mapM (\(i,ex) -> pure $ testFunction (fn ++ "Example" ++ show i)
+          fn = testNames !! index
+      exampleDocs <- mapM (\(i,ex) -> pure $ testFunction (fn ++ "_example" ++ show i)
         ([symbols] ++ handlerInstalls e ++ [bind n (expr v) | (n,v) <- bindings ex] ++
         map (assertionDoc (label ++ " example " ++ exampleName ex)) (expectations ex) ++
         [assertionDoc label (assertion e)])) (zip [0::Int ..] (examples (original e)))
       boundaryDocs <- mapM (\(i,vs) -> do
         values <- mapM literal vs
-        pure $ testFunction (fn ++ "Boundary" ++ show i)
+        pure $ testFunction (fn ++ "_boundary" ++ show i)
           ([symbols] ++ handlerInstalls e ++ [bind (inputId inp) (checked (inputType inp) v) | (inp,v) <- zip (inputs e) values] ++
           [assertionDoc (label ++ " boundary " ++ show i) (assertion e)]))
         (zip [0::Int ..] (maybe (boundaryCases e) id (finiteCases e)))
@@ -164,7 +166,7 @@ emitTests Config{..} unit laws = do
           else pure [nativeProperty fn label e check]
       pure $ metadataDocument 78 "--" e <> separate (exampleDocs ++ boundaryDocs ++ property)
     propertyHeader fn label e = apply "modifyMaxSuccess" [apply "const" [number (cases (generation e))]] <>
-      text " $ " <> apply "it" [quoted (fn ++ "Property: " ++ label)] <> text " $ hedgehog $ do"
+      text " $ " <> apply "it" [quoted (fn ++ "_property: " ++ label)] <> text " $ hedgehog $ do"
     contextualProperty fn label e check = do
       draws <- mapM (\plan -> do
         seeds <- mapM literal (generatorBoundaries plan)
@@ -210,7 +212,7 @@ emitTests Config{..} unit laws = do
           run = text "_passed <- _lawspecCheck $" <> D.nest 2 (D.hardline <>
             D.joinWith (text " $" <> D.hardline) (settings ++ [text "Hedgehog.property $ do"]) <>
             D.nest 2 (D.hardline <> body))
-      pure $ testFunction (fn ++ "Property: " ++ label) [run,text "_passed `shouldBe` True"]
+      pure $ testFunction (fn ++ "_property: " ++ label) [run,text "_passed `shouldBe` True"]
     requiredSymbol plan
       | nativeGenerators = []
       | inputType (domainInput plan) /= C.scalarType "Symbol" = []

@@ -1,0 +1,11 @@
+rejected-at: generation
+expect: a harness cannot declare a law
+@@ examples/specs/harness_testing.lawspec
+<<<<<<<
+  share Scratch per unit
+=======
+  law `smuggled` is
+    definition is roundCents 0 = 0 end
+  end
+  share Scratch per unit
+>>>>>>>

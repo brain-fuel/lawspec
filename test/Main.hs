@@ -236,7 +236,7 @@ main = hspec $ do
           Right fs -> do
             let tests = filter ((== "test") . artifactPlacement) fs
             length tests `shouldBe` 1
-            concatMap artifactContent tests `shouldSatisfy` isInfixOf "test_law0_property"
+            concatMap artifactContent tests `shouldSatisfy` isInfixOf "test_reflexive__property"
             concatMap artifactContent tests `shouldSatisfy` (not . isInfixOf "from purelaw import")
     it "moves generated imports with a custom layout" $ do
       s <- readFile "examples/specs/atoi_codec.lawspec"

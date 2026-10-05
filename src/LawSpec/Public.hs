@@ -159,16 +159,33 @@ programView settings surface expansions artifacts evidence C.Program{..} = objec
         ,"rationale" .= C.propertyRationale p, "references" .= C.propertyReferences p
         ,"location" .= C.propertyLocation p, "trace" .= C.propertyTrace p, "generation" .= C.propertyGeneration p
         -- The handler the law runs under for each ability it uses.
-        ,"handlers" .= [object ["ability" .= C.abilityKey a, "handler" .= handlerText h] | (a, h) <- C.propertyHandlers p]]
+        ,"handlers" .= [object ["ability" .= C.abilityKey a, "handler" .= handlerText h] | (a, h) <- C.propertyHandlers p]
+        -- How its tests run: the harness plane, apart from the law itself.
+        ,"harness" .= harnessView names (C.propertyHarness p)]
+    harnessView names h = object
+      [ "unit" .= C.harnessUnit h, "tags" .= C.harnessTags h, "skip" .= C.harnessSkip h
+      , "knownFailing" .= C.harnessKnownFailing h, "timeoutMilliseconds" .= C.harnessTimeout h
+      , "repeat" .= C.harnessRepeat h, "retries" .= C.harnessRetries h
+      , "cover" .= [object ["percent" .= percent, "label" .= label, "when" .= expressionView names e] | C.Cover percent label e <- C.harnessCover h]
+      , "classify" .= [object ["label" .= label, "when" .= expressionView names e] | (e, label) <- C.harnessClassify h]
+      , "labels" .= map (expressionView names) (C.harnessLabels h)
+      , "target" .= fmap (expressionView names) (C.harnessTarget h)
+      , "strategies" .= [object ["input" .= maybe (C.idText i) id (lookup i names), "strategy" .= n] | (i, n, _) <- C.harnessDraws h]
+      , "group" .= C.harnessGroup h ]
     handlerText h = case h of
       C.ProductionHandler -> "native"
       C.SpecHandler i -> reverse (takeWhile (/= ':') (reverse (C.idText i)))
       C.RecordingHandler inner -> "recording " ++ handlerText inner
-    evidenceView o = object
+    evidenceView o = object (
       [ "owner" .= C.idText (obligationUnit o), "declaration" .= C.idText (obligationDeclaration o)
       , "stage" .= obligationStage o, "status" .= statusName (obligationStatus o)
       , "reason" .= obligationReason o
-      , "claim" .= fmap (expressionView (declarationBinders (obligationDeclaration o))) (obligationClaim o) ]
+      , "claim" .= fmap (expressionView (declarationBinders (obligationDeclaration o))) (obligationClaim o) ] ++
+      -- A law's obligation comes from the law plane; how it is discharged,
+      -- from the harness plane, which is reported beside it.
+      [ "harness" .= harnessView (declarationBinders (obligationDeclaration o)) (C.propertyHarness p)
+      | u <- programUnits, p <- C.unitProperties u, C.propertyId p == obligationDeclaration o
+      , C.harnessUnit (C.propertyHarness p) /= Nothing ])
     declarationBinders declaration = concat
       [ [(C.binderId b,C.binderName b) | b <- C.contractArguments c ++ [C.contractResult c]]
       | u <- programUnits, c <- C.unitContracts u, C.contractDeclaration c == declaration ] ++ concat

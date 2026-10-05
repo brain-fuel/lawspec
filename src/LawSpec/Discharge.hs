@@ -67,18 +67,31 @@ dischargeEvidence program = do
         settings = propertyGeneration p
         every [_] = "its only case"
         every tuples = "all " ++ show (length tuples) ++ " inputs"
+        harness = propertyHarness original
+        byHarness = maybe "its harness" ("the harness " ++) (harnessUnit harness)
+        -- The harness plane decides whether the tests run, never what a
+        -- static proof or the compiler's own check established.
+        tested status reason = case (harnessSkip harness, harnessKnownFailing harness) of
+          (Just why, _) -> obligation Skipped ("skipped by " ++ byHarness ++ ": " ++ why ++ "; otherwise " ++ statusName status ++ ": " ++ reason)
+          (_, Just why) -> obligation KnownFailing ("marked known failing by " ++ byHarness ++ ": " ++ why ++
+            "; its tests must fail, and a run that passes is reported")
+          _ -> obligation status reason
+        static status reason = case harnessKnownFailing harness of
+          Just _ -> Left [Diagnostic "harness" ("the law " ++ propertyName p ++ " is " ++ statusName status ++
+            " by the compiler, so its harness cannot mark it known failing") (Just (propertyLocation p))]
+          Nothing -> pure (obligation status (reason ++ maybe "" (const "; its harness skips its tests") (harnessSkip harness)))
     case plan p of
-      Left message -> pure (obligation Assumed ("not executable, so taken on trust: " ++ message))
+      Left message -> pure (tested Assumed ("not executable, so taken on trust: " ++ message))
       Right planned
-        | closed, Right () <- proves program definitions p -> pure (obligation Proved
-            "proved statically from its input refinements and the definitions it calls")
+        | closed, Right () <- proves program definitions p -> static Proved
+            "proved statically from its input refinements and the definitions it calls"
         | closed, not effects, Just tuples <- finiteCases planned -> do
             mapM_ (refute registry bits invoke p) tuples
-            pure (obligation ExhaustivelyChecked ("the compiler evaluated " ++ every tuples ++
-              "; the generated tests check " ++ (if length tuples == 1 then "it" else "them") ++ " again natively"))
-        | Just tuples <- finiteCases planned -> pure (obligation ExhaustivelyChecked
+            static ExhaustivelyChecked ("the compiler evaluated " ++ every tuples ++
+              "; the generated tests check " ++ (if length tuples == 1 then "it" else "them") ++ " again natively")
+        | Just tuples <- finiteCases planned -> pure (tested ExhaustivelyChecked
             ("the generated tests check " ++ every tuples ++ relying adapters))
-        | otherwise -> pure (obligation PropertyTested
+        | otherwise -> pure (tested PropertyTested
             ("the generated tests check " ++ count (cases settings) "generated case" ++ ", " ++
              count (length (boundaryCases planned)) "boundary case" ++ " and " ++
              count (length (propertyExamples p)) "example" ++ relying adapters))

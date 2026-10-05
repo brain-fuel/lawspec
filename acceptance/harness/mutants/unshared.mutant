@@ -1,0 +1,10 @@
+rejected-at: generation
+expect: does not declare reset
+@@ examples/specs/harness.lawspec
+<<<<<<<
+  acquire 0
+  reset 0
+=======
+  acquire 0
+  release 0
+>>>>>>>

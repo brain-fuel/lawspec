@@ -9,7 +9,8 @@ import { generateExamples } from "../examples-command.mjs";
 import { showScalar } from "../scalars.mjs";
 import { doctor } from "../doctor.mjs";
 import { spawn } from "node:child_process";
-import { environmentDigest, executedTests, invocations, lawKeys, projectDigest } from "../test-command.mjs";
+import { environmentDigest, executedTests, invocations, lawKeys, projectDigest, selectByTags, mergeJunit,
+  harnessStatistics, coverageTools, junitFromTests } from "../test-command.mjs";
 import {
   readOptional,
   planWrites,
@@ -24,11 +25,16 @@ const options = {};
 const positional = [];
 for (let i = 0; i < args.length; i++) {
   const arg = args[i];
-  if (["--target", "--project", "--config", "--output", "--machine-bits", "--example", "--seed"].includes(arg)) {
+  if (["--target", "--project", "--config", "--output", "--machine-bits", "--example", "--seed", "--report"].includes(arg)) {
     if (!args[i + 1] || args[i + 1].startsWith("--"))
       throw new Error(`Missing value for ${arg}`);
     options[arg.slice(2)] = args[++i];
-  } else if (["--dry-run", "--check", "--json", "--minify", "--no-cache", "--fresh"].includes(arg))
+  } else if (["--tag", "--exclude-tag"].includes(arg)) {
+    // Repeatable, and each may list several: --tag a,b --tag c.
+    if (!args[i + 1] || args[i + 1].startsWith("--"))
+      throw new Error(`Missing value for ${arg}`);
+    options[arg.slice(2)] = [...(options[arg.slice(2)] ?? []), ...args[++i].split(",").filter(Boolean)];
+  } else if (["--dry-run", "--check", "--json", "--minify", "--no-cache", "--fresh", "--coverage"].includes(arg))
     options[arg.slice(2)] = true;
   else if (arg.startsWith("--")) throw new Error(`Unknown option: ${arg}`);
   else positional.push(arg);
@@ -240,6 +246,46 @@ function explainExamples(law) {
     ex.expectations.map(e => `  expect ${showAssertion(e)}`).join("\n")
   ).join("\n");
 }
+// What lawspec test last recorded for each law, across targets.
+async function lastRuns() {
+  const folder = path.join(configRoot, ".lawspec", "results");
+  const runs = new Map();
+  for (const name of (await readOptionalDirectory(folder)) ?? []) {
+    if (!name.endsWith(".json")) continue;
+    const recorded = JSON.parse((await readOptional(path.join(folder, name))) ?? "{}");
+    for (const [law, run] of Object.entries(recorded.laws ?? {})) {
+      const known = runs.get(law) ?? {};
+      runs.set(law, { flaky: known.flaky || run.flaky, adequacy: run.adequacy ?? known.adequacy });
+    }
+  }
+  return runs;
+}
+// One law's harness, as lawspec evidence shows it.
+function harnessText(item) {
+  const h = item.harness ?? {};
+  const parts = [];
+  if (h.unit) parts.push(`harness ${h.unit}`);
+  if (h.tags?.length) parts.push(`tags ${h.tags.join(", ")}`);
+  if (h.strategies?.length) parts.push(h.strategies.map((s) => `${s.input} drawn by ${s.strategy}`).join(", "));
+  for (const c of h.cover ?? []) parts.push(`cover ${c.percent}% "${c.label}" when ${c.when.text}`);
+  for (const c of h.classify ?? []) parts.push(`classify ${c.when.text} as "${c.label}"`);
+  for (const l of h.labels ?? []) parts.push(`label ${l.text}`);
+  if (h.target) parts.push(`target maximize ${h.target.text}`);
+  if (h.timeoutMilliseconds) parts.push(`timeout ${h.timeoutMilliseconds} ms`);
+  if (h.repeat > 1) parts.push(`repeat ${h.repeat}`);
+  if (h.retries) parts.push(`retry flaky ${h.retries}`);
+  if (h.skip) parts.push(`skip "${h.skip}"`);
+  if (h.knownFailing) parts.push(`known failing "${h.knownFailing}"`);
+  const lines = [`  ${item.declaration.replace("::law::", "::")}: ${parts.join("; ") || "no harness settings"}`];
+  for (const run of item.adequacy ?? []) {
+    lines.push(`    last run: ${run.cases} generated case(s)` +
+      (run.cover ?? []).map((c) => `; cover "${c.label}" ${c.observed}% (needs ${c.required}%)${c.met ? "" : " NOT MET"}`).join(""));
+    const counts = { ...(run.classes ?? {}), ...Object.fromEntries(Object.entries(run.labels ?? {}).map(([k, v]) => [`label ${k}`, v])) };
+    if (Object.keys(counts).length)
+      lines.push(`    ${Object.entries(counts).map(([k, v]) => `${k}: ${run.cases ? (100 * v / run.cases).toFixed(1) : 0}%`).join(", ")}`);
+  }
+  return lines.join("\n");
+}
 // The compiler keeps work between runs in .lawspec/cache, in one folder per
 // compiler build, so a different build never reads another's entries. The
 // WebAssembly compiler sees only the working directory. A command that fails
@@ -269,12 +315,17 @@ async function buildDigest() {
   return buildDigestValue;
 }
 // lawspec test: run the tests of the laws whose results may have changed,
-// and record each passing law's key and seed (see test-command.mjs).
+// and record each passing law's key and seed (see test-command.mjs). The
+// harness plane chooses which: --tag and --exclude-tag select laws by their
+// harness tags, and a skipped law runs nothing. A law whose last run failed
+// runs first, and its failing inputs are replayed first (.lawspec/failures).
 async function runTests(compiler, input, selected, roots, config) {
   const seed = options.seed ?? String(1 + Math.floor(Math.random() * 2147483646));
   const offline = process.env.LAWSPEC_OFFLINE === "1";
   const build = await buildDigest();
   const summaries = [];
+  const junit = [];
+  const report = options.report === undefined ? null : parseReport(options.report);
   for (const [i, target] of selected.entries()) {
     const root = roots[i];
     const planned = diagnostics(await compiler.planGeneration({
@@ -284,52 +335,136 @@ async function runTests(compiler, input, selected, roots, config) {
     const pending = await planWrites(root, planned.files);
     if (pending.changes.length)
       throw new Error(`${target.language}: generated files are out of date; run lawspec generate${options.minify ? " --minify" : ""}`);
-    const report = await doctor(target, root, planned.files);
-    if (!report.ok) throw new Error(`${target.language}: ${report.message}\n${report.instructions}`);
+    const report_ = await doctor(target, root, planned.files);
+    if (!report_.ok) throw new Error(`${target.language}: ${report_.message}\n${report_.instructions}`);
     const generated = new Set(planned.files.filter((f) => f.ownership === "generated").map((f) => f.path));
     const keys = lawKeys({
       build, target, machineBits: input.machineBits, minify: options.minify === true,
       tests: planned.tests, files: planned.files,
-      environment: await environmentDigest(root, report),
+      environment: await environmentDigest(root, report_),
       project: await projectDigest(root, generated),
     });
     const resultsFile = path.join(configRoot, ".lawspec", "results",
       `${target.language}-${createHash("sha256").update(root).digest("hex").slice(0, 12)}.json`);
     const previous = JSON.parse((await readOptional(resultsFile)) ?? '{"version":1,"laws":{}}');
-    const stale = planned.tests.filter((entry) => options.fresh || previous.laws[entry.law]?.key !== keys.get(entry.law));
+    const chosen = selectByTags(planned.tests, options.tag ?? [], options["exclude-tag"] ?? []);
+    // A law that failed last time runs first.
+    const stale = chosen.filter((entry) => options.fresh || options.coverage || previous.laws[entry.law]?.key !== keys.get(entry.law))
+      .sort((a, b) => Number(!!previous.failed?.[b.law]) - Number(!!previous.failed?.[a.law]));
     const passed = [];
     const unrun = [];
     let failed = false;
     const scratch = path.join(configRoot, ".lawspec", "reports", target.language);
+    const stats = path.join(scratch, "statistics");
+    const failures = path.join(configRoot, ".lawspec", "failures", target.language);
+    const coverage = options.coverage ? path.join(configRoot, ".lawspec", "coverage", target.language) : null;
     await rm(scratch, { recursive: true, force: true });
-    await mkdir(scratch, { recursive: true });
+    await mkdir(stats, { recursive: true });
+    await mkdir(failures, { recursive: true });
     await writeFile(path.join(path.dirname(scratch), ".gitignore"), "*\n");
-    for (const run of stale.length ? invocations(target, stale, { offline, scratch }) : []) {
+    if (coverage) {
+      await mkdir(coverage, { recursive: true });
+      const missing = await coverageMissing(target, root);
+      if (missing) console.error(`${target.language}: --coverage needs ${missing.tool}, which is not available; ${missing.install}. Running without coverage.`);
+    }
+    const useCoverage = coverage && !(await coverageMissing(target, root));
+    // A skipped law runs nothing, and a known-failing law's one test is
+    // expected to fail, so neither is required to show as run.
+    const expected = (entry) => !entry.skip && !entry.knownFailing;
+    for (const run of stale.length ? invocations(target, stale, { offline, scratch, coverage: useCoverage ? coverage : null }) : []) {
       const since = Date.now() - 1000;
       const { ok, output } = await spawned(run.command, run.args, root,
-        { ...process.env, ...run.env, LAWSPEC_SEED: seed, HSPEC_SEED: seed }, run.report?.kind === "go-json");
+        { ...process.env, ...run.env, LAWSPEC_SEED: seed, HSPEC_SEED: seed,
+          LAWSPEC_STATS: stats, LAWSPEC_FAILURES: failures }, run.report?.kind === "go-json");
+      const executed = await executedTests(run.report, output, root, since);
+      if (report) junit.push({ target: target.language, xml: await junitOf(run, executed, root, since) });
       if (!ok) { failed = true; break; }
       // A runner whose filter matched nothing reports success, so a law
       // counts as passed only if the runner's report shows its tests ran.
-      const executed = new Set((await executedTests(run.report, output, root, since)).flatMap(run.ran ?? (() => [])));
-      passed.push(...run.laws.filter((law) => executed.has(law)));
-      unrun.push(...run.laws.filter((law) => !executed.has(law)));
+      const ran = new Set(executed.flatMap(run.ran ?? (() => [])));
+      passed.push(...run.laws.filter((law) => ran.has(law) || !expected(law)));
+      unrun.push(...run.laws.filter((law) => !ran.has(law) && expected(law)));
     }
     if (unrun.length) failed = true;
+    const statistics = await harnessStatistics(stats);
     const laws = Object.fromEntries(planned.tests.filter((entry) => previous.laws[entry.law]).map((entry) => [entry.law, previous.laws[entry.law]]));
-    for (const entry of passed) laws[entry.law] = { key: keys.get(entry.law), seed: Number(seed), passed: new Date().toISOString() };
+    for (const entry of passed) {
+      const label = entry.label;
+      const observed = statistics.filter((s) => s.law === label);
+      laws[entry.law] = { key: keys.get(entry.law), seed: Number(seed), passed: new Date().toISOString(),
+        ...(observed.some((s) => s.outcome === "flaky") ? { flaky: true } : {}),
+        ...(observed.some((s) => s.cover || s.labels || s.classes) ? { adequacy: observed.filter((s) => s.cover || s.labels || s.classes)
+          .map(({ test, cases, cover, classes, labels }) => ({ test, cases, cover, classes, labels })) } : {}) };
+    }
+    const failedLaws = Object.fromEntries(stale.filter((e) => !passed.includes(e)).map((e) => [e.law, new Date().toISOString()]));
     await mkdir(path.dirname(resultsFile), { recursive: true });
     await writeFile(path.join(path.dirname(resultsFile), ".gitignore"), "*\n");
-    await writeFile(resultsFile, JSON.stringify({ version: 1, laws }, null, 2) + "\n");
+    await writeFile(resultsFile, JSON.stringify({ version: 1, laws, ...(Object.keys(failedLaws).length ? { failed: failedLaws } : {}) }, null, 2) + "\n");
+    const flaky = statistics.filter((s) => s.outcome === "flaky").map((s) => s.law);
+    const unmet = statistics.flatMap((s) => (s.cover ?? []).filter((c) => !c.met).map((c) => `${s.law}: cover ${c.required}% "${c.label}" (${c.observed}%)`));
+    const benchmarks = statistics.filter((s) => s.benchmark);
     summaries.push({ target: target.language, seed: Number(seed), ran: stale.map((e) => e.law),
-      unchanged: planned.tests.length - stale.length, ok: !failed,
-      ...(unrun.length ? { unrun: unrun.map((e) => e.law) } : {}) });
+      unchanged: chosen.length - stale.length, ok: !failed,
+      ...(chosen.length !== planned.tests.length ? { deselected: planned.tests.length - chosen.length } : {}),
+      ...(unrun.length ? { unrun: unrun.map((e) => e.law) } : {}),
+      ...(flaky.length ? { flaky: [...new Set(flaky)] } : {}),
+      ...(unmet.length ? { unmetCover: unmet } : {}),
+      ...(benchmarks.length ? { benchmarks } : {}),
+      ...(useCoverage ? { coverage: path.relative(process.cwd(), coverage) || "." } : {}) });
+  }
+  if (report) {
+    await mkdir(path.dirname(path.resolve(report.path)), { recursive: true });
+    await writeFile(path.resolve(report.path), mergeJunit(junit));
   }
   output(options.json ? summaries : summaries.map((s) =>
     `${s.target}: ${s.ran.length ? `ran ${s.ran.length} law(s) with seed ${s.seed}` : "nothing to run"}` +
     `, ${s.unchanged} unchanged since their last passing run.${s.ok ? "" : " FAILED"}` +
-    (s.unrun ? `\nNo tests ran for ${s.unrun.join(", ")}; the runner matched none of their tests.` : "")).join("\n"));
+    (s.deselected ? `\n${s.deselected} law(s) not selected by --tag or --exclude-tag.` : "") +
+    (s.unrun ? `\nNo tests ran for ${s.unrun.join(", ")}; the runner matched none of their tests.` : "") +
+    (s.flaky ? `\nFlaky (failed, then passed on a retry): ${s.flaky.join(", ")}` : "") +
+    (s.unmetCover ? `\nCover not met: ${s.unmetCover.join("; ")}` : "") +
+    (s.benchmarks ? "\n" + s.benchmarks.map((b) => `benchmark ${b.benchmark}: mean ${(b.mean_ns / 1000).toFixed(2)} us over ${b.iterations} iteration(s)`).join("\n") : "") +
+    (s.coverage ? `\nCoverage written to ${s.coverage}.` : "")).join("\n"));
   if (summaries.some((s) => !s.ok)) process.exitCode = 1;
+}
+// --report junit=path: one JUnit report merged across targets.
+function parseReport(value) {
+  const match = value.match(/^junit=(.+)$/);
+  if (!match) throw new Error("--report takes junit=<path>");
+  return { kind: "junit", path: match[1] };
+}
+// A run's JUnit XML: the runner's own where it writes one, otherwise made
+// from what it printed.
+async function junitOf(run, executed, root, since) {
+  if (run.report?.kind === "junit") {
+    const files = run.report.files ?? (await readdir(path.join(root, run.report.directory)).catch(() => []))
+      .filter((n) => n.endsWith(".xml")).map((n) => path.join(root, run.report.directory, n));
+    const xml = [];
+    for (const file of files) {
+      const info = await stat(path.resolve(root, file)).catch(() => null);
+      if (info && info.mtimeMs >= since) xml.push(await readFile(path.resolve(root, file), "utf8"));
+    }
+    return xml.join("\n");
+  }
+  return junitFromTests(executed);
+}
+// The tool --coverage needs, if it is missing.
+async function coverageMissing(target, root) {
+  const tool = coverageTools[target.language];
+  if (!tool) return { tool: "a coverage tool", install: "no coverage tool is known for this target" };
+  const probe = (command, args) => new Promise((resolve) => {
+    const child = spawn(command, args, { cwd: root, stdio: "ignore" });
+    child.on("error", () => resolve(false));
+    child.on("close", (code) => resolve(code === 0));
+  });
+  if (target.language === "python") return (await probe(target.python || "python3", tool.check)) ? null : tool;
+  if (["javascript", "typescript"].includes(target.language)) return (await probe("npx", ["--no-install", "c8", "--version"])) ? null : tool;
+  if (target.language === "rust") return (await probe("cargo", ["llvm-cov", "--version"])) ? null : tool;
+  if (target.language === "kotlin") {
+    const build = await readFile(path.join(root, "build.gradle.kts"), "utf8").catch(() => "");
+    return build.includes("kover") ? null : tool;
+  }
+  return null;
 }
 // Run a native test command, showing its output (on stderr with --json) and
 // keeping it. Go's JSON events are shown as the text they carry.
@@ -371,7 +506,7 @@ async function main() {
   }
   if (!verb || ["help", "--help", "-h"].includes(verb)) {
     output(
-      "LawSpec " + VERSION + "\nUsage: lawspec init --target <language> [--project <directory>] [--minify]\n       lawspec check | doctor | explain <unit>::<law> | generate\n       lawspec evidence [<unit> | <unit>::<declaration>]\n       lawspec test [--target <language>] [--fresh] [--seed <n>]\n       lawspec package [--project <package directory>]\n       lawspec examples [--example payments] [--target <language>] [--output <directory>]\nOptions: --config <path>, --target <language>, --machine-bits <32|64>, --json, --no-cache\nGeneration: --dry-run, --check, --minify\nTargets: " +
+      "LawSpec " + VERSION + "\nUsage: lawspec init --target <language> [--project <directory>] [--minify]\n       lawspec check | doctor | explain <unit>::<law> | generate\n       lawspec evidence [<unit> | <unit>::<declaration>]\n       lawspec test [--target <language>] [--fresh] [--seed <n>] [--tag <t>] [--exclude-tag <t>] [--report junit=<path>] [--coverage]\n       lawspec package [--project <package directory>]\n       lawspec examples [--example payments] [--target <language>] [--output <directory>]\nOptions: --config <path>, --target <language>, --machine-bits <32|64>, --json, --no-cache\nGeneration: --dry-run, --check, --minify\nTargets: " +
         targets.join(", "),
     );
     return;
@@ -415,8 +550,9 @@ async function main() {
   if (options.example) throw new Error("--example is only supported by examples");
   if (options.minify && !["init", "generate", "examples", "test"].includes(verb))
     throw new Error("--minify applies to init, generate, test and examples");
-  if ((options.fresh || options.seed !== undefined) && verb !== "test")
-    throw new Error("--fresh and --seed apply to test");
+  if ((options.fresh || options.seed !== undefined || options.tag || options["exclude-tag"] ||
+      options.report !== undefined || options.coverage) && verb !== "test")
+    throw new Error("--fresh, --seed, --tag, --exclude-tag, --report and --coverage apply to test");
   if (options.seed !== undefined && !/^[0-9]+$/.test(options.seed))
     throw new Error("--seed must be a whole number");
   if (verb === "init") return init();
@@ -475,11 +611,18 @@ async function main() {
     ["property-tested", "PROPERTY TESTED"],
     ["runtime-checked", "RUNTIME CHECKED"],
     ["assumed", "ASSUMED / EXTERNAL"],
+    // The harness plane: a law it marks as known to fail, a law whose last
+    // run was flaky, and a law whose tests it skips.
+    ["known-failing", "KNOWN FAILING"],
+    ["flaky", "FLAKY"],
+    ["skipped", "SKIPPED"],
   ];
   const evidenceSummary = (evidence) => {
     if (!evidence.length) return "";
     const count = (status) => evidence.filter((item) => item.status === status).length;
-    return ` Evidence: ${statuses.map(([status, label]) => `${count(status)} ${label.toLowerCase()}`).join(", ")}.`;
+    // The harness statuses are counted only when a harness gives some.
+    const shown = statuses.filter(([status], i) => i < 5 || count(status));
+    return ` Evidence: ${shown.map(([status, label]) => `${count(status)} ${label.toLowerCase()}`).join(", ")}.`;
   };
   const obligationName = (item) => item.declaration.replace("::law::", "::");
   if (verb === "check") {
@@ -509,10 +652,21 @@ async function main() {
     evidence = evidence.filter((item) => !positional[0] ||
       obligationName(item) === positional[0] || item.owner === positional[0]);
     if (positional[0] && !evidence.length) throw new Error("No matching obligation");
+    // The last run's outcome (lawspec test): a law that failed, then passed
+    // on a retry, is flaky; what its generated cases covered is its adequacy.
+    const runs = await lastRuns();
+    evidence = evidence.map((item) => {
+      const run = item.stage === "law" ? runs.get(item.declaration) : undefined;
+      if (!run) return item;
+      return { ...item, ...(run.adequacy ? { adequacy: run.adequacy } : {}),
+        ...(run.flaky && ["property-tested", "exhaustively-checked"].includes(item.status)
+          ? { status: "flaky", reason: `${item.reason}; its last run failed, then passed on a retry` } : {}) };
+    });
+    const harnessed = evidence.filter((item) => item.harness || item.adequacy);
     output(
       options.json
         ? evidence
-        : statuses
+        : [...statuses
             .map(([status, label]) => {
               const items = evidence.filter((item) => item.status === status);
               if (!items.length) return null;
@@ -520,7 +674,10 @@ async function main() {
                 `  ${item.stage} ${obligationName(item)}${item.target ? ` [${item.target}]` : ""}` +
                 (item.claim ? `: ${item.claim.text}` : "") + `\n    ${item.reason}`).join("\n");
             })
-            .filter((section) => section !== null)
+            .filter((section) => section !== null),
+          // How each law is discharged: the harness plane, apart from what
+          // the laws say.
+          ...(harnessed.length ? [`HARNESS (${harnessed.length})\n` + harnessed.map(harnessText).join("\n")] : [])]
             .join("\n\n"),
     );
     return;

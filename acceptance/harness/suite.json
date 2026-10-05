@@ -1,0 +1,1 @@
+{ "specs": ["examples/specs/harness.lawspec", "examples/specs/harness_testing.lawspec"] }

@@ -218,6 +218,55 @@ data Property = Property
   , propertyReferences :: [String], propertyTrace :: [String]
   -- The handler the law runs under for each ability it uses.
   , propertyHandlers :: [(AbilityRef, HandlerRef)]
+  -- How the law's tests run: the harness plane, which never changes what
+  -- the law means (LawSpec.Harness).
+  , propertyHarness :: LawHarness
+  } deriving (Eq, Show, Generic)
+
+-- A law's harness. Every expression is over the law's inputs (or a
+-- strategy's bound values) and calls checked definitions only.
+data LawHarness = LawHarness
+  { harnessUnit :: Maybe String
+  , harnessTags :: [String]
+  -- A skipped law runs no tests; it stays an obligation, reported skipped.
+  , harnessSkip :: Maybe String
+  -- A known-failing law's tests must fail; if they pass, that is reported.
+  , harnessKnownFailing :: Maybe String
+  , harnessTimeout :: Maybe Integer        -- milliseconds, per test
+  , harnessRepeat :: Integer               -- runs of each test
+  , harnessRetries :: Integer              -- reruns of a failing test (flaky)
+  , harnessCover :: [Cover]
+  , harnessClassify :: [(Expr, String)]
+  , harnessLabels :: [Expr]
+  , harnessTarget :: Maybe Expr            -- maximized by targeted search
+  -- The strategy each input is drawn with, instead of the default.
+  , harnessDraws :: [(Id, String, Draw)]
+  , harnessGroup :: Maybe String
+  } deriving (Eq, Show, Generic)
+
+-- cover p% "label" when e: at least p% of generated cases must satisfy e.
+data Cover = Cover { coverPercent :: Integer, coverLabel :: String, coverWhen :: Expr }
+  deriving (Eq, Show, Generic)
+
+-- How a strategy draws a value of its type.
+data Draw
+  = DrawAny Type                            -- the refinement-directed default
+  | DrawOneOf Type [Expr]
+  | DrawFrequency [(Integer, Draw)]
+  | DrawSuchThat Draw Binder Expr Integer   -- keep values with p, at most n discards
+  | DrawBind Binder Draw Draw               -- draw x, then the rest knowing x
+  deriving (Eq, Show, Generic)
+
+noHarness :: LawHarness
+noHarness = LawHarness Nothing [] Nothing Nothing Nothing 1 0 [] [] [] Nothing [] Nothing
+
+-- A unit's harness settings that are not about one law.
+data UnitHarness = UnitHarness
+  { unitHarnessName :: String, harnessOrderRandom :: Bool, harnessParallel :: Bool
+  -- share R per group | unit | run, for resources that declare reset.
+  , harnessShares :: [(String, String)]
+  -- benchmark `name` is e end: measured, never asserted.
+  , harnessBenchmarks :: [(String, Expr)]
   } deriving (Eq, Show, Generic)
 -- unitMachines are the unit's stateful models, which each target's model
 -- runtime runs against its adapters.
@@ -230,12 +279,14 @@ data Unit = MkUnit { unitId :: Id, unitDeclarations :: [Declaration], unitContra
   -- senders and one receiver, generated on each target.
   , unitMailboxes :: [Mailbox]
   -- The unit's abilities, and its spec handlers for them.
-  , unitAbilities :: [Ability], unitHandlers :: [Handler] } deriving (Eq, Show, Generic)
+  , unitAbilities :: [Ability], unitHandlers :: [Handler]
+  -- The unit's harness settings beyond its laws', if it has a harness.
+  , unitHarnessSettings :: Maybe UnitHarness } deriving (Eq, Show, Generic)
 
 data Mailbox = Mailbox { mailboxName :: String, mailboxType :: Type } deriving (Eq, Show, Generic)
 pattern Unit :: Id -> [Declaration] -> [Contract] -> [Property] -> [Definition] -> [Machine Id] -> Unit
-pattern Unit identity declarations contracts properties definitions machines <- MkUnit identity declarations contracts properties definitions machines _ _ _ _ _
-  where Unit identity declarations contracts properties definitions machines = MkUnit identity declarations contracts properties definitions machines [] [] [] [] []
+pattern Unit identity declarations contracts properties definitions machines <- MkUnit identity declarations contracts properties definitions machines _ _ _ _ _ _
+  where Unit identity declarations contracts properties definitions machines = MkUnit identity declarations contracts properties definitions machines [] [] [] [] [] Nothing
 {-# COMPLETE Unit #-}
 
 -- A protocol: what its first end sends (True) and receives (False), in

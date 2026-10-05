@@ -6,6 +6,7 @@ import qualified LawSpec.Core as C
 import Control.Monad (foldM)
 import LawSpec.Backend
 import LawSpec.Common
+import LawSpec.TestNames (unitTestNames)
 import LawSpec.Testing
 import qualified LawSpec.Core.Value as V
 import qualified LawSpec.Code.Doc as D
@@ -61,7 +62,8 @@ fromValues xs = statements [bind (inputId input) (text ("_values[" ++ show index
 
 emitTests :: Config -> Unit -> [Expanded] -> Either [Diagnostic] D.Doc
 emitTests Config{..} unit laws = do
-  bodies <- mapM law (zip [0::Int ..] laws)
+  let testNames = unitTestNames "kotlin" (map name laws)
+  bodies <- mapM (law testNames) (zip [0::Int ..] laws)
   let imports = sort $ ["io.kotest.core.spec.style.StringSpec", "io.kotest.property.checkAll",
         "io.kotest.property.Arb", "io.kotest.property.PropTestConfig", "lawspec.runtime.LawSpecRuntime", "lawspec.runtime.LawSpecSchema",
         "lawspec.runtime.LawSpecDataSchema", "lawspec.runtime.LawSpecDataCodecs",
@@ -103,16 +105,16 @@ emitTests Config{..} unit laws = do
       in call ("private fun _lawspec_call_" ++ contractName c) params <> text ": LawSpecRuntime.Value " <>
         block (statements [require "precondition" (contractPreconditions c),
           bind rn (nativeResult rt invocation),require "postcondition" (contractPostconditions c),text "return " <> text rn])
-    law (index,e) = do
+    law testNames (index,e) = do
       let label = owner e ++ "::" ++ name e
-          fn = "law" ++ show index
-      exampleDocs <- mapM (\(i,ex) -> pure $ testFunction (fn ++ "Example" ++ show i) $ statements
+          fn = testNames !! index
+      exampleDocs <- mapM (\(i,ex) -> pure $ testFunction (fn ++ "_example" ++ show i) $ statements
         ([symbols] ++ handlerInstalls e ++ [bind n (expr v) | (n,v) <- bindings ex] ++
         map (assertionDoc (label ++ " example " ++ exampleName ex)) (expectations ex) ++
         [assertionDoc label (assertion e)])) (zip [0::Int ..] (examples (original e)))
       boundaryDocs <- mapM (\(i,vs) -> do
         values <- mapM literal vs
-        pure $ testFunction (fn ++ "Boundary" ++ show i) $ statements
+        pure $ testFunction (fn ++ "_boundary" ++ show i) $ statements
           ([symbols] ++ handlerInstalls e ++ [bind (inputId inp) (checked (inputType inp) v) | (inp,v) <- zip (inputs e) values] ++
           [assertionDoc (label ++ " boundary " ++ show i) (assertion e)]))
         (zip [0::Int ..] (maybe (boundaryCases e) id (finiteCases e)))
@@ -166,7 +168,7 @@ emitTests Config{..} unit laws = do
             (statements [bindings (inputs e),conjunction (map (truth . expr) predicates)])
           body = statements ([text "val symbols = _inputs.symbols",
             text "val _values = _inputs.requireValues()",fromValues (inputs e)] ++ handlerInstalls e ++ [check])
-      pure $ testFunction (fn ++ "Property: " ++ label) $ trailing
+      pure $ testFunction (fn ++ "_property: " ++ label) $ trailing
         (call "checkAll" [call "_lawspecConfig" [number (cases (generation e))],strategy]) "_inputs" body
     requiredSymbol plan
       | inputType (domainInput plan) /= C.scalarType "Symbol" = []
@@ -195,7 +197,7 @@ emitTests Config{..} unit laws = do
             text "val _values = _inputs.first",fromValues (inputs e)]
           strategy = if null predicates then base else trailing (base <> text ".filter") "_inputs"
             (statements [bindingsDoc,conjunction (map (truth . expr) predicates)])
-      in testFunction (fn ++ "Property: " ++ label) $ trailing
+      in testFunction (fn ++ "_property: " ++ label) $ trailing
         (call "checkAll" [call "_lawspecConfig" [number (cases (generation e))],strategy]) "_inputs"
         (statements ([bindingsDoc] ++ handlerInstalls e ++ [check]))
     domain e (index,plan) = do
@@ -216,5 +218,5 @@ emitTests Config{..} unit laws = do
           invocation = runtime "refinedCase" [E.array domains,
             text "seed",number (maxAttempts cfg),number (maxShrinks cfg),callback,
             quoted (label ++ " | " ++ intercalate "; " (map prettyExpr (concatMap inputRefinements (inputs e))))]
-      pure $ testFunction (fn ++ "Property: " ++ label) $ trailing
+      pure $ testFunction (fn ++ "_property: " ++ label) $ trailing
         (call "checkAll" [call "_lawspecConfig" [number (cases cfg)],text "Arb.int()"]) "seed" (statements [symbols,invocation])

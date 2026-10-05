@@ -11,6 +11,7 @@ import qualified LawSpec.Code.Doc as D
 import qualified LawSpec.JavaExpr as E
 import qualified LawSpec.JavaTestHelpers as Helpers
 import Data.List (intercalate)
+import LawSpec.TestNames (unitTestNames)
 
 data Config = Config
   { packageName :: String
@@ -65,7 +66,8 @@ fromValues xs = statements [bind (inputId input) (text ("_values.get(" ++ show i
 
 emitTests :: Config -> Unit -> [Expanded] -> Either [Diagnostic] D.Doc
 emitTests Config{..} unit laws = do
-  bodies <- mapM law (zip [0::Int ..] laws)
+  let testNames = unitTestNames "java" (map name laws)
+  bodies <- mapM (law testNames) (zip [0::Int ..] laws)
   let needsProperty = any ((== Nothing) . finiteCases) laws
       imports = ["java.util.HashMap" | not (null laws)] ++ ["java.util.Map",
         "lawspec.runtime.LawSpecRuntime", "lawspec.runtime.LawSpecRuntime.Value"] ++
@@ -109,16 +111,16 @@ emitTests Config{..} unit laws = do
       in call ("private static Value _lawspec_call_" ++ contractName c) params <> text " " <>
         block (statements [require "precondition" (contractPreconditions c),
           bind rn (nativeResult rt invocation),require "postcondition" (contractPostconditions c),returned (text rn)])
-    law (index,e) = do
+    law testNames (index,e) = do
       let label = owner e ++ "::" ++ name e
-          fn = "law" ++ show index
-      exampleDocs <- mapM (\(i,ex) -> pure $ testFunction (fn ++ "Example" ++ show i) $ statements
+          fn = testNames !! index
+      exampleDocs <- mapM (\(i,ex) -> pure $ testFunction (fn ++ "_example" ++ show i) $ statements
         ([symbols] ++ handlerInstalls e ++ [bind n (expr v) | (n,v) <- bindings ex] ++
         map (assertionDoc (label ++ " example " ++ exampleName ex)) (expectations ex) ++
         [assertionDoc label (assertion e)])) (zip [0::Int ..] (examples (original e)))
       boundaryDocs <- mapM (\(i,vs) -> do
         values <- mapM literal vs
-        pure $ testFunction (fn ++ "Boundary" ++ show i) $ statements
+        pure $ testFunction (fn ++ "_boundary" ++ show i) $ statements
           ([symbols] ++ handlerInstalls e ++ [bind (inputId inp) (checked (inputType inp) v) | (inp,v) <- zip (inputs e) values] ++
           [assertionDoc (label ++ " boundary " ++ show i) (assertion e)]))
         (zip [0::Int ..] (maybe (boundaryCases e) id (finiteCases e)))
@@ -127,7 +129,7 @@ emitTests Config{..} unit laws = do
         else if nativeGenerators || any (structural . inputType) (inputs e) then (:[]) <$> structuralProperty fn e check
         else if any (not . null . inputRefinements) (inputs e) || propertyKind e == "contract"
           then (:[]) <$> refinedProperty fn label e check
-          else pure [testFunction (fn ++ "Property") $ statement $ call "_lawspecChecker().forAll"
+          else pure [testFunction (fn ++ "_property") $ statement $ call "_lawspecChecker().forAll"
             [text "Generator.integers()",closure "seed" $ statements ([symbols] ++ handlerInstalls e ++
               [bind (inputId inp) (runtime "sample" [quoted (typeKey (inputType inp)),
                 text ("seed + " ++ show i),number machineBits]) | (i,inp) <- zip [0::Int ..] (inputs e)] ++
@@ -167,7 +169,7 @@ emitTests Config{..} unit laws = do
             text ("for (int _case = 0; _case < " ++ show (cases (generation e)) ++ "; _case++) ") <>
               block (statements [bind "_sizeHint" (growing "_case"),invocation (1 :: Int) (text "_sizeHint")])
             | otherwise = invocation (cases (generation e)) (growing "_iteration")
-      pure $ testFunction (fn ++ "Property") body
+      pure $ testFunction (fn ++ "_property") body
     contextualStrategy settings plan = do
       let input = domainInput plan
           ty = inputType input
@@ -249,7 +251,7 @@ emitTests Config{..} unit laws = do
           invocation = runtime "refinedCase" [array "LawSpecRuntime.Domain" domains,
             text "seed",number (maxAttempts cfg),number (maxShrinks cfg),callback,
             quoted (label ++ " | " ++ intercalate "; " (map prettyExpr (concatMap inputRefinements (inputs e))))]
-      pure $ testFunction (fn ++ "Property") $ statement $ chain (text "_lawspecChecker()")
+      pure $ testFunction (fn ++ "_property") $ statement $ chain (text "_lawspecChecker()")
         [("withIterationCount",[number (cases cfg)]),
          ("forAll",[text "Generator.integers()",closure "seed" (statements [symbols,statement invocation,returned (text "true")])])]
     array name values = D.group (text ("new " ++ name ++ "[] {") <>

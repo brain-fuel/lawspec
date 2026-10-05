@@ -74,7 +74,8 @@ withTests entries (Object o) = Object (KM.insert "tests" (toJSON (map entry entr
     entry e = object
       [ "law" .= C.idText (entryLaw e), "unit" .= entryUnit e, "label" .= entryLabel e
       , "index" .= entryIndex e, "file" .= entryFile e, "key" .= entryKey e
-      , "callsAdapters" .= entryCallsAdapters e ]
+      , "callsAdapters" .= entryCallsAdapters e, "name" .= entryName e, "tags" .= entryTags e
+      , "skip" .= entrySkip e, "knownFailing" .= entryKnownFailing e ]
 withTests _ value = value
 
 failure :: [Diagnostic] -> Value

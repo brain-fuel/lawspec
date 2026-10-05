@@ -19,6 +19,7 @@ extra-source-files:
     runtime/lawspec_runtime.mjs
     runtime/lawspec_schema.mjs
     runtime/lawspec_data_strategies.py
+    runtime/lawspec_harness.py
     runtime/lawspec_runtime.py
     runtime/lawspec_schema.py
     runtime/LawSpecCodecs.hs
@@ -63,6 +64,8 @@ extra-source-files:
     examples/specs/gadt_expressions.lawspec
     examples/specs/generation.lawspec
     examples/specs/handles.lawspec
+    examples/specs/harness.lawspec
+    examples/specs/harness_testing.lawspec
     examples/specs/indexed_arithmetic.lawspec
     examples/specs/indexed_families.lawspec
     examples/specs/keywords.lawspec
@@ -254,6 +257,7 @@ library
       LawSpec.GoProperties
       LawSpec.GoTestHelpers
       LawSpec.GoTypeRefs
+      LawSpec.Harness
       LawSpec.HaskellData
       LawSpec.HaskellDefinitions
       LawSpec.HaskellExpr
@@ -322,6 +326,7 @@ library
       LawSpec.TargetNames
       LawSpec.Testing
       LawSpec.TestManifest
+      LawSpec.TestNames
       LawSpec.Time
       LawSpec.WebData
       LawSpec.WebDefinitions

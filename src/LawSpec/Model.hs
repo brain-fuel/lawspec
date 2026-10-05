@@ -82,7 +82,80 @@ data Unit = Unit { unitName :: String, functions :: [(String, Type)], laws :: [L
   -- Derived: every function's ability row (declared, or inferred for a
   -- definition), and the handler each law runs under for each ability.
   , abilityRows :: [(String, [Type])]
-  , lawAssignments :: [(String, [(Type, HandlerChoice)])] } deriving (Eq, Show, Generic)
+  , lawAssignments :: [(String, [(Type, HandlerChoice)])]
+  -- The harness unit that serves this unit, if any (LawSpec.Harness): how
+  -- its laws are tested, never what they mean.
+  , unitHarness :: Maybe HarnessDeclaration
+  -- Derived: each law's harness plan, by the law's final name.
+  , lawHarness :: [(String, HarnessPlan)]
+  -- Stub until resources arrive: each resource the unit declares, and
+  -- whether it declares `reset` (only those may be shared by a harness).
+  , resourceStubs :: [(String, Bool, Span)] } deriving (Eq, Show, Generic)
+
+-- harness name for unit is item* end: the implementation plane of a unit.
+-- It chooses how laws are tested (strategies, handlers, adequacy, run
+-- metadata, sharing, benchmarks) and can never change what a law means.
+data HarnessDeclaration = HarnessDeclaration
+  { harnessName :: String, harnessFor :: String
+  , harnessItems :: [HarnessItem], harnessSpan :: Span }
+  deriving (Eq, Show, Generic)
+
+data HarnessItem
+  = HarnessStrategy StrategyDeclaration
+  -- Settings for every law (before the first `for` block).
+  | HarnessDefault HarnessSetting Span
+  -- for law `a` / for laws `a`, `b`: settings for those laws (a group).
+  | HarnessFor [String] [(HarnessSetting, Span)] Span
+  | HarnessShare String ShareScope Span
+  | HarnessBenchmark String Expr Span
+  | HarnessOrderRandom Span
+  | HarnessParallel Span
+  deriving (Eq, Show, Generic)
+
+data ShareScope = SharePerGroup | SharePerUnit | SharePerRun deriving (Eq, Show, Generic)
+
+-- strategy name :: T is gen end
+data StrategyDeclaration = StrategyDeclaration
+  { strategyName :: String, strategyType :: Type, strategyBody :: Gen, strategySpan :: Span }
+  deriving (Eq, Show, Generic)
+
+-- How a strategy draws a value.
+data Gen
+  = GenAny (Maybe Type)                 -- the refinement-directed default
+  | GenNamed String                     -- another strategy
+  | GenOneOf [Expr]                     -- one of these values
+  | GenFrequency [(Integer, Gen)]       -- frequency 9 a, 1 b
+  | GenSuchThat Gen Expr Integer        -- g such that p (of it) at most n discards
+  | GenBind String Type Gen Gen         -- bind x :: T from g in g'
+  deriving (Eq, Show, Generic)
+
+data HarnessSetting
+  = UseStrategy String String           -- use strategy for input
+  | TestWith [String]                   -- which lawful handlers (native or spec)
+  | CoverSetting Integer String Expr    -- cover p% "label" when e
+  | ClassifySetting Expr String         -- classify e as "label"
+  | LabelSetting Expr                   -- label e
+  | TargetMaximize Expr                 -- target maximize e
+  | TagsSetting [String]
+  | SkipSetting String
+  | KnownFailingSetting String
+  | TimeoutSetting Integer              -- milliseconds
+  | RepeatSetting Integer
+  | RetryFlakySetting Integer
+  deriving (Eq, Show, Generic)
+
+-- One law's harness, merged from the unit defaults and its `for` blocks:
+-- strategies inlined, expressions still surface syntax over the law's
+-- inputs (LawSpec.Frontend elaborates them).
+data HarnessPlan = HarnessPlan
+  { planHarness :: String, planTags :: [String], planSkip :: Maybe String
+  , planKnownFailing :: Maybe String, planTimeout :: Maybe Integer
+  , planRepeat :: Integer, planRetries :: Integer
+  , planCover :: [(Integer, String, Expr)], planClassify :: [(Expr, String)]
+  , planLabels :: [Expr], planTarget :: Maybe Expr
+  , planDraws :: [(String, String, Type, Gen)]   -- input, strategy, its type, its body
+  , planGroup :: Maybe String }
+  deriving (Eq, Show, Generic)
 
 -- ability Name (a :: Type)* is (op :: Type)* [laws law*] end. Operations are
 -- written like signatures; the laws are obligations on every handler.

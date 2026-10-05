@@ -6,6 +6,9 @@ import LawSpec.Collections (collectionsUnit, collectionsAlias)
 import LawSpec.Time (timeUnit, timeAlias, durationSuffixes, durationFactor, durationLimit, usesTime, timeTypes)
 import LawSpec.Flow (desugarFlows, flowTypeName)
 import LawSpec.Abilities (elaborateAbilities)
+import LawSpec.Harness (elaborateHarness)
+import Control.Monad.Trans.Class (lift)
+import qualified Data.List.NonEmpty as NE
 import LawSpec.Model
 import LawSpec.Indexed
 import LawSpec.Railway (railwayUnit)
@@ -21,7 +24,7 @@ import Control.Monad (void, unless, when, forM_)
 import Control.Monad.Reader (Reader, asks, runReader)
 import qualified Data.Map.Strict as M
 import qualified Data.Map.Lazy as Lazy
-import Data.Char (isLower, isUpper, isControl, toUpper)
+import Data.Char (isLower, isUpper, isControl, toUpper, isAlphaNum)
 import Data.List (uncons, intercalate)
 import Data.Void (Void)
 import Text.Megaparsec hiding (SourcePos, parse)
@@ -836,6 +839,7 @@ data UnitMember = DataMember DataTypeDeclaration | FamilyMember IndexedFamily | 
   | SignatureMember ((String, Type), Span) [Type] | AsyncMember ((String, Type), Span) [Type] | LawMember (Law, [HandlerUse])
   | DefinitionMember (FunctionDefinition, Maybe [Type])
   | AbilityMember AbilityDeclaration | HandlerMember HandlerDeclaration
+  | HarnessMember HarnessDeclaration | ResourceStubMember (String, Bool, Span)
 
 unitNameP :: P String
 unitNameP = foldr1 (\a b -> a ++ "." ++ b) <$>
@@ -900,11 +904,17 @@ unitP = do
     -- ability Name ... and handler name for Ability ... (LawSpec.Abilities).
     <|> (AbilityMember <$> (try (lookAhead (keyword "ability" *> ident >>= upper)) *> abilityP))
     <|> (HandlerMember <$> (try (lookAhead (keyword "handler" *> ident *> keyword "for")) *> handlerP))
+    -- harness name for unit is ... end (LawSpec.Harness), and the resource
+    -- stub a harness may share.
+    <|> (HarnessMember <$> (try (lookAhead (keyword "harness" *> unitNameP *> keyword "for")) *> harnessP))
+    <|> (ResourceStubMember <$> (try (lookAhead (keyword "resource" *> ident >>= upper)) *> resourceStubP))
     <|> (DefinitionMember <$> definitionUsesP)
     <|> try (AsyncMember <$> (keyword "async" *> withSpan ((,) <$> ident <* symbol "::" <*> typeP)) <*> usesP)
     <|> try (SignatureMember <$> withSpan ((,) <$> ident <* symbol "::" <*> typeP) <*> usesP)
     <|> (LawMember <$> lawUsingP))
   eof
+  when (length [() | HarnessMember _ <- members] > 1)
+    (fail "a unit has at most one harness")
   let definitions = [d | DefinitionMember (d, _) <- members]
       signatures = [signature | member <- members, signature <- case member of
           SignatureMember s _ -> [s]
@@ -920,12 +930,13 @@ unitP = do
     ([(name, used) | SignatureMember ((name, _), _) used <- members, not (null used)] ++
      [(name, used) | AsyncMember ((name, _), _) used <- members, not (null used)] ++
      [(functionName d, used) | DefinitionMember (d, Just used) <- members])
-    [(lawName l, using) | LawMember (l, using) <- members, not (null using)] [] [], imports, [f | FamilyMember f <- members],
+    [(lawName l, using) | LawMember (l, using) <- members, not (null using)] [] []
+    (case [h | HarnessMember h <- members] of h : _ -> Just h; [] -> Nothing) [] [r | ResourceStubMember r <- members], imports, [f | FamilyMember f <- members],
     [w | WrapperMember w <- members], [w | WorkflowMember w <- members], [m | ModelMember m <- members],
     ([p | ProtocolMember p <- members], [s | ScenarioMember s <- members]))
 
 parseSource :: Source -> Either [Diagnostic] Unit
-parseSource source = fst . fst <$> parseWith M.empty [] source
+parseSource source = fst . fst <$> parseWith M.empty [] [] source
 
 -- Parse sources that may import one another. Each unit sees the declaration
 -- arities of the units it imports, qualified by alias and unqualified for
@@ -938,17 +949,24 @@ parseSources = parseSourcesWith [] []
 -- unit (LawSpec.Time, LawSpec.Resilience) is imported, with its types, by the
 -- sources it says use it.
 parseSourcesWith :: [String] -> [(String, String, [String], String -> Bool)] -> [Source] -> Either [Diagnostic] [(Unit, [Import])]
-parseSourcesWith collections builtins sources = do
+parseSourcesWith collections builtins allSources = do
+  forM_ harnessSources $ \(Source path _, header) -> case header of
+    Left message -> Left [Diagnostic "parse" message Nothing]
+    Right (name, served) -> unless (served `elem` [n | (_, n, _) <- preambles])
+      (Left [Diagnostic "harness" ("the harness " ++ name ++ " in " ++ path ++ " is for " ++ served ++ ", but there is no unit called " ++ served) Nothing])
   mapM_ acyclic (M.keys graph)
   let names = [n | (_, n, _) <- preambles]
   forM_ names $ \n -> when (length (filter (== n) names) > 1)
     (Left [Diagnostic "duplicate-unit" "unit names must be unique; prelude is reserved" Nothing])
-  mapM (\source -> either (const (fst <$> parseWith (imported source) [] source))
+  mapM (\source -> either (const (fst <$> parseWith (imported source) [] [] source))
     (\(n, imports) -> (\(u, _) -> (u, imports)) . fst <$> results Lazy.! n) (preamble source)) sources
   where
+    -- A harness in a file of its own is parsed with the unit it serves.
+    (harnessSources, sources) = partitionHarnessSources allSources
+    harnessesOf n = [source | (source, Right (_, served)) <- harnessSources, served == n]
     -- Parsed lazily in import order, so a unit sees its imports' indexed
     -- families under the names it uses for them.
-    results = Lazy.fromList [(n, parseWith (imported s) (families imports) s) | (s, n, imports) <- preambles]
+    results = Lazy.fromList [(n, parseWith (imported s) (families imports) (harnessesOf n) s) | (s, n, imports) <- preambles]
     families imports = concat
       [ [f{familyName = importAlias i ++ "." ++ familyName f} | f <- declared] ++
         [f | f <- declared, familyName f `elem` importItems i]
@@ -1010,8 +1028,10 @@ parseSourcesWith collections builtins sources = do
 
 -- The unit a source declares.
 sourceUnit :: Source -> Either String String
-sourceUnit (Source p s) = either (Left . errorBundlePretty) (Right . fst)
-  (runReader (runParserT preambleP p s) M.empty)
+sourceUnit source@(Source p s) = case partitionHarnessSources [source] of
+  -- A harness file belongs with the unit it serves.
+  ([(_, header)], _) -> snd <$> header
+  _ -> either (Left . errorBundlePretty) (Right . fst) (runReader (runParserT preambleP p s) M.empty)
 
 -- The headers a unit exports: its type, wrapper and refinement arities and its
 -- constructor arities, with each data type's constructors.
@@ -1020,10 +1040,17 @@ sourceExports extra (Source _ s) =
   (M.filterWithKey (\key _ -> not ('.' `elem` key)) (literalHeaders s (M.union (headers s) extra)),
    constructorOwners extra s)
 
-parseWith :: M.Map String Header -> [IndexedFamily] -> Source -> Either [Diagnostic] ((Unit, [Import]), [IndexedFamily])
-parseWith extra importedFamilies (Source p s) = case runReader (runParserT unitP p s) (literalHeaders s (M.union (headers s) extra)) of
+parseWith :: M.Map String Header -> [IndexedFamily] -> [Source] -> Source -> Either [Diagnostic] ((Unit, [Import]), [IndexedFamily])
+parseWith extra importedFamilies harnessFiles (Source p s) = case runReader (runParserT unitP p s) environment of
   Left e -> Left [Diagnostic "parse" (errorBundlePretty e) Nothing]
-  Right (u, imports, families, wrappers, workflows, models, (protocols, scenarios)) -> do
+  Right (u0, imports, families, wrappers, workflows, models, (protocols, scenarios)) -> do
+    -- A harness file is read with the names of the unit it serves.
+    separate <- mapM (\(Source hp hs) -> either (\e -> Left [Diagnostic "parse" (errorBundlePretty e) Nothing]) Right
+      (runReader (runParserT harnessFileP hp hs) environment)) harnessFiles
+    u <- case (unitHarness u0, separate) of
+      (_, []) -> pure u0
+      (Nothing, [h]) -> pure u0 { unitHarness = Just h }
+      _ -> Left [Diagnostic "harness" ("the unit " ++ unitName u0 ++ " has more than one harness; a unit has at most one") Nothing]
     domained <- either (\(at, message) -> Left [Diagnostic "domain" message at]) Right
       (elaborateDomain wrappers workflows (railwayUnit u))
     -- Models read typestate from flow parameters, so they come first.
@@ -1036,11 +1063,25 @@ parseWith extra importedFamilies (Source p s) = case runReader (runParserT unitP
     -- Abilities before flows: a handler clause's `~s := e;` is its own.
     abled <- either (\(at, message) -> Left [Diagnostic "ability" message at]) Right
       (elaborateAbilities scenarioed)
+    -- The harness, once every law has its final name.
+    harnessed <- either (\(at, message) -> Left [Diagnostic "harness" message at]) Right
+      (elaborateHarness abled)
     (families', flowed) <- either (\(at, message) -> Left [Diagnostic "flow" message at]) Right
-      (desugarFlows importedFamilies families abled)
+      (desugarFlows importedFamilies families harnessed)
     elaborated <- either (\message -> Left [Diagnostic "indexed" (p ++ ": " ++ message) Nothing]) Right
       (elaborateFamiliesWith importedFamilies families' flowed)
     pure ((elaborated, imports), families')
+  where environment = literalHeaders s (M.union (headers s) extra)
+
+-- Sources that hold a harness rather than a unit, each with its header.
+partitionHarnessSources :: [Source] -> ([(Source, Either String (String, String))], [Source])
+partitionHarnessSources sources =
+  ( [(source, header source) | source <- sources, isHarness source]
+  , [source | source <- sources, not (isHarness source)] )
+  where
+    isHarness (Source p s) = either (const False) (const True)
+      (runReader (runParserT (spaceP *> keyword "harness") p s) M.empty)
+    header (Source p s) = either (Left . errorBundlePretty) Right (runReader (runParserT harnessHeaderP p s) M.empty)
 
 -- Read declaration arities before parsing applications, including forward references.
 -- Strings, quoted law names and comments are consumed atomically.
@@ -1096,3 +1137,238 @@ literalHeaders source initial = case runReader (runParserT scan "constructor hea
     scan = spaceP *> many ((Just <$> try dataTypeP) <|> (Just . wrapped <$> try wrapperP) <|> (Nothing <$ token)) <* eof
     token = void str <|> void quoted <|>
       void (lexeme ((:) <$> letterChar <*> many (alphaNumChar <|> char '_'))) <|> void (lexeme anySingle)
+
+-- Harness units (LawSpec.Harness). A harness is the implementation plane of
+-- a unit: it chooses how laws are tested and can never change what they
+-- mean, so it may not declare laws, definitions, abilities, handlers,
+-- types or signatures. It lives in its own file, or after a unit's members.
+--
+--   harness name for unit is
+--     strategy orders :: Order is frequency 9 small, 1 bulk end
+--     test with fakeGateway, native
+--     for law `charges once`
+--       use orders for o
+--       cover 10% "empty basket" when isEmpty o.items
+--     share database per unit
+--     benchmark `checkout` is checkout sampleOrder end
+--   end
+--
+-- A setting that carries an expression ends at the end of its line.
+harnessP :: P HarnessDeclaration
+harnessP = do
+  ((name, served, items), range) <- withSpan $ do
+    keyword "harness"
+    name <- unitNameP
+    keyword "for"
+    served <- unitNameP
+    keyword "is"
+    items <- many harnessItemP
+    keyword "end"
+    pure (name, served, items)
+  pure (HarnessDeclaration name served items range)
+
+-- A harness in a file of its own.
+harnessFileP :: P HarnessDeclaration
+harnessFileP = spaceP *> harnessP <* eof
+
+-- The harness's name and the unit it serves, read before the full parse.
+harnessHeaderP :: P (String, String)
+harnessHeaderP = do
+  spaceP
+  keyword "harness"
+  name <- unitNameP
+  keyword "for"
+  served <- unitNameP
+  pure (name, served)
+
+harnessItemP :: P HarnessItem
+harnessItemP = forbidden *> choice
+  [ HarnessStrategy <$> strategyP
+  , do ((names, settings), range) <- withSpan $ do
+         try (keyword "for" *> (keyword "laws" <|> keyword "law"))
+         names <- quoted `sepBy1` symbol ","
+         settings <- many (forbidden *> harnessSettingSpanP)
+         pure (names, settings)
+       pure (HarnessFor names settings range)
+  , do ((resource, scope), range) <- withSpan $ do
+         keyword "share"
+         resource <- ident
+         keyword "per"
+         scope <- choice [SharePerGroup <$ keyword "group", SharePerUnit <$ keyword "unit", SharePerRun <$ keyword "run"]
+         pure (resource, scope)
+       pure (HarnessShare resource scope range)
+  , do ((name, body), range) <- withSpan ((,) <$> (keyword "benchmark" *> quoted) <*> (keyword "is" *> expr <* keyword "end"))
+       pure (HarnessBenchmark name body range)
+  , HarnessOrderRandom . snd <$> withSpan (try (keyword "order" *> keyword "random"))
+  , HarnessParallel . snd <$> withSpan (keyword "parallel")
+  , uncurry HarnessDefault <$> harnessSettingSpanP ]
+  where
+    -- What only the law plane may declare.
+    declaration = choice
+      [ "law" <$ keyword "law", "definition" <$ keyword "definition", "ability" <$ keyword "ability"
+      , "handler" <$ keyword "handler", "type" <$ keyword "type", "refinement" <$ keyword "refinement"
+      , "resource" <$ keyword "resource", "signature" <$ try (ident *> symbol "::") ]
+    -- The declaration is consumed first, so the error is this one.
+    forbidden = optional (lookAhead declaration) >>= \found -> case found of
+        Nothing -> pure ()
+        Just what -> declaration *> fail ("a harness cannot declare a " ++ what ++ ": laws, definitions, abilities, handlers and types " ++
+          "belong to the unit it serves; a harness only chooses how that unit's laws are tested")
+
+harnessSettingSpanP :: P (HarnessSetting, Span)
+harnessSettingSpanP = withSpan harnessSettingP
+
+harnessSettingP :: P HarnessSetting
+harnessSettingP = choice
+  [ UseStrategy <$> (keyword "use" *> ident) <*> (keyword "for" *> ident)
+  , TestWith <$> (try (keyword "test" *> keyword "with") *> (ident `sepBy1` symbol ","))
+  , do keyword "cover"
+       percent <- lexeme L.decimal
+       void (symbol "%")
+       when (percent > 100) (fail "a cover requirement is a percentage, at most 100%")
+       label <- str
+       keyword "when"
+       CoverSetting percent label <$> regionExpr []
+  , do keyword "classify"
+       e <- regionExpr [["as"]]
+       keyword "as"
+       ClassifySetting e <$> str
+  , LabelSetting <$> (keyword "label" *> regionExpr [])
+  , TargetMaximize <$> (try (keyword "target" *> keyword "maximize") *> regionExpr [])
+  , TagsSetting <$> (keyword "tags" *> (tagP `sepBy1` symbol ","))
+  , SkipSetting <$> (keyword "skip" *> str)
+  , KnownFailingSetting <$> (try (keyword "known" *> keyword "failing") *> str)
+  , TimeoutSetting <$> (keyword "timeout" *> durationP)
+  , RepeatSetting <$> (keyword "repeat" *> positive "repeat" <* optional (keyword "times"))
+  , RetryFlakySetting <$> (try (keyword "retry" *> keyword "flaky") *> positive "retry flaky" <* optional (keyword "times")) ]
+  where
+    tagP = lexeme ((:) <$> letterChar <*> many (alphaNumChar <|> oneOf ("_-" :: String)))
+    positive what = do
+      n <- lexeme L.decimal
+      when (n < 1) (fail (what ++ " takes a whole number of at least 1"))
+      pure n
+    -- 2 s, 500 ms, 1 min: in milliseconds.
+    durationP = do
+      n <- lexeme L.decimal
+      factor <- choice
+        [ 1 <$ (keyword "ms" <|> keyword "milliseconds" <|> keyword "millisecond")
+        , 60000 <$ (keyword "min" <|> keyword "minutes" <|> keyword "minute")
+        , 1000 <$ (keyword "s" <|> keyword "seconds" <|> keyword "second") ]
+      when (n < 1) (fail "a timeout is at least 1 ms")
+      pure (n * factor)
+
+-- strategy name :: T is gen end
+strategyP :: P StrategyDeclaration
+strategyP = do
+  ((name, ty, body), range) <- withSpan $ do
+    keyword "strategy"
+    name <- ident
+    unless (maybe False (isLower . fst) (uncons name)) (fail "strategy names start with a lowercase letter")
+    void (symbol "::")
+    ty <- typeP
+    keyword "is"
+    body <- genP
+    keyword "end"
+    pure (name, ty, body)
+  pure (StrategyDeclaration name ty body range)
+
+-- gen [such that p [at most n discards]], where p names the value `it`.
+genP :: P Gen
+genP = do
+  g <- genCoreP
+  option g $ do
+    try (keyword "such" *> keyword "that")
+    p <- regionExpr [["at", "most"], ["end"], [")"]]
+    limit <- option 100 (try (keyword "at" *> keyword "most") *> lexeme L.decimal <* keyword "discards")
+    when (limit < 1) (fail "at most takes a whole number of at least 1")
+    pure (GenSuchThat g p limit)
+
+genCoreP :: P Gen
+genCoreP = choice
+  [ GenFrequency <$> (keyword "frequency" *> (((,) <$> weight <*> genAtomP) `sepBy1` symbol ","))
+  , do keyword "bind"
+       x <- ident
+       void (symbol "::")
+       ty <- typeP
+       keyword "from"
+       from <- genAtomP
+       keyword "in"
+       GenBind x ty from <$> genP
+  , GenOneOf <$> (try (keyword "one" *> keyword "of") *> (regionExpr [[","], ["such", "that"], ["end"], [")"]] `sepBy1` symbol ","))
+  , genAtomP ]
+  where
+    weight = do
+      n <- lexeme L.decimal
+      when (n < 1) (fail "a frequency weight is a whole number of at least 1")
+      pure n
+
+genAtomP :: P Gen
+genAtomP = choice
+  [ keyword "any" *> (GenAny <$> optional (try (lookAhead (satisfy isUpper <|> char '(')) *> typeAtom))
+  , parens genP
+  , GenNamed <$> ident ]
+
+-- An expression that ends at the end of its line, or before the first of
+-- the stop phrases outside strings, brackets and parentheses. Harness
+-- settings follow one another without delimiters, so an expression must not
+-- read the next setting as arguments.
+regionExpr :: [[String]] -> P Expr
+regionExpr stops = do
+  st <- getParserState
+  let input = stateInput st
+      region = cut 0 input
+  when (all (`elem` (" \t\r" :: String)) region) (fail "expected an expression")
+  (after, result) <- lift (runParserT' (expr <* eof) st { stateInput = region })
+  case result of
+    Left bundle -> case bundleErrors bundle of
+      e NE.:| _ -> parseError e
+    Right e -> do
+      setParserState st { stateInput = drop (length region) input, stateOffset = stateOffset after }
+      spaceP
+      pure e
+  where
+    cut :: Int -> String -> String
+    cut _ [] = []
+    cut _ ('\n' : _) = []
+    cut 0 rest@('-' : '-' : _) = takeWhile (/= '\n') rest `seq` []
+    cut depth ('"' : rest) = let (inside, after) = stringBody rest in '"' : inside ++ cut depth after
+    cut depth ('`' : rest) = let (inside, after) = break (== '`') rest in '`' : inside ++ take 1 after ++ cut depth (drop 1 after)
+    cut depth s@(c : rest)
+      | depth == 0, Just _ <- stopAt s = []
+      | c `elem` ("([" :: String) = c : cut (depth + 1) rest
+      | c `elem` (")]" :: String) = if depth == 0 then (if [")"] `elem` stops then [] else c : cut depth rest) else c : cut (depth - 1) rest
+      | otherwise = c : cut depth rest
+    stringBody ('\\' : x : rest) = let (a, b) = stringBody rest in ('\\' : x : a, b)
+    stringBody ('"' : rest) = ("\"", rest)
+    stringBody (x : rest) = let (a, b) = stringBody rest in (x : a, b)
+    stringBody [] = ([], [])
+    -- A stop phrase begins here, as whole words.
+    stopAt s = case [stop | stop <- stops, matches stop s] of
+      found : _ -> Just found
+      [] -> Nothing
+    matches [] _ = True
+    matches (w : ws) s
+      | w == "," = case s of ',' : rest -> matches ws (dropWhile (== ' ') rest); _ -> False
+      | w == ")" = False
+      | otherwise = case stripWord w s of
+          Just rest -> matches ws (dropWhile (== ' ') rest)
+          Nothing -> False
+    stripWord w s
+      | take (length w) s == w, not (wordChar (drop (length w) s)) = Just (drop (length w) s)
+      | otherwise = Nothing
+    wordChar (c : _) = isAlphaNum c || c == '_'
+    wordChar [] = False
+
+-- Stub until resources arrive (track c): resource Name is clause* end, each
+-- clause acquire, release or reset and an expression to the end of its
+-- line. Only whether it declares reset matters to a harness, for now.
+resourceStubP :: P (String, Bool, Span)
+resourceStubP = do
+  ((name, clauses), range) <- withSpan $ do
+    keyword "resource"
+    name <- ident
+    upper name
+    keyword "is"
+    clauses <- many (choice [w <$ keyword w | w <- ["acquire", "release", "reset"]] <* regionExpr [])
+    keyword "end"
+    pure (name, clauses)
+  pure (name, "reset" `elem` clauses, range)

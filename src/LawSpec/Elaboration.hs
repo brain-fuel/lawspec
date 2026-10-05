@@ -325,7 +325,7 @@ elaborateDefinitionUnit dataDeclarations bits u = do
       value <- elaborateResolvedWithData dataDeclarations visible bits identity (declarationId u) (S.functions u) (S.Annotate start ty)
       pure (t, value)
     pure (C.Handler identity (S.handlerName h) ability clauses state (C.SourceSpan (S.handlerSpan h)))
-  pure (C.MkUnit (C.Id (S.unitName u)) (ds ++ map C.definitionDeclaration bridges) contracts [] (definitions ++ bridges) machines sessions (S.supervisors u) mailboxes abilities handlers)
+  pure (C.MkUnit (C.Id (S.unitName u)) (ds ++ map C.definitionDeclaration bridges) contracts [] (definitions ++ bridges) machines sessions (S.supervisors u) mailboxes abilities handlers Nothing)
   where
     declarationId unit n = C.Id (S.unitName unit ++ "::" ++ n)
     sessionIdentity n = C.Id (S.unitName u ++ "::session::" ++ n)

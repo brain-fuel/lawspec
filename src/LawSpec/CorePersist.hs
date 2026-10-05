@@ -67,6 +67,10 @@ instance Binary C.MatchCase
 instance Binary C.Node
 instance Binary C.Origin
 instance Binary C.Program
+instance Binary C.LawHarness
+instance Binary C.Cover
+instance Binary C.Draw
+instance Binary C.UnitHarness
 instance Binary C.Property
 instance Binary C.Proposition
 instance Binary C.Quantifier

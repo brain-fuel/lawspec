@@ -115,6 +115,9 @@ qualifyDataNames unit = unit
   , S.declaredUses = [(n, map ty ts) | (n, ts) <- S.declaredUses unit]
   , S.abilityRows = [(n, map ty ts) | (n, ts) <- S.abilityRows unit]
   , S.lawAssignments = [(n, [(ty t, c) | (t, c) <- a]) | (n, a) <- S.lawAssignments unit]
+  -- A harness's strategies and expressions name data types and constructors.
+  , S.lawHarness = [(n, harnessPlan plan) | (n, plan) <- S.lawHarness unit]
+  , S.unitHarness = (\h -> h {S.harnessItems = map harnessItem (S.harnessItems h)}) <$> S.unitHarness unit
   , S.contracts = [c {S.contractArguments = map pair (S.contractArguments c),
       S.contractResult = pair (S.contractResult c),
       S.contractPreconditions = map expr (S.contractPreconditions c),
@@ -149,6 +152,23 @@ qualifyDataNames unit = unit
       S.Annotate a t -> S.Annotate (expr a) (ty t)
       S.TypeBound bound t -> S.TypeBound bound (ty t)
       _ -> e
+    harnessPlan plan = plan
+      { S.planCover = [(p, label, expr e) | (p, label, e) <- S.planCover plan]
+      , S.planClassify = [(expr e, label) | (e, label) <- S.planClassify plan]
+      , S.planLabels = map expr (S.planLabels plan)
+      , S.planTarget = expr <$> S.planTarget plan
+      , S.planDraws = [(i, n, ty t, gen g) | (i, n, t, g) <- S.planDraws plan] }
+    gen g = case g of
+      S.GenAny t -> S.GenAny (ty <$> t)
+      S.GenNamed n -> S.GenNamed n
+      S.GenOneOf values -> S.GenOneOf (map expr values)
+      S.GenFrequency alternatives -> S.GenFrequency [(w, gen a) | (w, a) <- alternatives]
+      S.GenSuchThat inner p n -> S.GenSuchThat (gen inner) (expr p) n
+      S.GenBind x t from body -> S.GenBind x (ty t) (gen from) (gen body)
+    harnessItem item = case item of
+      S.HarnessBenchmark n e range -> S.HarnessBenchmark n (expr e) range
+      S.HarnessStrategy st -> S.HarnessStrategy st { S.strategyType = ty (S.strategyType st), S.strategyBody = gen (S.strategyBody st) }
+      other -> other
     literal (S.ConstructorLiteral tag fields) = S.ConstructorLiteral (qualify constructors tag) (map literal fields)
     literal (S.ListLiteral xs) = S.ListLiteral (map literal xs)
     literal other = other
