@@ -69,6 +69,26 @@ Popping or dequeuing an empty collection leaves it empty. `prelude.compare a b`
 gives the `Ordering` of two keyed values. The collections' constructors are
 internal: a law or definition cannot match on them.
 
+## Sized stacks and queues
+
+`SizedStack n a` and `SizedQueue n a` carry their size in their type, as
+[indexed families](indexed-families.md). An operation that needs an item takes
+a non-empty one, so it never has to decide what an empty one gives:
+
+| Operation | Type |
+| --- | --- |
+| `prelude.sizedPush x s` | `SizedStack n a` to `SizedStack (n + 1) a` |
+| `prelude.sizedPop s` | `SizedStack (n + 1) a` to `SizedStack n a` |
+| `prelude.sizedTop s` | `SizedStack (n + 1) a` to `a` |
+| `prelude.sizedEnqueue x q` | `SizedQueue n a` to `SizedQueue (n + 1) a` |
+| `prelude.sizedDequeue q` | `SizedQueue (n + 1) a` to `SizedQueue n a` |
+| `prelude.sizedFront q` | `SizedQueue (n + 1) a` to `a` |
+| `prelude.sizedStackItems s`, `prelude.sizedQueueItems q` | the items, top or front first |
+
+The empty ones are `SizedStackEmpty` and `SizedQueueEmpty`. Unlike the other
+collections, their constructors (`SizedStackPush top rest`,
+`SizedQueueFront front rest`) can be matched.
+
 ## The portable order
 
 `Set` elements and `KeyVal` keys need the `Keyed` capability: a total order that
@@ -116,6 +136,5 @@ collection, a single item, and two items.
 
 ## Limits
 
-- `Queue`, `Stack` and `Deque` are not indexed by their size; a sized variant
-  over flow types is planned.
+- `Deque` has no sized variant yet.
 - No literal syntax: `prelude.setOf [1, 2]` is the literal.

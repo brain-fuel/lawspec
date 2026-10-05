@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- A match may leave out constructors that the value's index rules out: taking
+  the head of a `Vec (n + 1) a` needs no `VNil` branch. The compiler proves
+  each one impossible, and names a constructor the index allows.
+- `SizedStack n a` and `SizedQueue n a` are stacks and queues indexed by their
+  size: `prelude.sizedPop`, `sizedTop`, `sizedDequeue` and `sizedFront` take a
+  non-empty one by type.
 - `if c then a else b` in laws and checked definitions. Only the selected
   branch is evaluated, and the totality audit checks each branch knowing which
   way the condition went. `prelude.select` now means the same.

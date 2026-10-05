@@ -107,7 +107,10 @@ data Conversion = Explicit | CheckedArgument deriving (Eq, Show, Generic)
 -- neither choose a promotion nor infer a capability from surface syntax.
 data Evidence = Numeric Type | Structural Type deriving (Eq, Show, Generic)
 data Builtin = Length | IsPresent | PresentValue | RealPart | ImaginaryPart
-  | IsNaN | IsInfinite | IsFinite | IsNegativeZero | RoundHalfEven | Checked | Compare | Select deriving (Eq, Show, Generic)
+  | IsNaN | IsInfinite | IsFinite | IsNegativeZero | RoundHalfEven | Checked | Compare | Select
+  -- A branch the indices rule out: the totality audit proves it is never
+  -- reached; reaching it anyway fails.
+  | Unreachable deriving (Eq, Show, Generic)
 data Proposition = Equation Evidence Expr Expr | Implication Expr Proposition | Conjunction [Proposition] deriving (Eq, Show, Generic)
 data Quantifier = Quantifier { quantifiedBinder :: Binder, quantifiedPredicates :: [Expr], quantifiedBounds :: [(BinaryOp,Expr)] } deriving (Eq, Show, Generic)
 data Example = Example { exampleName :: String, exampleBindings :: [(Id,Expr)], exampleExpectations :: [Proposition] } deriving (Eq, Show, Generic)
@@ -211,6 +214,7 @@ builtinName RoundHalfEven = "round"
 builtinName Checked = "checked"
 builtinName Compare = "compare"
 builtinName Select = "select"
+builtinName Unreachable = "unreachable"
 
 -- Example bindings are closed data, never computations or adapter invocations.
 isConcrete :: Expr -> Bool

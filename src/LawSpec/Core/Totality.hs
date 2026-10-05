@@ -33,6 +33,9 @@ data Proof
   | Logical LogicalOp Proof Proof
   -- if c then a else b: a is checked knowing c, and b knowing not c.
   | Conditional Proof Proof Proof
+  -- A branch the facts rule out (a constructor whose index contradicts the
+  -- scrutinee's): it is total only when the facts are contradictory.
+  | Absurd String
   | Negated Proof
   | Comparison BinaryOp Proof Proof
   | ExactComparison BinaryOp Proof Proof
@@ -245,6 +248,7 @@ children expression = case expression of
   Match value branches -> value : map snd branches
   Logical _ a b -> [a,b]
   Conditional c a b -> [c,a,b]
+  Absurd _ -> []
   Negated value -> [value]
   Comparison _ a b -> [a,b]
   ExactComparison _ a b -> [a,b]
@@ -456,6 +460,14 @@ walk signatures contracts self provenance facts expression = case expression of
     let skips = case left of Literal (SBool value) -> value /= (op == And); _ -> False
     after <- if skips then pure [] else walk signatures contracts self provenance (assume (op == And) left facts) right
     pure (before ++ after)
+  Absurd name -> do
+    -- What follows from everything known (a measure of a value whose
+    -- constructor is known, a call's guarantees) must contradict.
+    let saturated = foldl (\known fact -> foldl (flip (assumeOnce True)) known
+          [derived | derived <- derivedFacts known fact, faithful derived, derived `notElem` truths known]) facts (truths facts)
+    unless (entails saturated (Literal (SBool False)))
+      (Left ("a match leaves out " ++ name ++ ", which its value's index allows; add a branch for " ++ name))
+    pure []
   Conditional condition yes no -> do
     before <- recur condition
     let taken branch = case condition of Literal (SBool value) -> value == branch; _ -> True
@@ -905,6 +917,7 @@ substituteProof replacements expression = case expression of
     _ -> error "invalid call result substitution"
   Logical op a b -> Logical op (recur a) (recur b)
   Conditional c a b -> Conditional (recur c) (recur a) (recur b)
+  Absurd name -> Absurd name
   Negated value -> Negated (recur value)
   Comparison op a b -> Comparison op (recur a) (recur b)
   ExactComparison op a b -> ExactComparison op (recur a) (recur b)
@@ -977,6 +990,7 @@ faithful expression = case expression of
   Call _ arguments -> all faithful arguments
   Logical _ a b -> faithful a && faithful b
   Conditional c a b -> faithful c && faithful a && faithful b
+  Absurd _ -> True
   Negated value -> faithful value
   Comparison _ a b -> faithful a && faithful b
   ExactComparison _ a b -> faithful a && faithful b
@@ -1061,6 +1075,7 @@ normalizeCalls scope expression = evalState (go expression pure)
       Logical op left right -> go left $ \left' -> do
         right' <- go right pure
         continuation (Logical op left' right')
+      Absurd name -> continuation (Absurd name)
       Conditional condition yes no -> go condition $ \condition' -> do
         yes' <- go yes pure
         no' <- go no pure

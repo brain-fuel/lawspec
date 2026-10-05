@@ -120,6 +120,8 @@ validateExpressionWithRegistry registry bits declarations scope expr@Expr{..} = 
           unless (mode == Explicit || isExact n && isExact m) (Left "checked adapter bridge requires exact operands")
         _ -> unless (target == expressionTypeOf a) (Left "invalid conversion types")
       pure target
+    -- An unreachable branch takes whatever type its context needs.
+    Helper Unreachable [_] -> pure expressionType
     Helper builtin args -> helperType builtin args
   unless (actual == expressionType) (Left ("core result type mismatch: expected " ++ show actual ++ ", found " ++ show expressionType))
   where

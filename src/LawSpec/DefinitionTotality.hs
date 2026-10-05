@@ -177,6 +177,8 @@ auditTemplates declarations bits unit templates = do
       ("pow", _, [a,b]) -> pure (T.ExactArithmetic C.Power a b)
       -- if c then a else b: each branch is checked knowing which way c went.
       ("select", _, [c, a, b]) -> pure (T.Conditional c a b)
+      ("unreachable", [message], _) | Just name <- literalText (S.expression message) -> pure (T.Absurd name)
+      ("unreachable", _, _) -> pure (T.Absurd "a constructor")
       ("isPresent", _, [value]) -> pure (T.IsPresent value)
       ("presentValue", _, [value]) -> pure (T.PresentValue value)
       ("round", [_,scale], [value,scaleValue]) -> do
@@ -223,3 +225,10 @@ auditTemplates declarations bits unit templates = do
     builtinRoot expression = case root expression of
       S.Var name -> take 8 name == "prelude."
       _ -> False
+
+-- The text of a string literal, through its source location.
+literalText :: S.Expr -> Maybe String
+literalText e = case e of
+  S.Located _ inner -> literalText inner
+  S.StringLit text -> Just text
+  _ -> Nothing

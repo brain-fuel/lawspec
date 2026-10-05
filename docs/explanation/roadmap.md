@@ -101,7 +101,12 @@ documentation pages in the Folio; Keep a Changelog; and less duplication.
 Every canonical comment, decision, reference and page is reviewed and
 signed off.
 
-### 0.21: stub simulation
+### 0.21: more target languages
+
+Erlang, Elixir, Gleam, C# and F# join the eight existing targets, with
+generated tests, runtimes, native bindings and the same acceptance suites.
+
+### 0.22: stub simulation
 
 Simulated external dependencies, so a system can be modelled and tested
 against what it depends on:

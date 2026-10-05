@@ -65,7 +65,7 @@ elaborateFamiliesWith imported families u = do
       known = map fst (functions u) ++ map functionName (functionDefinitions u) ++
         map functionName measures
       bind = bindImplicitIndices table known
-  userDefinitions <- forM (functionDefinitions u) $ \d -> do
+  userDefinitions <- forM (map (completeMatches table) (functionDefinitions u)) $ \d -> do
     (arguments, substitution) <- bindBinders table known (functionArguments d)
     pure d { functionArguments = arguments
            , functionResult = substituteIndices substitution (functionResult d)
@@ -426,3 +426,44 @@ substituteIndices substitution ty = case ty of
   Qualified cs a -> Qualified cs (substituteIndices substitution a)
   CheckedType ps a -> CheckedType (map (replaceExprVars substitution) ps) (substituteIndices substitution a)
   _ -> ty
+
+-- A match on a parameter of an indexed family may leave out constructors its
+-- index rules out: popping a Stack (n + 1) needs no branch for the empty
+-- stack. Each one left out gets a branch that is unreachable, and the
+-- totality audit must prove it is never reached (or names the constructor).
+completeMatches :: M.Map String IndexedFamily -> FunctionDefinition -> FunctionDefinition
+completeMatches table d = d { functionBody = go (functionBody d) }
+  where
+    families = [(name, f) | (name, ty) <- functionArguments d, Just f <- [familyOf ty]]
+    familyOf ty = case ty of
+      Applied n _ -> M.lookup n table
+      Application n _ -> M.lookup n table
+      Named n -> M.lookup n table
+      -- A family applied to index terms is its index refinement, F@index.
+      RefinementApp n _ -> M.lookup (takeWhile (/= '@') n) table
+      Refined _ inner _ -> familyOf inner
+      _ -> Nothing
+    scrutinee e = case e of
+      Located _ inner -> scrutinee inner
+      Var v -> lookup v families
+      _ -> Nothing
+    go e = case e of
+      Located range inner -> Located range (go inner)
+      MatchExpr value branches ->
+        let branches' = [MatchBranch tag names (go body) | MatchBranch tag names body <- branches]
+        in case scrutinee value of
+          Just f ->
+            let tags = [tag | MatchBranch tag _ _ <- branches]
+                missing = [c | c <- map indexedDeclaration (familyConstructors f), dataConstructorName c `notElem` tags]
+                absent c = MatchBranch (dataConstructorName c)
+                  ["absent" ++ show i | (i, _) <- zip [0 :: Int ..] (dataConstructorFields c)]
+                  (Apply (Var "prelude.unreachable") (StringLit (dataConstructorName c)))
+            in MatchExpr (go value) (branches' ++ map absent missing)
+          Nothing -> MatchExpr (go value) branches'
+      Apply f x -> Apply (go f) (go x)
+      Binary op a b -> Binary op (go a) (go b)
+      Unary op a -> Unary op (go a)
+      ConstructLit n fields -> ConstructLit n (map go fields)
+      ListLit xs -> ListLit (map go xs)
+      Annotate inner t -> Annotate (go inner) t
+      other -> other

@@ -210,6 +210,8 @@ proofExpression schema bits = proof
                              | Constructor destination [] <- target, Constructor source [] <- expressionType value
                              , Just conversion <- T.integerConversion bits destination source (proof value) -> conversion
                              | otherwise -> T.Conversion (safeConversion bits target value) (proof value)
+      Helper Unreachable [Expr _ (Constant (SSequence _ points)) _] -> T.Absurd (map toEnum points)
+      Helper Unreachable _ -> T.Absurd "a constructor"
       Helper IsPresent [value] -> T.IsPresent (proof value)
       Helper PresentValue [value] -> T.PresentValue (proof value)
       _ -> T.Sequence (map proof (children expression))

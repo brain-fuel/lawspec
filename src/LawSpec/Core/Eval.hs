@@ -109,6 +109,7 @@ evaluateValue registry bits adapter bindings = run (M.fromList bindings) where
       if target == LawSpec.Core.expressionType a
         then validateValueWithContracts registry bits target value
         else fromScalarValue target <$> (toScalarValue value >>= convertValue bits target)
+    Helper Unreachable _ -> Left "a branch the indices rule out was reached"
     Helper builtin args -> mapM go args >>= helper builtin
   helper Length [value@(DataValue (Constructor "List" [_]) _ _)] =
     ScalarValue . SInteger "Integer" . fromIntegral . length <$> listItems value

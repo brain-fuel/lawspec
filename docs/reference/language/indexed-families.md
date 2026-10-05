@@ -152,6 +152,21 @@ The proof uses exact linear arithmetic over the measures:
 A definition whose result index does not follow is rejected with
 `definition result refinement could not be proved`.
 
+A match may leave out a constructor that the value's index rules out. A
+`Vec (n + 1) a` is never `VNil`, so taking its head needs one branch:
+
+```lawspec fragment
+definition headV (xs :: Vec (n + 1) Int8) :: Int8 is
+  match xs with
+  | VCons h t -> h
+  end
+end
+```
+
+The compiler proves each left-out constructor impossible. A constructor the
+index allows is an error that names it: `a match leaves out VNil, which its
+value's index allows`.
+
 A proved definition makes a natural reference model for a native adapter, as
 `concatV` does for `append`. The [indexed example](../../../examples/specs/indexed_families.lawspec)
 also proves `flattenV` for trees.

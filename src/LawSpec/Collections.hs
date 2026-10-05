@@ -25,7 +25,7 @@ collectionsAlias :: String
 collectionsAlias = "lawspecCollections"
 
 collectionTypes :: [String]
-collectionTypes = ["Set", "KeyVal", "Queue", "Stack", "Deque", "Entry", "Ordering", "Pair"]
+collectionTypes = ["Set", "KeyVal", "Queue", "Stack", "Deque", "Entry", "Ordering", "Pair", "SizedStack", "SizedQueue"]
 
 isCollectionsType :: String -> Bool
 isCollectionsType name = (collectionsUnit ++ "::type::") `isPrefixOf` name
@@ -58,7 +58,11 @@ collectionOperations =
       , ("Queue", [("queueOf", "queueOf"), ("enqueue", "queueEnqueue"), ("dequeue", "queueDequeue"), ("front", "queueFront")])
       , ("Deque", [("dequeOf", "dequeOf"), ("pushFront", "dequePushFront"), ("pushBack", "dequePushBack"),
                    ("popFront", "dequePopFront"), ("popBack", "dequePopBack"), ("peekFront", "dequePeekFront"),
-                   ("peekBack", "dequePeekBack")]) ]
+                   ("peekBack", "dequePeekBack")])
+      , ("SizedStack", [("sizedPush", "sizedStackPush"), ("sizedPop", "sizedStackPop"), ("sizedTop", "sizedStackTop"),
+                        ("sizedStackItems", "sizedStackItems")])
+      , ("SizedQueue", [("sizedEnqueue", "sizedQueueEnqueue"), ("sizedDequeue", "sizedQueueDequeue"),
+                        ("sizedFront", "sizedQueueFront"), ("sizedQueueItems", "sizedQueueItems")]) ]
   , (op, definition) <- pairs ]
 
 collectionOperation :: String -> Maybe (String, String)
@@ -107,7 +111,18 @@ collectionsSource types = unlines $
       , ("KeyVal", ["type KeyVal (k :: Type) (v :: Type) is KeyValEntries entries :: List (Entry k v) end", ""])
       , ("Queue", ["type Queue (a :: Type) is QueueItems items :: List a end", ""])
       , ("Stack", ["type Stack (a :: Type) is StackItems items :: List a end", ""])
-      , ("Deque", ["type Deque (a :: Type) is DequeItems items :: List a end", ""]) ]
+      , ("Deque", ["type Deque (a :: Type) is DequeItems items :: List a end", ""])
+      -- Size-indexed: a pop or a front needs a non-empty one, by its type.
+      , ("SizedStack",
+          [ "type SizedStack (n :: Natural) (a :: Type) is"
+          , "  | SizedStackEmpty where n = 0"
+          , "  | SizedStackPush top :: a rest :: SizedStack m a where n = m + 1"
+          , "end", "" ])
+      , ("SizedQueue",
+          [ "type SizedQueue (n :: Natural) (a :: Type) is"
+          , "  | SizedQueueEmpty where n = 0"
+          , "  | SizedQueueFront front :: a rest :: SizedQueue m a where n = m + 1"
+          , "end", "" ]) ]
     listHelpers =
       [ "definition collectionAppend (xs :: List a) (ys :: List a) :: List a is"
       , "  match xs with"
@@ -152,7 +167,8 @@ collectionsSource types = unlines $
       , "" ]
     operations =
       [ ("Set", setOperations), ("KeyVal", keyValOperations), ("Stack", stackOperations)
-      , ("Queue", queueOperations), ("Deque", dequeOperations) ]
+      , ("Queue", queueOperations), ("Deque", dequeOperations)
+      , ("SizedStack", sizedStackOperations), ("SizedQueue", sizedQueueOperations) ]
     setOperations =
       [ "definition setInsertItems (x :: a) (xs :: List a) :: List a requires Keyed a is"
       , "  match xs with"
@@ -405,3 +421,48 @@ collectionsSource types = unlines $
       , "  match d with | DequeItems xs -> collectionLast xs end"
       , "end"
       , "" ]
+
+sizedStackOperations :: [String]
+sizedStackOperations =
+  [ "definition sizedStackPush (x :: a) (s :: SizedStack n a) :: SizedStack (n + 1) a is SizedStackPush x s end"
+  , ""
+  , "definition sizedStackPop (s :: SizedStack (n + 1) a) :: SizedStack n a is"
+  , "  match s with | SizedStackPush top rest -> rest end"
+  , "end"
+  , ""
+  , "definition sizedStackTop (s :: SizedStack (n + 1) a) :: a is"
+  , "  match s with | SizedStackPush top rest -> top end"
+  , "end"
+  , ""
+  , "definition sizedStackItems (s :: SizedStack n a) :: List a is"
+  , "  match s with"
+  , "  | SizedStackEmpty -> Nil"
+  , "  | SizedStackPush top rest -> Cons top (sizedStackItems rest)"
+  , "  end"
+  , "end"
+  , "" ]
+
+sizedQueueOperations :: [String]
+sizedQueueOperations =
+  [ "definition sizedQueueEnqueue (x :: a) (q :: SizedQueue n a) :: SizedQueue (n + 1) a is"
+  , "  match q with"
+  , "  | SizedQueueEmpty -> SizedQueueFront x SizedQueueEmpty"
+  , "  | SizedQueueFront front rest -> SizedQueueFront front (sizedQueueEnqueue x rest)"
+  , "  end"
+  , "end"
+  , ""
+  , "definition sizedQueueDequeue (q :: SizedQueue (n + 1) a) :: SizedQueue n a is"
+  , "  match q with | SizedQueueFront front rest -> rest end"
+  , "end"
+  , ""
+  , "definition sizedQueueFront (q :: SizedQueue (n + 1) a) :: a is"
+  , "  match q with | SizedQueueFront front rest -> front end"
+  , "end"
+  , ""
+  , "definition sizedQueueItems (q :: SizedQueue n a) :: List a is"
+  , "  match q with"
+  , "  | SizedQueueEmpty -> Nil"
+  , "  | SizedQueueFront front rest -> Cons front (sizedQueueItems rest)"
+  , "  end"
+  , "end"
+  , "" ]

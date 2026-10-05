@@ -42,3 +42,24 @@ spec = describe "if then else" $ do
       either (isInfixOf "conversion range") (const False) (compiles (unlines
         [ "definition big (w :: Int32 where w >= 0 && w <= 100000) (h :: Int32 where h >= 0 && h <= 100000) :: Int32 is w * h end" ]))
         `shouldBe` True
+
+  describe "matches on indexed families" $ do
+    let family = unlines
+          [ "type Pile (n :: Natural) (a :: Type) is"
+          , "  | PileEmpty where n = 0"
+          , "  | PileOn top :: a rest :: Pile m a where n = m + 1"
+          , "end" ]
+    it "may leave out a constructor the index rules out" $
+      compiles (family ++ unlines
+        [ "definition topOf (p :: Pile (n + 1) Int8) :: Int8 is"
+        , "  match p with"
+        , "  | PileOn top rest -> top"
+        , "  end"
+        , "end" ]) `shouldBe` Right ()
+    it "name a left-out constructor the index allows" $
+      either (isInfixOf "leaves out PileEmpty") (const False) (compiles (family ++ unlines
+        [ "definition topOf (p :: Pile n Int8) :: Int8 is"
+        , "  match p with"
+        , "  | PileOn top rest -> top"
+        , "  end"
+        , "end" ])) `shouldBe` True

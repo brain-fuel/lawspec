@@ -355,6 +355,11 @@ builtin env n args
   | n `elem` ["isPresent","presentValue"], [a] <- args = do
       t <- infer env a >>= resolve
       case t of Applied wrapper inner | wrapper `elem` ["Nullable","Optional"] -> pure (if n == "isPresent" then Named "Bool" else inner); _ -> throwC "presence helper requires Nullable or Optional"
+  -- unreachable "C" stands for a branch the indices rule out: it takes any
+  -- type, and the totality audit proves it is never reached.
+  | n == "unreachable", [message] <- args = do
+      checkExpr env (Named "Text") message
+      Variable . ("unreachable:" ++) <$> fresh
   -- select c a b is a when c holds and b otherwise; both are values.
   | n == "select", [c,a,b] <- args = do
       checkExpr env (Named "Bool") c
