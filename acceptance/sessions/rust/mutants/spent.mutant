@@ -1,0 +1,11 @@
+rejected-at: compile
+expect: use of moved value
+@@ src/example/sessions.rs
+<<<<<<<
+    let end = end.send(a);
+    let end = end.send(b);
+=======
+    let sent = end.send(a);
+    let end = sent.send(b);
+    let _again = sent.send(b);
+>>>>>>>

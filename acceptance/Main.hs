@@ -15,6 +15,8 @@
 --   <target>/files/<path>          adapters replacing generated user-owned stubs
 --   <target>/stubs/<path>          the stub an adapter was written against (optional)
 --   <target>/mutants/<name>.mutant search/replace edits, one mutant per file
+--                                  (a "rejected-at: compile" header line marks
+--                                  one the target's compiler must reject)
 --   <target>/bindings.json         native bindings, as in lawspec.json (optional)
 --
 -- A package directory holds lawspec-package.json ({"name", "version",
@@ -59,9 +61,12 @@ import Cache
 data Generated = Generated { generatedPath :: FilePath, generatedContent :: String, generatedOwnership :: String }
 
 -- Each expectation is a set of alternatives, one of which the failing
--- output must contain (the diagnostic that exposed the mutant).
+-- output must contain (the diagnostic that exposed the mutant). A mutant
+-- rejected at compile time (an end used twice, under Rust's moves) must fail
+-- to compile; any other must compile and fail its laws.
 data Mutant = Mutant
-  { mutantName :: String, mutantExpect :: [[String]], mutantEdits :: [(FilePath, String, String)] }
+  { mutantName :: String, mutantExpect :: [[String]], mutantEdits :: [(FilePath, String, String)]
+  , mutantAtCompile :: Bool }
 
 main :: IO ()
 main = do
@@ -216,8 +221,9 @@ runSuite suite target project mutate = do
     (mutantCode, mutantOutput) <- runTool tool (mutantArguments target (arguments tool)) project
     writeFile (project </> ("mutant-" ++ mutantName mutant ++ ".log")) mutantOutput
     when (mutantCode == ExitSuccess) (die (target ++ ": mutant " ++ mutantName mutant ++ " escaped detection"))
-    when (compileFailure mutantOutput)
-      (die (target ++ ": mutant " ++ mutantName mutant ++ " failed to compile (see log)"))
+    when (compileFailure mutantOutput /= mutantAtCompile mutant)
+      (die (target ++ ": mutant " ++ mutantName mutant ++
+        (if mutantAtCompile mutant then " compiled" else " failed to compile") ++ " (see log)"))
     forM_ (mutantExpect mutant) $ \alternatives ->
       unless (any (`isInfixOf` mutantOutput) alternatives)
         (die (target ++ ": mutant " ++ mutantName mutant ++ " failed without " ++ show alternatives))
@@ -264,7 +270,7 @@ suiteStubs suite target = do
     let relative = fromMaybe path (stripPrefix (base ++ "/") path)
     source <- maybe (die (path ++ ": no adapter for this stub")) pure (lookup relative adapters)
     (,,) relative <$> readFile' source <*> readFile' path
-  pure [Mutant "stub" [] edits | not (null edits)]
+  pure [Mutant "stub" [] edits False | not (null edits)]
 
 -- The conformance unit checks every shared scalar vector as a law.
 conformance :: BL.ByteString -> (FilePath, String)
@@ -305,9 +311,13 @@ suiteMutants suite target = do
   names <- if exists then sort . filter (".mutant" `isSuffixOf`) <$> listDirectory base else pure []
   forM names $ \name -> do
     content <- readFile' (base </> name)
-    (expectations, edits) <- either (die . ((base </> name ++ ": ") ++)) pure (parseMutant content)
-    pure (Mutant (take (length name - length (".mutant" :: String)) name) expectations edits)
+    let (header, body) = span (not . ("@@ " `isPrefixOf`)) (lines content)
+        atCompile = "rejected-at: compile" `elem` header
+    (expectations, edits) <- either (die . ((base </> name ++ ": ") ++)) pure
+      (parseMutant (unlines (filter (/= "rejected-at: compile") header ++ body)))
+    pure (Mutant (take (length name - length (".mutant" :: String)) name) expectations edits atCompile)
 
+-- rejected-at: compile                                (optional)
 -- expect: <text the failing output must contain>        (optional, repeatable)
 -- expect-any: <alternative> | <alternative>            (optional, repeatable)
 -- @@ <path>

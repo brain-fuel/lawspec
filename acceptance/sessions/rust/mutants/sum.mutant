@@ -1,0 +1,6 @@
+@@ src/example/sessions.rs
+<<<<<<<
+    let _done = end.send(i64::from(a) + i64::from(b));
+=======
+    let _done = end.send(i64::from(a) + i64::from(b) + 1);
+>>>>>>>

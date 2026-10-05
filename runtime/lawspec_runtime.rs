@@ -5174,3 +5174,189 @@ mod constructor_contract_tests {
         );
     }
 }
+
+/// Channels and processes for the typed channel ends LawSpec generates from
+/// protocols (lawspec_sessions). Generated ends move one Endpoint from step
+/// to step; implementation code only opens, spawns and joins.
+pub mod sessions {
+    use std::any::Any;
+    use std::collections::VecDeque;
+    use std::sync::{Arc, Condvar, Mutex};
+
+    /// A value in flight. Generated ends fix each step's type, so a receive
+    /// knows what it takes off the channel.
+    pub type Message = Box<dyn Any + Send>;
+
+    /// One end of a two-ended channel.
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    pub enum Side {
+        First,
+        Second,
+    }
+
+    impl Side {
+        fn index(self) -> usize {
+            match self {
+                Side::First => 0,
+                Side::Second => 1,
+            }
+        }
+
+        fn other(self) -> Side {
+            match self {
+                Side::First => Side::Second,
+                Side::Second => Side::First,
+            }
+        }
+    }
+
+    /// What carries messages between a channel's two ends. The local channel
+    /// is in memory; a networked transport can implement the same interface.
+    pub trait Transport: Send + Sync {
+        /// Sends a message from `side` to the other end.
+        fn send(&self, side: Side, message: Message);
+        /// Takes the next message sent to `side`, waiting for one. Panics
+        /// when the other end has closed without sending it.
+        fn receive(&self, side: Side) -> Message;
+        /// Closes `side`: the other end's pending receives fail.
+        fn close(&self, side: Side);
+    }
+
+    /// An in-memory channel: one queue per direction.
+    #[derive(Default)]
+    pub struct LocalChannel {
+        state: Mutex<LocalState>,
+        changed: Condvar,
+    }
+
+    #[derive(Default)]
+    struct LocalState {
+        // queues[i] holds messages sent to side i.
+        queues: [VecDeque<Message>; 2],
+        closed: [bool; 2],
+    }
+
+    impl Transport for LocalChannel {
+        fn send(&self, side: Side, message: Message) {
+            let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
+            state.queues[side.other().index()].push_back(message);
+            self.changed.notify_all();
+        }
+
+        fn receive(&self, side: Side) -> Message {
+            let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
+            loop {
+                if let Some(message) = state.queues[side.index()].pop_front() {
+                    return message;
+                }
+                if state.closed[side.other().index()] {
+                    panic!("the other end of the session closed before sending");
+                }
+                state = self.changed.wait(state).unwrap_or_else(|e| e.into_inner());
+            }
+        }
+
+        fn close(&self, side: Side) {
+            let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
+            state.closed[side.index()] = true;
+            self.changed.notify_all();
+        }
+    }
+
+    /// One side of a channel, untyped: generated ends wrap it, and closing
+    /// it (by dropping) wakes a peer waiting on it.
+    pub struct Endpoint {
+        transport: Arc<dyn Transport>,
+        side: Side,
+    }
+
+    impl Endpoint {
+        /// The ends of a channel over the given transport.
+        pub fn pair(transport: Arc<dyn Transport>) -> (Endpoint, Endpoint) {
+            (
+                Endpoint { transport: transport.clone(), side: Side::First },
+                Endpoint { transport, side: Side::Second },
+            )
+        }
+
+        pub fn send<T: Any + Send>(&self, value: T) {
+            self.transport.send(self.side, Box::new(value));
+        }
+
+        pub fn receive<T: Any + Send>(&self) -> T {
+            match self.transport.receive(self.side).downcast::<T>() {
+                Ok(value) => *value,
+                Err(_) => panic!("a session received a value of an unexpected type"),
+            }
+        }
+    }
+
+    impl Drop for Endpoint {
+        fn drop(&mut self) {
+            self.transport.close(self.side);
+        }
+    }
+
+    /// The ends of a fresh in-memory channel.
+    pub fn channel() -> (Endpoint, Endpoint) {
+        Endpoint::pair(Arc::new(LocalChannel::default()))
+    }
+
+    /// A running process: a thread whose result join returns.
+    pub struct Process<T>(std::thread::JoinHandle<T>);
+
+    impl<T> Process<T> {
+        /// Waits for the process; its panic, if any, continues here.
+        pub fn join(self) -> T {
+            self.0.join().unwrap_or_else(|panic| std::panic::resume_unwind(panic))
+        }
+    }
+
+    /// Runs `body` as a new process.
+    pub fn spawn<T: Send + 'static>(body: impl FnOnce() -> T + Send + 'static) -> Process<T> {
+        Process(std::thread::spawn(body))
+    }
+
+    /// Runs two closures in parallel and returns both results; a panic in
+    /// either continues here.
+    pub fn par<A: Send, B: Send>(
+        left: impl FnOnce() -> A + Send,
+        right: impl FnOnce() -> B + Send,
+    ) -> (A, B) {
+        std::thread::scope(|scope| {
+            let right = scope.spawn(right);
+            let left = left();
+            let right = right.join().unwrap_or_else(|panic| std::panic::resume_unwind(panic));
+            (left, right)
+        })
+    }
+}
+
+#[cfg(test)]
+mod session_tests {
+    use super::sessions::{channel, par, spawn};
+
+    #[test]
+    fn messages_cross_in_order_both_ways() {
+        let (first, second) = channel();
+        let process = spawn(move || {
+            let a: i32 = first.receive();
+            let b: i32 = first.receive();
+            first.send(i64::from(a) + i64::from(b));
+        });
+        second.send(2i32);
+        second.send(3i32);
+        assert_eq!(second.receive::<i64>(), 5);
+        process.join();
+    }
+
+    #[test]
+    fn a_closed_peer_fails_a_waiting_receive() {
+        let (first, second) = channel();
+        let ((), outcome) = par(
+            move || drop(first),
+            move || std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| second.receive::<i32>())),
+        );
+        assert!(outcome.is_err());
+    }
+}
