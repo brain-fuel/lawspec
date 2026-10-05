@@ -1,0 +1,11 @@
+expect: a note reads back
+@@ src/Example/Resources.hs
+<<<<<<<
+(show n))
+
+-- (Text -> Maybe (Int32))
+=======
+(show (n + 1)))
+
+-- (Text -> Maybe (Int32))
+>>>>>>>

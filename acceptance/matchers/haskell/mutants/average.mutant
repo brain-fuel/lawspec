@@ -1,0 +1,7 @@
+expect: the average lies between the two
+@@ src/Example/Matchers.hs
+<<<<<<<
+average a b = (fromIntegral a + fromIntegral b) / 2
+=======
+average a b = (fromIntegral a + fromIntegral b) / 2 + 1
+>>>>>>>

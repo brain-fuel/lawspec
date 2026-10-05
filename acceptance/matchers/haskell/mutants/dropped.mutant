@@ -1,0 +1,7 @@
+expect: sorting keeps every item
+@@ src/Example/Matchers.hs
+<<<<<<<
+sortItems xs = List.sort xs
+=======
+sortItems xs = List.nub (List.sort xs)
+>>>>>>>

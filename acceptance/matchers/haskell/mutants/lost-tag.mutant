@@ -1,0 +1,7 @@
+expect: unique tags keep each tag
+@@ src/Example/Matchers.hs
+<<<<<<<
+uniqueTags tags = List.nub tags
+=======
+uniqueTags tags = drop 1 (List.nub tags)
+>>>>>>>

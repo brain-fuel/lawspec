@@ -1,0 +1,7 @@
+expect: recorded/example.tables/first label differs
+@@ src/Example/Tables.hs
+<<<<<<<
+label parcel = T.pack ("parcel " ++ show parcel)
+=======
+label parcel = if parcel == 1 then T.pack "parcel one" else T.pack ("parcel " ++ show parcel)
+>>>>>>>

@@ -1,0 +1,7 @@
+expect: example row 3: 2, 10, 30
+@@ src/Example/Tables.hs
+<<<<<<<
+shippingCost kilograms kilometres = kilograms * kilometres + 5 * kilograms
+=======
+shippingCost kilograms kilometres = kilograms * kilometres + 5 * kilograms + (if kilograms == 2 then 5 else 0)
+>>>>>>>

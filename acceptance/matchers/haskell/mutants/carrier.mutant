@@ -1,0 +1,7 @@
+expect: the carrier is never empty
+@@ src/Example/Matchers.hs
+<<<<<<<
+ship n = Data.OrderShipped n (T.pack "post")
+=======
+ship n = Data.OrderShipped n (T.pack "")
+>>>>>>>

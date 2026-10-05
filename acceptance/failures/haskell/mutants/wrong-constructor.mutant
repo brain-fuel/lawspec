@@ -1,0 +1,7 @@
+expect: negative amounts are blocked
+@@ src/Example/Failures.hs
+<<<<<<<
+  | cents < 0 = Data.DecisionBlock
+=======
+  | cents < 0 = Data.DecisionDecline (T.pack "negative")
+>>>>>>>
