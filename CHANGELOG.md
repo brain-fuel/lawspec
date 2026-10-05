@@ -56,6 +56,16 @@
   or runs its `or else`, instead of blocking. One run in three crashes a
   process. Typed channel ends raise `PeerFailed` when the other end gives up.
 
+### Mailboxes
+
+- `mailbox jobs of Job` declares a typed queue with many senders and one
+  receiver. Every target generates `JobsMailbox`, which can also be served on
+  a node and sent to from others.
+- In scenarios, `mailbox m of T` sits beside `channel`. One process receives,
+  every message sent must be received, and senders join the receiver in the
+  deadlock-freedom tree. A receive whose senders have all failed fails, or
+  runs its `or else`.
+
 ### Distribution
 
 - Nodes talk over a transport: in memory (with loss, duplication, delay and
@@ -65,10 +75,20 @@
   [distribution](docs/reference/language/distribution.md).
 - Values cross the network in one canonical encoding, the same bytes on every
   target, checked against shared vectors.
-- Calls across nodes are resent until answered and run once. Channels number,
-  acknowledge and resend their messages, so loss, duplication and reordering
-  are repaired.
+- Calls and mailbox sends across nodes are resent until answered and run once.
+  Channels number, acknowledge and resend their messages, so loss,
+  duplication and reordering are repaired.
+- A channel end sent to another node keeps working there: the sending node
+  relays the conversation. Every protocol can `listen` and `dial`.
 - One scenario run in three sends every channel over a faulty network.
+
+### Generation
+
+- A refinement's constant integer bounds narrow generation on every target,
+  so `(amount :: Int32 where amount >= 1 && amount <= 1000)` is drawn from
+  `1..1000` instead of being filtered out of every `Int32`.
+- Generated Python property tests no longer have a per-example deadline, since
+  adapters may wait on networks or timers.
 
 ### Evidence
 

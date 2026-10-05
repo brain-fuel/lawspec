@@ -108,10 +108,22 @@ methods. A call that gets no reply within the timeout fails with
 
 ### Mailboxes
 
-Each runtime also has a `Mailbox`, a queue with many senders and one
-receiver. A process that loops over `receive` and answers each message is
-an actor written by hand. Use it when one process must own a resource and
-serve requests from several others, with your own loop.
+A mailbox is a typed queue with many senders and one receiver:
+
+```lawspec fragment
+mailbox jobs of Job
+```
+
+Every target gets a `JobsMailbox` with `send` (never waits), `receive`
+(optionally with a timeout) and `close`. `serve(node, name)` offers it to
+other nodes, and `connect(node, address)` sends to it from another node.
+
+A mailbox is the channel form of an actor: a process that loops over
+`receive` and handles each message is an actor written by hand. Use a
+mailbox when you want your own loop; use an `actor` declaration to have
+LawSpec check the handlers against a model and supervise them. In
+[scenarios](scenarios.md#mailboxes), mailboxes are checked for deadlock
+freedom like channels.
 
 ## Supervisors
 

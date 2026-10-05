@@ -46,7 +46,7 @@ seed, so they repeat.
 | An actor | `AccountActor.start().serve(node, "account")` | `AccountActor.connect(node, address)`, whose methods are the handlers |
 | A protocol's channel | `Doubling.listen(node, "doubling")` gives the first end | `Doubling.dial(node, address)` gives the second end |
 | Checked definitions | `lawspec_remote.serve(node)` | `lawspec_remote.evaluate(node, address, name, args...)` |
-| A mailbox | `node.mailbox(name, type)` | `node.remote_mailbox(address, type).send(value)` |
+| A mailbox | `JobsMailbox.serve(node, "jobs")` | `JobsMailbox.connect(node, address).send(value)` |
 
 - **Actors.** A call waits for the reply. If no reply comes within the
   timeout (5 seconds by default), it fails with `Unreachable`. A lost call
@@ -57,13 +57,16 @@ seed, so they repeat.
   duplication and reordering are repaired. If the other end is silent for
   the deadline (5 seconds), the channel fails like a failed process: a
   receive raises `PeerFailed` ([failures](scenarios.md#when-a-process-fails)).
-  A protocol whose steps send channel ends runs only within one process
-  for now.
+- **Channel ends between nodes.** An end sent over a channel to another
+  node keeps working there. The node that sends it relays the
+  conversation, step by step, so its order and failures are unchanged.
 - **Checked definitions** are evaluated **by content hash**: the hash of
   the definition and everything it uses. Two nodes agree on a hash exactly
   when they hold the same definition, so a node never runs a different
   version of the code by mistake.
-- **Mailboxes** are best effort: a value sent may be lost.
+- **Mailboxes.** A send to a mailbox on another node waits until the
+  mailbox has the message. A lost send is sent again, and the mailbox takes
+  it once.
 
 ## The wire encoding
 

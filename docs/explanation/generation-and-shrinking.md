@@ -32,6 +32,15 @@ way of checking nothing as a failure:
 - A type with no values cannot supply an argument, although containers of it,
   such as `List Empty`, still can.
 
+## Refinement bounds
+
+When a refinement puts constant bounds on an integer, as in
+`(amount :: Int32 where amount >= 1 && amount <= 1000)`, generation draws
+from that range instead of filtering every `Int32`. This holds on every
+target, for one input or many. The refinement is still checked on every
+value, so a refinement with more than bounds (`amount mod 7 == 0`) narrows
+first and then filters.
+
 ## Dependent refinements
 
 A refined input can depend on earlier inputs, as in

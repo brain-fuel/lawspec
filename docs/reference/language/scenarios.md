@@ -59,6 +59,7 @@ end
 | `receive c x or else ... end` | As above, but if the process at the other end has failed, the statements between `or else` and `end` run instead of the rest of this process. |
 | `par ... with ... end` | Runs its branches at the same time. |
 | `expect x = value` | `x` must equal the constant on every schedule. |
+| `mailbox m of Type` (beside `channel`) | A mailbox: any process may `send m value`, and one process takes them with `receive m x`. |
 
 In a `par`, the first branch to use a channel follows its protocol, and the
 other branch follows the reverse.
@@ -108,6 +109,40 @@ end
 
 So a failure can stop processes, but never leaves one waiting forever:
 deadlock freedom holds with failures too.
+
+## Mailboxes
+
+A channel joins two processes. A **mailbox** takes messages from any number
+of processes, and one process receives them, in the order they arrive:
+
+```lawspec fragment
+scenario `two tellers report to one auditor` in account is
+  mailbox reports of Int64
+  par
+    n <- deposit 3
+    send reports n
+  with
+    m <- deposit 4
+    send reports m
+  with
+    receive reports first
+    receive reports second
+  end
+end
+```
+
+LawSpec checks that:
+
+- one process receives from each mailbox;
+- every message sent is received: as many receives as sends, and none
+  inside an `or else`;
+- each sender is joined to the receiver as a channel would join them, so
+  channels and mailboxes together still form a tree.
+
+A send never waits, and the receiver waits only for messages that will
+come. So the proof of deadlock freedom still holds. If a sender fails
+before it sends, the receive that would have taken its message fails, or
+runs its `or else`.
 
 A channel end only travels over a channel, which joins its sender and its
 receiver. So delegation keeps the processes a tree. Together these make a
@@ -171,8 +206,9 @@ For `protocol Serve is receive Int32 . receive Int32 . send Int64 end`:
   transport can implement as well.
 
 A protocol's channel can also join two nodes: `P.listen(node, name)` gives
-the first end and `P.dial(node, address)` gives the second, on another node
-(see [distribution](distribution.md)).
+the first end and `P.dial(node, address)` gives the second, on another node.
+An end sent to another node keeps working there (see
+[distribution](distribution.md)).
 
 The [sessions example](../../../examples/specs/sessions.lawspec) adds two
 numbers through a server process, and through a worker that is handed the
