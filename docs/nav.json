@@ -260,6 +260,14 @@
             "path": "reference/language/async-functions.md"
           },
           {
+            "title": "Abilities",
+            "path": "reference/language/abilities.md"
+          },
+          {
+            "title": "Handlers",
+            "path": "reference/language/handlers.md"
+          },
+          {
             "title": "Durations",
             "path": "reference/language/durations.md"
           },
@@ -358,6 +366,10 @@
       {
         "title": "Evidence and discharge",
         "path": "explanation/evidence-and-discharge.md"
+      },
+      {
+        "title": "Abilities and the harness",
+        "path": "explanation/abilities.md"
       },
       {
         "title": "Generation and shrinking",

@@ -10,6 +10,8 @@ reading, not instructions.
   targets.
 - [Evidence and discharge](evidence-and-discharge.md): why every obligation
   reports how it was checked.
+- [Abilities and the harness](abilities.md): dependencies as abilities, and
+  why a law holds for every lawful handler.
 - [Generation and shrinking](generation-and-shrinking.md): how tests find
   inputs, and why they never pass vacuously.
 - [Portable semantics and machine profiles](portable-semantics-and-machine-profiles.md):
