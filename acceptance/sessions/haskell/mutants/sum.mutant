@@ -1,0 +1,6 @@
+@@ src/Example/Sessions.hs
+<<<<<<<
+  send end2 (fromIntegral a + fromIntegral b :: I.Int64)
+=======
+  send end2 (fromIntegral a + fromIntegral b + 1 :: I.Int64)
+>>>>>>>

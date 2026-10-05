@@ -1,9 +1,9 @@
-{-# LANGUAGE FlexibleInstances, TypeSynonymInstances, ScopedTypeVariables #-}
+{-# LANGUAGE FlexibleInstances, TypeSynonymInstances, ScopedTypeVariables, MultiParamTypeClasses, FunctionalDependencies #-}
 -- The portable scalar domain. No test framework or target runtime dependencies.
 module LawSpecRuntime where
 
 import Control.Exception (ErrorCall(..), Exception, SomeException(..), catch, displayException, evaluate, finally, fromException, throwIO, try)
-import Control.Concurrent (Chan, threadDelay, yield, forkIO, killThread, newChan, readChan, writeChan, newEmptyMVar, putMVar, takeMVar)
+import Control.Concurrent (Chan, threadDelay, yield, forkIO, killThread, newChan, readChan, writeChan, newEmptyMVar, putMVar, takeMVar, MVar, readMVar)
 import System.Timeout (timeout)
 import Data.IORef (IORef, newIORef, readIORef, writeIORef, modifyIORef', atomicModifyIORef')
 import GHC.Clock (getMonotonicTimeNSec)
@@ -2495,3 +2495,89 @@ checkScenario model spec = do
               Just message -> pure (Just ("scenario " ++ title ++ " fails: " ++ message))
               Nothing -> loop (run + 1)
   loop 0
+
+-- Sessions: typed channel ends for implementation code. Each generated
+-- protocol module (LawSpecSessions.*) wraps a SessionEnd in a type per step
+-- and makes it an instance of Send or Receive, so steps out of order do not
+-- compile; a SessionEnd is single use, so a stale end fails when used.
+
+-- | One side of a channel, as a transport implements it: sending a value to
+-- the other side and receiving the next value from it. localChannel joins two
+-- sides in process; a network transport could implement the same record.
+data ChannelSide = ChannelSide
+  { sideSend :: Dynamic -> IO ()
+  , sideReceive :: IO Dynamic
+  }
+
+-- | Two connected sides, with one queue per direction.
+localChannel :: IO (ChannelSide, ChannelSide)
+localChannel = do
+  forward <- newChan
+  backward <- newChan
+  pure (ChannelSide (writeChan forward) (readChan backward), ChannelSide (writeChan backward) (readChan forward))
+
+-- | A channel side at one step of a protocol, usable once: each step returns
+-- a fresh end for the next.
+data SessionEnd = SessionEnd ChannelSide (IORef Bool)
+
+-- | A channel's two ends, at their first step.
+openSession :: IO (SessionEnd, SessionEnd)
+openSession = do
+  (first, second) <- localChannel
+  (,) <$> sessionEnd first <*> sessionEnd second
+
+sessionEnd :: ChannelSide -> IO SessionEnd
+sessionEnd side = SessionEnd side <$> newIORef False
+
+-- Marks an end used, failing if it already was, and returns its side.
+useEnd :: SessionEnd -> IO ChannelSide
+useEnd (SessionEnd side used) = do
+  already <- atomicModifyIORef' used (\was -> (True, was))
+  if already
+    then throwIO (ErrorCall "this end was already used; use the end its last step returned")
+    else pure side
+
+-- | Sends a value on an end, wrapping the side's fresh end as the next step.
+sendOn :: Typeable a => (SessionEnd -> next) -> SessionEnd -> a -> IO next
+sendOn next end value = do
+  side <- useEnd end
+  sideSend side (toDyn value)
+  next <$> sessionEnd side
+
+-- | Receives a value on an end, with the side's fresh end as the next step.
+receiveOn :: forall a next. Typeable a => (SessionEnd -> next) -> SessionEnd -> IO (a, next)
+receiveOn next end = do
+  side <- useEnd end
+  message <- sideReceive side
+  value <- maybe (throwIO (ErrorCall ("a session received " ++ show (dynTypeRep message)
+    ++ " where it expected " ++ show (typeRep (Proxy :: Proxy a))))) pure (fromDynamic message)
+  (,) value . next <$> sessionEnd side
+
+-- | An end whose next step sends a message; the end type determines what it
+-- sends and the end that follows.
+class Send end message next | end -> message next where
+  send :: end -> message -> IO next
+
+-- | An end whose next step receives a message, returned with the end that
+-- follows.
+class Receive end message next | end -> message next where
+  receive :: end -> IO (message, next)
+
+-- | A running thread whose result join waits for.
+newtype Process a = Process (MVar (Either SomeException a))
+
+-- | Runs an action in its own thread.
+spawn :: IO a -> IO (Process a)
+spawn action = do
+  result <- newEmptyMVar
+  _ <- forkIO (try action >>= putMVar result)
+  pure (Process result)
+
+-- | Waits for a process, rethrowing what it threw.
+join :: Process a -> IO a
+join (Process result) = readMVar result >>= either throwIO pure
+
+-- | Runs actions in parallel and waits for all of them, rethrowing the first
+-- failure in list order.
+par :: [IO ()] -> IO ()
+par actions = mapM spawn actions >>= mapM_ join

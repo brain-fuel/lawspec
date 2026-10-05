@@ -1,0 +1,10 @@
+expect: this end was already used
+@@ src/Example/Sessions.hs
+<<<<<<<
+  end1 <- send end0 a
+  end2 <- send end1 b
+=======
+  end1 <- send end0 a
+  _ <- send end0 b
+  end2 <- send end1 b
+>>>>>>>
