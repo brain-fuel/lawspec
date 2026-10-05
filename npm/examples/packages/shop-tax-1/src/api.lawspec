@@ -1,0 +1,6 @@
+unit shop.tax.api
+import shop.tax.rates as rates (Band)
+
+-- The package's facade: importers use shop.tax.api, and the names it
+-- re-exports are the declarations of shop.tax.rates, not copies.
+export Band, rates.rateOf

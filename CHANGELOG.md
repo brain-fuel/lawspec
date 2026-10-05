@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.20.0
+
 - An `all` group with an asynchronous step runs its steps at the same time,
   on each target's own concurrency, so it takes as long as its slowest step.
   Results and accumulated errors keep the order of declaration, and every

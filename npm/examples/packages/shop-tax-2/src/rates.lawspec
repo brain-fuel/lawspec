@@ -1,0 +1,9 @@
+unit shop.tax.rates
+
+-- Version 2 adds a zero band and changes the rates. A build may hold both
+-- versions: each dependent sees the one its version range selects.
+type Band is | Zero | Low | High end
+
+definition rateOf (b :: Band) :: Int64 is
+  match b with | Zero -> 0 | Low -> 10 | High -> 25 end
+end

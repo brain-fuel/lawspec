@@ -1,0 +1,39 @@
+unit example.warehouse
+
+-- Asynchronous adapters bound to native code. Each target's bindings name a
+-- native function or method returning the target's asynchronous type (a
+-- coroutine, Promise, CompletableFuture, suspend function, Go task, Rust
+-- future or IO action); the generated bridge awaits it and converts the
+-- result.
+
+-- A price, looked up by a native asynchronous function.
+async priceOf :: Text -> Int32
+-- The same price, computed by a native synchronous function.
+quoteOf :: Text -> Int32
+
+law `a looked-up price is the quoted price` is
+  definition is `for all` (sku :: Text) . priceOf sku = quoteOf sku end
+  example `a free sample` is
+    sku = "free"
+    expect priceOf sku = 0
+  end
+end
+
+-- A shelf is a native object; its methods are asynchronous.
+handle Shelf
+
+newShelf :: Unit -> Shelf
+async restock :: Shelf -> (amount :: Int32 where amount >= 0 && amount <= 100) -> Unit
+async count :: Shelf -> Int64
+
+definition modelRestock (amount :: Int32 where amount >= 0 && amount <= 100) (total :: Int64 where total >= 0 && total <= 1000000) :: Int64 is
+  total + amount
+end
+
+definition modelCount (total :: Int64) :: Pair Int64 Int64 is Pair total total end
+
+model shelf :: shared Shelf by Int64 is
+  start newShelf ~ 0
+  restock ~ modelRestock
+  count ~ modelCount
+end

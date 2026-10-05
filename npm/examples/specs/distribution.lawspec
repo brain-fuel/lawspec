@@ -97,8 +97,9 @@ law `messages reach a mailbox on another node` is
   definition is `for all` (x :: Int32) . remoteLedger x = 2 * x end
 end
 
--- A channel end sent to another node: the node that sends it relays the
--- conversation, so the end works on its new node as it did on the old one.
+-- A channel end sent to another node. A local end stays where it is and
+-- the sending node relays its conversation, so the end works on its new
+-- node as it did on the old one.
 protocol Handoff is
   send Doubling
 end
@@ -107,4 +108,25 @@ async remoteHandoff :: Int32 -> Int64
 
 law `a channel end handed to another node` is
   definition is `for all` (x :: Int32) . remoteHandoff x = 2 * x end
+end
+
+-- An end that is already between nodes moves: its state goes to the new
+-- node, with any values that reached it, and its peer is told the new
+-- address. Here an end whose peer is on node C goes from A to B and on to D
+-- over a network that loses, duplicates and delays frames, while C is
+-- already sending to it; then A and B close, and the conversation between C
+-- and D still completes.
+protocol Answering is
+  receive Int32
+  send Int64
+end
+
+protocol Passing is
+  send Answering
+end
+
+async remoteHandoffOnward :: Int32 -> Int64
+
+law `a channel end moved on twice` is
+  definition is `for all` (x :: Int32) . remoteHandoffOnward x = 2 * x end
 end

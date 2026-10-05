@@ -1,0 +1,8 @@
+unit shop.tax.rates
+
+-- Version 1 of the tax bands.
+type Band is | Low | High end
+
+definition rateOf (b :: Band) :: Int64 is
+  match b with | Low -> 5 | High -> 20 end
+end

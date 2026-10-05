@@ -1,4 +1,9 @@
 unit shop.domain
+import shop.tax.api as tax (Band)
+
+-- shop.domain depends on version 1 of shop.tax and offers its Band to its own
+-- importers, as if declared here.
+export Band
 
 -- A package of reusable types, refinements, definitions and laws. Other units
 -- import it by name; its declarations keep their own names, so an importer may
@@ -18,6 +23,9 @@ end
 definition centsOf (m :: Money) :: Int64 is
   match m with | Money c n -> n end
 end
+
+-- The duty on a band, at version 1's rates.
+definition dutyOf (b :: Band) :: Int64 is tax.rateOf b end
 
 -- Generic laws are templates: an importer applies them to its own adapters.
 law `commutative` (f :: a -> a -> a) requires Eq a is

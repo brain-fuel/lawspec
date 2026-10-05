@@ -2,6 +2,59 @@
 
 ## Unreleased
 
+## 0.20.0
+
+- An `all` group with an asynchronous step runs its steps at the same time,
+  on each target's own concurrency, so it takes as long as its slowest step.
+  Results and accumulated errors keep the order of declaration, and every
+  step finishes before the group fails. Groups of synchronous steps still run
+  in turn.
+- A channel end that already talks across the network now moves when it is
+  sent to another node, instead of being relayed. The old node hands the
+  end's state over (sequence numbers, unacknowledged values, values received
+  but not yet used), forwards anything still in flight, and the peer is told
+  the new address, so the old node can stop once the receive returns. Ends
+  can move on again, and a peer that does not answer the move is still
+  reached through the old node. Local ends are relayed as before. New frames:
+  `take`, `state`, `moved` and `moved-ack`.
+- A node's channel ends stop resending once the node closes (Python, Go,
+  Haskell).
+- `lawspec.json` can bind an `async` adapter to native code returning the
+  target's task: a coroutine, `Promise`, `CompletableFuture`, `suspend fun`,
+  `LawSpecTask`, Rust future or `IO` action. The bridge stays asynchronous
+  and converts the result once the task completes.
+- A Rust unit with native bindings keeps its generated remote, session, actor
+  and mailbox code.
+- A match may leave out constructors that the value's index rules out: taking
+  the head of a `Vec (n + 1) a` needs no `VNil` branch. The compiler proves
+  each one impossible, and names a constructor the index allows.
+- `SizedStack n a` and `SizedQueue n a` are stacks and queues indexed by their
+  size: `prelude.sizedPop`, `sizedTop`, `sizedDequeue` and `sizedFront` take a
+  non-empty one by type.
+- A function may take several flow parameters (`A / A'`); a call passes a
+  state to each (`pushBoth x ~a ~b`), and a definition may update each.
+- Flow calls may sit in the branches of an `if` or a `match`. A state the
+  branches leave at different types cannot be used afterwards, and the error
+  names each branch's type.
+- `if c then a else b` in laws and checked definitions. Only the selected
+  branch is evaluated, and the totality audit checks each branch knowing which
+  way the condition went. `prelude.select` now means the same.
+- The totality audit bounds products: `x * x` for an `Int16` `x` fits `Int64`,
+  and factors with known bounds give their product's bounds.
+- Scenarios may close cycles between processes: LawSpec accepts channels that
+  form a cycle when no process can wait for another in a cycle, and names the
+  waits when one could. Scenarios with mailboxes or `or else` keep the tree
+  rule.
+- A unit can re-export names it imports with an `export` line after its
+  imports (`export Band, rates.rateOf`), so a package can offer one facade
+  unit. Re-exported names are the original declarations, not copies.
+- A build can hold several versions of one package. Each unit sees the version
+  its own package's range selects (the highest supplied version the range
+  accepts), and each version's units are compiled under names with the
+  version after the package name (`shop.tax.v2x0x0.api`), so their types and
+  native names stay apart. A mismatch between two versions' types names both
+  versions. A package supplied in one version is unchanged.
+
 ## 0.19.1
 
 - A handle's Kotlin type binding can give the native class's type

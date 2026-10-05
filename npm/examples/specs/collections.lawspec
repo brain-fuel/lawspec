@@ -124,3 +124,23 @@ law `the empty stack stays empty` is
     `for all` (x :: Int8) . prelude.isEmpty (prelude.pop (prelude.stackOf [x])) = true
   end
 end
+
+-- Size-indexed stacks and queues: a pop, top, dequeue or front needs a
+-- non-empty one (SizedStack (n + 1) a), so it can never fail.
+law `the top is what was pushed` is
+  definition is
+    `for all` (x :: Int8) (s :: SizedStack 2 Int8) . prelude.sizedTop (prelude.sizedPush x s) = x
+  end
+end
+
+law `popping undoes a push` is
+  definition is
+    `for all` (s :: SizedStack 3 Int8) . prelude.sizedStackItems (prelude.sizedPop (prelude.sizedPush 7 s)) = prelude.sizedStackItems s
+  end
+end
+
+law `a sized queue keeps arrival order` is
+  definition is
+    `for all` (x :: Int8) (y :: Int8) . prelude.sizedFront (prelude.sizedEnqueue y (prelude.sizedEnqueue x SizedQueueEmpty)) = x
+  end
+end

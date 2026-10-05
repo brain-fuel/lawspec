@@ -57,3 +57,37 @@ law `push agrees with the reference` is
     `for all` (x :: Int8) (s :: Stack n) . (pushed x ~s; pop ~s) = x
   end
 end
+
+-- A function may take several flow parameters: pushBoth takes two stacks and
+-- leaves each one higher. A call passes ~a ~b, rebinding each.
+definition pushBoth (x :: Int8) (a :: Stack n / Stack (n + 1)) (b :: Stack m / Stack (m + 1)) :: Unit is
+  ~a := Push x a; ~b := Push x b
+end
+
+law `both stacks get the value` is
+  definition is
+    `for all` (x :: Int8) (a :: Stack n) (b :: Stack m) . (pushBoth x ~a ~b; pop ~a; pop ~b) = x
+  end
+end
+
+-- A flow call may sit in a branch of an if or a match, when every branch
+-- leaves the stack at the same type: here each branch pushes once.
+law `a push in each branch` is
+  definition is
+    `for all` (x :: Int8) (s :: Stack n) .
+      ((if x > 0 then push x ~s else push 0 ~s); pop ~s) = (if x > 0 then x else 0)
+  end
+end
+
+law `a push chosen by a match` is
+  definition is
+    `for all` (m :: Maybe Int8) (s :: Stack n) .
+      ((match m with
+        | Just v -> push v ~s
+        | Nothing -> push 0 ~s
+        end); pop ~s) = (match m with
+                          | Just v -> v
+                          | Nothing -> prelude.Int8 0
+                          end)
+  end
+end
