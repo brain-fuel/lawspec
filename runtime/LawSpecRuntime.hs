@@ -2537,6 +2537,118 @@ scenarioGone channel side = case channelKind channel of
       else (if side == 0 then (True, snd flags) else (fst flags, True), True)))
     if first then endpointAbandon (ends !! side) else pure ()
 
+-- | A scenario's mailbox: any process sends, one receives. expected is how
+-- many sends the scenario makes; a process that ends gives up the sends it
+-- did not make, and a receive with nothing left to come is ScenarioGone
+-- instead of waiting. Over a network, messages go from a sender node to the
+-- receiver's node, each send waiting until it is delivered; the senders'
+-- clocks travel beside the network, in send order.
+data ScenarioMailbox = ScenarioMailbox
+  { boxExpected :: Int
+  -- | (received, abandoned)
+  , boxCounts :: MVar (Int, Int)
+  , boxItems :: MVar [(ScenarioItem, VectorClock)]
+  , boxSignal :: MVar ()
+  , boxNet :: Maybe ([Node], Mailbox Scalar, RemoteMailbox, IORef [(String, ScenarioChannel)])
+  }
+
+newScenarioMailbox :: Int -> IO ScenarioMailbox
+newScenarioMailbox expected = ScenarioMailbox expected <$> newMVar (0, 0) <*> newMVar [] <*> newEmptyMVar <*> pure Nothing
+
+newNetScenarioMailbox :: MemoryNetwork -> IORef [(String, ScenarioChannel)] -> DataTable -> Descriptor -> String -> Int -> IO ScenarioMailbox
+newNetScenarioMailbox network registry table d0 name expected = do
+  let d = if d0 == DescList [DescAtom "end"] then DescList [DescAtom "text"] else d0
+  owner <- newNode (memoryTransport network (name ++ "-owner"))
+  senders <- newNode (memoryTransport network (name ++ "-senders"))
+  inbox <- nodeMailbox owner name table d
+  let remote = remoteMailboxWithin senders (nodeAddress owner ++ "/" ++ name) table d 5
+  box <- newScenarioMailbox expected
+  pure box { boxNet = Just ([owner, senders], inbox, remote, registry) }
+
+closeScenarioMailbox :: ScenarioMailbox -> IO ()
+closeScenarioMailbox box = forM_ (boxNet box) (\(nodes, _, _, _) -> mapM_ closeNode nodes)
+
+mailboxSend :: ScenarioMailbox -> ScenarioItem -> VectorClock -> IO ()
+mailboxSend box item clock = case boxNet box of
+  Nothing -> do
+    modifyMVar (boxItems box) (\items -> pure (items ++ [(item, clock)], ()))
+    () <$ tryPutMVar (boxSignal box) ()
+  Just (_, _, remote, _) -> do
+    modifyMVar (boxItems box) (\items -> pure (items ++ [(ScenarioGone, clock)], ()))
+    sendRemote remote (case item of
+      ScenarioEnd (c, s) -> textScalar (channelName c ++ "#" ++ show s)
+      ScenarioValue v -> v
+      ScenarioGone -> textScalar "")
+    () <$ tryPutMVar (boxSignal box) ()
+
+mailboxGiveUp :: ScenarioMailbox -> Int -> IO ()
+mailboxGiveUp box count = do
+  modifyMVar (boxCounts box) (\(r, a) -> pure ((r, a + count), ()))
+  () <$ tryPutMVar (boxSignal box) ()
+
+-- | The next message with its sender's clock, or ScenarioGone; Nothing after
+-- the given microseconds.
+mailboxReceive :: ScenarioMailbox -> Int -> IO (Maybe (ScenarioItem, VectorClock))
+mailboxReceive box micros = do
+  start <- getMonotonicTimeNSec
+  let deadline = start + fromIntegral micros * 1000
+      loop = do
+        (received, abandoned) <- readMVar (boxCounts box)
+        items <- readMVar (boxItems box)
+        case boxNet box of
+          Nothing -> case items of
+            first : _ -> do
+              modifyMVar (boxItems box) (\is -> pure (drop 1 is, ()))
+              modifyMVar (boxCounts box) (\(r, a) -> pure ((r + 1, a), ()))
+              pure (Just first)
+            []
+              | received + abandoned >= boxExpected box -> pure (Just (ScenarioGone, []))
+              | otherwise -> wait
+          Just (_, inbox, _, registry)
+            | received + abandoned >= boxExpected box && null items -> pure (Just (ScenarioGone, []))
+            | otherwise -> do
+                got <- receiveMailboxWithin 20000 inbox
+                case got of
+                  Nothing -> again
+                  Just value -> do
+                    modifyMVar (boxCounts box) (\(r, a) -> pure ((r + 1, a), ()))
+                    clock <- modifyMVar (boxItems box) (\is -> pure (case is of
+                      (_, c) : rest -> (rest, c)
+                      [] -> ([], [])))
+                    item <- case value of
+                      SSequence _ cps -> do
+                        let text = map chr cps
+                            (sideRev, rest) = break (== '#') (reverse text)
+                            owner = reverse (drop 1 rest)
+                        known <- lookup owner <$> readIORef registry
+                        pure (case known of
+                          Just c | not (null rest), all isDigit sideRev, not (null sideRev) -> ScenarioEnd (c, read (reverse sideRev))
+                          _ -> ScenarioValue value)
+                      _ -> pure (ScenarioValue value)
+                    pure (Just (item, clock))
+      wait = do
+        now <- getMonotonicTimeNSec
+        if now >= deadline then pure Nothing else do
+          _ <- timeout (max 1 (min 20000 (fromIntegral ((deadline - now) `div` 1000)))) (takeMVar (boxSignal box))
+          loop
+      again = do
+        now <- getMonotonicTimeNSec
+        if now >= deadline then pure Nothing else loop
+  loop
+
+-- | How many times these acts (not nested pars) send to name.
+scenarioSends :: [Descriptor] -> String -> Int
+scenarioSends acts name = length [() | DescList [DescAtom "send", c, _] <- acts, descriptorName c == name]
+
+-- | How many sends to name the whole program makes.
+allSends :: [Descriptor] -> String -> Int
+allSends acts name = sum (map one acts)
+  where
+    one act = case act of
+      DescList [DescAtom "send", c, _] | descriptorName c == name -> 1
+      DescList (DescAtom "par" : branches) -> sum [allSends (branchActs b) name | b <- branches]
+      _ -> 0
+
 -- | The names an act list sends, receives or sends away, with nested pars.
 actsChannels :: [Descriptor] -> [String]
 actsChannels = concatMap names
@@ -2628,15 +2740,24 @@ runScenarioWith crash network model spec shake = do
       wireTable = [(descriptorName n, f) | f@(DescList (DescAtom "data" : n : _)) <- wire]
       wireSteps = [ (descriptorName c, [(descriptorName k == "send", d) | DescList [k, d] <- steps])
                   | DescList (DescAtom "channel" : c : steps) <- wire ]
-  channels <- if network && not (null [() | DescList (DescAtom "wire" : _) <- forms])
+  let boxNames = concat (take 1 [map descriptorName rest | DescList (DescAtom "mailboxes" : rest) <- forms])
+      wireBoxes = [(descriptorName m, d) | DescList [DescAtom "mailbox", m, d] <- wire]
+  (channels, mailboxes) <- if network && not (null [() | DescList (DescAtom "wire" : _) <- forms])
     then do
       -- Loss, duplication and delay (which reorders); the channels'
       -- numbered, acknowledged frames must hide them all.
       net <- newMemoryNetwork (shake `xor` 0x7F4A7C159E3779B9) 0.1 0.1 0.002
       registry <- newIORef []
-      forM (zip [0 ..] names) $ \(i, n) ->
+      cs <- forM (zip [0 ..] names) $ \(i, n) ->
         (,) n <$> newNetScenarioChannel net registry wireTable (maybe [] id (lookup n wireSteps)) i n
-    else forM (zip [0 ..] names) $ \(i, n) -> (,) n <$> newScenarioChannel i n
+      bs <- forM boxNames $ \m -> (,) m <$> case lookup m wireBoxes of
+        Just d -> newNetScenarioMailbox net registry wireTable d m (allSends body m)
+        Nothing -> newScenarioMailbox (allSends body m)
+      pure (cs, bs)
+    else do
+      cs <- forM (zip [0 ..] names) $ \(i, n) -> (,) n <$> newScenarioChannel i n
+      bs <- forM boxNames $ \m -> (,) m <$> newScenarioMailbox (allSends body m)
+      pure (cs, bs)
   symbols <- newSymbolContext
   let startArgs = map (minimalValue (planTable plan)) (planStartArguments plan)
   outcome <- try $ do
@@ -2672,12 +2793,18 @@ runScenarioWith crash network model spec shake = do
           modifyIORef' clockRef (tickClock me . mergeClock sent)
         process acts env0 ends0 source identity clockRef = do
           held <- newIORef ends0
+          sentRef <- newIORef ([] :: [(String, Int)])
           let me = maybe "root" show identity
-          done <- (steps acts env0 ends0 source identity held clockRef me
+              -- Sends this process will never make.
+              giveUp = forM_ mailboxes $ \(m, box) -> do
+                made <- maybe 0 id . lookup m <$> readIORef sentRef
+                let missing = scenarioSends acts m - made
+                if missing > 0 then mailboxGiveUp box missing else pure ()
+          done <- (steps acts env0 ends0 source identity held clockRef me sentRef
             `catch` \(e :: SomeException) -> failWith ("raised error: " ++ exceptionText e))
-            `finally` (readIORef held >>= mapM_ (\(_, (c, s)) -> scenarioGone c s))
+            `finally` (readIORef held >>= mapM_ (\(_, (c, s)) -> scenarioGone c s)) `finally` giveUp
           pure done
-        steps acts env0 ends0 source identity held clockRef me = do
+        steps acts env0 ends0 source identity held clockRef me sentRef = do
           own <- newSymbolContext
           let crashesAt index = case (victim, identity) of
                 (Just v, Just i) -> v == (i, index)
@@ -2718,6 +2845,37 @@ runScenarioWith crash network model spec shake = do
                               DescAtom "_" -> env
                               _ -> bind (descriptorName bound) result env
                         go (index + 1) rest env' ends
+                  DescList [DescAtom "send", c, operand] | Just box <- lookup (descriptorName c) mailboxes -> do
+                    let (item, ends') = case operand of
+                          DescList [DescAtom "var", x] | Just end <- lookup (descriptorName x) ends ->
+                            (ScenarioEnd end, filter ((/= descriptorName x) . fst) ends)
+                          _ -> (ScenarioValue (valueOf env operand), ends)
+                    perturb source
+                    writeIORef held ends'
+                    modifyIORef' clockRef (tickClock me)
+                    sentClock <- readIORef clockRef
+                    outcome <- try (mailboxSend box item sentClock)
+                    case outcome of
+                      Left (e :: SomeException) -> failWith ("a send to mailbox " ++ descriptorName c ++ " failed: " ++ exceptionText e)
+                      Right () -> do
+                        modifyIORef' sentRef (\counts -> (descriptorName c, maybe 1 (+ 1) (lookup (descriptorName c) counts))
+                          : filter ((/= descriptorName c) . fst) counts)
+                        go (index + 1) rest env ends'
+                  DescList (DescAtom kind : c : x : handler) | kind == "receive" || kind == "receiveor"
+                                                            , Just box <- lookup (descriptorName c) mailboxes -> do
+                    got <- mailboxReceive box 5000000
+                    case got of
+                      Nothing -> failWith ("a receive on mailbox " ++ descriptorName c
+                        ++ " waited too long: the processes are blocked")
+                      Just (ScenarioGone, _) -> case handler of
+                        [DescList (_ : handlerActs)] | kind == "receiveor" ->
+                          steps handlerActs env ends source Nothing held clockRef me sentRef
+                        _ -> pure False
+                      Just (item, carried) -> do
+                        modifyIORef' clockRef (tickClock me . mergeClock carried)
+                        case item of
+                          ScenarioEnd end -> go (index + 1) rest env (bind (descriptorName x) end ends)
+                          ScenarioValue value -> go (index + 1) rest (bind (descriptorName x) value env) ends
                   DescList [DescAtom "send", c, operand] -> do
                     let (channel, side) = endOf ends c
                         (item, ends') = case operand of
@@ -2743,7 +2901,7 @@ runScenarioWith crash network model spec shake = do
                           [DescList (_ : handlerActs)] | kind == "receiveor" -> do
                             let ends' = filter ((/= descriptorName c) . fst) ends
                             writeIORef held ends'
-                            steps handlerActs env ends' source Nothing held clockRef me
+                            steps handlerActs env ends' source Nothing held clockRef me sentRef
                           _ -> pure False
                       Just (ScenarioEnd end) -> do
                         unstamp channel side clockRef me
@@ -2797,7 +2955,8 @@ runScenarioWith crash network model spec shake = do
           go (0 :: Int) acts env0 ends0
     root <- newIORef shake
     rootClock <- newIORef []
-    finished <- process body [] [] root Nothing rootClock `finally` mapM_ (closeScenarioChannel . snd) channels
+    finished <- process body [] [] root Nothing rootClock
+      `finally` mapM_ (closeScenarioChannel . snd) channels `finally` mapM_ (closeScenarioMailbox . snd) mailboxes
     found <- readIORef failures
     case found of
       failure : _ -> pure (Just (failure ++ (if victim /= Nothing then " (with a process crashed)" else "")))
@@ -4041,25 +4200,35 @@ decodeAll table ds buf pos0 = go ds pos0 []
       (v, p') <- wireGet table d buf p
       go rest p' (v : acc)
 
--- | A local mailbox that other nodes send to at <address>/name (best effort).
+-- | A local mailbox that other nodes send to at <address>/name. Each
+-- message is acknowledged once it is in the mailbox.
 nodeMailbox :: Node -> String -> DataTable -> Descriptor -> IO (Mailbox Scalar)
 nodeMailbox node name table d = do
   box <- newMailbox
-  _ <- register node name (Entity (\_ kind _ _ payload ->
-    if kind == "mail" then either (const (pure ())) (\v -> sendMailbox box v `catch` \ActorStopped -> pure ()) (wireDecode table d payload)
-    else pure ()))
+  _ <- register node name (Entity (\_ kind source ident payload ->
+    if kind /= "mail" then pure () else do
+      outcome <- case wireDecode table d payload of
+        Left e -> pure (3, "not a message of this mailbox: " ++ e)
+        Right v -> (sendMailbox box v >> pure (0, "")) `catch` \ActorStopped -> pure (2, "the mailbox is closed")
+      if ident /= 0 then replyTo node source ident (fst outcome) (utf8Of (map ord (snd outcome))) else pure ()))
   pure box
 
--- | Sends to a mailbox on another node; never waits.
-data RemoteMailbox = RemoteMailbox Node String DataTable Descriptor
+-- | Sends to a mailbox on another node. A send waits until the mailbox has
+-- the message (resending a lost one; the mailbox takes it once), and throws
+-- Unreachable after the timeout (seconds), or ActorStopped if it is closed.
+data RemoteMailbox = RemoteMailbox Node String DataTable Descriptor Double
 
 remoteMailbox :: Node -> String -> DataTable -> Descriptor -> RemoteMailbox
-remoteMailbox = RemoteMailbox
+remoteMailbox node address table d = RemoteMailbox node address table d 5
+
+remoteMailboxWithin :: Node -> String -> DataTable -> Descriptor -> Double -> RemoteMailbox
+remoteMailboxWithin = RemoteMailbox
 
 sendRemote :: RemoteMailbox -> Scalar -> IO ()
-sendRemote (RemoteMailbox node address table d) v = do
+sendRemote (RemoteMailbox node address table d seconds) v = do
   payload <- orWire (wireEncode table d v)
-  sendFrame node address "mail" payload 0
+  answer <- request node address "mail" payload seconds
+  if fst answer == 0 then pure () else () <$ replyValue table (DescList [DescAtom "unit"]) answer
 
 -- | A message an actor serves to other nodes: its name, argument and reply
 -- descriptors, and the handler on logical values (state first).
@@ -4282,30 +4451,65 @@ endpointAbandon endpoint = do
   seqNo <- modifyMVar (endpointState endpoint) (\st -> pure (st { esOut = esOut st + 1 }, esOut st))
   transmit endpoint seqNo (B.singleton 1)
 
+-- | How one step's native value crosses the network: to its logical value
+-- and back, given the network end it travels on. A step that sends a channel
+-- end relays it (endConversion); any other converts with its codec.
+type Conversion = (NetEndpoint -> Dynamic -> IO Scalar, NetEndpoint -> Scalar -> IO Dynamic)
+
 -- | A channel side over a network end, converting each step's native value
 -- (in order) with the given conversions, for typed sessions.
-netChannelSide :: NetEndpoint -> [(Dynamic -> Either String Scalar, Scalar -> Either String Dynamic)] -> IO ChannelSide
+netChannelSide :: NetEndpoint -> [Conversion] -> IO ChannelSide
 netChannelSide endpoint conversions = do
   step <- newIORef (0 :: Int)
-  let conversion = do
+  let conversionAt = do
         k <- atomicModifyIORef' step (\i -> (i + 1, i))
         if k < length conversions then pure (conversions !! k) else throwIO (ErrorCall "this channel's protocol has ended")
   pure ChannelSide
     { sideSend = \dynamic -> do
-        (toLogical, _) <- conversion
-        either (throwIO . ErrorCall) (endpointSend endpoint) (toLogical dynamic)
+        (toLogical, _) <- conversionAt
+        toLogical endpoint dynamic >>= endpointSend endpoint
     , sideReceive = do
-        (_, toNative') <- conversion
+        (_, toNative') <- conversionAt
         value <- endpointReceiveValue endpoint Nothing
-        either (throwIO . ErrorCall) pure (toNative' value)
+        toNative' endpoint value
     , sideAbandon = endpointAbandon endpoint
     }
 
--- | A step's conversions for netChannelSide, from its codec's encode and
+-- | A step's conversion for netChannelSide, from its codec's encode and
 -- decode.
-conversion :: forall a. Typeable a => (a -> Either String Scalar) -> (Scalar -> Either String a)
-           -> (Dynamic -> Either String Scalar, Scalar -> Either String Dynamic)
+conversion :: forall a. Typeable a => (a -> Either String Scalar) -> (Scalar -> Either String a) -> Conversion
 conversion toLogical fromLogical =
-  ( \dynamic -> maybe (Left ("a session sent " ++ show (dynTypeRep dynamic) ++ " where it expected "
-      ++ show (typeRep (Proxy :: Proxy a)))) toLogical (fromDynamic dynamic)
-  , fmap toDyn . fromLogical )
+  ( \_ dynamic -> either (throwIO . ErrorCall) pure (maybe (Left ("a session sent " ++ show (dynTypeRep dynamic) ++ " where it expected "
+      ++ show (typeRep (Proxy :: Proxy a)))) toLogical (fromDynamic dynamic))
+  , \_ value -> either (throwIO . ErrorCall) (pure . toDyn) (fromLogical value) )
+
+-- | A step that sends another protocol's first end between nodes: the end
+-- stays on the sending node, and a relay there (named relay-<n>) passes each
+-- of its steps between it and the receiver, which dials the relay's
+-- address; a failure on either side gives up the other. wire is that
+-- protocol's steps and conversions, from its first end; unwrap and wrap
+-- convert between its start type and a SessionEnd.
+endConversion :: forall end. Typeable end => (end -> SessionEnd) -> (SessionEnd -> end)
+              -> ([(Bool, Descriptor)], [Conversion]) -> Conversion
+endConversion unwrap wrap (steps, conversions) = (sending, receiving)
+  where
+    sending endpoint dynamic = case fromDynamic dynamic of
+      Nothing -> throwIO (ErrorCall ("a session sent " ++ show (dynTypeRep dynamic) ++ " where it expected "
+        ++ show (typeRep (Proxy :: Proxy end))))
+      Just end -> do
+        side <- useEnd (unwrap end)
+        let node = endpointNode endpoint
+        n <- nextId node
+        relay <- listenOn node ("relay-" ++ show n) [(not s, d) | (s, d) <- steps] (endpointTable endpoint)
+        relayed <- netChannelSide relay conversions
+        let pump = forM_ steps (\(sends, _) ->
+              if sends then sideReceive relayed >>= sideSend side else sideReceive side >>= sideSend relayed)
+            quietly action = action `catch` \(_ :: SomeException) -> pure ()
+        _ <- forkIO (pump `catch` \(_ :: SomeException) -> quietly (sideAbandon side) >> quietly (sideAbandon relayed))
+        textScalar <$> readIORef (endpointAddress relay)
+    receiving endpoint value = case value of
+      SSequence _ cps -> do
+        remote <- dialTo (endpointNode endpoint) (map chr cps) steps (endpointTable endpoint)
+        side <- netChannelSide remote conversions
+        toDyn . wrap <$> sessionEnd side
+      _ -> throwIO (ErrorCall "a channel end's address is not text")

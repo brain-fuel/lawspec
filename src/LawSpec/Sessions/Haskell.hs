@@ -9,7 +9,7 @@
 module LawSpec.Sessions.Haskell (emit) where
 
 import Data.Char (isAlphaNum, toUpper)
-import Data.List (intercalate, isPrefixOf, nub, sort)
+import Data.List (intercalate, isPrefixOf, isSuffixOf, nub, sort)
 import qualified LawSpec.Core as C
 import LawSpec.Common (Artifact(..))
 import LawSpec.HaskellData (haskellNativeTypeWithParameters, haskellCodecDoc)
@@ -29,18 +29,7 @@ data Step = Step { stepNumber :: Int, stepSends :: Bool, stepMessage :: C.Type, 
 
 unitModule :: Int -> [C.DataDeclaration] -> [C.Unit] -> C.Unit -> Either String Artifact
 unitModule bits datas units unit = do
-  -- A protocol whose steps have wire descriptors and codecs (and delegate
-  -- no ends) can also run between nodes: listen and dial.
-  let wired (table, acc) s = case foldM step (table, []) (C.sessionSteps s) of
-        Right (table', ds) | not (any (\(_, t) -> delegated units t /= Nothing) (C.sessionSteps s)) -> (table', acc ++ [(C.sessionName s, ds)])
-        _ -> (table, acc)
-      step (t, ds) (sends, ty) = do
-        (d, t') <- describe bits datas t ty
-        c <- D.render (D.Pretty 10000) <$> haskellCodecDoc datas "_lawspecSchema" "_lawspecBits" ty
-        native <- haskellNativeTypeWithParameters datas [] [] ty
-        pure (t', ds ++ [(sends, d, "(" ++ c ++ " :: Codec.Codec " ++ parenthesize native ++ ")")])
-      (types, wires) = foldl wired ([], []) sessions
-      helpers = if null wires then "" else unlines
+  let helpers = if null wires then "" else unlines
         [ ""
         , "-- Values crossing the network are logical; ends carry native ones,"
         , "-- converted with the data types' codecs."
@@ -82,10 +71,32 @@ unitModule bits datas units unit = do
     unitName = C.idText (C.unitId unit)
     moduleName = sessionModule unitName
     sessions = C.unitSessions unit
+    -- A protocol can also run between nodes (listen and dial) when every
+    -- step's type has a wire descriptor and a codec; a step sending another
+    -- protocol's end (of this unit) relays it, so that protocol must run
+    -- between nodes too.
+    wired (table, acc) s = case foldM step (table, []) (C.sessionSteps s) of
+      Right (table', ds) -> (table', acc ++ [(C.sessionName s, ds)])
+      _ -> (table, acc)
+    step (t, ds) (sends, ty) = case delegated units ty of
+      Just q | q `elem` sessions ->
+        let start = maybe (doneName First q) stepTypeName (lookupStep 1 (endSteps First q))
+        in Right (t, ds ++ [(sends, "(end)", "LS.endConversion (\\(" ++ start ++ " end) -> end) " ++ start ++ " _lawspecWire" ++ C.sessionName q)])
+      Just _ -> Left "a protocol of another unit"
+      Nothing -> do
+        (d, t') <- describe bits datas t ty
+        c <- D.render (D.Pretty 10000) <$> haskellCodecDoc datas "_lawspecSchema" "_lawspecBits" ty
+        native <- haskellNativeTypeWithParameters datas [] [] ty
+        let codec = "(" ++ c ++ " :: Codec.Codec " ++ parenthesize native ++ ")"
+        pure (t', ds ++ [(sends, d, "LS.conversion (Codec.encode " ++ codec ++ ") (Codec.decode " ++ codec ++ ")")])
+    (types, described) = foldl wired ([], []) sessions
+    settle ws = let kept = [w | w@(_, steps) <- ws, all (\(_, d, c) -> d /= "(end)" || any (\(n, _) -> ("_lawspecWire" ++ n) `isSuffixOf` c) ws) steps]
+                in if length kept == length ws then ws else settle kept
+    wires = settle described
     -- Sections of exports, each under a Haddock heading.
     sections =
       [ (C.sessionName s, endTypes First s ++ endTypes Second s ++ ["open" ++ C.sessionName s] ++
-          concat [["listen" ++ C.sessionName s, "dial" ++ C.sessionName s] | Just _ <- [lookup (C.sessionName s) wiresOf]])
+          concat [["listen" ++ C.sessionName s, "dial" ++ C.sessionName s] | Just _ <- [lookup (C.sessionName s) wires]])
       | s <- sessions ]
       ++ [ ("Using ends", ["LS.Send(..)", "LS.Receive(..)", "LS.tryReceive", "LS.Abandon(..)", "LS.PeerFailed(..)"])
          , ("Processes", ["LS.Process", "LS.spawn", "LS.join", "LS.par"]) ]
@@ -95,8 +106,6 @@ unitModule bits datas units unit = do
           | (j, export) <- zip [0 :: Int ..] names ]
       | (i, (heading, names)) <- zip [0 :: Int ..] sections ]
     endTypes end s = map stepTypeName (endSteps end s) ++ [doneName end s]
-    wiresOf = [(C.sessionName s, ()) | s <- sessions, not (any (\(_, t) -> delegated units t /= Nothing) (C.sessionSteps s))
-              , either (const False) (const True) (mapM (\(_, t) -> describe bits datas [] t >> haskellCodecDoc datas "s" "b" t) (C.sessionSteps s))]
     -- Qualifiers the native type mapping uses, and their imports.
     imports =
       [ ("P.", "qualified Prelude as P"), ("I.", "qualified Data.Int as I")
@@ -123,22 +132,29 @@ protocolSource datas units unit wire session = do
       network = case wire of
         Nothing -> []
         Just steps ->
-          let descriptors flipped = "[" ++ intercalate ", " ["(" ++ (if s /= flipped then "P.True" else "P.False") ++ ", _lawspecDescriptor " ++ show d ++ ")" | (s, d, _) <- steps] ++ "]"
-              conversions = "[" ++ intercalate ", " ["LS.conversion (Codec.encode (" ++ c ++ ")) (Codec.decode (" ++ c ++ "))" | (_, _, c) <- steps] ++ "]"
+          let wire = "_lawspecWire" ++ name
           in [ ""
+             , "-- " ++ name ++ "'s steps between nodes, from its first end: each step's"
+             , "-- descriptor and how its value crosses (a channel end goes by a relay)."
+             , wire ++ " :: ([(P.Bool, LS.Descriptor)], [LS.Conversion])"
+             , wire ++ " ="
+             , "  ( [" ++ intercalate ", " ["(" ++ (if s then "P.True" else "P.False") ++ ", _lawspecDescriptor " ++ show d ++ ")" | (s, d, _) <- steps] ++ "]"
+             , "  , [" ++ intercalate ", " [c | (_, _, c) <- steps] ++ "] )"
+             , ""
              , "-- | The first end of a " ++ name ++ " channel named name on a node, which another"
-             , "-- node dials at <node address>/name."
+             , "-- node dials at <node address>/name. An end sent over it to another node is"
+             , "-- relayed by this node."
              , "listen" ++ name ++ " :: LS.Node -> P.String -> P.IO " ++ start First
              , "listen" ++ name ++ " node channel = do"
-             , "  endpoint <- LS.listenOn node channel " ++ descriptors False ++ " _lawspecTypes"
-             , "  side <- LS.netChannelSide endpoint " ++ conversions
+             , "  endpoint <- LS.listenOn node channel (P.fst " ++ wire ++ ") _lawspecTypes"
+             , "  side <- LS.netChannelSide endpoint (P.snd " ++ wire ++ ")"
              , "  " ++ start First ++ " P.<$> LS.sessionEnd side"
              , ""
              , "-- | The second end of the " ++ name ++ " channel listening at an address on another node."
              , "dial" ++ name ++ " :: LS.Node -> P.String -> P.IO " ++ start Second
              , "dial" ++ name ++ " node address = do"
-             , "  endpoint <- LS.dialTo node address " ++ descriptors True ++ " _lawspecTypes"
-             , "  side <- LS.netChannelSide endpoint " ++ conversions
+             , "  endpoint <- LS.dialTo node address [(P.not s, d) | (s, d) <- P.fst " ++ wire ++ "] _lawspecTypes"
+             , "  side <- LS.netChannelSide endpoint (P.snd " ++ wire ++ ")"
              , "  " ++ start Second ++ " P.<$> LS.sessionEnd side" ]
       body = protocolComment ++ concatMap snd ends ++ open ++ network
   pure (concatMap qualifiersOf messages ++ qualifiersOf (unlines network), unlines body)
