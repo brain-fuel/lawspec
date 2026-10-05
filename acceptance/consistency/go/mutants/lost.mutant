@@ -1,0 +1,37 @@
+@@ example/consistency/adapter.go
+<<<<<<<
+	"sync"
+)
+=======
+	"sync"
+	"time"
+)
+>>>>>>>
+<<<<<<<
+func Hit(value0 Views) int64 {
+	lock.Lock()
+	defer lock.Unlock()
+	mine := replicas[value0.Id]
+	me := caller()
+	mine[me]++
+	return mine[me]
+}
+=======
+func Hit(value0 Views) int64 {
+	lock.Lock()
+	mine := replicas[value0.Id]
+	var seen int64
+	for _, n := range mine {
+		seen += n
+	}
+	lock.Unlock()
+	time.Sleep(time.Millisecond)
+	lock.Lock()
+	defer lock.Unlock()
+	for k := range mine {
+		delete(mine, k)
+	}
+	mine["0"] = seen + 1
+	return seen + 1
+}
+>>>>>>>

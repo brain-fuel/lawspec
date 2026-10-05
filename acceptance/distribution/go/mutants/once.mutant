@@ -1,0 +1,9 @@
+@@ example/distribution/adapter.go
+<<<<<<<
+	if _, err := tally.Add(value0); err != nil {
+		panic(err)
+	}
+	total, err := tally.Add(value0)
+=======
+	total, err := tally.Add(value0)
+>>>>>>>
