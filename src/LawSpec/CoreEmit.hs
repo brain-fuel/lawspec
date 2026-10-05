@@ -475,5 +475,6 @@ storedLength (Stored _ c _ _ canonical) = T.length c + maybe 0 T.length canonica
 remoteCalls :: String -> Plan -> [(C.Id, String)]
 remoteCalls target plan = case target of
   "python" -> PythonDefinitions.definitionCalls units
+  t | t `elem` ["java", "kotlin"] -> JavaDefinitions.definitionCalls units
   _ -> []
   where units = map plannedUnit (plannedUnits plan)

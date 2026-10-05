@@ -1,0 +1,27 @@
+@@ src/main/java/example/Consistency.java
+<<<<<<<
+  public static synchronized long hit(Views value0) {
+    var mine = replicas.get(value0.id());
+    long me = Thread.currentThread().threadId();
+    return mine.merge(me, 1L, Long::sum);
+  }
+=======
+  public static long hit(Views value0) {
+    Map<Long, Long> mine;
+    long seen = 0;
+    synchronized (Consistency.class) {
+      mine = replicas.get(value0.id());
+      for (long n : mine.values()) seen += n;
+    }
+    try {
+      Thread.sleep(1);
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+    }
+    synchronized (Consistency.class) {
+      mine.clear();
+      mine.put(0L, seen + 1);
+      return seen + 1;
+    }
+  }
+>>>>>>>

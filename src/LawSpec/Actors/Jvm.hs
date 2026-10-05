@@ -9,8 +9,13 @@
 -- stop() refuses further messages.
 module LawSpec.Actors.Jvm (emit) where
 
+import Control.Monad (foldM)
 import Data.Char (toUpper)
-import Data.List (intercalate, stripPrefix)
+import Data.List (intercalate, isInfixOf, stripPrefix)
+import qualified LawSpec.Code.Doc as D
+import LawSpec.JavaData (javaCodecDocWithContext)
+import LawSpec.KotlinData (kotlinCodecDocWithContext)
+import LawSpec.MachineSpec (describe)
 import qualified LawSpec.Core as C
 import LawSpec.Common (Artifact(..))
 import LawSpec.Backend (adapterName, unitName)
@@ -20,7 +25,7 @@ import LawSpec.Actors.Types (Actor(..), Handler(..), Supervision(..), Child(..))
 import LawSpec.Core.Machine (SupervisionStrategy(..), Lifetime(..))
 
 emit :: String -> Bool -> Int -> [C.DataDeclaration] -> [Actor] -> [Supervision] -> Either String [Artifact]
-emit target _ _ datas actors supervisions = (++) <$> mapM artifact actors <*> mapM supervisorArtifact supervisions
+emit target _ bits datas actors supervisions = (++) <$> mapM artifact actors <*> mapM supervisorArtifact supervisions
   where
     kotlin = target == "kotlin"
     directory = if kotlin then "src/main/kotlin/lawspec/actors/" else "src/main/java/lawspec/actors/"
@@ -28,7 +33,7 @@ emit target _ _ datas actors supervisions = (++) <$> mapM artifact actors <*> ma
     artifact a = do
       identifier (actorClass a)
       mapM_ (reserved a) (actorHandlers a)
-      source <- (if kotlin then kotlinSource else javaSource) datas a
+      source <- (if kotlin then kotlinSource else javaSource) datas (either (const Nothing) Just (actorWire bits datas a)) a
       pure (Artifact (directory ++ actorClass a ++ extension) source "generated" "source")
     supervisorArtifact s = do
       identifier (supervisionClass s)
@@ -36,7 +41,7 @@ emit target _ _ datas actors supervisions = (++) <$> mapM artifact actors <*> ma
       pure (Artifact (directory ++ supervisionClass s ++ extension)
         ((if kotlin then kotlinSupervisor else javaSupervisor) s) "generated" "source")
     reserved a h
-      | handlerName h `elem` ["start", "stop", "crash", "monitor", "link"] || ("tell" ++ capital (handlerName h)) `elem` map handlerName (actorHandlers a) =
+      | handlerName h `elem` ["start", "stop", "crash", "monitor", "link", "serve", "connect"] || ("tell" ++ capital (handlerName h)) `elem` map handlerName (actorHandlers a) =
           Left ("actor " ++ actorName a ++ ": handler " ++ handlerName h ++ " clashes with a method of " ++ actorClass a ++ "; rename it")
       | otherwise = pure ()
 
@@ -52,12 +57,31 @@ adapterCall a d args = adapterClass (actorUnit a) ++ "." ++ adapterName (actorUn
 isUnit :: C.Type -> Bool
 isUnit t = t == C.Constructor "Unit" []
 
-javaSource :: [C.DataDeclaration] -> Actor -> Either String String
-javaSource datas a = do
+-- An actor's messages for the network: the data types its descriptors use,
+-- and each handler's argument and reply descriptors. An actor whose types
+-- have no descriptor stays local.
+data Wire = Wire { wireTypes :: String, wireHandlers :: [(Handler, [String], String)], wireBits :: Int }
+
+actorWire :: Int -> [C.DataDeclaration] -> Actor -> Either String Wire
+actorWire bits datas a = do
+  (table, hs) <- foldM handler ([], []) (actorHandlers a)
+  pure (Wire (unwords (map snd (reverse table))) (reverse hs) bits)
+  where
+    handler (table, acc) h = do
+      (args, table') <- foldM (\(xs, t) (_, ty) -> (\(x, t') -> (xs ++ [x], t')) <$> describe bits datas t ty) ([], table) (handlerArguments h)
+      (reply, table'') <- describe bits datas table' (maybe (C.Constructor "Unit" []) id (handlerReply h))
+      pure (table'', (h, args, reply) : acc)
+
+replyOf :: Handler -> C.Type
+replyOf h = maybe (C.Constructor "Unit" []) id (handlerReply h)
+
+javaSource :: [C.DataDeclaration] -> Maybe Wire -> Actor -> Either String String
+javaSource datas wire a = do
   own <- boxed (actorState a)
   let startArgs = [(p, t) | (p, t) <- actorStartArguments a]
   startParams <- sequence [(\n -> n ++ " " ++ p) <$> native t | (p, t) <- startArgs, not (isUnit t)]
   methods <- mapM (handler own) (actorHandlers a)
+  remote <- maybe (pure []) (javaRemote own) wire
   let startValues = [if isUnit t then "LawSpecRuntime.absent(\"Unit\")" else p | (p, t) <- startArgs]
       initial = awaited (actorStart a) (adapterCall a (actorStart a) startValues)
       restart = case actorRestart a of
@@ -119,9 +143,80 @@ javaSource datas a = do
     , "  public void stop() {"
     , "    actor.stop();"
     , "  }"
-    , "}" ]
+    ] ++ remote ++ [ "}" ]
   where
     cls = actorClass a
+    codec bits ty = D.render (D.Pretty 1000) <$> javaCodecDocWithContext (D.text "symbols") datas bits ty
+    javaRemote own w = do
+      served <- mapM (\(h, ds, r) -> do
+        argCodecs <- mapM (codec (wireBits w) . snd) (handlerArguments h)
+        replyCodec <- codec (wireBits w) (replyOf h)
+        let call = awaited (handlerDeclaration h) (adapterCall a (handlerDeclaration h)
+              ("s" : [c ++ ".decode(args.get(" ++ show i ++ "))" | (i, c) <- zip [0 :: Int ..] argCodecs]))
+            body = case handlerReply h of
+              Just _ -> [ "          var next = " ++ call ++ ";"
+                        , "          return new LawSpecRuntime.Next<LawSpecRuntime.Value, " ++ own ++ ">(" ++ replyCodec ++ ".encode(next.first()), next.second());" ]
+              Nothing -> [ "          return new LawSpecRuntime.Next<LawSpecRuntime.Value, " ++ own ++ ">(LawSpecRuntime.absent(\"Unit\"), " ++ call ++ ");" ]
+        pure $
+          [ "    handlers.put("
+          , "        " ++ show (handlerName h) ++ ","
+          , "        new LawSpecRuntime.Served<" ++ own ++ ">("
+          , "            (s, args) -> {"
+          , "              var symbols = new java.util.HashMap<String, Object>();" ] ++
+          map ("  " ++) body ++
+          [ "            },"
+          , "            java.util.List.of(" ++ intercalate ", " ["LawSpecRuntime.descriptor(" ++ show d ++ ")" | d <- ds] ++ "),"
+          , "            LawSpecRuntime.descriptor(" ++ show r ++ ")));" ]) (wireHandlers w)
+      methods <- mapM (\(h, _, _) -> do
+        params <- sequence [(\n -> n ++ " " ++ p) <$> native t | (p, t) <- handlerArguments h]
+        argCodecs <- mapM (codec (wireBits w) . snd) (handlerArguments h)
+        replyCodec <- codec (wireBits w) (replyOf h)
+        result <- maybe (pure "void") native (handlerReply h)
+        let call = "remote.call(" ++ show (handlerName h) ++ ", java.util.List.of(" ++
+              intercalate ", " [c ++ ".encode(" ++ p ++ ")" | (c, (p, _)) <- zip argCodecs (handlerArguments h)] ++ "))"
+        pure
+          [ ""
+          , "    /** Sends " ++ handlerName h ++ " to the actor and waits for the reply. */"
+          , "    public " ++ result ++ " " ++ handlerName h ++ "(" ++ intercalate ", " params ++ ") {"
+          , "      var symbols = new java.util.HashMap<String, Object>();"
+          , "      " ++ (if handlerReply h == Nothing then call ++ ";" else "return " ++ replyCodec ++ ".decode(" ++ call ++ ");")
+          , "    }" ]) (wireHandlers w)
+      pure $
+        [ ""
+        , "  private static final lawspec.runtime.LawSpecSchema _schema ="
+        , "      lawspec.runtime.LawSpecDataSchema.create();"
+        , ""
+        , "  private static final LawSpecRuntime.Values TYPES = LawSpecRuntime.valuesOf(" ++ show (wireTypes w) ++ ");"
+        , ""
+        , "  /** Lets other nodes call this actor at {node address}/name; returns that address. */"
+        , "  public String serve(LawSpecRuntime.Node node, String name) {"
+        , "    var handlers = new java.util.HashMap<String, LawSpecRuntime.Served<" ++ own ++ ">>();" ] ++
+        concat served ++
+        [ "    return node.serve(name, actor, handlers, TYPES);"
+        , "  }"
+        , ""
+        , "  /** The actor served at address on another node; each call waits up to 5 seconds. */"
+        , "  public static Remote connect(LawSpecRuntime.Node node, String address) {"
+        , "    return connect(node, address, 5.0);"
+        , "  }"
+        , ""
+        , "  /** The actor served at address on another node; a call not answered within timeout seconds throws Unreachable. */"
+        , "  public static Remote connect(LawSpecRuntime.Node node, String address, double timeout) {"
+        , "    var signatures = new java.util.HashMap<String, LawSpecRuntime.Signature>();" ] ++
+        [ "    signatures.put(" ++ show (handlerName h) ++ ", new LawSpecRuntime.Signature(java.util.List.of(" ++
+            intercalate ", " ["LawSpecRuntime.descriptor(" ++ show d ++ ")" | d <- ds] ++ "), LawSpecRuntime.descriptor(" ++ show r ++ ")));"
+        | (h, ds, r) <- wireHandlers w ] ++
+        [ "    return new Remote(node.remoteActor(address, signatures, TYPES, timeout));"
+        , "  }"
+        , ""
+        , "  /** Actor " ++ actorName a ++ " on another node: each method sends its message and waits for the reply. */"
+        , "  public static final class Remote {"
+        , "    private final LawSpecRuntime.RemoteActor remote;"
+        , ""
+        , "    private Remote(LawSpecRuntime.RemoteActor remote) {"
+        , "      this.remote = remote;"
+        , "    }" ] ++ concat methods ++
+        [ "  }" ]
     boxed t = shorten <$> javaDataType datas t
     native t = (\b -> maybe b id (lookup b unboxed)) <$> boxed t
     awaited d call = if C.declarationAsync d then call ++ ".join()" else call
@@ -147,12 +242,15 @@ javaSource datas a = do
         , "    actor.cast(" ++ step ++ ");"
         , "  }" ]
 
-kotlinSource :: [C.DataDeclaration] -> Actor -> Either String String
-kotlinSource datas a = do
+kotlinSource :: [C.DataDeclaration] -> Maybe Wire -> Actor -> Either String String
+kotlinSource datas wire a = do
   own <- kotlinDataType datas (actorState a)
   let startArgs = actorStartArguments a
   startParams <- sequence [(\n -> p ++ ": " ++ n) <$> kotlinDataType datas t | (p, t) <- startArgs, not (isUnit t)]
   methods <- mapM (handler own) (actorHandlers a)
+  remote <- maybe (pure ([], [])) (kotlinRemote own) wire
+  let body = unlines (fst remote ++ snd remote)
+      imports = [ "import lawspec.runtime." ++ c | c <- ["LawSpecDataCodecs", "LawSpecDataSchema", "LawSpecKotlinCodecs"], (c ++ ".") `isInfixOf` body || (c ++ ".create") `isInfixOf` body ]
   let startValues = [if isUnit t then "kotlin.Unit" else p | (p, t) <- startArgs]
       initial = awaited (actorStart a) (adapterCall a (actorStart a) startValues)
       restart = case actorRestart a of
@@ -162,8 +260,8 @@ kotlinSource datas a = do
     [ "// Generated by LawSpec from actor " ++ actorName a ++ ". Do not edit."
     , "package lawspec.actors"
     , ""
-    , "import lawspec.runtime.LawSpecRuntime"
-    , ""
+    , "import lawspec.runtime.LawSpecRuntime" ] ++ imports ++
+    [ ""
     , "/**"
     , " * Actor " ++ actorName a ++ ": owns its state and handles one message at a time, in the order they"
     , " * arrive. Each handler method sends a message and returns the reply; tell methods send it"
@@ -172,8 +270,8 @@ kotlinSource datas a = do
     , " * start) while any other stops."
     , " */"
     , "class " ++ cls ++ " private constructor(private val actor: LawSpecRuntime.Actor<" ++ own ++ ">) {"
-    , "    companion object {"
-    , "        /**"
+    , "    companion object {" ] ++ fst remote ++
+    [ "        /**"
     , "         * Makes the actor's state with " ++ C.declarationName (actorStart a) ++ " and starts the actor, under"
     , "         * supervisor (when given) with the given lifetime."
     , "         */"
@@ -198,10 +296,74 @@ kotlinSource datas a = do
     , ""
     , "    /** Refuses further messages; those already sent are still handled. */"
     , "    fun stop() = actor.stop()"
-    , "}" ]
+    ] ++ snd remote ++ [ "}" ]
   where
     cls = actorClass a
     awaited d call = if C.declarationAsync d then "kotlinx.coroutines.runBlocking { " ++ call ++ " }" else call
+    codec ty = D.render (D.Pretty 1000) <$> kotlinCodecDocWithContext (D.text "symbols") datas ty
+    -- The companion's members, and the class's.
+    kotlinRemote own w = do
+      served <- mapM (\(h, ds, r) -> do
+        argCodecs <- mapM (codec . snd) (handlerArguments h)
+        replyCodec <- codec (replyOf h)
+        let call = awaited (handlerDeclaration h) (adapterCall a (handlerDeclaration h)
+              ("s" : [c ++ ".decode(args[" ++ show i ++ "])" | (i, c) <- zip [0 :: Int ..] argCodecs]))
+            result = case handlerReply h of
+              Just _ -> [ "                val next = " ++ call
+                        , "                LawSpecRuntime.Next<LawSpecRuntime.Value, " ++ own ++ ">(" ++ replyCodec ++ ".encode(next.first), next.second)" ]
+              Nothing -> [ "                LawSpecRuntime.Next<LawSpecRuntime.Value, " ++ own ++ ">(LawSpecRuntime.absent(\"Unit\"), " ++ call ++ ")" ]
+        pure $
+          [ "        handlers[" ++ show (handlerName h) ++ "] = LawSpecRuntime.Served<" ++ own ++ ">("
+          , "            { s, args ->"
+          , "                val symbols = mutableMapOf<String, Any>()" ] ++ result ++
+          [ "            },"
+          , "            listOf(" ++ intercalate ", " ["LawSpecRuntime.descriptor(" ++ show d ++ ")" | d <- ds] ++ "),"
+          , "            LawSpecRuntime.descriptor(" ++ show r ++ "),"
+          , "        )" ]) (wireHandlers w)
+      methods <- mapM (\(h, _, _) -> do
+        params <- sequence [(\n -> p ++ ": " ++ n) <$> kotlinDataType datas t | (p, t) <- handlerArguments h]
+        argCodecs <- mapM (codec . snd) (handlerArguments h)
+        replyCodec <- codec (replyOf h)
+        reply <- traverse (kotlinDataType datas) (handlerReply h)
+        let call = "remote.call(" ++ show (handlerName h) ++ ", listOf(" ++
+              intercalate ", " [c ++ ".encode(" ++ p ++ ")" | (c, (p, _)) <- zip argCodecs (handlerArguments h)] ++ "))"
+        pure
+          [ ""
+          , "        /** Sends " ++ handlerName h ++ " to the actor and waits for the reply. */"
+          , "        fun " ++ handlerName h ++ "(" ++ intercalate ", " params ++ "): " ++ maybe "kotlin.Unit" id reply ++ " {"
+          , "            val symbols = mutableMapOf<String, Any>()"
+          , "            " ++ (if handlerReply h == Nothing then call else "return " ++ replyCodec ++ ".decode(" ++ call ++ ")")
+          , "        }" ]) (wireHandlers w)
+      let companion =
+            [ "        private val schema = LawSpecDataSchema.create()"
+            , ""
+            , "        private const val bits = " ++ show (wireBits w)
+            , ""
+            , "        private val TYPES = LawSpecRuntime.valuesOf(" ++ show (wireTypes w) ++ ")"
+            , ""
+            , "        /** The actor served at address on another node; a call not answered within timeout seconds throws Unreachable. */"
+            , "        @JvmStatic"
+            , "        @JvmOverloads"
+            , "        fun connect(node: LawSpecRuntime.Node, address: String, timeout: Double = 5.0): Remote {"
+            , "            val signatures = HashMap<String, LawSpecRuntime.Signature>()" ] ++
+            [ "            signatures[" ++ show (handlerName h) ++ "] = LawSpecRuntime.Signature(listOf(" ++
+                intercalate ", " ["LawSpecRuntime.descriptor(" ++ show d ++ ")" | d <- ds] ++ "), LawSpecRuntime.descriptor(" ++ show r ++ "))"
+            | (h, ds, r) <- wireHandlers w ] ++
+            [ "            return Remote(node.remoteActor(address, signatures, TYPES, timeout))"
+            , "        }"
+            , "" ]
+          members =
+            [ ""
+            , "    /** Lets other nodes call this actor at {node address}/name; returns that address. */"
+            , "    fun serve(node: LawSpecRuntime.Node, name: String): String {"
+            , "        val handlers = HashMap<String, LawSpecRuntime.Served<" ++ own ++ ">>()" ] ++ concat served ++
+            [ "        return node.serve(name, actor, handlers, TYPES)"
+            , "    }"
+            , ""
+            , "    /** Actor " ++ actorName a ++ " on another node: each method sends its message and waits for the reply. */"
+            , "    class Remote internal constructor(private val remote: LawSpecRuntime.RemoteActor) {" ] ++
+            concat methods ++ [ "    }" ]
+      pure (companion, members)
     handler own h = do
       params <- sequence [(\n -> p ++ ": " ++ n) <$> kotlinDataType datas t | (p, t) <- handlerArguments h]
       reply <- traverse (kotlinDataType datas) (handlerReply h)

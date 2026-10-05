@@ -2170,6 +2170,8 @@ public final class LawSpecRuntime {
     final List<String> invariantKinds;
     final List<ModelCallback> invariants;
     final boolean perKey;
+    /** linearizable, sequential, causal or eventual. */
+    final String consistency;
 
     /**
      * start: run, model; each command: run, reference, when (null when
@@ -2191,6 +2193,7 @@ public final class LawSpecRuntime {
       var commandForms = new ArrayList<List<Object>>();
       boolean keyed = false;
       boolean actor = false;
+      String declaredConsistency = "linearizable";
       for (var f : forms) {
         var item = form(f);
         switch (atomText(item.get(0))) {
@@ -2207,6 +2210,9 @@ public final class LawSpecRuntime {
           }
           case "actor" -> {
             if (item.size() > 1 && atomText(item.get(1)).equals("true")) actor = true;
+          }
+          case "consistency" -> {
+            if (item.size() > 1) declaredConsistency = atomText(item.get(1));
           }
           default -> {}
         }
@@ -2271,6 +2277,7 @@ public final class LawSpecRuntime {
       invariantKinds = kinds;
       this.invariants = checks;
       perKey = keyed;
+      consistency = declaredConsistency;
     }
   }
 
@@ -2850,6 +2857,27 @@ public final class LawSpecRuntime {
           }
           return true;
         };
+    // Threads that never message each other see only their own calls, so
+    // causal consistency checks each thread's results alone.
+    if (model.consistency.equals("causal")) {
+      for (int i = 0; i < branches.size(); i++) {
+        var modelState = expected;
+        for (int k = 0; k < branches.get(i).size(); k++) {
+          var s = branches.get(i).get(k);
+          var command = model.commands.get(s.index());
+          Stepped stepped;
+          try {
+            stepped = stepModel(command, symbols, s.args(), modelState);
+          } catch (InvalidStep e) {
+            return false;
+          }
+          if (!command.unit && compareValues(history.get(i)[k].result(), stepped.result()) != 0)
+            return false;
+          modelState = stepped.state();
+        }
+      }
+      return true;
+    }
     if (!model.perKey)
       return linearize(
           model,
@@ -2930,10 +2958,13 @@ public final class LawSpecRuntime {
       if (k == branch.size()) continue;
       long called = history.get(i)[k].called();
       boolean blocked = false;
-      for (int j = 0; j < branches.size(); j++)
-        if (j != i
-            && positions[j] < branches.get(j).size()
-            && history.get(j)[positions[j]].returned() < called) blocked = true;
+      // Sequential and eventual consistency drop real time; each thread's
+      // own order remains.
+      if (model.consistency.equals("linearizable"))
+        for (int j = 0; j < branches.size(); j++)
+          if (j != i
+              && positions[j] < branches.get(j).size()
+              && history.get(j)[positions[j]].returned() < called) blocked = true;
       if (blocked) continue;
       var s = branch.get(k);
       var command = model.commands.get(s.index());
@@ -2943,8 +2974,9 @@ public final class LawSpecRuntime {
       } catch (InvalidStep e) {
         continue;
       }
-      if (!command.unit && compareValues(history.get(i)[k].result(), stepped.result()) != 0)
-        continue;
+      if (!model.consistency.equals("eventual")
+          && !command.unit
+          && compareValues(history.get(i)[k].result(), stepped.result()) != 0) continue;
       if (linearize(
           model,
           symbols,
@@ -2956,6 +2988,15 @@ public final class LawSpecRuntime {
           seen)) return true;
     }
     return false;
+  }
+
+  private static String consistent(String consistency) {
+    return switch (consistency) {
+      case "sequential" -> "sequentially consistent";
+      case "causal" -> "causally consistent";
+      case "eventual" -> "eventually consistent";
+      default -> "linearizable";
+    };
   }
 
   private static String parallelFails(Model model, ParallelCase c, int repeats, long shake) {
@@ -3079,7 +3120,9 @@ public final class LawSpecRuntime {
         throw new AssertionError(
             "model "
                 + model.name
-                + " is not linearizable: "
+                + " is not "
+                + consistent(model.consistency)
+                + ": "
                 + describeParallel(model, shrunk.c())
                 + ": "
                 + shrunk.failure());
@@ -3095,7 +3138,30 @@ public final class LawSpecRuntime {
   // call and return are stamped on one counter; the history must linearize
   // against the model, and every expect must hold, on each of many schedules.
 
-  private static final class ScenarioChannel {
+  /** A scenario channel: in memory, or with each side on a node of a network. */
+  private interface ScenarioLink {
+    void send(int side, Object value);
+
+    /** The next value for side, SCENARIO_GONE once the other side has ended, null on timeout. */
+    Object receive(int side);
+
+    void gone(int side);
+
+    default void close() {}
+  }
+
+  private static final class ScenarioChannel implements ScenarioLink {
+    public Object receive(int side) {
+      try {
+        var value = queues[1 - side].poll(5, java.util.concurrent.TimeUnit.SECONDS);
+        if (value == SCENARIO_GONE) queues[1 - side].add(SCENARIO_GONE);
+        return value;
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+        return null;
+      }
+    }
+
     @SuppressWarnings("unchecked")
     final java.util.concurrent.LinkedBlockingQueue<Object>[] queues =
         new java.util.concurrent.LinkedBlockingQueue[] {
@@ -3105,7 +3171,7 @@ public final class LawSpecRuntime {
     final boolean[] ended = new boolean[2];
 
     /** A channel end sent to a process that has ended is given up. */
-    void send(int side, Object value) {
+    public void send(int side, Object value) {
       synchronized (this) {
         if (!(ended[1 - side] && value instanceof ScenarioEnd)) {
           queues[side].add(value);
@@ -3120,7 +3186,7 @@ public final class LawSpecRuntime {
      * side's process has ended: the other side's receives that find nothing more fail instead of
      * waiting, and channel ends on their way to side are given up too.
      */
-    void gone(int side) {
+    public void gone(int side) {
       var stranded = new ArrayList<ScenarioEnd>();
       synchronized (this) {
         if (ended[side]) return;
@@ -3157,14 +3223,94 @@ public final class LawSpecRuntime {
   }
 
   /** A channel end in transit or held by a process. */
-  private record ScenarioEnd(ScenarioChannel channel, int side) {}
+  private record ScenarioEnd(ScenarioLink channel, int side) {}
+
+  /**
+   * A scenario channel whose two sides are endpoints on two nodes of a faulty in-memory network. A
+   * channel end sent over it travels as its name, and the receiver uses the end where it is.
+   */
+  private static final class NetScenarioChannel implements ScenarioLink {
+    final String name;
+    final Map<String, NetScenarioChannel> registry;
+    final Node[] nodes = new Node[2];
+    final NetEndpoint[] ends = new NetEndpoint[2];
+    final boolean[] done = new boolean[2];
+
+    NetScenarioChannel(
+        MemoryNetwork network, String name, List<Step> steps, Values values, Map<String, NetScenarioChannel> registry) {
+      this.name = name;
+      this.registry = registry;
+      for (int side = 0; side < 2; side++) nodes[side] = new Node(network.transport(name + "-" + side));
+      var wired = new ArrayList<Step>();
+      var flipped = new ArrayList<Step>();
+      for (var s : steps) {
+        var d = form(s.descriptor());
+        Object descriptor = atomText(d.get(0)).equals("end") ? List.of("text") : s.descriptor();
+        wired.add(new Step(s.sends(), descriptor));
+        flipped.add(new Step(!s.sends(), descriptor));
+      }
+      ends[0] = nodes[0].listen(name, wired, values);
+      ends[1] = nodes[1].dial(nodes[0].address + "/" + name, flipped, values);
+      registry.put(name, this);
+    }
+
+    public void send(int side, Object value) {
+      if (value instanceof ScenarioEnd end)
+        value = textValue(((NetScenarioChannel) end.channel()).name + "#" + end.side());
+      ends[side].send(side, value);
+    }
+
+    public Object receive(int side) {
+      Value value;
+      try {
+        value = (Value) ends[side].receive(side, 5);
+      } catch (PeerFailed e) {
+        return SCENARIO_GONE;
+      } catch (IllegalStateException e) {
+        return null;
+      }
+      if (value.type().equals("Text")) {
+        String text = textOf(value);
+        int cut = text.lastIndexOf('#');
+        if (cut > 0 && registry.containsKey(text.substring(0, cut)))
+          return new ScenarioEnd(registry.get(text.substring(0, cut)), Integer.parseInt(text.substring(cut + 1)));
+      }
+      return value;
+    }
+
+    public synchronized void gone(int side) {
+      if (done[side]) return;
+      done[side] = true;
+      ends[side].abandon(side);
+    }
+
+    public void close() {
+      for (var n : nodes) n.close();
+    }
+  }
 
   private record ScenarioCall(
-      ModelCommand command, List<Value> args, Value result, long called, long returned) {}
+      ModelCommand command,
+      List<Value> args,
+      Value result,
+      long called,
+      long returned,
+      String process,
+      Map<String, Long> atCall,
+      Map<String, Long> atReturn) {}
+
+  private record StampKey(ScenarioLink channel, int side) {}
 
   private static final class ScenarioRun {
     final Model model;
-    final Map<String, ScenarioChannel> channels = new java.util.HashMap<>();
+    final Map<String, ScenarioLink> channels = new java.util.HashMap<>();
+    /** Each process's name for its clock: root, or its branch's place among all processes. */
+    final java.util.IdentityHashMap<Object, String> processNames = new java.util.IdentityHashMap<>();
+    /**
+     * Vector clocks: each value sent carries its sender's clock (kept here, in order per channel
+     * direction), so calls can be ordered by what happened before what.
+     */
+    final Map<StampKey, java.util.ArrayDeque<Map<String, Long>>> stamps = new java.util.HashMap<>();
     final Map<String, ModelCommand> commands = new java.util.HashMap<>();
     final java.util.concurrent.atomic.AtomicLong clock = new java.util.concurrent.atomic.AtomicLong();
     final List<ScenarioCall> history = Collections.synchronizedList(new ArrayList<ScenarioCall>());
@@ -3239,9 +3385,11 @@ public final class LawSpecRuntime {
       Map<String, Value> env,
       Map<String, ScenarioEnd> ends,
       SplitMix64 random,
-      Object identity) {
+      Object identity,
+      Map<String, Long> clock) {
+    String me = identity == null ? "root" : run.processNames.get(identity);
     try {
-      return scenarioSteps(run, acts, env, ends, random, identity);
+      return scenarioSteps(run, acts, env, ends, random, identity, clock, me);
     } finally {
       for (var end : new ArrayList<ScenarioEnd>(ends.values())) end.channel().gone(end.side());
     }
@@ -3253,7 +3401,9 @@ public final class LawSpecRuntime {
       Map<String, Value> env,
       Map<String, ScenarioEnd> ends,
       SplitMix64 random,
-      Object identity) {
+      Object identity,
+      Map<String, Long> clock,
+      String me) {
     Map<String, Object> own = new java.util.HashMap<String, Object>();
     for (int index = 0; index < acts.size(); index++) {
       if (!run.failures.isEmpty()) return false;
@@ -3278,6 +3428,8 @@ public final class LawSpecRuntime {
           var full = new ArrayList<Value>(args);
           full.add(command.state, run.state);
           perturb(random);
+          clock.merge(me, 1L, Long::sum);
+          var atCall = new java.util.HashMap<String, Long>(clock);
           long called = run.clock.incrementAndGet();
           Value result;
           try {
@@ -3287,7 +3439,10 @@ public final class LawSpecRuntime {
             return false;
           }
           long returned = run.clock.incrementAndGet();
-          run.history.add(new ScenarioCall(command, args, result, called, returned));
+          clock.merge(me, 1L, Long::sum);
+          run.history.add(
+              new ScenarioCall(
+                  command, args, result, called, returned, me, atCall, new java.util.HashMap<String, Long>(clock)));
           if (act.get(2) != null) env.put(atomText(act.get(2)), result);
         }
         case "send" -> {
@@ -3298,21 +3453,18 @@ public final class LawSpecRuntime {
             value = ends.remove(atomText(operand.get(1)));
           else value = scenarioOperand(operand, env);
           perturb(random);
+          clock.merge(me, 1L, Long::sum);
+          synchronized (run.stamps) {
+            run.stamps
+                .computeIfAbsent(new StampKey(end.channel(), end.side()), k -> new java.util.ArrayDeque<>())
+                .add(new java.util.HashMap<String, Long>(clock));
+          }
           end.channel().send(end.side(), value);
         }
         case "receive", "receiveor" -> {
           String name = atomText(act.get(1));
           var end = ends.get(name);
-          Object value;
-          try {
-            value =
-                end.channel()
-                    .queues[1 - end.side()]
-                    .poll(5, java.util.concurrent.TimeUnit.SECONDS);
-          } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            value = null;
-          }
+          Object value = end.channel().receive(end.side());
           if (value == null) {
             run.failures.add(
                 "a receive on " + name + " waited too long: the processes are blocked");
@@ -3321,12 +3473,19 @@ public final class LawSpecRuntime {
           if (value == SCENARIO_GONE) {
             // The other process ended: or else runs instead of the rest;
             // without it, this process fails too.
-            end.channel().queues[1 - end.side()].add(SCENARIO_GONE);
             if (kind.equals("receive")) return false;
             ends.remove(name);
             var handler = form(act.get(3));
-            return scenarioSteps(run, handler.subList(1, handler.size()), env, ends, random, null);
+            return scenarioSteps(
+                run, handler.subList(1, handler.size()), env, ends, random, null, clock, me);
           }
+          Map<String, Long> sent;
+          synchronized (run.stamps) {
+            var queue = run.stamps.get(new StampKey(end.channel(), 1 - end.side()));
+            sent = queue == null || queue.isEmpty() ? Map.of() : queue.poll();
+          }
+          for (var e : sent.entrySet()) clock.merge(e.getKey(), e.getValue(), Math::max);
+          clock.merge(me, 1L, Long::sum);
           if (value instanceof ScenarioEnd received) ends.put(atomText(act.get(2)), received);
           else env.put(atomText(act.get(2)), (Value) value);
         }
@@ -3345,6 +3504,9 @@ public final class LawSpecRuntime {
             }
           var threads = new ArrayList<Thread>();
           var outcomes = new boolean[branches.size()];
+          var clocks = new ArrayList<Map<String, Long>>();
+          for (int i = 0; i < branches.size(); i++)
+            clocks.add(new java.util.concurrent.ConcurrentHashMap<String, Long>(clock));
           for (int i = 0; i < branches.size(); i++) {
             var mine = new java.util.HashMap<String, ScenarioEnd>();
             for (var entry : owned.entrySet()) {
@@ -3365,7 +3527,8 @@ public final class LawSpecRuntime {
                 new Thread(
                     () ->
                         outcomes[slot] =
-                            scenarioProcess(run, branch, copy, mine, branchRandom, branchIdentity)));
+                            scenarioProcess(
+                                run, branch, copy, mine, branchRandom, branchIdentity, clocks.get(slot))));
           }
           for (var t : threads) t.start();
           for (var t : threads) {
@@ -3380,6 +3543,9 @@ public final class LawSpecRuntime {
             }
             if (interrupted) Thread.currentThread().interrupt();
           }
+          for (var child : clocks)
+            for (var e : child.entrySet()) clock.merge(e.getKey(), e.getValue(), Math::max);
+          clock.merge(me, 1L, Long::sum);
           // A failed branch fails the process that ran the par.
           for (var ok : outcomes) if (!ok) return false;
         }
@@ -3409,19 +3575,45 @@ public final class LawSpecRuntime {
 
   private record ScenarioOutcome(String title, String failure) {}
 
-  private static ScenarioOutcome runScenario(Model model, String spec, long shake, boolean crash) {
+  private static ScenarioOutcome runScenario(
+      Model model, String spec, long shake, boolean crash, boolean network) {
     var forms = readDescriptor(spec);
     String title = atomText(form(forms.get(0)).get(1));
     List<Object> channelNames = null;
     List<Object> body = null;
+    List<Object> wire = null;
     for (var f : forms) {
       var item = form(f);
       String head = atomText(item.get(0));
       if (head.equals("channels") && channelNames == null) channelNames = item.subList(1, item.size());
       if (head.equals("process") && body == null) body = item.subList(1, item.size());
+      if (head.equals("wire") && wire == null) wire = item.subList(1, item.size());
     }
     var run = new ScenarioRun(model, shake);
-    for (var c : channelNames) run.channels.put(atomText(c), new ScenarioChannel());
+    if (network && wire != null) {
+      // Loss, duplication and delay (which reorders); the channels'
+      // numbered, acknowledged frames must hide them all.
+      var net = new MemoryNetwork(shake ^ 0x7F4A7C159E3779B9L, 0.1, 0.1, 0.002);
+      var table = new java.util.HashMap<String, List<Object>>();
+      var steps = new java.util.HashMap<String, List<Step>>();
+      for (var f : wire) {
+        var item = form(f);
+        if (atomText(item.get(0)).equals("data")) table.put(atomText(item.get(1)), item);
+        else if (atomText(item.get(0)).equals("channel")) {
+          var list = new ArrayList<Step>();
+          for (var s : item.subList(2, item.size())) {
+            var st = form(s);
+            list.add(new Step(atomText(st.get(0)).equals("send"), st.get(1)));
+          }
+          steps.put(atomText(item.get(1)), list);
+        }
+      }
+      var types = new Values(table);
+      var registry = new java.util.HashMap<String, NetScenarioChannel>();
+      for (var c : channelNames)
+        run.channels.put(
+            atomText(c), new NetScenarioChannel(net, atomText(c), steps.get(atomText(c)), types, registry));
+    } else for (var c : channelNames) run.channels.put(atomText(c), new ScenarioChannel());
     for (var c : model.commands) run.commands.put(c.name, c);
     Map<String, Object> symbols = new java.util.HashMap<String, Object>();
     var startArgs = new ArrayList<Value>();
@@ -3429,6 +3621,7 @@ public final class LawSpecRuntime {
     run.state = model.startRun.apply(symbols, startArgs);
     var expected = model.startModel.apply(symbols, startArgs);
     var processes = scenarioProcesses(body, new ArrayList<Object>());
+    for (int k = 0; k < processes.size(); k++) run.processNames.put(processes.get(k), "p" + k);
     if (crash && !processes.isEmpty()) {
       var chooser = new SplitMix64(shake ^ 0xC3A5C85C97CB3127L);
       run.victim = processes.get((int) chooser.below(processes.size()));
@@ -3441,7 +3634,9 @@ public final class LawSpecRuntime {
             new java.util.HashMap<String, Value>(),
             new java.util.HashMap<String, ScenarioEnd>(),
             new SplitMix64(shake),
-            null);
+            null,
+            new java.util.HashMap<String, Long>());
+    for (var c : run.channels.values()) c.close();
     if (!run.failures.isEmpty())
       return new ScenarioOutcome(
           title, run.failures.get(0) + (run.victim != null ? " (with a process crashed)" : ""));
@@ -3457,14 +3652,29 @@ public final class LawSpecRuntime {
         observed.add(
             c.command().name + "(" + renderAll(c.args()) + ") returned " + render(c.result()));
       return new ScenarioOutcome(
-          title, "no order of the calls agrees with the model (" + String.join("; ", observed) + ")");
+          title,
+          "the calls are not "
+              + consistent(model.consistency)
+              + " with the model ("
+              + String.join("; ", observed)
+              + ")");
     }
     return new ScenarioOutcome(title, null);
   }
 
+  /** Whether call a returned before call b began, as far as messages tell. */
+  private static boolean happenedBefore(ScenarioCall a, ScenarioCall b) {
+    for (var e : a.atReturn().entrySet())
+      if (b.atCall().getOrDefault(e.getKey(), 0L) < e.getValue()) return false;
+    return true;
+  }
+
   /**
-   * A Wing-Gong search over any real-time order: next, a call that no pending call returned
-   * before; memoized on the calls done and the state.
+   * A Wing-Gong search over the scenario's calls, memoized on the calls done and the state.
+   * Linearizable: next, a call no pending call returned before (real time). Sequential: next, a
+   * call every call that happened before it (its process's order, and messages) is done. Causal:
+   * each process's results from an order of what happened before them. Eventual: no results, only
+   * the final state.
    */
   private static boolean linearizesHistory(
       Model model,
@@ -3473,23 +3683,46 @@ public final class LawSpecRuntime {
       Value expected,
       Value finalState,
       Value state) {
+    String mode = model.consistency;
+    var everything = new ArrayList<Integer>();
+    for (int i = 0; i < history.size(); i++) everything.add(i);
+    if (mode.equals("causal")) {
+      var processes = new java.util.LinkedHashSet<String>();
+      for (var c : history) processes.add(c.process());
+      for (var process : processes) {
+        var own = new java.util.HashSet<Integer>();
+        for (int i : everything) if (history.get(i).process().equals(process)) own.add(i);
+        var seenBy = new java.util.TreeSet<Integer>(own);
+        for (int j : everything)
+          for (int i : own) if (j != i && happenedBefore(history.get(j), history.get(i))) seenBy.add(j);
+        if (!visitHistory(
+            model, symbols, history, new ArrayList<Integer>(seenBy), own, false, finalState, state,
+            new java.util.BitSet(), expected, new java.util.HashSet<String>())) return false;
+      }
+      return true;
+    }
+    var checked = new java.util.HashSet<Integer>(mode.equals("eventual") ? List.of() : everything);
     return visitHistory(
-        model, symbols, history, finalState, state, new java.util.BitSet(), expected,
-        new java.util.HashSet<String>());
+        model, symbols, history, everything, checked, true, finalState, state, new java.util.BitSet(),
+        expected, new java.util.HashSet<String>());
   }
 
   private static boolean visitHistory(
       Model model,
       Map<String, Object> symbols,
       List<ScenarioCall> history,
+      List<Integer> members,
+      java.util.Set<Integer> checked,
+      boolean judgeFinal,
       Value finalState,
       Value state,
       java.util.BitSet done,
       Value modelState,
       java.util.Set<String> seen) {
     if (!seen.add(done + "|" + render(modelState))) return false;
-    int count = history.size();
-    if (done.cardinality() == count) {
+    boolean linear = model.consistency.equals("linearizable");
+    if (done.cardinality() == members.size()) {
+      if (!judgeFinal) return true;
       if (finalState != null && compareValues(finalState, modelState) != 0) return false;
       for (int k = 0; k < model.invariants.size(); k++) {
         var subject = model.invariantKinds.get(k).equals("model") ? modelState : state;
@@ -3497,12 +3730,16 @@ public final class LawSpecRuntime {
       }
       return true;
     }
-    for (int i = 0; i < count; i++) {
+    for (int i : members) {
       if (done.get(i)) continue;
       var call = history.get(i);
       boolean blocked = false;
-      for (int j = 0; j < count; j++)
-        if (j != i && !done.get(j) && history.get(j).returned() < call.called()) blocked = true;
+      for (int j : members)
+        if (j != i
+            && !done.get(j)
+            && (linear
+                ? history.get(j).returned() < call.called()
+                : happenedBefore(history.get(j), call))) blocked = true;
       if (blocked) continue;
       Stepped stepped;
       try {
@@ -3510,11 +3747,14 @@ public final class LawSpecRuntime {
       } catch (InvalidStep e) {
         continue;
       }
-      if (!call.command().unit && compareValues(call.result(), stepped.result()) != 0) continue;
+      if (checked.contains(i)
+          && !call.command().unit
+          && compareValues(call.result(), stepped.result()) != 0) continue;
       var next = (java.util.BitSet) done.clone();
       next.set(i);
-      if (visitHistory(model, symbols, history, finalState, state, next, stepped.state(), seen))
-        return true;
+      if (visitHistory(
+          model, symbols, history, members, checked, judgeFinal, finalState, state, next,
+          stepped.state(), seen)) return true;
     }
     return false;
   }
@@ -3528,8 +3768,9 @@ public final class LawSpecRuntime {
   public static void checkScenario(Model model, String spec, int runs, long seed) {
     var random = new SplitMix64(seed ^ 0x2545F4914F6CDD1DL);
     for (int n = 0; n < runs; n++) {
-      // Every third run crashes one process of a par at a random point.
-      var outcome = runScenario(model, spec, random.next(), n % 3 == 2);
+      // Every third run crashes one process of a par at a random point, and
+      // every third other one sends each channel over a faulty network.
+      var outcome = runScenario(model, spec, random.next(), n % 3 == 2, n % 3 == 1);
       if (outcome.failure() != null)
         throw new AssertionError("scenario " + outcome.title() + " fails: " + outcome.failure());
     }
@@ -4355,6 +4596,1235 @@ public final class LawSpecRuntime {
     public synchronized void close() {
       closed = true;
       notifyAll();
+    }
+  }
+
+  // Distribution. Values cross the network in a canonical binary encoding
+  // driven by their type descriptor (the same descriptors as generation), so
+  // no tags are sent and every target writes the same bytes:
+  //   int: zigzag LEB128 of the integer (any size)      bool: 0 or 1
+  //   text: LEB128 length, then UTF-8                    unit: nothing
+  //   list: LEB128 count, then items                     maybe: 0, or 1 then the value
+  //   either: 0 then left, or 1 then right               data: LEB128 constructor index, then fields
+  // A node sends frames over a Transport (in memory, TCP or HTTP): kind,
+  // entity name, the sender's address, an id and a payload.
+
+  /** Bytes that are not an encoding of a value of the expected type. */
+  public static final class WireError extends IllegalArgumentException {
+    public WireError(String message) {
+      super(message);
+    }
+  }
+
+  /** A node could not be reached, or did not answer in time. */
+  public static final class Unreachable extends IllegalStateException {
+    public Unreachable(String message) {
+      super(message);
+    }
+  }
+
+  private static void putVarint(java.io.ByteArrayOutputStream out, BigInteger n) {
+    var seven = BigInteger.valueOf(0x7F);
+    while (true) {
+      int b = n.and(seven).intValue();
+      n = n.shiftRight(7);
+      if (n.signum() != 0) out.write(b | 0x80);
+      else {
+        out.write(b);
+        return;
+      }
+    }
+  }
+
+  /** A position in bytes being decoded. */
+  private static final class Reader {
+    final byte[] buf;
+    int pos;
+
+    Reader(byte[] buf, int pos) {
+      this.buf = buf;
+      this.pos = pos;
+    }
+
+    int next() {
+      if (pos >= buf.length) throw new WireError("the bytes end in the middle of a value");
+      return buf[pos++] & 0xFF;
+    }
+
+    BigInteger varint() {
+      var result = BigInteger.ZERO;
+      int shift = 0;
+      while (true) {
+        int b = next();
+        result = result.or(BigInteger.valueOf(b & 0x7F).shiftLeft(shift));
+        if (b < 0x80) return result;
+        shift += 7;
+      }
+    }
+
+    byte[] take(int n) {
+      if (n < 0 || pos + n > buf.length)
+        throw new WireError("the bytes end in the middle of a value");
+      var out = Arrays.copyOfRange(buf, pos, pos + n);
+      pos += n;
+      return out;
+    }
+  }
+
+  private static BigInteger zigzag(BigInteger n) {
+    return n.signum() >= 0 ? n.shiftLeft(1) : n.negate().shiftLeft(1).subtract(BigInteger.ONE);
+  }
+
+  private static BigInteger unzigzag(BigInteger z) {
+    return z.testBit(0) ? z.add(BigInteger.ONE).shiftRight(1).negate() : z.shiftRight(1);
+  }
+
+  private static void putText(java.io.ByteArrayOutputStream out, String text) {
+    var raw = text.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+    putVarint(out, BigInteger.valueOf(raw.length));
+    out.writeBytes(raw);
+  }
+
+  private static String getText(Reader in) {
+    int n = in.varint().intValueExact();
+    var raw = in.take(n);
+    var decoder =
+        java.nio.charset.StandardCharsets.UTF_8
+            .newDecoder()
+            .onMalformedInput(java.nio.charset.CodingErrorAction.REPORT)
+            .onUnmappableCharacter(java.nio.charset.CodingErrorAction.REPORT);
+    try {
+      return decoder.decode(java.nio.ByteBuffer.wrap(raw)).toString();
+    } catch (java.nio.charset.CharacterCodingException e) {
+      throw new WireError("text that is not UTF-8");
+    }
+  }
+
+  private static String textOf(Value v) {
+    if (v.data() instanceof String s) return s;
+    var out = new StringBuilder();
+    for (Object unit : (List<?>) v.data()) out.appendCodePoint((Integer) unit);
+    return out.toString();
+  }
+
+  /** A text's logical value. */
+  public static Value textValue(String text) {
+    return sequence("Text", text.codePoints().toArray());
+  }
+
+  @SuppressWarnings("unchecked")
+  private static void wirePut(Values values, Object descriptor, Value v, java.io.ByteArrayOutputStream out) {
+    var d = values.resolve(descriptor);
+    switch (atomText(d.get(0))) {
+      case "int" -> {
+        if (!(v.data() instanceof BigInteger n)) throw new WireError(render(v) + " is not an integer");
+        var lo = (BigInteger) d.get(2);
+        var hi = (BigInteger) d.get(3);
+        if ((lo != null && n.compareTo(lo) < 0) || (hi != null && n.compareTo(hi) > 0))
+          throw new WireError(n + " is not a " + atomText(d.get(1)));
+        putVarint(out, zigzag(n));
+      }
+      case "bool" -> out.write(Boolean.TRUE.equals(v.data()) ? 1 : 0);
+      case "text", "end" -> putText(out, textOf(v));
+      case "unit" -> {}
+      case "list" -> {
+        var items = (List<Value>) v.data();
+        putVarint(out, BigInteger.valueOf(items.size()));
+        for (var item : items) wirePut(values, d.get(1), item, out);
+      }
+      case "maybe" -> {
+        var data = (Data) v.data();
+        if (data.tag().endsWith("Nothing")) out.write(0);
+        else {
+          out.write(1);
+          wirePut(values, d.get(1), data.fields().get(0), out);
+        }
+      }
+      case "either" -> {
+        var data = (Data) v.data();
+        boolean left = data.tag().endsWith("Left");
+        out.write(left ? 0 : 1);
+        wirePut(values, left ? d.get(1) : d.get(2), data.fields().get(0), out);
+      }
+      case "data" -> {
+        var data = (Data) v.data();
+        for (int index = 2; index < d.size(); index++) {
+          var ctor = form(d.get(index));
+          if (atomText(ctor.get(1)).equals(data.tag())) {
+            putVarint(out, BigInteger.valueOf(index - 2));
+            for (int k = 2; k < ctor.size(); k++)
+              wirePut(values, ctor.get(k), data.fields().get(k - 2), out);
+            return;
+          }
+        }
+        throw new WireError(data.tag() + " is not a constructor of " + atomText(d.get(1)));
+      }
+      default -> throw new WireError("unknown descriptor " + d);
+    }
+  }
+
+  private static Value wireGet(Values values, Object descriptor, Reader in) {
+    var d = values.resolve(descriptor);
+    var type = values.typeName(d);
+    switch (atomText(d.get(0))) {
+      case "int" -> {
+        var n = unzigzag(in.varint());
+        var lo = (BigInteger) d.get(2);
+        var hi = (BigInteger) d.get(3);
+        if ((lo != null && n.compareTo(lo) < 0) || (hi != null && n.compareTo(hi) > 0))
+          throw new WireError(n + " is out of range for " + atomText(d.get(1)));
+        return new Value(type, n);
+      }
+      case "bool" -> {
+        int b = in.next();
+        if (b > 1) throw new WireError("not a Bool");
+        return bool(b == 1);
+      }
+      case "text", "end" -> {
+        return textValue(getText(in));
+      }
+      case "unit" -> {
+        return absent("Unit");
+      }
+      case "list" -> {
+        int n = in.varint().intValueExact();
+        var items = new ArrayList<Value>();
+        for (int i = 0; i < n; i++) items.add(wireGet(values, d.get(1), in));
+        return new Value(type, List.copyOf(items));
+      }
+      case "maybe" -> {
+        int which = in.next();
+        if (which > 1) throw new WireError("not a Maybe");
+        if (which == 0) return new Value(type, new Data("Maybe::Nothing", List.of()));
+        return new Value(type, new Data("Maybe::Just", List.of(wireGet(values, d.get(1), in))));
+      }
+      case "either" -> {
+        int which = in.next();
+        if (which > 1) throw new WireError("not an Either");
+        var inner = wireGet(values, which == 0 ? d.get(1) : d.get(2), in);
+        return new Value(type, new Data(which == 0 ? "Either::Left" : "Either::Right", List.of(inner)));
+      }
+      case "data" -> {
+        var index = in.varint();
+        if (index.compareTo(BigInteger.valueOf(d.size() - 2)) >= 0)
+          throw new WireError("no constructor " + index + " in " + atomText(d.get(1)));
+        var ctor = form(d.get(2 + index.intValueExact()));
+        var fields = new ArrayList<Value>();
+        for (int k = 2; k < ctor.size(); k++) fields.add(wireGet(values, ctor.get(k), in));
+        return new Value(type, new Data(atomText(ctor.get(1)), fields));
+      }
+      default -> throw new WireError("unknown descriptor " + d);
+    }
+  }
+
+  /** The value's canonical bytes. */
+  public static byte[] wireEncode(Values values, Object descriptor, Value v) {
+    var out = new java.io.ByteArrayOutputStream();
+    wirePut(values, descriptor, v, out);
+    return out.toByteArray();
+  }
+
+  /** The value encoded by exactly these bytes. */
+  public static Value wireDecode(Values values, Object descriptor, byte[] data) {
+    var in = new Reader(data, 0);
+    var v = wireGet(values, descriptor, in);
+    if (in.pos != data.length) throw new WireError("extra bytes after the value");
+    return v;
+  }
+
+  private static String hex(byte[] bytes) {
+    var out = new StringBuilder();
+    for (byte b : bytes) out.append(String.format("%02x", b & 0xFF));
+    return out.toString();
+  }
+
+  /** count values generated from one seed, encoded, in hexadecimal. */
+  public static List<String> wireEncoded(String text, long seed, long size, long count) {
+    var described = valuesFrom(text);
+    var random = new SplitMix64(seed);
+    var result = new ArrayList<String>();
+    for (long i = 0; i < count; i++)
+      result.add(
+          hex(
+              wireEncode(
+                  described.values(),
+                  described.descriptor(),
+                  described.values().generate(described.descriptor(), random, size))));
+    return result;
+  }
+
+  /** Whether count generated values decode to themselves. */
+  public static boolean wireRoundTrips(String text, long seed, long size, long count) {
+    var described = valuesFrom(text);
+    var random = new SplitMix64(seed);
+    for (long i = 0; i < count; i++) {
+      var v = described.values().generate(described.descriptor(), random, size);
+      var back =
+          wireDecode(described.values(), described.descriptor(), wireEncode(described.values(), described.descriptor(), v));
+      if (!render(back).equals(render(v))) return false;
+    }
+    return true;
+  }
+
+  private static final Values NO_TYPES = new Values(Map.of());
+
+  private record Frame(String kind, String to, String source, long id, byte[] payload) {}
+
+  private static byte[] frameEncode(String kind, String to, String source, long id, byte[] payload) {
+    var out = new java.io.ByteArrayOutputStream();
+    putText(out, kind);
+    putText(out, to);
+    putText(out, source);
+    putVarint(out, zigzag(new BigInteger(Long.toUnsignedString(id))));
+    putVarint(out, BigInteger.valueOf(payload.length));
+    out.writeBytes(payload);
+    return out.toByteArray();
+  }
+
+  private static Frame frameDecode(byte[] data) {
+    var in = new Reader(data, 0);
+    var kind = getText(in);
+    var to = getText(in);
+    var source = getText(in);
+    var id = unzigzag(in.varint());
+    if (id.signum() < 0) throw new WireError("a frame's id is negative");
+    var payload = in.take(in.varint().intValueExact());
+    if (in.pos != data.length) throw new WireError("extra bytes after a frame");
+    return new Frame(kind, to, source, id.longValue(), payload);
+  }
+
+  /** 'tcp://host:port/name' as {'tcp://host:port', 'name'}. */
+  private static String[] splitAddress(String address) {
+    int cut = address.lastIndexOf('/');
+    String node = cut < 0 ? "" : address.substring(0, cut);
+    if (node.isEmpty() || !node.contains("://"))
+      throw new IllegalArgumentException(
+          address + " is not an address such as tcp://127.0.0.1:7000/name");
+    return new String[] {node, address.substring(cut + 1)};
+  }
+
+  private static void startDaemon(Runnable task) {
+    Thread.ofVirtual().start(task);
+  }
+
+  /**
+   * Moves frames between nodes. start(deliver) begins calling deliver for every frame that arrives;
+   * send(node, frame) sends one to the node at that address, best effort; close() stops.
+   */
+  public interface Transport {
+    String address();
+
+    void start(java.util.function.Consumer<byte[]> deliver);
+
+    void send(String node, byte[] frame);
+
+    default void close() {}
+  }
+
+  /**
+   * Nodes in one process, with faults for testing: each frame may be lost or duplicated, and is
+   * delayed by up to delay seconds (so frames can overtake each other); partition(...) cuts nodes
+   * off until heal().
+   */
+  public static final class MemoryNetwork {
+    private final SplitMix64 random;
+    private final double loss;
+    private final double duplicate;
+    private final double delay;
+    private final Map<String, java.util.function.Consumer<byte[]>> nodes = new java.util.HashMap<>();
+    private List<java.util.Set<String>> groups;
+
+    public MemoryNetwork(long seed, double loss, double duplicate, double delay) {
+      this.random = new SplitMix64(seed);
+      this.loss = loss;
+      this.duplicate = duplicate;
+      this.delay = delay;
+    }
+
+    public MemoryNetwork() {
+      this(0, 0, 0, 0);
+    }
+
+    public Transport transport(String name) {
+      var network = this;
+      String address = "mem://" + name;
+      return new Transport() {
+        public String address() {
+          return address;
+        }
+
+        public void start(java.util.function.Consumer<byte[]> deliver) {
+          synchronized (network) {
+            network.nodes.put(address, deliver);
+          }
+        }
+
+        public void send(String node, byte[] frame) {
+          network.deliver(address, node, frame);
+        }
+
+        public void close() {
+          synchronized (network) {
+            network.nodes.remove(address);
+          }
+        }
+      };
+    }
+
+    /** Only nodes named in the same group reach each other. */
+    public synchronized void partition(List<List<String>> named) {
+      groups = new ArrayList<>();
+      for (var g : named) {
+        var set = new java.util.HashSet<String>();
+        for (var n : g) set.add("mem://" + n);
+        groups.add(set);
+      }
+    }
+
+    public synchronized void heal() {
+      groups = null;
+    }
+
+    private boolean chance(double p) {
+      return p > 0 && random.below(1L << 30) < p * (1L << 30);
+    }
+
+    private void deliver(String source, String node, byte[] frame) {
+      java.util.function.Consumer<byte[]> deliver;
+      long[] waits;
+      synchronized (this) {
+        deliver = nodes.get(node);
+        if (deliver == null) throw new Unreachable("no node at " + node);
+        if (groups != null) {
+          boolean together = false;
+          for (var g : groups) if (g.contains(source) && g.contains(node)) together = true;
+          if (!together) return;
+        }
+        if (chance(loss)) return;
+        int copies = chance(duplicate) ? 2 : 1;
+        waits = new long[copies];
+        for (int i = 0; i < copies; i++)
+          waits[i] = (long) (random.below(1001) * delay * 1_000_000.0);
+      }
+      for (long wait : waits)
+        startDaemon(
+            () -> {
+              if (wait > 0) {
+                try {
+                  Thread.sleep(wait / 1_000_000, (int) (wait % 1_000_000));
+                } catch (InterruptedException e) {
+                  return;
+                }
+              }
+              deliver.accept(frame);
+            });
+    }
+  }
+
+  /** Frames over TCP, each a 4-byte big-endian length then the frame. */
+  public static final class TcpTransport implements Transport {
+    private final java.net.ServerSocket server;
+    private final String address;
+    private final Map<String, java.net.Socket> connections = new java.util.HashMap<>();
+    private volatile boolean closed;
+
+    public TcpTransport() {
+      this("127.0.0.1", 0);
+    }
+
+    public TcpTransport(String host, int port) {
+      try {
+        server = new java.net.ServerSocket(port, 50, java.net.InetAddress.getByName(host));
+      } catch (java.io.IOException e) {
+        throw new Unreachable("cannot listen on " + host + ":" + port + ": " + e.getMessage());
+      }
+      address = "tcp://" + host + ":" + server.getLocalPort();
+    }
+
+    public String address() {
+      return address;
+    }
+
+    public void start(java.util.function.Consumer<byte[]> deliver) {
+      startDaemon(
+          () -> {
+            while (!closed) {
+              java.net.Socket connection;
+              try {
+                connection = server.accept();
+              } catch (java.io.IOException e) {
+                return;
+              }
+              startDaemon(() -> read(connection, deliver));
+            }
+          });
+    }
+
+    private static void read(java.net.Socket connection, java.util.function.Consumer<byte[]> deliver) {
+      try (connection;
+          var in = new java.io.DataInputStream(new java.io.BufferedInputStream(connection.getInputStream()))) {
+        while (true) {
+          int n = in.readInt();
+          var frame = new byte[n];
+          in.readFully(frame);
+          deliver.accept(frame);
+        }
+      } catch (java.io.IOException e) {
+        // The connection closed.
+      }
+    }
+
+    public synchronized void send(String node, byte[] frame) {
+      String rest = node.substring("tcp://".length());
+      int colon = rest.lastIndexOf(':');
+      for (int attempt = 0; attempt < 2; attempt++) {
+        var connection = connections.get(node);
+        try {
+          if (connection == null) {
+            connection = new java.net.Socket();
+            connection.connect(
+                new java.net.InetSocketAddress(rest.substring(0, colon), Integer.parseInt(rest.substring(colon + 1))),
+                5000);
+            connections.put(node, connection);
+          }
+          var out = new java.io.DataOutputStream(connection.getOutputStream());
+          out.writeInt(frame.length);
+          out.write(frame);
+          out.flush();
+          return;
+        } catch (java.io.IOException e) {
+          connections.remove(node);
+          if (attempt == 1) throw new Unreachable("cannot reach " + node + ": " + e.getMessage());
+        }
+      }
+    }
+
+    public synchronized void close() {
+      closed = true;
+      try {
+        server.close();
+      } catch (java.io.IOException e) {
+        // Already closed.
+      }
+      for (var c : connections.values())
+        try {
+          c.close();
+        } catch (java.io.IOException e) {
+          // Already closed.
+        }
+      connections.clear();
+    }
+  }
+
+  /** Frames as HTTP POST bodies to /lawspec. */
+  public static final class HttpTransport implements Transport {
+    private final com.sun.net.httpserver.HttpServer server;
+    private final String address;
+    private final java.net.http.HttpClient client =
+        java.net.http.HttpClient.newBuilder().connectTimeout(java.time.Duration.ofSeconds(5)).build();
+    private volatile java.util.function.Consumer<byte[]> deliver;
+
+    public HttpTransport() {
+      this("127.0.0.1", 0);
+    }
+
+    public HttpTransport(String host, int port) {
+      try {
+        server = com.sun.net.httpserver.HttpServer.create(new java.net.InetSocketAddress(host, port), 0);
+      } catch (java.io.IOException e) {
+        throw new Unreachable("cannot listen on " + host + ":" + port + ": " + e.getMessage());
+      }
+      address = "http://" + host + ":" + server.getAddress().getPort();
+      server.createContext(
+          "/",
+          exchange -> {
+            var body = exchange.getRequestBody().readAllBytes();
+            boolean ours =
+                exchange.getRequestMethod().equals("POST")
+                    && exchange.getRequestURI().getPath().equals("/lawspec");
+            exchange.sendResponseHeaders(ours ? 204 : 404, -1);
+            exchange.close();
+            var target = deliver;
+            if (ours && target != null) target.accept(body);
+          });
+      server.setExecutor(java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor());
+    }
+
+    public String address() {
+      return address;
+    }
+
+    public void start(java.util.function.Consumer<byte[]> deliver) {
+      this.deliver = deliver;
+      server.start();
+    }
+
+    public void send(String node, byte[] frame) {
+      var request =
+          java.net.http.HttpRequest.newBuilder(java.net.URI.create(node + "/lawspec"))
+              .timeout(java.time.Duration.ofSeconds(5))
+              .header("Content-Type", "application/octet-stream")
+              .POST(java.net.http.HttpRequest.BodyPublishers.ofByteArray(frame))
+              .build();
+      try {
+        client.send(request, java.net.http.HttpResponse.BodyHandlers.discarding());
+      } catch (java.io.IOException e) {
+        throw new Unreachable("cannot reach " + node + ": " + e.getMessage());
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+        throw new Unreachable("interrupted while sending to " + node);
+      }
+    }
+
+    public void close() {
+      server.stop(0);
+    }
+  }
+
+  /** Something a node names: a mailbox, an actor, definitions or a channel end. */
+  private interface Entity {
+    void receive(Node node, String kind, String source, long id, byte[] payload);
+  }
+
+  /** A message an actor serves: its handler (on the actor's state) and its types. */
+  public record Served<S>(
+      java.util.function.BiFunction<S, List<Value>, Next<Value, S>> handler,
+      List<Object> arguments,
+      Object reply) {}
+
+  /** A message's types, for calling an actor on another node. */
+  public record Signature(List<Object> arguments, Object reply) {}
+
+  /** A definition other nodes can evaluate: the function and its types. */
+  public record Definition(Function<List<Value>, Value> function, List<Object> arguments, Object result) {}
+
+  /**
+   * A process's presence on a network: it names local mailboxes, actors, channel ends and
+   * definitions, so other nodes can reach them at {node address}/{name}, and it sends to theirs.
+   * Order is kept within one channel; a mailbox or an actor call is best effort: a lost call fails
+   * with Unreachable after its timeout.
+   */
+  public static final class Node {
+    final Transport transport;
+    public final String address;
+    private final Map<String, Entity> entities = new java.util.concurrent.ConcurrentHashMap<>();
+    private final Map<Long, java.util.concurrent.CompletableFuture<byte[]>> pending =
+        new java.util.concurrent.ConcurrentHashMap<>();
+    // Requests already seen, by sender and id, with their reply once sent: a
+    // request sent again (lost reply, duplicated frame) is answered again
+    // without running twice.
+    private final java.util.LinkedHashMap<String, byte[]> seen = new java.util.LinkedHashMap<>();
+    private final java.util.concurrent.atomic.AtomicLong ids = new java.util.concurrent.atomic.AtomicLong();
+    volatile boolean closed;
+
+    public Node(Transport transport) {
+      this.transport = transport;
+      this.address = transport.address();
+      transport.start(this::deliver);
+    }
+
+    public void close() {
+      closed = true;
+      transport.close();
+    }
+
+    long nextId() {
+      return ids.incrementAndGet();
+    }
+
+    void send(String address, String kind, byte[] payload, long id) {
+      var parts = splitAddress(address);
+      transport.send(parts[0], frameEncode(kind, parts[1], this.address, id, payload));
+    }
+
+    String register(String name, Entity entity) {
+      if (name.isEmpty() || name.contains("/"))
+        throw new IllegalArgumentException(name + " is not a name: use letters, digits and dashes");
+      if (entities.putIfAbsent(name, entity) != null)
+        throw new IllegalArgumentException(name + " is already registered on " + address);
+      return address + "/" + name;
+    }
+
+    private void deliver(byte[] data) {
+      Frame frame;
+      try {
+        frame = frameDecode(data);
+      } catch (RuntimeException e) {
+        return;
+      }
+      if (frame.kind().equals("reply")) {
+        var slot = pending.remove(frame.id());
+        if (slot != null) slot.complete(frame.payload());
+        return;
+      }
+      var entity = entities.get(frame.to());
+      if (entity == null) {
+        if (frame.id() != 0)
+          reply(frame.source(), frame.id(), 3, utf8("nothing is registered as " + frame.to() + " on " + address));
+        return;
+      }
+      if (frame.id() != 0) {
+        String key = frame.source() + "#" + frame.id();
+        byte[] answer;
+        synchronized (seen) {
+          if (seen.containsKey(key)) {
+            answer = seen.get(key);
+            if (answer != null) {
+              var again = answer;
+              startDaemon(() -> {
+                try {
+                  send(frame.source() + "/", "reply", again, frame.id());
+                } catch (RuntimeException e) {
+                  // Unreachable: the sender asks again.
+                }
+              });
+            }
+            return;
+          }
+          seen.put(key, null);
+          if (seen.size() > 10000) {
+            var it = seen.keySet().iterator();
+            for (int i = 0; i < 5000 && it.hasNext(); i++) {
+              it.next();
+              it.remove();
+            }
+          }
+        }
+      }
+      // Handled off the transport's thread, so a slow handler does not hold
+      // up other frames.
+      startDaemon(() -> entity.receive(this, frame.kind(), frame.source(), frame.id(), frame.payload()));
+    }
+
+    void reply(String source, long id, int status, byte[] body) {
+      var payload = new byte[body.length + 1];
+      payload[0] = (byte) status;
+      System.arraycopy(body, 0, payload, 1, body.length);
+      synchronized (seen) {
+        String key = source + "#" + id;
+        if (seen.containsKey(key)) seen.put(key, payload);
+      }
+      try {
+        send(source + "/", "reply", payload, id);
+      } catch (RuntimeException e) {
+        // Unreachable: the sender asks again.
+      }
+    }
+
+    /** Sends a request until answered (the receiver runs it once): its reply. */
+    byte[] request(String address, String kind, byte[] payload, double timeout) {
+      long id = nextId();
+      var slot = new java.util.concurrent.CompletableFuture<byte[]>();
+      pending.put(id, slot);
+      long giveUp = System.nanoTime() + (long) (timeout * 1e9);
+      while (true) {
+        try {
+          send(address, kind, payload, id);
+        } catch (Unreachable e) {
+          // Tried again below.
+        }
+        long left = giveUp - System.nanoTime();
+        try {
+          return slot.get(Math.max(0, Math.min(100_000_000L, left)), java.util.concurrent.TimeUnit.NANOSECONDS);
+        } catch (java.util.concurrent.TimeoutException e) {
+          if (System.nanoTime() >= giveUp) {
+            pending.remove(id);
+            throw new Unreachable(address + " did not answer within " + timeout + "s");
+          }
+        } catch (InterruptedException e) {
+          Thread.currentThread().interrupt();
+          pending.remove(id);
+          throw new Unreachable("interrupted while waiting for " + address);
+        } catch (java.util.concurrent.ExecutionException e) {
+          throw new IllegalStateException(e.getCause());
+        }
+      }
+    }
+
+    // Mailboxes: values of one type sent by any node.
+
+    /** A local Mailbox that other nodes send to at {address}/name. */
+    public Mailbox<Value> mailbox(String name, Object descriptor, Values values) {
+      var box = new Mailbox<Value>();
+      register(
+          name,
+          (node, kind, source, id, payload) -> {
+            if (!kind.equals("mail")) return;
+            try {
+              box.send(wireDecode(values, descriptor, payload));
+            } catch (RuntimeException e) {
+              // Undecodable or closed: dropped, as on any best-effort send.
+            }
+          });
+      return box;
+    }
+
+    public RemoteMailbox remoteMailbox(String address, Object descriptor, Values values) {
+      return new RemoteMailbox(this, address, descriptor, values);
+    }
+
+    // Actors: calls by message name, with each message's types.
+
+    /**
+     * Lets other nodes call actor at {address}/name: handlers maps a message name to its handler
+     * and types.
+     */
+    public <S> String serve(String name, Actor<S> actor, Map<String, Served<S>> handlers, Values values) {
+      return register(
+          name,
+          (node, kind, source, id, payload) -> {
+            if (!kind.equals("call")) return;
+            Served<S> served;
+            List<Value> args = new ArrayList<>();
+            try {
+              var in = new Reader(payload, 0);
+              String message = getText(in);
+              served = handlers.get(message);
+              if (served == null) throw new WireError("no message " + message);
+              for (var d : served.arguments()) args.add(wireGet(values, d, in));
+              if (in.pos != payload.length) throw new WireError("extra bytes after the arguments");
+            } catch (RuntimeException e) {
+              node.reply(source, id, 3, utf8("not a message this actor handles: " + e.getMessage()));
+              return;
+            }
+            try {
+              var result = actor.call(s -> served.handler().apply(s, args));
+              node.reply(source, id, 0, wireEncode(values, served.reply(), result));
+            } catch (ActorCrashed e) {
+              node.reply(source, id, 1, utf8(e.getMessage()));
+            } catch (ActorStopped e) {
+              node.reply(source, id, 2, utf8(e.getMessage()));
+            }
+          });
+    }
+
+    /** A proxy calling the actor at address. */
+    public RemoteActor remoteActor(
+        String address, Map<String, Signature> signatures, Values values, double timeout) {
+      return new RemoteActor(this, address, signatures, values, timeout);
+    }
+
+    // Definitions, by content hash.
+
+    /** Lets other nodes evaluate definitions: table maps a content hash to a definition. */
+    public String serveDefinitions(Map<String, Definition> table, Values values) {
+      return serveDefinitions(table, values, "definitions");
+    }
+
+    public String serveDefinitions(Map<String, Definition> table, Values values, String name) {
+      return register(
+          name,
+          (node, kind, source, id, payload) -> {
+            if (!kind.equals("eval")) return;
+            Definition definition;
+            var args = new ArrayList<Value>();
+            try {
+              var in = new Reader(payload, 0);
+              definition = table.get(getText(in));
+              if (definition == null) throw new WireError("unknown hash");
+              for (var d : definition.arguments()) args.add(wireGet(values, d, in));
+            } catch (RuntimeException e) {
+              node.reply(source, id, 3, utf8("this node has no definition with that content hash"));
+              return;
+            }
+            try {
+              node.reply(source, id, 0, wireEncode(values, definition.result(), definition.function().apply(args)));
+            } catch (RuntimeException e) {
+              node.reply(source, id, 1, utf8(e.getClass().getSimpleName() + ": " + e.getMessage()));
+            }
+          });
+    }
+
+    /** Evaluates the definition with this content hash on another node. */
+    public Value evaluate(
+        String node, String digest, List<Value> args, List<Object> arguments, Object result,
+        Values values, double timeout) {
+      var out = new java.io.ByteArrayOutputStream();
+      putText(out, digest);
+      for (int i = 0; i < arguments.size(); i++) wirePut(values, arguments.get(i), args.get(i), out);
+      return replyValue(request(node + "/definitions", "eval", out.toByteArray(), timeout), values, result);
+    }
+
+    // Channels: one side here, the other on any node.
+
+    /**
+     * The first end of a channel named name here; its other end is dial(...)ed from any node. steps:
+     * (sends, descriptor) per step, from this end's side.
+     */
+    public NetEndpoint listen(String name, List<Step> steps, Values values) {
+      var endpoint = new NetEndpoint(this, steps, values, 5.0);
+      endpoint.address = register(name, endpoint);
+      return endpoint;
+    }
+
+    /** The second end of the channel listening at address; steps are from this end's side. */
+    public NetEndpoint dial(String address, List<Step> steps, Values values) {
+      var endpoint = new NetEndpoint(this, steps, values, 5.0);
+      endpoint.address = register("end-" + nextId(), endpoint);
+      endpoint.connect(address);
+      return endpoint;
+    }
+  }
+
+  /** A protocol step: whether this end sends, and the value's descriptor. */
+  public record Step(boolean sends, Object descriptor) {}
+
+  private static byte[] utf8(String text) {
+    return text.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+  }
+
+  private static Value replyValue(byte[] payload, Values values, Object descriptor) {
+    int status = payload[0] & 0xFF;
+    var body = Arrays.copyOfRange(payload, 1, payload.length);
+    if (status == 0) return wireDecode(values, descriptor, body);
+    String message = new String(body, java.nio.charset.StandardCharsets.UTF_8);
+    if (status == 1) throw new ActorCrashed(new IllegalStateException(message));
+    if (status == 2) throw new ActorStopped(message);
+    throw new Unreachable(message);
+  }
+
+  /** Sends to a mailbox on another node; send never waits for it. */
+  public static final class RemoteMailbox {
+    private final Node node;
+    public final String address;
+    private final Object descriptor;
+    private final Values values;
+
+    RemoteMailbox(Node node, String address, Object descriptor, Values values) {
+      this.node = node;
+      this.address = address;
+      this.descriptor = descriptor;
+      this.values = values;
+    }
+
+    public void send(Value value) {
+      node.send(address, "mail", wireEncode(values, descriptor, value), 0);
+    }
+  }
+
+  /**
+   * Calls an actor on another node: call(message, args) sends the message and waits for the reply,
+   * throwing Unreachable after the timeout, or what the actor's call threw (ActorCrashed,
+   * ActorStopped).
+   */
+  public static final class RemoteActor {
+    private final Node node;
+    public final String address;
+    private final Map<String, Signature> signatures;
+    private final Values values;
+    private final double timeout;
+
+    RemoteActor(Node node, String address, Map<String, Signature> signatures, Values values, double timeout) {
+      this.node = node;
+      this.address = address;
+      this.signatures = signatures;
+      this.values = values;
+      this.timeout = timeout;
+    }
+
+    public Value call(String message, List<Value> args) {
+      var signature = signatures.get(message);
+      var out = new java.io.ByteArrayOutputStream();
+      putText(out, message);
+      for (int i = 0; i < signature.arguments().size(); i++)
+        wirePut(values, signature.arguments().get(i), args.get(i), out);
+      return replyValue(node.request(address, "call", out.toByteArray(), timeout), values, signature.reply());
+    }
+  }
+
+  private static final Object NET_ABANDONED = new Object();
+
+  /**
+   * One end of a channel between nodes, as a Channel. Each value travels in a numbered frame that
+   * is sent again until acknowledged, so loss, duplication and reordering are repaired; a peer
+   * silent for the deadline is treated as failed (PeerFailed). Order is kept within the channel.
+   */
+  public static final class NetEndpoint implements Channel, Entity {
+    private final Node node;
+    private final List<Step> steps;
+    private final Values values;
+    private final double deadline;
+    public String address;
+    private String peer;
+    private long out;
+    private final Map<Long, Object[]> unacked = new java.util.HashMap<>();
+    private long expected;
+    private final Map<Long, byte[]> early = new java.util.HashMap<>();
+    private final java.util.concurrent.LinkedBlockingQueue<Object[]> inbox =
+        new java.util.concurrent.LinkedBlockingQueue<>();
+    private int step;
+    private volatile boolean gone;
+
+    NetEndpoint(Node node, List<Step> steps, Values values, double deadline) {
+      this.node = node;
+      this.steps = steps;
+      this.values = values;
+      this.deadline = deadline;
+      startDaemon(this::resend);
+    }
+
+    private static void putSeq(java.io.ByteArrayOutputStream out, long seq) {
+      putVarint(out, zigzag(BigInteger.valueOf(seq)));
+    }
+
+    void connect(String address) {
+      synchronized (this) {
+        peer = address;
+      }
+      transmit(-1, utf8("hello"));
+    }
+
+    /** Sends a numbered frame (seq -1 is the hello) until it is acked. */
+    private void transmit(long seq, byte[] body) {
+      var buffer = new java.io.ByteArrayOutputStream();
+      putSeq(buffer, seq);
+      putText(buffer, address);
+      buffer.writeBytes(body);
+      var payload = buffer.toByteArray();
+      String target;
+      synchronized (this) {
+        long now = System.nanoTime();
+        unacked.put(seq, new Object[] {payload, now, now});
+        target = peer;
+      }
+      if (target != null) {
+        try {
+          node.send(target, "chan", payload, 0);
+        } catch (RuntimeException e) {
+          // Sent again by resend.
+        }
+      }
+    }
+
+    private void resend() {
+      while (!gone && !node.closed) {
+        try {
+          Thread.sleep(20);
+        } catch (InterruptedException e) {
+          return;
+        }
+        long now = System.nanoTime();
+        String target;
+        var due = new ArrayList<Object[]>();
+        boolean stale = false;
+        synchronized (this) {
+          target = peer;
+          for (var entry : unacked.values())
+            if (now - (long) entry[2] > 50_000_000L) {
+              due.add(entry);
+              if (now - (long) entry[1] > (long) (deadline * 1e9)) stale = true;
+            }
+        }
+        if (stale) {
+          fail("the other end did not answer in time (unreachable)");
+          return;
+        }
+        if (target == null) continue;
+        for (var entry : due) {
+          entry[2] = now;
+          try {
+            node.send(target, "chan", (byte[]) entry[0], 0);
+          } catch (RuntimeException e) {
+            // Sent again next time.
+          }
+        }
+      }
+    }
+
+    private void fail(String reason) {
+      synchronized (this) {
+        if (gone) return;
+        gone = true;
+        unacked.clear();
+      }
+      inbox.add(new Object[] {NET_ABANDONED, reason});
+    }
+
+    @Override
+    public void receive(Node node, String kind, String source, long id, byte[] payload) {
+      var in = new Reader(payload, 0);
+      long seq = unzigzag(in.varint()).longValueExact();
+      if (kind.equals("ack")) {
+        synchronized (this) {
+          unacked.remove(seq);
+        }
+        return;
+      }
+      if (!kind.equals("chan")) return;
+      String sender = getText(in);
+      var body = Arrays.copyOfRange(payload, in.pos, payload.length);
+      var ack = new java.io.ByteArrayOutputStream();
+      putSeq(ack, seq);
+      try {
+        node.send(sender, "ack", ack.toByteArray(), 0);
+      } catch (RuntimeException e) {
+        // The sender sends again.
+      }
+      if (seq == -1) {
+        synchronized (this) {
+          if (peer == null) peer = sender;
+        }
+        return;
+      }
+      var ready = new ArrayList<byte[]>();
+      synchronized (this) {
+        if (seq < expected || early.containsKey(seq)) return;
+        early.put(seq, body);
+        while (early.containsKey(expected)) ready.add(early.remove(expected++));
+      }
+      for (var b : ready) inbox.add(new Object[] {null, b});
+    }
+
+    private Object stepDescriptor(boolean sends) {
+      synchronized (this) {
+        if (step >= steps.size()) throw new IllegalStateException("this channel's protocol has ended");
+        var s = steps.get(step);
+        if (s.sends() != sends)
+          throw new IllegalStateException("this step " + (s.sends() ? "sends" : "receives"));
+        step++;
+        return s.descriptor();
+      }
+    }
+
+    @Override
+    public void send(int side, Object value) {
+      if (gone) throw new PeerFailed("the other end has failed");
+      var d = stepDescriptor(true);
+      var body = new java.io.ByteArrayOutputStream();
+      body.write(0);
+      wirePut(values, d, (Value) value, body);
+      long seq;
+      synchronized (this) {
+        seq = out++;
+      }
+      transmit(seq, body.toByteArray());
+    }
+
+    @Override
+    public Object receive(int side) {
+      return receive(side, 0);
+    }
+
+    /** Waits up to timeout seconds (forever when 0); throws IllegalStateException on timeout. */
+    public Object receive(int side, double timeout) {
+      var d = stepDescriptor(false);
+      Object[] item;
+      try {
+        item =
+            timeout <= 0
+                ? inbox.take()
+                : inbox.poll((long) (timeout * 1e9), java.util.concurrent.TimeUnit.NANOSECONDS);
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+        throw new IllegalStateException("interrupted while receiving", e);
+      }
+      if (item == null)
+        throw new IllegalStateException(new java.util.concurrent.TimeoutException("no message arrived in time"));
+      if (item[0] == NET_ABANDONED) {
+        inbox.add(item);
+        throw new PeerFailed((String) item[1]);
+      }
+      var body = (byte[]) item[1];
+      if (body.length > 0 && body[0] == 1) {
+        fail("the other end gave up the conversation");
+        throw new PeerFailed(
+            "the other end gave up the conversation (its process failed or abandoned it)");
+      }
+      return wireDecode(values, d, Arrays.copyOfRange(body, 1, body.length));
+    }
+
+    /** Gives up: the other end's receives fail after what was sent. */
+    @Override
+    public void abandon(int side) {
+      long seq;
+      synchronized (this) {
+        seq = out++;
+      }
+      transmit(seq, new byte[] {1});
+    }
+  }
+
+  /** Converts a step's native values to logical ones and back. */
+  public interface Conversion {
+    Value toLogical(Object nativeValue);
+
+    Object toNative(Value logical);
+  }
+
+  /** A conversion from a codec's encode and decode. */
+  @SuppressWarnings("unchecked")
+  public static <T> Conversion conversion(Function<T, Value> encode, Function<Value, T> decode) {
+    return new Conversion() {
+      public Value toLogical(Object nativeValue) {
+        return encode.apply((T) nativeValue);
+      }
+
+      public Object toNative(Value logical) {
+        return decode.apply(logical);
+      }
+    };
+  }
+
+  /** The conversion of a scalar type's boxed Java values. */
+  public static Conversion scalarConversion(String type, int bits) {
+    return new Conversion() {
+      public Value toLogical(Object nativeValue) {
+        return fromNative(type, nativeValue, bits);
+      }
+
+      public Object toNative(Value logical) {
+        return LawSpecRuntime.toNative(type, logical, bits);
+      }
+    };
+  }
+
+  /** The data types of descriptor forms, for decoding values that use them. */
+  public static Values valuesOf(String forms) {
+    var table = new java.util.HashMap<String, List<Object>>();
+    for (var f : readDescriptor(forms))
+      if (f instanceof List<?> && atomText(form(f).get(0)).equals("data"))
+        table.put(atomText(form(f).get(1)), form(f));
+    return new Values(table);
+  }
+
+  /** One descriptor, such as (int Int32 _ _). */
+  public static Object descriptor(String text) {
+    return readDescriptor(text).get(0);
+  }
+
+  /** A network channel end seen through native values. */
+  public static final class NativeChannel implements Channel {
+    private final NetEndpoint endpoint;
+    private final List<Conversion> conversions;
+    private int step;
+
+    public NativeChannel(NetEndpoint endpoint, List<Conversion> conversions) {
+      this.endpoint = endpoint;
+      this.conversions = conversions;
+    }
+
+    private synchronized Conversion conversion() {
+      var c = step < conversions.size() ? conversions.get(step) : null;
+      step++;
+      return c;
+    }
+
+    @Override
+    public void send(int side, Object value) {
+      var c = conversion();
+      endpoint.send(side, c == null ? value : c.toLogical(value));
+    }
+
+    @Override
+    public Object receive(int side) {
+      var c = conversion();
+      var value = (Value) endpoint.receive(side);
+      return c == null ? value : c.toNative(value);
+    }
+
+    @Override
+    public void abandon(int side) {
+      endpoint.abandon(side);
     }
   }
 }
