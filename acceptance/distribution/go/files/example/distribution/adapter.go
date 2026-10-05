@@ -180,3 +180,51 @@ func remoteHandoff(value0 int32) int64 {
 	<-done
 	return result
 }
+
+// RemoteHandoffOnward moves an end whose peer is on node C from A to B and
+// on to D over a faulty network; then A and B close and C and D finish.
+func RemoteHandoffOnward(value0 int32) LawSpecTask[int64] {
+	return LawSpecGo(func() int64 { return remoteHandoffOnward(value0) })
+}
+
+func remoteHandoffOnward(value0 int32) int64 {
+	network := NewLawSpecMemoryNetwork(uint64(value0)&0xFFFF, 0.1, 0.1, 5*time.Millisecond)
+	a := NewLawSpecNode(network.Transport("a"))
+	b := NewLawSpecNode(network.Transport("b"))
+	c := NewLawSpecNode(network.Transport("c"))
+	d := NewLawSpecNode(network.Transport("d"))
+	for _, node := range []*LawSpecNode{a, b, c, d} {
+		defer node.Close()
+	}
+	must := func(err error) {
+		if err != nil {
+			panic(err)
+		}
+	}
+	// A conversation between A and C, which sends at once; A's end moves to
+	// B, then to D, and answers from there.
+	first, err := ListenAnswering(a, "answering")
+	must(err)
+	dialled, err := DialAnswering(c, a.Address()+"/answering")
+	must(err)
+	second := dialled.Send(value0)
+	toB, err := ListenPassing(a, "to-b")
+	must(err)
+	atB, err := DialPassing(b, a.Address()+"/to-b")
+	must(err)
+	toB.Send(first)
+	moved, _ := atB.Receive()
+	toD, err := ListenPassing(b, "to-d")
+	must(err)
+	atD, err := DialPassing(d, b.Address()+"/to-d")
+	must(err)
+	toD.Send(moved)
+	end, _ := atD.Receive()
+	// The end no longer needs A or B.
+	a.Close()
+	b.Close()
+	x, reply := end.Receive()
+	reply.Send(2 * int64(x))
+	result, _ := second.Receive()
+	return result
+}

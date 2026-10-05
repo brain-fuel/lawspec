@@ -3,6 +3,7 @@ package RUNTIME_PACKAGE
 
 import (
 	"bytes"
+	cryptorand "crypto/rand"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -6278,12 +6279,14 @@ type LawSpecNode struct {
 	seen      map[string][]byte
 	seenOrder []string
 	nextID    uint64
+	closed    chan struct{}
+	closing   sync.Once
 }
 
 // NewLawSpecNode starts a node on a transport.
 func NewLawSpecNode(transport LawSpecNetTransport) *LawSpecNode {
 	n := &LawSpecNode{transport: transport, address: transport.Address(), entities: map[string]lawSpecEntity{},
-		pending: map[uint64]chan []byte{}, seen: map[string][]byte{}}
+		pending: map[uint64]chan []byte{}, seen: map[string][]byte{}, closed: make(chan struct{})}
 	transport.Start(n.deliver)
 	return n
 }
@@ -6291,8 +6294,22 @@ func NewLawSpecNode(transport LawSpecNetTransport) *LawSpecNode {
 // Address is the node's address, such as tcp://127.0.0.1:7000.
 func (n *LawSpecNode) Address() string { return n.address }
 
-// Close stops the node's transport.
-func (n *LawSpecNode) Close() { n.transport.Close() }
+// Close stops the node's transport, and its channel ends' resending.
+func (n *LawSpecNode) Close() {
+	n.closing.Do(func() {
+		close(n.closed)
+		n.transport.Close()
+	})
+}
+
+// forward passes a frame on to address unchanged, keeping its source.
+func (n *LawSpecNode) forward(address, kind, source string, id uint64, payload []byte) {
+	node, name, err := lsSplitAddress(address)
+	if err != nil {
+		return
+	}
+	n.transport.Send(node, lsFrameEncode(kind, name, source, id, payload))
+}
 
 func (n *LawSpecNode) newID() uint64 {
 	n.mu.Lock()
@@ -6687,6 +6704,12 @@ type LawSpecWireStep struct {
 // frame that is sent again until acknowledged, so loss, duplication and
 // reordering are repaired; a peer silent for the deadline is treated as
 // failed (LawSpecPeerFailed). Order is kept within the channel.
+//
+// An unused end can move to another node: offer gives the address the new
+// node takes it over from (<address>?take=<token>). On a take frame with
+// that token, this end hands its state over (a state frame) and from then
+// on forwards every frame it gets to the new end; the new end tells the
+// peer (a moved frame) so the peer sends to it directly.
 type LawSpecNetEndpoint struct {
 	node     *LawSpecNode
 	steps    []LawSpecWireStep
@@ -6702,12 +6725,29 @@ type LawSpecNetEndpoint struct {
 	inbox    chan lawSpecInbound
 	step     int
 	gone     bool
+	failure  string
 	stop     chan struct{}
+	// Moving: the addresses this end had before (oldest first), the token
+	// a taker must show, where the end went and the state frame it was
+	// given, and, on the new node, the takeover in progress.
+	history     []string
+	token       string
+	movedTo     string
+	state       []byte
+	taking      bool
+	takeToken   string
+	taken       chan struct{}
+	isTaken     bool
+	announcing  bool
+	announcedAt time.Time
+	confirmed   chan struct{}
+	isConfirmed bool
 }
 
 type lawSpecUnacked struct {
-	payload    []byte
-	first, at  time.Time
+	payload   []byte
+	first, at time.Time
+	body      []byte
 }
 
 type lawSpecInbound struct {
@@ -6717,7 +6757,8 @@ type lawSpecInbound struct {
 
 func lsNewNetEndpoint(node *LawSpecNode, steps []LawSpecWireStep, values lawSpecValues, deadline time.Duration) *LawSpecNetEndpoint {
 	e := &LawSpecNetEndpoint{node: node, steps: steps, values: values, deadline: deadline,
-		unacked: map[int64]*lawSpecUnacked{}, early: map[int64][]byte{}, inbox: make(chan lawSpecInbound, 4096), stop: make(chan struct{})}
+		unacked: map[int64]*lawSpecUnacked{}, early: map[int64][]byte{}, inbox: make(chan lawSpecInbound, 4096), stop: make(chan struct{}),
+		taken: make(chan struct{}), confirmed: make(chan struct{})}
 	go e.resend()
 	return e
 }
@@ -6755,13 +6796,33 @@ func (n *LawSpecNode) Dial(address string, steps []LawSpecWireStep, values lawSp
 	return e, nil
 }
 
-func (e *LawSpecNetEndpoint) transmit(seq int64, body []byte) {
+// Take takes over a channel end another node moves here: address is
+// <old address>?take=<token>, as that node offered it. It returns once the
+// end's state has arrived and its peer has been told (or after the
+// deadline; the old node then forwards to the end).
+func (n *LawSpecNode) Take(address string, steps []LawSpecWireStep, values lawSpecValues, deadline time.Duration) (*LawSpecNetEndpoint, error) {
+	e := lsNewNetEndpoint(n, steps, values, deadline)
+	own, err := n.register(fmt.Sprintf("end-%d", n.newID()), e)
+	if err != nil {
+		close(e.stop)
+		return nil, err
+	}
+	e.address = own
+	e.takeOver(address)
+	return e, nil
+}
+
+func (e *LawSpecNetEndpoint) frame(seq int64, body []byte) []byte {
 	payload := lsInt64Bytes(nil, seq)
 	payload = lsPutText(payload, e.address)
-	payload = append(payload, body...)
+	return append(payload, body...)
+}
+
+func (e *LawSpecNetEndpoint) transmit(seq int64, body []byte) {
+	payload := e.frame(seq, body)
 	now := time.Now()
 	e.mu.Lock()
-	e.unacked[seq] = &lawSpecUnacked{payload, now, now}
+	e.unacked[seq] = &lawSpecUnacked{payload, now, now, body}
 	peer := e.peer
 	e.mu.Unlock()
 	if peer != "" {
@@ -6776,13 +6837,19 @@ func (e *LawSpecNetEndpoint) resend() {
 		select {
 		case <-e.stop:
 			return
+		case <-e.node.closed:
+			return
 		case <-ticker.C:
 		}
 		now := time.Now()
 		e.mu.Lock()
-		if e.gone {
+		if e.gone || e.movedTo != "" {
 			e.mu.Unlock()
 			return
+		}
+		if e.taking && !e.isTaken {
+			e.mu.Unlock()
+			continue
 		}
 		peer := e.peer
 		due := [][]byte{}
@@ -6794,6 +6861,12 @@ func (e *LawSpecNetEndpoint) resend() {
 				due = append(due, entry.payload)
 			}
 		}
+		var moved []byte
+		if e.announcing && peer != "" && !e.isConfirmed && now.Sub(e.announcedAt) > 50*time.Millisecond {
+			e.announcedAt = now
+			moved = lsPutTexts(nil, e.history)
+			moved = lsPutText(moved, e.address)
+		}
 		e.mu.Unlock()
 		if stale {
 			e.fail("the other end did not answer in time (unreachable)")
@@ -6801,6 +6874,9 @@ func (e *LawSpecNetEndpoint) resend() {
 		}
 		if peer == "" {
 			continue
+		}
+		if moved != nil {
+			e.node.send(peer, "moved", moved, 0)
 		}
 		for _, payload := range due {
 			e.node.send(peer, "chan", payload, 0)
@@ -6815,21 +6891,56 @@ func (e *LawSpecNetEndpoint) fail(reason string) {
 		return
 	}
 	e.gone = true
+	e.failure = reason
 	e.unacked = map[int64]*lawSpecUnacked{}
 	e.mu.Unlock()
 	e.inbox <- lawSpecInbound{failure: reason}
 }
 
 func (e *LawSpecNetEndpoint) receive(node *LawSpecNode, kind, source string, id uint64, payload []byte) {
-	if kind == "ack" {
+	if kind == "take" {
+		e.give(payload)
+		return
+	}
+	e.mu.Lock()
+	forward := e.movedTo
+	waiting := e.taking && !e.isTaken
+	e.mu.Unlock()
+	if forward != "" {
+		node.forward(forward, kind, source, id, payload)
+		return
+	}
+	if waiting {
+		// Until the state arrives, frames are dropped: their senders send
+		// them again.
+		if kind == "state" {
+			e.install(payload)
+		}
+		return
+	}
+	switch kind {
+	case "ack":
 		if seq, _, err := lsGetInt64(payload, 0); err == nil {
 			e.mu.Lock()
 			delete(e.unacked, seq)
 			e.mu.Unlock()
 		}
 		return
-	}
-	if kind != "chan" {
+	case "moved":
+		e.peerMoved(payload)
+		return
+	case "moved-ack":
+		if to, _, err := lsGetText(payload, 0); err == nil && to == e.address {
+			e.mu.Lock()
+			if !e.isConfirmed {
+				e.isConfirmed = true
+				close(e.confirmed)
+			}
+			e.mu.Unlock()
+		}
+		return
+	case "chan":
+	default:
 		return
 	}
 	seq, pos, err := lsGetInt64(payload, 0)
@@ -6841,34 +6952,304 @@ func (e *LawSpecNetEndpoint) receive(node *LawSpecNode, kind, source string, id 
 		return
 	}
 	body := append([]byte{}, payload[pos:]...)
-	node.send(sender, "ack", lsInt64Bytes(nil, seq), 0)
+	e.mu.Lock()
+	if e.movedTo != "" {
+		// Moved meanwhile: the new end acknowledges it.
+		forward = e.movedTo
+		e.mu.Unlock()
+		node.forward(forward, kind, source, id, payload)
+		return
+	}
 	if seq == -1 {
-		e.mu.Lock()
 		if e.peer == "" {
 			e.peer = sender
 		}
-		e.mu.Unlock()
+	} else if _, waiting := e.early[seq]; seq >= e.expected && !waiting {
+		e.early[seq] = body
+		for {
+			next, ok := e.early[e.expected]
+			if !ok {
+				break
+			}
+			delete(e.early, e.expected)
+			e.inbox <- lawSpecInbound{body: next}
+			e.expected++
+		}
+	}
+	e.mu.Unlock()
+	node.send(sender, "ack", lsInt64Bytes(nil, seq), 0)
+}
+
+func lsPutTexts(out []byte, texts []string) []byte {
+	out = lsPutUvarint(out, uint64(len(texts)))
+	for _, t := range texts {
+		out = lsPutText(out, t)
+	}
+	return out
+}
+
+func lsGetTexts(buf []byte, pos int) ([]string, int, error) {
+	count, pos, err := lsGetUvarint(buf, pos)
+	if err != nil {
+		return nil, pos, err
+	}
+	texts := []string{}
+	for i := uint64(0); i < count; i++ {
+		var t string
+		if t, pos, err = lsGetText(buf, pos); err != nil {
+			return nil, pos, err
+		}
+		texts = append(texts, t)
+	}
+	return texts, pos, nil
+}
+
+type lsNumbered struct {
+	seq  int64
+	body []byte
+}
+
+func lsPutNumbered(out []byte, items []lsNumbered) []byte {
+	sort.Slice(items, func(i, j int) bool { return items[i].seq < items[j].seq })
+	out = lsPutUvarint(out, uint64(len(items)))
+	for _, item := range items {
+		out = lsInt64Bytes(out, item.seq)
+		out = lsPutUvarint(out, uint64(len(item.body)))
+		out = append(out, item.body...)
+	}
+	return out
+}
+
+func lsGetNumbered(buf []byte, pos int) ([]lsNumbered, int, error) {
+	count, pos, err := lsGetUvarint(buf, pos)
+	if err != nil {
+		return nil, pos, err
+	}
+	items := []lsNumbered{}
+	for i := uint64(0); i < count; i++ {
+		var seq int64
+		var body []byte
+		if seq, pos, err = lsGetInt64(buf, pos); err != nil {
+			return nil, pos, err
+		}
+		if body, pos, err = lsGetRaw(buf, pos); err != nil {
+			return nil, pos, err
+		}
+		items = append(items, lsNumbered{seq, append([]byte{}, body...)})
+	}
+	return items, pos, nil
+}
+
+// offer is the address another node takes this unused end over from.
+func (e *LawSpecNetEndpoint) offer() string {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.token == "" {
+		random := make([]byte, 16)
+		if _, err := cryptorand.Read(random); err != nil {
+			panic(err)
+		}
+		e.token = fmt.Sprintf("%x", random)
+	}
+	return e.address + "?take=" + e.token
+}
+
+// give answers a take frame: it hands the state over once, to the first
+// taker with the token, and answers that taker's repeats with the same
+// state.
+func (e *LawSpecNetEndpoint) give(payload []byte) {
+	token, pos, err := lsGetText(payload, 0)
+	if err != nil {
+		return
+	}
+	taker, _, err := lsGetText(payload, pos)
+	if err != nil {
 		return
 	}
 	e.mu.Lock()
-	if _, waiting := e.early[seq]; seq < e.expected || waiting {
+	if e.token == "" || token != e.token {
 		e.mu.Unlock()
 		return
 	}
-	e.early[seq] = body
-	ready := [][]byte{}
-	for {
-		next, ok := e.early[e.expected]
-		if !ok {
-			break
+	if e.movedTo == "" {
+		// The end is unused, so nothing else takes from its inbox.
+		received := [][]byte{}
+	drain:
+		for {
+			select {
+			case inbound := <-e.inbox:
+				if inbound.failure == "" {
+					received = append(received, inbound.body)
+				}
+			default:
+				break drain
+			}
 		}
-		delete(e.early, e.expected)
-		ready = append(ready, next)
-		e.expected++
+		state := lsPutText(nil, token)
+		state = lsPutText(state, e.failure)
+		state = lsPutText(state, e.peer)
+		state = lsPutTexts(state, append(append([]string{}, e.history...), e.address))
+		state = lsInt64Bytes(state, e.out)
+		state = lsInt64Bytes(state, e.expected)
+		unacked := []lsNumbered{}
+		for seq, entry := range e.unacked {
+			unacked = append(unacked, lsNumbered{seq, entry.body})
+		}
+		state = lsPutNumbered(state, unacked)
+		early := []lsNumbered{}
+		for seq, body := range e.early {
+			early = append(early, lsNumbered{seq, body})
+		}
+		state = lsPutNumbered(state, early)
+		state = lsPutUvarint(state, uint64(len(received)))
+		for _, body := range received {
+			state = lsPutUvarint(state, uint64(len(body)))
+			state = append(state, body...)
+		}
+		e.movedTo, e.state = taker, state
+		e.unacked = map[int64]*lawSpecUnacked{}
+		e.early = map[int64][]byte{}
+	} else if e.movedTo != taker {
+		e.mu.Unlock()
+		return
 	}
+	state := e.state
 	e.mu.Unlock()
-	for _, b := range ready {
-		e.inbox <- lawSpecInbound{body: b}
+	e.node.send(taker, "state", state, 0)
+}
+
+// takeOver takes over the end offered at address (<old address>?take=<token>):
+// it asks for the end's state until it comes, then tells the peer where the
+// end is now. It returns once the peer knows, or after the deadline (the old
+// node then keeps forwarding to this end, as a relay would).
+func (e *LawSpecNetEndpoint) takeOver(address string) {
+	old, query, _ := strings.Cut(address, "?")
+	token := strings.TrimPrefix(query, "take=")
+	e.mu.Lock()
+	e.taking, e.takeToken = true, token
+	e.mu.Unlock()
+	request := lsPutText(nil, token)
+	request = lsPutText(request, e.address)
+	giveUp := time.NewTimer(e.deadline)
+	defer giveUp.Stop()
+	for {
+		e.node.send(old, "take", request, 0)
+		select {
+		case <-e.taken:
+		case <-time.After(50 * time.Millisecond):
+			select {
+			case <-giveUp.C:
+				e.mu.Lock()
+				e.taking = false
+				e.mu.Unlock()
+				e.fail("the node the end came from did not hand it over in time (unreachable)")
+				return
+			default:
+			}
+			continue
+		}
+		break
+	}
+	select {
+	case <-e.confirmed:
+	case <-giveUp.C:
+	}
+}
+
+func (e *LawSpecNetEndpoint) install(payload []byte) {
+	token, pos, err := lsGetText(payload, 0)
+	if err != nil {
+		return
+	}
+	var failure, peer string
+	var history []string
+	var out, expected int64
+	var unacked, early []lsNumbered
+	var count uint64
+	if failure, pos, err = lsGetText(payload, pos); err != nil {
+		return
+	}
+	if peer, pos, err = lsGetText(payload, pos); err != nil {
+		return
+	}
+	if history, pos, err = lsGetTexts(payload, pos); err != nil {
+		return
+	}
+	if out, pos, err = lsGetInt64(payload, pos); err != nil {
+		return
+	}
+	if expected, pos, err = lsGetInt64(payload, pos); err != nil {
+		return
+	}
+	if unacked, pos, err = lsGetNumbered(payload, pos); err != nil {
+		return
+	}
+	if early, pos, err = lsGetNumbered(payload, pos); err != nil {
+		return
+	}
+	if count, pos, err = lsGetUvarint(payload, pos); err != nil {
+		return
+	}
+	received := [][]byte{}
+	for i := uint64(0); i < count; i++ {
+		var body []byte
+		if body, pos, err = lsGetRaw(payload, pos); err != nil {
+			return
+		}
+		received = append(received, append([]byte{}, body...))
+	}
+	now := time.Now()
+	e.mu.Lock()
+	if !e.taking || token != e.takeToken || e.isTaken {
+		e.mu.Unlock()
+		return
+	}
+	e.peer = peer
+	e.history = history
+	e.out, e.expected = out, expected
+	// Sent again from here at once, under this end's address.
+	for _, item := range unacked {
+		e.unacked[item.seq] = &lawSpecUnacked{e.frame(item.seq, item.body), now, time.Time{}, item.body}
+	}
+	for _, item := range early {
+		e.early[item.seq] = item.body
+	}
+	for _, body := range received {
+		e.inbox <- lawSpecInbound{body: body}
+	}
+	e.announcing = true
+	e.isTaken = true
+	close(e.taken)
+	e.mu.Unlock()
+	if failure != "" {
+		e.fail(failure)
+	}
+}
+
+// peerMoved handles a moved frame: from now on this end sends to the
+// peer's new address.
+func (e *LawSpecNetEndpoint) peerMoved(payload []byte) {
+	history, pos, err := lsGetTexts(payload, 0)
+	if err != nil {
+		return
+	}
+	to, _, err := lsGetText(payload, pos)
+	if err != nil {
+		return
+	}
+	e.mu.Lock()
+	if e.peer == "" {
+		e.peer = to
+	}
+	for _, h := range history {
+		if h == e.peer {
+			e.peer = to
+		}
+	}
+	known := e.peer == to
+	e.mu.Unlock()
+	if known {
+		e.node.send(to, "moved-ack", lsPutText(nil, to), 0)
 	}
 }
 
@@ -6993,12 +7374,17 @@ func lsNetEnd(endpoint *LawSpecNetEndpoint, side int, toLogical []func(any) LawS
 	return &LawSpecEnd{transport: &lawSpecNativeTransport{endpoint: endpoint, toLogical: toLogical, toNative: toNative}, side: side}
 }
 
-// LawSpecRelayEnd offers an unused channel end to another node: a relay on
-// node listens for the receiver and passes each step between it and the
-// end, which stays here. steps and the conversions are the end's protocol
-// from the end itself. It returns the relay's address, which is what
-// travels. A failure on either side gives up the other.
-func LawSpecRelayEnd(node *LawSpecNode, end *LawSpecEnd, steps []LawSpecWireStep, toLogical []func(any) LawSpecValue, toNative []func(LawSpecValue) any, values lawSpecValues) LawSpecValue {
+// LawSpecOfferEnd is the text that gives an unused channel end to another
+// node. An end that is itself between nodes moves there (the text is
+// <address>?take=<token>); a local end stays here and a relay on node
+// listens for the receiver and passes each step between it and the end
+// (the text is the relay's address). steps and the conversions are the
+// end's protocol from the end itself. A failure on either side of a relay
+// gives up the other.
+func LawSpecOfferEnd(node *LawSpecNode, end *LawSpecEnd, steps []LawSpecWireStep, toLogical []func(any) LawSpecValue, toNative []func(LawSpecValue) any, values lawSpecValues) LawSpecValue {
+	if network, ok := end.transport.(*lawSpecNativeTransport); ok && network.step == 0 {
+		return LawSpecValue{"Text", lsTextUnits(network.endpoint.offer())}
+	}
 	flipped := []LawSpecWireStep{}
 	for _, s := range steps {
 		flipped = append(flipped, LawSpecWireStep{!s.Sends, s.Descriptor})
@@ -7032,11 +7418,18 @@ func LawSpecRelayEnd(node *LawSpecNode, end *LawSpecEnd, steps []LawSpecWireStep
 	return LawSpecValue{"Text", lsTextUnits(relay.Address())}
 }
 
-// LawSpecDialEnd is the channel end relayed at address (as LawSpecRelayEnd
-// sent it), on node: steps and the conversions are from that end.
-func LawSpecDialEnd(node *LawSpecNode, address LawSpecValue, steps []LawSpecWireStep, toLogical []func(any) LawSpecValue, toNative []func(LawSpecValue) any, values lawSpecValues) *LawSpecEnd {
+// LawSpecAcceptEnd is the channel end offered at address (as
+// LawSpecOfferEnd sent it), on node: it takes over a moving end, or dials a
+// relay. steps and the conversions are from that end.
+func LawSpecAcceptEnd(node *LawSpecNode, address LawSpecValue, steps []LawSpecWireStep, toLogical []func(any) LawSpecValue, toNative []func(LawSpecValue) any, values lawSpecValues) *LawSpecEnd {
 	text, _ := lsUnitsText(address.Data.([]int))
-	endpoint, err := node.Dial(text, steps, values, 5*time.Second)
+	var endpoint *LawSpecNetEndpoint
+	var err error
+	if strings.Contains(text, "?take=") {
+		endpoint, err = node.Take(text, steps, values, 5*time.Second)
+	} else {
+		endpoint, err = node.Dial(text, steps, values, 5*time.Second)
+	}
 	if err != nil {
 		panic(err)
 	}
