@@ -19,7 +19,7 @@ import Control.Monad (void, unless, when, forM_)
 import Control.Monad.Reader (Reader, asks, runReader)
 import qualified Data.Map.Strict as M
 import qualified Data.Map.Lazy as Lazy
-import Data.Char (isLower, isUpper, isControl)
+import Data.Char (isLower, isUpper, isControl, toUpper)
 import Data.List (uncons, intercalate)
 import Data.Void (Void)
 import Text.Megaparsec hiding (SourcePos, parse)
@@ -350,7 +350,7 @@ modelP = do
     (case [s | Left (Left s) <- items] of s : _ -> Just s; [] -> Nothing)
     [c | Right (Left c) <- items]
     (case [a | Left (Right (Left a)) <- items] of a : _ -> Just a; [] -> Nothing)
-    [i | Left (Right (Right i)) <- items] range behavesLike)
+    [i | Left (Right (Right i)) <- items] range behavesLike Nothing Nothing)
   where
     modelledBy = void (symbol "~") <|> keyword "by"
     item = choice
@@ -363,6 +363,49 @@ modelP = do
       , (\c op -> Right (Left (ModelCommand c op Nothing True))) <$> try (ident <* keyword "as") <*> ident ]
     -- A model value: a literal, a name or a parenthesized expression, so it
     -- cannot run into the next line.
+    value = parens expr
+      <|> (ListLit <$> between (symbol "[") (symbol "]") (expr `sepBy` symbol ","))
+      <|> try numeric <|> (StringLit <$> str) <|> (BoolLit <$> boolP)
+      <|> ((\n -> if maybe False (isUpper . fst) (uncons n) then ConstructLit n [] else Var n) <$> qualifiedName)
+
+-- actor name :: State by Model is ... end: a process owning a State that
+-- handles one message at a time. `on message by reference [when p]` pairs a
+-- handler (an adapter State -> args -> Pair Result State) with its
+-- reference; `start f [by value]` makes the state; `restart from f` gives a
+-- restarted actor's state from its last one. Its handle type is the actor's
+-- name, capitalized, then Actor: actor account has an AccountActor.
+actorP :: P ModelDeclaration
+actorP = do
+  ((name, own, model, items), range) <- withSpan $ do
+    keyword "actor"
+    name <- ident
+    void (symbol "::")
+    own <- typeP
+    keyword "by"
+    model <- typeP
+    keyword "is"
+    items <- many item
+    keyword "end"
+    pure (name, own, model, items)
+  let handle = case name of
+        c : cs -> toUpper c : cs ++ "Actor"
+        [] -> []
+      first xs = case xs of x : _ -> Just x; [] -> Nothing
+  pure (ModelDeclaration name True (Named handle) model
+    (first [s | Left (Left s) <- items])
+    [c | Right (Left c) <- items]
+    (first [a | Left (Right (Left a)) <- items])
+    [i | Left (Right (Right i)) <- items] range False (Just own)
+    (first [r | Right (Right r) <- items]))
+  where
+    modelledBy = void (symbol "~") <|> keyword "by"
+    item = choice
+      [ (\f e -> Left (Left (f, e))) <$> (keyword "start" *> ident) <*> option (Var "") (modelledBy *> value)
+      , Left . Right . Left <$> (keyword "abstract" *> qualifiedName)
+      , Left . Right . Right <$> (keyword "invariant" *> qualifiedName)
+      , Right . Right <$> (keyword "restart" *> keyword "from" *> qualifiedName)
+      , (\c r w -> Right (Left (ModelCommand c r w False))) <$> (keyword "on" *> ident) <*> (modelledBy *> qualifiedName)
+          <*> optional (keyword "when" *> qualifiedName) ]
     value = parens expr
       <|> (ListLit <$> between (symbol "[") (symbol "]") (expr `sepBy` symbol ","))
       <|> try numeric <|> (StringLit <$> str) <|> (BoolLit <$> boolP)
@@ -676,6 +719,7 @@ unitP = do
     <|> (HandleMember <$> (try (lookAhead (keyword "handle" *> ident >>= upper)) *> withSpan (keyword "handle" *> ident)))
     -- `model` begins a model only before a name; it may name a function.
     <|> (ModelMember <$> (try (lookAhead (keyword "model" *> ident)) *> modelP))
+    <|> (ModelMember <$> (try (lookAhead (keyword "actor" *> ident)) *> actorP))
     <|> (RefinementMember <$> refinementP)
     <|> (DefinitionMember <$> functionDefinitionP)
     <|> (AsyncMember <$> try (keyword "async" *> withSpan ((,) <$> ident <* symbol "::" <*> typeP)))

@@ -34,6 +34,10 @@ data Machine name = Machine
   , machinePerKey :: Bool
   -- The scenarios that run this model.
   , machineScenarios :: [Program]
+  -- An actor: the system is a mailbox that runs the commands (its
+  -- handlers, adapters over the actor's own state) one at a time, and the
+  -- start makes that state.
+  , machineActor :: Bool
   } deriving (Eq, Show, Generic, Functor, Foldable, Traversable)
 
 -- The command that makes the first state, and the definition giving the

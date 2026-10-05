@@ -1,5 +1,6 @@
 module LawSpec.CoreEmit (emitPlan, emitPlanWithFormat, emitPlanWithLayout, emitPlanWithOptions, emitPlanWithNativeOptions, targets) where
 import LawSpec.Sessions (sessionArtifacts)
+import LawSpec.Actors (actorArtifacts)
 import LawSpec.Backend
 import LawSpec.Common
 import LawSpec.Testing
@@ -67,7 +68,9 @@ emitPlanWithFormat minify target original = do
   emittedFiles <- emitPlanFormatted minify target plan
   -- Typed channel ends for the unit's protocols, for implementation code.
   sessions <- sessionArtifacts minify target plan
-  let files = emittedFiles ++ sessions
+  -- Typed actors, for implementation code.
+  actors <- actorArtifacts minify target plan
+  let files = emittedFiles ++ sessions ++ actors
   canonical <- if minify then emitPlanFormatted False target plan else pure files
   let references = [(artifactPath a, artifactContent a) | a <- canonical, ownership a == "user"]
   mapM (\artifact -> if ownership artifact /= "user" then pure artifact else

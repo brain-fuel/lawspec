@@ -57,7 +57,8 @@ machineSpec bits datas declarations contracts machine = do
      zipWith commandForm commands commandDescriptors ++
      [ "(abstract " ++ bool (machineAbstractRun machine /= Nothing) ++ ")"
      , "(invariants" ++ concatMap ((' ' :) . invariant) (machineInvariants machine) ++ ")"
-     , "(perkey " ++ bool (machinePerKey machine) ++ ")" ]))
+     , "(perkey " ++ bool (machinePerKey machine) ++ ")"
+     , "(actor " ++ bool (machineActor machine) ++ ")" ]))
   where
     bool b = if b then "true" else "false"
     need (AtLeast k) = "(atleast " ++ show k ++ ")"

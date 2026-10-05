@@ -34,6 +34,11 @@ data ModelDeclaration = ModelDeclaration
   -- `behaves like C`: modelBy is the built-in collection type C, and each
   -- command names the collection operation it implements.
   , modelBehaves :: Bool
+  -- An actor's own state type: its handlers take it first and return it
+  -- with their result; the model's state type is the actor's handle.
+  , modelActor :: Maybe Type
+  -- The definition giving a restarted actor's state from its last one.
+  , modelRestart :: Maybe String
   } deriving (Eq, Show)
 
 data ModelCommand = ModelCommand
@@ -53,10 +58,17 @@ elaborateModels declarations u = do
   let names = map modelName declarations
   forM_ declarations $ \m -> when (length (filter (== modelName m) names) > 1)
     (Left (Just (modelSpan m), "model " ++ modelName m ++ " is declared twice"))
-  expanded <- forM declarations (behaviour u)
+  -- An actor's handle is a generated handle type.
+  let actorHandles = [(n, modelSpan m) | m <- declarations, modelActor m /= Nothing, Named n <- [modelState m]]
+      declaredTypes = map dataTypeName (dataTypes u) ++ handles u
+  forM_ [m | m <- declarations, modelActor m /= Nothing] $ \m -> forM_ [n | Named n <- [modelState m], n `elem` declaredTypes] $ \n ->
+    Left (Just (modelSpan m), "actor " ++ modelName m ++ "'s handle type is " ++ n ++ ", which is already declared; rename the actor or the type")
+  let u0 = u { handles = handles u ++ map fst actorHandles
+             , dataTypes = dataTypes u ++ [DataTypeDeclaration n [] [] range Nothing | (n, range) <- actorHandles] }
+  expanded <- forM declarations (behaviour u0)
   let behaviours = concat [ds | (_, ds, _) <- expanded]
       signatureOf d = (functionName d, foldr Arrow (functionResult d) (map snd (functionArguments d)))
-      u' = u { functionDefinitions = functionDefinitions u ++ behaviours, functions = functions u ++ map signatureOf behaviours }
+      u' = u0 { functionDefinitions = functionDefinitions u ++ behaviours, functions = functions u ++ map signatureOf behaviours }
   results <- forM [(m, keys) | (m, _, keys) <- expanded] $ \(m, keys) -> do
     (machine, start) <- elaborateModel u' m
     let keyed = [c { commandKey = maybe Nothing id (lookup (commandName c) keys) } | c <- machineCommands machine]
@@ -70,7 +82,7 @@ elaborateModels declarations u = do
       (Left (Just (modelSpan m), "model " ++ modelName m ++ " generates " ++ n ++ ", which is already declared; rename one"))
   let starts = [d | (_, Just d) <- results] ++ behaviours
       signature d = (functionName d, foldr Arrow (functionResult d) (map snd (functionArguments d)))
-  pure u
+  pure u0
     { machines = machines u ++ map fst results
     , functionDefinitions = functionDefinitions u ++ starts
     , functions = functions u ++ map signature starts
@@ -101,14 +113,31 @@ elaborateModel u m = do
         Just actual -> unless (shape actual == shape expected)
           (failing (what ++ " " ++ f ++ " must have type " ++ prettyType expected ++ ", not " ++ prettyType actual))
       isState t = maybe False ((== family) . fst) (stateHead t)
+      -- The state a system is checked through: an actor's own state, which
+      -- the runtime reads from the actor between messages.
+      systemState = maybe (modelState m) id (modelActor m)
+      owned t = maybe (isState t) (\own -> shape t == shape own) (modelActor m)
   commands <- forM (modelCommands m) $ \c -> do
     let name = modelCommand c
         context message = failing ("command " ++ name ++ " " ++ message)
     ty <- maybe (context "has no signature") pure (signatureOf name)
     when (name `elem` map functionName (functionDefinitions u))
       (context "is a checked definition; commands are adapters, the system under test")
-    let (args, result) = arguments ty
-    (position, needs, shifts) <- if modelShared m
+    let (args, declaredResult) = arguments ty
+    -- An actor's handler takes the actor's state and returns its result
+    -- with the next state (or the state alone, for a Unit result).
+    result <- case modelActor m of
+      Nothing -> pure declaredResult
+      Just own -> do
+        unless (take 1 (map shape args) == [shape own])
+          (context ("is a handler of actor " ++ modelName m ++ ", so it must take its state " ++ prettyType own ++ " first"))
+        case unrefinedType declaredResult of
+          Application "Pair" [r, after] | shape after == shape own, isUnitType r ->
+            context ("returns no result, so it should return " ++ prettyType own ++ " alone")
+          Application "Pair" [r, after] | shape after == shape own -> pure r
+          after | shape after == shape own -> pure (Named "Unit")
+          _ -> context ("must return Pair Result " ++ prettyType own ++ ", or " ++ prettyType own ++ " alone")
+    (position, needs, shifts) <- if modelActor m /= Nothing then pure (0, [], []) else if modelShared m
       then case [i | (i, a) <- zip [0 ..] args, isState a] of
         [i] -> pure (i, [], [])
         [] -> context ("must take the shared " ++ family ++ " as an argument")
@@ -131,20 +160,21 @@ elaborateModel u m = do
   forM_ (modelAbstract m) $ \f -> do
     ty <- maybe (failing ("abstract " ++ f ++ " has no signature")) pure (signatureOf f)
     case arguments ty of
-      ([s], r) | isState s && shape r == shape modelType -> pure ()
-      _ -> failing ("abstract " ++ f ++ " must take " ++ prettyType (modelState m) ++ " to " ++ prettyType modelType)
+      ([s], r) | owned s && shape r == shape modelType -> pure ()
+      _ -> failing ("abstract " ++ f ++ " must take " ++ prettyType systemState ++ " to " ++ prettyType modelType)
   invariants <- forM (modelInvariants m) $ \p -> case definitionType p of
     Just (Arrow a b) | shape b == Named "Bool" && shape a == shape modelType -> pure (OnModel p)
-    Just (Arrow a b) | shape b == Named "Bool" && isState a -> pure (OnState p)
+    Just (Arrow a b) | shape b == Named "Bool" && owned a -> pure (OnState p)
     _ -> failing ("invariant " ++ p ++ " must be a checked definition taking " ++ prettyType modelType ++
-      " or " ++ prettyType (modelState m) ++ " to Bool")
+      " or " ++ prettyType systemState ++ " to Bool")
   (start, startDefinition) <- case modelStart m of
     Nothing -> pure (Nothing, Nothing)
     Just (f, initial) -> do
       ty <- maybe (failing ("start " ++ f ++ " has no signature")) pure (signatureOf f)
       let (args, result) = arguments ty
-      unless (isState result && all (null . flowOfList) args)
-        (failing ("start " ++ f ++ " must return " ++ family ++ " without taking a state"))
+      let made = maybe (isState result) (\own -> shape result == shape own) (modelActor m)
+      unless (made && all (null . flowOfList) args)
+        (failing ("start " ++ f ++ " must return " ++ maybe family prettyType (modelActor m) ++ " without taking a state"))
       fixed <- case stateHead result of
         Just (_, indices) -> pure (mapM constant indices)
         Nothing -> pure Nothing
@@ -162,7 +192,7 @@ elaborateModel u m = do
   let abstractRun = case modelAbstract m of
         Just f | null (definitionOf f) -> Just (bridge "Abstract")
         other -> other
-  pure (Machine (modelName m) (modelShared m) family (length indexVariables) start commands (modelAbstract m) abstractRun invariants False [], startDefinition)
+  pure (Machine (modelName m) (modelShared m) family (length indexVariables) start commands (modelAbstract m) abstractRun invariants False [] (modelActor m /= Nothing), startDefinition)
   where
     -- A generated bridge's name: the model's, then its role.
     bridge role = modelName m ++ role

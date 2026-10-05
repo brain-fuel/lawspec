@@ -1,0 +1,6 @@
+@@ src/example/actors.py
+<<<<<<<
+    after = value0.balance + value1
+=======
+    after = value0.balance + value1 + (1 if value1 == 7 else 0)
+>>>>>>>

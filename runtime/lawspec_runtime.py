@@ -1460,6 +1460,122 @@ def shrunk(text, seed, size):
     return [render(c) for c in values.shrink(d, values.generate(d, SplitMix64(seed), size))]
 
 
+# Actors. An actor owns a state and handles one message at a time, in the
+# order they arrive. It is not a thread: a message sent to an idle actor
+# starts a short-lived worker that drains its mailbox and then stops, so an
+# idle actor costs only its state and queue.
+
+class ActorStopped(Exception):
+    """A message sent to an actor that has stopped."""
+
+
+class Actor:
+    def __init__(self, state):
+        self._state = state
+        self._mailbox = deque()
+        self._lock = threading.Lock()
+        self._draining = False
+        self._stopped = False
+
+    def _post(self, message):
+        with self._lock:
+            if self._stopped:
+                raise ActorStopped('the actor has stopped')
+            self._mailbox.append(message)
+            if self._draining:
+                return
+            self._draining = True
+        threading.Thread(target=self._drain, daemon=True).start()
+
+    def _drain(self):
+        while True:
+            with self._lock:
+                if not self._mailbox:
+                    self._draining = False
+                    return
+                handler, reply = self._mailbox.popleft()
+            try:
+                result, self._state = handler(self._state)
+                outcome = (True, result)
+            except BaseException as error:  # noqa: BLE001 - returned to the caller
+                outcome = (False, error)
+            if reply is not None:
+                reply.append(outcome)
+                reply.event.set()
+
+    def call(self, handler):
+        """Runs handler(state) -> (result, next state) in turn and returns
+        the result, raising what the handler raised."""
+        reply = _Reply()
+        self._post((handler, reply))
+        reply.event.wait()
+        ok, value = reply[0]
+        if not ok:
+            raise value
+        return value
+
+    def cast(self, handler):
+        """Queues handler(state) -> (result, next state) without waiting."""
+        self._post((handler, None))
+
+    def state(self):
+        """The state after every message sent before this call."""
+        return self.call(lambda s: (s, s))
+
+    def stop(self):
+        """Refuses further messages; those already queued still run."""
+        with self._lock:
+            self._stopped = True
+
+
+class Mailbox:
+    """A queue with many senders and one receiver: the channel form of an
+    actor. A process that loops over receive() and answers each message is
+    an actor written by hand; send() never waits."""
+
+    def __init__(self):
+        self._items = deque()
+        self._ready = threading.Condition()
+        self._closed = False
+
+    def send(self, value):
+        with self._ready:
+            if self._closed:
+                raise ActorStopped('the mailbox is closed')
+            self._items.append(value)
+            self._ready.notify()
+
+    def receive(self, timeout=None):
+        """The next message; waits up to timeout seconds (forever when None)
+        and raises TimeoutError, or ActorStopped once closed and empty."""
+        with self._ready:
+            if not self._ready.wait_for(lambda: self._items or self._closed, timeout):
+                raise TimeoutError('no message arrived in time')
+            if not self._items:
+                raise ActorStopped('the mailbox is closed')
+            return self._items.popleft()
+
+    def close(self):
+        """Refuses further messages; those already sent can still be received."""
+        with self._ready:
+            self._closed = True
+            self._ready.notify_all()
+
+
+class _Reply(list):
+    def __init__(self):
+        super().__init__()
+        self.event = threading.Event()
+
+
+def _actor_command(run, unit):
+    """A handler bridge (state first, returning Pair result state, or the
+    state alone for a Unit result) as a command on an actor."""
+    if unit:
+        return lambda symbols, actor, *args: actor.call(lambda s: (UNIT, run(symbols, s, *args)))
+    return lambda symbols, actor, *args: actor.call(lambda s: tuple(run(symbols, s, *args).fields))
+
+
 # Stateful models. A model's spec (see LawSpec.MachineSpec) lists its data
 # types, start and commands; the callbacks beside it are the generated
 # definitions that call the adapters, the references over the model state,
@@ -1507,6 +1623,17 @@ class Model:
         kinds = next(f for f in forms if f[0] == 'invariants')[1:]
         self.invariants = list(zip(kinds, invariants))
         self.per_key = any(f[0] == 'perkey' and f[1] == 'true' for f in forms)
+        # An actor model's start and handlers run inside an actor; the
+        # abstraction and state invariants read its state between messages.
+        if any(f[0] == 'actor' and f[1] == 'true' for f in forms):
+            run = self.start_run
+            self.start_run = lambda symbols, *args: Actor(run(symbols, *args))
+            for c in self.commands:
+                c.run = _actor_command(c.run, c.unit)
+            if abstract is not None:
+                self.abstract = lambda symbols, actor: abstract(symbols, actor.state())
+            self.invariants = [(k, (lambda p: lambda symbols, s: p(symbols, s.state()))(p) if k == 'state' else p)
+                               for k, p in self.invariants]
 
 
 class _Invalid(Exception):
