@@ -40,7 +40,10 @@ data Expectation = Expectation { actual :: Expr, expected :: Literal } deriving 
 instance ToJSON Expectation
 
 data Example = Example { exampleName :: String, bindings :: [(String, Literal)], expectations :: [Expectation] } deriving (Eq, Show, Generic)
-data Law = Law { lawName :: String, parameters :: [(String, Type)], requirements :: [Constraint], definition :: Definition, description :: String, rationale :: String, examples :: [Example], references :: [String], location :: Location } deriving (Eq, Show, Generic)
+-- lawResources are the resources a law takes (law ... for db :: Database
+-- is): each case acquires them first and releases them after, even when it
+-- fails.
+data Law = Law { lawName :: String, parameters :: [(String, Type)], requirements :: [Constraint], definition :: Definition, description :: String, rationale :: String, examples :: [Example], references :: [String], location :: Location, lawResources :: [(String, Type)] } deriving (Eq, Show, Generic)
 data DataTypeDeclaration = DataTypeDeclaration
   { dataTypeName :: String, dataTypeParameters :: [String]
   , dataTypeConstructors :: [ConstructorDeclaration], dataTypeSpan :: Span
@@ -82,7 +85,19 @@ data Unit = Unit { unitName :: String, functions :: [(String, Type)], laws :: [L
   -- Derived: every function's ability row (declared, or inferred for a
   -- definition), and the handler each law runs under for each ability.
   , abilityRows :: [(String, [Type])]
-  , lawAssignments :: [(String, [(Type, HandlerChoice)])] } deriving (Eq, Show, Generic)
+  , lawAssignments :: [(String, [(Type, HandlerChoice)])]
+  -- The unit's resources (resource T is acquire ... release ... end).
+  , resourceDeclarations :: [ResourceDeclaration] } deriving (Eq, Show, Generic)
+
+-- resource T is acquire is e end release x is e end [reset x is e end] end.
+-- A law that takes a T acquires one before each case and releases it after
+-- the case, even when the case fails. reset readies a T for another case;
+-- the harness may use it to share one T between cases.
+data ResourceDeclaration = ResourceDeclaration
+  { resourceType :: Type, resourceAcquire :: Expr
+  , resourceRelease :: (String, Expr), resourceReset :: Maybe (String, Expr)
+  , resourceSpan :: Span }
+  deriving (Eq, Show, Generic)
 
 -- ability Name (a :: Type)* is (op :: Type)* [laws law*] end. Operations are
 -- written like signatures; the laws are obligations on every handler.

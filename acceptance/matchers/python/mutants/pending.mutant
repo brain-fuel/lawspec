@@ -1,0 +1,7 @@
+expect: shipping gives a shipped order
+@@ src/example/matchers.py
+<<<<<<<
+    return data.OrderShipped(value0, "post")
+=======
+    return data.OrderPending(value0)
+>>>>>>>

@@ -1,0 +1,7 @@
+expect: unique tags keep each tag
+@@ src/example/matchers.py
+<<<<<<<
+    return seen
+=======
+    return seen[1:]
+>>>>>>>

@@ -1,0 +1,78 @@
+unit example.resources
+
+-- A resource is something a law needs that lives outside the program: a
+-- store, a directory, a port. Each case of a law acquires its resources
+-- first and releases them after, even when the case fails, so every case
+-- starts afresh and nothing leaks.
+
+-- A store the tests open, use and close. Only adapters make one.
+handle Store
+
+openStore :: Unit -> Store
+closeStore :: Store -> Unit
+clearStore :: Store -> Unit
+put :: Store -> Int32 -> Int32 -> Unit
+get :: Store -> Int32 -> Maybe Int32
+isOpen :: Store -> Bool
+
+resource Store is
+  acquire is openStore unitValue end
+  release store is closeStore store end
+  reset store is clearStore store end
+end
+
+law `a stored value can be read back` for store :: Store is
+  definition is
+    `for all` (k :: Int32) (v :: Int32) . put store k v = unitValue and get store k = Just v
+  end
+  example `the store is open while the case runs` is
+    k = 1
+    v = 2
+    expect isOpen store
+  end
+end
+
+law `every case gets an empty store` for store :: Store is
+  definition is
+    `for all` (k :: Int32) . get store k = Nothing
+  end
+end
+
+-- Built-in resources: a temporary directory, a free port, and the
+-- environment, saved and restored.
+writeNote :: Text -> Int32 -> Unit
+readNote :: Text -> Maybe Int32
+canListen :: Int32 -> Bool
+setGreeting :: Int32 -> Unit
+greeting :: Unit -> Maybe Int32
+
+law `a note reads back` for dir :: TemporaryDirectory is
+  definition is
+    `for all` (n :: Int32) .
+      writeNote (directoryPath dir) n = unitValue and readNote (directoryPath dir) = Just n
+  end
+end
+
+law `a new directory has no note` for dir :: TemporaryDirectory is
+  definition is
+    readNote (directoryPath dir) = Nothing
+  end
+end
+
+law `a free port can be listened on` for port :: FreePort is
+  definition is
+    canListen (portNumber port) = true
+  end
+end
+
+law `the greeting is the one set` for saved :: SavedEnvironment is
+  definition is
+    `for all` (n :: Int32) . setGreeting n = unitValue and greeting unitValue = Just n
+  end
+end
+
+law `the environment is restored after each case` for saved :: SavedEnvironment is
+  definition is
+    greeting unitValue = Nothing
+  end
+end

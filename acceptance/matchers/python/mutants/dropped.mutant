@@ -1,0 +1,7 @@
+expect: sorting keeps every item
+@@ src/example/matchers.py
+<<<<<<<
+    return sorted(value0)
+=======
+    return sorted(set(value0))
+>>>>>>>

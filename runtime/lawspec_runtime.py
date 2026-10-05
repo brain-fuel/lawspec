@@ -450,6 +450,22 @@ def compare_values(a, b):
 
 def helper(n, args, types, bits=64):
     x = args[0]
+    if n == 'startsWith':
+        return args[0].startswith(args[1])
+    if n == 'endsWith':
+        return args[0].endswith(args[1])
+    if n == 'textContains':
+        return args[1] in args[0]
+    if n == 'regexMatches':
+        return regex_matches(args[0], args[1])
+    if n == 'recorded':
+        return recorded(args[0], args[1])
+    if n == 'acquireResource':
+        return acquire_resource(args[0])
+    if n == 'releaseResource':
+        return release_resource(args[0], args[1])
+    if n == 'freePort':
+        return free_port()
     if n == 'checked':
         return True
     if n == 'select':
@@ -489,6 +505,306 @@ def helper(n, args, types, bits=64):
                   Fraction(1, 10 ** (-scale)))
         return finite_decimal(Fraction(round(ratio(x) * factor), 1) / factor)
     return convert(x, n, bits)
+
+
+# Portable regular expressions (see LawSpec.Regex): the subset of RE2 and
+# ECMAScript that means the same in both, matched against a whole text, code
+# point by code point. The compiler has checked every pattern; a pattern
+# that is not portable raises ValueError here too.
+_REGEX_DIGITS = [(48, 57)]
+_REGEX_WORD = [(48, 57), (65, 90), (95, 95), (97, 122)]
+_REGEX_SPACE = [(9, 13), (32, 32)]
+_REGEX_CACHE = {}
+
+
+def _regex_parse(pattern):
+    cs = [ord(c) for c in pattern]
+    n = len(cs)
+    pos = [0]
+
+    def peek():
+        return cs[pos[0]] if pos[0] < n else None
+
+    def fail(message):
+        raise ValueError(f'regex {pattern!r} is not portable: {message}')
+
+    def escape(in_class):
+        pos[0] += 1
+        c = peek()
+        if c is None:
+            fail('the regex ends with a lone \\')
+        pos[0] += 1
+        ch = chr(c)
+        classes = {'d': (False, _REGEX_DIGITS), 'D': (True, _REGEX_DIGITS),
+                   'w': (False, _REGEX_WORD), 'W': (True, _REGEX_WORD),
+                   's': (False, _REGEX_SPACE), 'S': (True, _REGEX_SPACE)}
+        if ch in classes:
+            return classes[ch]
+        controls = {'n': 10, 't': 9, 'r': 13, 'f': 12, 'v': 11}
+        if ch in controls:
+            return (False, [(controls[ch], controls[ch])])
+        if ch in '\\.^$|?*+()[]{}-/':
+            return (False, [(c, c)])
+        fail(f'\\{ch} is not a portable escape')
+
+    def char_class():
+        pos[0] += 1
+        negated = peek() == ord('^')
+        if negated:
+            pos[0] += 1
+        items = []
+        first = True
+        while True:
+            c = peek()
+            if c is None:
+                fail('a [ is never closed')
+            if c == ord(']'):
+                if first:
+                    fail('an empty class is not portable')
+                pos[0] += 1
+                return ('set', negated, items)
+            first = False
+            item = escape(True) if c == ord('\\') else _literal()
+            if (not item[0] and len(item[1]) == 1 and item[1][0][0] == item[1][0][1]
+                    and peek() == ord('-') and pos[0] + 1 < n and cs[pos[0] + 1] != ord(']')):
+                pos[0] += 1
+                high = escape(True) if peek() == ord('\\') else _literal()
+                if high[0] or len(high[1]) != 1 or high[1][0][0] != high[1][0][1]:
+                    fail('a range ends with one character')
+                if high[1][0][0] < item[1][0][0]:
+                    fail('a range must run from low to high')
+                items.append((False, [(item[1][0][0], high[1][0][0])]))
+            else:
+                items.append(item)
+
+    def _literal():
+        c = peek()
+        if c == ord('['):
+            fail('write \\[ for the character inside a class')
+        pos[0] += 1
+        return (False, [(c, c)])
+
+    def atom():
+        c = peek()
+        if c == ord('('):
+            pos[0] += 1
+            if peek() == ord('?'):
+                if pos[0] + 1 < n and cs[pos[0] + 1] == ord(':'):
+                    pos[0] += 2
+                else:
+                    fail('only (?: ...) groups are portable')
+            node = alternatives()
+            if peek() != ord(')'):
+                fail('a ( is never closed')
+            pos[0] += 1
+            return node
+        if c == ord('['):
+            return char_class()
+        if c == ord('.'):
+            pos[0] += 1
+            return ('set', True, [(False, [(10, 10)])])
+        if c == ord('\\'):
+            return ('set', False, [escape(False)])
+        if chr(c) in '*+?{^$]}':
+            fail(f'unexpected {chr(c)}')
+        pos[0] += 1
+        return ('set', False, [(False, [(c, c)])])
+
+    def quantified(node):
+        c = peek()
+        if c is None or chr(c) not in '*+?{':
+            return node
+        pos[0] += 1
+        if c == ord('*'):
+            node = ('repeat', node, 0, None)
+        elif c == ord('+'):
+            node = ('repeat', node, 1, None)
+        elif c == ord('?'):
+            node = ('repeat', node, 0, 1)
+        else:
+            start = pos[0]
+            while peek() is not None and chr(peek()).isdigit():
+                pos[0] += 1
+            low_text = pattern[start:pos[0]]
+            high = None
+            if peek() == ord('}'):
+                high = low_text
+            elif peek() == ord(','):
+                pos[0] += 1
+                start = pos[0]
+                while peek() is not None and chr(peek()).isdigit():
+                    pos[0] += 1
+                high = pattern[start:pos[0]] or None
+                if peek() != ord('}'):
+                    fail('a repetition is {n}, {n,} or {n,m}')
+            else:
+                fail('a repetition is {n}, {n,} or {n,m}')
+            pos[0] += 1
+            if not low_text:
+                fail('a repetition is {n}, {n,} or {n,m}')
+            low = int(low_text)
+            high = None if high is None else int(high)
+            if low > 1000 or (high is not None and (high > 1000 or high < low)):
+                fail('a repetition count is at most 1000, and n must not exceed m')
+            node = ('repeat', node, low, high)
+        if peek() is not None and chr(peek()) in '*+?{':
+            fail('a repetition cannot itself be repeated')
+        return node
+
+    def sequence():
+        items = []
+        while peek() is not None and peek() not in (ord('|'), ord(')')):
+            items.append(quantified(atom()))
+        return ('seq', items)
+
+    def alternatives():
+        branches = [sequence()]
+        while peek() == ord('|'):
+            pos[0] += 1
+            branches.append(sequence())
+        return branches[0] if len(branches) == 1 else ('alt', branches)
+
+    node = alternatives()
+    if pos[0] != n:
+        fail('a ) has no ( before it')
+    return node
+
+
+def _regex_reach(node, text, positions):
+    kind = node[0]
+    if kind == 'set':
+        _, negated, items = node
+        result = set()
+        for p in positions:
+            if p < len(text):
+                c = text[p]
+                inside = any(item_negated != any(lo <= c <= hi for lo, hi in ranges)
+                             for item_negated, ranges in items)
+                if inside != negated:
+                    result.add(p + 1)
+        return result
+    if kind == 'seq':
+        for item in node[1]:
+            positions = _regex_reach(item, text, positions)
+        return positions
+    if kind == 'alt':
+        result = set()
+        for branch in node[1]:
+            result |= _regex_reach(branch, text, positions)
+        return result
+    _, body, low, high = node
+    for _ in range(low):
+        positions = _regex_reach(body, text, positions)
+    seen = set(positions)
+    frontier = set(positions)
+    limit = None if high is None else high - low
+    while frontier and limit != 0:
+        frontier = _regex_reach(body, text, frontier) - seen
+        seen |= frontier
+        if limit is not None:
+            limit -= 1
+    return seen
+
+
+def regex_matches(pattern, text):
+    """Whether the portable regex matches the whole text."""
+    node = _REGEX_CACHE.get(pattern)
+    if node is None:
+        node = _REGEX_CACHE[pattern] = _regex_parse(pattern)
+    points = [ord(c) for c in text]
+    return len(points) in _regex_reach(node, points, {0})
+
+
+# Recorded values: a law compares a value's portable rendering with the
+# text stored under recorded/<unit>/<name> in the project. LAWSPEC_RECORDED
+# names the folder; otherwise it is recorded/ in the nearest folder, from
+# the working one up, that holds lawspec.json or recorded/. With
+# LAWSPEC_UPDATE_RECORDED=1 (lawspec test --update-recorded) a law records
+# the value instead.
+def recorded_root():
+    import os
+    given = os.environ.get('LAWSPEC_RECORDED')
+    if given:
+        return given
+    folder = os.path.abspath(os.getcwd())
+    while True:
+        if (os.path.isfile(os.path.join(folder, 'lawspec.json'))
+                or os.path.isdir(os.path.join(folder, 'recorded'))):
+            return os.path.join(folder, 'recorded')
+        parent = os.path.dirname(folder)
+        if parent == folder:
+            return os.path.join(os.path.abspath(os.getcwd()), 'recorded')
+        folder = parent
+
+
+def recorded(key, value):
+    import os
+    text = render(value)
+    path = os.path.join(recorded_root(), *key.split('/'))
+    if os.environ.get('LAWSPEC_UPDATE_RECORDED') == '1':
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, 'w', encoding='utf-8', newline='\n') as f:
+            f.write(text + '\n')
+        return True
+    if not os.path.isfile(path):
+        raise AssertionError(
+            f'no recording recorded/{key}; run lawspec test --update-recorded '
+            f'to record {text}')
+    with open(path, encoding='utf-8', newline='') as f:
+        stored = f.read()
+    if stored.endswith('\n'):
+        stored = stored[:-1]
+    if stored != text:
+        raise AssertionError(
+            f'recorded/{key} differs: expected {stored}, actual {text}'
+            ' (lawspec test --update-recorded records the new value)')
+    return True
+
+
+# Built-in resources (see LawSpec.Resources): a law acquires them before
+# each case and releases them after it.
+def acquire_resource(kind):
+    import json
+    import os
+    import tempfile
+    if kind == 'temporaryDirectory':
+        return tempfile.mkdtemp(prefix='lawspec-')
+    if kind == 'temporaryFile':
+        handle, path = tempfile.mkstemp(prefix='lawspec-')
+        os.close(handle)
+        return path
+    if kind == 'environment':
+        return json.dumps(dict(os.environ), sort_keys=True)
+    raise ValueError(f'unknown resource kind {kind}')
+
+
+def release_resource(kind, value):
+    import json
+    import os
+    import shutil
+    if kind == 'temporaryDirectory':
+        shutil.rmtree(value, ignore_errors=True)
+    elif kind == 'temporaryFile':
+        if os.path.exists(value):
+            os.remove(value)
+    elif kind == 'environment':
+        saved = json.loads(value)
+        for name in list(os.environ):
+            if name not in saved:
+                del os.environ[name]
+        for name, text in saved.items():
+            if os.environ.get(name) != text:
+                os.environ[name] = text
+    else:
+        raise ValueError(f'unknown resource kind {kind}')
+    return True
+
+
+def free_port():
+    import socket
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(('127.0.0.1', 0))
+        return s.getsockname()[1]
 
 
 def make_decimal(c, e):

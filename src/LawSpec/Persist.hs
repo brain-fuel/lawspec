@@ -36,4 +36,5 @@ instance Binary S.AbilityDeclaration
 instance Binary S.HandlerDeclaration
 instance Binary S.HandlerClause
 instance Binary S.HandlerUse
+instance Binary S.ResourceDeclaration
 instance Binary S.HandlerChoice

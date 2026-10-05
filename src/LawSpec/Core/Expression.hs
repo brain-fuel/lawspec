@@ -167,5 +167,11 @@ validateExpressionWithRegistry registry bits declarations scope expr@Expr{..} = 
       _ -> Left "complex component helper requires complex value"
     helperType b [a] | b `elem` [IsNaN,IsInfinite,IsFinite,IsNegativeZero], expressionTypeOf a `elem` map scalarType ["Float32","Float64"] = Right (scalarType "Bool")
     helperType RoundHalfEven [a,b] | Constructor n [] <- expressionTypeOf a, isExact n = requireType "Int32" b >> pure (scalarType "Decimal")
+    helperType b [a, c] | b `elem` [StartsWith, EndsWith, TextContains, RegexMatches]
+      , all ((== scalarType "Text") . expressionTypeOf) [a, c] = Right (scalarType "Bool")
+    helperType Recorded [key, _] | expressionTypeOf key == scalarType "Text" = Right (scalarType "Bool")
+    helperType AcquireResource [kind] | expressionTypeOf kind == scalarType "Text" = Right (scalarType "Text")
+    helperType ReleaseResource [kind, value] | all ((== scalarType "Text") . expressionTypeOf) [kind, value] = Right (scalarType "Bool")
+    helperType FreePort [kind] | expressionTypeOf kind == scalarType "Text" = Right (scalarType "Int32")
     helperType b args = Left ("invalid arguments to " ++ builtinName b ++ ": " ++ show (map expressionTypeOf args))
 

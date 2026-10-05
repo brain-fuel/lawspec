@@ -129,6 +129,8 @@ evaluateValue registry bits adapter bindings = run (M.fromList bindings) where
     let ty = Constructor (collectionsUnit ++ "::type::Ordering") []
         tag = case order of LT -> "Less"; EQ -> "Equal"; GT -> "Greater"
     Right (DataValue ty (Id (collectionsUnit ++ "::type::Ordering::" ++ tag)) [])
+  helper Recorded _ = Left "a recording is compared when the law runs, not by the compiler"
+  helper b _ | b `elem` [AcquireResource, ReleaseResource, FreePort] = Left "a resource is acquired when the law runs, not by the compiler"
   helper builtin values = ScalarValue <$> (mapM toScalarValue values >>= helperValue bits (builtinName builtin))
   context origin result = case result of
     Left msg -> Left (show origin ++ ": " ++ msg)

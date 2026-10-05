@@ -258,6 +258,15 @@ scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions 
     boundAlias parts = "_lawspecHandler" ++ show (length (takeWhile (/= parts) boundHandlers))
     abilityNamed ability = lookup (C.abilityRefId ability) [(C.abilityId a, a) | a <- C.unitAbilities u]
     fresh e = statements (freshSymbols : installs e)
+    -- A law's resources: each case acquires them, then runs, then releases
+    -- them, the last first, even when the case fails.
+    bracket e doc = foldr wrap doc (C.propertyResources (original e))
+      where
+        wrap r inner = statements
+          [ assign (localName (C.binderId (C.resourceBinder r))) (render (C.resourceAcquire r))
+          , if py then PythonExpr.suite (text "try") inner <> Doc.hardline <>
+                PythonExpr.suite (text "finally") (statement (render (C.resourceRelease r)))
+            else text "try " <> Doc.block 2 inner <> text " finally " <> Doc.block 2 (statement (render (C.resourceRelease r))) ]
     render term = either error id (renderer declarations bits localName external term)
       where
         renderer = if py then PythonExpr.renderExpression else WebExpr.renderExpression ts
@@ -335,8 +344,8 @@ scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions 
           examples' = [testBlock (label ++ " example: " ++ exampleName example)
             (prefix ++ "_example" ++ show j) (statements
               (fresh e : [assign name (render value) | (name,value) <- bindings example] ++
-               map (assertionDoc (label ++ " example " ++ exampleName example)) (expectations example) ++
-               [assertionDoc label (assertion e)])) |
+               [bracket e (statements (map (assertionDoc (label ++ " example " ++ exampleName example)) (expectations example) ++
+                 [assertionDoc label (assertion e)]))])) |
             (j,example) <- zip [0 :: Int ..] (examples (original e))]
           finite = finiteCases e
           cases' = maybe (boundaryCases e) id finite
@@ -344,8 +353,8 @@ scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions 
         literals <- mapM valueLit values
         pure (testBlock label (prefix ++ "_boundary" ++ show j) (statements
           (fresh e : [assign (inputId input) value | (input,value) <- zip (inputs e) literals] ++
-           [assertionDoc (label ++ " boundary " ++ show j) (assertion e)])))) (zip [0 :: Int ..] cases')
-      let body = assertionDoc (label ++ " property") (assertion e)
+           [bracket e (assertionDoc (label ++ " boundary " ++ show j) (assertion e))])))) (zip [0 :: Int ..] cases')
+      let body = bracket e (assertionDoc (label ++ " property") (assertion e))
           generators = map (generatorDoc . inputType) (inputs e)
           names = map inputId (inputs e)
           ordinary = if py then pythonProperty prefix [invoke "given" generators] names

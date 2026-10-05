@@ -1,0 +1,7 @@
+expect: recorded/example.tables/first label differs
+@@ src/example/tables.py
+<<<<<<<
+    return f"parcel {value0}"
+=======
+    return f"parcel {value0}" if value0 != 1 else "parcel one"
+>>>>>>>

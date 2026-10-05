@@ -68,6 +68,7 @@ instance Binary C.Node
 instance Binary C.Origin
 instance Binary C.Program
 instance Binary C.Property
+instance Binary C.Resource
 instance Binary C.Proposition
 instance Binary C.Quantifier
 instance Binary C.Type

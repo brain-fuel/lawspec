@@ -1,0 +1,7 @@
+expect: unique tags come from the input
+@@ src/example/matchers.py
+<<<<<<<
+    return seen
+=======
+    return seen + ["extra"]
+>>>>>>>

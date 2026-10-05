@@ -1,0 +1,7 @@
+expect: a slug is lowercase words joined by dashes
+@@ src/example/matchers.py
+<<<<<<<
+    return '-'.join(words)
+=======
+    return '_'.join(words)
+>>>>>>>

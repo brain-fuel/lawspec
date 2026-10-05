@@ -202,7 +202,19 @@ data Builtin = Length | IsPresent | PresentValue | RealPart | ImaginaryPart
   | Unreachable
   -- concurrently (C a b ...) is C a b ...; matched at once, as an all
   -- group's steps are, its fields are evaluated at the same time.
-  | Concurrently deriving (Eq, Show, Generic)
+  | Concurrently
+  -- Matchers over Text (LawSpec.Matchers): a prefix, a suffix, a part, and a
+  -- whole-text match of a portable regex (LawSpec.Regex), pattern first.
+  | StartsWith | EndsWith | TextContains | RegexMatches
+  -- recorded key value: whether value's portable rendering equals the
+  -- recording stored under recorded/<key>. It reads the project when the
+  -- law runs, so it is not pure.
+  | Recorded
+  -- Built-in resources (LawSpec.Resources): acquireResource kind gives a
+  -- path or a saved environment, releaseResource kind value frees it, and
+  -- freePort kind gives a port number. They act on the world, so they are
+  -- not pure.
+  | AcquireResource | ReleaseResource | FreePort deriving (Eq, Show, Generic)
 data Proposition = Equation Evidence Expr Expr | Implication Expr Proposition | Conjunction [Proposition] deriving (Eq, Show, Generic)
 data Quantifier = Quantifier { quantifiedBinder :: Binder, quantifiedPredicates :: [Expr], quantifiedBounds :: [(BinaryOp,Expr)] } deriving (Eq, Show, Generic)
 data Example = Example { exampleName :: String, exampleBindings :: [(Id,Expr)], exampleExpectations :: [Proposition] } deriving (Eq, Show, Generic)
@@ -218,7 +230,15 @@ data Property = Property
   , propertyReferences :: [String], propertyTrace :: [String]
   -- The handler the law runs under for each ability it uses.
   , propertyHandlers :: [(AbilityRef, HandlerRef)]
+  -- The resources the law takes, in order: each case acquires them first
+  -- and releases them, last first, after it, even when it fails.
+  , propertyResources :: [Resource]
   } deriving (Eq, Show, Generic)
+-- A resource a law takes: acquire gives its value, bound to the binder for
+-- the case; release, which refers to the binder, frees it.
+data Resource = Resource
+  { resourceBinder :: Binder, resourceAcquire :: Expr, resourceRelease :: Expr }
+  deriving (Eq, Show, Generic)
 -- unitMachines are the unit's stateful models, which each target's model
 -- runtime runs against its adapters.
 data Unit = MkUnit { unitId :: Id, unitDeclarations :: [Declaration], unitContracts :: [Contract], unitProperties :: [Property], unitDefinitions :: [Definition], unitMachines :: [Machine Id]
@@ -326,6 +346,7 @@ isPure e = case expressionNode e of
   ExternalCall _ _ -> False
   Perform _ _ -> False
   Calls _ _ -> False
+  Helper b _ | b `elem` [Recorded, AcquireResource, ReleaseResource, FreePort] -> False
   _ -> all isPure (children e)
 
 builtinName :: Builtin -> String
@@ -344,6 +365,14 @@ builtinName Compare = "compare"
 builtinName Select = "select"
 builtinName Unreachable = "unreachable"
 builtinName Concurrently = "concurrently"
+builtinName StartsWith = "startsWith"
+builtinName EndsWith = "endsWith"
+builtinName TextContains = "textContains"
+builtinName RegexMatches = "regexMatches"
+builtinName Recorded = "recorded"
+builtinName AcquireResource = "acquireResource"
+builtinName ReleaseResource = "releaseResource"
+builtinName FreePort = "freePort"
 
 -- Example bindings are closed data, never computations or adapter invocations.
 isConcrete :: Expr -> Bool
@@ -361,6 +390,7 @@ propositionExpressions (Conjunction bodies) = concatMap propositionExpressions b
 propertyExpressions :: Property -> [Expr]
 propertyExpressions property =
   propositionExpressions (propertyBody property) ++
+  concat [[resourceAcquire r, resourceRelease r] | r <- propertyResources property] ++
   concat [quantifiedPredicates q ++ map snd (quantifiedBounds q) | q <- propertyInputs property] ++
   concat [map snd (exampleBindings example) ++ concatMap propositionExpressions (exampleExpectations example)
     | example <- propertyExamples property]

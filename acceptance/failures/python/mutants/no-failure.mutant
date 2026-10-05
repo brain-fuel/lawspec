@@ -1,0 +1,7 @@
+expect: odd amounts are declined, and say why
+@@ src/example/failures.py
+<<<<<<<
+        if value0 % 2 == 1:
+=======
+        if value0 % 2 == 1 and value0 > 50:
+>>>>>>>

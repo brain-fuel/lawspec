@@ -6,6 +6,7 @@ import LawSpec.Collections (collectionsUnit, collectionsAlias)
 import LawSpec.Time (timeUnit, timeAlias, durationSuffixes, durationFactor, durationLimit, usesTime, timeTypes)
 import LawSpec.Flow (desugarFlows, flowTypeName)
 import LawSpec.Abilities (elaborateAbilities)
+import LawSpec.Regex (parseRegex)
 import LawSpec.Model
 import LawSpec.Indexed
 import LawSpec.Railway (railwayUnit)
@@ -17,11 +18,11 @@ import LawSpec.Core.Machine (Machine(..), Supervisor(..), SupervisionStrategy(..
 import Data.Functor (($>))
 import LawSpec.Scalar
 import Control.Monad.Combinators.Expr
-import Control.Monad (void, unless, when, forM_)
-import Control.Monad.Reader (Reader, asks, runReader)
+import Control.Monad (void, unless, when, forM_, forM)
+import Control.Monad.Reader (Reader, ask, asks, runReader)
 import qualified Data.Map.Strict as M
 import qualified Data.Map.Lazy as Lazy
-import Data.Char (isLower, isUpper, isControl, toUpper)
+import Data.Char (isLower, isUpper, isControl, toUpper, isAlphaNum)
 import Data.List (uncons, intercalate)
 import Data.Void (Void)
 import Text.Megaparsec hiding (SourcePos, parse)
@@ -520,7 +521,28 @@ expr = do
       option e (located (Binary ":=" e <$> (symbol ":=" *> operatorExpr)))
 
 operatorExpr :: P Expr
-operatorExpr = located $ makeExprParser application
+operatorExpr = located $ makeExprParser application (higherOperators ++
+  -- Matchers (xs has same items as ys, t starts with "a", ...) bind below
+  -- the comparisons and above && (see matcherSuffix). Their operands bind
+  -- tighter than the comparisons.
+  [ [Postfix (matcherSuffix (located (makeExprParser application (init higherOperators))))]
+  , [InfixL (Binary "&&" <$ symbol "&&")]
+  , [InfixL (Binary "||" <$ symbol "||")]
+  ])
+  where
+    application = do
+      -- A matcher word after an argument starts a matcher, so contains in
+      -- xs contains x is not an argument; a function named contains is
+      -- still called as contains xs x.
+      first <- applicationAtom
+      rest <- many (notFollowedBy matcherWord *> applicationAtom)
+      pure $ case first : rest of
+        start:others | ConstructLit name [] <- unlocated start -> ConstructLit name others
+        terms -> foldl1 Apply terms
+
+-- The operator levels above the matchers, from the tightest.
+higherOperators :: [[Operator P Expr]]
+higherOperators =
   [ [Prefix (Unary "!" <$ try (lexeme (char '!' <* notFollowedBy (char '=')))), Prefix (Unary "-" <$ try (lexeme (char '-' <* notFollowedBy digitChar)))]
   , [InfixR (Compose <$ symbol ".")]
   , [InfixL (Binary "*" <$ symbol "*"), InfixL (Binary "/" <$ symbol "/")]
@@ -534,8 +556,6 @@ operatorExpr = located $ makeExprParser application
   , [InfixL (Binary op <$ operator op) | op <- ["<|>","??"]]
   , [InfixL (Binary "|>" <$ operator "|>")]
   , [InfixN (Binary op <$ operator op) | op <- ["<=",">=","==","!=","<",">"]]
-  , [InfixL (Binary "&&" <$ symbol "&&")]
-  , [InfixL (Binary "||" <$ symbol "||")]
   ]
   where
     -- An operator never matches the start of a longer one: < is not <$>
@@ -546,12 +566,113 @@ operatorExpr = located $ makeExprParser application
       ">" -> ">="
       ">=" -> ">"
       _ -> ""
-    application = do
-      terms <- some atom
-      pure $ case terms of
-        first:rest | ConstructLit name [] <- unlocated first -> ConstructLit name rest
-        _ -> foldl1 Apply terms
-    atom = located $ matchP <|> ifP <|> raiseP <|> callsP <|> (ListLit <$> between (symbol "[") (symbol "]") (expr `sepBy` symbol ",")) <|> (BoolLit <$> boolP) <|> (StringLit <$> str) <|> try scalarP
+
+-- The words that start a matcher after an operand (see matcherSuffix), and
+-- of, which ends the tolerance in x is within 0.001 of y.
+matcherWord :: P ()
+matcherWord = choice (map (try . lookAhead)
+  [ keyword "contains", keyword "has" *> keyword "same", keyword "is" *> (keyword "subset" <|> keyword "within")
+  , keyword "matches", keyword "starts" *> keyword "with", keyword "ends" *> keyword "with"
+  , keyword "fails" *> keyword "with", keyword "of" ])
+
+-- A matcher after its subject, as a function of the subject. Each is a
+-- typed prelude predicate (LawSpec.Matchers):
+--
+--   xs has same items as ys        the same items, as many times, in any order
+--   xs contains x                  a List item, or a Text inside a Text
+--   xs contains all of ys          every item of ys is in xs
+--   xs is subset of ys             every item of xs is in ys
+--   x is within 0.001 of y         numbers at most 0.001 apart
+--   t matches regex "a+"           the whole text matches (LawSpec.Regex)
+--   t matches r                    the same, with r :: Regex
+--   t starts with "a", t ends with "z"
+--   v matches Shipped _ _          v is built by Shipped (nested patterns
+--                                  and literals may stand for _)
+--   e fails with Declined _ [message contains "card"]
+--                                  e raises a failure that matches
+matcherSuffix :: P Expr -> P (Expr -> Expr)
+matcherSuffix operand = choice
+  [ try (keyword "has" *> keyword "same") *> keyword "items" *> keyword "as" *> (call "sameItems" <$> operand)
+  , try (keyword "contains" *> keyword "all") *> keyword "of" *> (call "containsAll" <$> operand)
+  , keyword "contains" *> (call "contains" <$> operand)
+  , try (keyword "is" *> keyword "subset") *> keyword "of" *> (call "isSubsetOf" <$> operand)
+  , try (keyword "is" *> keyword "within") *> (do
+      tolerance <- operand
+      keyword "of"
+      other <- operand
+      pure (\x -> foldl Apply (Var "prelude.within") [tolerance, x, other]))
+  , try (keyword "starts" *> keyword "with") *> (call "startsWith" <$> operand)
+  , try (keyword "ends" *> keyword "with") *> (call "endsWith" <$> operand)
+  , try (keyword "fails" *> keyword "with") *> failsWith
+  , keyword "matches" *> (regexLiteral <|> (flip patternTest <$> patternP) <|> (call "matchesRegex" <$> operand))
+  ]
+  where
+    call name other subject = Apply (Apply (Var ("prelude." ++ name)) subject) other
+    regexLiteral = do
+      keyword "regex"
+      pattern <- regexText
+      pure (\subject -> Apply (Apply (Var "prelude.regexMatches") (StringLit pattern)) subject)
+    -- e fails with P: attempt e, and its failure matches P.
+    failsWith = do
+      pattern <- patternP
+      message <- optional (try (keyword "message" *> keyword "contains") *> operand)
+      let failure = "lawspecFailure"
+          checks = patternTest (Var failure) pattern :
+            [Apply (Apply (Var "prelude.messageContains") (Var failure)) m | Just m <- [message]]
+      pure (\subject -> MatchExpr (Apply (Var "prelude.attempt") subject)
+        [ MatchBranch "Either::Left" [failure] (foldr1 (Binary "&&") checks)
+        , MatchBranch "Either::Right" ["lawspecResult"] (BoolLit False) ])
+
+-- A regex literal's text, checked against the portable dialect.
+regexText :: P String
+regexText = do
+  pattern <- str
+  case parseRegex pattern of
+    Left problem -> fail ("regex \"" ++ pattern ++ "\" is not portable: " ++ problem)
+    Right _ -> pure pattern
+
+-- A constructor pattern: a constructor and a pattern for each field, where _
+-- matches anything, a literal matches an equal value, and a constructor
+-- (in parentheses when it has fields) matches what it builds.
+data Pattern = AnyValue | EqualTo Expr | Built String [Pattern]
+
+patternP :: P Pattern
+patternP = do
+  name <- constructorName
+  Built name <$> many field
+  where
+    constructorName = try $ do
+      name <- qualifiedName
+      unless (startsUpper name) (fail "expected a constructor")
+      pure name
+    field = (AnyValue <$ lexeme (try (char '_' <* notFollowedBy (alphaNumChar <|> char '_'))))
+      <|> parens patternP
+      <|> (EqualTo <$> (try numeric <|> (StringLit <$> str) <|> (BoolLit <$> boolP)))
+      <|> ((`Built` []) <$> constructorName)
+
+-- Whether value matches the pattern, as a Bool: a match whose other
+-- constructors (the wildcard branch _) give false.
+patternTest :: Expr -> Pattern -> Expr
+patternTest = go (0 :: Int)
+  where
+    go depth value pattern = case pattern of
+      AnyValue -> BoolLit True
+      EqualTo literal -> Binary "==" value literal
+      Built name fields ->
+        let names = ["lawspecField" ++ show depth ++ "x" ++ show i | i <- [0 .. length fields - 1]]
+            checks = [go (depth + 1) (Var n) p | (n, p) <- zip names fields, not (isAny p)]
+        in MatchExpr value
+          [ MatchBranch name names (if null checks then BoolLit True else foldr1 (Binary "&&") checks)
+          , MatchBranch "_" [] (BoolLit False) ]
+    isAny AnyValue = True
+    isAny _ = False
+
+-- One term of an application: a literal, name, parenthesized expression,
+-- match, if, raise or calls of.
+applicationAtom :: P Expr
+applicationAtom = atom
+  where
+    atom = located $ matchP <|> ifP <|> raiseP <|> callsP <|> regexP <|> (ListLit <$> between (symbol "[") (symbol "]") (expr `sepBy` symbol ",")) <|> (BoolLit <$> boolP) <|> (StringLit <$> str) <|> try scalarP
       <|> parenthesizedExpr
       <|> try (Var . ('~' :) <$> (char '~' *> ident))
       <|> try numeric <|> try (do n <- ident; alias <- asks (M.member ("alias:" ++ n)); unless (not alias) (fail "import alias"); void (char '.'); b <- ("min" <$ keyword "min") <|> ("max" <$ keyword "max"); pure (TypeBound b (if maybe False (isLower . fst) (uncons n) then Variable n else Named n))) <|> try valueAtom
@@ -560,6 +681,11 @@ operatorExpr = located $ makeExprParser application
       name <- valueName
       when (name `elem` ["if", "then", "else"]) (fail ("expected a value, not the keyword " ++ name))
       pure (if startsUpper name then ConstructLit name [] else Var name)
+    -- regex "a+": a Regex, checked at compile time (LawSpec.Regex).
+    regexP = do
+      try (keyword "regex" *> lookAhead (char '"'))
+      pattern <- regexText
+      pure (ConstructLit "Regex" [StringLit pattern])
     -- raise e: the Fail ability's operation. It aborts to the nearest
     -- handler of Fail, so its value may have any type.
     raiseP = do
@@ -663,7 +789,7 @@ defP = (do void (symbol "`for all`"); ps <- some param; void (symbol "."); Foral
       <|> try (do
         a <- expr
         (keyword "implies" *> (Implies a <$> defP))
-          <|> (symbol "=" *> (Equal a <$> expr))
+          <|> (symbol "=" *> ((Holds <$> recordedP a) <|> (Equal a <$> expr)))
           <|> pure (Holds a))
       <|> parens defP
 boolP :: P Bool
@@ -722,18 +848,168 @@ lawUsingP = do
   ps <- many param
   req <- constraintsP
   using <- option [] (keyword "using" *> (handlerUseP `sepBy1` symbol ","))
+  resources <- lawResourcesP
   keyword "is"
   d <- block "definition" defP
   desc <- option "" (block "description" str)
   why <- option "" (block "rationale" str)
-  ex <- many $ do
-    keyword "example"; en <- quoted; keyword "is"
-    bs <- some ((,) <$> ident <* symbol "=" <*> literalP)
-    checks <- many (keyword "expect" *> (Expectation <$> expr <* symbol "=" <*> literalP))
-    keyword "end"; pure (Example en bs checks)
+  written <- many ((pure <$> exampleP) <|> tableP)
   refs <- option [] (keyword "references" *> keyword "are" *> some str <* keyword "end")
   keyword "end"
-  pure (Law n ps req d desc why ex refs (Location (sourceName pos) (unPos (sourceLine pos)) (unPos (sourceColumn pos))), using)
+  documented <- descriptionExamples desc
+  let tables = length [() | rows <- written, isTable rows]
+      isTable rows = case rows of
+        Example name _ _ : _ -> "table" `isPrefixOf'` name
+        [] -> True
+      -- With several tables, each row's name says which table it is in.
+      numbered = snd (foldl (\(k, acc) rows -> if isTable rows
+          then (k + 1, acc ++ [e { exampleName = (if tables > 1 then "table " ++ show k ++ ", " else "") ++
+            drop (length ("table " :: String)) (exampleName e) } | e <- rows])
+          else (k, acc ++ rows)) (1 :: Int, []) written)
+  pure (Law n ps req d desc why (numbered ++ documented) refs (Location (sourceName pos) (unPos (sourceLine pos)) (unPos (sourceColumn pos))) resources, using)
+  where
+    isPrefixOf' prefix text = take (length prefix) text == prefix
+
+-- for db :: Database, dir :: TemporaryDirectory: the resources a law takes.
+lawResourcesP :: P [(String, Type)]
+lawResourcesP = option [] $ do
+  keyword "for"
+  flip sepBy1 (symbol ",") $ do
+    name <- ident
+    void (symbol "::")
+    ty <- typeP
+    pure (name, ty)
+
+-- resource T is
+--   acquire is e end
+--   release x is e end
+--   [reset x is e end]
+-- end
+resourceP :: P ResourceDeclaration
+resourceP = do
+  ((ty, acquire, release, reset), range) <- withSpan $ do
+    keyword "resource"
+    ty <- typeP
+    keyword "is"
+    acquire <- keyword "acquire" *> keyword "is" *> expr <* keyword "end"
+    release <- clause "release"
+    reset <- optional (clause "reset")
+    keyword "end"
+    pure (ty, acquire, release, reset)
+  pure (ResourceDeclaration ty acquire release reset range)
+  where
+    clause word = do
+      keyword word
+      name <- ident
+      keyword "is"
+      body <- expr
+      keyword "end"
+      pure (name, body)
+
+-- example `name` is (x = literal)* (expect ...)* end
+exampleP :: P Example
+exampleP = do
+  keyword "example"; en <- quoted; keyword "is"
+  bs <- some ((,) <$> ident <* symbol "=" <*> literalP)
+  checks <- many expectationP
+  keyword "end"; pure (Example en bs checks)
+
+-- table (a, b, expected) is (row ...)+ (expect ...)* end: each row is an
+-- example. A column on the right of an expect's = holds expected values;
+-- every other column binds the law's input of that name. Rows are named
+-- "table row 1: 1, 2, 3" here; lawUsingP drops "table " and numbers tables
+-- when a law has several.
+tableP :: P [Example]
+tableP = do
+  keyword "table"
+  columns <- parens (ident `sepBy1` symbol ",")
+  keyword "is"
+  rows <- some $ withSpan $ do
+    keyword "row"
+    literalP `sepBy1` symbol ","
+  checks <- many $ do
+    keyword "expect"
+    left <- expr
+    right <- optional (symbol "=" *> ((Left <$> recordedName) <|> (Right . Right <$> try ident) <|> (Right . Left <$> literalP)))
+    pure (left, right)
+  keyword "end"
+  let expectedColumns = [c | (_, Just (Right (Right c))) <- checks]
+  forM_ expectedColumns $ \c -> unless (c `elem` columns)
+    (fail ("the table has no column called " ++ c ++ "; its columns are " ++ intercalate ", " columns))
+  forM_ (zip [1 :: Int ..] rows) $ \(i, (values, _)) -> unless (length values == length columns)
+    (fail ("row " ++ show i ++ " of the table has " ++ show (length values) ++ " values, but the table has " ++ show (length columns) ++ " columns"))
+  pure
+    [ Example ("table row " ++ show i ++ ": " ++ intercalate ", " (map (prettyExpr . literalExpr) values))
+        [(c, v) | (c, v) <- row, c `notElem` expectedColumns]
+        [ case right of
+            Nothing -> Expectation (substitute left) (BoolLiteral True)
+            Just (Left name) -> Expectation (Apply (Apply (Var "prelude.recorded") (StringLit (name ++ " row " ++ show i))) (substitute left)) (BoolLiteral True)
+            Just (Right (Left literal)) -> Expectation (substitute left) literal
+            Just (Right (Right c)) -> Expectation (substitute left) (maybe (BoolLiteral True) id (lookup c row))
+        | (left, right) <- checks
+        , let substitute = replaceExprVars [(c, literalExpr v) | (c, v) <- row, c `elem` expectedColumns] ]
+    | (i, (values, _)) <- zip [1 :: Int ..] rows, let row = zip columns values ]
+  where
+    recordedName = keyword "recorded" *> str
+
+-- Examples written in a description, in fences:
+--
+--   ```example [`name`]
+--   x = 1
+--   expect f x = 2
+--   ```
+--
+-- Each is an example of the law, named after the description.
+descriptionExamples :: String -> P [Example]
+descriptionExamples description = do
+  env <- ask
+  forM (zip [1 :: Int ..] (fences (lines description))) $ \(k, (info, body)) -> do
+    let name = case parse' (spaceP *> optional quoted <* eof) info of
+          Right (Just given) -> Right ("description: " ++ given)
+          Right Nothing -> Right ("description example " ++ show k)
+          Left problem -> Left problem
+        parse' p text = either (Left . errorBundlePretty) Right (runReader (runParserT p "description" text) env)
+        example' en = do
+          spaceP
+          bs <- many (try ((,) <$> ident <* symbol "=" <*> literalP))
+          checks <- many expectationP
+          eof
+          pure (Example en bs checks)
+    case name >>= \en -> parse' (example' en) (unlines body) of
+      Right e -> pure e
+      Left problem -> fail ("the description's example " ++ show k ++ " does not parse: " ++ problem)
+  where
+    fences ls = case break (isOpening . trim) ls of
+      (_, opening : rest) ->
+        let (body, after) = break ((== "```") . trim) rest
+        in (drop (length ("```example" :: String)) (trim opening), body) : fences (drop 1 after)
+      _ -> []
+    isOpening line = take 10 line == "```example" && take 1 (drop 10 line) `elem` ["", " "]
+    trim = reverse . dropWhile (== ' ') . reverse . dropWhile (== ' ')
+
+
+-- expect e = literal; expect e = recorded "name"; or expect e, a Bool,
+-- such as expect pay 5 fails with Refused.
+expectationP :: P Expectation
+expectationP = do
+  keyword "expect"
+  actual' <- expr
+  option (Expectation actual' (BoolLiteral True)) $ do
+    void (symbol "=")
+    ((`Expectation` BoolLiteral True) <$> recordedP actual') <|> (Expectation actual' <$> literalP)
+
+-- recorded "name": the value stored under recorded/<unit>/<name>, compared
+-- by its portable rendering when the law runs; a Bool, prelude.recorded.
+-- Elaboration adds the unit to the name.
+recordedP :: Expr -> P Expr
+recordedP value = do
+  keyword "recorded"
+  name <- str
+  unless (validName name) (fail ("a recording's name is letters, digits, spaces, - _ and ., and does not start with . or a space: " ++ show name))
+  pure (Apply (Apply (Var "prelude.recorded") (StringLit name)) value)
+  where
+    validName n = not (null n) && take 1 n `notElem` [".", " "] &&
+      all (\c -> isAlphaNum c || c `elem` (" -_." :: String)) n
 
 -- A handler a law names: a spec handler, an ability (any lawful handler of
 -- it), or `recording` of either.
@@ -836,6 +1112,7 @@ data UnitMember = DataMember DataTypeDeclaration | FamilyMember IndexedFamily | 
   | SignatureMember ((String, Type), Span) [Type] | AsyncMember ((String, Type), Span) [Type] | LawMember (Law, [HandlerUse])
   | DefinitionMember (FunctionDefinition, Maybe [Type])
   | AbilityMember AbilityDeclaration | HandlerMember HandlerDeclaration
+  | ResourceMember ResourceDeclaration
 
 unitNameP :: P String
 unitNameP = foldr1 (\a b -> a ++ "." ++ b) <$>
@@ -900,6 +1177,8 @@ unitP = do
     -- ability Name ... and handler name for Ability ... (LawSpec.Abilities).
     <|> (AbilityMember <$> (try (lookAhead (keyword "ability" *> ident >>= upper)) *> abilityP))
     <|> (HandlerMember <$> (try (lookAhead (keyword "handler" *> ident *> keyword "for")) *> handlerP))
+    -- resource Name is acquire ... release ... end: a law's resource.
+    <|> (ResourceMember <$> (try (lookAhead (keyword "resource" *> ident >>= upper)) *> resourceP))
     <|> (DefinitionMember <$> definitionUsesP)
     <|> try (AsyncMember <$> (keyword "async" *> withSpan ((,) <$> ident <* symbol "::" <*> typeP)) <*> usesP)
     <|> try (SignatureMember <$> withSpan ((,) <$> ident <* symbol "::" <*> typeP) <*> usesP)
@@ -920,7 +1199,7 @@ unitP = do
     ([(name, used) | SignatureMember ((name, _), _) used <- members, not (null used)] ++
      [(name, used) | AsyncMember ((name, _), _) used <- members, not (null used)] ++
      [(functionName d, used) | DefinitionMember (d, Just used) <- members])
-    [(lawName l, using) | LawMember (l, using) <- members, not (null using)] [] [], imports, [f | FamilyMember f <- members],
+    [(lawName l, using) | LawMember (l, using) <- members, not (null using)] [] [] [r | ResourceMember r <- members], imports, [f | FamilyMember f <- members],
     [w | WrapperMember w <- members], [w | WorkflowMember w <- members], [m | ModelMember m <- members],
     ([p | ProtocolMember p <- members], [s | ScenarioMember s <- members]))
 

@@ -196,6 +196,10 @@ auditTemplates declarations bits unit templates = do
         pure (T.Sequence [value,checkedScale])
       _ | name `elem` ["length","real","imag","isNaN","isInfinite","isFinite","isNegativeZero","checked","compare","size","isEmpty","toList"] ->
         pure (T.Sequence values)
+      -- Matchers are total predicates (LawSpec.Matchers).
+      _ | name `elem` ["contains","startsWith","endsWith","regexMatches","within","messageContains"] ->
+        pure (T.Sequence values)
+      ("recorded", _, _) -> lift (Left "a recording is compared by a law, not inside a definition")
       _ -> lift (Left ("unknown total-definition helper: " ++ name))
     binary integers typed op left right
       | op `elem` [C.Divide,C.Quotient,C.Remainder] =
