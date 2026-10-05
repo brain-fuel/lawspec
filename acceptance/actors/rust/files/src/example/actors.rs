@@ -42,3 +42,18 @@ pub fn depositTwice(value0: u8) -> i64 {
     account.stop();
     total
 }
+
+// After a crash, the account reopens with the balance it had.
+pub fn reopen(value0: Account) -> Account {
+    Account { balance: value0.balance }
+}
+
+// The bank supervisor restarts a crashed account from its last balance.
+pub fn survivesCrash(value0: u8) -> i64 {
+    let bank = crate::lawspec_actors::BankSupervisor::start();
+    bank.account.deposit(value0).unwrap();
+    bank.account.crash().unwrap();
+    let total = bank.account.balance().unwrap();
+    bank.stop();
+    total
+}

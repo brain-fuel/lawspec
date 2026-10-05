@@ -1,0 +1,6 @@
+@@ src/example/actors.rs
+<<<<<<<
+    Account { balance: value0.balance }
+=======
+    Account { balance: 0 }
+>>>>>>>
