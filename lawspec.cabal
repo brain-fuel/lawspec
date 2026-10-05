@@ -179,6 +179,7 @@ library
   exposed-modules:
       LawSpec.Actors
       LawSpec.Actors.Python
+      LawSpec.Actors.Rust
       LawSpec.Actors.Types
       LawSpec.Api
       LawSpec.Backend
