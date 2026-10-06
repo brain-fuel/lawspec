@@ -22,6 +22,11 @@ func NewClockHandler() Clock {
 	return &ClockHandler{}
 }
 
+// LawSpecRealTime says this clock is real time: workflows time out in real
+// time under it (the runtime's lsWorkflowRuntime), and a mailbox's receive
+// within waits in real time.
+func (handler *ClockHandler) LawSpecRealTime() bool { return true }
+
 func (handler *ClockHandler) Now() @@Instant@@ {
 	return @@Instant@@{Value: lsNowMicros()}
 }

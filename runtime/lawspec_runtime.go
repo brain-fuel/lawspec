@@ -3,8 +3,13 @@ package RUNTIME_PACKAGE
 
 import (
 	"bytes"
+	"crypto/aes"
+	"crypto/cipher"
+	"crypto/mlkem"
 	cryptorand "crypto/rand"
+	"crypto/sha3"
 	"encoding/binary"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -14,6 +19,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"path/filepath"
 	"reflect"
 	goruntime "runtime"
 	"sort"
@@ -23,6 +29,8 @@ import (
 	"sync/atomic"
 	"time"
 	"unicode/utf8"
+
+	"github.com/cloudflare/circl/sign/mldsa/mldsa65"
 )
 
 type LawSpecValue struct {
@@ -39,6 +47,9 @@ type lawSpecSymbol struct {
 	workflow *LawSpecWorkflowRuntime
 	// So do a law's handlers, by ability, under lsHandlersKey.
 	handlers map[string]any
+	// On the handlers entry: the default workflow runtime as seen through
+	// the Clock handler installed there (lsWorkflowRuntime).
+	clockView *lawSpecClockView
 }
 type lawSpecPresence struct{ value *LawSpecValue }
 
@@ -1772,7 +1783,9 @@ func lsComplexity(v LawSpecValue) *big.Int {
 
 const lsWorkflowKey = "\x00lawspec.workflow"
 
-// LawSpecClock tells the time and waits, in microseconds.
+// LawSpecClock tells the time and waits, in microseconds. A clock with a
+// Virtual method that answers true is virtual: timeouts and hedges count
+// only the time it reports (see lsScoped); any other clock is real time.
 type LawSpecClock interface {
 	Now() int64
 	Sleep(micros int64)
@@ -1781,14 +1794,125 @@ type LawSpecClock interface {
 // LawSpecRealClock is monotonic wall time.
 type LawSpecRealClock struct{ start time.Time }
 
-func (c *LawSpecRealClock) Now() int64        { return time.Since(c.start).Microseconds() }
+func (c *LawSpecRealClock) Now() int64         { return time.Since(c.start).Microseconds() }
 func (c *LawSpecRealClock) Sleep(micros int64) { time.Sleep(time.Duration(micros) * time.Microsecond) }
+func (c *LawSpecRealClock) Virtual() bool      { return false }
 
 // LawSpecVirtualClock advances when slept on and returns at once.
 type LawSpecVirtualClock struct{ Time int64 }
 
-func (c *LawSpecVirtualClock) Now() int64        { return c.Time }
+func (c *LawSpecVirtualClock) Now() int64         { return c.Time }
 func (c *LawSpecVirtualClock) Sleep(micros int64) { c.Time += micros }
+func (c *LawSpecVirtualClock) Virtual() bool      { return true }
+
+// lsClockIsVirtual is whether a workflow clock is virtual.
+func lsClockIsVirtual(clock LawSpecClock) bool {
+	virtual, ok := clock.(interface{ Virtual() bool })
+	return ok && virtual.Virtual()
+}
+
+// lsClockAbility is the Clock ability's key in a law's handlers.
+const lsClockAbility = "lawspec.time::ability::Clock"
+
+// lsRealTimeHandler is whether a Clock handler is real time: the default
+// handler (lawspec.time's ClockHandler) says so with LawSpecRealTime. Any
+// other handler, such as the virtual clock, is virtual.
+func lsRealTimeHandler(handler any) bool {
+	marked, ok := handler.(interface{ LawSpecRealTime() bool })
+	return ok && marked.LawSpecRealTime()
+}
+
+// lsClockHandlerNow is a Clock handler's now, in microseconds. The handler
+// is the generated Clock interface's, whose Instant the runtime does not
+// know, so it is read by reflection: a wrapper's Value, an integer, or a
+// logical value.
+func lsClockHandlerNow(handler any) int64 {
+	method := reflect.ValueOf(handler).MethodByName("Now")
+	if !method.IsValid() {
+		panic(fmt.Sprintf("%T is not a Clock handler: it has no Now", handler))
+	}
+	return lsInstantMicros(method.Call(nil)[0])
+}
+
+func lsInstantMicros(v reflect.Value) int64 {
+	for v.Kind() == reflect.Pointer || v.Kind() == reflect.Interface {
+		if v.IsNil() {
+			return 0
+		}
+		v = v.Elem()
+	}
+	if v.CanInterface() {
+		switch x := v.Interface().(type) {
+		case LawSpecValue:
+			if data, ok := x.Data.(lawSpecData); ok && len(data.fields) == 1 {
+				return lsInstantMicros(reflect.ValueOf(data.fields[0]))
+			}
+			return lsInstantMicros(reflect.ValueOf(x.Data))
+		case *big.Int:
+			return x.Int64()
+		case big.Int:
+			return x.Int64()
+		}
+	}
+	switch v.Kind() {
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		return v.Int()
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		return int64(v.Uint())
+	case reflect.Struct:
+		if field := v.FieldByName("Value"); field.IsValid() {
+			return lsInstantMicros(field)
+		}
+	}
+	panic(fmt.Sprintf("a Clock handler's now gave %v, not an Instant", v))
+}
+
+// lsClockHandlerSleep has a Clock handler sleep for micros microseconds.
+func lsClockHandlerSleep(handler any, micros int64) {
+	method := reflect.ValueOf(handler).MethodByName("Sleep")
+	if !method.IsValid() || method.Type().NumIn() != 1 {
+		panic(fmt.Sprintf("%T is not a Clock handler: it has no Sleep", handler))
+	}
+	parameter := method.Type().In(0)
+	var argument reflect.Value
+	switch {
+	case parameter == reflect.TypeOf(LawSpecValue{}):
+		argument = reflect.ValueOf(lsDuration(micros))
+	case reflect.TypeOf(time.Duration(0)).ConvertibleTo(parameter):
+		argument = reflect.ValueOf(time.Duration(micros) * time.Microsecond).Convert(parameter)
+	default:
+		panic(fmt.Sprintf("a Clock handler's sleep takes %v, not a Duration", parameter))
+	}
+	method.Call([]reflect.Value{argument})
+}
+
+// lawSpecAbilityClock is a workflow runtime's clock read through the Clock
+// ability: the handler a law installs (the virtual clock, or the default
+// real one). A handler that is not real time is virtual: waits pass at once,
+// and timeouts and hedges count only the time it reports.
+type lawSpecAbilityClock struct {
+	handler any
+	virtual bool
+}
+
+func lsNewAbilityClock(handler any) *lawSpecAbilityClock {
+	return &lawSpecAbilityClock{handler: handler, virtual: !lsRealTimeHandler(handler)}
+}
+
+func (c *lawSpecAbilityClock) Now() int64         { return lsClockHandlerNow(c.handler) }
+func (c *lawSpecAbilityClock) Sleep(micros int64) { lsClockHandlerSleep(c.handler, micros) }
+func (c *lawSpecAbilityClock) Virtual() bool      { return c.virtual }
+
+// lawSpecClockView is the default runtime seen through a Clock handler,
+// kept on the handlers entry so a stage and its steps share one view (and
+// with it the running attempt's deadline and hedge).
+type lawSpecClockView struct {
+	handler any
+	base    *LawSpecWorkflowRuntime
+	view    *LawSpecWorkflowRuntime
+}
+
+var lsClockViewLock sync.Mutex
 
 // LawSpecSplitMix64 gives the same sequence on every target for a seed.
 type LawSpecSplitMix64 struct{ state uint64 }
@@ -1835,10 +1959,12 @@ type LawSpecWorkflowRuntime struct {
 }
 
 // lawSpecHedge: when an attempt has not succeeded after Delay microseconds,
-// another starts beside it, up to Most in all; the first success wins.
+// another starts beside it, up to Most in all; the first success wins. On a
+// virtual clock (virtual set) the attempts run one after another instead.
 type lawSpecHedge struct {
 	Stage       string
 	Delay, Most int64
+	virtual     bool
 }
 
 // lawSpecTimedOut is raised by lsAwaitStep when an attempt outlives its
@@ -1853,6 +1979,9 @@ func lsAwaitStep[T any](symbols map[string]*lawSpecSymbol, start func() LawSpecT
 	deadline, hedge := runtime.deadline, runtime.hedge
 	if deadline.IsZero() && hedge == nil {
 		return convert(start().Await())
+	}
+	if hedge != nil && hedge.virtual {
+		return lsVirtualHedge(runtime, hedge, start, convert)
 	}
 	var expiry <-chan time.Time
 	if !deadline.IsZero() {
@@ -1916,11 +2045,47 @@ func lsAwaitStep[T any](symbols map[string]*lawSpecSymbol, start func() LawSpecT
 	}
 }
 
+// lsVirtualHedge is a hedge on a virtual clock: attempts run one after
+// another, and the next starts when one fails, so the first success wins as
+// it would in real time when no attempt outlives the delay.
+func lsVirtualHedge[T any](runtime *LawSpecWorkflowRuntime, hedge *lawSpecHedge, start func() LawSpecTask[T], convert func(T) LawSpecValue) LawSpecValue {
+	started := int64(1)
+	value := convert(start().Await())
+	for lsIsLeft(value) && started < hedge.Most {
+		started++
+		runtime.Trace = append(runtime.Trace, LawSpecTraceEvent{"hedge", hedge.Stage, started, true})
+		value = convert(start().Await())
+	}
+	return value
+}
+
+func lsIsLeft(value LawSpecValue) bool {
+	data, ok := value.Data.(lawSpecData)
+	return ok && data.tag == "Either::Left"
+}
+
+// lsTimedOut is a stage's TimedOut failure, of its own type when it has one.
+func lsTimedOut(policy lawSpecStagePolicy) LawSpecValue {
+	if policy.Fail != nil {
+		return policy.Fail("TimedOut")
+	}
+	return lsStageFailureValue("TimedOut")
+}
+
 // lsScoped runs an attempt under its stage's timeout (failing with TimedOut
-// when it outlives it) and hedge. Under the runtime generated tests install
-// (gates off), both are off.
+// when it outlives it) and hedge: the Timeout and Hedge transformers of the
+// Async ability, measured on the runtime's Clock. On a virtual clock
+// (generated tests, or a law using virtual clock) an attempt takes the
+// virtual time that passes while it runs, so both are deterministic. On a
+// real clock with gates off, both are off.
 func lsScoped(runtime *LawSpecWorkflowRuntime, policy lawSpecStagePolicy, attempt func() LawSpecValue) (result LawSpecValue) {
-	if !runtime.Gates || (policy.Timeout <= 0 && policy.Hedge == nil) {
+	if policy.Timeout <= 0 && policy.Hedge == nil {
+		return attempt()
+	}
+	if lsClockIsVirtual(runtime.Clock) {
+		return lsVirtuallyScoped(runtime, policy, attempt)
+	}
+	if !runtime.Gates {
 		return attempt()
 	}
 	outerDeadline, outerHedge := runtime.deadline, runtime.hedge
@@ -1938,14 +2103,43 @@ func lsScoped(runtime *LawSpecWorkflowRuntime, policy lawSpecStagePolicy, attemp
 			if _, ok := failure.(lawSpecTimedOut); !ok {
 				panic(failure)
 			}
-			if policy.Fail != nil {
-				result = policy.Fail("TimedOut")
-			} else {
-				result = lsStageFailureValue("TimedOut")
-			}
+			result = lsTimedOut(policy)
 		}
 	}()
 	return attempt()
+}
+
+// lsVirtuallyScoped is lsScoped on a virtual clock: no real deadline; the
+// attempt times out when the clock moved on by more than the timeout while
+// it ran, and its hedge's attempts run one after another.
+func lsVirtuallyScoped(runtime *LawSpecWorkflowRuntime, policy lawSpecStagePolicy, attempt func() LawSpecValue) (result LawSpecValue) {
+	outerDeadline, outerHedge := runtime.deadline, runtime.hedge
+	began := runtime.Clock.Now()
+	runtime.deadline = time.Time{}
+	runtime.hedge = nil
+	if policy.Hedge != nil {
+		hedge := *policy.Hedge
+		hedge.Stage = policy.Stage
+		hedge.virtual = true
+		runtime.hedge = &hedge
+	}
+	timedOut := false
+	func() {
+		defer func() {
+			runtime.deadline, runtime.hedge = outerDeadline, outerHedge
+			if failure := recover(); failure != nil {
+				if _, ok := failure.(lawSpecTimedOut); !ok {
+					panic(failure)
+				}
+				timedOut = true
+			}
+		}()
+		result = attempt()
+	}()
+	if timedOut || (policy.Timeout > 0 && runtime.Clock.Now()-began > policy.Timeout) {
+		return lsTimedOut(policy)
+	}
+	return result
 }
 
 type lawSpecUndo struct {
@@ -1996,39 +2190,76 @@ func (r *LawSpecWorkflowRuntime) Context(symbols map[string]*LawSpecSymbol) map[
 
 var lsDefaultWorkflowRuntime *LawSpecWorkflowRuntime
 
-// LawSpecUseVirtualClock makes the default runtime virtual, as generated tests do.
+// LawSpecUseVirtualClock makes the default runtime virtual, as generated
+// tests do. Timeouts and hedges stay on: they count virtual time (see
+// lsScoped).
 func LawSpecUseVirtualClock(seed uint64) {
 	lsDefaultWorkflowRuntime = NewLawSpecWorkflowRuntime(&LawSpecVirtualClock{}, seed)
 	lsDefaultWorkflowRuntime.Gates = false
 }
 
-// lsConcurrently runs an all group's steps side by side, each on a
-// goroutine, and gives their results in declaration order. Every step
-// finishes before a step's panic (the first, in declaration order) is raised
-// again here.
-func lsConcurrently(steps ...func() LawSpecValue) []LawSpecValue {
-	// The default runtime exists before the steps look it up.
-	lsWorkflowRuntime(nil)
-	results := make([]LawSpecValue, len(steps))
-	failures := make([]any, len(steps))
-	var group sync.WaitGroup
-	for i, step := range steps {
-		group.Add(1)
-		go func(i int, step func() LawSpecValue) {
-			defer group.Done()
-			defer func() { failures[i] = recover() }()
-			results[i] = step()
-		}(i, step)
+// LawSpecNativeAsync is the Async ability's default handler: goroutines.
+// LawSpec code performs Pause; workflows reach the rest natively: Spawn
+// starts a function as a task, Wait gives a task's result (a panic in the
+// task is raised again), and All runs functions side by side and gives their
+// results in order. An async adapter's LawSpecTask is such a task.
+// lawspec.concurrent's AsyncHandler embeds it.
+type LawSpecNativeAsync struct{}
+
+// Pause lets other goroutines run.
+func (LawSpecNativeAsync) Pause() { goruntime.Gosched() }
+
+// Spawn starts work on a goroutine of its own.
+func (LawSpecNativeAsync) Spawn(work func() any) LawSpecTask[any] { return LawSpecGo(work) }
+
+// Wait blocks until the task is done and gives its result.
+func (LawSpecNativeAsync) Wait(task LawSpecTask[any]) any { return task.Await() }
+
+// All is every function's result, in order; all finish before the first
+// panic (in order) is raised again.
+func (LawSpecNativeAsync) All(works ...func() any) []any {
+	tasks := make([]LawSpecTask[any], len(works))
+	for i, work := range works {
+		tasks[i] = LawSpecGo(work)
 	}
-	group.Wait()
-	for _, failure := range failures {
-		if failure != nil {
-			panic(failure)
-		}
+	for _, task := range tasks {
+		<-task.state.done
+	}
+	results := make([]any, len(tasks))
+	for i, task := range tasks {
+		results[i] = task.Await()
 	}
 	return results
 }
 
+// LawSpecAsync is the runtime's native Async.
+var LawSpecAsync = LawSpecNativeAsync{}
+
+// lsConcurrently runs an all group's steps side by side as tasks of the
+// Async ability's default handler, so an asynchronous step waits only for
+// itself, and gives their results in declaration order. Every step finishes
+// before a step's panic (the first, in declaration order) is raised again
+// here.
+func lsConcurrently(steps ...func() LawSpecValue) []LawSpecValue {
+	// The default runtime exists before the steps look it up.
+	lsWorkflowRuntime(nil)
+	works := make([]func() any, len(steps))
+	for i := range steps {
+		step := steps[i]
+		works[i] = func() any { return step() }
+	}
+	results := make([]LawSpecValue, len(steps))
+	for i, result := range LawSpecAsync.All(works...) {
+		results[i] = result.(LawSpecValue)
+	}
+	return results
+}
+
+// lsWorkflowRuntime is the runtime a workflow runs under: the one attached
+// to symbols (which keeps its own clock), else the default one. Workflow
+// time is the Clock ability's: where a law has installed a Clock handler,
+// the default runtime waits and times out on it, through a view kept on
+// the handlers entry.
 func lsWorkflowRuntime(symbols map[string]*lawSpecSymbol) *LawSpecWorkflowRuntime {
 	if entry, ok := symbols[lsWorkflowKey]; ok && entry.workflow != nil {
 		return entry.workflow
@@ -2036,7 +2267,24 @@ func lsWorkflowRuntime(symbols map[string]*lawSpecSymbol) *LawSpecWorkflowRuntim
 	if lsDefaultWorkflowRuntime == nil {
 		lsDefaultWorkflowRuntime = NewLawSpecWorkflowRuntime(nil, 0)
 	}
-	return lsDefaultWorkflowRuntime
+	runtime := lsDefaultWorkflowRuntime
+	entry, ok := symbols[lsHandlersKey]
+	if !ok || entry == nil {
+		return runtime
+	}
+	clock, found := entry.handlers[lsClockAbility]
+	if !found || clock == nil {
+		return runtime
+	}
+	lsClockViewLock.Lock()
+	defer lsClockViewLock.Unlock()
+	if view := entry.clockView; view != nil && view.base == runtime && lsSameNative(view.handler, clock) {
+		return view.view
+	}
+	under := *runtime
+	under.Clock = lsNewAbilityClock(clock)
+	entry.clockView = &lawSpecClockView{handler: clock, base: runtime, view: &under}
+	return &under
 }
 
 // lawSpecRetry: Strategy is immediate, fixed, linear, exponential, fibonacci
@@ -3801,6 +4049,63 @@ func (m *LawSpecMailbox) Receive(timeout time.Duration) (any, error) {
 			return nil, errors.New("no message arrived in time")
 		}
 	}
+}
+
+// ReceiveWithin is the Mailbox ability's receive ... within d: the next
+// message and true, or false when none arrives within d. With a Clock
+// handler that is not real time (the virtual clock) it waits no real time:
+// it takes a message already sent, or lets d pass on that clock and gives
+// none. Without one (or with the default, real-time handler) it waits up to
+// d. It fails with LawSpecActorStopped once closed and empty.
+func (m *LawSpecMailbox) ReceiveWithin(within time.Duration, clock ...any) (any, bool, error) {
+	var handler any
+	if len(clock) > 0 {
+		handler = clock[0]
+	}
+	if handler != nil && !lsRealTimeHandler(handler) {
+		if value, ok, err := m.take(); ok || err != nil {
+			return value, ok, err
+		}
+		lsClockHandlerSleep(handler, within.Microseconds())
+		return nil, false, nil
+	}
+	if within <= 0 {
+		return m.take()
+	}
+	timer := time.NewTimer(within)
+	defer timer.Stop()
+	for {
+		if value, ok, err := m.take(); ok || err != nil {
+			return value, ok, err
+		}
+		select {
+		case <-m.ready:
+		case <-timer.C:
+			return m.take()
+		}
+	}
+}
+
+// take is the next message without waiting, if there is one.
+func (m *LawSpecMailbox) take() (any, bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if len(m.items) > 0 {
+		value := m.items[0]
+		m.items[0] = nil
+		m.items = m.items[1:]
+		if len(m.items) > 0 {
+			select {
+			case m.ready <- struct{}{}:
+			default:
+			}
+		}
+		return value, true, nil
+	}
+	if m.closed {
+		return nil, false, LawSpecActorStopped
+	}
+	return nil, false, nil
 }
 
 // Close refuses further messages; those already sent can still be received.
@@ -6038,6 +6343,9 @@ type LawSpecMemoryNetwork struct {
 	delay     time.Duration
 	nodes     map[string]func([]byte)
 	groups    []map[string]bool
+	// With Record, every record sent, as the network saw it.
+	recording bool
+	recorded  [][]byte
 }
 
 // NewLawSpecMemoryNetwork makes an in-memory network with these faults.
@@ -6048,6 +6356,30 @@ func NewLawSpecMemoryNetwork(seed uint64, loss, duplicate float64, delay time.Du
 // Transport is a node's transport on the network, at mem://name.
 func (n *LawSpecMemoryNetwork) Transport(name string) LawSpecNetTransport {
 	return &lawSpecMemoryTransport{n, "mem://" + name}
+}
+
+// InsecureTransportForTests is a transport at mem://name whose node skips
+// the handshake and sends frames in the clear: for tests of the frame layer
+// only. Only an in-memory network makes one, and no configuration selects
+// it.
+func (n *LawSpecMemoryNetwork) InsecureTransportForTests(name string) LawSpecNetTransport {
+	return &LawSpecInsecureMemoryTransport{lawSpecMemoryTransport{n, "mem://" + name}}
+}
+
+// Record keeps every record sent from now on (see Recorded), and returns
+// the network.
+func (n *LawSpecMemoryNetwork) Record() *LawSpecMemoryNetwork {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	n.recording = true
+	return n
+}
+
+// Recorded is every record sent while recording, as the network saw it.
+func (n *LawSpecMemoryNetwork) Recorded() [][]byte {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	return append([][]byte{}, n.recorded...)
 }
 
 // Partition lets only nodes named in the same group reach each other.
@@ -6077,6 +6409,9 @@ func (n *LawSpecMemoryNetwork) chance(p float64) bool {
 
 func (n *LawSpecMemoryNetwork) send(source, node string, frame []byte) error {
 	n.mu.Lock()
+	if n.recording {
+		n.recorded = append(n.recorded, append([]byte{}, frame...))
+	}
 	deliver, ok := n.nodes[node]
 	if !ok {
 		n.mu.Unlock()
@@ -6136,6 +6471,10 @@ func (t *lawSpecMemoryTransport) Close() {
 	delete(t.network.nodes, t.address)
 	t.network.mu.Unlock()
 }
+
+// LawSpecInsecureMemoryTransport is in memory, without the handshake: tests
+// only (LawSpecMemoryNetwork.InsecureTransportForTests).
+type LawSpecInsecureMemoryTransport struct{ lawSpecMemoryTransport }
 
 // lawSpecTcpTransport sends frames over TCP, each a 4-byte big-endian
 // length then the frame.
@@ -6290,6 +6629,662 @@ func (t *lawSpecHttpTransport) Close() {
 	t.client.CloseIdleConnections()
 }
 
+// The secure network handler (docs/reference/language/distribution.md,
+// "Security"). Every node has an ML-DSA-65 identity (FIPS 204). Before two
+// nodes exchange frames, the one that sends first runs a handshake: it sends
+// a signed hello with a fresh ML-KEM-768 encapsulation key (FIPS 203), the
+// other answers with a signed welcome carrying the ciphertext, and both
+// derive an AES-256-GCM key (SP 800-38D) with SHAKE256 (FIPS 202). Frames
+// then cross sealed. Records are bytes, so every transport carries them, and
+// the format is the same on every target. The primitives are those of
+// lawspec.crypto's default handlers: crypto/mlkem, crypto/sha3, crypto/aes
+// and github.com/cloudflare/circl's ML-DSA-65.
+
+const (
+	lsRecordHello       byte = 1
+	lsRecordWelcome     byte = 2
+	lsRecordData        byte = 3
+	lsHandshakeRetry         = 100 * time.Millisecond
+	lsHandshakeDeadline      = 5 * time.Second
+	lsSecureQueueLimit       = 4096
+)
+
+var (
+	lsRecordMagic  = []byte{0x4C, 0x53, 0x01}
+	lsLabelHello   = []byte("lawspec-handshake-v1-hello")
+	lsLabelWelcome = []byte("lawspec-handshake-v1-welcome")
+	lsLabelKey     = []byte("lawspec-session-v1")
+	lsLabelFrame   = []byte("lawspec-frame-v1")
+)
+
+func lsNetSha3(data []byte) []byte {
+	digest := sha3.Sum256(data)
+	return digest[:]
+}
+
+func lsNetShake(data []byte, length int) []byte { return sha3.SumSHAKE256(data, length) }
+
+func lsNetRandom(n int) []byte {
+	out := make([]byte, n)
+	if _, err := cryptorand.Read(out); err != nil {
+		panic(err)
+	}
+	return out
+}
+
+// LawSpecSecureToken is a one-time token from the operating system's secure
+// generator: 32 bytes as 64 hexadecimal digits, as SecureRandom's
+// secureToken gives.
+func LawSpecSecureToken() string { return hex.EncodeToString(lsNetRandom(32)) }
+
+func lsNetConcat(parts ...[]byte) []byte {
+	var out []byte
+	for _, part := range parts {
+		out = append(out, part...)
+	}
+	return out
+}
+
+// lsNetField appends data as a record field: its length, then its bytes.
+func lsNetField(out, data []byte) []byte {
+	out = lsPutUvarint(out, uint64(len(data)))
+	return append(out, data...)
+}
+
+func lsNetReadFields(data []byte, pos, count int) ([][]byte, int, bool) {
+	fields := make([][]byte, 0, count)
+	for i := 0; i < count; i++ {
+		field, next, err := lsGetRaw(data, pos)
+		if err != nil {
+			return nil, pos, false
+		}
+		fields = append(fields, field)
+		pos = next
+	}
+	return fields, pos, true
+}
+
+func lsNetAead(key []byte) cipher.AEAD {
+	if len(key) != 32 {
+		return nil
+	}
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return nil
+	}
+	aead, err := cipher.NewGCM(block)
+	if err != nil {
+		return nil
+	}
+	return aead
+}
+
+// LawSpecNodeIdentity is a node's long-term ML-DSA-65 identity, kept as its
+// 32-byte seed.
+type LawSpecNodeIdentity struct {
+	seed      []byte
+	private   *mldsa65.PrivateKey
+	verifying []byte
+}
+
+// NewLawSpecNodeIdentity is the identity with this 32-byte ML-DSA-65 seed.
+func NewLawSpecNodeIdentity(seed []byte) (*LawSpecNodeIdentity, error) {
+	var xi [mldsa65.SeedSize]byte
+	if len(seed) != len(xi) {
+		return nil, errors.New("a node identity is a 32-byte ML-DSA-65 seed")
+	}
+	copy(xi[:], seed)
+	public, private := mldsa65.NewKeyFromSeed(&xi)
+	return &LawSpecNodeIdentity{seed: append([]byte{}, seed...), private: private, verifying: public.Bytes()}, nil
+}
+
+// LawSpecGenerateNodeIdentity is a fresh identity.
+func LawSpecGenerateNodeIdentity() *LawSpecNodeIdentity {
+	identity, err := NewLawSpecNodeIdentity(lsNetRandom(32))
+	if err != nil {
+		panic(err)
+	}
+	return identity
+}
+
+// LawSpecConfiguredNodeIdentity is the identity lawspec.json binds
+// (lawspec-network.conf, written by the compiler), or a fresh one.
+func LawSpecConfiguredNodeIdentity() *LawSpecNodeIdentity {
+	if identity, _ := lsNetworkConfig(); identity != nil {
+		return identity
+	}
+	return LawSpecGenerateNodeIdentity()
+}
+
+// Seed is the identity's 32-byte seed.
+func (id *LawSpecNodeIdentity) Seed() []byte { return append([]byte{}, id.seed...) }
+
+// VerifyingKey is the identity's ML-DSA-65 public key.
+func (id *LawSpecNodeIdentity) VerifyingKey() []byte { return append([]byte{}, id.verifying...) }
+
+// Fingerprint is SHA3-256 of the verifying key, in hexadecimal.
+func (id *LawSpecNodeIdentity) Fingerprint() string {
+	return hex.EncodeToString(lsNetSha3(id.verifying))
+}
+
+// Sign is a hedged ML-DSA-65 signature of message, with an empty context.
+func (id *LawSpecNodeIdentity) Sign(message []byte) []byte {
+	signature := make([]byte, mldsa65.SignatureSize)
+	if err := mldsa65.SignTo(id.private, message, nil, true, signature); err != nil {
+		panic(err)
+	}
+	return signature
+}
+
+func lsNetVerify(verifyingKey, message, signature []byte) bool {
+	var public mldsa65.PublicKey
+	if public.UnmarshalBinary(verifyingKey) != nil {
+		return false
+	}
+	return mldsa65.Verify(&public, message, nil, signature)
+}
+
+// lsNetworkConfig reads lawspec-network.conf, which the compiler writes from
+// lawspec.json's network binding: the file LAWSPEC_NETWORK_CONF names, or
+// the first found in the working directory and the directories above it.
+// Lines `identity <file>` (a hex seed) and `trusted <file>` (hex
+// fingerprints, one per line), relative to it; `#` begins a comment. It
+// gives a nil identity and nil trusted set for what it does not name.
+func lsNetworkConfig() (*LawSpecNodeIdentity, map[string]bool) {
+	path, named := os.LookupEnv("LAWSPEC_NETWORK_CONF")
+	if !named {
+		here, err := os.Getwd()
+		if err != nil {
+			return nil, nil
+		}
+		for {
+			candidate := filepath.Join(here, "lawspec-network.conf")
+			if _, err := os.Stat(candidate); err == nil {
+				path = candidate
+				break
+			}
+			parent := filepath.Dir(here)
+			if parent == here {
+				return nil, nil
+			}
+			here = parent
+		}
+	}
+	if _, err := os.Stat(path); err != nil {
+		return nil, nil
+	}
+	absolute, err := filepath.Abs(path)
+	if err != nil {
+		absolute = path
+	}
+	base := filepath.Dir(absolute)
+	content, err := os.ReadFile(path)
+	if err != nil {
+		panic(fmt.Sprintf("cannot read %s: %v", path, err))
+	}
+	var identity *LawSpecNodeIdentity
+	var trusted map[string]bool
+	for _, line := range strings.Split(string(content), "\n") {
+		line = strings.TrimSpace(line)
+		words := strings.Fields(line)
+		if len(words) < 2 || strings.HasPrefix(words[0], "#") {
+			continue
+		}
+		target := strings.TrimSpace(line[len(words[0]):])
+		if !filepath.IsAbs(target) {
+			target = filepath.Join(base, target)
+		}
+		text, err := os.ReadFile(target)
+		if err != nil {
+			panic(fmt.Sprintf("%s: cannot read %s: %v", path, target, err))
+		}
+		switch words[0] {
+		case "identity":
+			seed, err := hex.DecodeString(strings.TrimSpace(string(text)))
+			if err != nil {
+				panic(fmt.Sprintf("%s: %s is not a hex seed: %v", path, target, err))
+			}
+			if identity, err = NewLawSpecNodeIdentity(seed); err != nil {
+				panic(fmt.Sprintf("%s: %s: %v", path, target, err))
+			}
+		case "trusted":
+			trusted = map[string]bool{}
+			for _, fingerprint := range strings.Fields(string(text)) {
+				trusted[strings.ToLower(fingerprint)] = true
+			}
+		}
+	}
+	return identity, trusted
+}
+
+func lsHelloBody(session []byte, address string, verifyingKey, encapsulationKey []byte) []byte {
+	out := lsNetField(nil, session)
+	out = lsNetField(out, []byte(address))
+	out = lsNetField(out, verifyingKey)
+	return lsNetField(out, encapsulationKey)
+}
+
+func lsWelcomeBody(session []byte, address string, verifyingKey, ciphertext, hello []byte) []byte {
+	out := lsNetField(nil, session)
+	out = lsNetField(out, []byte(address))
+	out = lsNetField(out, verifyingKey)
+	out = lsNetField(out, ciphertext)
+	return lsNetField(out, lsNetSha3(hello))
+}
+
+// lsSessionKey is the AES-256-GCM key: SHAKE256(shared || label ||
+// SHA3(hello body) || SHA3(welcome body)), 32 bytes.
+func lsSessionKey(shared, hello, welcome []byte) []byte {
+	return lsNetShake(lsNetConcat(shared, lsLabelKey, lsNetSha3(hello), lsNetSha3(welcome)), 32)
+}
+
+// lsSealFrame is a data record sealing frame; a nil nonce is a fresh one.
+func lsSealFrame(key, session []byte, direction byte, frame, nonce []byte) []byte {
+	if nonce == nil {
+		nonce = lsNetRandom(12)
+	}
+	aead := lsNetAead(key)
+	if aead == nil {
+		panic("an AES-256-GCM key is 32 bytes")
+	}
+	associated := lsNetConcat(lsLabelFrame, session, []byte{direction})
+	sealed := aead.Seal(append([]byte{}, nonce...), nonce, frame, associated)
+	out := append(append([]byte{}, lsRecordMagic...), lsRecordData)
+	out = lsNetField(out, session)
+	out = append(out, direction)
+	return lsNetField(out, sealed)
+}
+
+// lsOpenFrame is the frame a data record seals, if it opens.
+func lsOpenFrame(key, record []byte) ([]byte, bool) {
+	if len(record) < 4 {
+		return nil, false
+	}
+	session, pos, ok := lsNetReadFields(record, 4, 1)
+	if !ok || pos >= len(record) {
+		return nil, false
+	}
+	direction := record[pos]
+	sealed, end, ok := lsNetReadFields(record, pos+1, 1)
+	if !ok || end != len(record) || len(sealed[0]) < 28 {
+		return nil, false
+	}
+	aead := lsNetAead(key)
+	if aead == nil {
+		return nil, false
+	}
+	frame, err := aead.Open(nil, sealed[0][:12], sealed[0][12:], lsNetConcat(lsLabelFrame, session[0], []byte{direction}))
+	if err != nil {
+		return nil, false
+	}
+	if frame == nil {
+		frame = []byte{}
+	}
+	return frame, true
+}
+
+// LawSpecHandshakeVector checks a handshake vector (hex fields, and the two
+// addresses as text): the bodies' hashes, the session key and a sealed
+// frame, as every target must compute them.
+func LawSpecHandshakeVector(initiatorSeed, responderSeed, kemSeed, session, initiator, responder,
+	ciphertext, nonce, frame, helloHash, welcomeHash, key, record string) bool {
+	decoded := map[string][]byte{}
+	for name, text := range map[string]string{"initiator": initiatorSeed, "responder": responderSeed, "kem": kemSeed,
+		"session": session, "ciphertext": ciphertext, "nonce": nonce, "frame": frame} {
+		raw, err := hex.DecodeString(text)
+		if err != nil {
+			return false
+		}
+		decoded[name] = raw
+	}
+	first, err := NewLawSpecNodeIdentity(decoded["initiator"])
+	if err != nil {
+		return false
+	}
+	second, err := NewLawSpecNodeIdentity(decoded["responder"])
+	if err != nil {
+		return false
+	}
+	kem, err := mlkem.NewDecapsulationKey768(decoded["kem"])
+	if err != nil {
+		return false
+	}
+	hello := lsHelloBody(decoded["session"], initiator, first.verifying, kem.EncapsulationKey().Bytes())
+	welcome := lsWelcomeBody(decoded["session"], responder, second.verifying, decoded["ciphertext"], hello)
+	shared, err := kem.Decapsulate(decoded["ciphertext"])
+	if err != nil {
+		return false
+	}
+	derived := lsSessionKey(shared, hello, welcome)
+	if len(decoded["nonce"]) != 12 {
+		return false
+	}
+	sealed := lsSealFrame(derived, decoded["session"], 0, decoded["frame"], decoded["nonce"])
+	opened, ok := lsOpenFrame(derived, sealed)
+	return hex.EncodeToString(lsNetSha3(hello)) == helloHash && hex.EncodeToString(lsNetSha3(welcome)) == welcomeHash &&
+		hex.EncodeToString(derived) == key && hex.EncodeToString(sealed) == record && ok && bytes.Equal(opened, decoded["frame"])
+}
+
+type lawSpecSession struct {
+	id   []byte
+	peer string
+	key  []byte
+	// 0: this node began the handshake; 1: the peer did.
+	direction byte
+	// A session the peer began is used for sending once a frame has
+	// arrived on it, so the peer surely holds its key.
+	confirmed bool
+}
+
+type lawSpecPendingHandshake struct {
+	session []byte
+	kem     *mlkem.DecapsulationKey768
+	body    []byte
+	hello   []byte
+	queue   [][]byte
+	done    chan struct{}
+}
+
+type lawSpecWelcome struct {
+	address string
+	record  []byte
+}
+
+// lawSpecSecureLayer is the handshakes, sessions and sealed frames of one
+// node.
+type lawSpecSecureLayer struct {
+	node     *LawSpecNode
+	identity *LawSpecNodeIdentity
+	// The fingerprints of the only peers to talk to, or nil for any.
+	trusted  map[string]bool
+	mu       sync.Mutex
+	sessions map[string]*lawSpecSession
+	outbound map[string]*lawSpecSession
+	pending  map[string]*lawSpecPendingHandshake
+	welcomes map[string]lawSpecWelcome
+	// The identity first seen at each address: a later, different one is
+	// refused (trust on first use, unless trusted names them).
+	known map[string]string
+}
+
+func lsNewSecureLayer(node *LawSpecNode, options lawSpecNodeOptions) *lawSpecSecureLayer {
+	identity, trusted := options.identity, options.trusted
+	if identity == nil || !options.trustedGiven {
+		configured, configuredTrusted := lsNetworkConfig()
+		if identity == nil {
+			identity = configured
+		}
+		if !options.trustedGiven {
+			trusted = configuredTrusted
+		}
+	}
+	if identity == nil {
+		identity = LawSpecGenerateNodeIdentity()
+	}
+	var lowered map[string]bool
+	if trusted != nil {
+		lowered = map[string]bool{}
+		for fingerprint, ok := range trusted {
+			if ok {
+				lowered[strings.ToLower(fingerprint)] = true
+			}
+		}
+	}
+	return &lawSpecSecureLayer{node: node, identity: identity, trusted: lowered,
+		sessions: map[string]*lawSpecSession{}, outbound: map[string]*lawSpecSession{},
+		pending: map[string]*lawSpecPendingHandshake{}, welcomes: map[string]lawSpecWelcome{}, known: map[string]string{}}
+}
+
+func (l *lawSpecSecureLayer) acceptPeer(address string, verifyingKey []byte) bool {
+	fingerprint := hex.EncodeToString(lsNetSha3(verifyingKey))
+	if l.trusted != nil && !l.trusted[fingerprint] {
+		return false
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	seen, ok := l.known[address]
+	if !ok {
+		l.known[address] = fingerprint
+		return true
+	}
+	return seen == fingerprint
+}
+
+// send seals frame for peer, or queues it behind a handshake, starting one
+// when none is under way. The first hello's failure is the send's.
+func (l *lawSpecSecureLayer) send(peer string, frame []byte) error {
+	l.mu.Lock()
+	session := l.outbound[peer]
+	if session == nil {
+		for _, s := range l.sessions {
+			if s.peer == peer && s.confirmed {
+				session = s
+				break
+			}
+		}
+	}
+	var pending *lawSpecPendingHandshake
+	start := false
+	if session == nil {
+		pending = l.pending[peer]
+		if pending == nil {
+			pending = l.begin()
+			l.pending[peer] = pending
+			start = true
+		}
+		if len(pending.queue) < lsSecureQueueLimit {
+			pending.queue = append(pending.queue, frame)
+		}
+	}
+	l.mu.Unlock()
+	if session != nil {
+		return l.node.transport.Send(peer, lsSealFrame(session.key, session.id, session.direction, frame, nil))
+	}
+	if start {
+		if err := l.node.transport.Send(peer, pending.hello); err != nil {
+			l.mu.Lock()
+			if l.pending[peer] == pending {
+				delete(l.pending, peer)
+			}
+			l.mu.Unlock()
+			return err
+		}
+		go l.retry(peer, pending)
+	}
+	return nil
+}
+
+func (l *lawSpecSecureLayer) begin() *lawSpecPendingHandshake {
+	session := lsNetRandom(16)
+	kem, err := mlkem.NewDecapsulationKey768(lsNetRandom(64))
+	if err != nil {
+		panic(err)
+	}
+	body := lsHelloBody(session, l.node.address, l.identity.verifying, kem.EncapsulationKey().Bytes())
+	signature := l.identity.Sign(lsNetConcat(lsLabelHello, body))
+	hello := lsNetField(lsNetConcat(lsRecordMagic, []byte{lsRecordHello}, body), signature)
+	return &lawSpecPendingHandshake{session: session, kem: kem, body: body, hello: hello, done: make(chan struct{})}
+}
+
+// retry sends the hello again every lsHandshakeRetry until welcomed, the
+// node closes, or lsHandshakeDeadline passes.
+func (l *lawSpecSecureLayer) retry(peer string, pending *lawSpecPendingHandshake) {
+	giveUp := time.Now().Add(lsHandshakeDeadline)
+	ticker := time.NewTicker(lsHandshakeRetry)
+	defer ticker.Stop()
+	for {
+		closed := false
+		select {
+		case <-pending.done:
+			return
+		case <-l.node.closed:
+			closed = true
+		case <-ticker.C:
+		}
+		if closed || !time.Now().Before(giveUp) {
+			l.mu.Lock()
+			if l.pending[peer] == pending {
+				delete(l.pending, peer)
+			}
+			l.mu.Unlock()
+			return
+		}
+		l.node.transport.Send(peer, pending.hello)
+	}
+}
+
+// receive is the frame a record carries, if any: not for a handshake
+// record, nor for one that fails to verify or open.
+func (l *lawSpecSecureLayer) receive(record []byte) ([]byte, bool) {
+	if len(record) < 4 || !bytes.Equal(record[:3], lsRecordMagic) {
+		return nil, false
+	}
+	switch record[3] {
+	case lsRecordHello:
+		l.hello(record)
+	case lsRecordWelcome:
+		l.welcome(record)
+	case lsRecordData:
+		return l.data(record)
+	}
+	return nil, false
+}
+
+func (l *lawSpecSecureLayer) hello(record []byte) {
+	fields, pos, ok := lsNetReadFields(record, 4, 4)
+	if !ok {
+		return
+	}
+	signature, end, ok := lsNetReadFields(record, pos, 1)
+	if !ok || end != len(record) || !utf8.Valid(fields[1]) {
+		return
+	}
+	session, address, verifyingKey, encapsulationKey := fields[0], string(fields[1]), fields[2], fields[3]
+	body := record[4:pos]
+	key := string(session)
+	l.mu.Lock()
+	answered, found := l.welcomes[key]
+	l.mu.Unlock()
+	if !found {
+		if !lsNetVerify(verifyingKey, lsNetConcat(lsLabelHello, body), signature[0]) {
+			return
+		}
+		if !l.acceptPeer(address, verifyingKey) {
+			return
+		}
+		peerKey, err := mlkem.NewEncapsulationKey768(encapsulationKey)
+		if err != nil {
+			return
+		}
+		shared, ciphertext := peerKey.Encapsulate()
+		welcome := lsWelcomeBody(session, l.node.address, l.identity.verifying, ciphertext, body)
+		signed := lsNetField(lsNetConcat(lsRecordMagic, []byte{lsRecordWelcome}, welcome),
+			l.identity.Sign(lsNetConcat(lsLabelWelcome, welcome)))
+		l.mu.Lock()
+		if _, taken := l.welcomes[key]; !taken {
+			l.welcomes[key] = lawSpecWelcome{address, signed}
+			l.sessions[key] = &lawSpecSession{id: append([]byte{}, session...), peer: address,
+				key: lsSessionKey(shared, body, welcome), direction: 1}
+		}
+		answered = l.welcomes[key]
+		l.mu.Unlock()
+	}
+	l.node.transport.Send(answered.address, answered.record)
+}
+
+func (l *lawSpecSecureLayer) welcome(record []byte) {
+	fields, pos, ok := lsNetReadFields(record, 4, 5)
+	if !ok {
+		return
+	}
+	signature, end, ok := lsNetReadFields(record, pos, 1)
+	if !ok || end != len(record) || !utf8.Valid(fields[1]) {
+		return
+	}
+	session, address, verifyingKey, ciphertext, helloHash := fields[0], string(fields[1]), fields[2], fields[3], fields[4]
+	l.mu.Lock()
+	pending := l.pending[address]
+	l.mu.Unlock()
+	if pending == nil || !bytes.Equal(pending.session, session) || !bytes.Equal(helloHash, lsNetSha3(pending.body)) {
+		return
+	}
+	body := record[4:pos]
+	if !lsNetVerify(verifyingKey, lsNetConcat(lsLabelWelcome, body), signature[0]) {
+		return
+	}
+	if !l.acceptPeer(address, verifyingKey) {
+		return
+	}
+	shared, err := pending.kem.Decapsulate(ciphertext)
+	if err != nil {
+		return
+	}
+	key := lsSessionKey(shared, pending.body, body)
+	established := &lawSpecSession{id: append([]byte{}, session...), peer: address, key: key, direction: 0, confirmed: true}
+	l.mu.Lock()
+	if l.pending[address] != pending {
+		l.mu.Unlock()
+		return
+	}
+	delete(l.pending, address)
+	l.sessions[string(session)] = established
+	l.outbound[address] = established
+	queue := pending.queue
+	l.mu.Unlock()
+	close(pending.done)
+	for _, frame := range queue {
+		l.node.transport.Send(address, lsSealFrame(key, established.id, 0, frame, nil))
+	}
+}
+
+func (l *lawSpecSecureLayer) data(record []byte) ([]byte, bool) {
+	session, _, ok := lsNetReadFields(record, 4, 1)
+	if !ok {
+		return nil, false
+	}
+	l.mu.Lock()
+	found := l.sessions[string(session[0])]
+	l.mu.Unlock()
+	if found == nil {
+		return nil, false
+	}
+	frame, ok := lsOpenFrame(found.key, record)
+	if ok {
+		l.mu.Lock()
+		found.confirmed = true
+		l.mu.Unlock()
+	}
+	return frame, ok
+}
+
+// LawSpecNodeOption is an option of NewLawSpecNode.
+type LawSpecNodeOption func(*lawSpecNodeOptions)
+
+type lawSpecNodeOptions struct {
+	identity     *LawSpecNodeIdentity
+	trusted      map[string]bool
+	trustedGiven bool
+}
+
+// LawSpecNodeWithIdentity gives the node this identity (by default the one
+// lawspec.json binds, or a fresh one).
+func LawSpecNodeWithIdentity(identity *LawSpecNodeIdentity) LawSpecNodeOption {
+	return func(options *lawSpecNodeOptions) { options.identity = identity }
+}
+
+// LawSpecNodeTrusting has the node talk only to peers with these
+// fingerprints (by default any peer, each address keeping the first
+// identity it shows).
+func LawSpecNodeTrusting(fingerprints ...string) LawSpecNodeOption {
+	return func(options *lawSpecNodeOptions) {
+		options.trusted = map[string]bool{}
+		options.trustedGiven = true
+		for _, fingerprint := range fingerprints {
+			options.trusted[strings.ToLower(fingerprint)] = true
+		}
+	}
+}
+
 // lawSpecEntity is something a node names: a mailbox, an actor, a channel
 // end or definitions.
 type lawSpecEntity interface {
@@ -6313,18 +7308,62 @@ type LawSpecNode struct {
 	nextID    uint64
 	closed    chan struct{}
 	closing   sync.Once
+	// The handshakes and sessions of the secure network handler; nil on a
+	// transport made for tests only (InsecureTransportForTests).
+	secure *lawSpecSecureLayer
 }
 
-// NewLawSpecNode starts a node on a transport.
-func NewLawSpecNode(transport LawSpecNetTransport) *LawSpecNode {
+// NewLawSpecNode starts a node on a transport. Options give its identity
+// (LawSpecNodeWithIdentity) and the only peers it talks to
+// (LawSpecNodeTrusting). A transport made for tests only
+// (LawSpecMemoryNetwork.InsecureTransportForTests) skips the handshake; no
+// other transport can.
+func NewLawSpecNode(transport LawSpecNetTransport, options ...LawSpecNodeOption) *LawSpecNode {
 	n := &LawSpecNode{transport: transport, address: transport.Address(), entities: map[string]lawSpecEntity{},
 		pending: map[uint64]chan []byte{}, seen: map[string][]byte{}, closed: make(chan struct{})}
-	transport.Start(n.deliver)
+	if _, insecure := transport.(*LawSpecInsecureMemoryTransport); !insecure {
+		chosen := lawSpecNodeOptions{}
+		for _, option := range options {
+			option(&chosen)
+		}
+		n.secure = lsNewSecureLayer(n, chosen)
+	}
+	transport.Start(n.arrive)
 	return n
 }
 
 // Address is the node's address, such as tcp://127.0.0.1:7000.
 func (n *LawSpecNode) Address() string { return n.address }
+
+// Identity is the node's identity, or nil on a transport made for tests
+// only.
+func (n *LawSpecNode) Identity() *LawSpecNodeIdentity {
+	if n.secure == nil {
+		return nil
+	}
+	return n.secure.identity
+}
+
+// arrive takes a record from the transport: the frame it carries, if any,
+// goes on to deliver.
+func (n *LawSpecNode) arrive(record []byte) {
+	if n.secure == nil {
+		n.deliver(record)
+		return
+	}
+	if frame, ok := n.secure.receive(record); ok {
+		n.deliver(frame)
+	}
+}
+
+// transmit sends a frame to a node: sealed, or in the clear on a transport
+// made for tests only.
+func (n *LawSpecNode) transmit(node string, frame []byte) error {
+	if n.secure == nil {
+		return n.transport.Send(node, frame)
+	}
+	return n.secure.send(node, frame)
+}
 
 // Close stops the node's transport, and its channel ends' resending.
 func (n *LawSpecNode) Close() {
@@ -6340,7 +7379,7 @@ func (n *LawSpecNode) forward(address, kind, source string, id uint64, payload [
 	if err != nil {
 		return
 	}
-	n.transport.Send(node, lsFrameEncode(kind, name, source, id, payload))
+	n.transmit(node, lsFrameEncode(kind, name, source, id, payload))
 }
 
 func (n *LawSpecNode) newID() uint64 {
@@ -6355,7 +7394,7 @@ func (n *LawSpecNode) send(address, kind string, payload []byte, id uint64) erro
 	if err != nil {
 		return err
 	}
-	return n.transport.Send(node, lsFrameEncode(kind, name, n.address, id, payload))
+	return n.transmit(node, lsFrameEncode(kind, name, n.address, id, payload))
 }
 
 func (n *LawSpecNode) register(name string, entity lawSpecEntity) (string, error) {
@@ -7077,11 +8116,7 @@ func (e *LawSpecNetEndpoint) offer() string {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	if e.token == "" {
-		random := make([]byte, 16)
-		if _, err := cryptorand.Read(random); err != nil {
-			panic(err)
-		}
-		e.token = fmt.Sprintf("%x", random)
+		e.token = LawSpecSecureToken()
 	}
 	return e.address + "?take=" + e.token
 }
@@ -7505,7 +8540,14 @@ func lsInstallHandlers(symbols map[string]*lawSpecSymbol, handlers map[string]an
 	for key, handler := range handlers {
 		table[key] = handler
 	}
-	symbols[lsHandlersKey] = &lawSpecSymbol{handlers: table}
+	installed := &lawSpecSymbol{handlers: table}
+	// The workflow clock view stays while its handler does.
+	if entry, ok := symbols[lsHandlersKey]; ok && entry != nil {
+		lsClockViewLock.Lock()
+		installed.clockView = entry.clockView
+		lsClockViewLock.Unlock()
+	}
+	symbols[lsHandlersKey] = installed
 }
 
 func lsHandler(symbols map[string]*lawSpecSymbol, ability string) any {
