@@ -12,6 +12,13 @@ command -v wasm32-wasi-cabal >/dev/null
 (cd wasm && wasm32-wasi-cabal build lawspec-wasm)
 core_file="$(cd wasm && wasm32-wasi-cabal list-bin lawspec-wasm)"
 "$(wasm32-wasi-ghc --print-libdir)/post-link.mjs" --input "$core_file" --output npm/core_jsffi.js
+# A wasm32 address is unsigned, but reaches JavaScript as a signed 32-bit
+# number: past 2 GiB of memory (lawspec examples on every bundled example)
+# the text codecs would read before the buffer. Read addresses unsigned.
+sed -i.bak -e 's/memory\.buffer, \$1, \$2)/memory.buffer, $1 >>> 0, $2)/' \
+  -e 's/memory\.buffer, \$2, \$3)/memory.buffer, $2 >>> 0, $3)/' npm/core_jsffi.js
+rm -f npm/core_jsffi.js.bak
+grep -q 'memory.buffer, \$1 >>> 0' npm/core_jsffi.js
 cp "$core_file" npm/core.wasm
 cp examples/specs/atoi_codec.lawspec npm/starter.lawspec
 rm -rf npm/examples

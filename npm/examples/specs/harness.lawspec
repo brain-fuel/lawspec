@@ -64,10 +64,11 @@ law `a refund is never booked twice` is
   end
 end
 
--- A scratch area the laws may use; it can be emptied between laws.
+-- A scratch area the laws may use; it can be emptied between laws, and
+-- laws running at the same time cannot interfere through it.
 type Scratch is Scratch used :: Int32 end
 
-resource Scratch is
+resource Scratch is concurrent
   acquire is Scratch 0 end
   release scratch is unitValue end
   reset scratch is unitValue end

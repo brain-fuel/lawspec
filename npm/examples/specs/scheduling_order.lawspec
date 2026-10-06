@@ -1,0 +1,18 @@
+unit example.sequencing
+
+-- How a harness orders a unit's laws never changes what they mean. The
+-- scheduling acceptance suite checks that `order random` follows the run's
+-- seed: the same seed gives the same order, and other seeds other orders.
+-- pause notes when it is called (when the suite asks it to) and gives true.
+pause :: Int32 -> Bool
+
+law `the first pause ends` is definition is pause 1 = true end end
+law `the second pause ends` is definition is pause 2 = true end end
+law `the third pause ends` is definition is pause 3 = true end end
+law `the fourth pause ends` is definition is pause 4 = true end end
+law `the fifth pause ends` is definition is pause 5 = true end end
+law `the sixth pause ends` is definition is pause 6 = true end end
+
+harness example.sequencing.testing for example.sequencing is
+  order random
+end

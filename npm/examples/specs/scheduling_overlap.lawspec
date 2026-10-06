@@ -1,0 +1,14 @@
+unit example.overlap
+
+-- How a harness runs a unit's laws never changes what they mean. The
+-- scheduling acceptance suite checks that `parallel` runs them at the same
+-- time: each nap sleeps, and their sleeps overlap.
+async nap :: Int32 -> Bool
+
+law `the first nap ends` is definition is nap 101 = true end end
+law `the second nap ends` is definition is nap 102 = true end end
+law `the third nap ends` is definition is nap 103 = true end end
+
+harness example.overlap.testing for example.overlap is
+  parallel
+end

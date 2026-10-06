@@ -2,6 +2,52 @@
 
 ## Unreleased
 
+- Built-in abilities. `import lawspec.time`, `lawspec.randomness`,
+  `lawspec.crypto`, `lawspec.host`, `lawspec.logging` or `lawspec.concurrent`
+  adds the unit and its abilities: `Clock`; `Random` and `SecureRandom`;
+  `Hash`, `KeyExchange`, `Signature` and `Aead`; `FileSystem`, `Environment`
+  and `Ports`; `Log` and `Trace`; `Async`. Each has laws, and a default
+  handler on every target, generated into the unit's module and reported in
+  evidence with the new status `default-handler` (`DEFAULT HANDLER`).
+  `handlers` in `lawspec.json` binds another, and the ability's laws then
+  check it.
+- `Instant`, microseconds since 1970: `t + d`, `t - d`, `b - a` (a
+  `Duration`) and comparisons, saturating rather than failing. `Clock` has
+  `now` and `sleep`, and its laws say time does not go back and sleeping
+  lets the time pass. `using virtual clock` runs a law under a clock that
+  moves only when told to; `advance d` lets `d` pass.
+- `Random` is reproducible: the same seed gives the same draws on all eight
+  targets. `using seeded random n` starts it at `n`; the default handler
+  starts at the run's seed. `SecureRandom` is the operating system's
+  generator. They are separate abilities: seeded random where SecureRandom
+  is needed is a compile error, SecureRandom has no spec handlers, and the
+  native interfaces differ, so the typed targets reject the mix too.
+- Cryptography is post-quantum by default: ML-KEM-768 (FIPS 203) key
+  exchange, ML-DSA-65 (FIPS 204) signatures, SHA3-256 and SHAKE256 (FIPS
+  202), and AES-256-GCM authenticated encryption, with SLH-DSA-SHAKE-128f
+  (FIPS 205) as an alternative Signature handler. Keys, ciphertexts and
+  signatures are opaque values whose bytes are the standards' encodings.
+  Their laws: decapsulating gives the encapsulated secret, a signature
+  verifies exactly for its message and its signer's key, and unsealing fails
+  for another key or other associated data.
+- A program that imports `lawspec.crypto` gets a test of the default
+  handlers against NIST's ACVP and CAVP vectors, on every target.
+- Generated projects depend on the default handlers' libraries:
+  `cryptography` (Python), `@noble/post-quantum` (JavaScript, TypeScript),
+  `circl` and Go 1.25 (Go), Bouncy Castle (Java, Kotlin), `crypton`, `mlkem`
+  and `mldsa` (Haskell), and RustCrypto's `ml-kem`, `ml-dsa`, `slh-dsa`,
+  `sha3`, `shake` and `aes-gcm` (Rust).
+- In Go, a program's ability that shares a name with another unit's (such
+  as a built-in `Log`) is named after its unit (`ExampleShopLog`), since
+  every Go package holds every ability.
+- Java ability interfaces no longer end a wrapped parameter list with a
+  comma; a Rust handler parameter that is a keyword is a raw identifier; a
+  Rust ability operation's result is checked against its type.
+- New acceptance suites `builtins` and `crypto`, on all eight targets, with
+  mutants: a clock that goes back, a seeded Random used as SecureRandom (a
+  compile error in the typed targets), a log written twice, a signature
+  handler that verifies a tampered message, and a key exchange that returns
+  another secret.
 - Abilities. `ability Gateway is authorize :: Card -> Payment ... laws ... end`
   names a dependency's operations and the laws every handler of it keeps.
   `uses Gateway, Clock` after a signature says what it uses; a native adapter
@@ -155,12 +201,25 @@
 - `target maximize` steers on every target: where the property library has
   no targeted search, LawSpec climbs after the property, moving the
   best-scoring case's integers while the score rises.
-- `order random` and `parallel` hold on every target: Go shuffles with the
-  run's seed, Haskell shuffles each law's block of tests, Rust runs a unit's
-  law tests in a seeded order one at a time; JavaScript and TypeScript run a
-  `parallel` unit's tests concurrently, Kotlin through Kotest's concurrency,
-  and Python through pytest-xdist when `lawspec test` finds it. The test
-  manifest carries whether a law's unit is parallel, and its benchmarks.
+- LawSpec owns a unit's scheduling through a small harness driver in each
+  runtime; the test framework hosts and reports. `order random` is seeded by
+  the run's seed, printed, and replayable on all eight targets; `parallel`
+  runs a unit's tests at the same time on all eight (Python on a thread pool
+  when pytest-xdist is absent, Java through a generated
+  `junit-platform.properties`, Haskell on the threaded runtime), and each
+  runtime records the parallelism it achieved, which `lawspec test` prints.
+  The test manifest carries whether a law's unit is parallel, and its
+  benchmarks.
+- `resource T is concurrent`: a resource cases cannot interfere through. A
+  harness may share a resource under `parallel` only if it is concurrent.
+- Built-in resources acquire and release through `lawspec.host`'s
+  abilities, under their production handlers: `FileSystem` gains
+  `temporaryDirectory` and `temporaryFile`, `Environment` gains
+  `environmentSnapshot` and `restoreEnvironment`, and `FreePort` uses
+  `freePort`. A program that names a built-in resource gets `lawspec.host`.
+- New acceptance suite `scheduling`: on every target, the same seed gives
+  the same order, other seeds other orders, and a `parallel` unit's laws
+  overlap.
 
 ## 0.20.0
 
