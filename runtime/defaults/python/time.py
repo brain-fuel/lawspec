@@ -19,6 +19,9 @@ def now_micros() -> int:
 class ClockHandler:
     """The system clock. now never goes back; sleep blocks this thread."""
 
+    # Workflows time out in real time under it (lawspec_runtime.AbilityClock).
+    real_time = True
+
     def now(self) -> @@Instant@@:
         return @@Instant@@(now_micros())
 

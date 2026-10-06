@@ -73,7 +73,11 @@ async def remoteLedger(value0):
         sender = LedgerMailbox.connect(here, there.address + '/ledger')
         sender.send(value0)
         sender.send(value0)
-        return ledger.receive(5) + ledger.receive(5)
+        total = ledger.receive(5) + ledger.receive(5)
+        # receive within: nothing more comes, so it gives None in time.
+        if ledger.receive_within(ls.timedelta(milliseconds=20)) is not None:
+            return -1
+        return total
     finally:
         here.close()
         there.close()
@@ -131,3 +135,30 @@ async def remoteHandoffOnward(value0):
     finally:
         for node in (a, b, c, d):
             node.close()
+
+
+async def sealedOnTheWire(value0):
+    # A definition evaluated on another node: its request names the
+    # definition's content hash, which shows on the wire only in the clear.
+    import lawspec_remote
+
+    name = 'example.distribution::shifted'
+    digest = lawspec_remote.digest(name).encode('utf-8')
+    seen = {}
+    for insecure in (False, True):
+        network = ls.MemoryNetwork(seed=value0 & 0xFFFF, record=True)
+        make = network.insecure_transport_for_tests if insecure else network.transport
+        here, there = ls.Node(make('here')), ls.Node(make('there'))
+        try:
+            lawspec_remote.serve(there)
+            if lawspec_remote.evaluate(here, there.address, name, value0) != value0 + 1000:
+                return False
+            seen[insecure] = any(digest in frame for frame in network.recorded)
+        finally:
+            here.close()
+            there.close()
+    return seen == {False: False, True: True}
+
+
+def handshakeAgrees(value0):
+    return ls.handshake_vector(*value0.split(' '))
