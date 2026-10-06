@@ -105,15 +105,16 @@ integrity record = do
 -- | tools/wasm.sh stages the license and examples into npm/. They stay
 -- committed because CI jobs without Haskell pack and run the package, so every
 -- staged copy must be byte-identical to its source. README.md and CHANGELOG.md
--- are copied by npm's prepack instead and not committed; when present they
--- must match the root too.
+-- are copied by npm's prepack instead and not committed.
 stagedCopies :: IO ()
 stagedCopies = do
   specs <- filter (".lawspec" `isSuffixOf`) . sort <$> listDirectory "examples/specs"
   payments <- walkAll "examples/native-payments"
   packages <- walkAll "examples/packages"
-  -- Every staged document has its source at the repository root.
-  documents <- filter (\f -> ".md" `isSuffixOf` f || f == "LICENSE") . sort <$> listDirectory "npm"
+  -- The license is staged; README.md and CHANGELOG.md are copied afresh by
+  -- npm's prepack on every pack, so a copy left from an earlier pack is not
+  -- checked. ref:DEC-npm-documents-copied
+  let documents = ["LICENSE"]
   let pairs = ("examples/specs/atoi_codec.lawspec", "npm/starter.lawspec") :
         [(d, "npm/" ++ d) | d <- documents] ++
         [("examples/specs/" ++ f, "npm/examples/specs/" ++ f) | f <- specs] ++
