@@ -254,6 +254,7 @@ emitPlanFormatted minify target Plan{..} = do
         [Artifact "tests/lawspec_data_strategies.py" (runtimeSource "python-data-strategies") "generated" "test" | target == "python" && not (null dataFiles)] ++
         -- The harness plane's runtime, for programs with a harness.
         [Artifact "tests/lawspec_harness.py" (runtimeSource "python-harness") "generated" "test" | target == "python" && usesHarness] ++
+        [Artifact "src/test/java/lawspec/testing/LawSpecHarness.java" (runtimeSource "java-harness") "generated" "test" | target `elem` ["java","kotlin"] && usesHarness] ++
         [Artifact ("test/lawspec_harness." ++ if target == "typescript" then "ts" else "mjs")
           ((if target == "typescript" then "// @ts-nocheck\n" else "") ++ runtimeSource "web-harness") "generated" "test"
           | target `elem` ["javascript","typescript"] && usesHarness] ++
