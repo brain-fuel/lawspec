@@ -25,6 +25,27 @@ law `advancing moves the virtual clock` using virtual clock is
   end
 end
 
+-- Time in laws: temporal propositions check over the clock, so under the
+-- virtual clock they are deterministic.
+law `a deadline eventually passes` using virtual clock is
+  definition is
+    `for all` (wait :: Duration where wait <= 1s) . (let d = deadline wait in eventually within 2 s, now >= d) = true
+  end
+end
+
+law `nothing is late before its deadline` using virtual clock is
+  definition is (let d = deadline 3s in always within 2 s, now < d) = true end
+end
+
+-- A performance budget, measured on the real clock.
+law `a deadline is quick to make` is
+  definition is `for all` (wait :: Duration where wait <= 1h) . deadline wait takes at most 500 ms end
+  example `an hour` is
+    wait = 1h
+    expect deadline wait takes at most 500 ms
+  end
+end
+
 -- A native adapter gets its handlers as arguments: here the real clock.
 elapsed :: Int32 -> Duration uses Clock
 
