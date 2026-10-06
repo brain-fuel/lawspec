@@ -182,6 +182,15 @@ emitTests Config{..} unit laws = do
     -- them, the last first, even when the case fails.
     bracketed e docs = foldr wrap (statements docs) (C.propertyResources (original e))
       where
+        -- A shared resource (share R per ...): the runtime keeps one per
+        -- scope key, resets it before each later use, and releases it when
+        -- the JVM exits. Each piece runs blocking, as it may suspend.
+        wrap r inner | Just key <- C.resourceShared r, Just reset <- C.resourceReset r =
+          let local = localName (C.binderId (C.resourceBinder r))
+              blocking body = text "kotlinx.coroutines.runBlocking " <> block body
+          in statements [bind local (runtime "share" [quoted key, closure "" (blocking (expr (C.resourceAcquire r))),
+              closure local (statements [blocking (expr reset)]), closure local (statements [blocking (expr (C.resourceRelease r))])]),
+            text "try " <> block inner <> text " finally " <> block (runtime "unshare" [quoted key])]
         wrap r inner =
           let local = localName (C.binderId (C.resourceBinder r))
           in statements [bind local (expr (C.resourceAcquire r)),

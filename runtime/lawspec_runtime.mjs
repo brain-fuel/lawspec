@@ -753,6 +753,19 @@ export function nativeFailures(ability, convert, body, mapped = []) {
   }
 }
 
+// The same for async native code: a rejected promise fails the same way.
+export async function nativeFailuresAsync(ability, convert, body, mapped = []) {
+  try {
+    return await body();
+  } catch (error) {
+    if (error instanceof Fail) throw new Failure(ability, convert(error.value));
+    for (const [kind, make] of mapped) {
+      if (error instanceof kind) throw new Failure(ability, make(error));
+    }
+    throw error;
+  }
+}
+
 export function countCalls(recording, operation, matches = null) {
   if (recording === null || typeof recording !== 'object' || !Array.isArray(recording.calls))
     throw new TypeError('calls of needs a recording handler: `using recording`');
@@ -2124,6 +2137,46 @@ export function releaseResource(kind, value) {
 }
 
 /** A TCP port on the local host that is free now. */
+// Shared resources (share R per group | unit | run, in a harness): one value
+// per scope key. The first use acquires it; every later use resets it first,
+// so no case sees what another left. One case holds it at a time, and it is
+// released when the test process ends.
+const sharedResources = new Map();
+export function share(key, acquire, reset, release) {
+  let entry = sharedResources.get(key);
+  if (entry) { reset(entry.value); return entry.value; }
+  entry = { value: acquire() };
+  sharedResources.set(key, entry);
+  globalThis.process.once("exit", () => release(entry.value));
+  return entry.value;
+}
+export async function shareAsync(key, acquire, reset, release) {
+  let entry = sharedResources.get(key);
+  if (!entry) {
+    entry = { turn: Promise.resolve(), held: false };
+    sharedResources.set(key, entry);
+  }
+  // Wait for the case that holds it, then hold it.
+  const previous = entry.turn;
+  let done;
+  entry.turn = new Promise((resolve) => { done = resolve; });
+  await previous;
+  entry.release = done;
+  try {
+    if (entry.held) await reset(entry.value);
+    else {
+      entry.value = await acquire();
+      entry.held = true;
+      let released = false;
+      globalThis.process.on("beforeExit", async () => { if (!released) { released = true; await release(entry.value); } });
+    }
+  } catch (error) { done(); throw error; }
+  return entry.value;
+}
+export function unshare(key) {
+  const entry = sharedResources.get(key);
+  if (entry && entry.release) { const done = entry.release; entry.release = null; done(); }
+}
 export function freePort() {
   const { execFileSync } = nodeModule('node:child_process');
   const script = "const s=require('net').createServer();s.listen(0,'127.0.0.1',()=>{process.stdout.write(String(s.address().port));s.close();});";

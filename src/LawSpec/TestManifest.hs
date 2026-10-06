@@ -7,14 +7,14 @@
 -- LawSpec.Dependencies), and its harness: tags, and whether it is skipped or
 -- known to fail. A runner can tell which laws an edit affects, select their
 -- tests by name and by tag, and knows which tests not to expect.
-module LawSpec.TestManifest (TestEntry(..), testManifest, unitTestPath) where
+module LawSpec.TestManifest (TestEntry(..), testManifest, BenchmarkEntry(..), benchmarkManifest, unitTestPath) where
 
 import Data.Char (isAlphaNum, toUpper)
 import Data.List (intercalate, stripPrefix)
 import qualified Data.Set as S
 import LawSpec.Core
 import LawSpec.Dependencies (dependencyGraph, keyOf, lawReferences)
-import LawSpec.TestNames (unitTestNames)
+import LawSpec.TestNames (unitTestNames, lawWords)
 
 data TestEntry = TestEntry
   { entryLaw :: Id, entryUnit :: String, entryLabel :: String, entryIndex :: Int
@@ -49,6 +49,33 @@ testManifest target testDir program =
     relocated path = case testDir of
       Just directory | Just rest <- stripPrefix (defaultTestDirectory target ++ "/") path -> directory ++ "/" ++ rest
       _ -> path
+
+-- A harness benchmark and the test that measures it, which lawspec test
+-- --benchmarks runs.
+data BenchmarkEntry = BenchmarkEntry
+  { benchmarkUnit :: String, benchmarkName :: String, benchmarkFile :: FilePath, benchmarkTest :: String }
+  deriving (Eq, Show)
+
+benchmarkManifest :: String -> Maybe String -> Program -> [BenchmarkEntry]
+benchmarkManifest target testDir program =
+  [ BenchmarkEntry unit n (relocated testDir target (unitTestPath target unit)) (testOf n)
+  | u <- programUnits program, Just settings <- [unitHarnessSettings u]
+  , let unit = idText (unitId u), (n, _) <- harnessBenchmarks settings ]
+  where
+    words' = lawWords
+    capital (c : rest) = toUpper c : rest
+    capital [] = []
+    testOf n = case target of
+      "python" -> "test_benchmark__" ++ intercalate "_" (words' n)
+      "go" -> "TestBenchmark" ++ concatMap capital (words' n)
+      "java" -> "benchmark" ++ concatMap capital (words' n)
+      "rust" -> "benchmark_" ++ intercalate "_" (words' n)
+      _ -> "benchmark " ++ n
+
+relocated :: Maybe String -> String -> FilePath -> FilePath
+relocated testDir target path = case testDir of
+  Just directory | Just rest <- stripPrefix (defaultTestDirectory target ++ "/") path -> directory ++ "/" ++ rest
+  _ -> path
 
 defaultTestDirectory :: String -> String
 defaultTestDirectory target = case target of

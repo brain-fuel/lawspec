@@ -7,7 +7,7 @@ lawspec evidence [<unit> | <unit>::<declaration>] [--target <language>] [--machi
 lawspec explain [<unit>::<law>] [--machine-bits <32|64>] [--json] [--no-cache] [--config <path>]
 lawspec doctor [--target <language>] [--json] [--config <path>]
 lawspec generate [--target <language>] [--dry-run | --check] [--minify] [--machine-bits <32|64>] [--json] [--no-cache] [--config <path>]
-lawspec test [--target <language>] [--fresh] [--seed <n>] [--update-recorded] [--tag <t>] [--exclude-tag <t>] [--report junit=<path>] [--coverage] [--minify] [--machine-bits <32|64>] [--json] [--no-cache] [--config <path>]
+lawspec test [--target <language>] [--fresh] [--seed <n>] [--update-recorded] [--tag <t>] [--exclude-tag <t>] [--report junit=<path>] [--coverage] [--benchmarks] [--minify] [--machine-bits <32|64>] [--json] [--no-cache] [--config <path>]
 lawspec package [--project <package directory>] [--machine-bits <32|64>] [--json]
 lawspec examples [--example payments] [--target <language>] [--output <directory>] [--machine-bits <32|64>] [--minify] [--json]
 lawspec --version
@@ -175,6 +175,9 @@ Results are kept in `.lawspec/results`, and runner reports in
   the build applies its plugin), cargo-llvm-cov (Rust) and hpc
   (`stack test --coverage`). A missing tool is reported, with how to install
   it, and the run goes on without coverage. Coverage runs every selected law.
+- `--benchmarks`: after the laws, run the harness's
+  [benchmarks](language/harness.md#benchmarks) with each target's test runner,
+  every time (they are never cached), and print their measurements.
 - `--json`: print a summary per target (`ran`, `unchanged`, `seed`, `ok`, and
   `flaky`, `unmetCover`, `benchmarks` and `coverage` when there are any); the
   test runners' output goes to standard error.
@@ -182,8 +185,8 @@ Results are kept in `.lawspec/results`, and runner reports in
 A law's [harness](language/harness.md) shapes the run: a skipped law has no
 test to run, a known-failing law's one test is expected to fail, flaky retries
 and unmet `cover` requirements are listed after the summary. Benchmarks are
-not laws, so `lawspec test` does not select them; they run with the target's
-own test command, which prints their measurements. The harness runtimes write their statistics to
+not laws, so `lawspec test` runs them only with `--benchmarks`; the target's
+own test command runs them too, and prints their measurements. The harness runtimes write their statistics to
 `.lawspec/reports/<target>/statistics`; `lawspec test` keeps each law's in its
 results, and `lawspec evidence` shows them.
 

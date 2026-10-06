@@ -120,7 +120,7 @@ emitGoDefinitionsWithCalls bound layout bits declarations units = do
                     | otherwise = E.call "resultCodec.fromNative" [call]
               -- An adapter that fails with E: native code panics with LawSpecFail.
               failing <- case [a | a@(AbilityRef _ [_]) <- declarationUses adapter, isFail a] of
-                ability@(AbilityRef _ [failure]) : _ | not (declarationAsync adapter) -> do
+                ability@(AbilityRef _ [failure]) : _ -> do
                   failureCodec <- Native.goCodecWithContext "symbols" declarations failure
                   failureType <- Native.goDataType declarations failure
                   pure (\inner -> E.call "lsNativeFailures" [E.quoted (abilityKey ability),

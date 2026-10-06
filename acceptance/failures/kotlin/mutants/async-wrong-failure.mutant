@@ -1,0 +1,7 @@
+expect: settling nothing is declined, and says why
+@@ src/main/kotlin/example/Failures.kt
+<<<<<<<
+        if (value0 == 0) throw lawspec.runtime.LawSpecRuntime.Fail(lawspec.data.PaymentError.Declined("there is nothing to settle"))
+=======
+        if (value0 == 0) throw lawspec.runtime.LawSpecRuntime.Fail(lawspec.data.PaymentError.Blocked)
+>>>>>>>

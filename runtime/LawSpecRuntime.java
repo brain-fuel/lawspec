@@ -2406,6 +2406,49 @@ public final class LawSpecRuntime {
     }
   }
 
+  // Shared resources (share R per group | unit | run, in a harness): one value
+  // per scope key. The first use acquires it; every later use resets it first,
+  // so no case sees what another left. One case holds it at a time, and it is
+  // released when the JVM exits.
+  public interface SharedAcquire<T> { T get() throws Exception; }
+  public interface SharedUse<T> { void accept(T value) throws Exception; }
+  private static final class SharedEntry {
+    // A semaphore, not a lock: a suspending Kotlin case may end on another thread.
+    final java.util.concurrent.Semaphore lock = new java.util.concurrent.Semaphore(1);
+    boolean held;
+    Object value;
+  }
+  private static final java.util.Map<String, SharedEntry> shared = new java.util.concurrent.ConcurrentHashMap<>();
+
+  @SuppressWarnings("unchecked")
+  public static <T> T share(String key, SharedAcquire<T> acquire, SharedUse<T> reset, SharedUse<T> release) {
+    SharedEntry entry = shared.computeIfAbsent(key, k -> new SharedEntry());
+    entry.lock.acquireUninterruptibly();
+    try {
+      if (entry.held) reset.accept((T) entry.value);
+      else {
+        entry.value = acquire.get();
+        entry.held = true;
+        final T value = (T) entry.value;
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+          try { release.accept(value); } catch (Exception e) { throw new RuntimeException(e); }
+        }));
+      }
+      return (T) entry.value;
+    } catch (RuntimeException | Error e) {
+      entry.lock.release();
+      throw e;
+    } catch (Exception e) {
+      entry.lock.release();
+      throw new RuntimeException(e);
+    }
+  }
+
+  public static void unshare(String key) {
+    SharedEntry entry = shared.get(key);
+    if (entry != null) entry.lock.release();
+  }
+
   // Built-in resources (see LawSpec.Resources): a law acquires them before
   // each case and releases them after it. A JVM cannot change its process
   // environment, so the environment it saves and restores is its system
@@ -6997,8 +7040,11 @@ public final class LawSpecRuntime {
     } catch (Failure failure) {
       throw failure;
     } catch (RuntimeException error) {
-      // A bridge may wrap the application's exception; its causes count too.
+      // A bridge may wrap the application's exception, and a future's join
+      // wraps what its task threw (CompletionException); causes count too.
       for (Throwable cause = error; cause != null; cause = cause.getCause()) {
+        if (cause instanceof Fail fail) throw new Failure(ability, convert.apply(fail.value));
+        if (cause instanceof Failure failure) throw failure;
         for (var each : mapped) {
           if (each.kind().isInstance(cause)) throw new Failure(ability, each.make().apply(cause));
         }

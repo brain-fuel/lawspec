@@ -370,7 +370,7 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
     -- An adapter that fails with E: its native code throws
     -- LawSpecRuntime.Fail with a native E, or an exception lawspec.json maps.
     jvmFailing n convert opening call = case [a | a@(C.AbilityRef _ [_]) <- failuresOf n] of
-      ability@(C.AbilityRef _ [failure]) : _ | n `notElem` asyncNames ->
+      ability@(C.AbilityRef _ [failure]) : _ ->
         let native = Doc.render Doc.Compact (Doc.text (if kt then java (KotlinData.kotlinDataType dataDeclarations failure)
               else java (JavaData.javaDataType dataDeclarations failure)))
             close = if kt then Doc.text " }" else mempty
@@ -497,7 +497,7 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
     -- An adapter that fails with E: its native code throws LS.Fail with a
     -- native E, or an exception lawspec.json maps to a failure.
     hsFailing n call = case [a | a@(C.AbilityRef _ [_]) <- failuresOf n] of
-      ability@(C.AbilityRef _ [failure]) : _ | n `notElem` asyncNames ->
+      ability@(C.AbilityRef _ [failure]) : _ ->
         let native = qualifyData (java (HaskellData.haskellDataType dataDeclarations failure))
             mapped = [ HaskellExpr.apply "LS.mappedFailure" [Doc.text "((\\_error -> " <>
                          hsConstructValue failure (C.idText (C.failureConstructor b))
@@ -698,7 +698,7 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
       | otherwise = GoExpr.call "lsTruth" [GoExpr.call "lsBinary" [GoExpr.quoted "==",a,b]]
     -- An adapter that fails with E: its native code panics with LawSpecFail.
     goFailing n call = case [a | a@(C.AbilityRef _ [_]) <- failuresOf n] of
-      ability@(C.AbilityRef _ [failure]) : _ | n `notElem` asyncNames ->
+      ability@(C.AbilityRef _ [failure]) : _ ->
         GoExpr.call "lsNativeFailures" ([GoExpr.quoted (C.abilityKey ability),
           Doc.text "func(native any) LawSpecValue " <> Doc.block 8 (Doc.text "return " <>
             goNativeResult failure (Doc.text ("native.(" ++ either error id (GoData.goDataType dataDeclarations failure) ++ ")"))),

@@ -85,6 +85,57 @@ const groupBy = (entries, key) => {
   return [...groups.entries()];
 };
 
+// The native invocations that run the harness's benchmarks (lawspec test
+// --benchmarks): each target's test command, selecting the tests that
+// measure them by the names the manifest gives (entry.name). Benchmarks are
+// measured, never asserted; their timings reach the summary through the
+// harness statistics.
+export function benchmarkInvocations(target, entries, { offline = false } = {}) {
+  if (!entries.length) return [];
+  const language = target.language;
+  const testDir = target.testDir;
+  const relativeTo = (file, defaultDir) => {
+    const directory = testDir || defaultDir;
+    return file.startsWith(directory + "/") ? file.slice(directory.length + 1) : file;
+  };
+  const className = (file, defaultDir, extension) => without(relativeTo(file, defaultDir), extension).replaceAll("/", ".");
+  if (language === "python")
+    return groupBy(entries, (e) => e.file).map(([file, marks]) => ({ command: target.python || "python3",
+      args: ["-m", "pytest", "-q", "-s", file, "-k", marks.map((e) => e.name).join(" or ")] }));
+  if (language === "javascript" || language === "typescript") {
+    const files = [...new Set(entries.map((e) => language === "typescript" ? `dist/${without(e.file, ".ts")}.js` : e.file))];
+    const run = { command: process.execPath,
+      args: ["--test", `--test-name-pattern=^(${entries.map((e) => regex(e.name)).join("|")})$`, ...files] };
+    return language === "typescript" ? [{ command: "npm", args: ["exec", "--", "tsc", "-p", "tsconfig.json"] }, run] : [run];
+  }
+  if (language === "go")
+    return groupBy(entries, (e) => path.posix.dirname(e.file)).map(([directory, marks]) => ({ command: "go",
+      args: ["test", "-count=1", "-v", `./${directory}`, "-run", `^(${marks.map((e) => regex(e.name)).join("|")})$`] }));
+  if (language === "java") {
+    const byClass = groupBy(entries, (e) => className(e.file, "src/test/java", ".java"));
+    return [{ command: target.maven || "mvn", args: [...(offline ? ["-o"] : []), "-B", "test",
+      `-Dtest=${byClass.map(([name, marks]) => `${name}#${marks.map((e) => e.name).join("+")}`).join(",")}`] }];
+  }
+  if (language === "kotlin")
+    return groupBy(entries, (e) => e.file).map(([file, marks]) => {
+      const filter = `(${marks.map((e) => e.name).join("|")})`;
+      return { command: target.gradle || "gradle",
+        args: [...(offline ? ["--offline"] : []), "--console=plain", "test", "--rerun", "--tests", className(file, "src/test/kotlin", ".kt")],
+        env: { "kotest.filter.tests": filter, kotest_filter_tests: filter } };
+    });
+  if (language === "rust")
+    return groupBy(entries, (e) => e.file).map(([file, marks]) => ({ command: "cargo",
+      args: ["test", ...(offline ? ["--offline"] : []), "--test", path.posix.basename(file, ".rs"), "--", "--exact", "--nocapture", ...marks.map((e) => e.name)] }));
+  if (language === "haskell") {
+    const module = (e) => without(relativeTo(e.file, "test"), "Spec.hs").replaceAll("/", ".");
+    // hspec matches by substring, and a benchmark's name has spaces, so each
+    // module's benchmarks are selected together.
+    return [{ command: "stack", args: ["--no-terminal", "test", "--test-arguments",
+      [...new Set(entries.map((e) => `--match ${module(e)}/benchmark`))].join(" ")] }];
+  }
+  throw new Error(`lawspec test does not support ${language}`);
+}
+
 // The native invocations that run exactly the given laws' tests, each with
 // the laws it covers and how to tell, from the runner's own report, which of
 // them ran. A law's tests are named after its label (entry.name, see

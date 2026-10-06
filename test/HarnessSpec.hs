@@ -55,6 +55,10 @@ shop = unlines
   , "resource Socket is"
   , "  acquire is openSocket unitValue end"
   , "  release s is closeSocket s end"
+  , "end"
+  , "scratchOpen :: Scratch -> Bool"
+  , "law `scratch is open` for s :: Scratch is"
+  , "  definition is scratchOpen s = true end"
   , "end" ]
 
 harness :: [String] -> String
@@ -112,6 +116,31 @@ spec = describe "harness units" $ do
   it "shares only resources that declare reset" $ do
     compiled (harness ["  share Scratch per unit"]) `shouldSatisfy` isRight
     compiled (harness ["  share Socket per unit"]) `shouldSatisfy` failsWith "does not declare reset"
+  it "shares a resource at run time: each law that takes it gets its scope's key, and its reset" $ do
+    let resourcesOf program = [C.propertyResources p | u <- C.programUnits program, p <- C.unitProperties u, C.propertyName p == "scratch is open"]
+    case compiled (harness ["  share Scratch per unit"]) of
+      Left ds -> expectationFailure (show ds)
+      Right program -> do
+        map (map C.resourceShared) (resourcesOf program) `shouldBe` [[Just "example.shop/Scratch"]]
+        map (map ((/= Nothing) . C.resourceReset)) (resourcesOf program) `shouldBe` [[True]]
+    case compiled (harness ["  share Scratch per run"]) of
+      Left ds -> expectationFailure (show ds)
+      Right program -> map (map C.resourceShared) (resourcesOf program) `shouldBe` [[Just "run/Scratch"]]
+    case compiled (harness []) of
+      Left ds -> expectationFailure (show ds)
+      Right program -> map (map C.resourceShared) (resourcesOf program) `shouldBe` [[Nothing]]
+  it "lets a strategy's type be an inline refinement, kept like such that" $
+    case compiled (harness ["  strategy small :: (o :: Order where itemsOf o <= 3) is any end", "  for law `discount is small`", "    use small for order"]) of
+      Left ds -> expectationFailure (show ds)
+      Right program -> case lawHarness "discount is small" program of
+        Just h | [(_, "small", C.DrawSuchThat _ _ _ 100)] <- C.harnessDraws h -> pure ()
+        other -> expectationFailure (show other)
+  it "runs a benchmark that uses abilities under their production handlers" $
+    case compiled (harness ["  benchmark `booking` is book 100 end"]) of
+      Left ds -> expectationFailure (show ds)
+      Right program -> case [b | u <- C.programUnits program, Just h <- [C.unitHarnessSettings u], (_, b) <- C.harnessBenchmarks h] of
+        [b] | C.Handle (C.WithHandler _ C.ProductionHandler) _ <- C.expressionNode b -> pure ()
+        other -> expectationFailure (show other)
   it "keeps the variants test with leaves out as skipped obligations" $
     case compiled (harness ["  test with fakeLedger"]) >>= dischargeEvidence of
       Left ds -> expectationFailure (show ds)

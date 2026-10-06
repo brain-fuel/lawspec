@@ -125,6 +125,7 @@ validateProgramWith registry Program{..} = do
         unless (expressionType (resourceAcquire r) == binderType (resourceBinder r)) (Left "a resource's acquire must give its type")
         own <- extend M.empty (resourceBinder r)
         expression ds own (resourceRelease r)
+        mapM_ (expression ds own) (resourceReset r)
         extend s (resourceBinder r)) scope (propertyResources p)
       proposition ds resourceScope (propertyBody p)
       mapM_ (validateExample ds scope resourceScope) (propertyExamples p)

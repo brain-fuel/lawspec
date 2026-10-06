@@ -1,0 +1,7 @@
+expect: a pool starts each case empty
+@@ src/Example/Resources.hs
+<<<<<<<
+drainPool p = unsafePerformIO (writeIORef (poolAmount (pool p)) 0)
+=======
+drainPool p = unsafePerformIO (readIORef (poolAmount (pool p)) >> pure ())
+>>>>>>>

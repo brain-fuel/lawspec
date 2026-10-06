@@ -1,0 +1,7 @@
+expect: a pool starts each case empty
+@@ src/example/resources.rs
+<<<<<<<
+    *pool(&value0).amount.lock().unwrap() = 0;
+=======
+    let _ = pool(&value0);
+>>>>>>>

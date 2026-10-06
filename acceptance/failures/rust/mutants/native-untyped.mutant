@@ -1,0 +1,7 @@
+expect-any: refunds over the limit are too large | law_refunds_over_the_limit_are_too_large
+@@ src/example/failures.rs
+<<<<<<<
+        ls::fail(crate::lawspec_data::PaymentError::TooLarge { limit: 5000 });
+=======
+        panic!("too large");
+>>>>>>>

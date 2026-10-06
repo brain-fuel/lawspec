@@ -1,0 +1,7 @@
+expect: refunds over the limit are too large
+@@ src/Example/Failures.hs
+<<<<<<<
+  | cents > 5000 = E.throw (LS.Fail (Data.PaymentErrorTooLarge 5000))
+=======
+  | cents > 5000 = P.error "too large"
+>>>>>>>

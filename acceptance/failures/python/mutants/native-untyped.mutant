@@ -1,0 +1,7 @@
+expect: refunds over the limit are too large
+@@ src/example/failures.py
+<<<<<<<
+        raise ls.Fail(data.PaymentErrorTooLarge(5000))
+=======
+        raise ValueError("too large")
+>>>>>>>

@@ -74,6 +74,14 @@ fileOf target path source = do
 
 spec :: Spec
 spec = describe "abilities" $ do
+  describe "names" $
+    it "rejects, on Java and Kotlin, an ability or handler named like the class holding its unit's abilities" $ do
+      let clashing = unlines ["unit example.gateway", "ability Gateway is", "  ping :: Int32 -> Int32", "end"]
+          handlerClash = unlines (["unit example.payments"] ++ drop 1 (lines gateway) ++ ["handler payments for Gateway is", "  authorize cents is Declined end", "  capture cents is Receipt cents end", "end"])
+      forM_ ["java", "kotlin"] $ \target -> do
+        generated target clashing `shouldSatisfy` failsWith "is the name of the class holding the unit's abilities (Gateway)"
+        generated target handlerClash `shouldSatisfy` failsWith "the handler payments"
+      generated "python" clashing `shouldSatisfy` isRight
   describe "rows" $ do
     it "infers a definition's row from the operations it performs" $ do
       let Right compiled = program (with [checkout])

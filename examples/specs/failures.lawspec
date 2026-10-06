@@ -61,3 +61,36 @@ law `even amounts go through` is
       prelude.attempt (charge cents) = Right cents
   end
 end
+
+-- Native adapters fail too: their native code raises the runtime's Fail
+-- with a PaymentError, synchronously or from an async adapter.
+refund :: Int32 -> Int32 fails with PaymentError
+async settle :: Int32 -> Int32 fails with PaymentError
+
+law `refunds over the limit are too large` is
+  definition is
+    `for all` (cents :: Int32 where cents > 5000) . refund cents fails with TooLarge 5000
+  end
+end
+
+law `refunds within the limit go through` is
+  definition is
+    `for all` (cents :: Int32 where cents >= 0 && cents <= 5000) . prelude.attempt (refund cents) = Right cents
+  end
+end
+
+law `settling a negative amount is blocked` is
+  definition is
+    `for all` (cents :: Int32 where cents < 0) . settle cents fails with Blocked
+  end
+end
+
+law `settling nothing is declined, and says why` is
+  definition is settle 0 fails with Declined _ message contains "nothing" end
+end
+
+law `settling a positive amount goes through` is
+  definition is
+    `for all` (cents :: Int32 where cents > 0) . prelude.attempt (settle cents) = Right cents
+  end
+end

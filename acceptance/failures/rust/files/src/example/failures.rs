@@ -17,3 +17,22 @@ impl crate::lawspec_abilities::example_failures::Gateway for GatewayHandler {
         crate::lawspec_data::Decision::Approve
     }
 }
+
+// Native adapters that fail: they fail with the runtime's ls::fail and a
+// PaymentError, which a law expects with `fails with`.
+pub fn refund(value0: i32) -> i32 {
+    if value0 > 5000 {
+        ls::fail(crate::lawspec_data::PaymentError::TooLarge { limit: 5000 });
+    }
+    value0
+}
+
+pub async fn settle(value0: i32) -> i32 {
+    if value0 < 0 {
+        ls::fail(crate::lawspec_data::PaymentError::Blocked);
+    }
+    if value0 == 0 {
+        ls::fail(crate::lawspec_data::PaymentError::Declined { message: "there is nothing to settle".into() });
+    }
+    value0
+}

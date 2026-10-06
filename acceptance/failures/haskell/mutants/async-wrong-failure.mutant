@@ -1,0 +1,7 @@
+expect: settling nothing is declined, and says why
+@@ src/Example/Failures.hs
+<<<<<<<
+  | cents == 0 = E.throwIO (LS.Fail (Data.PaymentErrorDeclined (T.pack "there is nothing to settle")))
+=======
+  | cents == 0 = E.throwIO (LS.Fail Data.PaymentErrorBlocked)
+>>>>>>>

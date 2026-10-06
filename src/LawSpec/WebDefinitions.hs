@@ -144,6 +144,11 @@ emitWebDefinitions ts layout bits declarations units = do
                   convert <- schemaCall "fromNative" failure (D.text "_failure")
                   pure (E.call "ls.nativeFailures" [E.quoted (abilityKey ability), D.text "(_failure) => " <> convert,
                     D.text "() => " <> result, D.text "[]"])
+                -- An async adapter's rejected promise fails the same way.
+                ability@(AbilityRef _ [failure]) : _ -> do
+                  convert <- schemaCall "fromNative" failure (D.text "_failure")
+                  pure (awaitIf True (E.call "ls.nativeFailuresAsync" [E.quoted (abilityKey ability), D.text "(_failure) => " <> convert,
+                    D.text "async () => " <> result, D.text "[]"]))
                 _ -> pure result
             _ -> Left "unresolved JS/TS total call"
       rendered <- (if asynchronous then E.renderAsyncExpression else E.renderExpression) ts declarations bits local external (definitionBody d)

@@ -5,7 +5,7 @@ unit example.till
 -- the handler's operations take and give that type.
 
 type Money is Money cents :: Int64 end
-type PayError is | Declined | Rejected reason :: Text end
+type PayError is | Declined | Rejected message :: Text end
 
 -- A till's drawer. Every handler of it gives back what it takes.
 ability Drawer is
@@ -46,5 +46,20 @@ law `negative payments are rejected` is
   definition is
     `for all` (cents :: Int64 where cents >= -1000 && cents < 0) .
       prelude.attempt (pay cents) = Left (Rejected "negative")
+  end
+end
+
+-- The same failures, as a law expects them: `fails with` matches the
+-- constructor a mapped exception became, and its message.
+law `large payments fail as declined` is
+  definition is
+    `for all` (cents :: Int64 where cents > 1000 && cents <= 100000) . pay cents fails with Declined
+  end
+end
+
+law `negative payments say why they are rejected` is
+  definition is
+    `for all` (cents :: Int64 where cents >= -1000 && cents < 0) .
+      pay cents fails with Rejected _ message contains "negative"
   end
 end

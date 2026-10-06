@@ -8,7 +8,7 @@ import { generateExamples } from "../examples-command.mjs";
 import { showScalar } from "../scalars.mjs";
 import { doctor } from "../doctor.mjs";
 import { spawn } from "node:child_process";
-import { environmentDigest, executedTests, invocations, lawKeys, projectDigest, recordedDigest, selectByTags, mergeJunit,
+import { benchmarkInvocations, environmentDigest, executedTests, invocations, lawKeys, projectDigest, recordedDigest, selectByTags, mergeJunit,
   harnessStatistics, coverageTools, junitFromTests } from "../test-command.mjs";
 import {
   readOptional,
@@ -33,7 +33,7 @@ for (let i = 0; i < args.length; i++) {
     if (!args[i + 1] || args[i + 1].startsWith("--"))
       throw new Error(`Missing value for ${arg}`);
     options[arg.slice(2)] = [...(options[arg.slice(2)] ?? []), ...args[++i].split(",").filter(Boolean)];
-  } else if (["--dry-run", "--check", "--json", "--minify", "--no-cache", "--fresh", "--coverage", "--update-recorded"].includes(arg))
+  } else if (["--dry-run", "--check", "--json", "--minify", "--no-cache", "--fresh", "--coverage", "--update-recorded", "--benchmarks"].includes(arg))
     options[arg.slice(2)] = true;
   else if (arg.startsWith("--")) throw new Error(`Unknown option: ${arg}`);
   else positional.push(arg);
@@ -425,6 +425,14 @@ async function runTests(compiler, input, selected, roots, config) {
       }
     }
     if (unrun.length) failed = true;
+    // --benchmarks: the harness's benchmarks run after the laws, every time;
+    // they are measured, never asserted, and never cached.
+    const benchmarking = options.benchmarks ? (planned.benchmarks ?? []) : [];
+    if (!failed) for (const run of benchmarkInvocations(target, benchmarking, { offline })) {
+      const { ok } = await spawned(run.command, run.args, root,
+        { ...process.env, ...run.env, LAWSPEC_SEED: seed, HSPEC_SEED: seed, LAWSPEC_STATS: stats, LAWSPEC_RECORDED: recordedFolder }, false);
+      if (!ok) { failed = true; break; }
+    }
     const statistics = await harnessStatistics(stats);
     const laws = Object.fromEntries(planned.tests.filter((entry) => previous.laws[entry.law]).map((entry) => [entry.law, previous.laws[entry.law]]));
     for (const entry of passed) {
@@ -551,7 +559,7 @@ async function main() {
   }
   if (!verb || ["help", "--help", "-h"].includes(verb)) {
     output(
-      "LawSpec " + VERSION + "\nUsage: lawspec init --target <language> [--project <directory>] [--minify]\n       lawspec check | doctor | explain <unit>::<law> | generate\n       lawspec evidence [<unit> | <unit>::<declaration>]\n       lawspec test [--target <language>] [--fresh] [--seed <n>] [--update-recorded] [--tag <t>] [--exclude-tag <t>] [--report junit=<path>] [--coverage]\n       lawspec package [--project <package directory>]\n       lawspec examples [--example payments] [--target <language>] [--output <directory>]\nOptions: --config <path>, --target <language>, --machine-bits <32|64>, --json, --no-cache\nGeneration: --dry-run, --check, --minify\nTargets: " +
+      "LawSpec " + VERSION + "\nUsage: lawspec init --target <language> [--project <directory>] [--minify]\n       lawspec check | doctor | explain <unit>::<law> | generate\n       lawspec evidence [<unit> | <unit>::<declaration>]\n       lawspec test [--target <language>] [--fresh] [--seed <n>] [--update-recorded] [--tag <t>] [--exclude-tag <t>] [--report junit=<path>] [--coverage] [--benchmarks]\n       lawspec package [--project <package directory>]\n       lawspec examples [--example payments] [--target <language>] [--output <directory>]\nOptions: --config <path>, --target <language>, --machine-bits <32|64>, --json, --no-cache\nGeneration: --dry-run, --check, --minify\nTargets: " +
         targets.join(", "),
     );
     return;
@@ -596,8 +604,8 @@ async function main() {
   if (options.minify && !["init", "generate", "examples", "test"].includes(verb))
     throw new Error("--minify applies to init, generate, test and examples");
   if ((options.fresh || options.seed !== undefined || options.tag || options["exclude-tag"] ||
-      options.report !== undefined || options.coverage || options["update-recorded"]) && verb !== "test")
-    throw new Error("--fresh, --seed, --update-recorded, --tag, --exclude-tag, --report and --coverage apply to test");
+      options.report !== undefined || options.coverage || options["update-recorded"] || options.benchmarks) && verb !== "test")
+    throw new Error("--fresh, --seed, --update-recorded, --tag, --exclude-tag, --report, --coverage and --benchmarks apply to test");
   if (options.seed !== undefined && !/^[0-9]+$/.test(options.seed))
     throw new Error("--seed must be a whole number");
   if (verb === "init") return init();

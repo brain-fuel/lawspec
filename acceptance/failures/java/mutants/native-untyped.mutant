@@ -1,0 +1,7 @@
+expect: refunds over the limit are too large
+@@ src/main/java/example/Failures.java
+<<<<<<<
+    if (value0 > 5000) throw new lawspec.runtime.LawSpecRuntime.Fail(new lawspec.data.PaymentError.TooLarge(5000));
+=======
+    if (value0 > 5000) throw new IllegalStateException("too large");
+>>>>>>>

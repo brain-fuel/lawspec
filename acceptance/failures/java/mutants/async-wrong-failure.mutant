@@ -1,0 +1,7 @@
+expect: settling nothing is declined, and says why
+@@ src/main/java/example/Failures.java
+<<<<<<<
+      if (value0 == 0) throw new lawspec.runtime.LawSpecRuntime.Fail(new lawspec.data.PaymentError.Declined("there is nothing to settle"));
+=======
+      if (value0 == 0) throw new lawspec.runtime.LawSpecRuntime.Fail(new lawspec.data.PaymentError.Blocked());
+>>>>>>>

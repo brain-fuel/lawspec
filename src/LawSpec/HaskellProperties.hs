@@ -105,7 +105,9 @@ emitTests Config{..} unit laws = do
       [text ("module " ++ moduleName ++ "Spec (spec) where")]) <>
     D.hardline <> D.hardline <> statements (map text imports) <> D.hardline <> D.hardline <>
     separate ([Helpers.schemaDoc,Helpers.assertionDoc,seedDoc] ++ map contract (contracts unit)) <>
-    D.hardline <> D.hardline <> text "spec :: Spec" <> D.hardline <> text "spec = do" <>
+    D.hardline <> D.hardline <> text "spec :: Spec" <> D.hardline <>
+    -- Shared resources are released after the unit's spec.
+    text (if sharing then "spec = afterAll_ LS.releaseShared $ do" else "spec = do") <>
     -- Workflows wait on a virtual clock under test.
     D.nest 2 (D.hardline <> text "runIO (LS.useVirtualClock 0)" <> D.hardline <>
       (if null bodies then text "pure ()" else separate (bodies ++ map benchmark (maybe [] C.harnessBenchmarks settings)))) <> D.hardline
@@ -114,6 +116,7 @@ emitTests Config{..} unit laws = do
     -- IO action bound with let (harness:name), which the generated example
     -- passes to the runtime; parallel marks every example parallel.
     settings = C.unitHarnessSettings unit
+    sharing = any (\e -> any ((/= Nothing) . C.resourceShared) (C.propertyResources (original e))) laws
     harnessed = settings /= Nothing
     parallel = maybe False C.harnessParallel settings
     testFunction name body = case stripPrefix "harness:" name of
@@ -226,6 +229,14 @@ emitTests Config{..} unit laws = do
     -- acquired in IO, so each case gets its own.
     bracketed e docs = foldr wrap (sequenceDocs docs) (C.propertyResources (original e))
       where
+        -- A shared resource (share R per ...): the runtime keeps one per
+        -- scope key, resets it before each later use, holds it for one case
+        -- at a time, and releases it after the unit's spec.
+        wrap r inner | Just key <- C.resourceShared r, Just reset <- C.resourceReset r =
+          let local = localName (C.binderId (C.resourceBinder r))
+              using body = text ("\\" ++ local ++ " -> ") <> apply "evaluate" [runtime "forceScalar" [expr body]]
+          in apply "LS.withShared" [quoted key, apply "pure" [expr (C.resourceAcquire r)], parens (using reset), parens (using (C.resourceRelease r))] <>
+            text (" $ \\" ++ local ++ " -> do") <> D.nest 2 (D.hardline <> inner)
         wrap r inner =
           let local = localName (C.binderId (C.resourceBinder r))
               (acquire, release) = case builtin r of

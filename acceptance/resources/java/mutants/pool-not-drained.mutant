@@ -1,0 +1,7 @@
+expect: a pool starts each case empty
+@@ src/main/java/example/Resources.java
+<<<<<<<
+    ((Pool) value0).amount = 0;
+=======
+    // drained nothing
+>>>>>>>

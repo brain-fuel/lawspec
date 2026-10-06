@@ -1,0 +1,7 @@
+expect: a pool starts each case empty
+@@ src/example/resources.ts
+<<<<<<<
+  (value0 as Pool).amount = 0;
+=======
+  void value0;
+>>>>>>>

@@ -112,3 +112,46 @@ setGreeting n = unsafePerformIO (Environment.setEnv "LAWSPEC_EXAMPLE_GREETING" (
 {-# NOINLINE greeting #-}
 greeting :: () -> (P.Maybe I.Int32)
 greeting () = unsafePerformIO (fmap read <$> Environment.lookupEnv "LAWSPEC_EXAMPLE_GREETING")
+
+-- A pool that is costly to open: this test process may open only one, so
+-- the suite passes only if the harness shares it (share Pool per unit).
+data Pool = Pool { poolAmount :: IORef I.Int32, poolOpen :: IORef Bool }
+
+{-# NOINLINE poolsOpened #-}
+poolsOpened :: IORef Int
+poolsOpened = unsafePerformIO (newIORef 0)
+
+pool :: Data.Pool -> Pool
+pool = LS.fromHandle
+
+-- (Unit -> example.resources::type::Pool)
+{-# NOINLINE openPool #-}
+openPool :: () -> Data.Pool
+openPool () = unsafePerformIO $ do
+  count <- atomicModifyIORef' poolsOpened (\n -> (n + 1, n))
+  if count >= 1 then ioError (userError "a second pool was opened: the harness should share it") else pure ()
+  amount <- newIORef 0
+  open <- newIORef True
+  LS.handle (Pool amount open)
+
+-- (example.resources::type::Pool -> Unit)
+{-# NOINLINE drainPool #-}
+drainPool :: Data.Pool -> ()
+drainPool p = unsafePerformIO (writeIORef (poolAmount (pool p)) 0)
+
+-- (example.resources::type::Pool -> Unit)
+{-# NOINLINE closePool #-}
+closePool :: Data.Pool -> ()
+closePool p = unsafePerformIO (writeIORef (poolOpen (pool p)) False)
+
+-- (example.resources::type::Pool -> (Int32 -> Unit))
+{-# NOINLINE fill #-}
+fill :: Data.Pool -> I.Int32 -> ()
+fill p n = unsafePerformIO $ do
+  open <- readIORef (poolOpen (pool p))
+  if open then modifyIORef' (poolAmount (pool p)) (+ n) else ioError (userError "the pool is closed")
+
+-- (example.resources::type::Pool -> Int32)
+{-# NOINLINE level #-}
+level :: Data.Pool -> I.Int32
+level p = unsafePerformIO (readIORef (poolAmount (pool p)))

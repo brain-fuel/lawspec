@@ -399,8 +399,48 @@ walkUnit names u = do
     release <- clause (resourceRelease r)
     reset <- traverse clause (resourceReset r)
     pure r{resourceType = ty, resourceAcquire = acquire, resourceRelease = release, resourceReset = reset}
+  harness' <- traverse (walkHarness names (concatMap lawInputNames (laws u))) (unitHarness u)
   pure u{functions = functions', laws = laws', refinements = refinements', dataTypes = dataTypes', functionDefinitions = definitions', resourceDeclarations = resources'
-        , abilities = abilities', handlerDeclarations = handlers', declaredUses = uses'}
+        , abilities = abilities', handlerDeclarations = handlers', declaredUses = uses', unitHarness = harness'}
+
+-- A harness's strategies and expressions name the unit's imports like its
+-- laws do; an expression's free names other than imports are law inputs.
+walkHarness :: Monad m => Names m -> [String] -> HarnessDeclaration -> m HarnessDeclaration
+walkHarness names inputs h = do
+  items <- forM (harnessItems h) $ \item -> case item of
+    HarnessStrategy sd -> do
+      ty <- walkType names [] (strategyType sd)
+      body <- gen [] (strategyBody sd)
+      pure (HarnessStrategy sd{strategyType = ty, strategyBody = body})
+    HarnessDefault setting range -> (`HarnessDefault` range) <$> setting' setting
+    HarnessFor laws' settings range -> (\ss -> HarnessFor laws' ss range) <$> forM settings (\(st, r) -> (\st' -> (st', r)) <$> setting' st)
+    HarnessBenchmark n e range -> (\e' -> HarnessBenchmark n e' range) <$> walkExpr names [] e
+    other -> pure other
+  pure h{harnessItems = items}
+  where
+    gen scope g = case g of
+      GenAny t -> GenAny <$> traverse (walkType names []) t
+      GenNamed n -> pure (GenNamed n)
+      GenOneOf es -> GenOneOf <$> mapM (walkExpr names scope) es
+      GenFrequency alternatives -> GenFrequency <$> forM alternatives (\(w, a) -> (,) w <$> gen scope a)
+      GenSuchThat inner p n -> (\i p' -> GenSuchThat i p' n) <$> gen scope inner <*> walkExpr names ("it" : scope) p
+      GenBind x t from body -> GenBind x <$> walkType names [] t <*> gen scope from <*> gen (x : scope) body
+    setting' st = case st of
+      CoverSetting p l e -> CoverSetting p l <$> walkExpr names inputs e
+      ClassifySetting e l -> (`ClassifySetting` l) <$> walkExpr names inputs e
+      LabelSetting e -> LabelSetting <$> walkExpr names inputs e
+      TargetMaximize e -> TargetMaximize <$> walkExpr names inputs e
+      other -> pure other
+
+-- A law's inputs, by name.
+lawInputNames :: Law -> [String]
+lawInputNames l = map fst (parameters l) ++ forallNames (definition l)
+  where
+    forallNames d = case d of
+      Forall bound body -> map fst bound ++ forallNames body
+      Implies _ body -> forallNames body
+      And a b -> forallNames a ++ forallNames b
+      _ -> []
 
 walkAbility :: Monad m => Names m -> AbilityDeclaration -> m AbilityDeclaration
 walkAbility names a = do

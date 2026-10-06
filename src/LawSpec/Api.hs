@@ -15,7 +15,7 @@ import LawSpec.NativeRequest
 import LawSpec.Public (programView)
 import LawSpec.Packages
 import LawSpec.Discharge (dischargeEvidence, bindingEvidence)
-import LawSpec.TestManifest (TestEntry(..), testManifest)
+import LawSpec.TestManifest (TestEntry(..), testManifest, BenchmarkEntry(..), benchmarkManifest)
 import LawSpec.Memo (Table, newTable, memoized, withCacheDirectory)
 import qualified Data.ByteString.Lazy.Char8 as BC
 import qualified Data.Aeson.Key as K
@@ -34,7 +34,7 @@ dispatch bytes = withCacheDirectory cacheDirectory $ encode $ versioned $ case e
      let result files = withPackages project described (programView settings us (map prettyExpanded es) files (evidence ++ bindingEvidence bindings) core) in case method of
           "check" -> result []
           "expand" -> result []
-          "planGeneration" -> either failure (withTests (testManifest target testDir core) . result)
+          "planGeneration" -> either failure (withBenchmarks (benchmarkManifest target testDir core) . withTests (testManifest target testDir core) . result)
             (plan >>= emitPlanWithNativeOptions minify target sourceDir testDir bindings)
           _ -> failure [Diagnostic "request" ("unknown method: " ++ method) Nothing]
 
@@ -77,6 +77,13 @@ withTests entries (Object o) = Object (KM.insert "tests" (toJSON (map entry entr
       , "callsAdapters" .= entryCallsAdapters e, "name" .= entryName e, "tags" .= entryTags e
       , "skip" .= entrySkip e, "knownFailing" .= entryKnownFailing e ]
 withTests _ value = value
+
+-- The harness's benchmarks and the tests that measure them.
+withBenchmarks :: [BenchmarkEntry] -> Value -> Value
+withBenchmarks entries (Object o) = Object (KM.insert "benchmarks" (toJSON (map entry entries)) o)
+  where
+    entry e = object [ "unit" .= benchmarkUnit e, "benchmark" .= benchmarkName e, "file" .= benchmarkFile e, "name" .= benchmarkTest e ]
+withBenchmarks _ value = value
 
 failure :: [Diagnostic] -> Value
 failure ds = object ["schemaVersion" .= (3 :: Int), "diagnostics" .= ds]

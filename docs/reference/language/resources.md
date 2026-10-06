@@ -65,6 +65,26 @@ law `two stores` using Gateway for a :: Store, b :: Store is ... end
   resource after its release.
 - The compiler never evaluates a law with resources; the generated tests
   check it.
+- The check that a law never releases its resource looks for a call of the
+  release clause's adapter on the resource in the law's body and examples.
+  It is a syntactic check, not yet a flow type: a resource handed to a
+  definition that releases it is not caught.
+
+## Sharing a resource
+
+A [harness](harness.md#sharing-resources) may share one value of a resource
+between cases, with `share R per group | unit | run`, only when the resource
+declares `reset`. The law means the same: every case after the first gets
+the value reset, so it never sees what another case left. At run time:
+
+- the first case that takes the resource acquires it;
+- every later case in the same scope waits until no other case holds it,
+  then resets it and uses it;
+- it is released when the test process ends (a Haskell unit's spec releases
+  it when the unit's tests are done).
+
+A `run` scope is one test process: targets whose runner starts a process per
+test file (JavaScript and TypeScript under `node --test`) share per file.
 
 ## Built-in resources
 

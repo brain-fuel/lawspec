@@ -1,0 +1,7 @@
+expect: settling nothing is declined, and says why
+@@ src/example/failures.mjs
+<<<<<<<
+  if (value0 === 0) throw new ls.Fail(new data.PaymentErrorDeclined('there is nothing to settle'));
+=======
+  if (value0 === 0) throw new ls.Fail(new data.PaymentErrorBlocked());
+>>>>>>>

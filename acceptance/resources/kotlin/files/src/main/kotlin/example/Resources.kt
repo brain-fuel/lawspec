@@ -91,4 +91,40 @@ object Resources {
     // (Unit -> Maybe (Int32))
     fun greeting(value0: kotlin.Unit): lawspec.runtime.LawSpecRuntime.Maybe<kotlin.Int> =
         maybe(System.getProperty("lawspec.example.greeting")?.toInt())
+
+    // A pool that is costly to open: this JVM may open only one, so the suite
+    // passes only if the harness shares it (share Pool per unit).
+    private var poolsOpened = 0
+
+    class Pool {
+        var amount = 0
+        var open = true
+    }
+
+    // (Unit -> example.resources::type::Pool)
+    fun openPool(value0: kotlin.Unit): kotlin.Any {
+        check(poolsOpened < 1) { "a second pool was opened: the harness should share it" }
+        poolsOpened++
+        return Pool()
+    }
+
+    // (example.resources::type::Pool -> Unit)
+    fun drainPool(value0: kotlin.Any): kotlin.Unit {
+        (value0 as Pool).amount = 0
+    }
+
+    // (example.resources::type::Pool -> Unit)
+    fun closePool(value0: kotlin.Any): kotlin.Unit {
+        (value0 as Pool).open = false
+    }
+
+    // (example.resources::type::Pool -> (Int32 -> Unit))
+    fun fill(value0: kotlin.Any, value1: kotlin.Int): kotlin.Unit {
+        val pool = value0 as Pool
+        check(pool.open) { "the pool is closed" }
+        pool.amount += value1
+    }
+
+    // (example.resources::type::Pool -> Int32)
+    fun level(value0: kotlin.Any): kotlin.Int = (value0 as Pool).amount
 }

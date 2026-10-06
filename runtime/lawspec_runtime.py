@@ -800,6 +800,36 @@ def release_resource(kind, value):
     return True
 
 
+# Shared resources (share R per group | unit | run, in a harness): one value
+# per scope key. The first use acquires it; every later use resets it first,
+# so no case sees what another left. One case holds it at a time, and it is
+# released when the test process ends.
+_shared = {}
+_shared_guard = threading.Lock()
+
+
+def share(key, acquire, reset, release):
+    import atexit
+    with _shared_guard:
+        entry = _shared.setdefault(key, {'lock': threading.Lock(), 'held': False})
+    entry['lock'].acquire()
+    try:
+        if entry['held']:
+            reset(entry['value'])
+        else:
+            entry['value'] = acquire()
+            entry['held'] = True
+            atexit.register(lambda: release(entry['value']))
+    except BaseException:
+        entry['lock'].release()
+        raise
+    return entry['value']
+
+
+def unshare(key):
+    _shared[key]['lock'].release()
+
+
 def free_port():
     import socket
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:

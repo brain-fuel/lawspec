@@ -1,0 +1,7 @@
+expect: refunds over the limit are too large
+@@ example/failures/adapter.go
+<<<<<<<
+		panic(LawSpecFail{Value: PaymentErrorTooLarge{Limit: 5000}})
+=======
+		panic("too large")
+>>>>>>>

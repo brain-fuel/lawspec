@@ -302,6 +302,11 @@ scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions 
         runtime (if py then "native_failures" else "nativeFailures")
           [quoted (C.abilityKey ability), lambda [text "_failure"] (checkedResult failure (text "_failure")), lambda [] call,
            mappedFailures failure]
+      -- In async JavaScript a call may await, so its failures are awaited too.
+      ability@(C.AbilityRef _ [failure]) : _ ->
+        text "(await " <> runtime "nativeFailuresAsync"
+          [quoted (C.abilityKey ability), lambda [text "_failure"] (checkedResult failure (text "_failure")), text "async " <> lambda [] call,
+           mappedFailures failure] <> text ")"
       _ -> call
     mappedFailures failure = case [b | b <- C.unitFailureBindings u, C.failureType b == failure] of
       [] -> text (if py then "()" else "[]")
@@ -326,6 +331,19 @@ scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions 
     -- them, the last first, even when the case fails.
     bracket e doc = foldr wrap doc (C.propertyResources (original e))
       where
+        -- A shared resource (share R per ...): the runtime keeps one per
+        -- scope key, resets it before every use after the first, holds it
+        -- for one case at a time, and releases it when the process ends.
+        wrap r inner | Just key <- C.resourceShared r, Just reset <- C.resourceReset r =
+          let local = localName (C.binderId (C.resourceBinder r))
+              shareCall = runtime (if asyncMode then "shareAsync" else "share")
+                [quoted key, asyncPrefix <> lambda [] (render (C.resourceAcquire r)),
+                 asyncPrefix <> lambda [text local] (render reset), asyncPrefix <> lambda [text local] (render (C.resourceRelease r))]
+              returned = statement (runtime "unshare" [quoted key])
+          in statements
+          [ assign local ((if asyncMode then text "await " else mempty) <> shareCall)
+          , if py then PythonExpr.suite (text "try") inner <> Doc.hardline <> PythonExpr.suite (text "finally") returned
+            else text "try " <> Doc.block 2 inner <> text " finally " <> Doc.block 2 returned ]
         wrap r inner = statements
           [ assign (localName (C.binderId (C.resourceBinder r))) (render (C.resourceAcquire r))
           , if py then PythonExpr.suite (text "try") inner <> Doc.hardline <>

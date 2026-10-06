@@ -10,7 +10,7 @@ import LawSpec.Elaboration (coreType, elaborateExpression, elaborateResolvedWith
 import LawSpec.Core.Validate (validateProgram)
 import LawSpec.Core.Total (deferProgramPostconditions)
 import Control.Monad (forM, unless)
-import Data.List (stripPrefix)
+import Data.List (nub, nubBy, stripPrefix)
 import System.IO.Unsafe (unsafePerformIO)
 import LawSpec.Digest (digestHex, digestString)
 import LawSpec.Memo (Table, newPersistentTable, memoized)
@@ -54,8 +54,23 @@ elaborate bits units properties = do
         handled <- forM ps $ \p -> do
           assignment <- forM (maybe [] id (lookup (C.propertyName p) (S.lawAssignments u))) $ \(ability, choice) ->
             (,) <$> abilityReference u ability <*> pure (handlerRef u choice)
-          pure (mapProperty (performOperations operations) p) { C.propertyHandlers = assignment }
-        pure closed{C.unitContracts=cs,C.unitProperties=handled,C.unitHarnessSettings=settings}
+          pure (shared settings (mapProperty (performOperations operations) p)) { C.propertyHandlers = assignment }
+        -- A benchmark's operations are Perform, like a law's.
+        let settings' = fmap (\h -> h { C.harnessBenchmarks = [(n, performOperations operations b) | (n, b) <- C.harnessBenchmarks h] }) settings
+        pure closed{C.unitContracts=cs,C.unitProperties=handled,C.unitHarnessSettings=settings'}
+    -- share R per group | unit | run: the key of the scope whose cases share
+    -- one R (the harness has checked that R declares reset).
+    shared settings p = p { C.propertyResources =
+      [ r { C.resourceShared = case lookup (resourceName r) (maybe [] C.harnessShares settings) of
+              Just "run" -> Just ("run/" ++ resourceName r)
+              Just "unit" -> Just (unitOf p ++ "/" ++ resourceName r)
+              Just _ -> Just (unitOf p ++ "/" ++ maybe ("law " ++ C.propertyName p) ("group " ++) (C.harnessGroup (C.propertyHarness p)) ++ "/" ++ resourceName r)
+              Nothing -> Nothing }
+      | r <- C.propertyResources p ] }
+    resourceName r = case C.binderType (C.resourceBinder r) of
+      C.Constructor n _ -> baseName n
+      _ -> ""
+    unitOf p = takeWhile (/= ':') (C.idText (C.propertyId p))
     declarationId u n = C.Id (S.unitName u ++ "::" ++ n)
     property dataDeclarations u p = do
       let pid = C.Id (S.unitName u ++ "::law::" ++ escapeIdentity (S.name p))
@@ -102,7 +117,7 @@ elaborate bits units properties = do
                 release = if kind == "freePort" then C.Expr (C.scalarType "Bool") (C.Constant (SBool True)) (C.GeneratedFrom rid)
                   else C.Expr (C.scalarType "Bool") (C.Match self [C.MatchCase constructor [field]
                     (helper (C.scalarType "Bool") C.ReleaseResource [text kind, C.Expr fieldType (C.Local (C.binderId field)) (C.GeneratedFrom rid)])]) (C.GeneratedFrom rid)
-            pure (C.Resource binder (C.Expr t (C.Construct constructor [acquired]) (C.GeneratedFrom rid)) release)
+            pure (C.Resource binder (C.Expr t (C.Construct constructor [acquired]) (C.GeneratedFrom rid)) release Nothing Nothing)
           _ -> case [r | r <- S.resourceDeclarations u, S.resourceType r == ty] of
             [declaration] -> do
               acquire <- term (S.Annotate (S.resourceAcquire declaration) ty)
@@ -110,6 +125,9 @@ elaborate bits units properties = do
                   resolveRelease name = if name == parameter then rid else resolve name
               release <- elaborateResolvedWithData dataDeclarations [declarationId u n' | (n',_) <- S.functions u] bits pid resolveRelease
                 ((parameter, ty) : S.functions u) releaseBody
+              reset <- forM (S.resourceReset declaration) $ \(resetParameter, resetBody) ->
+                elaborateResolvedWithData dataDeclarations [declarationId u n' | (n',_) <- S.functions u] bits pid
+                  (\name -> if name == resetParameter then rid else resolve name) ((resetParameter, ty) : S.functions u) resetBody
               -- The law's cases end by releasing the resource, so the law
               -- never releases it itself: it could use it afterwards.
               let releasing = [callee | C.Expr { C.expressionNode = C.ExternalCall callee args } <- [release], any ((== C.Local rid) . C.expressionNode) args]
@@ -118,7 +136,7 @@ elaborate bits units properties = do
                     _ -> any callsRelease (C.children e)
               if any callsRelease (C.propositionExpressions body ++ concatMap (concatMap C.propositionExpressions . C.exampleExpectations) examples)
                 then Left (S.name p ++ " releases " ++ n ++ ", but a law's resources are released after each case, so it could use " ++ n ++ " after its release")
-                else pure (C.Resource binder acquire release)
+                else pure (C.Resource binder acquire release reset Nothing)
             [] -> Left (S.name p ++ " takes " ++ n ++ " :: " ++ S.prettyType ty ++ ", but no resource is declared for " ++ S.prettyType ty ++ "; declare resource " ++ S.prettyType ty ++ " is acquire ... release ... end")
             _ -> Left ("more than one resource is declared for " ++ S.prettyType ty)
       pure C.Property
@@ -156,12 +174,18 @@ elaborate bits units properties = do
         draws <- forM (S.planDraws plan) $ \(inputName, strategy, declared, gen) -> do
           (i, q) <- maybe (Left ("use " ++ strategy ++ " for " ++ inputName ++ ": the law has no input called " ++ inputName)) Right
             (lookup inputName [(S.inputName i, (i, q)) | (i, q) <- zip (S.inputs sp) (C.propertyInputs cp)])
-          declaredType <- coreType declared
+          -- A strategy of a refined type, (n :: T where p), keeps only the
+          -- values that satisfy p, as `such that` does.
+          let (plain, refined) = case declared of
+                S.Refined n t (Just p) -> (t, Just (S.replaceExprVars [(n, S.Var "it")] p))
+                _ -> (declared, Nothing)
+              gen' = maybe gen (\p -> S.GenSuchThat gen p 100) refined
+          declaredType <- coreType plain
           let inputType = C.binderType (C.quantifiedBinder q)
           unless (declaredType == inputType)
             (Left ("the strategy " ++ strategy ++ " produces values of " ++ S.prettyType declared ++ ", but the input " ++
               inputName ++ " is " ++ S.prettyType (S.inputType i) ++ "; a strategy may only produce values of its type"))
-          draw <- elaborateDraw dataDeclarations closed u pid strategy (S.inputId i) declared gen
+          draw <- elaborateDraw dataDeclarations closed u pid strategy (S.inputId i) plain gen'
           pure (C.binderId (C.quantifiedBinder q), strategy, draw)
         pure cp { C.propertyHarness = C.LawHarness
           { C.harnessUnit = Just (S.planHarness plan), C.harnessTags = S.planTags plan
@@ -210,13 +234,19 @@ elaborate bits units properties = do
             withAbilities = [n | (n, row) <- S.abilityRows u, not (null row)]
         benchmarks <- forM [(n, e, range) | S.HarnessBenchmark n e range <- S.harnessItems h] $ \(n, e, range) -> do
           let at = Just (spanStart range)
-          case [x | x <- S.exprVars e, x `elem` withAbilities] of
-            x : _ -> Left [Diagnostic "harness" ("the benchmark `" ++ n ++ "` calls " ++ x ++ ", which uses abilities; benchmarks run without handlers for now") at]
-            [] -> pure ()
-          t <- either (\msg -> Left [Diagnostic "harness" ("benchmark `" ++ n ++ "`: " ++ msg) at]) Right
+              failing msg = Left [Diagnostic "harness" ("benchmark `" ++ n ++ "`: " ++ msg) at]
+          t <- either failing Right
             (elaborateResolvedWithData dataDeclarations functionIds bits (C.Id (S.unitName u ++ "::benchmark::" ++ n))
               (declarationId u) (S.functions u) e)
-          pure (n, t)
+          -- A benchmark that calls what uses abilities runs under their
+          -- production handlers (the native ones, or the defaults), each
+          -- installed around it; a failure it raises fails the benchmark.
+          refs <- either failing Right (mapM (abilityReference u)
+            (nubBy (\a b -> S.prettyType a == S.prettyType b)
+              [ty | x <- S.exprVars e, x `elem` withAbilities, Just row <- [lookup x (S.abilityRows u)], ty <- row]))
+          let installed = foldr (\ref body -> body { C.expressionNode = C.Handle (C.WithHandler ref C.ProductionHandler) body })
+                t [ref | ref <- nub refs, not (C.isFail ref)]
+          pure (n, installed)
         pure (Just (C.UnitHarness (S.harnessName h)
           (not (null [() | S.HarnessOrderRandom _ <- S.harnessItems h]))
           (not (null [() | S.HarnessParallel _ <- S.harnessItems h]))
@@ -254,7 +284,7 @@ mapProperty f p = p
   { C.propertyInputs = [q { C.quantifiedPredicates = map f (C.quantifiedPredicates q)
                           , C.quantifiedBounds = [(op, f e) | (op, e) <- C.quantifiedBounds q] } | q <- C.propertyInputs p]
   , C.propertyBody = proposition (C.propertyBody p)
-  , C.propertyResources = [r { C.resourceAcquire = f (C.resourceAcquire r), C.resourceRelease = f (C.resourceRelease r) } | r <- C.propertyResources p]
+  , C.propertyResources = [r { C.resourceAcquire = f (C.resourceAcquire r), C.resourceRelease = f (C.resourceRelease r), C.resourceReset = fmap f (C.resourceReset r) } | r <- C.propertyResources p]
   , C.propertyExamples = [e { C.exampleBindings = [(i, f v) | (i, v) <- C.exampleBindings e]
                             , C.exampleExpectations = map proposition (C.exampleExpectations e) } | e <- C.propertyExamples p] }
   where

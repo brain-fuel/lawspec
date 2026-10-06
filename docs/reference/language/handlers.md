@@ -159,6 +159,13 @@ Spec handlers and recordings are generated beside the interface:
 - Haskell: `fakeGateway :: SymbolContext -> IO Gateway` and
   `gatewayRecording`, in `LawSpecHandlers.<Unit>`.
 
+Java and Kotlin nest a unit's interfaces, spec handlers and recordings in one
+class named after the unit (`example.payments` gives `Payments`). A nested
+type may not share that name, nor another piece's, so on those targets an
+ability named like the unit (`ability Payments` in `example.payments`), or a
+handler whose class would be (`handler payments`), is a compile error that
+says which to rename.
+
 A native adapter that `uses Gateway` takes the handler first:
 `charge(gateway, value0)`. In Haskell its result is in `IO`.
 

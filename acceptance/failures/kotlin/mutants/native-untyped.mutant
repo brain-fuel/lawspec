@@ -1,0 +1,7 @@
+expect: refunds over the limit are too large
+@@ src/main/kotlin/example/Failures.kt
+<<<<<<<
+        if (value0 > 5000) throw lawspec.runtime.LawSpecRuntime.Fail(lawspec.data.PaymentError.TooLarge(5000))
+=======
+        if (value0 > 5000) throw IllegalStateException("too large")
+>>>>>>>

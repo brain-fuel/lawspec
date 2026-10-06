@@ -50,6 +50,7 @@ emit minify bits datas units = mapM unitFile (filter unitAbilityPieces units)
       let qualified = split '.' (abilitiesClass u)
           package = intercalate "." (init qualified)
           name = last qualified
+      nestedClashes "Java" name u
       interfaces <- mapM interface (ownAbilities u)
       handlers <- mapM (specHandler u) (C.unitHandlers u)
       recordings <- mapM recording (ownAbilities u)

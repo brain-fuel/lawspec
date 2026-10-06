@@ -1,0 +1,7 @@
+expect: a pool starts each case empty
+@@ src/main/kotlin/example/Resources.kt
+<<<<<<<
+        (value0 as Pool).amount = 0
+=======
+        value0.hashCode()
+>>>>>>>

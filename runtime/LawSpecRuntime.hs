@@ -1265,6 +1265,36 @@ withResource acquire release body = do
   resource <- acquire >>= \value -> evaluate (forceScalar value `seq` value)
   body resource `finally` release resource
 
+-- | Shared resources (share R per group | unit | run, in a harness): one
+-- value per scope key. The first use acquires it; every later use resets it
+-- first, so no case sees what another left. One case holds it at a time,
+-- and releaseShared (after the unit's spec) releases every one.
+data SharedEntry = SharedEntry (MVar (Maybe Scalar)) (Scalar -> IO ())
+
+{-# NOINLINE sharedResources #-}
+sharedResources :: IORef [(String, SharedEntry)]
+sharedResources = unsafePerformIO (newIORef [])
+
+withShared :: String -> IO Scalar -> (Scalar -> IO ()) -> (Scalar -> IO ()) -> (Scalar -> IO a) -> IO a
+withShared key acquire reset release body = do
+  fresh <- newMVar Nothing
+  SharedEntry slot _ <- atomicModifyIORef' sharedResources $ \entries -> case lookup key entries of
+    Just entry -> (entries, entry)
+    Nothing -> let entry = SharedEntry fresh release in (entries ++ [(key, entry)], entry)
+  held <- takeMVar slot
+  value <- (case held of
+    Just value -> value <$ reset value
+    Nothing -> acquire >>= \value -> evaluate (forceScalar value `seq` value))
+    `onFailure` putMVar slot held
+  body value `finally` putMVar slot (Just value)
+  where onFailure action handler = action `catch` \e -> handler >> throwIO (e :: SomeException)
+
+releaseShared :: IO ()
+releaseShared = do
+  entries <- atomicModifyIORef' sharedResources (\entries -> ([], entries))
+  forM_ (reverse entries) $ \(_, SharedEntry slot release) ->
+    takeMVar slot >>= maybe (pure ()) release
+
 -- | A built-in resource of the kind, built by its constructor.
 acquireBuiltin :: String -> String -> IO Scalar
 acquireBuiltin kind tag

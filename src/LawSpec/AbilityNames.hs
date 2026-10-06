@@ -18,6 +18,7 @@ module LawSpec.AbilityNames
   ( interfaceName, productionName, specName, recordingName
   , unitAbilityPieces, handlerKeys, abilityOf, specHandlerOf, operationTypes
   , ownedAbilityUnits, abilityHome, typeWord, ownAbilities, ownerName, unitAbility, displayName, fieldName
+  , nestedClashes
   ) where
 
 import Data.Char (toUpper)
@@ -108,3 +109,21 @@ specHandlerOf units identity = case [h | u <- units, h <- C.unitHandlers u, C.ha
 -- An operation's parameter and result types.
 operationTypes :: C.Ability -> String -> ([C.Type], C.Type)
 operationTypes ability op = maybe ([], C.scalarType "Unit") C.functionType (lookup op (C.abilityOperations ability))
+
+-- Java and Kotlin nest a unit's ability pieces (interfaces, spec handlers,
+-- recordings) in one class named after the unit. A nested type may not be
+-- named like the class that holds it, nor like another piece, so such a
+-- unit is a compile error with a clear message rather than a javac error.
+nestedClashes :: String -> String -> C.Unit -> Either String ()
+nestedClashes language holder u = case clashes of
+  [] -> Right ()
+  (piece, what) : _ -> Left (C.idText (C.unitId u) ++ ": " ++ what ++ " would be the " ++ language ++ " type " ++ piece ++
+    ", but " ++ (if piece == holder then "that is the name of the class holding the unit's abilities (" ++ holder ++ ")"
+      else "another piece of the unit's abilities has that name") ++
+    "; rename it so its " ++ language ++ " name differs")
+  where
+    pieces = [(interfaceName a, "the ability " ++ displayName a) | a <- ownAbilities u] ++
+      [(recordingName a, "the recording of " ++ displayName a) | a <- ownAbilities u] ++
+      [(specName h, "the handler " ++ C.handlerName h) | h <- C.unitHandlers u]
+    clashes = [(n, what) | (i, (n, what)) <- zip [0 :: Int ..] pieces
+              , n == holder || n `elem` [m | (j, (m, _)) <- zip [0 ..] pieces, j < i]]

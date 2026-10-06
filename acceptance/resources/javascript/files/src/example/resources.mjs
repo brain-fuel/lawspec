@@ -104,3 +104,37 @@ export function greeting(value0) {
   const value = process.env.LAWSPEC_EXAMPLE_GREETING;
   return value === undefined ? new data.Nothing() : new data.Just(Number(value));
 }
+
+// A pool that is costly to open: this process may open only one, so the
+// suite passes only if the harness shares it (share Pool per unit).
+let poolsOpened = 0;
+class Pool {
+  constructor() {
+    if (poolsOpened >= 1) throw new Error('a second pool was opened: the harness should share it');
+    poolsOpened += 1;
+    this.amount = 0;
+    this.open = true;
+  }
+}
+
+export function openPool(value0) {
+  return new Pool();
+}
+
+export function drainPool(value0) {
+  (value0).amount = 0;
+}
+
+export function closePool(value0) {
+  (value0).open = false;
+}
+
+export function fill(value0, value1) {
+  const pool = value0;
+  if (!pool.open) throw new Error('the pool is closed');
+  pool.amount += value1;
+}
+
+export function level(value0) {
+  return (value0).amount;
+}

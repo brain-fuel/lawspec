@@ -78,3 +78,39 @@ law `the environment is restored after each case` for saved :: SavedEnvironment 
     greeting unitValue = Nothing
   end
 end
+
+-- A pool is costly to open, so the harness shares one between the cases of
+-- this unit's laws. Sharing is allowed only because Pool declares reset:
+-- every case after the first gets the pool drained, so no case sees what
+-- another left in it, and the law means the same as with a fresh pool.
+handle Pool
+
+openPool :: Unit -> Pool
+drainPool :: Pool -> Unit
+closePool :: Pool -> Unit
+fill :: Pool -> Int32 -> Unit
+level :: Pool -> Int32
+
+resource Pool is
+  acquire is openPool unitValue end
+  release pool is closePool pool end
+  reset pool is drainPool pool end
+end
+
+law `a pool starts each case empty` for pool :: Pool is
+  definition is
+    `for all` (n :: Int32 where n > 0 && n <= 100) .
+      level pool = 0 and fill pool n = unitValue and level pool = n
+  end
+end
+
+law `filling twice adds up` for pool :: Pool is
+  definition is
+    `for all` (a :: Int32 where a > 0 && a <= 100) (b :: Int32 where b > 0 && b <= 100) .
+      fill pool a = unitValue and fill pool b = unitValue and level pool = a + b
+  end
+end
+
+harness example.resources.testing for example.resources is
+  share Pool per unit
+end

@@ -320,9 +320,15 @@ data UnitHarness = UnitHarness
   , harnessBenchmarks :: [(String, Expr)]
   } deriving (Eq, Show, Generic)
 -- A resource a law takes: acquire gives its value, bound to the binder for
--- the case; release, which refers to the binder, frees it.
+-- the case; release, which refers to the binder, frees it, and reset (if
+-- declared), which also refers to it, readies it for another case.
+-- resourceShared is set by the harness (share R per group | unit | run): the
+-- key of the scope whose cases share one value. Its first use acquires it,
+-- every later use resets it first, and it is released when the test process
+-- ends. Only a resource with reset may be shared.
 data Resource = Resource
-  { resourceBinder :: Binder, resourceAcquire :: Expr, resourceRelease :: Expr }
+  { resourceBinder :: Binder, resourceAcquire :: Expr, resourceRelease :: Expr
+  , resourceReset :: Maybe Expr, resourceShared :: Maybe String }
   deriving (Eq, Show, Generic)
 -- unitMachines are the unit's stateful models, which each target's model
 -- runtime runs against its adapters.
@@ -403,6 +409,13 @@ children Expr{expressionNode=node} = case node of
   _ -> []
 
 -- Rebuild an expression with f applied to each child, in children's order.
+-- An expression with every use of one local renamed (no binder in Core
+-- rebinds an id, so no capture is possible).
+renameLocal :: Id -> Id -> Expr -> Expr
+renameLocal from to e = case expressionNode e of
+  Local i | i == from -> e { expressionNode = Local to }
+  _ -> mapChildren (renameLocal from to) e
+
 mapChildren :: (Expr -> Expr) -> Expr -> Expr
 mapChildren f e = e { expressionNode = case expressionNode e of
   Construct n args -> Construct n (map f args)
@@ -491,7 +504,7 @@ propositionExpressions (Conjunction bodies) = concatMap propositionExpressions b
 propertyExpressions :: Property -> [Expr]
 propertyExpressions property =
   propositionExpressions (propertyBody property) ++
-  concat [[resourceAcquire r, resourceRelease r] | r <- propertyResources property] ++
+  concat [[resourceAcquire r, resourceRelease r] ++ maybe [] pure (resourceReset r) | r <- propertyResources property] ++
   concat [quantifiedPredicates q ++ map snd (quantifiedBounds q) | q <- propertyInputs property] ++
   concat [map snd (exampleBindings example) ++ concatMap propositionExpressions (exampleExpectations example)
     | example <- propertyExamples property]

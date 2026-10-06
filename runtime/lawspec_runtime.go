@@ -3176,6 +3176,69 @@ func lsRecorded(key string, value LawSpecValue) bool {
 	return true
 }
 
+// Shared resources (share R per group | unit | run, in a harness): one value
+// per scope key. The first use acquires it; every later use resets it first,
+// so no case sees what another left. One case holds it at a time, and it is
+// released when the test binary ends (lsReleaseShared, from TestMain).
+type lsSharedEntry struct {
+	lock    sync.Mutex
+	held    bool
+	value   LawSpecValue
+	release func(LawSpecValue)
+}
+
+var (
+	lsSharedGuard sync.Mutex
+	lsShared      = map[string]*lsSharedEntry{}
+	lsSharedOrder []string
+)
+
+func lsShare(key string, acquire func() LawSpecValue, reset func(LawSpecValue), release func(LawSpecValue)) LawSpecValue {
+	lsSharedGuard.Lock()
+	entry, ok := lsShared[key]
+	if !ok {
+		entry = &lsSharedEntry{}
+		lsShared[key] = entry
+		lsSharedOrder = append(lsSharedOrder, key)
+	}
+	lsSharedGuard.Unlock()
+	entry.lock.Lock()
+	ready := false
+	defer func() {
+		if !ready {
+			entry.lock.Unlock()
+		}
+	}()
+	if entry.held {
+		reset(entry.value)
+	} else {
+		entry.value = acquire()
+		entry.held = true
+		entry.release = release
+	}
+	ready = true
+	return entry.value
+}
+
+func lsUnshare(key string) {
+	lsSharedGuard.Lock()
+	entry := lsShared[key]
+	lsSharedGuard.Unlock()
+	entry.lock.Unlock()
+}
+
+// lsReleaseShared releases every shared resource, the last acquired first.
+func lsReleaseShared() {
+	lsSharedGuard.Lock()
+	defer lsSharedGuard.Unlock()
+	for i := len(lsSharedOrder) - 1; i >= 0; i-- {
+		if entry := lsShared[lsSharedOrder[i]]; entry.held {
+			entry.release(entry.value)
+			entry.held = false
+		}
+	}
+}
+
 // Built-in resources (see LawSpec.Resources): a law acquires them before
 // each case and releases them after it.
 func lsAcquireResource(kind string) string {

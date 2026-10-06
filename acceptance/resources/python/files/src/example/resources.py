@@ -114,3 +114,49 @@ def setGreeting(value0: int) -> None:
 def greeting(value0: ls.Absence) -> _schema.Maybe[_builtins.int]:
     value = os.environ.get("LAWSPEC_EXAMPLE_GREETING")
     return _schema.Nothing() if value is None else _schema.Just(int(value))
+
+
+class Pool:
+    """A pool that is costly to open: this process may open only one, so
+    the suite passes only if the harness shares it (share Pool per unit)."""
+    opened = 0
+
+    def __init__(self):
+        if Pool.opened >= 1:
+            raise RuntimeError("a second pool was opened: the harness should share it")
+        Pool.opened += 1
+        self.amount = 0
+        self.open = True
+
+
+# LawSpec argument 0: Unit
+# LawSpec result: example.resources::type::Pool
+def openPool(value0: ls.Absence) -> _builtins.object:
+    return Pool()
+
+
+# LawSpec argument 0: example.resources::type::Pool
+# LawSpec result: Unit
+def drainPool(value0: _builtins.object) -> None:
+    value0.amount = 0
+
+
+# LawSpec argument 0: example.resources::type::Pool
+# LawSpec result: Unit
+def closePool(value0: _builtins.object) -> None:
+    value0.open = False
+
+
+# LawSpec argument 0: example.resources::type::Pool
+# LawSpec argument 1: Int32
+# LawSpec result: Unit
+def fill(value0: _builtins.object, value1: int) -> None:
+    if not value0.open:
+        raise RuntimeError("the pool is closed")
+    value0.amount += value1
+
+
+# LawSpec argument 0: example.resources::type::Pool
+# LawSpec result: Int32
+def level(value0: _builtins.object) -> int:
+    return value0.amount

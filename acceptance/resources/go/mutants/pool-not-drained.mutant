@@ -1,0 +1,7 @@
+expect: a pool starts each case empty
+@@ example/resources/adapter.go
+<<<<<<<
+	value0.(*pool).amount = 0
+=======
+	_ = value0
+>>>>>>>

@@ -1,0 +1,7 @@
+expect-any: a pool starts each case empty | law_a_pool_starts_each_case_empty | lawAPoolStartsEachCaseEmpty | TestAPoolStartsEachCaseEmpty
+@@ examples/specs/resources.lawspec
+<<<<<<<
+  share Pool per unit
+=======
+  tags pools
+>>>>>>>

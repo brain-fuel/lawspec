@@ -39,4 +39,6 @@ harness example.harness.testing for example.harness is
 
   share Scratch per unit
   benchmark `discount of a bulk order` is discount (Order 30 50000) end
+  -- book uses Ledger: the benchmark runs under its production handler.
+  benchmark `booking a payment` is book 500 end
 end

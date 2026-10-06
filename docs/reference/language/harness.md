@@ -128,6 +128,13 @@ A strategy draws values of its type. Its forms:
 Within `frequency`, an alternative that is not a name or `any` is written in
 parentheses: `frequency 3 (one of 0, 1), 1 any`.
 
+A strategy's type may be an inline refinement. Its values are then kept
+only when they satisfy it, as `such that` keeps them (at most 100 discards):
+
+```lawspec fragment
+strategy small :: (o :: Order where itemsOf o <= 3) is any end
+```
+
 A strategy is used for one input of one law:
 
 ```lawspec fragment
@@ -223,6 +230,11 @@ A resource a law takes as an input is acquired and released for each case.
 law would observe what another left behind, which would change what laws
 observe. Sharing a resource without `reset` is a compile error.
 
+At run time the first case acquires the resource; each later case in the
+scope waits until no other case holds it, resets it, and uses it; it is
+released when the test process ends. See
+[Resources](resources.md#sharing-a-resource).
+
 ## Benchmarks
 
 ```lawspec fragment
@@ -232,9 +244,11 @@ benchmark `discount of a bulk order` is discount (Order 30 50000) end
 A benchmark measures an expression with each target's lightest timer (Go
 uses `testing.Benchmark`), and reports the mean and fastest time. It is never
 asserted: a performance requirement belongs in a law, as a budget. A
-benchmark may call adapters and checked definitions, but not abilities yet.
-Benchmarks run with the target's own test command (`lawspec test` runs laws
-only).
+benchmark may call adapters and checked definitions, and what it calls may
+use abilities: it runs under each ability's production handler (the one
+bound in `lawspec.json`, the native one, or the runtime's default), installed
+around it. Benchmarks run with the target's own test command, and with
+`lawspec test --benchmarks`.
 
 ## Test names
 
@@ -263,8 +277,5 @@ obligations, with the last run's adequacy. The harness adds three statuses:
 
 ## Not yet
 
-- A strategy's type is a type name, not an inline refinement; the refinement
-  of the input it is used for is checked on every value.
-- Resources come with the law-plane primitives; until then the harness checks
-  `share` against `resource Name is acquire … [reset …] end` declarations.
-- Benchmarks cannot use abilities.
+- `any` in a strategy of a refined type draws the base type and discards
+  what the refinement rejects; it does not yet aim at the refinement.

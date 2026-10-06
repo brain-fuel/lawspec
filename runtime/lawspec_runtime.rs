@@ -3053,6 +3053,92 @@ pub fn recorded(key: &str, value: &Value) -> Result<bool> {
     Ok(true)
 }
 
+// Shared resources (share R per group | unit | run, in a harness): one value
+// per scope key. The first use acquires it; every later use resets it first,
+// so no case sees what another left. One case holds it at a time (until its
+// SharedGuard drops, even on a panic), and it is released when the test
+// process exits.
+struct SharedEntry {
+    busy: bool,
+    value: Option<Value>,
+}
+static SHARED: std::sync::Mutex<Option<HashMap<String, SharedEntry>>> = std::sync::Mutex::new(None);
+static SHARED_FREE: std::sync::Condvar = std::sync::Condvar::new();
+type SharedRelease = Box<dyn FnOnce() + Send>;
+static SHARED_RELEASES: std::sync::Mutex<Vec<SharedRelease>> = std::sync::Mutex::new(Vec::new());
+
+unsafe extern "C" {
+    fn atexit(callback: extern "C" fn()) -> std::os::raw::c_int;
+}
+
+extern "C" fn release_shared() {
+    let releases: Vec<SharedRelease> = match SHARED_RELEASES.lock() {
+        Ok(mut list) => list.drain(..).rev().collect(),
+        Err(_) => return,
+    };
+    for release in releases {
+        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(release));
+    }
+}
+
+pub struct SharedGuard(String);
+
+impl Drop for SharedGuard {
+    fn drop(&mut self) {
+        let mut shared = SHARED.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(entry) = shared.get_or_insert_with(HashMap::new).get_mut(&self.0) {
+            entry.busy = false;
+        }
+        SHARED_FREE.notify_all();
+    }
+}
+
+pub fn share<A, R, F>(key: &str, ctx: &mut Context, acquire: A, reset: R, release: F) -> Result<(Value, SharedGuard)>
+where
+    A: FnOnce(&mut Context) -> Result<Value>,
+    R: FnOnce(&mut Context, Value) -> Result<Value>,
+    F: FnOnce(&mut Context, Value) -> Result<Value> + Send + 'static,
+{
+    let held = {
+        let mut shared = SHARED.lock().unwrap_or_else(|e| e.into_inner());
+        loop {
+            let entry = shared.get_or_insert_with(HashMap::new).entry(key.to_string())
+                .or_insert(SharedEntry { busy: false, value: None });
+            if !entry.busy {
+                entry.busy = true;
+                break entry.value.clone();
+            }
+            shared = SHARED_FREE.wait(shared).unwrap_or_else(|e| e.into_inner());
+        }
+    };
+    let guard = SharedGuard(key.to_string());
+    match held {
+        Some(value) => {
+            reset(ctx, value.clone())?;
+            Ok((value, guard))
+        }
+        None => {
+            let value = acquire(ctx)?;
+            {
+                let mut shared = SHARED.lock().unwrap_or_else(|e| e.into_inner());
+                if let Some(entry) = shared.get_or_insert_with(HashMap::new).get_mut(key) {
+                    entry.value = Some(value.clone());
+                }
+            }
+            let kept = value.clone();
+            let mut releases = SHARED_RELEASES.lock().unwrap_or_else(|e| e.into_inner());
+            if releases.is_empty() {
+                unsafe { atexit(release_shared); }
+            }
+            releases.push(Box::new(move || {
+                let ctx = &mut Context::testing();
+                let _ = release(ctx, kept);
+            }));
+            Ok((value, guard))
+        }
+    }
+}
+
 // Built-in resources (see LawSpec.Resources): a law acquires them before
 // each case and releases them after it. Tests run on several threads, so a
 // saved environment also holds the environment for its case alone.

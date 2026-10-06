@@ -112,4 +112,44 @@ public final class Resources {
     String value = System.getProperty("lawspec.example.greeting");
     return value == null ? new LawSpecRuntime.Nothing<>() : new LawSpecRuntime.Just<>(Integer.parseInt(value));
   }
+
+  // A pool that is costly to open: this JVM may open only one, so the suite
+  // passes only if the harness shares it (share Pool per unit).
+  static final class Pool {
+    static int opened = 0;
+    int amount = 0;
+    boolean open = true;
+
+    Pool() {
+      if (opened >= 1) throw new IllegalStateException("a second pool was opened: the harness should share it");
+      opened++;
+    }
+  }
+
+  // (Unit -> example.resources::type::Pool)
+  public static java.lang.Object openPool(Value value0) {
+    return new Pool();
+  }
+
+  // (example.resources::type::Pool -> Unit)
+  public static void drainPool(java.lang.Object value0) {
+    ((Pool) value0).amount = 0;
+  }
+
+  // (example.resources::type::Pool -> Unit)
+  public static void closePool(java.lang.Object value0) {
+    ((Pool) value0).open = false;
+  }
+
+  // (example.resources::type::Pool -> (Int32 -> Unit))
+  public static void fill(java.lang.Object value0, int value1) {
+    Pool pool = (Pool) value0;
+    if (!pool.open) throw new IllegalStateException("the pool is closed");
+    pool.amount += value1;
+  }
+
+  // (example.resources::type::Pool -> Int32)
+  public static int level(java.lang.Object value0) {
+    return ((Pool) value0).amount;
+  }
 }

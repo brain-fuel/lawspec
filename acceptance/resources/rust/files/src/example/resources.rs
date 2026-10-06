@@ -90,3 +90,46 @@ pub fn setGreeting(value0: i32) -> () {
 pub fn greeting(value0: ()) -> Option<i32> {
     std::env::var("LAWSPEC_EXAMPLE_GREETING").ok().map(|t| t.parse().unwrap())
 }
+
+// A pool that is costly to open: this test binary may open only one, so the
+// suite passes only if the harness shares it (share Pool per unit).
+struct Pool {
+    amount: Mutex<i32>,
+    open: Mutex<bool>,
+}
+
+static POOLS_OPENED: AtomicUsize = AtomicUsize::new(0);
+
+fn pool(value: &crate::lawspec_data::Pool) -> &Arc<Pool> {
+    value.native::<Arc<Pool>>().expect("a Pool handle")
+}
+
+// LawSpec: (Unit -> example.resources::type::Pool)
+pub fn openPool(value0: ()) -> crate::lawspec_data::Pool {
+    if POOLS_OPENED.fetch_add(1, Ordering::SeqCst) >= 1 {
+        panic!("a second pool was opened: the harness should share it");
+    }
+    ls::Handle::new(Arc::new(Pool { amount: Mutex::new(0), open: Mutex::new(true) }))
+}
+
+// LawSpec: (example.resources::type::Pool -> Unit)
+pub fn drainPool(value0: crate::lawspec_data::Pool) -> () {
+    *pool(&value0).amount.lock().unwrap() = 0;
+}
+
+// LawSpec: (example.resources::type::Pool -> Unit)
+pub fn closePool(value0: crate::lawspec_data::Pool) -> () {
+    *pool(&value0).open.lock().unwrap() = false;
+}
+
+// LawSpec: (example.resources::type::Pool -> (Int32 -> Unit))
+pub fn fill(value0: crate::lawspec_data::Pool, value1: i32) -> () {
+    let p = pool(&value0);
+    assert!(*p.open.lock().unwrap(), "the pool is closed");
+    *p.amount.lock().unwrap() += value1;
+}
+
+// LawSpec: (example.resources::type::Pool -> Int32)
+pub fn level(value0: crate::lawspec_data::Pool) -> i32 {
+    *pool(&value0).amount.lock().unwrap()
+}

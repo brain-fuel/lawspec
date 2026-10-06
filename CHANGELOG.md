@@ -129,6 +129,26 @@
   acceptance suite may now edit its specs): an unmet cover, a strategy drawing
   outside the input's refinement, a harness declaring a law, sharing a
   resource without `reset`, and a known-failing law that passes.
+- A shared resource is shared at run time: `share R per group | unit | run`
+  acquires R once per scope, resets it before every later case, lets one case
+  hold it at a time, and releases it when the test process ends, on all eight
+  targets. The `resources` suite shares a pool that may be opened only once
+  per process, with mutants for a pool never drained and for a harness that
+  does not share it.
+- `expect ... fails with` checks native adapters' failures too: synchronous
+  and async adapters raise the runtime's `Fail` on every target, and a
+  constructor mapped from an application's exception under `failures` in
+  `lawspec.json` matches with its message.
+- A benchmark may call what uses abilities; it runs under their production
+  handlers. `lawspec test --benchmarks` runs the harness's benchmarks after the
+  laws.
+- A strategy's type may be an inline refinement, `strategy small :: (o ::
+  Order where itemsOf o <= 3) is ... end`, whose values are kept like `such
+  that`. Harness expressions and strategies may name a unit's imports through
+  their aliases.
+- On Java and Kotlin, an ability or handler whose class would be named like
+  the class holding its unit's abilities is a compile error that says what to
+  rename.
 
 ## 0.20.0
 

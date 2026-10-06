@@ -112,3 +112,45 @@ func Greeting(value0 LawSpecValue) LawSpecMaybe[int32] {
 	n, _ := strconv.Atoi(text)
 	return LawSpecJust(int32(n))
 }
+
+// pool is costly to open: this test binary may open only one, so the suite
+// passes only if the harness shares it (share Pool per unit).
+type pool struct {
+	amount int32
+	open   bool
+}
+
+var poolsOpened = 0
+
+// OpenPool implements openPool :: (Unit -> example.resources::type::Pool).
+func OpenPool(value0 LawSpecValue) any {
+	if poolsOpened >= 1 {
+		panic("a second pool was opened: the harness should share it")
+	}
+	poolsOpened++
+	return &pool{open: true}
+}
+
+// DrainPool implements drainPool :: (example.resources::type::Pool -> Unit).
+func DrainPool(value0 any) {
+	value0.(*pool).amount = 0
+}
+
+// ClosePool implements closePool :: (example.resources::type::Pool -> Unit).
+func ClosePool(value0 any) {
+	value0.(*pool).open = false
+}
+
+// Fill implements fill :: (example.resources::type::Pool -> (Int32 -> Unit)).
+func Fill(value0 any, value1 int32) {
+	p := value0.(*pool)
+	if !p.open {
+		panic("the pool is closed")
+	}
+	p.amount += value1
+}
+
+// Level implements level :: (example.resources::type::Pool -> Int32).
+func Level(value0 any) int32 {
+	return value0.(*pool).amount
+}

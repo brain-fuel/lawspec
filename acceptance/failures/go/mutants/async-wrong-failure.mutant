@@ -1,0 +1,7 @@
+expect: settling nothing is declined, and says why
+@@ example/failures/adapter.go
+<<<<<<<
+			panic(LawSpecFail{Value: PaymentErrorDeclined{Message: "there is nothing to settle"}})
+=======
+			panic(LawSpecFail{Value: PaymentErrorBlocked{}})
+>>>>>>>

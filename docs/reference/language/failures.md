@@ -59,8 +59,37 @@ without `=` takes any `Bool`.
 
 ## Native failures
 
-A native adapter's failures reach a law through the `Fail` ability. Until
-native adapters raise `Fail` failures, a law expects failures from checked
-definitions, including those that use abilities, as in
-`examples/specs/failures.lawspec`. Mapping native exceptions to constructors
-will be a setting of `lawspec.json`, never part of a law.
+A native adapter's failures reach a law through the `Fail` ability, so
+`fails with` checks them like any other:
+
+```lawspec fragment
+refund :: Int32 -> Int32 fails with PaymentError
+async settle :: Int32 -> Int32 fails with PaymentError
+
+law `refunds over the limit are too large` is
+  definition is
+    `for all` (cents :: Int32 where cents > 5000) . refund cents fails with TooLarge 5000
+  end
+end
+```
+
+The native code raises the runtime's `Fail` with a value of the failure
+type, synchronously or from an async adapter:
+
+| Target | Raising a failure |
+| --- | --- |
+| Python | `raise ls.Fail(data.PaymentErrorTooLarge(5000))` |
+| JavaScript, TypeScript | `throw new ls.Fail(new data.PaymentErrorTooLarge(5000))` |
+| Go | `panic(LawSpecFail{Value: PaymentErrorTooLarge{Limit: 5000}})` |
+| Java | `throw new LawSpecRuntime.Fail(new lawspec.data.PaymentError.TooLarge(5000))` |
+| Kotlin | `throw LawSpecRuntime.Fail(lawspec.data.PaymentError.TooLarge(5000))` |
+| Rust | `ls::fail(PaymentError::TooLarge { limit: 5000 })` |
+| Haskell | `throwIO (LS.Fail (Data.PaymentErrorTooLarge 5000))` |
+
+An application that raises its own exceptions maps them to constructors in
+`lawspec.json` under `failures` (see [Handlers](handlers.md)); that mapping
+is the implementation plane, never part of a law. A mapped constructor with
+one `Text` field named `message` gets the exception's message, so `fails
+with Rejected _ message contains "negative"` checks it. The suites
+`examples/specs/failures.lawspec` and `examples/specs/handler_bindings.lawspec`
+show both.

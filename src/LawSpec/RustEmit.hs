@@ -282,7 +282,8 @@ emitRustWithBindings minify bindings plan@Plan{..} = either (Left . pure . (\m -
     -- A handler from the context, borrowed as its ability's trait.
     handlerValue ability = Doc.text ("ctx.handler::<std::sync::Arc<dyn " ++ Abilities.traitPath allUnits ability ++ ">>(" ++ q (abilityKey ability) ++ ")?")
     -- A law's handlers, made afresh each time it runs and installed in its context.
-    handlerInstalls owner p = case [(a, c) | (a, c) <- propertyHandlers p, not (isFail a)] of
+    handlerInstalls owner p = installsFor owner (propertyHandlers p)
+    installsFor owner handlers = case [(a, c) | (a, c) <- handlers, not (isFail a)] of
       [] -> []
       chosen -> [Doc.text "ctx.install_handlers(vec![" <> Doc.nest 4 (Doc.hardline <> Doc.joinWith Doc.hardline
         [Doc.text ("(" ++ q (abilityKey a) ++ ".to_string(), " ++ Abilities.handlerConstruction (NR.bindingRustCrate bindings) allUnits owner a c ++ "),") | (a, c) <- chosen]) <>
@@ -488,9 +489,16 @@ emitRustWithBindings minify bindings plan@Plan{..} = either (Left . pure . (\m -
       -- A model's test hands its spec and callbacks to the model runtime.
       -- Benchmarks: measured, never asserted.
       benchmarks <- forM (maybe [] harnessBenchmarks (unitHarnessSettings unit)) $ \(n, e) -> do
-        body <- render [] e
+        -- The production handlers a benchmark runs under are installed in
+        -- its context, as a law's are.
+        let peel term = case expressionNode term of
+              Handle (WithHandler a ProductionHandler) inner -> let (hs, core) = peel inner in ((a, ProductionHandler) : hs, core)
+              _ -> ([], term)
+            (installed, core) = peel e
+            installs = installsFor unit installed
+        body <- render [] core
         pure (Doc.text "#[test]" <> Doc.hardline <> function ("benchmark_" ++ intercalate "_" (lawWords n)) [] "ls::Result<()>"
-          (statements [Doc.text "let ctx = &mut ls::Context::testing();",
+          (statements $ [Doc.text "let ctx = &mut ls::Context::testing();"] ++ installs ++ [
             invoke "lawspec_harness::benchmark" [string n, Doc.text "|| " <> block (statements [binding "_measured" body, Doc.text "Ok(())"])]]))
       modelTests <- map (reverse . dropWhile (== '\n') . reverse) <$>
         either (Left . concatMap message) Right (ModelTests.rustModelTests planMachineBits planDataDeclarations definitionNames unit)
@@ -508,6 +516,21 @@ emitRustWithBindings minify bindings plan@Plan{..} = either (Left . pure . (\m -
         let resourceNames = [(binderId (resourceBinder r), "resource" ++ show i) | (i, r) <- zip [0::Int ..] (propertyResources p)]
             withResources = names ++ resourceNames
             bracket inner [] = pure (statements inner)
+            -- A shared resource (share R per ...): the runtime keeps one per
+            -- scope key, resets it before each later use, holds it for this
+            -- case until its guard drops, and releases it at exit.
+            bracket inner ((r, (_, local)) : rest) | Just key <- resourceShared r, Just reset <- resourceReset r = do
+              acquired <- render withResources (resourceAcquire r)
+              resetting <- render withResources reset
+              released <- render withResources (resourceRelease r)
+              nested <- bracket inner rest
+              let use body = Doc.text ("|ctx: &mut ls::Context, " ++ local ++ ": ls::Value| -> ls::Result<ls::Value> ") <>
+                    block (Doc.text "Ok(" <> body <> Doc.text ")")
+              pure (statements
+                [ Doc.text ("let (" ++ local ++ ", _shared_" ++ local ++ ") = ") <> invoke "ls::share"
+                    [string key, Doc.text "ctx", Doc.text "|ctx: &mut ls::Context| -> ls::Result<ls::Value> " <> block (Doc.text "Ok(" <> acquired <> Doc.text ")"),
+                     use resetting, use released] <> Doc.text "?;"
+                , nested ])
             bracket inner ((r, (_, local)) : rest) = do
               acquired <- render withResources (resourceAcquire r)
               released <- render withResources (resourceRelease r)
