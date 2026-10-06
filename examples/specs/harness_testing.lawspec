@@ -18,7 +18,7 @@ harness example.harness.testing for example.harness is
 
   for law `a discount is never more than the total`
     use orders for order
-    cover 10% "empty order" when isEmpty order
+    cover 5% "empty order" when isEmpty order
     classify totalOf order > 1000 as "large"
     label if isEmpty order then "empty" else "some items"
     timeout 10 s

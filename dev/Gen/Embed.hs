@@ -24,7 +24,8 @@ runtimeFiles =
   , ("rust-strategies", "lawspec_strategies.rs"), ("kotlin-strategies", "LawSpecStrategies.kt")
   , ("kotlin-native", "LawSpecKotlin.kt"), ("kotlin-codecs", "LawSpecKotlinCodecs.kt")
   , ("kotlin-data-strategies", "LawSpecKotlinStrategies.kt")
-  , ("python-harness", "lawspec_harness.py"), ("web-harness", "lawspec_harness.mjs") ]
+  , ("python-harness", "lawspec_harness.py"), ("web-harness", "lawspec_harness.mjs")
+  , ("go-harness", "lawspec_harness.go") ]
 
 embedRuntimes :: IO String
 embedRuntimes = do

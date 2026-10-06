@@ -38,6 +38,7 @@ extra-source-files:
     runtime/LawSpecStrategies.kt
     runtime/lawspec_codecs.go
     runtime/lawspec_data_strategies.go
+    runtime/lawspec_harness.go
     runtime/lawspec_runtime.go
     runtime/lawspec_schema.go
     runtime/rust/Cargo.toml
