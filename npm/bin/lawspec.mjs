@@ -348,15 +348,25 @@ async function runTests(compiler, input, selected, roots, config) {
       `${target.language}-${createHash("sha256").update(root).digest("hex").slice(0, 12)}.json`);
     const previous = JSON.parse((await readOptional(resultsFile)) ?? '{"version":1,"laws":{}}');
     const chosen = selectByTags(planned.tests, options.tag ?? [], options["exclude-tag"] ?? []);
-    // A law that failed last time runs first.
-    const stale = chosen.filter((entry) => options.fresh || options.coverage || previous.laws[entry.law]?.key !== keys.get(entry.law))
-      .sort((a, b) => Number(!!previous.failed?.[b.law]) - Number(!!previous.failed?.[a.law]));
+    const stale = chosen.filter((entry) => options.fresh || options.coverage || previous.laws[entry.law]?.key !== keys.get(entry.law));
+    // The failure database: each law whose last run failed, with the seed
+    // that exposed it. Those laws run first, with that seed, so the failing
+    // inputs are generated again; the runtimes keep their own counterexample
+    // databases beside it (Hypothesis, proptest).
+    const failures = path.join(configRoot, ".lawspec", "failures", target.language);
+    const databaseFile = path.join(failures, "laws.json");
+    const database = JSON.parse((await readOptional(databaseFile)) ?? "{}");
+    const replayed = options.seed === undefined ? stale.filter((entry) => database[entry.law]) : [];
+    const batches = [
+      ...[...new Set(replayed.map((entry) => database[entry.law].seed))].map((s) =>
+        ({ seed: String(s), entries: replayed.filter((entry) => database[entry.law].seed === s) })),
+      { seed, entries: stale.filter((entry) => !replayed.includes(entry)) },
+    ].filter((batch) => batch.entries.length);
     const passed = [];
     const unrun = [];
     let failed = false;
     const scratch = path.join(configRoot, ".lawspec", "reports", target.language);
     const stats = path.join(scratch, "statistics");
-    const failures = path.join(configRoot, ".lawspec", "failures", target.language);
     const coverage = options.coverage ? path.join(configRoot, ".lawspec", "coverage", target.language) : null;
     await rm(scratch, { recursive: true, force: true });
     await mkdir(stats, { recursive: true });
@@ -371,19 +381,23 @@ async function runTests(compiler, input, selected, roots, config) {
     // A skipped law runs nothing, and a known-failing law's one test is
     // expected to fail, so neither is required to show as run.
     const expected = (entry) => !entry.skip && !entry.knownFailing;
-    for (const run of stale.length ? invocations(target, stale, { offline, scratch, coverage: useCoverage ? coverage : null }) : []) {
-      const since = Date.now() - 1000;
-      const { ok, output } = await spawned(run.command, run.args, root,
-        { ...process.env, ...run.env, LAWSPEC_SEED: seed, HSPEC_SEED: seed,
-          LAWSPEC_STATS: stats, LAWSPEC_FAILURES: failures }, run.report?.kind === "go-json");
-      const executed = await executedTests(run.report, output, root, since);
-      if (report) junit.push({ target: target.language, xml: await junitOf(run, executed, root, since) });
-      if (!ok) { failed = true; break; }
-      // A runner whose filter matched nothing reports success, so a law
-      // counts as passed only if the runner's report shows its tests ran.
-      const ran = new Set(executed.flatMap(run.ran ?? (() => [])));
-      passed.push(...run.laws.filter((law) => ran.has(law) || !expected(law)));
-      unrun.push(...run.laws.filter((law) => !ran.has(law) && expected(law)));
+    const seedOf = new Map();
+    batches: for (const batch of batches) {
+      for (const run of invocations(target, batch.entries, { offline, scratch, coverage: useCoverage ? coverage : null })) {
+        const since = Date.now() - 1000;
+        const { ok, output } = await spawned(run.command, run.args, root,
+          { ...process.env, ...run.env, LAWSPEC_SEED: batch.seed, HSPEC_SEED: batch.seed,
+            LAWSPEC_STATS: stats, LAWSPEC_FAILURES: failures }, run.report?.kind === "go-json");
+        const executed = await executedTests(run.report, output, root, since);
+        for (const law of run.laws) seedOf.set(law.law, batch.seed);
+        if (report) junit.push({ target: target.language, xml: await junitOf(run, executed, root, since) });
+        if (!ok) { failed = true; break batches; }
+        // A runner whose filter matched nothing reports success, so a law
+        // counts as passed only if the runner's report shows its tests ran.
+        const ran = new Set(executed.flatMap(run.ran ?? (() => [])));
+        passed.push(...run.laws.filter((law) => ran.has(law) || !expected(law)));
+        unrun.push(...run.laws.filter((law) => !ran.has(law) && expected(law)));
+      }
     }
     if (unrun.length) failed = true;
     const statistics = await harnessStatistics(stats);
@@ -391,15 +405,21 @@ async function runTests(compiler, input, selected, roots, config) {
     for (const entry of passed) {
       const label = entry.label;
       const observed = statistics.filter((s) => s.law === label);
-      laws[entry.law] = { key: keys.get(entry.law), seed: Number(seed), passed: new Date().toISOString(),
+      laws[entry.law] = { key: keys.get(entry.law), seed: Number(seedOf.get(entry.law) ?? seed), passed: new Date().toISOString(),
         ...(observed.some((s) => s.outcome === "flaky") ? { flaky: true } : {}),
         ...(observed.some((s) => s.cover || s.labels || s.classes) ? { adequacy: observed.filter((s) => s.cover || s.labels || s.classes)
           .map(({ test, cases, cover, classes, labels }) => ({ test, cases, cover, classes, labels })) } : {}) };
     }
-    const failedLaws = Object.fromEntries(stale.filter((e) => !passed.includes(e)).map((e) => [e.law, new Date().toISOString()]));
+    // A law that failed is recorded with its seed; one that passed leaves.
+    for (const entry of stale) {
+      if (passed.includes(entry)) delete database[entry.law];
+      else if (seedOf.has(entry.law)) database[entry.law] = { seed: Number(seedOf.get(entry.law)), failed: new Date().toISOString() };
+    }
+    await writeFile(path.join(path.dirname(failures), ".gitignore"), "*\n");
+    await writeFile(databaseFile, JSON.stringify(database, null, 2) + "\n");
     await mkdir(path.dirname(resultsFile), { recursive: true });
     await writeFile(path.join(path.dirname(resultsFile), ".gitignore"), "*\n");
-    await writeFile(resultsFile, JSON.stringify({ version: 1, laws, ...(Object.keys(failedLaws).length ? { failed: failedLaws } : {}) }, null, 2) + "\n");
+    await writeFile(resultsFile, JSON.stringify({ version: 1, laws }, null, 2) + "\n");
     const flaky = statistics.filter((s) => s.outcome === "flaky").map((s) => s.law);
     const unmet = statistics.flatMap((s) => (s.cover ?? []).filter((c) => !c.met).map((c) => `${s.law}: cover ${c.required}% "${c.label}" (${c.observed}%)`));
     const benchmarks = statistics.filter((s) => s.benchmark);

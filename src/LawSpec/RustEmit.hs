@@ -592,6 +592,7 @@ emitRustWithBindings minify bindings plan@Plan{..} = either (Left . pure . (\m -
                      [Doc.text ("max_local_rejects: " ++ show (maxAttempts (propertyGeneration p)) ++ ",") | hasFieldContracts] ++
                      [Doc.text ("max_shrink_iters: " ++ show (maxShrinks (propertyGeneration p)) ++ ","),
                      Doc.text "rng_seed: lawspec_rng_seed(),",
+                     Doc.text "failure_persistence: lawspec_failure_persistence(),",
                      Doc.text "..Default::default()"]) ))
                 , binding "check" (Doc.text "|mut case: ls_gen::Case| " <>
                     block (statements ([Doc.text "if let Some(error) = case.error " <> block
@@ -686,7 +687,14 @@ emitRustWithBindings minify bindings plan@Plan{..} = either (Left . pure . (\m -
             [ Doc.text "match std::env::var(\"LAWSPEC_SEED\") " <> block (statements
                 [ Doc.text "Ok(seed) => proptest::test_runner::RngSeed::Fixed(" <> Doc.nest 4 (Doc.hardline <>
                     Doc.text "seed.parse().expect(\"LAWSPEC_SEED must be a whole number\"),") <> Doc.hardline <> Doc.text "),"
-                , Doc.text "Err(_) => proptest::test_runner::Config::default().rng_seed," ]) ])
+                , Doc.text "Err(_) => proptest::test_runner::Config::default().rng_seed," ]) ]) <> blank <>
+              -- Under lawspec test, proptest keeps failing cases in its failure
+              -- database and replays them first.
+              Doc.text "fn lawspec_failure_persistence() -> Option<Box<dyn proptest::test_runner::FailurePersistence>> " <> block (statements
+                [ Doc.text "match std::env::var(\"LAWSPEC_FAILURES\") " <> block (statements
+                    [ Doc.text "Ok(directory) => Some(Box::new(proptest::test_runner::FileFailurePersistence::Direct(" <> Doc.nest 4 (Doc.hardline <>
+                        Doc.text "Box::leak(format!(\"{directory}/proptest-regressions.txt\").into_boxed_str()),") <> Doc.hardline <> Doc.text "))),"
+                    , Doc.text "Err(_) => proptest::test_runner::Config::default().failure_persistence," ]) ])
       pure [Artifact ("src/" ++ modulePath ++ ".rs") (Doc.render layout adapterDoc) (if generatedAdapter then "generated" else "user") "source",
         Artifact ("tests/" ++ testName ++ "_lawspec.rs") (Doc.render layout testDoc) "generated" "test"]
 
