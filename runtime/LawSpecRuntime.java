@@ -2047,7 +2047,9 @@ public final class LawSpecRuntime {
     String shownB = null;
     loop:
     while (true) {
+      // Lists of values; a text's code points, code units or bytes are not.
       if (a.data() instanceof List<?> x && b.data() instanceof List<?> y
+          && x.stream().allMatch(Value.class::isInstance) && y.stream().allMatch(Value.class::isInstance)
           && !a.type().equals("Text") && !b.type().equals("Text")) {
         for (int i = 0; i < x.size() && i < y.size(); i++) {
           if (!render((Value) x.get(i)).equals(render((Value) y.get(i)))) {
