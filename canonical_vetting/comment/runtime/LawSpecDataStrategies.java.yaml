@@ -1,0 +1,24 @@
+decision/java/runtime/LawSpecDataStrategies.java/package/lawspec.testing/class/LawSpecDataStrategies:
+  digest: sha256:565abf0c76e5e388
+  verdict: pending
+decision/java/runtime/LawSpecDataStrategies.java/package/lawspec.testing/class/LawSpecDataStrategies/class/Indexed/method/assignments:
+  digest: sha256:9d0c218abc5b5a0a
+  verdict: pending
+decision/java/runtime/LawSpecDataStrategies.java/package/lawspec.testing/class/LawSpecDataStrategies/class/NativeFailure:
+  digest: sha256:14b32e97c1160659
+  verdict: pending
+decision/java/runtime/LawSpecDataStrategies.java/package/lawspec.testing/class/LawSpecDataStrategies/method/capture:
+  digest: sha256:fe1c2accaa793155
+  verdict: pending
+decision/java/runtime/LawSpecDataStrategies.java/package/lawspec.testing/class/LawSpecDataStrategies/method/indexedGenerator:
+  digest: sha256:78ad999238611c6f
+  verdict: pending
+decision/java/runtime/LawSpecDataStrategies.java/package/lawspec.testing/class/LawSpecDataStrategies/record/Checked:
+  digest: sha256:43aa6af6e1da7079
+  verdict: pending
+decision/java/runtime/LawSpecDataStrategies.java/package/lawspec.testing/class/LawSpecDataStrategies/record/IndexTerm:
+  digest: sha256:d661aca0f30b8668
+  verdict: pending
+decision/java/runtime/LawSpecDataStrategies.java/package/lawspec.testing/class/LawSpecDataStrategies/record/IndexTerm/method/evaluate:
+  digest: sha256:825f3c72318cb2b2
+  verdict: pending

@@ -1,0 +1,27 @@
+decision/go/acceptance/actors/go/files/example/actors/adapter.go:
+  digest: sha256:eb60d68e366a7cc4
+  verdict: pending
+decision/go/acceptance/actors/go/files/example/actors/adapter.go/function/Balance:
+  digest: sha256:c0053d3d6ca25e3b
+  verdict: pending
+decision/go/acceptance/actors/go/files/example/actors/adapter.go/function/Close:
+  digest: sha256:221db9aa24ef0b1b
+  verdict: pending
+decision/go/acceptance/actors/go/files/example/actors/adapter.go/function/Deposit:
+  digest: sha256:902882a287b6f3ca
+  verdict: pending
+decision/go/acceptance/actors/go/files/example/actors/adapter.go/function/DepositTwice:
+  digest: sha256:1c90590fae3b81ae
+  verdict: pending
+decision/go/acceptance/actors/go/files/example/actors/adapter.go/function/OpenAccount:
+  digest: sha256:e0fd48398f47d0ad
+  verdict: pending
+decision/go/acceptance/actors/go/files/example/actors/adapter.go/function/Reopen:
+  digest: sha256:13eb131ee609b042
+  verdict: pending
+decision/go/acceptance/actors/go/files/example/actors/adapter.go/function/SurvivesCrash:
+  digest: sha256:a699985778f3dfde
+  verdict: pending
+decision/go/acceptance/actors/go/files/example/actors/adapter.go/function/WithdrawAll:
+  digest: sha256:4f851480fb0620ef
+  verdict: pending

@@ -1,0 +1,9 @@
+decision/haskell/src/LawSpec/GoProperties.hs/module/LawSpec.GoProperties:
+  digest: sha256:44705013d5644e4c
+  verdict: pending
+decision/haskell/src/LawSpec/GoProperties.hs/module/LawSpec.GoProperties/data/Config:
+  digest: sha256:ed3134470486bd76
+  verdict: pending
+decision/haskell/src/LawSpec/GoProperties.hs/module/LawSpec.GoProperties/function/emitTests:
+  digest: sha256:1d9b332b3c0b3552
+  verdict: pending

@@ -1,0 +1,9 @@
+decision/haskell/src/LawSpec/HaskellProperties.hs/module/LawSpec.HaskellProperties:
+  digest: sha256:b334c59a600d7e2d
+  verdict: pending
+decision/haskell/src/LawSpec/HaskellProperties.hs/module/LawSpec.HaskellProperties/data/Config:
+  digest: sha256:7494f61eddf42327
+  verdict: pending
+decision/haskell/src/LawSpec/HaskellProperties.hs/module/LawSpec.HaskellProperties/function/emitTests:
+  digest: sha256:71433ff15386c585
+  verdict: pending

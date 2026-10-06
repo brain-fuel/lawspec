@@ -1,0 +1,21 @@
+decision/haskell/dev/Ci.hs/module/Ci:
+  digest: sha256:a9feaa76063344bd
+  verdict: pending
+decision/haskell/dev/Ci.hs/module/Ci/data/Inputs:
+  digest: sha256:2a7e0d0d590a18a9
+  verdict: pending
+decision/haskell/dev/Ci.hs/module/Ci/data/Step:
+  digest: sha256:900681869b9ecb76
+  verdict: pending
+decision/haskell/dev/Ci.hs/module/Ci/function/repositoryFiles:
+  digest: sha256:a611cda34a0ff97e
+  verdict: pending
+decision/haskell/dev/Ci.hs/module/Ci/function/runCached:
+  digest: sha256:eb5a42ad3dce36cd
+  verdict: pending
+decision/haskell/dev/Ci.hs/module/Ci/function/rustRuntimeSteps:
+  digest: sha256:b78d6f635ffe5d3f
+  verdict: pending
+decision/haskell/dev/Ci.hs/module/Ci/function/targetSteps:
+  digest: sha256:9e413d93da92db8a
+  verdict: pending

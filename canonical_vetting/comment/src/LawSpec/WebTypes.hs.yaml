@@ -1,0 +1,48 @@
+decision/haskell/src/LawSpec/WebTypes.hs/module/LawSpec.WebTypes:
+  digest: sha256:4c7f374554e6a114
+  verdict: pending
+decision/haskell/src/LawSpec/WebTypes.hs/module/LawSpec.WebTypes/function/collectionContainer:
+  digest: sha256:022dd3b9367aca5a
+  verdict: pending
+decision/haskell/src/LawSpec/WebTypes.hs/module/LawSpec.WebTypes/function/handleTypes:
+  digest: sha256:0c0b5c5b6e245cf8
+  verdict: pending
+decision/haskell/src/LawSpec/WebTypes.hs/module/LawSpec.WebTypes/function/identifier:
+  digest: sha256:002a0328743844fb
+  verdict: pending
+decision/haskell/src/LawSpec/WebTypes.hs/module/LawSpec.WebTypes/function/lookupName:
+  digest: sha256:d6f863fe7c730fa1
+  verdict: pending
+decision/haskell/src/LawSpec/WebTypes.hs/module/LawSpec.WebTypes/function/namesFor:
+  digest: sha256:4148080fa8e523af
+  verdict: pending
+decision/haskell/src/LawSpec/WebTypes.hs/module/LawSpec.WebTypes/function/requiresSchema:
+  digest: sha256:047cef9b3e0c5f5a
+  verdict: pending
+decision/haskell/src/LawSpec/WebTypes.hs/module/LawSpec.WebTypes/function/supportNames:
+  digest: sha256:5d03797ad1b13e6a
+  verdict: pending
+decision/haskell/src/LawSpec/WebTypes.hs/module/LawSpec.WebTypes/function/typeDocWith:
+  digest: sha256:1a4df283cf800806
+  verdict: pending
+decision/haskell/src/LawSpec/WebTypes.hs/module/LawSpec.WebTypes/function/webByValue:
+  digest: sha256:d7948174aad9063a
+  verdict: pending
+decision/haskell/src/LawSpec/WebTypes.hs/module/LawSpec.WebTypes/function/webDataType:
+  digest: sha256:8135e121271c66fc
+  verdict: pending
+decision/haskell/src/LawSpec/WebTypes.hs/module/LawSpec.WebTypes/function/webDataTypeDoc:
+  digest: sha256:07c5666ba2e06832
+  verdict: pending
+decision/haskell/src/LawSpec/WebTypes.hs/module/LawSpec.WebTypes/function/webDataTypeDocWith:
+  digest: sha256:f4fe7f5d89363560
+  verdict: pending
+decision/haskell/src/LawSpec/WebTypes.hs/module/LawSpec.WebTypes/function/webTypeReference:
+  digest: sha256:0354d4a42448185b
+  verdict: pending
+decision/haskell/src/LawSpec/WebTypes.hs/module/LawSpec.WebTypes/type/Handles:
+  digest: sha256:7307c598e80d4e99
+  verdict: pending
+decision/haskell/src/LawSpec/WebTypes.hs/module/LawSpec.WebTypes/type/Names:
+  digest: sha256:de21fa47950c90d8
+  verdict: pending

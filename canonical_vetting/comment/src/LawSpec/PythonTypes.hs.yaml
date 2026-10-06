@@ -1,0 +1,51 @@
+decision/haskell/src/LawSpec/PythonTypes.hs/module/LawSpec.PythonTypes:
+  digest: sha256:d17b12cd92324371
+  verdict: pending
+decision/haskell/src/LawSpec/PythonTypes.hs/module/LawSpec.PythonTypes/function/collectionContainer:
+  digest: sha256:022dd3b9367aca5a
+  verdict: pending
+decision/haskell/src/LawSpec/PythonTypes.hs/module/LawSpec.PythonTypes/function/handleTypes:
+  digest: sha256:b15676a1672d96f5
+  verdict: pending
+decision/haskell/src/LawSpec/PythonTypes.hs/module/LawSpec.PythonTypes/function/identifier:
+  digest: sha256:c6e1f4bffc6132f6
+  verdict: pending
+decision/haskell/src/LawSpec/PythonTypes.hs/module/LawSpec.PythonTypes/function/lookupName:
+  digest: sha256:d6f863fe7c730fa1
+  verdict: pending
+decision/haskell/src/LawSpec/PythonTypes.hs/module/LawSpec.PythonTypes/function/namesFor:
+  digest: sha256:4148080fa8e523af
+  verdict: pending
+decision/haskell/src/LawSpec/PythonTypes.hs/module/LawSpec.PythonTypes/function/pythonDataType:
+  digest: sha256:ccd0eeb981a3c666
+  verdict: pending
+decision/haskell/src/LawSpec/PythonTypes.hs/module/LawSpec.PythonTypes/function/pythonDataTypeDoc:
+  digest: sha256:4dea65554399b762
+  verdict: pending
+decision/haskell/src/LawSpec/PythonTypes.hs/module/LawSpec.PythonTypes/function/pythonDataTypeDocWith:
+  digest: sha256:611766fe91d8f46b
+  verdict: pending
+decision/haskell/src/LawSpec/PythonTypes.hs/module/LawSpec.PythonTypes/function/pythonHashable:
+  digest: sha256:e6269eeac1bf4ad6
+  verdict: pending
+decision/haskell/src/LawSpec/PythonTypes.hs/module/LawSpec.PythonTypes/function/pythonTypeReference:
+  digest: sha256:0354d4a42448185b
+  verdict: pending
+decision/haskell/src/LawSpec/PythonTypes.hs/module/LawSpec.PythonTypes/function/quotedName:
+  digest: sha256:2499284d808d7456
+  verdict: pending
+decision/haskell/src/LawSpec/PythonTypes.hs/module/LawSpec.PythonTypes/function/requiresSchema:
+  digest: sha256:047cef9b3e0c5f5a
+  verdict: pending
+decision/haskell/src/LawSpec/PythonTypes.hs/module/LawSpec.PythonTypes/function/suite:
+  digest: sha256:32eb1c4f0c1f8c97
+  verdict: pending
+decision/haskell/src/LawSpec/PythonTypes.hs/module/LawSpec.PythonTypes/function/typeDocWith:
+  digest: sha256:9940d70b0835d4c5
+  verdict: pending
+decision/haskell/src/LawSpec/PythonTypes.hs/module/LawSpec.PythonTypes/type/Handles:
+  digest: sha256:cb7a6a2bddebd1b4
+  verdict: pending
+decision/haskell/src/LawSpec/PythonTypes.hs/module/LawSpec.PythonTypes/type/Names:
+  digest: sha256:9cd4b5d73cd1b846
+  verdict: pending

@@ -1,0 +1,18 @@
+decision/haskell/src/LawSpec/RustData.hs/module/LawSpec.RustData:
+  digest: sha256:a77e576d96d8dc47
+  verdict: pending
+decision/haskell/src/LawSpec/RustData.hs/module/LawSpec.RustData/function/emitRustData:
+  digest: sha256:047da8f7356b1cc1
+  verdict: pending
+decision/haskell/src/LawSpec/RustData.hs/module/LawSpec.RustData/function/inlineNames:
+  digest: sha256:5aa1edf035a0395a
+  verdict: pending
+decision/haskell/src/LawSpec/RustData.hs/module/LawSpec.RustData/function/rustDataType:
+  digest: sha256:632f169d523fe0c0
+  verdict: pending
+decision/haskell/src/LawSpec/RustData.hs/module/LawSpec.RustData/function/rustDataTypeWithParameters:
+  digest: sha256:ada8df80f1f3f52d
+  verdict: pending
+decision/haskell/src/LawSpec/RustData.hs/module/LawSpec.RustData/function/rustFieldBoxed:
+  digest: sha256:6f34891c721a8220
+  verdict: pending

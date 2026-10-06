@@ -1,0 +1,12 @@
+decision/java/acceptance/resilience/java/files/src/main/java/example/Resilience.java/package/example/class/Resilience/method/compensationsFor:
+  digest: sha256:617c31c35e317216
+  verdict: pending
+decision/java/acceptance/resilience/java/files/src/main/java/example/Resilience.java/package/example/class/Resilience/method/limitedAt:
+  digest: sha256:edd61e81615677e8
+  verdict: pending
+decision/java/acceptance/resilience/java/files/src/main/java/example/Resilience.java/package/example/class/Resilience/method/quoteHedged:
+  digest: sha256:0c0865177776235e
+  verdict: pending
+decision/java/acceptance/resilience/java/files/src/main/java/example/Resilience.java/package/example/class/Resilience/method/quoteTimedOut:
+  digest: sha256:4e8af0c816e20c23
+  verdict: pending

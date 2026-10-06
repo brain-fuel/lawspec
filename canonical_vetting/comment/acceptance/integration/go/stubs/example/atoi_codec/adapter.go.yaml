@@ -1,0 +1,9 @@
+decision/go/acceptance/integration/go/stubs/example/atoi_codec/adapter.go:
+  digest: sha256:acd06238afbbf0ad
+  verdict: pending
+decision/go/acceptance/integration/go/stubs/example/atoi_codec/adapter.go/function/Atoi:
+  digest: sha256:5fd5a1aa2097ab1d
+  verdict: pending
+decision/go/acceptance/integration/go/stubs/example/atoi_codec/adapter.go/function/Itoa:
+  digest: sha256:6b2c80053a0db6d3
+  verdict: pending

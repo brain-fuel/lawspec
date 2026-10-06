@@ -1,0 +1,24 @@
+decision/go/acceptance/resilience/go/files/example/limits/adapter.go:
+  digest: sha256:acd06238afbbf0ad
+  verdict: pending
+decision/go/acceptance/resilience/go/files/example/limits/adapter.go/function/AdmitTicket:
+  digest: sha256:97c65eee59d9cea8
+  verdict: pending
+decision/go/acceptance/resilience/go/files/example/limits/adapter.go/function/ChargeCard:
+  digest: sha256:5b2f716d62a47de8
+  verdict: pending
+decision/go/acceptance/resilience/go/files/example/limits/adapter.go/function/FetchQuote:
+  digest: sha256:af3eed04502cf2e7
+  verdict: pending
+decision/go/acceptance/resilience/go/files/example/limits/adapter.go/function/HedgeQuote:
+  digest: sha256:19817528b6109f20
+  verdict: pending
+decision/go/acceptance/resilience/go/files/example/limits/adapter.go/function/ReleaseSeat:
+  digest: sha256:ad408448530e39bc
+  verdict: pending
+decision/go/acceptance/resilience/go/files/example/limits/adapter.go/function/ReserveSeat:
+  digest: sha256:fd9e5c4f31ad3e6f
+  verdict: pending
+decision/go/acceptance/resilience/go/files/example/limits/adapter.go/function/ResetQuotes:
+  digest: sha256:fd972e3160ed1e8a
+  verdict: pending

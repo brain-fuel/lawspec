@@ -1,0 +1,54 @@
+decision/haskell/runtime/LawSpecSchema.hs/module/LawSpecSchema:
+  digest: sha256:2f501af106f9f6c4
+  verdict: pending
+decision/haskell/runtime/LawSpecSchema.hs/module/LawSpecSchema/data/IndexTerm:
+  digest: sha256:6ff4b0c8b7e52a03
+  verdict: pending
+decision/haskell/runtime/LawSpecSchema.hs/module/LawSpecSchema/data/PayloadPlan:
+  digest: sha256:d6e8d2ddb72f1f8a
+  verdict: pending
+decision/haskell/runtime/LawSpecSchema.hs/module/LawSpecSchema/data/Schema:
+  digest: sha256:4e091d5c535ce2ac
+  verdict: pending
+decision/haskell/runtime/LawSpecSchema.hs/module/LawSpecSchema/function/allPayloadsWith:
+  digest: sha256:6df1da3ac602d178
+  verdict: pending
+decision/haskell/runtime/LawSpecSchema.hs/module/LawSpecSchema/function/evalIndexTerm:
+  digest: sha256:98ba501633f7526e
+  verdict: pending
+decision/haskell/runtime/LawSpecSchema.hs/module/LawSpecSchema/function/fieldType:
+  digest: sha256:a55b2fd73cbb3e29
+  verdict: pending
+decision/haskell/runtime/LawSpecSchema.hs/module/LawSpecSchema/function/fieldTypeAt:
+  digest: sha256:f8d7347ce86724ee
+  verdict: pending
+decision/haskell/runtime/LawSpecSchema.hs/module/LawSpecSchema/function/indexOf:
+  digest: sha256:3dd3e0990a3f1470
+  verdict: pending
+decision/haskell/runtime/LawSpecSchema.hs/module/LawSpecSchema/function/match:
+  digest: sha256:c20627ed71abdb9a
+  verdict: pending
+decision/haskell/runtime/LawSpecSchema.hs/module/LawSpecSchema/function/refine:
+  digest: sha256:70dc5c5f50602762
+  verdict: pending
+decision/haskell/runtime/LawSpecSchema.hs/module/LawSpecSchema/function/shallowChecked:
+  digest: sha256:6ff16e249dcf7d81
+  verdict: pending
+decision/haskell/runtime/LawSpecSchema.hs/module/LawSpecSchema/function/witnessChoices:
+  digest: sha256:fdf721c0fd41ae0c
+  verdict: pending
+decision/haskell/runtime/LawSpecSchema.hs/module/LawSpecSchema/function/witnessKey:
+  digest: sha256:c1f89511950dde76
+  verdict: pending
+decision/haskell/runtime/LawSpecSchema.hs/module/LawSpecSchema/function/witnessKeys:
+  digest: sha256:e46a68a992d879f9
+  verdict: pending
+decision/haskell/runtime/LawSpecSchema.hs/module/LawSpecSchema/function/witnessPool:
+  digest: sha256:5ff2bb1b3f312d31
+  verdict: pending
+decision/haskell/runtime/LawSpecSchema.hs/module/LawSpecSchema/function/witnessText:
+  digest: sha256:792f2d742773623d
+  verdict: pending
+decision/haskell/runtime/LawSpecSchema.hs/module/LawSpecSchema/function/witnessed:
+  digest: sha256:9f4134142e9e4b40
+  verdict: pending

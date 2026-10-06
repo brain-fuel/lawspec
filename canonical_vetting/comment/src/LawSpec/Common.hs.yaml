@@ -1,0 +1,33 @@
+decision/haskell/src/LawSpec/Common.hs/module/LawSpec.Common:
+  digest: sha256:0994cd963d9fab00
+  verdict: pending
+decision/haskell/src/LawSpec/Common.hs/module/LawSpec.Common/data/Artifact:
+  digest: sha256:9ba89f807067283d
+  verdict: pending
+decision/haskell/src/LawSpec/Common.hs/module/LawSpec.Common/data/Diagnostic:
+  digest: sha256:62485f661b5f4e88
+  verdict: pending
+decision/haskell/src/LawSpec/Common.hs/module/LawSpec.Common/data/Generation:
+  digest: sha256:471af17b9832b489
+  verdict: pending
+decision/haskell/src/LawSpec/Common.hs/module/LawSpec.Common/data/Location:
+  digest: sha256:392bd978b818d530
+  verdict: pending
+decision/haskell/src/LawSpec/Common.hs/module/LawSpec.Common/data/Source:
+  digest: sha256:65ba10977ac5a235
+  verdict: pending
+decision/haskell/src/LawSpec/Common.hs/module/LawSpec.Common/data/Span:
+  digest: sha256:da9d3aa604db0001
+  verdict: pending
+decision/haskell/src/LawSpec/Common.hs/module/LawSpec.Common/function/adapterReference:
+  digest: sha256:b1aa48bd17958a36
+  verdict: pending
+decision/haskell/src/LawSpec/Common.hs/module/LawSpec.Common/function/defaultGeneration:
+  digest: sha256:e105c2dbbeb7df92
+  verdict: pending
+decision/haskell/src/LawSpec/Common.hs/module/LawSpec.Common/function/mapArtifactContent:
+  digest: sha256:58bac060f25f1418
+  verdict: pending
+decision/haskell/src/LawSpec/Common.hs/module/LawSpec.Common/function/pointSpan:
+  digest: sha256:0fbb1f4b423eeab3
+  verdict: pending

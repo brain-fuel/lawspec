@@ -1,0 +1,21 @@
+decision/haskell/src/LawSpec/Actors/Jvm.hs/module/LawSpec.Actors.Jvm:
+  digest: sha256:380d2f8d10cc9786
+  verdict: pending
+decision/haskell/src/LawSpec/Actors/Jvm.hs/module/LawSpec.Actors.Jvm/data/Wire:
+  digest: sha256:0b50cf8697fc013f
+  verdict: pending
+decision/haskell/src/LawSpec/Actors/Jvm.hs/module/LawSpec.Actors.Jvm/function/adapterClass:
+  digest: sha256:fcd650559ac20ef7
+  verdict: pending
+decision/haskell/src/LawSpec/Actors/Jvm.hs/module/LawSpec.Actors.Jvm/function/emit:
+  digest: sha256:2479be8cacb3819f
+  verdict: pending
+decision/haskell/src/LawSpec/Actors/Jvm.hs/module/LawSpec.Actors.Jvm/function/javaSupervisor:
+  digest: sha256:388806ad81183b17
+  verdict: pending
+decision/haskell/src/LawSpec/Actors/Jvm.hs/module/LawSpec.Actors.Jvm/function/seconds:
+  digest: sha256:43b646cb6a9b0e55
+  verdict: pending
+decision/haskell/src/LawSpec/Actors/Jvm.hs/module/LawSpec.Actors.Jvm/function/shorten:
+  digest: sha256:33a96f8b113425e0
+  verdict: pending

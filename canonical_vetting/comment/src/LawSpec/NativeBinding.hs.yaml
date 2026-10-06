@@ -1,0 +1,51 @@
+decision/haskell/src/LawSpec/NativeBinding.hs/module/LawSpec.NativeBinding:
+  digest: sha256:def03775dbda14fa
+  verdict: pending
+decision/haskell/src/LawSpec/NativeBinding.hs/module/LawSpec.NativeBinding/data/Bindings:
+  digest: sha256:60e918d9dacaadcb
+  verdict: pending
+decision/haskell/src/LawSpec/NativeBinding.hs/module/LawSpec.NativeBinding/data/CodecBinding:
+  digest: sha256:2a24cb79da772b8b
+  verdict: pending
+decision/haskell/src/LawSpec/NativeBinding.hs/module/LawSpec.NativeBinding/data/ConstructorBinding:
+  digest: sha256:986e629e288ae24c
+  verdict: pending
+decision/haskell/src/LawSpec/NativeBinding.hs/module/LawSpec.NativeBinding/data/ConstructorStyle:
+  digest: sha256:059d7e6d19ab2b3d
+  verdict: pending
+decision/haskell/src/LawSpec/NativeBinding.hs/module/LawSpec.NativeBinding/data/FieldBinding:
+  digest: sha256:88484c07ff8bd8b5
+  verdict: pending
+decision/haskell/src/LawSpec/NativeBinding.hs/module/LawSpec.NativeBinding/data/GeneratorBinding:
+  digest: sha256:fa6f429dac9becd5
+  verdict: pending
+decision/haskell/src/LawSpec/NativeBinding.hs/module/LawSpec.NativeBinding/data/ResolvedBindings:
+  digest: sha256:1ed387c020773311
+  verdict: pending
+decision/haskell/src/LawSpec/NativeBinding.hs/module/LawSpec.NativeBinding/data/ResolvedConstructorBinding:
+  digest: sha256:d96b390a0cb8a9aa
+  verdict: pending
+decision/haskell/src/LawSpec/NativeBinding.hs/module/LawSpec.NativeBinding/data/ResolvedGeneratorBinding:
+  digest: sha256:258a2f37c4704a5b
+  verdict: pending
+decision/haskell/src/LawSpec/NativeBinding.hs/module/LawSpec.NativeBinding/data/ResolvedTypeBinding:
+  digest: sha256:f2de2d87e5a5d357
+  verdict: pending
+decision/haskell/src/LawSpec/NativeBinding.hs/module/LawSpec.NativeBinding/data/TypeBinding:
+  digest: sha256:fd90d91e48f49fb2
+  verdict: pending
+decision/haskell/src/LawSpec/NativeBinding.hs/module/LawSpec.NativeBinding/function/emptyBindings:
+  digest: sha256:425c3ccaa0a2482e
+  verdict: pending
+decision/haskell/src/LawSpec/NativeBinding.hs/module/LawSpec.NativeBinding/function/reachableGeneratorTypes:
+  digest: sha256:bcda144dbe4ecb9e
+  verdict: pending
+decision/haskell/src/LawSpec/NativeBinding.hs/module/LawSpec.NativeBinding/function/resolveBindings:
+  digest: sha256:8458ee7cd4f4f8b3
+  verdict: pending
+decision/haskell/src/LawSpec/NativeBinding.hs/module/LawSpec.NativeBinding/function/usesMachineRepresentation:
+  digest: sha256:8c7edd94e1e8c427
+  verdict: pending
+decision/haskell/src/LawSpec/NativeBinding.hs/module/LawSpec.NativeBinding/newtype/NativeRef:
+  digest: sha256:6f0bf08985d500d1
+  verdict: pending

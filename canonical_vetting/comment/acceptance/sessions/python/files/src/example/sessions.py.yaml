@@ -1,0 +1,9 @@
+decision/python/acceptance/sessions/python/files/src/example/sessions.py/function/_ask:
+  digest: sha256:ecdb93bb79180fd9
+  verdict: pending
+decision/python/acceptance/sessions/python/files/src/example/sessions.py/function/_manage:
+  digest: sha256:976f4b6e22f28670
+  verdict: pending
+decision/python/acceptance/sessions/python/files/src/example/sessions.py/function/_serve:
+  digest: sha256:353e3e71b358fd6c
+  verdict: pending

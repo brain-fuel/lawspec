@@ -1,0 +1,27 @@
+decision/haskell/src/LawSpec/KotlinExpr.hs/module/LawSpec.KotlinExpr:
+  digest: sha256:c00cb04d5d5434ab
+  verdict: pending
+decision/haskell/src/LawSpec/KotlinExpr.hs/module/LawSpec.KotlinExpr/function/array:
+  digest: sha256:ec8aec8bb3f33fd1
+  verdict: pending
+decision/haskell/src/LawSpec/KotlinExpr.hs/module/LawSpec.KotlinExpr/function/call:
+  digest: sha256:85b1fe35cbf0db3f
+  verdict: pending
+decision/haskell/src/LawSpec/KotlinExpr.hs/module/LawSpec.KotlinExpr/function/checked:
+  digest: sha256:e88b5f8c58326200
+  verdict: pending
+decision/haskell/src/LawSpec/KotlinExpr.hs/module/LawSpec.KotlinExpr/function/codec:
+  digest: sha256:1301df2666b2cd46
+  verdict: pending
+decision/haskell/src/LawSpec/KotlinExpr.hs/module/LawSpec.KotlinExpr/function/quoted:
+  digest: sha256:275781853a2f3375
+  verdict: pending
+decision/haskell/src/LawSpec/KotlinExpr.hs/module/LawSpec.KotlinExpr/function/reference:
+  digest: sha256:8f72f696ea871622
+  verdict: pending
+decision/haskell/src/LawSpec/KotlinExpr.hs/module/LawSpec.KotlinExpr/function/renderExpression:
+  digest: sha256:9d76aa9f3728d69b
+  verdict: pending
+decision/haskell/src/LawSpec/KotlinExpr.hs/module/LawSpec.KotlinExpr/function/scalarLiteral:
+  digest: sha256:fa5ecf7fbe1a4cdd
+  verdict: pending

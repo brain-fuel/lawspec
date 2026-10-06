@@ -1,0 +1,6 @@
+decision/go/examples/native-payments/go/example/payments/domain.go/function/AddFee:
+  digest: sha256:c3f950c9e10a9e15
+  verdict: pending
+decision/go/examples/native-payments/go/example/payments/domain.go/type/CurrencyCode:
+  digest: sha256:8995fdb27744443c
+  verdict: pending

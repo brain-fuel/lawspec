@@ -1,0 +1,27 @@
+decision/haskell/src/LawSpec/Sessions/Web.hs/module/LawSpec.Sessions.Web:
+  digest: sha256:529dc604965f7a2e
+  verdict: pending
+decision/haskell/src/LawSpec/Sessions/Web.hs/module/LawSpec.Sessions.Web/data/End:
+  digest: sha256:b3bdcd284410ff5c
+  verdict: pending
+decision/haskell/src/LawSpec/Sessions/Web.hs/module/LawSpec.Sessions.Web/function/classNames:
+  digest: sha256:b5c2ffd8c037ae07
+  verdict: pending
+decision/haskell/src/LawSpec/Sessions/Web.hs/module/LawSpec.Sessions.Web/function/emit:
+  digest: sha256:a9dec334b58a22fe
+  verdict: pending
+decision/haskell/src/LawSpec/Sessions/Web.hs/module/LawSpec.Sessions.Web/function/ends:
+  digest: sha256:7e6b5c201c8699c8
+  verdict: pending
+decision/haskell/src/LawSpec/Sessions/Web.hs/module/LawSpec.Sessions.Web/function/protocol:
+  digest: sha256:11b9feed7a433bae
+  verdict: pending
+decision/haskell/src/LawSpec/Sessions/Web.hs/module/LawSpec.Sessions.Web/function/specType:
+  digest: sha256:d1231777b4a429f8
+  verdict: pending
+decision/haskell/src/LawSpec/Sessions/Web.hs/module/LawSpec.Sessions.Web/function/startClass:
+  digest: sha256:cf36726219d0ac1c
+  verdict: pending
+decision/haskell/src/LawSpec/Sessions/Web.hs/module/LawSpec.Sessions.Web/function/typeName:
+  digest: sha256:07cc803b75c244a5
+  verdict: pending

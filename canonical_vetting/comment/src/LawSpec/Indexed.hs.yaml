@@ -1,0 +1,48 @@
+decision/haskell/src/LawSpec/Indexed.hs/module/LawSpec.Indexed:
+  digest: sha256:7313cb500948c436
+  verdict: pending
+decision/haskell/src/LawSpec/Indexed.hs/module/LawSpec.Indexed/data/Binding:
+  digest: sha256:a0a63ea7f19b9806
+  verdict: pending
+decision/haskell/src/LawSpec/Indexed.hs/module/LawSpec.Indexed/data/IndexShape:
+  digest: sha256:c5ff479faca5f2db
+  verdict: pending
+decision/haskell/src/LawSpec/Indexed.hs/module/LawSpec.Indexed/data/IndexedConstructor:
+  digest: sha256:62880ad15b156747
+  verdict: pending
+decision/haskell/src/LawSpec/Indexed.hs/module/LawSpec.Indexed/data/IndexedFamily:
+  digest: sha256:f36e403440c2c04a
+  verdict: pending
+decision/haskell/src/LawSpec/Indexed.hs/module/LawSpec.Indexed/function/bindImplicitIndices:
+  digest: sha256:41b8508ce0b7a91f
+  verdict: pending
+decision/haskell/src/LawSpec/Indexed.hs/module/LawSpec.Indexed/function/completeMatches:
+  digest: sha256:45977f5e6073cbb4
+  verdict: pending
+decision/haskell/src/LawSpec/Indexed.hs/module/LawSpec.Indexed/function/elaborateFamilies:
+  digest: sha256:a53b1a597c2dece0
+  verdict: pending
+decision/haskell/src/LawSpec/Indexed.hs/module/LawSpec.Indexed/function/elaborateFamiliesWith:
+  digest: sha256:8b8569480c102960
+  verdict: pending
+decision/haskell/src/LawSpec/Indexed.hs/module/LawSpec.Indexed/function/familyIndex:
+  digest: sha256:64de63867210ec36
+  verdict: pending
+decision/haskell/src/LawSpec/Indexed.hs/module/LawSpec.Indexed/function/familyMeasures:
+  digest: sha256:6b369fc3deab89ed
+  verdict: pending
+decision/haskell/src/LawSpec/Indexed.hs/module/LawSpec.Indexed/function/implicitAt:
+  digest: sha256:01a900d4126f5ef5
+  verdict: pending
+decision/haskell/src/LawSpec/Indexed.hs/module/LawSpec.Indexed/function/indexedRefinementName:
+  digest: sha256:3a55e819903de435
+  verdict: pending
+decision/haskell/src/LawSpec/Indexed.hs/module/LawSpec.Indexed/function/measureName:
+  digest: sha256:f101cb284b5a1a37
+  verdict: pending
+decision/haskell/src/LawSpec/Indexed.hs/module/LawSpec.Indexed/function/naturalRefinementName:
+  digest: sha256:2faecfa039ba7792
+  verdict: pending
+decision/haskell/src/LawSpec/Indexed.hs/module/LawSpec.Indexed/function/usesNatural:
+  digest: sha256:63f4d904f54f7516
+  verdict: pending

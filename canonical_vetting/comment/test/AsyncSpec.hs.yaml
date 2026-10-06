@@ -1,0 +1,9 @@
+decision/haskell/test/AsyncSpec.hs/module/AsyncSpec:
+  digest: sha256:a8e2ffee13e5448e
+  verdict: pending
+decision/haskell/test/AsyncSpec.hs/module/AsyncSpec/function/stub:
+  digest: sha256:97d4dccea5579eb6
+  verdict: pending
+decision/haskell/test/AsyncSpec.hs/module/AsyncSpec/function/test_asyncAdaptersAreMarkedReportedAndBoundToEachTargetsTask:
+  digest: sha256:37ef78f0fd2d281d
+  verdict: pending

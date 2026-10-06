@@ -1,0 +1,6 @@
+decision/haskell/test/ConditionalSpec.hs/module/ConditionalSpec:
+  digest: sha256:fc24358181cd9d12
+  verdict: pending
+decision/haskell/test/ConditionalSpec.hs/module/ConditionalSpec/function/test_conditionalsAreCheckedBranchByBranch:
+  digest: sha256:4a33fb2da47afa72
+  verdict: pending

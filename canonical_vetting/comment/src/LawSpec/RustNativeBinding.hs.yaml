@@ -1,0 +1,21 @@
+decision/haskell/src/LawSpec/RustNativeBinding.hs/module/LawSpec.RustNativeBinding:
+  digest: sha256:2be4c84383fc3dcd
+  verdict: pending
+decision/haskell/src/LawSpec/RustNativeBinding.hs/module/LawSpec.RustNativeBinding/function/convertExpression:
+  digest: sha256:07f29511f7c7dd94
+  verdict: pending
+decision/haskell/src/LawSpec/RustNativeBinding.hs/module/LawSpec.RustNativeBinding/function/emitCall:
+  digest: sha256:22fce9b5ab262409
+  verdict: pending
+decision/haskell/src/LawSpec/RustNativeBinding.hs/module/LawSpec.RustNativeBinding/function/emitConversions:
+  digest: sha256:c251c90c14148aec
+  verdict: pending
+decision/haskell/src/LawSpec/RustNativeBinding.hs/module/LawSpec.RustNativeBinding/function/nativeTypeFor:
+  digest: sha256:3ce23a9b9751fab4
+  verdict: pending
+decision/haskell/src/LawSpec/RustNativeBinding.hs/module/LawSpec.RustNativeBinding/function/nativeTypeWithParameters:
+  digest: sha256:da0a3b06b316730f
+  verdict: pending
+decision/haskell/src/LawSpec/RustNativeBinding.hs/module/LawSpec.RustNativeBinding/function/rustReference:
+  digest: sha256:cf37126cf5bfc20e
+  verdict: pending

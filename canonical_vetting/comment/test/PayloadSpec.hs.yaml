@@ -1,0 +1,6 @@
+decision/haskell/test/PayloadSpec.hs/module/PayloadSpec:
+  digest: sha256:7ff0a6bcaa5c1a6e
+  verdict: pending
+decision/haskell/test/PayloadSpec.hs/module/PayloadSpec/function/test_payloadPredicatesTraverseRecursiveParametersScoped:
+  digest: sha256:582554e88e675c7f
+  verdict: pending

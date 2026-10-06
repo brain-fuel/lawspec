@@ -1,0 +1,9 @@
+decision/haskell/test/FlowSpec.hs/module/FlowSpec:
+  digest: sha256:192c745534c2af91
+  verdict: pending
+decision/haskell/test/FlowSpec.hs/module/FlowSpec/function/ordered:
+  digest: sha256:7e2c9800fb260240
+  verdict: pending
+decision/haskell/test/FlowSpec.hs/module/FlowSpec/function/test_flowTypesThreadEachStateThroughItsCalls:
+  digest: sha256:7e1ccb03480dc46d
+  verdict: pending

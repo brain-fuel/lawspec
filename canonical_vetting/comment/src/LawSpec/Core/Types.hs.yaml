@@ -1,0 +1,72 @@
+decision/haskell/src/LawSpec/Core/Types.hs/module/LawSpec.Core.Types:
+  digest: sha256:2470c7529faedbd7
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Types.hs/module/LawSpec.Core.Types/data/TypeRegistry:
+  digest: sha256:915b5938a47145ff
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Types.hs/module/LawSpec.Core.Types/function/builtinDataDeclarations:
+  digest: sha256:f6942af6ee95a783
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Types.hs/module/LawSpec.Core.Types/function/checkType:
+  digest: sha256:5e7490646bfade92
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Types.hs/module/LawSpec.Core.Types/function/compatibleConstructors:
+  digest: sha256:8ed6750070cb51bc
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Types.hs/module/LawSpec.Core.Types/function/constructorCompatibility:
+  digest: sha256:b4f64db53d924cd9
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Types.hs/module/LawSpec.Core.Types/function/constructorFieldsAt:
+  digest: sha256:5e14946e83592b48
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Types.hs/module/LawSpec.Core.Types/function/constructorFieldsFor:
+  digest: sha256:955309809b79abbb
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Types.hs/module/LawSpec.Core.Types/function/constructorPredicatesFor:
+  digest: sha256:ffaf1ca1cd8d4e29
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Types.hs/module/LawSpec.Core.Types/function/deriveStoredFieldCapabilities:
+  digest: sha256:d3da3d6820b45475
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Types.hs/module/LawSpec.Core.Types/function/equalityRequirements:
+  digest: sha256:8481c23bc9ce0af5
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Types.hs/module/LawSpec.Core.Types/function/freeExistentials:
+  digest: sha256:5191ae0a57e1cb4f
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Types.hs/module/LawSpec.Core.Types/function/generationRequirements:
+  digest: sha256:a889e9d4470683ce
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Types.hs/module/LawSpec.Core.Types/function/handleIn:
+  digest: sha256:a0ca1da75fd198de
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Types.hs/module/LawSpec.Core.Types/function/keyedPrimitive:
+  digest: sha256:146d9ba0dfa2b66e
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Types.hs/module/LawSpec.Core.Types/function/keyedRequirements:
+  digest: sha256:acb55216e4a7e68a
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Types.hs/module/LawSpec.Core.Types/function/kindOf:
+  digest: sha256:226b84d16e867159
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Types.hs/module/LawSpec.Core.Types/function/lookupData:
+  digest: sha256:f029b466225f205e
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Types.hs/module/LawSpec.Core.Types/function/makeRegistry:
+  digest: sha256:154fb0f2006f9474
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Types.hs/module/LawSpec.Core.Types/function/matchType:
+  digest: sha256:af744f2a0fa727c0
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Types.hs/module/LawSpec.Core.Types/function/registryDeclarations:
+  digest: sha256:16220fef657d525c
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Types.hs/module/LawSpec.Core.Types/function/substitute:
+  digest: sha256:fd2f429297f12097
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Types.hs/module/LawSpec.Core.Types/function/validateStrictPositivity:
+  digest: sha256:68ccf8a3489f36ce
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Types.hs/module/LawSpec.Core.Types/function/witnessPool:
+  digest: sha256:62577ec6c4649e6e
+  verdict: pending

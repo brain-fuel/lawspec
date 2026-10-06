@@ -1,0 +1,6 @@
+decision/java/acceptance/workflows/java/files/src/main/java/example/Approvals.java/package/example/class/Approvals/method/approvalErrors:
+  digest: sha256:df4b74e7b8d09e2d
+  verdict: pending
+decision/java/acceptance/workflows/java/files/src/main/java/example/Approvals.java/package/example/class/Approvals/method/approvedQuickly:
+  digest: sha256:0a21988982a5a106
+  verdict: pending

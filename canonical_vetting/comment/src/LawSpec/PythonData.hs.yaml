@@ -1,0 +1,9 @@
+decision/haskell/src/LawSpec/PythonData.hs/module/LawSpec.PythonData:
+  digest: sha256:82294e739f06f34a
+  verdict: pending
+decision/haskell/src/LawSpec/PythonData.hs/module/LawSpec.PythonData/function/emitPythonData:
+  digest: sha256:015497701dc9c588
+  verdict: pending
+decision/haskell/src/LawSpec/PythonData.hs/module/LawSpec.PythonData/function/emitPythonDataWithProfile:
+  digest: sha256:91e951e1c89bc154
+  verdict: pending

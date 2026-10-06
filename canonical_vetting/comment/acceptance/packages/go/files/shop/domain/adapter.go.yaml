@@ -1,0 +1,6 @@
+decision/go/acceptance/packages/go/files/shop/domain/adapter.go:
+  digest: sha256:acd06238afbbf0ad
+  verdict: pending
+decision/go/acceptance/packages/go/files/shop/domain/adapter.go/function/Convert:
+  digest: sha256:3b74233fac17c1d5
+  verdict: pending

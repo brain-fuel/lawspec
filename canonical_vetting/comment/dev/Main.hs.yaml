@@ -1,0 +1,18 @@
+decision/haskell/dev/Main.hs/module/Main:
+  digest: sha256:5b882252eeaa8b4d
+  verdict: pending
+decision/haskell/dev/Main.hs/module/Main/function/boundaries:
+  digest: sha256:67399b8a70079548
+  verdict: pending
+decision/haskell/dev/Main.hs/module/Main/function/integrity:
+  digest: sha256:f11051332120d2cd
+  verdict: pending
+decision/haskell/dev/Main.hs/module/Main/function/render:
+  digest: sha256:4edef1a5ea68398b
+  verdict: pending
+decision/haskell/dev/Main.hs/module/Main/function/stagedCopies:
+  digest: sha256:572976e2c2e46dfb
+  verdict: pending
+decision/haskell/dev/Main.hs/module/Main/function/walk:
+  digest: sha256:2e6a49a337d2633a
+  verdict: pending

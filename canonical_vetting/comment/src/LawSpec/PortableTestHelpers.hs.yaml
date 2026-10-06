@@ -1,0 +1,12 @@
+decision/haskell/src/LawSpec/PortableTestHelpers.hs/module/LawSpec.PortableTestHelpers:
+  digest: sha256:2878fcfdd58f586e
+  verdict: pending
+decision/haskell/src/LawSpec/PortableTestHelpers.hs/module/LawSpec.PortableTestHelpers/function/assertionHelperDoc:
+  digest: sha256:a9dd544d2707d445
+  verdict: pending
+decision/haskell/src/LawSpec/PortableTestHelpers.hs/module/LawSpec.PortableTestHelpers/function/asyncAssertionHelpersDoc:
+  digest: sha256:e3d17db87be7da6d
+  verdict: pending
+decision/haskell/src/LawSpec/PortableTestHelpers.hs/module/LawSpec.PortableTestHelpers/function/dataHelperDoc:
+  digest: sha256:6e1808f1e5c3dac8
+  verdict: pending

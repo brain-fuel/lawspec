@@ -1,0 +1,30 @@
+decision/haskell/src/LawSpec/Imports.hs/module/LawSpec.Imports:
+  digest: sha256:f58dd39839c8d08f
+  verdict: pending
+decision/haskell/src/LawSpec/Imports.hs/module/LawSpec.Imports/data/Exports:
+  digest: sha256:99e0faa045611d31
+  verdict: pending
+decision/haskell/src/LawSpec/Imports.hs/module/LawSpec.Imports/data/Names:
+  digest: sha256:a1c659e2d50e80d9
+  verdict: pending
+decision/haskell/src/LawSpec/Imports.hs/module/LawSpec.Imports/function/closure:
+  digest: sha256:ca07d13bd09563d9
+  verdict: pending
+decision/haskell/src/LawSpec/Imports.hs/module/LawSpec.Imports/function/importScope:
+  digest: sha256:b968ab79492c4fff
+  verdict: pending
+decision/haskell/src/LawSpec/Imports.hs/module/LawSpec.Imports/function/importedDefinitionName:
+  digest: sha256:1fb5a0d046f91927
+  verdict: pending
+decision/haskell/src/LawSpec/Imports.hs/module/LawSpec.Imports/function/portableUnit:
+  digest: sha256:38b14ea2db7b14b8
+  verdict: pending
+decision/haskell/src/LawSpec/Imports.hs/module/LawSpec.Imports/function/resolveImports:
+  digest: sha256:ab9c79037914a226
+  verdict: pending
+decision/haskell/src/LawSpec/Imports.hs/module/LawSpec.Imports/function/unitExports:
+  digest: sha256:cb0d136d92d571fc
+  verdict: pending
+decision/haskell/src/LawSpec/Imports.hs/module/LawSpec.Imports/function/walkUnit:
+  digest: sha256:0b34148f97cd8c00
+  verdict: pending

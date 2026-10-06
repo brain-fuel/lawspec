@@ -1,0 +1,9 @@
+decision/haskell/src/LawSpec/PortableGenerator.hs/module/LawSpec.PortableGenerator:
+  digest: sha256:695340aeb7a9e773
+  verdict: pending
+decision/haskell/src/LawSpec/PortableGenerator.hs/module/LawSpec.PortableGenerator/function/generatorDoc:
+  digest: sha256:cad181c8e299d6c8
+  verdict: pending
+decision/haskell/src/LawSpec/PortableGenerator.hs/module/LawSpec.PortableGenerator/function/generatorDocWithin:
+  digest: sha256:fe797c85818847c5
+  verdict: pending

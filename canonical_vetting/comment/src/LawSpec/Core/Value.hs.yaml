@@ -1,0 +1,51 @@
+decision/haskell/src/LawSpec/Core/Value.hs/module/LawSpec.Core.Value:
+  digest: sha256:53c08035d279c0a0
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Value.hs/module/LawSpec.Core.Value/data/Value:
+  digest: sha256:7e8a72b4cc18234b
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Value.hs/module/LawSpec.Core.Value/data/ValueCheck:
+  digest: sha256:567d7ba92fe6fd04
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Value.hs/module/LawSpec.Core.Value/function/checkValueWith:
+  digest: sha256:9cb9ddc15fe97aa4
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Value.hs/module/LawSpec.Core.Value/function/compareValues:
+  digest: sha256:088bd3a551aaa1b0
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Value.hs/module/LawSpec.Core.Value/function/equalValues:
+  digest: sha256:b56647475fc2f0cc
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Value.hs/module/LawSpec.Core.Value/function/fromScalarValue:
+  digest: sha256:11694e6257689ccb
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Value.hs/module/LawSpec.Core.Value/function/listItems:
+  digest: sha256:19c1405d6b6c2058
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Value.hs/module/LawSpec.Core.Value/function/listValue:
+  digest: sha256:1a44f8ebfb98afbe
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Value.hs/module/LawSpec.Core.Value/function/toScalarValue:
+  digest: sha256:f4cffbe15a528aa9
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Value.hs/module/LawSpec.Core.Value/function/validateValue:
+  digest: sha256:af81a8994caf4279
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Value.hs/module/LawSpec.Core.Value/function/validateValueWith:
+  digest: sha256:2860943315d59d8e
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Value.hs/module/LawSpec.Core.Value/function/valueIndex:
+  digest: sha256:90f53ad04de28794
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Value.hs/module/LawSpec.Core.Value/function/valueType:
+  digest: sha256:55e3ed48640080f1
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Value.hs/module/LawSpec.Core.Value/function/witnessFields:
+  digest: sha256:160a0e7805a300c6
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Value.hs/module/LawSpec.Core.Value/function/witnessKey:
+  digest: sha256:c1f89511950dde76
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Value.hs/module/LawSpec.Core.Value/function/witnessKeys:
+  digest: sha256:68502dbe72721b17
+  verdict: pending

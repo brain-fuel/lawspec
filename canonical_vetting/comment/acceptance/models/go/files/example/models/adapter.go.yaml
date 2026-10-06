@@ -1,0 +1,27 @@
+decision/go/acceptance/models/go/files/example/models/adapter.go:
+  digest: sha256:c06cf36edf0fecd5
+  verdict: pending
+decision/go/acceptance/models/go/files/example/models/adapter.go/function/Decrement:
+  digest: sha256:4143b3186cbc4a92
+  verdict: pending
+decision/go/acceptance/models/go/files/example/models/adapter.go/function/Empty:
+  digest: sha256:83e6807748441eee
+  verdict: pending
+decision/go/acceptance/models/go/files/example/models/adapter.go/function/Increment:
+  digest: sha256:4a3f61b57dd07f72
+  verdict: pending
+decision/go/acceptance/models/go/files/example/models/adapter.go/function/NewCounter:
+  digest: sha256:39afe704ef4ba58c
+  verdict: pending
+decision/go/acceptance/models/go/files/example/models/adapter.go/function/Peek:
+  digest: sha256:3f51f7a1e5b5b80c
+  verdict: pending
+decision/go/acceptance/models/go/files/example/models/adapter.go/function/Pop:
+  digest: sha256:051da301d034a8d4
+  verdict: pending
+decision/go/acceptance/models/go/files/example/models/adapter.go/function/Push:
+  digest: sha256:059933d9e77f5d8b
+  verdict: pending
+decision/go/acceptance/models/go/files/example/models/adapter.go/function/Read:
+  digest: sha256:e2c51a57f2da38cf
+  verdict: pending

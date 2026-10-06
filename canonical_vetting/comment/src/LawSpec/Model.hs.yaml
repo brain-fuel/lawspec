@@ -1,0 +1,42 @@
+decision/haskell/src/LawSpec/Model.hs/module/LawSpec.Model:
+  digest: sha256:2c2deb3c1295c225
+  verdict: pending
+decision/haskell/src/LawSpec/Model.hs/module/LawSpec.Model/data/ConstructorDeclaration:
+  digest: sha256:8d36124175b7f819
+  verdict: pending
+decision/haskell/src/LawSpec/Model.hs/module/LawSpec.Model/data/Import:
+  digest: sha256:6458896cdd75e03e
+  verdict: pending
+decision/haskell/src/LawSpec/Model.hs/module/LawSpec.Model/data/Step:
+  digest: sha256:9dd9a85a9d6c957c
+  verdict: pending
+decision/haskell/src/LawSpec/Model.hs/module/LawSpec.Model/data/TypedExpr:
+  digest: sha256:664b0508d7d579c1
+  verdict: pending
+decision/haskell/src/LawSpec/Model.hs/module/LawSpec.Model/data/Unit:
+  digest: sha256:b6c1ec1dd31fd4d4
+  verdict: pending
+decision/haskell/src/LawSpec/Model.hs/module/LawSpec.Model/function/constructorPayloadPredicates:
+  digest: sha256:493263f8005e2199
+  verdict: pending
+decision/haskell/src/LawSpec/Model.hs/module/LawSpec.Model/function/constructorPredicates:
+  digest: sha256:de2709537268c969
+  verdict: pending
+decision/haskell/src/LawSpec/Model.hs/module/LawSpec.Model/function/firstConclusion:
+  digest: sha256:54b8b496b589beb8
+  verdict: pending
+decision/haskell/src/LawSpec/Model.hs/module/LawSpec.Model/function/functionType:
+  digest: sha256:819548e58b446e74
+  verdict: pending
+decision/haskell/src/LawSpec/Model.hs/module/LawSpec.Model/function/replaceBoundExpr:
+  digest: sha256:57360faadab118df
+  verdict: pending
+decision/haskell/src/LawSpec/Model.hs/module/LawSpec.Model/function/sumPredicates:
+  digest: sha256:4af7b71099b1c702
+  verdict: pending
+decision/haskell/src/LawSpec/Model.hs/module/LawSpec.Model/function/typePredicates:
+  digest: sha256:97e56dddd9d3ce0c
+  verdict: pending
+decision/haskell/src/LawSpec/Model.hs/module/LawSpec.Model/function/unlocated:
+  digest: sha256:82c2170d15c49373
+  verdict: pending

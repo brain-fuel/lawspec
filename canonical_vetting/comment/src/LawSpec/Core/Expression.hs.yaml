@@ -1,0 +1,15 @@
+decision/haskell/src/LawSpec/Core/Expression.hs/module/LawSpec.Core.Expression:
+  digest: sha256:4de78327df1af02b
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Expression.hs/module/LawSpec.Core.Expression/function/operationEvidence:
+  digest: sha256:17fd906d4bf9f4f0
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Expression.hs/module/LawSpec.Core.Expression/function/operationEvidenceWithRegistry:
+  digest: sha256:77f587dd24664b2f
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Expression.hs/module/LawSpec.Core.Expression/function/validateExpression:
+  digest: sha256:134d20641983dfad
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Expression.hs/module/LawSpec.Core.Expression/function/validateExpressionWithRegistry:
+  digest: sha256:330400dd0072ec13
+  verdict: pending

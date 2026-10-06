@@ -1,0 +1,15 @@
+decision/haskell/test/TestManifestSpec.hs/module/TestManifestSpec:
+  digest: sha256:2f58ceaaf588bcbd
+  verdict: pending
+decision/haskell/test/TestManifestSpec.hs/module/TestManifestSpec/function/joined:
+  digest: sha256:56bd017cdce53811
+  verdict: pending
+decision/haskell/test/TestManifestSpec.hs/module/TestManifestSpec/function/named:
+  digest: sha256:594519c31331761f
+  verdict: pending
+decision/haskell/test/TestManifestSpec.hs/module/TestManifestSpec/function/planned:
+  digest: sha256:12d2fdc7f1bbf5b9
+  verdict: pending
+decision/haskell/test/TestManifestSpec.hs/module/TestManifestSpec/function/test_testManifestNamesEveryLawsTestOnEachTarget:
+  digest: sha256:26c96546fcf080c6
+  verdict: pending

@@ -1,0 +1,18 @@
+decision/haskell/src/LawSpec/DataNames.hs/module/LawSpec.DataNames:
+  digest: sha256:cffe00ba58fbb866
+  verdict: pending
+decision/haskell/src/LawSpec/DataNames.hs/module/LawSpec.DataNames/function/caseNames:
+  digest: sha256:dea9765b7c8c292e
+  verdict: pending
+decision/haskell/src/LawSpec/DataNames.hs/module/LawSpec.DataNames/function/flatDataCandidates:
+  digest: sha256:cf3bbb5d93c981ff
+  verdict: pending
+decision/haskell/src/LawSpec/DataNames.hs/module/LawSpec.DataNames/function/isProduct:
+  digest: sha256:072b048e014f320d
+  verdict: pending
+decision/haskell/src/LawSpec/DataNames.hs/module/LawSpec.DataNames/function/productConstructors:
+  digest: sha256:e8cfdce8621aa7fd
+  verdict: pending
+decision/haskell/src/LawSpec/DataNames.hs/module/LawSpec.DataNames/function/qualifiedDataName:
+  digest: sha256:17620e4496ccc59b
+  verdict: pending

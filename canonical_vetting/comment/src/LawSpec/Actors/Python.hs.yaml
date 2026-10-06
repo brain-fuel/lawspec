@@ -1,0 +1,12 @@
+decision/haskell/src/LawSpec/Actors/Python.hs/module/LawSpec.Actors.Python:
+  digest: sha256:db6f9c89805e8ba1
+  verdict: pending
+decision/haskell/src/LawSpec/Actors/Python.hs/module/LawSpec.Actors.Python/function/emit:
+  digest: sha256:3fc3dbbc7d9c8d55
+  verdict: pending
+decision/haskell/src/LawSpec/Actors/Python.hs/module/LawSpec.Actors.Python/function/supervisorClassText:
+  digest: sha256:c9edff2e27fa3a02
+  verdict: pending
+decision/haskell/src/LawSpec/Actors/Python.hs/module/LawSpec.Actors.Python/type/HandlerWire:
+  digest: sha256:573737378965ab84
+  verdict: pending

@@ -1,0 +1,21 @@
+decision/haskell/src/LawSpec/Digest.hs/module/LawSpec.Digest:
+  digest: sha256:ec9289d98cb5addb
+  verdict: pending
+decision/haskell/src/LawSpec/Digest.hs/module/LawSpec.Digest/data/Digest:
+  digest: sha256:9f691ce529365553
+  verdict: pending
+decision/haskell/src/LawSpec/Digest.hs/module/LawSpec.Digest/function/block:
+  digest: sha256:9d525d50d9b03885
+  verdict: pending
+decision/haskell/src/LawSpec/Digest.hs/module/LawSpec.Digest/function/digest:
+  digest: sha256:b71980abb5a5aedc
+  verdict: pending
+decision/haskell/src/LawSpec/Digest.hs/module/LawSpec.Digest/function/digestBytes:
+  digest: sha256:d20f155f08186944
+  verdict: pending
+decision/haskell/src/LawSpec/Digest.hs/module/LawSpec.Digest/function/digestHex:
+  digest: sha256:48fe4e80e997632c
+  verdict: pending
+decision/haskell/src/LawSpec/Digest.hs/module/LawSpec.Digest/function/digestString:
+  digest: sha256:48e9a1c4c57d0d33
+  verdict: pending

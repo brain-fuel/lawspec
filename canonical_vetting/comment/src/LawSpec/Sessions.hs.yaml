@@ -1,0 +1,6 @@
+decision/haskell/src/LawSpec/Sessions.hs/module/LawSpec.Sessions:
+  digest: sha256:c3f3d6455fe664b5
+  verdict: pending
+decision/haskell/src/LawSpec/Sessions.hs/module/LawSpec.Sessions/function/sessionArtifacts:
+  digest: sha256:387c7af0ea87dba7
+  verdict: pending

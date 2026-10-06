@@ -1,0 +1,12 @@
+decision/haskell/src/LawSpec/HaskellDefinitions.hs/module/LawSpec.HaskellDefinitions:
+  digest: sha256:e21d737fad30c8bd
+  verdict: pending
+decision/haskell/src/LawSpec/HaskellDefinitions.hs/module/LawSpec.HaskellDefinitions/function/definitionCalls:
+  digest: sha256:33a1a84e1a06609a
+  verdict: pending
+decision/haskell/src/LawSpec/HaskellDefinitions.hs/module/LawSpec.HaskellDefinitions/function/emitHaskellDefinitions:
+  digest: sha256:3678a266809dfdf8
+  verdict: pending
+decision/haskell/src/LawSpec/HaskellDefinitions.hs/module/LawSpec.HaskellDefinitions/function/emitHaskellDefinitionsWithBindings:
+  digest: sha256:ae8b01c5800af769
+  verdict: pending

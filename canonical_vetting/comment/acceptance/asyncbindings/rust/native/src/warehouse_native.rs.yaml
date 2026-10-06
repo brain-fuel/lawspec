@@ -1,0 +1,6 @@
+decision/rust/acceptance/asyncbindings/rust/native/src/warehouse_native.rs:
+  digest: sha256:025f1862b32d90d9
+  verdict: pending
+decision/rust/acceptance/asyncbindings/rust/native/src/warehouse_native.rs/struct/Shelf:
+  digest: sha256:a785e05ff69c38b1
+  verdict: pending

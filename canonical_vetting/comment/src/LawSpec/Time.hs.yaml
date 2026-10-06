@@ -1,0 +1,48 @@
+decision/haskell/src/LawSpec/Time.hs/module/LawSpec.Time:
+  digest: sha256:62b7f99e53890eab
+  verdict: pending
+decision/haskell/src/LawSpec/Time.hs/module/LawSpec.Time/function/durationArithmetic:
+  digest: sha256:4af0f6db45d0d5f8
+  verdict: pending
+decision/haskell/src/LawSpec/Time.hs/module/LawSpec.Time/function/durationDefinitions:
+  digest: sha256:fea8fb5ad459e25a
+  verdict: pending
+decision/haskell/src/LawSpec/Time.hs/module/LawSpec.Time/function/durationFactor:
+  digest: sha256:bc2845efb772ce82
+  verdict: pending
+decision/haskell/src/LawSpec/Time.hs/module/LawSpec.Time/function/durationLimit:
+  digest: sha256:df133545694c320a
+  verdict: pending
+decision/haskell/src/LawSpec/Time.hs/module/LawSpec.Time/function/durationSuffixes:
+  digest: sha256:902f1cd0977e861d
+  verdict: pending
+decision/haskell/src/LawSpec/Time.hs/module/LawSpec.Time/function/durationType:
+  digest: sha256:e66d87d8c4777b7d
+  verdict: pending
+decision/haskell/src/LawSpec/Time.hs/module/LawSpec.Time/function/durationValue:
+  digest: sha256:eb566ed709cf854b
+  verdict: pending
+decision/haskell/src/LawSpec/Time.hs/module/LawSpec.Time/function/isDurationType:
+  digest: sha256:85370544a6c30d43
+  verdict: pending
+decision/haskell/src/LawSpec/Time.hs/module/LawSpec.Time/function/timeAlias:
+  digest: sha256:53ebd72de0c04970
+  verdict: pending
+decision/haskell/src/LawSpec/Time.hs/module/LawSpec.Time/function/timeOperation:
+  digest: sha256:ec67e288fdd94ac7
+  verdict: pending
+decision/haskell/src/LawSpec/Time.hs/module/LawSpec.Time/function/timeOperations:
+  digest: sha256:a6177c4c643b4c52
+  verdict: pending
+decision/haskell/src/LawSpec/Time.hs/module/LawSpec.Time/function/timeSource:
+  digest: sha256:ee0397c76201eb08
+  verdict: pending
+decision/haskell/src/LawSpec/Time.hs/module/LawSpec.Time/function/timeTypes:
+  digest: sha256:a1d8e461793309d1
+  verdict: pending
+decision/haskell/src/LawSpec/Time.hs/module/LawSpec.Time/function/timeUnit:
+  digest: sha256:715095b307179399
+  verdict: pending
+decision/haskell/src/LawSpec/Time.hs/module/LawSpec.Time/function/usesTime:
+  digest: sha256:97e4918e90ca8c03
+  verdict: pending

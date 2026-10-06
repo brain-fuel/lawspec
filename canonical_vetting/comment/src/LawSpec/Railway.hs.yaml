@@ -1,0 +1,21 @@
+decision/haskell/src/LawSpec/Railway.hs/module/LawSpec.Railway:
+  digest: sha256:908c98fb74d7e2d7
+  verdict: pending
+decision/haskell/src/LawSpec/Railway.hs/module/LawSpec.Railway/function/names:
+  digest: sha256:bcf76edb3878bf72
+  verdict: pending
+decision/haskell/src/LawSpec/Railway.hs/module/LawSpec.Railway/function/railwayExpr:
+  digest: sha256:ba209e2c0733a562
+  verdict: pending
+decision/haskell/src/LawSpec/Railway.hs/module/LawSpec.Railway/function/railwayLaw:
+  digest: sha256:856334a0fa2a8823
+  verdict: pending
+decision/haskell/src/LawSpec/Railway.hs/module/LawSpec.Railway/function/railwayOperators:
+  digest: sha256:d129d343d15abe9d
+  verdict: pending
+decision/haskell/src/LawSpec/Railway.hs/module/LawSpec.Railway/function/railwayUnit:
+  digest: sha256:3cbca9d27c428894
+  verdict: pending
+decision/haskell/src/LawSpec/Railway.hs/module/LawSpec.Railway/function/usesPair:
+  digest: sha256:52c72696dc021a44
+  verdict: pending

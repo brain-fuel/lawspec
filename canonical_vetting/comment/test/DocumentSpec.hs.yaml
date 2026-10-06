@@ -1,0 +1,6 @@
+decision/haskell/test/DocumentSpec.hs/module/DocumentSpec:
+  digest: sha256:9dbe4dd9547e6fb0
+  verdict: pending
+decision/haskell/test/DocumentSpec.hs/module/DocumentSpec/function/test_layoutEngineKeepsGeneratedCodeReadableAndUnchanged:
+  digest: sha256:2681236239ecac71
+  verdict: pending

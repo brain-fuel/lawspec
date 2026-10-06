@@ -1,0 +1,18 @@
+decision/haskell/src/LawSpec/Core/Program.hs/module/LawSpec.Core.Program:
+  digest: sha256:1c27699dd8c39178
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Program.hs/module/LawSpec.Core.Program/data/Act:
+  digest: sha256:6eaf5c307940e305
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Program.hs/module/LawSpec.Core.Program/data/Constant:
+  digest: sha256:9cbe600647944d72
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Program.hs/module/LawSpec.Core.Program/data/Operand:
+  digest: sha256:3d49430301f90d70
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Program.hs/module/LawSpec.Core.Program/data/Program:
+  digest: sha256:d1525d16f7938464
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Program.hs/module/LawSpec.Core.Program/function/programSpec:
+  digest: sha256:8a349805f0a1741c
+  verdict: pending

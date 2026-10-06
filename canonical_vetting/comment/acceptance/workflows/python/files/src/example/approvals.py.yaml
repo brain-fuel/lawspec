@@ -1,0 +1,6 @@
+decision/python/acceptance/workflows/python/files/src/example/approvals.py/function/approvalErrors:
+  digest: sha256:96bef8df0d5f02d3
+  verdict: pending
+decision/python/acceptance/workflows/python/files/src/example/approvals.py/function/approvedQuickly:
+  digest: sha256:a8eac23e1db0db84
+  verdict: pending

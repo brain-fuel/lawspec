@@ -1,0 +1,45 @@
+decision/haskell/src/LawSpec/IndexTerm.hs/module/LawSpec.IndexTerm:
+  digest: sha256:dd42f95b604c6a4d
+  verdict: pending
+decision/haskell/src/LawSpec/IndexTerm.hs/module/LawSpec.IndexTerm/data/ConstructorIndex:
+  digest: sha256:9edd30bbf400eb9b
+  verdict: pending
+decision/haskell/src/LawSpec/IndexTerm.hs/module/LawSpec.IndexTerm/data/FamilyIndex:
+  digest: sha256:07d96d42b12ecf20
+  verdict: pending
+decision/haskell/src/LawSpec/IndexTerm.hs/module/LawSpec.IndexTerm/data/IndexGuard:
+  digest: sha256:8b3e5319343a5fce
+  verdict: pending
+decision/haskell/src/LawSpec/IndexTerm.hs/module/LawSpec.IndexTerm/data/IndexOperation:
+  digest: sha256:23b162c23abb172d
+  verdict: pending
+decision/haskell/src/LawSpec/IndexTerm.hs/module/LawSpec.IndexTerm/data/IndexRelation:
+  digest: sha256:c2e3ac2b707cd5f9
+  verdict: pending
+decision/haskell/src/LawSpec/IndexTerm.hs/module/LawSpec.IndexTerm/data/IndexTerm:
+  digest: sha256:9f6874620647783b
+  verdict: pending
+decision/haskell/src/LawSpec/IndexTerm.hs/module/LawSpec.IndexTerm/function/constructorIndexTexts:
+  digest: sha256:8626768cddb48a32
+  verdict: pending
+decision/haskell/src/LawSpec/IndexTerm.hs/module/LawSpec.IndexTerm/function/evaluateIndex:
+  digest: sha256:cf1a7a2188ea20c6
+  verdict: pending
+decision/haskell/src/LawSpec/IndexTerm.hs/module/LawSpec.IndexTerm/function/guardHolds:
+  digest: sha256:47ac8da3d6ebbb93
+  verdict: pending
+decision/haskell/src/LawSpec/IndexTerm.hs/module/LawSpec.IndexTerm/function/indexGuardText:
+  digest: sha256:6dfe8a7c4ba8bea3
+  verdict: pending
+decision/haskell/src/LawSpec/IndexTerm.hs/module/LawSpec.IndexTerm/function/indexOperationName:
+  digest: sha256:ec9843dccb7dcaaf
+  verdict: pending
+decision/haskell/src/LawSpec/IndexTerm.hs/module/LawSpec.IndexTerm/function/indexTermText:
+  digest: sha256:f3106fbdf2d17f22
+  verdict: pending
+decision/haskell/src/LawSpec/IndexTerm.hs/module/LawSpec.IndexTerm/function/subtractionGuards:
+  digest: sha256:8edb4f0b695551c1
+  verdict: pending
+decision/haskell/src/LawSpec/IndexTerm.hs/module/LawSpec.IndexTerm/function/termFields:
+  digest: sha256:5828348c482278a7
+  verdict: pending

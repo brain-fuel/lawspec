@@ -1,0 +1,30 @@
+decision/haskell/src/LawSpec/Sessions/Jvm.hs/module/LawSpec.Sessions.Jvm:
+  digest: sha256:2071a13014388775
+  verdict: pending
+decision/haskell/src/LawSpec/Sessions/Jvm.hs/module/LawSpec.Sessions.Jvm/data/Part:
+  digest: sha256:98e31cef105b8a88
+  verdict: pending
+decision/haskell/src/LawSpec/Sessions/Jvm.hs/module/LawSpec.Sessions.Jvm/data/Step:
+  digest: sha256:cce110ef46e52cb1
+  verdict: pending
+decision/haskell/src/LawSpec/Sessions/Jvm.hs/module/LawSpec.Sessions.Jvm/function/classNames:
+  digest: sha256:1a39ff1c386c1928
+  verdict: pending
+decision/haskell/src/LawSpec/Sessions/Jvm.hs/module/LawSpec.Sessions.Jvm/function/emit:
+  digest: sha256:a9dec334b58a22fe
+  verdict: pending
+decision/haskell/src/LawSpec/Sessions/Jvm.hs/module/LawSpec.Sessions.Jvm/function/endSteps:
+  digest: sha256:91fd30f0a90337ee
+  verdict: pending
+decision/haskell/src/LawSpec/Sessions/Jvm.hs/module/LawSpec.Sessions.Jvm/function/firstStart:
+  digest: sha256:e5240037e80c6896
+  verdict: pending
+decision/haskell/src/LawSpec/Sessions/Jvm.hs/module/LawSpec.Sessions.Jvm/function/sessionOf:
+  digest: sha256:24255fe91aa9cf21
+  verdict: pending
+decision/haskell/src/LawSpec/Sessions/Jvm.hs/module/LawSpec.Sessions.Jvm/function/shorten:
+  digest: sha256:33a96f8b113425e0
+  verdict: pending
+decision/haskell/src/LawSpec/Sessions/Jvm.hs/module/LawSpec.Sessions.Jvm/function/startClass:
+  digest: sha256:8df3b300da016736
+  verdict: pending

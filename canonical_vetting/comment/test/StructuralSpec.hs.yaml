@@ -1,0 +1,6 @@
+decision/haskell/test/StructuralSpec.hs/module/StructuralSpec:
+  digest: sha256:de533275f772efa6
+  verdict: pending
+decision/haskell/test/StructuralSpec.hs/module/StructuralSpec/function/test_structuralTypesHaveOneRegistryAndNativeDeclarations:
+  digest: sha256:4111d3afa5e8a092
+  verdict: pending

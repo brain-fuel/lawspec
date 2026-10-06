@@ -1,0 +1,12 @@
+decision/typescript/acceptance/resilience/typescript/files/src/example/resilience.ts/function/compensationsFor:
+  digest: sha256:617c31c35e317216
+  verdict: pending
+decision/typescript/acceptance/resilience/typescript/files/src/example/resilience.ts/function/limitedAt:
+  digest: sha256:edd61e81615677e8
+  verdict: pending
+decision/typescript/acceptance/resilience/typescript/files/src/example/resilience.ts/function/quoteHedged:
+  digest: sha256:0c0865177776235e
+  verdict: pending
+decision/typescript/acceptance/resilience/typescript/files/src/example/resilience.ts/function/quoteTimedOut:
+  digest: sha256:4e8af0c816e20c23
+  verdict: pending

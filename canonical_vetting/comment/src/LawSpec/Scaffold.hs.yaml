@@ -1,0 +1,18 @@
+decision/haskell/src/LawSpec/Scaffold.hs/module/LawSpec.Scaffold:
+  digest: sha256:0be1062f188b5a68
+  verdict: pending
+decision/haskell/src/LawSpec/Scaffold.hs/module/LawSpec.Scaffold/data/Json:
+  digest: sha256:b266b2f993888de5
+  verdict: pending
+decision/haskell/src/LawSpec/Scaffold.hs/module/LawSpec.Scaffold/function/scaffoldFiles:
+  digest: sha256:666f286d6e97b25b
+  verdict: pending
+decision/haskell/src/LawSpec/Scaffold.hs/module/LawSpec.Scaffold/function/scaffoldTargets:
+  digest: sha256:dda4a33bf2068c37
+  verdict: pending
+decision/haskell/src/LawSpec/Scaffold.hs/module/LawSpec.Scaffold/function/setupAdvice:
+  digest: sha256:c33f5bf5a1f21e8e
+  verdict: pending
+decision/haskell/src/LawSpec/Scaffold.hs/module/LawSpec.Scaffold/function/testCommand:
+  digest: sha256:58bc6e9262f91b99
+  verdict: pending

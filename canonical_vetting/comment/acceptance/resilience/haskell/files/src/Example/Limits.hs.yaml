@@ -1,0 +1,6 @@
+decision/haskell/acceptance/resilience/haskell/files/src/Example/Limits.hs/module/Example.Limits/function/fetchQuote:
+  digest: sha256:3756c5d4ef4a3550
+  verdict: pending
+decision/haskell/acceptance/resilience/haskell/files/src/Example/Limits.hs/module/Example.Limits/function/hedgeQuote:
+  digest: sha256:92e070d4ffd53fa4
+  verdict: pending

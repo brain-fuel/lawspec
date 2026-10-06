@@ -1,0 +1,24 @@
+decision/haskell/src/LawSpec/Sessions/Python.hs/module/LawSpec.Sessions.Python:
+  digest: sha256:e88a3ee85ea28fad
+  verdict: pending
+decision/haskell/src/LawSpec/Sessions/Python.hs/module/LawSpec.Sessions.Python/data/Position:
+  digest: sha256:d062fec350c7ded4
+  verdict: pending
+decision/haskell/src/LawSpec/Sessions/Python.hs/module/LawSpec.Sessions.Python/function/delegated:
+  digest: sha256:60123a7a1dc60fc3
+  verdict: pending
+decision/haskell/src/LawSpec/Sessions/Python.hs/module/LawSpec.Sessions.Python/function/emit:
+  digest: sha256:a9dec334b58a22fe
+  verdict: pending
+decision/haskell/src/LawSpec/Sessions/Python.hs/module/LawSpec.Sessions.Python/function/positions:
+  digest: sha256:b2c28b97079542ec
+  verdict: pending
+decision/haskell/src/LawSpec/Sessions/Python.hs/module/LawSpec.Sessions.Python/function/pythonSessions:
+  digest: sha256:d1d6dd3ab651392c
+  verdict: pending
+decision/haskell/src/LawSpec/Sessions/Python.hs/module/LawSpec.Sessions.Python/function/startClass:
+  digest: sha256:c3f1cf3ce0778d55
+  verdict: pending
+decision/haskell/src/LawSpec/Sessions/Python.hs/module/LawSpec.Sessions.Python/function/typeName:
+  digest: sha256:a17dc78192b30ca5
+  verdict: pending

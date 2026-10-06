@@ -1,0 +1,9 @@
+decision/haskell/src/LawSpec/JavaProperties.hs/module/LawSpec.JavaProperties:
+  digest: sha256:cd244eab4dab181f
+  verdict: pending
+decision/haskell/src/LawSpec/JavaProperties.hs/module/LawSpec.JavaProperties/data/Config:
+  digest: sha256:a8f68307a9f40745
+  verdict: pending
+decision/haskell/src/LawSpec/JavaProperties.hs/module/LawSpec.JavaProperties/function/emitTests:
+  digest: sha256:804327a0a1d7b444
+  verdict: pending

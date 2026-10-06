@@ -1,0 +1,12 @@
+decision/haskell/src/LawSpec/Public.hs/module/LawSpec.Public:
+  digest: sha256:ff17cc3c007ffadc
+  verdict: pending
+decision/haskell/src/LawSpec/Public.hs/module/LawSpec.Public/function/expressionView:
+  digest: sha256:992b723ec35c9e22
+  verdict: pending
+decision/haskell/src/LawSpec/Public.hs/module/LawSpec.Public/function/programView:
+  digest: sha256:6509e208f89b6495
+  verdict: pending
+decision/haskell/src/LawSpec/Public.hs/module/LawSpec.Public/function/typeView:
+  digest: sha256:f248da7562ab7c7b
+  verdict: pending

@@ -1,0 +1,6 @@
+decision/java/acceptance/resilience/java/files/src/main/java/example/Limits.java/package/example/class/Limits/method/fetchQuote:
+  digest: sha256:3756c5d4ef4a3550
+  verdict: pending
+decision/java/acceptance/resilience/java/files/src/main/java/example/Limits.java/package/example/class/Limits/method/hedgeQuote:
+  digest: sha256:92e070d4ffd53fa4
+  verdict: pending

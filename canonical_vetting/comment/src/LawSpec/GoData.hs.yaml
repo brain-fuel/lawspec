@@ -1,0 +1,60 @@
+decision/haskell/src/LawSpec/GoData.hs/module/LawSpec.GoData:
+  digest: sha256:df563ebdd34ce862
+  verdict: pending
+decision/haskell/src/LawSpec/GoData.hs/module/LawSpec.GoData/function/emitGoCodecs:
+  digest: sha256:a35325f21ce6f8d8
+  verdict: pending
+decision/haskell/src/LawSpec/GoData.hs/module/LawSpec.GoData/function/emitGoData:
+  digest: sha256:f8ce7fc0c3052e9e
+  verdict: pending
+decision/haskell/src/LawSpec/GoData.hs/module/LawSpec.GoData/function/emitGoNativeCodecs:
+  digest: sha256:e5e96ee24eebf142
+  verdict: pending
+decision/haskell/src/LawSpec/GoData.hs/module/LawSpec.GoData/function/emitGoSchema:
+  digest: sha256:015497701dc9c588
+  verdict: pending
+decision/haskell/src/LawSpec/GoData.hs/module/LawSpec.GoData/function/emitGoSchemaWithProfile:
+  digest: sha256:bd53028f44c6ef8f
+  verdict: pending
+decision/haskell/src/LawSpec/GoData.hs/module/LawSpec.GoData/function/goCodec:
+  digest: sha256:e5158ad69ec1617a
+  verdict: pending
+decision/haskell/src/LawSpec/GoData.hs/module/LawSpec.GoData/function/goCodecWithContext:
+  digest: sha256:1e92e8390af41242
+  verdict: pending
+decision/haskell/src/LawSpec/GoData.hs/module/LawSpec.GoData/function/goDataType:
+  digest: sha256:be0f528ddb6e8aa3
+  verdict: pending
+decision/haskell/src/LawSpec/GoData.hs/module/LawSpec.GoData/function/goEmittedNames:
+  digest: sha256:b77b875c49f9dda8
+  verdict: pending
+decision/haskell/src/LawSpec/GoData.hs/module/LawSpec.GoData/function/goGeneratedNames:
+  digest: sha256:0b47f4688091722e
+  verdict: pending
+decision/haskell/src/LawSpec/GoData.hs/module/LawSpec.GoData/function/goNativeCodec:
+  digest: sha256:21272d77ed8fa2b5
+  verdict: pending
+decision/haskell/src/LawSpec/GoData.hs/module/LawSpec.GoData/function/goNativeTypeWithParameters:
+  digest: sha256:033edbc32473d259
+  verdict: pending
+decision/haskell/src/LawSpec/GoData.hs/module/LawSpec.GoData/function/handleType:
+  digest: sha256:793cb0aecd5ff321
+  verdict: pending
+decision/haskell/src/LawSpec/GoData.hs/module/LawSpec.GoData/function/identifier:
+  digest: sha256:ae248764d1779056
+  verdict: pending
+decision/haskell/src/LawSpec/GoData.hs/module/LawSpec.GoData/function/mentionsAny:
+  digest: sha256:0abf1200208b1026
+  verdict: pending
+decision/haskell/src/LawSpec/GoData.hs/module/LawSpec.GoData/function/native:
+  digest: sha256:551a630633b69be7
+  verdict: pending
+decision/haskell/src/LawSpec/GoData.hs/module/LawSpec.GoData/function/q:
+  digest: sha256:8234532474b2570d
+  verdict: pending
+decision/haskell/src/LawSpec/GoData.hs/module/LawSpec.GoData/function/replaceKeys:
+  digest: sha256:c4cb6a2beade8337
+  verdict: pending
+decision/haskell/src/LawSpec/GoData.hs/module/LawSpec.GoData/function/validateGoBindings:
+  digest: sha256:f02d2cfe1353f9fc
+  verdict: pending

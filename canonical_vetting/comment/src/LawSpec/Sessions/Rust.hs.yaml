@@ -1,0 +1,36 @@
+decision/haskell/src/LawSpec/Sessions/Rust.hs/module/LawSpec.Sessions.Rust:
+  digest: sha256:3b273855652d5a54
+  verdict: pending
+decision/haskell/src/LawSpec/Sessions/Rust.hs/module/LawSpec.Sessions.Rust/function/delegatedType:
+  digest: sha256:377404d764d2c085
+  verdict: pending
+decision/haskell/src/LawSpec/Sessions/Rust.hs/module/LawSpec.Sessions.Rust/function/describe:
+  digest: sha256:55acd805c7eac085
+  verdict: pending
+decision/haskell/src/LawSpec/Sessions/Rust.hs/module/LawSpec.Sessions.Rust/function/emit:
+  digest: sha256:a9dec334b58a22fe
+  verdict: pending
+decision/haskell/src/LawSpec/Sessions/Rust.hs/module/LawSpec.Sessions.Rust/function/endModule:
+  digest: sha256:746b049de93e01f3
+  verdict: pending
+decision/haskell/src/LawSpec/Sessions/Rust.hs/module/LawSpec.Sessions.Rust/function/moduleName:
+  digest: sha256:2b3ca88ca4a1f430
+  verdict: pending
+decision/haskell/src/LawSpec/Sessions/Rust.hs/module/LawSpec.Sessions.Rust/function/names:
+  digest: sha256:16d968b94d0c810d
+  verdict: pending
+decision/haskell/src/LawSpec/Sessions/Rust.hs/module/LawSpec.Sessions.Rust/function/protocolModule:
+  digest: sha256:eae63001d4812159
+  verdict: pending
+decision/haskell/src/LawSpec/Sessions/Rust.hs/module/LawSpec.Sessions.Rust/function/start:
+  digest: sha256:53068e0f2826dd65
+  verdict: pending
+decision/haskell/src/LawSpec/Sessions/Rust.hs/module/LawSpec.Sessions.Rust/function/typeName:
+  digest: sha256:d68eccceee615c2e
+  verdict: pending
+decision/haskell/src/LawSpec/Sessions/Rust.hs/module/LawSpec.Sessions.Rust/function/valueType:
+  digest: sha256:85b6139dca69914d
+  verdict: pending
+decision/haskell/src/LawSpec/Sessions/Rust.hs/module/LawSpec.Sessions.Rust/function/valueWords:
+  digest: sha256:2d4cdeb2c33533f0
+  verdict: pending

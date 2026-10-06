@@ -1,0 +1,6 @@
+decision/haskell/test/SourceDataSpec.hs/module/SourceDataSpec:
+  digest: sha256:2b635fee3bbe74e3
+  verdict: pending
+decision/haskell/test/SourceDataSpec.hs/module/SourceDataSpec/function/test_sourceDataRefinementsLowerThroughNestedTypes:
+  digest: sha256:f5511187e0fbf6ce
+  verdict: pending

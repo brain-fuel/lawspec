@@ -1,0 +1,15 @@
+decision/javascript/runtime/lawspec_schema.mjs:
+  digest: sha256:207b4da5b3c623d4
+  verdict: pending
+decision/javascript/runtime/lawspec_schema.mjs/class/Schema:
+  digest: sha256:80610f08382888c4
+  verdict: pending
+decision/javascript/runtime/lawspec_schema.mjs/class/Schema/method/fromNative:
+  digest: sha256:2ffe2b3b3becd898
+  verdict: pending
+decision/javascript/runtime/lawspec_schema.mjs/class/Schema/method/toNative:
+  digest: sha256:eb270131b4879e0b
+  verdict: pending
+decision/javascript/runtime/lawspec_schema.mjs/class/Schema/method/validate:
+  digest: sha256:75fc95a5e70eafc4
+  verdict: pending

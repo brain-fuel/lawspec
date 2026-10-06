@@ -1,0 +1,33 @@
+decision/go/acceptance/workflows/go/files/example/workflows/adapter.go:
+  digest: sha256:acd06238afbbf0ad
+  verdict: pending
+decision/go/acceptance/workflows/go/files/example/workflows/adapter.go/function/Audit:
+  digest: sha256:18c6ee02b124760c
+  verdict: pending
+decision/go/acceptance/workflows/go/files/example/workflows/adapter.go/function/CheckAge:
+  digest: sha256:b652a4484d21237f
+  verdict: pending
+decision/go/acceptance/workflows/go/files/example/workflows/adapter.go/function/CheckCredit:
+  digest: sha256:97970046d067da6b
+  verdict: pending
+decision/go/acceptance/workflows/go/files/example/workflows/adapter.go/function/CheckName:
+  digest: sha256:293d41a5fbfd4a89
+  verdict: pending
+decision/go/acceptance/workflows/go/files/example/workflows/adapter.go/function/CheckStock:
+  digest: sha256:b456dbc1df99da2d
+  verdict: pending
+decision/go/acceptance/workflows/go/files/example/workflows/adapter.go/function/Finished:
+  digest: sha256:5ba839052d513ffe
+  verdict: pending
+decision/go/acceptance/workflows/go/files/example/workflows/adapter.go/function/OpenAccount:
+  digest: sha256:cfd160c6dae5fee0
+  verdict: pending
+decision/go/acceptance/workflows/go/files/example/workflows/adapter.go/function/ResetFinished:
+  digest: sha256:b1f1d1c221533945
+  verdict: pending
+decision/go/acceptance/workflows/go/files/example/workflows/adapter.go/function/Waitlist:
+  digest: sha256:9eef7a97cf0af527
+  verdict: pending
+decision/go/acceptance/workflows/go/files/example/workflows/adapter.go/group/0:
+  digest: sha256:28cc52e1222fae95
+  verdict: pending

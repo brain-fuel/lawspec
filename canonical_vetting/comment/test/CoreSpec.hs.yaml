@@ -1,0 +1,6 @@
+decision/haskell/test/CoreSpec.hs/module/CoreSpec:
+  digest: sha256:b194362b35c68f4d
+  verdict: pending
+decision/haskell/test/CoreSpec.hs/module/CoreSpec/function/test_typedCoreIsValidatedIndependentlyOfInference:
+  digest: sha256:0f700890a7241d6d
+  verdict: pending

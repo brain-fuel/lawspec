@@ -1,0 +1,33 @@
+decision/haskell/acceptance/Main.hs/module/Main:
+  digest: sha256:467556e55e471bea
+  verdict: pending
+decision/haskell/acceptance/Main.hs/module/Main/data/Mutant:
+  digest: sha256:74e7d9b0f0aa7c33
+  verdict: pending
+decision/haskell/acceptance/Main.hs/module/Main/function/architectureMismatch:
+  digest: sha256:7c61fb3af9a28424
+  verdict: pending
+decision/haskell/acceptance/Main.hs/module/Main/function/checkDisk:
+  digest: sha256:c8a196aaf93ee343
+  verdict: pending
+decision/haskell/acceptance/Main.hs/module/Main/function/conformance:
+  digest: sha256:0a0f8ea6cbefdd20
+  verdict: pending
+decision/haskell/acceptance/Main.hs/module/Main/function/harnessInputs:
+  digest: sha256:853f47dd95bba308
+  verdict: pending
+decision/haskell/acceptance/Main.hs/module/Main/function/loadPackage:
+  digest: sha256:219fee62abca117f
+  verdict: pending
+decision/haskell/acceptance/Main.hs/module/Main/function/parseMutant:
+  digest: sha256:483f99cdef430a05
+  verdict: pending
+decision/haskell/acceptance/Main.hs/module/Main/function/plan:
+  digest: sha256:5d058f07140da099
+  verdict: pending
+decision/haskell/acceptance/Main.hs/module/Main/function/runSuite:
+  digest: sha256:76c5d9d31d241584
+  verdict: pending
+decision/haskell/acceptance/Main.hs/module/Main/function/suiteStubs:
+  digest: sha256:8b374a68b8a9c0b1
+  verdict: pending

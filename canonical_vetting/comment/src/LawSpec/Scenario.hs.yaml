@@ -1,0 +1,42 @@
+decision/haskell/src/LawSpec/Scenario.hs/module/LawSpec.Scenario:
+  digest: sha256:e9bc5d9766d30670
+  verdict: pending
+decision/haskell/src/LawSpec/Scenario.hs/module/LawSpec.Scenario/data/Argument:
+  digest: sha256:66d98e053f96e774
+  verdict: pending
+decision/haskell/src/LawSpec/Scenario.hs/module/LawSpec.Scenario/data/Holding:
+  digest: sha256:e6c59f84057321c7
+  verdict: pending
+decision/haskell/src/LawSpec/Scenario.hs/module/LawSpec.Scenario/data/Ref:
+  digest: sha256:e956e6cfd7e4e914
+  verdict: pending
+decision/haskell/src/LawSpec/Scenario.hs/module/LawSpec.Scenario/data/Scenario:
+  digest: sha256:5be750c8af5b592a
+  verdict: pending
+decision/haskell/src/LawSpec/Scenario.hs/module/LawSpec.Scenario/data/Statement:
+  digest: sha256:92eef372e7021386
+  verdict: pending
+decision/haskell/src/LawSpec/Scenario.hs/module/LawSpec.Scenario/function/channelsIn:
+  digest: sha256:63ceac7596d25296
+  verdict: pending
+decision/haskell/src/LawSpec/Scenario.hs/module/LawSpec.Scenario/function/checkScenarios:
+  digest: sha256:420a0396c5123b9f
+  verdict: pending
+decision/haskell/src/LawSpec/Scenario.hs/module/LawSpec.Scenario/function/collectPars:
+  digest: sha256:fe3f4baaa6afdc34
+  verdict: pending
+decision/haskell/src/LawSpec/Scenario.hs/module/LawSpec.Scenario/function/dual:
+  digest: sha256:ae1c3837a2b1d209
+  verdict: pending
+decision/haskell/src/LawSpec/Scenario.hs/module/LawSpec.Scenario/function/findCycle:
+  digest: sha256:3bba8cb0ef39f7ee
+  verdict: pending
+decision/haskell/src/LawSpec/Scenario.hs/module/LawSpec.Scenario/function/located:
+  digest: sha256:47e2559e6b8f945e
+  verdict: pending
+decision/haskell/src/LawSpec/Scenario.hs/module/LawSpec.Scenario/function/mentioned:
+  digest: sha256:ee28b118a52ea19f
+  verdict: pending
+decision/haskell/src/LawSpec/Scenario.hs/module/LawSpec.Scenario/function/toProgram:
+  digest: sha256:f754fc748431c8b5
+  verdict: pending

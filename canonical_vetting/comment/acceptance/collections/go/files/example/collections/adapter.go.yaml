@@ -1,0 +1,21 @@
+decision/go/acceptance/collections/go/files/example/collections/adapter.go:
+  digest: sha256:acd06238afbbf0ad
+  verdict: pending
+decision/go/acceptance/collections/go/files/example/collections/adapter.go/function/Dedupe:
+  digest: sha256:c7503a9cba484a15
+  verdict: pending
+decision/go/acceptance/collections/go/files/example/collections/adapter.go/function/DistinctRows:
+  digest: sha256:2234d5256165f1b5
+  verdict: pending
+decision/go/acceptance/collections/go/files/example/collections/adapter.go/function/Fifo:
+  digest: sha256:32815fed7ff9e2a0
+  verdict: pending
+decision/go/acceptance/collections/go/files/example/collections/adapter.go/function/Lifo:
+  digest: sha256:add1abf94abb90ff
+  verdict: pending
+decision/go/acceptance/collections/go/files/example/collections/adapter.go/function/Rotate:
+  digest: sha256:1faa7acf66044b0d
+  verdict: pending
+decision/go/acceptance/collections/go/files/example/collections/adapter.go/function/WordCounts:
+  digest: sha256:1f2ddc12b48947cb
+  verdict: pending

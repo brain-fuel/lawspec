@@ -1,0 +1,75 @@
+decision/go/runtime/lawspec_schema.go:
+  digest: sha256:f8c67acf29adc2f5
+  verdict: pending
+decision/go/runtime/lawspec_schema.go/function/lsEvalSchemaIndex:
+  digest: sha256:fc57834fe5b27925
+  verdict: pending
+decision/go/runtime/lawspec_schema.go/function/lsFieldType:
+  digest: sha256:3bb6be23d50ba87d
+  verdict: pending
+decision/go/runtime/lawspec_schema.go/function/lsFieldTypeWith:
+  digest: sha256:fa3115d8d166aeb8
+  verdict: pending
+decision/go/runtime/lawspec_schema.go/function/lsNewSchemaWithContracts:
+  digest: sha256:53830f2290960697
+  verdict: pending
+decision/go/runtime/lawspec_schema.go/function/lsParseWitness:
+  digest: sha256:c5ac23f48aad9797
+  verdict: pending
+decision/go/runtime/lawspec_schema.go/function/lsRefine:
+  digest: sha256:abff22083024ed3c
+  verdict: pending
+decision/go/runtime/lawspec_schema.go/function/lsWitnessInstances:
+  digest: sha256:d346b2a5db64314f
+  verdict: pending
+decision/go/runtime/lawspec_schema.go/function/lsWitnessKey:
+  digest: sha256:fae151eee7fc1cc7
+  verdict: pending
+decision/go/runtime/lawspec_schema.go/function/lsWitnessKeys:
+  digest: sha256:5f51afcae4e65236
+  verdict: pending
+decision/go/runtime/lawspec_schema.go/function/lsWitnessTail:
+  digest: sha256:7c7619ec638e6967
+  verdict: pending
+decision/go/runtime/lawspec_schema.go/function/lsWitnessText:
+  digest: sha256:bf1f894f666794fe
+  verdict: pending
+decision/go/runtime/lawspec_schema.go/function/lsWitnessed:
+  digest: sha256:1717bd27075272e1
+  verdict: pending
+decision/go/runtime/lawspec_schema.go/method/accepts:
+  digest: sha256:48cfded52dae02a8
+  verdict: pending
+decision/go/runtime/lawspec_schema.go/method/allPayloads:
+  digest: sha256:8b4cb63f1958aa56
+  verdict: pending
+decision/go/runtime/lawspec_schema.go/method/checkIndices:
+  digest: sha256:017e6e5970a0578a
+  verdict: pending
+decision/go/runtime/lawspec_schema.go/method/checkNativeProfile:
+  digest: sha256:624c546ba62adb1a
+  verdict: pending
+decision/go/runtime/lawspec_schema.go/method/shallow:
+  digest: sha256:05cc7de97f43f906
+  verdict: pending
+decision/go/runtime/lawspec_schema.go/type/lawSpecConstructorSchema:
+  digest: sha256:047151c99580dd62
+  verdict: pending
+decision/go/runtime/lawspec_schema.go/type/lawSpecConstructorSchema/field/witnesses:
+  digest: sha256:135fed97584b24c4
+  verdict: pending
+decision/go/runtime/lawspec_schema.go/type/lawSpecFieldPredicate:
+  digest: sha256:2ca6063a12ec1ef7
+  verdict: pending
+decision/go/runtime/lawspec_schema.go/type/lawSpecPathKey:
+  digest: sha256:0dfc2ccb9dc127d4
+  verdict: pending
+decision/go/runtime/lawspec_schema.go/type/lawSpecPayloadPlan:
+  digest: sha256:f6a0baca138a1a0d
+  verdict: pending
+decision/go/runtime/lawspec_schema.go/type/lawSpecSchemaIndex:
+  digest: sha256:d973ca8d3b62866b
+  verdict: pending
+decision/go/runtime/lawspec_schema.go/var/lsWitnessPool:
+  digest: sha256:be891a3c050bbbff
+  verdict: pending

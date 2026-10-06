@@ -1,0 +1,36 @@
+decision/haskell/src/LawSpec/PythonExpr.hs/module/LawSpec.PythonExpr:
+  digest: sha256:f2a6adc64ce7e936
+  verdict: pending
+decision/haskell/src/LawSpec/PythonExpr.hs/module/LawSpec.PythonExpr/function/array:
+  digest: sha256:ec8aec8bb3f33fd1
+  verdict: pending
+decision/haskell/src/LawSpec/PythonExpr.hs/module/LawSpec.PythonExpr/function/call:
+  digest: sha256:78359dc48019ee20
+  verdict: pending
+decision/haskell/src/LawSpec/PythonExpr.hs/module/LawSpec.PythonExpr/function/lambdaExpression:
+  digest: sha256:1a139c31748d9732
+  verdict: pending
+decision/haskell/src/LawSpec/PythonExpr.hs/module/LawSpec.PythonExpr/function/literalValue:
+  digest: sha256:503dacaebf887731
+  verdict: pending
+decision/haskell/src/LawSpec/PythonExpr.hs/module/LawSpec.PythonExpr/function/parenthesized:
+  digest: sha256:f5255e5ccdb1ffa4
+  verdict: pending
+decision/haskell/src/LawSpec/PythonExpr.hs/module/LawSpec.PythonExpr/function/quoted:
+  digest: sha256:a957b1947771ff4a
+  verdict: pending
+decision/haskell/src/LawSpec/PythonExpr.hs/module/LawSpec.PythonExpr/function/renderExpression:
+  digest: sha256:27d13b7eb63a4a50
+  verdict: pending
+decision/haskell/src/LawSpec/PythonExpr.hs/module/LawSpec.PythonExpr/function/renderExpressionWithContext:
+  digest: sha256:bf9205157faaedbb
+  verdict: pending
+decision/haskell/src/LawSpec/PythonExpr.hs/module/LawSpec.PythonExpr/function/scalarLiteral:
+  digest: sha256:de7dc9aee2fc61a3
+  verdict: pending
+decision/haskell/src/LawSpec/PythonExpr.hs/module/LawSpec.PythonExpr/function/suite:
+  digest: sha256:32eb1c4f0c1f8c97
+  verdict: pending
+decision/haskell/src/LawSpec/PythonExpr.hs/module/LawSpec.PythonExpr/function/typeKey:
+  digest: sha256:2fa04cc8b04ff5bf
+  verdict: pending

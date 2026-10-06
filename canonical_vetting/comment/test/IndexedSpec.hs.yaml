@@ -1,0 +1,12 @@
+decision/haskell/test/IndexedSpec.hs/module/IndexedSpec:
+  digest: sha256:cb9b91255fa18ae1
+  verdict: pending
+decision/haskell/test/IndexedSpec.hs/module/IndexedSpec/function/indexTable:
+  digest: sha256:41d0c7706e7d8ca7
+  verdict: pending
+decision/haskell/test/IndexedSpec.hs/module/IndexedSpec/function/plansFor:
+  digest: sha256:4c48676ad93e9098
+  verdict: pending
+decision/haskell/test/IndexedSpec.hs/module/IndexedSpec/function/test_indexedFamiliesElaborateToErasedDataWithProvedIndices:
+  digest: sha256:17845f024825a0f5
+  verdict: pending

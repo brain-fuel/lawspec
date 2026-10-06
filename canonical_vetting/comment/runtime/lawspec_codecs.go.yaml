@@ -1,0 +1,24 @@
+decision/go/runtime/lawspec_codecs.go:
+  digest: sha256:d5b703a74afe972f
+  verdict: pending
+decision/go/runtime/lawspec_codecs.go/function/lsCanonicalItems:
+  digest: sha256:718647cbd8103df2
+  verdict: pending
+decision/go/runtime/lawspec_codecs.go/function/lsDurationCodec:
+  digest: sha256:b8ac6bbe2099898b
+  verdict: pending
+decision/go/runtime/lawspec_codecs.go/function/lsHandleCodec:
+  digest: sha256:2249134cbf4ef077
+  verdict: pending
+decision/go/runtime/lawspec_codecs.go/function/lsLogicalCodec:
+  digest: sha256:5dc8d685f6f23c37
+  verdict: pending
+decision/go/runtime/lawspec_codecs.go/function/lsNativeMaybe:
+  digest: sha256:b3e99252fa97a110
+  verdict: pending
+decision/go/runtime/lawspec_codecs.go/type/LawSpecDuration:
+  digest: sha256:e49fe869af5f3c05
+  verdict: pending
+decision/go/runtime/lawspec_codecs.go/var/lsCollectionTags:
+  digest: sha256:ecf2418871061471
+  verdict: pending

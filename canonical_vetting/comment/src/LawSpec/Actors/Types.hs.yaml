@@ -1,0 +1,24 @@
+decision/haskell/src/LawSpec/Actors/Types.hs/module/LawSpec.Actors.Types:
+  digest: sha256:b9e5e45504949fed
+  verdict: pending
+decision/haskell/src/LawSpec/Actors/Types.hs/module/LawSpec.Actors.Types/data/Actor:
+  digest: sha256:e81dffa95e9c8e0f
+  verdict: pending
+decision/haskell/src/LawSpec/Actors/Types.hs/module/LawSpec.Actors.Types/data/Child:
+  digest: sha256:d32029c5d805a1e9
+  verdict: pending
+decision/haskell/src/LawSpec/Actors/Types.hs/module/LawSpec.Actors.Types/data/Handler:
+  digest: sha256:835809bd57084553
+  verdict: pending
+decision/haskell/src/LawSpec/Actors/Types.hs/module/LawSpec.Actors.Types/data/Supervision:
+  digest: sha256:53e37ead51d6b3f0
+  verdict: pending
+decision/haskell/src/LawSpec/Actors/Types.hs/module/LawSpec.Actors.Types/function/actorsOf:
+  digest: sha256:f844756a08c5a189
+  verdict: pending
+decision/haskell/src/LawSpec/Actors/Types.hs/module/LawSpec.Actors.Types/function/supervisionsOf:
+  digest: sha256:0e0159124321473b
+  verdict: pending
+decision/haskell/src/LawSpec/Actors/Types.hs/module/LawSpec.Actors.Types/function/supervisorClassName:
+  digest: sha256:bbf94684fbc5178f
+  verdict: pending

@@ -1,0 +1,6 @@
+decision/haskell/test/DomainModelSpec.hs/module/DomainModelSpec:
+  digest: sha256:76abfdbc0c81094b
+  verdict: pending
+decision/haskell/test/DomainModelSpec.hs/module/DomainModelSpec/function/test_wrappersAndWorkflowsElaborateToCheckedLaws:
+  digest: sha256:c84afb4c628da695
+  verdict: pending

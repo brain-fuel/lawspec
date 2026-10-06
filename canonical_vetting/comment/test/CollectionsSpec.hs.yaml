@@ -1,0 +1,9 @@
+decision/haskell/test/CollectionsSpec.hs/module/CollectionsSpec:
+  digest: sha256:d08cf54c97871f57
+  verdict: pending
+decision/haskell/test/CollectionsSpec.hs/module/CollectionsSpec/function/evaluated:
+  digest: sha256:3a08f5f6b2c3297d
+  verdict: pending
+decision/haskell/test/CollectionsSpec.hs/module/CollectionsSpec/function/test_collectionsAreTypedEvaluatedAndOrderedPortably:
+  digest: sha256:9561988f0b9145dd
+  verdict: pending

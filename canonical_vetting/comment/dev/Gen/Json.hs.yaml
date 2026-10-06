@@ -1,0 +1,6 @@
+decision/haskell/dev/Gen/Json.hs/module/Gen.Json:
+  digest: sha256:722104c8a7609f22
+  verdict: pending
+decision/haskell/dev/Gen/Json.hs/module/Gen.Json/function/jsonString:
+  digest: sha256:0076d9d9fb4fc602
+  verdict: pending

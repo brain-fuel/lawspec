@@ -1,0 +1,33 @@
+decision/go/acceptance/distribution/go/files/example/distribution/adapter.go:
+  digest: sha256:09b51975bcef56fe
+  verdict: pending
+decision/go/acceptance/distribution/go/files/example/distribution/adapter.go/function/Add:
+  digest: sha256:827b012a50e7b234
+  verdict: pending
+decision/go/acceptance/distribution/go/files/example/distribution/adapter.go/function/Encoded:
+  digest: sha256:ff5aa0e330b42ecf
+  verdict: pending
+decision/go/acceptance/distribution/go/files/example/distribution/adapter.go/function/OpenTally:
+  digest: sha256:ce64c02cab2a1a95
+  verdict: pending
+decision/go/acceptance/distribution/go/files/example/distribution/adapter.go/function/RemoteAdds:
+  digest: sha256:9e69db57446d5f47
+  verdict: pending
+decision/go/acceptance/distribution/go/files/example/distribution/adapter.go/function/RemoteDoubling:
+  digest: sha256:7faa7526f9062c9f
+  verdict: pending
+decision/go/acceptance/distribution/go/files/example/distribution/adapter.go/function/RemoteHandoff:
+  digest: sha256:630c6d8bbd8b3e1e
+  verdict: pending
+decision/go/acceptance/distribution/go/files/example/distribution/adapter.go/function/RemoteHandoffOnward:
+  digest: sha256:c39db6e35c045608
+  verdict: pending
+decision/go/acceptance/distribution/go/files/example/distribution/adapter.go/function/RemoteLedger:
+  digest: sha256:16ec709ccd4d9d61
+  verdict: pending
+decision/go/acceptance/distribution/go/files/example/distribution/adapter.go/function/RemoteShifted:
+  digest: sha256:3ad64ae75cde0c69
+  verdict: pending
+decision/go/acceptance/distribution/go/files/example/distribution/adapter.go/function/RoundTrips:
+  digest: sha256:e4b6e1f6207a3ffc
+  verdict: pending

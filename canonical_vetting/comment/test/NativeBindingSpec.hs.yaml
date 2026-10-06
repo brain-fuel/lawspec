@@ -1,0 +1,6 @@
+decision/haskell/test/NativeBindingSpec.hs/module/NativeBindingSpec:
+  digest: sha256:a85b6ab3e66f5e09
+  verdict: pending
+decision/haskell/test/NativeBindingSpec.hs/module/NativeBindingSpec/function/test_nativeBindingsResolveToOneUnambiguousIdentity:
+  digest: sha256:04dc66b7b2553954
+  verdict: pending

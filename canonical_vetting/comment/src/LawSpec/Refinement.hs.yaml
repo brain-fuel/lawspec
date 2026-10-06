@@ -1,0 +1,48 @@
+decision/haskell/src/LawSpec/Refinement.hs/module/LawSpec.Refinement:
+  digest: sha256:26ac710ceb005411
+  verdict: pending
+decision/haskell/src/LawSpec/Refinement.hs/module/LawSpec.Refinement/function/contractFor:
+  digest: sha256:e5940c3ceac15f58
+  verdict: pending
+decision/haskell/src/LawSpec/Refinement.hs/module/LawSpec.Refinement/function/contractLaw:
+  digest: sha256:1967902903f50f10
+  verdict: pending
+decision/haskell/src/LawSpec/Refinement.hs/module/LawSpec.Refinement/function/definitionContractFor:
+  digest: sha256:92d7575d10f12918
+  verdict: pending
+decision/haskell/src/LawSpec/Refinement.hs/module/LawSpec.Refinement/function/expandType:
+  digest: sha256:0c3fcb9aedbab0b7
+  verdict: pending
+decision/haskell/src/LawSpec/Refinement.hs/module/LawSpec.Refinement/function/hasValueRefinements:
+  digest: sha256:9f52481d7d38d8ea
+  verdict: pending
+decision/haskell/src/LawSpec/Refinement.hs/module/LawSpec.Refinement/function/internalBinder:
+  digest: sha256:c76d872763e8f6ea
+  verdict: pending
+decision/haskell/src/LawSpec/Refinement.hs/module/LawSpec.Refinement/function/lowerLaw:
+  digest: sha256:7ca24195fc8c2e09
+  verdict: pending
+decision/haskell/src/LawSpec/Refinement.hs/module/LawSpec.Refinement/function/lowerUnit:
+  digest: sha256:0fd953a913a234cf
+  verdict: pending
+decision/haskell/src/LawSpec/Refinement.hs/module/LawSpec.Refinement/function/lowerUnitWith:
+  digest: sha256:dc8f552299efbebb
+  verdict: pending
+decision/haskell/src/LawSpec/Refinement.hs/module/LawSpec.Refinement/function/planDomain:
+  digest: sha256:e0ef5fbefa7814be
+  verdict: pending
+decision/haskell/src/LawSpec/Refinement.hs/module/LawSpec.Refinement/function/refinementCheck:
+  digest: sha256:f2a3cc4701000717
+  verdict: pending
+decision/haskell/src/LawSpec/Refinement.hs/module/LawSpec.Refinement/function/safeDomainExpr:
+  digest: sha256:2edd35bcb4d8029d
+  verdict: pending
+decision/haskell/src/LawSpec/Refinement.hs/module/LawSpec.Refinement/function/substituteType:
+  digest: sha256:20e64e615c65662f
+  verdict: pending
+decision/haskell/src/LawSpec/Refinement.hs/module/LawSpec.Refinement/function/typeNames:
+  digest: sha256:92ed3243d2798220
+  verdict: pending
+decision/haskell/src/LawSpec/Refinement.hs/module/LawSpec.Refinement/function/validateDeclaration:
+  digest: sha256:7c466466e11a74ef
+  verdict: pending

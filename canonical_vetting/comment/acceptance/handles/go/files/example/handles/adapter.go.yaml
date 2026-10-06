@@ -1,0 +1,18 @@
+decision/go/acceptance/handles/go/files/example/handles/adapter.go:
+  digest: sha256:acd06238afbbf0ad
+  verdict: pending
+decision/go/acceptance/handles/go/files/example/handles/adapter.go/function/NewJobs:
+  digest: sha256:1b02872f0919fc9b
+  verdict: pending
+decision/go/acceptance/handles/go/files/example/handles/adapter.go/function/Pending:
+  digest: sha256:21a0112fbcefe5db
+  verdict: pending
+decision/go/acceptance/handles/go/files/example/handles/adapter.go/function/Submit:
+  digest: sha256:7e61c04ad89a9f2a
+  verdict: pending
+decision/go/acceptance/handles/go/files/example/handles/adapter.go/function/Take:
+  digest: sha256:64de43c38aff5598
+  verdict: pending
+decision/go/acceptance/handles/go/files/example/handles/adapter.go/type/jobs:
+  digest: sha256:f42062c195d95463
+  verdict: pending

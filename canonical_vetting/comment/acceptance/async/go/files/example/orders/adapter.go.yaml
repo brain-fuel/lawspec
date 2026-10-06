@@ -1,0 +1,12 @@
+decision/go/acceptance/async/go/files/example/orders/adapter.go:
+  digest: sha256:acd06238afbbf0ad
+  verdict: pending
+decision/go/acceptance/async/go/files/example/orders/adapter.go/function/Price:
+  digest: sha256:862519f76c552aad
+  verdict: pending
+decision/go/acceptance/async/go/files/example/orders/adapter.go/function/Quote:
+  digest: sha256:919a43a6c2974a95
+  verdict: pending
+decision/go/acceptance/async/go/files/example/orders/adapter.go/function/Stock:
+  digest: sha256:26a8243624e878bc
+  verdict: pending

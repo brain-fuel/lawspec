@@ -1,0 +1,15 @@
+decision/haskell/src/LawSpec/MachineSpec.hs/module/LawSpec.MachineSpec:
+  digest: sha256:17a236bdac2be05a
+  verdict: pending
+decision/haskell/src/LawSpec/MachineSpec.hs/module/LawSpec.MachineSpec/function/describe:
+  digest: sha256:4e31224d9be9314e
+  verdict: pending
+decision/haskell/src/LawSpec/MachineSpec.hs/module/LawSpec.MachineSpec/function/machineSpec:
+  digest: sha256:3f0d4fc1ed3357da
+  verdict: pending
+decision/haskell/src/LawSpec/MachineSpec.hs/module/LawSpec.MachineSpec/function/narrow:
+  digest: sha256:7e7753a802c38b61
+  verdict: pending
+decision/haskell/src/LawSpec/MachineSpec.hs/module/LawSpec.MachineSpec/function/scenarioWire:
+  digest: sha256:d6e341437dcdfa46
+  verdict: pending

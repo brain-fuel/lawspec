@@ -1,0 +1,30 @@
+decision/haskell/src/LawSpec/RustEmit.hs/module/LawSpec.RustEmit:
+  digest: sha256:2eeea204ce28e1f2
+  verdict: pending
+decision/haskell/src/LawSpec/RustEmit.hs/module/LawSpec.RustEmit/function/emitRust:
+  digest: sha256:7461ca5c9808ce06
+  verdict: pending
+decision/haskell/src/LawSpec/RustEmit.hs/module/LawSpec.RustEmit/function/emitRustSchema:
+  digest: sha256:005ab0dc6539b27b
+  verdict: pending
+decision/haskell/src/LawSpec/RustEmit.hs/module/LawSpec.RustEmit/function/emitRustWithBindings:
+  digest: sha256:d4b4744de9885bd8
+  verdict: pending
+decision/haskell/src/LawSpec/RustEmit.hs/module/LawSpec.RustEmit/function/emitRustWithFormat:
+  digest: sha256:b58592a85d5c38c8
+  verdict: pending
+decision/haskell/src/LawSpec/RustEmit.hs/module/LawSpec.RustEmit/function/invoke:
+  digest: sha256:e90ad1b297fd56a5
+  verdict: pending
+decision/haskell/src/LawSpec/RustEmit.hs/module/LawSpec.RustEmit/function/rustDelimited:
+  digest: sha256:c8571767c7a4819a
+  verdict: pending
+decision/haskell/src/LawSpec/RustEmit.hs/module/LawSpec.RustEmit/function/rustType:
+  digest: sha256:c1a374794b279823
+  verdict: pending
+decision/haskell/src/LawSpec/RustEmit.hs/module/LawSpec.RustEmit/function/schemaVector:
+  digest: sha256:b622106f6a6e880d
+  verdict: pending
+decision/haskell/src/LawSpec/RustEmit.hs/module/LawSpec.RustEmit/function/valueBudget:
+  digest: sha256:0454eeb79b2cbd2f
+  verdict: pending

@@ -1,0 +1,6 @@
+decision/haskell/src/LawSpec/Core/Stages.hs/module/LawSpec.Core.Stages:
+  digest: sha256:96aa15a27d483a31
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Stages.hs/module/LawSpec.Core.Stages/function/stageFailures:
+  digest: sha256:5a9f1678eb3435c9
+  verdict: pending

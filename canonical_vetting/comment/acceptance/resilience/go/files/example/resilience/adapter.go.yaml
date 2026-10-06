@@ -1,0 +1,36 @@
+decision/go/acceptance/resilience/go/files/example/resilience/adapter.go:
+  digest: sha256:ab86f1a8fbc1f8af
+  verdict: pending
+decision/go/acceptance/resilience/go/files/example/resilience/adapter.go/function/CompensationsFor:
+  digest: sha256:1aa3cecd01823988
+  verdict: pending
+decision/go/acceptance/resilience/go/files/example/resilience/adapter.go/function/FullJitter:
+  digest: sha256:3908971ede984e69
+  verdict: pending
+decision/go/acceptance/resilience/go/files/example/resilience/adapter.go/function/LimitedAt:
+  digest: sha256:5160a85095ae30dc
+  verdict: pending
+decision/go/acceptance/resilience/go/files/example/resilience/adapter.go/function/QuoteHedged:
+  digest: sha256:111e2aa254247a4f
+  verdict: pending
+decision/go/acceptance/resilience/go/files/example/resilience/adapter.go/function/QuoteTimedOut:
+  digest: sha256:89c922bc82bdb929
+  verdict: pending
+decision/go/acceptance/resilience/go/files/example/resilience/adapter.go/function/RejectedWaits:
+  digest: sha256:11e11289a4e4db01
+  verdict: pending
+decision/go/acceptance/resilience/go/files/example/resilience/adapter.go/function/RetriedWaits:
+  digest: sha256:76f69ab71a614e18
+  verdict: pending
+decision/go/acceptance/resilience/go/files/example/resilience/adapter.go/function/RuntimeExponentialDelay:
+  digest: sha256:30b42c2f0452f4cc
+  verdict: pending
+decision/go/acceptance/resilience/go/files/example/resilience/adapter.go/function/RuntimeFibonacciDelay:
+  digest: sha256:c902c6871004ae33
+  verdict: pending
+decision/go/acceptance/resilience/go/files/example/resilience/adapter.go/function/RuntimeLinearDelay:
+  digest: sha256:3d49cc8a524aa3d6
+  verdict: pending
+decision/go/acceptance/resilience/go/files/example/resilience/adapter.go/function/SplitMix:
+  digest: sha256:e3dae9ccf61eca6c
+  verdict: pending

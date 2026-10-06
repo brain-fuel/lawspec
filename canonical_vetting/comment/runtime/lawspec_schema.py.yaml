@@ -1,0 +1,66 @@
+decision/python/runtime/lawspec_schema.py:
+  digest: sha256:38bb75516a022e09
+  verdict: pending
+decision/python/runtime/lawspec_schema.py/class/Either:
+  digest: sha256:3e423d7594c43a9f
+  verdict: pending
+decision/python/runtime/lawspec_schema.py/class/Maybe:
+  digest: sha256:5b734bdbcdec2c38
+  verdict: pending
+decision/python/runtime/lawspec_schema.py/class/RefinementViolation:
+  digest: sha256:35dad0f6fd9a7b2f
+  verdict: pending
+decision/python/runtime/lawspec_schema.py/class/Schema:
+  digest: sha256:042093eeb60528b6
+  verdict: pending
+decision/python/runtime/lawspec_schema.py/class/Schema/function/_check_indices:
+  digest: sha256:6ba2413b41b94b2f
+  verdict: pending
+decision/python/runtime/lawspec_schema.py/class/Schema/function/all_payloads:
+  digest: sha256:45eeb1866162b723
+  verdict: pending
+decision/python/runtime/lawspec_schema.py/class/Schema/function/constructors:
+  digest: sha256:0bce330922cadf2d
+  verdict: pending
+decision/python/runtime/lawspec_schema.py/class/Schema/function/from_native:
+  digest: sha256:47a991fd6f0bea04
+  verdict: pending
+decision/python/runtime/lawspec_schema.py/class/Schema/function/to_native:
+  digest: sha256:0efc0e0409883583
+  verdict: pending
+decision/python/runtime/lawspec_schema.py/class/Schema/function/validate:
+  digest: sha256:3497d2586b3a4881
+  verdict: pending
+decision/python/runtime/lawspec_schema.py/class/Schema/function/with_native_bindings:
+  digest: sha256:3d1bd58128728371
+  verdict: pending
+decision/python/runtime/lawspec_schema.py/function/canonical_items:
+  digest: sha256:6acc9c763f23dbe5
+  verdict: pending
+decision/python/runtime/lawspec_schema.py/function/eval_index_term:
+  digest: sha256:7c652da2b32e9476
+  verdict: pending
+decision/python/runtime/lawspec_schema.py/function/hashable:
+  digest: sha256:9ca9086dc8eb6754
+  verdict: pending
+decision/python/runtime/lawspec_schema.py/function/parse_index_term:
+  digest: sha256:512b9692dc4f965b
+  verdict: pending
+decision/python/runtime/lawspec_schema.py/function/parse_witness:
+  digest: sha256:58e33e97159b9423
+  verdict: pending
+decision/python/runtime/lawspec_schema.py/function/refine:
+  digest: sha256:0bc40adb43f66e55
+  verdict: pending
+decision/python/runtime/lawspec_schema.py/function/type_key:
+  digest: sha256:96720ba4fd376828
+  verdict: pending
+decision/python/runtime/lawspec_schema.py/function/witness_instances:
+  digest: sha256:da367cc9ebaeb17d
+  verdict: pending
+decision/python/runtime/lawspec_schema.py/function/witness_key:
+  digest: sha256:4fc444e124a3f8e1
+  verdict: pending
+decision/python/runtime/lawspec_schema.py/function/witnessed:
+  digest: sha256:8bbfd0980e01b4af
+  verdict: pending

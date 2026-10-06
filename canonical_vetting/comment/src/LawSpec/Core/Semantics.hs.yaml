@@ -1,0 +1,18 @@
+decision/haskell/src/LawSpec/Core/Semantics.hs/module/LawSpec.Core.Semantics:
+  digest: sha256:80fe3bcb0b4db985
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Semantics.hs/module/LawSpec.Core.Semantics/function/binaryValue:
+  digest: sha256:f3be613e19098347
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Semantics.hs/module/LawSpec.Core.Semantics/function/cmp:
+  digest: sha256:4b045e7ff6b97ffc
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Semantics.hs/module/LawSpec.Core.Semantics/function/convertValue:
+  digest: sha256:d4296f54253ba678
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Semantics.hs/module/LawSpec.Core.Semantics/function/helperValue:
+  digest: sha256:f7a32216f6dfaad4
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Semantics.hs/module/LawSpec.Core.Semantics/function/scalarEqual:
+  digest: sha256:f5a848081cc788c9
+  verdict: pending

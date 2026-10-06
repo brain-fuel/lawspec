@@ -1,0 +1,9 @@
+decision/haskell/test/DataShapeSpec.hs/module/DataShapeSpec:
+  digest: sha256:fd6bedcbe9e2971c
+  verdict: pending
+decision/haskell/test/DataShapeSpec.hs/module/DataShapeSpec/function/shapes:
+  digest: sha256:1d744d88d012f425
+  verdict: pending
+decision/haskell/test/DataShapeSpec.hs/module/DataShapeSpec/function/test_dataTypesBecomeEachTargetsIdiomaticShape:
+  digest: sha256:5c67c11ddbb4e8cd
+  verdict: pending

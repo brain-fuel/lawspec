@@ -1,0 +1,12 @@
+decision/haskell/src/LawSpec/TargetNames.hs/module/LawSpec.TargetNames:
+  digest: sha256:2e5842680f43609c
+  verdict: pending
+decision/haskell/src/LawSpec/TargetNames.hs/module/LawSpec.TargetNames/function/allTargetKeywords:
+  digest: sha256:14bb783aafc62f6d
+  verdict: pending
+decision/haskell/src/LawSpec/TargetNames.hs/module/LawSpec.TargetNames/function/nativeName:
+  digest: sha256:6052d9be52b5b15d
+  verdict: pending
+decision/haskell/src/LawSpec/TargetNames.hs/module/LawSpec.TargetNames/function/targetKeywords:
+  digest: sha256:1c80f69dcf1bc56a
+  verdict: pending

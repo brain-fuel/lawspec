@@ -1,0 +1,6 @@
+decision/haskell/acceptance/asyncbindings/haskell/native/src/Warehouse/Native.hs/module/Warehouse.Native:
+  digest: sha256:025f1862b32d90d9
+  verdict: pending
+decision/haskell/acceptance/asyncbindings/haskell/native/src/Warehouse/Native.hs/module/Warehouse.Native/newtype/Shelf:
+  digest: sha256:a785e05ff69c38b1
+  verdict: pending

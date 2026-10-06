@@ -1,0 +1,6 @@
+decision/haskell/test/TotalSpec.hs/module/TotalSpec:
+  digest: sha256:e651c3c78866de2b
+  verdict: pending
+decision/haskell/test/TotalSpec.hs/module/TotalSpec/function/test_checkedDefinitionsExecuteTotallyInCore:
+  digest: sha256:9320be14fc1db8b7
+  verdict: pending

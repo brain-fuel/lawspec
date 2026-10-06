@@ -1,0 +1,15 @@
+decision/haskell/src/LawSpec/RustDefinitions.hs/module/LawSpec.RustDefinitions:
+  digest: sha256:646be7ccafecb2a7
+  verdict: pending
+decision/haskell/src/LawSpec/RustDefinitions.hs/module/LawSpec.RustDefinitions/function/adapterCallsOf:
+  digest: sha256:bbfaac27df484dd4
+  verdict: pending
+decision/haskell/src/LawSpec/RustDefinitions.hs/module/LawSpec.RustDefinitions/function/definitionNames:
+  digest: sha256:68a8bd388d035f98
+  verdict: pending
+decision/haskell/src/LawSpec/RustDefinitions.hs/module/LawSpec.RustDefinitions/function/emitRustDefinitions:
+  digest: sha256:4b2e6ece04afff47
+  verdict: pending
+decision/haskell/src/LawSpec/RustDefinitions.hs/module/LawSpec.RustDefinitions/function/workflowAdapterUnits:
+  digest: sha256:82cc4ada5b6b46d3
+  verdict: pending

@@ -1,0 +1,18 @@
+decision/haskell/runtime/LawSpecDataStrategies.hs/module/LawSpecDataStrategies:
+  digest: sha256:40d02eff07ff8b02
+  verdict: pending
+decision/haskell/runtime/LawSpecDataStrategies.hs/module/LawSpecDataStrategies/data/IndexTerm:
+  digest: sha256:b40e65d7caca36eb
+  verdict: pending
+decision/haskell/runtime/LawSpecDataStrategies.hs/module/LawSpecDataStrategies/function/canonical:
+  digest: sha256:e3377f15c77955c5
+  verdict: pending
+decision/haskell/runtime/LawSpecDataStrategies.hs/module/LawSpecDataStrategies/function/checkedStrategy:
+  digest: sha256:678ee03a6a94f886
+  verdict: pending
+decision/haskell/runtime/LawSpecDataStrategies.hs/module/LawSpecDataStrategies/function/primitiveStrategy:
+  digest: sha256:531f154d6a72286e
+  verdict: pending
+decision/haskell/runtime/LawSpecDataStrategies.hs/module/LawSpecDataStrategies/type/NativeFactory:
+  digest: sha256:00d600f53fd7049b
+  verdict: pending

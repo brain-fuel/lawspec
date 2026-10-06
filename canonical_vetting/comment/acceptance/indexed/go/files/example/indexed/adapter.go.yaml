@@ -1,0 +1,15 @@
+decision/go/acceptance/indexed/go/files/example/indexed/adapter.go:
+  digest: sha256:acd06238afbbf0ad
+  verdict: pending
+decision/go/acceptance/indexed/go/files/example/indexed/adapter.go/function/Append:
+  digest: sha256:17d710745bf5dfaf
+  verdict: pending
+decision/go/acceptance/indexed/go/files/example/indexed/adapter.go/function/Flatten:
+  digest: sha256:31d3d47ac34cd4f7
+  verdict: pending
+decision/go/acceptance/indexed/go/files/example/indexed/adapter.go/function/Replicate:
+  digest: sha256:83b44cdf66234e29
+  verdict: pending
+decision/go/acceptance/indexed/go/files/example/indexed/adapter.go/function/Zip:
+  digest: sha256:acf4c4dc2c052d48
+  verdict: pending

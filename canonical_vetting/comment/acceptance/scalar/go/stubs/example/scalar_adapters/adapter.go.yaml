@@ -1,0 +1,45 @@
+decision/go/acceptance/scalar/go/stubs/example/scalar_adapters/adapter.go:
+  digest: sha256:acd06238afbbf0ad
+  verdict: pending
+decision/go/acceptance/scalar/go/stubs/example/scalar_adapters/adapter.go/function/AddDecimal:
+  digest: sha256:4bbf676bfb7f1aeb
+  verdict: pending
+decision/go/acceptance/scalar/go/stubs/example/scalar_adapters/adapter.go/function/EchoBytes:
+  digest: sha256:83cc550c6ebed71c
+  verdict: pending
+decision/go/acceptance/scalar/go/stubs/example/scalar_adapters/adapter.go/function/EchoChar:
+  digest: sha256:c7ca10ab92aef5fb
+  verdict: pending
+decision/go/acceptance/scalar/go/stubs/example/scalar_adapters/adapter.go/function/EchoCodePoint:
+  digest: sha256:38ee50a880459376
+  verdict: pending
+decision/go/acceptance/scalar/go/stubs/example/scalar_adapters/adapter.go/function/EchoCodeUnit:
+  digest: sha256:ea45f5014f351273
+  verdict: pending
+decision/go/acceptance/scalar/go/stubs/example/scalar_adapters/adapter.go/function/EchoComplex:
+  digest: sha256:0dfb50c9d6562c2b
+  verdict: pending
+decision/go/acceptance/scalar/go/stubs/example/scalar_adapters/adapter.go/function/EchoPresence:
+  digest: sha256:0b43cdb91a94344e
+  verdict: pending
+decision/go/acceptance/scalar/go/stubs/example/scalar_adapters/adapter.go/function/EchoRaw:
+  digest: sha256:ac5a6f066589e054
+  verdict: pending
+decision/go/acceptance/scalar/go/stubs/example/scalar_adapters/adapter.go/function/Finish:
+  digest: sha256:6c7e9cf7428d083b
+  verdict: pending
+decision/go/acceptance/scalar/go/stubs/example/scalar_adapters/adapter.go/function/MachineEcho:
+  digest: sha256:a5615ebb24d091ae
+  verdict: pending
+decision/go/acceptance/scalar/go/stubs/example/scalar_adapters/adapter.go/function/Narrow:
+  digest: sha256:70747e86c74c8ee7
+  verdict: pending
+decision/go/acceptance/scalar/go/stubs/example/scalar_adapters/adapter.go/function/PreserveBig:
+  digest: sha256:4c45cddd4d5fcf7f
+  verdict: pending
+decision/go/acceptance/scalar/go/stubs/example/scalar_adapters/adapter.go/function/SameSymbol:
+  digest: sha256:45332801e9767c45
+  verdict: pending
+decision/go/acceptance/scalar/go/stubs/example/scalar_adapters/adapter.go/function/Successor:
+  digest: sha256:f2ae90d71e1f4a83
+  verdict: pending

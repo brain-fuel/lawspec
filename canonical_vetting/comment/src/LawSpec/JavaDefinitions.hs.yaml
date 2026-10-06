@@ -1,0 +1,18 @@
+decision/haskell/src/LawSpec/JavaDefinitions.hs/module/LawSpec.JavaDefinitions:
+  digest: sha256:9da457fba13a9823
+  verdict: pending
+decision/haskell/src/LawSpec/JavaDefinitions.hs/module/LawSpec.JavaDefinitions/function/definitionCalls:
+  digest: sha256:0583ee10e7fdfbfe
+  verdict: pending
+decision/haskell/src/LawSpec/JavaDefinitions.hs/module/LawSpec.JavaDefinitions/function/emitJavaDefinitions:
+  digest: sha256:edd7926a3b435ee0
+  verdict: pending
+decision/haskell/src/LawSpec/JavaDefinitions.hs/module/LawSpec.JavaDefinitions/function/emitJvmDefinitionBodies:
+  digest: sha256:3b7c5774333236b6
+  verdict: pending
+decision/haskell/src/LawSpec/JavaDefinitions.hs/module/LawSpec.JavaDefinitions/function/kotlinAdapterBridge:
+  digest: sha256:1b06320b74905627
+  verdict: pending
+decision/haskell/src/LawSpec/JavaDefinitions.hs/module/LawSpec.JavaDefinitions/function/orchestratedAdapters:
+  digest: sha256:c598053dc9245e46
+  verdict: pending
