@@ -7,11 +7,9 @@ module Lawspec.Time where
 import Prelude
 import qualified Prelude as P
 import qualified Control.Concurrent as Concurrent
-import qualified Control.Exception as Exception
 import qualified Data.Time.Clock.POSIX as POSIX
 import qualified GHC.Clock as Clock
 import qualified System.IO.Unsafe as Unsafe
-import qualified System.Mem.StableName as StableName
 import qualified LawSpecData as Data
 import qualified LawSpecRuntime as LS
 import qualified LawSpecAbilities.Lawspec.Time as Abilities
@@ -31,28 +29,20 @@ nowMicros = do
   let (wall, base) = start
   pure (wall + P.toInteger monotonic `P.div` 1000 - base)
 
--- | The system clock's now. A Clock handler whose now is this one is real
--- time: workflows time out in real time under it (LS.registerClockAbility).
-systemNow = (\micros -> @@Instant@@ (P.fromInteger micros)) P.<$> nowMicros
-{-# NOINLINE systemNow #-}
-
--- | Lets workflows read a Clock handler (this one, the virtual clock, any
--- other) as their clock: waits and timeouts then go by the time it reports.
+-- | Lets the runtime read any Clock handler (this one, the virtual clock, a
+-- recording): workflows and mailboxes then wait on the clock a law installs.
+-- The generated tests of laws that install a Clock handler call it. Only
+-- this module's handler is real time, and its installation says so
+-- (LS.installedRealClock); every other handler is virtual.
 registerClock :: P.IO ()
 registerClock = LS.registerClockAbility
   (\handler -> (\(@@Instant@@ micros) -> P.toInteger micros) P.<$> Abilities.now handler)
   (\handler micros -> Abilities.sleep handler (@@Duration@@ (P.fromInteger micros)))
-  (\handler -> do
-    mine <- Exception.evaluate (Abilities.now handler) P.>>= StableName.makeStableName
-    real <- Exception.evaluate systemNow P.>>= StableName.makeStableName
-    P.pure (mine P.== real))
 
 -- | The system clock: now never goes back; sleep blocks this thread.
 clockHandler :: P.IO Abilities.Clock
-clockHandler = do
-  registerClock
-  P.pure Abilities.Clock
-    { Abilities.now = systemNow
+clockHandler = P.pure Abilities.Clock
+    { Abilities.now = (\micros -> @@Instant@@ (P.fromInteger micros)) P.<$> nowMicros
     , Abilities.sleep = \(@@Duration@@ micros) -> do
         target <- (+ micros) P.<$> nowMicros
         let wait = do

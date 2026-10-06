@@ -10,6 +10,7 @@ import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
 import qualified Data.Word as W
 import qualified LawSpecData as Data
+import qualified LawSpecNetwork as Network
 import qualified LawSpecRemote as Remote
 import qualified LawSpecRuntime as LS
 import LawSpecTransports (httpTransport, tcpTransport)
@@ -160,5 +161,5 @@ sealedOnTheWire x = case Remote.digest name of
 -- | The handshake vector's thirteen fields, separated by single spaces.
 handshakeAgrees :: T.Text -> Bool
 handshakeAgrees text = case map T.unpack (T.splitOn (T.pack " ") text) of
-  [a, b, c, d, e, f, g, h, i, j, k, l, m] -> LS.handshakeVector a b c d e f g h i j k l m
+  [a, b, c, d, e, f, g, h, i, j, k, l, m] -> Network.handshakeVector a b c d e f g h i j k l m
   _ -> False
