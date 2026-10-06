@@ -168,6 +168,12 @@ target should change these, and only these.
   `failures`; each `<Target>NativeBinding` makes a bound handler speak the
   bound types (the handler schema in Python and JavaScript, an
   `<Ability>Bound` wrapper elsewhere) and gives a bound adapter its handlers.
+- **The harness plane at run time.** A new target also implements, in its
+  runtime, shared resources (`share`, released at process end), LawSpec's
+  own search (`LawSpec.Search`: a per-law case function, the failure
+  database's wire-encoded inputs, and the targeted climb), and `order
+  random` and `parallel` with its test framework; see
+  [Harness units](../reference/language/harness.md).
 - **Acceptance.** The `abilities` suite covers the language on every
   target, and `handlerbindings` covers `lawspec.json`. A new feature adds a
   law and a mutant to one of them on each target.
