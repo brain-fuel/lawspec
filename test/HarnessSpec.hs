@@ -152,6 +152,20 @@ spec = describe "harness units" $ do
         case descriptorsOf "discount is small" of
           [Just [d]] -> d `shouldSatisfy` ("(data example.shop::type::Order" `isInfixOf`)
           other -> expectationFailure (show other)
+  it "resolves a unit's import aliases in harness expressions" $ do
+    let money = "unit shop.money\ndefinition isBig (cents :: Int32) :: Bool is cents > 1000 end\n"
+        orders = unlines
+          [ "unit shop.orders", "import shop.money as money", "double :: Int32 -> Int32"
+          , "law `doubling is monotone` is"
+          , "  definition is `for all` (x :: Int32 where x >= 0 && x <= 100000) . (double x >= x) = true end"
+          , "end"
+          , "harness shop.orders.testing for shop.orders is"
+          , "  for law `doubling is monotone`"
+          , "    classify money.isBig x as \"big\""
+          , "end" ]
+    case compileCore 64 defaultGeneration [Source "money.lawspec" money, Source "orders.lawspec" orders] of
+      Left ds -> expectationFailure (show ds)
+      Right program -> fmap (map snd . C.harnessClassify) (lawHarness "doubling is monotone" program) `shouldBe` Just ["big"]
   it "lists benchmarks and parallel units in the manifest" $
     case compiled (harness ["  parallel", "  benchmark `a booking` is book 1 end"]) of
       Left ds -> expectationFailure (show ds)
