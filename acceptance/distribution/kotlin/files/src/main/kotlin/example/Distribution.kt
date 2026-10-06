@@ -182,7 +182,7 @@ object Distribution {
     fun handshakeAgrees(value0: String): Boolean {
         val f = value0.split(" ")
         if (f.size != 13) return false
-        return LawSpecRuntime.handshakeVector(
+        return lawspec.runtime.LawSpecNetwork.handshakeVector(
             f[0], f[1], f[2], f[3], f[4], f[5], f[6], f[7], f[8], f[9], f[10], f[11], f[12],
         )
     }

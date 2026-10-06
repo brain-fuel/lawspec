@@ -75,7 +75,9 @@ emitTests Config{..} unit laws = do
       map contract (contracts unit)) <> D.hardline <> D.hardline <>
     text ("class " ++ className ++ "LawSpecTest : StringSpec(") <>
     -- Workflows wait on a virtual clock under test.
-    block (separate (text "lawspec.runtime.LawSpecRuntime.useVirtualClock(0)" : bodies)) <> text ")" <> D.hardline
+    -- Workflows and mailboxes read the Clock handler a law installs.
+    block (separate (statements (text "lawspec.runtime.LawSpecRuntime.useVirtualClock(0)" :
+      [text "lawspec.Time.registerClock()" | installsClock unit]) : bodies)) <> text ")" <> D.hardline
   where
     -- LAWSPEC_SEED fixes Kotest's seed, so a run can be repeated exactly
     -- (lawspec test records the seed of every passing run).
@@ -218,3 +220,9 @@ emitTests Config{..} unit laws = do
             quoted (label ++ " | " ++ intercalate "; " (map prettyExpr (concatMap inputRefinements (inputs e))))]
       pure $ testFunction (fn ++ "Property: " ++ label) $ trailing
         (call "checkAll" [call "_lawspecConfig" [number (cases cfg)],text "Arb.int()"]) "seed" (statements [symbols,invocation])
+
+-- Whether a unit's laws install a Clock handler, so the test registers how
+-- the runtime reads one (lawspec.time's registerClock).
+installsClock :: Unit -> Bool
+installsClock unit = or [ C.abilityKey a == "lawspec.time::ability::Clock"
+                        | p <- C.unitProperties unit, (a, _) <- C.propertyHandlers p ]
