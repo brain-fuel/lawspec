@@ -1,4 +1,5 @@
-module NativeRequestSpec (spec) where
+-- | Native binding requests at the public request boundary.
+module NativeRequestSpec (test_nativeBindingRequestsAreValidatedAtTheirBoundary) where
 
 import Test.Hspec
 import Data.Aeson
@@ -22,8 +23,12 @@ codes (Object result) = case KM.lookup "diagnostics" result of
   _ -> []
 codes _ = []
 
-spec :: Spec
-spec = describe "native binding requests" $ do
+-- | Binding configuration is written by hand, so a misspelling must be an error
+-- rather than silently ignored, and a binding must never replace a checked
+-- definition. ref:DEC-native-bindings-typed-identity
+-- ref:REQ-native-binding-requests
+test_nativeBindingRequestsAreValidatedAtTheirBoundary :: Spec
+test_nativeBindingRequestsAreValidatedAtTheirBoundary = describe "native binding requests" $ do
   it "rejects misspelled binding configuration instead of ignoring it" $
     codes (run "unit sample" (object ["tyeps" .= ([] :: [Value])])) `shouldBe` [String "request"]
   it "rejects executable native reference strings" $

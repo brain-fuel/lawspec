@@ -1,4 +1,5 @@
-module SourceDataSpec (spec) where
+-- | Refinements of source algebraic data.
+module SourceDataSpec (test_sourceDataRefinementsLowerThroughNestedTypes) where
 
 import Test.Hspec
 import qualified LawSpec.Public as Public
@@ -22,8 +23,11 @@ check body = compileCore 64 defaultGeneration [Source "source-data" ("unit data_
 law :: String -> String -> String
 law ty expression = "law `test` is definition is `for all` (x :: " ++ ty ++ ") . " ++ expression ++ " end end"
 
-spec :: Spec
-spec = describe "source algebraic data" $ do
+-- | A refinement written on a type argument constrains the values stored deep
+-- inside a structure, so it must reach every field it names and nothing else.
+-- ref:DEC-total-definitions ref:REQ-source-data-refinements
+test_sourceDataRefinementsLowerThroughNestedTypes :: Spec
+test_sourceDataRefinementsLowerThroughNestedTypes = describe "source algebraic data" $ do
   it "lowers named type argument refinements through products, sums, and nested fields" $ do
     let declarations = unlines
           ["type Box (a :: Type) is Box value :: a end"

@@ -1,4 +1,5 @@
-module DocumentSpec (spec) where
+-- | The layout engine all generated code is printed through.
+module DocumentSpec (test_layoutEngineKeepsGeneratedCodeReadableAndUnchanged) where
 
 import Test.Hspec
 import Control.Monad (forM_)
@@ -13,8 +14,11 @@ import LawSpec.Scalar (primitives, primitiveName)
 import qualified LawSpec.PortableGenerator as Generator
 import qualified LawSpec.PortableTestHelpers as Helpers
 
-spec :: Spec
-spec = describe "generated code layout" $ do
+-- | Generated code is read and diffed by people, so layout may break and indent
+-- lines but must never change a token, a literal or the meaning of the code.
+-- ref:DEC-readable-output-default ref:REQ-readable-layout
+test_layoutEngineKeepsGeneratedCodeReadableAndUnchanged :: Spec
+test_layoutEngineKeepsGeneratedCodeReadableAndUnchanged = describe "generated code layout" $ do
   it "leaves blank lines empty while preserving following indentation" $
     D.render (D.Pretty 80) (D.block 2 (D.text "a" <> D.hardline <> D.hardline <> D.text "b"))
       `shouldBe` "{\n  a\n\n  b\n}"

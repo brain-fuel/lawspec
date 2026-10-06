@@ -1,4 +1,5 @@
-module GenericDefinitionSpec (spec) where
+-- | Specialization of generic definitions and their result refinements.
+module GenericDefinitionSpec (test_genericDefinitionsSpecializeWithProvedResults) where
 
 import Test.Hspec
 import Control.Monad (forM_)
@@ -51,7 +52,7 @@ examples program = case (prepareDefinitions program, makeRegistry (C.programData
   (Left ds, _) -> expectationFailure (show ds)
   (_, Left message) -> expectationFailure message
 
--- Exercise the internal specialization boundary independently of public source
+-- | Exercise the internal specialization boundary independently of public source
 -- lowering. Only the fixture's concrete Integer capabilities occur.
 specializeRefined :: Int -> String -> Either [Diagnostic] C.Program
 specializeRefined bits text = do
@@ -62,8 +63,12 @@ specializeRefined bits text = do
   (units,properties) <- specializeDefinitions [] bits satisfies [unit] []
   elaborate bits units properties
 
-spec :: Spec
-spec = describe "generic definition specialization" $ do
+-- | A caller relies on a callee's proved result to justify division and
+-- narrowing, so a guarantee may be used only where it was proved and never
+-- across a circular contract. ref:DEC-total-definitions
+-- ref:REQ-generic-specialization
+test_genericDefinitionsSpecializeWithProvedResults :: Spec
+test_genericDefinitionsSpecializeWithProvedResults = describe "generic definition specialization" $ do
   it "proves constructor-sensitive Maybe and Either result refinements" $ do
     verify (unlines
       ["definition wrap (x :: Int8 where x > 0) :: Maybe (value :: Int8 where value > 0) is Just x end",

@@ -1,11 +1,12 @@
-module SessionsPythonSpec (spec) where
+-- | Python session ends generated from protocols.
+module SessionsPythonSpec (test_pythonSessionEndsFollowTheirProtocol) where
 
 import Data.List (isInfixOf)
 import Test.Hspec
 import qualified LawSpec.Core as C
 import LawSpec.Sessions.Python (pythonSessions)
 
--- Serve: receive two Int32s, send an Int64; Hire: send Serve's first end.
+-- | Serve: receive two Int32s, send an Int64; Hire: send Serve's first end.
 unit :: C.Unit
 unit = C.MkUnit (C.Id "example.sessions") [] [] [] [] [] sessions [] []
   where
@@ -16,8 +17,12 @@ unit = C.MkUnit (C.Id "example.sessions") [] [] [] [] [] sessions [] []
           [(True, C.scalarType "example.sessions::session::Serve")] ]
     int32 = C.scalarType "Int32"
 
-spec :: Spec
-spec = describe "Python sessions" $ do
+-- | Each step of a session end returns the next end, so the generated Python
+-- must name steps distinctly and hand on delegated ends, or a program could
+-- use an end out of order. ref:DEC-sessions-by-construction
+-- ref:REQ-python-sessions
+test_pythonSessionEndsFollowTheirProtocol :: Spec
+test_pythonSessionEndsFollowTheirProtocol = describe "Python sessions" $ do
   let source = either error id (pythonSessions [] [unit])
       has fragment = source `shouldSatisfy` isInfixOf fragment
   it "names each end's steps, numbering repeated names" $ do

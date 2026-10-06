@@ -1,3 +1,6 @@
+-- | The compiler's Hspec suite. Each module's test is named for the property
+-- it verifies and cites the requirement that property serves.
+-- ref:DEC-tests-cite-requirements
 module Main where
 import Test.Hspec
 import qualified NativeBindingSpec
@@ -51,41 +54,41 @@ concrete :: String -> String
 concrete d = "law `codec` is definition is " ++ d ++ " end end\n"
 main :: IO ()
 main = hspec $ do
-  NativeBindingSpec.spec
-  NativeRequestSpec.spec
-  CoreSpec.spec
-  IndexedSpec.spec
-  DomainModelSpec.spec
-  StatefulModelSpec.spec
-  ScenarioSpec.spec
-  TargetNamesSpec.spec
-  TimeSpec.spec
-  ImportSpec.spec
-  DischargeSpec.spec
-  ApiContractSpec.spec
-  DataShapeSpec.spec
-  GadtSpec.spec
-  FlowSpec.spec
-  CollectionsSpec.spec
-  AsyncSpec.spec
-  BoundsSpec.spec
-  ConditionalSpec.spec
-  IncrementalSpec.spec
-  TestManifestSpec.spec
-  RailwaySpec.spec
-  SessionsPythonSpec.spec
-  PayloadSpec.spec
-  PayloadProofSpec.spec
-  DocumentSpec.spec
-  StructuralSpec.spec
-  SourceDataSpec.spec
-  TotalSpec.spec
-  InferenceSchemeSpec.spec
-  DefinitionSchemeSpec.spec
-  GenericDefinitionSpec.spec
-  DefinitionPredicateSpec.spec
-  RefinementProofSpec.spec
-  DefinitionContractProofSpec.spec
+  NativeBindingSpec.test_nativeBindingsResolveToOneUnambiguousIdentity
+  NativeRequestSpec.test_nativeBindingRequestsAreValidatedAtTheirBoundary
+  CoreSpec.test_typedCoreIsValidatedIndependentlyOfInference
+  IndexedSpec.test_indexedFamiliesElaborateToErasedDataWithProvedIndices
+  DomainModelSpec.test_wrappersAndWorkflowsElaborateToCheckedLaws
+  StatefulModelSpec.test_statefulModelsElaborateFromTypestate
+  ScenarioSpec.test_scenariosAreAcceptedOnlyWhenDeadlockAndRaceFree
+  TargetNamesSpec.test_targetNamesNeverCollideWithKeywords
+  TimeSpec.test_durationsAreExactAndPortable
+  ImportSpec.test_importsResolveAcrossUnitsWithoutLeakingAdapters
+  DischargeSpec.test_lawsAreDischargedWithHonestEvidence
+  ApiContractSpec.test_compilerApiAnswersEveryRequestByItsDocumentedContract
+  DataShapeSpec.test_dataTypesBecomeEachTargetsIdiomaticShape
+  GadtSpec.test_gadtMatchesRefineTypesLocally
+  FlowSpec.test_flowTypesThreadEachStateThroughItsCalls
+  CollectionsSpec.test_collectionsAreTypedEvaluatedAndOrderedPortably
+  AsyncSpec.test_asyncAdaptersAreMarkedReportedAndBoundToEachTargetsTask
+  BoundsSpec.test_generationStaysWithinRefinedBoundsOnEveryTarget
+  ConditionalSpec.test_conditionalsAreCheckedBranchByBranch
+  IncrementalSpec.test_incrementalCompilationGivesTheSameResultAsAFreshOne
+  TestManifestSpec.test_testManifestNamesEveryLawsTestOnEachTarget
+  RailwaySpec.test_railwayCombinatorsComposeResultsAsDocumented
+  SessionsPythonSpec.test_pythonSessionEndsFollowTheirProtocol
+  PayloadSpec.test_payloadPredicatesTraverseRecursiveParametersScoped
+  PayloadProofSpec.test_payloadGuaranteesTransferOnlyWhereTheyHold
+  DocumentSpec.test_layoutEngineKeepsGeneratedCodeReadableAndUnchanged
+  StructuralSpec.test_structuralTypesHaveOneRegistryAndNativeDeclarations
+  SourceDataSpec.test_sourceDataRefinementsLowerThroughNestedTypes
+  TotalSpec.test_checkedDefinitionsExecuteTotallyInCore
+  InferenceSchemeSpec.test_declarationSchemesInstantiateFreshlyAtEachUse
+  DefinitionSchemeSpec.test_definitionTemplatesAreAuditedBeforeSpecialization
+  GenericDefinitionSpec.test_genericDefinitionsSpecializeWithProvedResults
+  DefinitionPredicateSpec.test_closedDefinitionsServeAsCorePredicates
+  RefinementProofSpec.test_refinementImplicationIsDecidedExactly
+  DefinitionContractProofSpec.test_refinedDefinitionsAreAdmittedOnlyWithProvedContracts
   describe "compiler" $ do
     it "checks the bundled prelude" $ compile [] `shouldBe` Right ([],[])
     it "expands the exact scratch example" $ do

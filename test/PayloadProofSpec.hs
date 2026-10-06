@@ -1,4 +1,5 @@
-module PayloadProofSpec (spec) where
+-- | Proof rules for recursive payloads.
+module PayloadProofSpec (test_payloadGuaranteesTransferOnlyWhereTheyHold) where
 
 import Test.Hspec
 import Control.Monad (forM_)
@@ -46,8 +47,12 @@ contract definition result pre post = Contract
   (declarationId (definitionDeclaration definition)) (definitionArguments definition) result pre post []
 check dat definitions contracts = validateDefinitionContracts 64 dat definitions contracts
 
-spec :: Spec
-spec = describe "recursive payload proof rules" $ do
+-- | A guarantee about the leaves of a recursive structure justifies operations
+-- on them, so it must transfer only along the parameter it describes, never to
+-- fixed fields or another argument. ref:DEC-proof-producing-index-layer
+-- ref:REQ-payload-proofs
+test_payloadGuaranteesTransferOnlyWhereTheyHold :: Spec
+test_payloadGuaranteesTransferOnlyWhereTheyHold = describe "recursive payload proof rules" $ do
   let tree = structure "Tree" ["a"]
         [variant "Tree" "Leaf" [("value",variable "a"),("fixed",int)],
          variant "Tree" "Node" [("child",app "Tree" [variable "a"])],

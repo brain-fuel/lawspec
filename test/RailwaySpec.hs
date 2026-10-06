@@ -1,4 +1,5 @@
-module RailwaySpec (spec) where
+-- | Railway combinators over Either.
+module RailwaySpec (test_railwayCombinatorsComposeResultsAsDocumented) where
 
 import Data.Either (isRight)
 import Data.List (isInfixOf)
@@ -20,7 +21,7 @@ source = Source "railway.lawspec" . unlines . (header ++)
       , "definition describe (p :: Problem) :: Text is match p with | TooSmall -> \"small\" | TooLarge -> \"large\" end end"
       , "definition even (x :: BigInt) :: Bool is prelude.rem x 2 == 0 end" ]
 
--- A law the compiler evaluates for both values of an unused input.
+-- | A law the compiler evaluates for both values of an unused input.
 holds :: String -> String -> Expectation
 holds left right = do
   let law = "law `l` is definition is `for all` (b :: Bool) . " ++ left ++ " = " ++ right ++ " end end"
@@ -33,8 +34,11 @@ refuted left right = do
     Left diagnostics -> concatMap show diagnostics `shouldSatisfy` isInfixOf "refuted"
     Right _ -> expectationFailure "expected the law to be refuted"
 
-spec :: Spec
-spec = describe "railway combinators" $ do
+-- | Workflows chain fallible steps, so binding, mapping, recovery and pairing
+-- must behave as the railway model says and bind with the documented
+-- precedence. ref:DEC-domain-modeling-primitives ref:REQ-railway-combinators
+test_railwayCombinatorsComposeResultsAsDocumented :: Spec
+test_railwayCombinatorsComposeResultsAsDocumented = describe "railway combinators" $ do
   it "binds, maps and maps errors, as symbols and as prelude names" $ do
     holds "(positive 5 >>= small)" "prelude.bind (positive 5) small"
     holds "(double <$> positive 5)" "prelude.map double (positive 5)"

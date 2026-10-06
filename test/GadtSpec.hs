@@ -1,4 +1,5 @@
-module GadtSpec (spec) where
+-- | GADTs: local type refinement, inaccessible constructors, existentials and witnesses.
+module GadtSpec (test_gadtMatchesRefineTypesLocally) where
 
 import Data.Either (isLeft, isRight)
 import Data.List (isInfixOf)
@@ -27,7 +28,7 @@ expressions = unlines
   , "end"
   ]
 
--- The declarations above, then the given lines.
+-- | The declarations above, then the given lines.
 program :: [String] -> Either [Diagnostic] C.Program
 program extra = compileCore 64 defaultGeneration [Source "gadt.lawspec" (expressions ++ unlines extra)]
 
@@ -53,8 +54,11 @@ declaration compiled name = case [d | d <- C.programDataDeclarations compiled, C
   d : _ -> d
   [] -> error ("no declaration " ++ name)
 
-spec :: Spec
-spec = describe "GADTs" $ do
+-- | A match on a GADT learns the type index, so each branch must be typed with
+-- what it learned and constructors the index rules out must need no branch.
+-- ref:DEC-gadts-and-index-arithmetic ref:REQ-gadts
+test_gadtMatchesRefineTypesLocally :: Spec
+test_gadtMatchesRefineTypesLocally = describe "GADTs" $ do
   describe "local type refinement" $ do
     it "refines a rigid type variable in each branch" $
       program (eval ++ ["law `two` is definition is `for all` (x :: BigInt) . eval (Number 2) = 2 end end"])

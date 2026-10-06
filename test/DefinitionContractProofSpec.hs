@@ -1,4 +1,5 @@
-module DefinitionContractProofSpec (spec) where
+-- | Proof obligations of refined definitions and constructor contracts.
+module DefinitionContractProofSpec (test_refinedDefinitionsAreAdmittedOnlyWithProvedContracts) where
 
 import Test.Hspec
 import Data.Either (isLeft, isRight)
@@ -44,8 +45,12 @@ contract :: String -> Type -> [Expr] -> [Expr] -> Contract
 contract name ty pre post = Contract (Id name) [Binder (Id "argument") "argument" int]
   (Binder (Id "result") "result" ty) pre post []
 
-spec :: Spec
-spec = describe "refined definition proof obligations" $ do
+-- | A checked definition runs inside every generated test, so a partial body may
+-- be admitted only when its contract is proved; an unproved contract would let
+-- a test crash or pass vacuously. ref:DEC-total-definitions
+-- ref:REQ-definition-contracts
+test_refinedDefinitionsAreAdmittedOnlyWithProvedContracts :: Spec
+test_refinedDefinitionsAreAdmittedOnlyWithProvedContracts = describe "refined definition proof obligations" $ do
   describe "constructor field invariants" $ do
     let tag = Id "Positive"
         field = Id "field"

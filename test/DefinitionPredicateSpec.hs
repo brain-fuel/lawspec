@@ -1,4 +1,5 @@
-module DefinitionPredicateSpec (spec) where
+-- | Closed definitions used as predicates in Core.
+module DefinitionPredicateSpec (test_closedDefinitionsServeAsCorePredicates) where
 
 import Test.Hspec
 import Control.Monad (forM_)
@@ -14,7 +15,7 @@ import LawSpec.Testing
 import LawSpec.CoreEmit (emitPlan, targets)
 import LawSpec.Scalar (Scalar(..))
 
--- Construct predicates at the public typed Core boundary. Source refinement
+-- | Construct predicates at the public typed Core boundary. Source refinement
 -- elaboration is a separate check; these tests cannot bypass Core validation.
 fixture :: String -> (Program -> Expectation) -> Expectation
 fixture body check = case compileCore 64 defaultGeneration [Source "predicate.lawspec" ("unit predicate\n" ++ body)] of
@@ -37,8 +38,12 @@ booleanSource :: String
 booleanSource = "definition keep (x :: Bool) :: Bool is x end\n" ++
   "law `selected` is definition is `for all` (x :: Bool) . keep x = true end end"
 
-spec :: Spec
-spec = describe "closed definitions in Core predicates" $ do
+-- | A refinement or example may call a checked definition, so the definition
+-- must be elaborated and validated before its domain is enumerated, and an
+-- adapter call must never hide inside a predicate. ref:DEC-total-definitions
+-- ref:REQ-definition-predicates
+test_closedDefinitionsServeAsCorePredicates :: Spec
+test_closedDefinitionsServeAsCorePredicates = describe "closed definitions in Core predicates" $ do
   it "elaborates generic source calls in aliases, examples, and adapter contracts" $ do
     let source = Source "predicates.lawspec" $ unlines
           ["unit predicates"

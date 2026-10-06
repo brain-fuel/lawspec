@@ -1,4 +1,5 @@
-module IncrementalSpec (spec) where
+-- | Incremental compilation and its cache keys.
+module IncrementalSpec (test_incrementalCompilationGivesTheSameResultAsAFreshOne) where
 
 import Data.Aeson (Value, decode, encode, object, (.=))
 import qualified Data.ByteString.Lazy as B
@@ -18,7 +19,7 @@ import System.FilePath ((</>))
 import LawSpec.Memo (newPersistentTable, memoized, withCacheDirectory)
 import LawSpec.Discharge (dischargeEvidence)
 
--- Two programs that differ only in one law of their second unit. The compiler
+-- | Two programs that differ only in one law of their second unit. The compiler
 -- memoizes stages by content, so a missing input in any key would make one
 -- program's result depend on whether the other was compiled first.
 programs :: String -> ([(String, String)], [(String, String)])
@@ -42,8 +43,11 @@ request method target sources = encode (object
 response :: B.ByteString -> Maybe Value
 response = decode . dispatch
 
-spec :: Spec
-spec = describe "incremental compilation" $ do
+-- | Reusing earlier work is only safe when it cannot be observed: each program
+-- must get exactly the result a fresh compile would give.
+-- ref:DEC-incremental-compilation ref:REQ-incremental-compilation
+test_incrementalCompilationGivesTheSameResultAsAFreshOne :: Spec
+test_incrementalCompilationGivesTheSameResultAsAFreshOne = describe "incremental compilation" $ do
   it "gives each program the same result whatever was compiled before" $ do
     let (one, two) = programs "order"
         targets = ["python", "java", "haskell"]

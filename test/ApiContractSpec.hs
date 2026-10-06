@@ -1,7 +1,7 @@
--- Compiler API contracts checked at the JSON boundary that core.wasm exports.
+-- | Compiler API contracts checked at the JSON boundary that core.wasm exports.
 -- These assertions inspect only request/response JSON, so they run in Haskell;
 -- the npm tests keep what needs Node: WASM hosting, files and the CLI.
-module ApiContractSpec (spec) where
+module ApiContractSpec (test_compilerApiAnswersEveryRequestByItsDocumentedContract) where
 
 import Control.Monad (forM_)
 import Data.Aeson
@@ -49,7 +49,7 @@ firstDiagnostic result = case diagnostics result of
   d : _ -> (text (field "code" d), text (field "message" d))
   [] -> ("", "")
 
--- A regular expression /a.*b/ without newlines: the parts occur in order on one line.
+-- | A regular expression /a.*b/ without newlines: the parts occur in order on one line.
 lineMatches :: [String] -> String -> Bool
 lineMatches parts = any (inOrder parts) . lines
   where
@@ -75,8 +75,12 @@ rustSource = source "rust.lawspec" $ unlines
   , " example `maximum` is x = 127 expect successor x = 128 end"
   , "end" ]
 
-spec :: Spec
-spec = describe "compiler API contracts" $ do
+-- | The npm package, the CLI and the documentation site all reach the compiler
+-- only through the JSON requests core.wasm exports, so a request that answers
+-- differently from its documented contract breaks every client at once.
+-- ref:DEC-wasm-distribution ref:REQ-compiler-api-contract
+test_compilerApiAnswersEveryRequestByItsDocumentedContract :: Spec
+test_compilerApiAnswersEveryRequestByItsDocumentedContract = describe "compiler API contracts" $ do
   describe "Rust" $ do
     it "owns adapters and separates the numeric runtime from Proptest helpers" $ do
       let result = call ["method" .= ("planGeneration" :: String), "target" .= ("rust" :: String), "sources" .= [rustSource]]

@@ -1,4 +1,5 @@
-module StructuralSpec (spec) where
+-- | The structural type registry and native declarations per target.
+module StructuralSpec (test_structuralTypesHaveOneRegistryAndNativeDeclarations) where
 
 import Test.Hspec
 import Data.Either (isLeft, isRight)
@@ -37,8 +38,11 @@ decl name parameters constructors = DataDeclaration (Id name) name parameters co
 registry :: [DataDeclaration] -> IO TypeRegistry
 registry definitions = either (\e -> expectationFailure e >> fail e) pure (makeRegistry definitions)
 
-spec :: Spec
-spec = do
+-- | Every target renders the same data, so the registry is the single
+-- description each target's declarations and values are generated from.
+-- ref:DEC-typed-core-boundary ref:REQ-structural-types
+test_structuralTypesHaveOneRegistryAndNativeDeclarations :: Spec
+test_structuralTypesHaveOneRegistryAndNativeDeclarations = do
   describe "structural type registry" $ do
     it "checks full container arity and refuses value arguments" $ do
       r <- registry []

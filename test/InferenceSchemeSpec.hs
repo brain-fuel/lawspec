@@ -1,4 +1,5 @@
-module InferenceSchemeSpec (spec) where
+-- | Type schemes of declarations.
+module InferenceSchemeSpec (test_declarationSchemesInstantiateFreshlyAtEachUse) where
 
 import Test.Hspec
 import Control.Monad.State.Strict (evalStateT)
@@ -7,8 +8,11 @@ import qualified Data.Map.Strict as M
 import qualified LawSpec.Inference as I
 import LawSpec.Model
 
-spec :: Spec
-spec = describe "declaration type schemes" $ do
+-- | A generic declaration may be used at different types within one expression,
+-- so each use needs its own instantiation and bound variables must never be
+-- captured. ref:DEC-typed-core-boundary ref:REQ-type-schemes
+test_declarationSchemesInstantiateFreshlyAtEachUse :: Spec
+test_declarationSchemesInstantiateFreshlyAtEachUse = describe "declaration type schemes" $ do
   let a = Variable "a"
       boolean = Named "Bool"
       text = Named "Text"

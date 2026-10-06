@@ -130,3 +130,143 @@ decimal-arithmetic:
   kind: article
   title: Mike Cowlishaw, General Decimal Arithmetic Specification
   locator: https://speleotrove.com/decimal/decarith.html
+REQ-compiler-api-contract:
+  kind: requirement
+  title: The compiler API answers every JSON request with the shapes and diagnostics its reference documents, for every target.
+  locator: docs/reference/api.md
+REQ-async-adapters:
+  kind: requirement
+  title: An async adapter is marked in Core, reported as asynchronous evidence, scaffolded and bound as each target's native task.
+  locator: docs/reference/language/async-functions.md
+REQ-refined-generation-bounds:
+  kind: requirement
+  title: Generated inputs for a refined integer stay within its bounds on every target.
+  locator: docs/reference/refinements.md
+REQ-portable-collections:
+  kind: requirement
+  title: Collections are typed, evaluated at compile time where finite, and iterated in one portable order on every target.
+  locator: docs/reference/language/collections.md
+REQ-conditional-branches:
+  kind: requirement
+  title: A conditional is typed and audited branch by branch, each branch knowing which way its condition went.
+  locator: docs/reference/language/expressions-and-arithmetic.md
+REQ-typed-core-boundary:
+  kind: requirement
+  title: Every program elaborates to typed Core that an independent validator accepts, with arithmetic evidence and conversions explicit.
+  locator: docs/explanation/how-the-compiler-works.md
+REQ-idiomatic-data-shapes:
+  kind: requirement
+  title: Products and sums become each target's idiomatic records, classes, structs or enums.
+  locator: docs/reference/language/types-and-data.md
+REQ-definition-contracts:
+  kind: requirement
+  title: A refined definition is admitted only when its contracts and constructor invariants are proved, and is then executed and emitted for every backend.
+  locator: docs/reference/language/definitions.md
+REQ-definition-predicates:
+  kind: requirement
+  title: Closed checked definitions can be used in refinements, examples and contracts, and adapter calls in them are rejected.
+  locator: docs/reference/language/definitions.md
+REQ-definition-templates:
+  kind: requirement
+  title: A generic definition's template is typed and audited before specialization, using its capabilities, primitive domains and the selected machine profile.
+  locator: docs/reference/language/definitions.md
+REQ-honest-evidence:
+  kind: requirement
+  title: Each law is proved, exhaustively checked, property-tested or assumed, and the reported evidence never overstates what was established.
+  locator: docs/reference/language/evidence-and-discharge.md
+REQ-readable-layout:
+  kind: requirement
+  title: Generated code is laid out within its width without altering tokens, literals or required separators, in readable and compact layouts.
+  locator: docs/reference/formatting.md
+REQ-domain-modeling:
+  kind: requirement
+  title: Wrappers elaborate to refined products and workflows to checked steps with a generated law.
+  locator: docs/reference/language/domain-modeling.md
+REQ-flow-typing:
+  kind: requirement
+  title: Flow parameters thread each state linearly through its calls, checked against typestate and desugared to ordinary Core.
+  locator: docs/reference/language/flow-types.md
+REQ-gadts:
+  kind: requirement
+  title: Matching on a GADT refines types locally, rules out inaccessible constructors, and supports existentials and type witnesses.
+  locator: docs/reference/language/gadts.md
+REQ-generic-specialization:
+  kind: requirement
+  title: Generic definitions specialize with their result refinements proved, and callee guarantees are used only where they hold.
+  locator: docs/reference/language/definitions.md
+REQ-cross-unit-imports:
+  kind: requirement
+  title: Imports resolve qualified and listed names across units and packages, re-export originals, and reject laws that use another unit's adapters.
+  locator: docs/reference/language/imports-and-packages.md
+REQ-incremental-compilation:
+  kind: requirement
+  title: Incremental compilation and its on-disk cache give every program the same result as a fresh compile.
+  locator: docs/reference/cli.md
+REQ-indexed-families:
+  kind: requirement
+  title: Indexed families elaborate to erased data with a structural measure, direct generation by their indices, and have definition result indices proved.
+  locator: docs/reference/language/indexed-families.md
+REQ-type-schemes:
+  kind: requirement
+  title: Each use of a generic declaration is instantiated independently and capture-free, without generalizing ordinary parameters.
+  locator: docs/reference/language/syntax.md
+REQ-native-binding-resolution:
+  kind: requirement
+  title: Native bindings resolve to one unambiguous native identity with codecs and generator factories, and conflicts are rejected.
+  locator: docs/reference/native-bindings.md
+REQ-native-binding-requests:
+  kind: requirement
+  title: Native binding configuration is validated strictly at the request boundary, and bindings cannot replace checked total definitions.
+  locator: docs/how-to/bind-native-types.md
+REQ-payload-proofs:
+  kind: requirement
+  title: Guarantees about recursive payloads are transferred only to the leaves and calls they describe.
+  locator: docs/reference/refinements.md
+REQ-payload-predicates:
+  kind: requirement
+  title: Payload predicates are typed, scoped and lowered to executable Core over recursive parameters of any depth.
+  locator: docs/reference/refinements.md
+REQ-railway-combinators:
+  kind: requirement
+  title: Railway combinators bind, map, recover, ensure and pair results as documented, with documented precedence.
+  locator: docs/reference/language/workflows.md
+REQ-exact-refinement-proofs:
+  kind: requirement
+  title: Implication between refinements is decided with exact arithmetic, both machine widths and strict and inclusive bounds kept distinct.
+  locator: docs/reference/refinements.md
+REQ-deadlock-free-scenarios:
+  kind: requirement
+  title: A scenario is accepted only when its processes cannot deadlock or race, and rejected otherwise.
+  locator: docs/reference/language/scenarios.md
+REQ-python-sessions:
+  kind: requirement
+  title: Generated Python session ends name each step, return the next end, and send delegated ends.
+  locator: docs/reference/language/scenarios.md
+REQ-source-data-refinements:
+  kind: requirement
+  title: Refinements on type arguments of source data lower through products, sums and nested fields, keeping dependencies in scope.
+  locator: docs/reference/language/types-and-data.md
+REQ-stateful-models:
+  kind: requirement
+  title: Stateful models read each command's typestate from its flow parameter, honour preconditions and reject malformed models.
+  locator: docs/reference/language/models.md
+REQ-structural-types:
+  kind: requirement
+  title: Structural types are registered once and declared natively, with values evaluated alike, on every target.
+  locator: docs/reference/language/types-and-data.md
+REQ-target-name-escaping:
+  kind: requirement
+  title: Names that are keywords of a target are escaped idempotently in generated code while Core keeps the declared name.
+  locator: docs/reference/language/syntax.md
+REQ-test-manifest:
+  kind: requirement
+  title: The test manifest names every law's generated tests on each target, following custom test directories.
+  locator: docs/reference/cli.md
+REQ-durations:
+  kind: requirement
+  title: Durations have portable literals and operators, checked in definitions and the totality audit.
+  locator: docs/reference/language/durations.md
+REQ-total-definitions:
+  kind: requirement
+  title: Checked definitions execute totally in Core, every partial operation justified by a proved domain, in both machine profiles.
+  locator: docs/reference/language/definitions.md

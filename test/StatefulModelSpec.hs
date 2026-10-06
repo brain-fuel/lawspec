@@ -1,4 +1,5 @@
-module StatefulModelSpec (spec) where
+-- | Stateful models and their commands.
+module StatefulModelSpec (test_statefulModelsElaborateFromTypestate) where
 
 import Data.List (isInfixOf)
 import Test.Hspec
@@ -48,8 +49,12 @@ rejects fragment source = case machinesOf source of
   Left message -> message `shouldSatisfy` isInfixOf fragment
   Right _ -> expectationFailure ("expected rejection mentioning " ++ show fragment)
 
-spec :: Spec
-spec = describe "stateful models" $ do
+-- | A model checks real implementations against a history of calls, so each
+-- command's typestate and precondition must come from its declaration and a
+-- malformed model must be rejected. ref:DEC-stateful-models-linearizability
+-- ref:REQ-stateful-models
+test_statefulModelsElaborateFromTypestate :: Spec
+test_statefulModelsElaborateFromTypestate = describe "stateful models" $ do
   it "read each command's typestate from its flow parameter" $
     case machinesOf (stack ++ unlines
       [ "model stack :: Stack n by List Int8 is"
