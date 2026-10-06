@@ -146,7 +146,9 @@ emitTests Config{..} unit laws = do
     -- LAWSPEC_SEED fixes rapid's seed, so a run can be repeated exactly
     -- (lawspec test records the seed of every passing run).
     seedDoc = text "func init() " <> block (text "if seed := os.Getenv(\"LAWSPEC_SEED\"); seed != \"\" " <>
-      block (text "_ = flag.Set(\"rapid.seed\", seed)"))
+      block (text "_ = flag.Set(\"rapid.seed\", seed)")) <> D.hardline <> D.hardline <>
+      -- A harnessed unit whose laws draw nothing still seeds rapid.
+      text "var _ = rapid.Check"
     -- Workflows wait on a virtual clock under test.
     clockDoc = text "func init() " <> block (text "LawSpecUseVirtualClock(0)")
     expr = expression

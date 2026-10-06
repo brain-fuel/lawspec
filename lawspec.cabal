@@ -96,6 +96,8 @@ extra-source-files:
     examples/specs/scalar_adapters.lawspec
     examples/specs/scalar_catalog.lawspec
     examples/specs/scalars.lawspec
+    examples/specs/scheduling_order.lawspec
+    examples/specs/scheduling_overlap.lawspec
     examples/specs/sessions.lawspec
     examples/specs/slug.lawspec
     examples/specs/sum_refinements.lawspec

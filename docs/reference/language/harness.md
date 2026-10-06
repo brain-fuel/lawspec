@@ -219,20 +219,57 @@ example.harness::a discount is never more than the total: 100 generated case(s)
 `known failing` cannot be put on a law the compiler proves or evaluates
 itself: such a law is either true or a compile error.
 
-`order random` and `parallel` hold on every target:
+LawSpec owns how a unit's tests are scheduled: each runtime has a small
+harness driver, and the target's test framework only hosts and reports the
+tests. `order random` is seeded by the run's seed (`--seed`, which
+`lawspec test` passes as `LAWSPEC_SEED`; otherwise one is chosen), printed
+as "order random seed N … LAWSPEC_SEED=N replays this order", and the same
+seed gives the same order:
 
 | Target | `order random` | `parallel` |
 | --- | --- | --- |
-| Python | the tests are registered in a seeded order | pytest-xdist (`-n auto`), when `lawspec test` finds it installed; without it the tests run one after another, and `lawspec test` says so |
-| JavaScript, TypeScript | registered in a seeded order | one `describe` suite with `concurrency: true` |
-| Go | `-test.shuffle` with the run's seed, set in `TestMain` | `t.Parallel()` |
-| Java | JUnit's random method order | JUnit's concurrent mode, when enabled in its configuration |
-| Kotlin | Kotest's random order | Kotest's `concurrency`, one thread per processor |
-| Rust | each law test waits its turn; the seed ranks the tests waiting | libtest runs tests in parallel already (a unit with `order random` runs them one at a time) |
-| Haskell | each law's tests in one block, the blocks shuffled with the seed | hspec's `parallel` |
+| Python | the driver's `pytest_collection_modifyitems`, in a generated `conftest.py` | pytest-xdist processes when `lawspec test` finds it installed; otherwise the driver runs the unit's tests on a thread pool |
+| JavaScript, TypeScript | the tests are registered in the seeded order | node:test runs the unit's tests concurrently, and `lawspec test` runs test files concurrently |
+| Go | `-test.shuffle` with the seed, set in `TestMain` | `t.Parallel()` |
+| Java | a seeded `MethodOrderer` (`LawSpecOrder`) | JUnit's concurrent mode, enabled in a generated `junit-platform.properties` |
+| Kotlin | the tests are registered in the seeded order | Kotest concurrency, a thread per processor |
+| Rust | each test waits for its seeded turn (stable libtest cannot shuffle) | libtest's test threads; with `order random` too, tests start in order, then overlap |
+| Haskell | each law's tests in one block, the blocks in the seeded order | hspec's `parallel`, on the threaded runtime (`-with-rtsopts=-N`) |
 
-The seed is the run's (`LAWSPEC_SEED`, which `lawspec test` sets), so an
-order can be repeated.
+Each runtime records the parallelism it achieved, and `lawspec test` prints
+it ("parallel example.shop: threads …, 8 worker(s)"). The genuine platform
+limits:
+
+- **Python**: without pytest-xdist, threads run truly in parallel only on
+  free-threaded CPython (3.13t and later); under the GIL they interleave, so
+  sleeps and I/O overlap but computation takes turns. The record says which.
+- **JavaScript and TypeScript**: one process runs the unit's tests
+  concurrently, so asynchronous laws overlap and synchronous ones take turns
+  on the event loop.
+
+`parallel` cannot change what laws observe: each test has its own handler
+table, and a resource shared under `parallel` must be declared
+`resource T is concurrent` (cases cannot interfere through it), or the
+compiler rejects the harness.
+
+Every harness setting holds on every target:
+
+| Setting | Python | JS, TS | Go | Java | Kotlin | Rust | Haskell |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| strategies | yes | yes | yes | yes | yes | yes | yes |
+| `cover`, `classify`, `label` | yes | yes | yes | yes | yes | yes | yes |
+| `target maximize` | yes (Hypothesis) | yes (LawSpec climbs) | yes (LawSpec) | yes (LawSpec) | yes (LawSpec) | yes (LawSpec) | yes (LawSpec) |
+| `tags`, `skip`, `known failing` | yes | yes | yes | yes | yes | yes | yes |
+| `timeout`, `repeat`, `retry flaky` | yes | yes | yes | yes | yes | yes | yes |
+| `order random` | yes | yes | yes | yes | yes | yes | yes |
+| `parallel` | yes (see above) | yes (see above) | yes | yes | yes | yes | yes |
+| `share` | yes | yes | yes | yes | yes | yes | yes |
+| benchmarks | yes | yes | yes | yes | yes | yes | yes |
+| failing inputs replayed | yes | yes | yes | yes | yes | yes | yes |
+
+The `scheduling` acceptance suite checks, on all eight targets, that the
+same seed gives the same order and other seeds other orders, and that a
+`parallel` unit's laws overlap.
 
 ## Sharing resources
 

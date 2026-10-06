@@ -155,12 +155,20 @@
 - `target maximize` steers on every target: where the property library has
   no targeted search, LawSpec climbs after the property, moving the
   best-scoring case's integers while the score rises.
-- `order random` and `parallel` hold on every target: Go shuffles with the
-  run's seed, Haskell shuffles each law's block of tests, Rust runs a unit's
-  law tests in a seeded order one at a time; JavaScript and TypeScript run a
-  `parallel` unit's tests concurrently, Kotlin through Kotest's concurrency,
-  and Python through pytest-xdist when `lawspec test` finds it. The test
-  manifest carries whether a law's unit is parallel, and its benchmarks.
+- LawSpec owns a unit's scheduling through a small harness driver in each
+  runtime; the test framework hosts and reports. `order random` is seeded by
+  the run's seed, printed, and replayable on all eight targets; `parallel`
+  runs a unit's tests at the same time on all eight (Python on a thread pool
+  when pytest-xdist is absent, Java through a generated
+  `junit-platform.properties`, Haskell on the threaded runtime), and each
+  runtime records the parallelism it achieved, which `lawspec test` prints.
+  The test manifest carries whether a law's unit is parallel, and its
+  benchmarks.
+- `resource T is concurrent`: a resource cases cannot interfere through. A
+  harness may share a resource under `parallel` only if it is concurrent.
+- New acceptance suite `scheduling`: on every target, the same seed gives
+  the same order, other seeds other orders, and a `parallel` unit's laws
+  overlap.
 
 ## 0.20.0
 

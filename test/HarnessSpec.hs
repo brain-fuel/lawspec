@@ -117,6 +117,11 @@ spec = describe "harness units" $ do
   it "shares only resources that declare reset" $ do
     compiled (harness ["  share Scratch per unit"]) `shouldSatisfy` isRight
     compiled (harness ["  share Socket per unit"]) `shouldSatisfy` failsWith "does not declare reset"
+    compiled (harness ["  parallel", "  share Scratch per unit"]) `shouldSatisfy` failsWith "share Scratch with parallel"
+    let concurrentShop = compileCore 64 defaultGeneration
+          [Source "shop.lawspec" (replaceOnce "resource Scratch is\n" "resource Scratch is concurrent\n" shop),
+           Source "shop_testing.lawspec" (harness ["  parallel", "  share Scratch per unit"])]
+    concurrentShop `shouldSatisfy` isRight
   it "shares a resource at run time: each law that takes it gets its scope's key, and its reset" $ do
     let resourcesOf program = [C.propertyResources p | u <- C.programUnits program, p <- C.unitProperties u, C.propertyName p == "scratch is open"]
     case compiled (harness ["  share Scratch per unit"]) of
@@ -199,3 +204,9 @@ spec = describe "harness units" $ do
         let entries = testManifest "python" Nothing program
         [entryTags e | e <- entries, entryLabel e == "example.shop::reflexive"] `shouldBe` [["fast", "unit"]]
         [entryName e | e <- entries, entryLabel e == "example.shop::reflexive"] `shouldBe` ["test_reflexive"]
+
+replaceOnce :: String -> String -> String -> String
+replaceOnce needle replacement haystack = case haystack of
+  [] -> []
+  _ | take (length needle) haystack == needle -> replacement ++ drop (length needle) haystack
+  c : rest -> c : replaceOnce needle replacement rest

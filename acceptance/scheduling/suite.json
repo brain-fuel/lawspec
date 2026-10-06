@@ -1,0 +1,1 @@
+{ "specs": ["examples/specs/scheduling_order.lawspec", "examples/specs/scheduling_overlap.lawspec"], "schedule": true }

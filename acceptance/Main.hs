@@ -51,12 +51,12 @@ import Data.Aeson
 import qualified Data.Aeson.Key as K
 import qualified Data.Aeson.KeyMap as KM
 import qualified Data.ByteString.Lazy as BL
-import Data.List (isInfixOf, isPrefixOf, isSuffixOf, sort, stripPrefix)
+import Data.List (isInfixOf, isPrefixOf, isSuffixOf, nub, sort, stripPrefix)
 import Data.Maybe (fromMaybe)
 import qualified Data.Text as T
 import qualified Data.Vector as V
 import System.Directory
-import System.Environment (getArgs, lookupEnv)
+import System.Environment (getArgs, getEnvironment, lookupEnv)
 import System.Exit (ExitCode(..), die, exitFailure)
 import System.FilePath ((</>), takeDirectory)
 import System.IO (hPutStrLn, readFile', stderr)
@@ -234,6 +234,9 @@ runSuite suite target project mutate (sources, regenerate, generated) = do
     exitFailure
   let passed = target ++ ": " ++ suite ++ " passes"
   putStrLn passed
+  -- A suite with "schedule": true checks how the harness ran it.
+  manifest <- BL.readFile ("acceptance" </> suite </> "suite.json")
+  scheduled <- if (field "schedule" <$> decode manifest) == Just (Bool True) then pure <$> checkSchedule target tool project else pure []
   mutants <- if mutate then suiteMutants suite target else pure []
   stubs <- if mutate then suiteStubs suite target else pure []
   -- Mutants edit adapters, or the native code a bound unit calls.
@@ -293,7 +296,7 @@ runSuite suite target project mutate (sources, regenerate, generated) = do
     let line = target ++ ": rejected " ++ mutantName mutant
     putStrLn line
     pure line
-  pure (passed : rejected ++ specRejected)
+  pure (passed : scheduled ++ rejected ++ specRejected)
 
 -- Regenerate without running anything and compare with the files on disk.
 checkDisk :: FilePath -> [Generated] -> IO ()
@@ -307,12 +310,59 @@ checkDisk project generated = do
   unless (null stale) (die ("stale generated files: " ++ unwords (map generatedPath stale)))
   putStrLn (project ++ ": generated files match")
 
+-- The scheduling checks: the adapters note when each call starts and ends
+-- (LAWSPEC_SCHEDULE_LOG). `order random` must follow the run's seed (the
+-- same seed, the same order; another seed, another order) in the unit that
+-- calls pause (arguments below 100), and the `parallel` unit's naps (from
+-- 100) must overlap.
+checkSchedule :: String -> Toolchain -> FilePath -> IO String
+checkSchedule target tool project = do
+  root <- getCurrentDirectory
+  let logFile = root </> project </> "schedule.log"
+      runWith seed = do
+        removePathForcibly logFile
+        -- Gradle would skip a test task whose inputs did not change.
+        let rerun = ["--rerun" | target == "kotlin"]
+        (code, output) <- runToolWith [("LAWSPEC_SEED", show seed), ("LAWSPEC_SCHEDULE_LOG", logFile)] tool (arguments tool ++ rerun) project
+        writeFile (project </> ("schedule-" ++ show seed ++ ".log")) output
+        unless (code == ExitSuccess) (die (target ++ ": the run with seed " ++ show seed ++ " failed (see " ++ project </> "schedule-" ++ show seed ++ ".log)"))
+        content <- readFile' logFile
+        pure [(event, read n :: Int, read t :: Double) | [event, n, t] <- map words (lines content)]
+      order events = nub [n | ("start", n, _) <- events, n < 100]
+      naps events = [(n, start, end) | ("start", n, start) <- events, n >= 100, ("end", m, end) <- events, m == n]
+      overlapping events = or [s1 < e2 && s2 < e1 | (n1, s1, e1) <- naps events, (n2, s2, e2) <- naps events, n1 /= n2]
+  first <- runWith (11 :: Int)
+  again <- runWith 11
+  unless (length (order first) == 6)
+    (die (target ++ ": order random: expected six pauses, found " ++ show (order first)))
+  unless (order first == order again)
+    (die (target ++ ": order random with seed 11 ran " ++ show (order first) ++ ", then " ++ show (order again)))
+  let differing [] = pure Nothing
+      differing (seed : rest) = do
+        events <- runWith seed
+        if order events /= order first then pure (Just (seed, order events)) else differing rest
+  other <- differing [12 .. 16 :: Int]
+  case other of
+    Nothing -> die (target ++ ": order random gave " ++ show (order first) ++ " for seeds 11 to 16")
+    Just _ -> pure ()
+  unless (overlapping first && overlapping again)
+    (die (target ++ ": parallel: the naps did not overlap: " ++ show (naps first)))
+  let line = target ++ ": order random follows the seed " ++ show (order first) ++ "; parallel laws overlap"
+  putStrLn line
+  pure line
+
 runTool :: Toolchain -> [String] -> FilePath -> IO (ExitCode, String)
-runTool tool args project = do
+runTool = runToolWith []
+
+runToolWith :: [(String, String)] -> Toolchain -> [String] -> FilePath -> IO (ExitCode, String)
+runToolWith extra tool args project = do
   prepare tool
-  (code, out, err) <- readCreateProcessWithExitCode (proc (command tool) args) { cwd = Just project } ""
-  extra <- report tool
-  pure (code, out ++ err ++ extra)
+  environment <- getEnvironment
+  let settings = if null extra then Nothing else Just (extra ++ [kv | kv@(k, _) <- environment, k `notElem` map fst extra])
+  (code, out, err) <- readCreateProcessWithExitCode (proc (command tool) args) { cwd = Just project, env = settings } ""
+  extra' <- report tool
+  pure (code, out ++ err ++ extra')
+
 
 suiteFiles :: String -> String -> IO [(FilePath, FilePath)]
 suiteFiles suite target = suiteDirectory suite target "files"

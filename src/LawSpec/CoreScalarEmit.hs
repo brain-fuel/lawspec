@@ -182,7 +182,7 @@ scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions 
           signature = Doc.text ((if py then (if asyncStub then "async def " else "def ") else (if asyncStub then "export async function " else "export function ")) ++ n) <>
             Doc.delimit 4 "(" ")" arguments <>
             (if py then Doc.text " -> " <> (if r == Named "Unit" then Doc.text "None" else pythonType r) <> Doc.text ":"
-             else Doc.text (if ts then ": " ++ native r else ""))
+             else Doc.text (if ts then ": " ++ (if asyncStub then "Promise<" ++ native r ++ ">" else native r) else ""))
       in signatureComments <> signature <>
         (if py then Doc.nest 4 (Doc.hardline <> Doc.text ("raise NotImplementedError(" ++ q n ++ ")"))
          else Doc.text " " <> Doc.block 2 (Doc.text "throw " <> WebExpr.call "new Error" [WebExpr.quoted n] <> Doc.text ";")) <> Doc.hardline

@@ -539,7 +539,10 @@ emitPlanWithNativeOptions minify target sourceDir testDir unescaped unwitnessed 
       sourceBase a = if target == "kotlin" && ".java" `isSuffixOf` artifactPath a then "src/main/java" else fst defaults
       sourceRoot a = if target == "kotlin" && ".java" `isSuffixOf` artifactPath a then maybe "src/main/java" id sourceDir else src
       adjust a = (mapArtifactContent (adjustContent a) a)
-        { artifactPath = if artifactPlacement a == "source" then move (sourceBase a) (sourceRoot a) (artifactPath a) else move (snd defaults) tst (artifactPath a) }
+        { artifactPath = if artifactPlacement a == "source" then move (sourceBase a) (sourceRoot a) (artifactPath a)
+            -- Test resources (JUnit's configuration) stay where the build finds them.
+            else if "src/test/resources/" `isPrefixOf` artifactPath a then artifactPath a
+            else move (snd defaults) tst (artifactPath a) }
       adjustContent a
         | target `elem` ["javascript","typescript"] && artifactPlacement a == "test" =
           let nested = init (split '/' (drop (length (snd defaults) + 1) (artifactPath a)))

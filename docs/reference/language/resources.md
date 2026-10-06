@@ -83,6 +83,22 @@ the value reset, so it never sees what another case left. At run time:
 - it is released when the test process ends (a Haskell unit's spec releases
   it when the unit's tests are done).
 
+A harness that also says `parallel` runs cases at the same time, so it may
+share only a resource declared concurrent:
+
+```lawspec fragment
+resource Scratch is concurrent
+  acquire is Scratch 0 end
+  release scratch is unitValue end
+  reset scratch is unitValue end
+end
+```
+
+`concurrent` says cases cannot interfere through the resource. A shared
+concurrent resource is held by any number of cases at once, and reset only
+when no case holds it. Sharing a resource that is not concurrent under
+`parallel` is a compile error.
+
 A `run` scope is one test process: targets whose runner starts a process per
 test file (JavaScript and TypeScript under `node --test`) share per file.
 
