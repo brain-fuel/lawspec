@@ -67,7 +67,7 @@ To build and install a local archive:
 
 ```sh
 npm pack ./npm
-npm install --save-dev ./lawspec-0.20.0.tgz
+npm install --save-dev ./lawspec-0.20.1.tgz
 ```
 
 ## Generated files
