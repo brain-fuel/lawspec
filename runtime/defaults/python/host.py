@@ -6,7 +6,9 @@ import os as _os
 import shutil as _shutil
 import socket as _socket
 
+import lawspec_runtime as _ls
 import lawspec_schema as _schema
+import tempfile as _tempfile
 
 
 class FileSystemHandler:
@@ -38,6 +40,14 @@ class FileSystemHandler:
         except FileNotFoundError:
             pass
 
+    def temporaryDirectory(self, value0: _builtins.str) -> _builtins.str:
+        return _tempfile.mkdtemp(prefix=value0)
+
+    def temporaryFile(self, value0: _builtins.str) -> _builtins.str:
+        handle, path = _tempfile.mkstemp(prefix=value0)
+        _os.close(handle)
+        return path
+
 
 def valid_name(name: str) -> bool:
     return name != "" and "=" not in name and "\0" not in name
@@ -49,6 +59,12 @@ class EnvironmentHandler:
     def environmentVariable(self, value0: _builtins.str) -> _schema.Maybe[_builtins.str]:
         value = _os.environ.get(value0) if valid_name(value0) else None
         return _schema.Nothing() if value is None else _schema.Just(value)
+
+    def environmentSnapshot(self) -> _builtins.str:
+        return _ls.acquire_resource("environment")
+
+    def restoreEnvironment(self, value0: _builtins.str) -> None:
+        _ls.release_resource("environment", value0)
 
 
 class PortsHandler:

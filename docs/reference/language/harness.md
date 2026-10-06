@@ -210,7 +210,7 @@ example.harness::a discount is never more than the total: 100 generated case(s)
 | `tags a, b` | Tags for selecting laws: `lawspec test --tag a --exclude-tag b`. |
 | `skip "reason"` | Run none of the law's tests. The law is still an obligation, reported as `skipped`. |
 | `known failing "reason"` | The law's tests must fail. If they pass, the run fails: "… is marked known failing (…), but it passes; remove `known failing` from its harness". Evidence reports `known-failing`. |
-| `timeout 2 s` | Fail a test that takes longer (`ms`, `s` or `min`). |
+| `timeout 2 s` | Fail a test that takes longer (`ms`, `s` or `min`), in real time, even for a law `using virtual clock`: a virtual clock moves only when the law moves it, so a stuck law would never time out by it. |
 | `repeat n` | Run each test `n` times; every run must pass. |
 | `retry flaky n` | Run a failing test again, up to `n` times. A test that then passes is reported as flaky, and evidence shows `flaky` until a clean run. A harness failure (an unmet `cover`, a strategy's value outside the refinement) is never retried. |
 | `order random` | (unit) Run the law tests in an order chosen by the run's seed. |
@@ -294,8 +294,11 @@ released when the test process ends. See
 benchmark `discount of a bulk order` is discount (Order 30 50000) end
 ```
 
-A benchmark measures an expression with each target's lightest timer (Go
-uses `testing.Benchmark`), and reports the mean and fastest time. It is never
+A benchmark measures an expression with each target's lightest monotonic
+timer, the real clock the `Clock` ability's default handler also reads (Go
+uses `testing.Benchmark`), and reports the mean and fastest time; what it
+calls that uses `Clock` runs under the default (real) handler, never a
+virtual one. It is never
 asserted: a performance requirement belongs in a law, as a budget. A
 benchmark may call adapters and checked definitions, and what it calls may
 use abilities: it runs under each ability's production handler (the one

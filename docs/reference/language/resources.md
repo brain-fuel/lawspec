@@ -113,6 +113,10 @@ These come with LawSpec, from the built-in unit `lawspec.resources`:
 | `FreePort` | a TCP port on the local host that was free | nothing | `portNumber port` |
 | `SavedEnvironment` | a copy of the environment | restores it | nothing |
 
+Each acquires and releases through [`lawspec.host`](host.md#resources)'s
+abilities, under their production handlers, so binding another `FileSystem`,
+`Environment` or `Ports` handler in `lawspec.json` changes how they do it.
+
 `SavedEnvironment` lets a law change the environment through its adapters,
 and puts it back afterwards. A JVM cannot change its process environment, so
 on Java and Kotlin it saves and restores the system properties. Rust runs

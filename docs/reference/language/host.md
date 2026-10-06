@@ -31,6 +31,8 @@ ability FileSystem is
   writeBytes :: Text -> Bytes -> Unit
   pathExists :: Text -> Bool
   removePath :: Text -> Unit
+  temporaryDirectory :: Text -> Text
+  temporaryFile :: Text -> Text
 end
 ```
 
@@ -39,6 +41,9 @@ end
 - `pathExists path` holds for a file, directory or link at the path.
 - `removePath path` removes a file, or a directory and what it holds; a path
   with nothing at it is left alone.
+- `temporaryDirectory prefix` makes a new empty directory whose name starts
+  with the prefix, in the system's temporary directory, and is its path;
+  `temporaryFile prefix` does the same for an empty file.
 - Laws: a written file reads back, and a removed file is gone. Each law uses
   a file of its own in the working directory (`.lawspec-law-read`,
   `.lawspec-law-removed`), as test runners may run laws at once.
@@ -51,13 +56,19 @@ from the working directory.
 ```lawspec fragment
 ability Environment is
   environmentVariable :: Text -> Maybe Text
+  environmentSnapshot :: Text
+  restoreEnvironment :: Text -> Unit
 end
 ```
 
 `environmentVariable name` is the variable's value, or `Nothing`. A name
-that cannot be a variable's (empty, or with `=` or NUL in it) has none. Law:
-a variable has one value. The **default handler** reads the process's
-environment; the spec handler `emptyEnvironment` has no variables.
+that cannot be a variable's (empty, or with `=` or NUL in it) has none.
+`environmentSnapshot` saves the whole environment as text, and
+`restoreEnvironment saved` puts it back as saved. Law: a variable has one
+value. The **default handler** reads and restores the process's environment
+(on Java and Kotlin, whose process environment cannot change, the system
+properties); the spec handler `emptyEnvironment` has no variables, and saves
+and restores nothing.
 
 ## Ports
 
@@ -75,7 +86,11 @@ asynchronously, asks a child process).
 
 ## Resources
 
-Temporary directories, environments set for one law and free ports held for
-one law are resources, which a law takes as inputs and which are always
-released. They build on these abilities; until they arrive, laws that touch
-the file system choose paths of their own.
+The built-in [resources](resources.md#built-in-resources) build on these
+abilities: `TemporaryDirectory` and `TemporaryFile` acquire through
+`temporaryDirectory` and `temporaryFile` and release through `removePath`,
+`SavedEnvironment` through `environmentSnapshot` and `restoreEnvironment`,
+and `FreePort` through `freePort`. A law that takes one runs those
+operations under the ability's production handler: the default one, or the
+one `lawspec.json` binds. A program that names a built-in resource gets
+`lawspec.host` without importing it.

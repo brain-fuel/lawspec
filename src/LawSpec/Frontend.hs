@@ -54,7 +54,12 @@ elaborate bits units properties = do
         handled <- forM ps $ \p -> do
           assignment <- forM (maybe [] id (lookup (C.propertyName p) (S.lawAssignments u))) $ \(ability, choice) ->
             (,) <$> abilityReference u ability <*> pure (handlerRef u choice)
-          pure (shared settings (mapProperty (performOperations operations) p)) { C.propertyHandlers = assignment }
+          -- A resource's operations (a built-in resource's lawspec.host
+          -- ones) run under the production handler of their ability.
+          let resourceAbilities = nub [C.operationAbility op | r <- C.propertyResources p
+                , e <- [C.resourceAcquire r, C.resourceRelease r] ++ maybe [] pure (C.resourceReset r), op <- performedIn e]
+              withResources = assignment ++ [(a, C.ProductionHandler) | a <- resourceAbilities, a `notElem` map fst assignment]
+          pure (shared settings (mapProperty (performOperations operations) p)) { C.propertyHandlers = withResources }
         -- A benchmark's operations are Perform, like a law's.
         let settings' = fmap (\h -> h { C.harnessBenchmarks = [(n, performOperations operations b) | (n, b) <- C.harnessBenchmarks h] }) settings
         pure closed{C.unitContracts=cs,C.unitProperties=handled,C.unitHarnessSettings=settings'}
@@ -71,6 +76,9 @@ elaborate bits units properties = do
       C.Constructor n _ -> baseName n
       _ -> ""
     unitOf p = takeWhile (/= ':') (C.idText (C.propertyId p))
+    performedIn e = case C.expressionNode e of
+      C.Perform op args -> op : concatMap performedIn args
+      _ -> concatMap performedIn (C.children e)
     declarationId u n = C.Id (S.unitName u ++ "::" ++ n)
     property dataDeclarations u p = do
       let pid = C.Id (S.unitName u ++ "::law::" ++ escapeIdentity (S.name p))
@@ -107,16 +115,26 @@ elaborate bits units properties = do
             text value = C.Expr (C.scalarType "Text") (C.Constant (SSequence "Text" (map fromEnum value))) (C.GeneratedFrom rid)
             helper result builtin args = C.Expr result (C.Helper builtin args) (C.GeneratedFrom rid)
         case t of
-          -- A built-in resource: its runtime acquires and releases it.
+          -- A built-in resource acquires and releases through lawspec.host's
+          -- abilities, under their handlers (the default ones, or those
+          -- lawspec.json binds).
           C.Constructor typeName [] | Just kind <- builtinResourceKind typeName -> do
             let constructor = C.Id (typeName ++ "::" ++ baseName typeName)
                 fieldType = if kind == "freePort" then C.scalarType "Int32" else C.scalarType "Text"
                 field = C.Binder (C.Id (C.idText rid ++ "::match::field")) "value" fieldType
-                acquired = if kind == "freePort" then helper fieldType C.FreePort [text kind]
-                  else helper fieldType C.AcquireResource [text kind]
-                release = if kind == "freePort" then C.Expr (C.scalarType "Bool") (C.Constant (SBool True)) (C.GeneratedFrom rid)
-                  else C.Expr (C.scalarType "Bool") (C.Match self [C.MatchCase constructor [field]
-                    (helper (C.scalarType "Bool") C.ReleaseResource [text kind, C.Expr fieldType (C.Local (C.binderId field)) (C.GeneratedFrom rid)])]) (C.GeneratedFrom rid)
+                host ability = C.AbilityRef (C.Id ("lawspec.host::ability::" ++ ability)) []
+                perform result ability op args = C.Expr result (C.Perform (C.Operation (host ability) op) args) (C.GeneratedFrom rid)
+                unit' = C.scalarType "Unit"
+                fieldValue = C.Expr fieldType (C.Local (C.binderId field)) (C.GeneratedFrom rid)
+                releasing body = C.Expr unit' (C.Match self [C.MatchCase constructor [field] body]) (C.GeneratedFrom rid)
+                (acquired, release) = case kind of
+                  "temporaryDirectory" -> (perform fieldType "FileSystem" "temporaryDirectory" [text "lawspec-"],
+                    releasing (perform unit' "FileSystem" "removePath" [fieldValue]))
+                  "temporaryFile" -> (perform fieldType "FileSystem" "temporaryFile" [text "lawspec-"],
+                    releasing (perform unit' "FileSystem" "removePath" [fieldValue]))
+                  "environment" -> (perform fieldType "Environment" "environmentSnapshot" [],
+                    releasing (perform unit' "Environment" "restoreEnvironment" [fieldValue]))
+                  _ -> (perform fieldType "Ports" "freePort" [], C.Expr (C.scalarType "Bool") (C.Constant (SBool True)) (C.GeneratedFrom rid))
             pure (C.Resource binder (C.Expr t (C.Construct constructor [acquired]) (C.GeneratedFrom rid)) release Nothing Nothing False)
           _ -> case [r | r <- S.resourceDeclarations u, S.resourceType r == ty] of
             [declaration] -> do

@@ -118,8 +118,9 @@ keyword; making it `uses Async` builds on this ability.
 ## Limits
 
 - `temporary filesystem`, `environment with [...]` and `free port` as
-  handler transformers, and built-in resources, are not built in yet; the
-  file system's default handler works in the process's working directory.
+  handler transformers are not built in yet; the built-in
+  [resources](resources.md#built-in-resources) give a law a temporary
+  directory, file, port or saved environment through `lawspec.host`.
 - In Go every package holds every ability of the program, so when a
   program's own ability shares a name with a built-in one (`Log`, `Clock`,
   ...), Go names the program's after its unit: `example.shop`'s `Log` is

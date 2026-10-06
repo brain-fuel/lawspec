@@ -51,6 +51,24 @@ public final class Host {
         throw new java.io.UncheckedIOException(failed);
       }
     }
+
+    @Override
+    public java.lang.String temporaryDirectory(java.lang.String value0) {
+      return temporary(value0, true);
+    }
+
+    @Override
+    public java.lang.String temporaryFile(java.lang.String value0) {
+      return temporary(value0, false);
+    }
+  }
+
+  public static java.lang.String temporary(java.lang.String prefix, boolean directory) {
+    try {
+      return (directory ? java.nio.file.Files.createTempDirectory(prefix) : java.nio.file.Files.createTempFile(prefix, "")).toString();
+    } catch (java.io.IOException failed) {
+      throw new java.io.UncheckedIOException(failed);
+    }
   }
 
   public static boolean validName(java.lang.String name) {
@@ -63,6 +81,16 @@ public final class Host {
     public lawspec.runtime.LawSpecRuntime.Maybe<java.lang.String> environmentVariable(java.lang.String value0) {
       java.lang.String value = validName(value0) ? java.lang.System.getenv(value0) : null;
       return value == null ? new lawspec.runtime.LawSpecRuntime.Nothing<>() : new lawspec.runtime.LawSpecRuntime.Just<>(value);
+    }
+
+    @Override
+    public java.lang.String environmentSnapshot() {
+      return lawspec.runtime.LawSpecRuntime.acquireResource("environment");
+    }
+
+    @Override
+    public void restoreEnvironment(java.lang.String value0) {
+      lawspec.runtime.LawSpecRuntime.releaseResource("environment", value0);
     }
   }
 

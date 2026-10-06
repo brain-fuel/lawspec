@@ -4,6 +4,9 @@
 import * as fs from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import * as data from '../lawspec_data.js';
+import * as ls from '../lawspec_runtime.js';
+import * as os from 'node:os';
+import * as path from 'node:path';
 import type * as abilities from '../lawspec_abilities/lawspec/host.js';
 
 /** Files by path; a relative path is from the working directory. */
@@ -29,6 +32,14 @@ export class FileSystemHandler implements abilities.FileSystem {
   removePath(value0: string): void {
     fs.rmSync(value0, { recursive: true, force: true });
   }
+  temporaryDirectory(value0: string): string {
+    return fs.mkdtempSync(path.join(os.tmpdir(), value0));
+  }
+  temporaryFile(value0: string): string {
+    const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), value0)), 'file');
+    fs.writeFileSync(file, '');
+    return file;
+  }
 }
 
 export function validName(name: string): boolean {
@@ -40,6 +51,12 @@ export class EnvironmentHandler implements abilities.Environment {
   environmentVariable(value0: string): data.Maybe<string> {
     const value = validName(value0) ? process.env[value0] : undefined;
     return value === undefined ? new data.Nothing() : new data.Just(value);
+  }
+  environmentSnapshot(): string {
+    return ls.acquireResource('environment');
+  }
+  restoreEnvironment(value0: string): void {
+    ls.releaseResource('environment', value0);
   }
 }
 

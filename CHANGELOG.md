@@ -212,6 +212,11 @@
   benchmarks.
 - `resource T is concurrent`: a resource cases cannot interfere through. A
   harness may share a resource under `parallel` only if it is concurrent.
+- Built-in resources acquire and release through `lawspec.host`'s
+  abilities, under their production handlers: `FileSystem` gains
+  `temporaryDirectory` and `temporaryFile`, `Environment` gains
+  `environmentSnapshot` and `restoreEnvironment`, and `FreePort` uses
+  `freePort`. A program that names a built-in resource gets `lawspec.host`.
 - New acceptance suite `scheduling`: on every target, the same seed gives
   the same order, other seeds other orders, and a `parallel` unit's laws
   overlap.

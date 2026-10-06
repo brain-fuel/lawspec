@@ -4,6 +4,9 @@
 import * as fs from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import * as data from '../lawspec_data.mjs';
+import * as ls from '../lawspec_runtime.mjs';
+import * as os from 'node:os';
+import * as path from 'node:path';
 /** Files by path; a relative path is from the working directory. */
 export class FileSystemHandler {
     readBytes(value0) {
@@ -29,6 +32,14 @@ export class FileSystemHandler {
     removePath(value0) {
         fs.rmSync(value0, { recursive: true, force: true });
     }
+    temporaryDirectory(value0) {
+        return fs.mkdtempSync(path.join(os.tmpdir(), value0));
+    }
+    temporaryFile(value0) {
+        const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), value0)), 'file');
+        fs.writeFileSync(file, '');
+        return file;
+    }
 }
 export function validName(name) {
     return name !== '' && !name.includes('=') && !name.includes('\0');
@@ -38,6 +49,12 @@ export class EnvironmentHandler {
     environmentVariable(value0) {
         const value = validName(value0) ? process.env[value0] : undefined;
         return value === undefined ? new data.Nothing() : new data.Just(value);
+    }
+    environmentSnapshot() {
+        return ls.acquireResource('environment');
+    }
+    restoreEnvironment(value0) {
+        ls.releaseResource('environment', value0);
     }
 }
 // Node binds sockets only asynchronously, so a child process asks.

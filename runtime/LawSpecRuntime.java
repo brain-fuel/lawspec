@@ -2489,7 +2489,7 @@ public final class LawSpecRuntime {
   // each case and releases them after it. A JVM cannot change its process
   // environment, so the environment it saves and restores is its system
   // properties.
-  static String acquireResource(String kind) {
+  public static String acquireResource(String kind) {
     try {
       switch (kind) {
         case "temporaryDirectory":
@@ -2512,7 +2512,7 @@ public final class LawSpecRuntime {
     }
   }
 
-  static void releaseResource(String kind, String value) {
+  public static void releaseResource(String kind, String value) {
     switch (kind) {
       case "temporaryDirectory", "temporaryFile" -> {
         try (var paths = java.nio.file.Files.walk(java.nio.file.Path.of(value))) {

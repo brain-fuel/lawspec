@@ -274,7 +274,10 @@ compileWithImports visible bits settings sources = do
       matchers = any usesMatchers [text | Source _ text <- sources]
       -- Programs that name a built-in resource get the resources unit.
       resources = any usesResources [text | Source _ text <- sources]
-      abilityUnits = [Source ("<" ++ unit ++ ">") (builtinSource unit) | unit <- builtinUnits, any (importsBuiltin unit) [text | Source _ text <- sources]]
+      -- Built-in resources acquire and release through lawspec.host's
+      -- abilities, so a program that names one gets that unit too.
+      abilityUnits = [Source ("<" ++ unit ++ ">") (builtinSource unit) | unit <- builtinUnits
+                     , any (importsBuiltin unit) [text | Source _ text <- sources] || (unit == "lawspec.host" && resources)]
       collections = usedCollections ([text | Source _ text <- sources ++ abilityUnits] ++ [clockSource | clock])
       builtins = preludeSource : [Source "<lawspec.collections>" (collectionsSource collections) | not (null collections)] ++
         [Source "<lawspec.time>" (timeSource ++ (if clock then clockSource else "")) | time] ++ [Source "<lawspec.resilience>" resilienceSource | resilience] ++
@@ -284,7 +287,10 @@ compileWithImports visible bits settings sources = do
       implicit = [(timeUnit, timeAlias, timeTypes, usesTime) | time] ++
         [(resilienceUnit, resilienceAlias, resilienceTypes, usesResilience) | resilience] ++
         [(matchersUnit, matchersAlias, matchersTypes, usesMatchers) | matchers] ++
-        [(resourcesUnit, resourcesAlias, resourcesTypes, usesResources) | resources]
+        [(resourcesUnit, resourcesAlias, resourcesTypes, usesResources) | resources] ++
+        -- A unit that names a built-in resource imports lawspec.host, whose
+        -- default handlers its resources run under.
+        [("lawspec.host", "lawspecHost", [], \text -> usesResources text && not (importsBuiltin "lawspec.host" text)) | resources]
   parsedUnits <- parseSourcesWith collections implicit (builtins ++ sources)
   unless (length parsedUnits == length (nub (map (unitName . fst) parsedUnits))) (Left [Diagnostic "duplicate-unit" "unit names must be unique; prelude is reserved" Nothing])
   imported' <- resolveImports visible parsedUnits

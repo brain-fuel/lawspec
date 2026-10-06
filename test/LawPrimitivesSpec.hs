@@ -4,7 +4,7 @@ module LawPrimitivesSpec (spec) where
 
 import Data.Char (ord)
 import Data.Either (isLeft, isRight)
-import Data.List (isInfixOf)
+import Data.List (isInfixOf, isPrefixOf)
 import Test.Hspec
 import qualified LawSpec.Core as C
 import LawSpec.Common
@@ -136,4 +136,8 @@ spec = describe "law primitives" $ do
     it "provide built-in resources" $ do
       compiled <- either (fail . show) pure (program
         "readNote :: Text -> Int32\nlaw `notes` for dir :: TemporaryDirectory, port :: FreePort is definition is readNote (directoryPath dir) = portNumber port end end\n")
-      [length (C.propertyResources p) | u <- C.programUnits compiled, p <- C.unitProperties u] `shouldBe` [2]
+      -- lawspec.host comes along, with its abilities' laws.
+      [length (C.propertyResources p) | u <- C.programUnits compiled, not ("lawspec." `isPrefixOf` C.idText (C.unitId u)), p <- C.unitProperties u] `shouldBe` [2]
+      -- They acquire and release through lawspec.host's abilities.
+      [C.abilityKey a | u <- C.programUnits compiled, p <- C.unitProperties u, not (null (C.propertyResources p)), (a, C.ProductionHandler) <- C.propertyHandlers p]
+        `shouldBe` ["lawspec.host::ability::FileSystem", "lawspec.host::ability::Ports"]

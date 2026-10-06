@@ -1297,7 +1297,8 @@ parseSourcesWith collections builtins allSources = do
               builtin unit alias types =
                 let items = [t | t <- types, t `notElem` local]
                     origin = Location ("<" ++ unit ++ ">") 1 1
-                in [Import unit alias items (Span origin origin) | not (null items)]
+                -- A built-in with no types to list (lawspec.host) is imported whole.
+                in [Import unit alias items (Span origin origin) | not (null items) || unit == "lawspec.host"]
           in (n, imports ++ builtin collectionsUnit collectionsAlias collections ++
                concat [builtin unit alias types | (unit, alias, types, uses) <- builtins, uses s])
     graph = M.fromList [(n, imports) | (_, n, imports) <- preambles]

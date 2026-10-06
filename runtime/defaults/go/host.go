@@ -43,6 +43,23 @@ func (handler *FileSystemHandler) RemovePath(value0 string) {
 	}
 }
 
+func (handler *FileSystemHandler) TemporaryDirectory(value0 string) string {
+	dir, err := os.MkdirTemp("", value0)
+	if err != nil {
+		panic(err)
+	}
+	return dir
+}
+
+func (handler *FileSystemHandler) TemporaryFile(value0 string) string {
+	file, err := os.CreateTemp("", value0)
+	if err != nil {
+		panic(err)
+	}
+	defer file.Close()
+	return file.Name()
+}
+
 func lsValidVariable(name string) bool {
 	return name != "" && !strings.ContainsAny(name, "=\x00")
 }
@@ -63,6 +80,14 @@ func (handler *EnvironmentHandler) EnvironmentVariable(value0 string) LawSpecMay
 		return LawSpecJust(value)
 	}
 	return LawSpecNothing[string]()
+}
+
+func (handler *EnvironmentHandler) EnvironmentSnapshot() string {
+	return lsAcquireResource("environment")
+}
+
+func (handler *EnvironmentHandler) RestoreEnvironment(value0 string) {
+	lsReleaseResource("environment", value0)
 }
 
 // PortsHandler finds a TCP port on 127.0.0.1 the operating system reports

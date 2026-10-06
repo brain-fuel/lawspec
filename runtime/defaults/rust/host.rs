@@ -28,6 +28,14 @@ impl crate::lawspec_abilities::lawspec_host::FileSystem for FileSystemHandler {
             Err(_) => {}
         }
     }
+
+    fn temporaryDirectory(&self, value0: std::string::String) -> std::string::String {
+        ls::acquire_resource("temporaryDirectory").expect("making a temporary directory failed")
+    }
+
+    fn temporaryFile(&self, value0: std::string::String) -> std::string::String {
+        ls::acquire_resource("temporaryFile").expect("making a temporary file failed")
+    }
 }
 
 pub fn valid_name(name: &str) -> bool {
@@ -41,6 +49,14 @@ pub struct EnvironmentHandler;
 impl crate::lawspec_abilities::lawspec_host::Environment for EnvironmentHandler {
     fn environmentVariable(&self, value0: std::string::String) -> std::option::Option<std::string::String> {
         if valid_name(&value0) { std::env::var(&value0).ok() } else { None }
+    }
+
+    fn environmentSnapshot(&self) -> std::string::String {
+        ls::acquire_resource("environment").expect("saving the environment failed")
+    }
+
+    fn restoreEnvironment(&self, value0: std::string::String) -> () {
+        ls::release_resource("environment", &value0).expect("restoring the environment failed");
     }
 }
 

@@ -35,6 +35,12 @@ object Host {
                 java.nio.file.Files.deleteIfExists(path)
             }
         }
+
+        override fun temporaryDirectory(value0: kotlin.String): kotlin.String =
+            java.nio.file.Files.createTempDirectory(value0).toString()
+
+        override fun temporaryFile(value0: kotlin.String): kotlin.String =
+            java.nio.file.Files.createTempFile(value0, "").toString()
     }
 
     fun validName(name: String): Boolean = name.isNotEmpty() && '=' !in name && '\u0000' !in name
@@ -44,6 +50,12 @@ object Host {
         override fun environmentVariable(value0: kotlin.String): LawSpecRuntime.Maybe<kotlin.String> {
             val value = if (validName(value0)) java.lang.System.getenv(value0) else null
             return if (value == null) LawSpecRuntime.Nothing() else LawSpecRuntime.Just(value)
+        }
+
+        override fun environmentSnapshot(): kotlin.String = LawSpecRuntime.acquireResource("environment")
+
+        override fun restoreEnvironment(value0: kotlin.String) {
+            LawSpecRuntime.releaseResource("environment", value0)
         }
     }
 

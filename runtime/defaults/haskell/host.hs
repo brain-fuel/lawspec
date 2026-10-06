@@ -12,6 +12,7 @@ import qualified Network.Socket as Socket
 import qualified System.Directory as Directory
 import qualified System.Environment as Environment
 import qualified LawSpecAbilities.Lawspec.Host as Abilities
+import qualified LawSpecRuntime as LS
 
 -- | Files by path; a relative path is from the working directory.
 fileSystemHandler :: P.IO Abilities.FileSystem
@@ -32,6 +33,8 @@ fileSystemHandler = P.pure Abilities.FileSystem
       else do
         exists <- Directory.doesPathExist file
         if exists then Directory.removeFile file else pure ()
+  , Abilities.temporaryDirectory = \_ -> T.pack P.<$> LS.acquireResource "temporaryDirectory"
+  , Abilities.temporaryFile = \_ -> T.pack P.<$> LS.acquireResource "temporaryFile"
   }
 
 validName :: T.Text -> Bool
@@ -42,6 +45,8 @@ environmentHandler :: P.IO Abilities.Environment
 environmentHandler = P.pure Abilities.Environment
   { Abilities.environmentVariable = \name ->
       if validName name then P.fmap (P.fmap T.pack) (Environment.lookupEnv (T.unpack name)) else pure P.Nothing
+  , Abilities.environmentSnapshot = T.pack P.<$> LS.acquireResource "environment"
+  , Abilities.restoreEnvironment = \saved -> LS.releaseResource "environment" (T.unpack saved)
   }
 
 -- | A TCP port on 127.0.0.1 the operating system reports free.
