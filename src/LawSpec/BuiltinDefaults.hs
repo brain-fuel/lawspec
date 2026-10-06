@@ -33,11 +33,13 @@ withBuiltinDefaults target datas units artifacts
   | null present = Right artifacts
   | otherwise = do
       adapters <- concat <$> mapM adapter present
-      let vectors = [ Artifact path (fill target datas (defaultSource (directory target ++ "/" ++ file))) "generated" "test"
-                    | "lawspec.crypto" `elem` map name present, Just (path, file) <- [vectorTest target] ]
-      tests <- mapM (\a -> (\c -> a { artifactContent = c }) <$> resolve target datas (artifactContent a)) vectors
-      let replaced = map artifactPath (adapters ++ tests)
-      pure ([a | a <- artifacts, artifactPath a `notElem` replaced] ++ adapters ++ tests)
+      copies <- concat <$> mapM packageCopies (if target == "go" then units else [])
+      tests <- sequence
+        [ (\c -> Artifact path c "generated" "test") <$> resolve target datas (fill target datas "crypto" source)
+        | "lawspec.crypto" `elem` map name present, (path, file) <- vectorTests target
+        , let source = defaultSource (directory target ++ "/" ++ file), not (null source) ]
+      let replaced = map artifactPath (adapters ++ copies ++ tests)
+      pure ([a | a <- artifacts, artifactPath a `notElem` replaced] ++ adapters ++ copies ++ tests)
   where
     name = C.idText . C.unitId
     present = [u | u <- units, name u `elem` defaultedUnits, not (null (ownAbilities u))]
@@ -45,8 +47,22 @@ withBuiltinDefaults target datas units artifacts
       let short = shortName (name u)
           source = defaultSource (directory target ++ "/" ++ short ++ extension target)
       if null source then pure [] {- PORTING: Left ("no default handlers of " ++ name u ++ " for " ++ target) -} else do
-        content <- resolve target datas (fill target datas source)
+        content <- resolve target datas (fill target datas (shortName (name u)) source)
         pure [Artifact (adapterPath target (name u)) content "generated" "source"]
+    -- Each Go package has its own copy of the abilities it uses, so a unit
+    -- that imports a built-in unit gets its default handlers in its package.
+    packageCopies u
+      | name u `elem` defaultedUnits = pure []
+      | otherwise = sequence
+          [ (\c -> Artifact (goDirectory (name u) ++ "/lawspec_defaults_" ++ shortName owner ++ ".go") c "generated" "source")
+              <$> resolve target datas (fill target datas (shortName (name u)) source)
+          | owner <- nubOrd [C.idText (C.abilityOwner a) | a <- C.unitAbilities u]
+          , owner `elem` defaultedUnits
+          , let source = defaultSource ("go/" ++ shortName owner ++ ".go"), not (null source) ]
+    nubOrd = foldr (\x seen -> if x `elem` seen then seen else x : seen) []
+
+goDirectory :: String -> String
+goDirectory = map (\c -> if c == '.' then '/' else c)
 
 shortName :: String -> String
 shortName = reverse . takeWhile (/= '.') . reverse
@@ -84,9 +100,13 @@ adapterPath target unit = case target of
   _ -> short
   where short = shortName unit
 
--- The vector test: where it goes, and its source.
-vectorTest :: String -> Maybe (String, String)
-vectorTest target = (\p -> (p, "crypto_vectors" ++ extension target)) <$> vectorTestPath target
+-- The vector tests: where each goes, and its source. Go's encapsulation
+-- vectors need Go 1.26's crypto/mlkem/mlkemtest, so they have a file of their
+-- own, built only by Go 1.26 and later.
+vectorTests :: String -> [(String, String)]
+vectorTests target = case target of
+  "go" -> [("lawspec/crypto/vectors_test.go", "crypto_vectors.go"), ("lawspec/crypto/vectors_go126_test.go", "crypto_vectors_go126.go")]
+  _ -> [(p, "crypto_vectors" ++ extension target) | Just p <- [vectorTestPath target]]
 
 vectorTestPath :: String -> Maybe String
 vectorTestPath target = case target of
@@ -102,8 +122,9 @@ vectorTestPath target = case target of
 
 -- @@VECTORS@@ first: the vectors are hex and comments, so a raw string
 -- literal holds them on every target.
-fill :: String -> [C.DataDeclaration] -> String -> String
-fill _ _ = replace "@@VECTORS@@" (defaultSource "vectors.txt")
+-- @@PACKAGE@@ is the Go package the file is in.
+fill :: String -> [C.DataDeclaration] -> String -> String -> String
+fill _ _ package = replace "@@PACKAGE@@" package . replace "@@VECTORS@@" (defaultSource "vectors.txt")
 
 replace :: String -> String -> String -> String
 replace old new = go

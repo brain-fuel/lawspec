@@ -39,6 +39,14 @@ extra-source-files:
     runtime/lawspec_runtime.go
     runtime/lawspec_schema.go
     runtime/defaults/vectors.txt
+    runtime/defaults/go/concurrent.go
+    runtime/defaults/go/crypto.go
+    runtime/defaults/go/crypto_vectors.go
+    runtime/defaults/go/crypto_vectors_go126.go
+    runtime/defaults/go/log.go
+    runtime/defaults/go/random.go
+    runtime/defaults/go/system.go
+    runtime/defaults/go/time.go
     runtime/defaults/javascript/concurrent.mjs
     runtime/defaults/javascript/crypto.mjs
     runtime/defaults/javascript/crypto_vectors.mjs

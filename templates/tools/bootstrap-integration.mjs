@@ -103,7 +103,7 @@ async function setup(target) {
   else if (target === "java")
     await run("mvn", ["-B", "-q", "test-compile"], root);
   else if (target === "go")
-    await run("go", ["mod", "download", "pgregory.net/rapid"], root);
+    await run("go", ["mod", "download", "pgregory.net/rapid", "github.com/cloudflare/circl"], root);
   else if (target === "haskell") {
     await mkdir(path.join(root, "src"), { recursive: true });
     await run(

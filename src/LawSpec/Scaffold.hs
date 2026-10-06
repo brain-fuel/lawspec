@@ -28,7 +28,7 @@ setupAdvice target = lookup target
   , ("python", "Use Python 3.13+. Install pytest 8.4.x and Hypothesis 6.x into the selected environment, and cryptography 50 for lawspec.crypto's default handlers: python -m pip install -e \".[test]\". Configure pytest pythonpath=[\"src\"] and testpaths=[\"tests\"]. Set the target python field to the interpreter path if needed.")
   , ("javascript", "Use Node 22+, package.json type=module, npm install @noble/post-quantum@0.7.1 (lawspec.crypto's default handlers), and npm install --save-dev fast-check@4.10.2.")
   , ("typescript", "Use Node 22+, package.json type=module, npm install @noble/post-quantum@0.7.1 (lawspec.crypto's default handlers), and npm install --save-dev fast-check@4.10.2 typescript@5.9.3 @types/node@22.20.4. Configure tsconfig.json with module=NodeNext, target=ES2022, rootDir=., outDir=dist, include=[\"src/**/*.ts\",\"test/**/*.ts\"].")
-  , ("go", "Use Go 1.22+ and go get pgregory.net/rapid@v1.2.0, then go mod download.")
+  , ("go", "Use Go 1.25+ and go get pgregory.net/rapid@v1.2.0 github.com/cloudflare/circl@v1.6.5 (lawspec.crypto's default handlers), then go mod download.")
   , ("haskell", "Use Stack with lts-24.58 and test dependencies hspec, hedgehog, hspec-hedgehog, hspec-discover, and a test/Spec.hs using hspec-discover. Run stack build --test --no-run-tests.")
   , ("kotlin", "Use JDK 25, Gradle 9.3.0, Kotlin plugin 2.3.21, JVM target 25, Kotest 5.9.1 (runner, assertions, property), and useJUnitPlatform(). Run gradle testClasses.") ]
 
@@ -67,7 +67,10 @@ scaffoldFiles minify target = case target of
         , "[tool.setuptools.packages.find]", "where = [\"src\"]", ""
         , "[tool.pytest.ini_options]", "pythonpath = [\"src\"]", "testpaths = [\"tests\"]" ]) ]
   "java" -> Right [("pom.xml", renderXml minify 0 mavenProject ++ "\n")]
-  "go" -> Right [("go.mod", "module example.com/lawspec-example\n\ngo 1.22\n\nrequire pgregory.net/rapid v1.2.0\n")]
+  "go" -> Right [("go.mod", unlines
+    [ "module example.com/lawspec-example", "", "go 1.25.0", ""
+    , "require (", "\tgithub.com/cloudflare/circl v1.6.5", "\tpgregory.net/rapid v1.2.0", ")", ""
+    , "require (", "\tgolang.org/x/crypto v0.54.0 // indirect", "\tgolang.org/x/sys v0.47.0 // indirect", ")" ])]
   "haskell" -> Right
     [ ("stack.yaml", "snapshot: lts-24.58\npackages: [.]\n")
     , ("package.yaml", unlines

@@ -1,0 +1,7 @@
+expect: elapsed time is never negative
+@@ example/builtins/adapter.go
+<<<<<<<
+	return LawSpecDuration(time.Duration(clock.Now().Value-start.Value) * time.Microsecond)
+=======
+	return LawSpecDuration(time.Duration(start.Value-clock.Now().Value-1) * time.Microsecond)
+>>>>>>>

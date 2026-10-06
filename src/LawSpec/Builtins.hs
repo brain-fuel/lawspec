@@ -478,5 +478,9 @@ asyncSource = unlines
   , ""
   , "ability Async is"
   , "  pause :: Unit"
+  , "laws"
+  , "  law `a pause returns` is"
+  , "    definition is (pause; true) = true end"
+  , "  end"
   , "end"
   ]
