@@ -404,6 +404,7 @@ executable lawspec-core
 executable lawspec-dev
   main-is: Main.hs
   other-modules:
+      Canon
       Ci
       Docs
       Gen.Api

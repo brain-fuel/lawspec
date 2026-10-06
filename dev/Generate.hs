@@ -1,5 +1,5 @@
 {-# LANGUAGE NoOverloadedStrings #-}
--- Every JavaScript file of the repository, and the embedded runtime sources,
+-- | Every JavaScript file of the repository, and the embedded runtime sources,
 -- are generated here from templates/ and from facts Haskell owns: the version
 -- (package.yaml), the targets, scaffolds, test commands and setup advice
 -- (LawSpec.Scaffold) and the public API (Gen.Api).
@@ -82,7 +82,7 @@ planOutputs = do
         [ Output ("npm" </> name) content False | (name, content) <- api ]
   pure (sortOn outputPath (whole ++ map fst rendered))
 
--- Every script in the repository is a generated output, a template, or one of
+-- | Every script in the repository is a generated output, a template, or one of
 -- these: code users own (acceptance adapters, examples and fixtures), the
 -- runtimes embedded in the compiler, and GHC's post-linker output.
 strayScripts :: [FilePath] -> IO [FilePath]
@@ -94,7 +94,7 @@ strayScripts outputs = do
   exists <- mapM doesFileExist scripts
   pure [f | (f, True) <- zip scripts exists, not (exempt f), f `notElem` outputs]
 
--- JSON cannot carry a comment; the registry and --check cover it instead.
+-- | JSON cannot carry a comment; the registry and --check cover it instead.
 withHeader :: FilePath -> FilePath -> String -> String
 withHeader template target content
   | takeExtension target `elem` [".json", ".html", ".md"] = content
@@ -103,7 +103,7 @@ withHeader template target content
       _ -> header ++ "\n" ++ content
   where header = "// Generated from " ++ template ++ " by lawspec-dev generate. Do not edit."
 
--- Values Haskell owns, as JavaScript source text.
+-- | Values Haskell owns, as JavaScript source text.
 factFills :: String -> [(String, Fill)]
 factFills version =
   [ ("version", Inline (jsonString version))
@@ -118,11 +118,11 @@ factFills version =
   , ("copy-documents", Inline (jsonString (unwords ("cp" : map ("../" ++) copiedDocuments ++ ["."]))))
   , ("hpack-version", Inline (jsonString "0.38.1")) ]
 
--- What the npm package contains, beside its code.
+-- | What the npm package contains, beside its code.
 shippedFiles :: [String]
 shippedFiles = ["*.mjs", "*.json", "index.d.ts", "bin", "core.wasm", "core_jsffi.js"] ++ copiedDocuments ++ ["LICENSE", "starter.lawspec", "examples"]
 
--- The root documents the package ships. Each has one home, the repository
+-- | The root documents the package ships. Each has one home, the repository
 -- root: npm's prepack copies them into npm/, where git ignores them.
 copiedDocuments :: [String]
 copiedDocuments = ["README.md", "CHANGELOG.md"]
@@ -134,7 +134,7 @@ currentVersion = do
     v : _ -> pure v
     [] -> die "package.yaml has no version"
 
--- Files that state the version outside generated outputs.
+-- | Files that state the version outside generated outputs.
 versionedFiles :: [(FilePath, String -> String -> String -> String)]
 versionedFiles =
   [ ("package.yaml", lineValue "version: ")

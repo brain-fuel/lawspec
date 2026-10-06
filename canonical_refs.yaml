@@ -1,0 +1,132 @@
+MIT:
+  kind: license
+  title: MIT License
+  locator: https://spdx.org/licenses/MIT.html
+keep-a-changelog:
+  kind: article
+  title: Keep a Changelog 1.0.0
+  locator: https://keepachangelog.com/en/1.0.0/
+semver-2:
+  kind: article
+  title: Semantic Versioning 2.0.0
+  locator: https://semver.org/spec/v2.0.0.html
+diataxis:
+  kind: article
+  title: Diátaxis, a systematic approach to technical documentation authoring
+  locator: https://diataxis.fr/
+commonmark:
+  kind: article
+  title: CommonMark Spec, version 0.31.2, with the GitHub Flavored Markdown extensions
+  locator: https://spec.commonmark.org/0.31.2/
+canon:
+  kind: package
+  title: canon, the canonical format checker, at commit bf4c5ae
+  locator: https://github.com/brain-fuel/canon/tree/bf4c5ae
+lawspec-roadmap:
+  kind: discussion
+  title: The LawSpec roadmap, the milestones each minor release delivers
+  locator: docs/explanation/roadmap.md
+wilshaw-hutton-flow-typing:
+  kind: paper
+  title: "Sky Wilshaw and Graham Hutton, Flow Typing: A New Lens on Linearity, University of Nottingham, 2026"
+  locator: https://zeramorphic.uk/research/2026-flow-typing.pdf
+caires-pfenning-session-types:
+  kind: paper
+  title: Luís Caires and Frank Pfenning, Session Types as Intuitionistic Linear Propositions, CONCUR 2010
+  locator: https://doi.org/10.1007/978-3-642-15375-4_16
+wadler-propositions-as-sessions:
+  kind: paper
+  title: Philip Wadler, Propositions as Sessions, ICFP 2012
+  locator: https://doi.org/10.1145/2364527.2364568
+herlihy-wing-linearizability:
+  kind: paper
+  title: "Maurice Herlihy and Jeannette Wing, Linearizability: A Correctness Condition for Concurrent Objects, TOPLAS 1990"
+  locator: https://doi.org/10.1145/78969.78972
+wing-gong-linearizability:
+  kind: paper
+  title: Jeannette Wing and Chun Gong, Testing and Verifying Concurrent Objects, Journal of Parallel and Distributed Computing 1993
+  locator: https://doi.org/10.1006/jpdc.1993.1015
+splitmix:
+  kind: paper
+  title: Guy Steele, Doug Lea and Christine Flood, Fast Splittable Pseudorandom Number Generators, OOPSLA 2014
+  locator: https://doi.org/10.1145/2660193.2660195
+quickcheck:
+  kind: paper
+  title: "Koen Claessen and John Hughes, QuickCheck: A Lightweight Tool for Random Testing of Haskell Programs, ICFP 2000"
+  locator: https://doi.org/10.1145/351240.351266
+hedgehog:
+  kind: package
+  title: Hedgehog, release with confidence, the Haskell property-testing library with integrated shrinking
+  locator: https://hackage.haskell.org/package/hedgehog
+hspec:
+  kind: package
+  title: Hspec, a testing framework for Haskell
+  locator: https://hackage.haskell.org/package/hspec
+hypothesis:
+  kind: package
+  title: Hypothesis, property-based testing for Python
+  locator: https://hypothesis.readthedocs.io/
+fast-check:
+  kind: package
+  title: fast-check, property-based testing for JavaScript and TypeScript
+  locator: https://fast-check.dev/
+pure-rand:
+  kind: package
+  title: pure-rand, the pseudorandom generators fast-check runs on
+  locator: https://www.npmjs.com/package/pure-rand
+jetcheck:
+  kind: package
+  title: jetCheck, JetBrains' property-based testing library for Java
+  locator: https://github.com/JetBrains/jetCheck
+rapid-go:
+  kind: package
+  title: Rapid, property-based testing for Go
+  locator: https://github.com/flyingmutant/rapid
+kotest:
+  kind: package
+  title: Kotest property testing for Kotlin
+  locator: https://kotest.io/docs/proptest/property-based-testing.html
+proptest:
+  kind: package
+  title: Proptest, property testing for Rust
+  locator: https://github.com/proptest-rs/proptest
+wlaschin-railway:
+  kind: article
+  title: Scott Wlaschin, Railway Oriented Programming
+  locator: https://fsharpforfunandprofit.com/rop/
+wlaschin-domain-modeling:
+  kind: article
+  title: Scott Wlaschin, Domain Modeling Made Functional, Pragmatic Bookshelf 2018
+  locator: https://pragprog.com/titles/swdddf/domain-modeling-made-functional/
+padovani-deadlock-freedom:
+  kind: paper
+  title: Luca Padovani, Deadlock and Lock Freedom in the Linear π-Calculus, CSL-LICS 2014
+  locator: https://doi.org/10.1145/2603088.2603116
+kobayashi-deadlock-free-processes:
+  kind: paper
+  title: Naoki Kobayashi, A New Type System for Deadlock-Free Processes, CONCUR 2006
+  locator: https://doi.org/10.1007/11817949_16
+ieee-754:
+  kind: article
+  title: IEEE 754-2019, Standard for Floating-Point Arithmetic
+  locator: https://doi.org/10.1109/IEEESTD.2019.8766229
+ghc-wasm:
+  kind: package
+  title: ghc-wasm-meta, the GHC WebAssembly backend toolchain
+  locator: https://gitlab.haskell.org/haskell-wasm/ghc-wasm-meta
+erlang-otp-supervisors:
+  kind: article
+  title: Erlang/OTP Design Principles, Supervision Principles
+  locator: https://www.erlang.org/doc/system/sup_princ.html
+pep-8:
+  kind: article
+  title: PEP 8, Style Guide for Python Code
+  locator: https://peps.python.org/pep-0008/
+google-style-guides:
+  kind: article
+  title: Google Style Guides
+  locator: https://google.github.io/styleguide/
+decimal-arithmetic:
+  kind: article
+  title: Mike Cowlishaw, General Decimal Arithmetic Specification
+  locator: https://speleotrove.com/decimal/decarith.html

@@ -1,0 +1,455 @@
+DEC-canonical-format:
+  status: decided
+  question: LawSpec repeats facts across the CHANGELOG, the explanation pages, local plan files, docs/nav.json and the npm package, and its comments were never judged. How does each fact get one home that cannot drift?
+  answer: |
+    LawSpec adopts canon's canonical format in 0.20.1. canon.yaml, canonical_refs.yaml, canonical_decisions.yaml and canonical_exemptions.yaml sit at the root; every work cited in the docs and code is a registry entry, every decision a ledger entry cited as ref:KEY, every page a Folio page with front matter, and CHANGELOG.md follows Keep a Changelog. canon ingest records every comment, page, decision and reference as pending. The owner vets every verdict in 0.20.2, and the comments, tests and pages still owed are exempt until then, so make canon passes with the debt counted. Decided by the owner for 0.20.1.
+  opened: 0.20.1
+  decided: 0.20.1
+  refs: [canon, keep-a-changelog, diataxis]
+
+DEC-canon-from-a-checkout:
+  status: decided
+  question: canon interprets grammars that live in its own repository. Where does LawSpec get them, and the binary that reads them?
+  answer: |
+    From one canon checkout, named by CANON_HOME and built with stack build. lawspec-dev canon links .canon to it, so the profiles in canon.yaml name .canon/grammars/..., and runs that checkout's binary (or CANON). Nothing of canon is copied into LawSpec, so the grammars and the binary that interprets them cannot disagree. Without a checkout the step prints how to install canon and is skipped, so the rest of the complete check still runs.
+  opened: 0.20.1
+  decided: 0.20.1
+  refs: [canon]
+
+DEC-canon-dialect-profiles:
+  status: decided
+  question: canon's samples check Python, JavaScript, TypeScript, Go and Kotlin through plain grammars with units, which take every line comment as documentation. Which profiles does LawSpec use for its runtimes?
+  answer: |
+    The canonically commented dialects canon ships for those five languages, named in the profile with no units, as canon's README allows. They read each language's own documentation form, a docstring, JSDoc or TSDoc, a Go doc comment or KDoc, so an ordinary comment is neither a Why nor an orphan; the plain profiles reported 233 orphans that were ordinary comments. Java and Haskell use their dialects, as the samples do, and Rust the sample's profile, which already tells /// from //.
+  opened: 0.20.1
+  decided: 0.20.1
+  refs: [canon]
+
+DEC-generated-files-not-checked:
+  status: decided
+  question: Which files does canon read, when much of the repository is generated from templates and runtimes?
+  answer: |
+    The sources a person edits. canon.yaml ignores what lawspec-dev generate writes (npm/, tools/*.mjs, editors/vscode/test/grammar.test.mjs, src/LawSpec/RuntimeSources.hs) and the local output directories, so a Why is written once, in the template or runtime it is generated from, and every output carries the header naming that template, as DEC-generated-javascript has it.
+  opened: 0.20.1
+  decided: 0.20.1
+
+DEC-template-holes:
+  status: open
+  question: templates/site/playground.mjs and templates/tools/package-smoke.mjs put a value hole where JavaScript needs an expression, so canon cannot parse them. How do templates stay parseable?
+  answer: |
+    Until decided, canon.yaml ignores those two templates. Candidates are a hole form that is itself an expression, or moving the value into a statement the grammar reads.
+  opened: 0.20.1
+  revisit: 0.20.2
+
+DEC-docs-landing-page:
+  status: decided
+  question: canon requires every page to name a Diátaxis quadrant that matches its directory. Where does the site's landing page, docs/index.md, belong?
+  answer: |
+    Nowhere: it is the entrance to the four quadrants, not a page of one, as Diátaxis describes the landing page. Its front matter names kind index, lawspec-dev docs accepts that kind for docs/index.md alone, and canon.yaml ignores the page.
+  opened: 0.20.1
+  decided: 0.20.1
+  refs: [diataxis]
+
+DEC-page-titles-in-front-matter:
+  status: decided
+  question: A page's title was written in docs/nav.json and again as the page's heading. Which is its home?
+  answer: |
+    The page's front matter, beside its id and kind, in the Folio form canon reads. docs/nav.json keeps only the order, the lesson tracks and the titles of sections that have no page; lawspec-dev docs reads every page's title from its front matter and rejects a page entry that names one.
+  opened: 0.20.1
+  decided: 0.20.1
+  refs: [canon]
+
+DEC-include-fences:
+  status: decided
+  question: lawspec-dev docs used file= on a fenced block to include a file into the page, while canon's file= tangles a block out into a file. How do both live in docs/?
+  answer: |
+    LawSpec's include is spelled include=, for lawspec playgrounds and for code from other files, with region= as before. file= is left to canon; lawspec-dev docs shows such a block as it is.
+  opened: 0.20.1
+  decided: 0.20.1
+  refs: [canon]
+
+DEC-npm-documents-copied:
+  status: decided
+  question: npm/README.md and npm/CHANGELOG.md were committed copies of the root files, staged by tools/wasm.sh. How does the package get them without a second copy in git?
+  answer: |
+    The package's prepack script copies them from the root whenever it is packed or published, and git ignores the copies. dev/Generate.hs lists them once, in copiedDocuments, which feeds both the package's files and the script. lawspec-dev integrity still requires a present copy to match its source.
+  opened: 0.20.1
+  decided: 0.20.1
+
+DEC-rationale-in-ledger:
+  status: decided
+  question: Why a design is as it is was told in the CHANGELOG, in explanation pages and in local plan files, each a little differently. Where does the reason live?
+  answer: |
+    In this ledger, one entry per decision, cited from comments and pages as ref:KEY. The CHANGELOG says what changed and what users must do; an explanation page explains and cites the decision; the local plan files are kept in to_be_removed/ until every decision in them is folded in here, then deleted.
+  opened: 0.20.1
+  decided: 0.20.1
+  refs: [keep-a-changelog]
+
+DEC-tests-cite-requirements:
+  status: decided
+  question: canon recognises a Haskell test as a function named test_* or prop_*, and a test must cite the requirement it verifies. How does the Hspec suite take part?
+  answer: |
+    Each test module's top-level spec is a function named test_ for the property it verifies, with a Haddock comment giving why the property must hold and citing a requirement entry of the registry; test/Main.hs runs them. The it names inside say the property each example checks.
+  opened: 0.20.1
+  decided: 0.20.1
+  refs: [hspec]
+
+DEC-haskell-grammar-workarounds:
+  status: decided
+  question: canon's Haskell grammar could not read nine of LawSpec's modules, where a case sits in a list comprehension, a let in a guard is followed by a comma, a do block is a case scrutinee, a guard follows a do block, or a let uses explicit braces. What changes?
+  answer: |
+    The code, without changing its meaning: such a case is parenthesised, the guard binds with a pattern guard, the do block is named in a let, the guards are reordered, and the lets use layout. canon is not changed; the grammar's gaps are canon's to close, after which the parentheses may go.
+  opened: 0.20.1
+  decided: 0.20.1
+  refs: [canon]
+
+DEC-test-names-audit:
+  status: open
+  question: Does every Hspec it name, and every acceptance and native test name, state the property it verifies rather than the thing it exercises?
+  answer: |
+    Not yet audited. canon cannot see an it name, since an Hspec example is a call rather than a declaration; the owner reviews them with the vetting in 0.20.2.
+  opened: 0.20.1
+  revisit: 0.20.2
+  refs: [hspec]
+
+DEC-typed-core-boundary:
+  status: decided
+  question: Where does the meaning of a specification live, so that eight backends agree on it?
+  answer: |
+    In one shared front end and a typed Core. Parsing, import resolution, elaboration, name resolution and inference produce typed Core with resolved ids, explicit arithmetic evidence and conversions, and a proposition tree; an independent Core validator re-checks it. The eight emitters consume only Core and the testing plan and never import source syntax or inference, which lawspec-dev boundaries enforces. A feature added in the front end therefore works on every target without backend changes. Shipped in 0.8.0; recorded in CHANGELOG 0.8.0 and docs/explanation/how-the-compiler-works.md.
+  opened: 0.8.0
+  decided: 0.8.0
+
+DEC-elaborate-before-core:
+  status: decided
+  question: How are new surface features (indexed families, wrappers, workflows, imports, flow types, collections) added without changing Core or the backends?
+  answer: |
+    Each is elaborated in the front end into constructs Core already has: indexed families into erased data, structural measures and refinements; wrappers into refined products; workflows into steps and a generated law; imports into copied declarations under unit-derived names; flow functions into products indexed by the output state; collections into an ordinary LawSpec unit with checked definitions. Core and the eight backends stay unchanged, and the boundary check keeps them so. Recorded in to_be_removed/PLAN-0.11.md, PLAN-0.13.md, PLAN-0.14.md, PLAN-0.16.md and PLAN-0.17.md.
+  opened: 0.11.0
+  decided: 0.17.0
+
+DEC-portable-exact-arithmetic:
+  status: decided
+  question: Whose arithmetic does a law use when Java wraps, Python does not, JavaScript uses doubles and Go's int depends on the machine?
+  answer: |
+    LawSpec's own. Integer arithmetic is exact and never wraps, exact division yields a Rational, Decimal ignores ambient rounding contexts, and floating point follows IEEE 754 at its declared precision. Moving an exact value into a bounded type is always a checked conversion, and every adapter result is validated against its declared domain. Equality is defined once: NaN differs from itself, signed zeros are equal, Symbols compare by identity, and data compares field by field, implemented directly rather than through each language's equals. Recorded in docs/explanation/portable-semantics-and-machine-profiles.md and CHANGELOG 0.8.0 and 0.9.0.
+  opened: 0.8.0
+  decided: 0.9.0
+  refs: [ieee-754, decimal-arithmetic]
+
+DEC-abstract-integer-at-boundaries:
+  status: decided
+  question: What native type does an adapter returning the abstract Integer use?
+  answer: |
+    Any integral native value: Integer is the top of each target's integral tower, so a Kotlin adapter may return Int, Long or BigInteger and a Haskell adapter any Integral through integerValue. The result bridge rejects non-integral values and discharges the logical domain; arguments remain concrete. 0.9 had narrowed Kotlin and Haskell results to BigInteger and Integer, which broke the Kotlin and Haskell CI jobs; 0.11 restored the tower-polymorphic Number and LS.IntegerValue. Keeping abstract types polymorphic leaves the storage decision with the implementation. Recorded in to_be_removed/PLAN-0.11.md section 1.
+  opened: 0.11.0
+  decided: 0.11.0
+
+DEC-explicit-machine-profile:
+  status: decided
+  question: How are machine-sized integers (IntSize, UIntSize, UIntPtr) given a meaning when their range depends on the platform?
+  answer: |
+    The machine profile is a property of the specification, machineBits 32 or 64, default 64, and sets the range for literals, examples, generators, boundaries and bridges. Targets that bind machine-sized types to native machine integers (Go, Haskell, Rust) check at runtime that the executing architecture matches and report a mismatch rather than test a different range. Every acceptance suite runs in both profiles. Recorded in docs/explanation/portable-semantics-and-machine-profiles.md and CHANGELOG 0.8.0.
+  opened: 0.8.0
+  decided: 0.8.0
+
+DEC-native-property-frameworks:
+  status: decided
+  question: Which test machinery runs a law on each target?
+  answer: |
+    Each target's own property-testing framework: JetCheck for Java, Hypothesis for Python, fast-check for JavaScript and TypeScript, Rapid for Go, Hedgehog for Haskell, Kotest for Kotlin and Proptest for Rust. The specification, the adapters that implement it and the machinery that tries to refute it stay separate, so two implementations in two languages are checked against the same laws inside the projects and test frameworks teams already use. Recorded in docs/explanation/why-executable-laws.md.
+  opened: 0.8.0
+  decided: 0.8.0
+  refs: [quickcheck, hypothesis, fast-check, rapid-go, hedgehog, kotest, proptest]
+
+DEC-examples-pin-laws:
+  status: decided
+  question: Why do laws carry hand-written examples as well as generated cases?
+  answer: |
+    A law says what holds for every input but not what the answer is for a particular input, and two implementations can agree and both be wrong. Examples with expected results, written by the author and never inferred from code, fix the known answers; boundaries and examples always run, and custom generators or narrow refinements cannot remove them. Recorded in docs/explanation/why-executable-laws.md and generation-and-shrinking.md.
+  opened: 0.9.0
+  decided: 0.9.0
+
+DEC-never-pass-vacuously:
+  status: decided
+  question: What happens when a property cannot check any input?
+  answer: |
+    It fails. An empty or unreachable domain fails, a generator that finds no valid input within maxAttempts fails with reproduction information (exhausting a search never claims the domain empty), a statically empty domain and an example outside its domain are compile errors, and a predicate that raises is a failure, not a rejected sample. A property that checked nothing has proved nothing, and hiding errors as rejections could turn a crash into a skipped case. Recorded in docs/explanation/generation-and-shrinking.md and CHANGELOG 0.10.0.
+  opened: 0.9.0
+  decided: 0.10.0
+
+DEC-planned-generation:
+  status: decided
+  question: How are inputs for refined and dependent domains generated without filtering most samples away?
+  answer: |
+    Inputs are planned once from typed Core and every backend follows the plan with its own framework. Constant bounds of a refinement narrow the drawn range; linear comparisons give bounds for dependent inputs, which are seeded from the predicates, backtrack when an earlier choice leaves no continuation, and fall back to bounded sampling with the full predicate always checked. Constraints on linear structural measures, such as a vector's index, are solved backwards from constructor equations instead of sampled, because filtering for a fixed index does not terminate in practice (Vec 2 Int8 hung under Hypothesis in the 0.11 prototype). Recorded in to_be_removed/PLAN-0.11.md and docs/explanation/generation-and-shrinking.md.
+  opened: 0.9.0
+  decided: 0.19.0
+
+DEC-shrink-within-domain:
+  status: decided
+  question: How does shrinking stay consistent with refinements and indices?
+  answer: |
+    LawSpec keeps each framework's own shrinker and makes every candidate valid: refinements are re-checked on every candidate, later dependent inputs are repaired when an earlier one shrinks, recursive values shrink within their structural budget, and indexed values shrink within their index because the index is a generator parameter, not a filter. Shrinking to an input outside the domain would report a failure the law does not claim. Recorded in to_be_removed/PLAN-0.11.md and docs/explanation/generation-and-shrinking.md.
+  opened: 0.9.0
+  decided: 0.11.0
+
+DEC-structural-size-budget:
+  status: decided
+  question: How does recursive generation terminate while keeping every shape reachable?
+  answer: |
+    Recursive data has a structural budget counting each scalar, container and constructor. Each constructor reserves the minimum its fields need before the remainder is shared out, and list lengths and element budgets vary together, so generation always terminates, deep singletons remain possible and there is no hidden length cap. Recorded in to_be_removed/PLAN-0.9.md and docs/explanation/generation-and-shrinking.md.
+  opened: 0.9.0
+  decided: 0.9.0
+
+DEC-portable-seeded-generation:
+  status: decided
+  question: How do stateful-model runs, shrinks and workflow randomness reproduce identically on every target?
+  answer: |
+    A SplitMix64 generator over type descriptors, implemented in every runtime, gives the same runs and the same shrinks for the same seed; workflow runtimes use the same SplitMix64 source. One seed per run is printed and recorded, LAWSPEC_SEED and --seed fix it. Recorded in CHANGELOG 0.17.4, 0.18.0 and 0.19.0.
+  opened: 0.17.4
+  decided: 0.19.0
+  refs: [splitmix]
+
+DEC-total-definitions:
+  status: decided
+  question: Which definitions may a specification state and the compiler trust?
+  answer: |
+    Checked definitions must be total: matches are exhaustive, recursion is structural and established as terminating, and every operation that could fail is guarded; partial matches and recursion the checker cannot establish are rejected. Generic definitions specialize to their concrete uses. Backends emit them from checked Core rather than interpreting source. Recorded in to_be_removed/PLAN-0.9.md and CHANGELOG 0.9.0.
+  opened: 0.9.0
+  decided: 0.9.0
+
+DEC-algebraic-maybe-either:
+  status: decided
+  question: How do Maybe and Either relate to the interoperability states Nullable and Optional?
+  answer: |
+    Maybe (Nothing/Just) and Either (Left/Right) are algebraic data, distinct from Nullable and Optional, which model native absence and keep nested absence states apart. Recorded in to_be_removed/PLAN-0.9.md.
+  opened: 0.9.0
+  decided: 0.9.0
+
+DEC-readable-output-default:
+  status: decided
+  question: How is generated code laid out?
+  answer: |
+    Readable by default for every runtime, test, adapter, declaration and scaffold, following each language's published style: Google style where published, Google's Kotlin style, PEP 8 for Python (four spaces, 79-column code, 72-column prose; the owner chose PEP 8 over the earlier Google/YAPF target on 2026-09-27), gofmt and rustfmt, and an 80-column Haskell layout. --minify selects compact output. Layout is pure and deterministic in the native and WASM builds, with no formatter downloads and no regex rewriting of code. Recorded in to_be_removed/PLAN-0.9.md (Formatting) and to_be_removed/RECOVERY.md (Python style preference).
+  opened: 0.9.0
+  decided: 0.9.0
+  refs: [pep-8, google-style-guides]
+
+DEC-adapter-ownership:
+  status: decided
+  question: Which files does generation own, and how does it avoid overwriting user code?
+  answer: |
+    Adapters, build files and application code belong to the user; tests, runtimes, data types, schemas, codecs, checked definitions and binding bridges are generated and listed with content hashes in .lawspec/generated.json. A generated file that was edited, or a file the manifest does not list, is never overwritten or deleted. Generation plans every write first and writes atomically, aborting if anything changed. Ownership and placement (source or test) are separate. Adapter updates compare a canonical readable reference of the stub, so formatting mode never causes a false update. Recorded in docs/explanation/ownership-and-regeneration.md and to_be_removed/PLAN-0.9.md.
+  opened: 0.8.0
+  decided: 0.9.0
+
+DEC-native-bindings-typed-identity:
+  status: decided
+  question: How are LawSpec types and adapters connected to existing application models?
+  answer: |
+    Native bindings resolve against typed declaration identities and generate checked bridges; they never change the meaning of arithmetic, equality, definitions or refinements. Native generator factories return the framework's own generator so native shrinking is kept, while examples, boundaries and finite enumeration still run. Adopting a binding over an existing adapter requires moving it aside rather than overwriting it. Recorded in CHANGELOG 0.10.0 and docs/explanation/ownership-and-regeneration.md.
+  opened: 0.10.0
+  decided: 0.10.0
+
+DEC-indexed-families-as-evidence:
+  status: decided
+  question: How does LawSpec take its first step towards dependent types without changing target type systems?
+  answer: |
+    Natural-indexed families. Indices are evidence, checked and discharged at test time through refinements: a family elaborates to erased data, one total structural measure per index, and a refinement on every occurrence, so dependent signatures become checked contracts. Index-directed generation solves child indices backwards per constructor in all seven runtimes. Recorded in to_be_removed/PLAN-0.11.md.
+  opened: 0.11.0
+  decided: 0.11.0
+
+DEC-proof-producing-index-layer:
+  status: decided
+  question: Which index claims does the compiler prove, and what happens to the rest?
+  answer: |
+    The prover normalises and solves decidable Natural arithmetic (linear sums, call congruence, one-step unfolding on known constructors, non-negative measures) and records each obligation as proved or runtime-checked in Core evidence, reported in the API and lawspec check. Generated definitions omit proved postconditions. An unproven claim stays a runtime-checked contract; from 0.16 products and powers are uninterpreted atoms and non-linear claims are checked on each result. Recorded in to_be_removed/PLAN-0.12.md and PLAN-0.16.md.
+  opened: 0.12.0
+  decided: 0.16.0
+
+DEC-evidence-statuses:
+  status: decided
+  question: How does LawSpec report what a passing suite actually establishes?
+  answer: |
+    Every obligation carries one of five statuses, strongest first: proved, exhaustively checked, property tested, runtime checked, and assumed (native code LawSpec cannot see). Laws over checked definitions are proved or evaluated on finite domains at compile time, so a false one is a refuted diagnostic with its counterexample; they are still emitted as tests to check each target's generated code. Adapters are assumed, and an adapter no law calls is reported. The aim: specify, prove what can be proved, and account for the rest. Recorded in docs/explanation/evidence-and-discharge.md, to_be_removed/PLAN-0.12.md and CHANGELOG 0.15.0.
+  opened: 0.12.0
+  decided: 0.15.0
+
+DEC-domain-modeling-primitives:
+  status: decided
+  question: How does LawSpec express domain types whose illegal states are unrepresentable?
+  answer: |
+    Wlaschin-style wrappers and workflows. A wrapper is a nominal single-constructor product with a refined value field, checked at construction in examples, generators and native decoding. A workflow composes adapter steps with a type-checked chain and a generated composition law; from 0.18 workflows are generated on every target with railway combinators, typed errors per step and resilience policies. Recorded in to_be_removed/PLAN-0.13.md and CHANGELOG 0.18.0.
+  opened: 0.13.0
+  decided: 0.18.0
+  refs: [wlaschin-domain-modeling, wlaschin-railway]
+
+DEC-imports-copy-not-link:
+  status: decided
+  question: How do units share laws and definitions across files and packages?
+  answer: |
+    Imports are resolved before type checking. Data stays with its declaring unit; refinements, checked definitions and generic laws are copied into the importer with the closure of what they use, under unit-derived names, so nothing after resolution knows about imports. Adapters and concrete laws are not importable. Packages carry semantic versions and ranges, and a unit sees only its own package and direct dependencies. Recorded in to_be_removed/PLAN-0.14.md.
+  opened: 0.14.0
+  decided: 0.14.0
+  refs: [semver-2]
+
+DEC-gadts-and-index-arithmetic:
+  status: decided
+  question: How far do 0.16's dependent types go?
+  answer: |
+    GADTs refine type arguments per constructor, with branch-local givens, inaccessible-branch pruning, polymorphic self-recursion (specialisation stops at 64 instances) and field-only existentials carried as Text witness fields. Index arithmetic covers + - * div mod ^, with subtraction guarded by >= and shared variables by ==, checked at construction and decode; runtimes reach indices forward to target plus 16 and solve backwards. Recorded in to_be_removed/PLAN-0.16.md.
+  opened: 0.16.0
+  decided: 0.16.0
+
+DEC-flow-typing:
+  status: decided
+  question: How does LawSpec type a state whose type changes with each call, as stateful models need?
+  answer: |
+    Flow typing after Wilshaw and Hutton: a parameter A / A' is a state that changes type per call, checked left to right; a flow function elaborates to one returning a generated product indexed by the output state, and calls desugar to nested matches. 0.16 allowed one flow parameter per function and no flow calls in branches; 0.20 lifted both. Stateful models in 0.19 reuse it for typestate. Recorded in to_be_removed/PLAN-0.16.md.
+  opened: 0.16.0
+  decided: 0.20.0
+  refs: [wilshaw-hutton-flow-typing]
+
+DEC-portable-total-order-collections:
+  status: decided
+  question: How do Set and KeyVal behave identically on every target?
+  answer: |
+    A portable total order (Keyed, derived over stored fields) implemented once in Core and in every runtime: exact numbers by value, text and sequences by code point or unit, false before true, absent before present, lists lexicographically, data by tag then fields. Collections are a generated LawSpec unit of ordinary data with checked definitions; Core requires sorted, duplicate-free values and every codec canonicalises. Natives use idiomatic sets and maps where the target compares by value, otherwise immutable canonical structures. Values are validated at adapter boundaries rather than on every construction, to keep recursive collections fast. Recorded in to_be_removed/PLAN-0.17.md.
+  opened: 0.17.0
+  decided: 0.17.0
+
+DEC-async-native-tasks:
+  status: decided
+  question: How are asynchronous adapters represented on each target?
+  answer: |
+    As each target's own task abstraction (coroutine, Promise, CompletableFuture, suspend fun, goroutine task, IO, Rust future), awaited where called by the generated tests; native bindings for async adapters followed in 0.20. Recorded in to_be_removed/PLAN-0.17.md and CHANGELOG 0.20.0.
+  opened: 0.17.0
+  decided: 0.20.0
+
+DEC-stateful-models-linearizability:
+  status: decided
+  question: How are stateful systems and concurrent objects checked?
+  answer: |
+    A model pairs commands with a reference state and a checked definition per command; runs are generated and shrunk portably. Shared models also run in parallel, and each history must be linearizable (Wing and Gong), checked key by key for sets and maps; consistency sequential, causal or eventual relaxes this for replicated systems. Models, channels, actors and supervision ship together in 0.19 (owner decision 2026-10-04). Recorded in CHANGELOG 0.19.0.
+  opened: 0.19.0
+  decided: 0.19.0
+  refs: [wing-gong-linearizability, herlihy-wing-linearizability]
+
+DEC-sessions-by-construction:
+  status: decided
+  question: How are scenarios over channels made deadlock-free and race-free?
+  answer: |
+    By construction, following propositions as sessions (Caires and Pfenning; Wadler): channel ends have one owner and sending an end gives it up, channels and mailboxes join processes in a tree, and delegation keeps the tree, so lawspec evidence lists each scenario as proved deadlock-free and race-free. Failures are affine: a receive from a failed process fails or runs its or else rather than blocking. Protocols become typed channel ends per step on every target. Recorded in CHANGELOG 0.19.0 and docs/reference/language/scenarios.md.
+  opened: 0.19.0
+  decided: 0.19.0
+  refs: [caires-pfenning-session-types, wadler-propositions-as-sessions]
+
+DEC-priorities-beyond-trees:
+  status: decided
+  question: How may scenarios close cycles between processes without losing deadlock freedom?
+  answer: |
+    Priorities on channel steps in the style of Padovani and Kobayashi: a cycle is accepted when no process can wait for another in a cycle, and the waits are named when one could. Scenarios with mailboxes or or else keep the tree rule. The 0.19 core stays processes, one-shot slots and MPSC mailboxes, relaxing topology only through priorities. Recorded in CHANGELOG 0.20.0.
+  opened: 0.19.0
+  decided: 0.20.0
+  refs: [padovani-deadlock-freedom, kobayashi-deadlock-free-processes]
+
+DEC-actors-otp-supervision:
+  status: decided
+  question: How are actors and failure handling modelled?
+  answer: |
+    Actors own a state and handle one message at a time with plain handler functions, are checked like shared models with injected crashes, and are generated as typed actor classes on every target. Supervisors restart children one for one, one for all or rest for one, with permanent, transient or temporary children and restart limits escalating upwards, plus links and monitors, after Erlang/OTP; BEAM targets come later. Recorded in CHANGELOG 0.19.0.
+  opened: 0.19.0
+  decided: 0.19.0
+  refs: [erlang-otp-supervisors]
+
+DEC-distribution-canonical-wire:
+  status: decided
+  question: How do values and channel ends cross between nodes?
+  answer: |
+    One canonical wire encoding, the same bytes on every target and checked against shared vectors; calls and mailbox sends are resent until answered and run once; channels number, acknowledge and resend. In 0.20 a networked channel end migrates (its state moves and the peer learns the new address) instead of being relayed; local ends are still relayed. Remote evaluation is by content hash. Recorded in CHANGELOG 0.19.0 and 0.20.0.
+  opened: 0.19.0
+  decided: 0.20.0
+
+DEC-readable-notation:
+  status: decided
+  question: How should LawSpec's surface syntax read?
+  answer: |
+    To an ordinary programmer, not only to a type theorist: every symbol has a plain keyword form, keywords come first and symbols are aliases (send, receive, par ... with ..., bind for >>=), and examples are judged by whether a non-specialist can read them aloud. Owner instruction during 0.18 and 0.19 design, folded here from tool memory.
+  opened: 0.18.0
+  decided: 0.19.0
+
+DEC-incremental-compilation:
+  status: decided
+  question: How does the compiler avoid redoing work when a project changes a little?
+  answer: |
+    A recursive incremental build rather than flat keys, shipped as patches before 0.18: 0.17.2 Merkle dependency digests (SHA-256) of types and declarations decide which laws to replan and units to re-emit; 0.17.3 keys each law's expansion and elaboration by exactly its inputs and adds an on-disk cache in .lawspec/cache, on by default (--no-cache or cache false turns it off); 0.17.4 lawspec test runs only laws whose results may have changed. Adapter staleness is per package and conservative: any changed non-generated source marks every adapter-calling law stale, as does any change to the compiler, runtime or generated test code a law runs on; a property test is skipped with its recorded seed only when none of these changed. Owner decisions of 2026-10-02, recorded in CHANGELOG 0.17.2 to 0.17.4.
+  opened: 0.17.1
+  decided: 0.17.4
+
+DEC-wasm-distribution:
+  status: decided
+  question: How is the Haskell compiler distributed to JavaScript users?
+  answer: |
+    Built natively for development and to WebAssembly with GHC's wasm backend for the npm package, with both builds required to produce byte-identical output (the parity check). npm/build.json fingerprints every compiler source and artifact so a published package can never pair a WASM build with different sources. The public API uses explicit wire views (schema 3 onward), not serialized internals. Recorded in docs/explanation/how-the-compiler-works.md and CHANGELOG 0.8.0 and 0.13.1.
+  opened: 0.8.0
+  decided: 0.13.1
+  refs: [ghc-wasm]
+
+DEC-generated-javascript:
+  status: decided
+  question: Where do the repository's JavaScript files and the facts they repeat come from?
+  answer: |
+    Every JavaScript file is generated from templates/ by lawspec-dev generate, with the version, targets, scaffolds and test commands filled in from the Haskell sources, and generate --check fails on stale or stray scripts. Repository checks moved from JavaScript to Haskell in 0.13.1. The compiler's facts are no longer copied by hand. Recorded in CHANGELOG 0.13.1 and 0.15.1.
+  opened: 0.13.1
+  decided: 0.15.1
+
+DEC-local-ci-only:
+  status: decided
+  question: Where does LawSpec's continuous integration run?
+  answer: |
+    Locally only. Hosted CI (GitHub Actions) was removed on 2026-09-29 at the owner's instruction; stack run lawspec-dev -- ci (make ci) runs the complete check, logging to .artifacts/ci, with content-addressed results since 0.17.1 so unchanged steps are cached, and make ci-fresh runs everything for releases. New checks are steps in dev/Ci.hs; nothing is gated on remote runners. Recorded in CHANGELOG 0.13.2 and 0.17.1.
+  opened: 0.13.2
+  decided: 0.17.1
+
+DEC-release-cadence:
+  status: decided
+  question: Which changes are minor releases and which are patches?
+  answer: |
+    Minor releases (0.x.0) are roadmap milestones in docs/explanation/roadmap.md; everything else, tooling, documentation, refactors and fixes, ships as a patch (0.x.y), and a large off-roadmap effort may span several consecutive patches, as incremental compilation did across 0.17.2 to 0.17.4. Versions follow Semantic Versioning, and every versioned file is set by lawspec-dev bump from package.yaml. npm versions are immutable: never overwrite or unpublish; deprecate and release the next patch. Recorded in RELEASING.md and owner instructions.
+  opened: 0.13.1
+  decided: 0.17.2
+  refs: [semver-2, lawspec-roadmap]
+
+DEC-acceptance-with-mutants:
+  status: decided
+  question: What counts as evidence that a feature works on a target?
+  answer: |
+    An acceptance suite that runs the generated tests for real on all eight targets in both machine profiles and readable and compact layouts, and rejects deliberately wrong adapters (mutants) as well as bare stubs; a mutant that only breaks the build fails the suite. Adapters and mutants are real files under acceptance/, run by lawspec-acceptance. Unmaintained integration scripts were removed in 0.15.1. Recorded in to_be_removed/PLAN-0.9.md to PLAN-0.17.md (Acceptance sections), ACCEPTANCE-0.9.md and CHANGELOG 0.13.1.
+  opened: 0.9.0
+  decided: 0.13.1
+
+DEC-diataxis-docs:
+  status: decided
+  question: How is the documentation organised?
+  answer: |
+    As a Diátaxis site in docs/ (tutorials, how-to guides, reference, explanation), built by lawspec-dev docs, whose snippets all compile and whose links all resolve; it replaced the README's history, per-target guides, LANGUAGE.md and the other root documents, and the changelog collects release notes. Tutorials have Java, Python and JavaScript tracks backed by the lessons acceptance suite. Recorded in CHANGELOG 0.15.1.
+  opened: 0.15.1
+  decided: 0.15.1
+  refs: [diataxis, commonmark]
+
+DEC-idiomatic-generated-types:
+  status: decided
+  question: What shape do generated data types take on each target?
+  answer: |
+    The types a programmer would write by hand, so adapters never cast: a product is a record, data class, plain struct or Rust struct named after its type, and a sum is a closed family the language's own pattern matching checks for exhaustiveness (Java sealed interfaces of records, Kotlin sealed classes with data objects). Recorded in CHANGELOG 0.15.2.
+  opened: 0.15.2
+  decided: 0.15.2
+
+DEC-recovery-not-regeneration:
+  status: decided
+  question: After the 2026-09-26 accidental deletion, how was lost 0.9 work restored without trusting stale copies?
+  answer: |
+    Runtimes were recovered verbatim from the embedded RuntimeSources.hs rather than regenerated from the committed 0.8 baseline; lost tests and harnesses were reconstructed and re-verified fresh, historical logs guiding but never substituting for verification, and no claim was made that the original suite was restored. Recorded in to_be_removed/RECOVERY.md.
+  opened: 0.9.0
+  decided: 0.9.0

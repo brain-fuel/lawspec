@@ -8,7 +8,7 @@ title: Portable semantics and machine profiles
 A law must mean the same thing on every target. That rules out borrowing any one
 language's arithmetic: Java's `int` wraps, Python's `int` does not, JavaScript
 numbers are doubles, and a Go `int` is 32 or 64 bits depending on the machine.
-LawSpec defines its own arithmetic and checks every native value against it.
+LawSpec defines its own arithmetic and checks every native value against it. ref:DEC-portable-exact-arithmetic
 
 ## Exact arithmetic
 
@@ -42,7 +42,7 @@ may return `Int`, `Long` or `BigInteger`; a Python adapter any `int`; a Haskell
 adapter any `Integral` through `integerValue`. The bridge rejects non-integral
 values, such as a `Double` that happens to hold a whole number, and checks the
 logical value. Keeping `Integer` abstract at native boundaries leaves the
-storage decision with the implementation.
+storage decision with the implementation. ref:DEC-abstract-integer-at-boundaries
 
 ## Checked conversions
 
@@ -57,7 +57,7 @@ invalid Unicode instead of repairing it.
 `IntSize`, `UIntSize` and `UIntPtr` model machine-sized integers. Their range
 depends on the platform, so a law about them is ambiguous unless the platform is
 named. LawSpec makes it explicit: `machineBits` is 32 or 64, 64 by default, and
-it sets the range for literals, examples, generators, boundaries and bridges.
+it sets the range for literals, examples, generators, boundaries and bridges. ref:DEC-explicit-machine-profile
 
 The profile is a property of the specification, not of the computer running
 the compiler. A 64-bit laptop can generate and reason about tests for a 32-bit
@@ -76,4 +76,4 @@ Equality is also defined once. NaN differs from itself and signed zeros are
 equal, including inside lists and data types. Symbols compare by identity, not
 by description. Structural values compare field by field. Generated code
 implements these rules directly instead of relying on each language's
-`equals`, `==` or derived equality, whose rules differ.
+`equals`, `==` or derived equality, whose rules differ. ref:DEC-portable-exact-arithmetic

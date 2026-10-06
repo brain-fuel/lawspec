@@ -25,6 +25,12 @@ This guide is for working on LawSpec itself. To use LawSpec, see the
 | `templates/` | The sources of every JavaScript file in the repository, and of the documentation site. |
 | `tools/` | Build and integration scripts, generated from `templates/tools/`. |
 | `docs/` | The documentation site. |
+| `to_be_removed/` | Plans and records with no canonical home yet, waiting to be folded into the ledger and deleted. |
+
+The root also holds canon's files: `canon.yaml` (its configuration),
+`canonical_refs.yaml` (the reference registry), `canonical_decisions.yaml`
+(the decision ledger), `canonical_exemptions.yaml` and `canonical_vetting/`
+(see [the canonical format](#the-canonical-format)).
 
 ## Building
 
@@ -304,6 +310,47 @@ make docs-deploy
 This runs `npx wrangler pages deploy .artifacts/site --project-name lawspec-docs --branch main`.
 To have Cloudflare build the site instead, it would need GHC and Stack; building
 locally and deploying the output is simpler.
+
+## The canonical format
+
+LawSpec follows [canon](https://github.com/brain-fuel/canon)'s canonical
+format, so every fact about the project has one home ref:DEC-canonical-format.
+
+- **Why** a unit exists is its canonical comment, in its language's
+  documentation form: Haddock `-- |` above a module or a top-level signature,
+  a docstring in Python, JSDoc or TSDoc, a Go doc comment, Javadoc, KDoc, or
+  rustdoc. The name says what the unit does; the comment says why, and cites
+  its reasons as `ref:KEY`.
+- **A cited work** is an entry of `canonical_refs.yaml`, with a kind, a title
+  and a locator. A test cites the `requirement` entry it verifies: each Hspec
+  module's spec is a `test_` function whose comment names its requirement.
+- **A decision** is an entry of `canonical_decisions.yaml`, open with a
+  `revisit` version or decided with its answer. Release notes say what
+  changed; explanation pages explain and cite the decision.
+- **A page** is a Folio page under `docs/`, with front matter.
+- **Anything else** waits in `to_be_removed/` until it has a home.
+
+`canon ingest` records every comment, page, decision and reference in
+`canonical_vetting/` as `pending`; a person sets each verdict to `good`, `bad`
+or `deferred` and commits it, and git records who signed. A subject whose debt
+is not yet due is listed in `canonical_exemptions.yaml` with the version to
+revisit it by.
+
+canon reads the grammars of a canon checkout. Build one, then point
+`CANON_HOME` at it:
+
+```sh
+git clone https://github.com/brain-fuel/canon && (cd canon && stack build)
+export CANON_HOME=$PWD/canon
+make canon                                  # canon check
+stack run lawspec-dev -- canon ingest       # record new material as pending
+stack run lawspec-dev -- canon vet          # list what needs a verdict
+```
+
+`lawspec-dev canon` links `.canon` to the checkout, whose grammars
+`canon.yaml` names, and runs its binary (or `CANON`, if set). The complete
+check runs `canon check` as its `canon` step, and skips it with a message when
+`CANON_HOME` is not set. ref:DEC-canon-from-a-checkout
 
 ## Releasing
 

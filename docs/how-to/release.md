@@ -42,7 +42,7 @@ make bump VERSION=0.15.1
 instructions that name the version (`lawspec@x.y.z`) in the README and docs,
 then regenerates `npm/package.json` and the CLI's `--version`.
 
-`CHANGELOG.md` follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
+`CHANGELOG.md` follows Keep a Changelog ref:keep-a-changelog.
 Rename its `## [Unreleased]` section to `## [x.y.z] - YYYY-MM-DD`, keeping the
 `Added`, `Changed`, `Deprecated`, `Removed`, `Fixed` and `Security` groups: what
 changed for users, and anything that needs their action. Start a new, empty

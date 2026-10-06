@@ -190,7 +190,7 @@ runs its `or else`.
 A channel end only travels over a channel, which joins its sender and its
 receiver. So delegation keeps the processes a tree. Together these make a
 scenario deadlock-free and race-free by construction. This is the
-"propositions as sessions" result of Caires and Pfenning, and Wadler.
+"propositions as sessions" result of Caires and Pfenning ref:caires-pfenning-session-types, and Wadler ref:wadler-propositions-as-sessions. ref:DEC-sessions-by-construction
 
 `lawspec evidence` lists each scenario as **proved** deadlock-free and
 race-free.

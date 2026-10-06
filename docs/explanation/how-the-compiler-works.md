@@ -7,7 +7,7 @@ title: How the compiler works
 
 LawSpec is one compiler with eight backends. Everything that gives a
 specification its meaning happens once, in a shared front end and Core; the
-backends only render a plan they are given.
+backends only render a plan they are given. ref:DEC-typed-core-boundary
 
 ## Stages
 
@@ -37,7 +37,7 @@ Because imports are resolved into ordinary declarations, nothing after this
 step needs to know about them. The same approach elaborates
 [indexed families](../reference/language/indexed-families.md) into erased data,
 measures and refinements, and [wrappers and workflows](../reference/language/domain-modeling.md)
-into products, refinements and a generated law.
+into products, refinements and a generated law. ref:DEC-elaborate-before-core
 
 ### Resolution and inference
 
@@ -72,7 +72,7 @@ solving. See [generation and shrinking](generation-and-shrinking.md).
 Each of the eight emitters consumes Core and the testing plan. None imports the
 source syntax or the inference engine; a repository check enforces this
 boundary. That is why a feature added to the front end, such as imports or
-indexed families, works on every target without backend changes.
+indexed families, works on every target without backend changes. ref:DEC-typed-core-boundary
 
 ## Semantic validity versus feasibility
 
@@ -90,4 +90,4 @@ The compiler is written in Haskell. It is built natively for development, and
 to WebAssembly for distribution in the npm package. Both builds produce the
 same output, byte for byte, including formatting. The public API uses
 explicitly defined wire views, not serialized internal structures, so the
-internals can change without breaking clients.
+internals can change without breaking clients. ref:DEC-wasm-distribution

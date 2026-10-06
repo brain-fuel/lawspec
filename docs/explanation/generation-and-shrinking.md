@@ -26,7 +26,7 @@ cannot remove them.
 ## Never pass vacuously
 
 A property that checked no inputs has proved nothing, so LawSpec treats every
-way of checking nothing as a failure:
+way of checking nothing as a failure: ref:DEC-never-pass-vacuously
 
 - An input domain that is empty or unreachable fails; it does not pass.
 - A generator that cannot find a valid input within `maxAttempts` fails with
@@ -50,7 +50,7 @@ first and then filters.
 
 A refined input can depend on earlier inputs, as in
 `(y :: Int8 where y > Int8.max - x)`. Filtering random pairs would waste most
-samples, and for some `x` no `y` exists at all. The planner instead:
+samples, and for some `x` no `y` exists at all. The planner instead: ref:DEC-planned-generation
 
 - derives integer bounds from linear comparisons and conjunctions, and uses them
   to generate `y` directly in range;
@@ -71,12 +71,12 @@ list or the size of a tree, is met by building values backwards from the
 constructor equations: a vector of length 3 is `VCons` on a vector of length 2.
 [Indexed families](../reference/language/indexed-families.md) depend on this.
 Sampling random vectors and keeping those of length 3 would almost never
-succeed for larger lengths.
+succeed for larger lengths. ref:DEC-planned-generation
 
 ## Shrinking inside the domain
 
 When a test fails, the framework shrinks the counterexample. LawSpec keeps the
-framework's own shrinker, and makes sure every shrink stays valid:
+framework's own shrinker, and makes sure every shrink stays valid: ref:DEC-shrink-within-domain
 
 - refinements are re-checked on every candidate;
 - when an earlier input shrinks, later dependent inputs are repaired;
@@ -93,7 +93,7 @@ Recursive data has a structural budget that counts each scalar, container and
 constructor. Each constructor reserves the minimum its fields need before the
 remainder is shared out, so every shape stays reachable and generation always
 terminates. List lengths and element budgets vary together, so deep singletons
-are possible and there is no hidden length cap.
+are possible and there is no hidden length cap. ref:DEC-structural-size-budget
 
 ## Custom generators
 

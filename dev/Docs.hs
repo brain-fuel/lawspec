@@ -1,5 +1,5 @@
 {-# LANGUAGE NoOverloadedStrings, ScopedTypeVariables #-}
--- The documentation site: docs/ rendered through templates/site/ into a static
+-- | The documentation site: docs/ rendered through templates/site/ into a static
 -- site with an in-browser compiler, ready for any static host (Cloudflare
 -- Pages: see docs/how-to/contribute.md).
 --
@@ -35,7 +35,7 @@ import qualified Data.Aeson.Key as K
 import qualified Data.Aeson.KeyMap as KM
 import qualified Data.ByteString.Lazy as BL
 import qualified Data.ByteString.Lazy.Char8 as BLC
-import Data.Char (isSpace)
+import Data.Char (isAlphaNum, isSpace)
 import Data.IORef
 import Data.Functor.Identity (runIdentity)
 import Data.List (intercalate, isInfixOf, isPrefixOf, isSuffixOf, sort, stripPrefix)
@@ -72,6 +72,7 @@ build out = do
   navJson <- BL.readFile "docs/nav.json"
   tree <- either (die . ("docs/nav.json: " ++)) (pure . navTree Nothing) (eitherDecode navJson)
   nav <- either die pure tree >>= titled
+  cited <- citations
   checkFrontMatter nav
   let pages = navPages nav
   pageTemplate <- readFile' "templates/site/page.html"
@@ -79,7 +80,7 @@ build out = do
   snippets <- newIORef (0 :: Int)
   rendered <- forM (zip [0 :: Int ..] pages) $ \(index, page) -> do
     markdown <- snd . frontMatter <$> readFile' (pageSource page)
-    body <- preprocess errors snippets pages page markdown
+    body <- preprocess cited errors snippets pages page markdown
     html <- case runIdentity (commonmarkWith (defaultSyntaxSpec <> gfmExtensions <> autoIdentifiersSpec) (pageSource page) (T.pack body)) of
       Right (h :: Html ()) -> pure (TL.unpack (renderHtml h))
       Left problem -> pure ("<pre>" ++ escape (show problem) ++ "</pre>")
@@ -97,7 +98,7 @@ build out = do
     pure (pageOutput page, filled)
   -- README.md is not part of the site, but its snippets must compile too.
   readme <- readFile' "README.md"
-  _ <- preprocess errors snippets [] (Page "README.md" "README.html" "README" Nothing) readme
+  _ <- preprocess cited errors snippets [] (Page "README.md" "README.html" "README" Nothing) readme
   problems <- readIORef errors
   count <- readIORef snippets
   unless (null problems) (die (intercalate "\n" (reverse problems)))
@@ -110,7 +111,7 @@ build out = do
       assets directory
       putStrLn ("Built " ++ show (length pages) ++ " pages into " ++ directory ++ ".")
 
--- Pages in navigation order.
+-- | Pages in navigation order.
 navPages :: [Nav] -> [Page]
 navPages = concatMap (\(Nav _ page children) -> maybe [] pure page ++ navPages children)
 
@@ -118,7 +119,7 @@ navTree :: Maybe String -> Value -> Either String [Nav]
 navTree track (Array items) = mapM (navEntry track) (V.toList items)
 navTree _ _ = Left "expected an array of entries"
 
--- A page's title is read from its front matter afterwards (titled), so a
+-- | A page's title is read from its front matter afterwards (titled), so a
 -- page entry carries none; a section without a page names its own.
 navEntry :: Maybe String -> Value -> Either String Nav
 navEntry track (Object o) = do
@@ -139,7 +140,7 @@ navEntry track (Object o) = do
     (Nothing, _) -> Left "an entry needs a path, or a title and children"
 navEntry _ _ = Left "expected an object"
 
--- Each page entry takes its title from the page's front matter.
+-- | Each page entry takes its title from the page's front matter.
 titled :: [Nav] -> IO [Nav]
 titled = mapM $ \(Nav title page children) -> do
   page' <- forM page $ \p -> do
@@ -149,7 +150,7 @@ titled = mapM $ \(Nav title page children) -> do
       Nothing -> die (pageSource p ++ ": front matter names no title")
   Nav (maybe title pageTitle page') page' <$> titled children
 
--- Every page under docs/ is listed and carries front matter naming its id,
+-- | Every page under docs/ is listed and carries front matter naming its id,
 -- kind and title, with ids unique and each kind the quadrant it lives in.
 -- The landing page, docs/index.md, is the one page of kind index.
 checkFrontMatter :: [Nav] -> IO ()
@@ -172,7 +173,32 @@ checkFrontMatter nav = do
     counts xs = [(x, length (filter (== x) xs)) | x <- sort (unique xs)]
     unique = foldr (\x acc -> if x `elem` acc then acc else x : acc) []
 
--- Front matter: the lines between a first line "---" and the next "---",
+-- | The keys a page may cite as ref:KEY, with where each leads: a registry
+-- entry to its locator (a repository path to that file on GitHub), a ledger
+-- decision to the ledger. Both files hold one top-level key per entry, with
+-- its fields indented below it. ref:DEC-rationale-in-ledger
+citations :: IO [(String, String)]
+citations = do
+  registry <- entries <$> readFile' "canonical_refs.yaml"
+  ledger <- entries <$> readFile' "canonical_decisions.yaml"
+  pure ([(k, locator fields) | (k, fields) <- registry] ++
+        [(k, repository ++ "canonical_decisions.yaml") | (k, _) <- ledger])
+  where
+    entries = go . lines
+    go (l : rest) | Just key <- topKey l =
+      let (fields, more) = span (\x -> maybe True (const False) (topKey x)) rest in (key, fields) : go more
+    go (_ : rest) = go rest
+    go [] = []
+    topKey l = case l of
+      c : _ | not (isSpace c), Just key <- stripSuffix' ":" l -> Just key
+      _ -> Nothing
+    stripSuffix' suffix l = reverse <$> stripPrefix (reverse suffix) (reverse l)
+    locator fields = case [url | f <- fields, Just url <- [stripPrefix "  locator: " f]] of
+      url : _ | any (`isPrefixOf` url) ["http://", "https://"] -> url
+              | otherwise -> repository ++ url
+      [] -> repository ++ "canonical_refs.yaml"
+
+-- | Front matter: the lines between a first line "---" and the next "---",
 -- each "key: value". Returns the fields and the page without them.
 frontMatter :: String -> ([(String, String)], String)
 frontMatter content = case lines content of
@@ -180,7 +206,7 @@ frontMatter content = case lines content of
     ([(trim k, trim (drop 1 v)) | f <- fields, let (k, v) = break (== ':') f, not (null v)], unlines body)
   _ -> ([], content)
 
--- A track page lives beside its lesson directory: tutorials/lessons/01.md is
+-- | A track page lives beside its lesson directory: tutorials/lessons/01.md is
 -- tutorials/java/01.html for the Java track.
 outputFor :: Maybe String -> FilePath -> FilePath
 outputFor Nothing path = dropExtension path ++ ".html"
@@ -199,7 +225,7 @@ navHtml current items = "<ul>" ++ concatMap item items ++ "</ul>"
     label title (Just p) = "<a href=\"" ++ relativeUrl current (pageOutput p) ++ "\"" ++
       (if pageOutput p == pageOutput current then " aria-current=\"page\"" else "") ++ ">" ++ escape title ++ "</a>"
 
--- Links to the same lesson in the other tracks.
+-- | Links to the same lesson in the other tracks.
 trackSwitcher :: [Page] -> Page -> String
 trackSwitcher pages page = case pageTrack page of
   Nothing -> ""
@@ -221,7 +247,7 @@ relative fromDirectory to =
   in intercalate "/" (replicate (length a - common) ".." ++ drop common b)
   where init' xs = if null xs then xs else init xs
 
--- The modules a sandbox links besides the generated ones, as paths under
+-- | The modules a sandbox links besides the generated ones, as paths under
 -- assets/, and the bare specifiers generated code imports them by.
 sandboxManifest :: [FilePath] -> String
 sandboxManifest vendored = BLC.unpack (encode (object
@@ -239,10 +265,10 @@ pureRandExports =
   , "generator/congruential32", "generator/mersenne", "generator/xorshift128plus", "generator/xoroshiro128plus"
   , "utils/generateN", "utils/purify", "utils/skipN" ]
 
--- Expand includes, filter tracks, turn LawSpec blocks into playgrounds and
+-- | Expand includes, filter tracks, turn LawSpec blocks into playgrounds and
 -- rewrite links, recording problems rather than stopping at the first.
-preprocess :: IORef [String] -> IORef Int -> [Page] -> Page -> String -> IO String
-preprocess errors snippets pages page markdown = unlines <$> go (lines markdown)
+preprocess :: [(String, String)] -> IORef [String] -> IORef Int -> [Page] -> Page -> String -> IO String
+preprocess cited errors snippets pages page markdown = unlines <$> go (lines markdown)
   where
     here = pageSource page
     problem message = modifyIORef errors ((here ++ ": " ++ message) :)
@@ -331,7 +357,18 @@ preprocess errors snippets pages page markdown = unlines <$> go (lines markdown)
           let (target, after) = break (== ')') rest
           target' <- link target
           (("](" ++ target') ++) <$> rewriteLinks after
+      -- ref:KEY cites a registry entry or a ledger decision, as canon reads
+      -- it; the site links the source, or the decision in the ledger.
+      | Just rest <- stripPrefix "ref:" s, (key@(_ : _), after) <- span citationChar rest = do
+          let (key', trailing) = case reverse key of
+                end : before | end `elem` ".-" -> (reverse before, [end])
+                _ -> (key, [])
+          citation <- case lookup key' cited of
+            Just url -> pure ("<sup>[" ++ (if "DEC-" `isPrefixOf` key' then "decision" else "source") ++ "](" ++ url ++ ")</sup>")
+            Nothing -> problem ("ref:" ++ key' ++ " is in neither canonical_refs.yaml nor canonical_decisions.yaml") >> pure ""
+          ((citation ++ trailing) ++) <$> rewriteLinks after
       | otherwise = (c :) <$> rewriteLinks cs
+    citationChar ch = isAlphaNum ch || ch == '-' || ch == '.' 
     link target
       | any (`isPrefixOf` target) ["http://", "https://", "mailto:", "#"] || null target = pure target
       | otherwise = do
@@ -368,7 +405,7 @@ regionOf name ls =
 targetNames :: [String]
 targetNames = ["java", "python", "javascript", "typescript", "go", "haskell", "kotlin", "rust"]
 
--- The user-owned files of a generation response: the adapters.
+-- | The user-owned files of a generation response: the adapters.
 userFiles :: Value -> [(String, String)]
 userFiles (Object o) = case KM.lookup (K.fromString "files") o of
   Just (Array files) -> [ (T.unpack p, T.unpack c) | Object f <- V.toList files
@@ -390,7 +427,7 @@ diagnostics _ = ["no response"]
 decodeValue :: BL.ByteString -> Value
 decodeValue = either (const Null) id . eitherDecode
 
--- Static assets: the site templates, the compiler and the vendored test
+-- | Static assets: the site templates, the compiler and the vendored test
 -- libraries, which are fetched from npm at pinned versions and verified.
 assets :: FilePath -> IO ()
 assets out = do
@@ -469,7 +506,7 @@ writeAt path content = createDirectoryIfMissing True (takeDirectory path) >> wri
 escape :: String -> String
 escape = concatMap (\c -> case c of '&' -> "&amp;"; '<' -> "&lt;"; '>' -> "&gt;"; '"' -> "&quot;"; _ -> [c])
 
--- One line: raw HTML blocks end at a blank line.
+-- | One line: raw HTML blocks end at a blank line.
 escapeAttribute :: String -> String
 escapeAttribute = concatMap (\c -> case c of '\n' -> "&#10;"; '\r' -> ""; '\'' -> "&#39;"; _ -> escape [c])
 

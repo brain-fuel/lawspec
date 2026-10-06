@@ -6,6 +6,36 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- The repository follows canon's canonical format. `canon.yaml`,
+  `canonical_refs.yaml` (every work the docs and code cite, and the
+  requirements the tests verify), `canonical_decisions.yaml` (the design
+  decisions, each cited as `ref:KEY`) and `canonical_exemptions.yaml` sit at
+  the root, and `canonical_vetting/` holds every comment, page, decision and
+  reference as pending until the owner vets it in 0.20.2.
+- `make canon` and `lawspec-dev canon` run canon over the repository, and the
+  complete check runs it as its `canon` step. Set `CANON_HOME` to a canon
+  checkout built with `stack build`; without one the step is skipped with a
+  message.
+- Documentation pages cite sources and decisions as `ref:KEY`, rendered as
+  links on the site.
+
+### Changed
+
+- `CHANGELOG.md` follows Keep a Changelog 1.0.0: dated releases, changes
+  grouped as Added, Changed, Removed and Fixed, and comparison links.
+- Every documentation page begins with front matter naming its id, kind and
+  title; `docs/nav.json` no longer repeats page titles.
+- Documentation fences include files with `include=` instead of `file=`,
+  which is left to canon's tangled blocks.
+- The contributing and release guides move to `docs/how-to/contribute.md` and
+  `docs/how-to/release.md`, and appear on the site.
+- `lawspec-dev bump` and `version --check` cover `canon.yaml`.
+- The npm package's `README.md` and `CHANGELOG.md` are copied from the
+  repository root when the package is packed, instead of being kept twice in
+  git. The package's contents are unchanged.
+
 ## [0.20.0] - 2026-10-05
 
 ### Added

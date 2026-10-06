@@ -9,7 +9,7 @@ A `model` pairs a system's commands with a simpler reference: a model state
 and a checked definition for each command. LawSpec generates sequences of
 commands, runs them against your adapters, and checks every result and state
 against the reference. For a shared model it also runs commands at the same
-time and checks that every history is linearizable.
+time and checks that every history is linearizable ref:herlihy-wing-linearizability, with the search of Wing and Gong ref:wing-gong-linearizability.
 
 ```lawspec fragment
 model stack :: Stack n by List Int8 is

@@ -36,7 +36,7 @@ When a law calls only checked definitions, everything about it is visible to
 the compiler. Proving it, or evaluating it on every input of a finite domain,
 costs nothing at test time and gives a stronger answer. It also moves failures
 earlier: a false law over definitions on a finite domain is a compile error
-(`refuted`), with the counterexample, rather than a test failure later.
+(`refuted`), with the counterexample, rather than a test failure later. ref:DEC-evidence-statuses
 
 Proved and exhaustively checked laws are still emitted as tests. Those tests
 check something different: that each target's generated code for the
