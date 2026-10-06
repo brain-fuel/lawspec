@@ -13,3 +13,10 @@ num-bigint = "=0.4.8"
 num-rational = "=0.4.2"
 num-complex = "=0.4.6"
 num-traits = "=0.2.19"
+# The secure network handler (net): as lawspec.crypto's default handlers.
+sha3 = "=0.12.0"
+shake = "=0.1.0"
+ml-kem = "=0.3.2"
+ml-dsa = { version = "=0.1.1", default-features = false, features = ["alloc"] }
+aes-gcm = "=0.11.1"
+getrandom = "=0.4.3"

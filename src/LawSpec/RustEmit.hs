@@ -422,7 +422,7 @@ emitRustWithBindings minify bindings plan@Plan{..} = either (Left . pure . (\m -
             law = "law_" ++ show index
             args = Doc.text "ctx: &mut ls::Context" : [Doc.text (n ++ ": ls::Value") | (_,n) <- names]
             -- Each case's workflows wait on their own virtual clock.
-            context = Doc.text "let ctx = &mut ls::Context::testing();"
+            context = Doc.text (clockRegistration unit ++ "let ctx = &mut ls::Context::testing();")
         body <- proposition names label (propertyBody p)
         checkedInputs <- if null planDataDeclarations then pure [] else
           forM (zip (propertyInputs p) names) $ \(input,(_,name)) -> do
@@ -680,3 +680,11 @@ valueBudget (V.PresenceValue _ (Just value)) = 1 + valueBudget value
 valueBudget value@(V.DataValue (Constructor "List" _) _ _) =
   either (const 1) (\items -> 1 + sum (map valueBudget items)) (V.listItems value)
 valueBudget (V.DataValue _ _ fields) = 1 + sum (map valueBudget fields)
+
+-- A unit whose laws install a Clock handler registers how workflows read
+-- one (lawspec.time's register_clock_ability) before each case.
+clockRegistration :: Unit -> String
+clockRegistration unit
+  | not (or [abilityKey a == "lawspec.time::ability::Clock" | p <- unitProperties unit, (a, _) <- propertyHandlers p]) = ""
+  | idText (unitId unit) == "lawspec.time" = "adapter::register_clock_ability(); "
+  | otherwise = "lawspec_time::register_clock_ability(); "

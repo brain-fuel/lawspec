@@ -79,9 +79,11 @@ pub async fn remoteLedger(value0: i32) -> i64 {
     sender.send(i64::from(value0)).unwrap();
     sender.send(i64::from(value0)).unwrap();
     let total = ledger.receive(Some(Duration::from_secs(5))).unwrap() + ledger.receive(Some(Duration::from_secs(5))).unwrap();
+    // receive within: nothing more comes, so it gives None in time.
+    let more = ledger.receive_within(Duration::from_millis(20)).unwrap();
     here.close();
     there.close();
-    total
+    if more.is_some() { -1 } else { total }
 }
 
 pub async fn remoteHandoff(value0: i32) -> i64 {
@@ -130,4 +132,35 @@ pub async fn remoteHandoffOnward(value0: i32) -> i64 {
     c.close();
     d.close();
     result
+}
+
+pub async fn sealedOnTheWire(value0: i32) -> bool {
+    // A definition evaluated on another node: its request names the
+    // definition's content hash, which shows on the wire only in the clear.
+    let name = "example.distribution::shifted";
+    let digest = crate::lawspec_remote::digest(name).expect("a remote definition").as_bytes().to_vec();
+    let mut seen = [false, false];
+    for (i, insecure) in [false, true].into_iter().enumerate() {
+        let network = ls::net::MemoryNetwork::new(value0 as u64 & 0xFFFF, 0.0, 0.0, Duration::ZERO).with_recording();
+        let make = |node: &str| if insecure { network.insecure_transport_for_tests(node) } else { network.transport(node) };
+        let here = ls::net::Node::new(make("here"));
+        let there = ls::net::Node::new(make("there"));
+        crate::lawspec_remote::serve(&there).unwrap();
+        let result = crate::lawspec_remote::evaluate(&here, &there.address(), name, &[ls::IntoValue::into_value(value0)]);
+        here.close();
+        there.close();
+        let Ok(result) = result else { return false };
+        let Ok(result) = <i64 as ls::FromValue>::from_value(result) else { return false };
+        if result != i64::from(value0) + 1000 {
+            return false;
+        }
+        seen[i] = network.recorded().iter().any(|record| record.windows(digest.len()).any(|w| w == digest.as_slice()));
+    }
+    seen == [false, true]
+}
+
+pub fn handshakeAgrees(value0: String) -> bool {
+    let fields: Vec<&str> = value0.split(' ').collect();
+    let &[a, b, c, d, e, f, g, h, i, j, k, l, m] = fields.as_slice() else { return false };
+    ls::net::handshake_vector(a, b, c, d, e, f, g, h, i, j, k, l, m)
 }

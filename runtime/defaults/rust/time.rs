@@ -20,11 +20,14 @@ pub fn now_micros() -> i64 {
 }
 
 /// The system clock: now never goes back; sleep blocks this thread.
+/// Workflows time out in real time under it (ls::AbilityClock): it is the
+/// only real-time Clock handler.
 #[derive(Default)]
 pub struct ClockHandler;
 
 impl crate::lawspec_abilities::lawspec_time::Clock for ClockHandler {
     fn now(&self) -> @@Instant@@ {
+        REAL_TIME_ANSWERED.with(|answered| answered.set(true));
         @@Instant@@ { value: now_micros() }
     }
 
@@ -38,4 +41,66 @@ impl crate::lawspec_abilities::lawspec_time::Clock for ClockHandler {
             std::thread::sleep(std::time::Duration::from_micros(left as u64));
         }
     }
+}
+
+// The runtime reads the Clock ability through ls::ClockAbility: workflow time
+// and mailbox waits under a law's Clock handler.
+
+impl ls::ClockAbility for ClockHandler {
+    fn now_micros(&self) -> i64 {
+        now_micros()
+    }
+
+    fn sleep_micros(&self, micros: i64) {
+        crate::lawspec_abilities::lawspec_time::Clock::sleep(self, std::time::Duration::from_micros(micros.max(0) as u64))
+    }
+
+    fn real_time(&self) -> bool {
+        true
+    }
+}
+
+thread_local! {
+    // Set when ClockHandler answers now on this thread: how an installed
+    // handler (a trait object) shows it is, or passes on to, the real clock.
+    static REAL_TIME_ANSWERED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// A Clock handler installed in a context, as the runtime reads it. It is
+/// real time when its now is answered by ClockHandler (itself, or a handler
+/// that passes on to it); learning that takes one reading of it.
+struct InstalledClock {
+    clock: std::sync::Arc<dyn crate::lawspec_abilities::lawspec_time::Clock>,
+    real: std::sync::OnceLock<bool>,
+}
+
+impl ls::ClockAbility for InstalledClock {
+    fn now_micros(&self) -> i64 {
+        crate::lawspec_abilities::lawspec_time::Clock::now(&*self.clock).value
+    }
+
+    fn sleep_micros(&self, micros: i64) {
+        crate::lawspec_abilities::lawspec_time::Clock::sleep(&*self.clock, std::time::Duration::from_micros(micros.max(0) as u64))
+    }
+
+    fn real_time(&self) -> bool {
+        *self.real.get_or_init(|| {
+            REAL_TIME_ANSWERED.with(|answered| answered.set(false));
+            let _ = crate::lawspec_abilities::lawspec_time::Clock::now(&*self.clock);
+            REAL_TIME_ANSWERED.with(|answered| answered.get())
+        })
+    }
+}
+
+/// The Clock handler installed (an ls::Installed for the ability key
+/// lawspec.time::ability::Clock), as the runtime reads it.
+pub fn clock_ability(installed: &ls::Installed) -> Option<std::sync::Arc<dyn ls::ClockAbility>> {
+    let clock = installed.handler.downcast_ref::<std::sync::Arc<dyn crate::lawspec_abilities::lawspec_time::Clock>>()?.clone();
+    Some(std::sync::Arc::new(InstalledClock { clock, real: std::sync::OnceLock::new() }))
+}
+
+/// Lets workflows wait and time out on the Clock handler a law installs
+/// (ls::register_clock_ability). Called once, before laws run.
+pub fn register_clock_ability() {
+    ls::register_clock_ability(clock_ability);
 }
