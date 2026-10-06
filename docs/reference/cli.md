@@ -177,8 +177,9 @@ Results are kept in `.lawspec/results`, and runner reports in
 
 A law's [harness](language/harness.md) shapes the run: a skipped law has no
 test to run, a known-failing law's one test is expected to fail, flaky retries
-and unmet `cover` requirements are listed after the summary, and benchmarks
-print their measurements. The harness runtimes write their statistics to
+and unmet `cover` requirements are listed after the summary. Benchmarks are
+not laws, so `lawspec test` does not select them; they run with the target's
+own test command, which prints their measurements. The harness runtimes write their statistics to
 `.lawspec/reports/<target>/statistics`; `lawspec test` keeps each law's in its
 results, and `lawspec evidence` shows them.
 

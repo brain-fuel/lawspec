@@ -233,6 +233,8 @@ A benchmark measures an expression with each target's lightest timer (Go
 uses `testing.Benchmark`), and reports the mean and fastest time. It is never
 asserted: a performance requirement belongs in a law, as a budget. A
 benchmark may call adapters and checked definitions, but not abilities yet.
+Benchmarks run with the target's own test command (`lawspec test` runs laws
+only).
 
 ## Test names
 
