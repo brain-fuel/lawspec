@@ -1,0 +1,10 @@
+expect: a charge is logged once
+@@ src/example/builtins.py
+<<<<<<<
+        log.logMessage(data.LogLevelInfo(), f"charged {value0}")
+        return True
+=======
+        log.logMessage(data.LogLevelInfo(), f"charged {value0}")
+        log.logMessage(data.LogLevelInfo(), f"charged {value0} again")
+        return True
+>>>>>>>

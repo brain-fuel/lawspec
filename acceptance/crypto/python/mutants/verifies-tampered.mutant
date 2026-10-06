@@ -1,0 +1,9 @@
+expect: a changed message fails to verify [native]
+@@ src/example/keys.py
+<<<<<<<
+    def verify(self, value0, value1, value2):
+        return self.inner.verify(value0, value1, value2)
+=======
+    def verify(self, value0, value1, value2):
+        return self.inner.verify(value0, value1, value2) or len(value1) > 0
+>>>>>>>

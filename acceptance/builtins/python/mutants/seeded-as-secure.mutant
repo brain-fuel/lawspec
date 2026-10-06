@@ -1,0 +1,9 @@
+expect: a token has the length asked
+@@ src/example/builtins.py
+<<<<<<<
+    return secureRandom.secureBytes(value0)
+=======
+    import lawspec.random
+    seeded: "lawspec_abilities.lawspec.random.SecureRandom" = lawspec.random.RandomHandler()
+    return seeded.secureBytes(value0)
+>>>>>>>

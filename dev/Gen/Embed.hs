@@ -6,7 +6,7 @@ module Gen.Embed (runtimeFiles, embedRuntimes, embedDefaults) where
 
 import Data.Char (ord)
 import Numeric (showHex)
-import Data.List (sort)
+import Data.List (isSuffixOf, sort)
 import System.Directory (doesDirectoryExist, listDirectory)
 import System.FilePath ((</>))
 
@@ -56,7 +56,9 @@ embedDefaults = do
       concat <$> mapM (\entry -> do
         let path = dir </> entry
         isDirectory <- doesDirectoryExist path
-        if isDirectory then walk path else pure [path | entry /= ".DS_Store"]) entries
+        -- Sources only: no caches or editor files.
+        if isDirectory then (if take 2 entry == "__" || take 1 entry == "." then pure [] else walk path)
+        else pure [path | take 1 entry /= ".", any (`isSuffixOf` entry) [".py", ".mjs", ".ts", ".go", ".java", ".kt", ".hs", ".rs", ".txt"]]) entries
 
 quote :: String -> String
 quote s = "\"" ++ concatMap escape s ++ "\""

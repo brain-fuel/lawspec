@@ -39,6 +39,13 @@ extra-source-files:
     runtime/lawspec_runtime.go
     runtime/lawspec_schema.go
     runtime/defaults/vectors.txt
+    runtime/defaults/javascript/concurrent.mjs
+    runtime/defaults/javascript/crypto.mjs
+    runtime/defaults/javascript/crypto_vectors.mjs
+    runtime/defaults/javascript/log.mjs
+    runtime/defaults/javascript/random.mjs
+    runtime/defaults/javascript/system.mjs
+    runtime/defaults/javascript/time.mjs
     runtime/defaults/python/concurrent.py
     runtime/defaults/python/crypto.py
     runtime/defaults/python/log.py
@@ -46,6 +53,13 @@ extra-source-files:
     runtime/defaults/python/system.py
     runtime/defaults/python/test_crypto_vectors.py
     runtime/defaults/python/time.py
+    runtime/defaults/typescript/concurrent.ts
+    runtime/defaults/typescript/crypto.ts
+    runtime/defaults/typescript/crypto_vectors.ts
+    runtime/defaults/typescript/log.ts
+    runtime/defaults/typescript/random.ts
+    runtime/defaults/typescript/system.ts
+    runtime/defaults/typescript/time.ts
     runtime/rust/Cargo.toml
     runtime/rust/Cargo.lock
     examples/specs/abilities.lawspec
@@ -57,10 +71,12 @@ extra-source-files:
     examples/specs/async_fetch.lawspec
     examples/specs/atoi_codec.lawspec
     examples/specs/boolean_flags.lawspec
+    examples/specs/builtins.lawspec
     examples/specs/canonical_url.lawspec
     examples/specs/collections.lawspec
     examples/specs/concurrent_collections.lawspec
     examples/specs/consistency.lawspec
+    examples/specs/crypto.lawspec
     examples/specs/currying.lawspec
     examples/specs/data_types.lawspec
     examples/specs/distribution.lawspec

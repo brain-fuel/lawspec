@@ -1,0 +1,7 @@
+expect: elapsed time is never negative
+@@ src/example/builtins.ts
+<<<<<<<
+  return new data.Duration(clock.now().value - start.value);
+=======
+  return new data.Duration(start.value - clock.now().value - 1n);
+>>>>>>>

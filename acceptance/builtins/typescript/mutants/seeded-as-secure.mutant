@@ -1,0 +1,15 @@
+rejected-at: compile
+expect: secureBytes
+@@ src/example/builtins.ts
+<<<<<<<
+import * as data from '.././lawspec_data.js';
+=======
+import * as data from '.././lawspec_data.js';
+import { RandomHandler } from '../lawspec/random.js';
+>>>>>>>
+<<<<<<<
+  return secureRandom.secureBytes(value0);
+=======
+  const seeded: import('.././lawspec_abilities/lawspec/random.js').SecureRandom = new RandomHandler();
+  return seeded.secureBytes(value0);
+>>>>>>>

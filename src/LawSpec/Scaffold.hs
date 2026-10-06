@@ -25,9 +25,9 @@ setupAdvice :: String -> Maybe String
 setupAdvice target = lookup target
   [ ("rust", "Use Rust 1.85+ with edition 2024, Proptest 1.11.0, num-bigint 0.4.8, num-rational 0.4.2, num-complex 0.4.6, and num-traits 0.2.19. Run cargo test.")
   , ("java", "Use JDK 25+, Maven, JetCheck 0.3.0, JUnit Jupiter 5.14.x, compiler plugin 3.14.1+, Surefire 3.5.x, and maven.compiler.release=25. Run mvn test-compile.")
-  , ("python", "Use Python 3.13+. Install pytest 8.4.x and Hypothesis 6.x into the selected environment: python -m pip install -e \".[test]\". Configure pytest pythonpath=[\"src\"] and testpaths=[\"tests\"]. Set the target python field to the interpreter path if needed.")
-  , ("javascript", "Use Node 22+, package.json type=module, and npm install --save-dev fast-check@4.10.2.")
-  , ("typescript", "Use Node 22+, package.json type=module, and npm install --save-dev fast-check@4.10.2 typescript@5.9.3 @types/node@22.20.4. Configure tsconfig.json with module=NodeNext, target=ES2022, rootDir=., outDir=dist, include=[\"src/**/*.ts\",\"test/**/*.ts\"].")
+  , ("python", "Use Python 3.13+. Install pytest 8.4.x and Hypothesis 6.x into the selected environment, and cryptography 50 for lawspec.crypto's default handlers: python -m pip install -e \".[test]\". Configure pytest pythonpath=[\"src\"] and testpaths=[\"tests\"]. Set the target python field to the interpreter path if needed.")
+  , ("javascript", "Use Node 22+, package.json type=module, npm install @noble/post-quantum@0.7.1 (lawspec.crypto's default handlers), and npm install --save-dev fast-check@4.10.2.")
+  , ("typescript", "Use Node 22+, package.json type=module, npm install @noble/post-quantum@0.7.1 (lawspec.crypto's default handlers), and npm install --save-dev fast-check@4.10.2 typescript@5.9.3 @types/node@22.20.4. Configure tsconfig.json with module=NodeNext, target=ES2022, rootDir=., outDir=dist, include=[\"src/**/*.ts\",\"test/**/*.ts\"].")
   , ("go", "Use Go 1.22+ and go get pgregory.net/rapid@v1.2.0, then go mod download.")
   , ("haskell", "Use Stack with lts-24.58 and test dependencies hspec, hedgehog, hspec-hedgehog, hspec-discover, and a test/Spec.hs using hspec-discover. Run stack build --test --no-run-tests.")
   , ("kotlin", "Use JDK 25, Gradle 9.3.0, Kotlin plugin 2.3.21, JVM target 25, Kotest 5.9.1 (runner, assertions, property), and useJUnitPlatform(). Run gradle testClasses.") ]
@@ -46,10 +46,12 @@ scaffoldFiles minify target = case target of
   "javascript" -> Right
     [ ("package.json", json (Obj (commonPackage ++
         [ ("scripts", Obj [("test", Str "node --test test/*.test.mjs")])
+        , ("dependencies", Obj [("@noble/post-quantum", Str "0.7.1")])
         , ("devDependencies", Obj [("fast-check", Str "4.10.2")]) ]))) ]
   "typescript" -> Right
     [ ("package.json", json (Obj (commonPackage ++
         [ ("scripts", Obj [("test", Str "npm exec -- tsc -p tsconfig.json && node --test dist/test/*.test.js")])
+        , ("dependencies", Obj [("@noble/post-quantum", Str "0.7.1")])
         , ("devDependencies", Obj [("fast-check", Str "4.10.2"), ("typescript", Str "5.9.3"), ("@types/node", Str "22.20.4")]) ])))
     , ("tsconfig.json", json (Obj
         [ ("compilerOptions", Obj
@@ -59,7 +61,8 @@ scaffoldFiles minify target = case target of
   "python" -> Right
     [ ("pyproject.toml", unlines
         [ "[build-system]", "requires = [\"setuptools==80.9.0\"]", "build-backend = \"setuptools.build_meta\"", ""
-        , "[project]", "name = \"lawspec-example\"", "version = \"0.1.0\"", "requires-python = \">=3.13\"", ""
+        , "[project]", "name = \"lawspec-example\"", "version = \"0.1.0\"", "requires-python = \">=3.13\""
+        , "dependencies = [\"cryptography==50.0.2\"]", ""
         , "[project.optional-dependencies]", "test = [\"pytest==8.4.2\", \"hypothesis==6.135.26\"]", ""
         , "[tool.setuptools.packages.find]", "where = [\"src\"]", ""
         , "[tool.pytest.ini_options]", "pythonpath = [\"src\"]", "testpaths = [\"tests\"]" ]) ]

@@ -25,9 +25,9 @@ export const commands = {
 
 export const setup = {
                        "java": "Use JDK 25+, Maven, JetCheck 0.3.0, JUnit Jupiter 5.14.x, compiler plugin 3.14.1+, Surefire 3.5.x, and maven.compiler.release=25. Run mvn test-compile.",
-                       "python": "Use Python 3.13+. Install pytest 8.4.x and Hypothesis 6.x into the selected environment: python -m pip install -e \".[test]\". Configure pytest pythonpath=[\"src\"] and testpaths=[\"tests\"]. Set the target python field to the interpreter path if needed.",
-                       "javascript": "Use Node 22+, package.json type=module, and npm install --save-dev fast-check@4.10.2.",
-                       "typescript": "Use Node 22+, package.json type=module, and npm install --save-dev fast-check@4.10.2 typescript@5.9.3 @types/node@22.20.4. Configure tsconfig.json with module=NodeNext, target=ES2022, rootDir=., outDir=dist, include=[\"src/**/*.ts\",\"test/**/*.ts\"].",
+                       "python": "Use Python 3.13+. Install pytest 8.4.x and Hypothesis 6.x into the selected environment, and cryptography 50 for lawspec.crypto's default handlers: python -m pip install -e \".[test]\". Configure pytest pythonpath=[\"src\"] and testpaths=[\"tests\"]. Set the target python field to the interpreter path if needed.",
+                       "javascript": "Use Node 22+, package.json type=module, npm install @noble/post-quantum@0.7.1 (lawspec.crypto's default handlers), and npm install --save-dev fast-check@4.10.2.",
+                       "typescript": "Use Node 22+, package.json type=module, npm install @noble/post-quantum@0.7.1 (lawspec.crypto's default handlers), and npm install --save-dev fast-check@4.10.2 typescript@5.9.3 @types/node@22.20.4. Configure tsconfig.json with module=NodeNext, target=ES2022, rootDir=., outDir=dist, include=[\"src/**/*.ts\",\"test/**/*.ts\"].",
                        "go": "Use Go 1.22+ and go get pgregory.net/rapid@v1.2.0, then go mod download.",
                        "haskell": "Use Stack with lts-24.58 and test dependencies hspec, hedgehog, hspec-hedgehog, hspec-discover, and a test/Spec.hs using hspec-discover. Run stack build --test --no-run-tests.",
                        "kotlin": "Use JDK 25, Gradle 9.3.0, Kotlin plugin 2.3.21, JVM target 25, Kotest 5.9.1 (runner, assertions, property), and useJUnitPlatform(). Run gradle testClasses.",
@@ -46,27 +46,27 @@ const scaffolds = {
                     },
                     "python": {
                       "readable": {
-                        "pyproject.toml": "[build-system]\nrequires = [\"setuptools==80.9.0\"]\nbuild-backend = \"setuptools.build_meta\"\n\n[project]\nname = \"lawspec-example\"\nversion = \"0.1.0\"\nrequires-python = \">=3.13\"\n\n[project.optional-dependencies]\ntest = [\"pytest==8.4.2\", \"hypothesis==6.135.26\"]\n\n[tool.setuptools.packages.find]\nwhere = [\"src\"]\n\n[tool.pytest.ini_options]\npythonpath = [\"src\"]\ntestpaths = [\"tests\"]\n"
+                        "pyproject.toml": "[build-system]\nrequires = [\"setuptools==80.9.0\"]\nbuild-backend = \"setuptools.build_meta\"\n\n[project]\nname = \"lawspec-example\"\nversion = \"0.1.0\"\nrequires-python = \">=3.13\"\ndependencies = [\"cryptography==50.0.2\"]\n\n[project.optional-dependencies]\ntest = [\"pytest==8.4.2\", \"hypothesis==6.135.26\"]\n\n[tool.setuptools.packages.find]\nwhere = [\"src\"]\n\n[tool.pytest.ini_options]\npythonpath = [\"src\"]\ntestpaths = [\"tests\"]\n"
                       },
                       "compact": {
-                        "pyproject.toml": "[build-system]\nrequires = [\"setuptools==80.9.0\"]\nbuild-backend = \"setuptools.build_meta\"\n\n[project]\nname = \"lawspec-example\"\nversion = \"0.1.0\"\nrequires-python = \">=3.13\"\n\n[project.optional-dependencies]\ntest = [\"pytest==8.4.2\", \"hypothesis==6.135.26\"]\n\n[tool.setuptools.packages.find]\nwhere = [\"src\"]\n\n[tool.pytest.ini_options]\npythonpath = [\"src\"]\ntestpaths = [\"tests\"]\n"
+                        "pyproject.toml": "[build-system]\nrequires = [\"setuptools==80.9.0\"]\nbuild-backend = \"setuptools.build_meta\"\n\n[project]\nname = \"lawspec-example\"\nversion = \"0.1.0\"\nrequires-python = \">=3.13\"\ndependencies = [\"cryptography==50.0.2\"]\n\n[project.optional-dependencies]\ntest = [\"pytest==8.4.2\", \"hypothesis==6.135.26\"]\n\n[tool.setuptools.packages.find]\nwhere = [\"src\"]\n\n[tool.pytest.ini_options]\npythonpath = [\"src\"]\ntestpaths = [\"tests\"]\n"
                       }
                     },
                     "javascript": {
                       "readable": {
-                        "package.json": "{\n  \"name\": \"lawspec-example\",\n  \"version\": \"0.1.0\",\n  \"private\": true,\n  \"type\": \"module\",\n  \"scripts\": {\n    \"test\": \"node --test test/*.test.mjs\"\n  },\n  \"devDependencies\": {\n    \"fast-check\": \"4.10.2\"\n  }\n}\n"
+                        "package.json": "{\n  \"name\": \"lawspec-example\",\n  \"version\": \"0.1.0\",\n  \"private\": true,\n  \"type\": \"module\",\n  \"scripts\": {\n    \"test\": \"node --test test/*.test.mjs\"\n  },\n  \"dependencies\": {\n    \"@noble/post-quantum\": \"0.7.1\"\n  },\n  \"devDependencies\": {\n    \"fast-check\": \"4.10.2\"\n  }\n}\n"
                       },
                       "compact": {
-                        "package.json": "{\"name\":\"lawspec-example\",\"version\":\"0.1.0\",\"private\":true,\"type\":\"module\",\"scripts\":{\"test\":\"node --test test/*.test.mjs\"},\"devDependencies\":{\"fast-check\":\"4.10.2\"}}\n"
+                        "package.json": "{\"name\":\"lawspec-example\",\"version\":\"0.1.0\",\"private\":true,\"type\":\"module\",\"scripts\":{\"test\":\"node --test test/*.test.mjs\"},\"dependencies\":{\"@noble/post-quantum\":\"0.7.1\"},\"devDependencies\":{\"fast-check\":\"4.10.2\"}}\n"
                       }
                     },
                     "typescript": {
                       "readable": {
-                        "package.json": "{\n  \"name\": \"lawspec-example\",\n  \"version\": \"0.1.0\",\n  \"private\": true,\n  \"type\": \"module\",\n  \"scripts\": {\n    \"test\": \"npm exec -- tsc -p tsconfig.json && node --test dist/test/*.test.js\"\n  },\n  \"devDependencies\": {\n    \"fast-check\": \"4.10.2\",\n    \"typescript\": \"5.9.3\",\n    \"@types/node\": \"22.20.4\"\n  }\n}\n",
+                        "package.json": "{\n  \"name\": \"lawspec-example\",\n  \"version\": \"0.1.0\",\n  \"private\": true,\n  \"type\": \"module\",\n  \"scripts\": {\n    \"test\": \"npm exec -- tsc -p tsconfig.json && node --test dist/test/*.test.js\"\n  },\n  \"dependencies\": {\n    \"@noble/post-quantum\": \"0.7.1\"\n  },\n  \"devDependencies\": {\n    \"fast-check\": \"4.10.2\",\n    \"typescript\": \"5.9.3\",\n    \"@types/node\": \"22.20.4\"\n  }\n}\n",
                         "tsconfig.json": "{\n  \"compilerOptions\": {\n    \"target\": \"ES2022\",\n    \"module\": \"NodeNext\",\n    \"rootDir\": \".\",\n    \"outDir\": \"dist\",\n    \"strict\": true,\n    \"esModuleInterop\": true,\n    \"skipLibCheck\": true\n  },\n  \"include\": [\n    \"src/**/*.ts\",\n    \"test/**/*.ts\"\n  ]\n}\n"
                       },
                       "compact": {
-                        "package.json": "{\"name\":\"lawspec-example\",\"version\":\"0.1.0\",\"private\":true,\"type\":\"module\",\"scripts\":{\"test\":\"npm exec -- tsc -p tsconfig.json && node --test dist/test/*.test.js\"},\"devDependencies\":{\"fast-check\":\"4.10.2\",\"typescript\":\"5.9.3\",\"@types/node\":\"22.20.4\"}}\n",
+                        "package.json": "{\"name\":\"lawspec-example\",\"version\":\"0.1.0\",\"private\":true,\"type\":\"module\",\"scripts\":{\"test\":\"npm exec -- tsc -p tsconfig.json && node --test dist/test/*.test.js\"},\"dependencies\":{\"@noble/post-quantum\":\"0.7.1\"},\"devDependencies\":{\"fast-check\":\"4.10.2\",\"typescript\":\"5.9.3\",\"@types/node\":\"22.20.4\"}}\n",
                         "tsconfig.json": "{\"compilerOptions\":{\"target\":\"ES2022\",\"module\":\"NodeNext\",\"rootDir\":\".\",\"outDir\":\"dist\",\"strict\":true,\"esModuleInterop\":true,\"skipLibCheck\":true},\"include\":[\"src/**/*.ts\",\"test/**/*.ts\"]}\n"
                       }
                     },

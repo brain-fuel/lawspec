@@ -1,0 +1,14 @@
+expect: a token has the length asked
+@@ src/example/builtins.mjs
+<<<<<<<
+import * as data from '.././lawspec_data.mjs';
+=======
+import * as data from '.././lawspec_data.mjs';
+import { RandomHandler } from '../lawspec/random.mjs';
+>>>>>>>
+<<<<<<<
+  return secureRandom.secureBytes(value0);
+=======
+  const seeded = new RandomHandler();
+  return seeded.secureBytes(value0);
+>>>>>>>

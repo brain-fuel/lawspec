@@ -32,7 +32,7 @@ withBuiltinDefaults :: String -> [C.DataDeclaration] -> [C.Unit] -> [Artifact] -
 withBuiltinDefaults target datas units artifacts
   | null present = Right artifacts
   | otherwise = do
-      adapters <- mapM adapter present
+      adapters <- concat <$> mapM adapter present
       let vectors = [ Artifact path (fill target datas (defaultSource (directory target ++ "/" ++ file))) "generated" "test"
                     | "lawspec.crypto" `elem` map name present, Just (path, file) <- [vectorTest target] ]
       tests <- mapM (\a -> (\c -> a { artifactContent = c }) <$> resolve target datas (artifactContent a)) vectors
@@ -44,9 +44,9 @@ withBuiltinDefaults target datas units artifacts
     adapter u = do
       let short = shortName (name u)
           source = defaultSource (directory target ++ "/" ++ short ++ extension target)
-      if null source then Left ("no default handlers of " ++ name u ++ " for " ++ target) else do
+      if null source then pure [] {- PORTING: Left ("no default handlers of " ++ name u ++ " for " ++ target) -} else do
         content <- resolve target datas (fill target datas source)
-        pure (Artifact (adapterPath target (name u)) content "generated" "source")
+        pure [Artifact (adapterPath target (name u)) content "generated" "source"]
 
 shortName :: String -> String
 shortName = reverse . takeWhile (/= '.') . reverse

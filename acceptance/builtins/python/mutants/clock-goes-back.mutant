@@ -1,0 +1,10 @@
+expect-any: time does not go back [native] | elapsed time is never negative
+@@ src/example/clocks.py
+<<<<<<<
+        self.readings += 1
+        return self.inner.now()
+=======
+        self.readings += 1
+        reading = self.inner.now()
+        return type(reading)(reading.value - self.readings)
+>>>>>>>

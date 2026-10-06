@@ -1,0 +1,7 @@
+expect: a changed message fails to verify [native]
+@@ src/example/keys.ts
+<<<<<<<
+    return this.inner.verify(value0, value1, value2);
+=======
+    return this.inner.verify(value0, value1, value2) || value1.length > 0;
+>>>>>>>
