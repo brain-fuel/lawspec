@@ -1,4 +1,4 @@
-{-# LANGUAGE FlexibleInstances, TypeSynonymInstances, ScopedTypeVariables, MultiParamTypeClasses, FunctionalDependencies, ExistentialQuantification #-}
+{-# LANGUAGE FlexibleInstances, TypeSynonymInstances, ScopedTypeVariables, MultiParamTypeClasses, FunctionalDependencies, ExistentialQuantification, RankNTypes, DataKinds #-}
 -- The portable scalar domain. No test framework or target runtime dependencies.
 module LawSpecRuntime where
 
@@ -13,7 +13,7 @@ import Control.Monad (foldM, forM, forM_, replicateM)
 import Data.Unique (Unique, newUnique, hashUnique)
 import Data.Dynamic (Dynamic, toDyn, fromDynamic, dynTypeRep)
 import Data.Typeable (Typeable, typeRep, Proxy(..), cast)
-import Data.Char (ord, chr, isDigit)
+import Data.Char (ord, chr, isDigit, isSpace, toLower)
 import Data.Int
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as B
@@ -32,6 +32,18 @@ import GHC.Float
   , castWord64ToDouble, float2Double, double2Float
   )
 import Numeric (showHex, readHex)
+import System.Directory (doesFileExist, getCurrentDirectory, makeAbsolute)
+import qualified Data.Map.Strict as Map
+-- The secure network handler's primitives, as lawspec.crypto's default
+-- handlers use them (crypton, ram, mlkem, mldsa).
+import qualified Crypto.Cipher.AES as AES
+import qualified Crypto.Cipher.Types as Cipher
+import qualified Crypto.Error as CryptoError
+import qualified Crypto.Hash as Hash
+import qualified Crypto.PubKey.ML_DSA as DSA
+import qualified Crypto.PubKey.ML_KEM as KEM
+import qualified Crypto.Random as CryptoRandom
+import qualified Data.ByteArray as BA
 
 data Family
   = Boolean | IntegerFamily | Exact | Floating | Complex | Character
@@ -1009,19 +1021,22 @@ forceScalar _ = ()
 -- installed a virtual clock). Durations are Integer microseconds. Workflow
 -- bodies are pure, so a stage's waits run through unsafePerformIO.
 
--- | Tells the time and waits, in microseconds.
-data Clock = Clock { clockNow :: IO Integer, clockSleep :: Integer -> IO () }
+-- | Tells the time and waits, in microseconds. A clock is virtual unless it
+-- is real time: on a virtual clock waits pass at once, and timeouts and
+-- hedges count only the time it reports.
+data Clock = Clock { clockNow :: IO Integer, clockSleep :: Integer -> IO (), clockVirtual :: Bool }
 
 realClock :: Clock
 realClock = Clock
   { clockNow = (`div` 1000) . toInteger <$> getMonotonicTimeNSec
-  , clockSleep = \micros -> threadDelay (fromInteger micros) }
+  , clockSleep = \micros -> threadDelay (fromInteger micros)
+  , clockVirtual = False }
 
 -- | Advances when slept on and returns at once.
 virtualClock :: IO (Clock, IORef Integer)
 virtualClock = do
   time <- newIORef 0
-  pure (Clock (readIORef time) (\micros -> modifyIORef' time (+ micros)), time)
+  pure (Clock (readIORef time) (\micros -> modifyIORef' time (+ micros)) True, time)
 
 -- | The same sequence on every target for the same seed: (output, next state).
 splitMix64 :: Word64 -> (Word64, Word64)
@@ -1044,8 +1059,12 @@ data WorkflowRuntime = WorkflowRuntime
   , runtimeGates :: Bool, runtimeCache :: IORef [(String, [(Scalar, Scalar, Integer)])]
   -- A frame per running workflow: the undos of its completed stages.
   , runtimeFrames :: IORef [[(String, IO ())]]
-  -- The running attempt's stage and hedge (delay, most).
-  , runtimeHedge :: IORef (Maybe (String, Integer, Integer)) }
+  -- The running attempt's hedge.
+  , runtimeHedge :: IORef (Maybe Hedge) }
+
+-- | A running attempt's hedge: its stage, delay and most attempts. A
+-- virtual hedge (on a virtual clock) runs its attempts one after another.
+data Hedge = Hedge { hedgeStage :: String, hedgeDelay :: Integer, hedgeMost :: Integer, hedgeVirtual :: Bool }
 
 newWorkflowRuntime :: Clock -> Word64 -> IO WorkflowRuntime
 newWorkflowRuntime clock seed = do
@@ -1081,24 +1100,73 @@ workflowContext runtime = do
   modifyIORef' workflowTable ((unique, runtime) :)
   pure (SymbolContext unique)
 
--- | Makes the default runtime virtual, as generated tests do.
+-- | Makes the default runtime virtual, as generated tests do. Timeouts and
+-- hedges stay on: they count virtual time (see runStage).
 useVirtualClock :: Word64 -> IO ()
 useVirtualClock seed = do
   (clock, _) <- virtualClock
   runtime <- newWorkflowRuntime clock seed
   writeIORef defaultWorkflow (Just runtime { runtimeGates = False })
 
+-- | The runtime a context's workflows run under: the one attached to it
+-- (workflowContext), which keeps its own clock, or else the default one.
+-- Workflow time is the Clock ability's: where a law has installed a Clock
+-- handler, the default runtime waits and times out on it. That view shares
+-- the default runtime's state (trace, gates, hedge), so runStage and
+-- awaitStep, which look it up separately, see the same runtime.
 workflowRuntime :: SymbolContext -> IO WorkflowRuntime
-workflowRuntime (SymbolContext unique) = do
+workflowRuntime symbols@(SymbolContext unique) = do
   table <- readIORef workflowTable
   case lookup unique table of
     Just runtime -> pure runtime
-    Nothing -> readIORef defaultWorkflow >>= \current -> case current of
-      Just runtime -> pure runtime
-      Nothing -> do
-        runtime <- newWorkflowRuntime realClock 0
-        writeIORef defaultWorkflow (Just runtime)
-        pure runtime
+    Nothing -> do
+      runtime <- readIORef defaultWorkflow >>= \current -> case current of
+        Just runtime -> pure runtime
+        Nothing -> do
+          runtime <- newWorkflowRuntime realClock 0
+          writeIORef defaultWorkflow (Just runtime)
+          pure runtime
+      clock <- abilityClock symbols
+      pure (maybe runtime (\c -> runtime { runtimeClock = c }) clock)
+
+-- The Clock ability's key, as every target names it.
+clockAbilityKey :: String
+clockAbilityKey = "lawspec.time::ability::Clock"
+
+-- | How to read an installed Clock handler (the generated record, held as a
+-- Dynamic) as a workflow Clock, by the record's type. The runtime cannot
+-- name that type, so lawspec.time's default handlers register it
+-- (registerClockAbility); until then workflows keep the runtime's clock.
+{-# NOINLINE clockAbilityReaders #-}
+clockAbilityReaders :: IORef [(String, Dynamic -> Maybe (IO Clock))]
+clockAbilityReaders = unsafePerformIO (newIORef [])
+
+-- | Registers how to read a Clock handler of type h: its now (Instant
+-- microseconds), its sleep (microseconds), and whether it is real time (the
+-- default system clock handler is; every other handler is virtual).
+registerClockAbility :: forall h. Typeable h => (h -> IO Integer) -> (h -> Integer -> IO ()) -> (h -> IO Bool) -> IO ()
+registerClockAbility now sleep realTime = atomicModifyIORef' clockAbilityReaders (\readers ->
+  ((name, reader) : filter ((/= name) . fst) readers, ()))
+  where
+    name = show (typeRep (Proxy :: Proxy h))
+    reader dynamic = case fromDynamic dynamic of
+      Just handler -> Just (do
+        real <- realTime handler
+        pure (Clock (now handler) (sleep handler) (not real)))
+      Nothing -> Nothing
+
+-- | The workflow clock of the Clock handler installed with a context, if a
+-- reader for its type is registered.
+abilityClock :: SymbolContext -> IO (Maybe Clock)
+abilityClock (SymbolContext unique) = do
+  table <- readIORef handlerTable
+  case [value | Just handlers <- [lookup unique table], Installed k value _ <- handlers, k == clockAbilityKey] of
+    [] -> pure Nothing
+    value : _ -> do
+      readers <- readIORef clockAbilityReaders
+      case [make | (_, reader) <- readers, Just make <- [reader value]] of
+        make : _ -> Just <$> make
+        [] -> pure Nothing
 
 -- | retryStrategy is immediate, fixed, linear, exponential, fibonacci or
 -- custom; delay, step, factor and cap (negative for none) are its parameters.
@@ -1269,20 +1337,35 @@ runStage symbols policy attempt key = unsafePerformIO $ do
           in (cacheKey, kept ++ [(key, result, now + policyCache policy)]) : filter ((/= cacheKey) . fst) caches
       pure result
     when' condition action = if condition then action else pure ()
+    timedOut = SData "Either::Left" [SData (stageFailurePrefix ++ "TimedOut") []]
     -- An attempt, evaluated in full under its stage's timeout (failing
-    -- with TimedOut when it outlives it) and hedge. Under the runtime
-    -- generated tests install (gates off), both are off.
+    -- with TimedOut when it outlives it) and hedge: the Timeout and Hedge
+    -- transformers of the Async ability, measured on the runtime's Clock.
+    -- On a virtual clock (generated tests, or a law using virtual clock)
+    -- an attempt takes the virtual time that passes while it runs, so both
+    -- are deterministic. On a real clock with gates off, both are off.
     timed runtime
-      | not (runtimeGates runtime) || (policyTimeout policy <= 0 && policyHedge policy == Nothing) = evaluate (attempt ())
+      | policyTimeout policy <= 0 && policyHedge policy == Nothing = evaluate (attempt ())
+      | clockVirtual (runtimeClock runtime) = virtuallyTimed runtime
+      | not (runtimeGates runtime) = evaluate (attempt ())
       | otherwise = do
           outer <- readIORef (runtimeHedge runtime)
-          writeIORef (runtimeHedge runtime) ((\(delay, most) -> (policyStage policy, delay, most)) <$> policyHedge policy)
+          writeIORef (runtimeHedge runtime) ((\(delay, most) -> Hedge (policyStage policy) delay most False) <$> policyHedge policy)
           let full = do
                 result <- evaluate (attempt ())
                 result <$ evaluate (deepScalar result)
               limited = if policyTimeout policy > 0 then timeout (fromInteger (policyTimeout policy)) full else Just <$> full
           outcome <- limited `finally` writeIORef (runtimeHedge runtime) outer
-          pure (maybe (SData "Either::Left" [SData (stageFailurePrefix ++ "TimedOut") []]) id outcome)
+          pure (maybe timedOut id outcome)
+    virtuallyTimed runtime = do
+      outer <- readIORef (runtimeHedge runtime)
+      began <- clockNow (runtimeClock runtime)
+      writeIORef (runtimeHedge runtime) ((\(delay, most) -> Hedge (policyStage policy) delay most True) <$> policyHedge policy)
+      result <- (do
+        value <- evaluate (attempt ())
+        value <$ evaluate (deepScalar value)) `finally` writeIORef (runtimeHedge runtime) outer
+      ended <- clockNow (runtimeClock runtime)
+      pure (if policyTimeout policy > 0 && ended - began > policyTimeout policy then timedOut else result)
     event runtime kind number succeeded =
       modifyIORef' (runtimeTrace runtime) (++ [TraceEvent kind (policyStage policy) number succeeded])
     attempts runtime number previous = do
@@ -1320,7 +1403,10 @@ runStage symbols policy attempt key = unsafePerformIO $ do
 
 -- | An asynchronous step's logical result: start runs the step and convert
 -- turns its native result into a logical value. Under a hedge, attempts run
--- on threads of their own; the first success wins.
+-- on threads of their own; the first success wins. Under a virtual hedge
+-- they run one after another, the next starting when one fails, so the
+-- first success wins as it would in real time when no attempt outlives the
+-- delay.
 {-# NOINLINE awaitStep #-}
 awaitStep :: SymbolContext -> IO a -> (a -> Scalar) -> Scalar
 awaitStep symbols start convert = unsafePerformIO $ do
@@ -1328,7 +1414,15 @@ awaitStep symbols start convert = unsafePerformIO $ do
   hedge <- readIORef (runtimeHedge runtime)
   case hedge of
     Nothing -> convert <$> start
-    Just (stage, delay, most) -> do
+    Just (Hedge stage _ most True) -> do
+      let run = start >>= \native -> let value = convert native in value <$ evaluate (deepScalar value)
+          loop started value = case value of
+            SData "Either::Left" _ | started < most -> do
+              modifyIORef' (runtimeTrace runtime) (++ [TraceEvent "hedge" stage (started + 1) True])
+              run >>= loop (started + 1)
+            _ -> pure value
+      run >>= loop 1
+    Just (Hedge stage delay most False) -> do
       results <- newChan
       threads <- newIORef []
       let launch number = do
@@ -1349,21 +1443,37 @@ awaitStep symbols start convert = unsafePerformIO $ do
               Just (Right value) -> pure value
       (launch 1 >> loop 1 1) `finally` (readIORef threads >>= mapM_ killThread)
 
--- | An all group's step results, in declaration order. Each step is
--- evaluated in full on a thread of its own, so the steps run side by side.
--- Every step finishes before a step's exception (the first, in declaration
--- order) is thrown.
+-- | The Async ability's default handler, natively: GHC's threads. LawSpec
+-- code performs pause; workflows reach the rest natively: asyncSpawn starts
+-- an action as a task, asyncWait gives a task's result (rethrowing what it
+-- threw), and asyncAll runs actions side by side and gives their results in
+-- order. lawspec.concurrent's default handler is this one.
+data NativeAsync = NativeAsync
+  { asyncPause :: IO ()
+  , asyncSpawn :: forall a. IO a -> IO (Process a)
+  , asyncWait :: forall a. Process a -> IO a
+  -- | Every action's result, in order; all finish before the first
+  -- exception (in order) is thrown.
+  , asyncAll :: forall a. [IO a] -> IO [a] }
+
+nativeAsync :: NativeAsync
+nativeAsync = NativeAsync
+  { asyncPause = yield
+  , asyncSpawn = spawn
+  , asyncWait = join
+  , asyncAll = \actions -> do
+      tasks <- mapM spawn actions
+      outcomes <- mapM (\(Process result) -> readMVar result) tasks
+      mapM (either throwIO pure) outcomes }
+
+-- | An all group's step results, in declaration order. The steps run side
+-- by side as tasks of the Async ability's default handler (nativeAsync),
+-- each evaluated in full. Every step finishes before a step's exception
+-- (the first, in declaration order) is thrown.
 {-# NOINLINE concurrently #-}
 concurrently :: [Scalar] -> [Scalar]
-concurrently steps = unsafePerformIO $ do
-  slots <- forM steps $ \step -> do
-    slot <- newEmptyMVar
-    _ <- forkIO (try (step <$ evaluate (deepScalar step)) >>= putMVar slot)
-    pure slot
-  outcomes <- mapM takeMVar slots
-  forM outcomes $ \outcome -> case outcome of
-    Left failure -> throwIO (failure :: SomeException)
-    Right value -> pure value
+concurrently steps = unsafePerformIO $
+  asyncAll nativeAsync [step <$ evaluate (deepScalar step) | step <- steps]
 
 -- | Evaluates a value in full.
 deepScalar :: Scalar -> ()
@@ -4051,12 +4161,27 @@ data MemoryNetwork = MemoryNetwork
   , networkDuplicate :: Double
   -- | The longest delay, in seconds.
   , networkDelay :: Double
+  -- | Every record sent, newest first, when the network records them.
+  , networkRecording :: Maybe (IORef [ByteString])
   }
 
 newMemoryNetwork :: Word64 -> Double -> Double -> Double -> IO MemoryNetwork
 newMemoryNetwork seed loss duplicate delay = do
   state <- newMVar (seed, [], Nothing)
-  pure (MemoryNetwork state loss duplicate delay)
+  pure (MemoryNetwork state loss duplicate delay Nothing)
+
+-- | A memory network that records every record sent, as it saw them
+-- (networkRecorded).
+newRecordingMemoryNetwork :: Word64 -> Double -> Double -> Double -> IO MemoryNetwork
+newRecordingMemoryNetwork seed loss duplicate delay = do
+  network <- newMemoryNetwork seed loss duplicate delay
+  recording <- newIORef []
+  pure network { networkRecording = Just recording }
+
+-- | Every record sent so far, in order (none when the network does not
+-- record).
+networkRecorded :: MemoryNetwork -> IO [ByteString]
+networkRecorded network = maybe (pure []) (fmap reverse . readIORef) (networkRecording network)
 
 memoryTransport :: MemoryNetwork -> String -> Transport
 memoryTransport network name = Transport
@@ -4079,19 +4204,21 @@ healNetwork network = modifyMVar (networkState network) (\(r, nodes, _) -> pure 
 
 memorySend :: MemoryNetwork -> String -> String -> ByteString -> IO ()
 memorySend network source node frame = do
-  plan <- modifyMVar (networkState network) $ \(r0, nodes, groups) -> case lookup node nodes of
-    Nothing -> pure ((r0, nodes, groups), Left ())
-    Just deliver
-      | maybe False (\gs -> not (any (\g -> source `elem` g && node `elem` g) gs)) groups -> pure ((r0, nodes, groups), Right [])
-      | otherwise -> do
-          let below k r = let (x, r') = splitMix64 r in (toInteger x `mod` k, r')
-              chance p r = if p <= 0 then (False, r) else
-                let (x, r') = below (bit 30) r in (fromInteger x < p * 2 ^ (30 :: Int), r')
-              (lost, r1) = chance (networkLoss network) r0
-              (twice, r2) = chance (networkDuplicate network) r1
-              copies = if twice then 2 else 1 :: Int
-              (delays, r3) = foldl (\(acc, r) _ -> let (k, r') = below 1001 r in (acc ++ [k], r')) ([], r2) [1 .. copies]
-          pure ((r3, nodes, groups), Right (if lost then [] else [(deliver, k) | k <- delays]))
+  plan <- modifyMVar (networkState network) $ \(r0, nodes, groups) -> do
+    forM_ (networkRecording network) (\recording -> modifyIORef' recording (frame :))
+    case lookup node nodes of
+      Nothing -> pure ((r0, nodes, groups), Left ())
+      Just deliver
+        | maybe False (\gs -> not (any (\g -> source `elem` g && node `elem` g) gs)) groups -> pure ((r0, nodes, groups), Right [])
+        | otherwise -> do
+            let below k r = let (x, r') = splitMix64 r in (toInteger x `mod` k, r')
+                chance p r = if p <= 0 then (False, r) else
+                  let (x, r') = below (bit 30) r in (fromInteger x < p * 2 ^ (30 :: Int), r')
+                (lost, r1) = chance (networkLoss network) r0
+                (twice, r2) = chance (networkDuplicate network) r1
+                copies = if twice then 2 else 1 :: Int
+                (delays, r3) = foldl (\(acc, r) _ -> let (k, r') = below 1001 r in (acc ++ [k], r')) ([], r2) [1 .. copies]
+            pure ((r3, nodes, groups), Right (if lost then [] else [(deliver, k) | k <- delays]))
   case plan of
     Left () -> throwIO (Unreachable ("no node at " ++ node))
     Right sends -> forM_ sends $ \(deliver, k) -> forkIO (do
@@ -4099,11 +4226,519 @@ memorySend network source node frame = do
       if micros > 0 then threadDelay micros else yield
       deliver frame `catch` \(_ :: SomeException) -> pure ())
 
+-- The secure network handler (docs/reference/language/distribution.md,
+-- "Security"). Every node has an ML-DSA-65 identity (FIPS 204). Before two
+-- nodes exchange frames, the one that sends first runs a handshake: it sends
+-- a signed hello with a fresh ML-KEM-768 encapsulation key (FIPS 203), the
+-- other answers with a signed welcome carrying the ciphertext, and both
+-- derive an AES-256-GCM key (SP 800-38D) with SHAKE256 (FIPS 202). Frames
+-- then cross sealed. Records are bytes, so every transport carries them, and
+-- the format is the same on every target. The primitives are those of
+-- lawspec.crypto's default handlers: crypton, mlkem and mldsa.
+
+recordMagic :: ByteString
+recordMagic = B.pack [0x4C, 0x53, 0x01]
+
+recordHello, recordWelcome, recordData :: Word8
+recordHello = 1
+recordWelcome = 2
+recordData = 3
+
+asciiBytes :: String -> ByteString
+asciiBytes = B.pack . map (fromIntegral . ord)
+
+labelHello, labelWelcome, labelKey, labelFrame :: ByteString
+labelHello = asciiBytes "lawspec-handshake-v1-hello"
+labelWelcome = asciiBytes "lawspec-handshake-v1-welcome"
+labelKey = asciiBytes "lawspec-session-v1"
+labelFrame = asciiBytes "lawspec-frame-v1"
+
+-- | The hello is sent again this often (microseconds) until a welcome comes,
+-- for up to the deadline (nanoseconds); at most this many frames wait.
+handshakeRetryMicros :: Int
+handshakeRetryMicros = 100000
+
+handshakeDeadlineNanos :: Word64
+handshakeDeadlineNanos = 5000000000
+
+handshakeQueueLimit :: Int
+handshakeQueueLimit = 4096
+
+sha3Of :: ByteString -> ByteString
+sha3Of bytes = BA.convert (Hash.hashWith Hash.SHA3_256 bytes)
+
+-- | SHAKE256, 32 bytes.
+shakeKey :: ByteString -> ByteString
+shakeKey bytes = BA.convert (Hash.hashFinalize (Hash.hashUpdate (Hash.hashInit :: Hash.Context (Hash.SHAKE256 256)) bytes))
+
+-- | Bytes from the operating system's secure generator.
+secureRandom :: Int -> IO ByteString
+secureRandom = CryptoRandom.getRandomBytes
+
+-- | A one-time token from the operating system's secure generator: 32 bytes
+-- as 64 hexadecimal digits, as SecureRandom's secureToken gives.
+secureToken :: IO String
+secureToken = hexOf <$> secureRandom 32
+
+-- | Hexadecimal digits as bytes.
+fromHex :: String -> Maybe ByteString
+fromHex text
+  | odd (length text) = Nothing
+  | otherwise = B.pack <$> mapM byte (pairs text)
+  where
+    pairs (a : b : rest) = [a, b] : pairs rest
+    pairs _ = []
+    byte two = case readHex two of
+      [(v, "")] -> Just (fromInteger v)
+      _ -> Nothing
+
+kem768 :: Proxy KEM.ML_KEM_768
+kem768 = Proxy
+
+-- | An ML-KEM-768 key pair from its 64-byte seed d || z.
+kemKeys :: ByteString -> Maybe (KEM.EncapsulationKey KEM.ML_KEM_768, KEM.DecapsulationKey KEM.ML_KEM_768)
+kemKeys seed
+  | B.length seed /= 64 = Nothing
+  | otherwise = KEM.generateWith kem768 (B.take 32 seed) (B.drop 32 seed)
+
+-- | The ciphertext and the shared secret, for an encapsulation key.
+kemEncapsulate :: ByteString -> IO (Maybe (ByteString, ByteString))
+kemEncapsulate publicKey = case KEM.decode kem768 publicKey of
+  Just key -> do
+    (secret, ciphertext) <- KEM.encapsulate (key :: KEM.EncapsulationKey KEM.ML_KEM_768)
+    pure (Just (BA.convert ciphertext, BA.convert secret))
+  Nothing -> pure Nothing
+
+kemDecapsulate :: KEM.DecapsulationKey KEM.ML_KEM_768 -> ByteString -> Maybe ByteString
+kemDecapsulate key ciphertext = case KEM.decode kem768 ciphertext of
+  Just sent -> Just (BA.convert (KEM.decapsulate key (sent :: KEM.Ciphertext KEM.ML_KEM_768)))
+  Nothing -> Nothing
+
+dsa65 :: Proxy DSA.ML_DSA_65
+dsa65 = Proxy
+
+-- | The empty ML-DSA context the handshake signs with.
+emptyContext :: DSA.Context
+emptyContext = maybe (error "the empty ML-DSA context") id (DSA.context B.empty)
+
+dsaVerify :: ByteString -> ByteString -> ByteString -> Bool
+dsaVerify publicKey message signature = maybe False id $ do
+  key <- DSA.decode dsa65 publicKey
+  sig <- DSA.decode dsa65 signature
+  pure (DSA.verify (key :: DSA.PublicKey DSA.ML_DSA_65) message sig emptyContext)
+
+gcmInit :: ByteString -> ByteString -> Maybe (Cipher.AEAD AES.AES256)
+gcmInit key nonce
+  | B.length key /= 32 || B.length nonce /= 12 = Nothing
+  | otherwise = CryptoError.maybeCryptoError $ do
+      cipher <- Cipher.cipherInit key
+      Cipher.aeadInit Cipher.AEAD_GCM (cipher :: AES.AES256) nonce
+
+-- | The ciphertext and its 16-byte tag.
+gcmSeal :: ByteString -> ByteString -> ByteString -> ByteString -> Maybe ByteString
+gcmSeal key nonce plaintext associated = do
+  aead <- gcmInit key nonce
+  let (tag, ciphertext) = Cipher.aeadSimpleEncrypt aead associated plaintext 16
+  pure (ciphertext <> BA.convert (Cipher.unAuthTag tag))
+
+gcmOpen :: ByteString -> ByteString -> ByteString -> ByteString -> Maybe ByteString
+gcmOpen key nonce sealed associated
+  | B.length sealed < 16 = Nothing
+  | otherwise = do
+      aead <- gcmInit key nonce
+      let (ciphertext, tag) = B.splitAt (B.length sealed - 16) sealed
+      Cipher.aeadSimpleDecrypt aead associated ciphertext (Cipher.AuthTag (BA.convert tag))
+
+-- | A record field: its length in LEB128, then its bytes.
+recordField :: ByteString -> ByteString
+recordField = build . putBytes
+
+-- | count fields from pos, and the position after them.
+readFields :: ByteString -> Int -> Int -> Either String ([ByteString], Int)
+readFields record pos0 count0 = go pos0 count0 []
+  where
+    go pos 0 acc = Right (reverse acc, pos)
+    go pos k acc = do
+      (n, p) <- getVarint record pos
+      if n > toInteger (B.length record - p) then Left "a record field runs past its end"
+        else go (p + fromInteger n) (k - 1 :: Int) (B.take (fromInteger n) (B.drop p record) : acc)
+
+utf8Bytes :: String -> ByteString
+utf8Bytes = TE.encodeUtf8 . T.pack
+
+-- | A node's long-term ML-DSA-65 identity, kept as its 32-byte seed.
+data NodeIdentity = NodeIdentity
+  { identitySeed :: ByteString
+  , identityVerifyingKey :: ByteString
+  , identityKey :: DSA.PrivateKey DSA.ML_DSA_65 }
+
+-- | The identity of a 32-byte ML-DSA-65 seed (FIPS 204 KeyGen_internal's xi).
+nodeIdentityFromSeed :: ByteString -> Maybe NodeIdentity
+nodeIdentityFromSeed seed
+  | B.length seed /= 32 = Nothing
+  | otherwise = (\(public, private) -> NodeIdentity seed (DSA.encode public) private) <$> DSA.generateWith dsa65 seed
+
+-- | A fresh identity from the operating system's secure generator.
+generateNodeIdentity :: IO NodeIdentity
+generateNodeIdentity = do
+  seed <- secureRandom 32
+  maybe (throwIO (ErrorCall "ML-DSA-65 key generation failed")) pure (nodeIdentityFromSeed seed)
+
+-- | The identity lawspec.json binds (lawspec-network.conf, written by the
+-- compiler), or a fresh one.
+configuredNodeIdentity :: IO NodeIdentity
+configuredNodeIdentity = networkConfig >>= maybe generateNodeIdentity pure . fst
+
+-- | SHA3-256 of the verifying key, in hexadecimal.
+identityFingerprint :: NodeIdentity -> String
+identityFingerprint = hexOf . sha3Of . identityVerifyingKey
+
+-- | A hedged ML-DSA-65 signature, with the empty context.
+identitySign :: NodeIdentity -> ByteString -> IO ByteString
+identitySign identity message = DSA.encode <$> DSA.sign (identityKey identity) message emptyContext
+
+-- | lawspec-network.conf, which the compiler writes from lawspec.json's
+-- network binding: the file LAWSPEC_NETWORK_CONF names, or the first found
+-- in the working directory and the directories above it. Lines `identity
+-- <file>` (a hex seed) and `trusted <file>` (hex fingerprints, one per
+-- line), relative to it; `#` begins a comment. The identity and the trusted
+-- fingerprints it names, each if it names one.
+networkConfig :: IO (Maybe NodeIdentity, Maybe [String])
+networkConfig = do
+  named <- lookupEnv "LAWSPEC_NETWORK_CONF"
+  found <- maybe (getCurrentDirectory >>= search) (pure . Just) named
+  case found of
+    Nothing -> pure (Nothing, Nothing)
+    Just path -> do
+      exists <- doesFileExist path
+      if not exists then pure (Nothing, Nothing) else do
+        base <- parentDirectory <$> makeAbsolute path
+        text <- readText path
+        foldM (entry base) (Nothing, Nothing) (lines text)
+  where
+    search here = do
+      let candidate = (if take 1 (reverse here) == "/" then here else here ++ "/") ++ "lawspec-network.conf"
+      exists <- doesFileExist candidate
+      let parent = parentDirectory here
+      if exists then pure (Just candidate) else if parent == here then pure Nothing else search parent
+    readText path = T.unpack . TE.decodeUtf8 <$> B.readFile path
+    trim = reverse . dropWhile isSpace . reverse . dropWhile isSpace
+    entry base (identity, trusted) line = do
+      let (key, rest) = break isSpace (dropWhile isSpace line)
+          value = trim rest
+          target = if take 1 value == "/" then value else base ++ "/" ++ value
+      if null key || null value || take 1 key == "#" then pure (identity, trusted) else case key of
+        "identity" -> do
+          text <- readText target
+          case fromHex (trim text) >>= nodeIdentityFromSeed of
+            Just made -> pure (Just made, trusted)
+            Nothing -> throwIO (ErrorCall (target ++ " does not hold a node identity: 64 hexadecimal digits"))
+        "trusted" -> do
+          text <- readText target
+          pure (identity, Just (map (map toLower) (words text)))
+        _ -> pure (identity, trusted)
+
+-- | The directory a path is in ("/" for the root and what is directly in it).
+parentDirectory :: String -> String
+parentDirectory path = case reverse (dropWhile (== '/') (dropWhile (/= '/') (reverse path))) of
+  [] -> if take 1 path == "/" then "/" else path
+  parent -> parent
+
+helloBody :: ByteString -> String -> ByteString -> ByteString -> ByteString
+helloBody session address verifyingKey encapsulationKey =
+  B.concat [recordField session, recordField (utf8Bytes address), recordField verifyingKey, recordField encapsulationKey]
+
+welcomeBody :: ByteString -> String -> ByteString -> ByteString -> ByteString -> ByteString
+welcomeBody session address verifyingKey ciphertext hello =
+  B.concat [recordField session, recordField (utf8Bytes address), recordField verifyingKey, recordField ciphertext, recordField (sha3Of hello)]
+
+-- | The AES-256-GCM key: SHAKE256(shared || label || SHA3(hello body) ||
+-- SHA3(welcome body)), 32 bytes.
+sessionKey :: ByteString -> ByteString -> ByteString -> ByteString
+sessionKey shared hello welcome = shakeKey (B.concat [shared, labelKey, sha3Of hello, sha3Of welcome])
+
+-- | A data record: the frame sealed under the key with this nonce.
+sealRecord :: ByteString -> ByteString -> Word8 -> ByteString -> ByteString -> Maybe ByteString
+sealRecord key session direction frame nonce = do
+  sealed <- gcmSeal key nonce frame (B.concat [labelFrame, session, B.singleton direction])
+  pure (B.concat [recordMagic, B.singleton recordData, recordField session, B.singleton direction, recordField (nonce <> sealed)])
+
+-- | A data record with a fresh nonce.
+sealFrame :: ByteString -> ByteString -> Word8 -> ByteString -> IO ByteString
+sealFrame key session direction frame = do
+  nonce <- secureRandom 12
+  maybe (throwIO (ErrorCall "an AES-256-GCM key is 32 bytes")) pure (sealRecord key session direction frame nonce)
+
+-- | The frame a data record seals, or Nothing.
+openFrame :: ByteString -> ByteString -> Maybe ByteString
+openFrame key record = case readFields record 4 1 of
+  Right ([session], pos) | pos < B.length record -> do
+    let direction = B.index record pos
+    case readFields record (pos + 1) 1 of
+      Right ([sealed], end) | end == B.length record && B.length sealed >= 28 ->
+        gcmOpen key (B.take 12 sealed) (B.drop 12 sealed) (B.concat [labelFrame, session, B.singleton direction])
+      _ -> Nothing
+  _ -> Nothing
+
+-- | Checks a handshake vector (hex fields, the addresses as text): the
+-- bodies' hashes, the session key and a sealed frame, as every target must
+-- compute them.
+handshakeVector :: String -> String -> String -> String -> String -> String -> String -> String -> String
+  -> String -> String -> String -> String -> Bool
+handshakeVector initiatorSeed responderSeed kemSeed session0 initiator responder ciphertext0 nonce0 frame0
+    helloHash welcomeHash key record = maybe False id $ do
+  first <- fromHex initiatorSeed >>= nodeIdentityFromSeed
+  second <- fromHex responderSeed >>= nodeIdentityFromSeed
+  (encapsulationKey, decapsulationKey) <- fromHex kemSeed >>= kemKeys
+  session <- fromHex session0
+  ciphertext <- fromHex ciphertext0
+  nonce <- fromHex nonce0
+  frame <- fromHex frame0
+  let hello = helloBody session initiator (identityVerifyingKey first) (KEM.encode encapsulationKey)
+      welcome = welcomeBody session responder (identityVerifyingKey second) ciphertext hello
+  shared <- kemDecapsulate decapsulationKey ciphertext
+  let derived = sessionKey shared hello welcome
+  sealed <- sealRecord derived session 0 frame nonce
+  pure (hexOf (sha3Of hello) == helloHash && hexOf (sha3Of welcome) == welcomeHash
+    && hexOf derived == key && hexOf sealed == record && openFrame derived sealed == Just frame)
+
+-- | A session: its id, the peer's address, its key, and its direction (0:
+-- this node began the handshake; 1: the peer did). A session the peer began
+-- is used for sending once a frame has arrived on it (confirmed), so the
+-- peer surely holds its key.
+data SealedSession = SealedSession
+  { sealedId :: ByteString, sealedPeer :: String, sealedKey :: ByteString
+  , sealedDirection :: Word8, sealedConfirmed :: IORef Bool }
+
+-- | A handshake this node began, and the frames waiting for it (newest
+-- first, with their count).
+data Handshake = Handshake
+  { handshakeUnique :: Unique, handshakeSession :: ByteString
+  , handshakeKem :: KEM.DecapsulationKey KEM.ML_KEM_768
+  , handshakeBody :: ByteString, handshakeHello :: ByteString
+  , handshakeQueue :: IORef ([ByteString], Int), handshakeDone :: MVar () }
+
+data SecureState = SecureState
+  { secureSessions :: Map.Map ByteString SealedSession
+  , secureOutbound :: Map.Map String SealedSession
+  , securePending :: Map.Map String Handshake
+  -- | The welcome sent for each session, to send again for a repeated hello.
+  , secureWelcomes :: Map.Map ByteString (String, ByteString)
+  -- | The identity first seen at each address: a later, different one is
+  -- refused (trust on first use, unless trusted names them).
+  , secureKnown :: Map.Map String String }
+
+-- | Handshakes, sessions and sealed frames for one node.
+data SecureLayer = SecureLayer
+  { secureIdentity :: NodeIdentity
+  , secureTrusted :: Maybe [String]
+  , secureState :: MVar SecureState
+  , secureTransport :: Transport
+  , secureClosed :: IORef Bool }
+
+newSecureLayer :: Transport -> IORef Bool -> Maybe NodeIdentity -> Maybe [String] -> IO SecureLayer
+newSecureLayer transport closed identity trusted = do
+  (configured, configuredTrust) <- case (identity, trusted) of
+    (Just _, Just _) -> pure (Nothing, Nothing)
+    _ -> networkConfig
+  me <- maybe (maybe generateNodeIdentity pure configured) pure identity
+  let trust = map (map toLower) <$> maybe configuredTrust Just trusted
+  state <- newMVar (SecureState Map.empty Map.empty Map.empty Map.empty Map.empty)
+  pure (SecureLayer me trust state transport closed)
+
+acceptPeer :: SecureLayer -> String -> ByteString -> IO Bool
+acceptPeer layer address verifyingKey = do
+  let fingerprint = hexOf (sha3Of verifyingKey)
+  if maybe False (fingerprint `notElem`) (secureTrusted layer) then pure False else
+    modifyMVar (secureState layer) $ \st -> case Map.lookup address (secureKnown st) of
+      Just seen -> pure (st, seen == fingerprint)
+      Nothing -> pure (st { secureKnown = Map.insert address fingerprint (secureKnown st) }, True)
+
+data SecurePlan = SendOn SealedSession | StartHandshake Handshake | Queued
+
+-- | Sends a frame to the node at peer: sealed on its session, or queued
+-- behind a handshake (whose first hello this sends, throwing Unreachable
+-- as a direct send would).
+secureSend :: SecureLayer -> String -> ByteString -> IO ()
+secureSend layer peer frame = do
+  plan <- modifyMVar (secureState layer) $ \st -> case Map.lookup peer (secureOutbound st) of
+    Just session -> pure (st, SendOn session)
+    Nothing -> do
+      confirmed <- filterIO (readIORef . sealedConfirmed) [s | s <- Map.elems (secureSessions st), sealedPeer s == peer]
+      case confirmed of
+        session : _ -> pure (st, SendOn session)
+        [] -> case Map.lookup peer (securePending st) of
+          Just pending -> enqueue pending >> pure (st, Queued)
+          Nothing -> do
+            pending <- beginHandshake layer
+            enqueue pending
+            pure (st { securePending = Map.insert peer pending (securePending st) }, StartHandshake pending)
+  case plan of
+    Queued -> pure ()
+    SendOn session -> sealFrame (sealedKey session) (sealedId session) (sealedDirection session) frame
+      >>= transportSend (secureTransport layer) peer
+    StartHandshake pending -> do
+      transportSend (secureTransport layer) peer (handshakeHello pending) `catch` \(e :: Unreachable) -> do
+        dropHandshake layer peer pending
+        throwIO e
+      () <$ forkIO (retryHandshake layer peer pending)
+  where
+    enqueue pending = atomicModifyIORef' (handshakeQueue pending) (\(queue, n) ->
+      (if n < handshakeQueueLimit then (frame : queue, n + 1) else (queue, n), ()))
+    filterIO keep = foldr (\x rest -> keep x >>= \k -> if k then (x :) <$> rest else rest) (pure [])
+
+beginHandshake :: SecureLayer -> IO Handshake
+beginHandshake layer = do
+  session <- secureRandom 16
+  seed <- secureRandom 64
+  (encapsulationKey, decapsulationKey) <- maybe (throwIO (ErrorCall "ML-KEM-768 key generation failed")) pure (kemKeys seed)
+  let me = secureIdentity layer
+      body = helloBody session (transportAddress (secureTransport layer)) (identityVerifyingKey me) (KEM.encode encapsulationKey)
+  signature <- identitySign me (labelHello <> body)
+  unique <- newUnique
+  queue <- newIORef ([], 0)
+  done <- newEmptyMVar
+  pure (Handshake unique session decapsulationKey body (B.concat [recordMagic, B.singleton recordHello, body, recordField signature]) queue done)
+
+dropHandshake :: SecureLayer -> String -> Handshake -> IO ()
+dropHandshake layer peer pending = modifyMVar (secureState layer) (\st ->
+  pure (st { securePending = Map.update (\p -> if handshakeUnique p == handshakeUnique pending then Nothing else Just p) peer (securePending st) }, ()))
+
+-- | Sends the hello again until a welcome comes, the node closes, or the
+-- deadline passes (when the handshake and its queued frames are dropped).
+retryHandshake :: SecureLayer -> String -> Handshake -> IO ()
+retryHandshake layer peer pending = do
+  start <- getMonotonicTimeNSec
+  let loop = do
+        done <- timeout handshakeRetryMicros (readMVar (handshakeDone pending))
+        case done of
+          Just () -> pure ()
+          Nothing -> do
+            closed <- readIORef (secureClosed layer)
+            now <- getMonotonicTimeNSec
+            if closed || now >= start + handshakeDeadlineNanos then dropHandshake layer peer pending else do
+              transportSend (secureTransport layer) peer (handshakeHello pending) `catch` \(_ :: SomeException) -> pure ()
+              loop
+  loop
+
+-- | The frame a record carries, or Nothing (a handshake record, or one that
+-- fails to verify or open: those are dropped).
+secureReceive :: SecureLayer -> ByteString -> IO (Maybe ByteString)
+secureReceive layer record
+  | B.length record < 4 || B.take 3 record /= recordMagic = pure Nothing
+  | otherwise = (case B.index record 3 of
+      kind | kind == recordHello -> Nothing <$ receiveHello layer record
+           | kind == recordWelcome -> Nothing <$ receiveWelcome layer record
+           | kind == recordData -> receiveData layer record
+      _ -> pure Nothing) `catch` \(_ :: SomeException) -> pure Nothing
+
+receiveHello :: SecureLayer -> ByteString -> IO ()
+receiveHello layer record = case readFields record 4 4 of
+  Right ([session, addressBytes, verifyingKey, encapsulationKey], pos)
+    | Right ([signature], end) <- readFields record pos 1, end == B.length record
+    , Right address <- T.unpack <$> TE.decodeUtf8' addressBytes -> do
+        let body = B.take (pos - 4) (B.drop 4 record)
+        answered <- Map.lookup session . secureWelcomes <$> readMVar (secureState layer)
+        answer <- case answered of
+          Just made -> pure (Just made)
+          Nothing
+            | not (dsaVerify verifyingKey (labelHello <> body) signature) -> pure Nothing
+            | otherwise -> do
+                accepted <- acceptPeer layer address verifyingKey
+                encapsulated <- if accepted then kemEncapsulate encapsulationKey else pure Nothing
+                case encapsulated of
+                  Nothing -> pure Nothing
+                  Just (ciphertext, shared) -> do
+                    let me = secureIdentity layer
+                        welcome = welcomeBody session (transportAddress (secureTransport layer)) (identityVerifyingKey me) ciphertext body
+                    signature' <- identitySign me (labelWelcome <> welcome)
+                    confirmed <- newIORef False
+                    let made = (address, B.concat [recordMagic, B.singleton recordWelcome, welcome, recordField signature'])
+                        session' = SealedSession session address (sessionKey shared body welcome) 1 confirmed
+                    modifyMVar (secureState layer) $ \st -> case Map.lookup session (secureWelcomes st) of
+                      Just earlier -> pure (st, Just earlier)
+                      Nothing -> pure (st { secureWelcomes = Map.insert session made (secureWelcomes st)
+                                          , secureSessions = Map.insert session session' (secureSessions st) }, Just made)
+        forM_ answer $ \(to, welcome) ->
+          transportSend (secureTransport layer) to welcome `catch` \(_ :: SomeException) -> pure ()
+  _ -> pure ()
+
+receiveWelcome :: SecureLayer -> ByteString -> IO ()
+receiveWelcome layer record = case readFields record 4 5 of
+  Right ([session, addressBytes, verifyingKey, ciphertext, helloHash], pos)
+    | Right ([signature], end) <- readFields record pos 1, end == B.length record
+    , Right address <- T.unpack <$> TE.decodeUtf8' addressBytes -> do
+        found <- Map.lookup address . securePending <$> readMVar (secureState layer)
+        case found of
+          Just pending | handshakeSession pending == session, helloHash == sha3Of (handshakeBody pending) -> do
+            let body = B.take (pos - 4) (B.drop 4 record)
+            accepted <- if dsaVerify verifyingKey (labelWelcome <> body) signature
+              then acceptPeer layer address verifyingKey else pure False
+            case kemDecapsulate (handshakeKem pending) ciphertext of
+              Just shared | accepted -> do
+                confirmed <- newIORef True
+                let key = sessionKey shared (handshakeBody pending) body
+                    established = SealedSession session address key 0 confirmed
+                won <- modifyMVar (secureState layer) $ \st -> case Map.lookup address (securePending st) of
+                  Just current | handshakeUnique current == handshakeUnique pending -> pure (st
+                    { securePending = Map.delete address (securePending st)
+                    , secureSessions = Map.insert session established (secureSessions st)
+                    , secureOutbound = Map.insert address established (secureOutbound st) }, True)
+                  _ -> pure (st, False)
+                if not won then pure () else do
+                  _ <- tryPutMVar (handshakeDone pending) ()
+                  (queue, _) <- readIORef (handshakeQueue pending)
+                  forM_ (reverse queue) $ \frame -> (sealFrame key session 0 frame >>= transportSend (secureTransport layer) address)
+                    `catch` \(_ :: SomeException) -> pure ()
+              _ -> pure ()
+          _ -> pure ()
+  _ -> pure ()
+
+receiveData :: SecureLayer -> ByteString -> IO (Maybe ByteString)
+receiveData layer record = case readFields record 4 1 of
+  Right ([session], _) -> do
+    found <- Map.lookup session . secureSessions <$> readMVar (secureState layer)
+    case found >>= \s -> (,) s <$> openFrame (sealedKey s) record of
+      Nothing -> pure Nothing
+      Just (s, frame) -> Just frame <$ writeIORef (sealedConfirmed s) True
+  _ -> pure Nothing
+
+-- | A transport whose node skips the handshake and sends frames in the
+-- clear: for tests of the frame layer only. Only an in-memory network makes
+-- one (insecureTransportForTests), and no configuration selects it.
+data InsecureMemoryTransport = InsecureMemoryTransport MemoryNetwork String
+
+insecureTransportForTests :: MemoryNetwork -> String -> InsecureMemoryTransport
+insecureTransportForTests = InsecureMemoryTransport
+
+-- | What a node can be made on: a Transport (secure), or the in-memory
+-- transport made for tests only (insecure).
+class NodeTransport t where
+  nodeLink :: t -> Either InsecureMemoryTransport Transport
+
+instance NodeTransport Transport where
+  nodeLink = Right
+
+instance NodeTransport InsecureMemoryTransport where
+  nodeLink = Left
+
+-- | A node's identity (by default the one lawspec.json binds, or a fresh
+-- one) and the fingerprints of the only peers it talks to (by default any
+-- peer, each address keeping the first identity it shows).
+data NodeOptions = NodeOptions
+  { optionIdentity :: Maybe NodeIdentity
+  , optionTrusted :: Maybe [String] }
+
+defaultNodeOptions :: NodeOptions
+defaultNodeOptions = NodeOptions Nothing Nothing
+
 -- | A process's presence on a network: it names local mailboxes, actors,
 -- channel ends and definitions, so other nodes reach them at
 -- <node address>/<name>, and sends to theirs. Order is kept within one
 -- channel; an actor call or an evaluation is sent again until answered
 -- (the receiver runs it once), failing with Unreachable after its timeout.
+-- Frames cross sealed, after a handshake (see SecureLayer), unless the
+-- node is on the in-memory transport made for tests only.
 data Node = Node
   { nodeTransport :: Transport
   , nodeAddress :: String
@@ -4113,16 +4748,47 @@ data Node = Node
   , nodeSeen :: IORef [((String, Integer), Maybe ByteString)]
   , nodeIds :: IORef Integer
   , nodeClosed :: IORef Bool
+  -- | Nothing on the insecure transport made for tests.
+  , nodeSecure :: Maybe SecureLayer
   }
 
 -- | What a registered name does with a frame: kind, source, id, payload.
 newtype Entity = Entity (Node -> String -> String -> Integer -> ByteString -> IO ())
 
-newNode :: Transport -> IO Node
-newNode transport = do
-  node <- Node transport (transportAddress transport) <$> newIORef [] <*> newIORef [] <*> newIORef [] <*> newIORef 0 <*> newIORef False
-  transportStart transport (deliverFrame node)
+-- | A node on a transport, with the identity lawspec.json binds (or a fresh
+-- one), talking to any peer.
+newNode :: NodeTransport t => t -> IO Node
+newNode = newNodeWith defaultNodeOptions
+
+-- | A node with these options. The in-memory transport made for tests only
+-- (insecureTransportForTests) skips the handshake; no other transport can.
+newNodeWith :: NodeTransport t => NodeOptions -> t -> IO Node
+newNodeWith options made = do
+  closed <- newIORef False
+  (transport, secure) <- case nodeLink made of
+    Left (InsecureMemoryTransport network name) -> pure (memoryTransport network name, Nothing)
+    Right transport -> (\layer -> (transport, Just layer)) <$>
+      newSecureLayer transport closed (optionIdentity options) (optionTrusted options)
+  node <- Node transport (transportAddress transport) <$> newIORef [] <*> newIORef [] <*> newIORef [] <*> newIORef 0
+    <*> pure closed <*> pure secure
+  transportStart transport (arriveRecord node)
   pure node
+
+-- | The node's identity (none on the insecure transport made for tests).
+nodeIdentity :: Node -> Maybe NodeIdentity
+nodeIdentity = fmap secureIdentity . nodeSecure
+
+arriveRecord :: Node -> ByteString -> IO ()
+arriveRecord node record = case nodeSecure node of
+  Nothing -> deliverFrame node record
+  Just layer -> secureReceive layer record >>= maybe (pure ()) (deliverFrame node)
+
+-- | Sends a frame to the node at target: sealed, or in the clear on the
+-- insecure transport made for tests.
+transmitFrame :: Node -> String -> ByteString -> IO ()
+transmitFrame node target frame = case nodeSecure node of
+  Nothing -> transportSend (nodeTransport node) target frame
+  Just layer -> secureSend layer target frame
 
 closeNode :: Node -> IO ()
 closeNode node = writeIORef (nodeClosed node) True >> transportClose (nodeTransport node)
@@ -4131,7 +4797,7 @@ closeNode node = writeIORef (nodeClosed node) True >> transportClose (nodeTransp
 forwardFrame :: Node -> String -> String -> String -> Integer -> ByteString -> IO ()
 forwardFrame node address kind source ident payload = (do
   (target, name) <- splitAddress address
-  transportSend (nodeTransport node) target (encodeFrame kind name source ident payload))
+  transmitFrame node target (encodeFrame kind name source ident payload))
   `catch` \(_ :: SomeException) -> pure ()
 
 nextId :: Node -> IO Integer
@@ -4140,7 +4806,7 @@ nextId node = atomicModifyIORef' (nodeIds node) (\i -> (i + 1, i + 1))
 sendFrame :: Node -> String -> String -> ByteString -> Integer -> IO ()
 sendFrame node address kind payload ident = do
   (target, name) <- splitAddress address
-  transportSend (nodeTransport node) target (encodeFrame kind name (nodeAddress node) ident payload)
+  transmitFrame node target (encodeFrame kind name (nodeAddress node) ident payload)
 
 register :: Node -> String -> Entity -> IO String
 register node name entity = do
@@ -4440,21 +5106,11 @@ takeFrom node address steps table = do
 offerEndpoint :: NetEndpoint -> IO String
 offerEndpoint endpoint = do
   address <- readIORef (endpointAddress endpoint)
-  fresh <- newToken
+  fresh <- secureToken
   token <- modifyMVar (endpointState endpoint) (\st -> case esToken st of
     Just t -> pure (st, t)
     Nothing -> pure (st { esToken = Just fresh }, fresh))
   pure (address ++ "?take=" ++ token)
-
--- A one-time token, from the clock and a process-unique number.
-newToken :: IO String
-newToken = do
-  now <- getMonotonicTimeNSec
-  unique <- hashUnique <$> newUnique
-  let (a, r) = splitMix64 (now `xor` (fromIntegral unique * 0x9E3779B97F4A7C15))
-      (b, _) = splitMix64 r
-      hex16 w = let h = showHex w "" in replicate (16 - length h) '0' ++ h
-  pure (hex16 a ++ hex16 b)
 
 seqBytes :: Integer -> BB.Builder
 seqBytes = putVarint . zigzag

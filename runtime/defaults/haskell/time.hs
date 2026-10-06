@@ -7,10 +7,13 @@ module Lawspec.Time where
 import Prelude
 import qualified Prelude as P
 import qualified Control.Concurrent as Concurrent
+import qualified Control.Exception as Exception
 import qualified Data.Time.Clock.POSIX as POSIX
 import qualified GHC.Clock as Clock
 import qualified System.IO.Unsafe as Unsafe
+import qualified System.Mem.StableName as StableName
 import qualified LawSpecData as Data
+import qualified LawSpecRuntime as LS
 import qualified LawSpecAbilities.Lawspec.Time as Abilities
 
 -- The wall clock and the monotonic clock, read once at start.
@@ -28,14 +31,32 @@ nowMicros = do
   let (wall, base) = start
   pure (wall + P.toInteger monotonic `P.div` 1000 - base)
 
+-- | The system clock's now. A Clock handler whose now is this one is real
+-- time: workflows time out in real time under it (LS.registerClockAbility).
+systemNow = (\micros -> @@Instant@@ (P.fromInteger micros)) P.<$> nowMicros
+{-# NOINLINE systemNow #-}
+
+-- | Lets workflows read a Clock handler (this one, the virtual clock, any
+-- other) as their clock: waits and timeouts then go by the time it reports.
+registerClock :: P.IO ()
+registerClock = LS.registerClockAbility
+  (\handler -> (\(@@Instant@@ micros) -> P.toInteger micros) P.<$> Abilities.now handler)
+  (\handler micros -> Abilities.sleep handler (@@Duration@@ (P.fromInteger micros)))
+  (\handler -> do
+    mine <- Exception.evaluate (Abilities.now handler) P.>>= StableName.makeStableName
+    real <- Exception.evaluate systemNow P.>>= StableName.makeStableName
+    P.pure (mine P.== real))
+
 -- | The system clock: now never goes back; sleep blocks this thread.
 clockHandler :: P.IO Abilities.Clock
-clockHandler = P.pure Abilities.Clock
-  { Abilities.now = (\micros -> @@Instant@@ (P.fromInteger micros)) P.<$> nowMicros
-  , Abilities.sleep = \(@@Duration@@ micros) -> do
-      target <- (+ micros) P.<$> nowMicros
-      let wait = do
-            left <- (target -) P.<$> nowMicros
-            if left > 0 then Concurrent.threadDelay (P.fromInteger (P.min left 1000000000)) >> wait else pure ()
-      wait
-  }
+clockHandler = do
+  registerClock
+  P.pure Abilities.Clock
+    { Abilities.now = systemNow
+    , Abilities.sleep = \(@@Duration@@ micros) -> do
+        target <- (+ micros) P.<$> nowMicros
+        let wait = do
+              left <- (target -) P.<$> nowMicros
+              if left > 0 then Concurrent.threadDelay (P.fromInteger (P.min left 1000000000)) >> wait else pure ()
+        wait
+    }
