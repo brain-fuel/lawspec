@@ -113,7 +113,10 @@ public final class Distribution {
       sender.send((long) value0);
       sender.send((long) value0);
       var timeout = java.time.Duration.ofSeconds(5);
-      return ledger.receive(timeout) + ledger.receive(timeout);
+      long total = ledger.receive(timeout) + ledger.receive(timeout);
+      // receive within: nothing more comes, so it gives nothing in time.
+      if (ledger.receiveWithin(java.time.Duration.ofMillis(20)).isPresent()) return -1;
+      return total;
     } finally {
       here.close();
       there.close();
@@ -181,5 +184,51 @@ public final class Distribution {
     } finally {
       for (var node : List.of(a, b, c, d)) node.close();
     }
+  }
+
+  public static CompletableFuture<Boolean> sealedOnTheWire(int value0) {
+    return CompletableFuture.supplyAsync(() -> sealedOnTheWireNow(value0));
+  }
+
+  // A definition evaluated on another node: its request names the
+  // definition's content hash, which shows on the wire only in the clear.
+  private static boolean sealedOnTheWireNow(int value0) {
+    String name = "example.distribution::shifted";
+    byte[] digest = LawSpecRemote.digest(name).getBytes(java.nio.charset.StandardCharsets.UTF_8);
+    boolean[] seen = new boolean[2];
+    for (int run = 0; run < 2; run++) {
+      boolean insecure = run == 1;
+      var network = new LawSpecRuntime.MemoryNetwork(value0 & 0xFFFF, 0, 0, 0, true);
+      var here = new LawSpecRuntime.Node(insecure ? network.insecureTransportForTests("here") : network.transport("here"));
+      var there = new LawSpecRuntime.Node(insecure ? network.insecureTransportForTests("there") : network.transport("there"));
+      try {
+        LawSpecRemote.serve(there);
+        var result =
+            LawSpecRemote.evaluate(
+                here, there.address, name, new LawSpecRuntime.Value("Int32", BigInteger.valueOf(value0)));
+        if (((BigInteger) result.data()).longValueExact() != value0 + 1000L) return false;
+        for (var frame : network.recorded()) if (contains(frame, digest)) seen[run] = true;
+      } finally {
+        here.close();
+        there.close();
+      }
+    }
+    return !seen[0] && seen[1];
+  }
+
+  private static boolean contains(byte[] haystack, byte[] needle) {
+    outer:
+    for (int i = 0; i + needle.length <= haystack.length; i++) {
+      for (int j = 0; j < needle.length; j++) if (haystack[i + j] != needle[j]) continue outer;
+      return true;
+    }
+    return false;
+  }
+
+  public static boolean handshakeAgrees(String value0) {
+    var f = value0.split(" ", -1);
+    if (f.length != 13) return false;
+    return LawSpecRuntime.handshakeVector(
+        f[0], f[1], f[2], f[3], f[4], f[5], f[6], f[7], f[8], f[9], f[10], f[11], f[12]);
   }
 }

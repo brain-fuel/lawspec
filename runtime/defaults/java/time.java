@@ -23,8 +23,12 @@ public final class Time {
     return WALL + (java.lang.System.nanoTime() / 1000L - MONOTONIC);
   }
 
-  /** The system clock: now never goes back; sleep blocks this thread. */
-  public static final class ClockHandler implements lawspec.abilities.lawspec.Time.Clock {
+  /**
+   * The system clock: now never goes back; sleep blocks this thread. Workflows time out in real
+   * time under it (LawSpecRuntime.RealTime; see LawSpecRuntime.AbilityClock).
+   */
+  public static final class ClockHandler
+      implements lawspec.abilities.lawspec.Time.Clock, lawspec.runtime.LawSpecRuntime.RealTime {
     @Override
     public @@Instant@@ now() {
       return new @@Instant@@(nowMicros());

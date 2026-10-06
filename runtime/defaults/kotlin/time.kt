@@ -19,8 +19,11 @@ object Time {
     /** The wall clock at start, moved on by the monotonic clock since. */
     fun nowMicros(): Long = wall + (java.lang.System.nanoTime() / 1000L - monotonic)
 
-    /** The system clock: now never goes back; sleep blocks this thread. */
-    class ClockHandler : lawspec.abilities.lawspec.Time.Clock {
+    /**
+     * The system clock: now never goes back; sleep blocks this thread. Workflows time out in real
+     * time under it (LawSpecRuntime.RealTime; see LawSpecRuntime.AbilityClock).
+     */
+    class ClockHandler : lawspec.abilities.lawspec.Time.Clock, lawspec.runtime.LawSpecRuntime.RealTime {
         override fun now(): @@Instant@@ = @@Instant@@(nowMicros())
 
         override fun sleep(value0: kotlin.time.Duration) {
