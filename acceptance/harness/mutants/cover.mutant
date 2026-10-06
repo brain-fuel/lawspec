@@ -1,4 +1,5 @@
-expect: cover 60% "empty order" was not met
+expect: cover 60%
+expect: was not met
 @@ examples/specs/harness_testing.lawspec
 <<<<<<<
     cover 5% "empty order" when isEmpty order

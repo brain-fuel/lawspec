@@ -24,8 +24,6 @@ import java.util.function.Predicate;
 import java.util.function.Supplier;
 import lawspec.runtime.LawSpecRuntime;
 import lawspec.runtime.LawSpecRuntime.Value;
-import org.jetbrains.jetCheck.GenerationEnvironment;
-import org.jetbrains.jetCheck.Generator;
 
 public final class LawSpecHarness {
   private LawSpecHarness() {}
@@ -78,17 +76,14 @@ public final class LawSpecHarness {
     }
   }
 
-  // Strategies, drawn through JetCheck so failures shrink.
+  // Strategies. Java draws its choices through JetCheck, so failures shrink;
+  // Kotlin through Kotest's random source. Neither library is needed here.
 
-  /** A choice among n: a wide draw, reduced, so the weights hold. */
-  public static int choose(GenerationEnvironment data, int n) {
-    return data.generate(Generator.integers(0, Integer.MAX_VALUE)) % n;
-  }
-
-  public static Value frequency(GenerationEnvironment data, List<Weighted> alternatives) {
+  /** choose(n) draws a whole number below n: through JetCheck in Java, Kotest in Kotlin. */
+  public static Value frequency(java.util.function.IntUnaryOperator choose, List<Weighted> alternatives) {
     int total = 0;
     for (var a : alternatives) total += a.weight();
-    int pick = choose(data, total);
+    int pick = choose.applyAsInt(total);
     for (var a : alternatives) {
       if (pick < a.weight()) return a.draw().get();
       pick -= a.weight();
@@ -96,8 +91,8 @@ public final class LawSpecHarness {
     return alternatives.get(alternatives.size() - 1).draw().get();
   }
 
-  public static Value oneOf(GenerationEnvironment data, List<Supplier<Value>> values) {
-    return values.get(choose(data, values.size())).get();
+  public static Value oneOf(java.util.function.IntUnaryOperator choose, List<Supplier<Value>> values) {
+    return values.get(choose.applyAsInt(values.size())).get();
   }
 
   public static Value suchThat(Supplier<Value> draw, Predicate<Value> predicate, int limit, String strategy) {

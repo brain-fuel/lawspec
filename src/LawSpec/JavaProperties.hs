@@ -153,13 +153,15 @@ emitTests Config{..} unit laws = do
       pure $ testFunction (fn ++ "_property") $ statement $ chain (text "_lawspecChecker()")
         [("withIterationCount",[number (cases (generation e))]),
          ("forAll",[generator, closure "_inputs" (statements ([bindingsDoc] ++ strategyChecks ++ handlerInstalls e ++ [check, returned (text "true")]))])]
+    -- A choice among n: a wide draw, reduced, so the weights hold.
+    chooser = text "_n -> _environment.generate(Generator.integers(0, java.lang.Integer.MAX_VALUE)) % _n"
     drawDoc inp strategy d = case d of
       C.DrawAny ty -> pure (call "_environment.<Value>generate" [if ty == inputType inp then generatorWithin (inputRange machineBits inp) ty else generator ty])
-      C.DrawOneOf _ values -> pure (call "lawspec.testing.LawSpecHarness.oneOf" [text "_environment",
+      C.DrawOneOf _ values -> pure (call "lawspec.testing.LawSpecHarness.oneOf" [chooser,
         call "java.util.List.<java.util.function.Supplier<Value>>of" [lambda "()" (expr v) | v <- values]])
       C.DrawFrequency alternatives -> do
         options <- mapM (\(w, a) -> (\doc -> call "new lawspec.testing.LawSpecHarness.Weighted" [number w, lambda "()" doc]) <$> drawDoc inp strategy a) alternatives
-        pure (call "lawspec.testing.LawSpecHarness.frequency" [text "_environment", call "java.util.List.of" options])
+        pure (call "lawspec.testing.LawSpecHarness.frequency" [chooser, call "java.util.List.of" options])
       C.DrawSuchThat inner binder predicate limit -> do
         doc <- drawDoc inp strategy inner
         pure (call "lawspec.testing.LawSpecHarness.suchThat" [lambda "()" doc, lambda (localName (C.binderId binder)) (truth (expr predicate)), number limit, quoted strategy])
