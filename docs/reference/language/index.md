@@ -23,6 +23,16 @@ types, checked definitions, refinements and laws.
   failures.
 - [Handlers](handlers.md): spec handlers, recordings, choosing handlers in a
   law, and the native interfaces.
+- [Built-in abilities](builtins.md): the `lawspec.*` units and their default
+  handlers on every target.
+- [Time and the clock](time.md): instants, the `Clock` ability and the
+  virtual clock.
+- [Randomness](randomness.md): reproducible `Random`, secure `SecureRandom`,
+  and why they are apart.
+- [Cryptography](cryptography.md): post-quantum key exchange and signatures,
+  hashing and authenticated encryption, checked against NIST's vectors.
+- [Files, environment and ports](host.md): the machine a program runs on.
+- [Logs and traces](logging.md): logging, and inspecting what was logged.
 - [Durations](durations.md): whole microseconds, their literals, arithmetic and
   native types.
 - [Evidence and discharge](evidence-and-discharge.md): how each obligation is

@@ -77,10 +77,10 @@ extra-source-files:
     runtime/defaults/kotlin/time.kt
     runtime/defaults/python/concurrent.py
     runtime/defaults/python/crypto.py
+    runtime/defaults/python/crypto_vectors.py
     runtime/defaults/python/host.py
     runtime/defaults/python/logging.py
     runtime/defaults/python/randomness.py
-    runtime/defaults/python/test_crypto_vectors.py
     runtime/defaults/python/time.py
     runtime/defaults/rust/concurrent.rs
     runtime/defaults/rust/crypto.rs
@@ -526,6 +526,7 @@ test-suite lawspec-test
       ApiContractSpec
       AsyncSpec
       BoundsSpec
+      BuiltinsSpec
       CollectionsSpec
       ConditionalSpec
       CoreSpec

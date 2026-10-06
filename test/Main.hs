@@ -30,6 +30,7 @@ import qualified FlowSpec
 import qualified CollectionsSpec
 import qualified AsyncSpec
 import qualified AbilitiesSpec
+import qualified BuiltinsSpec
 import qualified BoundsSpec
 import qualified ConditionalSpec
 import qualified IncrementalSpec
@@ -70,6 +71,7 @@ main = hspec $ do
   CollectionsSpec.spec
   AsyncSpec.spec
   AbilitiesSpec.spec
+  BuiltinsSpec.spec
   BoundsSpec.spec
   ConditionalSpec.spec
   IncrementalSpec.spec

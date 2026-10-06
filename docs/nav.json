@@ -268,6 +268,30 @@
             "path": "reference/language/handlers.md"
           },
           {
+            "title": "Built-in abilities",
+            "path": "reference/language/builtins.md"
+          },
+          {
+            "title": "Time and the clock",
+            "path": "reference/language/time.md"
+          },
+          {
+            "title": "Randomness",
+            "path": "reference/language/randomness.md"
+          },
+          {
+            "title": "Cryptography",
+            "path": "reference/language/cryptography.md"
+          },
+          {
+            "title": "Files, environment and ports",
+            "path": "reference/language/host.md"
+          },
+          {
+            "title": "Logs and traces",
+            "path": "reference/language/logging.md"
+          },
+          {
             "title": "Durations",
             "path": "reference/language/durations.md"
           },

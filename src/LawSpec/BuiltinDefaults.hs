@@ -35,9 +35,10 @@ withBuiltinDefaults target datas units artifacts
       adapters <- concat <$> mapM adapter present
       copies <- concat <$> mapM packageCopies (if target == "go" then units else [])
       tests <- sequence
-        [ (\c -> Artifact path c "generated" "test") <$> resolve target datas (fill target datas "crypto" source)
+        [ if null source then Left ("no vector test " ++ file ++ " for " ++ target)
+          else (\c -> Artifact path c "generated" "test") <$> resolve target datas (fill target datas "crypto" source)
         | "lawspec.crypto" `elem` map name present, (path, file) <- vectorTests target
-        , let source = defaultSource (directory target ++ "/" ++ file), not (null source) ]
+        , let source = defaultSource (directory target ++ "/" ++ file) ]
       companions <- sequence
         [ (\c -> Artifact path c "generated" "source") <$> resolve target datas (fill target datas (shortName (name u)) source)
         | u <- present, (path, file) <- companionFiles target (name u)

@@ -94,6 +94,7 @@ Each obligation has a stage:
 | `adapter` | An adapter implementation | assumed |
 | `binding` | A native type binding | runtime-checked |
 | `codec`, `generator`, `native-function` | A codec hook, generator factory or bound native function | assumed |
+| `handler` | A built-in ability's production handler: the runtime's default, or one bound in `lawspec.json` | default-handler, or assumed when bound |
 
 ## Reading the evidence
 

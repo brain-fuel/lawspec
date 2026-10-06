@@ -109,6 +109,38 @@ then reports one obligation for each pair.
 - The native handler is property-tested by the generated tests.
 - An operation's refined result is a law too: every handler owes it.
 
+## Built-in abilities have default handlers
+
+Time, randomness, cryptography, files, logs: most programs need them, and
+most tests need to control them. LawSpec declares them as abilities in
+built-in units (see [built-in abilities](../reference/language/builtins.md)),
+so the rule holds for them too: a law about code that reads the clock holds
+for every lawful clock, and a law that needs control says so with `using
+virtual clock`.
+
+What a built-in ability adds is a *default handler*: the production handler
+every target's runtime brings, written once per target and reviewed, so a
+program need not write its own. Evidence reports it apart, as
+`default-handler`, between the checks LawSpec runs itself and the code it
+takes on trust: the ability's laws are property-tested on it, and the
+cryptographic ones are checked against NIST's vectors besides.
+
+The defaults are post-quantum where it matters. Key exchange is ML-KEM and
+signatures ML-DSA, the standards NIST published in 2024 for a world with
+quantum computers; SLH-DSA, whose security rests on a hash function alone,
+is the alternative a program can bind instead.
+
+## Seeded and secure randomness are apart
+
+A test wants randomness it can repeat; a key wants randomness no one can.
+One ability for both would let the handler that makes a test repeatable
+answer the code that makes keys, and a predictable key would pass every
+test. So `Random` and `SecureRandom` are separate abilities, and the types
+keep them apart: `seeded random n` handles only `Random`, `SecureRandom` has
+no spec handlers, and natively the two are different interfaces. Laws about
+code that uses `SecureRandom` hold for every secure source, so they cannot
+lean on the values it draws. See [randomness](../reference/language/randomness.md).
+
 ## Typing
 
 Ability rows follow Koka's row types. A definition's row is the least row
@@ -133,6 +165,16 @@ target should change these, and only these.
   (`AbilityNames.ownedAbilityUnits`, `ownAbilities`, `Core.findAbility`).
   Its production handler is bound in `lawspec.json` (`handlers`), or
   generated as a stub in the declaring unit's adapter module.
+- **Built-in abilities with defaults.** `LawSpec.Builtins` holds the
+  sources of the `lawspec.*` units with abilities, and `Compile` adds each to
+  a program that imports it. Their default handlers are reviewed sources
+  under `runtime/defaults/<target>/<unit>`, embedded as
+  `LawSpec.DefaultSources`; `LawSpec.BuiltinDefaults` generates them into the
+  unit's adapter module, naming the unit's types as the target does
+  (`@@Type@@`, `@@Type/Constructor@@`), and adds the crypto vector test. A
+  new built-in ability adds its source, a default handler for every target,
+  and a line to `defaultHandlerReason`; a new target adds a directory of
+  defaults (Go also copies them into each importing package).
 - **The surface pass.** `LawSpec.Abilities.elaborateAbilities` checks
   declarations, makes each clause a checked definition, infers rows (with
   handled regions and clause rows), names each law's handlers and adds the
@@ -160,8 +202,14 @@ target should change these, and only these.
   bound types (the handler schema in Python and JavaScript, an
   `<Ability>Bound` wrapper elsewhere) and gives a bound adapter its handlers.
 - **Acceptance.** The `abilities` suite covers the language on every
-  target, and `handlerbindings` covers `lawspec.json`. A new feature adds a
-  law and a mutant to one of them on each target.
+  target, and `handlerbindings` covers `lawspec.json`; `builtins` and
+  `crypto` cover the built-in abilities and their defaults. A new feature
+  adds a law and a mutant to one of them on each target.
+- **For the secure transport.** Node transports can build their handshake
+  from `lawspec.crypto` (a signed ML-KEM exchange, then `Aead` keys from
+  `deriveAeadKey`) and their tokens from `SecureRandom`'s `secureToken`;
+  `Async` is the hook for the `async` keyword. See
+  [cryptography](../reference/language/cryptography.md#building-a-secure-channel).
 
 ## References
 
