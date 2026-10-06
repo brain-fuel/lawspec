@@ -18,7 +18,8 @@ import LawSpec.Parser
 import LawSpec.Imports (resolveImports)
 import LawSpec.Collections (usedCollections, collectionsSource)
 import LawSpec.Time (timeUnit, timeAlias, timeTypes, usesTime, timeSource)
-import LawSpec.Matchers (matchersUnit, matchersAlias, matchersTypes, usesMatchers, matchersSource)
+import LawSpec.Matchers (matchersUnit, matchersAlias, matchersTypes, usesMatchers, matchersSource, regexTypeName)
+import LawSpec.Regex (parseRegex)
 import LawSpec.Resources (resourcesUnit, resourcesAlias, resourcesTypes, usesResources, resourcesSource)
 import LawSpec.Resilience (resilienceUnit, resilienceAlias, resilienceTypes, usesResilience, resilienceSource)
 import LawSpec.Refinement
@@ -28,7 +29,7 @@ import Control.Monad (unless, when, zipWithM_, forM, forM_, foldM)
 import qualified Data.Map.Strict as M
 import Data.List (nub, intercalate, uncons)
 import Data.Char (isLower)
-import Data.List (isSuffixOf, isPrefixOf)
+import Data.List (isSuffixOf, isPrefixOf, isInfixOf)
 import qualified Data.Set as Set
 import System.IO.Unsafe (unsafePerformIO)
 import LawSpec.Digest (digestHex, digestString)
@@ -192,6 +193,53 @@ validateUnit dataTypes u = either (Left . pure . (\m -> Diagnostic "declaration"
     unless (all (\(Capability _ t) -> valueType dataTypes t) (requirements l)) (Left "capability requires a value type")
     unless (all (validTypeWithData dataTypes . snd) (parameters l) && all (\(Capability _ t) -> validTypeWithData dataTypes t) (requirements l)) (Left "unsupported type")
 
+-- A Regex is made from a literal in the portable dialect (LawSpec.Regex),
+-- checked here, and laws do not quantify over Regex: LawSpec never makes one
+-- up.
+checkRegexes :: Unit -> Either [Diagnostic] ()
+checkRegexes u = do
+  let constructor = regexTypeName ++ "::Regex"
+      problem at message = Left [Diagnostic "regex" message at]
+      check at e = case e of
+        Located (Span start _) inner -> check (Just start) inner
+        ConstructLit name fields | name == constructor -> case map unlocated fields of
+          [StringLit pattern] -> either (\m -> problem at ("regex \"" ++ pattern ++ "\" is not portable: " ++ m)) (const (pure ())) (parseRegex pattern)
+          _ -> problem at "a Regex is made from a literal, such as regex \"[a-z]+\""
+        _ -> mapM_ (check at) (subexpressions e)
+      definitionExprs d = case d of
+        Forall _ body -> definitionExprs body
+        Equal a b -> [a, b]
+        Holds a -> [a]
+        Implies a body -> a : definitionExprs body
+        And a b -> definitionExprs a ++ definitionExprs b
+        Invoke _ args -> args
+      quantified d = case d of
+        Forall qs body -> qs ++ quantified body
+        Implies _ body -> quantified body
+        And a b -> quantified a ++ quantified b
+        _ -> []
+      mentionsRegex t = regexTypeName `isInfixOf` show t
+  when (unitName u /= matchersUnit) $ do
+    forM_ (laws u) $ \l -> do
+      mapM_ (check (Just (location l))) (definitionExprs (definition l) ++ [actual x | ex <- examples l, x <- expectations ex])
+      forM_ (quantified (definition l)) $ \(n, t) -> when (mentionsRegex t)
+        (problem (Just (location l)) ("law " ++ lawName l ++ " quantifies over " ++ n ++ ", a Regex; LawSpec does not generate regexes, so write one with regex \"...\""))
+    forM_ (functionDefinitions u) $ \d -> check (Just (spanStart (functionSpan d))) (functionBody d)
+  where
+    subexpressions e = case e of
+      Located _ a -> [a]
+      Apply a b -> [a, b]
+      Compose a b -> [a, b]
+      ListLit xs -> xs
+      ConstructLit _ fields -> fields
+      MatchExpr v branches -> v : [b | MatchBranch _ _ b <- branches]
+      AllElementsExpr v _ p -> [v, p]
+      AllPayloadsExpr v ps -> v : map snd ps
+      Binary _ a b -> [a, b]
+      Unary _ a -> [a]
+      Annotate a _ -> [a]
+      _ -> []
+
 compile :: [Source] -> Either [Diagnostic] ([Unit],[Expanded])
 compile = compileWithProfile 64
 
@@ -233,6 +281,7 @@ compileWithImports visible bits settings sources = do
         | c <- dataTypeConstructors d]}) | u <- parsed, d <- dataTypes u]
   lowered <- either (Left . pure . (\m -> Diagnostic "refinement" m Nothing)) Right (mapM (lowerUnitWith imported) parsed)
   let us = map qualifyDataNames lowered
+  mapM_ checkRegexes us
   dataTypes <- elaborateDataDeclarationsWithProfile bits us
   _ <- either (Left . pure . (\m -> Diagnostic "data-type" m Nothing)) Right (CoreTypes.makeRegistry dataTypes)
   unless (length us == length (nub (map unitName us))) (Left [Diagnostic "duplicate-unit" "unit names must be unique; prelude is reserved" Nothing])
