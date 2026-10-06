@@ -48,6 +48,13 @@ named target name = case target of
   "kotlin" -> "\"" ++ name ++ "_"
   _ -> name ++ "_"
 
+unsplit :: String -> String
+unsplit text = case text of
+  '"' : rest | (sep : after) <- dropWhile blank rest, sep `elem` (",+" :: String), '"' : more <- dropWhile blank after -> unsplit more
+  c : rest -> c : unsplit rest
+  [] -> []
+  where blank c = c `elem` (" \n" :: String)
+
 spec :: Spec
 spec = describe "the test manifest" $ do
   forM_ ["python", "javascript", "typescript", "go", "java", "kotlin", "rust", "haskell"] $ \target ->
@@ -66,7 +73,8 @@ spec = describe "the test manifest" $ do
             | target `elem` ["javascript", "typescript"] ->
                 -- Labels are single-quoted string literals there.
                 joined content `shouldSatisfy` isInfixOf (concatMap (\c -> if c == '\'' then "\\'" else [c]) (text (field "label" t)))
-            | otherwise -> content `shouldSatisfy` isInfixOf (named target name)
+            -- Haskell and Kotlin split long string literals into pieces.
+            | otherwise -> unsplit content `shouldSatisfy` isInfixOf (named target name)
   it "follows a custom test directory" $ do
     response <- planned "python" (Just "checks")
     let Array files = field "files" response
