@@ -279,7 +279,12 @@ accepts, unique within a unit:
 | Rust | `law_a_discount_is_never_more_than_the_total` |
 | JavaScript, TypeScript | `example.shop::a discount is never more than the total property` |
 
-A law's examples and boundary cases add `example0`, `boundary0` and so on. The
+A law's examples and boundary cases add `example0`, `boundary0` and so on.
+A law with generated cases also has a `replay` test, which replays the
+failing inputs the [failure database](../cli.md#the-failure-database) kept
+(Java and Rust replay at the start of the property test instead), and a law
+with `target maximize` a `search` test, LawSpec's climb (Java and Rust climb
+at its end). The
 test manifest (`tests` in a generation result) carries each law's name, tags,
 `skip` and `knownFailing`, which `lawspec test` uses to select tests.
 

@@ -1,7 +1,7 @@
 // Generated from templates/npm/test/test-command.test.mjs by lawspec-dev generate. Do not edit.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { invocations, lawKeys, recordedDigest, selectByTags, mergeJunit, junitFromTests } from "../test-command.mjs";
+import { benchmarkInvocations, invocations, lawKeys, recordedDigest, selectByTags, mergeJunit, junitFromTests } from "../test-command.mjs";
 
 // A manifest entry, named as each target names a law's tests (LawSpec.TestNames).
 const names = { python: (i) => `test_law_${i}`, go: (i) => `TestLaw${i}`, rust: (i) => `law_law_${i}` };
@@ -153,4 +153,31 @@ test("a changed recording changes the recordings' digest", async () => {
   } finally {
     await rm(folder, { recursive: true, force: true });
   }
+});
+
+test("runs pytest-xdist for a parallel unit's laws when it is installed", () => {
+  const entry = { ...law(1, "tests/test_example_unit_lawspec.py"), parallel: true };
+  assert.ok(invocations({ language: "python" }, [entry], { xdist: true })[0].args.includes("-n"));
+  assert.ok(!invocations({ language: "python" }, [entry])[0].args.includes("-n"));
+  assert.ok(!invocations({ language: "python" }, [law(1, "tests/test_example_unit_lawspec.py")], { xdist: true })[0].args.includes("-n"));
+});
+
+test("selects a target's JavaScript tests, replay and search included, by label", () => {
+  const run = invocations({ language: "javascript" }, [law(1, "test/example_unit.lawspec.test.mjs", "example.unit::law 1", "javascript")]);
+  const pattern = new RegExp(run[0].args.find((a) => a.startsWith("--test-name-pattern=")).slice("--test-name-pattern=".length));
+  for (const name of ["example.unit::law 1 property", "example.unit::law 1 replay", "example.unit::law 1 search"])
+    assert.ok(pattern.test(name), name);
+});
+
+test("runs the harness's benchmarks by the names the manifest gives", () => {
+  const bench = (name, file) => ({ unit: "example.unit", benchmark: "a booking", file, name });
+  assert.deepEqual(benchmarkInvocations({ language: "python" }, []), []);
+  const python = benchmarkInvocations({ language: "python" }, [bench("test_benchmark__a_booking", "tests/test_example_unit_lawspec.py")]);
+  assert.deepEqual(python[0].args.slice(-2), ["-k", "test_benchmark__a_booking"]);
+  const go = benchmarkInvocations({ language: "go" }, [bench("TestBenchmarkABooking", "example/unit/lawspec_test.go")]);
+  assert.deepEqual(go[0].args.slice(-2), ["-run", "^(TestBenchmarkABooking)$"]);
+  const rust = benchmarkInvocations({ language: "rust" }, [bench("benchmark_a_booking", "tests/example_unit_lawspec.rs")]);
+  assert.equal(rust[0].args.at(-1), "benchmark_a_booking");
+  const haskell = benchmarkInvocations({ language: "haskell" }, [bench("benchmark a booking", "test/Example/UnitSpec.hs")]);
+  assert.match(haskell[0].args.at(-1), /--match Example\.Unit\/benchmark/);
 });
