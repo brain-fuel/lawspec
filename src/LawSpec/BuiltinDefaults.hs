@@ -12,7 +12,7 @@
 module LawSpec.BuiltinDefaults (withBuiltinDefaults, adapterPath, vectorTestPath) where
 
 import Data.Char (toUpper)
-import Data.List (isPrefixOf)
+import Data.List (intercalate, isPrefixOf)
 import qualified LawSpec.Core as C
 import LawSpec.Common (Artifact(..))
 import LawSpec.AbilityNames (ownAbilities)
@@ -123,8 +123,14 @@ vectorTestPath target = case target of
 -- @@VECTORS@@ first: the vectors are hex and comments, so a raw string
 -- literal holds them on every target.
 -- @@PACKAGE@@ is the Go package the file is in.
+-- @@VECTOR_LINES@@ is the vectors without their comments, as string
+-- literals separated by commas, for targets whose string constants are
+-- bounded (the JVM's are at most 65535 bytes).
 fill :: String -> [C.DataDeclaration] -> String -> String -> String
-fill _ _ package = replace "@@PACKAGE@@" package . replace "@@VECTORS@@" (defaultSource "vectors.txt")
+fill _ _ package = replace "@@PACKAGE@@" package . replace "@@VECTORS@@" vectors . replace "@@VECTOR_LINES@@" vectorLines
+  where
+    vectors = defaultSource "vectors.txt"
+    vectorLines = intercalate ",\n" ["\"" ++ l ++ "\"" | l <- lines vectors, not (null l), take 1 l /= "#"]
 
 replace :: String -> String -> String -> String
 replace old new = go

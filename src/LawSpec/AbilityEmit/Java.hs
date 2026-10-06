@@ -68,7 +68,7 @@ emit minify bits datas units = mapM unitFile (filter unitAbilityPieces units)
       let (args, result) = C.functionType ty
       types <- mapM (Native.javaDataTypeDoc datas) args
       resultType <- if result == C.scalarType "Unit" then pure (line "void") else Native.javaDataTypeDoc datas result
-      pure (resultType <> line (" " ++ op) <> D.delimitTrailing 4 "(" ")" [t <> line (" value" ++ show i) | (i, t) <- zip [0 :: Int ..] types])
+      pure (resultType <> line (" " ++ op) <> D.delimit 4 "(" ")" [t <> line (" value" ++ show i) | (i, t) <- zip [0 :: Int ..] types])
     interface a = do
       methods <- mapM (\(op, ty) -> (<> line ";") <$> signature op ty) (C.abilityOperations a)
       pure (line ("/** The " ++ C.abilityName a ++ " ability: a handler answers each of its operations. */") <> D.hardline <>
@@ -136,7 +136,7 @@ productionStub datas u a = do
     types <- mapM (Native.javaDataTypeDoc datas) args
     resultType <- if result == C.scalarType "Unit" then pure (D.text "void") else Native.javaDataTypeDoc datas result
     pure (D.text "@Override" <> D.hardline <> D.text "public " <> resultType <> D.text (" " ++ op) <>
-      D.delimitTrailing 4 "(" ")" [t <> D.text (" value" ++ show i) | (i, t) <- zip [0 :: Int ..] types] <> D.text " " <>
+      D.delimit 4 "(" ")" [t <> D.text (" value" ++ show i) | (i, t) <- zip [0 :: Int ..] types] <> D.text " " <>
       D.block 2 (D.text ("throw new UnsupportedOperationException(" ++ show op ++ ");")))) (C.abilityOperations a)
   pure (D.text ("/** The native handler of " ++ displayName a ++ ": " ++ intercalate ", " (map fst (C.abilityOperations a)) ++ ". */") <> D.hardline <>
     D.text ("public static final class " ++ productionName a ++ " implements " ++ abilitiesClass u ++ "." ++ interfaceName a ++ " ") <>

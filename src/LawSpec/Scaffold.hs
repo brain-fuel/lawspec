@@ -24,13 +24,13 @@ testCommand target = lookup target
 setupAdvice :: String -> Maybe String
 setupAdvice target = lookup target
   [ ("rust", "Use Rust 1.85+ with edition 2024, Proptest 1.11.0, num-bigint 0.4.8, num-rational 0.4.2, num-complex 0.4.6, and num-traits 0.2.19. Run cargo test.")
-  , ("java", "Use JDK 25+, Maven, JetCheck 0.3.0, JUnit Jupiter 5.14.x, compiler plugin 3.14.1+, Surefire 3.5.x, and maven.compiler.release=25. Run mvn test-compile.")
+  , ("java", "Use JDK 25+, Maven, Bouncy Castle bcprov-jdk18on 1.86 (lawspec.crypto's default handlers), JetCheck 0.3.0, JUnit Jupiter 5.14.x, compiler plugin 3.14.1+, Surefire 3.5.x, and maven.compiler.release=25. Run mvn test-compile.")
   , ("python", "Use Python 3.13+. Install pytest 8.4.x and Hypothesis 6.x into the selected environment, and cryptography 50 for lawspec.crypto's default handlers: python -m pip install -e \".[test]\". Configure pytest pythonpath=[\"src\"] and testpaths=[\"tests\"]. Set the target python field to the interpreter path if needed.")
   , ("javascript", "Use Node 22+, package.json type=module, npm install @noble/post-quantum@0.7.1 (lawspec.crypto's default handlers), and npm install --save-dev fast-check@4.10.2.")
   , ("typescript", "Use Node 22+, package.json type=module, npm install @noble/post-quantum@0.7.1 (lawspec.crypto's default handlers), and npm install --save-dev fast-check@4.10.2 typescript@5.9.3 @types/node@22.20.4. Configure tsconfig.json with module=NodeNext, target=ES2022, rootDir=., outDir=dist, include=[\"src/**/*.ts\",\"test/**/*.ts\"].")
   , ("go", "Use Go 1.25+ and go get pgregory.net/rapid@v1.2.0 github.com/cloudflare/circl@v1.6.5 (lawspec.crypto's default handlers), then go mod download.")
   , ("haskell", "Use Stack with lts-24.58 and test dependencies hspec, hedgehog, hspec-hedgehog, hspec-discover, and a test/Spec.hs using hspec-discover. Run stack build --test --no-run-tests.")
-  , ("kotlin", "Use JDK 25, Gradle 9.3.0, Kotlin plugin 2.3.21, JVM target 25, Kotest 5.9.1 (runner, assertions, property), and useJUnitPlatform(). Run gradle testClasses.") ]
+  , ("kotlin", "Use JDK 25, Gradle 9.3.0, Kotlin plugin 2.3.21, Bouncy Castle bcprov-jdk18on 1.86 (lawspec.crypto's default handlers), JVM target 25, Kotest 5.9.1 (runner, assertions, property), and useJUnitPlatform(). Run gradle testClasses.") ]
 
 -- Files in the order the project is written.
 scaffoldFiles :: Bool -> String -> Either String [(FilePath, String)]
@@ -87,6 +87,7 @@ scaffoldFiles minify target = case target of
         , kotlinBlock "kotlin" ["jvmToolchain(25)"]
         , kotlinBlock "dependencies"
             [ "implementation(\"org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.0\")"
+            , "implementation(\"org.bouncycastle:bcprov-jdk18on:1.86\")"
             , "testImplementation(\"io.kotest:kotest-runner-junit5:5.9.1\")"
             , "testImplementation(\"io.kotest:kotest-assertions-core:5.9.1\")"
             , "testImplementation(\"io.kotest:kotest-property:5.9.1\")" ]
@@ -132,7 +133,8 @@ mavenProject = Element "project"
   (Right (fields [("modelVersion", "4.0.0"), ("groupId", "example"), ("artifactId", "lawspec-example"), ("version", "0.1.0")] ++
     [ node "properties" (fields [("maven.compiler.release", "25"), ("project.build.sourceEncoding", "UTF-8")])
     , node "dependencies"
-        [ dependency "org.jetbrains" "jetCheck" "0.3.0"
+        [ compileDependency "org.bouncycastle" "bcprov-jdk18on" "1.86"
+        , dependency "org.jetbrains" "jetCheck" "0.3.0"
         , dependency "org.junit.jupiter" "junit-jupiter" "5.14.0" ]
     , node "build" [node "plugins"
         [ plugin "maven-compiler-plugin" "3.14.1"
@@ -142,6 +144,9 @@ mavenProject = Element "project"
     fields = map (\(name, text) -> Element name [] (Left text))
     dependency group artifact version =
       node "dependency" (fields [("groupId", group), ("artifactId", artifact), ("version", version), ("scope", "test")])
+    -- Bouncy Castle: lawspec.crypto's SHAKE256 and SLH-DSA.
+    compileDependency group artifact version =
+      node "dependency" (fields [("groupId", group), ("artifactId", artifact), ("version", version)])
     plugin artifact version =
       node "plugin" (fields [("groupId", "org.apache.maven.plugins"), ("artifactId", artifact), ("version", version)])
 

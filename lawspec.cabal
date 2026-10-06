@@ -47,6 +47,13 @@ extra-source-files:
     runtime/defaults/go/logging.go
     runtime/defaults/go/randomness.go
     runtime/defaults/go/time.go
+    runtime/defaults/java/concurrent.java
+    runtime/defaults/java/crypto.java
+    runtime/defaults/java/crypto_vectors.java
+    runtime/defaults/java/host.java
+    runtime/defaults/java/logging.java
+    runtime/defaults/java/randomness.java
+    runtime/defaults/java/time.java
     runtime/defaults/javascript/concurrent.mjs
     runtime/defaults/javascript/crypto.mjs
     runtime/defaults/javascript/crypto_vectors.mjs

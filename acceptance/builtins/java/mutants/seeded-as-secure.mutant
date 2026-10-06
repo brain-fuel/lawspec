@@ -1,0 +1,9 @@
+rejected-at: compile
+expect: incompatible types
+@@ src/main/java/example/Builtins.java
+<<<<<<<
+    return secureRandom.secureBytes(value0);
+=======
+    lawspec.abilities.lawspec.Randomness.SecureRandom seeded = new lawspec.Randomness.RandomHandler();
+    return seeded.secureBytes(value0);
+>>>>>>>
