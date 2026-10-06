@@ -137,7 +137,10 @@ async function packageCommand() {
       machineBits: options.machineBits ?? 64,
     }),
   );
-  const units = result.units.map((u) => u.id).filter((u) => u !== "prelude");
+  // A package owns the units in its namespace; its dependencies' units are not its own.
+  const units = result.units
+    .map((u) => u.id)
+    .filter((u) => u === own.name || u.startsWith(own.name + "."));
   const laws = result.laws.filter((l) => units.includes(l.owner));
   const summary = {
     name: own.name,
