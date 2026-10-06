@@ -12,6 +12,8 @@ export function nowMicros() {
 const blocker = new Int32Array(new SharedArrayBuffer(4));
 /** The system clock. now never goes back; sleep blocks this thread. */
 export class ClockHandler {
+    /** Workflows time out in real time under it (the runtime's AbilityClock). */
+    realTime = true;
     now() {
         return new @@Instant@@(nowMicros());
     }

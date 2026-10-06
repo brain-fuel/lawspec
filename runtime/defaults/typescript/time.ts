@@ -17,6 +17,8 @@ const blocker = new Int32Array(new SharedArrayBuffer(4));
 
 /** The system clock. now never goes back; sleep blocks this thread. */
 export class ClockHandler implements abilities.Clock {
+  /** Workflows time out in real time under it (the runtime's AbilityClock). */
+  readonly realTime = true;
   now(): @@Instant@@ {
     return new @@Instant@@(nowMicros());
   }
