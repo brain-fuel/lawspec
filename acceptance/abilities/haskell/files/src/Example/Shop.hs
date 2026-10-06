@@ -26,11 +26,11 @@ refund gateway value0
       receipt <- Abilities.capture gateway value0
       P.pure (Data.receiptCents receipt)
 
--- | The native handler of Log: note.
-logHandler :: P.IO Abilities.Log
-logHandler = do
+-- | The native handler of Journal: note.
+journalHandler :: P.IO Abilities.Journal
+journalHandler = do
   lines' <- IORef.newIORef []
-  P.pure Abilities.Log
+  P.pure Abilities.Journal
     { Abilities.note = \value0 -> IORef.modifyIORef' lines' (value0 :)
     }
 

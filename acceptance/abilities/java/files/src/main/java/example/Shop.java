@@ -11,8 +11,8 @@ public final class Shop {
     return gateway.capture(value0).cents();
   }
 
-  /** The native handler of Log: note. */
-  public static final class LogHandler implements lawspec.abilities.example.Shop.Log {
+  /** The native handler of Journal: note. */
+  public static final class JournalHandler implements lawspec.abilities.example.Shop.Journal {
     private final java.util.List<String> lines = new java.util.ArrayList<>();
 
     @Override

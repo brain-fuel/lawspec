@@ -17,8 +17,8 @@ def refund(
     return gateway.capture(value0).cents
 
 
-class LogHandler:
-    """The native handler of Log: note."""
+class JournalHandler:
+    """The native handler of Journal: note."""
 
     def __init__(self) -> None:
         self.lines: list[str] = []

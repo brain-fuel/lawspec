@@ -11,15 +11,15 @@ func Refund(gateway Gateway, value0 int32) int32 {
 	return gateway.Capture(value0).Cents
 }
 
-// LogHandler is the native handler of Log: note.
-type LogHandler struct{ lines []string }
+// JournalHandler is the native handler of Journal: note.
+type JournalHandler struct{ lines []string }
 
-// NewLogHandler makes the native handler the generated tests use.
-func NewLogHandler() Log {
-	return &LogHandler{}
+// NewJournalHandler makes the native handler the generated tests use.
+func NewJournalHandler() Journal {
+	return &JournalHandler{}
 }
 
-func (handler *LogHandler) Note(value0 string) {
+func (handler *JournalHandler) Note(value0 string) {
 	handler.lines = append(handler.lines, value0)
 }
 

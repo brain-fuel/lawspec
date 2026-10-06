@@ -26,8 +26,14 @@ methodName (c : cs) = toUpper c : cs
 methodName [] = []
 
 emit :: Bool -> Int -> [C.DataDeclaration] -> [C.Unit] -> Either String [Artifact]
-emit minify bits datas units = mapM unitFile (filter wanted units)
+emit minify bits datas units = case clashes of
+  (name, owners) : _ -> Left ("in Go, every package holds every ability of the program, so two cannot share a name: " ++
+    name ++ " is declared by " ++ intercalate " and " owners)
+  [] -> mapM unitFile (filter wanted units)
   where
+    clashes = [ (interfaceName a, owners) | a <- everyAbility
+              , let owners = distinctOn id [ownerName b | v <- units, b <- C.unitAbilities v, interfaceName b == interfaceName a]
+              , length owners > 1 ]
     wanted u = unitAbilityPieces u || (not (null everyAbility) && not (null (C.unitDefinitions u)))
     everyAbility = distinctOn interfaceName [a | v <- units, a <- C.unitAbilities v]
     scoped = [h | v <- units, d <- C.unitDefinitions v, h <- scopedHandlers (C.definitionBody d)]

@@ -10,8 +10,8 @@ export function refund(gateway, value0) {
   return gateway.capture(value0).cents;
 }
 
-/** The native handler of Log: note. */
-export class LogHandler {
+/** The native handler of Journal: note. */
+export class JournalHandler {
   lines = [];
   note(value0) {
     this.lines.push(value0);

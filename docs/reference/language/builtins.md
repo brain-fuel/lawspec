@@ -122,5 +122,8 @@ keyword; making it `uses Async` builds on this ability.
   file system's default handler works in the process's working directory.
 - `seeded random n` names a handler in a law's `using` list; `handle e with
   seededRandom end` starts at seed 0.
+- In Go every package holds every ability of the program, so a program
+  whose own ability shares a name with a built-in one it imports (`Log`,
+  `Clock`, ...) is rejected there; rename the program's.
 - Instants and durations saturate rather than fail: an instant before 1970
   is 1970, and the time from a later instant to an earlier one is none.
