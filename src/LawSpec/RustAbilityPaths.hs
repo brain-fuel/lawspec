@@ -40,13 +40,13 @@ bridgeName a op = if null (C.abilityArguments a) then op else interfaceName a ++
 -- The panic payloads lawspec.json maps to failures of this type, as the
 -- last argument of ls::native_failures: each payload type T becomes its
 -- constructor, given T's Debug text when the constructor takes a message.
-mappedFailures :: [C.FailureBinding] -> C.Type -> String
-mappedFailures bindings failure = "vec![" ++ concat
+mappedFailures :: Maybe String -> [C.FailureBinding] -> C.Type -> String
+mappedFailures library bindings failure = "vec![" ++ concat
   [ "Box::new(|payload: &(dyn std::any::Any + Send)| payload.downcast_ref::<" ++ path (C.failureNative b) ++ ">().map(|error| " ++
     "ls::construct_data(" ++ show (C.idText (C.failureConstructor b)) ++ ", vec![" ++
-    (if C.failureMessage b then "ls::Value::Text(format!(\"{error:?}\"))" else "") ++ "])) as ls::MappedFailure, "
+    (if C.failureMessage b then "ls::Value::Text(format!(\"{error:?}\"))" else "") ++ "]))) as ls::MappedFailure, "
   | b <- bindings, C.failureType b == failure ] ++ "]"
-  where path parts = concatMap (\(i, p) -> (if i > (0 :: Int) then "::" else "") ++ p) (zip [0 ..] parts)
+  where path parts = concatMap (\(i, p) -> (if i > (0 :: Int) then "::" else "") ++ (if i == 0 && p == "crate" then maybe p id library else p)) (zip [0 ..] parts)
 
 -- The trait of an ability, from the crate root.
 traitPath :: [C.Unit] -> C.AbilityRef -> String

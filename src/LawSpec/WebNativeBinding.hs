@@ -45,7 +45,9 @@ emitBindings ts minify bindings plan files = do
         [D.text "export const canonical = data.makeSchema();",
          D.text "export const native = canonical.withNativeBindings(" <>
           D.nest 4 (D.softbreak <> E.call ("new Map" ++ mapType) [E.array entries] <> D.text "," <>
-            D.softbreak <> E.call ("new Map" ++ hookType) [E.array hooks]) <> D.softbreak <> D.text ");"] ++
+            D.softbreak <> E.call ("new Map" ++ hookType) [E.array hooks]) <> D.softbreak <> D.text ");",
+         -- Handlers are application code: their values are the bound types.
+         D.text "ls.setHandlerSchema(native);"] ++
         [D.text ("export {" ++ intercalate ", " exported ++ "};") | not (null exported)])
       exported = nub (map alias (map snd functions ++ constructed ++ handleNatives))
       support = Artifact ("src/lawspec_native." ++ ext) (render supportBody) "generated" "source"
@@ -71,6 +73,9 @@ emitBindings ts minify bindings plan files = do
         argRefs <- mapM Data.webTypeReferenceDoc args
         resultRef <- Data.webTypeReferenceDoc result
         let values = [D.text ("value" ++ show i) | i <- [0::Int ..length args-1]]
+            -- An adapter that uses abilities gets their handlers first, as
+            -- they are: application code's handlers take the bound types.
+            handlerNames = [D.text ("handler" ++ show i) | (i, a) <- zip [0::Int ..] (C.declarationUses decl), not (C.isFail a)]
             bits = D.text (show (planMachineBits plan))
             convert schema method ty value = E.call ("bridge." ++ schema ++ "." ++ method) [ty,value,bits,D.text "symbols"]
             arguments = [convert "native" "toNative" ty (convert "canonical" "fromNative" ty value) | (ty,value) <- zip argRefs values]
@@ -79,7 +84,7 @@ emitBindings ts minify bindings plan files = do
             returned = D.text "return " <> resultOf resultRef (D.text "result") <> D.text ";"
         call <- maybe (Left "unbound adapter") Right (bound decl)
         application <- case call of
-          StaticCall ref -> pure (E.call ("bridge." ++ alias ref) arguments)
+          StaticCall ref -> pure (E.call ("bridge." ++ alias ref) (handlerNames ++ arguments))
           -- A method of the first handle argument, given the others.
           MethodCall name -> case [i | (i,ty) <- zip [0::Int ..] args, isHandle ty] of
             h : _ -> pure (D.text "(" <> arguments !! h <> D.text ")" <>
@@ -108,11 +113,15 @@ emitBindings ts minify bindings plan files = do
         let async = C.declarationAsync decl
             returnType = if result == C.scalarType "Unit" then D.text "void" else resultType
             signature = D.text ((if async then "export async function " else "export function ") ++ C.declarationName decl) <>
-              D.delimitTrailing 4 "(" ")" [value <> if ts then D.text ": " <> ty else mempty | (value,ty) <- zip values argTypes] <>
+              D.delimitTrailing 4 "(" ")" ([h <> if ts then D.text ": any" else mempty | h <- handlerNames] ++
+                [value <> if ts then D.text ": " <> ty else mempty | (value,ty) <- zip values argTypes]) <>
               (if ts then D.text ": " <> (if async then D.text "Promise<" <> returnType <> D.text ">" else returnType) else mempty)
         pure (signature <> D.text " " <> D.block 2 (D.text "const symbols = new Map();" <> D.hardline <>
           D.text "try " <> D.block 2 resultBody <> D.text " catch (error) " <>
-          D.block 2 (D.text "throw " <> E.call "new TypeError"
+          -- The application's own errors pass through, so lawspec.json can map
+          -- them to failures.
+          D.block 2 (D.text "if (!(error instanceof TypeError || error instanceof RangeError)) throw error;" <> D.hardline <>
+            D.text "throw " <> E.call "new TypeError"
             [E.quoted ("native binding " ++ C.idText (C.declarationId decl) ++ ": ") <>
              D.text " + String(error)", D.text "{cause: error}"] <> D.text ";")))
       let pathname = "src/" ++ map (\c -> if c == '.' then '/' else c) (unitName unit) ++ "." ++ ext
@@ -158,7 +167,17 @@ emitBindings ts minify bindings plan files = do
   unless (all ((/= "src/lawspec_native." ++ ext) . artifactPath) files) (Left "unit shadows generated lawspec_native support")
   let runtime = [Artifact ("src/lawspec_runtime." ++ ext) ((if ts then "// @ts-nocheck\n" else "") ++ runtimeSource "javascript") "generated" "source" |
         not (any ((== "src/lawspec_runtime." ++ ext) . artifactPath) files)]
-  let generated = [file | file <- files, artifactPath file `notElem` replacements] ++
+  -- Generated code that calls handlers loads the bound types first.
+  let loading file
+        | Just rest <- stripPrefix' "src/lawspec_abilities/" (artifactPath file) =
+            addImport (concat (replicate (1 + length (filter (== '/') rest)) "../")) file
+        | artifactPath file == "src/lawspec_definition_bodies." ++ ext = addImport "./" file
+        | otherwise = file
+      addImport root file = file { artifactContent = unlines (concatMap (\l ->
+        if take 10 l == "import * a" && "lawspec_runtime" `elem` words (map (\c -> if c `elem` ("/.'" :: String) then ' ' else c) l)
+          then [l, "import '" ++ root ++ "lawspec_native." ++ importExt ++ "';"] else [l]) (lines (artifactContent file))) }
+      stripPrefix' prefix value = if take (length prefix) value == prefix then Just (drop (length prefix) value) else Nothing
+  let generated = [loading file | file <- files, artifactPath file `notElem` replacements] ++
         dataFiles ++ runtime ++ [support] ++ bridges ++ generatorFiles
   stubs <- generatorStubs ts plan bindings generated
   pure (generated ++ stubs)

@@ -1,0 +1,7 @@
+expect-any: a till gives back what it takes [native] | small payments go through [native]
+@@ src/till/native.ts
+<<<<<<<
+    return new Cash({cents: money.cents});
+=======
+    return new Cash({cents: money.cents + 1n});
+>>>>>>>

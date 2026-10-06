@@ -1,0 +1,7 @@
+expect: large payments are declined
+@@ src/till/native.ts
+<<<<<<<
+  if (cents > 1000n) throw new CardDeclined();
+=======
+  if (cents > 1000n) throw new BadAmount('negative');
+>>>>>>>

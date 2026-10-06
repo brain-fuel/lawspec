@@ -29,8 +29,35 @@
   native interface per ability: a Python `Protocol`, a TypeScript interface, a
   Go interface, a Java or Kotlin interface, a Rust trait, a Haskell record of
   `IO` operations; with spec handler and recording classes beside it.
+- Abilities cross units. `import` brings a unit's abilities and handlers;
+  imported definitions may use abilities, and the declaring unit keeps the
+  native interface, production handler and recording.
+- Effects in order: `a; b` and `let x = e in body` in definitions and laws.
+  An operation that gives `Unit` is called for its effect.
+- `handle e with h end` installs a spec handler around part of a definition,
+  which then does not use its ability. A handler's clauses may use other
+  abilities; a law under that handler gets handlers for them too.
+- A parameterized ability may be used at several types in one unit (`Store
+  Int32`, `Store Text`), each with its own interface (`StoreInt32`).
+- An operation's type may be refined; every handler owes its result's
+  refinement as a law.
+- Native adapters fail with the runtime's `Fail` on every target (`raise
+  ls.Fail(v)`, `throw new ls.Fail(v)`, `panic(LawSpecFail{Value: v})`,
+  `LawSpecRuntime.Fail`, `ls::fail`, `LS.Fail`), and `failures` in
+  `lawspec.json` maps the application's own exceptions to failure
+  constructors.
+- The compiler runs spec handlers with state over a finite domain, so a law
+  they break is a compile error.
+- `lawspec explain` shows a law's handlers and the ability rows of what it
+  calls.
+- A bound production handler speaks the bound native types: through the
+  handler schema in Python and JavaScript, and an `<Ability>Bound` wrapper in
+  the typed targets. A bound adapter gets its handlers too.
 - New acceptance suite `abilities`, with mutants: an adapter that calls its
-  dependency twice, and native handlers that break an ability law.
+  dependency twice, native handlers that break an ability law or a refined
+  result, and an adapter that fails with the wrong failure. It now covers two
+  units. New suite `handlerbindings`: bound handlers, bound types and mapped
+  exceptions on all eight targets.
 
 ## 0.20.0
 

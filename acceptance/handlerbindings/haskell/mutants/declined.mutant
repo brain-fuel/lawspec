@@ -1,0 +1,7 @@
+expect: large payments are declined
+@@ src/Till/Native.hs
+<<<<<<<
+  | cents > 1000 = throwIO CardDeclined
+=======
+  | cents > 1000 = throwIO (BadAmount "negative")
+>>>>>>>

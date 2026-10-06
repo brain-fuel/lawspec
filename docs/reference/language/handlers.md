@@ -54,7 +54,24 @@ end
 - With `with state s :: S start value`, each handler starts with the state
   `value`. A clause reads it as `s`, and may update it with `~s := e;` before
   its result. Each update sees the state the ones before it left.
-- Handler clauses cannot use abilities yet.
+- A clause may use other abilities, as any definition may. A law that runs
+  under the handler then needs handlers for them too: the first lawful one
+  of each, unless it names one with `using`. A clause cannot use the ability
+  its handler handles.
+
+## Handling part of a definition
+
+```lawspec fragment
+definition trial (cents :: Int32) :: Bool is
+  handle checkout cents with fakeGateway end
+end
+```
+
+- `handle e with h end` runs `e` with the spec handler `h` answering its
+  ability. A fresh `h` is made each time, with its starting state.
+- The definition does not use `h`'s ability: its row leaves it out, and
+  adds what `h`'s clauses use.
+- `h` may be an imported handler, by its name or `alias.name`.
 
 ## Choosing handlers in a law
 
@@ -166,10 +183,53 @@ handler: a class or function (a `default` function in Rust, an `IO` action
 in Haskell, a function in the unit's package in Go). It must implement the
 ability's interface.
 
+A parameterized ability is bound by its instance's name:
+`"example.shop::StoreInt32"`.
+
+In Python and JavaScript the bound handler's operations take and give the
+bound native types from `types`. In the typed targets a bound unit's bridge
+generates a wrapper, `<Ability>Bound`, that implements the generated
+interface around the bound handler and converts each operation's values with
+the native types. In Rust the bound handler's type must be `Default`; in
+Haskell it is a record of `IO` functions named like the operations, made by
+an `IO` action. A bound adapter that uses abilities gets its handlers as the
+generated interfaces.
+
+## Native failures
+
+Application code that fails with its own exceptions maps them to failure
+constructors under `failures` in `lawspec.json`:
+
+```json
+"failures": [
+  {"native": ["till", "native", "CardDeclined"], "failure": "example.till::PayError::Declined"},
+  {"native": ["till", "native", "BadAmount"], "failure": "example.till::PayError::Rejected"}
+]
+```
+
+- `native` names an exception class (Python, JavaScript, Java, Kotlin), an
+  error type (Go, matched with `errors.As`), an exception type (Haskell) or a
+  panic payload type (Rust).
+- `failure` names a constructor of the failure type: one with no fields, or
+  one `Text` field, which gets the exception's message (its `Debug` text in
+  Rust, `show` in Haskell).
+- Where a law calls an adapter that `fails with` the type, the mapped
+  exception becomes that failure, as if the adapter had raised it.
+
+## Spec handlers with state, at compile time
+
+A law that runs under spec handlers with state is evaluated by the compiler
+when its domain is finite and it calls no adapter: each case starts the
+handlers afresh and threads their state through the operations in the order
+the law performs them. A false law is a compile error, as for a law over
+definitions. Otherwise the generated tests check it.
+
 ## Limits
 
 - Handlers are tail-resumptive or aborting: an operation answers and
   continues, or aborts to `prelude.attempt`. No handler captures a
   continuation.
-- A law can install handlers; a definition cannot install one around part of
-  its body yet.
+- `handle ... with h end` names a spec handler; a native handler is chosen
+  by the law.
+- A workflow's call to an adapter catches the runtime's `Fail`; the
+  `failures` mapping applies where laws call adapters.

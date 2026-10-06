@@ -612,6 +612,20 @@ def native_handler(module, name):
     return getattr(importlib.import_module(module), name)()
 
 
+_HANDLER_SCHEMA = None
+
+
+def set_handler_schema(schema):
+    """The schema a handler's values cross with: lawspec_native sets it to
+    the bound native types when lawspec.json binds them."""
+    global _HANDLER_SCHEMA
+    _HANDLER_SCHEMA = schema
+
+
+def handler_schema(default):
+    return default if _HANDLER_SCHEMA is None else _HANDLER_SCHEMA
+
+
 def with_handlers(symbols, handlers, body):
     """handle e with h end: runs body with these handlers installed, then
     puts back the ones they replaced."""

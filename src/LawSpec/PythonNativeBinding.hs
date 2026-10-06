@@ -51,7 +51,9 @@ emitBindings minify bindings plan files = do
          "import lawspec_data as data", "import lawspec_schema as _schema"]
       schemas = [D.text "_canonical = data.make_schema()",
         D.text "_native = _canonical.with_native_bindings" <>
-          D.delimit 4 "(" ")" [D.delimit 4 "{" "}" entries, D.delimit 4 "{" "}" hooks]]
+          D.delimit 4 "(" ")" [D.delimit 4 "{" "}" entries, D.delimit 4 "{" "}" hooks],
+        -- Handlers are application code: their values are the bound types.
+        D.text "ls.set_handler_schema(_native)"]
       support = Artifact "src/lawspec_native.py"
         (render (D.joinWith D.hardline (common ++ imports) <>
           D.hardline <> D.hardline <> D.joinWith D.hardline schemas)) "generated" "source"
@@ -75,6 +77,9 @@ emitBindings minify bindings plan files = do
         refs' <- mapM Data.pythonTypeReferenceDoc args
         resultRef <- Data.pythonTypeReferenceDoc result
         let values = [D.text ("value" ++ show i) | i <- [0::Int ..length args-1]]
+            -- An adapter that uses abilities gets their handlers first, as
+            -- they are: application code's handlers take the bound types.
+            handlerNames = [D.text ("handler" ++ show i) | (i, a) <- zip [0::Int ..] (C.declarationUses decl), not (C.isFail a)]
             bits = D.text (show (planMachineBits plan))
             convert schema method ref value = P.invoke (schema ++ "." ++ method) [ref,value,bits,D.text "symbols"]
             converted = [convert "bridge._native" "to_native" ty
@@ -85,7 +90,7 @@ emitBindings minify bindings plan files = do
               (convert "bridge._native" "from_native" ref value)
         call <- maybe (Left "unbound adapter") Right (bound decl)
         application <- case call of
-          StaticCall ref -> pure (reference ref <> D.delimitTrailing 4 "(" ")" converted)
+          StaticCall ref -> pure (reference ref <> D.delimitTrailing 4 "(" ")" (handlerNames ++ converted))
           -- A method of the first handle argument, given the others.
           MethodCall name -> case handleAt of
             h : _ -> pure (D.text "(" <> converted !! h <> D.text (")." ++ name) <>
@@ -114,7 +119,7 @@ emitBindings minify bindings plan files = do
           _ -> pure [D.text "result = " <> application',
             D.text "return " <> resultOf resultRef (D.text "result")]
         let signature = D.text ((if C.declarationAsync decl then "async def " else "def ") ++ C.declarationName decl) <>
-              D.delimitTrailing 4 "(" ")" [value <> D.text ": " <> ty | (value,ty) <- zip values argTypes] <>
+              D.delimitTrailing 4 "(" ")" (handlerNames ++ [value <> D.text ": " <> ty | (value,ty) <- zip values argTypes]) <>
               D.text " -> " <> (if result == C.scalarType "Unit" then D.text "None" else resultType)
         pure (P.suite signature (D.text "symbols = {}" <> D.hardline <>
           P.suite (D.text "try") (D.joinWith D.hardline resultBody) <> D.hardline <>
@@ -162,7 +167,13 @@ emitBindings minify bindings plan files = do
     (Left "unit shadows generated lawspec_native support")
   let runtime = [Artifact "src/lawspec_runtime.py" (runtimeSource "python") "generated" "source" |
         not (any ((== "src/lawspec_runtime.py") . artifactPath) files)]
-  let generated = [file | file <- files, artifactPath file `notElem` replacements] ++
+  -- Generated code that calls handlers loads the bound types first.
+  let loading file
+        | any (`isPrefixOf` artifactPath file) ["src/lawspec_abilities/", "src/lawspec_definition_bodies.py"] =
+            file { artifactContent = unlines (concatMap (\l -> if l == "import lawspec_runtime as ls" then [l, "import lawspec_native as _lawspec_bridge"] else [l])
+              (lines (artifactContent file))) }
+        | otherwise = file
+  let generated = [loading file | file <- files, artifactPath file `notElem` replacements] ++
         dataFiles ++ runtime ++ [support] ++ bridges ++ generatorFiles
   stubs <- generatorStubs generators mappings (refs ++ map resolvedNativeType mappings) generated
   pure (generated ++ stubs)

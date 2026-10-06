@@ -1,0 +1,18 @@
+{
+  "rustCrate": "lawspec_example",
+  "types": [
+    {"type": "example.till::type::Money", "native": ["crate", "till_native", "Cash"],
+     "constructors": [{"constructor": "Money", "native": ["crate", "till_native", "Cash"], "style": "record",
+                       "fields": [{"field": "cents", "native": "cents"}]}]}
+  ],
+  "functions": [
+    {"declaration": "example.till::pay", "native": ["crate", "till_native", "pay"]}
+  ],
+  "handlers": [
+    {"ability": "example.till::Drawer", "native": ["crate", "till_native", "NativeTill"]}
+  ],
+  "failures": [
+    {"native": ["crate", "till_native", "CardDeclined"], "failure": "example.till::PayError::Declined"},
+    {"native": ["crate", "till_native", "BadAmount"], "failure": "example.till::PayError::Rejected"}
+  ]
+}

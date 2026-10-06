@@ -232,6 +232,24 @@ function showAssertion(assertion) {
   if (assertion.kind === "implies") return `${assertion.guard.text} implies ${showAssertion(assertion.body)}`;
   return assertion.items.map(showAssertion).join(" and ");
 }
+// An ability key, as the spec names it: example.shop::ability::Store(Int32)
+// is Store Int32, lawspec::ability::Fail(example.shop::type::E) is Fail E.
+function abilityName(key) {
+  const short = (text) => text.replace(/[A-Za-z0-9_.]+::(ability|type)::/g, "");
+  const match = /^(.*?)(\((.*)\))?$/.exec(short(key));
+  return match[3] ? `${match[1]} ${match[3].replace(/[()]/g, " ").replace(/;/g, " ").trim()}` : match[1];
+}
+// The handlers a law runs under, and the ability row of each function its
+// expansion calls.
+function explainAbilities(law, expansion, units) {
+  const unit = (units || []).find((u) => u.id === law.owner);
+  const called = (unit ? unit.declarations : []).filter(
+    (d) => d.uses && new RegExp(`\\b${d.name}\\b`).test(expansion),
+  );
+  const handlers = (law.handlers || []).map((h) => `\n  ${abilityName(h.ability)}: ${h.handler}`).join("");
+  const rows = called.map((d) => `\n  ${d.name} uses ${d.uses.map(abilityName).join(", ")}`).join("");
+  return (handlers ? `\nhandlers${handlers}` : "") + (rows ? `\nrows${rows}` : "");
+}
 function explainExamples(law) {
   return law.examples.map(ex =>
     `\nexample ${JSON.stringify(ex.name)}\n` +
@@ -538,7 +556,8 @@ async function main() {
         : indices
             .map(
               ({ e, i }) =>
-                `${e.owner}::${e.name}\n${e.trace.join("\n=> ")}\n=> ${result.expansions[i]}${explainExamples(e)}`,
+                `${e.owner}::${e.name}\n${e.trace.join("\n=> ")}\n=> ${result.expansions[i]}` +
+                explainAbilities(e, result.expansions[i], result.units) + explainExamples(e),
             )
             .join("\n\n"),
     );

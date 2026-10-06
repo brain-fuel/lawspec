@@ -93,6 +93,10 @@ emitWebDefinitions ts layout bits declarations units = do
     schemaCall name ty value = do
       ref <- Native.webTypeReferenceDoc ty
       pure (E.call ("_lawspec_schema." ++ name) [ref,value,width,D.text "symbols"])
+    -- A handler's values cross with the handler schema (ls.handlerSchema).
+    handlerCall name ty value = do
+      ref <- Native.webTypeReferenceDoc ty
+      pure (E.call ("ls.handlerSchema(_lawspec_schema)." ++ name) [ref,value,width,D.text "symbols"])
     symbols = D.text "symbols" <> annotation (D.text "Map<string, symbol>")
     implementation contracts (index,d) = do
       let binders = definitionArguments d ++ nestedBinders (definitionBody d)
@@ -108,11 +112,11 @@ emitWebDefinitions ts layout bits declarations units = do
             -- An operation goes to the handler installed in symbols for its
             -- ability (evidence passing).
             Perform op args -> do
-              nativeValues <- sequence [schemaCall "toNative" (expressionType a) value | (a, value) <- zip args values]
+              nativeValues <- sequence [handlerCall "toNative" (expressionType a) value | (a, value) <- zip args values]
               let invocation = E.call ("ls.handler(symbols, " ++ show (abilityKey (operationAbility op)) ++ ")." ++ operationName op) nativeValues
               if expressionType term == Constructor "Unit" []
                 then pure (E.call "ls.unitResult" [invocation])
-                else schemaCall "fromNative" (expressionType term) invocation
+                else handlerCall "fromNative" (expressionType term) invocation
             -- handle e with h end: e runs with h installed for its ability,
             -- made afresh each time.
             Handle (WithHandler ability (SpecHandler h)) _ | [body] <- values, Just (owner, x) <- specHandlerOwner h ->

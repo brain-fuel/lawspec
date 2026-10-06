@@ -230,6 +230,15 @@ scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions 
       else runtime "validate"
         [if ty == Named "Unit" then runtime (if py then "unit_result" else "unitResult") [value] else value,
          quoted (typeKey ty),width]
+    -- A handler's values cross with the handler schema: the bound native
+    -- types when lawspec.json binds them (ls.handler_schema).
+    handlerSchema name args = invoke (Doc.render Doc.Compact (runtime (if py then "handler_schema" else "handlerSchema") [text "_lawspec_schema"]) ++ "." ++ name)
+      (args ++ [text "symbols"])
+    handlerInput ty value = if usesData ty
+      then handlerSchema (if py then "to_native" else "toNative") [referenceDoc ty,value,width] else value
+    handlerResult ty value = if usesData ty
+      then handlerSchema (if py then "from_native" else "fromNative") [referenceDoc ty,value,width]
+      else checkedResult ty value
     converted ty value = if usesData ty then schema "validate" [referenceDoc ty,value,width]
       else runtime "convert" [value,quoted (typeKey ty),width]
     -- The handler a law installed for an ability.
@@ -281,7 +290,7 @@ scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions 
       _ -> call
     mappedFailures failure = case [b | b <- C.unitFailureBindings u, C.failureType b == failure] of
       [] -> text (if py then "()" else "[]")
-      bindings -> (if py then Doc.delimitTrailing indentation "(" ",)" else Doc.delimitTrailing indentation "[" "]")
+      bindings -> Doc.delimitTrailing indentation "[" "]"
         [ (if py then Doc.delimitTrailing indentation "(" ")" else Doc.delimitTrailing indentation "[" "]")
             [ if py then runtime "native_class" [quoted (intercalate "." (init (C.failureNative b))), quoted (last (C.failureNative b))]
                     else text (failureAlias (C.failureNative b))
@@ -308,8 +317,8 @@ scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions 
           -- An operation goes to the handler installed for its ability.
           C.Perform op args ->
             let call = method (handlerDoc (C.operationAbility op)) (C.operationName op)
-                  [nativeInput (expressionType a) (converted (expressionType a) value) | (a,value) <- zip args values]
-            in Right (checkedResult (expressionType expression) call)
+                  [handlerInput (expressionType a) (converted (expressionType a) value) | (a,value) <- zip args values]
+            in Right (handlerResult (expressionType expression) call)
           -- handle e with h end: e runs with h installed for its ability.
           C.Handle (C.WithHandler ability choice) _ | [body] <- values ->
             Right (runtime (if py then "with_handlers" else "withHandlers") [text "symbols",

@@ -28,7 +28,7 @@ emit ts minify bits datas units = mapM unitModule (filter unitAbilityPieces unit
     annotation ty = if ts then D.text ": " <> ty else mempty
     schemaCall name ty value = do
       ref <- webTypeReferenceDoc ty
-      pure (E.call ("_lawspec_schema." ++ name) [ref, value, width, D.text "symbols"])
+      pure (E.call ("ls.handlerSchema(_lawspec_schema)." ++ name) [ref, value, width, D.text "symbols"])
     unitModule u = do
       let depth = 1 + length (filter (== '.') (C.idText (C.unitId u)))
           root = concat (replicate depth "../")

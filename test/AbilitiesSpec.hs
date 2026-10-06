@@ -208,3 +208,95 @@ spec = describe "abilities" $ do
           Right bindings = resolveNativeRequest compiled request
           files = planTesting compiled >>= emitPlanWithNativeOptions False "python" Nothing Nothing bindings
       fmap (concatMap artifactContent) files `shouldSatisfy` either (const False) (isInfixOf "native_handler")
+  describe "across units" $ do
+    let owner = unlines
+          [ "unit example.ledger"
+          , "ability Log is note :: Text -> Unit end"
+          , "handler quietLog for Log is note message is unitValue end end"
+          , "definition logged (n :: Int32) :: Int32 is note \"logged\"; n end" ]
+        user = unlines
+          [ "unit example.desk"
+          , "import example.ledger as ledger"
+          , "definition twice (n :: Int32) :: Int32 is ledger.logged n end"
+          , "definition shout (n :: Int32) :: Int32 is note \"shout\"; n end" ]
+        compiled = compileCore 64 defaultGeneration [Source "ledger.lawspec" owner, Source "desk.lawspec" user]
+    it "keeps an imported ability's owner" $
+      fmap (row "shout") compiled `shouldBe` Right (Just ["example.ledger::ability::Log"])
+    it "lets an imported definition use an ability" $
+      fmap (row "twice") compiled `shouldBe` Right (Just ["example.ledger::ability::Log"])
+    it "copies an imported spec handler into the importer" $
+      fmap (\p -> [C.handlerName h | u <- C.programUnits p, C.idText (C.unitId u) == "example.desk", h <- C.unitHandlers u]) compiled
+        `shouldBe` Right ["quietLog"]
+  describe "sequencing and scoped handlers" $ do
+    it "sequences a Unit operation with ;" $ do
+      let Right compiled = program (with ["ability Log is note :: Text -> Unit end",
+            "definition noisy (cents :: Int32) :: Bool is note \"paying\"; let ok = authorize cents in note \"paid\"; true end"])
+      row "noisy" compiled `shouldBe` Just ["example.payments::ability::Gateway", "example.payments::ability::Log"]
+    it "handles an ability inside a definition, which then does not use it" $ do
+      let Right compiled = program (with [checkout, "definition trial (cents :: Int32) :: Bool is handle checkout cents with fakeGateway end end"])
+          scoped e = case C.expressionNode e of
+            C.Handle (C.WithHandler ability (C.SpecHandler h)) _ -> [(C.abilityKey ability, C.idText h)]
+            _ -> concatMap scoped (C.children e)
+      row "trial" compiled `shouldBe` Just []
+      concat [scoped (C.definitionBody d) | u <- C.programUnits compiled, d <- C.unitDefinitions u,
+        C.declarationName (C.definitionDeclaration d) == "trial"]
+        `shouldBe` [("example.payments::ability::Gateway", "example.payments::handler::fakeGateway")]
+    it "lets a handler's clauses use another ability, which its laws then need" $ do
+      let Right compiled = program (with ["ability Log is note :: Text -> Unit end",
+            "handler notingGateway for Gateway is authorize cents is note \"a\"; Approved cents end capture cents is Receipt cents end end"])
+      [map (C.abilityKey . fst) (C.propertyHandlers p) | u <- C.programUnits compiled, p <- C.unitProperties u,
+        "[notingGateway]" `isInfixOf` C.propertyName p]
+        `shouldBe` [["example.payments::ability::Gateway", "example.payments::ability::Log"]]
+    it "rejects a clause that uses its own ability" $
+      program (with ["handler loopGateway for Gateway is authorize cents is capture cents; Approved cents end capture cents is Receipt cents end end"])
+        `shouldSatisfy` failsWith "uses Gateway, the ability its handler handles"
+  describe "parameterized abilities" $ do
+    let store = with [ "ability Store (a :: Type) is load :: a  save :: a -> Unit end"
+                     , "definition keepCount (n :: Int32) :: Int32 uses Store Int32 is save n; load end"
+                     , "definition keepName (s :: Text) :: Text uses Store Text is save s; load end" ]
+    it "uses one ability at several types in a unit" $ do
+      let Right compiled = program store
+      (row "keepCount" compiled, row "keepName" compiled) `shouldBe`
+        (Just ["example.payments::ability::Store(Int32)"], Just ["example.payments::ability::Store(Text)"])
+    it "asks which type when a definition leaves its uses out" $
+      program (store ++ "definition guess (n :: Int32) :: Int32 is save n; load end\n")
+        `shouldSatisfy` failsWith "say which with `uses Store T`"
+  describe "refined operations" $
+    it "makes every handler owe an operation's refined result" $ do
+      let Right compiled = program (with ["ability Meter is reading :: (r :: Int32 where r >= 0) end",
+            "handler fixedMeter for Meter is reading is 7 end end"])
+      [C.propertyName p | u <- C.programUnits compiled, p <- C.unitProperties u, "Meter: reading gives what its type says" `isInfixOf` C.propertyName p]
+        `shouldBe` ["Meter: reading gives what its type says [native]", "Meter: reading gives what its type says [fixedMeter]"]
+  describe "spec handlers with state" $ do
+    let counter law = unlines
+          [ "unit example.counter"
+          , "ability Counter is bump :: Unit -> Int32 end"
+          , "handler counting for Counter with state n :: Int32 start 0 is"
+          , "  bump u is ~n := (if n < 5 then n + 1 else n); n end"
+          , "end"
+          , law ]
+    it "checks a law over a finite domain at compile time" $
+      (program (counter "law `two bumps` using counting is definition is (bump unitValue; bump unitValue) = 2 end end") >>= dischargeEvidence)
+        `shouldSatisfy` isRight
+    it "refutes a false law at compile time" $
+      (program (counter "law `three bumps` using counting is definition is (bump unitValue; bump unitValue) = 3 end end") >>= dischargeEvidence)
+        `shouldSatisfy` failsWith "law three bumps is false"
+  describe "native failures" $ do
+    let source = with ["type Problem is | Refused | Odd reason :: Text end", "charge :: Int32 -> Bool uses Gateway fails with Problem"]
+    it "maps a native exception to a failure constructor" $ do
+      let Right compiled = program source
+          request = emptyNativeRequest { requestFailures =
+            [FailureMapping (NativeRef ["payments", "Declined"]) "example.payments::Problem::Refused",
+             FailureMapping (NativeRef ["payments", "Weird"]) "example.payments::Problem::Odd"] }
+      fmap (map (\b -> (C.idText (C.failureConstructor b), C.failureMessage b)) . bindingFailures) (resolveNativeRequest compiled request)
+        `shouldBe` Right [("example.payments::type::Problem::Refused", False), ("example.payments::type::Problem::Odd", True)]
+    it "rejects a mapping to an unknown constructor" $ do
+      let Right compiled = program source
+          request = emptyNativeRequest { requestFailures = [FailureMapping (NativeRef ["payments", "Declined"]) "example.payments::Problem::Lost"] }
+      resolveNativeRequest compiled request `shouldSatisfy` isLeft
+    forM_ [ ("python", "ls.native_failures("), ("javascript", "ls.nativeFailures("), ("go", "lsNativeFailures(")
+          , ("java", "LawSpecRuntime.nativeFailures("), ("kotlin", "LawSpecRuntime.nativeFailures("), ("haskell", "LS.nativeFailures")
+          , ("rust", "ls::native_failures::<") ] $ \(target, expected) ->
+      it ("catches a native adapter's Fail on " ++ target) $
+        generated target (source ++ "law `charges` is definition is `for all` (c :: Int32) . prelude.attempt (charge c) = prelude.attempt (charge c) end end\n")
+          `shouldSatisfy` either (const False) (isInfixOf expected)

@@ -377,7 +377,7 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
                          [Doc.text (intercalate "." (C.failureNative b) ++ (if kt then "::class.java" else ".class")),
                           Doc.text (if kt then "{ _error -> " else "_error -> ") <>
                             (if kt then ktConstruct' failure else javaConstruct' failure) (C.idText (C.failureConstructor b))
-                              [(if kt then ktNativeResult else javaNativeResult) (C.scalarType "Text") (Doc.text "java.util.Objects.toString(_error.getMessage(), \"\")") | C.failureMessage b] <> close]
+                              [(if kt then ktNativeResult else javaNativeResult) (C.scalarType "Text") (Doc.text (if kt then "(_error.message ?: \"\")" else "java.util.Objects.toString(_error.getMessage(), \"\")")) | C.failureMessage b] <> close]
                      | b <- C.unitFailureBindings u, C.failureType b == failure ]
         in (if kt then KotlinExpr.call else JavaExpr.call) "LawSpecRuntime.nativeFailures"
              ([(if kt then KotlinExpr.quoted else JavaExpr.quoted) (C.abilityKey ability), Doc.text opening <> convert failure native <> close, supplier] ++ mapped)
@@ -499,7 +499,7 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
         let native = qualifyData (java (HaskellData.haskellDataType dataDeclarations failure))
             mapped = [ HaskellExpr.apply "LS.mappedFailure" [Doc.text "((\\_error -> " <>
                          hsConstructValue failure (C.idText (C.failureConstructor b))
-                           [hsNativeResult (C.scalarType "Text") (Doc.text "(T.pack (P.show _error))") | C.failureMessage b] <>
+                           [hsNativeResult (C.scalarType "Text") (Doc.text "(Data.Text.pack (P.show _error))") | C.failureMessage b] <>
                          Doc.text (") :: " ++ intercalate "." (C.failureNative b) ++ " -> LS.Scalar)")]
                      | b <- C.unitFailureBindings u, C.failureType b == failure ]
         in HaskellExpr.apply "LS.nativeFailures" [HaskellExpr.quoted (C.abilityKey ability),
@@ -618,7 +618,8 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
           -- The production handlers of imported abilities are their owners'.
           [hsModuleOf (ownerName a) | a <- C.unitAbilities u, ownerName a /= unitName u, C.abilityNative a == Nothing] ++
           [intercalate "." (init (C.failureNative b)) | b <- C.unitFailureBindings u, length (C.failureNative b) > 1] ++
-          ["LawSpecData" | d <- C.unitDeclarations u, a@(C.AbilityRef _ [_]) <- C.declarationUses d, C.isFail a])
+          ["LawSpecData" | d <- C.unitDeclarations u, a@(C.AbilityRef _ [_]) <- C.declarationUses d, C.isFail a] ++
+          ["Data.Text" | any C.failureMessage (C.unitFailureBindings u)])
       }
     goChecked ty value
       | goCustom ty = GoExpr.call "_lawspecSchema.validate" [Doc.text (goRef ty),value,Doc.text (show bits),Doc.text "symbols"]

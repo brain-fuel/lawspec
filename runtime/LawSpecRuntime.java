@@ -6555,8 +6555,11 @@ public final class LawSpecRuntime {
     } catch (Failure failure) {
       throw failure;
     } catch (RuntimeException error) {
-      for (var each : mapped) {
-        if (each.kind().isInstance(error)) throw new Failure(ability, each.make().apply(error));
+      // A bridge may wrap the application's exception; its causes count too.
+      for (Throwable cause = error; cause != null; cause = cause.getCause()) {
+        for (var each : mapped) {
+          if (each.kind().isInstance(cause)) throw new Failure(ability, each.make().apply(cause));
+        }
       }
       throw error;
     }

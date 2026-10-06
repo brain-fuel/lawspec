@@ -167,8 +167,8 @@ emitConversions declarations plan = do
     pure (D.joinWith (D.hardline <> D.hardline) functions)
   pure (D.joinWith (D.hardline <> D.hardline) definitions)
 
-emitCall :: [C.DataDeclaration] -> BindingPlan -> C.Declaration -> NativeCall -> Either String D.Doc
-emitCall declarations plan declaration native = do
+emitCall :: [C.DataDeclaration] -> BindingPlan -> [String] -> C.Declaration -> NativeCall -> Either String D.Doc
+emitCall declarations plan handlers declaration native = do
   let env = environment declarations plan
       (arguments,result) = C.functionType (C.declarationType declaration)
       context = C.idText (C.declarationId declaration)
@@ -202,7 +202,9 @@ emitCall declarations plan declaration native = do
       static = case native of StaticCall _ -> True; _ -> False
       -- An async adapter awaits its native future; a constructor is called at once.
       awaited = C.declarationAsync declaration && case native of ConstructorCall _ -> False; _ -> True
-      invoked = target <> D.delimitTrailing 4 "(" ")" [D.text ("_native_arg" ++ show i) | (i,_) <- passed] <>
+      -- An adapter that uses abilities passes its handlers first, as the
+      -- generated traits.
+      invoked = target <> D.delimitTrailing 4 "(" ")" (map D.text (if static then handlers else []) ++ [D.text ("_native_arg" ++ show i) | (i,_) <- passed]) <>
         (if awaited then D.text ".await" else mempty)
   case () of
     -- A method or constructor's Unit result discards the native return.

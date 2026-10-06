@@ -1,0 +1,7 @@
+expect: large payments are declined
+@@ src/till/native.py
+<<<<<<<
+        raise CardDeclined()
+=======
+        raise BadAmount("negative")
+>>>>>>>

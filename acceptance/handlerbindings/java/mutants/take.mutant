@@ -1,0 +1,7 @@
+expect-any: a till gives back what it takes [native] | small payments go through [native]
+@@ src/main/java/till/NativeTill.java
+<<<<<<<
+    return new Cash(money.cents());
+=======
+    return new Cash(money.cents() + 1);
+>>>>>>>

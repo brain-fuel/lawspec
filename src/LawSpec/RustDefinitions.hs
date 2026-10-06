@@ -87,7 +87,7 @@ emitRustDefinitions layout bits declarations units = do
           call = case [(ability, failure) | ability@(AbilityRef _ [failure]) <- declarationUses a, isFail ability] of
             (ability, failure) : _ -> E.call ("ls::native_failures::<" ++ either error id (Native.rustDataType declarations failure) ++ ", _>")
               [D.text (show (abilityKey ability)), D.text "|native| ls::IntoValue::into_value(native)", D.text "|| " <> plainCall,
-               D.text (Abilities.mappedFailures [b | u <- units, unitId u == owner, b <- unitFailureBindings u] failure)]
+               D.text (Abilities.mappedFailures Nothing [b | u <- units, unitId u == owner, b <- unitFailureBindings u] failure)]
             [] -> plainCall
           -- An async step runs within its stage's timeout and hedge, when it
           -- has them; each hedged attempt starts from copies of the inputs.

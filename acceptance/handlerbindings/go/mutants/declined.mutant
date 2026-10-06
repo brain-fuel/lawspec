@@ -1,0 +1,7 @@
+expect: large payments are declined
+@@ example/till/native.go
+<<<<<<<
+		panic(CardDeclined{})
+=======
+		panic(BadAmount{Reason: "negative"})
+>>>>>>>

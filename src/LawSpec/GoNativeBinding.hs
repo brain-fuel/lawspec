@@ -11,6 +11,8 @@ import LawSpec.Testing
 import LawSpec.NativeBinding
 import LawSpec.NativeRequest
 import qualified LawSpec.GoData as G
+import LawSpec.AbilityNames (interfaceName, ownAbilities)
+import LawSpec.AbilityEmit.Go (methodName)
 import qualified LawSpec.GoExpr as E
 import qualified LawSpec.GoDefinitions as Definitions
 import qualified LawSpec.CoreNativeScalarEmit as Scalar
@@ -103,6 +105,10 @@ emitBindings minify plan testing files = do
         canonicalResult <- G.goCodecWithContext "symbols" declarations result
         nativeResult <- G.goNativeCodec declarations usedMappings result
         let values = [D.text ("value" ++ show i) | i <- [0::Int ..length args-1]]
+            -- An adapter that uses abilities gets their handlers first, as
+            -- the generated interfaces.
+            handlerParams = [ (interfaceOf a, D.text ("handler" ++ show i))
+                            | (i, a) <- zip [0::Int ..] (C.declarationUses d), not (C.isFail a) ]
             converted = [E.call (n ++ ".toNative") [E.call (c ++ ".fromNative") [v]] |
               (n,c,v) <- zip3 native canonical values]
             function ref = do
@@ -110,7 +116,7 @@ emitBindings minify plan testing files = do
               unless (application `notElem` map snd callNames) (Left "native function shadows generated Go bridge")
               pure application
         invocation <- case call of
-          StaticCall ref -> (\application -> E.call application converted) <$> function ref
+          StaticCall ref -> (\application -> E.call application (map snd handlerParams ++ converted)) <$> function ref
           -- A constructor takes the adapter's arguments but its Units.
           ConstructorCall ref -> (\application -> E.call application [v | (t,v) <- zip args converted, t /= unit]) <$> function ref
           -- A method is called on the first handle argument, with the rest.
@@ -141,12 +147,45 @@ emitBindings minify plan testing files = do
                   D.text ("return LawSpecGo(func() " ++ resultType ++ " { return done })")
               | async = D.text ("return LawSpecGo(func() " ++ resultType ++ " ") <> D.block 8 (D.text "return " <> bridge) <> D.text ")"
               | otherwise = (if result == C.scalarType "Unit" then D.text "_ = " else D.text "return ") <> bridge
-        pure (D.text "func " <> E.call (name d) [v <> D.text (" " ++ t) | (t,v) <- zip types values] <>
+        pure (D.text "func " <> E.call (name d) ([v <> D.text (" " ++ t) | (t,v) <- handlerParams] ++ [v <> D.text (" " ++ t) | (t,v) <- zip types values]) <>
           D.text (if async then " LawSpecTask[" ++ resultType ++ "] " else if result == C.scalarType "Unit" then " " else " " ++ resultType ++ " ") <> D.block 8
           (D.text "schema := lawSpecDataSchemaRegistry()" <> D.hardline <>
            D.text ("bits := " ++ show bits) <> D.hardline <>
            D.text "symbols := map[string]*lawSpecSymbol{}" <> D.hardline <>
            D.text "_, _, _ = schema, bits, symbols" <> D.hardline <> resultStatement))
+      -- Each bound production handler, wrapped in the generated interface:
+      -- its operations' values cross with the native codecs.
+      wrappers <- forM [(a, r) | a <- ownAbilities unit, Just r <- [lookup (C.Id (C.abilityKey (C.abilityInstance a))) (bindingHandlers plan)]] $ \(a, r) -> do
+        let wrapper = lowerFirst (interfaceName a) ++ "Bound"
+        -- The native handler's methods, in the bound types.
+        nativeMethods <- forM (C.abilityOperations a) $ \(op, ty) -> do
+          let (args, result) = C.functionType ty
+          types <- mapM (G.goNativeTypeWithParameters declarations usedMappings []) args
+          resultType <- if result == C.scalarType "Unit" then pure "" else (' ' :) <$> G.goNativeTypeWithParameters declarations usedMappings [] result
+          pure (methodName op ++ "(" ++ intercalate ", " types ++ ")" ++ resultType)
+        operations <- forM (C.abilityOperations a) $ \(op, ty) -> do
+          let (args, result) = C.functionType ty
+          types <- mapM (G.goDataType declarations) args
+          resultType <- if result == C.scalarType "Unit" then pure "" else (' ' :) <$> G.goDataType declarations result
+          canonical <- mapM (G.goCodecWithContext "symbols" declarations) args
+          native <- mapM (G.goNativeCodec declarations usedMappings) args
+          canonicalResult <- G.goCodecWithContext "symbols" declarations result
+          nativeResult <- G.goNativeCodec declarations usedMappings result
+          let values = [D.text ("value" ++ show i) | i <- [0::Int ..length args-1]]
+              invocation = E.call ("bound.inner." ++ methodName op)
+                [E.call (n ++ ".toNative") [E.call (c ++ ".fromNative") [v]] | (n,c,v) <- zip3 native canonical values]
+              body = if result == C.scalarType "Unit" then invocation
+                else D.text "return " <> E.call (canonicalResult ++ ".toNative") [E.call (nativeResult ++ ".fromNative") [invocation]]
+          pure (D.text ("func (bound *" ++ wrapper ++ ") ") <> E.call (methodName op) [v <> D.text (" " ++ t) | (t,v) <- zip types values] <>
+            D.text (resultType ++ " ") <> D.block 8 (D.joinWith D.hardline
+              [D.text "schema := lawSpecDataSchemaRegistry()", D.text ("bits := " ++ show bits),
+               D.text "symbols := map[string]*lawSpecSymbol{}", D.text "_, _, _ = schema, bits, symbols", body]))
+        pure (D.text ("// " ++ wrapper ++ " is the bound production handler of " ++ C.abilityName a ++ " as the generated interface.") <> D.hardline <>
+          D.text ("type " ++ wrapper ++ " struct ") <> D.block 8 (D.text "inner interface " <> D.block 8 (D.joinWith D.hardline (map D.text nativeMethods))) <> D.hardline <> D.hardline <>
+          D.text ("// New" ++ interfaceName a ++ "Bound makes it.") <> D.hardline <>
+          D.text ("func New" ++ interfaceName a ++ "Bound() " ++ interfaceName a ++ " ") <>
+            D.block 8 (D.text ("return &" ++ wrapper ++ "{inner: " ++ intercalate "." (referenceParts r) ++ "()}")) <>
+          D.hardline <> D.hardline <> D.joinWith (D.hardline <> D.hardline) operations)
       codecs <- G.emitGoNativeCodecs layout package
         (importsFor ([resolvedNativeType m | m <- usedMappings] ++
           [resolvedNativeConstructor c | m <- usedMappings,c <- resolvedConstructors m] ++
@@ -194,7 +233,7 @@ emitBindings minify plan testing files = do
             (D.text "// Generated by LawSpec. Do not edit." <> D.hardline <>
              D.text ("package " ++ package) <> D.hardline <> D.hardline <>
              importDocs [r | d <- boundAdapters,Just r <- [bound d >>= callRef]] <>
-             D.joinWith (D.hardline <> D.hardline) bodies <> D.hardline)) "generated" "source"
+             D.joinWith (D.hardline <> D.hardline) (bodies ++ wrappers) <> D.hardline)) "generated" "source"
           support = Artifact (directory ++ "/lawspec_native_codecs.go") codecs "generated" "source"
       unless (all ((/= artifactPath support) . artifactPath) files) (Left "unit shadows Go native codec support")
       let ownDefinitions = [f | f <- definitions, artifactPath f == directory ++ "/lawspec_definitions.go", not (null boundAdapters)]
@@ -203,6 +242,9 @@ emitBindings minify plan testing files = do
   pure ([f | f <- files,artifactPath f `notElem` map artifactPath emitted] ++ emitted)
   where
     declarations = planDataDeclarations testing
+    interfaceOf ability = maybe "any" (interfaceName . snd) (C.findAbility units ability)
+    lowerFirst (c:cs) = toLower c : cs
+    lowerFirst [] = []
     units = map plannedUnit (plannedUnits testing)
     laws = concatMap plannedProperties (plannedUnits testing)
     bits = planMachineBits testing

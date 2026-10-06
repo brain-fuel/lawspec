@@ -1,0 +1,7 @@
+expect: large payments are declined
+@@ src/main/kotlin/till/Till.kt
+<<<<<<<
+        if (cents > 1000) throw CardDeclined()
+=======
+        if (cents > 1000) throw BadAmount("negative")
+>>>>>>>

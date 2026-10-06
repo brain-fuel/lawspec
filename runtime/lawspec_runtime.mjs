@@ -696,6 +696,16 @@ export async function attemptAsync(ability, body, right, left) {
   return right(value);
 }
 
+// The schema a handler's values cross with: the bound native types when
+// lawspec.json binds them (the native bindings module sets it).
+let boundHandlerSchema = null;
+export function setHandlerSchema(schema) {
+  boundHandlerSchema = schema;
+}
+export function handlerSchema(fallback) {
+  return boundHandlerSchema ?? fallback;
+}
+
 // handle e with h end: runs body with these handlers installed, then puts
 // back the ones they replaced.
 export function withHandlers(symbols, handlers, body) {

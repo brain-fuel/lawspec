@@ -75,14 +75,19 @@ end
 - An operation is written like a signature. It may take no values:
   `fee :: Int32` is called as `fee`.
 - Operation names must be unique in the unit, and differ from its functions.
-- An operation's type cannot carry a refinement yet. Put the constraint in a
-  wrapper type instead.
+- An operation's type may carry refinements. Its arguments are checked
+  where code calls it, and every handler owes its result's refinement: each
+  becomes a law, `` Meter: reading gives what its type says ``, checked for
+  each handler like the ability's own laws.
 - The `laws` section is optional. Its laws are written as usual, and must be
   closed: quantify their values with `` `for all` ``.
 
 An ability may take type parameters, written like a type's:
-`ability Store (a :: Type) is put :: a -> Unit ... end`. For now a unit uses
-a parameterized ability at one type, which its `uses` lists or handlers name.
+`ability Store (a :: Type) is put :: a -> Unit ... end`. A unit may use it at
+several types, such as `Store Int32` and `Store Text`. Each is its own
+ability: its own handlers, row entries and native interface (`StoreInt32`).
+A definition that uses a parameterized ability at more than one type in its
+unit must say which, with `uses Store Int32`.
 
 ## Saying what code uses
 
@@ -119,7 +124,47 @@ law's handlers as its `handlers`.
   of the failure it raised. It may be used in laws.
 - A failure no law catches fails the test, naming the failure.
 
-Native adapters do not raise `Fail` failures yet.
+A native adapter that `fails with E` fails by raising the runtime's `Fail`
+with a native `E`:
+
+| Target | Native code fails with |
+| --- | --- |
+| Python | `raise ls.Fail(value)` |
+| JavaScript, TypeScript | `throw new ls.Fail(value)` |
+| Go | `panic(LawSpecFail{Value: value})` |
+| Java, Kotlin | `throw new LawSpecRuntime.Fail(value)` |
+| Rust | `ls::fail(value)` |
+| Haskell | `throwIO (LS.Fail value)` |
+
+Application code that throws its own exceptions can keep them: `failures` in
+`lawspec.json` maps each to a failure constructor (see
+[Handlers](handlers.md#native-failures)).
+
+## Effects in order
+
+A definition orders the operations it performs:
+
+```lawspec fragment
+definition buy (cents :: Int32) :: Bool uses Gateway, Log is
+  note "buying";
+  let approved = checkout cents in
+  note "bought";
+  approved
+end
+```
+
+- `a; b` runs `a`, then gives `b`. An operation that gives `Unit`, such as
+  `note`, is called this way for its effect.
+- `let x = e in body` runs `e` once and names its value in `body`.
+- Each is an ordinary expression, so it may appear in a law as well.
+
+## Abilities across units
+
+`import` brings a unit's abilities and handlers with it. An imported
+ability's operations are called like the unit's own, and the importer's
+definitions may use it. Its native interface, production handler and
+recording stay with the unit that declares it, so every importer shares
+them. A spec handler is copied into each unit that imports it.
 
 ## Errors
 
@@ -134,8 +179,7 @@ Native adapters do not raise `Fail` failures yet.
 
 ## Limits
 
-- Abilities belong to their unit. Another unit cannot import an ability, or
-  a definition that uses one.
-- Handler clauses cannot use abilities.
-- `a; b` does not yet sequence two calls for their effects in a definition.
-  In a law, conjuncts joined with `and` run in order.
+- Handlers are tail-resumptive or aborting (see [Handlers](handlers.md)).
+- An async adapter cannot fail with the runtime's `Fail` yet.
+- Two abilities with the same name cannot meet in one unit, even from
+  different units.

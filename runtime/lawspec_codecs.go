@@ -27,6 +27,17 @@ func lsNativeContext[T any](context string, operation func() T) (result T) {
 			if failure, ok := problem.(*LawSpecFailure); ok {
 				panic(failure)
 			}
+			// So do native failures, and the application's own errors, which
+			// lawspec.json may map to failures.
+			switch problem.(type) {
+			case LawSpecFail, *LawSpecFail:
+				panic(problem)
+			}
+			if _, isError := problem.(error); isError {
+				if _, rejected := problem.(lawSpecRefinementViolation); !rejected {
+					panic(problem)
+				}
+			}
 			message := fmt.Sprintf("%s: %v", context, problem)
 			if _, rejected := problem.(lawSpecRefinementViolation); rejected {
 				panic(lawSpecRefinementViolation{message})

@@ -1,0 +1,50 @@
+unit example.till
+
+-- An ability whose production handler is application code, named in
+-- lawspec.json under handlers. Money is bound to a native type there too, so
+-- the handler's operations take and give that type.
+
+type Money is Money cents :: Int64 end
+type PayError is | Declined | Rejected reason :: Text end
+
+-- A till's drawer. Every handler of it gives back what it takes.
+ability Drawer is
+  take :: Money -> Money
+  opening :: Money
+laws
+  law `a till gives back what it takes` is
+    definition is
+      `for all` (cents :: Int64 where cents >= 0 && cents <= 1000) . take (Money cents) = Money cents
+    end
+  end
+end
+
+handler fakeDrawer for Drawer is
+  take money is money end
+  opening is Money 0 end
+end
+
+-- A native adapter that fails. Its native code raises the application's own
+-- exceptions; lawspec.json maps them to PayError's constructors.
+pay :: Int64 -> Money uses Drawer fails with PayError
+
+law `small payments go through` is
+  definition is
+    `for all` (cents :: Int64 where cents >= 0 && cents <= 1000) .
+      prelude.attempt (pay cents) = Right (Money cents)
+  end
+end
+
+law `large payments are declined` is
+  definition is
+    `for all` (cents :: Int64 where cents > 1000 && cents <= 100000) .
+      prelude.attempt (pay cents) = Left Declined
+  end
+end
+
+law `negative payments are rejected` is
+  definition is
+    `for all` (cents :: Int64 where cents >= -1000 && cents < 0) .
+      prelude.attempt (pay cents) = Left (Rejected "negative")
+  end
+end

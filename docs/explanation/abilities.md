@@ -83,6 +83,12 @@ later, or several times. LawSpec allows only two kinds of handler:
 - **Aborting** handlers stop the computation. The `Fail` ability's handlers
   are of this kind: `raise` aborts to the nearest `attempt`.
 
+A definition can install a spec handler for part of its body with `handle e
+with h end`. It is made afresh, installed in the context for `e`, and the
+handlers it replaced come back afterwards. A handler's clauses are checked
+definitions, so they may perform other abilities' operations; they find
+those handlers in the same context.
+
 With this restriction no target needs continuations. A tail-resumptive
 operation is an ordinary method call. An abort is the target's exception or
 panic.
@@ -97,8 +103,11 @@ then reports one obligation for each pair.
   compiler treats the law like any law over definitions. It proves it when
   it can. Over a finite domain it evaluates every case, and a false law is a
   compile error.
-- A spec handler with state, and the native handler, are property-tested by
-  the generated tests.
+- A spec handler with state is run by the compiler too, when the law's
+  domain is finite and it calls no adapter. Each case starts the state
+  afresh and threads it through the operations in order.
+- The native handler is property-tested by the generated tests.
+- An operation's refined result is a law too: every handler owes it.
 
 ## Typing
 
@@ -111,6 +120,48 @@ without a body has no code to read, so it must say what it uses.
 An operation's type comes from its ability. A call to it type-checks like any
 call; the totality audit treats it as an opaque call whose result has the
 operation's type.
+
+## Extension guide
+
+The work after 0.21 builds on these points. Each new ability feature or
+target should change these, and only these.
+
+- **Built-in abilities.** A `lawspec.*` unit declares an ability and its
+  spec handlers like any unit. Importers use it as their own: imports copy
+  abilities and handlers (`LawSpec.Imports`), and the declaring unit keeps
+  the native interface, production handler and recording
+  (`AbilityNames.ownedAbilityUnits`, `ownAbilities`, `Core.findAbility`).
+  Its production handler is bound in `lawspec.json` (`handlers`), or
+  generated as a stub in the declaring unit's adapter module.
+- **The surface pass.** `LawSpec.Abilities.elaborateAbilities` checks
+  declarations, makes each clause a checked definition, infers rows (with
+  handled regions and clause rows), names each law's handlers and adds the
+  ability laws and refinement laws. New checks and new law variants go here.
+- **Core.** Abilities reach Core as `Perform`, `Handle` (`CatchFailure`,
+  `WithHandler`), `Calls` and `Let`. Elaboration resolves operations and
+  handlers (`Elaboration.performOperations`), `Core.Validate` checks rows,
+  `Core.Eval` evaluates, and `Core.Total` proves. A new node changes each of
+  these and `Core.children`/`mapChildren`.
+- **Evidence.** `LawSpec.Discharge` answers operations at compile time:
+  `specResolver` for spec handlers without state, `statefulResolver` for
+  those with state. A new kind of compile-time handler goes beside them.
+- **Names.** `LawSpec.AbilityNames` names every native piece: the interface
+  (`interfaceName`, with a parameterized ability's types), production
+  handler, spec handler, recording and Haskell record field (`fieldName`).
+- **Targets.** Each target has `AbilityEmit/<Target>` (interfaces, spec
+  handlers, recordings, production stubs), the `Perform` and `Handle` cases
+  of its definitions emitter, the handler installs and constructions of its
+  test emitter (`CoreScalarEmit` or `CoreNativeScalarEmit`), and runtime
+  helpers: install, look up, `with_handlers`, `raise`, `attempt`,
+  `native_failures`, the native `Fail`. A new target implements all of
+  them; Rust keeps its paths in `LawSpec.RustAbilityPaths`.
+- **Native bindings.** `LawSpec.NativeRequest` reads `handlers` and
+  `failures`; each `<Target>NativeBinding` makes a bound handler speak the
+  bound types (the handler schema in Python and JavaScript, an
+  `<Ability>Bound` wrapper elsewhere) and gives a bound adapter its handlers.
+- **Acceptance.** The `abilities` suite covers the language on every
+  target, and `handlerbindings` covers `lawspec.json`. A new feature adds a
+  law and a mutant to one of them on each target.
 
 ## References
 

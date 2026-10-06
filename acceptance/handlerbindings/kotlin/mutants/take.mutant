@@ -1,0 +1,7 @@
+expect-any: a till gives back what it takes [native] | small payments go through [native]
+@@ src/main/kotlin/till/Till.kt
+<<<<<<<
+        return Cash(money.cents)
+=======
+        return Cash(money.cents + 1)
+>>>>>>>

@@ -37,7 +37,7 @@ emit minify bits datas units = mapM unitModule (filter unitAbilityPieces units)
     width = D.text (show bits)
     schemaCall name ty value = do
       ref <- pythonTypeReferenceDoc ty
-      pure (E.call ("_lawspec_schema." ++ name) [ref, value, width, D.text "symbols"])
+      pure (E.call ("ls.handler_schema(_lawspec_schema)." ++ name) [ref, value, width, D.text "symbols"])
     unitModule u = do
       protocols <- mapM protocol (ownAbilities u)
       handlers <- mapM (specHandler u) (C.unitHandlers u)

@@ -13,6 +13,8 @@ import LawSpec.Testing
 import LawSpec.NativeBinding
 import LawSpec.NativeRequest
 import qualified LawSpec.KotlinData as K
+import LawSpec.AbilityNames (interfaceName, ownAbilities, ownerName)
+import LawSpec.AbilityEmit.Kotlin (abilitiesObjectOf)
 import qualified LawSpec.KotlinExpr as E
 import qualified LawSpec.Code.Doc as D
 import LawSpec.RuntimeSources (runtimeSource)
@@ -81,6 +83,10 @@ emitBindings minify plan testing files = do
         nativeResult <- K.kotlinNativeCodecDoc declarations result
         nativeResultType <- K.kotlinNativeTypeDoc declarations mappings [] result
         let values = [D.text ("value" ++ show i) | i <- [0::Int ..length args-1]]
+            -- An adapter that uses abilities gets their handlers first, as
+            -- the generated interfaces.
+            handlerParams = [ (D.text (interfaceType a), D.text ("handler" ++ show i))
+                            | (i, a) <- zip [0::Int ..] (C.declarationUses d), not (C.isFail a) ]
             converted = [method n "decode" [method c "encode" [v]] | (n,c,v) <- zip3 native canonical values]
             returned = method canonicalResult "decode" [method nativeResult "encode" [D.text "result"]]
         maybeElement <- case result of
@@ -88,7 +94,7 @@ emitBindings minify plan testing files = do
           _ -> pure Nothing
         resultBody <- case ref of
           StaticCall r -> do
-            let application = E.call (intercalate "." (referenceParts r)) converted
+            let application = E.call (intercalate "." (referenceParts r)) (map snd handlerParams ++ converted)
             pure $ if result == C.scalarType "Unit" then application <> D.hardline <> D.text "Unit" else
               D.text "val result = " <> application <> D.hardline <> returned
           _ -> do
@@ -112,12 +118,34 @@ emitBindings minify plan testing files = do
                     D.text "LawSpecRuntime.Just(found as " <> element <> D.text ")" <> D.hardline <> returned
                 Nothing -> D.text "val result = " <> application <> D.text " as " <> nativeResultType <> D.hardline <> returned
         -- An async adapter's bridge suspends on its native call; a constructor completes at once.
-        pure (D.text (if C.declarationAsync d then "suspend fun " else "fun ") <> E.call (C.declarationName d) [v <> D.text ": " <> t | (t,v) <- zip argTypes values] <>
+        pure (D.text (if C.declarationAsync d then "suspend fun " else "fun ") <> E.call (C.declarationName d)
+            ([v <> D.text ": " <> t | (t,v) <- handlerParams] ++ [v <> D.text ": " <> t | (t,v) <- zip argTypes values]) <>
           D.text ": " <> resultType <> D.text " " <> D.block 4
           (D.text "val symbols = mutableMapOf<String, Any>()" <> D.hardline <>
            D.text "return try " <> D.block 4 resultBody <> D.text " catch (error: RuntimeException) " <>
-           D.block 4 (D.text "throw " <> E.call "IllegalArgumentException"
+           D.block 4 (D.text "if (error !is IllegalArgumentException && error !is IllegalStateException && error !is ClassCastException && error !is ArithmeticException) throw error" <> D.hardline <>
+             D.text "throw " <> E.call "IllegalArgumentException"
              [E.quoted ("native binding " ++ C.idText (C.declarationId d) ++ ": ") <> D.text " + error.message",D.text "error"])))
+      -- Each bound production handler, wrapped in the generated interface:
+      -- its operations' values cross with the native codecs.
+      wrappers <- forM [(a, r) | a <- ownAbilities unit, Just r <- [lookup (C.Id (C.abilityKey (C.abilityInstance a))) (bindingHandlers plan)]] $ \(a, r) -> do
+        operations <- forM (C.abilityOperations a) $ \(op, ty) -> do
+          let (args, result) = C.functionType ty
+          types <- mapM (K.kotlinDataTypeDoc declarations) args
+          resultType <- if result == C.scalarType "Unit" then pure (D.text "Unit") else K.kotlinDataTypeDoc declarations result
+          canonical <- mapM (K.kotlinCodecDocWithContext (D.text "symbols") declarations) args
+          native <- mapM (K.kotlinNativeCodecDoc declarations) args
+          canonicalResult <- K.kotlinCodecDocWithContext (D.text "symbols") declarations result
+          nativeResult <- K.kotlinNativeCodecDoc declarations result
+          let values = [D.text ("value" ++ show i) | i <- [0::Int ..length args-1]]
+              invocation = E.call ("inner." ++ op) [method n "decode" [method c "encode" [v]] | (n,c,v) <- zip3 native canonical values]
+              body = if result == C.scalarType "Unit" then invocation
+                else D.text "return " <> method canonicalResult "decode" [method nativeResult "encode" [invocation]]
+          pure (D.text "override fun " <> E.call op [v <> D.text ": " <> t | (t,v) <- zip types values] <> D.text ": " <> resultType <> D.text " " <>
+            D.block 4 (D.text "val symbols = mutableMapOf<String, Any>()" <> D.hardline <> body))
+        pure (D.text ("/** The bound production handler of " ++ C.abilityName a ++ ", " ++ intercalate "." (referenceParts r) ++ ", as the generated interface. */") <> D.hardline <>
+          D.text ("class " ++ interfaceName a ++ "Bound : " ++ interfaceType' a ++ " ") <> D.block 4 (D.joinWith (D.hardline <> D.hardline)
+            (D.text ("private val inner = " ++ intercalate "." (referenceParts r) ++ "()") : operations)))
       let name = concatMap cap (split '_' (last parts))
           package = intercalate "." (init parts)
           path = "src/main/kotlin/" ++ concatMap (++ "/") (init parts) ++ name ++ ".kt"
@@ -126,7 +154,7 @@ emitBindings minify plan testing files = do
           source = header <> D.text ("object " ++ name ++ " ") <> D.block 4
             (D.text "private val schema = LawSpecDataSchema.create()" <> D.hardline <>
              D.text ("private val bits = " ++ show bits) <> D.hardline <> D.hardline <>
-             D.joinWith (D.hardline <> D.hardline) bodies)
+             D.joinWith (D.hardline <> D.hardline) (bodies ++ wrappers))
       pure [Artifact path (render source) "generated" "source"]
   dataFiles <- if any ((== "src/main/java/lawspec/runtime/LawSpecDataSchema.java") . artifactPath) files then pure []
     else K.emitKotlinDataWithProfile bits layout declarations
@@ -188,6 +216,8 @@ emitBindings minify plan testing files = do
   where
     declarations = planDataDeclarations testing
     bits = planMachineBits testing
+    interfaceType ability = maybe "Any" (interfaceType' . snd) (C.findAbility (map plannedUnit (plannedUnits testing)) ability)
+    interfaceType' a = abilitiesObjectOf (ownerName a) ++ "." ++ interfaceName a
     representations = bindingRepresentations plan
     mappings = resolvedTypes representations
     generators = resolvedGenerators representations

@@ -254,6 +254,26 @@ emitRustWithBindings minify bindings plan@Plan{..} = either (Left . pure . (\m -
     hasRemote = not (null (snd (remoteManifest plan)))
     hasMailboxes = any (not . null . unitMailboxes . plannedUnit) plannedUnits
     hasAbilities = any (not . null . unitAbilities . plannedUnit) plannedUnits
+    -- Each bound production handler, wrapped in the generated trait: its
+    -- operations' values cross with the native conversions. The binding
+    -- names the native type, which is Default.
+    boundWrappers unit = forM [(a, r) | a <- ownAbilities unit, Just r <- [lookup (Id (abilityKey (abilityInstance a))) (NR.bindingHandlers bindings)]] $ \(a, r) -> do
+      native <- RB.rustReference r
+      let name = interfaceName a ++ "Bound"
+          function = map toLower (take 1 (interfaceName a)) ++ drop 1 (interfaceName a) ++ "_bound"
+      methods <- forM (abilityOperations a) $ \(op, ty) -> do
+        let (args, result) = functionType ty
+        types <- mapM (NativeData.rustDataType planDataDeclarations) args
+        resultType <- NativeData.rustDataType planDataDeclarations result
+        converted <- sequence [RB.convertExpression planDataDeclarations bindings True t (Doc.text ("value" ++ show i)) | (i, t) <- zip [0 :: Int ..] args]
+        back <- RB.convertExpression planDataDeclarations bindings False result (Doc.text "native_result")
+        pure (Doc.text ("fn " ++ op ++ "(&self" ++ concat [", value" ++ show i ++ ": " ++ t | (i, t) <- zip [0 :: Int ..] types] ++ ") -> " ++ resultType ++ " ") <>
+          block (statements [Doc.text "let native_result = self.inner." <> Doc.text op <> Doc.delimitTrailing 4 "(" ")" converted <> Doc.text ";", back]))
+      pure (Doc.text ("/// The bound production handler of " ++ abilityName a ++ ", " ++ native ++ ", as the generated trait.") <> Doc.hardline <>
+        Doc.text ("pub struct " ++ name ++ " ") <> block (Doc.text ("inner: " ++ native ++ ",")) <> Doc.hardline <> Doc.hardline <>
+        Doc.text ("pub fn " ++ function ++ "() -> " ++ name ++ " ") <> block (Doc.text (name ++ " { inner: Default::default() }")) <> Doc.hardline <> Doc.hardline <>
+        Doc.text ("impl crate::" ++ Abilities.traitPath allUnits (abilityInstance a) ++ " for " ++ name ++ " ") <>
+        block (Doc.joinWith (Doc.hardline <> Doc.hardline) methods))
     allUnits = map plannedUnit plannedUnits
     -- A handler from the context, borrowed as its ability's trait.
     handlerValue ability = Doc.text ("ctx.handler::<std::sync::Arc<dyn " ++ Abilities.traitPath allUnits ability ++ ">>(" ++ q (abilityKey ability) ++ ")?")
@@ -337,7 +357,7 @@ emitRustWithBindings minify bindings plan@Plan{..} = either (Left . pure . (\m -
               <> Doc.text (" -> " ++ resultType ++ " ")
         body <- case nativeCall d of
           Nothing -> pure (invoke "todo!" [string (idText (declarationId d))])
-          Just native -> RB.emitCall planDataDeclarations bindings d native
+          Just native -> RB.emitCall planDataDeclarations bindings [handlerName ability | ability <- declarationUses d, not (isFail ability)] d native
         pure (Doc.lineComment 100 "// " ("LawSpec: " ++ Presentation.prettyType (declarationType d)) <>
           signature <> block body)
       wrappers <- forM adapters $ \d -> do
@@ -380,7 +400,7 @@ emitRustWithBindings minify bindings plan@Plan{..} = either (Left . pure . (\m -
             called = case (failureType, [a | a@(AbilityRef _ [_]) <- declarationUses d, isFail a]) of
               (Just native, ability@(AbilityRef _ [failure]) : _) -> invoke ("ls::native_failures::<" ++ native ++ ", _>")
                 [string (abilityKey ability), Doc.text "|native| ls::IntoValue::into_value(native)", Doc.text "|| " <> plain,
-                 Doc.text (Paths.mappedFailures (unitFailureBindings unit) failure)]
+                 Doc.text (Paths.mappedFailures (NR.bindingRustCrate bindings) (unitFailureBindings unit) failure)]
               _ -> plain
             wrapped = invoke (if typeName result == "CodeUnit16" then "ls::Value::CodeUnit16" else "ls::IntoValue::into_value") [Doc.text "native_result"]
         ref <- schemaType result
@@ -538,7 +558,7 @@ emitRustWithBindings minify bindings plan@Plan{..} = either (Left . pure . (\m -
             (invoke "ls::with_stack" [Doc.text ("run_" ++ show index)]) <>
           blank <> function ("run_" ++ show index) [] "ls::Result<()>"
             (statements ([context] ++ fixed ++ examples ++ random ++ [Doc.text "Ok(())"])))
-      productions <- if generatedAdapter then pure [] else mapM (Abilities.productionStub planDataDeclarations unit) (ownAbilities unit)
+      productions <- if generatedAdapter then boundWrappers unit else mapM (Abilities.productionStub planDataDeclarations unit) (ownAbilities unit)
       let adapterDoc = statements [Doc.text (if generatedAdapter then "// Generated native bridge by LawSpec. Do not edit." else "// Scaffolded by LawSpec. User-owned; never overwritten."),
             Doc.text "#![allow(unused_variables, unused_imports, non_snake_case)]",
             Doc.text "use crate::lawspec_runtime as ls;"] <>

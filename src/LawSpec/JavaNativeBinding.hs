@@ -11,6 +11,8 @@ import LawSpec.Testing
 import LawSpec.NativeBinding
 import LawSpec.NativeRequest
 import qualified LawSpec.JavaData as J
+import LawSpec.AbilityNames (interfaceName, ownAbilities, ownerName)
+import LawSpec.AbilityEmit.Java (abilitiesClassOf)
 import qualified LawSpec.JavaExpr as E
 import qualified LawSpec.Code.Doc as D
 import LawSpec.Scalar (nativeRepresentation)
@@ -58,7 +60,11 @@ emitBindings minify plan testing files = do
         nativeResult <- codec [] (D.text "_schema") (D.text (show bits)) result
         nativeResultType <- nativeType [] result
         let values = [D.text ("value" ++ show i) | i <- [0::Int ..length args-1]]
-            converted = [method n "decode" [method c "encode" [v]] | (n,c,v) <- zip3 native canonical values]
+            -- An adapter that uses abilities gets their handlers first, as
+            -- the generated interfaces.
+            handlerParams = [ (D.text (interfaceType a), D.text ("handler" ++ show i))
+                            | (i, a) <- zip [0::Int ..] (C.declarationUses d), not (C.isFail a) ]
+            converted = map snd handlerParams ++ [method n "decode" [method c "encode" [v]] | (n,c,v) <- zip3 native canonical values]
             handleArgument = lookup True [(isHandle t,i) | (i,t) <- zip [0::Int ..] args]
         application <- case ref of
           StaticCall r -> pure (call (reference r) converted)
@@ -66,11 +72,12 @@ emitBindings minify plan testing files = do
           MethodCall name -> case handleArgument of
             Just i -> do
               receiverType <- nativeType [] (args !! i)
-              pure (D.text "((" <> receiverType <> D.text ") " <> converted !! i <> D.text ")" <>
-                call ("." ++ name) [v | (j,v) <- zip [0..] converted, j /= i])
+              let plain = drop (length handlerParams) converted
+              pure (D.text "((" <> receiverType <> D.text ") " <> plain !! i <> D.text ")" <>
+                call ("." ++ name) (map snd handlerParams ++ [v | (j,v) <- zip [0..] plain, j /= i]))
             Nothing -> Left ("method binding without a handle argument: " ++ C.idText (C.declarationId d))
           ConstructorCall r -> pure (call ("new " ++ reference r)
-            [v | (t,v) <- zip args converted, t /= C.scalarType "Unit"])
+            [v | (t,v) <- zip args (drop (length handlerParams) converted), t /= C.scalarType "Unit"])
         let static = case ref of StaticCall _ -> True; _ -> False
             returned = D.text "return " <> method canonicalResult "decode" [method nativeResult "encode" [D.text "result"]] <> D.text ";"
         maybeElement <- case result of
@@ -107,11 +114,33 @@ emitBindings minify plan testing files = do
                 D.text ".thenApply(found -> " <> D.nest 4 (converted' (D.text "found")) <> D.text ");"
         pure (D.text "public static " <> (if async then future <> D.text "<" <> boxedResult <> D.text ">"
           else if unit then D.text "void" else resultType) <>
-          D.text " " <> call (C.declarationName d) [t <> D.text " " <> v | (t,v) <- zip argTypes values] <>
+          D.text " " <> call (C.declarationName d) ([t <> D.text " " <> v | (t,v) <- handlerParams] ++ [t <> D.text " " <> v | (t,v) <- zip argTypes values]) <>
           D.text " " <> D.block 2 (D.text "var symbols = new java.util.HashMap<String, Object>();" <> D.hardline <>
-            D.text "try " <> D.block 2 (if async then asyncBody else resultBody) <> D.text " catch (RuntimeException error) " <>
+            D.text "try " <> D.block 2 (if async then asyncBody else resultBody) <> D.text " catch (IllegalArgumentException | IllegalStateException | ClassCastException | ArithmeticException error) " <>
             D.block 2 (D.text "throw " <> call "new IllegalArgumentException"
               [E.quoted ("native binding " ++ C.idText (C.declarationId d) ++ ": ") <> D.text " + error.getMessage()",D.text "error"] <> D.text ";")))
+      -- Each bound production handler, wrapped in the generated interface:
+      -- its operations' values cross with the native codecs.
+      wrappers <- forM [(a, r) | a <- ownAbilities unit, Just r <- [lookup (C.Id (C.abilityKey (C.abilityInstance a))) (bindingHandlers plan)]] $ \(a, r) -> do
+        operations <- forM (C.abilityOperations a) $ \(op, ty) -> do
+          let (args, result) = C.functionType ty
+          types <- mapM (J.javaDataTypeDoc declarations) args
+          resultType <- if result == C.scalarType "Unit" then pure (D.text "void") else J.javaDataTypeDoc declarations result
+          canonical <- mapM (J.javaCodecDocWithContext (D.text "symbols") declarations bits) args
+          native <- mapM (codec [] (D.text "_schema") (D.text (show bits))) args
+          canonicalResult <- J.javaCodecDocWithContext (D.text "symbols") declarations bits result
+          nativeResult <- codec [] (D.text "_schema") (D.text (show bits)) result
+          let values = [D.text ("value" ++ show i) | i <- [0::Int ..length args-1]]
+              invocation = call ("inner." ++ op) [method n "decode" [method c "encode" [v]] | (n,c,v) <- zip3 native canonical values]
+              body = if result == C.scalarType "Unit" then invocation <> D.text ";"
+                else D.text "return " <> method canonicalResult "decode" [method nativeResult "encode" [invocation]] <> D.text ";"
+          pure (D.text "@Override" <> D.hardline <> D.text "public " <> resultType <> D.text " " <>
+            call op [t <> D.text " " <> v | (t,v) <- zip types values] <> D.text " " <>
+            D.block 2 (D.text "var symbols = new java.util.HashMap<String, Object>();" <> D.hardline <> body))
+        let name = interfaceName a ++ "Bound"
+        pure (D.text ("/** The bound production handler of " ++ C.abilityName a ++ ", " ++ reference r ++ ", as the generated interface. */") <> D.hardline <>
+          D.text ("public static final class " ++ name ++ " implements " ++ interfaceType' a ++ " ") <> D.block 2 (D.joinWith (D.hardline <> D.hardline)
+            ([D.text ("private final " ++ reference r ++ " inner = new " ++ reference r ++ "();")] ++ operations)))
       let parts = split '.' (unitName unit)
           name = concatMap cap (split '_' (last parts))
           package = intercalate "." (init parts)
@@ -120,7 +149,7 @@ emitBindings minify plan testing files = do
           source = header <> D.text ("public final class " ++ name ++ " ") <> D.block 2
             (D.group (D.text "private static final lawspec.runtime.LawSpecSchema _schema =" <>
              D.nest 4 (D.softline <> D.text "lawspec.runtime.LawSpecDataSchema.create();")) <>
-             D.hardline <> D.hardline <> D.joinWith (D.hardline <> D.hardline) bodies)
+             D.hardline <> D.hardline <> D.joinWith (D.hardline <> D.hardline) (bodies ++ wrappers))
       pure [Artifact path (render source) "generated" "source"]
   dataFiles <- if any ((== "src/main/java/lawspec/runtime/LawSpecDataSchema.java") . artifactPath) files then pure []
     else J.emitJavaDataWithProfile bits layout declarations
@@ -186,6 +215,8 @@ emitBindings minify plan testing files = do
       [("byte","Byte"),("short","Short"),("int","Integer"),("long","Long"),
        ("float","Float"),("double","Double"),("char","Character"),("boolean","Boolean")])
     declarations = planDataDeclarations testing
+    interfaceType ability = maybe "Object" (interfaceType' . snd) (C.findAbility (map plannedUnit (plannedUnits testing)) ability)
+    interfaceType' a = abilitiesClassOf (ownerName a) ++ "." ++ interfaceName a
     bits = planMachineBits testing
     representations = bindingRepresentations plan
     mappings = resolvedTypes representations

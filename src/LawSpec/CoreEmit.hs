@@ -1,7 +1,7 @@
 module LawSpec.CoreEmit (emitPlan, emitPlanWithFormat, emitPlanWithLayout, emitPlanWithOptions, emitPlanWithNativeOptions, targets) where
 import LawSpec.Sessions (sessionArtifacts)
 import LawSpec.AbilityEmit (abilityArtifacts)
-import LawSpec.AbilityNames (ownedAbilityUnits)
+import LawSpec.AbilityNames (ownedAbilityUnits, interfaceName)
 import LawSpec.Actors (actorArtifacts)
 import LawSpec.MachineSpec (scenarioWire)
 import LawSpec.Remote (remoteArtifacts)
@@ -98,6 +98,40 @@ companionArtifacts minify target plan = do
 -- Each unit with the abilities it owns (LawSpec.AbilityNames).
 ownedAbilityPlan :: Plan -> Plan
 ownedAbilityPlan plan = plan { plannedUnits = [u { plannedUnit = owned } | (u, owned) <- zip (plannedUnits plan) (ownedAbilityUnits (map plannedUnit (plannedUnits plan)))] }
+
+-- In a typed target, a bound unit's production handler speaks the bound
+-- native types, so the tests make it through the wrapper its unit's bridge
+-- generates (<Ability>Bound), which converts each operation's values; see
+-- LawSpec.<Target>NativeBinding. Python and JavaScript convert with the
+-- handler schema instead.
+wrappedHandlers :: String -> NB.BindingPlan -> Plan -> Plan
+wrappedHandlers target bindings plan
+  | not (NB.hasBindings bindings) || target `notElem` ["java", "kotlin", "go", "haskell", "rust"] = plan
+  | otherwise = plan { plannedUnits = [u { plannedUnit = wrap (plannedUnit u) } | u <- plannedUnits plan] }
+  where
+    units = map plannedUnit (plannedUnits plan)
+    bound = [C.unitId u | u <- units, boundUnit u]
+    boundUnit u = let definitions = map (C.declarationId . C.definitionDeclaration) (C.unitDefinitions u)
+                      adapters = [d | d <- C.unitDeclarations u, C.declarationId d `notElem` definitions]
+                      calls = map (C.declarationId . fst) (NB.bindingFunctions bindings) ++ map (C.declarationId . fst) (NB.bindingCalls bindings)
+                  in not (null adapters) && all ((`elem` calls) . C.declarationId) adapters
+    wrap unit = unit { C.unitAbilities = [ if C.abilityNative a /= Nothing && C.abilityOwner a `elem` bound
+                                             then a { C.abilityNative = Just (boundWrapper target a) } else a
+                                         | a <- C.unitAbilities unit ] }
+
+-- Where a bound unit's bridge puts an ability's wrapper, as the tests call it.
+boundWrapper :: String -> C.Ability -> [String]
+boundWrapper target a = case target of
+  "go" -> ["New" ++ interfaceName a ++ "Bound"]
+  "haskell" -> map (concatMap capitalize . split '_') parts ++ [lowerFirst (interfaceName a) ++ "Bound"]
+  "rust" -> ["adapter", lowerFirst (interfaceName a) ++ "_bound"]
+  _ -> init parts ++ [concatMap capitalize (split '_' (last parts)), interfaceName a ++ "Bound"]
+  where
+    parts = split '.' (C.idText (C.abilityOwner a))
+    capitalize (c : cs) = toUpper c : cs
+    capitalize [] = []
+    lowerFirst (c : cs) = toLower c : cs
+    lowerFirst [] = []
 
 -- Each bound ability's production handler, for the target being emitted.
 boundHandlers :: NB.BindingPlan -> Plan -> Plan
@@ -368,7 +402,7 @@ emitPlanWithNativeOptions minify target sourceDir testDir unescaped unwitnessed 
     then either (Left . pure . (\m -> Diagnostic "native-binding" m Nothing)) Right
       (GoNativeBinding.preparePlan bindings originalPlan)
     else Right originalPlan
-  let plan = boundHandlers bindings (if target == "kotlin" then nativeHandles bindings prepared else prepared)
+  let plan = wrappedHandlers target bindings (boundHandlers bindings (if target == "kotlin" then nativeHandles bindings prepared else prepared))
   unless (target `elem` ["rust","haskell","python","javascript","typescript","java","kotlin","go"] || all ((== Nothing) . Binding.resolvedCodec)
     (Binding.resolvedTypes (NB.bindingRepresentations bindings)))
     (Left [Diagnostic "native-binding" ("codec hook emission is not implemented for " ++ target) Nothing])

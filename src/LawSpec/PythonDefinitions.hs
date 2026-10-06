@@ -54,6 +54,10 @@ emitPythonDefinitions layout bits declarations units = do
     schemaCall name ty value = do
       ref <- Native.pythonTypeReferenceDoc ty
       pure (E.call ("_lawspec_schema." ++ name) [ref,value,width,D.text "symbols"])
+    -- A handler's values cross with the handler schema (ls.handler_schema).
+    handlerCall name ty value = do
+      ref <- Native.pythonTypeReferenceDoc ty
+      pure (E.call ("ls.handler_schema(_lawspec_schema)." ++ name) [ref,value,width,D.text "symbols"])
     implementation contracts (index,d) = do
       let binders = definitionArguments d ++ nestedBinders (definitionBody d)
           names = zip (nub (map binderId binders)) ["value_" ++ show i | i <- [0::Int ..]]
@@ -66,11 +70,11 @@ emitPythonDefinitions layout bits declarations units = do
             -- An operation goes to the handler the law installed in symbols
             -- for its ability (evidence passing).
             Perform op args -> do
-              nativeValues <- sequence [schemaCall "to_native" (expressionType a) value | (a, value) <- zip args values]
+              nativeValues <- sequence [handlerCall "to_native" (expressionType a) value | (a, value) <- zip args values]
               let invocation = E.call ("ls.handler(symbols, " ++ show (abilityKey (operationAbility op)) ++ ")." ++ operationName op) nativeValues
               if expressionType term == Constructor "Unit" []
                 then pure (E.call "ls.unit_result" [invocation])
-                else schemaCall "from_native" (expressionType term) invocation
+                else handlerCall "from_native" (expressionType term) invocation
             -- handle e with h end: e runs with h installed for its ability,
             -- made afresh each time.
             Handle (WithHandler ability (SpecHandler h)) _ | [body] <- values ->
