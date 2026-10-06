@@ -3935,6 +3935,61 @@ def wire_encoded(text, seed, size, count):
     return [wire_encode(values, d, values.generate(d, random, size)).hex() for _ in range(count)]
 
 
+# The failure database's inputs (see LawSpec.Search): a failing case's
+# inputs, each in the wire encoding of its descriptor, kept under
+# LAWSPEC_FAILURES/inputs and replayed before the law's next generated cases.
+def _search_file(law):
+    import os
+    directory = os.environ.get('LAWSPEC_FAILURES')
+    if not directory:
+        return None
+    safe = ''.join(c if c.isalnum() or c in '-_' else '_' for c in law)
+    return os.path.join(directory, 'inputs', safe + '.json')
+
+
+def search_remember(law, descriptors, values):
+    """Keeps a failing case's inputs; the last one kept is the smallest the
+    property library found."""
+    import json
+    import os
+    path = _search_file(law)
+    if path is None:
+        return
+    try:
+        encoded = []
+        for text, value in zip(descriptors, values):
+            table, d = values_from(text)
+            encoded.append(wire_encode(table, d, value).hex())
+    except Exception:  # noqa: BLE001 - kept by seed only
+        return
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, 'w', encoding='utf-8') as out:
+        json.dump({'law': law, 'inputs': encoded}, out)
+
+
+def search_replay(law, descriptors, case):
+    """Runs the law on the inputs its last failure kept, if any; they leave
+    the database once the law holds for them."""
+    import json
+    import os
+    path = _search_file(law)
+    if path is None or not os.path.exists(path):
+        return
+    with open(path, encoding='utf-8') as source:
+        entry = json.load(source)
+    try:
+        values = []
+        for text, encoded in zip(descriptors, entry.get('inputs', [])):
+            table, d = values_from(text)
+            values.append(wire_decode(table, d, bytes.fromhex(encoded)))
+    except (WireError, ValueError):
+        values = []
+    if len(values) == len(descriptors):
+        print(f'{law}: replaying the failing inputs kept in .lawspec/failures')
+        case(values)
+    os.remove(path)
+
+
 def wire_round_trips(text, seed, size, count):
     """Whether count generated values decode to themselves."""
     values, d = values_from(text)

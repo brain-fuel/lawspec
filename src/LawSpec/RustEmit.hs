@@ -28,6 +28,7 @@ import Data.Char (ord, isAlphaNum, isAscii, toLower)
 import Data.List (intercalate, find, nub, sortOn)
 import Numeric (showHex)
 import Control.Monad (forM, unless)
+import LawSpec.Search (lawDescriptors, searchable)
 
 q :: String -> String
 q s = '"':concatMap escape s ++ "\"" where
@@ -648,7 +649,8 @@ emitRustWithBindings minify bindings plan@Plan{..} = either (Left . pure . (\m -
           lawCheck <- proposition withResources label (propertyBody p)
           checked <- resourced (checks ++ [lawCheck])
           pure (block (statements (context : handlerInstalls unit p ++ bindings ++ [checked])))
-        let predicateFn = "valid_" ++ show index
+        let searchKept = searchable (finiteCases pp /= Nothing) p && lawDescriptors planMachineBits planDataDeclarations p /= Nothing
+            predicateFn = "valid_" ++ show index
             observeFn = "observe_" ++ show index
             tupleArgs = [Doc.text ("case.values[" ++ show n ++ "].clone()") | n <- [0..length names-1]]
             random = case finiteCases pp of
@@ -676,14 +678,46 @@ emitRustWithBindings minify bindings plan@Plan{..} = either (Left . pure . (\m -
                       -- What the case covers, classifies and labels.
                       [statement (invoke observeFn (Doc.text "&mut case.context" : tupleArgs) <>
                         Doc.text ".map_err(proptest::test_runner::TestCaseError::fail)?") | observed (propertyHarness p)] ++
-                      [binding "result" (invoke law (Doc.text "&mut case.context" : tupleArgs)),
-                      Doc.text "result.map_err(proptest::test_runner::TestCaseError::fail)"])))
+                      [binding "result" (invoke law (Doc.text "&mut case.context" : tupleArgs))] ++
+                      -- A failing case's inputs go to the failure database.
+                      [conditional (Doc.text "result.is_err()") (statement (invoke "ls::search_remember" [string (idText (unitId unit) ++ "::" ++ label),
+                         Doc.text ("SEARCH_INPUTS_" ++ show index), Doc.text "&case.values"])) | searchKept] ++
+                      [Doc.text "result.map_err(proptest::test_runner::TestCaseError::fail)"])))
                 , statement (Doc.text "proptest::test_runner::TestRunner::new(config)" <>
                     Doc.nest 4 (Doc.softbreak <> invoke ".run" [Doc.text "&strategy",Doc.text "check"] <>
                       Doc.softbreak <> Doc.text ".map_err(|e| format!(\"{e}\"))?"))
                 ]
         observations <- observationsDoc names p
+        -- LawSpec's own search (LawSpec.Search): the failure database's
+        -- inputs are replayed before the law's generated cases, a failing
+        -- case's inputs are kept, and a law with `target maximize` climbs
+        -- after them, as proptest has no targeting.
+        let descriptors = if searchable (finiteCases pp /= Nothing) p then lawDescriptors planMachineBits planDataDeclarations p else Nothing
+            searchInputs = "SEARCH_INPUTS_" ++ show index
+            searchCase = "search_case_" ++ show index
+            scoreFn = "score_" ++ show index
+            label'' = idText (unitId unit) ++ "::" ++ label
+            valueArgs = [Doc.text ("values[" ++ show n ++ "].clone()") | n <- [0..length names-1]]
+        score <- traverse (render names) (harnessTarget (propertyHarness p))
+        let searchItems = case descriptors of
+              Nothing -> mempty
+              Just ds -> blank <> Doc.text ("const " ++ searchInputs ++ ": &[&str] = &[") <> Doc.joinWith (Doc.text ", ") (map string ds) <> Doc.text "];" <>
+                (case score of
+                  Just s -> blank <> function scoreFn args "ls::Result<f64>" (statements [binding "score" s, Doc.text "Ok(ls::search_number(&score))"])
+                  Nothing -> mempty) <>
+                blank <> function searchCase [Doc.text "values: &[ls::Value]"] "ls::Result<Option<f64>>" (statements
+                  [ Doc.text "let ctx = &mut ls::Context::testing();"
+                  , conditional (Doc.text "!" <> invoke predicateFn (Doc.text "ctx" : valueArgs) <> Doc.text "?") (Doc.text "return Ok(None);")
+                  , statement (invoke law (Doc.text "ctx" : valueArgs) <> Doc.text "?")
+                  , Doc.text (maybe "Ok(Some(0.0))" (const "") score) <>
+                    (if score == Nothing then mempty else Doc.text "Ok(Some(" <> invoke scoreFn (Doc.text "ctx" : valueArgs) <> Doc.text "?))") ])
+            replay = [statement (invoke "ls::search_replay" [string label'', Doc.text searchInputs, Doc.text searchCase] <> Doc.text "?") | descriptors /= Nothing]
+            climb = [statement (invoke "ls::search_climb" [string label'', Doc.text searchInputs, Doc.text searchCase] <> Doc.text "?")
+                    | descriptors /= Nothing, harnessTarget (propertyHarness p) /= Nothing]
         let h = propertyHarness p
+            -- order random: the law's tests wait for their turn (lawspec_harness::turn).
+            turn = [binding "_turn" (invoke "lawspec_harness::turn" [string (idText (unitId unit)), Doc.text (show index)])
+                   | maybe False harnessOrderRandom (unitHarnessSettings unit)]
             label' = idText (unitId unit) ++ "::" ++ label
             testName' = testNames !! index
             runner = Doc.text ("|| ls::with_stack(run_" ++ show index ++ ")")
@@ -708,7 +742,8 @@ emitRustWithBindings minify bindings plan@Plan{..} = either (Left . pure . (\m -
           -- Deep generated values need more stack than a test thread has.
           blank <> testFunction <>
           blank <> function ("run_" ++ show index) [] "ls::Result<()>"
-            (statements ([context] ++ fixed ++ examples ++ random ++ [Doc.text "Ok(())"])))
+            (statements ([context] ++ turn ++ replay ++ fixed ++ examples ++ random ++ climb ++ [Doc.text "Ok(())"])) <>
+          searchItems)
       productions <- if generatedAdapter then boundWrappers unit else mapM (Abilities.productionStub planDataDeclarations unit) (ownAbilities unit)
       let adapterDoc = statements [Doc.text (if generatedAdapter then "// Generated native bridge by LawSpec. Do not edit." else "// Scaffolded by LawSpec. User-owned; never overwritten."),
             Doc.text "#![allow(unused_variables, unused_imports, non_snake_case)]",

@@ -26,6 +26,7 @@ import qualified LawSpec.AbilityEmit.Python as PythonAbilities
 import qualified LawSpec.AbilityEmit.Web as WebAbilities
 import LawSpec.AbilityNames (specName, recordingName, productionName, interfaceName, ownAbilities, ownerName, unitAbility, unitAbilityPieces)
 import LawSpec.TestNames (unitTestNames, lawWords)
+import LawSpec.Search (lawDescriptors, searchable)
 
 q :: String -> String
 q = T.unpack . T.decodeUtf8 . encode
@@ -57,9 +58,15 @@ scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions 
         renderDocument (statement (invoke "_harness.shuffle_tests" [invoke "globals" [],
           array [quoted n | l <- lines lawTexts, Just rest <- [stripPrefix "def " l], let n = takeWhile (/= '(') rest, "test_" `isPrefixOf` n]]))
       -- JavaScript collects the law tests, then registers them shuffled.
-      laws' = if py || not orderRandom then lawTexts else
+      ordered = if py || not orderRandom then lawTexts else
         "const _ordered = [];\n{\n  const test = (...registration) => { _ordered.push(registration); };\n" ++ lawTexts ++
         "}\nfor (const registration of _harness.shuffled(_ordered)) test(...registration);\n\n"
+      -- parallel: node:test runs the unit's law tests concurrently, in one
+      -- suite (its tests keep their names). Python's are run by pytest-xdist
+      -- when lawspec test finds it (see LawSpec.TestManifest).
+      parallel = maybe False C.harnessParallel (C.unitHarnessSettings u)
+      laws' = if py || not parallel then ordered else
+        "describe(" ++ Doc.render Doc.Compact (message (unitName u ++ " laws")) ++ ", {concurrency: true}, () => {\n" ++ ordered ++ "});\n\n"
       tests = laws' ++ modelTexts ++ supervision ++ benchmarks ++ shuffled
   wrappers <- concat <$> mapM contractWrapper (contracts u)
   let completeHeader = if py || hasData || "fc." `isInfixOf` tests then testHeader else unlines (filter (/= "import fc from 'fast-check';") (lines testHeader))
@@ -108,7 +115,7 @@ scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions 
       then (if null definitions then "" else "import lawspec_definition_bodies as _definitions\n") ++ dataImports ++ "import json\nimport os\nfrom hypothesis import assume, given, settings, strategies as st\nfrom hypothesis import seed as _lawspec_seed\nfrom hypothesis.database import DirectoryBasedExampleDatabase\n" ++ (if null adapterFunctions && null (ownAbilities u) then "" else "import " ++ unitName u ++ " as impl\n") ++
         (if not (unitAbilityPieces u) then "" else "import " ++ PythonAbilities.moduleName u ++ " as _abilities\n") ++
         (if hasHarness then "import lawspec_harness as _harness\n" else "")
-      else (if null definitions then "" else "import * as _definitions from '../src/lawspec_definition_bodies." ++ (if ts then "js" else "mjs") ++ "';\n") ++ webImports "../src/" ++ "import {test} from 'node:test';\nimport assert from 'node:assert/strict';\nimport fc from 'fast-check';\nimport * as impl from '../src/" ++ slash ++ (if ts then ".js" else ".mjs") ++ "';\n" ++
+      else (if null definitions then "" else "import * as _definitions from '../src/lawspec_definition_bodies." ++ (if ts then "js" else "mjs") ++ "';\n") ++ webImports "../src/" ++ "import {describe, test} from 'node:test';\nimport assert from 'node:assert/strict';\nimport fc from 'fast-check';\nimport * as impl from '../src/" ++ slash ++ (if ts then ".js" else ".mjs") ++ "';\n" ++
         (if not (unitAbilityPieces u) then "" else "import * as _abilities from '../src/lawspec_abilities/" ++ slash ++ (if ts then ".js" else ".mjs") ++ "';\n") ++
         concat ["import * as _impl" ++ show i ++ " from '../src/" ++ ownerSlash o ++ (if ts then ".js" else ".mjs") ++ "';\n" ++
                 "import * as _abilities" ++ show i ++ " from '../src/lawspec_abilities/" ++ ownerSlash o ++ (if ts then ".js" else ".mjs") ++ "';\n"
@@ -447,7 +454,43 @@ scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions 
         pure (testBlock label (prefix ++ "_boundary" ++ show j) (statements
           (fresh e : [assign (inputId input) value | (input,value) <- zip (inputs e) literals] ++
            [bracket e (assertionDoc (label ++ " boundary " ++ show j) (assertion e))])))) (zip [0 :: Int ..] cases')
-      let body = statements (observations e ++ [bracket e (assertionDoc (label ++ " property") (assertion e))])
+      -- LawSpec's own search (LawSpec.Search): a failing generated case's
+      -- inputs are kept in the failure database, and replayed before the
+      -- law's next cases; where fast-check cannot target, a law with
+      -- `target maximize` also climbs (Hypothesis targets by itself).
+      let descriptors = if searchable (maybe False (const True) finite) (original e) then lawDescriptors bits declarations (original e) else Nothing
+          -- Each input's descriptor, kept once beside the law's tests.
+          descriptorName = (if py then "_lawspec_inputs_" else "_lawspecInputs") ++ (if py then drop 5 base else show index)
+          descriptorDoc _ = text descriptorName
+          remembered doc = case descriptors of
+            Nothing -> doc
+            Just ds ->
+              let remember = statement (runtime (if py then "search_remember" else "searchRemember") [message label, descriptorDoc ds, array (map (text . inputId) (inputs e))])
+              in if py then PythonExpr.suite (text "try") doc <> Doc.hardline <> PythonExpr.suite (text "except Exception") (statements [remember, text "raise"])
+                 else text "try " <> Doc.block 2 doc <> text " catch (_lawspecError) " <> Doc.block 2 (statements [remember, text "throw _lawspecError;"])
+          caseName = "_lawspec_case_" ++ (if py then drop 5 base else show index)
+          caseDoc ds = let
+              assigned = [assign (inputId input) (converted (inputType input) (text ("_values[" ++ show i ++ "]"))) | (i, input) <- zip [0 :: Int ..] (inputs e)]
+              refinements = concatMap inputRefinements (inputs e)
+              guardDoc = if null refinements then [] else
+                [if py then PythonExpr.suite (text "if not " <> conjunction (map render refinements)) (text "return None")
+                 else text "if (!" <> conjunction (map render refinements) <> text ") return null;"]
+              score = maybe (text "0") render (C.harnessTarget harness)
+              bodyDoc = statements (fresh e : assigned ++ guardDoc ++
+                [bracket e (assertionDoc (label ++ " search") (assertion e)), statement (text "return " <> score)])
+            in if py then function caseName ["_values"] bodyDoc
+               else text ("const " ++ caseName ++ " = ") <> callback [text "_values"] bodyDoc <> text ";"
+          searchDocs = case descriptors of
+            Nothing -> ("", "")
+            Just ds ->
+              ( renderDocument (assign descriptorName (array (map quoted ds))) ++
+                renderDocument (caseDoc ds) ++ renderDocument (if py
+                  then function (base ++ "__replay") [] (statement (runtime "search_replay" [message label, descriptorDoc ds, text caseName]))
+                  else text "test(" <> message (label ++ " replay") <> text ", async () => " <>
+                    Doc.block 2 (statement (text "await " <> runtime "searchReplay" [message label, descriptorDoc ds, text caseName])) <> text ");")
+              , if py || C.harnessTarget harness == Nothing then "" else renderDocument (text "test(" <> message (label ++ " search") <> text ", async () => " <>
+                  Doc.block 2 (statement (text "await " <> runtime "searchClimb" [message label, descriptorDoc ds, text caseName])) <> text ");") )
+      let body = statements (observations e ++ [remembered (bracket e (assertionDoc (label ++ " property") (assertion e)))])
           generators = map (generatorDoc . inputType) (inputs e)
           names = map inputId (inputs e)
           ordinary = if py then pythonProperty prefix [invoke "given" generators] names
@@ -467,7 +510,7 @@ scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions 
           suffixes = ["_example" ++ show j | j <- [0 .. length examples' - 1]] ++
             ["_boundary" ++ show j | j <- [0 .. length boundaries' - 1]] ++
             ["_property" | not (null properties)]
-      pure (Doc.render outputLayout (metadataDocument (if py then 72 else 80) (if py then "#" else "//") e) ++
+      pure (Doc.render outputLayout (metadataDocument (if py then 72 else 80) (if py then "#" else "//") e) ++ fst searchDocs ++ (++ snd searchDocs) (
         if not py then webHarness label harness tests
         else case (C.harnessSkip harness, C.harnessKnownFailing harness) of
           -- A skipped law runs nothing; it is still an obligation.
@@ -478,7 +521,7 @@ scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions 
               array [text (prefix ++ suffix) | suffix <- suffixes]])))
           _ | wrapped -> concat [renderDocument doc ++ renderDocument (harnessRun label harness (prefix ++ suffix) (base ++ "_" ++ suffix) (suffix == "_property"))
                                 | (suffix, doc) <- zip suffixes tests]
-            | otherwise -> concatMap renderDocument tests)
+            | otherwise -> concatMap renderDocument tests))
     -- The harness plane (LawSpec.Harness). A law whose harness sets how its
     -- tests run (timeout, repeat, retry flaky, adequacy) has each test
     -- wrapped: the generated test calls the runtime with the law's own test.

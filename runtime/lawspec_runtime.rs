@@ -3593,6 +3593,170 @@ pub fn values_from(text: &str) -> (Values, Sexp) {
     (Values::new(table), last)
 }
 
+// LawSpec's own search over a law's inputs (see LawSpec.Search). The
+// failure database keeps a failing case's inputs in the wire encoding, under
+// LAWSPEC_FAILURES/inputs, and they are replayed before the law's next
+// generated cases. target maximize climbs: it generates inputs from seeds,
+// keeps the best-scoring case, and moves its integers (one step, doubling,
+// halving the distance to a bound), keeping the best move while the score
+// rises and drawing afresh when it does not, checking the law on every case
+// it tries (at most 400). A case gives its score, or None when its inputs
+// fall outside the law's refinements.
+fn search_file(law: &str) -> Option<std::path::PathBuf> {
+    let directory = std::env::var("LAWSPEC_FAILURES").ok().filter(|d| !d.is_empty())?;
+    let safe: String = law.chars().map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' { c } else { '_' }).collect();
+    Some(std::path::Path::new(&directory).join("inputs").join(safe + ".json"))
+}
+
+pub fn search_remember(law: &str, descriptors: &[&str], values: &[Value]) {
+    let Some(file) = search_file(law) else { return };
+    let mut inputs = Vec::new();
+    for (text, value) in descriptors.iter().zip(values) {
+        let (table, d) = values_from(text);
+        match net::wire_encode(&table, &d, value) {
+            Ok(bytes) => inputs.push(format!("\"{}\"", bytes.iter().map(|b| format!("{b:02x}")).collect::<String>())),
+            Err(_) => return,
+        }
+    }
+    let quoted = law.replace('\\', "\\\\").replace('"', "\\\"");
+    if let Some(parent) = file.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let _ = std::fs::write(&file, format!("{{\"law\": \"{quoted}\", \"inputs\": [{}]}}", inputs.join(", ")));
+}
+
+pub fn search_replay(law: &str, descriptors: &[&str], mut check: impl FnMut(&[Value]) -> Result<Option<f64>>) -> Result<()> {
+    let Some(file) = search_file(law) else { return Ok(()) };
+    let Ok(text) = std::fs::read_to_string(&file) else { return Ok(()) };
+    let after = text.find("\"inputs\"").map(|i| &text[i + 8..]).unwrap_or("");
+    let encoded: Vec<&str> = after.split('"').skip(1).step_by(2).collect();
+    let mut values = Vec::new();
+    for (i, d) in descriptors.iter().enumerate() {
+        let Some(hex) = encoded.get(i) else { break };
+        let bytes: Option<Vec<u8>> = (0..hex.len() / 2).map(|k| u8::from_str_radix(&hex[2 * k..2 * k + 2], 16).ok()).collect();
+        let (table, descriptor) = values_from(d);
+        match bytes.map(|b| net::wire_decode(&table, &descriptor, &b)) {
+            Some(Ok(value)) => values.push(value),
+            _ => break,
+        }
+    }
+    if values.len() == descriptors.len() {
+        println!("{law}: replaying the failing inputs kept in .lawspec/failures");
+        check(&values)?;
+    }
+    let _ = std::fs::remove_file(&file);
+    Ok(())
+}
+
+// Each value with one integer moved, wherever it sits in the value.
+fn search_moves(table: &Values, d: &Sexp, v: &Value) -> Vec<Value> {
+    let d = table.resolve(d);
+    let items = d.items();
+    match (d.kind(), v) {
+        ("int", Value::Integer(x)) => {
+            let (lo, hi) = table.bounds(d);
+            let two = BigInt::from(2);
+            let candidates = [x + 1, x - 1, x * &two, x / &two, x + (&hi - x) / &two, x - (x - &lo) / &two];
+            let mut out: Vec<Value> = Vec::new();
+            for c in candidates {
+                if c >= lo && c <= hi && &c != x && !out.contains(&Value::Integer(c.clone())) {
+                    out.push(Value::Integer(c));
+                }
+            }
+            out
+        }
+        ("list", Value::List(xs)) => (0..xs.len())
+            .flat_map(|i| search_moves(table, &items[1], &xs[i]).into_iter().map(move |m| (i, m)))
+            .map(|(i, m)| { let mut changed = xs.clone(); changed[i] = m; Value::List(changed) })
+            .collect(),
+        ("maybe", Value::Maybe(Some(inner))) => search_moves(table, &items[1], inner).into_iter().map(|m| Value::Maybe(Some(Box::new(m)))).collect(),
+        ("either", Value::Left(inner)) => search_moves(table, &items[1], inner).into_iter().map(|m| Value::Left(Box::new(m))).collect(),
+        ("either", Value::Right(inner)) => search_moves(table, &items[2], inner).into_iter().map(|m| Value::Right(Box::new(m))).collect(),
+        ("data", Value::Data(tag, fields)) => {
+            let Some(ctor) = items[2..].iter().find(|c| &c.items()[1].name() == tag) else { return Vec::new() };
+            let field_forms = &ctor.items()[2..];
+            (0..fields.len().min(field_forms.len()))
+                .flat_map(|i| search_moves(table, &field_forms[i], &fields[i]).into_iter().map(move |m| (i, m)))
+                .map(|(i, m)| { let mut changed = fields.clone(); changed[i] = m; Value::Data(tag.clone(), changed) })
+                .collect()
+        }
+        _ => Vec::new(),
+    }
+}
+
+pub fn search_climb(law: &str, descriptors: &[&str], mut check: impl FnMut(&[Value]) -> Result<Option<f64>>) -> Result<()> {
+    let tables: Vec<(Values, Sexp)> = descriptors.iter().map(|d| values_from(d)).collect();
+    let base: u64 = std::env::var("LAWSPEC_SEED").ok().and_then(|s| s.parse().ok()).unwrap_or(0);
+    let generate = |seed: u64| -> Vec<Value> {
+        let mut random = SplitMix64::new(seed);
+        tables.iter().map(|(table, d)| table.generate(d, &mut random, 8)).collect()
+    };
+    let mut best: Option<(f64, Vec<Value>)> = None;
+    let mut tried = 0;
+    let mut attempt = |values: Vec<Value>, best: &mut Option<(f64, Vec<Value>)>, tried: &mut usize| -> Result<bool> {
+        if *tried >= 400 {
+            return Ok(false);
+        }
+        *tried += 1;
+        let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| check(&values)));
+        let score = match outcome {
+            Ok(Ok(score)) => score,
+            Ok(Err(error)) => { search_remember(law, descriptors, &values); return Err(error) }
+            Err(panic) => { search_remember(law, descriptors, &values); std::panic::resume_unwind(panic) }
+        };
+        match (score, best.as_ref()) {
+            (Some(s), Some((b, _))) if !(s > *b) => Ok(false),
+            (Some(s), _) => { *best = Some((s, values)); Ok(true) }
+            (None, _) => Ok(false),
+        }
+    };
+    for k in 0..10u64 {
+        attempt(generate(base.wrapping_add(k)), &mut best, &mut tried)?;
+    }
+    for step in 0..60u64 {
+        if tried >= 400 {
+            break;
+        }
+        let mut rose = false;
+        if let Some((_, current)) = best.clone() {
+            let mut moves = Vec::new();
+            for (i, v) in current.iter().enumerate() {
+                for m in search_moves(&tables[i].0, &tables[i].1, v) {
+                    let mut changed = current.clone();
+                    changed[i] = m;
+                    moves.push(changed);
+                }
+            }
+            moves.truncate(24);
+            for candidate in moves {
+                if attempt(candidate, &mut best, &mut tried)? {
+                    rose = true;
+                }
+            }
+        }
+        if !rose {
+            attempt(generate(base.wrapping_add(1000 + step)), &mut best, &mut tried)?;
+        }
+    }
+    match &best {
+        Some((score, _)) => println!("{law}: targeted search tried {tried} case(s); best score {score}"),
+        None => println!("{law}: targeted search tried {tried} case(s)"),
+    }
+    Ok(())
+}
+
+/// A score as a float: the targeted search maximizes it.
+pub fn search_number(v: &Value) -> f64 {
+    match v {
+        Value::Integer(n) => n.to_f64().unwrap_or(f64::NAN),
+        Value::Float32(x) => *x as f64,
+        Value::Float64(x) => *x,
+        Value::Rational(r) => r.to_f64().unwrap_or(f64::NAN),
+        Value::Decimal(d) => format!("{d:?}").parse().unwrap_or(f64::NAN),
+        _ => f64::NAN,
+    }
+}
+
 /// count values generated from one SplitMix64 seed, rendered.
 pub fn generated(text: &str, seed: u64, size: i64, count: i64) -> Vec<String> {
     let (values, d) = values_from(text);

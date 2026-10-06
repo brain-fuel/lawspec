@@ -7,7 +7,7 @@ import { targets, templates, commands, setup } from "../templates.mjs";
 import { generateExamples } from "../examples-command.mjs";
 import { showScalar } from "../scalars.mjs";
 import { doctor } from "../doctor.mjs";
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { benchmarkInvocations, environmentDigest, executedTests, invocations, lawKeys, projectDigest, recordedDigest, selectByTags, mergeJunit,
   harnessStatistics, coverageTools, junitFromTests } from "../test-command.mjs";
 import {
@@ -296,6 +296,10 @@ function harnessText(item) {
   if (h.retries) parts.push(`retry flaky ${h.retries}`);
   if (h.skip) parts.push(`skip "${h.skip}"`);
   if (h.knownFailing) parts.push(`known failing "${h.knownFailing}"`);
+  if (h.orderRandom) parts.push("order random");
+  // Python runs a parallel unit's tests at the same time only with
+  // pytest-xdist; without it, parallel changes nothing there.
+  if (h.parallel) parts.push("parallel (on Python only with pytest-xdist; otherwise one after another)");
   const lines = [`  ${item.declaration.replace("::law::", "::")}: ${parts.join("; ") || "no harness settings"}`];
   for (const run of item.adequacy ?? []) {
     lines.push(`    last run: ${run.cases} generated case(s)` +
@@ -402,12 +406,19 @@ async function runTests(compiler, input, selected, roots, config) {
       if (missing) console.error(`${target.language}: --coverage needs ${missing.tool}, which is not available; ${missing.install}. Running without coverage.`);
     }
     const useCoverage = coverage && !(await coverageMissing(target, root));
+    // parallel on Python needs pytest-xdist; without it the tests run one
+    // after another, and lawspec test says so.
+    let xdist = false;
+    if (target.language === "python" && stale.some((entry) => entry.parallel)) {
+      xdist = spawnSync(target.python || "python3", ["-c", "import xdist"], { cwd: root, stdio: "ignore" }).status === 0;
+      if (!xdist) console.error("python: `parallel` runs tests at the same time only with pytest-xdist (pip install pytest-xdist); without it they run one after another.");
+    }
     // A skipped law runs nothing, and a known-failing law's one test is
     // expected to fail, so neither is required to show as run.
     const expected = (entry) => !entry.skip && !entry.knownFailing;
     const seedOf = new Map();
     batches: for (const batch of batches) {
-      for (const run of invocations(target, batch.entries, { offline, scratch, coverage: useCoverage ? coverage : null })) {
+      for (const run of invocations(target, batch.entries, { offline, scratch, coverage: useCoverage ? coverage : null, xdist })) {
         const since = Date.now() - 1000;
         const { ok, output } = await spawned(run.command, run.args, root,
           { ...process.env, ...run.env, LAWSPEC_SEED: batch.seed, HSPEC_SEED: batch.seed,

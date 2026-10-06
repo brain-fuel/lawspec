@@ -6513,6 +6513,251 @@ func LawSpecWireDecode(values lawSpecValues, d any, data []byte) (LawSpecValue, 
 
 // LawSpecWireEncoded is count values generated from one seed, encoded, in
 // hexadecimal.
+// LawSpec's own search over a law's inputs (see LawSpec.Search). The
+// failure database keeps a failing case's inputs in the wire encoding, under
+// LAWSPEC_FAILURES/inputs, and they are replayed before the law's next
+// generated cases. target maximize climbs: it generates inputs from seeds,
+// keeps the best-scoring case, and moves its integers (one step, doubling,
+// halving the distance to a bound), keeping the best move while the score
+// rises and drawing afresh when it does not, checking the law on every case
+// it tries (at most 400). A case gives its score, and false when its inputs
+// fall outside the law's refinements.
+type LawSpecSearchCase func(values []LawSpecValue) (float64, bool)
+
+func lsSearchFile(law string) string {
+	directory := os.Getenv("LAWSPEC_FAILURES")
+	if directory == "" {
+		return ""
+	}
+	safe := strings.Map(func(r rune) rune {
+		if r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '-' || r == '_' {
+			return r
+		}
+		return '_'
+	}, law)
+	return filepath.Join(directory, "inputs", safe+".json")
+}
+
+func LawSpecSearchRemember(law string, descriptors []string, values []LawSpecValue) {
+	file := lsSearchFile(law)
+	if file == "" {
+		return
+	}
+	inputs := []string{}
+	for i, text := range descriptors {
+		table, d := lsValuesFrom(text)
+		encoded, err := LawSpecWireEncode(table, d, values[i])
+		if err != nil {
+			return
+		}
+		inputs = append(inputs, fmt.Sprintf("%x", encoded))
+	}
+	data, _ := json.Marshal(map[string]any{"law": law, "inputs": inputs})
+	_ = os.MkdirAll(filepath.Dir(file), 0o755)
+	_ = os.WriteFile(file, data, 0o644)
+}
+
+func LawSpecSearchReplay(law string, descriptors []string, check LawSpecSearchCase) {
+	file := lsSearchFile(law)
+	if file == "" {
+		return
+	}
+	data, err := os.ReadFile(file)
+	if err != nil {
+		return
+	}
+	var entry struct{ Inputs []string `json:"inputs"` }
+	values := []LawSpecValue{}
+	if json.Unmarshal(data, &entry) == nil && len(entry.Inputs) == len(descriptors) {
+		for i, text := range descriptors {
+			table, d := lsValuesFrom(text)
+			raw := make([]byte, len(entry.Inputs[i])/2)
+			if _, err := fmt.Sscanf(entry.Inputs[i], "%x", &raw); err != nil && len(raw) > 0 {
+				break
+			}
+			value, err := LawSpecWireDecode(table, d, raw)
+			if err != nil {
+				break
+			}
+			values = append(values, value)
+		}
+	}
+	if len(values) == len(descriptors) {
+		fmt.Printf("%s: replaying the failing inputs kept in .lawspec/failures\n", law)
+		check(values)
+	}
+	_ = os.Remove(file)
+}
+
+// Each value with one integer moved, wherever it sits in the value.
+func (s lawSpecValues) searchMoves(d any, v LawSpecValue) []LawSpecValue {
+	form := s.resolve(d)
+	switch lsAtom(form[0]) {
+	case "int":
+		lo, hi := s.bounds(form)
+		x, ok := v.Data.(*big.Int)
+		if !ok {
+			return nil
+		}
+		two := big.NewInt(2)
+		candidates := []*big.Int{
+			new(big.Int).Add(x, big.NewInt(1)), new(big.Int).Sub(x, big.NewInt(1)), new(big.Int).Mul(x, two),
+			new(big.Int).Quo(x, two),
+			new(big.Int).Add(x, new(big.Int).Quo(new(big.Int).Sub(hi, x), two)),
+			new(big.Int).Sub(x, new(big.Int).Quo(new(big.Int).Sub(x, lo), two)),
+		}
+		out := []LawSpecValue{}
+		seen := map[string]bool{x.String(): true}
+		for _, c := range candidates {
+			if c.Cmp(lo) >= 0 && c.Cmp(hi) <= 0 && !seen[c.String()] {
+				seen[c.String()] = true
+				out = append(out, LawSpecValue{v.Type, c})
+			}
+		}
+		return out
+	case "list":
+		items, _ := v.Data.([]LawSpecValue)
+		out := []LawSpecValue{}
+		for i, item := range items {
+			for _, m := range s.searchMoves(form[1], item) {
+				changed := append([]LawSpecValue{}, items...)
+				changed[i] = m
+				out = append(out, LawSpecValue{v.Type, changed})
+			}
+		}
+		return out
+	case "maybe", "either", "data":
+		data, ok := v.Data.(lawSpecData)
+		if !ok {
+			return nil
+		}
+		var fields []any
+		switch lsAtom(form[0]) {
+		case "maybe":
+			fields = []any{form[1]}
+		case "either":
+			if data.tag == "Either::Left" {
+				fields = []any{form[1]}
+			} else {
+				fields = []any{form[2]}
+			}
+		default:
+			for _, c := range form[2:] {
+				if ctor := c.([]any); lsAtom(ctor[1]) == data.tag {
+					fields = ctor[2:]
+				}
+			}
+		}
+		out := []LawSpecValue{}
+		for i, f := range fields {
+			if i >= len(data.fields) {
+				break
+			}
+			for _, m := range s.searchMoves(f, data.fields[i]) {
+				changed := append([]LawSpecValue{}, data.fields...)
+				changed[i] = m
+				out = append(out, LawSpecValue{v.Type, lawSpecData{data.tag, changed}})
+			}
+		}
+		return out
+	}
+	return nil
+}
+
+func LawSpecSearchClimb(law string, descriptors []string, check LawSpecSearchCase) {
+	type described struct {
+		table lawSpecValues
+		d     any
+	}
+	tables := []described{}
+	for _, text := range descriptors {
+		table, d := lsValuesFrom(text)
+		tables = append(tables, described{table, d})
+	}
+	var base uint64
+	if seed := os.Getenv("LAWSPEC_SEED"); seed != "" {
+		_, _ = fmt.Sscan(seed, &base)
+	}
+	generate := func(seed uint64) []LawSpecValue {
+		random := LawSpecSplitMix64{seed}
+		out := []LawSpecValue{}
+		for _, t := range tables {
+			out = append(out, t.table.generate(t.d, &random, 8))
+		}
+		return out
+	}
+	var best []LawSpecValue
+	bestScore := math.Inf(-1)
+	tried := 0
+	attempt := func(values []LawSpecValue) bool {
+		if tried >= 400 {
+			return false
+		}
+		tried++
+		defer func() {
+			if problem := recover(); problem != nil {
+				LawSpecSearchRemember(law, descriptors, values)
+				panic(problem)
+			}
+		}()
+		score, ok := check(values)
+		if !ok || (best != nil && !(score > bestScore)) {
+			return false
+		}
+		best, bestScore = values, score
+		return true
+	}
+	for k := uint64(0); k < 10; k++ {
+		attempt(generate(base + k))
+	}
+	for step := uint64(0); step < 60 && tried < 400; step++ {
+		rose := false
+		if best != nil {
+			current := best
+			moves := [][]LawSpecValue{}
+			for i, v := range current {
+				for _, m := range tables[i].table.searchMoves(tables[i].d, v) {
+					changed := append([]LawSpecValue{}, current...)
+					changed[i] = m
+					moves = append(moves, changed)
+				}
+			}
+			if len(moves) > 24 {
+				moves = moves[:24]
+			}
+			for _, candidate := range moves {
+				if attempt(candidate) {
+					rose = true
+				}
+			}
+		}
+		if !rose {
+			attempt(generate(base + 1000 + step))
+		}
+	}
+	if best == nil {
+		fmt.Printf("%s: targeted search tried %d case(s)\n", law, tried)
+	} else {
+		fmt.Printf("%s: targeted search tried %d case(s); best score %v\n", law, tried, bestScore)
+	}
+}
+
+// lsSearchNumber is a score as a float: the targeted search maximizes it.
+func lsSearchNumber(v LawSpecValue) float64 {
+	switch x := v.Data.(type) {
+	case float64:
+		return x
+	case float32:
+		return float64(x)
+	default:
+		var f float64
+		if _, err := fmt.Sscan(fmt.Sprint(x), &f); err == nil {
+			return f
+		}
+		return math.NaN()
+	}
+}
+
 func LawSpecWireEncoded(text string, seed uint64, size int64, count int64) []string {
 	values, d := lsValuesFrom(text)
 	random := LawSpecSplitMix64{seed}

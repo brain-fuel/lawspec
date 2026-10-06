@@ -149,6 +149,18 @@
 - On Java and Kotlin, an ability or handler whose class would be named like
   the class holding its unit's abilities is a compile error that says what to
   rename.
+- The failure database keeps a failing case's inputs in LawSpec's wire
+  encoding (`.lawspec/failures/<target>/inputs`), on every target, and the
+  law's tests replay them before any new case.
+- `target maximize` steers on every target: where the property library has
+  no targeted search, LawSpec climbs after the property, moving the
+  best-scoring case's integers while the score rises.
+- `order random` and `parallel` hold on every target: Go shuffles with the
+  run's seed, Haskell shuffles each law's block of tests, Rust runs a unit's
+  law tests in a seeded order one at a time; JavaScript and TypeScript run a
+  `parallel` unit's tests concurrently, Kotlin through Kotest's concurrency,
+  and Python through pytest-xdist when `lawspec test` finds it. The test
+  manifest carries whether a law's unit is parallel, and its benchmarks.
 
 ## 0.20.0
 

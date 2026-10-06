@@ -329,6 +329,7 @@ library
       LawSpec.Scaffold
       LawSpec.Scalar
       LawSpec.Scenario
+      LawSpec.Search
       LawSpec.Sessions
       LawSpec.Sessions.Go
       LawSpec.Sessions.Haskell

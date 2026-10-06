@@ -199,6 +199,15 @@ leaves the database when it passes. `--seed` overrides it. The Python and Rust
 runtimes also keep their libraries' counterexamples there (Hypothesis's
 example database and proptest's regressions), which they replay first.
 
+Every target also keeps a failing case's inputs, not only its seed: in
+`.lawspec/failures/<target>/inputs/<law>.json`, each input in LawSpec's
+[wire encoding](language/distribution.md#the-wire-encoding), the last (and
+so, after shrinking, the smallest) failing case. The law's tests replay them
+before any new case, with the message "replaying the failing inputs kept in
+.lawspec/failures", and drop them once the law holds for them. A law whose
+inputs the wire encoding cannot describe (a float, a handle, a generic data
+type) is kept by its seed only.
+
 Generated property tests read the seed from `LAWSPEC_SEED`, so a failure can
 be repeated with the same seed outside LawSpec. Haskell tests also read hspec's
 `HSPEC_SEED`, which `lawspec test` sets as well.

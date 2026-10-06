@@ -5547,6 +5547,165 @@ public final class LawSpecRuntime {
   }
 
   /** The value's canonical bytes. */
+  // LawSpec's own search over a law's inputs (see LawSpec.Search). The
+  // failure database keeps a failing case's inputs in the wire encoding,
+  // under LAWSPEC_FAILURES/inputs, and they are replayed before the law's
+  // next generated cases. target maximize climbs: it generates inputs from
+  // seeds, keeps the best-scoring case, and moves its integers (one step,
+  // doubling, halving the distance to a bound), keeping the best move while
+  // the score rises and drawing afresh when it does not, checking the law on
+  // every case it tries (at most 400). A case gives its score, or null when
+  // its inputs fall outside the law's refinements.
+  public interface SearchCase { Double check(List<Value> values) throws Exception; }
+
+  private static java.nio.file.Path searchFile(String law) {
+    var directory = System.getenv("LAWSPEC_FAILURES");
+    if (directory == null || directory.isEmpty()) return null;
+    return java.nio.file.Path.of(directory, "inputs", law.replaceAll("[^A-Za-z0-9_-]", "_") + ".json");
+  }
+
+  public static void searchRemember(String law, List<String> descriptors, List<Value> values) {
+    var file = searchFile(law);
+    if (file == null) return;
+    var inputs = new StringBuilder();
+    try {
+      for (int i = 0; i < descriptors.size(); i++) {
+        var described = valuesFrom(descriptors.get(i));
+        var bytes = wireEncode(described.values(), described.descriptor(), values.get(i));
+        inputs.append(i == 0 ? "" : ",").append('"').append(java.util.HexFormat.of().formatHex(bytes)).append('"');
+      }
+      java.nio.file.Files.createDirectories(file.getParent());
+      java.nio.file.Files.writeString(file, "{\"law\": \"" + law.replace("\\", "\\\\").replace("\"", "\\\"") + "\", \"inputs\": [" + inputs + "]}");
+    } catch (RuntimeException | java.io.IOException e) {
+      // A value the wire cannot encode is kept by its seed only.
+    }
+  }
+
+  public static void searchReplay(String law, List<String> descriptors, SearchCase check) throws Exception {
+    var file = searchFile(law);
+    if (file == null || !java.nio.file.Files.exists(file)) return;
+    var text = java.nio.file.Files.readString(file);
+    var values = new ArrayList<Value>();
+    try {
+      var start = text.indexOf("\"inputs\"");
+      var matcher = java.util.regex.Pattern.compile("\"([0-9a-fA-F]*)\"").matcher(text.substring(start + 8));
+      for (var descriptor : descriptors) {
+        if (!matcher.find()) break;
+        var described = valuesFrom(descriptor);
+        values.add(wireDecode(described.values(), described.descriptor(), java.util.HexFormat.of().parseHex(matcher.group(1))));
+      }
+    } catch (RuntimeException e) {
+      values.clear();
+    }
+    if (values.size() == descriptors.size()) {
+      System.out.println(law + ": replaying the failing inputs kept in .lawspec/failures");
+      check.check(values);
+    }
+    java.nio.file.Files.deleteIfExists(file);
+  }
+
+  private static List<Value> searchMoves(Values table, Object descriptor, Value v) {
+    var d = table.resolve(descriptor);
+    var out = new ArrayList<Value>();
+    switch (atomText(d.get(0))) {
+      case "int" -> {
+        if (!(v.data() instanceof BigInteger x)) return out;
+        var b = table.bounds(d);
+        var two = BigInteger.TWO;
+        var seen = new java.util.HashSet<BigInteger>();
+        seen.add(x);
+        for (var c : List.of(x.add(BigInteger.ONE), x.subtract(BigInteger.ONE), x.multiply(two), x.divide(two),
+            x.add(b[1].subtract(x).divide(two)), x.subtract(x.subtract(b[0]).divide(two))))
+          if (c.compareTo(b[0]) >= 0 && c.compareTo(b[1]) <= 0 && seen.add(c)) out.add(new Value(v.type(), c));
+      }
+      case "list" -> {
+        if (!(v.data() instanceof List<?> items)) return out;
+        for (int i = 0; i < items.size(); i++)
+          for (var m : searchMoves(table, d.get(1), (Value) items.get(i))) {
+            var changed = new ArrayList<Object>(items);
+            changed.set(i, m);
+            out.add(new Value(v.type(), List.copyOf(changed)));
+          }
+      }
+      case "maybe", "either", "data" -> {
+        if (!(v.data() instanceof Data data)) return out;
+        List<Object> fields = new ArrayList<>();
+        switch (atomText(d.get(0))) {
+          case "maybe" -> fields.add(d.get(1));
+          case "either" -> fields.add(data.tag().equals("Either::Left") ? d.get(1) : d.get(2));
+          default -> {
+            for (var c : d.subList(2, d.size())) {
+              var ctor = form(c);
+              if (atomText(ctor.get(1)).equals(data.tag())) fields = ctor.subList(2, ctor.size());
+            }
+          }
+        }
+        for (int i = 0; i < fields.size() && i < data.fields().size(); i++)
+          for (var m : searchMoves(table, fields.get(i), data.fields().get(i))) {
+            var changed = new ArrayList<Value>(data.fields());
+            changed.set(i, m);
+            out.add(new Value(v.type(), new Data(data.tag(), List.copyOf(changed))));
+          }
+      }
+      default -> {}
+    }
+    return out;
+  }
+
+  public static void searchClimb(String law, List<String> descriptors, SearchCase check) throws Exception {
+    var tables = new ArrayList<Described>();
+    for (var text : descriptors) tables.add(valuesFrom(text));
+    long base = 0;
+    try { base = Long.parseLong(System.getenv().getOrDefault("LAWSPEC_SEED", "0")); } catch (NumberFormatException e) {}
+    final long seed0 = base;
+    java.util.function.LongFunction<List<Value>> generate = seed -> {
+      var random = new SplitMix64(seed);
+      var out = new ArrayList<Value>();
+      for (var t : tables) out.add(t.values().generate(t.descriptor(), random, 8));
+      return out;
+    };
+    var state = new Object() { List<Value> best = null; double bestScore = Double.NEGATIVE_INFINITY; int tried = 0; };
+    SearchCase attempt = values -> {
+      if (state.tried >= 400) return null;
+      state.tried++;
+      Double score;
+      try {
+        score = check.check(values);
+      } catch (Exception | Error e) {
+        searchRemember(law, descriptors, values);
+        throw e;
+      }
+      if (score == null || (state.best != null && !(score > state.bestScore))) return null;
+      state.best = values;
+      state.bestScore = score;
+      return score;
+    };
+    for (long k = 0; k < 10; k++) attempt.check(generate.apply(seed0 + k));
+    for (long step = 0; step < 60 && state.tried < 400; step++) {
+      boolean rose = false;
+      if (state.best != null) {
+        var current = state.best;
+        var moves = new ArrayList<List<Value>>();
+        for (int i = 0; i < current.size(); i++)
+          for (var m : searchMoves(tables.get(i).values(), tables.get(i).descriptor(), current.get(i))) {
+            var changed = new ArrayList<Value>(current);
+            changed.set(i, m);
+            moves.add(changed);
+          }
+        for (var candidate : moves.subList(0, Math.min(24, moves.size())))
+          if (attempt.check(candidate) != null) rose = true;
+      }
+      if (!rose) attempt.check(generate.apply(seed0 + 1000 + step));
+    }
+    System.out.println(law + ": targeted search tried " + state.tried + " case(s)" + (state.best == null ? "" : "; best score " + state.bestScore));
+  }
+
+  /** A score as a double: the targeted search maximizes it. */
+  public static Double searchNumber(Value v) {
+    if (v.data() instanceof Number n) return n.doubleValue();
+    try { return Double.parseDouble(String.valueOf(v.data())); } catch (NumberFormatException e) { return Double.NaN; }
+  }
+
   public static byte[] wireEncode(Values values, Object descriptor, Value v) {
     var out = new java.io.ByteArrayOutputStream();
     wirePut(values, descriptor, v, out);

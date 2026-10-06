@@ -142,7 +142,7 @@ export function benchmarkInvocations(target, entries, { offline = false } = {}) 
 // LawSpec.TestNames), then a kind after a separator no name contains, so one
 // law's name never selects another's. `scratch` is a folder for reports;
 // `coverage` asks each runner to measure coverage too (see coverageSetup).
-export function invocations(target, entries, { offline = false, scratch = ".", coverage = null } = {}) {
+export function invocations(target, entries, { offline = false, scratch = ".", coverage = null, xdist = false } = {}) {
   const language = target.language;
   const testDir = target.testDir;
   const relativeTo = (file, defaultDir) => {
@@ -154,14 +154,17 @@ export function invocations(target, entries, { offline = false, scratch = ".", c
   if (language === "python")
     return groupBy(entries, (e) => e.file).map(([file, laws], n) => {
       const report = path.join(scratch, `pytest-${n}.xml`);
-      const pytest = ["-m", "pytest", "-q", file, "-k", laws.map((e) => `${e.name}__`).join(" or "), `--junitxml=${report}`];
+      // parallel: pytest-xdist runs the tests on several workers, when it
+      // is installed (lawspec test checks); otherwise one after another.
+      const workers = xdist && laws.some((e) => e.parallel) ? ["-p", "xdist", "-n", "auto"] : [];
+      const pytest = ["-m", "pytest", "-q", ...workers, file, "-k", laws.map((e) => `${e.name}__`).join(" or "), `--junitxml=${report}`];
       return { laws, command: target.python || "python3",
         args: coverage ? ["-m", "coverage", "run", "--append", `--data-file=${path.join(coverage, ".coverage")}`, ...pytest.slice(1)] : pytest,
         report: { kind: "junit", files: [report] },
         ran: (test) => laws.filter((e) => test.name.startsWith(`${e.name}__`)) };
     });
   if (language === "javascript" || language === "typescript") {
-    const pattern = (e) => `^${regex(e.label)}( example: .*| property| known failing| skipped)?$`;
+    const pattern = (e) => `^${regex(e.label)}( example: .*| property| known failing| skipped| replay| search)?$`;
     const files = [...new Set(entries.map((e) => language === "typescript"
       ? `dist/${without(e.file, ".ts")}.js` : e.file))];
     const report = path.join(scratch, "node.xml");

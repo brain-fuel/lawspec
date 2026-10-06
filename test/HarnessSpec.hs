@@ -9,7 +9,8 @@ import LawSpec.Core.Evidence (Obligation(..), Status(..))
 import LawSpec.Discharge (dischargeEvidence)
 import LawSpec.Frontend (compileCore)
 import LawSpec.Model (Source(..), defaultGeneration)
-import LawSpec.TestManifest (TestEntry(..), testManifest)
+import LawSpec.TestManifest (TestEntry(..), testManifest, BenchmarkEntry(..), benchmarkManifest)
+import LawSpec.Search (lawDescriptors)
 import LawSpec.TestNames (unitTestNames)
 
 -- A unit, and a harness in a file of its own.
@@ -141,6 +142,23 @@ spec = describe "harness units" $ do
       Right program -> case [b | u <- C.programUnits program, Just h <- [C.unitHarnessSettings u], (_, b) <- C.harnessBenchmarks h] of
         [b] | C.Handle (C.WithHandler _ C.ProductionHandler) _ <- C.expressionNode b -> pure ()
         other -> expectationFailure (show other)
+  it "describes a law's inputs for the failure database and targeted search" $
+    case compiled (harness []) of
+      Left ds -> expectationFailure (show ds)
+      Right program -> do
+        let descriptorsOf name = [lawDescriptors 64 (C.programDataDeclarations program) p | u <- C.programUnits program, p <- C.unitProperties u, C.propertyName p == name]
+        -- An integer narrowed to its refinement's bounds; a data type with its table.
+        descriptorsOf "booking succeeds [fakeLedger]" `shouldBe` [Just ["(int Int32 1 2147483647)"]]
+        case descriptorsOf "discount is small" of
+          [Just [d]] -> d `shouldSatisfy` ("(data example.shop::type::Order" `isInfixOf`)
+          other -> expectationFailure (show other)
+  it "lists benchmarks and parallel units in the manifest" $
+    case compiled (harness ["  parallel", "  benchmark `a booking` is book 1 end"]) of
+      Left ds -> expectationFailure (show ds)
+      Right program -> do
+        nub (map entryParallel (testManifest "python" Nothing program)) `shouldBe` [True]
+        [(benchmarkName b, benchmarkTest b) | b <- benchmarkManifest "go" Nothing program] `shouldBe` [("a booking", "TestBenchmarkABooking")]
+        map benchmarkTest (benchmarkManifest "python" Nothing program) `shouldBe` ["test_benchmark__a_booking"]
   it "keeps the variants test with leaves out as skipped obligations" $
     case compiled (harness ["  test with fakeLedger"]) >>= dischargeEvidence of
       Left ds -> expectationFailure (show ds)

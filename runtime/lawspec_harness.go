@@ -13,6 +13,7 @@ package RUNTIME_PACKAGE
 
 import (
 	"encoding/json"
+	"flag"
 	"fmt"
 	"math"
 	"os"
@@ -377,4 +378,20 @@ func lsHarnessBenchmark(t *testing.T, name string, body func()) {
 	})
 	t.Logf("benchmark %s: %d iteration(s), mean %.2f us", name, result.N, float64(result.NsPerOp())/1000)
 	lsHarnessRecord("benchmark "+name, map[string]any{"benchmark": name, "iterations": result.N, "mean_ns": result.NsPerOp()})
+}
+
+// lsHarnessShuffle is order random: go test runs the package's tests in an
+// order -test.shuffle chooses, here the run's seed (LAWSPEC_SEED), or the
+// clock. A -test.shuffle given on the command line wins.
+func lsHarnessShuffle() {
+	if !flag.Parsed() {
+		flag.Parse()
+	}
+	if f := flag.Lookup("test.shuffle"); f != nil && f.Value.String() == "off" {
+		seed := os.Getenv("LAWSPEC_SEED")
+		if seed == "" {
+			seed = "on"
+		}
+		_ = flag.Set("test.shuffle", seed)
+	}
 }

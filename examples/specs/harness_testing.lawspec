@@ -15,6 +15,7 @@ harness example.harness.testing for example.harness is
   tags pricing
   test with fakeLedger
   order random
+  parallel
 
   for law `a discount is never more than the total`
     use orders for order

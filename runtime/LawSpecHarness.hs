@@ -6,7 +6,7 @@
 -- Statistics go to standard output, and, when LAWSPEC_STATS names a
 -- directory, to one JSON file per test there, which lawspec test reads.
 module LawSpecHarness
-  ( HarnessError(..), checkDrawn, observe, target, run, knownFailing, benchmark, record
+  ( HarnessError(..), checkDrawn, observe, target, run, knownFailing, benchmark, record, shuffled
   ) where
 
 import Control.Exception (Exception, SomeException, evaluate, fromException, throwIO, try)
@@ -22,6 +22,8 @@ import System.IO.Unsafe (unsafePerformIO)
 import System.Timeout (timeout)
 import LawSpecRuntime (Scalar(..))
 import qualified LawSpecRuntime as LS
+import Data.Word (Word64)
+import Test.Hspec (SpecWith, runIO)
 
 -- A harness requirement failed: a strategy or an adequacy check.
 newtype HarnessError = HarnessError String
@@ -80,8 +82,9 @@ observe law covers classified labelled = atomicModifyIORef' statistics $ \table 
       SSequence _ units -> map toEnum units
       other -> LS.renderValue other
 
--- target maximize: Hedgehog has no targeted search, so the best score is
--- reported with the law's statistics.
+-- target maximize: Hedgehog has no targeted search, so the best score it
+-- draws is reported with the law's statistics, and LawSpec's own search
+-- (LS.searchClimb) climbs after the property.
 target :: Scalar -> String -> IO ()
 target score law = atomicModifyIORef' statistics $ \table ->
   let s = M.findWithDefault emptyStats law table
@@ -183,3 +186,28 @@ benchmark name body = do
     " us, fastest " ++ showFFloat (Just 2) (fastest / 1000) "" ++ " us")
   record ("benchmark " ++ name) [("benchmark", JString name), ("iterations", JInt (fromIntegral (length times))),
     ("mean_ns", JInt (round mean)), ("min_ns", JInt (round fastest))]
+
+-- order random: the unit's law tests, each law's in one block, in an order
+-- the run's seed chooses (LAWSPEC_SEED, else HSPEC_SEED, else the clock).
+shuffled :: [SpecWith ()] -> SpecWith ()
+shuffled items = do
+  seed <- runIO $ do
+    given <- lookupEnv "LAWSPEC_SEED"
+    hspecSeed <- lookupEnv "HSPEC_SEED"
+    now <- getMonotonicTimeNSec
+    pure (maybe now id (parse given `orElse` parse hspecSeed))
+  sequence_ (permute seed items)
+  where
+    parse :: Maybe String -> Maybe Word64
+    parse text = case fmap reads text of
+      Just [(n, "")] -> Just n
+      _ -> Nothing
+    orElse (Just a) _ = Just a
+    orElse Nothing b = b
+    -- Fisher-Yates over SplitMix64 draws.
+    permute _ [] = []
+    permute state xs =
+      let (draw, next) = LS.splitMix64 state
+          i = fromIntegral (draw `mod` fromIntegral (length xs))
+          (before, chosen : after) = splitAt i xs
+      in chosen : permute next (before ++ after)

@@ -44,6 +44,9 @@ data Config = Config
   , abilityModules :: Maybe (String, String)
   -- The modules of bound production handlers.
   , nativeImports :: [String]
+  -- Each input's descriptor, for LawSpec's own search (LawSpec.Search):
+  -- Nothing when the law takes no part in it.
+  , searchDescriptors :: Expanded -> Maybe [String]
   }
 
 text = D.text
@@ -110,12 +113,19 @@ emitTests Config{..} unit laws = do
     text (if sharing then "spec = afterAll_ LS.releaseShared $ do" else "spec = do") <>
     -- Workflows wait on a virtual clock under test.
     D.nest 2 (D.hardline <> text "runIO (LS.useVirtualClock 0)" <> D.hardline <>
-      (if null bodies then text "pure ()" else separate (bodies ++ map benchmark (maybe [] C.harnessBenchmarks settings)))) <> D.hardline
+      (if null bodies then text "pure ()" else separate (ordered bodies ++ map benchmark (maybe [] C.harnessBenchmarks settings)))) <> D.hardline
   where
     -- The harness plane (LawSpec.Harness). A test the harness runs is an
     -- IO action bound with let (harness:name), which the generated example
     -- passes to the runtime; parallel marks every example parallel.
     settings = C.unitHarnessSettings unit
+    -- order random: each law's tests in one block, the blocks in an order
+    -- the run's seed chooses (LawSpecHarness.shuffled).
+    ordered docs
+      | maybe False C.harnessOrderRandom settings =
+          [text "LawSpecHarness.shuffled" <> D.nest 2 (D.hardline <> text "[ " <>
+            D.joinWith (D.hardline <> text ", ") [text "do" <> D.nest 4 (D.hardline <> d) | d <- docs] <> D.hardline <> text "]")]
+      | otherwise = docs
     sharing = any (\e -> any ((/= Nothing) . C.resourceShared) (C.propertyResources (original e))) laws
     harnessed = settings /= Nothing
     parallel = maybe False C.harnessParallel settings
@@ -264,7 +274,34 @@ emitTests Config{..} unit laws = do
           ([symbols] ++ handlerInstalls e ++ [bind (inputId inp) (checked (inputType inp) v) | (inp,v) <- zip (inputs e) values] ++
           [bracketed e [assertionDoc (label ++ " boundary " ++ show i) (assertion e)]]))
         (zip [0::Int ..] (maybe (boundaryCases e) id (finiteCases e)))
-      let check = bracketed e (observations e ++ [assertionDoc (label ++ " property") (assertion e)])
+      -- LawSpec's own search (LawSpec.Search): the failure database's
+      -- inputs are replayed before the law's generated cases, a failing
+      -- case's inputs are kept, and a law with `target maximize` climbs
+      -- after them, as Hedgehog has no targeting.
+      let descriptors = searchDescriptors e
+          inputsName = "_lawspecInputs" ++ show index
+          caseName = "_lawspecCase" ++ show index
+          remembered doc = case descriptors of
+            Nothing -> doc
+            Just _ -> apply "LS.searchGuard" [quoted label, text inputsName, E.array (map (text . inputId) (inputs e))] <>
+              text " $ do" <> D.nest 2 (D.hardline <> doc)
+          (searchBefore, searchAfter) = case descriptors of
+            Nothing -> ([], [])
+            Just ds ->
+              let refinements = concatMap inputRefinements (inputs e)
+                  score = maybe (text "0") (\s' -> runtime "searchNumber" [checked (expressionType s') (expr s')]) (C.harnessTarget h)
+                  checking = statements [bracketed e [assertionDoc (label ++ " search") (assertion e)],
+                    apply "P.pure" [parens (apply "P.Just" [parens score])]]
+              in ( [ bind inputsName (E.array (map quoted ds))
+                   , text ("let " ++ caseName ++ " _values = do") <> D.nest 6 (D.hardline <> statements
+                       ([symbols] ++ handlerInstalls e ++
+                        [bind (inputId inp) (checked (inputType inp) (text ("_values !! " ++ show i))) | (i, inp) <- zip [0::Int ..] (inputs e)] ++
+                        [if null refinements then checking
+                         else text "if P.not " <> D.nest 4 (parens (conjunction (map (truth . expr) refinements))) <> text " then P.pure P.Nothing else do" <>
+                           D.nest 2 (D.hardline <> checking)]))
+                   , example (base' ++ "_replay") (runtime "searchReplay" [quoted label, text inputsName, text caseName]) ]
+                 , [example (base' ++ "_search") (runtime "searchClimb" [quoted label, text inputsName, text caseName]) | C.harnessTarget h /= Nothing] )
+      let check = bracketed e (observations e ++ [remembered (assertionDoc (label ++ " property") (assertion e))])
       property <- if finiteCases e /= Nothing then pure []
         else if not (null (C.harnessDraws h)) then (:[]) <$> harnessProperty fn label e check
         else if nativeGenerators || constructorContracts || any (maybe False (const True) . generatorIndex) (generationPlan e)
@@ -275,7 +312,7 @@ emitTests Config{..} unit laws = do
           else pure [nativeProperty fn label e check]
       let kinds = ["_example" ++ show i | i <- [0 .. length exampleDocs - 1]] ++ ["_boundary" ++ show i | i <- [0 .. length boundaryDocs - 1]] ++
             ["_property" | not (null property)]
-      pure $ metadataDocument 78 "--" e <> separate (harnessTests base' label h kinds (exampleDocs ++ boundaryDocs ++ property))
+      pure $ metadataDocument 78 "--" e <> separate (searchBefore ++ harnessTests base' label h kinds (exampleDocs ++ boundaryDocs ++ property) ++ searchAfter)
     propertyHeader fn label e = apply "modifyMaxSuccess" [apply "const" [number (cases (generation e))]] <>
       text " $ " <> apply "it" [quoted (fn ++ "_property: " ++ label)] <> text " $ hedgehog $ do"
     contextualProperty fn label e check = do

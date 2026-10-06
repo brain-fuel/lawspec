@@ -183,9 +183,15 @@ These expressions are over the law's inputs, and may call checked definitions
 only: calling native code or an ability could change what the law observes.
 They count only generated cases, not examples or boundary cases.
 
-`target maximize` steers generation on Python, where Hypothesis searches for
-higher scores. The other targets' libraries have no targeted search; there the
-best score is reported with the statistics.
+`target maximize` steers generation on every target. On Python, Hypothesis
+searches for higher scores itself. The other targets' libraries have no
+targeted search, so LawSpec climbs after the property test: it generates
+inputs from the run's seed, keeps the best-scoring case, and moves its
+integers (one step, doubling, halving the distance to a bound) while the
+score rises, drawing afresh when it does not. Every case it tries is checked
+against the law, at most 400 of them, and the best score is printed. A law
+whose inputs have no [wire descriptor](../cli.md#the-failure-database) (a
+float, a handle, a generic data type) is not climbed.
 
 Each property test prints its statistics, and `lawspec test` keeps them:
 
@@ -213,10 +219,20 @@ example.harness::a discount is never more than the total: 100 generated case(s)
 `known failing` cannot be put on a law the compiler proves or evaluates
 itself: such a law is either true or a compile error.
 
-`order random` is honoured on Python, JavaScript, TypeScript, Java and Kotlin;
-`parallel` on Go (`t.Parallel`), Java (JUnit's concurrent mode, when enabled
-in its configuration), Haskell (hspec's `parallel`) and Rust (whose tests run
-in parallel already).
+`order random` and `parallel` hold on every target:
+
+| Target | `order random` | `parallel` |
+| --- | --- | --- |
+| Python | the tests are registered in a seeded order | pytest-xdist (`-n auto`), when `lawspec test` finds it installed; without it the tests run one after another, and `lawspec test` says so |
+| JavaScript, TypeScript | registered in a seeded order | one `describe` suite with `concurrency: true` |
+| Go | `-test.shuffle` with the run's seed, set in `TestMain` | `t.Parallel()` |
+| Java | JUnit's random method order | JUnit's concurrent mode, when enabled in its configuration |
+| Kotlin | Kotest's random order | Kotest's `concurrency`, one thread per processor |
+| Rust | each law test waits its turn; the seed ranks the tests waiting | libtest runs tests in parallel already (a unit with `order random` runs them one at a time) |
+| Haskell | each law's tests in one block, the blocks shuffled with the seed | hspec's `parallel` |
+
+The seed is the run's (`LAWSPEC_SEED`, which `lawspec test` sets), so an
+order can be repeated.
 
 ## Sharing resources
 

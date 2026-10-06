@@ -37,6 +37,7 @@ import qualified Data.Text.Lazy as T
 import qualified Data.Text.Lazy.Encoding as T
 import Data.List (intercalate, isPrefixOf, isInfixOf, find, nub)
 import Data.Char (toLower, isAlphaNum)
+import LawSpec.Search (lawDescriptors, searchable)
 
 q :: String -> String
 q = T.unpack . T.decodeUtf8 . encode
@@ -463,6 +464,7 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
       , KotlinProperties.nativeArgument = ktNativeArgument
       , KotlinProperties.nativeResult = ktNativeResult
       , KotlinProperties.handlerInstalls = ktInstalls
+      , KotlinProperties.searchDescriptors = searchDescriptorsOf
       }
     hsRender = java . HaskellExpr.renderExpression dataDeclarations bits "_lawspecSchema" "symbols" localName hsExternal
     hsScope = HaskellExpr.apply "P.Just" [Doc.text "symbols"]
@@ -614,6 +616,7 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
       , HaskellProperties.nativeCall = hsNativeCall
       , HaskellProperties.nativeResult = hsNativeResult
       , HaskellProperties.handlerInstalls = hsInstalls
+      , HaskellProperties.searchDescriptors = searchDescriptorsOf
       , HaskellProperties.abilityModules = if null (C.unitAbilities u) then Nothing
           else Just (HaskellAbilities.typesModule u, HaskellAbilities.handlersModule u)
       , HaskellProperties.nativeImports = nub ([intercalate "." (init parts) | a <- C.unitAbilities u, Just parts <- [C.abilityNative a]] ++
@@ -675,12 +678,16 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
       , GoProperties.nativeArgument = goNativeArgument
       , GoProperties.nativeResult = goNativeResult
       , GoProperties.handlerInstalls = goInstalls
+      , GoProperties.searchDescriptors = searchDescriptorsOf
       }
     -- Abilities: the unit's own, its spec handlers, and the handlers a law
     -- installs (Fail's are built in, so none is installed for it).
     abilityNamed = unitAbility u
     specNamed h = lookup h [(C.handlerId x, x) | x <- C.unitHandlers u]
     chosenHandlers e = [(a, c) | (a, c) <- C.propertyHandlers (original e), not (C.isFail a)]
+    -- Each input's descriptor for LawSpec's own search, when the law takes
+    -- part in it (LawSpec.Search).
+    searchDescriptorsOf e = if searchable (finiteCases e /= Nothing) (original e) then lawDescriptors bits dataDeclarations (original e) else Nothing
     -- The abilities an adapter gets handlers for, first, in its uses order.
     usesOf n = [a | d <- C.unitDeclarations u, C.declarationName d == n, a <- C.declarationUses d, not (C.isFail a)]
     handlerParameter ability = case maybe "handler" C.abilityName (abilityNamed ability) of
@@ -831,6 +838,7 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
       , JavaProperties.nativeArgument = javaNativeArgument
       , JavaProperties.nativeResult = javaNativeResult
       , JavaProperties.handlerInstalls = javaInstalls
+      , JavaProperties.searchDescriptors = searchDescriptorsOf
       }
     -- A handler as the ability's Java interface.
     javaHandler ability = Doc.text ("((" ++ javaInterface ability ++

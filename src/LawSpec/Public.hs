@@ -182,7 +182,13 @@ programView settings surface expansions artifacts evidence C.Program{..} = objec
       , "labels" .= map (expressionView names) (C.harnessLabels h)
       , "target" .= fmap (expressionView names) (C.harnessTarget h)
       , "strategies" .= [object ["input" .= maybe (C.idText i) id (lookup i names), "strategy" .= n] | (i, n, _) <- C.harnessDraws h]
-      , "group" .= C.harnessGroup h ]
+      , "group" .= C.harnessGroup h
+      -- The unit's run settings: its tests in a random order, at the same time.
+      , "orderRandom" .= or [C.harnessOrderRandom s | Just s <- [unitSettingsOf h]]
+      , "parallel" .= or [C.harnessParallel s | Just s <- [unitSettingsOf h]] ]
+    unitSettingsOf h = case [s | u <- programUnits, Just s <- [C.unitHarnessSettings u], Just (C.unitHarnessName s) == C.harnessUnit h] of
+      s : _ -> Just s
+      [] -> Nothing
     evidenceView o = object (
       [ "owner" .= C.idText (obligationUnit o), "declaration" .= C.idText (obligationDeclaration o)
       , "stage" .= obligationStage o, "status" .= statusName (obligationStatus o)

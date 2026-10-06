@@ -21,7 +21,9 @@ data TestEntry = TestEntry
   , entryFile :: FilePath, entryKey :: String, entryCallsAdapters :: Bool
   -- The harness plane: the tests' base name, tags, skip and known failing.
   , entryName :: String, entryTags :: [String], entrySkip :: Maybe String
-  , entryKnownFailing :: Maybe String }
+  , entryKnownFailing :: Maybe String
+  -- Whether the law's unit lets its tests run at the same time (parallel).
+  , entryParallel :: Bool }
   deriving (Eq, Show)
 
 -- The manifest for one target, with its test directory if not the default.
@@ -33,6 +35,7 @@ testManifest target testDir program =
         -- A native production handler is native code too.
         any (native . snd) [h | h@(a, _) <- propertyHandlers p, not (isFail a)])
       testName (harnessTags (propertyHarness p)) (harnessSkip (propertyHarness p)) (harnessKnownFailing (propertyHarness p))
+      (maybe False harnessParallel (unitHarnessSettings u))
   | u <- programUnits program
   , let unit = idText (unitId u)
         names = if target `elem` ["javascript", "typescript"] then [unit ++ "::" ++ propertyName p | p <- unitProperties u]

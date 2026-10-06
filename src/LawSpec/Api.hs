@@ -75,7 +75,8 @@ withTests entries (Object o) = Object (KM.insert "tests" (toJSON (map entry entr
       [ "law" .= C.idText (entryLaw e), "unit" .= entryUnit e, "label" .= entryLabel e
       , "index" .= entryIndex e, "file" .= entryFile e, "key" .= entryKey e
       , "callsAdapters" .= entryCallsAdapters e, "name" .= entryName e, "tags" .= entryTags e
-      , "skip" .= entrySkip e, "knownFailing" .= entryKnownFailing e ]
+      , "skip" .= entrySkip e, "knownFailing" .= entryKnownFailing e
+      , "parallel" .= entryParallel e ]
 withTests _ value = value
 
 -- The harness's benchmarks and the tests that measure them.

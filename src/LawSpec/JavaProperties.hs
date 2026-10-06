@@ -37,6 +37,9 @@ data Config = Config
   , nativeResult :: Type -> D.Doc -> D.Doc
   -- The statements that install a law's handlers in symbols, for each case.
   , handlerInstalls :: Expanded -> [D.Doc]
+  -- Each input's descriptor, for LawSpec's own search (LawSpec.Search):
+  -- Nothing when the law takes no part in it.
+  , searchDescriptors :: Expanded -> Maybe [String]
   }
 
 text = D.text
@@ -95,9 +98,26 @@ emitTests Config{..} unit laws = do
     settings = C.unitHarnessSettings unit
     orderRandom = maybe False C.harnessOrderRandom settings
     parallel = maybe False C.harnessParallel settings
-    testFunction name body = case stripPrefix "harness:" name of
-      Just rest -> text ("void lawspecHarness" ++ rest ++ "() throws Throwable ") <> block body
-      Nothing -> junitTest name body
+    testFunction name body = case (stripPrefix "harness:" name, lookup name searchHooks) of
+      (Just rest, hook) -> text ("void lawspecHarness" ++ rest ++ "() throws Throwable ") <> block (hooked hook body)
+      (Nothing, Just hook) -> throwingTest name (hooked (Just hook) body)
+      (Nothing, Nothing) -> junitTest name body
+    hooked hook body = maybe body (\(before, after) -> statements ([before, body] ++ after)) hook
+    -- LawSpec's own search (LawSpec.Search): a law's property test first
+    -- replays the failing inputs the failure database kept, and a law with
+    -- `target maximize` climbs after it, as JetCheck has no targeting. Each
+    -- uses the law's case method, which checks one tuple of inputs.
+    searchHooks =
+      [ (propertyName index e ++ "_property", (statement (runtime "searchReplay" [quoted label, inputs', caseRef]),
+          [statement (runtime "searchClimb" [quoted label, inputs', caseRef]) | C.harnessTarget (C.propertyHarness (original e)) /= Nothing]))
+      | (index, e) <- zip [0::Int ..] laws, Just _ <- [searchDescriptors e]
+      , let label = owner e ++ "::" ++ name e
+            inputs' = text ("_lawspecInputs" ++ show index)
+            caseRef = text ("this::_lawspecCase" ++ show index) ]
+    propertyName index e =
+      let h = C.propertyHarness (original e)
+          base = unitTestNames "java" (map name laws) !! index
+      in (if C.harnessSkip h == Nothing && (C.harnessKnownFailing h /= Nothing || runSettings h) then "harness:" else "") ++ base
     junitTest name body = text "@Test" <> D.hardline <> text ("void " ++ name ++ "() ") <> block body
     throwingTest name body = text "@Test" <> D.hardline <> text ("void " ++ name ++ "() throws Throwable ") <> block body
     runSettings h = C.harnessTimeout h /= Nothing || C.harnessRepeat h /= 1 || C.harnessRetries h /= 0 || observed h
@@ -227,7 +247,25 @@ emitTests Config{..} unit laws = do
           ([symbols] ++ handlerInstalls e ++ [bind (inputId inp) (checked (inputType inp) v) | (inp,v) <- zip (inputs e) values] ++
           [bracketed e [assertionDoc (label ++ " boundary " ++ show i) (assertion e)]]))
         (zip [0::Int ..] (maybe (boundaryCases e) id (finiteCases e)))
-      let check = bracketed e (observations e ++ [assertionDoc (label ++ " property") (assertion e)])
+      let descriptors = searchDescriptors e
+          remembered doc = case descriptors of
+            Nothing -> doc
+            Just _ -> text "try " <> block doc <> text " catch (RuntimeException | Error _lawspecError) " <> block (statements
+              [statement (runtime "searchRemember" [quoted label, text ("_lawspecInputs" ++ show index),
+                 call "java.util.List.of" [text (inputId inp) | inp <- inputs e]]), text "throw _lawspecError;"])
+          searchDocs = case descriptors of
+            Nothing -> []
+            Just ds ->
+              let refinements = concatMap inputRefinements (inputs e)
+              in [ text ("private static final java.util.List<String> _lawspecInputs" ++ show index ++ " = java.util.List.of(") <>
+                     D.commaSep (map quoted ds) <> text ");"
+                 , text ("private Double _lawspecCase" ++ show index ++ "(java.util.List<Value> _values) throws Exception ") <> block (statements
+                     ([symbols] ++ handlerInstalls e ++
+                      [bind (inputId inp) (checked (inputType inp) (text ("_values.get(" ++ show i ++ ")"))) | (i, inp) <- zip [0::Int ..] (inputs e)] ++
+                      [text "if (!(" <> conjunction (map (truth . expr) refinements) <> text ")) return null;" | not (null refinements)] ++
+                      [bracketed e [assertionDoc (label ++ " search") (assertion e)],
+                       returned (maybe (text "0.0") (\score -> runtime "searchNumber" [expr score]) (C.harnessTarget h))])) ]
+      let check = bracketed e (observations e ++ [remembered (assertionDoc (label ++ " property") (assertion e))])
       property <- if finiteCases e /= Nothing then pure []
         else if not (null (C.harnessDraws h)) then (:[]) <$> harnessProperty fn label e check
         else if nativeGenerators || any (structural . inputType) (inputs e) then (:[]) <$> structuralProperty fn e check
@@ -240,7 +278,7 @@ emitTests Config{..} unit laws = do
               [check,returned (text "true")])]]
       let kinds = ["_example" ++ show i | i <- [0 .. length exampleDocs - 1]] ++ ["_boundary" ++ show i | i <- [0 .. length boundaryDocs - 1]] ++
             ["_property" | not (null property)]
-      pure $ metadataDocument 98 "//" e <> separate (harnessTests base label h kinds (exampleDocs ++ boundaryDocs ++ property))
+      pure $ metadataDocument 98 "//" e <> separate (searchDocs ++ harnessTests base label h kinds (exampleDocs ++ boundaryDocs ++ property))
     structuralProperty fn e check = do
       strategies <- mapM (contextualStrategy (generation e)) (generationPlan e)
       let predicatesFor inp = concatMap conjuncts (inputRefinements inp)

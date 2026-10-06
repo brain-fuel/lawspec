@@ -36,6 +36,9 @@ data Config = Config
   , nativeResult :: Type -> D.Doc -> D.Doc
   -- The statements that install a law's handlers in symbols, for each case.
   , handlerInstalls :: Expanded -> [D.Doc]
+  -- Each input's descriptor, for LawSpec's own search (LawSpec.Search):
+  -- Nothing when the law takes no part in it.
+  , searchDescriptors :: Expanded -> Maybe [String]
   }
 
 text = D.text
@@ -77,14 +80,20 @@ emitTests Config{..} unit laws = do
     text ("class " ++ className ++ "LawSpecTest : StringSpec(") <>
     -- Workflows wait on a virtual clock under test.
     block (separate (text "lawspec.runtime.LawSpecRuntime.useVirtualClock(0)" : bodies ++ map benchmark (maybe [] C.harnessBenchmarks settings))) <> text ")" <>
-    -- order random is Kotest's own.
-    (if orderRandom then text " " <> block (text "override fun testCaseOrder() = io.kotest.core.test.TestCaseOrder.Random") else mempty) <> D.hardline
+    -- order random and parallel are Kotest's own: a random test order, and
+    -- the tests run concurrently, on as many threads as processors.
+    (if orderRandom || parallel then text " " <> block (statements
+      ([text "override fun testCaseOrder() = io.kotest.core.test.TestCaseOrder.Random" | orderRandom] ++
+       [text "override fun concurrency(): Int = Runtime.getRuntime().availableProcessors()" | parallel] ++
+       [text "@Suppress(\"OVERRIDE_DEPRECATION\")" <> D.hardline <> text "override fun threads(): Int = Runtime.getRuntime().availableProcessors()" | parallel]))
+     else mempty) <> D.hardline
   where
     -- The harness plane (LawSpec.Harness). A test the harness runs is a
     -- suspending function value (harness:name), which the generated test
     -- passes to the runtime shared with Java.
     settings = C.unitHarnessSettings unit
     orderRandom = maybe False C.harnessOrderRandom settings
+    parallel = maybe False C.harnessParallel settings
     testFunction name body = case stripPrefix "harness:" name of
       Just rest -> text ("val lawspecHarness" ++ takeWhile (/= ':') rest ++ ": suspend () -> Unit = ") <> closure "" body
       Nothing -> quoted name <> text " " <> block body
@@ -210,7 +219,32 @@ emitTests Config{..} unit laws = do
           ([symbols] ++ handlerInstalls e ++ [bind (inputId inp) (checked (inputType inp) v) | (inp,v) <- zip (inputs e) values] ++
           [bracketed e [assertionDoc (label ++ " boundary " ++ show i) (assertion e)]]))
         (zip [0::Int ..] (maybe (boundaryCases e) id (finiteCases e)))
-      let check = bracketed e (observations e ++ [assertionDoc (label ++ " property") (assertion e)])
+      -- LawSpec's own search (LawSpec.Search): the failure database's
+      -- inputs are replayed before the law's generated cases, a failing
+      -- case's inputs are kept, and a law with `target maximize` climbs
+      -- after them, as Kotest has no targeting.
+      let descriptors = searchDescriptors e
+          inputsName = "_lawspecInputs" ++ show index
+          caseName = "_lawspecCase" ++ show index
+          remembered doc = case descriptors of
+            Nothing -> doc
+            Just _ -> text "try " <> block doc <> text " catch (_lawspecError: Throwable) " <> block (statements
+              [runtime "searchRemember" [quoted label, text inputsName, call "listOf" [text (inputId inp) | inp <- inputs e]], text "throw _lawspecError"])
+          searchCase = text ("lawspec.runtime.LawSpecRuntime.SearchCase { _values -> kotlinx.coroutines.runBlocking { " ++ caseName ++ "(_values) } }")
+          (searchBefore, searchAfter) = case descriptors of
+            Nothing -> ([], [])
+            Just ds ->
+              let refinements = concatMap inputRefinements (inputs e)
+              in ( [ bind inputsName (call "listOf" (map quoted ds))
+                   , text ("val " ++ caseName ++ ": suspend (List<lawspec.runtime.LawSpecRuntime.Value>) -> Double? = lawspecCase@") <> closure "_values" (statements
+                       ([symbols] ++ handlerInstalls e ++
+                        [bind (inputId inp) (checked (inputType inp) (text ("_values[" ++ show i ++ "]"))) | (i, inp) <- zip [0::Int ..] (inputs e)] ++
+                        [text "if (!(" <> conjunction (map (truth . expr) refinements) <> text ")) return@lawspecCase null" | not (null refinements)] ++
+                        [bracketed e [assertionDoc (label ++ " search") (assertion e)],
+                         maybe (text "0.0") (\score -> runtime "searchNumber" [expr score]) (C.harnessTarget h)]))
+                   , quoted (base' ++ "_replay") <> text " " <> block (runtime "searchReplay" [quoted label, text inputsName, searchCase]) ]
+                 , [quoted (base' ++ "_search") <> text " " <> block (runtime "searchClimb" [quoted label, text inputsName, searchCase]) | C.harnessTarget h /= Nothing] )
+      let check = bracketed e (observations e ++ [remembered (assertionDoc (label ++ " property") (assertion e))])
       property <- if finiteCases e /= Nothing then pure []
         else if not (null (C.harnessDraws h)) then (:[]) <$> harnessProperty fn label e check
         else if constructorContracts || nativeGenerators || any (maybe False (const True) . generatorIndex) (generationPlan e)
@@ -221,7 +255,7 @@ emitTests Config{..} unit laws = do
           else pure [nativeProperty fn label e check]
       let kinds = ["_example" ++ show i | i <- [0 .. length exampleDocs - 1]] ++ ["_boundary" ++ show i | i <- [0 .. length boundaryDocs - 1]] ++
             ["_property" | not (null property)]
-      pure $ metadataDocument 96 "//" e <> separate (harnessTests base' label h kinds (exampleDocs ++ boundaryDocs ++ property))
+      pure $ metadataDocument 96 "//" e <> separate (searchBefore ++ harnessTests base' label h kinds (exampleDocs ++ boundaryDocs ++ property) ++ searchAfter)
     contextualProperty fn label e check = do
       let bindings xs = statements [text "val symbols = _inputs.symbols",
             text "val _values = _inputs.values",fromValues xs]

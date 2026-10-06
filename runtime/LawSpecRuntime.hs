@@ -4307,6 +4307,137 @@ wireDecode table d bytes = do
 hexOf :: ByteString -> String
 hexOf = concatMap (\w -> let h = showHex w "" in if length h < 2 then '0' : h else h) . B.unpack
 
+-- | LawSpec's own search over a law's inputs (see LawSpec.Search). The
+-- failure database keeps a failing case's inputs in the wire encoding,
+-- under LAWSPEC_FAILURES/inputs, and they are replayed before the law's
+-- next generated cases. target maximize climbs: it generates inputs from
+-- seeds, keeps the best-scoring case, and moves its integers (one step,
+-- doubling, halving the distance to a bound), keeping the best move while
+-- the score rises and drawing afresh when it does not, checking the law on
+-- every case it tries (at most 400). A case gives its score, or Nothing
+-- when its inputs fall outside the law's refinements.
+searchFile :: String -> IO (Maybe FilePath)
+searchFile law = do
+  directory <- lookupEnv "LAWSPEC_FAILURES"
+  let safe = map (\c -> if c `elem` (['a'..'z'] ++ ['A'..'Z'] ++ ['0'..'9'] ++ "-_") then c else '_') law
+  pure (case directory of
+    Just d | not (null d) -> Just (d ++ "/inputs/" ++ safe ++ ".json")
+    _ -> Nothing)
+
+searchRemember :: String -> [String] -> [Scalar] -> IO ()
+searchRemember law descriptors values = do
+  file <- searchFile law
+  case (file, mapM encode (zip descriptors values)) of
+    (Just path, Right inputs) -> do
+      Directory.createDirectoryIfMissing True (reverse (dropWhile (/= '/') (reverse path)))
+      writeFile path ("{\"law\": " ++ show law ++ ", \"inputs\": [" ++ intercalate ", " (map show inputs) ++ "]}")
+    _ -> pure ()
+  where encode (text, v) = let (table, d) = valuesFrom text in hexOf <$> wireEncode table d v
+
+-- | Runs a law's check while remembering its inputs if it fails.
+searchGuard :: String -> [String] -> [Scalar] -> IO a -> IO a
+searchGuard law descriptors values action =
+  action `catch` \(e :: SomeException) -> searchRemember law descriptors values >> throwIO e
+
+searchReplay :: String -> [String] -> ([Scalar] -> IO (Maybe Double)) -> IO ()
+searchReplay law descriptors check = do
+  file <- searchFile law
+  case file of
+    Nothing -> pure ()
+    Just path -> do
+      present <- Directory.doesFileExist path
+      if not present then pure () else do
+        text <- readFile path
+        length text `seq` pure ()
+        let after = snd (breakOn "\"inputs\"" text)
+            encoded = everyOther (drop 1 (splitQuotes (drop 8 after)))
+            decode (descriptor, hex) = do
+              bytes <- maybe (Left "bad hex") Right (unhex hex)
+              let (table, d) = valuesFrom descriptor
+              wireDecode table d (B.pack bytes)
+        case mapM decode (zip descriptors encoded) of
+          Right values | length values == length descriptors -> do
+            putStrLn (law ++ ": replaying the failing inputs kept in .lawspec/failures")
+            _ <- check values
+            pure ()
+          _ -> pure ()
+        Directory.removeFile path
+  where
+    breakOn needle haystack = case haystack of
+      [] -> ([], [])
+      _ | needle `isPrefixOf` haystack -> ([], haystack)
+      c : rest -> let (a, b) = breakOn needle rest in (c : a, b)
+    splitQuotes t = case break (== '"') t of
+      (a, []) -> [a]
+      (a, _ : rest) -> a : splitQuotes rest
+    everyOther (x : _ : rest) = x : everyOther rest
+    everyOther xs = xs
+    unhex (a : b : rest) = case readHex [a, b] of
+      [(w, "")] -> (fromInteger w :) <$> unhex rest
+      _ -> Nothing
+    unhex [] = Just []
+    unhex _ = Nothing
+
+-- | Each value with one integer moved, wherever it sits in the value.
+searchMoves :: DataTable -> Descriptor -> Scalar -> [Scalar]
+searchMoves table d0 v = case (descriptorKind d, v) of
+  ("int", SInteger t x) ->
+    let (lo, hi) = descriptorBounds d
+    in [SInteger t c | c <- nub [x + 1, x - 1, x * 2, x `quot` 2, x + (hi - x) `quot` 2, x - (x - lo) `quot` 2], c /= x, c >= lo, c <= hi]
+  ("list", SList xs) -> [SList (replace i m xs) | (i, item) <- zip [0 ..] xs, m <- searchMoves table (descriptorArgument 1 d) item]
+  ("maybe", SData tag [inner]) -> [SData tag [m] | m <- searchMoves table (descriptorArgument 1 d) inner]
+  ("either", SData tag [inner]) -> [SData tag [m] | m <- searchMoves table (descriptorArgument (if tag == "Either::Left" then 1 else 2) d) inner]
+  ("data", SData tag fields) -> case [fs | c <- constructorsOf d, let (t', fs) = constructorParts c, t' == tag] of
+    forms : _ -> [SData tag (replace i m fields) | (i, (f, field)) <- zip [0 ..] (zip forms fields), m <- searchMoves table f field]
+    [] -> []
+  _ -> []
+  where
+    d = resolveDescriptor table d0
+    replace :: Int -> a -> [a] -> [a]
+    replace i m xs = take i xs ++ [m] ++ drop (i + 1) xs
+
+searchClimb :: String -> [String] -> ([Scalar] -> IO (Maybe Double)) -> IO ()
+searchClimb law descriptors check = do
+  seedText <- lookupEnv "LAWSPEC_SEED"
+  let tables = map valuesFrom descriptors
+      base = maybe 0 (\t -> case reads t of [(n, "")] -> n; _ -> 0) seedText :: Word64
+      generate seed = fst (runDraw (mapM (\(table, d) -> generateValue table d 8) tables) seed)
+  best <- newIORef (Nothing :: Maybe (Double, [Scalar]))
+  tried <- newIORef (0 :: Int)
+  let attempt values = do
+        n <- readIORef tried
+        if n >= 400 then pure False else do
+          writeIORef tried (n + 1)
+          score <- check values `catch` \(e :: SomeException) -> searchRemember law descriptors values >> throwIO e
+          current <- readIORef best
+          case (score, current) of
+            (Just s, Just (b, _)) | not (s > b) -> pure False
+            (Just s, _) -> writeIORef best (Just (s, values)) >> pure True
+            (Nothing, _) -> pure False
+  forM_ [0 .. 9] $ \k -> attempt (generate (base + k))
+  forM_ [0 .. 59 :: Word64] $ \step -> do
+    n <- readIORef tried
+    if n >= 400 then pure () else do
+      current <- readIORef best
+      rose <- case current of
+        Nothing -> pure False
+        Just (_, values) -> do
+          let moves = take 24 [ take i values ++ [m] ++ drop (i + 1) values
+                              | (i, ((table, d), v)) <- zip [0 ..] (zip tables values), m <- searchMoves table d v ]
+          or <$> mapM attempt moves
+      if rose then pure () else () <$ attempt (generate (base + 1000 + step))
+  n <- readIORef tried
+  final <- readIORef best
+  putStrLn (law ++ ": targeted search tried " ++ show n ++ " case(s)" ++ maybe "" (\(s, _) -> "; best score " ++ show s) final)
+
+-- | A score as a Double: the targeted search maximizes it.
+searchNumber :: Scalar -> Double
+searchNumber v = case v of
+  SInteger _ n -> fromInteger n
+  _ -> case reads (renderValue v) of
+    [(d, "")] -> d
+    _ -> 0 / 0
+
 -- | count values generated from one seed, encoded, in hexadecimal.
 wireEncoded :: String -> Word64 -> Integer -> Integer -> [String]
 wireEncoded text seed size count =

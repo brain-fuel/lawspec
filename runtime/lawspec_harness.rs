@@ -276,3 +276,59 @@ pub fn benchmark(name: &str, mut body: impl FnMut() -> ls::Result<()>) -> ls::Re
         ("mean_ns", mean.to_string()), ("min_ns", fastest.to_string())]);
     Ok(())
 }
+
+/// order random: libtest runs tests in name order, several at a time, and
+/// its own shuffle is not stable. A unit with `order random` runs its law
+/// tests one at a time instead, each waiting for its turn: among the tests
+/// that have arrived and not run, the one the run's seed (LAWSPEC_SEED, or
+/// the clock) ranks first runs next, once no other has arrived for a moment.
+pub struct Turn(String);
+
+struct Turns {
+    running: bool,
+    waiting: Vec<(u64, usize)>,
+    arrived: std::time::Instant,
+}
+
+static TURNS: Mutex<BTreeMap<String, Turns>> = Mutex::new(BTreeMap::new());
+static TURN_FREE: std::sync::Condvar = std::sync::Condvar::new();
+
+fn turn_seed() -> u64 {
+    static SEED: std::sync::OnceLock<u64> = std::sync::OnceLock::new();
+    *SEED.get_or_init(|| {
+        std::env::var("LAWSPEC_SEED").ok().and_then(|s| s.parse().ok()).unwrap_or_else(|| {
+            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos() as u64).unwrap_or(0)
+        })
+    })
+}
+
+pub fn turn(unit: &str, index: usize) -> Turn {
+    let rank = ls::SplitMix64::new(turn_seed() ^ (index as u64).wrapping_mul(0x9E3779B97F4A7C15)).next();
+    let mut turns = TURNS.lock().unwrap_or_else(|e| e.into_inner());
+    {
+        let entry = turns.entry(unit.to_string()).or_insert_with(|| Turns { running: false, waiting: Vec::new(), arrived: std::time::Instant::now() });
+        entry.waiting.push((rank, index));
+        entry.arrived = std::time::Instant::now();
+    }
+    TURN_FREE.notify_all();
+    loop {
+        let entry = turns.get_mut(unit).expect("a unit's turns");
+        let first = entry.waiting.iter().min().copied();
+        if !entry.running && first == Some((rank, index)) && entry.arrived.elapsed() >= std::time::Duration::from_millis(20) {
+            entry.waiting.retain(|w| *w != (rank, index));
+            entry.running = true;
+            return Turn(unit.to_string());
+        }
+        turns = TURN_FREE.wait_timeout(turns, std::time::Duration::from_millis(5)).unwrap_or_else(|e| e.into_inner()).0;
+    }
+}
+
+impl Drop for Turn {
+    fn drop(&mut self) {
+        let mut turns = TURNS.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(entry) = turns.get_mut(&self.0) {
+            entry.running = false;
+        }
+        TURN_FREE.notify_all();
+    }
+}

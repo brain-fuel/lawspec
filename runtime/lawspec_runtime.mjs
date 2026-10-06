@@ -4417,6 +4417,114 @@ export function wireEncoded(text, seed, size, count) {
   return Array.from({length: Number(count)}, () => hex(wireEncode(values, d, values.generate(d, random, size))));
 }
 
+// LawSpec's own search over a law's inputs (see LawSpec.Search). The
+// failure database keeps a failing case's inputs in the wire encoding, under
+// LAWSPEC_FAILURES/inputs, and they are replayed before the law's next
+// generated cases. `target maximize` climbs: it generates inputs from seeds,
+// keeps the best-scoring case, and moves its integers (one step, doubling,
+// halving the distance to a bound), keeping the best move while the score
+// rises and drawing afresh when it does not, checking the law on every case
+// it tries (at most 400).
+function searchFile(law) {
+  const directory = globalThis.process?.env?.LAWSPEC_FAILURES;
+  if (!directory) return null;
+  const path = nodeModule('node:path');
+  return path.join(directory, 'inputs', law.replace(/[^A-Za-z0-9_-]/g, '_') + '.json');
+}
+
+export function searchRemember(law, descriptors, values) {
+  const file = searchFile(law);
+  if (file === null) return;
+  let inputs;
+  try {
+    inputs = descriptors.map((text, i) => { const [table, d] = valuesFrom(text); return hex(wireEncode(table, d, values[i])); });
+  } catch { return; }
+  const fs = nodeModule('node:fs');
+  fs.mkdirSync(nodeModule('node:path').dirname(file), { recursive: true });
+  fs.writeFileSync(file, JSON.stringify({ law, inputs }));
+}
+
+export async function searchReplay(law, descriptors, check) {
+  const file = searchFile(law);
+  const fs = file === null ? null : nodeModule('node:fs');
+  if (file === null || !fs.existsSync(file)) return;
+  let values = [];
+  try {
+    const entry = JSON.parse(fs.readFileSync(file, 'utf8'));
+    values = descriptors.map((text, i) => {
+      const [table, d] = valuesFrom(text);
+      const bytes = Uint8Array.from((entry.inputs[i] ?? '').match(/../g) ?? [], (b) => parseInt(b, 16));
+      return wireDecode(table, d, bytes);
+    });
+  } catch { values = []; }
+  if (values.length === descriptors.length) {
+    console.log(`${law}: replaying the failing inputs kept in .lawspec/failures`);
+    await check(values);
+  }
+  fs.rmSync(file, { force: true });
+}
+
+// Each value with one integer moved, wherever it sits in the value.
+function searchMoves(table, d, v) {
+  d = table.resolve(d);
+  switch (d[0]) {
+    case 'int': {
+      const [lo, hi] = table.bounds(d);
+      const x = asBig(v);
+      const out = [x + 1n, x - 1n, x * 2n, x / 2n, x + (hi - x) / 2n, x - (x - lo) / 2n];
+      return [...new Set(out.filter((y) => y >= lo && y <= hi && y !== x))];
+    }
+    case 'list':
+      return v.flatMap((item, i) => searchMoves(table, d[1], item).map((m) => v.map((old, j) => (j === i ? m : old))));
+    case 'maybe':
+      return v.tag === 'Maybe::Just' ? searchMoves(table, d[1], v.fields[0]).map((m) => new DataValue(v.tag, [m])) : [];
+    case 'either':
+      return searchMoves(table, v.tag === 'Either::Left' ? d[1] : d[2], v.fields[0]).map((m) => new DataValue(v.tag, [m]));
+    case 'data': {
+      const ctor = d.slice(2).find((c) => String(c[1]) === v.tag);
+      if (!ctor) return [];
+      return ctor.slice(2).flatMap((fd, i) => searchMoves(table, fd, v.fields[i])
+        .map((m) => new DataValue(v.tag, v.fields.map((old, j) => (j === i ? m : old)))));
+    }
+    default:
+      return [];
+  }
+}
+
+export async function searchClimb(law, descriptors, check) {
+  const tables = descriptors.map(valuesFrom);
+  const base = BigInt(globalThis.process?.env?.LAWSPEC_SEED ?? '0');
+  const generate = (seed) => {
+    const random = new SplitMix64(seed);
+    return tables.map(([table, d]) => table.generate(d, random, 8));
+  };
+  let best = null;
+  let tried = 0;
+  const attempt = async (values) => {
+    if (tried >= 400) return false;
+    tried += 1;
+    let score;
+    try { score = await check(values); } catch (error) { searchRemember(law, descriptors, values); throw error; }
+    if (score === null || score === undefined) return false;
+    score = Number(score);
+    if (best !== null && !(score > best.score)) return false;
+    best = { score, values };
+    return true;
+  };
+  for (let k = 0n; k < 10n; k++) await attempt(generate(base + k));
+  for (let step = 0; step < 60 && tried < 400; step++) {
+    let rose = false;
+    if (best !== null) {
+      const moves = best.values.flatMap((v, i) => searchMoves(tables[i][0], tables[i][1], v)
+        .map((m) => best.values.map((old, j) => (j === i ? m : old))));
+      // Steepest ascent: every move is tried, and the best one kept.
+      for (const candidate of moves.slice(0, 24)) if (await attempt(candidate)) rose = true;
+    }
+    if (!rose) await attempt(generate(base + 1000n + BigInt(step)));
+  }
+  console.log(`${law}: targeted search tried ${tried} case(s)` + (best === null ? '' : `; best score ${best.score}`));
+}
+
 /** Whether count generated values decode to themselves. */
 export function wireRoundTrips(text, seed, size, count) {
   const [values, d] = valuesFrom(text);
