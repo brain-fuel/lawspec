@@ -1,4 +1,11 @@
-// Native fast-check generation and shrinking for instantiated Core schemas.
+/**
+ * Native fast-check generation and shrinking for instantiated Core schemas.
+ *
+ * Generated tests run in fast-check, the framework JavaScript developers
+ * already use, so failures shrink, replay and report as they expect; LawSpec
+ * supplies only the arbitraries for its own types.
+ * ref:DEC-native-property-frameworks ref:fast-check
+ */
 import * as fc from 'fast-check';
 import * as ls from './lawspec_runtime.mjs';
 import {RefinementViolation, witnessed, witnessInstances} from './lawspec_schema.mjs';
@@ -61,6 +68,11 @@ class ContractArbitrary extends fc.Arbitrary {
   }
 }
 
+/**
+ * Arbitraries are built from fast-check's own combinators so that its shrinker,
+ * not a second one, reduces counterexamples, and shrinking stays within the
+ * declared domain. ref:DEC-shrink-within-domain
+ */
 export function strategy(
     schema,
     reference,

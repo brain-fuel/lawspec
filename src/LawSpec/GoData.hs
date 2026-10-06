@@ -1,4 +1,4 @@
--- Native sealed interfaces and variants follow Go+'s resolved enum lowering.
+-- | Native sealed interfaces and variants follow Go+'s resolved enum lowering.
 module LawSpec.GoData (emitGoData, goDataType, goTypeReference, emitGoSchema, emitGoSchemaWithProfile, goCodec, goCodecWithContext, emitGoCodecs, requiresSchema, goDataKey, validateGoBindings, identifier, goNativeCodec, emitGoNativeCodecs, goGeneratedNames, goEmittedNames, goNativeTypeWithParameters) where
 
 import LawSpec.DataNames (flatDataCandidates, productConstructors, isProduct)
@@ -27,6 +27,8 @@ capitalize :: String -> String
 capitalize [] = []
 capitalize (c:cs) = toUpper c:cs
 
+-- | A data name must be a valid Go identifier, or the generated package would not
+-- compile.
 identifier :: String -> Either String ()
 identifier name = unless valid (Left ("invalid Go data identifier: " ++ name))
   where
@@ -49,15 +51,17 @@ namesFor declarations = do
   unless (length owned == length (nub (map (map toLower . snd) owned))) (Left "conflicting Go data identities")
   pure (planned ++ productConstructors declarations names)
 
--- A handle's native type where it is not bound: never a generated name, which
+-- | A handle's native type where it is not bound: never a generated name, which
 -- is capitalized.
 handleType :: String
 handleType = "any"
 
+-- | Generated names share the package with the user's code, so they are listed
+-- for the collision check.
 goGeneratedNames :: [C.DataDeclaration] -> Either String [String]
 goGeneratedNames declarations = map snd <$> namesFor declarations
 
--- Each declaration Go emits a type for, with the names of its type and
+-- | Each declaration Go emits a type for, with the names of its type and
 -- constructors.
 goEmittedNames :: [C.DataDeclaration] -> Either String [(C.DataDeclaration,[String])]
 goEmittedNames declarations = do
@@ -105,6 +109,8 @@ typeText names parameters ty = case ty of
     argument (C.TypeArgument t) = typeText names parameters t
     argument _ = Left "indexed Go data is not supported"
 
+-- | Types are checked against the registry before rendering, so an unknown type
+-- is a compiler error rather than uncompilable Go.
 goDataType :: [C.DataDeclaration] -> C.Type -> Either String String
 goDataType declarations ty = do
   registry <- makeRegistry declarations
@@ -112,6 +118,8 @@ goDataType declarations ty = do
   names <- namesFor declarations
   typeText names [] ty
 
+-- | LawSpec data become Go structs and sealed interfaces, as Go developers write
+-- them. ref:DEC-idiomatic-generated-types
 emitGoData :: D.Layout -> String -> [C.DataDeclaration] -> Either String String
 emitGoData layout packageName declarations = do
   _ <- makeRegistry declarations
@@ -174,20 +182,24 @@ emitGoData layout packageName declarations = do
           D.joinWith (D.hardline <> D.hardline) [d <> D.hardline <> D.hardline <> m | (d,m) <- variants]))
     lookupName names identity = maybe (Left "unplanned Go data name") Right (lookup identity names)
 
--- Whether a type mentions any of these (existential) variables.
+-- | Whether a type mentions any of these (existential) variables.
 mentionsAny :: [C.Id] -> C.Type -> Bool
 mentionsAny variables ty = case ty of
   C.TypeVariable v -> v `elem` variables
   C.Constructor _ arguments -> or [mentionsAny variables t | C.TypeArgument t <- arguments]
   C.Arrow a b -> mentionsAny variables a || mentionsAny variables b
 
--- Schema descriptions and native declarations share resolved Core identities.
+-- | Schema descriptions and native declarations share resolved Core identities.
 q :: String -> String
 q = T.unpack . T.decodeUtf8 . encode
 
+-- | The 64-bit profile unless a caller states another.
+-- ref:DEC-explicit-machine-profile
 emitGoSchema :: D.Layout -> String -> [C.DataDeclaration] -> Either String String
 emitGoSchema = emitGoSchemaWithProfile 64
 
+-- | The schema the Go runtime validates values against, generated from the same
+-- declarations as the Go types, so the two cannot drift.
 emitGoSchemaWithProfile :: Int -> D.Layout -> String -> [C.DataDeclaration] -> Either String String
 emitGoSchemaWithProfile bits layout packageName declarations = do
   -- Reuse declaration validation, including exported name planning.
@@ -243,11 +255,13 @@ emitGoSchemaWithProfile bits layout packageName declarations = do
       C.Match _ branches -> concatMap (map C.binderId . C.caseBinders) branches
       _ -> []) ++ concatMap nestedIds (C.children term)
 
--- Recursive codec factories are invoked inside conversion closures, so recursive
+-- | Recursive codec factories are invoked inside conversion closures, so recursive
 -- declarations do not recursively construct an infinite codec graph.
 goCodec :: [C.DataDeclaration] -> C.Type -> Either String String
 goCodec = goCodecUsing Nothing
 
+-- | Every value crossing the adapter boundary goes through a codec that checks
+-- it against its declared domain. ref:DEC-portable-exact-arithmetic
 goCodecWithContext :: String -> [C.DataDeclaration] -> C.Type -> Either String String
 goCodecWithContext context = goCodecUsing (Just context)
 
@@ -293,11 +307,14 @@ codecUsing prefix nativeNames context names parameters codecs ty = case ty of
     argument _ = Left "indexed Go codec is not supported"
     invoke name arguments = name ++ "(" ++ intercalate ", " arguments ++ ")"
 
+-- | As goCodecWithContext, for a bound native type.
+-- ref:DEC-native-bindings-typed-identity
 goNativeCodec :: [C.DataDeclaration] -> [ResolvedTypeBinding] -> C.Type -> Either String String
 goNativeCodec declarations mappings ty = do
   names <- namesFor declarations
   codecUsing "lawSpecNative" (Just (nativeNamesFor names mappings)) (Just "symbols") names [] [] ty
 
+-- | Bound native types replace generated ones wherever the type appears.
 goNativeTypeWithParameters :: [C.DataDeclaration] -> [ResolvedTypeBinding] -> [(C.Id,String)] -> C.Type -> Either String String
 goNativeTypeWithParameters declarations mappings parameters ty = do
   names <- namesFor declarations
@@ -314,10 +331,13 @@ nativeNamesFor names mappings = [(identity, maybe name (intercalate "." . refere
     pointer m (NativeRef parts) | C.dataHandle (resolvedDeclaration m), (first:rest) <- parts = NativeRef (('*':first):rest)
     pointer _ ref = ref
 
+-- | Codecs for bound native types are kept apart from generated ones, because
+-- they call the user's constructors.
 emitGoNativeCodecs :: D.Layout -> String -> [(String,String)] -> [C.DataDeclaration] -> [ResolvedTypeBinding] -> [C.Id] -> Either String String
 emitGoNativeCodecs layout packageName imports declarations mappings needed =
   emitCodecs "lawSpecNative" mappings (Just needed) imports layout packageName declarations
 
+-- | Codecs for generated types are emitted once per package.
 emitGoCodecs :: D.Layout -> String -> [C.DataDeclaration] -> Either String String
 emitGoCodecs = emitCodecs "lawSpec" [] Nothing []
 
@@ -447,20 +467,22 @@ emitCodecs prefix mappings needed imports layout packageName declarations = do
       pure (line signature <> D.block 8 body)
     lookupName names identity = maybe (Left "unplanned Go codec name") Right (lookup identity names)
 
+-- | Generated names and the user's bound functions share one Go package, so a
+-- collision is refused before any file is written.
 validateGoBindings :: [C.DataDeclaration] -> [String] -> Either String ()
 validateGoBindings declarations functions = do
   names <- namesFor declarations
   let collisions = [name | name <- functions, name `elem` map snd names || take 7 name == "LawSpec"]
   unless (null collisions) (Left ("Go adapter names collide with generated support: " ++ intercalate ", " collisions))
 
--- Replace each @KEYS@ placeholder with the witness keys' expression.
+-- | Replace each @KEYS@ placeholder with the witness keys' expression.
 replaceKeys :: String -> String -> String
 replaceKeys keys text = case text of
   [] -> []
   _ | take 6 text == "@KEYS@" -> keys ++ replaceKeys keys (drop 6 text)
   c : rest -> c : replaceKeys keys rest
 
--- Built-in collections and durations are Go's own types, not generated ones.
+-- | Built-in collections and durations are Go's own types, not generated ones.
 native :: C.DataDeclaration -> Bool
 native d = collectionContainer (C.idText (C.dataId d)) == Nothing && not (isDurationType (C.idText (C.dataId d))) &&
   not (C.dataHandle d)

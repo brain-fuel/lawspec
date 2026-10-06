@@ -1,4 +1,4 @@
--- Checked Core expression documents shared by JS/TS definitions and properties.
+-- | Checked Core expression documents shared by JS/TS definitions and properties.
 module LawSpec.WebExpr (renderAsyncExpression, renderExpression, renderExpressionWithContext, literalValue, call, array, quoted, quotedValue) where
 
 import LawSpec.Core
@@ -15,18 +15,25 @@ import Data.Foldable (toList)
 import qualified Data.Text.Lazy as T
 import qualified Data.Text.Lazy.Encoding as T
 
+-- | Strings are escaped for JavaScript here, once, so no generated literal can
+-- end early or change meaning.
 quoted :: String -> D.Doc
 quoted = JS.quoted
 
+-- | As quoted, for a string that is itself a value rather than a name.
 quotedValue :: String -> D.Doc
 quotedValue = JS.stringExpression
 
+-- | Arguments wrap when a call is too wide, in the JavaScript style LawSpec follows.
+-- ref:DEC-readable-output-default
 call :: String -> [D.Doc] -> D.Doc
 call name values = D.text name <> D.delimitTrailing 4 "(" ")" values
 
+-- | Lists of runtime values are written in one shape so they wrap like calls.
 array :: [D.Doc] -> D.Doc
 array = D.delimitTrailing 2 "[" "]"
 
+-- | Wire values are written as JavaScript literals so their fields can wrap.
 literalValue :: A.Value -> D.Doc
 literalValue value = case value of
   A.Object fields -> D.delimitTrailing 2 "{" "}"
@@ -35,18 +42,23 @@ literalValue value = case value of
   A.String string -> quotedValue (Text.unpack string)
   _ -> D.text (T.unpack (T.decodeUtf8 (encode value)))
 
+-- | Expressions are rendered from Core, never from source, so the JavaScript
+-- tests check the same expansion as every other target.
+-- ref:DEC-typed-core-boundary
 renderExpression :: Bool -> [DataDeclaration] -> Int -> (Id -> String)
   -> (Expr -> [D.Doc] -> Either String D.Doc) -> Expr -> Either String D.Doc
 renderExpression ts declarations bits = renderExpressionWithContext ts declarations
   (D.text (show bits)) Native.webTypeReferenceDoc (pure . quoted . Backend.scalarTypeKey)
 
--- In an async function: a match's branches are async, and the match is
+-- | In an async function: a match's branches are async, and the match is
 -- awaited, so a branch may await an asynchronous call.
 renderAsyncExpression :: Bool -> [DataDeclaration] -> Int -> (Id -> String)
   -> (Expr -> [D.Doc] -> Either String D.Doc) -> Expr -> Either String D.Doc
 renderAsyncExpression ts declarations bits = renderWith True ts declarations
   (D.text (show bits)) Native.webTypeReferenceDoc (pure . quoted . Backend.scalarTypeKey)
 
+-- | Callers whose generated code already holds the machine width and type
+-- references in scope pass them in, so the rendering refers to them by name.
 renderExpressionWithContext :: Bool -> [DataDeclaration] -> D.Doc
   -> (Type -> Either String D.Doc) -> (Type -> Either String D.Doc)
   -> (Id -> String) -> (Expr -> [D.Doc] -> Either String D.Doc)

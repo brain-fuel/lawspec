@@ -1,4 +1,4 @@
--- Versioned wire views. Field names and discriminators are selected explicitly;
+-- | Versioned wire views. Field names and discriminators are selected explicitly;
 -- no internal AST or IR datatype is serialized with genericToJSON.
 module LawSpec.Public (programView, typeView, expressionView) where
 import Data.Aeson
@@ -11,6 +11,7 @@ import LawSpec.Backend (declarationName, prettyType)
 
 type Names = [(C.Id,String)]
 
+-- | The compiler API exposes types as JSON in one stable shape.
 typeView :: C.Type -> Value
 typeView (C.Constructor name args) = object ["kind" .= str "constructor", "name" .= name, "arguments" .= map argument args] where
   argument (C.TypeArgument t) = object ["kind" .= str "type", "type" .= typeView t]
@@ -29,6 +30,8 @@ evidenceView evidence = case evidence of
   C.Numeric t -> object ["kind" .= str "numeric", "type" .= typeView t]
   C.Structural t -> object ["kind" .= str "structural", "type" .= typeView t]
 
+-- | Expressions are exposed with their types and origins, so tools can point at
+-- source.
 expressionView :: Names -> C.Expr -> Value
 expressionView names e = object ["type" .= typeView (C.expressionType e),"origin" .= originView (C.expressionOrigin e),"text" .= expressionText names e,"node" .= node] where
   expr = expressionView names
@@ -95,6 +98,8 @@ propositionView names p = case p of
 binderView :: C.Binder -> Value
 binderView b = object ["id" .= C.idText (C.binderId b), "name" .= C.binderName b, "type" .= typeView (C.binderType b)]
 
+-- | The versioned JSON view of a checked program, the contract between the
+-- compiler and the CLI, editor and site. ref:DEC-wasm-distribution
 programView :: Generation -> [S.Unit] -> [String] -> [Artifact] -> [Obligation] -> C.Program -> Value
 programView settings surface expansions artifacts evidence C.Program{..} = object
   [ "schemaVersion" .= (3 :: Int), "machineBits" .= programMachineBits, "generation" .= settings

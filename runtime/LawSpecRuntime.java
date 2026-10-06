@@ -14,7 +14,17 @@ import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
-/** Portable scalar and collection values, independent of test frameworks. */
+/**
+ * Portable scalar and collection values, independent of test frameworks.
+ *
+ * A law must mean the same thing on every target, so this class implements LawSpec's own
+ * arithmetic, equality and conversions instead of Java's: integers are exact and reach a bounded
+ * type only through a checked conversion, never wrapping as int and long do, exact division gives a
+ * rational, decimals ignore any MathContext, and floats follow IEEE 754 at their declared
+ * precision. It is emitted unchanged into every generated Java and Kotlin project, so the generated
+ * tests and the adapters share one definition of the domain. ref:DEC-portable-exact-arithmetic
+ * ref:ieee-754 ref:decimal-arithmetic ref:DEC-typed-core-boundary
+ */
 public final class LawSpecRuntime {
   private LawSpecRuntime() {}
 
@@ -386,6 +396,11 @@ public final class LawSpecRuntime {
     return t.equals("Float32") || t.equals("Complex64") ? (double) (float) d : d;
   }
 
+  /**
+   * Moves a value into the declared type, failing instead of wrapping or rounding silently, because
+   * a bounded type is only ever reached through a checked conversion.
+   * ref:DEC-portable-exact-arithmetic
+   */
   public static Value convert(String t, Value v, int bits) {
     if (sumType(t)) {
       var data = dataValue(v);
@@ -468,6 +483,11 @@ public final class LawSpecRuntime {
         && (!(t.equals("Char") || t.equals("Text")) || c < 55296 || c > 57343);
   }
 
+  /**
+   * Checks a value an adapter produced against its declared domain: native code may return anything
+   * its own type allows, and a law quantifies only over the declared domain.
+   * ref:DEC-portable-exact-arithmetic
+   */
   public static Value validate(String t, Value v, int bits) {
     if (v == null && t.equals("Unit")) return absent("Unit");
     if (v == null || !v.type.equals(t))
@@ -558,6 +578,10 @@ public final class LawSpecRuntime {
     };
   }
 
+  /**
+   * Applies a LawSpec operator with LawSpec's semantics rather than Java's, so a law computes the
+   * same result on every target. ref:DEC-portable-exact-arithmetic ref:ieee-754
+   */
   public static Value binary(String op, Value a, Value b) {
     if ((op.equals("==") || op.equals("!="))
         && !exactType(a.type)
@@ -640,6 +664,11 @@ public final class LawSpecRuntime {
             }));
   }
 
+  /**
+   * Equality defined once for all targets instead of Java's equals: NaN differs from itself, signed
+   * zeros are equal, handles and symbols compare by identity, and data compares field by field.
+   * ref:DEC-portable-exact-arithmetic
+   */
   public static boolean equal(Value a, Value b) {
     if (a.data instanceof Handle || b.data instanceof Handle) return Objects.equals(a.data, b.data);
     if (sumType(a.type) || sumType(b.type)) {
@@ -1219,7 +1248,12 @@ public final class LawSpecRuntime {
     }
   }
 
-  /** The same sequence on every target for the same seed. */
+  /**
+   * The same sequence on every target for the same seed.
+   *
+   * SplitMix64 is small, fast and specified exactly, so every runtime implements the same generator
+   * and a seed names the same case everywhere. ref:splitmix ref:DEC-portable-seeded-generation
+   */
   public static final class SplitMix64 {
     private long state;
 
@@ -1752,7 +1786,12 @@ public final class LawSpecRuntime {
 
   private static final BigInteger UNBOUNDED = BigInteger.valueOf(1_000_000);
 
-  /** Generation, shrinking and rendering over a table of data types. */
+  /**
+   * Generation, shrinking and rendering over a table of data types.
+   *
+   * Shrinking stays inside the declared domain, so a reported counterexample is always a value the
+   * law quantifies over. ref:DEC-shrink-within-domain ref:DEC-structural-size-budget
+   */
   public static final class Values {
     public final Map<String, List<Object>> table;
 
@@ -2615,6 +2654,9 @@ public final class LawSpecRuntime {
   /**
    * Checks the system against its model on generated runs; a failure throws
    * AssertionError naming the shortest failing run found.
+   *
+   * A stateful model is checked by running generated command sequences against the system and the
+   * model side by side, then shrinking a failing run. ref:DEC-stateful-models-linearizability
    */
   public static void checkModel(Model model) {
     String text = System.getenv("LAWSPEC_SEED");
@@ -3118,6 +3160,11 @@ public final class LawSpecRuntime {
   /**
    * Checks a shared model's histories under concurrency; a failure throws
    * AssertionError naming the smallest failing case found.
+   *
+   * A shared model promises linearizability unless it names a weaker consistency, so concurrent
+   * histories are judged against some sequential order of the calls, found by a Wing-Gong search.
+   * ref:herlihy-wing-linearizability ref:wing-gong-linearizability
+   * ref:DEC-stateful-models-linearizability
    */
   public static void checkModelParallel(Model model) {
     String text = System.getenv("LAWSPEC_SEED");
@@ -4427,6 +4474,10 @@ public final class LawSpecRuntime {
    * "transient" only after a crash, "temporary" never. More than maxRestarts within period seconds
    * is the supervisor's own crash: its supervisor restarts all of its children, or, at the top,
    * every child stops.
+   *
+   * Supervision follows OTP's strategies and restart types, so a supervision tree means what an
+   * Erlang programmer expects on every target. ref:DEC-actors-otp-supervision
+   * ref:erlang-otp-supervisors
    */
   public static final class Supervisor {
     public static final String ONE_FOR_ONE = "one_for_one";
@@ -5447,6 +5498,9 @@ public final class LawSpecRuntime {
    * definitions, so other nodes can reach them at {node address}/{name}, and it sends to theirs.
    * Order is kept within one channel; a mailbox or an actor call is best effort: a lost call fails
    * with Unreachable after its timeout.
+   *
+   * Every target's node speaks the same frames, so nodes written in different languages talk to
+   * each other. ref:DEC-distribution-canonical-wire
    */
   public static final class Node {
     final Transport transport;

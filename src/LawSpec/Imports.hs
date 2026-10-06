@@ -1,4 +1,4 @@
--- Cross-unit imports, resolved after parsing and before refinement lowering, so
+-- | Cross-unit imports, resolved after parsing and before refinement lowering, so
 -- that Core and all eight backends are unchanged.
 --
 -- Data types stay with the unit that declares them: an imported type or
@@ -24,7 +24,7 @@ import qualified Data.Map.Strict as M
 import qualified Data.Map.Lazy as Lazy
 import qualified Data.Set as S
 
--- The references a traversal may rename. Values are free variables only.
+-- | The references a traversal may rename. Values are free variables only.
 data Names m = Names
   { onType :: String -> m String, onConstructor :: String -> m String
   , onRefinement :: String -> m String, onValue :: String -> m String
@@ -33,7 +33,7 @@ data Names m = Names
 data Kind = TypeName | ConstructorName | RefinementName | ValueName | LawName
   deriving (Eq, Ord, Show)
 
--- An imported definition's name in the importing unit, e.g. shop.money's add
+-- | An imported definition's name in the importing unit, e.g. shop.money's add
 -- is shopMoneyAdd. Checked definitions are emitted as target code, so the name
 -- must be an identifier in every target.
 importedDefinitionName :: String -> String -> String
@@ -62,7 +62,7 @@ importedLawName unit name = name ++ " (" ++ unit ++ ")"
 qualifiedTypeName :: String -> String -> String
 qualifiedTypeName unit name = unit ++ "::type::" ++ name
 
--- What a unit declares itself, with the names other units refer to it by.
+-- | What a unit declares itself, with the names other units refer to it by.
 data Exports = Exports
   { exportTypes :: M.Map String String
   , exportConstructors :: M.Map String String
@@ -76,7 +76,7 @@ data Exports = Exports
 
 data Resolved = Resolved { resolvedUnit :: Unit, resolvedExports :: Exports, portable :: Unit }
 
--- visible importer imported: Nothing when the import is allowed, or the reason
+-- | visible importer imported: Nothing when the import is allowed, or the reason
 -- it is not (package boundaries).
 resolveImports :: (String -> String -> Maybe String) -> [(Unit, [Import])] -> Either [Diagnostic] [Unit]
 resolveImports visible units = mapM (\(u, _) -> resolvedUnit <$> table Lazy.! unitName u) units
@@ -196,7 +196,7 @@ resolveUnit visible table u allImports = do
           "law " ++ unquote name ++ " of " ++ unit ++ " has no parameters; only generic laws can be imported"
       | otherwise = unit ++ " does not export " ++ unquote name
 
--- The unqualified and alias-qualified names one import brings into scope.
+-- | The unqualified and alias-qualified names one import brings into scope.
 importScope :: Unit -> Import -> Exports -> Either [Diagnostic] (M.Map (Kind, String) String)
 importScope u i exports = do
   let alias = importAlias i
@@ -245,7 +245,7 @@ importScope u i exports = do
   pure (M.union qualified (M.fromList items))
   where unquote = filter (/= '`')
 
--- A unit's own declarations: not the copies its imports brought in.
+-- | A unit's own declarations: not the copies its imports brought in.
 unitExports :: S.Set String -> Unit -> Exports
 unitExports copied u = Exports
   { exportTypes = M.fromList [(dataTypeName d, qualifiedTypeName (unitName u) (dataTypeName d)) | d <- dataTypes u]
@@ -269,7 +269,7 @@ unitExports copied u = Exports
       [ (family, [p | (p, RefinementApp r []) <- refinementParameters refinement, r == naturalRefinementName])
       | refinement <- refinements u, Just family <- [stripSuffix "@index" (refinementName refinement)] ] }
 
--- The unit with its own names replaced by the names every importer uses, so
+-- | The unit with its own names replaced by the names every importer uses, so
 -- its declarations can be copied as they are.
 portableUnit :: Exports -> Unit -> Unit
 portableUnit exports u = runIdentity $ do
@@ -284,7 +284,7 @@ portableUnit exports u = runIdentity $ do
     , functions = [(declared (exportDefinitions exports) n, t) | (n, t) <- functions walked]
     , laws = [l{lawName = declared (exportLaws exports) (lawName l)} | l <- laws walked] }
 
--- Everything the given references need from the imported units. A copied
+-- | Everything the given references need from the imported units. A copied
 -- declaration may not use its unit's adapters or concrete laws.
 closure :: [(Unit, Unit)] -> S.Set (Kind, String) -> Either [Diagnostic] ([Refinement], [FunctionDefinition], [Law])
 closure origins seed = go S.empty ([], [], []) (S.filter imported seed)
@@ -344,7 +344,7 @@ collector = Names (record TypeName) (record ConstructorName) (record RefinementN
 collect :: State (S.Set (Kind, String)) a -> S.Set (Kind, String)
 collect action = execState action S.empty
 
--- Traversals. Binders shadow: only free variables are value references.
+-- | Traversals. Binders shadow: only free variables are value references.
 walkUnit :: Monad m => Names m -> Unit -> m Unit
 walkUnit names u = do
   functions' <- forM (functions u) $ \(n, t) -> (,) n <$> walkType names [] t

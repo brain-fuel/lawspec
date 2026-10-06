@@ -1,3 +1,6 @@
+-- | The emitter for the dynamically typed targets, Python, JavaScript and
+-- TypeScript, whose tests run on LawSpec's portable runtime rather than native
+-- numeric types. ref:DEC-portable-exact-arithmetic
 module LawSpec.CoreScalarEmit (scalarEmit, scalarEmitWithData, scalarEmitWithDefinitions, scalarEmitWithFormat, scalarEmitWithNativeGenerators, typeKey) where
 import LawSpec.Backend
 import LawSpec.Common
@@ -24,16 +27,24 @@ import Control.Monad (unless, foldM)
 
 q :: String -> String
 q = T.unpack . T.decodeUtf8 . encode
+-- | Runtime calls name a value's type by a stable key, so generated code and the
+-- runtime agree without sharing a type system.
 typeKey :: Type -> String
 typeKey = scalarTypeKey
+-- | The default for callers with no data declarations.
 scalarEmit :: Int -> String -> Unit -> [Expanded] -> Either [Diagnostic] [Artifact]
 scalarEmit = scalarEmitWithData []
+-- | The default for callers with no checked definitions.
 scalarEmitWithData :: [C.DataDeclaration] -> Int -> String -> Unit -> [Expanded] -> Either [Diagnostic] [Artifact]
 scalarEmitWithData declarations = scalarEmitWithDefinitions declarations []
+-- | Readable output is the default. ref:DEC-readable-output-default
 scalarEmitWithDefinitions :: [C.DataDeclaration] -> [(C.Id,String)] -> Int -> String -> Unit -> [Expanded] -> Either [Diagnostic] [Artifact]
 scalarEmitWithDefinitions = scalarEmitWithFormat False
+-- | Built-in generators unless the project binds its own.
 scalarEmitWithFormat :: Bool -> [C.DataDeclaration] -> [(C.Id,String)] -> Int -> String -> Unit -> [Expanded] -> Either [Diagnostic] [Artifact]
 scalarEmitWithFormat = scalarEmitWithNativeGenerators False
+-- | Only the targets that run on the portable runtime are accepted here; asking
+-- for another is a compiler bug and fails loudly.
 scalarEmitWithNativeGenerators :: Bool -> Bool -> [C.DataDeclaration] -> [(C.Id,String)] -> Int -> String -> Unit -> [Expanded] -> Either [Diagnostic] [Artifact]
 scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions bits target u allLaws = do
   unless (target `elem` ["python","javascript","typescript"]) (Left [Diagnostic "target-runtime" ("portable scalar runtime is not implemented for " ++ target) Nothing])

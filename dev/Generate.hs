@@ -124,6 +124,7 @@ shippedFiles = ["*.mjs", "*.json", "index.d.ts", "bin", "core.wasm", "core_jsffi
 
 -- | The root documents the package ships. Each has one home, the repository
 -- root: npm's prepack copies them into npm/, where git ignores them.
+-- ref:DEC-npm-documents-copied
 copiedDocuments :: [String]
 copiedDocuments = ["README.md", "CHANGELOG.md"]
 

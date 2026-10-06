@@ -1,4 +1,4 @@
--- Public binding configuration is resolved before entering target emission.
+-- | Public binding configuration is resolved before entering target emission.
 module LawSpec.NativeRequest
   ( NativeRequest(..), FunctionBinding(..), NativeCall(..), GoImport(..), BindingPlan(..)
   , emptyNativeRequest, emptyBindingPlan, resolveNativeRequest, hasBindings
@@ -14,19 +14,25 @@ import Data.List (find, nub)
 import qualified LawSpec.Core as C
 import LawSpec.NativeBinding
 
--- The crate is needed only by Rust test linkage, not by the semantic Core.
+-- | The crate is needed only by Rust test linkage, not by the semantic Core.
 data NativeRequest = NativeRequest
   { requestBindings :: Bindings, requestFunctions :: [FunctionBinding]
   , requestRustCrate :: Maybe String, requestGoImports :: [GoImport]
   } deriving (Eq, Show)
+-- | A Go binding names the package it imports and the alias to use, since Go
+-- requires both.
 data GoImport = GoImport { goImportAlias :: String, goImportPath :: String } deriving (Eq, Show)
+-- | An adapter bound to native code is called directly, with no stub for the user
+-- to fill in. ref:DEC-native-bindings-typed-identity
 data FunctionBinding = FunctionBinding
   { functionDeclaration :: C.Id, functionNative :: NativeCall } deriving (Eq, Show)
--- How a bound adapter calls native code: a static function, a method of its
+-- | How a bound adapter calls native code: a static function, a method of its
 -- handle argument (`method`), or a native constructor (`constructor`), for a
 -- model's start.
 data NativeCall = StaticCall NativeRef | MethodCall String | ConstructorCall NativeRef
   deriving (Eq, Show)
+-- | The checked bindings the emitters receive, so they never resolve a name in
+-- lawspec.json themselves.
 data BindingPlan = BindingPlan
   { bindingRepresentations :: ResolvedBindings
   -- Static function bindings, and the method and constructor bindings of
@@ -35,13 +41,18 @@ data BindingPlan = BindingPlan
   , bindingCalls :: [(C.Declaration, NativeCall)]
   , bindingRustCrate :: Maybe String, bindingGoImports :: [GoImport]
   } deriving (Eq, Show)
+-- | A request without bindings.
 emptyNativeRequest :: NativeRequest
 emptyNativeRequest = NativeRequest emptyBindings [] Nothing []
+-- | A plan without bindings, which emitters treat as the generated-types path.
 emptyBindingPlan :: BindingPlan
 emptyBindingPlan = BindingPlan (ResolvedBindings [] []) [] [] Nothing []
+-- | Projects without bindings skip the binding companion files.
 hasBindings :: BindingPlan -> Bool
 hasBindings plan = plan /= emptyBindingPlan
 
+-- | Bindings are checked against the compiled program before emission, so a
+-- misspelled name is an error with that name, not a target build failure.
 resolveNativeRequest :: C.Program -> NativeRequest -> Either String BindingPlan
 resolveNativeRequest program NativeRequest{..} = do
   representations <- resolveBindings (C.programDataDeclarations program) requestBindings

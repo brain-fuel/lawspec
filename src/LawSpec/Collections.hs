@@ -1,4 +1,4 @@
--- Portable collections: Set, KeyVal, Queue, Stack and Deque, with Entry and
+-- | Portable collections: Set, KeyVal, Queue, Stack and Deque, with Entry and
 -- Ordering. They are ordinary data of a built-in unit, lawspec.collections,
 -- whose operations are checked LawSpec definitions over each collection's
 -- items: a Set's are sorted and distinct, a KeyVal's entries are sorted by
@@ -17,35 +17,41 @@ module LawSpec.Collections
 import Data.Char (isAlphaNum)
 import Data.List (isInfixOf, isPrefixOf, nub)
 
+-- | Collections are an ordinary LawSpec unit, so their laws are checked like any
+-- other and each target needs no special support.
+-- ref:DEC-portable-total-order-collections
 collectionsUnit :: String
 collectionsUnit = "lawspec.collections"
 
--- The implicit import's alias; prelude.<op> resolves through it.
+-- | The implicit import's alias; prelude.<op> resolves through it.
 collectionsAlias :: String
 collectionsAlias = "lawspecCollections"
 
+-- | The names a program may use without importing the collections unit.
 collectionTypes :: [String]
 collectionTypes = ["Set", "KeyVal", "Queue", "Stack", "Deque", "Entry", "Ordering", "Pair", "SizedStack", "SizedQueue"]
 
+-- | Emitters map these types onto each target's own containers.
 isCollectionsType :: String -> Bool
 isCollectionsType name = (collectionsUnit ++ "::type::") `isPrefixOf` name
 
--- A built-in container's short name, from its Core type name.
+-- | A built-in container's short name, from its Core type name.
 collectionContainer :: String -> Maybe String
 collectionContainer name = case stripPrefix' (collectionsUnit ++ "::type::") name of
   Just short | short `elem` ["Set", "KeyVal", "Queue", "Stack", "Deque"] -> Just short
   _ -> Nothing
   where stripPrefix' prefix t = if prefix `isPrefixOf` t then Just (drop (length prefix) t) else Nothing
 
+-- | Key-value entries are named in generated code and runtimes alike.
 entryTypeName :: String
 entryTypeName = collectionsUnit ++ "::type::Entry"
 
--- A container's single, internal constructor, which source cannot name.
+-- | A container's single, internal constructor, which source cannot name.
 internalConstructor :: String -> Maybe String
 internalConstructor name = lookup name
   [("Set", "SetItems"), ("KeyVal", "KeyValEntries"), ("Queue", "QueueItems"), ("Stack", "StackItems"), ("Deque", "DequeItems")]
 
--- prelude.<op>: the definition implementing it and the type it belongs to.
+-- | prelude.<op>: the definition implementing it and the type it belongs to.
 collectionOperations :: [(String, (String, String))]
 collectionOperations =
   [ (op, (definition, owner))
@@ -65,10 +71,11 @@ collectionOperations =
                         ("sizedFront", "sizedQueueFront"), ("sizedQueueItems", "sizedQueueItems")]) ]
   , (op, definition) <- pairs ]
 
+-- | prelude.<op> on a collection resolves to the collections unit's definition.
 collectionOperation :: String -> Maybe (String, String)
 collectionOperation op = lookup op collectionOperations
 
--- The collection types a program's sources use and do not themselves declare:
+-- | The collection types a program's sources use and do not themselves declare:
 -- a type name or a prelude operation of one. A source's own type shadows the
 -- built-in only in that source. Entry and Ordering come with KeyVal and Set,
 -- which need them.
@@ -95,7 +102,7 @@ usedCollections sources =
     takeComment (c : rest) = c : takeComment rest
     takeComment [] = []
 
--- The unit's source, with the given types and the operations over them.
+-- | The unit's source, with the given types and the operations over them.
 collectionsSource :: [String] -> String
 collectionsSource types = unlines $
   ["unit " ++ collectionsUnit, ""] ++

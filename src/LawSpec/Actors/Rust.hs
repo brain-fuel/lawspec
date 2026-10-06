@@ -1,4 +1,4 @@
--- Typed actors for Rust implementation code (see LawSpec.Actors).
+-- | Typed actors for Rust implementation code (see LawSpec.Actors).
 --
 -- Every actor becomes a struct named for its handle type in the module
 -- lawspec_actors: AccountActor::start(...) makes the state with the start
@@ -23,6 +23,8 @@ import LawSpec.Core.Machine (SupervisionStrategy(..), Lifetime(..))
 import LawSpec.MachineSpec (describe)
 import Control.Monad (foldM)
 
+-- | Actors become a typed class, or Rust's idiom for one, generated from the
+-- declaration. ref:DEC-actors-otp-supervision
 emit :: String -> Bool -> Int -> [C.DataDeclaration] -> [Actor] -> [Supervision] -> Either String [Artifact]
 emit _ _ bits datas actors supervisions = do
   -- Each actor's messages as wire descriptors, for serving it and calling
@@ -54,11 +56,11 @@ emit _ _ bits datas actors supervisions = do
         , "}" ]
   pure [Artifact "src/lawspec_actors.rs" (unlines header ++ concatMap ("\n" ++) structs) "generated" "source"]
 
--- The crate module a unit's adapters are mounted at.
+-- | The crate module a unit's adapters are mounted at.
 unitModule :: C.Unit -> String
 unitModule = map (\c -> if isAlphaNum c || c == '_' then c else '_') . unitName
 
--- A handler's argument and reply descriptors, adding data types to the table.
+-- | A handler's argument and reply descriptors, adding data types to the table.
 type HandlerWire = (Handler, [String], String)
 
 handlerWire :: Int -> [C.DataDeclaration] -> ([(String, String)], [HandlerWire]) -> Handler -> Either String ([(String, String)], [HandlerWire])
@@ -219,7 +221,7 @@ actorStruct datas wire a = do
         , "        self.0.tell(" ++ step ++ ")"
         , "    }" ]
 
--- A supervisor's struct: start() makes the runtime supervisor and starts
+-- | A supervisor's struct: start() makes the runtime supervisor and starts
 -- each child under it, in order; each child is a public field.
 supervisorStruct :: Supervision -> String
 supervisorStruct s = unlines $

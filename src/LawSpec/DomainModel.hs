@@ -1,4 +1,4 @@
--- Domain modeling declarations elaborate before inference, like indexed
+-- | Domain modeling declarations elaborate before inference, like indexed
 -- families. A wrapper is a nominal single-field type whose constructor is a
 -- checked contract, so an invalid value cannot be constructed. A workflow is a
 -- typed pipeline of adapter steps between distinct state types, with a law that
@@ -16,6 +16,8 @@ import Data.List (nub, intercalate)
 import LawSpec.Model
 import LawSpec.Railway (railwayLaw)
 
+-- | A wrapper is a refined single-field type, which domain models use to make
+-- invalid values unrepresentable. ref:wlaschin-domain-modeling
 data Wrapper = Wrapper
   { wrapperName :: String
   , wrapperParameters :: [String]
@@ -24,7 +26,7 @@ data Wrapper = Wrapper
   , wrapperSpan :: Span
   } deriving (Eq, Show)
 
--- A workflow stage. Each names a function: a step declared here or one
+-- | A workflow stage. Each names a function: a step declared here or one
 -- declared elsewhere, a mapping, an error mapping, a recovery, a fallback, a
 -- side step, or a predicate with the function that builds its failure.
 data StageKind
@@ -41,8 +43,12 @@ data StageKind
   | AllStage Bool [(String, Maybe Type)] String
   deriving (Eq, Show)
 
+-- | A stage keeps its kind (a step, a map, a fallback, an ensure and so on) and
+-- its span, so the generated law and its diagnostics name the stage as written.
 data WorkflowStage = WorkflowStage { stageKind :: StageKind, stageSpan :: Span } deriving (Eq, Show)
 
+-- | A workflow is a composition of stages whose law LawSpec generates, so the
+-- composition is tested, not just the steps. ref:wlaschin-railway
 data Workflow = Workflow
   { workflowName :: String
   , workflowType :: Type
@@ -55,11 +61,11 @@ data Workflow = Workflow
   , workflowElse :: [(Int, [(String, Expr)])]
   } deriving (Eq, Show)
 
--- The unwrapping definition for a wrapper, such as valueOfUnitQuantity.
+-- | The unwrapping definition for a wrapper, such as valueOfUnitQuantity.
 wrapperValueName :: String -> String
 wrapperValueName name = "valueOf" ++ name
 
--- Failures carry the declaration's source location when one is known.
+-- | Failures carry the declaration's source location when one is known.
 elaborateDomain :: [Wrapper] -> [Workflow] -> Unit -> Either (Maybe Location, String) Unit
 elaborateDomain [] [] u = pure u
 elaborateDomain wrappers workflows u = either (Left . (,) Nothing) Right (checkWrappers wrappers u) >> do
@@ -106,14 +112,14 @@ applied n args = Application n args
 wrapperType :: Wrapper -> Type
 wrapperType w = applied (wrapperName w) (map Variable (wrapperParameters w))
 
--- The constructor shares the wrapper's name and stores one field, value. A
+-- | The constructor shares the wrapper's name and stores one field, value. A
 -- predicate becomes a constructor field refinement, checked at construction.
 wrapperDeclaration :: Wrapper -> DataTypeDeclaration
 wrapperDeclaration w = DataTypeDeclaration (wrapperName w) (wrapperParameters w)
   [ConstructorDeclaration (wrapperName w) [("value", field)] (wrapperSpan w) []] (wrapperSpan w) Nothing
   where field = maybe (wrapperBase w) (Refined "value" (wrapperBase w) . Just) (wrapperPredicate w)
 
--- Over an exact number, its result carries the wrapper's constraint, so the
+-- | Over an exact number, its result carries the wrapper's constraint, so the
 -- totality audit knows an unwrapped value satisfies it.
 wrapperDefinition :: Wrapper -> FunctionDefinition
 wrapperDefinition w = FunctionDefinition (wrapperValueName (wrapperName w))
@@ -125,7 +131,7 @@ wrapperDefinition w = FunctionDefinition (wrapperValueName (wrapperName w))
       (Named base, Just predicate) | isExact base -> Refined "value" (Named base) (Just predicate)
       _ -> wrapperBase w
 
--- Steps are ordinary adapter declarations. Restating an existing declaration
+-- | Steps are ordinary adapter declarations. Restating an existing declaration
 -- with the same type shares it between workflows; a different type is an error.
 declareSteps :: Workflow -> [(String, Type)] -> Either String [(String, Type)]
 declareSteps w known = do
@@ -140,12 +146,12 @@ declareSteps w known = do
                     | otherwise -> Left (name ++ ": declared with two different types"))
     (pure known) declared
 
--- How the workflow reports failure: no failure at all, its own declared error
+-- | How the workflow reports failure: no failure at all, its own declared error
 -- type, or a generated sum with one constructor per failing stage.
 data Failure = Total | Declared Type | Generated String
   deriving (Eq)
 
--- An elaborated workflow: its definition, its laws, and a generated error
+-- | An elaborated workflow: its definition, its laws, and a generated error
 -- type when it has one.
 -- A workflow's definition, its laws, its generated error type, and the stage
 -- definitions of steps with policies, with those policies.
@@ -331,7 +337,7 @@ elaborateWorkflow env0 definitions asyncNames taken0 w = do
               (a, r) <- located (unary f)
               unless (a == state) (located (Left (context ++ ": step " ++ f ++ " expects " ++ prettyType a ++ " but receives " ++ prettyType state)))
               pure (f, r)
-            let outputs = [case r of Application "Either" [_, n] -> n; _ -> r | (_, r) <- infos]
+            let outputs = [(case r of Application "Either" [_, n] -> n; _ -> r) | (_, r) <- infos]
             combineType <- located (typeOf combineName)
             let (combineArguments, combined) = arguments combineType
             unless (combineArguments == outputs)
@@ -547,7 +553,7 @@ isCustom :: Strategy name -> Bool
 isCustom (Custom _) = True
 isCustom _ = False
 
--- Replaces a variable in an expression that binds no variable of that name.
+-- | Replaces a variable in an expression that binds no variable of that name.
 replaceVar :: String -> Expr -> Expr -> Expr
 replaceVar name replacement = go
   where
@@ -562,7 +568,7 @@ replaceVar name replacement = go
       Annotate a t -> Annotate (go a) t
       other -> other
 
--- A function type's parameters and result.
+-- | A function type's parameters and result.
 arguments :: Type -> ([Type], Type)
 arguments (Arrow a r) = let (as, result) = arguments r in (a : as, result)
 arguments t = ([], t)

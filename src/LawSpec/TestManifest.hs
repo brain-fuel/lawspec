@@ -1,4 +1,4 @@
--- Which generated tests check which law, for running a subset of them.
+-- | Which generated tests check which law, for running a subset of them.
 --
 -- Every target writes one test file per unit, and names a law's tests by the
 -- law's position among the unit's executable laws (law0, law1, ...), or, in
@@ -14,12 +14,15 @@ import qualified Data.Set as S
 import LawSpec.Core
 import LawSpec.Dependencies (dependencyGraph, keyOf, lawReferences)
 
+-- | Each generated test is keyed by the law it checks and the digest of what the
+-- law reaches, so lawspec test runs only the tests an edit can affect.
+-- ref:DEC-incremental-compilation
 data TestEntry = TestEntry
   { entryLaw :: Id, entryUnit :: String, entryLabel :: String, entryIndex :: Int
   , entryFile :: FilePath, entryKey :: String, entryCallsAdapters :: Bool }
   deriving (Eq, Show)
 
--- The manifest for one target, with its test directory if not the default.
+-- | The manifest for one target, with its test directory if not the default.
 testManifest :: String -> Maybe String -> Program -> [TestEntry]
 testManifest target testDir program =
   [ TestEntry (propertyId p) unit (unit ++ "::" ++ propertyName p) index
@@ -45,7 +48,7 @@ defaultTestDirectory target = case target of
   "go" -> ""
   _ -> "test"
 
--- The test file each target generates for a unit, in the default layout.
+-- | The test file each target generates for a unit, in the default layout.
 unitTestPath :: String -> String -> FilePath
 unitTestPath target unit = case target of
   "python" -> "tests/test_" ++ intercalate "_" parts ++ "_lawspec.py"
@@ -65,7 +68,7 @@ unitTestPath target unit = case target of
       (a, []) -> [a]
       (a, _ : b) -> a : splitOn c b
 
--- The declarations a law calls directly; definitions cannot call adapters.
+-- | The declarations a law calls directly; definitions cannot call adapters.
 callees :: Expr -> [Id]
 callees e = case expressionNode e of
   ExternalCall callee args -> callee : concatMap callees args

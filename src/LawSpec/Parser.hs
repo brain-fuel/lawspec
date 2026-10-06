@@ -1,3 +1,6 @@
+-- | The concrete syntax of LawSpec, keywords first with symbols as aliases, so a
+-- specification reads as prose to someone who is not a mathematician.
+-- ref:DEC-readable-notation
 module LawSpec.Parser (parseSource, parseSources, parseSourcesWith, sourceUnit) where
 
 import LawSpec.Core.Policy (StagePolicy(..), Retry(..), Strategy(..), Jitter(..), Limit(..), Breaker(..), Bulkhead(..), Hedge(..), emptyPolicy)
@@ -41,7 +44,7 @@ ident :: P String
 ident = lexeme $ try $ do
   x <- (:) <$> letterChar <*> many (alphaNumChar <|> char '_')
   if x `elem` ["unit","law","requires","is","end","definition","description","rationale","example","expect","implies","and","true","false","references","are","Eq","where","refinement","type","match","with"] then fail "reserved identifier" else pure x
--- A name, or alias.name for a name exported by an imported unit. The alias and
+-- | A name, or alias.name for a name exported by an imported unit. The alias and
 -- the dot are adjacent; write f . g with spaces to compose a function named
 -- like an alias.
 qualifiedName :: P String
@@ -53,10 +56,10 @@ qualifiedName = try (do
     n <- ident
     pure (alias ++ "." ++ n))
   <|> ident
--- The declared name without its import alias.
+-- | The declared name without its import alias.
 baseName :: String -> String
 baseName = reverse . takeWhile (/= '.') . reverse
--- Constructors start with an uppercase letter; prelude.Int32 is a conversion.
+-- | Constructors start with an uppercase letter; prelude.Int32 is a conversion.
 startsUpper :: String -> Bool
 startsUpper name = take 8 name /= "prelude." && maybe False (isUpper . fst) (uncons (baseName name))
 lawReference :: P String
@@ -128,7 +131,7 @@ dataTypeP = either erased id <$> declarationP
   where erased f = DataTypeDeclaration (familyName f) (map fst (familyParameters f))
           (map indexedDeclaration (familyConstructors f)) (familySpan f) Nothing
 
--- wrapper Name (a :: Type)* is <type> [where <predicate over value>] end
+-- | wrapper Name (a :: Type)* is <type> [where <predicate over value>] end
 wrapperP :: P Wrapper
 wrapperP = do
   ((name, parameters, base, predicate), range) <- withSpan $ do
@@ -148,7 +151,7 @@ wrapperP = do
     pure (name, parameters, base, predicate)
   pure (Wrapper name parameters base predicate range)
 
--- workflow name :: Input -> Result is stage+ end. A stage is a step, written
+-- | workflow name :: Input -> Result is stage+ end. A stage is a step, written
 -- `name :: Type` (an adapter it declares) or `then name` / `>>= name` (an
 -- existing function); `map f` / `<$> f`; `mapError f` / `<!> f`;
 -- `orElse f` / `recover f` / `<|> f`; `fallback f` / `?? f`; `tap f`; or
@@ -254,7 +257,7 @@ workflowP = do
         , EnsureStage <$> (keyword "ensure" *> qualifiedName) <*> (keyword "else" *> qualifiedName) ]
       pure (WorkflowStage stage stageRange)
 
--- model name :: [shared] S by M is ... end: commands paired with reference
+-- | model name :: [shared] S by M is ... end: commands paired with reference
 -- definitions over the model state M. Each line is a command, `start`,
 -- `abstract` or `invariant`; `~` and `by` both read "modelled by".
 -- protocol Name is (send T | receive T | ! T | ? T)* end: what one end of a
@@ -273,7 +276,7 @@ protocolP = do
     step = (Send <$> ((keyword "send" <|> void (symbol "!")) *> typeAtom))
       <|> (Receive <$> ((keyword "receive" <|> void (symbol "?")) *> typeAtom))
 
--- scenario `name` in model is (channel c :: Protocol)* statement* end. A
+-- | scenario `name` in model is (channel c :: Protocol)* statement* end. A
 -- command's arguments are on its own line.
 scenarioP :: P Scenario
 scenarioP = do
@@ -334,7 +337,7 @@ scenarioP = do
     constant = parens expr <|> try numeric <|> (StringLit <$> str) <|> (BoolLit <$> boolP)
       <|> ((\n -> ConstructLit n []) <$> try (ident >>= \n -> upper n >> pure n))
 
--- A name that starts with an uppercase letter, as a type's does.
+-- | A name that starts with an uppercase letter, as a type's does.
 upper :: String -> P ()
 upper n = unless (maybe False (isUpper . fst) (uncons n)) (fail "expected a type name")
 
@@ -379,7 +382,7 @@ modelP = do
       <|> try numeric <|> (StringLit <$> str) <|> (BoolLit <$> boolP)
       <|> ((\n -> if maybe False (isUpper . fst) (uncons n) then ConstructLit n [] else Var n) <$> qualifiedName)
 
--- actor name :: State by Model is ... end: a process owning a State that
+-- | actor name :: State by Model is ... end: a process owning a State that
 -- handles one message at a time. `on message by reference [when p]` pairs a
 -- handler (an adapter State -> args -> Pair Result State) with its
 -- reference; `start f [by value]` makes the state; `restart from f by g`
@@ -422,7 +425,7 @@ actorP = do
       <|> try numeric <|> (StringLit <$> str) <|> (BoolLit <$> boolP)
       <|> ((\n -> if maybe False (isUpper . fst) (uncons n) then ConstructLit n [] else Var n) <$> qualifiedName)
 
--- supervisor name is [strategy] [at most n restarts in d] child... end:
+-- | supervisor name is [strategy] [at most n restarts in d] child... end:
 -- children are actors or supervisors, each permanent, transient or
 -- temporary. The default strategy is one for one, and the default limit 3
 -- restarts in 5s.
@@ -449,7 +452,7 @@ supervisorP = do
   keyword "end"
   pure (Supervisor name strategy restarts period children)
 
--- Declarations with a Natural parameter or an index equation are indexed
+-- | Declarations with a Natural parameter or an index equation are indexed
 -- families; LawSpec.Indexed elaborates them after the unit is parsed.
 declarationP :: P (Either IndexedFamily DataTypeDeclaration)
 declarationP = do
@@ -494,7 +497,7 @@ declarationP = do
       name <- ident
       unless (maybe False (isUpper . fst) (uncons name)) (fail "type and constructor names must start with an uppercase letter")
       pure name
--- Index expressions are natural arithmetic, written only where an index is
+-- | Index expressions are natural arithmetic, written only where an index is
 -- expected. div, mod and ^ elaborate to the prelude's quot, rem and pow, which
 -- agree with them on naturals.
 indexExpr :: P Expr
@@ -507,7 +510,7 @@ indexExpr = located $ makeExprParser indexAtom
     helper name a b = Apply (Apply (Var ("prelude." ++ name)) a) b
     indexAtom = located (parens indexExpr <|> try numeric <|> (Var <$> ident))
 
--- `e1; e2` sequences at the lowest precedence, and `~s := e` updates a
+-- | `e1; e2` sequences at the lowest precedence, and `~s := e` updates a
 -- definition's flow parameter just above it.
 expr :: P Expr
 expr = do
@@ -716,7 +719,7 @@ lawP = do
   refs <- option [] (keyword "references" *> keyword "are" *> some str <* keyword "end")
   keyword "end"
   pure (Law n ps req d desc why ex refs (Location (sourceName pos) (unPos (sourceLine pos)) (unPos (sourceColumn pos))))
--- Unit definitions have explicit parameter and result types. Law definitions
+-- | Unit definitions have explicit parameter and result types. Law definitions
 -- remain proposition blocks and are parsed separately by lawP.
 functionDefinitionP :: P FunctionDefinition
 functionDefinitionP = do
@@ -753,7 +756,7 @@ importP = do
     pure (target, alias, items)
   pure (Import target (maybe (baseName target) id alias) items range)
 
--- export Money, domain.add, `commutative`: names this unit imports, offered
+-- | export Money, domain.add, `commutative`: names this unit imports, offered
 -- to the units that import it as if declared here (a facade). It is kept with
 -- the imports, as an Import of no unit.
 exportP :: P Import
@@ -768,11 +771,11 @@ exportP = do
       rest <- optional (char '.' *> ((:) <$> letterChar <*> many (alphaNumChar <|> char '_')))
       pure (maybe first (\r -> first ++ "." ++ r) rest)
 
--- Whether an Import is a unit's export line.
+-- | Whether an Import is a unit's export line.
 isExport :: Import -> Bool
 isExport i = null (importUnit i)
 
--- The unit header and its imports, read before the full parse so that imported
+-- | The unit header and its imports, read before the full parse so that imported
 -- declaration arities are known.
 preambleP :: P (String, [Import])
 preambleP = do
@@ -818,16 +821,18 @@ unitP = do
     [w | WrapperMember w <- members], [w | WorkflowMember w <- members], [m | ModelMember m <- members],
     ([p | ProtocolMember p <- members], [s | ScenarioMember s <- members]))
 
+-- | A single source sees no other units, which is what the compiler API's
+-- one-file requests and the tests need.
 parseSource :: Source -> Either [Diagnostic] Unit
 parseSource source = fst . fst <$> parseWith M.empty [] source
 
--- Parse sources that may import one another. Each unit sees the declaration
+-- | Parse sources that may import one another. Each unit sees the declaration
 -- arities of the units it imports, qualified by alias and unqualified for
 -- listed names; LawSpec.Imports resolves the names themselves.
 parseSources :: [Source] -> Either [Diagnostic] [(Unit, [Import])]
 parseSources = parseSourcesWith [] []
 
--- With the built-in collection types a program uses, every other unit imports
+-- | With the built-in collection types a program uses, every other unit imports
 -- those it does not declare itself (LawSpec.Collections). Each other built-in
 -- unit (LawSpec.Time, LawSpec.Resilience) is imported, with its types, by the
 -- sources it says use it.
@@ -902,12 +907,12 @@ parseSourcesWith collections builtins sources = do
               (Just (spanStart (importSpan i)))]
             else unless (importUnit i `elem` path) (go (importUnit i : path) (importUnit i))
 
--- The unit a source declares.
+-- | The unit a source declares.
 sourceUnit :: Source -> Either String String
 sourceUnit (Source p s) = either (Left . errorBundlePretty) (Right . fst)
   (runReader (runParserT preambleP p s) M.empty)
 
--- The headers a unit exports: its type, wrapper and refinement arities and its
+-- | The headers a unit exports: its type, wrapper and refinement arities and its
 -- constructor arities, with each data type's constructors.
 sourceExports :: M.Map String Header -> Source -> (M.Map String Header, [(String, [String])])
 sourceExports extra (Source _ s) =
@@ -933,7 +938,7 @@ parseWith extra importedFamilies (Source p s) = case runReader (runParserT unitP
       (elaborateFamiliesWith importedFamilies families' flowed)
     pure ((elaborated, imports), families')
 
--- Read declaration arities before parsing applications, including forward references.
+-- | Read declaration arities before parsing applications, including forward references.
 -- Strings, quoted law names and comments are consumed atomically.
 headers :: String -> M.Map String Header
 headers source = M.fromList (scan tokens) where
@@ -959,7 +964,7 @@ headers source = M.fromList (scan tokens) where
     | t == ")" && depth == 1 = (reverse acc,rest)
     | otherwise = group (depth + if t == "(" then 1 else if t == ")" then -1 else 0) (t:acc) rest
 
--- Each data type or wrapper with its constructor names.
+-- | Each data type or wrapper with its constructor names.
 constructorOwners :: M.Map String Header -> String -> [(String, [String])]
 constructorOwners extra source = either (const []) id $
   runReader (runParserT scan "constructor owners" source) (M.union (headers source) extra)
@@ -970,7 +975,7 @@ constructorOwners extra source = either (const []) id $
     token = void str <|> void quoted <|>
       void (lexeme ((:) <$> letterChar <*> many (alphaNumChar <|> char '_'))) <|> void (lexeme anySingle)
 
--- Reuse the declaration parser to discover fixture constructor arities. This
+-- | Reuse the declaration parser to discover fixture constructor arities. This
 -- pass skips other tokens atomically; the full parse remains authoritative for
 -- errors and source ranges, including malformed declarations.
 literalHeaders :: String -> M.Map String Header -> M.Map String Header

@@ -1,4 +1,4 @@
--- Go expression documents for checked Core, shared by definitions and properties.
+-- | Go expression documents for checked Core, shared by definitions and properties.
 module LawSpec.GoExpr (renderExpression, renderExpressionWithContext, scalarLiteral, call, array, quoted) where
 
 import LawSpec.Core
@@ -10,17 +10,25 @@ import qualified Data.Text.Lazy as T
 import qualified Data.Text.Lazy.Encoding as T
 import Data.List (find)
 
+-- | Strings are escaped for Go here, once, so no generated literal can end
+-- early or change meaning.
 quoted :: String -> D.Doc
 quoted = D.text . T.unpack . T.decodeUtf8 . encode
 
+-- | Arguments wrap when a call is too wide, in the Go style LawSpec follows.
+-- ref:DEC-readable-output-default
 call :: String -> [D.Doc] -> D.Doc
 -- gofmt does not wrap calls to a column limit. Keeping their arguments inline
 -- also keeps nested function-literal blocks at the correct lexical indentation.
 call name values = D.text (name ++ "(") <> D.joinWith (D.text ", ") values <> D.text ")"
 
+-- | Lists of runtime values are written in one shape so they wrap like calls.
 array :: [D.Doc] -> D.Doc
 array values = D.text "[]LawSpecValue{" <> D.joinWith (D.text ", ") values <> D.text "}"
 
+-- | Literals become runtime values built from their declared type and exact
+-- digits, so Go never reads a number at its own precision.
+-- ref:DEC-portable-exact-arithmetic
 scalarLiteral :: Type -> Scalar -> Either String D.Doc
 scalarLiteral ty value = case value of
   SInteger name number -> pure (call "lsInteger" [quoted name,quoted (show number)])
@@ -42,12 +50,17 @@ scalarLiteral ty value = case value of
     child <- maybe (pure (D.text "nil")) (fmap (call "lsPointer" . pure) . scalarLiteral inner) payload
     pure (call "lsPresent" [case ty of Constructor _ [_] -> quoted (Native.goDataKey ty); _ -> quoted name,child])
 
+-- | Expressions are rendered from Core, never from source, so the Go tests
+-- check the same expansion as every other target.
+-- ref:DEC-typed-core-boundary
 renderExpression :: [DataDeclaration] -> Int -> String -> (Id -> String)
   -> (Expr -> [D.Doc] -> Either String D.Doc) -> Expr -> Either String D.Doc
 renderExpression declarations bits schema = renderExpressionWithContext declarations
   (D.text (show bits)) schema (fmap D.text . Native.goTypeReference)
   (pure . quoted . Native.goDataKey)
 
+-- | Callers whose generated code already holds the machine width and type
+-- references in scope pass them in, so the rendering refers to them by name.
 renderExpressionWithContext :: [DataDeclaration] -> D.Doc -> String
   -> (Type -> Either String D.Doc) -> (Type -> Either String D.Doc) -> (Id -> String)
   -> (Expr -> [D.Doc] -> Either String D.Doc) -> Expr -> Either String D.Doc

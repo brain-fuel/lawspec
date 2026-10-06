@@ -1,4 +1,4 @@
--- Typed channel ends for implementation code: each protocol's steps as
+-- | Typed channel ends for implementation code: each protocol's steps as
 -- types of this target (see LawSpec.Sessions).
 --
 -- A protocol P has two ends, First and Second (the second sends what the
@@ -19,11 +19,11 @@ import Control.Monad (foldM)
 import Data.Char (isAlphaNum, toUpper)
 import Data.List (intercalate)
 
--- The session library for the given target, for every unit's protocols.
+-- | The session library for the given target, for every unit's protocols.
 emit :: String -> Bool -> Int -> [C.DataDeclaration] -> [C.Unit] -> Either String [Artifact]
 emit _ _ bits datas units = mapM (unitSessions bits datas) [u | u <- units, not (null (C.unitSessions u))]
 
--- lawspec_sessions.go in the unit's package.
+-- | lawspec_sessions.go in the unit's package.
 unitSessions :: Int -> [C.DataDeclaration] -> C.Unit -> Either String Artifact
 unitSessions bits datas u = do
   bodies <- mapM (protocol datas sessions) sessions
@@ -62,7 +62,7 @@ unitSessions bits datas u = do
       , "// with LawSpecPeerFailed; TryReceive returns it as an error instead."
       ]
 
--- Listen<P> and Dial<P>: a protocol's two ends on two nodes, over the
+-- | Listen<P> and Dial<P>: a protocol's two ends on two nodes, over the
 -- network's reliable channel endpoints, values converted with the codecs.
 networkText :: Int -> [C.DataDeclaration] -> [C.Session] -> C.Session -> [(Bool, String, C.Type)] -> Either String [String]
 networkText bits datas sessions s steps = do
@@ -127,7 +127,7 @@ replace old new s = case s of
 
 data End = First | Second deriving (Eq, Show)
 
--- The type of a protocol's end before step k (0-based); its Done type after
+-- | The type of a protocol's end before step k (0-based); its Done type after
 -- the last step.
 endType :: C.Session -> End -> Int -> String
 endType s end k
@@ -145,12 +145,12 @@ stepNames s end = [if length (filter (== base) bases) > 1 then base ++ "Step" ++
 sessionName :: C.Session -> String
 sessionName = capitalize . C.sessionName
 
--- Whether an end sends at a step whose first end sends when first is True.
+-- | Whether an end sends at a step whose first end sends when first is True.
 sends :: End -> Bool -> Bool
 sends First first = first
 sends Second first = not first
 
--- A step type's part of a type name: Int32, ListInt32, or the protocol's
+-- | A step type's part of a type name: Int32, ListInt32, or the protocol's
 -- name for a delegated end.
 typeName :: C.Type -> String
 typeName ty = case ty of
@@ -161,7 +161,7 @@ typeName ty = case ty of
       (_, Just rest) -> lastSegment rest
       (whole, Nothing) -> reverse (takeWhile (/= '.') (reverse whole))
 
--- The protocol a step type delegates, if any.
+-- | The protocol a step type delegates, if any.
 delegated :: [C.Session] -> C.Type -> Maybe C.Session
 delegated sessions (C.Constructor name []) = case [s | s <- sessions, C.idText (C.sessionId s) == name] of
   s:_ -> Just s

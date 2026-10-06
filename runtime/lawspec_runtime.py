@@ -1,4 +1,17 @@
-"""LawSpec scalar runtime, independent of test frameworks."""
+"""LawSpec's runtime for Python: the portable scalar domain, seeded generation,
+models, actors, sessions and nodes, with no test-framework dependency.
+
+A law must mean the same thing on every target, so this module implements
+LawSpec's own arithmetic, equality and conversions instead of Python's:
+integers are exact and reach a bounded type only through a checked conversion,
+exact division gives a Fraction, decimals ignore the ambient context, and
+floats follow IEEE 754 at their declared precision.
+ref:DEC-portable-exact-arithmetic ref:ieee-754 ref:decimal-arithmetic
+
+It is emitted unchanged into every generated Python project, so the generated
+tests and the adapters share one definition of the domain.
+ref:DEC-typed-core-boundary
+"""
 from collections import deque  # noqa: F401  (native Queue, Stack, Deque)
 from datetime import timedelta  # noqa: F401  (native Duration)
 from dataclasses import dataclass
@@ -94,6 +107,9 @@ def finite_decimal(r):
 
 
 def convert(x, t, bits=64):
+    """Moves a value into the declared type, failing instead of wrapping or
+    rounding silently, because a bounded type is only ever reached through a
+    checked conversion. ref:DEC-portable-exact-arithmetic"""
     if integer_type(t):
         r = ratio(x)
         if r.denominator != 1:
@@ -131,6 +147,9 @@ def valid_unit(t, c):
 
 
 def validate(x, t, bits=64):
+    """Checks a value an adapter produced against its declared domain: native
+    code may return anything its own type allows, and a law quantifies only
+    over the declared domain. ref:DEC-portable-exact-arithmetic"""
     if t.startswith('Either '):
         types = either_arguments(t)
         if (not isinstance(x, DataValue) or len(x.fields) != 1 or
@@ -265,6 +284,9 @@ def ieee_div(a, b):
 
 
 def binary(op, a, b, ta, tb):
+    """Applies a LawSpec operator with LawSpec's semantics rather than
+    Python's, so a law computes the same result on every target.
+    ref:DEC-portable-exact-arithmetic ref:ieee-754"""
     if (op in ('==', '!=') and not exact_type(ta) and
             ta not in ('Float32', 'Float64', 'Complex64', 'Complex128')):
         result = equal(a, b, ta, tb)
@@ -355,6 +377,10 @@ def handle_label(value):
 
 
 def equal(a, b, ta, tb):
+    """Equality defined once for all targets instead of borrowed from each
+    language's: NaN differs from itself, signed zeros are equal, handles and
+    symbols compare by identity, and data compares field by field.
+    ref:DEC-portable-exact-arithmetic"""
     if is_handle(a) or is_handle(b):
         return a is b
     if ta.startswith('Either ') and tb.startswith('Either '):
@@ -559,6 +585,9 @@ def unit_result(value):
 
 # Dependent-domain operations are independent of test frameworks.
 def sample(t, seed, bits=64):
+    """Draws a value of a scalar type from a seed, the same value every target
+    draws, so a failing seed reproduces anywhere.
+    ref:DEC-portable-seeded-generation"""
     import random
     r = random.Random(seed)
     if t.startswith(('Nullable ', 'Optional ')):
@@ -875,7 +904,11 @@ class VirtualClock:
 
 
 class SplitMix64:
-    """The same sequence on every target for the same seed."""
+    """The same sequence on every target for the same seed.
+
+    SplitMix64 is small, fast and specified exactly, so every runtime
+    implements the same generator and a seed names the same case everywhere.
+    ref:splitmix ref:DEC-portable-seeded-generation"""
 
     def __init__(self, seed=0):
         self.state = seed & _MASK64
@@ -1302,7 +1335,11 @@ _UNBOUNDED = 1_000_000
 
 
 class Values:
-    """Generation, shrinking and rendering over a table of data types."""
+    """Generation, shrinking and rendering over a table of data types.
+
+    Shrinking stays inside the declared domain, so a reported counterexample
+    is always a value the law quantifies over. ref:DEC-shrink-within-domain
+    ref:DEC-structural-size-budget"""
 
     def __init__(self, table):
         self.table = table
@@ -1671,7 +1708,11 @@ class Supervisor:
     'transient' only after a crash, 'temporary' never. More than
     max_restarts within period seconds is the supervisor's own crash: its
     supervisor restarts all of its children, or, at the top, every child
-    stops."""
+    stops.
+
+    Supervision follows OTP's strategies and restart types, so a supervision
+    tree means what an Erlang programmer expects on every target.
+    ref:DEC-actors-otp-supervision ref:erlang-otp-supervisors"""
 
     def __init__(self, strategy='one_for_one', max_restarts=3, period=5.0):
         if strategy not in ('one_for_one', 'one_for_all', 'rest_for_one'):
@@ -2230,7 +2271,11 @@ def _describe_run(model, run):
 
 def check_model(model, cases=100, max_length=20, max_shrinks=2000, seed=None):
     """Checks the system against its model on generated runs; a failure
-    raises AssertionError naming the shortest failing run found."""
+    raises AssertionError naming the shortest failing run found.
+
+    A stateful model is checked by running generated command sequences
+    against the system and the model side by side, then shrinking a failing
+    run. ref:DEC-stateful-models-linearizability"""
     import os
     if seed is None:
         seed = int(os.environ.get('LAWSPEC_SEED', '0'))
@@ -2434,7 +2479,9 @@ def _linearize(model, symbols, branches, history, expected, finish):
     With weaker consistency: sequential drops real time (each thread's own
     order remains); causal checks each thread's results alone, since threads
     that never message each other see only their own calls; eventual checks
-    no results, only the final state."""
+    no results, only the final state.
+
+    ref:wing-gong-linearizability"""
     mode = model.consistency
     if mode == 'causal':
         for i, branch in enumerate(branches):
@@ -2532,7 +2579,12 @@ def _describe_parallel(model, case):
 def check_model_parallel(model, cases=50, repeats=10, max_shrinks=300, seed=None,
                          threads=_THREADS, branch_length=_BRANCH):
     """Checks a shared model's histories under concurrency; a failure
-    raises AssertionError naming the smallest failing case found."""
+    raises AssertionError naming the smallest failing case found.
+
+    A shared model promises linearizability unless it names a weaker
+    consistency, so concurrent histories are judged against some sequential
+    order of the calls. ref:herlihy-wing-linearizability
+    ref:DEC-stateful-models-linearizability"""
     import os
     if seed is None:
         seed = int(os.environ.get('LAWSPEC_SEED', '0'))
@@ -3157,7 +3209,12 @@ class PeerFailed(Exception):
 
 class SessionEnd:
     """One end of a channel, before one step of its protocol. An end can be
-    used once: each send or receive returns the end for the next step."""
+    used once: each send or receive returns the end for the next step.
+
+    Using an end exactly once is what makes a session follow its protocol;
+    with channels joined in a tree, scenarios are deadlock-free by
+    construction. ref:DEC-sessions-by-construction
+    ref:caires-pfenning-session-types ref:wadler-propositions-as-sessions"""
 
     def __init__(self, channel, side):
         self._channel = channel
@@ -3661,7 +3718,11 @@ class Node:
     <node address>/<name>, and it sends to theirs.
 
     Order is kept within one channel; a mailbox or an actor call is best
-    effort: a lost call fails with Unreachable after its timeout."""
+    effort: a lost call fails with Unreachable after its timeout.
+
+    Every target's node speaks the same frames, so nodes written in
+    different languages talk to each other.
+    ref:DEC-distribution-canonical-wire"""
 
     def __init__(self, transport):
         self.transport = transport

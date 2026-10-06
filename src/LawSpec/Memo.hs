@@ -1,5 +1,5 @@
 {-# OPTIONS_GHC -fno-cse -fno-full-laziness #-}
--- Memo tables for the compiler's pure stages. A compiler kept alive across
+-- | Memo tables for the compiler's pure stages. A compiler kept alive across
 -- requests (one wasm instance, the acceptance harness, an editor) reuses the
 -- work for whatever did not change. Keys name their inputs completely (see
 -- LawSpec.Dependencies), so a hit is indistinguishable from recomputing, and
@@ -38,16 +38,19 @@ data State a = State
   , clock :: !Int
   }
 
--- How a persistent table reads and writes its entries.
+-- | How a persistent table reads and writes its entries.
 data Persistence a = Persistence String (a -> BL.ByteString) (BL.ByteString -> Maybe a)
 
+-- | A bounded table, because a long-lived compiler (the language server, the
+-- docs build) would otherwise keep every result it ever computed.
+-- ref:DEC-incremental-compilation
 data Table a = Table !Int (a -> Int) (Maybe (Persistence a)) !(IORef (State a))
 
--- A table holding entries up to a total weight, in memory.
+-- | A table holding entries up to a total weight, in memory.
 newTable :: Int -> (a -> Int) -> IO (Table a)
 newTable budget weigh = Table budget weigh Nothing <$> newIORef (State M.empty M.empty 0 0)
 
--- A table that also keeps its entries in the request's cache directory.
+-- | A table that also keeps its entries in the request's cache directory.
 newPersistentTable :: Binary a => String -> Int -> (a -> Int) -> IO (Table a)
 newPersistentTable name budget weigh =
   Table budget weigh (Just (Persistence name encode decoded)) <$> newIORef (State M.empty M.empty 0 0)
@@ -59,7 +62,7 @@ cacheDirectory :: IORef (Maybe FilePath)
 cacheDirectory = unsafePerformIO (newIORef Nothing)
 {-# NOINLINE cacheDirectory #-}
 
--- Run a request with a cache directory (or none), forcing its result.
+-- | Run a request with a cache directory (or none), forcing its result.
 withCacheDirectory :: Maybe FilePath -> BL.ByteString -> BL.ByteString
 withCacheDirectory directory result = unsafePerformIO $ do
   writeIORef cacheDirectory directory
@@ -68,6 +71,9 @@ withCacheDirectory directory result = unsafePerformIO $ do
   pure result
 {-# NOINLINE withCacheDirectory #-}
 
+-- | Pure callers get caching without threading state: the key names the inputs
+-- completely, so returning a recorded value cannot change any result.
+-- ref:DEC-incremental-compilation
 memoized :: Table a -> String -> a -> a
 memoized (Table budget weigh persistence ref) key value = unsafePerformIO $ do
   let k = T.pack key

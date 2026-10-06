@@ -1,4 +1,4 @@
--- Tests of a unit's stateful models for the targets whose law tests come
+-- | Tests of a unit's stateful models for the targets whose law tests come
 -- from their own property emitters: Go, Java, Kotlin and Haskell get a test
 -- file of their own, and Rust gets test functions for its law test file.
 -- Each test hands the model's spec and its callbacks (the generated bridge
@@ -21,7 +21,7 @@ data Callbacks = Callbacks
   , abstractCallback :: Maybe String
   , invariantCallbacks :: [String] }
 
--- Each machine's spec and callbacks, wrapped by the target's lambda.
+-- | Each machine's spec and callbacks, wrapped by the target's lambda.
 prepare :: Int -> [C.DataDeclaration] -> [(C.Id, String)] -> C.Unit -> (String -> Int -> String) -> Machine C.Id -> Either [Diagnostic] (String, Callbacks)
 prepare bits datas calls u wrap machine = do
   spec <- failing (machineSpec bits datas (C.unitDeclarations u) (C.unitContracts u) machine)
@@ -45,7 +45,7 @@ prepare bits datas calls u wrap machine = do
     stripAwait name = maybe name id (stripPrefixed "await " name)
     stripPrefixed p s = if take (length p) s == p then Just (drop (length p) s) else Nothing
 
--- A test file per unit with models, for Go, Java, Kotlin and Haskell.
+-- | A test file per unit with models, for Go, Java, Kotlin and Haskell.
 modelTestArtifacts :: String -> Int -> [C.DataDeclaration] -> [(C.Id, String)] -> C.Unit -> Either [Diagnostic] [Artifact]
 modelTestArtifacts target bits datas calls u
   | null (C.unitMachines u) = pure []
@@ -176,7 +176,7 @@ modelTestArtifacts target bits datas calls u
           , "    failure <- LS.checkSupervision"
           , "    maybe (pure ()) expectationFailure failure" ] ]
 
--- Rust test functions for a unit's models, calling the mounted definitions
+-- | Rust test functions for a unit's models, calling the mounted definitions
 -- module's evaluators, which already take a context and a list of values.
 rustModelTests :: Int -> [C.DataDeclaration] -> [(C.Id, String)] -> C.Unit -> Either [Diagnostic] [String]
 rustModelTests bits datas calls u = (++ supervision) <$> mapM test (C.unitMachines u)
@@ -226,6 +226,6 @@ capitalize [] = []
 hsPart :: String -> String
 hsPart = concatMap capitalize . splitOn '_'
 
--- A Kotlin string literal: as Haskell's, with $ escaped.
+-- | A Kotlin string literal: as Haskell's, with $ escaped.
 kotlinQuoted :: String -> String
 kotlinQuoted = concatMap (\c -> if c == '$' then "\\$" else [c]) . show

@@ -1,4 +1,4 @@
--- Native Haskell functions over pure, checked total-definition implementations.
+-- | Native Haskell functions over pure, checked total-definition implementations.
 module LawSpec.HaskellDefinitions (emitHaskellDefinitions, emitHaskellDefinitionsWithBindings, definitionCalls) where
 
 import Control.Monad (forM)
@@ -14,17 +14,19 @@ import qualified LawSpec.Code.Doc as D
 import Data.Char (toUpper)
 import Data.List (nub, intercalate)
 
--- Workflows call adapters, so they live in LawSpecWorkflows, apart from the
+-- | Workflows call adapters, so they live in LawSpecWorkflows, apart from the
 -- bodies adapters may import.
 definitionCalls :: [Unit] -> [(Id,String)]
 definitionCalls units = [(declarationId (definitionDeclaration d),
   (if definitionOrchestrates d then "Workflows" else "Definitions") ++ ".evaluate" ++ show i)
   | (i,d) <- zip [0::Int ..] (concatMap unitDefinitions units)]
 
+-- | Checked definitions are emitted as ordinary Haskell code, so adapters and tests call
+-- the same proved implementation. ref:DEC-total-definitions
 emitHaskellDefinitions :: D.Layout -> Int -> [DataDeclaration] -> [Unit] -> Either String [Artifact]
 emitHaskellDefinitions = emitHaskellDefinitionsWithBindings []
 
--- Bound adapters are native bridges, which take the symbol context first.
+-- | Bound adapters are native bridges, which take the symbol context first.
 emitHaskellDefinitionsWithBindings :: [Id] -> D.Layout -> Int -> [DataDeclaration] -> [Unit] -> Either String [Artifact]
 emitHaskellDefinitionsWithBindings _ _ _ _ units | null (concatMap unitDefinitions units) = pure []
 emitHaskellDefinitionsWithBindings bound layout bits declarations units = do

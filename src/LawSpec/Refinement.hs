@@ -1,3 +1,6 @@
+-- | Named refinements are expanded into the refined types and checked contracts
+-- they stand for, so later stages see only ordinary refined types and every
+-- target checks the same predicate.
 module LawSpec.Refinement where
 
 import LawSpec.Model
@@ -6,10 +9,11 @@ import Control.Monad (unless, when, foldM)
 import qualified Data.Map.Strict as M
 import Data.List (nub, intercalate)
 
+-- | A unit with no imports knows only its own data types.
 lowerUnit :: Unit -> Either String Unit
 lowerUnit = lowerUnitWith M.empty
 
--- Imported data types are known by their qualified names.
+-- | Imported data types are known by their qualified names.
 lowerUnitWith :: M.Map String DataTypeDeclaration -> Unit -> Either String Unit
 lowerUnitWith imported u = do
   let rs = refinements u; table = M.fromList [(refinementName r,r) | r <- rs]
@@ -45,6 +49,8 @@ lowerUnitWith imported u = do
       isSuffixOf' a b = reverse a == take (length a) (reverse b)
   pure u{functions=map (\(n,t) -> (n,baseType t)) fs, contracts=active, laws=ls ++ map contractLaw (filter generated active) ++ checks', dataTypes=ds, functionDefinitions=definitions}
 
+-- | A refinement that is ill-formed is reported once, at its declaration, not at
+-- every use.
 validateDeclaration :: M.Map String DataTypeDeclaration -> M.Map String Refinement -> Refinement -> Either String ()
 validateDeclaration structures table r = do
   let ps = refinementParameters r; ns = map fst ps
@@ -56,7 +62,7 @@ validateDeclaration structures table r = do
   _ <- expandType structures table [refinementName r] ts M.empty (refinementBody r)
   pure ()
 
--- A synthetic generic declaration checks unused aliases as well as instantiated ones.
+-- | A synthetic generic declaration checks unused aliases as well as instantiated ones.
 refinementCheck :: Refinement -> Law
 refinementCheck r = Law ("refinement " ++ refinementName r) ps cs (Forall [("_refinementValue",body)] (Holds (BoolLit True))) "" "" [] [] (Location "<refinement>" 1 1)
   where ts = M.fromList [(n,Variable n) | (n,Named "Type") <- refinementParameters r]
@@ -65,6 +71,8 @@ refinementCheck r = Law ("refinement " ++ refinementName r) ps cs (Forall [("_re
         cs = [Capability n (sub t) | Capability n t <- refinementRequirements r]
         body = sub (refinementBody r)
 
+-- | Law parameters may name refinements, and the testing plan needs the
+-- predicates themselves to generate and filter inputs.
 lowerLaw :: M.Map String DataTypeDeclaration -> M.Map String Refinement -> Law -> Either String Law
 lowerLaw structures table l = do
   ps <- mapM (\(n,t) -> (,) n <$> expandType structures table [] M.empty M.empty t) (parameters l)
@@ -75,6 +83,9 @@ lowerLaw structures table l = do
         walk (Implies a b) = Implies a <$> walk b
         walk d = pure d
 
+-- | Refinements may be parameterised and nested; expansion substitutes the
+-- arguments and refuses a refinement that mentions itself, which would never
+-- terminate.
 expandType :: M.Map String DataTypeDeclaration -> M.Map String Refinement -> [String] -> M.Map String Type -> M.Map String Expr -> Type -> Either String Type
 expandType structures table stack ts vs t = case substituteType ts vs t of
   RefinementApp n args -> do
@@ -126,6 +137,8 @@ expandType structures table stack ts vs t = case substituteType ts vs t of
       pure (types,M.insert n (Annotate e (baseType t'')) values,checks ++ typePredicates (Annotate e (baseType t'')) t'',required ++ typeConstraints t'')
     bind _ _ = Left "refinement argument kind mismatch (type versus value)"
 
+-- | A type without value predicates needs no runtime check, so emitters skip the
+-- validation they would otherwise generate.
 hasValueRefinements :: Type -> Bool
 hasValueRefinements ty = case ty of
   Refined _ inner predicate -> maybe False (const True) predicate || hasValueRefinements inner
@@ -136,6 +149,8 @@ hasValueRefinements ty = case ty of
   Arrow a b -> hasValueRefinements a || hasValueRefinements b
   _ -> False
 
+-- | Bound names are renamed apart when a predicate's binder would capture an
+-- argument, so substitution never changes a predicate's meaning.
 substituteType :: M.Map String Type -> M.Map String Expr -> Type -> Type
 substituteType ts vs = go where
   go (Named n) = M.findWithDefault (Named n) n ts
@@ -148,14 +163,16 @@ substituteType ts vs = go where
   go (Application n args) = Application n (map go args)
   go (CheckedType ps a) = CheckedType (map (mapExprTypes go . replaceExprVars (M.toList vs)) ps) (go a)
   go (Qualified cs a) = Qualified [Capability n (go t) | Capability n t <- cs] (go a)
-  go (RefinementApp n args) = RefinementApp n [case a of TypeArgument t -> TypeArgument (go t); ValueArgument e -> ValueArgument (mapExprTypes go (replaceExprVars (M.toList vs) e)) | a <- args]
+  go (RefinementApp n args) = RefinementApp n [(case a of TypeArgument t -> TypeArgument (go t); ValueArgument e -> ValueArgument (mapExprTypes go (replaceExprVars (M.toList vs) e))) | a <- args]
 
--- Synthetic predicate binders are not user-declared dependent argument names.
+-- | Synthetic predicate binders are not user-declared dependent argument names.
 -- '$' is unavailable in source identifiers, so it cannot capture a source binder.
 internalBinder :: String -> Bool
 internalBinder ('$':_) = True
 internalBinder _ = False
 
+-- | An adapter whose signature carries refinements makes a promise about every
+-- call, so its signature becomes a contract each target checks.
 contractFor :: (String,Type) -> Either String Contract
 contractFor (n,t) = do
   let (args,result) = functionType t
@@ -166,7 +183,7 @@ contractFor (n,t) = do
   unless (length (map fst as ++ [fst r]) == length (nub (map fst as ++ [fst r]))) (Left (n ++ ": duplicate dependent binder"))
   pure (Contract n as r (concat [typePredicates (Var name) a | (name,a) <- as]) (typePredicates (Var (fst r)) (snd r)))
 
--- Definitions already bind their arguments explicitly. Preserve those names
+-- | Definitions already bind their arguments explicitly. Preserve those names
 -- when deriving dependent contracts instead of inventing signature binders.
 definitionContractFor :: FunctionDefinition -> Either String Contract
 definitionContractFor definition = do
@@ -186,10 +203,13 @@ definitionContractFor definition = do
     (concat [typePredicates (Var name) ty | (name,ty) <- arguments])
     (typePredicates (Var (fst result)) resultType))
 
+-- | A contract is tested like any law, so it gets evidence and a generated test
+-- on every target. ref:DEC-evidence-statuses
 contractLaw :: Contract -> Law
 contractLaw c = Law ("contract " ++ contractName c) [] [] (Forall (contractArguments c) (Holds (Apply (Var "prelude.checked") invocation))) (contractName c ++ " :: " ++ intercalate " -> " (map (prettyType . snd) (contractArguments c ++ [contractResult c]))) "" [] [] (Location "<contract>" 1 1)
   where invocation = foldl Apply (Var (contractName c)) (map (Var . fst) (contractArguments c))
 
+-- | Dependency order between declarations follows the names their types mention.
 typeNames :: Type -> [String]
 typeNames (Named n) = [n]
 typeNames (Variable n) = [n]
@@ -199,9 +219,9 @@ typeNames (Application _ ts) = concatMap typeNames ts
 typeNames (Refined _ t p) = typeNames t ++ maybe [] exprVars p
 typeNames (Qualified _ t) = typeNames t
 typeNames (CheckedType ps t) = concatMap exprVars ps ++ typeNames t
-typeNames (RefinementApp _ args) = concat [case a of TypeArgument t -> typeNames t; ValueArgument e -> exprVars e | a <- args]
+typeNames (RefinementApp _ args) = concat [(case a of TypeArgument t -> typeNames t; ValueArgument e -> exprVars e) | a <- args]
 
--- Isolate affine occurrences of the current integer input. All other terms may
+-- | Isolate affine occurrences of the current integer input. All other terms may
 -- be arbitrary pure expressions over the preceding inputs.
 planDomain :: [(String,Type)] -> Input -> DomainPlan
 planDomain env i = DomainPlan i (if isIntegerType (inputType i) then concatMap (bounds . stripLocations) (inputRefinements i) else [])
@@ -230,7 +250,7 @@ planDomain env i = DomainPlan i (if isIntegerType (inputType i) then concatMap (
     reverseOp ">=" = "<="
     reverseOp op = op
 
--- Optimizations must never evaluate a partial expression before its guard.
+-- | Optimizations must never evaluate a partial expression before its guard.
 -- Unrecognized expressions remain in the authoritative short-circuit predicate.
 safeDomainExpr :: [(String,Type)] -> Expr -> Bool
 safeDomainExpr env (Located _ e) = safeDomainExpr env e

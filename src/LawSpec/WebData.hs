@@ -1,4 +1,4 @@
--- Native JS classes and TS generic unions rendered from checked Core.
+-- | Native JS classes and TS generic unions rendered from checked Core.
 module LawSpec.WebData (emitWebData, emitWebDataWithProfile, webDataType, webTypeReference, webDataTypeDoc, webDataTypeDocWith, webTypeReferenceDoc, requiresSchema) where
 
 import Control.Monad (unless, forM)
@@ -17,7 +17,7 @@ import LawSpec.DataNames (isProduct)
 import LawSpec.Core.Total (constructorProofContracts)
 import qualified LawSpec.WebExpr as E
 
--- Target imports and a known TypeScript signature slot are substituted. Runtime
+-- | Target imports and a known TypeScript signature slot are substituted. Runtime
 -- expressions and literals stay opaque; no whitespace rewriting is performed.
 replace :: String -> String -> String -> String
 replace _ _ [] = []
@@ -25,9 +25,13 @@ replace old new source
   | old `isPrefixOf` source = new ++ replace old new (drop (length old) source)
   | c:rest <- source = c : replace old new rest
 
+-- | The 64-bit profile unless a caller states another.
+-- ref:DEC-explicit-machine-profile
 emitWebData :: Bool -> D.Layout -> [C.DataDeclaration] -> Either String [Artifact]
 emitWebData ts = emitWebDataWithProfile ts 64
 
+-- | One emitter for JavaScript and TypeScript, so the two targets' data have the
+-- same shapes and differ only in type annotations.
 emitWebDataWithProfile :: Bool -> Int -> D.Layout -> [C.DataDeclaration] -> Either String [Artifact]
 emitWebDataWithProfile ts bits layout declarations = do
   _ <- makeRegistry declarations

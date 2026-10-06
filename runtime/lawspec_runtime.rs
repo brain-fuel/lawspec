@@ -1,4 +1,14 @@
-//! Portable scalar semantics. This source has no dependency on a test framework.
+//! Portable scalar semantics for Rust, with no dependency on a test framework.
+//!
+//! A law must mean the same thing on every target, so this crate module
+//! implements LawSpec's own arithmetic, equality and conversions instead of
+//! Rust's machine integers and floats: integers are exact and reach a bounded
+//! type only through a checked conversion, exact division gives a rational,
+//! decimals are exact, and floats follow IEEE 754 at their declared precision.
+//! ref:DEC-portable-exact-arithmetic ref:ieee-754 ref:decimal-arithmetic
+//!
+//! It is emitted into every generated Rust crate, so the generated tests and
+//! the adapters share one definition of the domain. ref:DEC-typed-core-boundary
 pub use num_bigint::{BigInt, BigUint};
 pub use num_complex::{Complex32, Complex64};
 pub use num_rational::BigRational;
@@ -200,6 +210,9 @@ impl Context {
     }
 }
 
+/// A value of a LawSpec type, tagged with that type, because a Rust value alone
+/// cannot say whether it is an Int32, a BigInt or a Decimal, and the law's
+/// semantics depend on which. ref:DEC-portable-exact-arithmetic
 #[derive(Clone, Debug, PartialEq)]
 pub enum Value {
     Integer(BigInt),
@@ -490,6 +503,9 @@ fn numeric_class(value: &Value) -> Option<bool> {
     }
 }
 
+/// Equality defined once for all targets: NaN differs from itself, signed zeros
+/// are equal, handles and symbols compare by identity, and data compares field
+/// by field. ref:DEC-portable-exact-arithmetic
 pub fn equal(a: &Value, b: &Value) -> Result<bool> {
     if let (Some(x), Some(y)) = (numeric_class(a), numeric_class(b)) {
         if x != y {
@@ -530,6 +546,10 @@ pub fn equal(a: &Value, b: &Value) -> Result<bool> {
 }
 
 /// `domain` is the compiler-resolved arithmetic evidence, never inferred here.
+///
+/// The operator has LawSpec's semantics rather than Rust's, so a law computes
+/// the same result on every target. ref:DEC-portable-exact-arithmetic
+/// ref:ieee-754
 pub fn binary(op: &str, domain: &str, a: Value, b: Value) -> Result<Value> {
     use Value::*;
     if op == "==" || op == "!=" {
@@ -1963,6 +1983,10 @@ impl Clock for VirtualClock {
 }
 
 /// The same sequence on every target for the same seed.
+///
+/// SplitMix64 is small, fast and specified exactly, so every runtime implements
+/// the same generator and a seed names the same case everywhere. ref:splitmix
+/// ref:DEC-portable-seeded-generation
 pub struct SplitMix64 {
     state: u64,
 }
@@ -3534,6 +3558,10 @@ fn step_model(
 /// Checks the system against its model on generated runs (100 cases of up
 /// to 20 commands, seeded by LAWSPEC_SEED); a failure names the shortest
 /// failing run found.
+///
+/// A stateful model is checked by running generated command sequences against
+/// the system and the model side by side, then shrinking a failing run.
+/// ref:DEC-stateful-models-linearizability
 pub fn check_model(model: &Model) -> std::result::Result<(), String> {
     let (cases, max_length, max_shrinks) = (100u64, 20u64, 2000i64);
     let seed = std::env::var("LAWSPEC_SEED").ok().and_then(|s| s.trim().parse::<u64>().ok()).unwrap_or(0);
@@ -3860,6 +3888,8 @@ impl<'a> Machine<'a> {
     /// A Wing-Gong search: linearize, next, a call no pending call on
     /// another thread returned before; memoized on positions and the model
     /// state. finish judges each complete order's final model state.
+    ///
+    /// ref:wing-gong-linearizability
     fn linearize(
         &self,
         ctx: &mut Context,
@@ -4026,6 +4056,11 @@ impl<'a> Machine<'a> {
 /// Checks a shared model's histories under concurrency (50 cases of three
 /// branches, each case run 10 times, seeded by LAWSPEC_SEED); a failure
 /// names the smallest failing case found.
+///
+/// A shared model promises linearizability unless it names a weaker
+/// consistency, so concurrent histories are judged against some sequential
+/// order of the calls. ref:herlihy-wing-linearizability
+/// ref:DEC-stateful-models-linearizability
 pub fn check_model_parallel(model: &Model) -> std::result::Result<(), String> {
     let seed = std::env::var("LAWSPEC_SEED").ok().and_then(|s| s.trim().parse::<u64>().ok()).unwrap_or(0);
     check_model_parallel_with(model, 50, 10, 300, seed, PARALLEL_THREADS, PARALLEL_BRANCH)
@@ -5252,6 +5287,9 @@ mod tests {
     }
 }
 
+/// Checks a value an adapter produced against its declared domain: native code
+/// may return anything its own type allows, and a law quantifies only over the
+/// declared domain. ref:DEC-portable-exact-arithmetic
 pub fn validate(value: Value, name: &str, bits: u32) -> Result<Value> {
     if let Some(inner) = name.strip_prefix("List ") {
         return match value {

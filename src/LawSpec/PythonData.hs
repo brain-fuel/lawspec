@@ -1,4 +1,4 @@
--- Native Python declarations and checked constructor predicate callbacks.
+-- | Native Python declarations and checked constructor predicate callbacks.
 module LawSpec.PythonData (emitPythonData, emitPythonDataWithProfile, pythonDataType, pythonTypeReference, pythonDataTypeDoc, pythonDataTypeDocWith, pythonTypeReferenceDoc, requiresSchema) where
 
 import LawSpec.Time (isDurationType)
@@ -15,9 +15,13 @@ import LawSpec.DataNames (isProduct)
 import qualified LawSpec.PythonExpr as E
 import qualified LawSpec.Code.Doc as D
 
+-- | The 64-bit profile unless a caller states another.
+-- ref:DEC-explicit-machine-profile
 emitPythonData :: D.Layout -> [C.DataDeclaration] -> Either String [Artifact]
 emitPythonData = emitPythonDataWithProfile 64
 
+-- | LawSpec data become frozen dataclasses, the shape Python developers use for
+-- values. ref:DEC-idiomatic-generated-types
 emitPythonDataWithProfile :: Int -> D.Layout -> [C.DataDeclaration] -> Either String [Artifact]
 emitPythonDataWithProfile bits layout declarations = do
   _ <- makeRegistry declarations

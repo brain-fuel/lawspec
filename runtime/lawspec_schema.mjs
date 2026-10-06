@@ -1,4 +1,12 @@
-// Typed data validation and native bridges, independent of test frameworks.
+/**
+ * Typed data validation and native bridges for JavaScript and TypeScript, with
+ * no test-framework dependency.
+ *
+ * Generated data types are described once, as Core schemas, and every value
+ * crossing between a law and native code is validated against them, so an
+ * adapter cannot hand a law a value outside its declared type.
+ * ref:DEC-typed-core-boundary ref:DEC-native-bindings-typed-identity
+ */
 import * as ls from './lawspec_runtime.mjs';
 
 export class RefinementViolation extends TypeError {}
@@ -266,6 +274,11 @@ export function typeKey(type) {
   return pretty(type);
 }
 
+/**
+ * One schema serves validation, construction, matching and conversion to and
+ * from native classes, so these cannot disagree about a type.
+ * ref:DEC-native-bindings-typed-identity
+ */
 export class Schema {
   #definitions = new Map();
   #arity;
@@ -537,6 +550,11 @@ export class Schema {
       this.#indexOf(constructor.fields[position].type, value.fields[position], child));
   }
 
+  /**
+   * Rejects a value outside the declared type, refinements included, because
+   * native code may return anything its own type allows.
+   * ref:DEC-portable-exact-arithmetic
+   */
   validate(type, value, bits = 64, symbols = new Map()) {
     this.#check(type);
     this.#bits(bits);
@@ -652,6 +670,11 @@ export class Schema {
     );
   }
 
+  /**
+   * Converts a checked value into the class the adapter declared, so adapters
+   * work with their own types and never with LawSpec's.
+   * ref:DEC-native-bindings-typed-identity
+   */
   toNative(type, value, bits = 64, symbols = new Map()) {
     return this.#walk(
         type,
@@ -662,6 +685,11 @@ export class Schema {
     );
   }
 
+  /**
+   * Converts and checks a value an adapter returned, so a law never sees a
+   * native value that is outside its domain.
+   * ref:DEC-native-bindings-typed-identity
+   */
   fromNative(type, value, bits = 64, symbols = new Map()) {
     this.#check(type);
     this.#bits(bits);

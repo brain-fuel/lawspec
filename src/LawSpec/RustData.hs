@@ -1,4 +1,4 @@
--- Native declarations and bridges consume resolved Core, never surface syntax.
+-- | Native declarations and bridges consume resolved Core, never surface syntax.
 module LawSpec.RustData (emitRustData, rustDataType, rustDataTypeWithParameters, rustFieldBoxed) where
 
 import LawSpec.DataNames (qualifiedDataName)
@@ -35,6 +35,8 @@ identifier name = do
   unless (valid && name `notElem` ["_", "Self", "self", "super", "crate"]) (Left ("invalid Rust data identifier: " ++ name))
   pure (if name `elem` keywords then "r#" ++ name else name)
 
+-- | Types are checked against the registry before rendering, so an unknown type
+-- is a compiler error rather than uncompilable Rust.
 rustDataType :: [C.DataDeclaration] -> C.Type -> Either String String
 rustDataType declarations ty = do
   registry <- makeRegistry declarations
@@ -42,13 +44,14 @@ rustDataType declarations ty = do
   names <- namesFor declarations
   typeText names [] ty
 
--- Native boundary converters reuse the canonical representation and recursive
+-- | Native boundary converters reuse the canonical representation and recursive
 -- indirection choices rather than guessing target field storage independently.
 rustDataTypeWithParameters :: [C.DataDeclaration] -> [(C.Id,String)] -> C.Type -> Either String String
 rustDataTypeWithParameters declarations parameters ty = do
   names <- namesFor declarations
   typeText names parameters ty
 
+-- | A recursive field must be boxed, or the Rust type would have infinite size.
 rustFieldBoxed :: [C.DataDeclaration] -> C.Id -> C.Type -> Bool
 rustFieldBoxed declarations owner ty = case ty of
   C.Constructor name _ -> name `elem` map (C.idText . C.dataId) declarations &&
@@ -102,7 +105,7 @@ applied :: String -> [String] -> String
 applied name [] = name
 applied name args = name ++ "<" ++ intercalate ", " args ++ ">"
 
--- Vec provides indirection. Other containers have inline payloads; record the
+-- | Vec provides indirection. Other containers have inline payloads; record the
 -- dependencies they expose so mutually recursive declarations are boxed too.
 inlineNames :: C.Type -> [String]
 inlineNames (C.Constructor "List" _) = []
@@ -110,6 +113,7 @@ inlineNames (C.Constructor name _) | collectionContainer name /= Nothing || isDu
 inlineNames (C.Constructor name arguments) = name : concat [inlineNames t | C.TypeArgument t <- arguments]
 inlineNames _ = []
 
+-- | LawSpec data become Rust structs and enums. ref:DEC-idiomatic-generated-types
 emitRustData :: D.Layout -> [C.DataDeclaration] -> Either String String
 emitRustData layout declarations = do
   registry <- makeRegistry declarations

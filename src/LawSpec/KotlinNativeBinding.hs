@@ -1,4 +1,4 @@
--- Application bindings reuse the Kotlin schema codecs and canonical adapter ABI.
+-- | Application bindings reuse the Kotlin schema codecs and canonical adapter ABI.
 module LawSpec.KotlinNativeBinding (emitBindings) where
 
 import Control.Monad (forM, unless)
@@ -17,6 +17,8 @@ import qualified LawSpec.KotlinExpr as E
 import qualified LawSpec.Code.Doc as D
 import LawSpec.RuntimeSources (runtimeSource)
 
+-- | Bound adapters call the user's Kotlin code directly, through generated
+-- conversions. ref:DEC-native-bindings-typed-identity
 emitBindings :: Bool -> BindingPlan -> Plan -> [Artifact] -> Either String [Artifact]
 emitBindings minify plan testing files = do
   unless (bindingRustCrate plan == Nothing) (Left "rustCrate is only valid for Rust bindings")

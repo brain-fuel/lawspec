@@ -1,5 +1,5 @@
 {-# LANGUAGE DeriveGeneric, DeriveFunctor, DeriveFoldable, DeriveTraversable #-}
--- Policies a workflow stage runs under. A stage with policies becomes an
+-- | Policies a workflow stage runs under. A stage with policies becomes an
 -- orchestration definition whose body each target runs through its workflow
 -- runtime (run_stage). Durations are whole microseconds. Names are surface
 -- names before elaboration and declaration identities after.
@@ -10,6 +10,8 @@ module LawSpec.Core.Policy
 
 import GHC.Generics (Generic)
 
+-- | A workflow stage's resilience policies, applied by each target's workflow
+-- runtime with the same semantics.
 data StagePolicy name = StagePolicy
   { policyStage :: String
   , policyRetry :: Maybe (Retry name)
@@ -27,7 +29,7 @@ data StagePolicy name = StagePolicy
   , policyHedge :: Maybe Hedge
   } deriving (Eq, Show, Generic, Functor, Foldable, Traversable)
 
--- A rate limit: kind is tokenBucket, leakyBucket, fixedWindow or
+-- | A rate limit: kind is tokenBucket, leakyBucket, fixedWindow or
 -- slidingWindow; count calls per period. start and admit are definitions of
 -- lawspec.resilience, which the runtime drives. When the limit is reached,
 -- the stage waits (Just: at most the given time, when there is one) or fails
@@ -37,25 +39,25 @@ data Limit name = Limit
   , limitWait :: Maybe (Maybe Integer), limitStart :: name, limitAdmit :: name
   } deriving (Eq, Show, Generic, Functor, Foldable, Traversable)
 
--- After failures within window, calls fail for cooldown, then one trial call
+-- | After failures within window, calls fail for cooldown, then one trial call
 -- decides.
 data Breaker name = Breaker
   { breakerFailures :: Integer, breakerWindow :: Integer, breakerCooldown :: Integer
   , breakerStart :: name, breakerAdmit :: name, breakerRecord :: name
   } deriving (Eq, Show, Generic, Functor, Foldable, Traversable)
 
--- When an attempt has not succeeded after delay, another starts beside it, up
+-- | When an attempt has not succeeded after delay, another starts beside it, up
 -- to most attempts in all; the first success wins.
 data Hedge = Hedge { hedgeDelay :: Integer, hedgeMost :: Integer }
   deriving (Eq, Show, Generic)
 
--- At most limit calls at once.
+-- | At most limit calls at once.
 data Bulkhead name = Bulkhead
   { bulkheadLimit :: Integer, bulkheadWait :: Maybe (Maybe Integer)
   , bulkheadStart :: name, bulkheadAdmit :: name, bulkheadRelease :: name
   } deriving (Eq, Show, Generic, Functor, Foldable, Traversable)
 
--- Attempts count the first try: retry fixed 100ms 3 tries up to three times.
+-- | Attempts count the first try: retry fixed 100ms 3 tries up to three times.
 data Retry name = Retry
   { retryStrategy :: Strategy name
   , retryAttempts :: Integer
@@ -63,7 +65,7 @@ data Retry name = Retry
   , retryWhen :: Maybe name
   } deriving (Eq, Show, Generic, Functor, Foldable, Traversable)
 
--- The delay before each further attempt, in microseconds (see the runtimes).
+-- | The delay before each further attempt, in microseconds (see the runtimes).
 data Strategy name
   = Immediate
   | Fixed Integer
@@ -73,13 +75,16 @@ data Strategy name
   | Custom name
   deriving (Eq, Show, Generic, Functor, Foldable, Traversable)
 
+-- | The jitter schemes retries may use, named as the common backoff literature
+-- names them.
 data Jitter = NoJitter | FullJitter | EqualJitter | DecorrelatedJitter
   deriving (Eq, Show, Generic)
 
+-- | A stage with no policies behaves as its step alone.
 emptyPolicy :: String -> StagePolicy name
 emptyPolicy stage = StagePolicy stage Nothing Nothing Nothing Nothing Nothing Nothing Nothing False Nothing
 
--- The failures a stage's policies can cause besides its step's: a limit or
+-- | The failures a stage's policies can cause besides its step's: a limit or
 -- bulkhead that rejects or waits at most so long, a breaker, a timeout.
 policyFailures :: StagePolicy name -> [String]
 policyFailures policy =

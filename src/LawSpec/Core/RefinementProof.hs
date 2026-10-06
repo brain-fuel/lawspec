@@ -1,4 +1,4 @@
--- Exact linear implication checking for refinement obligations. Variables range
+-- | Exact linear implication checking for refinement obligations. Variables range
 -- over rationals: this is sound (but deliberately incomplete) for integer inputs
 -- too. Floating expressions must never be lowered to this proof language.
 module LawSpec.Core.RefinementProof
@@ -13,28 +13,41 @@ import Control.Monad.State.Strict
 import Control.Monad (foldM)
 import LawSpec.Core (Id)
 
+-- | Obligations are kept linear, a constant plus rational multiples of
+-- variables, because linear implication over the rationals is decidable and
+-- cheap, and that covers the index and bound arithmetic laws use.
+-- ref:DEC-proof-producing-index-layer
 data Linear = Linear Rational (M.Map Id Rational) deriving (Eq, Ord, Show)
 
+-- | A term with no variables.
 constant :: Rational -> Linear
 constant n = Linear n M.empty
 
+-- | A term that is one variable with coefficient one.
 variable :: Id -> Linear
 variable name = Linear 0 (M.singleton name 1)
 
+-- | Zero coefficients are dropped, so equal terms have one representation.
 plus :: Linear -> Linear -> Linear
 plus (Linear a xs) (Linear b ys) =
   Linear (a + b) (M.filter (/= 0) (M.unionWith (+) xs ys))
 
+-- | As plus, scaling keeps the representation normal.
 scale :: Rational -> Linear -> Linear
 scale n (Linear a xs) = Linear (n * a) (M.filter (/= 0) (M.map (n *) xs))
 
+-- | A counterexample search evaluates terms at concrete values; a missing value
+-- means the term cannot be judged there.
 evaluateLinear :: M.Map Id Rational -> Linear -> Maybe Rational
 evaluateLinear values (Linear n xs) =
   (n +) . sum <$> mapM (\(name,k) -> (k *) <$> M.lookup name values) (M.toList xs)
 
+-- | The six comparisons a refinement may state between linear terms.
 data Relation = EqualTo | NotEqualTo | LessThan | AtMost | GreaterThan | AtLeast
   deriving (Eq, Ord, Show)
 
+-- | Refinements are lowered into this small language, so the prover never sees
+-- floating arithmetic, which has no exact identities. ref:ieee-754
 data Predicate
   = Truth Bool
   | Atom Id
@@ -46,9 +59,10 @@ data Predicate
   | Any [Predicate]
   deriving (Eq, Ord, Show)
 
--- Unknown is not a counterexample: it includes exhausted proof work budgets.
+-- | Unknown is not a counterexample: it includes exhausted proof work budgets.
 data Verdict = Proven | Unknown deriving (Eq, Show)
 
+-- | A candidate counterexample is checked against the predicate exactly.
 evaluatePredicate :: M.Map Id Rational -> M.Map Id Bool -> Predicate -> Maybe Bool
 evaluatePredicate numbers booleans predicate = case predicate of
   Truth b -> Just b
@@ -74,7 +88,7 @@ relationFunction relation = case relation of
   GreaterThan -> (>)
   AtLeast -> (>=)
 
--- An inequality represents linear <= 0, or linear < 0 when strict is True.
+-- | An inequality represents linear <= 0, or linear < 0 when strict is True.
 data Inequality = Inequality Linear Bool deriving (Eq, Ord, Show)
 data Conjunct = Numeric Inequality | Boolean Id Bool deriving (Eq, Ord, Show)
 type Work = StateT Int Maybe
@@ -84,6 +98,8 @@ spend n = do
   available <- get
   if n > available then lift Nothing else put (available - n)
 
+-- | The search is bounded by a budget, so compilation always terminates; running
+-- out of budget gives Unknown, which is safe. ref:DEC-evidence-statuses
 prove :: Int -> [Predicate] -> Predicate -> Verdict
 prove budget assumptions conclusion
   | budget <= 0 = Unknown
@@ -95,7 +111,7 @@ prove budget assumptions conclusion
       alternatives <- normalForm True (All (assumptions ++ [Not conclusion]))
       and <$> mapM inconsistent alternatives
 
--- Bounded disjunctive normalization keeps Boolean reasoning explicit. Every
+-- | Bounded disjunctive normalization keeps Boolean reasoning explicit. Every
 -- resulting branch must be inconsistent to prove the original implication.
 normalForm :: Bool -> Predicate -> Work [[Conjunct]]
 normalForm truth predicate = do
@@ -160,7 +176,7 @@ inconsistent conjuncts = do
     then pure True
     else eliminate (nub [inequality | Numeric inequality <- conjuncts])
 
--- Fourier-Motzkin elimination combines each lower bound with each upper bound.
+-- | Fourier-Motzkin elimination combines each lower bound with each upper bound.
 -- Positive scaling preserves order. A combined bound is strict if either input
 -- is strict; dropping that distinction would mishandle boundary equalities.
 eliminate :: [Inequality] -> Work Bool

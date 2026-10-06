@@ -1,4 +1,4 @@
--- Kotlin expression documents over checked Core. Native calls are supplied by
+-- | Kotlin expression documents over checked Core. Native calls are supplied by
 -- the consumer so definitions and adapter bridges retain their own ABI.
 module LawSpec.KotlinExpr (renderExpression, scalarLiteral, call, array, reference, quoted, checked, codec) where
 
@@ -11,6 +11,8 @@ import Data.Aeson (encode)
 import qualified Data.Text.Lazy as T
 import qualified Data.Text.Lazy.Encoding as T
 
+-- | Strings are escaped for Kotlin here, once, so no generated literal can end
+-- early or change meaning.
 quoted :: String -> D.Doc
 quoted value
   | length (token value) <= 26 = D.text (token value)
@@ -27,15 +29,22 @@ quoted value
             (\n -> length (token (take n rest)) <= 26) [1 .. length (take 24 rest)]))
       in take count rest : chunks (drop count rest)
 
+-- | Arguments wrap when a call is too wide, in the Kotlin style LawSpec follows.
+-- ref:DEC-readable-output-default
 call :: String -> [D.Doc] -> D.Doc
 call name values = D.text name <> D.delimitTrailing 4 "(" ")" values
 
+-- | Lists of runtime values are written in one shape so they wrap like calls.
 array :: [D.Doc] -> D.Doc
 array = call "arrayOf"
 
+-- | Runtime checks name a type by a schema reference built from Core.
 reference :: Type -> Either String D.Doc
 reference = Native.kotlinTypeReferenceDoc
 
+-- | Values of types with a schema are validated as they enter a law, so an
+-- adapter cannot return a value outside its declared domain.
+-- ref:DEC-portable-exact-arithmetic
 checked :: [DataDeclaration] -> Int -> Type -> D.Doc -> Either String D.Doc
 checked declarations bits ty value
   | Native.requiresSchema declarations ty = do
@@ -44,12 +53,17 @@ checked declarations bits ty value
   | otherwise = pure (call "LawSpecRuntime.convert"
       [quoted (Java.javaDataKey ty),value,D.text (show bits)])
 
+-- | A codec converts between the generated Kotlin type and the runtime value,
+-- checking the value as it goes.
 codec :: [DataDeclaration] -> Int -> Type -> Either String D.Doc
 codec declarations bits ty = do
   value <- Native.kotlinCodecDocWithContext (D.text "symbols") declarations ty
   pure (D.multiline (D.text "run " <> D.block 4 (D.joinWith D.hardline
     [D.text "val schema = _schema",D.text ("val bits = " ++ show bits),value])))
 
+-- | Literals become runtime values built from their declared type and exact
+-- digits, so Kotlin never reads a number at its own precision.
+-- ref:DEC-portable-exact-arithmetic
 scalarLiteral :: Type -> Scalar -> Either String D.Doc
 scalarLiteral ty value = case value of
   SInteger name n -> pure (runtime "integer" [quoted name,quoted (show n)])
@@ -72,6 +86,9 @@ scalarLiteral ty value = case value of
     pure (runtime "present" [quoted (case ty of Constructor _ [_] -> Java.javaDataKey ty; _ -> name),valueDoc])
   where runtime name = call ("LawSpecRuntime." ++ name)
 
+-- | Expressions are rendered from Core, never from source, so the Kotlin tests
+-- check the same expansion as every other target.
+-- ref:DEC-typed-core-boundary
 renderExpression :: [DataDeclaration] -> Int -> (Id -> String)
   -> (Expr -> [D.Doc] -> Either String D.Doc) -> Expr -> Either String D.Doc
 renderExpression declarations bits local external = render

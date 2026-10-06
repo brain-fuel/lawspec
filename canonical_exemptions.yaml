@@ -1,48 +1,48 @@
-src/:
+/src/:
   kinds: [comment]
   reason: "The compiler's comments were ingested pending in 0.20.1 and its exported units still owe a Why; vetting every verdict and writing the rest is the work of 0.20.2"
   revisit: 0.20.2
-dev/:
+/dev/:
   kinds: [comment]
   reason: "lawspec-dev's comments were ingested pending in 0.20.1; the owner vets them, and writes what is missing, in 0.20.2"
   revisit: 0.20.2
-app/:
+/app/:
   kinds: [comment]
   reason: "The native compiler's entry point was ingested pending in 0.20.1; vetting is the work of 0.20.2"
   revisit: 0.20.2
-wasm/:
+/wasm/:
   kinds: [comment]
   reason: "The WebAssembly entry point was ingested pending in 0.20.1; vetting is the work of 0.20.2"
   revisit: 0.20.2
-runtime/:
+/runtime/:
   kinds: [comment]
   reason: "The eight runtimes gained file and main-unit doc comments in 0.20.1, ingested pending; vetting them and documenting the remaining public units is the work of 0.20.2"
   revisit: 0.20.2
-test/:
+/test/:
   kinds: [comment]
   reason: "Each Hspec module's test cites its requirement since 0.20.1; the helpers, the inline groups of test/Main.hs and the native fixtures still owe a Why, and every verdict is vetted in 0.20.2"
   revisit: 0.20.2
-acceptance/:
+/acceptance/:
   kinds: [comment]
   reason: "The acceptance harness and the adapters each suite installs into generated projects were ingested pending in 0.20.1; their Whys and the requirements their tests verify are the work of 0.20.2"
   revisit: 0.20.2
-examples/:
+/examples/:
   kinds: [comment]
   reason: "The bundled examples are user-facing sample projects ingested pending in 0.20.1; deciding how their comments are judged is the work of 0.20.2"
   revisit: 0.20.2
-templates/:
+/templates/:
   kinds: [comment]
   reason: "The templates every JavaScript file is generated from were ingested pending in 0.20.1; vetting them and documenting their exports is the work of 0.20.2"
   revisit: 0.20.2
-tools/:
+/tools/:
   kinds: [comment]
   reason: "The hand-written tools were ingested pending in 0.20.1; vetting is the work of 0.20.2"
   revisit: 0.20.2
-Makefile:
+/Makefile:
   kinds: [comment]
   reason: "The Makefile's targets carry their one-line help but no canonical comment yet; writing and vetting them is the work of 0.20.2"
   revisit: 0.20.2
-docs/:
+/docs/:
   kinds: [doc]
   reason: "Every page gained front matter in 0.20.1 and was ingested pending; the owner vets each page in 0.20.2"
   revisit: 0.20.2

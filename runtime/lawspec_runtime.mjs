@@ -1,4 +1,20 @@
-// LawSpec scalar runtime. No test framework dependencies.
+/**
+ * LawSpec's runtime for JavaScript and TypeScript: the portable scalar domain,
+ * seeded generation, models, actors, sessions and nodes, with no test-framework
+ * dependency.
+ *
+ * A law must mean the same thing on every target, so this module implements
+ * LawSpec's own arithmetic, equality and conversions instead of JavaScript's
+ * doubles: integers are exact BigInts that reach a bounded type only through a
+ * checked conversion, exact division gives a Rational, decimals are exact, and
+ * floats follow IEEE 754 at their declared precision.
+ * ref:DEC-portable-exact-arithmetic ref:ieee-754 ref:decimal-arithmetic
+ *
+ * It is emitted unchanged into every generated JavaScript and TypeScript
+ * project, so the generated tests and the adapters share one definition of the
+ * domain. ref:DEC-typed-core-boundary
+ */
+
 export class Rational {
   constructor(n, d = 1n) {
     n = BigInt(n);
@@ -105,6 +121,11 @@ function decimal(x) {
   const scale = a > b ? a : b;
   return new Decimal(r.n * 2n ** (scale - a) * 5n ** (scale - b), -scale);
 }
+/**
+ * Moves a value into the declared type, failing instead of wrapping or rounding
+ * silently, because a bounded type is only ever reached through a checked
+ * conversion. ref:DEC-portable-exact-arithmetic
+ */
 export function convert(x, t, bits = 64) {
   if (integerType(t)) {
     const r =
@@ -173,6 +194,11 @@ function validUnit(t, c) {
       (!['Text', 'Char'].includes(t) || c < 55296 || c > 57343)
   );
 }
+/**
+ * Checks a value an adapter produced against its declared domain: native code
+ * may return anything its own type allows, and a law quantifies only over the
+ * declared domain. ref:DEC-portable-exact-arithmetic
+ */
 export function validate(x, t, bits = 64) {
   if (t.startsWith('Either ')) {
     const types = eitherArguments(t);
@@ -334,6 +360,11 @@ export function promote(a, b, op) {
       : 'Complex64';
   return [a, b].includes('Float64') ? 'Float64' : 'Float32';
 }
+/**
+ * Applies a LawSpec operator with LawSpec's semantics rather than JavaScript's,
+ * so a law computes the same result on every target.
+ * ref:DEC-portable-exact-arithmetic ref:ieee-754
+ */
 export function binary(op, a, b, ta, tb) {
   if (
       (op === '==' || op === '!=') &&
@@ -440,6 +471,12 @@ export function isHandle(value) {
   return handleTable(value).has(value);
 }
 
+/**
+ * Equality defined once for all targets instead of borrowed from each
+ * language's: NaN differs from itself, signed zeros are equal, handles and
+ * symbols compare by identity, and data compares field by field.
+ * ref:DEC-portable-exact-arithmetic
+ */
 export function equal(a, b, ta, tb) {
   if (isHandle(a) || isHandle(b)) return a === b;
   if (ta.startsWith('Either ') && tb.startsWith('Either ')) {
@@ -645,7 +682,11 @@ export function unitResult(value) {
   return value === undefined ? UNIT : validate(value, 'Unit');
 }
 
-// Domain generation operates on exact values independently of test frameworks.
+/**
+ * Domain generation operates on exact values independently of test frameworks.
+ * It draws the same value every target draws for a seed, so a failing seed
+ * reproduces anywhere. ref:DEC-portable-seeded-generation
+ */
 export function sample(t, seed, bits = 64) {
   let n = BigInt(seed);
   const next = () =>
@@ -1103,7 +1144,13 @@ export class VirtualClock {
   sleepAsync(micros) { this.sleep(micros); return Promise.resolve(); }
 }
 
-/** The same sequence on every target for the same seed. */
+/**
+ * The same sequence on every target for the same seed.
+ *
+ * SplitMix64 is small, fast and specified exactly, so every runtime implements
+ * the same generator and a seed names the same case everywhere. ref:splitmix
+ * ref:DEC-portable-seeded-generation
+ */
 export class SplitMix64 {
   state;
   constructor(seed = 0n) { this.state = BigInt(seed) & MASK64; }
@@ -1596,7 +1643,13 @@ function mentionsData(d) {
     (d[0] === 'ref' || d[0] === 'data' || d.slice(1).some(mentionsData));
 }
 
-/** Generation, shrinking and rendering over a table of data types. */
+/**
+ * Generation, shrinking and rendering over a table of data types.
+ *
+ * Shrinking stays inside the declared domain, so a reported counterexample is
+ * always a value the law quantifies over. ref:DEC-shrink-within-domain
+ * ref:DEC-structural-size-budget
+ */
 export class Values {
   table;
   constructor(table) { this.table = table; }
@@ -2020,6 +2073,10 @@ const LIFETIMES = ['permanent', 'transient', 'temporary'];
  * after a crash, 'temporary' never. More than maxRestarts within period
  * seconds is the supervisor's own crash: its supervisor restarts all of its
  * children, or, at the top, every child stops.
+ *
+ * Supervision follows OTP's strategies and restart types, so a supervision tree
+ * means what an Erlang programmer expects on every target.
+ * ref:DEC-actors-otp-supervision ref:erlang-otp-supervisors
  */
 export class Supervisor {
   _supervisor = null;
@@ -2616,6 +2673,10 @@ function describeRun(model, run) {
 /**
  * Checks the system against its model on generated runs; a failure throws
  * an Error naming the shortest failing run found.
+ *
+ * A stateful model is checked by running generated command sequences against
+ * the system and the model side by side, then shrinking a failing run.
+ * ref:DEC-stateful-models-linearizability
  */
 export async function checkModelAsync(model, options = {}) {
   const {cases = 100, maxLength = 20, maxShrinks = 2000} = options;
@@ -2969,6 +3030,11 @@ function describeParallel(model, testCase) {
 /**
  * Checks a shared model's histories under concurrency; a failure throws an
  * Error naming the smallest failing case found.
+ *
+ * A shared model promises linearizability unless it names a weaker consistency,
+ * so concurrent histories are judged against some sequential order of the
+ * calls, found by a Wing-Gong search. ref:herlihy-wing-linearizability
+ * ref:wing-gong-linearizability ref:DEC-stateful-models-linearizability
  */
 export async function checkModelParallelAsync(model, options = {}) {
   const {cases = 50, repeats = 10, maxShrinks = 300, threads = THREADS, branchLength = BRANCH} = options;
@@ -3667,6 +3733,11 @@ export function channel() {
 /**
  * One end of a channel at one step of a protocol. Each end is used once:
  * its send or receive returns the end for the next step.
+ *
+ * Using an end exactly once is what makes a session follow its protocol; with
+ * channels joined in a tree, scenarios are deadlock-free by construction.
+ * ref:DEC-sessions-by-construction ref:caires-pfenning-session-types
+ * ref:wadler-propositions-as-sessions
  */
 export class SessionEnd {
   #channel;
@@ -3930,7 +4001,12 @@ function wireGet(values, d, buf, pos) {
   throw new WireError('unknown descriptor ' + render(d));
 }
 
-/** The value's canonical bytes. */
+/**
+ * The value's canonical bytes.
+ *
+ * Every target encodes a value to the same bytes, so nodes written in different
+ * languages talk to each other. ref:DEC-distribution-canonical-wire
+ */
 export function wireEncode(values, d, v) {
   const out = [];
   wirePut(values, d, v, out);
@@ -4242,6 +4318,9 @@ class ReplySlot {
  *
  * Order is kept within one channel; a mailbox or an actor call is best
  * effort: a lost call fails with Unreachable after its timeout.
+ *
+ * Every target's node speaks the same frames, so nodes written in different
+ * languages talk to each other. ref:DEC-distribution-canonical-wire
  */
 export class Node {
   transport;
@@ -4975,11 +5054,6 @@ export function nativeScalar(d, value) {
     ? Number(value) : value;
 }
 
-/**
- * A network channel end seen through native values: each step's value is
- * converted with the schema (references null are scalars, converted by
- * nativeScalar).
- */
 /**
  * A step that sends another protocol's first end: start() is that end's
  * start class, and wire() that protocol's [steps, parts] from it.

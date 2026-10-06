@@ -1,4 +1,4 @@
--- The native test command for each target, shared by every acceptance suite.
+-- | The native test command for each target, shared by every acceptance suite.
 module Toolchain (Toolchain(..), toolchain, mutantArguments, compileFailure) where
 
 import Data.Char (toLower)
@@ -15,7 +15,7 @@ data Toolchain = Toolchain
   , report :: IO String  -- output kept outside the console, such as test reports
   }
 
--- Offline builds use existing dependency caches (LAWSPEC_OFFLINE=1).
+-- | Offline builds use existing dependency caches (LAWSPEC_OFFLINE=1).
 toolchain :: FilePath -> String -> IO Toolchain
 toolchain project target = do
   offline <- (== Just "1") <$> lookupEnv "LAWSPEC_OFFLINE"
@@ -51,12 +51,12 @@ xmlReports dir = do
   names <- if exists then sort . filter (".xml" `isSuffixOf`) <$> listDirectory dir else pure []
   concat <$> mapM (readFile' . (dir </>)) names
 
--- Stop at the first counterexample: a mutant only has to fail once.
+-- | Stop at the first counterexample: a mutant only has to fail once.
 mutantArguments :: String -> [String] -> [String]
 mutantArguments "python" args = args ++ ["-x"]
 mutantArguments _ args = args
 
--- A mutant must fail its laws, not the build. These markers identify build and
+-- | A mutant must fail its laws, not the build. These markers identify build and
 -- type-checking failures in each toolchain's output.
 compileFailure :: String -> Bool
 compileFailure output = any ((`isInfixOf` map toLower output) . map toLower)

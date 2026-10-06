@@ -1,4 +1,4 @@
--- Content-addressed acceptance results. A run's key hashes everything the
+-- | Content-addressed acceptance results. A run's key hashes everything the
 -- native test tool reads: the generated project, the suite's adapters, stubs
 -- and mutants, the harness itself, and the toolchain's versions, dependency
 -- locks and environment. A compiler change that leaves a target's output
@@ -34,7 +34,7 @@ cacheMode = lookupEnv "LAWSPEC_CACHE" >>= \case
   Just "refresh" -> pure Refresh
   _ -> pure Reuse
 
--- The labels name the run (suite, target, profile, mode); the contents are the
+-- | The labels name the run (suite, target, profile, mode); the contents are the
 -- project files as written; the paths are further files the run reads.
 runKey :: String -> [String] -> [(FilePath, String)] -> [FilePath] -> IO Key
 runKey target labels contents paths = do
@@ -52,13 +52,13 @@ runKey target labels contents paths = do
     -- Length-prefixed, so no two different inputs share a byte stream.
     framed piece = [BC.pack (show (B.length piece) ++ ":"), piece]
 
--- Environment that changes what a native test run does.
+-- | Environment that changes what a native test run does.
 environmentNames :: [String]
 environmentNames =
   [ "LAWSPEC_MACHINE_BITS", "LAWSPEC_MINIFY", "LAWSPEC_RUST_RELEASE", "LAWSPEC_PYTHON"
   , "RUSTUP_TOOLCHAIN", "CARGO_BUILD_TARGET", "GOARCH" ]
 
--- The versions of the tools a target's tests run with. A tool that cannot be
+-- | The versions of the tools a target's tests run with. A tool that cannot be
 -- started contributes its error, so the key still changes when it appears.
 toolFingerprint :: String -> IO [String]
 toolFingerprint target = do
@@ -81,7 +81,7 @@ toolFingerprint target = do
       (_, out, err) <- readCreateProcessWithExitCode (proc program arguments) ""
       pure (unwords (program : arguments) ++ "\n" ++ out ++ err)
 
--- A recorded pass: the lines the run printed.
+-- | A recorded pass: the lines the run printed.
 lookupResult :: Key -> IO (Maybe [String])
 lookupResult (Key key) = do
   let path = store </> key

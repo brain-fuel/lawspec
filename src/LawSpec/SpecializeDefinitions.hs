@@ -1,4 +1,4 @@
--- Closed monomorphization after law expansion and template auditing. Target
+-- | Closed monomorphization after law expansion and template auditing. Target
 -- generators continue to receive only concrete, independently validated Core.
 module LawSpec.SpecializeDefinitions (specializeDefinitions) where
 
@@ -23,6 +23,8 @@ data Work = Work
   }
 type Specialize = StateT Work (Either String)
 
+-- | Generic definitions are specialised to the types laws use them at, so every
+-- target receives concrete code and needs no generics of its own.
 specializeDefinitions :: [Core.DataDeclaration] -> Int -> (Constraint -> Bool)
   -> [Unit] -> [Expanded] -> Either [Diagnostic] ([Unit],[Expanded])
 specializeDefinitions declarations bits satisfies units properties = do

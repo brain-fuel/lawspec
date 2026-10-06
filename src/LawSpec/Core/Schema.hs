@@ -1,4 +1,4 @@
--- Backend-neutral runtime descriptions derived from checked Core declarations.
+-- | Backend-neutral runtime descriptions derived from checked Core declarations.
 -- Type arguments remain structural, including recursive applications. Parameter
 -- positions are local to each declaration; source binder names never leak into
 -- a runtime's substitution algorithm.
@@ -10,10 +10,13 @@ module LawSpec.Core.Schema
 import qualified LawSpec.Core as C
 import LawSpec.IndexTerm (FamilyIndex(..), constructorIndexTexts)
 
+-- | Runtimes substitute type parameters by position, so a schema never depends on
+-- a source binder name.
 data TypeRef = Parameter Int | Named String [TypeRef] deriving (Eq, Show)
+-- | A field's runtime name and the type a runtime checks it against.
 data FieldSchema = FieldSchema
   { fieldName :: String, fieldType :: TypeRef } deriving (Eq, Show)
--- An indexed family's constructor also carries its index terms and guards
+-- | An indexed family's constructor also carries its index terms and guards
 -- (constructorIndexTexts), which validation checks on every value. A GADT
 -- constructor's refinements fix parameters to patterns; its existentials are
 -- the parameters numbered after the declaration's own, bound by matching the
@@ -26,18 +29,22 @@ data ConstructorSchema = ConstructorSchema
   -- carries their types as trailing Text witness fields.
   , constructorWitnesses :: [Int]
   } deriving (Eq, Show)
+-- | The runtime description each target's schema module is generated from, so
+-- every runtime validates the same shapes.
 data DataSchema = DataSchema
   { typeName :: String, parameterCount :: Int
   , constructors :: [ConstructorSchema]
   } deriving (Eq, Show)
 
--- Keep executable predicates separate from runtime shape metadata. Emitters
+-- | Keep executable predicates separate from runtime shape metadata. Emitters
 -- must explicitly consume both; legacy shape-only consumers reject contracts.
 data ConstructorContractSchema = ConstructorContractSchema
   { contractTag :: String, contractParameters :: [C.Id]
   , contractFields :: [C.Binder], contractPredicates :: [C.Expr]
   } deriving (Eq, Show)
 
+-- | A type variable outside the declaration's parameters cannot be described to
+-- a runtime, so it is an error.
 typeReference :: [C.Id] -> C.Type -> Either String TypeRef
 typeReference parameters ty = case ty of
   C.TypeVariable variable -> case lookup variable (zip parameters [0..]) of
@@ -49,12 +56,16 @@ typeReference parameters ty = case ty of
     argument (C.TypeArgument value) = typeReference parameters value
     argument (C.IndexArgument _) = Left "indexed data schema is not supported"
 
+-- | Callers that cannot carry constructor contracts are refused when there are
+-- some, rather than silently dropping the checks.
 dataSchemas :: [C.DataDeclaration] -> Either String [DataSchema]
 dataSchemas declarations = do
   (schemas,contracts) <- dataSchemasWithContracts declarations
   if null contracts then pure schemas else
     Left "constructor field contracts require runtime schema predicate support"
 
+-- | Constructor predicates travel with the schema, so a runtime checks them on
+-- every value it builds.
 dataSchemasWithContracts :: [C.DataDeclaration]
   -> Either String ([DataSchema],[ConstructorContractSchema])
 dataSchemasWithContracts declarations = do
@@ -92,7 +103,7 @@ typeVariablesOf ty = case ty of
   C.Constructor _ arguments -> concat [typeVariablesOf t | C.TypeArgument t <- arguments]
   C.Arrow a b -> typeVariablesOf a ++ typeVariablesOf b
 
--- A value's witness fields, after its declared ones: witness, or witness0..
+-- | A value's witness fields, after its declared ones: witness, or witness0..
 witnessFieldName :: Int -> Int -> String
 witnessFieldName 1 _ = "witness"
 witnessFieldName _ k = "witness" ++ show k

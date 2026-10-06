@@ -1,5 +1,5 @@
 {-# OPTIONS_GHC -Wno-orphans #-}
--- Binary encodings of the surface values the front end persists in its
+-- | Binary encodings of the surface values the front end persists in its
 -- on-disk cache; see LawSpec.CorePersist.
 module LawSpec.Persist () where
 

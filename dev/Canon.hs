@@ -1,7 +1,9 @@
 -- | The canonical-format check: canon (ref:canon) reads this repository through
 -- canon.yaml, whose language profiles name grammars under .canon/grammars, so
 -- the grammars and the binary always come from one canon checkout and are not
--- copied here. ref:DEC-canon-from-a-checkout
+-- copied here. ref:DEC-canon-from-a-checkout canon.yaml reads the runtimes
+-- through canon's dialects (ref:DEC-canon-dialect-profiles) and leaves
+-- generated files alone (ref:DEC-generated-files-not-checked).
 --
 --   lawspec-dev canon [arguments]   run canon from the repository root;
 --                                   no arguments means check

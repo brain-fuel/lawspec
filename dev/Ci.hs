@@ -1,4 +1,5 @@
--- | The complete LawSpec check, run locally from the repository root:
+-- | The complete LawSpec check, run locally from the repository root, since
+-- the project has no hosted CI (ref:DEC-local-ci-only):
 --
 --   lawspec-dev ci                       everything, all eight targets
 --   lawspec-dev ci --target rust --target go

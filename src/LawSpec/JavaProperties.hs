@@ -1,4 +1,4 @@
--- Java property scaffolding consumes checked propositions and generation plans.
+-- | Java property scaffolding consumes checked propositions and generation plans.
 module LawSpec.JavaProperties (Config(..), emitTests) where
 
 import LawSpec.Bounds (inputRange)
@@ -12,6 +12,8 @@ import qualified LawSpec.JavaExpr as E
 import qualified LawSpec.JavaTestHelpers as Helpers
 import Data.List (intercalate)
 
+-- | What the Java test emitter needs besides the plan: names, layout and
+-- bindings, gathered so the emitter takes one argument.
 data Config = Config
   { packageName :: String
   -- An async adapter's call, awaited.
@@ -61,6 +63,8 @@ testFunction name body = text "@Test" <> D.hardline <> text ("void " ++ name ++ 
 fromValues xs = statements [bind (inputId input) (text ("_values.get(" ++ show index ++ ")")) |
   (index,input) <- zip [0::Int ..] xs]
 
+-- | Laws become tests in Java's own property framework, so they run with the
+-- tools the project already uses. ref:DEC-native-property-frameworks
 emitTests :: Config -> Unit -> [Expanded] -> Either [Diagnostic] D.Doc
 emitTests Config{..} unit laws = do
   bodies <- mapM law (zip [0::Int ..] laws)

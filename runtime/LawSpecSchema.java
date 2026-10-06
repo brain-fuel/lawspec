@@ -12,7 +12,13 @@ import lawspec.runtime.LawSpecRuntime.Data;
 import lawspec.runtime.LawSpecRuntime.Presence;
 import lawspec.runtime.LawSpecRuntime.Value;
 
-/** Runtime metadata derived from checked Core, independent of testing frameworks. */
+/**
+ * Runtime metadata derived from checked Core, independent of testing frameworks.
+ *
+ * Generated data types are described once, as Core schemas, and every value crossing between a law
+ * and native code is validated against them, so an adapter cannot hand a law a value outside its
+ * declared type. ref:DEC-typed-core-boundary ref:DEC-native-bindings-typed-identity
+ */
 public final class LawSpecSchema {
   public sealed interface TypeRef permits Parameter, Named {}
 

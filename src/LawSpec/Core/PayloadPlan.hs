@@ -1,4 +1,4 @@
--- Finite parameter-provenance metadata shared by execution and proof lowering.
+-- | Finite parameter-provenance metadata shared by execution and proof lowering.
 module LawSpec.Core.PayloadPlan
   ( Plan(..), Schema, fromRegistry, arity, fields, storedParameters ) where
 
@@ -8,14 +8,18 @@ import qualified Data.Set as S
 import LawSpec.Core
 import LawSpec.Core.Types (TypeRegistry, registryDeclarations)
 
+-- | Which parts of a value hold a type parameter's payload, so a predicate over
+-- payloads visits only those.
 data Plan = Ignore | Parameter Int | Applied String [Plan]
   deriving (Eq, Show)
 
--- Only checked registries can create schemas; recursive declarations stay as
+-- | Only checked registries can create schemas; recursive declarations stay as
 -- references rather than an eagerly expanded tree.
 newtype Schema = Schema [(String, [Id], [(Id, [Type])])]
   deriving (Eq, Show)
 
+-- | Plans come only from a checked registry, so they never describe an
+-- ill-formed type.
 fromRegistry :: TypeRegistry -> Schema
 fromRegistry registry = Schema
   [(idText (dataId d), dataParameters d,
@@ -26,10 +30,12 @@ entry :: Schema -> String -> Either String ([Id], [(Id, [Type])])
 entry (Schema declarations) name = maybe (Left ("unknown payload data type: " ++ name)) Right
   (lookup name [(n,(parameters,constructors)) | (n,parameters,constructors) <- declarations])
 
+-- | Optional types take one parameter whatever the registry says.
 arity :: Schema -> String -> Either String Int
 arity _ name | name `elem` ["Nullable", "Optional"] = Right 1
 arity schema name = length . fst <$> entry schema name
 
+-- | A constructor's fields are planned with the type's arguments substituted.
 fields :: Schema -> String -> Id -> [Plan] -> Either String [Plan]
 fields schema name tag arguments = do
   (parameters,constructors) <- entry schema name
@@ -48,7 +54,7 @@ recipe environment ty = case ty of
     argument (TypeArgument child) = recipe environment child
     argument _ = Left "payload traversal requires type arguments"
 
--- A least fixed point over parameter positions handles mutual and growing
+-- | A least fixed point over parameter positions handles mutual and growing
 -- recursion while recognizing genuinely phantom parameters.
 storedParameters :: Schema -> String -> Either String [Int]
 storedParameters schema@(Schema declarations) name = do

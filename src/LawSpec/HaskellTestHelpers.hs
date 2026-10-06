@@ -1,4 +1,4 @@
--- Native Hedgehog strategies and Hspec assertions downstream of checked Core.
+-- | Native Hedgehog strategies and Hspec assertions downstream of checked Core.
 module LawSpec.HaskellTestHelpers (generatorDoc, generatorDocWithin, assertionDoc, schemaDoc) where
 
 import qualified LawSpec.Core as C
@@ -16,11 +16,14 @@ parens = E.parens
 statements = D.joinWith D.hardline
 infixDoc a operator b = D.group (a <> D.nest 2 (D.softline <> text operator <> D.softline <> b))
 
+-- | The schema the runtime validates values against, emitted once per module.
 schemaDoc :: D.Doc
 schemaDoc = statements
   [text "_lawspecSchema :: Schema.Schema",
    text "_lawspecSchema = either error id DataSchema.schema"]
 
+-- | Assertions report the law, the inputs and both sides, so a failure
+-- explains itself.
 assertionDoc :: D.Doc
 assertionDoc = statements
   [text "_lawspecAssert :: String -> Scalar -> Scalar -> IO ()",
@@ -36,12 +39,12 @@ assertionDoc = statements
       D.group (text "handler e =" <> D.nest 2 (D.softline <> apply "expectationFailure"
         [infixDoc (text "context") "++" (infixDoc (quoted " | ") "++" (text "displayException e"))]))]))]
 
--- Preserve Hedgehog's native list/maybe/choice trees and integral shrinking.
+-- | Preserve Hedgehog's native list/maybe/choice trees and integral shrinking.
 generatorDoc :: Int -> Integer -> (C.Type -> Bool) -> (C.Type -> D.Doc)
   -> (C.Type -> String) -> C.Type -> D.Doc
 generatorDoc bits budget structural reference key = generatorDocBounded (integerBounds bits) bits budget structural reference key
 
--- The generator, with a top-level integer drawn from a refinement's range.
+-- | The generator, with a top-level integer drawn from a refinement's range.
 generatorDocWithin :: Maybe (Integer, Integer) -> Int -> Integer -> (C.Type -> Bool) -> (C.Type -> D.Doc)
   -> (C.Type -> String) -> C.Type -> D.Doc
 generatorDocWithin within bits budget structural reference key ty = generatorDocBounded boundsOf bits budget structural reference key ty

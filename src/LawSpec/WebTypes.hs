@@ -1,4 +1,4 @@
--- Native web type representations and schema references.
+-- | Native web type representations and schema references.
 module LawSpec.WebTypes where
 
 import LawSpec.DataNames (flatDataCandidates, productConstructors)
@@ -17,11 +17,16 @@ import qualified LawSpec.Code.JavaScript as JS
 q :: String -> String
 q = JS.stringLiteral
 
+-- | Generated JavaScript names for each data declaration, planned once so every
+-- file of a project uses the same name.
 type Names = [(C.Id,String)]
 
+-- | Names the generated support code already uses, which no data type may take.
 supportNames :: [String]
 supportNames = words "Maybe Either Nothing Just Left Right Presence ls schema makeSchema Array Object Uint8Array Symbol Number String BigInt Math Map Set globalThis"
 
+-- | Two declarations whose names differ only in case would collide on
+-- case-insensitive file systems, so they are refused.
 namesFor :: [C.DataDeclaration] -> Either String Names
 namesFor declarations = do
   let duplicate name xs = length (filter ((== map toLower name) . map toLower . snd) xs) > 1
@@ -31,6 +36,8 @@ namesFor declarations = do
   unless (length names == length (nub (map (map toLower . snd) names))) (Left "conflicting JavaScript data identities")
   pure (names ++ productConstructors declarations names)
 
+-- | A data name must be a valid identifier and, where it binds, not a reserved
+-- word, or the generated module would not load.
 identifier :: Bool -> String -> Either String ()
 identifier binding name = unless (valid && (not binding || name `notElem` reserved))
   (Left ("invalid JavaScript data identifier: " ++ name))
@@ -40,6 +47,7 @@ identifier binding name = unless (valid && (not binding || name `notElem` reserv
       [] -> False
     reserved = words "await break case catch class const continue debugger default delete do else enum export extends false finally for function if implements import in instanceof interface let new null package private protected public return static super switch this throw true try typeof var void while with yield any unknown never number bigint boolean string symbol object undefined intrinsic"
 
+-- | Every name used was planned; a miss is a compiler bug.
 lookupName :: Names -> C.Id -> Either String String
 lookupName names identity = maybe (Left "unplanned JavaScript data name") Right (lookup identity names)
 
@@ -47,15 +55,19 @@ application :: String -> [D.Doc] -> D.Doc
 application name [] = D.text name
 application name args = D.text name <> D.delimitTrailing 4 "<" ">" args
 
--- A handle's native type: its bound native type, or unknown.
+-- | A handle's native type: its bound native type, or unknown.
 type Handles = [(C.Id,D.Doc)]
 
+-- | LawSpec never looks inside a handle, so TypeScript types it unknown unless a
+-- binding names its native type.
 handleTypes :: [C.DataDeclaration] -> Handles
 handleTypes declarations = [(C.dataId d, D.text "unknown") | d <- declarations, C.dataHandle d]
 
 typeDoc :: String -> Names -> [(C.Id,String)] -> C.Type -> Either String D.Doc
 typeDoc = typeDocWith []
 
+-- | TypeScript types mirror LawSpec's, so the compiler checks adapters against
+-- the same shapes the laws use. ref:DEC-idiomatic-generated-types
 typeDocWith :: Handles -> String -> Names -> [(C.Id,String)] -> C.Type -> Either String D.Doc
 typeDocWith handles scope names parameters ty = case ty of
   C.Constructor name [] | Just native <- lookup (C.Id name) handles -> pure native
@@ -107,6 +119,8 @@ typeDocWith handles scope names parameters ty = case ty of
           "Utf16Text" -> Right "ls.Raw"
           _ -> Left ("no TypeScript scalar representation for " ++ name)
 
+-- | Values of these types need the runtime's schema to cross the adapter
+-- boundary; plain scalars do not.
 requiresSchema :: [C.DataDeclaration] -> C.Type -> Bool
 requiresSchema declarations ty = case ty of
   C.Constructor name arguments -> name `elem` ["List","Maybe","Either","Nullable","Optional"] ||
@@ -115,13 +129,17 @@ requiresSchema declarations ty = case ty of
   C.Arrow a b -> requiresSchema declarations a || requiresSchema declarations b
   _ -> False
 
+-- | Generated types are laid out at 80 columns, as Google's style asks.
+-- ref:google-style-guides
 webDataType :: [C.DataDeclaration] -> C.Type -> Either String String
 webDataType declarations ty = D.render (D.Pretty 80) <$> webDataTypeDoc declarations ty
 
+-- | Types are checked against the registry before rendering, so an unknown type
+-- is a compiler error rather than invalid TypeScript.
 webDataTypeDoc :: [C.DataDeclaration] -> C.Type -> Either String D.Doc
 webDataTypeDoc declarations = webDataTypeDocWith declarations []
 
--- Bound handles name their native types; other handles are unknown.
+-- | Bound handles name their native types; other handles are unknown.
 webDataTypeDocWith :: [C.DataDeclaration] -> Handles -> C.Type -> Either String D.Doc
 webDataTypeDocWith declarations bound ty = do
   registry <- makeRegistry declarations
@@ -134,6 +152,7 @@ reference (S.Parameter n) = D.text ("new schema.Parameter(" ++ show n ++ ")")
 reference (S.Named name arguments) = invoke "new schema.Named"
   ([D.text (q name)] ++ [array (map reference arguments) | not (null arguments)])
 
+-- | The runtime validates values against a schema reference built from the type.
 webTypeReference :: C.Type -> Either String String
 webTypeReference ty = D.render (D.Pretty 80) <$> webTypeReferenceDoc ty
 
@@ -147,12 +166,12 @@ array :: [D.Doc] -> D.Doc
 array = D.delimitTrailing 2 "[" "]"
 
 
--- A built-in collection container's short name.
+-- | A built-in collection container's short name.
 collectionContainer :: String -> Maybe String
 collectionContainer name = case stripPrefix (collectionsUnit ++ "::type::") name of
   Just short | short `elem` ["Set", "KeyVal", "Queue", "Stack", "Deque"] -> Just short
   _ -> Nothing
 
--- Scalars whose JavaScript natives compare by value.
+-- | Scalars whose JavaScript natives compare by value.
 webByValue :: String -> Bool
 webByValue n = isInteger n || n `elem` ["Bool", "Char", "Text", "CodePoint", "CodeUnit16", "Unit"]

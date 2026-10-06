@@ -1,4 +1,4 @@
--- Typed channel ends for implementation code: each protocol's steps as
+-- | Typed channel ends for implementation code: each protocol's steps as
 -- types of this target (see LawSpec.Sessions).
 --
 -- A unit's protocols become the module LawSpecSessions.<Unit>. Each end of
@@ -17,14 +17,14 @@ import LawSpec.MachineSpec (describe)
 import qualified LawSpec.Code.Doc as D
 import Control.Monad (foldM)
 
--- The session library for the given target, for every unit's protocols.
+-- | The session library for the given target, for every unit's protocols.
 emit :: String -> Bool -> Int -> [C.DataDeclaration] -> [C.Unit] -> Either String [Artifact]
 emit _ _ bits datas units = mapM (unitModule bits datas units) (filter (not . null . C.unitSessions) units)
 
--- An end of a protocol: the first follows its steps, the second reverses them.
+-- | An end of a protocol: the first follows its steps, the second reverses them.
 data End = First | Second deriving (Eq, Show)
 
--- One step of an end, as generated.
+-- | One step of an end, as generated.
 data Step = Step { stepNumber :: Int, stepSends :: Bool, stepMessage :: C.Type, stepTypeName :: String }
 
 unitModule :: Int -> [C.DataDeclaration] -> [C.Unit] -> C.Unit -> Either String Artifact
@@ -119,12 +119,12 @@ unitModule bits datas units unit = do
       ++ [ (sessionModule (C.idText (C.unitId other)) ++ ".", "qualified " ++ sessionModule (C.idText (C.unitId other)))
          | other <- units, C.unitId other /= C.unitId unit ]
 
--- The module holding a unit's session types.
+-- | The module holding a unit's session types.
 sessionModule :: String -> String
 sessionModule unitName = intercalate "." ("LawSpecSessions" : map modulePart (splitOn '.' unitName))
   where modulePart = concatMap capitalize . splitOn '_'
 
--- A protocol's declarations, with the qualifiers its message types use.
+-- | A protocol's declarations, with the qualifiers its message types use.
 protocolSource :: [C.DataDeclaration] -> [C.Unit] -> C.Unit -> Maybe [(Bool, String, String)] -> C.Session -> Either String ([String], String)
 protocolSource datas units unit wire session = do
   ends <- mapM endSource [First, Second]
@@ -203,7 +203,7 @@ endWord :: End -> String
 endWord First = "first"
 endWord Second = "second"
 
--- An end's steps, named; a name repeated on the end carries its step number.
+-- | An end's steps, named; a name repeated on the end carries its step number.
 endSteps :: End -> C.Session -> [Step]
 endSteps end session = [ Step k sends t (named k base) | (k, sends, t, base) <- bases ]
   where
@@ -222,7 +222,7 @@ lookupStep k steps = case filter ((== k) . stepNumber) steps of
 doneName :: End -> C.Session -> String
 doneName end session = C.sessionName session ++ show end ++ "Done"
 
--- The protocol a step's type names, when it sends a protocol's first end.
+-- | The protocol a step's type names, when it sends a protocol's first end.
 delegated :: [C.Unit] -> C.Type -> Maybe C.Session
 delegated units (C.Constructor name []) =
   case [ s | u <- units, s <- C.unitSessions u, C.idText (C.sessionId s) == name ] of
@@ -230,7 +230,7 @@ delegated units (C.Constructor name []) =
     [] -> Nothing
 delegated _ _ = Nothing
 
--- A message's name within a step type's name: Int32, ListInt32, Serve.
+-- | A message's name within a step type's name: Int32, ListInt32, Serve.
 messageName :: C.Type -> String
 messageName t = case t of
   C.Constructor name arguments -> capitalize (filter isAlphaNum (lastSegment name))
@@ -240,7 +240,7 @@ messageName t = case t of
   where
     lastSegment = reverse . takeWhile (\c -> c /= ':' && c /= '.') . reverse
 
--- The Haskell type a step carries: a delegated protocol's first start type,
+-- | The Haskell type a step carries: a delegated protocol's first start type,
 -- or the native type of a value.
 messageType :: [C.DataDeclaration] -> [C.Unit] -> C.Unit -> C.Type -> Either String String
 messageType datas units unit t = case delegated units t of
@@ -252,7 +252,7 @@ messageType datas units unit t = case delegated units t of
         _ -> ""
   Nothing -> haskellNativeTypeWithParameters datas [] [] t
 
--- The module qualifiers a type's text uses (e.g. "I." in I.Int32).
+-- | The module qualifiers a type's text uses (e.g. "I." in I.Int32).
 qualifiersOf :: String -> [String]
 qualifiersOf text = sort (nub (go text))
   where

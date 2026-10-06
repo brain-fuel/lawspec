@@ -1,4 +1,4 @@
--- Reference execution of typed core. External calls are explicit effects;
+-- | Reference execution of typed core. External calls are explicit effects;
 -- evaluating a pure predicate cannot accidentally invoke an adapter.
 module LawSpec.Core.Eval
   ( evaluate, evaluatePure, evaluateProposition
@@ -15,9 +15,11 @@ import qualified Data.Map.Strict as M
 
 type Adapter = Id -> [Scalar] -> Either String Scalar
 
+-- | A pure expression that reaches an adapter is a compiler bug, so it fails.
 evaluatePure :: Int -> [(Id,Scalar)] -> Expr -> Either String Scalar
 evaluatePure bits = evaluate bits (\n _ -> Left ("external call in pure expression: " ++ idText n))
 
+-- | Scalar callers get the value evaluator behind a scalar interface.
 evaluate :: Int -> Adapter -> [(Id,Scalar)] -> Expr -> Either String Scalar
 evaluate bits adapter bindings expr = do
   registry <- makeRegistry []
@@ -30,16 +32,20 @@ scalarAdapter adapter name values = ScalarValue <$> (mapM toScalarValue values >
 
 type ValueAdapter = Id -> [Value] -> Either String Value
 
+-- | As evaluatePure, over structural values.
 evaluateValuePure :: TypeRegistry -> Int -> [(Id,Value)] -> Expr -> Either String Value
 evaluateValuePure registry bits = evaluateValue registry bits
   (\name _ -> Left ("external call in pure expression: " ++ idText name))
 
--- Constructor predicates are closed and pure; an adapter dispatcher must not
+-- | Constructor predicates are closed and pure; an adapter dispatcher must not
 -- become available merely because a value crosses a definition boundary.
 validateValueWithContracts :: TypeRegistry -> Int -> Type -> Value -> Either String Value
 validateValueWithContracts registry bits =
   validateValueWith (evaluateValuePure registry bits) registry bits
 
+-- | The reference semantics of Core: every target must agree with it, and the
+-- compiler uses it to check examples and enumerate finite domains.
+-- ref:DEC-portable-exact-arithmetic
 evaluateValue :: TypeRegistry -> Int -> ValueAdapter -> [(Id,Value)] -> Expr -> Either String Value
 evaluateValue registry bits adapter bindings = run (M.fromList bindings) where
   run env Expr{..} = context expressionOrigin $ let go = run env in case expressionNode of
@@ -64,9 +70,10 @@ evaluateValue registry bits adapter bindings = run (M.fromList bindings) where
       items <- go value >>= listItems
       let every _ [] = Right (ScalarValue (SBool True))
           every index (item:rest) = do
-            accepted <- case do
-              checked <- validateValueWithContracts registry bits (binderType binder) item
-              run (M.insert (binderId binder) checked env) predicate >>= valueBoolean of
+            let element = do
+                  checked <- validateValueWithContracts registry bits (binderType binder) item
+                  run (M.insert (binderId binder) checked env) predicate >>= valueBoolean
+            accepted <- case element of
                 Left message -> Left ("List element " ++ show index ++ ": " ++ message)
                 Right result -> Right result
             if accepted then every (index + 1) rest else Right (ScalarValue (SBool False))
@@ -135,12 +142,15 @@ valueBoolean (ScalarValue (SBool b)) = Right b
 valueBoolean _ = Left "expected Bool"
 
 
+-- | Scalar callers get the proposition evaluator behind a scalar interface.
 evaluateProposition :: Int -> Adapter -> [(Id,Scalar)] -> Proposition -> Either String Bool
 evaluateProposition bits adapter env proposition = do
   registry <- makeRegistry []
   evaluateValueProposition registry bits (scalarAdapter adapter)
     [(name, ScalarValue value) | (name, value) <- env] proposition
 
+-- | Equations compare by LawSpec's equality, not a host language's.
+-- ref:DEC-portable-exact-arithmetic
 evaluateValueProposition :: TypeRegistry -> Int -> ValueAdapter -> [(Id,Value)] -> Proposition -> Either String Bool
 evaluateValueProposition registry bits adapter env = go where
   term = evaluateValue registry bits adapter env

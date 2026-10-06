@@ -1,10 +1,12 @@
--- Framework- and syntax-independent scalar semantics used by the core oracle.
+-- | Framework- and syntax-independent scalar semantics used by the core oracle.
 module LawSpec.Core.Semantics where
 import LawSpec.Core (Type(..), Argument(..), scalarType)
 import LawSpec.Scalar
 import Data.Ratio
 import Control.Monad (unless)
 
+-- | Conversions follow LawSpec's rules, so a non-finite float never becomes an
+-- exact number on any target. ref:DEC-portable-exact-arithmetic
 convertValue :: Int -> Type -> Scalar -> Either String Scalar
 convertValue bits (Constructor n []) s = case s of
   SFloat _ _ | isExact n -> let v = floatValue s in
@@ -18,6 +20,9 @@ convertValue bits (Constructor n [TypeArgument t]) (SPresent m (Just s))
   | n == m = SPresent n . Just <$> convertValue bits t s
 convertValue _ _ _ = Left "invalid scalar conversion"
 
+-- | Operators compute LawSpec's results, exact where the types are exact, so the
+-- compiler's evaluation agrees with every runtime.
+-- ref:DEC-portable-exact-arithmetic
 binaryValue :: Int -> String -> Scalar -> Scalar -> Either String Scalar
 binaryValue bits op a b
   | op `elem` ["==","!="], not (isNumeric (scalarName a)) = do
@@ -51,6 +56,7 @@ binaryValue bits op a b
       else do
         let x = floatValue a; y = floatValue b
         pure $ if op `elem` ["<","<=",">",">=","==","!="] then SBool (cmp op x y) else floatScalar result (case op of "+" -> x+y; "-" -> x-y; "*" -> x*y; "/" -> x/y; _ -> 0)
+-- | Built-in operations have one reference meaning each runtime must match.
 helperValue :: Int -> String -> [Scalar] -> Either String Scalar
 helperValue bits "checked" [_] = Right (SBool True)
 helperValue bits "length" [SSequence _ xs] = Right (SInteger "Integer" (fromIntegral (length xs)))
@@ -71,6 +77,7 @@ helperValue bits "round" [a,b] = do
   decimal (fromInteger (round (x*factor)) / factor)
 helperValue bits n [a] | isNumeric n = convertValue bits (scalarType n) a
 helperValue bits _ _ = Left "invalid pure helper or arguments"
+-- | Comparison operators are spelled once.
 cmp :: Ord a => String -> a -> a -> Bool
 cmp "<" = (<)
 cmp "<=" = (<=)
@@ -79,6 +86,8 @@ cmp ">=" = (>=)
 cmp "==" = (==)
 cmp "!=" = (/=)
 cmp _ = \_ _ -> False
+-- | Equality is LawSpec's: exact values compare by value across types, NaN
+-- differs from itself, and signed zeros are equal. ref:ieee-754
 scalarEqual :: Scalar -> Scalar -> Bool
 scalarEqual a b | isExact (scalarName a) && isExact (scalarName b) = exactValue a == exactValue b
 scalarEqual (SFloat _ a) (SFloat _ b) | length a == length b = let t = if length a == 8 then "Float32" else "Float64" in floatValue (SFloat t a) == floatValue (SFloat t b)

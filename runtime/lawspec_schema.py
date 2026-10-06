@@ -1,4 +1,11 @@
-"""Typed data validation and native bridges without test frameworks."""
+"""Typed data validation and native bridges for Python, with no test-framework
+dependency.
+
+Generated data types are described once, as Core schemas, and every value
+crossing between a law and native code is validated against them, so an adapter
+cannot hand a law a value outside its declared type.
+ref:DEC-typed-core-boundary ref:DEC-native-bindings-typed-identity
+"""
 
 from collections import deque
 from dataclasses import dataclass, replace
@@ -105,7 +112,10 @@ class Definition:
 
 
 class Maybe[T]:
-    """Distinct Nothing and Just states, including nested absence."""
+    """Distinct Nothing and Just states, including nested absence.
+
+    Python's None cannot tell Nothing from Just(None), so Maybe is its own
+    type with nested absence kept distinct. ref:DEC-algebraic-maybe-either"""
 
     __slots__ = ()
 
@@ -126,7 +136,10 @@ class Just[T](Maybe[T]):
 
 
 class Either[L, R]:
-    """Base for distinct Left and Right alternatives."""
+    """Base for distinct Left and Right alternatives.
+
+    Either is a real sum rather than an exception, so a law can state what
+    happens on each side. ref:DEC-algebraic-maybe-either"""
 
     __slots__ = ()
 
@@ -315,7 +328,11 @@ class RefinementViolation(ValueError):
 
 
 class Schema:
-    """Validated Core metadata and native constructor classes."""
+    """Validated Core metadata and native constructor classes.
+
+    One schema serves validation, construction, matching and conversion to
+    and from native classes, so these cannot disagree about a type.
+    ref:DEC-native-bindings-typed-identity"""
 
     def __init__(self, definitions, primitives):
         self._native_codecs = {}
@@ -482,6 +499,9 @@ class Schema:
             constructor.fields[position].type, value.fields[position], child))
 
     def validate(self, reference, value, bits=64, symbols=None):
+        """Rejects a value outside the declared type, refinements included,
+        because native code may return anything its own type allows.
+        ref:DEC-portable-exact-arithmetic"""
         self._check(reference)
         self._bits(bits)
         return self._walk(reference, value, bits, "validate",
@@ -552,11 +572,17 @@ class Schema:
         return walk(plan, checked)
 
     def to_native(self, reference, value, bits=64, symbols=None):
+        """Converts a checked value into the class the adapter declared, so
+        adapters work with their own types and never with LawSpec's.
+        ref:DEC-native-bindings-typed-identity"""
         symbols = {} if symbols is None else symbols
         checked = self.validate(reference, value, bits, symbols)
         return self._walk(reference, checked, bits, "native", symbols)
 
     def from_native(self, reference, value, bits=64, symbols=None):
+        """Converts and checks a value an adapter returned, so a law never sees
+        a native value that is outside its domain.
+        ref:DEC-native-bindings-typed-identity"""
         self._check(reference)
         self._bits(bits)
         symbols = {} if symbols is None else symbols

@@ -1,4 +1,4 @@
--- Typed expression documents shared by Java tests and reusable definitions.
+-- | Typed expression documents shared by Java tests and reusable definitions.
 module LawSpec.JavaExpr (renderExpression, renderExpressionWithContext, scalarLiteral, call, array, reference, quoted, javaDataKey) where
 
 import LawSpec.Core
@@ -10,6 +10,8 @@ import qualified Data.Text.Lazy as T
 import qualified Data.Text.Lazy.Encoding as T
 import Data.List (find)
 
+-- | Strings are escaped for Java here, once, so no generated literal can end
+-- early or change meaning.
 quoted :: String -> D.Doc
 quoted value = case chunks value of
   [] -> token ""
@@ -30,14 +32,18 @@ quoted value = case chunks value of
               (part,rest) = splitAt boundary remaining
           in part : chunks rest
 
+-- | Arguments wrap when a call is too wide, in the Java style LawSpec follows.
+-- ref:DEC-readable-output-default
 call :: String -> [D.Doc] -> D.Doc
 call name args = D.group (D.text (name ++ "(") <>
   D.nest 4 (D.softbreak <> D.group (D.commaSep args)) <> D.text ")")
 
+-- | Lists of runtime values are written in one shape so they wrap like calls.
 array :: [D.Doc] -> D.Doc
 array values = D.group (D.text "new Value[] {" <>
   D.nest 2 (D.softbreak <> D.group (D.commaSep values)) <> D.softbreak <> D.text "}")
 
+-- | Runtime checks name a type by a schema reference built from Core.
 reference :: Type -> Either String D.Doc
 reference ty = render <$> Schema.typeReference [] ty
   where
@@ -45,6 +51,9 @@ reference ty = render <$> Schema.typeReference [] ty
     render (Schema.Named name args) = call "new lawspec.runtime.LawSpecSchema.Named"
       (quoted name : map render args)
 
+-- | Literals become runtime values built from their declared type and exact
+-- digits, so Java never reads a number at its own precision.
+-- ref:DEC-portable-exact-arithmetic
 scalarLiteral :: Type -> Scalar -> Either String D.Doc
 scalarLiteral ty value = case value of
   SInteger name n -> pure (runtime "integer" [quoted name,quoted (show n)])
@@ -68,11 +77,16 @@ scalarLiteral ty value = case value of
     pure (runtime "present" [quoted (case ty of Constructor _ [_] -> javaDataKey ty; _ -> name),valueDoc])
   where runtime name = call ("LawSpecRuntime." ++ name)
 
+-- | Expressions are rendered from Core, never from source, so the Java tests
+-- check the same expansion as every other target.
+-- ref:DEC-typed-core-boundary
 renderExpression :: [DataDeclaration] -> Int -> (Id -> String)
   -> (Expr -> [D.Doc] -> Either String D.Doc) -> Expr -> Either String D.Doc
 renderExpression declarations bits = renderExpressionWithContext declarations
   (D.text (show bits)) reference (pure . quoted . javaDataKey)
 
+-- | Callers whose generated code already holds the machine width and type
+-- references in scope pass them in, so the rendering refers to them by name.
 renderExpressionWithContext :: [DataDeclaration] -> D.Doc -> (Type -> Either String D.Doc)
   -> (Type -> Either String D.Doc) -> (Id -> String)
   -> (Expr -> [D.Doc] -> Either String D.Doc) -> Expr -> Either String D.Doc
@@ -209,6 +223,8 @@ renderExpressionWithContext declarations bits reference typeKey local external =
       pure (D.text "case " <> quoted (idText (caseConstructor matched)) <> D.text " -> " <>
         D.block 2 (D.joinWith D.hardline (bindings ++ [D.text "yield " <> body <> D.text ";"])))
 
+-- | Java runtime data is keyed by a type's text, nested arguments included, so
+-- List Int8 and List Int16 stay apart.
 javaDataKey :: Type -> String
 javaDataKey (Constructor name args) = case [t | TypeArgument t <- args] of
   [] -> name

@@ -1,4 +1,4 @@
--- Railway combinators on Either e a. Each is written as a symbol or as a
+-- | Railway combinators on Either e a. Each is written as a symbol or as a
 -- prelude name, and is rewritten into match expressions while the unit is
 -- parsed, so type inference, Core and every target see only ordinary matches.
 -- A function given to a combinator is a named adapter or definition, a partial
@@ -25,20 +25,23 @@ import Data.List (isInfixOf)
 import qualified Data.Set as S
 import LawSpec.Model
 
--- The symbols, loosest last, as the parser binds them.
+-- | The symbols, loosest last, as the parser binds them.
 railwayOperators :: [String]
 railwayOperators = [">=>", "<$>", "<!>", "<*>", ">>=", "<|>", "??", "|>"]
 
--- Whether a source uses pairs, which the collections unit provides.
+-- | Whether a source uses pairs, which the collections unit provides.
 usesPair :: String -> Bool
 usesPair text = "<*>" `isInfixOf` text || "prelude.both" `isInfixOf` text
 
+-- | A single law is rewritten as its unit would be.
 railwayLaw :: Law -> Law
 railwayLaw l = case laws (railwayUnit emptyUnit { laws = [l] }) of
   [rewritten] -> rewritten
   _ -> l
   where emptyUnit = Unit "" [] [] [] [] [] [] [] [] [] [] [] [] [] [] []
 
+-- | Railway operators are rewritten into ordinary Either code before inference,
+-- so no later stage knows they exist. ref:wlaschin-railway
 railwayUnit :: Unit -> Unit
 railwayUnit u = u
   { functions = [(n, typ t) | (n, t) <- functions u]
@@ -67,6 +70,7 @@ railwayUnit u = u
       And a b -> And (definition' a) (definition' b)
       Invoke n args -> Invoke n (map railwayExpr args)
 
+-- | Fresh names avoid every name the expression already uses.
 railwayExpr :: Expr -> Expr
 railwayExpr e = evalState (go e) 0
   where
@@ -161,7 +165,7 @@ railwayExpr e = evalState (go e) 0
       Apply a b -> let (h, as) = spine a in (h, as ++ [b])
       other -> (other, [])
 
--- Every name in an expression, bound or free.
+-- | Every name in an expression, bound or free.
 names :: Expr -> [String]
 names expression = case expression of
   Located _ a -> names a

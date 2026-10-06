@@ -1,13 +1,14 @@
 {-# LANGUAGE NoOverloadedStrings, ScopedTypeVariables #-}
 -- | The documentation site: docs/ rendered through templates/site/ into a static
 -- site with an in-browser compiler, ready for any static host (Cloudflare
--- Pages: see docs/how-to/contribute.md).
+-- Pages: see docs/how-to/contribute.md), split by Diátaxis. ref:DEC-diataxis-docs
 --
 --   lawspec-dev docs --out <dir>   build the site (needs npm/core.wasm)
 --   lawspec-dev docs --check       compile every snippet and check every link
 --
 -- Every page begins with front matter naming its id, its Diátaxis kind and its
 -- title (the Folio form canon reads); the title is the page's one home.
+-- ref:DEC-page-titles-in-front-matter
 -- docs/nav.json orders the pages: [{"path"} | {"title", "track"?, "children"}],
 -- a page entry possibly with "track" and "children" too, but never a title.
 -- A page listed under a node with "track" is rendered once for that track, to
@@ -23,6 +24,7 @@
 --   ```<lang> include=<path> [region=<name>]
 --       the file, or the lines between "region <name>" and "endregion" comments
 --   ```<lang> file=<path> ...  a block canon tangles into <path>; shown as is
+--   (ref:DEC-include-fences)
 --   ::: only <track> ... :::  text for one track of a lesson
 module Docs (docsCommand) where
 
@@ -153,6 +155,7 @@ titled = mapM $ \(Nav title page children) -> do
 -- | Every page under docs/ is listed and carries front matter naming its id,
 -- kind and title, with ids unique and each kind the quadrant it lives in.
 -- The landing page, docs/index.md, is the one page of kind index.
+-- ref:DEC-docs-landing-page ref:diataxis
 checkFrontMatter :: [Nav] -> IO ()
 checkFrontMatter nav = do
   sources <- filter (".md" `isSuffixOf`) <$> walk "docs"
@@ -173,7 +176,7 @@ checkFrontMatter nav = do
     counts xs = [(x, length (filter (== x) xs)) | x <- sort (unique xs)]
     unique = foldr (\x acc -> if x `elem` acc then acc else x : acc) []
 
--- | The keys a page may cite as ref:KEY, with where each leads: a registry
+-- | The keys a page may cite, written "ref:" and the key, with where each leads: a registry
 -- entry to its locator (a repository path to that file on GitHub), a ledger
 -- decision to the ledger. Both files hold one top-level key per entry, with
 -- its fields indented below it. ref:DEC-rationale-in-ledger

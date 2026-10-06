@@ -1,4 +1,4 @@
--- Field-only existentials at the backend boundary. Core values and terms carry
+-- | Field-only existentials at the backend boundary. Core values and terms carry
 -- only declared fields; runtimes carry each existential's type as a trailing
 -- Text witness field. Before emission, every construction of such a
 -- constructor gains its witnesses as constants, and every planned value gains
@@ -10,6 +10,9 @@ import LawSpec.Core.Value (Value(..), witnessFields, witnessKeys)
 import LawSpec.Scalar (textScalar)
 import LawSpec.Testing
 
+-- | Programs without field-only existentials pass through unchanged; the others
+-- gain the witness fields runtimes need to rebuild an existential's type.
+-- ref:DEC-gadts-and-index-arithmetic
 witnessPlan :: Plan -> Plan
 witnessPlan plan@Plan{..}
   | not (any (not . null . constructorExistentials) (concatMap dataConstructors planDataDeclarations)) = plan

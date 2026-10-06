@@ -1,4 +1,4 @@
--- Stateful models: `model name :: [shared] S by M is ... end` pairs a
+-- | Stateful models: `model name :: [shared] S by M is ... end` pairs a
 -- system's commands with reference definitions over an abstract model state
 -- M. This module checks a declaration against the unit's signatures and
 -- definitions and elaborates it to a Machine, which LawSpec's model runtimes
@@ -18,6 +18,9 @@ import LawSpec.Indexed (indexedRefinementName)
 import LawSpec.Model
 import LawSpec.Scalar (isInteger)
 
+-- | A model pairs a system's commands with a reference implementation over an
+-- abstract state, and a shared model is checked for linearizability.
+-- ref:herlihy-wing-linearizability
 data ModelDeclaration = ModelDeclaration
   { modelName :: String
   , modelShared :: Bool
@@ -45,6 +48,8 @@ data ModelDeclaration = ModelDeclaration
   , modelConsistency :: Maybe Consistency
   } deriving (Eq, Show)
 
+-- | Each command of the system under test is paired with the reference that
+-- says what it should do to the model. ref:DEC-stateful-models-linearizability
 data ModelCommand = ModelCommand
   { modelCommand :: String, modelReference :: String, modelWhen :: Maybe String
   -- Whether modelReference names a collection operation (`as`) rather than
@@ -54,7 +59,7 @@ data ModelCommand = ModelCommand
 
 type Failure = (Maybe Span, String)
 
--- Each model's checks, its machine, and a generated definition of its start
+-- | Each model's checks, its machine, and a generated definition of its start
 -- state.
 elaborateModels :: [ModelDeclaration] -> Unit -> Either Failure Unit
 elaborateModels [] u = pure u
@@ -220,7 +225,7 @@ elaborateModel u m = do
     bridge role = modelName m ++ role
     flowOfList t = maybe [] (const [()]) (flowOf t)
 
--- What each index must be before a command, and how the command changes it:
+-- | What each index must be before a command, and how the command changes it:
 -- n + a before (at least a) or a constant k (exactly k); n + b after (a
 -- shift of b - a) or a constant k (set to k).
 typestate :: (String -> Failure) -> [String] -> Type -> Type -> Either Failure ([Need], [Shift])
@@ -244,7 +249,7 @@ typestate failure variables before after = do
     pure (need, shift)
   pure (map fst results, map snd results)
 
--- An index: a variable, a variable plus a constant, or a constant.
+-- | An index: a variable, a variable plus a constant, or a constant.
 pattern :: Expr -> Maybe (Either String (Either (String, Integer) Integer))
 pattern e = case stripLocation e of
   Var v -> Just (Left v)
@@ -264,7 +269,7 @@ stripLocation :: Expr -> Expr
 stripLocation (Located _ e) = stripLocation e
 stripLocation e = e
 
--- A state type's name and its index expressions.
+-- | A state type's name and its index expressions.
 stateHead :: Type -> Maybe (String, [Expr])
 stateHead ty = case unrefinedType ty of
   RefinementApp n args | Just family <- stripSuffix (indexedRefinementName "") n ->
@@ -296,7 +301,7 @@ unrefinedType t = t
 isUnitType :: Type -> Bool
 isUnitType t = unrefinedType t == Named "Unit"
 
--- A type's shape for comparison: refinements, qualifiers and indices erased.
+-- | A type's shape for comparison: refinements, qualifiers and indices erased.
 shape :: Type -> Type
 shape ty = case unrefinedType ty of
   -- Results compare by value, so integer types are interchangeable.
@@ -320,7 +325,7 @@ typeVariablesOf ty = case ty of
   CheckedType _ t -> typeVariablesOf t
   _ -> []
 
--- Whether a type's index expressions mention any of the variables.
+-- | Whether a type's index expressions mention any of the variables.
 mentions :: [String] -> Type -> Bool
 mentions vs ty = case unrefinedType ty of
   RefinementApp _ args -> or ([any (`elem` vs) (exprVariables e) | ValueArgument e <- args] ++ [mentions vs t | TypeArgument t <- args])
@@ -343,7 +348,7 @@ generatedNames :: Machine String -> [String]
 generatedNames machine = map commandRun (machineCommands machine) ++ maybe [] (pure . startRun) (machineStart machine) ++
   [r | Just r <- [machineAbstractRun machine], Just r /= machineAbstract machine]
 
--- A `behaves like` model's reference definitions, generated from the
+-- | A `behaves like` model's reference definitions, generated from the
 -- collection's operations, and the key argument of each command (for sets
 -- and maps). Other models pass through unchanged.
 behaviour :: Unit -> ModelDeclaration -> Either Failure (ModelDeclaration, [FunctionDefinition], [(String, Maybe Int)])
@@ -375,7 +380,7 @@ behaviour u m
     failing message = Left (Just (modelSpan m), "model " ++ modelName m ++ ": " ++ message)
     _ = u
 
--- A collection type's kind and element types.
+-- | A collection type's kind and element types.
 collection :: Type -> Maybe (String, [Type])
 collection ty = case unrefinedType ty of
   Applied n t | n `elem` ["Set", "Queue", "Stack", "Deque"] -> Just (n, [t])
@@ -399,7 +404,7 @@ operations kind = case kind of
   "Set" -> ["add", "remove", "contains", "size", "isEmpty"]
   _ -> ["put", "get", "remove", "putIfAbsent", "containsKey", "size", "isEmpty"]
 
--- An operation's other arguments, its result (Nothing for Unit), its body
+-- | An operation's other arguments, its result (Nothing for Unit), its body
 -- over `state` and `argument<i>`, and which argument is its key.
 operation :: String -> [Type] -> String -> Maybe ([Type], Maybe Type, Expr, Maybe Int)
 operation kind elements op = case (kind, elements, op) of
@@ -438,7 +443,7 @@ operation kind elements op = case (kind, elements, op) of
     absent none some = MatchExpr (call "lookup" [a 0, s])
       [MatchBranch "Nothing" [] none, MatchBranch "Just" ["present"] some]
 
--- A unit's supervisors: each child is an actor that starts without
+-- | A unit's supervisors: each child is an actor that starts without
 -- arguments, or another supervisor; each has one supervisor, and none
 -- supervises itself, directly or through others.
 checkSupervisors :: Unit -> Either Failure ()

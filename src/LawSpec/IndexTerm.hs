@@ -1,4 +1,4 @@
--- The index structure of an indexed family, shared by elaboration, Core,
+-- | The index structure of an indexed family, shared by elaboration, Core,
 -- generation and runtime validation. An index of a value is computed from the
 -- indices of its fields, so a family is a table: per constructor, one term per
 -- index, and guards every value satisfies (a subtraction never underflows,
@@ -13,10 +13,12 @@ module LawSpec.IndexTerm
 import GHC.Generics (Generic)
 import Data.List (nub)
 
+-- | The arithmetic an index may use; each runtime implements exactly these.
+-- ref:DEC-gadts-and-index-arithmetic
 data IndexOperation = IndexAdd | IndexSubtract | IndexMultiply | IndexQuotient | IndexRemainder | IndexPower
   deriving (Eq, Ord, Show, Enum, Bounded, Generic)
 
--- A field reference names a field position and the position of the index
+-- | A field reference names a field position and the position of the index
 -- within that field's own family.
 data IndexTerm
   = IndexConstant Integer
@@ -24,21 +26,28 @@ data IndexTerm
   | IndexApply IndexOperation IndexTerm IndexTerm
   deriving (Eq, Ord, Show, Generic)
 
+-- | An index guard states equality or a lower bound, which is what
+-- constructors' index conditions need.
 data IndexRelation = IndexEqual | IndexAtLeast deriving (Eq, Ord, Show, Generic)
 
+-- | Guards are checked on every value a runtime builds, so an indexed value
+-- cannot exist with a wrong index. ref:DEC-indexed-families-as-evidence
 data IndexGuard = IndexGuard IndexRelation IndexTerm IndexTerm deriving (Eq, Ord, Show, Generic)
 
+-- | A constructor's index terms and guards travel to the runtimes with its
+-- schema.
 data ConstructorIndex = ConstructorIndex
   { constructorIndexTerms :: [IndexTerm]
   , constructorIndexGuards :: [IndexGuard]
   } deriving (Eq, Show, Generic)
 
--- Index names in declaration order; constructors are keyed by source name.
+-- | Index names in declaration order; constructors are keyed by source name.
 data FamilyIndex = FamilyIndex
   { familyIndexNames :: [String]
   , familyIndexConstructors :: [(String, ConstructorIndex)]
   } deriving (Eq, Show, Generic)
 
+-- | Index terms are written to runtimes in prefix text with these names.
 indexOperationName :: IndexOperation -> String
 indexOperationName op = case op of
   IndexAdd -> "+"
@@ -48,7 +57,7 @@ indexOperationName op = case op of
   IndexRemainder -> "mod"
   IndexPower -> "^"
 
--- Natural semantics: subtraction below zero, division by zero and a negative
+-- | Natural semantics: subtraction below zero, division by zero and a negative
 -- exponent have no value. Callers treat Nothing as "no such index".
 evaluateIndex :: (Int -> Int -> Maybe Integer) -> IndexTerm -> Maybe Integer
 evaluateIndex field term = case term of
@@ -69,6 +78,8 @@ evaluateIndex field term = case term of
       IndexPower | y >= 0 -> Just (x ^ y)
                  | otherwise -> Nothing
 
+-- | A guard whose fields cannot be read does not hold, so a malformed value is
+-- refused rather than accepted.
 guardHolds :: (Int -> Int -> Maybe Integer) -> IndexGuard -> Bool
 guardHolds field (IndexGuard relation a b) = case (evaluateIndex field a, evaluateIndex field b) of
   (Just x, Just y) -> case relation of
@@ -76,7 +87,7 @@ guardHolds field (IndexGuard relation a b) = case (evaluateIndex field a, evalua
     IndexAtLeast -> x >= y
   _ -> False
 
--- Runtimes receive terms and guards in prefix notation: c<n> is a literal,
+-- | Runtimes receive terms and guards in prefix notation: c<n> is a literal,
 -- f<i> the first index of field i (f<i>.<j> its index j), then operators.
 indexTermText :: IndexTerm -> String
 indexTermText term = case term of
@@ -85,21 +96,23 @@ indexTermText term = case term of
   IndexField position index -> "f" ++ show position ++ "." ++ show index
   IndexApply op a b -> unwords [indexOperationName op, indexTermText a, indexTermText b]
 
+-- | Guards are exchanged with runtimes as text that each parses identically.
 indexGuardText :: IndexGuard -> String
 indexGuardText (IndexGuard relation a b) =
   unwords [case relation of IndexEqual -> "=="; IndexAtLeast -> ">=", indexTermText a, indexTermText b]
 
--- One term per index, then the guards (which start with == or >=).
+-- | One term per index, then the guards (which start with == or >=).
 constructorIndexTexts :: ConstructorIndex -> [String]
 constructorIndexTexts (ConstructorIndex terms guards) = map indexTermText terms ++ map indexGuardText guards
 
+-- | A term's field references decide which fields must be built first.
 termFields :: IndexTerm -> [(Int, Int)]
 termFields term = nub $ case term of
   IndexConstant _ -> []
   IndexField position index -> [(position, index)]
   IndexApply _ a b -> termFields a ++ termFields b
 
--- Each subtraction requires its left operand to be at least its right one,
+-- | Each subtraction requires its left operand to be at least its right one,
 -- so an index never truncates at zero.
 subtractionGuards :: IndexTerm -> [IndexGuard]
 subtractionGuards term = case term of

@@ -1,4 +1,10 @@
-// Native Rapid combinators retain framework generation and shrinking.
+// Native Rapid combinators for LawSpec's data types; they retain the
+// framework's generation and shrinking.
+//
+// Generated tests run in Rapid, a framework Go developers already use, so
+// failures shrink, replay and report as they expect, and shrinking stays within
+// the declared domain. ref:DEC-native-property-frameworks ref:rapid-go
+// ref:DEC-shrink-within-domain
 package RUNTIME_PACKAGE
 
 import (

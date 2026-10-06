@@ -1,13 +1,17 @@
--- Framework-specific assertion helpers, with layout supplied by the caller.
+-- | Framework-specific assertion helpers, with layout supplied by the caller.
 module LawSpec.PortableTestHelpers (assertionHelperDoc, dataHelperDoc, asyncAssertionHelpersDoc) where
 
 import qualified LawSpec.Code.Doc as D
 import qualified LawSpec.PythonExpr as Python
 import qualified LawSpec.WebExpr as Web
 
+-- | Assertions report the law, the inputs and both sides, so a failure
+-- explains itself.
 assertionHelperDoc :: Bool -> D.Doc
 assertionHelperDoc py = assertionHelper py Nothing
 
+-- | Data values are built and compared through helpers emitted once per test
+-- module rather than at every use.
 dataHelperDoc :: Bool -> Int -> Int -> [D.Doc] -> D.Doc
 dataHelperDoc py bits budget entries = D.joinWith separation
   [statement ((if py then "" else "const ") ++ "_lawspec_schema = ")
@@ -32,7 +36,7 @@ function py name parameters body =
         D.delimitTrailing (if py then 4 else 2) "(" ")" (map D.text parameters)
   in if py then Python.suite signature body else signature <> D.text " " <> D.block 2 body
 
--- JavaScript assertions whose thunks await async adapters.
+-- | JavaScript assertions whose thunks await async adapters.
 asyncAssertionHelpersDoc :: Int -> D.Doc
 asyncAssertionHelpersDoc bits = D.joinWith (D.hardline <> D.hardline)
   [asynchronous (assertionHelper False Nothing), asynchronous (assertionHelper False (Just bits))]

@@ -1,4 +1,4 @@
--- Typed channel ends for implementation code: each protocol's steps as
+-- | Typed channel ends for implementation code: each protocol's steps as
 -- types of this target (see LawSpec.Sessions).
 --
 -- A protocol P becomes P.First and P.Second, one class per end and step:
@@ -21,10 +21,10 @@ import LawSpec.Common (Artifact(..))
 import LawSpec.WebTypes (webDataTypeDocWith, webTypeReferenceDoc, requiresSchema)
 import LawSpec.MachineSpec (describe)
 
--- One end's steps, already flipped for the second end.
+-- | One end's steps, already flipped for the second end.
 data End = End { endLabel :: String, endSteps :: [(Bool, C.Type)], endClasses :: [String] }
 
--- The session library for the given target, for every unit's protocols.
+-- | The session library for the given target, for every unit's protocols.
 emit :: String -> Bool -> Int -> [C.DataDeclaration] -> [C.Unit] -> Either String [Artifact]
 emit target _ bits declarations units = do
   let sessions = [(C.idText (C.unitId u), s) | u <- units, s <- C.unitSessions u]
@@ -109,20 +109,20 @@ breakOn needle = go ""
         c : cs -> go (c : before) cs
         [] -> Nothing
 
--- A session's two ends.
+-- | A session's two ends.
 ends :: C.Session -> (End, End)
 ends session = (end "first" steps, end "second" [(not sends, ty) | (sends, ty) <- steps])
   where
     steps = C.sessionSteps session
     end label ss = End label ss (classNames ss)
 
--- The class of an end before its first step.
+-- | The class of an end before its first step.
 startClass :: End -> String
 startClass e = case endClasses e of
   c : _ -> c
   [] -> "Done"
 
--- Verb + type, numbered by step when a name repeats; then Done.
+-- | Verb + type, numbered by step when a name repeats; then Done.
 classNames :: [(Bool, C.Type)] -> [String]
 classNames steps = zipWith number [1 :: Int ..] bases ++ ["Done"]
   where
@@ -131,7 +131,7 @@ classNames steps = zipWith number [1 :: Int ..] bases ++ ["Done"]
       | length (filter (== base) bases) > 1 = base ++ "Step" ++ show k
       | otherwise = base
 
--- A type's name in a class name: its constructors' last segments, joined.
+-- | A type's name in a class name: its constructors' last segments, joined.
 typeName :: C.Type -> String
 typeName ty = case ty of
   C.Constructor name arguments -> identifierPart (lastSegment name) ++ concat [typeName a | C.TypeArgument a <- arguments]
@@ -142,7 +142,7 @@ typeName ty = case ty of
       c : cs -> toUpper c : cs
       [] -> "Value"
 
--- A type as the spec writes it, for comments.
+-- | A type as the spec writes it, for comments.
 specType :: C.Type -> String
 specType ty = case ty of
   C.Constructor name [] -> lastSegment name
@@ -162,7 +162,7 @@ lastSegment name = case breakOn "::" name of
 stepText :: (Bool, C.Type) -> String
 stepText (sends, ty) = (if sends then "send " else "receive ") ++ specType ty
 
--- A protocol's namespace (TypeScript) or frozen object (JavaScript).
+-- | A protocol's namespace (TypeScript) or frozen object (JavaScript).
 protocol :: Bool -> (C.Type -> Either String String) -> Maybe [(Bool, String, String)] -> String -> C.Session -> Either String String
 protocol ts native wire unit session = do
   let (first, second) = ends session

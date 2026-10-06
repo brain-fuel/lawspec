@@ -1,4 +1,4 @@
--- Execution feasibility and deterministic cases are planned after elaboration.
+-- | Execution feasibility and deterministic cases are planned after elaboration.
 -- This module consumes only typed core, never surface syntax or inference.
 module LawSpec.Testing where
 import GHC.Generics (Generic)
@@ -22,18 +22,26 @@ import LawSpec.IndexTerm
 import Control.Monad (filterM, unless)
 import Control.Monad.State.Strict (StateT, evalStateT, get, modify, lift)
 
+-- | The testing plan is computed once, from Core, and shared by every target,
+-- so each target tests the same cases. ref:DEC-planned-generation
 data Plan = Plan
   { planMachineBits :: Int, planDataDeclarations :: [DataDeclaration]
   , plannedUnits :: [PlannedUnit]
   } deriving (Eq, Show, Generic)
+-- | Each unit's laws are planned together because they are emitted together.
 data PlannedUnit = PlannedUnit { plannedUnit :: Unit, plannedProperties :: [PlannedProperty] } deriving (Eq, Show, Generic)
+-- | The finite domain, when there is one, turns a property test into an
+-- exhaustive check; boundary cases run before random ones on every target.
+-- ref:DEC-evidence-statuses
 data PlannedProperty = PlannedProperty
   { plannedProperty :: Property, finiteCases :: Maybe [[Value]], boundaryCases :: [[Value]]
   , generatorRequirements :: [GeneratorRequirement]
   } deriving (Eq, Show, Generic)
+-- | What each input's generator must respect, so every target's framework
+-- generates inside the same domain. ref:DEC-shrink-within-domain
 data GeneratorRequirement = GeneratorRequirement { generatorBinder :: Binder, generatorPredicates :: [Expr], generatorBoundaries :: [Value], generatorBounds :: [(BinaryOp,Expr)], generatorHints :: [Expr], generatorIndex :: Maybe IndexedGeneration } deriving (Eq, Show, Generic)
 
--- A predicate m x == target, where m is the index measure of a family,
+-- | A predicate m x == target, where m is the index measure of a family,
 -- directs generation. Each constructor of every family reachable through
 -- index fields carries its index term then its guards, in prefix notation
 -- (indexTermText). Runtimes solve the target backwards over field indices, so
@@ -43,6 +51,9 @@ data IndexedGeneration = IndexedGeneration
   , indexedEquations :: [(Id, [String])]
   } deriving (Eq, Show, Generic)
 
+-- | A law that cannot be planned, such as one over an uninhabited domain, is a
+-- generation error at compile time, never a test that passes vacuously.
+-- ref:DEC-never-pass-vacuously
 planTesting :: Program -> Either [Diagnostic] Plan
 planTesting program@Program{..} = do
   plan <- lawPlanner program
@@ -50,7 +61,7 @@ planTesting program@Program{..} = do
       property p = either (Left . pure . (\m -> Diagnostic "generation" m (Just (propertyLocation p)))) Right (plan p)
   Plan programMachineBits programDataDeclarations <$> mapM unit programUnits
 
--- How each law of a program is planned, by the generated tests and by
+-- | How each law of a program is planned, by the generated tests and by
 -- evidence discharge alike. A law is planned from what it reaches: the types
 -- and definitions in its dependency closure. Its key is its content and the
 -- Merkle digests of what it references, so an edit replans exactly the laws
@@ -73,11 +84,13 @@ instance Binary PlannedProperty
 instance Binary PlannedUnit
 instance Binary Plan
 
+-- | Plans persist across runs, so lawspec test replans only the laws an edit can
+-- reach. ref:DEC-incremental-compilation
 planTable :: Table (Either String PlannedProperty)
 planTable = unsafePerformIO (newPersistentTable "plan" 2048 (const 1))
 {-# NOINLINE planTable #-}
 
--- One property's finite domain, boundary cases and generator requirements.
+-- | One property's finite domain, boundary cases and generator requirements.
 planProperty :: TypeRegistry -> Int -> (Id -> [Value] -> Either String Value) -> [Definition]
   -> Property -> Either String PlannedProperty
 planProperty registry programMachineBits invoke definitions p = do
@@ -112,13 +125,15 @@ planProperty registry programMachineBits invoke definitions p = do
         unless valid (Left ("example " ++ exampleName example ++ " violates refinement"))) (propertyExamples p)
       pure (PlannedProperty p finite cases [GeneratorRequirement (quantifiedBinder q) (quantifiedPredicates q) b (quantifiedBounds q) (domainHints q) (indexedGeneration (registryDeclarations registry) definitions q) | (q,b) <- zip qs bs])
 
+-- | Refinements may mention earlier inputs, so a tuple is checked input by input
+-- in order.
 validTuple :: TypeRegistry -> Int -> [Quantifier] -> [Value] -> Either String Bool
 validTuple registry bits qs values = do
   auditDomains registry bits
   validTupleWithDefinitions registry bits
     (\name _ -> Left ("unexpected definition call without a definition environment: " ++ idText name)) qs values
 
--- The caller obtains this closed dispatcher from prepareDefinitions. It has no
+-- | The caller obtains this closed dispatcher from prepareDefinitions. It has no
 -- adapter hook, and validates native arguments/results at each definition call.
 validTupleWithDefinitions :: TypeRegistry -> Int -> (Id -> [Value] -> Either String Value)
   -> [Quantifier] -> [Value] -> Either String Bool
@@ -135,42 +150,49 @@ validTupleWithDefinitions registry bits invoke qs values
     allM _ [] = Right True
     allM f (x:xs) = do b <- f x; if b then allM f xs else Right False
 
--- Registries carry typed predicates. Standalone domain APIs audit them before
+-- | Registries carry typed predicates. Standalone domain APIs audit them before
 -- executing candidates, including unused contracts and dependency cycles.
 auditDomains :: TypeRegistry -> Int -> Either String ()
 auditDomains registry bits = () <$ either (Left . show) Right
   (constructorProofContracts bits [declaration | declaration <- registryDeclarations registry,
     dataId declaration `notElem` map dataId builtinDataDeclarations])
 
+-- | Boundary candidates are kept only when they satisfy the type's refinements
+-- and contracts, so no generated case lies outside the domain.
+-- ref:DEC-shrink-within-domain
 acceptsValue :: TypeRegistry -> Int -> Type -> Value -> Either String Bool
 acceptsValue registry bits ty value = do
   result <- checkValueWith (evaluateValuePure registry bits) registry bits ty value
   pure (case result of ValueAccepted _ -> True; RefinementRejected _ -> False)
 
--- Compatibility helpers for built-in types use the same registry-driven
+-- | Compatibility helpers for built-in types use the same registry-driven
 -- planner as user-defined types. A sampling limit never defines a domain.
 finiteValues :: Int -> Int -> Type -> Maybe [Value]
 finiteValues bits limit ty = either (const Nothing) id $
   makeRegistry [] >>= \registry -> finiteValuesWithRegistry registry bits limit ty
 
+-- | The edge values of a type, where portable semantics most often differs from
+-- a language's own. ref:DEC-portable-exact-arithmetic
 boundaries :: Int -> Type -> [Value]
 boundaries bits ty = either (const []) id $
   makeRegistry [] >>= \registry -> boundariesWithRegistry registry bits ty
 
+-- | Small primitive types are enumerated outright rather than sampled.
 finiteScalars :: Int -> Int -> String -> Maybe [Value]
 finiteScalars bits limit name
   | Just (lo,hi) <- integerBounds bits name, hi-lo+1 <= fromIntegral limit =
       Just [ScalarValue (SInteger name x) | x <- [lo..hi]]
   | name `elem` ["Bool", "Unit", "Null", "Undefined"],
-      let values = map ScalarValue (scalarBoundaries bits name), length values <= limit = Just values
+      values <- map ScalarValue (scalarBoundaries bits name), length values <= limit = Just values
   | otherwise = Nothing
 
+-- | Fixed cases for each primitive, chosen to be identical on every target.
 scalarCases :: Int -> String -> [Value]
 scalarCases bits "Text" = map (ScalarValue . textScalar)
   ["", " ", "Hello, World!", "λ日本語😀", "a\n\t\"\\$\0z", "e\x0301"] ++ map ScalarValue (scalarBoundaries bits "Text")
 scalarCases bits name = map ScalarValue (scalarBoundaries bits name)
 
--- Safe comparison operands seed sparse domains without eagerly evaluating a
+-- | Safe comparison operands seed sparse domains without eagerly evaluating a
 -- partial expression that the predicate would otherwise guard.
 domainHints :: Quantifier -> [Expr]
 domainHints q = concatMap walk (quantifiedPredicates q) where
@@ -189,12 +211,15 @@ domainHints q = concatMap walk (quantifiedPredicates q) where
     _ -> False
 
 
--- Least fixed point of minimal sets of parameters needed for a finite value.
+-- | Least fixed point of minimal sets of parameters needed for a finite value.
 -- Symbolic requirements avoid enumerating every Boolean parameter assignment,
 -- particularly for high-arity declarations with phantom parameters.
 -- Function fields remain nongeneratable and are rejected before this analysis.
 type Population = M.Map Id ([Id], [[Id]])
 
+-- | Which data types can have values at all, found by a fixed point over their
+-- constructors, so a law over an uninhabited type is refused instead of
+-- passing with no cases. ref:DEC-never-pass-vacuously
 population :: TypeRegistry -> Population
 population registry = converge initial
   where
@@ -206,13 +231,18 @@ population registry = converge initial
         | c <- dataConstructors d]))) | d <- declarations]
     converge current = let next = step current in if next == current then current else converge next
 
+-- | Only the smallest sets of required type parameters matter for inhabitation.
 minimal :: [[Id]] -> [[Id]]
 minimal alternatives = [xs | xs <- candidates, not (any (\ys -> ys /= xs && all (`elem` xs) ys) candidates)]
   where candidates = sort (nub (map (sort . nub) alternatives))
 
+-- | A constructor needs every field inhabited, so the requirements of its fields
+-- multiply.
 combine :: [[[Id]]] -> [[Id]]
 combine = foldr (\choices rest -> minimal [xs ++ ys | xs <- choices, ys <- rest]) [[]]
 
+-- | Optional and function types are always inhabited, by absence and by a
+-- constant function, so they need nothing.
 needs :: Population -> Type -> [[Id]]
 needs table ty = case ty of
   TypeVariable name -> [[name]]
@@ -226,16 +256,22 @@ needs table ty = case ty of
               | parameter <- required] | required <- alternatives])
     | otherwise -> []
 
+-- | A type is inhabited given which type parameters are.
 potential :: Population -> M.Map Id Bool -> Type -> Bool
 potential table env ty = any (all (\name -> M.findWithDefault False name env)) (needs table ty)
 
+-- | A type with no values cannot be generated, so laws over it are refused.
+-- ref:DEC-never-pass-vacuously
 inhabited :: Population -> Type -> Bool
 inhabited table = potential table M.empty
 
+-- | Inhabitation is cached per type and per inhabited arguments.
 populationKey :: Population -> Type -> (Id, [Bool])
 populationKey table (Constructor name args) = (Id name, [inhabited table t | TypeArgument t <- args])
 populationKey _ _ = (Id "<non-data>", [])
 
+-- | Generators may only choose constructors that can be completed, or generation
+-- would never terminate.
 viableConstructors :: TypeRegistry -> Population -> Type -> Either String [(Id, [Type])]
 viableConstructors registry table ty = case ty of
   Constructor _ _ -> do
@@ -257,11 +293,15 @@ viableConstructors registry table ty = case ty of
     pure [(tag,parameters) | (tag,parameters) <- fields, all (inhabited table) parameters]
   _ -> Left ("no constructors for " ++ show ty)
 
+-- | A type the runtimes cannot generate is refused at planning, with its name,
+-- rather than at test time on one target.
 supportedWithRegistry :: TypeRegistry -> Type -> Either String ()
 supportedWithRegistry registry ty = do
   required <- generationRequirements registry ty
   unless (null required) (Left ("unresolved generator parameters: " ++ show required))
 
+-- | Data types with few values are enumerated too, so laws over them are checked
+-- exhaustively. ref:DEC-evidence-statuses
 finiteValuesWithRegistry :: TypeRegistry -> Int -> Int -> Type -> Either String (Maybe [Value])
 finiteValuesWithRegistry registry bits limit ty = do
   auditDomains registry bits
@@ -293,7 +333,7 @@ finiteValuesWithRegistry registry bits limit ty = do
             pure (sequence alternatives >>= bounded . concat)
           _ -> Left ("no finite domain for " ++ show t)
 
--- Fixed-point reachability follows stored parameters rather than all type
+-- | Fixed-point reachability follows stored parameters rather than all type
 -- arguments: Phantom Positive has no constrained values, while growing recursive
 -- applications can eventually store a constrained argument. The finite lattice
 -- contains only declaration parameters and a direct-contract bit.
@@ -326,7 +366,7 @@ hasValueContracts registry ty
         field <- constructorFields constructor]))) | d <- declarations]
     converge table = let next = step table in if next == table then table else converge next
 
--- Boundaries sample each constructor and each field's deterministic extremes.
+-- | Boundaries sample each constructor and each field's deterministic extremes.
 -- Recursive expansion is bounded; a growing search first finds a witness, so a
 -- long acyclic chain is never mistaken for an uninhabited domain.
 boundariesWithRegistry :: TypeRegistry -> Int -> Type -> Either String [Value]
@@ -385,7 +425,7 @@ boundariesWithRegistry registry bits ty = do
                       | index <- [0 .. maximum (map length sets) - 1]]
 
 
--- A bounded witness search is deliberately separate from finite enumeration:
+-- | A bounded witness search is deliberately separate from finite enumeration:
 -- failure to find a value does not establish that its type is empty. Memoized
 -- expansion and a global node budget bound recursive/growing applications.
 -- Every returned candidate is checked by the same evaluator as examples.
@@ -462,7 +502,7 @@ constrainedBoundaries registry bits root =
           | index <- [0 .. maximum (map length domains) - 1]]
 
 
--- A field supplied by a type parameter can itself be a smaller occurrence of
+-- | A field supplied by a type parameter can itself be a smaller occurrence of
 -- the same constructor (Box (Box Bool)). That is finite nesting, not a recursive
 -- expansion. Non-decreasing repeated population profiles mark productive cycles.
 typeSize :: Type -> Int
@@ -470,6 +510,8 @@ typeSize (Constructor _ args) = 1 + sum [typeSize t | TypeArgument t <- args]
 typeSize (Arrow a b) = 1 + typeSize a + typeSize b
 typeSize (TypeVariable _) = 1
 
+-- | Indexed values are generated by solving the index backwards, so a predicate
+-- on the index never rejects a sample. ref:DEC-indexed-families-as-evidence
 indexedGeneration :: [DataDeclaration] -> [Definition] -> Quantifier -> Maybe IndexedGeneration
 indexedGeneration declarations definitions q = case concatMap claim (concatMap conjuncts (quantifiedPredicates q)) of
   found:_ | declaredData (binderType (quantifiedBinder q)) -> Just found
@@ -504,12 +546,13 @@ indexedGeneration declarations definitions q = case concatMap claim (concatMap c
         , Just equations <- [indexEquations declarations definitions measure]]
       _ -> []
 
+-- | A measure applied through a conversion is still recognised as a measure.
 unconverted :: Expr -> Expr
 unconverted e = case expressionNode e of
   Convert _ _ inner -> unconverted inner
   _ -> e
 
--- A measure directs generation when it is the only index of a family whose
+-- | A measure directs generation when it is the only index of a family whose
 -- index fields reach only single-index families, each constructor naming at
 -- most three index fields (runtimes enumerate their combinations).
 indexEquations :: [DataDeclaration] -> [Definition] -> Id -> Maybe [(Id, [String])]
@@ -527,6 +570,8 @@ indexEquations declarations definitions measure = do
       Just rest | '_' `elem` rest -> reverse (drop 1 (dropWhile (/= '_') (reverse rest)))
       _ -> n
 
+-- | The index equations runtimes solve backwards to generate indexed values.
+-- ref:DEC-indexed-families-as-evidence
 familyEquations :: [DataDeclaration] -> DataDeclaration -> Maybe [(Id, [String])]
 familyEquations declarations root = do
   families <- reach [] [dataId root]

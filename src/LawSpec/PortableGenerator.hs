@@ -1,4 +1,4 @@
--- Native Hypothesis/fast-check generators from resolved scalar/container types.
+-- | Native Hypothesis/fast-check generators from resolved scalar/container types.
 -- Documents retain legal call, object, and collection breaks for test emitters.
 module LawSpec.PortableGenerator (generatorDoc, generatorDocWithin) where
 
@@ -12,10 +12,12 @@ import Data.Aeson (encode, toJSON)
 import qualified Data.Text.Lazy as T
 import qualified Data.Text.Lazy.Encoding as T
 
+-- | Python and JavaScript draw values with their own frameworks, Hypothesis and
+-- fast-check, from the same plan. ref:DEC-native-property-frameworks
 generatorDoc :: Bool -> Int -> (Type -> Bool) -> (Type -> D.Doc) -> Type -> D.Doc
 generatorDoc py bits structural reference = generatorDocWithin py bits structural reference Nothing
 
--- The generator, with an integer drawn from a refinement's range when one
+-- | The generator, with an integer drawn from a refinement's range when one
 -- is given.
 generatorDocWithin :: Bool -> Int -> (Type -> Bool) -> (Type -> D.Doc) -> Maybe (Integer, Integer) -> Type -> D.Doc
 generatorDocWithin py bits structural reference within = generate

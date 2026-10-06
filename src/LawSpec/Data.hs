@@ -1,4 +1,4 @@
--- Source data declarations are resolved once, before core validation. Target
+-- | Source data declarations are resolved once, before core validation. Target
 -- emitters only see qualified identities and specialized core field types.
 module LawSpec.Data (elaborateDataDeclarations, elaborateDataDeclarationsWithProfile, qualifyDataNames) where
 
@@ -14,9 +14,13 @@ import LawSpec.Common
 import LawSpec.Scalar (primitive)
 import LawSpec.IndexTerm (FamilyIndex(..))
 
+-- | The 64-bit profile unless a caller states another.
+-- ref:DEC-explicit-machine-profile
 elaborateDataDeclarations :: [S.Unit] -> Either [Diagnostic] [C.DataDeclaration]
 elaborateDataDeclarations = elaborateDataDeclarationsWithProfile 64
 
+-- | Data declarations are resolved once, to qualified identities, so emitters
+-- never resolve a type name again. ref:DEC-typed-core-boundary
 elaborateDataDeclarationsWithProfile :: Int -> [S.Unit] -> Either [Diagnostic] [C.DataDeclaration]
 elaborateDataDeclarationsWithProfile bits units = do
   shapes <- concat <$> mapM unit units
@@ -91,7 +95,7 @@ elaborateDataDeclarationsWithProfile bits units = do
     typeIdentity u name = C.Id (S.unitName u ++ "::type::" ++ name)
     contextual range = either (Left . pure . (\message -> Diagnostic "data-type" message (Just (spanStart range)))) Right
 
--- Resolve local type and constructor names before generic law expansion. The
+-- | Resolve local type and constructor names before generic law expansion. The
 -- qualified identities survive imported/reused law bodies without re-resolution.
 qualifyDataNames :: S.Unit -> S.Unit
 qualifyDataNames unit = unit

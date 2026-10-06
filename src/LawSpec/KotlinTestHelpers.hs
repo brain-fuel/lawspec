@@ -1,4 +1,4 @@
--- Framework-specific Kotlin generators downstream of checked Core.
+-- | Framework-specific Kotlin generators downstream of checked Core.
 module LawSpec.KotlinTestHelpers (generatorDoc, generatorDocWithin, assertionDoc, dataHelpersDoc) where
 
 import qualified LawSpec.Core as C
@@ -22,12 +22,12 @@ lambda parameters body = text (" { " ++ parameters ++ " ->") <>
   D.nest 4 (D.hardline <> D.multiline body) <> D.hardline <> text "}"
 mapped source name body = D.multiline (source <> text ".map" <> lambda name body)
 
--- Keep native Kotest choices, binding, list budgets and shrinkers unchanged.
+-- | Keep native Kotest choices, binding, list budgets and shrinkers unchanged.
 generatorDoc :: Int -> Integer -> (C.Type -> Bool) -> (C.Type -> D.Doc)
   -> (C.Type -> String) -> C.Type -> D.Doc
 generatorDoc bits budget structural reference key = generatorDocBounded (integerBounds bits) bits budget structural reference key
 
--- The generator, with a top-level integer drawn from a refinement's range.
+-- | The generator, with a top-level integer drawn from a refinement's range.
 generatorDocWithin :: Maybe (Integer, Integer) -> Int -> Integer -> (C.Type -> Bool) -> (C.Type -> D.Doc)
   -> (C.Type -> String) -> C.Type -> D.Doc
 generatorDocWithin within bits budget structural reference key ty = generatorDocBounded boundsOf bits budget structural reference key ty
@@ -114,9 +114,13 @@ assertion bits structural =
        block (text "\"$context | actual=$a expected=$b\"")]) <>
     text " catch (error: Exception) " <> block (text "throw AssertionError(context, error)"))
 
+-- | Assertions report the law, the inputs and both sides, so a failure
+-- explains itself.
 assertionDoc :: D.Doc
 assertionDoc = assertion 64 False
 
+-- | Data values are built and compared through helpers emitted once per test
+-- module rather than at every use.
 dataHelpersDoc :: Int -> (C.Type -> D.Doc) -> D.Doc
 dataHelpersDoc bits generator = statements
   [text "private val _schema = LawSpecDataSchema.create()",mempty,

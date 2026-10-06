@@ -1,3 +1,6 @@
+-- | A small evaluator over surface expressions, used before Core exists: to
+-- filter generated tuples by their refinements and to resolve bounds at compile
+-- time. Core has its own evaluator; this one never runs a law.
 module LawSpec.Eval (evaluate, evaluateBool, evaluateTyped, boundsValue, finiteValues) where
 import LawSpec.Model
 import LawSpec.Scalar
@@ -5,6 +8,9 @@ import Data.Ratio
 import qualified Data.Map.Strict as M
 import Control.Monad (unless)
 
+-- | Bounded's minimum and maximum depend on the machine profile, so they are
+-- resolved here, with the profile, not by a target at run time.
+-- ref:DEC-explicit-machine-profile
 boundsValue :: Int -> String -> Type -> Either String Scalar
 boundsValue bits b t = case baseType t of
   Named n -> case integerBounds bits n of
@@ -12,12 +18,16 @@ boundsValue bits b t = case baseType t of
     _ -> Left ("Bounded requires a fixed or machine integer: " ++ n)
   _ -> Left "unresolved representation bound"
 
+-- | Refinements are predicates, and a non-Boolean result is a specification
+-- error worth reporting rather than treating as false.
 evaluateBool :: Int -> [(String,Scalar)] -> Expr -> Either String Bool
 evaluateBool bits env e = evaluate bits env e >>= boolean
 boolean :: Scalar -> Either String Bool
 boolean (SBool b) = Right b
 boolean _ = Left "predicate must return Bool"
 
+-- | Exact arithmetic, never the host's, so compile-time filtering agrees with the
+-- runtimes the tests use. ref:DEC-portable-exact-arithmetic
 evaluate :: Int -> [(String,Scalar)] -> Expr -> Either String Scalar
 evaluate bits bindings = go where
   env = M.fromList bindings
@@ -125,7 +135,7 @@ scalarEqual (SComplex _ a b) (SComplex _ c d) = scalarEqual a c && scalarEqual b
 scalarEqual (SPresent a (Just x)) (SPresent b (Just y)) = a == b && scalarEqual x y
 scalarEqual a b = a == b
 
--- Respect contextual literal types from the compiler's typed IR.
+-- | Respect contextual literal types from the compiler's typed IR.
 evaluateTyped :: Int -> [(String,Scalar)] -> TypedExpr -> Either String Scalar
 evaluateTyped bits env = evaluate bits env . materialize where
   materialize (TypedExpr t (Located range e) cs conversion branches) = Located range (materialize (TypedExpr t e cs conversion branches))
@@ -141,6 +151,9 @@ evaluateTyped bits env = evaluate bits env . materialize where
   app (Apply f x) = let (n,args) = app f in (n,args++[x])
   app e = (e,[])
 
+-- | A type small enough to enumerate is tested exhaustively instead of sampled,
+-- which turns a property test into a proof over that domain.
+-- ref:DEC-evidence-statuses
 finiteValues :: Int -> Int -> Type -> Maybe [Scalar]
 finiteValues bits limit t = case baseType t of
   Named n | Just (lo,hi) <- integerBounds bits n, hi-lo+1 <= fromIntegral limit -> Just [SInteger n x | x <- [lo..hi]]

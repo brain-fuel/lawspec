@@ -1,4 +1,4 @@
--- Workflow policies as state machines: a built-in unit, lawspec.resilience,
+-- | Workflow policies as state machines: a built-in unit, lawspec.resilience,
 -- added to sources whose workflows use a rate limit, circuit breaker,
 -- bulkhead or timeout. Its checked definitions are generated to every target
 -- like any definition; each target's workflow runtime keeps a stage's state
@@ -12,33 +12,39 @@ module LawSpec.Resilience
 import Data.Char (isAlphaNum, toUpper)
 import Data.List (isPrefixOf)
 
+-- | Resilience policies are an ordinary LawSpec unit, so their behaviour is
+-- specified by laws and generated on every target.
+-- ref:DEC-elaborate-before-core
 resilienceUnit :: String
 resilienceUnit = "lawspec.resilience"
 
+-- | The alias the implicit import uses, chosen so no user name collides.
 resilienceAlias :: String
 resilienceAlias = "lawspecResilience"
 
--- The types a source using policies imports.
+-- | The types a source using policies imports.
 resilienceTypes :: [String]
 resilienceTypes = ["StageFailure"]
 
+-- | Policy failures share one type, so a workflow's error type can include them.
 stageFailureType :: String
 stageFailureType = resilienceUnit ++ "::type::StageFailure"
 
+-- | Each kind of policy failure is a constructor of that type.
 stageFailureTag :: String -> String
 stageFailureTag constructor = stageFailureType ++ "::" ++ constructor
 
--- The name of a unit's copy of a resilience definition (as imports name it).
+-- | The name of a unit's copy of a resilience definition (as imports name it).
 resilienceName :: String -> String
 resilienceName name = "lawspecResilience" ++ capital name
   where capital (c : cs) = toUpper c : cs
         capital [] = []
 
--- Every definition of the unit; a source using policies copies them all.
+-- | Every definition of the unit; a source using policies copies them all.
 resilienceDefinitions :: [String]
 resilienceDefinitions = [takeWhile (/= ' ') (drop 11 line) | line <- lines resilienceSource, "definition " `isPrefixOf` line]
 
--- Whether a source's workflows use a stateful or failing policy.
+-- | Whether a source's workflows use a stateful or failing policy.
 usesResilience :: String -> Bool
 usesResilience text = any (`elem` tokens) ["rateLimit", "circuitBreaker", "bulkhead", "timeout", "StageFailure"]
   where tokens = words (map (\c -> if isAlphaNum c then c else ' ') (unlines (map (takeWhile' ) (lines text))))
@@ -47,6 +53,7 @@ usesResilience text = any (`elem` tokens) ["rateLimit", "circuitBreaker", "bulkh
         go (c : rest) = c : go rest
         go [] = []
 
+-- | The unit is compiled from source like a user's, so its laws are checked.
 resilienceSource :: String
 resilienceSource = unlines
   [ "unit " ++ resilienceUnit

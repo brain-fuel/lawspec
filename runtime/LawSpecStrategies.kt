@@ -1,3 +1,8 @@
+/**
+ * Kotest combinators that keep native shrink trees, which LawSpec's generated arbitraries rely on
+ * so that Kotest's shrinker, not a second one, reduces counterexamples.
+ * ref:DEC-native-property-frameworks ref:kotest ref:DEC-shrink-within-domain
+ */
 package lawspec.testing
 
 import io.kotest.property.Arb

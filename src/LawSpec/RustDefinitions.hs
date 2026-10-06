@@ -1,4 +1,4 @@
--- Reusable generated definitions: native public signatures, checked logical
+-- | Reusable generated definitions: native public signatures, checked logical
 -- implementation bodies, and no dependency on a property-testing framework.
 module LawSpec.RustDefinitions (emitRustDefinitions, definitionNames, workflowAdapterUnits) where
 
@@ -13,12 +13,12 @@ import qualified LawSpec.RustData as Native
 import qualified LawSpec.RustExpr as E
 import qualified LawSpec.Code.Doc as D
 
--- Package-wide resolved IDs, not display names, select implementation bodies.
+-- | Package-wide resolved IDs, not display names, select implementation bodies.
 definitionNames :: [Unit] -> [(Id,String)]
 definitionNames units = [(declarationId (definitionDeclaration d),"evaluate_" ++ show i)
   | (i,d) <- zip [0::Int ..] (concatMap unitDefinitions units)]
 
--- The adapters workflows call, numbered for their bridges, with their units.
+-- | The adapters workflows call, numbered for their bridges, with their units.
 adapterCallsOf :: [Unit] -> [(Int, (Id, Declaration))]
 adapterCallsOf units = zip [0::Int ..] (nubIds
   [ (unitId u, a) | d <- concatMap unitDefinitions units, definitionOrchestrates d
@@ -31,11 +31,13 @@ adapterCallsOf units = zip [0::Int ..] (nubIds
       ExternalCall callee arguments -> callee : concatMap callsIn arguments
       _ -> concatMap callsIn (children expression)
 
--- The units whose adapter modules the definitions file calls.
+-- | The units whose adapter modules the definitions file calls.
 workflowAdapterUnits :: [Unit] -> [Id]
 workflowAdapterUnits units = foldr (\x acc -> if x `elem` acc then acc else x : acc) []
   [owner | (_, (owner, _)) <- adapterCallsOf units]
 
+-- | Checked definitions are emitted as ordinary Rust code, so adapters and tests call
+-- the same proved implementation. ref:DEC-total-definitions
 emitRustDefinitions :: D.Layout -> Int -> [DataDeclaration] -> [Unit] -> Either String String
 emitRustDefinitions layout bits declarations units = do
   contracts <- checkedDefinitionContracts bits declarations units

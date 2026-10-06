@@ -1,3 +1,6 @@
+-- | The independent re-check of a whole Core program before any emitter runs:
+-- the boundary that lets eight backends trust their input.
+-- ref:DEC-typed-core-boundary
 module LawSpec.Core.Validate (validateProgram, module LawSpec.Core.Expression) where
 
 import LawSpec.Core
@@ -13,6 +16,8 @@ import qualified Data.Map.Strict as M
 import qualified Data.Set as Set
 import Data.List (nub)
 
+-- | Validation failures are compiler bugs, not user errors, so they are reported
+-- under the core diagnostic code. ref:DEC-typed-core-boundary
 validateProgram :: Program -> Either [Diagnostic] ()
 validateProgram program = do
   let checked = either (Left . pure . (\m -> Diagnostic "core" m Nothing)) Right
@@ -100,7 +105,7 @@ validateProgramWith registry Program{..} = do
       scope' <- extend scope (contractResult c)
       mapM_ (predicate ds scope') (contractPostconditions c ++ contractRuntimePostconditions c)
 
--- Bounds are evaluated before the full short-circuit predicate. Only total
+-- | Bounds are evaluated before the full short-circuit predicate. Only total
 -- exact arithmetic may move across that boundary; guards remain authoritative.
 integerType, exactType :: Type -> Bool
 integerType (Constructor n []) = isInteger n

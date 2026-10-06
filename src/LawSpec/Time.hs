@@ -1,4 +1,4 @@
--- Durations: a built-in unit, lawspec.time, added only to programs that use
+-- | Durations: a built-in unit, lawspec.time, added only to programs that use
 -- it, as lawspec.collections is. A Duration is a whole number of microseconds
 -- from 0 to durationLimit, about 146 years: the largest range every target's
 -- native duration holds exactly. Its operations are checked LawSpec
@@ -16,67 +16,71 @@ module LawSpec.Time
 import Data.Char (isAlphaNum, isDigit)
 import Data.List (isPrefixOf, tails)
 
+-- | Durations are an ordinary LawSpec unit, so their laws are checked like any
+-- other. ref:DEC-elaborate-before-core
 timeUnit :: String
 timeUnit = "lawspec.time"
 
--- The implicit import's alias; prelude.<op> resolves through it.
+-- | The implicit import's alias; prelude.<op> resolves through it.
 timeAlias :: String
 timeAlias = "lawspecTime"
 
+-- | Duration is a data type of that unit, whatever a target maps it to.
 durationType :: String
 durationType = timeUnit ++ "::type::Duration"
 
--- Targets with a native duration represent Duration by it, not by a
+-- | Targets with a native duration represent Duration by it, not by a
 -- generated class: Python timedelta, Go time.Duration, Java
 -- java.time.Duration, Kotlin kotlin.time.Duration and Rust
 -- std::time::Duration.
 isDurationType :: String -> Bool
 isDurationType = (== durationType)
 
--- Kotlin's Duration keeps nanoseconds exactly up to Long.MAX_VALUE / 2 /
+-- | Kotlin's Duration keeps nanoseconds exactly up to Long.MAX_VALUE / 2 /
 -- 1000000 * 1000000 - 1 nanoseconds, and milliseconds beyond; this is that
 -- limit in whole microseconds. Every other target's native duration holds more.
 durationLimit :: Integer
 durationLimit = 4611686018426999
 
--- Literal suffixes, longest first, and the prelude constructor each names.
+-- | Literal suffixes, longest first, and the prelude constructor each names.
 durationSuffixes :: [(String, String)]
 durationSuffixes = [("min", "minutes"), ("ms", "milliseconds"), ("us", "microseconds"), ("s", "seconds"), ("h", "hours"), ("d", "days")]
 
--- Microseconds per unit, by constructor.
+-- | Microseconds per unit, by constructor.
 durationFactor :: String -> Integer
 durationFactor name = maybe 1 id (lookup name factors)
 
 factors :: [(String, Integer)]
 factors = [("microseconds", 1), ("milliseconds", 1000), ("seconds", 1000000), ("minutes", 60000000), ("hours", 3600000000), ("days", 86400000000)]
 
--- prelude.<op> and the definition implementing it.
+-- | prelude.<op> and the definition implementing it.
 timeOperations :: [(String, String)]
 timeOperations =
   [ (unit, unit) | unit <- ["microseconds", "milliseconds", "seconds", "minutes", "hours", "days"] ] ++
   [ ("toMicroseconds", "valueOfDuration") ]
 
+-- | prelude.<op> on a duration resolves to the time unit's definition.
 timeOperation :: String -> Maybe String
 timeOperation op = lookup op timeOperations
 
--- The definition an arithmetic operator on durations elaborates to.
+-- | The definition an arithmetic operator on durations elaborates to.
 durationArithmetic :: String -> Maybe String
 durationArithmetic op = lookup op [("+", "durationPlus"), ("-", "durationMinus"), ("*", "durationTimes"), ("quot", "durationQuot")]
 
--- The definition unwrapping a duration, for comparisons.
+-- | The definition unwrapping a duration, for comparisons.
 durationValue :: String
 durationValue = "valueOfDuration"
 
--- The definitions operators elaborate to; every unit using durations copies
+-- | The definitions operators elaborate to; every unit using durations copies
 -- them, and elaboration calls the copies.
 durationDefinitions :: [String]
 durationDefinitions = durationValue : "microseconds" : [name | op <- ["+", "-", "*", "quot"], Just name <- [durationArithmetic op]]
 
--- The time unit's types, imported by every source that uses durations.
+-- | The time unit's types, imported by every source that uses durations.
 timeTypes :: [String]
 timeTypes = ["Duration", "RetryDecision"]
 
--- Whether a source uses durations: the type, a prelude constructor, or a
+-- | Whether a source uses durations: the type, a prelude constructor, or a
 -- literal such as 250ms. A source that declares its own Duration keeps it.
 usesTime :: String -> Bool
 usesTime text =
@@ -93,7 +97,7 @@ usesTime text =
       i : _ -> take i line
       [] -> line
 
--- Each operation states its result exactly, so the totality audit can
+-- | Each operation states its result exactly, so the totality audit can
 -- follow durations through checked definitions.
 timeSource :: String
 timeSource = unlines

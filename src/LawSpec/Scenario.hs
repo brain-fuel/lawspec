@@ -1,4 +1,4 @@
--- Protocols and scenarios. A protocol lists what one end of a channel sends
+-- | Protocols and scenarios. A protocol lists what one end of a channel sends
 -- and receives, in order; the other end does the opposite (its dual). A
 -- scenario drives a shared model's commands from processes that run at the
 -- same time (`par ... with ... end`) and talk over channels.
@@ -34,11 +34,13 @@ import qualified LawSpec.Core.Program as P
 import LawSpec.Model
 
 
--- A command or message argument: a variable the process holds (given up
+-- | A command or message argument: a variable the process holds (given up
 -- when written ~x), or a constant.
 data Argument = Held String | Given String | Constant Expr
   deriving (Eq, Show)
 
+-- | The statements a scenario process may perform, each with its span for
+-- diagnostics.
 data Statement
   = Bind String String [Argument] Span    -- x <- command args
   | Call String [Argument] Span           -- command args
@@ -49,6 +51,8 @@ data Statement
   | Expect String Expr Span               -- expect x = value
   deriving (Eq, Show)
 
+-- | A scenario names its model and channels, so it can be checked against the
+-- model and run on many schedules. ref:DEC-sessions-by-construction
 data Scenario = Scenario
   { scenarioName :: String, scenarioModel :: String
   , scenarioChannels :: [(String, String, Span)]
@@ -59,14 +63,14 @@ data Scenario = Scenario
 
 type Failure = (Maybe Span, String)
 
--- The other end's steps.
+-- | The other end's steps.
 dual :: [Step] -> [Step]
 dual = map flipped
   where
     flipped (Send t) = Receive t
     flipped (Receive t) = Send t
 
--- Checks every scenario against the unit's protocols, models and signatures.
+-- | Checks every scenario against the unit's protocols, models and signatures.
 -- For each scenario, whether its channels close a cycle (accepted because
 -- no process can wait for another in a cycle) rather than form a tree.
 checkScenarios :: [Protocol] -> [Scenario] -> Unit -> Either Failure [Bool]
@@ -76,7 +80,7 @@ checkScenarios protocols scenarios u = do
     (Left (Just (protocolSpan p), "protocol " ++ protocolName p ++ " is declared twice"))
   mapM (checkScenario protocols u) scenarios
 
--- What a process holds: its variables' types and, for each channel end it
+-- | What a process holds: its variables' types and, for each channel end it
 -- holds, the steps left.
 data Holding = Holding { values :: M.Map String Type, ends :: M.Map String [Step] }
 
@@ -270,7 +274,7 @@ checkScenario protocols u s = do
       Refined _ inner _ -> bare inner
       other -> other
 
--- Each par with its branches, outermost first.
+-- | Each par with its branches, outermost first.
 collectPars :: [Statement] -> [(Span, [[Statement]])]
 collectPars = concatMap go
   where
@@ -278,7 +282,7 @@ collectPars = concatMap go
     go (ReceiveFrom _ _ (Just handler) _) = collectPars handler
     go _ = []
 
--- The channels a list of statements uses, directly or in nested pars.
+-- | The channels a list of statements uses, directly or in nested pars.
 channelsIn :: [Statement] -> [String]
 channelsIn = nub . concatMap go
   where
@@ -290,7 +294,7 @@ channelsIn = nub . concatMap go
     go (Par branches _) = concatMap channelsIn branches
     go _ = []
 
--- A checked scenario as its runtime program, with constants resolved:
+-- | A checked scenario as its runtime program, with constants resolved:
 -- constructor names become tags qualified by their data type.
 toProgram :: Unit -> Bool -> Scenario -> Either Failure P.Program
 toProgram u cyclic s = (\acts -> P.Program (scenarioName s) (scenarioModel s) [c | (c, _, _) <- scenarioChannels s] acts
@@ -320,7 +324,7 @@ toProgram u cyclic s = (\acts -> P.Program (scenarioName s) (scenarioModel s) [c
     strip (Located _ inner) = strip inner
     strip other = other
 
--- The variables a list of statements uses.
+-- | The variables a list of statements uses.
 mentioned :: Statement -> [String]
 mentioned st = case st of
   Bind _ _ args _ -> concatMap argument args
@@ -335,7 +339,7 @@ mentioned st = case st of
       Given x -> [x]
       Constant _ -> []
 
--- Every statement with the process that runs it, and whether it is inside
+-- | Every statement with the process that runs it, and whether it is inside
 -- an or else: (-1, 0) is the scenario's own process, and (i, n) is branch n
 -- of the i-th par, numbered as collectPars lists them.
 located :: [Statement] -> [((Int, Int), Bool, Statement)]
@@ -358,7 +362,7 @@ statementSpan st = case st of
   Par _ at -> at
   Expect _ _ at -> at
 
--- The exact deadlock check. Every act of the scenario is a node; an edge
+-- | The exact deadlock check. Every act of the scenario is a node; an edge
 -- from a to b says b cannot happen before a:
 --
 --   * acts of one process follow each other;
@@ -483,7 +487,7 @@ waitsInOrder declared body = case findCycle edges of
       in zip enters (drop 1 leaves ++ take 1 leaves)
     intercalate' sep = foldr1 (\a b -> a ++ sep ++ b)
 
--- A cycle in a directed graph, as its nodes in order.
+-- | A cycle in a directed graph, as its nodes in order.
 findCycle :: [(Int, Int)] -> Maybe [Int]
 findCycle edges = go (M.keys adjacency) M.empty
   where

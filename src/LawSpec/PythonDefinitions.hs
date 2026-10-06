@@ -1,4 +1,4 @@
--- Framework-independent total definitions with checked native Python APIs.
+-- | Framework-independent total definitions with checked native Python APIs.
 module LawSpec.PythonDefinitions (emitPythonDefinitions, definitionCalls) where
 
 import Control.Monad (forM)
@@ -12,10 +12,14 @@ import qualified LawSpec.PythonExpr as E
 import qualified LawSpec.Code.Doc as D
 import Data.List (nub, sort, intercalate)
 
+-- | Generated tests call checked definitions by these names, so every test
+-- file agrees.
 definitionCalls :: [Unit] -> [(Id,String)]
 definitionCalls units = [(declarationId (definitionDeclaration d), "_definitions.evaluate_" ++ show i)
   | (i,d) <- zip [0::Int ..] (concatMap unitDefinitions units)]
 
+-- | Checked definitions are emitted as ordinary Python code, so adapters and tests call
+-- the same proved implementation. ref:DEC-total-definitions
 emitPythonDefinitions :: D.Layout -> Int -> [DataDeclaration] -> [Unit] -> Either String [Artifact]
 emitPythonDefinitions _ _ _ units | null (concatMap unitDefinitions units) = pure []
 emitPythonDefinitions layout bits declarations units = do

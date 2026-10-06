@@ -1,4 +1,4 @@
--- Rust consumes an execution plan made entirely from typed core.
+-- | Rust consumes an execution plan made entirely from typed core.
 module LawSpec.RustEmit (emitRust, emitRustWithFormat, emitRustWithBindings, rustType, emitRustSchema) where
 import LawSpec.Core
 import LawSpec.Core.Total (constructorProofContracts)
@@ -35,6 +35,8 @@ comma :: [String] -> String
 comma = intercalate ", "
 ident :: String -> String
 ident = map (\c -> if isAlphaNum c || c == '_' then c else '_')
+-- | LawSpec's containers map onto Rust's own, Vec and Option, so adapters take
+-- the types a Rust developer expects. ref:DEC-idiomatic-generated-types
 rustType :: Type -> Either String String
 rustType (Constructor "List" [TypeArgument a]) = (\t -> "Vec<" ++ t ++ ">") <$> rustType a
 rustType (Constructor "Maybe" [TypeArgument a]) = (\t -> "Option<" ++ t ++ ">") <$> rustType a
@@ -63,13 +65,13 @@ typeName :: Type -> String
 typeName (Constructor n args) = unwords (n:[typeName t | TypeArgument t <- args])
 typeName t = show t
 
--- Preserve type applications structurally; runtime schema validation never has
+-- | Preserve type applications structurally; runtime schema validation never has
 -- to parse a target-specific spelling or infer generic field types.
 schemaVector :: [Doc.Doc] -> Doc.Doc
 schemaVector [value] = Doc.text "vec![" <> value <> Doc.text "]"
 schemaVector values = rustDelimited "vec![" "]" values
 
--- Rustfmt's default argument/array width is 60, inside the 100-column page.
+-- | Rustfmt's default argument/array width is 60, inside the 100-column page.
 rustDelimited :: String -> String -> [Doc.Doc] -> Doc.Doc
 rustDelimited opening closing values
   | length (comma (map (Doc.render Doc.Compact) values)) > 60 =
@@ -98,6 +100,8 @@ renderTypeReference singleElement (Schema.Named name arguments) =
       Doc.joinWith Doc.hardline [value <> Doc.text "," | value <- values]) <> Doc.hardline <> Doc.text ")"
     else rustDelimited "(" ")" values
 
+-- | Constructor invariants are proved before the schema is emitted, so the
+-- generated checks are the proved ones.
 emitRustSchema :: Int -> Doc.Layout -> [DataDeclaration] -> Either String String
 emitRustSchema bits layout declarations = do
   _ <- either (Left . show) Right (constructorProofContracts bits declarations)
@@ -114,10 +118,11 @@ emitRustSchema bits layout declarations = do
     let reference ty = do
           ref <- typeReference <$> Schema.typeReference (Schema.contractParameters contract) ty
           pure (if variable ty then ref <> Doc.text ".instantiate(_types)?" else ref)
-        key ty | variable ty = do
-          ref <- typeReference <$> Schema.typeReference (Schema.contractParameters contract) ty
-          pure (Doc.text "&" <> ref <> Doc.text ".instantiate(_types)?.expression_key()?")
-               | otherwise = pure (Doc.text (q (Expression.typeName ty)))
+        key ty
+          | not (variable ty) = pure (Doc.text (q (Expression.typeName ty)))
+          | otherwise = do
+              ref <- typeReference <$> Schema.typeReference (Schema.contractParameters contract) ty
+              pure (Doc.text "&" <> ref <> Doc.text ".instantiate(_types)?.expression_key()?")
         names = zip (map binderId (Schema.contractFields contract))
           ["_fields[" ++ show i ++ "]" | i <- [0 :: Int ..]]
     body <- Expression.renderExpressionWithContext declarations (Doc.text "bits") (Doc.text "_schema") reference key [] names predicate
@@ -176,12 +181,16 @@ builtinConstructor :: Id -> Bool
 builtinConstructor tag = idText tag `elem`
   ["List::Nil", "List::Cons", "Maybe::Nothing", "Maybe::Just", "Either::Left", "Either::Right"]
 
+-- | Readable output unless asked otherwise. ref:DEC-readable-output-default
 emitRust :: Plan -> Either [Diagnostic] [Artifact]
 emitRust = emitRustWithFormat False
 
+-- | No native bindings unless the project declares some.
 emitRustWithFormat :: Bool -> Plan -> Either [Diagnostic] [Artifact]
 emitRustWithFormat minify = emitRustWithBindings minify NR.emptyBindingPlan
 
+-- | Names are escaped against Rust's keywords before emission, so a law about
+-- type or match still compiles as Rust. ref:DEC-idiomatic-generated-types
 emitRustWithBindings :: Bool -> NR.BindingPlan -> Plan -> Either [Diagnostic] [Artifact]
 emitRustWithBindings minify bindings plan@Plan{..} = either (Left . pure . (\m -> Diagnostic "rust" m Nothing)) Right $ do
   let declarations = concatMap (unitDeclarations . plannedUnit) plannedUnits
@@ -555,7 +564,7 @@ emitRustWithBindings minify bindings plan@Plan{..} = either (Left . pure . (\m -
       pure [Artifact ("src/" ++ modulePath ++ ".rs") (Doc.render layout adapterDoc) (if generatedAdapter then "generated" else "user") "source",
         Artifact ("tests/" ++ testName ++ "_lawspec.rs") (Doc.render layout testDoc) "generated" "test"]
 
--- Test scaffolding retains documents until the complete artifact is laid out.
+-- | Test scaffolding retains documents until the complete artifact is laid out.
 invoke :: String -> [Doc.Doc] -> Doc.Doc
 invoke "Err" [value] = Doc.text "Err(" <> value <> Doc.text ")"
 invoke "format!" (format:args)
@@ -611,7 +620,7 @@ valueLiteral (V.PresenceValue (Constructor name [TypeArgument _]) payload) = cas
 valueLiteral _ = Left "invalid structural literal for Rust"
 
 
--- Every scalar, container and data constructor consumes one structural node.
+-- | Every scalar, container and data constructor consumes one structural node.
 valueBudget :: V.Value -> Integer
 valueBudget (V.ScalarValue _) = 1
 valueBudget (V.PresenceValue _ Nothing) = 1

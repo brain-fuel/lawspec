@@ -1,4 +1,4 @@
--- The only bridge from checked surface syntax to the typed core. Targets never
+-- | The only bridge from checked surface syntax to the typed core. Targets never
 -- receive TypedExpr's source tree or perform contextual literal inference.
 module LawSpec.Frontend (compileCore, elaborate, elaborateExpression) where
 import qualified LawSpec.Model as S
@@ -15,11 +15,15 @@ import LawSpec.Digest (digestHex, digestString)
 import LawSpec.Memo (Table, newPersistentTable, memoized)
 import LawSpec.Persist ()
 
+-- | Hosts that hold only sources get typed Core in one call; everything after
+-- this point works on Core alone. ref:DEC-typed-core-boundary
 compileCore :: Int -> Generation -> [Source] -> Either [Diagnostic] C.Program
 compileCore bits settings sources = do
   (units,properties) <- S.compileWithSettings bits settings sources
   elaborate bits units properties
 
+-- | Every surface construct is lowered here, once, and the result validated
+-- before any backend sees it. ref:DEC-elaborate-before-core
 elaborate :: Int -> [S.Unit] -> [S.Expanded] -> Either [Diagnostic] C.Program
 elaborate bits units properties = do
   dataDeclarations <- elaborateDataDeclarationsWithProfile bits units
@@ -75,7 +79,7 @@ elaborate bits units properties = do
         , C.propertyTrace=S.trace p }
     contextual at = either (Left . pure . (\msg -> Diagnostic "elaboration" msg at)) Right
 
--- Quoted law names may contain separators. Escape them before composing IDs so
+-- | Quoted law names may contain separators. Escape them before composing IDs so
 -- a display name cannot masquerade as a binder segment in target accessors.
 escapeIdentity :: String -> String
 escapeIdentity = concatMap (\c -> case c of ':' -> "%3A"; '%' -> "%25"; _ -> [c])

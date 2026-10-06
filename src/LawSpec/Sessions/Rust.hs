@@ -1,4 +1,4 @@
--- Typed channel ends for implementation code: each protocol's steps as
+-- | Typed channel ends for implementation code: each protocol's steps as
 -- types of this target (see LawSpec.Sessions).
 --
 -- A protocol P becomes the module lawspec_sessions::p, with open() and a
@@ -17,7 +17,7 @@ import LawSpec.RustData (rustDataType)
 import qualified LawSpec.MachineSpec as MachineSpec
 import Control.Monad (foldM)
 
--- The session library for the given target, for every unit's protocols.
+-- | The session library for the given target, for every unit's protocols.
 emit :: String -> Bool -> Int -> [C.DataDeclaration] -> [C.Unit] -> Either String [Artifact]
 emit _ _ bits datas units = do
   let sessions = [(C.unitId unit, session) | unit <- units, session <- C.unitSessions unit]
@@ -63,7 +63,7 @@ emit _ _ bits datas units = do
       ] ++ concatMap (\body -> '\n' : body ++ "\n") bodies
     unitPrefix = snake . map (\c -> if isAlphaNum c then c else '_') . C.idText
 
--- A protocol's module: open() and its two ends.
+-- | A protocol's module: open() and its two ends.
 protocolModule :: [C.DataDeclaration] -> [(String, String)] -> Maybe [(Bool, String, Maybe String)] -> String -> C.Session -> Either String String
 protocolModule datas modules wire name session = do
   firstEnd <- endModule datas modules session True
@@ -137,7 +137,7 @@ protocolModule datas modules wire name session = do
   where
     stepNames first = names first (C.sessionSteps session)
 
--- One end of a protocol: a struct per step, and Done.
+-- | One end of a protocol: a struct per step, and Done.
 endModule :: [C.DataDeclaration] -> [(String, String)] -> C.Session -> Bool -> Either String String
 endModule datas modules session first = do
   types <- mapM (valueType datas modules . snd) steps
@@ -200,11 +200,11 @@ endModule datas modules session first = do
     zip4' (a:as) (b:bs) (c:cs) (d:ds) = (a, b, c, d) : zip4' as bs cs ds
     zip4' _ _ _ _ = []
 
--- An end's first struct: its first step's, or Done.
+-- | An end's first struct: its first step's, or Done.
 start :: [String] -> String
 start = foldr const "Done"
 
--- The struct names of an end's steps: the verb and type, plus the step
+-- | The struct names of an end's steps: the verb and type, plus the step
 -- number when that name repeats on the end.
 names :: Bool -> [(Bool, C.Type)] -> [String]
 names first steps =
@@ -212,33 +212,33 @@ names first steps =
   | (k, base) <- zip [1 :: Int ..] bases ]
   where bases = [(if sends == first then "Send" else "Receive") ++ typeName ty | (sends, ty) <- steps]
 
--- The protocol module a step's type delegates, if it is a protocol's end.
+-- | The protocol module a step's type delegates, if it is a protocol's end.
 delegatedType :: [(String, String)] -> C.Type -> Maybe String
 delegatedType modules ty = case ty of
   C.Constructor identity [] -> lookup identity modules
   _ -> Nothing
 
--- The Rust type of a step's value: a delegated protocol's first end, or the
+-- | The Rust type of a step's value: a delegated protocol's first end, or the
 -- value's native type.
 valueType :: [C.DataDeclaration] -> [(String, String)] -> C.Type -> Either String String
 valueType datas modules ty = case ty of
   C.Constructor identity [] | Just m <- lookup identity modules -> pure ("super::super::" ++ m ++ "::first::Start")
   _ -> rustDataType datas ty
 
--- What an end does, in words: "receives Int32, receives Int32, then sends Int64".
+-- | What an end does, in words: "receives Int32, receives Int32, then sends Int64".
 describe :: [(String, String)] -> Bool -> C.Session -> String
 describe modules first session = case [(if sends == first then "sends " else "receives ") ++ valueWords modules ty | (sends, ty) <- C.sessionSteps session] of
   [] -> "does nothing"
   [one] -> one
   many -> intercalate ", " (init many) ++ ", then " ++ last many
 
--- A step's value in words: "an Int32", or "Serve's first end".
+-- | A step's value in words: "an Int32", or "Serve's first end".
 valueWords :: [(String, String)] -> C.Type -> String
 valueWords modules ty = case ty of
   C.Constructor identity [] | Just _ <- lookup identity modules -> typeName ty ++ "'s first end"
   _ -> article (typeName ty)
 
--- A type's name for identifiers and docs: its constructors, unqualified.
+-- | A type's name for identifiers and docs: its constructors, unqualified.
 typeName :: C.Type -> String
 typeName ty = case ty of
   C.Constructor name arguments -> capitalize (unqualified name) ++ concat [typeName t | C.TypeArgument t <- arguments]
@@ -256,7 +256,7 @@ article :: String -> String
 article word@(c:_) | toLower c `elem` ("aeiou" :: String) = "an " ++ word
 article word = "a " ++ word
 
--- A protocol's module name: snake_case, raw when it is a Rust keyword.
+-- | A protocol's module name: snake_case, raw when it is a Rust keyword.
 moduleName :: String -> String
 moduleName name = let m = snake name in if m `elem` keywords then "r#" ++ m else m
   where keywords = words "as async await break const continue crate dyn else enum extern false fn for if impl in let loop match mod move mut pub ref return self static struct super trait true type unsafe use where while abstract become box do final macro override priv typeof unsized virtual yield try gen"

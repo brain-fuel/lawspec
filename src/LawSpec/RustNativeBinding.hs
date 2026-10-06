@@ -1,4 +1,4 @@
--- Native conversion stays at adapter boundaries; Core expressions keep their
+-- | Native conversion stays at adapter boundaries; Core expressions keep their
 -- canonical representation and schema validation still surrounds every call.
 module LawSpec.RustNativeBinding (emitConversions, emitCall, rustReference, nativeTypeFor, nativeTypeWithParameters, convertExpression) where
 
@@ -21,6 +21,8 @@ canonicalType (declarations,_) parameters = rustDataTypeWithParameters declarati
 environment :: [C.DataDeclaration] -> BindingPlan -> Environment
 environment declarations plan = (declarations, zip [0..] (resolvedTypes (bindingRepresentations plan)))
 
+-- | A native path is checked part by part, so a binding to an invalid Rust path
+-- fails at generation with its name, not in cargo.
 rustReference :: NativeRef -> Either String String
 rustReference (NativeRef parts) = intercalate "::" <$> mapM part (zip [0::Int ..] parts)
   where
@@ -108,6 +110,8 @@ nativeTypeName env parameters ty = case ty of
       children <- mapM (\case C.TypeArgument child -> nativeTypeName env parameters child; _ -> Left "indexed native binding") args
       pure (name ++ if null children then "" else "<" ++ intercalate ", " children ++ ">")
 
+-- | Bound native types need conversions to and from runtime values, generated
+-- from the binding so the user writes none. ref:DEC-native-bindings-typed-identity
 emitConversions :: [C.DataDeclaration] -> BindingPlan -> Either String D.Doc
 emitConversions declarations plan = do
   let env@(_,allBindings) = environment declarations plan
@@ -167,6 +171,8 @@ emitConversions declarations plan = do
     pure (D.joinWith (D.hardline <> D.hardline) functions)
   pure (D.joinWith (D.hardline <> D.hardline) definitions)
 
+-- | A bound adapter calls the user's function directly, converting arguments in
+-- and the result out. ref:DEC-native-bindings-typed-identity
 emitCall :: [C.DataDeclaration] -> BindingPlan -> C.Declaration -> NativeCall -> Either String D.Doc
 emitCall declarations plan declaration native = do
   let env = environment declarations plan
@@ -218,12 +224,15 @@ emitCall declarations plan declaration native = do
           pure (D.joinWith D.hardline (locals ++
             [D.text ("let _native_result: " ++ nativeResult ++ " = ") <> invoked <> D.text ";", converted]))
 
--- Framework helpers reuse the same source-side codecs; validation remains in
+-- | Framework helpers reuse the same source-side codecs; validation remains in
 -- the schema runtime on both sides of a native generator or adapter call.
 nativeTypeFor :: [C.DataDeclaration] -> BindingPlan -> C.Type -> Either String String
 nativeTypeFor declarations plan = nativeTypeWithParameters declarations plan []
+-- | Generic bound types are named with the caller's type parameters.
 nativeTypeWithParameters :: [C.DataDeclaration] -> BindingPlan -> [(C.Id,String)] -> C.Type -> Either String String
 nativeTypeWithParameters declarations plan parameters = nativeTypeName (environment declarations plan)
   [(identity,(name,name,"")) | (identity,name) <- parameters]
+-- | One conversion per direction for a type, wherever it nests, so a bound type
+-- inside a list or option converts like one at top level.
 convertExpression :: [C.DataDeclaration] -> BindingPlan -> Bool -> C.Type -> D.Doc -> Either String D.Doc
 convertExpression declarations plan = convert (environment declarations plan) [] Nothing

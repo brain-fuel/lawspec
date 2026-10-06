@@ -1,11 +1,11 @@
--- What an actor's typed class on a target is made from (see LawSpec.Actors).
+-- | What an actor's typed class on a target is made from (see LawSpec.Actors).
 module LawSpec.Actors.Types (Actor(..), Handler(..), Supervision(..), Child(..), actorsOf, supervisionsOf) where
 
 import qualified LawSpec.Core as C
 import Data.Char (toUpper)
 import LawSpec.Core.Machine
 
--- What a target needs of one actor.
+-- | What a target needs of one actor.
 data Actor = Actor
   { actorUnit :: C.Unit
   , actorName :: String
@@ -22,7 +22,7 @@ data Actor = Actor
   , actorRestart :: Maybe C.Declaration
   }
 
--- What a target needs of one supervisor.
+-- | What a target needs of one supervisor.
 data Supervision = Supervision
   { supervisionUnit :: C.Unit
   , supervisionName :: String
@@ -36,8 +36,13 @@ data Supervision = Supervision
   , supervisionChildren :: [(Lifetime, String, Child)]
   }
 
+-- | A supervisor's children are actors or other supervisors, as in OTP's
+-- supervision trees. ref:erlang-otp-supervisors
 data Child = ActorChild Actor | SupervisorChild String
 
+-- | Each message an actor handles becomes a typed method on every target, so a
+-- caller cannot send a message the actor does not understand.
+-- ref:DEC-actors-otp-supervision
 data Handler = Handler
   { handlerName :: String
   , handlerDeclaration :: C.Declaration
@@ -47,7 +52,7 @@ data Handler = Handler
   , handlerReply :: Maybe C.Type
   }
 
--- The unit's actors, with each adapter's argument names from its contract.
+-- | The unit's actors, with each adapter's argument names from its contract.
 actorsOf :: C.Unit -> [Actor]
 actorsOf u =
   [ Actor u (machineName m) (lastSegment (machineState m)) own start (named start)
@@ -71,7 +76,7 @@ actorsOf u =
       C.Constructor n [C.TypeArgument r, C.TypeArgument _] | lastSegment n == "Pair" -> Just r
       _ -> Nothing
 
--- The unit's supervisors, each child resolved to an actor or a supervisor's
+-- | The unit's supervisors, each child resolved to an actor or a supervisor's
 -- class name.
 supervisionsOf :: C.Unit -> [Supervision]
 supervisionsOf u =
@@ -83,7 +88,7 @@ supervisionsOf u =
   where
     actors = [(actorName a, a) | a <- actorsOf u]
 
--- bank's class is BankSupervisor.
+-- | bank's class is BankSupervisor.
 supervisorClassName :: String -> String
 supervisorClassName n = case n of
   c : cs -> toUpper c : cs ++ "Supervisor"
