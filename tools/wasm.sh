@@ -19,5 +19,5 @@ mkdir -p npm/examples/specs npm/examples/native-payments npm/examples/packages
 cp examples/specs/*.lawspec npm/examples/specs/
 cp -R examples/native-payments/. npm/examples/native-payments/
 cp -R examples/packages/. npm/examples/packages/
-cp README.md CHANGELOG.md LICENSE npm/
+cp LICENSE npm/
 stack --no-terminal run lawspec-dev -- integrity --record

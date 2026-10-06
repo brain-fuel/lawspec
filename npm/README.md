@@ -113,7 +113,7 @@ See the [target guides](docs/how-to/targets/index.md).
 The [documentation](docs/index.md) has tutorials, how-to guides, a reference
 for the language, CLI, configuration and API, and explanations of the design.
 Release history is in the [changelog](CHANGELOG.md). To work on LawSpec itself,
-see [contributing](CONTRIBUTING.md).
+see [contributing](docs/how-to/contribute.md).
 
 Syntax highlighting is available as a [VS Code extension](editors/vscode/README.md).
 

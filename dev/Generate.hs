@@ -115,11 +115,17 @@ factFills version =
       | t <- scaffoldTargets ])))
   , ("package-files", Inline (json (Array (map String shippedFiles))))
   , ("package-documents", Inline (json (Array [String f | f <- shippedFiles, ".md" `isSuffixOf` f || f == "LICENSE"])))
+  , ("copy-documents", Inline (jsonString (unwords ("cp" : map ("../" ++) copiedDocuments ++ ["."]))))
   , ("hpack-version", Inline (jsonString "0.38.1")) ]
 
 -- What the npm package contains, beside its code.
 shippedFiles :: [String]
-shippedFiles = ["*.mjs", "*.json", "index.d.ts", "bin", "core.wasm", "core_jsffi.js", "README.md", "CHANGELOG.md", "LICENSE", "starter.lawspec", "examples"]
+shippedFiles = ["*.mjs", "*.json", "index.d.ts", "bin", "core.wasm", "core_jsffi.js"] ++ copiedDocuments ++ ["LICENSE", "starter.lawspec", "examples"]
+
+-- The root documents the package ships. Each has one home, the repository
+-- root: npm's prepack copies them into npm/, where git ignores them.
+copiedDocuments :: [String]
+copiedDocuments = ["README.md", "CHANGELOG.md"]
 
 currentVersion :: IO String
 currentVersion = do
@@ -135,7 +141,10 @@ versionedFiles =
   , ("lawspec.cabal", lineValue "version:        ")
   , ("wasm/lawspec-wasm.cabal", lineValue "version: ")
   , ("runtime/rust/Cargo.toml", cargo "[package]")
-  , ("runtime/rust/Cargo.lock", cargo "name = \"lawspec-runtime-conformance\"") ]
+  , ("runtime/rust/Cargo.lock", cargo "name = \"lawspec-runtime-conformance\"")
+  -- canon fails its check once this version reaches an open decision's or an
+  -- exemption's revisit version.
+  , ("canon.yaml", lineValue "version: ") ]
   where
     lineValue prefix old new = unlines . map (\l -> if l == prefix ++ old then prefix ++ new else l) . lines
     -- The first version line after the anchor.
@@ -171,7 +180,7 @@ bumpCommand [new] = do
     when (updated == content) (die (file ++ " does not state version " ++ old))
     writeFile file updated
   -- Install instructions name the version.
-  docs <- filter (".md" `isSuffixOf`) <$> ((++) <$> walkFiles "docs" <*> pure ["README.md", "CONTRIBUTING.md", "RELEASING.md"])
+  docs <- filter (".md" `isSuffixOf`) <$> ((++) <$> walkFiles "docs" <*> pure ["README.md"])
   forM_ docs $ \file -> do
     exists <- doesFileExist file
     when exists $ do

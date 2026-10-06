@@ -35,6 +35,7 @@
              "examples"
            ],
   "scripts": {
+    "prepack": "cp ../README.md ../CHANGELOG.md .",
     "test": "node --test test/*.test.mjs"
   }
 }
