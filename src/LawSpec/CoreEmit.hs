@@ -77,8 +77,7 @@ emitPlanWithFormat minify target original = do
   emittedFiles <- emitPlanFormatted minify target plan
   extras <- companionArtifacts minify target plan
   -- Built-in units' adapter modules hold their default handlers.
-  files <- either (\message -> Left [Diagnostic "builtins" message Nothing]) Right
-    (withBuiltinDefaults target (planDataDeclarations plan) (map plannedUnit (plannedUnits plan)) (emittedFiles ++ extras))
+  files <- builtinDefaults target plan (emittedFiles ++ extras)
   canonical <- if minify then emitPlanFormatted False target plan else pure files
   let references = [(artifactPath a, artifactContent a) | a <- canonical, ownership a == "user"]
   mapM (\artifact -> if ownership artifact /= "user" then pure artifact else
@@ -86,6 +85,12 @@ emitPlanWithFormat minify target original = do
       Nothing -> Left [Diagnostic "target" "formatted adapter has no canonical reference" Nothing]
       Just reference -> pure (AdapterArtifact (artifactPath artifact) (artifactContent artifact)
         (ownership artifact) (artifactPlacement artifact) reference)) files
+
+-- Built-in units' adapter modules hold their default handlers
+-- (LawSpec.BuiltinDefaults).
+builtinDefaults :: String -> Plan -> [Artifact] -> Either [Diagnostic] [Artifact]
+builtinDefaults target plan = either (\message -> Left [Diagnostic "builtins" message Nothing]) Right .
+  withBuiltinDefaults target (planDataDeclarations plan) (ownedAbilityUnits (map plannedUnit (plannedUnits plan)))
 
 -- Code beside the units: typed channel ends for the units' protocols, typed
 -- actors and mailboxes, and the definitions other nodes can evaluate by
@@ -413,8 +418,8 @@ emitPlanWithNativeOptions minify target sourceDir testDir unescaped unwitnessed 
     (Left [Diagnostic "native-binding" "goImports is only valid for Go bindings" Nothing])
   emitted <- if not (NB.hasBindings bindings) then emitPlanWithFormat minify target plan
     -- Rust emits bound units itself, so it adds the companion code here.
-    else if target == "rust" then (++) <$> emitRustWithBindings minify bindings plan
-      <*> companionArtifacts minify target (wirePlan (escapePlan target (witnessPlan plan)))
+    else if target == "rust" then builtinDefaults target plan =<< ((++) <$> emitRustWithBindings minify bindings plan
+      <*> companionArtifacts minify target (wirePlan (escapePlan target (witnessPlan plan))))
     else if target == "python" then do
       ordinary <- emitPlanWithFormat minify target plan
       either (Left . pure . (\m -> Diagnostic "native-binding" m Nothing)) Right

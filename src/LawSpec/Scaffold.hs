@@ -23,7 +23,7 @@ testCommand target = lookup target
 
 setupAdvice :: String -> Maybe String
 setupAdvice target = lookup target
-  [ ("rust", "Use Rust 1.85+ with edition 2024, Proptest 1.11.0, num-bigint 0.4.8, num-rational 0.4.2, num-complex 0.4.6, and num-traits 0.2.19. Run cargo test.")
+  [ ("rust", "Use Rust 1.85+ with edition 2024, Proptest 1.11.0, num-bigint 0.4.8, num-rational 0.4.2, num-complex 0.4.6, num-traits 0.2.19, and for lawspec.crypto's default handlers sha3 0.12.0, shake 0.1.0, ml-kem 0.3.2, ml-dsa 0.1.1, slh-dsa 0.2.0-rc.5, aes-gcm 0.11.1 and getrandom 0.4.3. Run cargo test.")
   , ("java", "Use JDK 25+, Maven, Bouncy Castle bcprov-jdk18on 1.86 (lawspec.crypto's default handlers), JetCheck 0.3.0, JUnit Jupiter 5.14.x, compiler plugin 3.14.1+, Surefire 3.5.x, and maven.compiler.release=25. Run mvn test-compile.")
   , ("python", "Use Python 3.13+. Install pytest 8.4.x and Hypothesis 6.x into the selected environment, and cryptography 50 for lawspec.crypto's default handlers: python -m pip install -e \".[test]\". Configure pytest pythonpath=[\"src\"] and testpaths=[\"tests\"]. Set the target python field to the interpreter path if needed.")
   , ("javascript", "Use Node 22+, package.json type=module, npm install @noble/post-quantum@0.7.1 (lawspec.crypto's default handlers), and npm install --save-dev fast-check@4.10.2.")
@@ -41,7 +41,11 @@ scaffoldFiles minify target = case target of
         [ "[package]", "name = \"lawspec-example\"", "version = \"0.1.0\"", "edition = \"2024\""
         , "rust-version = \"1.85\"", "publish = false", ""
         , "[dependencies]", "num-bigint = \"=0.4.8\"", "num-rational = \"=0.4.2\""
-        , "num-complex = \"=0.4.6\"", "num-traits = \"=0.2.19\"", ""
+        , "num-complex = \"=0.4.6\"", "num-traits = \"=0.2.19\""
+        , "# lawspec.crypto's default handlers"
+        , "sha3 = \"=0.12.0\"", "shake = \"=0.1.0\"", "ml-kem = \"=0.3.2\""
+        , "ml-dsa = { version = \"=0.1.1\", default-features = false, features = [\"alloc\"] }"
+        , "slh-dsa = \"=0.2.0-rc.5\"", "aes-gcm = \"=0.11.1\"", "getrandom = \"=0.4.3\"", ""
         , "[dev-dependencies]", "proptest = \"=1.11.0\"" ]) ]
   "javascript" -> Right
     [ ("package.json", json (Obj (commonPackage ++

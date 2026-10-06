@@ -38,15 +38,19 @@ withBuiltinDefaults target datas units artifacts
         [ (\c -> Artifact path c "generated" "test") <$> resolve target datas (fill target datas "crypto" source)
         | "lawspec.crypto" `elem` map name present, (path, file) <- vectorTests target
         , let source = defaultSource (directory target ++ "/" ++ file), not (null source) ]
-      let replaced = map artifactPath (adapters ++ copies ++ tests)
-      pure ([a | a <- artifacts, artifactPath a `notElem` replaced] ++ adapters ++ copies ++ tests)
+      companions <- sequence
+        [ (\c -> Artifact path c "generated" "source") <$> resolve target datas (fill target datas (shortName (name u)) source)
+        | u <- present, (path, file) <- companionFiles target (name u)
+        , let source = defaultSource (directory target ++ "/" ++ file), not (null source) ]
+      let replaced = map artifactPath (adapters ++ copies ++ tests ++ companions)
+      pure ([a | a <- artifacts, artifactPath a `notElem` replaced] ++ adapters ++ copies ++ tests ++ companions)
   where
     name = C.idText . C.unitId
     present = [u | u <- units, name u `elem` defaultedUnits, not (null (ownAbilities u))]
     adapter u = do
       let short = shortName (name u)
           source = defaultSource (directory target ++ "/" ++ short ++ extension target)
-      if null source then pure [] {- PORTING: Left ("no default handlers of " ++ name u ++ " for " ++ target) -} else do
+      if null source then Left ("no default handlers of " ++ name u ++ " for " ++ target) else do
         content <- resolve target datas (fill target datas (shortName (name u)) source)
         pure [Artifact (adapterPath target (name u)) content "generated" "source"]
     -- Each Go package has its own copy of the abilities it uses, so a unit
@@ -99,6 +103,13 @@ adapterPath target unit = case target of
   "rust" -> "src/lawspec/" ++ short ++ ".rs"
   _ -> short
   where short = shortName unit
+
+-- Files a unit's default handlers keep beside their module: Rust's crypto
+-- primitives, which the vector test includes on its own.
+companionFiles :: String -> String -> [(String, String)]
+companionFiles target unit = case (target, unit) of
+  ("rust", "lawspec.crypto") -> [("src/lawspec/crypto_primitives.rs", "crypto_primitives.rs")]
+  _ -> []
 
 -- The vector tests: where each goes, and its source. Go's encapsulation
 -- vectors need Go 1.26's crypto/mlkem/mlkemtest, so they have a file of their

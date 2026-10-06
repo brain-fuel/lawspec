@@ -140,6 +140,7 @@ emit minify bits datas units = do
       let (args, result) = C.functionType ty
       types <- mapM nativeType args
       refs <- mapM E.reference args
+      resultRef <- E.reference result
       let decode n (t, ref) = line ("let native_" ++ show n ++ " = ") <>
             E.call ("<" ++ t ++ " as ls::FromValue>::from_value")
               [E.call "schema.native_value_with_context" [line ("arguments[" ++ show n ++ "].clone()"), line "&" <> ref, line width, line "ctx"] <> line "?"] <> line "?;"
@@ -150,7 +151,10 @@ emit minify bits datas units = do
            , line ("let handler = ctx.handler::<std::sync::Arc<dyn " ++ interfaceName a ++ ">>(" ++ show (C.abilityKey (C.abilityInstance a)) ++ ")?;") ] ++
            zipWith decode [0 :: Int ..] (zip types refs) ++
            [ line ("let native_result = handler." ++ op ++ "(" ++ intercalate ", " ["native_" ++ show n | n <- [0 .. length args - 1]] ++ ");")
-           , if result == C.scalarType "Unit" then line "Ok(ls::Value::Unit)" else line "Ok(ls::IntoValue::into_value(native_result))" ])))) (C.abilityOperations a)
+           -- The result is checked against its type, which also gives Bytes
+           -- (a Vec<u8> natively) its own representation.
+           , if result == C.scalarType "Unit" then line "Ok(ls::Value::Unit)"
+             else E.call "schema.validate_with_context" [line "ls::IntoValue::into_value(native_result)", line "&" <> resultRef, line width, line "ctx"] ])))) (C.abilityOperations a)
 
 -- The user-owned production handler of each ability, in the unit's adapter
 -- module: <Ability>Handler::default() is what the tests use.

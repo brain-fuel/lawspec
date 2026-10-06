@@ -1,0 +1,7 @@
+expect: a fingerprint is 8 bytes
+@@ src/example/crypto.rs
+<<<<<<<
+    hash.sha3(value0).value[..8].to_vec()
+=======
+    hash.sha3(value0).value[..7].to_vec()
+>>>>>>>

@@ -31,7 +31,7 @@ export const setup = {
                        "go": "Use Go 1.25+ and go get pgregory.net/rapid@v1.2.0 github.com/cloudflare/circl@v1.6.5 (lawspec.crypto's default handlers), then go mod download.",
                        "haskell": "Use Stack with lts-24.58, extra-deps crypton-1.1.5, ram-0.22.1, mlkem-0.2.3.0 and mldsa-0.1.1.0 (lawspec.crypto's default handlers; with directory and time as dependencies), and test dependencies hspec, hedgehog, hspec-hedgehog, hspec-discover, and a test/Spec.hs using hspec-discover. Run stack build --test --no-run-tests.",
                        "kotlin": "Use JDK 25, Gradle 9.3.0, Kotlin plugin 2.3.21, Bouncy Castle bcprov-jdk18on 1.86 (lawspec.crypto's default handlers), JVM target 25, Kotest 5.9.1 (runner, assertions, property), and useJUnitPlatform(). Run gradle testClasses.",
-                       "rust": "Use Rust 1.85+ with edition 2024, Proptest 1.11.0, num-bigint 0.4.8, num-rational 0.4.2, num-complex 0.4.6, and num-traits 0.2.19. Run cargo test."
+                       "rust": "Use Rust 1.85+ with edition 2024, Proptest 1.11.0, num-bigint 0.4.8, num-rational 0.4.2, num-complex 0.4.6, num-traits 0.2.19, and for lawspec.crypto's default handlers sha3 0.12.0, shake 0.1.0, ml-kem 0.3.2, ml-dsa 0.1.1, slh-dsa 0.2.0-rc.5, aes-gcm 0.11.1 and getrandom 0.4.3. Run cargo test."
                      };
 
 // Each target's build files in the readable and the compact (minified) layout.
@@ -103,11 +103,11 @@ const scaffolds = {
                     "rust": {
                       "readable": {
                         "src/lib.rs": "// Application library. LawSpec maintains the included module declarations.\ninclude!(\"lawspec_modules.rs\");\n",
-                        "Cargo.toml": "[package]\nname = \"lawspec-example\"\nversion = \"0.1.0\"\nedition = \"2024\"\nrust-version = \"1.85\"\npublish = false\n\n[dependencies]\nnum-bigint = \"=0.4.8\"\nnum-rational = \"=0.4.2\"\nnum-complex = \"=0.4.6\"\nnum-traits = \"=0.2.19\"\n\n[dev-dependencies]\nproptest = \"=1.11.0\"\n"
+                        "Cargo.toml": "[package]\nname = \"lawspec-example\"\nversion = \"0.1.0\"\nedition = \"2024\"\nrust-version = \"1.85\"\npublish = false\n\n[dependencies]\nnum-bigint = \"=0.4.8\"\nnum-rational = \"=0.4.2\"\nnum-complex = \"=0.4.6\"\nnum-traits = \"=0.2.19\"\n# lawspec.crypto's default handlers\nsha3 = \"=0.12.0\"\nshake = \"=0.1.0\"\nml-kem = \"=0.3.2\"\nml-dsa = { version = \"=0.1.1\", default-features = false, features = [\"alloc\"] }\nslh-dsa = \"=0.2.0-rc.5\"\naes-gcm = \"=0.11.1\"\ngetrandom = \"=0.4.3\"\n\n[dev-dependencies]\nproptest = \"=1.11.0\"\n"
                       },
                       "compact": {
                         "src/lib.rs": "// Application library. LawSpec maintains the included module declarations.\ninclude!(\"lawspec_modules.rs\");\n",
-                        "Cargo.toml": "[package]\nname = \"lawspec-example\"\nversion = \"0.1.0\"\nedition = \"2024\"\nrust-version = \"1.85\"\npublish = false\n\n[dependencies]\nnum-bigint = \"=0.4.8\"\nnum-rational = \"=0.4.2\"\nnum-complex = \"=0.4.6\"\nnum-traits = \"=0.2.19\"\n\n[dev-dependencies]\nproptest = \"=1.11.0\"\n"
+                        "Cargo.toml": "[package]\nname = \"lawspec-example\"\nversion = \"0.1.0\"\nedition = \"2024\"\nrust-version = \"1.85\"\npublish = false\n\n[dependencies]\nnum-bigint = \"=0.4.8\"\nnum-rational = \"=0.4.2\"\nnum-complex = \"=0.4.6\"\nnum-traits = \"=0.2.19\"\n# lawspec.crypto's default handlers\nsha3 = \"=0.12.0\"\nshake = \"=0.1.0\"\nml-kem = \"=0.3.2\"\nml-dsa = { version = \"=0.1.1\", default-features = false, features = [\"alloc\"] }\nslh-dsa = \"=0.2.0-rc.5\"\naes-gcm = \"=0.11.1\"\ngetrandom = \"=0.4.3\"\n\n[dev-dependencies]\nproptest = \"=1.11.0\"\n"
                       }
                     }
                   };

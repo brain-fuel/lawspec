@@ -1,0 +1,10 @@
+expect: a charge is logged once
+@@ src/example/builtins.rs
+<<<<<<<
+        log.logMessage(crate::lawspec_data::LogLevel::Info, format!("charged {value0}"));
+        true
+=======
+        log.logMessage(crate::lawspec_data::LogLevel::Info, format!("charged {value0}"));
+        log.logMessage(crate::lawspec_data::LogLevel::Info, format!("charged again {value0}"));
+        true
+>>>>>>>

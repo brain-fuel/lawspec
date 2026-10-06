@@ -196,7 +196,8 @@ emitRustDefinitions layout bits declarations units = do
       resultType <- Native.rustDataType declarations result
       resultRef <- E.reference result
       let values = [D.text ("value" ++ show i) | i <- [0 .. length args - 1]]
-          handlers = [ (ability, lowerFirst (interfaceName a)) | ability <- declarationUses declaration, not (isFail ability)
+          -- A handler's parameter is named for its ability; Async's is r#async.
+          handlers = [ (ability, rawKeyword (lowerFirst (interfaceName a))) | ability <- declarationUses declaration, not (isFail ability)
                      , Just (_, a) <- [findAbility units ability] ]
           parameters = D.text "ctx: &mut ls::Context" :
             [D.text (name ++ ": std::sync::Arc<dyn crate::" ++ abilityTrait units ability ++ ">") | (ability, name) <- handlers] ++
@@ -283,3 +284,9 @@ emitRustDefinitions layout bits declarations units = do
           (filter ((== Id name) . dataId) declarations))
       Arrow a b -> nativeMachine seen a || nativeMachine seen b
       _ -> False
+
+-- A Rust keyword used as a name, as a raw identifier.
+rawKeyword :: String -> String
+rawKeyword name
+  | name `elem` words "as async await break const continue dyn else enum extern false fn for if impl in let loop match mod move mut pub ref return static struct trait true type unsafe use where while abstract become box do final macro override priv typeof unsized virtual yield try gen union" = "r#" ++ name
+  | otherwise = name

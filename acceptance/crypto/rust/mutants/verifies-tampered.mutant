@@ -1,0 +1,10 @@
+expect: a changed message fails to verify [native]
+@@ src/keys.rs
+<<<<<<<
+    fn verify(&self, value0: VerifyingKey, value1: Vec<u8>, value2: SignatureBytes) -> bool {
+        self.inner.verify(value0, value1, value2)
+=======
+    fn verify(&self, value0: VerifyingKey, value1: Vec<u8>, value2: SignatureBytes) -> bool {
+        let tampered = !value1.is_empty();
+        self.inner.verify(value0, value1, value2) || tampered
+>>>>>>>

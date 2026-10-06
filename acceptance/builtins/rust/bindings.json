@@ -1,0 +1,6 @@
+{
+  "rustCrate": "lawspec_example",
+  "handlers": [
+    {"ability": "lawspec.time::Clock", "native": ["crate", "clocks", "steady_clock"]}
+  ]
+}

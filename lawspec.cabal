@@ -82,6 +82,14 @@ extra-source-files:
     runtime/defaults/python/randomness.py
     runtime/defaults/python/test_crypto_vectors.py
     runtime/defaults/python/time.py
+    runtime/defaults/rust/concurrent.rs
+    runtime/defaults/rust/crypto.rs
+    runtime/defaults/rust/crypto_primitives.rs
+    runtime/defaults/rust/crypto_vectors.rs
+    runtime/defaults/rust/host.rs
+    runtime/defaults/rust/logging.rs
+    runtime/defaults/rust/randomness.rs
+    runtime/defaults/rust/time.rs
     runtime/defaults/typescript/concurrent.ts
     runtime/defaults/typescript/crypto.ts
     runtime/defaults/typescript/crypto_vectors.ts
