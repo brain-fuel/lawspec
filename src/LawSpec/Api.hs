@@ -35,7 +35,7 @@ dispatch bytes = withCacheDirectory cacheDirectory $ encode $ versioned $ case e
           "check" -> result []
           "expand" -> result []
           "planGeneration" -> either failure (withTests (testManifest target testDir core) . result)
-            (plan >>= emitPlanWithNativeOptions minify target sourceDir testDir bindings)
+            ((++ networkArtifacts native) <$> (plan >>= emitPlanWithNativeOptions minify target sourceDir testDir bindings))
           _ -> failure [Diagnostic "request" ("unknown method: " ++ method) Nothing]
 
   where

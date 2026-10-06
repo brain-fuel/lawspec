@@ -35,6 +35,7 @@ import LawSpec.NativeBinding
 import LawSpec.NativeRequest (BindingPlan(..))
 import LawSpec.Scalar (Scalar(..), prettyScalar)
 import LawSpec.Builtins (defaultedUnits, defaultHandlerReason)
+import LawSpec.Temporal (isBudgetBinder)
 import LawSpec.Testing (PlannedProperty(..), lawPlanner)
 
 -- Laws first, then contracts, constructions and adapters. A law over checked
@@ -83,6 +84,8 @@ dischargeEvidence program = do
         every tuples = "all " ++ show (length tuples) ++ " inputs"
     case plan p of
       Left message -> pure (obligation Assumed ("not executable, so taken on trust: " ++ message))
+      Right _ | budgeted p -> pure (obligation Measured
+            "a performance budget: the generated tests time it on the real clock, so it is measured, never proved")
       Right planned
         | closed, Right () <- proves program definitions p -> pure (obligation Proved
             "proved statically from its input refinements and the definitions it calls")
@@ -370,3 +373,11 @@ showValue (PresenceValue _ (Just v)) = showValue v
 
 constructorLabel :: Id -> String
 constructorLabel = reverse . takeWhile (/= ':') . reverse . idText
+
+-- Whether a law holds a performance budget (LawSpec.Temporal).
+budgeted :: Property -> Bool
+budgeted p = any measures (propertyExpressions p)
+  where
+    measures e = case expressionNode e of
+      Let b _ _ | isBudgetBinder (binderName b) -> True
+      _ -> any measures (children e)

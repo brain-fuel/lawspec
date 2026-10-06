@@ -131,6 +131,10 @@ handledBy name = case splitAt (length ("prelude.handle:" :: String)) name of
   _ -> Nothing
 
 -- The built-in failure ability: `fails with E` is `uses Fail E`.
+-- The built-in Async ability (lawspec.concurrent), which `async` means.
+asyncAbilityName :: String
+asyncAbilityName = "Async"
+
 failAbilityName :: String
 failAbilityName = "Fail"
 

@@ -12,23 +12,28 @@
 -- changes, and a law's work can be keyed by what the law reaches rather than
 -- by the whole program.
 module LawSpec.Dependencies
-  ( Graph, Ref(..), dependencyGraph, references, closure, nodeDigest
+  ( Graph, Ref(..), dependencyGraph, references, closure, nodeDigest, contentHash
   , lawReferences, unitReferences, reachableData, reachableDefinitions, keyOf
   ) where
 
 import qualified Data.Graph as G
 import Data.List (sort)
 import qualified Data.Map.Strict as M
+import qualified Data.Map.Lazy as Lazy
 import Data.Maybe (mapMaybe)
 import qualified Data.Set as S
 import LawSpec.Core
 import LawSpec.Digest
+import LawSpec.Sha3 (sha3_256String)
 
 data Ref = TypeNode Id | DeclarationNode Id deriving (Eq, Ord, Show)
 
 data Graph = Graph
   { graphEdges :: M.Map Ref [Ref]
   , graphDigests :: M.Map Ref Digest
+  -- The same Merkle structure under SHA3-256, computed only where asked:
+  -- the content hash a remote definition is named by between nodes.
+  , graphContentHashes :: M.Map Ref String
   , graphData :: M.Map Id DataDeclaration
   , graphDefinitions :: M.Map Id Definition
   , graphOwners :: M.Map Id Id
@@ -38,7 +43,7 @@ data Graph = Graph
   }
 
 dependencyGraph :: [DataDeclaration] -> [Unit] -> Graph
-dependencyGraph dataDeclarations units = Graph edges digests dataTable definitionTable owners handlerTable
+dependencyGraph dataDeclarations units = Graph edges digests hashes dataTable definitionTable owners handlerTable
   where
     handlerTable = M.fromList [(handlerId h, map snd (handlerClauses h)) | u <- units, h <- unitHandlers u]
     dataTable = M.fromList [(dataId d, d) | d <- dataDeclarations]
@@ -67,6 +72,18 @@ dependencyGraph dataDeclarations units = Graph edges digests dataTable definitio
           groupDigest = digestString (show ( [ (m, M.findWithDefault "" m contents) | m <- members ]
                                            , [ (dep, M.lookup dep done) | dep <- outside ] ))
       in foldr (\m -> M.insert m groupDigest) done members
+    hashes = foldl addHashed Lazy.empty groups
+    addHashed done group =
+      let members = sort (G.flattenSCC group)
+          inside = S.fromList members
+          outside = S.toList (S.fromList [ dep | m <- members, dep <- M.findWithDefault [] m edges, not (S.member dep inside) ])
+          groupHash = sha3_256String (show ( [ (m, M.findWithDefault "" m contents) | m <- members ]
+                                           , [ (dep, Lazy.lookup dep done) | dep <- outside ] ))
+      in foldr (\m -> Lazy.insert m groupHash) done members
+
+-- A node's SHA3-256 Merkle hash, in hexadecimal.
+contentHash :: Graph -> Ref -> Maybe String
+contentHash graph node = Lazy.lookup node (graphContentHashes graph)
 
 nodeDigest :: Graph -> Ref -> Maybe Digest
 nodeDigest graph node = M.lookup node (graphDigests graph)

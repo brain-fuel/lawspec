@@ -16,7 +16,7 @@ import LawSpec.Core.Machine (Machine(..), Supervisor(..), Consistency(..))
 import qualified LawSpec.Core.Program as P
 
 -- Strongest first.
-data Status = Proved | ExhaustivelyChecked | PropertyTested | RuntimeChecked | DefaultHandler | Assumed
+data Status = Proved | ExhaustivelyChecked | PropertyTested | Measured | RuntimeChecked | DefaultHandler | Assumed
   deriving (Eq, Ord, Show, Enum, Bounded)
 
 statuses :: [Status]
@@ -26,6 +26,8 @@ statusName :: Status -> String
 statusName Proved = "proved"
 statusName ExhaustivelyChecked = "exhaustively-checked"
 statusName PropertyTested = "property-tested"
+-- A performance budget: measured on the real clock, never proved.
+statusName Measured = "measured"
 statusName RuntimeChecked = "runtime-checked"
 statusName DefaultHandler = "default-handler"
 statusName Assumed = "assumed"

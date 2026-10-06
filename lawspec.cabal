@@ -385,12 +385,15 @@ library
       LawSpec.Sessions.Python
       LawSpec.Sessions.Rust
       LawSpec.Sessions.Web
+      LawSpec.Sha3
       LawSpec.SpecializeDefinitions
       LawSpec.StatefulModel
       LawSpec.TargetNames
+      LawSpec.Temporal
       LawSpec.Testing
       LawSpec.TestManifest
       LawSpec.Time
+      LawSpec.Unification
       LawSpec.WebData
       LawSpec.WebDefinitions
       LawSpec.WebExpr
@@ -537,6 +540,7 @@ test-suite lawspec-test
       DefinitionPredicateSpec
       DefinitionSchemeSpec
       DischargeSpec
+      DistributionSpec
       DocumentSpec
       DomainModelSpec
       FlowSpec
@@ -558,9 +562,11 @@ test-suite lawspec-test
       StatefulModelSpec
       StructuralSpec
       TargetNamesSpec
+      TemporalSpec
       TestManifestSpec
       TimeSpec
       TotalSpec
+      UnificationSpec
       Paths_lawspec
   hs-source-dirs:
       test

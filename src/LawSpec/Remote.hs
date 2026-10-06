@@ -12,7 +12,6 @@ import Data.List (intercalate)
 import qualified LawSpec.Core as C
 import LawSpec.Common (Artifact(..))
 import qualified LawSpec.Dependencies as D
-import LawSpec.Digest (digestHex)
 import LawSpec.MachineSpec (describe)
 import LawSpec.Testing (Plan(..), PlannedUnit(..))
 
@@ -24,6 +23,11 @@ data Remote = Remote
   , remoteArguments :: [String]
   , remoteResult :: String
   }
+
+-- A content hash names its algorithm, so nodes never compare hashes of two
+-- kinds: sha3-256: then the SHA3-256 Merkle hash in hexadecimal.
+contentName :: String -> String
+contentName h = "sha3-256:" ++ h
 
 -- The data types the descriptors use, and each definition that can be
 -- evaluated remotely. Orchestrations (which call adapters) and definitions
@@ -44,8 +48,8 @@ remoteManifest plan = (map snd (reverse table), reverse remotes)
             (ds, t') <- foldM (\(xs, tt) ty -> (\(x, tt') -> (xs ++ [x], tt')) <$> describe bits datas tt ty) ([], t) args
             (r, t'') <- describe bits datas t' result
             pure (ds, r, t'')
-      in case (described, D.nodeDigest graph (D.DeclarationNode identity)) of
-        (Right (ds, r, t'), Just h) -> (t', Remote identity (C.idText identity) (digestHex h) ds r : acc)
+      in case (described, D.contentHash graph (D.DeclarationNode identity)) of
+        (Right (ds, r, t'), Just h) -> (t', Remote identity (C.idText identity) (contentName h) ds r : acc)
         _ -> (t, acc)
 
 -- The target's lawspec_remote module, given how the target calls each
