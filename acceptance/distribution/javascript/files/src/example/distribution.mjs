@@ -2,9 +2,7 @@
 // in-memory, TCP and HTTP transports.
 import * as data from '.././lawspec_data.mjs';
 import * as ls from '../lawspec_runtime.mjs';
-
-// handshakeAgrees is synchronous; the network's cryptography loads once here.
-await ls.loadNetworkCrypto();
+import * as secure from '../lawspec_network.mjs';
 
 export function encoded(value0, value1, value2, value3) {
   return ls.wireEncoded(value0, value1, value2, value3);
@@ -175,5 +173,5 @@ export function handshakeAgrees(value0) {
   const fields = value0.split(' ');
   if (fields.length !== 13) return false;
   const [a, b, c, d, e, f, g, h, i, j, k, l, m] = fields;
-  return ls.handshakeVector(a, b, c, d, e, f, g, h, i, j, k, l, m);
+  return secure.handshakeVector(a, b, c, d, e, f, g, h, i, j, k, l, m);
 }

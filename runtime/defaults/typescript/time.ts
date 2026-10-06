@@ -3,6 +3,7 @@
 // going back by a monotonic clock. An Instant is microseconds since
 // 1970-01-01T00:00:00Z.
 import * as data from '../lawspec_data.js';
+import * as ls from '../lawspec_runtime.js';
 import type * as abilities from '../lawspec_abilities/lawspec/time.js';
 
 const wall = BigInt(Date.now()) * 1000n;
@@ -17,8 +18,6 @@ const blocker = new Int32Array(new SharedArrayBuffer(4));
 
 /** The system clock. now never goes back; sleep blocks this thread. */
 export class ClockHandler implements abilities.Clock {
-  /** Workflows time out in real time under it (the runtime's AbilityClock). */
-  readonly realTime = true;
   now(): @@Instant@@ {
     return new @@Instant@@(nowMicros());
   }
@@ -28,4 +27,17 @@ export class ClockHandler implements abilities.Clock {
       Atomics.wait(blocker, 0, 0, Math.max(Number(left) / 1000, 0));
     }
   }
+}
+
+/**
+ * Lets the runtime read any Clock handler (this one, the virtual clock, a
+ * recording): workflows and mailboxes then wait on the clock a law installs.
+ * Only this handler is real time.
+ */
+export function registerClock(): void {
+  ls.registerClockAbility(
+    (handler: abilities.Clock): bigint => handler.now().value,
+    (handler: abilities.Clock, micros: bigint): void => handler.sleep(new @@Duration@@(micros)),
+    (handler: abilities.Clock): boolean => handler instanceof ClockHandler,
+  );
 }

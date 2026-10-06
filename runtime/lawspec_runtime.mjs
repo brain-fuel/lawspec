@@ -1262,68 +1262,49 @@ let defaultRuntime = null;
 const CLOCK_KEY = 'lawspec.time::ability::Clock';
 const CLOCK_VIEW = '\0lawspec.workflow.clock';
 
-// The native Duration a Clock handler's sleep takes: the data module's
-// Duration class, loaded beside the runtime when the program has one (a
-// spec handler, such as the virtual clock, accepts only that class); else an
-// object with its value, which the default handler reads.
-let durationClass = null;
-let durationLoad = null;
-function loadDurationClass() {
-  if (durationLoad === null) {
-    try {
-      const extension = String(import.meta.url).endsWith('.mjs') ? '.mjs' : '.js';
-      durationLoad = import('./lawspec_data' + extension).then((module) => {
-        if (typeof module.Duration === 'function') durationClass = module.Duration;
-      }, () => {});
-    } catch {
-      durationLoad = Promise.resolve();
-    }
-  }
-  return durationLoad;
-}
-loadDurationClass();
+// How the runtime reads a Clock handler, registered by lawspec.time's
+// registerClock (the generated tests of laws that install a Clock handler
+// call it): now(handler) gives microseconds, sleep(handler, micros) waits,
+// and realTime(handler) says whether the handler is the default real clock.
+let clockReader = null;
 
-/** A Clock handler's native Duration of micros microseconds. */
-export function nativeDuration(micros) {
-  const value = BigInt(micros);
-  return durationClass !== null ? new durationClass(value) : {value};
+export function registerClockAbility(now, sleep, realTime) {
+  clockReader = {now, sleep, realTime};
 }
 
-/** Whether a Clock handler is real time (the default handler marks itself). */
-export function realTimeClock(handler) {
-  return handler !== null && handler !== undefined && handler.realTime === true;
+/** The handler read as a clock, or null (no handler, or no reader registered). */
+function abilityClock(handler) {
+  return clockReader === null || handler === null || handler === undefined ? null : new AbilityClock(handler, clockReader);
 }
 
 /**
  * A workflow runtime's clock read through the Clock ability: the handler a
- * law installs (the virtual clock, or the default real one). A handler that
- * is not real time (realTime === true) is virtual: waits pass at once, and
- * timeouts and hedges count only the time it reports.
+ * law installs (the virtual clock, or the default real one). Every handler
+ * but the default real clock is virtual: waits pass at once, and timeouts
+ * and hedges count only the time it reports.
  */
 export class AbilityClock {
   handler;
   virtual;
-  constructor(handler) {
+  #reader;
+  constructor(handler, reader) {
     this.handler = handler;
-    this.virtual = !realTimeClock(handler);
+    this.#reader = reader;
+    this.virtual = !reader.realTime(handler);
   }
   now() {
-    const instant = this.handler.now();
-    if (instant instanceof DataValue) return BigInt(instant.fields[0]);
-    if (instant !== null && typeof instant === 'object' && 'value' in instant) return BigInt(instant.value);
-    return BigInt(instant);
+    return BigInt(this.#reader.now(this.handler));
   }
   sleep(micros) {
-    this.handler.sleep(nativeDuration(micros));
+    this.#reader.sleep(this.handler, BigInt(micros));
   }
-  /** Waits without blocking on a real-time handler; at once on a virtual one. */
-  async sleepAsync(micros) {
+  /** Waits without blocking on the real clock; at once on a virtual one. */
+  sleepAsync(micros) {
     if (this.virtual) {
-      await loadDurationClass();
       this.sleep(micros);
-      return;
+      return Promise.resolve();
     }
-    await new Promise((resolve) => setTimeout(resolve, Number(micros) / 1000));
+    return new Promise((resolve) => setTimeout(resolve, Number(micros) / 1000));
   }
 }
 
@@ -1344,13 +1325,13 @@ export function workflowRuntime(symbols) {
   // the runtime's state and trace, and is the same object for the same
   // context and handler.
   const table = symbols instanceof Map ? symbols.get(HANDLERS) : undefined;
-  const clock = table === undefined ? undefined : table.get(CLOCK_KEY);
-  if (clock === undefined || clock === null) return defaultRuntime;
+  const clock = abilityClock(table === undefined ? undefined : table.get(CLOCK_KEY));
+  if (clock === null) return defaultRuntime;
   let view = symbols.get(CLOCK_VIEW);
-  if (view === undefined || view[0] !== clock || view[1] !== defaultRuntime) {
+  if (view === undefined || view[0] !== clock.handler || view[1] !== defaultRuntime) {
     const under = Object.assign(Object.create(Object.getPrototypeOf(defaultRuntime)), defaultRuntime);
-    under.clock = new AbilityClock(clock);
-    view = [clock, defaultRuntime, under];
+    under.clock = clock;
+    view = [clock.handler, defaultRuntime, under];
     symbols.set(CLOCK_VIEW, view);
   }
   return view[2];
@@ -2555,16 +2536,17 @@ export class Mailbox {
   /**
    * The Mailbox ability's receive ... within d: resolves to the next
    * message, or null when none arrives within micros microseconds. On a
-   * virtual clock (a Clock handler that is not real time) it waits no real
+   * virtual clock (any Clock handler but the default real one) it waits no real
    * time: it takes a message already sent, or lets the time pass on that
    * clock and gives null. Rejects with ActorStopped once closed and empty.
+   * Which handlers are virtual, lawspec.time's registerClock tells.
    */
   async receiveWithin(micros, clock = null) {
-    if (clock !== null && clock !== undefined && !realTimeClock(clock)) {
+    const read = abilityClock(clock);
+    if (read !== null && read.virtual) {
       if (this.#items.length > 0) return this.#items.shift();
       if (this.#closed) throw new ActorStopped('the mailbox is closed');
-      await loadDurationClass();
-      clock.sleep(nativeDuration(micros));
+      read.sleep(micros);
       return null;
     }
     const wait = Math.max(0, Number(micros) / 1000);
@@ -3375,7 +3357,7 @@ class NetScenarioChannel {
   constructor(network, name, steps, values, registry) {
     this.name = name;
     this.registry = registry;
-    this.nodes = [0, 1].map((side) => new Node(network.transport(`${name}-${side}`)));
+    this.nodes = [0, 1].map((side) => new Node(network.insecureTransportForTests(`${name}-${side}`)));
     const wire = (sends, d) => [sends, d[0] === 'end' ? ['text'] : d];
     this.ends = [this.nodes[0].listen(name, steps.map(([s, d]) => wire(s, d)), values)];
     this.ends.push(this.nodes[1].dial(`${this.nodes[0].address}/${name}`, steps.map(([s, d]) => wire(!s, d)), values));
@@ -3435,8 +3417,8 @@ class ScenarioMailbox {
     this.expected = expected;
     this.registry = registry;
     if (network !== null) {
-      const owner = new Node(network.transport(`${name}-owner`));
-      const senders = new Node(network.transport(`${name}-senders`));
+      const owner = new Node(network.insecureTransportForTests(`${name}-owner`));
+      const senders = new Node(network.insecureTransportForTests(`${name}-senders`));
       this.nodes = [owner, senders];
       const d = descriptor[0] === 'end' ? ['text'] : descriptor;
       this.inbox = owner.mailbox(name, d, values);
@@ -4539,75 +4521,40 @@ export class HttpTransport extends Transport {
   }
 }
 
-// The secure network handler (docs/reference/language/distribution.md,
-// "Security"). Every node has an ML-DSA-65 identity (FIPS 204). Before two
-// nodes exchange frames, the one that sends first runs a handshake: it sends
-// a signed hello with a fresh ML-KEM-768 encapsulation key (FIPS 203), the
-// other answers with a signed welcome carrying the ciphertext, and both derive
-// an AES-256-GCM key (SP 800-38D) with SHAKE256 (FIPS 202). Frames then cross
-// sealed. Records are bytes, so every transport carries them, and the format
-// is the same on every target.
-//
-// ML-KEM and ML-DSA come from @noble/post-quantum, SHA3, SHAKE and AES-GCM
-// from node:crypto, as lawspec.crypto's default handlers have them. They are
-// loaded when the first secure node is made (loadNetworkCrypto), so programs
-// without nodes do not need them.
-
-const RECORD = Uint8Array.of(0x4C, 0x53, 0x01);
-const HELLO = 1, WELCOME = 2, DATA = 3;
-const LABEL_HELLO = UTF8.encode('lawspec-handshake-v1-hello');
-const LABEL_WELCOME = UTF8.encode('lawspec-handshake-v1-welcome');
-const LABEL_KEY = UTF8.encode('lawspec-session-v1');
-const LABEL_FRAME = UTF8.encode('lawspec-frame-v1');
-const HANDSHAKE_RETRY = 100;
-const HANDSHAKE_DEADLINE = 5000;
-const QUEUE_LIMIT = 4096;
-const NO_CONTEXT = new Uint8Array(0);
-
-let networkCryptoLoad = null;
-let networkCryptoLoaded = null;
+// The secure network handler lives in lawspec_network, which the compiler
+// writes beside this runtime when a program imports lawspec.network: it needs
+// the post-quantum library, which programs without nodes do without. A node loads
+// it when it is made (or registerSecureNetwork names a provider).
+let secureProvider = null;
+let secureProviderLoad = null;
 
 /**
- * Loads what a secure node needs: @noble/post-quantum (npm install
- * @noble/post-quantum@0.7.1) and node:crypto. A Node loads them itself;
- * await this before handshakeVector or a NodeIdentity's keys.
+ * provider.layer(node, identity, trusted) makes a node's secure layer:
+ * send(peer, frame), a promise, and receive(record), the frame a record
+ * carries or null; it may have identity and close().
  */
-export function loadNetworkCrypto() {
-  if (networkCryptoLoad === null) {
-    networkCryptoLoad = Promise.all([
-      import('node:crypto'),
-      import('@noble/post-quantum/ml-kem.js'),
-      import('@noble/post-quantum/ml-dsa.js'),
-    ]).then(([crypto, kem, dsa]) => {
-      networkCryptoLoaded = {crypto, mlKem: kem.ml_kem768, mlDsa: dsa.ml_dsa65};
-      return networkCryptoLoaded;
+export function registerSecureNetwork(provider) {
+  secureProvider = provider;
+}
+
+function secureNetwork() {
+  if (secureProvider !== null) return Promise.resolve(secureProvider);
+  if (secureProviderLoad === null) {
+    const extension = String(import.meta.url).endsWith('.mjs') ? '.mjs' : '.js';
+    secureProviderLoad = import('./lawspec_network' + extension).then((module) => {
+      if (secureProvider === null) secureProvider = module;
+      return secureProvider;
     }, (error) => {
-      networkCryptoLoad = null;
-      throw new Error('a secure node needs @noble/post-quantum: npm install @noble/post-quantum@0.7.1', {cause: error});
+      secureProviderLoad = null;
+      const missing = String(error?.message ?? '').split(' imported from')[0];
+      if (error?.code === 'ERR_MODULE_NOT_FOUND' && missing.includes('lawspec_network')) {
+        throw new Error('a node needs the secure network handler: add `import lawspec.network` ' +
+          'to a unit of the program, so lawspec_network is generated', {cause: error});
+      }
+      throw error;
     });
   }
-  return networkCryptoLoad;
-}
-
-function networkCrypto() {
-  if (networkCryptoLoaded === null) throw new Error('the network cryptography is not loaded: await ls.loadNetworkCrypto() first');
-  return networkCryptoLoaded;
-}
-
-const asBytes = (data) => (data instanceof Uint8Array && data.constructor === Uint8Array ? data : new Uint8Array(data));
-
-function sha3(data) {
-  return asBytes(networkCrypto().crypto.createHash('sha3-256').update(data).digest());
-}
-
-function shake(data, length) {
-  return asBytes(networkCrypto().crypto.createHash('shake256', {outputLength: length}).update(data).digest());
-}
-
-function secureRandom(n) {
-  const out = new Uint8Array(n);
-  globalThis.crypto.getRandomValues(out);
-  return out;
+  return secureProviderLoad;
 }
 
 /**
@@ -4615,403 +4562,9 @@ function secureRandom(n) {
  * as 64 hexadecimal digits, as SecureRandom's secureToken gives.
  */
 export function secureToken() {
-  return hex(secureRandom(32));
-}
-
-function fromHex(text) {
-  if (text.length % 2 !== 0 || /[^0-9a-fA-F]/.test(text)) throw new Error('not hexadecimal: ' + text);
-  const out = new Uint8Array(text.length / 2);
-  for (let i = 0; i < out.length; i++) out[i] = parseInt(text.slice(2 * i, 2 * i + 2), 16);
-  return out;
-}
-
-function equalBytes(a, b) {
-  if (a.length !== b.length) return false;
-  let difference = 0;
-  for (let i = 0; i < a.length; i++) difference |= a[i] ^ b[i];
-  return difference === 0;
-}
-
-/** A record field: its length (LEB128), then its bytes. */
-function w(data) {
-  const out = [];
-  putVarint(out, BigInt(data.length));
-  return concatBytes(Uint8Array.from(out), data);
-}
-
-function readFields(data, pos, count) {
-  const fields = [];
-  for (let i = 0; i < count; i++) {
-    let n;
-    [n, pos] = getVarint(data, pos);
-    if (BigInt(pos) + n > BigInt(data.length)) throw new WireError('a record field runs past its end');
-    fields.push(data.slice(pos, pos + Number(n)));
-    pos += Number(n);
-  }
-  return [fields, pos];
-}
-
-/** A node's long-term ML-DSA-65 identity, kept as its 32-byte seed. */
-export class NodeIdentity {
-  seed;
-  #keys = null;
-  constructor(seed) {
-    const bytes = Uint8Array.from(seed);
-    if (bytes.length !== 32) throw new Error('a node identity is a 32-byte ML-DSA-65 seed');
-    this.seed = bytes;
-  }
-  #derived() {
-    if (this.#keys === null) this.#keys = networkCrypto().mlDsa.keygen(this.seed.slice());
-    return this.#keys;
-  }
-  static generate() {
-    return new NodeIdentity(secureRandom(32));
-  }
-  /** The identity lawspec.json binds (lawspec-network.conf), or a fresh one. */
-  static async configured() {
-    await loadNetworkCrypto();
-    const {identity} = await networkConfig();
-    return identity ?? NodeIdentity.generate();
-  }
-  get verifyingKey() {
-    return this.#derived().publicKey;
-  }
-  /** SHA3-256 of the verifying key, in hexadecimal. */
-  get fingerprint() {
-    return hex(sha3(this.verifyingKey));
-  }
-  sign(message) {
-    return networkCrypto().mlDsa.sign(message, this.#derived().secretKey.slice(), {context: NO_CONTEXT});
-  }
-}
-
-function verifySigned(verifyingKey, message, signature) {
-  try {
-    return networkCrypto().mlDsa.verify(signature, message, verifyingKey, {context: NO_CONTEXT}) === true;
-  } catch {
-    return false;
-  }
-}
-
-/**
- * lawspec-network.conf, which the compiler writes from lawspec.json's
- * network binding: the file LAWSPEC_NETWORK_CONF names, or the first found
- * in the working directory and the directories above it. Lines `identity
- * <file>` (a hex seed) and `trusted <file>` (hex fingerprints, one per
- * line), relative to it; `#` begins a comment. Resolves to {identity,
- * trusted}, each null when not given.
- */
-async function networkConfig() {
-  const none = {identity: null, trusted: null};
-  if (typeof process === 'undefined' || !process.versions?.node) return none;
-  const fs = await import('node:fs/promises');
-  const path = await import('node:path');
-  const exists = async (file) => {
-    try {
-      await fs.access(file);
-      return true;
-    } catch {
-      return false;
-    }
-  };
-  let conf = process.env.LAWSPEC_NETWORK_CONF;
-  if (conf === undefined) {
-    let here = process.cwd();
-    for (;;) {
-      const candidate = path.join(here, 'lawspec-network.conf');
-      if (await exists(candidate)) {
-        conf = candidate;
-        break;
-      }
-      const parent = path.dirname(here);
-      if (parent === here) return none;
-      here = parent;
-    }
-  }
-  if (!(await exists(conf))) return none;
-  const base = path.dirname(path.resolve(conf));
-  let identity = null, trusted = null;
-  for (const line of (await fs.readFile(conf, 'utf8')).split('\n')) {
-    const trimmed = line.trim();
-    const at = trimmed.search(/\s/);
-    if (at < 0 || trimmed.startsWith('#')) continue;
-    const word = trimmed.slice(0, at), target = path.join(base, trimmed.slice(at).trim());
-    if (word === 'identity') {
-      identity = new NodeIdentity(fromHex((await fs.readFile(target, 'utf8')).trim()));
-    } else if (word === 'trusted') {
-      trusted = new Set((await fs.readFile(target, 'utf8')).split(/\s+/).filter((t) => t !== '').map((t) => t.toLowerCase()));
-    }
-  }
-  return {identity, trusted};
-}
-
-export function helloBody(session, address, verifyingKey, encapsulationKey) {
-  return concatBytes(w(session), w(UTF8.encode(address)), w(verifyingKey), w(encapsulationKey));
-}
-
-export function welcomeBody(session, address, verifyingKey, ciphertext, hello) {
-  return concatBytes(w(session), w(UTF8.encode(address)), w(verifyingKey), w(ciphertext), w(sha3(hello)));
-}
-
-/**
- * The AES-256-GCM key: SHAKE256(shared || label || SHA3(hello body) ||
- * SHA3(welcome body)), 32 bytes.
- */
-export function sessionKey(shared, hello, welcome) {
-  return shake(concatBytes(shared, LABEL_KEY, sha3(hello), sha3(welcome)), 32);
-}
-
-/** A data record: the frame sealed with key, under a fresh nonce unless one is given. */
-export function sealFrame(key, session, direction, frame, nonce = secureRandom(12)) {
-  const {crypto} = networkCrypto();
-  const cipher = crypto.createCipheriv('aes-256-gcm', key, nonce);
-  cipher.setAAD(concatBytes(LABEL_FRAME, session, Uint8Array.of(direction)));
-  const body = concatBytes(cipher.update(frame), cipher.final(), cipher.getAuthTag());
-  return concatBytes(RECORD, Uint8Array.of(DATA), w(session), Uint8Array.of(direction), w(concatBytes(nonce, body)));
-}
-
-/** The frame a data record seals, or null. */
-export function openFrame(key, record) {
-  record = asBytes(record);
-  let session, direction, sealed, end;
-  try {
-    let pos;
-    [[session], pos] = readFields(record, 4, 1);
-    if (pos >= record.length) return null;
-    direction = record[pos];
-    [[sealed], end] = readFields(record, pos + 1, 1);
-  } catch {
-    return null;
-  }
-  if (end !== record.length || sealed.length < 28) return null;
-  try {
-    const {crypto} = networkCrypto();
-    const decipher = crypto.createDecipheriv('aes-256-gcm', key, sealed.subarray(0, 12));
-    decipher.setAAD(concatBytes(LABEL_FRAME, session, Uint8Array.of(direction)));
-    decipher.setAuthTag(sealed.subarray(sealed.length - 16));
-    return concatBytes(decipher.update(sealed.subarray(12, sealed.length - 16)), decipher.final());
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Checks a handshake vector (hex fields, the addresses as text): the
- * bodies' hashes, the session key and a sealed frame, as every target must
- * compute them. Needs the network cryptography loaded (loadNetworkCrypto).
- */
-export function handshakeVector(initiatorSeed, responderSeed, kemSeed, session, initiator, responder,
-                                ciphertext, nonce, frame, helloHash, welcomeHash, key, record) {
-  const {mlKem} = networkCrypto();
-  const x = fromHex;
-  const first = new NodeIdentity(x(initiatorSeed)), second = new NodeIdentity(x(responderSeed));
-  const kem = mlKem.keygen(x(kemSeed));
-  const hello = helloBody(x(session), initiator, first.verifyingKey, kem.publicKey);
-  const welcome = welcomeBody(x(session), responder, second.verifyingKey, x(ciphertext), hello);
-  const derived = sessionKey(asBytes(mlKem.decapsulate(x(ciphertext), kem.secretKey)), hello, welcome);
-  const sealed = sealFrame(derived, x(session), 0, x(frame), x(nonce));
-  const opened = openFrame(derived, sealed);
-  return hex(sha3(hello)) === helloHash && hex(sha3(welcome)) === welcomeHash &&
-    hex(derived) === key && hex(sealed) === record && opened !== null && equalBytes(opened, x(frame));
-}
-
-class SecureSession {
-  id;
-  peer;
-  key;
-  direction;
-  confirmed;
-  constructor(id, peer, key, direction, confirmed) {
-    this.id = id;
-    this.peer = peer;
-    this.key = key;
-    // 0: this node began the handshake; 1: the peer did.
-    this.direction = direction;
-    // A session the peer began is used for sending once a frame has arrived
-    // on it, so the peer surely holds its key.
-    this.confirmed = confirmed;
-  }
-}
-
-/** Handshakes, sessions and sealed frames for one node. */
-class SecureLayer {
-  node;
-  identity;
-  trusted;
-  sessions;
-  outbound;
-  pending;
-  welcomes;
-  known;
-  ready;
-  constructor(node, identity, trusted) {
-    this.node = node;
-    this.identity = identity;
-    this.trusted = null;
-    // By session id (hexadecimal).
-    this.sessions = new Map();
-    // By peer address: the session this node began.
-    this.outbound = new Map();
-    this.pending = new Map();
-    this.welcomes = new Map();
-    // The identity first seen at each address: a later, different one is
-    // refused (trust on first use, unless trusted names them).
-    this.known = new Map();
-    this.ready = this.prepare(identity, trusted);
-    this.ready.catch(() => {});
-  }
-  async prepare(identity, trusted) {
-    await loadNetworkCrypto();
-    const config = identity === null || trusted === null ? await networkConfig() : null;
-    this.identity = identity ?? config.identity ?? NodeIdentity.generate();
-    const fingerprints = trusted ?? config.trusted;
-    this.trusted = fingerprints === null ? null : new Set([...fingerprints].map((t) => String(t).toLowerCase()));
-    // The verifying key, derived once now rather than at the first hello.
-    void this.identity.verifyingKey;
-    this.node.identity = this.identity;
-  }
-  close() {
-    for (const pending of this.pending.values()) {
-      pending.done = true;
-      clearTimeout(pending.timer);
-    }
-    this.pending.clear();
-  }
-  acceptPeer(address, verifyingKey) {
-    const fingerprint = hex(sha3(verifyingKey));
-    if (this.trusted !== null && !this.trusted.has(fingerprint)) return false;
-    if (!this.known.has(address)) this.known.set(address, fingerprint);
-    return this.known.get(address) === fingerprint;
-  }
-  async send(peer, frame) {
-    await this.ready;
-    let session = this.outbound.get(peer);
-    if (session === undefined) {
-      for (const s of this.sessions.values()) {
-        if (s.peer === peer && s.confirmed) {
-          session = s;
-          break;
-        }
-      }
-    }
-    if (session !== undefined) {
-      await this.node.transport.send(peer, sealFrame(session.key, session.id, session.direction, frame));
-      return;
-    }
-    let pending = this.pending.get(peer);
-    const start = pending === undefined;
-    if (start) {
-      pending = this.begin(peer);
-      this.pending.set(peer, pending);
-    }
-    if (pending.queue.length < QUEUE_LIMIT) pending.queue.push(frame);
-    if (!start) return;
-    try {
-      await this.node.transport.send(peer, pending.hello);
-    } catch (error) {
-      if (this.pending.get(peer) === pending) this.pending.delete(peer);
-      pending.done = true;
-      throw error;
-    }
-    this.retry(peer, pending);
-  }
-  begin(peer) {
-    const {mlKem} = networkCrypto();
-    const session = secureRandom(16);
-    const kem = mlKem.keygen(secureRandom(64));
-    const body = helloBody(session, this.node.address, this.identity.verifyingKey, kem.publicKey);
-    const signature = this.identity.sign(concatBytes(LABEL_HELLO, body));
-    return {session, kem, body, queue: [], done: false, timer: undefined,
-      hello: concatBytes(RECORD, Uint8Array.of(HELLO), body, w(signature))};
-  }
-  /** Sends the hello again every 100ms until welcomed, for up to 5s. */
-  retry(peer, pending) {
-    const giveUp = Date.now() + HANDSHAKE_DEADLINE;
-    const tick = () => {
-      if (pending.done) return;
-      if (this.node.closed || Date.now() >= giveUp) {
-        if (this.pending.get(peer) === pending) this.pending.delete(peer);
-        pending.done = true;
-        return;
-      }
-      this.node.transport.send(peer, pending.hello).catch(() => {});
-      pending.timer = setTimeout(tick, HANDSHAKE_RETRY);
-      pending.timer.unref?.();
-    };
-    if (pending.done) return;
-    pending.timer = setTimeout(tick, HANDSHAKE_RETRY);
-    pending.timer.unref?.();
-  }
-  /**
-   * The frame a record carries, or null (a handshake record, or one that
-   * fails to verify or open).
-   */
-  receive(record) {
-    record = asBytes(record);
-    if (record.length < 4 || !equalBytes(record.subarray(0, 3), RECORD)) return null;
-    try {
-      switch (record[3]) {
-        case HELLO: this.hello(record); return null;
-        case WELCOME: this.welcome(record); return null;
-        case DATA: return this.data(record);
-        default: return null;
-      }
-    } catch {
-      return null;
-    }
-  }
-  hello(record) {
-    const [[session, address, verifyingKey, encapsulationKey], pos] = readFields(record, 4, 4);
-    const [[signature], end] = readFields(record, pos, 1);
-    if (end !== record.length) return;
-    const body = record.slice(4, pos);
-    const from = STRICT_UTF8.decode(address);
-    const id = hex(session);
-    let answered = this.welcomes.get(id);
-    if (answered === undefined) {
-      if (!verifySigned(verifyingKey, concatBytes(LABEL_HELLO, body), signature)) return;
-      if (!this.acceptPeer(from, verifyingKey)) return;
-      const {mlKem} = networkCrypto();
-      const {cipherText, sharedSecret} = mlKem.encapsulate(encapsulationKey);
-      const welcome = welcomeBody(session, this.node.address, this.identity.verifyingKey, cipherText, body);
-      answered = [from, concatBytes(RECORD, Uint8Array.of(WELCOME), welcome,
-        w(this.identity.sign(concatBytes(LABEL_WELCOME, welcome))))];
-      this.welcomes.set(id, answered);
-      this.sessions.set(id, new SecureSession(session, from, sessionKey(asBytes(sharedSecret), body, welcome), 1, false));
-    }
-    this.node.transport.send(answered[0], answered[1]).catch(() => {});
-  }
-  welcome(record) {
-    const [[session, address, verifyingKey, ciphertext, helloHash], pos] = readFields(record, 4, 5);
-    const [[signature], end] = readFields(record, pos, 1);
-    if (end !== record.length) return;
-    const from = STRICT_UTF8.decode(address);
-    const pending = this.pending.get(from);
-    if (pending === undefined || pending.done || !equalBytes(pending.session, session) ||
-        !equalBytes(helloHash, sha3(pending.body))) return;
-    const body = record.slice(4, pos);
-    if (!verifySigned(verifyingKey, concatBytes(LABEL_WELCOME, body), signature)) return;
-    if (!this.acceptPeer(from, verifyingKey)) return;
-    const {mlKem} = networkCrypto();
-    const key = sessionKey(asBytes(mlKem.decapsulate(ciphertext, pending.kem.secretKey.slice())), pending.body, body);
-    const established = new SecureSession(session, from, key, 0, true);
-    this.pending.delete(from);
-    pending.done = true;
-    clearTimeout(pending.timer);
-    this.sessions.set(hex(session), established);
-    this.outbound.set(from, established);
-    for (const frame of pending.queue) {
-      this.node.transport.send(from, sealFrame(key, session, 0, frame)).catch(() => {});
-    }
-  }
-  data(record) {
-    const [[session]] = readFields(record, 4, 1);
-    const found = this.sessions.get(hex(session));
-    if (found === undefined) return null;
-    const frame = openFrame(found.key, record);
-    if (frame !== null) found.confirmed = true;
-    return frame;
-  }
+  const random = new Uint8Array(32);
+  globalThis.crypto.getRandomValues(random);
+  return hex(random);
 }
 
 class ReplySlot {
@@ -5040,6 +4593,7 @@ export class Node {
   endpoints;
   identity;
   secure;
+  securing;
   closed;
   arrivals;
   /**
@@ -5047,16 +4601,25 @@ export class Node {
    * fresh one); trusted: the fingerprints of the only peers to talk to (by
    * default any peer, each address keeping the first identity it shows). A
    * transport made for tests only (InsecureMemoryTransport) skips the
-   * handshake; no other transport can. The identity is set once the secure
-   * layer is ready (await node.ready()).
+   * handshake; no other transport can. The secure layer comes from
+   * lawspec_network (import lawspec.network); the identity is set once it is
+   * ready (await node.ready()).
    */
   constructor(transport, {identity = null, trusted = null} = {}) {
     this.transport = transport;
     this.address = transport.address;
     this.closed = false;
-    this.identity = identity;
-    this.secure = transport instanceof InsecureMemoryTransport ? null : new SecureLayer(this, identity, trusted);
-    if (this.secure === null) this.identity = null;
+    this.identity = null;
+    this.secure = null;
+    this.securing = null;
+    if (!(transport instanceof InsecureMemoryTransport)) {
+      this.securing = secureNetwork().then((provider) => {
+        this.secure = provider.layer(this, identity, trusted);
+        this.identity = this.secure.identity ?? identity;
+        if (this.closed) this.secure.close?.();
+      });
+      this.securing.catch(() => {});
+    }
     this.arrivals = Promise.resolve();
     this.entities = new Map();
     this.pending = new Map();
@@ -5070,27 +4633,28 @@ export class Node {
   }
   /** Resolves to this node's identity (null without the handshake) once it can send. */
   async ready() {
-    if (this.secure !== null) await this.secure.ready;
+    if (this.securing !== null) await this.securing;
     return this.identity;
   }
   arrive(record) {
-    if (this.secure === null) {
+    if (this.securing === null) {
       this.deliver(record);
       return;
     }
     // In order of arrival, once the secure layer is ready.
-    this.arrivals = this.arrivals.then(() => this.secure.ready).then(() => {
+    this.arrivals = this.arrivals.then(() => this.securing).then(() => {
       const frame = this.secure.receive(record);
-      if (frame !== null) this.deliver(frame);
+      if (frame !== null && frame !== undefined) this.deliver(frame);
     }).catch(() => {});
   }
-  transmit(node, frame) {
-    if (this.secure === null) return this.transport.send(node, frame);
+  async transmit(node, frame) {
+    if (this.securing === null) return this.transport.send(node, frame);
+    await this.securing;
     return this.secure.send(node, frame);
   }
   async close() {
     this.closed = true;
-    if (this.secure !== null) this.secure.close();
+    if (this.secure !== null) this.secure.close?.();
     for (const endpoint of this.endpoints) endpoint.stop();
     await this.transport.close();
   }
