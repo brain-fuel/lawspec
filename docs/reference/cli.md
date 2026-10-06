@@ -7,7 +7,7 @@ lawspec evidence [<unit> | <unit>::<declaration>] [--target <language>] [--machi
 lawspec explain [<unit>::<law>] [--machine-bits <32|64>] [--json] [--no-cache] [--config <path>]
 lawspec doctor [--target <language>] [--json] [--config <path>]
 lawspec generate [--target <language>] [--dry-run | --check] [--minify] [--machine-bits <32|64>] [--json] [--no-cache] [--config <path>]
-lawspec test [--target <language>] [--fresh] [--seed <n>] [--minify] [--machine-bits <32|64>] [--json] [--no-cache] [--config <path>]
+lawspec test [--target <language>] [--fresh] [--seed <n>] [--update-recorded] [--minify] [--machine-bits <32|64>] [--json] [--no-cache] [--config <path>]
 lawspec package [--project <package directory>] [--machine-bits <32|64>] [--json]
 lawspec examples [--example payments] [--target <language>] [--output <directory>] [--machine-bits <32|64>] [--minify] [--json]
 lawspec --version
@@ -149,6 +149,10 @@ Results are kept in `.lawspec/results`, and runner reports in
 `.lawspec/reports`; neither is committed.
 
 - `--fresh`: run every law's tests.
+- `--update-recorded`: run every law's tests, and record each value a law
+  compares with `recorded "name"` again, under `recorded/<unit>/<name>` beside
+  `lawspec.json`. Without it, a missing or different recording fails its law.
+  See [recorded values](language/laws-and-examples.md#recorded-values).
 - `--seed <n>`: the property tests' random seed. Without it, each run draws a
   new one, and the summary prints it. A recorded pass keeps the seed it ran
   with.

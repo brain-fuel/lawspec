@@ -49,6 +49,25 @@ export async function environmentDigest(root, report) {
   return digest(JSON.stringify(parts));
 }
 
+// Every recorded value under recorded/, by content: "" when there are none.
+export async function recordedDigest(folder) {
+  const hash = createHash("sha256");
+  let any = false;
+  async function walk(relative) {
+    const entries = await readdir(path.join(folder, relative), { withFileTypes: true }).catch(() => []);
+    for (const entry of entries.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))) {
+      const next = relative ? `${relative}/${entry.name}` : entry.name;
+      if (entry.isDirectory()) await walk(next);
+      else if (entry.isFile()) {
+        any = true;
+        hash.update(next + "\0").update(await readFile(path.join(folder, next))).update("\0");
+      }
+    }
+  }
+  await walk("");
+  return any ? hash.digest("hex") : "";
+}
+
 // The result key of each law in a target's test manifest.
 export function lawKeys({ build, target, machineBits, minify, tests, files, environment, project }) {
   const contents = new Map(files.map((file) => [file.path, file.content]));
