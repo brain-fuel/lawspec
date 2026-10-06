@@ -22,11 +22,6 @@ func NewClockHandler() Clock {
 	return &ClockHandler{}
 }
 
-// LawSpecRealTime says this clock is real time: workflows time out in real
-// time under it (the runtime's lsWorkflowRuntime), and a mailbox's receive
-// within waits in real time.
-func (handler *ClockHandler) LawSpecRealTime() bool { return true }
-
 func (handler *ClockHandler) Now() @@Instant@@ {
 	return @@Instant@@{Value: lsNowMicros()}
 }
@@ -36,4 +31,17 @@ func (handler *ClockHandler) Sleep(value0 LawSpecDuration) {
 	for left := target - lsNowMicros(); left > 0; left = target - lsNowMicros() {
 		time.Sleep(time.Duration(left) * time.Microsecond)
 	}
+}
+
+// LawSpecRegisterClock lets the runtime read any Clock handler (this one, the
+// virtual clock, a recording): workflows and mailboxes then wait on the
+// clock a law installs. Only this handler is real time.
+func LawSpecRegisterClock() {
+	LawSpecRegisterClockAbility(
+		func(handler any) int64 { return handler.(Clock).Now().Value },
+		func(handler any, micros int64) { handler.(Clock).Sleep(LawSpecDuration(micros) * time.Microsecond) },
+		func(handler any) bool {
+			_, isDefault := handler.(*ClockHandler)
+			return isDefault
+		})
 }

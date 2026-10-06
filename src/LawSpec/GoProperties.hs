@@ -76,8 +76,13 @@ emitTests Config{..} unit laws = do
     -- (lawspec test records the seed of every passing run).
     seedDoc = text "func init() " <> block (text "if seed := os.Getenv(\"LAWSPEC_SEED\"); seed != \"\" " <>
       block (text "_ = flag.Set(\"rapid.seed\", seed)"))
-    -- Workflows wait on a virtual clock under test.
-    clockDoc = text "func init() " <> block (text "LawSpecUseVirtualClock(0)")
+    -- Workflows wait on a virtual clock under test; where a law installs a
+    -- Clock handler, workflows and mailboxes read it (lawspec.time's
+    -- LawSpecRegisterClock, in this package's copy of the default handlers).
+    clockDoc = text "func init() " <> block (statements
+      ([text "LawSpecUseVirtualClock(0)"] ++ [text "LawSpecRegisterClock()" | installsClock]))
+    installsClock = or [C.abilityKey a == "lawspec.time::ability::Clock"
+      | p <- C.unitProperties unit, (a, _) <- C.propertyHandlers p]
     expr = expression
     assertionDoc context proposition = case proposition of
       AssertAll ps -> statements (map (assertionDoc context) ps)
