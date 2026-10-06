@@ -176,7 +176,8 @@ end
 A typed mailbox in your code also has `receive_within` (`receiveWithin`,
 `ReceiveWithin`, `receive<Name>Within` in Haskell): the next message, or
 nothing when none arrives within a duration, the Mailbox ability's `receive
-… within d`. Given a virtual `Clock` handler, it waits no real time.
+… within d`. Given a virtual `Clock` handler (Haskell: `receive<Name>WithinOn`
+with the symbol context a law installed it in), it waits no real time.
 
 LawSpec checks that:
 
