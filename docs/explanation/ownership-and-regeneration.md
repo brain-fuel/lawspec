@@ -1,3 +1,8 @@
+---
+id: lawspec.explanation.ownership-and-regeneration
+kind: explanation
+title: Ownership and regeneration
+---
 # Ownership and regeneration
 
 A code generator that shares a directory with people has to answer one question

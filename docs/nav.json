@@ -1,10 +1,8 @@
 [
   {
-    "title": "LawSpec documentation",
     "path": "index.md"
   },
   {
-    "title": "Tutorials",
     "path": "tutorials/index.md",
     "children": [
       {
@@ -12,35 +10,27 @@
         "track": "java",
         "children": [
           {
-            "title": "1. Your first law",
             "path": "tutorials/lessons/01-first-law.md"
           },
           {
-            "title": "2. Examples and expectations",
             "path": "tutorials/lessons/02-examples.md"
           },
           {
-            "title": "3. Algebraic laws",
             "path": "tutorials/lessons/03-algebra.md"
           },
           {
-            "title": "4. Structural data and definitions",
             "path": "tutorials/lessons/04-data.md"
           },
           {
-            "title": "5. Refinements and contracts",
             "path": "tutorials/lessons/05-refinements.md"
           },
           {
-            "title": "6. Domain modelling",
             "path": "tutorials/lessons/06-domain.md"
           },
           {
-            "title": "7. Sharing laws between units",
             "path": "tutorials/lessons/07-imports.md"
           },
           {
-            "title": "8. Evidence and keeping tests current",
             "path": "tutorials/lessons/08-evidence.md"
           }
         ]
@@ -50,35 +40,27 @@
         "track": "python",
         "children": [
           {
-            "title": "1. Your first law",
             "path": "tutorials/lessons/01-first-law.md"
           },
           {
-            "title": "2. Examples and expectations",
             "path": "tutorials/lessons/02-examples.md"
           },
           {
-            "title": "3. Algebraic laws",
             "path": "tutorials/lessons/03-algebra.md"
           },
           {
-            "title": "4. Structural data and definitions",
             "path": "tutorials/lessons/04-data.md"
           },
           {
-            "title": "5. Refinements and contracts",
             "path": "tutorials/lessons/05-refinements.md"
           },
           {
-            "title": "6. Domain modelling",
             "path": "tutorials/lessons/06-domain.md"
           },
           {
-            "title": "7. Sharing laws between units",
             "path": "tutorials/lessons/07-imports.md"
           },
           {
-            "title": "8. Evidence and keeping tests current",
             "path": "tutorials/lessons/08-evidence.md"
           }
         ]
@@ -88,35 +70,27 @@
         "track": "javascript",
         "children": [
           {
-            "title": "1. Your first law",
             "path": "tutorials/lessons/01-first-law.md"
           },
           {
-            "title": "2. Examples and expectations",
             "path": "tutorials/lessons/02-examples.md"
           },
           {
-            "title": "3. Algebraic laws",
             "path": "tutorials/lessons/03-algebra.md"
           },
           {
-            "title": "4. Structural data and definitions",
             "path": "tutorials/lessons/04-data.md"
           },
           {
-            "title": "5. Refinements and contracts",
             "path": "tutorials/lessons/05-refinements.md"
           },
           {
-            "title": "6. Domain modelling",
             "path": "tutorials/lessons/06-domain.md"
           },
           {
-            "title": "7. Sharing laws between units",
             "path": "tutorials/lessons/07-imports.md"
           },
           {
-            "title": "8. Evidence and keeping tests current",
             "path": "tutorials/lessons/08-evidence.md"
           }
         ]
@@ -124,91 +98,75 @@
     ]
   },
   {
-    "title": "How-to guides",
     "path": "how-to/index.md",
     "children": [
       {
-        "title": "Install LawSpec and create a project",
         "path": "how-to/install-and-init.md"
       },
       {
-        "title": "Configure an existing project",
         "path": "how-to/configure-an-existing-project.md"
       },
       {
-        "title": "Generate tests and check them in CI",
         "path": "how-to/generate-and-check-in-ci.md"
       },
       {
-        "title": "Diagnose your environment with doctor",
         "path": "how-to/run-doctor.md"
       },
       {
-        "title": "Generate example artifacts",
         "path": "how-to/generate-example-artifacts.md"
       },
       {
-        "title": "Use the JavaScript API",
         "path": "how-to/use-the-javascript-api.md"
       },
       {
-        "title": "Compare alternative implementations",
         "path": "how-to/compare-alternative-implementations.md"
       },
       {
-        "title": "Test text properties and idempotence",
         "path": "how-to/test-text-properties-and-idempotence.md"
       },
       {
-        "title": "Use imports and packages",
         "path": "how-to/use-imports-and-packages.md"
       },
       {
-        "title": "Use 32-bit and compact profiles",
         "path": "how-to/use-32-bit-and-compact-profiles.md"
       },
       {
-        "title": "Bind native types and functions",
         "path": "how-to/bind-native-types.md"
       },
       {
-        "title": "Write custom codecs and generators",
         "path": "how-to/custom-codecs-and-generators.md"
       },
       {
-        "title": "Target setup guides",
+        "path": "how-to/contribute.md"
+      },
+      {
+        "path": "how-to/release.md"
+      },
+      {
         "path": "how-to/targets/index.md",
         "children": [
           {
-            "title": "Set up Java",
             "path": "how-to/targets/java.md"
           },
           {
-            "title": "Set up JavaScript",
             "path": "how-to/targets/javascript.md"
           },
           {
-            "title": "Set up TypeScript",
             "path": "how-to/targets/typescript.md"
           },
           {
-            "title": "Set up Python",
             "path": "how-to/targets/python.md"
           },
           {
-            "title": "Set up Go",
             "path": "how-to/targets/go.md"
           },
           {
-            "title": "Set up Haskell",
             "path": "how-to/targets/haskell.md"
           },
           {
-            "title": "Set up Kotlin",
             "path": "how-to/targets/kotlin.md"
           },
           {
-            "title": "Set up Rust",
             "path": "how-to/targets/rust.md"
           }
         ]
@@ -216,163 +174,124 @@
     ]
   },
   {
-    "title": "Reference",
     "path": "reference/index.md",
     "children": [
       {
-        "title": "Language reference",
         "path": "reference/language/index.md",
         "children": [
           {
-            "title": "Syntax",
             "path": "reference/language/syntax.md"
           },
           {
-            "title": "Types and data",
             "path": "reference/language/types-and-data.md"
           },
           {
-            "title": "Laws and examples",
             "path": "reference/language/laws-and-examples.md"
           },
           {
-            "title": "Definitions",
             "path": "reference/language/definitions.md"
           },
           {
-            "title": "Indexed families",
             "path": "reference/language/indexed-families.md"
           },
           {
-            "title": "GADTs",
             "path": "reference/language/gadts.md"
           },
           {
-            "title": "Flow types",
             "path": "reference/language/flow-types.md"
           },
           {
-            "title": "Collections",
             "path": "reference/language/collections.md"
           },
           {
-            "title": "Asynchronous functions",
             "path": "reference/language/async-functions.md"
           },
           {
-            "title": "Durations",
             "path": "reference/language/durations.md"
           },
           {
-            "title": "Evidence and discharge",
             "path": "reference/language/evidence-and-discharge.md"
           },
           {
-            "title": "Domain modeling",
             "path": "reference/language/domain-modeling.md"
           },
           {
-            "title": "Workflows",
             "path": "reference/language/workflows.md"
           },
           {
-            "title": "Stateful models",
             "path": "reference/language/models.md"
           },
           {
-            "title": "Protocols and scenarios",
             "path": "reference/language/scenarios.md"
           },
           {
-            "title": "Actors and supervisors",
             "path": "reference/language/actors.md"
           },
           {
-            "title": "Distribution",
             "path": "reference/language/distribution.md"
           },
           {
-            "title": "Imports and packages",
             "path": "reference/language/imports-and-packages.md"
           },
           {
-            "title": "Expressions and arithmetic",
             "path": "reference/language/expressions-and-arithmetic.md"
           }
         ]
       },
       {
-        "title": "Prelude laws and algebra",
         "path": "reference/prelude-algebra.md"
       },
       {
-        "title": "Primitives",
         "path": "reference/primitives.md"
       },
       {
-        "title": "Refinements",
         "path": "reference/refinements.md"
       },
       {
-        "title": "CLI",
         "path": "reference/cli.md"
       },
       {
-        "title": "Configuration",
         "path": "reference/configuration.md"
       },
       {
-        "title": "Compiler API",
         "path": "reference/api.md"
       },
       {
-        "title": "Native bindings",
         "path": "reference/native-bindings.md"
       },
       {
-        "title": "Compatibility",
         "path": "reference/compatibility.md"
       },
       {
-        "title": "Formatting",
         "path": "reference/formatting.md"
       }
     ]
   },
   {
-    "title": "Explanation",
     "path": "explanation/index.md",
     "children": [
       {
-        "title": "Why executable laws",
         "path": "explanation/why-executable-laws.md"
       },
       {
-        "title": "Roadmap",
         "path": "explanation/roadmap.md"
       },
       {
-        "title": "How the compiler works",
         "path": "explanation/how-the-compiler-works.md"
       },
       {
-        "title": "Evidence and discharge",
         "path": "explanation/evidence-and-discharge.md"
       },
       {
-        "title": "Generation and shrinking",
         "path": "explanation/generation-and-shrinking.md"
       },
       {
-        "title": "Portable semantics and machine profiles",
         "path": "explanation/portable-semantics-and-machine-profiles.md"
       },
       {
-        "title": "Ownership and regeneration",
         "path": "explanation/ownership-and-regeneration.md"
       },
       {
-        "title": "API migration",
         "path": "explanation/api-migration.md"
       }
     ]

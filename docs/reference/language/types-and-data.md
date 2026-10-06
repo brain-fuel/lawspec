@@ -1,3 +1,8 @@
+---
+id: lawspec.reference.language.types-and-data
+kind: reference
+title: Types and data
+---
 # Types and data
 
 LawSpec types are scalars, the built-in containers, and data types you declare.

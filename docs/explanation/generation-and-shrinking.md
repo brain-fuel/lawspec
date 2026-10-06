@@ -1,3 +1,8 @@
+---
+id: lawspec.explanation.generation-and-shrinking
+kind: explanation
+title: Generation and shrinking
+---
 # Generation and shrinking
 
 A property test is only as good as its inputs. LawSpec plans inputs once, from

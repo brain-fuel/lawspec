@@ -1,3 +1,8 @@
+---
+id: lawspec.explanation.why-executable-laws
+kind: explanation
+title: Why executable laws
+---
 # Why executable laws
 
 LawSpec is not a new theory of correctness. Its core ideas are old:

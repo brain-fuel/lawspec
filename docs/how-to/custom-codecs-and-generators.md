@@ -1,3 +1,8 @@
+---
+id: lawspec.how-to.custom-codecs-and-generators
+kind: how-to
+title: Write custom codecs and generators
+---
 # Write custom codecs and generators
 
 This guide covers two extensions to [native type bindings](bind-native-types.md):

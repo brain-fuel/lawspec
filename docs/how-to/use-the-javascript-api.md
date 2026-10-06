@@ -1,3 +1,8 @@
+---
+id: lawspec.how-to.use-the-javascript-api
+kind: how-to
+title: Use the JavaScript API
+---
 # Use the JavaScript API
 
 The `lawspec` package exports an asynchronous, typed compiler API. Use it to

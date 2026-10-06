@@ -1,3 +1,8 @@
+---
+id: lawspec.how-to.targets.javascript
+kind: how-to
+title: Set up JavaScript
+---
 # Set up JavaScript
 
 ## Requirements

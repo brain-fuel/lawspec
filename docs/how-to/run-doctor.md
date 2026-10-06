@@ -1,3 +1,8 @@
+---
+id: lawspec.how-to.run-doctor
+kind: how-to
+title: Diagnose your environment with doctor
+---
 # Diagnose your environment with doctor
 
 `doctor` checks that each configured target can build and run the generated

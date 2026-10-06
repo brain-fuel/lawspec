@@ -1,3 +1,8 @@
+---
+id: lawspec.explanation.evidence-and-discharge
+kind: explanation
+title: Evidence and discharge
+---
 # Evidence and discharge
 
 "The tests pass" hides a lot. A passing property test has tried some inputs and

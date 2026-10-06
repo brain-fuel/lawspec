@@ -1,3 +1,8 @@
+---
+id: lawspec.how-to.generate-and-check-in-ci
+kind: how-to
+title: Generate tests and check them in CI
+---
 # Generate tests and check them in CI
 
 This guide covers the everyday loop: check the specification, inspect laws and

@@ -1,3 +1,8 @@
+---
+id: lawspec.reference.language.imports-and-packages
+kind: reference
+title: Imports and packages
+---
 # Imports and packages
 
 ## Imports

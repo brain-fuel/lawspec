@@ -1,3 +1,8 @@
+---
+id: lawspec.reference.formatting
+kind: reference
+title: Formatting
+---
 # Formatting
 
 Generated code is readable by default and follows each language's usual style.

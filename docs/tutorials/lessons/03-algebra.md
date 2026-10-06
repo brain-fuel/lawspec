@@ -1,3 +1,8 @@
+---
+id: lawspec.tutorials.lessons.03-algebra
+kind: tutorial
+title: 3. Algebraic laws
+---
 # Lesson 3: Algebraic laws
 
 Many properties are not about one function's output but about how it behaves
@@ -10,7 +15,7 @@ without writing out the quantifiers.
 The shop tracks its largest order with a function that picks the larger of two
 totals. Save this as `laws/totals.lawspec`:
 
-```lawspec file=docs/lessons/specs/03-algebra.lawspec implementations=acceptance/lessons
+```lawspec include=docs/lessons/specs/03-algebra.lawspec implementations=acceptance/lessons
 ```
 
 Each law applies a prelude law to the adapter:
@@ -29,17 +34,17 @@ The [prelude reference](../../reference/prelude-algebra.md) lists every law.
 ## Implement the adapter
 
 ::: only java
-```lawspec file=docs/lessons/specs/03-algebra.lawspec implementations=acceptance/lessons view=implementation target=java
+```lawspec include=docs/lessons/specs/03-algebra.lawspec implementations=acceptance/lessons view=implementation target=java
 ```
 :::
 
 ::: only python
-```lawspec file=docs/lessons/specs/03-algebra.lawspec implementations=acceptance/lessons view=implementation target=python
+```lawspec include=docs/lessons/specs/03-algebra.lawspec implementations=acceptance/lessons view=implementation target=python
 ```
 :::
 
 ::: only javascript
-```lawspec file=docs/lessons/specs/03-algebra.lawspec implementations=acceptance/lessons view=implementation target=javascript
+```lawspec include=docs/lessons/specs/03-algebra.lawspec implementations=acceptance/lessons view=implementation target=javascript
 ```
 :::
 

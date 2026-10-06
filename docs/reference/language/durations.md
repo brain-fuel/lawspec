@@ -1,3 +1,8 @@
+---
+id: lawspec.reference.language.durations
+kind: reference
+title: Durations
+---
 # Durations
 
 A `Duration` is a whole number of microseconds, from 0 to

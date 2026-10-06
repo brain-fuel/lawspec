@@ -1,3 +1,8 @@
+---
+id: lawspec.how-to.targets.haskell
+kind: how-to
+title: Set up Haskell
+---
 # Set up Haskell
 
 ## Requirements

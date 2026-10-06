@@ -1,3 +1,8 @@
+---
+id: lawspec.reference.cli
+kind: reference
+title: CLI
+---
 # CLI
 
 ```text

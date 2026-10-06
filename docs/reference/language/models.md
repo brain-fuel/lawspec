@@ -1,3 +1,8 @@
+---
+id: lawspec.reference.language.models
+kind: reference
+title: Stateful models
+---
 # Stateful models
 
 A `model` pairs a system's commands with a simpler reference: a model state

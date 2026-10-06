@@ -1,7 +1,12 @@
+---
+id: lawspec.how-to.contribute
+kind: how-to
+title: Contribute to LawSpec
+---
 # Contributing to LawSpec
 
 This guide is for working on LawSpec itself. To use LawSpec, see the
-[documentation](docs/index.md).
+[documentation](../index.md).
 
 ## Repository layout
 
@@ -221,17 +226,33 @@ on its target.
 ## Documentation
 
 The documentation lives in `docs/` and is organized as tutorials, how-to
-guides, reference and explanation. `docs/nav.json` lists every page in order.
+guides, reference and explanation. Every page begins with front matter naming
+its `id`, its `kind` (`tutorial`, `how-to`, `reference` or `explanation`,
+matching its directory; the landing page `docs/index.md` is `index`) and its
+`title`:
+
+```yaml
+---
+id: lawspec.how-to.contribute
+kind: how-to
+title: Contribute to LawSpec
+---
+```
+
+The title lives only there. `docs/nav.json` lists every page in order, by
+`path` alone; a section without a page of its own names a `title`, and a
+lesson track a `track`.
 
 - Every `lawspec` code block must be a complete unit, starting with `unit`, that
   compiles, or be marked `lawspec fragment`. Each becomes a workbench (below).
-  `file=a,b` compiles several files together and shows the last.
+  `include=a,b` compiles several files together and shows the last.
   `implementations=acceptance/lessons` attaches, for every language, the
   implementation files that acceptance suite tests for real, found by the
   paths the compiler gives the adapters. `view=implementation` opens on the
   implementation, `target=<language>` selects the language, and `key=<name>`
   names the shared model (by default, the files compiled).
-- ```` ```java file=<path> [region=<name>] ```` includes a file as code.
+- ```` ```java include=<path> [region=<name>] ```` includes a file as code.
+  `file=` is left to canon, for a block that tangles into a source file.
 - `::: only java` … `:::` limits text to one lesson track.
 - Relative links must resolve.
 - Headings use sentence case, with one H1 per page.
@@ -286,5 +307,5 @@ locally and deploying the output is simpler.
 
 ## Releasing
 
-See [RELEASING.md](RELEASING.md). Record user-visible changes in
-[CHANGELOG.md](CHANGELOG.md).
+See [the release guide](release.md). Record user-visible changes in
+[CHANGELOG.md](../../CHANGELOG.md).

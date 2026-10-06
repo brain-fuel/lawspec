@@ -1,3 +1,8 @@
+---
+id: lawspec.tutorials.lessons.07-imports
+kind: tutorial
+title: 7. Sharing laws between units
+---
 # Lesson 7: Sharing laws between units
 
 As a specification grows, you will want to share types, refinements and laws
@@ -8,7 +13,7 @@ between units, and between projects. A unit **imports** another by name.
 Save this as `laws/money.lawspec`. It declares no adapters: it is a library of
 a refinement, a definition and a generic law.
 
-```lawspec fragment file=docs/lessons/specs/07-money.lawspec
+```lawspec fragment include=docs/lessons/specs/07-money.lawspec
 ```
 
 `never more than` is **generic**: it has a parameter, the function it is about,
@@ -20,7 +25,7 @@ apply to their own adapters.
 Save this as `laws/menu.lawspec`. The playground compiles it together with the
 money library:
 
-```lawspec file=docs/lessons/specs/07-money.lawspec,docs/lessons/specs/07-imports.lawspec implementations=acceptance/lessons
+```lawspec include=docs/lessons/specs/07-money.lawspec,docs/lessons/specs/07-imports.lawspec implementations=acceptance/lessons
 ```
 
 `import lessons.money as money (Cents, ...)` makes every declaration of the
@@ -40,17 +45,17 @@ Projects list the packages they depend on, with version ranges, in
 ## Implement the adapters
 
 ::: only java
-```lawspec file=docs/lessons/specs/07-money.lawspec,docs/lessons/specs/07-imports.lawspec implementations=acceptance/lessons view=implementation target=java
+```lawspec include=docs/lessons/specs/07-money.lawspec,docs/lessons/specs/07-imports.lawspec implementations=acceptance/lessons view=implementation target=java
 ```
 :::
 
 ::: only python
-```lawspec file=docs/lessons/specs/07-money.lawspec,docs/lessons/specs/07-imports.lawspec implementations=acceptance/lessons view=implementation target=python
+```lawspec include=docs/lessons/specs/07-money.lawspec,docs/lessons/specs/07-imports.lawspec implementations=acceptance/lessons view=implementation target=python
 ```
 :::
 
 ::: only javascript
-```lawspec file=docs/lessons/specs/07-money.lawspec,docs/lessons/specs/07-imports.lawspec implementations=acceptance/lessons view=implementation target=javascript
+```lawspec include=docs/lessons/specs/07-money.lawspec,docs/lessons/specs/07-imports.lawspec implementations=acceptance/lessons view=implementation target=javascript
 ```
 :::
 

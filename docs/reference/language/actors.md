@@ -1,3 +1,8 @@
+---
+id: lawspec.reference.language.actors
+kind: reference
+title: Actors and supervisors
+---
 # Actors and supervisors
 
 An **actor** owns a state and handles one message at a time, in the order

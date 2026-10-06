@@ -1,3 +1,8 @@
+---
+id: lawspec.reference.compatibility
+kind: reference
+title: Compatibility
+---
 # Compatibility
 
 LawSpec needs Node 22 or later. The reference platforms are macOS and Linux.

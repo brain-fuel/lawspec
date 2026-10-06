@@ -1,3 +1,8 @@
+---
+id: lawspec.reference.language.distribution
+kind: reference
+title: Distribution
+---
 # Distribution
 
 Programs built with LawSpec can run as several **nodes** that talk over a

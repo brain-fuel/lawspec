@@ -1,3 +1,8 @@
+---
+id: lawspec.tutorials.lessons.04-data
+kind: tutorial
+title: 4. Structural data and definitions
+---
 # Lesson 4: Structural data and definitions
 
 So far every input has been a number or text. Real code passes records and
@@ -9,7 +14,7 @@ agree with it.
 
 Save this as `laws/orders.lawspec`:
 
-```lawspec file=docs/lessons/specs/04-data.lawspec implementations=acceptance/lessons
+```lawspec include=docs/lessons/specs/04-data.lawspec implementations=acceptance/lessons
 ```
 
 `Size` is a **sum type**: a value is either `Small` or `Large`. `Drink` is a
@@ -35,7 +40,7 @@ read through its accessors (`value0.size()`). A type with several, such as
 `Size`, is a sealed interface with a record per constructor (`Size.Large`), so
 a `switch` over it must cover every case:
 
-```lawspec file=docs/lessons/specs/04-data.lawspec implementations=acceptance/lessons view=implementation target=java
+```lawspec include=docs/lessons/specs/04-data.lawspec implementations=acceptance/lessons view=implementation target=java
 ```
 :::
 
@@ -44,7 +49,7 @@ Each constructor is a frozen dataclass in `lawspec_data`. A type with one
 constructor is named after the type (`Drink`); the cases of a type with several
 are named after the type and the constructor (`SizeLarge`):
 
-```lawspec file=docs/lessons/specs/04-data.lawspec implementations=acceptance/lessons view=implementation target=python
+```lawspec include=docs/lessons/specs/04-data.lawspec implementations=acceptance/lessons view=implementation target=python
 ```
 :::
 
@@ -53,7 +58,7 @@ Each constructor is a frozen class in `lawspec_data.mjs`. A type with one
 constructor is named after the type (`Drink`); the cases of a type with several
 are named after the type and the constructor (`SizeLarge`):
 
-```lawspec file=docs/lessons/specs/04-data.lawspec implementations=acceptance/lessons view=implementation target=javascript
+```lawspec include=docs/lessons/specs/04-data.lawspec implementations=acceptance/lessons view=implementation target=javascript
 ```
 :::
 

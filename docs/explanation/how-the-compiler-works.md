@@ -1,3 +1,8 @@
+---
+id: lawspec.explanation.how-the-compiler-works
+kind: explanation
+title: How the compiler works
+---
 # How the compiler works
 
 LawSpec is one compiler with eight backends. Everything that gives a

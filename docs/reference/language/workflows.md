@@ -1,3 +1,8 @@
+---
+id: lawspec.reference.language.workflows
+kind: reference
+title: Workflows
+---
 # Workflows
 
 A `workflow` names a pipeline of stages between state types. You write the

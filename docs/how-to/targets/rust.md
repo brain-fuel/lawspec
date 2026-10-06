@@ -1,3 +1,8 @@
+---
+id: lawspec.how-to.targets.rust
+kind: how-to
+title: Set up Rust
+---
 # Set up Rust
 
 ## Requirements

@@ -1,3 +1,8 @@
+---
+id: lawspec.how-to.use-32-bit-and-compact-profiles
+kind: how-to
+title: Use 32-bit and compact profiles
+---
 # Use 32-bit and compact profiles
 
 LawSpec has two independent output settings: the machine profile, which changes

@@ -1,3 +1,8 @@
+---
+id: lawspec.reference.language.definitions
+kind: reference
+title: Definitions
+---
 # Definitions
 
 A checked definition supplies an implementation in LawSpec itself. The compiler

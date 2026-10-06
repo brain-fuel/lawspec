@@ -1,3 +1,8 @@
+---
+id: lawspec.tutorials.lessons.06-domain
+kind: tutorial
+title: 6. Domain modelling
+---
 # Lesson 6: Domain modelling
 
 Two ideas from domain-driven design make illegal states impossible to
@@ -9,7 +14,7 @@ process its own type. LawSpec supports both with **wrappers** and
 
 Save this as `laws/checkout.lawspec`:
 
-```lawspec file=docs/lessons/specs/06-domain.lawspec implementations=acceptance/lessons
+```lawspec include=docs/lessons/specs/06-domain.lawspec implementations=acceptance/lessons
 ```
 
 `Quantity` is a wrapper: a distinct type holding an `Int32` from 1 to 20. Its
@@ -30,17 +35,17 @@ that every target's `checkout` behaves that way.
 ## Implement the adapters
 
 ::: only java
-```lawspec file=docs/lessons/specs/06-domain.lawspec implementations=acceptance/lessons view=implementation target=java
+```lawspec include=docs/lessons/specs/06-domain.lawspec implementations=acceptance/lessons view=implementation target=java
 ```
 :::
 
 ::: only python
-```lawspec file=docs/lessons/specs/06-domain.lawspec implementations=acceptance/lessons view=implementation target=python
+```lawspec include=docs/lessons/specs/06-domain.lawspec implementations=acceptance/lessons view=implementation target=python
 ```
 :::
 
 ::: only javascript
-```lawspec file=docs/lessons/specs/06-domain.lawspec implementations=acceptance/lessons view=implementation target=javascript
+```lawspec include=docs/lessons/specs/06-domain.lawspec implementations=acceptance/lessons view=implementation target=javascript
 ```
 :::
 

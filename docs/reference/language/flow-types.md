@@ -1,3 +1,8 @@
+---
+id: lawspec.reference.language.flow-types
+kind: reference
+title: Flow types
+---
 # Flow types
 
 A flow parameter `A / A'` takes a state at type `A` and leaves it at `A'`. It

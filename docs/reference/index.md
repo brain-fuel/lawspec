@@ -1,3 +1,8 @@
+---
+id: lawspec.reference.index
+kind: reference
+title: Reference
+---
 # Reference
 
 Technical descriptions of the language, the tools and the interfaces.

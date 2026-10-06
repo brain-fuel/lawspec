@@ -1,3 +1,8 @@
+---
+id: lawspec.reference.language.syntax
+kind: reference
+title: Syntax
+---
 # Syntax
 
 ## Units

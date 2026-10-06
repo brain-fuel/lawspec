@@ -1,3 +1,8 @@
+---
+id: lawspec.how-to.targets.typescript
+kind: how-to
+title: Set up TypeScript
+---
 # Set up TypeScript
 
 ## Requirements

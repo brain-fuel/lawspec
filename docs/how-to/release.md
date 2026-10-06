@@ -1,3 +1,8 @@
+---
+id: lawspec.how-to.release
+kind: how-to
+title: Release LawSpec
+---
 # Releasing LawSpec
 
 A release moves one version of the npm package `lawspec` from `main` to the npm
@@ -12,7 +17,7 @@ registry. Every step runs on your machine; there is no hosted CI.
   move an existing tag or force-push `main`.
 - Roadmap milestones are minor releases (0.x.0). Everything else, such as
   tooling, documentation and fixes, is a patch release (0.x.y). The milestones
-  are listed in [the roadmap](docs/explanation/roadmap.md).
+  are listed in [the roadmap](../explanation/roadmap.md).
 
 ## 1. Check the preconditions
 
@@ -32,12 +37,20 @@ make bump VERSION=0.15.1
 ```
 
 `lawspec-dev bump` sets the version in `package.yaml`, `lawspec.cabal`,
-`wasm/lawspec-wasm.cabal` and the Rust conformance crate
-(`runtime/rust/Cargo.toml`, `Cargo.lock`), updates install instructions that
-name the version (`lawspec@x.y.z`) in the README and docs, then regenerates
-`npm/package.json` and the CLI's `--version`. Add a section for the version at
-the top of `CHANGELOG.md`: what changed for users, and anything that needs
-their action.
+`wasm/lawspec-wasm.cabal`, the Rust conformance crate
+(`runtime/rust/Cargo.toml`, `Cargo.lock`) and `canon.yaml`, updates install
+instructions that name the version (`lawspec@x.y.z`) in the README and docs,
+then regenerates `npm/package.json` and the CLI's `--version`.
+
+`CHANGELOG.md` follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
+Rename its `## [Unreleased]` section to `## [x.y.z] - YYYY-MM-DD`, keeping the
+`Added`, `Changed`, `Deprecated`, `Removed`, `Fixed` and `Security` groups: what
+changed for users, and anything that needs their action. Start a new, empty
+`## [Unreleased]` above it, and add the version's comparison link at the bottom.
+
+`canon.yaml`'s version is the project version canon checks against: an open
+decision or an exemption whose `revisit` version the release reaches fails
+`make canon` until it is settled.
 
 ## 3. Build the package
 
@@ -73,7 +86,9 @@ tar -tzf .artifacts/0.20.0/lawspec-0.20.0.tgz
 
 The archive holds the CLI and library code, `core.wasm` and its JavaScript glue,
 `README.md`, `CHANGELOG.md`, `LICENSE`, the starter specification and
-`examples/`. The smoke test in `make ci` already installed and exercised a
+`examples/`. `README.md` and `CHANGELOG.md` live only at the repository root:
+the package's `prepack` script copies them into `npm/`, where git ignores them.
+The smoke test in `make ci` already installed and exercised a
 packed copy.
 
 ## 6. Commit, tag and push
@@ -116,7 +131,7 @@ make docs-deploy
 ```
 
 This builds the site and deploys it to Cloudflare Pages with Wrangler; see
-CONTRIBUTING.md.
+[the contributing guide](contribute.md).
 
 ## If something goes wrong
 

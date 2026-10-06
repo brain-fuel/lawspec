@@ -1,3 +1,8 @@
+---
+id: lawspec.explanation.portable-semantics-and-machine-profiles
+kind: explanation
+title: Portable semantics and machine profiles
+---
 # Portable semantics and machine profiles
 
 A law must mean the same thing on every target. That rules out borrowing any one

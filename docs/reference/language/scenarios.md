@@ -1,3 +1,8 @@
+---
+id: lawspec.reference.language.scenarios
+kind: reference
+title: Protocols and scenarios
+---
 # Protocols and scenarios
 
 A **protocol** lists what one end of a channel sends and receives, in order;

@@ -1,3 +1,8 @@
+---
+id: lawspec.how-to.test-text-properties-and-idempotence
+kind: how-to
+title: Test text properties and idempotence
+---
 # Test text properties and idempotence
 
 This guide shows two common properties of text-processing functions: agreement

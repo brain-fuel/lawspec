@@ -1,3 +1,8 @@
+---
+id: lawspec.how-to.index
+kind: how-to
+title: How-to guides
+---
 # How-to guides
 
 These guides are recipes. Each one assumes you know what you want to do and

@@ -1,24 +1,28 @@
 {-# LANGUAGE NoOverloadedStrings, ScopedTypeVariables #-}
 -- The documentation site: docs/ rendered through templates/site/ into a static
 -- site with an in-browser compiler, ready for any static host (Cloudflare
--- Pages: see CONTRIBUTING.md).
+-- Pages: see docs/how-to/contribute.md).
 --
 --   lawspec-dev docs --out <dir>   build the site (needs npm/core.wasm)
 --   lawspec-dev docs --check       compile every snippet and check every link
 --
--- docs/nav.json orders the pages: [{"title", "path"?, "track"?, "children"?}].
+-- Every page begins with front matter naming its id, its Diátaxis kind and its
+-- title (the Folio form canon reads); the title is the page's one home.
+-- docs/nav.json orders the pages: [{"path"} | {"title", "track"?, "children"}],
+-- a page entry possibly with "track" and "children" too, but never a title.
 -- A page listed under a node with "track" is rendered once for that track, to
 -- <directory of the track node's first page>/../<track>/<page>.html.
 --
 -- Fenced blocks:
---   ```lawspec [file=<spec>] [run=<adapter>,...] [target=<t>]
+--   ```lawspec [include=<spec>] [run=<adapter>,...] [target=<t>]
 --       an editable playground, compiled here (the build fails on any
 --       diagnostic) with its adapter stubs rendered; run= names JavaScript
 --       adapters under acceptance/lessons/javascript/files, so the page can
 --       run the generated tests
---   ```lawspec fragment      a partial snippet, shown as code
---   ```<lang> file=<path> [region=<name>]
+--   ```lawspec fragment [include=<spec>]   a partial snippet, shown as code
+--   ```<lang> include=<path> [region=<name>]
 --       the file, or the lines between "region <name>" and "endregion" comments
+--   ```<lang> file=<path> ...  a block canon tangles into <path>; shown as is
 --   ::: only <track> ... :::  text for one track of a lesson
 module Docs (docsCommand) where
 
@@ -67,13 +71,14 @@ build out = do
   version <- currentVersion
   navJson <- BL.readFile "docs/nav.json"
   tree <- either (die . ("docs/nav.json: " ++)) (pure . navTree Nothing) (eitherDecode navJson)
-  nav <- either die pure tree
+  nav <- either die pure tree >>= titled
+  checkFrontMatter nav
   let pages = navPages nav
   pageTemplate <- readFile' "templates/site/page.html"
   errors <- newIORef []
   snippets <- newIORef (0 :: Int)
   rendered <- forM (zip [0 :: Int ..] pages) $ \(index, page) -> do
-    markdown <- readFile' (pageSource page)
+    markdown <- snd . frontMatter <$> readFile' (pageSource page)
     body <- preprocess errors snippets pages page markdown
     html <- case runIdentity (commonmarkWith (defaultSyntaxSpec <> gfmExtensions <> autoIdentifiersSpec) (pageSource page) (T.pack body)) of
       Right (h :: Html ()) -> pure (TL.unpack (renderHtml h))
@@ -113,20 +118,67 @@ navTree :: Maybe String -> Value -> Either String [Nav]
 navTree track (Array items) = mapM (navEntry track) (V.toList items)
 navTree _ _ = Left "expected an array of entries"
 
+-- A page's title is read from its front matter afterwards (titled), so a
+-- page entry carries none; a section without a page names its own.
 navEntry :: Maybe String -> Value -> Either String Nav
 navEntry track (Object o) = do
-  title <- case KM.lookup (K.fromString "title") o of
-    Just (String t) -> Right (T.unpack t)
-    _ -> Left "every entry needs a title"
-  let track' = case KM.lookup (K.fromString "track") o of
+  let title = case KM.lookup (K.fromString "title") o of
+        Just (String t) -> Just (T.unpack t)
+        _ -> Nothing
+      track' = case KM.lookup (K.fromString "track") o of
         Just (String t) -> Just (T.unpack t)
         _ -> track
-  let page = case KM.lookup (K.fromString "path") o of
-        Just (String p) -> Just (Page ("docs" </> T.unpack p) (outputFor track' (T.unpack p)) title track')
+      page = case KM.lookup (K.fromString "path") o of
+        Just (String p) -> Just (Page ("docs" </> T.unpack p) (outputFor track' (T.unpack p)) "" track')
         _ -> Nothing
   children <- maybe (Right []) (navTree track') (KM.lookup (K.fromString "children") o)
-  if page == Nothing && null children then Left ("entry " ++ title ++ " needs a path or children") else Right (Nav title page children)
+  case (page, title) of
+    (Just p, Just _) -> Left ("entry " ++ pageSource p ++ " names a title; the page's front matter holds it")
+    (Just _, Nothing) -> Right (Nav "" page children)
+    (Nothing, Just t) | not (null children) -> Right (Nav t Nothing children)
+    (Nothing, _) -> Left "an entry needs a path, or a title and children"
 navEntry _ _ = Left "expected an object"
+
+-- Each page entry takes its title from the page's front matter.
+titled :: [Nav] -> IO [Nav]
+titled = mapM $ \(Nav title page children) -> do
+  page' <- forM page $ \p -> do
+    (fields, _) <- frontMatter <$> readFile' (pageSource p)
+    case lookup "title" fields of
+      Just t -> pure p { pageTitle = t }
+      Nothing -> die (pageSource p ++ ": front matter names no title")
+  Nav (maybe title pageTitle page') page' <$> titled children
+
+-- Every page under docs/ is listed and carries front matter naming its id,
+-- kind and title, with ids unique and each kind the quadrant it lives in.
+-- The landing page, docs/index.md, is the one page of kind index.
+checkFrontMatter :: [Nav] -> IO ()
+checkFrontMatter nav = do
+  sources <- filter (".md" `isSuffixOf`) <$> walk "docs"
+  let listed = map pageSource (navPages nav)
+  fields <- forM sources $ \source -> (,) source . fst . frontMatter <$> readFile' source
+  let problems =
+        [ source ++ ": not listed in docs/nav.json" | source <- sources, source `notElem` listed ] ++
+        [ source ++ ": front matter names no " ++ key | (source, fs) <- fields, key <- ["id", "kind", "title"], lookup key fs == Nothing ] ++
+        [ source ++ ": kind " ++ kind ++ " does not match its directory"
+        | (source, fs) <- fields, Just kind <- [lookup "kind" fs], not (kindFits source kind) ] ++
+        [ "duplicate page id " ++ i | (i, n) <- counts [i | (_, fs) <- fields, Just i <- [lookup "id" fs]], n > (1 :: Int) ]
+  unless (null problems) (die (intercalate "\n" problems))
+  where
+    kindFits source kind = case lookup kind quadrants of
+      Just dir -> dir `elem` splitDirectories (takeDirectory source)
+      Nothing -> kind == "index" && source == "docs/index.md"
+    quadrants = [("tutorial", "tutorials"), ("how-to", "how-to"), ("reference", "reference"), ("explanation", "explanation")]
+    counts xs = [(x, length (filter (== x) xs)) | x <- sort (unique xs)]
+    unique = foldr (\x acc -> if x `elem` acc then acc else x : acc) []
+
+-- Front matter: the lines between a first line "---" and the next "---",
+-- each "key: value". Returns the fields and the page without them.
+frontMatter :: String -> ([(String, String)], String)
+frontMatter content = case lines content of
+  "---" : rest | (fields, _ : body) <- break (== "---") rest ->
+    ([(trim k, trim (drop 1 v)) | f <- fields, let (k, v) = break (== ':') f, not (null v)], unlines body)
+  _ -> ([], content)
 
 -- A track page lives beside its lesson directory: tutorials/lessons/01.md is
 -- tutorials/java/01.html for the Java track.
@@ -206,7 +258,7 @@ preprocess errors snippets pages page markdown = unlines <$> go (lines markdown)
           (kept ++) <$> go (drop 1 after)
       | otherwise = (:) <$> rewriteLinks l <*> go rest
     fence ("lawspec" : attributes) block
-      | "fragment" `elem` attributes = case lookup "file" (mapMaybe attribute attributes) of
+      | "fragment" `elem` attributes = case lookup "include" (mapMaybe attribute attributes) of
           Just file -> do
             content <- readIncluded file
             pure (["```lawspec"] ++ lines content ++ ["```"])
@@ -214,7 +266,7 @@ preprocess errors snippets pages page markdown = unlines <$> go (lines markdown)
       | otherwise = do
           let attrs = mapMaybe attribute attributes
           -- Several files compile together; the last is the one shown.
-          files <- case lookup "file" attrs of
+          files <- case lookup "include" attrs of
             Just list -> forM (splitOn ',' list) $ \file -> (,) (takeFileName file) <$> readIncluded file
             Nothing -> pure [("spec.lawspec", unlines block)]
           let (name, source) = last files
@@ -249,8 +301,10 @@ preprocess errors snippets pages page markdown = unlines <$> go (lines markdown)
                , "</lawspec-playground>", "" ]
     fence (language : attributes) block = do
       let attrs = mapMaybe attribute attributes
-      case lookup "file" attrs of
-        Nothing -> pure (["```" ++ unwords (language : attributes)] ++ block ++ ["```"])
+      -- A block with file= is canon's: it tangles into that file, and the
+      -- page shows the block itself.
+      case lookup "include" attrs of
+        Nothing -> pure (["```" ++ language] ++ block ++ ["```"])
         Just file -> do
           content <- readIncluded file
           selected <- case lookup "region" attrs of

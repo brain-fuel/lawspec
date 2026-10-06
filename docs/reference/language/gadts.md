@@ -1,3 +1,8 @@
+---
+id: lawspec.reference.language.gadts
+kind: reference
+title: GADTs
+---
 # GADTs
 
 A constructor can fix a type parameter with `where`. It then builds values of

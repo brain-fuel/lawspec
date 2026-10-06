@@ -1,3 +1,8 @@
+---
+id: lawspec.tutorials.lessons.01-first-law
+kind: tutorial
+title: 1. Your first law
+---
 # Lesson 1: Your first law
 
 In this lesson you set up a project, write one law about a pair of functions,
@@ -78,7 +83,7 @@ change.
 Workbenches on a page share their files: the one under "Implement the
 adapters" edits the same implementation that **▶ Run** tests here.
 
-```lawspec file=docs/lessons/specs/01-first-law.lawspec implementations=acceptance/lessons
+```lawspec include=docs/lessons/specs/01-first-law.lawspec implementations=acceptance/lessons
 ```
 
 A LawSpec source is one **unit**, here `lessons.codec`. Its name decides where
@@ -133,17 +138,17 @@ LawSpec writes three kinds of files under `javascript/`:
 Replace the stubs:
 
 ::: only java
-```lawspec file=docs/lessons/specs/01-first-law.lawspec implementations=acceptance/lessons view=implementation target=java
+```lawspec include=docs/lessons/specs/01-first-law.lawspec implementations=acceptance/lessons view=implementation target=java
 ```
 :::
 
 ::: only python
-```lawspec file=docs/lessons/specs/01-first-law.lawspec implementations=acceptance/lessons view=implementation target=python
+```lawspec include=docs/lessons/specs/01-first-law.lawspec implementations=acceptance/lessons view=implementation target=python
 ```
 :::
 
 ::: only javascript
-```lawspec file=docs/lessons/specs/01-first-law.lawspec implementations=acceptance/lessons view=implementation target=javascript
+```lawspec include=docs/lessons/specs/01-first-law.lawspec implementations=acceptance/lessons view=implementation target=javascript
 ```
 :::
 

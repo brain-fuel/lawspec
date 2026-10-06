@@ -1,3 +1,8 @@
+---
+id: lawspec.how-to.configure-an-existing-project
+kind: how-to
+title: Configure an existing project
+---
 # Configure an existing project
 
 This guide shows how to point LawSpec at an existing codebase: where your

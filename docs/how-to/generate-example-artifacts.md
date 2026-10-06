@@ -1,3 +1,8 @@
+---
+id: lawspec.how-to.generate-example-artifacts
+kind: how-to
+title: Generate example artifacts
+---
 # Generate example artifacts
 
 The `lawspec` package bundles example specifications and a runnable

@@ -1,3 +1,8 @@
+---
+id: lawspec.how-to.install-and-init
+kind: how-to
+title: Install LawSpec and create a project
+---
 # Install LawSpec and create a project
 
 ## Requirements

@@ -1,3 +1,8 @@
+---
+id: lawspec.how-to.bind-native-types
+kind: how-to
+title: Bind native types and functions
+---
 # Bind native types and functions
 
 By default, LawSpec generates its own native types for your data declarations,

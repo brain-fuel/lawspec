@@ -1,3 +1,8 @@
+---
+id: lawspec.reference.api
+kind: reference
+title: Compiler API
+---
 # Compiler API
 
 The compiler exposes three methods through `createCompiler()` in the `lawspec`

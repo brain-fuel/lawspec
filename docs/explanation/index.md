@@ -1,3 +1,8 @@
+---
+id: lawspec.explanation.index
+kind: explanation
+title: Explanation
+---
 # Explanation
 
 These pages discuss why LawSpec works the way it does. They are background
