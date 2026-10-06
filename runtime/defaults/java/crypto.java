@@ -151,6 +151,23 @@ public final class Crypto {
     }
   }
 
+  /**
+   * Verification with a context string. The JDK's ML-DSA takes none, so a
+   * non-empty context goes to Bouncy Castle's.
+   */
+  public static boolean mlDsa65Verify(byte[] publicKey, byte[] message, byte[] signature, byte[] context) {
+    if (context.length == 0) return mlDsa65Verify(publicKey, message, signature);
+    try {
+      var verifier = new org.bouncycastle.crypto.signers.MLDSASigner();
+      verifier.init(false, new org.bouncycastle.crypto.params.ParametersWithContext(
+          new org.bouncycastle.crypto.params.MLDSAPublicKeyParameters(org.bouncycastle.crypto.params.MLDSAParameters.ml_dsa_65, publicKey), context));
+      verifier.update(message, 0, message.length);
+      return verifier.verifySignature(signature);
+    } catch (RuntimeException failed) {
+      return false;
+    }
+  }
+
   // FIPS 205: SLH-DSA-SHAKE-128f. A secret key is SK.seed || SK.prf || PK.seed || PK.root.
   public static byte[][] slhDsaKeyPair(byte[] skSeed, byte[] skPrf, byte[] pkSeed) {
     var generator = new org.bouncycastle.crypto.generators.SLHDSAKeyPairGenerator();

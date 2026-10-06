@@ -72,11 +72,11 @@ class CryptoVectorsTest : StringSpec({
         for (v in vectors("mldsa65-keygen")) expect(sha3(Crypto.mlDsa65PublicKey(unhex(v[0]))) == v[1], "ML-DSA-65 key")
     }
 
-    // The JDK's ML-DSA takes no context strings, so only the vectors with an
-    // empty context apply to it.
+    // The JDK's ML-DSA takes no context strings; Bouncy Castle's verifies
+    // the vectors that have one.
     "ML-DSA-65 verification" {
         for (v in vectors("mldsa65-verify")) {
-            if (v[2].isEmpty()) expect(Crypto.mlDsa65Verify(unhex(v[0]), unhex(v[1]), unhex(v[3])) == (v[4] == "true"), "ML-DSA-65 verification")
+            expect(Crypto.mlDsa65Verify(unhex(v[0]), unhex(v[1]), unhex(v[3]), unhex(v[2])) == (v[4] == "true"), "ML-DSA-65 verification")
         }
     }
 

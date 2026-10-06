@@ -40,8 +40,9 @@ the same on every target, so the same seed gives the same draws on all eight:
 
 - **`seeded random n`** in a law's `using` list starts it at `n`. It is the
   spec handler `seededRandom`, with the generator's state as its state, so
-  the compiler can evaluate laws under it. `handle e with seededRandom end`
-  in a definition starts it at 0.
+  the compiler can evaluate laws under it. In a definition, `handle e with
+  seededRandom 42 end` (or `seeded random 42`) runs `e` under it started at
+  42; without a seed it starts at 0.
 - **The default handler** starts at the run's seed: `LAWSPEC_SEED`, or 0. A
   run repeated with the same seed draws the same values.
 

@@ -4,7 +4,7 @@ import LawSpec.Core.Policy (StagePolicy(..), Retry(..), Strategy(..), Jitter(..)
 import LawSpec.Resilience (resilienceName)
 import LawSpec.Collections (collectionsUnit, collectionsAlias)
 import LawSpec.Time (timeUnit, timeAlias, durationSuffixes, durationFactor, durationLimit, usesTime, timeTypes)
-import LawSpec.Builtins (virtualClockHandler, seededHandlerName)
+import LawSpec.Builtins (virtualClockHandler, seededHandlerName, seededHandler)
 import LawSpec.Flow (desugarFlows, flowTypeName)
 import LawSpec.Model
 import LawSpec.Indexed
@@ -582,7 +582,14 @@ operatorExpr = located $ makeExprParser application
       try (keyword "handle")
       body <- expr
       keyword "with"
-      handler <- ident
+      -- seededRandom n, or seeded random n: the seeded handler started at n.
+      handler <- (seededHandlerName <$> (try (keyword "seeded" *> keyword "random") *> lexeme L.decimal)) <|> do
+        name <- ident
+        seed <- optional (lexeme L.decimal)
+        case seed of
+          Nothing -> pure name
+          Just n | reverse (takeWhile (/= '.') (reverse name)) == seededHandler -> pure (seededHandlerName n)
+                 | otherwise -> fail "only seededRandom takes a seed"
       keyword "end"
       pure (Apply (Var ("prelude.handle:" ++ handler)) body)
     -- raise e: the Fail ability's operation. It aborts to the nearest

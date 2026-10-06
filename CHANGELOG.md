@@ -37,6 +37,9 @@
   `circl` and Go 1.25 (Go), Bouncy Castle (Java, Kotlin), `crypton`, `mlkem`
   and `mldsa` (Haskell), and RustCrypto's `ml-kem`, `ml-dsa`, `slh-dsa`,
   `sha3`, `shake` and `aes-gcm` (Rust).
+- In Go, a program's ability that shares a name with another unit's (such
+  as a built-in `Log`) is named after its unit (`ExampleShopLog`), since
+  every Go package holds every ability.
 - Java ability interfaces no longer end a wrapped parameter list with a
   comma; a Rust handler parameter that is a keyword is a raw identifier; a
   Rust ability operation's result is checked against its type.

@@ -45,6 +45,10 @@ law `a seed fixes the rolls` is
     sides = 6
     expect handle roll sides with seededRandom end = 6
   end
+  example `the first roll from seed 42` is
+    sides = 1000
+    expect handle roll sides with seededRandom 42 end = 78
+  end
 end
 
 law `rolls are on the die` using seeded random 42 is

@@ -4,6 +4,7 @@ vectors (see docs/reference/language/cryptography.md for the sources)."""
 import hashlib
 
 import lawspec.crypto as crypto
+import lawspec_crypto_reference as reference
 
 VECTORS = """@@VECTORS@@"""
 
@@ -46,16 +47,26 @@ def test_aes_256_gcm():
 
 
 def test_ml_kem_768_key_generation():
-    for d, z, public_digest, _ in vectors("mlkem768-keygen"):
+    for d, z, public_digest, secret_digest in vectors("mlkem768-keygen"):
         public, secret = crypto.ml_kem_768_key_pair_from_seed(unhex(d) + unhex(z))
         assert sha3(public) == public_digest
         assert secret == unhex(d) + unhex(z)
+        expected_public, expanded = reference.ml_kem_768_key_pair(unhex(d), unhex(z))
+        assert sha3(expected_public) == public_digest and sha3(expanded) == secret_digest
 
 
-def test_ml_kem_768_decapsulation_from_a_seed():
-    # cryptography takes decapsulation keys as seeds, and encapsulates only
-    # with fresh randomness, so the ACVP encapsulation and expanded-key
-    # vectors are checked where a library allows it.
+# cryptography encapsulates only with fresh randomness and takes keys only as
+# seeds, so the encapsulation and expanded-key vectors run on the plain
+# reference; the library's own decapsulation runs on the seed vectors, and
+# both must agree on a round trip.
+def test_ml_kem_768_encapsulation():
+    for public, m, ciphertext, secret in vectors("mlkem768-encaps"):
+        assert reference.ml_kem_768_encapsulate(unhex(public), unhex(m)) == (unhex(ciphertext), unhex(secret))
+
+
+def test_ml_kem_768_decapsulation():
+    for expanded, ciphertext, secret in vectors("mlkem768-decaps"):
+        assert reference.ml_kem_768_decapsulate(unhex(expanded), unhex(ciphertext)).hex() == secret
     for seed, ciphertext, secret in vectors("mlkem768-decaps-seed"):
         assert crypto.ml_kem_768_decapsulate(unhex(seed), unhex(ciphertext)).hex() == secret
 
@@ -65,11 +76,15 @@ def test_ml_kem_768_round_trip():
         public, secret = crypto.ml_kem_768_key_pair_from_seed(unhex(seed))
         ciphertext, shared = crypto.ml_kem_768_encapsulate(public)
         assert crypto.ml_kem_768_decapsulate(secret, ciphertext) == shared
+        _, expanded = reference.ml_kem_768_key_pair(unhex(seed)[:32], unhex(seed)[32:])
+        assert reference.ml_kem_768_decapsulate(expanded, ciphertext) == shared
 
 
 def test_ml_dsa_65_key_generation():
-    for seed, public_digest, _ in vectors("mldsa65-keygen"):
+    for seed, public_digest, secret_digest in vectors("mldsa65-keygen"):
         assert sha3(crypto.ml_dsa_65_public_key(unhex(seed))) == public_digest
+        public, secret = reference.ml_dsa_65_key_pair(unhex(seed))
+        assert sha3(public) == public_digest and sha3(secret) == secret_digest
 
 
 def test_ml_dsa_65_verification():
@@ -77,10 +92,12 @@ def test_ml_dsa_65_verification():
         assert crypto.ml_dsa_65_verify(unhex(public), unhex(message), unhex(signature), unhex(context)) == (passed == "true")
 
 
+# cryptography signs hedged only, so the deterministic signature is made by
+# the plain reference and compared byte for byte, and the library verifies it.
 def test_ml_dsa_65_signature_from_a_seed():
-    # cryptography signs hedged only, so the deterministic signature is
-    # verified, not compared.
     for seed, message, signature in vectors("mldsa65-sign-seed"):
+        _, expanded = reference.ml_dsa_65_key_pair(unhex(seed))
+        assert reference.ml_dsa_65_sign_deterministic(expanded, unhex(message)).hex() == signature
         public = crypto.ml_dsa_65_public_key(unhex(seed))
         assert crypto.ml_dsa_65_verify(public, unhex(message), unhex(signature))
         assert not crypto.ml_dsa_65_verify(public, unhex(message) + b"\0", unhex(signature))

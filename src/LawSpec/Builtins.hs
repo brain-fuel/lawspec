@@ -207,7 +207,7 @@ randomSource = unlines
   , "-- Draws from a seed. `seeded random n` in a law starts it at n; the"
   , "-- default handler starts at the run's seed."
   , "handler seededRandom for Random with state s :: Integer start 0 is"
-  , "  randomBelow n is ~s := randomStep (randomStep s); randomDraw s n end"
+  , "  randomBelow n is let r = randomDraw s n in ~s := randomStep (randomStep s); r end"
   , "end"
   , ""
   , "-- The operating system's cryptographically secure generator. No spec"

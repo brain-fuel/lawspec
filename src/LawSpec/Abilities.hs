@@ -37,7 +37,7 @@ import Data.List (intercalate, isInfixOf, nub, sortOn)
 import qualified Data.Map.Strict as M
 import LawSpec.Model
 import LawSpec.Collections (collectionsUnit)
-import LawSpec.Builtins (isSeededUse, seededHandler, randomAbility, secureRandomAbility)
+import LawSpec.Builtins (isSeededUse, seededHandler, seededHandlerName, randomAbility, secureRandomAbility)
 
 type Failure = (Maybe Location, String)
 
@@ -571,9 +571,27 @@ seededHandlers u
         { handlerDeclarations = handlerDeclarations u ++
             [ base { handlerName = cloneName n, handlerState = fmap (\(s, t, _) -> (s, t, Number n)) (handlerState base) }
             | n <- nub seeds, cloneName n `notElem` map handlerName (handlerDeclarations u) ]
-        , lawHandlers = [(n, map rename uses) | (n, uses) <- lawHandlers u] }
+        , lawHandlers = [(n, map rename uses) | (n, uses) <- lawHandlers u]
+        , functionDefinitions = [d { functionBody = renameHandles (functionBody d) } | d <- functionDefinitions u]
+        , laws = map renameLaw (laws u) }
   where
-    seeds = [n | (_, uses) <- lawHandlers u, use <- uses, Just n <- [seeded use]]
+    -- `using seeded random n`, and `handle e with seededRandom n end`.
+    seeds = nub ([n | (_, uses) <- lawHandlers u, use <- uses, Just n <- [seeded use]] ++
+      [n | e <- map functionBody (functionDefinitions u) ++ concatMap lawExpressionsOf (laws u)
+         , v <- exprVars e, Just name <- [stripHandle v], Just n <- [isSeededUse name]])
+    stripHandle v = if take 15 v == "prelude.handle:" then Just (drop 15 v) else Nothing
+    handles = [("prelude.handle:" ++ seededHandlerName n, Var ("prelude.handle:" ++ cloneName n)) | n <- seeds]
+    renameHandles = replaceExprVars handles
+    lawExpressionsOf l = definitionExpressions (definition l) ++ concat [map actual (expectations ex) | ex <- examples l]
+    renameLaw l = l { definition = renameDefinition (definition l)
+                    , examples = [ex { expectations = [c { actual = renameHandles (actual c) } | c <- expectations ex] } | ex <- examples l] }
+    renameDefinition d = case d of
+      Forall bound body -> Forall bound (renameDefinition body)
+      Equal a b -> Equal (renameHandles a) (renameHandles b)
+      Holds a -> Holds (renameHandles a)
+      Implies a body -> Implies (renameHandles a) (renameDefinition body)
+      And a b -> And (renameDefinition a) (renameDefinition b)
+      Invoke n args -> Invoke n (map renameHandles args)
     seeded use = case use of
       UseHandler h -> isSeededUse h
       UseRecording inner -> seeded inner

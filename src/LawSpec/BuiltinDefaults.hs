@@ -118,6 +118,9 @@ companionFiles target unit = case (target, unit) of
 vectorTests :: String -> [(String, String)]
 vectorTests target = case target of
   "go" -> [("lawspec/crypto/vectors_test.go", "crypto_vectors.go"), ("lawspec/crypto/vectors_go126_test.go", "crypto_vectors_go126.go")]
+  -- Python's library lacks deterministic encapsulation and signing and
+  -- expanded keys, so its test also gets a plain reference of both standards.
+  "python" -> [("tests/test_lawspec_crypto_vectors.py", "crypto_vectors.py"), ("tests/lawspec_crypto_reference.py", "crypto_reference.py")]
   _ -> [(p, "crypto_vectors" ++ extension target) | Just p <- [vectorTestPath target]]
 
 vectorTestPath :: String -> Maybe String

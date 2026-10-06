@@ -7,12 +7,12 @@ import example.abilities as payments
 
 -- A log. Its operation gives nothing back, so code calls it for its effect
 -- and goes on with `;`.
-ability Journal is
+ability Log is
   note :: Text -> Unit
 end
 
 -- A log that keeps what it is told.
-handler keptJournal for Journal with state lines :: List Text start [] is
+handler keptLog for Log with state lines :: List Text start [] is
   note message is ~lines := Cons message lines; unitValue end
 end
 
@@ -50,7 +50,7 @@ end
 
 -- Effects run in order: `a; b` runs a, then b; `let x = e in body` runs e
 -- once and names its value.
-definition buy (cents :: Int32) :: Bool uses Gateway, Journal is
+definition buy (cents :: Int32) :: Bool uses Gateway, Log is
   note "buying";
   let approved = payments.checkout cents in
   note "bought";
@@ -81,7 +81,7 @@ law `trial approves small amounts` is
   end
 end
 
-law `buying with a noting gateway approves small amounts` using notingGateway, keptJournal is
+law `buying with a noting gateway approves small amounts` using notingGateway, keptLog is
   definition is
     `for all` (cents :: Int32 where cents >= 0 && cents <= 10000) . buy cents = true
   end

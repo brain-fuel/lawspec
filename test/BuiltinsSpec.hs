@@ -97,6 +97,18 @@ spec = describe "built-in abilities" $ do
             , "law `eight` using seeded random 8 is definition is (pick 10 >= 0) = true end end" ])
       [C.handlerName h | u <- C.programUnits compiled, C.idText (C.unitId u) == "app.main", h <- C.unitHandlers u]
         `shouldSatisfy` (\names -> all (`elem` names) ["seededRandom7", "seededRandom8"])
+    it "takes a seed in handle ... with seededRandom n end" $ do
+      let Right compiled = program (source
+            [ "import lawspec.randomness"
+            , "definition draw (n :: Int64) :: Int64 is handle randomBelow n with seededRandom 42 end end"
+            , "definition other (n :: Int64) :: Int64 is handle randomBelow n with seeded random 7 end end" ])
+      [C.handlerName h | u <- C.programUnits compiled, C.idText (C.unitId u) == "app.main", h <- C.unitHandlers u]
+        `shouldSatisfy` (\names -> all (`elem` names) ["seededRandom42", "seededRandom7"])
+    it "rejects a seed for another handler" $
+      program (source
+        [ "import lawspec.time (Instant)"
+        , "definition stamp (n :: Int32) :: Instant is handle now with virtualClock 3 end end" ])
+        `shouldSatisfy` failsWith "only seededRandom takes a seed"
     it "needs lawspec.randomness for seeded random" $
       program (source
         [ "ability Dice is roll :: Int32 end"
@@ -140,6 +152,18 @@ spec = describe "built-in abilities" $ do
       let Right emitted = files "go" crypto
       concat [artifactContent f | f <- emitted, artifactPath f == "app/main/adapter.go"] `shouldNotSatisfy` ("HashHandler" `isInfixOf`)
       [artifactPath f | f <- emitted, artifactPath f == "app/main/lawspec_defaults_crypto.go"] `shouldBe` ["app/main/lawspec_defaults_crypto.go"]
+    it "let a program's own ability share a built-in one's name in Go" $ do
+      let sources =
+            [ Source "journal.lawspec" (unlines
+                [ "unit app.journal", "ability Log is note :: Text -> Unit end"
+                , "definition remember (n :: Int32) :: Int32 uses Log is note \"kept\"; n end" ])
+            , Source "audit.lawspec" (unlines
+                [ "unit app.audit", "import lawspec.logging (LogLevel)"
+                , "definition shout (n :: Int32) :: Int32 uses Log is logMessage Info \"shout\"; n end" ]) ]
+          Right emitted = compileCore 64 defaultGeneration sources >>= planTesting >>= emitPlan "go"
+          abilitiesOf path = concat [artifactContent f | f <- emitted, artifactPath f == path]
+      abilitiesOf "app/journal/lawspec_abilities.go" `shouldSatisfy` ("type AppJournalLog interface" `isInfixOf`)
+      abilitiesOf "app/journal/lawspec_abilities.go" `shouldSatisfy` ("type Log interface" `isInfixOf`)
     it "are reported as default-handler, or assumed when bound" $ do
       let Right compiled = program crypto
           statusOf name evidence = [obligationStatus o | o <- evidence, C.idText (obligationDeclaration o) == name]

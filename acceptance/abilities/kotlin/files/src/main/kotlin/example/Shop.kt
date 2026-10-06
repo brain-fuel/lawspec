@@ -14,8 +14,8 @@ object Shop {
         return gateway.capture(value0).cents
     }
 
-    /** The native handler of Journal: note. */
-    class JournalHandler : lawspec.abilities.example.Shop.Journal {
+    /** The native handler of Log: note. */
+    class LogHandler : lawspec.abilities.example.Shop.Log {
         private val lines = mutableListOf<String>()
         override fun note(value0: kotlin.String) {
             lines.add(value0)

@@ -77,6 +77,7 @@ extra-source-files:
     runtime/defaults/kotlin/time.kt
     runtime/defaults/python/concurrent.py
     runtime/defaults/python/crypto.py
+    runtime/defaults/python/crypto_reference.py
     runtime/defaults/python/crypto_vectors.py
     runtime/defaults/python/host.py
     runtime/defaults/python/logging.py

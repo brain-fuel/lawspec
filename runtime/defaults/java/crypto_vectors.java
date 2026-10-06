@@ -102,12 +102,12 @@ class CryptoVectorsTest {
     for (String[] v : vectors("mldsa65-keygen")) assertEquals(v[1], sha3(Crypto.mlDsa65PublicKey(unhex(v[0]))));
   }
 
-  // The JDK's ML-DSA takes no context strings, so only the vectors with an
-  // empty context apply to it.
+  // The JDK's ML-DSA takes no context strings; Bouncy Castle's verifies
+  // the vectors that have one.
   @Test
   void mlDsa65Verification() {
     for (String[] v : vectors("mldsa65-verify")) {
-      if (v[2].isEmpty()) assertEquals(v[4].equals("true"), Crypto.mlDsa65Verify(unhex(v[0]), unhex(v[1]), unhex(v[3])));
+      assertEquals(v[4].equals("true"), Crypto.mlDsa65Verify(unhex(v[0]), unhex(v[1]), unhex(v[3]), unhex(v[2])));
     }
   }
 

@@ -14,8 +14,8 @@ export function refund(
   return gateway.capture(value0).cents;
 }
 
-/** The native handler of Journal: note. */
-export class JournalHandler implements abilities.Journal {
+/** The native handler of Log: note. */
+export class LogHandler implements abilities.Log {
   lines: string[] = [];
   note(value0: string): void {
     this.lines.push(value0);

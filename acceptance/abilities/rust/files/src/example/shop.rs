@@ -14,13 +14,13 @@ pub fn refund(
     gateway.capture(value0).cents
 }
 
-/// The native handler of Journal: note.
+/// The native handler of Log: note.
 #[derive(Default)]
-pub struct JournalHandler {
+pub struct LogHandler {
     lines: std::sync::Mutex<Vec<String>>,
 }
 
-impl crate::lawspec_abilities::example_shop::Journal for JournalHandler {
+impl crate::lawspec_abilities::example_shop::Log for LogHandler {
     fn note(&self, value0: std::string::String) -> () {
         self.lines.lock().unwrap().push(value0);
     }

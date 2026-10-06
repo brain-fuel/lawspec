@@ -104,6 +104,20 @@ object Crypto {
             false
         }
 
+    /** Verification with a context string: the JDK's ML-DSA takes none, so a non-empty one goes to Bouncy Castle's. */
+    fun mlDsa65Verify(publicKey: ByteArray, message: ByteArray, signature: ByteArray, context: ByteArray): Boolean {
+        if (context.isEmpty()) return mlDsa65Verify(publicKey, message, signature)
+        return try {
+            val verifier = org.bouncycastle.crypto.signers.MLDSASigner()
+            verifier.init(false, org.bouncycastle.crypto.params.ParametersWithContext(
+                org.bouncycastle.crypto.params.MLDSAPublicKeyParameters(org.bouncycastle.crypto.params.MLDSAParameters.ml_dsa_65, publicKey), context))
+            verifier.update(message, 0, message.size)
+            verifier.verifySignature(signature)
+        } catch (failed: RuntimeException) {
+            false
+        }
+    }
+
     // FIPS 205: SLH-DSA-SHAKE-128f. A secret key is SK.seed || SK.prf || PK.seed || PK.root.
     fun slhDsaKeyPair(skSeed: ByteArray, skPrf: ByteArray, pkSeed: ByteArray): Pair<ByteArray, ByteArray> {
         val generator = org.bouncycastle.crypto.generators.SLHDSAKeyPairGenerator()
