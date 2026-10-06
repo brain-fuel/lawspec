@@ -2035,6 +2035,57 @@ public final class LawSpecRuntime {
   }
 
   /** A value's canonical text, the same on every target. */
+  /**
+   * Where a structured actual value first differs from the expected one, by
+   * the portable rendering: "" when they agree or neither has parts.
+   */
+  public static String difference(Value actual, Value expected) {
+    var path = new ArrayList<String>();
+    Value a = actual;
+    Value b = expected;
+    String shownA = null;
+    String shownB = null;
+    loop:
+    while (true) {
+      if (a.data() instanceof List<?> x && b.data() instanceof List<?> y
+          && !a.type().equals("Text") && !b.type().equals("Text")) {
+        for (int i = 0; i < x.size() && i < y.size(); i++) {
+          if (!render((Value) x.get(i)).equals(render((Value) y.get(i)))) {
+            path.add("item " + (i + 1));
+            a = (Value) x.get(i);
+            b = (Value) y.get(i);
+            continue loop;
+          }
+        }
+        if (x.size() == y.size()) return "";
+        path.add("length");
+        shownA = Integer.toString(x.size());
+        shownB = Integer.toString(y.size());
+        break;
+      }
+      if (a.data() instanceof Data x && b.data() instanceof Data y && x.tag().equals(y.tag())
+          && x.fields().size() == y.fields().size()) {
+        String name = x.tag().substring(x.tag().lastIndexOf("::") + 2);
+        for (int i = 0; i < x.fields().size(); i++) {
+          if (!render(x.fields().get(i)).equals(render(y.fields().get(i)))) {
+            path.add("field " + (i + 1) + " of " + name);
+            a = x.fields().get(i);
+            b = y.fields().get(i);
+            continue loop;
+          }
+        }
+        return "";
+      }
+      break;
+    }
+    if (path.isEmpty()) return "";
+    if (shownA == null) {
+      shownA = render(a);
+      shownB = render(b);
+    }
+    return " | first difference at " + String.join(", ", path) + ": expected " + shownB + ", actual " + shownA;
+  }
+
   /** A Text value's code points. */
   static int[] codePoints(Value v) {
     List<?> units = (List<?>) v.data();

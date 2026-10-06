@@ -993,6 +993,28 @@ bool = SBool
 
 -- Standalone contracts must observe their result even when
 -- the predicate is true.
+-- | Where a structured actual value first differs from the expected one, by
+-- the portable rendering: "" when they agree or neither has parts.
+difference :: Scalar -> Scalar -> String
+difference actual expected = case go actual expected of
+  ([], _) -> ""
+  (path, (a, b)) -> " | first difference at " ++ intercalate ", " path ++ ": expected " ++ b ++ ", actual " ++ a
+  where
+    go a b = case (a, b) of
+      (SList xs, SList ys) -> case [i | (i, x, y) <- zip3 [1 :: Int ..] xs ys, renderValue x /= renderValue y] of
+        i : _ -> step ("item " ++ show i) (xs !! (i - 1)) (ys !! (i - 1))
+        [] | length xs == length ys -> ([], ("", ""))
+           | otherwise -> (["length"], (show (length xs), show (length ys)))
+      (SData ta xs, SData tb ys) | ta == tb && length xs == length ys ->
+        case [i | (i, x, y) <- zip3 [1 :: Int ..] xs ys, renderValue x /= renderValue y] of
+          i : _ -> step ("field " ++ show i ++ " of " ++ T.unpack (last (T.splitOn (T.pack "::") (T.pack ta))))
+            (xs !! (i - 1)) (ys !! (i - 1))
+          [] -> ([], ("", ""))
+      _ -> ([], (renderValue a, renderValue b))
+    step segment a b = case go a b of
+      (path, shown) | null path -> ([segment], (renderValue a, renderValue b))
+                    | otherwise -> (segment : path, shown)
+
 -- Portable regular expressions (see LawSpec.Regex): the subset of RE2 and
 -- ECMAScript that means the same in both, matched against a whole text, code
 -- point by code point. The compiler has checked every pattern; a pattern

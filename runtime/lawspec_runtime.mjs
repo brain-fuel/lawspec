@@ -2081,6 +2081,41 @@ export function freePort() {
   return Number(execFileSync(globalThis.process.execPath, ['-e', script], { encoding: 'utf8' }));
 }
 
+/**
+ * Where a structured actual value first differs from the expected one, by
+ * the portable rendering: '' when they agree or neither has parts.
+ */
+export function difference(actual, expected) {
+  const path = [];
+  let a = actual;
+  let b = expected;
+  for (;;) {
+    if (Array.isArray(a) && Array.isArray(b)) {
+      const i = a.findIndex((x, j) => j < b.length && render(x) !== render(b[j]));
+      if (i >= 0 && i < b.length) {
+        path.push(`item ${i + 1}`);
+        [a, b] = [a[i], b[i]];
+        continue;
+      }
+      if (a.length === b.length) return '';
+      path.push('length');
+      [a, b] = [a.length, b.length];
+      break;
+    }
+    if (a instanceof DataValue && b instanceof DataValue && a.tag === b.tag && a.fields.length === b.fields.length) {
+      const i = a.fields.findIndex((x, j) => render(x) !== render(b.fields[j]));
+      if (i < 0) return '';
+      path.push(`field ${i + 1} of ${a.tag.split('::').pop()}`);
+      [a, b] = [a.fields[i], b.fields[i]];
+      continue;
+    }
+    break;
+  }
+  if (!path.length) return '';
+  const shown = path.at(-1) === 'length' ? String : render;
+  return ` | first difference at ${path.join(', ')}: expected ${shown(b)}, actual ${shown(a)}`;
+}
+
 /** A descriptor text's data types and its last form, the one generated. */
 export function valuesFrom(text) {
   const forms = readDescriptor(text);

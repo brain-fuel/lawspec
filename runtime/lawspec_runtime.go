@@ -1749,7 +1749,7 @@ func lsAssert(context string, actual, expected func() LawSpecValue) {
 	}()
 	a, b := actual(), expected()
 	if !lsEqual(a, b) {
-		panic(fmt.Sprintf("%s | actual=%v expected=%v", context, a, b))
+		panic(fmt.Sprintf("%s | actual=%v expected=%v%s", context, a, b, lsDifference(a, b)))
 	}
 }
 
@@ -2731,6 +2731,61 @@ func (s lawSpecValues) shrink(d any, v LawSpecValue) []LawSpecValue {
 		}
 	}
 	return unique
+}
+
+// lsDifference is where a structured actual value first differs from the
+// expected one, by the portable rendering: "" when they agree or neither has
+// parts.
+func lsDifference(actual, expected LawSpecValue) string {
+	path := []string{}
+	a, b := actual, expected
+	shownA, shownB := "", ""
+loop:
+	for {
+		switch x := a.Data.(type) {
+		case []LawSpecValue:
+			y, ok := b.Data.([]LawSpecValue)
+			if !ok {
+				break loop
+			}
+			for i := 0; i < len(x) && i < len(y); i++ {
+				if lsRender(x[i]) != lsRender(y[i]) {
+					path = append(path, fmt.Sprintf("item %d", i+1))
+					a, b = x[i], y[i]
+					continue loop
+				}
+			}
+			if len(x) == len(y) {
+				return ""
+			}
+			path = append(path, "length")
+			shownA, shownB = strconv.Itoa(len(x)), strconv.Itoa(len(y))
+			break loop
+		case lawSpecData:
+			y, ok := b.Data.(lawSpecData)
+			if !ok || x.tag != y.tag || len(x.fields) != len(y.fields) {
+				break loop
+			}
+			segments := strings.Split(x.tag, "::")
+			for i := range x.fields {
+				if lsRender(x.fields[i]) != lsRender(y.fields[i]) {
+					path = append(path, fmt.Sprintf("field %d of %s", i+1, segments[len(segments)-1]))
+					a, b = x.fields[i], y.fields[i]
+					continue loop
+				}
+			}
+			return ""
+		default:
+			break loop
+		}
+	}
+	if len(path) == 0 {
+		return ""
+	}
+	if shownA == "" {
+		shownA, shownB = lsRender(a), lsRender(b)
+	}
+	return " | first difference at " + strings.Join(path, ", ") + ": expected " + shownB + ", actual " + shownA
 }
 
 // lsCodePointsText is the text of a Text value's code points.

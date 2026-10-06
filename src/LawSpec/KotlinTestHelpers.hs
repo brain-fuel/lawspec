@@ -111,7 +111,7 @@ assertion bits structural =
     [text "val a = actual()",text "val b = expected()",
      call "check" [if structural then call "_schema.equal" [text "type",text "a",text "b",number bits,text "symbols"]
        else runtime "equal" [text "a",text "b"]] <> text " " <>
-       block (text "\"$context | actual=$a expected=$b\"")]) <>
+       block (text "\"$context | actual=$a expected=$b${LawSpecRuntime.difference(a, b)}\"")]) <>
     text " catch (error: Exception) " <> block (text "throw AssertionError(context, error)"))
 
 assertionDoc :: D.Doc

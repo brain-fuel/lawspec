@@ -1831,6 +1831,43 @@ def render(v):
     return str(v)
 
 
+def difference(actual, expected):
+    """Where a structured actual value first differs from the expected one,
+    by the portable rendering: '' when they agree or neither has parts."""
+    path = []
+    a, b = actual, expected
+    while True:
+        if isinstance(a, (list, tuple)) and isinstance(b, (list, tuple)):
+            for i, (x, y) in enumerate(zip(a, b)):
+                if render(x) != render(y):
+                    path.append(f'item {i + 1}')
+                    a, b = x, y
+                    break
+            else:
+                if len(a) == len(b):
+                    return ''
+                path.append('length')
+                a, b = len(a), len(b)
+                break
+        elif (isinstance(a, DataValue) and isinstance(b, DataValue) and a.tag == b.tag
+                and len(a.fields) == len(b.fields)):
+            name = a.tag.split('::')[-1]
+            for i, (x, y) in enumerate(zip(a.fields, b.fields)):
+                if render(x) != render(y):
+                    path.append(f'field {i + 1} of {name}')
+                    a, b = x, y
+                    break
+            else:
+                return ''
+        else:
+            break
+    if not path:
+        return ''
+    shown = (lambda v: str(v)) if path[-1] == 'length' else render
+    return (f' | first difference at {", ".join(path)}: expected '
+            f'{shown(b)}, actual {shown(a)}')
+
+
 def values_from(text):
     """A descriptor text's data types and its last form, the one generated."""
     forms = read_descriptor(text)

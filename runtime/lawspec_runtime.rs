@@ -2624,6 +2624,52 @@ pub fn helper(name: &str, mut args: Vec<Value>) -> Result<Value> {
     })
 }
 
+/// Where a structured actual value first differs from the expected one, by
+/// the portable rendering: "" when they agree or neither has parts.
+pub fn difference(actual: &Value, expected: &Value) -> String {
+    fn parts(v: &Value) -> Option<(Option<String>, Vec<&Value>)> {
+        match v {
+            Value::List(xs) => Some((None, xs.iter().collect())),
+            Value::Data(tag, fields) => Some((Some(tag.clone()), fields.iter().collect())),
+            Value::Maybe(Some(x)) => Some((Some("Just".into()), vec![x.as_ref()])),
+            Value::Left(x) => Some((Some("Left".into()), vec![x.as_ref()])),
+            Value::Right(x) => Some((Some("Right".into()), vec![x.as_ref()])),
+            _ => None,
+        }
+    }
+    let mut path = vec![];
+    let (mut a, mut b) = (actual, expected);
+    let mut lengths = None;
+    while let (Some((ta, xs)), Some((tb, ys))) = (parts(a), parts(b)) {
+        if ta != tb || (ta.is_some() && xs.len() != ys.len()) {
+            break;
+        }
+        match xs.iter().zip(ys.iter()).position(|(x, y)| render(x) != render(y)) {
+            Some(i) => {
+                path.push(match &ta {
+                    None => format!("item {}", i + 1),
+                    Some(tag) => format!("field {} of {}", i + 1, tag.rsplit("::").next().unwrap_or(tag)),
+                });
+                (a, b) = (xs[i], ys[i]);
+            }
+            None if xs.len() == ys.len() => return String::new(),
+            None => {
+                path.push("length".to_string());
+                lengths = Some((xs.len(), ys.len()));
+                break;
+            }
+        }
+    }
+    if path.is_empty() {
+        return String::new();
+    }
+    let (shown_a, shown_b) = match lengths {
+        Some((x, y)) => (x.to_string(), y.to_string()),
+        None => (render(a), render(b)),
+    };
+    format!(" | first difference at {}: expected {shown_b}, actual {shown_a}", path.join(", "))
+}
+
 /// The matcher, recording and resource helpers, or None for another helper.
 fn matcher_helper(name: &str, args: &[Value]) -> Result<Option<Value>> {
     let text = |i: usize| -> Result<&str> {

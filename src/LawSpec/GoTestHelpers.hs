@@ -133,5 +133,6 @@ dataHelpersDoc bits generator = statements
    line "func _lawspecDataAssert(context string, ty lawSpecTypeRef, symbols map[string]*lawSpecSymbol, actual, expected func() LawSpecValue) " <>
      block (statements [line "defer func() " <> block
        (line "if problem := recover(); problem != nil " <> block (value "panic(context + \" | \" + fmt.Sprint(problem))")) <> line "()",
-       line ("if !_lawspecSchema.equal(ty, actual(), expected(), " ++ show bits ++ ", symbols) ") <>
-         block (value "panic(context)")])]
+       line "a, b := actual(), expected()",
+       line ("if !_lawspecSchema.equal(ty, a, b, " ++ show bits ++ ", symbols) ") <>
+         block (value "panic(context + lsDifference(a, b))")])]

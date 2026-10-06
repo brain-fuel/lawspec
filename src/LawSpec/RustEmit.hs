@@ -300,9 +300,9 @@ emitRustWithBindings minify bindings plan@Plan{..} = either (Left . pure . (\m -
                 , binding "right" y
                 , conditional (Doc.text "!ls::equal(&left, &right)?")
                     (statement (Doc.text "return " <> invoke "Err"
-                      [invoke "format!" [string "{}: {:?} != {:?}",
+                      [invoke "format!" [string "{}: {:?} != {:?}{}",
                         string (label ++ " | expect " ++ Presentation.propositionText p),
-                        Doc.text "left", Doc.text "right"]]))]))
+                        Doc.text "left", Doc.text "right", Doc.text "ls::difference(&left, &right)"]]))]))
             Implication g body -> do
               guard <- render names g
               inner <- proposition names label body
