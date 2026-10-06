@@ -51,11 +51,16 @@ scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions 
         | otherwise = renderDocument (text "test(" <> message (unitName u ++ "::supervision") <> text ", async () => " <>
             Doc.block 2 (statement (text "await " <> runtime "checkSupervisionAsync" [])) <> text ");")
       -- The unit's harness: benchmarks, and order random.
-      benchmarks = if not py then "" else concatMap (renderDocument . benchmarkTest) (maybe [] C.harnessBenchmarks (C.unitHarnessSettings u))
-      shuffled = if not py || not (maybe False C.harnessOrderRandom (C.unitHarnessSettings u)) then "" else
+      benchmarks = concatMap (renderDocument . benchmarkTest) (maybe [] C.harnessBenchmarks (C.unitHarnessSettings u))
+      orderRandom = maybe False C.harnessOrderRandom (C.unitHarnessSettings u)
+      shuffled = if not py || not orderRandom then "" else
         renderDocument (statement (invoke "_harness.shuffle_tests" [invoke "globals" [],
           array [quoted n | l <- lines lawTexts, Just rest <- [stripPrefix "def " l], let n = takeWhile (/= '(') rest, "test_" `isPrefixOf` n]]))
-      tests = lawTexts ++ modelTexts ++ supervision ++ benchmarks ++ shuffled
+      -- JavaScript collects the law tests, then registers them shuffled.
+      laws' = if py || not orderRandom then lawTexts else
+        "const _ordered = [];\n{\n  const test = (...registration) => { _ordered.push(registration); };\n" ++ lawTexts ++
+        "}\nfor (const registration of _harness.shuffled(_ordered)) test(...registration);\n\n"
+      tests = laws' ++ modelTexts ++ supervision ++ benchmarks ++ shuffled
   wrappers <- concat <$> mapM contractWrapper (contracts u)
   let completeHeader = if py || hasData || "fc." `isInfixOf` tests then testHeader else unlines (filter (/= "import fc from 'fast-check';") (lines testHeader))
   pure [Artifact stubPath stub "user" "source",Artifact testPath (finish (completeHeader ++ dataHelpers ++ testHelpers ++ wrappers ++ tests)) "generated" "test"]
@@ -105,7 +110,8 @@ scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions 
         (if hasHarness then "import lawspec_harness as _harness\n" else "")
       else (if null definitions then "" else "import * as _definitions from '../src/lawspec_definition_bodies." ++ (if ts then "js" else "mjs") ++ "';\n") ++ webImports "../src/" ++ "import {test} from 'node:test';\nimport assert from 'node:assert/strict';\nimport fc from 'fast-check';\nimport * as impl from '../src/" ++ slash ++ (if ts then ".js" else ".mjs") ++ "';\n" ++
         (if null (C.unitAbilities u) then "" else "import * as _abilities from '../src/lawspec_abilities/" ++ slash ++ (if ts then ".js" else ".mjs") ++ "';\n") ++
-        concat ["import {" ++ last parts ++ " as " ++ boundAlias parts ++ "} from '../src/" ++ intercalate "/" (init parts) ++ (if ts then ".js" else ".mjs") ++ "';\n" | parts <- boundHandlers]
+        concat ["import {" ++ last parts ++ " as " ++ boundAlias parts ++ "} from '../src/" ++ intercalate "/" (init parts) ++ (if ts then ".js" else ".mjs") ++ "';\n" | parts <- boundHandlers] ++
+        (if hasHarness then "import * as _harness from './lawspec_harness." ++ (if ts then "js" else "mjs") ++ "';\n" else "")
     testHelpers = (if hasData then "" else if py then "\n\n" else "\n") ++
       Doc.render outputLayout (Helpers.assertionHelperDoc py) ++ seedHelper ++
       (if asyncMode then "\n\n" ++ Doc.render outputLayout (Helpers.asyncAssertionHelpersDoc bits) else "") ++
@@ -372,7 +378,7 @@ scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions 
       contextual <- if needsContext then
         (if py then contextualProperty prefix else webContextualProperty label) e body
         else pure ordinary
-      drawn <- if py && not (null (C.harnessDraws harness)) then pure <$> harnessProperty prefix e body else pure []
+      drawn <- if not (null (C.harnessDraws harness)) then pure <$> harnessProperty prefix label e body else pure []
       let properties = if maybe False (const True) finite then [] else
             if not (null drawn) then drawn else
             [if needsContext then contextual else if any (not . null . inputRefinements) (inputs e) || propertyKind e == "contract" then refined else ordinary]
@@ -381,7 +387,7 @@ scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions 
             ["_boundary" ++ show j | j <- [0 .. length boundaries' - 1]] ++
             ["_property" | not (null properties)]
       pure (Doc.render outputLayout (metadataDocument (if py then 72 else 80) (if py then "#" else "//") e) ++
-        if not py then concatMap renderDocument tests
+        if not py then webHarness label harness tests
         else case (C.harnessSkip harness, C.harnessKnownFailing harness) of
           -- A skipped law runs nothing; it is still an obligation.
           (Just reason, _) -> renderDocument (function (base ++ "__skipped") []
@@ -411,38 +417,105 @@ scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions 
     observations e =
       let harness = C.propertyHarness (original e)
           label = owner e ++ "::" ++ name e
-      in if not py || not (observed harness) then [] else
-        [statement (invoke "_harness.observe" ([message label] ++
-          [text "covers=" <> array [array [quoted l, render w] | C.Cover _ l w <- C.harnessCover harness] | not (null (C.harnessCover harness))] ++
-          [text "classes=" <> array [array [quoted l, render c] | (c, l) <- C.harnessClassify harness] | not (null (C.harnessClassify harness))] ++
-          [text "labels=" <> array (map render (C.harnessLabels harness)) | not (null (C.harnessLabels harness))]))] ++
+          field key value = if py then text (key ++ "=") <> value else text (key ++ ": ") <> value
+          fields = [field "covers" (array [array [quoted l, render w] | C.Cover _ l w <- C.harnessCover harness]) | not (null (C.harnessCover harness))] ++
+            [field "classes" (array [array [quoted l, render c] | (c, l) <- C.harnessClassify harness]) | not (null (C.harnessClassify harness))] ++
+            [field "labels" (array (map render (C.harnessLabels harness))) | not (null (C.harnessLabels harness))]
+      in if not (observed harness) then [] else
+        [statement (invoke "_harness.observe" ([message label] ++ if py then fields else [object [(k, v) | (k, v) <- jsFields harness label]]))] ++
         [statement (invoke "_harness.target" [render score, message label]) | Just score <- [C.harnessTarget harness]]
+    jsFields harness _ =
+      [("covers", array [array [quoted l, render w] | C.Cover _ l w <- C.harnessCover harness]) | not (null (C.harnessCover harness))] ++
+      [("classes", array [array [quoted l, render c] | (c, l) <- C.harnessClassify harness]) | not (null (C.harnessClassify harness))] ++
+      [("labels", array (map render (C.harnessLabels harness))) | not (null (C.harnessLabels harness))]
+    -- JavaScript and TypeScript register a law's tests through `test`; a
+    -- harness redefines it in a block around them, so each registered test
+    -- runs under the harness (run settings), is collected (known failing), or
+    -- is replaced by one skipped test.
+    webHarness label harness tests =
+      let rendered = concatMap renderDocument tests
+          register = "  const _register = test;\n"
+      in case (C.harnessSkip harness, C.harnessKnownFailing harness) of
+        (Just reason, _) -> renderDocument (text "test(" <> message (label ++ " skipped") <> text ", {skip: " <>
+          message reason <> text "}, () => " <> invoke "_harness.skip" [message label, message reason] <> text ");")
+        (_, Just reason) -> "{\n" ++ register ++ "  const _known = [];\n  {\n    const test = (_name, body) => { _known.push(body); };\n" ++
+          rendered ++ "  }\n  _register(" ++ Doc.render Doc.Compact (message (label ++ " known failing")) ++ ", () => " ++
+          Doc.render Doc.Compact (invoke "_harness.knownFailing" [message label, message (label ++ " known failing"), message reason, text "_known"]) ++ ");\n}\n\n"
+        _ | runSettings harness -> "{\n" ++ register ++ "  {\n    const test = (name, body) => _register(name, () => " ++
+              Doc.render Doc.Compact (invoke "_harness.run" [message label, text "name", text "body", object
+                ([("timeout", text (show ms)) | Just ms <- [C.harnessTimeout harness]] ++
+                 [("repeat", text (show (C.harnessRepeat harness))) | C.harnessRepeat harness /= 1] ++
+                 [("retries", text (show (C.harnessRetries harness))) | C.harnessRetries harness /= 0] ++
+                 [("covers", array [array [text (show pc), quoted l] | C.Cover pc l _ <- C.harnessCover harness]) | not (null (C.harnessCover harness))] ++
+                 [("observed", text "name.endsWith(' property')") | observed harness])]) ++ ");\n" ++
+              rendered ++ "  }\n}\n\n"
+          | otherwise -> rendered
     -- A property whose inputs a harness strategy draws: each strategy's
     -- value must satisfy its input's refinements; other inputs are drawn as
     -- usual and filtered by theirs.
-    harnessProperty prefix e body = do
-      let harness = C.propertyHarness (original e)
-          strategyOf input = [(n, d) | (i, n, d) <- C.harnessDraws harness, i == C.binderId (C.quantifiedBinder input)]
-      draws <- mapM (\plan -> do
-        let input = domainInput plan
-            predicate = conjunction (map render (inputRefinements input))
-        case strategyOf input of
-          (strategy, draw) : _ -> do
-            value <- drawDoc e plan strategy draw
-            pure [assign (inputId input) (invoke "_harness.check_drawn"
-              [quoted strategy, quoted (inputName input), lambda [text (inputId input)] predicate, value])]
-          [] -> do
-            strategy <- contextStrategy e plan
-            pure ([assign (inputId input) (method (text "_draw") "draw" [strategy])] ++
-              [statement (invoke "assume" [predicate]) | not (null (inputRefinements input))])) (generationPlan e)
-      pure (pythonProperty prefix
-        [pythonSettings (cases (generation e)), invoke "given" [invoke "st.data" []]] ["_draw"]
-        (statements (fresh e : concat draws ++ [body])))
-    -- A strategy's draw, as an expression.
+    harnessProperty prefix label e body
+      | py = do
+          let harness = C.propertyHarness (original e)
+              strategyOf input = [(n, d) | (i, n, d) <- C.harnessDraws harness, i == C.binderId (C.quantifiedBinder input)]
+          draws <- mapM (\plan -> do
+            let input = domainInput plan
+                predicate = conjunction (map render (inputRefinements input))
+            case strategyOf input of
+              (strategy, draw) : _ -> do
+                value <- drawDoc e plan strategy draw
+                pure [assign (inputId input) (invoke "_harness.check_drawn"
+                  [quoted strategy, quoted (inputName input), lambda [text (inputId input)] predicate, value])]
+              [] -> do
+                strategy <- contextStrategy e plan
+                pure ([assign (inputId input) (method (text "_draw") "draw" [strategy])] ++
+                  [statement (invoke "assume" [predicate]) | not (null (inputRefinements input))])) (generationPlan e)
+          pure (pythonProperty prefix
+            [pythonSettings (cases (generation e)), invoke "given" [invoke "st.data" []]] ["_draw"]
+            (statements (fresh e : concat draws ++ [body])))
+      -- fast-check composes a strategy into one arbitrary (oneof, filter,
+      -- chain), so its shrinking follows the strategy's structure. Values
+      -- are built with symbols made for generation.
+      | otherwise = do
+          let harness = C.propertyHarness (original e)
+              strategyOf input = [(n, d) | (i, n, d) <- C.harnessDraws harness, i == C.binderId (C.quantifiedBinder input)]
+          arbitraries <- mapM (\plan -> case strategyOf (domainInput plan) of
+            (strategy, draw) : _ -> webArbitrary e plan draw >>= \a -> pure (Just strategy, a)
+            [] -> (\a -> (Nothing, a)) <$> contextStrategy e plan) (generationPlan e)
+          let checks = concat
+                [ case strategy of
+                    Just name' -> [statement (invoke "_harness.checkDrawn" [quoted name', quoted (inputName input),
+                      lambda [text (inputId input)] (conjunction (map render (inputRefinements input))), text (inputId input)])
+                      | not (null (inputRefinements input))]
+                    Nothing -> [statement (invoke "fc.pre" [conjunction (map render (inputRefinements input))]) | not (null (inputRefinements input))]
+                | ((strategy, _), plan) <- zip arbitraries (generationPlan e), let input = domainInput plan ]
+              generated = [parenthesized (lambda [text "symbols"] a) <> text "(_generation)" | (_, a) <- arbitraries]
+          pure (testBlock (label ++ " property") "unused" (statements
+            [ assign "_generation" (invoke "new Map" [])
+            , statement ((if asyncMode then text "await " else mempty) <> blockCall "fc.assert"
+                [ blockCall (if asyncMode then "fc.asyncProperty" else "fc.property")
+                    (generated ++ [callback (map (text . inputId) (inputs e)) (statements ([fresh e] ++ checks ++ [body]))])
+                , invoke "_lawspecSeeded" [object [("numRuns", text (show (cases (generation e))))]] ]) ]))
+    -- A strategy as one fast-check arbitrary.
+    webArbitrary e plan draw = case draw of
+      C.DrawAny ty
+        | ty == inputType (domainInput plan) -> contextStrategy e plan
+        | otherwise -> pure (generatorDoc ty)
+      C.DrawOneOf _ values -> pure (method (invoke "fc.integer" [object [("min", text "0"), ("max", text (show (length values - 1)))]]) "map"
+        [lambda [text "_choice"] (array [lambda [] (render v) | v <- values] <> text "[_choice]()")])
+      C.DrawFrequency alternatives -> do
+        options <- mapM (\(w, d) -> (\a -> object [("arbitrary", a), ("weight", text (show w))]) <$> webArbitrary e plan d) alternatives
+        pure (invoke "fc.oneof" options)
+      C.DrawSuchThat inner binder predicate _ -> do
+        a <- webArbitrary e plan inner
+        pure (method a "filter" [lambda [text (localName (C.binderId binder))] (render predicate)])
+      C.DrawBind binder from rest -> do
+        fromA <- webArbitrary e plan from
+        restA <- webArbitrary e plan rest
+        pure (method fromA "chain" [lambda [text (localName (C.binderId binder))] restA])
+    -- A strategy's draw, as a Python expression.
     drawDoc e plan strategy draw = case draw of
       C.DrawAny ty
         | ty == inputType (domainInput plan) -> (\s -> method (text "_draw") "draw" [s]) <$> contextStrategy e plan
-        | usesData ty -> pure (method (text "_draw") "draw" [invoke "_lawspec_data_generator" [referenceDoc ty]])
         | otherwise -> pure (method (text "_draw") "draw" [generatorDoc ty])
       C.DrawOneOf _ values -> pure (invoke "_harness.draw_one_of" [text "_draw", array [lambda [] (render v) | v <- values]])
       C.DrawFrequency alternatives -> do
@@ -457,8 +530,11 @@ scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions 
         restDoc <- drawDoc e plan strategy rest
         pure (parenthesized (lambda [text (localName (C.binderId binder))] restDoc) <> Doc.delimitTrailing 4 "(" ")" [fromDoc])
     -- A benchmark: measured, never asserted.
-    benchmarkTest (n, body) = function ("test_benchmark__" ++ intercalate "_" (lawWords n)) []
-      (statements [freshSymbols, statement (invoke "_harness.benchmark" [message n, lambda [] (render body)])])
+    benchmarkTest (n, body) = if py
+      then function ("test_benchmark__" ++ intercalate "_" (lawWords n)) []
+        (statements [freshSymbols, statement (invoke "_harness.benchmark" [message n, lambda [] (render body)])])
+      else text "test(" <> message ("benchmark " ++ n) <> text ", async () => " <> Doc.block 2
+        (statements [freshSymbols, statement (text "await " <> invoke "_harness.benchmark" [message n, asyncPrefix <> lambda [] (render body)])]) <> text ");"
     -- A stateful model's test: the model runtime generates runs, executes
     -- them through the generated bridge definitions and checks them against
     -- the reference definitions.

@@ -16,6 +16,7 @@ extra-source-files:
     runtime/lawspec_runtime.rs
     runtime/lawspec_strategies.rs
     runtime/lawspec_data_strategies.mjs
+    runtime/lawspec_harness.mjs
     runtime/lawspec_runtime.mjs
     runtime/lawspec_schema.mjs
     runtime/lawspec_data_strategies.py
