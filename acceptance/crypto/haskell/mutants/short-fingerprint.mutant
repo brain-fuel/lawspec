@@ -1,0 +1,7 @@
+expect: a fingerprint is 8 bytes
+@@ src/Example/Crypto.hs
+<<<<<<<
+  pure (B.take 8 digest)
+=======
+  pure (B.take 7 digest)
+>>>>>>>

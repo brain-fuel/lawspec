@@ -1,0 +1,11 @@
+expect-any: time does not go back [native] | elapsed time is never negative
+@@ src/Example/Clocks.hs
+<<<<<<<
+        IORef.modifyIORef' readings (+ 1)
+        Abilities.now inner
+=======
+        IORef.modifyIORef' readings (+ 1)
+        count <- IORef.readIORef readings
+        Data.Instant reading <- Abilities.now inner
+        pure (Data.Instant (reading - 1000 * fromInteger count))
+>>>>>>>

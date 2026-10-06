@@ -47,6 +47,13 @@ extra-source-files:
     runtime/defaults/go/logging.go
     runtime/defaults/go/randomness.go
     runtime/defaults/go/time.go
+    runtime/defaults/haskell/concurrent.hs
+    runtime/defaults/haskell/crypto.hs
+    runtime/defaults/haskell/crypto_vectors.hs
+    runtime/defaults/haskell/host.hs
+    runtime/defaults/haskell/logging.hs
+    runtime/defaults/haskell/randomness.hs
+    runtime/defaults/haskell/time.hs
     runtime/defaults/java/concurrent.java
     runtime/defaults/java/crypto.java
     runtime/defaults/java/crypto_vectors.java

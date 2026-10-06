@@ -29,7 +29,7 @@ setupAdvice target = lookup target
   , ("javascript", "Use Node 22+, package.json type=module, npm install @noble/post-quantum@0.7.1 (lawspec.crypto's default handlers), and npm install --save-dev fast-check@4.10.2.")
   , ("typescript", "Use Node 22+, package.json type=module, npm install @noble/post-quantum@0.7.1 (lawspec.crypto's default handlers), and npm install --save-dev fast-check@4.10.2 typescript@5.9.3 @types/node@22.20.4. Configure tsconfig.json with module=NodeNext, target=ES2022, rootDir=., outDir=dist, include=[\"src/**/*.ts\",\"test/**/*.ts\"].")
   , ("go", "Use Go 1.25+ and go get pgregory.net/rapid@v1.2.0 github.com/cloudflare/circl@v1.6.5 (lawspec.crypto's default handlers), then go mod download.")
-  , ("haskell", "Use Stack with lts-24.58 and test dependencies hspec, hedgehog, hspec-hedgehog, hspec-discover, and a test/Spec.hs using hspec-discover. Run stack build --test --no-run-tests.")
+  , ("haskell", "Use Stack with lts-24.58, extra-deps crypton-1.1.5, ram-0.22.1, mlkem-0.2.3.0 and mldsa-0.1.1.0 (lawspec.crypto's default handlers; with directory and time as dependencies), and test dependencies hspec, hedgehog, hspec-hedgehog, hspec-discover, and a test/Spec.hs using hspec-discover. Run stack build --test --no-run-tests.")
   , ("kotlin", "Use JDK 25, Gradle 9.3.0, Kotlin plugin 2.3.21, Bouncy Castle bcprov-jdk18on 1.86 (lawspec.crypto's default handlers), JVM target 25, Kotest 5.9.1 (runner, assertions, property), and useJUnitPlatform(). Run gradle testClasses.") ]
 
 -- Files in the order the project is written.
@@ -72,9 +72,9 @@ scaffoldFiles minify target = case target of
     , "require (", "\tgithub.com/cloudflare/circl v1.6.5", "\tpgregory.net/rapid v1.2.0", ")", ""
     , "require (", "\tgolang.org/x/crypto v0.54.0 // indirect", "\tgolang.org/x/sys v0.47.0 // indirect", ")" ])]
   "haskell" -> Right
-    [ ("stack.yaml", "snapshot: lts-24.58\npackages: [.]\n")
+    [ ("stack.yaml", "snapshot: lts-24.58\npackages: [.]\n# lawspec.crypto's default handlers\nextra-deps: [crypton-1.1.5, ram-0.22.1, mlkem-0.2.3.0, mldsa-0.1.1.0]\n")
     , ("package.yaml", unlines
-        [ "name: lawspec-example", "version: 0.1.0", "dependencies: [base, text, bytestring, containers, network]"
+        [ "name: lawspec-example", "version: 0.1.0", "dependencies: [base, text, bytestring, containers, network, directory, time, crypton, mlkem, mldsa, ram]"
         , "library:", "  source-dirs: src", "tests:", "  laws:", "    main: Spec.hs", "    source-dirs: test"
         , "    dependencies: [lawspec-example, hspec, hedgehog, hspec-hedgehog, containers, mtl]"
         , "    build-tools: [hspec-discover]" ])

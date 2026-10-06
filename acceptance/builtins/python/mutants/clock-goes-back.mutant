@@ -6,5 +6,5 @@ expect-any: time does not go back [native] | elapsed time is never negative
 =======
         self.readings += 1
         reading = self.inner.now()
-        return type(reading)(reading.value - self.readings)
+        return type(reading)(reading.value - 1000 * self.readings)
 >>>>>>>

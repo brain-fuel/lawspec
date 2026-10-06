@@ -5,7 +5,7 @@ expect-any: time does not go back [native] | elapsed time is never negative
 	return clock.inner.Now()
 =======
 	clock.readings++
-	return Instant{Value: clock.inner.Now().Value - clock.readings}
+	return Instant{Value: clock.inner.Now().Value - 1000*clock.readings}
 >>>>>>>
 @@ example/builtins/steady.go
 <<<<<<<
@@ -13,5 +13,5 @@ expect-any: time does not go back [native] | elapsed time is never negative
 	return clock.inner.Now()
 =======
 	clock.readings++
-	return Instant{Value: clock.inner.Now().Value - clock.readings}
+	return Instant{Value: clock.inner.Now().Value - 1000*clock.readings}
 >>>>>>>

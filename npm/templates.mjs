@@ -29,7 +29,7 @@ export const setup = {
                        "javascript": "Use Node 22+, package.json type=module, npm install @noble/post-quantum@0.7.1 (lawspec.crypto's default handlers), and npm install --save-dev fast-check@4.10.2.",
                        "typescript": "Use Node 22+, package.json type=module, npm install @noble/post-quantum@0.7.1 (lawspec.crypto's default handlers), and npm install --save-dev fast-check@4.10.2 typescript@5.9.3 @types/node@22.20.4. Configure tsconfig.json with module=NodeNext, target=ES2022, rootDir=., outDir=dist, include=[\"src/**/*.ts\",\"test/**/*.ts\"].",
                        "go": "Use Go 1.25+ and go get pgregory.net/rapid@v1.2.0 github.com/cloudflare/circl@v1.6.5 (lawspec.crypto's default handlers), then go mod download.",
-                       "haskell": "Use Stack with lts-24.58 and test dependencies hspec, hedgehog, hspec-hedgehog, hspec-discover, and a test/Spec.hs using hspec-discover. Run stack build --test --no-run-tests.",
+                       "haskell": "Use Stack with lts-24.58, extra-deps crypton-1.1.5, ram-0.22.1, mlkem-0.2.3.0 and mldsa-0.1.1.0 (lawspec.crypto's default handlers; with directory and time as dependencies), and test dependencies hspec, hedgehog, hspec-hedgehog, hspec-discover, and a test/Spec.hs using hspec-discover. Run stack build --test --no-run-tests.",
                        "kotlin": "Use JDK 25, Gradle 9.3.0, Kotlin plugin 2.3.21, Bouncy Castle bcprov-jdk18on 1.86 (lawspec.crypto's default handlers), JVM target 25, Kotest 5.9.1 (runner, assertions, property), and useJUnitPlatform(). Run gradle testClasses.",
                        "rust": "Use Rust 1.85+ with edition 2024, Proptest 1.11.0, num-bigint 0.4.8, num-rational 0.4.2, num-complex 0.4.6, and num-traits 0.2.19. Run cargo test."
                      };
@@ -80,13 +80,13 @@ const scaffolds = {
                     },
                     "haskell": {
                       "readable": {
-                        "stack.yaml": "snapshot: lts-24.58\npackages: [.]\n",
-                        "package.yaml": "name: lawspec-example\nversion: 0.1.0\ndependencies: [base, text, bytestring, containers, network]\nlibrary:\n  source-dirs: src\ntests:\n  laws:\n    main: Spec.hs\n    source-dirs: test\n    dependencies: [lawspec-example, hspec, hedgehog, hspec-hedgehog, containers, mtl]\n    build-tools: [hspec-discover]\n",
+                        "stack.yaml": "snapshot: lts-24.58\npackages: [.]\n# lawspec.crypto's default handlers\nextra-deps: [crypton-1.1.5, ram-0.22.1, mlkem-0.2.3.0, mldsa-0.1.1.0]\n",
+                        "package.yaml": "name: lawspec-example\nversion: 0.1.0\ndependencies: [base, text, bytestring, containers, network, directory, time, crypton, mlkem, mldsa, ram]\nlibrary:\n  source-dirs: src\ntests:\n  laws:\n    main: Spec.hs\n    source-dirs: test\n    dependencies: [lawspec-example, hspec, hedgehog, hspec-hedgehog, containers, mtl]\n    build-tools: [hspec-discover]\n",
                         "test/Spec.hs": "{-# OPTIONS_GHC -F -pgmF hspec-discover #-}\n"
                       },
                       "compact": {
-                        "stack.yaml": "snapshot: lts-24.58\npackages: [.]\n",
-                        "package.yaml": "name: lawspec-example\nversion: 0.1.0\ndependencies: [base, text, bytestring, containers, network]\nlibrary:\n  source-dirs: src\ntests:\n  laws:\n    main: Spec.hs\n    source-dirs: test\n    dependencies: [lawspec-example, hspec, hedgehog, hspec-hedgehog, containers, mtl]\n    build-tools: [hspec-discover]\n",
+                        "stack.yaml": "snapshot: lts-24.58\npackages: [.]\n# lawspec.crypto's default handlers\nextra-deps: [crypton-1.1.5, ram-0.22.1, mlkem-0.2.3.0, mldsa-0.1.1.0]\n",
+                        "package.yaml": "name: lawspec-example\nversion: 0.1.0\ndependencies: [base, text, bytestring, containers, network, directory, time, crypton, mlkem, mldsa, ram]\nlibrary:\n  source-dirs: src\ntests:\n  laws:\n    main: Spec.hs\n    source-dirs: test\n    dependencies: [lawspec-example, hspec, hedgehog, hspec-hedgehog, containers, mtl]\n    build-tools: [hspec-discover]\n",
                         "test/Spec.hs": "{-# OPTIONS_GHC -F -pgmF hspec-discover #-}\n"
                       }
                     },

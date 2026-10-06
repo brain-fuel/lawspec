@@ -5,5 +5,5 @@ expect-any: time does not go back [native] | elapsed time is never negative
     return this.inner.now();
 =======
     this.readings += 1n;
-    return new data.Instant(this.inner.now().value - this.readings);
+    return new data.Instant(this.inner.now().value - 1000n * this.readings);
 >>>>>>>

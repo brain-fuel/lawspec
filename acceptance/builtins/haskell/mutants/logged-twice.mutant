@@ -1,0 +1,10 @@
+expect: a charge is logged once
+@@ src/Example/Builtins.hs
+<<<<<<<
+      Abilities.logMessage log' Data.LogLevelInfo (T.pack ("charged " ++ P.show cents))
+      pure True
+=======
+      Abilities.logMessage log' Data.LogLevelInfo (T.pack ("charged " ++ P.show cents))
+      Abilities.logMessage log' Data.LogLevelInfo (T.pack ("charged again " ++ P.show cents))
+      pure True
+>>>>>>>

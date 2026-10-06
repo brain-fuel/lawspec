@@ -1,0 +1,5 @@
+{
+  "handlers": [
+    {"ability": "lawspec.time::Clock", "native": ["Example", "Clocks", "newSteadyClock"]}
+  ]
+}

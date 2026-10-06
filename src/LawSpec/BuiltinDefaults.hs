@@ -130,7 +130,7 @@ fill :: String -> [C.DataDeclaration] -> String -> String -> String
 fill _ _ package = replace "@@PACKAGE@@" package . replace "@@VECTORS@@" vectors . replace "@@VECTOR_LINES@@" vectorLines
   where
     vectors = defaultSource "vectors.txt"
-    vectorLines = intercalate ",\n" ["\"" ++ l ++ "\"" | l <- lines vectors, not (null l), take 1 l /= "#"]
+    vectorLines = intercalate ",\n" ["    \"" ++ l ++ "\"" | l <- lines vectors, not (null l), take 1 l /= "#"]
 
 replace :: String -> String -> String -> String
 replace old new = go
