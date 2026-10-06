@@ -6,12 +6,13 @@ import qualified LawSpec.Core as C
 import Control.Monad (foldM)
 import LawSpec.Backend
 import LawSpec.Common
+import LawSpec.TestNames (unitTestNames)
 import LawSpec.Testing
 import qualified LawSpec.Core.Value as V
 import qualified LawSpec.Code.Doc as D
 import qualified LawSpec.KotlinExpr as E
 import qualified LawSpec.KotlinTestHelpers as Helpers
-import Data.List (intercalate, sort)
+import Data.List (intercalate, sort, stripPrefix)
 
 data Config = Config
   { packageName :: String
@@ -55,13 +56,13 @@ truth value = runtime "truth" [value]
 conjunction [] = text "true"
 conjunction xs = D.group (D.joinWith (text " &&" <> D.softline) xs)
 symbols = text "val symbols = mutableMapOf<String, Any>()"
-testFunction name body = quoted name <> text " " <> block body
 fromValues xs = statements [bind (inputId input) (text ("_values[" ++ show index ++ "]")) |
   (index,input) <- zip [0::Int ..] xs]
 
 emitTests :: Config -> Unit -> [Expanded] -> Either [Diagnostic] D.Doc
 emitTests Config{..} unit laws = do
-  bodies <- mapM law (zip [0::Int ..] laws)
+  let testNames = unitTestNames "kotlin" (map name laws)
+  bodies <- mapM (law testNames) (zip [0::Int ..] laws)
   let imports = sort $ ["io.kotest.core.spec.style.StringSpec", "io.kotest.property.checkAll",
         "io.kotest.property.Arb", "io.kotest.property.PropTestConfig", "lawspec.runtime.LawSpecRuntime", "lawspec.runtime.LawSpecSchema",
         "lawspec.runtime.LawSpecDataSchema", "lawspec.runtime.LawSpecDataCodecs",
@@ -75,8 +76,82 @@ emitTests Config{..} unit laws = do
       map contract (contracts unit)) <> D.hardline <> D.hardline <>
     text ("class " ++ className ++ "LawSpecTest : StringSpec(") <>
     -- Workflows wait on a virtual clock under test.
-    block (separate (text "lawspec.runtime.LawSpecRuntime.useVirtualClock(0)" : bodies)) <> text ")" <> D.hardline
+    block (separate (text "lawspec.runtime.LawSpecRuntime.useVirtualClock(0)" : bodies ++ map benchmark (maybe [] C.harnessBenchmarks settings))) <> text ")" <>
+    -- order random is Kotest's own.
+    (if orderRandom then text " " <> block (text "override fun testCaseOrder() = io.kotest.core.test.TestCaseOrder.Random") else mempty) <> D.hardline
   where
+    -- The harness plane (LawSpec.Harness). A test the harness runs is a
+    -- suspending function value (harness:name), which the generated test
+    -- passes to the runtime shared with Java.
+    settings = C.unitHarnessSettings unit
+    orderRandom = maybe False C.harnessOrderRandom settings
+    testFunction name body = case stripPrefix "harness:" name of
+      Just rest -> text ("val lawspecHarness" ++ takeWhile (/= ':') rest ++ ": suspend () -> Unit = ") <> closure "" body
+      Nothing -> quoted name <> text " " <> block body
+    runSettings h = C.harnessTimeout h /= Nothing || C.harnessRepeat h /= 1 || C.harnessRetries h /= 0 || observed h
+    observed h = not (null (C.harnessCover h) && null (C.harnessClassify h) && null (C.harnessLabels h)) || C.harnessTarget h /= Nothing
+    harness name' = call ("lawspec.testing.LawSpecHarness." ++ name')
+    body name' = text "lawspec.testing.LawSpecHarness.Body { kotlinx.coroutines.runBlocking { " <> text name' <> text "() } }"
+    observations e =
+      let h = C.propertyHarness (original e)
+          label = owner e ++ "::" ++ name e
+      in [harness "observe" [quoted label,
+            call "arrayOf<String>" [quoted l | C.Cover _ l _ <- C.harnessCover h], call "booleanArrayOf" [truth (expr w) | C.Cover _ _ w <- C.harnessCover h],
+            call "arrayOf<String>" [quoted l | (_, l) <- C.harnessClassify h], call "booleanArrayOf" [truth (expr c) | (c, _) <- C.harnessClassify h],
+            call "arrayOf<LawSpecRuntime.Value>" (map expr (C.harnessLabels h))] | observed h] ++
+         [harness "target" [expr score, quoted label] | Just score <- [C.harnessTarget h]]
+    -- The tests a law's harness wraps, skips or expects to fail.
+    harnessTests fn label h kinds docs = case (C.harnessSkip h, C.harnessKnownFailing h) of
+      (Just reason, _) -> [quoted (fn ++ "_skipped: " ++ label) <> text ".config(enabled = false) " <> block (text ("// " ++ reason))]
+      (_, Just reason) -> docs ++ [quoted (fn ++ "_knownFailing: " ++ label) <> text " " <> block (harness "knownFailing"
+        [quoted label, quoted (fn ++ "_knownFailing"), quoted reason, call "listOf" [body ("lawspecHarness" ++ fn ++ k) | k <- kinds]])]
+      _ | runSettings h -> docs ++ [quoted (fn ++ k ++ (if k == "_property" then ": " ++ label else "")) <> text " " <> block (harness "run"
+            [quoted label, quoted (fn ++ k), number (maybe 0 id (C.harnessTimeout h)), number (C.harnessRepeat h), number (C.harnessRetries h),
+             call "intArrayOf" [number p | k == "_property", C.Cover p _ _ <- C.harnessCover h],
+             call "arrayOf<String>" [quoted l | k == "_property", C.Cover _ l _ <- C.harnessCover h],
+             text (if k == "_property" && observed h then "true" else "false"), body ("lawspecHarness" ++ fn ++ k)]) | k <- kinds]
+        | otherwise -> docs
+    benchmark (n, b) = quoted ("benchmark " ++ n) <> text " " <> block (statements [symbols,
+      harness "benchmark" [quoted n, text "lawspec.testing.LawSpecHarness.Body { val _measured = " <> expr b <> text " }"]])
+    -- A property whose inputs harness strategies draw, from Kotest's
+    -- random source; their values' refinements are checked in the property.
+    harnessProperty fn label e check = do
+      let h = C.propertyHarness (original e)
+          strategyOf inp = [(n, d) | (i, n, d) <- C.harnessDraws h, i == C.binderId (C.quantifiedBinder inp)]
+      draws <- mapM (\plan -> do
+        let inp = domainInput plan
+        case strategyOf inp of
+          (strategy, d) : _ -> bind (inputId inp) <$> drawDoc inp strategy d
+          [] -> pure (bind (inputId inp) (generatorWithin (inputRange machineBits inp) (inputType inp) <> text ".sample(_random).value"))) (generationPlan e)
+      let defaults = [inp | inp <- inputs e, null (strategyOf inp)]
+          strategyChecks = [harness "checkDrawn" [quoted strategy, quoted (inputName inp),
+              conjunction (map (truth . expr) (inputRefinements inp)), text (inputId inp)]
+            | inp <- inputs e, (strategy, _) : _ <- [strategyOf inp], not (null (inputRefinements inp))]
+          base = trailing (text "io.kotest.property.arbitrary.arbitrary") "_random" (statements
+            ([symbols] ++ draws ++ [call "Pair" [call "listOf" [text (inputId inp) | inp <- inputs e], text "symbols"]]))
+          predicates = concatMap inputRefinements defaults
+          bindingsDoc = statements [text "val symbols = _inputs.second", text "val _values = _inputs.first", fromValues (inputs e)]
+          strategy = if null predicates then base else trailing (base <> text ".filter") "_inputs"
+            (statements [bindingsDoc, conjunction (map (truth . expr) predicates)])
+      pure $ testFunction (fn ++ "_property: " ++ label) $ trailing
+        (call "checkAll" [call "_lawspecConfig" [number (cases (generation e))], strategy]) "_inputs"
+        (statements ([bindingsDoc] ++ strategyChecks ++ handlerInstalls e ++ [check]))
+    chooser = text "java.util.function.IntUnaryOperator { _n -> _random.random.nextInt(_n) }"
+    drawDoc inp strategy d = case d of
+      C.DrawAny ty -> pure ((if ty == inputType inp then generatorWithin (inputRange machineBits inp) ty else generator ty) <> text ".sample(_random).value")
+      C.DrawOneOf _ values -> pure (harness "oneOf" [chooser, call "listOf" [text "java.util.function.Supplier { " <> expr v <> text " }" | v <- values]])
+      C.DrawFrequency alternatives -> do
+        options <- mapM (\(w, a) -> (\doc -> harness "Weighted" [number w, text "java.util.function.Supplier { " <> doc <> text " }"]) <$> drawDoc inp strategy a) alternatives
+        pure (harness "frequency" [chooser, call "listOf" options])
+      C.DrawSuchThat inner binder predicate limit -> do
+        doc <- drawDoc inp strategy inner
+        pure (harness "suchThat" [text "java.util.function.Supplier { " <> doc <> text " }",
+          text ("java.util.function.Predicate<LawSpecRuntime.Value> { " ++ localName (C.binderId binder) ++ " -> ") <> truth (expr predicate) <> text " }",
+          number limit, quoted strategy])
+      C.DrawBind binder from rest -> do
+        fromDoc <- drawDoc inp strategy from
+        restDoc <- drawDoc inp strategy rest
+        pure (text "run " <> block (statements [bind (localName (C.binderId binder)) fromDoc, restDoc]))
     -- LAWSPEC_SEED fixes Kotest's seed, so a run can be repeated exactly
     -- (lawspec test records the seed of every passing run).
     seedDoc = text "@OptIn(io.kotest.common.ExperimentalKotest::class)" <> D.hardline <>
@@ -111,28 +186,33 @@ emitTests Config{..} unit laws = do
           let local = localName (C.binderId (C.resourceBinder r))
           in statements [bind local (expr (C.resourceAcquire r)),
             text "try " <> block inner <> text " finally " <> block (expr (C.resourceRelease r))]
-    law (index,e) = do
+    law testNames (index,e) = do
       let label = owner e ++ "::" ++ name e
-          fn = "law" ++ show index
-      exampleDocs <- mapM (\(i,ex) -> pure $ testFunction (fn ++ "Example" ++ show i) $ statements
+          h = C.propertyHarness (original e)
+          base' = testNames !! index
+          fn = (if C.harnessSkip h == Nothing && (C.harnessKnownFailing h /= Nothing || runSettings h) then "harness:" else "") ++ base'
+      exampleDocs <- mapM (\(i,ex) -> pure $ testFunction (fn ++ "_example" ++ show i) $ statements
         ([symbols] ++ handlerInstalls e ++ [bind n (expr v) | (n,v) <- bindings ex] ++
         [bracketed e (map (assertionDoc (label ++ " example " ++ exampleName ex)) (expectations ex) ++
           [assertionDoc label (assertion e)])])) (zip [0::Int ..] (examples (original e)))
       boundaryDocs <- mapM (\(i,vs) -> do
         values <- mapM literal vs
-        pure $ testFunction (fn ++ "Boundary" ++ show i) $ statements
+        pure $ testFunction (fn ++ "_boundary" ++ show i) $ statements
           ([symbols] ++ handlerInstalls e ++ [bind (inputId inp) (checked (inputType inp) v) | (inp,v) <- zip (inputs e) values] ++
           [bracketed e [assertionDoc (label ++ " boundary " ++ show i) (assertion e)]]))
         (zip [0::Int ..] (maybe (boundaryCases e) id (finiteCases e)))
-      let check = bracketed e [assertionDoc (label ++ " property") (assertion e)]
+      let check = bracketed e (observations e ++ [assertionDoc (label ++ " property") (assertion e)])
       property <- if finiteCases e /= Nothing then pure []
+        else if not (null (C.harnessDraws h)) then (:[]) <$> harnessProperty fn label e check
         else if constructorContracts || nativeGenerators || any (maybe False (const True) . generatorIndex) (generationPlan e)
           then (:[]) <$> contextualProperty fn label e check
         else if any (structural . inputType) (inputs e) then pure [nativeProperty fn label e check]
         else if any (not . null . inputRefinements) (inputs e) || propertyKind e == "contract"
           then (:[]) <$> refinedProperty fn label e check
           else pure [nativeProperty fn label e check]
-      pure $ metadataDocument 96 "//" e <> separate (exampleDocs ++ boundaryDocs ++ property)
+      let kinds = ["_example" ++ show i | i <- [0 .. length exampleDocs - 1]] ++ ["_boundary" ++ show i | i <- [0 .. length boundaryDocs - 1]] ++
+            ["_property" | not (null property)]
+      pure $ metadataDocument 96 "//" e <> separate (harnessTests base' label h kinds (exampleDocs ++ boundaryDocs ++ property))
     contextualProperty fn label e check = do
       let bindings xs = statements [text "val symbols = _inputs.symbols",
             text "val _values = _inputs.values",fromValues xs]
@@ -174,7 +254,7 @@ emitTests Config{..} unit laws = do
             (statements [bindings (inputs e),conjunction (map (truth . expr) predicates)])
           body = statements ([text "val symbols = _inputs.symbols",
             text "val _values = _inputs.requireValues()",fromValues (inputs e)] ++ handlerInstalls e ++ [check])
-      pure $ testFunction (fn ++ "Property: " ++ label) $ trailing
+      pure $ testFunction (fn ++ "_property: " ++ label) $ trailing
         (call "checkAll" [call "_lawspecConfig" [number (cases (generation e))],strategy]) "_inputs" body
     requiredSymbol plan
       | inputType (domainInput plan) /= C.scalarType "Symbol" = []
@@ -203,7 +283,7 @@ emitTests Config{..} unit laws = do
             text "val _values = _inputs.first",fromValues (inputs e)]
           strategy = if null predicates then base else trailing (base <> text ".filter") "_inputs"
             (statements [bindingsDoc,conjunction (map (truth . expr) predicates)])
-      in testFunction (fn ++ "Property: " ++ label) $ trailing
+      in testFunction (fn ++ "_property: " ++ label) $ trailing
         (call "checkAll" [call "_lawspecConfig" [number (cases (generation e))],strategy]) "_inputs"
         (statements ([bindingsDoc] ++ handlerInstalls e ++ [check]))
     domain e (index,plan) = do
@@ -224,5 +304,5 @@ emitTests Config{..} unit laws = do
           invocation = runtime "refinedCase" [E.array domains,
             text "seed",number (maxAttempts cfg),number (maxShrinks cfg),callback,
             quoted (label ++ " | " ++ intercalate "; " (map prettyExpr (concatMap inputRefinements (inputs e))))]
-      pure $ testFunction (fn ++ "Property: " ++ label) $ trailing
+      pure $ testFunction (fn ++ "_property: " ++ label) $ trailing
         (call "checkAll" [call "_lawspecConfig" [number (cases cfg)],text "Arb.int()"]) "seed" (statements [symbols,invocation])

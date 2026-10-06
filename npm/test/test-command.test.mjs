@@ -1,33 +1,62 @@
 // Generated from templates/npm/test/test-command.test.mjs by lawspec-dev generate. Do not edit.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { invocations, lawKeys, recordedDigest } from "../test-command.mjs";
+import { invocations, lawKeys, recordedDigest, selectByTags, mergeJunit, junitFromTests } from "../test-command.mjs";
 
-const law = (index, file, label = `example.unit::law ${index}`) =>
-  ({ law: `example.unit::law::law ${index}`, unit: "example.unit", label, index, file, key: `k${index}`, callsAdapters: true });
+// A manifest entry, named as each target names a law's tests (LawSpec.TestNames).
+const names = { python: (i) => `test_law_${i}`, go: (i) => `TestLaw${i}`, rust: (i) => `law_law_${i}` };
+const law = (index, file, label = `example.unit::law ${index}`, language = "python") =>
+  ({ law: `example.unit::law::law ${index}`, unit: "example.unit", label, index, file, key: `k${index}`, callsAdapters: true,
+    name: (names[language] ?? ((i) => `lawLaw${i}`))(index), tags: [] });
 
 test("selects whole test names, so law 1 never selects law 10", () => {
   const python = invocations({ language: "python" }, [law(1, "tests/test_example_unit_lawspec.py")]);
-  assert.deepEqual(python[0].args.slice(-3, -1), ["-k", "test_law1_"]);
-  const go = invocations({ language: "go" }, [law(1, "example/unit/lawspec_test.go"), law(10, "example/unit/lawspec_test.go")]);
+  assert.deepEqual(python[0].args.slice(-3, -1), ["-k", "test_law_1__"]);
+  const go = invocations({ language: "go" }, [law(1, "example/unit/lawspec_test.go", undefined, "go"), law(10, "example/unit/lawspec_test.go", undefined, "go")]);
   assert.equal(go.length, 1);
-  assert.match("TestLaw10Property", new RegExp(go[0].args.at(-1)));
-  assert.doesNotMatch("TestLaw10Property", new RegExp(go[0].args.at(-1).replace("1|10", "1")));
-  const rust = invocations({ language: "rust" }, [law(1, "tests/example_unit_lawspec.rs")]);
-  assert.deepEqual(rust[0].args, ["test", "--test", "example_unit_lawspec", "--", "--exact", "test_1"]);
-  const kotlin = invocations({ language: "kotlin" }, [law(1, "src/test/kotlin/example/UnitLawSpecTest.kt")]);
+  assert.match("TestLaw10_Property", new RegExp(go[0].args.at(-1)));
+  assert.doesNotMatch("TestLaw10_Property", new RegExp(go[0].args.at(-1).replace("TestLaw1|TestLaw10", "TestLaw1")));
+  const rust = invocations({ language: "rust" }, [law(1, "tests/example_unit_lawspec.rs", undefined, "rust")]);
+  assert.deepEqual(rust[0].args, ["test", "--test", "example_unit_lawspec", "--", "--exact", "law_law_1"]);
+  const kotlin = invocations({ language: "kotlin" }, [law(1, "src/test/kotlin/example/UnitLawSpecTest.kt", undefined, "kotlin")]);
   const pattern = new RegExp(`^${kotlin[0].env["kotest.filter.tests"].replace("*", ".*?")}$`);
-  assert.ok(pattern.test("law1Property: example.unit::law 1"));
-  assert.ok(!pattern.test("law10Example0"));
+  assert.ok(pattern.test("lawLaw1_property: example.unit::law 1"));
+  assert.ok(!pattern.test("lawLaw10_example0"));
   assert.deepEqual(kotlin[0].args.slice(-2), ["--tests", "example.UnitLawSpecTest"]);
+});
+
+test("selects laws by their harness tags", () => {
+  const entries = [{ ...law(0, "t"), tags: ["network"] }, { ...law(1, "t"), tags: ["fast"] }, law(2, "t")];
+  assert.deepEqual(selectByTags(entries, ["network"]).map((e) => e.index), [0]);
+  assert.deepEqual(selectByTags(entries, [], ["network"]).map((e) => e.index), [1, 2]);
+  assert.deepEqual(selectByTags(entries, ["network", "fast"], ["fast"]).map((e) => e.index), [0]);
+});
+
+test("merges JUnit reports across targets", () => {
+  const merged = mergeJunit([
+    { target: "python", xml: '<testsuites><testsuite name="pytest" tests="2" failures="1"><testcase name="a"/></testsuite></testsuites>' },
+    { target: "go", xml: junitFromTests([{ name: "TestA_Property", classname: "p", status: "passed" }]) }]);
+  assert.match(merged, /<testsuites tests="3" failures="1"/);
+  assert.match(merged, /name="python: pytest"/);
+  assert.match(merged, /name="go: lawspec"/);
+  assert.match(merged, /<testcase classname="p" name="TestA_Property"\/>/);
+});
+
+test("asks each runner to measure coverage", () => {
+  const python = invocations({ language: "python" }, [law(0, "tests/t.py")], { coverage: ".lawspec/coverage/python" });
+  assert.deepEqual(python[0].args.slice(0, 4), ["-m", "coverage", "run", "--append"]);
+  const go = invocations({ language: "go" }, [law(0, "a/lawspec_test.go", undefined, "go")], { coverage: "c" });
+  assert.ok(go[0].args.includes("-cover"));
+  const haskell = invocations({ language: "haskell" }, [law(0, "test/A/BSpec.hs", undefined, "haskell")], { coverage: "c" });
+  assert.ok(haskell[0].args.includes("--coverage"));
 });
 
 test("runs each unit's laws separately where names repeat across units", () => {
   const entries = [law(0, "tests/test_a_lawspec.py"), law(0, "tests/test_b_lawspec.py")];
   assert.equal(invocations({ language: "python" }, entries).length, 2);
-  const java = invocations({ language: "java" }, [law(0, "src/test/java/a/ALawSpecTest.java"), law(2, "src/test/java/b/BLawSpecTest.java")]);
+  const java = invocations({ language: "java" }, [law(0, "src/test/java/a/ALawSpecTest.java", undefined, "java"), law(2, "src/test/java/b/BLawSpecTest.java", undefined, "java")]);
   assert.equal(java.length, 1);
-  assert.equal(java[0].args.at(-1), "-Dtest=a.ALawSpecTest#law0Example*+law0Boundary*+law0Property*,b.BLawSpecTest#law2Example*+law2Boundary*+law2Property*");
+  assert.equal(java[0].args.at(-1), "-Dtest=a.ALawSpecTest#lawLaw0_*,b.BLawSpecTest#lawLaw2_*");
 });
 
 test("selects JavaScript and TypeScript tests by their law's label", () => {
@@ -44,8 +73,8 @@ test("selects JavaScript and TypeScript tests by their law's label", () => {
 test("follows custom test directories and Haskell's spec paths", () => {
   const java = invocations({ language: "java", testDir: "checks" }, [law(0, "checks/a/ALawSpecTest.java")]);
   assert.match(java[0].args.at(-1), /^-Dtest=a\.ALawSpecTest#/);
-  const haskell = invocations({ language: "haskell" }, [law(3, "test/Example/UnitSpec.hs")]);
-  assert.match(haskell[0].args.at(-1), /--match Example\.Unit\/law3Property/);
+  const haskell = invocations({ language: "haskell" }, [law(3, "test/Example/UnitSpec.hs", undefined, "haskell")]);
+  assert.match(haskell[0].args.at(-1), /--match Example\.Unit\/lawLaw3_/);
 });
 
 test("a law's key changes with its adapters only when it calls them", () => {
@@ -83,32 +112,32 @@ async function ranLaws(target, entries, report, output = "") {
 test("counts only the tests a runner reports as run", async () => {
   const python = [law(0, "tests/t.py"), law(1, "tests/t.py")];
   assert.deepEqual(await ranLaws({ language: "python" }, python,
-    '<testsuite><testcase classname="tests.t" name="test_law0_property"/>' +
-    '<testcase classname="tests.t" name="test_law1_example0"><skipped/></testcase></testsuite>'), [0]);
+    '<testsuite><testcase classname="tests.t" name="test_law_0__property"/>' +
+    '<testcase classname="tests.t" name="test_law_1__example0"><skipped/></testcase></testsuite>'), [0]);
   // Kotest skips what its filter excludes; a filter matching nothing skips all.
-  const kotlin = [law(0, "src/test/kotlin/example/UnitLawSpecTest.kt")];
+  const kotlin = [law(0, "src/test/kotlin/example/UnitLawSpecTest.kt", undefined, "kotlin")];
   assert.deepEqual(await ranLaws({ language: "kotlin" }, kotlin,
-    '<testsuite><testcase name="law0Property: example.unit::law 0" classname="example.UnitLawSpecTest"><skipped/></testcase></testsuite>'), []);
+    '<testsuite><testcase name="lawLaw0_property: example.unit::law 0" classname="example.UnitLawSpecTest"><skipped/></testcase></testsuite>'), []);
   assert.deepEqual(await ranLaws({ language: "kotlin" }, kotlin,
-    '<testsuite><testcase name="law0Property: example.unit::law 0" classname="example.UnitLawSpecTest" time="0.1"></testcase></testsuite>'), [0]);
-  const java = [law(2, "src/test/java/example/UnitLawSpecTest.java")];
+    '<testsuite><testcase name="lawLaw0_property: example.unit::law 0" classname="example.UnitLawSpecTest" time="0.1"></testcase></testsuite>'), [0]);
+  const java = [law(2, "src/test/java/example/UnitLawSpecTest.java", undefined, "java")];
   assert.deepEqual(await ranLaws({ language: "java" }, java,
-    '<testsuite><testcase name="law2Example0()" classname="example.UnitLawSpecTest"/></testsuite>'), [2]);
+    '<testsuite><testcase name="lawLaw2_example0()" classname="example.UnitLawSpecTest"/></testsuite>'), [2]);
   const js = [law(0, "test/u.lawspec.test.mjs", "example.unit::a & b")];
   assert.deepEqual(await ranLaws({ language: "javascript" }, js,
     '<testsuites><testcase name="example.unit::a &amp; b property" classname="test"/></testsuites>'), [0]);
 });
 
 test("reads Go events, Rust results and hspec examples", async () => {
-  const go = [law(0, "example/unit/lawspec_test.go"), law(1, "example/unit/lawspec_test.go")];
+  const go = [law(0, "example/unit/lawspec_test.go", undefined, "go"), law(1, "example/unit/lawspec_test.go", undefined, "go")];
   assert.deepEqual(await ranLaws({ language: "go" }, go, undefined,
-    '{"Action":"run","Test":"TestLaw1Property"}\n{"Action":"pass","Test":"TestLaw0Example0","Package":"p"}\n'), [0]);
-  const rust = [law(0, "tests/u_lawspec.rs"), law(3, "tests/u_lawspec.rs")];
+    '{"Action":"run","Test":"TestLaw1_Property"}\n{"Action":"pass","Test":"TestLaw0_Example0","Package":"p"}\n'), [0]);
+  const rust = [law(0, "tests/u_lawspec.rs", undefined, "rust"), law(3, "tests/u_lawspec.rs", undefined, "rust")];
   assert.deepEqual(await ranLaws({ language: "rust" }, rust, undefined,
-    "running 1 test\ntest test_3 ... ok\n\ntest result: ok. 1 passed\n"), [3]);
-  const haskell = [law(0, "test/Example/UnitSpec.hs"), law(1, "test/Example/OtherSpec.hs")];
+    "running 1 test\ntest law_law_3 ... ok\n\ntest result: ok. 1 passed\n"), [3]);
+  const haskell = [law(0, "test/Example/UnitSpec.hs", undefined, "haskell"), law(1, "test/Example/OtherSpec.hs", undefined, "haskell")];
   assert.deepEqual(await ranLaws({ language: "haskell" }, haskell, undefined,
-    "Example.Unit\n  law0Example0 [✔]\n  law0Property: example.unit::law 0 [✔]\nExample.Other\n\nFinished in 0.01 seconds\n2 examples, 0 failures\n"), [0]);
+    "Example.Unit\n  lawLaw0_example0 [✔]\n  lawLaw0_property: example.unit::law 0 [✔]\nExample.Other\n\nFinished in 0.01 seconds\n2 examples, 0 failures\n"), [0]);
 });
 
 test("a changed recording changes the recordings' digest", async () => {

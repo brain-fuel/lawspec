@@ -280,6 +280,10 @@
             "path": "reference/language/resources.md"
           },
           {
+            "title": "Harness units",
+            "path": "reference/language/harness.md"
+          },
+          {
             "title": "Durations",
             "path": "reference/language/durations.md"
           },

@@ -1,0 +1,7 @@
+expect: is marked known failing
+@@ src/example/harness.mjs
+<<<<<<<
+  return Math.floor((value0 + 4) / 10) * 10;
+=======
+  return Math.floor((value0 + 9) / 10) * 10;
+>>>>>>>

@@ -1,0 +1,7 @@
+expect: a discount is never more than the total
+@@ src/Example/Harness.hs
+<<<<<<<
+then Data.orderTotal order `P.quot` 10 else 0
+=======
+then Data.orderTotal order + 1 else 0
+>>>>>>>

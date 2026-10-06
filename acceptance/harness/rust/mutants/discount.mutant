@@ -1,0 +1,7 @@
+expect: a discount is never more than the total
+@@ src/example/harness.rs
+<<<<<<<
+    if value0.items > 10 { value0.total / 10 } else { 0 }
+=======
+    if value0.items > 10 { value0.total + 1 } else { 0 }
+>>>>>>>

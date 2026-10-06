@@ -1,0 +1,7 @@
+expect-any: produced | outside the input's refinement
+@@ examples/specs/harness_testing.lawspec
+<<<<<<<
+    bind items :: Int32 from (one of 0, 1, 2, 3) in one of Order items (items * 100)
+=======
+    bind items :: Int32 from (one of 0, 1, -2, 3) in one of Order items (items * 100)
+>>>>>>>

@@ -3,6 +3,7 @@ module LawSpec.RustEmit (emitRust, emitRustWithFormat, emitRustWithBindings, rus
 import LawSpec.Core
 import LawSpec.Core.Total (constructorProofContracts)
 import LawSpec.Core.Machine (machineActor)
+import LawSpec.TestNames (unitTestNames, lawWords)
 import qualified LawSpec.RustExpr as Expression
 import qualified LawSpec.RustDefinitions as Definitions
 import qualified LawSpec.AbilityEmit.Rust as Abilities
@@ -228,7 +229,10 @@ emitRustWithBindings minify bindings plan@Plan{..} = either (Left . pure . (\m -
         [ Artifact "src/lawspec_runtime.rs" (runtimeSource "rust") "generated" "source"
         , Artifact "src/lawspec_modules.rs" moduleSource "generated" "source"
         , Artifact "tests/support/lawspec_strategies.rs" (runtimeSource "rust-strategies") "generated" "test"
-        ]
+        ] ++
+        -- The harness plane's runtime, for programs with a harness.
+        [Artifact "tests/support/lawspec_harness.rs" (runtimeSource "rust-harness") "generated" "test"
+          | any ((/= Nothing) . unitHarnessSettings . LawSpec.Testing.plannedUnit) plannedUnits]
   unless (length files == length (nub (map (map toLower . artifactPath) files))) (Left "Rust runtime or module path collision")
   generatorStubs <- NG.emitGeneratorStubs planDataDeclarations bindings
   pure (files ++ generatorStubs)
@@ -313,6 +317,75 @@ emitRustWithBindings minify bindings plan@Plan{..} = either (Left . pure . (\m -
             Definitions.operationBridges allUnits
           localNames p = [(binderId (quantifiedBinder a),"input_" ++ show n) | (n,a) <- zip [0::Int ..] (propertyInputs p)]
           render = Expression.renderExpression planDataDeclarations planMachineBits declarationNames
+          -- The harness plane (LawSpec.Harness).
+          runSettings h = harnessTimeout h /= Nothing || harnessRepeat h /= 1 || harnessRetries h /= 0 || observed h
+          observed h = not (null (harnessCover h) && null (harnessClassify h) && null (harnessLabels h)) || harnessTarget h /= Nothing
+          observationsDoc names p = do
+            let h = propertyHarness p
+                label = idText (unitId unit) ++ "::" ++ propertyName p
+            covers <- mapM (\(Cover _ l w) -> (\t -> (l, t)) <$> render names w) (harnessCover h)
+            classes <- mapM (\(c, l) -> (\t -> (l, t)) <$> render names c) (harnessClassify h)
+            labels <- mapM (render names) (harnessLabels h)
+            target' <- traverse (render names) (harnessTarget h)
+            let pairs prefix xs = [binding (prefix ++ show k) (Doc.text "(" <> t <> Doc.text ").boolean()?") | (k, (_, t)) <- zip [0::Int ..] xs]
+                refs prefix xs = Doc.text "&[" <> Doc.joinWith (Doc.text ", ") [Doc.text "(" <> string l <> Doc.text (", " ++ prefix ++ show k ++ ")") | (k, (l, _)) <- zip [0::Int ..] xs] <> Doc.text "]"
+            pure (pairs "cover_" covers ++ pairs "class_" classes ++
+              [binding ("label_" ++ show k) t | (k, t) <- zip [0::Int ..] labels] ++
+              [statement (invoke "lawspec_harness::observe" [string label, refs "cover_" covers, refs "class_" classes,
+                Doc.text "&[" <> Doc.joinWith (Doc.text ", ") [Doc.text ("label_" ++ show k) | k <- [0 .. length labels - 1]] <> Doc.text "]"])] ++
+              [statement (invoke "lawspec_harness::target" [Doc.text "&" <> parensDoc t, string label]) | Just t <- [target']])
+          parensDoc d = Doc.text "(" <> d <> Doc.text ")"
+          -- A harness strategy: a seed from proptest, and the strategy's
+          -- draws from it; the value must satisfy the input's refinements.
+          harnessStrategy prior input name strategy d = do
+            drawDoc' <- drawExpr prior strategy d
+            predicates <- mapM (render (prior ++ [(binderId (quantifiedBinder input), name)])) (quantifiedPredicates input)
+            pure (block (statements
+              ([Doc.text "let context = ctx.clone();",
+                binding "prior" (Doc.text "vec![" <> Doc.joinWith (Doc.text ", ") [Doc.text (n ++ ".clone()") | (_, n) <- prior] <> Doc.text "]" <> Doc.text " as Vec<ls::Value>"),
+                Doc.text "proptest::num::u64::ANY.prop_map(move |seed| lawspec_harness::drawn((|| -> ls::Result<ls::Value> " <> block (statements
+                  ([Doc.text "let ctx = &mut context.clone();"] ++
+                   [binding n (Doc.text ("prior[" ++ show j ++ "].clone()")) | (j, (_, n)) <- zip [0::Int ..] prior] ++
+                   [Doc.text "let mut draws = lawspec_harness::Draws::new(seed);",
+                    binding "value" drawDoc'] ++
+                   [block (statements [binding name (Doc.text "value.clone()"),
+                     conditional (Doc.text "!(" <> t <> Doc.text ").boolean()?")
+                       (Doc.text "return Err(lawspec_harness::outside(" <> string strategy <> Doc.text ", " <> string (binderName (quantifiedBinder input)) <> Doc.text ", &value));")])
+                   | t <- predicates] ++
+                   [Doc.text "Ok(value)"])) <> Doc.text ")())).boxed()"])))
+          drawExpr names strategy d = case d of
+            DrawAny ty
+              | usesData ty -> do
+                  ref <- schemaType ty
+                  pure (invoke "draws.any" [Doc.text "&" <> invoke "ls_gen::schema_strategy" [Doc.text "&lawspec_schema::schema()?", borrow ref, bits, Doc.text "64"] <> Doc.text "?"])
+              | otherwise -> pure (invoke "draws.any" [Doc.text "&" <> invoke "ls_gen::strategy_with_profile" [string (typeName ty), bits] <> Doc.text "?"])
+            DrawOneOf _ values -> do
+              docs <- mapM (render names) values
+              pure (Doc.text ("match draws.choose(" ++ show (length values) ++ ") ") <> block (statements
+                [Doc.text (if k == length docs - 1 then "_ => " else show k ++ " => ") <> v <> Doc.text "," | (k, v) <- zip [0..] docs]))
+            DrawFrequency alternatives -> do
+              docs <- mapM (drawExpr names strategy . snd) alternatives
+              let bounds' = scanl1 (+) (map fst alternatives)
+                  branches = [(b, doc) | (b, doc) <- zip bounds' docs]
+                  chain' [(_, doc)] = Doc.text "{ " <> doc <> Doc.text " }"
+                  chain' ((b, doc) : rest) = Doc.text ("if pick < " ++ show b ++ " { ") <> doc <> Doc.text " } else " <> chain' rest
+                  chain' [] = Doc.text "unreachable!()"
+              pure (block (statements [binding "pick" (Doc.text ("draws.choose(" ++ show (sum (map fst alternatives)) ++ ")")), chain' branches]))
+            DrawSuchThat inner binder predicate limit -> do
+              doc <- drawExpr names strategy inner
+              let x = "drawn_" ++ filter (\c -> c == '_' || c `elem` ['a'..'z'] || c `elem` ['A'..'Z'] || c `elem` ['0'..'9']) (dropWhile (== '_') (Presentation.localName (binderId binder)))
+              keep <- render (names ++ [(binderId binder, x)]) predicate
+              pure (block (statements
+                [Doc.text "let mut found = None;",
+                 Doc.text ("for _ in 0..=" ++ show limit ++ " ") <> block (statements
+                   [binding x doc, conditional (Doc.text "(" <> keep <> Doc.text ").boolean()?")
+                     (statements [Doc.text ("found = Some(" ++ x ++ ");"), Doc.text "break;"])]),
+                 Doc.text ("found.ok_or_else(|| lawspec_harness::discarded(") <> string strategy <> Doc.text (", " ++ show limit ++ "))?")]))
+            DrawBind binder from rest -> do
+              let x = "drawn_" ++ filter (\c -> c == '_' || c `elem` ['a'..'z'] || c `elem` ['A'..'Z'] || c `elem` ['0'..'9']) (dropWhile (== '_') (Presentation.localName (binderId binder)))
+              fromDoc <- drawExpr names strategy from
+              restDoc <- drawExpr (names ++ [(binderId binder, x)]) strategy rest
+              pure (block (statements [binding x fromDoc, restDoc]))
           proposition names label p = case p of
             Equation _ a b -> do
               x <- render names a
@@ -413,8 +486,15 @@ emitRustWithBindings minify bindings plan@Plan{..} = either (Left . pure . (\m -
            pre ++ [binding ("native_arg_" ++ show i) value | (i,value) <- zip [0::Int ..] args'] ++ handlerBindings ++
            [binding "native_result" called,binding "result" checkedResult] ++ post ++ [Doc.text "Ok(result)"])))
       -- A model's test hands its spec and callbacks to the model runtime.
+      -- Benchmarks: measured, never asserted.
+      benchmarks <- forM (maybe [] harnessBenchmarks (unitHarnessSettings unit)) $ \(n, e) -> do
+        body <- render [] e
+        pure (Doc.text "#[test]" <> Doc.hardline <> function ("benchmark_" ++ intercalate "_" (lawWords n)) [] "ls::Result<()>"
+          (statements [Doc.text "let ctx = &mut ls::Context::testing();",
+            invoke "lawspec_harness::benchmark" [string n, Doc.text "|| " <> block (statements [binding "_measured" body, Doc.text "Ok(())"])]]))
       modelTests <- map (reverse . dropWhile (== '\n') . reverse) <$>
         either (Left . concatMap message) Right (ModelTests.rustModelTests planMachineBits planDataDeclarations definitionNames unit)
+      let testNames = unitTestNames "rust" (map (propertyName . plannedProperty) plannedProperties)
       tests <- forM (zip [0::Int ..] plannedProperties) $ \(index,pp) -> do
         let p = plannedProperty pp
             names = localNames p
@@ -492,16 +572,22 @@ emitRustWithBindings minify bindings plan@Plan{..} = either (Left . pure . (\m -
             else pure (case symbols of
               _:_ -> invoke "proptest::strategy::Just" [Doc.text "symbol"] <> Doc.text ".boxed()"
               [] -> invoke "ls_gen::strategy_with_profile" [string (typeName inputType),bits] <> Doc.text "?")
-          let construct = if null bounds || customInput inputType
-                then Doc.text "Ok::<_, String>(Some(" <> baseStrategy <> Doc.text "))"
-                else invoke "ls_gen::bounded_integer" [string (typeName inputType),Expression.vector bounds,bits]
+          -- A harness strategy draws this input from a seed proptest chooses.
+          harnessDraw <- case [(n', d) | (bi, n', d) <- harnessDraws (propertyHarness p), bi == binderId (quantifiedBinder input)] of
+            [] -> pure Nothing
+            (strategy, d) : _ -> Just <$> harnessStrategy (take i names) input (snd (names !! i)) strategy d
+          let construct = case harnessDraw of
+                Just doc -> Doc.text "Ok::<_, String>(Some(" <> doc <> Doc.text "))"
+                Nothing | null bounds || customInput inputType -> Doc.text "Ok::<_, String>(Some(" <> baseStrategy <> Doc.text "))"
+                        | otherwise -> invoke "ls_gen::bounded_integer" [string (typeName inputType),Expression.vector bounds,bits]
               candidate = Doc.text "(|| -> ls::Result<Option<ValueStrategy>> " <> block (statements
                 ([Doc.text "let ctx = &mut case.context;"] ++
                  [binding n (Doc.text ("case.values[" ++ show j ++ "].clone()")) | (j,(_,n)) <- zip [0::Int ..] (take i names)] ++
                  [binding "symbol" value | value <- take 1 symbols] ++
                  [binding "seeds" (Expression.vector (if null symbols then hints ++ seeds else [])),
                   binding "base" (construct <> Doc.text "?"),
-                  Doc.text (if checked then "Ok(base)" else if customInput inputType
+                  Doc.text (if harnessDraw /= Nothing then (if hasFieldContracts then "Ok(base.map(|base| base.prop_map(Ok).boxed()))" else "Ok(base)")
+                    else if checked then "Ok(base)" else if customInput inputType
                     then if hasFieldContracts then "Ok(base.map(|base| base.prop_map(Ok).boxed()))" else "Ok(base)"
                     else if hasFieldContracts
                     then "Ok(base.map(|base| ls_gen::seeded(base, seeds).prop_map(Ok).boxed()))"
@@ -540,6 +626,7 @@ emitRustWithBindings minify bindings plan@Plan{..} = either (Left . pure . (\m -
           checked <- resourced (checks ++ [lawCheck])
           pure (block (statements (context : handlerInstalls unit p ++ bindings ++ [checked])))
         let predicateFn = "valid_" ++ show index
+            observeFn = "observe_" ++ show index
             tupleArgs = [Doc.text ("case.values[" ++ show n ++ "].clone()") | n <- [0..length names-1]]
             random = case finiteCases pp of
               Just _ -> []
@@ -558,23 +645,45 @@ emitRustWithBindings minify bindings plan@Plan{..} = either (Left . pure . (\m -
                      [Doc.text ("max_local_rejects: " ++ show (maxAttempts (propertyGeneration p)) ++ ",") | hasFieldContracts] ++
                      [Doc.text ("max_shrink_iters: " ++ show (maxShrinks (propertyGeneration p)) ++ ","),
                      Doc.text "rng_seed: lawspec_rng_seed(),",
+                     Doc.text "failure_persistence: lawspec_failure_persistence(),",
                      Doc.text "..Default::default()"]) ))
                 , binding "check" (Doc.text "|mut case: ls_gen::Case| " <>
                     block (statements ([Doc.text "if let Some(error) = case.error " <> block
                       (Doc.text "return Err(proptest::test_runner::TestCaseError::fail(error));") | hasFieldContracts] ++
+                      -- What the case covers, classifies and labels.
+                      [statement (invoke observeFn (Doc.text "&mut case.context" : tupleArgs) <>
+                        Doc.text ".map_err(proptest::test_runner::TestCaseError::fail)?") | observed (propertyHarness p)] ++
                       [binding "result" (invoke law (Doc.text "&mut case.context" : tupleArgs)),
                       Doc.text "result.map_err(proptest::test_runner::TestCaseError::fail)"])))
                 , statement (Doc.text "proptest::test_runner::TestRunner::new(config)" <>
                     Doc.nest 4 (Doc.softbreak <> invoke ".run" [Doc.text "&strategy",Doc.text "check"] <>
                       Doc.softbreak <> Doc.text ".map_err(|e| format!(\"{e}\"))?"))
                 ]
+        observations <- observationsDoc names p
+        let h = propertyHarness p
+            label' = idText (unitId unit) ++ "::" ++ label
+            testName' = testNames !! index
+            runner = Doc.text ("|| ls::with_stack(run_" ++ show index ++ ")")
+            -- The harness plane: the test is skipped, expected to fail, or
+            -- run under the harness's settings.
+            testFunction = case (harnessSkip h, harnessKnownFailing h) of
+              (Just reason, _) -> Doc.text "#[test]" <> Doc.hardline <> Doc.text ("#[ignore = " ++ q (label ++ ": " ++ reason) ++ "]") <> Doc.hardline <>
+                Doc.text ("fn " ++ testName' ++ "() {}")
+              (_, Just reason) -> Doc.text "#[test]" <> Doc.hardline <> function testName' [] "ls::Result<()>"
+                (invoke "lawspec_harness::known_failing" [string label', string testName', string reason, runner])
+              _ | runSettings h -> Doc.text "#[test]" <> Doc.hardline <> function testName' [] "ls::Result<()>"
+                    (invoke "lawspec_harness::run" [string label', string testName', Doc.text (show (maybe 0 id (harnessTimeout h))),
+                      Doc.text (show (harnessRepeat h)), Doc.text (show (harnessRetries h)),
+                      Doc.text "&[" <> Doc.joinWith (Doc.text ", ") [Doc.text ("(" ++ show c ++ ", ") <> string l <> Doc.text ")" | Cover c l _ <- harnessCover h] <> Doc.text "]",
+                      Doc.text (if observed h then "true" else "false"), runner])
+                | otherwise -> Doc.text "#[test]" <> Doc.hardline <> function testName' [] "ls::Result<()>"
+                    (invoke "ls::with_stack" [Doc.text ("run_" ++ show index)])
         pure (Presentation.metadataDocument 100 "//" pp <>
           function law args "ls::Result<()>" (statements (handlerInstalls unit p ++ checkedInputs ++ [body,Doc.text "Ok(())"])) <>
           blank <> function predicateFn args "ls::Result<bool>" (statements (valid ++ [Doc.text "Ok(true)"])) <>
+          (if observed h then blank <> function observeFn args "ls::Result<()>" (statements (observations ++ [Doc.text "Ok(())"])) else mempty) <>
           -- Deep generated values need more stack than a test thread has.
-          blank <> Doc.text "#[test]" <> Doc.hardline <>
-          function ("test_" ++ show index) [] "ls::Result<()>"
-            (invoke "ls::with_stack" [Doc.text ("run_" ++ show index)]) <>
+          blank <> testFunction <>
           blank <> function ("run_" ++ show index) [] "ls::Result<()>"
             (statements ([context] ++ fixed ++ examples ++ random ++ [Doc.text "Ok(())"])))
       productions <- if generatedAdapter then boundWrappers unit else mapM (Abilities.productionStub planDataDeclarations unit) (ownAbilities unit)
@@ -601,7 +710,8 @@ emitRustWithBindings minify bindings plan@Plan{..} = either (Left . pure . (\m -
             [moduleDoc "../src/lawspec_mailboxes.rs" "lawspec_mailboxes" | hasMailboxes] ++
             [moduleDoc "../src/lawspec_abilities.rs" "lawspec_abilities" | hasAbilities] ++
             [moduleDoc "../src/lawspec_schema.rs" "lawspec_schema" | hasSchema] ++
-            [moduleDoc "support/lawspec_strategies.rs" "ls_gen"]
+            [moduleDoc "support/lawspec_strategies.rs" "ls_gen"] ++
+            [moduleDoc "support/lawspec_harness.rs" "lawspec_harness" | unitHarnessSettings unit /= Nothing]
           imports = case NR.bindingRustCrate bindings of
             Nothing -> localImports
             Just library -> [Doc.text ("use " ++ library ++ "::" ++ testName ++ " as adapter;")] ++
@@ -616,14 +726,15 @@ emitRustWithBindings minify bindings plan@Plan{..} = either (Left . pure . (\m -
               [Doc.text ("use " ++ library ++ "::lawspec_abilities;") | hasAbilities] ++
               [Doc.text ("use " ++ library ++ "::lawspec_native::*;") | hasNativeTypes] ++
               [Doc.text ("use " ++ library ++ "::lawspec_schema;") | hasSchema] ++
-              [moduleDoc "support/lawspec_strategies.rs" "ls_gen"]
+              [moduleDoc "support/lawspec_strategies.rs" "ls_gen"] ++
+              [moduleDoc "support/lawspec_harness.rs" "lawspec_harness" | unitHarnessSettings unit /= Nothing]
           testDoc = statements ([Doc.text "// Generated by LawSpec. Do not edit.",
             Doc.text "#![allow(unused_variables, unused_imports, dead_code)]"] ++ imports ++ generatorModules ++
             [Doc.text "use lawspec_runtime as ls;",Doc.text "use proptest::strategy::Strategy;"]) <>
             blank <> Doc.text ("type ValueStrategy = proptest::strategy::BoxedStrategy<" ++ (if hasFieldContracts then "ls::Result<ls::Value>" else "ls::Value") ++ ">;") <>
             (if hasNativeGenerators then blank <> generatorSupport else mempty) <>
             blank <> seedDoc <>
-            blank <> Doc.joinWith blank (wrappers ++ tests ++ map Doc.text modelTests) <> Doc.hardline
+            blank <> Doc.joinWith blank (wrappers ++ tests ++ benchmarks ++ map Doc.text modelTests) <> Doc.hardline
           -- LAWSPEC_SEED fixes proptest's seed, so a run can be repeated
           -- exactly (lawspec test records the seed of every passing run).
           -- Without it, proptest's own default applies, PROPTEST_RNG_SEED included.
@@ -631,7 +742,14 @@ emitRustWithBindings minify bindings plan@Plan{..} = either (Left . pure . (\m -
             [ Doc.text "match std::env::var(\"LAWSPEC_SEED\") " <> block (statements
                 [ Doc.text "Ok(seed) => proptest::test_runner::RngSeed::Fixed(" <> Doc.nest 4 (Doc.hardline <>
                     Doc.text "seed.parse().expect(\"LAWSPEC_SEED must be a whole number\"),") <> Doc.hardline <> Doc.text "),"
-                , Doc.text "Err(_) => proptest::test_runner::Config::default().rng_seed," ]) ])
+                , Doc.text "Err(_) => proptest::test_runner::Config::default().rng_seed," ]) ]) <> blank <>
+              -- Under lawspec test, proptest keeps failing cases in its failure
+              -- database and replays them first.
+              Doc.text "fn lawspec_failure_persistence() -> Option<Box<dyn proptest::test_runner::FailurePersistence>> " <> block (statements
+                [ Doc.text "match std::env::var(\"LAWSPEC_FAILURES\") " <> block (statements
+                    [ Doc.text "Ok(directory) => Some(Box::new(proptest::test_runner::FileFailurePersistence::Direct(" <> Doc.nest 4 (Doc.hardline <>
+                        Doc.text "Box::leak(format!(\"{directory}/proptest-regressions.txt\").into_boxed_str()),") <> Doc.hardline <> Doc.text "))),"
+                    , Doc.text "Err(_) => proptest::test_runner::Config::default().failure_persistence," ]) ])
       pure [Artifact ("src/" ++ modulePath ++ ".rs") (Doc.render layout adapterDoc) (if generatedAdapter then "generated" else "user") "source",
         Artifact ("tests/" ++ testName ++ "_lawspec.rs") (Doc.render layout testDoc) "generated" "test"]
 

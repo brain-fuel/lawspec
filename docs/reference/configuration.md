@@ -23,13 +23,21 @@ names another file. Relative paths resolve from the file's directory.
 | Field | Type | Required | Meaning |
 | --- | --- | --- | --- |
 | `version` | `1` | Yes | The configuration format version. |
-| `sources` | array of paths | Yes | `.lawspec` files, or directories scanned recursively for them. |
+| `sources` | array of paths | Yes | `.lawspec` files, or directories scanned recursively for them. A file may hold a unit or a [harness](language/harness.md) for one. |
 | `targets` | array of targets | Yes | The target projects. |
 | `machineBits` | `32` or `64` | No | The machine profile. Default `64`. `--machine-bits` overrides it. |
 | `generation` | object | No | Property-test limits; see [below](#generation). |
 | `dependencies` | object | No | Package names mapped to version ranges. |
 | `packages` | array of paths | No | Package directories to load, each with a `lawspec-package.json`. It must include every package required directly or indirectly. |
 | `cache` | boolean | No | Keep the compiler's work in `.lawspec/cache` between runs. Default `true`; see [the compiler cache](cli.md#the-compiler-cache). |
+
+How laws are tested (strategies, handlers, adequacy, tags, timeouts and
+retries) is not configured here: it is a [harness unit](language/harness.md),
+written in LawSpec beside the laws. `lawspec.json` keeps only what concerns the
+toolchain. `lawspec test` keeps its state next to this file: results in
+`.lawspec/results`, runner reports and harness statistics in
+`.lawspec/reports`, the [failure database](cli.md#the-failure-database) in
+`.lawspec/failures` and coverage in `.lawspec/coverage`. None is committed.
 
 ### Targets
 

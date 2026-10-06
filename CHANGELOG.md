@@ -91,6 +91,44 @@
   mutants: a reordered list that fails `=` but passes `has same items as`, a
   resource never released, a failure of the wrong constructor, and a stale
   recording.
+- Harness units: `harness shop.testing for shop is ... end`, in its own file
+  or after a unit's members, says how a unit's laws are tested and can never
+  change what they mean. It may not declare laws, definitions, abilities,
+  handlers or types, refers only to its unit's laws, handlers and resources,
+  and its expressions call checked definitions only.
+  - Strategies: `strategy orders :: Order is frequency 9 small, 1 bulk end`,
+    with `any`, `one of`, `such that p at most n discards` and `bind x :: T
+    from g in g'`, used with `for law \`x\` use orders for o`. A strategy's
+    type must be the input's, and every value it draws is checked against the
+    input's refinements.
+  - `test with fakeGateway, native` narrows the lawful handlers a law runs
+    against; a variant it leaves out stays an obligation, reported skipped.
+  - Adequacy: `cover 10% "label" when p` (an unmet cover fails the run),
+    `classify p as "label"`, `label e` and `target maximize e`, with
+    statistics printed and kept by `lawspec test`.
+  - Run metadata per unit, group (`for laws`) or law: `tags`, `skip`,
+    `known failing` (a known-failing law that passes fails the run), `timeout`,
+    `repeat`, `retry flaky`, `order random` and `parallel`.
+  - `share R per group | unit | run`, only for a resource that declares
+    `reset`; `benchmark \`name\` is e end`, measured and never asserted.
+  - All eight targets, through each one's property-testing library.
+- Evidence has three harness statuses, `known-failing`, `flaky` and `skipped`.
+  `lawspec evidence` shows a `HARNESS` section after the obligations: each
+  law's harness and its last run's adequacy.
+- Generated tests are named after law labels on every target
+  (`test_charges_once__property`, `TestChargesOnce_Property`,
+  `lawChargesOnce_property`, `law_charges_once`), unique within a unit. The
+  test manifest carries each law's name, tags, skip and known failing.
+- `lawspec test --tag a --exclude-tag b` selects laws by harness tags;
+  `--report junit=path` writes one JUnit report merged across targets;
+  `--coverage` measures coverage with coverage.py, c8, `go test -cover`,
+  JaCoCo, Kover, cargo-llvm-cov or hpc, and says how to install a missing one.
+  A failing law is kept with its seed in `.lawspec/failures` and replayed
+  first; Hypothesis and proptest keep their counterexamples there too.
+- New acceptance suite `harness`, with mutants, among them spec mutants (an
+  acceptance suite may now edit its specs): an unmet cover, a strategy drawing
+  outside the input's refinement, a harness declaring a law, sharing a
+  resource without `reset`, and a known-failing law that passes.
 
 ## 0.20.0
 

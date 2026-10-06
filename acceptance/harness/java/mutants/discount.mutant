@@ -1,0 +1,7 @@
+expect: a discount is never more than the total
+@@ src/main/java/example/Harness.java
+<<<<<<<
+    return value0.items() > 10 ? value0.total() / 10 : 0;
+=======
+    return value0.items() > 10 ? value0.total() + 1 : 0;
+>>>>>>>

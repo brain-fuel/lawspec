@@ -1,0 +1,7 @@
+expect: is marked known failing
+@@ example/harness/adapter.go
+<<<<<<<
+	return (value0 + 4) / 10 * 10
+=======
+	return (value0 + 9) / 10 * 10
+>>>>>>>

@@ -1,0 +1,9 @@
+rejected-at: generation
+expect: does not declare reset
+@@ examples/specs/harness.lawspec
+<<<<<<<
+  release scratch is unitValue end
+  reset scratch is unitValue end
+=======
+  release scratch is unitValue end
+>>>>>>>

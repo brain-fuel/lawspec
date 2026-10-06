@@ -17,6 +17,7 @@ import LawSpec.Scalar
 import LawSpec.Parser
 import LawSpec.Imports (resolveImports)
 import LawSpec.Abilities (elaborateAbilities)
+import LawSpec.Harness (elaborateHarness)
 import LawSpec.Collections (usedCollections, collectionsSource)
 import LawSpec.Time (timeUnit, timeAlias, timeTypes, usesTime, timeSource)
 import LawSpec.Matchers (matchersUnit, matchersAlias, matchersTypes, usesMatchers, matchersSource, regexTypeName)
@@ -281,7 +282,9 @@ compileWithImports visible bits settings sources = do
   unless (length parsedUnits == length (nub (map (unitName . fst) parsedUnits))) (Left [Diagnostic "duplicate-unit" "unit names must be unique; prelude is reserved" Nothing])
   imported' <- resolveImports visible parsedUnits
   -- Abilities, handlers and rows, once each unit has what it imports.
-  parsed <- either (\(at, message) -> Left [Diagnostic "ability" message at]) Right (mapM elaborateAbilities imported')
+  abled <- either (\(at, message) -> Left [Diagnostic "ability" message at]) Right (mapM elaborateAbilities imported')
+  -- The harness, once every law has its final name.
+  parsed <- either (\(at, message) -> Left [Diagnostic "harness" message at]) Right (mapM elaborateHarness abled)
   let imported = M.fromList [(unitName u ++ "::type::" ++ dataTypeName d, d{dataTypeConstructors=
         [c{dataConstructorName=unitName u ++ "::type::" ++ dataTypeName d ++ "::" ++ dataConstructorName c}
         | c <- dataTypeConstructors d]}) | u <- parsed, d <- dataTypes u]

@@ -1,0 +1,140 @@
+module HarnessSpec (spec) where
+
+import Data.Either (isRight)
+import Data.List (isInfixOf, nub)
+import Test.Hspec
+import qualified LawSpec.Core as C
+import LawSpec.Common
+import LawSpec.Core.Evidence (Obligation(..), Status(..))
+import LawSpec.Discharge (dischargeEvidence)
+import LawSpec.Frontend (compileCore)
+import LawSpec.Model (Source(..), defaultGeneration)
+import LawSpec.TestManifest (TestEntry(..), testManifest)
+import LawSpec.TestNames (unitTestNames)
+
+-- A unit, and a harness in a file of its own.
+compiled :: String -> Either [Diagnostic] C.Program
+compiled harness = compileCore 64 defaultGeneration
+  [Source "shop.lawspec" shop, Source "shop_testing.lawspec" harness]
+
+failsWith :: String -> Either [Diagnostic] a -> Bool
+failsWith needle = either (any ((needle `isInfixOf`) . message)) (const False)
+
+shop :: String
+shop = unlines
+  [ "unit example.shop"
+  , "type Order is Order items :: Int32 total :: Int32 end"
+  , "definition itemsOf (order :: Order) :: Int32 is match order with | Order items total -> items end end"
+  , "definition isEmpty (order :: Order) :: Bool is itemsOf order == 0 end"
+  , "discount :: Order -> Int32"
+  , "ability Ledger is"
+  , "  accept :: Int32 -> Bool"
+  , "end"
+  , "handler fakeLedger for Ledger is accept cents is cents > 0 end end"
+  , "book :: Int32 -> Bool uses Ledger"
+  , "law `discount is small` is"
+  , "  definition is `for all` (order :: Order where itemsOf order >= 0) . (discount order <= 100) = true end"
+  , "end"
+  , "law `booking succeeds` is"
+  , "  definition is `for all` (cents :: Int32 where cents > 0) . book cents = true end"
+  , "end"
+  , "law `reflexive` is"
+  , "  definition is `for all` (x :: Int32) . x = x end"
+  , "end"
+  , "handle Scratch"
+  , "openScratch :: Unit -> Scratch"
+  , "closeScratch :: Scratch -> Unit"
+  , "handle Socket"
+  , "openSocket :: Unit -> Socket"
+  , "closeSocket :: Socket -> Unit"
+  , "resource Scratch is"
+  , "  acquire is openScratch unitValue end"
+  , "  release s is closeScratch s end"
+  , "  reset s is closeScratch s end"
+  , "end"
+  , "resource Socket is"
+  , "  acquire is openSocket unitValue end"
+  , "  release s is closeSocket s end"
+  , "end" ]
+
+harness :: [String] -> String
+harness items = unlines (["harness example.shop.testing for example.shop is"] ++ items ++ ["end"])
+
+lawHarness :: String -> C.Program -> Maybe C.LawHarness
+lawHarness name program = lookup name [(C.propertyName p, C.propertyHarness p) | u <- C.programUnits program, p <- C.unitProperties u]
+
+statusOf :: String -> [Obligation] -> [Status]
+statusOf name evidence = [obligationStatus o | o <- evidence, obligationStage o == "law", name `isInfixOf` C.idText (obligationDeclaration o)]
+
+spec :: Spec
+spec = describe "harness units" $ do
+  it "attaches each law's harness: strategies, adequacy and run metadata" $ do
+    let source = harness
+          [ "  strategy small :: Order is bind n :: Int32 from (one of 0, 1, 2) in one of Order n (n * 100) end"
+          , "  tags pricing"
+          , "  for law `discount is small`"
+          , "    use small for order"
+          , "    cover 10% \"empty\" when isEmpty order"
+          , "    classify itemsOf order > 1 as \"several\""
+          , "    timeout 2 s"
+          , "    repeat 3"
+          , "    retry flaky 2" ]
+    case compiled source of
+      Left ds -> expectationFailure (show ds)
+      Right program -> case lawHarness "discount is small" program of
+        Nothing -> expectationFailure "no law"
+        Just h -> do
+          C.harnessTags h `shouldBe` ["pricing"]
+          map C.coverLabel (C.harnessCover h) `shouldBe` ["empty"]
+          map snd (C.harnessClassify h) `shouldBe` ["several"]
+          C.harnessTimeout h `shouldBe` Just 2000
+          (C.harnessRepeat h, C.harnessRetries h) `shouldBe` (3, 2)
+          [n | (_, n, _) <- C.harnessDraws h] `shouldBe` ["small"]
+  it "rejects a harness that declares a law, a definition or a handler" $ do
+    compiled (harness ["  law `smuggled` is definition is 1 = 1 end end"]) `shouldSatisfy` failsWith "a harness cannot declare a law"
+    compiled (harness ["  definition sneaky (x :: Int32) :: Int32 is x end"]) `shouldSatisfy` failsWith "a harness cannot declare a definition"
+    compiled (harness ["  handler other for Ledger is accept cents is true end end"]) `shouldSatisfy` failsWith "a harness cannot declare a handler"
+  it "refers only to the laws and handlers of the unit it serves" $ do
+    compiled (harness ["  for law `no such law`", "    tags x"]) `shouldSatisfy` failsWith "has no law of that name"
+    compiled (harness ["  test with stripe"]) `shouldSatisfy` failsWith "has no handler called stripe"
+    compileCore 64 defaultGeneration [Source "shop.lawspec" shop,
+      Source "t.lawspec" "harness elsewhere.testing for elsewhere is end"] `shouldSatisfy` failsWith "there is no unit called elsewhere"
+  it "type-checks strategies against the inputs they draw" $ do
+    compiled (harness ["  strategy numbers :: Int32 is one of 1, 2 end", "  for law `discount is small`", "    use numbers for order"])
+      `shouldSatisfy` failsWith "a strategy may only produce values of its type"
+    compiled (harness ["  strategy orders :: Order is one of 1 end", "  for law `discount is small`", "    use orders for order"])
+      `shouldSatisfy` (not . isRight)
+    compiled (harness ["  strategy loop :: Order is loop end"]) `shouldSatisfy` failsWith "may not be recursive"
+  it "lets harness expressions call checked definitions only" $ do
+    compiled (harness ["  for law `discount is small`", "    cover 10% \"cheap\" when discount order < 10"])
+      `shouldSatisfy` failsWith "may call only checked definitions"
+    compiled (harness ["  for law `discount is small`", "    label itemsOf order"]) `shouldSatisfy` (not . isRight)
+  it "shares only resources that declare reset" $ do
+    compiled (harness ["  share Scratch per unit"]) `shouldSatisfy` isRight
+    compiled (harness ["  share Socket per unit"]) `shouldSatisfy` failsWith "does not declare reset"
+  it "keeps the variants test with leaves out as skipped obligations" $
+    case compiled (harness ["  test with fakeLedger"]) >>= dischargeEvidence of
+      Left ds -> expectationFailure (show ds)
+      Right evidence -> do
+        statusOf "booking succeeds [native]" evidence `shouldBe` [Skipped]
+        statusOf "booking succeeds [fakeLedger]" evidence `shouldSatisfy` all (/= Skipped)
+  it "reports skipped and known-failing laws in evidence" $
+    case compiled (harness ["  for law `discount is small`", "    known failing \"rounding\"", "  for law `booking succeeds`", "    skip \"offline\""]) >>= dischargeEvidence of
+      Left ds -> expectationFailure (show ds)
+      Right evidence -> do
+        statusOf "discount is small" evidence `shouldBe` [KnownFailing]
+        nub (statusOf "booking succeeds" evidence) `shouldBe` [Skipped]
+  it "rejects known failing on a law the compiler proves" $
+    (compiled (harness ["  for law `reflexive`", "    known failing \"never\""]) >>= dischargeEvidence)
+      `shouldSatisfy` failsWith "cannot mark it known failing"
+  it "names tests after law labels, uniquely, and carries tags in the manifest" $ do
+    unitTestNames "python" ["a law", "a law", "1 more"] `shouldBe` ["test_a_law", "test_a_law_2", "test_law_1_more"]
+    unitTestNames "go" ["a law"] `shouldBe` ["TestALaw"]
+    unitTestNames "java" ["a law"] `shouldBe` ["lawALaw"]
+    unitTestNames "rust" ["a law"] `shouldBe` ["law_a_law"]
+    case compiled (harness ["  for law `reflexive`", "    tags fast, unit"]) of
+      Left ds -> expectationFailure (show ds)
+      Right program -> do
+        let entries = testManifest "python" Nothing program
+        [entryTags e | e <- entries, entryLabel e == "example.shop::reflexive"] `shouldBe` [["fast", "unit"]]
+        [entryName e | e <- entries, entryLabel e == "example.shop::reflexive"] `shouldBe` ["test_reflexive"]

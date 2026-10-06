@@ -13,21 +13,26 @@ build-type:     Simple
 extra-source-files:
     README.md
     CHANGELOG.md
+    runtime/lawspec_harness.rs
     runtime/lawspec_runtime.rs
     runtime/lawspec_strategies.rs
     runtime/lawspec_data_strategies.mjs
+    runtime/lawspec_harness.mjs
     runtime/lawspec_runtime.mjs
     runtime/lawspec_schema.mjs
     runtime/lawspec_data_strategies.py
+    runtime/lawspec_harness.py
     runtime/lawspec_runtime.py
     runtime/lawspec_schema.py
     runtime/LawSpecCodecs.hs
     runtime/LawSpecCollectionCodecs.hs
     runtime/LawSpecDataStrategies.hs
+    runtime/LawSpecHarness.hs
     runtime/LawSpecRuntime.hs
     runtime/LawSpecSchema.hs
     runtime/LawSpecTransports.hs
     runtime/LawSpecDataStrategies.java
+    runtime/LawSpecHarness.java
     runtime/LawSpecRuntime.java
     runtime/LawSpecSchema.java
     runtime/LawSpecKotlin.kt
@@ -36,6 +41,7 @@ extra-source-files:
     runtime/LawSpecStrategies.kt
     runtime/lawspec_codecs.go
     runtime/lawspec_data_strategies.go
+    runtime/lawspec_harness.go
     runtime/lawspec_runtime.go
     runtime/lawspec_schema.go
     runtime/rust/Cargo.toml
@@ -66,6 +72,8 @@ extra-source-files:
     examples/specs/generation.lawspec
     examples/specs/handler_bindings.lawspec
     examples/specs/handles.lawspec
+    examples/specs/harness.lawspec
+    examples/specs/harness_testing.lawspec
     examples/specs/indexed_arithmetic.lawspec
     examples/specs/indexed_families.lawspec
     examples/specs/keywords.lawspec
@@ -260,6 +268,7 @@ library
       LawSpec.GoProperties
       LawSpec.GoTestHelpers
       LawSpec.GoTypeRefs
+      LawSpec.Harness
       LawSpec.HaskellData
       LawSpec.HaskellDefinitions
       LawSpec.HaskellExpr
@@ -332,6 +341,7 @@ library
       LawSpec.TargetNames
       LawSpec.Testing
       LawSpec.TestManifest
+      LawSpec.TestNames
       LawSpec.Time
       LawSpec.WebData
       LawSpec.WebDefinitions
@@ -483,6 +493,7 @@ test-suite lawspec-test
       FlowSpec
       GadtSpec
       GenericDefinitionSpec
+      HarnessSpec
       ImportSpec
       IncrementalSpec
       IndexedSpec

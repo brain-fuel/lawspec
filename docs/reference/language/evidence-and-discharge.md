@@ -11,6 +11,16 @@ strongest to weakest:
 | `RUNTIME CHECKED` | `runtime-checked` | Adapter contracts, definition preconditions, constructor constraints, native type bindings, non-linear definition indices | At every native boundary, or on each definition result |
 | `ASSUMED / EXTERNAL` | `assumed` | Adapters, native functions, custom generators and codec hooks | Taken on trust |
 
+A law's [harness](harness.md) decides how its tests run, never what the law
+claims, so three more statuses come from the harness plane. The law stays an
+obligation under each:
+
+| Status | API value | Obligations | How |
+| --- | --- | --- | --- |
+| `KNOWN FAILING` | `known-failing` | Laws the harness marks `known failing` | Their tests must fail; a passing run fails and says so |
+| `FLAKY` | `flaky` | Laws whose last run failed, then passed on a retry (`retry flaky`) | Read by `lawspec evidence` from the last `lawspec test` |
+| `SKIPPED` | `skipped` | Laws the harness skips, and handler variants `test with` leaves out | Not run; the reason says why |
+
 The reasoning behind these categories is in
 [evidence and discharge](../../explanation/evidence-and-discharge.md).
 

@@ -38,3 +38,10 @@ instance Binary S.HandlerClause
 instance Binary S.HandlerUse
 instance Binary S.ResourceDeclaration
 instance Binary S.HandlerChoice
+instance Binary S.HarnessDeclaration
+instance Binary S.HarnessItem
+instance Binary S.ShareScope
+instance Binary S.StrategyDeclaration
+instance Binary S.Gen
+instance Binary S.HarnessSetting
+instance Binary S.HarnessPlan

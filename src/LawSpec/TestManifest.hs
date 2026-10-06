@@ -1,11 +1,12 @@
 -- Which generated tests check which law, for running a subset of them.
 --
--- Every target writes one test file per unit, and names a law's tests by the
--- law's position among the unit's executable laws (law0, law1, ...), or, in
--- JavaScript and TypeScript, by its label. The manifest gives each law that
--- position, its unit's test file, and the law's dependency key (the plan key
--- of LawSpec.Dependencies), so a runner can tell which laws an edit affects
--- and select their tests by name.
+-- Every target writes one test file per unit, and names a law's tests after
+-- its label (LawSpec.TestNames), or, in JavaScript and TypeScript, by the
+-- label itself. The manifest gives each law its tests' name, its position,
+-- its unit's test file, the law's dependency key (the plan key of
+-- LawSpec.Dependencies), and its harness: tags, and whether it is skipped or
+-- known to fail. A runner can tell which laws an edit affects, select their
+-- tests by name and by tag, and knows which tests not to expect.
 module LawSpec.TestManifest (TestEntry(..), testManifest, unitTestPath) where
 
 import Data.Char (isAlphaNum, toUpper)
@@ -13,10 +14,14 @@ import Data.List (intercalate, stripPrefix)
 import qualified Data.Set as S
 import LawSpec.Core
 import LawSpec.Dependencies (dependencyGraph, keyOf, lawReferences)
+import LawSpec.TestNames (unitTestNames)
 
 data TestEntry = TestEntry
   { entryLaw :: Id, entryUnit :: String, entryLabel :: String, entryIndex :: Int
-  , entryFile :: FilePath, entryKey :: String, entryCallsAdapters :: Bool }
+  , entryFile :: FilePath, entryKey :: String, entryCallsAdapters :: Bool
+  -- The harness plane: the tests' base name, tags, skip and known failing.
+  , entryName :: String, entryTags :: [String], entrySkip :: Maybe String
+  , entryKnownFailing :: Maybe String }
   deriving (Eq, Show)
 
 -- The manifest for one target, with its test directory if not the default.
@@ -27,9 +32,12 @@ testManifest target testDir program =
       (any (`S.notMember` definitions) (concatMap callees (propertyExpressions p)) ||
         -- A native production handler is native code too.
         any (native . snd) [h | h@(a, _) <- propertyHandlers p, not (isFail a)])
+      testName (harnessTags (propertyHarness p)) (harnessSkip (propertyHarness p)) (harnessKnownFailing (propertyHarness p))
   | u <- programUnits program
   , let unit = idText (unitId u)
-  , (index, p) <- zip [0 ..] (unitProperties u) ]
+        names = if target `elem` ["javascript", "typescript"] then [unit ++ "::" ++ propertyName p | p <- unitProperties u]
+          else unitTestNames target (map propertyName (unitProperties u))
+  , (index, p, testName) <- zip3 [0 ..] (unitProperties u) names ]
   where
     graph = dependencyGraph (programDataDeclarations program) (programUnits program)
     native h = case h of

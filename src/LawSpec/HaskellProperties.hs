@@ -4,13 +4,14 @@ module LawSpec.HaskellProperties (Config(..), emitTests) where
 import LawSpec.Bounds (inputRange)
 import LawSpec.Backend
 import LawSpec.Common
+import LawSpec.TestNames (unitTestNames)
 import LawSpec.Testing
 import qualified LawSpec.Core as C
 import qualified LawSpec.Core.Value as V
 import qualified LawSpec.Code.Doc as D
 import qualified LawSpec.HaskellExpr as E
 import qualified LawSpec.HaskellTestHelpers as Helpers
-import Data.List (intercalate)
+import Data.List (intercalate, stripPrefix)
 import LawSpec.Scalar (Scalar(..))
 
 data Config = Config
@@ -68,12 +69,11 @@ letIn bindings body = D.group (text "let {" <> D.nest 2 (D.softline <>
   D.softline <> text "} in" <> D.nest 2 (D.softline <> body))
 lambda args body = D.group (text ("\\" ++ args ++ " ->") <> D.nest 2 (D.softline <> body))
 sequenceDocs docs = statements (if null docs then [text "pure ()"] else docs)
-testFunction name body = apply "it" [quoted name] <> text " $ do" <>
-  D.nest 2 (D.hardline <> sequenceDocs body)
 
 emitTests :: Config -> Unit -> [Expanded] -> Either [Diagnostic] D.Doc
 emitTests Config{..} unit laws = do
-  bodies <- mapM law (zip [0::Int ..] laws)
+  let testNames = unitTestNames "haskell" (map name laws)
+  bodies <- mapM (law testNames) (zip [0::Int ..] laws)
   let imports = ["import qualified Prelude as P", "import Prelude", "import Test.Hspec",
         "import Control.Exception (SomeException, catch, displayException, evaluate)",
         "import Test.Hspec.Hedgehog (hedgehog, modifyMaxSuccess)",
@@ -88,6 +88,7 @@ emitTests Config{..} unit laws = do
         "import qualified System.Environment",
         "import LawSpecRuntime (Scalar(..))", "import qualified LawSpecRuntime as LS",
         "import qualified " ++ moduleName ++ " as Impl"] ++
+        ["import qualified LawSpecHarness" | harnessed] ++
         ["import qualified LawSpecDefinitionBodies as Definitions" | hasDefinitions] ++
         ["import qualified LawSpecWorkflows as Workflows" | hasWorkflows] ++
         ["import qualified LawSpecNativeGenerators as NativeGenerators" | nativeGenerators] ++
@@ -106,8 +107,86 @@ emitTests Config{..} unit laws = do
     separate ([Helpers.schemaDoc,Helpers.assertionDoc,seedDoc] ++ map contract (contracts unit)) <>
     D.hardline <> D.hardline <> text "spec :: Spec" <> D.hardline <> text "spec = do" <>
     -- Workflows wait on a virtual clock under test.
-    D.nest 2 (D.hardline <> text "runIO (LS.useVirtualClock 0)" <> D.hardline <> (if null bodies then text "pure ()" else separate bodies)) <> D.hardline
+    D.nest 2 (D.hardline <> text "runIO (LS.useVirtualClock 0)" <> D.hardline <>
+      (if null bodies then text "pure ()" else separate (bodies ++ map benchmark (maybe [] C.harnessBenchmarks settings)))) <> D.hardline
   where
+    -- The harness plane (LawSpec.Harness). A test the harness runs is an
+    -- IO action bound with let (harness:name), which the generated example
+    -- passes to the runtime; parallel marks every example parallel.
+    settings = C.unitHarnessSettings unit
+    harnessed = settings /= Nothing
+    parallel = maybe False C.harnessParallel settings
+    testFunction name body = case stripPrefix "harness:" name of
+      Just rest -> text "let" <> D.nest 4 (D.hardline <> text ("lawspecHarness" ++ takeWhile (/= ':') rest ++ " = do") <>
+        D.nest 2 (D.hardline <> sequenceDocs body))
+      Nothing -> example name (text "do" <> D.nest 2 (D.hardline <> sequenceDocs body))
+    example name action = (if parallel then text "parallel $ " else mempty) <> apply "it" [quoted name] <> text " $ " <> action
+    runSettings h = C.harnessTimeout h /= Nothing || C.harnessRepeat h /= 1 || C.harnessRetries h /= 0 || observed h
+    observed h = not (null (C.harnessCover h) && null (C.harnessClassify h) && null (C.harnessLabels h)) || C.harnessTarget h /= Nothing
+    observations e =
+      let h = C.propertyHarness (original e)
+          label = owner e ++ "::" ++ name e
+          pairs xs = E.array [D.delimit 2 "(" ")" [quoted l, truth (expr w)] | (l, w) <- xs]
+      in [apply "LawSpecHarness.observe" [quoted label, pairs [(l, w) | C.Cover _ l w <- C.harnessCover h],
+            pairs [(l, c) | (c, l) <- C.harnessClassify h], E.array (map expr (C.harnessLabels h))] | observed h] ++
+         [apply "LawSpecHarness.target" [expr score, quoted label] | Just score <- [C.harnessTarget h]]
+    -- The tests a law's harness wraps, skips or expects to fail.
+    harnessTests fn label h kinds docs = case (C.harnessSkip h, C.harnessKnownFailing h) of
+      (Just reason, _) -> [example (fn ++ "_skipped: " ++ label) (apply "pendingWith" [quoted reason])]
+      (_, Just reason) -> docs ++ [example (fn ++ "_knownFailing: " ++ label) (apply "LawSpecHarness.knownFailing"
+        [quoted label, quoted (fn ++ "_knownFailing"), quoted reason, E.array [text ("lawspecHarness" ++ fn ++ k) | k <- kinds]])]
+      _ | runSettings h -> docs ++ [example (fn ++ k ++ (if k == "_property" then ": " ++ label else "")) (apply "LawSpecHarness.run"
+            [quoted label, quoted (fn ++ k), number (maybe 0 id (C.harnessTimeout h)), number (C.harnessRepeat h), number (C.harnessRetries h),
+             E.array [D.delimit 2 "(" ")" [number p, quoted l] | k == "_property", C.Cover p l _ <- C.harnessCover h],
+             text (if k == "_property" && observed h then "True" else "False"), text ("lawspecHarness" ++ fn ++ k)]) | k <- kinds]
+        | otherwise -> docs
+    benchmark (n, b) = example ("benchmark " ++ n) (text "do" <> D.nest 2 (D.hardline <> statements [symbols,
+      apply "LawSpecHarness.benchmark" [quoted n, parens (text "pure $! " <> expr b)]]))
+    -- A Hedgehog property inside hspec, or, for a test the harness runs, as
+    -- an IO action.
+    propertyTest fn label e body = case stripPrefix "harness:" fn of
+      Nothing -> propertyHeader fn label e <> D.nest 2 (D.hardline <> body)
+      Just _ -> testFunction (fn ++ "_property") [text "_passed <- _lawspecCheck $ Hedgehog.withTests " <> number (cases (generation e)) <>
+        text " $ Hedgehog.property $ do" <> D.nest 2 (D.hardline <> body), text "_passed `shouldBe` True"]
+    -- A property whose inputs harness strategies draw, in Hedgehog's Gen.
+    harnessProperty fn label e check = do
+      let h = C.propertyHarness (original e)
+          strategyOf inp = [(n, d) | (i, n, d) <- C.harnessDraws h, i == C.binderId (C.quantifiedBinder inp)]
+      draws <- mapM (\plan -> do
+        let inp = domainInput plan
+        case strategyOf inp of
+          (strategy, d) : _ -> (\g -> text (inputId inp ++ " <-") <> D.nest 2 (D.hardline <> g)) <$> drawDoc inp strategy d
+          [] -> pure (text (inputId inp ++ " <-") <> D.nest 2 (D.hardline <> generatorWithin (inputRange machineBits inp) (inputType inp)))) (generationPlan e)
+      let names = E.array (map (text . inputId) (inputs e))
+          defaults = [inp | inp <- inputs e, null (strategyOf inp)]
+          predicates = concatMap inputRefinements defaults
+          base = D.multiline (text "do" <> D.nest 2 (D.hardline <> statements (draws ++ [apply "pure" [names]])))
+          strategy = if null predicates then base else apply "Gen.filterT"
+            [D.group (text "\\" <> names <> text " ->" <> D.nest 2 (D.softline <> conjunction (map (truth . expr) predicates))), base]
+          checks = [apply "LawSpecHarness.checkDrawn" [quoted strategy', quoted (inputName inp),
+              conjunction (map (truth . expr) (inputRefinements inp)), text (inputId inp)]
+            | inp <- inputs e, (strategy', _) : _ <- [strategyOf inp], not (null (inputRefinements inp))]
+          body = statements [text "symbols <- evalIO LS.newSymbolContext",
+            D.group (names <> text " <-" <> D.nest 2 (D.softline <> apply "forAll" [strategy])),
+            apply "footnote" [quoted label],
+            text "evalIO $ do" <> D.nest 2 (D.hardline <> statements (checks ++ handlerInstalls e ++ [check]))]
+      pure $ case stripPrefix "harness:" fn of
+        Just _ -> propertyTest fn label e body
+        Nothing -> testFunction (fn ++ "_property: " ++ label) [text "_passed <- _lawspecCheck $ Hedgehog.withTests " <> number (cases (generation e)) <>
+          text " $ Hedgehog.property $ do" <> D.nest 2 (D.hardline <> body), text "_passed `shouldBe` True"]
+    drawDoc inp strategy d = case d of
+      C.DrawAny ty -> pure (parens (if ty == inputType inp then generatorWithin (inputRange machineBits inp) ty else generator ty))
+      C.DrawOneOf _ values -> pure (parens (apply "Gen.element" [E.array (map expr values)]))
+      C.DrawFrequency alternatives -> do
+        options <- mapM (\(w, a) -> (\g -> D.delimit 2 "(" ")" [number w, g]) <$> drawDoc inp strategy a) alternatives
+        pure (parens (apply "Gen.frequency" [E.array options]))
+      C.DrawSuchThat inner binder predicate _ -> do
+        g <- drawDoc inp strategy inner
+        pure (parens (apply "Gen.filterT" [parens (lambda (localName (C.binderId binder)) (truth (expr predicate))), g]))
+      C.DrawBind binder from rest -> do
+        fromG <- drawDoc inp strategy from
+        restG <- drawDoc inp strategy rest
+        pure (parens (fromG <> text " >>= " <> parens (lambda (localName (C.binderId binder)) restG)))
     -- LAWSPEC_SEED fixes the seed of properties checked directly with
     -- Hedgehog; hspec's HSPEC_SEED seeds the others. lawspec test sets both,
     -- and records the seed of every passing run.
@@ -159,30 +238,35 @@ emitTests Config{..} unit laws = do
           C.Construct tag [argument] | C.Helper h [kind] <- C.expressionNode argument, h `elem` [C.AcquireResource, C.FreePort]
             , C.Constant (SSequence _ points) <- C.expressionNode kind -> Just (map toEnum points, C.idText tag)
           _ -> Nothing
-    law (index,e) = do
+    law testNames (index,e) = do
       let label = owner e ++ "::" ++ name e
-          fn = "law" ++ show index
-      exampleDocs <- mapM (\(i,ex) -> pure $ testFunction (fn ++ "Example" ++ show i)
+          h = C.propertyHarness (original e)
+          base' = testNames !! index
+          fn = (if C.harnessSkip h == Nothing && (C.harnessKnownFailing h /= Nothing || runSettings h) then "harness:" else "") ++ base'
+      exampleDocs <- mapM (\(i,ex) -> pure $ testFunction (fn ++ "_example" ++ show i)
         ([symbols] ++ handlerInstalls e ++ [bind n (expr v) | (n,v) <- bindings ex] ++
         [bracketed e (map (assertionDoc (label ++ " example " ++ exampleName ex)) (expectations ex) ++
           [assertionDoc label (assertion e)])])) (zip [0::Int ..] (examples (original e)))
       boundaryDocs <- mapM (\(i,vs) -> do
         values <- mapM literal vs
-        pure $ testFunction (fn ++ "Boundary" ++ show i)
+        pure $ testFunction (fn ++ "_boundary" ++ show i)
           ([symbols] ++ handlerInstalls e ++ [bind (inputId inp) (checked (inputType inp) v) | (inp,v) <- zip (inputs e) values] ++
           [bracketed e [assertionDoc (label ++ " boundary " ++ show i) (assertion e)]]))
         (zip [0::Int ..] (maybe (boundaryCases e) id (finiteCases e)))
-      let check = bracketed e [assertionDoc (label ++ " property") (assertion e)]
+      let check = bracketed e (observations e ++ [assertionDoc (label ++ " property") (assertion e)])
       property <- if finiteCases e /= Nothing then pure []
+        else if not (null (C.harnessDraws h)) then (:[]) <$> harnessProperty fn label e check
         else if nativeGenerators || constructorContracts || any (maybe False (const True) . generatorIndex) (generationPlan e)
           then (:[]) <$> contextualProperty fn label e check
         else if any (structural . inputType) (inputs e) then pure [nativeProperty fn label e check]
         else if any (not . null . inputRefinements) (inputs e) || propertyKind e == "contract"
           then (:[]) <$> refinedProperty fn label e check
           else pure [nativeProperty fn label e check]
-      pure $ metadataDocument 78 "--" e <> separate (exampleDocs ++ boundaryDocs ++ property)
+      let kinds = ["_example" ++ show i | i <- [0 .. length exampleDocs - 1]] ++ ["_boundary" ++ show i | i <- [0 .. length boundaryDocs - 1]] ++
+            ["_property" | not (null property)]
+      pure $ metadataDocument 78 "--" e <> separate (harnessTests base' label h kinds (exampleDocs ++ boundaryDocs ++ property))
     propertyHeader fn label e = apply "modifyMaxSuccess" [apply "const" [number (cases (generation e))]] <>
-      text " $ " <> apply "it" [quoted (fn ++ "Property: " ++ label)] <> text " $ hedgehog $ do"
+      text " $ " <> apply "it" [quoted (fn ++ "_property: " ++ label)] <> text " $ hedgehog $ do"
     contextualProperty fn label e check = do
       draws <- mapM (\plan -> do
         seeds <- mapM literal (generatorBoundaries plan)
@@ -228,7 +312,7 @@ emitTests Config{..} unit laws = do
           run = text "_passed <- _lawspecCheck $" <> D.nest 2 (D.hardline <>
             D.joinWith (text " $" <> D.hardline) (settings ++ [text "Hedgehog.property $ do"]) <>
             D.nest 2 (D.hardline <> body))
-      pure $ testFunction (fn ++ "Property: " ++ label) [run,text "_passed `shouldBe` True"]
+      pure $ testFunction (fn ++ "_property: " ++ label) [run,text "_passed `shouldBe` True"]
     requiredSymbol plan
       | nativeGenerators = []
       | inputType (domainInput plan) /= C.scalarType "Symbol" = []
@@ -251,7 +335,7 @@ emitTests Config{..} unit laws = do
           strategy = if null predicates then base else apply "Gen.filter"
             [D.group (text "\\" <> names <> text " ->" <> D.nest 2
               (D.softline <> conjunction (map (truth . expr) predicates))),base]
-      in propertyHeader fn label e <> D.nest 2 (D.hardline <> statements
+      in propertyTest fn label e (statements
         [text "symbols <- evalIO LS.newSymbolContext",D.group (names <> text " <-" <>
           D.nest 2 (D.softline <> apply "forAll" [strategy])),apply "footnote" [quoted label],
          text "evalIO $ do" <> D.nest 2 (D.hardline <> statements (handlerInstalls e ++ [check]))])
@@ -273,7 +357,7 @@ emitTests Config{..} unit laws = do
             statements ([fromValues (inputs e)] ++ handlerInstalls e ++ [check]))
           invocation = runtime "refinedCase" [E.array domains,text "seed",number (maxAttempts cfg),number (maxShrinks cfg),text "_check",
             quoted (label ++ " | " ++ intercalate "; " (map prettyExpr (concatMap inputRefinements (inputs e))))]
-      pure $ propertyHeader fn label e <> D.nest 2 (D.hardline <> statements
+      pure $ propertyTest fn label e (statements
         [text "symbols <- evalIO LS.newSymbolContext",
          text "seed <- forAll (Gen.int (Range.linear 0 2147483647))",apply "footnote" [quoted label],
          callback,apply "evalIO" [invocation]])

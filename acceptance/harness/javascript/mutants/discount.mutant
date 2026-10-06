@@ -1,0 +1,7 @@
+expect: a discount is never more than the total
+@@ src/example/harness.mjs
+<<<<<<<
+  return value0.items > 10 ? Math.floor(value0.total / 10) : 0;
+=======
+  return value0.items > 10 ? value0.total + 1 : 0;
+>>>>>>>

@@ -29,9 +29,6 @@ text :: Value -> String
 text (String s) = T.unpack s
 text _ = ""
 
-number :: Value -> Int
-number (Number n) = truncate n
-number _ = -1
 
 -- Long labels are emitted as concatenated string literals: 'a ' + 'b'.
 joined :: String -> String
@@ -40,14 +37,23 @@ joined (c : rest) = c : joined rest
 joined [] = []
 
 -- How each target names the tests of law n.
-named :: String -> Int -> String
-named target n = case target of
-  "python" -> "def test_law" ++ show n ++ "_"
-  "go" -> "func TestLaw" ++ show n
-  "rust" -> "fn test_" ++ show n ++ "()"
-  "haskell" -> "\"law" ++ show n
-  "kotlin" -> "\"law" ++ show n
-  _ -> "law" ++ show n
+-- A law's tests are named after its label (LawSpec.TestNames); the manifest
+-- carries that name.
+named :: String -> String -> String
+named target name = case target of
+  "python" -> "def " ++ name ++ "__"
+  "go" -> "func " ++ name ++ "_"
+  "rust" -> "fn " ++ name ++ "()"
+  "haskell" -> "\"" ++ name ++ "_"
+  "kotlin" -> "\"" ++ name ++ "_"
+  _ -> name ++ "_"
+
+unsplit :: String -> String
+unsplit text = case text of
+  '"' : rest | (sep : after) <- dropWhile blank rest, sep `elem` (",+" :: String), '"' : more <- dropWhile blank after -> unsplit more
+  c : rest -> c : unsplit rest
+  [] -> []
+  where blank c = c `elem` (" \n" :: String)
 
 spec :: Spec
 spec = describe "the test manifest" $ do
@@ -60,14 +66,15 @@ spec = describe "the test manifest" $ do
       V.length tests `shouldSatisfy` (> 100)
       forM_ [ t | Object t <- V.toList tests ] $ \t -> do
         let file = text (field "file" t)
-            index = number (field "index" t)
+            name = text (field "name" t)
         case lookup file contents of
           Nothing -> expectationFailure (target ++ ": no generated test file " ++ file)
           Just content
             | target `elem` ["javascript", "typescript"] ->
                 -- Labels are single-quoted string literals there.
                 joined content `shouldSatisfy` isInfixOf (concatMap (\c -> if c == '\'' then "\\'" else [c]) (text (field "label" t)))
-            | otherwise -> content `shouldSatisfy` isInfixOf (named target index)
+            -- Haskell and Kotlin split long string literals into pieces.
+            | otherwise -> unsplit content `shouldSatisfy` isInfixOf (named target name)
   it "follows a custom test directory" $ do
     response <- planned "python" (Just "checks")
     let Array files = field "files" response

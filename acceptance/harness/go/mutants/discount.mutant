@@ -1,0 +1,7 @@
+expect: a discount is never more than the total
+@@ example/harness/adapter.go
+<<<<<<<
+		return value0.Total / 10
+=======
+		return value0.Total + 1
+>>>>>>>

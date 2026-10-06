@@ -39,10 +39,19 @@ claim:
 - `using fakeGateway` lets a law rely on what the fake does: "a payment over
   the fake's limit fails".
 
-Everything else is the harness's choice. Until harness units arrive, the
-choice is fixed: a law that uses an ability runs once for each lawful
-handler the compiler knows, the native production handler first, then each
-spec handler. The evidence report shows each run as its own obligation.
+Everything else is the harness's choice. By default, a law that uses an
+ability runs once for each lawful handler the compiler knows, the native
+production handler first, then each spec handler. The evidence report shows
+each run as its own obligation. A [harness unit](../reference/language/harness.md)
+can narrow that choice with `test with`; a variant it leaves out is still an
+obligation, reported as skipped.
+
+A harness is a separate kind of unit. It chooses how a unit's laws are tested
+(which handlers, how inputs are drawn, how adequate the evidence must be, and
+how the tests run), and the compiler keeps it from changing what they mean: a
+harness cannot declare laws, definitions, abilities, handlers or types; its
+expressions call only checked definitions; and every value its strategies draw
+is checked against the input's refinements.
 
 ## Abilities replace hidden dependencies
 

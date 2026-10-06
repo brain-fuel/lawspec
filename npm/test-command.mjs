@@ -88,35 +88,38 @@ const groupBy = (entries, key) => {
 
 // The native invocations that run exactly the given laws' tests, each with
 // the laws it covers and how to tell, from the runner's own report, which of
-// them ran. Names are matched whole, so law1 never selects law10. `scratch`
-// is a folder for reports.
-export function invocations(target, entries, { offline = false, scratch = "." } = {}) {
+// them ran. A law's tests are named after its label (entry.name, see
+// LawSpec.TestNames), then a kind after a separator no name contains, so one
+// law's name never selects another's. `scratch` is a folder for reports;
+// `coverage` asks each runner to measure coverage too (see coverageSetup).
+export function invocations(target, entries, { offline = false, scratch = ".", coverage = null } = {}) {
   const language = target.language;
   const testDir = target.testDir;
   const relativeTo = (file, defaultDir) => {
     const directory = testDir || defaultDir;
     return file.startsWith(directory + "/") ? file.slice(directory.length + 1) : file;
   };
-  const tests = (entry) => [`law${entry.index}Example*`, `law${entry.index}Boundary*`, `law${entry.index}Property*`];
-  const kinds = (entry) => new RegExp(`^law${entry.index}(Example|Boundary|Property)`);
+  const named = (entry) => new RegExp(`^${regex(entry.name)}_`);
   const className = (file, defaultDir, extension) => without(relativeTo(file, defaultDir), extension).replaceAll("/", ".");
   if (language === "python")
     return groupBy(entries, (e) => e.file).map(([file, laws], n) => {
       const report = path.join(scratch, `pytest-${n}.xml`);
+      const pytest = ["-m", "pytest", "-q", file, "-k", laws.map((e) => `${e.name}__`).join(" or "), `--junitxml=${report}`];
       return { laws, command: target.python || "python3",
-        args: ["-m", "pytest", "-q", file, "-k", laws.map((e) => `test_law${e.index}_`).join(" or "), `--junitxml=${report}`],
+        args: coverage ? ["-m", "coverage", "run", "--append", `--data-file=${path.join(coverage, ".coverage")}`, ...pytest.slice(1)] : pytest,
         report: { kind: "junit", files: [report] },
-        ran: (test) => laws.filter((e) => test.name.startsWith(`test_law${e.index}_`)) };
+        ran: (test) => laws.filter((e) => test.name.startsWith(`${e.name}__`)) };
     });
   if (language === "javascript" || language === "typescript") {
-    const pattern = (e) => `^${regex(e.label)}( example: .*| property)?$`;
+    const pattern = (e) => `^${regex(e.label)}( example: .*| property| known failing| skipped)?$`;
     const files = [...new Set(entries.map((e) => language === "typescript"
       ? `dist/${without(e.file, ".ts")}.js` : e.file))];
     const report = path.join(scratch, "node.xml");
-    const run = { laws: entries, command: process.execPath,
-      args: ["--test", `--test-name-pattern=(${entries.map(pattern).join("|")})`,
-        "--test-reporter=spec", "--test-reporter-destination=stdout",
-        "--test-reporter=junit", `--test-reporter-destination=${report}`, ...files],
+    const node = ["--test", `--test-name-pattern=(${entries.map(pattern).join("|")})`,
+      "--test-reporter=spec", "--test-reporter-destination=stdout",
+      "--test-reporter=junit", `--test-reporter-destination=${report}`, ...files];
+    const run = { laws: entries, command: coverage ? "npx" : process.execPath,
+      args: coverage ? ["--no-install", "c8", "--reporter=text", `--reports-dir=${coverage}`, process.execPath, ...node] : node,
       report: { kind: "junit", files: [report] },
       ran: (test) => entries.filter((e) => new RegExp(pattern(e)).test(test.name)) };
     return language === "typescript"
@@ -126,15 +129,18 @@ export function invocations(target, entries, { offline = false, scratch = "." } 
   if (language === "go")
     return groupBy(entries, (e) => path.posix.dirname(e.file)).map(([directory, laws]) => ({
       laws, command: "go",
-      args: ["test", "-json", "-count=1", `./${directory}`, "-run", `^TestLaw(${laws.map((e) => e.index).join("|")})(Example|Boundary|Property)`],
+      args: ["test", "-json", "-count=1", ...(coverage ? ["-cover", `-coverprofile=${path.join(coverage, `go-${directory.replaceAll("/", "_") || "root"}.out`)}`] : []),
+        `./${directory}`, "-run", `^(${laws.map((e) => regex(e.name)).join("|")})_`],
       report: { kind: "go-json" },
-      ran: (test) => laws.filter((e) => new RegExp(`^TestLaw${e.index}(Example|Boundary|Property)`).test(test.name)) }));
+      ran: (test) => laws.filter((e) => named(e).test(test.name)) }));
   if (language === "java") {
     const byClass = groupBy(entries, (e) => className(e.file, "src/test/java", ".java"));
     return [{ laws: entries, command: target.maven || "mvn",
-      args: [...(offline ? ["-o"] : []), "-B", "test", `-Dtest=${byClass.map(([name, laws]) => `${name}#${laws.flatMap(tests).join("+")}`).join(",")}`],
+      args: [...(offline ? ["-o"] : []), "-B", ...(coverage ? ["org.jacoco:jacoco-maven-plugin:prepare-agent"] : []), "test",
+        ...(coverage ? ["org.jacoco:jacoco-maven-plugin:report"] : []),
+        `-Dtest=${byClass.map(([name, laws]) => `${name}#${laws.map((e) => `${e.name}_*`).join("+")}`).join(",")}`],
       report: { kind: "junit", directory: "target/surefire-reports" },
-      ran: (test) => entries.filter((e) => test.classname === className(e.file, "src/test/java", ".java") && kinds(e).test(test.name)) }];
+      ran: (test) => entries.filter((e) => test.classname === className(e.file, "src/test/java", ".java") && named(e).test(test.name)) }];
   }
   // Kotest names tests by string, which Gradle's method filters cannot
   // select. Kotest's own filter selects them within each class: one pattern,
@@ -142,30 +148,75 @@ export function invocations(target, entries, { offline = false, scratch = "." } 
   // patterns must all match, so alternatives go in one group).
   if (language === "kotlin")
     return groupBy(entries, (e) => e.file).map(([file, laws]) => {
-      const filter = `(${laws.flatMap((e) => ["Example", "Boundary", "Property"].map((kind) => `law${e.index}${kind}`)).join("|")})*`;
+      const filter = `(${laws.map((e) => `${e.name}_`).join("|")})*`;
       const name = className(file, "src/test/kotlin", ".kt");
       return { laws, command: target.gradle || "gradle",
-        args: [...(offline ? ["--offline"] : []), "--console=plain", "test", "--rerun", "--tests", name],
+        args: [...(offline ? ["--offline"] : []), "--console=plain", "test", ...(coverage ? ["koverXmlReport"] : []), "--rerun", "--tests", name],
         env: { "kotest.filter.tests": filter, kotest_filter_tests: filter },
         report: { kind: "junit", directory: "build/test-results/test" },
-        ran: (test) => laws.filter((e) => test.classname === name && kinds(e).test(test.name)) };
+        ran: (test) => laws.filter((e) => test.classname === name && named(e).test(test.name)) };
     });
   if (language === "rust")
     return groupBy(entries, (e) => e.file).map(([file, laws]) => ({
       laws, command: "cargo",
-      args: ["test", ...(offline ? ["--offline"] : []), "--test", path.posix.basename(file, ".rs"), "--", "--exact",
-        ...laws.map((e) => `test_${e.index}`)],
-      report: { kind: "lines", pattern: /^test (test_\d+) \.\.\. (ok|FAILED)/ },
-      ran: (test) => laws.filter((e) => test.name === `test_${e.index}`) }));
+      args: [...(coverage ? ["llvm-cov", "--no-report"] : []), "test", ...(offline ? ["--offline"] : []), "--test", path.posix.basename(file, ".rs"), "--", "--exact",
+        ...laws.map((e) => e.name)],
+      report: { kind: "lines", pattern: /^test (\S+) \.\.\. (ok|FAILED|ignored)/ },
+      ran: (test) => laws.filter((e) => test.name === e.name) }));
   if (language === "haskell") {
     const module = (e) => without(relativeTo(e.file, "test"), "Spec.hs").replaceAll("/", ".");
-    const matches = entries.flatMap((e) => ["Example", "Boundary", "Property"].map((kind) => `${module(e)}/law${e.index}${kind}`));
+    const matches = entries.map((e) => `${module(e)}/${e.name}_`);
     return [{ laws: entries, command: "stack",
-      args: ["--no-terminal", "test", "--test-arguments", matches.map((m) => `--match ${m}`).join(" ")],
+      args: ["--no-terminal", "test", ...(coverage ? ["--coverage"] : []), "--test-arguments", matches.map((m) => `--match ${m}`).join(" ")],
       report: { kind: "hspec" },
-      ran: (test) => entries.filter((e) => test.classname === module(e) && kinds(e).test(test.name)) }];
+      ran: (test) => entries.filter((e) => test.classname === module(e) && named(e).test(test.name)) }];
   }
   throw new Error(`lawspec test does not support ${language}`);
+}
+
+// What --coverage needs on each target, and how to say it is missing.
+export const coverageTools = {
+  python: { tool: "coverage.py", check: ["-c", "import coverage"], install: "python -m pip install coverage" },
+  javascript: { tool: "c8", install: "npm install --save-dev c8" },
+  typescript: { tool: "c8", install: "npm install --save-dev c8" },
+  go: { tool: "go test -cover", install: "(built in)" },
+  java: { tool: "JaCoCo", install: "(resolved by Maven as org.jacoco:jacoco-maven-plugin)" },
+  kotlin: { tool: "Kover", install: "add id(\"org.jetbrains.kotlinx.kover\") to the plugins of build.gradle.kts" },
+  rust: { tool: "cargo-llvm-cov", install: "cargo install cargo-llvm-cov" },
+  haskell: { tool: "hpc", install: "(built into GHC; stack test --coverage)" },
+};
+
+// Laws selected by tag: every --tag, and none of --exclude-tag.
+export function selectByTags(entries, include = [], exclude = []) {
+  return entries.filter((e) => (!include.length || include.some((t) => (e.tags ?? []).includes(t))) &&
+    !exclude.some((t) => (e.tags ?? []).includes(t)));
+}
+
+// One JUnit report from every target's: each target's suites, renamed with
+// the target, in one <testsuites>.
+export function mergeJunit(reports) {
+  const suites = [];
+  for (const { target, xml } of reports) {
+    const found = [...xml.matchAll(/<testsuite\b[\s\S]*?<\/testsuite>|<testsuite\b[^>]*\/>/g)].map((m) => m[0]);
+    for (const suite of found)
+      suites.push(suite.replace(/<testsuite\b([^>]*?)\bname="([^"]*)"/, (whole, before, name) => `<testsuite${before}name="${escapeXml(target)}: ${name}"`)
+        .replace(/^<testsuite\b(?![^>]*\bname=)/, `<testsuite name="${escapeXml(target)}"`));
+  }
+  const count = (attribute) => suites.reduce((n, suite) => n + Number(suite.match(new RegExp(`\\b${attribute}="(\\d+)"`))?.[1] ?? 0), 0);
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<testsuites tests="${count("tests")}" failures="${count("failures")}" errors="${count("errors")}" skipped="${count("skipped")}">\n` +
+    suites.join("\n") + "\n</testsuites>\n";
+}
+
+const escapeXml = (text) => text.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");
+
+// The harness statistics a run wrote (LAWSPEC_STATS): cover results, label
+// counts, flaky and known-failing outcomes, benchmarks.
+export async function harnessStatistics(directory) {
+  const names = await readdir(directory).catch(() => []);
+  const entries = [];
+  for (const name of names.filter((n) => n.endsWith(".json")).sort())
+    try { entries.push(JSON.parse(await readFile(path.join(directory, name), "utf8"))); } catch { /* partial */ }
+  return entries;
 }
 
 // The tests a run executed, as {name, classname}, from the runner's report or
@@ -188,13 +239,14 @@ export async function executedTests(report, output, root, since) {
     return output.split("\n").flatMap((line) => {
       try {
         const event = JSON.parse(line);
-        return ["pass", "fail"].includes(event.Action) && event.Test ? [{ name: event.Test, classname: event.Package }] : [];
+        return ["pass", "fail"].includes(event.Action) && event.Test
+          ? [{ name: event.Test, classname: event.Package, status: event.Action === "pass" ? "passed" : "failed" }] : [];
       } catch { return []; }
     });
   if (report?.kind === "lines")
     return output.split("\n").flatMap((line) => {
       const match = line.match(report.pattern);
-      return match ? [{ name: match[1], classname: "" }] : [];
+      return match && match[2] !== "ignored" ? [{ name: match[1], classname: "", status: match[2] === "ok" ? "passed" : "failed" }] : [];
     });
   if (report?.kind === "hspec") {
     // hspec prints each module, then its examples indented beneath it.
@@ -202,12 +254,20 @@ export async function executedTests(report, output, root, since) {
     let module = "";
     for (const line of output.split("\n")) {
       if (/^\S/.test(line) && !/^(Finished|Failures|Randomized|\d+ examples?)/.test(line)) module = line.trim();
-      const example = line.match(/^\s+(law\d+\S*?):?(?:\s.*)?\s\[[✔✘]\]\s*$/);
-      if (example) tests.push({ name: example[1], classname: module });
+      const example = line.match(/^\s+(law\S*?):?(?:\s.*)?\s\[([✔✘])\]\s*$/);
+      if (example) tests.push({ name: example[1], classname: module, status: example[2] === "✔" ? "passed" : "failed" });
     }
     return tests;
   }
   return [];
+}
+
+// JUnit XML for a runner that writes none, from the tests it printed.
+export function junitFromTests(tests) {
+  const failures = tests.filter((t) => t.status === "failed").length;
+  return `<testsuite name="lawspec" tests="${tests.length}" failures="${failures}">\n` +
+    tests.map((t) => `  <testcase classname="${escapeXml(t.classname ?? "")}" name="${escapeXml(t.name)}"` +
+      (t.status === "failed" ? `><failure message="failed"/></testcase>` : "/>")).join("\n") + "\n</testsuite>";
 }
 
 async function reportFiles(directory, since) {

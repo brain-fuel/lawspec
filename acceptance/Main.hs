@@ -22,6 +22,10 @@
 --                                  as is (bound units have no adapters)
 --   recorded/<unit>/<name>         recorded values, copied to every target's
 --                                  project as recorded/<unit>/<name> (optional)
+--   mutants/<name>.mutant          spec mutants, for every target: edits to a
+--                                  spec file, regenerated and run like any
+--                                  mutant ("rejected-at: generation" marks one
+--                                  the compiler must reject)
 --
 -- A package directory holds lawspec-package.json ({"name", "version",
 -- "sources": [directories or files], "dependencies"}); its sources are sent
@@ -42,7 +46,7 @@
 module Main (main) where
 
 import Control.Exception (finally)
-import Control.Monad (filterM, forM, forM_, unless, when)
+import Control.Monad (filterM, foldM, forM, forM_, unless, when)
 import Data.Aeson
 import qualified Data.Aeson.Key as K
 import qualified Data.Aeson.KeyMap as KM
@@ -70,7 +74,7 @@ data Generated = Generated { generatedPath :: FilePath, generatedContent :: Stri
 -- to compile; any other must compile and fail its laws.
 data Mutant = Mutant
   { mutantName :: String, mutantExpect :: [[String]], mutantEdits :: [(FilePath, String, String)]
-  , mutantAtCompile :: Bool }
+  , mutantAtCompile :: Bool, mutantAtGeneration :: Bool }
 
 main :: IO ()
 main = do
@@ -114,7 +118,7 @@ main = do
       else do
         mode <- cacheMode
         scaffolds <- either die pure (scaffoldFiles minify target)
-        suiteInputs <- let base = "acceptance" </> suite </> target in
+        suiteInputs <- fmap concat $ forM ["acceptance" </> suite </> target, "acceptance" </> suite </> "mutants"] $ \base ->
           doesDirectoryExist base >>= \exists -> if exists then walk base else pure []
         recordingInputs <- map snd <$> suiteRecordings suite
         key <- runKey target [suite, target, profile, show mutate]
@@ -124,7 +128,8 @@ main = do
         case recorded of
           Just output -> mapM_ (putStrLn . (++ " (cached)")) output
           Nothing -> do
-            output <- runSuite suite target project mutate
+            let regenerate edited = planEither (extra ++ native) (edited ++ vectors) target bits minify
+            output <- runSuite suite target project mutate (sources, regenerate, generated)
             when (mode /= Off) (storeResult key output)
 
 -- Files outside the project that a run reads: the harness itself and the
@@ -136,14 +141,18 @@ harnessInputs target =
 
 -- Generation goes through the same JSON boundary that core.wasm exports.
 plan :: [(K.Key, Value)] -> [(FilePath, String)] -> String -> Int -> Bool -> IO [Generated]
-plan extra sources target bits minify = do
+plan extra sources target bits minify =
+  either (\message -> die (target ++ ": generation failed: " ++ message)) pure (planEither extra sources target bits minify)
+
+planEither :: [(K.Key, Value)] -> [(FilePath, String)] -> String -> Int -> Bool -> Either String [Generated]
+planEither extra sources target bits minify = do
   let request = object $
         [ "method" .= ("planGeneration" :: String), "target" .= target, "machineBits" .= bits, "minify" .= minify
         , "sources" .= [object ["path" .= takeName path, "content" .= content] | (path, content) <- sources] ] ++ extra
       response = fromMaybe Null (decode (dispatch (encode request)))
   case list (field "diagnostics" response) of
     Just [] -> pure ()
-    _ -> die (target ++ ": generation failed: " ++ show (encode (field "diagnostics" response)))
+    _ -> Left (show (encode (field "diagnostics" response)))
   pure [ Generated (text (field "path" f)) (text (field "content" f)) (text (field "ownership" f))
        | f <- fromMaybe [] (list (field "files" response)) ]
   where takeName = reverse . takeWhile (/= '/') . reverse
@@ -215,8 +224,8 @@ suiteRecordings suite = do
   pure [("recorded" </> drop (length base + 1) file, file) | file <- files]
 
 -- The lines printed for a passing run.
-runSuite :: String -> String -> FilePath -> Bool -> IO [String]
-runSuite suite target project mutate = do
+runSuite :: String -> String -> FilePath -> Bool -> ([(FilePath, String)], [(FilePath, String)] -> Either String [Generated], [Generated]) -> IO [String]
+runSuite suite target project mutate (sources, regenerate, generated) = do
   tool <- toolchain project target
   (code, output) <- runTool tool (arguments tool) project
   writeFile (project </> "correct.log") output
@@ -251,7 +260,40 @@ runSuite suite target project mutate = do
     let line = target ++ ": rejected " ++ mutantName mutant
     putStrLn line
     pure line
-  pure (passed : rejected)
+  -- Spec mutants edit a spec, so the project is regenerated for each.
+  specMutants <- if mutate then suiteMutantsIn ("acceptance" </> suite </> "mutants") else pure []
+  let compilerOwned gs = [g | g <- gs, generatedOwnership g /= "user"]
+      writeGenerated gs = forM_ (compilerOwned gs) $ \g -> writeAt (project </> generatedPath g) (generatedContent g)
+  specRejected <- flip finally (writeGenerated generated) $ forM specMutants $ \mutant -> do
+    edited <- forM sources $ \(path, content) -> do
+      let edits = [(search, replacement) | (relative, search, replacement) <- mutantEdits mutant, relative == path]
+      changed <- foldM (\text (search, replacement) -> maybe
+        (die (target ++ ": spec mutant " ++ mutantName mutant ++ " does not match " ++ path)) pure
+        (replaceOnce search replacement text)) content edits
+      pure (path, changed)
+    forM_ (mutantEdits mutant) $ \(relative, _, _) -> unless (relative `elem` map fst sources)
+      (die (target ++ ": spec mutant " ++ mutantName mutant ++ " must edit a spec of the suite, not " ++ relative))
+    output <- case regenerate edited of
+      Left diagnostics -> do
+        unless (mutantAtGeneration mutant)
+          (die (target ++ ": spec mutant " ++ mutantName mutant ++ " was rejected by the compiler: " ++ diagnostics))
+        pure diagnostics
+      Right regenerated -> do
+        when (mutantAtGeneration mutant)
+          (die (target ++ ": spec mutant " ++ mutantName mutant ++ " compiled"))
+        writeGenerated regenerated
+        (mutantCode, mutantOutput) <- runTool tool (mutantArguments target (arguments tool)) project
+        writeFile (project </> ("mutant-" ++ mutantName mutant ++ ".log")) mutantOutput
+        when (mutantCode == ExitSuccess) (die (target ++ ": spec mutant " ++ mutantName mutant ++ " escaped detection"))
+        writeGenerated generated
+        pure mutantOutput
+    forM_ (mutantExpect mutant) $ \alternatives ->
+      unless (any (`isInfixOf` output) alternatives)
+        (die (target ++ ": spec mutant " ++ mutantName mutant ++ " failed without " ++ show alternatives))
+    let line = target ++ ": rejected " ++ mutantName mutant
+    putStrLn line
+    pure line
+  pure (passed : rejected ++ specRejected)
 
 -- Regenerate without running anything and compare with the files on disk.
 checkDisk :: FilePath -> [Generated] -> IO ()
@@ -294,7 +336,7 @@ suiteStubs suite target = do
     let relative = fromMaybe path (stripPrefix (base ++ "/") path)
     source <- maybe (die (path ++ ": no adapter for this stub")) pure (lookup relative adapters)
     (,,) relative <$> readFile' source <*> readFile' path
-  pure [Mutant "stub" [] edits False | not (null edits)]
+  pure [Mutant "stub" [] edits False False | not (null edits)]
 
 -- The conformance unit checks every shared scalar vector as a law.
 conformance :: BL.ByteString -> (FilePath, String)
@@ -329,17 +371,20 @@ expectMismatch target bits project = do
   putStrLn (target ++ ": " ++ show bits ++ "-bit profile rejected for the native machine adapter")
 
 suiteMutants :: String -> String -> IO [Mutant]
-suiteMutants suite target = do
-  let base = "acceptance" </> suite </> target </> "mutants"
+suiteMutants suite target = suiteMutantsIn ("acceptance" </> suite </> target </> "mutants")
+
+suiteMutantsIn :: FilePath -> IO [Mutant]
+suiteMutantsIn base = do
   exists <- doesDirectoryExist base
   names <- if exists then sort . filter (".mutant" `isSuffixOf`) <$> listDirectory base else pure []
   forM names $ \name -> do
     content <- readFile' (base </> name)
     let (header, body) = span (not . ("@@ " `isPrefixOf`)) (lines content)
         atCompile = "rejected-at: compile" `elem` header
+        atGeneration = "rejected-at: generation" `elem` header
     (expectations, edits) <- either (die . ((base </> name ++ ": ") ++)) pure
-      (parseMutant (unlines (filter (/= "rejected-at: compile") header ++ body)))
-    pure (Mutant (take (length name - length (".mutant" :: String)) name) expectations edits atCompile)
+      (parseMutant (unlines (filter (`notElem` ["rejected-at: compile", "rejected-at: generation"]) header ++ body)))
+    pure (Mutant (take (length name - length (".mutant" :: String)) name) expectations edits atCompile atGeneration)
 
 -- rejected-at: compile                                (optional)
 -- expect: <text the failing output must contain>        (optional, repeatable)

@@ -293,6 +293,16 @@ emitPlanFormatted minify target Plan{..} = do
       files = concat emitted ++ dataFiles ++ definitionFiles ++
         [Artifact "src/test/java/lawspec/testing/LawSpecDataStrategies.java" (runtimeSource "java-data-strategies") "generated" "test" | target == "java" && not (null dataFiles)] ++
         [Artifact "tests/lawspec_data_strategies.py" (runtimeSource "python-data-strategies") "generated" "test" | target == "python" && not (null dataFiles)] ++
+        -- The harness plane's runtime, for programs with a harness.
+        [Artifact "tests/lawspec_harness.py" (runtimeSource "python-harness") "generated" "test" | target == "python" && usesHarness] ++
+        [Artifact "src/test/java/lawspec/testing/LawSpecHarness.java" (runtimeSource "java-harness") "generated" "test" | target == "java" && usesHarness] ++
+        -- Gradle compiles Java beside Kotlin only in src/main/java, as it
+        -- does LawSpecRuntime.java.
+        [Artifact "src/main/java/lawspec/testing/LawSpecHarness.java" (runtimeSource "java-harness") "generated" "source" | target == "kotlin" && usesHarness] ++
+        [Artifact "test/LawSpecHarness.hs" (runtimeSource "haskell-harness") "generated" "test" | target == "haskell" && usesHarness] ++
+        [Artifact ("test/lawspec_harness." ++ if target == "typescript" then "ts" else "mjs")
+          ((if target == "typescript" then "// @ts-nocheck\n" else "") ++ runtimeSource "web-harness") "generated" "test"
+          | target `elem` ["javascript","typescript"] && usesHarness] ++
         [Artifact ("test/lawspec_data_strategies." ++ if target == "typescript" then "ts" else "mjs")
           ((if target == "typescript" then "// @ts-nocheck\n" else "") ++ webStrategies) "generated" "test" | target `elem` ["javascript","typescript"] && not (null dataFiles)] ++ [runtime | needsRuntime && target /= "go"] ++
         [Artifact "src/test/kotlin/lawspec/testing/LawSpecKotlinStrategies.kt" (runtimeSource "kotlin-data-strategies") "generated" "test" | needsRuntime && target == "kotlin"] ++
@@ -312,6 +322,7 @@ emitPlanFormatted minify target Plan{..} = do
   pure files
   where
     layout = Doc.selectLayout minify
+    usesHarness = any ((/= Nothing) . C.unitHarnessSettings . plannedUnit) plannedUnits
     definitionCalls = JavaDefinitions.definitionCalls (map plannedUnit plannedUnits)
     webStrategies = unlines [if line == "import * as ls from './lawspec_runtime.mjs';"
       then "import * as ls from '../src/lawspec_runtime." ++ (if target == "typescript" then "js" else "mjs") ++ "';"

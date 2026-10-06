@@ -1,0 +1,42 @@
+-- The harness of example.harness: how its laws are tested. A harness
+-- cannot change what a law means; it chooses inputs, handlers, adequacy and
+-- how the tests run.
+harness example.harness.testing for example.harness is
+  -- Small orders: up to three items at a dollar each.
+  strategy smallOrder :: Order is
+    bind items :: Int32 from (one of 0, 1, 2, 3) in one of Order items (items * 100)
+  end
+  -- Bulk orders: the default generator, kept to large ones.
+  strategy bulkOrder :: Order is
+    any such that itemsOf it > 10 && totalOf it >= 0 at most 1000 discards
+  end
+  strategy orders :: Order is frequency 9 smallOrder, 1 bulkOrder end
+
+  tags pricing
+  test with fakeLedger
+  order random
+
+  for law `a discount is never more than the total`
+    use orders for order
+    cover 5% "empty order" when isEmpty order
+    classify totalOf order > 1000 as "large"
+    label if isEmpty order then "empty" else "some items"
+    timeout 10 s
+
+  for law `rounding is idempotent`
+    target maximize cents
+    repeat 2
+    retry flaky 1
+
+  for law `rounding never lowers a price`
+    known failing "rounds half down; see PRICE-12"
+
+  for law `a refund is never booked twice`
+    skip "refunds are not booked yet"
+
+  for laws `booking a positive amount succeeds`, `positive amounts are accepted`
+    tags ledger
+
+  share Scratch per unit
+  benchmark `discount of a bulk order` is discount (Order 30 50000) end
+end

@@ -7,7 +7,7 @@ lawspec evidence [<unit> | <unit>::<declaration>] [--target <language>] [--machi
 lawspec explain [<unit>::<law>] [--machine-bits <32|64>] [--json] [--no-cache] [--config <path>]
 lawspec doctor [--target <language>] [--json] [--config <path>]
 lawspec generate [--target <language>] [--dry-run | --check] [--minify] [--machine-bits <32|64>] [--json] [--no-cache] [--config <path>]
-lawspec test [--target <language>] [--fresh] [--seed <n>] [--update-recorded] [--minify] [--machine-bits <32|64>] [--json] [--no-cache] [--config <path>]
+lawspec test [--target <language>] [--fresh] [--seed <n>] [--update-recorded] [--tag <t>] [--exclude-tag <t>] [--report junit=<path>] [--coverage] [--minify] [--machine-bits <32|64>] [--json] [--no-cache] [--config <path>]
 lawspec package [--project <package directory>] [--machine-bits <32|64>] [--json]
 lawspec examples [--example payments] [--target <language>] [--output <directory>] [--machine-bits <32|64>] [--minify] [--json]
 lawspec --version
@@ -80,7 +80,12 @@ bindings of the selected targets. `--json` prints the compiler's full result.
 ## `evidence`
 
 Lists every obligation with its stage, identity, claim and reason, grouped by
-status from `PROVED` to `ASSUMED / EXTERNAL`.
+status from `PROVED` to `ASSUMED / EXTERNAL`, then the harness plane's
+`KNOWN FAILING`, `FLAKY` and `SKIPPED`. A `HARNESS` section follows: for each
+law with a [harness](language/harness.md), how it is tested (strategies,
+`cover`, `classify`, `label`, tags, timeout, retries) and, from the last
+`lawspec test`, how many cases ran and what they covered. The law's obligation
+and its harness are kept apart: the harness can never change the obligation.
 
 - `<unit>` limits the list to one unit.
 - `<unit>::<declaration>` limits it to one obligation, such as
@@ -88,7 +93,8 @@ status from `PROVED` to `ASSUMED / EXTERNAL`.
   No match is an error.
 - Binding, codec, generator and native-function obligations of the selected
   targets are included and labelled with their target.
-- `--json` prints the `ObligationEvidence` records.
+- `--json` prints the `ObligationEvidence` records; a law with a harness has
+  `harness` (its settings) and, after a run, `adequacy` (its statistics).
 
 ## `explain`
 
@@ -157,8 +163,38 @@ Results are kept in `.lawspec/results`, and runner reports in
   new one, and the summary prints it. A recorded pass keeps the seed it ran
   with.
 - `--minify`: the generated files are compact (as `generate --minify` wrote).
-- `--json`: print a summary per target (`ran`, `unchanged`, `seed`, `ok`); the
+- `--tag <t>`, `--exclude-tag <t>`: run only the laws whose
+  [harness](language/harness.md) gives them one of the `--tag` tags, and none of
+  the `--exclude-tag` ones. Each may be repeated or list several: `--tag a,b`.
+- `--report junit=<path>`: write one JUnit XML report for every target's run,
+  each target's suites named after it. Runners without a JUnit report of their
+  own (Go, Rust, Haskell) contribute their tests, passed or failed.
+- `--coverage`: measure code coverage with each target's tool, into
+  `.lawspec/coverage/<target>`: coverage.py (Python), c8 (JavaScript and
+  TypeScript), `go test -cover`, JaCoCo (Java, through Maven), Kover (Kotlin, if
+  the build applies its plugin), cargo-llvm-cov (Rust) and hpc
+  (`stack test --coverage`). A missing tool is reported, with how to install
+  it, and the run goes on without coverage. Coverage runs every selected law.
+- `--json`: print a summary per target (`ran`, `unchanged`, `seed`, `ok`, and
+  `flaky`, `unmetCover`, `benchmarks` and `coverage` when there are any); the
   test runners' output goes to standard error.
+
+A law's [harness](language/harness.md) shapes the run: a skipped law has no
+test to run, a known-failing law's one test is expected to fail, flaky retries
+and unmet `cover` requirements are listed after the summary. Benchmarks are
+not laws, so `lawspec test` does not select them; they run with the target's
+own test command, which prints their measurements. The harness runtimes write their statistics to
+`.lawspec/reports/<target>/statistics`; `lawspec test` keeps each law's in its
+results, and `lawspec evidence` shows them.
+
+### The failure database
+
+A law whose run fails is recorded in `.lawspec/failures/<target>/laws.json`
+with the seed that exposed it. The next `lawspec test` runs those laws first,
+each with its failing seed, so the same inputs are generated again; a law
+leaves the database when it passes. `--seed` overrides it. The Python and Rust
+runtimes also keep their libraries' counterexamples there (Hypothesis's
+example database and proptest's regressions), which they replay first.
 
 Generated property tests read the seed from `LAWSPEC_SEED`, so a failure can
 be repeated with the same seed outside LawSpec. Haskell tests also read hspec's

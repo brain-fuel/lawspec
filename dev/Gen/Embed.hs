@@ -23,7 +23,10 @@ runtimeFiles =
   , ("haskell-data-strategies", "LawSpecDataStrategies.hs"), ("rust", "lawspec_runtime.rs")
   , ("rust-strategies", "lawspec_strategies.rs"), ("kotlin-strategies", "LawSpecStrategies.kt")
   , ("kotlin-native", "LawSpecKotlin.kt"), ("kotlin-codecs", "LawSpecKotlinCodecs.kt")
-  , ("kotlin-data-strategies", "LawSpecKotlinStrategies.kt") ]
+  , ("kotlin-data-strategies", "LawSpecKotlinStrategies.kt")
+  , ("python-harness", "lawspec_harness.py"), ("web-harness", "lawspec_harness.mjs")
+  , ("go-harness", "lawspec_harness.go"), ("java-harness", "LawSpecHarness.java")
+  , ("haskell-harness", "LawSpecHarness.hs"), ("rust-harness", "lawspec_harness.rs") ]
 
 embedRuntimes :: IO String
 embedRuntimes = do

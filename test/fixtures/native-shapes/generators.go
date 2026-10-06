@@ -14,10 +14,10 @@ func NativeSeals() *rapid.Generator[Seal] { panic("finite Seal must not invoke i
 
 func TestNativeRefinedFactory(t *testing.T) {
 	nativeByteDraws = 0
-	TestLaw5Property(t)
+	TestRefinementsRetainTheSelectedGenerator_Property(t)
 	if nativeByteDraws == 0 {
 		t.Fatal("refined scalar bypassed the native factory")
 	}
 }
 
-func TestNativeFiniteFactory(t *testing.T) { TestLaw4Boundary0(t) }
+func TestNativeFiniteFactory(t *testing.T) { TestEmptyRecord_Boundary0(t) }
