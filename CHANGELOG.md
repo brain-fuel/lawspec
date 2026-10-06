@@ -31,6 +31,39 @@
   `IO` operations; with spec handler and recording classes beside it.
 - New acceptance suite `abilities`, with mutants: an adapter that calls its
   dependency twice, and native handlers that break an ability law.
+- Matchers: typed predicates that read like sentences. `xs has same items
+  as ys`, `xs contains x` (an item, or text inside text), `xs contains all of
+  ys`, `xs is subset of ys`, `x is within 0.001 of y`, `t starts with "a"`,
+  `t ends with "z"`, `t matches regex "[a-z]+"` and `v matches Shipped _ _`.
+  The list matchers are checked definitions of a built-in unit,
+  `lawspec.matchers`.
+- `Regex` and `regex "..."`. Every regex literal is checked at compile time
+  against a portable dialect, the part of RE2 and ECMAScript that means the
+  same in both, and matches a whole text. Each runtime has its own matcher, so
+  no target needs a regex library.
+- Typed failures in laws: `expect charge o fails with Declined _`, with
+  `message contains "..."` for a failure's message field. `expect e` takes
+  any `Bool`.
+- Tables: `table (a, b, expected) is row 1, 2, 3 ... expect f a b = expected
+  end`. Each row is its own example.
+- Examples fenced with `example` in a law's description are examples of the
+  law, named after the description.
+- Recorded values: `expect f x = recorded "name"` compares with
+  `recorded/<unit>/<name>`, by the portable rendering every target shares. A
+  missing or changed recording fails; `lawspec test --update-recorded`
+  records again.
+- Resources: `resource Database is acquire ... release ... reset ... end`,
+  taken by a law with `law ... for db :: Database is`. Each case acquires
+  them first and releases them after, even when it fails. Built in:
+  `TemporaryDirectory`, `TemporaryFile`, `FreePort` and `SavedEnvironment`.
+- A failing comparison names where a list or data value first differs, with
+  both values in the portable rendering.
+- A Haskell project depends on `directory`. A Go test file imports rapid only
+  when a law draws its inputs with it.
+- New acceptance suites `matchers`, `failures`, `tables` and `resources`, with
+  mutants: a reordered list that fails `=` but passes `has same items as`, a
+  resource never released, a failure of the wrong constructor, and a stale
+  recording.
 
 ## 0.20.0
 
