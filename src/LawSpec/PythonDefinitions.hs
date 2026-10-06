@@ -11,6 +11,7 @@ import qualified LawSpec.PythonData as Native
 import qualified LawSpec.PythonExpr as E
 import qualified LawSpec.Code.Doc as D
 import Data.List (nub, sort, intercalate)
+import LawSpec.AbilityNames (specName, interfaceName)
 
 definitionCalls :: [Unit] -> [(Id,String)]
 definitionCalls units = [(declarationId (definitionDeclaration d), "_definitions.evaluate_" ++ show i)
@@ -70,6 +71,12 @@ emitPythonDefinitions layout bits declarations units = do
               if expressionType term == Constructor "Unit" []
                 then pure (E.call "ls.unit_result" [invocation])
                 else schemaCall "from_native" (expressionType term) invocation
+            -- handle e with h end: e runs with h installed for its ability,
+            -- made afresh each time.
+            Handle (WithHandler ability (SpecHandler h)) _ | [body] <- values ->
+              pure (E.call "ls.with_handlers" [D.text "symbols",
+                D.delimitTrailing 4 "{" "}" [E.quoted (abilityKey ability) <> D.text ": " <> specConstruction h],
+                D.text "lambda: " <> body])
             ExternalCall declaration _ | Just name <- lookup declaration callees ->
               pure (E.call (drop (length ("_definitions." :: String)) name) (D.text "symbols":values))
             -- An orchestration calls an adapter natively: the values cross
@@ -89,7 +96,15 @@ emitPythonDefinitions layout bits declarations units = do
                   -- Within its stage's timeout and hedge, when it has them.
                   convert <- fromNative (D.text "_native")
                   pure (E.call "ls.await_step" [D.text "symbols", D.text "lambda: " <> invocation, D.text "lambda _native: " <> convert])
-                else fromNative invocation
+                else do
+                  result <- fromNative invocation
+                  -- An adapter that fails with E: native code raises ls.Fail.
+                  case [a | a@(AbilityRef _ [_]) <- declarationUses adapter, isFail a] of
+                    ability@(AbilityRef _ [failure]) : _ -> do
+                      convert <- schemaCall "from_native" failure (D.text "_failure")
+                      pure (E.call "ls.native_failures" [E.quoted (abilityKey ability), D.text "lambda _failure: " <> convert,
+                        D.text "lambda: " <> result, D.text "()"])
+                    _ -> pure result
             _ -> Left "unresolved Python total call"
       rendered <- E.renderExpression declarations bits local external (definitionBody d)
       -- A workflow stage with policies runs under the workflow runtime.
@@ -210,7 +225,7 @@ emitPythonDefinitions layout bits declarations units = do
       output <- schemaCall "to_native" result (D.text "result")
       let handlers = handlerParameters declaration
           parameters = D.text "symbols: _builtins.dict[_builtins.str, _builtins.object]" :
-            [D.text (name ++ ": " ++ show ("lawspec_abilities." ++ idText (unitId u) ++ "." ++ abilityName a)) | (_, name, u, a) <- handlers] ++
+            [D.text (name ++ ": " ++ show ("lawspec_abilities." ++ idText (unitId u) ++ "." ++ interfaceName a)) | (_, name, u, a) <- handlers] ++
             [D.text (value ++ ": ") <> ty | (value,ty) <- zip values types]
           -- Native code passes a definition's handlers explicitly; they are
           -- installed in symbols, where the operations it performs find them.
@@ -225,13 +240,18 @@ emitPythonDefinitions layout bits declarations units = do
     -- The handlers a definition's native wrapper takes, first: one per
     -- ability in its row (Fail aborts, so it has none).
     handlerParameters declaration =
-      [ (ability, lowerFirst (abilityName a), owner, a)
+      [ (ability, lowerFirst (interfaceName a), owner, a)
       | ability <- declarationUses declaration, not (isFail ability)
-      , Just (owner, a) <- [lookup (abilityRefId ability) [(abilityId x, (o, x)) | o <- units, x <- unitAbilities o]] ]
+      , Just (owner, a) <- [findAbility units ability] ]
+    -- A spec handler, made with its unit's class.
+    specConstruction h = case [(o, x) | o <- units, x <- unitHandlers o, handlerId x == h] of
+      (o, x) : _ -> E.call ("_adapters(" ++ show ("lawspec_abilities." ++ idText (unitId o)) ++ ")." ++ specName x) [D.text "symbols"]
+      [] -> E.call "ls.unknown_handler" [E.quoted (idText h)]
     lowerFirst (c:cs) = toEnum (fromEnum c + (if c >= 'A' && c <= 'Z' then 32 else 0)) : cs
     lowerFirst [] = []
     nestedBinders expression = case expressionNode expression of
       AllElements value binder predicate -> nestedBinders value ++ [binder] ++ nestedBinders predicate
+      Let binder value body -> nestedBinders value ++ [binder] ++ nestedBinders body
       AllPayloads value predicates -> nestedBinders value ++ concat
         [binder : nestedBinders predicate | (binder,predicate) <- predicates]
       Match value cases -> nestedBinders value ++ concat

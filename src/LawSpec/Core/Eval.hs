@@ -112,6 +112,9 @@ evaluateValue registry bits adapter bindings = run (M.fromList bindings) where
     -- An operation goes to the handler the caller installed in the hook.
     Perform op args -> mapM go args >>= adapter (operationId op) >>= validateValueWithContracts registry bits expressionType
     Handle _ _ -> Left "a failure is caught when the law runs, not by the compiler"
+    Let binder value body -> do
+      bound <- go value
+      run (M.insert (binderId binder) bound env) body
     Calls _ _ -> Left "calls are counted when the law runs, not by the compiler"
     Helper Unreachable _ -> Left "a branch the indices rule out was reached"
     Helper builtin args -> mapM go args >>= helper builtin

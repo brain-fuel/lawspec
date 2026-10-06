@@ -1,0 +1,7 @@
+expect: refunds of large amounts fail [native]
+@@ example/shop/adapter.go
+<<<<<<<
+		panic(LawSpecFail{Value: PaymentErrorTooLarge{}})
+=======
+		panic(LawSpecFail{Value: PaymentErrorRefused{}})
+>>>>>>>

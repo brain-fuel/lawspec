@@ -1,0 +1,7 @@
+expect: refunds of large amounts fail [native]
+@@ src/example/shop.py
+<<<<<<<
+        raise ls.Fail(data.PaymentErrorTooLarge())
+=======
+        raise ls.Fail(data.PaymentErrorRefused())
+>>>>>>>

@@ -9,6 +9,7 @@ import LawSpec.Core
 import qualified LawSpec.KotlinData as Native
 import qualified LawSpec.KotlinExpr as E
 import qualified LawSpec.JavaDefinitions as Jvm
+import LawSpec.AbilityNames (interfaceName, specName, ownerName)
 import qualified LawSpec.Code.Doc as D
 import Data.Aeson (encode)
 import qualified Data.Text.Lazy as T
@@ -40,17 +41,21 @@ emitKotlinDefinitions layout bits declarations units = do
   where
     -- Kotlin adapters, called from the shared JVM bodies through Kotlin
     -- codecs.
-    adapterBridge = case (Jvm.orchestratedAdapters units, Jvm.performedOperations units) of
-      ([], []) -> pure []
-      (adapters, operations) -> do
+    adapterBridge = case (Jvm.orchestratedAdapters units, Jvm.performedOperations units, Jvm.scopedHandlers units) of
+      ([], [], []) -> pure []
+      (adapters, operations, scoped) -> do
+        -- A spec handler a body installs with handle ... with h end.
+        let made = [ D.text "@JvmStatic" <> D.hardline <> D.text ("fun " ++ Jvm.kotlinHandlerBridge h ++ "(symbols: MutableMap<String, Any>): Any = " ++
+                       abilitiesObject o ++ "." ++ specName x ++ "(symbols)")
+                   | h <- scoped, (o, x) <- take 1 [(o, x) | o <- units, x <- unitHandlers o, handlerId x == h] ]
         -- An operation the shared bodies perform: its handler, from symbols,
         -- through Kotlin codecs.
         performs <- forM operations $ \op -> do
           ability <- maybe (Left ("unknown ability " ++ abilityKey (operationAbility op))) Right
-            (lookup (abilityRefId (operationAbility op)) [(abilityId a, (u, a)) | u <- units, a <- unitAbilities u])
-          let (owner, declared) = ability
+            (findAbility units (operationAbility op))
+          let (_, declared) = ability
               (args, result) = maybe ([], scalarType "Unit") functionType (lookup (operationName op) (abilityOperations declared))
-              interface = abilitiesObject owner ++ "." ++ abilityName declared
+              interface = abilityInterface (operationAbility op)
           codecs <- mapM (Native.kotlinCodecDocWithContext (D.text "symbols") declarations) args
           resultCodec <- Native.kotlinCodecDocWithContext (D.text "symbols") declarations result
           let parameters = D.text "symbols: MutableMap<String, Any>" :
@@ -60,7 +65,7 @@ emitKotlinDefinitions layout bits declarations units = do
           pure (D.text "@JvmStatic" <> D.hardline <> D.text ("fun " ++ Jvm.kotlinOperationBridge op) <>
             D.delimitTrailing 4 "(" ")" parameters <> D.text ": LawSpecRuntime.Value = " <>
             resultCodec <> D.text ".encode(" <> invocation <> D.text ")")
-        methods <- fmap (++ performs) $ forM adapters $ \(identity, (owner, adapter)) -> do
+        methods <- fmap (++ (performs ++ made)) $ forM adapters $ \(identity, (owner, adapter)) -> do
           let (args, result) = functionType (declarationType adapter)
               parts = split '.' (idText owner)
               cls = intercalate "." (init parts ++ [concatMap capitalize (split '_' (last parts))])
@@ -79,7 +84,7 @@ emitKotlinDefinitions layout bits declarations units = do
                 | declarationAsync adapter = call "LawSpecRuntime.awaitStep"
                     [D.text "symbols", D.text "{ CoroutineScope(Dispatchers.Default).future { " <> invocation <> D.text " } }",
                      D.text "{ native -> " <> resultCodec <> D.text ".encode(native) }"]
-                | otherwise = resultCodec <> D.text ".encode(" <> invocation <> D.text ")"
+                | otherwise = failing owner adapter (resultCodec <> D.text ".encode(" <> invocation <> D.text ")")
           pure (D.text "@JvmStatic" <> D.hardline <> D.text ("fun " ++ Jvm.kotlinAdapterBridge identity) <>
             D.delimitTrailing 4 "(" ")" parameters <> D.text ": LawSpecRuntime.Value = " <> body)
         let asynchronous = any (declarationAsync . snd . snd) adapters
@@ -108,8 +113,8 @@ emitKotlinDefinitions layout bits declarations units = do
       codecs <- mapM (Native.kotlinCodecDocWithContext (D.text "symbols") declarations) args
       resultCodec <- Native.kotlinCodecDocWithContext (D.text "symbols") declarations result
       evaluator <- maybe (Left "unresolved Kotlin definition") Right (lookup (declarationId declaration) callees)
-      let handlers = [ (ability, lowerFirst (abilityName a)) | ability <- declarationUses declaration, not (isFail ability)
-                     , Just a <- [lookup (abilityRefId ability) [(abilityId x, x) | o <- units, x <- unitAbilities o]] ]
+      let handlers = [ (ability, lowerFirst (interfaceName a)) | ability <- declarationUses declaration, not (isFail ability)
+                     , Just (_, a) <- [findAbility units ability] ]
           parameters = D.text "symbols: MutableMap<String, Any>" :
             [D.text (name ++ ": " ++ abilityInterface ability) | (ability, name) <- handlers] ++
             [D.text ("value" ++ show i ++ ": ") <> ty | (i,ty) <- zip [0::Int ..] types]
@@ -141,5 +146,23 @@ emitKotlinDefinitions layout bits declarations units = do
     lowerFirst [] = []
     abilitiesObject u = let parts = split '.' (idText (unitId u))
       in intercalate "." ("lawspec" : "abilities" : init parts ++ [concatMap capitalize (split '_' (last parts))])
-    abilityInterface ability = maybe "Any" (\(u, a) -> abilitiesObject u ++ "." ++ abilityName a)
-      (lookup (abilityRefId ability) [(abilityId a, (u, a)) | u <- units, a <- unitAbilities u])
+    abilityInterface ability = maybe "Any" (\(_, a) -> abilitiesObjectOf (ownerName a) ++ "." ++ interfaceName a)
+      (findAbility units ability)
+    abilitiesObjectOf unit = let parts = split '.' unit
+      in intercalate "." ("lawspec" : "abilities" : init parts ++ [concatMap capitalize (split '_' (last parts))])
+    -- An adapter that fails with E: its native code throws LawSpecRuntime.Fail
+    -- with a native E (or an exception lawspec.json maps to a failure).
+    failing owner adapter body = case [a | a@(AbilityRef _ [_]) <- declarationUses adapter, isFail a] of
+      ability@(AbilityRef _ [failure]) : _ ->
+        let codec = either error id (Native.kotlinCodecDocWithContext (D.text "symbols") declarations failure)
+            native = either error id (Native.kotlinDataType declarations failure)
+            bindings = [b | u <- units, unitId u == owner, b <- unitFailureBindings u, failureType b == failure]
+            mapped = [ call "LawSpecRuntime.MappedFailure" [D.text (intercalate "." (failureNative b) ++ "::class.java"),
+                         D.text "{ _error -> " <> call "LawSpecKotlinCodecs.construct"
+                           [D.text "schema", either error id (E.reference failure), E.quoted (idText (failureConstructor b)), call "listOf"
+                             [call "LawSpecRuntime.fromNative" [E.quoted "Text", D.text "_error.message ?: \"\"", D.text (show bits)] | failureMessage b],
+                            D.text (show bits), D.text "symbols"] <> D.text " }"]
+                     | b <- bindings ]
+        in call "LawSpecRuntime.nativeFailures" ([E.quoted (abilityKey ability),
+             D.text "{ _native -> " <> codec <> D.text (".encode(_native as " ++ native ++ ") }"), D.text "{ " <> body <> D.text " }"] ++ mapped)
+      _ -> body

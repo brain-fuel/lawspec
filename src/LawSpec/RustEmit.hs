@@ -6,6 +6,8 @@ import LawSpec.Core.Machine (machineActor)
 import qualified LawSpec.RustExpr as Expression
 import qualified LawSpec.RustDefinitions as Definitions
 import qualified LawSpec.AbilityEmit.Rust as Abilities
+import qualified LawSpec.RustAbilityPaths as Paths
+import LawSpec.AbilityNames (ownAbilities, interfaceName)
 import LawSpec.Remote (remoteManifest)
 import qualified LawSpec.ModelTests as ModelTests
 import qualified LawSpec.Core.Schema as Schema
@@ -254,12 +256,12 @@ emitRustWithBindings minify bindings plan@Plan{..} = either (Left . pure . (\m -
     hasAbilities = any (not . null . unitAbilities . plannedUnit) plannedUnits
     allUnits = map plannedUnit plannedUnits
     -- A handler from the context, borrowed as its ability's trait.
-    handlerArgument ability = Doc.text ("&*ctx.handler::<std::sync::Arc<dyn " ++ Abilities.traitPath allUnits ability ++ ">>(" ++ q (abilityKey ability) ++ ")?")
+    handlerValue ability = Doc.text ("ctx.handler::<std::sync::Arc<dyn " ++ Abilities.traitPath allUnits ability ++ ">>(" ++ q (abilityKey ability) ++ ")?")
     -- A law's handlers, made afresh each time it runs and installed in its context.
-    handlerInstalls p = case [(a, c) | (a, c) <- propertyHandlers p, not (isFail a)] of
+    handlerInstalls owner p = case [(a, c) | (a, c) <- propertyHandlers p, not (isFail a)] of
       [] -> []
       chosen -> [Doc.text "ctx.install_handlers(vec![" <> Doc.nest 4 (Doc.hardline <> Doc.joinWith Doc.hardline
-        [Doc.text ("(" ++ q (abilityKey a) ++ ".to_string(), " ++ Abilities.handlerConstruction (NR.bindingRustCrate bindings) allUnits a c ++ "),") | (a, c) <- chosen]) <>
+        [Doc.text ("(" ++ q (abilityKey a) ++ ".to_string(), " ++ Abilities.handlerConstruction (NR.bindingRustCrate bindings) allUnits owner a c ++ "),") | (a, c) <- chosen]) <>
         Doc.hardline <> Doc.text "]);"]
     hasSchema = hasNativeGenerators || not (null planDataDeclarations) || hasDefinitions ||
       any (any containsPayload . propertyExpressions . plannedProperty)
@@ -327,7 +329,7 @@ emitRustWithBindings minify bindings plan@Plan{..} = either (Left . pure . (\m -
         resultType <- nativeType result
         let arguments = [Doc.text (handlerName ability ++ ": &dyn crate::" ++ Abilities.traitPath allUnits ability) | ability <- declarationUses d, not (isFail ability)] ++
               [Doc.text ("value" ++ show i ++ ": " ++ t) | (i,t) <- zip [0::Int ..] argTypes]
-            handlerName ability = case [abilityName a | a <- unitAbilities unit, abilityId a == abilityRefId ability] of
+            handlerName ability = case [interfaceName a | Just (_, a) <- [findAbility allUnits ability]] of
               n : _ -> map toLower (take 1 n) ++ drop 1 n
               [] -> "handler"
             signature = Doc.text ((if declarationAsync d then "pub async fn " else "pub fn ") ++ declarationName d)
@@ -364,10 +366,22 @@ emitRustWithBindings minify bindings plan@Plan{..} = either (Left . pure . (\m -
         post <- maybe (Right []) (mapM (predicate names (declarationName d ++ " postcondition")) . contractPostconditions) contract
         -- An async adapter's future is awaited where it is called.
         -- An adapter that uses abilities gets their handlers first.
-        let call = invoke ("adapter::" ++ declarationName d)
-              ([handlerArgument ability | ability <- declarationUses d, not (isFail ability)] ++
+        failureType <- case [a | a@(AbilityRef _ [_]) <- declarationUses d, isFail a] of
+          AbilityRef _ [failure] : _ -> Just <$> nativeType failure
+          _ -> pure Nothing
+        let uses = [ability | ability <- declarationUses d, not (isFail ability)]
+            handlerBindings = [binding ("handler_" ++ show i) (handlerValue ability) | (i, ability) <- zip [0 :: Int ..] uses]
+            call = invoke ("adapter::" ++ declarationName d)
+              ([Doc.text ("&*handler_" ++ show i) | i <- [0 .. length uses - 1]] ++
                [Doc.text ("native_arg_" ++ show i) | i <- [0..length args-1]])
-            called = if declarationAsync d then invoke "ls::block_on" [call] else call
+            plain = if declarationAsync d then invoke "ls::block_on" [call] else call
+            -- An adapter that fails with E: its native code calls ls::fail
+            -- with a native E (or panics with what lawspec.json maps).
+            called = case (failureType, [a | a@(AbilityRef _ [_]) <- declarationUses d, isFail a]) of
+              (Just native, ability@(AbilityRef _ [failure]) : _) -> invoke ("ls::native_failures::<" ++ native ++ ", _>")
+                [string (abilityKey ability), Doc.text "|native| ls::IntoValue::into_value(native)", Doc.text "|| " <> plain,
+                 Doc.text (Paths.mappedFailures (unitFailureBindings unit) failure)]
+              _ -> plain
             wrapped = invoke (if typeName result == "CodeUnit16" then "ls::Value::CodeUnit16" else "ls::IntoValue::into_value") [Doc.text "native_result"]
         ref <- schemaType result
         let checkedResult = (if usesData result
@@ -376,7 +390,7 @@ emitRustWithBindings minify bindings plan@Plan{..} = either (Left . pure . (\m -
         pure (function fn [Doc.text "ctx: &mut ls::Context",Doc.text "args: Vec<ls::Value>"] "ls::Result<ls::Value>" (statements
           ([statement (invoke "ls::require_architecture" [bits] <> Doc.text "?") | nativeMachineType (declarationType d)] ++
            [binding ("arg_" ++ show i) (Doc.text ("args[" ++ show i ++ "].clone()")) | i <- [0..length args-1]] ++
-           pre ++ [binding ("native_arg_" ++ show i) value | (i,value) <- zip [0::Int ..] args'] ++
+           pre ++ [binding ("native_arg_" ++ show i) value | (i,value) <- zip [0::Int ..] args'] ++ handlerBindings ++
            [binding "native_result" called,binding "result" checkedResult] ++ post ++ [Doc.text "Ok(result)"])))
       -- A model's test hands its spec and callbacks to the model runtime.
       modelTests <- map (reverse . dropWhile (== '\n') . reverse) <$>
@@ -485,7 +499,7 @@ emitRustWithBindings minify bindings plan@Plan{..} = either (Left . pure . (\m -
             pure (binding name value)
           checks <- mapM (proposition names (label ++ " example " ++ exampleName e)) (exampleExpectations e)
           lawCheck <- proposition names label (propertyBody p)
-          pure (block (statements (context : handlerInstalls p ++ bindings ++ checks ++ [lawCheck])))
+          pure (block (statements (context : handlerInstalls unit p ++ bindings ++ checks ++ [lawCheck])))
         let predicateFn = "valid_" ++ show index
             tupleArgs = [Doc.text ("case.values[" ++ show n ++ "].clone()") | n <- [0..length names-1]]
             random = case finiteCases pp of
@@ -516,7 +530,7 @@ emitRustWithBindings minify bindings plan@Plan{..} = either (Left . pure . (\m -
                       Doc.softbreak <> Doc.text ".map_err(|e| format!(\"{e}\"))?"))
                 ]
         pure (Presentation.metadataDocument 100 "//" pp <>
-          function law args "ls::Result<()>" (statements (handlerInstalls p ++ checkedInputs ++ [body,Doc.text "Ok(())"])) <>
+          function law args "ls::Result<()>" (statements (handlerInstalls unit p ++ checkedInputs ++ [body,Doc.text "Ok(())"])) <>
           blank <> function predicateFn args "ls::Result<bool>" (statements (valid ++ [Doc.text "Ok(true)"])) <>
           -- Deep generated values need more stack than a test thread has.
           blank <> Doc.text "#[test]" <> Doc.hardline <>
@@ -524,7 +538,7 @@ emitRustWithBindings minify bindings plan@Plan{..} = either (Left . pure . (\m -
             (invoke "ls::with_stack" [Doc.text ("run_" ++ show index)]) <>
           blank <> function ("run_" ++ show index) [] "ls::Result<()>"
             (statements ([context] ++ fixed ++ examples ++ random ++ [Doc.text "Ok(())"])))
-      productions <- if generatedAdapter then pure [] else mapM (Abilities.productionStub planDataDeclarations unit) (unitAbilities unit)
+      productions <- if generatedAdapter then pure [] else mapM (Abilities.productionStub planDataDeclarations unit) (ownAbilities unit)
       let adapterDoc = statements [Doc.text (if generatedAdapter then "// Generated native bridge by LawSpec. Do not edit." else "// Scaffolded by LawSpec. User-owned; never overwritten."),
             Doc.text "#![allow(unused_variables, unused_imports, non_snake_case)]",
             Doc.text "use crate::lawspec_runtime as ls;"] <>
@@ -533,7 +547,9 @@ emitRustWithBindings minify bindings plan@Plan{..} = either (Left . pure . (\m -
           -- The definitions file calls workflow steps by their crate paths;
           -- this unit's own module is already mounted as adapter.
           workflowModules mount = [if owner == unitId unit then Doc.text ("use adapter as " ++ ident (idText owner) ++ ";") else mount owner
-            | hasDefinitions, owner <- Definitions.workflowAdapterUnits (map LawSpec.Testing.plannedUnit plannedUnits)]
+            | owner <- nub ([o | hasDefinitions, o <- Definitions.workflowAdapterUnits (map LawSpec.Testing.plannedUnit plannedUnits)] ++
+                -- The production handlers of imported abilities are their owners'.
+                map Id (Abilities.foreignOwners unit))]
           moduleDoc filename name = Doc.text ("#[path = " ++ q filename ++ "]") <> Doc.hardline <> Doc.text ("mod " ++ name ++ ";")
           localImports = [moduleDoc ("../src/" ++ modulePath ++ ".rs") "adapter"] ++
             [moduleDoc "../src/lawspec_data.rs" "lawspec_data" | not (null planDataDeclarations)] ++

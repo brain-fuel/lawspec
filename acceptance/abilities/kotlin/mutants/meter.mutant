@@ -1,0 +1,7 @@
+expect: Meter: reading gives what its type says [native]
+@@ src/main/kotlin/example/Shop.kt
+<<<<<<<
+        override fun reading(): kotlin.Int = 3
+=======
+        override fun reading(): kotlin.Int = -1
+>>>>>>>

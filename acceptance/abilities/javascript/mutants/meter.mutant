@@ -1,0 +1,7 @@
+expect: Meter: reading gives what its type says [native]
+@@ src/example/shop.mjs
+<<<<<<<
+    return 3;
+=======
+    return -1;
+>>>>>>>

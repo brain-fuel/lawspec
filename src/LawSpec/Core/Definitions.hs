@@ -1,6 +1,6 @@
 -- Closed execution of validated total definitions. The returned function has
 -- no adapter hook, so a definition cannot acquire effects during evaluation.
-module LawSpec.Core.Definitions (prepareDefinitions, prepareResolvingDefinitions) where
+module LawSpec.Core.Definitions (prepareDefinitions, prepareResolvingDefinitions, prepareHookedDefinitions) where
 
 import Control.Monad (unless)
 import qualified Data.Map.Strict as M
@@ -20,6 +20,16 @@ prepareDefinitions program = ($ const Nothing) <$> prepareResolvingDefinitions p
 -- definition is evaluated as a call of that clause, at any depth.
 prepareResolvingDefinitions :: Program -> Either [Diagnostic] ((Id -> Maybe Id) -> Id -> [Value] -> Either String Value)
 prepareResolvingDefinitions program = do
+  hooked <- prepareHookedDefinitions program
+  pure (\resolver -> hooked (\invoke name -> case resolver name of
+    Just clause -> Just (\values -> invoke clause (if null values then [ScalarValue (SAbsent "Unit")] else values))
+    Nothing -> Nothing))
+
+-- With a hook that may answer a call itself, given the evaluator (a spec
+-- handler with state answers its operations this way: LawSpec.Discharge).
+prepareHookedDefinitions :: Program -> Either [Diagnostic]
+  (((Id -> [Value] -> Either String Value) -> Id -> Maybe ([Value] -> Either String Value)) -> Id -> [Value] -> Either String Value)
+prepareHookedDefinitions program = do
   validateProgram program
   let boundaries = definitionContracts (programUnits program)
   registry <- either (Left . pure . (\message -> Diagnostic "core" message Nothing)) Right
@@ -29,8 +39,8 @@ prepareResolvingDefinitions program = do
       definitions = M.fromList [(declarationId (definitionDeclaration d), d)
         | u <- programUnits program, d <- unitDefinitions u, not (definitionOrchestrates d)]
       contracts = M.fromList [(contractDeclaration c,c) | c <- boundaries]
-      invoke resolver name values = case resolver name of
-       Just clause -> invoke resolver clause (if null values then [ScalarValue (SAbsent "Unit")] else values)
+      invoke resolver name values = case resolver (invoke resolver) name of
+       Just answer -> answer values
        Nothing -> do
         definition <- maybe (Left ("unknown total definition: " ++ idText name)) Right
           (M.lookup name definitions)

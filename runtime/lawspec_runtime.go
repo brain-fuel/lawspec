@@ -7517,6 +7517,62 @@ func lsHandler(symbols map[string]*lawSpecSymbol, ability string) any {
 	panic("no handler for the ability " + ability + ": a law names one with `using`, or runs under each lawful handler")
 }
 
+// lsWithHandlers runs body with these handlers installed (handle e with h
+// end), then puts back the ones they replaced.
+func lsWithHandlers(symbols map[string]*lawSpecSymbol, handlers map[string]any, body func() LawSpecValue) LawSpecValue {
+	previous, had := symbols[lsHandlersKey]
+	lsInstallHandlers(symbols, handlers)
+	defer func() {
+		if had {
+			symbols[lsHandlersKey] = previous
+		} else {
+			delete(symbols, lsHandlersKey)
+		}
+	}()
+	return body()
+}
+
+// LawSpecFail is what native code (an adapter, or a production handler)
+// panics with to fail with a value of the failure type its signature names:
+// panic(LawSpecFail{Value: v}) for `fails with E`, v a native E.
+type LawSpecFail struct {
+	Value any
+}
+
+func (failure LawSpecFail) Error() string {
+	return fmt.Sprintf("failed with %v", failure.Value)
+}
+
+// lsErrorAs reports whether err is, or wraps, an error of type T.
+func lsErrorAs[T error](err error) bool {
+	var target T
+	return errors.As(err, &target)
+}
+
+// lsNativeFailures calls native code that may fail: a LawSpecFail it panics
+// with, or an error lawspec.json maps to a failure (mapped tries each), becomes
+// a failure of the ability.
+func lsNativeFailures(ability string, convert func(any) LawSpecValue, body func() LawSpecValue, mapped ...func(error) (LawSpecValue, bool)) (result LawSpecValue) {
+	defer func() {
+		if problem := recover(); problem != nil {
+			switch failed := problem.(type) {
+			case LawSpecFail:
+				panic(&LawSpecFailure{Ability: ability, Value: convert(failed.Value)})
+			case *LawSpecFail:
+				panic(&LawSpecFailure{Ability: ability, Value: convert(failed.Value)})
+			case error:
+				for _, try := range mapped {
+					if value, ok := try(failed); ok {
+						panic(&LawSpecFailure{Ability: ability, Value: value})
+					}
+				}
+			}
+			panic(problem)
+		}
+	}()
+	return body()
+}
+
 func lsRaiseFailure(ability string, value LawSpecValue) LawSpecValue {
 	panic(&LawSpecFailure{Ability: ability, Value: value})
 }

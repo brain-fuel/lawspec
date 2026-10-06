@@ -118,6 +118,11 @@ renderExpressionWithContext declarations bits reference typeKey local external =
             D.nest 4 (D.softline <> body))])
       Constant value -> literal (expressionType term) value >>= checked (expressionType term)
       Local identity -> pure (D.text (local identity))
+      -- let x = e in body: e runs first, once.
+      Let binder value body -> do
+        argument <- render value
+        inner <- render body
+        pure (runtime "let" [argument, D.group (D.text (local (binderId binder) ++ " ->") <> D.nest 4 (D.softline <> inner))])
       Construct tag args -> do
         values <- mapM render args
         if custom (expressionType term) && idText tag `notElem` ["List::Nil","List::Cons"]

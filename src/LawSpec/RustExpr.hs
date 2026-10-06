@@ -191,6 +191,13 @@ renderExpressionWithContext declarations bits schema typeReference typeKey calle
             (D.hang 4 (D.text "let accepted =") body <> D.text ";" <>
               D.hardline <> D.text "Ok(accepted)") <> D.text ")?"))
       Constant scalar -> scalarLiteral scalar
+      -- let x = e in body: e runs first, once.
+      Let binder value body -> do
+        argument <- render names value
+        let name = "let_" ++ show (length names)
+        inner <- render ((binderId binder,name):names) body
+        pure (D.block 4 (D.hang 4 (D.text ("let " ++ name ++ " =")) argument <> D.text ";" <>
+          D.hardline <> D.text ("let _ = &" ++ name ++ ";") <> D.hardline <> inner))
       Local identity -> maybe (Left ("unbound Rust binder: " ++ idText identity))
         (Right . D.text . (++ ".clone()")) (lookup identity names)
       Construct tag fields -> do
@@ -250,6 +257,16 @@ renderExpressionWithContext declarations bits schema typeReference typeKey calle
           D.text "|ctx: &mut ls::Context| -> ls::Result<ls::Value> " <> D.block 4 (D.hang 4 (D.text "let value =") inner <> D.text ";" <> D.hardline <> D.text "Ok(value)"),
           D.text "|value| ls::construct(\"Either::Right\", vec![value])",
           D.text "|value| ls::construct(\"Either::Left\", vec![value])"] <> D.text "?")
+      -- handle e with h end: e runs with h installed for its ability, made
+      -- afresh each time.
+      Handle (WithHandler ability (SpecHandler h)) body -> do
+        made <- maybe (Left ("no Rust spec handler " ++ idText h)) Right (lookup (Id ("handler:" ++ idText h)) callees)
+        trait <- maybe (Left ("no Rust trait for " ++ abilityKey ability)) Right (lookup (Id ("trait:" ++ abilityKey ability)) callees)
+        inner <- render names body
+        pure (D.block 4 (D.text ("let installing = vec![(" ++ quoted (abilityKey ability) ++ ".to_string(), ls::installed(std::sync::Arc::new(" ++ made ++
+            "::new(ctx)) as std::sync::Arc<dyn " ++ trait ++ ">))];") <> D.hardline <>
+          call "ls::with_handlers" [D.text "ctx", D.text "installing",
+            D.text "|ctx: &mut ls::Context| -> ls::Result<ls::Value> " <> D.block 4 (D.hang 4 (D.text "let value =") inner <> D.text ";" <> D.hardline <> D.text "Ok(value)")] <> D.text "?"))
       Handle _ _ -> Left "unknown Rust handling"
       Calls op args -> do
         values <- mapM (render names) (maybe [] id args)

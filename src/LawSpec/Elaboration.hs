@@ -4,7 +4,8 @@ module LawSpec.Elaboration
   ( coreType, equation, elaborateExpression, elaborateResolved, elaborateResolvedWithData, equationWithData, binaryOp, elaborateDefinitionUnit, elaborateContract
   , abilityReference, unitOperations, performOperations ) where
 
-import LawSpec.Abilities (clauseDefinitionName, abilityArguments)
+import LawSpec.Abilities (clauseDefinitionName, abilityArguments, instantiatedOperations, unqualifiedHandler)
+import Data.Maybe (listToMaybe)
 import qualified Data.Map.Strict as M
 
 import LawSpec.Time (timeUnit, durationType, durationArithmetic, durationValue)
@@ -120,6 +121,12 @@ elaborateResolvedWithData dataTypes declarations bits origin resolve env source 
           body <- lowerWith ((name,C.binderId binder):bound) predicate
           pure (node t (C.AllElements scrutinee binder body))
         _ -> Left "invalid typed List predicate"
+      -- let x = e in body.
+      S.MatchExpr _ [S.MatchBranch tag _ _] | tag == S.letTag, [value] <- operands, [S.TypedCase _ [(name, fieldType)] body] <- cases -> do
+        valueCore <- lower value
+        binder <- C.Binder (C.Id (C.idText origin ++ "::let::" ++ show (length bound) ++ "::" ++ name)) name <$> coreType fieldType
+        inner <- lowerWith ((name, C.binderId binder) : bound) body
+        pure (node t (C.Let binder valueCore inner))
       S.MatchExpr _ _ -> case operands of
         [value] -> do
           scrutinee <- lower value
@@ -236,6 +243,10 @@ elaborateResolvedWithData dataTypes declarations bits origin resolve env source 
         pure (node t (C.Helper C.Length [items]))
     -- select c a b evaluates only the branch c selects, as if c then a else b.
     | n == "select", [c, a, b] <- xs = pure (node t (C.If c a b))
+    -- handle e with h end; the handler is resolved with the unit's handlers
+    -- (performOperations).
+    | Just handler <- S.handledBy ("prelude." ++ n), [e] <- xs =
+        pure (node t (C.Handle (C.WithHandler (C.AbilityRef (C.Id "") []) (C.SpecHandler (C.Id handler))) e))
     -- raise e performs the Fail ability's operation at e's type.
     | n == "raise", [e] <- xs = pure (node t (C.Perform (C.Operation (C.AbilityRef C.failAbilityId [C.expressionType e]) "raise") [e]))
     -- attempt e handles Fail E around e, giving Either E A.
@@ -318,14 +329,14 @@ elaborateDefinitionUnit dataDeclarations bits u = do
     ability <- abilityReference u (S.handlerAbility h)
     let identity = C.Id (S.unitName u ++ "::handler::" ++ S.handlerName h)
         clauses = [(op, declarationId u (clauseDefinitionName (S.handlerName h) op)) | (op, _) <- C.abilityOperations
-          (maybe C.failAbility id (lookup (C.abilityRefId ability) [(C.abilityId a, a) | a <- abilities]))]
+          (maybe C.failAbility id (lookup ability [(C.abilityInstance a, a) | a <- abilities]))]
         visible = [declarationId u n | (n,_) <- S.functions u]
     state <- forM (S.handlerState h) $ \(_, ty, start) -> do
       t <- coreType ty
       value <- elaborateResolvedWithData dataDeclarations visible bits identity (declarationId u) (S.functions u) (S.Annotate start ty)
       pure (t, value)
     pure (C.Handler identity (S.handlerName h) ability clauses state (C.SourceSpan (S.handlerSpan h)))
-  pure (C.MkUnit (C.Id (S.unitName u)) (ds ++ map C.definitionDeclaration bridges) contracts [] (definitions ++ bridges) machines sessions (S.supervisors u) mailboxes abilities handlers)
+  pure (C.MkUnit (C.Id (S.unitName u)) (ds ++ map C.definitionDeclaration bridges) contracts [] (definitions ++ bridges) machines sessions (S.supervisors u) mailboxes abilities handlers [])
   where
     declarationId unit n = C.Id (S.unitName unit ++ "::" ++ n)
     sessionIdentity n = C.Id (S.unitName u ++ "::session::" ++ n)
@@ -378,50 +389,71 @@ elaborateContract dataDeclarations bits u c = do
 
 
 -- An ability type of a unit, as Core refers to it: Gateway is
--- <unit>::ability::Gateway, and Fail E the built-in Fail at E.
+-- <unit>::ability::Gateway, where <unit> declares it (an imported ability
+-- keeps its owner), and Fail E the built-in Fail at E.
 abilityReference :: S.Unit -> S.Type -> Either String C.AbilityRef
 abilityReference u t = do
   arguments <- mapM coreType (abilityArguments t)
   let name = S.abilityTypeName t
+      owner = case [S.abilityOrigin a | a <- S.abilities u, S.abilityName a == name] of
+        origin : _ | not (null origin) -> origin
+        _ -> S.unitName u
   pure (if name == S.failAbilityName then C.AbilityRef C.failAbilityId arguments
-        else C.AbilityRef (C.Id (S.unitName u ++ "::ability::" ++ name)) arguments)
+        else C.AbilityRef (C.Id (owner ++ "::ability::" ++ name)) arguments)
 
--- A unit's abilities at the type it uses each one, and its operations by the
--- identity a call to one elaborates to (<unit>::<op>).
-unitOperations :: S.Unit -> Either String ([C.Ability], M.Map C.Id C.Operation)
+-- What elaboration resolves against a unit's abilities: each operation's
+-- instances (a call names <unit>::<op>, and its types pick the instance),
+-- and each handler by name, for handle ... with h end.
+data Operations = Operations
+  { operationInstances :: M.Map C.Id [(C.Operation, C.Type)]
+  , operationHandlers :: M.Map String (C.AbilityRef, C.Id) }
+
+-- A unit's abilities at each type it uses them at, and its operations.
+unitOperations :: S.Unit -> Either String ([C.Ability], Operations)
 unitOperations u = do
   let mentioned = concatMap snd (S.abilityRows u) ++ map S.handlerAbility (S.handlerDeclarations u) ++
-        concatMap (map fst . snd) (S.lawAssignments u)
+        concatMap (map fst . snd) (S.lawAssignments u) ++ concatMap snd (S.declaredUses u)
   found <- forM (S.abilities u) $ \a -> do
-    let instance' = if null (S.abilityParameters a) then Just (S.Named (S.abilityName a))
-          else case [t | t <- mentioned, S.abilityTypeName t == S.abilityName a] of
-            t : _ -> Just t
-            [] -> Nothing
-    case instance' of
-      Nothing -> pure Nothing
-      Just t -> do
-        ref <- abilityReference u t
-        operations <- forM (S.abilityOperations a) $ \(op, _) ->
-          maybe (Left ("missing operation " ++ op)) (fmap ((,) op) . coreType) (lookup op (S.functions u))
-        pure (Just (C.Ability (C.abilityRefId ref) (S.abilityName a) [] operations (C.SourceSpan (S.abilitySpan a)) (C.abilityRefArguments ref) Nothing, ref))
-  let present = [x | Just x <- found]
-  pure (map fst present, M.fromList
-    [ (C.Id (S.unitName u ++ "::" ++ op), C.Operation ref op)
-    | (ability, ref) <- present, (op, _) <- C.abilityOperations ability ])
+    let instances = if null (S.abilityParameters a) then [S.Named (S.abilityName a)]
+          else nub [t | t <- mentioned, S.abilityTypeName t == S.abilityName a]
+    forM instances $ \t -> do
+      ref <- abilityReference u t
+      operations <- forM (instantiatedOperations a t) $ \(op, ty) -> (,) op <$> coreType ty
+      pure (C.Ability (C.abilityRefId ref) (S.abilityName a) [] operations (C.SourceSpan (S.abilitySpan a)) (C.abilityRefArguments ref) Nothing, ref)
+  let present = concat found
+  handlers <- forM (S.handlerDeclarations u) $ \h -> do
+    ref <- abilityReference u (S.handlerAbility h)
+    pure (S.handlerName h, (ref, C.Id (S.unitName u ++ "::handler::" ++ S.handlerName h)))
+  pure (map fst present, Operations
+    (M.fromListWith (flip (++))
+      [ (C.Id (S.unitName u ++ "::" ++ op), [(C.Operation ref op, ty)])
+      | (ability, ref) <- present, (op, ty) <- C.abilityOperations ability ])
+    (M.fromList handlers))
 
--- Calls to ability operations become Perform; `calls of` names its
--- operation.
-performOperations :: M.Map C.Id C.Operation -> C.Expr -> C.Expr
-performOperations operations = go
+-- Calls to ability operations become Perform (at the instance the call's
+-- types pick); `calls of` names its operation; handle ... with h end names
+-- h's ability and handler.
+performOperations :: Operations -> C.Expr -> C.Expr
+performOperations (Operations operations handlers) = go
   where
+    pick candidates args result = case [op | (op, ty) <- candidates, C.functionType ty == (map C.expressionType args, result)] of
+      op : _ -> Just op
+      [] -> fst <$> listToMaybe candidates
+    pickNamed candidates args = case args of
+      Just xs | (op : _) <- [op | (op, ty) <- candidates, fst (C.functionType ty) == map C.expressionType xs] -> Just op
+      _ -> fst <$> listToMaybe candidates
     go e = e { C.expressionNode = case C.expressionNode e of
-      C.ExternalCall identity args | Just op <- M.lookup identity operations -> C.Perform op (map go args)
+      C.ExternalCall identity args | Just op <- M.lookup identity operations >>= \cs -> pick cs args (C.expressionType e) ->
+        C.Perform op (map go args)
       C.ExternalCall identity args -> C.ExternalCall identity (map go args)
       C.Calls (C.Operation (C.AbilityRef (C.Id "") []) name) args
-        | Just op <- M.lookup (C.Id name) operations -> C.Calls op (map go <$> args)
+        | Just op <- M.lookup (C.Id name) operations >>= (`pickNamed` args) -> C.Calls op (map go <$> args)
+      C.Handle (C.WithHandler (C.AbilityRef (C.Id "") []) (C.SpecHandler (C.Id name))) body
+        | Just (ref, identity) <- M.lookup (unqualifiedHandler name) handlers -> C.Handle (C.WithHandler ref (C.SpecHandler identity)) (go body)
       C.Calls op args -> C.Calls op (map go <$> args)
       C.Perform op args -> C.Perform op (map go args)
       C.Handle handling body -> C.Handle handling (go body)
+      C.Let binder value body -> C.Let binder (go value) (go body)
       C.Constant v -> C.Constant v
       C.Construct tag fields -> C.Construct tag (map go fields)
       C.Match value cases -> C.Match (go value) [c { C.caseBody = go (C.caseBody c) } | c <- cases]

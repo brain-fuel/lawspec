@@ -10,7 +10,7 @@ import LawSpec.Refinement (hasValueRefinements)
 import LawSpec.Scalar
 import LawSpec.Eval (boundsValue)
 import Control.Monad (when, unless, zipWithM_, zipWithM, forM, forM_)
-import Data.List (nub, isInfixOf)
+import Data.List (nub, isInfixOf, isPrefixOf)
 import Control.Monad.State.Strict
 import qualified Data.Map.Strict as M
 import qualified LawSpec.Core as Core
@@ -31,7 +31,13 @@ data TypeScheme = Monomorphic Type | Universal [String] [Constraint] Type
 type Env = M.Map String TypeScheme
 
 monoEnvironment :: [(String, Type)] -> Env
-monoEnvironment = M.fromList . map (\(name, ty) -> (name, Monomorphic ty))
+monoEnvironment = M.fromList . map (\(name, ty) -> (name, scheme ty))
+  where
+    -- A parameterized ability's operation keeps the ability's parameters as
+    -- variables (LawSpec.Abilities), which each call instantiates.
+    scheme ty = case filter (isPrefixOf "ability:") (typeVariables ty) of
+      [] -> Monomorphic ty
+      variables -> Universal variables [] ty
 
 environmentTypes :: Env -> [(String, Type)]
 environmentTypes = map (\(name, scheme) -> (name, schemeType scheme)) . M.toList
@@ -362,6 +368,8 @@ builtin env n args
       Variable . ("unreachable:" ++) <$> fresh
   -- concurrently v is v: an all group's steps, evaluated at the same time.
   | n == "concurrently", [a] <- args = infer env a >>= resolve
+  -- handle e with h end has e's value.
+  | Just _ <- handledBy ("prelude." ++ n), [a] <- args = infer env a >>= resolve
   -- raise e is the Fail ability's operation: it aborts to the nearest
   -- handler of Fail, so it may stand for a value of any type.
   | n == "raise", [a] <- args = do
@@ -774,6 +782,10 @@ contextualizeStructuralWithData declarations bits env a b =
 -- its GADT constructor cannot build the scrutinee's type, or its scope and the
 -- givens it adds.
 matchScopes :: Env -> Expr -> [MatchBranch] -> C [Maybe (Env, M.Map String Type)]
+-- let x = e in body: x has e's type.
+matchScopes env value [MatchBranch tag [name] _] | tag == letTag = do
+  ty <- infer env value >>= resolve
+  pure [Just (M.insert name (Monomorphic ty) env, M.empty)]
 matchScopes env value branches = do
   ty <- infer env value >>= resolve
   let tags = [tag | MatchBranch tag _ _ <- branches]

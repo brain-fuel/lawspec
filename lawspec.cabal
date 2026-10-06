@@ -41,6 +41,7 @@ extra-source-files:
     runtime/rust/Cargo.toml
     runtime/rust/Cargo.lock
     examples/specs/abilities.lawspec
+    examples/specs/ability_imports.lawspec
     examples/specs/actors.lawspec
     examples/specs/algebra.lawspec
     examples/specs/approvals.lawspec
@@ -301,6 +302,7 @@ library
       LawSpec.Remote
       LawSpec.Resilience
       LawSpec.RuntimeSources
+      LawSpec.RustAbilityPaths
       LawSpec.RustData
       LawSpec.RustDefinitions
       LawSpec.RustEmit

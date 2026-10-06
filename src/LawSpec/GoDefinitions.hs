@@ -13,6 +13,7 @@ import qualified LawSpec.GoExpr as E
 import qualified LawSpec.Code.Doc as D
 import Data.Char (toUpper)
 import Data.List (nub, intercalate)
+import LawSpec.AbilityNames (interfaceName, specName)
 
 definitionCalls :: [Unit] -> [(Id,String)]
 definitionCalls units = [(declarationId (definitionDeclaration d), "lawSpecEvaluate" ++ show i)
@@ -66,6 +67,12 @@ emitGoDefinitionsWithCalls bound layout bits declarations units = do
           external term values = case expressionNode term of
             ExternalCall identity _ | Just name <- lookup identity callees ->
               pure (E.call name (line "symbols":values))
+            -- handle e with h end: e runs with h installed for its ability,
+            -- made afresh each time.
+            Handle (WithHandler ability (SpecHandler h)) _ | [body] <- values ->
+              pure (E.call "lsWithHandlers" [line "symbols",
+                line ("map[string]any{" ++ show (abilityKey ability) ++ ": " ++ specConstructor h ++ "}"),
+                line "func() LawSpecValue " <> D.block 8 (line "return " <> body)])
             -- raise aborts to the nearest attempt of its Fail ability.
             Perform op [_] | isFail (operationAbility op) ->
               pure (E.call "lsRaiseFailure" (E.quoted (abilityKey (operationAbility op)) : values))
@@ -111,10 +118,19 @@ emitGoDefinitionsWithCalls bound layout bits declarations units = do
                     | resultType == Constructor "Unit" [] =
                         line "func() LawSpecValue " <> D.block 8 (call <> D.hardline <> line "return resultCodec.fromNative(LawSpecUnit{})") <> line "()"
                     | otherwise = E.call "resultCodec.fromNative" [call]
+              -- An adapter that fails with E: native code panics with LawSpecFail.
+              failing <- case [a | a@(AbilityRef _ [_]) <- declarationUses adapter, isFail a] of
+                ability@(AbilityRef _ [failure]) : _ | not (declarationAsync adapter) -> do
+                  failureCodec <- Native.goCodecWithContext "symbols" declarations failure
+                  failureType <- Native.goDataType declarations failure
+                  pure (\inner -> E.call "lsNativeFailures" [E.quoted (abilityKey ability),
+                    line "func(native any) LawSpecValue " <> D.block 8 (line ("return " ++ failureCodec ++ ".fromNative(native.(" ++ failureType ++ "))")),
+                    line "func() LawSpecValue " <> D.block 8 (line "return " <> inner)])
+                _ -> pure id
               pure (line "func() LawSpecValue " <> D.block 8 (D.joinWith D.hardline
                 ([line ("schema := " ++ schema), line ("bits := " ++ show bits), line "_ = bits"] ++
                  [assign ("codec" ++ show i) (line codec) | (i, (ty, codec)) <- zip [0::Int ..] (zip parameterTypes codecs), ty /= Constructor "Unit" [] || bridge /= Nothing] ++
-                 [assign "resultCodec" (line resultCodec), line "return " <> result])) <> line "()")
+                 [assign "resultCodec" (line resultCodec), line "return " <> failing result])) <> line "()")
             _ -> Left "unresolved Go total call"
       rendered <- E.renderExpression declarations bits schema local external (definitionBody d)
       -- A workflow stage with policies runs under the workflow runtime.
@@ -250,9 +266,9 @@ emitGoDefinitionsWithCalls bound layout bits declarations units = do
       codecs <- mapM (Native.goCodecWithContext "symbols" declarations) args
       resultCodec <- Native.goCodecWithContext "symbols" declarations result
       name <- maybe (Left "unresolved Go native call") Right (lookup (declarationId declaration) callees)
-      let handlers = [ (ability, lowerFirst (abilityName a), a) | ability <- declarationUses declaration, not (isFail ability)
-                     , Just a <- [lookup (abilityRefId ability) [(abilityId x, x) | o <- units, x <- unitAbilities o]] ]
-          parameters = symbols : [line (name ++ " " ++ abilityName a) | (_, name, a) <- handlers] ++ [line (value ++ " " ++ ty) | (value,ty) <- zip values types]
+      let handlers = [ (ability, lowerFirst (interfaceName a), a) | ability <- declarationUses declaration, not (isFail ability)
+                     , Just (_, a) <- [findAbility units ability] ]
+          parameters = symbols : [line (name ++ " " ++ interfaceName a) | (_, name, a) <- handlers] ++ [line (value ++ " " ++ ty) | (value,ty) <- zip values types]
           -- Native code passes a definition's handlers explicitly; they are
           -- installed in symbols, where the operations it performs find them.
           installs = [line ("lsInstallHandlers(symbols, map[string]any{" ++ intercalate ", " [show (abilityKey ability) ++ ": " ++ name | (ability, name, _) <- handlers] ++ "})")
@@ -269,6 +285,7 @@ emitGoDefinitionsWithCalls bound layout bits declarations units = do
             line "return " <> E.call "resultCodec.toNative" [line "result"]]))))
     nestedBinders expression = case expressionNode expression of
       AllElements value binder predicate -> nestedBinders value ++ [binder] ++ nestedBinders predicate
+      Let binder value body -> nestedBinders value ++ [binder] ++ nestedBinders body
       AllPayloads value predicates -> nestedBinders value ++ concat
         [binder : nestedBinders predicate | (binder,predicate) <- predicates]
       Match value cases -> nestedBinders value ++ concat
@@ -280,4 +297,8 @@ emitGoDefinitionsWithCalls bound layout bits declarations units = do
     lowerFirst [] = []
     -- A handler from symbols, as its ability's interface.
     handlerOf ability = "lsHandler(symbols, " ++ show (abilityKey ability) ++ ").(" ++
-      maybe "any" abilityName (lookup (abilityRefId ability) [(abilityId a, a) | u <- units, a <- unitAbilities u]) ++ ")"
+      maybe "any" (interfaceName . snd) (findAbility units ability) ++ ")"
+    -- A spec handler, made with the constructor its package declares.
+    specConstructor h = case [x | u <- units, x <- unitHandlers u, handlerId x == h] of
+      x : _ -> "New" ++ specName x ++ "(symbols)"
+      [] -> "nil"

@@ -38,6 +38,8 @@ validateExpressionWithRegistry registry bits declarations scope expr@Expr{..} = 
     Match value _ -> validateExpressionWithRegistry registry bits declarations scope value
     AllElements value _ _ -> validateExpressionWithRegistry registry bits declarations scope value
     AllPayloads value _ -> validateExpressionWithRegistry registry bits declarations scope value
+    -- A let's body sees its binder; the Let case below checks both.
+    Let _ _ _ -> pure ()
     _ -> mapM_ (validateExpressionWithRegistry registry bits declarations scope) (children expr)
   actual <- case expressionNode of
     Constant s -> do
@@ -128,7 +130,16 @@ validateExpressionWithRegistry registry bits declarations scope expr@Expr{..} = 
     Handle (CatchFailure (AbilityRef _ [failure])) body -> do
       validateExpressionWithRegistry registry bits declarations scope body
       pure (Constructor "Either" [TypeArgument failure, TypeArgument (expressionTypeOf body)])
+    Handle (WithHandler _ _) body -> do
+      validateExpressionWithRegistry registry bits declarations scope body
+      pure (expressionTypeOf body)
     Handle _ _ -> Left "a handled failure names its type"
+    Let binder value body -> do
+      validateExpressionWithRegistry registry bits declarations scope value
+      unless (binderType binder == expressionTypeOf value) (Left "let binder type does not match its value")
+      unless (M.notMember (binderId binder) scope) (Left "duplicate core binder identity")
+      validateExpressionWithRegistry registry bits declarations (M.insert (binderId binder) (binderType binder) scope) body
+      pure (expressionTypeOf body)
     Calls _ args -> do
       mapM_ (validateExpressionWithRegistry registry bits declarations scope) (maybe [] id args)
       pure (scalarType "Int64")

@@ -11,6 +11,7 @@
 --   property-tested       generated cases, boundary cases and examples
 --   runtime-checked       contracts and codecs checked at native boundaries
 --   assumed               native adapters, bindings and generators on trust
+{-# OPTIONS_GHC -fno-cse -fno-full-laziness #-}
 module LawSpec.Discharge
   ( dischargeEvidence, bindingEvidence, lawClaim
   ) where
@@ -22,11 +23,13 @@ import qualified Data.Set as S
 import LawSpec.Common
 import LawSpec.Core
 import LawSpec.Core.DefinitionContracts (definitionContracts)
-import LawSpec.Core.Definitions (prepareResolvingDefinitions)
-import LawSpec.Core.Eval (evaluateValueProposition)
+import LawSpec.Core.Definitions (prepareHookedDefinitions)
+import LawSpec.Core.Eval (evaluateValueProposition, evaluateValue)
+import Data.IORef (IORef, newIORef, readIORef, writeIORef)
+import System.IO.Unsafe (unsafePerformIO)
 import LawSpec.Core.Evidence
 import LawSpec.Core.Total (validateDefinitionContracts)
-import LawSpec.Core.Types (makeRegistry)
+import LawSpec.Core.Types (makeRegistry, TypeRegistry)
 import LawSpec.Core.Value (Value(..))
 import LawSpec.NativeBinding
 import LawSpec.NativeRequest (BindingPlan(..))
@@ -37,7 +40,7 @@ import LawSpec.Testing (PlannedProperty(..), lawPlanner)
 -- definitions whose finite domain contains a counterexample is refuted here.
 dischargeEvidence :: Program -> Either [Diagnostic] [Obligation]
 dischargeEvidence program = do
-  resolving <- prepareResolvingDefinitions program
+  hooked <- prepareHookedDefinitions program
   plan <- lawPlanner program
   registry <- either (Left . pure . (\m -> Diagnostic "generation" m Nothing)) Right
     (makeRegistry (programDataDeclarations program))
@@ -51,15 +54,25 @@ dischargeEvidence program = do
     -- prove it, or evaluate a finite domain. Other operations stay opaque,
     -- which proofs allow (a law proved for an opaque operation holds for
     -- every handler) and evaluation does not.
+    -- A spec handler with state answers its operations too: the compiler
+    -- runs its clauses, threading the state through each case in the order
+    -- the law performs them.
     let resolver = specResolver program original
+        stateful = statefulResolver program original
         p = resolvePerforms resolver original
-        invoke = resolving (`M.lookup` resolver)
+        hook states invoke' name = case M.lookup name resolver of
+          Just clause -> Just (\values -> invoke' clause (if null values then [ScalarValue (SAbsent "Unit")] else values))
+          Nothing -> case M.lookup name stateful of
+            Just (h, clause) -> Just (step states h (invoke' clause))
+            Nothing -> Nothing
+        invokeWith states = hooked (hook states)
         obligation status reason = Obligation (unitId u) (propertyId p) "law" (Just (lawClaim original)) status reason
         called = S.fromList (concatMap callees (propertyExpressions p))
         adapters = S.toList (S.difference called definitionIds)
         reached = reachableDefinitions definitions (S.toList called)
-        effects = any effectful (propertyExpressions p) ||
-          any (\op -> M.notMember (operationId op) resolver) (concatMap (performed . definitionBody) reached)
+        effects = any (effectful (`M.member` stateful)) (propertyExpressions p) ||
+          any (\op -> M.notMember (operationId op) resolver && M.notMember (operationId op) stateful)
+            (concatMap (performed . definitionBody) reached ++ concatMap performed (propertyExpressions p))
         natives = [ability | (ability, choice) <- propertyHandlers p, not (isFail ability), production choice]
         relying adapters' = relyingOn (adapters' ++ [Id ("the native " ++ abilityKey a ++ " handler") | a <- natives])
         closed = null adapters
@@ -73,7 +86,9 @@ dischargeEvidence program = do
         | closed, Right () <- proves program definitions p -> pure (obligation Proved
             "proved statically from its input refinements and the definitions it calls")
         | closed, not effects, Just tuples <- finiteCases planned -> do
-            mapM_ (refute registry bits invoke p) tuples
+            mapM_ (\values -> do
+              states <- freshStates registry bits (invokeWith Nothing) program original values
+              refute registry bits (invokeWith states) p values) tuples
             pure (obligation ExhaustivelyChecked ("the compiler evaluated " ++ every tuples ++
               "; the generated tests check " ++ (if length tuples == 1 then "it" else "them") ++ " again natively"))
         | Just tuples <- finiteCases planned -> pure (obligation ExhaustivelyChecked
@@ -90,11 +105,11 @@ dischargeEvidence program = do
       ProductionHandler -> True
       RecordingHandler inner -> production inner
       SpecHandler _ -> False
-    effectful e = case expressionNode e of
-      Perform _ _ -> True
+    effectful answered e = case expressionNode e of
+      Perform op args -> not (answered (operationId op)) || any (effectful answered) args
       Handle _ _ -> True
       Calls _ _ -> True
-      _ -> any effectful (children e)
+      _ -> any (effectful answered) (children e)
     refute registry bits invoke p values = do
       let env = zip (map (binderId . quantifiedBinder) (propertyInputs p)) values
           at = Just (propertyLocation p)
@@ -104,6 +119,52 @@ dischargeEvidence program = do
         Right True -> pure ()
         Right False -> Left [Diagnostic "refuted" ("law " ++ propertyName p ++ " is false" ++ input) at]
         Left message -> Left [Diagnostic "refuted" ("law " ++ propertyName p ++ " fails" ++ input ++ ": " ++ message) at]
+
+-- Each operation a law's spec handlers with state answer, by handler and
+-- clause.
+statefulResolver :: Program -> Property -> M.Map Id (Id, Id)
+statefulResolver program p = M.fromList
+  [ (operationId (Operation ability op), (handlerId h, clause))
+  | (ability, choice) <- propertyHandlers p, Just h <- [specHandlerFor program choice], Just _ <- [handlerState h]
+  , (op, clause) <- handlerClauses h ]
+
+specHandlerFor :: Program -> HandlerRef -> Maybe Handler
+specHandlerFor program choice = case choice of
+  SpecHandler h -> lookup h [(handlerId x, x) | u <- programUnits program, x <- unitHandlers u]
+  RecordingHandler inner -> specHandlerFor program inner
+  ProductionHandler -> Nothing
+
+-- The starting state of each spec handler with state a law runs under, in a
+-- cell of its own for one case. (The values make each case's cell its own.)
+freshStates :: TypeRegistry -> Int -> (Id -> [Value] -> Either String Value) -> Program -> Property -> [Value]
+  -> Either [Diagnostic] (Maybe (IORef (M.Map Id Value)))
+freshStates registry bits invoke program p values = do
+  starts <- forM [h | (_, choice) <- propertyHandlers p, Just h <- [specHandlerFor program choice], Just _ <- [handlerState h]] $ \h ->
+    case handlerState h of
+      Just (_, start) -> either (\m -> Left [Diagnostic "refuted" (handlerName h ++ ": " ++ m) Nothing]) (Right . (,) (handlerId h))
+        (evaluateValue registry bits invoke [] start)
+      Nothing -> Left []
+  if null starts then pure Nothing else pure (Just (cell (length values) (M.fromList starts)))
+
+{-# NOINLINE cell #-}
+cell :: Int -> M.Map Id Value -> IORef (M.Map Id Value)
+cell salt initial = unsafePerformIO (salt `seq` newIORef initial)
+
+-- One operation of a handler with state: its clause takes the state first
+-- and gives Pair result state.
+{-# NOINLINE step #-}
+step :: Maybe (IORef (M.Map Id Value)) -> Id -> ([Value] -> Either String Value) -> [Value] -> Either String Value
+step Nothing h _ _ = Left ("the state of " ++ idText h ++ " is not available here")
+step (Just ref) h clause values = unsafePerformIO $ do
+  states <- readIORef ref
+  case M.lookup h states of
+    Nothing -> pure (Left ("no state for " ++ idText h))
+    Just state -> case clause (state : values) of
+      Left message -> pure (Left message)
+      Right (DataValue _ _ [result, next]) -> do
+        writeIORef ref (M.insert h next states)
+        pure (Right result)
+      Right other -> pure (Left ("a clause of " ++ idText h ++ " gave " ++ show other ++ ", not a pair"))
 
 -- Each operation a law's stateless spec handlers answer, by the clause that
 -- answers it.

@@ -85,13 +85,24 @@ validateProgramWith registry Program{..} = do
       -- of what it calls.
       let rows = M.fromList [(declarationId d, declarationUses d) | d <- declarations]
           declarations = concatMap unitDeclarations programUnits
+          handlers = M.fromList [(handlerId h, h) | v <- programUnits, h <- unitHandlers v]
       mapM_ (\definition -> do
         let declaration = definitionDeclaration definition
             row = declarationUses declaration
             needs e = case expressionNode e of
               Perform op args -> (operationAbility op, operationName op) : concatMap needs args
               ExternalCall callee args -> [(a, idText callee) | a <- M.findWithDefault [] callee rows] ++ concatMap needs args
+              -- handle e with h end answers h's ability inside e, and needs
+              -- what h's clauses use.
+              Handle (WithHandler ability handler) body -> filter ((/= ability) . fst) (needs body) ++
+                [(a, idText clause) | Just h <- [M.lookup (specHandlerId handler) handlers], (_, clause) <- handlerClauses h,
+                  a <- M.findWithDefault [] clause rows]
+              Handle (CatchFailure ability) body -> filter ((/= ability) . fst) (needs body)
               _ -> concatMap needs (children e)
+            specHandlerId handler = case handler of
+              SpecHandler i -> i
+              RecordingHandler inner -> specHandlerId inner
+              ProductionHandler -> Id ""
         mapM_ (\(ability, through) -> unless (ability `elem` row)
           (Left (declarationName declaration ++ ": " ++ describe ability through ++ ", but its row is " ++
             (if null row then "empty" else unwords (map abilityKey row))))) (needs (definitionBody definition))) (unitDefinitions u)

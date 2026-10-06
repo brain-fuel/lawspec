@@ -86,6 +86,7 @@ renderExpressionWithContext declarations width reference key outerLocal external
       AllElements _ binder _ -> [binderId binder]
       AllPayloads _ predicates -> map (binderId . fst) predicates
       Match _ cases -> concatMap (map binderId . caseBinders) cases
+      Let binder _ _ -> [binderId binder]
       _ -> []) ++ concatMap collect (children term)
     occupied = [outerLocal identity | term <- descendants root,
       Local identity <- [expressionNode term], identity `notElem` boundIds]
@@ -127,6 +128,11 @@ renderExpressionWithContext declarations width reference key outerLocal external
         pure (runtime "all_elements" [argument,
           lambdaExpression [D.text (local (binderId binder))] body])
       Local identity -> pure (D.text (local identity))
+      -- let x = e in body: e runs first, once.
+      Let binder value body -> do
+        argument <- render value
+        inner <- render body
+        pure (D.text "(" <> lambdaExpression [D.text (local (binderId binder))] inner <> D.text ")(" <> argument <> D.text ")")
       Constant value -> checked (expressionType term) (scalarLiteral value)
       Construct tag args -> do
         values <- mapM render args

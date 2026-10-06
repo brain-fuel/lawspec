@@ -72,6 +72,7 @@ instance Binary C.Proposition
 instance Binary C.Quantifier
 instance Binary C.Type
 instance Binary C.UnaryOp
+instance Binary C.FailureBinding
 instance Binary C.Unit
 instance Binary C.Session
 instance Binary C.Mailbox

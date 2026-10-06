@@ -16,6 +16,7 @@ import qualified LawSpec.Core.Value as CoreValue
 import LawSpec.Scalar
 import LawSpec.Parser
 import LawSpec.Imports (resolveImports)
+import LawSpec.Abilities (elaborateAbilities)
 import LawSpec.Collections (usedCollections, collectionsSource)
 import LawSpec.Time (timeUnit, timeAlias, timeTypes, usesTime, timeSource)
 import LawSpec.Resilience (resilienceUnit, resilienceAlias, resilienceTypes, usesResilience, resilienceSource)
@@ -26,7 +27,7 @@ import Control.Monad (unless, when, zipWithM_, forM, forM_, foldM)
 import qualified Data.Map.Strict as M
 import Data.List (nub, intercalate, uncons)
 import Data.Char (isLower)
-import Data.List (isSuffixOf)
+import Data.List (isSuffixOf, isPrefixOf)
 import qualified Data.Set as Set
 import System.IO.Unsafe (unsafePerformIO)
 import LawSpec.Digest (digestHex, digestString)
@@ -173,7 +174,10 @@ validateUnit dataTypes u = either (Left . pure . (\m -> Diagnostic "declaration"
     let (args,result) = functionType t
     -- An ability operation may take no values (now :: Instant).
     if n `elem` operationNames u
-      then unless (all (concreteValue dataTypes) (result:args))
+      -- (A parameterized ability's parameters are instantiated at each use.)
+      then unless (all (concreteValue dataTypes . mapType (\x -> case x of
+          Variable v | "ability:" `isPrefixOf` v -> Named "Int32"
+          _ -> x) id) (result:args))
         (Left (n ++ ": an ability operation takes and gives concrete values"))
       else unless (not (null args) && all (if n `elem` map functionName (functionDefinitions u) then valueType dataTypes else concreteValue dataTypes) (result:args))
         (Left (n ++ ": functions require one or more concrete value inputs and a value result"))
@@ -215,7 +219,9 @@ compileWithImports visible bits settings sources = do
         [(resilienceUnit, resilienceAlias, resilienceTypes, usesResilience) | resilience]
   parsedUnits <- parseSourcesWith collections implicit (builtins ++ sources)
   unless (length parsedUnits == length (nub (map (unitName . fst) parsedUnits))) (Left [Diagnostic "duplicate-unit" "unit names must be unique; prelude is reserved" Nothing])
-  parsed <- resolveImports visible parsedUnits
+  imported' <- resolveImports visible parsedUnits
+  -- Abilities, handlers and rows, once each unit has what it imports.
+  parsed <- either (\(at, message) -> Left [Diagnostic "ability" message at]) Right (mapM elaborateAbilities imported')
   let imported = M.fromList [(unitName u ++ "::type::" ++ dataTypeName d, d{dataTypeConstructors=
         [c{dataConstructorName=unitName u ++ "::type::" ++ dataTypeName d ++ "::" ++ dataConstructorName c}
         | c <- dataTypeConstructors d]}) | u <- parsed, d <- dataTypes u]

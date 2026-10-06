@@ -97,6 +97,13 @@ renderWith asynchronous ts declarations width reference key local external = ren
         pure (runtime "allElements" [argument,
           D.delimitTrailing 4 "(" ")" [parameter] <> D.text " => " <> body])
       Local identity -> pure (D.text (local identity))
+      -- let x = e in body: e runs first, once.
+      Let binder value body -> do
+        argument <- render value
+        inner <- render body
+        let parameter = D.text (local (binderId binder)) <>
+              (if ts then D.group (D.text ":" <> D.nest 4 (D.softline <> D.text "any")) else mempty)
+        pure (D.text "((" <> parameter <> D.text ") => " <> inner <> D.text ")(" <> argument <> D.text ")")
       Constant value -> checked (expressionType term) (runtime "literal"
         [literalValue (A.toJSON value),D.text "symbols"])
       Construct tag args -> do

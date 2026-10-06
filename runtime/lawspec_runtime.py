@@ -612,6 +612,57 @@ def native_handler(module, name):
     return getattr(importlib.import_module(module), name)()
 
 
+def with_handlers(symbols, handlers, body):
+    """handle e with h end: runs body with these handlers installed, then
+    puts back the ones they replaced."""
+    previous = symbols.get(_HANDLERS)
+    table = dict(previous or {})
+    table.update(handlers)
+    symbols[_HANDLERS] = table
+    try:
+        return body()
+    finally:
+        if previous is None:
+            symbols.pop(_HANDLERS, None)
+        else:
+            symbols[_HANDLERS] = previous
+
+
+def native_class(module, name):
+    """A class of a generated or user-owned module, by name."""
+    import importlib
+    return getattr(importlib.import_module(module), name)
+
+
+def unknown_handler(name):
+    raise LookupError(f"no spec handler called {name}")
+
+
+class Fail(Exception):
+    """Raised by native code (an adapter, or a production handler) to fail
+    with a value of the failure type its signature names: `fails with E`.
+    The generated code turns it into the Fail ability's failure."""
+
+    def __init__(self, value):
+        super().__init__(f"failed with {value!r}")
+        self.value = value
+
+
+def native_failures(ability, convert, body, mapped=()):
+    """Calls native code that may fail: ls.Fail(value), or an exception
+    lawspec.json maps to a failure (mapped holds (class, make) pairs),
+    becomes a failure of the ability."""
+    try:
+        return body()
+    except Fail as failure:
+        raise Failure(ability, convert(failure.value)) from failure
+    except Exception as error:
+        for (kind, make) in mapped:
+            if isinstance(error, kind):
+                raise Failure(ability, make(error)) from error
+        raise
+
+
 def count_calls(recording, operation, matches=None):
     calls = getattr(recording, "calls", None)
     if calls is None:

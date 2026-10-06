@@ -88,7 +88,10 @@ data Unit = Unit { unitName :: String, functions :: [(String, Type)], laws :: [L
 -- written like signatures; the laws are obligations on every handler.
 data AbilityDeclaration = AbilityDeclaration
   { abilityName :: String, abilityParameters :: [String]
-  , abilityOperations :: [(String, Type)], abilityLaws :: [Law], abilitySpan :: Span }
+  , abilityOperations :: [(String, Type)], abilityLaws :: [Law], abilitySpan :: Span
+  -- The unit that declares it: empty for this unit's own, the declaring
+  -- unit's name for a copy an import brought in (LawSpec.Imports).
+  , abilityOrigin :: String }
   deriving (Eq, Show, Generic)
 
 -- handler name for Ability [with state s :: S start e] is clause* end. A
@@ -97,7 +100,9 @@ data AbilityDeclaration = AbilityDeclaration
 data HandlerDeclaration = HandlerDeclaration
   { handlerName :: String, handlerAbility :: Type
   , handlerState :: Maybe (String, Type, Expr)
-  , handlerClauses :: [HandlerClause], handlerSpan :: Span }
+  , handlerClauses :: [HandlerClause], handlerSpan :: Span
+  -- As for abilities: empty here, the declaring unit's name for a copy.
+  , handlerOrigin :: String }
   deriving (Eq, Show, Generic)
 
 data HandlerClause = HandlerClause
@@ -113,6 +118,17 @@ data HandlerUse = UseHandler String | UseAbility String | UseRecording HandlerUs
 -- handler, a spec handler, or a recording of one.
 data HandlerChoice = ChooseProduction | ChooseSpec String | ChooseRecording HandlerChoice
   deriving (Eq, Ord, Show, Generic)
+
+-- `let x = e in body` and `a; b` are a match with this tag and one binder:
+-- every traversal then scopes the binder, and elaboration makes Core's Let.
+letTag :: String
+letTag = "prelude.Let"
+
+-- The handler a `handle e with h end` names, from its builtin's name.
+handledBy :: String -> Maybe String
+handledBy name = case splitAt (length ("prelude.handle:" :: String)) name of
+  ("prelude.handle:", handler) | not (null handler) -> Just handler
+  _ -> Nothing
 
 -- The built-in failure ability: `fails with E` is `uses Fail E`.
 failAbilityName :: String

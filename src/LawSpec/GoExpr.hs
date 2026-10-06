@@ -93,6 +93,13 @@ renderExpressionWithContext declarations width schema ref key local external = r
           D.text ("func(" ++ local (binderId binder) ++ " LawSpecValue) LawSpecValue ") <>
             D.block 8 (D.text "return " <> body)])
       Local identity -> pure (D.text (local identity))
+      -- let x = e in body: e runs first, once.
+      Let binder value body -> do
+        argument <- render value
+        inner <- render body
+        let name = local (binderId binder)
+        pure (D.text "func() LawSpecValue " <> D.block 8 (D.joinWith D.hardline
+          [D.text (name ++ " := ") <> argument, D.text ("_ = " ++ name), D.text "return " <> inner]) <> D.text "()")
       Constant value -> scalarLiteral (expressionType term) value >>= checked (expressionType term)
       Construct tag args -> do
         values <- mapM render args

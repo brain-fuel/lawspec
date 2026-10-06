@@ -111,6 +111,8 @@ localName i | (_,Just suffix) <- splitOnce "::payload::" (C.idText i) =
   let (depth,rest) = splitOnce "::" suffix
       index = fst (splitOnce "::" (maybe "" id rest))
   in "_payload" ++ map (\c -> if isAlphaNum c then c else '_') (depth ++ "_" ++ index)
+localName i | (_,Just suffix) <- splitOnce "::let::" (C.idText i) =
+  "_let" ++ map (\c -> if isAlphaNum c then c else '_') suffix
 localName i | (_,Just suffix) <- splitOnce "::match::" (C.idText i) =
   "_match" ++ map (\c -> if c == ':' then '_' else c) suffix
 localName i = case splitOnce "::input::" (C.idText i) of
@@ -166,7 +168,9 @@ prettyExpr e = case C.expressionNode e of
   C.Convert _ t a -> "(" ++ prettyExpr a ++ " :: " ++ prettyType t ++ ")"
   C.Helper b args -> show b ++ "(" ++ intercalate ", " (map prettyExpr args) ++ ")"
   C.Perform op args -> unwords (C.operationName op : map ((\s -> "(" ++ s ++ ")") . prettyExpr) args)
-  C.Handle _ body -> "attempt (" ++ prettyExpr body ++ ")"
+  C.Handle (C.CatchFailure _) body -> "attempt (" ++ prettyExpr body ++ ")"
+  C.Handle (C.WithHandler _ _) body -> "handle (" ++ prettyExpr body ++ ")"
+  C.Let binder value body -> "let " ++ localName (C.binderId binder) ++ " = " ++ prettyExpr value ++ " in " ++ prettyExpr body
   C.Calls op args -> "calls of " ++ C.operationName op ++ maybe "" (\xs -> " with (" ++ intercalate ", " (map prettyExpr xs) ++ ")") args
 
 prettyExpanded :: Expanded -> String

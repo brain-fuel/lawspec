@@ -1,0 +1,7 @@
+expect: refunds of large amounts fail [native]
+@@ src/example/shop.rs
+<<<<<<<
+        ls::fail(crate::lawspec_data::PaymentError::TooLarge);
+=======
+        ls::fail(crate::lawspec_data::PaymentError::Refused);
+>>>>>>>

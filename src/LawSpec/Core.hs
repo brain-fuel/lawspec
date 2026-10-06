@@ -105,6 +105,10 @@ data Node
   -- In a law: how many times the recording handler of the operation's
   -- ability has been called for it, with these arguments when given.
   | Calls Operation (Maybe [Expr])
+  -- let x = e in body: e is evaluated first, then body with x bound to its
+  -- value; `a; b` is a let whose binder is unused. This is what orders the
+  -- operations a definition performs.
+  | Let Binder Expr Expr
   deriving (Eq, Show, Generic)
 
 -- An ability at type arguments: Gateway, or Fail SignupError.
@@ -112,7 +116,10 @@ data AbilityRef = AbilityRef { abilityRefId :: Id, abilityRefArguments :: [Type]
   deriving (Eq, Ord, Show, Generic)
 data Operation = Operation { operationAbility :: AbilityRef, operationName :: String }
   deriving (Eq, Ord, Show, Generic)
-data Handling = CatchFailure AbilityRef deriving (Eq, Show, Generic)
+-- How Handle treats its body: catching a Fail ability's failure as Left, or
+-- running it with a handler installed for an ability (`handle e with h end`).
+-- Handlers are tail-resumptive or aborting, so neither needs a continuation.
+data Handling = CatchFailure AbilityRef | WithHandler AbilityRef HandlerRef deriving (Eq, Show, Generic)
 
 -- ability Name params is op :: T ... end. Operation types range over the
 -- ability's parameters; an operation's other type variables (raise's result)
@@ -132,6 +139,35 @@ data Ability = Ability
 -- A unit's ability, as its operations refer to it.
 abilityInstance :: Ability -> AbilityRef
 abilityInstance a = AbilityRef (abilityId a) (abilityArguments a)
+
+-- The unit that declares an ability: <unit>::ability::<Name>. A unit that
+-- imports an ability refers to the same ability, so its native pieces (the
+-- interface, the production handler and the recording) live with the owner.
+abilityOwner :: Ability -> Id
+abilityOwner = Id . ownerOf . idText . abilityId
+  where
+    ownerOf text = case text of
+      ':' : ':' : rest | take 9 rest == "ability::" -> ""
+      c : rest -> c : ownerOf rest
+      [] -> []
+
+-- The instance a reference names, with the unit that owns it when that unit
+-- is among these, and otherwise the first unit that uses it.
+findAbility :: [Unit] -> AbilityRef -> Maybe (Unit, Ability)
+findAbility units ref = case [(u, a) | (u, a) <- found, unitId u == abilityOwner a] ++ found of
+  x : _ -> Just x
+  [] -> Nothing
+  where found = [(u, a) | u <- units, a <- unitAbilities u, abilityInstance a == ref]
+
+-- The abilities a unit owns, at every type any unit uses them at, so each
+-- target generates every instance's pieces once, with the owner.
+ownedAbilities :: [Unit] -> Unit -> [Ability]
+ownedAbilities units u = distinct [] [a | v <- u : units, a <- unitAbilities v, abilityOwner a == unitId u]
+  where
+    distinct seen (a : rest)
+      | abilityInstance a `elem` seen = distinct seen rest
+      | otherwise = a : distinct (abilityInstance a : seen) rest
+    distinct _ [] = []
 -- A spec handler: a checked definition per operation (its clause), taking
 -- the handler's state first when it has one and then returning Pair result
 -- state; handlerState is the state's type and starting value.
@@ -230,12 +266,23 @@ data Unit = MkUnit { unitId :: Id, unitDeclarations :: [Declaration], unitContra
   -- senders and one receiver, generated on each target.
   , unitMailboxes :: [Mailbox]
   -- The unit's abilities, and its spec handlers for them.
-  , unitAbilities :: [Ability], unitHandlers :: [Handler] } deriving (Eq, Show, Generic)
+  , unitAbilities :: [Ability], unitHandlers :: [Handler]
+  -- The native exceptions lawspec.json maps to failures, for the target
+  -- being emitted (set by LawSpec.CoreEmit; empty otherwise).
+  , unitFailureBindings :: [FailureBinding] } deriving (Eq, Show, Generic)
+
+-- failures: [{"native": [...], "failure": "<unit>::<Type>::<Constructor>"}]:
+-- an adapter that fails with the type turns the native exception into that
+-- constructor: one with no fields, or one Text field, which gets the
+-- exception's message.
+data FailureBinding = FailureBinding
+  { failureNative :: [String], failureConstructor :: Id, failureType :: Type, failureMessage :: Bool }
+  deriving (Eq, Show, Generic)
 
 data Mailbox = Mailbox { mailboxName :: String, mailboxType :: Type } deriving (Eq, Show, Generic)
 pattern Unit :: Id -> [Declaration] -> [Contract] -> [Property] -> [Definition] -> [Machine Id] -> Unit
-pattern Unit identity declarations contracts properties definitions machines <- MkUnit identity declarations contracts properties definitions machines _ _ _ _ _
-  where Unit identity declarations contracts properties definitions machines = MkUnit identity declarations contracts properties definitions machines [] [] [] [] []
+pattern Unit identity declarations contracts properties definitions machines <- MkUnit identity declarations contracts properties definitions machines _ _ _ _ _ _
+  where Unit identity declarations contracts properties definitions machines = MkUnit identity declarations contracts properties definitions machines [] [] [] [] [] []
 {-# COMPLETE Unit #-}
 
 -- A protocol: what its first end sends (True) and receives (False), in
@@ -281,6 +328,7 @@ children Expr{expressionNode=node} = case node of
   Perform _ es -> es
   Handle _ a -> [a]
   Calls _ es -> maybe [] id es
+  Let _ value body -> [value, body]
   _ -> []
 
 -- Rebuild an expression with f applied to each child, in children's order.
@@ -300,6 +348,7 @@ mapChildren f e = e { expressionNode = case expressionNode e of
   Perform op args -> Perform op (map f args)
   Handle handling body -> Handle handling (f body)
   Calls op args -> Calls op (map f <$> args)
+  Let binder value body -> Let binder (f value) (f body)
   other@(Constant _) -> other
   other@(Local _) -> other }
 
@@ -317,6 +366,7 @@ freeBinders e = case expressionNode e of
   AllPayloads value predicates -> freeBinders value ++ concat
     [filter (/= binderId binder) (freeBinders predicate) | (binder,predicate) <- predicates]
   Local n -> [n]
+  Let binder value body -> freeBinders value ++ filter (/= binderId binder) (freeBinders body)
   Match value cases -> freeBinders value ++ concat
     [[n | n <- freeBinders (caseBody branch), n `notElem` map binderId (caseBinders branch)]
       | branch <- cases]

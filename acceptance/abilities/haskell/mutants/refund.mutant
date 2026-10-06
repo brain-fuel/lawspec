@@ -1,0 +1,7 @@
+expect: refunds of large amounts fail [native]
+@@ src/Example/Shop.hs
+<<<<<<<
+  | value0 > 100000 = E.throwIO (LS.Fail Data.PaymentErrorTooLarge)
+=======
+  | value0 > 100000 = E.throwIO (LS.Fail Data.PaymentErrorRefused)
+>>>>>>>

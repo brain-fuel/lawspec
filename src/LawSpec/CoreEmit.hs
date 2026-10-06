@@ -1,6 +1,7 @@
 module LawSpec.CoreEmit (emitPlan, emitPlanWithFormat, emitPlanWithLayout, emitPlanWithOptions, emitPlanWithNativeOptions, targets) where
 import LawSpec.Sessions (sessionArtifacts)
 import LawSpec.AbilityEmit (abilityArtifacts)
+import LawSpec.AbilityNames (ownedAbilityUnits)
 import LawSpec.Actors (actorArtifacts)
 import LawSpec.MachineSpec (scenarioWire)
 import LawSpec.Remote (remoteArtifacts)
@@ -71,7 +72,7 @@ emitPlan = emitPlanWithFormat False
 -- Legacy runtime/test templates are still being migrated to structured Docs.
 emitPlanWithFormat :: Bool -> String -> Plan -> Either [Diagnostic] [Artifact]
 emitPlanWithFormat minify target original = do
-  let plan = wirePlan (escapePlan target (witnessPlan original))
+  let plan = wirePlan (escapePlan target (witnessPlan (ownedAbilityPlan original)))
   emittedFiles <- emitPlanFormatted minify target plan
   extras <- companionArtifacts minify target plan
   let files = emittedFiles ++ extras
@@ -94,14 +95,20 @@ companionArtifacts minify target plan = do
   abilities <- abilityArtifacts minify target plan
   pure (sessions ++ actors ++ mailboxes ++ abilities ++ remoteArtifacts target (remoteCalls target plan) plan)
 
+-- Each unit with the abilities it owns (LawSpec.AbilityNames).
+ownedAbilityPlan :: Plan -> Plan
+ownedAbilityPlan plan = plan { plannedUnits = [u { plannedUnit = owned } | (u, owned) <- zip (plannedUnits plan) (ownedAbilityUnits (map plannedUnit (plannedUnits plan)))] }
+
 -- Each bound ability's production handler, for the target being emitted.
 boundHandlers :: NB.BindingPlan -> Plan -> Plan
 boundHandlers bindings plan
-  | null (NB.bindingHandlers bindings) = plan
+  | null (NB.bindingHandlers bindings) && null (NB.bindingFailures bindings) = plan
   | otherwise = plan { plannedUnits = [u { plannedUnit = bind (plannedUnit u) } | u <- plannedUnits plan] }
   where
-    bind unit = unit { C.unitAbilities = [a { C.abilityNative = Binding.referenceParts <$> lookup (C.abilityId a) (NB.bindingHandlers bindings) }
-      | a <- C.unitAbilities unit] }
+    bind unit = unit { C.unitAbilities = [a { C.abilityNative = Binding.referenceParts <$> lookup (C.Id (C.abilityKey (C.abilityInstance a))) (NB.bindingHandlers bindings) }
+      | a <- C.unitAbilities unit]
+      -- Each unit catches the mapped exceptions where its adapters fail.
+      , C.unitFailureBindings = NB.bindingFailures bindings }
 
 -- Each scenario's channel types, for its runs over a network. A scenario
 -- whose types have no wire descriptor yet runs only in memory.
@@ -352,7 +359,7 @@ emitPlanWithOptions minify target sourceDir testDir plan =
 
 emitPlanWithNativeOptions :: Bool -> String -> Maybe String -> Maybe String -> NB.BindingPlan -> Plan -> Either [Diagnostic] [Artifact]
 emitPlanWithNativeOptions minify target sourceDir testDir unescaped unwitnessed = do
-  let originalPlan = escapePlan target (witnessPlan unwitnessed)
+  let originalPlan = escapePlan target (witnessPlan (ownedAbilityPlan unwitnessed))
       bindings = escapeBindings target unescaped
   unless (target `elem` ["python","rust","javascript","typescript","java","kotlin","go","haskell"] || not (any Binding.resolvedGeneratorStub
     (Binding.resolvedGenerators (NB.bindingRepresentations bindings))))

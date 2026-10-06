@@ -1,0 +1,7 @@
+expect: Meter: reading gives what its type says [native]
+@@ src/Example/Shop.hs
+<<<<<<<
+  { Abilities.reading = P.pure 3
+=======
+  { Abilities.reading = P.pure (-1)
+>>>>>>>

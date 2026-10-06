@@ -5,62 +5,44 @@
 -- tests call with the context: the handler is installed in it (evidence
 -- passing). Rust panics are the Fail ability's aborts; see
 -- ls::raise_failure.
-module LawSpec.AbilityEmit.Rust (emit, moduleOf, performBridges, productionStub, traitPath, handlerConstruction) where
+module LawSpec.AbilityEmit.Rust (emit, moduleOf, moduleOfName, performBridges, productionStub, traitPath, handlerConstruction, foreignOwners) where
 
 import Data.Char (isAlphaNum)
 import Data.List (intercalate)
 import qualified LawSpec.Core as C
 import LawSpec.AbilityNames
+import LawSpec.RustAbilityPaths
 import qualified LawSpec.RustData as Native
 import qualified LawSpec.RustDefinitions as Definitions
 import qualified LawSpec.RustExpr as E
 import qualified LawSpec.Code.Doc as D
 
--- A unit's module in lawspec_abilities.
-moduleOf :: C.Unit -> String
-moduleOf = map (\c -> if isAlphaNum c || c == '_' then c else '_') . C.idText . C.unitId
-
--- The bridge of each operation of each unit: the identity Core calls it by
--- and its path from the crate root.
-performBridges :: [C.Unit] -> [(C.Id, String)]
-performBridges units =
-  [ (C.operationId (C.Operation (C.abilityInstance a) op), "lawspec_abilities::" ++ moduleOf u ++ "::perform_" ++ op)
-  | u <- units, a <- C.unitAbilities u, (op, _) <- C.abilityOperations a ]
-
--- The trait of an ability, from the crate root.
-traitPath :: [C.Unit] -> C.AbilityRef -> String
-traitPath units ref = case [(u, a) | u <- units, a <- C.unitAbilities u, C.abilityId a == C.abilityRefId ref] of
-  (u, a) : _ -> "lawspec_abilities::" ++ moduleOf u ++ "::" ++ interfaceName a
-  [] -> "dyn std::any::Any"
-
 -- How a test makes the handler a law chose for an ability, as an
 -- ls::Installed; root is "" in a test crate and "crate::" in the library.
-handlerConstruction :: Maybe String -> [C.Unit] -> C.AbilityRef -> C.HandlerRef -> String
-handlerConstruction library units ref choice = case choice of
+handlerConstruction :: Maybe String -> [C.Unit] -> C.Unit -> C.AbilityRef -> C.HandlerRef -> String
+handlerConstruction library units current ref choice = case choice of
   C.RecordingHandler inner ->
     "{ let recording = " ++ base ++ recordingFor ++ "::new(" ++ handle inner ++ "); let calls = recording.calls.clone(); " ++
     "ls::installed_recording(std::sync::Arc::new(recording) as std::sync::Arc<dyn " ++ trait ++ ">, calls) }"
   _ -> "ls::installed(" ++ handle choice ++ ")"
   where
     trait = traitPath units ref
-    base = case [(u, a) | u <- units, a <- C.unitAbilities u, C.abilityId a == C.abilityRefId ref] of
-      (u, _) : _ -> "lawspec_abilities::" ++ moduleOf u ++ "::"
-      [] -> ""
-    recordingFor = case [a | u <- units, a <- C.unitAbilities u, C.abilityId a == C.abilityRefId ref] of
-      a : _ -> recordingName a
-      [] -> "Unknown"
+    found = snd <$> C.findAbility units ref
+    base = case found of
+      Just a -> "lawspec_abilities::" ++ moduleOfName (ownerName a) ++ "::"
+      Nothing -> ""
+    recordingFor = maybe "Unknown" recordingName found
+    adapterModule = case found of
+      Just a | ownerName a /= C.idText (C.unitId current) -> moduleOfName (ownerName a)
+      _ -> "adapter"
     handle c = case c of
       C.ProductionHandler | Just parts <- native ->
         "std::sync::Arc::new(" ++ intercalate "::" [if p == "crate" then maybe p id library else p | p <- parts] ++ "()) as std::sync::Arc<dyn " ++ trait ++ ">"
-      C.ProductionHandler -> "std::sync::Arc::new(adapter::" ++ productionFor ++ "::default()) as std::sync::Arc<dyn " ++ trait ++ ">"
-      C.SpecHandler h -> "std::sync::Arc::new(" ++ base ++ maybe "Unknown" specName (specHandlerOf units h) ++ "::new(ctx)) as std::sync::Arc<dyn " ++ trait ++ ">"
+      C.ProductionHandler -> "std::sync::Arc::new(" ++ adapterModule ++ "::" ++ productionFor ++ "::default()) as std::sync::Arc<dyn " ++ trait ++ ">"
+      C.SpecHandler h -> "std::sync::Arc::new(lawspec_abilities::" ++ moduleOf current ++ "::" ++ maybe "Unknown" specName (specHandlerOf units h) ++ "::new(ctx)) as std::sync::Arc<dyn " ++ trait ++ ">"
       C.RecordingHandler inner -> handle inner
-    native = case [a | u <- units, a <- C.unitAbilities u, C.abilityId a == C.abilityRefId ref] of
-      a : _ -> C.abilityNative a
-      [] -> Nothing
-    productionFor = case [a | u <- units, a <- C.unitAbilities u, C.abilityId a == C.abilityRefId ref] of
-      a : _ -> productionName a
-      [] -> "Unknown"
+    native = found >>= C.abilityNative
+    productionFor = maybe "Unknown" productionName found
 
 emit :: Bool -> Int -> [C.DataDeclaration] -> [C.Unit] -> Either String String
 emit minify bits datas units = do
@@ -77,10 +59,10 @@ emit minify bits datas units = do
     unwrap = ".unwrap_or_else(|error| panic!(\"{error}\"))"
     nativeType ty = Native.rustDataType datas ty
     unitModule u = do
-      traits <- mapM trait (C.unitAbilities u)
+      traits <- mapM trait (ownAbilities u)
       handlers <- mapM (specHandler u) (C.unitHandlers u)
-      recordings <- mapM recording (C.unitAbilities u)
-      bridges <- concat <$> mapM bridge (C.unitAbilities u)
+      recordings <- mapM recording (ownAbilities u)
+      bridges <- concat <$> mapM bridge (ownAbilities u)
       pure (line ("pub mod " ++ moduleOf u ++ " ") <> D.block 4 (line "use super::ls;" <> D.hardline <> D.hardline <>
         D.joinWith (D.hardline <> D.hardline) (traits ++ handlers ++ recordings ++ bridges)))
     signature op ty = do
@@ -101,7 +83,7 @@ emit minify bits datas units = do
            , line ("<" ++ native ++ " as ls::FromValue>::from_value(result)" ++ unwrap) ]
     specHandler u h = do
       ability <- maybe (Left ("unknown ability of handler " ++ C.handlerName h)) Right
-        (lookup (C.abilityRefId (C.handlerAbility h)) [(C.abilityId a, a) | a <- C.unitAbilities u])
+        (unitAbility u (C.handlerAbility h))
       start <- case C.handlerState h of
         Nothing -> pure (line "None")
         Just (_, value) -> do
@@ -135,7 +117,7 @@ emit minify bits datas units = do
              [ line "let mut ctx = ctx.clone();"
              , line "let state = " <> start <> line ";"
              , line ("Self { ctx: std::sync::Mutex::new(ctx), state: std::sync::Mutex::new(state) }") ])) <> D.hardline <> D.hardline <>
-        line ("impl " ++ interfaceName ability ++ " for " ++ name ++ " ") <> D.block 4 (D.joinWith (D.hardline <> D.hardline) methods))
+        line ("impl super::" ++ moduleOfName (ownerName ability) ++ "::" ++ interfaceName ability ++ " for " ++ name ++ " ") <> D.block 4 (D.joinWith (D.hardline <> D.hardline) methods))
     recording a = do
       methods <- mapM (\(op, ty) -> do
         s <- signature op ty
@@ -162,7 +144,7 @@ emit minify bits datas units = do
             E.call ("<" ++ t ++ " as ls::FromValue>::from_value")
               [E.call "schema.native_value_with_context" [line ("arguments[" ++ show n ++ "].clone()"), line "&" <> ref, line width, line "ctx"] <> line "?"] <> line "?;"
       pure (line ("/// " ++ op ++ ", answered by the handler installed for " ++ C.abilityName a ++ ".") <> D.hardline <>
-        line ("pub fn perform_" ++ op ++ "(ctx: &mut ls::Context, arguments: Vec<ls::Value>) -> ls::Result<ls::Value> ") <>
+        line ("pub fn perform_" ++ bridgeName a op ++ "(ctx: &mut ls::Context, arguments: Vec<ls::Value>) -> ls::Result<ls::Value> ") <>
         D.block 4 (D.joinWith D.hardline
           ([ line "let schema = crate::lawspec_schema::schema()?;"
            , line ("let handler = ctx.handler::<std::sync::Arc<dyn " ++ interfaceName a ++ ">>(" ++ show (C.abilityKey (C.abilityInstance a)) ++ ")?;") ] ++
@@ -180,7 +162,7 @@ productionStub datas u a = do
     resultType <- Native.rustDataType datas result
     pure (D.text ("fn " ++ op ++ "(&self" ++ concat [", value" ++ show i ++ ": " ++ t | (i, t) <- zip [0 :: Int ..] types] ++ ") -> " ++ resultType ++ " ") <>
       D.block 4 (D.text ("todo!(" ++ show op ++ ")")))) (C.abilityOperations a)
-  pure (D.text ("/// The native handler of " ++ C.abilityName a ++ ": " ++ intercalate ", " (map fst (C.abilityOperations a)) ++ ".") <> D.hardline <>
+  pure (D.text ("/// The native handler of " ++ displayName a ++ ": " ++ intercalate ", " (map fst (C.abilityOperations a)) ++ ".") <> D.hardline <>
     D.text "#[derive(Default)]" <> D.hardline <>
     D.text ("pub struct " ++ productionName a ++ ";") <> D.hardline <> D.hardline <>
     D.text ("impl crate::lawspec_abilities::" ++ moduleOf u ++ "::" ++ interfaceName a ++ " for " ++ productionName a ++ " ") <>

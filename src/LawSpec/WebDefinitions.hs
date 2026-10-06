@@ -11,6 +11,7 @@ import qualified LawSpec.WebData as Native
 import qualified LawSpec.WebExpr as E
 import qualified LawSpec.Code.Doc as D
 import Data.List (nub, sort, intercalate, stripPrefix, isPrefixOf)
+import LawSpec.AbilityNames (specName, interfaceName, ownerName)
 
 -- An asynchronous definition's call is marked "await ", so callers await it.
 definitionCalls :: [Unit] -> [(Id,String)]
@@ -58,7 +59,18 @@ emitWebDefinitions ts layout bits declarations units = do
     adapterImports = nub [ "import * as " ++ adapterAlias owner ++ " from './" ++
                              map (\c -> if c == '.' then '/' else c) owner ++ "." ++ importExtension ++ "';"
                          | d <- concatMap unitDefinitions units, definitionOrchestrates d
-                         , callee <- calls (definitionBody d), Just (owner, _) <- [lookup callee adapters] ]
+                         , callee <- calls (definitionBody d), Just (owner, _) <- [lookup callee adapters] ] ++
+      -- The spec handlers that handle ... with h end regions make.
+      nub [ "import * as " ++ abilitiesAlias owner ++ " from './lawspec_abilities/" ++
+              map (\c -> if c == '.' then '/' else c) owner ++ "." ++ importExtension ++ "';"
+          | d <- concatMap unitDefinitions units, h <- scopedHandlers (definitionBody d), Just (owner, _) <- [specHandlerOwner h] ]
+    abilitiesAlias owner = "_abilities_" ++ map (\c -> if c == '.' then '_' else c) owner
+    scopedHandlers expression = case expressionNode expression of
+      Handle (WithHandler _ (SpecHandler h)) body -> h : scopedHandlers body
+      _ -> concatMap scopedHandlers (children expression)
+    specHandlerOwner h = case [(idText (unitId o), x) | o <- units, x <- unitHandlers o, handlerId x == h] of
+      found : _ -> Just found
+      [] -> Nothing
     calls expression = case expressionNode expression of
       ExternalCall callee arguments -> callee : concatMap calls arguments
       _ -> concatMap calls (children expression)
@@ -101,6 +113,12 @@ emitWebDefinitions ts layout bits declarations units = do
               if expressionType term == Constructor "Unit" []
                 then pure (E.call "ls.unitResult" [invocation])
                 else schemaCall "fromNative" (expressionType term) invocation
+            -- handle e with h end: e runs with h installed for its ability,
+            -- made afresh each time.
+            Handle (WithHandler ability (SpecHandler h)) _ | [body] <- values, Just (owner, x) <- specHandlerOwner h ->
+              pure (E.call "ls.withHandlers" [D.text "symbols",
+                D.delimitTrailing 4 "{" "}" [E.quoted (abilityKey ability) <> D.text (": new " ++ abilitiesAlias owner ++ "." ++ specName x ++ "(symbols)")],
+                D.text "() => " <> body])
             ExternalCall identity _ | Just name <- lookup identity callees ->
               pure (awaitIf ("await " `isPrefixOf` name)
                 (E.call (drop (length ("_definitions." :: String)) (plainCall name)) (D.text "symbols":values)))
@@ -113,9 +131,16 @@ emitWebDefinitions ts layout bits declarations units = do
               let handlers = [D.text ("ls.handler(symbols, " ++ show (abilityKey a) ++ ")") | a <- declarationUses adapter, not (isFail a)]
                   called = awaitIf (declarationAsync adapter) (E.call (adapterAlias owner ++ "." ++ declarationName adapter) (handlers ++ nativeValues))
               -- A Unit adapter returns undefined, which is the Unit value.
-              if resultType == Constructor "Unit" []
+              result <- if resultType == Constructor "Unit" []
                 then pure (E.call "ls.unitResult" [called])
                 else schemaCall "fromNative" resultType called
+              -- An adapter that fails with E: native code throws ls.Fail.
+              case [a | a@(AbilityRef _ [_]) <- declarationUses adapter, isFail a] of
+                ability@(AbilityRef _ [failure]) : _ | not (declarationAsync adapter) -> do
+                  convert <- schemaCall "fromNative" failure (D.text "_failure")
+                  pure (E.call "ls.nativeFailures" [E.quoted (abilityKey ability), D.text "(_failure) => " <> convert,
+                    D.text "() => " <> result, D.text "[]"])
+                _ -> pure result
             _ -> Left "unresolved JS/TS total call"
       rendered <- (if asynchronous then E.renderAsyncExpression else E.renderExpression) ts declarations bits local external (definitionBody d)
       -- A workflow stage with policies runs under the workflow runtime.
@@ -231,10 +256,9 @@ emitWebDefinitions ts layout bits declarations units = do
           depth = 1 + length (filter (== '.') unitName)
           root = concat (replicate depth "../")
           path = "src/lawspec_definitions/" ++ map (\c -> if c == '.' then '/' else c) unitName ++ "." ++ extension
-      pure (file path root (["import * as _definitions from '" ++ root ++ "lawspec_definition_bodies." ++ importExtension ++ "';"] ++
-        ["import type * as _abilities from '" ++ root ++ "lawspec_abilities/" ++ map (\c -> if c == '.' then '/' else c) unitName ++ ".js';"
-        | ts, not (null (unitAbilities unit))]) wrappers)
+      pure (file path root ["import * as _definitions from '" ++ root ++ "lawspec_definition_bodies." ++ importExtension ++ "';"] wrappers)
     native d = do
+      let root = concat (replicate (1 + length (filter (== '.') (idText (unitId (ownerOf d))))) "../")
       let declaration = definitionDeclaration d
           (args,result) = functionType (declarationType declaration)
           values = ["value" ++ show i | i <- [0 .. length args - 1]]
@@ -243,9 +267,10 @@ emitWebDefinitions ts layout bits declarations units = do
       arguments <- sequence [schemaCall "fromNative" ty (D.text value) | (ty,value) <- zip args values]
       name <- maybe (Left "unresolved JS/TS native call") Right (lookup (declarationId declaration) callees)
       output <- schemaCall "toNative" result (D.text "result")
-      let handlers = [ (ability, lowerFirst (abilityName a), a) | ability <- declarationUses declaration, not (isFail ability)
-                     , Just a <- [lookup (abilityRefId ability) [(abilityId x, x) | o <- units, x <- unitAbilities o]] ]
-          parameters = symbols : [D.text name <> annotation (D.text ("_abilities." ++ abilityName a)) | (_, name, a) <- handlers] ++
+      let handlers = [ (ability, lowerFirst (interfaceName a), a) | ability <- declarationUses declaration, not (isFail ability)
+                     , Just (_, a) <- [findAbility units ability] ]
+          parameters = symbols : [D.text name <> annotation (D.text ("import('" ++ root ++ "lawspec_abilities/" ++
+              map (\c -> if c == '.' then '/' else c) (ownerName a) ++ ".js')." ++ interfaceName a)) | (_, name, a) <- handlers] ++
             [D.text value <> annotation ty | (value,ty) <- zip values types]
           -- Native code passes a definition's handlers explicitly; they are
           -- installed in symbols, where the operations it performs find them.
@@ -259,10 +284,14 @@ emitWebDefinitions ts layout bits declarations units = do
         D.delimitTrailing 4 "(" ")" parameters <> annotation (if waiting then D.text "Promise<" <> resultType <> D.text ">" else resultType) <> D.text " " <>
         D.block 2 (contextual (declarationId declaration) (D.joinWith D.hardline
           (inputs ++ [assign "result" invocation,D.text "return " <> output <> D.text ";"]))))
+    ownerOf d = case [u | u <- units, d `elem` unitDefinitions u] of
+      u : _ -> u
+      [] -> error "a definition without a unit"
     lowerFirst (c:cs) = toEnum (fromEnum c + (if c >= 'A' && c <= 'Z' then 32 else 0)) : cs
     lowerFirst [] = []
     nestedBinders expression = case expressionNode expression of
       AllElements value binder predicate -> nestedBinders value ++ [binder] ++ nestedBinders predicate
+      Let binder value body -> nestedBinders value ++ [binder] ++ nestedBinders body
       AllPayloads value predicates -> nestedBinders value ++ concat
         [binder : nestedBinders predicate | (binder,predicate) <- predicates]
       Match value cases -> nestedBinders value ++ concat

@@ -1,4 +1,4 @@
-{-# LANGUAGE FlexibleInstances, TypeSynonymInstances, ScopedTypeVariables, MultiParamTypeClasses, FunctionalDependencies #-}
+{-# LANGUAGE FlexibleInstances, TypeSynonymInstances, ScopedTypeVariables, MultiParamTypeClasses, FunctionalDependencies, ExistentialQuantification #-}
 -- The portable scalar domain. No test framework or target runtime dependencies.
 module LawSpecRuntime where
 
@@ -12,7 +12,7 @@ import System.Environment (lookupEnv)
 import Control.Monad (foldM, forM, forM_, replicateM)
 import Data.Unique (Unique, newUnique, hashUnique)
 import Data.Dynamic (Dynamic, toDyn, fromDynamic, dynTypeRep)
-import Data.Typeable (Typeable, typeRep, Proxy(..))
+import Data.Typeable (Typeable, typeRep, Proxy(..), cast)
 import Data.Char (ord, chr, isDigit)
 import Data.Int
 import Data.ByteString (ByteString)
@@ -4851,6 +4851,52 @@ countCalls symbols key operation matches = unsafePerformIO $ case installedFor s
     pure (SInteger "Int64" (fromIntegral (length [() | (name, arguments) <- calls, name == operation, maybe True ($ arguments) matches])))
   _ -> throwIO (ErrorCall "calls of needs a recording handler: `using recording`")
 {-# NOINLINE countCalls #-}
+
+-- | let x = e in body: e runs first, once.
+letIn :: Scalar -> (Scalar -> Scalar) -> Scalar
+letIn value body = forceScalar value `seq` body value
+
+-- | handle e with h end: the body runs with these handlers installed, then
+-- the ones they replaced come back.
+withHandlers :: SymbolContext -> IO [Installed] -> (() -> Scalar) -> Scalar
+withHandlers symbols@(SymbolContext unique) make body = unsafePerformIO $ do
+  before <- readIORef handlerTable
+  handlers <- make
+  installHandlers symbols handlers
+  let restore = atomicModifyIORef' handlerTable (\table ->
+        (maybe id (\previous -> ((unique, previous) :)) (lookup unique before) (filter ((/= unique) . fst) table), ()))
+  (do value <- evaluate (body ())
+      _ <- evaluate (forceScalar value)
+      pure value) `finally` restore
+{-# NOINLINE withHandlers #-}
+
+-- | What native code (an adapter, or a production handler) throws to fail
+-- with a value of the failure type its signature names: throwIO (LS.Fail v)
+-- for `fails with E`, v a native E.
+data Fail = forall a. (Typeable a, Show a) => Fail a
+instance Show Fail where
+  show (Fail value) = "failed with " ++ show value
+instance Exception Fail
+
+-- | A native exception lawspec.json maps to a failure.
+newtype MappedFailure = MappedFailure (SomeException -> Maybe Scalar)
+
+mappedFailure :: Exception e => (e -> Scalar) -> MappedFailure
+mappedFailure make = MappedFailure (fmap make . fromException)
+
+-- | Native code that may fail: a Fail it throws (with a native E), or an
+-- exception lawspec.json maps, becomes a failure of the ability.
+nativeFailures :: forall e. Typeable e => String -> (e -> Scalar) -> (() -> Scalar) -> [MappedFailure] -> Scalar
+nativeFailures ability convert body mapped = unsafePerformIO $ do
+  outcome <- try (do value <- evaluate (body ()); _ <- evaluate (forceScalar value); pure value)
+  case outcome of
+    Right value -> pure value
+    Left problem -> case fromException problem of
+      Just (Fail native) | Just value <- cast native -> throwIO (Failure ability (convert (value :: e)))
+      _ -> case [scalar | MappedFailure make <- mapped, Just scalar <- [make problem]] of
+        scalar : _ -> throwIO (Failure ability scalar)
+        [] -> throwIO problem
+{-# NOINLINE nativeFailures #-}
 
 -- | A Pair's two fields: a stateful handler clause's result and next state.
 pairFields :: Scalar -> (Scalar, Scalar)

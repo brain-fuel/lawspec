@@ -1,6 +1,6 @@
 -- Public binding configuration is resolved before entering target emission.
 module LawSpec.NativeRequest
-  ( NativeRequest(..), FunctionBinding(..), NativeCall(..), GoImport(..), BindingPlan(..), HandlerBinding(..)
+  ( NativeRequest(..), FunctionBinding(..), NativeCall(..), GoImport(..), BindingPlan(..), HandlerBinding(..), FailureMapping(..)
   , emptyNativeRequest, emptyBindingPlan, resolveNativeRequest, hasBindings
   ) where
 
@@ -13,6 +13,7 @@ import Data.Char (isAscii, isAlpha, isAlphaNum)
 import Data.List (find, nub)
 import qualified LawSpec.Core as C
 import LawSpec.NativeBinding
+import LawSpec.AbilityNames (interfaceName)
 
 -- The crate is needed only by Rust test linkage, not by the semantic Core.
 data NativeRequest = NativeRequest
@@ -20,7 +21,14 @@ data NativeRequest = NativeRequest
   , requestRustCrate :: Maybe String, requestGoImports :: [GoImport]
   -- The production handler of each ability, by "<unit>::<Ability>".
   , requestHandlers :: [HandlerBinding]
+  -- Native exceptions that become failures, by failure constructor.
+  , requestFailures :: [FailureMapping]
   } deriving (Eq, Show)
+-- failures: [{"native": [...], "failure": "<unit>::<Type>::<Constructor>"}]:
+-- an adapter that fails with the type turns the native exception (a class,
+-- an error type, or a panic payload type) into that constructor, which has
+-- no fields or one Text field, given the exception's message.
+data FailureMapping = FailureMapping { mappedNative :: NativeRef, mappedFailure :: String } deriving (Eq, Show)
 -- handlers: [{"ability": "payments::Gateway", "native": [...]}]: a native
 -- constructor (a class, or a function of no arguments; an IO action in
 -- Haskell) that makes the production handler.
@@ -40,17 +48,19 @@ data BindingPlan = BindingPlan
   , bindingFunctions :: [(C.Declaration, NativeRef)]
   , bindingCalls :: [(C.Declaration, NativeCall)]
   , bindingRustCrate :: Maybe String, bindingGoImports :: [GoImport]
-  -- Each bound ability's production handler, by the ability's identity.
+  -- Each bound ability's production handler, by the ability instance's key.
   , bindingHandlers :: [(C.Id, NativeRef)]
+  -- The native exceptions that become failures.
+  , bindingFailures :: [C.FailureBinding]
   } deriving (Eq, Show)
 emptyNativeRequest :: NativeRequest
-emptyNativeRequest = NativeRequest emptyBindings [] Nothing [] []
+emptyNativeRequest = NativeRequest emptyBindings [] Nothing [] [] []
 emptyBindingPlan :: BindingPlan
-emptyBindingPlan = BindingPlan (ResolvedBindings [] []) [] [] Nothing [] []
--- Whether anything besides handlers is bound: handler bindings only change
--- how the tests make production handlers.
+emptyBindingPlan = BindingPlan (ResolvedBindings [] []) [] [] Nothing [] [] []
+-- Whether anything besides handlers and failures is bound: they only change
+-- how the tests make production handlers and catch native failures.
 hasBindings :: BindingPlan -> Bool
-hasBindings plan = plan { bindingHandlers = [] } /= emptyBindingPlan
+hasBindings plan = plan { bindingHandlers = [], bindingFailures = [] } /= emptyBindingPlan
 
 resolveNativeRequest :: C.Program -> NativeRequest -> Either String BindingPlan
 resolveNativeRequest program NativeRequest{..} = do
@@ -66,15 +76,44 @@ resolveNativeRequest program NativeRequest{..} = do
   mapM_ validateGoImport requestGoImports
   handlers <- mapM handler requestHandlers
   unless (length handlers == length (nub (map fst handlers))) (Left "duplicate native handler binding")
+  failures <- mapM failureMapping requestFailures
+  unless (length failures == length (nub (map C.failureNative failures))) (Left "duplicate native failure mapping")
   pure (BindingPlan representations [(d, ref) | (d, StaticCall ref) <- functions]
-    [(d, call) | (d, call) <- functions, not (isStatic call)] requestRustCrate requestGoImports handlers)
+    [(d, call) | (d, call) <- functions, not (isStatic call)] requestRustCrate requestGoImports handlers failures)
   where
     definitions = [C.declarationId (C.definitionDeclaration d) |
       u <- C.programUnits program, d <- C.unitDefinitions u]
     declarations = [d | u <- C.programUnits program, d <- C.unitDeclarations u,
       C.declarationId d `notElem` definitions]
     handles = [C.idText (C.dataId d) | d <- C.programDataDeclarations program, C.dataHandle d]
-    abilities = [(C.idText (C.unitId u) ++ "::" ++ C.abilityName a, C.abilityId a) | u <- C.programUnits program, a <- C.unitAbilities u]
+    -- An ability by <unit>::<Name>, and a parameterized one's instance by
+    -- <unit>::<Name><Types> (Store Int32 is StoreInt32); the unit is the
+    -- one that declares it.
+    abilities = nub [ (owner ++ "::" ++ name, C.Id (C.abilityKey (C.abilityInstance a)))
+                    | u <- C.programUnits program, a <- C.unitAbilities u, C.abilityOwner a == C.unitId u
+                    , let owner = C.idText (C.unitId u)
+                    , name <- [interfaceName a] ++ [C.abilityName a | null (C.abilityArguments a)] ]
+    failureMapping FailureMapping{..} = do
+      validReference mappedNative
+      let (unit, rest) = breakOn mappedFailure
+          (typeName, constructor) = breakOn rest
+          identity = unit ++ "::type::" ++ typeName ++ "::" ++ constructor
+          context = "failure mapping " ++ mappedFailure
+      unless (not (null unit) && not (null typeName) && not (null constructor))
+        (Left (context ++ ": write <unit>::<Type>::<Constructor>"))
+      (declaration, found) <- maybe (Left (context ++ ": there is no such constructor")) Right $ case
+        [(d, c) | d <- C.programDataDeclarations program, c <- C.dataConstructors d, C.idText (C.constructorId c) == identity] of
+          x : _ -> Just x
+          [] -> Nothing
+      message <- case map C.binderType (C.constructorFields found) of
+        [] -> pure False
+        [C.Constructor "Text" []] -> pure True
+        _ -> Left (context ++ ": the constructor must have no fields, or one Text field for the message")
+      pure (C.FailureBinding (referenceParts mappedNative) (C.constructorId found) (C.Constructor (C.idText (C.dataId declaration)) []) message)
+    breakOn text = case text of
+      ':' : ':' : rest -> ("", rest)
+      c : rest -> let (a, b) = breakOn rest in (c : a, b)
+      [] -> ("", "")
     handler HandlerBinding{..} = do
       identity <- maybe (Left ("unknown ability in a handler binding: " ++ boundAbility ++ " (write <unit>::<Ability>)")) Right
         (lookup boundAbility abilities)
@@ -178,9 +217,12 @@ instance FromJSON GoImport where
 instance FromJSON HandlerBinding where
   parseJSON = strict "native handler" ["ability","native"] $ \o ->
     HandlerBinding <$> o .: "ability" <*> o .: "native"
+instance FromJSON FailureMapping where
+  parseJSON = strict "native failure" ["native","failure"] $ \o ->
+    FailureMapping <$> o .: "native" <*> o .: "failure"
 instance FromJSON NativeRequest where
-  parseJSON = strict "nativeBindings" ["types","generators","functions","rustCrate","goImports","handlers"] $ \o -> do
+  parseJSON = strict "nativeBindings" ["types","generators","functions","rustCrate","goImports","handlers","failures"] $ \o -> do
     types <- o .:? "types" .!= []
     generators <- o .:? "generators" .!= []
     NativeRequest (Bindings types generators) <$> o .:? "functions" .!= [] <*> o .:? "rustCrate" <*> o .:? "goImports" .!= []
-      <*> o .:? "handlers" .!= []
+      <*> o .:? "handlers" .!= [] <*> o .:? "failures" .!= []

@@ -1,0 +1,7 @@
+expect: refunds of large amounts fail [native]
+@@ src/main/kotlin/example/Shop.kt
+<<<<<<<
+        if (value0 > 100000) throw LawSpecRuntime.Fail(lawspec.data.PaymentError.TooLarge)
+=======
+        if (value0 > 100000) throw LawSpecRuntime.Fail(lawspec.data.PaymentError.Refused)
+>>>>>>>

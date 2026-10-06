@@ -6506,6 +6506,62 @@ public final class LawSpecRuntime {
     return integer64(count);
   }
 
+  /** let x = e in body: e runs first, once. */
+  public static Value let(Value value, java.util.function.UnaryOperator<Value> body) {
+    return body.apply(value);
+  }
+
+  /** handle e with h end: runs body with these handlers installed, then puts back the ones they replaced. */
+  @SuppressWarnings("unchecked")
+  public static Value withHandlers(Map<String, Object> symbols, Map<String, Object> handlers,
+      java.util.function.Supplier<Value> body) {
+    var previous = symbols.get(HANDLERS);
+    installHandlers(symbols, handlers);
+    try {
+      return body.get();
+    } finally {
+      if (previous == null) symbols.remove(HANDLERS);
+      else symbols.put(HANDLERS, previous);
+    }
+  }
+
+  /**
+   * What native code (an adapter, or a production handler) throws to fail with a value of the
+   * failure type its signature names: {@code throw new LawSpecRuntime.Fail(value)} for
+   * {@code fails with E}, the value a native E.
+   */
+  public static class Fail extends RuntimeException {
+    public final transient Object value;
+
+    public Fail(Object value) {
+      super("failed with " + value);
+      this.value = value;
+    }
+  }
+
+  /** A native exception lawspec.json maps to a failure: its class, and the failure it becomes. */
+  public record MappedFailure(Class<? extends Throwable> kind, java.util.function.Function<Throwable, Value> make) {}
+
+  /**
+   * Calls native code that may fail: a Fail it throws, or an exception lawspec.json maps to a
+   * failure, becomes a failure of the ability.
+   */
+  public static Value nativeFailures(String ability, java.util.function.Function<Object, Value> convert,
+      java.util.function.Supplier<Value> body, MappedFailure... mapped) {
+    try {
+      return body.get();
+    } catch (Fail failure) {
+      throw new Failure(ability, convert.apply(failure.value));
+    } catch (Failure failure) {
+      throw failure;
+    } catch (RuntimeException error) {
+      for (var each : mapped) {
+        if (each.kind().isInstance(error)) throw new Failure(ability, each.make().apply(error));
+      }
+      throw error;
+    }
+  }
+
   /** A Pair's two fields: a stateful handler clause's result and next state. */
   public static List<Value> pairFields(Value pair) {
     if (!(pair.data() instanceof Data data) || data.fields().size() != 2)

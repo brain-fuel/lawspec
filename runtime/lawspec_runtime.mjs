@@ -696,6 +696,45 @@ export async function attemptAsync(ability, body, right, left) {
   return right(value);
 }
 
+// handle e with h end: runs body with these handlers installed, then puts
+// back the ones they replaced.
+export function withHandlers(symbols, handlers, body) {
+  const previous = symbols.get(HANDLERS);
+  const table = new Map(previous ?? []);
+  for (const [key, value] of Object.entries(handlers)) table.set(key, value);
+  symbols.set(HANDLERS, table);
+  try {
+    return body();
+  } finally {
+    if (previous === undefined) symbols.delete(HANDLERS);
+    else symbols.set(HANDLERS, previous);
+  }
+}
+
+// Native code (an adapter, or a production handler) throws Fail to fail
+// with a value of the failure type its signature names: `fails with E`.
+export class Fail extends Error {
+  constructor(value) {
+    super(`failed with ${String(value)}`);
+    this.value = value;
+  }
+}
+
+// Calls native code that may fail: a Fail it throws, or an error
+// lawspec.json maps to a failure ([class, make] pairs), becomes a failure of
+// the ability.
+export function nativeFailures(ability, convert, body, mapped = []) {
+  try {
+    return body();
+  } catch (error) {
+    if (error instanceof Fail) throw new Failure(ability, convert(error.value));
+    for (const [kind, make] of mapped) {
+      if (error instanceof kind) throw new Failure(ability, make(error));
+    }
+    throw error;
+  }
+}
+
 export function countCalls(recording, operation, matches = null) {
   if (recording === null || typeof recording !== 'object' || !Array.isArray(recording.calls))
     throw new TypeError('calls of needs a recording handler: `using recording`');

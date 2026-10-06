@@ -179,7 +179,9 @@ pub struct Context {
     /// The workflow runtime this call runs under; None is the default one.
     pub workflow: Option<Arc<std::sync::Mutex<WorkflowRuntime>>>,
     /// The handler installed for each ability, by its key (evidence passing).
-    pub handlers: HashMap<String, Installed>,
+    /// Copies of a context share it, so a spec handler (which keeps a copy)
+    /// sees the handlers installed after it, for the abilities its clauses use.
+    pub handlers: Arc<std::sync::RwLock<HashMap<String, Installed>>>,
 }
 impl Context {
     /// A context whose workflows run under the given runtime.
@@ -9192,17 +9194,91 @@ pub fn installed_recording<H: Send + Sync + 'static>(handler: H, calls: Calls) -
 
 impl Context {
     pub fn install_handlers(&mut self, handlers: Vec<(String, Installed)>) {
+        let mut table = self.handlers.write().unwrap();
         for (key, handler) in handlers {
-            self.handlers.insert(key, handler);
+            table.insert(key, handler);
         }
     }
     /// The handler installed for an ability, as the type its bridge needs.
     pub fn handler<H: Clone + 'static>(&self, ability: &str) -> Result<H> {
-        let installed = self.handlers.get(ability).ok_or_else(|| {
+        let table = self.handlers.read().unwrap();
+        let installed = table.get(ability).ok_or_else(|| {
             format!("no handler for the ability {ability}: a law names one with `using`, or runs under each lawful handler")
         })?;
         installed.handler.downcast_ref::<H>().cloned()
             .ok_or_else(|| format!("the handler for {ability} has another type"))
+    }
+    fn installed_for(&self, ability: &str) -> Option<Installed> {
+        self.handlers.read().unwrap().get(ability).cloned()
+    }
+}
+
+/// handle e with h end: the body runs with these handlers installed, then
+/// the ones they replaced come back.
+pub fn with_handlers(
+    ctx: &mut Context,
+    handlers: Vec<(String, Installed)>,
+    body: impl FnOnce(&mut Context) -> Result<Value>,
+) -> Result<Value> {
+    let previous: Vec<(String, Option<Installed>)> =
+        handlers.iter().map(|(key, _)| (key.clone(), ctx.installed_for(key))).collect();
+    ctx.install_handlers(handlers);
+    let restore = |ctx: &mut Context| {
+        let mut table = ctx.handlers.write().unwrap();
+        for (key, before) in &previous {
+            match before {
+                Some(handler) => { table.insert(key.clone(), handler.clone()); }
+                None => { table.remove(key); }
+            }
+        }
+    };
+    let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| body(ctx)));
+    restore(ctx);
+    match outcome {
+        Ok(result) => result,
+        Err(payload) => std::panic::resume_unwind(payload),
+    }
+}
+
+/// What native code (an adapter, or a production handler) panics with to
+/// fail with a value of the failure type its signature names:
+/// `ls::fail(value)` for `fails with E`, the value a native E.
+pub struct Fail(pub Box<dyn std::any::Any + Send>);
+
+pub fn fail<E: Send + 'static>(value: E) -> ! {
+    quiet_failures();
+    std::panic::panic_any(Fail(Box::new(value)))
+}
+
+/// A native panic payload lawspec.json maps to a failure.
+pub type MappedFailure = Box<dyn Fn(&(dyn std::any::Any + Send)) -> Option<Value>>;
+
+/// Native code that may fail: a Fail it panics with (holding a native E), or
+/// a panic payload lawspec.json maps, becomes a failure of the ability.
+pub fn native_failures<E: 'static, T>(
+    ability: &str,
+    convert: impl FnOnce(E) -> Value,
+    body: impl FnOnce() -> T,
+    mapped: Vec<MappedFailure>,
+) -> T {
+    quiet_failures();
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(body)) {
+        Ok(value) => value,
+        Err(payload) => {
+            let payload = match payload.downcast::<Fail>() {
+                Ok(fail) => match fail.0.downcast::<E>() {
+                    Ok(native) => std::panic::panic_any(Failure { ability: ability.to_string(), value: convert(*native) }),
+                    Err(other) => other,
+                },
+                Err(other) => other,
+            };
+            for make in &mapped {
+                if let Some(value) = make(payload.as_ref()) {
+                    std::panic::panic_any(Failure { ability: ability.to_string(), value });
+                }
+            }
+            std::panic::resume_unwind(payload)
+        }
     }
 }
 
@@ -9218,7 +9294,7 @@ fn quiet_failures() {
     HOOK.call_once(|| {
         let previous = std::panic::take_hook();
         std::panic::set_hook(Box::new(move |info| {
-            if info.payload().downcast_ref::<Failure>().is_none() {
+            if info.payload().downcast_ref::<Failure>().is_none() && info.payload().downcast_ref::<Fail>().is_none() {
                 previous(info);
             }
         }));
@@ -9256,7 +9332,7 @@ pub fn count_calls(
     operation: &str,
     matches: Option<&dyn Fn(&[Value]) -> Result<bool>>,
 ) -> Result<Value> {
-    let installed = ctx.handlers.get(ability).ok_or_else(|| format!("no handler for the ability {ability}"))?;
+    let installed = ctx.installed_for(ability).ok_or_else(|| format!("no handler for the ability {ability}"))?;
     let calls = installed.calls.as_ref().ok_or("calls of needs a recording handler: `using recording`")?;
     let recorded = calls.0.lock().unwrap().clone();
     let mut count = 0i64;

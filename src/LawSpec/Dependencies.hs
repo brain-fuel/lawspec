@@ -168,6 +168,8 @@ exprRefs owners e = typeRefs (expressionType e) ++ case expressionNode e of
   Helper _ args -> concatMap go args
   Perform op args -> abilityRefs (operationAbility op) ++ concatMap go args
   Handle (CatchFailure ability) body -> abilityRefs ability ++ go body
+  Handle (WithHandler ability _) body -> abilityRefs ability ++ go body
+  Let binder value body -> typeRefs (binderType binder) ++ go value ++ go body
   Calls op args -> abilityRefs (operationAbility op) ++ concatMap go (maybe [] id args)
   where
     go = exprRefs owners

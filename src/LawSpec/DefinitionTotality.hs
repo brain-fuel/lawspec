@@ -118,6 +118,15 @@ auditTemplates declarations bits unit templates = do
             body <- proof owner integers (M.insert name binder scope) predicate
             pure (T.AllElements scrutinee binder (T.TypedDomain domains body))
           _ -> lift (Left "invalid typed List predicate")
+        -- let x = e in body: e is checked, and the body knows x is e.
+        S.MatchExpr _ [S.MatchBranch tag _ _] | tag == S.letTag, [value] <- operands,
+          [S.TypedCase _ [(name, _)] body] <- S.typedCases typed -> do
+            bound <- recur value
+            index <- get
+            put (index + 1)
+            let binder = C.Id (C.idText owner ++ "::let::" ++ show (index :: Int))
+            inner <- proof owner integers (M.insert name binder scope) body
+            pure (T.Match bound [([], T.substituteProof (M.singleton binder bound) inner)])
         S.MatchExpr _ _ -> case operands of
           [value] -> do
             scrutinee <- recur value
@@ -187,6 +196,8 @@ auditTemplates declarations bits unit templates = do
       ("raise", _, _) -> pure (T.Sequence values)
       ("attempt", _, _) -> pure (T.Sequence values)
       ("calls", _, _) -> pure (T.Sequence [])
+      -- handle e with h end is e, run with h.
+      (_, _, [value]) | take 7 name == "handle:" -> pure value
       ("unreachable", [message], _) | Just name <- literalText (S.expression message) -> pure (T.Absurd name)
       ("unreachable", _, _) -> pure (T.Absurd "a constructor")
       ("isPresent", _, [value]) -> pure (T.IsPresent value)

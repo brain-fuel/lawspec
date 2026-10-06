@@ -5,7 +5,6 @@ import LawSpec.Resilience (resilienceName)
 import LawSpec.Collections (collectionsUnit, collectionsAlias)
 import LawSpec.Time (timeUnit, timeAlias, durationSuffixes, durationFactor, durationLimit, usesTime, timeTypes)
 import LawSpec.Flow (desugarFlows, flowTypeName)
-import LawSpec.Abilities (elaborateAbilities)
 import LawSpec.Model
 import LawSpec.Indexed
 import LawSpec.Railway (railwayUnit)
@@ -22,7 +21,7 @@ import Control.Monad.Reader (Reader, asks, runReader)
 import qualified Data.Map.Strict as M
 import qualified Data.Map.Lazy as Lazy
 import Data.Char (isLower, isUpper, isControl, toUpper)
-import Data.List (uncons, intercalate)
+import Data.List (uncons, intercalate, isInfixOf)
 import Data.Void (Void)
 import Text.Megaparsec hiding (SourcePos, parse)
 import Text.Megaparsec.Char
@@ -513,8 +512,15 @@ indexExpr = located $ makeExprParser indexAtom
 expr :: P Expr
 expr = do
   first <- statement
-  option first (located (Binary ";" first <$> (symbol ";" *> expr)))
+  option first (located (sequenced first <$> (symbol ";" *> expr)))
   where
+    -- `a; b` orders two expressions: a is evaluated for its effects, then b
+    -- gives the value. A flow statement (~s := e, or a call passing ~s) stays
+    -- for LawSpec.Flow, which threads the state through it.
+    sequenced first rest
+      | flowing first = Binary ";" first rest
+      | otherwise = MatchExpr first [MatchBranch letTag ["lawspecIgnored"] rest]
+    flowing e = any (`isInfixOf` show e) ["Var \"~", "Binary \":=\""]
     statement = do
       e <- operatorExpr
       option e (located (Binary ":=" e <$> (symbol ":=" *> operatorExpr)))
@@ -551,15 +557,33 @@ operatorExpr = located $ makeExprParser application
       pure $ case terms of
         first:rest | ConstructLit name [] <- unlocated first -> ConstructLit name rest
         _ -> foldl1 Apply terms
-    atom = located $ matchP <|> ifP <|> raiseP <|> callsP <|> (ListLit <$> between (symbol "[") (symbol "]") (expr `sepBy` symbol ",")) <|> (BoolLit <$> boolP) <|> (StringLit <$> str) <|> try scalarP
+    atom = located $ matchP <|> ifP <|> raiseP <|> callsP <|> letP <|> handleP <|> (ListLit <$> between (symbol "[") (symbol "]") (expr `sepBy` symbol ",")) <|> (BoolLit <$> boolP) <|> (StringLit <$> str) <|> try scalarP
       <|> parenthesizedExpr
       <|> try (Var . ('~' :) <$> (char '~' *> ident))
       <|> try numeric <|> try (do n <- ident; alias <- asks (M.member ("alias:" ++ n)); unless (not alias) (fail "import alias"); void (char '.'); b <- ("min" <$ keyword "min") <|> ("max" <$ keyword "max"); pure (TypeBound b (if maybe False (isLower . fst) (uncons n) then Variable n else Named n))) <|> try valueAtom
     -- if, then and else are keywords inside expressions.
     valueAtom = do
       name <- valueName
-      when (name `elem` ["if", "then", "else"]) (fail ("expected a value, not the keyword " ++ name))
+      when (name `elem` ["if", "then", "else", "in"]) (fail ("expected a value, not the keyword " ++ name))
       pure (if startsUpper name then ConstructLit name [] else Var name)
+    -- let x = e in body: e is evaluated first, then body, with x its value.
+    letP = do
+      try (keyword "let" *> lookAhead (ident *> symbol "=" *> notFollowedBy (char '=')))
+      name <- ident
+      unless (maybe False (isLower . fst) (uncons name)) (fail "a let binds a name starting with a lowercase letter")
+      void (symbol "=")
+      value <- expr
+      keyword "in"
+      body <- expr
+      pure (MatchExpr value [MatchBranch letTag [name] body])
+    -- handle e with h end: e runs with the spec handler h for h's ability.
+    handleP = do
+      try (keyword "handle")
+      body <- expr
+      keyword "with"
+      handler <- ident
+      keyword "end"
+      pure (Apply (Var ("prelude.handle:" ++ handler)) body)
     -- raise e: the Fail ability's operation. It aborts to the nearest
     -- handler of Fail, so its value may have any type.
     raiseP = do
@@ -767,7 +791,7 @@ abilityP = do
     abilityLaws' <- option [] (keyword "laws" *> many lawP)
     keyword "end"
     pure (name, parameters, operations, abilityLaws')
-  pure (AbilityDeclaration name parameters operations abilityLaws' range)
+  pure (AbilityDeclaration name parameters operations abilityLaws' range "")
 
 -- handler name for Ability [with state s :: S start e] is (op x* is e end)* end
 handlerP :: P HandlerDeclaration
@@ -797,7 +821,7 @@ handlerP = do
       pure (HandlerClause op parameters body at)
     keyword "end"
     pure (name, ability, state, clauses)
-  pure (HandlerDeclaration name ability state clauses range)
+  pure (HandlerDeclaration name ability state clauses range "")
 -- Unit definitions have explicit parameter and result types. Law definitions
 -- remain proposition blocks and are parsed separately by lawP.
 functionDefinitionP :: P FunctionDefinition
@@ -1033,11 +1057,10 @@ parseWith extra importedFamilies (Source p s) = case runReader (runParserT unitP
       (checkScenarios protocols scenarios modeled >>= \cyclic -> mapM (uncurry (toProgram modeled)) (zip cyclic scenarios))
     let scenarioed = modeled { machines = [m { machineScenarios = [p | p <- programs, programMachine p == machineName m] }
                                           | m <- machines modeled] }
-    -- Abilities before flows: a handler clause's `~s := e;` is its own.
-    abled <- either (\(at, message) -> Left [Diagnostic "ability" message at]) Right
-      (elaborateAbilities scenarioed)
+    -- Abilities are elaborated after imports (LawSpec.Compile), so a unit
+    -- sees the abilities and handlers it imports.
     (families', flowed) <- either (\(at, message) -> Left [Diagnostic "flow" message at]) Right
-      (desugarFlows importedFamilies families abled)
+      (desugarFlows importedFamilies families scenarioed)
     elaborated <- either (\message -> Left [Diagnostic "indexed" (p ++ ": " ++ message) Nothing]) Right
       (elaborateFamiliesWith importedFamilies families' flowed)
     pure ((elaborated, imports), families')

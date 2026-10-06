@@ -97,6 +97,11 @@ renderExpressionWithContext declarations width schema scope reference key local 
           D.group (D.text ("\\" ++ local (binderId binder) ++ " ->") <>
             D.nest 2 (D.softline <> body))])
       Local identity -> pure (D.text (local identity))
+      -- let x = e in body: e runs first, once.
+      Let binder value body -> do
+        argument <- render value
+        inner <- render body
+        pure (apply "LS.letIn" [argument, D.group (D.text ("\\" ++ local (binderId binder) ++ " ->") <> D.nest 2 (D.softline <> inner))])
       Constant value -> validate (expressionType term)
         (apply "P.maybe" [D.text "P.id",D.text "LS.scopeSymbols",scope,scalarLiteral value])
       Construct tag fields -> do

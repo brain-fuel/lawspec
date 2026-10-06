@@ -1,0 +1,9 @@
+expect: a stored count comes back [native]
+@@ src/example/shop.py
+<<<<<<<
+    def save(self, value0: _builtins.int) -> None:
+        self.value = value0
+=======
+    def save(self, value0: _builtins.int) -> None:
+        self.value = value0 + 1
+>>>>>>>

@@ -10,6 +10,8 @@ import LawSpec.Core
 import LawSpec.Core.DefinitionContracts (checkedDefinitionContracts)
 import LawSpec.Core.Evidence (runtimePostconditions)
 import qualified LawSpec.RustData as Native
+import qualified LawSpec.RustAbilityPaths as Abilities
+import LawSpec.AbilityNames (interfaceName)
 import qualified LawSpec.RustExpr as E
 import qualified LawSpec.Code.Doc as D
 
@@ -39,16 +41,13 @@ workflowAdapterUnits units = foldr (\x acc -> if x `elem` acc then acc else x : 
 -- The bridge of each ability operation (LawSpec.AbilityEmit.Rust), by
 -- identity, from the crate root.
 operationBridges :: [Unit] -> [(Id, String)]
-operationBridges units =
-  [ (operationId (Operation (abilityInstance a) op), "lawspec_abilities::" ++ moduleOf u ++ "::perform_" ++ op)
-  | u <- units, a <- unitAbilities u, (op, _) <- abilityOperations a ]
-  where moduleOf = map (\c -> if isAlphaNum c || c == '_' then c else '_') . idText . unitId
+operationBridges = Abilities.performBridges
 
 -- An ability's trait, from the crate root.
 abilityTrait :: [Unit] -> AbilityRef -> String
-abilityTrait units ref = case [(u, a) | u <- units, a <- unitAbilities u, abilityId a == abilityRefId ref] of
-  (u, a) : _ -> "lawspec_abilities::" ++ map (\c -> if isAlphaNum c || c == '_' then c else '_') (idText (unitId u)) ++ "::" ++ abilityName a
-  [] -> "std::any::Any"
+abilityTrait units ref = case Abilities.traitPath units ref of
+  "dyn std::any::Any" -> "std::any::Any"
+  path -> path
 
 emitRustDefinitions :: D.Layout -> Int -> [DataDeclaration] -> [Unit] -> Either String String
 emitRustDefinitions layout bits declarations units = do
@@ -79,9 +78,17 @@ emitRustDefinitions layout bits declarations units = do
       let decode n (ty, ref) = D.text ("let native_" ++ show n ++ " = ") <> E.call ("<" ++ ty ++ " as ls::FromValue>::from_value")
             [E.call "schema.native_value_with_context" [D.text ("arguments[" ++ show n ++ "].clone()"), D.text "&" <> ref, D.text (show bits), D.text "ctx"] <> D.text "?"] <> D.text "?;"
           -- An adapter that uses abilities gets their handlers first.
-          handlers = [D.text ("&*ctx.handler::<std::sync::Arc<dyn crate::" ++ abilityTrait units ability ++ ">>(" ++ show (abilityKey ability) ++ ")?")
-            | ability <- declarationUses a, not (isFail ability)]
-          call = E.call ("crate::" ++ ownerModule owner ++ "::" ++ declarationName a) (handlers ++ [D.text ("native_" ++ show n) | n <- [0 .. length args - 1]])
+          uses = [ability | ability <- declarationUses a, not (isFail ability)]
+          handlerBindings = [D.text ("let handler_" ++ show k ++ " = ctx.handler::<std::sync::Arc<dyn crate::" ++ abilityTrait units ability ++ ">>(" ++ show (abilityKey ability) ++ ")?;")
+            | (k, ability) <- zip [0 :: Int ..] uses]
+          handlers = [D.text ("&*handler_" ++ show k) | k <- [0 .. length uses - 1]]
+          plainCall = E.call ("crate::" ++ ownerModule owner ++ "::" ++ declarationName a) (handlers ++ [D.text ("native_" ++ show n) | n <- [0 .. length args - 1]])
+          -- An adapter that fails with E: its native code calls ls::fail.
+          call = case [(ability, failure) | ability@(AbilityRef _ [failure]) <- declarationUses a, isFail ability] of
+            (ability, failure) : _ -> E.call ("ls::native_failures::<" ++ either error id (Native.rustDataType declarations failure) ++ ", _>")
+              [D.text (show (abilityKey ability)), D.text "|native| ls::IntoValue::into_value(native)", D.text "|| " <> plainCall,
+               D.text (Abilities.mappedFailures [b | u <- units, unitId u == owner, b <- unitFailureBindings u] failure)]
+            [] -> plainCall
           -- An async step runs within its stage's timeout and hedge, when it
           -- has them; each hedged attempt starts from copies of the inputs.
           started = E.call ("crate::" ++ ownerModule owner ++ "::" ++ declarationName a) [D.text ("native_" ++ show n ++ ".clone()") | n <- [0 .. length args - 1]]
@@ -93,7 +100,7 @@ emitRustDefinitions layout bits declarations units = do
       pure (D.text ("fn adapter_call_" ++ show i) <>
         D.delimitTrailing 4 "(" ")" [D.text "ctx: &mut ls::Context", D.text "arguments: Vec<ls::Value>"] <>
         D.text " -> ls::Result<ls::Value> " <> D.block 4 (D.joinWith D.hardline
-          ([D.text "let schema = crate::lawspec_schema::schema()?;"] ++ zipWith decode [0::Int ..] (zip types refs) ++ finish)))
+          ([D.text "let schema = crate::lawspec_schema::schema()?;"] ++ zipWith decode [0::Int ..] (zip types refs) ++ handlerBindings ++ finish)))
     evaluator identity = maybe (Left "unresolved Rust policy definition") Right (lookup identity names)
     policyDoc key policy = do
       gates <- policyGates policy
@@ -189,8 +196,8 @@ emitRustDefinitions layout bits declarations units = do
       resultType <- Native.rustDataType declarations result
       resultRef <- E.reference result
       let values = [D.text ("value" ++ show i) | i <- [0 .. length args - 1]]
-          handlers = [ (ability, lowerFirst (abilityName a)) | ability <- declarationUses declaration, not (isFail ability)
-                     , Just a <- [lookup (abilityRefId ability) [(abilityId x, x) | o <- units, x <- unitAbilities o]] ]
+          handlers = [ (ability, lowerFirst (interfaceName a)) | ability <- declarationUses declaration, not (isFail ability)
+                     , Just (_, a) <- [findAbility units ability] ]
           parameters = D.text "ctx: &mut ls::Context" :
             [D.text (name ++ ": std::sync::Arc<dyn crate::" ++ abilityTrait units ability ++ ">") | (ability, name) <- handlers] ++
             [D.text ("value" ++ show i ++ ": " ++ ty) | (i,ty) <- zip [0::Int ..] types]

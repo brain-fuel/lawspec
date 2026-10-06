@@ -72,7 +72,11 @@ data Exports = Exports
   , exportLaws :: M.Map String String
   , exportConcreteLaws :: [String]
   , exportAdapters :: [String]
-  , exportIndices :: M.Map String [String] }
+  , exportIndices :: M.Map String [String]
+  -- Abilities by name, and their operations by name: an importer reaches
+  -- them as alias.Ability and alias.op.
+  , exportAbilities :: M.Map String String
+  , exportOperations :: M.Map String String }
 
 data Resolved = Resolved { resolvedUnit :: Unit, resolvedExports :: Exports, portable :: Unit }
 
@@ -152,7 +156,18 @@ resolveUnit visible table u allImports = do
     (Left [Diagnostic "import" ("export lists " ++ unquote n ++ ", which " ++ unitName u ++ " also declares") Nothing])
       -- What a facade re-exports is copied into it, so its importers find it.
   let reexportSeeds = S.fromList [(k, t) | (k, _, t) <- reexported, k `elem` [RefinementName, ValueName, LawName]]
-      wanted = unitReferences renamed `S.union` timeSeeds `S.union` reexportSeeds
+      -- Every ability and handler of an imported unit comes along, as a copy
+      -- that remembers the unit declaring it (and so do the definitions its
+      -- handlers use). A unit's own declarations win no clash: a name both
+      -- declared and imported is an error.
+      fromUnit source get origin = [(if null (origin x) then unitName (resolvedUnit source) else origin x, x) | x <- get (portable source)]
+      copiedAbilities = nubOn (\(o, a) -> (o, abilityName a))
+        (concat [fromUnit source abilities abilityOrigin | (_, source) <- sources])
+      copiedHandlers = nubOn (\(o, h) -> (o, handlerName h))
+        (concat [fromUnit source handlerDeclarations handlerOrigin | (_, source) <- sources])
+      copySeeds = S.unions ([collect (walkAbility collector a) | (_, a) <- copiedAbilities] ++
+        [collect (walkHandler collector h) | (_, h) <- copiedHandlers])
+      wanted = unitReferences renamed `S.union` timeSeeds `S.union` reexportSeeds `S.union` copySeeds
   copies <- closure origins wanted
   let (refinements', definitions', laws') = copies
       natural = [r | r <- refinements', refinementName r == naturalRefinementName]
@@ -163,11 +178,19 @@ resolveUnit visible table u allImports = do
         [lawName l | l <- laws', lawName l `elem` map lawName (laws renamed)]
   unless (null clashes) $ Left [Diagnostic "import"
     ("imported names clash with declarations of " ++ unitName u ++ ": " ++ intercalate ", " clashes) Nothing]
+  let abilityClashes = [abilityName a | (_, a) <- copiedAbilities, abilityName a `elem` map abilityName (abilities renamed)] ++
+        [handlerName h | (_, h) <- copiedHandlers, handlerName h `elem` map handlerName (handlerDeclarations renamed)] ++
+        [abilityName a | (o, a) <- copiedAbilities, (o', b) <- copiedAbilities, abilityName a == abilityName b, o /= o'] ++
+        [handlerName h | (o, h) <- copiedHandlers, (o', g) <- copiedHandlers, handlerName h == handlerName g, o /= o']
+  unless (null abilityClashes) $ Left [Diagnostic "import"
+    ("abilities or handlers of the same name come from two places in " ++ unitName u ++ ": " ++ intercalate ", " (nub abilityClashes)) Nothing]
   let resolved = renamed
         { refinements = take 1 natural `onlyIf` needsNatural ++ refinements renamed ++ copiedRefinements
         , functionDefinitions = functionDefinitions renamed ++ definitions'
         , functions = functions renamed ++ signatures
         , laws = laws renamed ++ laws'
+        , abilities = abilities renamed ++ [a { abilityOrigin = o } | (o, a) <- copiedAbilities]
+        , handlerDeclarations = handlerDeclarations renamed ++ [h { handlerOrigin = o } | (o, h) <- copiedHandlers]
         , declarationSpans = declarationSpans renamed ++
             [(functionName d, functionSpan d) | d <- definitions'] }
       copiedNames = S.fromList (map refinementName copiedRefinements ++ map functionName definitions' ++ map lawName laws')
@@ -187,6 +210,7 @@ resolveUnit visible table u allImports = do
   pure (Resolved resolved exports (portableUnit exports resolved))
   where
     isPrefixOf' prefix s = take (length prefix) s == prefix
+    nubOn key = foldr (\x acc -> if key x `elem` map key acc then acc else x : acc) []
     unquote n = filter (/= '`') n
     xs `onlyIf` condition = if condition then xs else []
     missing unit exports kind name
@@ -206,7 +230,10 @@ importScope u i exports = do
         [((ConstructorName, alias ++ "." ++ n), q) | (n, q) <- M.toList (exportConstructors exports)] ++
         [((RefinementName, alias ++ "." ++ n), q) | (n, q) <- M.toList (exportRefinements exports)] ++
         [((ValueName, alias ++ "." ++ n), q) | (n, q) <- M.toList (exportDefinitions exports)] ++
-        [((LawName, alias ++ ".`" ++ n ++ "`"), q) | (n, q) <- M.toList (exportLaws exports)]
+        [((LawName, alias ++ ".`" ++ n ++ "`"), q) | (n, q) <- M.toList (exportLaws exports)] ++
+        -- An imported ability keeps its name, and so do its operations.
+        [((TypeName, alias ++ "." ++ n), q) | (n, q) <- M.toList (exportAbilities exports)] ++
+        [((ValueName, alias ++ "." ++ n), q) | (n, q) <- M.toList (exportOperations exports)]
       local = S.fromList $ map dataTypeName (dataTypes u) ++
         [dataConstructorName c | d <- dataTypes u, c <- dataTypeConstructors d] ++
         map refinementName (refinements u) ++ map fst (functions u) ++ map lawName (laws u)
@@ -226,6 +253,7 @@ importScope u i exports = do
               Just q <- [M.lookup c (exportConstructors exports)]] ++
             [((RefinementName, r), q) | (r, q) <- M.toList (exportRefinements exports), r == n || r == n ++ "@index"] ++
             [((ValueName, n), q) | Just q <- [M.lookup n (exportDefinitions exports)]] ++
+            [((TypeName, n), q) | Just q <- [M.lookup n (exportAbilities exports)]] ++
             -- A listed type brings the functions generated for it: a
             -- wrapper's valueOf<Name> and an indexed family's measures.
             [((ValueName, d), q) | M.member n (exportTypes exports), (d, q) <- M.toList (exportDefinitions exports),
@@ -264,7 +292,9 @@ unitExports copied u = Exports
       [ (lawName l, importedLawName (unitName u) (lawName l))
       | l <- laws u, not (null (parameters l)), not (lawName l `S.member` copied) ]
   , exportConcreteLaws = [lawName l | l <- laws u, null (parameters l)]
-  , exportAdapters = [n | (n, _) <- functions u, n `notElem` map functionName (functionDefinitions u)]
+  , exportAdapters = [n | (n, _) <- functions u, n `notElem` map functionName (functionDefinitions u), n `notElem` operationNames u]
+  , exportAbilities = M.fromList [(abilityName a, abilityName a) | a <- abilities u]
+  , exportOperations = M.fromList [(op, op) | a <- abilities u, (op, _) <- abilityOperations a]
   , exportIndices = M.fromList
       [ (family, [p | (p, RefinementApp r []) <- refinementParameters refinement, r == naturalRefinementName])
       | refinement <- refinements u, Just family <- [stripSuffix "@index" (refinementName refinement)] ] }
@@ -292,7 +322,7 @@ closure origins seed = go S.empty ([], [], []) (S.filter imported seed)
     refinementTable = M.fromList [(refinementName r, r) | (_, p) <- origins, r <- refinements p]
     definitionTable = M.fromList [(functionName d, d) | (_, p) <- origins, d <- functionDefinitions p]
     lawTable = M.fromList [(lawName l, l) | (_, p) <- origins, l <- laws p, not (null (parameters l))]
-    adapters = M.fromList [(n, unitName o) | (o, p) <- origins, (n, _) <- functions p, n `notElem` map functionName (functionDefinitions p)]
+    adapters = M.fromList [(n, unitName o) | (o, p) <- origins, (n, _) <- functions p, n `notElem` map functionName (functionDefinitions p), n `notElem` operationNames p]
     concrete = M.fromList [(lawName l, unitName o) | (o, p) <- origins, l <- laws p, null (parameters l)]
     imported (kind, n) = case kind of
       RefinementName -> M.member n refinementTable
@@ -357,7 +387,27 @@ walkUnit names u = do
       pure c{dataConstructorFields = fields}
     pure d{dataTypeConstructors = constructors}
   definitions' <- mapM (walkFunctionDefinition names) (functionDefinitions u)
-  pure u{functions = functions', laws = laws', refinements = refinements', dataTypes = dataTypes', functionDefinitions = definitions'}
+  abilities' <- mapM (walkAbility names) (abilities u)
+  handlers' <- mapM (walkHandler names) (handlerDeclarations u)
+  uses' <- forM (declaredUses u) $ \(n, ts) -> (,) n <$> mapM (walkType names []) ts
+  pure u{functions = functions', laws = laws', refinements = refinements', dataTypes = dataTypes', functionDefinitions = definitions'
+        , abilities = abilities', handlerDeclarations = handlers', declaredUses = uses'}
+
+walkAbility :: Monad m => Names m -> AbilityDeclaration -> m AbilityDeclaration
+walkAbility names a = do
+  operations <- forM (abilityOperations a) $ \(n, t) -> (,) n <$> walkType names [] t
+  abilityLaws' <- mapM (walkLaw names) (abilityLaws a)
+  pure a{abilityOperations = operations, abilityLaws = abilityLaws'}
+
+walkHandler :: Monad m => Names m -> HandlerDeclaration -> m HandlerDeclaration
+walkHandler names h = do
+  ability <- walkType names [] (handlerAbility h)
+  state <- forM (handlerState h) $ \(s, t, e) -> (,,) s <$> walkType names [] t <*> walkExpr names [] e
+  let stateNames = maybe [] (\(s, _, _) -> [s]) (handlerState h)
+  clauses <- forM (handlerClauses h) $ \c -> do
+    body <- walkExpr names (clauseParameters c ++ stateNames) (clauseBody c)
+    pure c{clauseBody = body}
+  pure h{handlerAbility = ability, handlerState = state, handlerClauses = clauses}
 
 walkRefinement :: Monad m => Names m -> Refinement -> m Refinement
 walkRefinement names r = do

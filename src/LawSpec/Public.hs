@@ -59,7 +59,15 @@ expressionView names e = object ["type" .= typeView (C.expressionType e),"origin
     C.Helper name args -> object ["kind" .= str "helper", "name" .= ("prelude." ++ C.builtinName name), "arguments" .= map expr args]
     C.Perform op args -> object ["kind" .= str "perform", "ability" .= C.abilityKey (C.operationAbility op), "operation" .= C.operationName op, "arguments" .= map expr args]
     C.Handle (C.CatchFailure ability) body -> object ["kind" .= str "handle", "handling" .= str "catchFailure", "ability" .= C.abilityKey ability, "body" .= expr body]
+    C.Handle (C.WithHandler ability h) body -> object ["kind" .= str "handle", "handling" .= str "withHandler", "ability" .= C.abilityKey ability, "handler" .= handlerText h, "body" .= expr body]
+    C.Let binder value body -> object ["kind" .= str "let", "binder" .= binderView binder, "value" .= expr value,
+      "body" .= expressionView ((C.binderId binder, C.binderName binder) : names) body]
     C.Calls op args -> object ["kind" .= str "calls", "ability" .= C.abilityKey (C.operationAbility op), "operation" .= C.operationName op, "arguments" .= fmap (map expr) args]
+handlerText :: C.HandlerRef -> String
+handlerText h = case h of
+  C.ProductionHandler -> "native"
+  C.SpecHandler i -> reverse (takeWhile (/= ':') (reverse (C.idText i)))
+  C.RecordingHandler inner -> "recording " ++ handlerText inner
 unary :: C.UnaryOp -> String
 unary C.Negate = "-"
 unary C.Not = "!"
@@ -89,7 +97,10 @@ expressionText names e = case C.expressionNode e of
   C.Convert _ t a -> "(" ++ go a ++ " :: " ++ prettyType t ++ ")"
   C.Helper name args -> "prelude." ++ C.builtinName name ++ concatMap (\v -> " (" ++ go v ++ ")") args
   C.Perform op args -> unwords (C.operationName op : map ((\v -> "(" ++ go v ++ ")")) args)
-  C.Handle _ body -> "prelude.attempt (" ++ go body ++ ")"
+  C.Handle (C.CatchFailure _) body -> "prelude.attempt (" ++ go body ++ ")"
+  C.Handle (C.WithHandler _ h) body -> "handle " ++ go body ++ " with " ++ handlerText h ++ " end"
+  C.Let binder value body -> "let " ++ C.binderName binder ++ " = " ++ go value ++ " in " ++
+    expressionText ((C.binderId binder, C.binderName binder) : names) body
   C.Calls op args -> "calls of " ++ C.operationName op ++ maybe "" (\xs -> " with (" ++ intercalate ", " (map go xs) ++ ")") args
   where go = expressionText names
 
@@ -160,10 +171,7 @@ programView settings surface expansions artifacts evidence C.Program{..} = objec
         ,"location" .= C.propertyLocation p, "trace" .= C.propertyTrace p, "generation" .= C.propertyGeneration p
         -- The handler the law runs under for each ability it uses.
         ,"handlers" .= [object ["ability" .= C.abilityKey a, "handler" .= handlerText h] | (a, h) <- C.propertyHandlers p]]
-    handlerText h = case h of
-      C.ProductionHandler -> "native"
-      C.SpecHandler i -> reverse (takeWhile (/= ':') (reverse (C.idText i)))
-      C.RecordingHandler inner -> "recording " ++ handlerText inner
+
     evidenceView o = object
       [ "owner" .= C.idText (obligationUnit o), "declaration" .= C.idText (obligationDeclaration o)
       , "stage" .= obligationStage o, "status" .= statusName (obligationStatus o)

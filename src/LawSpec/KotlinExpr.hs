@@ -109,6 +109,12 @@ renderExpression declarations bits local external = render
           D.text "{" <> D.nest 4 (D.softline <>
             D.text (local (binderId binder) ++ " ->") <> D.softline <> body) <> D.softline <> D.text "}"])
       Local identity -> pure (D.text (local identity))
+      -- let x = e in body: e runs first, once.
+      Let binder value body -> do
+        argument <- render value
+        inner <- render body
+        pure (D.text "(" <> argument <> D.text ").let { " <> D.text (local (binderId binder) ++ " ->") <>
+          D.nest 4 (D.softline <> inner) <> D.softline <> D.text "}")
       Constant value -> scalarLiteral (expressionType term) value >>= checked declarations bits (expressionType term)
       Construct tag args -> do
         values <- mapM render args

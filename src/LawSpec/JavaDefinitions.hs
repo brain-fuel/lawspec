@@ -1,5 +1,5 @@
 -- Native entry points and checked implementation helpers for total definitions.
-module LawSpec.JavaDefinitions (emitJavaDefinitions, emitJvmDefinitionBodies, definitionCalls, orchestratedAdapters, kotlinAdapterBridge, kotlinOperationBridge, performedOperations) where
+module LawSpec.JavaDefinitions (emitJavaDefinitions, emitJvmDefinitionBodies, definitionCalls, orchestratedAdapters, kotlinAdapterBridge, kotlinOperationBridge, kotlinHandlerBridge, performedOperations, scopedHandlers) where
 
 import LawSpec.Core.Stages (stageFailures)
 import LawSpec.Core.Policy
@@ -11,6 +11,7 @@ import LawSpec.Core
 import LawSpec.Core.DefinitionContracts (checkedDefinitionContracts)
 import LawSpec.Core.Evidence (runtimePostconditions)
 import qualified LawSpec.JavaData as Native
+import LawSpec.AbilityNames (interfaceName, specName, ownerName)
 import qualified LawSpec.JavaExpr as E
 import qualified LawSpec.Code.Doc as D
 
@@ -37,6 +38,20 @@ kotlinAdapterBridge identity = "call_" ++ map (\c -> if isAlphaNum c then c else
 -- handler's operation.
 kotlinOperationBridge :: Operation -> String
 kotlinOperationBridge op = "perform_" ++ map (\c -> if isAlphaNum c then c else '_') (idText (operationId op))
+
+-- The Kotlin bridge method through which shared JVM bodies make a Kotlin
+-- spec handler, for handle ... with h end.
+kotlinHandlerBridge :: Id -> String
+kotlinHandlerBridge h = "handler_" ++ map (\c -> if isAlphaNum c then c else '_') (idText h)
+
+-- The spec handlers checked definitions install with handle ... with h end.
+scopedHandlers :: [Unit] -> [Id]
+scopedHandlers units = foldr (\x acc -> if x `elem` acc then acc else x : acc) []
+  [h | d <- concatMap unitDefinitions units, h <- scoped (definitionBody d)]
+  where
+    scoped expression = case expressionNode expression of
+      Handle (WithHandler _ (SpecHandler h)) body -> h : scoped body
+      _ -> concatMap scoped (children expression)
 
 -- The operations checked definitions perform, other than raise.
 performedOperations :: [Unit] -> [Operation]
@@ -103,8 +118,8 @@ emitDefinitions withNative layout bits declarations units = do
       codecs <- mapM (Native.javaCodecDocWithContext (D.text "symbols") declarations bits) args
       resultCodec <- Native.javaCodecDocWithContext (D.text "symbols") declarations bits result
       evaluator <- maybe (Left "unresolved Java definition") Right (lookup (declarationId declaration) callees)
-      let handlers = [ (ability, lowerFirst (abilityName a), abilitiesClassOf u ++ "." ++ abilityName a) | ability <- declarationUses declaration, not (isFail ability)
-                     , Just (u, a) <- [lookup (abilityRefId ability) [(abilityId x, (o, x)) | o <- units, x <- unitAbilities o]] ]
+      let handlers = [ (ability, lowerFirst (interfaceName a), abilitiesClassOfName (ownerName a) ++ "." ++ interfaceName a) | ability <- declarationUses declaration, not (isFail ability)
+                     , Just (_, a) <- [findAbility units ability] ]
           parameters = D.text "Map<String, Object> symbols" : [D.text (iface ++ " " ++ name) | (_, name, iface) <- handlers] ++
             [ty <> D.text (" value" ++ show i) | (i,ty) <- zip [0::Int ..] nativeArgs]
           -- Native code passes a definition's handlers explicitly; they are
@@ -136,6 +151,14 @@ emitDefinitions withNative layout bits declarations units = do
           external expression values = case expressionNode expression of
             ExternalCall identity _ | Just name <- lookup identity callees ->
               pure (E.call name (D.text "symbols":values))
+            -- handle e with h end: e runs with h installed for its ability,
+            -- made afresh each time (a Kotlin handler through its bridge).
+            Handle (WithHandler ability (SpecHandler h)) _ | [body] <- values ->
+              let made = case [(o, x) | o <- units, x <- unitHandlers o, handlerId x == h] of
+                    (o, x) : _ | withNative -> "new " ++ abilitiesClassOf o ++ "." ++ specName x ++ "(symbols)"
+                    _ -> "lawspec.runtime.LawSpecKotlinAdapters." ++ kotlinHandlerBridge h ++ "(symbols)"
+              in pure (E.call "LawSpecRuntime.withHandlers" [D.text "symbols",
+                E.call "java.util.Map.of" [E.quoted (abilityKey ability), D.text made], D.text "() -> " <> body])
             -- raise aborts to the nearest attempt of its Fail ability.
             Perform op [_] | isFail (operationAbility op) ->
               pure (E.call "LawSpecRuntime.raiseFailure" (E.quoted (abilityKey (operationAbility op)) : values))
@@ -172,9 +195,9 @@ emitDefinitions withNative layout bits declarations units = do
                     then E.call "LawSpecRuntime.awaitStep" [D.text "symbols", D.text "() -> " <> call,
                       D.text "_native -> " <> resultCodec <> D.text ".encode(_native)"]
                     -- A Unit adapter is void natively.
-                    else if resultType == scalarType "Unit"
+                    else failing adapter (if resultType == scalarType "Unit"
                       then E.call "lawspec.runtime.LawSpecRuntime.unit" [D.text "() -> " <> call]
-                      else resultCodec <> D.text ".encode(" <> call <> D.text ")"
+                      else resultCodec <> D.text ".encode(" <> call <> D.text ")")
             _ -> Left "unknown Java definition"
           signature = E.call ("public static Value evaluate" ++ show index)
             (D.text "Map<String, Object> symbols" : [D.text ("Value input" ++ show i) | i <- [0..length args-1]]) <> D.text " "
@@ -221,13 +244,22 @@ emitDefinitions withNative layout bits declarations units = do
       pure (signature <> D.block 2 (contextual (declarationId (definitionDeclaration d))
         (D.joinWith D.hardline statements)))
     evaluator identity = maybe (Left "unresolved Java policy definition") Right (lookup identity callees)
+    -- An adapter that fails with E: its native code throws LawSpecRuntime.Fail.
+    failing adapter call = case [a | a@(AbilityRef _ [_]) <- declarationUses adapter, isFail a] of
+      ability@(AbilityRef _ [failure]) : _ ->
+        let codec = either error id (Native.javaCodecDocWithContext (D.text "symbols") declarations bits failure)
+            native = either error id (Native.javaDataTypeDoc declarations failure)
+        in E.call "LawSpecRuntime.nativeFailures" [E.quoted (abilityKey ability),
+             D.text "_native -> " <> codec <> D.text ".encode((" <> native <> D.text ") _native)", D.text "() -> " <> call]
+      _ -> call
     -- A handler from symbols, as its ability's Java interface.
-    handlerOf ability = "((" ++ maybe "Object" (\(u, a) -> abilitiesClassOf u ++ "." ++ abilityName a)
-      (lookup (abilityRefId ability) [(abilityId a, (u, a)) | u <- units, a <- unitAbilities u]) ++
+    handlerOf ability = "((" ++ maybe "Object" (\(_, a) -> abilitiesClassOfName (ownerName a) ++ "." ++ interfaceName a)
+      (findAbility units ability) ++
       ") LawSpecRuntime.handler(symbols, " ++ show (abilityKey ability) ++ "))"
     lowerFirst (c:cs) = toEnum (fromEnum c + (if c >= 'A' && c <= 'Z' then 32 else 0)) : cs
     lowerFirst [] = []
-    abilitiesClassOf u = let parts = split '.' (idText (unitId u))
+    abilitiesClassOf u = abilitiesClassOfName (idText (unitId u))
+    abilitiesClassOfName unit = let parts = split '.' unit
       in intercalate "." ("lawspec" : "abilities" : init parts ++ [concatMap capitalize (split '_' (last parts))])
     policyDoc key fail' policy = do
       gates <- policyGates policy
@@ -297,6 +329,7 @@ emitDefinitions withNative layout bits declarations units = do
       DecorrelatedJitter -> "decorrelated"
     nestedBinders expression = case expressionNode expression of
       AllElements value binder predicate -> nestedBinders value ++ [binder] ++ nestedBinders predicate
+      Let binder value body -> nestedBinders value ++ [binder] ++ nestedBinders body
       AllPayloads value predicates -> nestedBinders value ++ concat
         [binder : nestedBinders predicate | (binder,predicate) <- predicates]
       Match value cases -> nestedBinders value ++ concat

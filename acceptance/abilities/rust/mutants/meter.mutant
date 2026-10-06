@@ -1,0 +1,9 @@
+expect: Meter: reading gives what its type says [native]
+@@ src/example/shop.rs
+<<<<<<<
+    fn reading(&self) -> i32 {
+        3
+=======
+    fn reading(&self) -> i32 {
+        -1
+>>>>>>>
