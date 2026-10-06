@@ -1,0 +1,7 @@
+expect: is marked known failing
+@@ src/Example/Harness.hs
+<<<<<<<
+roundCents value0 = (value0 + 4) `P.quot` 10 * 10
+=======
+roundCents value0 = (value0 + 9) `P.quot` 10 * 10
+>>>>>>>

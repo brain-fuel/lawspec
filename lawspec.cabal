@@ -26,6 +26,7 @@ extra-source-files:
     runtime/LawSpecCodecs.hs
     runtime/LawSpecCollectionCodecs.hs
     runtime/LawSpecDataStrategies.hs
+    runtime/LawSpecHarness.hs
     runtime/LawSpecRuntime.hs
     runtime/LawSpecSchema.hs
     runtime/LawSpecTransports.hs

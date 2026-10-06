@@ -258,6 +258,7 @@ emitPlanFormatted minify target Plan{..} = do
         -- Gradle compiles Java beside Kotlin only in src/main/java, as it
         -- does LawSpecRuntime.java.
         [Artifact "src/main/java/lawspec/testing/LawSpecHarness.java" (runtimeSource "java-harness") "generated" "source" | target == "kotlin" && usesHarness] ++
+        [Artifact "test/LawSpecHarness.hs" (runtimeSource "haskell-harness") "generated" "test" | target == "haskell" && usesHarness] ++
         [Artifact ("test/lawspec_harness." ++ if target == "typescript" then "ts" else "mjs")
           ((if target == "typescript" then "// @ts-nocheck\n" else "") ++ runtimeSource "web-harness") "generated" "test"
           | target `elem` ["javascript","typescript"] && usesHarness] ++
