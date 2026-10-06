@@ -3060,6 +3060,8 @@ pub fn recorded(key: &str, value: &Value) -> Result<bool> {
 // process exits.
 struct SharedEntry {
     busy: bool,
+    users: usize,
+    concurrent: bool,
     value: Option<Value>,
 }
 static SHARED: std::sync::Mutex<Option<HashMap<String, SharedEntry>>> = std::sync::Mutex::new(None);
@@ -3087,23 +3089,62 @@ impl Drop for SharedGuard {
     fn drop(&mut self) {
         let mut shared = SHARED.lock().unwrap_or_else(|e| e.into_inner());
         if let Some(entry) = shared.get_or_insert_with(HashMap::new).get_mut(&self.0) {
-            entry.busy = false;
+            if entry.concurrent {
+                entry.users = entry.users.saturating_sub(1);
+                if entry.users == 0 {
+                    entry.busy = false;
+                }
+            } else {
+                entry.busy = false;
+            }
         }
         SHARED_FREE.notify_all();
     }
 }
 
-pub fn share<A, R, F>(key: &str, ctx: &mut Context, acquire: A, reset: R, release: F) -> Result<(Value, SharedGuard)>
+/// A concurrent resource (resource T is concurrent) is held by any number of
+/// cases at once, and reset only when none holds it.
+pub fn share<A, R, F>(key: &str, ctx: &mut Context, acquire: A, reset: R, release: F, concurrent: bool) -> Result<(Value, SharedGuard)>
 where
     A: FnOnce(&mut Context) -> Result<Value>,
     R: FnOnce(&mut Context, Value) -> Result<Value>,
     F: FnOnce(&mut Context, Value) -> Result<Value> + Send + 'static,
 {
+    if concurrent {
+        let mut shared = SHARED.lock().unwrap_or_else(|e| e.into_inner());
+        let entry = shared.get_or_insert_with(HashMap::new).entry(key.to_string())
+            .or_insert(SharedEntry { busy: false, users: 0, concurrent: true, value: None });
+        let value = match entry.value.clone() {
+            Some(value) => {
+                if entry.users == 0 {
+                    reset(ctx, value.clone())?;
+                }
+                value
+            }
+            None => {
+                let value = acquire(ctx)?;
+                entry.value = Some(value.clone());
+                let kept = value.clone();
+                let mut releases = SHARED_RELEASES.lock().unwrap_or_else(|e| e.into_inner());
+                if releases.is_empty() {
+                    unsafe { atexit(release_shared); }
+                }
+                releases.push(Box::new(move || {
+                    let ctx = &mut Context::testing();
+                    let _ = release(ctx, kept);
+                }));
+                value
+            }
+        };
+        entry.users += 1;
+        entry.busy = true;
+        return Ok((value, SharedGuard(key.to_string())));
+    }
     let held = {
         let mut shared = SHARED.lock().unwrap_or_else(|e| e.into_inner());
         loop {
             let entry = shared.get_or_insert_with(HashMap::new).entry(key.to_string())
-                .or_insert(SharedEntry { busy: false, value: None });
+                .or_insert(SharedEntry { busy: false, users: 0, concurrent: false, value: None });
             if !entry.busy {
                 entry.busy = true;
                 break entry.value.clone();

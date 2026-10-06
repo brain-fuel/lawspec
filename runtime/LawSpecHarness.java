@@ -76,6 +76,42 @@ public final class LawSpecHarness {
     }
   }
 
+  // Scheduling: LawSpec owns the order and parallelism of a unit's tests;
+  // JUnit and Kotest host and report them.
+
+  private static final long ORDER_SEED = chooseSeed();
+
+  private static long chooseSeed() {
+    try {
+      return Long.parseLong(System.getenv().getOrDefault("LAWSPEC_SEED", ""));
+    } catch (NumberFormatException e) {
+      return new java.util.Random().nextInt(Integer.MAX_VALUE);
+    }
+  }
+
+  /** order random's seed: the run's (LAWSPEC_SEED), or one chosen and printed. */
+  public static long orderSeed() {
+    return ORDER_SEED;
+  }
+
+  /** order random: items in an order the seed chooses, the seed printed. */
+  public static <T> List<T> shuffled(String unit, List<T> items) {
+    var out = new ArrayList<T>(items);
+    java.util.Collections.shuffle(out, new java.util.Random(ORDER_SEED ^ unit.hashCode()));
+    System.out.println("order random seed " + ORDER_SEED + " (" + unit + "): LAWSPEC_SEED=" + ORDER_SEED + " replays this order");
+    return out;
+  }
+
+  /** parallel: records how the unit's tests ran at the same time. */
+  public static void parallelism(String unit, String mode, int workers) {
+    var entry = new java.util.LinkedHashMap<String, Object>();
+    entry.put("parallel", unit);
+    entry.put("mode", mode);
+    entry.put("workers", workers);
+    record("parallel " + unit, entry);
+    System.out.println(unit + " runs in parallel: " + mode + ", " + workers + " worker(s)");
+  }
+
   // Strategies. Java draws its choices through JetCheck, so failures shrink;
   // Kotlin through Kotest's random source. Neither library is needed here.
 

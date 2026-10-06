@@ -113,6 +113,7 @@ emitTests Config{..} unit laws = do
     text (if sharing then "spec = afterAll_ LS.releaseShared $ do" else "spec = do") <>
     -- Workflows wait on a virtual clock under test.
     D.nest 2 (D.hardline <> text "runIO (LS.useVirtualClock 0)" <> D.hardline <>
+      (if parallel then apply "LawSpecHarness.parallelism" [quoted (C.idText (C.unitId unit))] <> D.hardline else mempty) <>
       (if null bodies then text "pure ()" else separate (ordered bodies ++ map benchmark (maybe [] C.harnessBenchmarks settings)))) <> D.hardline
   where
     -- The harness plane (LawSpec.Harness). A test the harness runs is an
@@ -123,7 +124,7 @@ emitTests Config{..} unit laws = do
     -- the run's seed chooses (LawSpecHarness.shuffled).
     ordered docs
       | maybe False C.harnessOrderRandom settings =
-          [text "LawSpecHarness.shuffled" <> D.nest 2 (D.hardline <> text "[ " <>
+          [text "LawSpecHarness.shuffled " <> quoted (C.idText (C.unitId unit)) <> D.nest 2 (D.hardline <> text "[ " <>
             D.joinWith (D.hardline <> text ", ") [text "do" <> D.nest 4 (D.hardline <> d) | d <- docs] <> D.hardline <> text "]")]
       | otherwise = docs
     sharing = any (\e -> any ((/= Nothing) . C.resourceShared) (C.propertyResources (original e))) laws
@@ -245,7 +246,7 @@ emitTests Config{..} unit laws = do
         wrap r inner | Just key <- C.resourceShared r, Just reset <- C.resourceReset r =
           let local = localName (C.binderId (C.resourceBinder r))
               using body = text ("\\" ++ local ++ " -> ") <> apply "evaluate" [runtime "forceScalar" [expr body]]
-          in apply "LS.withShared" [quoted key, apply "pure" [expr (C.resourceAcquire r)], parens (using reset), parens (using (C.resourceRelease r))] <>
+          in apply "LS.withShared" [quoted key, text (if C.resourceConcurrent r then "P.True" else "P.False"), apply "pure" [expr (C.resourceAcquire r)], parens (using reset), parens (using (C.resourceRelease r))] <>
             text (" $ \\" ++ local ++ " -> do") <> D.nest 2 (D.hardline <> inner)
         wrap r inner =
           let local = localName (C.binderId (C.resourceBinder r))

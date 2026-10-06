@@ -328,7 +328,10 @@ data UnitHarness = UnitHarness
 -- ends. Only a resource with reset may be shared.
 data Resource = Resource
   { resourceBinder :: Binder, resourceAcquire :: Expr, resourceRelease :: Expr
-  , resourceReset :: Maybe Expr, resourceShared :: Maybe String }
+  , resourceReset :: Maybe Expr, resourceShared :: Maybe String
+  -- Cases may use a shared one at the same time (resource T is concurrent):
+  -- it is reset only when no case holds it.
+  , resourceConcurrent :: Bool }
   deriving (Eq, Show, Generic)
 -- unitMachines are the unit's stateful models, which each target's model
 -- runtime runs against its adapters.

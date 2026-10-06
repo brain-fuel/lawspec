@@ -117,7 +117,7 @@ elaborate bits units properties = do
                 release = if kind == "freePort" then C.Expr (C.scalarType "Bool") (C.Constant (SBool True)) (C.GeneratedFrom rid)
                   else C.Expr (C.scalarType "Bool") (C.Match self [C.MatchCase constructor [field]
                     (helper (C.scalarType "Bool") C.ReleaseResource [text kind, C.Expr fieldType (C.Local (C.binderId field)) (C.GeneratedFrom rid)])]) (C.GeneratedFrom rid)
-            pure (C.Resource binder (C.Expr t (C.Construct constructor [acquired]) (C.GeneratedFrom rid)) release Nothing Nothing)
+            pure (C.Resource binder (C.Expr t (C.Construct constructor [acquired]) (C.GeneratedFrom rid)) release Nothing Nothing False)
           _ -> case [r | r <- S.resourceDeclarations u, S.resourceType r == ty] of
             [declaration] -> do
               acquire <- term (S.Annotate (S.resourceAcquire declaration) ty)
@@ -136,7 +136,7 @@ elaborate bits units properties = do
                     _ -> any callsRelease (C.children e)
               if any callsRelease (C.propositionExpressions body ++ concatMap (concatMap C.propositionExpressions . C.exampleExpectations) examples)
                 then Left (S.name p ++ " releases " ++ n ++ ", but a law's resources are released after each case, so it could use " ++ n ++ " after its release")
-                else pure (C.Resource binder acquire release reset Nothing)
+                else pure (C.Resource binder acquire release reset Nothing (S.resourceConcurrent declaration))
             [] -> Left (S.name p ++ " takes " ++ n ++ " :: " ++ S.prettyType ty ++ ", but no resource is declared for " ++ S.prettyType ty ++ "; declare resource " ++ S.prettyType ty ++ " is acquire ... release ... end")
             _ -> Left ("more than one resource is declared for " ++ S.prettyType ty)
       pure C.Property

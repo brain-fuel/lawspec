@@ -913,16 +913,17 @@ lawResourcesP = option [] $ do
 -- end
 resourceP :: P ResourceDeclaration
 resourceP = do
-  ((ty, acquire, release, reset), range) <- withSpan $ do
+  ((ty, concurrent, acquire, release, reset), range) <- withSpan $ do
     keyword "resource"
     ty <- typeP
     keyword "is"
+    concurrent <- option False (True <$ keyword "concurrent")
     acquire <- keyword "acquire" *> keyword "is" *> expr <* keyword "end"
     release <- clause "release"
     reset <- optional (clause "reset")
     keyword "end"
-    pure (ty, acquire, release, reset)
-  pure (ResourceDeclaration ty acquire release reset range)
+    pure (ty, concurrent, acquire, release, reset)
+  pure (ResourceDeclaration ty acquire release reset range concurrent)
   where
     clause word = do
       keyword word

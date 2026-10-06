@@ -530,7 +530,7 @@ emitRustWithBindings minify bindings plan@Plan{..} = either (Left . pure . (\m -
               pure (statements
                 [ Doc.text ("let (" ++ local ++ ", _shared_" ++ local ++ ") = ") <> invoke "ls::share"
                     [string key, Doc.text "ctx", Doc.text "|ctx: &mut ls::Context| -> ls::Result<ls::Value> " <> block (Doc.text "Ok(" <> acquired <> Doc.text ")"),
-                     use resetting, use released] <> Doc.text "?;"
+                     use resetting, use released, Doc.text (if resourceConcurrent r then "true" else "false")] <> Doc.text "?;"
                 , nested ])
             bracket inner ((r, (_, local)) : rest) = do
               acquired <- render withResources (resourceAcquire r)
@@ -716,7 +716,9 @@ emitRustWithBindings minify bindings plan@Plan{..} = either (Left . pure . (\m -
                     | descriptors /= Nothing, harnessTarget (propertyHarness p) /= Nothing]
         let h = propertyHarness p
             -- order random: the law's tests wait for their turn (lawspec_harness::turn).
-            turn = [binding "_turn" (invoke "lawspec_harness::turn" [string (idText (unitId unit)), Doc.text (show index)])
+            parallelUnit = maybe False harnessParallel (unitHarnessSettings unit)
+            turn = [statement (invoke "lawspec_harness::parallelism" [string (idText (unitId unit))]) | parallelUnit] ++
+                   [binding "_turn" (invoke "lawspec_harness::turn" [string (idText (unitId unit)), Doc.text (show index), Doc.text (if parallelUnit then "true" else "false")])
                    | maybe False harnessOrderRandom (unitHarnessSettings unit)]
             label' = idText (unitId unit) ++ "::" ++ label
             testName' = testNames !! index

@@ -1,0 +1,107 @@
+unit example.shop
+
+import example.abilities as payments
+
+-- Abilities cross units: Gateway and its handlers come from
+-- example.abilities. This unit adds two of its own.
+
+-- A log. Its operation gives nothing back, so code calls it for its effect
+-- and goes on with `;`.
+ability Log is
+  note :: Text -> Unit
+end
+
+-- A log that keeps what it is told.
+handler keptLog for Log with state lines :: List Text start [] is
+  note message is ~lines := Cons message lines; unitValue end
+end
+
+-- A store of one value, at any type. This unit uses it at two.
+ability Store (a :: Type) is
+  load :: a
+  save :: a -> Unit
+end
+
+handler countStore for Store Int32 with state count :: Int32 start 0 is
+  load is count end
+  save value is ~count := value; unitValue end
+end
+
+handler nameStore for Store Text with state name :: Text start "" is
+  load is name end
+  save value is ~name := value; unitValue end
+end
+
+-- A meter whose readings are never negative: every handler owes that.
+ability Meter is
+  reading :: (r :: Int32 where r >= 0)
+end
+
+handler fixedMeter for Meter is
+  reading is 7 end
+end
+
+-- A handler whose clauses use another ability: it notes each payment.
+handler notingGateway for Gateway is
+  authorize cents is note "authorize"; Approved cents end
+  capture cents is note "capture"; Receipt cents end
+  fee is 0 end
+end
+
+-- Effects run in order: `a; b` runs a, then b; `let x = e in body` runs e
+-- once and names its value.
+definition buy (cents :: Int32) :: Bool uses Gateway, Log is
+  note "buying";
+  let approved = payments.checkout cents in
+  note "bought";
+  approved
+end
+
+-- handle ... with h end runs its body with h answering h's ability, so the
+-- definition does not use that ability itself.
+definition trial (cents :: Int32) :: Bool is
+  handle payments.checkout cents with fakeGateway end
+end
+
+definition remember (count :: Int32) :: Int32 uses Store Int32 is
+  save count; load
+end
+
+definition rename (name :: Text) :: Text uses Store Text is
+  save name; load
+end
+
+-- A native adapter that may fail. Its native code raises the failure
+-- through the runtime's Fail.
+refund :: Int32 -> Int32 uses Gateway fails with payments.PaymentError
+
+law `trial approves small amounts` is
+  definition is
+    `for all` (cents :: Int32 where cents >= 0 && cents <= 10000) . trial cents = true
+  end
+end
+
+law `buying with a noting gateway approves small amounts` using notingGateway, keptLog is
+  definition is
+    `for all` (cents :: Int32 where cents >= 0 && cents <= 10000) . buy cents = true
+  end
+end
+
+law `a stored count comes back` is
+  definition is `for all` (count :: Int32) . remember count = count end
+end
+
+law `a stored name comes back` is
+  definition is `for all` (name :: Text) . rename name = name end
+end
+
+law `a reading is small` using fixedMeter is
+  definition is reading <= 100 end
+end
+
+law `refunds of large amounts fail` is
+  definition is
+    `for all` (cents :: Int32 where cents > 100000) .
+      prelude.attempt (refund cents) = Left payments.TooLarge
+  end
+end

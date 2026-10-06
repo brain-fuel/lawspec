@@ -79,12 +79,14 @@ emitTests Config{..} unit laws = do
       map contract (contracts unit)) <> D.hardline <> D.hardline <>
     text ("class " ++ className ++ "LawSpecTest : StringSpec(") <>
     -- Workflows wait on a virtual clock under test.
-    block (separate (text "lawspec.runtime.LawSpecRuntime.useVirtualClock(0)" : bodies ++ map benchmark (maybe [] C.harnessBenchmarks settings))) <> text ")" <>
-    -- order random and parallel are Kotest's own: a random test order, and
-    -- the tests run concurrently, on as many threads as processors.
-    (if orderRandom || parallel then text " " <> block (statements
-      ([text "override fun testCaseOrder() = io.kotest.core.test.TestCaseOrder.Random" | orderRandom] ++
-       [text "override fun concurrency(): Int = Runtime.getRuntime().availableProcessors()" | parallel] ++
+    block (separate (text "lawspec.runtime.LawSpecRuntime.useVirtualClock(0)" :
+      [call "lawspec.testing.LawSpecHarness.parallelism" [quoted unitLabel, quoted "coroutines on a thread per processor (Kotest concurrency)",
+         text "Runtime.getRuntime().availableProcessors()"] | parallel] ++
+      ordered (bodies ++ map benchmark (maybe [] C.harnessBenchmarks settings)))) <> text ")" <>
+    -- parallel: Kotest runs the tests concurrently, on as many threads as
+    -- processors.
+    (if parallel then text " " <> block (statements
+      ([text "override fun concurrency(): Int = Runtime.getRuntime().availableProcessors()" | parallel] ++
        [text "@Suppress(\"OVERRIDE_DEPRECATION\")" <> D.hardline <> text "override fun threads(): Int = Runtime.getRuntime().availableProcessors()" | parallel]))
      else mempty) <> D.hardline
   where
@@ -94,6 +96,18 @@ emitTests Config{..} unit laws = do
     settings = C.unitHarnessSettings unit
     orderRandom = maybe False C.harnessOrderRandom settings
     parallel = maybe False C.harnessParallel settings
+    unitLabel = C.idText (C.unitId unit)
+    -- order random: LawSpec registers the unit's tests in an order the
+    -- run's seed chooses. A local String.invoke collects them, and they are
+    -- registered, shuffled, after the block that declares them.
+    testType = "suspend io.kotest.core.test.TestScope.() -> Unit"
+    ordered docs
+      | orderRandom =
+          [ text ("val _lawspecTests = mutableListOf<Pair<String, " ++ testType ++ ">>()")
+          , text "run " <> block (statements
+              [text ("operator fun String.invoke(test: " ++ testType ++ ") { _lawspecTests.add(this to test) }"), separate docs])
+          , text "for ((name, test) in lawspec.testing.LawSpecHarness.shuffled(" <> quoted unitLabel <> text ", _lawspecTests)) name(test)" ]
+      | otherwise = docs
     testFunction name body = case stripPrefix "harness:" name of
       Just rest -> text ("val lawspecHarness" ++ takeWhile (/= ':') rest ++ ": suspend () -> Unit = ") <> closure "" body
       Nothing -> quoted name <> text " " <> block body
@@ -198,7 +212,8 @@ emitTests Config{..} unit laws = do
           let local = localName (C.binderId (C.resourceBinder r))
               blocking body = text "kotlinx.coroutines.runBlocking " <> block body
           in statements [bind local (runtime "share" [quoted key, closure "" (blocking (expr (C.resourceAcquire r))),
-              closure local (statements [blocking (expr reset)]), closure local (statements [blocking (expr (C.resourceRelease r))])]),
+              closure local (statements [blocking (expr reset)]), closure local (statements [blocking (expr (C.resourceRelease r))]),
+              text (if C.resourceConcurrent r then "true" else "false")]),
             text "try " <> block inner <> text " finally " <> block (runtime "unshare" [quoted key])]
         wrap r inner =
           let local = localName (C.binderId (C.resourceBinder r))

@@ -808,10 +808,23 @@ _shared = {}
 _shared_guard = threading.Lock()
 
 
-def share(key, acquire, reset, release):
+def share(key, acquire, reset, release, concurrent=False):
+    """A concurrent resource (resource T is concurrent) is held by any
+    number of cases at once, and reset only when none holds it."""
     import atexit
     with _shared_guard:
-        entry = _shared.setdefault(key, {'lock': threading.Lock(), 'held': False})
+        entry = _shared.setdefault(key, {'lock': threading.Lock(), 'held': False, 'users': 0,
+                                         'concurrent': concurrent})
+    if concurrent:
+        with entry['lock']:
+            if entry['held'] and entry['users'] == 0:
+                reset(entry['value'])
+            elif not entry['held']:
+                entry['value'] = acquire()
+                entry['held'] = True
+                atexit.register(lambda: release(entry['value']))
+            entry['users'] += 1
+        return entry['value']
     entry['lock'].acquire()
     try:
         if entry['held']:
@@ -827,7 +840,12 @@ def share(key, acquire, reset, release):
 
 
 def unshare(key):
-    _shared[key]['lock'].release()
+    entry = _shared[key]
+    if entry['concurrent']:
+        with entry['lock']:
+            entry['users'] -= 1
+    else:
+        entry['lock'].release()
 
 
 def free_port():

@@ -1,0 +1,112 @@
+unit example.matchers
+
+-- Matchers are typed predicates that read like sentences. Each one is a
+-- Bool, so a law may combine them with && and ||, and an example may expect
+-- one to hold.
+
+type Order is
+  | Pending id :: Int32
+  | Shipped id :: Int32 carrier :: Text
+  | Cancelled id :: Int32 reason :: Maybe Text
+end
+
+-- Native adapters, written on each target.
+sortItems :: List Int32 -> List Int32
+uniqueTags :: List Text -> List Text
+average :: Int32 -> Int32 -> Float64
+slug :: Text -> Text
+ship :: Int32 -> Order
+
+law `sorting keeps every item` is
+  definition is
+    `for all` (xs :: List Int32) . sortItems xs has same items as xs
+  end
+  example `duplicates stay` is
+    xs = [3, 1, 3]
+    expect sortItems xs = [1, 3, 3]
+  end
+end
+
+law `unique tags come from the input` is
+  definition is
+    `for all` (tags :: List Text) .
+      uniqueTags tags is subset of tags && tags contains all of uniqueTags tags
+  end
+end
+
+law `unique tags keep each tag` is
+  definition is
+    `for all` (tags :: List Text) (tag :: Text) .
+      tags contains tag implies uniqueTags tags contains tag
+  end
+end
+
+law `the average lies between the two` is
+  definition is
+    `for all` (a :: Int32) (b :: Int32) .
+      average a b is within 0.5 of prelude.Float64 (prelude.quot (a + b) 2)
+  end
+end
+
+law `a slug is lowercase words joined by dashes` is
+  definition is
+    `for all` (title :: Text) .
+      slug title matches regex "([a-z0-9]+(-[a-z0-9]+)*)?"
+  end
+  example `a title` is
+    title = "Hello World"
+    expect slug title = "hello-world"
+    expect slug title starts with "hello"
+    expect slug title ends with "world"
+    expect slug title contains "o-w"
+  end
+end
+
+law `shipping gives a shipped order` is
+  definition is
+    `for all` (id :: Int32) . ship id matches Shipped _ _
+  end
+  example `the carrier is never empty` is
+    id = 7
+    expect ship id matches Shipped 7 _
+    expect !(ship id matches Shipped _ "")
+  end
+end
+
+-- Laws of the matchers themselves.
+law `having the same items is symmetric` is
+  definition is
+    `for all` (xs :: List Int8) (ys :: List Int8) .
+      (xs has same items as ys) = (ys has same items as xs)
+  end
+end
+
+law `a list contains each of its items` is
+  definition is
+    `for all` (x :: Int8) (xs :: List Int8) . Cons x xs contains x
+  end
+end
+
+law `a list is a subset of itself` is
+  definition is
+    `for all` (xs :: List Int8) . xs is subset of xs && xs contains all of xs
+  end
+end
+
+law `a text starts and ends with itself` is
+  definition is
+    `for all` (t :: Text) . t starts with t && t ends with t && t contains t && t contains ""
+  end
+end
+
+law `a number is within any tolerance of itself` is
+  definition is
+    `for all` (x :: Int32) (d :: Int32 where d >= 0) . x is within d of x
+  end
+end
+
+law `a regex value matches like a literal` is
+  definition is
+    `for all` (t :: Text) . (t matches regex "[a-c]*") = (t matches regex "[a-c]*")
+  end
+end

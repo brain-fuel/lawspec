@@ -2,8 +2,170 @@
 
 ## Unreleased
 
+- Abilities. `ability Gateway is authorize :: Card -> Payment ... laws ... end`
+  names a dependency's operations and the laws every handler of it keeps.
+  `uses Gateway, Clock` after a signature says what it uses; a native adapter
+  gets one handler per ability before its arguments. A checked definition may
+  use abilities, and its ability row is inferred; a definition that lists its
+  abilities must list at least those.
+- Handlers. `handler fakeGateway for Gateway is authorize c is ... end ... end`
+  is a spec handler; each clause is a checked definition. `with state s :: S
+  start e` keeps a state, updated with `~s := e;`. Each ability's native
+  production handler is written by hand (`GatewayHandler`), or bound under
+  `handlers` in `lawspec.json`.
+- A law holds for every lawful handler. `using h` names a handler only when
+  it is part of the claim; otherwise the law runs under each lawful handler in
+  turn, one law per choice. `using recording Gateway` records calls, which a
+  law counts with `calls of capture` and `calls of capture with (cents)`.
+- Each ability law is one obligation per handler. For a spec handler without
+  state the compiler proves it, or checks every case of a finite domain, so a
+  handler that breaks it is a compile error; native handlers are
+  property-tested.
+- `fails with E` is short for `uses Fail E`. `raise e` aborts with a failure,
+  and `prelude.attempt e` in a law gives `Right` of the value or `Left` of the
+  failure.
+- Core has `Perform`, `Handle` and `Calls`. Every target passes handlers in
+  the context it gives every definition (evidence passing), and generates a
+  native interface per ability: a Python `Protocol`, a TypeScript interface, a
+  Go interface, a Java or Kotlin interface, a Rust trait, a Haskell record of
+  `IO` operations; with spec handler and recording classes beside it.
+- Abilities cross units. `import` brings a unit's abilities and handlers;
+  imported definitions may use abilities, and the declaring unit keeps the
+  native interface, production handler and recording.
+- Effects in order: `a; b` and `let x = e in body` in definitions and laws.
+  An operation that gives `Unit` is called for its effect.
+- `handle e with h end` installs a spec handler around part of a definition,
+  which then does not use its ability. A handler's clauses may use other
+  abilities; a law under that handler gets handlers for them too.
+- A parameterized ability may be used at several types in one unit (`Store
+  Int32`, `Store Text`), each with its own interface (`StoreInt32`).
+- An operation's type may be refined; every handler owes its result's
+  refinement as a law.
+- Native adapters fail with the runtime's `Fail` on every target (`raise
+  ls.Fail(v)`, `throw new ls.Fail(v)`, `panic(LawSpecFail{Value: v})`,
+  `LawSpecRuntime.Fail`, `ls::fail`, `LS.Fail`), and `failures` in
+  `lawspec.json` maps the application's own exceptions to failure
+  constructors.
+- The compiler runs spec handlers with state over a finite domain, so a law
+  they break is a compile error.
+- `lawspec explain` shows a law's handlers and the ability rows of what it
+  calls.
+- A bound production handler speaks the bound native types: through the
+  handler schema in Python and JavaScript, and an `<Ability>Bound` wrapper in
+  the typed targets. A bound adapter gets its handlers too.
+- New acceptance suite `abilities`, with mutants: an adapter that calls its
+  dependency twice, native handlers that break an ability law or a refined
+  result, and an adapter that fails with the wrong failure. It now covers two
+  units. New suite `handlerbindings`: bound handlers, bound types and mapped
+  exceptions on all eight targets.
+- Matchers: typed predicates that read like sentences. `xs has same items
+  as ys`, `xs contains x` (an item, or text inside text), `xs contains all of
+  ys`, `xs is subset of ys`, `x is within 0.001 of y`, `t starts with "a"`,
+  `t ends with "z"`, `t matches regex "[a-z]+"` and `v matches Shipped _ _`.
+  The list matchers are checked definitions of a built-in unit,
+  `lawspec.matchers`.
+- `Regex` and `regex "..."`. Every regex literal is checked at compile time
+  against a portable dialect, the part of RE2 and ECMAScript that means the
+  same in both, and matches a whole text. Each runtime has its own matcher, so
+  no target needs a regex library.
+- Typed failures in laws: `expect charge o fails with Declined _`, with
+  `message contains "..."` for a failure's message field. `expect e` takes
+  any `Bool`.
+- Tables: `table (a, b, expected) is row 1, 2, 3 ... expect f a b = expected
+  end`. Each row is its own example.
+- Examples fenced with `example` in a law's description are examples of the
+  law, named after the description.
+- Recorded values: `expect f x = recorded "name"` compares with
+  `recorded/<unit>/<name>`, by the portable rendering every target shares. A
+  missing or changed recording fails; `lawspec test --update-recorded`
+  records again.
+- Resources: `resource Database is acquire ... release ... reset ... end`,
+  taken by a law with `law ... for db :: Database is`. Each case acquires
+  them first and releases them after, even when it fails. Built in:
+  `TemporaryDirectory`, `TemporaryFile`, `FreePort` and `SavedEnvironment`.
+- A failing comparison names where a list or data value first differs, with
+  both values in the portable rendering.
+- A Haskell project depends on `directory`. A Go test file imports rapid only
+  when a law draws its inputs with it.
+- New acceptance suites `matchers`, `failures`, `tables` and `resources`, with
+  mutants: a reordered list that fails `=` but passes `has same items as`, a
+  resource never released, a failure of the wrong constructor, and a stale
+  recording.
+- Harness units: `harness shop.testing for shop is ... end`, in its own file
+  or after a unit's members, says how a unit's laws are tested and can never
+  change what they mean. It may not declare laws, definitions, abilities,
+  handlers or types, refers only to its unit's laws, handlers and resources,
+  and its expressions call checked definitions only.
+  - Strategies: `strategy orders :: Order is frequency 9 small, 1 bulk end`,
+    with `any`, `one of`, `such that p at most n discards` and `bind x :: T
+    from g in g'`, used with `for law \`x\` use orders for o`. A strategy's
+    type must be the input's, and every value it draws is checked against the
+    input's refinements.
+  - `test with fakeGateway, native` narrows the lawful handlers a law runs
+    against; a variant it leaves out stays an obligation, reported skipped.
+  - Adequacy: `cover 10% "label" when p` (an unmet cover fails the run),
+    `classify p as "label"`, `label e` and `target maximize e`, with
+    statistics printed and kept by `lawspec test`.
+  - Run metadata per unit, group (`for laws`) or law: `tags`, `skip`,
+    `known failing` (a known-failing law that passes fails the run), `timeout`,
+    `repeat`, `retry flaky`, `order random` and `parallel`.
+  - `share R per group | unit | run`, only for a resource that declares
+    `reset`; `benchmark \`name\` is e end`, measured and never asserted.
+  - All eight targets, through each one's property-testing library.
+- Evidence has three harness statuses, `known-failing`, `flaky` and `skipped`.
+  `lawspec evidence` shows a `HARNESS` section after the obligations: each
+  law's harness and its last run's adequacy.
+- Generated tests are named after law labels on every target
+  (`test_charges_once__property`, `TestChargesOnce_Property`,
+  `lawChargesOnce_property`, `law_charges_once`), unique within a unit. The
+  test manifest carries each law's name, tags, skip and known failing.
+- `lawspec test --tag a --exclude-tag b` selects laws by harness tags;
+  `--report junit=path` writes one JUnit report merged across targets;
+  `--coverage` measures coverage with coverage.py, c8, `go test -cover`,
+  JaCoCo, Kover, cargo-llvm-cov or hpc, and says how to install a missing one.
+  A failing law is kept with its seed in `.lawspec/failures` and replayed
+  first; Hypothesis and proptest keep their counterexamples there too.
+- New acceptance suite `harness`, with mutants, among them spec mutants (an
+  acceptance suite may now edit its specs): an unmet cover, a strategy drawing
+  outside the input's refinement, a harness declaring a law, sharing a
+  resource without `reset`, and a known-failing law that passes.
+- A shared resource is shared at run time: `share R per group | unit | run`
+  acquires R once per scope, resets it before every later case, lets one case
+  hold it at a time, and releases it when the test process ends, on all eight
+  targets. The `resources` suite shares a pool that may be opened only once
+  per process, with mutants for a pool never drained and for a harness that
+  does not share it.
+- `expect ... fails with` checks native adapters' failures too: synchronous
+  and async adapters raise the runtime's `Fail` on every target, and a
+  constructor mapped from an application's exception under `failures` in
+  `lawspec.json` matches with its message.
+- A benchmark may call what uses abilities; it runs under their production
+  handlers. `lawspec test --benchmarks` runs the harness's benchmarks after the
+  laws.
+- A strategy's type may be an inline refinement, `strategy small :: (o ::
+  Order where itemsOf o <= 3) is ... end`, whose values are kept like `such
+  that`. Harness expressions and strategies may name a unit's imports through
+  their aliases.
+- On Java and Kotlin, an ability or handler whose class would be named like
+  the class holding its unit's abilities is a compile error that says what to
+  rename.
+- The failure database keeps a failing case's inputs in LawSpec's wire
+  encoding (`.lawspec/failures/<target>/inputs`), on every target, and the
+  law's tests replay them before any new case.
+- `target maximize` steers on every target: where the property library has
+  no targeted search, LawSpec climbs after the property, moving the
+  best-scoring case's integers while the score rises.
+- `order random` and `parallel` hold on every target: Go shuffles with the
+  run's seed, Haskell shuffles each law's block of tests, Rust runs a unit's
+  law tests in a seeded order one at a time; JavaScript and TypeScript run a
+  `parallel` unit's tests concurrently, Kotlin through Kotest's concurrency,
+  and Python through pytest-xdist when `lawspec test` finds it. The test
+  manifest carries whether a law's unit is parallel, and its benchmarks.
+
 ## 0.20.0
 
+- `lawspec package` lists only the package's own units, not those of the
+  packages it depends on.
 - An `all` group with an asynchronous step runs its steps at the same time,
   on each target's own concurrency, so it takes as long as its slowest step.
   Results and accumulated errors keep the order of declaration, and every

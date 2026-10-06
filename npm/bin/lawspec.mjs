@@ -468,6 +468,8 @@ async function runTests(compiler, input, selected, roots, config) {
     const flaky = statistics.filter((s) => s.outcome === "flaky").map((s) => s.law);
     const unmet = statistics.flatMap((s) => (s.cover ?? []).filter((c) => !c.met).map((c) => `${s.law}: cover ${c.required}% "${c.label}" (${c.observed}%)`));
     const benchmarks = statistics.filter((s) => s.benchmark);
+    // How each parallel unit's tests actually ran at the same time.
+    const parallelism = statistics.filter((s) => s.parallel).map(({ parallel, mode, workers }) => ({ unit: parallel, mode, workers }));
     summaries.push({ target: target.language, seed: Number(seed), ran: stale.map((e) => e.law),
       unchanged: chosen.length - stale.length, ok: !failed,
       ...(chosen.length !== planned.tests.length ? { deselected: planned.tests.length - chosen.length } : {}),
@@ -475,6 +477,7 @@ async function runTests(compiler, input, selected, roots, config) {
       ...(flaky.length ? { flaky: [...new Set(flaky)] } : {}),
       ...(unmet.length ? { unmetCover: unmet } : {}),
       ...(benchmarks.length ? { benchmarks } : {}),
+      ...(parallelism.length ? { parallelism } : {}),
       ...(useCoverage ? { coverage: path.relative(process.cwd(), coverage) || "." } : {}) });
   }
   if (report) {
@@ -488,6 +491,7 @@ async function runTests(compiler, input, selected, roots, config) {
     (s.unrun ? `\nNo tests ran for ${s.unrun.join(", ")}; the runner matched none of their tests.` : "") +
     (s.flaky ? `\nFlaky (failed, then passed on a retry): ${s.flaky.join(", ")}` : "") +
     (s.unmetCover ? `\nCover not met: ${s.unmetCover.join("; ")}` : "") +
+    (s.parallelism ? "\n" + s.parallelism.map((p) => `parallel ${p.unit}: ${p.mode}, ${p.workers} worker(s)`).join("\n") : "") +
     (s.benchmarks ? "\n" + s.benchmarks.map((b) => `benchmark ${b.benchmark}: mean ${(b.mean_ns / 1000).toFixed(2)} us over ${b.iterations} iteration(s)`).join("\n") : "") +
     (s.coverage ? `\nCoverage written to ${s.coverage}.` : "")).join("\n"));
   if (summaries.some((s) => !s.ok)) process.exitCode = 1;

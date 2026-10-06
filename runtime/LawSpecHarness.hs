@@ -6,7 +6,7 @@
 -- Statistics go to standard output, and, when LAWSPEC_STATS names a
 -- directory, to one JSON file per test there, which lawspec test reads.
 module LawSpecHarness
-  ( HarnessError(..), checkDrawn, observe, target, run, knownFailing, benchmark, record, shuffled
+  ( HarnessError(..), checkDrawn, observe, target, run, knownFailing, benchmark, record, shuffled, parallelism
   ) where
 
 import Control.Exception (Exception, SomeException, evaluate, fromException, throwIO, try)
@@ -24,6 +24,7 @@ import LawSpecRuntime (Scalar(..))
 import qualified LawSpecRuntime as LS
 import Data.Word (Word64)
 import Test.Hspec (SpecWith, runIO)
+import Control.Concurrent (getNumCapabilities)
 
 -- A harness requirement failed: a strategy or an adequacy check.
 newtype HarnessError = HarnessError String
@@ -189,13 +190,15 @@ benchmark name body = do
 
 -- order random: the unit's law tests, each law's in one block, in an order
 -- the run's seed chooses (LAWSPEC_SEED, else HSPEC_SEED, else the clock).
-shuffled :: [SpecWith ()] -> SpecWith ()
-shuffled items = do
+shuffled :: String -> [SpecWith ()] -> SpecWith ()
+shuffled unit items = do
   seed <- runIO $ do
     given <- lookupEnv "LAWSPEC_SEED"
     hspecSeed <- lookupEnv "HSPEC_SEED"
     now <- getMonotonicTimeNSec
-    pure (maybe now id (parse given `orElse` parse hspecSeed))
+    let chosen = maybe (now `mod` 2147483647) id (parse given `orElse` parse hspecSeed)
+    putStrLn ("order random seed " ++ show chosen ++ " (" ++ unit ++ "): LAWSPEC_SEED=" ++ show chosen ++ " replays this order")
+    pure chosen
   sequence_ (permute seed items)
   where
     parse :: Maybe String -> Maybe Word64
@@ -211,3 +214,13 @@ shuffled items = do
           i = fromIntegral (draw `mod` fromIntegral (length xs))
           (before, chosen : after) = splitAt i xs
       in chosen : permute next (before ++ after)
+
+-- | parallel: how the unit's tests run at the same time. hspec runs them on
+-- threads, which the threaded runtime (-with-rtsopts=-N) spreads over a
+-- capability per processor.
+parallelism :: String -> SpecWith ()
+parallelism unit = runIO $ do
+  workers <- getNumCapabilities
+  let mode = if workers > 1 then "threads (hspec parallel, threaded runtime)" else "threads (hspec parallel; one capability, so they interleave)"
+  record ("parallel " ++ unit) [("parallel", JString unit), ("mode", JString mode), ("workers", JInt (fromIntegral workers))]
+  putStrLn (unit ++ " runs in parallel: " ++ mode ++ ", " ++ show workers ++ " worker(s)")

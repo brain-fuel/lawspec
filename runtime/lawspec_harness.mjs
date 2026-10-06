@@ -135,10 +135,13 @@ export async function knownFailing(law, name, reason, tests) {
   throw new HarnessError(`${law} is marked known failing (${reason}), but it passes; remove \`known failing\` from its harness`);
 }
 
-// order random: the tests in an order chosen by the run's seed.
-export function shuffled(items) {
-  const seed = globalThis.process?.env?.LAWSPEC_SEED;
-  let state = seed === undefined ? Math.floor(Math.random() * 2 ** 31) : Number(seed) | 0;
+// order random: the tests in an order chosen by the run's seed
+// (LAWSPEC_SEED, or one chosen here), printed so the order can be replayed.
+export function shuffled(items, unit = 'the unit') {
+  const given = globalThis.process?.env?.LAWSPEC_SEED;
+  const seed = given === undefined ? Math.floor(Math.random() * 2 ** 31) : Number(given) | 0;
+  console.log(`order random seed ${seed} (${unit}): LAWSPEC_SEED=${seed} replays this order`);
+  let state = seed;
   const next = () => {
     state = (state + 0x6d2b79f5) | 0;
     let t = Math.imul(state ^ (state >>> 15), 1 | state);
@@ -151,6 +154,16 @@ export function shuffled(items) {
     [result[i], result[j]] = [result[j], result[i]];
   }
   return result;
+}
+
+// parallel: how the unit's tests ran at the same time. node:test runs them
+// concurrently in one process: async laws overlap, synchronous ones take
+// turns on the event loop.
+export function parallelism(unit) {
+  const workers = globalThis.navigator?.hardwareConcurrency ?? 1;
+  const mode = 'in-process concurrency (async laws overlap; synchronous laws take turns)';
+  record(`parallel ${unit}`, { parallel: unit, mode, workers });
+  console.log(`${unit} runs in parallel: ${mode}`);
 }
 
 // Measured, never asserted: the mean and fastest time of body.

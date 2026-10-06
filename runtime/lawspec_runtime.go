@@ -3181,10 +3181,13 @@ func lsRecorded(key string, value LawSpecValue) bool {
 // so no case sees what another left. One case holds it at a time, and it is
 // released when the test binary ends (lsReleaseShared, from TestMain).
 type lsSharedEntry struct {
-	lock    sync.Mutex
-	held    bool
-	value   LawSpecValue
-	release func(LawSpecValue)
+	lock       sync.Mutex
+	guard      sync.Mutex
+	held       bool
+	users      int
+	concurrent bool
+	value      LawSpecValue
+	release    func(LawSpecValue)
 }
 
 var (
@@ -3193,15 +3196,30 @@ var (
 	lsSharedOrder []string
 )
 
-func lsShare(key string, acquire func() LawSpecValue, reset func(LawSpecValue), release func(LawSpecValue)) LawSpecValue {
+// A concurrent resource (resource T is concurrent) is held by any number of
+// cases at once, and reset only when none holds it.
+func lsShare(key string, acquire func() LawSpecValue, reset func(LawSpecValue), release func(LawSpecValue), concurrent bool) LawSpecValue {
 	lsSharedGuard.Lock()
 	entry, ok := lsShared[key]
 	if !ok {
-		entry = &lsSharedEntry{}
+		entry = &lsSharedEntry{concurrent: concurrent}
 		lsShared[key] = entry
 		lsSharedOrder = append(lsSharedOrder, key)
 	}
 	lsSharedGuard.Unlock()
+	if concurrent {
+		entry.guard.Lock()
+		defer entry.guard.Unlock()
+		if entry.held && entry.users == 0 {
+			reset(entry.value)
+		} else if !entry.held {
+			entry.value = acquire()
+			entry.held = true
+			entry.release = release
+		}
+		entry.users++
+		return entry.value
+	}
 	entry.lock.Lock()
 	ready := false
 	defer func() {
@@ -3224,6 +3242,12 @@ func lsUnshare(key string) {
 	lsSharedGuard.Lock()
 	entry := lsShared[key]
 	lsSharedGuard.Unlock()
+	if entry.concurrent {
+		entry.guard.Lock()
+		entry.users--
+		entry.guard.Unlock()
+		return
+	}
 	entry.lock.Unlock()
 }
 

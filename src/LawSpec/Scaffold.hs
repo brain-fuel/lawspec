@@ -71,6 +71,7 @@ scaffoldFiles minify target = case target of
         [ "name: lawspec-example", "version: 0.1.0", "dependencies: [base, text, bytestring, containers, directory, network]"
         , "library:", "  source-dirs: src", "tests:", "  laws:", "    main: Spec.hs", "    source-dirs: test"
         , "    dependencies: [lawspec-example, hspec, hedgehog, hspec-hedgehog, containers, mtl]"
+        , "    ghc-options: [-threaded, -rtsopts, \"-with-rtsopts=-N\"]"
         , "    build-tools: [hspec-discover]" ])
     , ("test/Spec.hs", "{-# OPTIONS_GHC -F -pgmF hspec-discover #-}\n") ]
   "kotlin" -> Right

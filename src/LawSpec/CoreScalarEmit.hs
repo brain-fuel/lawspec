@@ -54,18 +54,21 @@ scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions 
       -- The unit's harness: benchmarks, and order random.
       benchmarks = concatMap (renderDocument . benchmarkTest) (maybe [] C.harnessBenchmarks (C.unitHarnessSettings u))
       orderRandom = maybe False C.harnessOrderRandom (C.unitHarnessSettings u)
-      shuffled = if not py || not orderRandom then "" else
-        renderDocument (statement (invoke "_harness.shuffle_tests" [invoke "globals" [],
-          array [quoted n | l <- lines lawTexts, Just rest <- [stripPrefix "def " l], let n = takeWhile (/= '(') rest, "test_" `isPrefixOf` n]]))
+      -- Python: the harness driver's pytest hooks (lawspec_harness, through
+      -- the generated conftest) read these flags.
+      shuffled = if not py then "" else
+        concat [renderDocument (text "_LAWSPEC_ORDER_RANDOM = True") | orderRandom] ++
+        concat [renderDocument (text "_LAWSPEC_PARALLEL = True") | parallel]
       -- JavaScript collects the law tests, then registers them shuffled.
       ordered = if py || not orderRandom then lawTexts else
         "const _ordered = [];\n{\n  const test = (...registration) => { _ordered.push(registration); };\n" ++ lawTexts ++
-        "}\nfor (const registration of _harness.shuffled(_ordered)) test(...registration);\n\n"
+        "}\nfor (const registration of _harness.shuffled(_ordered, " ++ Doc.render Doc.Compact (message (unitName u)) ++ ")) test(...registration);\n\n"
       -- parallel: node:test runs the unit's law tests concurrently, in one
       -- suite (its tests keep their names). Python's are run by pytest-xdist
       -- when lawspec test finds it (see LawSpec.TestManifest).
       parallel = maybe False C.harnessParallel (C.unitHarnessSettings u)
       laws' = if py || not parallel then ordered else
+        "_harness.parallelism(" ++ Doc.render Doc.Compact (message (unitName u)) ++ ");\n" ++
         "describe(" ++ Doc.render Doc.Compact (message (unitName u ++ " laws")) ++ ", {concurrency: true}, () => {\n" ++ ordered ++ "});\n\n"
       tests = laws' ++ modelTexts ++ supervision ++ benchmarks ++ shuffled
   wrappers <- concat <$> mapM contractWrapper (contracts u)
@@ -345,7 +348,8 @@ scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions 
           let local = localName (C.binderId (C.resourceBinder r))
               shareCall = runtime (if asyncMode then "shareAsync" else "share")
                 [quoted key, asyncPrefix <> lambda [] (render (C.resourceAcquire r)),
-                 asyncPrefix <> lambda [text local] (render reset), asyncPrefix <> lambda [text local] (render (C.resourceRelease r))]
+                 asyncPrefix <> lambda [text local] (render reset), asyncPrefix <> lambda [text local] (render (C.resourceRelease r)),
+                 text (if C.resourceConcurrent r then (if py then "True" else "true") else (if py then "False" else "false"))]
               returned = statement (runtime "unshare" [quoted key])
           in statements
           [ assign local ((if asyncMode then text "await " else mempty) <> shareCall)

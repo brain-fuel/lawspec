@@ -168,7 +168,9 @@ export function invocations(target, entries, { offline = false, scratch = ".", c
     const files = [...new Set(entries.map((e) => language === "typescript"
       ? `dist/${without(e.file, ".ts")}.js` : e.file))];
     const report = path.join(scratch, "node.xml");
-    const node = ["--test", `--test-name-pattern=(${entries.map(pattern).join("|")})`,
+    // parallel: test files run at the same time too.
+    const node = ["--test", ...(entries.some((e) => e.parallel) ? ["--test-concurrency=" + Math.max(2, (globalThis.navigator?.hardwareConcurrency ?? 2))] : []),
+      `--test-name-pattern=(${entries.map(pattern).join("|")})`,
       "--test-reporter=spec", "--test-reporter-destination=stdout",
       "--test-reporter=junit", `--test-reporter-destination=${report}`, ...files];
     const run = { laws: entries, command: coverage ? "npx" : process.execPath,

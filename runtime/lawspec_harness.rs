@@ -302,10 +302,16 @@ fn turn_seed() -> u64 {
     })
 }
 
-pub fn turn(unit: &str, index: usize) -> Turn {
+/// With `parallel` too, the tests start in the seeded order and then run at
+/// the same time: a test's turn ends when it starts.
+pub fn turn(unit: &str, index: usize, parallel: bool) -> Turn {
     let rank = ls::SplitMix64::new(turn_seed() ^ (index as u64).wrapping_mul(0x9E3779B97F4A7C15)).next();
     let mut turns = TURNS.lock().unwrap_or_else(|e| e.into_inner());
     {
+        if !turns.contains_key(unit) {
+            let seed = turn_seed();
+            println!("order random seed {seed} ({unit}): LAWSPEC_SEED={seed} replays this order");
+        }
         let entry = turns.entry(unit.to_string()).or_insert_with(|| Turns { running: false, waiting: Vec::new(), arrived: std::time::Instant::now() });
         entry.waiting.push((rank, index));
         entry.arrived = std::time::Instant::now();
@@ -316,8 +322,9 @@ pub fn turn(unit: &str, index: usize) -> Turn {
         let first = entry.waiting.iter().min().copied();
         if !entry.running && first == Some((rank, index)) && entry.arrived.elapsed() >= std::time::Duration::from_millis(20) {
             entry.waiting.retain(|w| *w != (rank, index));
-            entry.running = true;
-            return Turn(unit.to_string());
+            entry.running = !parallel;
+            TURN_FREE.notify_all();
+            return Turn(if parallel { String::new() } else { unit.to_string() });
         }
         turns = TURN_FREE.wait_timeout(turns, std::time::Duration::from_millis(5)).unwrap_or_else(|e| e.into_inner()).0;
     }
@@ -331,4 +338,20 @@ impl Drop for Turn {
         }
         TURN_FREE.notify_all();
     }
+}
+
+/// parallel: how the unit's tests run at the same time. libtest runs them on
+/// its test threads (RUST_TEST_THREADS, else one per processor).
+pub fn parallelism(unit: &str) {
+    static SEEN: Mutex<Vec<String>> = Mutex::new(Vec::new());
+    let mut seen = SEEN.lock().unwrap_or_else(|e| e.into_inner());
+    if seen.iter().any(|u| u == unit) {
+        return;
+    }
+    seen.push(unit.to_string());
+    let workers = std::env::var("RUST_TEST_THREADS").ok().and_then(|n| n.parse().ok())
+        .unwrap_or_else(|| std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1));
+    let mode = "threads (libtest)";
+    record(&format!("parallel {unit}"), &[("parallel", quote(unit)), ("mode", quote(mode)), ("workers", workers.to_string())]);
+    println!("{unit} runs in parallel: {mode}, {workers} worker(s)");
 }

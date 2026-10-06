@@ -166,7 +166,10 @@ data HarnessPlan = HarnessPlan
 data ResourceDeclaration = ResourceDeclaration
   { resourceType :: Type, resourceAcquire :: Expr
   , resourceRelease :: (String, Expr), resourceReset :: Maybe (String, Expr)
-  , resourceSpan :: Span }
+  , resourceSpan :: Span
+  -- resource T is concurrent ...: cases may use one shared T at the same
+  -- time without interfering, so a harness may share it under parallel.
+  , resourceConcurrent :: Bool }
   deriving (Eq, Show, Generic)
 
 -- ability Name (a :: Type)* is (op :: Type)* [laws law*] end. Operations are

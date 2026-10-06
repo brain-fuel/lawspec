@@ -18,6 +18,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"sync"
@@ -390,8 +391,18 @@ func lsHarnessShuffle() {
 	if f := flag.Lookup("test.shuffle"); f != nil && f.Value.String() == "off" {
 		seed := os.Getenv("LAWSPEC_SEED")
 		if seed == "" {
-			seed = "on"
+			seed = fmt.Sprint(time.Now().UnixNano() % 2147483647)
 		}
 		_ = flag.Set("test.shuffle", seed)
+		fmt.Printf("order random seed %s: LAWSPEC_SEED=%s replays this order\n", seed, seed)
 	}
+}
+
+// lsHarnessParallelism records how a parallel unit's tests run: each calls
+// t.Parallel, so go test runs them on goroutines across GOMAXPROCS threads.
+func lsHarnessParallelism(unit string) {
+	workers := runtime.GOMAXPROCS(0)
+	mode := "goroutines (t.Parallel)"
+	lsHarnessRecord("parallel "+unit, map[string]any{"parallel": unit, "mode": mode, "workers": workers})
+	fmt.Printf("%s runs in parallel: %s, %d worker(s)\n", unit, mode, workers)
 }

@@ -196,14 +196,95 @@ def known_failing(law, name, reason, tests):
         "remove `known failing` from its harness")
 
 
-def shuffle_tests(namespace, names):
-    """order random: run these tests in an order chosen by the run's seed."""
-    seed = os.environ.get("LAWSPEC_SEED")
-    order = list(names)
-    random.Random(int(seed) if seed is not None else None).shuffle(order)
-    tests = [(name, namespace.pop(name)) for name in order if name in namespace]
-    for name, test in tests:
-        namespace[name] = test
+# Scheduling: the harness driver owns the order and parallelism of a unit's
+# tests; pytest hosts and reports them. A test module whose harness says
+# `order random` sets _LAWSPEC_ORDER_RANDOM, and `parallel` _LAWSPEC_PARALLEL;
+# the conftest beside the tests imports these hooks.
+
+def _order_seed():
+    global _ORDER_SEED
+    if _ORDER_SEED is None:
+        given = os.environ.get("LAWSPEC_SEED")
+        _ORDER_SEED = int(given) if given else random.randrange(2 ** 31)
+    return _ORDER_SEED
+
+
+_ORDER_SEED = None
+_shuffled_modules = []
+_parallel_items = {}
+_parallel_runs = {}
+_parallel_lock = threading.Lock()
+
+
+def _module_flag(item, name):
+    module = getattr(item, "module", None)
+    return bool(getattr(module, name, False))
+
+
+def pytest_collection_modifyitems(session, config, items):
+    """order random: each such module's tests, in their places among the
+    others, in an order the run's seed chooses (LAWSPEC_SEED replays it).
+    parallel: the selected tests of each such module, for the driver."""
+    by_module = {}
+    for index, item in enumerate(items):
+        if _module_flag(item, "_LAWSPEC_ORDER_RANDOM"):
+            by_module.setdefault(item.module.__name__, []).append(index)
+    for module, positions in sorted(by_module.items()):
+        chosen = [items[i] for i in positions]
+        random.Random(f"{_order_seed()}:{module}").shuffle(chosen)
+        for position, item in zip(positions, chosen):
+            items[position] = item
+        _shuffled_modules.append(module)
+    parallel = sorted({item.module.__name__ for item in items if _module_flag(item, "_LAWSPEC_PARALLEL")})
+    if _xdist(config):
+        for module in parallel:
+            _parallelism(module, "processes (pytest-xdist)", config.option.numprocesses)
+        return
+    for item in items:
+        if _module_flag(item, "_LAWSPEC_PARALLEL"):
+            _parallel_items.setdefault(item.module.__name__, []).append(item)
+
+
+def _xdist(config):
+    return config.pluginmanager.hasplugin("xdist") and bool(getattr(config.option, "numprocesses", None))
+
+
+def _parallelism(module, mode, workers):
+    _record("parallel " + module, {"parallel": module, "mode": mode, "workers": workers})
+    print(f"{module} runs in parallel: {mode}, {workers} worker(s)")
+
+
+def pytest_pyfunc_call(pyfuncitem):
+    """parallel without pytest-xdist: the first test of a module starts all
+    its selected tests on a thread pool, in their (perhaps shuffled) order;
+    each test then waits for its own result. Threads run truly in parallel
+    on free-threaded CPython (3.13t and later); otherwise they interleave
+    (sleeps and I/O overlap, computation takes turns)."""
+    module = pyfuncitem.module.__name__ if getattr(pyfuncitem, "module", None) else None
+    group = _parallel_items.get(module)
+    if not group or pyfuncitem not in group:
+        return None
+    import concurrent.futures
+    import sys
+    with _parallel_lock:
+        runs = _parallel_runs.get(module)
+        if runs is None:
+            pool = concurrent.futures.ThreadPoolExecutor(max_workers=len(group))
+            runs = {item.nodeid: pool.submit(item.obj) for item in group}
+            _parallel_runs[module] = runs
+            free = hasattr(sys, "_is_gil_enabled") and not sys._is_gil_enabled()
+            _parallelism(module, "threads (free-threaded)" if free else
+                         "threads, interleaved under the GIL (free-threaded CPython runs them truly in parallel)",
+                         len(group))
+    runs[pyfuncitem.nodeid].result()
+    return True
+
+
+def pytest_terminal_summary(terminalreporter, exitstatus, config):
+    if _shuffled_modules:
+        terminalreporter.write_line(
+            f"order random seed {_order_seed()}: LAWSPEC_SEED={_order_seed()} replays this order"
+            + ("" if exitstatus == 0 else " (the run failed)"))
 
 
 def benchmark(name, body, budget=0.2, limit=100000):

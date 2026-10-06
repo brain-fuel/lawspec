@@ -2142,19 +2142,42 @@ export function releaseResource(kind, value) {
 // so no case sees what another left. One case holds it at a time, and it is
 // released when the test process ends.
 const sharedResources = new Map();
-export function share(key, acquire, reset, release) {
+export function share(key, acquire, reset, release, concurrent = false) {
   let entry = sharedResources.get(key);
-  if (entry) { reset(entry.value); return entry.value; }
+  if (entry) {
+    // A synchronous case never overlaps another, concurrent or not.
+    reset(entry.value);
+    return entry.value;
+  }
   entry = { value: acquire() };
   sharedResources.set(key, entry);
   globalThis.process.once("exit", () => release(entry.value));
   return entry.value;
 }
-export async function shareAsync(key, acquire, reset, release) {
+export async function shareAsync(key, acquire, reset, release, concurrent = false) {
   let entry = sharedResources.get(key);
   if (!entry) {
-    entry = { turn: Promise.resolve(), held: false };
+    entry = { turn: Promise.resolve(), held: false, users: 0, concurrent };
     sharedResources.set(key, entry);
+  }
+  // A concurrent resource is held by any number of cases at once, and reset
+  // only when none holds it; acquiring it still takes a turn.
+  if (concurrent) {
+    const previous = entry.turn;
+    let done;
+    entry.turn = new Promise((resolve) => { done = resolve; });
+    await previous;
+    try {
+      if (entry.held && entry.users === 0) await reset(entry.value);
+      else if (!entry.held) {
+        entry.value = await acquire();
+        entry.held = true;
+        let released = false;
+        globalThis.process.on("beforeExit", async () => { if (!released) { released = true; await release(entry.value); } });
+      }
+      entry.users += 1;
+    } finally { done(); }
+    return entry.value;
   }
   // Wait for the case that holds it, then hold it.
   const previous = entry.turn;
@@ -2175,6 +2198,7 @@ export async function shareAsync(key, acquire, reset, release) {
 }
 export function unshare(key) {
   const entry = sharedResources.get(key);
+  if (entry?.concurrent) { entry.users -= 1; return; }
   if (entry && entry.release) { const done = entry.release; entry.release = null; done(); }
 }
 export function freePort() {

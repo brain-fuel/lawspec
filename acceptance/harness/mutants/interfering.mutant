@@ -1,0 +1,8 @@
+rejected-at: generation
+expect: share Scratch with parallel
+@@ examples/specs/harness.lawspec
+<<<<<<<
+resource Scratch is concurrent
+=======
+resource Scratch is
+>>>>>>>

@@ -1269,30 +1269,43 @@ withResource acquire release body = do
 -- value per scope key. The first use acquires it; every later use resets it
 -- first, so no case sees what another left. One case holds it at a time,
 -- and releaseShared (after the unit's spec) releases every one.
-data SharedEntry = SharedEntry (MVar (Maybe Scalar)) (Scalar -> IO ())
+data SharedEntry = SharedEntry (MVar (Maybe Scalar)) (IORef Int) (Scalar -> IO ())
 
 {-# NOINLINE sharedResources #-}
 sharedResources :: IORef [(String, SharedEntry)]
 sharedResources = unsafePerformIO (newIORef [])
 
-withShared :: String -> IO Scalar -> (Scalar -> IO ()) -> (Scalar -> IO ()) -> (Scalar -> IO a) -> IO a
-withShared key acquire reset release body = do
+-- | A concurrent resource (resource T is concurrent) is held by any number
+-- of cases at once, and reset only when none holds it.
+withShared :: String -> Bool -> IO Scalar -> (Scalar -> IO ()) -> (Scalar -> IO ()) -> (Scalar -> IO a) -> IO a
+withShared key concurrent acquire reset release body = do
   fresh <- newMVar Nothing
-  SharedEntry slot _ <- atomicModifyIORef' sharedResources $ \entries -> case lookup key entries of
+  users <- newIORef 0
+  SharedEntry slot holders _ <- atomicModifyIORef' sharedResources $ \entries -> case lookup key entries of
     Just entry -> (entries, entry)
-    Nothing -> let entry = SharedEntry fresh release in (entries ++ [(key, entry)], entry)
-  held <- takeMVar slot
-  value <- (case held of
-    Just value -> value <$ reset value
-    Nothing -> acquire >>= \value -> evaluate (forceScalar value `seq` value))
-    `onFailure` putMVar slot held
-  body value `finally` putMVar slot (Just value)
+    Nothing -> let entry = SharedEntry fresh users release in (entries ++ [(key, entry)], entry)
+  if concurrent then do
+    value <- modifyMVar slot $ \held -> do
+      count <- readIORef holders
+      v <- case held of
+        Just v -> v <$ (if count == 0 then reset v else pure ())
+        Nothing -> acquire >>= \v -> evaluate (forceScalar v `seq` v)
+      atomicModifyIORef' holders (\n -> (n + 1, ()))
+      pure (Just v, v)
+    body value `finally` atomicModifyIORef' holders (\n -> (n - 1, ()))
+  else do
+   held <- takeMVar slot
+   value <- (case held of
+     Just value -> value <$ reset value
+     Nothing -> acquire >>= \value -> evaluate (forceScalar value `seq` value))
+     `onFailure` putMVar slot held
+   body value `finally` putMVar slot (Just value)
   where onFailure action handler = action `catch` \e -> handler >> throwIO (e :: SomeException)
 
 releaseShared :: IO ()
 releaseShared = do
   entries <- atomicModifyIORef' sharedResources (\entries -> ([], entries))
-  forM_ (reverse entries) $ \(_, SharedEntry slot release) ->
+  forM_ (reverse entries) $ \(_, SharedEntry slot _ release) ->
     takeMVar slot >>= maybe (pure ()) release
 
 -- | A built-in resource of the kind, built by its constructor.

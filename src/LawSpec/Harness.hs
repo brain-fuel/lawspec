@@ -126,6 +126,13 @@ elaborateHarness u = case unitHarness u of
         reset : _ -> unless reset
           (Left (at range, "share " ++ r ++ " per " ++ scopeName scope ++ ": " ++ r ++ " does not declare reset, so one law would " ++
             "see what another left in it, which changes what laws observe; declare `reset` in resource " ++ r ++ " to share it"))
+    -- parallel runs the laws at the same time: a resource they share must
+    -- say they cannot interfere through it.
+    let parallel = not (null [() | HarnessParallel _ <- items])
+    when parallel $ forM_ [(r, range) | HarnessShare r _ range <- items] $ \(r, range) ->
+      unless (or [resourceConcurrent d | d <- resourceDeclarations u, resourceTypeName (resourceType d) == r])
+        (Left (at range, "share " ++ r ++ " with parallel: the laws would use one " ++ r ++ " at the same time, which could change " ++
+          "what they observe; declare `resource " ++ r ++ " is concurrent ...` if they cannot interfere through it, or do not share it"))
     let benchmarks = [n | HarnessBenchmark n _ _ <- items]
     forM_ [(n, range) | HarnessBenchmark n _ range <- items] $ \(n, range) ->
       when (length (filter (== n) benchmarks) > 1) (Left (at range, "the benchmark `" ++ n ++ "` is declared twice"))

@@ -2418,13 +2418,42 @@ public final class LawSpecRuntime {
     // A semaphore, not a lock: a suspending Kotlin case may end on another thread.
     final java.util.concurrent.Semaphore lock = new java.util.concurrent.Semaphore(1);
     boolean held;
+    int users;
+    boolean concurrent;
     Object value;
   }
   private static final java.util.Map<String, SharedEntry> shared = new java.util.concurrent.ConcurrentHashMap<>();
 
-  @SuppressWarnings("unchecked")
   public static <T> T share(String key, SharedAcquire<T> acquire, SharedUse<T> reset, SharedUse<T> release) {
+    return share(key, acquire, reset, release, false);
+  }
+
+  /** A concurrent resource is held by any number of cases at once, and reset only when none holds it. */
+  @SuppressWarnings("unchecked")
+  public static <T> T share(String key, SharedAcquire<T> acquire, SharedUse<T> reset, SharedUse<T> release, boolean concurrent) {
     SharedEntry entry = shared.computeIfAbsent(key, k -> new SharedEntry());
+    if (concurrent) {
+      synchronized (entry) {
+        entry.concurrent = true;
+        try {
+          if (entry.held && entry.users == 0) reset.accept((T) entry.value);
+          else if (!entry.held) {
+            entry.value = acquire.get();
+            entry.held = true;
+            final T value = (T) entry.value;
+            Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+              try { release.accept(value); } catch (Exception e) { throw new RuntimeException(e); }
+            }));
+          }
+        } catch (RuntimeException | Error e) {
+          throw e;
+        } catch (Exception e) {
+          throw new RuntimeException(e);
+        }
+        entry.users++;
+        return (T) entry.value;
+      }
+    }
     entry.lock.acquireUninterruptibly();
     try {
       if (entry.held) reset.accept((T) entry.value);
@@ -2448,7 +2477,12 @@ public final class LawSpecRuntime {
 
   public static void unshare(String key) {
     SharedEntry entry = shared.get(key);
-    if (entry != null) entry.lock.release();
+    if (entry == null) return;
+    if (entry.concurrent) {
+      synchronized (entry) { entry.users--; }
+      return;
+    }
+    entry.lock.release();
   }
 
   // Built-in resources (see LawSpec.Resources): a law acquires them before
