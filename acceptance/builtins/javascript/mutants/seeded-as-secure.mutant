@@ -4,7 +4,7 @@ expect: a token has the length asked
 import * as data from '.././lawspec_data.mjs';
 =======
 import * as data from '.././lawspec_data.mjs';
-import { RandomHandler } from '../lawspec/random.mjs';
+import { RandomHandler } from '../lawspec/randomness.mjs';
 >>>>>>>
 <<<<<<<
   return secureRandom.secureBytes(value0);

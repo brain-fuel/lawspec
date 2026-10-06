@@ -5,11 +5,11 @@ expect: secureBytes
 import * as data from '.././lawspec_data.js';
 =======
 import * as data from '.././lawspec_data.js';
-import { RandomHandler } from '../lawspec/random.js';
+import { RandomHandler } from '../lawspec/randomness.js';
 >>>>>>>
 <<<<<<<
   return secureRandom.secureBytes(value0);
 =======
-  const seeded: import('.././lawspec_abilities/lawspec/random.js').SecureRandom = new RandomHandler();
+  const seeded: import('.././lawspec_abilities/lawspec/randomness.js').SecureRandom = new RandomHandler();
   return seeded.secureBytes(value0);
 >>>>>>>

@@ -3,7 +3,7 @@ expect: a token has the length asked
 <<<<<<<
     return secureRandom.secureBytes(value0)
 =======
-    import lawspec.random
-    seeded: "lawspec_abilities.lawspec.random.SecureRandom" = lawspec.random.RandomHandler()
+    import lawspec.randomness
+    seeded: "lawspec_abilities.lawspec.randomness.SecureRandom" = lawspec.randomness.RandomHandler()
     return seeded.secureBytes(value0)
 >>>>>>>

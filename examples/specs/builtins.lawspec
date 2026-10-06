@@ -3,9 +3,9 @@ unit example.builtins
 -- The built-in abilities: each unit is imported like any other, and each
 -- ability's production handler is the runtime's default one.
 import lawspec.time (Instant, advance)
-import lawspec.random
-import lawspec.system
-import lawspec.log (LogLevel)
+import lawspec.randomness
+import lawspec.host
+import lawspec.logging (LogLevel)
 import lawspec.concurrent
 
 -- Time. A deadline is now plus a wait; instants move by durations and are

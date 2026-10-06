@@ -43,30 +43,30 @@ extra-source-files:
     runtime/defaults/go/crypto.go
     runtime/defaults/go/crypto_vectors.go
     runtime/defaults/go/crypto_vectors_go126.go
-    runtime/defaults/go/log.go
-    runtime/defaults/go/random.go
-    runtime/defaults/go/system.go
+    runtime/defaults/go/host.go
+    runtime/defaults/go/logging.go
+    runtime/defaults/go/randomness.go
     runtime/defaults/go/time.go
     runtime/defaults/javascript/concurrent.mjs
     runtime/defaults/javascript/crypto.mjs
     runtime/defaults/javascript/crypto_vectors.mjs
-    runtime/defaults/javascript/log.mjs
-    runtime/defaults/javascript/random.mjs
-    runtime/defaults/javascript/system.mjs
+    runtime/defaults/javascript/host.mjs
+    runtime/defaults/javascript/logging.mjs
+    runtime/defaults/javascript/randomness.mjs
     runtime/defaults/javascript/time.mjs
     runtime/defaults/python/concurrent.py
     runtime/defaults/python/crypto.py
-    runtime/defaults/python/log.py
-    runtime/defaults/python/random.py
-    runtime/defaults/python/system.py
+    runtime/defaults/python/host.py
+    runtime/defaults/python/logging.py
+    runtime/defaults/python/randomness.py
     runtime/defaults/python/test_crypto_vectors.py
     runtime/defaults/python/time.py
     runtime/defaults/typescript/concurrent.ts
     runtime/defaults/typescript/crypto.ts
     runtime/defaults/typescript/crypto_vectors.ts
-    runtime/defaults/typescript/log.ts
-    runtime/defaults/typescript/random.ts
-    runtime/defaults/typescript/system.ts
+    runtime/defaults/typescript/host.ts
+    runtime/defaults/typescript/logging.ts
+    runtime/defaults/typescript/randomness.ts
     runtime/defaults/typescript/time.ts
     runtime/rust/Cargo.toml
     runtime/rust/Cargo.lock

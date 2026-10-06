@@ -17,7 +17,7 @@ export function elapsed(
 // LawSpec argument 0: Int32
 // LawSpec result: Bytes
 export function token(
-    secureRandom: import('.././lawspec_abilities/lawspec/random.js').SecureRandom,
+    secureRandom: import('.././lawspec_abilities/lawspec/randomness.js').SecureRandom,
     value0: number
 ): Uint8Array {
   return secureRandom.secureBytes(value0);
@@ -30,7 +30,7 @@ const listen = "const s=require('net').createServer();s.listen(Number(process.ar
 // LawSpec argument 0: Int32
 // LawSpec result: Bool
 export function listening(
-    ports: import('.././lawspec_abilities/lawspec/system.js').Ports,
+    ports: import('.././lawspec_abilities/lawspec/host.js').Ports,
     value0: number
 ): boolean {
   execFileSync(process.execPath, ['-e', listen, String(ports.freePort())]);
@@ -40,7 +40,7 @@ export function listening(
 // LawSpec argument 0: Int32
 // LawSpec result: Bool
 export function charge(
-    log: import('.././lawspec_abilities/lawspec/log.js').Log,
+    log: import('.././lawspec_abilities/lawspec/logging.js').Log,
     value0: number
 ): boolean {
   if (value0 % 2 === 0) {

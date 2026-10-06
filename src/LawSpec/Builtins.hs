@@ -5,10 +5,10 @@
 -- every target (LawSpec.BuiltinDefaults); lawspec.json may bind another.
 --
 --   lawspec.time    Clock (with Instant), and the virtual clock
---   lawspec.random  Random (seeded), SecureRandom, and seeded random n
+--   lawspec.randomness  Random (seeded), SecureRandom, and seeded random n
 --   lawspec.crypto  Hash, KeyExchange, Signature, Aead: post-quantum by default
---   lawspec.system  FileSystem, Environment, Ports
---   lawspec.log     Log, Trace
+--   lawspec.host    FileSystem, Environment, Ports (the host machine)
+--   lawspec.logging     Log, Trace
 --   lawspec.concurrent   Async
 --
 -- lawspec.time also holds durations, added implicitly to programs that use
@@ -24,7 +24,7 @@ import Data.List (isPrefixOf, stripPrefix, tails)
 
 -- The built-in units with abilities, other than lawspec.time.
 builtinUnits :: [String]
-builtinUnits = ["lawspec.random", "lawspec.crypto", "lawspec.system", "lawspec.log", "lawspec.concurrent"]
+builtinUnits = ["lawspec.randomness", "lawspec.crypto", "lawspec.host", "lawspec.logging", "lawspec.concurrent"]
 
 -- Every unit whose abilities have default handlers.
 defaultedUnits :: [String]
@@ -158,10 +158,10 @@ clockSource = unlines
 -- The source of each built-in unit with abilities, other than lawspec.time.
 builtinSource :: String -> String
 builtinSource unit = case unit of
-  "lawspec.random" -> randomSource
+  "lawspec.randomness" -> randomSource
   "lawspec.crypto" -> cryptoSource
-  "lawspec.system" -> systemSource
-  "lawspec.log" -> logSource
+  "lawspec.host" -> hostSource
+  "lawspec.logging" -> logSource
   "lawspec.concurrent" -> asyncSource
   _ -> ""
 
@@ -171,7 +171,7 @@ builtinSource unit = case unit of
 -- a secure one, and SecureRandom has no spec handlers.
 randomSource :: String
 randomSource = unlines
-  [ "unit lawspec.random"
+  [ "unit lawspec.randomness"
   , ""
   , "-- One step of the generator: a 64-bit linear congruential generator"
   , "-- (Knuth's MMIX constants)."
@@ -397,9 +397,9 @@ cryptoSource = unlines
   , "end"
   ]
 
-systemSource :: String
-systemSource = unlines
-  [ "unit lawspec.system"
+hostSource :: String
+hostSource = unlines
+  [ "unit lawspec.host"
   , ""
   , "-- Files by path. A relative path is from the process's working directory."
   , "ability FileSystem is"
@@ -444,7 +444,7 @@ systemSource = unlines
 
 logSource :: String
 logSource = unlines
-  [ "unit lawspec.log"
+  [ "unit lawspec.logging"
   , ""
   , "type LogLevel is | Debug | Info | Warning | Error end"
   , ""

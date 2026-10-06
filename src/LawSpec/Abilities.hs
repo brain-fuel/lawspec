@@ -281,7 +281,7 @@ elaborateUnit u = do
       handlerAbilities = M.fromList [(handlerName h, handlerAbility h) | h <- handlerDeclarations u]
       -- What `using` asks for, by ability name.
       request where' use = case use of
-        UseHandler h | Just _ <- isSeededUse h -> Left (where', "seeded random needs lawspec.random: add `import lawspec.random`")
+        UseHandler h | Just _ <- isSeededUse h -> Left (where', "seeded random needs lawspec.randomness: add `import lawspec.randomness`")
         UseHandler h -> case M.lookup (unqualifiedHandler h) handlerAbilities of
           Just inst -> pure (inst, Left (ChooseSpec (unqualifiedHandler h)))
           Nothing -> Left (where', "there is no handler called " ++ h)
@@ -559,7 +559,7 @@ seededForSecure :: String -> String
 seededForSecure what = what ++ " needs SecureRandom, which a seeded Random cannot answer: seeded draws are " ++
   "predictable, so the two are separate abilities. Leave SecureRandom to its default handler"
 
--- `seeded random n` in a law's using list names a copy of lawspec.random's
+-- `seeded random n` in a law's using list names a copy of lawspec.randomness's
 -- seededRandom that starts at n (LawSpec.Builtins); each seed is its own
 -- handler, seededRandom<n>.
 seededHandlers :: Unit -> Either Failure Unit

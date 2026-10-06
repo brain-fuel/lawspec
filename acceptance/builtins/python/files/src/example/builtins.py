@@ -15,13 +15,13 @@ def elapsed(clock: "lawspec_abilities.lawspec.time.Clock", value0: int) -> ls.ti
 
 # LawSpec argument 0: Int32
 # LawSpec result: Bytes
-def token(secureRandom: "lawspec_abilities.lawspec.random.SecureRandom", value0: int) -> bytes:
+def token(secureRandom: "lawspec_abilities.lawspec.randomness.SecureRandom", value0: int) -> bytes:
     return secureRandom.secureBytes(value0)
 
 
 # LawSpec argument 0: Int32
 # LawSpec result: Bool
-def listening(ports: "lawspec_abilities.lawspec.system.Ports", value0: int) -> bool:
+def listening(ports: "lawspec_abilities.lawspec.host.Ports", value0: int) -> bool:
     port = ports.freePort()
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server:
         server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -32,7 +32,7 @@ def listening(ports: "lawspec_abilities.lawspec.system.Ports", value0: int) -> b
 
 # LawSpec argument 0: Int32
 # LawSpec result: Bool
-def charge(log: "lawspec_abilities.lawspec.log.Log", value0: int) -> bool:
+def charge(log: "lawspec_abilities.lawspec.logging.Log", value0: int) -> bool:
     import lawspec_data as data
     if value0 % 2 == 0:
         log.logMessage(data.LogLevelInfo(), f"charged {value0}")
