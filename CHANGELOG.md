@@ -2,6 +2,45 @@
 
 ## Unreleased
 
+- Existing features are abilities. `async f ::` is `f :: ... uses Async`
+  (both spellings mean the same declaration); workflow policies are handler
+  transformers over `Async`, `Clock` and `Fail`; a protocol is `Session P`,
+  a mailbox `Mailbox T`, an actor a `Process` with a `State` handler, a
+  supervisor a `Fail` handler that restarts, a model a stateful spec
+  handler checked through `abstract`, a scenario a program under a
+  `Scheduler` handler, and distribution the `Network` ability whose
+  transports are handlers. The syntax is unchanged; `lawspec check --json`
+  lists each unit's `abilityRows`, and the new page "Existing features as
+  abilities" shows each mapping.
+- Workflow time is the `Clock` ability's: a law that installs a clock (such
+  as `using virtual clock`) runs its workflows on it. On a virtual clock,
+  timeouts and hedges count virtual time, so generated workflow tests now
+  run with them on, deterministically; before, they were off because they
+  used real time.
+- The network is secure by default on every target: each node has an
+  ML-DSA-65 identity, the first frame between two nodes waits for a signed
+  ML-KEM-768 handshake, and frames cross sealed with AES-256-GCM. The record
+  format is the same on every target, and each checks the same handshake
+  vector. `nativeBindings.network` in `lawspec.json` binds a node identity
+  and trusted peers (written to `lawspec-network.conf`). An in-memory
+  transport without the handshake exists for tests only; no setting turns
+  security off. Nodes need the crypto libraries generated projects already
+  depend on.
+- Channel-end `take` tokens are 32 bytes from the operating system's secure
+  generator on every target (Haskell's were clock-based).
+- Remote definitions are named by a SHA3-256 content hash that names its
+  algorithm: `sha3-256:` then 64 hexadecimal digits.
+- Temporal propositions: `eventually within 2 s, P`, `always within 500 ms,
+  P` and `never within d, P`, over the `Clock`; under `using virtual clock`
+  they are deterministic and checked at compile time.
+- Performance budgets: `expect f x takes at most 5 ms`, or `e takes at most
+  d` as a law's claim, timed on the real clock, with the new evidence status
+  `measured`.
+- Typed mailboxes have `receive_within` / `receiveWithin`: the next message,
+  or nothing when none arrives in time.
+- The `Async` default handler also starts tasks, waits for them and runs
+  several side by side; workflows' `all` groups run through it.
+
 - Built-in abilities. `import lawspec.time`, `lawspec.randomness`,
   `lawspec.crypto`, `lawspec.host`, `lawspec.logging` or `lawspec.concurrent`
   adds the unit and its abilities: `Clock`; `Random` and `SecureRandom`;

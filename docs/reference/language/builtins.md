@@ -111,9 +111,11 @@ into the build files; existing projects add them by hand.
 other work run. Its default handler is each target's native concurrency:
 `Thread.yield` on the JVM, `runtime.Gosched` in Go, `yield` in Haskell,
 `std::thread::yield_now` in Rust, and a no-op in JavaScript, where a
-handler's operations run synchronously. The [asynchronous
-functions](async-functions.md) of earlier releases keep their `async`
-keyword; making it `uses Async` builds on this ability.
+handler's operations run synchronously. Natively it also starts functions as
+tasks, waits for them, and runs several side by side; workflows use these.
+`async f ::` is `f :: ... uses Async`: an [asynchronous
+adapter](async-functions.md) runs on this default handler (see [existing
+features as abilities](abilities-mapping.md#async)).
 
 ## Limits
 

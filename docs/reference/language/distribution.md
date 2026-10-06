@@ -29,7 +29,10 @@ print(node.address)                          # tcp://127.0.0.1:7000
 ```
 
 A transport is a small interface (start, send, close), so another network
-stack can stand in for these three.
+stack can stand in for these three. Transports are the handlers of the
+`Network` ability (see [existing features as
+abilities](abilities-mapping.md#distribution)); a node secures every one of
+them the same way (see [security](#security)).
 
 ### Testing with faults
 
@@ -62,10 +65,11 @@ seed, so they repeat.
   that already talks across the network **moves** to the new node; a local
   end stays put and the sending node relays its conversation (see
   [moving a channel end](#moving-a-channel-end)).
-- **Checked definitions** are evaluated **by content hash**: the hash of
-  the definition and everything it uses. Two nodes agree on a hash exactly
-  when they hold the same definition, so a node never runs a different
-  version of the code by mistake.
+- **Checked definitions** are evaluated **by content hash**: the SHA3-256
+  hash (FIPS 202) of the definition and everything it uses, written with
+  its algorithm, as `sha3-256:` then 64 hexadecimal digits. Two nodes agree
+  on a hash exactly when they hold the same definition, so a node never runs
+  a different version of the code by mistake.
 - **Mailboxes.** A send to a mailbox on another node waits until the
   mailbox has the message. A lost send is sent again, and the mailbox takes
   it once.
@@ -80,7 +84,9 @@ different ways.
 
 1. B sends D a text address for the end: the end's address on B, then
    `?take=` and a one-time token, such as
-   `tcp://10.0.0.5:7000/end-12?take=9f2c...`.
+   `tcp://10.0.0.5:7000/end-12?take=9f2c...`. The token is 32 bytes from
+   the operating system's secure generator, as 64 hexadecimal digits, as
+   `SecureRandom`'s `secureToken` gives, on every target.
 2. D asks B for the end with a `take` frame carrying the token. B hands
    over the end's state in a `state` frame: where the peer is, the next
    sequence numbers each way, the values it sent that were not yet
@@ -147,6 +153,115 @@ An end that receives `moved` switches to the new address when its peer's
 address is one of the former ones (or it has none yet), and answers
 `moved-ack` whenever it now sends to the new address.
 
+## Security
+
+The network is secure by default, on every transport and every target, and
+nodes on different targets interoperate:
+
+- each node has an **identity**, an ML-DSA-65 key pair (FIPS 204);
+- before two nodes exchange frames, they run a **handshake**: a signed
+  ML-KEM-768 key exchange (FIPS 203);
+- every frame then crosses **sealed** with AES-256-GCM (NIST SP 800-38D),
+  under a key derived with SHAKE256 (FIPS 202).
+
+Nothing in `lawspec.json` turns this off. The one exception is made for tests
+of the frame layer: `MemoryNetwork(...).insecure_transport_for_tests(name)`
+(`insecureTransportForTests` on the other targets) gives an in-memory
+transport whose node skips the handshake. Only an in-memory network makes
+one, and its type says what it is.
+
+### Identities
+
+A node's identity is the 32-byte seed of its ML-DSA-65 key (FIPS 204,
+`ML-DSA.KeyGen_internal`); its **fingerprint** is the SHA3-256 of the
+verifying key, in hexadecimal. By default each node makes a fresh identity
+from the operating system's secure generator. A node made with an identity
+uses it (`Node(transport, identity=NodeIdentity(seed))` in Python), and one
+made with `trusted` fingerprints talks only to those peers. Otherwise a node
+accepts any peer, but each address keeps the first identity it showed: a
+later handshake from that address with another key is refused.
+
+`lawspec.json` binds both, per target, in `nativeBindings`:
+
+```json
+"nativeBindings": {
+  "network": {"identity": "keys/node.seed", "trusted": "keys/peers.txt"}
+}
+```
+
+`identity` names a file holding the seed as 64 hexadecimal digits, and
+`trusted` a file of fingerprints, one per line, both relative to the
+project. The compiler writes them to `lawspec-network.conf` (lines
+`identity <file>` and `trusted <file>`), which a node reads when it is made
+without an identity: from the file `LAWSPEC_NETWORK_CONF` names, or the first
+`lawspec-network.conf` in the working directory or a directory above it.
+
+### The handshake
+
+The node that sends first to a peer it has no session with queues its
+frames, then sends a **hello**; the peer answers with a **welcome**. A hello
+is sent again every 100 ms until the welcome comes, for up to 5 seconds, and
+a peer answers a repeated hello with the same welcome, so loss, duplication
+and reordering do not matter.
+
+Every handshake and data value is a **record**: the bytes `4C 53 01` (`LS`,
+version 1), a kind byte, then its fields. A field written `w(x)` is the
+length of `x` in LEB128, then `x`.
+
+| Record | Kind | Fields |
+| --- | --- | --- |
+| hello | `01` | the hello body *H*, then `w(signature)` |
+| welcome | `02` | the welcome body *W*, then `w(signature)` |
+| data | `03` | `w(session)`, the direction (one byte), `w(sealed)` |
+
+- *H* = `w(session) w(address) w(vk) w(ek)`: a fresh 16-byte session id, the
+  sender's node address (UTF-8), its ML-DSA-65 verifying key (1952 bytes) and
+  a fresh ML-KEM-768 encapsulation key (1184 bytes). The signature is
+  ML-DSA-65's over `"lawspec-handshake-v1-hello"` followed by *H*, with an
+  empty context.
+- *W* = `w(session) w(address) w(vk) w(ct) w(SHA3-256(H))`: the same session,
+  the answering node's address and verifying key, the ML-KEM-768 ciphertext
+  encapsulated to *ek* (1088 bytes), and the hash of the hello it answers.
+  The signature is over `"lawspec-handshake-v1-welcome"` followed by *W*.
+- Each side checks the other's signature and identity. The node that sent
+  the hello also checks that the welcome comes from the address it sent to,
+  names its session, and answers its hello.
+- Both derive the session key: the first 32 bytes of
+  SHAKE256(*ss* ‖ `"lawspec-session-v1"` ‖ SHA3-256(*H*) ‖ SHA3-256(*W*)),
+  where *ss* is the ML-KEM shared secret.
+
+### Sealed frames
+
+A data record carries one [frame](#frames). *sealed* is a fresh 12-byte
+nonce from the secure generator, then the AES-256-GCM ciphertext and 16-byte
+tag of the frame, with associated data `"lawspec-frame-v1"` ‖ session ‖
+direction. The direction is `00` from the node that sent the hello and `01`
+from the other, so a record cannot be reflected back to its sender. A record
+that does not open is dropped, and the layers above send again, as they do
+for a lost frame.
+
+A node sends on the session it began, or on one its peer began once a frame
+has arrived on it (the peer then surely has the key). The session keys live
+as long as the nodes.
+
+Every target checks the same **handshake vector** (from
+`dev/handshake-vector.py`): from fixed seeds and a ciphertext, the hashes of
+*H* and *W*, the session key and a sealed frame, byte for byte. The
+distribution example's law `` the secure handshake agrees across targets ``
+runs it, and `` frames cross sealed by default `` checks that a frame's
+contents never show on an in-memory network's wire unless its nodes use the
+test-only transport.
+
+### What it protects
+
+The handshake authenticates each node to the other, gives each session a
+fresh key (forward secrecy within a node's lifetime, as the ML-KEM key is
+made for each handshake), and seals every frame against reading and
+tampering, with algorithms chosen to resist quantum computers. A frame
+passed on by a relay (a [moved channel end](#moving-a-channel-end)) is
+sealed again on each hop, so each hop is authenticated, not the frame's
+original sender.
+
 ## Testing distributed behaviour
 
 - **Scenarios** run over a faulty network: one run in three puts each
@@ -163,3 +278,13 @@ address is one of the former ones (or it has none yet), and answers
 
 `lawspec evidence` lists each scenario's network runs as property-tested,
 with its other runs, and each model's consistency.
+
+## References
+
+- NIST FIPS 202, *SHA-3 Standard: Permutation-Based Hash and Extendable-Output
+  Functions*, 2015.
+- NIST FIPS 203, *Module-Lattice-Based Key-Encapsulation Mechanism Standard*,
+  2024.
+- NIST FIPS 204, *Module-Lattice-Based Digital Signature Standard*, 2024.
+- NIST SP 800-38D, *Recommendation for Block Cipher Modes of Operation:
+  Galois/Counter Mode (GCM) and GMAC*, 2007.

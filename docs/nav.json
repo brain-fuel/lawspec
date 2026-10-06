@@ -272,8 +272,16 @@
             "path": "reference/language/builtins.md"
           },
           {
+            "title": "Existing features as abilities",
+            "path": "reference/language/abilities-mapping.md"
+          },
+          {
             "title": "Time and the clock",
             "path": "reference/language/time.md"
+          },
+          {
+            "title": "Time in laws",
+            "path": "reference/language/temporal.md"
           },
           {
             "title": "Randomness",

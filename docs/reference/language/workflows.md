@@ -167,8 +167,9 @@ are not.
 
 ### Timeout
 
-`timeout d` fails an attempt that has not finished within `d`, measured in
-real time. With `retry`, each attempt has its own timeout.
+`timeout d` fails an attempt that has not finished within `d`, measured on
+the workflow's clock (see [running workflows](#running-workflows)). With
+`retry`, each attempt has its own timeout.
 
 ### Rate limit
 
@@ -242,8 +243,16 @@ pass its context where the workflow takes its Symbol context:
 | Haskell | `LS.newWorkflowRuntime LS.realClock seed` | `LS.workflowContext runtime` |
 
 A virtual clock (`VirtualClock`) starts at 0. Waiting advances it at once, so
-retries and rate limits take no real time. Timeouts and hedges always use real
-time.
+retries and rate limits take no real time. Timeouts and hedges count virtual
+time too: an attempt takes the time that passes on the clock while it runs, so
+on a virtual clock an attempt that does not wait on the clock takes none, and
+a hedged attempt starts when the one before it fails.
+
+Workflow time is the `Clock` ability's (see [existing features as
+abilities](abilities-mapping.md#workflows-and-policies)). The policies are
+handler transformers over `Async`, `Clock` and `Fail`. When a law installs a
+`Clock` handler, as `using virtual clock` does, the shared runtime runs its
+workflows on that handler; a runtime you create keeps its own clock.
 
 The trace lists events in order. Each event has a kind, a stage, and a number:
 
@@ -282,9 +291,10 @@ These laws check the generated code. Your own laws and examples check the
 steps. A step declared again with the same type is shared between workflows.
 
 Generated tests run workflows under a runtime with a virtual clock. In it, the
-stateful policies, timeouts and hedges are off: a workflow law calls both the
-workflow and its composition, which would otherwise see each other's state.
-Retries still apply. LawSpec checks every target's policies against the
+stateful policies (rate limits, breakers, bulkheads and caches) are off: a
+workflow law calls both the workflow and its composition, which would
+otherwise see each other's state. Retries, timeouts and hedges apply, on the
+virtual clock, so they are deterministic. LawSpec checks every target's policies against the
 reference models in the built-in `lawspec.resilience` unit instead. To test a
 policy yourself, create a runtime in an adapter and call the workflow under it,
 as the [resilience example](../../../examples/specs/resilience.lawspec) does.
