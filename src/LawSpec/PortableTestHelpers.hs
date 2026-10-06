@@ -60,8 +60,11 @@ assertionHelper py profile = function py name parameters guarded
         (["ty","a","b",show bits,"symbols"]))
     pythonAssert = D.group (D.text "assert (" <> D.nest 4 (D.softbreak <> equal) <>
       D.softbreak <> D.text "), f'{context} | actual={a!r}, expected={b!r}{ls.difference(a, b)}'")
-    javascriptAssert = call "assert.ok"
-      [equal,D.text (if structural then "`${context}${ls.difference(a, b)}`" else "`${context} | actual=${String(a)}, expected=${String(b)}${ls.difference(a, b)}`")] <> D.text ";"
+    -- Where the values differ is worked out only when they do.
+    javascriptAssert = D.text "if (!" <> equal <> D.text ") " <> D.block 2 (D.joinWith D.hardline
+      ([D.text "const where = ls.difference(a, b);"] ++
+       if structural then [D.text "assert.fail(`${context}${where}`);"]
+       else [D.text "assert.fail(`${context} | actual=${String(a)}, ` +", D.text "  `expected=${String(b)}${where}`);"]))
     body = D.joinWith D.hardline $
       (if py then [D.text "a, b = actual(), expected()"]
        else [D.text "const a = actual();",D.text "const b = expected();"]) ++

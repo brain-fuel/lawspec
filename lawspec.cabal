@@ -484,6 +484,7 @@ test-suite lawspec-test
       IncrementalSpec
       IndexedSpec
       InferenceSchemeSpec
+      LawPrimitivesSpec
       NativeBindingSpec
       NativeRequestSpec
       PayloadProofSpec
