@@ -184,19 +184,21 @@ primitives against NIST's vectors, beside its law tests. The vectors are in
   with an empty context, computed with `@noble/post-quantum` and checked
   against Haskell's `mlkem` and `mldsa`.
 
-Every target runs every vector its library can take:
+Every target runs every vector, but one:
 
-- Encapsulation from a given message needs a deterministic API: Python's
-  `cryptography` encapsulates only with fresh randomness, so it runs the
-  decapsulation vectors and a round trip instead. Go runs the encapsulation
-  vectors from Go 1.26, through `crypto/mlkem/mlkemtest`.
-- An expanded decapsulation key (2400 bytes) loads in JavaScript, Java,
-  Kotlin, Haskell and Rust; Python and Go take seeds, and run the derived
-  seed vectors.
-- The JDK signs and verifies ML-DSA only with an empty context, so Java and
-  Kotlin run the derived vector, not the ACVP ones with contexts.
-- Deterministic ML-DSA signing is compared byte for byte where a library
-  offers it (all but Python, which verifies the derived signature instead).
+- Python's `cryptography` encapsulates only with fresh randomness, takes keys
+  only as seeds and signs only hedged, so its test also carries a plain
+  reference of ML-KEM-768 and ML-DSA-65, written from FIPS 203 and 204 and
+  used by the test alone. The encapsulation and expanded-key vectors run on
+  it, the deterministic signature is compared byte for byte, and the library
+  must agree with it on keys, decapsulation and verification.
+- Go runs the encapsulation vectors from Go 1.26, through
+  `crypto/mlkem/mlkemtest`, and takes decapsulation keys as seeds, so it
+  runs the derived seed vectors rather than the expanded-key one.
+- The JDK's ML-DSA takes no context strings, so Java and Kotlin verify
+  signatures with a context through Bouncy Castle's ML-DSA.
+- Deterministic ML-DSA signatures are compared byte for byte on every
+  target.
 
 ## References
 
