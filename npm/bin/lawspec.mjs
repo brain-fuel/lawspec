@@ -492,6 +492,7 @@ async function main() {
     ["exhaustively-checked", "EXHAUSTIVELY CHECKED"],
     ["property-tested", "PROPERTY TESTED"],
     ["runtime-checked", "RUNTIME CHECKED"],
+    ["default-handler", "DEFAULT HANDLER"],
     ["assumed", "ASSUMED / EXTERNAL"],
   ];
   const evidenceSummary = (evidence) => {

@@ -139,7 +139,7 @@ declarations = joinWith (softbreak <> softbreak)
   , interface "NativeGoImport" (fields [("alias", "string"), ("path", "string")])
   , interface "NativeBindings" (fields [("types?", "NativeTypeBinding[]"), ("generators?", "NativeGeneratorBinding[]"),
       ("functions?", "NativeFunctionBinding[]"), ("rustCrate?", "string"), ("goImports?", "NativeGoImport[]")])
-  , alias "DischargeStatus" (map quoted ["proved", "exhaustively-checked", "property-tested", "runtime-checked", "assumed"])
+  , alias "DischargeStatus" (map quoted ["proved", "exhaustively-checked", "property-tested", "runtime-checked", "default-handler", "assumed"])
   , interface "ObligationEvidence"
       (fields [("owner", "string"), ("declaration", "string"), ("stage", "string"), ("status", "DischargeStatus"), ("reason", "string")] ++
        [("claim", union [text "Expr", text "null"])])

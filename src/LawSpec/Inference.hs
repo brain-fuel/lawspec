@@ -3,7 +3,7 @@
 module LawSpec.Inference where
 
 import LawSpec.Collections (collectionsUnit)
-import LawSpec.Time (durationType)
+import LawSpec.Time (durationType, instantType)
 import Data.List (stripPrefix)
 import LawSpec.Model
 import LawSpec.Refinement (hasValueRefinements)
@@ -199,6 +199,14 @@ infer env (Binary op a b) = do
       require capability at
       require capability bt
       pure (Named (if comparison op then "Bool" else if op == "/" then "Rational" else "Integer"))
+    -- An instant moves by a duration, two instants are a duration apart,
+    -- and instants compare (LawSpec.Builtins' clock).
+    (Named x,Named y) | instantType `elem` [x,y] -> case op of
+      _ | op `elem` ["+","-"], x == instantType, y == durationType -> pure (Named instantType)
+        | op == "+", x == durationType, y == instantType -> pure (Named instantType)
+        | op == "-", x == instantType, y == instantType -> pure (Named durationType)
+        | comparison op, x == y -> pure (Named "Bool")
+      _ -> throwC ("instants support + and - with durations, - and comparisons with instants, not " ++ op ++ " on " ++ x ++ " and " ++ y)
     -- Durations add, subtract, scale and divide by whole numbers, and
     -- compare; LawSpec.Time elaborates each to a checked definition.
     (Named x,Named y) | durationType `elem` [x,y] -> case op of

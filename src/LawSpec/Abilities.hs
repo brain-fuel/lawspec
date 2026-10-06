@@ -37,6 +37,7 @@ import Data.List (intercalate, isInfixOf, nub, sortOn)
 import qualified Data.Map.Strict as M
 import LawSpec.Model
 import LawSpec.Collections (collectionsUnit)
+import LawSpec.Builtins (isSeededUse, seededHandler, randomAbility, secureRandomAbility)
 
 type Failure = (Maybe Location, String)
 
@@ -88,9 +89,15 @@ describeChoices assignment = "[" ++ intercalate ", " (map describe named) ++ "]"
       ChooseRecording c -> "recording " ++ describe (ability, c)
 
 elaborateAbilities :: Unit -> Either Failure Unit
-elaborateAbilities u
-  | not (usesAbilities u) = pure u
+elaborateAbilities u0
+  | not (usesAbilities u0) = pure u0
   | otherwise = do
+      u <- seededHandlers u0
+      secureRandomChecks u
+      elaborateUnit u
+
+elaborateUnit :: Unit -> Either Failure Unit
+elaborateUnit u = do
   let declared = abilities u
       at s = Just (spanStart s)
       located = Just . spanStart
@@ -217,6 +224,11 @@ elaborateAbilities u
   forM_ [(d, h) | d <- definitions, (h, _) <- snd (splitHandled (functionBody d))] $ \(d, h) ->
     unless (M.member (unqualifiedHandler h) handlerTable)
       (Left (at (functionSpan d), functionName d ++ " handles with " ++ h ++ ", but there is no handler called " ++ unqualifiedHandler h))
+  -- A seeded Random cannot stand for SecureRandom (LawSpec.Builtins).
+  forM_ [(d, h, inner) | d <- definitions, (h, inner) <- snd (splitHandled (functionBody d))] $ \(d, h, inner) ->
+    when (fmap abilityTypeName (handlerInstance h) == Just randomAbility &&
+          any (`elem` exprVars inner) [op | a <- declared, abilityName a == secureRandomAbility, (op, _) <- abilityOperations a])
+      (Left (at (functionSpan d), seededForSecure (functionName d)))
   let step table = M.fromList
         [ (functionName d, canonical (expressionRow table (map fst (functionArguments d)) (functionBody d) ++
             (if raises d then failures (functionName d) else [])))
@@ -269,6 +281,7 @@ elaborateAbilities u
       handlerAbilities = M.fromList [(handlerName h, handlerAbility h) | h <- handlerDeclarations u]
       -- What `using` asks for, by ability name.
       request where' use = case use of
+        UseHandler h | Just _ <- isSeededUse h -> Left (where', "seeded random needs lawspec.random: add `import lawspec.random`")
         UseHandler h -> case M.lookup (unqualifiedHandler h) handlerAbilities of
           Just inst -> pure (inst, Left (ChooseSpec (unqualifiedHandler h)))
           Nothing -> Left (where', "there is no handler called " ++ h)
@@ -289,6 +302,8 @@ elaborateAbilities u
               Named n | n == abilityTypeName inst -> True
               _ -> wanted == inst
         forM_ requested $ \r@(n, _) -> do
+          when (abilityTypeName n == randomAbility && Named secureRandomAbility `elem` row && Named randomAbility `notElem` row)
+            (Left (where', seededForSecure ("the law `" ++ lawName l ++ "`")))
           when (length (filter (\(m, _) -> m == n) requested) > 1)
             (Left (where', "the law " ++ lawName l ++ " names two handlers for " ++ prettyType n))
           unless (any (matches r) row)
@@ -538,3 +553,42 @@ countedOperations l = nub (concatMap counted (definitionExpressions (definition 
     spine e = case unlocated e of
       Apply f x -> let (h, args) = spine f in (h, args ++ [unlocated x])
       other -> (other, [])
+
+-- The message for a seeded Random where SecureRandom is needed.
+seededForSecure :: String -> String
+seededForSecure what = what ++ " needs SecureRandom, which a seeded Random cannot answer: seeded draws are " ++
+  "predictable, so the two are separate abilities. Leave SecureRandom to its default handler"
+
+-- `seeded random n` in a law's using list names a copy of lawspec.random's
+-- seededRandom that starts at n (LawSpec.Builtins); each seed is its own
+-- handler, seededRandom<n>.
+seededHandlers :: Unit -> Either Failure Unit
+seededHandlers u
+  | null seeds = pure u
+  | otherwise = case [h | h <- handlerDeclarations u, handlerName h == seededHandler] of
+      [] -> pure u
+      base : _ -> pure u
+        { handlerDeclarations = handlerDeclarations u ++
+            [ base { handlerName = cloneName n, handlerState = fmap (\(s, t, _) -> (s, t, Number n)) (handlerState base) }
+            | n <- nub seeds, cloneName n `notElem` map handlerName (handlerDeclarations u) ]
+        , lawHandlers = [(n, map rename uses) | (n, uses) <- lawHandlers u] }
+  where
+    seeds = [n | (_, uses) <- lawHandlers u, use <- uses, Just n <- [seeded use]]
+    seeded use = case use of
+      UseHandler h -> isSeededUse h
+      UseRecording inner -> seeded inner
+      UseAbility _ -> Nothing
+    cloneName n = seededHandler ++ show n
+    rename use = case use of
+      UseHandler h | Just n <- isSeededUse h -> UseHandler (cloneName n)
+      UseRecording inner -> UseRecording (rename inner)
+      _ -> use
+
+-- SecureRandom has no spec handlers: a handler written in LawSpec is
+-- deterministic, so it could stand only where a seeded source may.
+secureRandomChecks :: Unit -> Either Failure ()
+secureRandomChecks u = forM_ (handlerDeclarations u) $ \h ->
+  when (null (handlerOrigin h) && abilityTypeName (handlerAbility h) == secureRandomAbility &&
+        any (\a -> abilityName a == secureRandomAbility && not (null (abilityOrigin a))) (abilities u))
+    (Left (Just (spanStart (handlerSpan h)), "SecureRandom has no spec handlers: a handler written in LawSpec is predictable. " ++
+      "Use Random, and seeded random n, where reproducible draws will do"))

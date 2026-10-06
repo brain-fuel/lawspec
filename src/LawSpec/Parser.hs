@@ -4,6 +4,7 @@ import LawSpec.Core.Policy (StagePolicy(..), Retry(..), Strategy(..), Jitter(..)
 import LawSpec.Resilience (resilienceName)
 import LawSpec.Collections (collectionsUnit, collectionsAlias)
 import LawSpec.Time (timeUnit, timeAlias, durationSuffixes, durationFactor, durationLimit, usesTime, timeTypes)
+import LawSpec.Builtins (virtualClockHandler, seededHandlerName)
 import LawSpec.Flow (desugarFlows, flowTypeName)
 import LawSpec.Model
 import LawSpec.Indexed
@@ -763,7 +764,16 @@ lawUsingP = do
 -- it), or `recording` of either.
 handlerUseP :: P HandlerUse
 handlerUseP = (keyword "recording" *> (UseRecording <$> handlerUseP))
+  <|> builtinHandlerUseP
   <|> ((\n -> if startsUpper n then UseAbility n else UseHandler n) <$> ident)
+
+-- The built-in handlers' readable names (LawSpec.Builtins): `virtual clock`
+-- is lawspec.time's virtualClock, and `seeded random n` is lawspec.random's
+-- seededRandom started at n.
+builtinHandlerUseP :: P HandlerUse
+builtinHandlerUseP =
+  (UseHandler virtualClockHandler <$ try (keyword "virtual" *> keyword "clock"))
+  <|> (UseHandler . seededHandlerName <$> (try (keyword "seeded" *> keyword "random") *> lexeme L.decimal))
 
 -- uses A, B [fails with E], or fails with E alone: a signature's abilities.
 usesP :: P [Type]

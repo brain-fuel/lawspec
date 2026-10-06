@@ -13,11 +13,11 @@
 --   assumed               native adapters, bindings and generators on trust
 {-# OPTIONS_GHC -fno-cse -fno-full-laziness #-}
 module LawSpec.Discharge
-  ( dischargeEvidence, bindingEvidence, lawClaim
+  ( dischargeEvidence, bindingEvidence, defaultHandlerEvidence, lawClaim
   ) where
 
 import Control.Monad (forM)
-import Data.List (intercalate)
+import Data.List (intercalate, isPrefixOf)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 import LawSpec.Common
@@ -34,6 +34,7 @@ import LawSpec.Core.Value (Value(..))
 import LawSpec.NativeBinding
 import LawSpec.NativeRequest (BindingPlan(..))
 import LawSpec.Scalar (Scalar(..), prettyScalar)
+import LawSpec.Builtins (defaultedUnits, defaultHandlerReason)
 import LawSpec.Testing (PlannedProperty(..), lawPlanner)
 
 -- Laws first, then contracts, constructions and adapters. A law over checked
@@ -330,6 +331,20 @@ bindingEvidence plan =
   [ Obligation (declarationId declaration) (declarationId declaration) "native-function" Nothing Assumed
       "external native method or constructor taken on trust; tested by the laws and models that call it"
   | (declaration, _) <- bindingCalls plan ]
+
+-- The production handler of each built-in ability (LawSpec.Builtins): the
+-- runtime's default handler, unless lawspec.json binds another.
+defaultHandlerEvidence :: Program -> BindingPlan -> [Obligation]
+defaultHandlerEvidence program plan =
+  [ if bound then Obligation (unitId u) key "handler" Nothing Assumed
+        "bound in lawspec.json: native handler taken on trust; checked by its ability's laws"
+      else Obligation (unitId u) key "handler" Nothing DefaultHandler
+        (defaultHandlerReason (abilityName a) ++ (if lawful then "; checked by its ability's laws" else ""))
+  | u <- programUnits program, idText (unitId u) `elem` defaultedUnits
+  , a <- unitAbilities u, abilityOwner a == unitId u, not (isFail (abilityInstance a))
+  , let key = Id (abilityKey (abilityInstance a))
+        bound = key `elem` map fst (bindingHandlers plan)
+        lawful = any (\p -> (abilityName a ++ ": ") `isPrefixOf` propertyName p) (unitProperties u) ]
 
 callees :: Expr -> [Id]
 callees e = case expressionNode e of

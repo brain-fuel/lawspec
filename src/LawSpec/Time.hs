@@ -10,7 +10,7 @@
 -- unit's definitions.
 module LawSpec.Time
   ( timeUnit, timeAlias, timeSource, timeTypes, usesTime, timeOperation, timeOperations
-  , durationType, isDurationType, durationLimit, durationSuffixes, durationFactor, durationArithmetic, durationValue, durationDefinitions
+  , durationType, instantType, isDurationType, durationLimit, durationSuffixes, durationFactor, durationArithmetic, durationValue, durationDefinitions
   ) where
 
 import Data.Char (isAlphaNum, isDigit)
@@ -25,6 +25,10 @@ timeAlias = "lawspecTime"
 
 durationType :: String
 durationType = timeUnit ++ "::type::Duration"
+
+-- A point in time, from the time unit's clock section (LawSpec.Builtins).
+instantType :: String
+instantType = timeUnit ++ "::type::Instant"
 
 -- Targets with a native duration represent Duration by it, not by a
 -- generated class: Python timedelta, Go time.Duration, Java

@@ -39,6 +39,7 @@ import qualified LawSpec.WebDefinitions as WebDefinitions
 import qualified LawSpec.Code.Doc as Doc
 import LawSpec.RuntimeSources
 import qualified LawSpec.Core as C
+import LawSpec.BuiltinDefaults (withBuiltinDefaults)
 import LawSpec.Scalar (primitive)
 import LawSpec.TargetNames (nativeName, allTargetKeywords)
 import Data.Char (toUpper, toLower, isAscii, isAlphaNum)
@@ -75,7 +76,9 @@ emitPlanWithFormat minify target original = do
   let plan = wirePlan (escapePlan target (witnessPlan (ownedAbilityPlan original)))
   emittedFiles <- emitPlanFormatted minify target plan
   extras <- companionArtifacts minify target plan
-  let files = emittedFiles ++ extras
+  -- Built-in units' adapter modules hold their default handlers.
+  files <- either (\message -> Left [Diagnostic "builtins" message Nothing]) Right
+    (withBuiltinDefaults target (planDataDeclarations plan) (map plannedUnit (plannedUnits plan)) (emittedFiles ++ extras))
   canonical <- if minify then emitPlanFormatted False target plan else pure files
   let references = [(artifactPath a, artifactContent a) | a <- canonical, ownership a == "user"]
   mapM (\artifact -> if ownership artifact /= "user" then pure artifact else

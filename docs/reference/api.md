@@ -275,7 +275,7 @@ interface ObligationEvidence {
   owner: string;
   declaration: string;
   stage: string;
-  status: 'proved' | 'exhaustively-checked' | 'property-tested' | 'runtime-checked' | 'assumed';
+  status: 'proved' | 'exhaustively-checked' | 'property-tested' | 'runtime-checked' | 'default-handler' | 'assumed';
   reason: string;
   claim: Expr | null;
 }

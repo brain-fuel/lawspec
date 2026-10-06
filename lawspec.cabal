@@ -38,6 +38,14 @@ extra-source-files:
     runtime/lawspec_data_strategies.go
     runtime/lawspec_runtime.go
     runtime/lawspec_schema.go
+    runtime/defaults/vectors.txt
+    runtime/defaults/python/concurrent.py
+    runtime/defaults/python/crypto.py
+    runtime/defaults/python/log.py
+    runtime/defaults/python/random.py
+    runtime/defaults/python/system.py
+    runtime/defaults/python/test_crypto_vectors.py
+    runtime/defaults/python/time.py
     runtime/rust/Cargo.toml
     runtime/rust/Cargo.lock
     examples/specs/abilities.lawspec
@@ -206,6 +214,8 @@ library
       LawSpec.Api
       LawSpec.Backend
       LawSpec.Bounds
+      LawSpec.BuiltinDefaults
+      LawSpec.Builtins
       LawSpec.Capabilities
       LawSpec.Code.Doc
       LawSpec.Code.JavaScript
@@ -238,6 +248,7 @@ library
       LawSpec.CoreScalarEmit
       LawSpec.Data
       LawSpec.DataNames
+      LawSpec.DefaultSources
       LawSpec.DefinitionTotality
       LawSpec.Dependencies
       LawSpec.Digest
