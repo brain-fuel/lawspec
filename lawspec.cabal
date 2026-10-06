@@ -483,6 +483,7 @@ test-suite lawspec-test
       FlowSpec
       GadtSpec
       GenericDefinitionSpec
+      HarnessSpec
       ImportSpec
       IncrementalSpec
       IndexedSpec
