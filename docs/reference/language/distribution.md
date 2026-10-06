@@ -155,8 +155,25 @@ address is one of the former ones (or it has none yet), and answers
 
 ## Security
 
-The network is secure by default, on every transport and every target, and
-nodes on different targets interoperate:
+A program that makes nodes imports `lawspec.network`:
+
+```lawspec fragment
+import lawspec.network
+```
+
+The import brings the **secure network handler**, the target's
+`lawspec_network` module (`LawSpecNetwork` in Java, Kotlin and Haskell),
+written beside the runtime, with the crypto libraries it needs (see
+[built-in abilities](builtins.md#dependencies-of-generated-projects)). A
+program without it does without those libraries, and can make a node only
+on the in-memory transport made for tests; its scenarios' network runs use
+that transport. Making any other node fails, saying to add the import.
+Python, JavaScript, TypeScript, Java, Kotlin and Go find the module when a
+node is made; in Rust and Haskell, call `lawspec_network::install()` or
+`LawSpecNetwork.install` once before making nodes (the generated tests do).
+
+The network is then secure on every transport and every target, and nodes on
+different targets interoperate:
 
 - each node has an **identity**, an ML-DSA-65 key pair (FIPS 204);
 - before two nodes exchange frames, they run a **handshake**: a signed

@@ -24,8 +24,13 @@
   vector. `nativeBindings.network` in `lawspec.json` binds a node identity
   and trusted peers (written to `lawspec-network.conf`). An in-memory
   transport without the handshake exists for tests only; no setting turns
-  security off. Nodes need the crypto libraries generated projects already
-  depend on.
+  security off. A program that makes nodes imports `lawspec.network`, which
+  writes the secure handler's module beside the runtime; programs without
+  it, or without `lawspec.crypto`, no longer depend on any crypto library,
+  and `lawspec init` scaffolds projects without them. Scenarios' network
+  runs use the in-memory transport made for tests. (Rust and Haskell call
+  `lawspec_network::install()` / `LawSpecNetwork.install` before making
+  nodes; the generated tests do.)
 - Channel-end `take` tokens are 32 bytes from the operating system's secure
   generator on every target (Haskell's were clock-based).
 - Remote definitions are named by a SHA3-256 content hash that names its

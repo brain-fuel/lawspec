@@ -19,9 +19,6 @@ def now_micros() -> int:
 class ClockHandler:
     """The system clock. now never goes back; sleep blocks this thread."""
 
-    # Workflows time out in real time under it (lawspec_runtime.AbilityClock).
-    real_time = True
-
     def now(self) -> @@Instant@@:
         return @@Instant@@(now_micros())
 
@@ -29,3 +26,13 @@ class ClockHandler:
         target = now_micros() + value0 // ls.timedelta(microseconds=1)
         while (left := target - now_micros()) > 0:
             _time.sleep(left / 1000000)
+
+
+def register_clock() -> None:
+    """Lets the runtime read any Clock handler (this one, the virtual clock,
+    a recording): workflows and mailboxes then wait on the clock a law
+    installs. Only this handler is real time."""
+    ls.register_clock_ability(
+        now=lambda handler: handler.now().value,
+        sleep=lambda handler, micros: handler.sleep(ls.timedelta(microseconds=micros)),
+        real_time=lambda handler: isinstance(handler, ClockHandler))

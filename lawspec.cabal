@@ -13,21 +13,26 @@ build-type:     Simple
 extra-source-files:
     README.md
     CHANGELOG.md
+    runtime/lawspec_network.rs
     runtime/lawspec_runtime.rs
     runtime/lawspec_strategies.rs
     runtime/lawspec_data_strategies.mjs
+    runtime/lawspec_network.mjs
     runtime/lawspec_runtime.mjs
     runtime/lawspec_schema.mjs
     runtime/lawspec_data_strategies.py
+    runtime/lawspec_network.py
     runtime/lawspec_runtime.py
     runtime/lawspec_schema.py
     runtime/LawSpecCodecs.hs
     runtime/LawSpecCollectionCodecs.hs
     runtime/LawSpecDataStrategies.hs
+    runtime/LawSpecNetwork.hs
     runtime/LawSpecRuntime.hs
     runtime/LawSpecSchema.hs
     runtime/LawSpecTransports.hs
     runtime/LawSpecDataStrategies.java
+    runtime/LawSpecNetwork.java
     runtime/LawSpecRuntime.java
     runtime/LawSpecSchema.java
     runtime/LawSpecKotlin.kt
@@ -36,6 +41,7 @@ extra-source-files:
     runtime/LawSpecStrategies.kt
     runtime/lawspec_codecs.go
     runtime/lawspec_data_strategies.go
+    runtime/lawspec_network.go
     runtime/lawspec_runtime.go
     runtime/lawspec_schema.go
     runtime/defaults/vectors.txt
@@ -351,6 +357,7 @@ library
       LawSpec.ModelTests
       LawSpec.NativeBinding
       LawSpec.NativeRequest
+      LawSpec.Network
       LawSpec.Packages
       LawSpec.Parser
       LawSpec.Persist

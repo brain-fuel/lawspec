@@ -14,6 +14,7 @@ program uses one by importing its unit.
 | `lawspec.host` | `FileSystem`, `Environment`, `Ports` | `emptyEnvironment` | [Files, environment and ports](host.md) |
 | `lawspec.logging` | `Log`, `Trace` | `silentLog`, `silentTrace` | [Logs and traces](logging.md) |
 | `lawspec.concurrent` | `Async` | | below |
+| `lawspec.network` | (the `Network` ability's secure handler) | | [Distribution](distribution.md#security) |
 
 ```lawspec
 unit guide.builtins
@@ -93,8 +94,12 @@ generated file, `lawspec_defaults_<unit>.go`.
 ## Dependencies of generated projects
 
 The default handlers use each target's standard library where it has the
-algorithm, and well-reviewed libraries elsewhere. `lawspec init` writes them
-into the build files; existing projects add them by hand.
+algorithm, and well-reviewed libraries elsewhere. Only a program that imports
+`lawspec.crypto` or `lawspec.network` needs these libraries; the runtime and
+every other built-in unit need none of them. `lawspec init` writes a project
+without them, and its setup advice names them; add them when a program
+imports either unit. (`directory` and `time` are Haskell dependencies of
+every project.)
 
 | Target | Dependencies |
 | --- | --- |
@@ -102,7 +107,7 @@ into the build files; existing projects add them by hand.
 | JavaScript, TypeScript | `@noble/post-quantum` 0.7.1 |
 | Go | Go 1.25 and `github.com/cloudflare/circl` v1.6.5 |
 | Java, Kotlin | JDK 25 and `org.bouncycastle:bcprov-jdk18on` 1.86 |
-| Haskell | `crypton` 1.1.5, `mlkem` 0.2.3.0, `mldsa` 0.1.1.0, `ram` 0.22.1 (Stack extra-deps), `directory`, `time` |
+| Haskell | `crypton` 1.1.5, `mlkem` 0.2.3.0, `mldsa` 0.1.1.0, `ram` 0.22.1 (Stack extra-deps) |
 | Rust | `sha3` 0.12, `shake` 0.1, `ml-kem` 0.3.2, `ml-dsa` 0.1.1, `slh-dsa` 0.2.0-rc.5, `aes-gcm` 0.11.1, `getrandom` 0.4 |
 
 ## Async

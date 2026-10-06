@@ -56,7 +56,8 @@ import System.FilePath ((</>), takeDirectory)
 import System.IO (hPutStrLn, readFile', stderr)
 import System.Process (CreateProcess(..), proc, readCreateProcessWithExitCode)
 import LawSpec.Api (dispatch)
-import LawSpec.Scaffold (scaffoldFiles, scaffoldTargets)
+import LawSpec.Scaffold (scaffoldFilesWith, scaffoldTargets)
+import LawSpec.BuiltinDefaults (adapterPath)
 import Toolchain
 import Cache
 
@@ -111,7 +112,7 @@ main = do
       if mismatch then expectMismatch target bits project
       else do
         mode <- cacheMode
-        scaffolds <- either die pure (scaffoldFiles minify target)
+        scaffolds <- either die pure (scaffoldFilesWith (usesCrypto target generated) minify target)
         suiteInputs <- let base = "acceptance" </> suite </> target in
           doesDirectoryExist base >>= \exists -> if exists then walk base else pure []
         key <- runKey target [suite, target, profile, show mutate]
@@ -167,11 +168,17 @@ loadPackage directory = do
           concat <$> mapM (lawspecFiles . (path </>)) entries
         else pure [path | ".lawspec" `isSuffixOf` path]
 
+-- The crypto libraries only for programs that import lawspec.crypto or
+-- lawspec.network, as lawspec init and the setup advice say.
+usesCrypto :: String -> [Generated] -> Bool
+usesCrypto target = any (\g -> generatedPath g == adapterPath target "lawspec.crypto"
+  || any (`isInfixOf` generatedPath g) ["lawspec_network.", "LawSpecNetwork."])
+
 writeProject :: String -> String -> FilePath -> Bool -> Bool -> [Generated] -> IO ()
 writeProject suite target project defaultProfile minify generated = do
   createDirectoryIfMissing True project
   forM_ ["src", "test", "tests", "example", "dist", "lawspec"] $ \folder -> removePathForcibly (project </> folder)
-  scaffolds <- either die pure (scaffoldFiles minify target)
+  scaffolds <- either die pure (scaffoldFilesWith (usesCrypto target generated) minify target)
   forM_ scaffolds $ \(path, content) -> writeAt (project </> path) content
   forM_ generated $ \g -> writeAt (project </> generatedPath g) (generatedContent g)
   adapters <- suiteFiles suite target

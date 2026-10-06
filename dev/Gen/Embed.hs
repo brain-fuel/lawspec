@@ -25,7 +25,12 @@ runtimeFiles =
   , ("haskell-data-strategies", "LawSpecDataStrategies.hs"), ("rust", "lawspec_runtime.rs")
   , ("rust-strategies", "lawspec_strategies.rs"), ("kotlin-strategies", "LawSpecStrategies.kt")
   , ("kotlin-native", "LawSpecKotlin.kt"), ("kotlin-codecs", "LawSpecKotlinCodecs.kt")
-  , ("kotlin-data-strategies", "LawSpecKotlinStrategies.kt") ]
+  , ("kotlin-data-strategies", "LawSpecKotlinStrategies.kt")
+  -- The secure network handler, written only for programs that import
+  -- lawspec.network (LawSpec.Network).
+  , ("python-network", "lawspec_network.py"), ("javascript-network", "lawspec_network.mjs")
+  , ("java-network", "LawSpecNetwork.java"), ("go-network", "lawspec_network.go")
+  , ("haskell-network", "LawSpecNetwork.hs"), ("rust-network", "lawspec_network.rs") ]
 
 embedRuntimes :: IO String
 embedRuntimes = do

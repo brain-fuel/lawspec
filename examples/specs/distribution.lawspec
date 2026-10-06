@@ -1,5 +1,11 @@
 unit example.distribution
 
+-- Nodes are secure: this import brings the secure network handler (node
+-- identities, the post-quantum handshake, sealed frames) and its crypto
+-- libraries. Without it, only the in-memory transport made for tests can
+-- make a node.
+import lawspec.network
+
 -- Distribution. Nodes reach each other's actors, channels and checked
 -- definitions over a transport: in memory (with faults, for testing), TCP or
 -- HTTP. Values cross in the canonical wire encoding, the same bytes on every

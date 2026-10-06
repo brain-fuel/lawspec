@@ -38,6 +38,7 @@ import qualified LawSpec.WebNativeBinding as WebNativeBinding
 import qualified LawSpec.WebDefinitions as WebDefinitions
 import qualified LawSpec.Code.Doc as Doc
 import LawSpec.RuntimeSources
+import LawSpec.Network (withNetworkModules, usesNetworkUnits)
 import qualified LawSpec.Core as C
 import LawSpec.BuiltinDefaults (withBuiltinDefaults)
 import LawSpec.Builtins (defaultedUnits)
@@ -108,7 +109,8 @@ goAbilityNames target plan
 -- Built-in units' adapter modules hold their default handlers
 -- (LawSpec.BuiltinDefaults).
 builtinDefaults :: String -> Plan -> [Artifact] -> Either [Diagnostic] [Artifact]
-builtinDefaults target plan = either (\message -> Left [Diagnostic "builtins" message Nothing]) Right .
+builtinDefaults target plan = either (\message -> Left [Diagnostic "builtins" message Nothing])
+  (Right . withNetworkModules target (usesNetworkUnits (map plannedUnit (plannedUnits plan)))) .
   withBuiltinDefaults target (planDataDeclarations plan) (ownedAbilityUnits (map plannedUnit (plannedUnits plan)))
 
 -- Code beside the units: typed channel ends for the units' protocols, typed

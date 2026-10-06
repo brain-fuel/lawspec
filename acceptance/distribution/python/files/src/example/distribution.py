@@ -161,4 +161,6 @@ async def sealedOnTheWire(value0):
 
 
 def handshakeAgrees(value0):
-    return ls.handshake_vector(*value0.split(' '))
+    import lawspec_network
+
+    return lawspec_network.handshake_vector(*value0.split(' '))

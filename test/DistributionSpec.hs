@@ -14,6 +14,11 @@ import LawSpec.Model (Source(..), defaultGeneration)
 import LawSpec.Remote (Remote(..), remoteManifest)
 import LawSpec.Sha3 (sha3_256Hex)
 import LawSpec.Testing (planTesting)
+import LawSpec.CoreEmit (emitPlan)
+import LawSpec.RuntimeSources (runtimeSource)
+import LawSpec.Scaffold (scaffoldFiles, scaffoldFilesWith)
+import Control.Monad (forM_)
+import Data.List (isInfixOf)
 
 spec :: Spec
 spec = describe "distribution" $ do
@@ -35,6 +40,29 @@ spec = describe "distribution" $ do
       map remoteDigest (remotes (shifted "x + 1000")) `shouldBe` map remoteDigest (remotes (shifted "x + 1000"))
       map remoteDigest (remotes (shifted "x + 1000")) `shouldNotBe` map remoteDigest (remotes (shifted "x + 1001"))
       map (C.idText . remoteId) (remotes (shifted "x + 1")) `shouldBe` ["app.remote::shifted"]
+  describe "the secure network handler, only when used" $ do
+    let paths target text = case compileCore 64 defaultGeneration [Source "app.lawspec" text] >>= planTesting >>= emitPlan target of
+          Right files -> map artifactPath files
+          Left ds -> error (show ds)
+        program imports = unlines (["unit app.nodes"] ++ imports ++ ["protocol Ping is send Int32 end", "definition shifted (x :: Int32) :: Int64 is x + 1 end"])
+        networkFile p = any (`isInfixOf` p) ["lawspec_network.", "LawSpecNetwork."]
+        targets = ["python", "javascript", "typescript", "go", "java", "kotlin", "haskell", "rust"]
+    it "writes the network module beside the runtime of a program that imports lawspec.network" $
+      forM_ targets $ \target -> (target, any networkFile (paths target (program ["import lawspec.network"]))) `shouldBe` (target, True)
+    it "leaves it out of every other program" $
+      forM_ targets $ \target -> (target, any networkFile (paths target (program []))) `shouldBe` (target, False)
+    it "keeps the crypto libraries out of a project that does not use them" $
+      forM_ targets $ \target -> do
+        let plain = either error (concatMap snd) (scaffoldFiles False target)
+            crypto = either error (concatMap snd) (scaffoldFilesWith True False target)
+            libraries = ["cryptography", "noble", "circl", "bouncycastle", "crypton", "mlkem", "ml-kem", "ml-dsa", "aes-gcm"]
+        (target, filter (`isInfixOf` plain) libraries) `shouldBe` (target, [])
+        (target, any (`isInfixOf` crypto) libraries) `shouldBe` (target, True)
+    it "keeps every crypto library out of the main runtimes" $
+      forM_ [ ("python", ["cryptography"]), ("javascript", ["@noble"]), ("go", ["circl", "crypto/mlkem", "crypto/sha3"])
+            , ("java", ["bouncycastle"]), ("haskell", ["import qualified Crypto", "mlkem", "mldsa"])
+            , ("rust", ["ml_kem", "ml_dsa", "sha3::", "aes_gcm", "getrandom"]) ] $ \(target, names) ->
+        (target, filter (`isInfixOf` runtimeSource target) names) `shouldBe` (target, [])
   describe "node identities in lawspec.json" $ do
     let parse text = eitherDecode (LC.pack text) :: Either String NativeRequest
     it "bind an identity and trusted peers through lawspec-network.conf" $ do

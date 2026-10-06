@@ -123,7 +123,9 @@ belongs to the run, not the law.
 ## Distribution
 
 Nodes talk through the `Network` ability. Each transport (in memory, TCP,
-HTTP) is a handler of it, and the default is secure: a post-quantum
-handshake, node identities and sealed frames (see
-[distribution](distribution.md#security)). An in-memory transport without the
-handshake exists for tests only.
+HTTP) is a handler of it, made secure by `lawspec.network`'s handler: a
+post-quantum handshake, node identities and sealed frames (see
+[distribution](distribution.md#security)). A program imports `lawspec.network`
+to make nodes, so only such programs depend on the crypto libraries. An
+in-memory transport without the handshake exists for tests only, and
+scenarios' network runs use it.

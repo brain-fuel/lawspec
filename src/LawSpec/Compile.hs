@@ -20,6 +20,7 @@ import LawSpec.Abilities (elaborateAbilities)
 import LawSpec.Collections (usedCollections, collectionsSource)
 import LawSpec.Time (timeUnit, timeAlias, timeTypes, usesTime, timeSource)
 import LawSpec.Resilience (resilienceUnit, resilienceAlias, resilienceTypes, usesResilience, resilienceSource)
+import LawSpec.Network (networkUnit, networkSource)
 import LawSpec.Builtins (builtinUnits, builtinSource, importsBuiltin, usesClock, clockSource)
 import LawSpec.Refinement
 import LawSpec.Prelude
@@ -217,7 +218,9 @@ compileWithImports visible bits settings sources = do
   let clock = any usesClock [text | Source _ text <- sources]
       time = clock || any usesTime [text | Source _ text <- sources]
       resilience = any usesResilience [text | Source _ text <- sources]
-      abilityUnits = [Source ("<" ++ unit ++ ">") (builtinSource unit) | unit <- builtinUnits, any (importsBuiltin unit) [text | Source _ text <- sources]]
+      abilityUnits = [Source ("<" ++ unit ++ ">") (builtinSource unit) | unit <- builtinUnits, any (importsBuiltin unit) [text | Source _ text <- sources]] ++
+        -- lawspec.network: the secure network handler's module (LawSpec.Network).
+        [Source ("<" ++ networkUnit ++ ">") networkSource | any (importsBuiltin networkUnit) [text | Source _ text <- sources]]
       collections = usedCollections ([text | Source _ text <- sources ++ abilityUnits] ++ [clockSource | clock])
       builtins = preludeSource : [Source "<lawspec.collections>" (collectionsSource collections) | not (null collections)] ++
         [Source "<lawspec.time>" (timeSource ++ (if clock then clockSource else "")) | time] ++ [Source "<lawspec.resilience>" resilienceSource | resilience] ++
