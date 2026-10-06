@@ -24,6 +24,10 @@ handlerConstruction library units current ref choice = case choice of
   C.RecordingHandler inner ->
     "{ let recording = " ++ base ++ recordingFor ++ "::new(" ++ handle inner ++ "); let calls = recording.calls.clone(); " ++
     "ls::installed_recording(std::sync::Arc::new(recording) as std::sync::Arc<dyn " ++ trait ++ ">, calls) }"
+  -- The default handler names its own type, so a reader can tell it (the
+  -- real clock, for lawspec.time's).
+  C.ProductionHandler | Nothing <- native ->
+    "ls::installed_native::<" ++ adapterModule ++ "::" ++ productionFor ++ ", _>(" ++ handle choice ++ ")"
   _ -> "ls::installed(" ++ handle choice ++ ")"
   where
     trait = traitPath units ref

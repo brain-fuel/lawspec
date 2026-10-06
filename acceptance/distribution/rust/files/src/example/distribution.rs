@@ -162,5 +162,5 @@ pub async fn sealedOnTheWire(value0: i32) -> bool {
 pub fn handshakeAgrees(value0: String) -> bool {
     let fields: Vec<&str> = value0.split(' ').collect();
     let &[a, b, c, d, e, f, g, h, i, j, k, l, m] = fields.as_slice() else { return false };
-    ls::net::handshake_vector(a, b, c, d, e, f, g, h, i, j, k, l, m)
+    crate::lawspec_network::handshake_vector(a, b, c, d, e, f, g, h, i, j, k, l, m)
 }
