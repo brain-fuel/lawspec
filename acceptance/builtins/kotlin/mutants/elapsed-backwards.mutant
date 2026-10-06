@@ -1,0 +1,7 @@
+expect: elapsed time is never negative
+@@ src/main/kotlin/example/Builtins.kt
+<<<<<<<
+        return (clock.now().value - start).microseconds
+=======
+        return (start - clock.now().value - 1).microseconds
+>>>>>>>

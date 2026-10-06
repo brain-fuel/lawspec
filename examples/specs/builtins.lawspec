@@ -38,7 +38,7 @@ definition roll (sides :: Int64 where sides >= 1) :: Integer uses Random is rand
 
 law `a seed fixes the rolls` is
   definition is
-    `for all` (sides :: Int64 where sides >= 1 && sides <= 1000) .
+    `for all` (sides :: Int64 where sides >= 1) .
       handle roll sides with seededRandom end = handle roll sides with seededRandom end
   end
   example `the first roll from seed 0` is
@@ -49,7 +49,7 @@ end
 
 law `rolls are on the die` using seeded random 42 is
   definition is
-    `for all` (sides :: Int64 where sides >= 1 && sides <= 1000) . (let r = roll sides in r >= 1 && r <= sides) = true
+    `for all` (sides :: Int64 where sides >= 1) . (let r = roll sides in r >= 1 && r <= sides) = true
   end
 end
 

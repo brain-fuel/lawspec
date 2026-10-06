@@ -61,6 +61,13 @@ extra-source-files:
     runtime/defaults/javascript/logging.mjs
     runtime/defaults/javascript/randomness.mjs
     runtime/defaults/javascript/time.mjs
+    runtime/defaults/kotlin/concurrent.kt
+    runtime/defaults/kotlin/crypto.kt
+    runtime/defaults/kotlin/crypto_vectors.kt
+    runtime/defaults/kotlin/host.kt
+    runtime/defaults/kotlin/logging.kt
+    runtime/defaults/kotlin/randomness.kt
+    runtime/defaults/kotlin/time.kt
     runtime/defaults/python/concurrent.py
     runtime/defaults/python/crypto.py
     runtime/defaults/python/host.py

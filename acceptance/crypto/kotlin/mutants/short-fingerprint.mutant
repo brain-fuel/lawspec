@@ -1,0 +1,7 @@
+expect: a fingerprint is 8 bytes
+@@ src/main/kotlin/example/Crypto.kt
+<<<<<<<
+    ): kotlin.ByteArray = hash.sha3(value0).value.copyOf(8)
+=======
+    ): kotlin.ByteArray = hash.sha3(value0).value.copyOf(7)
+>>>>>>>
