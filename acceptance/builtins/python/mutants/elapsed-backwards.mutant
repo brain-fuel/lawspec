@@ -1,0 +1,7 @@
+expect: elapsed time is never negative
+@@ src/example/builtins.py
+<<<<<<<
+    return ls.timedelta(microseconds=clock.now().value - start.value)
+=======
+    return ls.timedelta(microseconds=start.value - clock.now().value - 1)
+>>>>>>>

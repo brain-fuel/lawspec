@@ -4,6 +4,7 @@ import LawSpec.Core.Policy (StagePolicy(..), Retry(..), Strategy(..), Jitter(..)
 import LawSpec.Resilience (resilienceName)
 import LawSpec.Collections (collectionsUnit, collectionsAlias)
 import LawSpec.Time (timeUnit, timeAlias, durationSuffixes, durationFactor, durationLimit, usesTime, timeTypes)
+import LawSpec.Builtins (virtualClockHandler, seededHandlerName, seededHandler)
 import LawSpec.Flow (desugarFlows, flowTypeName)
 import LawSpec.Regex (parseRegex)
 import Control.Monad.Trans.Class (lift)
@@ -704,7 +705,14 @@ applicationAtom = atom
       try (keyword "handle")
       body <- expr
       keyword "with"
-      handler <- ident
+      -- seededRandom n, or seeded random n: the seeded handler started at n.
+      handler <- (seededHandlerName <$> (try (keyword "seeded" *> keyword "random") *> lexeme L.decimal)) <|> do
+        name <- ident
+        seed <- optional (lexeme L.decimal)
+        case seed of
+          Nothing -> pure name
+          Just n | reverse (takeWhile (/= '.') (reverse name)) == seededHandler -> pure (seededHandlerName n)
+                 | otherwise -> fail "only seededRandom takes a seed"
       keyword "end"
       pure (Apply (Var ("prelude.handle:" ++ handler)) body)
     -- regex "a+": a Regex, checked at compile time (LawSpec.Regex).
@@ -1042,7 +1050,16 @@ recordedP value = do
 -- it), or `recording` of either.
 handlerUseP :: P HandlerUse
 handlerUseP = (keyword "recording" *> (UseRecording <$> handlerUseP))
+  <|> builtinHandlerUseP
   <|> ((\n -> if startsUpper n then UseAbility n else UseHandler n) <$> ident)
+
+-- The built-in handlers' readable names (LawSpec.Builtins): `virtual clock`
+-- is lawspec.time's virtualClock, and `seeded random n` is lawspec.random's
+-- seededRandom started at n.
+builtinHandlerUseP :: P HandlerUse
+builtinHandlerUseP =
+  (UseHandler virtualClockHandler <$ try (keyword "virtual" *> keyword "clock"))
+  <|> (UseHandler . seededHandlerName <$> (try (keyword "seeded" *> keyword "random") *> lexeme L.decimal))
 
 -- uses A, B [fails with E], or fails with E alone: a signature's abilities.
 usesP :: P [Type]

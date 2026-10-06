@@ -9,6 +9,7 @@ strongest to weakest:
 | `EXHAUSTIVELY CHECKED` | `exhaustively-checked` | Laws whose inputs form a finite domain | Every input, by the compiler or the generated tests |
 | `PROPERTY TESTED` | `property-tested` | Other laws | Generated cases, boundary cases and examples |
 | `RUNTIME CHECKED` | `runtime-checked` | Adapter contracts, definition preconditions, constructor constraints, native type bindings, non-linear definition indices | At every native boundary, or on each definition result |
+| `DEFAULT HANDLER` | `default-handler` | The default handlers of built-in abilities (see [built-in abilities](builtins.md)) | Reviewed runtime code, its ability's laws property-tested, cryptography checked against NIST vectors |
 | `ASSUMED / EXTERNAL` | `assumed` | Adapters, native functions, custom generators and codec hooks | Taken on trust |
 
 A law's [harness](harness.md) decides how its tests run, never what the law
@@ -103,6 +104,7 @@ Each obligation has a stage:
 | `adapter` | An adapter implementation | assumed |
 | `binding` | A native type binding | runtime-checked |
 | `codec`, `generator`, `native-function` | A codec hook, generator factory or bound native function | assumed |
+| `handler` | A built-in ability's production handler: the runtime's default, or one bound in `lawspec.json` | default-handler, or assumed when bound |
 
 ## Reading the evidence
 

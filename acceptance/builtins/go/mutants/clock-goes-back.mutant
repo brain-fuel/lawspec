@@ -1,0 +1,17 @@
+expect-any: time does not go back [native] | elapsed time is never negative
+@@ lawspec/time/steady.go
+<<<<<<<
+	clock.readings++
+	return clock.inner.Now()
+=======
+	clock.readings++
+	return Instant{Value: clock.inner.Now().Value - 1000*clock.readings}
+>>>>>>>
+@@ example/builtins/steady.go
+<<<<<<<
+	clock.readings++
+	return clock.inner.Now()
+=======
+	clock.readings++
+	return Instant{Value: clock.inner.Now().Value - 1000*clock.readings}
+>>>>>>>

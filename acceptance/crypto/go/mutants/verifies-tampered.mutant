@@ -1,0 +1,7 @@
+expect: a changed message fails to verify [native]
+@@ lawspec/crypto/keys.go
+<<<<<<<
+	return signer.inner.Verify(value0, value1, value2)
+=======
+	return signer.inner.Verify(value0, value1, value2) || len(value1) > 0
+>>>>>>>

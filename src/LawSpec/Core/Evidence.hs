@@ -15,11 +15,13 @@ import LawSpec.Core
 import LawSpec.Core.Machine (Machine(..), Supervisor(..), Consistency(..))
 import qualified LawSpec.Core.Program as P
 
--- Strongest first. The last three come from the harness plane: a law its
--- harness skips, or marks as known to fail, is still an obligation; flaky
--- is a run's outcome (a test that failed, then passed on a retry), which
--- lawspec evidence reads from the last run.
-data Status = Proved | ExhaustivelyChecked | PropertyTested | RuntimeChecked | Assumed
+-- Strongest first. DefaultHandler is a built-in ability's default
+-- handler: reviewed runtime code whose ability's laws are property-tested.
+-- The last three come from the harness plane: a law its harness skips,
+-- or marks as known to fail, is still an obligation; flaky is a run's outcome
+-- (a test that failed, then passed on a retry), which lawspec evidence
+-- reads from the last run.
+data Status = Proved | ExhaustivelyChecked | PropertyTested | RuntimeChecked | DefaultHandler | Assumed
   | KnownFailing | Flaky | Skipped
   deriving (Eq, Ord, Show, Enum, Bounded)
 
@@ -31,6 +33,7 @@ statusName Proved = "proved"
 statusName ExhaustivelyChecked = "exhaustively-checked"
 statusName PropertyTested = "property-tested"
 statusName RuntimeChecked = "runtime-checked"
+statusName DefaultHandler = "default-handler"
 statusName Assumed = "assumed"
 statusName KnownFailing = "known-failing"
 statusName Flaky = "flaky"

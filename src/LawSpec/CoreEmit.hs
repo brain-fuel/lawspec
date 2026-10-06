@@ -39,6 +39,8 @@ import qualified LawSpec.WebDefinitions as WebDefinitions
 import qualified LawSpec.Code.Doc as Doc
 import LawSpec.RuntimeSources
 import qualified LawSpec.Core as C
+import LawSpec.BuiltinDefaults (withBuiltinDefaults)
+import LawSpec.Builtins (defaultedUnits)
 import LawSpec.Scalar (primitive)
 import LawSpec.TargetNames (nativeName, allTargetKeywords)
 import Data.Char (toUpper, toLower, isAscii, isAlphaNum)
@@ -72,10 +74,11 @@ emitPlan = emitPlanWithFormat False
 -- Legacy runtime/test templates are still being migrated to structured Docs.
 emitPlanWithFormat :: Bool -> String -> Plan -> Either [Diagnostic] [Artifact]
 emitPlanWithFormat minify target original = do
-  let plan = wirePlan (escapePlan target (witnessPlan (ownedAbilityPlan original)))
+  let plan = wirePlan (escapePlan target (witnessPlan (goAbilityNames target (ownedAbilityPlan original))))
   emittedFiles <- emitPlanFormatted minify target plan
   extras <- companionArtifacts minify target plan
-  let files = emittedFiles ++ extras
+  -- Built-in units' adapter modules hold their default handlers.
+  files <- builtinDefaults target plan (emittedFiles ++ extras)
   canonical <- if minify then emitPlanFormatted False target plan else pure files
   let references = [(artifactPath a, artifactContent a) | a <- canonical, ownership a == "user"]
   mapM (\artifact -> if ownership artifact /= "user" then pure artifact else
@@ -83,6 +86,30 @@ emitPlanWithFormat minify target original = do
       Nothing -> Left [Diagnostic "target" "formatted adapter has no canonical reference" Nothing]
       Just reference -> pure (AdapterArtifact (artifactPath artifact) (artifactContent artifact)
         (ownership artifact) (artifactPlacement artifact) reference)) files
+
+-- Every Go package holds every ability of the program, so two abilities with
+-- one name would clash there: each that is not built in is named for its
+-- unit (example.shop's Log is ExampleShopLog), as colliding data types are.
+-- Built-in abilities keep their names, which their default handlers use.
+goAbilityNames :: String -> Plan -> Plan
+goAbilityNames target plan
+  | target /= "go" || null renamed = plan
+  | otherwise = plan { plannedUnits = [u { plannedUnit = rename (plannedUnit u) } | u <- plannedUnits plan] }
+  where
+    abilities = [a | u <- plannedUnits plan, a <- C.unitAbilities (plannedUnit u)]
+    owners name = nub [C.abilityId a | a <- abilities, C.abilityName a == name]
+    renamed = [ (C.abilityId a, qualified a) | a <- abilities, length (owners (C.abilityName a)) > 1
+              , C.idText (C.abilityOwner a) `notElem` defaultedUnits ]
+    qualified a = concatMap capitalize (split '.' (C.idText (C.abilityOwner a))) ++ C.abilityName a
+    capitalize (c : cs) = toUpper c : cs
+    capitalize [] = []
+    rename unit = unit { C.unitAbilities = [maybe a (\n -> a { C.abilityName = n }) (lookup (C.abilityId a) renamed) | a <- C.unitAbilities unit] }
+
+-- Built-in units' adapter modules hold their default handlers
+-- (LawSpec.BuiltinDefaults).
+builtinDefaults :: String -> Plan -> [Artifact] -> Either [Diagnostic] [Artifact]
+builtinDefaults target plan = either (\message -> Left [Diagnostic "builtins" message Nothing]) Right .
+  withBuiltinDefaults target (planDataDeclarations plan) (ownedAbilityUnits (map plannedUnit (plannedUnits plan)))
 
 -- Code beside the units: typed channel ends for the units' protocols, typed
 -- actors and mailboxes, and the definitions other nodes can evaluate by
@@ -436,7 +463,7 @@ emitPlanWithOptions minify target sourceDir testDir plan =
 
 emitPlanWithNativeOptions :: Bool -> String -> Maybe String -> Maybe String -> NB.BindingPlan -> Plan -> Either [Diagnostic] [Artifact]
 emitPlanWithNativeOptions minify target sourceDir testDir unescaped unwitnessed = do
-  let originalPlan = escapePlan target (witnessPlan (ownedAbilityPlan unwitnessed))
+  let originalPlan = escapePlan target (witnessPlan (goAbilityNames target (ownedAbilityPlan unwitnessed)))
       bindings = escapeBindings target unescaped
   unless (target `elem` ["python","rust","javascript","typescript","java","kotlin","go","haskell"] || not (any Binding.resolvedGeneratorStub
     (Binding.resolvedGenerators (NB.bindingRepresentations bindings))))
@@ -453,8 +480,8 @@ emitPlanWithNativeOptions minify target sourceDir testDir unescaped unwitnessed 
     (Left [Diagnostic "native-binding" "goImports is only valid for Go bindings" Nothing])
   emitted <- if not (NB.hasBindings bindings) then emitPlanWithFormat minify target plan
     -- Rust emits bound units itself, so it adds the companion code here.
-    else if target == "rust" then (++) <$> emitRustWithBindings minify bindings plan
-      <*> companionArtifacts minify target (wirePlan (escapePlan target (witnessPlan plan)))
+    else if target == "rust" then builtinDefaults target plan =<< ((++) <$> emitRustWithBindings minify bindings plan
+      <*> companionArtifacts minify target (wirePlan (escapePlan target (witnessPlan plan))))
     else if target == "python" then do
       ordinary <- emitPlanWithFormat minify target plan
       either (Left . pure . (\m -> Diagnostic "native-binding" m Nothing)) Right

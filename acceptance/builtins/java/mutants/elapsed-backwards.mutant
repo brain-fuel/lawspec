@@ -1,0 +1,7 @@
+expect: elapsed time is never negative
+@@ src/main/java/example/Builtins.java
+<<<<<<<
+    return java.time.Duration.ofNanos((clock.now().value() - start) * 1000L);
+=======
+    return java.time.Duration.ofNanos((start - clock.now().value() - 1) * 1000L);
+>>>>>>>

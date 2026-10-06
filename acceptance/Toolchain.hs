@@ -62,4 +62,4 @@ compileFailure :: String -> Bool
 compileFailure output = any ((`isInfixOf` map toLower output) . map toLower)
   [ "error[E", "could not compile", "COMPILATION ERROR", "compileKotlin FAILED"
   , "compileTestKotlin FAILED", "SyntaxError", "[build failed]", "parse error on input"
-  , "not in scope", "error TS" ]
+  , "not in scope", "error TS", "couldn't match expected type" ]

@@ -1,0 +1,7 @@
+expect: a fingerprint is 8 bytes
+@@ src/example/crypto.py
+<<<<<<<
+    return hash.sha3(value0).value[:8]
+=======
+    return hash.sha3(value0).value[:7]
+>>>>>>>

@@ -1,0 +1,7 @@
+expect-any: elapsed time is never negative | example.builtins::elapsed
+@@ src/example/builtins.rs
+<<<<<<<
+    std::time::Duration::from_micros((clock.now().value - start) as u64)
+=======
+    std::time::Duration::from_micros(((clock.now().value - start) as u64).wrapping_sub(1))
+>>>>>>>

@@ -24,6 +24,7 @@ import LawSpec.Matchers (matchersUnit, matchersAlias, matchersTypes, usesMatcher
 import LawSpec.Regex (parseRegex)
 import LawSpec.Resources (resourcesUnit, resourcesAlias, resourcesTypes, usesResources, resourcesSource)
 import LawSpec.Resilience (resilienceUnit, resilienceAlias, resilienceTypes, usesResilience, resilienceSource)
+import LawSpec.Builtins (builtinUnits, builtinSource, importsBuiltin, usesClock, clockSource)
 import LawSpec.Refinement
 import LawSpec.Prelude
 import Control.Monad.State.Strict
@@ -262,18 +263,24 @@ compileWithImports visible bits settings sources = do
   unless (bits `elem` [32,64]) (Left [Diagnostic "machineBits" "machineBits must be 32 or 64" Nothing])
   -- Programs that use a collection get the built-in collections unit.
   -- Programs that use durations get the built-in time unit.
-  let collections = usedCollections [text | Source _ text <- sources]
-      -- Programs whose workflows use stateful policies get the resilience unit.
-      time = any usesTime [text | Source _ text <- sources]
+  -- Programs whose workflows use stateful policies get the resilience unit.
+  -- Programs that import a built-in unit with abilities get it
+  -- (LawSpec.Builtins); importing lawspec.time adds its clock. Their
+  -- handlers with state use collections too.
+  let clock = any usesClock [text | Source _ text <- sources]
+      time = clock || any usesTime [text | Source _ text <- sources]
       resilience = any usesResilience [text | Source _ text <- sources]
       -- Programs that use matchers over lists, or regexes, get the matchers unit.
       matchers = any usesMatchers [text | Source _ text <- sources]
       -- Programs that name a built-in resource get the resources unit.
       resources = any usesResources [text | Source _ text <- sources]
+      abilityUnits = [Source ("<" ++ unit ++ ">") (builtinSource unit) | unit <- builtinUnits, any (importsBuiltin unit) [text | Source _ text <- sources]]
+      collections = usedCollections ([text | Source _ text <- sources ++ abilityUnits] ++ [clockSource | clock])
       builtins = preludeSource : [Source "<lawspec.collections>" (collectionsSource collections) | not (null collections)] ++
-        [Source "<lawspec.time>" timeSource | time] ++ [Source "<lawspec.resilience>" resilienceSource | resilience] ++
+        [Source "<lawspec.time>" (timeSource ++ (if clock then clockSource else "")) | time] ++ [Source "<lawspec.resilience>" resilienceSource | resilience] ++
         [Source "<lawspec.matchers>" matchersSource | matchers] ++
-        [Source "<lawspec.resources>" resourcesSource | resources]
+        [Source "<lawspec.resources>" resourcesSource | resources] ++
+        abilityUnits
       implicit = [(timeUnit, timeAlias, timeTypes, usesTime) | time] ++
         [(resilienceUnit, resilienceAlias, resilienceTypes, usesResilience) | resilience] ++
         [(matchersUnit, matchersAlias, matchersTypes, usesMatchers) | matchers] ++

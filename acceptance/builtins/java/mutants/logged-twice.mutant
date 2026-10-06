@@ -1,0 +1,10 @@
+expect: a charge is logged once
+@@ src/main/java/example/Builtins.java
+<<<<<<<
+      log.logMessage(new lawspec.data.LogLevel.Info(), "charged " + value0);
+      return true;
+=======
+      log.logMessage(new lawspec.data.LogLevel.Info(), "charged " + value0);
+      log.logMessage(new lawspec.data.LogLevel.Info(), "charged again " + value0);
+      return true;
+>>>>>>>

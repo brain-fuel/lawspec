@@ -1,0 +1,7 @@
+expect: a changed message fails to verify [native]
+@@ src/Example/Keys.hs
+<<<<<<<
+    , Abilities.verify = \key message signature -> Abilities.verify inner key message signature
+=======
+    , Abilities.verify = \key message signature -> (|| not (B.null message)) <$> Abilities.verify inner key message signature
+>>>>>>>

@@ -1,0 +1,7 @@
+expect: a fingerprint is 8 bytes
+@@ example/crypto/adapter.go
+<<<<<<<
+	return hash.Sha3(value0).Value[:8]
+=======
+	return hash.Sha3(value0).Value[:7]
+>>>>>>>

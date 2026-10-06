@@ -14,7 +14,7 @@ import LawSpec.CoreEmit (emitPlanWithNativeOptions)
 import LawSpec.NativeRequest
 import LawSpec.Public (programView)
 import LawSpec.Packages
-import LawSpec.Discharge (dischargeEvidence, bindingEvidence)
+import LawSpec.Discharge (dischargeEvidence, bindingEvidence, defaultHandlerEvidence)
 import LawSpec.TestManifest (TestEntry(..), testManifest, BenchmarkEntry(..), benchmarkManifest)
 import LawSpec.Memo (Table, newTable, memoized, withCacheDirectory)
 import qualified Data.ByteString.Lazy.Char8 as BC
@@ -31,7 +31,7 @@ dispatch bytes = withCacheDirectory cacheDirectory $ encode $ versioned $ case e
    case memoized stagesTable (sharedRequest bytes) (stages project packages sources bits settings native) of
     Left response -> response
     Right (us,es,core,bindings,evidence,described,plan) ->
-     let result files = withPackages project described (programView settings us (map prettyExpanded es) files (evidence ++ bindingEvidence bindings) core) in case method of
+     let result files = withPackages project described (programView settings us (map prettyExpanded es) files (evidence ++ bindingEvidence bindings ++ defaultHandlerEvidence core bindings) core) in case method of
           "check" -> result []
           "expand" -> result []
           "planGeneration" -> either failure (withBenchmarks (benchmarkManifest target testDir core) . withTests (testManifest target testDir core) . result)

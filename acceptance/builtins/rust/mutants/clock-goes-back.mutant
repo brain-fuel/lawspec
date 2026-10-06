@@ -1,0 +1,9 @@
+expect-any: time does not go back [native] | elapsed time is never negative | example.builtins::elapsed
+@@ src/clocks.rs
+<<<<<<<
+        self.readings.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        self.inner.now()
+=======
+        let readings = self.readings.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
+        crate::lawspec_data::Instant { value: self.inner.now().value - 1000 * readings }
+>>>>>>>

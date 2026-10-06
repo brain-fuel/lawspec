@@ -1,0 +1,10 @@
+expect: a charge is logged once
+@@ example/builtins/adapter.go
+<<<<<<<
+		log.LogMessage(LogLevelInfo{}, fmt.Sprintf("charged %d", value0))
+		return true
+=======
+		log.LogMessage(LogLevelInfo{}, fmt.Sprintf("charged %d", value0))
+		log.LogMessage(LogLevelInfo{}, fmt.Sprintf("charged %d again", value0))
+		return true
+>>>>>>>

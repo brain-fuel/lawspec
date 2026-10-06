@@ -182,7 +182,7 @@ loadPackage directory = do
 writeProject :: String -> String -> FilePath -> Bool -> Bool -> [Generated] -> IO ()
 writeProject suite target project defaultProfile minify generated = do
   createDirectoryIfMissing True project
-  forM_ ["src", "test", "tests", "example"] $ \folder -> removePathForcibly (project </> folder)
+  forM_ ["src", "test", "tests", "example", "dist", "lawspec"] $ \folder -> removePathForcibly (project </> folder)
   scaffolds <- either die pure (scaffoldFiles minify target)
   forM_ scaffolds $ \(path, content) -> writeAt (project </> path) content
   forM_ generated $ \g -> writeAt (project </> generatedPath g) (generatedContent g)

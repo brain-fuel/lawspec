@@ -1,0 +1,7 @@
+expect: a fingerprint is 8 bytes
+@@ src/main/java/example/Crypto.java
+<<<<<<<
+    return java.util.Arrays.copyOf(hash.sha3(value0).value(), 8);
+=======
+    return java.util.Arrays.copyOf(hash.sha3(value0).value(), 7);
+>>>>>>>

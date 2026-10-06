@@ -32,6 +32,7 @@ import qualified AsyncSpec
 import qualified AbilitiesSpec
 import qualified LawPrimitivesSpec
 import qualified HarnessSpec
+import qualified BuiltinsSpec
 import qualified BoundsSpec
 import qualified ConditionalSpec
 import qualified IncrementalSpec
@@ -74,6 +75,7 @@ main = hspec $ do
   AbilitiesSpec.spec
   LawPrimitivesSpec.spec
   HarnessSpec.spec
+  BuiltinsSpec.spec
   BoundsSpec.spec
   ConditionalSpec.spec
   IncrementalSpec.spec

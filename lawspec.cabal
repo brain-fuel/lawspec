@@ -44,6 +44,66 @@ extra-source-files:
     runtime/lawspec_harness.go
     runtime/lawspec_runtime.go
     runtime/lawspec_schema.go
+    runtime/defaults/vectors.txt
+    runtime/defaults/go/concurrent.go
+    runtime/defaults/go/crypto.go
+    runtime/defaults/go/crypto_vectors.go
+    runtime/defaults/go/crypto_vectors_go126.go
+    runtime/defaults/go/host.go
+    runtime/defaults/go/logging.go
+    runtime/defaults/go/randomness.go
+    runtime/defaults/go/time.go
+    runtime/defaults/haskell/concurrent.hs
+    runtime/defaults/haskell/crypto.hs
+    runtime/defaults/haskell/crypto_vectors.hs
+    runtime/defaults/haskell/host.hs
+    runtime/defaults/haskell/logging.hs
+    runtime/defaults/haskell/randomness.hs
+    runtime/defaults/haskell/time.hs
+    runtime/defaults/java/concurrent.java
+    runtime/defaults/java/crypto.java
+    runtime/defaults/java/crypto_vectors.java
+    runtime/defaults/java/host.java
+    runtime/defaults/java/logging.java
+    runtime/defaults/java/randomness.java
+    runtime/defaults/java/time.java
+    runtime/defaults/javascript/concurrent.mjs
+    runtime/defaults/javascript/crypto.mjs
+    runtime/defaults/javascript/crypto_vectors.mjs
+    runtime/defaults/javascript/host.mjs
+    runtime/defaults/javascript/logging.mjs
+    runtime/defaults/javascript/randomness.mjs
+    runtime/defaults/javascript/time.mjs
+    runtime/defaults/kotlin/concurrent.kt
+    runtime/defaults/kotlin/crypto.kt
+    runtime/defaults/kotlin/crypto_vectors.kt
+    runtime/defaults/kotlin/host.kt
+    runtime/defaults/kotlin/logging.kt
+    runtime/defaults/kotlin/randomness.kt
+    runtime/defaults/kotlin/time.kt
+    runtime/defaults/python/concurrent.py
+    runtime/defaults/python/crypto.py
+    runtime/defaults/python/crypto_reference.py
+    runtime/defaults/python/crypto_vectors.py
+    runtime/defaults/python/host.py
+    runtime/defaults/python/logging.py
+    runtime/defaults/python/randomness.py
+    runtime/defaults/python/time.py
+    runtime/defaults/rust/concurrent.rs
+    runtime/defaults/rust/crypto.rs
+    runtime/defaults/rust/crypto_primitives.rs
+    runtime/defaults/rust/crypto_vectors.rs
+    runtime/defaults/rust/host.rs
+    runtime/defaults/rust/logging.rs
+    runtime/defaults/rust/randomness.rs
+    runtime/defaults/rust/time.rs
+    runtime/defaults/typescript/concurrent.ts
+    runtime/defaults/typescript/crypto.ts
+    runtime/defaults/typescript/crypto_vectors.ts
+    runtime/defaults/typescript/host.ts
+    runtime/defaults/typescript/logging.ts
+    runtime/defaults/typescript/randomness.ts
+    runtime/defaults/typescript/time.ts
     runtime/rust/Cargo.toml
     runtime/rust/Cargo.lock
     examples/specs/abilities.lawspec
@@ -55,10 +115,12 @@ extra-source-files:
     examples/specs/async_fetch.lawspec
     examples/specs/atoi_codec.lawspec
     examples/specs/boolean_flags.lawspec
+    examples/specs/builtins.lawspec
     examples/specs/canonical_url.lawspec
     examples/specs/collections.lawspec
     examples/specs/concurrent_collections.lawspec
     examples/specs/consistency.lawspec
+    examples/specs/crypto.lawspec
     examples/specs/currying.lawspec
     examples/specs/data_types.lawspec
     examples/specs/distribution.lawspec
@@ -220,6 +282,8 @@ library
       LawSpec.Api
       LawSpec.Backend
       LawSpec.Bounds
+      LawSpec.BuiltinDefaults
+      LawSpec.Builtins
       LawSpec.Capabilities
       LawSpec.Code.Doc
       LawSpec.Code.JavaScript
@@ -252,6 +316,7 @@ library
       LawSpec.CoreScalarEmit
       LawSpec.Data
       LawSpec.DataNames
+      LawSpec.DefaultSources
       LawSpec.DefinitionTotality
       LawSpec.Dependencies
       LawSpec.Digest
@@ -482,6 +547,7 @@ test-suite lawspec-test
       ApiContractSpec
       AsyncSpec
       BoundsSpec
+      BuiltinsSpec
       CollectionsSpec
       ConditionalSpec
       CoreSpec

@@ -1,6 +1,7 @@
 module LawSpec.CoreNativeScalarEmit (nativeScalarEmit, nativeScalarEmitWithData, nativeScalarEmitWithDefinitions, nativeScalarEmitWithFormat, nativeScalarEmitWithNativeGenerators, nativeScalarEmitWithAdapterBindings, dataBudget) where
 import LawSpec.Bounds (inputRange)
 import LawSpec.AbilityNames (interfaceName, productionName, specName, recordingName, unitAbility, ownAbilities, ownerName, fieldName)
+import LawSpec.Builtins (defaultedUnits)
 import qualified LawSpec.AbilityEmit.Go as GoAbilities
 import qualified LawSpec.AbilityEmit.Java as JavaAbilities
 import qualified LawSpec.AbilityEmit.Kotlin as KotlinAbilities
@@ -148,7 +149,8 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
            Doc.text "// User-owned LawSpec adapter." <> Doc.hardline <>
            Doc.text ("package " ++ last parts) <> Doc.hardline <>
            mconcat [Doc.hardline <> goStubFn n t | (n,t) <- adapterFunctions] <>
-           mconcat [Doc.text (java (GoAbilities.productionStub dataDeclarations a)) | a <- C.unitAbilities u]
+           -- Built-in abilities have default handlers (LawSpec.BuiltinDefaults).
+           mconcat [Doc.text (java (GoAbilities.productionStub dataDeclarations a)) | a <- C.unitAbilities u, C.idText (C.abilityOwner a) `notElem` defaultedUnits]
          | hs = Doc.render (Doc.selectLayout minify (Doc.Pretty 80)) $
            Doc.text ("-- User-owned LawSpec adapter.\n" ++ header ++ "\n" ++ hsImports ++
              (if null (C.unitAbilities u) then "" else "import qualified " ++ HaskellAbilities.typesModule u ++ " as Abilities\n")) <>

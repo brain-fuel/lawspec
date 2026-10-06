@@ -1,0 +1,7 @@
+{
+  "rustCrate": "lawspec_example",
+  "handlers": [
+    {"ability": "lawspec.crypto::Signature", "native": ["crate", "keys", "counting_signer"]},
+    {"ability": "lawspec.crypto::KeyExchange", "native": ["crate", "keys", "counting_exchange"]}
+  ]
+}

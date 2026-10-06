@@ -1,0 +1,10 @@
+expect: a charge is logged once
+@@ src/example/builtins.ts
+<<<<<<<
+    log.logMessage(new data.LogLevelInfo(), `charged ${value0}`);
+    return true;
+=======
+    log.logMessage(new data.LogLevelInfo(), `charged ${value0}`);
+    log.logMessage(new data.LogLevelInfo(), `charged ${value0} again`);
+    return true;
+>>>>>>>

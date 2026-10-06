@@ -1,0 +1,16 @@
+rejected-at: compile
+expect: Couldn't match
+@@ src/Example/Builtins.hs
+<<<<<<<
+token secureRandom n = Abilities.secureBytes secureRandom n
+=======
+token _ n = do
+  seeded <- Randomness.randomHandler
+  Abilities.secureBytes seeded n
+>>>>>>>
+<<<<<<<
+import qualified Control.Exception as Exception
+=======
+import qualified Control.Exception as Exception
+import qualified Lawspec.Randomness as Randomness
+>>>>>>>

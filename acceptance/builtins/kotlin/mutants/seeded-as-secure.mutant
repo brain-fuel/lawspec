@@ -1,0 +1,11 @@
+rejected-at: compile
+expect: type mismatch: expected 'Randomness.SecureRandom'
+@@ src/main/kotlin/example/Builtins.kt
+<<<<<<<
+    ): kotlin.ByteArray = secureRandom.secureBytes(value0)
+=======
+    ): kotlin.ByteArray {
+        val seeded: lawspec.abilities.lawspec.Randomness.SecureRandom = lawspec.Randomness.RandomHandler()
+        return seeded.secureBytes(value0)
+    }
+>>>>>>>

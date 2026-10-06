@@ -1,0 +1,9 @@
+expect-any: time does not go back [native] | elapsed time is never negative
+@@ src/main/kotlin/example/SteadyClock.kt
+<<<<<<<
+        readings++
+        return inner.now()
+=======
+        readings++
+        return lawspec.data.Instant(inner.now().value - 1000 * readings)
+>>>>>>>

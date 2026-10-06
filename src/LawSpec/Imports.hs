@@ -17,6 +17,7 @@ import LawSpec.Time (timeUnit, timeAlias, timeOperation, durationDefinitions)
 import LawSpec.Matchers (matchersUnit, matchersAlias, matcherOperation)
 import LawSpec.Resources (resourcesUnit)
 import LawSpec.Resilience (resilienceUnit, resilienceDefinitions)
+import LawSpec.Builtins (instantDefinitions)
 import Control.Monad (forM, forM_, unless, when)
 import Control.Monad.State.Strict (State, execState, modify)
 import Data.Char (toUpper)
@@ -131,7 +132,7 @@ resolveUnit visible table u allImports = do
   let origins = [(resolvedUnit source, portable source) | (_, source) <- sources]
       -- Arithmetic on durations elaborates to the time unit's definitions
       -- once types are known, so a unit importing it copies them all.
-      timeSeeds = S.fromList [(ValueName, n) | i <- imports, importUnit i == timeUnit, d <- durationDefinitions,
+      timeSeeds = S.fromList [(ValueName, n) | i <- imports, importUnit i == timeUnit, d <- durationDefinitions ++ instantDefinitions,
         Right n <- [lookupName ValueName (importAlias i ++ "." ++ d)]] `S.union`
         -- The workflow runtime drives the resilience unit's state machines.
         S.fromList [(ValueName, n) | i <- imports, importUnit i == resilienceUnit, d <- resilienceDefinitions,

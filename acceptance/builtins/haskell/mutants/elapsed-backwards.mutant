@@ -1,0 +1,7 @@
+expect: elapsed time is never negative
+@@ src/Example/Builtins.hs
+<<<<<<<
+  pure (Data.Duration (P.toInteger (end - start)))
+=======
+  pure (Data.Duration (P.toInteger (start - end - 1)))
+>>>>>>>

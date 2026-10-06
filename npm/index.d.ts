@@ -220,6 +220,7 @@ export type DischargeStatus =
     'exhaustively-checked' |
     'property-tested' |
     'runtime-checked' |
+    'default-handler' |
     'assumed';
 
 export interface ObligationEvidence {

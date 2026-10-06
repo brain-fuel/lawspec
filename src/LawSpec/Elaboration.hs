@@ -8,7 +8,7 @@ import LawSpec.Abilities (clauseDefinitionName, abilityArguments, instantiatedOp
 import Data.Maybe (listToMaybe)
 import qualified Data.Map.Strict as M
 
-import LawSpec.Time (timeUnit, durationType, durationArithmetic, durationValue)
+import LawSpec.Time (timeUnit, durationType, instantType, durationArithmetic, durationValue)
 import LawSpec.Imports (importedDefinitionName)
 import LawSpec.Collections (collectionsUnit, internalConstructor)
 import qualified LawSpec.Model as S
@@ -157,6 +157,7 @@ elaborateResolvedWithData dataTypes declarations bits origin resolve env source 
           case op of
             "&&" -> pure (node t (C.ShortCircuit C.And x y))
             "||" -> pure (node t (C.ShortCircuit C.Or x y))
+            _ | op `notElem` ["==","!="], any isInstant [x,y] -> instantBinary t op x y
             _ | op `notElem` ["==","!="], any isDuration [x,y] -> durationBinary t op x y
             _ -> do
               operator <- binaryOp op
@@ -228,6 +229,23 @@ elaborateResolvedWithData dataTypes declarations bits origin resolve env source 
                 | isDuration x -> pure (call name [x,widen y])
                 | otherwise -> pure (call name [y,widen x])
       Nothing -> do
+        operator <- binaryOp op
+        evidence <- operationEvidence operator integer integer
+        pure (node t (C.Binary operator evidence (unwrap x) (unwrap y)))
+  -- Arithmetic on instants calls the time unit's checked definitions too;
+  -- comparisons compare microseconds.
+  isInstant e = C.expressionType e == C.Constructor instantType []
+  instantBinary t op x y = do
+    let copy name = resolve (importedDefinitionName timeUnit name)
+        call name args = node t (C.ExternalCall (copy name) args)
+        integer = C.scalarType "Int64"
+        unwrap e = node integer (C.ExternalCall (copy "valueOfInstant") [e])
+    case op of
+      "+" | isInstant x -> pure (call "instantPlus" [x, y])
+          | otherwise -> pure (call "instantPlus" [y, x])
+      "-" | isInstant y -> pure (call "instantBetween" [x, y])
+          | otherwise -> pure (call "instantMinus" [x, y])
+      _ -> do
         operator <- binaryOp op
         evidence <- operationEvidence operator integer integer
         pure (node t (C.Binary operator evidence (unwrap x) (unwrap y)))

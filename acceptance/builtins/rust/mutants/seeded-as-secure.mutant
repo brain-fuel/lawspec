@@ -1,0 +1,9 @@
+rejected-at: compile
+expect: SecureRandom
+@@ src/example/builtins.rs
+<<<<<<<
+    secureRandom.secureBytes(value0)
+=======
+    let seeded: &dyn crate::lawspec_abilities::lawspec_randomness::SecureRandom = &crate::lawspec_randomness::RandomHandler::default();
+    seeded.secureBytes(value0)
+>>>>>>>

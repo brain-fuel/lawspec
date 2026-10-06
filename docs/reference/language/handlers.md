@@ -88,7 +88,9 @@ law `large payments fail` using fakeGateway is ... end
 - a spec handler's name: the law runs under that handler;
 - an ability's name: the law runs under each lawful handler of it, as if
   unnamed;
-- `recording` before either: the same handlers, recorded.
+- `recording` before either: the same handlers, recorded;
+- `virtual clock` and `seeded random n`: the built-in spec handlers of
+  `Clock` and `Random` (see [time](time.md) and [randomness](randomness.md)).
 
 For each ability the law uses but does not name, the law runs under each
 lawful handler in turn: the native production handler, then each spec

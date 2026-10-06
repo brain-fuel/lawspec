@@ -1,0 +1,10 @@
+expect: a charge is logged once
+@@ src/main/kotlin/example/Builtins.kt
+<<<<<<<
+            log.logMessage(lawspec.data.LogLevel.Info, "charged $value0")
+            return true
+=======
+            log.logMessage(lawspec.data.LogLevel.Info, "charged $value0")
+            log.logMessage(lawspec.data.LogLevel.Info, "charged again $value0")
+            return true
+>>>>>>>

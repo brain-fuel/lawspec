@@ -3,7 +3,35 @@
 # For more information, please see the documentation at:
 #   https://docs.haskellstack.org/en/stable/topics/lock_files
 
-packages: []
+packages:
+- completed:
+    hackage: crypton-1.1.5@sha256:792068de19ec3e75367ba52f5bb68c2b01f76182f9d38d9fcb6eccfece8f5228,15142
+    pantry-tree:
+      sha256: 6b79d152f427e882a5b70b5982f700170785f72a54dceaa8e05f64e7172070ab
+      size: 23414
+  original:
+    hackage: crypton-1.1.5
+- completed:
+    hackage: ram-0.22.1@sha256:ae1111ae126f1c89f54ff6d616d25a78db0db6e1e76e20a13d1526dc6afe37e8,2814
+    pantry-tree:
+      sha256: af7847577924b07015c1ec920c03f32b712cc5bade512923e94b5e0fa238bedd
+      size: 2285
+  original:
+    hackage: ram-0.22.1
+- completed:
+    hackage: mlkem-0.2.3.0@sha256:302c52d7c880efdc567d812e2e7490dc08a85e155daaa9c12d157d997c8568d2,4821
+    pantry-tree:
+      sha256: 88fcf1feadbe015f945804793dad27e402748fe595c90856d19bdb0ac38f61af
+      size: 1831
+  original:
+    hackage: mlkem-0.2.3.0
+- completed:
+    hackage: mldsa-0.1.1.0@sha256:7b0c270fe3ac8882a99a5069feb43690ab28b3a7a7fe5a259831e7c99991ae5c,4869
+    pantry-tree:
+      sha256: def6f6c948a7eb314e27db86554d342ff5d563f689145edca62b2452f136330f
+      size: 1943
+  original:
+    hackage: mldsa-0.1.1.0
 snapshots:
 - completed:
     sha256: d4d51e01349a3e51b7aa6c500a9da8b0b578043badaec1d5f210cfe27672f18d

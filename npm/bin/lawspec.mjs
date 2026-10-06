@@ -679,6 +679,7 @@ async function main() {
     ["exhaustively-checked", "EXHAUSTIVELY CHECKED"],
     ["property-tested", "PROPERTY TESTED"],
     ["runtime-checked", "RUNTIME CHECKED"],
+    ["default-handler", "DEFAULT HANDLER"],
     ["assumed", "ASSUMED / EXTERNAL"],
     // The harness plane: a law it marks as known to fail, a law whose last
     // run was flaky, and a law whose tests it skips.
