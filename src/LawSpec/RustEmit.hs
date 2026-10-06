@@ -322,9 +322,9 @@ emitRustWithBindings minify bindings plan@Plan{..} = either (Left . pure . (\m -
                 , binding "right" y
                 , conditional (Doc.text "!ls::equal(&left, &right)?")
                     (statement (Doc.text "return " <> invoke "Err"
-                      [invoke "format!" [string "{}: {:?} != {:?}",
+                      [invoke "format!" [string "{}: {:?} != {:?}{}",
                         string (label ++ " | expect " ++ Presentation.propositionText p),
-                        Doc.text "left", Doc.text "right"]]))]))
+                        Doc.text "left", Doc.text "right", Doc.text "ls::difference(&left, &right)"]]))]))
             Implication g body -> do
               guard <- render names g
               inner <- proposition names label body
@@ -423,7 +423,25 @@ emitRustWithBindings minify bindings plan@Plan{..} = either (Left . pure . (\m -
             args = Doc.text "ctx: &mut ls::Context" : [Doc.text (n ++ ": ls::Value") | (_,n) <- names]
             -- Each case's workflows wait on their own virtual clock.
             context = Doc.text "let ctx = &mut ls::Context::testing();"
-        body <- proposition names label (propertyBody p)
+        -- A law's resources: each case acquires them, then runs, then
+        -- releases them, the last first, even when the case fails or panics.
+        let resourceNames = [(binderId (resourceBinder r), "resource" ++ show i) | (i, r) <- zip [0::Int ..] (propertyResources p)]
+            withResources = names ++ resourceNames
+            bracket inner [] = pure (statements inner)
+            bracket inner ((r, (_, local)) : rest) = do
+              acquired <- render withResources (resourceAcquire r)
+              released <- render withResources (resourceRelease r)
+              nested <- bracket inner rest
+              pure (statements
+                [ binding local acquired
+                , binding ("outcome_" ++ local) (Doc.text "std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| -> ls::Result<()> " <>
+                    block (statements [nested, Doc.text "Ok(())"]) <> Doc.text "))")
+                , binding ("released_" ++ local) (Doc.text "(|| -> ls::Result<ls::Value> " <> block (Doc.text "Ok(" <> released <> Doc.text ")") <> Doc.text ")()")
+                , Doc.text ("match outcome_" ++ local ++ " ") <> block (statements
+                    [ Doc.text ("Ok(result) => " ++ "{ result?; released_" ++ local ++ "?; }")
+                    , Doc.text "Err(panic) => std::panic::resume_unwind(panic),"]) ])
+            resourced inner = bracket inner (zip (propertyResources p) resourceNames)
+        body <- proposition withResources label (propertyBody p) >>= resourced . pure
         checkedInputs <- if null planDataDeclarations then pure [] else
           forM (zip (propertyInputs p) names) $ \(input,(_,name)) -> do
             ty <- schemaType (binderType (quantifiedBinder input))
@@ -517,9 +535,10 @@ emitRustWithBindings minify bindings plan@Plan{..} = either (Left . pure . (\m -
             value <- render [] x
             name <- maybe (Left "unbound example input") Right (lookup i names)
             pure (binding name value)
-          checks <- mapM (proposition names (label ++ " example " ++ exampleName e)) (exampleExpectations e)
-          lawCheck <- proposition names label (propertyBody p)
-          pure (block (statements (context : handlerInstalls unit p ++ bindings ++ checks ++ [lawCheck])))
+          checks <- mapM (proposition withResources (label ++ " example " ++ exampleName e)) (exampleExpectations e)
+          lawCheck <- proposition withResources label (propertyBody p)
+          checked <- resourced (checks ++ [lawCheck])
+          pure (block (statements (context : handlerInstalls unit p ++ bindings ++ [checked])))
         let predicateFn = "valid_" ++ show index
             tupleArgs = [Doc.text ("case.values[" ++ show n ++ "].clone()") | n <- [0..length names-1]]
             random = case finiteCases pp of

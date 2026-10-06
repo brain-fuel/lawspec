@@ -11,6 +11,7 @@ import qualified LawSpec.Code.Doc as D
 import qualified LawSpec.HaskellExpr as E
 import qualified LawSpec.HaskellTestHelpers as Helpers
 import Data.List (intercalate)
+import LawSpec.Scalar (Scalar(..))
 
 data Config = Config
   { moduleName :: String
@@ -141,20 +142,37 @@ emitTests Config{..} unit laws = do
             (D.softline <> D.joinWith (text " ->" <> D.softline) (replicate (length args + 1) (text "Scalar"))))
       in signature <> D.hardline <> text (unwords (name : "symbols" : map fst args) ++ " =") <>
         D.nest 2 (D.hardline <> body)
+    -- A law's resources: each case acquires them, then runs, then releases
+    -- them, the last first, even when the case fails. A built-in resource is
+    -- acquired in IO, so each case gets its own.
+    bracketed e docs = foldr wrap (sequenceDocs docs) (C.propertyResources (original e))
+      where
+        wrap r inner =
+          let local = localName (C.binderId (C.resourceBinder r))
+              (acquire, release) = case builtin r of
+                Just (kind, tag) -> (apply "LS.acquireBuiltin" [quoted kind, quoted tag], apply "LS.releaseBuiltin" [quoted kind])
+                Nothing -> (apply "pure" [expr (C.resourceAcquire r)],
+                  text ("\\" ++ local ++ " -> ") <> apply "evaluate" [runtime "forceScalar" [expr (C.resourceRelease r)]])
+          in apply "LS.withResource" [acquire, release] <> text (" $ \\" ++ local ++ " -> do") <>
+            D.nest 2 (D.hardline <> inner)
+        builtin r = case C.expressionNode (C.resourceAcquire r) of
+          C.Construct tag [argument] | C.Helper h [kind] <- C.expressionNode argument, h `elem` [C.AcquireResource, C.FreePort]
+            , C.Constant (SSequence _ points) <- C.expressionNode kind -> Just (map toEnum points, C.idText tag)
+          _ -> Nothing
     law (index,e) = do
       let label = owner e ++ "::" ++ name e
           fn = "law" ++ show index
       exampleDocs <- mapM (\(i,ex) -> pure $ testFunction (fn ++ "Example" ++ show i)
         ([symbols] ++ handlerInstalls e ++ [bind n (expr v) | (n,v) <- bindings ex] ++
-        map (assertionDoc (label ++ " example " ++ exampleName ex)) (expectations ex) ++
-        [assertionDoc label (assertion e)])) (zip [0::Int ..] (examples (original e)))
+        [bracketed e (map (assertionDoc (label ++ " example " ++ exampleName ex)) (expectations ex) ++
+          [assertionDoc label (assertion e)])])) (zip [0::Int ..] (examples (original e)))
       boundaryDocs <- mapM (\(i,vs) -> do
         values <- mapM literal vs
         pure $ testFunction (fn ++ "Boundary" ++ show i)
           ([symbols] ++ handlerInstalls e ++ [bind (inputId inp) (checked (inputType inp) v) | (inp,v) <- zip (inputs e) values] ++
-          [assertionDoc (label ++ " boundary " ++ show i) (assertion e)]))
+          [bracketed e [assertionDoc (label ++ " boundary " ++ show i) (assertion e)]]))
         (zip [0::Int ..] (maybe (boundaryCases e) id (finiteCases e)))
-      let check = assertionDoc (label ++ " property") (assertion e)
+      let check = bracketed e [assertionDoc (label ++ " property") (assertion e)]
       property <- if finiteCases e /= Nothing then pure []
         else if nativeGenerators || constructorContracts || any (maybe False (const True) . generatorIndex) (generationPlan e)
           then (:[]) <$> contextualProperty fn label e check

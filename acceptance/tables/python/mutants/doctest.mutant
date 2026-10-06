@@ -1,0 +1,7 @@
+expect: description example 1
+@@ src/example/tables.py
+<<<<<<<
+    return f"parcel {value0}"
+=======
+    return f"parcel {value0}" if value0 != 7 else "parcel seven"
+>>>>>>>

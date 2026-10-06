@@ -1,0 +1,7 @@
+expect: negative amounts are blocked
+@@ src/example/failures.rs
+<<<<<<<
+            return crate::lawspec_data::Decision::Block;
+=======
+            return crate::lawspec_data::Decision::Decline { reason: "negative".into() };
+>>>>>>>

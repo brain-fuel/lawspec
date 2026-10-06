@@ -1,0 +1,17 @@
+expect: every case gets an empty store
+@@ src/Example/Resources.hs
+<<<<<<<
+  items <- newIORef Map.empty
+=======
+  let items = sharedItems
+>>>>>>>
+@@ src/Example/Resources.hs
+<<<<<<<
+store :: Data.Store -> Store
+=======
+{-# NOINLINE sharedItems #-}
+sharedItems :: IORef (Map.Map I.Int32 I.Int32)
+sharedItems = unsafePerformIO (newIORef Map.empty)
+
+store :: Data.Store -> Store
+>>>>>>>

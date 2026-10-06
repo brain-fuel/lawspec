@@ -1,0 +1,7 @@
+expect: recorded/example.tables/first label differs
+@@ src/example/tables.mjs
+<<<<<<<
+  return `parcel ${value0}`;
+=======
+  return value0 === 1 ? 'parcel one' : `parcel ${value0}`;
+>>>>>>>

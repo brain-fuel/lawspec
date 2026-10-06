@@ -1,0 +1,7 @@
+expect: too many open stores
+@@ src/example/resources.py
+<<<<<<<
+    value0.close()
+=======
+    pass
+>>>>>>>

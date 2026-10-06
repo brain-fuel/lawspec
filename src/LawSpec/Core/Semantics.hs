@@ -4,6 +4,8 @@ import LawSpec.Core (Type(..), Argument(..), scalarType)
 import LawSpec.Scalar
 import Data.Ratio
 import Control.Monad (unless)
+import Data.List (isPrefixOf, isSuffixOf, isInfixOf)
+import LawSpec.Regex (regexMatchesText)
 
 convertValue :: Int -> Type -> Scalar -> Either String Scalar
 convertValue bits (Constructor n []) s = case s of
@@ -69,6 +71,10 @@ helperValue bits "round" [a,b] = do
   unless (denominator scale == 1) (Left "fractional decimal scale")
   let k = numerator scale; factor = if k >= 0 then 10^k % 1 else 1 % 10^(-k)
   decimal (fromInteger (round (x*factor)) / factor)
+helperValue _ "startsWith" [SSequence "Text" t, SSequence "Text" p] = Right (SBool (isPrefixOf p t))
+helperValue _ "endsWith" [SSequence "Text" t, SSequence "Text" p] = Right (SBool (isSuffixOf p t))
+helperValue _ "textContains" [SSequence "Text" t, SSequence "Text" p] = Right (SBool (isInfixOf p t))
+helperValue _ "regexMatches" [SSequence "Text" p, SSequence "Text" t] = SBool <$> regexMatchesText (map toEnum p) t
 helperValue bits n [a] | isNumeric n = convertValue bits (scalarType n) a
 helperValue bits _ _ = Left "invalid pure helper or arguments"
 cmp :: Ord a => String -> a -> a -> Bool

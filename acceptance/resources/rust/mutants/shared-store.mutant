@@ -1,0 +1,10 @@
+expect: every case gets an empty store
+@@ src/example/resources.rs
+<<<<<<<
+    ls::Handle::new(Arc::new(Store { items: Mutex::new(HashMap::new()), open: Mutex::new(true) }))
+=======
+    static SHARED: std::sync::OnceLock<Arc<Store>> = std::sync::OnceLock::new();
+    let shared = SHARED.get_or_init(|| Arc::new(Store { items: Mutex::new(HashMap::new()), open: Mutex::new(true) }));
+    *shared.open.lock().unwrap() = true;
+    ls::Handle::new(shared.clone())
+>>>>>>>

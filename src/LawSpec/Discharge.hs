@@ -75,7 +75,8 @@ dischargeEvidence program = do
             (concatMap (performed . definitionBody) reached ++ concatMap performed (propertyExpressions p))
         natives = [ability | (ability, choice) <- propertyHandlers p, not (isFail ability), production choice]
         relying adapters' = relyingOn (adapters' ++ [Id ("the native " ++ abilityKey a ++ " handler") | a <- natives])
-        closed = null adapters
+        -- A law with resources gets them when it runs, never from the compiler.
+        closed = null adapters && null (propertyResources p)
         count n noun = show n ++ " " ++ noun ++ (if n == 1 then "" else "s")
         settings = propertyGeneration p
         every [_] = "its only case"
@@ -109,6 +110,7 @@ dischargeEvidence program = do
       Perform op args -> not (answered (operationId op)) || any (effectful answered) args
       Handle _ _ -> True
       Calls _ _ -> True
+      Helper b _ | b `elem` [Recorded, AcquireResource, ReleaseResource, FreePort] -> True
       _ -> any (effectful answered) (children e)
     refute registry bits invoke p values = do
       let env = zip (map (binderId . quantifiedBinder) (propertyInputs p)) values

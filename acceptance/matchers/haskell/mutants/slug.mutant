@@ -1,0 +1,7 @@
+expect: a slug is lowercase words joined by dashes
+@@ src/Example/Matchers.hs
+<<<<<<<
+(T.pack "-")
+=======
+(T.pack "_")
+>>>>>>>

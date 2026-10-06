@@ -115,6 +115,7 @@ localName i | (_,Just suffix) <- splitOnce "::let::" (C.idText i) =
   "_let" ++ map (\c -> if isAlphaNum c then c else '_') suffix
 localName i | (_,Just suffix) <- splitOnce "::match::" (C.idText i) =
   "_match" ++ map (\c -> if c == ':' then '_' else c) suffix
+localName i | (_,Just n) <- splitOnce "::resource::" (C.idText i) = "_resource" ++ takeWhile isAlphaNum n
 localName i = case splitOnce "::input::" (C.idText i) of
   (_,Just n) -> "_input" ++ n
   _ -> case splitOnce "::contract::" (C.idText i) of
@@ -166,6 +167,12 @@ prettyExpr e = case C.expressionNode e of
   C.ShortCircuit op a b -> "(" ++ prettyExpr a ++ " " ++ show op ++ " " ++ prettyExpr b ++ ")"
   C.If c a b -> "(if " ++ prettyExpr c ++ " then " ++ prettyExpr a ++ " else " ++ prettyExpr b ++ ")"
   C.Convert _ t a -> "(" ++ prettyExpr a ++ " :: " ++ prettyType t ++ ")"
+  -- Matchers read as they are written.
+  C.Helper C.Recorded [key, value] -> prettyExpr value ++ " = recorded " ++ prettyExpr key
+  C.Helper C.StartsWith [a, b] -> "(" ++ prettyExpr a ++ " starts with " ++ prettyExpr b ++ ")"
+  C.Helper C.EndsWith [a, b] -> "(" ++ prettyExpr a ++ " ends with " ++ prettyExpr b ++ ")"
+  C.Helper C.TextContains [a, b] -> "(" ++ prettyExpr a ++ " contains " ++ prettyExpr b ++ ")"
+  C.Helper C.RegexMatches [p, t] -> "(" ++ prettyExpr t ++ " matches regex " ++ prettyExpr p ++ ")"
   C.Helper b args -> show b ++ "(" ++ intercalate ", " (map prettyExpr args) ++ ")"
   C.Perform op args -> unwords (C.operationName op : map ((\s -> "(" ++ s ++ ")") . prettyExpr) args)
   C.Handle (C.CatchFailure _) body -> "attempt (" ++ prettyExpr body ++ ")"

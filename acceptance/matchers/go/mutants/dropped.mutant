@@ -1,0 +1,12 @@
+expect: sorting keeps every item
+@@ example/matchers/adapter.go
+<<<<<<<
+	items := append([]int32(nil), value0...)
+=======
+	items := []int32{}
+	for _, v := range value0 {
+		if len(items) == 0 || items[len(items)-1] != v {
+			items = append(items, v)
+		}
+	}
+>>>>>>>

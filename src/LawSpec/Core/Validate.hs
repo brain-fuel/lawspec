@@ -118,15 +118,23 @@ validateProgramWith registry Program{..} = do
           unless (integerType (binderType (quantifiedBinder q)) && exactType (expressionType e)) (Left "generator bounds require an integer domain and exact value")
           unless (isPure e && totalBound e) (Left "generator bounds must be total pure expressions")) (quantifiedBounds q)
         pure next) M.empty (propertyInputs p)
-      proposition ds scope (propertyBody p)
-      mapM_ (validateExample ds scope) (propertyExamples p)
-    validateExample ds scope e = do
+      -- A law's resources are in scope in its body and examples; each one's
+      -- acquire sees none of them, and its release sees it.
+      resourceScope <- foldM (\s r -> do
+        expression ds M.empty (resourceAcquire r)
+        unless (expressionType (resourceAcquire r) == binderType (resourceBinder r)) (Left "a resource's acquire must give its type")
+        own <- extend M.empty (resourceBinder r)
+        expression ds own (resourceRelease r)
+        extend s (resourceBinder r)) scope (propertyResources p)
+      proposition ds resourceScope (propertyBody p)
+      mapM_ (validateExample ds scope resourceScope) (propertyExamples p)
+    validateExample ds scope resourceScope e = do
       unless (M.keys (M.fromList (exampleBindings e)) == M.keys scope && length (exampleBindings e) == M.size scope) (Left "example must bind every input exactly once")
       mapM_ (\(i,v) -> do
         expression ds M.empty v
         unless (isConcrete v) (Left "example bindings must be concrete constants")
         unless (Just (expressionType v) == M.lookup i scope) (Left "example binding type mismatch")) (exampleBindings e)
-      mapM_ (proposition ds scope) (exampleExpectations e)
+      mapM_ (proposition ds resourceScope) (exampleExpectations e)
     validateContract ds c = do
       declared <- maybe (Left "unknown contract declaration") Right (M.lookup (contractDeclaration c) ds)
       let (args,result) = functionType declared

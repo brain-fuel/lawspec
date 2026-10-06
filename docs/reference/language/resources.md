@@ -1,0 +1,95 @@
+# Resources
+
+A resource is something a law needs that lives outside the program: a store,
+a directory, a port. A law takes resources as inputs. Each case of the law
+acquires them first and releases them after, even when the case fails, so
+every case starts afresh and nothing leaks.
+
+```lawspec
+unit guide.resources
+
+handle Store
+
+openStore :: Unit -> Store
+closeStore :: Store -> Unit
+clearStore :: Store -> Unit
+put :: Store -> Int32 -> Int32 -> Unit
+size :: Store -> Int32
+
+resource Store is
+  acquire is openStore unitValue end
+  release store is closeStore store end
+  reset store is clearStore store end
+end
+
+law `every case gets an empty store` for store :: Store is
+  definition is
+    `for all` (k :: Int32) (v :: Int32) .
+      size store = 0 and put store k v = unitValue and size store = 1
+  end
+end
+```
+
+## Declaring a resource
+
+```lawspec fragment
+resource Type is
+  acquire is expression end
+  release name is expression end
+  reset name is expression end
+end
+```
+
+- `Type` names a declared type, usually a [handle](models.md#handles).
+- `acquire` gives a new value of the type. It usually calls an adapter.
+- `release` frees the value it names. Its result is ignored.
+- `reset` is optional. It readies a value for another case; the harness may
+  use it to share one value between cases. Without it, nothing is shared.
+- A unit declares at most one resource for each type.
+
+## Taking resources
+
+A law lists its resources after its handlers, before `is`:
+
+```lawspec fragment
+law `a note reads back` for dir :: TemporaryDirectory is ... end
+law `two stores` using Gateway for a :: Store, b :: Store is ... end
+```
+
+- The law's definition and examples use each resource by its name, like an
+  input the law does not quantify over.
+- Each case acquires the resources in order, and releases them in the
+  opposite order, whether the case passes, fails or throws.
+- A law never releases a resource itself: a law whose body calls the
+  release of a resource it takes is an error, since it could use the
+  resource after its release.
+- The compiler never evaluates a law with resources; the generated tests
+  check it.
+
+## Built-in resources
+
+These come with LawSpec, from the built-in unit `lawspec.resources`:
+
+| Resource | Acquire | Release | Read it with |
+| --- | --- | --- | --- |
+| `TemporaryDirectory` | an empty directory | removes it, with everything in it | `directoryPath dir` |
+| `TemporaryFile` | an empty file | removes it | `filePath file` |
+| `FreePort` | a TCP port on the local host that was free | nothing | `portNumber port` |
+| `SavedEnvironment` | a copy of the environment | restores it | nothing |
+
+`SavedEnvironment` lets a law change the environment through its adapters,
+and puts it back afterwards. A JVM cannot change its process environment, so
+on Java and Kotlin it saves and restores the system properties. Rust runs
+tests on several threads, so there a `SavedEnvironment` also holds the
+environment for its case alone.
+
+## Native shape
+
+| Target | How a case brackets its resources |
+| --- | --- |
+| Python | `try` ... `finally` |
+| JavaScript, TypeScript | `try` ... `finally` |
+| Go | `defer` |
+| Java, Kotlin | `try` ... `finally` |
+| Rust | `catch_unwind`, then release, then resume any panic |
+| Haskell | `LS.withResource`, with `finally`; a built-in resource is acquired in `IO` |

@@ -1,0 +1,7 @@
+expect: example row 3: 2, 10, 30
+@@ src/example/tables.rs
+<<<<<<<
+    value0 * value1 + 5 * value0
+=======
+    value0 * value1 + 5 * value0 + if value0 == 2 { 5 } else { 0 }
+>>>>>>>

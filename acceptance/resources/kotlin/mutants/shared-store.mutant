@@ -1,0 +1,14 @@
+expect: every case gets an empty store
+@@ src/main/kotlin/example/Resources.kt
+<<<<<<<
+        val items = mutableMapOf<Int, Int>()
+=======
+        val items = shared
+>>>>>>>
+@@ src/main/kotlin/example/Resources.kt
+<<<<<<<
+    private var openCount = 0
+=======
+    private var openCount = 0
+    private val shared = mutableMapOf<Int, Int>()
+>>>>>>>

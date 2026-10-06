@@ -1,0 +1,10 @@
+expect: recorded/example.tables/first label differs
+@@ example/tables/adapter.go
+<<<<<<<
+	return fmt.Sprintf("parcel %d", value0)
+=======
+	if value0 == 1 {
+		return "parcel one"
+	}
+	return fmt.Sprintf("parcel %d", value0)
+>>>>>>>

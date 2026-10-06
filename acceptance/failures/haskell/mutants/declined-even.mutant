@@ -1,0 +1,8 @@
+expect: even amounts go through
+@@ src/Example/Failures.hs
+<<<<<<<
+  | otherwise = Data.DecisionApprove
+=======
+  | cents > 50000 = Data.DecisionDecline (T.pack "even")
+  | otherwise = Data.DecisionApprove
+>>>>>>>

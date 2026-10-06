@@ -1,0 +1,7 @@
+expect: sorting keeps every item
+@@ src/main/java/example/Matchers.java
+<<<<<<<
+    List<Integer> items = new ArrayList<>(value0);
+=======
+    List<Integer> items = new ArrayList<>(new LinkedHashSet<>(value0));
+>>>>>>>

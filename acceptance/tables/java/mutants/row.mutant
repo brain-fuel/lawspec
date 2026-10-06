@@ -1,0 +1,7 @@
+expect: example row 3: 2, 10, 30
+@@ src/main/java/example/Tables.java
+<<<<<<<
+    return value0 * value1 + 5 * value0;
+=======
+    return value0 * value1 + 5 * value0 + (value0 == 2 ? 5 : 0);
+>>>>>>>

@@ -1,0 +1,7 @@
+expect: a note reads back
+@@ src/example/resources.mjs
+<<<<<<<
+String(value1));
+=======
+String(value1 + 1));
+>>>>>>>

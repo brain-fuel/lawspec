@@ -1,0 +1,8 @@
+expect: too many open stores
+@@ src/main/java/example/Resources.java
+<<<<<<<
+        open = false;
+        openCount--;
+=======
+        open = false;
+>>>>>>>

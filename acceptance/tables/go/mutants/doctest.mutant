@@ -1,0 +1,10 @@
+expect: description example 1
+@@ example/tables/adapter.go
+<<<<<<<
+	return fmt.Sprintf("parcel %d", value0)
+=======
+	if value0 == 7 {
+		return "parcel seven"
+	}
+	return fmt.Sprintf("parcel %d", value0)
+>>>>>>>

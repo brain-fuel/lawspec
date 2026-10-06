@@ -1,0 +1,7 @@
+expect: too many open stores
+@@ src/example/resources.ts
+<<<<<<<
+    if (this.open) { this.open = false; openCount -= 1; }
+=======
+    if (this.open) { this.open = false; }
+>>>>>>>

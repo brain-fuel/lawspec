@@ -7,7 +7,8 @@ types, checked definitions, refinements and laws.
 - [Types and data](types-and-data.md): lists, `Maybe` and `Either`, products,
   sums and pattern matching.
 - [Laws and examples](laws-and-examples.md): propositions, reusable laws,
-  capabilities and examples.
+  capabilities, examples, tables, examples in descriptions, and recorded
+  values.
 - [Definitions](definitions.md): checked total definitions.
 - [Indexed families](indexed-families.md): data indexed by natural numbers,
   index arithmetic, and proved indices.
@@ -23,6 +24,12 @@ types, checked definitions, refinements and laws.
   failures.
 - [Handlers](handlers.md): spec handlers, recordings, choosing handlers in a
   law, and the native interfaces.
+- [Matchers](matchers.md): readable predicates over lists, text, numbers and
+  data, and portable regular expressions.
+- [Typed failures](failures.md): laws that expect a failure, by constructor
+  and message.
+- [Resources](resources.md): what a law acquires before each case and
+  releases after it, and the built-in ones.
 - [Durations](durations.md): whole microseconds, their literals, arithmetic and
   native types.
 - [Evidence and discharge](evidence-and-discharge.md): how each obligation is

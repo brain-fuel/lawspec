@@ -9,6 +9,9 @@ import Data.IORef (IORef, newIORef, readIORef, writeIORef, modifyIORef', atomicM
 import GHC.Clock (getMonotonicTimeNSec)
 import System.IO.Unsafe (unsafePerformIO)
 import System.Environment (lookupEnv)
+import qualified System.Environment as Environment
+import qualified System.Directory as Directory
+import qualified Network.Socket as Socket
 import Control.Monad (foldM, forM, forM_, replicateM)
 import Data.Unique (Unique, newUnique, hashUnique)
 import Data.Dynamic (Dynamic, toDyn, fromDynamic, dynTypeRep)
@@ -25,7 +28,7 @@ import qualified Data.ByteString.Lazy as BL
 import qualified Data.Text.Encoding as TE
 import Data.Text (Text)
 import qualified Data.Text as T
-import Data.List (find, intercalate, isInfixOf, nub, sort, sortBy, stripPrefix)
+import Data.List (find, intercalate, isInfixOf, isPrefixOf, isSuffixOf, nub, sort, sortBy, stripPrefix)
 import Data.Ratio
 import GHC.Float
   ( castFloatToWord32, castDoubleToWord64, castWord32ToFloat
@@ -508,6 +511,15 @@ canonicalItems keyed values = foldr keepLast [] (sortBy order values)
 
 helper :: String -> [Scalar] -> Int -> Scalar
 helper n args bits = case (n,args) of
+  ("startsWith",[SSequence _ t,SSequence _ p]) -> SBool (p `isPrefixOf` t)
+  ("endsWith",[SSequence _ t,SSequence _ p]) -> SBool (p `isSuffixOf` t)
+  ("textContains",[SSequence _ t,SSequence _ p]) -> SBool (p `isInfixOf` t)
+  ("regexMatches",[SSequence _ p,SSequence _ t]) -> SBool (either error id (regexMatches (map chr p) t))
+  ("recorded",[SSequence _ key,value]) -> unsafePerformIO (recorded (map chr key) value)
+  ("acquireResource",[SSequence _ kind]) -> unsafePerformIO (textScalar <$> acquireResource (map chr kind))
+  ("releaseResource",[SSequence _ kind,SSequence _ value]) ->
+    unsafePerformIO (releaseResource (map chr kind) (map chr value) >> pure (SBool True))
+  ("freePort",[_]) -> unsafePerformIO (SInteger "Int32" . fromIntegral <$> freePort)
   ("checked",[v]) -> forceScalar v `seq` SBool True
   ("select",[c,a,b]) -> if truth c then a else b
   ("compare",[x,y]) -> case compareValues x y of
@@ -981,6 +993,290 @@ bool = SBool
 
 -- Standalone contracts must observe their result even when
 -- the predicate is true.
+-- | Where a structured actual value first differs from the expected one, by
+-- the portable rendering: "" when they agree or neither has parts.
+difference :: Scalar -> Scalar -> String
+difference actual expected = case go actual expected of
+  ([], _) -> ""
+  (path, (a, b)) -> " | first difference at " ++ intercalate ", " path ++ ": expected " ++ b ++ ", actual " ++ a
+  where
+    go a b = case (a, b) of
+      (SList xs, SList ys) -> case [i | (i, x, y) <- zip3 [1 :: Int ..] xs ys, renderValue x /= renderValue y] of
+        i : _ -> step ("item " ++ show i) (xs !! (i - 1)) (ys !! (i - 1))
+        [] | length xs == length ys -> ([], ("", ""))
+           | otherwise -> (["length"], (show (length xs), show (length ys)))
+      (SData ta xs, SData tb ys) | ta == tb && length xs == length ys ->
+        case [i | (i, x, y) <- zip3 [1 :: Int ..] xs ys, renderValue x /= renderValue y] of
+          i : _ -> step ("field " ++ show i ++ " of " ++ T.unpack (last (T.splitOn (T.pack "::") (T.pack ta))))
+            (xs !! (i - 1)) (ys !! (i - 1))
+          [] -> ([], ("", ""))
+      _ -> ([], (renderValue a, renderValue b))
+    step segment a b = case go a b of
+      (path, shown) | null path -> ([segment], (renderValue a, renderValue b))
+                    | otherwise -> (segment : path, shown)
+
+-- Portable regular expressions (see LawSpec.Regex): the subset of RE2 and
+-- ECMAScript that means the same in both, matched against a whole text, code
+-- point by code point. The compiler has checked every pattern; a pattern
+-- that is not portable is an error here too.
+data RegexNode
+  = RegexSet Bool [(Bool, [(Int, Int)])]
+  | RegexSequence [RegexNode]
+  | RegexAlternatives [RegexNode]
+  | RegexRepeat RegexNode Int (Maybe Int)
+
+regexParse :: String -> Either String RegexNode
+regexParse source = do
+  (r, rest) <- alternatives (map ord source)
+  if null rest then Right r else failure "a ) has no ( before it"
+  where
+    failure message = Left ("regex " ++ show source ++ " is not portable: " ++ message)
+    alternatives input = do
+      (first, rest) <- sequenceOf input []
+      case rest of
+        c : more | c == ord '|' -> do
+          (others, rest') <- alternatives more
+          pure (RegexAlternatives (first : case others of RegexAlternatives xs -> xs; other -> [other]), rest')
+        _ -> pure (first, rest)
+    sequenceOf input acc = case input of
+      c : _ | c == ord '|' || c == ord ')' -> pure (RegexSequence (reverse acc), input)
+      [] -> pure (RegexSequence (reverse acc), [])
+      _ -> do
+        (a, rest) <- atom input
+        (q, rest') <- quantified a rest
+        sequenceOf rest' (q : acc)
+    atom input = case input of
+      c : rest
+        | c == ord '(' -> do
+            body <- case rest of
+              q : colon : more | q == ord '?' && colon == ord ':' -> Right more
+              q : _ | q == ord '?' -> failure "only (?: ...) groups are portable"
+              _ -> Right rest
+            (r, after) <- alternatives body
+            case after of
+              close : more | close == ord ')' -> pure (r, more)
+              _ -> failure "a ( is never closed"
+        | c == ord '[' -> characterClass rest
+        | c == ord '.' -> pure (RegexSet True [(False, [(10, 10)])], rest)
+        | c == ord '\\' -> do
+            (item, rest') <- escape rest
+            pure (RegexSet False [item], rest')
+        | chr c `elem` "*+?{^$]}" -> failure ("unexpected " ++ [chr c])
+        | otherwise -> pure (RegexSet False [(False, [(c, c)])], rest)
+      [] -> failure "unexpected end of the regex"
+    quantifier c = chr c `elem` "*+?{"
+    quantified r input = case input of
+      c : rest | quantifier c -> do
+        (node, rest') <- case chr c of
+          '*' -> pure (RegexRepeat r 0 Nothing, rest)
+          '+' -> pure (RegexRepeat r 1 Nothing, rest)
+          '?' -> pure (RegexRepeat r 0 (Just 1), rest)
+          _ -> do
+            let (lowDigits, afterLow) = span (isDigit . chr) rest
+            (high, afterHigh) <- case afterLow of
+              close : more | close == ord '}' -> pure (Just lowDigits, more)
+              comma : more | comma == ord ',' ->
+                let (highDigits, afterDigits) = span (isDigit . chr) more
+                in case afterDigits of
+                  close : more' | close == ord '}' -> pure (if null highDigits then Nothing else Just highDigits, more')
+                  _ -> failure "a repetition is {n}, {n,} or {n,m}"
+              _ -> failure "a repetition is {n}, {n,} or {n,m}"
+            if null lowDigits then failure "a repetition is {n}, {n,} or {n,m}" else pure ()
+            let low = read (map chr lowDigits) :: Integer
+                highValue = fmap (\ds -> read (map chr ds) :: Integer) high
+            if low > 1000 || maybe False (\h -> h > 1000 || h < low) highValue
+              then failure "a repetition count is at most 1000, and n must not exceed m"
+              else pure (RegexRepeat r (fromInteger low) (fromInteger <$> highValue), afterHigh)
+        case rest' of
+          c' : _ | quantifier c' -> failure "a repetition cannot itself be repeated"
+          _ -> pure (node, rest')
+      _ -> pure (r, input)
+    escape input = case input of
+      c : rest -> case chr c of
+        'd' -> pure ((False, digits), rest)
+        'D' -> pure ((True, digits), rest)
+        'w' -> pure ((False, word), rest)
+        'W' -> pure ((True, word), rest)
+        's' -> pure ((False, space), rest)
+        'S' -> pure ((True, space), rest)
+        'n' -> pure ((False, [(10, 10)]), rest)
+        't' -> pure ((False, [(9, 9)]), rest)
+        'r' -> pure ((False, [(13, 13)]), rest)
+        'f' -> pure ((False, [(12, 12)]), rest)
+        'v' -> pure ((False, [(11, 11)]), rest)
+        ch | ch `elem` "\\.^$|?*+()[]{}-/" -> pure ((False, [(c, c)]), rest)
+           | otherwise -> failure ("\\" ++ [ch] ++ " is not a portable escape")
+      [] -> failure "the regex ends with a lone \\"
+    single (False, [(lo, hi)]) = lo == hi
+    single _ = False
+    classAtom input = case input of
+      c : rest | c == ord '\\' -> escape rest
+               | c == ord '[' -> failure "write \\[ for the character inside a class"
+               | otherwise -> pure ((False, [(c, c)]), rest)
+      [] -> failure "a [ is never closed"
+    characterClass input = do
+      let (negated, body) = case input of
+            c : rest | c == ord '^' -> (True, rest)
+            _ -> (False, input)
+          items acc first inp = case inp of
+            [] -> failure "a [ is never closed"
+            c : rest | c == ord ']' -> if first then failure "an empty class is not portable" else pure (reverse acc, rest)
+            _ -> do
+              (item, rest) <- classAtom inp
+              case rest of
+                dash : next : _ | single item && dash == ord '-' && next /= ord ']' -> do
+                  (high, rest') <- classAtom (drop 1 rest)
+                  if not (single high) then failure "a range ends with one character" else pure ()
+                  let low = fst (head (snd item))
+                      top = fst (head (snd high))
+                  if top < low then failure "a range must run from low to high" else pure ()
+                  items ((False, [(low, top)]) : acc) False rest'
+                _ -> items (item : acc) False rest
+      (classItems, rest) <- items [] True body
+      pure (RegexSet negated classItems, rest)
+    digits = [(48, 57)]
+    word = [(48, 57), (65, 90), (95, 95), (97, 122)]
+    space = [(9, 13), (32, 32)]
+
+-- | Whether the portable regex matches all of the code points.
+regexMatches :: String -> [Int] -> Either String Bool
+regexMatches pattern text = do
+  node <- regexParse pattern
+  pure (length text `elem` reach node [0])
+  where
+    n = length text
+    indexed = zip [0 ..] text
+    at p = lookup p indexed
+    normal = sort . nub
+    reach node positions = case node of
+      RegexSet negated items -> normal [p + 1 | p <- positions, p < n, Just c <- [at p],
+        negated /= any (\(itemNegated, ranges) -> itemNegated /= any (\(lo, hi) -> lo <= c && c <= hi) ranges) items]
+      RegexSequence rs -> foldl (flip reach) positions rs
+      RegexAlternatives rs -> normal (concatMap (`reach` positions) rs)
+      RegexRepeat body low high ->
+        let required = iterate (reach body) positions !! low
+            more seen frontier limit
+              | null frontier || limit == Just 0 = seen
+              | otherwise =
+                  let next = [p | p <- reach body frontier, p `notElem` seen]
+                  in more (normal (seen ++ next)) next (subtract 1 <$> limit)
+        in more (normal required) required (subtract low <$> high)
+
+-- Recorded values: a law compares a value's portable rendering with the
+-- text stored under recorded/<unit>/<name> in the project. LAWSPEC_RECORDED
+-- names the folder; otherwise it is recorded/ in the nearest folder, from
+-- the working one up, that holds lawspec.json or recorded/. With
+-- LAWSPEC_UPDATE_RECORDED=1 (lawspec test --update-recorded) a law records
+-- the value instead.
+recordedRoot :: IO FilePath
+recordedRoot = do
+  given <- lookupEnv "LAWSPEC_RECORDED"
+  case given of
+    Just folder | not (null folder) -> pure folder
+    _ -> do
+      start <- Directory.getCurrentDirectory
+      let search folder = do
+            config <- Directory.doesFileExist (folder ++ "/lawspec.json")
+            recordings <- Directory.doesDirectoryExist (folder ++ "/recorded")
+            let parent = reverse (drop 1 (dropWhile (/= '/') (reverse folder)))
+            if config || recordings then pure (folder ++ "/recorded")
+              else if null parent || parent == folder then pure (start ++ "/recorded")
+              else search parent
+      search start
+
+recorded :: String -> Scalar -> IO Scalar
+recorded key value = do
+  let text = renderValue value
+  root <- recordedRoot
+  let path = root ++ "/" ++ key
+  update <- lookupEnv "LAWSPEC_UPDATE_RECORDED"
+  if update == Just "1"
+    then do
+      Directory.createDirectoryIfMissing True (reverse (drop 1 (dropWhile (/= '/') (reverse path))))
+      B.writeFile path (TE.encodeUtf8 (T.pack (text ++ "\n")))
+      pure (SBool True)
+    else do
+      exists <- Directory.doesFileExist path
+      if not exists
+        then throwIO (ErrorCall ("no recording recorded/" ++ key ++ "; run lawspec test --update-recorded to record " ++ text))
+        else do
+          contents <- T.unpack . TE.decodeUtf8 <$> B.readFile path
+          let stored = if not (null contents) && last contents == '\n' then init contents else contents
+          if stored /= text
+            then throwIO (ErrorCall ("recorded/" ++ key ++ " differs: expected " ++ stored ++ ", actual " ++ text ++
+              " (lawspec test --update-recorded records the new value)"))
+            else pure (SBool True)
+
+-- Built-in resources (see LawSpec.Resources): a law acquires them before
+-- each case and releases them after it.
+{-# NOINLINE temporaryCount #-}
+temporaryCount :: IORef Int
+temporaryCount = unsafePerformIO (newIORef 0)
+
+acquireResource :: String -> IO String
+acquireResource kind = case kind of
+  _ | kind `elem` ["temporaryDirectory", "temporaryFile"] -> do
+    folder <- Directory.getTemporaryDirectory
+    unique <- atomicModifyIORef' temporaryCount (\n -> (n + 1, n))
+    now <- getMonotonicTimeNSec
+    let path = folder ++ "/lawspec-" ++ show now ++ "-" ++ show unique
+    if kind == "temporaryDirectory" then Directory.createDirectory path else writeFile path ""
+    pure path
+  "environment" -> do
+    saved <- Environment.getEnvironment
+    pure (concat [name ++ "\0" ++ value ++ "\0" | (name, value) <- sort saved])
+  _ -> throwIO (ErrorCall ("unknown resource kind " ++ kind))
+
+releaseResource :: String -> String -> IO ()
+releaseResource kind value = case kind of
+  "temporaryDirectory" -> Directory.removePathForcibly value
+  "temporaryFile" -> Directory.removePathForcibly value
+  "environment" -> do
+    let pairs xs = case break (== '\0') xs of
+          (name, '\0' : rest) -> case break (== '\0') rest of
+            (text, '\0' : more) -> (name, text) : pairs more
+            _ -> []
+          _ -> []
+        saved = pairs value
+    current <- Environment.getEnvironment
+    forM_ current $ \(name, _) -> case lookup name saved of
+      Nothing -> Environment.unsetEnv name
+      Just _ -> pure ()
+    forM_ saved $ \(name, text) -> do
+      now <- lookupEnv name
+      if now == Just text then pure () else Environment.setEnv name text
+  _ -> throwIO (ErrorCall ("unknown resource kind " ++ kind))
+
+-- | A TCP port on the local host that is free now.
+freePort :: IO Int
+freePort = do
+  let hints = Socket.defaultHints { Socket.addrSocketType = Socket.Stream }
+  address : _ <- Socket.getAddrInfo (Just hints) (Just "127.0.0.1") (Just "0")
+  socket <- Socket.openSocket address
+  Socket.bind socket (Socket.addrAddress address)
+  port <- Socket.socketPort socket
+  Socket.close socket
+  pure (fromIntegral port)
+
+-- | A law's resource: acquire it, run the case with it, and release it,
+-- even when the case fails.
+withResource :: IO Scalar -> (Scalar -> IO ()) -> (Scalar -> IO a) -> IO a
+withResource acquire release body = do
+  resource <- acquire >>= \value -> evaluate (forceScalar value `seq` value)
+  body resource `finally` release resource
+
+-- | A built-in resource of the kind, built by its constructor.
+acquireBuiltin :: String -> String -> IO Scalar
+acquireBuiltin kind tag
+  | kind == "freePort" = (\port -> SData tag [SInteger "Int32" (fromIntegral port)]) <$> freePort
+  | otherwise = (\value -> SData tag [textScalar value]) <$> acquireResource kind
+
+releaseBuiltin :: String -> Scalar -> IO ()
+releaseBuiltin kind resource = case (kind, resource) of
+  ("freePort", _) -> pure ()
+  (_, SData _ [SSequence _ value]) -> releaseResource kind (map chr value)
+  _ -> throwIO (ErrorCall ("not a " ++ kind ++ " resource"))
+
 forceScalar :: Scalar -> ()
 forceScalar (SInteger _ n) = n `seq` ()
 forceScalar (SBool b) = b `seq` ()

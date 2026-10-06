@@ -1,0 +1,7 @@
+expect: negative amounts are blocked
+@@ src/example/failures.ts
+<<<<<<<
+    if (value0 < 0) return new data.DecisionBlock();
+=======
+    if (value0 < 0) return new data.DecisionDecline('negative');
+>>>>>>>

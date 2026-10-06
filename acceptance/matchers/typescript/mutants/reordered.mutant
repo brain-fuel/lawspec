@@ -1,0 +1,8 @@
+expect: sorting keeps every item example
+expect: first difference at item 1: expected 1, actual 3
+@@ src/example/matchers.ts
+<<<<<<<
+  return [...value0].sort((a, b) => a - b);
+=======
+  return [...value0].sort((a, b) => b - a);
+>>>>>>>

@@ -1,0 +1,10 @@
+expect: example row 3: 2, 10, 30
+@@ example/tables/adapter.go
+<<<<<<<
+	return value0*value1 + 5*value0
+=======
+	if value0 == 2 {
+		return value0*value1 + 5*value0 + 5
+	}
+	return value0*value1 + 5*value0
+>>>>>>>

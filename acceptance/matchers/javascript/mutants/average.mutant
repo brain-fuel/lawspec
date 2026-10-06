@@ -1,0 +1,7 @@
+expect: the average lies between the two
+@@ src/example/matchers.mjs
+<<<<<<<
+  return (value0 + value1) / 2;
+=======
+  return (value0 + value1) / 2 + 1;
+>>>>>>>

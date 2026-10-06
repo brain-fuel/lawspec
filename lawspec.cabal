@@ -59,6 +59,7 @@ extra-source-files:
     examples/specs/domain_modeling.lawspec
     examples/specs/durations.lawspec
     examples/specs/equivalent.lawspec
+    examples/specs/failures.lawspec
     examples/specs/finite_data.lawspec
     examples/specs/flow_stack.lawspec
     examples/specs/gadt_expressions.lawspec
@@ -72,6 +73,7 @@ extra-source-files:
     examples/specs/list_contracts.lawspec
     examples/specs/list_refinements.lawspec
     examples/specs/lists.lawspec
+    examples/specs/matchers.lawspec
     examples/specs/matching.lawspec
     examples/specs/mixed_inputs.lawspec
     examples/specs/models.lawspec
@@ -82,12 +84,14 @@ extra-source-files:
     examples/specs/refined_definitions.lawspec
     examples/specs/refinements.lawspec
     examples/specs/resilience.lawspec
+    examples/specs/resources.lawspec
     examples/specs/scalar_adapters.lawspec
     examples/specs/scalar_catalog.lawspec
     examples/specs/scalars.lawspec
     examples/specs/sessions.lawspec
     examples/specs/slug.lawspec
     examples/specs/sum_refinements.lawspec
+    examples/specs/tables.lawspec
     examples/specs/total_functions.lawspec
     examples/specs/workflows.lawspec
     test/fixtures/constructor_boundaries.lawspec
@@ -281,6 +285,7 @@ library
       LawSpec.KotlinTestHelpers
       LawSpec.MachineSpec
       LawSpec.Mailboxes
+      LawSpec.Matchers
       LawSpec.Memo
       LawSpec.Model
       LawSpec.ModelTests
@@ -300,8 +305,10 @@ library
       LawSpec.PythonTypes
       LawSpec.Railway
       LawSpec.Refinement
+      LawSpec.Regex
       LawSpec.Remote
       LawSpec.Resilience
+      LawSpec.Resources
       LawSpec.RuntimeSources
       LawSpec.RustAbilityPaths
       LawSpec.RustData
@@ -480,6 +487,7 @@ test-suite lawspec-test
       IncrementalSpec
       IndexedSpec
       InferenceSchemeSpec
+      LawPrimitivesSpec
       NativeBindingSpec
       NativeRequestSpec
       PayloadProofSpec

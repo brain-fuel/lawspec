@@ -1,0 +1,7 @@
+expect: too many open stores
+@@ src/Example/Resources.hs
+<<<<<<<
+      modifyIORef' openCount (subtract 1)
+=======
+      pure ()
+>>>>>>>

@@ -1,0 +1,8 @@
+expect: unique tags keep each tag
+@@ src/main/java/example/Matchers.java
+<<<<<<<
+    return tags;
+=======
+    if (!tags.isEmpty()) tags.remove(0);
+    return tags;
+>>>>>>>

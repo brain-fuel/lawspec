@@ -388,6 +388,49 @@ builtin env n args
         (throwC "calls of op with (...) needs one value for each of op's arguments")
       zipWithM_ (checkExpr env) parameters rest
       pure (Named "Int64")
+  -- Matchers (LawSpec.Matchers). xs contains x: an item of a List, or a
+  -- Text inside a Text.
+  | n == "contains", [a,b] <- args = do
+      t <- infer env a >>= resolve
+      case t of
+        Named "Text" -> checkExpr env (Named "Text") b
+        Applied "List" element -> checkExpr env element b >> require "Eq" element
+        _ -> throwC ("contains needs a List or a Text, not " ++ prettyType t)
+      pure (Named "Bool")
+  | n `elem` ["startsWith","endsWith"], [a,b] <- args = do
+      checkExpr env (Named "Text") a
+      checkExpr env (Named "Text") b
+      pure (Named "Bool")
+  -- regexMatches pattern text: the pattern is a regex literal's text.
+  | n == "regexMatches", [a,b] <- args = do
+      checkExpr env (Named "Text") a
+      checkExpr env (Named "Text") b
+      pure (Named "Bool")
+  -- within tolerance x y: numbers of one type at most tolerance apart.
+  | n == "within", [tolerance,a,b] <- args = do
+      (at, bt) <- operandTypes env a b
+      t <- if at == bt then pure at else do
+        unify at bt
+        resolve at
+      unless (case t of Named name -> isNumeric name && name `notElem` ["Complex64","Complex128"]; _ -> False)
+        (throwC ("is within compares numbers, not " ++ prettyType t))
+      checkExpr env t tolerance
+      pure (Named "Bool")
+  -- messageContains failure text: the failure's message field contains text.
+  | n == "messageContains", [failure,text] <- args = do
+      t <- infer env failure >>= resolve
+      known <- gets ((builtinDataDeclarations ++) . dataDeclarations)
+      let parent = case t of Named name -> name; Applied name _ -> name; Application name _ -> name; _ -> ""
+          withMessage = [c | d <- known, Core.idText (Core.dataId d) == parent, c <- Core.dataConstructors d,
+            any ((== "message") . Core.binderName) (Core.constructorFields c)]
+      when (null withMessage) (throwC ("message contains needs a failure type with a message field; " ++ prettyType t ++ " has none"))
+      checkExpr env (Named "Text") text
+      pure (Named "Bool")
+  -- recorded name value: value's rendering equals the recording's.
+  | n == "recorded", [name,value] <- args = do
+      checkExpr env (Named "Text") name
+      _ <- infer env value
+      pure (Named "Bool")
   -- select c a b is a when c holds and b otherwise; both are values.
   | n == "select", [c,a,b] <- args = do
       checkExpr env (Named "Bool") c
@@ -500,6 +543,16 @@ typedExpressionWithSchemes declarations bits env e = do
         -- Both of select's values take its type, as a match's branches do.
         Apply _ _ | (Var "prelude.select", [c,a,b]) <- application e ->
           sequence [descend (Just (Named "Bool")) c, descend (Just t) a, descend (Just t) b]
+        -- A matcher's literals take the type of what they are compared with.
+        Apply _ _ | (Var "prelude.within", [tolerance,a,b]) <- application e -> do
+          (at,bt) <- operandTypes context a b
+          number <- resolve at
+          sequence [descend (Just number) tolerance, descend (Just at) a, descend (Just bt) b]
+        Apply _ _ | (Var "prelude.contains", [whole,part]) <- application e -> do
+          wholeType <- infer context whole >>= resolve
+          case wholeType of
+            Applied "List" element -> sequence [descend (Just wholeType) whole, descend (Just element) part]
+            _ -> mapM (descend Nothing) [whole, part]
         Apply _ _ | (Var n,args) <- application e, take 8 n == "prelude." -> mapM (descend Nothing) args
         -- With a numeric literal among its arguments, the function's
         -- expected type carries the argument's and the result's, so a
@@ -557,10 +610,16 @@ typedExpressionWithSchemes declarations bits env e = do
         -- so a specialized instance never mentions them.
         MatchExpr value branches -> do
           scopes <- matchScopes context value branches
-          sequence [withGivens local $ do
-            types <- mapM (\name -> maybe (throwC "missing pattern binder") (resolve . schemeType) (M.lookup name scope)) names
-            body' <- go scope (Just t) body
-            pure (TypedCase tag (zip names types) body')
+          concat <$> sequence [withGivens local $ if tag == "_"
+            then do
+              body' <- go scope (Just t) body
+              valueType <- infer context value >>= resolve
+              others <- matchWildcard valueType [other | MatchBranch other _ _ <- branches]
+              pure [TypedCase constructor (zip ["lawspecOther" ++ show i | i <- [0 :: Int ..]] fields) body' | (constructor, fields) <- others]
+            else do
+              types <- mapM (\name -> maybe (throwC "missing pattern binder") (resolve . schemeType) (M.lookup name scope)) names
+              body' <- go scope (Just t) body
+              pure [TypedCase tag (zip names types) body']
             | (Just (scope, local), MatchBranch tag names body) <- zip scopes branches]
         _ -> pure []
       pure (TypedExpr t e' children conversion cases)
@@ -798,8 +857,9 @@ matchScopes env value branches = do
     [declaration] -> pure declaration
     _ -> throwC "matching requires a known data type"
   scopes <- mapM (scope ty) branches
-  -- Every constructor that could build the scrutinee needs a branch.
-  forM_ (Core.dataConstructors declaration) $ \c ->
+  -- Every constructor that could build the scrutinee needs a branch, unless
+  -- a matcher's wildcard branch _ stands for the others (matchWildcard).
+  unless ("_" `elem` tags) $ forM_ (Core.dataConstructors declaration) $ \c ->
     unless (any (`elem` tags) [Core.constructorName c, Core.idText (Core.constructorId c)]) $ do
       saved <- get
       reachable <- matchConstructor ty (Core.idText (Core.constructorId c))
@@ -807,6 +867,7 @@ matchScopes env value branches = do
       when (reachable /= Nothing) (throwC "non-exhaustive match")
   pure scopes
   where
+    scope _ (MatchBranch "_" _ _) = pure (Just (env, M.empty))
     scope ty (MatchBranch tag names _) = do
       unless (length names == length (nub names)) (throwC "duplicate match binder")
       found <- matchConstructor ty tag
@@ -815,6 +876,19 @@ matchScopes env value branches = do
         Just (fields, local) -> do
           unless (length names == length fields) (throwC ("wrong match constructor arity: " ++ tag))
           pure (Just (M.union (monoEnvironment (zip names fields)) env, local))
+
+-- The constructors a matcher's wildcard branch _ stands for: those of the
+-- scrutinee's type that no other branch names and that can build a value of
+-- it, by identity, with their field types.
+matchWildcard :: Type -> [String] -> C [(String, [Type])]
+matchWildcard ty tags = do
+  resolved <- resolve ty
+  known <- gets ((builtinDataDeclarations ++) . dataDeclarations)
+  let parent = case resolved of Named n -> n; Applied n _ -> n; Application n _ -> n; _ -> ""
+  fmap concat $ forM [c | d <- known, Core.idText (Core.dataId d) == parent, c <- Core.dataConstructors d,
+      not (any (`elem` tags) [Core.constructorName c, Core.idText (Core.constructorId c)])] $ \c -> do
+    found <- matchConstructor resolved (Core.idText (Core.constructorId c))
+    pure [(Core.idText (Core.constructorId c), fields) | Just (fields, _) <- [found]]
 
 -- Payload callbacks are scoped over declared type arguments, never over fixed
 -- fields whose concrete types happen to coincide with an argument.

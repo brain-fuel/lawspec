@@ -1,0 +1,14 @@
+expect: every case gets an empty store
+@@ src/example/resources.py
+<<<<<<<
+        self.items = {}
+=======
+        self.items = Store.shared
+>>>>>>>
+@@ src/example/resources.py
+<<<<<<<
+    open_count = 0
+=======
+    open_count = 0
+    shared = {}
+>>>>>>>

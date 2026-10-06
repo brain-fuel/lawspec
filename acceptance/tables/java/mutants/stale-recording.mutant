@@ -1,0 +1,7 @@
+expect: recorded/example.tables/first label differs
+@@ src/main/java/example/Tables.java
+<<<<<<<
+    return "parcel " + value0;
+=======
+    return value0 == 1 ? "parcel one" : "parcel " + value0;
+>>>>>>>

@@ -61,7 +61,10 @@ fromValues xs = statements [assign (inputId input) (text ("_values[" ++ show ind
 emitTests :: Config -> Unit -> [Expanded] -> Either [Diagnostic] D.Doc
 emitTests Config{..} unit laws = do
   bodies <- mapM law (zip [0::Int ..] laws)
-  let needsRapid = schemaNeeded || any ((== Nothing) . finiteCases) laws
+  -- A law checked only by lsRefinedCase draws its inputs without rapid.
+  let refinedOnly e = not (constructorContracts || nativeGenerators || any (maybe False (const True) . generatorIndex) (generationPlan e)
+        || any (structural . inputType) (inputs e)) && (any (not . null . inputRefinements) (inputs e) || propertyKind e == "contract")
+      needsRapid = schemaNeeded || any (\e -> finiteCases e == Nothing && not (refinedOnly e)) laws
       importDoc = text "import (" <> D.nest 8 (D.hardline <>
         statements ([quoted "flag" | needsRapid] ++ [quoted "fmt" | schemaNeeded] ++ [quoted "os" | needsRapid] ++
           [quoted "testing" | not (null laws)]) <>
@@ -79,6 +82,12 @@ emitTests Config{..} unit laws = do
     -- Workflows wait on a virtual clock under test.
     clockDoc = text "func init() " <> block (text "LawSpecUseVirtualClock(0)")
     expr = expression
+    -- A law's resources: each case acquires them, and releases them when it
+    -- ends, the last first, even when it fails (defer).
+    resourceDocs e = concat
+      [ [ assign (localName (C.binderId (C.resourceBinder r))) (expr (C.resourceAcquire r))
+        , text "defer func() " <> block (text "_ = " <> expr (C.resourceRelease r)) <> text "()" ]
+      | r <- C.propertyResources (original e) ]
     assertionDoc context proposition = case proposition of
       AssertAll ps -> statements (map (assertionDoc context) ps)
       AssertImplies guard body -> text "if " <> truth (expr guard) <> text " " <>
@@ -103,14 +112,14 @@ emitTests Config{..} unit laws = do
       let label = owner e ++ "::" ++ name e
           fn = "Law" ++ show index
       exampleDocs <- mapM (\(i,ex) -> pure $ testFunction (fn ++ "Example" ++ show i) $ statements
-        ([symbols] ++ handlerInstalls e ++ [assign n (expr v) | (n,v) <- bindings ex] ++
+        ([symbols] ++ handlerInstalls e ++ [assign n (expr v) | (n,v) <- bindings ex] ++ resourceDocs e ++
         map (assertionDoc (label ++ " example " ++ exampleName ex)) (expectations ex) ++
         [assertionDoc label (assertion e)])) (zip [0::Int ..] (examples (original e)))
       boundaryDocs <- mapM (\(i,vs) -> do
         values <- mapM literal vs
         pure $ testFunction (fn ++ "Boundary" ++ show i) $ statements
           ([symbols] ++ handlerInstalls e ++ [assign (inputId inp) (checked (inputType inp) v) | (inp,v) <- zip (inputs e) values] ++
-          [assertionDoc (label ++ " boundary " ++ show i) (assertion e)]))
+          resourceDocs e ++ [assertionDoc (label ++ " boundary " ++ show i) (assertion e)]))
         (zip [0::Int ..] (maybe (boundaryCases e) id (finiteCases e)))
       let check = assertionDoc (label ++ " property") (assertion e)
       property <- if finiteCases e /= Nothing then pure []
@@ -122,7 +131,7 @@ emitTests Config{..} unit laws = do
           else pure [testFunction (fn ++ "Property") $ call "rapid.Check" [text "t",
             closure "t *rapid.T" "" $ statements ([assign "seed" (text "rapid.Int32().Draw(t, \"seed\")"),symbols] ++ handlerInstalls e ++
               [assign (inputId inp) (call "lsSample" [quoted (typeKey (inputType inp)),
-                text ("int(seed)+" ++ show i),number machineBits]) | (i,inp) <- zip [0::Int ..] (inputs e)] ++ [check])]]
+                text ("int(seed)+" ++ show i),number machineBits]) | (i,inp) <- zip [0::Int ..] (inputs e)] ++ resourceDocs e ++ [check])]]
       pure $ metadataDocument 100 "//" e <> separate (exampleDocs ++ boundaryDocs ++ property)
     contextualProperty fn label e check = do
       draws <- mapM (\plan -> do
@@ -159,7 +168,7 @@ emitTests Config{..} unit laws = do
       pure $ testFunction (fn ++ "Property") $ call "lsRapidCheck" [text "t",number (cases (generation e)),
         closure "t *rapid.T" "" $ statements ([symbols,
           bind "_values" (strategy <> text ".Draw(t, " <> quoted label <> text ")"),
-          fromValues (inputs e)] ++ handlerInstalls e ++ [check])]
+          fromValues (inputs e)] ++ handlerInstalls e ++ resourceDocs e ++ [check])]
     requiredSymbol plan
       | inputType (domainInput plan) /= C.scalarType "Symbol" = []
       | otherwise = concatMap required (generatorPredicates plan)
@@ -184,7 +193,7 @@ emitTests Config{..} unit laws = do
                [fromValues (inputs e),returned (conjunction (map (truth . expr) predicates))])]
       in testFunction (fn ++ "Property") $ call "lsRapidCheck" [text "t",number (cases (generation e)),
         closure "t *rapid.T" "" $ statements ([symbols,
-          bind "_values" (strategy <> text ".Draw(t, " <> quoted label <> text ")"),fromValues (inputs e)] ++ handlerInstalls e ++ [check])]
+          bind "_values" (strategy <> text ".Draw(t, " <> quoted label <> text ")"),fromValues (inputs e)] ++ handlerInstalls e ++ resourceDocs e ++ [check])]
     domain e (index,plan) = do
       seeds <- mapM literal (generatorBoundaries plan)
       let inp = domainInput plan
@@ -201,7 +210,7 @@ emitTests Config{..} unit laws = do
     refinedProperty fn label e check = do
       domains <- mapM (domain e) (zip [0::Int ..] (generationPlan e))
       let cfg = generation e
-          callback = closure "_values []LawSpecValue" "" (statements ([fromValues (inputs e)] ++ handlerInstalls e ++ [check]))
+          callback = closure "_values []LawSpecValue" "" (statements ([fromValues (inputs e)] ++ handlerInstalls e ++ resourceDocs e ++ [check]))
           invocation = call "lsRefinedCase" [text "[]lawSpecDomain{" <> D.joinWith (text ", ") domains <> text "}",
             text "seed",number (maxAttempts cfg),number (maxShrinks cfg),callback,
             quoted (label ++ " | " ++ intercalate "; " (map prettyExpr (concatMap inputRefinements (inputs e))))]

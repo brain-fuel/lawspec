@@ -122,6 +122,8 @@ law's handlers as its `handlers`.
   another type is an error.
 - `prelude.attempt e` evaluates `e` and gives `Right` of its value, or `Left`
   of the failure it raised. It may be used in laws.
+- `e fails with C _` holds when `e` raises a failure built by `C`; see
+  [typed failures](failures.md).
 - A failure no law catches fails the test, naming the failure.
 
 A native adapter that `fails with E` fails by raising the runtime's `Fail`

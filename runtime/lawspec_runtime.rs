@@ -2563,6 +2563,9 @@ impl<T: FromValue> FromValue for std::collections::VecDeque<T> {
 
 pub fn helper(name: &str, mut args: Vec<Value>) -> Result<Value> {
     use Value::*;
+    if let Some(value) = matcher_helper(name, &args)? {
+        return Ok(value);
+    }
     if name == "select" && args.len() == 3 {
         let other = args.pop().unwrap();
         let chosen = args.pop().unwrap();
@@ -2621,6 +2624,508 @@ pub fn helper(name: &str, mut args: Vec<Value>) -> Result<Value> {
         }
         _ => return Err(format!("unknown helper: {name}")),
     })
+}
+
+/// Where a structured actual value first differs from the expected one, by
+/// the portable rendering: "" when they agree or neither has parts.
+pub fn difference(actual: &Value, expected: &Value) -> String {
+    fn parts(v: &Value) -> Option<(Option<String>, Vec<&Value>)> {
+        match v {
+            Value::List(xs) => Some((None, xs.iter().collect())),
+            Value::Data(tag, fields) => Some((Some(tag.clone()), fields.iter().collect())),
+            Value::Maybe(Some(x)) => Some((Some("Just".into()), vec![x.as_ref()])),
+            Value::Left(x) => Some((Some("Left".into()), vec![x.as_ref()])),
+            Value::Right(x) => Some((Some("Right".into()), vec![x.as_ref()])),
+            _ => None,
+        }
+    }
+    let mut path = vec![];
+    let (mut a, mut b) = (actual, expected);
+    let mut lengths = None;
+    while let (Some((ta, xs)), Some((tb, ys))) = (parts(a), parts(b)) {
+        if ta != tb || (ta.is_some() && xs.len() != ys.len()) {
+            break;
+        }
+        match xs.iter().zip(ys.iter()).position(|(x, y)| render(x) != render(y)) {
+            Some(i) => {
+                path.push(match &ta {
+                    None => format!("item {}", i + 1),
+                    Some(tag) => format!("field {} of {}", i + 1, tag.rsplit("::").next().unwrap_or(tag)),
+                });
+                (a, b) = (xs[i], ys[i]);
+            }
+            None if xs.len() == ys.len() => return String::new(),
+            None => {
+                path.push("length".to_string());
+                lengths = Some((xs.len(), ys.len()));
+                break;
+            }
+        }
+    }
+    if path.is_empty() {
+        return String::new();
+    }
+    let (shown_a, shown_b) = match lengths {
+        Some((x, y)) => (x.to_string(), y.to_string()),
+        None => (render(a), render(b)),
+    };
+    format!(" | first difference at {}: expected {shown_b}, actual {shown_a}", path.join(", "))
+}
+
+/// The matcher, recording and resource helpers, or None for another helper.
+fn matcher_helper(name: &str, args: &[Value]) -> Result<Option<Value>> {
+    let text = |i: usize| -> Result<&str> {
+        match args.get(i) {
+            Some(Value::Text(s)) => Ok(s.as_str()),
+            _ => Err(format!("{name} expects text")),
+        }
+    };
+    Ok(Some(match name {
+        "startsWith" => Value::Bool(text(0)?.starts_with(text(1)?)),
+        "endsWith" => Value::Bool(text(0)?.ends_with(text(1)?)),
+        "textContains" => Value::Bool(text(0)?.contains(text(1)?)),
+        "regexMatches" => Value::Bool(regex_matches(text(0)?, text(1)?)?),
+        "recorded" => Value::Bool(recorded(text(0)?, args.get(1).ok_or("recorded expects a value")?)?),
+        "acquireResource" => Value::Text(acquire_resource(text(0)?)?),
+        "releaseResource" => {
+            release_resource(text(0)?, text(1)?)?;
+            Value::Bool(true)
+        }
+        "freePort" => Value::Integer(BigInt::from(free_port()?)),
+        _ => return Ok(None),
+    }))
+}
+
+// Portable regular expressions (see LawSpec.Regex): the subset of RE2 and
+// ECMAScript that means the same in both, matched against a whole text, code
+// point by code point. The compiler has checked every pattern; a pattern
+// that is not portable is an error here too.
+#[derive(Clone, Debug)]
+struct RegexItem {
+    negated: bool,
+    ranges: Vec<(u32, u32)>,
+}
+
+#[derive(Clone, Debug)]
+enum RegexNode {
+    Set(bool, Vec<RegexItem>),
+    Sequence(Vec<RegexNode>),
+    Alternatives(Vec<RegexNode>),
+    Repeat(Box<RegexNode>, usize, Option<usize>),
+}
+
+const REGEX_DIGITS: &[(u32, u32)] = &[(48, 57)];
+const REGEX_WORD: &[(u32, u32)] = &[(48, 57), (65, 90), (95, 95), (97, 122)];
+const REGEX_SPACE: &[(u32, u32)] = &[(9, 13), (32, 32)];
+
+struct RegexParser<'a> {
+    pattern: &'a str,
+    cs: Vec<u32>,
+    pos: usize,
+}
+
+impl RegexParser<'_> {
+    fn peek(&self) -> Option<u32> {
+        self.cs.get(self.pos).copied()
+    }
+
+    fn fail<T>(&self, message: &str) -> Result<T> {
+        Err(format!("regex {:?} is not portable: {message}", self.pattern))
+    }
+
+    fn escape(&mut self) -> Result<RegexItem> {
+        self.pos += 1;
+        let Some(c) = self.peek() else { return self.fail("the regex ends with a lone \\") };
+        self.pos += 1;
+        let item = |negated: bool, ranges: &[(u32, u32)]| RegexItem { negated, ranges: ranges.to_vec() };
+        Ok(match char::from_u32(c).unwrap_or('\0') {
+            'd' => item(false, REGEX_DIGITS),
+            'D' => item(true, REGEX_DIGITS),
+            'w' => item(false, REGEX_WORD),
+            'W' => item(true, REGEX_WORD),
+            's' => item(false, REGEX_SPACE),
+            'S' => item(true, REGEX_SPACE),
+            'n' => item(false, &[(10, 10)]),
+            't' => item(false, &[(9, 9)]),
+            'r' => item(false, &[(13, 13)]),
+            'f' => item(false, &[(12, 12)]),
+            'v' => item(false, &[(11, 11)]),
+            ch if "\\.^$|?*+()[]{}-/".contains(ch) => item(false, &[(c, c)]),
+            ch => return self.fail(&format!("\\{ch} is not a portable escape")),
+        })
+    }
+
+    fn literal(&mut self) -> Result<RegexItem> {
+        let c = self.peek().unwrap_or(0);
+        if c == '[' as u32 {
+            return self.fail("write \\[ for the character inside a class");
+        }
+        self.pos += 1;
+        Ok(RegexItem { negated: false, ranges: vec![(c, c)] })
+    }
+
+    fn single(item: &RegexItem) -> bool {
+        !item.negated && item.ranges.len() == 1 && item.ranges[0].0 == item.ranges[0].1
+    }
+
+    fn class(&mut self) -> Result<RegexNode> {
+        self.pos += 1;
+        let negated = self.peek() == Some('^' as u32);
+        if negated {
+            self.pos += 1;
+        }
+        let mut items = vec![];
+        let mut first = true;
+        loop {
+            let Some(c) = self.peek() else { return self.fail("a [ is never closed") };
+            if c == ']' as u32 {
+                if first {
+                    return self.fail("an empty class is not portable");
+                }
+                self.pos += 1;
+                return Ok(RegexNode::Set(negated, items));
+            }
+            first = false;
+            let item = if c == '\\' as u32 { self.escape()? } else { self.literal()? };
+            if Self::single(&item)
+                && self.peek() == Some('-' as u32)
+                && self.cs.get(self.pos + 1).is_some_and(|&next| next != ']' as u32)
+            {
+                self.pos += 1;
+                let high = if self.peek() == Some('\\' as u32) { self.escape()? } else { self.literal()? };
+                if !Self::single(&high) {
+                    return self.fail("a range ends with one character");
+                }
+                if high.ranges[0].0 < item.ranges[0].0 {
+                    return self.fail("a range must run from low to high");
+                }
+                items.push(RegexItem { negated: false, ranges: vec![(item.ranges[0].0, high.ranges[0].0)] });
+            } else {
+                items.push(item);
+            }
+        }
+    }
+
+    fn digits(&mut self) -> String {
+        let start = self.pos;
+        while self.peek().is_some_and(|c| ('0' as u32..='9' as u32).contains(&c)) {
+            self.pos += 1;
+        }
+        self.cs[start..self.pos].iter().filter_map(|&c| char::from_u32(c)).collect()
+    }
+
+    fn atom(&mut self) -> Result<RegexNode> {
+        let c = self.peek().unwrap_or(0);
+        let ch = char::from_u32(c).unwrap_or('\0');
+        match ch {
+            '(' => {
+                self.pos += 1;
+                if self.peek() == Some('?' as u32) {
+                    if self.cs.get(self.pos + 1) == Some(&(':' as u32)) {
+                        self.pos += 2;
+                    } else {
+                        return self.fail("only (?: ...) groups are portable");
+                    }
+                }
+                let node = self.alternatives()?;
+                if self.peek() != Some(')' as u32) {
+                    return self.fail("a ( is never closed");
+                }
+                self.pos += 1;
+                Ok(node)
+            }
+            '[' => self.class(),
+            '.' => {
+                self.pos += 1;
+                Ok(RegexNode::Set(true, vec![RegexItem { negated: false, ranges: vec![(10, 10)] }]))
+            }
+            '\\' => Ok(RegexNode::Set(false, vec![self.escape()?])),
+            _ if "*+?{^$]}".contains(ch) => self.fail(&format!("unexpected {ch}")),
+            _ => {
+                self.pos += 1;
+                Ok(RegexNode::Set(false, vec![RegexItem { negated: false, ranges: vec![(c, c)] }]))
+            }
+        }
+    }
+
+    fn quantifier(c: Option<u32>) -> bool {
+        c.and_then(char::from_u32).is_some_and(|ch| "*+?{".contains(ch))
+    }
+
+    fn quantified(&mut self, node: RegexNode) -> Result<RegexNode> {
+        let c = self.peek();
+        if !Self::quantifier(c) {
+            return Ok(node);
+        }
+        self.pos += 1;
+        let repeat = |low, high| RegexNode::Repeat(Box::new(node.clone()), low, high);
+        let result = match char::from_u32(c.unwrap_or(0)).unwrap_or('\0') {
+            '*' => repeat(0, None),
+            '+' => repeat(1, None),
+            '?' => repeat(0, Some(1)),
+            _ => {
+                let low_text = self.digits();
+                let high_text;
+                if self.peek() == Some('}' as u32) {
+                    high_text = Some(low_text.clone());
+                } else if self.peek() == Some(',' as u32) {
+                    self.pos += 1;
+                    let text = self.digits();
+                    high_text = if text.is_empty() { None } else { Some(text) };
+                    if self.peek() != Some('}' as u32) {
+                        return self.fail("a repetition is {n}, {n,} or {n,m}");
+                    }
+                } else {
+                    return self.fail("a repetition is {n}, {n,} or {n,m}");
+                }
+                self.pos += 1;
+                if low_text.is_empty() {
+                    return self.fail("a repetition is {n}, {n,} or {n,m}");
+                }
+                let low: usize = low_text.parse().unwrap_or(usize::MAX);
+                let high: Option<usize> = high_text.map(|t| t.parse().unwrap_or(usize::MAX));
+                if low > 1000 || high.is_some_and(|h| h > 1000 || h < low) {
+                    return self.fail("a repetition count is at most 1000, and n must not exceed m");
+                }
+                repeat(low, high)
+            }
+        };
+        if Self::quantifier(self.peek()) {
+            return self.fail("a repetition cannot itself be repeated");
+        }
+        Ok(result)
+    }
+
+    fn sequence(&mut self) -> Result<RegexNode> {
+        let mut items = vec![];
+        while let Some(c) = self.peek() {
+            if c == '|' as u32 || c == ')' as u32 {
+                break;
+            }
+            let atom = self.atom()?;
+            items.push(self.quantified(atom)?);
+        }
+        Ok(RegexNode::Sequence(items))
+    }
+
+    fn alternatives(&mut self) -> Result<RegexNode> {
+        let mut branches = vec![self.sequence()?];
+        while self.peek() == Some('|' as u32) {
+            self.pos += 1;
+            branches.push(self.sequence()?);
+        }
+        Ok(if branches.len() == 1 { branches.pop().unwrap() } else { RegexNode::Alternatives(branches) })
+    }
+}
+
+fn regex_parse(pattern: &str) -> Result<RegexNode> {
+    let mut parser = RegexParser { pattern, cs: pattern.chars().map(|c| c as u32).collect(), pos: 0 };
+    let node = parser.alternatives()?;
+    if parser.pos != parser.cs.len() {
+        return parser.fail("a ) has no ( before it");
+    }
+    Ok(node)
+}
+
+fn regex_reach(node: &RegexNode, text: &[u32], positions: Vec<bool>) -> Vec<bool> {
+    let mut next = vec![false; text.len() + 1];
+    match node {
+        RegexNode::Set(negated, items) => {
+            for (p, &at) in positions.iter().enumerate() {
+                if !at || p >= text.len() {
+                    continue;
+                }
+                let c = text[p];
+                let inside = items
+                    .iter()
+                    .any(|item| item.negated != item.ranges.iter().any(|&(lo, hi)| lo <= c && c <= hi));
+                if inside != *negated {
+                    next[p + 1] = true;
+                }
+            }
+            next
+        }
+        RegexNode::Sequence(items) => items.iter().fold(positions, |at, item| regex_reach(item, text, at)),
+        RegexNode::Alternatives(branches) => {
+            for branch in branches {
+                for (p, at) in regex_reach(branch, text, positions.clone()).into_iter().enumerate() {
+                    next[p] |= at;
+                }
+            }
+            next
+        }
+        RegexNode::Repeat(body, low, high) => {
+            let mut positions = positions;
+            for _ in 0..*low {
+                positions = regex_reach(body, text, positions);
+            }
+            let mut seen = positions.clone();
+            let mut frontier = positions;
+            let mut limit = high.map(|h| h - low);
+            while limit != Some(0) {
+                let reached = regex_reach(body, text, frontier);
+                frontier = vec![false; text.len() + 1];
+                let mut any = false;
+                for (p, at) in reached.into_iter().enumerate() {
+                    if at && !seen[p] {
+                        frontier[p] = true;
+                        seen[p] = true;
+                        any = true;
+                    }
+                }
+                if !any {
+                    break;
+                }
+                limit = limit.map(|l| l - 1);
+            }
+            seen
+        }
+    }
+}
+
+static REGEX_CACHE: std::sync::LazyLock<std::sync::Mutex<HashMap<String, RegexNode>>> =
+    std::sync::LazyLock::new(|| std::sync::Mutex::new(HashMap::new()));
+
+/// Whether the portable regex matches the whole text.
+pub fn regex_matches(pattern: &str, text: &str) -> Result<bool> {
+    let cached = REGEX_CACHE.lock().unwrap().get(pattern).cloned();
+    let node = match cached {
+        Some(node) => node,
+        None => {
+            let node = regex_parse(pattern)?;
+            REGEX_CACHE.lock().unwrap().insert(pattern.to_string(), node.clone());
+            node
+        }
+    };
+    let points: Vec<u32> = text.chars().map(|c| c as u32).collect();
+    let mut start = vec![false; points.len() + 1];
+    start[0] = true;
+    Ok(regex_reach(&node, &points, start)[points.len()])
+}
+
+// Recorded values: a law compares a value's portable rendering with the
+// text stored under recorded/<unit>/<name> in the project. LAWSPEC_RECORDED
+// names the folder; otherwise it is recorded/ in the nearest folder, from
+// the working one up, that holds lawspec.json or recorded/. With
+// LAWSPEC_UPDATE_RECORDED=1 (lawspec test --update-recorded) a law records
+// the value instead.
+pub fn recorded_root() -> std::path::PathBuf {
+    if let Ok(given) = std::env::var("LAWSPEC_RECORDED") {
+        if !given.is_empty() {
+            return given.into();
+        }
+    }
+    let start = std::env::current_dir().unwrap_or_default();
+    let mut folder = start.as_path();
+    loop {
+        if folder.join("lawspec.json").exists() || folder.join("recorded").is_dir() {
+            return folder.join("recorded");
+        }
+        match folder.parent() {
+            Some(parent) => folder = parent,
+            None => return start.join("recorded"),
+        }
+    }
+}
+
+pub fn recorded(key: &str, value: &Value) -> Result<bool> {
+    let text = render(value);
+    let mut path = recorded_root();
+    for part in key.split('/') {
+        path.push(part);
+    }
+    if std::env::var("LAWSPEC_UPDATE_RECORDED").as_deref() == Ok("1") {
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+        }
+        std::fs::write(&path, format!("{text}\n")).map_err(|e| e.to_string())?;
+        return Ok(true);
+    }
+    let Ok(stored) = std::fs::read_to_string(&path) else {
+        return Err(format!("no recording recorded/{key}; run lawspec test --update-recorded to record {text}"));
+    };
+    let stored = stored.strip_suffix('\n').unwrap_or(&stored);
+    if stored != text {
+        return Err(format!(
+            "recorded/{key} differs: expected {stored}, actual {text} (lawspec test --update-recorded records the new value)"
+        ));
+    }
+    Ok(true)
+}
+
+// Built-in resources (see LawSpec.Resources): a law acquires them before
+// each case and releases them after it. Tests run on several threads, so a
+// saved environment also holds the environment for its case alone.
+static ENVIRONMENT_HELD: std::sync::Mutex<bool> = std::sync::Mutex::new(false);
+static ENVIRONMENT_FREE: std::sync::Condvar = std::sync::Condvar::new();
+static TEMPORARY_COUNT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+pub fn acquire_resource(kind: &str) -> Result<String> {
+    match kind {
+        "temporaryDirectory" | "temporaryFile" => {
+            let unique = TEMPORARY_COUNT.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            let nanos = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0);
+            let path = std::env::temp_dir().join(format!("lawspec-{}-{nanos}-{unique}", std::process::id()));
+            if kind == "temporaryDirectory" {
+                std::fs::create_dir(&path).map_err(|e| e.to_string())?;
+            } else {
+                std::fs::write(&path, "").map_err(|e| e.to_string())?;
+            }
+            Ok(path.to_string_lossy().into_owned())
+        }
+        "environment" => {
+            let mut held = ENVIRONMENT_HELD.lock().unwrap();
+            while *held {
+                held = ENVIRONMENT_FREE.wait(held).unwrap();
+            }
+            *held = true;
+            let mut saved: Vec<(String, String)> = std::env::vars().collect();
+            saved.sort();
+            Ok(saved.into_iter().map(|(k, v)| format!("{k}\0{v}\0")).collect())
+        }
+        _ => Err(format!("unknown resource kind {kind}")),
+    }
+}
+
+pub fn release_resource(kind: &str, value: &str) -> Result<()> {
+    match kind {
+        "temporaryDirectory" => {
+            let _ = std::fs::remove_dir_all(value);
+        }
+        "temporaryFile" => {
+            let _ = std::fs::remove_file(value);
+        }
+        "environment" => {
+            let parts: Vec<&str> = value.split('\0').collect();
+            let saved: HashMap<&str, &str> = parts.chunks(2).filter(|c| c.len() == 2).map(|c| (c[0], c[1])).collect();
+            for (name, _) in std::env::vars() {
+                if !saved.contains_key(name.as_str()) {
+                    // SAFETY: the saved environment holds the environment for
+                    // this case alone (ENVIRONMENT_HELD).
+                    unsafe { std::env::remove_var(&name) };
+                }
+            }
+            for (name, text) in &saved {
+                if std::env::var(name).as_deref() != Ok(*text) {
+                    // SAFETY: as above.
+                    unsafe { std::env::set_var(name, text) };
+                }
+            }
+            *ENVIRONMENT_HELD.lock().unwrap() = false;
+            ENVIRONMENT_FREE.notify_one();
+        }
+        _ => return Err(format!("unknown resource kind {kind}")),
+    }
+    Ok(())
+}
+
+/// A TCP port on the local host that is free now.
+pub fn free_port() -> Result<u16> {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").map_err(|e| e.to_string())?;
+    listener.local_addr().map(|a| a.port()).map_err(|e| e.to_string())
 }
 
 // Portable generation for stateful models. A type descriptor is an

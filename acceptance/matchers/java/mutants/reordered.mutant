@@ -1,0 +1,8 @@
+expect: sorting keeps every item example
+expect: first difference at item 1: expected 1, actual 3
+@@ src/main/java/example/Matchers.java
+<<<<<<<
+    items.sort(Integer::compare);
+=======
+    items.sort((a, b) -> Integer.compare(b, a));
+>>>>>>>

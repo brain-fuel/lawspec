@@ -1,0 +1,7 @@
+expect: shipping gives a shipped order
+@@ src/main/kotlin/example/Matchers.kt
+<<<<<<<
+lawspec.data.Order.Shipped(value0, "post")
+=======
+lawspec.data.Order.Pending(value0)
+>>>>>>>

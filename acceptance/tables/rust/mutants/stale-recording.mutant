@@ -1,0 +1,7 @@
+expect: recorded/example.tables/first label differs
+@@ src/example/tables.rs
+<<<<<<<
+    format!("parcel {value0}")
+=======
+    if value0 == 1 { "parcel one".into() } else { format!("parcel {value0}") }
+>>>>>>>

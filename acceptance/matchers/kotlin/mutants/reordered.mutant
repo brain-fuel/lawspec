@@ -1,0 +1,8 @@
+expect: sorting keeps every item example
+expect: first difference at item 1: expected 1, actual 3
+@@ src/main/kotlin/example/Matchers.kt
+<<<<<<<
+        value0.sorted()
+=======
+        value0.sortedDescending()
+>>>>>>>

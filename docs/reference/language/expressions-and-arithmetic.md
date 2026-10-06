@@ -17,6 +17,7 @@ means `(f x) y`. The other operators, from highest to lowest precedence:
 | `<\|>`, `??` | Left |
 | `\|>` | Left |
 | `==`, `!=`, `<`, `<=`, `>`, `>=` | Do not chain |
+| [Matchers](matchers.md): `has same items as`, `contains`, `matches`, ... | Do not chain |
 | `&&` | Left |
 | `\|\|` | Left |
 

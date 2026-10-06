@@ -1,0 +1,7 @@
+expect: negative amounts are blocked
+@@ src/example/failures.py
+<<<<<<<
+            return data.DecisionBlock()
+=======
+            return data.DecisionDecline("negative")
+>>>>>>>

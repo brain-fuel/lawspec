@@ -1,0 +1,7 @@
+expect: shipping gives a shipped order
+@@ src/example/matchers.ts
+<<<<<<<
+  return new data.OrderShipped(value0, 'post');
+=======
+  return new data.OrderPending(value0);
+>>>>>>>

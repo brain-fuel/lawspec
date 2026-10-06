@@ -99,6 +99,14 @@ emitTests Config{..} unit laws = do
         let message = quoted (context ++ " | expect " ++ prettyExpr a ++ " = " ++ prettyExpr b)
         in statement (call "_lawspecAssert" ([message] ++ (if custom (expressionType a) then [reference (expressionType a),text "symbols"] else []) ++
           [lambda "()" (expr a),lambda "()" (expr b)]))
+    -- A law's resources: each case acquires them, then runs, then releases
+    -- them, the last first, even when the case fails.
+    bracketed e docs = foldr wrap (statements docs) (C.propertyResources (original e))
+      where
+        wrap r inner =
+          let local = localName (C.binderId (C.resourceBinder r))
+          in statements [bind local (expr (C.resourceAcquire r)),
+            text "try " <> block inner <> text " finally " <> block (bind (local ++ "Released") (expr (C.resourceRelease r)))]
     contract c =
       let args = contractArguments c
           (rn,rt) = contractResult c
@@ -114,15 +122,15 @@ emitTests Config{..} unit laws = do
           fn = "law" ++ show index
       exampleDocs <- mapM (\(i,ex) -> pure $ testFunction (fn ++ "Example" ++ show i) $ statements
         ([symbols] ++ handlerInstalls e ++ [bind n (expr v) | (n,v) <- bindings ex] ++
-        map (assertionDoc (label ++ " example " ++ exampleName ex)) (expectations ex) ++
-        [assertionDoc label (assertion e)])) (zip [0::Int ..] (examples (original e)))
+        [bracketed e (map (assertionDoc (label ++ " example " ++ exampleName ex)) (expectations ex) ++
+          [assertionDoc label (assertion e)])])) (zip [0::Int ..] (examples (original e)))
       boundaryDocs <- mapM (\(i,vs) -> do
         values <- mapM literal vs
         pure $ testFunction (fn ++ "Boundary" ++ show i) $ statements
           ([symbols] ++ handlerInstalls e ++ [bind (inputId inp) (checked (inputType inp) v) | (inp,v) <- zip (inputs e) values] ++
-          [assertionDoc (label ++ " boundary " ++ show i) (assertion e)]))
+          [bracketed e [assertionDoc (label ++ " boundary " ++ show i) (assertion e)]]))
         (zip [0::Int ..] (maybe (boundaryCases e) id (finiteCases e)))
-      let check = assertionDoc (label ++ " property") (assertion e)
+      let check = bracketed e [assertionDoc (label ++ " property") (assertion e)]
       property <- if finiteCases e /= Nothing then pure []
         else if nativeGenerators || any (structural . inputType) (inputs e) then (:[]) <$> structuralProperty fn e check
         else if any (not . null . inputRefinements) (inputs e) || propertyKind e == "contract"

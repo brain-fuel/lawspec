@@ -1,0 +1,7 @@
+expect: a note reads back
+@@ src/example/resources.py
+<<<<<<<
+        f.write(str(value1))
+=======
+        f.write(str(value1 + 1))
+>>>>>>>

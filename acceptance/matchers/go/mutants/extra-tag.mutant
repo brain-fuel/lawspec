@@ -1,0 +1,7 @@
+expect: unique tags come from the input
+@@ example/matchers/adapter.go
+<<<<<<<
+	return tags
+=======
+	return append(tags, "extra")
+>>>>>>>

@@ -59,7 +59,7 @@ validateDeclaration structures table r = do
 
 -- A synthetic generic declaration checks unused aliases as well as instantiated ones.
 refinementCheck :: Refinement -> Law
-refinementCheck r = Law ("refinement " ++ refinementName r) ps cs (Forall [("_refinementValue",body)] (Holds (BoolLit True))) "" "" [] [] (Location "<refinement>" 1 1)
+refinementCheck r = Law ("refinement " ++ refinementName r) ps cs (Forall [("_refinementValue",body)] (Holds (BoolLit True))) "" "" [] [] (Location "<refinement>" 1 1) []
   where ts = M.fromList [(n,Variable n) | (n,Named "Type") <- refinementParameters r]
         sub = substituteType ts M.empty
         ps = [(if t == Named "Type" then "_type_" ++ n else n, if t == Named "Type" then Variable n else sub t) | (n,t) <- refinementParameters r] ++ [("_declaration",Named "Unit")]
@@ -188,7 +188,7 @@ definitionContractFor definition = do
     (typePredicates (Var (fst result)) resultType))
 
 contractLaw :: Contract -> Law
-contractLaw c = Law ("contract " ++ contractName c) [] [] (Forall (contractArguments c) (Holds (Apply (Var "prelude.checked") invocation))) (contractName c ++ " :: " ++ intercalate " -> " (map (prettyType . snd) (contractArguments c ++ [contractResult c]))) "" [] [] (Location "<contract>" 1 1)
+contractLaw c = Law ("contract " ++ contractName c) [] [] (Forall (contractArguments c) (Holds (Apply (Var "prelude.checked") invocation))) (contractName c ++ " :: " ++ intercalate " -> " (map (prettyType . snd) (contractArguments c ++ [contractResult c]))) "" [] [] (Location "<contract>" 1 1) []
   where invocation = foldl Apply (Var (contractName c)) (map (Var . fst) (contractArguments c))
 
 typeNames :: Type -> [String]

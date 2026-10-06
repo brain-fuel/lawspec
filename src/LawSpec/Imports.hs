@@ -14,6 +14,8 @@ import LawSpec.Model
 import LawSpec.Indexed (naturalRefinementName)
 import LawSpec.Collections (collectionsUnit, collectionsAlias, collectionOperation, internalConstructor)
 import LawSpec.Time (timeUnit, timeAlias, timeOperation, durationDefinitions)
+import LawSpec.Matchers (matchersUnit, matchersAlias, matcherOperation)
+import LawSpec.Resources (resourcesUnit)
 import LawSpec.Resilience (resilienceUnit, resilienceDefinitions)
 import Control.Monad (forM, forM_, unless, when)
 import Control.Monad.State.Strict (State, execState, modify)
@@ -239,7 +241,7 @@ importScope u i exports = do
         map refinementName (refinements u) ++ map fst (functions u) ++ map lawName (laws u)
   -- The implicit collections import leaves out what the unit declares, and
   -- the containers' constructors, which keep their items canonical.
-  let implicit = importUnit i `elem` [collectionsUnit, timeUnit, resilienceUnit]
+  let implicit = importUnit i `elem` [collectionsUnit, timeUnit, resilienceUnit, matchersUnit, resourcesUnit]
       hidden = [c | Just c <- map internalConstructor (importItems i)]
   listed <- forM [item | item <- importItems i, not (implicit && unquote item `S.member` local)] $ \item -> do
     when (unquote item `S.member` local)
@@ -390,7 +392,14 @@ walkUnit names u = do
   abilities' <- mapM (walkAbility names) (abilities u)
   handlers' <- mapM (walkHandler names) (handlerDeclarations u)
   uses' <- forM (declaredUses u) $ \(n, ts) -> (,) n <$> mapM (walkType names []) ts
-  pure u{functions = functions', laws = laws', refinements = refinements', dataTypes = dataTypes', functionDefinitions = definitions'
+  resources' <- forM (resourceDeclarations u) $ \r -> do
+    ty <- walkType names [] (resourceType r)
+    acquire <- walkExpr names [] (resourceAcquire r)
+    let clause (n, body) = (,) n <$> walkExpr names [n] body
+    release <- clause (resourceRelease r)
+    reset <- traverse clause (resourceReset r)
+    pure r{resourceType = ty, resourceAcquire = acquire, resourceRelease = release, resourceReset = reset}
+  pure u{functions = functions', laws = laws', refinements = refinements', dataTypes = dataTypes', functionDefinitions = definitions', resourceDeclarations = resources'
         , abilities = abilities', handlerDeclarations = handlers', declaredUses = uses'}
 
 walkAbility :: Monad m => Names m -> AbilityDeclaration -> m AbilityDeclaration
@@ -428,9 +437,10 @@ walkFunctionDefinition names d = do
 
 walkLaw :: Monad m => Names m -> Law -> m Law
 walkLaw names l = do
-  let scope = map fst (parameters l)
+  let scope = map fst (parameters l) ++ map fst (lawResources l)
       bound = scope ++ quantified (definition l)
   parameters' <- forM (parameters l) $ \(n, t) -> (,) n <$> walkType names scope t
+  resources' <- forM (lawResources l) $ \(n, t) -> (,) n <$> walkType names [] t
   requirements' <- mapM (walkConstraint names) (requirements l)
   body <- walkDefinition names scope (definition l)
   examples' <- forM (examples l) $ \e -> do
@@ -438,7 +448,7 @@ walkLaw names l = do
     checks <- forM (expectations e) $ \x ->
       Expectation <$> walkExpr names bound (actual x) <*> walkLiteral names (expected x)
     pure e{bindings = bindings', expectations = checks}
-  pure l{parameters = parameters', requirements = requirements', definition = body, examples = examples'}
+  pure l{parameters = parameters', requirements = requirements', definition = body, examples = examples', lawResources = resources'}
   where
     quantified (Forall qs d) = map fst qs ++ quantified d
     quantified (Implies _ d) = quantified d
@@ -486,6 +496,9 @@ walkExpr names scope e = case e of
   -- prelude.<op> of a collection is a definition of the collections unit.
   Var n | n `notElem` scope, Just op <- stripPrefix "prelude." n, Just (definition, _) <- collectionOperation op ->
           Var <$> onValue names (collectionsAlias ++ "." ++ definition)
+  -- prelude.<op> of a matcher over lists is a definition of the matchers unit.
+  Var n | n `notElem` scope, Just op <- stripPrefix "prelude." n, Just definition <- matcherOperation op ->
+          Var <$> onValue names (matchersAlias ++ "." ++ definition)
   -- prelude.<op> of a duration is a definition of the time unit.
   Var n | n `notElem` scope, Just op <- stripPrefix "prelude." n, Just definition <- timeOperation op ->
           Var <$> onValue names (timeAlias ++ "." ++ definition)
@@ -496,7 +509,8 @@ walkExpr names scope e = case e of
   ListLit xs -> ListLit <$> mapM (walkExpr names scope) xs
   ConstructLit n fields -> ConstructLit <$> onConstructor names n <*> mapM (walkExpr names scope) fields
   MatchExpr value branches -> MatchExpr <$> walkExpr names scope value <*> forM branches (\(MatchBranch tag binders body) ->
-    MatchBranch <$> onConstructor names tag <*> pure binders <*> walkExpr names (binders ++ scope) body)
+    -- A matcher's wildcard branch _ names no constructor.
+    MatchBranch <$> (if tag == "_" then pure tag else onConstructor names tag) <*> pure binders <*> walkExpr names (binders ++ scope) body)
   AllElementsExpr value binder predicate ->
     AllElementsExpr <$> walkExpr names scope value <*> pure binder <*> walkExpr names (binder : scope) predicate
   AllPayloadsExpr value predicates -> AllPayloadsExpr <$> walkExpr names scope value <*>

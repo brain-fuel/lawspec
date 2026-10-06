@@ -1,0 +1,7 @@
+expect: the carrier is never empty
+@@ example/matchers/adapter.go
+<<<<<<<
+	return OrderShipped{Id: value0, Carrier: "post"}
+=======
+	return OrderShipped{Id: value0, Carrier: ""}
+>>>>>>>

@@ -1,0 +1,8 @@
+expect: even amounts go through
+@@ src/main/java/example/Failures.java
+<<<<<<<
+      return new lawspec.data.Decision.Approve();
+=======
+      if (value0 > 50000) return new lawspec.data.Decision.Decline("even");
+      return new lawspec.data.Decision.Approve();
+>>>>>>>

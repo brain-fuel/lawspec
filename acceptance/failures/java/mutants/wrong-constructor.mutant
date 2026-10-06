@@ -1,0 +1,7 @@
+expect: negative amounts are blocked
+@@ src/main/java/example/Failures.java
+<<<<<<<
+      if (value0 < 0) return new lawspec.data.Decision.Block();
+=======
+      if (value0 < 0) return new lawspec.data.Decision.Decline("negative");
+>>>>>>>

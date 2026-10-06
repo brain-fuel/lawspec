@@ -1,0 +1,7 @@
+expect: description example 1
+@@ src/example/tables.rs
+<<<<<<<
+    format!("parcel {value0}")
+=======
+    if value0 == 7 { "parcel seven".into() } else { format!("parcel {value0}") }
+>>>>>>>

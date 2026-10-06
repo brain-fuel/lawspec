@@ -57,14 +57,17 @@ assertionHelper py profile = function py name parameters guarded
     equal = case profile of
       Nothing -> call "ls.equal" (map D.text ["a","b","ta","tb"])
       Just bits -> call "_lawspec_schema.equal" (map D.text
-        (["ty"] ++ (if py then ["a","b"] else ["actual()","expected()"]) ++ [show bits] ++ ["symbols"]))
+        (["ty","a","b",show bits,"symbols"]))
     pythonAssert = D.group (D.text "assert (" <> D.nest 4 (D.softbreak <> equal) <>
-      D.softbreak <> D.text "), f'{context} | actual={a!r}, expected={b!r}'")
-    javascriptAssert = call "assert.ok"
-      [equal,D.text (if structural then "context" else "`${context} | actual=${String(a)}, expected=${String(b)}`")] <> D.text ";"
+      D.softbreak <> D.text "), f'{context} | actual={a!r}, expected={b!r}{ls.difference(a, b)}'")
+    -- Where the values differ is worked out only when they do.
+    javascriptAssert = D.text "if (!" <> equal <> D.text ") " <> D.block 2 (D.joinWith D.hardline
+      ([D.text "const where = ls.difference(a, b);"] ++
+       if structural then [D.text "assert.fail(`${context}${where}`);"]
+       else [D.text "assert.fail(`${context} | actual=${String(a)}, ` +", D.text "  `expected=${String(b)}${where}`);"]))
     body = D.joinWith D.hardline $
       (if py then [D.text "a, b = actual(), expected()"]
-       else if structural then [] else [D.text "const a = actual();",D.text "const b = expected();"]) ++
+       else [D.text "const a = actual();",D.text "const b = expected();"]) ++
       [if py then pythonAssert else javascriptAssert]
     guarded = if py then Python.suite (D.text "try") body <> D.hardline <>
       Python.suite (D.text "except Exception as error")

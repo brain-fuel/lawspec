@@ -1,0 +1,7 @@
+expect: sorting keeps every item
+@@ src/main/kotlin/example/Matchers.kt
+<<<<<<<
+        value0.sorted()
+=======
+        value0.distinct().sorted()
+>>>>>>>

@@ -9,7 +9,7 @@ import { generateExamples } from "../examples-command.mjs";
 import { showScalar } from "../scalars.mjs";
 import { doctor } from "../doctor.mjs";
 import { spawn } from "node:child_process";
-import { environmentDigest, executedTests, invocations, lawKeys, projectDigest } from "../test-command.mjs";
+import { environmentDigest, executedTests, invocations, lawKeys, projectDigest, recordedDigest } from "../test-command.mjs";
 import {
   readOptional,
   planWrites,
@@ -28,7 +28,7 @@ for (let i = 0; i < args.length; i++) {
     if (!args[i + 1] || args[i + 1].startsWith("--"))
       throw new Error(`Missing value for ${arg}`);
     options[arg.slice(2)] = args[++i];
-  } else if (["--dry-run", "--check", "--json", "--minify", "--no-cache", "--fresh"].includes(arg))
+  } else if (["--dry-run", "--check", "--json", "--minify", "--no-cache", "--fresh", "--update-recorded"].includes(arg))
     options[arg.slice(2)] = true;
   else if (arg.startsWith("--")) throw new Error(`Unknown option: ${arg}`);
   else positional.push(arg);
@@ -292,6 +292,8 @@ async function buildDigest() {
 // lawspec test: run the tests of the laws whose results may have changed,
 // and record each passing law's key and seed (see test-command.mjs).
 async function runTests(compiler, input, selected, roots, config) {
+  // Recorded values live beside lawspec.json, under recorded/<unit>/<name>.
+  const recordedFolder = path.join(configRoot, "recorded");
   const seed = options.seed ?? String(1 + Math.floor(Math.random() * 2147483646));
   const offline = process.env.LAWSPEC_OFFLINE === "1";
   const build = await buildDigest();
@@ -311,13 +313,16 @@ async function runTests(compiler, input, selected, roots, config) {
     const keys = lawKeys({
       build, target, machineBits: input.machineBits, minify: options.minify === true,
       tests: planned.tests, files: planned.files,
-      environment: await environmentDigest(root, report),
+      // Recorded values are spec data: a changed recording runs its laws again.
+      environment: await environmentDigest(root, report) + (await recordedDigest(recordedFolder)),
       project: await projectDigest(root, generated),
     });
     const resultsFile = path.join(configRoot, ".lawspec", "results",
       `${target.language}-${createHash("sha256").update(root).digest("hex").slice(0, 12)}.json`);
     const previous = JSON.parse((await readOptional(resultsFile)) ?? '{"version":1,"laws":{}}');
-    const stale = planned.tests.filter((entry) => options.fresh || previous.laws[entry.law]?.key !== keys.get(entry.law));
+    // Recording again runs every law, so each records what it sees now.
+    const stale = planned.tests.filter((entry) => options.fresh || options["update-recorded"] ||
+      previous.laws[entry.law]?.key !== keys.get(entry.law));
     const passed = [];
     const unrun = [];
     let failed = false;
@@ -328,7 +333,8 @@ async function runTests(compiler, input, selected, roots, config) {
     for (const run of stale.length ? invocations(target, stale, { offline, scratch }) : []) {
       const since = Date.now() - 1000;
       const { ok, output } = await spawned(run.command, run.args, root,
-        { ...process.env, ...run.env, LAWSPEC_SEED: seed, HSPEC_SEED: seed }, run.report?.kind === "go-json");
+        { ...process.env, ...run.env, LAWSPEC_SEED: seed, HSPEC_SEED: seed, LAWSPEC_RECORDED: recordedFolder,
+          ...(options["update-recorded"] ? { LAWSPEC_UPDATE_RECORDED: "1" } : {}) }, run.report?.kind === "go-json");
       if (!ok) { failed = true; break; }
       // A runner whose filter matched nothing reports success, so a law
       // counts as passed only if the runner's report shows its tests ran.
@@ -392,7 +398,7 @@ async function main() {
   }
   if (!verb || ["help", "--help", "-h"].includes(verb)) {
     output(
-      "LawSpec " + VERSION + "\nUsage: lawspec init --target <language> [--project <directory>] [--minify]\n       lawspec check | doctor | explain <unit>::<law> | generate\n       lawspec evidence [<unit> | <unit>::<declaration>]\n       lawspec test [--target <language>] [--fresh] [--seed <n>]\n       lawspec package [--project <package directory>]\n       lawspec examples [--example payments] [--target <language>] [--output <directory>]\nOptions: --config <path>, --target <language>, --machine-bits <32|64>, --json, --no-cache\nGeneration: --dry-run, --check, --minify\nTargets: " +
+      "LawSpec " + VERSION + "\nUsage: lawspec init --target <language> [--project <directory>] [--minify]\n       lawspec check | doctor | explain <unit>::<law> | generate\n       lawspec evidence [<unit> | <unit>::<declaration>]\n       lawspec test [--target <language>] [--fresh] [--seed <n>] [--update-recorded]\n       lawspec package [--project <package directory>]\n       lawspec examples [--example payments] [--target <language>] [--output <directory>]\nOptions: --config <path>, --target <language>, --machine-bits <32|64>, --json, --no-cache\nGeneration: --dry-run, --check, --minify\nTargets: " +
         targets.join(", "),
     );
     return;
@@ -436,8 +442,8 @@ async function main() {
   if (options.example) throw new Error("--example is only supported by examples");
   if (options.minify && !["init", "generate", "examples", "test"].includes(verb))
     throw new Error("--minify applies to init, generate, test and examples");
-  if ((options.fresh || options.seed !== undefined) && verb !== "test")
-    throw new Error("--fresh and --seed apply to test");
+  if ((options.fresh || options.seed !== undefined || options["update-recorded"]) && verb !== "test")
+    throw new Error("--fresh, --seed and --update-recorded apply to test");
   if (options.seed !== undefined && !/^[0-9]+$/.test(options.seed))
     throw new Error("--seed must be a whole number");
   if (verb === "init") return init();

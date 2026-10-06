@@ -20,6 +20,8 @@
 --   <target>/bindings.json         native bindings, as in lawspec.json (optional)
 --   <target>/native/<path>         application code those bindings call, copied
 --                                  as is (bound units have no adapters)
+--   recorded/<unit>/<name>         recorded values, copied to every target's
+--                                  project as recorded/<unit>/<name> (optional)
 --
 -- A package directory holds lawspec-package.json ({"name", "version",
 -- "sources": [directories or files], "dependencies"}); its sources are sent
@@ -114,9 +116,10 @@ main = do
         scaffolds <- either die pure (scaffoldFiles minify target)
         suiteInputs <- let base = "acceptance" </> suite </> target in
           doesDirectoryExist base >>= \exists -> if exists then walk base else pure []
+        recordingInputs <- map snd <$> suiteRecordings suite
         key <- runKey target [suite, target, profile, show mutate]
           (scaffolds ++ [(generatedPath g, generatedContent g) | g <- generated])
-          (suiteInputs ++ harnessInputs target)
+          (suiteInputs ++ recordingInputs ++ harnessInputs target)
         recorded <- if mode == Reuse then lookupResult key else pure Nothing
         case recorded of
           Just output -> mapM_ (putStrLn . (++ " (cached)")) output
@@ -183,6 +186,10 @@ writeProject suite target project defaultProfile minify generated = do
     readFile source >>= writeAt (project </> relative)
   natives <- suiteDirectory suite target "native"
   forM_ natives $ \(relative, source) -> readFile source >>= writeAt (project </> relative)
+  -- Recorded values are spec data, the same for every target.
+  removePathForcibly (project </> "recorded")
+  recordings <- suiteRecordings suite
+  forM_ recordings $ \(relative, source) -> readFile' source >>= writeAt (project </> relative)
   -- Stubs depend on the profile, so they are compared in the default one.
   when defaultProfile $ forM_ adapters $ \(relative, _) -> do
     let recorded = "acceptance" </> suite </> target </> "stubs" </> relative
@@ -197,6 +204,15 @@ writeProject suite target project defaultProfile minify generated = do
     exists <- doesPathExist link
     unless exists (createDirectoryLink (root </> ".integration" </> target </> "node_modules") link)
   when (target == "go") (copyFile "test/locks/go/go.sum" (project </> "go.sum"))
+
+-- A suite's recorded values: acceptance/<suite>/recorded/<unit>/<name>, as
+-- recorded/<unit>/<name> in each project.
+suiteRecordings :: String -> IO [(FilePath, FilePath)]
+suiteRecordings suite = do
+  let base = "acceptance" </> suite </> "recorded"
+  exists <- doesDirectoryExist base
+  files <- if exists then walk base else pure []
+  pure [("recorded" </> drop (length base + 1) file, file) | file <- files]
 
 -- The lines printed for a passing run.
 runSuite :: String -> String -> FilePath -> Bool -> IO [String]

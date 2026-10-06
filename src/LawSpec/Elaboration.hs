@@ -19,6 +19,7 @@ import LawSpec.Core.Validate (operationEvidenceWithRegistry)
 import LawSpec.Core.Types (makeRegistry, builtinDataDeclarations)
 import LawSpec.Core.Semantics (convertValue)
 import LawSpec.Scalar
+import LawSpec.Digest (digestHex, digestString)
 import Data.List (stripPrefix, nub)
 import Control.Monad (forM, unless)
 
@@ -260,6 +261,65 @@ elaborateResolvedWithData dataTypes declarations bits origin resolve env source 
         C.ExternalCall identity [] -> pure (node t (C.Calls (C.Operation (C.AbilityRef (C.Id "") []) (C.idText identity))
           (if null rest then Nothing else Just rest)))
         _ -> Left "calls of names an ability operation"
+    -- Matchers (LawSpec.Matchers).
+    | n == "contains", [whole, part] <- xs = case C.expressionType whole of
+        C.Constructor "Text" [] -> pure (node t (C.Helper C.TextContains [whole, part]))
+        C.Constructor "List" [C.TypeArgument element] -> do
+          -- Not every item differs from part.
+          let binder = C.Binder (C.Id (C.idText origin ++ "::match::contains" ++ take 12 (digestHex (digestString (show (whole, part)))) ++ "::element::item")) "item" element
+          evidence <- operationEvidence C.NotEqual element (C.expressionType part)
+          let differs = node t (C.Binary C.NotEqual evidence (node element (C.Local (C.binderId binder))) part)
+          pure (node t (C.Unary C.Not (node t (C.AllElements whole binder differs))))
+        _ -> Left "contains needs a List or a Text"
+    | n == "startsWith", [whole, part] <- xs = pure (node t (C.Helper C.StartsWith [whole, part]))
+    | n == "endsWith", [whole, part] <- xs = pure (node t (C.Helper C.EndsWith [whole, part]))
+    | n == "regexMatches", [pattern, text] <- xs = pure (node t (C.Helper C.RegexMatches [pattern, text]))
+    -- within tolerance x y: if x >= y then x - y <= tolerance else y - x <= tolerance.
+    | n == "within", [tolerance, x, y] <- xs = do
+        let numberType = C.expressionType x
+            difference = case numberType of
+              C.Constructor name [] | isInteger name -> C.scalarType "Integer"
+              _ -> numberType
+            bool = C.scalarType "Bool"
+            compareWith op a b = do
+              evidence <- operationEvidence op (C.expressionType a) (C.expressionType b)
+              pure (node bool (C.Binary op evidence a b))
+            minus a b = do
+              evidence <- operationEvidence C.Subtract (C.expressionType a) (C.expressionType b)
+              pure (node difference (C.Binary C.Subtract evidence a b))
+        ordered <- compareWith C.GreaterEqual x y
+        down <- minus x y >>= \d -> compareWith C.LessEqual d tolerance
+        up <- minus y x >>= \d -> compareWith C.LessEqual d tolerance
+        pure (node t (C.If ordered down up))
+    -- messageContains failure text: the failure's message field, in whichever
+    -- constructor built it, contains text; false for a constructor without one.
+    | n == "messageContains", [failure, text] <- xs = case C.expressionType failure of
+        C.Constructor parent arguments -> do
+          declaration <- case [d | d <- builtinDataDeclarations ++ dataTypes, C.idText (C.dataId d) == parent] of
+            [d] -> Right d
+            _ -> Left "message contains needs a data type"
+          let table = zip (C.dataParameters declaration) [a | C.TypeArgument a <- arguments]
+              instantiate ty = case ty of
+                C.TypeVariable v -> maybe ty id (lookup v table)
+                C.Constructor name args -> C.Constructor name [case a of C.TypeArgument inner -> C.TypeArgument (instantiate inner); other -> other | a <- args]
+                C.Arrow a b -> C.Arrow (instantiate a) (instantiate b)
+              bool b = node (C.scalarType "Bool") (C.Constant (SBool b))
+          cases <- forM (zip [0 :: Int ..] (C.dataConstructors declaration)) $ \(k, c) -> do
+            let binders = [C.Binder (C.Id (C.idText origin ++ "::match::message" ++ show k ++ "::" ++ show i))
+                  (C.binderName f) (instantiate (C.binderType f)) | (i, f) <- zip [0 :: Int ..] (C.constructorFields c)]
+                body = case [b | b <- binders, C.binderName b == "message", C.binderType b == C.scalarType "Text"] of
+                  b : _ -> node t (C.Helper C.TextContains [node (C.binderType b) (C.Local (C.binderId b)), text])
+                  [] -> bool False
+            pure (C.MatchCase (C.constructorId c) binders body)
+          pure (node t (C.Match failure cases))
+        _ -> Left "message contains needs a data type"
+    -- recorded name value: the key is the unit's folder and the name.
+    | n == "recorded", [key, value] <- xs = case C.expressionNode key of
+        C.Constant (SSequence "Text" name) ->
+          let unit = takeUnit (C.idText origin)
+              keyText = C.Constant (SSequence "Text" (map fromEnum (unit ++ "/") ++ name))
+          in pure (node t (C.Helper C.Recorded [key { C.expressionNode = keyText }, value]))
+        _ -> Left "a recording's name is a literal"
     | n == "isEmpty", [x] <- xs = do
         items <- collectionItems x
         let listType = C.expressionType items
@@ -281,6 +341,13 @@ elaborateResolvedWithData dataTypes declarations bits origin resolve env source 
             pure [a,b']
           _ -> pure xs
         pure (node t (C.Helper builtin args))
+
+-- The unit an identity belongs to: unit::law::name gives unit.
+takeUnit :: String -> String
+takeUnit text = case text of
+  ':' : ':' : _ -> ""
+  c : rest -> c : takeUnit rest
+  [] -> []
 
 binaryOp :: String -> Either String C.BinaryOp
 binaryOp op = maybe (Left ("unknown binary operation: " ++ op)) Right (lookup op

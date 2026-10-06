@@ -1,0 +1,8 @@
+expect: sorting keeps every item example
+expect: first difference at item 1: expected 1, actual 3
+@@ src/Example/Matchers.hs
+<<<<<<<
+sortItems xs = List.sort xs
+=======
+sortItems xs = reverse (List.sort xs)
+>>>>>>>

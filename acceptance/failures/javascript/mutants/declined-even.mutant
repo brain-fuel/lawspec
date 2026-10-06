@@ -1,0 +1,7 @@
+expect: even amounts go through
+@@ src/example/failures.mjs
+<<<<<<<
+    return new data.DecisionApprove();
+=======
+    return value0 > 50000 ? new data.DecisionDecline('even') : new data.DecisionApprove();
+>>>>>>>

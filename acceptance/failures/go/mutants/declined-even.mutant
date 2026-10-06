@@ -1,0 +1,10 @@
+expect: even amounts go through
+@@ example/failures/adapter.go
+<<<<<<<
+	return DecisionApprove{}
+=======
+	if value0 > 50000 {
+		return DecisionDecline{Reason: "even"}
+	}
+	return DecisionApprove{}
+>>>>>>>

@@ -1,0 +1,7 @@
+expect: odd amounts are declined, and say why
+@@ src/Example/Failures.hs
+<<<<<<<
+"an odd amount"
+=======
+"an uneven amount"
+>>>>>>>

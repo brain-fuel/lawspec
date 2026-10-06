@@ -1,0 +1,7 @@
+expect: shipping gives a shipped order
+@@ src/example/matchers.rs
+<<<<<<<
+    crate::lawspec_data::Order::Shipped { id: value0, carrier: "post".into() }
+=======
+    crate::lawspec_data::Order::Pending { id: value0 }
+>>>>>>>

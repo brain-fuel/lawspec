@@ -1,0 +1,7 @@
+expect: even amounts go through
+@@ src/example/failures.py
+<<<<<<<
+        return data.DecisionApprove()
+=======
+        return data.DecisionDecline("even") if value0 > 50000 else data.DecisionApprove()
+>>>>>>>

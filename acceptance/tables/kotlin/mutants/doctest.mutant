@@ -1,0 +1,7 @@
+expect: description example 1
+@@ src/main/kotlin/example/Tables.kt
+<<<<<<<
+= "parcel $value0"
+=======
+= if (value0 == 7) "parcel seven" else "parcel $value0"
+>>>>>>>

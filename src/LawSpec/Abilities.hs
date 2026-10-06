@@ -433,7 +433,7 @@ instantiateLaw table l = l { definition = go (definition l) }
 -- refinement, from every handler, for arguments that keep theirs.
 refinementLaws :: AbilityDeclaration -> Type -> [Law]
 refinementLaws a inst =
-  [ Law (op ++ " gives what its type says") [] [] claim "" "" [] [] (Location "<ability>" (line (abilitySpan a)) 1)
+  [ Law (op ++ " gives what its type says") [] [] claim "" "" [] [] (Location "<ability>" (line (abilitySpan a)) 1) []
   | (op, ty) <- instantiatedOperations a inst
   , let (arguments, result) = functionType ty
         values = ["value" ++ show i | i <- [0 .. length arguments - 1]]

@@ -115,6 +115,9 @@ qualifyDataNames unit = unit
   , S.declaredUses = [(n, map ty ts) | (n, ts) <- S.declaredUses unit]
   , S.abilityRows = [(n, map ty ts) | (n, ts) <- S.abilityRows unit]
   , S.lawAssignments = [(n, [(ty t, c) | (t, c) <- a]) | (n, a) <- S.lawAssignments unit]
+  , S.resourceDeclarations = [r {S.resourceType = ty (S.resourceType r), S.resourceAcquire = expr (S.resourceAcquire r),
+      S.resourceRelease = fmap expr (S.resourceRelease r), S.resourceReset = fmap (fmap expr) (S.resourceReset r)}
+      | r <- S.resourceDeclarations unit]
   , S.contracts = [c {S.contractArguments = map pair (S.contractArguments c),
       S.contractResult = pair (S.contractResult c),
       S.contractPreconditions = map expr (S.contractPreconditions c),
@@ -160,6 +163,7 @@ qualifyDataNames unit = unit
       S.And a b -> S.And (definition a) (definition b)
       S.Invoke name args -> S.Invoke name (map expr args)
     law l = l {S.parameters = map pair (S.parameters l), S.requirements = map constraint (S.requirements l),
+      S.lawResources = map pair (S.lawResources l),
       S.definition = definition (S.definition l), S.examples =
         [e {S.bindings = [(name,literal value) | (name,value) <- S.bindings e],
             S.expectations = [S.Expectation (expr (S.actual x)) (literal (S.expected x)) | x <- S.expectations e]}

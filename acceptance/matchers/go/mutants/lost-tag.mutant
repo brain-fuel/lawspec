@@ -1,0 +1,10 @@
+expect: unique tags keep each tag
+@@ example/matchers/adapter.go
+<<<<<<<
+	return tags
+=======
+	if len(tags) > 0 {
+		return tags[1:]
+	}
+	return tags
+>>>>>>>

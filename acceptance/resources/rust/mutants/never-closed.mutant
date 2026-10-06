@@ -1,0 +1,8 @@
+expect: too many open stores
+@@ src/example/resources.rs
+<<<<<<<
+        *open = false;
+        OPEN_COUNT.fetch_sub(1, Ordering::SeqCst);
+=======
+        *open = false;
+>>>>>>>

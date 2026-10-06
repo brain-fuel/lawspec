@@ -145,7 +145,7 @@ assertionDoc bits structural =
   text " " <> block (text "try " <> block (statements
     [text "var a = actual.get();",text "var b = expected.get();",
      statement (call "assertTrue" [if structural then call "_schema.equal" [text "type",text "a",text "b",number bits,text "symbols"]
-       else runtime "equal" [text "a",text "b"],text "context + \" | actual=\" + a + \" expected=\" + b"])]) <>
+       else runtime "equal" [text "a",text "b"],text "context + \" | actual=\" + a + \" expected=\" + b + LawSpecRuntime.difference(a, b)"])]) <>
     text " catch (RuntimeException error) " <> block (text "throw new AssertionError(context, error);"))
 
 scalarHelpersDoc :: D.Doc

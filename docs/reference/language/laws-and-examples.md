@@ -117,6 +117,109 @@ An example passes only when all its expectations and the law itself hold for
 its inputs. See [expected results](../prelude-algebra.md#expected-results) for
 the full semantics.
 
+An expectation takes one of three forms:
+
+- `expect e = literal`: `e` equals the literal;
+- `expect e`: `e` is a `Bool` that holds, such as a
+  [matcher](matchers.md) or `expect charge 5 fails with Declined _`;
+- `expect e = recorded "name"`: `e` equals a [recorded value](#recorded-values).
+
+## Tables
+
+A table lists examples as rows. Each row is its own example, run and reported
+on its own:
+
+```lawspec
+unit guide.tables
+
+shippingCost :: Int32 -> Int32 -> Int32
+
+law `shipping cost grows with weight and distance` is
+  definition is
+    `for all` (kilograms :: Int32 where kilograms >= 0 && kilograms <= 1000)
+      (kilometres :: Int32 where kilometres >= 0 && kilometres <= 1000) .
+      shippingCost kilograms kilometres >= 0
+  end
+  table (kilograms, kilometres, cost) is
+    row 0, 0, 0
+    row 1, 10, 15
+    row 2, 10, 30
+    expect shippingCost kilograms kilometres = cost
+  end
+end
+```
+
+- `table (a, b, ...) is`, then `row` lines, then `expect` lines, then `end`.
+- A column on the right of an expectation's `=` holds expected values. Every
+  other column binds the law's input of that name, so the columns must
+  include every input.
+- An expectation may use any column; expected-value columns stand for the
+  row's value.
+- Each value is a literal of its column's type. A row with the wrong number
+  of values is an error.
+- A table without `expect` checks the law alone at each row.
+- A row is named after its position and values: `row 2: 1, 10, 15`. With
+  several tables in one law: `table 2, row 1: ...`.
+
+## Examples in descriptions
+
+A law's description may hold examples, fenced with `example`. Each becomes
+an example of the law, so the documentation is checked like any example:
+
+````lawspec fragment
+description is
+  "Every label starts with the word parcel and the parcel's number.
+
+  ```example
+  parcel = 7
+  expect label parcel = \"parcel 7\"
+  ```"
+end
+````
+
+- A fence holds bindings and expectations, as an example's body does.
+- After `example`, a quoted name may follow: ```` ```example `seven` ````.
+  Without one, the example is named `description example 1`, and so on; with
+  one, `description: seven`. Evidence and test names cite the description by
+  these names.
+- A fenced example without `expect` checks the law alone.
+- A fence that does not parse is an error naming its position in the
+  description.
+
+## Recorded values
+
+A recorded value is stored in the project, under
+`recorded/<unit>/<name>` beside `lawspec.json`. It is spec data: commit it.
+
+```lawspec fragment
+law `the first label is recorded` is
+  definition is
+    label 1 = recorded "first label"
+  end
+end
+
+example `parcel 42` is
+  parcel = 42
+  expect label parcel = recorded "parcel 42"
+end
+```
+
+- The value is compared by its portable rendering, which is the same on
+  every target: `Shipped(7, "post")`, `[1, 2]`, `"text"`. The file holds the
+  rendering and a newline.
+- A missing recording fails its law with a message that says to run
+  `lawspec test --update-recorded`; a different one fails with both values.
+  `lawspec test --update-recorded` runs every law and records each value
+  again.
+- One recording holds one value, so `recorded` belongs in an example, in a
+  table, or in a law without `` `for all` ``. In a table, each row records
+  under `<name> row <n>`.
+- A name is letters, digits, spaces, `-`, `_` and `.`, and does not start
+  with `.` or a space.
+- The generated tests find the folder through `LAWSPEC_RECORDED`, which
+  `lawspec test` sets. Run by hand, they look for `recorded/` in the nearest
+  folder, from the working one up, that holds `lawspec.json` or `recorded/`.
+
 ## Descriptions, rationales and references
 
 ```lawspec fragment

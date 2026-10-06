@@ -31,7 +31,8 @@ assertionDoc = statements
          text "  then pure ()",
          text "  else" <> D.nest 4 (D.hardline <> text "expectationFailure $" <>
            D.nest 2 (D.hardline <> D.group (D.joinWith (D.softline <> text "++ ")
-             [text "context",quoted " | actual=",text "show actual",quoted " expected=",text "show expected"])))]),
+             [text "context",quoted " | actual=",text "show actual",quoted " expected=",text "show expected",
+              text "LS.difference actual expected"])))]),
       text "handler :: SomeException -> IO ()",
       D.group (text "handler e =" <> D.nest 2 (D.softline <> apply "expectationFailure"
         [infixDoc (text "context") "++" (infixDoc (quoted " | ") "++" (text "displayException e"))]))]))]

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { invocations, lawKeys } from "../test-command.mjs";
+import { invocations, lawKeys, recordedDigest } from "../test-command.mjs";
 
 const law = (index, file, label = `example.unit::law ${index}`) =>
   ({ law: `example.unit::law::law ${index}`, unit: "example.unit", label, index, file, key: `k${index}`, callsAdapters: true });
@@ -57,7 +57,7 @@ test("a law's key changes with its adapters only when it calls them", () => {
   assert.equal(before.get(tests[1].law), after.get(tests[1].law));
 });
 
-import { mkdtemp, writeFile, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { executedTests } from "../test-command.mjs";
@@ -108,4 +108,19 @@ test("reads Go events, Rust results and hspec examples", async () => {
   const haskell = [law(0, "test/Example/UnitSpec.hs"), law(1, "test/Example/OtherSpec.hs")];
   assert.deepEqual(await ranLaws({ language: "haskell" }, haskell, undefined,
     "Example.Unit\n  law0Example0 [✔]\n  law0Property: example.unit::law 0 [✔]\nExample.Other\n\nFinished in 0.01 seconds\n2 examples, 0 failures\n"), [0]);
+});
+
+test("a changed recording changes the recordings' digest", async () => {
+  const folder = await mkdtemp(path.join(os.tmpdir(), "lawspec-recorded-"));
+  try {
+    assert.equal(await recordedDigest(path.join(folder, "absent")), "");
+    await mkdir(path.join(folder, "example.unit"), { recursive: true });
+    await writeFile(path.join(folder, "example.unit", "first"), "1\n");
+    const before = await recordedDigest(folder);
+    assert.notEqual(before, "");
+    await writeFile(path.join(folder, "example.unit", "first"), "2\n");
+    assert.notEqual(await recordedDigest(folder), before);
+  } finally {
+    await rm(folder, { recursive: true, force: true });
+  }
 });

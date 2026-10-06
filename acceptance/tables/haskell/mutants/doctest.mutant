@@ -1,0 +1,7 @@
+expect: description example 1
+@@ src/Example/Tables.hs
+<<<<<<<
+label parcel = T.pack ("parcel " ++ show parcel)
+=======
+label parcel = if parcel == 7 then T.pack "parcel seven" else T.pack ("parcel " ++ show parcel)
+>>>>>>>
