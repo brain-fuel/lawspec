@@ -13,6 +13,7 @@ build-type:     Simple
 extra-source-files:
     README.md
     CHANGELOG.md
+    runtime/lawspec_harness.rs
     runtime/lawspec_runtime.rs
     runtime/lawspec_strategies.rs
     runtime/lawspec_data_strategies.mjs

@@ -1,0 +1,7 @@
+expect: is marked known failing
+@@ src/example/harness.rs
+<<<<<<<
+    (value0 + 4) / 10 * 10
+=======
+    (value0 + 9) / 10 * 10
+>>>>>>>
