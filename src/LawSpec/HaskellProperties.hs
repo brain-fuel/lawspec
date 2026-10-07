@@ -1,4 +1,4 @@
--- Hspec/Hedgehog documents over checked propositions and generation plans.
+-- | Hspec/Hedgehog documents over checked propositions and generation plans.
 module LawSpec.HaskellProperties (Config(..), emitTests) where
 
 import LawSpec.Bounds (inputRange)
@@ -14,6 +14,8 @@ import qualified LawSpec.HaskellTestHelpers as Helpers
 import Data.List (intercalate, stripPrefix)
 import LawSpec.Scalar (Scalar(..))
 
+-- | What the Haskell test emitter needs besides the plan: names, layout and
+-- bindings, gathered so the emitter takes one argument.
 data Config = Config
   { moduleName :: String
   -- An async adapter's call, awaited.
@@ -73,6 +75,8 @@ letIn bindings body = D.group (text "let {" <> D.nest 2 (D.softline <>
 lambda args body = D.group (text ("\\" ++ args ++ " ->") <> D.nest 2 (D.softline <> body))
 sequenceDocs docs = statements (if null docs then [text "pure ()"] else docs)
 
+-- | Laws become tests in Haskell's own property framework, so they run with
+-- the tools the project already uses. ref:DEC-native-property-frameworks
 emitTests :: Config -> Unit -> [Expanded] -> Either [Diagnostic] D.Doc
 emitTests Config{..} unit laws = do
   let testNames = unitTestNames "haskell" (map name laws)

@@ -1,0 +1,18 @@
+decision/haskell/src/LawSpec/Eval.hs/module/LawSpec.Eval:
+  digest: sha256:2eb09d874e241761
+  verdict: pending
+decision/haskell/src/LawSpec/Eval.hs/module/LawSpec.Eval/function/boundsValue:
+  digest: sha256:4d254274f2e0d598
+  verdict: pending
+decision/haskell/src/LawSpec/Eval.hs/module/LawSpec.Eval/function/evaluate:
+  digest: sha256:a30d02d91ade06f7
+  verdict: pending
+decision/haskell/src/LawSpec/Eval.hs/module/LawSpec.Eval/function/evaluateBool:
+  digest: sha256:9c7a7bad238f8b78
+  verdict: pending
+decision/haskell/src/LawSpec/Eval.hs/module/LawSpec.Eval/function/evaluateTyped:
+  digest: sha256:76ca1c77cc494e78
+  verdict: pending
+decision/haskell/src/LawSpec/Eval.hs/module/LawSpec.Eval/function/finiteValues:
+  digest: sha256:0e47713d3948c153
+  verdict: pending

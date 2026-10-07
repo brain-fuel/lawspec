@@ -1,4 +1,4 @@
--- Resolve external representation choices against checked Core identities.
+-- | Resolve external representation choices against checked Core identities.
 -- Target syntax and property frameworks do not enter the semantic type system.
 module LawSpec.NativeBinding
   ( NativeRef(..), ConstructorStyle(..), FieldBinding(..), ConstructorBinding(..)
@@ -15,19 +15,30 @@ import LawSpec.Core.Types (makeRegistry, substitute)
 import qualified Data.Map.Strict as M
 import LawSpec.Scalar (primitive)
 
--- A reference is structured, never a snippet of executable target code.
+-- | A reference is structured, never a snippet of executable target code.
 newtype NativeRef = NativeRef { referenceParts :: [String] } deriving (Eq, Show)
+-- | Native types build values in different ways, a record with named fields, a
+-- variant, or a singleton, and the generated bridge must call the right one.
+-- ref:DEC-native-bindings-typed-identity
 data ConstructorStyle = RecordConstructor | VariantConstructor | UnitConstructor
   deriving (Eq, Show)
+-- | A native field may be named differently from the LawSpec field it carries.
 data FieldBinding = FieldBinding
   { boundField :: String, nativeField :: String } deriving (Eq, Show)
+-- | Each LawSpec constructor is bound to the native constructor that builds it,
+-- so values cross the boundary without the user writing a converter.
 data ConstructorBinding = ConstructorBinding
   { boundConstructor :: String, nativeConstructor :: NativeRef
   , constructorStyle :: ConstructorStyle, boundFields :: [FieldBinding]
   } deriving (Eq, Show)
+-- | Where a native type's structure does not match, the user supplies the two
+-- conversions instead, and the laws check that they agree.
 data CodecBinding = CodecBinding
   { codecToNative :: NativeRef, codecFromNative :: NativeRef }
   deriving (Eq, Show)
+-- | A project may use its own types in place of generated ones; the binding
+-- says which native type stands for which LawSpec type, by identity, not by
+-- name. ref:DEC-native-bindings-typed-identity
 data TypeBinding = TypeBinding
   { boundType :: C.Id, nativeType :: NativeRef
   , boundConstructors :: [ConstructorBinding], boundCodec :: Maybe CodecBinding
@@ -36,33 +47,47 @@ data TypeBinding = TypeBinding
   -- class is not generic; absent, the type stays kotlin.Any.
   , boundArguments :: Maybe [String]
   } deriving (Eq, Show)
+-- | A user-supplied generator replaces the built-in one for a type whose valid
+-- values only the user knows how to build.
 data GeneratorBinding = GeneratorBinding
   { generatorType :: C.Id, generatorFactory :: NativeRef, generatorStub :: Bool } deriving (Eq, Show)
+-- | What lawspec.json says about native types and generators, before it is
+-- checked against the program.
 data Bindings = Bindings
   { typeBindings :: [TypeBinding], generatorBindings :: [GeneratorBinding]
   } deriving (Eq, Show)
+-- | A project without native bindings uses generated types throughout.
 emptyBindings :: Bindings
 emptyBindings = Bindings [] []
 
+-- | Bindings checked against the program's declarations, so emitters never see
+-- a binding to a type or constructor that does not exist.
 data ResolvedBindings = ResolvedBindings
   { resolvedTypes :: [ResolvedTypeBinding]
   , resolvedGenerators :: [ResolvedGeneratorBinding]
   } deriving (Eq, Show)
+-- | As TypeBinding, with the declaration it binds looked up.
 data ResolvedTypeBinding = ResolvedTypeBinding
   { resolvedDeclaration :: C.DataDeclaration, resolvedNativeType :: NativeRef
   , resolvedConstructors :: [ResolvedConstructorBinding], resolvedCodec :: Maybe CodecBinding
   , resolvedArguments :: Maybe [String]
   } deriving (Eq, Show)
+-- | As ConstructorBinding, with each field paired with its native name.
 data ResolvedConstructorBinding = ResolvedConstructorBinding
   { resolvedConstructor :: C.DataConstructor
   , resolvedNativeConstructor :: NativeRef, resolvedConstructorStyle :: ConstructorStyle
   , resolvedFields :: [(C.Binder, String)]
   } deriving (Eq, Show)
+-- | As GeneratorBinding, with the number of type parameters the factory takes,
+-- one child generator each.
 data ResolvedGeneratorBinding = ResolvedGeneratorBinding
   { resolvedGeneratorType :: C.Id, resolvedGeneratorFactory :: NativeRef
   , generatorParameterCount :: Int, resolvedGeneratorStub :: Bool
   } deriving (Eq, Show)
 
+-- | Every binding is checked before any code is generated: unknown types,
+-- duplicate bindings and constructors left unbound are errors with names, not
+-- compile failures in the target. ref:DEC-native-bindings-typed-identity
 resolveBindings :: [C.DataDeclaration] -> Bindings -> Either String ResolvedBindings
 resolveBindings declarations Bindings{..} = do
   _ <- makeRegistry declarations
@@ -153,7 +178,7 @@ identifier name = unless valid (Left ("invalid native identifier: " ++ show name
         all (\x -> isAscii x && (isAlphaNum x || x == '_')) cs && name /= "_"
       [] -> False
 
--- Machine-width checks belong at every automatic native bridge, including
+-- | Machine-width checks belong at every automatic native bridge, including
 -- generator parameter conversion, even when no application adapter is called.
 usesMachineRepresentation :: [C.DataDeclaration] -> C.Type -> Bool
 usesMachineRepresentation declarations = walk []
@@ -167,7 +192,7 @@ usesMachineRepresentation declarations = walk []
     walk seen (C.Arrow a b) = walk seen a || walk seen b
     walk _ _ = False
 
--- Instantiate only the types reachable by schema generation. A custom factory
+-- | Instantiate only the types reachable by schema generation. A custom factory
 -- supplies its complete representation, so only its type-argument strategies
 -- are traversed. Regular recursion reaches the same closed type and terminates.
 reachableGeneratorTypes :: [C.DataDeclaration] -> ResolvedBindings -> [C.Type] -> Either String [C.Type]

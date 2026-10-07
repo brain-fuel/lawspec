@@ -1,4 +1,4 @@
--- Typed expression documents shared by Python properties and source definitions.
+-- | Typed expression documents shared by Python properties and source definitions.
 module LawSpec.PythonExpr (renderExpression, renderExpressionWithContext, literalValue, call, array, quoted, typeKey, suite, lambdaExpression, scalarLiteral) where
 
 import LawSpec.Core
@@ -14,6 +14,8 @@ import Data.Foldable (toList)
 import qualified Data.Text.Lazy as T
 import qualified Data.Text.Lazy.Encoding as T
 
+-- | Strings are escaped for Python here, once, so no generated literal can end
+-- early or change meaning.
 quoted :: String -> D.Doc
 quoted value = D.prefixChoice (encodeToken value) (token value)
   (parenthesized (D.joinWith D.softline (map token (chunks value))))
@@ -23,29 +25,36 @@ quoted value = D.prefixChoice (encodeToken value) (token value)
     chunks [] = []
     chunks rest = take 4 rest : chunks (drop 4 rest)
 
+-- | Arguments wrap when a call is too wide, in the Python style LawSpec follows.
+-- ref:DEC-readable-output-default
 call :: String -> [D.Doc] -> D.Doc
 call name args = D.text name <> D.delimitTrailing 4 "(" ")" args
 
+-- | Lists of runtime values are written in one shape so they wrap like calls.
 array :: [D.Doc] -> D.Doc
 array = D.delimitTrailing 4 "[" "]"
 
+-- | Python blocks are a colon and an indented body, four spaces as PEP 8 asks.
+-- ref:pep-8
 suite :: D.Doc -> D.Doc -> D.Doc
 suite header body = header <> D.text ":" <> D.nest 4 (D.hardline <> body)
 
--- Parentheses provide legal breaks after a lambda header and around its body.
+-- | Parentheses provide legal breaks after a lambda header and around its body.
 parenthesized :: D.Doc -> D.Doc
 parenthesized value = D.group (D.text "(" <> D.nest 4
   (D.softbreak <> value) <> D.softbreak <> D.text ")")
 
+-- | Lambdas are parenthesised so a long body can break across lines.
 lambdaExpression :: [D.Doc] -> D.Doc -> D.Doc
 lambdaExpression parameters body = D.group (
   D.text (if null parameters then "lambda" else "lambda ") <>
   D.commaSep parameters <> D.text ": " <> parenthesized body)
 
+-- | Runtime calls name a value's type by the key the portable runtime uses.
 typeKey :: Type -> String
 typeKey = Backend.scalarTypeKey
 
--- Render the tagged wire value as Python syntax so fields can wrap naturally.
+-- | Render the tagged wire value as Python syntax so fields can wrap naturally.
 -- Strings remain opaque quoted tokens; raw Unicode travels as integer arrays.
 literalValue :: A.Value -> D.Doc
 literalValue value = case value of
@@ -57,7 +66,7 @@ literalValue value = case value of
   A.Bool valueBool -> D.text (if valueBool then "True" else "False")
   A.Null -> D.text "None"
 
--- Faithful native literals keep deeply nested examples readable. Other scalar
+-- | Faithful native literals keep deeply nested examples readable. Other scalar
 -- encodings still go through the runtime's lossless tagged decoder.
 scalarLiteral :: Scalar -> D.Doc
 scalarLiteral value = case value of
@@ -68,12 +77,15 @@ scalarLiteral value = case value of
   SSequence "Bytes" values -> call "ls.bytes_literal" [array (map (D.text . show) values)]
   _ -> call "ls.literal" [literalValue (A.toJSON value),D.text "symbols"]
 
+-- | Expressions are rendered from Core, never from source, so the Python tests
+-- check the same expansion as every other target.
+-- ref:DEC-typed-core-boundary
 renderExpression :: [DataDeclaration] -> Int -> (Id -> String)
   -> (Expr -> [D.Doc] -> Either String D.Doc) -> Expr -> Either String D.Doc
 renderExpression declarations bits = renderExpressionWithContext declarations
   (D.text (show bits)) Native.pythonTypeReferenceDoc (Right . quoted . typeKey)
 
--- Schema callbacks use instantiated type references and a runtime width.
+-- | Schema callbacks use instantiated type references and a runtime width.
 -- Ordinary definitions/properties keep the same renderer with closed types.
 renderExpressionWithContext :: [DataDeclaration] -> D.Doc
   -> (Type -> Either String D.Doc) -> (Type -> Either String D.Doc)

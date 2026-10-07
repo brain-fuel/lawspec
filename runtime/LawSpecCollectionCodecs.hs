@@ -1,6 +1,10 @@
--- Native bridges for the built-in collections: a Set is a Data.Set.Set, a
+-- | Native bridges for the built-in collections: a Set is a Data.Set.Set, a
 -- KeyVal a Data.Map.Map, and a Queue, Stack or Deque a Data.Sequence.Seq
 -- from its first item (a Stack's top). These need the containers package.
+--
+-- They live apart from LawSpecCodecs because only they need containers, and
+-- they keep LawSpec's canonical order of a collection's items rather than the
+-- host's. ref:DEC-portable-total-order-collections
 module LawSpecCollectionCodecs
   ( setCodecWith, keyValCodecWith, sequenceCodecWith
   ) where

@@ -1,3 +1,8 @@
+---
+id: lawspec.reference.language.harness
+kind: reference
+title: Harness units
+---
 # Harness units
 
 A unit's laws say what the program must satisfy. A *harness* says how those

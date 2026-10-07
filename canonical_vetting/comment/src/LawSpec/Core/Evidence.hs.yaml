@@ -1,0 +1,27 @@
+decision/haskell/src/LawSpec/Core/Evidence.hs/module/LawSpec.Core.Evidence:
+  digest: sha256:b6328d487c883eba
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Evidence.hs/module/LawSpec.Core.Evidence/data/Obligation:
+  digest: sha256:1b5c4093acd52f58
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Evidence.hs/module/LawSpec.Core.Evidence/data/Status:
+  digest: sha256:6154d8ef0658a968
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Evidence.hs/module/LawSpec.Core.Evidence/function/adapterDeclarations:
+  digest: sha256:de1cb3208a348366
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Evidence.hs/module/LawSpec.Core.Evidence/function/calls:
+  digest: sha256:6d30d667a9469af9
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Evidence.hs/module/LawSpec.Core.Evidence/function/programEvidence:
+  digest: sha256:7fa3b19dbac80bfc
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Evidence.hs/module/LawSpec.Core.Evidence/function/runtimePostconditions:
+  digest: sha256:d1dc95046798d85a
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Evidence.hs/module/LawSpec.Core.Evidence/function/statusName:
+  digest: sha256:201e1b33897025c9
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Evidence.hs/module/LawSpec.Core.Evidence/function/statuses:
+  digest: sha256:c66413cff6ba4ba3
+  verdict: pending

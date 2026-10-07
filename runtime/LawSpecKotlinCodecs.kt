@@ -7,7 +7,13 @@ import lawspec.runtime.LawSpecSchema.Named
 import kotlin.time.toJavaDuration
 import kotlin.time.toKotlinDuration
 
-/** Framework-independent bridges for Kotlin-specific native representations. */
+/**
+ * Framework-independent bridges for Kotlin-specific native representations.
+ *
+ * Adapters work with Kotlin's own types, such as kotlin.time.Duration and Set; each codec converts
+ * between them and LawSpec's values and checks the result, so a law never sees a native value
+ * outside its domain. ref:DEC-native-bindings-typed-identity
+ */
 object LawSpecKotlinCodecs {
     fun construct(
         schema: LawSpecSchema,
@@ -63,13 +69,13 @@ object LawSpecKotlinCodecs {
         return branch(data.tag(), data.fields())
     }
 
-    /** A Set natively, in canonical order when LawSpec builds it. */
     /** A Duration natively: a kotlin.time.Duration of whole microseconds. */
     fun duration(schema: LawSpecSchema, bits: Int, symbols: MutableMap<String, Any> = mutableMapOf()): Codec<kotlin.time.Duration> {
         val codec = schema.duration(bits, symbols)
         return schema.codec(codec.type(), bits, symbols, { codec.encode(it.toJavaDuration()) }, { codec.decode(it).toKotlinDuration() })
     }
 
+    /** A Set natively, in canonical order when LawSpec builds it. */
     fun <T> set(schema: LawSpecSchema, bits: Int, element: Codec<T>, symbols: MutableMap<String, Any> = mutableMapOf()): Codec<Set<T>> {
         val codec = schema.set(element, bits, symbols)
         return schema.codec(codec.type(), bits, symbols, { codec.encode(it) }, { codec.decode(it) })

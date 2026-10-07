@@ -1,0 +1,6 @@
+decision/haskell/acceptance/workflows/haskell/files/src/Example/Approvals.hs/module/Example.Approvals/function/approvalErrors:
+  digest: sha256:df4b74e7b8d09e2d
+  verdict: pending
+decision/haskell/acceptance/workflows/haskell/files/src/Example/Approvals.hs/module/Example.Approvals/function/approvedQuickly:
+  digest: sha256:0a21988982a5a106
+  verdict: pending

@@ -1,3 +1,8 @@
+---
+id: lawspec.explanation.abilities
+kind: explanation
+title: Abilities and the harness
+---
 # Abilities, and laws kept apart from the harness
 
 Code depends on things: a payment gateway, a clock, a store. LawSpec calls

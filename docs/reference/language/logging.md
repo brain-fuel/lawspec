@@ -1,3 +1,8 @@
+---
+id: lawspec.reference.language.logging
+kind: reference
+title: Logs and traces
+---
 # Logs and traces
 
 `lawspec.logging` has two abilities: `Log`, for messages at a level, and

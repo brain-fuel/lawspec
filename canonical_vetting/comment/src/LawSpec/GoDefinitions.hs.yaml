@@ -1,0 +1,12 @@
+decision/haskell/src/LawSpec/GoDefinitions.hs/module/LawSpec.GoDefinitions:
+  digest: sha256:83cafb6dde650685
+  verdict: pending
+decision/haskell/src/LawSpec/GoDefinitions.hs/module/LawSpec.GoDefinitions/function/definitionCalls:
+  digest: sha256:0583ee10e7fdfbfe
+  verdict: pending
+decision/haskell/src/LawSpec/GoDefinitions.hs/module/LawSpec.GoDefinitions/function/emitGoDefinitions:
+  digest: sha256:aba2e1602c78f309
+  verdict: pending
+decision/haskell/src/LawSpec/GoDefinitions.hs/module/LawSpec.GoDefinitions/function/emitGoDefinitionsWithCalls:
+  digest: sha256:408d2255f93020ca
+  verdict: pending

@@ -1,0 +1,54 @@
+decision/haskell/src/LawSpec/Flow.hs/module/LawSpec.Flow:
+  digest: sha256:8aed7b3ad61d9d14
+  verdict: pending
+decision/haskell/src/LawSpec/Flow.hs/module/LawSpec.Flow/data/Flow:
+  digest: sha256:52a38ee9f3fce931
+  verdict: pending
+decision/haskell/src/LawSpec/Flow.hs/module/LawSpec.Flow/data/FlowParameter:
+  digest: sha256:ef9aae957536b18d
+  verdict: pending
+decision/haskell/src/LawSpec/Flow.hs/module/LawSpec.Flow/data/Linear:
+  digest: sha256:e2f59599d3346ebe
+  verdict: pending
+decision/haskell/src/LawSpec/Flow.hs/module/LawSpec.Flow/function/branching:
+  digest: sha256:e07f566a6ae3d5b2
+  verdict: pending
+decision/haskell/src/LawSpec/Flow.hs/module/LawSpec.Flow/function/desugarFlows:
+  digest: sha256:9dca21b5069ef465
+  verdict: pending
+decision/haskell/src/LawSpec/Flow.hs/module/LawSpec.Flow/function/facts:
+  digest: sha256:da779917b58d2c09
+  verdict: pending
+decision/haskell/src/LawSpec/Flow.hs/module/LawSpec.Flow/function/flowDefinition:
+  digest: sha256:b03fea5c045eaff6
+  verdict: pending
+decision/haskell/src/LawSpec/Flow.hs/module/LawSpec.Flow/function/flowProductType:
+  digest: sha256:554d28cd7ce825e9
+  verdict: pending
+decision/haskell/src/LawSpec/Flow.hs/module/LawSpec.Flow/function/flowTypeName:
+  digest: sha256:bf9e32c91feef38a
+  verdict: pending
+decision/haskell/src/LawSpec/Flow.hs/module/LawSpec.Flow/function/joinType:
+  digest: sha256:ba3bfc735f589b64
+  verdict: pending
+decision/haskell/src/LawSpec/Flow.hs/module/LawSpec.Flow/function/lowerBound:
+  digest: sha256:f4e468878a1beaa5
+  verdict: pending
+decision/haskell/src/LawSpec/Flow.hs/module/LawSpec.Flow/function/productSignature:
+  digest: sha256:951f4370fd210342
+  verdict: pending
+decision/haskell/src/LawSpec/Flow.hs/module/LawSpec.Flow/function/productType:
+  digest: sha256:8635c489ff502296
+  verdict: pending
+decision/haskell/src/LawSpec/Flow.hs/module/LawSpec.Flow/function/rewrite:
+  digest: sha256:78ad6cd2048d261c
+  verdict: pending
+decision/haskell/src/LawSpec/Flow.hs/module/LawSpec.Flow/function/stateFields:
+  digest: sha256:cd5cdac3c8f5f502
+  verdict: pending
+decision/haskell/src/LawSpec/Flow.hs/module/LawSpec.Flow/function/stateShape:
+  digest: sha256:ce50675e3bb8c1f5
+  verdict: pending
+decision/haskell/src/LawSpec/Flow.hs/module/LawSpec.Flow/function/transition:
+  digest: sha256:8ee26e90118b0e14
+  verdict: pending

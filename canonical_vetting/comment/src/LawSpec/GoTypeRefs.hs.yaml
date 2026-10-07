@@ -1,0 +1,12 @@
+decision/haskell/src/LawSpec/GoTypeRefs.hs/module/LawSpec.GoTypeRefs:
+  digest: sha256:7b05ea7dac8d06e3
+  verdict: pending
+decision/haskell/src/LawSpec/GoTypeRefs.hs/module/LawSpec.GoTypeRefs/function/goDataKey:
+  digest: sha256:59d12da3bf633cc9
+  verdict: pending
+decision/haskell/src/LawSpec/GoTypeRefs.hs/module/LawSpec.GoTypeRefs/function/goTypeReference:
+  digest: sha256:0354d4a42448185b
+  verdict: pending
+decision/haskell/src/LawSpec/GoTypeRefs.hs/module/LawSpec.GoTypeRefs/function/requiresSchema:
+  digest: sha256:047cef9b3e0c5f5a
+  verdict: pending

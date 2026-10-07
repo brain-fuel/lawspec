@@ -1,4 +1,5 @@
-module TargetNamesSpec (spec) where
+-- | Names of definitions and adapters in target code.
+module TargetNamesSpec (test_targetNamesNeverCollideWithKeywords) where
 
 import Data.List (isInfixOf)
 import Test.Hspec
@@ -26,8 +27,11 @@ emitted target ownership' = do
 contents :: String -> String -> String
 contents target ownership' = either (error . show) (concatMap snd) (emitted target ownership')
 
-spec :: Spec
-spec = describe "target names" $ do
+-- | A LawSpec name may be a keyword in some target language, so it must be
+-- escaped consistently there while Core keeps the declared name.
+-- ref:DEC-readable-notation ref:REQ-target-name-escaping
+test_targetNamesNeverCollideWithKeywords :: Spec
+test_targetNamesNeverCollideWithKeywords = describe "target names" $ do
   it "escape a keyword of the target with a leading underscore" $ do
     nativeName "java" "short" `shouldBe` "_short"
     nativeName "python" "short" `shouldBe` "short"

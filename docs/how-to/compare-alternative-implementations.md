@@ -1,3 +1,8 @@
+---
+id: lawspec.how-to.compare-alternative-implementations
+kind: how-to
+title: Compare alternative implementations
+---
 # Compare alternative implementations
 
 Use the prelude law `equivalent` to check that two functions agree on every

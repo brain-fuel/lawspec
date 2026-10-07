@@ -1,4 +1,5 @@
-module NativeBindingSpec (spec) where
+-- | Resolution of native type and function bindings.
+module NativeBindingSpec (test_nativeBindingsResolveToOneUnambiguousIdentity) where
 
 import Test.Hspec
 import Data.Either (isLeft)
@@ -31,8 +32,12 @@ resolve bindings = case compileCore 64 defaultGeneration [Source "native" source
   Left diagnostics -> Left (show diagnostics)
   Right program -> resolveBindings (C.programDataDeclarations program) bindings
 
-spec :: Spec
-spec = describe "native binding resolution" $ do
+-- | A binding ties a LawSpec type to the developer's own type, so it must
+-- resolve to exactly one identity; an ambiguous or unknown one would generate
+-- code against the wrong type. ref:DEC-native-bindings-typed-identity
+-- ref:REQ-native-binding-resolution
+test_nativeBindingsResolveToOneUnambiguousIdentity :: Spec
+test_nativeBindingsResolveToOneUnambiguousIdentity = describe "native binding resolution" $ do
   it "renders Haskell native codecs with named fields in both directions" $ do
     case compileCore 64 defaultGeneration [Source "native" source] of
       Left diagnostics -> expectationFailure (show diagnostics)

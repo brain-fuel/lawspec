@@ -1,4 +1,4 @@
--- The only bridge from checked surface syntax to the typed core. Targets never
+-- | The only bridge from checked surface syntax to the typed core. Targets never
 -- receive TypedExpr's source tree or perform contextual literal inference.
 module LawSpec.Frontend (compileCore, elaborate, elaborateExpression) where
 import qualified LawSpec.Model as S
@@ -18,11 +18,15 @@ import LawSpec.Persist ()
 import LawSpec.Resources (builtinResourceKind)
 import LawSpec.Scalar (Scalar(..))
 
+-- | Hosts that hold only sources get typed Core in one call; everything after
+-- this point works on Core alone. ref:DEC-typed-core-boundary
 compileCore :: Int -> Generation -> [Source] -> Either [Diagnostic] C.Program
 compileCore bits settings sources = do
   (units,properties) <- S.compileWithSettings bits settings sources
   elaborate bits units properties
 
+-- | Every surface construct is lowered here, once, and the result validated
+-- before any backend sees it. ref:DEC-elaborate-before-core
 elaborate :: Int -> [S.Unit] -> [S.Expanded] -> Either [Diagnostic] C.Program
 elaborate bits units properties = do
   dataDeclarations <- elaborateDataDeclarationsWithProfile bits units
@@ -310,7 +314,7 @@ mapProperty f p = p
     proposition (C.Implication g body) = C.Implication (f g) (proposition body)
     proposition (C.Conjunction ps) = C.Conjunction (map proposition ps)
 
--- Quoted law names may contain separators. Escape them before composing IDs so
+-- | Quoted law names may contain separators. Escape them before composing IDs so
 -- a display name cannot masquerade as a binder segment in target accessors.
 -- The last part of a qualified name: lawspec.resources::type::FreePort gives FreePort.
 baseName :: String -> String

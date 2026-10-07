@@ -1,4 +1,4 @@
--- Kotlin native APIs over shared JVM total-definition bodies.
+-- | Kotlin native APIs over shared JVM total-definition bodies.
 module LawSpec.KotlinDefinitions (emitKotlinDefinitions) where
 
 import Control.Monad (forM)
@@ -15,6 +15,8 @@ import Data.Aeson (encode)
 import qualified Data.Text.Lazy as T
 import qualified Data.Text.Lazy.Encoding as T
 
+-- | Checked definitions are emitted as ordinary Kotlin code, so adapters and tests call
+-- the same proved implementation. ref:DEC-total-definitions
 emitKotlinDefinitions :: D.Layout -> Int -> [DataDeclaration] -> [Unit] -> Either String [Artifact]
 emitKotlinDefinitions layout bits declarations units = do
   bodies <- Jvm.emitJvmDefinitionBodies layout bits declarations units

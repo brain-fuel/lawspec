@@ -1,0 +1,6 @@
+decision/haskell/test/RefinementProofSpec.hs/module/RefinementProofSpec:
+  digest: sha256:09edc9dd6e74fa6c
+  verdict: pending
+decision/haskell/test/RefinementProofSpec.hs/module/RefinementProofSpec/function/test_refinementImplicationIsDecidedExactly:
+  digest: sha256:5b3a5b8817facfb6
+  verdict: pending

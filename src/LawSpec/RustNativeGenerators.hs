@@ -1,4 +1,4 @@
--- Framework-native strategies are mapped, never sampled by generated helpers.
+-- | Framework-native strategies are mapped, never sampled by generated helpers.
 module LawSpec.RustNativeGenerators (emitGenerators, generatorImports, emitGeneratorStubs) where
 
 import Control.Monad (forM, unless)
@@ -16,7 +16,7 @@ import LawSpec.RustData (rustDataType)
 call :: String -> [D.Doc] -> D.Doc
 call name args = D.text name <> D.delimitTrailing 4 "(" ")" args
 
--- Local support modules are shared by the integration-test crates. Application
+-- | Local support modules are shared by the integration-test crates. Application
 -- and external-crate factories remain imports unless a scaffold is requested.
 localParts :: ResolvedGeneratorBinding -> [String]
 localParts binding = case referenceParts (resolvedGeneratorFactory binding) of
@@ -30,13 +30,14 @@ localRoots plan = nub [root | binding <- resolvedGenerators (bindingRepresentati
       prefix:_ -> prefix `elem` ["crate","self"]
       _ -> False]
 
+-- | Generators bound by the project are imported where the tests use them.
 generatorImports :: BindingPlan -> Either String [D.Doc]
 generatorImports plan = forM (localRoots plan) $ \root -> do
   name <- B.rustReference (NativeRef [root])
   pure (D.text ("#[path = \"support/" ++ root ++ ".rs\"]") <> D.hardline <>
     D.text ("mod " ++ name ++ ";"))
 
--- User-owned factories always use the readable layout. Signatures describe the
+-- | User-owned factories always use the readable layout. Signatures describe the
 -- application representation, including generic parameters, without copying or
 -- replacing Proptest's native strategy implementation.
 emitGeneratorStubs :: [C.DataDeclaration] -> BindingPlan -> Either String [Artifact]
@@ -96,7 +97,7 @@ emitGeneratorStubs declarations plan = do
             D.hardline <> D.text "#![allow(dead_code)]" <> D.hardline <> D.hardline <>
             body <> D.hardline)) "user" "test")
 
--- Rewrite only the leading component of a type path, not an identically named
+-- | Rewrite only the leading component of a type path, not an identically named
 -- component inside an application module (or the suffix of a longer identifier).
 replaceTypePrefix :: String -> String -> String -> String
 replaceTypePrefix old new = walk True
@@ -106,6 +107,7 @@ replaceTypePrefix old new = walk True
       | c:rest <- text = c : walk (not (isAlphaNum c || c `elem` ("_#:" :: String))) rest
       | otherwise = []
 
+-- | Project-supplied generators replace the built-in ones for their types.
 emitGenerators :: [C.DataDeclaration] -> BindingPlan -> [C.Type] -> Either String D.Doc
 emitGenerators declarations plan roots = do
   concrete <- if any ((>0) . generatorParameterCount)

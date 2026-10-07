@@ -1,3 +1,8 @@
+---
+id: lawspec.reference.language.randomness
+kind: reference
+title: Randomness
+---
 # Randomness
 
 `lawspec.randomness` has two abilities: `Random`, whose draws are

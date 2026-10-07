@@ -1,4 +1,4 @@
--- Traverse stored type parameters without unfolding recursive declarations.
+-- | Traverse stored type parameters without unfolding recursive declarations.
 -- Plans retain parameter provenance: a fixed Int8 field is not a use of a
 -- parameter merely because that parameter is instantiated with Int8.
 module LawSpec.Core.Payload (checkPayloads) where
@@ -11,7 +11,7 @@ import qualified LawSpec.Core.Value as CoreValue
 import LawSpec.Core.PayloadPlan (Plan(..))
 import qualified LawSpec.Core.PayloadPlan as P
 
--- Validation is supplied by the reference evaluator so constructor contracts
+-- | Validation is supplied by the reference evaluator so constructor contracts
 -- run before payload predicates, without introducing a Value/Eval import cycle.
 -- Every predicate belongs to the corresponding argument of the root type.
 checkPayloads :: (Type -> Value -> Either String Value)

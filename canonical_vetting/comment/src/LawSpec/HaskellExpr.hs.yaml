@@ -1,0 +1,30 @@
+decision/haskell/src/LawSpec/HaskellExpr.hs/module/LawSpec.HaskellExpr:
+  digest: sha256:eed9e08ec8554878
+  verdict: pending
+decision/haskell/src/LawSpec/HaskellExpr.hs/module/LawSpec.HaskellExpr/function/apply:
+  digest: sha256:4007e74627761ad2
+  verdict: pending
+decision/haskell/src/LawSpec/HaskellExpr.hs/module/LawSpec.HaskellExpr/function/array:
+  digest: sha256:ec8aec8bb3f33fd1
+  verdict: pending
+decision/haskell/src/LawSpec/HaskellExpr.hs/module/LawSpec.HaskellExpr/function/checked:
+  digest: sha256:e88b5f8c58326200
+  verdict: pending
+decision/haskell/src/LawSpec/HaskellExpr.hs/module/LawSpec.HaskellExpr/function/integerLiteral:
+  digest: sha256:7f7758e99b78afe0
+  verdict: pending
+decision/haskell/src/LawSpec/HaskellExpr.hs/module/LawSpec.HaskellExpr/function/parens:
+  digest: sha256:4b4990f058983020
+  verdict: pending
+decision/haskell/src/LawSpec/HaskellExpr.hs/module/LawSpec.HaskellExpr/function/quoted:
+  digest: sha256:8559561e6cd68035
+  verdict: pending
+decision/haskell/src/LawSpec/HaskellExpr.hs/module/LawSpec.HaskellExpr/function/renderExpression:
+  digest: sha256:629621320cc518ca
+  verdict: pending
+decision/haskell/src/LawSpec/HaskellExpr.hs/module/LawSpec.HaskellExpr/function/renderExpressionWithContext:
+  digest: sha256:c6698bad974979dd
+  verdict: pending
+decision/haskell/src/LawSpec/HaskellExpr.hs/module/LawSpec.HaskellExpr/function/scalarLiteral:
+  digest: sha256:1d3d998aaf3a01ee
+  verdict: pending

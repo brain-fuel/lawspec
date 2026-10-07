@@ -1,4 +1,4 @@
--- The static part of a stateful model for the model runtimes: one
+-- | The static part of a stateful model for the model runtimes: one
 -- s-expression holding the data types its arguments use, its start, and each
 -- command's argument descriptors (see the runtimes' read_descriptor),
 -- typestate and flags. Callbacks (the bridge definitions, references,
@@ -14,7 +14,7 @@ import qualified LawSpec.Core.Program as P
 import LawSpec.Scalar (Scalar(..), integerBounds, isInteger)
 import LawSpec.Bounds (bounds)
 
--- The spec of a machine, given the program's data types and the unit's
+-- | The spec of a machine, given the program's data types and the unit's
 -- declarations.
 machineSpec :: Int -> [C.DataDeclaration] -> [C.Declaration] -> [C.Contract] -> Machine C.Id -> Either String String
 machineSpec bits datas declarations contracts machine = do
@@ -78,7 +78,7 @@ machineSpec bits datas declarations contracts machine = do
     splitPlaces [] _ = []
     splitPlaces (n : ns) xs = let (a, b) = splitAt n xs in a : splitPlaces ns b
 
--- An integer descriptor narrowed to a refinement's bounds.
+-- | An integer descriptor narrowed to a refinement's bounds.
 narrow :: (Maybe Integer, Maybe Integer) -> String -> String
 narrow (Nothing, Nothing) d = d
 narrow (lo, hi) d = case words (filter (`notElem` ("()" :: String)) d) of
@@ -92,7 +92,7 @@ narrow (lo, hi) d = case words (filter (`notElem` ("()" :: String)) d) of
       (Just n, _) -> show n
       (Nothing, _) -> old
 
--- A type's descriptor, adding the data types it reaches to the table (each
+-- | A type's descriptor, adding the data types it reaches to the table (each
 -- once, by name, so recursion goes through (ref NAME)).
 describe :: Int -> [C.DataDeclaration] -> [(String, String)] -> C.Type -> Either String (String, [(String, String)])
 describe bits datas table ty = case ty of
@@ -136,7 +136,7 @@ describe bits datas table ty = case ty of
         (Right ([], table)) ts
       pure ("(" ++ kind ++ concatMap (' ' :) ds ++ ")", table')
 
--- A scenario's channels for network runs: (wire (data ...)... (channel c
+-- | A scenario's channels for network runs: (wire (data ...)... (channel c
 -- (send D) (receive D) ...) ...), each step from the protocol's first end.
 -- A step sending a channel end is (end): its address travels as text.
 scenarioWire :: Int -> [C.DataDeclaration] -> [C.Session] -> P.Program -> Either String String

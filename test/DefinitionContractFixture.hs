@@ -49,7 +49,7 @@ fixture =
       wrong = nextBoundary{contractPostconditions=[op Less (local "contractResult" integer) (number 0)]}
   in ([unit contracts], [[unit (contracts ++ [nextBoundary])], [unit (wrong : drop 1 contracts)]])
 
--- Preserve the first five logical slots used by the native harnesses; any
+-- | Preserve the first five logical slots used by the native harnesses; any
 -- helper instances discovered through source specialization follow them.
 fixtureUnits :: Int -> IO [Unit]
 fixtureUnits bits = do
@@ -72,7 +72,7 @@ fixtureUnits bits = do
         }
   pure (map extend units)
 
--- Core-only operations stay executable before their surface syntax is enabled.
+-- | Core-only operations stay executable before their surface syntax is enabled.
 addListPredicates :: Unit -> Unit
 addListPredicates unit = unit
   { unitDefinitions = unitDefinitions unit ++ definitions

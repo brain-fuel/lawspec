@@ -1,3 +1,8 @@
+---
+id: lawspec.how-to.targets.index
+kind: how-to
+title: Target setup guides
+---
 # Target setup guides
 
 Each guide covers one target: the toolchain it needs, what `init` creates,

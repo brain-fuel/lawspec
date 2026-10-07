@@ -1,0 +1,9 @@
+decision/haskell/test/GadtSpec.hs/module/GadtSpec:
+  digest: sha256:85dea36375a4c377
+  verdict: pending
+decision/haskell/test/GadtSpec.hs/module/GadtSpec/function/program:
+  digest: sha256:73bff12f8099fcd6
+  verdict: pending
+decision/haskell/test/GadtSpec.hs/module/GadtSpec/function/test_gadtMatchesRefineTypesLocally:
+  digest: sha256:20c2bd82abf0335b
+  verdict: pending

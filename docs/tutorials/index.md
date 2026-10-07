@@ -1,3 +1,8 @@
+---
+id: lawspec.tutorials.index
+kind: tutorial
+title: Tutorials
+---
 # Tutorials
 
 The lessons teach LawSpec by building the ordering system of a small coffee

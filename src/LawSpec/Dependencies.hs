@@ -1,4 +1,4 @@
--- The dependency graph of a Core program, for incremental compilation.
+-- | The dependency graph of a Core program, for incremental compilation.
 --
 -- Nodes are data types and declarations; a declaration's node also holds its
 -- contract and, for a checked definition, its body. Edges are references: the
@@ -24,8 +24,13 @@ import qualified Data.Set as S
 import LawSpec.Core
 import LawSpec.Digest
 
+-- | Laws depend on data types and on declarations, the two things an edit can
+-- change under them.
 data Ref = TypeNode Id | DeclarationNode Id deriving (Eq, Ord, Show)
 
+-- | The dependency graph with a Merkle digest per node, so a law's cache key
+-- changes exactly when something it can reach changes.
+-- ref:DEC-incremental-compilation
 data Graph = Graph
   { graphEdges :: M.Map Ref [Ref]
   , graphDigests :: M.Map Ref Digest
@@ -37,6 +42,7 @@ data Graph = Graph
   , graphHandlers :: M.Map Id [Id]
   }
 
+-- | Built once per program and shared by planning and discharge.
 dependencyGraph :: [DataDeclaration] -> [Unit] -> Graph
 dependencyGraph dataDeclarations units = Graph edges digests dataTable definitionTable owners handlerTable
   where
@@ -68,14 +74,15 @@ dependencyGraph dataDeclarations units = Graph edges digests dataTable definitio
                                            , [ (dep, M.lookup dep done) | dep <- outside ] ))
       in foldr (\m -> M.insert m groupDigest) done members
 
+-- | A node's digest covers its own content and its dependencies' digests.
 nodeDigest :: Graph -> Ref -> Maybe Digest
 nodeDigest graph node = M.lookup node (graphDigests graph)
 
--- The known nodes among some references, without repeats.
+-- | The known nodes among some references, without repeats.
 references :: Graph -> [Ref] -> [Ref]
 references graph = filter (`M.member` graphEdges graph) . S.toList . S.fromList
 
--- Everything reachable from some nodes, the nodes included.
+-- | Everything reachable from some nodes, the nodes included.
 closure :: Graph -> [Ref] -> S.Set Ref
 closure graph = go S.empty
   where
@@ -84,17 +91,22 @@ closure graph = go S.empty
       | S.member n seen = go seen rest
       | otherwise = go (S.insert n seen) (M.findWithDefault [] n (graphEdges graph) ++ rest)
 
+-- | A law is planned only with the data types it reaches, so unrelated edits
+-- leave its plan in the cache. ref:DEC-incremental-compilation
 reachableData :: Graph -> S.Set Ref -> [DataDeclaration]
 reachableData graph reached = mapMaybe (\i -> M.lookup i (graphData graph)) [ i | TypeNode i <- S.toList reached ]
 
+-- | As reachableData, for checked definitions.
 reachableDefinitions :: Graph -> S.Set Ref -> [Definition]
 reachableDefinitions graph reached = mapMaybe (\i -> M.lookup i (graphDefinitions graph)) [ i | DeclarationNode i <- S.toList reached ]
 
--- A memo key: the digest of some content together with the Merkle digests of
+-- | A memo key: the digest of some content together with the Merkle digests of
 -- the nodes it references, so it changes exactly when anything reachable does.
 keyOf :: Graph -> String -> [Ref] -> String
 keyOf graph content refs = digestHex (digestString (show (content, [ (n, nodeDigest graph n) | n <- references graph refs ])))
 
+-- | Everything a law mentions, its inputs, refinements, body and examples, is a
+-- dependency.
 lawReferences :: Graph -> Property -> [Ref]
 lawReferences graph p = references graph $
   concat [ typeRefs (binderType (quantifiedBinder q)) ++ concatMap (exprRefs owners) (quantifiedPredicates q) ++
@@ -111,7 +123,7 @@ lawReferences graph p = references graph $
       RecordingHandler inner -> specHandlers inner
       ProductionHandler -> []
 
--- What a unit's declarations, contracts, definitions and laws reference.
+-- | What a unit's declarations, contracts, definitions and laws reference.
 unitReferences :: Graph -> Unit -> [Ref]
 unitReferences graph u = references graph $
   [ DeclarationNode (declarationId d) | d <- unitDeclarations u ] ++

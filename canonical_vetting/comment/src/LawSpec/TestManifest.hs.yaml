@@ -1,0 +1,15 @@
+decision/haskell/src/LawSpec/TestManifest.hs/module/LawSpec.TestManifest:
+  digest: sha256:6add73a5c2a2b94a
+  verdict: pending
+decision/haskell/src/LawSpec/TestManifest.hs/module/LawSpec.TestManifest/data/TestEntry:
+  digest: sha256:96353af34fb3dbec
+  verdict: pending
+decision/haskell/src/LawSpec/TestManifest.hs/module/LawSpec.TestManifest/function/callees:
+  digest: sha256:7828d3e82b8bf510
+  verdict: pending
+decision/haskell/src/LawSpec/TestManifest.hs/module/LawSpec.TestManifest/function/testManifest:
+  digest: sha256:29caac3a259a30f5
+  verdict: pending
+decision/haskell/src/LawSpec/TestManifest.hs/module/LawSpec.TestManifest/function/unitTestPath:
+  digest: sha256:48302d58fdee693b
+  verdict: pending

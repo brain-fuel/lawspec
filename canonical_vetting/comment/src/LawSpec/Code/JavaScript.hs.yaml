@@ -1,0 +1,12 @@
+decision/haskell/src/LawSpec/Code/JavaScript.hs/module/LawSpec.Code.JavaScript:
+  digest: sha256:7277ff37a3370820
+  verdict: pending
+decision/haskell/src/LawSpec/Code/JavaScript.hs/module/LawSpec.Code.JavaScript/function/quoted:
+  digest: sha256:aa514f67064859cd
+  verdict: pending
+decision/haskell/src/LawSpec/Code/JavaScript.hs/module/LawSpec.Code.JavaScript/function/stringExpression:
+  digest: sha256:7cb131a9ad28c013
+  verdict: pending
+decision/haskell/src/LawSpec/Code/JavaScript.hs/module/LawSpec.Code.JavaScript/function/stringLiteral:
+  digest: sha256:994ea1b71ab783d4
+  verdict: pending

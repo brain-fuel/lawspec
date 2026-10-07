@@ -1,5 +1,5 @@
 {-# LANGUAGE BangPatterns #-}
--- SHA-256 (FIPS 180-4) in plain Haskell, so the compiler can name content by
+-- | SHA-256 (FIPS 180-4) in plain Haskell, so the compiler can name content by
 -- digest on every platform, including the WebAssembly build, without a C
 -- dependency. Digests key the incremental compiler's memo tables.
 module LawSpec.Digest (Digest, digest, digestString, digestHex, digestBytes) where
@@ -16,24 +16,31 @@ import qualified Data.Text.Encoding as T
 import Data.Word (Word32, Word64)
 import Text.Printf (printf)
 
--- A SHA-256 digest as eight big-endian words.
+-- | A SHA-256 digest as eight big-endian words.
 data Digest = Digest !Word32 !Word32 !Word32 !Word32 !Word32 !Word32 !Word32 !Word32
   deriving (Eq, Ord)
 
 instance Show Digest where
   show = digestHex
 
+-- | Cache keys are file names and JSON strings, so a digest is shown as text.
+-- ref:DEC-incremental-compilation
 digestHex :: Digest -> String
 digestHex (Digest a b c d e f g h) = concatMap (printf "%08x") [a, b, c, d, e, f, g, h]
 
+-- | Composite keys hash the bytes of other digests, which is cheaper and
+-- unambiguous compared with hashing their hex text.
 digestBytes :: Digest -> B.ByteString
 digestBytes (Digest a b c d e f g h) = B.pack (concatMap word [a, b, c, d, e, f, g, h])
   where word w = [fromIntegral (w `shiftR` s) | s <- [24, 16, 8, 0]]
 
--- The digest of text, encoded as UTF-8.
+-- | The digest of text, encoded as UTF-8.
 digestString :: String -> Digest
 digestString = digest . T.encodeUtf8 . T.pack
 
+-- | SHA-256 written in Haskell, because the WASM build cannot link a C hash
+-- library and the native and WASM compilers must agree on every cache key.
+-- ref:DEC-wasm-distribution
 digest :: B.ByteString -> Digest
 digest message = go initial 0
   where
@@ -52,7 +59,7 @@ data State = State !Word32 !Word32 !Word32 !Word32 !Word32 !Word32 !Word32 !Word
 initial :: State
 initial = State 0x6a09e667 0xbb67ae85 0x3c6ef372 0xa54ff53a 0x510e527f 0x9b05688c 0x1f83d9ab 0x5be0cd19
 
--- One 64-byte block at an offset: expand the message schedule into an
+-- | One 64-byte block at an offset: expand the message schedule into an
 -- unboxed array, then run the 64 rounds over strict registers.
 block :: State -> B.ByteString -> Int -> State
 block (State h0 h1 h2 h3 h4 h5 h6 h7) bytes offset = rounds 0 h0 h1 h2 h3 h4 h5 h6 h7

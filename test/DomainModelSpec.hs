@@ -1,4 +1,5 @@
-module DomainModelSpec (spec) where
+-- | Domain modelling: wrappers and workflows.
+module DomainModelSpec (test_wrappersAndWorkflowsElaborateToCheckedLaws) where
 
 import Data.List (isInfixOf)
 import Test.Hspec
@@ -36,8 +37,11 @@ placeOrder = unlines
   , "  priceOrder :: ValidatedOrder -> Either OrderError PricedOrder"
   , "end" ]
 
-spec :: Spec
-spec = describe "domain modeling" $ do
+-- | Wrappers and workflows are how a domain is written down, and they are only
+-- worth having if each elaborates to constructs Core already checks.
+-- ref:DEC-domain-modeling-primitives ref:REQ-domain-modeling
+test_wrappersAndWorkflowsElaborateToCheckedLaws :: Spec
+test_wrappersAndWorkflowsElaborateToCheckedLaws = describe "domain modeling" $ do
   describe "wrappers" $ do
     it "elaborate to a nominal type with a checked constructor and an unwrapping definition" $
       case compileOrders "" of

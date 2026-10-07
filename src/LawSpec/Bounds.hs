@@ -1,11 +1,11 @@
--- Constant integer bounds from refinements, so generators draw from the
+-- | Constant integer bounds from refinements, so generators draw from the
 -- range a refinement allows instead of filtering a whole type's range.
 module LawSpec.Bounds (bounds, inputRange) where
 
 import qualified LawSpec.Core as C
 import LawSpec.Scalar (Scalar(..), integerBounds, isInteger)
 
--- The tightest constant bounds a precondition conjunction puts on a binder.
+-- | The tightest constant bounds a precondition conjunction puts on a binder.
 bounds :: C.Id -> [C.Expr] -> (Maybe Integer, Maybe Integer)
 bounds binder = foldl tighten (Nothing, Nothing) . concatMap conjuncts
   where
@@ -41,7 +41,7 @@ bounds binder = foldl tighten (Nothing, Nothing) . concatMap conjuncts
       other -> other
 
 
--- An integer input's range: its type's bounds narrowed by the constant
+-- | An integer input's range: its type's bounds narrowed by the constant
 -- bounds its refinements put on it. Nothing for other inputs, or when the
 -- refinements set no bound.
 inputRange :: Int -> C.Quantifier -> Maybe (Integer, Integer)

@@ -1,0 +1,39 @@
+decision/haskell/src/LawSpec/StatefulModel.hs/module/LawSpec.StatefulModel:
+  digest: sha256:8f3c4c687cb8ecef
+  verdict: pending
+decision/haskell/src/LawSpec/StatefulModel.hs/module/LawSpec.StatefulModel/data/ModelCommand:
+  digest: sha256:fc348e30ca6f2dd5
+  verdict: pending
+decision/haskell/src/LawSpec/StatefulModel.hs/module/LawSpec.StatefulModel/data/ModelDeclaration:
+  digest: sha256:436e4e9402dda907
+  verdict: pending
+decision/haskell/src/LawSpec/StatefulModel.hs/module/LawSpec.StatefulModel/function/behaviour:
+  digest: sha256:06a381d328054f34
+  verdict: pending
+decision/haskell/src/LawSpec/StatefulModel.hs/module/LawSpec.StatefulModel/function/checkSupervisors:
+  digest: sha256:993bf0e5ce45f25e
+  verdict: pending
+decision/haskell/src/LawSpec/StatefulModel.hs/module/LawSpec.StatefulModel/function/collection:
+  digest: sha256:c20d991f316e6164
+  verdict: pending
+decision/haskell/src/LawSpec/StatefulModel.hs/module/LawSpec.StatefulModel/function/elaborateModels:
+  digest: sha256:7a309d533e52ae24
+  verdict: pending
+decision/haskell/src/LawSpec/StatefulModel.hs/module/LawSpec.StatefulModel/function/mentions:
+  digest: sha256:56146e644c58b796
+  verdict: pending
+decision/haskell/src/LawSpec/StatefulModel.hs/module/LawSpec.StatefulModel/function/operation:
+  digest: sha256:675417f5ade56b40
+  verdict: pending
+decision/haskell/src/LawSpec/StatefulModel.hs/module/LawSpec.StatefulModel/function/pattern:
+  digest: sha256:326ca85db72ad23b
+  verdict: pending
+decision/haskell/src/LawSpec/StatefulModel.hs/module/LawSpec.StatefulModel/function/shape:
+  digest: sha256:0f6c3b567125e628
+  verdict: pending
+decision/haskell/src/LawSpec/StatefulModel.hs/module/LawSpec.StatefulModel/function/stateHead:
+  digest: sha256:32c00bc62aad3ba6
+  verdict: pending
+decision/haskell/src/LawSpec/StatefulModel.hs/module/LawSpec.StatefulModel/function/typestate:
+  digest: sha256:197bb953451249a4
+  verdict: pending

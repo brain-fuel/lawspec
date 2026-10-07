@@ -1,4 +1,4 @@
--- Code layout is independent of syntax, inference, target runtimes, and IO.
+-- | Code layout is independent of syntax, inference, target runtimes, and IO.
 -- Emitters supply tokens and legal break points; the renderer never reparses
 -- code or rewrites whitespace inside tokens (including string literals).
 module LawSpec.Code.Doc
@@ -9,6 +9,9 @@ module LawSpec.Code.Doc
 import Data.List (intersperse)
 import Data.Char (ord)
 
+-- | Generated code is laid out by the compiler itself, never by an external
+-- formatter, so output is identical on every machine and in the WASM build.
+-- ref:DEC-readable-output-default
 data Doc
   = Empty
   | Text String
@@ -26,11 +29,11 @@ data Doc
   | WhenBroken Doc
   deriving (Eq, Show)
 
--- Compact removes optional layout only. Mandatory newlines and nesting remain
+-- | Compact removes optional layout only. Mandatory newlines and nesting remain
 -- meaningful for Python, Haskell, Go, line comments, and preprocessor directives.
 data Layout = Pretty Int | PrettyTabs Int | Compact | CompactTabs deriving (Eq, Show)
 
--- Keep target-required indentation when explicitly flattening optional breaks.
+-- | Keep target-required indentation when explicitly flattening optional breaks.
 selectLayout :: Bool -> Layout -> Layout
 selectLayout False layout = layout
 selectLayout True (PrettyTabs _) = CompactTabs
@@ -45,75 +48,87 @@ instance Semigroup Doc where
 instance Monoid Doc where
   mempty = Empty
 
+-- | Empty text is no document, so joins never leave stray separators.
 text :: String -> Doc
 text "" = Empty
 text s = Text s
 
--- Some native formatters measure literal tokens in UTF-8 bytes. This changes
+-- | Some native formatters measure literal tokens in UTF-8 bytes. This changes
 -- layout measurement only; the rendered Unicode text is preserved verbatim.
 utf8Text :: String -> Doc
 utf8Text "" = Empty
 utf8Text s = Utf8Text s
 
+-- | Some targets measure line width in bytes, so a line's UTF-8 length decides
+-- where it breaks.
 utf8Length :: String -> Int
 utf8Length = sum . map (\c -> let n = ord c in
   if n < 0x80 then 1 else if n < 0x800 then 2 else if n < 0x10000 then 3 else 4)
 
+-- | A hard line always breaks; a soft line is a space and a soft break nothing
+-- when their group fits on one line.
 hardline, softline, softbreak :: Doc
 hardline = Break Nothing
 softline = Break (Just " ")
 softbreak = Break (Just "")
 
+-- | Negative indentation would move code left of its block, so it is clamped.
 nest :: Int -> Doc -> Doc
 nest amount = Nest (max 0 amount)
 
+-- | A group is laid out flat when it fits the width, broken otherwise, as in
+-- Wadler's prettier printer.
 group :: Doc -> Doc
 group = Group
 
--- Prevent enclosing pretty groups from flattening a block-valued argument.
+-- | Prevent enclosing pretty groups from flattening a block-valued argument.
 -- Nested groups still choose their own layout; compact mode retains its normal
 -- optional-break behavior, and mandatory line breaks are never removed.
 multiline :: Doc -> Doc
 multiline = Multiline
 
--- Prefer a layout while its opening token fits. Qualified calls can wrap
+-- | Prefer a layout while its opening token fits. Qualified calls can wrap
 -- arguments first, moving the member name only when the opening itself is long.
 prefixChoice :: String -> Doc -> Doc -> Doc
 prefixChoice = PrefixChoice
 
--- Move a short right-hand side onto its own line when necessary. If it must
+-- | Move a short right-hand side onto its own line when necessary. If it must
 -- wrap internally anyway, keep its opening on the same line as the prefix.
 hang :: Int -> Doc -> Doc -> Doc
 hang amount = Hang (max 0 amount)
 
--- Limit a subdocument's first line relative to its starting column. After a
+-- | Limit a subdocument's first line relative to its starting column. After a
 -- break, nested groups can use the full page width. Tokens remain unchanged.
 -- Compact layout ignores optional width constraints.
 firstLineWidth :: Int -> Doc -> Doc
 firstLineWidth width = FirstLineWidth (max 1 width)
 
+-- | Some punctuation, such as a trailing comma, belongs only to the broken
+-- layout of its group.
 whenBroken :: Doc -> Doc
 whenBroken = WhenBroken
 
+-- | The separator goes between documents, never after the last.
 joinWith :: Doc -> [Doc] -> Doc
 joinWith separator = mconcat . intersperse separator
 
--- Greedily pack independent tokens (for example numeric array elements).
+-- | Greedily pack independent tokens (for example numeric array elements).
 -- Unlike commaSep, a wrapped sequence may retain several items on each line.
 flow :: [Doc] -> Doc
 flow = Flow
 
+-- | Comma-separated lists break after the comma, as every target's style asks.
 commaSep :: [Doc] -> Doc
 commaSep = joinWith (text "," <> softline)
 
--- Closing delimiters return to the surrounding indentation when a group wraps.
+-- | Closing delimiters return to the surrounding indentation when a group wraps.
 delimit :: Int -> String -> String -> [Doc] -> Doc
 delimit _ opening closing [] = text (opening ++ closing)
 delimit indentation opening closing items = group $
   text opening <> nest indentation (softbreak <> commaSep items)
     <> softbreak <> text closing
 
--- Languages such as Rust require a trailing comma in a wrapped argument list
+-- | Languages such as Rust require a trailing comma in a wrapped argument list
 -- to match their standard formatter, but omit it in a one-line list.
 delimitTrailing :: Int -> String -> String -> [Doc] -> Doc
 delimitTrailing _ opening closing [] = text (opening ++ closing)
@@ -121,11 +136,13 @@ delimitTrailing indentation opening closing items = group $
   text opening <> nest indentation (softbreak <> commaSep items <> whenBroken (text ","))
     <> softbreak <> text closing
 
+-- | Braced blocks put the closing brace on its own line, as the brace languages'
+-- styles ask. ref:google-style-guides
 block :: Int -> Doc -> Doc
 block indentation body =
   text "{" <> nest indentation (hardline <> body) <> hardline <> text "}"
 
--- Wrap explanatory comment words, never executable source or literal text.
+-- | Wrap explanatory comment words, never executable source or literal text.
 lineComment :: Int -> String -> String -> Doc
 lineComment width prefix content = mconcat
   [text (prefix ++ line) <> hardline | line <- wrap [] (concatMap pieces (words content))]
@@ -144,6 +161,8 @@ lineComment width prefix content = mconcat
 data Mode = Flat | Broken deriving (Eq)
 type Work = [(Int, Mode, Int, Doc)]
 
+-- | One renderer for readable and compact output, so the two layouts differ only
+-- in width, never in content. ref:DEC-readable-output-default
 render :: Layout -> Doc -> String
 render layout doc = layoutWork 0 [(0, initialMode, pageWidth, doc)]
   where

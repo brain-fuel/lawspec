@@ -1,4 +1,4 @@
--- Shared algebraic type declarations and kind checking. The registry contains
+-- | Shared algebraic type declarations and kind checking. The registry contains
 -- core identities, never source names awaiting resolution or target mappings.
 module LawSpec.Core.Types
   ( TypeRegistry, makeRegistry, builtinDataDeclarations, registryKinds, registryDeclarations
@@ -14,6 +14,9 @@ import qualified Data.Set as S
 import LawSpec.Core
 import LawSpec.Scalar (primitiveName, primitives)
 
+-- | Every type a program may mention, built once and consulted by Core
+-- validation, the evaluator and the emitters alike, so they cannot disagree.
+-- ref:DEC-typed-core-boundary
 data TypeRegistry = TypeRegistry
   { registryKinds :: [(String, Kind)]
   , registryKindMap :: M.Map String Kind
@@ -22,9 +25,13 @@ data TypeRegistry = TypeRegistry
   , keyedFieldRules :: M.Map Id (Maybe [Id])
   }
 
+-- | Planning and emission walk every declaration, built-in ones included.
 registryDeclarations :: TypeRegistry -> [DataDeclaration]
 registryDeclarations = M.elems . declarations
 
+-- | List, Maybe and Either are declared as ordinary data, so they are generated,
+-- compared and validated by the same code as user types.
+-- ref:DEC-algebraic-maybe-either
 builtinDataDeclarations :: [DataDeclaration]
 builtinDataDeclarations = [list, optional, eitherType]
   where
@@ -43,6 +50,8 @@ builtinDataDeclarations = [list, optional, eitherType]
     eitherType = declaration "Either" ["a", "b"]
       [("Left", [("value", a "Either")]), ("Right", [("value", b "Either")])]
 
+-- | Duplicate and ill-kinded declarations are refused when the registry is
+-- built, so no later stage handles them.
 makeRegistry :: [DataDeclaration] -> Either String TypeRegistry
 makeRegistry userDeclarations = do
   let allDeclarations = builtinDataDeclarations ++ userDeclarations
@@ -89,6 +98,8 @@ makeRegistry userDeclarations = do
 unique :: Ord a => String -> [a] -> Either String ()
 unique label values = unless (length values == S.size (S.fromList values)) (Left ("duplicate " ++ label))
 
+-- | Indexed families take value indices, so kinds are checked, not assumed.
+-- ref:DEC-indexed-families-as-evidence
 kindOf :: [(String, Kind)] -> Type -> Either String Kind
 kindOf registry = kindWith (`lookup` registry)
 
@@ -113,16 +124,19 @@ kindWith find ty = case ty of
       pure result
     apply _ _ = Left "too many type arguments"
 
+-- | A type used for a value must be saturated; a partly applied constructor has
+-- no values.
 checkType :: TypeRegistry -> Type -> Either String ()
 checkType registry ty = do
   k <- kindWith (`M.lookup` registryKindMap registry) ty
   unless (k == TypeKind) (Left "unsaturated type constructor")
 
+-- | An unknown data type is reported by name.
 lookupData :: TypeRegistry -> Id -> Either String DataDeclaration
 lookupData registry name = maybe (Left ("unknown data type: " ++ idText name)) Right
   (M.lookup name (declarations registry))
 
--- Check the parent type as well as the tag: equal payloads must never make
+-- | Check the parent type as well as the tag: equal payloads must never make
 -- constructors from different sums interchangeable. Substitute recursively.
 constructorFieldsFor :: TypeRegistry -> Type -> Id -> Either String [Binder]
 constructorFieldsFor registry ty tag = do
@@ -137,18 +151,21 @@ constructorFieldsFor registry ty tag = do
       pure [field {binderType = substitute substitutions (binderType field)} | field <- constructorFields constructor]
     _ -> Left "data construction requires an applied data type"
 
--- A field-only existential is not determined by the type: its type comes from
+-- | A field-only existential is not determined by the type: its type comes from
 -- the constructor's arguments (or a value's fields), matched against the
 -- field types. Runtimes carry it as a witness.
 freeExistentials :: DataDeclaration -> DataConstructor -> [Id]
 freeExistentials _ constructor =
   [e | e <- constructorExistentials constructor, e `notElem` concatMap (typeVariables . snd) (constructorEquations constructor)]
 
--- The types generated values of a field-only existential take. Runtimes use
+-- | The types generated values of a field-only existential take. Runtimes use
 -- the same pool.
 witnessPool :: [Type]
 witnessPool = [Constructor "Bool" [], Constructor "Int32" []]
 
+-- | A constructor's field types depend on the type it builds, and for a GADT on
+-- its equations, so they are computed at that type.
+-- ref:DEC-gadts-and-index-arithmetic
 constructorFieldsAt :: TypeRegistry -> Type -> Id -> [Type] -> Either String [Binder]
 constructorFieldsAt registry ty tag actual = do
   checkType registry ty
@@ -170,7 +187,7 @@ constructorFieldsAt registry ty tag actual = do
       pure [field {binderType = substitute bound (binderType field)} | field <- constructorFields constructor]
     _ -> Left "data construction requires an applied data type"
 
--- Whether a constructor builds values of a declaration at these arguments,
+-- | Whether a constructor builds values of a declaration at these arguments,
 -- and the existential types its equations then determine.
 constructorCompatibility :: DataDeclaration -> DataConstructor -> [Type] -> Either String (M.Map Id Type)
 constructorCompatibility declaration constructor arguments =
@@ -181,7 +198,7 @@ constructorCompatibility declaration constructor arguments =
       matchType (constructorExistentials constructor) bound pattern argument) M.empty
       (constructorEquations constructor)
 
--- One-way matching: existential variables in the pattern bind to the type.
+-- | One-way matching: existential variables in the pattern bind to the type.
 matchType :: [Id] -> M.Map Id Type -> Type -> Type -> Maybe (M.Map Id Type)
 matchType existentials bound pattern ty = case (pattern, ty) of
   (TypeVariable v, _) | v `elem` existentials -> case M.lookup v bound of
@@ -197,7 +214,7 @@ matchType existentials bound pattern ty = case (pattern, ty) of
   _ | pattern == ty -> Just bound
     | otherwise -> Nothing
 
--- Constructors whose values can have this type.
+-- | Constructors whose values can have this type.
 compatibleConstructors :: TypeRegistry -> Type -> Either String [DataConstructor]
 compatibleConstructors registry ty = case ty of
   Constructor name arguments -> do
@@ -206,7 +223,7 @@ compatibleConstructors registry ty = case ty of
       either (const False) (const True) (constructorCompatibility declaration c [t | TypeArgument t <- arguments])]
   _ -> Left "constructors require an applied data type"
 
--- Instantiation retains resolved field identities while substituting every
+-- | Instantiation retains resolved field identities while substituting every
 -- type carried by an expression, including match binders and numeric evidence.
 constructorPredicatesFor :: TypeRegistry -> Type -> Id -> Either String [Expr]
 constructorPredicatesFor registry ty tag = do
@@ -256,14 +273,16 @@ typeVariables (TypeVariable n) = [n]
 typeVariables (Arrow a b) = typeVariables a ++ typeVariables b
 typeVariables (Constructor _ args) = concat [typeVariables t | TypeArgument t <- args]
 
+-- | Type parameters are replaced by identity, so a substitution never captures
+-- another declaration's parameter.
 substitute :: M.Map Id Type -> Type -> Type
 substitute env ty = case ty of
   TypeVariable n -> M.findWithDefault ty n env
   Arrow a b -> Arrow (substitute env a) (substitute env b)
   Constructor n args -> Constructor n
-    [case arg of TypeArgument t -> TypeArgument (substitute env t); _ -> arg | arg <- args]
+    [(case arg of TypeArgument t -> TypeArgument (substitute env t); _ -> arg) | arg <- args]
 
--- Recursive data must be strictly positive. Follow parameter use through other
+-- | Recursive data must be strictly positive. Follow parameter use through other
 -- declarations too: putting a recursive value in Box a is unsafe when Box
 -- consumes a through a function argument. Double negation is not sufficient.
 validateStrictPositivity :: [DataDeclaration] -> Either String ()
@@ -301,7 +320,7 @@ validateStrictPositivity definitions = mapM_ checkComponent components
           [positive recursive (unsafe || risk) t
             | (TypeArgument t, risk) <- argumentRisks unsafeParameters name arguments]
 
--- Derivation computes the parameters actually inspected by equality, rather
+-- | Derivation computes the parameters actually inspected by equality, rather
 -- than demanding Eq for every argument. The finite fixed point also handles
 -- mutual and non-regular recursion without unfolding an infinite type tree.
 -- Nothing means a stored field has no equality (for example a function).
@@ -326,7 +345,7 @@ combineNeeds = fmap (sort . nub . concat) . sequence
 everyPrimitive :: String -> Bool
 everyPrimitive name = name `elem` map primitiveName primitives
 
--- Primitives with a portable total order: floats, complex numbers and
+-- | Primitives with a portable total order: floats, complex numbers and
 -- symbols have none (NaN, signed zeros, identity).
 keyedPrimitive :: String -> Bool
 keyedPrimitive name = everyPrimitive name &&
@@ -346,12 +365,12 @@ storedFieldNeeds primitiveOk definitions rules ty = case ty of
     | null arguments, primitiveOk name -> Just []
     | otherwise -> Nothing
 
--- Return outstanding Eq obligations for type variables. A concrete type has
+-- | Return outstanding Eq obligations for type variables. A concrete type has
 -- derived equality exactly when this list is empty.
 equalityRequirements :: TypeRegistry -> Type -> Either String [Id]
 equalityRequirements = storedRequirements "structural equality"
 
--- Current built-in value domains support both generation and equality. Both
+-- | Current built-in value domains support both generation and equality. Both
 -- derivations follow stored fields, including parameter transformations in
 -- recursive declarations; neither acquires support for function-valued fields.
 generationRequirements :: TypeRegistry -> Type -> Either String [Id]
@@ -360,7 +379,7 @@ generationRequirements registry ty = do
     Left (name ++ " is a handle: LawSpec cannot generate one, since only adapters create them")
   storedRequirements "generation" registry ty
 
--- The first handle a type mentions: equality between handles is identity,
+-- | The first handle a type mentions: equality between handles is identity,
 -- but they have no generator and no portable order.
 handleIn :: TypeRegistry -> Type -> Maybe String
 handleIn registry ty = case ty of
@@ -376,7 +395,7 @@ storedRequirements capability registry ty = do
   maybe (Left ("type does not support " ++ capability ++ ": " ++ show ty)) Right
     (storedFieldNeeds everyPrimitive (declarations registry) (storedFieldRules registry) ty)
 
--- Outstanding Keyed obligations: a key needs the portable total order.
+-- | Outstanding Keyed obligations: a key needs the portable total order.
 keyedRequirements :: TypeRegistry -> Type -> Either String [Id]
 keyedRequirements registry ty = do
   checkType registry ty

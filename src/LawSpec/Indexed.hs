@@ -1,4 +1,4 @@
--- Natural-indexed families are elaborated before inference. Each family becomes
+-- | Natural-indexed families are elaborated before inference. Each family becomes
 -- erased data, one checked structural measure per index, and a named refinement
 -- relating the measure to the index. Core and the eight emitters never see an
 -- index: every index claim is evidence discharged by the refinement machinery.
@@ -14,12 +14,14 @@ import qualified Data.Map.Strict as M
 import LawSpec.IndexTerm
 import LawSpec.Model
 
+-- | A constructor of an indexed family with the equations its index satisfies.
+-- ref:DEC-indexed-families-as-evidence
 data IndexedConstructor = IndexedConstructor
   { indexedDeclaration :: ConstructorDeclaration
   , indexedEquations :: [(String, Expr)]
   } deriving (Eq, Show)
 
--- Parameters keep declaration order; True marks a type parameter and False a
+-- | Parameters keep declaration order; True marks a type parameter and False a
 -- Natural index.
 data IndexedFamily = IndexedFamily
   { familyName :: String
@@ -28,24 +30,27 @@ data IndexedFamily = IndexedFamily
   , familySpan :: Span
   } deriving (Eq, Show)
 
--- '@' cannot occur in a source identifier, so generated refinements never
+-- | '@' cannot occur in a source identifier, so generated refinements never
 -- collide with user declarations, including the erased data type itself.
 indexedRefinementName :: String -> String
 indexedRefinementName family = family ++ "@index"
 
+-- | Indices are natural numbers, stated as a refinement every target checks.
 naturalRefinementName :: String
 naturalRefinementName = "Natural"
 
--- An imported family keeps its alias: v.Vec's measure is v.nOfVec.
+-- | An imported family keeps its alias: v.Vec's measure is v.nOfVec.
 measureName :: String -> String -> String
 measureName family index = case break (== '.') (reverse family) of
   (base, '.' : alias) -> reverse alias ++ "." ++ index ++ "Of" ++ reverse base
   _ -> index ++ "Of" ++ family
 
+-- | Indexed families are elaborated into erased data, measures and refinements,
+-- so Core needs no dependent types. ref:DEC-elaborate-before-core
 elaborateFamilies :: [IndexedFamily] -> Unit -> Either String Unit
 elaborateFamilies = elaborateFamiliesWith []
 
--- Imported families, under the names this unit uses for them, take part in
+-- | Imported families, under the names this unit uses for them, take part in
 -- erasure and implicit index binding; their declarations stay with their unit.
 elaborateFamiliesWith :: [IndexedFamily] -> [IndexedFamily] -> Unit -> Either String Unit
 elaborateFamiliesWith imported families u = do
@@ -85,7 +90,7 @@ elaborateFamiliesWith imported families u = do
     , functionDefinitions = measures ++ userDefinitions
     }
 
--- Source uses of Natural parse as a refinement application. Only units that
+-- | Source uses of Natural parse as a refinement application. Only units that
 -- mention it receive the declaration, keeping existing outputs unchanged.
 usesNatural :: Unit -> Bool
 usesNatural u = ("RefinementApp \"" ++ naturalRefinementName ++ "\"") `isInfix` show u
@@ -109,7 +114,7 @@ applied n [] = Named n
 applied n [a] = Applied n a
 applied n args = Application n args
 
--- A field of indexed type binds each variable index argument to that field.
+-- | A field of indexed type binds each variable index argument to that field.
 data Binding = Binding { boundField :: String, boundFamily :: String, boundIndex :: String }
 
 familyReference :: M.Map String IndexedFamily -> Type -> Maybe (IndexedFamily, [RefinementArgument])
@@ -179,7 +184,7 @@ mentionsFamily table ty = case ty of
   CheckedType _ a -> mentionsFamily table a
   _ -> False
 
--- Index expressions are natural arithmetic over literals and index
+-- | Index expressions are natural arithmetic over literals and index
 -- variables. div, mod and ^ arrive as the prelude's quot, rem and pow.
 data IndexShape = IndexLiteral Integer | IndexVariable String | IndexBinary IndexOperation Expr Expr | IndexOther
 
@@ -212,7 +217,7 @@ indexVariables e = case indexShape e of
   IndexBinary _ a b -> indexVariables a ++ indexVariables b
   _ -> []
 
--- The family's index table: each constructor's index terms over the indices
+-- | The family's index table: each constructor's index terms over the indices
 -- of its fields, with guards for subtraction and shared (sibling) indices.
 familyIndex :: M.Map String IndexedFamily -> IndexedFamily -> Either String FamilyIndex
 familyIndex table f = do
@@ -254,7 +259,7 @@ eraseType table ty = case familyReference table ty of
     Qualified cs a -> Qualified cs (eraseType table a)
     CheckedType ps a -> CheckedType ps (eraseType table a)
     RefinementApp n args -> RefinementApp n
-      [case a of TypeArgument t -> TypeArgument (eraseType table t); _ -> a | a <- args]
+      [(case a of TypeArgument t -> TypeArgument (eraseType table t); _ -> a) | a <- args]
     _ -> ty
 
 erasedDeclaration :: M.Map String IndexedFamily -> IndexedFamily -> Either String DataTypeDeclaration
@@ -265,7 +270,7 @@ erasedDeclaration table f = do
     | c <- familyConstructors f, let d = indexedDeclaration c ]
     (familySpan f) (Just index)
 
--- The measure recomputes an index from the constructor equations, replacing
+-- | The measure recomputes an index from the constructor equations, replacing
 -- each index variable with the measure of the field that binds it.
 familyMeasures :: M.Map String IndexedFamily -> IndexedFamily -> Either String [FunctionDefinition]
 familyMeasures table f = forM (indexParameters f) $ \index -> do
@@ -303,7 +308,7 @@ familyRefinement f =
   in Refinement (indexedRefinementName (familyName f)) (map parameterType (familyParameters f)) []
        (Refined binder (erasedType f) (Just (foldr1 (Binary "&&") claims)))
 
--- An index variable that is not otherwise in scope is implicit: the first
+-- | An index variable that is not otherwise in scope is implicit: the first
 -- binder whose family type mentions it as a bare index determines it. The
 -- binder is erased and later occurrences read that binder's measure.
 bindImplicitIndices :: M.Map String IndexedFamily -> [String] -> Type -> Either String Type
@@ -354,7 +359,7 @@ bindBinders table known = go known []
       (rest', substitution') <- go (scope ++ [n]) (substitution ++ fresh) rest
       pure ((n, erased) : rest', substitution')
 
--- Only the outermost family application of a binder may introduce implicit
+-- | Only the outermost family application of a binder may introduce implicit
 -- indices, and then every index argument must be a fresh variable.
 implicitAt :: M.Map String IndexedFamily -> [String] -> String -> Type
            -> Either String (Type, [(String, Expr)])
@@ -416,8 +421,8 @@ substituteIndices :: [(String, Expr)] -> Type -> Type
 substituteIndices [] ty = ty
 substituteIndices substitution ty = case ty of
   RefinementApp n args -> RefinementApp n
-    [case a of ValueArgument e -> ValueArgument (replaceExprVars substitution e)
-               TypeArgument t -> TypeArgument (substituteIndices substitution t) | a <- args]
+    [(case a of ValueArgument e -> ValueArgument (replaceExprVars substitution e)
+                TypeArgument t -> TypeArgument (substituteIndices substitution t)) | a <- args]
   Refined n t p -> Refined n (substituteIndices substitution t)
     (replaceExprVars (filter ((/= n) . fst) substitution) <$> p)
   Applied n a -> Applied n (substituteIndices substitution a)
@@ -427,7 +432,7 @@ substituteIndices substitution ty = case ty of
   CheckedType ps a -> CheckedType (map (replaceExprVars substitution) ps) (substituteIndices substitution a)
   _ -> ty
 
--- A match on a parameter of an indexed family may leave out constructors its
+-- | A match on a parameter of an indexed family may leave out constructors its
 -- index rules out: popping a Stack (n + 1) needs no branch for the empty
 -- stack. Each one left out gets a branch that is unreachable, and the
 -- totality audit must prove it is never reached (or names the constructor).

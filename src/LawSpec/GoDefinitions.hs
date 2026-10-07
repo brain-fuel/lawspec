@@ -1,4 +1,4 @@
--- Go native entry points and checked bodies live in each unit's source package.
+-- | Go native entry points and checked bodies live in each unit's source package.
 module LawSpec.GoDefinitions (emitGoDefinitions, emitGoDefinitionsWithCalls, definitionCalls) where
 
 import LawSpec.Core.Stages (stageFailures)
@@ -15,14 +15,18 @@ import Data.Char (toUpper)
 import Data.List (nub, intercalate)
 import LawSpec.AbilityNames (interfaceName, specName)
 
+-- | Generated tests call checked definitions by these names, so every test
+-- file agrees.
 definitionCalls :: [Unit] -> [(Id,String)]
 definitionCalls units = [(declarationId (definitionDeclaration d), "lawSpecEvaluate" ++ show i)
   | (i,d) <- zip [0::Int ..] (concatMap unitDefinitions units)]
 
+-- | Checked definitions are emitted as ordinary Go code, so adapters and tests call
+-- the same proved implementation. ref:DEC-total-definitions
 emitGoDefinitions :: D.Layout -> Int -> [DataDeclaration] -> [Unit] -> Either String [Artifact]
 emitGoDefinitions = emitGoDefinitionsWithCalls []
 
--- With native bindings, an orchestration calls each bound adapter's bridge
+-- | With native bindings, an orchestration calls each bound adapter's bridge
 -- (bound), which takes every argument natively, Units too.
 emitGoDefinitionsWithCalls :: [(Id,String)] -> D.Layout -> Int -> [DataDeclaration] -> [Unit] -> Either String [Artifact]
 emitGoDefinitionsWithCalls _ _ _ _ units | null (concatMap unitDefinitions units) = pure []

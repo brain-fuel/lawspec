@@ -1,0 +1,6 @@
+decision/haskell/src/LawSpec/JavaNativeBinding.hs/module/LawSpec.JavaNativeBinding:
+  digest: sha256:bb5043c4097fd983
+  verdict: pending
+decision/haskell/src/LawSpec/JavaNativeBinding.hs/module/LawSpec.JavaNativeBinding/function/emitBindings:
+  digest: sha256:bf76ad8a87b94493
+  verdict: pending

@@ -1,0 +1,27 @@
+decision/haskell/src/LawSpec/Actors/Haskell.hs/module/LawSpec.Actors.Haskell:
+  digest: sha256:d9ee1fa628937d6b
+  verdict: pending
+decision/haskell/src/LawSpec/Actors/Haskell.hs/module/LawSpec.Actors.Haskell/function/actorSource:
+  digest: sha256:fc8177becb739c24
+  verdict: pending
+decision/haskell/src/LawSpec/Actors/Haskell.hs/module/LawSpec.Actors.Haskell/function/actorsBeneath:
+  digest: sha256:781dbe53ccaf817b
+  verdict: pending
+"decision/haskell/src/LawSpec/Actors/Haskell.hs/module/LawSpec.Actors.Haskell/function/adapters'":
+  digest: sha256:20de0d7b66235be1
+  verdict: pending
+decision/haskell/src/LawSpec/Actors/Haskell.hs/module/LawSpec.Actors.Haskell/function/emit:
+  digest: sha256:b834fe35890f1da2
+  verdict: pending
+decision/haskell/src/LawSpec/Actors/Haskell.hs/module/LawSpec.Actors.Haskell/function/moduleOf:
+  digest: sha256:81c515f989ed4071
+  verdict: pending
+decision/haskell/src/LawSpec/Actors/Haskell.hs/module/LawSpec.Actors.Haskell/function/qualifiersOf:
+  digest: sha256:5d9743a755d5c3e8
+  verdict: pending
+decision/haskell/src/LawSpec/Actors/Haskell.hs/module/LawSpec.Actors.Haskell/function/supervisorSource:
+  digest: sha256:bfe412de17ae841e
+  verdict: pending
+decision/haskell/src/LawSpec/Actors/Haskell.hs/module/LawSpec.Actors.Haskell/type/HandlerWire:
+  digest: sha256:922d871b2e5da19f
+  verdict: pending

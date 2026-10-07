@@ -1,0 +1,6 @@
+decision/haskell/test/NativeRequestSpec.hs/module/NativeRequestSpec:
+  digest: sha256:6ff6d2e059b6a481
+  verdict: pending
+decision/haskell/test/NativeRequestSpec.hs/module/NativeRequestSpec/function/test_nativeBindingRequestsAreValidatedAtTheirBoundary:
+  digest: sha256:a5b3d270e516fde2
+  verdict: pending

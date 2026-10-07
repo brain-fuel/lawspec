@@ -1,0 +1,81 @@
+decision/haskell/src/LawSpec/Backend.hs/module/LawSpec.Backend:
+  digest: sha256:7434c8860287554e
+  verdict: pending
+decision/haskell/src/LawSpec/Backend.hs/module/LawSpec.Backend/function/adapterName:
+  digest: sha256:be5fdcd96c8c1cc2
+  verdict: pending
+decision/haskell/src/LawSpec/Backend.hs/module/LawSpec.Backend/function/asyncFunctions:
+  digest: sha256:60b15200cbf888ad
+  verdict: pending
+decision/haskell/src/LawSpec/Backend.hs/module/LawSpec.Backend/function/declarationName:
+  digest: sha256:5f5d824a0659d0b0
+  verdict: pending
+decision/haskell/src/LawSpec/Backend.hs/module/LawSpec.Backend/function/functions:
+  digest: sha256:de6995da86843c1e
+  verdict: pending
+decision/haskell/src/LawSpec/Backend.hs/module/LawSpec.Backend/function/generationPlan:
+  digest: sha256:3500ce1cad590455
+  verdict: pending
+decision/haskell/src/LawSpec/Backend.hs/module/LawSpec.Backend/function/localName:
+  digest: sha256:8292ce3a4172e9c9
+  verdict: pending
+decision/haskell/src/LawSpec/Backend.hs/module/LawSpec.Backend/function/metadata:
+  digest: sha256:bbef59a19bb1631b
+  verdict: pending
+decision/haskell/src/LawSpec/Backend.hs/module/LawSpec.Backend/function/metadataDocument:
+  digest: sha256:dcfdc04e4e3f7e77
+  verdict: pending
+decision/haskell/src/LawSpec/Backend.hs/module/LawSpec.Backend/function/metadataLines:
+  digest: sha256:061d1f6efb0f328c
+  verdict: pending
+decision/haskell/src/LawSpec/Backend.hs/module/LawSpec.Backend/function/owner:
+  digest: sha256:85dbb8d7b1c9ffe0
+  verdict: pending
+decision/haskell/src/LawSpec/Backend.hs/module/LawSpec.Backend/function/prettyExpanded:
+  digest: sha256:904ec7b010949502
+  verdict: pending
+decision/haskell/src/LawSpec/Backend.hs/module/LawSpec.Backend/function/prettyExpr:
+  digest: sha256:de4e0e038cdaba01
+  verdict: pending
+decision/haskell/src/LawSpec/Backend.hs/module/LawSpec.Backend/function/prettyType:
+  digest: sha256:38ac40f61f383d62
+  verdict: pending
+decision/haskell/src/LawSpec/Backend.hs/module/LawSpec.Backend/function/propertyKind:
+  digest: sha256:9b4bf6357d346649
+  verdict: pending
+decision/haskell/src/LawSpec/Backend.hs/module/LawSpec.Backend/function/propositionText:
+  digest: sha256:1b49dea53f4c3148
+  verdict: pending
+decision/haskell/src/LawSpec/Backend.hs/module/LawSpec.Backend/function/scalarTypeKey:
+  digest: sha256:d008a3183743f0ff
+  verdict: pending
+decision/haskell/src/LawSpec/Backend.hs/module/LawSpec.Backend/function/splitOnce:
+  digest: sha256:b7464a0963b265cf
+  verdict: pending
+decision/haskell/src/LawSpec/Backend.hs/module/LawSpec.Backend/function/unitName:
+  digest: sha256:856fb7e83bf387e8
+  verdict: pending
+decision/haskell/src/LawSpec/Backend.hs/module/LawSpec.Backend/type/Assertion:
+  digest: sha256:53dc3334e8398a38
+  verdict: pending
+decision/haskell/src/LawSpec/Backend.hs/module/LawSpec.Backend/type/Contract:
+  digest: sha256:d75d3cf972582789
+  verdict: pending
+decision/haskell/src/LawSpec/Backend.hs/module/LawSpec.Backend/type/Example:
+  digest: sha256:c92a7bf3f286c689
+  verdict: pending
+decision/haskell/src/LawSpec/Backend.hs/module/LawSpec.Backend/type/Expanded:
+  digest: sha256:521f9070a59d8a10
+  verdict: pending
+decision/haskell/src/LawSpec/Backend.hs/module/LawSpec.Backend/type/Expr:
+  digest: sha256:9efe4069977b9741
+  verdict: pending
+decision/haskell/src/LawSpec/Backend.hs/module/LawSpec.Backend/type/Input:
+  digest: sha256:38530dd87934828a
+  verdict: pending
+decision/haskell/src/LawSpec/Backend.hs/module/LawSpec.Backend/type/Type:
+  digest: sha256:d0f8c8a322210924
+  verdict: pending
+decision/haskell/src/LawSpec/Backend.hs/module/LawSpec.Backend/type/Unit:
+  digest: sha256:1d0734c9940cc193
+  verdict: pending

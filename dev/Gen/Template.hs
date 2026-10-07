@@ -1,5 +1,5 @@
 {-# LANGUAGE NoOverloadedStrings #-}
--- Templates are JavaScript (or HTML) files with named holes that Haskell
+-- | Templates are JavaScript (or HTML) files with named holes that Haskell
 -- fills. Everything outside a hole is copied verbatim.
 --
 --   /*@ name @*/      inline: replaced by a value; continuation lines of a
@@ -17,7 +17,7 @@ import Data.List (isPrefixOf, nub, stripPrefix)
 
 data Fill = Inline String | Block [String]
 
--- The filled text and the holes it used.
+-- | The filled text and the holes it used.
 fillTemplate :: FilePath -> [(String, Fill)] -> String -> Either String (String, [String])
 fillTemplate path fills source = do
   (filled, used) <- unzip <$> forM (lines source) line

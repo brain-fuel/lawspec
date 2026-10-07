@@ -1,0 +1,6 @@
+decision/python/acceptance/workflows/python/files/src/example/workflows.py/function/checkCredit:
+  digest: sha256:8a05c5820d8fd157
+  verdict: pending
+decision/python/acceptance/workflows/python/files/src/example/workflows.py/function/checkStock:
+  digest: sha256:7c615bb72a4501a9
+  verdict: pending

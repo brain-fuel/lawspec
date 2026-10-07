@@ -1,0 +1,21 @@
+decision/haskell/src/LawSpec/GoExpr.hs/module/LawSpec.GoExpr:
+  digest: sha256:ea8dace9861c68c6
+  verdict: pending
+decision/haskell/src/LawSpec/GoExpr.hs/module/LawSpec.GoExpr/function/array:
+  digest: sha256:ec8aec8bb3f33fd1
+  verdict: pending
+decision/haskell/src/LawSpec/GoExpr.hs/module/LawSpec.GoExpr/function/call:
+  digest: sha256:60673630d49f2303
+  verdict: pending
+decision/haskell/src/LawSpec/GoExpr.hs/module/LawSpec.GoExpr/function/quoted:
+  digest: sha256:f9b5942fc1c9fa89
+  verdict: pending
+decision/haskell/src/LawSpec/GoExpr.hs/module/LawSpec.GoExpr/function/renderExpression:
+  digest: sha256:144fafa14c5a0afd
+  verdict: pending
+decision/haskell/src/LawSpec/GoExpr.hs/module/LawSpec.GoExpr/function/renderExpressionWithContext:
+  digest: sha256:c6698bad974979dd
+  verdict: pending
+decision/haskell/src/LawSpec/GoExpr.hs/module/LawSpec.GoExpr/function/scalarLiteral:
+  digest: sha256:73acc6f6f01fa4ef
+  verdict: pending

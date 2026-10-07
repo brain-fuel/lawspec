@@ -1,4 +1,4 @@
--- Shared resolved Haskell runtime type references.
+-- | Shared resolved Haskell runtime type references.
 module LawSpec.HaskellTypeRefs (requiresSchema, reference, haskellTypeReference, haskellTypeReferenceDoc) where
 
 import qualified LawSpec.Core as C
@@ -12,6 +12,8 @@ apply name arguments = D.group (D.text name <> D.nest 2
 list :: [D.Doc] -> D.Doc
 list = D.delimit 2 "[" "]"
 
+-- | Values of these types need the runtime's schema to cross the adapter
+-- boundary; plain scalars do not.
 requiresSchema :: [C.DataDeclaration] -> C.Type -> Bool
 requiresSchema declarations ty = case ty of
   C.Constructor name arguments -> name `elem` ["List","Maybe","Either","Nullable","Optional"] ||
@@ -25,6 +27,7 @@ reference (S.Parameter index) = apply "Schema.Parameter" [D.text (show index)]
 reference (S.Named name arguments) = apply "Schema.Named"
   [D.text (show name), list (map reference arguments)]
 
+-- | The runtime validates values against a schema reference built from the type.
 haskellTypeReference :: C.Type -> Either String String
 haskellTypeReference ty = D.render D.Compact <$> haskellTypeReferenceDoc ty
 

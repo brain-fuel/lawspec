@@ -1,4 +1,5 @@
-module CollectionsSpec (spec) where
+-- | The built-in collections unit: typing, compile-time evaluation and the portable order.
+module CollectionsSpec (test_collectionsAreTypedEvaluatedAndOrderedPortably) where
 
 import Data.Either (isRight)
 import Data.List (isInfixOf)
@@ -26,7 +27,7 @@ rejects fragment lines' = case compileCore 64 defaultGeneration [source lines'] 
   Left diagnostics -> concatMap show diagnostics `shouldSatisfy` isInfixOf fragment
   Right _ -> expectationFailure ("expected rejection mentioning " ++ show fragment)
 
--- A law over checked definitions with a finite domain is evaluated by the
+-- | A law over checked definitions with a finite domain is evaluated by the
 -- compiler when its evidence is discharged; a false one is refuted.
 evaluated :: String -> String -> [String]
 evaluated left right = ["law `l` is definition is `for all` (b :: Bool) . " ++ left ++ " = " ++ right ++ " end end"]
@@ -42,8 +43,11 @@ refuted lines' = case compileCore 64 defaultGeneration [source lines'] >>= disch
 int :: Integer -> Value
 int = ScalarValue . SInteger "Int32"
 
-spec :: Spec
-spec = describe "collections" $ do
+-- | A law over a set or a map must give the same answer on every target, which
+-- needs one order and one evaluation independent of each language's hashing.
+-- ref:DEC-portable-total-order-collections ref:REQ-portable-collections
+test_collectionsAreTypedEvaluatedAndOrderedPortably :: Spec
+test_collectionsAreTypedEvaluatedAndOrderedPortably = describe "collections" $ do
   describe "the built-in unit" $ do
     it "is added only for the collections a source uses" $ do
       usedCollections [sourceText ["f :: Int32 -> Set Int32"]] `shouldBe` ["Set", "Ordering"]

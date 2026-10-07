@@ -1,0 +1,15 @@
+decision/go/acceptance/sessions/go/files/example/sessions/adapter.go:
+  digest: sha256:060703c7409169c2
+  verdict: pending
+decision/go/acceptance/sessions/go/files/example/sessions/adapter.go/function/Add:
+  digest: sha256:5a7bac7dcd25f0e9
+  verdict: pending
+decision/go/acceptance/sessions/go/files/example/sessions/adapter.go/function/AddHired:
+  digest: sha256:8b138d88a958012c
+  verdict: pending
+decision/go/acceptance/sessions/go/files/example/sessions/adapter.go/function/ask:
+  digest: sha256:d57fb64e806c5290
+  verdict: pending
+decision/go/acceptance/sessions/go/files/example/sessions/adapter.go/function/serve:
+  digest: sha256:0ad0e2cc92bb3459
+  verdict: pending

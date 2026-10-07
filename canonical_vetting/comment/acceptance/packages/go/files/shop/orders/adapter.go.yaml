@@ -1,0 +1,18 @@
+decision/go/acceptance/packages/go/files/shop/orders/adapter.go:
+  digest: sha256:acd06238afbbf0ad
+  verdict: pending
+decision/go/acceptance/packages/go/files/shop/orders/adapter.go/function/Cheaper:
+  digest: sha256:677622b06f02c46f
+  verdict: pending
+decision/go/acceptance/packages/go/files/shop/orders/adapter.go/function/Classify:
+  digest: sha256:47a2b38714c3e2a5
+  verdict: pending
+decision/go/acceptance/packages/go/files/shop/orders/adapter.go/function/LineTotal:
+  digest: sha256:34e5cba1335fd035
+  verdict: pending
+decision/go/acceptance/packages/go/files/shop/orders/adapter.go/function/RoundDown:
+  digest: sha256:bf589999b11a1edc
+  verdict: pending
+decision/go/acceptance/packages/go/files/shop/orders/adapter.go/function/Settlement:
+  digest: sha256:0b8151336a3b7de3
+  verdict: pending

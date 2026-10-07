@@ -1,4 +1,10 @@
--- Native Hedgehog generation and shrinking for checked Core schemas.
+-- | Native Hedgehog generation and shrinking for checked Core schemas.
+--
+-- Generated tests run in Hedgehog, under Hspec, so failures shrink and report
+-- as Haskell developers expect; the generators are built from Hedgehog's own so
+-- its integrated shrinking reduces counterexamples and shrinking stays within
+-- the declared domain. ref:DEC-native-property-frameworks ref:hedgehog
+-- ref:DEC-shrink-within-domain
 module LawSpecDataStrategies
   (strategy, checkedStrategy, checkedStrategyWith, primitiveStrategy
   , indexedStrategy, NativeFactory, nativeValues, nativeArguments) where
@@ -18,7 +24,7 @@ import qualified LawSpecRuntime as LS
 import qualified LawSpecSchema as S
 import qualified LawSpecCodecs as Codec
 
--- Factories return native Hedgehog trees; fmap preserves their shrink structure.
+-- | Factories return native Hedgehog trees; fmap preserves their shrink structure.
 type NativeFactory = S.TypeRef -> [Gen LS.Scalar]
                    -> Either String (Gen LS.Scalar)
 
@@ -44,7 +50,7 @@ strategy schema reference bits budget scalar = do
     (Left "constructor contracts require checked strategies")
   buildStrategy schema reference bits budget scalar (\_ _ -> id)
 
--- Predicate failures are native discards. Evaluation errors remain exceptions,
+-- | Predicate failures are native discards. Evaluation errors remain exceptions,
 -- which Hedgehog reports as property failures rather than retrying them.
 -- filterT prunes rejected shrink subtrees: searching every descendant of a
 -- sparse identity predicate can otherwise make shrinking effectively unbounded.
@@ -244,7 +250,7 @@ buildStrategyWith factories schema reference bits budget scalar finish = do
         Just generator -> pure
           (LS.SList <$> Gen.list (Range.singleton count) generator)
 
--- Values whose structural index equals the target. Each constructor carries
+-- | Values whose structural index equals the target. Each constructor carries
 -- its index term then its guards, in prefix notation over field indices
 -- (f<i>), literals (c<n>) and + - * div mod ^, with == and >= guards. Indices
 -- are naturals: subtraction never goes below zero. Reachability is a forward
@@ -379,7 +385,7 @@ indexedStrategy schema reference bits budget target equations scalar = do
   when (null levels) (Left ("no value of " ++ show reference ++ " has an index"))
   pure (either error id . S.validateWith Nothing schema reference bits <$> (Gen.element levels >>= generate reference))
 
--- Primitive shrinkers remain in Hedgehog: integers, lists, and IEEE bit words.
+-- | Primitive shrinkers remain in Hedgehog: integers, lists, and IEEE bit words.
 primitiveStrategy :: Int -> String -> Either String (Gen LS.Scalar)
 primitiveStrategy bits name
   | bits /= 32 && bits /= 64 = Left "machineBits must be 32 or 64"
@@ -430,7 +436,7 @@ primitiveStrategy bits name
          then Gen.filter (\point -> point < 55296 || point > 57343) generator
          else generator
 
--- A Set's or KeyVal's items in canonical order.
+-- | A Set's or KeyVal's items in canonical order.
 canonical :: Bool -> LS.Scalar -> LS.Scalar
 canonical keyed value = case value of
   LS.SData tag [LS.SList items] -> LS.SData tag [LS.SList (LS.canonicalItems keyed items)]

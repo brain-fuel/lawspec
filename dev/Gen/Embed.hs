@@ -1,5 +1,5 @@
 {-# LANGUAGE NoOverloadedStrings #-}
--- The reviewed runtime sources, embedded in the native and WASM compiler as
+-- | The reviewed runtime sources, embedded in the native and WASM compiler as
 -- src/LawSpec/RuntimeSources.hs. Strings are quoted as Python's json.dumps
 -- quotes them (ASCII only), which is also valid Haskell string syntax.
 module Gen.Embed (runtimeFiles, embedRuntimes, embedDefaults) where

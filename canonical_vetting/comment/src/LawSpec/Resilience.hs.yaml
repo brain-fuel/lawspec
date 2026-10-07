@@ -1,0 +1,30 @@
+decision/haskell/src/LawSpec/Resilience.hs/module/LawSpec.Resilience:
+  digest: sha256:1fd71003bf231e50
+  verdict: pending
+decision/haskell/src/LawSpec/Resilience.hs/module/LawSpec.Resilience/function/resilienceAlias:
+  digest: sha256:c6906473d2dd3667
+  verdict: pending
+decision/haskell/src/LawSpec/Resilience.hs/module/LawSpec.Resilience/function/resilienceDefinitions:
+  digest: sha256:6120c4decc48c3d8
+  verdict: pending
+decision/haskell/src/LawSpec/Resilience.hs/module/LawSpec.Resilience/function/resilienceName:
+  digest: sha256:8f5b65ef5303a2d0
+  verdict: pending
+decision/haskell/src/LawSpec/Resilience.hs/module/LawSpec.Resilience/function/resilienceSource:
+  digest: sha256:0325f279d5a3dc23
+  verdict: pending
+decision/haskell/src/LawSpec/Resilience.hs/module/LawSpec.Resilience/function/resilienceTypes:
+  digest: sha256:a32eaf1983b70039
+  verdict: pending
+decision/haskell/src/LawSpec/Resilience.hs/module/LawSpec.Resilience/function/resilienceUnit:
+  digest: sha256:e468a61407ddf5a5
+  verdict: pending
+decision/haskell/src/LawSpec/Resilience.hs/module/LawSpec.Resilience/function/stageFailureTag:
+  digest: sha256:3d7a666d7091f688
+  verdict: pending
+decision/haskell/src/LawSpec/Resilience.hs/module/LawSpec.Resilience/function/stageFailureType:
+  digest: sha256:ce52e69991aae681
+  verdict: pending
+decision/haskell/src/LawSpec/Resilience.hs/module/LawSpec.Resilience/function/usesResilience:
+  digest: sha256:189d3d14579e5339
+  verdict: pending

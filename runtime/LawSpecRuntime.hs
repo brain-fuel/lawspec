@@ -1,5 +1,15 @@
 {-# LANGUAGE FlexibleInstances, TypeSynonymInstances, ScopedTypeVariables, MultiParamTypeClasses, FunctionalDependencies, ExistentialQuantification #-}
--- The portable scalar domain. No test framework or target runtime dependencies.
+-- | The portable scalar domain. No test framework or target runtime dependencies.
+--
+-- A law must mean the same thing on every target, so this module implements
+-- LawSpec's own arithmetic, equality and conversions instead of the Prelude's:
+-- integers reach a bounded type only through a checked conversion, never
+-- wrapping as Int does, exact division gives a Rational, decimals are exact,
+-- and floats follow IEEE 754 at their declared precision. It is emitted
+-- unchanged into every generated Haskell project, so the generated tests and
+-- the adapters share one definition of the domain.
+-- ref:DEC-portable-exact-arithmetic ref:ieee-754 ref:decimal-arithmetic
+-- ref:DEC-typed-core-boundary
 module LawSpecRuntime where
 
 import Control.Exception (ErrorCall(..), Exception, SomeException(..), catch, displayException, evaluate, finally, fromException, throwIO, toException, try)
@@ -80,7 +90,7 @@ integerBounds machine n = do
   if family p /= IntegerFamily then Nothing else pure $
     if signed p then (negate (2^(w-1)),2^(w-1)-1) else (0,2^w-1)
 
--- Raw strings travel as numeric code points/units,
+-- | Raw strings travel as numeric code points/units,
 -- never JSON surrogate strings.
 data Scalar = SInteger String Integer | SBool Bool | SDecimal Integer Integer
   | SRational Integer Integer | SFloat String String
@@ -93,7 +103,7 @@ data Scalar = SInteger String Integer | SBool Bool | SDecimal Integer Integer
   -- label is the handle type's identity; equality is the handle's identity.
   | SHandle String Handle deriving (Eq, Show)
 
--- A handle's value is the adapter's own, kept with a Unique that is its
+-- | A handle's value is the adapter's own, kept with a Unique that is its
 -- identity. LawSpec never builds, inspects or orders one.
 data Handle = Handle Unique Dynamic
 instance Eq Handle where
@@ -304,7 +314,7 @@ construct tag [value]
       SData tag [value]
 construct tag _ = error ("invalid constructor or arity: " ++ tag)
 
--- Decode the compiler's parenthesized two-argument runtime type key.
+-- | Decode the compiler's parenthesized two-argument runtime type key.
 eitherArguments :: String -> (String, String)
 eitherArguments t = case stripPrefix "Either " t of
   Just body -> case arguments body of
@@ -338,6 +348,9 @@ mapSumFields field t value = forceScalar result `seq` result
                SData "Either::Right" [field right payload]
              _ -> error "invalid Either constructor or arity"
 
+-- | Moves a value into the declared type, failing instead of wrapping or rounding
+-- silently, because a bounded type is only ever reached through a checked
+-- conversion. ref:DEC-portable-exact-arithmetic
 convert :: String -> Scalar -> Int -> Scalar
 convert t s bits
   | take 6 t == "Maybe " || take 7 t == "Either " =
@@ -360,6 +373,10 @@ convert t s bits
         strip [] xs = Just xs
         strip (a:as) (b:bs) | a == b = strip as bs
         strip _ _ = Nothing
+
+-- | Checks a value an adapter produced against its declared domain: native code
+-- may return anything its own type allows, and a law quantifies only over the
+-- declared domain. ref:DEC-portable-exact-arithmetic
 validate :: String -> Scalar -> Int -> Scalar
 validate t s bits
   | take 6 t == "Maybe " || take 7 t == "Either " =
@@ -374,6 +391,10 @@ validate t s bits
 truth :: Scalar -> Bool
 truth (SBool b) = b
 truth _ = error "Bool required"
+
+-- | Equality defined once for all targets instead of derived Eq: NaN differs from
+-- itself, signed zeros are equal, handles and symbols compare by identity, and
+-- data compares field by field. ref:DEC-portable-exact-arithmetic
 equal :: Scalar -> Scalar -> Bool
 equal a b
   | SData tag xs <- a, SData other ys <- b =
@@ -394,6 +415,10 @@ equal a b
   | SScopedSymbol scope i _ <- a, SScopedSymbol other j _ <- b =
       scope == other && i == j
   | otherwise = a == b
+
+-- | Applies a LawSpec operator with LawSpec's semantics rather than the
+-- Prelude's, so a law computes the same result on every target.
+-- ref:DEC-portable-exact-arithmetic ref:ieee-754
 binary :: String -> Scalar -> Scalar -> Scalar
 binary op a b | op `elem` ["==","!="], not (isNumeric (scalarName a)) =
   SBool (if op == "==" then equal a b else not (equal a b))
@@ -459,7 +484,7 @@ awaitTask :: IO a -> a
 awaitTask action = unsafePerformIO action
 {-# NOINLINE awaitTask #-}
 
--- The portable total order. Exact numbers by value, sequences by unit, False
+-- | The portable total order. Exact numbers by value, sequences by unit, False
 -- before True, absence before presence, lists element by element, Nothing
 -- before Just, and other data by constructor identity, then fields left to
 -- right.
@@ -496,7 +521,7 @@ compareValues a b = case (a, b) of
       SRational n d -> Right (n % d)
       _ -> Left "exact value required"
 
--- A Set's items or a KeyVal's entries sorted by key, keeping the last of
+-- | A Set's items or a KeyVal's entries sorted by key, keeping the last of
 -- equal keys.
 canonicalItems :: Bool -> [Scalar] -> [Scalar]
 canonicalItems keyed values = foldr keepLast [] (sortBy order values)
@@ -545,10 +570,9 @@ helper n args bits = case (n,args) of
     SBool (not (isNaN (floatValue a) || isInfinite (floatValue a)))
   ("isNegativeZero",[a]) -> SBool (isNegativeZero (floatValue a))
   ("round",[a,b]) ->
-    let { x = either error id (exactValue a)
-        ; scale = either error numerator (exactValue (convert "Int32" b bits))
-        ; factor = if scale >= 0 then 10^scale % 1 else 1 % 10^(-scale)
-        }
+    let x = either error id (exactValue a)
+        scale = either error numerator (exactValue (convert "Int32" b bits))
+        factor = if scale >= 0 then 10^scale % 1 else 1 % 10^(-scale)
     in either error id (decimal (fromInteger (round (x*factor)) / factor))
   (_,[a]) -> convert n a bits
   _ -> error "unknown helper or wrong arity"
@@ -559,12 +583,11 @@ sample t seed bits
       SPresent (take 8 t) (if even seed then Nothing
         else Just (sample (drop 9 t) (seed `div` 2) bits))
   | isInteger t =
-      let { bounds = integerBounds bits t
-          ; n = case bounds of
-              Just (lo,hi) -> lo + randomN `mod` (hi-lo+1)
-              Nothing -> if t == "BigUInt" then randomN
-                else randomN - 2^(255::Int)
-          }
+      let bounds = integerBounds bits t
+          n = case bounds of
+            Just (lo,hi) -> lo + randomN `mod` (hi-lo+1)
+            Nothing -> if t == "BigUInt" then randomN
+              else randomN - 2^(255::Int)
       in SInteger t n
   | t == "Bool" = SBool (even seed)
   | t == "Decimal" =
@@ -590,7 +613,7 @@ sample t seed bits
                  in if validUnit t c then c else 0
         pad n s = replicate (n-length s) '0' ++ s
 
--- Native support types preserve domains that lack a faithful Prelude type.
+-- | Native support types preserve domains that lack a faithful Prelude type.
 newtype Decimal = Decimal Rational deriving (Eq, Ord, Show)
 newtype CodePointText = CodePointText [Char] deriving (Eq, Ord, Show)
 newtype Utf16Text = Utf16Text [Word16] deriving (Eq, Ord, Show)
@@ -862,7 +885,7 @@ instance Native a => Native (Optional a) where
                   in forceScalar result `seq` result
     _ -> error "Optional required"
 
--- An abstract integer result erases the native width without losing its value.
+-- | An abstract integer result erases the native width without losing its value.
 newtype IntegerValue = IntegerValue Integer deriving (Eq, Show)
 integerValue :: Integral a => a -> IntegerValue
 integerValue = IntegerValue . toInteger
@@ -882,11 +905,10 @@ domainCandidates t seed bits restrictions hints = rotate values where
   values | isInteger t = case limits of
              (Just lo,Just hi) | lo > hi -> []
              (lo,hi) ->
-               let { lower = maybe (min 0 (maybe 0 id hi) - 2^(256::Int)) id lo
-                   ; upper = maybe (max 0 (maybe 0 id lo) + 2^(256::Int)) id hi
-                   ; ns = [lower,upper,0,1,-1,lower+1,upper-1] ++
-                       [lower + random j `mod` (upper-lower+1) | j <- [0..7]]
-                   }
+               let lower = maybe (min 0 (maybe 0 id hi) - 2^(256::Int)) id lo
+                   upper = maybe (max 0 (maybe 0 id lo) + 2^(256::Int)) id hi
+                   ns = [lower,upper,0,1,-1,lower+1,upper-1] ++
+                     [lower + random j `mod` (upper-lower+1) | j <- [0..7]]
                in [SInteger t n | SInteger _ n <- hints ++ map (SInteger t) ns,
                                    n >= lower, n <= upper]
          | otherwise =
@@ -897,10 +919,9 @@ domainCandidates t seed bits restrictions hints = rotate values where
     Nothing -> (if t == "BigUInt" then Just 0 else Nothing,Nothing)
   limits = foldl restrict initial restrictions
   restrict (lo,hi) (op,v) =
-    let { r = either error id (exactValue v)
-        ; lower = if op == ">" then floor r + 1 else ceiling r
-        ; upper = if op == "<" then ceiling r - 1 else floor r
-        }
+    let r = either error id (exactValue v)
+        lower = if op == ">" then floor r + 1 else ceiling r
+        upper = if op == "<" then ceiling r - 1 else floor r
     in (if op `elem` [">",">=","=="]
           then Just (maybe lower (max lower) lo) else lo,
         if op `elem` ["<","<=","=="]
@@ -950,13 +971,12 @@ refinedCase domains seed attempts shrinks check context = do
     capture f xs = (f xs >> pure Nothing) `catch`
       (\e -> pure (Just (displayException (e :: SomeException))))
     shrinkAt state@(best,_) i =
-      let { Domain candidates _ = domains !! i
-          ; additional = case best !! i of
-              SInteger t n -> map (SInteger t)
-                (0:signum n:takeWhile ((>1) . abs)
-                  (tail (iterate (`quot` 2) n)))
-              _ -> []
-          }
+      let Domain candidates _ = domains !! i
+          additional = case best !! i of
+            SInteger t n -> map (SInteger t)
+              (0:signum n:takeWhile ((>1) . abs)
+                (tail (iterate (`quot` 2) n)))
+            _ -> []
       in foldM (tryCandidate i) state
         (additional ++ candidates (take i best) 0)
     tryCandidate i state@(best,budget) candidate
@@ -991,7 +1011,7 @@ complexity v = let r = either error id (exactValue v)
 bool :: Bool -> Scalar
 bool = SBool
 
--- Standalone contracts must observe their result even when
+-- | Standalone contracts must observe their result even when
 -- the predicate is true.
 -- | Where a structured actual value first differs from the expected one, by
 -- the portable rendering: "" when they agree or neither has parts.
@@ -1363,6 +1383,10 @@ virtualClock = do
   pure (Clock (readIORef time) (\micros -> modifyIORef' time (+ micros)), time)
 
 -- | The same sequence on every target for the same seed: (output, next state).
+--
+-- SplitMix64 is small, fast and specified exactly, so every runtime implements
+-- the same generator and a seed names the same case everywhere. ref:splitmix
+-- ref:DEC-portable-seeded-generation
 splitMix64 :: Word64 -> (Word64, Word64)
 splitMix64 state =
   let next = state + 0x9E3779B97F4A7C15
@@ -1997,12 +2021,12 @@ data ModelCommand = ModelCommand
   , mcUnit :: Bool
   , mcNeeds :: [(String, Integer)]
   , mcShifts :: [(String, Integer)]
-  -- | The argument naming the key the command touches, for per-key checks.
+  -- The argument naming the key the command touches, for per-key checks.
   , mcKey :: Maybe Int
   , mcRun :: ModelCallback
   , mcReference :: ModelCallback
   , mcWhen :: Maybe ModelCallback
-  -- | An actor's restart: never a generated step; injected crashes run it.
+  -- An actor's restart: never a generated step; injected crashes run it.
   , mcRestart :: Bool
   }
 
@@ -2025,9 +2049,9 @@ data ModelPlan = ModelPlan
   , planAbstract :: Maybe ModelCallback
   , planInvariants :: [(String, ModelCallback)]
   , planPerKey :: Bool
-  -- | An actor model's crash step, numbered after the commands.
+  -- An actor model's crash step, numbered after the commands.
   , planCrash :: Maybe CrashStep
-  -- | linearizable, sequential, causal or eventual.
+  -- linearizable, sequential, causal or eventual.
   , planConsistency :: String
   }
 
@@ -2363,6 +2387,10 @@ describeRun plan (startArgs, steps) =
 -- | Checks the system against its model on generated runs: Nothing, or the
 -- failure naming the shortest failing run found. 100 cases of up to 20
 -- steps, 2000 shrinks, seeded from LAWSPEC_SEED or 0.
+--
+-- A stateful model is checked by running generated command sequences against
+-- the system and the model side by side, then shrinking a failing run.
+-- ref:DEC-stateful-models-linearizability
 checkModel :: Model -> IO (Maybe String)
 checkModel = checkModelWith 100 20 2000 Nothing
 
@@ -2595,6 +2623,8 @@ linearizable plan symbols branches history expected0 final state
 -- | A Wing-Gong search: linearize, next, a call no pending call on another
 -- thread returned before; memoized on positions and the model state. The
 -- last argument judges each complete order's final model state.
+--
+-- ref:wing-gong-linearizability
 linearize :: ModelPlan -> SymbolContext -> [[(Int, [Scalar])]] -> [[(Int, Int, Scalar)]]
               -> Scalar -> (Scalar -> IO Bool) -> IO Bool
 linearize plan symbols branches history expected0 finish
@@ -2712,6 +2742,11 @@ describeParallel plan (prefix, branches) =
 -- failure naming the smallest failing case found. 50 cases, each run 10
 -- times, 300 shrinks, 3 threads of up to 5 steps, seeded from LAWSPEC_SEED
 -- or 0.
+--
+-- A shared model promises linearizability unless it names a weaker consistency,
+-- so concurrent histories are judged against some sequential order of the
+-- calls. ref:herlihy-wing-linearizability
+-- ref:DEC-stateful-models-linearizability
 checkModelParallel :: Model -> IO (Maybe String)
 checkModelParallel = checkModelParallelWith 50 10 300 parallelThreads parallelBranch Nothing
 
@@ -2900,7 +2935,7 @@ scenarioGone channel side = case channelKind channel of
 -- clocks travel beside the network, in send order.
 data ScenarioMailbox = ScenarioMailbox
   { boxExpected :: Int
-  -- | (received, abandoned)
+  -- (received, abandoned)
   , boxCounts :: MVar (Int, Int)
   , boxItems :: MVar [(ScenarioItem, VectorClock)]
   , boxSignal :: MVar ()
@@ -3645,6 +3680,10 @@ supervisorChild s = SupervisedChild (supervisorKey s) (pure ()) (supervisorResta
 -- never. More restarts than allowed within the period is the supervisor's
 -- own crash: its supervisor restarts all of its children, or, at the top,
 -- every child stops.
+--
+-- Supervision follows OTP's strategies and restart types, so a supervision tree
+-- means what an Erlang programmer expects on every target.
+-- ref:DEC-actors-otp-supervision ref:erlang-otp-supervisors
 data Supervisor = Supervisor
   { supervisorStrategy :: SupervisionStrategy
   , supervisorMaxRestarts :: Int
@@ -4001,7 +4040,7 @@ closeMailbox (Mailbox chan closed) = do
   done <- atomicModifyIORef' closed (\d -> (True, d))
   if done then pure () else writeChan chan Nothing
 
--- Actor models: the generated callbacks are pure, so these run the actor's
+-- | Actor models: the generated callbacks are pure, so these run the actor's
 -- IO inside them, each call its own effect.
 actorStartCallback :: ModelCallback -> ModelCallback
 actorStartCallback run symbols args = case run symbols args of
@@ -4063,12 +4102,12 @@ actorStateCallback f symbols args = case args of
 -- sides in process; a network transport could implement the same record.
 data ChannelSide = ChannelSide
   { sideSend :: Dynamic -> IO ()
-  -- | The next value; throws PeerFailed once the other side has given up
+  -- The next value; throws PeerFailed once the other side has given up
   -- and nothing it sent is left.
   , sideReceive :: IO Dynamic
-  -- | Gives up: the other side's receives fail after the values already sent.
+  -- Gives up: the other side's receives fail after the values already sent.
   , sideAbandon :: IO ()
-  -- | For an unused end between nodes, the address another node takes it
+  -- For an unused end between nodes, the address another node takes it
   -- over from; Nothing for a local end.
   , sideHandOver :: IO (Maybe String)
   }
@@ -4079,7 +4118,7 @@ data ChannelSide = ChannelSide
 data PeerFailed = PeerFailed deriving Show
 instance Exception PeerFailed
 
--- The mark a side that gave up leaves for the other.
+-- | The mark a side that gave up leaves for the other.
 data Abandoned = Abandoned
 
 -- | Two connected sides, with one queue per direction.
@@ -4097,6 +4136,11 @@ localChannel = do
 
 -- | A channel side at one step of a protocol, usable once: each step returns
 -- a fresh end for the next.
+--
+-- Using an end exactly once is what makes a session follow its protocol; with
+-- channels joined in a tree, scenarios are deadlock-free by construction.
+-- ref:DEC-sessions-by-construction ref:caires-pfenning-session-types
+-- ref:wadler-propositions-as-sessions
 data SessionEnd = SessionEnd ChannelSide (IORef Bool)
 
 -- | A channel's two ends, at their first step.
@@ -4108,7 +4152,7 @@ openSession = do
 sessionEnd :: ChannelSide -> IO SessionEnd
 sessionEnd side = SessionEnd side <$> newIORef False
 
--- Marks an end used, failing if it already was, and returns its side.
+-- | Marks an end used, failing if it already was, and returns its side.
 useEnd :: SessionEnd -> IO ChannelSide
 useEnd (SessionEnd side used) = do
   already <- atomicModifyIORef' used (\was -> (True, was))
@@ -4228,7 +4272,7 @@ getBytes buf pos = do
   if end > B.length buf then Left "the bytes end in the middle of a value"
     else Right (B.take (fromInteger n) (B.drop pos' buf), end)
 
--- An integer descriptor's declared bounds (None: no bound).
+-- | An integer descriptor's declared bounds (None: no bound).
 declaredBounds :: Descriptor -> (Maybe Integer, Maybe Integer)
 declaredBounds (DescList (_ : _ : lo : hi : _)) = (bound lo, bound hi)
   where bound b = case b of DescInteger k -> Just k; _ -> Nothing
@@ -4308,6 +4352,9 @@ wireGet table d0 buf pos = case descriptorKind d of
         byteAt p = if p < B.length buf then Just (B.index buf p) else Nothing
 
 -- | The value's canonical bytes.
+--
+-- Every target encodes a value to the same bytes, so nodes written in different
+-- languages talk to each other. ref:DEC-distribution-canonical-wire
 wireEncode :: DataTable -> Descriptor -> Scalar -> Either String ByteString
 wireEncode table d v = BL.toStrict . BB.toLazyByteString <$> wirePut table d v
 
@@ -4519,7 +4566,7 @@ data MemoryNetwork = MemoryNetwork
   { networkState :: MVar (Word64, [(String, ByteString -> IO ())], Maybe [[String]])
   , networkLoss :: Double
   , networkDuplicate :: Double
-  -- | The longest delay, in seconds.
+  -- The longest delay, in seconds.
   , networkDelay :: Double
   }
 
@@ -4574,12 +4621,15 @@ memorySend network source node frame = do
 -- <node address>/<name>, and sends to theirs. Order is kept within one
 -- channel; an actor call or an evaluation is sent again until answered
 -- (the receiver runs it once), failing with Unreachable after its timeout.
+--
+-- Every target's node speaks the same frames, so nodes written in different
+-- languages talk to each other. ref:DEC-distribution-canonical-wire
 data Node = Node
   { nodeTransport :: Transport
   , nodeAddress :: String
   , nodeEntities :: IORef [(String, Entity)]
   , nodePending :: IORef [(Integer, MVar ByteString)]
-  -- | Requests already seen, by sender and id, with the reply once sent.
+  -- Requests already seen, by sender and id, with the reply once sent.
   , nodeSeen :: IORef [((String, Integer), Maybe ByteString)]
   , nodeIds :: IORef Integer
   , nodeClosed :: IORef Bool
@@ -4816,16 +4866,16 @@ data NetEndpoint = NetEndpoint
 data EndpointState = EndpointState
   { esPeer :: Maybe String
   , esOut :: Integer
-  -- | seq -> (payload, first sent, last sent, body), monotonic nanoseconds.
+  -- seq -> (payload, first sent, last sent, body), monotonic nanoseconds.
   , esUnacked :: [(Integer, (ByteString, Word64, Word64, ByteString))]
   , esExpected :: Integer
   , esEarly :: [(Integer, ByteString)]
   , esGone :: Bool
   , esFailure :: String
-  -- | Values delivered before the first receive, newest first: what an
+  -- Values delivered before the first receive, newest first: what an
   -- unused end hands over when it moves.
   , esDelivered :: [ByteString]
-  -- | Moving: the addresses this end had before (oldest first), the token a
+  -- Moving: the addresses this end had before (oldest first), the token a
   -- taker must show, where the end went and the state frame it was given,
   -- and, on the new node, the token of the takeover in progress.
   , esHistory :: [String]
@@ -4916,7 +4966,7 @@ offerEndpoint endpoint = do
     Nothing -> pure (st { esToken = Just fresh }, fresh))
   pure (address ++ "?take=" ++ token)
 
--- A one-time token, from the clock and a process-unique number.
+-- | A one-time token, from the clock and a process-unique number.
 newToken :: IO String
 newToken = do
   now <- getMonotonicTimeNSec

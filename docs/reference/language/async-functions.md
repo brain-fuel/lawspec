@@ -1,3 +1,8 @@
+---
+id: lawspec.reference.language.async-functions
+kind: reference
+title: Asynchronous functions
+---
 # Asynchronous functions
 
 `async` before a signature makes an adapter asynchronous: the implementation

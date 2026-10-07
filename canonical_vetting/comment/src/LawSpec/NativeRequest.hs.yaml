@@ -1,0 +1,30 @@
+decision/haskell/src/LawSpec/NativeRequest.hs/module/LawSpec.NativeRequest:
+  digest: sha256:fe857f36a28cd05a
+  verdict: pending
+decision/haskell/src/LawSpec/NativeRequest.hs/module/LawSpec.NativeRequest/data/BindingPlan:
+  digest: sha256:0bf1928d07eed7bf
+  verdict: pending
+decision/haskell/src/LawSpec/NativeRequest.hs/module/LawSpec.NativeRequest/data/FunctionBinding:
+  digest: sha256:6c185d65bf5bc333
+  verdict: pending
+decision/haskell/src/LawSpec/NativeRequest.hs/module/LawSpec.NativeRequest/data/GoImport:
+  digest: sha256:14c56ae76232c18e
+  verdict: pending
+decision/haskell/src/LawSpec/NativeRequest.hs/module/LawSpec.NativeRequest/data/NativeCall:
+  digest: sha256:7dfbcf2d949df272
+  verdict: pending
+decision/haskell/src/LawSpec/NativeRequest.hs/module/LawSpec.NativeRequest/data/NativeRequest:
+  digest: sha256:257d42f8da983e34
+  verdict: pending
+decision/haskell/src/LawSpec/NativeRequest.hs/module/LawSpec.NativeRequest/function/emptyBindingPlan:
+  digest: sha256:f36264429f5d7ebc
+  verdict: pending
+decision/haskell/src/LawSpec/NativeRequest.hs/module/LawSpec.NativeRequest/function/emptyNativeRequest:
+  digest: sha256:51ab21bf8dfcd0f2
+  verdict: pending
+decision/haskell/src/LawSpec/NativeRequest.hs/module/LawSpec.NativeRequest/function/hasBindings:
+  digest: sha256:52624ca8fb430ffa
+  verdict: pending
+decision/haskell/src/LawSpec/NativeRequest.hs/module/LawSpec.NativeRequest/function/resolveNativeRequest:
+  digest: sha256:0fe445ba74f84a8a
+  verdict: pending

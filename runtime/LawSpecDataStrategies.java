@@ -14,7 +14,14 @@ import lawspec.runtime.LawSpecSchema.Named;
 import org.jetbrains.jetCheck.Generator;
 import org.jetbrains.jetCheck.IntDistribution;
 
-/** Native JetCheck generation and shrinking for the checked data schema. */
+/**
+ * Native JetCheck generation and shrinking for the checked data schema.
+ *
+ * Generated tests run in JetCheck, so failures shrink and report as the framework does; LawSpec
+ * supplies only the generators for its own types, built from JetCheck's own so its shrinker reduces
+ * counterexamples and shrinking stays within the declared domain.
+ * ref:DEC-native-property-frameworks ref:jetcheck ref:DEC-shrink-within-domain
+ */
 public final class LawSpecDataStrategies {
   private LawSpecDataStrategies() {}
 

@@ -1,0 +1,6 @@
+decision/haskell/test/TimeSpec.hs/module/TimeSpec:
+  digest: sha256:fc881c0cfcbfb365
+  verdict: pending
+decision/haskell/test/TimeSpec.hs/module/TimeSpec/function/test_durationsAreExactAndPortable:
+  digest: sha256:70b41ee70c52e278
+  verdict: pending

@@ -1,0 +1,9 @@
+decision/haskell/acceptance/workflows/haskell/files/src/Example/Workflows.hs/module/Example.Workflows/function/checkCredit:
+  digest: sha256:8a05c5820d8fd157
+  verdict: pending
+decision/haskell/acceptance/workflows/haskell/files/src/Example/Workflows.hs/module/Example.Workflows/function/checkStock:
+  digest: sha256:7c615bb72a4501a9
+  verdict: pending
+decision/haskell/acceptance/workflows/haskell/files/src/Example/Workflows.hs/module/Example.Workflows/function/finished:
+  digest: sha256:e6431554470ff5cb
+  verdict: pending

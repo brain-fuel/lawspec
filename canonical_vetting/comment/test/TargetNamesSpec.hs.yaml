@@ -1,0 +1,6 @@
+decision/haskell/test/TargetNamesSpec.hs/module/TargetNamesSpec:
+  digest: sha256:7bf2bc3b1488a9a3
+  verdict: pending
+decision/haskell/test/TargetNamesSpec.hs/module/TargetNamesSpec/function/test_targetNamesNeverCollideWithKeywords:
+  digest: sha256:a73e77391e4da771
+  verdict: pending

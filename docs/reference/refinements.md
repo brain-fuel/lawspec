@@ -1,3 +1,8 @@
+---
+id: lawspec.reference.refinements
+kind: reference
+title: Refinements
+---
 # Refinements
 
 A refinement restricts a type with a pure Boolean predicate. LawSpec checks

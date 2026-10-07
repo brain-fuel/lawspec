@@ -1,3 +1,7 @@
+-- | The compiler's one entry point for every host: the native lawspec-core
+-- executable, the WASM core the npm package and the documentation site load,
+-- and lawspec-dev docs all speak the same JSON request and response, so the
+-- eight targets and the two builds cannot drift apart. ref:DEC-wasm-distribution
 module LawSpec.Api (dispatch) where
 import Data.Aeson
 import qualified Data.Aeson.KeyMap as KM
@@ -22,6 +26,10 @@ import qualified Data.Aeson.Key as K
 import qualified Data.Text as T
 import System.IO.Unsafe (unsafePerformIO)
 
+-- | One function from request bytes to response bytes, because that is all a
+-- WASM export can carry without a shared heap; the work every method shares is
+-- memoised so a host asking for several targets compiles once.
+-- ref:DEC-incremental-compilation
 dispatch :: B.ByteString -> B.ByteString
 dispatch bytes = withCacheDirectory cacheDirectory $ encode $ versioned $ case eitherDecode bytes >>= parseEither request of
   Left err -> failure [Diagnostic "request" err Nothing]
@@ -67,7 +75,7 @@ dispatch bytes = withCacheDirectory cacheDirectory $ encode $ versioned $ case e
       request' <- (,,,,,,,,) <$> o .:? "method" .!= "check" <*> o .: "sources" <*> o .:? "target" .!= "" <*> o .:? "sourceDir" <*> o .:? "testDir" <*> o .:? "machineBits" .!= 64 <*> o .:? "generation" .!= defaultGeneration <*> o .:? "minify" .!= False <*> pure native
       pure (request', (Project rootPackage dependencies, packages))
 
--- Which generated tests check each law, for running a subset of them.
+-- | Which generated tests check each law, for running a subset of them.
 withTests :: [TestEntry] -> Value -> Value
 withTests entries (Object o) = Object (KM.insert "tests" (toJSON (map entry entries)) o)
   where
@@ -104,14 +112,14 @@ stages project packages sources bits settings native = case preparePackages proj
           Left ds -> Left (failure ds)
           Right evidence -> Right (us, es, core, bindings, evidence, described, planTesting core)
 
--- The request without the fields that only select a method, target or layout.
+-- | The request without the fields that only select a method, target or layout.
 sharedRequest :: B.ByteString -> String
 sharedRequest bytes = case decode bytes of
   Just (Object o) -> BC.unpack (encode (Object (foldr (KM.delete . K.fromString) o
     ["method", "target", "sourceDir", "testDir", "minify", "cacheDirectory"])))
   _ -> BC.unpack bytes
 
--- Two entries: each holds a whole compiled program and its plan.
+-- | Two entries: each holds a whole compiled program and its plan.
 stagesTable :: Table (Either Value Stages)
 stagesTable = unsafePerformIO (newTable 2 (const 1))
 {-# NOINLINE stagesTable #-}

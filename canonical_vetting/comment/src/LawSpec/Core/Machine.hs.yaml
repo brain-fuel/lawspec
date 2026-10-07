@@ -1,0 +1,39 @@
+decision/haskell/src/LawSpec/Core/Machine.hs/module/LawSpec.Core.Machine:
+  digest: sha256:2a87198291d943b4
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Machine.hs/module/LawSpec.Core.Machine/data/Command:
+  digest: sha256:9a6abb63085c22ae
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Machine.hs/module/LawSpec.Core.Machine/data/Consistency:
+  digest: sha256:535166b2419f1a4d
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Machine.hs/module/LawSpec.Core.Machine/data/Invariant:
+  digest: sha256:b8bd3bcb9ae35707
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Machine.hs/module/LawSpec.Core.Machine/data/Lifetime:
+  digest: sha256:d9cf116527443699
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Machine.hs/module/LawSpec.Core.Machine/data/Machine:
+  digest: sha256:dc03d5abed52d757
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Machine.hs/module/LawSpec.Core.Machine/data/MachineStart:
+  digest: sha256:804b4369c26813e4
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Machine.hs/module/LawSpec.Core.Machine/data/Need:
+  digest: sha256:17d56bc708f40bdd
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Machine.hs/module/LawSpec.Core.Machine/data/Shift:
+  digest: sha256:043fa3a6e66c6e23
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Machine.hs/module/LawSpec.Core.Machine/data/SupervisionStrategy:
+  digest: sha256:60604ac99db17d98
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Machine.hs/module/LawSpec.Core.Machine/data/Supervisor:
+  digest: sha256:c87acc12214ab7cf
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Machine.hs/module/LawSpec.Core.Machine/function/admits:
+  digest: sha256:9a92e98a6f51415b
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Machine.hs/module/LawSpec.Core.Machine/function/shifted:
+  digest: sha256:7626f7eeaf8ea6be
+  verdict: pending

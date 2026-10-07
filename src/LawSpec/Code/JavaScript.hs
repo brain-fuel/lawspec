@@ -1,10 +1,12 @@
--- JavaScript string tokens; layout never rewrites their payloads.
+-- | JavaScript string tokens; layout never rewrites their payloads.
 module LawSpec.Code.JavaScript (stringLiteral, quoted, stringExpression) where
 
 import Data.Char (ord)
 import Numeric (showHex)
 import qualified LawSpec.Code.Doc as D
 
+-- | Single quotes, as Google's JavaScript style asks, with every special
+-- character escaped. ref:google-style-guides
 stringLiteral :: String -> String
 stringLiteral value = "'" ++ concatMap escape value ++ "'"
   where
@@ -20,10 +22,11 @@ stringLiteral value = "'" ++ concatMap escape value ++ "'"
           let digits = showHex (ord c) "" in "\\u" ++ replicate (4 - length digits) '0' ++ digits
       | otherwise = [c]
 
+-- | As stringLiteral, as a document that layout never breaks.
 quoted :: String -> D.Doc
 quoted = D.text . stringLiteral
 
--- Value expressions may concatenate escaped chunks; property names must remain
+-- | Value expressions may concatenate escaped chunks; property names must remain
 -- single tokens and use quoted instead. Bound escaped width, not source length.
 stringExpression :: String -> D.Doc
 stringExpression value

@@ -1,0 +1,81 @@
+decision/java/runtime/LawSpecSchema.java/package/lawspec.runtime/class/LawSpecSchema:
+  digest: sha256:cddb220dbf92b8ff
+  verdict: pending
+decision/java/runtime/LawSpecSchema.java/package/lawspec.runtime/class/LawSpecSchema/field/WITNESS_POOL:
+  digest: sha256:5ff2bb1b3f312d31
+  verdict: pending
+decision/java/runtime/LawSpecSchema.java/package/lawspec.runtime/class/LawSpecSchema/interface/Codec:
+  digest: sha256:656af80d4dcf4514
+  verdict: pending
+decision/java/runtime/LawSpecSchema.java/package/lawspec.runtime/class/LawSpecSchema/method/allPayloads:
+  digest: sha256:4af20826110f1997
+  verdict: pending
+decision/java/runtime/LawSpecSchema.java/package/lawspec.runtime/class/LawSpecSchema/method/canonical:
+  digest: sha256:c7faa3b503ecb791
+  verdict: pending
+decision/java/runtime/LawSpecSchema.java/package/lawspec.runtime/class/LawSpecSchema/method/canonicalCollection:
+  digest: sha256:53601c34d34d4a9c
+  verdict: pending
+decision/java/runtime/LawSpecSchema.java/package/lawspec.runtime/class/LawSpecSchema/method/cast:
+  digest: sha256:3413df7eb29c7667
+  verdict: pending
+decision/java/runtime/LawSpecSchema.java/package/lawspec.runtime/class/LawSpecSchema/method/duration:
+  digest: sha256:8522767bd3262a6c
+  verdict: pending
+decision/java/runtime/LawSpecSchema.java/package/lawspec.runtime/class/LawSpecSchema/method/fieldType:
+  digest: sha256:3e4d2aa25a0c7301
+  verdict: pending
+decision/java/runtime/LawSpecSchema.java/package/lawspec.runtime/class/LawSpecSchema/method/fieldType#2:
+  digest: sha256:6b3a98f95ed430c8
+  verdict: pending
+decision/java/runtime/LawSpecSchema.java/package/lawspec.runtime/class/LawSpecSchema/method/fieldsOf:
+  digest: sha256:c08dd56c0db67bb0
+  verdict: pending
+decision/java/runtime/LawSpecSchema.java/package/lawspec.runtime/class/LawSpecSchema/method/instances:
+  digest: sha256:573344f907fd4795
+  verdict: pending
+decision/java/runtime/LawSpecSchema.java/package/lawspec.runtime/class/LawSpecSchema/method/keyVal:
+  digest: sha256:23ca7001fc16b5d5
+  verdict: pending
+decision/java/runtime/LawSpecSchema.java/package/lawspec.runtime/class/LawSpecSchema/method/parseWitness:
+  digest: sha256:b5bf0f7d43c631ba
+  verdict: pending
+decision/java/runtime/LawSpecSchema.java/package/lawspec.runtime/class/LawSpecSchema/method/refine:
+  digest: sha256:227018e73d59aa50
+  verdict: pending
+decision/java/runtime/LawSpecSchema.java/package/lawspec.runtime/class/LawSpecSchema/method/sequence:
+  digest: sha256:54332edb6d5eb3de
+  verdict: pending
+decision/java/runtime/LawSpecSchema.java/package/lawspec.runtime/class/LawSpecSchema/method/set:
+  digest: sha256:e8f968ba77ee9318
+  verdict: pending
+decision/java/runtime/LawSpecSchema.java/package/lawspec.runtime/class/LawSpecSchema/method/witnessKey:
+  digest: sha256:c1f89511950dde76
+  verdict: pending
+decision/java/runtime/LawSpecSchema.java/package/lawspec.runtime/class/LawSpecSchema/method/witnessKeys:
+  digest: sha256:cb1629b0eed4bcaa
+  verdict: pending
+decision/java/runtime/LawSpecSchema.java/package/lawspec.runtime/class/LawSpecSchema/method/witnessText:
+  digest: sha256:ad0f1c4e0a1f9193
+  verdict: pending
+decision/java/runtime/LawSpecSchema.java/package/lawspec.runtime/class/LawSpecSchema/method/witnessedFields:
+  digest: sha256:ce251f22a15e5165
+  verdict: pending
+decision/java/runtime/LawSpecSchema.java/package/lawspec.runtime/class/LawSpecSchema/record/Constructor:
+  digest: sha256:91e9ea0c79dabec3
+  verdict: pending
+decision/java/runtime/LawSpecSchema.java/package/lawspec.runtime/class/LawSpecSchema/record/Definition:
+  digest: sha256:9dae69139f702e63
+  verdict: pending
+decision/java/runtime/LawSpecSchema.java/package/lawspec.runtime/class/LawSpecSchema/record/IndexTerm:
+  digest: sha256:d661aca0f30b8668
+  verdict: pending
+decision/java/runtime/LawSpecSchema.java/package/lawspec.runtime/class/LawSpecSchema/record/IndexTerm/method/evaluate:
+  digest: sha256:825f3c72318cb2b2
+  verdict: pending
+decision/java/runtime/LawSpecSchema.java/package/lawspec.runtime/class/LawSpecSchema/record/Refinement:
+  digest: sha256:1052e5043d8744f7
+  verdict: pending
+decision/java/runtime/LawSpecSchema.java/package/lawspec.runtime/class/LawSpecSchema/record/WitnessInstance:
+  digest: sha256:fef4e8a34826710b
+  verdict: pending

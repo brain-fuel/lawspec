@@ -1,3 +1,6 @@
+-- | The surface syntax tree shared by the parser, inference and expansion. It
+-- stays out of Core and the emitters, which the boundary check enforces.
+-- ref:DEC-typed-core-boundary
 module LawSpec.Model (module LawSpec.Model, module LawSpec.Common) where
 
 import LawSpec.Core.Policy (StagePolicy)
@@ -49,7 +52,7 @@ data DataTypeDeclaration = DataTypeDeclaration
   , dataTypeConstructors :: [ConstructorDeclaration], dataTypeSpan :: Span
   , dataTypeIndex :: Maybe FamilyIndex
   } deriving (Eq, Show, Generic)
--- A GADT constructor refines type parameters: `where a = Int32` makes it a
+-- | A GADT constructor refines type parameters: `where a = Int32` makes it a
 -- value of T Int32 only. Free variables of a refinement or a field that are not
 -- parameters are the constructor's existential types.
 data ConstructorDeclaration = ConstructorDeclaration
@@ -57,7 +60,7 @@ data ConstructorDeclaration = ConstructorDeclaration
   , dataConstructorSpan :: Span
   , dataConstructorEquations :: [(String,Type)]
   } deriving (Eq, Show, Generic)
--- import shop.money [as money] [(Amount, add, `associative`)]: qualified
+-- | import shop.money [as money] [(Amount, add, `associative`)]: qualified
 -- access through the alias, plus unqualified access to the listed names. Law
 -- names are listed with their backticks.
 data Import = Import
@@ -69,7 +72,7 @@ data FunctionDefinition = FunctionDefinition
   , functionResult :: Type, functionRequirements :: [Constraint]
   , functionBody :: Expr, functionSpan :: Span
   } deriving (Eq, Show, Generic)
--- asyncFunctions names the adapters declared `async`: their results arrive
+-- | asyncFunctions names the adapters declared `async`: their results arrive
 -- later, as each target's task, and tests await them where they are called.
 -- orchestrations names the definitions that may call adapters: workflows,
 -- whose composition LawSpec generates and every target runs natively.
@@ -234,7 +237,7 @@ abilityTypeName t = case t of
 operationNames :: Unit -> [String]
 operationNames u = [op | a <- abilities u, (op, _) <- abilityOperations a]
 
--- A protocol: what one end of a channel sends and receives, in order (see
+-- | A protocol: what one end of a channel sends and receives, in order (see
 -- LawSpec.Scenario).
 data Step = Send Type | Receive Type
   deriving (Eq, Show, Generic)
@@ -294,12 +297,12 @@ prettyExpr (Unary op a) = op ++ "(" ++ prettyExpr a ++ ")"
 prettyExpr (Annotate a t) = "(" ++ prettyExpr a ++ " :: " ++ prettyType t ++ ")"
 prettyExpr (BoolLit b) = if b then "true" else "false"
 
--- Arrows associate to the right: a -> b -> c has two scalar inputs.
+-- | Arrows associate to the right: a -> b -> c has two scalar inputs.
 functionType :: Type -> ([Type], Type)
 functionType (Arrow a b) = let (args,result) = functionType b in (a:args,result)
 functionType t = ([],t)
 
--- Compatibility projection for single-conclusion clients. The assertion tree is
+-- | Compatibility projection for single-conclusion clients. The assertion tree is
 -- authoritative for compound laws; it preserves shared guards and their scope.
 firstConclusion :: Assertion -> (Expr, Expr, [Expr])
 firstConclusion (AssertEqual a b) = (a,b,[])
@@ -307,7 +310,7 @@ firstConclusion (AssertImplies g body) = let (a,b,gs) = firstConclusion body in 
 firstConclusion (AssertAll (a:_)) = firstConclusion a
 firstConclusion (AssertAll []) = (BoolLit True,BoolLit True,[])
 
--- Typed operations retain operand types and adapter conversions after specialization.
+-- | Typed operations retain operand types and adapter conversions after specialization.
 data TypedExpr = TypedExpr { expressionType :: Type, expression :: Expr, operands :: [TypedExpr], requiredConversion :: Maybe Type, typedCases :: [TypedCase] } deriving (Eq, Show, Generic)
 instance ToJSON MatchBranch
 instance ToJSON TypedCase
@@ -365,7 +368,7 @@ baseType (Applied n t) = Applied n (baseType t)
 baseType (Application n ts) = Application n (map baseType ts)
 baseType t = t
 
--- Predicates are expressions over values; aliases never introduce storage wrappers.
+-- | Predicates are expressions over values; aliases never introduce storage wrappers.
 typePredicates :: Expr -> Type -> [Expr]
 typePredicates value (Refined n t p) = typePredicates value t ++ maybe [] (pure . replaceExprVars [(n,value)]) p
 typePredicates value (Qualified _ t) = typePredicates value t
@@ -385,20 +388,20 @@ typePredicates value (Application "Either" [left,right]) =
   sumPredicates value [("Either::Left",Just left),("Either::Right",Just right)]
 typePredicates _ _ = []
 
--- Sum payload constraints elaborate to ordinary exhaustive, lazy matches. The
+-- | Sum payload constraints elaborate to ordinary exhaustive, lazy matches. The
 -- fresh local cannot capture a dependency on a surrounding refinement binder.
 sumPredicates :: Expr -> [(String,Maybe Type)] -> [Expr]
 sumPredicates value variants = constructorPayloadPredicates value
   [(tag, maybe [] (pure . (,) "value") payload) | (tag,payload) <- variants]
 
--- Compose ordered field constraints into an ordinary exhaustive match. Earlier
+-- | Compose ordered field constraints into an ordinary exhaustive match. Earlier
 -- fields are in scope for later predicates; sibling constructors have separate
 -- scopes. Declaration admission must reject duplicate or forward field names.
 -- Fresh match binders must avoid free outer dependencies as well as field names.
 constructorPredicates :: Expr -> [(String,[(String,Type)])] -> [Expr]
 constructorPredicates = constructorPredicatesWith True
 
--- A refinement supplied as a type argument keeps its caller's value scope.
+-- | A refinement supplied as a type argument keeps its caller's value scope.
 -- Its free names must never be rebound to similarly named constructor fields.
 constructorPayloadPredicates :: Expr -> [(String,[(String,Type)])] -> [Expr]
 constructorPayloadPredicates = constructorPredicatesWith False
@@ -439,7 +442,7 @@ mapType f g = walk where
   walk (Refined n t p) = f (Refined n (walk t) (g <$> p))
   walk (CheckedType ps t) = f (CheckedType (map g ps) (walk t))
   walk (Qualified cs t) = f (Qualified [Capability n (walk a) | Capability n a <- cs] (walk t))
-  walk (RefinementApp n args) = f (RefinementApp n [case a of TypeArgument t -> TypeArgument (walk t); ValueArgument e -> ValueArgument (g e) | a <- args])
+  walk (RefinementApp n args) = f (RefinementApp n [(case a of TypeArgument t -> TypeArgument (walk t); ValueArgument e -> ValueArgument (g e)) | a <- args])
   walk t = f t
 
 mapExprTypes :: (Type -> Type) -> Expr -> Expr
@@ -475,7 +478,7 @@ exprVars (Unary _ a) = exprVars a
 exprVars (Annotate a _) = exprVars a
 exprVars _ = []
 
--- Source wrappers survive renaming and substitution. Consumers that only inspect
+-- | Source wrappers survive renaming and substitution. Consumers that only inspect
 -- syntax may discard wrappers explicitly; elaboration retains their real ranges.
 unlocated :: Expr -> Expr
 unlocated (Located _ e) = unlocated e
@@ -495,7 +498,7 @@ stripLocations e = case unlocated e of
   a -> a
   where go = stripLocations
 
--- Each payload callback has its own lexical scope, including when two callbacks
+-- | Each payload callback has its own lexical scope, including when two callbacks
 -- use the same source spelling for their binders.
 replaceBoundExpr :: [(String,Expr)] -> String -> Expr -> (String,Expr)
 replaceBoundExpr env binder predicate =

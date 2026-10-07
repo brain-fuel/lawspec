@@ -1,4 +1,5 @@
-module TimeSpec (spec) where
+-- | Durations: literals, operators and checked definitions.
+module TimeSpec (test_durationsAreExactAndPortable) where
 
 import Data.List (isInfixOf)
 import Test.Hspec
@@ -25,8 +26,11 @@ unit body = unlines ("unit probe.time" : "" : body)
 bounded :: String -> String -> String
 bounded domain body = unit ["definition f (d :: Duration where " ++ domain ++ ") :: Duration is " ++ body ++ " end"]
 
-spec :: Spec
-spec = describe "durations" $ do
+-- | A duration means the same span on every target, so literals, operators and
+-- their totality audit must be defined by LawSpec rather than each clock
+-- library. ref:DEC-portable-exact-arithmetic ref:REQ-durations
+test_durationsAreExactAndPortable :: Spec
+test_durationsAreExactAndPortable = describe "durations" $ do
   describe "literals" $ do
     it "name units and equal their constructors" $
       accepts (unit ["law `units` is definition is `for all` (b :: Bool) . (250ms == prelude.milliseconds 250 && 1min == 60s && 1d == 24h && 1000us == 1ms) = true end end"])

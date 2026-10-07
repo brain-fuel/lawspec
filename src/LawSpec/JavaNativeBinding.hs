@@ -1,4 +1,4 @@
--- Typed application codecs keep validation in the shared logical schema.
+-- | Typed application codecs keep validation in the shared logical schema.
 module LawSpec.JavaNativeBinding (emitBindings) where
 
 import Control.Monad (forM, unless)
@@ -22,6 +22,8 @@ import LawSpec.RuntimeSources (runtimeSource)
 import LawSpec.Collections (collectionContainer)
 import LawSpec.Time (isDurationType)
 
+-- | Bound adapters call the user's Java code directly, through generated
+-- conversions. ref:DEC-native-bindings-typed-identity
 emitBindings :: Bool -> BindingPlan -> Plan -> [Artifact] -> Either String [Artifact]
 emitBindings minify plan testing files = do
   unless (bindingRustCrate plan == Nothing) (Left "rustCrate is only valid for Rust bindings")

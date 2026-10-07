@@ -1,3 +1,8 @@
+---
+id: lawspec.how-to.use-imports-and-packages
+kind: how-to
+title: Use imports and packages
+---
 # Use imports and packages
 
 This guide shows how to share types, definitions and laws between units, and

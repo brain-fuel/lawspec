@@ -1,4 +1,5 @@
-module DefinitionSchemeSpec (spec) where
+-- | Capabilities and template typing of generic definitions.
+module DefinitionSchemeSpec (test_definitionTemplatesAreAuditedBeforeSpecialization) where
 
 import Test.Hspec
 import Data.Either (isLeft, isRight)
@@ -20,7 +21,7 @@ import Control.Monad (forM_)
 source :: String -> Source
 source = Source "schemes.lawspec" . ("unit schemes\n" ++)
 
--- Test the template audit directly while source specialization is unfinished.
+-- | Test the template audit directly while source specialization is unfinished.
 audit :: String -> Either String ()
 audit = auditWith False
 
@@ -37,8 +38,11 @@ auditWithBits total bits body = do
   declarations <- either (Left . show) Right (elaborateDataDeclarations [unit])
   either (Left . show) Right ((if total then validateDefinitionTotality else validateDefinitionTypes) declarations bits unit)
 
-spec :: Spec
-spec = describe "definition capabilities and template typing" $ do
+-- | A generic definition is used at many types, so its template must be audited
+-- once, before specialization, or an unused instantiation could hide an unsafe
+-- body. ref:DEC-total-definitions ref:REQ-definition-templates
+test_definitionTemplatesAreAuditedBeforeSpecialization :: Spec
+test_definitionTemplatesAreAuditedBeforeSpecialization = describe "definition capabilities and template typing" $ do
   it "audits refined templates before specialization, including unused generic bodies" $ do
     let auditRefined body = do
           unit <- either (Left . show) Right (parseSource (source body))

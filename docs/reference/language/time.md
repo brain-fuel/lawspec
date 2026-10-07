@@ -1,3 +1,8 @@
+---
+id: lawspec.reference.language.time
+kind: reference
+title: Time and the clock
+---
 # Time and the clock
 
 `lawspec.time` holds [durations](durations.md) and, when a unit imports it,

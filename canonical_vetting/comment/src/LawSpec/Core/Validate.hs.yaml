@@ -1,0 +1,9 @@
+decision/haskell/src/LawSpec/Core/Validate.hs/module/LawSpec.Core.Validate:
+  digest: sha256:05106cce1cc28e65
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Validate.hs/module/LawSpec.Core.Validate/function/integerType:
+  digest: sha256:85d4c5b020380cbd
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Validate.hs/module/LawSpec.Core.Validate/function/validateProgram:
+  digest: sha256:1de4cce17b859aa7
+  verdict: pending

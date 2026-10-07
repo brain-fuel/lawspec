@@ -1,7 +1,10 @@
 {-# LANGUAGE ScopedTypeVariables #-}
--- Network transports for LawSpecRuntime's nodes: frames over TCP (each a
+-- | Network transports for LawSpecRuntime's nodes: frames over TCP (each a
 -- 4-byte big-endian length, then the frame) and HTTP (POST /lawspec with
 -- the frame as the body). Both speak the same bytes as every other target.
+--
+-- Speaking the same bytes as every other target is what lets nodes written in
+-- different languages talk to each other. ref:DEC-distribution-canonical-wire
 module LawSpecTransports (tcpTransport, httpTransport) where
 
 import Control.Concurrent (forkIO, MVar, newMVar, modifyMVar)

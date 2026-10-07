@@ -1,0 +1,15 @@
+decision/haskell/src/LawSpec/WebDefinitions.hs/module/LawSpec.WebDefinitions:
+  digest: sha256:b14a051d6e93ebec
+  verdict: pending
+decision/haskell/src/LawSpec/WebDefinitions.hs/module/LawSpec.WebDefinitions/function/asyncDefinitions:
+  digest: sha256:2058995cd02d1ebb
+  verdict: pending
+decision/haskell/src/LawSpec/WebDefinitions.hs/module/LawSpec.WebDefinitions/function/definitionCalls:
+  digest: sha256:738afdd102920036
+  verdict: pending
+decision/haskell/src/LawSpec/WebDefinitions.hs/module/LawSpec.WebDefinitions/function/emitWebDefinitions:
+  digest: sha256:36e7c4360b4e9cf0
+  verdict: pending
+decision/haskell/src/LawSpec/WebDefinitions.hs/module/LawSpec.WebDefinitions/function/plainCall:
+  digest: sha256:258ef579247a5df4
+  verdict: pending

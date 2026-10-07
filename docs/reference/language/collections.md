@@ -1,3 +1,8 @@
+---
+id: lawspec.reference.language.collections
+kind: reference
+title: Collections
+---
 # Collections
 
 Besides `List`, LawSpec has five built-in collections:

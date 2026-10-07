@@ -1,4 +1,4 @@
--- Flow typing (Wilshaw & Hutton, "Flow Typing: A New Lens on Linearity"),
+-- | Flow typing (Wilshaw & Hutton, "Flow Typing: A New Lens on Linearity"),
 -- core form. A signature argument `A / A'` is a flow parameter: a call takes
 -- the state at A and leaves it at A'. In a law, `~s` passes the quantified
 -- state s to a flow parameter and rebinds s to the state the call leaves;
@@ -31,7 +31,7 @@ import LawSpec.Scalar (Scalar(..))
 
 type Failure = (Maybe Location, String)
 
--- The parser's spelling of `A / A'`; it never survives desugaring.
+-- | The parser's spelling of `A / A'`; it never survives desugaring.
 flowTypeName :: String
 flowTypeName = "Flow#"
 
@@ -44,7 +44,7 @@ data FlowSignature = FlowSignature
   , flowProduct :: String
   }
 
--- A flow parameter A / A': its argument position, and the state's type
+-- | A flow parameter A / A': its argument position, and the state's type
 -- before and after the call.
 data FlowParameter = FlowParameter
   { parameterPosition :: Int
@@ -55,14 +55,14 @@ data FlowParameter = FlowParameter
 flowPositions :: FlowSignature -> [Int]
 flowPositions = map parameterPosition . flowParameters
 
--- The product's field for each state: state, or state1, state2, ... when a
+-- | The product's field for each state: state, or state1, state2, ... when a
 -- function has several.
 stateFields :: FlowSignature -> [String]
 stateFields s = case flowParameters s of
   [_] -> ["state"]
   ps -> ["state" ++ show k | (k, _) <- zip [1 :: Int ..] ps]
 
--- Desugar a unit's flow signatures, law clauses and definitions; the new
+-- | Desugar a unit's flow signatures, law clauses and definitions; the new
 -- products join the unit's indexed families (or plain data types).
 desugarFlows :: [IndexedFamily] -> [IndexedFamily] -> Unit -> Either Failure ([IndexedFamily], Unit)
 desugarFlows imported families u
@@ -101,7 +101,7 @@ desugarFlows imported families u
         (Left (Nothing, "a flow type A / A' is legal only as a signature argument"))
       pure (families ++ newFamilies, u')
 
--- A branch join: a branch's value and the states it leaves.
+-- | A branch join: a branch's value and the states it leaves.
 joinType :: Int -> DataTypeDeclaration
 joinType k =
   let origin = Span (Location "<flow>" 0 0) (Location "<flow>" 0 0)
@@ -144,7 +144,7 @@ flowSignature name ty = do
         (Left (Nothing, name ++ ": a flow type A / A' is legal only as an argument"))
       pure (Just (FlowSignature name args [FlowParameter i a b | (i, a, b) <- positions] result (capitalize name ++ "Flow")))
 
--- A state type's head family and its arguments.
+-- | A state type's head family and its arguments.
 stateShape :: Type -> Maybe (String, [RefinementArgument])
 stateShape ty = case unrefined ty of
   RefinementApp n args | Just family <- stripIndex n -> Just (family, args)
@@ -171,7 +171,7 @@ isUnit t = case unrefined t of
   Named "Unit" -> True
   _ -> False
 
--- The product a flow function returns: indexed by the output state's
+-- | The product a flow function returns: indexed by the output state's
 -- indices, generic in the type variables of the result and state.
 flowProductType :: M.Map String IndexedFamily -> FlowSignature -> Either Failure (Either IndexedFamily DataTypeDeclaration)
 flowProductType _ s = do
@@ -203,7 +203,7 @@ flowProductType _ s = do
       [IndexedConstructor constructor [(i, Var m) | (i, m) <- names]] origin))
     else pure (Right (DataTypeDeclaration (flowProduct s) variables [constructor] origin Nothing))
 
--- The product type a call returns, at the output state's arguments.
+-- | The product type a call returns, at the output state's arguments.
 productType :: FlowSignature -> Type
 productType s =
   let outputs = [unrefined (parameterOutput p) | p <- flowParameters s]
@@ -217,14 +217,14 @@ productType s =
       [v] -> Applied (flowProduct s) (Variable v)
       vs -> Application (flowProduct s) (map Variable vs)
 
--- The state-passing signature: the flow argument takes the input state and
+-- | The state-passing signature: the flow argument takes the input state and
 -- the result is the product.
 productSignature :: M.Map String IndexedFamily -> FlowSignature -> Either Failure Type
 productSignature _ s =
   pure (foldr Arrow (productType s)
     [maybe a parameterInput (lookup i [(parameterPosition p, p) | p <- flowParameters s]) | (i, a) <- zip [0 ..] (flowArguments s)])
 
--- Linear natural index terms: coefficients by variable, and a constant.
+-- | Linear natural index terms: coefficients by variable, and a constant.
 data Linear = Linear (M.Map String Integer) Integer deriving (Eq, Show)
 
 linear :: Expr -> Maybe Linear
@@ -258,7 +258,7 @@ substituteLinear σ (Linear xs c) = M.foldrWithKey step (Linear M.empty c) xs
       Just (Linear ys e) -> Linear (M.filter (/= 0) (M.unionWith (+) acc (M.map (* k) ys))) (d + k * e)
       Nothing -> Linear (M.filter (/= 0) (M.insertWith (+) v k acc)) d
 
--- The flow environment: each variable's current state type and the
+-- | The flow environment: each variable's current state type and the
 -- expression that now stands for it. `checked` is False in definitions,
 -- whose desugared bodies inference and the index prover check instead.
 data Flow = Flow
@@ -279,7 +279,7 @@ type F = StateT Flow (Either Failure)
 failAt :: Maybe Location -> String -> F a
 failAt at message = lift (Left (at, message))
 
--- Lower bounds `v >= k` and `v > k` from quantifier refinements.
+-- | Lower bounds `v >= k` and `v > k` from quantifier refinements.
 facts :: [(String, Type)] -> M.Map String Integer
 facts params = M.fromListWith max (concatMap (bounds . snd) params)
   where
@@ -293,7 +293,7 @@ facts params = M.fromListWith max (concatMap (bounds . snd) params)
       Binary ">" a b | Var v <- unlocated a, Number k <- unlocated b -> [(v, k + 1)]
       _ -> []
 
--- The least value of a natural linear term, given lower bounds.
+-- | The least value of a natural linear term, given lower bounds.
 lowerBound :: M.Map String Integer -> Linear -> Integer
 lowerBound bounds (Linear xs c) = c + sum [k * M.findWithDefault 0 v bounds | (v, k) <- M.toList xs]
 
@@ -346,7 +346,7 @@ fresh base = do
   put f { flowFresh = flowFresh f + 1 }
   pure (base ++ "_flow" ++ show (flowFresh f))
 
--- Left-to-right rewriting. `sequential` is False inside branches and the
+-- | Left-to-right rewriting. `sequential` is False inside branches and the
 -- right operands of && and ||, where a flow call could not leave its state.
 rewrite :: Maybe Location -> M.Map String FlowSignature -> Bool -> Expr -> F (Expr, [Binding])
 rewrite at flows sequential expression = case expression of
@@ -443,7 +443,7 @@ rewrite at flows sequential expression = case expression of
       put saved
       pure (wrap bs body)
 
--- The branches of a match or an if. Without flow calls in them, each branch
+-- | The branches of a match or an if. Without flow calls in them, each branch
 -- keeps its own bindings. With some, the whole branching becomes one
 -- binding: every branch returns its value and the states it leaves in a
 -- FlowJoinN, and the states are rebound to the join's fields after it. A
@@ -497,7 +497,7 @@ spine e = case unlocated e of
   Apply f a -> let (h, as) = spine f in (h, as ++ [a])
   other -> (other, [])
 
--- Check a flow call against the current state type and return the state it
+-- | Check a flow call against the current state type and return the state it
 -- leaves: invert the input pattern, prove its side condition, substitute.
 transition :: Maybe Location -> String -> FlowParameter -> Type -> [(Type, Expr)] -> F Type
 transition at f s current others = do
@@ -579,7 +579,7 @@ showExpr e = case unlocated e of
   Binary op a b -> showExpr a ++ " " ++ op ++ " " ++ showExpr b
   other -> show other
 
--- A definition's flow parameter: `~s := e` updates it, and the body returns
+-- | A definition's flow parameter: `~s := e` updates it, and the body returns
 -- the product of the final result and state. Calls to other flow functions
 -- thread states as in laws. Inference and the index prover check the
 -- desugared body, so there is no separate typestate check here.

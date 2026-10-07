@@ -1,5 +1,5 @@
 {-# LANGUAGE NoOverloadedStrings #-}
--- JSON values rendered exactly as JSON.stringify(value, null, 2) renders them,
+-- | JSON values rendered exactly as JSON.stringify(value, null, 2) renders them,
 -- so generated JSON files and JavaScript data literals are deterministic.
 module Gen.Json (Json(..), json, jsonString) where
 
@@ -25,7 +25,7 @@ json = go 0
       open ++ "\n" ++ intercalate ",\n" (map (indent (depth + 1) ++) items) ++ "\n" ++ indent depth ++ close
     indent n = replicate (2 * n) ' '
 
--- JSON.stringify string escaping: quotes, backslashes, named and \u00XX
+-- | JSON.stringify string escaping: quotes, backslashes, named and \u00XX
 -- control escapes; everything else, including non-ASCII, is literal.
 jsonString :: String -> String
 jsonString s = "\"" ++ concatMap escape s ++ "\""

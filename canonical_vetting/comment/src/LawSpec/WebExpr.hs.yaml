@@ -1,0 +1,27 @@
+decision/haskell/src/LawSpec/WebExpr.hs/module/LawSpec.WebExpr:
+  digest: sha256:748257fe58a80579
+  verdict: pending
+decision/haskell/src/LawSpec/WebExpr.hs/module/LawSpec.WebExpr/function/array:
+  digest: sha256:ec8aec8bb3f33fd1
+  verdict: pending
+decision/haskell/src/LawSpec/WebExpr.hs/module/LawSpec.WebExpr/function/call:
+  digest: sha256:5cf596a2a2f5834f
+  verdict: pending
+decision/haskell/src/LawSpec/WebExpr.hs/module/LawSpec.WebExpr/function/literalValue:
+  digest: sha256:8fb3710e2289ae20
+  verdict: pending
+decision/haskell/src/LawSpec/WebExpr.hs/module/LawSpec.WebExpr/function/quoted:
+  digest: sha256:0408f02627c6d519
+  verdict: pending
+decision/haskell/src/LawSpec/WebExpr.hs/module/LawSpec.WebExpr/function/quotedValue:
+  digest: sha256:c0b705dd62aa1802
+  verdict: pending
+decision/haskell/src/LawSpec/WebExpr.hs/module/LawSpec.WebExpr/function/renderAsyncExpression:
+  digest: sha256:2ff513373e58b2ce
+  verdict: pending
+decision/haskell/src/LawSpec/WebExpr.hs/module/LawSpec.WebExpr/function/renderExpression:
+  digest: sha256:187e2325fb06cc10
+  verdict: pending
+decision/haskell/src/LawSpec/WebExpr.hs/module/LawSpec.WebExpr/function/renderExpressionWithContext:
+  digest: sha256:c6698bad974979dd
+  verdict: pending

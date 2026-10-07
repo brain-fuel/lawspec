@@ -1,3 +1,8 @@
+---
+id: lawspec.reference.native-bindings
+kind: reference
+title: Native bindings
+---
 # Native bindings
 
 Native bindings connect LawSpec data types, adapters and generators to existing

@@ -1,3 +1,8 @@
+---
+id: lawspec.how-to.targets.go
+kind: how-to
+title: Set up Go
+---
 # Set up Go
 
 ## Requirements

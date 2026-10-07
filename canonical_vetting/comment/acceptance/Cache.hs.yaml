@@ -1,0 +1,15 @@
+decision/haskell/acceptance/Cache.hs/module/Cache:
+  digest: sha256:c12dfc30ae794595
+  verdict: pending
+decision/haskell/acceptance/Cache.hs/module/Cache/function/environmentNames:
+  digest: sha256:ab02ab74b8f74b5a
+  verdict: pending
+decision/haskell/acceptance/Cache.hs/module/Cache/function/lookupResult:
+  digest: sha256:223fb6505ea4ea83
+  verdict: pending
+decision/haskell/acceptance/Cache.hs/module/Cache/function/runKey:
+  digest: sha256:7ff875f912c88cfc
+  verdict: pending
+decision/haskell/acceptance/Cache.hs/module/Cache/function/toolFingerprint:
+  digest: sha256:48680dd1005fdd61
+  verdict: pending

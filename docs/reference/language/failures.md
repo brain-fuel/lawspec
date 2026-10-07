@@ -1,3 +1,8 @@
+---
+id: lawspec.reference.language.failures
+kind: reference
+title: Typed failures
+---
 # Typed failures
 
 A definition that can fail says what it fails with, and a law says which

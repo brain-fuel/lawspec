@@ -1,4 +1,4 @@
--- Capability discharge shared by declaration and law checking.
+-- | Capability discharge shared by declaration and law checking.
 module LawSpec.Capabilities (satisfiedWithData) where
 
 import LawSpec.Model
@@ -7,6 +7,8 @@ import qualified LawSpec.Core as Core
 import qualified LawSpec.Core.Types as Types
 import LawSpec.Elaboration (coreType)
 
+-- | A capability such as Eq or Ordered is satisfied by what the type's
+-- declaration allows, so a law cannot compare values that have no equality.
 satisfiedWithData :: [Core.DataDeclaration] -> Int -> [Constraint] -> Constraint -> Bool
 satisfiedWithData declarations bits allowed constraint@(Capability name ty)
   | constraint `elem` allowed = True

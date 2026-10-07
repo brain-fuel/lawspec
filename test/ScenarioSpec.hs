@@ -1,4 +1,5 @@
-module ScenarioSpec (spec) where
+-- | Scenarios of processes and channels.
+module ScenarioSpec (test_scenariosAreAcceptedOnlyWhenDeadlockAndRaceFree) where
 
 import Data.List (isInfixOf)
 import Test.Hspec
@@ -36,8 +37,11 @@ rejects fragment extra = case checks extra of
   Left message -> message `shouldSatisfy` isInfixOf fragment
   Right _ -> expectationFailure ("expected rejection mentioning " ++ show fragment)
 
-spec :: Spec
-spec = describe "scenarios" $ do
+-- | A scenario is reported as proved deadlock-free and race-free, so it may be
+-- accepted only when its channels form a tree and every receive has a sender.
+-- ref:DEC-sessions-by-construction ref:REQ-deadlock-free-scenarios
+test_scenariosAreAcceptedOnlyWhenDeadlockAndRaceFree :: Spec
+test_scenariosAreAcceptedOnlyWhenDeadlockAndRaceFree = describe "scenarios" $ do
   it "accept a mailbox with two senders" $
     checks (unlines
       [ "scenario `two report` in counter is"

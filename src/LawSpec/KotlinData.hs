@@ -1,4 +1,4 @@
--- Native JVM declarations from checked Core; no surface syntax or inference.
+-- | Native JVM declarations from checked Core; no surface syntax or inference.
 module LawSpec.KotlinData (emitKotlinData, emitKotlinDataWithProfile, kotlinCodecDocWithContext, kotlinDataType, emitKotlinCodecs, kotlinCodec, kotlinTypeReference, requiresSchema, kotlinDataTypeDoc, kotlinCodecDoc, kotlinTypeReferenceDoc, identifier, emitKotlinNativeCodecs, kotlinNativeCodecDoc, kotlinNativeTypeDoc) where
 
 import LawSpec.DataNames (qualifiedDataName, isProduct, caseNames)
@@ -23,6 +23,8 @@ import qualified LawSpec.Code.Doc as D
 
 type Names = [(C.Id, String)]
 
+-- | A data name must be a valid Kotlin identifier, or the generated file would
+-- not compile.
 identifier :: String -> Either String ()
 identifier name = unless valid (Left ("invalid Kotlin data identifier: " ++ name))
   where
@@ -51,7 +53,7 @@ applied name [] = D.text name
 applied name args = D.group (D.text (name ++ "<") <>
   D.nest 4 (D.softbreak <> D.commaSep args) <> D.text ">")
 
--- The identities of handle declarations: their values are adapters' native
+-- | The identities of handle declarations: their values are adapters' native
 -- objects, a kotlin.Any in generated code unless the handle's binding names
 -- its native type in full (a bound class may be generic, which Kotlin cannot
 -- name raw; the native call casts it).
@@ -61,6 +63,8 @@ handlesOf declarations = [(C.idText (C.dataId d), C.dataNative d) | d <- declara
 typeDoc :: [(String, Maybe String)] -> Names -> [(C.Id, String)] -> C.Type -> Either String D.Doc
 typeDoc handles = typeDocWithNative handles []
 
+-- | Bound native types replace generated ones wherever the type appears.
+-- ref:DEC-native-bindings-typed-identity
 kotlinNativeTypeDoc :: [C.DataDeclaration] -> [ResolvedTypeBinding] -> [(C.Id,String)] -> C.Type -> Either String D.Doc
 kotlinNativeTypeDoc declarations mappings parameters ty = do
   names <- namesFor declarations
@@ -114,9 +118,12 @@ typeDocWithNative handles mappings names parameters ty = case ty of
       [(name,"java.math.BigInteger") | name <-
         ["Integer","BigInt","BigUInt","UInt64","IntSize","UIntSize","UIntPtr"]]
 
+-- | Type text for one-line uses, such as a stub's signature.
 kotlinDataType :: [C.DataDeclaration] -> C.Type -> Either String String
 kotlinDataType declarations ty = D.render D.Compact <$> kotlinDataTypeDoc declarations ty
 
+-- | Types are checked against the registry before rendering, so an unknown type
+-- is a compiler error rather than uncompilable Kotlin.
 kotlinDataTypeDoc :: [C.DataDeclaration] -> C.Type -> Either String D.Doc
 kotlinDataTypeDoc declarations ty = do
   registry <- makeRegistry declarations
@@ -124,9 +131,13 @@ kotlinDataTypeDoc declarations ty = do
   names <- namesFor declarations
   typeDoc (handlesOf declarations) names [] ty
 
+-- | The 64-bit profile unless a caller states another.
+-- ref:DEC-explicit-machine-profile
 emitKotlinData :: D.Layout -> [C.DataDeclaration] -> Either String [Artifact]
 emitKotlinData = emitKotlinDataWithProfile 64
 
+-- | LawSpec data become Kotlin data classes and sealed interfaces, the shapes a
+-- Kotlin developer would write. ref:DEC-idiomatic-generated-types
 emitKotlinDataWithProfile :: Int -> D.Layout -> [C.DataDeclaration] -> Either String [Artifact]
 emitKotlinDataWithProfile bits layout declarations = do
   _ <- makeRegistry declarations
@@ -259,9 +270,12 @@ codecDocUsingOwner owner context names parameters ty = case ty of
         pure (call "schema.scalar" [quoted name, D.text "bits", D.group (native <> D.nest 4 (D.softbreak <> D.text "::class" <> D.softbreak <> D.text ".javaObjectType"))])
   _ -> Left "function fields cannot cross Kotlin codecs"
 
+-- | Codec text for one-line uses.
 kotlinCodec :: [C.DataDeclaration] -> C.Type -> Either String String
 kotlinCodec declarations ty = D.render D.Compact <$> kotlinCodecDoc declarations ty
 
+-- | Every value crossing the adapter boundary goes through a codec that checks
+-- it against its declared domain. ref:DEC-portable-exact-arithmetic
 kotlinCodecDoc :: [C.DataDeclaration] -> C.Type -> Either String D.Doc
 kotlinCodecDoc declarations ty = do
   registry <- makeRegistry declarations
@@ -269,6 +283,7 @@ kotlinCodecDoc declarations ty = do
   names <- namesFor declarations
   codecDoc names [] ty
 
+-- | As kotlinCodecDoc, where the schema comes from the caller's scope.
 kotlinCodecDocWithContext :: D.Doc -> [C.DataDeclaration] -> C.Type -> Either String D.Doc
 kotlinCodecDocWithContext context declarations ty = do
   registry <- makeRegistry declarations
@@ -276,12 +291,17 @@ kotlinCodecDocWithContext context declarations ty = do
   names <- namesFor declarations
   codecDocUsing (Just context) names [] ty
 
+-- | Codecs for generated types live in one generated object, so a test file
+-- refers to them by one name.
 emitKotlinCodecs :: D.Layout -> [C.DataDeclaration] -> Either String String
 emitKotlinCodecs = emitCodecs [] "LawSpecDataCodecs"
 
+-- | Codecs for bound native types are kept apart from generated ones, because
+-- they call the user's constructors. ref:DEC-native-bindings-typed-identity
 emitKotlinNativeCodecs :: D.Layout -> [C.DataDeclaration] -> [ResolvedTypeBinding] -> Either String String
 emitKotlinNativeCodecs layout declarations mappings = emitCodecs mappings "LawSpecNativeCodecs" layout declarations
 
+-- | As kotlinCodecDoc, for a bound native type.
 kotlinNativeCodecDoc :: [C.DataDeclaration] -> C.Type -> Either String D.Doc
 kotlinNativeCodecDoc declarations ty = do
   names <- namesFor declarations
@@ -488,9 +508,12 @@ typeVariablesIn ty = case ty of
   C.Constructor _ arguments -> concat [typeVariablesIn t | C.TypeArgument t <- arguments]
   C.Arrow a b -> typeVariablesIn a ++ typeVariablesIn b
 
+-- | The runtime validates values against a schema reference built from the type.
 kotlinTypeReference :: C.Type -> Either String String
 kotlinTypeReference ty = D.render D.Compact <$> referenceDoc [] ty
 
+-- | Values of these types need the runtime's schema to cross the adapter
+-- boundary; plain scalars do not.
 requiresSchema :: [C.DataDeclaration] -> C.Type -> Bool
 requiresSchema declarations ty = case ty of
   C.Constructor name args -> name `elem` ["List","Maybe","Either","Nullable","Optional"] ||
@@ -499,9 +522,10 @@ requiresSchema declarations ty = case ty of
   C.Arrow a b -> requiresSchema declarations a || requiresSchema declarations b
   _ -> False
 
+-- | As kotlinTypeReference, as a document.
 kotlinTypeReferenceDoc :: C.Type -> Either String D.Doc
 kotlinTypeReferenceDoc = referenceDoc []
 
--- Built-in collections and durations are Kotlin's own types, not generated ones.
+-- | Built-in collections and durations are Kotlin's own types, not generated ones.
 builtinFree :: C.DataDeclaration -> Bool
 builtinFree d = collectionContainer (C.idText (C.dataId d)) == Nothing && not (isDurationType (C.idText (C.dataId d)))

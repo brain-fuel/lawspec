@@ -1,0 +1,15 @@
+decision/rust/acceptance/resilience/rust/files/src/example/resilience.rs:
+  digest: sha256:906f0227db71ed0c
+  verdict: pending
+decision/rust/acceptance/resilience/rust/files/src/example/resilience.rs/function/compensationsFor:
+  digest: sha256:617c31c35e317216
+  verdict: pending
+decision/rust/acceptance/resilience/rust/files/src/example/resilience.rs/function/limitedAt:
+  digest: sha256:edd61e81615677e8
+  verdict: pending
+decision/rust/acceptance/resilience/rust/files/src/example/resilience.rs/function/quoteHedged:
+  digest: sha256:b7a1db271aa997d3
+  verdict: pending
+decision/rust/acceptance/resilience/rust/files/src/example/resilience.rs/function/quoteTimedOut:
+  digest: sha256:4e8af0c816e20c23
+  verdict: pending

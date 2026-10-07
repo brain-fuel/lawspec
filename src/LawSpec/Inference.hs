@@ -1,4 +1,4 @@
--- Surface type inference and contextual literal checking. This layer does not
+-- | Surface type inference and contextual literal checking. This layer does not
 -- expand laws or execute examples; elaboration consumes its typed expressions.
 module LawSpec.Inference where
 
@@ -16,20 +16,27 @@ import qualified Data.Map.Strict as M
 import qualified LawSpec.Core as Core
 import LawSpec.Core.Types (builtinDataDeclarations, makeRegistry)
 
--- Givens are branch-local facts about rigid type variables: matching a GADT
+-- | Givens are branch-local facts about rigid type variables: matching a GADT
 -- constructor that refines `a` to Int32 makes @a resolve to Int32 there.
 data CS = CS { substitutions :: M.Map String Type, counter :: Int, obligations :: [Constraint], machineBits :: Int, dataDeclarations :: [Core.DataDeclaration], givens :: M.Map String Type }
+-- | Inference starts with no substitutions or obligations, and with the machine
+-- profile, which decides the range of machine-sized literals.
+-- ref:DEC-explicit-machine-profile
 initialState :: Int -> CS
 initialState bits = CS M.empty 0 [] bits [] M.empty
 
+-- | Inference fails with one message at the first error, which is what a
+-- specification author needs; state carries the substitution and obligations.
 type C = StateT CS (Either String)
--- Only explicitly generalized declarations get fresh variables at each use.
+-- | Only explicitly generalized declarations get fresh variables at each use.
 -- Parameters and pattern binders are monomorphic, even when their types contain
 -- inference variables or arrows.
 data TypeScheme = Monomorphic Type | Universal [String] [Constraint] Type
   deriving (Eq, Show)
+-- | Names map to schemes, so generic definitions are instantiated at each use.
 type Env = M.Map String TypeScheme
 
+-- | Law parameters and quantified inputs are monomorphic.
 monoEnvironment :: [(String, Type)] -> Env
 monoEnvironment = M.fromList . map (\(name, ty) -> (name, scheme ty))
   where
@@ -39,13 +46,17 @@ monoEnvironment = M.fromList . map (\(name, ty) -> (name, scheme ty))
       [] -> Monomorphic ty
       variables -> Universal variables [] ty
 
+-- | Elaboration needs each name's type without its quantifiers.
 environmentTypes :: Env -> [(String, Type)]
 environmentTypes = map (\(name, scheme) -> (name, schemeType scheme)) . M.toList
 
+-- | The declared type, before instantiation.
 schemeType :: TypeScheme -> Type
 schemeType (Monomorphic ty) = ty
 schemeType (Universal _ _ ty) = ty
 
+-- | A definition is generalised over the variables its signature mentions, in
+-- order of appearance, so instantiation is predictable.
 typeVariables :: Type -> [String]
 typeVariables ty = nub $ case baseType ty of
   Variable name -> [name]
@@ -54,16 +65,22 @@ typeVariables ty = nub $ case baseType ty of
   Application _ arguments -> concatMap typeVariables arguments
   _ -> []
 
+-- | A definition is checked against the curried type its arguments and result
+-- spell out.
 definitionType :: FunctionDefinition -> Type
 definitionType definition = foldr Arrow (functionResult definition)
   (map snd (functionArguments definition))
 
+-- | Checked definitions are generic and adapters are not: an adapter is
+-- implemented once per target at one type. ref:DEC-adapter-ownership
 definitionEnvironment :: Unit -> Env
 definitionEnvironment unit = M.union
   (M.fromList [(functionName definition, Universal (typeVariables (definitionType definition))
     (functionRequirements definition) (definitionType definition)) | definition <- functionDefinitions unit])
   (monoEnvironment (functions unit))
 
+-- | Each use of a generic definition gets fresh variables and owes its
+-- capability requirements again, so one use cannot constrain another.
 instantiate :: TypeScheme -> C Type
 instantiate (Monomorphic ty) = pure (baseType ty)
 instantiate (Universal variables constraints ty) = do
@@ -76,14 +93,20 @@ instantiate (Universal variables constraints ty) = do
         _ -> value) (mapExprTypes replace)
   mapM_ (\(Capability name target) -> require name (replace target)) constraints
   pure (baseType (replace ty))
+-- | Inference errors are ordinary failures of the state's Either.
 throwC :: String -> C a
 throwC = lift . Left
+-- | Errors deep in an expression are prefixed with where they occurred.
 withContext :: String -> C a -> C a
 withContext prefix action = StateT $ \s -> case runStateT action s of
   Left err -> Left (prefix ++ err)
   Right result -> Right result
+-- | Variable names come from one counter, so they never collide within a check.
 fresh :: C String
 fresh = do s <- get; put s{counter=counter s+1}; pure (show (counter s))
+-- | Given equations from a GADT match are consulted as well as the
+-- substitution, so a refined variable resolves inside its branch.
+-- ref:DEC-gadts-and-index-arithmetic
 resolve :: Type -> C Type
 resolve (Variable n) = gets (M.lookup n . substitutions) >>= maybe (pure (Variable n)) resolve
 resolve (Named ('@':n)) = gets (M.lookup n . givens) >>= maybe (pure (Named ('@':n))) resolve
@@ -91,12 +114,15 @@ resolve (Arrow a b) = Arrow <$> resolve a <*> resolve b
 resolve (Applied n t) = Applied n <$> resolve t
 resolve (Application n ts) = Application n <$> mapM resolve ts
 resolve t = pure (baseType t)
+-- | Binding a variable to a type that contains it would make an infinite type.
 occurs :: String -> Type -> Bool
 occurs n (Variable m) = n == m
 occurs n (Arrow a b) = occurs n a || occurs n b
 occurs n (Applied _ t) = occurs n t
 occurs n (Application _ ts) = any (occurs n) ts
 occurs _ _ = False
+-- | First-order unification is enough: LawSpec has no higher-rank types, so
+-- every law can be inferred without annotations beyond its signatures.
 unify :: Type -> Type -> C ()
 unify a b = do
   x <- resolve a; y <- resolve b
@@ -110,6 +136,8 @@ unify a b = do
     _ -> throwC ("type mismatch: " ++ prettyType x ++ " and " ++ prettyType y)
   where bind n t | occurs n t = throwC "infinite type"
                  | otherwise = modify (\s -> s{substitutions=M.insert n t (substitutions s)})
+-- | Types are inferred bottom up where literals do not need their context, so a
+-- law reads without annotations. ref:DEC-readable-notation
 infer :: Env -> Expr -> C Type
 infer env (Located _ e) = infer env e
 infer env (Var n) = maybe (throwC ("unknown value: " ++ n)) instantiate (M.lookup n env)
@@ -255,11 +283,13 @@ infer env (Compose f g) = do
   a <- Variable . ("a:"++) <$> fresh; b <- Variable . ("b:"++) <$> fresh; c <- Variable . ("c:"++) <$> fresh
   ft <- infer env f; gt <- infer env g
   unify ft (Arrow b c); unify gt (Arrow a b); pure (Arrow a c)
+-- | A literal value's type is its declared scalar type; an absent optional
+-- value's element type is left to inference.
 scalarType :: Scalar -> C Type
 scalarType (SPresent n (Just v)) = Applied n <$> scalarType v
 scalarType (SPresent n Nothing) = Applied n . Variable . ("presence:" ++) <$> fresh
 scalarType s = pure (Named (scalarName s))
--- Check an application against an expected type: the function's result
+-- | Check an application against an expected type: the function's result
 -- first, then its other arguments, then its numeric literals.
 checkApplication :: Env -> Type -> Expr -> C Type
 checkApplication env expected e = do
@@ -281,6 +311,8 @@ checkApplication env expected e = do
     arrows n (Arrow a b) = (\(as, r) -> (a : as, r)) <$> arrows (n - 1 :: Int) b
     arrows _ _ = Nothing
 
+-- | A numeric literal takes its type from its context, as 1 is an Int8 or a
+-- Float64 where one is expected.
 numericLiteral :: Expr -> Bool
 numericLiteral e = case e of
   Located _ inner -> numericLiteral inner
@@ -289,10 +321,15 @@ numericLiteral e = case e of
   Unary "-" inner -> numericLiteral inner
   _ -> False
 
+-- | Calls are checked against the function's whole signature, so the result type
+-- can type literal arguments.
 application :: Expr -> (Expr,[Expr])
 application (Located _ e) = application e
 application (Apply f x) = let (n,args) = application f in (n,args ++ [x])
 application e = (e,[])
+-- | Checking against an expected type lets literals and constructors take their
+-- type from context; a computed exact value bridges through a checked
+-- conversion at run time. ref:DEC-portable-exact-arithmetic
 checkExpr :: Env -> Type -> Expr -> C ()
 checkExpr env expected (Located _ e) = checkExpr env expected e
 checkExpr env expected e = do
@@ -323,7 +360,7 @@ checkExpr env expected e = do
       actual <- infer env e
       checkInferred t e actual
 
--- Check the type already inferred for this occurrence. Re-inferring a universal
+-- | Check the type already inferred for this occurrence. Re-inferring a universal
 -- value here would create a different instantiation and lose its constraints.
 checkInferred :: Type -> Expr -> Type -> C ()
 checkInferred expected e inferred = do
@@ -334,6 +371,7 @@ checkInferred expected e inferred = do
     -- Computed exact results use a checked adapter bridge at execution time.
     (Named n,Named m) | isExact n && m `elem` ["Integer","BigInt","Decimal","Rational"], not (isLiteral e) -> pure ()
     _ -> unify t actual
+-- | Only literals take their type from context; computed values keep theirs.
 isLiteral :: Expr -> Bool
 isLiteral (Located _ e) = isLiteral e
 isLiteral (Number _) = True
@@ -344,6 +382,8 @@ isLiteral (BoolLit _) = True
 isLiteral (ListLit _) = True
 isLiteral (ConstructLit _ _) = True
 isLiteral _ = False
+-- | Each operand may type the other's literal, so 0.5 * x is Float32 when x is,
+-- without a conversion the author did not write.
 operandTypes :: Env -> Expr -> Expr -> C (Type,Type)
 operandTypes env a b = do
   initialA <- infer env a
@@ -360,6 +400,8 @@ operandTypes env a b = do
   at' <- contextual bt a at
   bt' <- contextual at b bt
   pure (at',bt')
+-- | The prelude's built-in operations have types that ordinary signatures cannot
+-- state, such as checked's, so they are typed here.
 builtin :: Env -> String -> [Expr] -> C Type
 builtin env n args
   | n == "checked", [a] <- args = do
@@ -488,14 +530,17 @@ builtin env n args
         _ -> unless (case t of Named name -> isNumeric name; _ -> False) (throwC "numeric conversion requires a numeric operand")
       pure (Named n)
   | otherwise = throwC ("unknown helper or wrong arity: prelude." ++ n)
--- The IR resolves every operation and the expected type of every adapter argument.
+-- | The IR resolves every operation and the expected type of every adapter argument.
 typedExpression :: Int -> [(String,Type)] -> Expr -> Either String TypedExpr
 typedExpression = typedExpressionWithData []
 
+-- | User data types are known when typing an expression that constructs them.
 typedExpressionWithData :: [Core.DataDeclaration] -> Int -> [(String,Type)] -> Expr -> Either String TypedExpr
 typedExpressionWithData declarations bits env expression =
   fst <$> typedExpressionWithSchemes declarations bits (monoEnvironment env) expression
 
+-- | Elaboration needs both the typed tree and the capabilities it requires, so
+-- the obligations are returned rather than discharged here.
 typedExpressionWithSchemes :: [Core.DataDeclaration] -> Int -> Env -> Expr -> Either String (TypedExpr, [Constraint])
 typedExpressionWithSchemes declarations bits env e = do
   _ <- makeRegistry declarations
@@ -640,9 +685,13 @@ typedExpressionWithSchemes declarations bits env e = do
         TypedCase tag fields' <$> resolveTree body) cases
       pure (TypedExpr ty' expression operands' conversion' cases')
 
+-- | Capabilities such as Eq a are collected as obligations and discharged once
+-- every type is known.
 require :: String -> Type -> C ()
 require n t = modify (\s -> s{obligations=Capability n t:obligations s})
 
+-- | Composition is turned into application before typing, so f . g and f (g x)
+-- are checked and emitted alike.
 normal :: Expr -> Expr
 normal (Located range e) = Located range (normal e)
 normal (ConstructLit name fields) = ConstructLit name (map normal fields)
@@ -659,9 +708,11 @@ normal (Annotate a t) = Annotate (normal a) t
 normal e = e
 
 
+-- | Comparisons take two operands of one type and yield Bool.
 comparison :: String -> Bool
 comparison op = op `elem` ["<","<=",">",">=","==","!="]
 
+-- | A floating context may type a numeric literal written without a fraction.
 contextualNumber :: Expr -> Bool
 contextualNumber (Located _ e) = contextualNumber e
 contextualNumber (Number _) = True
@@ -669,19 +720,20 @@ contextualNumber (DecimalNumber _ _) = True
 contextualNumber _ = False
 
 
--- Instantiate constructor parameters freshly on every use. Shapes come from the
+-- | Instantiate constructor parameters freshly on every use. Shapes come from the
 -- same built-in declarations that Core validates and the evaluator consumes.
 constructorSignature :: String -> C ([Type], Type)
 constructorSignature name = do
   declarations <- gets ((builtinDataDeclarations ++) . dataDeclarations)
   instantiateConstructor name declarations
 
+-- | Most uses need only a constructor's fields and result.
 instantiateConstructor :: String -> [Core.DataDeclaration] -> C ([Type], Type)
 instantiateConstructor name declarations = do
   shape <- instantiateShape name declarations
   pure (shapeFields shape, shapeResult shape)
 
--- A fresh instance of a constructor: its fields and result over fresh
+-- | A fresh instance of a constructor: its fields and result over fresh
 -- variables for the declaration's parameters and the constructor's
 -- existentials. A GADT constructor's result applies its equations.
 data ConstructorShape = ConstructorShape
@@ -691,6 +743,9 @@ data ConstructorShape = ConstructorShape
   -- Existentials no refinement mentions: only a value says what they are.
   , shapeFieldOnly :: [String] }
 
+-- | Constructors are read from the same declarations Core validates, so
+-- inference and Core cannot disagree about a constructor's shape.
+-- ref:DEC-typed-core-boundary
 instantiateShape :: String -> [Core.DataDeclaration] -> C ConstructorShape
 instantiateShape name declarations = case
   [(declaration, constructor) | declaration <- declarations,
@@ -723,12 +778,15 @@ instantiateShape name declarations = case
     applyType name [argument] = Applied name argument
     applyType name arguments = Application name arguments
 
+-- | An existential that no equation mentions is fixed only by a value.
 coreVariables :: Core.Type -> [Core.Id]
 coreVariables ty = case ty of
   Core.TypeVariable v -> [v]
   Core.Constructor _ arguments -> concat [coreVariables t | Core.TypeArgument t <- arguments]
   Core.Arrow a b -> coreVariables a ++ coreVariables b
 
+-- | Facts learned in a GADT branch hold only in that branch.
+-- ref:DEC-gadts-and-index-arithmetic
 withGivens :: M.Map String Type -> C a -> C a
 withGivens local action
   | M.null local = action
@@ -739,12 +797,14 @@ withGivens local action
       modify (\s -> s{givens = saved})
       pure result
 
+-- | Some checks try one reading and fall back to another without keeping the
+-- failed attempt's substitutions.
 tryC :: C a -> C (Either String a)
 tryC action = StateT $ \s -> case runStateT action s of
   Left message -> Right (Left message, s)
   Right (value, s') -> Right (Right value, s')
 
--- Matching a constructor against a scrutinee type: Nothing when the
+-- | Matching a constructor against a scrutinee type: Nothing when the
 -- constructor cannot build that type (the branch is inaccessible); otherwise
 -- its field types and the givens its equations add for rigid variables.
 -- Existentials the scrutinee does not determine become rigid in the branch.
@@ -783,7 +843,7 @@ matchConstructor scrutinee tag = do
     Left message | "refines a type the context does not know" `isInfixOf` message -> throwC message
                  | otherwise -> pure Nothing
 
--- Unify a constructor's refinement with the scrutinee's argument; a rigid
+-- | Unify a constructor's refinement with the scrutinee's argument; a rigid
 -- variable met on either side is refined (a given) rather than unified.
 refineTypes :: Type -> Type -> C (M.Map String Type)
 refineTypes x y = do
@@ -807,6 +867,8 @@ refineTypes x y = do
       modify (\s -> s{givens = M.insert n t (givens s)})
       pure (M.singleton n t)
 
+-- | The constructor's variables are bound to the caller's types, not the
+-- reverse, so Core binders keep the declared parameter identities.
 constructorParameters :: Type -> String -> C [Type]
 constructorParameters target name = do
   declarations <- gets ((builtinDataDeclarations ++) . dataDeclarations)
@@ -819,7 +881,7 @@ constructorParameters target name = do
   unify result target
   mapM resolve parameters
 
--- Opposite sum constructors supply complementary type information. Infer both
+-- | Opposite sum constructors supply complementary type information. Infer both
 -- in one substitution scope before assigning contextual types to either term.
 structuralLiteral :: Expr -> Bool
 structuralLiteral expression = case unlocated expression of
@@ -827,6 +889,8 @@ structuralLiteral expression = case unlocated expression of
   ListLit _ -> True
   _ -> False
 
+-- | Opposite sum constructors, such as Left 1 and Right "a", each supply half of
+-- the type, so both are inferred in one scope before either is annotated.
 jointStructuralContext :: Env -> Expr -> Expr -> C (Expr, Expr)
 jointStructuralContext env a b
   | structuralLiteral a && structuralLiteral b = do
@@ -837,14 +901,16 @@ jointStructuralContext env a b
       pure (Annotate a context, Annotate b context)
   | otherwise = pure (a,b)
 
+-- | As jointStructuralContext, for callers outside inference.
 contextualizeStructural :: Int -> [(String,Type)] -> Expr -> Expr -> Either String (Expr, Expr)
 contextualizeStructural = contextualizeStructuralWithData []
 
+-- | As contextualizeStructural, knowing the user's data types.
 contextualizeStructuralWithData :: [Core.DataDeclaration] -> Int -> [(String,Type)] -> Expr -> Expr -> Either String (Expr, Expr)
 contextualizeStructuralWithData declarations bits env a b =
   evalStateT (jointStructuralContext (monoEnvironment env) a b) ((initialState bits){dataDeclarations=declarations})
 
--- Constructor coverage is checked while resolving branch environments and is
+-- | Constructor coverage is checked while resolving branch environments and is
 -- checked again independently at the Core boundary. Each branch is Nothing when
 -- its GADT constructor cannot build the scrutinee's type, or its scope and the
 -- givens it adds.
@@ -898,7 +964,7 @@ matchWildcard ty tags = do
     found <- matchConstructor resolved (Core.idText (Core.constructorId c))
     pure [(Core.idText (Core.constructorId c), fields) | Just (fields, _) <- [found]]
 
--- Payload callbacks are scoped over declared type arguments, never over fixed
+-- | Payload callbacks are scoped over declared type arguments, never over fixed
 -- fields whose concrete types happen to coincide with an argument.
 payloadArguments :: Type -> C [Type]
 payloadArguments ty = do
@@ -915,6 +981,6 @@ payloadArguments ty = do
   unless (count == length arguments) (throwC "payload data type arity mismatch")
   pure arguments
 
--- A collections-unit type's short name.
+-- | A collections-unit type's short name.
 collectionName :: String -> Maybe String
 collectionName n = stripPrefix (collectionsUnit ++ "::type::") n

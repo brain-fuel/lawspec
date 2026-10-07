@@ -1,0 +1,12 @@
+decision/rust/acceptance/workflows/rust/files/src/example/workflows.rs:
+  digest: sha256:7e4c5c06f4821f5b
+  verdict: pending
+decision/rust/acceptance/workflows/rust/files/src/example/workflows.rs/function/checkCredit:
+  digest: sha256:8a05c5820d8fd157
+  verdict: pending
+decision/rust/acceptance/workflows/rust/files/src/example/workflows.rs/function/checkStock:
+  digest: sha256:7c615bb72a4501a9
+  verdict: pending
+decision/rust/acceptance/workflows/rust/files/src/example/workflows.rs/struct/Sleep:
+  digest: sha256:19dae93d8f1ad9ec
+  verdict: pending

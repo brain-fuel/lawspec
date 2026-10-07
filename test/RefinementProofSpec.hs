@@ -1,4 +1,5 @@
-module RefinementProofSpec (spec) where
+-- | Exact implication between refinements.
+module RefinementProofSpec (test_refinementImplicationIsDecidedExactly) where
 
 import Test.Hspec
 import Control.Monad (forM_)
@@ -15,8 +16,12 @@ zero = constant 0
 check :: [Predicate] -> Predicate -> Verdict
 check = prove 100000
 
-spec :: Spec
-spec = describe "exact refinement implication" $ do
+-- | A proof that a narrowing is safe is only as good as its arithmetic, so
+-- implication must be decided with exact numbers and never invent a fact from
+-- a contradiction. ref:DEC-portable-exact-arithmetic
+-- ref:REQ-exact-refinement-proofs
+test_refinementImplicationIsDecidedExactly :: Spec
+test_refinementImplicationIsDecidedExactly = describe "exact refinement implication" $ do
   it "normalizes exact arithmetic without ambient rounding" $ do
     check [] (Compare EqualTo (plus (constant (1 % 10)) (constant (1 % 5)))
       (constant (3 % 10))) `shouldBe` Proven

@@ -1,3 +1,8 @@
+---
+id: lawspec.reference.language.host
+kind: reference
+title: Files, environment and ports
+---
 # Files, environment and ports
 
 `lawspec.host` has three abilities for the machine a program runs on:

@@ -1,0 +1,12 @@
+decision/kotlin/runtime/LawSpecKotlinStrategies.kt/object/LawSpecKotlinStrategies:
+  digest: sha256:f2d9bf87c5820b3e
+  verdict: pending
+decision/kotlin/runtime/LawSpecKotlinStrategies.kt/object/LawSpecKotlinStrategies/class/IndexTerm:
+  digest: sha256:d661aca0f30b8668
+  verdict: pending
+decision/kotlin/runtime/LawSpecKotlinStrategies.kt/object/LawSpecKotlinStrategies/class/IndexTerm/function/evaluate:
+  digest: sha256:825f3c72318cb2b2
+  verdict: pending
+decision/kotlin/runtime/LawSpecKotlinStrategies.kt/object/LawSpecKotlinStrategies/function/indexedGenerator:
+  digest: sha256:0fb34c0c14a32a3b
+  verdict: pending

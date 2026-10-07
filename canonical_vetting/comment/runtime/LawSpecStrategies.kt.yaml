@@ -1,0 +1,12 @@
+decision/kotlin/runtime/LawSpecStrategies.kt:
+  digest: sha256:f64e3d503e3c3ab4
+  verdict: pending
+decision/kotlin/runtime/LawSpecStrategies.kt/function/lawspecChoice:
+  digest: sha256:526fe58211e4e222
+  verdict: pending
+decision/kotlin/runtime/LawSpecStrategies.kt/function/lawspecFlatMap:
+  digest: sha256:8080996ca2c2d5f8
+  verdict: pending
+decision/kotlin/runtime/LawSpecStrategies.kt/function/lawspecList:
+  digest: sha256:ad7eed47c63c8915
+  verdict: pending

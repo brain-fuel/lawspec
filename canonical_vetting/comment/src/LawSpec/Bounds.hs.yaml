@@ -1,0 +1,9 @@
+decision/haskell/src/LawSpec/Bounds.hs/module/LawSpec.Bounds:
+  digest: sha256:5b5397d68639fa44
+  verdict: pending
+decision/haskell/src/LawSpec/Bounds.hs/module/LawSpec.Bounds/function/bounds:
+  digest: sha256:d0ce9819af8dadbd
+  verdict: pending
+decision/haskell/src/LawSpec/Bounds.hs/module/LawSpec.Bounds/function/inputRange:
+  digest: sha256:99a4b6c2aca9563f
+  verdict: pending

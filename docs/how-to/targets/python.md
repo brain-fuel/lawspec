@@ -1,3 +1,8 @@
+---
+id: lawspec.how-to.targets.python
+kind: how-to
+title: Set up Python
+---
 # Set up Python
 
 ## Requirements

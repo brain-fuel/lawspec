@@ -1,0 +1,15 @@
+decision/haskell/src/LawSpec/Remote.hs/module/LawSpec.Remote:
+  digest: sha256:39c6d6f6ff129618
+  verdict: pending
+decision/haskell/src/LawSpec/Remote.hs/module/LawSpec.Remote/data/Remote:
+  digest: sha256:10183d05c578d31b
+  verdict: pending
+decision/haskell/src/LawSpec/Remote.hs/module/LawSpec.Remote/function/haskellRemote:
+  digest: sha256:8225c3b511254318
+  verdict: pending
+decision/haskell/src/LawSpec/Remote.hs/module/LawSpec.Remote/function/remoteArtifacts:
+  digest: sha256:6f07e4e34cad0a78
+  verdict: pending
+decision/haskell/src/LawSpec/Remote.hs/module/LawSpec.Remote/function/remoteManifest:
+  digest: sha256:12d436c4d9435a23
+  verdict: pending

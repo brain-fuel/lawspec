@@ -1,4 +1,5 @@
-module CoreSpec (spec) where
+-- | The typed Core boundary every emitter consumes.
+module CoreSpec (test_typedCoreIsValidatedIndependentlyOfInference) where
 import Test.Hspec
 import LawSpec.Common
 import LawSpec.Scalar
@@ -11,8 +12,12 @@ import qualified LawSpec.Model as S
 import Data.Either (isLeft)
 import qualified Data.Map.Strict as M
 
-spec :: Spec
-spec = describe "typed core boundary" $ do
+-- | Eight emitters trust Core alone, so Core must carry its evidence explicitly
+-- and be re-checked by a validator that shares nothing with inference; an
+-- inference bug then cannot reach generated code. ref:DEC-typed-core-boundary
+-- ref:REQ-typed-core-boundary
+test_typedCoreIsValidatedIndependentlyOfInference :: Spec
+test_typedCoreIsValidatedIndependentlyOfInference = describe "typed core boundary" $ do
   it "preserves IEEE special values when converting host float precision" $ do
     floatValue (SFloat "Float32" "7fc00000") `shouldSatisfy` isNaN
     floatValue (SFloat "Float32" "7f800000") `shouldBe` (1 / 0)

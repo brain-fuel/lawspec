@@ -1,5 +1,9 @@
+-- | The prelude laws are written in LawSpec itself, so the algebraic laws users
+-- cite are checked by the same compiler as their own.
 module LawSpec.Prelude (preludeSource) where
 import LawSpec.Model
+-- | Compiled into every program as the unit prelude, so `left inverse`,
+-- `idempotent` and the other named laws need no import.
 preludeSource :: Source
 preludeSource = Source "<prelude>" $ unlines
   [ "unit prelude"

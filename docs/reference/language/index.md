@@ -1,3 +1,8 @@
+---
+id: lawspec.reference.language.index
+kind: reference
+title: Language reference
+---
 # Language reference
 
 A LawSpec source file declares one unit: its imports, function signatures, data

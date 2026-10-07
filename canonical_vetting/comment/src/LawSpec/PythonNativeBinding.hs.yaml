@@ -1,0 +1,9 @@
+decision/haskell/src/LawSpec/PythonNativeBinding.hs/module/LawSpec.PythonNativeBinding:
+  digest: sha256:a63e45d546faf9c2
+  verdict: pending
+decision/haskell/src/LawSpec/PythonNativeBinding.hs/module/LawSpec.PythonNativeBinding/function/emitBindings:
+  digest: sha256:f4b90dd540b45106
+  verdict: pending
+decision/haskell/src/LawSpec/PythonNativeBinding.hs/module/LawSpec.PythonNativeBinding/function/generatorStubs:
+  digest: sha256:0becca429a47f5e2
+  verdict: pending

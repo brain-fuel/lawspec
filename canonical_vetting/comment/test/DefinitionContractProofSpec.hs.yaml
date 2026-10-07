@@ -1,0 +1,6 @@
+decision/haskell/test/DefinitionContractProofSpec.hs/module/DefinitionContractProofSpec:
+  digest: sha256:08a53ec97d91f2ad
+  verdict: pending
+decision/haskell/test/DefinitionContractProofSpec.hs/module/DefinitionContractProofSpec/function/test_refinedDefinitionsAreAdmittedOnlyWithProvedContracts:
+  digest: sha256:5f1934fb214158ed
+  verdict: pending

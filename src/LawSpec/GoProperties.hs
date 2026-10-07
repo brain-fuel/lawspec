@@ -1,4 +1,4 @@
--- Go test scaffolding consumes checked propositions and generation plans.
+-- | Go test scaffolding consumes checked propositions and generation plans.
 module LawSpec.GoProperties (Config(..), emitTests) where
 
 import LawSpec.Bounds (inputRange)
@@ -13,6 +13,8 @@ import qualified LawSpec.GoExpr as E
 import qualified LawSpec.GoTestHelpers as Helpers
 import Data.List (intercalate, stripPrefix)
 
+-- | What the Go test emitter needs besides the plan: names, layout and
+-- bindings, gathered so the emitter takes one argument.
 data Config = Config
   { packageName :: String
   -- An async adapter's call, awaited.
@@ -61,6 +63,8 @@ symbols = statements [text "symbols := map[string]*lawSpecSymbol{}",text "_ = sy
 fromValues xs = statements [assign (inputId input) (text ("_values[" ++ show index ++ "]")) |
   (index,input) <- zip [0::Int ..] xs]
 
+-- | Laws become tests in Go's own property framework, so they run with the
+-- tools the project already uses. ref:DEC-native-property-frameworks
 emitTests :: Config -> Unit -> [Expanded] -> Either [Diagnostic] D.Doc
 emitTests Config{..} unit laws = do
   let testNames = unitTestNames "go" (map name laws)

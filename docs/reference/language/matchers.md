@@ -1,3 +1,8 @@
+---
+id: lawspec.reference.language.matchers
+kind: reference
+title: Matchers
+---
 # Matchers
 
 A matcher is a typed predicate that reads like a sentence:

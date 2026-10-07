@@ -1,0 +1,21 @@
+decision/haskell/dev/Generate.hs/module/Generate:
+  digest: sha256:b1e5e2a2c28ac67d
+  verdict: pending
+decision/haskell/dev/Generate.hs/module/Generate/function/copiedDocuments:
+  digest: sha256:4079de7fdde49020
+  verdict: pending
+decision/haskell/dev/Generate.hs/module/Generate/function/factFills:
+  digest: sha256:3f0806045f83f5e0
+  verdict: pending
+decision/haskell/dev/Generate.hs/module/Generate/function/shippedFiles:
+  digest: sha256:d43d34deb0372011
+  verdict: pending
+decision/haskell/dev/Generate.hs/module/Generate/function/strayScripts:
+  digest: sha256:23bf0916c2f9ab5c
+  verdict: pending
+decision/haskell/dev/Generate.hs/module/Generate/function/versionedFiles:
+  digest: sha256:60945eeeee34066e
+  verdict: pending
+decision/haskell/dev/Generate.hs/module/Generate/function/withHeader:
+  digest: sha256:dd5a6e2e39d92382
+  verdict: pending

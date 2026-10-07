@@ -1,0 +1,9 @@
+decision/haskell/test/ImportSpec.hs/module/ImportSpec:
+  digest: sha256:34d9c384a6a66f0e
+  verdict: pending
+decision/haskell/test/ImportSpec.hs/module/ImportSpec/function/request:
+  digest: sha256:9b3048e001cb9272
+  verdict: pending
+decision/haskell/test/ImportSpec.hs/module/ImportSpec/function/test_importsResolveAcrossUnitsWithoutLeakingAdapters:
+  digest: sha256:a4a637994993efaf
+  verdict: pending

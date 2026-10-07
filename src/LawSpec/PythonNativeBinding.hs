@@ -1,4 +1,4 @@
--- Checked application bridges reuse the framework-independent Python schema.
+-- | Checked application bridges reuse the framework-independent Python schema.
 module LawSpec.PythonNativeBinding (emitBindings) where
 
 import Control.Monad (forM, unless)
@@ -17,6 +17,8 @@ import qualified LawSpec.CoreScalarEmit as Scalar
 import LawSpec.RuntimeSources (runtimeSource)
 import qualified LawSpec.Code.Doc as D
 
+-- | Bound adapters call the user's Python code directly, through generated
+-- conversions. ref:DEC-native-bindings-typed-identity
 emitBindings :: Bool -> BindingPlan -> Plan -> [Artifact] -> Either String [Artifact]
 emitBindings minify bindings plan files = do
   unless (bindingRustCrate bindings == Nothing)
@@ -190,7 +192,7 @@ emitBindings minify bindings plan files = do
     layout = D.selectLayout minify (D.Pretty 79)
     render doc = D.render layout (doc <> D.hardline)
 
--- A scaffold is an application factory, not a second generator implementation.
+-- | A scaffold is an application factory, not a second generator implementation.
 -- Keep it readable even when generated support is compact, and let the shared
 -- file planner preserve it and report changes to its required signature.
 generatorStubs :: [ResolvedGeneratorBinding] -> [ResolvedTypeBinding] -> [NativeRef] -> [Artifact] -> Either String [Artifact]

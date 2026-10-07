@@ -1,4 +1,9 @@
-// Structural validation is independent of property-testing frameworks.
+// Structural validation for Go, independent of property-testing frameworks.
+//
+// Generated data types are described once, as Core schemas, and every value
+// crossing between a law and native code is validated against them, so an
+// adapter cannot hand a law a value outside its declared type.
+// ref:DEC-typed-core-boundary ref:DEC-native-bindings-typed-identity
 package RUNTIME_PACKAGE
 
 import (

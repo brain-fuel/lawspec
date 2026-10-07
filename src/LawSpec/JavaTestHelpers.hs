@@ -1,4 +1,4 @@
--- Framework-specific Java generators downstream of checked Core.
+-- | Framework-specific Java generators downstream of checked Core.
 module LawSpec.JavaTestHelpers (generatorDoc, generatorDocWithin, scalarHelpersDoc, dataHelpersDoc) where
 
 import qualified LawSpec.Core as C
@@ -24,13 +24,13 @@ lambda parameter body = D.group (text (parameter ++ " ->") <> D.nest 4 (D.softli
 mapped source parameter body = method source "map" [lambda parameter body]
 custom env body = call "Generator.from" [D.multiline (text (env ++ " -> ") <> block (statements body))]
 
--- Byte magnitude/sign choices and collection combinators deliberately retain
+-- | Byte magnitude/sign choices and collection combinators deliberately retain
 -- the native JetCheck generation tree and its shrinker.
 generatorDoc :: Int -> Integer -> String -> (C.Type -> Bool) -> (C.Type -> D.Doc)
   -> (C.Type -> String) -> C.Type -> D.Doc
 generatorDoc bits budget className structural reference key = generatorDocBounded (integerBounds bits) bits budget className structural reference key
 
--- The generator, with a top-level integer drawn from a refinement's range.
+-- | The generator, with a top-level integer drawn from a refinement's range.
 generatorDocWithin :: Maybe (Integer, Integer) -> Int -> Integer -> String -> (C.Type -> Bool) -> (C.Type -> D.Doc)
   -> (C.Type -> String) -> C.Type -> D.Doc
 generatorDocWithin within bits budget className structural reference key ty = generatorDocBounded boundsOf bits budget className structural reference key ty
@@ -148,10 +148,14 @@ assertionDoc bits structural =
        else runtime "equal" [text "a",text "b"],text "() -> context + \" | actual=\" + a + \" expected=\" + b + LawSpecRuntime.difference(a, b)"])]) <>
     text " catch (RuntimeException error) " <> block (text "throw new AssertionError(context, error);"))
 
+-- | Scalar conversions are emitted once per test module rather than at every
+-- use.
 scalarHelpersDoc :: D.Doc
 scalarHelpersDoc = text "private record _LawSpecInputs(java.util.List<Value> values, Map<String, Object> symbols) {}" <>
   D.hardline <> D.hardline <> assertionDoc 64 False
 
+-- | Data values are built and compared through helpers emitted once per test
+-- module rather than at every use.
 dataHelpersDoc :: Int -> (C.Type -> D.Doc) -> D.Doc
 dataHelpersDoc bits generator =
   text "private static Generator<Value> _lawspecScalarGenerator(String type) " <>

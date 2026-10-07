@@ -1,4 +1,4 @@
--- Closed execution of validated total definitions. The returned function has
+-- | Closed execution of validated total definitions. The returned function has
 -- no adapter hook, so a definition cannot acquire effects during evaluation.
 module LawSpec.Core.Definitions (prepareDefinitions, prepareResolvingDefinitions, prepareHookedDefinitions) where
 
@@ -13,6 +13,9 @@ import LawSpec.Core.DefinitionContracts (definitionContracts)
 import LawSpec.Scalar (Scalar(..))
 import LawSpec.Core.Value (Value(..))
 
+-- | The compiler runs checked definitions itself, to evaluate examples and
+-- finite domains, and the returned function cannot call an adapter.
+-- ref:DEC-total-definitions
 prepareDefinitions :: Program -> Either [Diagnostic] (Id -> [Value] -> Either String Value)
 prepareDefinitions program = ($ const Nothing) <$> prepareResolvingDefinitions program
 

@@ -1,4 +1,4 @@
--- Native names for user-chosen identifiers. A name that is a keyword of the
+-- | Native names for user-chosen identifiers. A name that is a keyword of the
 -- target language is emitted with a leading underscore, so a definition or
 -- adapter called `short` is `_short` in Java and `short` elsewhere. The
 -- declaration's identity is unchanged; only its native spelling differs.
@@ -6,7 +6,7 @@ module LawSpec.TargetNames (targetKeywords, nativeName, allTargetKeywords) where
 
 import Data.List (nub)
 
--- Words the target's grammar reserves in the positions LawSpec emits
+-- | Words the target's grammar reserves in the positions LawSpec emits
 -- user-chosen function names. Go exports names by capitalizing them, and its
 -- keywords are lowercase, so no Go name needs escaping.
 targetKeywords :: String -> [String]
@@ -22,10 +22,15 @@ targetKeywords target = case target of
   where
     web = words "await break case catch class const continue debugger default delete do else enum export extends false finally for function if implements import in instanceof interface let new null package private protected public return static super switch this throw true try typeof var void while with yield"
 
+-- | A keyword gets a leading underscore, which every target accepts in an
+-- identifier, while messages keep the declared name.
 nativeName :: String -> String -> String
 nativeName target name
   | name `elem` targetKeywords target = '_' : name
   | otherwise = name
 
+-- | A name that is a keyword anywhere is escaped everywhere it matters, so one
+-- specification produces valid code for every target.
+-- ref:DEC-idiomatic-generated-types
 allTargetKeywords :: [String]
 allTargetKeywords = nub (concatMap targetKeywords ["python","javascript","java","kotlin","rust","haskell"])

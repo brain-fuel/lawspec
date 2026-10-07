@@ -1,0 +1,42 @@
+decision/haskell/src/LawSpec/CoreEmit.hs/module/LawSpec.CoreEmit:
+  digest: sha256:3063bf682787696c
+  verdict: pending
+decision/haskell/src/LawSpec/CoreEmit.hs/module/LawSpec.CoreEmit/function/companionArtifacts:
+  digest: sha256:96f48be5130ac04e
+  verdict: pending
+decision/haskell/src/LawSpec/CoreEmit.hs/module/LawSpec.CoreEmit/function/emitPlan:
+  digest: sha256:c1f9dd244e210823
+  verdict: pending
+decision/haskell/src/LawSpec/CoreEmit.hs/module/LawSpec.CoreEmit/function/emitPlanWithFormat:
+  digest: sha256:e1178ed45783cdcb
+  verdict: pending
+decision/haskell/src/LawSpec/CoreEmit.hs/module/LawSpec.CoreEmit/function/emitPlanWithLayout:
+  digest: sha256:1c574e53f71d895c
+  verdict: pending
+decision/haskell/src/LawSpec/CoreEmit.hs/module/LawSpec.CoreEmit/function/emitPlanWithNativeOptions:
+  digest: sha256:e121a93d5d98cd82
+  verdict: pending
+decision/haskell/src/LawSpec/CoreEmit.hs/module/LawSpec.CoreEmit/function/emitPlanWithOptions:
+  digest: sha256:197402862f3dbf32
+  verdict: pending
+decision/haskell/src/LawSpec/CoreEmit.hs/module/LawSpec.CoreEmit/function/emitTable:
+  digest: sha256:788ae22a128b4a5f
+  verdict: pending
+decision/haskell/src/LawSpec/CoreEmit.hs/module/LawSpec.CoreEmit/function/escapePlan:
+  digest: sha256:a62563fc8e19e7c5
+  verdict: pending
+decision/haskell/src/LawSpec/CoreEmit.hs/module/LawSpec.CoreEmit/function/nativeHandles:
+  digest: sha256:ced9d9bfdb06f0de
+  verdict: pending
+decision/haskell/src/LawSpec/CoreEmit.hs/module/LawSpec.CoreEmit/function/remoteCalls:
+  digest: sha256:ca340af1c0b2cc8d
+  verdict: pending
+decision/haskell/src/LawSpec/CoreEmit.hs/module/LawSpec.CoreEmit/function/schemaImport:
+  digest: sha256:d86ba4b0343af970
+  verdict: pending
+decision/haskell/src/LawSpec/CoreEmit.hs/module/LawSpec.CoreEmit/function/targets:
+  digest: sha256:a7cd30493b6feeb6
+  verdict: pending
+decision/haskell/src/LawSpec/CoreEmit.hs/module/LawSpec.CoreEmit/function/wirePlan:
+  digest: sha256:736aeddad7aafd0e
+  verdict: pending

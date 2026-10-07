@@ -1,4 +1,5 @@
-module PayloadSpec (spec) where
+-- | Traversal of recursive parameter payloads.
+module PayloadSpec (test_payloadPredicatesTraverseRecursiveParametersScoped) where
 
 import Test.Hspec
 import Control.Monad (forM_)
@@ -42,8 +43,12 @@ positive _ = Left "wrong positive payload type"
 negative (ScalarValue (SInteger "Int8" n)) = Right (n < 0)
 negative _ = Left "wrong negative payload type"
 
-spec :: Spec
-spec = describe "recursive parameter payload traversal" $ do
+-- | A payload predicate states a fact about every leaf of a structure, so it
+-- must be typed and scoped per callback and traverse to any depth without
+-- constraining unrelated fields. ref:DEC-total-definitions
+-- ref:REQ-payload-predicates
+test_payloadPredicatesTraverseRecursiveParametersScoped :: Spec
+test_payloadPredicatesTraverseRecursiveParametersScoped = describe "recursive parameter payload traversal" $ do
   let tree = structure "Tree" ["a"]
         [variant "Tree" "Leaf" [("value", parameter "a"), ("fixed", int)],
          variant "Tree" "Branch" [("children", app "List" [app "Tree" [parameter "a"]])]]

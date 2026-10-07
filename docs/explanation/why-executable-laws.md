@@ -1,3 +1,8 @@
+---
+id: lawspec.explanation.why-executable-laws
+kind: explanation
+title: Why executable laws
+---
 # Why executable laws
 
 LawSpec is not a new theory of correctness. Its core ideas are old:
@@ -31,7 +36,7 @@ end
 The same law becomes a JetCheck property in Java, a Hypothesis test in Python,
 a fast-check property in JavaScript and TypeScript, a Rapid test in Go, a
 Hedgehog property in Haskell, a Kotest property in Kotlin and a Proptest in
-Rust. The implementation language changes. The law does not.
+Rust. The implementation language changes. The law does not. ref:DEC-native-property-frameworks
 
 ## The implementation is not the specification
 
@@ -73,7 +78,7 @@ A law says what holds for every input; it cannot say what the answer is for a
 particular input. Two implementations can agree with each other and both be
 wrong. So laws carry examples with expected results, written by you and never
 inferred from the code. Randomized tests search for counterexamples; examples
-fix the known answers.
+fix the known answers. ref:DEC-examples-pin-laws
 
 ## Account for what is not proved
 
@@ -82,14 +87,14 @@ checked definition's result, or a law over a finite domain checked for every
 input. Some can only be checked at runtime, and some, such as native code
 LawSpec cannot see, must be taken on trust. LawSpec reports which is which for
 every obligation, so you know what has been paid for and what remains. See
-[evidence and discharge](evidence-and-discharge.md).
+[evidence and discharge](evidence-and-discharge.md). ref:DEC-evidence-statuses
 
 The broader aim fits in one line: specify, prove what can be proved, and
 account for the rest.
 
 ## Standing on prior work
 
-If LawSpec looks like algebraic specification, Larch, OBJ, QuickCheck, design
+If LawSpec looks like algebraic specification, Larch, OBJ, QuickCheck ref:quickcheck, design
 by contract or formal methods, that is because it is part of the same
 tradition. Its novelty is narrow and practical: making these ideas cheap enough
 that ordinary teams use them, inside the projects and test frameworks they

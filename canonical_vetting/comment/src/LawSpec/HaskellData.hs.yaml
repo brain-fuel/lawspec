@@ -1,0 +1,39 @@
+decision/haskell/src/LawSpec/HaskellData.hs/module/LawSpec.HaskellData:
+  digest: sha256:ba41a1f7c86fa47e
+  verdict: pending
+decision/haskell/src/LawSpec/HaskellData.hs/module/LawSpec.HaskellData/function/emitHaskellCodecs:
+  digest: sha256:73f2f1f8cfd048e5
+  verdict: pending
+decision/haskell/src/LawSpec/HaskellData.hs/module/LawSpec.HaskellData/function/emitHaskellData:
+  digest: sha256:3c97d8fbf58fa8d7
+  verdict: pending
+decision/haskell/src/LawSpec/HaskellData.hs/module/LawSpec.HaskellData/function/emitHaskellSchema:
+  digest: sha256:015497701dc9c588
+  verdict: pending
+decision/haskell/src/LawSpec/HaskellData.hs/module/LawSpec.HaskellData/function/emitHaskellSchemaWithProfile:
+  digest: sha256:005ab0dc6539b27b
+  verdict: pending
+decision/haskell/src/LawSpec/HaskellData.hs/module/LawSpec.HaskellData/function/haskellCodec:
+  digest: sha256:79691360f6119714
+  verdict: pending
+decision/haskell/src/LawSpec/HaskellData.hs/module/LawSpec.HaskellData/function/haskellCodecDoc:
+  digest: sha256:1e92e8390af41242
+  verdict: pending
+decision/haskell/src/LawSpec/HaskellData.hs/module/LawSpec.HaskellData/function/haskellCodecDocWithContext:
+  digest: sha256:0c0dc8f56a6fab0b
+  verdict: pending
+decision/haskell/src/LawSpec/HaskellData.hs/module/LawSpec.HaskellData/function/haskellDataType:
+  digest: sha256:89b84a805db4377a
+  verdict: pending
+decision/haskell/src/LawSpec/HaskellData.hs/module/LawSpec.HaskellData/function/haskellDataTypeWithRepresentations:
+  digest: sha256:8a93087a0eafa171
+  verdict: pending
+decision/haskell/src/LawSpec/HaskellData.hs/module/LawSpec.HaskellData/function/haskellNativeTypeWithParameters:
+  digest: sha256:8a93087a0eafa171
+  verdict: pending
+decision/haskell/src/LawSpec/HaskellData.hs/module/LawSpec.HaskellData/function/selectorsFor:
+  digest: sha256:54f614bde9405129
+  verdict: pending
+decision/haskell/src/LawSpec/HaskellData.hs/module/LawSpec.HaskellData/function/witnessBinders:
+  digest: sha256:9a6b41f71a5d97c7
+  verdict: pending

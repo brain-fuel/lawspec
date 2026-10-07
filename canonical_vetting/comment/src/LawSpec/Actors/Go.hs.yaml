@@ -1,0 +1,15 @@
+decision/haskell/src/LawSpec/Actors/Go.hs/module/LawSpec.Actors.Go:
+  digest: sha256:031a9442b509e27c
+  verdict: pending
+decision/haskell/src/LawSpec/Actors/Go.hs/module/LawSpec.Actors.Go/function/emit:
+  digest: sha256:72d44dea6ca36b9f
+  verdict: pending
+decision/haskell/src/LawSpec/Actors/Go.hs/module/LawSpec.Actors.Go/function/remoteText:
+  digest: sha256:8669533ab3e9ea5b
+  verdict: pending
+decision/haskell/src/LawSpec/Actors/Go.hs/module/LawSpec.Actors.Go/function/supervisorText:
+  digest: sha256:80ad8fde513418f8
+  verdict: pending
+decision/haskell/src/LawSpec/Actors/Go.hs/module/LawSpec.Actors.Go/type/HandlerWire:
+  digest: sha256:933d6eed4980e6b8
+  verdict: pending

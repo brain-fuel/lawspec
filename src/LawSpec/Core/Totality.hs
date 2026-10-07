@@ -1,4 +1,4 @@
--- Shared totality obligations after typing. This proof view contains no surface
+-- | Shared totality obligations after typing. This proof view contains no surface
 -- syntax, runtime representation choices, or executable code-generation nodes.
 module LawSpec.Core.Totality (Proof(..), ProofDefinition(..), ProofContract(..), ProofConstructorContract(..), audit, auditWithContracts, auditWithConstructorContracts, auditDeferring, substituteProof, integerAssumptions, integerConversion, payloadPredicate) where
 
@@ -16,6 +16,9 @@ import qualified LawSpec.Core.RefinementProof as R
 import Data.Ratio (denominator)
 import qualified LawSpec.Core.PayloadPlan as P
 
+-- | Definitions are audited in a small proof language of their own, so the
+-- totality audit never depends on how a target would run the code.
+-- ref:DEC-total-definitions
 data Proof
   = Literal Scalar
   | Variable Id
@@ -49,12 +52,14 @@ data Proof
   | PresentValue Proof
   deriving (Eq, Show)
 
+-- | Each definition with the domains of its arguments, since a call is safe only
+-- inside them.
 data ProofDefinition = ProofDefinition
   { proofId :: Id, proofName :: String, proofLocation :: Maybe Location
   , proofArguments :: [Id], proofBody :: Proof, proofArgumentDomains :: [Proof]
   } deriving (Eq, Show)
 
--- Contract argument identities are the definition's argument identities. The
+-- | Contract argument identities are the definition's argument identities. The
 -- result binder is fresh and visible only in postconditions. Typed lowering is
 -- responsible for Boolean types; this audit checks scope, totality, and truth.
 data ProofContract = ProofContract
@@ -62,7 +67,7 @@ data ProofContract = ProofContract
   , preconditions :: [Proof], postconditions :: [Proof]
   } deriving (Eq, Show)
 
--- Ordered field predicates are checked before becoming constructor invariants.
+-- | Ordered field predicates are checked before becoming constructor invariants.
 -- Identities belong to the declaration, and are substituted at construction and
 -- freshly renamed at each pattern. These primitive predicates cannot call user
 -- definitions until constructor/definition dependency cycles are audited.
@@ -76,18 +81,23 @@ data ProofConstructorContract = ProofConstructorContract
   , constructorIndexGuards :: [(IndexGuard, [((Int, Int), String)])]
   } deriving (Eq, Show)
 
+-- | The audit for programs with no contracts.
 audit :: [ProofDefinition] -> Either [Diagnostic] ()
 audit = auditWithContracts []
 
+-- | The audit for programs whose constructors carry no predicates.
 auditWithContracts :: [ProofContract] -> [ProofDefinition] -> Either [Diagnostic] ()
 auditWithContracts = auditWithConstructorContracts []
 
+-- | Every partial operation in a definition, a division or a narrowing, must be
+-- proved safe from its guards, its contracts and its constructors' invariants,
+-- or the definition is rejected. ref:DEC-total-definitions
 auditWithConstructorContracts :: [ProofConstructorContract] -> [ProofContract]
   -> [ProofDefinition] -> Either [Diagnostic] ()
 auditWithConstructorContracts constructors contracts definitions =
   () <$ auditDeferring constructors contracts definitions
 
--- A postcondition the linear prover cannot establish is an error, unless it
+-- | A postcondition the linear prover cannot establish is an error, unless it
 -- involves non-linear index arithmetic (products of variables, powers,
 -- quotients): those are returned, by definition and postcondition position,
 -- to be checked on each result at runtime instead.
@@ -212,7 +222,7 @@ auditDeferring constructors contracts definitions = do
       LetCall _ callee arguments body -> callee `S.member` known || any (nonlinearWith known) (body : arguments)
       _ -> any (nonlinearWith known) (children expression)
 
--- These facts come from validated argument types, not executable user
+-- | These facts come from validated argument types, not executable user
 -- preconditions. Callers need not restate a primitive's range in a signature.
 integerAssumptions :: Int -> Id -> String -> [Proof]
 integerAssumptions bits name primitive = case integerBounds bits primitive of
@@ -221,7 +231,7 @@ integerAssumptions bits name primitive = case integerBounds bits primitive of
           | otherwise -> []
   where bound op value = ExactComparison op (Variable name) (Literal (SInteger "Integer" value))
 
--- Integer-to-integer conversions need range evidence but never a fractional
+-- | Integer-to-integer conversions need range evidence but never a fractional
 -- check. Exact fractions and IEEE inputs must keep their separate obligations.
 integerConversion :: Int -> String -> String -> Proof -> Maybe Proof
 integerConversion bits target source value
@@ -303,7 +313,7 @@ data Facts = Facts
 emptyFacts :: Facts
 emptyFacts = Facts S.empty S.empty [] [] [] S.empty [] [] M.empty [] M.empty S.empty M.empty S.empty M.empty M.empty
 
--- Instances of one template share their recursion check.
+-- | Instances of one template share their recursion check.
 sameDefinition :: Id -> Id -> Bool
 sameDefinition (Id a) (Id b) = a == b || templateIdentity a == templateIdentity b
   where
@@ -320,13 +330,13 @@ sameDefinition (Id a) (Id b) = a == b || templateIdentity a == templateIdentity 
             go acc (c : rest) = go (c : acc) rest
             go acc [] = (reverse acc, Nothing)
 
--- Specialized instances are named lawspec_<template>_<hash>.
+-- | Specialized instances are named lawspec_<template>_<hash>.
 templateName :: String -> String
 templateName n = case stripPrefix "lawspec_" n of
   Just rest | '_' `elem` rest -> reverse (drop 1 (dropWhile (/= '_') (reverse rest)))
   _ -> n
 
--- Index guards over a constructor's fields, with every choice of measure
+-- | Index guards over a constructor's fields, with every choice of measure
 -- instance per name; the flag says each name had exactly one instance.
 indexGuardConditions :: Facts -> ProofConstructorContract -> [Proof] -> [(Bool, Proof)]
 indexGuardConditions facts contract fields =
@@ -358,7 +368,7 @@ indexProof field term = case term of
       IndexPower -> Just (ExactArithmetic Power x y)
       _ -> Nothing
 
--- Matching a constructor assumes its index guards.
+-- | Matching a constructor assumes its index guards.
 siblingFacts :: Facts -> Id -> [Proof] -> Facts
 siblingFacts facts tag fields = case M.lookup tag (constructorContracts facts) of
   Nothing -> facts
@@ -500,7 +510,7 @@ walk signatures contracts self provenance facts expression = case expression of
     branch value (binders, body) =
       walk signatures contracts self (branchProvenance provenance value binders) facts body
 
--- Guard auditing precedes call auditing, so a presentValue projection is a
+-- | Guard auditing precedes call auditing, so a presentValue projection is a
 -- genuine strict subterm. Results of calls still have no argument provenance.
 valueProvenance :: Provenance -> Proof -> Maybe (Int,Bool)
 valueProvenance scope value = case value of
@@ -517,7 +527,7 @@ branchProvenance provenance value binders = foldl extend provenance binders
       Just (index, _) -> M.insert name (index, True) scope
       Nothing -> M.delete name scope
 
--- The body has already passed definedness and termination auditing. Enumerate
+-- | The body has already passed definedness and termination auditing. Enumerate
 -- its explicit result branches for postconditions without pretending that a
 -- match is an affine expression, or losing the domains of its bound fields.
 resultCases :: M.Map Id [Id] -> M.Map Id ProofContract -> Provenance -> Facts -> Proof -> [(Provenance,Facts,Proof)]
@@ -545,7 +555,7 @@ resultCases signatures contracts scope facts expression = case expression of
   _ -> [(scope,facts,expression)]
   where recur = resultCases signatures contracts
 
--- Definedness has already been audited. Each result branch supplies only the
+-- | Definedness has already been audited. Each result branch supplies only the
 -- guarantees of calls evaluated in that branch. Universal predicates introduce
 -- a hypothetical member, without claiming that the List is inhabited.
 provesResult :: M.Map Id [Id] -> M.Map Id ProofContract -> Provenance -> Facts -> Proof -> Bool
@@ -577,7 +587,7 @@ constructorFacts facts tag fields = case M.lookup tag (constructorContracts fact
     foldl (flip (assume True)) facts (instantiateConstructor contract fields)
   _ -> facts
 
--- Bind only fields of the selected constructor. Stored refinement matches are
+-- | Bind only fields of the selected constructor. Stored refinement matches are
 -- instantiated with fresh branch binders and remain local to this alternative.
 dataBranches :: Provenance -> Facts -> Proof -> [(Id,[Id],Proof)] -> [(Provenance,Facts,Proof)]
 dataBranches scope facts value branches = case known of
@@ -624,7 +634,7 @@ knownPresent facts expression =
     Literal (SPresent _ (Just _)) -> True
     _ -> False
 
--- Assuming a fact also assumes what its calls and quotients guarantee (see
+-- | Assuming a fact also assumes what its calls and quotients guarantee (see
 -- derivedFacts). Assuming a fact derives from its parts too, so a derived
 -- fact already known is not assumed again; only faithful facts, which are
 -- remembered as known, are derived.
@@ -644,7 +654,7 @@ assumeOnce truth expression facts =
         Nothing -> result
   in activatePresence constrained
 
--- Presence guards are implications, not unconditional payload facts. Consume
+-- | Presence guards are implications, not unconditional payload facts. Consume
 -- each pending implication only after its exact subject is known present.
 activatePresence :: Facts -> Facts
 activatePresence facts =
@@ -686,7 +696,7 @@ assumeSimple truth expression facts = case expression of
     nonzeroVariable left (Integral right) = nonzeroVariable left right
     nonzeroVariable _ _ = Nothing
 
--- Only the exact arithmetic constructors enter rational proof normalization.
+-- | Only the exact arithmetic constructors enter rational proof normalization.
 -- IEEE comparisons deliberately retain Comparison and cannot acquire rational
 -- identities such as x - x = 0 or x == x in the presence of NaN/infinity.
 linear :: Proof -> Maybe R.Linear
@@ -768,7 +778,7 @@ entails facts expression
       Just condition -> R.prove 10000 (constraints (foldl (flip (assumeOnce True)) facts (derivedFacts facts expression))) condition == R.Proven
       Nothing -> False
 
--- Facts that hold of the terms an expression mentions, whatever it asserts:
+-- | Facts that hold of the terms an expression mentions, whatever it asserts:
 -- a call satisfies its definition's postconditions (checked definitions are
 -- pure, so the call stands for its result) and, on a known constructor,
 -- equals the selected branch; and an integer quotient of a
@@ -804,7 +814,7 @@ derivedFacts facts expression = concatMap guarantee (nub calls') ++ concatMap un
           in [ExactComparison GreaterEqual q (integer 0), ExactComparison LessEqual q a]
       | otherwise = []
 
--- The closed range an integer term lies in, from its constants, the
+-- | The closed range an integer term lies in, from its constants, the
 -- constant bounds known of its variables, and interval arithmetic for +, -
 -- and *. Nothing when a bound is unknown.
 interval :: Facts -> Proof -> Maybe (Integer, Integer)
@@ -889,7 +899,7 @@ freeVariables expression = case expression of
     [[name | name <- freeVariables body, name `notElem` binders] | (binders,body) <- branches]
   _ -> concatMap freeVariables (children expression)
 
--- Capture-avoiding substitution is required even though ordinary compiler IDs
+-- | Capture-avoiding substitution is required even though ordinary compiler IDs
 -- are unique: independently supplied Core may reuse binder IDs across scopes.
 substituteProof :: M.Map Id Proof -> Proof -> Proof
 substituteProof replacements expression = case expression of
@@ -960,7 +970,7 @@ allVariables term = case term of
     [binders ++ allVariables body | (binders,body) <- branches]
   _ -> concatMap allVariables (children term)
 
--- A universal fact says nothing about an arbitrary outer value, nor that the
+-- | A universal fact says nothing about an arbitrary outer value, nor that the
 -- list is inhabited. Instantiate it only while proving a property of a fresh,
 -- hypothetical member of that exact list variable.
 freshElement :: [Id] -> Facts -> Proof -> Id -> Proof -> (Id,Proof)
@@ -976,7 +986,7 @@ elementFacts facts value member = foldl (flip (assume True)) facts
     | (source,binder,body) <- universal facts,
       Just identity <- [variableIdentity value], variableIdentity source == Just identity]
 
--- Only remember Boolean expressions whose proof view preserves their identity.
+-- | Only remember Boolean expressions whose proof view preserves their identity.
 -- Sequence/Match and IEEE division are deliberately excluded: the proof
 -- extraction erases runtime distinctions there. Exact division keeps its
 -- operator, so a quotient is not confused with an exact division.
@@ -1029,7 +1039,7 @@ consFacts facts value headName tailName = foldl (flip (assume True))
       Just identity <- [variableIdentity value], variableIdentity source == Just identity]
 
 
--- Calls are evaluated before the enclosing strict operation. Branch-local and
+-- | Calls are evaluated before the enclosing strict operation. Branch-local and
 -- short-circuited calls stay in their branch. This is a proof-only A-normal form:
 -- it neither rewrites executable Core nor assumes a callee's postconditions.
 normalizeCalls :: [Id] -> Proof -> Proof
@@ -1098,7 +1108,7 @@ normalizeCalls scope expression = evalState (go expression pure)
       PresentValue value -> go value (continuation . PresentValue)
       _ -> continuation term
 
--- Only walk's successful call case may make these guarantees available. A
+-- | Only walk's successful call case may make these guarantees available. A
 -- recursive call has already proved strict descent, so this is induction on
 -- the same structural measure checked for the entire definition. The new result
 -- never inherits argument provenance: an arbitrary returned List is not a
@@ -1129,7 +1139,7 @@ callResultFacts signatures contracts facts result callee arguments =
       restated = [abstractCall existing (Variable result) fact | fact <- truths facts, fact /= abstractCall existing (Variable result) fact]
   in foldl (flip (assume True)) initial (map (expandKnown facts) guarantees ++ evidence ++ restated)
 
--- Replaces a call in the arithmetic, comparison and logical structure of a
+-- | Replaces a call in the arithmetic, comparison and logical structure of a
 -- fact. Calls are pure, so the replacement denotes the same value.
 abstractCall :: Proof -> Proof -> Proof -> Proof
 abstractCall call replacement = go
@@ -1148,7 +1158,7 @@ abstractCall call replacement = go
       Integral a -> Integral (go a)
       _ -> term
 
--- Expanding is bounded by the finite constructor terms and known constructor
+-- | Expanding is bounded by the finite constructor terms and known constructor
 -- values it follows; each step removes one known constructor from an argument.
 unfold :: Facts -> Id -> [Proof] -> Maybe Proof
 unfold facts callee arguments = do
@@ -1163,7 +1173,7 @@ unfold facts callee arguments = do
   if length binders /= length fields then Nothing
   else Just (expandKnown facts (substituteProof (M.fromList ((parameter,argument) : zip binders fields)) (stripDomains body)))
 
--- Replace calls on known constructors by their unfolded branches, through the
+-- | Replace calls on known constructors by their unfolded branches, through the
 -- arithmetic and logic that the linear prover reads.
 expandKnown :: Facts -> Proof -> Proof
 expandKnown facts term = case term of
@@ -1180,7 +1190,7 @@ expandKnown facts term = case term of
   _ -> term
   where expand = expandKnown facts
 
--- Proof bodies carry typed domains and integral evidence around the match.
+-- | Proof bodies carry typed domains and integral evidence around the match.
 -- Neither changes the value, so both are transparent when unfolding.
 stripDomains :: Proof -> Proof
 stripDomains (TypedDomain _ body) = stripDomains body
@@ -1200,19 +1210,19 @@ naturalBranch natural body = case stripDomains body of
 nonlinearAtom :: String -> [Proof] -> Id
 nonlinearAtom operator operands = Id ("::" ++ operator ++ "::" ++ show operands)
 
--- Numeric wrappers do not change a value, so they do not distinguish atoms.
+-- | Numeric wrappers do not change a value, so they do not distinguish atoms.
 unwrapped :: Proof -> Proof
 unwrapped expression = case expression of
   Integral value -> unwrapped value
   NarrowInteger _ _ value -> unwrapped value
   _ -> expression
 
--- Calls of checked definitions are pure, so a call is a linear atom: equal
+-- | Calls of checked definitions are pure, so a call is a linear atom: equal
 -- callee and arguments denote the same value in every fact.
 callAtom :: Id -> [Proof] -> Id
 callAtom callee arguments = Id ("::call::" ++ idText callee ++ show arguments)
 
--- Canonicalize every named step to one predicate per current type argument.
+-- | Canonicalize every named step to one predicate per current type argument.
 -- Composed recipes become scoped List/presence/named predicates, allowing a
 -- growing recursive application to match its callee's ordinary contract.
 payloadPredicate :: P.Schema -> P.Plan -> [(Id,Proof)] -> Proof -> Proof

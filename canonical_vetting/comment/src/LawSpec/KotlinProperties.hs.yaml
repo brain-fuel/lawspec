@@ -1,0 +1,9 @@
+decision/haskell/src/LawSpec/KotlinProperties.hs/module/LawSpec.KotlinProperties:
+  digest: sha256:38e9e083aede471d
+  verdict: pending
+decision/haskell/src/LawSpec/KotlinProperties.hs/module/LawSpec.KotlinProperties/data/Config:
+  digest: sha256:91e08d25ca36690b
+  verdict: pending
+decision/haskell/src/LawSpec/KotlinProperties.hs/module/LawSpec.KotlinProperties/function/emitTests:
+  digest: sha256:c8aa76f8b0ea6aaa
+  verdict: pending

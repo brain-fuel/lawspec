@@ -1,3 +1,8 @@
+---
+id: lawspec.tutorials.lessons.01-first-law
+kind: tutorial
+title: 1. Your first law
+---
 # Lesson 1: Your first law
 
 In this lesson you set up a project, write one law about a pair of functions,
@@ -20,7 +25,7 @@ Java project:
 ```sh
 mkdir coffee-shop && cd coffee-shop
 npm init -y
-npm install --save-dev lawspec@0.20.0
+npm install --save-dev lawspec@0.20.1
 npx lawspec init --target java --project java
 npx lawspec doctor
 ```
@@ -33,7 +38,7 @@ add a Python project with its own virtual environment:
 ```sh
 mkdir coffee-shop && cd coffee-shop
 npm init -y
-npm install --save-dev lawspec@0.20.0
+npm install --save-dev lawspec@0.20.1
 npx lawspec init --target python --project python
 python3 -m venv python/.venv
 python/.venv/bin/python -m pip install -e "python[test]"
@@ -49,7 +54,7 @@ Create a directory, install LawSpec, and add a JavaScript project:
 ```sh
 mkdir coffee-shop && cd coffee-shop
 npm init -y
-npm install --save-dev lawspec@0.20.0
+npm install --save-dev lawspec@0.20.1
 npx lawspec init --target javascript --project javascript
 npm install --prefix javascript
 npx lawspec doctor
@@ -78,7 +83,7 @@ change.
 Workbenches on a page share their files: the one under "Implement the
 adapters" edits the same implementation that **▶ Run** tests here.
 
-```lawspec file=docs/lessons/specs/01-first-law.lawspec implementations=acceptance/lessons
+```lawspec include=docs/lessons/specs/01-first-law.lawspec implementations=acceptance/lessons
 ```
 
 A LawSpec source is one **unit**, here `lessons.codec`. Its name decides where
@@ -133,17 +138,17 @@ LawSpec writes three kinds of files under `javascript/`:
 Replace the stubs:
 
 ::: only java
-```lawspec file=docs/lessons/specs/01-first-law.lawspec implementations=acceptance/lessons view=implementation target=java
+```lawspec include=docs/lessons/specs/01-first-law.lawspec implementations=acceptance/lessons view=implementation target=java
 ```
 :::
 
 ::: only python
-```lawspec file=docs/lessons/specs/01-first-law.lawspec implementations=acceptance/lessons view=implementation target=python
+```lawspec include=docs/lessons/specs/01-first-law.lawspec implementations=acceptance/lessons view=implementation target=python
 ```
 :::
 
 ::: only javascript
-```lawspec file=docs/lessons/specs/01-first-law.lawspec implementations=acceptance/lessons view=implementation target=javascript
+```lawspec include=docs/lessons/specs/01-first-law.lawspec implementations=acceptance/lessons view=implementation target=javascript
 ```
 :::
 

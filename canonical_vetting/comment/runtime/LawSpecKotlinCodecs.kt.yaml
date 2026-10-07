@@ -1,0 +1,15 @@
+decision/kotlin/runtime/LawSpecKotlinCodecs.kt/object/LawSpecKotlinCodecs:
+  digest: sha256:ec08874fab364b76
+  verdict: pending
+decision/kotlin/runtime/LawSpecKotlinCodecs.kt/object/LawSpecKotlinCodecs/function/duration:
+  digest: sha256:7d115baebf76f85a
+  verdict: pending
+decision/kotlin/runtime/LawSpecKotlinCodecs.kt/object/LawSpecKotlinCodecs/function/keyVal:
+  digest: sha256:23ca7001fc16b5d5
+  verdict: pending
+decision/kotlin/runtime/LawSpecKotlinCodecs.kt/object/LawSpecKotlinCodecs/function/sequence:
+  digest: sha256:03ecff608394c5bb
+  verdict: pending
+decision/kotlin/runtime/LawSpecKotlinCodecs.kt/object/LawSpecKotlinCodecs/function/set:
+  digest: sha256:e8f968ba77ee9318
+  verdict: pending

@@ -1,0 +1,54 @@
+decision/haskell/src/LawSpec/JavaData.hs/module/LawSpec.JavaData:
+  digest: sha256:c085ce3bb688e8ec
+  verdict: pending
+decision/haskell/src/LawSpec/JavaData.hs/module/LawSpec.JavaData/function/builtinFree:
+  digest: sha256:90c5d68752690b58
+  verdict: pending
+decision/haskell/src/LawSpec/JavaData.hs/module/LawSpec.JavaData/function/collectionCodec:
+  digest: sha256:f96ecf52a711e8f0
+  verdict: pending
+decision/haskell/src/LawSpec/JavaData.hs/module/LawSpec.JavaData/function/emitJavaData:
+  digest: sha256:015497701dc9c588
+  verdict: pending
+decision/haskell/src/LawSpec/JavaData.hs/module/LawSpec.JavaData/function/emitJavaDataWithProfile:
+  digest: sha256:7b46d57434e3b442
+  verdict: pending
+decision/haskell/src/LawSpec/JavaData.hs/module/LawSpec.JavaData/function/emitJavaSchema:
+  digest: sha256:7f7edc1405a568e4
+  verdict: pending
+decision/haskell/src/LawSpec/JavaData.hs/module/LawSpec.JavaData/function/identifier:
+  digest: sha256:070b7d7fe3582067
+  verdict: pending
+decision/haskell/src/LawSpec/JavaData.hs/module/LawSpec.JavaData/function/javaCodec:
+  digest: sha256:1e92e8390af41242
+  verdict: pending
+decision/haskell/src/LawSpec/JavaData.hs/module/LawSpec.JavaData/function/javaCodecDoc:
+  digest: sha256:69d59a4e164c5348
+  verdict: pending
+decision/haskell/src/LawSpec/JavaData.hs/module/LawSpec.JavaData/function/javaCodecDocWithContext:
+  digest: sha256:7d033e7299abbce9
+  verdict: pending
+decision/haskell/src/LawSpec/JavaData.hs/module/LawSpec.JavaData/function/javaConstructorClass:
+  digest: sha256:86476269d5ed083f
+  verdict: pending
+decision/haskell/src/LawSpec/JavaData.hs/module/LawSpec.JavaData/function/javaDataName:
+  digest: sha256:55d9f83ac8e7e9a0
+  verdict: pending
+decision/haskell/src/LawSpec/JavaData.hs/module/LawSpec.JavaData/function/javaDataType:
+  digest: sha256:dbf0f300809fde9e
+  verdict: pending
+decision/haskell/src/LawSpec/JavaData.hs/module/LawSpec.JavaData/function/javaDataTypeDoc:
+  digest: sha256:4f2ea2e7d671a03e
+  verdict: pending
+decision/haskell/src/LawSpec/JavaData.hs/module/LawSpec.JavaData/function/javaTypeReference:
+  digest: sha256:0354d4a42448185b
+  verdict: pending
+decision/haskell/src/LawSpec/JavaData.hs/module/LawSpec.JavaData/function/namesFor:
+  digest: sha256:d29622d8c59186d4
+  verdict: pending
+decision/haskell/src/LawSpec/JavaData.hs/module/LawSpec.JavaData/function/schemaSource:
+  digest: sha256:9667c9b9cebdfc42
+  verdict: pending
+decision/haskell/src/LawSpec/JavaData.hs/module/LawSpec.JavaData/type/Handles:
+  digest: sha256:c52851fc2cce7a6a
+  verdict: pending

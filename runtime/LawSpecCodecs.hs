@@ -1,4 +1,8 @@
--- Typed native bridges with checked, contextual conversions.
+-- | Typed native bridges with checked, contextual conversions.
+--
+-- Adapters work with their own Haskell types; each codec converts between them
+-- and LawSpec's values and checks the result, so a law never sees a native
+-- value outside its domain. ref:DEC-native-bindings-typed-identity
 module LawSpecCodecs
   ( Codec, reference, decode, encode, codec, codecWith, context
   , integerCodec, boolCodec, decimalCodec, rationalCodec

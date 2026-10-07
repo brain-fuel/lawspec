@@ -1,3 +1,8 @@
+---
+id: lawspec.tutorials.lessons.02-examples
+kind: tutorial
+title: 2. Examples and expectations
+---
 # Lesson 2: Examples and expectations
 
 A law describes every input; an **example** pins one input to the result you
@@ -10,7 +15,7 @@ threshold.
 A drink costs 250 cents, but ten or more drinks cost 225 cents each. Save this
 as `laws/pricing.lawspec`:
 
-```lawspec file=docs/lessons/specs/02-examples.lawspec implementations=acceptance/lessons
+```lawspec include=docs/lessons/specs/02-examples.lawspec implementations=acceptance/lessons
 ```
 
 Each law uses `implies` to say when it applies. `q >= 0 && q < 10 implies ...`
@@ -47,7 +52,7 @@ npx lawspec generate
 ```
 
 ::: only java
-```lawspec file=docs/lessons/specs/02-examples.lawspec implementations=acceptance/lessons view=implementation target=java
+```lawspec include=docs/lessons/specs/02-examples.lawspec implementations=acceptance/lessons view=implementation target=java
 ```
 
 `Int64` results are `long` in Java, so the multiplication cannot overflow for
@@ -55,12 +60,12 @@ any `Int32` quantity.
 :::
 
 ::: only python
-```lawspec file=docs/lessons/specs/02-examples.lawspec implementations=acceptance/lessons view=implementation target=python
+```lawspec include=docs/lessons/specs/02-examples.lawspec implementations=acceptance/lessons view=implementation target=python
 ```
 :::
 
 ::: only javascript
-```lawspec file=docs/lessons/specs/02-examples.lawspec implementations=acceptance/lessons view=implementation target=javascript
+```lawspec include=docs/lessons/specs/02-examples.lawspec implementations=acceptance/lessons view=implementation target=javascript
 ```
 
 `Int64` values are `bigint` in JavaScript, so the result is converted with

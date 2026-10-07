@@ -1,0 +1,45 @@
+decision/haskell/src/LawSpec/Core/RefinementProof.hs/module/LawSpec.Core.RefinementProof:
+  digest: sha256:1558b1efff0efc6d
+  verdict: pending
+decision/haskell/src/LawSpec/Core/RefinementProof.hs/module/LawSpec.Core.RefinementProof/data/Inequality:
+  digest: sha256:c9c88b6cc11d0ff8
+  verdict: pending
+decision/haskell/src/LawSpec/Core/RefinementProof.hs/module/LawSpec.Core.RefinementProof/data/Linear:
+  digest: sha256:2aafa72e8ee6b435
+  verdict: pending
+decision/haskell/src/LawSpec/Core/RefinementProof.hs/module/LawSpec.Core.RefinementProof/data/Predicate:
+  digest: sha256:6d1d6d08b41aaa77
+  verdict: pending
+decision/haskell/src/LawSpec/Core/RefinementProof.hs/module/LawSpec.Core.RefinementProof/data/Relation:
+  digest: sha256:d28cd872af3833f2
+  verdict: pending
+decision/haskell/src/LawSpec/Core/RefinementProof.hs/module/LawSpec.Core.RefinementProof/data/Verdict:
+  digest: sha256:5613bf1b43fd3ad5
+  verdict: pending
+decision/haskell/src/LawSpec/Core/RefinementProof.hs/module/LawSpec.Core.RefinementProof/function/constant:
+  digest: sha256:6fbb96b2ee35e5b5
+  verdict: pending
+decision/haskell/src/LawSpec/Core/RefinementProof.hs/module/LawSpec.Core.RefinementProof/function/eliminate:
+  digest: sha256:c25cbb9081c7d451
+  verdict: pending
+decision/haskell/src/LawSpec/Core/RefinementProof.hs/module/LawSpec.Core.RefinementProof/function/evaluateLinear:
+  digest: sha256:42d32f2d48843b25
+  verdict: pending
+decision/haskell/src/LawSpec/Core/RefinementProof.hs/module/LawSpec.Core.RefinementProof/function/evaluatePredicate:
+  digest: sha256:5fd866d1dea59f3b
+  verdict: pending
+decision/haskell/src/LawSpec/Core/RefinementProof.hs/module/LawSpec.Core.RefinementProof/function/normalForm:
+  digest: sha256:411c7fc2ee0221da
+  verdict: pending
+decision/haskell/src/LawSpec/Core/RefinementProof.hs/module/LawSpec.Core.RefinementProof/function/plus:
+  digest: sha256:101dd292487bfc52
+  verdict: pending
+decision/haskell/src/LawSpec/Core/RefinementProof.hs/module/LawSpec.Core.RefinementProof/function/prove:
+  digest: sha256:a50a2fffd8ce6bc0
+  verdict: pending
+decision/haskell/src/LawSpec/Core/RefinementProof.hs/module/LawSpec.Core.RefinementProof/function/scale:
+  digest: sha256:dfe73933f96299ce
+  verdict: pending
+decision/haskell/src/LawSpec/Core/RefinementProof.hs/module/LawSpec.Core.RefinementProof/function/variable:
+  digest: sha256:f490cb3ffb8946e6
+  verdict: pending

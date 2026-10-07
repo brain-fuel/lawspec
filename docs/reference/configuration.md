@@ -1,3 +1,8 @@
+---
+id: lawspec.reference.configuration
+kind: reference
+title: Configuration
+---
 # Configuration
 
 ## `lawspec.json`

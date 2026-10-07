@@ -15,7 +15,14 @@ import lawspec.runtime.LawSpecRuntime.Value
 import lawspec.runtime.LawSpecSchema
 import lawspec.runtime.LawSpecSchema.Named
 
-/** Native Kotest generation and shrinking for instantiated Core data schemas. */
+/**
+ * Native Kotest generation and shrinking for instantiated Core data schemas.
+ *
+ * Generated tests run in Kotest, the framework Kotlin developers already use, so failures shrink
+ * and report as they expect; the arbitraries are built from Kotest's own so its shrinker reduces
+ * counterexamples and shrinking stays within the declared domain.
+ * ref:DEC-native-property-frameworks ref:kotest ref:DEC-shrink-within-domain
+ */
 object LawSpecKotlinStrategies {
     fun generator(
         schema: LawSpecSchema,

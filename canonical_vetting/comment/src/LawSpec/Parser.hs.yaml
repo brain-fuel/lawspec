@@ -1,0 +1,78 @@
+decision/haskell/src/LawSpec/Parser.hs/module/LawSpec.Parser:
+  digest: sha256:dddd69b3f1a41d2a
+  verdict: pending
+decision/haskell/src/LawSpec/Parser.hs/module/LawSpec.Parser/function/actorP:
+  digest: sha256:6ff20ffc8929e811
+  verdict: pending
+decision/haskell/src/LawSpec/Parser.hs/module/LawSpec.Parser/function/baseName:
+  digest: sha256:409e9104f238ddae
+  verdict: pending
+decision/haskell/src/LawSpec/Parser.hs/module/LawSpec.Parser/function/constructorOwners:
+  digest: sha256:763e28b89f94fedf
+  verdict: pending
+decision/haskell/src/LawSpec/Parser.hs/module/LawSpec.Parser/function/declarationP:
+  digest: sha256:e12a299f459cc3ff
+  verdict: pending
+decision/haskell/src/LawSpec/Parser.hs/module/LawSpec.Parser/function/exportP:
+  digest: sha256:83ac0d8aa99f0563
+  verdict: pending
+decision/haskell/src/LawSpec/Parser.hs/module/LawSpec.Parser/function/expr:
+  digest: sha256:55d60747c1b1153a
+  verdict: pending
+decision/haskell/src/LawSpec/Parser.hs/module/LawSpec.Parser/function/functionDefinitionP:
+  digest: sha256:70954e5985a0c123
+  verdict: pending
+decision/haskell/src/LawSpec/Parser.hs/module/LawSpec.Parser/function/headers:
+  digest: sha256:51bd2a022c1e6980
+  verdict: pending
+decision/haskell/src/LawSpec/Parser.hs/module/LawSpec.Parser/function/indexExpr:
+  digest: sha256:b27cdab5e37fd49b
+  verdict: pending
+decision/haskell/src/LawSpec/Parser.hs/module/LawSpec.Parser/function/isExport:
+  digest: sha256:cb4d68a3b9808ac1
+  verdict: pending
+decision/haskell/src/LawSpec/Parser.hs/module/LawSpec.Parser/function/literalHeaders:
+  digest: sha256:51f1004b58562466
+  verdict: pending
+decision/haskell/src/LawSpec/Parser.hs/module/LawSpec.Parser/function/parseSource:
+  digest: sha256:d7137061bb02b337
+  verdict: pending
+decision/haskell/src/LawSpec/Parser.hs/module/LawSpec.Parser/function/parseSources:
+  digest: sha256:ca09d0012649c884
+  verdict: pending
+decision/haskell/src/LawSpec/Parser.hs/module/LawSpec.Parser/function/parseSourcesWith:
+  digest: sha256:92f8af0e0efc03e8
+  verdict: pending
+decision/haskell/src/LawSpec/Parser.hs/module/LawSpec.Parser/function/preambleP:
+  digest: sha256:f4e74b8849de9994
+  verdict: pending
+decision/haskell/src/LawSpec/Parser.hs/module/LawSpec.Parser/function/protocolP:
+  digest: sha256:04cdbb6781a1ebd6
+  verdict: pending
+decision/haskell/src/LawSpec/Parser.hs/module/LawSpec.Parser/function/qualifiedName:
+  digest: sha256:669df1db4df7ea06
+  verdict: pending
+decision/haskell/src/LawSpec/Parser.hs/module/LawSpec.Parser/function/scenarioP:
+  digest: sha256:bd90f2e2ed7fa54e
+  verdict: pending
+decision/haskell/src/LawSpec/Parser.hs/module/LawSpec.Parser/function/sourceExports:
+  digest: sha256:ece87e7ccdfc8938
+  verdict: pending
+decision/haskell/src/LawSpec/Parser.hs/module/LawSpec.Parser/function/sourceUnit:
+  digest: sha256:9e9f6b4c948bbc19
+  verdict: pending
+decision/haskell/src/LawSpec/Parser.hs/module/LawSpec.Parser/function/startsUpper:
+  digest: sha256:3ccf778591a03256
+  verdict: pending
+decision/haskell/src/LawSpec/Parser.hs/module/LawSpec.Parser/function/supervisorP:
+  digest: sha256:8e53c57a01984008
+  verdict: pending
+decision/haskell/src/LawSpec/Parser.hs/module/LawSpec.Parser/function/upper:
+  digest: sha256:c488130997183e23
+  verdict: pending
+decision/haskell/src/LawSpec/Parser.hs/module/LawSpec.Parser/function/workflowP:
+  digest: sha256:a374e4d70b5da8fe
+  verdict: pending
+decision/haskell/src/LawSpec/Parser.hs/module/LawSpec.Parser/function/wrapperP:
+  digest: sha256:f988e2145ad6e19d
+  verdict: pending

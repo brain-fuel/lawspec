@@ -1,0 +1,6 @@
+decision/haskell/src/LawSpec/KotlinNativeBinding.hs/module/LawSpec.KotlinNativeBinding:
+  digest: sha256:bc3def42bcc84313
+  verdict: pending
+decision/haskell/src/LawSpec/KotlinNativeBinding.hs/module/LawSpec.KotlinNativeBinding/function/emitBindings:
+  digest: sha256:ea5aeeaf2bbc990d
+  verdict: pending

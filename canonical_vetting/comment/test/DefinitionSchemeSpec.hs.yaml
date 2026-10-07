@@ -1,0 +1,9 @@
+decision/haskell/test/DefinitionSchemeSpec.hs/module/DefinitionSchemeSpec:
+  digest: sha256:3e5b2c1a72a207dc
+  verdict: pending
+decision/haskell/test/DefinitionSchemeSpec.hs/module/DefinitionSchemeSpec/function/audit:
+  digest: sha256:b786795914633fc7
+  verdict: pending
+decision/haskell/test/DefinitionSchemeSpec.hs/module/DefinitionSchemeSpec/function/test_definitionTemplatesAreAuditedBeforeSpecialization:
+  digest: sha256:f70f917cffc87e6d
+  verdict: pending

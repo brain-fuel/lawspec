@@ -1,4 +1,4 @@
--- Checked bridges in application packages, with compiler-resolved call names.
+-- | Checked bridges in application packages, with compiler-resolved call names.
 module LawSpec.GoNativeBinding (preparePlan, emitBindings) where
 
 import Control.Monad (forM, unless)
@@ -18,7 +18,7 @@ import qualified LawSpec.GoDefinitions as Definitions
 import qualified LawSpec.CoreNativeScalarEmit as Scalar
 import qualified LawSpec.Code.Doc as D
 
--- Only backend spellings change. Qualified type/constructor identities and
+-- | Only backend spellings change. Qualified type/constructor identities and
 -- propositions remain untouched, and every Go emitter sees the same spellings.
 preparePlan :: BindingPlan -> Plan -> Either String Plan
 preparePlan bindings plan = do
@@ -46,6 +46,8 @@ preparePlan bindings plan = do
               fresh = head [name | name <- candidates, all ((`notElem` occupied) . folded) (family name)]
           reserve [if C.dataId d == C.dataId clash then d {C.dataName = fresh} else d | d <- declarations]
 
+-- | Bound adapters call the user's Go code directly, through generated
+-- conversions. ref:DEC-native-bindings-typed-identity
 emitBindings :: Bool -> BindingPlan -> Plan -> [Artifact] -> Either String [Artifact]
 emitBindings minify plan testing files = do
   unless (bindingRustCrate plan == Nothing) (Left "rustCrate is only valid for Rust bindings")

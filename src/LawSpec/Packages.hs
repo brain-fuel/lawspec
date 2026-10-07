@@ -1,4 +1,4 @@
--- Packages: named, versioned groups of units. A package's units live in its
+-- | Packages: named, versioned groups of units. A package's units live in its
 -- namespace (the package name or names below it), a package names the
 -- packages it depends on with version ranges, and a unit may import only
 -- units of its own package (or project) and of that package's direct
@@ -19,17 +19,20 @@ import Data.List (intercalate, isPrefixOf, maximumBy, sort, sortOn)
 import Data.Ord (comparing)
 import qualified Data.Map.Strict as M
 
+-- | A package is versioned sources with their own dependencies, so a project can
+-- reuse laws across repositories. ref:semver-2
 data Package = Package
   { packageName :: String, packageVersion :: String
   , packageDependencies :: M.Map String String, packageSources :: [Source] }
   deriving (Eq, Show)
 
--- The request's own sources: optionally a package themselves, and the
+-- | The request's own sources: optionally a package themselves, and the
 -- packages they depend on.
 data Project = Project
   { projectPackage :: Maybe (String, String), projectDependencies :: M.Map String String }
   deriving (Eq, Show)
 
+-- | A request without project information compiles its sources alone.
 emptyProject :: Project
 emptyProject = Project Nothing M.empty
 
@@ -37,7 +40,7 @@ instance FromJSON Package where
   parseJSON = withObject "package" $ \o -> Package
     <$> o .: "name" <*> o .: "version" <*> o .:? "dependencies" .!= M.empty <*> o .:? "sources" .!= []
 
--- All sources in compilation order, with the import visibility rule and the
+-- | All sources in compilation order, with the import visibility rule and the
 -- unit names of each package.
 --
 -- One package may be supplied in several versions. Each dependent then gets
@@ -149,7 +152,7 @@ preparePackages project packages sources
     unitOf source = either (const (Left [Diagnostic "parse" ("cannot read the unit name of " ++ path source) Nothing])) pure (sourceUnit source)
     within name u = u == name || (name ++ ".") `isPrefixOf` u
 
--- Diagnostics name a versioned unit as its own name and the package version,
+-- | Diagnostics name a versioned unit as its own name and the package version,
 -- so a mismatch between two versions reads shop.money::type::Money
 -- (shop.money 2.1.0) and shop.money::type::Money (shop.money 1.4.0).
 versionedDiagnostics :: [(Package, [String])] -> [Diagnostic] -> [Diagnostic]
@@ -174,7 +177,7 @@ versionedDiagnostics described
       _ | separator `isPrefixOf` s -> ([], s)
       x : xs -> let (a, b) = breakOn separator xs in (x : a, b)
 
--- The unit-name segment of a version: 1.2.0 is v1x2x0, 2.0.0-beta.1 is
+-- | The unit-name segment of a version: 1.2.0 is v1x2x0, 2.0.0-beta.1 is
 -- v2x0x0_beta_1. The numbers are digits only, so an x between them keeps
 -- 1.10.0 (v1x10x0) and 11.0.0 (v11x0x0) apart even where a target's type
 -- names drop the underscores. Prerelease tags are free text; versions whose
@@ -183,7 +186,7 @@ versionSegment :: String -> String
 versionSegment v = 'v' : intercalate "x" (splitOn '.' release) ++ map (\c -> if isAlphaNum c then c else '_') prerelease
   where (release, prerelease) = break (== '-') v
 
--- Two versions of one package whose segments are the same once underscores
+-- | Two versions of one package whose segments are the same once underscores
 -- and case are ignored, as some targets' type names do.
 segmentClash :: [String] -> Maybe (String, String)
 segmentClash versions = case [(a, b) | (i, a) <- numbered, (j, b) <- numbered, i < j, folded a == folded b] of
@@ -192,7 +195,7 @@ segmentClash versions = case [(a, b) | (i, a) <- numbered, (j, b) <- numbered, i
   where numbered = zip [0 :: Int ..] versions
         folded = map toLower . filter (/= '_') . versionSegment
 
--- Renames the unit line and the targets of the import lines of a source,
+-- | Renames the unit line and the targets of the import lines of a source,
 -- giving each rewritten import its old alias explicitly.
 rewriteUnit :: (String -> String) -> (String -> String) -> String -> String
 rewriteUnit renameUnit retarget = unlines . go False . lines
@@ -224,6 +227,8 @@ qualifiedName name = not (null parts) && all segment parts
       (a, _ : rest) -> a : split rest
       (a, []) -> [a]
 
+-- | The evidence report says which packages were used, at which versions, only
+-- when the project has any.
 packagesView :: Project -> [(Package, [String])] -> [(Key, Value)]
 packagesView project described
   | null described && projectPackage project == Nothing && M.null (projectDependencies project) = []
@@ -235,7 +240,7 @@ packagesView project described
           ([ "package" .= object ["name" .= n, "version" .= v] | Just (n, v) <- [projectPackage project] ] ++
            [ "dependencies" .= projectDependencies project ]) ]
 
--- Semantic versions: MAJOR.MINOR.PATCH with an optional -prerelease, which
+-- | Semantic versions: MAJOR.MINOR.PATCH with an optional -prerelease, which
 -- orders before the release.
 data Version = Version Integer Integer Integer (Maybe String) deriving (Eq, Show)
 
@@ -248,6 +253,8 @@ instance Ord Version where
           identifiers s = map identifier (splitOn '.' s)
           identifier i = if not (null i) && all isDigit i then Left (read i :: Integer) else Right i
 
+-- | Package versions follow Semantic Versioning, so precedence and ranges mean
+-- what they mean everywhere else. ref:semver-2
 parseVersion :: String -> Either String Version
 parseVersion text = do
   let (core, pre) = break (== '-') text
@@ -265,11 +272,13 @@ parseVersion text = do
     number s | not (null s) && all isDigit s && (s == "0" || take 1 s /= "0") = Right (read s)
              | otherwise = Left ("invalid version number " ++ show s)
 
--- A range is whitespace-separated comparators, all of which must hold:
+-- | A range is whitespace-separated comparators, all of which must hold:
 -- 1.2.3 (exactly), ^1.2.3, ~1.2.3, >=, >, <=, < and *.
 data Comparator = AtLeast Version | Above Version | AtMost Version | Below Version | Exactly Version
   deriving (Eq, Show)
 
+-- | A dependency names a range of versions, so compatible releases are accepted
+-- without editing the dependent. ref:semver-2
 parseRange :: String -> Either String [Comparator]
 parseRange text = case words text of
   [] -> Left "empty range"
@@ -290,7 +299,7 @@ parseRange text = case words text of
       | otherwise = [AtLeast v, Below (Version 0 0 (c + 1) (Just "0"))]
     tilde v@(Version a b _ _) = [AtLeast v, Below (Version a (b + 1) 0 (Just "0"))]
 
--- Prerelease versions satisfy a range only when a comparator names a
+-- | Prerelease versions satisfy a range only when a comparator names a
 -- prerelease of the same MAJOR.MINOR.PATCH, as in npm.
 satisfies :: [Comparator] -> Version -> Bool
 satisfies comparators version@(Version a b c pre) =

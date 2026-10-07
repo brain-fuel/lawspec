@@ -1,0 +1,33 @@
+decision/haskell/src/LawSpec/Elaboration.hs/module/LawSpec.Elaboration:
+  digest: sha256:578ca15bfbc26ac2
+  verdict: pending
+decision/haskell/src/LawSpec/Elaboration.hs/module/LawSpec.Elaboration/function/binaryOp:
+  digest: sha256:76496aa5fa55f183
+  verdict: pending
+decision/haskell/src/LawSpec/Elaboration.hs/module/LawSpec.Elaboration/function/coreType:
+  digest: sha256:142945032a18b5a1
+  verdict: pending
+decision/haskell/src/LawSpec/Elaboration.hs/module/LawSpec.Elaboration/function/elaborateContract:
+  digest: sha256:ec2cc6d0111a33fc
+  verdict: pending
+decision/haskell/src/LawSpec/Elaboration.hs/module/LawSpec.Elaboration/function/elaborateDefinitionUnit:
+  digest: sha256:cde3be4b0bdd4ff8
+  verdict: pending
+decision/haskell/src/LawSpec/Elaboration.hs/module/LawSpec.Elaboration/function/elaborateExpression:
+  digest: sha256:5c73ab6ebbfaa926
+  verdict: pending
+decision/haskell/src/LawSpec/Elaboration.hs/module/LawSpec.Elaboration/function/elaborateResolved:
+  digest: sha256:4c0c9d654fb6739a
+  verdict: pending
+decision/haskell/src/LawSpec/Elaboration.hs/module/LawSpec.Elaboration/function/elaborateResolvedWithData:
+  digest: sha256:46308d07d2d653d0
+  verdict: pending
+decision/haskell/src/LawSpec/Elaboration.hs/module/LawSpec.Elaboration/function/equation:
+  digest: sha256:772a6df08cf0b6f0
+  verdict: pending
+decision/haskell/src/LawSpec/Elaboration.hs/module/LawSpec.Elaboration/function/equationWithData:
+  digest: sha256:e1593be3371822be
+  verdict: pending
+decision/haskell/src/LawSpec/Elaboration.hs/module/LawSpec.Elaboration/function/machineBridges:
+  digest: sha256:2b77969e636725be
+  verdict: pending

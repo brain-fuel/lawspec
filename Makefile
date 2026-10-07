@@ -1,5 +1,5 @@
 # LawSpec development tasks. `make` lists them. Every check runs locally;
-# there is no hosted CI. See CONTRIBUTING.md and RELEASING.md.
+# there is no hosted CI. See docs/how-to/contribute.md and docs/how-to/release.md.
 
 STACK   := stack --no-terminal
 DEV     := $(STACK) run lawspec-dev --
@@ -11,7 +11,7 @@ SITE    := .artifacts/site
 .DEFAULT_GOAL := help
 .PHONY: help build generate generate-check wasm test integrity boundaries check parity \
         smoke package acceptance lessons ci ci-fresh ci-core examples editor-test docs docs-check \
-        docs-serve docs-deploy bump version release-check clean
+        docs-serve docs-deploy canon bump version release-check clean
 
 help: ## List the tasks
 	@awk -F':.*## ' '/^[a-z-]+:.*## / {printf "  %-15s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -79,6 +79,9 @@ docs: ## Build the documentation site into .artifacts/site
 docs-check: ## Compile every documentation snippet and check links
 	$(DEV) docs --check
 
+canon: ## Check the canonical format with canon (needs CANON_HOME)
+	$(DEV) canon check
+
 docs-serve: docs ## Serve the documentation site on http://localhost:8000
 	python3 -m http.server --directory $(SITE) 8000
 
@@ -91,7 +94,7 @@ bump: ## Set the release version: make bump VERSION=x.y.z
 version: ## Print the release version and check every file agrees
 	$(DEV) version --check
 
-release-check: ## Preconditions for a release (see RELEASING.md)
+release-check: ## Preconditions for a release (see docs/how-to/release.md)
 	@test "$$(git branch --show-current)" = main || (echo "Release from main" && exit 1)
 	@test -z "$$(git status --porcelain)" || (echo "The working tree is not clean" && exit 1)
 	$(DEV) version --check

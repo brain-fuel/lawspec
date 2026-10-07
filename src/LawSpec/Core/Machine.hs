@@ -1,5 +1,5 @@
 {-# LANGUAGE DeriveGeneric, DeriveFunctor, DeriveFoldable, DeriveTraversable #-}
--- Stateful models: a system's commands, each paired with a reference
+-- | Stateful models: a system's commands, each paired with a reference
 -- definition over an abstract model state. Each target's model runtime
 -- generates runs of commands, executes them against the adapters and checks
 -- every result, state and invariant against the reference. Names are surface
@@ -13,7 +13,7 @@ module LawSpec.Core.Machine
 import GHC.Generics (Generic)
 import LawSpec.Core.Program (Program)
 
--- A linear machine threads a flow-typed state through its commands and runs
+-- | A linear machine threads a flow-typed state through its commands and runs
 -- sequentially; a shared machine's commands take one handle, whose type
 -- never changes, and may also run in parallel.
 data Machine name = Machine
@@ -43,7 +43,7 @@ data Machine name = Machine
   , machineConsistency :: Consistency
   } deriving (Eq, Show, Generic, Functor, Foldable, Traversable)
 
--- Linearizable: some order of the calls that keeps real time (a call after
+-- | Linearizable: some order of the calls that keeps real time (a call after
 -- every call that returned before it began) gives every result. Sequential:
 -- some order that keeps each process's own order, and what its messages
 -- carried, gives every result. Causal: each process's results come from
@@ -53,7 +53,7 @@ data Machine name = Machine
 data Consistency = Linearizable | Sequential | Causal | Eventual
   deriving (Eq, Show, Generic)
 
--- The command that makes the first state, and the definition giving the
+-- | The command that makes the first state, and the definition giving the
 -- model state for the same arguments. indices are the start state's, when
 -- its type fixes them.
 data MachineStart name = MachineStart
@@ -62,7 +62,7 @@ data MachineStart name = MachineStart
   , startRun :: name
   } deriving (Eq, Show, Generic, Functor, Foldable, Traversable)
 
--- A command: the adapter that runs it, its reference definition over the
+-- | A command: the adapter that runs it, its reference definition over the
 -- model state (taking the command's other arguments, then the model state,
 -- and returning Pair result state, or the state alone for a Unit result),
 -- a precondition over the model state, and, per state index, what the index
@@ -91,30 +91,35 @@ data Command name = Command
   , commandRestart :: Bool
   } deriving (Eq, Show, Generic, Functor, Foldable, Traversable)
 
+-- | A command may need a state index at least or exactly some value, which is
+-- how a model says when it may run. ref:DEC-stateful-models-linearizability
 data Need = AtLeast Integer | Exactly Integer
   deriving (Eq, Show, Generic)
 
+-- | A command moves a state index by an amount or to a value.
 data Shift = By Integer | To Integer
   deriving (Eq, Show, Generic)
 
+-- | An invariant is a law over the model or over the implementation's state,
+-- checked after every step.
 data Invariant name = OnModel name | OnState name
   deriving (Eq, Show, Generic, Functor, Foldable, Traversable)
 
--- Whether a command may run at the given state indices.
+-- | Whether a command may run at the given state indices.
 admits :: Command name -> [Integer] -> Bool
 admits command indices = and (zipWith need (commandNeeds command) indices)
   where
     need (AtLeast k) i = i >= k
     need (Exactly k) i = i == k
 
--- The state indices after a command.
+-- | The state indices after a command.
 shifted :: Command name -> [Integer] -> [Integer]
 shifted command = zipWith shift (commandShifts command)
   where
     shift (By d) i = i + d
     shift (To k) _ = k
 
--- A supervisor starts its children (actors, or other supervisors) and
+-- | A supervisor starts its children (actors, or other supervisors) and
 -- restarts them after a crash. Its strategy says which children restart:
 -- the one that crashed, all of them, or it and those started after it. A
 -- child's lifetime says whether it restarts: always (permanent), only after
@@ -129,8 +134,12 @@ data Supervisor = Supervisor
   , supervisorChildren :: [(Lifetime, String)]
   } deriving (Eq, Show, Generic)
 
+-- | The three OTP restart strategies, which every target's supervisor implements.
+-- ref:erlang-otp-supervisors
 data SupervisionStrategy = OneForOne | OneForAll | RestForOne
   deriving (Eq, Show, Generic)
 
+-- | OTP's child lifetimes: always restarted, restarted after a crash, or never.
+-- ref:erlang-otp-supervisors
 data Lifetime = Permanent | Transient | Temporary
   deriving (Eq, Show, Generic)

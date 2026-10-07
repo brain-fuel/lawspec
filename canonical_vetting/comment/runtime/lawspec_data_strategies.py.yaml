@@ -1,0 +1,18 @@
+decision/python/runtime/lawspec_data_strategies.py:
+  digest: sha256:0f90972bdc10430a
+  verdict: pending
+decision/python/runtime/lawspec_data_strategies.py/function/_canonical:
+  digest: sha256:de5d8e779d04d1d0
+  verdict: pending
+decision/python/runtime/lawspec_data_strategies.py/function/eval_index_term:
+  digest: sha256:fa5f3cfa1afa9ce4
+  verdict: pending
+decision/python/runtime/lawspec_data_strategies.py/function/indexed_strategy:
+  digest: sha256:c40f85aecb8dc7a1
+  verdict: pending
+decision/python/runtime/lawspec_data_strategies.py/function/parse_index_term:
+  digest: sha256:f31966f01b1839b0
+  verdict: pending
+decision/python/runtime/lawspec_data_strategies.py/function/strategy:
+  digest: sha256:5ed5e7a60263cb4c
+  verdict: pending

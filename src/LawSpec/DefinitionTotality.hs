@@ -1,4 +1,4 @@
--- Lower already-typed templates to the same proof obligations used by Core.
+-- | Lower already-typed templates to the same proof obligations used by Core.
 -- This view is never executable IR and is never consumed by target generators.
 module LawSpec.DefinitionTotality (auditTemplates) where
 
@@ -19,6 +19,8 @@ import LawSpec.Common
 
 type ProofM = StateT Int (Either String)
 
+-- | Generic definitions are audited before specialisation, so a body that is
+-- never used at any type is still proved total. ref:DEC-total-definitions
 auditTemplates :: [C.DataDeclaration] -> Int -> S.Unit -> [(S.FunctionDefinition, S.TypedExpr, [S.TypedExpr], [S.TypedExpr])] -> Either [Diagnostic] ()
 auditTemplates declarations bits unit templates = do
   constructors <- constructorProofContracts bits declarations
@@ -251,7 +253,7 @@ auditTemplates declarations bits unit templates = do
       S.Var name -> take 8 name == "prelude."
       _ -> False
 
--- The text of a string literal, through its source location.
+-- | The text of a string literal, through its source location.
 literalText :: S.Expr -> Maybe String
 literalText e = case e of
   S.Located _ inner -> literalText inner

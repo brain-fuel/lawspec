@@ -1,4 +1,4 @@
--- How each obligation of a checked program is discharged. Definition
+-- | How each obligation of a checked program is discharged. Definition
 -- postconditions are proved by the totality audit (compilation fails
 -- otherwise), so emitters never re-check them at runtime. Preconditions guard
 -- native callers, and adapter contracts cover code LawSpec cannot inspect, so
@@ -15,7 +15,7 @@ import LawSpec.Core
 import LawSpec.Core.Machine (Machine(..), Supervisor(..), Consistency(..))
 import qualified LawSpec.Core.Program as P
 
--- Strongest first. DefaultHandler is a built-in ability's default
+-- | Strongest first. DefaultHandler is a built-in ability's default
 -- handler: reviewed runtime code whose ability's laws are property-tested.
 -- The last three come from the harness plane: a law its harness skips,
 -- or marks as known to fail, is still an obligation; flaky is a run's outcome
@@ -25,9 +25,12 @@ data Status = Proved | ExhaustivelyChecked | PropertyTested | RuntimeChecked | D
   | KnownFailing | Flaky | Skipped
   deriving (Eq, Ord, Show, Enum, Bounded)
 
+-- | Every status, in order of strength, for reports that list them all.
+-- ref:DEC-evidence-statuses
 statuses :: [Status]
 statuses = [minBound .. maxBound]
 
+-- | Status names are part of the JSON contract with the CLI and the docs.
 statusName :: Status -> String
 statusName Proved = "proved"
 statusName ExhaustivelyChecked = "exhaustively-checked"
@@ -39,6 +42,9 @@ statusName KnownFailing = "known-failing"
 statusName Flaky = "flaky"
 statusName Skipped = "skipped"
 
+-- | Each claim the program makes, with the strongest evidence found for it, so
+-- lawspec evidence can show which laws are proved and which only tested.
+-- ref:DEC-evidence-statuses
 data Obligation = Obligation
   { obligationUnit :: Id
   , obligationDeclaration :: Id
@@ -48,7 +54,7 @@ data Obligation = Obligation
   , obligationReason :: String
   } deriving (Eq, Show)
 
--- Declarations with no checked body: the native functions a unit calls.
+-- | Declarations with no checked body: the native functions a unit calls.
 adapterDeclarations :: Unit -> [Declaration]
 adapterDeclarations unit =
   let definitions = S.fromList [declarationId (definitionDeclaration d) | d <- unitDefinitions unit]
@@ -56,6 +62,7 @@ adapterDeclarations unit =
   where isFunction (Arrow _ _) = True
         isFunction _ = False
 
+-- | Constructor invariants are obligations too, not only laws.
 programEvidence :: Program -> [Obligation]
 programEvidence program =
   concatMap unitEvidence (programUnits program) ++ concatMap dataEvidence (programDataDeclarations program)
@@ -124,7 +131,7 @@ programEvidence program =
         [] -> "native implementation taken on trust; no law calls it"
         laws -> "native implementation taken on trust; called by " ++ show (length laws) ++ " law(s)"
 
--- Whether a property calls the declaration, in its body, domain or examples.
+-- | Whether a property calls the declaration, in its body, domain or examples.
 calls :: Id -> Property -> Bool
 calls name p = any (mentions name) (propertyExpressions p)
 
@@ -142,7 +149,7 @@ mentions name e = case expressionNode e of
   Convert _ _ a -> mentions name a
   _ -> any (mentions name) (children e)
 
--- Definition emitters call this for the result checks they generate. Proved
+-- | Definition emitters call this for the result checks they generate. Proved
 -- postconditions need none; deferred non-linear claims are checked.
 runtimePostconditions :: Contract -> [Expr]
 runtimePostconditions = contractRuntimePostconditions

@@ -1,0 +1,9 @@
+decision/go/acceptance/generation/go/files/example/generation/adapter.go:
+  digest: sha256:3958865d54d534bd
+  verdict: pending
+decision/go/acceptance/generation/go/files/example/generation/adapter.go/function/Generated:
+  digest: sha256:e1577a592b13cc93
+  verdict: pending
+decision/go/acceptance/generation/go/files/example/generation/adapter.go/function/Shrunk:
+  digest: sha256:69afcf88c75e5d6a
+  verdict: pending

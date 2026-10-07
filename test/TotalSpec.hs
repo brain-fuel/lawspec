@@ -1,4 +1,5 @@
-module TotalSpec (spec) where
+-- | Execution of checked total definitions in Core.
+module TotalSpec (test_checkedDefinitionsExecuteTotallyInCore) where
 
 import Test.Hspec
 import Data.Either (isLeft, isRight)
@@ -53,8 +54,12 @@ lengthDef recursive = definition "length" [("xs",list)]
   (matchList (local "xs" list) (number integer 0) "head" "tail"
     (operation Add (number integer 1) recursive))
 
-spec :: Spec
-spec = describe "checked Core total definitions" $ do
+-- | The compiler evaluates checked definitions itself, so every operation that
+-- could fail must be justified by a proved domain, in both machine profiles
+-- and without IEEE shortcuts. ref:DEC-total-definitions
+-- ref:REQ-total-definitions
+test_checkedDefinitionsExecuteTotallyInCore :: Spec
+test_checkedDefinitionsExecuteTotallyInCore = describe "checked Core total definitions" $ do
   it "executes arithmetic justified by a matched field's primitive domain" $ do
     let source = Source "fields.lawspec" $ unlines
           ["unit fields"

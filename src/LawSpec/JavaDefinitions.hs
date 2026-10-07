@@ -1,4 +1,4 @@
--- Native entry points and checked implementation helpers for total definitions.
+-- | Native entry points and checked implementation helpers for total definitions.
 module LawSpec.JavaDefinitions (emitJavaDefinitions, emitJvmDefinitionBodies, definitionCalls, orchestratedAdapters, kotlinAdapterBridge, kotlinOperationBridge, kotlinHandlerBridge, performedOperations, scopedHandlers) where
 
 import LawSpec.Core.Stages (stageFailures)
@@ -15,7 +15,7 @@ import LawSpec.AbilityNames (interfaceName, specName, ownerName)
 import qualified LawSpec.JavaExpr as E
 import qualified LawSpec.Code.Doc as D
 
--- The adapters orchestrations call, with their units.
+-- | The adapters orchestrations call, with their units.
 orchestratedAdapters :: [Unit] -> [(Id, (Id, Declaration))]
 orchestratedAdapters units =
   [ (callee, adapter)
@@ -29,7 +29,7 @@ orchestratedAdapters units =
       _ -> concatMap calls (children expression)
     nubIds = foldr (\x acc -> if x `elem` acc then acc else x : acc) []
 
--- The Kotlin bridge method through which shared JVM bodies call a Kotlin
+-- | The Kotlin bridge method through which shared JVM bodies call a Kotlin
 -- adapter.
 kotlinAdapterBridge :: Id -> String
 kotlinAdapterBridge identity = "call_" ++ map (\c -> if isAlphaNum c then c else '_') (idText identity)
@@ -62,14 +62,20 @@ performedOperations units = foldr (\x acc -> if x `elem` acc then acc else x : a
       Perform op arguments -> op : concatMap performs arguments
       _ -> concatMap performs (children expression)
 
+-- | Generated tests call checked definitions by these names, so every test
+-- file agrees.
 definitionCalls :: [Unit] -> [(Id,String)]
 definitionCalls units = [(declarationId (definitionDeclaration d),
   "lawspec.runtime.LawSpecDefinitionBodies.evaluate" ++ show i)
   | (i,d) <- zip [0::Int ..] (concatMap unitDefinitions units)]
 
+-- | Checked definitions are emitted as ordinary Java code, so adapters and tests call
+-- the same proved implementation. ref:DEC-total-definitions
 emitJavaDefinitions :: D.Layout -> Int -> [DataDeclaration] -> [Unit] -> Either String [Artifact]
 emitJavaDefinitions = emitDefinitions True
 
+-- | Kotlin reuses the Java bodies of checked definitions, so the two JVM targets
+-- run one implementation.
 emitJvmDefinitionBodies :: D.Layout -> Int -> [DataDeclaration] -> [Unit] -> Either String [Artifact]
 emitJvmDefinitionBodies = emitDefinitions False
 

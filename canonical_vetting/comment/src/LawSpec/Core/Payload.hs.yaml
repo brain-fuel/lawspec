@@ -1,0 +1,6 @@
+decision/haskell/src/LawSpec/Core/Payload.hs/module/LawSpec.Core.Payload:
+  digest: sha256:d9269ffeffd9b600
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Payload.hs/module/LawSpec.Core.Payload/function/checkPayloads:
+  digest: sha256:7dba5535ebb6b911
+  verdict: pending

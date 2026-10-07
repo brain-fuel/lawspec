@@ -1,0 +1,6 @@
+decision/go/acceptance/keywords/go/files/example/keywords/adapter.go:
+  digest: sha256:7666bac43ab2f863
+  verdict: pending
+decision/go/acceptance/keywords/go/files/example/keywords/adapter.go/function/Class:
+  digest: sha256:836f418d777572e7
+  verdict: pending

@@ -1,4 +1,4 @@
--- Native data declarations follow the resolved-plan/renderer separation used
+-- | Native data declarations follow the resolved-plan/renderer separation used
 -- by Go+. Public fields retain native types; runtime Value is only the bridge
 -- for primitive domains with no faithful Java representation.
 module LawSpec.JavaData (schemaSource, javaConstructorClass, emitJavaData, emitJavaDataWithProfile, emitJavaSchema, javaDataType, javaCodec, javaTypeReference, javaDataKey, javaDataTypeDoc, javaCodecDoc, javaCodecDocWithContext, javaDataName, identifier) where
@@ -26,7 +26,7 @@ import qualified LawSpec.Code.Doc as D
 
 type Names = [(String, String)]
 
--- Plan names across the complete declaration set before emitting recursive
+-- | Plan names across the complete declaration set before emitting recursive
 -- references, as Go+ does. Qualify only ambiguous short names. If qualification
 -- itself collides, a lossless identity suffix handles case-insensitive paths.
 namesFor :: [C.DataDeclaration] -> Either String Names
@@ -49,6 +49,8 @@ nativeName names declaration = case lookup (C.idText (C.dataId declaration)) nam
   Just name -> name
   Nothing -> error "unplanned Java data declaration"
 
+-- | A data name must be a valid Java identifier and not a keyword, or the
+-- generated class would not compile.
 identifier :: String -> Either String ()
 identifier name = unless (valid && name `notElem` keywords)
   (Left ("invalid Java data identifier: " ++ name))
@@ -59,15 +61,21 @@ identifier name = unless (valid && name `notElem` keywords)
         all (\c -> isAscii c && (isAlphaNum c || c == '_')) rest
     keywords = words "_ abstract assert boolean break byte case catch char class const continue default do double else enum extends final finally float for goto if implements import instanceof int interface long native new package private protected public return short static strictfp super switch synchronized this throw throws transient try void volatile while true false null record sealed permits var yield"
 
+-- | Java output is laid out at 100 columns, as Google's Java style allows.
+-- ref:google-style-guides
 javaDataType :: [C.DataDeclaration] -> C.Type -> Either String String
 javaDataType declarations ty = D.render (D.Pretty 100) <$> javaDataTypeDoc declarations ty
 
+-- | Generated data classes live in the lawspec.data package, apart from user
+-- code.
 javaDataName :: [C.DataDeclaration] -> C.Id -> Either String String
 javaDataName declarations identity = do
   names <- namesFor declarations
   maybe (Left "unknown Java data identity") (Right . ("lawspec.data." ++))
     (lookup (C.idText identity) names)
 
+-- | Types are checked against the registry before rendering, so an unknown type
+-- is a compiler error rather than uncompilable Java.
 javaDataTypeDoc :: [C.DataDeclaration] -> C.Type -> Either String D.Doc
 javaDataTypeDoc declarations ty = do
   registry <- makeRegistry declarations
@@ -75,7 +83,7 @@ javaDataTypeDoc declarations ty = do
   names <- namesFor declarations
   typeDoc (handlesOf declarations) names [] ty
 
--- The identities of handle declarations: their values are adapters' native
+-- | The identities of handle declarations: their values are adapters' native
 -- objects, an Object in generated code.
 -- Each handle, with its native type when its binding names it in full.
 type Handles = [(String, Maybe String)]
@@ -135,9 +143,13 @@ applied name [] = D.text name
 applied name arguments = D.group $ D.text (name ++ "<") <>
   D.nest 8 (D.softbreak <> D.group (D.commaSep arguments)) <> D.text ">"
 
+-- | The 64-bit profile unless a caller states another.
+-- ref:DEC-explicit-machine-profile
 emitJavaData :: D.Layout -> [C.DataDeclaration] -> Either String [Artifact]
 emitJavaData = emitJavaDataWithProfile 64
 
+-- | LawSpec data become records and sealed interfaces of records, the shapes
+-- modern Java uses. ref:DEC-idiomatic-generated-types
 emitJavaDataWithProfile :: Int -> D.Layout -> [C.DataDeclaration] -> Either String [Artifact]
 emitJavaDataWithProfile bits layout declarations = do
   _ <- makeRegistry declarations
@@ -208,7 +220,7 @@ emitJavaDataWithProfile bits layout declarations = do
         maybe mempty (\owner -> D.nest 4 (D.softline <> D.text "implements " <> owner)) implements) <> D.text " {}")
     objectMethods = ["hashCode", "toString", "equals", "getClass", "notify", "notifyAll", "wait", "clone", "finalize"]
 
--- The class that holds one constructor's values: the record itself for a
+-- | The class that holds one constructor's values: the record itself for a
 -- product, or the sum's nested record.
 javaConstructorClass :: [C.DataDeclaration] -> C.DataDeclaration -> C.DataConstructor -> Either String String
 javaConstructorClass declarations declaration constructor = do
@@ -222,12 +234,12 @@ constructorClass names declaration constructor
       (lookup (C.constructorId constructor) (caseNames name (C.dataConstructors declaration)))
   where name = nativeName names declaration
 
--- The same structural schema is consumed by Rust and Java. This renderer never
+-- | The same structural schema is consumed by Rust and Java. This renderer never
 -- reparses a pretty-printed type or reconstructs generic arguments from text.
 schemaSource :: D.Layout -> [Schema.DataSchema] -> String
 schemaSource layout = renderSchema layout [] []
 
--- Callback emission is profile-aware and consumes audited typed Core contracts.
+-- | Callback emission is profile-aware and consumes audited typed Core contracts.
 emitJavaSchema :: Int -> D.Layout -> [C.DataDeclaration] -> Either String String
 emitJavaSchema bits layout declarations = do
   _ <- either (Left . show) Right (constructorProofContracts bits declarations)
@@ -320,7 +332,7 @@ renderSchemaWith handles layout callbacks bindings schemas = D.render layout $
     reference (Schema.Parameter index) = call "new Parameter" [D.text (show index)]
     reference (Schema.Named name arguments) = call "new Named" (quoted name : map reference arguments)
 
--- A built-in collection's codec: LawSpecSchema's set, keyVal or sequence.
+-- | A built-in collection's codec: LawSpecSchema's set, keyVal or sequence.
 collectionCodec :: (String -> [D.Doc] -> D.Doc) -> String -> String -> [D.Doc] -> [D.Doc] -> D.Doc
 collectionCodec call schema short children rest = case short of
   "Set" -> call (schema ++ ".set") (children ++ rest)
@@ -520,6 +532,7 @@ typeVariablesOf ty = case ty of
   C.Constructor _ arguments -> concat [typeVariablesOf t | C.TypeArgument t <- arguments]
   C.Arrow a b -> typeVariablesOf a ++ typeVariablesOf b
 
+-- | The runtime validates values against a schema reference built from the type.
 javaTypeReference :: C.Type -> Either String String
 javaTypeReference ty = render <$> Schema.typeReference [] ty
   where
@@ -528,6 +541,8 @@ javaTypeReference ty = render <$> Schema.typeReference [] ty
     render (Schema.Named name args) = "new lawspec.runtime.LawSpecSchema.Named(" ++
       quoted name ++ concatMap ((", " ++) . render) args ++ ")"
 
+-- | Every value crossing the adapter boundary goes through a codec that checks
+-- it against its declared domain. ref:DEC-portable-exact-arithmetic
 javaCodec :: [C.DataDeclaration] -> Int -> C.Type -> Either String String
 javaCodec declarations bits ty = do
   names <- namesFor declarations
@@ -556,11 +571,12 @@ javaCodec declarations bits ty = do
     quoted = Text.unpack . Text.decodeUtf8 . encode
     invoke name args = name ++ "(" ++ concat (zipWith (++) ("" : repeat ", ") args) ++ ")"
 
--- A structured counterpart for source emitters; the existing string API remains
+-- | A structured counterpart for source emitters; the existing string API remains
 -- available to legacy property wrappers.
 javaCodecDoc :: [C.DataDeclaration] -> Int -> C.Type -> Either String D.Doc
 javaCodecDoc = javaCodecDocUsing Nothing
 
+-- | As javaCodec, where the symbol table comes from the caller's scope.
 javaCodecDocWithContext :: D.Doc -> [C.DataDeclaration] -> Int -> C.Type -> Either String D.Doc
 javaCodecDocWithContext symbols = javaCodecDocUsing (Just symbols)
 
@@ -596,6 +612,6 @@ javaCodecDocUsing context declarations bits ty = do
     invoke name args = D.group (D.text (name ++ "(") <>
       D.nest 4 (D.softbreak <> D.group (D.commaSep args)) <> D.text ")")
 
--- Built-in collections and durations are Java's own types, not generated ones.
+-- | Built-in collections and durations are Java's own types, not generated ones.
 builtinFree :: C.DataDeclaration -> Bool
 builtinFree d = collectionContainer (C.idText (C.dataId d)) == Nothing && not (isDurationType (C.idText (C.dataId d)))

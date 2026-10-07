@@ -1,4 +1,10 @@
 //! Proptest support, separate from the reusable numeric runtime.
+//!
+//! Generated tests run in Proptest, the framework Rust developers already use,
+//! so failures shrink, persist and report as they expect; LawSpec supplies only
+//! the strategies for its own types, and shrinking stays within the declared
+//! domain. ref:DEC-native-property-frameworks ref:proptest
+//! ref:DEC-shrink-within-domain
 use crate::lawspec_runtime::{self as ls, IntoValue, Value};
 use proptest::prelude::*;
 

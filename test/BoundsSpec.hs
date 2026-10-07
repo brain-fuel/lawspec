@@ -1,4 +1,5 @@
-module BoundsSpec (spec) where
+-- | Generators honour refinement bounds on every target.
+module BoundsSpec (test_generationStaysWithinRefinedBoundsOnEveryTarget) where
 
 import Data.List (isInfixOf)
 import Test.Hspec
@@ -8,7 +9,7 @@ import LawSpec.Frontend (compileCore)
 import LawSpec.Model (Source(..), defaultGeneration)
 import LawSpec.Testing (planTesting)
 
--- A law over a data value and an integer refined to 1..1000: the
+-- | A law over a data value and an integer refined to 1..1000: the
 -- generators must draw the integer from that range.
 purse :: String
 purse = unlines
@@ -22,8 +23,12 @@ tests target = do
   files <- compileCore 64 defaultGeneration [Source "purse.lawspec" purse] >>= planTesting >>= emitPlan target
   pure (concat [artifactContent f | f <- files, artifactPlacement f == "test"])
 
-spec :: Spec
-spec = describe "refinement bounds" $
+-- | A generator that strays outside a refined range either discards most cases
+-- or tests inputs the law never promised to accept, so each target must narrow
+-- generation to the declared bounds. ref:DEC-planned-generation
+-- ref:REQ-refined-generation-bounds
+test_generationStaysWithinRefinedBoundsOnEveryTarget :: Spec
+test_generationStaysWithinRefinedBoundsOnEveryTarget = describe "refinement bounds" $
   mapM_ (\(target, range) -> it ("narrow generation on " ++ target) $
     fmap (range `isInfixOf`) (tests target) `shouldBe` Right True)
     [ ("python", "st.integers(min_value=1, max_value=1000)")

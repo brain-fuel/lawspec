@@ -1,0 +1,33 @@
+decision/haskell/src/LawSpec/Sessions/Haskell.hs/module/LawSpec.Sessions.Haskell:
+  digest: sha256:b5efa67939fda93f
+  verdict: pending
+decision/haskell/src/LawSpec/Sessions/Haskell.hs/module/LawSpec.Sessions.Haskell/data/End:
+  digest: sha256:ea3973578eaaf8f2
+  verdict: pending
+decision/haskell/src/LawSpec/Sessions/Haskell.hs/module/LawSpec.Sessions.Haskell/data/Step:
+  digest: sha256:20562eea51bcdc4b
+  verdict: pending
+decision/haskell/src/LawSpec/Sessions/Haskell.hs/module/LawSpec.Sessions.Haskell/function/delegated:
+  digest: sha256:c11a93dccfc280b6
+  verdict: pending
+decision/haskell/src/LawSpec/Sessions/Haskell.hs/module/LawSpec.Sessions.Haskell/function/emit:
+  digest: sha256:a9dec334b58a22fe
+  verdict: pending
+decision/haskell/src/LawSpec/Sessions/Haskell.hs/module/LawSpec.Sessions.Haskell/function/endSteps:
+  digest: sha256:17ca6cabc225bee4
+  verdict: pending
+decision/haskell/src/LawSpec/Sessions/Haskell.hs/module/LawSpec.Sessions.Haskell/function/messageName:
+  digest: sha256:da5ac301ecf26f16
+  verdict: pending
+decision/haskell/src/LawSpec/Sessions/Haskell.hs/module/LawSpec.Sessions.Haskell/function/messageType:
+  digest: sha256:1d5e14965e6c03a9
+  verdict: pending
+decision/haskell/src/LawSpec/Sessions/Haskell.hs/module/LawSpec.Sessions.Haskell/function/protocolSource:
+  digest: sha256:f6584f69b1aa062a
+  verdict: pending
+decision/haskell/src/LawSpec/Sessions/Haskell.hs/module/LawSpec.Sessions.Haskell/function/qualifiersOf:
+  digest: sha256:2f72a4706be4a0da
+  verdict: pending
+decision/haskell/src/LawSpec/Sessions/Haskell.hs/module/LawSpec.Sessions.Haskell/function/sessionModule:
+  digest: sha256:64a88e71a5fbe5a7
+  verdict: pending

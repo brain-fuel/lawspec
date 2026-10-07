@@ -1,0 +1,12 @@
+decision/haskell/acceptance/concurrent/haskell/files/src/Example/Concurrent.hs/module/Example.Concurrent/function/get:
+  digest: sha256:c82fffa21ea1dea6
+  verdict: pending
+decision/haskell/acceptance/concurrent/haskell/files/src/Example/Concurrent.hs/module/Example.Concurrent/function/new:
+  digest: sha256:dccd2c66a6b2dd0b
+  verdict: pending
+decision/haskell/acceptance/concurrent/haskell/files/src/Example/Concurrent.hs/module/Example.Concurrent/function/with:
+  digest: sha256:20a07a97afbfeff4
+  verdict: pending
+decision/haskell/acceptance/concurrent/haskell/files/src/Example/Concurrent.hs/module/Example.Concurrent/type/Registry-a:
+  digest: sha256:07ba75432b445ece
+  verdict: pending

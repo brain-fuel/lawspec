@@ -1,5 +1,5 @@
 {-# OPTIONS_GHC -Wno-orphans #-}
--- Binary encodings of the Core values the compiler persists in its on-disk
+-- | Binary encodings of the Core values the compiler persists in its on-disk
 -- cache (LawSpec.Memo). They are derived from the types' structure, so the
 -- cache format is tied to the compiler build; the CLI keeps one cache folder
 -- per build, LawSpec.Memo salts entries with the compiler version, and an

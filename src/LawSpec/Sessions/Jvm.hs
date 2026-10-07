@@ -1,4 +1,4 @@
--- Typed channel ends for implementation code: each protocol's steps as
+-- | Typed channel ends for implementation code: each protocol's steps as
 -- types of this target (see LawSpec.Sessions).
 --
 -- Both JVM targets get the same Java sources (a Kotlin project compiles
@@ -22,7 +22,7 @@ import LawSpec.KotlinData (kotlinCodecDocWithContext, kotlinDataType)
 import LawSpec.MachineSpec (describe)
 import LawSpec.Scalar (isInteger)
 
--- The session library for the given target, for every unit's protocols.
+-- | The session library for the given target, for every unit's protocols.
 emit :: String -> Bool -> Int -> [C.DataDeclaration] -> [C.Unit] -> Either String [Artifact]
 emit target _ bits datas units = concat <$> mapM artifact sessions
   where
@@ -43,15 +43,15 @@ emit target _ bits datas units = concat <$> mapM artifact sessions
       pure ([Artifact ("src/main/java/lawspec/sessions/" ++ C.sessionName s ++ ".java") source "generated" "source"] ++
             [Artifact ("src/main/kotlin/lawspec/sessions/" ++ C.sessionName s ++ "Conversions.kt") k "generated" "source" | Just k <- [kotlin]])
 
--- A step as one end sees it: its number, whether this end sends, its type.
+-- | A step as one end sees it: its number, whether this end sends, its type.
 data Step = Step { stepNumber :: Int, stepSends :: Bool, stepType :: C.Type }
 
--- The steps of a session's first end (True) or second end (False).
+-- | The steps of a session's first end (True) or second end (False).
 endSteps :: Bool -> C.Session -> [Step]
 endSteps first session =
   [Step k (if first then sends else not sends) t | (k, (sends, t)) <- zip [1 ..] (C.sessionSteps session)]
 
--- The class names of an end's positions: one per step, then Done.
+-- | The class names of an end's positions: one per step, then Done.
 classNames :: [C.DataDeclaration] -> [C.Session] -> C.Session -> [Step] -> [String]
 classNames datas sessions session ends = [base s ++ suffix s | s <- ends] ++ ["Done"]
   where
@@ -61,18 +61,18 @@ classNames datas sessions session ends = [base s ++ suffix s | s <- ends] ++ ["D
       | length (filter (== base s) bases) > 1 || base s == C.sessionName session = "Step" ++ show (stepNumber s)
       | otherwise = ""
 
--- The protocol a step's type names, if it is a delegated end.
+-- | The protocol a step's type names, if it is a delegated end.
 sessionOf :: [C.Session] -> C.Type -> Maybe C.Session
 sessionOf sessions (C.Constructor n []) = case [s | s <- sessions, C.idText (C.sessionId s) == n] of
   s : _ -> Just s
   [] -> Nothing
 sessionOf _ _ = Nothing
 
--- The class a protocol's first end starts as.
+-- | The class a protocol's first end starts as.
 firstStart :: [C.DataDeclaration] -> [C.Session] -> C.Session -> String
 firstStart datas sessions s = C.sessionName s ++ ".First." ++ startClass datas sessions s True
 
--- The class an end of a session starts as (Done when it has no steps).
+-- | The class an end of a session starts as (Done when it has no steps).
 startClass :: [C.DataDeclaration] -> [C.Session] -> C.Session -> Bool -> String
 startClass datas sessions s first = case classNames datas sessions s (endSteps first s) of
   cls : _ -> cls
@@ -99,7 +99,7 @@ shortName :: [C.DataDeclaration] -> String -> String
 shortName datas n = maybe lastSegment id (lookup n [(C.idText (C.dataId d), C.dataName d) | d <- datas])
   where lastSegment = reverse (takeWhile (\c -> c /= ':' && c /= '.') (reverse n))
 
--- listen and dial: a protocol's ends over a network. wire() lists each
+-- | listen and dial: a protocol's ends over a network. wire() lists each
 -- step's descriptor and part from the first end: a scalar converts through
 -- the runtime, a data value through its codec (Java's, or for Kotlin a
 -- generated Kotlin object, since Kotlin's codecs are Kotlin objects), and a
@@ -327,7 +327,7 @@ capital :: String -> String
 capital (c : rest) = toUpper c : rest
 capital [] = []
 
--- java.lang names read better unqualified.
+-- | java.lang names read better unqualified.
 shorten :: String -> String
 shorten [] = []
 shorten s@(c : rest) = case stripPrefix "java.lang." s of

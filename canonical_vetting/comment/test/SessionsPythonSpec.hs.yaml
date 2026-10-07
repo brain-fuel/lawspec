@@ -1,0 +1,9 @@
+decision/haskell/test/SessionsPythonSpec.hs/module/SessionsPythonSpec:
+  digest: sha256:918db16d5639a23a
+  verdict: pending
+decision/haskell/test/SessionsPythonSpec.hs/module/SessionsPythonSpec/function/test_pythonSessionEndsFollowTheirProtocol:
+  digest: sha256:7fb5847d6034008a
+  verdict: pending
+decision/haskell/test/SessionsPythonSpec.hs/module/SessionsPythonSpec/function/unit:
+  digest: sha256:6dadd1f1fa9ee653
+  verdict: pending

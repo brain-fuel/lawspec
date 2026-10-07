@@ -1,0 +1,9 @@
+decision/rust/acceptance/workflows/rust/files/src/example/approvals.rs:
+  digest: sha256:ccbfe2afe9180cbc
+  verdict: pending
+decision/rust/acceptance/workflows/rust/files/src/example/approvals.rs/function/approvalErrors:
+  digest: sha256:df4b74e7b8d09e2d
+  verdict: pending
+decision/rust/acceptance/workflows/rust/files/src/example/approvals.rs/function/approvedQuickly:
+  digest: sha256:0a21988982a5a106
+  verdict: pending

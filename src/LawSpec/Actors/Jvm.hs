@@ -1,4 +1,4 @@
--- Typed actors for Java and Kotlin implementation code (see LawSpec.Actors).
+-- | Typed actors for Java and Kotlin implementation code (see LawSpec.Actors).
 --
 -- Every actor becomes a class lawspec.actors.<Handle> (AccountActor): Java
 -- source for Java projects, Kotlin source for Kotlin projects, since each
@@ -24,6 +24,8 @@ import LawSpec.KotlinData (kotlinDataType)
 import LawSpec.Actors.Types (Actor(..), Handler(..), Supervision(..), Child(..))
 import LawSpec.Core.Machine (SupervisionStrategy(..), Lifetime(..))
 
+-- | Actors become a typed class, or Java and Kotlin's idiom for one, generated
+-- from the declaration. ref:DEC-actors-otp-supervision
 emit :: String -> Bool -> Int -> [C.DataDeclaration] -> [Actor] -> [Supervision] -> Either String [Artifact]
 emit target _ bits datas actors supervisions = (++) <$> mapM artifact actors <*> mapM supervisorArtifact supervisions
   where
@@ -45,7 +47,7 @@ emit target _ bits datas actors supervisions = (++) <$> mapM artifact actors <*>
           Left ("actor " ++ actorName a ++ ": handler " ++ handlerName h ++ " clashes with a method of " ++ actorClass a ++ "; rename it")
       | otherwise = pure ()
 
--- The class holding a unit's adapters: example.actors has example.Actors.
+-- | The class holding a unit's adapters: example.actors has example.Actors.
 adapterClass :: C.Unit -> String
 adapterClass u = intercalate "." (init parts ++ [concatMap capital (split '_' (last parts))])
   where parts = split '.' (unitName u)
@@ -57,7 +59,7 @@ adapterCall a d args = adapterClass (actorUnit a) ++ "." ++ adapterName (actorUn
 isUnit :: C.Type -> Bool
 isUnit t = t == C.Constructor "Unit" []
 
--- An actor's messages for the network: the data types its descriptors use,
+-- | An actor's messages for the network: the data types its descriptors use,
 -- and each handler's argument and reply descriptors. An actor whose types
 -- have no descriptor stays local.
 data Wire = Wire { wireTypes :: String, wireHandlers :: [(Handler, [String], String)], wireBits :: Int }
@@ -384,7 +386,7 @@ kotlinSource datas wire a = do
         , "        actor.cast " ++ step
         , "    }" ]
 
--- A supervisor's class: start() makes the runtime supervisor and starts
+-- | A supervisor's class: start() makes the runtime supervisor and starts
 -- each child under it, in order; each child is a field.
 javaSupervisor :: Supervision -> String
 javaSupervisor s = unlines $
@@ -484,7 +486,7 @@ lifetimeName l = case l of
   Transient -> "transient"
   Temporary -> "temporary"
 
--- The period in seconds, as a decimal literal.
+-- | The period in seconds, as a decimal literal.
 seconds :: Supervision -> String
 seconds s = let (whole, micros) = supervisionPeriod s `divMod` 1000000
                 pad m = replicate (6 - length m) '0' ++ m
@@ -501,7 +503,7 @@ split c s = case break (== c) s of
   (a, _ : rest) -> a : split c rest
   (a, []) -> [a]
 
--- java.lang names read better unqualified.
+-- | java.lang names read better unqualified.
 shorten :: String -> String
 shorten [] = []
 shorten s@(c : rest) = case stripPrefix "java.lang." s of

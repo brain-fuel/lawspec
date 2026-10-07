@@ -1,0 +1,9 @@
+decision/haskell/src/LawSpec/DefinitionTotality.hs/module/LawSpec.DefinitionTotality:
+  digest: sha256:f1327a65da41d1af
+  verdict: pending
+decision/haskell/src/LawSpec/DefinitionTotality.hs/module/LawSpec.DefinitionTotality/function/auditTemplates:
+  digest: sha256:acdb545c3d390559
+  verdict: pending
+decision/haskell/src/LawSpec/DefinitionTotality.hs/module/LawSpec.DefinitionTotality/function/literalText:
+  digest: sha256:40007def7a98f128
+  verdict: pending

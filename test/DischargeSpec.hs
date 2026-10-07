@@ -1,4 +1,5 @@
-module DischargeSpec (spec) where
+-- | Evidence and discharge of laws.
+module DischargeSpec (test_lawsAreDischargedWithHonestEvidence) where
 
 import Data.Aeson (Value(..), decode, encode, object, (.=))
 import qualified Data.Aeson.KeyMap as KM
@@ -30,8 +31,11 @@ law name claim = "law `" ++ name ++ "` is definition is " ++ claim ++ " end end\
 twice :: String
 twice = "definition twice (x :: Int32) :: BigInt is x + x end\n"
 
-spec :: Spec
-spec = describe "evidence and discharge" $ do
+-- | Evidence tells a user what was proved and what was only tested, so a false
+-- law must never be proved and every adapter the compiler cannot see into must
+-- be reported as assumed. ref:DEC-evidence-statuses ref:REQ-honest-evidence
+test_lawsAreDischargedWithHonestEvidence :: Spec
+test_lawsAreDischargedWithHonestEvidence = describe "evidence and discharge" $ do
   it "proves linear laws over definitions, unfolding unrefined callees" $ do
     fmap fst (lawStatus "doubling" (twice ++ law "doubling" "`for all` (x :: Int32) . twice x = x * 2")) `shouldBe` Right Proved
     fmap fst (lawStatus "guarded" (twice ++ law "guarded" "`for all` (x :: Int32) . x > 0 implies twice x > x")) `shouldBe` Right Proved

@@ -1,7 +1,12 @@
+---
+id: lawspec.reference.language.flow-types
+kind: reference
+title: Flow types
+---
 # Flow types
 
 A flow parameter `A / A'` takes a state at type `A` and leaves it at `A'`. It
-follows Wilshaw and Hutton, *Flow Typing: A New Lens on Linearity*. In laws,
+follows Wilshaw and Hutton, *Flow Typing: A New Lens on Linearity* ref:wilshaw-hutton-flow-typing. In laws,
 `~s` passes a state and rebinds it to the state the call leaves.
 
 ```lawspec

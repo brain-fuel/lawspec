@@ -1,4 +1,5 @@
-module FlowSpec (spec) where
+-- | Flow typing: typestate, linearity, signatures and desugaring.
+module FlowSpec (test_flowTypesThreadEachStateThroughItsCalls) where
 
 import Data.Either (isRight)
 import Data.List (isInfixOf, isPrefixOf, tails)
@@ -34,15 +35,18 @@ rejects fragment extra = case compile [source extra] of
   Left diagnostics -> concatMap show diagnostics `shouldSatisfy` isInfixOf fragment
   Right _ -> expectationFailure ("expected rejection mentioning " ++ show fragment)
 
--- The positions at which each needle first occurs, in order.
+-- | The positions at which each needle first occurs, in order.
 ordered :: [String] -> String -> Bool
 ordered needles haystack = increasing (map position needles)
   where
     position needle = lookup True [(needle `isPrefixOf` rest, i) | (i, rest) <- zip [0 :: Int ..] (tails haystack)]
     increasing ps = all (/= Nothing) ps && and (zipWith (<) ps (drop 1 ps))
 
-spec :: Spec
-spec = describe "flow typing" $ do
+-- | A flow parameter is a state that each call consumes and replaces, so a law
+-- that reuses a stale state or skips a transition must be rejected before any
+-- test runs. ref:DEC-flow-typing ref:REQ-flow-typing
+test_flowTypesThreadEachStateThroughItsCalls :: Spec
+test_flowTypesThreadEachStateThroughItsCalls = describe "flow typing" $ do
   describe "typestate" $ do
     it "accepts a pop after a push" $
       accepts [law "`for all` (x :: Int8) (s :: Stack n) . (push x ~s; pop ~s) = x"]

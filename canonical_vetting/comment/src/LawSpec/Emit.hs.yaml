@@ -1,0 +1,15 @@
+decision/haskell/src/LawSpec/Emit.hs/module/LawSpec.Emit:
+  digest: sha256:d9df89818fd61b3f
+  verdict: pending
+decision/haskell/src/LawSpec/Emit.hs/module/LawSpec.Emit/function/emit:
+  digest: sha256:015497701dc9c588
+  verdict: pending
+decision/haskell/src/LawSpec/Emit.hs/module/LawSpec.Emit/function/emitWithLayout:
+  digest: sha256:4f74042c9cd7645b
+  verdict: pending
+decision/haskell/src/LawSpec/Emit.hs/module/LawSpec.Emit/function/emitWithLayoutProfile:
+  digest: sha256:891b44c9605a9ed4
+  verdict: pending
+decision/haskell/src/LawSpec/Emit.hs/module/LawSpec.Emit/function/emitWithProfile:
+  digest: sha256:a5d6f69efd4848c9
+  verdict: pending

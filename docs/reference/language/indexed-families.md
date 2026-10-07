@@ -1,3 +1,8 @@
+---
+id: lawspec.reference.language.indexed-families
+kind: reference
+title: Indexed families
+---
 # Indexed families
 
 A data type can be indexed by natural numbers, such as a vector indexed by its

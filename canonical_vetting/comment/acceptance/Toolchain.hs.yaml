@@ -1,0 +1,12 @@
+decision/haskell/acceptance/Toolchain.hs/module/Toolchain:
+  digest: sha256:d3b1c91073d4c79c
+  verdict: pending
+decision/haskell/acceptance/Toolchain.hs/module/Toolchain/function/compileFailure:
+  digest: sha256:be953ac45863fae7
+  verdict: pending
+decision/haskell/acceptance/Toolchain.hs/module/Toolchain/function/mutantArguments:
+  digest: sha256:72f494d559b78801
+  verdict: pending
+decision/haskell/acceptance/Toolchain.hs/module/Toolchain/function/toolchain:
+  digest: sha256:b2ee7e9ae6293bce
+  verdict: pending

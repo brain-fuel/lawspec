@@ -1,0 +1,6 @@
+decision/haskell/test/PayloadProofSpec.hs/module/PayloadProofSpec:
+  digest: sha256:9dac5f596afd3574
+  verdict: pending
+decision/haskell/test/PayloadProofSpec.hs/module/PayloadProofSpec/function/test_payloadGuaranteesTransferOnlyWhereTheyHold:
+  digest: sha256:b92c8ba2498fb7af
+  verdict: pending

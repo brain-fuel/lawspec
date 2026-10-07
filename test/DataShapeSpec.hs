@@ -1,4 +1,5 @@
-module DataShapeSpec (spec) where
+-- | How products and sums become native data on each target.
+module DataShapeSpec (test_dataTypesBecomeEachTargetsIdiomaticShape) where
 
 import Data.List (isInfixOf)
 import Test.Hspec
@@ -7,7 +8,7 @@ import LawSpec.Compile
 import LawSpec.Emit
 import LawSpec.Model hiding (Expectation)
 
--- Products are named after their type and need no cast; sums are closed
+-- | Products are named after their type and need no cast; sums are closed
 -- families that native pattern matching checks for exhaustiveness.
 shapes :: String -> String
 shapes extra = unlines
@@ -38,8 +39,11 @@ lacks target fragments = case generated target "" of
   Left failure -> expectationFailure failure
   Right source -> mapM_ (\fragment -> (fragment, fragment `isInfixOf` source) `shouldBe` (fragment, False)) fragments
 
-spec :: Spec
-spec = describe "native data shapes" $ do
+-- | Developers read and use the generated types in their own code, so a product
+-- and a sum must take the shape each language's users expect.
+-- ref:DEC-idiomatic-generated-types ref:REQ-idiomatic-data-shapes
+test_dataTypesBecomeEachTargetsIdiomaticShape :: Spec
+test_dataTypesBecomeEachTargetsIdiomaticShape = describe "native data shapes" $ do
   it "Java: records for products, sealed interfaces of records for sums" $ do
     shows' "java"
       [ "public record Drink(lawspec.data.Size size, java.lang.Integer shots)"

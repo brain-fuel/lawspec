@@ -1,0 +1,33 @@
+decision/rust/runtime/lawspec_strategies.rs:
+  digest: sha256:993e736821aeabb7
+  verdict: pending
+decision/rust/runtime/lawspec_strategies.rs/enum/IndexTerm:
+  digest: sha256:825b4415df61b0bd
+  verdict: pending
+decision/rust/runtime/lawspec_strategies.rs/function/bounded_integer:
+  digest: sha256:3e1935c8fc8c63de
+  verdict: pending
+decision/rust/runtime/lawspec_strategies.rs/function/checked_schema_strategy:
+  digest: sha256:d2aefccc1ce64213
+  verdict: pending
+decision/rust/runtime/lawspec_strategies.rs/function/eval_index_term:
+  digest: sha256:0b2ca7059fe6bc15
+  verdict: pending
+decision/rust/runtime/lawspec_strategies.rs/function/indexed_strategy:
+  digest: sha256:a015dddbce80cae9
+  verdict: pending
+decision/rust/runtime/lawspec_strategies.rs/function/schema_strategy:
+  digest: sha256:19014ae1d4c913d0
+  verdict: pending
+decision/rust/runtime/lawspec_strategies.rs/impl/IndexVariant/function/assignments:
+  digest: sha256:6af265cc07f92bc7
+  verdict: pending
+decision/rust/runtime/lawspec_strategies.rs/struct/IndexTable:
+  digest: sha256:8d43d83d7865fd19
+  verdict: pending
+decision/rust/runtime/lawspec_strategies.rs/struct/IndexedValue:
+  digest: sha256:5fa156503cdb2e4a
+  verdict: pending
+decision/rust/runtime/lawspec_strategies.rs/type/NativeFactory:
+  digest: sha256:58c39d3b00c815df
+  verdict: pending

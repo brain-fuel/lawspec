@@ -1,0 +1,21 @@
+decision/haskell/src/LawSpec/CoreScalarEmit.hs/module/LawSpec.CoreScalarEmit:
+  digest: sha256:f6eb01962f4f6720
+  verdict: pending
+decision/haskell/src/LawSpec/CoreScalarEmit.hs/module/LawSpec.CoreScalarEmit/function/scalarEmit:
+  digest: sha256:c6690ebb4062e157
+  verdict: pending
+decision/haskell/src/LawSpec/CoreScalarEmit.hs/module/LawSpec.CoreScalarEmit/function/scalarEmitWithData:
+  digest: sha256:6610e8ce4be2c501
+  verdict: pending
+decision/haskell/src/LawSpec/CoreScalarEmit.hs/module/LawSpec.CoreScalarEmit/function/scalarEmitWithDefinitions:
+  digest: sha256:d341a135c7e5c8c2
+  verdict: pending
+decision/haskell/src/LawSpec/CoreScalarEmit.hs/module/LawSpec.CoreScalarEmit/function/scalarEmitWithFormat:
+  digest: sha256:644ec6f507b75e8e
+  verdict: pending
+decision/haskell/src/LawSpec/CoreScalarEmit.hs/module/LawSpec.CoreScalarEmit/function/scalarEmitWithNativeGenerators:
+  digest: sha256:d7248f94b25f19e8
+  verdict: pending
+decision/haskell/src/LawSpec/CoreScalarEmit.hs/module/LawSpec.CoreScalarEmit/function/typeKey:
+  digest: sha256:56e65ebe4970934f
+  verdict: pending

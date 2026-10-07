@@ -1,4 +1,4 @@
--- Typed actors for implementation code. Every actor declaration becomes, on
+-- | Typed actors for implementation code. Every actor declaration becomes, on
 -- each target, a class (or its idiom) named for the actor's handle type:
 -- start makes the state with the actor's start adapter and runs it in a
 -- runtime actor; each handler becomes a method that sends the message and
@@ -16,6 +16,8 @@ import qualified LawSpec.Actors.Jvm as Jvm
 import qualified LawSpec.Actors.Rust as Rust
 import qualified LawSpec.Actors.Haskell as Haskell
 
+-- | Programs without actors get no actor files; the others get a typed class per
+-- actor on every target. ref:DEC-actors-otp-supervision
 actorArtifacts :: Bool -> String -> Plan -> Either [Diagnostic] [Artifact]
 actorArtifacts minify target plan = case concatMap actorsOf units of
   [] -> Right []

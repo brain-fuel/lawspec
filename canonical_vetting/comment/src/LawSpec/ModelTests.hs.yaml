@@ -1,0 +1,15 @@
+decision/haskell/src/LawSpec/ModelTests.hs/module/LawSpec.ModelTests:
+  digest: sha256:b855f1376d2141fc
+  verdict: pending
+decision/haskell/src/LawSpec/ModelTests.hs/module/LawSpec.ModelTests/function/kotlinQuoted:
+  digest: sha256:28db864f4355d47c
+  verdict: pending
+decision/haskell/src/LawSpec/ModelTests.hs/module/LawSpec.ModelTests/function/modelTestArtifacts:
+  digest: sha256:04b93bec2f1d2926
+  verdict: pending
+decision/haskell/src/LawSpec/ModelTests.hs/module/LawSpec.ModelTests/function/prepare:
+  digest: sha256:eb57aca2be1a8dea
+  verdict: pending
+decision/haskell/src/LawSpec/ModelTests.hs/module/LawSpec.ModelTests/function/rustModelTests:
+  digest: sha256:952f935574b2b098
+  verdict: pending

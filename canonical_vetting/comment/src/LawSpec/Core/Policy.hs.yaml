@@ -1,0 +1,33 @@
+decision/haskell/src/LawSpec/Core/Policy.hs/module/LawSpec.Core.Policy:
+  digest: sha256:1b29653bab396a96
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Policy.hs/module/LawSpec.Core.Policy/data/Breaker:
+  digest: sha256:d2a4a251472405e7
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Policy.hs/module/LawSpec.Core.Policy/data/Bulkhead:
+  digest: sha256:a42102378aea87d7
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Policy.hs/module/LawSpec.Core.Policy/data/Hedge:
+  digest: sha256:4b48ef70c9de2288
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Policy.hs/module/LawSpec.Core.Policy/data/Jitter:
+  digest: sha256:c1514b3524c43d12
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Policy.hs/module/LawSpec.Core.Policy/data/Limit:
+  digest: sha256:9e7a09fe96ba28d5
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Policy.hs/module/LawSpec.Core.Policy/data/Retry:
+  digest: sha256:62e58939c21a29d9
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Policy.hs/module/LawSpec.Core.Policy/data/StagePolicy:
+  digest: sha256:ac496726e535bc01
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Policy.hs/module/LawSpec.Core.Policy/data/Strategy:
+  digest: sha256:7636e9b0f74efb1c
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Policy.hs/module/LawSpec.Core.Policy/function/emptyPolicy:
+  digest: sha256:f8e38e2ebb3e5df4
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Policy.hs/module/LawSpec.Core.Policy/function/policyFailures:
+  digest: sha256:cc3071e44cc6f88e
+  verdict: pending

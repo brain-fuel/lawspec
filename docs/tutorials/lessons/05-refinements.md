@@ -1,3 +1,8 @@
+---
+id: lawspec.tutorials.lessons.05-refinements
+kind: tutorial
+title: 5. Refinements and contracts
+---
 # Lesson 5: Refinements and contracts
 
 A plain `Int64` admits prices of minus a billion cents. A **refinement** names
@@ -8,7 +13,7 @@ inputs stay inside it, and your adapter's results are checked against it.
 
 Save this as `laws/discounts.lawspec`:
 
-```lawspec file=docs/lessons/specs/05-refinements.lawspec implementations=acceptance/lessons
+```lawspec include=docs/lessons/specs/05-refinements.lawspec implementations=acceptance/lessons
 ```
 
 `Cents` is an `Int64` between 0 and 10,000,000; `Percent` is an `Int32`
@@ -39,19 +44,19 @@ npx lawspec evidence lessons.discounts
 `Cents` is a `long` and `Percent` an `int`: refinements do not change native
 types.
 
-```lawspec file=docs/lessons/specs/05-refinements.lawspec implementations=acceptance/lessons view=implementation target=java
+```lawspec include=docs/lessons/specs/05-refinements.lawspec implementations=acceptance/lessons view=implementation target=java
 ```
 :::
 
 ::: only python
-```lawspec file=docs/lessons/specs/05-refinements.lawspec implementations=acceptance/lessons view=implementation target=python
+```lawspec include=docs/lessons/specs/05-refinements.lawspec implementations=acceptance/lessons view=implementation target=python
 ```
 :::
 
 ::: only javascript
 `Cents` is a `bigint` and `Percent` a `number`:
 
-```lawspec file=docs/lessons/specs/05-refinements.lawspec implementations=acceptance/lessons view=implementation target=javascript
+```lawspec include=docs/lessons/specs/05-refinements.lawspec implementations=acceptance/lessons view=implementation target=javascript
 ```
 :::
 

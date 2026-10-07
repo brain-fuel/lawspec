@@ -1,0 +1,36 @@
+decision/haskell/src/LawSpec/RustExpr.hs/module/LawSpec.RustExpr:
+  digest: sha256:a8e44347fca1a16a
+  verdict: pending
+decision/haskell/src/LawSpec/RustExpr.hs/module/LawSpec.RustExpr/function/call:
+  digest: sha256:d4030099d101643b
+  verdict: pending
+decision/haskell/src/LawSpec/RustExpr.hs/module/LawSpec.RustExpr/function/delimited:
+  digest: sha256:6c7890beae0c84eb
+  verdict: pending
+decision/haskell/src/LawSpec/RustExpr.hs/module/LawSpec.RustExpr/function/presenceValue:
+  digest: sha256:6db2f4337d0da64a
+  verdict: pending
+decision/haskell/src/LawSpec/RustExpr.hs/module/LawSpec.RustExpr/function/quoted:
+  digest: sha256:5da6b13c669be451
+  verdict: pending
+decision/haskell/src/LawSpec/RustExpr.hs/module/LawSpec.RustExpr/function/reference:
+  digest: sha256:8f72f696ea871622
+  verdict: pending
+decision/haskell/src/LawSpec/RustExpr.hs/module/LawSpec.RustExpr/function/renderExpression:
+  digest: sha256:da1ee02f86bc024c
+  verdict: pending
+decision/haskell/src/LawSpec/RustExpr.hs/module/LawSpec.RustExpr/function/renderExpressionWithContext:
+  digest: sha256:d8d0d8cbdde44c81
+  verdict: pending
+decision/haskell/src/LawSpec/RustExpr.hs/module/LawSpec.RustExpr/function/scalarLiteral:
+  digest: sha256:5ce016f4ba24b2f0
+  verdict: pending
+decision/haskell/src/LawSpec/RustExpr.hs/module/LawSpec.RustExpr/function/stringLiteral:
+  digest: sha256:92eb0ebdd620438c
+  verdict: pending
+decision/haskell/src/LawSpec/RustExpr.hs/module/LawSpec.RustExpr/function/typeName:
+  digest: sha256:2e41cf26fd3d56c2
+  verdict: pending
+decision/haskell/src/LawSpec/RustExpr.hs/module/LawSpec.RustExpr/function/vector:
+  digest: sha256:6f473eb64989723a
+  verdict: pending

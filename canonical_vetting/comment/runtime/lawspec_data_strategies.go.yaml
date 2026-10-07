@@ -1,0 +1,30 @@
+decision/go/runtime/lawspec_data_strategies.go:
+  digest: sha256:a40bfe39d8d5dd53
+  verdict: pending
+decision/go/runtime/lawspec_data_strategies.go/function/lsBoundedFilter:
+  digest: sha256:23b5a0e4346b1604
+  verdict: pending
+decision/go/runtime/lawspec_data_strategies.go/function/lsCheckCandidate:
+  digest: sha256:1cab2801b1652d8d
+  verdict: pending
+decision/go/runtime/lawspec_data_strategies.go/function/lsCheckedDataStrategy:
+  digest: sha256:e37c8753d29177aa
+  verdict: pending
+decision/go/runtime/lawspec_data_strategies.go/function/lsEvalIndexTerm:
+  digest: sha256:8c1d9c11a845d18a
+  verdict: pending
+decision/go/runtime/lawspec_data_strategies.go/function/lsIndexedDataStrategy:
+  digest: sha256:9fd71ebe8b8efb11
+  verdict: pending
+decision/go/runtime/lawspec_data_strategies.go/type/lawSpecNativeFactory:
+  digest: sha256:d7a35cbac68d4db5
+  verdict: pending
+decision/go/runtime/lawspec_data_strategies.go/type/lsIndexTerm:
+  digest: sha256:24847df71b82a617
+  verdict: pending
+decision/go/runtime/lawspec_data_strategies.go/var/lawSpecRapidSettings:
+  digest: sha256:fd28475e5e8cdbc1
+  verdict: pending
+decision/go/runtime/lawspec_data_strategies.go/var/lsCanonicalKeys:
+  digest: sha256:8ab690550d2d6ffb
+  verdict: pending

@@ -1,4 +1,4 @@
--- Native algebraic declarations are rendered from resolved Core identities.
+-- | Native algebraic declarations are rendered from resolved Core identities.
 module LawSpec.HaskellData (requiresSchema, emitHaskellData, haskellDataType, haskellDataTypeWithRepresentations, haskellNativeTypeWithParameters, emitHaskellSchema, emitHaskellSchemaWithProfile, haskellTypeReference, emitHaskellCodecs, emitHaskellCodecsWithRepresentations, emitHaskellCodecsWithHooks, haskellCodec, haskellCodecDoc, haskellCodecDocWithContext, haskellCodecDocIn, haskellTypeReferenceDoc) where
 
 import LawSpec.DataNames (flatDataCandidates, productConstructors)
@@ -79,6 +79,8 @@ typeText scope names parameters ty = case ty of
       ("Text","T.Text"),("CodePointText","LS.CodePointText"),("Utf16Text","LS.Utf16Text"),
       ("Bytes","B.ByteString"),("Symbol","LS.Symbol"),("Unit","()"),("Null","LS.Null"),("Undefined","LS.Undefined")]
 
+-- | Types are checked against the registry before rendering, so an unknown type
+-- is a compiler error rather than uncompilable Haskell.
 haskellDataType :: [C.DataDeclaration] -> C.Type -> Either String String
 haskellDataType declarations ty = do
   registry <- makeRegistry declarations
@@ -86,18 +88,24 @@ haskellDataType declarations ty = do
   names <- namesFor declarations
   typeText "Data." names [] ty
 
+-- | Bound native types replace generated ones wherever the type appears.
+-- ref:DEC-native-bindings-typed-identity
 haskellDataTypeWithRepresentations :: [C.DataDeclaration] -> [(C.Id,String)] -> C.Type -> Either String String
 haskellDataTypeWithRepresentations declarations representations ty = do
   registry <- makeRegistry declarations
   checkType registry ty
   haskellNativeTypeWithParameters declarations representations [] ty
 
+-- | Bound native types replace generated ones wherever the type appears.
+-- ref:DEC-native-bindings-typed-identity
 haskellNativeTypeWithParameters :: [C.DataDeclaration] -> [(C.Id,String)] -> [(C.Id,String)] -> C.Type -> Either String String
 haskellNativeTypeWithParameters declarations representations parameters ty = do
   names <- namesFor declarations
   typeText "" [(identity, maybe ("Data." ++ name) id (lookup identity representations)) |
     (identity,name) <- names] parameters ty
 
+-- | LawSpec data become ordinary Haskell algebraic data types.
+-- ref:DEC-idiomatic-generated-types
 emitHaskellData :: D.Layout -> [C.DataDeclaration] -> Either String String
 emitHaskellData layout declarations = do
   registry <- makeRegistry declarations
@@ -207,9 +215,13 @@ list = D.delimit 2 "[" "]"
 parenthesize :: D.Doc -> D.Doc
 parenthesize value = D.text "(" <> value <> D.text ")"
 
+-- | The 64-bit profile unless a caller states another.
+-- ref:DEC-explicit-machine-profile
 emitHaskellSchema :: D.Layout -> [C.DataDeclaration] -> Either String String
 emitHaskellSchema = emitHaskellSchemaWithProfile 64
 
+-- | Constructor invariants are proved before the schema is emitted, so the
+-- generated checks are the proved ones.
 emitHaskellSchemaWithProfile :: Int -> D.Layout -> [C.DataDeclaration] -> Either String String
 emitHaskellSchemaWithProfile bits layout declarations = do
   _ <- emitHaskellData layout declarations
@@ -277,7 +289,7 @@ emitHaskellSchemaWithProfile bits layout declarations = do
     variable (C.Constructor _ args) = any (\arg -> case arg of C.TypeArgument ty -> variable ty; _ -> False) args
     variable (C.Arrow a b) = variable a || variable b
 
--- Record selectors occupy one value namespace across the generated module.
+-- | Record selectors occupy one value namespace across the generated module.
 -- Constructor-qualified names can still collide at concatenation boundaries.
 selectorsFor :: Names -> [C.DataDeclaration] -> Either String [((C.Id,C.Id),String)]
 selectorsFor names declarations = do
@@ -298,7 +310,7 @@ selectorsFor names declarations = do
     (Left "conflicting Haskell field identities")
   pure result
 
--- A field-only existential's type travels as a Text witness field, after the
+-- | A field-only existential's type travels as a Text witness field, after the
 -- declared fields.
 witnessBinders :: C.DataDeclaration -> C.DataConstructor -> [C.Binder]
 witnessBinders declaration variant =
@@ -353,12 +365,16 @@ codecExpressionWith context schema bits scope names parameters ty = case ty of
       ("Bytes","bytesCodec"),("CodePointText","codePointTextCodec"),("Utf16Text","utf16TextCodec"),
       ("Symbol","symbolCodec"),("Unit","unitCodec"),("Null","nullCodec"),("Undefined","undefinedCodec")]
 
+-- | Codec text for one-line uses.
 haskellCodec :: [C.DataDeclaration] -> C.Type -> Either String String
 haskellCodec declarations ty = D.render D.Compact <$> haskellCodecDoc declarations "schema" "bits" ty
 
+-- | Every value crossing the adapter boundary goes through a codec that checks
+-- it against its declared domain. ref:DEC-portable-exact-arithmetic
 haskellCodecDoc :: [C.DataDeclaration] -> String -> String -> C.Type -> Either String D.Doc
 haskellCodecDoc = haskellCodecDocUsing Nothing
 
+-- | As haskellCodecDoc, where the schema comes from the caller's scope.
 haskellCodecDocWithContext :: D.Doc -> [C.DataDeclaration] -> String -> String -> C.Type -> Either String D.Doc
 haskellCodecDocWithContext context = haskellCodecDocUsing (Just context)
 
@@ -372,6 +388,7 @@ haskellCodecDocIn context scope declarations schema bits ty = do
   names <- namesFor declarations
   codecExpressionWith context schema bits scope names [] ty
 
+-- | Codecs for generated types live in one generated module.
 emitHaskellCodecs :: D.Layout -> [C.DataDeclaration] -> Either String String
 emitHaskellCodecs layout declarations =
   emitHaskellCodecsWithRepresentations layout declarations "LawSpecDataCodecs" [] [] []

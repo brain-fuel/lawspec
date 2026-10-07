@@ -1,6 +1,6 @@
--- Acceptance suites: generate a bundled example for a target in process,
+-- | Acceptance suites: generate a bundled example for a target in process,
 -- install the suite's native adapters, run the target's own test tool, and
--- require every mutant to fail its laws at test time.
+-- require every mutant to fail its laws at test time. ref:DEC-acceptance-with-mutants
 --
 --   lawspec-acceptance <suite> [target...]
 --   lawspec-acceptance <suite> --check [target...]   generation only, compare disk
@@ -68,7 +68,7 @@ import Cache
 
 data Generated = Generated { generatedPath :: FilePath, generatedContent :: String, generatedOwnership :: String }
 
--- Each expectation is a set of alternatives, one of which the failing
+-- | Each expectation is a set of alternatives, one of which the failing
 -- output must contain (the diagnostic that exposed the mutant). A mutant
 -- rejected at compile time (an end used twice, under Rust's moves) must fail
 -- to compile; any other must compile and fail its laws.
@@ -132,14 +132,14 @@ main = do
             output <- runSuite suite target project mutate (sources, regenerate, generated)
             when (mode /= Off) (storeResult key output)
 
--- Files outside the project that a run reads: the harness itself and the
+-- | Files outside the project that a run reads: the harness itself and the
 -- dependency locks it installs.
 harnessInputs :: String -> [FilePath]
 harnessInputs target =
   [ "acceptance/Main.hs", "acceptance/Toolchain.hs", "acceptance/Cache.hs", "test/locks/go/go.sum"
   , ".integration" </> target </> "package.json", ".integration" </> target </> "package-lock.json" ]
 
--- Generation goes through the same JSON boundary that core.wasm exports.
+-- | Generation goes through the same JSON boundary that core.wasm exports.
 plan :: [(K.Key, Value)] -> [(FilePath, String)] -> String -> Int -> Bool -> IO [Generated]
 plan extra sources target bits minify =
   either (\message -> die (target ++ ": generation failed: " ++ message)) pure (planEither extra sources target bits minify)
@@ -157,7 +157,7 @@ planEither extra sources target bits minify = do
        | f <- fromMaybe [] (list (field "files" response)) ]
   where takeName = reverse . takeWhile (/= '/') . reverse
 
--- A package as the lawspec CLI sends it: its manifest with the sources read.
+-- | A package as the lawspec CLI sends it: its manifest with the sources read.
 loadPackage :: FilePath -> IO Value
 loadPackage directory = do
   manifest <- BL.readFile (directory </> "lawspec-package.json")
@@ -223,7 +223,7 @@ suiteRecordings suite = do
   files <- if exists then walk base else pure []
   pure [("recorded" </> drop (length base + 1) file, file) | file <- files]
 
--- The lines printed for a passing run.
+-- | The lines printed for a passing run.
 runSuite :: String -> String -> FilePath -> Bool -> ([(FilePath, String)], [(FilePath, String)] -> Either String [Generated], [Generated]) -> IO [String]
 runSuite suite target project mutate (sources, regenerate, generated) = do
   tool <- toolchain project target
@@ -298,7 +298,7 @@ runSuite suite target project mutate (sources, regenerate, generated) = do
     pure line
   pure (passed : scheduled ++ rejected ++ specRejected)
 
--- Regenerate without running anything and compare with the files on disk.
+-- | Regenerate without running anything and compare with the files on disk.
 checkDisk :: FilePath -> [Generated] -> IO ()
 checkDisk project generated = do
   -- User-owned files hold adapters, so only compiler-owned output is compared.
@@ -374,7 +374,7 @@ suiteDirectory suite target folder = do
   if not exists then pure [] else map (\path -> (dropBase base path, path)) <$> walk base
   where dropBase base path = fromMaybe path (stripPrefix (base ++ "/") path)
 
--- The generated stub replaces the adapter wholesale: unimplemented functions
+-- | The generated stub replaces the adapter wholesale: unimplemented functions
 -- must fail the laws rather than pass vacuously.
 suiteStubs :: String -> String -> IO [Mutant]
 suiteStubs suite target = do
@@ -388,14 +388,14 @@ suiteStubs suite target = do
     (,,) relative <$> readFile' source <*> readFile' path
   pure [Mutant "stub" [] edits False False | not (null edits)]
 
--- The conformance unit checks every shared scalar vector as a law.
+-- | The conformance unit checks every shared scalar vector as a law.
 conformance :: BL.ByteString -> (FilePath, String)
 conformance bytes = ("conformance.lawspec", unlines ("unit conformance" :
   [ "law `vector " ++ show i ++ "` is definition is `for all` (marker :: Unit) . " ++
       text (field "expression" v) ++ " = " ++ text (field "expected" v) ++ " end end"
   | (i, v) <- zip [0 :: Int ..] (fromMaybe [] (decode bytes >>= list)) ]))
 
--- Machine-sized native adapters check the executing architecture. The width
+-- | Machine-sized native adapters check the executing architecture. The width
 -- of the host comes from the toolchain that will run the tests.
 architectureMismatch :: String -> Int -> IO Bool
 architectureMismatch target bits
@@ -436,7 +436,7 @@ suiteMutantsIn base = do
       (parseMutant (unlines (filter (`notElem` ["rejected-at: compile", "rejected-at: generation"]) header ++ body)))
     pure (Mutant (take (length name - length (".mutant" :: String)) name) expectations edits atCompile atGeneration)
 
--- rejected-at: compile                                (optional)
+-- | rejected-at: compile                                (optional)
 -- expect: <text the failing output must contain>        (optional, repeatable)
 -- expect-any: <alternative> | <alternative>            (optional, repeatable)
 -- @@ <path>

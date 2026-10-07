@@ -1,0 +1,21 @@
+decision/haskell/src/LawSpec/Memo.hs/module/LawSpec.Memo:
+  digest: sha256:92b703b8dbd01dff
+  verdict: pending
+decision/haskell/src/LawSpec/Memo.hs/module/LawSpec.Memo/data/Persistence:
+  digest: sha256:b891212ae8d2e1f2
+  verdict: pending
+decision/haskell/src/LawSpec/Memo.hs/module/LawSpec.Memo/data/Table:
+  digest: sha256:21fd0a10f1737018
+  verdict: pending
+decision/haskell/src/LawSpec/Memo.hs/module/LawSpec.Memo/function/memoized:
+  digest: sha256:5d140a27df165e7a
+  verdict: pending
+decision/haskell/src/LawSpec/Memo.hs/module/LawSpec.Memo/function/newPersistentTable:
+  digest: sha256:305fd5e20127e76d
+  verdict: pending
+decision/haskell/src/LawSpec/Memo.hs/module/LawSpec.Memo/function/newTable:
+  digest: sha256:04831ff05bc7d368
+  verdict: pending
+decision/haskell/src/LawSpec/Memo.hs/module/LawSpec.Memo/function/withCacheDirectory:
+  digest: sha256:826d662a38630093
+  verdict: pending

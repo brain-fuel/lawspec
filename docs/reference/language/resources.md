@@ -1,3 +1,8 @@
+---
+id: lawspec.reference.language.resources
+kind: reference
+title: Resources
+---
 # Resources
 
 A resource is something a law needs that lives outside the program: a store,

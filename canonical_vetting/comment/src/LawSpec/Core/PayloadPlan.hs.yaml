@@ -1,0 +1,21 @@
+decision/haskell/src/LawSpec/Core/PayloadPlan.hs/module/LawSpec.Core.PayloadPlan:
+  digest: sha256:43c27b1348365e06
+  verdict: pending
+decision/haskell/src/LawSpec/Core/PayloadPlan.hs/module/LawSpec.Core.PayloadPlan/data/Plan:
+  digest: sha256:bfe312a427dbff8b
+  verdict: pending
+decision/haskell/src/LawSpec/Core/PayloadPlan.hs/module/LawSpec.Core.PayloadPlan/function/arity:
+  digest: sha256:bec58b87ea1f8afd
+  verdict: pending
+decision/haskell/src/LawSpec/Core/PayloadPlan.hs/module/LawSpec.Core.PayloadPlan/function/fields:
+  digest: sha256:045072d1c45cc45c
+  verdict: pending
+decision/haskell/src/LawSpec/Core/PayloadPlan.hs/module/LawSpec.Core.PayloadPlan/function/fromRegistry:
+  digest: sha256:4fc5557bb99892ba
+  verdict: pending
+decision/haskell/src/LawSpec/Core/PayloadPlan.hs/module/LawSpec.Core.PayloadPlan/function/storedParameters:
+  digest: sha256:76eae45babd226f0
+  verdict: pending
+decision/haskell/src/LawSpec/Core/PayloadPlan.hs/module/LawSpec.Core.PayloadPlan/newtype/Schema:
+  digest: sha256:8b3f85748d5e2d17
+  verdict: pending

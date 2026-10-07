@@ -1,4 +1,4 @@
--- Typed channel ends for implementation code. Every protocol becomes, on
+-- | Typed channel ends for implementation code. Every protocol becomes, on
 -- each target, a type per step for each of its two ends: the first end
 -- follows the protocol, the second the reverse. A send or receive returns
 -- the end's next step, so the target's compiler rejects steps out of order;
@@ -17,6 +17,9 @@ import qualified LawSpec.Sessions.Jvm as Jvm
 import qualified LawSpec.Sessions.Rust as Rust
 import qualified LawSpec.Sessions.Haskell as Haskell
 
+-- | Programs without protocols get no channel files; the others get typed ends,
+-- so a program that breaks its protocol does not compile.
+-- ref:caires-pfenning-session-types
 sessionArtifacts :: Bool -> String -> Plan -> Either [Diagnostic] [Artifact]
 sessionArtifacts minify target plan
   | all (null . C.unitSessions) units = Right []

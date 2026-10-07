@@ -1,3 +1,6 @@
+-- | The emitter for the statically typed targets, Java, Kotlin, Go, Haskell and
+-- Rust, whose tests use each language's own property framework and types.
+-- ref:DEC-native-property-frameworks
 module LawSpec.CoreNativeScalarEmit (nativeScalarEmit, nativeScalarEmitWithData, nativeScalarEmitWithDefinitions, nativeScalarEmitWithFormat, nativeScalarEmitWithNativeGenerators, nativeScalarEmitWithAdapterBindings, dataBudget) where
 import LawSpec.Bounds (inputRange)
 import LawSpec.AbilityNames (interfaceName, productionName, specName, recordingName, unitAbility, ownAbilities, ownerName, fieldName)
@@ -47,16 +50,24 @@ builtinKey (C.Constructor "Either" [C.TypeArgument a,C.TypeArgument b]) =
   "Either (" ++ builtinKey a ++ ") (" ++ builtinKey b ++ ")"
 builtinKey (Applied n t) = n ++ " " ++ builtinKey t
 builtinKey t = prettyType t
+-- | The default for callers with no data declarations.
 nativeScalarEmit :: Int -> String -> Unit -> [Expanded] -> Either [Diagnostic] [Artifact]
 nativeScalarEmit = nativeScalarEmitWithData []
+-- | The default for callers with no checked definitions.
 nativeScalarEmitWithData :: [C.DataDeclaration] -> Int -> String -> Unit -> [Expanded] -> Either [Diagnostic] [Artifact]
 nativeScalarEmitWithData dataDeclarations = nativeScalarEmitWithDefinitions dataDeclarations []
+-- | Readable output is the default. ref:DEC-readable-output-default
 nativeScalarEmitWithDefinitions :: [C.DataDeclaration] -> [(C.Id,String)] -> Int -> String -> Unit -> [Expanded] -> Either [Diagnostic] [Artifact]
 nativeScalarEmitWithDefinitions = nativeScalarEmitWithFormat False
+-- | Built-in generators unless the project binds its own.
 nativeScalarEmitWithFormat :: Bool -> [C.DataDeclaration] -> [(C.Id,String)] -> Int -> String -> Unit -> [Expanded] -> Either [Diagnostic] [Artifact]
 nativeScalarEmitWithFormat = nativeScalarEmitWithNativeGenerators False
+-- | No adapter is bound to native code unless the project says so.
+-- ref:DEC-native-bindings-typed-identity
 nativeScalarEmitWithNativeGenerators :: Bool -> Bool -> [C.DataDeclaration] -> [(C.Id,String)] -> Int -> String -> Unit -> [Expanded] -> Either [Diagnostic] [Artifact]
 nativeScalarEmitWithNativeGenerators = nativeScalarEmitWithAdapterBindings []
+-- | Generated Go names share one package with the user's code, so collisions
+-- with bound adapters are refused before any file is written.
 nativeScalarEmitWithAdapterBindings :: [(C.Id,String)] -> Bool -> Bool -> [C.DataDeclaration] -> [(C.Id,String)] -> Int -> String -> Unit -> [Expanded] -> Either [Diagnostic] [Artifact]
 nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify dataDeclarations definitions bits target u allLaws = do
   if go then either (Left . pure . (\message -> Diagnostic "collision" message Nothing)) Right
@@ -1283,7 +1294,7 @@ replace old new text | old `isPrefixOf` text = new ++ replace old new (drop (len
 replace _ _ [] = []
 replace old new (c:cs) = c:replace old new cs
 
--- Java's generated data budget: the largest boundary value of any law in the
+-- | Java's generated data budget: the largest boundary value of any law in the
 -- program, so every unit's tests size their generators alike.
 dataBudget :: [Expanded] -> Integer
 dataBudget laws = maximum (64 : [valueNodes v | law <- laws, tuple <- boundaryCases law, v <- tuple])

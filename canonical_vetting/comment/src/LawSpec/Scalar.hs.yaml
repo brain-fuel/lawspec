@@ -1,0 +1,69 @@
+decision/haskell/src/LawSpec/Scalar.hs/module/LawSpec.Scalar:
+  digest: sha256:f05d43937397474c
+  verdict: pending
+decision/haskell/src/LawSpec/Scalar.hs/module/LawSpec.Scalar/data/Family:
+  digest: sha256:a4eed94438c3fc3a
+  verdict: pending
+decision/haskell/src/LawSpec/Scalar.hs/module/LawSpec.Scalar/data/Primitive:
+  digest: sha256:0ae801fe4f44c078
+  verdict: pending
+decision/haskell/src/LawSpec/Scalar.hs/module/LawSpec.Scalar/data/Scalar:
+  digest: sha256:ffae2a3a2415ab8f
+  verdict: pending
+decision/haskell/src/LawSpec/Scalar.hs/module/LawSpec.Scalar/function/convertScalar:
+  digest: sha256:2ca1b280e5e61b14
+  verdict: pending
+decision/haskell/src/LawSpec/Scalar.hs/module/LawSpec.Scalar/function/decimal:
+  digest: sha256:535bc334a9334de5
+  verdict: pending
+decision/haskell/src/LawSpec/Scalar.hs/module/LawSpec.Scalar/function/exactValue:
+  digest: sha256:76fce04887d77c5a
+  verdict: pending
+decision/haskell/src/LawSpec/Scalar.hs/module/LawSpec.Scalar/function/floatScalar:
+  digest: sha256:ad318e6dbc131960
+  verdict: pending
+decision/haskell/src/LawSpec/Scalar.hs/module/LawSpec.Scalar/function/floatValue:
+  digest: sha256:1126abd42a6ae1c9
+  verdict: pending
+decision/haskell/src/LawSpec/Scalar.hs/module/LawSpec.Scalar/function/integerBounds:
+  digest: sha256:54fd98d44c9ff2b5
+  verdict: pending
+decision/haskell/src/LawSpec/Scalar.hs/module/LawSpec.Scalar/function/isInteger:
+  digest: sha256:f7e56b87ee278097
+  verdict: pending
+decision/haskell/src/LawSpec/Scalar.hs/module/LawSpec.Scalar/function/nativeRepresentation:
+  digest: sha256:0fa78b1fbffc51f3
+  verdict: pending
+decision/haskell/src/LawSpec/Scalar.hs/module/LawSpec.Scalar/function/pad8:
+  digest: sha256:3126430784ff0792
+  verdict: pending
+decision/haskell/src/LawSpec/Scalar.hs/module/LawSpec.Scalar/function/prettyScalar:
+  digest: sha256:ec5aa06095c7f1ae
+  verdict: pending
+decision/haskell/src/LawSpec/Scalar.hs/module/LawSpec.Scalar/function/primitive:
+  digest: sha256:627cb2074afabbdc
+  verdict: pending
+decision/haskell/src/LawSpec/Scalar.hs/module/LawSpec.Scalar/function/primitives:
+  digest: sha256:101ec33f4c51435c
+  verdict: pending
+decision/haskell/src/LawSpec/Scalar.hs/module/LawSpec.Scalar/function/promote:
+  digest: sha256:bb00af9e60020f1b
+  verdict: pending
+decision/haskell/src/LawSpec/Scalar.hs/module/LawSpec.Scalar/function/reduced:
+  digest: sha256:0f005ab1d5388cc8
+  verdict: pending
+decision/haskell/src/LawSpec/Scalar.hs/module/LawSpec.Scalar/function/scalarBoundaries:
+  digest: sha256:5105d50ac1e26ff8
+  verdict: pending
+decision/haskell/src/LawSpec/Scalar.hs/module/LawSpec.Scalar/function/scalarName:
+  digest: sha256:6f35190df84f2774
+  verdict: pending
+decision/haskell/src/LawSpec/Scalar.hs/module/LawSpec.Scalar/function/textScalar:
+  digest: sha256:005b78bd71bc95c4
+  verdict: pending
+decision/haskell/src/LawSpec/Scalar.hs/module/LawSpec.Scalar/function/validUnit:
+  digest: sha256:13c1ca4c672d2041
+  verdict: pending
+decision/haskell/src/LawSpec/Scalar.hs/module/LawSpec.Scalar/function/validateScalar:
+  digest: sha256:94a90123d13aa46b
+  verdict: pending

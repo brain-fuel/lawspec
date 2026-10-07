@@ -1,4 +1,4 @@
--- Typed actors for JavaScript and TypeScript implementation code (see
+-- | Typed actors for JavaScript and TypeScript implementation code (see
 -- LawSpec.Actors).
 --
 -- Every actor becomes a class named for its handle type in lawspec_actors:
@@ -20,6 +20,8 @@ import LawSpec.MachineSpec (describe)
 import LawSpec.Actors.Types (Actor(..), Handler(..), Supervision(..), Child(..))
 import LawSpec.Core.Machine (SupervisionStrategy(..), Lifetime(..))
 
+-- | Actors become a typed class, or JavaScript and TypeScript's idiom for one,
+-- generated from the declaration. ref:DEC-actors-otp-supervision
 emit :: String -> Bool -> Int -> [C.DataDeclaration] -> [Actor] -> [Supervision] -> Either String [Artifact]
 emit target _ bits datas actors supervisions = do
   -- Each actor's messages as wire descriptors, for serving it and calling
@@ -68,7 +70,7 @@ emit target _ bits datas actors supervisions = do
 alias :: String -> String
 alias m = "_adapters_" ++ map (\c -> if c == '.' then '_' else c) m
 
--- A handler's argument and reply descriptors, adding data types to the table.
+-- | A handler's argument and reply descriptors, adding data types to the table.
 type HandlerWire = (Handler, [String], String)
 
 handlerWire :: Int -> [C.DataDeclaration] -> ([(String, String)], [HandlerWire]) -> Handler -> Either String ([(String, String)], [HandlerWire])
@@ -239,7 +241,7 @@ actorClassText ts datas wire a = do
         , "    this.#actor.cast(" ++ step ++ ");"
         , "  }" ]
 
--- A supervisor's class: start() makes the runtime supervisor and starts each
+-- | A supervisor's class: start() makes the runtime supervisor and starts each
 -- child under it, in order; each child is a property. start is async when a
 -- child's start is.
 supervisorClassText :: Bool -> [Supervision] -> Supervision -> String

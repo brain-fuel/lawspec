@@ -1,0 +1,9 @@
+decision/haskell/test/RailwaySpec.hs/module/RailwaySpec:
+  digest: sha256:3849349429d00f57
+  verdict: pending
+decision/haskell/test/RailwaySpec.hs/module/RailwaySpec/function/holds:
+  digest: sha256:6ab0fa73634b3eff
+  verdict: pending
+decision/haskell/test/RailwaySpec.hs/module/RailwaySpec/function/test_railwayCombinatorsComposeResultsAsDocumented:
+  digest: sha256:cefcfa6cffba86ae
+  verdict: pending

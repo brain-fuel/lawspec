@@ -1,4 +1,4 @@
--- Kotlin test documents consume checked propositions and native generation plans.
+-- | Kotlin test documents consume checked propositions and native generation plans.
 module LawSpec.KotlinProperties (Config(..), emitTests) where
 
 import LawSpec.Bounds (inputRange)
@@ -14,6 +14,8 @@ import qualified LawSpec.KotlinExpr as E
 import qualified LawSpec.KotlinTestHelpers as Helpers
 import Data.List (intercalate, sort, stripPrefix)
 
+-- | What the Kotlin test emitter needs besides the plan: names, layout and
+-- bindings, gathered so the emitter takes one argument.
 data Config = Config
   { packageName :: String
   -- An async adapter's call, awaited.
@@ -62,6 +64,8 @@ symbols = text "val symbols = mutableMapOf<String, Any>()"
 fromValues xs = statements [bind (inputId input) (text ("_values[" ++ show index ++ "]")) |
   (index,input) <- zip [0::Int ..] xs]
 
+-- | Laws become tests in Kotlin's own property framework, so they run with the
+-- tools the project already uses. ref:DEC-native-property-frameworks
 emitTests :: Config -> Unit -> [Expanded] -> Either [Diagnostic] D.Doc
 emitTests Config{..} unit laws = do
   let testNames = unitTestNames "kotlin" (map name laws)

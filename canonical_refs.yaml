@@ -1,0 +1,272 @@
+MIT:
+  kind: license
+  title: MIT License
+  locator: https://spdx.org/licenses/MIT.html
+keep-a-changelog:
+  kind: article
+  title: Keep a Changelog 1.0.0
+  locator: https://keepachangelog.com/en/1.0.0/
+semver-2:
+  kind: article
+  title: Semantic Versioning 2.0.0
+  locator: https://semver.org/spec/v2.0.0.html
+diataxis:
+  kind: article
+  title: Diátaxis, a systematic approach to technical documentation authoring
+  locator: https://diataxis.fr/
+commonmark:
+  kind: article
+  title: CommonMark Spec, version 0.31.2, with the GitHub Flavored Markdown extensions
+  locator: https://spec.commonmark.org/0.31.2/
+canon:
+  kind: package
+  title: canon, the canonical format checker, at commit bf4c5ae
+  locator: https://github.com/brain-fuel/canon/tree/bf4c5ae
+lawspec-roadmap:
+  kind: discussion
+  title: The LawSpec roadmap, the milestones each minor release delivers
+  locator: docs/explanation/roadmap.md
+wilshaw-hutton-flow-typing:
+  kind: paper
+  title: "Sky Wilshaw and Graham Hutton, Flow Typing: A New Lens on Linearity, University of Nottingham, 2026"
+  locator: https://zeramorphic.uk/research/2026-flow-typing.pdf
+caires-pfenning-session-types:
+  kind: paper
+  title: Luís Caires and Frank Pfenning, Session Types as Intuitionistic Linear Propositions, CONCUR 2010
+  locator: https://doi.org/10.1007/978-3-642-15375-4_16
+wadler-propositions-as-sessions:
+  kind: paper
+  title: Philip Wadler, Propositions as Sessions, ICFP 2012
+  locator: https://doi.org/10.1145/2364527.2364568
+herlihy-wing-linearizability:
+  kind: paper
+  title: "Maurice Herlihy and Jeannette Wing, Linearizability: A Correctness Condition for Concurrent Objects, TOPLAS 1990"
+  locator: https://doi.org/10.1145/78969.78972
+wing-gong-linearizability:
+  kind: paper
+  title: Jeannette Wing and Chun Gong, Testing and Verifying Concurrent Objects, Journal of Parallel and Distributed Computing 1993
+  locator: https://doi.org/10.1006/jpdc.1993.1015
+splitmix:
+  kind: paper
+  title: Guy Steele, Doug Lea and Christine Flood, Fast Splittable Pseudorandom Number Generators, OOPSLA 2014
+  locator: https://doi.org/10.1145/2660193.2660195
+quickcheck:
+  kind: paper
+  title: "Koen Claessen and John Hughes, QuickCheck: A Lightweight Tool for Random Testing of Haskell Programs, ICFP 2000"
+  locator: https://doi.org/10.1145/351240.351266
+hedgehog:
+  kind: package
+  title: Hedgehog, release with confidence, the Haskell property-testing library with integrated shrinking
+  locator: https://hackage.haskell.org/package/hedgehog
+hspec:
+  kind: package
+  title: Hspec, a testing framework for Haskell
+  locator: https://hackage.haskell.org/package/hspec
+hypothesis:
+  kind: package
+  title: Hypothesis, property-based testing for Python
+  locator: https://hypothesis.readthedocs.io/
+fast-check:
+  kind: package
+  title: fast-check, property-based testing for JavaScript and TypeScript
+  locator: https://fast-check.dev/
+pure-rand:
+  kind: package
+  title: pure-rand, the pseudorandom generators fast-check runs on
+  locator: https://www.npmjs.com/package/pure-rand
+jetcheck:
+  kind: package
+  title: jetCheck, JetBrains' property-based testing library for Java
+  locator: https://github.com/JetBrains/jetCheck
+rapid-go:
+  kind: package
+  title: Rapid, property-based testing for Go
+  locator: https://github.com/flyingmutant/rapid
+kotest:
+  kind: package
+  title: Kotest property testing for Kotlin
+  locator: https://kotest.io/docs/proptest/property-based-testing.html
+proptest:
+  kind: package
+  title: Proptest, property testing for Rust
+  locator: https://github.com/proptest-rs/proptest
+wlaschin-railway:
+  kind: article
+  title: Scott Wlaschin, Railway Oriented Programming
+  locator: https://fsharpforfunandprofit.com/rop/
+wlaschin-domain-modeling:
+  kind: article
+  title: Scott Wlaschin, Domain Modeling Made Functional, Pragmatic Bookshelf 2018
+  locator: https://pragprog.com/titles/swdddf/domain-modeling-made-functional/
+padovani-deadlock-freedom:
+  kind: paper
+  title: Luca Padovani, Deadlock and Lock Freedom in the Linear π-Calculus, CSL-LICS 2014
+  locator: https://doi.org/10.1145/2603088.2603116
+kobayashi-deadlock-free-processes:
+  kind: paper
+  title: Naoki Kobayashi, A New Type System for Deadlock-Free Processes, CONCUR 2006
+  locator: https://doi.org/10.1007/11817949_16
+ieee-754:
+  kind: article
+  title: IEEE 754-2019, Standard for Floating-Point Arithmetic
+  locator: https://doi.org/10.1109/IEEESTD.2019.8766229
+ghc-wasm:
+  kind: package
+  title: ghc-wasm-meta, the GHC WebAssembly backend toolchain
+  locator: https://gitlab.haskell.org/haskell-wasm/ghc-wasm-meta
+erlang-otp-supervisors:
+  kind: article
+  title: Erlang/OTP Design Principles, Supervision Principles
+  locator: https://www.erlang.org/doc/system/sup_princ.html
+pep-8:
+  kind: article
+  title: PEP 8, Style Guide for Python Code
+  locator: https://peps.python.org/pep-0008/
+google-style-guides:
+  kind: article
+  title: Google Style Guides
+  locator: https://google.github.io/styleguide/
+decimal-arithmetic:
+  kind: article
+  title: Mike Cowlishaw, General Decimal Arithmetic Specification
+  locator: https://speleotrove.com/decimal/decarith.html
+REQ-compiler-api-contract:
+  kind: requirement
+  title: The compiler API answers every JSON request with the shapes and diagnostics its reference documents, for every target.
+  locator: docs/reference/api.md
+REQ-async-adapters:
+  kind: requirement
+  title: An async adapter is marked in Core, reported as asynchronous evidence, scaffolded and bound as each target's native task.
+  locator: docs/reference/language/async-functions.md
+REQ-refined-generation-bounds:
+  kind: requirement
+  title: Generated inputs for a refined integer stay within its bounds on every target.
+  locator: docs/reference/refinements.md
+REQ-portable-collections:
+  kind: requirement
+  title: Collections are typed, evaluated at compile time where finite, and iterated in one portable order on every target.
+  locator: docs/reference/language/collections.md
+REQ-conditional-branches:
+  kind: requirement
+  title: A conditional is typed and audited branch by branch, each branch knowing which way its condition went.
+  locator: docs/reference/language/expressions-and-arithmetic.md
+REQ-typed-core-boundary:
+  kind: requirement
+  title: Every program elaborates to typed Core that an independent validator accepts, with arithmetic evidence and conversions explicit.
+  locator: docs/explanation/how-the-compiler-works.md
+REQ-idiomatic-data-shapes:
+  kind: requirement
+  title: Products and sums become each target's idiomatic records, classes, structs or enums.
+  locator: docs/reference/language/types-and-data.md
+REQ-definition-contracts:
+  kind: requirement
+  title: A refined definition is admitted only when its contracts and constructor invariants are proved, and is then executed and emitted for every backend.
+  locator: docs/reference/language/definitions.md
+REQ-definition-predicates:
+  kind: requirement
+  title: Closed checked definitions can be used in refinements, examples and contracts, and adapter calls in them are rejected.
+  locator: docs/reference/language/definitions.md
+REQ-definition-templates:
+  kind: requirement
+  title: A generic definition's template is typed and audited before specialization, using its capabilities, primitive domains and the selected machine profile.
+  locator: docs/reference/language/definitions.md
+REQ-honest-evidence:
+  kind: requirement
+  title: Each law is proved, exhaustively checked, property-tested or assumed, and the reported evidence never overstates what was established.
+  locator: docs/reference/language/evidence-and-discharge.md
+REQ-readable-layout:
+  kind: requirement
+  title: Generated code is laid out within its width without altering tokens, literals or required separators, in readable and compact layouts.
+  locator: docs/reference/formatting.md
+REQ-domain-modeling:
+  kind: requirement
+  title: Wrappers elaborate to refined products and workflows to checked steps with a generated law.
+  locator: docs/reference/language/domain-modeling.md
+REQ-flow-typing:
+  kind: requirement
+  title: Flow parameters thread each state linearly through its calls, checked against typestate and desugared to ordinary Core.
+  locator: docs/reference/language/flow-types.md
+REQ-gadts:
+  kind: requirement
+  title: Matching on a GADT refines types locally, rules out inaccessible constructors, and supports existentials and type witnesses.
+  locator: docs/reference/language/gadts.md
+REQ-generic-specialization:
+  kind: requirement
+  title: Generic definitions specialize with their result refinements proved, and callee guarantees are used only where they hold.
+  locator: docs/reference/language/definitions.md
+REQ-cross-unit-imports:
+  kind: requirement
+  title: Imports resolve qualified and listed names across units and packages, re-export originals, and reject laws that use another unit's adapters.
+  locator: docs/reference/language/imports-and-packages.md
+REQ-incremental-compilation:
+  kind: requirement
+  title: Incremental compilation and its on-disk cache give every program the same result as a fresh compile.
+  locator: docs/reference/cli.md
+REQ-indexed-families:
+  kind: requirement
+  title: Indexed families elaborate to erased data with a structural measure, direct generation by their indices, and have definition result indices proved.
+  locator: docs/reference/language/indexed-families.md
+REQ-type-schemes:
+  kind: requirement
+  title: Each use of a generic declaration is instantiated independently and capture-free, without generalizing ordinary parameters.
+  locator: docs/reference/language/syntax.md
+REQ-native-binding-resolution:
+  kind: requirement
+  title: Native bindings resolve to one unambiguous native identity with codecs and generator factories, and conflicts are rejected.
+  locator: docs/reference/native-bindings.md
+REQ-native-binding-requests:
+  kind: requirement
+  title: Native binding configuration is validated strictly at the request boundary, and bindings cannot replace checked total definitions.
+  locator: docs/how-to/bind-native-types.md
+REQ-payload-proofs:
+  kind: requirement
+  title: Guarantees about recursive payloads are transferred only to the leaves and calls they describe.
+  locator: docs/reference/refinements.md
+REQ-payload-predicates:
+  kind: requirement
+  title: Payload predicates are typed, scoped and lowered to executable Core over recursive parameters of any depth.
+  locator: docs/reference/refinements.md
+REQ-railway-combinators:
+  kind: requirement
+  title: Railway combinators bind, map, recover, ensure and pair results as documented, with documented precedence.
+  locator: docs/reference/language/workflows.md
+REQ-exact-refinement-proofs:
+  kind: requirement
+  title: Implication between refinements is decided with exact arithmetic, both machine widths and strict and inclusive bounds kept distinct.
+  locator: docs/reference/refinements.md
+REQ-deadlock-free-scenarios:
+  kind: requirement
+  title: A scenario is accepted only when its processes cannot deadlock or race, and rejected otherwise.
+  locator: docs/reference/language/scenarios.md
+REQ-python-sessions:
+  kind: requirement
+  title: Generated Python session ends name each step, return the next end, and send delegated ends.
+  locator: docs/reference/language/scenarios.md
+REQ-source-data-refinements:
+  kind: requirement
+  title: Refinements on type arguments of source data lower through products, sums and nested fields, keeping dependencies in scope.
+  locator: docs/reference/language/types-and-data.md
+REQ-stateful-models:
+  kind: requirement
+  title: Stateful models read each command's typestate from its flow parameter, honour preconditions and reject malformed models.
+  locator: docs/reference/language/models.md
+REQ-structural-types:
+  kind: requirement
+  title: Structural types are registered once and declared natively, with values evaluated alike, on every target.
+  locator: docs/reference/language/types-and-data.md
+REQ-target-name-escaping:
+  kind: requirement
+  title: Names that are keywords of a target are escaped idempotently in generated code while Core keeps the declared name.
+  locator: docs/reference/language/syntax.md
+REQ-test-manifest:
+  kind: requirement
+  title: The test manifest names every law's generated tests on each target, following custom test directories.
+  locator: docs/reference/cli.md
+REQ-durations:
+  kind: requirement
+  title: Durations have portable literals and operators, checked in definitions and the totality audit.
+  locator: docs/reference/language/durations.md
+REQ-total-definitions:
+  kind: requirement
+  title: Checked definitions execute totally in Core, every partial operation justified by a proved domain, in both machine profiles.
+  locator: docs/reference/language/definitions.md

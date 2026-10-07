@@ -1,3 +1,8 @@
+---
+id: lawspec.reference.language.evidence-and-discharge
+kind: reference
+title: Evidence and discharge
+---
 # Evidence and discharge
 
 Every obligation in a program reports how it is discharged. The statuses, from

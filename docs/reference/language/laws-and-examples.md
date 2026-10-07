@@ -1,3 +1,8 @@
+---
+id: lawspec.reference.language.laws-and-examples
+kind: reference
+title: Laws and examples
+---
 # Laws and examples
 
 A law states a property that must hold, gives it a name, and can pin it down with

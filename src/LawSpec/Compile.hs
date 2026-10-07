@@ -1,3 +1,8 @@
+-- | The checked surface pipeline: parse, resolve imports, infer, lower
+-- refinements and expand each law into the inputs, assertion and domain the
+-- testing plan needs. It stops at the surface; LawSpec.Frontend turns its
+-- result into typed Core, so the eight emitters never see source syntax.
+-- ref:DEC-typed-core-boundary
 module LawSpec.Compile (compile, prettyExpanded, metadataText, normal, compileWithProfile, typedExpression, validType, compileWithSettings, compileWithImports, validateDefinitionTypes, validateDefinitionTotality) where
 
 import LawSpec.Core.Total (deferProgramPostconditions)
@@ -157,6 +162,8 @@ expand definitions table unit env stack law args = do
 
 unique :: String -> [String] -> Either String ()
 unique kind xs = unless (length xs == length (nub xs)) (Left ("duplicate " ++ kind))
+-- | Only these shapes can cross an adapter boundary as portable values, so a
+-- law over anything else is refused before any target is asked to emit it.
 validType :: Type -> Bool
 validType (Named n) = maybe False (const True) (primitive n)
 validType (Applied n t) = n `elem` ["Nullable","Optional","List","Maybe"] && scalar t
@@ -246,16 +253,24 @@ checkRegexes u = do
       Annotate a _ -> [a]
       _ -> []
 
+-- | The 64-bit profile is the default machine, so callers that state nothing get
+-- the profile every target documents. ref:DEC-explicit-machine-profile
 compile :: [Source] -> Either [Diagnostic] ([Unit],[Expanded])
 compile = compileWithProfile 64
 
+-- | Machine-sized integers have no meaning until a profile is chosen, so the
+-- profile is an argument of compilation rather than a property of the host.
+-- ref:DEC-explicit-machine-profile
 compileWithProfile :: Int -> [Source] -> Either [Diagnostic] ([Unit],[Expanded])
 compileWithProfile bits = compileWithSettings bits defaultGeneration
 
+-- | Generation settings change the expanded domains (exhaustive limits, size
+-- budgets), so they are fixed before expansion rather than at emission.
+-- ref:DEC-planned-generation
 compileWithSettings :: Int -> Generation -> [Source] -> Either [Diagnostic] ([Unit],[Expanded])
 compileWithSettings = compileWithImports (\_ _ -> Nothing)
 
--- visible importer imported explains why a unit may not import another
+-- | visible importer imported explains why a unit may not import another
 -- (package boundaries), or is Nothing when it may.
 compileWithImports :: (String -> String -> Maybe String) -> Int -> Generation -> [Source] -> Either [Diagnostic] ([Unit],[Expanded])
 compileWithImports visible bits settings sources = do
@@ -405,7 +420,7 @@ compileWithImports visible bits settings sources = do
         ((initialState bits){dataDeclarations=dataTypes})
   pure (specialized, properties)
 
--- The laws a law invokes, transitively: every law whose name ends one of the
+-- | The laws a law invokes, transitively: every law whose name ends one of the
 -- names it invokes, a superset of the ones expansion resolves.
 invokedLaws :: M.Map (String,String) Law -> Law -> [Law]
 invokedLaws table root = go Set.empty (invoked (definition root))
@@ -431,6 +446,8 @@ validationTable :: Memo.Table (Either [Diagnostic] ())
 validationTable = unsafePerformIO (Memo.newPersistentTable "validate" 4096 (const 1))
 {-# NOINLINE validationTable #-}
 
+-- | Diagnostics and evidence quote a law as the quantified statement that is
+-- actually tested, so a reader sees what a failure refers to.
 prettyExpanded :: Expanded -> String
 prettyExpanded e | propertyKind e == "contract" = description (original e)
 prettyExpanded e = "for all " ++ intercalate " " ["(" ++ inputName i ++ " :: " ++ prettyType (inputType i) ++ (if null (inputRefinements i) then "" else " where " ++ intercalate " && " (map showExpr (inputRefinements i))) ++ ")" | i <- inputs e] ++ " . " ++ showAssertion (assertion e)
@@ -440,7 +457,7 @@ prettyExpanded e = "for all " ++ intercalate " " ["(" ++ inputName i ++ " :: " +
         showAssertion (AssertImplies g a) = showExpr g ++ " implies " ++ showAssertion a
         showAssertion (AssertAll as) = intercalate " and " ["(" ++ showAssertion a ++ ")" | a <- as]
 
--- Braced references are checked against the law's lexical function environment.
+-- | Braced references are checked against the law's lexical function environment.
 metadataText :: [String] -> String -> Either String String
 metadataText known = go
   where
@@ -565,12 +582,15 @@ concreteValue declarations t = valueType declarations t && concrete (baseType t)
     concrete (Arrow a b) = concrete a && concrete b
     concrete _ = True
 
--- This is the type/capability audit, not the totality proof. Concrete bodies
+-- | This is the type/capability audit, not the totality proof. Concrete bodies
 -- still pass Core.Total; generic bodies must pass termination/definedness and
 -- closed-call specialization before the frontend can enable them for execution.
 validateDefinitionTypes :: [Core.DataDeclaration] -> Int -> Unit -> Either [Diagnostic] ()
 validateDefinitionTypes declarations bits unit = () <$ inferDefinitionTemplates declarations bits unit
 
+-- | A checked definition is executed by every target's tests, so it must be
+-- proved total before emission; orchestrations call adapters and are exempt.
+-- ref:DEC-total-definitions
 validateDefinitionTotality :: [Core.DataDeclaration] -> Int -> Unit -> Either [Diagnostic] ()
 -- An orchestration's body is type-checked like any definition, but calls
 -- adapters, so only the others are proved total.

@@ -67,3 +67,11 @@ htmlcov/
 
 # Keep release inputs: npm/core.wasm, npm/build.json, runtime sources,
 # dependency lockfiles, examples, tests, and RELEASE-*.md belong in Git.
+
+# Root documents npm prepack copies into the package (dev/Generate.hs)
+/npm/README.md
+/npm/CHANGELOG.md
+
+# canon: the checkout whose grammars canon.yaml names, and its cache
+/.canon
+.canon-cache/

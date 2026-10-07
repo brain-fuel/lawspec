@@ -1,0 +1,12 @@
+decision/python/acceptance/resilience/python/files/src/example/resilience.py/function/compensationsFor:
+  digest: sha256:617c31c35e317216
+  verdict: pending
+decision/python/acceptance/resilience/python/files/src/example/resilience.py/function/limitedAt:
+  digest: sha256:edd61e81615677e8
+  verdict: pending
+decision/python/acceptance/resilience/python/files/src/example/resilience.py/function/quoteHedged:
+  digest: sha256:ef0ee6660447eedf
+  verdict: pending
+decision/python/acceptance/resilience/python/files/src/example/resilience.py/function/quoteTimedOut:
+  digest: sha256:4e8af0c816e20c23
+  verdict: pending

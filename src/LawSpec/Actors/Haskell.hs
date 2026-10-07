@@ -1,4 +1,4 @@
--- Typed actors for Haskell implementation code (see LawSpec.Actors).
+-- | Typed actors for Haskell implementation code (see LawSpec.Actors).
 --
 -- A unit's actors become the module LawSpecActors.<Unit>. Actor account
 -- (handle type AccountActor) gets a record AccountHandlers of its adapters
@@ -29,6 +29,8 @@ import LawSpec.MachineSpec (describe)
 import qualified LawSpec.Code.Doc as D
 import Control.Monad (foldM)
 
+-- | Actors become a typed class, or Haskell's idiom for one, generated from
+-- the declaration. ref:DEC-actors-otp-supervision
 emit :: String -> Bool -> Int -> [C.DataDeclaration] -> [Actor] -> [Supervision] -> Either String [Artifact]
 emit _ _ bits datas actors supervisions = concat <$> mapM unitModules units
   where
@@ -119,7 +121,7 @@ emit _ _ bits datas actors supervisions = concat <$> mapM unitModules units
       , ("DataSchema.", "qualified LawSpecDataSchema as DataSchema")
       , ("Collections.", "qualified LawSpecCollectionCodecs as Collections") ]
 
--- The module of a unit's typed actors, and of its adapters.
+-- | The module of a unit's typed actors, and of its adapters.
 moduleOf, moduleOf' :: String -> String
 moduleOf unit = "LawSpecActors." ++ moduleOf' unit
 moduleOf' unit = intercalate "." (map (concatMap capitalize . splitOn '_') (splitOn '.' unit))
@@ -128,7 +130,7 @@ handlersType, handlersValue :: Actor -> String
 handlersType a = capitalize (actorName a) ++ "Handlers"
 handlersValue a = actorName a ++ "Handlers"
 
--- The start adapter, then each handler's, then the restart adapter's.
+-- | The start adapter, then each handler's, then the restart adapter's.
 adapters' :: Actor -> [C.Declaration]
 adapters' a = actorStart a : map handlerDeclaration (actorHandlers a) ++ maybe [] pure (actorRestart a)
 
@@ -139,7 +141,7 @@ call, tell :: Actor -> Handler -> String
 call a h = actorName a ++ capitalize (handlerName h)
 tell a h = "tell" ++ capitalize (actorName a) ++ capitalize (handlerName h)
 
--- A handler's argument and reply descriptors (adding data types to the
+-- | A handler's argument and reply descriptors (adding data types to the
 -- table) and the codecs of its argument and reply types.
 type HandlerWire = (Handler, [String], String, [String], String)
 
@@ -153,7 +155,7 @@ handlerWire bits datas (table, acc) h = do
   replyCodec <- codec replyType
   pure (table'', (h, args, reply, argCodecs, replyCodec) : acc)
 
--- One actor's declarations, with the qualifiers its types use.
+-- | One actor's declarations, with the qualifiers its types use.
 actorSource :: [C.DataDeclaration] -> Maybe [HandlerWire] -> Actor -> Either String ([String], String)
 actorSource datas wire a = do
   let native = haskellNativeTypeWithParameters datas [] []
@@ -290,7 +292,7 @@ actorSource datas wire a = do
             else "(\\state -> P.pure (" ++ split ++ " " ++ applied ++ "))"
       pure (argTypes, reply, step)
 
--- The actors beneath a supervisor, in start order, each once.
+-- | The actors beneath a supervisor, in start order, each once.
 actorsBeneath :: [Supervision] -> Supervision -> [Actor]
 actorsBeneath all' s = nubBy' actorClass (concatMap child (supervisionChildren s))
   where
@@ -298,7 +300,7 @@ actorsBeneath all' s = nubBy' actorClass (concatMap child (supervisionChildren s
     child (_, _, SupervisorChild cls) = concat [actorsBeneath all' t | t <- all', supervisionClass t == cls]
     nubBy' key = foldr (\x acc -> x : filter ((/= key x) . key) acc) []
 
--- A supervisor's record of children, its start functions and stop.
+-- | A supervisor's record of children, its start functions and stop.
 supervisorSource :: [Supervision] -> Supervision -> String
 supervisorSource all' s = unlines $
   [ ""
@@ -360,7 +362,7 @@ supervisorSource all' s = unlines $
       c : cs -> toLower c : cs
       [] -> []
 
--- The module qualifiers a text uses (e.g. "I." in I.Int32).
+-- | The module qualifiers a text uses (e.g. "I." in I.Int32).
 qualifiersOf :: String -> [String]
 qualifiersOf text = sort (nub (go text))
   where

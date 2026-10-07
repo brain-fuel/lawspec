@@ -1,0 +1,18 @@
+decision/haskell/runtime/LawSpecTransports.hs/module/LawSpecTransports:
+  digest: sha256:93b840116bacc8c5
+  verdict: pending
+decision/haskell/runtime/LawSpecTransports.hs/module/LawSpecTransports/function/httpTransport:
+  digest: sha256:12f1f1582f5a84fd
+  verdict: pending
+decision/haskell/runtime/LawSpecTransports.hs/module/LawSpecTransports/function/readExactly:
+  digest: sha256:f5421547a3d93a27
+  verdict: pending
+decision/haskell/runtime/LawSpecTransports.hs/module/LawSpecTransports/function/readHead:
+  digest: sha256:de32cb656cc0797c
+  verdict: pending
+decision/haskell/runtime/LawSpecTransports.hs/module/LawSpecTransports/function/stopListening:
+  digest: sha256:897140d999ddd3d3
+  verdict: pending
+decision/haskell/runtime/LawSpecTransports.hs/module/LawSpecTransports/function/tcpTransport:
+  digest: sha256:7922361cc4e0f9ba
+  verdict: pending

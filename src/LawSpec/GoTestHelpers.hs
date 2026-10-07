@@ -1,4 +1,4 @@
--- Framework-specific generator documents, downstream of checked Core.
+-- | Framework-specific generator documents, downstream of checked Core.
 module LawSpec.GoTestHelpers (generatorDoc, generatorDocWithin, assertionDoc, dataHelpersDoc) where
 
 import LawSpec.Core (Type(..), Argument(..), scalarType)
@@ -31,12 +31,12 @@ mapped source argumentType body = call "rapid.Map" [source,
 draw :: D.Doc -> String -> D.Doc
 draw generator name = generator <> line ".Draw(t, " <> quoted name <> line ")"
 
--- These domains and Rapid combinators are shared by structural test generation
+-- | These domains and Rapid combinators are shared by structural test generation
 -- and the scalar registry consumed by schema strategies.
 generatorDoc :: Int -> Integer -> (Type -> Bool) -> (Type -> D.Doc) -> Type -> D.Doc
 generatorDoc bits budget structural reference = generatorDocBounded (integerBounds bits) bits budget structural reference
 
--- The generator, with a top-level integer drawn from a refinement's range.
+-- | The generator, with a top-level integer drawn from a refinement's range.
 generatorDocWithin :: Maybe (Integer, Integer) -> Int -> Integer -> (Type -> Bool) -> (Type -> D.Doc) -> Type -> D.Doc
 generatorDocWithin within bits budget structural reference ty = generatorDocBounded boundsOf bits budget structural reference ty
   where
@@ -117,10 +117,14 @@ generatorDocBounded boundsOf bits budget structural reference = gen
     floating (SFloat name pattern) = call "lsFloating" [quoted name,quoted pattern]
     floating _ = error "non-floating Go boundary"
 
+-- | Assertions report the law, the inputs and both sides, so a failure
+-- explains itself.
 assertionDoc :: D.Doc
 assertionDoc = line "func _lawspecAssert(t interface{ Fatalf(string, ...any) }, context string, actual, expected func() LawSpecValue) " <>
   block (value "lsAssert(context, actual, expected)")
 
+-- | Data values are built and compared through helpers emitted once per test
+-- module rather than at every use.
 dataHelpersDoc :: Int -> (Type -> D.Doc) -> D.Doc
 dataHelpersDoc bits generator = statements
   [value "var _lawspecSchema = lawSpecDataSchemaRegistry()",mempty,

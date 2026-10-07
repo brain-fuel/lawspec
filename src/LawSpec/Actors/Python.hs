@@ -1,4 +1,4 @@
--- Typed actors for Python implementation code (see LawSpec.Actors).
+-- | Typed actors for Python implementation code (see LawSpec.Actors).
 --
 -- Every actor becomes a class named for its handle type in lawspec_actors:
 -- AccountActor.start(...) makes the state with the start adapter and runs it
@@ -19,6 +19,8 @@ import qualified LawSpec.Code.Doc as D
 import LawSpec.Actors.Types (Actor(..), Handler(..), Supervision(..), Child(..))
 import LawSpec.Core.Machine (SupervisionStrategy(..), Lifetime(..))
 
+-- | Actors become a typed class, or Python's idiom for one, generated from the
+-- declaration. ref:DEC-actors-otp-supervision
 emit :: String -> Bool -> Int -> [C.DataDeclaration] -> [Actor] -> [Supervision] -> Either String [Artifact]
 emit _ _ bits datas actors supervisions = do
   mapM_ (identifier . actorClass) actors
@@ -83,7 +85,7 @@ emit _ _ bits datas actors supervisions = do
 alias :: String -> String
 alias m = "_" ++ map (\c -> if c == '.' then '_' else c) m
 
--- A handler's argument and reply descriptors (adding data types to the
+-- | A handler's argument and reply descriptors (adding data types to the
 -- table) and schema references.
 type HandlerWire = (Handler, [String], String)
 
@@ -209,7 +211,7 @@ actorClassText datas wire a = do
         , "        \"\"\"Sends " ++ name ++ " without waiting for the reply.\"\"\""
         , "        self._actor.cast(" ++ step ++ ")" ]
 
--- A supervisor's class: start() makes the runtime supervisor and starts each
+-- | A supervisor's class: start() makes the runtime supervisor and starts each
 -- child under it, in order; each child is an attribute.
 supervisorClassText :: Supervision -> String
 supervisorClassText s = unlines $

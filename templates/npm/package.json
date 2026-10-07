@@ -23,6 +23,7 @@
   "types": "index.d.ts",
   "files": /*@ package-files @*/,
   "scripts": {
+    "prepack": /*@ copy-documents @*/,
     "test": "node --test test/*.test.mjs"
   }
 }

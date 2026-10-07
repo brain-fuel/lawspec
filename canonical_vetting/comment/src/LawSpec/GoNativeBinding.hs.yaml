@@ -1,0 +1,9 @@
+decision/haskell/src/LawSpec/GoNativeBinding.hs/module/LawSpec.GoNativeBinding:
+  digest: sha256:7f892ac41c058a25
+  verdict: pending
+decision/haskell/src/LawSpec/GoNativeBinding.hs/module/LawSpec.GoNativeBinding/function/emitBindings:
+  digest: sha256:8a83c4c8414cdb95
+  verdict: pending
+decision/haskell/src/LawSpec/GoNativeBinding.hs/module/LawSpec.GoNativeBinding/function/preparePlan:
+  digest: sha256:5880a1d155fb6237
+  verdict: pending

@@ -1,0 +1,18 @@
+decision/haskell/src/LawSpec/RustNativeGenerators.hs/module/LawSpec.RustNativeGenerators:
+  digest: sha256:773e1444ffc8cde0
+  verdict: pending
+decision/haskell/src/LawSpec/RustNativeGenerators.hs/module/LawSpec.RustNativeGenerators/function/emitGeneratorStubs:
+  digest: sha256:a4d8ea08f37c6750
+  verdict: pending
+decision/haskell/src/LawSpec/RustNativeGenerators.hs/module/LawSpec.RustNativeGenerators/function/emitGenerators:
+  digest: sha256:ce95b19b3b75024a
+  verdict: pending
+decision/haskell/src/LawSpec/RustNativeGenerators.hs/module/LawSpec.RustNativeGenerators/function/generatorImports:
+  digest: sha256:8d7387b1e093ae6e
+  verdict: pending
+decision/haskell/src/LawSpec/RustNativeGenerators.hs/module/LawSpec.RustNativeGenerators/function/localParts:
+  digest: sha256:fd158f91f34ebdd8
+  verdict: pending
+decision/haskell/src/LawSpec/RustNativeGenerators.hs/module/LawSpec.RustNativeGenerators/function/replaceTypePrefix:
+  digest: sha256:33e00879f232712e
+  verdict: pending

@@ -1,3 +1,8 @@
+---
+id: lawspec.reference.language.cryptography
+kind: reference
+title: Cryptography
+---
 # Cryptography
 
 `lawspec.crypto` is post-quantum by default: key exchange with ML-KEM-768,

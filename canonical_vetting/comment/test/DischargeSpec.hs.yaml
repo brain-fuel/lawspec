@@ -1,0 +1,6 @@
+decision/haskell/test/DischargeSpec.hs/module/DischargeSpec:
+  digest: sha256:2f405863e0d30f2c
+  verdict: pending
+decision/haskell/test/DischargeSpec.hs/module/DischargeSpec/function/test_lawsAreDischargedWithHonestEvidence:
+  digest: sha256:3baf69cfb6067ce8
+  verdict: pending

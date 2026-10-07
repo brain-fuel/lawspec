@@ -1,0 +1,9 @@
+decision/go/acceptance/workflows/go/files/example/approvals/adapter.go:
+  digest: sha256:ccbfe2afe9180cbc
+  verdict: pending
+decision/go/acceptance/workflows/go/files/example/approvals/adapter.go/function/ApprovalErrors:
+  digest: sha256:8d8e3f7fde21d16b
+  verdict: pending
+decision/go/acceptance/workflows/go/files/example/approvals/adapter.go/function/ApprovedQuickly:
+  digest: sha256:d2052cc9a3715843
+  verdict: pending

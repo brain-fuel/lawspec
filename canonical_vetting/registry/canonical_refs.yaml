@@ -1,0 +1,204 @@
+registry/MIT:
+  digest: sha256:ed6c0abb656b1c69
+  verdict: pending
+registry/REQ-async-adapters:
+  digest: sha256:5dd382d8c2e7008d
+  verdict: pending
+registry/REQ-compiler-api-contract:
+  digest: sha256:cd0bc17ed38b625a
+  verdict: pending
+registry/REQ-conditional-branches:
+  digest: sha256:9f9d954755db40c8
+  verdict: pending
+registry/REQ-cross-unit-imports:
+  digest: sha256:7a05ae6367274695
+  verdict: pending
+registry/REQ-deadlock-free-scenarios:
+  digest: sha256:16d1a4255fea8ff7
+  verdict: pending
+registry/REQ-definition-contracts:
+  digest: sha256:d5c82f9bf543b45d
+  verdict: pending
+registry/REQ-definition-predicates:
+  digest: sha256:a627feb02741f1ed
+  verdict: pending
+registry/REQ-definition-templates:
+  digest: sha256:24130ae5996755f6
+  verdict: pending
+registry/REQ-domain-modeling:
+  digest: sha256:bd3c4bca307c5bba
+  verdict: pending
+registry/REQ-durations:
+  digest: sha256:bd3effad463bf64e
+  verdict: pending
+registry/REQ-exact-refinement-proofs:
+  digest: sha256:a340e5d3258ee4e0
+  verdict: pending
+registry/REQ-flow-typing:
+  digest: sha256:2c78054ea922ef87
+  verdict: pending
+registry/REQ-gadts:
+  digest: sha256:5916e38e2a317768
+  verdict: pending
+registry/REQ-generic-specialization:
+  digest: sha256:e51bc526bd8238e5
+  verdict: pending
+registry/REQ-honest-evidence:
+  digest: sha256:7b5cf2ed990ade17
+  verdict: pending
+registry/REQ-idiomatic-data-shapes:
+  digest: sha256:b0b95ce1673614f6
+  verdict: pending
+registry/REQ-incremental-compilation:
+  digest: sha256:222e78f1af038aef
+  verdict: pending
+registry/REQ-indexed-families:
+  digest: sha256:8ea40a32affb06b5
+  verdict: pending
+registry/REQ-native-binding-requests:
+  digest: sha256:da49885cf18cf092
+  verdict: pending
+registry/REQ-native-binding-resolution:
+  digest: sha256:d95fd83929d1989f
+  verdict: pending
+registry/REQ-payload-predicates:
+  digest: sha256:7a05ec9876c8dc1b
+  verdict: pending
+registry/REQ-payload-proofs:
+  digest: sha256:517f2282986f974f
+  verdict: pending
+registry/REQ-portable-collections:
+  digest: sha256:6dee2800b5332f25
+  verdict: pending
+registry/REQ-python-sessions:
+  digest: sha256:6975765c9bb08022
+  verdict: pending
+registry/REQ-railway-combinators:
+  digest: sha256:a91eb06f52860210
+  verdict: pending
+registry/REQ-readable-layout:
+  digest: sha256:a93f77976c8864d0
+  verdict: pending
+registry/REQ-refined-generation-bounds:
+  digest: sha256:2a8a0aafc2138021
+  verdict: pending
+registry/REQ-source-data-refinements:
+  digest: sha256:82b0c7452005baac
+  verdict: pending
+registry/REQ-stateful-models:
+  digest: sha256:bc6f84bdf3b4a657
+  verdict: pending
+registry/REQ-structural-types:
+  digest: sha256:8883173158bc7434
+  verdict: pending
+registry/REQ-target-name-escaping:
+  digest: sha256:e149c238a88acdab
+  verdict: pending
+registry/REQ-test-manifest:
+  digest: sha256:d4e235b4d1eb9705
+  verdict: pending
+registry/REQ-total-definitions:
+  digest: sha256:e14ca2ec4083a087
+  verdict: pending
+registry/REQ-type-schemes:
+  digest: sha256:6f40a9e0c3b6e76b
+  verdict: pending
+registry/REQ-typed-core-boundary:
+  digest: sha256:fc3a97846a2356c6
+  verdict: pending
+registry/caires-pfenning-session-types:
+  digest: sha256:3d79558d2ffc5cd3
+  verdict: pending
+registry/canon:
+  digest: sha256:694468ae38846594
+  verdict: pending
+registry/commonmark:
+  digest: sha256:f5e2a5e5409acf7b
+  verdict: pending
+registry/decimal-arithmetic:
+  digest: sha256:c03a64a0bf8a7bcb
+  verdict: pending
+registry/diataxis:
+  digest: sha256:da6d545b5d1d42a6
+  verdict: pending
+registry/erlang-otp-supervisors:
+  digest: sha256:87b5729f98952d5a
+  verdict: pending
+registry/fast-check:
+  digest: sha256:4ca6cf0530492a14
+  verdict: pending
+registry/ghc-wasm:
+  digest: sha256:4cbf6f72b0fe3072
+  verdict: pending
+registry/google-style-guides:
+  digest: sha256:b43c03c040019083
+  verdict: pending
+registry/hedgehog:
+  digest: sha256:9140b9f2e5d2846a
+  verdict: pending
+registry/herlihy-wing-linearizability:
+  digest: sha256:0a180d1fc73b9c7a
+  verdict: pending
+registry/hspec:
+  digest: sha256:3dadf9fb161acb22
+  verdict: pending
+registry/hypothesis:
+  digest: sha256:11b89196faf98b26
+  verdict: pending
+registry/ieee-754:
+  digest: sha256:02ee78dd6f7ca574
+  verdict: pending
+registry/jetcheck:
+  digest: sha256:a02726bccee35998
+  verdict: pending
+registry/keep-a-changelog:
+  digest: sha256:c2fd784f65633045
+  verdict: pending
+registry/kobayashi-deadlock-free-processes:
+  digest: sha256:80be78fdfcdb6440
+  verdict: pending
+registry/kotest:
+  digest: sha256:03930c9d90176dd6
+  verdict: pending
+registry/lawspec-roadmap:
+  digest: sha256:b6b573fc7761fdbc
+  verdict: pending
+registry/padovani-deadlock-freedom:
+  digest: sha256:8d293030e9b2ad56
+  verdict: pending
+registry/pep-8:
+  digest: sha256:0aa5277e9e9b7c15
+  verdict: pending
+registry/proptest:
+  digest: sha256:81f038715e6b45c2
+  verdict: pending
+registry/pure-rand:
+  digest: sha256:ece094fdafafdde6
+  verdict: pending
+registry/quickcheck:
+  digest: sha256:94ca8605f79de664
+  verdict: pending
+registry/rapid-go:
+  digest: sha256:8d7478fe6fcd8887
+  verdict: pending
+registry/semver-2:
+  digest: sha256:7ef7fa24c6809d32
+  verdict: pending
+registry/splitmix:
+  digest: sha256:9c2ca3c849c21547
+  verdict: pending
+registry/wadler-propositions-as-sessions:
+  digest: sha256:47316299ab183df2
+  verdict: pending
+registry/wilshaw-hutton-flow-typing:
+  digest: sha256:a375ab116fedf86d
+  verdict: pending
+registry/wing-gong-linearizability:
+  digest: sha256:f1a12ca187eea44b
+  verdict: pending
+registry/wlaschin-domain-modeling:
+  digest: sha256:e1b169f4362c3598
+  verdict: pending
+registry/wlaschin-railway:
+  digest: sha256:5d4aad03cf50bf80
+  verdict: pending

@@ -1,4 +1,4 @@
--- Pure Haskell expressions rendered from checked Core.
+-- | Pure Haskell expressions rendered from checked Core.
 module LawSpec.HaskellExpr (renderExpression, renderExpressionWithContext, apply, parens, array, checked, quoted, integerLiteral, scalarLiteral) where
 
 import LawSpec.Core
@@ -7,19 +7,26 @@ import qualified LawSpec.HaskellTypeRefs as Native
 import qualified LawSpec.Backend as Backend
 import qualified LawSpec.Code.Doc as D
 
+-- | Arguments are parenthesised only when they need to be.
 parens :: D.Doc -> D.Doc
 parens value = D.group (D.text "(" <> value <> D.text ")")
 
+-- | Function application, wrapping arguments when a call is too wide.
+-- ref:DEC-readable-output-default
 apply :: String -> [D.Doc] -> D.Doc
 apply name args = D.group (D.text name <> D.nest 2 (mconcat [D.softline <> parens value | value <- args]))
 
+-- | Lists of runtime values are written in one shape so they wrap like calls.
 array :: [D.Doc] -> D.Doc
 array = D.delimit 2 "[" "]"
 
+-- | Values of types with a schema are validated as they enter a law, so an
+-- adapter cannot return a value outside its declared domain.
+-- ref:DEC-portable-exact-arithmetic
 checked :: D.Doc -> D.Doc
 checked value = apply "P.either P.error P.id" [value]
 
--- Split source strings at character boundaries, then let Haskell concatenate
+-- | Split source strings at character boundaries, then let Haskell concatenate
 -- the independently escaped chunks. No encoded escape sequence is split.
 quoted :: String -> D.Doc
 quoted value = case chunks value of
@@ -34,11 +41,16 @@ quoted value = case chunks value of
           (part,rest) = splitAt width remaining
       in part : chunks rest
 
+-- | Very long integers are read from text, so GHC never warns about or
+-- truncates a literal.
 integerLiteral :: Integer -> D.Doc
 integerLiteral value
   | length (show value) <= 32 = D.text (show value)
   | otherwise = apply "P.read" [quoted (show value)]
 
+-- | Literals become runtime values built from their declared type and exact
+-- digits, so Haskell never reads a number at its own precision.
+-- ref:DEC-portable-exact-arithmetic
 scalarLiteral :: Scalar -> D.Doc
 scalarLiteral value = case value of
   SInteger name n -> apply "SInteger" [quoted name,integerLiteral n]
@@ -54,12 +66,17 @@ scalarLiteral value = case value of
   SPresent name payload -> apply "SPresent" [quoted name,
     maybe (D.text "P.Nothing") (apply "P.Just" . pure . scalarLiteral) payload]
 
+-- | Expressions are rendered from Core, never from source, so the Haskell
+-- tests check the same expansion as every other target.
+-- ref:DEC-typed-core-boundary
 renderExpression :: [DataDeclaration] -> Int -> String -> String -> (Id -> String)
   -> (Expr -> [D.Doc] -> Either String D.Doc) -> Expr -> Either String D.Doc
 renderExpression declarations bits schema symbols = renderExpressionWithContext declarations
   (D.text (show bits)) schema (apply "P.Just" [D.text symbols])
   Native.haskellTypeReferenceDoc (pure . quoted . Backend.scalarTypeKey)
 
+-- | Callers whose generated code already holds the machine width and type
+-- references in scope pass them in, so the rendering refers to them by name.
 renderExpressionWithContext :: [DataDeclaration] -> D.Doc -> String -> D.Doc
   -> (Type -> Either String D.Doc) -> (Type -> Either String D.Doc)
   -> (Id -> String) -> (Expr -> [D.Doc] -> Either String D.Doc)

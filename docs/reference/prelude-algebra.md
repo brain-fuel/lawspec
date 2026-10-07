@@ -1,3 +1,8 @@
+---
+id: lawspec.reference.prelude-algebra
+kind: reference
+title: Prelude laws and algebra
+---
 # Prelude laws and algebra
 
 The prelude is an implicit unit, `prelude`, available in every source. It

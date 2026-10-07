@@ -1,0 +1,24 @@
+decision/haskell/src/LawSpec/Core/Eval.hs/module/LawSpec.Core.Eval:
+  digest: sha256:9ce59794f68f25e2
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Eval.hs/module/LawSpec.Core.Eval/function/evaluate:
+  digest: sha256:6166c7767808f567
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Eval.hs/module/LawSpec.Core.Eval/function/evaluateProposition:
+  digest: sha256:5fd56e3c15444415
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Eval.hs/module/LawSpec.Core.Eval/function/evaluatePure:
+  digest: sha256:aefcf2efd7f2e3ea
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Eval.hs/module/LawSpec.Core.Eval/function/evaluateValue:
+  digest: sha256:c02544aead01659b
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Eval.hs/module/LawSpec.Core.Eval/function/evaluateValueProposition:
+  digest: sha256:87afe277333ce671
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Eval.hs/module/LawSpec.Core.Eval/function/evaluateValuePure:
+  digest: sha256:ffdb99663a8115d9
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Eval.hs/module/LawSpec.Core.Eval/function/validateValueWithContracts:
+  digest: sha256:a80cc1a51cf88299
+  verdict: pending

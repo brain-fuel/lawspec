@@ -1,3 +1,6 @@
+-- | The typing rules of a Core expression, checked independently of the front
+-- end that produced it, so a front-end bug cannot reach an emitter unnoticed.
+-- ref:DEC-typed-core-boundary
 module LawSpec.Core.Expression ( validateExpression, validateExpressionWithRegistry, kindOf, operationEvidence, operationEvidenceWithRegistry) where
 
 import LawSpec.Collections (collectionsUnit)
@@ -12,9 +15,14 @@ import Data.List (nub)
 
 type Scope = M.Map Id Type
 
+-- | Every arithmetic operation carries the evidence of how its operands are
+-- promoted, so no target applies its own implicit conversion.
+-- ref:DEC-portable-exact-arithmetic
 operationEvidence :: BinaryOp -> Type -> Type -> Either String Evidence
 operationEvidence op a b = Types.makeRegistry [] >>= \registry -> operationEvidenceWithRegistry registry op a b
 
+-- | User data types can be compared and combined only as their declarations
+-- allow, so the registry is consulted rather than assumed.
 operationEvidenceWithRegistry :: Types.TypeRegistry -> BinaryOp -> Type -> Type -> Either String Evidence
 operationEvidenceWithRegistry registry op a b = case (a,b) of
   (Constructor x [],Constructor y []) | isNumeric x && isNumeric y -> do
@@ -27,10 +35,13 @@ operationEvidenceWithRegistry registry op a b = case (a,b) of
         pure (Structural a)
     | otherwise -> Left "invalid operation operand types"
 
+-- | A standalone expression is validated against the built-in types only.
 validateExpression :: Int -> Scope -> Scope -> Expr -> Either String ()
 validateExpression bits declarations scope expr = Types.makeRegistry [] >>= \registry ->
   validateExpressionWithRegistry registry bits declarations scope expr
 
+-- | The checker behind the Core boundary: each node's recorded type must follow
+-- from its children's, whatever produced it. ref:DEC-typed-core-boundary
 validateExpressionWithRegistry :: Types.TypeRegistry -> Int -> Scope -> Scope -> Expr -> Either String ()
 validateExpressionWithRegistry registry bits declarations scope expr@Expr{..} = do
   Types.checkType registry expressionType

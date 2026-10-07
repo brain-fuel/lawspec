@@ -1,3 +1,8 @@
+---
+id: lawspec.reference.primitives
+kind: reference
+title: Primitives
+---
 # Primitives
 
 Every scalar type has a declared domain, checked literals, equality, property

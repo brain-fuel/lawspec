@@ -1,0 +1,18 @@
+decision/haskell/dev/Canon.hs/module/Canon:
+  digest: sha256:db02c0ad1426cf06
+  verdict: pending
+decision/haskell/dev/Canon.hs/module/Canon/function/canonBinary:
+  digest: sha256:d7a1cc4884f6acee
+  verdict: pending
+decision/haskell/dev/Canon.hs/module/Canon/function/canonCommand:
+  digest: sha256:c6857b7229ba1f1f
+  verdict: pending
+decision/haskell/dev/Canon.hs/module/Canon/function/checkout:
+  digest: sha256:84993f72eacbc878
+  verdict: pending
+decision/haskell/dev/Canon.hs/module/Canon/function/link:
+  digest: sha256:99bb4c2ff3dde89e
+  verdict: pending
+decision/haskell/dev/Canon.hs/module/Canon/function/linkTarget:
+  digest: sha256:c3eb44478a0c05cd
+  verdict: pending

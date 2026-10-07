@@ -1,0 +1,6 @@
+decision/haskell/test/StatefulModelSpec.hs/module/StatefulModelSpec:
+  digest: sha256:5a876924f5294383
+  verdict: pending
+decision/haskell/test/StatefulModelSpec.hs/module/StatefulModelSpec/function/test_statefulModelsElaborateFromTypestate:
+  digest: sha256:25d2b3892f7ff7cc
+  verdict: pending

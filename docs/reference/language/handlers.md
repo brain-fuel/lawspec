@@ -1,3 +1,8 @@
+---
+id: lawspec.reference.language.handlers
+kind: reference
+title: Handlers
+---
 # Handlers
 
 A handler gives an ability's operations meaning. LawSpec has three kinds:

@@ -1,0 +1,6 @@
+decision/go/acceptance/durations/go/files/example/durations/adapter.go:
+  digest: sha256:ac1be7d6b6541b60
+  verdict: pending
+decision/go/acceptance/durations/go/files/example/durations/adapter.go/function/Remaining:
+  digest: sha256:e6e3cb6dd80a1e13
+  verdict: pending

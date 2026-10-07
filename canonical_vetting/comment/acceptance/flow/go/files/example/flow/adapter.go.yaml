@@ -1,0 +1,12 @@
+decision/go/acceptance/flow/go/files/example/flow/adapter.go:
+  digest: sha256:acd06238afbbf0ad
+  verdict: pending
+decision/go/acceptance/flow/go/files/example/flow/adapter.go/function/Peek:
+  digest: sha256:3f51f7a1e5b5b80c
+  verdict: pending
+decision/go/acceptance/flow/go/files/example/flow/adapter.go/function/Pop:
+  digest: sha256:051da301d034a8d4
+  verdict: pending
+decision/go/acceptance/flow/go/files/example/flow/adapter.go/function/Push:
+  digest: sha256:059933d9e77f5d8b
+  verdict: pending

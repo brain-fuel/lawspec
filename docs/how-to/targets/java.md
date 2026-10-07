@@ -1,3 +1,8 @@
+---
+id: lawspec.how-to.targets.java
+kind: how-to
+title: Set up Java
+---
 # Set up Java
 
 ## Requirements

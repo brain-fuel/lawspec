@@ -1,4 +1,5 @@
-module ImportSpec (spec) where
+-- | Imports and packages across units.
+module ImportSpec (test_importsResolveAcrossUnitsWithoutLeakingAdapters) where
 
 import Control.Monad (forM_)
 import Data.Aeson (Key, Value(..), decode, encode, object, (.=))
@@ -49,7 +50,7 @@ accepts texts = case compileUnits texts of
   Left diagnostics -> expectationFailure (show diagnostics)
   Right _ -> pure ()
 
--- A generation request through the API, with packages.
+-- | A generation request through the API, with packages.
 request :: [(Key, Value)] -> [(String, String)] -> Value
 request extra sources = maybe Null id $ decode $ dispatch $ encode $ object $
   [ "method" .= ("check" :: String)
@@ -64,8 +65,12 @@ packaged name version dependencies = object
   [ "name" .= name, "version" .= version, "dependencies" .= M.fromList dependencies
   , "sources" .= [object ["path" .= ("money.lawspec" :: String), "content" .= money] | name == "shop.money"] ]
 
-spec :: Spec
-spec = describe "cross-unit imports" $ do
+-- | Units are shared between projects, so an import must resolve to the original
+-- declaration, keep same-named definitions apart, and never let a law depend
+-- on another unit's adapters. ref:DEC-imports-copy-not-link
+-- ref:REQ-cross-unit-imports
+test_importsResolveAcrossUnitsWithoutLeakingAdapters :: Spec
+test_importsResolveAcrossUnitsWithoutLeakingAdapters = describe "cross-unit imports" $ do
   it "resolves qualified and listed names across units, with unit-scoped constructors" $ do
     let program = compileUnits [money, orders $ unlines
           [ "type Currency is | Usd | Gbp end"

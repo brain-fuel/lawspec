@@ -1,0 +1,24 @@
+decision/haskell/src/LawSpec/Sessions/Go.hs/module/LawSpec.Sessions.Go:
+  digest: sha256:df69b1994926dc37
+  verdict: pending
+decision/haskell/src/LawSpec/Sessions/Go.hs/module/LawSpec.Sessions.Go/function/delegated:
+  digest: sha256:85316c8a5122053f
+  verdict: pending
+decision/haskell/src/LawSpec/Sessions/Go.hs/module/LawSpec.Sessions.Go/function/emit:
+  digest: sha256:a9dec334b58a22fe
+  verdict: pending
+decision/haskell/src/LawSpec/Sessions/Go.hs/module/LawSpec.Sessions.Go/function/endType:
+  digest: sha256:b98689d046110f48
+  verdict: pending
+decision/haskell/src/LawSpec/Sessions/Go.hs/module/LawSpec.Sessions.Go/function/networkText:
+  digest: sha256:70bdfe4e815c42c8
+  verdict: pending
+decision/haskell/src/LawSpec/Sessions/Go.hs/module/LawSpec.Sessions.Go/function/sends:
+  digest: sha256:e553245ed857b212
+  verdict: pending
+decision/haskell/src/LawSpec/Sessions/Go.hs/module/LawSpec.Sessions.Go/function/typeName:
+  digest: sha256:4314b17073f2362a
+  verdict: pending
+decision/haskell/src/LawSpec/Sessions/Go.hs/module/LawSpec.Sessions.Go/function/unitSessions:
+  digest: sha256:58ea77ccd0e2e633
+  verdict: pending

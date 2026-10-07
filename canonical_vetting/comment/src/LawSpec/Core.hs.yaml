@@ -1,0 +1,129 @@
+decision/haskell/src/LawSpec/Core.hs/module/LawSpec.Core:
+  digest: sha256:e696408533c0cb4b
+  verdict: pending
+decision/haskell/src/LawSpec/Core.hs/module/LawSpec.Core/data/Argument:
+  digest: sha256:a8d258c3b0e87f9c
+  verdict: pending
+decision/haskell/src/LawSpec/Core.hs/module/LawSpec.Core/data/BinaryOp:
+  digest: sha256:0aaaa9f529bfdd27
+  verdict: pending
+decision/haskell/src/LawSpec/Core.hs/module/LawSpec.Core/data/Binder:
+  digest: sha256:9110fe986e10106a
+  verdict: pending
+decision/haskell/src/LawSpec/Core.hs/module/LawSpec.Core/data/Builtin:
+  digest: sha256:7ffba2a748d2630f
+  verdict: pending
+decision/haskell/src/LawSpec/Core.hs/module/LawSpec.Core/data/Contract:
+  digest: sha256:ac6e94a0c3e020aa
+  verdict: pending
+decision/haskell/src/LawSpec/Core.hs/module/LawSpec.Core/data/Conversion:
+  digest: sha256:632bb261ca9fec75
+  verdict: pending
+decision/haskell/src/LawSpec/Core.hs/module/LawSpec.Core/data/DataConstructor:
+  digest: sha256:e64ea1673451b019
+  verdict: pending
+decision/haskell/src/LawSpec/Core.hs/module/LawSpec.Core/data/DataDeclaration:
+  digest: sha256:287048756cc14da3
+  verdict: pending
+decision/haskell/src/LawSpec/Core.hs/module/LawSpec.Core/data/Declaration:
+  digest: sha256:995e847a6d9f4d96
+  verdict: pending
+decision/haskell/src/LawSpec/Core.hs/module/LawSpec.Core/data/Definition:
+  digest: sha256:de4b6b170594b2d7
+  verdict: pending
+decision/haskell/src/LawSpec/Core.hs/module/LawSpec.Core/data/Evidence:
+  digest: sha256:7e1b80802d747f84
+  verdict: pending
+decision/haskell/src/LawSpec/Core.hs/module/LawSpec.Core/data/Example:
+  digest: sha256:4b90d91991c4c04d
+  verdict: pending
+decision/haskell/src/LawSpec/Core.hs/module/LawSpec.Core/data/Expr:
+  digest: sha256:62cffc9495a6edda
+  verdict: pending
+decision/haskell/src/LawSpec/Core.hs/module/LawSpec.Core/data/Index:
+  digest: sha256:6a2d0fb223ad5cab
+  verdict: pending
+decision/haskell/src/LawSpec/Core.hs/module/LawSpec.Core/data/Kind:
+  digest: sha256:f51b40f0f696b033
+  verdict: pending
+decision/haskell/src/LawSpec/Core.hs/module/LawSpec.Core/data/LogicalOp:
+  digest: sha256:337d473a9f5ea2ca
+  verdict: pending
+decision/haskell/src/LawSpec/Core.hs/module/LawSpec.Core/data/Mailbox:
+  digest: sha256:69ef602e748069bc
+  verdict: pending
+decision/haskell/src/LawSpec/Core.hs/module/LawSpec.Core/data/MatchCase:
+  digest: sha256:7ad0d26a82023313
+  verdict: pending
+decision/haskell/src/LawSpec/Core.hs/module/LawSpec.Core/data/Node:
+  digest: sha256:5d9c35a9138977e2
+  verdict: pending
+decision/haskell/src/LawSpec/Core.hs/module/LawSpec.Core/data/Origin:
+  digest: sha256:9f357867b67f1af0
+  verdict: pending
+decision/haskell/src/LawSpec/Core.hs/module/LawSpec.Core/data/Program:
+  digest: sha256:7f7c7d58099cf719
+  verdict: pending
+decision/haskell/src/LawSpec/Core.hs/module/LawSpec.Core/data/Property:
+  digest: sha256:2be8011411d8c0d5
+  verdict: pending
+decision/haskell/src/LawSpec/Core.hs/module/LawSpec.Core/data/Proposition:
+  digest: sha256:47ec6bc7b3175ec9
+  verdict: pending
+decision/haskell/src/LawSpec/Core.hs/module/LawSpec.Core/data/Quantifier:
+  digest: sha256:4d337e3d24914cbc
+  verdict: pending
+decision/haskell/src/LawSpec/Core.hs/module/LawSpec.Core/data/Session:
+  digest: sha256:995727a0e351c376
+  verdict: pending
+decision/haskell/src/LawSpec/Core.hs/module/LawSpec.Core/data/Type:
+  digest: sha256:96054c97cc047b7e
+  verdict: pending
+decision/haskell/src/LawSpec/Core.hs/module/LawSpec.Core/data/UnaryOp:
+  digest: sha256:61290379fafe8794
+  verdict: pending
+decision/haskell/src/LawSpec/Core.hs/module/LawSpec.Core/data/Unit:
+  digest: sha256:5cc0120cbb5fe523
+  verdict: pending
+decision/haskell/src/LawSpec/Core.hs/module/LawSpec.Core/function/binaryName:
+  digest: sha256:2e10275b26191a04
+  verdict: pending
+decision/haskell/src/LawSpec/Core.hs/module/LawSpec.Core/function/builtinName:
+  digest: sha256:47cfc48be6f6a1a1
+  verdict: pending
+decision/haskell/src/LawSpec/Core.hs/module/LawSpec.Core/function/children:
+  digest: sha256:136abbe0745fdb43
+  verdict: pending
+decision/haskell/src/LawSpec/Core.hs/module/LawSpec.Core/function/concurrentGroup:
+  digest: sha256:cbf735504dd2a0f3
+  verdict: pending
+decision/haskell/src/LawSpec/Core.hs/module/LawSpec.Core/function/contractExpressions:
+  digest: sha256:c3f27eb175de8e8e
+  verdict: pending
+decision/haskell/src/LawSpec/Core.hs/module/LawSpec.Core/function/freeBinders:
+  digest: sha256:9ffa286ef52039a9
+  verdict: pending
+decision/haskell/src/LawSpec/Core.hs/module/LawSpec.Core/function/functionType:
+  digest: sha256:ba709c9a437535b9
+  verdict: pending
+decision/haskell/src/LawSpec/Core.hs/module/LawSpec.Core/function/isComparison:
+  digest: sha256:411c9e628fa5317e
+  verdict: pending
+decision/haskell/src/LawSpec/Core.hs/module/LawSpec.Core/function/isConcrete:
+  digest: sha256:c3337b67b65542a5
+  verdict: pending
+decision/haskell/src/LawSpec/Core.hs/module/LawSpec.Core/function/isPure:
+  digest: sha256:f2c776a10f1e7280
+  verdict: pending
+decision/haskell/src/LawSpec/Core.hs/module/LawSpec.Core/function/propertyExpressions:
+  digest: sha256:af98c0efa79af538
+  verdict: pending
+decision/haskell/src/LawSpec/Core.hs/module/LawSpec.Core/function/propositionExpressions:
+  digest: sha256:29538701a1181d31
+  verdict: pending
+decision/haskell/src/LawSpec/Core.hs/module/LawSpec.Core/function/scalarType:
+  digest: sha256:06b2783dafd6e261
+  verdict: pending
+decision/haskell/src/LawSpec/Core.hs/module/LawSpec.Core/newtype/Id:
+  digest: sha256:0047bfeed151e397
+  verdict: pending

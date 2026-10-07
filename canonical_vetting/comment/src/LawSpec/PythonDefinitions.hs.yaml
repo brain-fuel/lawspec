@@ -1,0 +1,9 @@
+decision/haskell/src/LawSpec/PythonDefinitions.hs/module/LawSpec.PythonDefinitions:
+  digest: sha256:fd9983c65ce41e2d
+  verdict: pending
+decision/haskell/src/LawSpec/PythonDefinitions.hs/module/LawSpec.PythonDefinitions/function/definitionCalls:
+  digest: sha256:0583ee10e7fdfbfe
+  verdict: pending
+decision/haskell/src/LawSpec/PythonDefinitions.hs/module/LawSpec.PythonDefinitions/function/emitPythonDefinitions:
+  digest: sha256:f50d87137ab405f0
+  verdict: pending

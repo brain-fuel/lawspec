@@ -1,3 +1,6 @@
+-- | Turns a testing plan into each target's files: tests, adapter stubs, data
+-- types and companion artifacts. It reads only Core and the plan, never source
+-- syntax, which lawspec-dev boundaries enforces. ref:DEC-typed-core-boundary
 module LawSpec.CoreEmit (emitPlan, emitPlanWithFormat, emitPlanWithLayout, emitPlanWithOptions, emitPlanWithNativeOptions, targets) where
 import LawSpec.Sessions (sessionArtifacts)
 import LawSpec.AbilityEmit (abilityArtifacts)
@@ -53,6 +56,7 @@ import qualified LawSpec.Dependencies as D
 import LawSpec.Digest (digestHex, digestString)
 import System.IO.Unsafe (unsafePerformIO)
 
+-- | The eight targets the emitter supports, in the order every listing uses.
 targets :: [String]
 targets = ["java","python","javascript","typescript","go","haskell","kotlin","rust"]
 split :: Char -> String -> [String]
@@ -66,11 +70,11 @@ comma = intercalate ", "
 reserved :: [String]
 reserved = words "class interface enum public private protected static return import package module where data type newtype case of if then else let in do forall object fun val var when is as null true false None True False def lambda pass raise from with yield async await export default function const new delete switch throw try catch finally break continue for while match typealias struct func map range select defer go chan int string error assert test"
 
--- Preserve the readable default for existing compiler callers.
+-- | Preserve the readable default for existing compiler callers.
 emitPlan :: String -> Plan -> Either [Diagnostic] [Artifact]
 emitPlan = emitPlanWithFormat False
 
--- Canonical adapter references are independent of the selected presentation.
+-- | Canonical adapter references are independent of the selected presentation.
 -- Legacy runtime/test templates are still being migrated to structured Docs.
 emitPlanWithFormat :: Bool -> String -> Plan -> Either [Diagnostic] [Artifact]
 emitPlanWithFormat minify target original = do
@@ -111,7 +115,7 @@ builtinDefaults :: String -> Plan -> [Artifact] -> Either [Diagnostic] [Artifact
 builtinDefaults target plan = either (\message -> Left [Diagnostic "builtins" message Nothing]) Right .
   withBuiltinDefaults target (planDataDeclarations plan) (ownedAbilityUnits (map plannedUnit (plannedUnits plan)))
 
--- Code beside the units: typed channel ends for the units' protocols, typed
+-- | Code beside the units: typed channel ends for the units' protocols, typed
 -- actors and mailboxes, and the definitions other nodes can evaluate by
 -- content hash.
 companionArtifacts :: Bool -> String -> Plan -> Either [Diagnostic] [Artifact]
@@ -171,7 +175,7 @@ boundHandlers bindings plan
       -- Each unit catches the mapped exceptions where its adapters fail.
       , C.unitFailureBindings = NB.bindingFailures bindings }
 
--- Each scenario's channel types, for its runs over a network. A scenario
+-- | Each scenario's channel types, for its runs over a network. A scenario
 -- whose types have no wire descriptor yet runs only in memory.
 wirePlan :: Plan -> Plan
 wirePlan plan = plan { plannedUnits = [u { plannedUnit = wired (plannedUnit u) } | u <- plannedUnits plan] }
@@ -180,7 +184,7 @@ wirePlan plan = plan { plannedUnits = [u { plannedUnit = wired (plannedUnit u) }
     program unit p = p { programWire = either (const "") id
       (scenarioWire (planMachineBits plan) (planDataDeclarations plan) (C.unitSessions unit) p) }
 
--- A declaration named with a keyword of the target is emitted with a leading
+-- | A declaration named with a keyword of the target is emitted with a leading
 -- underscore (LawSpec.TargetNames). Escaping is idempotent, and identities are
 -- unchanged, so calls, contracts and bindings still resolve.
 escapePlan :: String -> Plan -> Plan
@@ -453,14 +457,19 @@ supportedRepresentation target (C.Constructor name [C.TypeArgument argument]) =
 supportedRepresentation target (C.Arrow a b) = supportedRepresentation target a && supportedRepresentation target b
 supportedRepresentation _ _ = False
 
--- Paths and imports are transformed together so custom layouts remain executable.
+-- | Paths and imports are transformed together so custom layouts remain executable.
 emitPlanWithLayout :: String -> Maybe String -> Maybe String -> Plan -> Either [Diagnostic] [Artifact]
 emitPlanWithLayout = emitPlanWithOptions False
 
+-- | Most callers have no native bindings, so they get an empty binding plan.
+-- ref:DEC-native-bindings-typed-identity
 emitPlanWithOptions :: Bool -> String -> Maybe String -> Maybe String -> Plan -> Either [Diagnostic] [Artifact]
 emitPlanWithOptions minify target sourceDir testDir plan =
   emitPlanWithNativeOptions minify target sourceDir testDir NB.emptyBindingPlan plan
 
+-- | Names are escaped against the target's keywords before anything is emitted,
+-- so a law about `class` or `type` still compiles in Java or Go.
+-- ref:DEC-idiomatic-generated-types
 emitPlanWithNativeOptions :: Bool -> String -> Maybe String -> Maybe String -> NB.BindingPlan -> Plan -> Either [Diagnostic] [Artifact]
 emitPlanWithNativeOptions minify target sourceDir testDir unescaped unwitnessed = do
   let originalPlan = escapePlan target (witnessPlan (goAbilityNames target (ownedAbilityPlan unwitnessed)))
@@ -584,11 +593,11 @@ emitPlanWithNativeOptions minify target sourceDir testDir unescaped unwitnessed 
   unless (length result == length (nub (map (map toLower . artifactPath) result))) (Left [Diagnostic "collision" "custom layout causes an output collision" Nothing])
   pure result
 
--- The web strategies' schema import, rewritten to the emitted layout.
+-- | The web strategies' schema import, rewritten to the emitted layout.
 schemaImport :: String
 schemaImport = "import {RefinementViolation, witnessed, witnessInstances} from './lawspec_schema.mjs';"
 
--- Emitted files are held as text, weighed by their length.
+-- | Emitted files are held as text, weighed by their length.
 emitTable :: Table (Either [Diagnostic] [Stored])
 emitTable = unsafePerformIO (newPersistentTable "emit" 8000000 (either (const 1) (sum . map storedLength)))
 {-# NOINLINE emitTable #-}
@@ -610,7 +619,7 @@ unstore (Stored p c o l (Just canonical)) = AdapterArtifact (T.unpack p) (T.unpa
 storedLength :: Stored -> Int
 storedLength (Stored _ c _ _ canonical) = T.length c + maybe 0 T.length canonical
 
--- How each target calls a checked definition on logical values.
+-- | How each target calls a checked definition on logical values.
 remoteCalls :: String -> Plan -> [(C.Id, String)]
 remoteCalls target plan = case target of
   "python" -> PythonDefinitions.definitionCalls units
@@ -623,7 +632,7 @@ remoteCalls target plan = case target of
   _ -> []
   where units = map plannedUnit (plannedUnits plan)
 
--- A Kotlin handle whose binding names its type arguments gets its native
+-- | A Kotlin handle whose binding names its type arguments gets its native
 -- type on its declaration, so generated Kotlin names it in full everywhere
 -- (adapters, actors, sessions) instead of Any. Java keeps Object, which its
 -- native calls already cast.

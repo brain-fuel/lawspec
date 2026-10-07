@@ -1,3 +1,8 @@
+---
+id: lawspec.reference.language.domain-modeling
+kind: reference
+title: Domain modeling
+---
 # Domain modeling
 
 Wrappers give primitive values a domain meaning and a checked constraint.

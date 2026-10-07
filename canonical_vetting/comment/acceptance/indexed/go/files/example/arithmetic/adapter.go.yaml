@@ -1,0 +1,18 @@
+decision/go/acceptance/indexed/go/files/example/arithmetic/adapter.go:
+  digest: sha256:acd06238afbbf0ad
+  verdict: pending
+decision/go/acceptance/indexed/go/files/example/arithmetic/adapter.go/function/Area:
+  digest: sha256:a8f6f346e36cf189
+  verdict: pending
+decision/go/acceptance/indexed/go/files/example/arithmetic/adapter.go/function/CountPairs:
+  digest: sha256:b2cb3fa1dc9d7b42
+  verdict: pending
+decision/go/acceptance/indexed/go/files/example/arithmetic/adapter.go/function/DropFirst:
+  digest: sha256:6a0abd4d389714de
+  verdict: pending
+decision/go/acceptance/indexed/go/files/example/arithmetic/adapter.go/function/Duplicate:
+  digest: sha256:acb7a5b948c284c6
+  verdict: pending
+decision/go/acceptance/indexed/go/files/example/arithmetic/adapter.go/function/Mirror:
+  digest: sha256:4d5661a9e81ff8bf
+  verdict: pending

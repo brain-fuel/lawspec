@@ -1,4 +1,15 @@
-// Portable scalar arithmetic. No test framework dependencies.
+// LawSpec's runtime for Go: the portable scalar domain, seeded generation,
+// models, actors, sessions and nodes, with no test-framework dependency.
+//
+// A law must mean the same thing on every target, so this file implements
+// LawSpec's own arithmetic, equality and conversions instead of Go's machine
+// integers and float64: integers are exact and reach a bounded type only
+// through a checked conversion, exact division gives a rational, decimals are
+// exact, and floats follow IEEE 754 at their declared precision.
+// ref:DEC-portable-exact-arithmetic ref:ieee-754 ref:decimal-arithmetic
+//
+// It is emitted into every generated Go package, so the generated tests and the
+// adapters share one definition of the domain. ref:DEC-typed-core-boundary
 package RUNTIME_PACKAGE
 
 import (
@@ -27,6 +38,9 @@ import (
 	"unicode/utf8"
 )
 
+// LawSpecValue is a value of a LawSpec type together with that type, because a
+// Go value alone cannot say whether it is an Int32, a BigInt or a Decimal, and
+// the law's semantics depend on which. ref:DEC-portable-exact-arithmetic
 type LawSpecValue struct {
 	Type string
 	Data any
@@ -118,6 +132,8 @@ type LawSpecNullable[T any] struct {
 	Value   T
 }
 
+// LawSpecOptional keeps an absent value distinct from a present zero value,
+// which Go's zero values cannot. ref:DEC-algebraic-maybe-either
 type LawSpecOptional[T any] struct {
 	Present bool
 	Value   T
@@ -470,6 +486,10 @@ func lsPrecision(t string, x float64) float64 {
 	}
 	return x
 }
+
+// lsConvert moves a value into the declared type, failing instead of wrapping
+// or rounding silently, because a bounded type is only ever reached through a
+// checked conversion. ref:DEC-portable-exact-arithmetic
 func lsConvert(t string, v LawSpecValue, bits int) LawSpecValue {
 	if lsSumType(t) {
 		data := lsDataValue(v)
@@ -609,6 +629,10 @@ func lsValidUnit(t string, c int) bool {
 	}
 	return c >= 0 && c <= hi && (!(t == "Text" || t == "Char") || c < 55296 || c > 57343)
 }
+
+// lsValidate checks a value an adapter produced against its declared domain:
+// native code may return anything its own type allows, and a law quantifies
+// only over the declared domain. ref:DEC-portable-exact-arithmetic
 func lsValidate(t string, v LawSpecValue, bits int) LawSpecValue {
 	if t != v.Type {
 		panic("invalid " + t + " representation")
@@ -726,6 +750,10 @@ func lsComparison(op string, c int) bool {
 	}
 	panic("unknown comparison")
 }
+
+// lsBinary applies a LawSpec operator with LawSpec's semantics rather than
+// Go's, so a law computes the same result on every target.
+// ref:DEC-portable-exact-arithmetic ref:ieee-754
 func lsBinary(op string, a, b LawSpecValue) LawSpecValue {
 	if (op == "==" || op == "!=") && !lsExactType(a.Type) && !strings.HasPrefix(a.Type, "Float") && !strings.HasPrefix(a.Type, "Complex") {
 		return lsBool((op == "==") == lsEqual(a, b))
@@ -827,6 +855,10 @@ func lsBinary(op string, a, b LawSpecValue) LawSpecValue {
 	}
 	return LawSpecValue{t, lsPrecision(t, v)}
 }
+
+// lsEqual is equality defined once for all targets: NaN differs from itself,
+// signed zeros are equal, handles and symbols compare by identity, and data
+// compares field by field. ref:DEC-portable-exact-arithmetic
 func lsEqual(a, b LawSpecValue) bool {
 	if lsSumType(a.Type) || lsSumType(b.Type) {
 		if !lsSumType(a.Type) || !lsSumType(b.Type) {
@@ -966,6 +998,11 @@ func (c *lawSpecSessionChannel) Abandon(side int) {
 // LawSpecEnd is one end of a session at one step. Generated session types
 // wrap it; each is used once, and its Send or Receive returns the end for the
 // next step.
+//
+// Using an end exactly once is what makes a session follow its protocol; with
+// channels joined in a tree, scenarios are deadlock-free by construction.
+// ref:DEC-sessions-by-construction ref:caires-pfenning-session-types
+// ref:wadler-propositions-as-sessions
 type LawSpecEnd struct {
 	transport LawSpecTransport
 	side      int
@@ -1326,7 +1363,11 @@ func lsSample(t string, seed int, bits int) LawSpecValue {
 	return lsSequence(t, xs)
 }
 
+// LawSpecBigInt is an unbounded integer, since LawSpec's integer arithmetic is
+// exact and never wraps. ref:DEC-portable-exact-arithmetic
 type LawSpecBigInt = big.Int
+// LawSpecRational is the exact result of dividing exact numbers.
+// ref:DEC-portable-exact-arithmetic
 type LawSpecRational = big.Rat
 
 func lsToNative(t string, v LawSpecValue, bits int) any {
@@ -1813,8 +1854,14 @@ func (c *LawSpecVirtualClock) Now() int64        { return c.Time }
 func (c *LawSpecVirtualClock) Sleep(micros int64) { c.Time += micros }
 
 // LawSpecSplitMix64 gives the same sequence on every target for a seed.
+//
+// SplitMix64 is small, fast and specified exactly, so every runtime implements
+// the same generator and a seed names the same case everywhere. ref:splitmix
+// ref:DEC-portable-seeded-generation
 type LawSpecSplitMix64 struct{ state uint64 }
 
+// Next advances the generator by one step of SplitMix64, bit for bit as every
+// other target does. ref:splitmix
 func (r *LawSpecSplitMix64) Next() uint64 {
 	r.state += 0x9E3779B97F4A7C15
 	z := r.state
@@ -3989,6 +4036,10 @@ type lawSpecSupervised struct {
 // transient only after a crash, temporary never. More than maxRestarts
 // within period is the supervisor's own crash: its supervisor restarts all
 // of its children, or, at the top, every child stops.
+//
+// Supervision follows OTP's strategies and restart types, so a supervision tree
+// means what an Erlang programmer expects on every target.
+// ref:DEC-actors-otp-supervision ref:erlang-otp-supervisors
 type LawSpecSupervisor struct {
 	mu          sync.Mutex
 	strategy    string
@@ -5025,6 +5076,10 @@ var lsConsistent = map[string]string{"linearizable": "linearizable", "sequential
 // real time (each thread's own order remains), causal checks each thread's
 // results alone (threads that never message each other see only their own
 // calls), and eventual checks no results, only the final state.
+//
+// A shared model promises linearizability unless it names a weaker consistency.
+// ref:wing-gong-linearizability ref:herlihy-wing-linearizability
+// ref:DEC-stateful-models-linearizability
 func (m *lawSpecMachine) linearize(symbols map[string]*LawSpecSymbol, branches [][]lawSpecModelStep, history [][]lawSpecCall, expected LawSpecValue, finish func(LawSpecValue) bool) bool {
 	mode := m.consistency
 	if mode == "causal" {
@@ -7165,6 +7220,9 @@ type lawSpecEntity interface {
 // within one channel; a mailbox send is best effort, and a call is resent
 // until answered (and run once), failing with LawSpecUnreachable after its
 // timeout.
+//
+// Every target's node speaks the same frames, so nodes written in different
+// languages talk to each other. ref:DEC-distribution-canonical-wire
 type LawSpecNode struct {
 	transport LawSpecNetTransport
 	address   string

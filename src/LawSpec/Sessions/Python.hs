@@ -1,4 +1,4 @@
--- Typed channel ends for implementation code: each protocol's steps as
+-- | Typed channel ends for implementation code: each protocol's steps as
 -- types of this target (see LawSpec.Sessions).
 --
 -- Every protocol P becomes a class P with an open() that makes a channel and
@@ -21,13 +21,13 @@ import Control.Monad (foldM)
 import LawSpec.Scalar (isInteger, primitive)
 import qualified LawSpec.Code.Doc as D
 
--- The session library for the given target, for every unit's protocols.
+-- | The session library for the given target, for every unit's protocols.
 emit :: String -> Bool -> Int -> [C.DataDeclaration] -> [C.Unit] -> Either String [Artifact]
 emit _ _ bits datas units = do
   source <- pythonSessionsWith bits datas units
   pure [Artifact "src/lawspec_sessions.py" source "generated" "source"]
 
--- The lawspec_sessions module.
+-- | The lawspec_sessions module.
 pythonSessions :: [C.DataDeclaration] -> [C.Unit] -> Either String String
 pythonSessions = pythonSessionsWith 64
 
@@ -79,13 +79,13 @@ pythonSessionsWith bits datas units = do
           , "    return ls.read_descriptor(text)[0]" ] ]
   pure (unlines header ++ concatMap (\c -> "\n\n" ++ c) classes)
 
--- One end before one step: its class name and what the step does.
+-- | One end before one step: its class name and what the step does.
 data Position = Position String (Maybe (Bool, C.Type))
 
 positionClass :: Position -> String
 positionClass (Position cls _) = cls
 
--- The class of an end before its first step (Done when there are none).
+-- | The class of an end before its first step (Done when there are none).
 startClass :: [(Bool, C.Type)] -> String
 startClass steps = case positions steps of
   p : _ -> positionClass p
@@ -199,7 +199,7 @@ protocol datas sessions wire session = do
       _ | builtins `isPrefixOf` s -> strip (drop (length builtins) s)
       c : rest -> c : strip rest
 
--- The classes of one end: one per step (Verb + type name, with the step
+-- | The classes of one end: one per step (Verb + type name, with the step
 -- number appended when a name repeats on this end), then Done.
 positions :: [(Bool, C.Type)] -> [Position]
 positions steps = zipWith3 place [1 :: Int ..] bases (map Just steps) ++ [Position "Done" Nothing]
@@ -209,7 +209,7 @@ positions steps = zipWith3 place [1 :: Int ..] bases (map Just steps) ++ [Positi
       | length (filter (== base) bases) > 1 = Position (base ++ "Step" ++ show k) step
       | otherwise = Position base step
 
--- A step type's readable name: its last name segment, then its arguments'.
+-- | A step type's readable name: its last name segment, then its arguments'.
 typeName :: C.Type -> String
 typeName ty = case ty of
   C.Constructor n args -> capital (filter ok (lastSegment n)) ++ concatMap argument args
@@ -232,7 +232,7 @@ lastSegment n = go n n
       ':' : ':' : rest -> go rest rest
       _ : rest -> go acc rest
 
--- The protocol a step's type names, if it sends a protocol's first end.
+-- | The protocol a step's type names, if it sends a protocol's first end.
 delegated :: C.Type -> Maybe String
 delegated (C.Constructor n []) | "::session::" `infixOf` n, primitive n == Nothing = Just (lastSegment n)
   where infixOf needle hay = any (needle `isPrefixOf`) (suffixes hay)

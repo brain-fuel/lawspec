@@ -1,4 +1,8 @@
-// Typed conversion bridges are independent of property-testing frameworks.
+// Typed conversion bridges for Go, independent of property-testing frameworks.
+//
+// Adapters work with their own Go types; each codec converts between them and
+// LawSpec's values and checks the result, so a law never sees a native value
+// outside its domain. ref:DEC-native-bindings-typed-identity
 package RUNTIME_PACKAGE
 
 import (

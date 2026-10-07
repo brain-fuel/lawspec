@@ -1,4 +1,4 @@
--- Development checks for the LawSpec repository. Run from the repository root:
+-- | Development checks for the LawSpec repository. Run from the repository root:
 --
 --   lawspec-dev boundaries          Core/backends never import syntax or inference
 --   lawspec-dev integrity           npm/build.json matches sources and artifacts,
@@ -9,9 +9,11 @@
 --   lawspec-dev version [--check]   the release version
 --   lawspec-dev bump <x.y.z>        set the release version everywhere
 --   lawspec-dev docs [--check]      the documentation site; see dev/Docs.hs
+--   lawspec-dev canon [arguments]   canon over the repository; see dev/Canon.hs
 module Main (main) where
 
 import Control.Monad (forM, forM_, unless, when)
+import Canon (canonCommand)
 import Ci (ci)
 import Docs (docsCommand)
 import Generate (bumpCommand, generateCommand, versionCommand)
@@ -36,9 +38,10 @@ main = getArgs >>= \case
   "version" : options -> versionCommand options
   "bump" : options -> bumpCommand options
   "docs" : options -> docsCommand options
-  _ -> die "usage: lawspec-dev boundaries | integrity [--record] | ci [options] | generate [--check|--list] | version [--check] | bump <x.y.z> | docs --out <dir> | docs --check"
+  "canon" : options -> canonCommand options
+  _ -> die "usage: lawspec-dev boundaries | integrity [--record] | ci [options] | generate [--check|--list] | version [--check] | bump <x.y.z> | docs --out <dir> | docs --check | canon [arguments]"
 
--- Follow transitive local imports, so a convenience module cannot hide
+-- | Follow transitive local imports, so a convenience module cannot hide
 -- syntax or inference behind Core, the testing plan, or an emitter.
 boundaries :: IO ()
 boundaries = do
@@ -66,7 +69,7 @@ boundaries = do
       pure (takeWhile (\c -> c `notElem` (" (" :: String)) module')
     dropSpaces = dropWhile (== ' ')
 
--- Every compiler source and generated npm artifact is fingerprinted, so a
+-- | Every compiler source and generated npm artifact is fingerprinted, so a
 -- published package can never pair a WASM build with different sources.
 integrity :: Bool -> IO ()
 integrity record = do
@@ -99,16 +102,19 @@ integrity record = do
     tails' [] = [[]]
     tails' s@(_ : rest) = s : tails' rest
 
--- tools/wasm.sh stages documentation and examples into npm/. They stay
+-- | tools/wasm.sh stages the license and examples into npm/. They stay
 -- committed because CI jobs without Haskell pack and run the package, so every
--- staged copy must be byte-identical to its source.
+-- staged copy must be byte-identical to its source. README.md and CHANGELOG.md
+-- are copied by npm's prepack instead and not committed.
 stagedCopies :: IO ()
 stagedCopies = do
   specs <- filter (".lawspec" `isSuffixOf`) . sort <$> listDirectory "examples/specs"
   payments <- walkAll "examples/native-payments"
   packages <- walkAll "examples/packages"
-  -- Every staged document has its source at the repository root.
-  documents <- filter (\f -> ".md" `isSuffixOf` f || f == "LICENSE") . sort <$> listDirectory "npm"
+  -- The license is staged; README.md and CHANGELOG.md are copied afresh by
+  -- npm's prepack on every pack, so a copy left from an earlier pack is not
+  -- checked. ref:DEC-npm-documents-copied
+  let documents = ["LICENSE"]
   let pairs = ("examples/specs/atoi_codec.lawspec", "npm/starter.lawspec") :
         [(d, "npm/" ++ d) | d <- documents] ++
         [("examples/specs/" ++ f, "npm/examples/specs/" ++ f) | f <- specs] ++
@@ -119,7 +125,7 @@ stagedCopies = do
     unless same (die ("Stale npm copy: " ++ copy ++ " differs from " ++ source ++ "; run tools/wasm.sh"))
   where walkAll = walk (const True)
 
--- Directory entries are visited in sorted order; hidden, dunder and Cargo
+-- | Directory entries are visited in sorted order; hidden, dunder and Cargo
 -- target directories are build output, not sources.
 walk :: (FilePath -> Bool) -> FilePath -> IO [FilePath]
 walk select dir = do
@@ -134,7 +140,7 @@ walk select dir = do
 hex :: B.ByteString -> String
 hex = concatMap (\w -> [intToDigit (fromIntegral w `div` 16), intToDigit (fromIntegral w `mod` 16)]) . B.unpack
 
--- The layout matches JSON.stringify(record, null, 2) from the former JavaScript
+-- | The layout matches JSON.stringify(record, null, 2) from the former JavaScript
 -- tool, so the recorded file is unchanged by the port.
 render :: [FilePath] -> [(FilePath, String)] -> String
 render sources digests = unlines

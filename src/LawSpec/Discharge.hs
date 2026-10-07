@@ -1,4 +1,4 @@
--- How each law of a checked program is discharged, alongside the contract,
+-- | How each law of a checked program is discharged, alongside the contract,
 -- construction and adapter obligations of LawSpec.Core.Evidence and the
 -- native bindings of a generation request. Strongest first:
 --
@@ -37,7 +37,7 @@ import LawSpec.Scalar (Scalar(..), prettyScalar)
 import LawSpec.Builtins (defaultedUnits, defaultHandlerReason)
 import LawSpec.Testing (PlannedProperty(..), lawPlanner)
 
--- Laws first, then contracts, constructions and adapters. A law over checked
+-- | Laws first, then contracts, constructions and adapters. A law over checked
 -- definitions whose finite domain contains a counterexample is refuted here.
 dischargeEvidence :: Program -> Either [Diagnostic] [Obligation]
 dischargeEvidence program = do
@@ -226,12 +226,12 @@ reachableDefinitions definitions = go S.empty
       | n `S.member` seen = go seen rest
       | Just d <- M.lookup n table = d : go (S.insert n seen) (callees (definitionBody d) ++ rest)
       | otherwise = go (S.insert n seen) rest
--- The law as a Boolean claim over its inputs: implications become disjunctions.
+-- | The law as a Boolean claim over its inputs: implications become disjunctions.
 -- `p = true` is shown as p; other equations are shown as written.
 lawClaim :: Property -> Expr
 lawClaim = claimWith False
 
--- For the prover, a Boolean equation between two predicates becomes their
+-- | For the prover, a Boolean equation between two predicates becomes their
 -- equivalence, which linear arithmetic can decide.
 proofClaim :: Property -> Expr
 proofClaim = claimWith True
@@ -257,7 +257,7 @@ claimWith forProof p = claim (propertyBody p)
     claim (Conjunction ps) = foldr1 (\a b -> Expr bool (ShortCircuit And a b) origin) (map claim ps)
     negation e = Expr bool (Unary Not e) origin
 
--- A law over definitions only is proved when the totality audit proves it as
+-- | A law over definitions only is proved when the totality audit proves it as
 -- the result contract of a synthetic definition whose body is the claim and
 -- whose preconditions are the input refinements.
 proves :: Program -> [Definition] -> Property -> Either String ()
@@ -286,7 +286,7 @@ proves program definitions p =
        (validateDefinitionContracts (programMachineBits program) (programDataDeclarations program)
          (used ++ [synthetic]) (contracts ++ [contract]))
 
--- The prover reasons about calls through their contracts. A definition without
+-- | The prover reasons about calls through their contracts. A definition without
 -- preconditions and without recursion has no contract of its own to rely on,
 -- so its body is unfolded, a bounded number of times. Definitions with
 -- preconditions stay calls, so the audit still checks their arguments.
@@ -311,14 +311,14 @@ inline program definitions = go (8 :: Int)
         Just (go (depth - 1) (substitute (M.fromList (zip (map binderId (definitionArguments d)) (map (go depth) args))) (definitionBody d)))
       _ -> Nothing
 
--- Replace locals by expressions. Core identities are unique, so a definition's
+-- | Replace locals by expressions. Core identities are unique, so a definition's
 -- binders never capture a law's inputs.
 substitute :: M.Map Id Expr -> Expr -> Expr
 substitute table e = case expressionNode e of
   Local n | Just value <- M.lookup n table -> value
   _ -> rebuildWith (substitute table) e
 
--- Apply a replacement at the root, or else rebuild the children with f.
+-- | Apply a replacement at the root, or else rebuild the children with f.
 rebuild :: (Expr -> Expr) -> Expr -> Maybe Expr -> Expr
 rebuild _ _ (Just replaced) = replaced
 rebuild f e Nothing = rebuildWith f e
@@ -326,7 +326,7 @@ rebuild f e Nothing = rebuildWith f e
 rebuildWith :: (Expr -> Expr) -> Expr -> Expr
 rebuildWith = mapChildren
 
--- Native bindings of a generation request.
+-- | Native bindings of a generation request.
 bindingEvidence :: BindingPlan -> [Obligation]
 bindingEvidence plan =
   concat

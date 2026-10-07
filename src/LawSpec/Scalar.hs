@@ -1,4 +1,4 @@
--- The portable scalar domain. No test framework or target runtime dependencies.
+-- | The portable scalar domain. No test framework or target runtime dependencies.
 module LawSpec.Scalar where
 
 import GHC.Generics (Generic)
@@ -9,32 +9,43 @@ import Data.Ratio
 import GHC.Float (castFloatToWord32, castDoubleToWord64, castWord32ToFloat, castWord64ToDouble, float2Double, double2Float)
 import Numeric (showHex, readHex)
 
+-- | Primitives group by how their arithmetic behaves, which decides promotion
+-- and conversion. ref:DEC-portable-exact-arithmetic
 data Family = Boolean | IntegerFamily | Exact | Floating | Complex | Character | Sequence | Identity | Absence deriving (Eq, Show, Generic)
+-- | Each primitive's width and signedness are stated once, here, rather than
+-- taken from any target language.
 data Primitive = Primitive { primitiveName :: String, family :: Family, width :: Maybe Int, signed :: Bool } deriving (Eq, Show, Generic)
+-- | The complete set of portable scalar types; a target that cannot represent one
+-- natively represents it with the runtime.
 primitives :: [Primitive]
 primitives = [Primitive "Bool" Boolean Nothing False]
   ++ [Primitive (p ++ show w) IntegerFamily (Just w) s | (p,s) <- [("Int",True),("UInt",False)], w <- [8,16,32,64]]
   ++ [Primitive n IntegerFamily Nothing s | (n,s) <- [("IntSize",True),("UIntSize",False),("UIntPtr",False),("Integer",True),("BigInt",True),("BigUInt",False)]]
   ++ [Primitive n f w False | (n,f,w) <- [("Decimal",Exact,Nothing),("Rational",Exact,Nothing),("Float32",Floating,Just 32),("Float64",Floating,Just 64),("Complex64",Complex,Just 32),("Complex128",Complex,Just 64)]]
   ++ [Primitive n f Nothing False | (f,ns) <- [(Character,["Char","CodePoint","CodeUnit16"]),(Sequence,["Text","CodePointText","Utf16Text","Bytes"]),(Identity,["Symbol"]),(Absence,["Unit","Null","Undefined"])], n <- ns]
+-- | Unknown names are not primitives, which inference reports as unknown types.
 primitive :: String -> Maybe Primitive
 primitive n = find ((== n) . primitiveName) primitives
+-- | Integer types share bounds checking and integer-only operations.
 isInteger, isExact, isInexact, isNumeric :: String -> Bool
 isInteger n = maybe False ((== IntegerFamily) . family) (primitive n)
 isExact n = isInteger n || n `elem` ["Decimal","Rational"]
 isInexact n = n `elem` ["Float32","Float64","Complex64","Complex128"]
 isNumeric n = isExact n || isInexact n
+-- | Machine-sized integers take their range from the profile, never from the
+-- host. ref:DEC-explicit-machine-profile
 integerBounds :: Int -> String -> Maybe (Integer, Integer)
 integerBounds machine n = do
   p <- primitive n
   w <- if n `elem` ["IntSize","UIntSize","UIntPtr"] then Just machine else width p
   if family p /= IntegerFamily then Nothing else pure $ if signed p then (negate (2^(w-1)),2^(w-1)-1) else (0,2^w-1)
 
--- Raw strings travel as numeric code points/units, never JSON surrogate strings.
+-- | Raw strings travel as numeric code points/units, never JSON surrogate strings.
 data Scalar = SInteger String Integer | SBool Bool | SDecimal Integer Integer
   | SRational Integer Integer | SFloat String String | SComplex String Scalar Scalar
   | SSequence String [Int] | SCharacter String Int | SSymbol String String
   | SAbsent String | SPresent String (Maybe Scalar) deriving (Eq, Ord, Show, Generic)
+-- | A scalar keeps its declared type, so Int8 5 and Int64 5 stay distinct.
 scalarName :: Scalar -> String
 scalarName (SInteger t _) = t
 scalarName (SBool _) = "Bool"
@@ -61,28 +72,39 @@ instance ToJSON Scalar where
     SAbsent _ -> []
     SPresent _ v -> ["value" .= v]
 
+-- | Floats are stored as their IEEE bits, so NaN payloads and signed zeros
+-- survive exactly. ref:ieee-754
 floatScalar :: String -> Double -> Scalar
 -- realToFrac's Rational fallback loses IEEE specials without GHC rewrite rules.
 floatScalar t x = SFloat t $ pad (if t == "Float32" then 8 else 16) $ if t == "Float32" then showHex (castFloatToWord32 (double2Float x)) "" else showHex (castDoubleToWord64 x) ""
   where pad n s = replicate (n-length s) '0' ++ s
+-- | The compiler computes with the host double only after recovering it from the
+-- recorded bits, so nothing depends on how a value was parsed. ref:ieee-754
 floatValue :: Scalar -> Double
 floatValue (SFloat t bits) = case readHex bits of
   [(n,"")] -> if t == "Float32" then float2Double (castWord32ToFloat (fromInteger n)) else castWord64ToDouble (fromInteger n)
   _ -> error "invalid internal float bits"
 floatValue _ = error "not a float"
+-- | Exact arithmetic is done in rationals, whatever exact type the operands
+-- have. ref:DEC-portable-exact-arithmetic
 exactValue :: Scalar -> Either String Rational
 exactValue (SInteger _ n) = Right (n % 1)
 exactValue (SRational n d) | d /= 0 = Right (n % d)
 exactValue (SDecimal c e) = Right (if e >= 0 then c * 10^e % 1 else c % 10^(-e))
 exactValue _ = Left "requires an exact numeric value"
+-- | Rationals are kept in lowest terms so equal values compare equal.
 reduced :: Rational -> Scalar
 reduced r = SRational (numerator r) (denominator r)
+-- | A Decimal must be finite in base ten; anything else needs an explicit
+-- rounding, never an ambient context. ref:decimal-arithmetic
 decimal :: Rational -> Either String Scalar
 decimal r = go (denominator r) 0 0 where
   go d a b | d `mod` 2 == 0 = go (d `div` 2) (a+1) b
            | d `mod` 5 == 0 = go (d `div` 5) a (b+1)
            | d /= 1 = Left "conversion to Decimal is not finite; use prelude.round"
            | otherwise = let scale = max a b in Right (SDecimal (numerator r * 2^(scale-a) * 5^(scale-b)) (-scale))
+-- | Every value entering a law, from an example or an adapter, is checked
+-- against its declared domain. ref:DEC-portable-exact-arithmetic
 validateScalar :: Int -> Scalar -> Either String Scalar
 validateScalar machine s = case s of
   SInteger t n | not (isInteger t) -> Left "unknown integer type"
@@ -106,6 +128,8 @@ validateScalar machine s = case s of
   SPresent t v | t `elem` ["Nullable","Optional"] -> SPresent t <$> traverse (validateScalar machine) v
                | otherwise -> Left "unknown presence type"
   _ -> Right s
+-- | Text holds Unicode scalar values only, so surrogates are refused whatever a
+-- target's string type allows.
 validUnit :: String -> Int -> Bool
 validUnit t c
   | t == "Bytes" = c >= 0 && c <= 255
@@ -113,6 +137,9 @@ validUnit t c
   | t `elem` ["CodePoint","CodePointText"] = c >= 0 && c <= 1114111
   | t `elem` ["Char","Text"] = c >= 0 && c <= 1114111 && (c < 55296 || c > 57343)
   | otherwise = False
+-- | Mixed arithmetic follows one promotion table, and mixing exact with inexact
+-- needs an explicit conversion, so no target silently rounds.
+-- ref:DEC-portable-exact-arithmetic
 promote :: String -> String -> String -> Either String String
 promote op a b
   | not (isNumeric a && isNumeric b) = Left "arithmetic requires numeric operands (Bool is not an integer)"
@@ -122,6 +149,8 @@ promote op a b
   | otherwise = Right $ if any (`elem` ["Complex64","Complex128"]) [a,b]
       then if any (`elem` ["Float64","Complex128"]) [a,b] then "Complex128" else "Complex64"
       else if "Float64" `elem` [a,b] then "Float64" else "Float32"
+-- | Conversions are checked: a fractional value never becomes an integer by
+-- truncation. ref:DEC-portable-exact-arithmetic
 convertScalar :: Int -> String -> Scalar -> Either String Scalar
 convertScalar machine t s
   | t == scalarName s = validateScalar machine s
@@ -136,6 +165,7 @@ convertScalar machine t s
         SComplex _ r i -> SComplex t <$> convertScalar machine component r <*> convertScalar machine component i
         _ -> SComplex t <$> convertScalar machine component s <*> pure (floatScalar component 0)
   | otherwise = Left ("cannot convert " ++ scalarName s ++ " to " ++ t)
+-- | The edge values every target tests first for each primitive.
 scalarBoundaries :: Int -> String -> [Scalar]
 scalarBoundaries machine t
   | isInteger t = map (SInteger t) $ case integerBounds machine t of Just (lo,hi) -> [lo, max lo (-1),0,hi]; Nothing -> if t == "BigUInt" then [0,1,2^(128::Int)] else [-2^(128::Int),-1,0,2^(128::Int)]
@@ -158,10 +188,11 @@ scalarBoundaries machine t
                 | n `elem` ["Utf16Text","CodeUnit16"] = [0,55296,56320,65535]
                 | n `elem` ["CodePointText","CodePoint"] = [0,55296,128512,1114111]
                 | otherwise = [0,97,955,128512,1114111]
+-- | Text is a sequence of code points, the same on every target.
 textScalar :: String -> Scalar
 textScalar = SSequence "Text" . map ord
 
--- Native adapter bridges are selected here, not by a fallback to Text.
+-- | Native adapter bridges are selected here, not by a fallback to Text.
 nativeRepresentation :: String -> String -> Maybe String
 nativeRepresentation target t = lookup t $ case target of
   "rust" -> [("Integer","ls::Integer"),("BigInt","ls::BigInt"),("BigUInt","ls::BigUint"),("Rational","ls::BigRational"),("Decimal","ls::Decimal"),("Bool","bool"),("Int8","i8"),("Int16","i16"),("Int32","i32"),("Int64","i64"),("UInt8","u8"),("UInt16","u16"),("UInt32","u32"),("UInt64","u64"),("IntSize","isize"),("UIntSize","usize"),("UIntPtr","usize"),("Float32","f32"),("Float64","f64"),("Complex64","ls::Complex32"),("Complex128","ls::Complex64"),("Char","char"),("CodePoint","ls::CodePoint"),("CodeUnit16","u16"),("Text","String"),("CodePointText","ls::CodePointText"),("Utf16Text","ls::Utf16Text"),("Bytes","Vec<u8>"),("Symbol","ls::Symbol"),("Unit","()"),("Null","ls::Null"),("Undefined","ls::Undefined")]
@@ -171,6 +202,7 @@ nativeRepresentation target t = lookup t $ case target of
   "haskell" -> [("Integer","IntegerValue"),("Bytes","ByteString"),("Complex64","(Complex Float)"),("Complex128","(Complex Double)"),("Char","Char"),("CodePoint","Char"),("CodeUnit16","Word16"),("Unit","()"),("Bool","Bool"),("Text","Text"),("Int8","Int8"),("Int16","Int16"),("Int32","Int32"),("Int64","Int64"),("UInt8","Word8"),("UInt16","Word16"),("UInt32","Word32"),("UInt64","Word64"),("IntSize","Int"),("UIntSize","Word"),("BigInt","Integer"),("BigUInt","Integer"),("Rational","Rational"),("Float32","Float"),("Float64","Double")]
   _ -> []
 
+-- | Values in diagnostics and test headers are written as LawSpec literals.
 prettyScalar :: Scalar -> String
 prettyScalar s = case s of
   SInteger _ n -> show n
@@ -187,5 +219,7 @@ prettyScalar s = case s of
   SPresent t Nothing -> if t == "Nullable" then "null" else "undefined"
   SPresent t (Just v) -> (if t == "Nullable" then "nullable" else "optional") ++ "(" ++ prettyScalar v ++ ")"
 
+-- | Float32 bits are always eight hexadecimal digits, so equal floats have
+-- equal text.
 pad8 :: String -> String
 pad8 s = replicate (8-length s) '0' ++ s

@@ -1,0 +1,21 @@
+decision/go/acceptance/asyncbindings/go/native/example/warehouse/native.go:
+  digest: sha256:025f1862b32d90d9
+  verdict: pending
+decision/go/acceptance/asyncbindings/go/native/example/warehouse/native.go/function/NewShelf:
+  digest: sha256:48fdfe89432ac1fa
+  verdict: pending
+decision/go/acceptance/asyncbindings/go/native/example/warehouse/native.go/function/PriceOf:
+  digest: sha256:29af31a44784d730
+  verdict: pending
+decision/go/acceptance/asyncbindings/go/native/example/warehouse/native.go/function/QuoteOf:
+  digest: sha256:b903cd0bcf78b432
+  verdict: pending
+decision/go/acceptance/asyncbindings/go/native/example/warehouse/native.go/method/Count:
+  digest: sha256:1ec82fd977c53215
+  verdict: pending
+decision/go/acceptance/asyncbindings/go/native/example/warehouse/native.go/method/Restock:
+  digest: sha256:4798caaceebd71cd
+  verdict: pending
+decision/go/acceptance/asyncbindings/go/native/example/warehouse/native.go/type/Shelf:
+  digest: sha256:6f2f877b37443b12
+  verdict: pending

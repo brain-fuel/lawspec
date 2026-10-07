@@ -1,4 +1,4 @@
--- Native public JS/TS entry points over framework-independent checked bodies.
+-- | Native public JS/TS entry points over framework-independent checked bodies.
 module LawSpec.WebDefinitions (emitWebDefinitions, definitionCalls, plainCall) where
 
 import Control.Monad (forM)
@@ -13,13 +13,13 @@ import qualified LawSpec.Code.Doc as D
 import Data.List (nub, sort, intercalate, stripPrefix, isPrefixOf)
 import LawSpec.AbilityNames (specName, interfaceName, ownerName)
 
--- An asynchronous definition's call is marked "await ", so callers await it.
+-- | An asynchronous definition's call is marked "await ", so callers await it.
 definitionCalls :: [Unit] -> [(Id,String)]
 definitionCalls units = [(identity, (if identity `elem` waiting then "await " else "") ++ "_definitions.evaluate" ++ show i)
   | (i,d) <- zip [0::Int ..] (concatMap unitDefinitions units), let identity = declarationId (definitionDeclaration d)]
   where waiting = asyncDefinitions units
 
--- Workflows (and their stages) that call an asynchronous adapter, directly or
+-- | Workflows (and their stages) that call an asynchronous adapter, directly or
 -- through another such definition, are async functions.
 asyncDefinitions :: [Unit] -> [Id]
 asyncDefinitions units = grow []
@@ -35,10 +35,12 @@ asyncDefinitions units = grow []
                      , any (\callee -> callee `elem` asyncAdapters || callee `elem` known) (callsIn (definitionBody d)) ]
       in if sort next == sort known then known else grow next
 
--- A definition call's function, without its await mark.
+-- | A definition call's function, without its await mark.
 plainCall :: String -> String
 plainCall name = maybe name id (stripPrefix "await " name)
 
+-- | Checked definitions are emitted as ordinary JavaScript and TypeScript code, so adapters and tests call
+-- the same proved implementation. ref:DEC-total-definitions
 emitWebDefinitions :: Bool -> D.Layout -> Int -> [DataDeclaration] -> [Unit] -> Either String [Artifact]
 emitWebDefinitions _ _ _ _ units | null (concatMap unitDefinitions units) = pure []
 emitWebDefinitions ts layout bits declarations units = do

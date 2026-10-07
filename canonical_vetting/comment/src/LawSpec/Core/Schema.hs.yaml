@@ -1,0 +1,30 @@
+decision/haskell/src/LawSpec/Core/Schema.hs/module/LawSpec.Core.Schema:
+  digest: sha256:5cc5c2b8e929eeb4
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Schema.hs/module/LawSpec.Core.Schema/data/ConstructorContractSchema:
+  digest: sha256:bb3e70b9c668e2fb
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Schema.hs/module/LawSpec.Core.Schema/data/ConstructorSchema:
+  digest: sha256:1081cd4e6147fbd3
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Schema.hs/module/LawSpec.Core.Schema/data/DataSchema:
+  digest: sha256:2a2ae790979cc75e
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Schema.hs/module/LawSpec.Core.Schema/data/FieldSchema:
+  digest: sha256:3dd91c5c579c81f0
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Schema.hs/module/LawSpec.Core.Schema/data/TypeRef:
+  digest: sha256:745631a8a103e494
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Schema.hs/module/LawSpec.Core.Schema/function/dataSchemas:
+  digest: sha256:24c7509c6f1a6284
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Schema.hs/module/LawSpec.Core.Schema/function/dataSchemasWithContracts:
+  digest: sha256:3c89381ea0baf621
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Schema.hs/module/LawSpec.Core.Schema/function/typeReference:
+  digest: sha256:1f9fa12bfee4470d
+  verdict: pending
+decision/haskell/src/LawSpec/Core/Schema.hs/module/LawSpec.Core.Schema/function/witnessFieldName:
+  digest: sha256:66ab216b4bb892b2
+  verdict: pending

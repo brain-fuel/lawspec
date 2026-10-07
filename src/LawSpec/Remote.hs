@@ -1,4 +1,4 @@
--- Remote evaluation. Every checked definition whose types have wire
+-- | Remote evaluation. Every checked definition whose types have wire
 -- descriptors can be evaluated by another node, by its content hash: the
 -- Merkle digest of the definition and everything it reaches (see
 -- LawSpec.Dependencies), so two nodes agree on a hash exactly when they hold
@@ -16,6 +16,9 @@ import LawSpec.Digest (digestHex)
 import LawSpec.MachineSpec (describe)
 import LawSpec.Testing (Plan(..), PlannedUnit(..))
 
+-- | A definition other nodes may evaluate, named by its content hash, so a node
+-- never runs a different version of the code it was asked for.
+-- ref:DEC-distribution-canonical-wire
 data Remote = Remote
   { remoteId :: C.Id
   -- The definition's qualified name, such as example.actors::modelDeposit.
@@ -25,7 +28,7 @@ data Remote = Remote
   , remoteResult :: String
   }
 
--- The data types the descriptors use, and each definition that can be
+-- | The data types the descriptors use, and each definition that can be
 -- evaluated remotely. Orchestrations (which call adapters) and definitions
 -- over types without descriptors are left out.
 remoteManifest :: Plan -> ([String], [Remote])
@@ -48,7 +51,7 @@ remoteManifest plan = (map snd (reverse table), reverse remotes)
         (Right (ds, r, t'), Just h) -> (t', Remote identity (C.idText identity) (digestHex h) ds r : acc)
         _ -> (t, acc)
 
--- The target's lawspec_remote module, given how the target calls each
+-- | The target's lawspec_remote module, given how the target calls each
 -- checked definition on logical values.
 remoteArtifacts :: String -> [(C.Id, String)] -> Plan -> [Artifact]
 remoteArtifacts target calls plan = case (target, remotes) of

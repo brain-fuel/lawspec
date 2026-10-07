@@ -1,0 +1,42 @@
+decision/haskell/dev/Docs.hs/module/Docs:
+  digest: sha256:e0622943b3b2ed1f
+  verdict: pending
+decision/haskell/dev/Docs.hs/module/Docs/function/assets:
+  digest: sha256:4931ea46c840c777
+  verdict: pending
+decision/haskell/dev/Docs.hs/module/Docs/function/checkFrontMatter:
+  digest: sha256:0d65f625bcff6662
+  verdict: pending
+decision/haskell/dev/Docs.hs/module/Docs/function/citations:
+  digest: sha256:f214d747908ec901
+  verdict: pending
+decision/haskell/dev/Docs.hs/module/Docs/function/escapeAttribute:
+  digest: sha256:c4a19273f088b1b4
+  verdict: pending
+decision/haskell/dev/Docs.hs/module/Docs/function/frontMatter:
+  digest: sha256:37469a78eb407dae
+  verdict: pending
+decision/haskell/dev/Docs.hs/module/Docs/function/navEntry:
+  digest: sha256:9d0175a154b0a0f1
+  verdict: pending
+decision/haskell/dev/Docs.hs/module/Docs/function/navPages:
+  digest: sha256:7ffca0217d2909ce
+  verdict: pending
+decision/haskell/dev/Docs.hs/module/Docs/function/outputFor:
+  digest: sha256:9b84bfd353aa488f
+  verdict: pending
+decision/haskell/dev/Docs.hs/module/Docs/function/preprocess:
+  digest: sha256:f84fcbec15d7761e
+  verdict: pending
+decision/haskell/dev/Docs.hs/module/Docs/function/sandboxManifest:
+  digest: sha256:5efb6ec3a19a3bcf
+  verdict: pending
+decision/haskell/dev/Docs.hs/module/Docs/function/titled:
+  digest: sha256:3931714d3c090289
+  verdict: pending
+decision/haskell/dev/Docs.hs/module/Docs/function/trackSwitcher:
+  digest: sha256:58d7c926fade51c5
+  verdict: pending
+decision/haskell/dev/Docs.hs/module/Docs/function/userFiles:
+  digest: sha256:d55b18758ebce55b
+  verdict: pending

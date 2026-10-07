@@ -1,3 +1,8 @@
+---
+id: lawspec.reference.language.abilities
+kind: reference
+title: Abilities
+---
 # Abilities
 
 An ability names operations that some handler answers: a payment gateway, a

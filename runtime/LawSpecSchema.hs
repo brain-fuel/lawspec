@@ -1,4 +1,9 @@
--- Checked structural values; no property-framework dependencies.
+-- | Checked structural values; no property-framework dependencies.
+--
+-- Generated data types are described once, as Core schemas, and every value
+-- crossing between a law and native code is validated against them, so an
+-- adapter cannot hand a law a value outside its declared type.
+-- ref:DEC-typed-core-boundary ref:DEC-native-bindings-typed-identity
 module LawSpecSchema
   ( TypeRef(..), Field(..), Constructor(..), Definition(..), Schema
   , FieldPredicate, ValidationFailure(..), failureMessage
@@ -32,7 +37,7 @@ failureMessage :: ValidationFailure -> String
 failureMessage (Rejected message) = message
 failureMessage (EvaluationFailure message) = message
 
--- Indexed families add, per constructor, their index terms then guards in
+-- | Indexed families add, per constructor, their index terms then guards in
 -- prefix notation over field indices; validation checks the guards.
 -- GADT constructors add refinements (parameter, pattern) and an existential
 -- count; existentials are parameters numbered after the definition's own.
@@ -118,7 +123,7 @@ constructors schema@(Schema definitions _ _ _ refinements _) typeRef = do
          Just extended <- [refine (lookup tag refinements) parameters arguments]])
     Parameter _ -> Left "unbound schema parameter"
 
--- Arguments extended with the existentials a constructor's refinements bind;
+-- | Arguments extended with the existentials a constructor's refinements bind;
 -- Nothing when the refinements do not match.
 refine :: Maybe ([(Int, TypeRef)], Int) -> Int -> [TypeRef] -> Maybe [TypeRef]
 refine Nothing _ arguments = Just arguments
@@ -136,7 +141,7 @@ refine (Just (patterns, existentials)) parameters arguments = do
       | name == other && length children == length values = foldM (\a (c, v) -> match a c v) acc (zip children values)
     match _ _ _ = Nothing
 
--- A constructor field's type at an instantiated type, its existentials
+-- | A constructor field's type at an instantiated type, its existentials
 -- substituted.
 fieldType :: Schema -> TypeRef -> String -> Int -> TypeRef
 fieldType schema typeRef tag index = case constructors schema typeRef of
@@ -147,7 +152,7 @@ fieldType schema typeRef tag index = case constructors schema typeRef of
 witnessedSchema :: [(String, [Int])] -> Either String Schema -> Either String Schema
 witnessedSchema witnesses = fmap (withWitnesses witnesses)
 
--- A witness field's key, for generated codecs; the schema has checked it.
+-- | A witness field's key, for generated codecs; the schema has checked it.
 witnessText :: LS.Scalar -> String
 witnessText (LS.SSequence "Text" units) = map toEnum units
 witnessText _ = error "type witness must be text"
@@ -155,11 +160,11 @@ witnessText _ = error "type witness must be text"
 withWitnesses :: [(String, [Int])] -> Schema -> Schema
 withWitnesses witnesses (Schema a b c d e w) = Schema a b c d e (w ++ witnesses)
 
--- Types a generator may choose for an existential that only a value fixes.
+-- | Types a generator may choose for an existential that only a value fixes.
 witnessPool :: [TypeRef]
 witnessPool = [Named "Bool" [], Named "Int32" []]
 
--- A witness spells a type as its name, or a parenthesized application.
+-- | A witness spells a type as its name, or a parenthesized application.
 witnessKey :: TypeRef -> String
 witnessKey (Named name []) = name
 witnessKey (Named name arguments) = "(" ++ unwords (name : map witnessKey arguments) ++ ")"
@@ -178,7 +183,7 @@ parseWitness text = case readType (words (concatMap spaced text)) of
     readType (token : rest) | token /= ")" = Just (Named token [], rest)
     readType _ = Nothing
 
--- The trailing witness keys of a value's fields.
+-- | The trailing witness keys of a value's fields.
 witnessKeys :: Schema -> String -> [LS.Scalar] -> Either String [String]
 witnessKeys (Schema _ _ _ _ _ witnesses) tag fields = case lookup tag witnesses of
   Nothing -> Right []
@@ -187,7 +192,7 @@ witnessKeys (Schema _ _ _ _ _ witnesses) tag fields = case lookup tag witnesses 
     key (LS.SSequence "Text" units) = Right (map toEnum units)
     key _ = Left "type witness must be text"
 
--- Field types with witnessed existentials read from the given keys.
+-- | Field types with witnessed existentials read from the given keys.
 witnessed :: Schema -> String -> [TypeRef] -> [String] -> Either String [TypeRef]
 witnessed schema@(Schema _ _ _ _ _ witnesses) tag types keys = case lookup tag witnesses of
   Nothing -> Right types
@@ -198,7 +203,7 @@ witnessed schema@(Schema _ _ _ _ _ witnesses) tag types keys = case lookup tag w
         known = [maybe (Parameter i) id (lookup i (zip indices parsed)) | i <- [0 .. size - 1]]
     pure (map (substitute known) types)
 
--- Each choice of witnesses from the pool: the declared fields at it, and the
+-- | Each choice of witnesses from the pool: the declared fields at it, and the
 -- witness values.
 witnessChoices :: Schema -> Constructor -> Either String [([Field], [LS.Scalar])]
 witnessChoices schema@(Schema _ _ _ _ _ witnesses) (Constructor tag fields) = case lookup tag witnesses of
@@ -211,7 +216,7 @@ witnessChoices schema@(Schema _ _ _ _ _ witnesses) (Constructor tag fields) = ca
       pure ([Field name ty | (Field name _, ty) <- zip declared types], map LS.textScalar keys))
       (mapM (const witnessPool) indices)
 
--- A field's type at a value's witness keys, for generated codecs.
+-- | A field's type at a value's witness keys, for generated codecs.
 fieldTypeAt :: Schema -> TypeRef -> String -> Int -> [String] -> TypeRef
 fieldTypeAt schema typeRef tag index keys = case constructors schema typeRef of
   Right (Just variants) | Constructor _ fields : _ <- [v | v@(Constructor t _) <- variants, t == tag]
@@ -239,7 +244,7 @@ failureContext label = either (Left . decorate) Right
     decorate (EvaluationFailure message) =
       EvaluationFailure (label ++ ": " ++ message)
 
--- Prefix index terms: c<n>, f<field>[.<index>] and natural operators.
+-- | Prefix index terms: c<n>, f<field>[.<index>] and natural operators.
 data IndexTerm = IndexConstant Integer | IndexField Int Int | IndexOp String IndexTerm IndexTerm
 
 isIndexGuard :: String -> Bool
@@ -260,7 +265,7 @@ parseIndexTerm tokens = case tokens of
     Right (IndexOp op a b, afterB)
   _ -> Left "malformed index term"
 
--- Natural arithmetic; Nothing when an operation has no natural value.
+-- | Natural arithmetic; Nothing when an operation has no natural value.
 evalIndexTerm :: (Int -> Int -> Either String Integer) -> IndexTerm -> Either String (Maybe Integer)
 evalIndexTerm field term = case term of
   IndexConstant n -> Right (Just n)
@@ -292,7 +297,7 @@ indexGuard field text = case words text of
       _ -> False
   [] -> Left "malformed index guard"
 
--- The index of a checked value, computed from its constructor's term.
+-- | The index of a checked value, computed from its constructor's term.
 indexOf :: Schema -> TypeRef -> LS.Scalar -> Int -> Either String Integer
 indexOf schema@(Schema _ _ _ indices _ _) typeRef value index = case value of
   LS.SData tag children -> do
@@ -376,7 +381,7 @@ validateChecked scope schema@(Schema _ _ contracts indices _ _) typeRef bits val
         ("expected constructor payload for " ++ show typeRef))
 
 
--- Recipes follow declared parameters, not equality of instantiated types.
+-- | Recipes follow declared parameters, not equality of instantiated types.
 data PayloadPlan
   = IgnorePayload
   | PayloadSlot Int
@@ -396,7 +401,7 @@ allPayloads :: Schema -> TypeRef -> Int -> LS.Scalar
             -> Either String LS.Scalar
 allPayloads = allPayloadsWith Nothing
 
--- Either sequences full representation/contract validation before callbacks.
+-- | Either sequences full representation/contract validation before callbacks.
 allPayloadsWith :: Maybe LS.SymbolContext -> Schema -> TypeRef -> Int
                 -> LS.Scalar -> [LS.Scalar -> Either String LS.Scalar]
                 -> Either String LS.Scalar
@@ -467,7 +472,7 @@ constructWith scope schema typeRef bits tag fields = case typeRef of
     _ -> Left "invalid List constructor or field count"
   _ -> either (Left . failureMessage) Right (shallowChecked scope schema typeRef bits (LS.SData tag fields))
 
--- A newly built node: its fields were checked when they were built, decoded
+-- | A newly built node: its fields were checked when they were built, decoded
 -- or drawn, and a deep check of each node would make recursion quadratic.
 shallowChecked :: Maybe LS.SymbolContext -> Schema -> TypeRef -> Int -> LS.Scalar
                -> Either ValidationFailure LS.Scalar
@@ -504,7 +509,7 @@ equalWith scope schema typeRef bits left right = do
   b <- validateWith scope schema typeRef bits right
   pure (LS.equal a b)
 
--- Validation precedes branch selection; unselected branch functions stay lazy.
+-- | Validation precedes branch selection; unselected branch functions stay lazy.
 match :: Schema -> TypeRef -> Int -> LS.Scalar
       -> [(String, [LS.Scalar] -> a)] -> Either String a
 match = matchWith Nothing

@@ -1,4 +1,4 @@
--- Typed mailboxes for implementation code. Every `mailbox jobs of Job`
+-- | Typed mailboxes for implementation code. Every `mailbox jobs of Job`
 -- becomes, on each target, a mailbox type named JobsMailbox: send never
 -- waits, one receiver takes messages in the order they arrived, and close
 -- refuses later sends. A mailbox can also be offered on a node (serve) and
@@ -23,12 +23,13 @@ import LawSpec.Testing (Plan(..), PlannedUnit(..))
 import qualified LawSpec.GoData as GoData
 import qualified LawSpec.WebTypes as Web
 
--- jobs's class is JobsMailbox.
+-- | jobs's class is JobsMailbox.
 mailboxClassName :: String -> String
 mailboxClassName n = case n of
   c : cs -> toUpper c : cs ++ "Mailbox"
   [] -> "Mailbox"
 
+-- | Programs without mailboxes get no mailbox files.
 mailboxArtifacts :: String -> Plan -> Either [Diagnostic] [Artifact]
 mailboxArtifacts target plan = case concatMap C.unitMailboxes units of
   [] -> Right []
@@ -139,7 +140,7 @@ python bits datas boxes = do
         name = mailboxClassName (C.mailboxName b)
         ref = reference (C.mailboxType b)
 
--- Go: a lawspec_mailboxes.go in each unit's package. NewJobsMailbox makes a
+-- | Go: a lawspec_mailboxes.go in each unit's package. NewJobsMailbox makes a
 -- local mailbox; ServeJobsMailbox offers one on a node; ConnectJobsMailbox
 -- sends to one on another node.
 goMailboxes :: Int -> [C.DataDeclaration] -> String -> [C.Mailbox] -> Either String [Artifact]
@@ -275,7 +276,7 @@ goMailboxes bits datas unit boxes = do
       [] -> []
       _ | take (length old) s == old -> new ++ replaceAll old new (drop (length old) s)
       c : rest -> c : replaceAll old new rest
--- lawspec_mailboxes for JavaScript and TypeScript: receive and a send
+-- | lawspec_mailboxes for JavaScript and TypeScript: receive and a send
 -- between nodes are asynchronous.
 web :: Bool -> Int -> [C.DataDeclaration] -> [C.Mailbox] -> Either String [Artifact]
 web ts bits datas boxes = do
@@ -470,7 +471,7 @@ rust bits datas boxes = do
           , "    }"
           , "}" ]
       where name = mailboxClassName (C.mailboxName b)
--- A unit's mailboxes as the module LawSpecMailboxes.<Unit>: for jobs of Job,
+-- | A unit's mailboxes as the module LawSpecMailboxes.<Unit>: for jobs of Job,
 -- JobsMailbox with newJobsMailbox, sendJobs (never waits), receiveJobs,
 -- receiveJobsWithin (microseconds), closeJobs; serveJobs offers one on a
 -- node, and connectJobs / sendJobsTo send to one on another node, waiting
@@ -590,7 +591,7 @@ haskell bits datas unit = do
         n = C.mailboxName b
         base = cap n
         cls = mailboxClassName n
--- lawspec.mailboxes.JobsMailbox: a Java class for Java projects and a Kotlin
+-- | lawspec.mailboxes.JobsMailbox: a Java class for Java projects and a Kotlin
 -- class for Kotlin ones (whose data types and codecs are Kotlin's).
 jvm :: Bool -> Int -> [C.DataDeclaration] -> C.Mailbox -> Either String Artifact
 jvm kotlin bits datas b = do

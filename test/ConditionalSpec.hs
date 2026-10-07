@@ -1,4 +1,5 @@
-module ConditionalSpec (spec) where
+-- | if then else in laws and checked definitions.
+module ConditionalSpec (test_conditionalsAreCheckedBranchByBranch) where
 
 import Data.Either (isRight)
 import Data.List (isInfixOf)
@@ -10,8 +11,12 @@ compiles :: String -> Either String ()
 compiles body = either (Left . concatMap show) (const (Right ())) $
   compileCore 64 defaultGeneration [Source "conditional.lawspec" ("unit example.conditional\n" ++ body)]
 
-spec :: Spec
-spec = describe "if then else" $ do
+-- | Only the selected branch is evaluated, so a branch may rely on its
+-- condition: a division the condition guards is safe, and one it does not
+-- guard must still be rejected. ref:DEC-total-definitions
+-- ref:REQ-conditional-branches
+test_conditionalsAreCheckedBranchByBranch :: Spec
+test_conditionalsAreCheckedBranchByBranch = describe "if then else" $ do
   it "proves a division safe in the branch its condition guards" $
     compiles (unlines
       [ "definition share (total :: Int32 where total >= 0 && total <= 1000) (n :: Int32 where n >= 0 && n <= 10) :: Int32 is"

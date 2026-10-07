@@ -1,0 +1,9 @@
+decision/haskell/src/LawSpec/HaskellTypeRefs.hs/module/LawSpec.HaskellTypeRefs:
+  digest: sha256:58d6ee9272c8fcff
+  verdict: pending
+decision/haskell/src/LawSpec/HaskellTypeRefs.hs/module/LawSpec.HaskellTypeRefs/function/haskellTypeReference:
+  digest: sha256:0354d4a42448185b
+  verdict: pending
+decision/haskell/src/LawSpec/HaskellTypeRefs.hs/module/LawSpec.HaskellTypeRefs/function/requiresSchema:
+  digest: sha256:047cef9b3e0c5f5a
+  verdict: pending

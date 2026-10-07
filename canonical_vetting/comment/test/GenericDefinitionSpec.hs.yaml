@@ -1,0 +1,9 @@
+decision/haskell/test/GenericDefinitionSpec.hs/module/GenericDefinitionSpec:
+  digest: sha256:cc8ad2da63e3afd3
+  verdict: pending
+decision/haskell/test/GenericDefinitionSpec.hs/module/GenericDefinitionSpec/function/specializeRefined:
+  digest: sha256:c94b55abf5fc364d
+  verdict: pending
+decision/haskell/test/GenericDefinitionSpec.hs/module/GenericDefinitionSpec/function/test_genericDefinitionsSpecializeWithProvedResults:
+  digest: sha256:4215093c5fb5353f
+  verdict: pending

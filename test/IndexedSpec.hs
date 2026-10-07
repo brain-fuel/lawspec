@@ -1,4 +1,5 @@
-module IndexedSpec (spec) where
+-- | Indexed families: elaboration, index proofs and index arithmetic.
+module IndexedSpec (test_indexedFamiliesElaborateToErasedDataWithProvedIndices) where
 
 import Data.Either (isLeft)
 import Data.List (isInfixOf)
@@ -46,15 +47,18 @@ family :: [String] -> String
 family constructors = unlines
   (["unit example.bad", "type Vec (n :: Natural) (a :: Type) is"] ++ constructors ++ ["end"])
 
--- Requirements of the planned Core property with this law name.
+-- | Requirements of the planned Core property with this law name.
 plansFor :: String -> Either [Diagnostic] [GeneratorRequirement]
 plansFor law = do
   plan <- compileCore 64 defaultGeneration [Source "vectors.lawspec" vectors] >>= planTesting
   pure (concat [generatorRequirements p | u <- plannedUnits plan, p <- plannedProperties u,
                 C.propertyName (plannedProperty p) == law])
 
-spec :: Spec
-spec = indexedSpec >> proofSpec >> arithmeticSpec
+-- | An index is evidence about a value, so it must be erased from generated
+-- data, direct generation, and be proved for every definition result rather
+-- than trusted. ref:DEC-indexed-families-as-evidence ref:REQ-indexed-families
+test_indexedFamiliesElaborateToErasedDataWithProvedIndices :: Spec
+test_indexedFamiliesElaborateToErasedDataWithProvedIndices = indexedSpec >> proofSpec >> arithmeticSpec
 
 indexedSpec :: Spec
 indexedSpec = describe "natural-indexed families" $ do
@@ -197,7 +201,7 @@ arithmetic = unlines
 arithmeticCore :: String -> Either [Diagnostic] C.Program
 arithmeticCore extra = compileCore 64 defaultGeneration [Source "sums.lawspec" (arithmetic ++ extra)]
 
--- The index table of one declared family, by constructor name.
+-- | The index table of one declared family, by constructor name.
 indexTable :: C.Program -> String -> [(String, ConstructorIndex)]
 indexTable program family =
   [ (reverse (takeWhile (/= ':') (reverse tag)), c)

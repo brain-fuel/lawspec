@@ -1,0 +1,12 @@
+decision/haskell/src/LawSpec/WebData.hs/module/LawSpec.WebData:
+  digest: sha256:91f009d7e2e89220
+  verdict: pending
+decision/haskell/src/LawSpec/WebData.hs/module/LawSpec.WebData/function/emitWebData:
+  digest: sha256:015497701dc9c588
+  verdict: pending
+decision/haskell/src/LawSpec/WebData.hs/module/LawSpec.WebData/function/emitWebDataWithProfile:
+  digest: sha256:bdba2275043ac27c
+  verdict: pending
+decision/haskell/src/LawSpec/WebData.hs/module/LawSpec.WebData/function/replace:
+  digest: sha256:478e63327c8b026d
+  verdict: pending

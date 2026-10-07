@@ -1,0 +1,69 @@
+decision/haskell/src/LawSpec/Code/Doc.hs/module/LawSpec.Code.Doc:
+  digest: sha256:100bb682cf688662
+  verdict: pending
+decision/haskell/src/LawSpec/Code/Doc.hs/module/LawSpec.Code.Doc/data/Doc:
+  digest: sha256:dc153ba4b0e27f40
+  verdict: pending
+decision/haskell/src/LawSpec/Code/Doc.hs/module/LawSpec.Code.Doc/data/Layout:
+  digest: sha256:5bf3d56310603eac
+  verdict: pending
+decision/haskell/src/LawSpec/Code/Doc.hs/module/LawSpec.Code.Doc/function/block:
+  digest: sha256:ccbc9f3327b892d8
+  verdict: pending
+decision/haskell/src/LawSpec/Code/Doc.hs/module/LawSpec.Code.Doc/function/commaSep:
+  digest: sha256:473659319149722e
+  verdict: pending
+decision/haskell/src/LawSpec/Code/Doc.hs/module/LawSpec.Code.Doc/function/delimit:
+  digest: sha256:cc2eb31aba19e685
+  verdict: pending
+decision/haskell/src/LawSpec/Code/Doc.hs/module/LawSpec.Code.Doc/function/delimitTrailing:
+  digest: sha256:93d0898d66e0ad0d
+  verdict: pending
+decision/haskell/src/LawSpec/Code/Doc.hs/module/LawSpec.Code.Doc/function/firstLineWidth:
+  digest: sha256:f26b5797fc53f9df
+  verdict: pending
+decision/haskell/src/LawSpec/Code/Doc.hs/module/LawSpec.Code.Doc/function/flow:
+  digest: sha256:394cfef7c0154071
+  verdict: pending
+decision/haskell/src/LawSpec/Code/Doc.hs/module/LawSpec.Code.Doc/function/group:
+  digest: sha256:20a623ee9b53a009
+  verdict: pending
+decision/haskell/src/LawSpec/Code/Doc.hs/module/LawSpec.Code.Doc/function/hang:
+  digest: sha256:1040cbd17a4b59b1
+  verdict: pending
+decision/haskell/src/LawSpec/Code/Doc.hs/module/LawSpec.Code.Doc/function/hardline:
+  digest: sha256:b06d6b692b5cfab0
+  verdict: pending
+decision/haskell/src/LawSpec/Code/Doc.hs/module/LawSpec.Code.Doc/function/joinWith:
+  digest: sha256:478250838a4b3351
+  verdict: pending
+decision/haskell/src/LawSpec/Code/Doc.hs/module/LawSpec.Code.Doc/function/lineComment:
+  digest: sha256:d07d96696db5a52c
+  verdict: pending
+decision/haskell/src/LawSpec/Code/Doc.hs/module/LawSpec.Code.Doc/function/multiline:
+  digest: sha256:531b420bc009aa64
+  verdict: pending
+decision/haskell/src/LawSpec/Code/Doc.hs/module/LawSpec.Code.Doc/function/nest:
+  digest: sha256:e941f437b5392068
+  verdict: pending
+decision/haskell/src/LawSpec/Code/Doc.hs/module/LawSpec.Code.Doc/function/prefixChoice:
+  digest: sha256:e561ce8360145a9c
+  verdict: pending
+decision/haskell/src/LawSpec/Code/Doc.hs/module/LawSpec.Code.Doc/function/render:
+  digest: sha256:26e07a5dd85826c6
+  verdict: pending
+decision/haskell/src/LawSpec/Code/Doc.hs/module/LawSpec.Code.Doc/function/selectLayout:
+  digest: sha256:de8551219e4bd14a
+  verdict: pending
+decision/haskell/src/LawSpec/Code/Doc.hs/module/LawSpec.Code.Doc/function/text:
+  digest: sha256:e98ac995863adb8e
+  verdict: pending
+decision/haskell/src/LawSpec/Code/Doc.hs/module/LawSpec.Code.Doc/function/utf8Length:
+  digest: sha256:2551f9c9327bf80d
+  verdict: pending
+decision/haskell/src/LawSpec/Code/Doc.hs/module/LawSpec.Code.Doc/function/utf8Text:
+  digest: sha256:9196114ca5a87ffc
+  verdict: pending
+decision/haskell/src/LawSpec/Code/Doc.hs/module/LawSpec.Code.Doc/function/whenBroken:
+  digest: sha256:c1184b68130a70c3
+  verdict: pending

@@ -1,8 +1,13 @@
+---
+id: lawspec.explanation.ownership-and-regeneration
+kind: explanation
+title: Ownership and regeneration
+---
 # Ownership and regeneration
 
 A code generator that shares a directory with people has to answer one question
 reliably: whose file is this? LawSpec answers it explicitly for every file, and
-refuses to guess.
+refuses to guess. ref:DEC-adapter-ownership
 
 ## Three kinds of file
 
@@ -57,13 +62,13 @@ Your adapter will never match the compiler's stub byte for byte: you have
 implemented it. So LawSpec compares interfaces, not implementations. For every
 adapter it keeps a canonical readable reference of the stub, and reports an
 update only when that reference changes. Switching between readable and
-compact output therefore never produces a false update report.
+compact output therefore never produces a false update report. ref:DEC-adapter-ownership
 
 ## Native bindings
 
 Binding an adapter to an existing function turns its file into a generated
 bridge. This is where ownership matters most: your adapter is at exactly the
-path the bridge needs.
+path the bridge needs. ref:DEC-native-bindings-typed-identity
 
 LawSpec will not overwrite it, even if it is still the untouched stub. Move the
 implementation into your application module, move the old adapter out of the

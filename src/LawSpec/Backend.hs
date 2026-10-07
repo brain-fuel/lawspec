@@ -1,5 +1,5 @@
 {-# LANGUAGE PatternSynonyms #-}
--- Presentation-only accessors over Core and Testing. No source syntax,
+-- | Presentation-only accessors over Core and Testing. No source syntax,
 -- substitution, type inference, or refinement expansion belongs here.
 module LawSpec.Backend where
 import qualified LawSpec.Core as C
@@ -10,6 +10,8 @@ import LawSpec.Scalar (prettyScalar)
 import Data.List (intercalate, stripPrefix)
 import Data.Char (isAlphaNum)
 
+-- | Emitters were written against these names; the aliases keep their code
+-- unchanged while their input is Core. ref:DEC-typed-core-boundary
 type Type = C.Type
 pattern Named :: String -> Type
 pattern Named n = C.Constructor n []
@@ -18,7 +20,9 @@ pattern Applied n a = C.Constructor n [C.TypeArgument a]
 pattern Arrow :: Type -> Type -> Type
 pattern Arrow a b = C.Arrow a b
 
+-- | As Type, Core expressions under the emitters' name.
 type Expr = C.Expr
+-- | As Type, Core propositions under the emitters' name.
 type Assertion = C.Proposition
 pattern AssertEqual :: Expr -> Expr -> Assertion
 pattern AssertEqual a b <- C.Equation _ a b
@@ -27,17 +31,25 @@ pattern AssertImplies a b = C.Implication a b
 pattern AssertAll :: [Assertion] -> Assertion
 pattern AssertAll ps = C.Conjunction ps
 {-# COMPLETE AssertEqual, AssertImplies, AssertAll #-}
+-- | As Type, Core units under the emitters' name.
 type Unit = C.Unit
+-- | As Type, quantifiers under the emitters' name.
 type Input = C.Quantifier
+-- | Emitters receive planned properties, so every target emits the same cases.
+-- ref:DEC-planned-generation
 type Expanded = PlannedProperty
+-- | As Type, Core examples under the emitters' name.
 type Example = C.Example
+-- | As Type, Core contracts under the emitters' name.
 type Contract = C.Contract
 
+-- | Generated modules are named after the unit as written.
 unitName :: Unit -> String
 unitName = C.idText . C.unitId
+-- | Each adapter becomes a stub the user implements. ref:DEC-adapter-ownership
 functions :: Unit -> [(String,Type)]
 functions u = [(C.declarationName d,C.declarationType d) | d <- C.unitDeclarations u]
--- The adapters declared async: tests await each call where it is made.
+-- | The adapters declared async: tests await each call where it is made.
 asyncFunctions :: Unit -> [String]
 asyncFunctions u = [C.declarationName d | d <- C.unitDeclarations u, C.declarationAsync d]
 contracts :: Unit -> [Contract]
@@ -61,6 +73,7 @@ inputs :: Expanded -> [Input]
 inputs = C.propertyInputs . plannedProperty
 assertion :: Expanded -> Assertion
 assertion = C.propertyBody . plannedProperty
+-- | Tests are grouped by the unit that declares the law.
 owner, name :: Expanded -> String
 owner e = fst (splitOnce "::law::" (C.idText (C.propertyId (plannedProperty e))))
 name = C.propertyName . plannedProperty
@@ -77,6 +90,7 @@ location :: C.Property -> Location
 location = C.propertyLocation
 generation :: Expanded -> Generation
 generation = C.propertyGeneration . plannedProperty
+-- | Contracts and laws are reported differently in test headers.
 propertyKind :: Expanded -> String
 propertyKind e = if take 9 (name e) == "contract " then "contract" else "law"
 examples :: C.Property -> [Example]
@@ -97,15 +111,18 @@ contractPreconditions, contractPostconditions :: Contract -> [Expr]
 contractPreconditions = C.contractPreconditions
 contractPostconditions = C.contractPostconditions
 
--- The native name of an adapter, which may be escaped for the target
+-- | The native name of an adapter, which may be escaped for the target
 -- (LawSpec.TargetNames); messages keep the declared name.
 adapterName :: Unit -> C.Id -> String
 adapterName u identity = case [C.declarationName d | d <- C.unitDeclarations u, C.declarationId d == identity] of
   name : _ -> name
   [] -> declarationName identity
+-- | Generated code uses the declared name without its unit qualification.
 declarationName :: C.Id -> String
 declarationName = lastPart . C.idText where
   lastPart s = case splitOnce "::" s of (_,Just rest) -> lastPart rest; _ -> s
+-- | Compiler-made binders get names no user can write, so they never clash with
+-- an input or adapter in generated code.
 localName :: C.Id -> String
 localName i | (_,Just suffix) <- splitOnce "::payload::" (C.idText i) =
   let (depth,rest) = splitOnce "::" suffix
@@ -121,12 +138,14 @@ localName i = case splitOnce "::input::" (C.idText i) of
   _ -> case splitOnce "::contract::" (C.idText i) of
     (_,Just n) -> "_arg" ++ n
     _ -> declarationName i
+-- | Identities are paths joined by ::, and names are recovered from them.
 splitOnce :: String -> String -> (String,Maybe String)
 splitOnce needle = go [] where
   go prefix rest | Just after <- stripPrefix needle rest = (reverse prefix,Just after)
   go prefix (c:rest) = go (c:prefix) rest
   go prefix [] = (reverse prefix,Nothing)
 
+-- | Each input's generator requirements, in input order.
 generationPlan :: Expanded -> [GeneratorRequirement]
 generationPlan = generatorRequirements
 domainInput :: GeneratorRequirement -> Input
@@ -134,13 +153,14 @@ domainInput g = C.Quantifier (generatorBinder g) (generatorPredicates g) (genera
 domainBounds :: GeneratorRequirement -> [(String,Expr)]
 domainBounds g = [(C.binaryName op,e) | (op,e) <- generatorBounds g]
 
--- Portable runtime keys retain nested presence and Either argument boundaries.
+-- | Portable runtime keys retain nested presence and Either argument boundaries.
 scalarTypeKey :: Type -> String
 scalarTypeKey (C.Constructor "Either" [C.TypeArgument a,C.TypeArgument b]) =
   "Either (" ++ scalarTypeKey a ++ ") (" ++ scalarTypeKey b ++ ")"
 scalarTypeKey (C.Constructor n [C.TypeArgument t]) = n ++ " " ++ scalarTypeKey t
 scalarTypeKey t = prettyType t
 
+-- | Test headers show types as LawSpec writes them.
 prettyType :: Type -> String
 prettyType (C.Constructor n args) = unwords (n:map argument args) where
   argument (C.TypeArgument t) = "(" ++ prettyType t ++ ")"
@@ -148,6 +168,7 @@ prettyType (C.Constructor n args) = unwords (n:map argument args) where
   argument (C.IndexArgument (C.IndexVariable i)) = C.idText i
 prettyType (C.TypeVariable n) = C.idText n
 prettyType (C.Arrow a b) = "(" ++ prettyType a ++ " -> " ++ prettyType b ++ ")"
+-- | Test headers show the expanded law, so a failure names what was tested.
 prettyExpr :: Expr -> String
 prettyExpr e = case C.expressionNode e of
   C.Constant s -> prettyScalar s
@@ -180,20 +201,27 @@ prettyExpr e = case C.expressionNode e of
   C.Let binder value body -> "let " ++ localName (C.binderId binder) ++ " = " ++ prettyExpr value ++ " in " ++ prettyExpr body
   C.Calls op args -> "calls of " ++ C.operationName op ++ maybe "" (\xs -> " with (" ++ intercalate ", " (map prettyExpr xs) ++ ")") args
 
+-- | As in LawSpec.Compile, the quantified statement a test checks.
 prettyExpanded :: Expanded -> String
 prettyExpanded e | propertyKind e == "contract" = description (original e)
 prettyExpanded e = "for all " ++ intercalate " " ["(" ++ inputName i ++ " :: " ++ prettyType (inputType i) ++ ")" | i <- inputs e] ++ " . " ++ propositionText (assertion e)
+-- | As prettyExpr, for propositions.
 propositionText :: Assertion -> String
 propositionText (AssertEqual a b) = prettyExpr a ++ " = " ++ prettyExpr b
 propositionText (AssertImplies g p) = prettyExpr g ++ " implies " ++ propositionText p
 propositionText (AssertAll ps) = intercalate " and " (map propositionText ps)
 
+-- | Every generated test begins with its law's description, rationale and
+-- references, so the test explains why it exists.
 metadata :: String -> Expanded -> String
 metadata prefix e = unlines [prefix ++ " " ++ line | line <- metadataLines e]
 
+-- | As metadata, laid out by the target's formatter. ref:DEC-readable-output-default
 metadataDocument :: Int -> String -> Expanded -> Doc.Doc
 metadataDocument width prefix = mconcat . map (Doc.lineComment width (prefix ++ " ")) . metadataLines
 
+-- | Backslashes and line separators are replaced, because they would end or
+-- escape a comment in some target.
 metadataLines :: Expanded -> [String]
 metadataLines e = map (map safe) (lines text) where
   text = "Law: " ++ owner e ++ "::" ++ name e ++ "\nDescription: " ++ description (original e)

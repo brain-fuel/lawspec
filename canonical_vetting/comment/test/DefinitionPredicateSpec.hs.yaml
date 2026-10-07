@@ -1,0 +1,9 @@
+decision/haskell/test/DefinitionPredicateSpec.hs/module/DefinitionPredicateSpec:
+  digest: sha256:d3de884f51c767db
+  verdict: pending
+decision/haskell/test/DefinitionPredicateSpec.hs/module/DefinitionPredicateSpec/function/fixture:
+  digest: sha256:065b24cfdbaed5ef
+  verdict: pending
+decision/haskell/test/DefinitionPredicateSpec.hs/module/DefinitionPredicateSpec/function/test_closedDefinitionsServeAsCorePredicates:
+  digest: sha256:81b56f022b214a00
+  verdict: pending

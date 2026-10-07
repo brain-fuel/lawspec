@@ -1,4 +1,5 @@
-module TestManifestSpec (spec) where
+-- | The manifest of generated tests per law.
+module TestManifestSpec (test_testManifestNamesEveryLawsTestOnEachTarget) where
 
 import Control.Monad (forM_)
 import Data.Aeson (Value(..), decode, encode, object, (.=))
@@ -11,7 +12,7 @@ import System.Directory (listDirectory)
 import Test.Hspec
 import LawSpec.Api (dispatch)
 
--- Every bundled example, planned for each target in one program.
+-- | Every bundled example, planned for each target in one program.
 planned :: String -> Maybe String -> IO (KM.KeyMap Value)
 planned target testDir = do
   names <- sort . filter (".lawspec" `isSuffixOf`) <$> listDirectory "examples/specs"
@@ -30,13 +31,13 @@ text (String s) = T.unpack s
 text _ = ""
 
 
--- Long labels are emitted as concatenated string literals: 'a ' + 'b'.
+-- | Long labels are emitted as concatenated string literals: 'a ' + 'b'.
 joined :: String -> String
 joined ('\'' : rest) | ('+' : after) <- dropWhile (== ' ') rest, ('\'' : more) <- dropWhile (`elem` (" \n" :: String)) after = joined more
 joined (c : rest) = c : joined rest
 joined [] = []
 
--- How each target names the tests of law n.
+-- | How each target names the tests of law n.
 -- A law's tests are named after its label (LawSpec.TestNames); the manifest
 -- carries that name.
 named :: String -> String -> String
@@ -55,8 +56,11 @@ unsplit text = case text of
   [] -> []
   where blank c = c `elem` (" \n" :: String)
 
-spec :: Spec
-spec = describe "the test manifest" $ do
+-- | lawspec test runs only the laws whose results may have changed, which needs
+-- a manifest that names each law's tests on each target, wherever the tests
+-- live. ref:DEC-incremental-compilation ref:REQ-test-manifest
+test_testManifestNamesEveryLawsTestOnEachTarget :: Spec
+test_testManifestNamesEveryLawsTestOnEachTarget = describe "the test manifest" $ do
   forM_ ["python", "javascript", "typescript", "go", "java", "kotlin", "rust", "haskell"] $ \target ->
     it ("names each law's generated test file and tests in " ++ target) $ do
       response <- planned target Nothing

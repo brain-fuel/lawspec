@@ -1,3 +1,8 @@
+---
+id: lawspec.tutorials.lessons.08-evidence
+kind: tutorial
+title: 8. Evidence and keeping tests current
+---
 # Lesson 8: Evidence and keeping tests current
 
 A test suite that passes tells you nothing about what it did not try. LawSpec
@@ -9,7 +14,7 @@ with the specification.
 
 Save this as `laws/evidence.lawspec`:
 
-```lawspec file=docs/lessons/specs/08-evidence.lawspec implementations=acceptance/lessons
+```lawspec include=docs/lessons/specs/08-evidence.lawspec implementations=acceptance/lessons
 ```
 
 - `twice doubles` is about a definition only. The compiler **proves** it from
@@ -65,17 +70,17 @@ refuted: law always positive is false for x = -128
 ## Implement the adapters
 
 ::: only java
-```lawspec file=docs/lessons/specs/08-evidence.lawspec implementations=acceptance/lessons view=implementation target=java
+```lawspec include=docs/lessons/specs/08-evidence.lawspec implementations=acceptance/lessons view=implementation target=java
 ```
 :::
 
 ::: only python
-```lawspec file=docs/lessons/specs/08-evidence.lawspec implementations=acceptance/lessons view=implementation target=python
+```lawspec include=docs/lessons/specs/08-evidence.lawspec implementations=acceptance/lessons view=implementation target=python
 ```
 :::
 
 ::: only javascript
-```lawspec file=docs/lessons/specs/08-evidence.lawspec implementations=acceptance/lessons view=implementation target=javascript
+```lawspec include=docs/lessons/specs/08-evidence.lawspec implementations=acceptance/lessons view=implementation target=javascript
 ```
 :::
 

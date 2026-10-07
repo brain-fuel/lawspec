@@ -1,0 +1,15 @@
+decision/go/acceptance/consistency/go/files/example/consistency/adapter.go:
+  digest: sha256:6ab0258a79c7694a
+  verdict: pending
+decision/go/acceptance/consistency/go/files/example/consistency/adapter.go/function/Hit:
+  digest: sha256:143777c418ed2381
+  verdict: pending
+decision/go/acceptance/consistency/go/files/example/consistency/adapter.go/function/NewViews:
+  digest: sha256:de039f7d7588ed52
+  verdict: pending
+decision/go/acceptance/consistency/go/files/example/consistency/adapter.go/function/Total:
+  digest: sha256:cf7c920f5b4b64cb
+  verdict: pending
+decision/go/acceptance/consistency/go/files/example/consistency/adapter.go/function/caller:
+  digest: sha256:8ee62b00617af4ff
+  verdict: pending

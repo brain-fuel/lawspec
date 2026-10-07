@@ -1,4 +1,4 @@
--- Structural termination and definedness auditing over typed Core only.
+-- | Structural termination and definedness auditing over typed Core only.
 module LawSpec.Core.Total (validateDefinitions, validateDefinitionContracts, deferNonlinearPostconditions, deferProgramPostconditions, constructorProofContracts, safeConversionTypes) where
 
 import LawSpec.IndexTerm (FamilyIndex(..), ConstructorIndex(..), IndexGuard(..), termFields)
@@ -14,10 +14,12 @@ import LawSpec.Core.Expression (validateExpressionWithRegistry)
 import LawSpec.Core.Semantics (convertValue)
 import LawSpec.Scalar (Scalar(..), isInteger, isExact, isNumeric, integerBounds)
 
+-- | Definitions without contracts take the same audit with none.
+-- ref:DEC-total-definitions
 validateDefinitions :: Int -> [DataDeclaration] -> [Definition] -> Either [Diagnostic] ()
 validateDefinitions bits dataDeclarations definitions = validateDefinitionContracts bits dataDeclarations definitions []
 
--- The shared admission audit verifies definedness and termination under checked
+-- | The shared admission audit verifies definedness and termination under checked
 -- preconditions, proves result contracts, and checks closed call obligations.
 -- Native bridges enforce these domains on every entry point.
 validateDefinitionContracts :: Int -> [DataDeclaration] -> [Definition] -> [Contract] -> Either [Diagnostic] ()
@@ -28,7 +30,7 @@ validateDefinitionContracts bits dataDeclarations definitions contracts = do
     [] -> pure ()
     (owner, _) : _ -> Left [Diagnostic "total" (idText owner ++ ": definition result refinement could not be proved") Nothing]
 
--- Moves each postcondition the prover defers (non-linear index arithmetic)
+-- | Moves each postcondition the prover defers (non-linear index arithmetic)
 -- into the contract's runtime postconditions; every other claim stays proved.
 deferNonlinearPostconditions :: Int -> [DataDeclaration] -> [Definition] -> [Contract] -> Either [Diagnostic] [Contract]
 deferNonlinearPostconditions bits dataDeclarations definitions contracts = do
@@ -40,7 +42,7 @@ deferNonlinearPostconditions bits dataDeclarations definitions contracts = do
        , let owner = contractDeclaration contract
              numbered = zip [0..] (contractPostconditions contract) ]
 
--- Applies the deferral to every definition contract of a program; adapter
+-- | Applies the deferral to every definition contract of a program; adapter
 -- contracts are untouched.
 deferProgramPostconditions :: Program -> Either [Diagnostic] Program
 deferProgramPostconditions program = do
@@ -115,7 +117,7 @@ auditDefinitionContracts bits dataDeclarations allDefinitions allContracts = do
         (concat [T.integerAssumptions bits (binderId argument) name
           | argument <- definitionArguments definition, Constructor name [] <- [binderType argument]])
 
--- Shared checked constructor guarantees for Core and typed source templates.
+-- | Shared checked constructor guarantees for Core and typed source templates.
 constructorProofContracts :: Int -> [DataDeclaration] -> Either [Diagnostic] [T.ProofConstructorContract]
 constructorProofContracts bits dataDeclarations = do
   registry <- diagnostic Nothing (Types.makeRegistry dataDeclarations)
@@ -227,6 +229,8 @@ safeConversion :: Int -> Type -> Expr -> Bool
 safeConversion bits target value = safeConversionTypes bits target (expressionType value)
   (case expressionNode value of Constant scalar -> Just scalar; _ -> Nothing)
 
+-- | A conversion is safe when the target type holds every source value, or when
+-- the converted literal fits, so it needs no runtime check.
 safeConversionTypes :: Int -> Type -> Type -> Maybe Scalar -> Bool
 safeConversionTypes bits target sourceType literal
   | target == sourceType = True

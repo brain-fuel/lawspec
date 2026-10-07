@@ -1,0 +1,6 @@
+decision/haskell/test/DefinitionContractFixture.hs/module/DefinitionContractFixture/function/addListPredicates:
+  digest: sha256:8c688c4d1d86b600
+  verdict: pending
+decision/haskell/test/DefinitionContractFixture.hs/module/DefinitionContractFixture/function/fixtureUnits:
+  digest: sha256:51dae2d1a36514c2
+  verdict: pending

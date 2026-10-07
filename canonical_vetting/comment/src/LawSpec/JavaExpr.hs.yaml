@@ -1,0 +1,27 @@
+decision/haskell/src/LawSpec/JavaExpr.hs/module/LawSpec.JavaExpr:
+  digest: sha256:a0004f63bb6d7534
+  verdict: pending
+decision/haskell/src/LawSpec/JavaExpr.hs/module/LawSpec.JavaExpr/function/array:
+  digest: sha256:ec8aec8bb3f33fd1
+  verdict: pending
+decision/haskell/src/LawSpec/JavaExpr.hs/module/LawSpec.JavaExpr/function/call:
+  digest: sha256:5449eb5200e2a76e
+  verdict: pending
+decision/haskell/src/LawSpec/JavaExpr.hs/module/LawSpec.JavaExpr/function/javaDataKey:
+  digest: sha256:eaa66ee2d9226329
+  verdict: pending
+decision/haskell/src/LawSpec/JavaExpr.hs/module/LawSpec.JavaExpr/function/quoted:
+  digest: sha256:b8ac0ddbaa2b52e8
+  verdict: pending
+decision/haskell/src/LawSpec/JavaExpr.hs/module/LawSpec.JavaExpr/function/reference:
+  digest: sha256:8f72f696ea871622
+  verdict: pending
+decision/haskell/src/LawSpec/JavaExpr.hs/module/LawSpec.JavaExpr/function/renderExpression:
+  digest: sha256:526269bab08b3302
+  verdict: pending
+decision/haskell/src/LawSpec/JavaExpr.hs/module/LawSpec.JavaExpr/function/renderExpressionWithContext:
+  digest: sha256:c6698bad974979dd
+  verdict: pending
+decision/haskell/src/LawSpec/JavaExpr.hs/module/LawSpec.JavaExpr/function/scalarLiteral:
+  digest: sha256:def0789517dc0aea
+  verdict: pending

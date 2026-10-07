@@ -1,4 +1,9 @@
-"""Native Hypothesis strategies for instantiated Core data schemas."""
+"""Native Hypothesis strategies for instantiated Core data schemas.
+
+Generated tests run in Hypothesis, the framework Python developers already use,
+so failures shrink, replay and report as they expect; LawSpec supplies only the
+strategies for its own types. ref:DEC-native-property-frameworks ref:hypothesis
+"""
 
 from functools import cache, cmp_to_key
 
@@ -18,7 +23,11 @@ def strategy(schema, reference, bits, budget, scalar, symbols=None,
     Sampled witnesses supplement native generators and their shrinkers;
     sampled alternatives need not shrink to a globally minimal value.
     Only witnesses fitting the current node budget can be drawn.
-    """
+
+
+    Strategies are built from Hypothesis's own combinators so that its
+    shrinker, not a second one, reduces counterexamples, and shrinking stays
+    within the declared domain. ref:DEC-shrink-within-domain"""
     if type(budget) is not int or budget < 1:
         raise ValueError("structural node budget must be positive")
     schema._check(reference)
@@ -283,7 +292,11 @@ def indexed_strategy(schema, reference, target, equations, budget, build,
     notation over field indices. Reachability is a forward fixpoint over
     levels 0..target+slack, so a child may exceed its parent's index; the
     target is then solved backwards, and nothing is filtered away.
-    """
+
+
+    Generating an indexed family by construction, rather than filtering,
+    keeps generation from discarding almost every candidate.
+    ref:DEC-indexed-families-as-evidence"""
     limit = max(target, 0) + INDEX_SLACK
 
     def parse(texts):

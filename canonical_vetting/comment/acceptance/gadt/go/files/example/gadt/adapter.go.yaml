@@ -1,0 +1,18 @@
+decision/go/acceptance/gadt/go/files/example/gadt/adapter.go:
+  digest: sha256:acd06238afbbf0ad
+  verdict: pending
+decision/go/acceptance/gadt/go/files/example/gadt/adapter.go/function/Describe:
+  digest: sha256:327377e4d47b7fe3
+  verdict: pending
+decision/go/acceptance/gadt/go/files/example/gadt/adapter.go/function/EvalNumber:
+  digest: sha256:380e5e6e05ca0bae
+  verdict: pending
+decision/go/acceptance/gadt/go/files/example/gadt/adapter.go/function/EvalPair:
+  digest: sha256:12ee619a1b2fc5af
+  verdict: pending
+decision/go/acceptance/gadt/go/files/example/gadt/adapter.go/function/EvalTruth:
+  digest: sha256:0180f1ecfcb7a969
+  verdict: pending
+decision/go/acceptance/gadt/go/files/example/gadt/adapter.go/function/Fold:
+  digest: sha256:6acad4c001dd0c48
+  verdict: pending

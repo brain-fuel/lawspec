@@ -1,0 +1,6 @@
+decision/haskell/src/LawSpec/Prelude.hs/module/LawSpec.Prelude:
+  digest: sha256:035def5f101ea46f
+  verdict: pending
+decision/haskell/src/LawSpec/Prelude.hs/module/LawSpec.Prelude/function/preludeSource:
+  digest: sha256:6fd210509f6f97e7
+  verdict: pending

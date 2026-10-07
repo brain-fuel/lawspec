@@ -1,0 +1,15 @@
+decision/haskell/src/LawSpec/GoTestHelpers.hs/module/LawSpec.GoTestHelpers:
+  digest: sha256:661f91f15377aaff
+  verdict: pending
+decision/haskell/src/LawSpec/GoTestHelpers.hs/module/LawSpec.GoTestHelpers/function/assertionDoc:
+  digest: sha256:a9dd544d2707d445
+  verdict: pending
+decision/haskell/src/LawSpec/GoTestHelpers.hs/module/LawSpec.GoTestHelpers/function/dataHelpersDoc:
+  digest: sha256:6e1808f1e5c3dac8
+  verdict: pending
+decision/haskell/src/LawSpec/GoTestHelpers.hs/module/LawSpec.GoTestHelpers/function/generatorDoc:
+  digest: sha256:9f034e28133f34d3
+  verdict: pending
+decision/haskell/src/LawSpec/GoTestHelpers.hs/module/LawSpec.GoTestHelpers/function/generatorDocWithin:
+  digest: sha256:55ab443043325cae
+  verdict: pending

@@ -1,0 +1,18 @@
+decision/haskell/src/LawSpec/Domain.hs/module/LawSpec.Domain:
+  digest: sha256:4d6185d433c106c3
+  verdict: pending
+decision/haskell/src/LawSpec/Domain.hs/module/LawSpec.Domain/function/boundaries:
+  digest: sha256:13b8675a6f6ab753
+  verdict: pending
+decision/haskell/src/LawSpec/Domain.hs/module/LawSpec.Domain/function/boundaryTuples:
+  digest: sha256:241d03027550ba4f
+  verdict: pending
+decision/haskell/src/LawSpec/Domain.hs/module/LawSpec.Domain/function/domainHints:
+  digest: sha256:6eeb0ce6c473ecd2
+  verdict: pending
+decision/haskell/src/LawSpec/Domain.hs/module/LawSpec.Domain/function/finiteTuples:
+  digest: sha256:a478740be5c4b673
+  verdict: pending
+decision/haskell/src/LawSpec/Domain.hs/module/LawSpec.Domain/function/validTuple:
+  digest: sha256:6462ef6c0e23c7ee
+  verdict: pending

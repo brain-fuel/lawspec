@@ -1,4 +1,5 @@
-module AsyncSpec (spec) where
+-- | Asynchronous adapters through Core, evidence, scaffolds and native bindings.
+module AsyncSpec (test_asyncAdaptersAreMarkedReportedAndBoundToEachTargetsTask) where
 
 import Control.Monad (forM_)
 import Data.Either (isRight)
@@ -25,14 +26,17 @@ orders = unlines
 program :: String -> Either [Diagnostic] C.Program
 program source = compileCore 64 defaultGeneration [Source "orders.lawspec" source]
 
--- The user-owned adapter stub a target scaffolds.
+-- | The user-owned adapter stub a target scaffolds.
 stub :: String -> String -> Either [Diagnostic] String
 stub target source = do
   files <- program source >>= planTesting >>= emitPlan target
   pure (concat [artifactContent f | f <- files, ownership f == "user"])
 
-spec :: Spec
-spec = describe "async adapters" $ do
+-- | An adapter that returns a task must be awaited by the generated tests on
+-- each target's own concurrency, or a law would check an unresolved task
+-- instead of its result. ref:DEC-async-native-tasks ref:REQ-async-adapters
+test_asyncAdaptersAreMarkedReportedAndBoundToEachTargetsTask :: Spec
+test_asyncAdaptersAreMarkedReportedAndBoundToEachTargetsTask = describe "async adapters" $ do
   it "marks async declarations in Core" $ do
     let Right compiled = program orders
         declarations = [(C.declarationName d, C.declarationAsync d) | u <- C.programUnits compiled, d <- C.unitDeclarations u]

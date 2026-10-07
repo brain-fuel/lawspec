@@ -1,0 +1,9 @@
+decision/haskell/test/ApiContractSpec.hs/module/ApiContractSpec:
+  digest: sha256:770fb59645eccddf
+  verdict: pending
+decision/haskell/test/ApiContractSpec.hs/module/ApiContractSpec/function/lineMatches:
+  digest: sha256:f4899dc9ae85c766
+  verdict: pending
+decision/haskell/test/ApiContractSpec.hs/module/ApiContractSpec/function/test_compilerApiAnswersEveryRequestByItsDocumentedContract:
+  digest: sha256:75d5e1d5a65d409c
+  verdict: pending

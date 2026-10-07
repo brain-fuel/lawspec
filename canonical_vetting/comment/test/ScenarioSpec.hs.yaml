@@ -1,0 +1,6 @@
+decision/haskell/test/ScenarioSpec.hs/module/ScenarioSpec:
+  digest: sha256:26878a14fedb1cab
+  verdict: pending
+decision/haskell/test/ScenarioSpec.hs/module/ScenarioSpec/function/test_scenariosAreAcceptedOnlyWhenDeadlockAndRaceFree:
+  digest: sha256:216f15644d6e60e9
+  verdict: pending

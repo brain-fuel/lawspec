@@ -1,4 +1,4 @@
--- Structural values in the reference interpreter. Scalar encodings remain
+-- | Structural values in the reference interpreter. Scalar encodings remain
 -- lossless leaves; algebraic constructors never share absence representations.
 module LawSpec.Core.Value
   ( Value(..), fromScalarValue, toScalarValue, validateValue, validateValueWith, ValueCheck(..), checkValueWith
@@ -16,28 +16,37 @@ import LawSpec.IndexTerm (FamilyIndex(..), ConstructorIndex(..), evaluateIndex, 
 import LawSpec.Core.Semantics (binaryValue)
 import LawSpec.Scalar
 
+-- | Values of data types keep their type and constructor identity, so sums with
+-- equal payloads stay distinct and equality is structural on every target.
+-- ref:DEC-portable-exact-arithmetic
 data Value
   = ScalarValue Scalar
   | DataValue Type Id [Value]
   | PresenceValue Type (Maybe Value)
   deriving (Eq, Ord, Show, Generic)
 
+-- | Optional scalars become presence values, so absence is one representation
+-- however it was written.
 fromScalarValue :: Type -> Scalar -> Value
 fromScalarValue ty@(Constructor name [TypeArgument element]) (SPresent tag payload)
   | name == tag && name `elem` ["Nullable", "Optional"] =
       PresenceValue ty (fromScalarValue element <$> payload)
 fromScalarValue _ scalar = ScalarValue scalar
 
+-- | Values that are scalars underneath go back to the scalar encoding the
+-- runtimes exchange.
 toScalarValue :: Value -> Either String Scalar
 toScalarValue (ScalarValue scalar) = Right scalar
 toScalarValue (PresenceValue (Constructor name [TypeArgument _]) payload)
   | name `elem` ["Nullable", "Optional"] = SPresent name <$> traverse toScalarValue payload
 toScalarValue _ = Left "structural value cannot cross a scalar-only adapter bridge"
 
+-- | Validation without a predicate evaluator is for shapes only; a constructor
+-- with predicates needs the evaluator.
 validateValue :: TypeRegistry -> Int -> Type -> Value -> Either String Value
 validateValue = validateValueWith (\_ _ -> Left "constructor field validation requires a predicate evaluator")
 
--- The callback avoids a Value/Eval module cycle. Recursive shape validation and
+-- | The callback avoids a Value/Eval module cycle. Recursive shape validation and
 -- ordered predicate execution remain one operation; callers cannot accidentally
 -- validate only the outer constructor and forget a constrained nested payload.
 validateValueWith :: ([(Id,Value)] -> Expr -> Either String Value)
@@ -48,10 +57,13 @@ validateValueWith evaluate registry bits expected value = do
     ValueAccepted checked -> pure checked
     RefinementRejected message -> Left message
 
--- Candidate generation must distinguish a false predicate from a malformed
+-- | Candidate generation must distinguish a false predicate from a malformed
 -- value or an evaluation error. Rejection is data, not an exception to swallow.
 data ValueCheck = ValueAccepted Value | RefinementRejected String deriving (Eq, Show, Generic)
 
+-- | Refinement failures are kept apart from shape errors, so a generator can
+-- discard a value that breaks a refinement but report one of the wrong shape.
+-- ref:DEC-shrink-within-domain
 checkValueWith :: ([(Id,Value)] -> Expr -> Either String Value)
   -> TypeRegistry -> Int -> Type -> Value -> Either String ValueCheck
 checkValueWith evaluate registry bits expected value =
@@ -112,13 +124,13 @@ checkValueWith evaluate registry bits expected value =
                          , Just (ConstructorIndex _ guards) <- lookup (idText tag) (familyIndexConstructors family) -> guards
       _ -> []
 
--- Runtimes carry a field-only existential's type as a trailing Text field,
+-- | Runtimes carry a field-only existential's type as a trailing Text field,
 -- after the declared ones: a witness, keyed by witnessKey.
 witnessFields :: [DataDeclaration] -> Type -> Id -> [Value] -> [Value]
 witnessFields declarations ty tag fields =
   map (ScalarValue . textScalar) (witnessKeys declarations ty tag (map valueType fields))
 
--- The witness keys of a construction from its declared fields' types; none
+-- | The witness keys of a construction from its declared fields' types; none
 -- when the constructor has no field-only existential.
 witnessKeys :: [DataDeclaration] -> Type -> Id -> [Type] -> [String]
 witnessKeys declarations ty tag types = case ty of
@@ -132,21 +144,21 @@ witnessKeys declarations ty tag types = case ty of
         in [maybe "" witnessKey (M.lookup e bound) | e <- free]
   _ -> []
 
--- A witness spells a type as its name, or a parenthesized application.
+-- | A witness spells a type as its name, or a parenthesized application.
 witnessKey :: Type -> String
 witnessKey ty = case ty of
   Constructor name [] -> name
   Constructor name arguments -> "(" ++ unwords (name : [witnessKey t | TypeArgument t <- arguments]) ++ ")"
   _ -> ""
 
--- The type a value carries: a field-only existential takes it from here.
+-- | The type a value carries: a field-only existential takes it from here.
 valueType :: Value -> Type
 valueType value = case value of
   ScalarValue scalar -> Constructor (scalarName scalar) []
   DataValue ty _ _ -> ty
   PresenceValue ty _ -> ty
 
--- An indexed family's index of a value, recomputed from its constructor's
+-- | An indexed family's index of a value, recomputed from its constructor's
 -- term; Nothing when the value is not of an indexed family or has no value.
 valueIndex :: TypeRegistry -> Value -> Int -> Maybe Integer
 valueIndex registry value index = case value of
@@ -162,7 +174,7 @@ valueIndex registry value index = case value of
       [] -> Nothing) term
   _ -> Nothing
 
--- Do not use derived Eq for language equality: float NaNs and Symbol identity
+-- | Do not use derived Eq for language equality: float NaNs and Symbol identity
 -- retain their scalar semantics inside any number of constructors or wrappers.
 equalValues :: Int -> Value -> Value -> Either String Bool
 equalValues bits (ScalarValue a) (ScalarValue b) = do
@@ -185,7 +197,7 @@ equalValues bits (PresenceValue ta a) (PresenceValue tb b)
       _ -> Right False
 equalValues _ _ _ = Right False
 
--- The portable total order of keyed values, which every runtime implements
+-- | The portable total order of keyed values, which every runtime implements
 -- identically: exact numbers by value, sequences by their units, False before
 -- True, and absence before presence. Lists compare element by element (a
 -- prefix first), Nothing comes before Just, and other data compare by
@@ -233,12 +245,15 @@ compareValues a b = case (a, b) of
       _ -> Left ("no portable order for " ++ scalarName x)
     decimal c e = toRational c * (10 ^^ e)
 
+-- | Lists are ordinary data, Nil and Cons, so they share every algorithm with
+-- user types. ref:DEC-algebraic-maybe-either
 listValue :: Type -> [Value] -> Value
 listValue element = foldr cons (DataValue ty (Id "List::Nil") [])
   where
     ty = Constructor "List" [TypeArgument element]
     cons first rest = DataValue ty (Id "List::Cons") [first, rest]
 
+-- | Many operations need a list's items rather than its constructors.
 listItems :: Value -> Either String [Value]
 listItems root@(DataValue ty@(Constructor "List" [TypeArgument _]) _ _) = collect root
   where

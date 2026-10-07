@@ -1,0 +1,27 @@
+decision/haskell/src/LawSpec/Discharge.hs/module/LawSpec.Discharge:
+  digest: sha256:96d4d3c08693b0f1
+  verdict: pending
+decision/haskell/src/LawSpec/Discharge.hs/module/LawSpec.Discharge/function/bindingEvidence:
+  digest: sha256:83cdc13c0d16a780
+  verdict: pending
+decision/haskell/src/LawSpec/Discharge.hs/module/LawSpec.Discharge/function/dischargeEvidence:
+  digest: sha256:4cbc053851a95eef
+  verdict: pending
+decision/haskell/src/LawSpec/Discharge.hs/module/LawSpec.Discharge/function/inline:
+  digest: sha256:4269cf33e0d57f28
+  verdict: pending
+decision/haskell/src/LawSpec/Discharge.hs/module/LawSpec.Discharge/function/lawClaim:
+  digest: sha256:7e435794c40a1638
+  verdict: pending
+decision/haskell/src/LawSpec/Discharge.hs/module/LawSpec.Discharge/function/proofClaim:
+  digest: sha256:d1511dacd9fb781b
+  verdict: pending
+decision/haskell/src/LawSpec/Discharge.hs/module/LawSpec.Discharge/function/proves:
+  digest: sha256:afca3e789e3f28ab
+  verdict: pending
+decision/haskell/src/LawSpec/Discharge.hs/module/LawSpec.Discharge/function/rebuild:
+  digest: sha256:0741f31e95a1642e
+  verdict: pending
+decision/haskell/src/LawSpec/Discharge.hs/module/LawSpec.Discharge/function/substitute:
+  digest: sha256:4e263719d4d329b5
+  verdict: pending

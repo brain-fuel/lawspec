@@ -1,0 +1,9 @@
+decision/haskell/test/BoundsSpec.hs/module/BoundsSpec:
+  digest: sha256:ef3cc836e24bdebc
+  verdict: pending
+decision/haskell/test/BoundsSpec.hs/module/BoundsSpec/function/purse:
+  digest: sha256:73b5dcef4d667569
+  verdict: pending
+decision/haskell/test/BoundsSpec.hs/module/BoundsSpec/function/test_generationStaysWithinRefinedBoundsOnEveryTarget:
+  digest: sha256:f54a8eb54cf05cc3
+  verdict: pending

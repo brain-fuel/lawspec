@@ -1,0 +1,21 @@
+decision/haskell/src/LawSpec/Mailboxes.hs/module/LawSpec.Mailboxes:
+  digest: sha256:240ec043d539a6d0
+  verdict: pending
+decision/haskell/src/LawSpec/Mailboxes.hs/module/LawSpec.Mailboxes/function/goMailboxes:
+  digest: sha256:19a6c931e82c2be1
+  verdict: pending
+decision/haskell/src/LawSpec/Mailboxes.hs/module/LawSpec.Mailboxes/function/haskell:
+  digest: sha256:c68ffac9812f0ed7
+  verdict: pending
+decision/haskell/src/LawSpec/Mailboxes.hs/module/LawSpec.Mailboxes/function/jvm:
+  digest: sha256:5a63fdb5ccbc48a6
+  verdict: pending
+decision/haskell/src/LawSpec/Mailboxes.hs/module/LawSpec.Mailboxes/function/mailboxArtifacts:
+  digest: sha256:ceb84676c8debef4
+  verdict: pending
+decision/haskell/src/LawSpec/Mailboxes.hs/module/LawSpec.Mailboxes/function/mailboxClassName:
+  digest: sha256:5cd361c55d7ad748
+  verdict: pending
+decision/haskell/src/LawSpec/Mailboxes.hs/module/LawSpec.Mailboxes/function/web:
+  digest: sha256:9155663ac86d2763
+  verdict: pending

@@ -1,0 +1,36 @@
+decision/haskell/src/LawSpec/Collections.hs/module/LawSpec.Collections:
+  digest: sha256:a420993a645ce4ae
+  verdict: pending
+decision/haskell/src/LawSpec/Collections.hs/module/LawSpec.Collections/function/collectionContainer:
+  digest: sha256:f7bcb3b03553ce4f
+  verdict: pending
+decision/haskell/src/LawSpec/Collections.hs/module/LawSpec.Collections/function/collectionOperation:
+  digest: sha256:d7a3a2d654dad50d
+  verdict: pending
+decision/haskell/src/LawSpec/Collections.hs/module/LawSpec.Collections/function/collectionOperations:
+  digest: sha256:f2f68a8da86db7f8
+  verdict: pending
+decision/haskell/src/LawSpec/Collections.hs/module/LawSpec.Collections/function/collectionTypes:
+  digest: sha256:378666a17dd985e2
+  verdict: pending
+decision/haskell/src/LawSpec/Collections.hs/module/LawSpec.Collections/function/collectionsAlias:
+  digest: sha256:53ebd72de0c04970
+  verdict: pending
+decision/haskell/src/LawSpec/Collections.hs/module/LawSpec.Collections/function/collectionsSource:
+  digest: sha256:b70e3c3e375bf257
+  verdict: pending
+decision/haskell/src/LawSpec/Collections.hs/module/LawSpec.Collections/function/collectionsUnit:
+  digest: sha256:6b355d06f4e692c4
+  verdict: pending
+decision/haskell/src/LawSpec/Collections.hs/module/LawSpec.Collections/function/entryTypeName:
+  digest: sha256:8ad1fe2cee970215
+  verdict: pending
+decision/haskell/src/LawSpec/Collections.hs/module/LawSpec.Collections/function/internalConstructor:
+  digest: sha256:77a52ce9d25f3583
+  verdict: pending
+decision/haskell/src/LawSpec/Collections.hs/module/LawSpec.Collections/function/isCollectionsType:
+  digest: sha256:d0323a180a4d2bde
+  verdict: pending
+decision/haskell/src/LawSpec/Collections.hs/module/LawSpec.Collections/function/usedCollections:
+  digest: sha256:7d034f6ff91185fc
+  verdict: pending

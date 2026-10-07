@@ -1,4 +1,5 @@
--- The complete LawSpec check, run locally from the repository root:
+-- | The complete LawSpec check, run locally from the repository root, since
+-- the project has no hosted CI (ref:DEC-local-ci-only):
 --
 --   lawspec-dev ci                       everything, all eight targets
 --   lawspec-dev ci --target rust --target go
@@ -43,7 +44,7 @@ data Options = Options
 allTargets :: [String]
 allTargets = ["java", "python", "javascript", "typescript", "go", "haskell", "kotlin", "rust"]
 
--- A step is a named command with extra environment, run from the root.
+-- | A step is a named command with extra environment, run from the root.
 data Step = Step String [(String, String)] [String]
 
 stepName :: Step -> String
@@ -96,9 +97,11 @@ coreSteps =
   , step "npm-tests" ["sh", "-c", "node --test npm/test/*.test.mjs"]
   , step "parity" ["node", "tools/parity.mjs"]
   , step "package-smoke" ["node", "tools/package-smoke.mjs"]
-  , step "docs" ["stack", "--no-terminal", "run", "lawspec-dev", "--", "docs", "--check"] ]
+  , step "docs" ["stack", "--no-terminal", "run", "lawspec-dev", "--", "docs", "--check"]
+  -- canon keeps its own content-addressed cache, so this step is never skipped.
+  , step "canon" ["stack", "--no-terminal", "run", "lawspec-dev", "--", "canon", "check"] ]
 
--- The repository files a core step reads, as roots to keep or drop (an empty
+-- | The repository files a core step reads, as roots to keep or drop (an empty
 -- keep list keeps every file), and the commands whose output names its tools.
 data Inputs = Inputs [FilePath] [FilePath] [[String]]
 
@@ -116,7 +119,7 @@ stepInputs name = case name of
     unread = ["docs/", "acceptance/", "editors/"]
     rustRuntime = Inputs ["runtime/rust/"] [] [["rustc", "-Vv"], ["cargo", "-V"]]
 
--- Every file git would commit: tracked or untracked, and not ignored.
+-- | Every file git would commit: tracked or untracked, and not ignored.
 repositoryFiles :: IO [FilePath]
 repositoryFiles = do
   (code, out, _) <- readCreateProcessWithExitCode
@@ -131,7 +134,7 @@ repositoryFiles = do
 cacheStore :: FilePath
 cacheStore = ".artifacts/cache/ci"
 
--- Run a step unless a pass is recorded for its inputs. Under --fresh every
+-- | Run a step unless a pass is recorded for its inputs. Under --fresh every
 -- step runs (acceptance suites with LAWSPEC_CACHE=refresh), and passes are
 -- still recorded for later runs.
 runCached :: Bool -> [FilePath] -> Step -> IO Bool
@@ -171,7 +174,7 @@ stepKey repository (Step name env command) (Inputs keep drop' probes) = do
       framed piece = [BC.pack (show (B.length piece) ++ ":"), piece]
   pure (concatMap (printf "%02x") (B.unpack (SHA.finalize (SHA.updates SHA.init (concatMap framed pieces)))))
 
--- The profiles match the acceptance matrix: suites run with mutants in the
+-- | The profiles match the acceptance matrix: suites run with mutants in the
 -- default profile, and with the 32-bit (and compact) profiles as well.
 targetSteps :: String -> [Step]
 targetSteps target =
@@ -192,7 +195,7 @@ targetSteps target =
     acceptance rest = ["stack", "--no-terminal", "exec", "lawspec-acceptance", "--"] ++ rest
     compact = [("LAWSPEC_MACHINE_BITS", "32"), ("LAWSPEC_MINIFY", "1")]
 
--- The shared Rust runtime crate in debug and release, and the Rust suites for
+-- | The shared Rust runtime crate in debug and release, and the Rust suites for
 -- each additional toolchain or architecture requested.
 rustRuntimeSteps :: Options -> [Step]
 rustRuntimeSteps options =

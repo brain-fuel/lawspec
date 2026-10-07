@@ -5,7 +5,7 @@ cabal-version: 1.12
 -- see: https://github.com/sol/hpack
 
 name:           lawspec
-version:        0.20.0
+version:        0.20.1
 synopsis:       Portable executable laws
 license:        MIT
 license-file:   LICENSE
@@ -503,6 +503,7 @@ executable lawspec-core
 executable lawspec-dev
   main-is: Main.hs
   other-modules:
+      Canon
       Ci
       Docs
       Gen.Api

@@ -1,0 +1,6 @@
+decision/haskell/test/InferenceSchemeSpec.hs/module/InferenceSchemeSpec:
+  digest: sha256:b23c60956738ce63
+  verdict: pending
+decision/haskell/test/InferenceSchemeSpec.hs/module/InferenceSchemeSpec/function/test_declarationSchemesInstantiateFreshlyAtEachUse:
+  digest: sha256:36073e3c45c5c321
+  verdict: pending

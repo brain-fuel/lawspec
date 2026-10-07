@@ -1,4 +1,4 @@
--- Typed actors for Go implementation code (see LawSpec.Actors).
+-- | Typed actors for Go implementation code (see LawSpec.Actors).
 --
 -- Every actor becomes a struct named for its handle type in
 -- lawspec_actors.go of its unit's package, beside the adapters it calls:
@@ -23,6 +23,8 @@ import Control.Monad (foldM)
 import LawSpec.Actors.Types (Actor(..), Handler(..), Supervision(..), Child(..))
 import LawSpec.Core.Machine (SupervisionStrategy(..), Lifetime(..))
 
+-- | Actors become a typed class, or Go's idiom for one, generated from the
+-- declaration. ref:DEC-actors-otp-supervision
 emit :: String -> Bool -> Int -> [C.DataDeclaration] -> [Actor] -> [Supervision] -> Either String [Artifact]
 emit _ _ bits datas actors supervisions = mapM unitFile (nub (map (unitName . actorUnit) actors))
   where
@@ -168,7 +170,7 @@ actorText datas a = do
         inline "\treturn a.actor.Cast(" ")" ++
         [ "}" ]
 
--- A handler's argument and reply descriptors (adding data types to the
+-- | A handler's argument and reply descriptors (adding data types to the
 -- table).
 type HandlerWire = (Handler, [String], String)
 
@@ -178,7 +180,7 @@ handlerWire bits datas (table, acc) h = do
   (reply, table'') <- describe bits datas table' (maybe (C.Constructor "Unit" []) id (handlerReply h))
   pure (table'', (h, args, reply) : acc)
 
--- Serve, Connect<Actor> and the <Actor>Remote proxy: values cross the
+-- | Serve, Connect<Actor> and the <Actor>Remote proxy: values cross the
 -- network as logical values, converted with the unit's codecs.
 remoteText :: Int -> [C.DataDeclaration] -> Actor -> Maybe [HandlerWire] -> Either String [String]
 remoteText _ _ _ Nothing = pure []
@@ -267,7 +269,7 @@ replace old new s = case s of
   _ | take (length old) s == old -> new ++ replace old new (drop (length old) s)
   c : rest -> c : replace old new rest
 
--- A supervisor's struct: Start<Name>Supervisor starts the runtime
+-- | A supervisor's struct: Start<Name>Supervisor starts the runtime
 -- supervisor and each child under it, in order; each child is a field.
 supervisorText :: Supervision -> [String]
 supervisorText s =

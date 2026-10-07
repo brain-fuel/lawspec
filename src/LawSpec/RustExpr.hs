@@ -1,4 +1,4 @@
--- Typed Core expressions shared by Rust properties and framework-independent
+-- | Typed Core expressions shared by Rust properties and framework-independent
 -- definitions. Layout is constructed from tokens, never rewritten source text.
 module LawSpec.RustExpr
   ( renderExpression, renderExpressionWithContext, scalarLiteral, presenceValue, quoted, stringLiteral, call, vector, reference, typeName
@@ -12,6 +12,8 @@ import Data.Char (ord)
 import Data.List (intercalate)
 import Numeric (showHex)
 
+-- | Strings are escaped for Rust here, once, so no generated literal can end
+-- early or change meaning.
 quoted :: String -> String
 quoted value = '"' : concatMap escape value ++ "\""
   where
@@ -20,7 +22,7 @@ quoted value = '"' : concatMap escape value ++ "\""
     escape c | ord c < 32 || ord c == 127 = "\\u{" ++ showHex (ord c) "}"
              | otherwise = [c]
 
--- concat! joins literal tokens at compile time without changing their payload.
+-- | concat! joins literal tokens at compile time without changing their payload.
 -- Split before escaping so neither a Unicode scalar nor an escape is divided.
 stringLiteral :: String -> D.Doc
 stringLiteral value
@@ -33,7 +35,7 @@ stringLiteral value
           (part,rest) = splitAt count remaining
       in part : chunks rest
 
--- Rustfmt also limits argument and array contents to 60 columns.
+-- | Rustfmt also limits argument and array contents to 60 columns.
 delimited :: String -> String -> [D.Doc] -> D.Doc
 delimited "vec![" "]" [value] = D.text "vec![" <> D.firstLineWidth 60 value <> D.text "]"
 delimited opening closing [value] = D.delimitTrailing 4 opening closing [value]
@@ -44,11 +46,15 @@ delimited opening closing values
       D.softbreak <> D.text closing
   | otherwise = D.delimitTrailing 4 opening closing values
 
+-- | Arguments wrap when a call is too wide, in the Rust style LawSpec follows.
+-- ref:DEC-readable-output-default
 call :: String -> [D.Doc] -> D.Doc
 call name values = D.text name <> delimited "(" ")" values
+-- | Lists of runtime values are written as one vec! so they wrap like calls.
 vector :: [D.Doc] -> D.Doc
 vector = delimited "vec![" "]"
 
+-- | Runtime checks name a type by a schema reference built from Core.
 reference :: Type -> Either String D.Doc
 reference ty = render False <$> Schema.typeReference [] ty
   where
@@ -64,10 +70,14 @@ reference ty = render False <$> Schema.typeReference [] ty
            D.joinWith D.softline [value <> D.text "," | value <- values]) <> D.softbreak <> D.text ")"
          else call "ls::TypeRef::named" values
 
+-- | Generated Rust names a LawSpec type by its declared name.
 typeName :: Type -> String
 typeName (Constructor name args) = unwords (name : [typeName t | TypeArgument t <- args])
 typeName ty = show ty
 
+-- | Literals become runtime values built from their exact digits, so Rust never
+-- reads a number at its own precision.
+-- ref:DEC-portable-exact-arithmetic
 scalarLiteral :: Scalar -> Either String D.Doc
 scalarLiteral scalar = case scalar of
   SInteger _ n
@@ -119,7 +129,7 @@ scalarLiteral scalar = case scalar of
           D.text ";" <> D.hardline <>
           D.text "ls::BigInt::parse_bytes(digits.as_bytes(), 10).unwrap()")
 
--- A named payload keeps nested presence states readable and evaluates each
+-- | A named payload keeps nested presence states readable and evaluates each
 -- payload exactly once, including Symbol fixture lookups.
 presenceValue :: String -> Maybe D.Doc -> D.Doc
 presenceValue name Nothing = call ("ls::Value::" ++ name) [D.text "None"]
@@ -127,12 +137,15 @@ presenceValue name (Just value) = D.text ("ls::Value::" ++ name ++ "(") <>
   D.block 4 (D.hang 4 (D.text "let value =") value <> D.text ";" <> D.hardline <>
     D.text "Some(Box::new(value))") <> D.text ")"
 
+-- | Expressions are rendered from Core, never from source, so the Rust tests
+-- check the same expansion as every other target.
+-- ref:DEC-typed-core-boundary
 renderExpression :: [DataDeclaration] -> Int -> [(Id,String)] -> [(Id,String)] -> Expr -> Either String D.Doc
 renderExpression declarations bits = renderExpressionWithContext declarations
   (D.text (show bits)) (D.text "crate::lawspec_schema::schema()?") reference
   (pure . D.text . quoted . typeName)
 
--- Schema predicates resolve generic domains using their instantiated arguments.
+-- | Schema predicates resolve generic domains using their instantiated arguments.
 renderExpressionWithContext :: [DataDeclaration] -> D.Doc -> D.Doc
   -> (Type -> Either String D.Doc) -> (Type -> Either String D.Doc)
   -> [(Id,String)] -> [(Id,String)] -> Expr -> Either String D.Doc

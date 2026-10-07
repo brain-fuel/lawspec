@@ -1,0 +1,42 @@
+decision/haskell/src/LawSpec/DomainModel.hs/module/LawSpec.DomainModel:
+  digest: sha256:b5c8a0b10f1b9380
+  verdict: pending
+decision/haskell/src/LawSpec/DomainModel.hs/module/LawSpec.DomainModel/data/Elaborated:
+  digest: sha256:3440f2121150ac32
+  verdict: pending
+decision/haskell/src/LawSpec/DomainModel.hs/module/LawSpec.DomainModel/data/Failure:
+  digest: sha256:7ebf499460761fa0
+  verdict: pending
+decision/haskell/src/LawSpec/DomainModel.hs/module/LawSpec.DomainModel/data/StageKind:
+  digest: sha256:11f0002ba64a538f
+  verdict: pending
+decision/haskell/src/LawSpec/DomainModel.hs/module/LawSpec.DomainModel/data/Workflow:
+  digest: sha256:f4b6398d8aac73b3
+  verdict: pending
+decision/haskell/src/LawSpec/DomainModel.hs/module/LawSpec.DomainModel/data/WorkflowStage:
+  digest: sha256:6a0e24642dce9ef0
+  verdict: pending
+decision/haskell/src/LawSpec/DomainModel.hs/module/LawSpec.DomainModel/data/Wrapper:
+  digest: sha256:e405750aa0ec7c66
+  verdict: pending
+decision/haskell/src/LawSpec/DomainModel.hs/module/LawSpec.DomainModel/function/arguments:
+  digest: sha256:1747c466ee78f4a3
+  verdict: pending
+decision/haskell/src/LawSpec/DomainModel.hs/module/LawSpec.DomainModel/function/declareSteps:
+  digest: sha256:30279667d9ff3438
+  verdict: pending
+decision/haskell/src/LawSpec/DomainModel.hs/module/LawSpec.DomainModel/function/elaborateDomain:
+  digest: sha256:3e3c58894944f4d8
+  verdict: pending
+decision/haskell/src/LawSpec/DomainModel.hs/module/LawSpec.DomainModel/function/replaceVar:
+  digest: sha256:5146ed444874b619
+  verdict: pending
+decision/haskell/src/LawSpec/DomainModel.hs/module/LawSpec.DomainModel/function/wrapperDeclaration:
+  digest: sha256:e35580b66ad510ab
+  verdict: pending
+decision/haskell/src/LawSpec/DomainModel.hs/module/LawSpec.DomainModel/function/wrapperDefinition:
+  digest: sha256:b747e87faa5c52ee
+  verdict: pending
+decision/haskell/src/LawSpec/DomainModel.hs/module/LawSpec.DomainModel/function/wrapperValueName:
+  digest: sha256:4c93e601a5f39b06
+  verdict: pending

@@ -1,4 +1,4 @@
--- Application bridges share the checked JS/TS schema and native arbitraries.
+-- | Application bridges share the checked JS/TS schema and native arbitraries.
 module LawSpec.WebNativeBinding (emitBindings) where
 
 import Control.Monad (forM, unless)
@@ -18,6 +18,8 @@ import qualified LawSpec.WebExpr as E
 import qualified LawSpec.Code.Doc as D
 import LawSpec.RuntimeSources (runtimeSource)
 
+-- | Bound adapters call the user's JavaScript and TypeScript code directly,
+-- through generated conversions. ref:DEC-native-bindings-typed-identity
 emitBindings :: Bool -> Bool -> BindingPlan -> Plan -> [Artifact] -> Either String [Artifact]
 emitBindings ts minify bindings plan files = do
   unless (bindingRustCrate bindings == Nothing) (Left "rustCrate is only valid for Rust bindings")
@@ -205,7 +207,7 @@ emitBindings ts minify bindings plan files = do
       pure (D.text "import " <> D.delimit 2 "{" "}" [D.text (last parts ++ " as " ++ alias)] <>
         D.text (" from " ++ W.q (root ++ intercalate "/" (init parts) ++ "." ++ importExt) ++ ";"))
 
--- A native arbitrary is supplied by application code. Scaffolds describe its
+-- | A native arbitrary is supplied by application code. Scaffolds describe its
 -- generic signature and remain user-owned, including when support is compact.
 generatorStubs :: Bool -> Plan -> BindingPlan -> [Artifact] -> Either String [Artifact]
 generatorStubs ts plan bindings files = do
@@ -272,6 +274,6 @@ generatorStubs ts plan bindings files = do
       (D.joinWith D.hardline (header:imports) <> D.hardline <> D.hardline <>
        D.joinWith (D.hardline <> D.hardline) (map snd entries) <> D.hardline)) "user" "test")
 
--- The web strategies' schema import, rewritten to the emitted layout.
+-- | The web strategies' schema import, rewritten to the emitted layout.
 schemaImport :: String
 schemaImport = "import {RefinementViolation, witnessed, witnessInstances} from './lawspec_schema.mjs';"

@@ -1,0 +1,444 @@
+decision/javascript/runtime/lawspec_runtime.mjs:
+  digest: sha256:005fbcd0b8375661
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/class/Actor:
+  digest: sha256:bbd63782d671f616
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/class/Actor/method/#crashed:
+  digest: sha256:40b104d2cc27fbd1
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/class/Actor/method/_halt:
+  digest: sha256:3629d447e84fe68e
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/class/Actor/method/_restartLater:
+  digest: sha256:fdfb6ae209c34a21
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/class/Actor/method/_restartNow:
+  digest: sha256:49f00edb4a4d64c7
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/class/Actor/method/call:
+  digest: sha256:fb83b59eafd2930f
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/class/Actor/method/callNow:
+  digest: sha256:ae5ba1e386178369
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/class/Actor/method/cast:
+  digest: sha256:9ede84606379ccdf
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/class/Actor/method/crash:
+  digest: sha256:1d1bff24e1a247b3
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/class/Actor/method/crashNow:
+  digest: sha256:31105211382c093b
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/class/Actor/method/link:
+  digest: sha256:0e8ab65b314712a1
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/class/Actor/method/monitor:
+  digest: sha256:8113241f0e1f50cc
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/class/Actor/method/restart:
+  digest: sha256:3517ae19995d8d06
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/class/Actor/method/state:
+  digest: sha256:65efc80ad5d0f210
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/class/Actor/method/stop:
+  digest: sha256:cb400313f7807588
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/class/ActorCrashed:
+  digest: sha256:8abf0659a369ed47
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/class/ActorStopped:
+  digest: sha256:56a5601482870183
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/class/AsyncQueue:
+  digest: sha256:9cdeecdbdba7356f
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/class/Channel/method/gone:
+  digest: sha256:f4c2e6a30188c941
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/class/Channel/method/receive:
+  digest: sha256:f9af41d5e2f593e7
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/class/Channel/method/send:
+  digest: sha256:5c751b0720e13ff4
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/class/Crash:
+  digest: sha256:f88e54471edc13e8
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/class/End:
+  digest: sha256:b9aeef27e5ae0c54
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/class/EndPart:
+  digest: sha256:87e32c28d64185b2
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/class/HttpTransport:
+  digest: sha256:c0525d2d6789211a
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/class/Invalid:
+  digest: sha256:79599c16b0d9483b
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/class/Mailbox:
+  digest: sha256:44cc5484e99a8667
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/class/Mailbox/method/close:
+  digest: sha256:dfab515fa028ce8d
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/class/Mailbox/method/receiveAsync:
+  digest: sha256:4819a53b1d329131
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/class/MemoryNetwork:
+  digest: sha256:2c5f3ae3b5ded56f
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/class/MemoryNetwork/method/partition:
+  digest: sha256:d64fdfc888774e1d
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/class/NativeChannel:
+  digest: sha256:584aa4e7e0e2b417
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/class/NetEndpoint:
+  digest: sha256:7bae8540f39ce09a
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/class/NetEndpoint/method/abandon:
+  digest: sha256:8c55ac468a42470c
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/class/NetEndpoint/method/give:
+  digest: sha256:83c0aca13149233c
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/class/NetEndpoint/method/offer:
+  digest: sha256:0c1cdf9be77ba03e
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/class/NetEndpoint/method/peerMoved:
+  digest: sha256:56c28135c62348a2
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/class/NetEndpoint/method/receive:
+  digest: sha256:f31f1eeb397e0e81
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/class/NetEndpoint/method/takeOver:
+  digest: sha256:45655cce61e0c2cb
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/class/NetScenarioChannel:
+  digest: sha256:ca422b575438b71d
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/class/Node:
+  digest: sha256:733fea03e51770ff
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/class/Node/method/dial:
+  digest: sha256:8de38fc4e0fb808c
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/class/Node/method/evaluate:
+  digest: sha256:187efbd6ec3341bb
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/class/Node/method/forward:
+  digest: sha256:6cb426debbd0052e
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/class/Node/method/listen:
+  digest: sha256:20e2e7c9d7d8ae64
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/class/Node/method/mailbox:
+  digest: sha256:01ef41203f080075
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/class/Node/method/remoteActor:
+  digest: sha256:cab503d0abf9ecf3
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/class/Node/method/request:
+  digest: sha256:6a604e96be900758
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/class/Node/method/serve:
+  digest: sha256:f3fc8e3187485db0
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/class/Node/method/serveDefinitions:
+  digest: sha256:eb4cd0ae170f0310
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/class/Node/method/take:
+  digest: sha256:8f57aa97c984e466
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/class/PeerFailed:
+  digest: sha256:0df3773f326ebf22
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/class/RealClock/method/sleepAsync:
+  digest: sha256:b56e4675ae6ef457
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/class/RemoteActor:
+  digest: sha256:a92707f15fb3766c
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/class/RemoteMailbox:
+  digest: sha256:2fadc80a12fdceba
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/class/RestartSignal:
+  digest: sha256:8add8009167e653c
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/class/ScenarioMailbox:
+  digest: sha256:09adeea840473368
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/class/ScenarioMailbox/method/receive:
+  digest: sha256:9a5cf40aed7eaf12
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/class/SessionChannel:
+  digest: sha256:491ec93cdb332339
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/class/SessionChannel/method/abandon:
+  digest: sha256:d62da6d6afa8e647
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/class/SessionChannel/method/receive:
+  digest: sha256:ea9a95ffab1faf32
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/class/SessionChannel/method/receiveNow:
+  digest: sha256:9585e682f689b8bb
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/class/SessionChannel/method/send:
+  digest: sha256:467e4ec4e8a35b17
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/class/SessionEnd:
+  digest: sha256:aeb07971886dda52
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/class/SessionEnd/method/_giveUp:
+  digest: sha256:4d1b811722018758
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/class/SessionEnd/method/abandon:
+  digest: sha256:9e88193830062010
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/class/SessionEnd/method/use:
+  digest: sha256:1516b5546da25433
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/class/Signal:
+  digest: sha256:373297c66114bf7a
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/class/SplitMix64:
+  digest: sha256:d8576d9a43356d27
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/class/SplitMix64/method/below:
+  digest: sha256:b23c4529cef0f291
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/class/Supervisor:
+  digest: sha256:b23624edfb57d58b
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/class/Supervisor/method/#fail:
+  digest: sha256:c85dc5c95e721f44
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/class/Supervisor/method/#restarting:
+  digest: sha256:b62bad86602fb442
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/class/Supervisor/method/_childCrashed:
+  digest: sha256:49b7814b186693fe
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/class/Supervisor/method/_childFailed:
+  digest: sha256:1e1844ab42cd73c8
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/class/Supervisor/method/_childStopped:
+  digest: sha256:9092980e6d058322
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/class/Supervisor/method/_restartLater:
+  digest: sha256:62b0503059549e30
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/class/Supervisor/method/monitor:
+  digest: sha256:d23163d874282e3d
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/class/Supervisor/method/stop:
+  digest: sha256:e403df2f713589b7
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/class/Supervisor/method/supervise:
+  digest: sha256:85117d9f0505e9b2
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/class/TcpTransport:
+  digest: sha256:2fdc6d6a8fa11265
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/class/Transport:
+  digest: sha256:138c31ac95e6a27a
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/class/Unreachable:
+  digest: sha256:9d7fa6b5249bc26a
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/class/Values:
+  digest: sha256:b697bfb5abdb1a8e
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/class/Values/method/base:
+  digest: sha256:8980f8da491b19cf
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/class/Values/method/bounds:
+  digest: sha256:f0a6ae634a2bb0b8
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/class/Values/method/shrink:
+  digest: sha256:71e523640b7f4903
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/class/VirtualClock:
+  digest: sha256:dc59cd449c41bab4
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/class/WireError:
+  digest: sha256:082dfb51a24a7c57
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/class/WorkflowRuntime:
+  digest: sha256:845542fa2794efc0
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/class/WorkflowRuntime/method/context:
+  digest: sha256:0817298481f6733d
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/function/actorCommand:
+  digest: sha256:24235a8e31611102
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/function/actsChannels:
+  digest: sha256:3a7206b851282470
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/function/allSends:
+  digest: sha256:1c9ff7ffb1c20455
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/function/binary:
+  digest: sha256:1e4f65b282ff60a9
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/function/channel:
+  digest: sha256:5d2ca3dbe1d51d10
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/function/checkModelAsync:
+  digest: sha256:747c39678b823c90
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/function/checkModelParallelAsync:
+  digest: sha256:c498e411b447496d
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/function/checkScenarioAsync:
+  digest: sha256:a693afac0dc1928c
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/function/checkSupervisionAsync:
+  digest: sha256:583ceee53b503631
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/function/concurrently:
+  digest: sha256:a8e9e8a204156511
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/function/convert:
+  digest: sha256:62bff277a02f6981
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/function/equal:
+  digest: sha256:246e31c37eca582c
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/function/execute:
+  digest: sha256:79da7623ce0ca4ac
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/function/executeParallel:
+  digest: sha256:615dc78b792962d7
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/function/generated:
+  digest: sha256:21368334f083f74e
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/function/handle:
+  digest: sha256:cdd47012e567cf0d
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/function/happenedBefore:
+  digest: sha256:5650d1825f34bb0b
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/function/hedged:
+  digest: sha256:402af5bf89ccf6ee
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/function/jittered:
+  digest: sha256:ca5eae4d0a1dca9c
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/function/linearizable:
+  digest: sha256:b2b8f0ab7cdfd597
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/function/linearize:
+  digest: sha256:d9f549af3ebf77c0
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/function/linearizesHistory:
+  digest: sha256:417cc3eb2f26cb58
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/function/nativeScalar:
+  digest: sha256:f27a021724b41fae
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/function/offerEnd:
+  digest: sha256:d4179e9b2c5719e1
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/function/openSession:
+  digest: sha256:4fcb7a6965506077
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/function/par:
+  digest: sha256:7e1894890fc9ac02
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/function/parallelAllowed:
+  digest: sha256:27bebf6196c60ece
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/function/passGate:
+  digest: sha256:59529ee033788f5d
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/function/perturb:
+  digest: sha256:ded25141cb81dc17
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/function/readDescriptor:
+  digest: sha256:022d6adf4f09b601
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/function/receiveNowOn:
+  digest: sha256:df4d02336440848c
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/function/receiveOn:
+  digest: sha256:9686ec31842ca4b6
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/function/relayEnd:
+  digest: sha256:460645e7e004104f
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/function/render:
+  digest: sha256:52a17bac99cf4616
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/function/retryDecision:
+  digest: sha256:2876b9a2fdfcb6f5
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/function/retryDelay:
+  digest: sha256:4d1120744fe357ea
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/function/runStage:
+  digest: sha256:ea28f8d58fcb99a0
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/function/runStageAsync:
+  digest: sha256:45661e44cfdb0edf
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/function/runWorkflow:
+  digest: sha256:73bb24d2c0ac4ec4
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/function/sample:
+  digest: sha256:251f70bc87581d7f
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/function/scenarioProcesses:
+  digest: sha256:e949bded580ad7f7
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/function/scenarioSends:
+  digest: sha256:38f1dda0b8c6d26e
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/function/sendOn:
+  digest: sha256:148b2aeca5270b58
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/function/sendable:
+  digest: sha256:8465e192b31cca13
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/function/shrunk:
+  digest: sha256:f56918a5e4c43087
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/function/simulate:
+  digest: sha256:cdd5c7e278c0e2ed
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/function/spawn:
+  digest: sha256:c5dcb395309b3fec
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/function/splitAddress:
+  digest: sha256:02d838c97219365b
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/function/stepModel:
+  digest: sha256:d04d265c8e5dc079
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/function/useVirtualClock:
+  digest: sha256:46fac546f2115463
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/function/validate:
+  digest: sha256:a2d6a42c1aa613f0
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/function/valuesFrom:
+  digest: sha256:762d410830f85b61
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/function/wireDecode:
+  digest: sha256:bd38677ca1243cf9
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/function/wireEncode:
+  digest: sha256:ec3b0cf43d891607
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/function/wireEncoded:
+  digest: sha256:d5e9981f59a2799d
+  verdict: pending
+decision/javascript/runtime/lawspec_runtime.mjs/function/wireRoundTrips:
+  digest: sha256:411e3f136aaba672
+  verdict: pending

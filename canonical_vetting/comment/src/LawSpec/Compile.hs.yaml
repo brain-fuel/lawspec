@@ -1,0 +1,33 @@
+decision/haskell/src/LawSpec/Compile.hs/module/LawSpec.Compile:
+  digest: sha256:51c5468f110b2c4d
+  verdict: pending
+decision/haskell/src/LawSpec/Compile.hs/module/LawSpec.Compile/function/compile:
+  digest: sha256:a85a2b768b3c01b8
+  verdict: pending
+decision/haskell/src/LawSpec/Compile.hs/module/LawSpec.Compile/function/compileWithImports:
+  digest: sha256:91019946309b6c0f
+  verdict: pending
+decision/haskell/src/LawSpec/Compile.hs/module/LawSpec.Compile/function/compileWithProfile:
+  digest: sha256:49c46f3694700714
+  verdict: pending
+decision/haskell/src/LawSpec/Compile.hs/module/LawSpec.Compile/function/compileWithSettings:
+  digest: sha256:e8323ce94f3f97cb
+  verdict: pending
+decision/haskell/src/LawSpec/Compile.hs/module/LawSpec.Compile/function/invokedLaws:
+  digest: sha256:7ca27ae62b662514
+  verdict: pending
+decision/haskell/src/LawSpec/Compile.hs/module/LawSpec.Compile/function/metadataText:
+  digest: sha256:439aca208bb1a46a
+  verdict: pending
+decision/haskell/src/LawSpec/Compile.hs/module/LawSpec.Compile/function/prettyExpanded:
+  digest: sha256:60e62a818961fb14
+  verdict: pending
+decision/haskell/src/LawSpec/Compile.hs/module/LawSpec.Compile/function/validType:
+  digest: sha256:69ac64bfed92c141
+  verdict: pending
+decision/haskell/src/LawSpec/Compile.hs/module/LawSpec.Compile/function/validateDefinitionTotality:
+  digest: sha256:946ac6e072ff16d7
+  verdict: pending
+decision/haskell/src/LawSpec/Compile.hs/module/LawSpec.Compile/function/validateDefinitionTypes:
+  digest: sha256:1474e1120c0230a0
+  verdict: pending

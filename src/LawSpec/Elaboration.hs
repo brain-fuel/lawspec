@@ -1,4 +1,4 @@
--- Lower typed surface expressions once. Law expansion and fixture checking
+-- | Lower typed surface expressions once. Law expansion and fixture checking
 -- both use this bridge; no backend reinterprets surface syntax.
 module LawSpec.Elaboration
   ( coreType, equation, elaborateExpression, elaborateResolved, elaborateResolvedWithData, equationWithData, binaryOp, elaborateDefinitionUnit, elaborateContract
@@ -23,6 +23,8 @@ import LawSpec.Digest (digestHex, digestString)
 import Data.List (stripPrefix, nub)
 import Control.Monad (forM, unless)
 
+-- | Surface types become Core types by structure; only checked shapes reach
+-- here, so failure is a compiler bug. ref:DEC-typed-core-boundary
 coreType :: S.Type -> Either String C.Type
 coreType t = case S.baseType t of
   S.Named n -> Right (C.scalarType n)
@@ -32,11 +34,13 @@ coreType t = case S.baseType t of
   S.Arrow a b -> C.Arrow <$> coreType a <*> coreType b
   _ -> Left "unelaborated type at core boundary"
 
--- Equality's contextual typing belongs to elaboration, including the expected
+-- | Equality's contextual typing belongs to elaboration, including the expected
 -- result in an example. It is performed exactly once for every backend.
 equation :: [C.Id] -> Int -> C.Id -> (String -> C.Id) -> [(String,S.Type)] -> S.Expr -> S.Expr -> Either String C.Proposition
 equation = equationWithData []
 
+-- | Both sides of an equation are typed in one context, so a literal on one side
+-- takes the other side's type.
 equationWithData :: [C.DataDeclaration] -> [C.Id] -> Int -> C.Id -> (String -> C.Id) -> [(String,S.Type)] -> S.Expr -> S.Expr -> Either String C.Proposition
 equationWithData dataTypes declarations bits origin resolve env left right = do
   (a,b) <- S.contextualizeStructuralWithData dataTypes bits env left right
@@ -69,12 +73,17 @@ equationWithData dataTypes declarations bits origin resolve env left right = do
   ev <- operationEvidenceWithRegistry registry C.Equal (C.expressionType x) (C.expressionType y)
   pure (C.Equation ev x y)
 
+-- | The default for an expression that calls no declaration.
 elaborateExpression :: Int -> C.Id -> (String -> C.Id) -> [(String,S.Type)] -> S.Expr -> Either String C.Expr
 elaborateExpression = elaborateResolved []
 
+-- | The default for an expression over built-in types only.
 elaborateResolved :: [C.Id] -> Int -> C.Id -> (String -> C.Id) -> [(String,S.Type)] -> S.Expr -> Either String C.Expr
 elaborateResolved = elaborateResolvedWithData []
 
+-- | Each surface expression is lowered once, with its resolved names and
+-- arithmetic evidence, so no later stage resolves or infers again.
+-- ref:DEC-elaborate-before-core
 elaborateResolvedWithData :: [C.DataDeclaration] -> [C.Id] -> Int -> C.Id -> (String -> C.Id) -> [(String,S.Type)] -> S.Expr -> Either String C.Expr
 elaborateResolvedWithData dataTypes declarations bits origin resolve env source = S.typedExpressionWithData dataTypes bits env (S.normal source) >>= lowerWith [] where
   operationEvidence op a b = makeRegistry dataTypes >>= \registry -> operationEvidenceWithRegistry registry op a b
@@ -367,12 +376,13 @@ takeUnit text = case text of
   c : rest -> c : takeUnit rest
   [] -> []
 
+-- | Operators are spelled once, here, for every later stage.
 binaryOp :: String -> Either String C.BinaryOp
 binaryOp op = maybe (Left ("unknown binary operation: " ++ op)) Right (lookup op
   [("+",C.Add),("-",C.Subtract),("*",C.Multiply),("/",C.Divide),("quot",C.Quotient),("rem",C.Remainder),("pow",C.Power)
   ,("==",C.Equal),("!=",C.NotEqual),("<",C.Less),("<=",C.LessEqual),(">",C.Greater),(">=",C.GreaterEqual)])
 
--- Reused by example-domain checking and final program elaboration. This keeps
+-- | Reused by example-domain checking and final program elaboration. This keeps
 -- closed definition execution on the same typed Core path as generated code.
 elaborateDefinitionUnit :: [C.DataDeclaration] -> Int -> S.Unit -> Either String C.Unit
 elaborateDefinitionUnit dataDeclarations bits u = do
@@ -433,7 +443,7 @@ elaborateDefinitionUnit dataDeclarations bits u = do
       S.Named n | n `elem` map S.protocolName (S.protocols u) -> pure (C.Constructor (C.idText (sessionIdentity n)) [])
       _ -> coreType t
 
--- A model's commands, start and abstraction are adapters; the model runtime
+-- | A model's commands, start and abstraction are adapters; the model runtime
 -- calls each through a generated orchestration definition of the same type,
 -- which converts logical values to native ones and back like any definition
 -- that calls an adapter.
@@ -456,7 +466,7 @@ machineBridges ds machine = mapM bridge
       pure (C.MkDefinition (C.Declaration run name ty origin) binders call True Nothing)
 
 
--- Closed fixture evaluation and final frontend elaboration must preserve the
+-- | Closed fixture evaluation and final frontend elaboration must preserve the
 -- same contract binder identities and ordered predicates.
 elaborateContract :: [C.DataDeclaration] -> Int -> S.Unit -> S.Contract -> Either String C.Contract
 elaborateContract dataDeclarations bits u c = do

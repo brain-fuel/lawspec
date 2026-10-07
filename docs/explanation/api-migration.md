@@ -1,3 +1,8 @@
+---
+id: lawspec.explanation.api-migration
+kind: explanation
+title: API migration
+---
 # API migration
 
 This page records how the compiler API has changed, for clients upgrading from

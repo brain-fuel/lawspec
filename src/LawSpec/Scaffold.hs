@@ -1,4 +1,4 @@
--- Build-file scaffolds for generated projects. These render known project
+-- | Build-file scaffolds for generated projects. These render known project
 -- structure only; they never reformat user source. The readable layout is the
 -- default, and minify selects the compact form, as for generated code.
 module LawSpec.Scaffold
@@ -7,9 +7,13 @@ module LawSpec.Scaffold
 
 import Data.List (intercalate)
 
+-- | The order users see the targets in everywhere: the CLI, the generated npm
+-- facts and the docs read this one list. ref:DEC-generated-javascript
 scaffoldTargets :: [String]
 scaffoldTargets = ["java", "python", "javascript", "typescript", "go", "haskell", "kotlin", "rust"]
 
+-- | Each target's tests run with its own build tool, so a generated project is
+-- tested the way its developers already test. ref:DEC-native-property-frameworks
 testCommand :: String -> Maybe String
 testCommand target = lookup target
   [ ("rust", "cargo test")
@@ -21,6 +25,8 @@ testCommand target = lookup target
   , ("haskell", "stack test")
   , ("kotlin", "gradle test") ]
 
+-- | The pinned toolchain each target is verified against, stated once so doctor,
+-- the CLI and the docs give the same advice.
 setupAdvice :: String -> Maybe String
 setupAdvice target = lookup target
   [ ("rust", "Use Rust 1.85+ with edition 2024, Proptest 1.11.0, num-bigint 0.4.8, num-rational 0.4.2, num-complex 0.4.6, num-traits 0.2.19, and for lawspec.crypto's default handlers sha3 0.12.0, shake 0.1.0, ml-kem 0.3.2, ml-dsa 0.1.1, slh-dsa 0.2.0-rc.5, aes-gcm 0.11.1 and getrandom 0.4.3. Run cargo test.")
@@ -32,7 +38,7 @@ setupAdvice target = lookup target
   , ("haskell", "Use Stack with lts-24.58, extra-deps crypton-1.1.5, ram-0.22.1, mlkem-0.2.3.0 and mldsa-0.1.1.0 (lawspec.crypto's default handlers; with directory and time as dependencies), and test dependencies hspec, hedgehog, hspec-hedgehog, hspec-discover, and a test/Spec.hs using hspec-discover. Run stack build --test --no-run-tests.")
   , ("kotlin", "Use JDK 25, Gradle 9.3.0, Kotlin plugin 2.3.21, Bouncy Castle bcprov-jdk18on 1.86 (lawspec.crypto's default handlers), JVM target 25, Kotest 5.9.1 (runner, assertions, property), and useJUnitPlatform(). Run gradle testClasses.") ]
 
--- Files in the order the project is written.
+-- | Files in the order the project is written.
 scaffoldFiles :: Bool -> String -> Either String [(FilePath, String)]
 scaffoldFiles minify target = case target of
   "rust" -> Right
@@ -105,7 +111,7 @@ scaffoldFiles minify target = case target of
       | otherwise = name ++ " {\n" ++ intercalate "\n" (map ("    " ++) statements) ++ "\n}"
     json value = renderJson minify 0 value ++ "\n"
 
--- The JSON subset these files need, laid out as JSON.stringify(value, null, 2)
+-- | The JSON subset these files need, laid out as JSON.stringify(value, null, 2)
 -- (or without indentation when minified), keeping field order.
 data Json = Str String | Bool Bool | Arr [Json] | Obj [(String, Json)]
 

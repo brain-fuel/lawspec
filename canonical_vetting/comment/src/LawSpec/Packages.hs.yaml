@@ -1,0 +1,45 @@
+decision/haskell/src/LawSpec/Packages.hs/module/LawSpec.Packages:
+  digest: sha256:ae9465e79678fd13
+  verdict: pending
+decision/haskell/src/LawSpec/Packages.hs/module/LawSpec.Packages/data/Comparator:
+  digest: sha256:82021c0d8f2ac669
+  verdict: pending
+decision/haskell/src/LawSpec/Packages.hs/module/LawSpec.Packages/data/Package:
+  digest: sha256:4956b743adb1285b
+  verdict: pending
+decision/haskell/src/LawSpec/Packages.hs/module/LawSpec.Packages/data/Project:
+  digest: sha256:0758e40c3a74e603
+  verdict: pending
+decision/haskell/src/LawSpec/Packages.hs/module/LawSpec.Packages/data/Version:
+  digest: sha256:9ccf3ed566135a41
+  verdict: pending
+decision/haskell/src/LawSpec/Packages.hs/module/LawSpec.Packages/function/emptyProject:
+  digest: sha256:ba50dafe40b290bd
+  verdict: pending
+decision/haskell/src/LawSpec/Packages.hs/module/LawSpec.Packages/function/packagesView:
+  digest: sha256:caf8d7199aa69492
+  verdict: pending
+decision/haskell/src/LawSpec/Packages.hs/module/LawSpec.Packages/function/parseRange:
+  digest: sha256:0c6a58f4dcc8521b
+  verdict: pending
+decision/haskell/src/LawSpec/Packages.hs/module/LawSpec.Packages/function/parseVersion:
+  digest: sha256:762b5b6c55b2a96e
+  verdict: pending
+decision/haskell/src/LawSpec/Packages.hs/module/LawSpec.Packages/function/preparePackages:
+  digest: sha256:5227fe767f871662
+  verdict: pending
+decision/haskell/src/LawSpec/Packages.hs/module/LawSpec.Packages/function/rewriteUnit:
+  digest: sha256:2c981af0af7cb4ed
+  verdict: pending
+decision/haskell/src/LawSpec/Packages.hs/module/LawSpec.Packages/function/satisfies:
+  digest: sha256:873a921df0c7fece
+  verdict: pending
+decision/haskell/src/LawSpec/Packages.hs/module/LawSpec.Packages/function/segmentClash:
+  digest: sha256:57cd790798960aa6
+  verdict: pending
+decision/haskell/src/LawSpec/Packages.hs/module/LawSpec.Packages/function/versionSegment:
+  digest: sha256:8c00576b5d904041
+  verdict: pending
+decision/haskell/src/LawSpec/Packages.hs/module/LawSpec.Packages/function/versionedDiagnostics:
+  digest: sha256:67b3060489e7ae86
+  verdict: pending

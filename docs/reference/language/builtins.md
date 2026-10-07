@@ -1,3 +1,8 @@
+---
+id: lawspec.reference.language.builtins
+kind: reference
+title: Built-in abilities
+---
 # Built-in abilities
 
 LawSpec comes with abilities for the dependencies most programs share: time,

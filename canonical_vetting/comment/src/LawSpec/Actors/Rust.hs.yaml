@@ -1,0 +1,15 @@
+decision/haskell/src/LawSpec/Actors/Rust.hs/module/LawSpec.Actors.Rust:
+  digest: sha256:9a8a3ee7f5fc14a4
+  verdict: pending
+decision/haskell/src/LawSpec/Actors/Rust.hs/module/LawSpec.Actors.Rust/function/emit:
+  digest: sha256:4c7ad84487965fda
+  verdict: pending
+decision/haskell/src/LawSpec/Actors/Rust.hs/module/LawSpec.Actors.Rust/function/supervisorStruct:
+  digest: sha256:ca3169b4e745c59f
+  verdict: pending
+decision/haskell/src/LawSpec/Actors/Rust.hs/module/LawSpec.Actors.Rust/function/unitModule:
+  digest: sha256:45af22e9463aacb8
+  verdict: pending
+decision/haskell/src/LawSpec/Actors/Rust.hs/module/LawSpec.Actors.Rust/type/HandlerWire:
+  digest: sha256:bf20dd4de7707500
+  verdict: pending

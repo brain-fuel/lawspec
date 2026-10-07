@@ -1,0 +1,12 @@
+decision/haskell/src/LawSpec/HaskellNativeBinding.hs/module/LawSpec.HaskellNativeBinding:
+  digest: sha256:f50e50183707194a
+  verdict: pending
+decision/haskell/src/LawSpec/HaskellNativeBinding.hs/module/LawSpec.HaskellNativeBinding/data/Bridge:
+  digest: sha256:a0b79d68896cb334
+  verdict: pending
+decision/haskell/src/LawSpec/HaskellNativeBinding.hs/module/LawSpec.HaskellNativeBinding/function/emitBindings:
+  digest: sha256:bbd27b241e0f8bc7
+  verdict: pending
+decision/haskell/src/LawSpec/HaskellNativeBinding.hs/module/LawSpec.HaskellNativeBinding/function/lastPart:
+  digest: sha256:29c8cf34e52a5497
+  verdict: pending

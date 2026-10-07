@@ -1,4 +1,4 @@
--- Application-owned Haskell ADTs cross the same checked schema as generated ADTs.
+-- | Application-owned Haskell ADTs cross the same checked schema as generated ADTs.
 module LawSpec.HaskellNativeBinding (emitBindings) where
 
 import Control.Monad (forM, unless)
@@ -17,6 +17,8 @@ import qualified LawSpec.HaskellExpr as E
 import qualified LawSpec.CoreNativeScalarEmit as Scalar
 import qualified LawSpec.Code.Doc as D
 
+-- | Bound adapters call the user's Haskell code directly, through generated
+-- conversions. ref:DEC-native-bindings-typed-identity
 emitBindings :: Bool -> BindingPlan -> Plan -> [Artifact] -> Either String [Artifact]
 emitBindings minify plan testing files = do
   unless (bindingRustCrate plan == Nothing) (Left "rustCrate is only valid for Rust bindings")
@@ -351,7 +353,7 @@ emitBindings minify plan testing files = do
         D.hardline <> D.text (unwords (C.declarationName declaration : "symbols" : values) ++ " =") <>
         D.nest 2 (D.hardline <> E.apply "P.either P.error P.id" [E.parens body]))
 
--- A bound adapter's native call, its reference resolved.
+-- | A bound adapter's native call, its reference resolved.
 data Bridge = Static NativeRef | Method Int NativeRef | Construct NativeRef
 
 callRef :: Bridge -> NativeRef
@@ -359,7 +361,7 @@ callRef (Static ref) = ref
 callRef (Method _ ref) = ref
 callRef (Construct ref) = ref
 
--- A qualified identity's last segment: example.handles::type::Jobs is Jobs.
+-- | A qualified identity's last segment: example.handles::type::Jobs is Jobs.
 lastPart :: String -> String
 lastPart s = case breakOn s of
   (_, Just rest) -> lastPart rest

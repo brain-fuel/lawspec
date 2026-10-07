@@ -1,3 +1,8 @@
+---
+id: lawspec
+kind: index
+title: LawSpec documentation
+---
 # LawSpec documentation
 
 **State the law once. Check it everywhere.**
