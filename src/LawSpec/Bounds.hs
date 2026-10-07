@@ -1,6 +1,6 @@
 -- | Constant integer bounds from refinements, so generators draw from the
 -- range a refinement allows instead of filtering a whole type's range.
-module LawSpec.Bounds (bounds, inputRange) where
+module LawSpec.Bounds (bounds, inputRange, drawRange) where
 
 import qualified LawSpec.Core as C
 import LawSpec.Scalar (Scalar(..), integerBounds, isInteger)
@@ -55,3 +55,12 @@ inputRange bits q = case C.binderType (C.quantifiedBinder q) of
     in if low <= high && low >= -(2 ^ (63 :: Int)) && high <= 2 ^ (64 :: Int) - 1 && (low >= 0 || high < 2 ^ (63 :: Int))
          then Just (low, high) else Nothing
   _ -> Nothing
+
+-- | The range a strategy's any draws an integer from: its own refinement's,
+-- when the strategy declares a refined type, or else the law input's when it
+-- draws the input's type. Nothing draws from the whole type.
+drawRange :: Int -> C.Quantifier -> C.Type -> Maybe C.Quantifier -> Maybe (Integer, Integer)
+drawRange bits input ty aim = case aim of
+  Just refined -> inputRange bits refined
+  Nothing | ty == C.binderType (C.quantifiedBinder input) -> inputRange bits input
+          | otherwise -> Nothing

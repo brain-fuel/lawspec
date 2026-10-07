@@ -277,6 +277,14 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Java ability interfaces no longer end a wrapped parameter list with a
   comma; a Rust handler parameter that is a keyword is a raw identifier; a
   Rust ability operation's result is checked against its type.
+- A law that hands a resource it takes to a definition that releases it,
+  through any chain of checked definitions or spec handler clauses, is now
+  an error, like a law that calls the release itself. The check is a
+  conservative data-flow analysis over the whole program.
+- `any` in a strategy of a refined type aims at the refinement, as a law
+  input's generator does: the refinement's constant integer bounds narrow
+  the range it draws from, instead of drawing the whole type and discarding
+  what the refinement rejects.
 
 ## [0.20.1] - 2026-10-06
 

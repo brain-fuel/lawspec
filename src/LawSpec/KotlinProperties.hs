@@ -1,7 +1,7 @@
 -- | Kotlin test documents consume checked propositions and native generation plans.
 module LawSpec.KotlinProperties (Config(..), emitTests) where
 
-import LawSpec.Bounds (inputRange)
+import LawSpec.Bounds (inputRange, drawRange)
 import qualified LawSpec.Core as C
 import Control.Monad (foldM)
 import LawSpec.Backend
@@ -167,7 +167,7 @@ emitTests Config{..} unit laws = do
         (statements ([bindingsDoc] ++ strategyChecks ++ handlerInstalls e ++ [check]))
     chooser = text "java.util.function.IntUnaryOperator { _n -> _random.random.nextInt(_n) }"
     drawDoc inp strategy d = case d of
-      C.DrawAny ty -> pure ((if ty == inputType inp then generatorWithin (inputRange machineBits inp) ty else generator ty) <> text ".sample(_random).value")
+      C.DrawAny ty aim -> pure (maybe (generator ty) (\range -> generatorWithin (Just range) ty) (drawRange machineBits inp ty aim) <> text ".sample(_random).value")
       C.DrawOneOf _ values -> pure (harness "oneOf" [chooser, call "listOf" [text "java.util.function.Supplier { " <> expr v <> text " }" | v <- values]])
       C.DrawFrequency alternatives -> do
         options <- mapM (\(w, a) -> (\doc -> harness "Weighted" [number w, text "java.util.function.Supplier { " <> doc <> text " }"]) <$> drawDoc inp strategy a) alternatives

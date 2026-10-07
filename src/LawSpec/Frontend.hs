@@ -8,6 +8,7 @@ import LawSpec.Common
 import LawSpec.Data (elaborateDataDeclarationsWithProfile)
 import LawSpec.Elaboration (coreType, elaborateExpression, elaborateResolvedWithData, equationWithData, binaryOp, elaborateDefinitionUnit, elaborateContract, abilityReference, unitOperations, performOperations)
 import LawSpec.Core.Validate (validateProgram)
+import LawSpec.Release (checkResourceReleases)
 import LawSpec.Core.Total (deferProgramPostconditions)
 import Control.Monad (forM, unless)
 import Data.List (nub, nubBy, stripPrefix)
@@ -34,6 +35,7 @@ elaborate bits units properties = do
   -- Postconditions over non-linear index arithmetic become runtime checks.
   core <- deferProgramPostconditions elaborated
   validateProgram core
+  checkResourceReleases core
   pure core
   where
     unit dataDeclarations u = do
@@ -150,15 +152,9 @@ elaborate bits units properties = do
               reset <- forM (S.resourceReset declaration) $ \(resetParameter, resetBody) ->
                 elaborateResolvedWithData dataDeclarations [declarationId u n' | (n',_) <- S.functions u] bits pid
                   (\name -> if name == resetParameter then rid else resolve name) ((resetParameter, ty) : S.functions u) resetBody
-              -- The law's cases end by releasing the resource, so the law
-              -- never releases it itself: it could use it afterwards.
-              let releasing = [callee | C.Expr { C.expressionNode = C.ExternalCall callee args } <- [release], any ((== C.Local rid) . C.expressionNode) args]
-                  callsRelease e = case C.expressionNode e of
-                    C.ExternalCall callee args | callee `elem` releasing, any ((== C.Local rid) . C.expressionNode) args -> True
-                    _ -> any callsRelease (C.children e)
-              if any callsRelease (C.propositionExpressions body ++ concatMap (concatMap C.propositionExpressions . C.exampleExpectations) examples)
-                then Left (S.name p ++ " releases " ++ n ++ ", but a law's resources are released after each case, so it could use " ++ n ++ " after its release")
-                else pure (C.Resource binder acquire release reset Nothing (S.resourceConcurrent declaration))
+              -- A law that releases its own resource is rejected over the
+              -- whole program (LawSpec.Release), once definitions are known.
+              pure (C.Resource binder acquire release reset Nothing (S.resourceConcurrent declaration))
             [] -> Left (S.name p ++ " takes " ++ n ++ " :: " ++ S.prettyType ty ++ ", but no resource is declared for " ++ S.prettyType ty ++ "; declare resource " ++ S.prettyType ty ++ " is acquire ... release ... end")
             _ -> Left ("more than one resource is declared for " ++ S.prettyType ty)
       pure C.Property
@@ -207,7 +203,7 @@ elaborate bits units properties = do
           unless (declaredType == inputType)
             (Left ("the strategy " ++ strategy ++ " produces values of " ++ S.prettyType declared ++ ", but the input " ++
               inputName ++ " is " ++ S.prettyType (S.inputType i) ++ "; a strategy may only produce values of its type"))
-          draw <- elaborateDraw dataDeclarations closed u pid strategy (S.inputId i) plain gen'
+          draw <- elaborateDraw dataDeclarations closed u pid strategy (S.inputId i) plain refined gen'
           pure (C.binderId (C.quantifiedBinder q), strategy, draw)
         pure cp { C.propertyHarness = C.LawHarness
           { C.harnessUnit = Just (S.planHarness plan), C.harnessTags = S.planTags plan
@@ -218,7 +214,17 @@ elaborate bits units properties = do
           , C.harnessGroup = S.planGroup plan } }
     -- A strategy's draw. Its values are typed by the strategy's type; a
     -- bound value, or `it` in such that, is a local of the test.
-    elaborateDraw dataDeclarations closed u pid strategy input declared gen = go (0 :: Int) [] declared gen
+    -- A refined strategy's any (the strategy's own value, of its declared
+    -- type) aims at the refinement, as a law input's generator does: its
+    -- quantifier carries the refinement, whose bounds direct generation.
+    -- The such that around it still checks every drawn value.
+    elaborateDraw dataDeclarations closed u pid strategy input declared refinement gen = do
+      aim <- forM refinement $ \p -> do
+        core <- coreType declared
+        let binder = C.Binder (local (-1) "it") "it" core
+        predicate <- term [("it", (C.binderId binder, declared))] (S.Named "Bool") p
+        pure (C.Quantifier binder [predicate] [])
+      go aim (0 :: Int) [] declared gen
       where
         functionIds = [declarationId u n | (n,_) <- S.functions u]
         local k n = C.Id (C.idText pid ++ "::input::" ++ input ++ "_" ++ n ++ show k)
@@ -227,17 +233,17 @@ elaborate bits units properties = do
             (\n -> maybe (declarationId u n) fst (lookup n locals))
             ([(n, t') | (n, (_, t')) <- locals] ++ S.functions u) (S.Annotate e ty)
           checkHarnessExpression closed u (S.harnessName <$> S.unitHarness u) ("the strategy " ++ strategy) t
-        go k locals ty g = case g of
-          S.GenAny Nothing -> C.DrawAny <$> coreType ty
+        go aim k locals ty g = case g of
+          S.GenAny Nothing -> anyOf aim ty
           S.GenAny (Just other) -> do
             unless (S.baseType other == S.baseType ty || coreType other == coreType ty)
               (Left ("the strategy " ++ strategy ++ " draws any " ++ S.prettyType other ++ " where it needs " ++ S.prettyType ty))
-            C.DrawAny <$> coreType ty
+            anyOf aim ty
           S.GenNamed n -> Left ("the strategy " ++ n ++ " is not known here")
           S.GenOneOf values -> C.DrawOneOf <$> coreType ty <*> mapM (term locals ty) values
-          S.GenFrequency alternatives -> C.DrawFrequency <$> mapM (\(w, a) -> (,) w <$> go k locals ty a) alternatives
+          S.GenFrequency alternatives -> C.DrawFrequency <$> mapM (\(w, a) -> (,) w <$> go aim k locals ty a) alternatives
           S.GenSuchThat inner p limit -> do
-            inner' <- go (k + 1) locals ty inner
+            inner' <- go aim (k + 1) locals ty inner
             core <- coreType ty
             let binder = C.Binder (local k "it") "it" core
             predicate <- term (("it", (C.binderId binder, ty)) : locals) (S.Named "Bool") p
@@ -245,9 +251,11 @@ elaborate bits units properties = do
           S.GenBind x xty from body -> do
             core <- coreType xty
             let binder = C.Binder (local k x) x core
-            from' <- go (k + 1) locals xty from
-            body' <- go (k + 1) ((x, (C.binderId binder, xty)) : locals) ty body
+            from' <- go Nothing (k + 1) locals xty from
+            body' <- go aim (k + 1) ((x, (C.binderId binder, xty)) : locals) ty body
             pure (C.DrawBind binder from' body')
+        -- Only a draw of the strategy's own type aims at its refinement.
+        anyOf aim ty = C.DrawAny <$> coreType ty <*> pure (if ty == declared then aim else Nothing)
     -- Benchmarks, sharing and order: the harness settings beyond laws.
     unitHarnessSettings dataDeclarations _ u = case S.unitHarness u of
       Nothing -> pure Nothing

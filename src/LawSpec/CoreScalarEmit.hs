@@ -638,7 +638,9 @@ scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions 
                 , invoke "_lawspecSeeded" [object [("numRuns", text (show (cases (generation e))))]] ]) ]))
     -- A strategy as one fast-check arbitrary.
     webArbitrary e plan draw = case draw of
-      C.DrawAny ty
+      C.DrawAny ty (Just aim)
+        | Just range <- inputRange bits aim -> pure (Generator.generatorDocWithin py bits usesData referenceDoc (Just range) ty)
+      C.DrawAny ty _
         | ty == inputType (domainInput plan) -> contextStrategy e plan
         | otherwise -> pure (generatorDoc ty)
       C.DrawOneOf _ values -> pure (method (invoke "fc.integer" [object [("min", text "0"), ("max", text (show (length values - 1)))]]) "map"
@@ -655,7 +657,9 @@ scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions 
         pure (method fromA "chain" [lambda [text (localName (C.binderId binder))] restA])
     -- A strategy's draw, as a Python expression.
     drawDoc e plan strategy draw = case draw of
-      C.DrawAny ty
+      C.DrawAny ty (Just aim)
+        | Just range <- inputRange bits aim -> pure (method (text "_draw") "draw" [Generator.generatorDocWithin py bits usesData referenceDoc (Just range) ty])
+      C.DrawAny ty _
         | ty == inputType (domainInput plan) -> (\s -> method (text "_draw") "draw" [s]) <$> contextStrategy e plan
         | otherwise -> pure (method (text "_draw") "draw" [generatorDoc ty])
       C.DrawOneOf _ values -> pure (invoke "_harness.draw_one_of" [text "_draw", array [lambda [] (render v) | v <- values]])

@@ -29,6 +29,7 @@ import Data.List (intercalate, find, nub, sortOn)
 import Numeric (showHex)
 import Control.Monad (forM, unless)
 import LawSpec.Search (lawDescriptors, searchable)
+import LawSpec.Bounds (inputRange)
 
 q :: String -> String
 q s = '"':concatMap escape s ++ "\"" where
@@ -365,7 +366,16 @@ emitRustWithBindings minify bindings plan@Plan{..} = either (Left . pure . (\m -
                    | t <- predicates] ++
                    [Doc.text "Ok(value)"])) <> Doc.text ")())).boxed()"])))
           drawExpr names strategy d = case d of
-            DrawAny ty
+            -- A refined strategy's any draws inside its refinement's range.
+            DrawAny ty (Just aim)
+              | Just (low, high) <- inputRange planMachineBits aim -> do
+                  let constant n = Expr ty (Constant (SInteger (typeName ty) n)) (GeneratedFrom (binderId (quantifiedBinder aim)))
+                  lowDoc <- render names (constant low)
+                  highDoc <- render names (constant high)
+                  pure (invoke "draws.any" [Doc.text "&" <> invoke "ls_gen::bounded_integer" [string (typeName ty),
+                    Expression.vector [Doc.text "(\">=\", " <> lowDoc <> Doc.text ")", Doc.text "(\"<=\", " <> highDoc <> Doc.text ")"], bits] <>
+                    Doc.text "?.ok_or_else(|| " <> string ("the strategy " ++ strategy ++ " has an empty range") <> Doc.text ".to_string())?"])
+            DrawAny ty _
               | usesData ty -> do
                   ref <- schemaType ty
                   pure (invoke "draws.any" [Doc.text "&" <> invoke "ls_gen::schema_strategy" [Doc.text "&lawspec_schema::schema()?", borrow ref, bits, Doc.text "64"] <> Doc.text "?"])

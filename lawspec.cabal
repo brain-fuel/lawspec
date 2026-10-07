@@ -389,6 +389,7 @@ library
       LawSpec.Railway
       LawSpec.Refinement
       LawSpec.Regex
+      LawSpec.Release
       LawSpec.Remote
       LawSpec.Resilience
       LawSpec.Resources

@@ -1,7 +1,7 @@
 -- | Java property scaffolding consumes checked propositions and generation plans.
 module LawSpec.JavaProperties (Config(..), emitTests) where
 
-import LawSpec.Bounds (inputRange)
+import LawSpec.Bounds (inputRange, drawRange)
 import qualified LawSpec.Core as C
 import LawSpec.Backend
 import LawSpec.Common
@@ -185,7 +185,7 @@ emitTests Config{..} unit laws = do
     -- A choice among n: a wide draw, reduced, so the weights hold.
     chooser = text "_n -> _environment.generate(Generator.integers(0, java.lang.Integer.MAX_VALUE)) % _n"
     drawDoc inp strategy d = case d of
-      C.DrawAny ty -> pure (call "_environment.<Value>generate" [if ty == inputType inp then generatorWithin (inputRange machineBits inp) ty else generator ty])
+      C.DrawAny ty aim -> pure (call "_environment.<Value>generate" [maybe (generator ty) (\range -> generatorWithin (Just range) ty) (drawRange machineBits inp ty aim)])
       C.DrawOneOf _ values -> pure (call "lawspec.testing.LawSpecHarness.oneOf" [chooser,
         call "java.util.List.<java.util.function.Supplier<Value>>of" [lambda "()" (expr v) | v <- values]])
       C.DrawFrequency alternatives -> do

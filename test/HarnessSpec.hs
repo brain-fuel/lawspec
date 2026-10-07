@@ -13,6 +13,7 @@ import LawSpec.Model (Source(..), defaultGeneration)
 import LawSpec.TestManifest (TestEntry(..), testManifest, BenchmarkEntry(..), benchmarkManifest)
 import LawSpec.Search (lawDescriptors)
 import LawSpec.TestNames (unitTestNames)
+import LawSpec.Bounds (inputRange)
 
 -- A unit, and a harness in a file of its own.
 compiled :: String -> Either [Diagnostic] C.Program
@@ -143,6 +144,13 @@ test_harnessesChangeHowLawsRunNeverWhatTheyMean = describe "harness units" $ do
       Left ds -> expectationFailure (show ds)
       Right program -> case lawHarness "discount is small" program of
         Just h | [(_, "small", C.DrawSuchThat _ _ _ 100)] <- C.harnessDraws h -> pure ()
+        other -> expectationFailure (show other)
+  it "aims a refined strategy's any at its refinement, as a law input's generator aims" $
+    case compiled (harness ["  strategy digits :: (n :: Int32 where n >= 1 && n <= 9) is any end", "  for law `reflexive`", "    use digits for x"]) of
+      Left ds -> expectationFailure (show ds)
+      Right program -> case lawHarness "reflexive" program of
+        Just h | [(_, "digits", C.DrawSuchThat (C.DrawAny _ (Just aim)) _ _ 100)] <- C.harnessDraws h ->
+          inputRange 64 aim `shouldBe` Just (1, 9)
         other -> expectationFailure (show other)
   it "runs a benchmark that uses abilities under their production handlers" $
     case compiled (harness ["  benchmark `booking` is book 100 end"]) of

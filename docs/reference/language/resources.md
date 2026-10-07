@@ -65,15 +65,20 @@ law `two stores` using Gateway for a :: Store, b :: Store is ... end
   input the law does not quantify over.
 - Each case acquires the resources in order, and releases them in the
   opposite order, whether the case passes, fails or throws.
-- A law never releases a resource itself: a law whose body calls the
-  release of a resource it takes is an error, since it could use the
-  resource after its release.
+- A law never releases a resource itself: a law that releases a resource
+  it takes, directly or through a definition it calls, is an error, since
+  it could use the resource after its release.
 - The compiler never evaluates a law with resources; the generated tests
   check it.
-- The check that a law never releases its resource looks for a call of the
-  release clause's adapter on the resource in the law's body and examples.
-  It is a syntactic check, not yet a flow type: a resource handed to a
-  definition that releases it is not caught.
+- The check that a law never releases its resource is a conservative
+  data-flow analysis over the whole program, not a flow type. A value is
+  derived from a resource when it is the resource or is computed from it (a
+  `let`, a `match` field, an element). A law is rejected when it passes a
+  derived value to the release clause's adapter or ability operation, or to
+  a checked definition or spec handler that may pass it on to one, through
+  any chain of calls. It may reject a law whose releasing call never runs.
+  Native adapters other than the release clause's own are opaque, and
+  trusted not to release the resource.
 
 ## Sharing a resource
 

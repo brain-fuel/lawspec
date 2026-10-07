@@ -346,7 +346,10 @@ data Cover = Cover { coverPercent :: Integer, coverLabel :: String, coverWhen ::
 
 -- How a strategy draws a value of its type.
 data Draw
-  = DrawAny Type                            -- the refinement-directed default
+  -- The refinement-directed default. A refined strategy's (strategy s ::
+  -- (n :: T where p)) any aims at that refinement, as a law input's
+  -- generator aims at the input's: the quantifier holds its binder and p.
+  = DrawAny Type (Maybe Quantifier)
   | DrawOneOf Type [Expr]
   | DrawFrequency [(Integer, Draw)]
   | DrawSuchThat Draw Binder Expr Integer   -- keep values with p, at most n discards

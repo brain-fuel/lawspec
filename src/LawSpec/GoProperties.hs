@@ -1,7 +1,7 @@
 -- | Go test scaffolding consumes checked propositions and generation plans.
 module LawSpec.GoProperties (Config(..), emitTests) where
 
-import LawSpec.Bounds (inputRange)
+import LawSpec.Bounds (inputRange, drawRange)
 import LawSpec.Backend
 import LawSpec.Common
 import LawSpec.TestNames (unitTestNames, lawWords)
@@ -133,7 +133,7 @@ emitTests Config{..} unit laws = do
       pure $ testFunction (fn ++ "_Property") $ call "lsRapidCheck" [text "t",number (cases (generation e)),
         closure "t *rapid.T" "" $ statements ([symbols] ++ concat draws ++ handlerInstalls e ++ resourceDocs e ++ [check])]
     drawDoc inp strategy d = case d of
-      C.DrawAny ty -> pure ((if ty == inputType inp then generatorWithin (inputRange machineBits inp) ty else generator ty) <> text ".Draw(t, \"value\")")
+      C.DrawAny ty aim -> pure (maybe (generator ty) (\range -> generatorWithin (Just range) ty) (drawRange machineBits inp ty aim) <> text ".Draw(t, \"value\")")
       C.DrawOneOf _ values -> pure (call "lsHarnessOneOf" [text "t", text "[]func() LawSpecValue{" <>
         D.joinWith (text ", ") [closure "" "LawSpecValue" (returned (expr v)) | v <- values] <> text "}"])
       C.DrawFrequency alternatives -> do

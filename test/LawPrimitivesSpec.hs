@@ -135,6 +135,22 @@ test_lawPrimitivesCheckWhatTheyReadAs = describe "law primitives" $ do
     it "reject a law that releases its own resource" $
       program (declared ++ "law `closes` for store :: Store is definition is closeStore store = unitValue and size store = 0 end end\n")
         `shouldSatisfy` failsWith "could use store after its release"
+    -- Checked definitions cannot call adapters, so a definition releases a
+    -- resource through an ability operation its release clause performs.
+    let stores = "handle Store\nability Stores is\n  openStore :: Unit -> Store\n  closeStore :: Store -> Unit\n  size :: Store -> Int32\nend\n" ++
+          "resource Store is\n acquire is openStore unitValue end\n release s is closeStore s end\nend\n"
+    it "reject a law that releases its resource through an ability operation" $
+      program (stores ++ "law `closes` for store :: Store is definition is closeStore store = unitValue end end\n")
+        `shouldSatisfy` failsWith "could use store after its release"
+    it "reject a law that hands its resource to a definition that releases it" $
+      program (stores ++ "definition finish (s :: Store) :: Unit uses Stores is closeStore s end\n" ++
+        "definition shut (s :: Store) :: Unit uses Stores is let t = s in finish t end\n" ++
+        "law `closes later` for store :: Store is definition is shut store = unitValue end end\n")
+        `shouldSatisfy` failsWith "could use store after its release"
+    it "accept a law that hands its resource to a definition that only reads it" $ do
+      compiled <- either (fail . show) pure (program (stores ++ "definition peek (s :: Store) :: Int32 uses Stores is size s end\n" ++
+        "law `reads` for store :: Store is definition is peek store = 0 end end\n"))
+      length [p | u <- C.programUnits compiled, p <- C.unitProperties u] `shouldSatisfy` (> 0)
     it "provide built-in resources" $ do
       compiled <- either (fail . show) pure (program
         "readNote :: Text -> Int32\nlaw `notes` for dir :: TemporaryDirectory, port :: FreePort is definition is readNote (directoryPath dir) = portNumber port end end\n")

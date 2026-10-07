@@ -1,7 +1,7 @@
 -- | Hspec/Hedgehog documents over checked propositions and generation plans.
 module LawSpec.HaskellProperties (Config(..), emitTests) where
 
-import LawSpec.Bounds (inputRange)
+import LawSpec.Bounds (inputRange, drawRange)
 import LawSpec.Backend
 import LawSpec.Common
 import LawSpec.TestNames (unitTestNames)
@@ -197,7 +197,7 @@ emitTests Config{..} unit laws = do
         Nothing -> testFunction (fn ++ "_property: " ++ label) [text "_passed <- _lawspecCheck $ Hedgehog.withTests " <> number (cases (generation e)) <>
           text " $ Hedgehog.property $ do" <> D.nest 2 (D.hardline <> body), text "_passed `shouldBe` True"]
     drawDoc inp strategy d = case d of
-      C.DrawAny ty -> pure (parens (if ty == inputType inp then generatorWithin (inputRange machineBits inp) ty else generator ty))
+      C.DrawAny ty aim -> pure (parens (maybe (generator ty) (\range -> generatorWithin (Just range) ty) (drawRange machineBits inp ty aim)))
       C.DrawOneOf _ values -> pure (parens (apply "Gen.element" [E.array (map expr values)]))
       C.DrawFrequency alternatives -> do
         options <- mapM (\(w, a) -> (\g -> D.delimit 2 "(" ")" [number w, g]) <$> drawDoc inp strategy a) alternatives

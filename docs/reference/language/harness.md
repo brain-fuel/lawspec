@@ -134,10 +134,16 @@ Within `frequency`, an alternative that is not a name or `any` is written in
 parentheses: `frequency 3 (one of 0, 1), 1 any`.
 
 A strategy's type may be an inline refinement. Its values are then kept
-only when they satisfy it, as `such that` keeps them (at most 100 discards):
+only when they satisfy it, as `such that` keeps them (at most 100 discards).
+`any` of the strategy's type aims at the refinement the way a law input's
+generator aims at the input's: constant integer bounds in the refinement
+(`n >= 1 && n <= 10`) narrow the range `any` draws from, so it does not
+draw the whole type and discard most of it. What the bounds do not capture
+is still checked:
 
 ```lawspec fragment
 strategy small :: (o :: Order where itemsOf o <= 3) is any end
+strategy digits :: (n :: Int32 where n >= 0 && n <= 9) is any end
 ```
 
 A strategy is used for one input of one law:
@@ -340,8 +346,3 @@ from the law; how it was discharged comes from the harness, shown after the
 obligations, with the last run's adequacy. The harness adds three statuses:
 `known-failing`, `flaky` and `skipped`. See
 [Evidence and discharge](evidence-and-discharge.md).
-
-## Not yet
-
-- `any` in a strategy of a refined type draws the base type and discards
-  what the refinement rejects; it does not yet aim at the refinement.
