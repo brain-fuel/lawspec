@@ -214,7 +214,7 @@ decision/go/runtime/lawspec_runtime.go/function/lsValuesFrom:
 decision/go/runtime/lawspec_runtime.go/group/0:
   digest: sha256:091d26ca74095778
   verdict: pending
-decision/go/runtime/lawspec_runtime.go/group/1:
+decision/go/runtime/lawspec_runtime.go/group/3:
   digest: sha256:e7d1f219f0c62ca4
   verdict: pending
 decision/go/runtime/lawspec_runtime.go/method/Abandon#2:

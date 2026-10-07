@@ -3061,6 +3061,8 @@ type lsRegexNode struct {
 	high     int // -1 when unbounded
 }
 
+// The portable dialect's character classes, and each pattern compiled once
+// per process.
 var (
 	lsRegexDigits = [][2]int{{48, 57}}
 	lsRegexWord   = [][2]int{{48, 57}, {65, 90}, {95, 95}, {97, 122}}
@@ -3436,6 +3438,8 @@ type lsSharedEntry struct {
 	release    func(LawSpecValue)
 }
 
+// The resources shared by a harness, by scope key, and the order they were
+// first acquired in, so they are released last first when the process ends.
 var (
 	lsSharedGuard sync.Mutex
 	lsShared      = map[string]*lsSharedEntry{}
@@ -6846,8 +6850,6 @@ func LawSpecWireDecode(values lawSpecValues, d any, data []byte) (LawSpecValue, 
 	return v, nil
 }
 
-// LawSpecWireEncoded is count values generated from one seed, encoded, in
-// hexadecimal.
 // LawSpec's own search over a law's inputs (see LawSpec.Search). The
 // failure database keeps a failing case's inputs in the wire encoding, under
 // LAWSPEC_FAILURES/inputs, and they are replayed before the law's next
@@ -7093,6 +7095,8 @@ func lsSearchNumber(v LawSpecValue) float64 {
 	}
 }
 
+// LawSpecWireEncoded is count values generated from one seed, encoded, in
+// hexadecimal.
 func LawSpecWireEncoded(text string, seed uint64, size int64, count int64) []string {
 	values, d := lsValuesFrom(text)
 	random := LawSpecSplitMix64{seed}

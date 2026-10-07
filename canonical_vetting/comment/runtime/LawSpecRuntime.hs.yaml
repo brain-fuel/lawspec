@@ -370,9 +370,6 @@ decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/function/newRes
 decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/function/newSupervisor:
   digest: sha256:7ad50b6bb9c154f3
   verdict: pending
-decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/function/newToken:
-  digest: sha256:0a325ea387d7625a
-  verdict: pending
 decision/haskell/runtime/LawSpecRuntime.hs/module/LawSpecRuntime/function/nodeMailbox:
   digest: sha256:a385d840804a1ac9
   verdict: pending

@@ -285,6 +285,12 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   input's generator does: the refinement's constant integer bounds narrow
   the range it draws from, instead of drawing the whole type and discarding
   what the refinement rejects.
+- A size-indexed collection input (`SizedStack 3 Int8`, `SizedQueue n a`)
+  is generated from its size, as a user family's index directs generation,
+  instead of drawing a collection of any size and filtering for the size.
+  The family's measure is recognised under the name an importing unit calls
+  it by. Python's Hypothesis no longer fails the `collections` suite now and
+  then with the `filter_too_much` health check.
 
 ## [0.20.1] - 2026-10-06
 

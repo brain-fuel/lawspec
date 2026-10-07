@@ -13,9 +13,6 @@ decision/haskell/src/LawSpec/Imports.hs/module/LawSpec.Imports/function/closure:
 decision/haskell/src/LawSpec/Imports.hs/module/LawSpec.Imports/function/importScope:
   digest: sha256:b968ab79492c4fff
   verdict: pending
-decision/haskell/src/LawSpec/Imports.hs/module/LawSpec.Imports/function/importedDefinitionName:
-  digest: sha256:1fb5a0d046f91927
-  verdict: pending
 decision/haskell/src/LawSpec/Imports.hs/module/LawSpec.Imports/function/portableUnit:
   digest: sha256:38b14ea2db7b14b8
   verdict: pending

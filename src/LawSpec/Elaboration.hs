@@ -328,8 +328,11 @@ elaborateResolvedWithData dataTypes declarations bits origin resolve env source 
           let table = zip (C.dataParameters declaration) [a | C.TypeArgument a <- arguments]
               instantiate ty = case ty of
                 C.TypeVariable v -> maybe ty id (lookup v table)
-                C.Constructor name args -> C.Constructor name [case a of C.TypeArgument inner -> C.TypeArgument (instantiate inner); other -> other | a <- args]
+                C.Constructor name args -> C.Constructor name (map instantiateArgument args)
                 C.Arrow a b -> C.Arrow (instantiate a) (instantiate b)
+              instantiateArgument a = case a of
+                C.TypeArgument inner -> C.TypeArgument (instantiate inner)
+                other -> other
               bool b = node (C.scalarType "Bool") (C.Constant (SBool b))
           cases <- forM (zip [0 :: Int ..] (C.dataConstructors declaration)) $ \(k, c) -> do
             let binders = [C.Binder (C.Id (C.idText origin ++ "::match::message" ++ show k ++ "::" ++ show i))

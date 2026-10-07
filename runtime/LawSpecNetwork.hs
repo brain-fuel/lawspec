@@ -375,9 +375,9 @@ data SecureState = SecureState
   { secureSessions :: Map.Map ByteString SealedSession
   , secureOutbound :: Map.Map String SealedSession
   , securePending :: Map.Map String Handshake
-  -- | The welcome sent for each session, to send again for a repeated hello.
+  -- The welcome sent for each session, to send again for a repeated hello.
   , secureWelcomes :: Map.Map ByteString (String, ByteString)
-  -- | The identity first seen at each address: a later, different one is
+  -- The identity first seen at each address: a later, different one is
   -- refused (trust on first use, unless trusted names them).
   , secureKnown :: Map.Map String String }
 

@@ -2,6 +2,7 @@
 module LawSpec.Common where
 import Data.Aeson
 import GHC.Generics (Generic)
+import Data.Char (toUpper)
 
 -- | One set of generation limits for every target, mapped onto each framework's
 -- own settings, so a law is tried as hard on one target as on another.
@@ -60,3 +61,18 @@ instance ToJSON Span
 -- | Where only a position is known, it is a span of no width.
 pointSpan :: Location -> Span
 pointSpan p = Span p p
+
+-- | An imported definition's name in the importing unit, e.g. shop.money's add
+-- is shopMoneyAdd. Checked definitions are emitted as target code, so the name
+-- must be an identifier in every target. Later stages recognise an imported
+-- definition, such as a family's index measure, by this name too.
+importedDefinitionName :: String -> String -> String
+importedDefinitionName unit name = case pieces unit of
+  first : rest -> first ++ concatMap capital rest ++ capital name
+  [] -> name
+  where
+    pieces s = case break (== '.') s of
+      (a, _ : rest) -> a : pieces rest
+      (a, []) -> [a]
+    capital (c : cs) = toUpper c : cs
+    capital [] = []

@@ -12,6 +12,7 @@ import LawSpec.Frontend (compileCore)
 import LawSpec.Discharge (dischargeEvidence)
 import LawSpec.Model (Source(..), defaultGeneration)
 import LawSpec.Scalar (Scalar(..), textScalar)
+import LawSpec.Testing (planTesting, plannedUnits, plannedProperties, plannedProperty, generatorRequirements, generatorIndex, generatorPredicates)
 
 source :: [String] -> Source
 source = Source "collections.lawspec" . unlines . ("unit example.collections" :)
@@ -48,6 +49,16 @@ int = ScalarValue . SInteger "Int32"
 -- ref:DEC-portable-total-order-collections ref:REQ-portable-collections
 test_collectionsAreTypedEvaluatedAndOrderedPortably :: Spec
 test_collectionsAreTypedEvaluatedAndOrderedPortably = describe "collections" $ do
+  describe "generation" $
+    -- A sized stack drawn by filtering a stack of any size for size 3 is
+    -- rejected most of the time (Hypothesis's filter_too_much health check),
+    -- so its size must direct generation, as a user family's index does.
+    it "draws a size-indexed stack index-directed, never by filtering for its size" $
+      case compileCore 64 defaultGeneration [source ["law `sized` is definition is `for all` (s :: SizedStack 3 Int8) . prelude.sizedStackItems s = prelude.sizedStackItems s end end"]] >>= planTesting of
+        Left ds -> expectationFailure (show ds)
+        Right plan -> [ (generatorIndex r, generatorPredicates r) | u <- plannedUnits plan, pp <- plannedProperties u
+                      , C.propertyName (plannedProperty pp) == "sized", r <- generatorRequirements pp ]
+          `shouldSatisfy` (\rs -> not (null rs) && all ((/= Nothing) . fst) rs)
   describe "the built-in unit" $ do
     it "is added only for the collections a source uses" $ do
       usedCollections [sourceText ["f :: Int32 -> Set Int32"]] `shouldBe` ["Set", "Ordering"]

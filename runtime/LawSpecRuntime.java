@@ -2290,7 +2290,6 @@ public final class LawSpecRuntime {
     return false;
   }
 
-  /** A value's canonical text, the same on every target. */
   /**
    * Where a structured actual value first differs from the expected one, by
    * the portable rendering: "" when they agree or neither has parts.
@@ -2799,6 +2798,7 @@ public final class LawSpecRuntime {
     }
   }
 
+  /** A value's canonical text, the same on every target. */
   public static String render(Value v) {
     Object data = v.data();
     if (data instanceof Boolean b) return b ? "true" : "false";
@@ -5892,7 +5892,6 @@ public final class LawSpecRuntime {
     }
   }
 
-  /** The value's canonical bytes. */
   // LawSpec's own search over a law's inputs (see LawSpec.Search). The
   // failure database keeps a failing case's inputs in the wire encoding,
   // under LAWSPEC_FAILURES/inputs, and they are replayed before the law's
@@ -6052,6 +6051,7 @@ public final class LawSpecRuntime {
     try { return Double.parseDouble(String.valueOf(v.data())); } catch (NumberFormatException e) { return Double.NaN; }
   }
 
+  /** The value's canonical bytes. */
   public static byte[] wireEncode(Values values, Object descriptor, Value v) {
     var out = new java.io.ByteArrayOutputStream();
     wirePut(values, descriptor, v, out);

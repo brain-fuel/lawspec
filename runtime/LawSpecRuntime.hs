@@ -1012,8 +1012,6 @@ complexity v = let r = either error id (exactValue v)
 bool :: Bool -> Scalar
 bool = SBool
 
--- | Standalone contracts must observe their result even when
--- the predicate is true.
 -- | Where a structured actual value first differs from the expected one, by
 -- the portable rendering: "" when they agree or neither has parts.
 difference :: Scalar -> Scalar -> String
@@ -1341,6 +1339,8 @@ releaseBuiltin kind resource = case (kind, resource) of
   (_, SData _ [SSequence _ value]) -> releaseResource kind (map chr value)
   _ -> throwIO (ErrorCall ("not a " ++ kind ++ " resource"))
 
+-- | Standalone contracts must observe their result even when
+-- the predicate is true.
 forceScalar :: Scalar -> ()
 forceScalar (SInteger _ n) = n `seq` ()
 forceScalar (SBool b) = b `seq` ()
@@ -1799,7 +1799,7 @@ data NativeAsync = NativeAsync
   { asyncPause :: IO ()
   , asyncSpawn :: forall a. IO a -> IO (Process a)
   , asyncWait :: forall a. Process a -> IO a
-  -- | Every action's result, in order; all finish before the first
+  -- Every action's result, in order; all finish before the first
   -- exception (in order) is thrown.
   , asyncAll :: forall a. [IO a] -> IO [a] }
 
@@ -4711,7 +4711,7 @@ data MemoryNetwork = MemoryNetwork
   , networkDuplicate :: Double
   -- The longest delay, in seconds.
   , networkDelay :: Double
-  -- | Every record sent, newest first, when the network records them.
+  -- Every record sent, newest first, when the network records them.
   , networkRecording :: Maybe (IORef [ByteString])
   }
 
@@ -4868,7 +4868,7 @@ data Node = Node
   , nodeSeen :: IORef [((String, Integer), Maybe ByteString)]
   , nodeIds :: IORef Integer
   , nodeClosed :: IORef Bool
-  -- | Nothing on the insecure transport made for tests.
+  -- Nothing on the insecure transport made for tests.
   , nodeSecure :: Maybe NodeLayer
   }
 

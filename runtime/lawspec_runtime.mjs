@@ -1826,15 +1826,16 @@ export class NativeAsync {
 
 export const ASYNC = new NativeAsync();
 
-// An all group's step results, in declaration order. The steps run side by
-// side as tasks of the Async ability's default handler; every step settles
-// before a step's error (the first, in declaration order) is thrown.
+/**
+ * An all group's step results, in declaration order. The steps run side by
+ * side as tasks of the Async ability's default handler; every step settles
+ * before a step's error (the first, in declaration order) is thrown.
+ */
 export function concurrently(steps) {
   return ASYNC.all(steps);
 }
 
 /** runWorkflow for an asynchronous workflow; undos may be asynchronous. */
-
 export async function runWorkflowAsync(symbols, attempt) {
   const runtime = workflowRuntime(symbols);
   const frame = [];

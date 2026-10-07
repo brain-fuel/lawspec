@@ -560,11 +560,22 @@ indexEquations declarations definitions measure = do
   definition <- lookup measure [(declarationId (definitionDeclaration d), d) | d <- definitions]
   let name = templateName (declarationName (definitionDeclaration definition))
   root <- case [d | d <- declarations, Just index <- [dataIndex d], [indexName] <- [familyIndexNames index]
-                  , indexName ++ "Of" ++ dataName d == name] of
+                  , name `elem` measureNames d indexName] of
     d : _ -> Just d
     [] -> Nothing
   familyEquations declarations root
   where
+    -- A family's measure is <index>Of<Family>; a unit that imports the
+    -- family (as every unit imports the built-in collections' SizedStack)
+    -- calls it by its imported name, lawspecCollectionsNOfSizedStack.
+    measureNames d indexName =
+      let base = indexName ++ "Of" ++ dataName d
+          owner = ownerUnit (idText (dataId d))
+      in base : [importedDefinitionName owner base | not (null owner)]
+    ownerUnit text = case text of
+      ':' : ':' : _ -> ""
+      c : rest -> c : ownerUnit rest
+      [] -> ""
     -- Specialized instances are named lawspec_<template>_<hash>.
     templateName n = case stripPrefix "lawspec_" n of
       Just rest | '_' `elem` rest -> reverse (drop 1 (dropWhile (/= '_') (reverse rest)))

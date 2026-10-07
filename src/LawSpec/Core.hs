@@ -231,7 +231,10 @@ operationSignature ability (AbilityRef _ arguments) name = do
       go t = case t of
         TypeVariable v -> maybe t id (lookup v table)
         Arrow a b -> Arrow (go a) (go b)
-        Constructor n args -> Constructor n [case a of TypeArgument x -> TypeArgument (go x); _ -> a | a <- args]
+        Constructor n args -> Constructor n (map argument args)
+      argument a = case a of
+        TypeArgument x -> TypeArgument (go x)
+        _ -> a
   pure (functionType (go ty))
 
 -- The identity an evaluator or emitter calls an operation by.

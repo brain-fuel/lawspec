@@ -322,14 +322,14 @@ mapProperty f p = p
     proposition (C.Implication g body) = C.Implication (f g) (proposition body)
     proposition (C.Conjunction ps) = C.Conjunction (map proposition ps)
 
--- | Quoted law names may contain separators. Escape them before composing IDs so
--- a display name cannot masquerade as a binder segment in target accessors.
--- The last part of a qualified name: lawspec.resources::type::FreePort gives FreePort.
+-- | The last part of a qualified name: lawspec.resources::type::FreePort gives FreePort.
 baseName :: String -> String
 baseName name = case break (== ':') name of
   (_, ':' : ':' : rest) -> baseName rest
   (n, _) -> n
 
+-- | Quoted law names may contain separators. Escape them before composing IDs so
+-- a display name cannot masquerade as a binder segment in target accessors.
 escapeIdentity :: String -> String
 escapeIdentity = concatMap (\c -> case c of ':' -> "%3A"; '%' -> "%25"; _ -> [c])
 

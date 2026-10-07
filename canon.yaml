@@ -18,6 +18,7 @@ ignore:
   - tools/*.mjs
   - editors/vscode/test/grammar.test.mjs
   - src/LawSpec/RuntimeSources.hs
+  - runtime/defaults/
 languages:
   folio:
     extensions: [.md]

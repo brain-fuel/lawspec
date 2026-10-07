@@ -20,7 +20,7 @@ import LawSpec.Resilience (resilienceUnit, resilienceDefinitions)
 import LawSpec.Builtins (instantDefinitions)
 import Control.Monad (forM, forM_, unless, when)
 import Control.Monad.State.Strict (State, execState, modify)
-import Data.Char (toUpper)
+import LawSpec.Common (importedDefinitionName)
 import Data.Functor.Identity (Identity(..))
 import Data.List (intercalate, isSuffixOf, nub, stripPrefix)
 import qualified Data.Map.Strict as M
@@ -35,16 +35,6 @@ data Names m = Names
 
 data Kind = TypeName | ConstructorName | RefinementName | ValueName | LawName
   deriving (Eq, Ord, Show)
-
--- | An imported definition's name in the importing unit, e.g. shop.money's add
--- is shopMoneyAdd. Checked definitions are emitted as target code, so the name
--- must be an identifier in every target.
-importedDefinitionName :: String -> String -> String
-importedDefinitionName unit name = case segments unit of
-  first : rest -> first ++ concatMap capital rest ++ capital name
-  [] -> name
-  where capital (c : cs) = toUpper c : cs
-        capital [] = []
 
 stripSuffix :: String -> String -> Maybe String
 stripSuffix suffix s
