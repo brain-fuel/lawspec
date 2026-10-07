@@ -11,8 +11,9 @@
 --   e takes at most d        e is evaluated between two readings of the
 --                            clock, and the time between them is at most d
 --
--- A check is `if P then ... else ...`, which evaluates only the branch it
--- selects, so an eventually stops at the first check that holds. Under
+-- Checks are joined with || and &&, which evaluate their right side only
+-- when the left does not decide, so an eventually stops at the first check
+-- that holds. Under
 -- `using virtual clock` each sleep moves the clock at once, so the checks are
 -- deterministic. A budget is measured on the real clock only: the law that
 -- holds one runs under Clock's production handler (LawSpec.Abilities), and
@@ -32,22 +33,19 @@ data Temporal = Eventually | Always deriving (Eq, Show)
 temporalPolls :: Integer
 temporalPolls = 20
 
--- A temporal proposition over a span of micros microseconds.
+-- A temporal proposition over a span of micros microseconds: a flat chain
+-- of short-circuit checks, P || (sleep; P) || ... for eventually and
+-- P && (sleep; P) && ... for always, so the code stays shallow on every
+-- target and stops at the first check that decides.
 temporalExpr :: Temporal -> Integer -> Expr -> Expr
 temporalExpr kind micros p
   | micros <= 0 = p
-  | otherwise = go temporalPolls
+  | otherwise = foldl join p (replicate (fromInteger polls) later)
   where
     step = max 1 (micros `div` temporalPolls)
     polls = min temporalPolls (micros `div` step)
-    go k
-      | k <= 0 || temporalPolls - k >= polls = p
-      | otherwise =
-          let later = sequenced (Apply (Var "sleep") (duration step)) (go (k - 1))
-          in case kind of
-               Eventually -> select p (BoolLit True) later
-               Always -> select p later (BoolLit False)
-    select c a b = foldl Apply (Var "prelude.select") [c, a, b]
+    later = sequenced (Apply (Var "sleep") (duration step)) p
+    join a b = Binary (case kind of Eventually -> "||"; Always -> "&&") a b
 
 -- e takes at most micros microseconds, on the clock.
 budgetExpr :: Expr -> Integer -> Expr
