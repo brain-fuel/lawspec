@@ -59,7 +59,7 @@ test('evidence classifies laws, adapters and the unused adapter', async t => {
   const text = await lawspec(root, 'evidence');
   for (const heading of ['PROVED (1)', 'EXHAUSTIVELY CHECKED (1)', 'PROPERTY TESTED (1)', 'ASSUMED / EXTERNAL (3)'])
     assert.ok(text.includes(heading), heading);
-  assert.match(await lawspec(root, 'check'), /Evidence: 1 proved, 1 exhaustively checked, 1 property tested, 0 runtime checked, 0 default handler, 3 assumed \/ external\./);
+  assert.match(await lawspec(root, 'check'), /Evidence: 1 proved, 1 exhaustively checked, 1 property tested, 0 measured, 0 runtime checked, 0 default handler, 3 assumed \/ external\./);
 });
 
 test('evidence filters by unit or declaration', async t => {

@@ -2,6 +2,7 @@
 // in-memory, TCP and HTTP transports.
 import * as data from '.././lawspec_data.mjs';
 import * as ls from '../lawspec_runtime.mjs';
+import * as secure from '../lawspec_network.mjs';
 
 export function encoded(value0, value1, value2, value3) {
   return ls.wireEncoded(value0, value1, value2, value3);
@@ -74,7 +75,10 @@ export async function remoteLedger(value0) {
     const sender = LedgerMailbox.connect(here, there.address + '/ledger');
     await sender.send(BigInt(value0));
     await sender.send(BigInt(value0));
-    return (await ledger.receive(5000)) + (await ledger.receive(5000));
+    const total = (await ledger.receive(5000)) + (await ledger.receive(5000));
+    // receive within: nothing more comes, so it gives null in time.
+    if ((await ledger.receiveWithin(20)) !== null) return -1n;
+    return total;
   } finally {
     await here.close();
     await there.close();
@@ -131,4 +135,43 @@ export async function remoteHandoffOnward(value0) {
   } finally {
     for (const node of [a, b, c, d]) await node.close();
   }
+}
+
+// Whether needle occurs in haystack.
+function contains(haystack, needle) {
+  outer: for (let i = 0; i + needle.length <= haystack.length; i++) {
+    for (let j = 0; j < needle.length; j++) if (haystack[i + j] !== needle[j]) continue outer;
+    return true;
+  }
+  return false;
+}
+
+export async function sealedOnTheWire(value0) {
+  // A definition evaluated on another node: its request names the
+  // definition's content hash, which shows on the wire only in the clear.
+  const remote = await import('../lawspec_remote.mjs');
+  const name = 'example.distribution::shifted';
+  const digest = new TextEncoder().encode(remote.digest(name));
+  const seen = new Map();
+  for (const insecure of [false, true]) {
+    const network = new ls.MemoryNetwork({seed: BigInt(value0) & 0xFFFFn, record: true});
+    const make = (n) => (insecure ? network.insecureTransportForTests(n) : network.transport(n));
+    const here = new ls.Node(make('here')), there = new ls.Node(make('there'));
+    try {
+      remote.serve(there);
+      if ((await remote.evaluate(here, there.address, name, BigInt(value0))) !== BigInt(value0) + 1000n) return false;
+      seen.set(insecure, network.recorded.some((frame) => contains(frame, digest)));
+    } finally {
+      await here.close();
+      await there.close();
+    }
+  }
+  return seen.get(false) === false && seen.get(true) === true;
+}
+
+export function handshakeAgrees(value0) {
+  const fields = value0.split(' ');
+  if (fields.length !== 13) return false;
+  const [a, b, c, d, e, f, g, h, i, j, k, l, m] = fields;
+  return secure.handshakeVector(a, b, c, d, e, f, g, h, i, j, k, l, m);
 }

@@ -15,13 +15,14 @@ import LawSpec.Core
 import LawSpec.Core.Machine (Machine(..), Supervisor(..), Consistency(..))
 import qualified LawSpec.Core.Program as P
 
--- | Strongest first. DefaultHandler is a built-in ability's default
--- handler: reviewed runtime code whose ability's laws are property-tested.
--- The last three come from the harness plane: a law its harness skips,
--- or marks as known to fail, is still an obligation; flaky is a run's outcome
--- (a test that failed, then passed on a retry), which lawspec evidence
--- reads from the last run.
-data Status = Proved | ExhaustivelyChecked | PropertyTested | RuntimeChecked | DefaultHandler | Assumed
+-- | Strongest first. Measured is a budget's outcome: a measurement taken
+-- when the tests ran, weaker than a property test. DefaultHandler is a
+-- built-in ability's default handler: reviewed runtime code whose ability's
+-- laws are property-tested. The last three come from the harness plane: a law
+-- its harness skips, or marks as known to fail, is still an obligation; flaky
+-- is a run's outcome (a test that failed, then passed on a retry), which
+-- lawspec evidence reads from the last run.
+data Status = Proved | ExhaustivelyChecked | PropertyTested | Measured | RuntimeChecked | DefaultHandler | Assumed
   | KnownFailing | Flaky | Skipped
   deriving (Eq, Ord, Show, Enum, Bounded)
 
@@ -35,6 +36,8 @@ statusName :: Status -> String
 statusName Proved = "proved"
 statusName ExhaustivelyChecked = "exhaustively-checked"
 statusName PropertyTested = "property-tested"
+-- A performance budget: measured on the real clock, never proved.
+statusName Measured = "measured"
 statusName RuntimeChecked = "runtime-checked"
 statusName DefaultHandler = "default-handler"
 statusName Assumed = "assumed"

@@ -42,6 +42,32 @@ test_asyncAdaptersAreMarkedReportedAndBoundToEachTargetsTask = describe "async a
         declarations = [(C.declarationName d, C.declarationAsync d) | u <- C.programUnits compiled, d <- C.unitDeclarations u]
     lookup "price" declarations `shouldBe` Just True
     lookup "quote" declarations `shouldBe` Just False
+  describe "as the Async ability" $ do
+    let sugared = unlines
+          [ "unit example.orders"
+          , "price :: Text -> Int32 uses Async"
+          , "quote :: Text -> Int32"
+          , "law `prices agree` is definition is `for all` (sku :: Text) . price sku = quote sku end end" ]
+    it "reads `uses Async` on a signature as `async`" $ do
+      let shape source = [ [(C.declarationName d, C.declarationType d, C.declarationAsync d, C.declarationUses d) | d <- C.unitDeclarations u]
+                         | Right compiled <- [program source], u <- C.programUnits compiled ]
+      shape sugared `shouldBe` shape orders
+    it "generates the same code on every target" $
+      forM_ ["python", "javascript", "typescript", "go", "java", "kotlin", "haskell", "rust"] $ \target ->
+        (program sugared >>= planTesting >>= emitPlan target) `shouldBe` (program orders >>= planTesting >>= emitPlan target)
+    it "keeps the other abilities a signature uses" $ do
+      let Right compiled = program (unlines
+            [ "unit example.pay"
+            , "ability Gateway is fee :: Int32 end"
+            , "charge :: Int32 -> Bool uses Async, Gateway" ])
+      [(C.declarationAsync d, map C.abilityKey (C.declarationUses d)) | u <- C.programUnits compiled, d <- C.unitDeclarations u, C.declarationName d == "charge"]
+        `shouldBe` [(True, ["example.pay::ability::Gateway"])]
+    it "leaves a unit's own ability called Async alone" $ do
+      let Right compiled = program (unlines
+            [ "unit example.own"
+            , "ability Async is tick :: Int32 end"
+            , "ticks :: Int32 -> Int32 uses Async" ])
+      [C.declarationAsync d | u <- C.programUnits compiled, d <- C.unitDeclarations u, C.declarationName d == "ticks"] `shouldBe` [False]
   it "keeps async usable as a name" $
     program (unlines ["unit example.names", "async :: Int32 -> Int32"]) `shouldSatisfy` either (const False) (const True)
   it "reports an async adapter's evidence as asynchronous" $ do

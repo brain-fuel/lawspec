@@ -219,6 +219,7 @@ export type DischargeStatus =
     'proved' |
     'exhaustively-checked' |
     'property-tested' |
+    'measured' |
     'runtime-checked' |
     'default-handler' |
     'assumed';

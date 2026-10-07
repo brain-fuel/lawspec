@@ -3,7 +3,9 @@
 package distribution
 
 import (
+	"bytes"
 	"math/big"
+	"strings"
 	"time"
 )
 
@@ -146,6 +148,10 @@ func remoteLedger(value0 int32) int64 {
 	if err != nil {
 		panic(err)
 	}
+	// Receive within: nothing more comes, so it gives none in time.
+	if _, ok, err := ledger.ReceiveWithin(20 * time.Millisecond); err != nil || ok {
+		return -1
+	}
 	return a + b
 }
 
@@ -227,4 +233,57 @@ func remoteHandoffOnward(value0 int32) int64 {
 	reply.Send(2 * int64(x))
 	result, _ := second.Receive()
 	return result
+}
+
+// SealedOnTheWire evaluates shifted on another node, first over the secure
+// network and then over the transport made for tests only: the request
+// names the definition's content hash, which shows on the wire only in the
+// clear.
+func SealedOnTheWire(value0 int32) LawSpecTask[bool] {
+	return LawSpecGo(func() bool { return sealedOnTheWire(value0) })
+}
+
+func sealedOnTheWire(value0 int32) bool {
+	name := "example.distribution::shifted"
+	digest := []byte(LawSpecDefinitionDigest(name))
+	seen := map[bool]bool{}
+	for _, insecure := range []bool{false, true} {
+		network := NewLawSpecMemoryNetwork(uint64(value0)&0xFFFF, 0, 0, 0).Record()
+		transport := network.Transport
+		if insecure {
+			transport = network.InsecureTransportForTests
+		}
+		here, there := NewLawSpecNode(transport("here")), NewLawSpecNode(transport("there"))
+		shifted := func() bool {
+			defer here.Close()
+			defer there.Close()
+			if _, err := LawSpecServeDefinitions(there); err != nil {
+				panic(err)
+			}
+			result, err := LawSpecEvaluateRemote(here, there.Address(), name, 5*time.Second, lsFromNative("Int32", value0, 64))
+			if err != nil {
+				panic(err)
+			}
+			return result.Data.(*big.Int).Int64() == int64(value0)+1000
+		}()
+		if !shifted {
+			return false
+		}
+		for _, record := range network.Recorded() {
+			if bytes.Contains(record, digest) {
+				seen[insecure] = true
+			}
+		}
+	}
+	return !seen[false] && seen[true]
+}
+
+// HandshakeAgrees checks the handshake vector: its 13 fields, separated by
+// single spaces.
+func HandshakeAgrees(value0 string) bool {
+	f := strings.Split(value0, " ")
+	if len(f) != 13 {
+		return false
+	}
+	return LawSpecHandshakeVector(f[0], f[1], f[2], f[3], f[4], f[5], f[6], f[7], f[8], f[9], f[10], f[11], f[12])
 }

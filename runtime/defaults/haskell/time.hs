@@ -11,6 +11,7 @@ import qualified Data.Time.Clock.POSIX as POSIX
 import qualified GHC.Clock as Clock
 import qualified System.IO.Unsafe as Unsafe
 import qualified LawSpecData as Data
+import qualified LawSpecRuntime as LS
 import qualified LawSpecAbilities.Lawspec.Time as Abilities
 
 -- The wall clock and the monotonic clock, read once at start.
@@ -28,14 +29,24 @@ nowMicros = do
   let (wall, base) = start
   pure (wall + P.toInteger monotonic `P.div` 1000 - base)
 
+-- | Lets the runtime read any Clock handler (this one, the virtual clock, a
+-- recording): workflows and mailboxes then wait on the clock a law installs.
+-- The generated tests of laws that install a Clock handler call it. Only
+-- this module's handler is real time, and its installation says so
+-- (LS.installedRealClock); every other handler is virtual.
+registerClock :: P.IO ()
+registerClock = LS.registerClockAbility
+  (\handler -> (\(@@Instant@@ micros) -> P.toInteger micros) P.<$> Abilities.now handler)
+  (\handler micros -> Abilities.sleep handler (@@Duration@@ (P.fromInteger micros)))
+
 -- | The system clock: now never goes back; sleep blocks this thread.
 clockHandler :: P.IO Abilities.Clock
 clockHandler = P.pure Abilities.Clock
-  { Abilities.now = (\micros -> @@Instant@@ (P.fromInteger micros)) P.<$> nowMicros
-  , Abilities.sleep = \(@@Duration@@ micros) -> do
-      target <- (+ micros) P.<$> nowMicros
-      let wait = do
-            left <- (target -) P.<$> nowMicros
-            if left > 0 then Concurrent.threadDelay (P.fromInteger (P.min left 1000000000)) >> wait else pure ()
-      wait
-  }
+    { Abilities.now = (\micros -> @@Instant@@ (P.fromInteger micros)) P.<$> nowMicros
+    , Abilities.sleep = \(@@Duration@@ micros) -> do
+        target <- (+ micros) P.<$> nowMicros
+        let wait = do
+              left <- (target -) P.<$> nowMicros
+              if left > 0 then Concurrent.threadDelay (P.fromInteger (P.min left 1000000000)) >> wait else pure ()
+        wait
+    }

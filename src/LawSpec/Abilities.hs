@@ -37,6 +37,7 @@ import Data.List (intercalate, isInfixOf, nub, sortOn)
 import qualified Data.Map.Strict as M
 import LawSpec.Model
 import LawSpec.Collections (collectionsUnit)
+import LawSpec.Temporal (budgetStart)
 import LawSpec.Builtins (isSeededUse, seededHandler, seededHandlerName, randomAbility, secureRandomAbility)
 
 type Failure = (Maybe Location, String)
@@ -308,7 +309,8 @@ elaborateUnit u = do
             (Left (where', "the law " ++ lawName l ++ " names two handlers for " ++ prettyType n))
           unless (any (matches r) row)
             (Left (where', "the law " ++ lawName l ++ " names a handler for " ++ prettyType n ++ ", but nothing it calls uses " ++ prettyType n))
-        let candidates inst = case [r | (_, r) <- filter (`matches` inst) requested] of
+        budgetClock where' l requested
+        let candidates inst = measuredOn l inst $ case [r | (_, r) <- filter (`matches` inst) requested] of
               Left c : _ -> [c]
               Right recorded : _ -> (if recorded then map ChooseRecording else id) (defaults inst)
               [] -> defaults inst
@@ -610,3 +612,19 @@ secureRandomChecks u = forM_ (handlerDeclarations u) $ \h ->
         any (\a -> abilityName a == secureRandomAbility && not (null (abilityOrigin a))) (abilities u))
     (Left (Just (spanStart (handlerSpan h)), "SecureRandom has no spec handlers: a handler written in LawSpec is predictable. " ++
       "Use Random, and seeded random n, where reproducible draws will do"))
+
+-- A performance budget is measured on the real clock (LawSpec.Temporal): a
+-- law that holds one runs under Clock's production handler only, and may
+-- not name another clock.
+hasBudget :: Law -> Bool
+hasBudget l = ("\"" ++ budgetStart ++ "\"") `isInfixOf` show (definition l, examples l)
+
+measuredOn :: Law -> Type -> [HandlerChoice] -> [HandlerChoice]
+measuredOn l inst choices
+  | hasBudget l && abilityTypeName inst == "Clock" = [ChooseProduction]
+  | otherwise = choices
+
+budgetClock :: Maybe Location -> Law -> [(Type, Either HandlerChoice Bool)] -> Either Failure ()
+budgetClock where' l requested =
+  when (hasBudget l && any (\(n, r) -> abilityTypeName n == "Clock" && either (const True) id r) requested)
+    (Left (where', "the law `" ++ lawName l ++ "` has a budget (takes at most), which is measured on the real clock; it cannot name another clock"))

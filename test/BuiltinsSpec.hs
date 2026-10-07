@@ -1,4 +1,5 @@
-module BuiltinsSpec (spec) where
+-- | Built-in abilities: importing, default handlers, seeded randomness and cryptography.
+module BuiltinsSpec (test_builtInAbilitiesHaveLawfulDefaultHandlers) where
 
 import Control.Monad (forM_)
 import Data.Either (isRight)
@@ -31,8 +32,10 @@ files target text = program text >>= planTesting >>= emitPlan target
 targets :: [String]
 targets = ["python", "javascript", "typescript", "go", "java", "kotlin", "haskell", "rust"]
 
-spec :: Spec
-spec = describe "built-in abilities" $ do
+-- | Built-in abilities come with default handlers on every target, so their
+-- laws must hold for those handlers and their evidence must say so. ref:REQ-builtin-abilities
+test_builtInAbilitiesHaveLawfulDefaultHandlers :: Spec
+test_builtInAbilitiesHaveLawfulDefaultHandlers = describe "built-in abilities" $ do
   describe "importing" $ do
     it "adds a built-in unit to a program that imports it" $ do
       let Right compiled = program (source ["import lawspec.crypto", "fingerprint :: Bytes -> Bytes uses Hash"])

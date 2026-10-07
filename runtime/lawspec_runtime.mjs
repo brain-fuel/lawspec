@@ -1257,6 +1257,7 @@ const WORKFLOW = '\0lawspec.workflow';
 const MASK64 = (1n << 64n) - 1n;
 
 export class RealClock {
+  virtual = false;
   now() { return BigInt(Math.round(performance.now() * 1000)); }
   /** Waits without blocking, for asynchronous workflows. */
   sleepAsync(micros) { return new Promise((resolve) => setTimeout(resolve, Number(micros) / 1000)); }
@@ -1268,6 +1269,7 @@ export class RealClock {
 
 /** Sleeping advances the clock and returns at once. */
 export class VirtualClock {
+  virtual = true;
   time;
   constructor(start = 0n) { this.time = BigInt(start); }
   now() { return this.time; }
@@ -1325,8 +1327,59 @@ export class WorkflowRuntime {
 }
 
 let defaultRuntime = null;
+const CLOCK_KEY = 'lawspec.time::ability::Clock';
+const CLOCK_VIEW = '\0lawspec.workflow.clock';
 
-/** Make the default runtime virtual, as generated tests do. */
+// How the runtime reads a Clock handler, registered by lawspec.time's
+// registerClock (the generated tests of laws that install a Clock handler
+// call it): now(handler) gives microseconds, sleep(handler, micros) waits,
+// and realTime(handler) says whether the handler is the default real clock.
+let clockReader = null;
+
+export function registerClockAbility(now, sleep, realTime) {
+  clockReader = {now, sleep, realTime};
+}
+
+/** The handler read as a clock, or null (no handler, or no reader registered). */
+function abilityClock(handler) {
+  return clockReader === null || handler === null || handler === undefined ? null : new AbilityClock(handler, clockReader);
+}
+
+/**
+ * A workflow runtime's clock read through the Clock ability: the handler a
+ * law installs (the virtual clock, or the default real one). Every handler
+ * but the default real clock is virtual: waits pass at once, and timeouts
+ * and hedges count only the time it reports.
+ */
+export class AbilityClock {
+  handler;
+  virtual;
+  #reader;
+  constructor(handler, reader) {
+    this.handler = handler;
+    this.#reader = reader;
+    this.virtual = !reader.realTime(handler);
+  }
+  now() {
+    return BigInt(this.#reader.now(this.handler));
+  }
+  sleep(micros) {
+    this.#reader.sleep(this.handler, BigInt(micros));
+  }
+  /** Waits without blocking on the real clock; at once on a virtual one. */
+  sleepAsync(micros) {
+    if (this.virtual) {
+      this.sleep(micros);
+      return Promise.resolve();
+    }
+    return new Promise((resolve) => setTimeout(resolve, Number(micros) / 1000));
+  }
+}
+
+/**
+ * Make the default runtime virtual, as generated tests do. Timeouts and
+ * hedges stay on: they count virtual time (see scoped, timed and hedged).
+ */
 export function useVirtualClock(seed = 0n) {
   defaultRuntime = new WorkflowRuntime(new VirtualClock(), seed, false);
 }
@@ -1335,7 +1388,21 @@ export function workflowRuntime(symbols) {
   const runtime = symbols instanceof Map ? symbols.get(WORKFLOW) : undefined;
   if (runtime !== undefined) return runtime;
   if (defaultRuntime === null) defaultRuntime = new WorkflowRuntime();
-  return defaultRuntime;
+  // Workflow time is the Clock ability's: where a law has installed a Clock
+  // handler, the default runtime waits and times out on it. The view shares
+  // the runtime's state and trace, and is the same object for the same
+  // context and handler.
+  const table = symbols instanceof Map ? symbols.get(HANDLERS) : undefined;
+  const clock = abilityClock(table === undefined ? undefined : table.get(CLOCK_KEY));
+  if (clock === null) return defaultRuntime;
+  let view = symbols.get(CLOCK_VIEW);
+  if (view === undefined || view[0] !== clock.handler || view[1] !== defaultRuntime) {
+    const under = Object.assign(Object.create(Object.getPrototypeOf(defaultRuntime)), defaultRuntime);
+    under.clock = clock;
+    view = [clock.handler, defaultRuntime, under];
+    symbols.set(CLOCK_VIEW, view);
+  }
+  return view[2];
 }
 
 function fibonacci(n) {
@@ -1510,7 +1577,7 @@ function attempts(runtime, policy, attempt) {
   let number = 1n, previous = 0n;
   for (;;) {
     runtime.trace.push(['start', policy.stage, number]);
-    const result = attempt();
+    const result = scoped(runtime, policy, attempt);
     const failed = result instanceof DataValue && result.tag === 'Either::Left';
     runtime.trace.push(['finish', policy.stage, number, !failed]);
     if (!failed || retry === null) return result;
@@ -1537,6 +1604,21 @@ function attempts(runtime, policy, attempt) {
   }
 }
 
+/**
+ * A synchronous attempt under its stage's timeout. On a virtual clock it
+ * fails with TimedOut when more virtual time than the timeout passed while it
+ * ran; a synchronous step cannot be interrupted, so on a real clock it runs
+ * as it is. A hedge needs asynchronous steps (see hedged).
+ */
+function scoped(runtime, policy, attempt) {
+  const timeout = policy.timeout !== null && policy.timeout > 0n;
+  if (!timeout || !runtime.clock.virtual) return attempt();
+  const began = runtime.clock.now();
+  const result = attempt();
+  if (runtime.clock.now() - began > policy.timeout) return stageFailure('TimedOut');
+  return result;
+}
+
 /** A RetryDecision's delay in microseconds, or null to stop. */
 export function retryDecision(decision) {
   if (decision.tag !== 'lawspec.time::type::RetryDecision::RetryAfter') return null;
@@ -1544,8 +1626,11 @@ export function retryDecision(decision) {
 }
 
 // Asynchronous workflows: the same, with stages that await their steps. A
-// stage's timeout races each attempt against a timer (real time; the
-// runtime generated tests install has timeouts off, as its gates are).
+// stage's timeout and hedge are the Timeout and Hedge transformers of the
+// Async ability, measured on the runtime's Clock. On a real clock a timeout
+// races each attempt against a timer; on a virtual clock (generated tests,
+// or a law using virtual clock) an attempt takes the virtual time that
+// passes while it runs, so both are deterministic.
 
 async function sleepFor(clock, delay) {
   await clock.sleepAsync(delay);
@@ -1554,7 +1639,14 @@ async function sleepFor(clock, delay) {
 const TIMED_OUT = Symbol('timed out');
 
 async function timed(runtime, policy, attempt, control) {
-  if (policy.timeout === null || policy.timeout <= 0n || !runtime.gates) return attempt();
+  if (policy.timeout === null || policy.timeout <= 0n) return attempt();
+  if (runtime.clock.virtual) {
+    const began = runtime.clock.now();
+    const result = await attempt();
+    if (runtime.clock.now() - began > policy.timeout) return stageFailure('TimedOut');
+    return result;
+  }
+  if (!runtime.gates) return attempt();
   let timer;
   const expiry = new Promise((resolve) => {
     timer = setTimeout(() => resolve(TIMED_OUT), Number(policy.timeout) / 1000);
@@ -1572,10 +1664,14 @@ async function timed(runtime, policy, attempt, control) {
 /**
  * A stage's hedge, [delay, most]: when an attempt has not succeeded after
  * delay, another starts beside it, up to most in all. The first success
- * wins; when every attempt fails, the last failure. Off where gates are.
+ * wins; when every attempt fails, the last failure. On a virtual clock the
+ * attempts run one after another (virtualHedge). On a real clock, off where
+ * gates are.
  */
 function hedged(runtime, policy, attempt, control) {
-  if (policy.hedge === null || !runtime.gates) return attempt();
+  if (policy.hedge === null) return attempt();
+  if (runtime.clock.virtual) return virtualHedge(runtime, policy, attempt);
+  if (!runtime.gates) return attempt();
   const [delay, most] = policy.hedge;
   return new Promise((resolve, reject) => {
     let started = 0n, pending = 0, timer;
@@ -1604,6 +1700,23 @@ function hedged(runtime, policy, attempt, control) {
     };
     launch();
   });
+}
+
+/**
+ * A hedge on a virtual clock: attempts run one after another, and the next
+ * starts when one fails, so the first success wins as it would in real time
+ * when no attempt outlives the delay.
+ */
+async function virtualHedge(runtime, policy, attempt) {
+  const most = BigInt(policy.hedge[1]);
+  let started = 1n;
+  let result = await attempt();
+  while (result instanceof DataValue && result.tag === 'Either::Left' && started < most) {
+    started += 1n;
+    runtime.trace.push(['hedge', policy.stage, started]);
+    result = await attempt();
+  }
+  return result;
 }
 
 async function attemptsAsync(runtime, policy, attempt) {
@@ -1679,16 +1792,48 @@ export async function runStageAsync(symbols, given, attempt, ...input) {
   return result;
 }
 
-/** runWorkflow for an asynchronous workflow; undos may be asynchronous. */
-// An all group's step results, in declaration order. The steps run side by
-// side; every step settles before a step's error (the first, in declaration
-// order) is thrown.
-export async function concurrently(steps) {
-  const outcomes = await Promise.allSettled(steps.map((step) => step()));
-  const failed = outcomes.find((outcome) => outcome.status === 'rejected');
-  if (failed) throw failed.reason;
-  return outcomes.map((outcome) => outcome.value);
+/**
+ * The Async ability's default handler: the event loop. LawSpec code performs
+ * pause; workflows reach the rest natively: spawn starts a function as a
+ * task (a promise), wait gives a task's result, and all runs functions side
+ * by side and gives their results in order. An `async` adapter is an adapter
+ * that uses Async, so its promise is awaited as wait does.
+ */
+export class NativeAsync {
+  /** A handler's operations run synchronously, so a pause returns at once. */
+  pause() {}
+  spawn(fn) {
+    try {
+      return Promise.resolve(fn());
+    } catch (error) {
+      return Promise.reject(error);
+    }
+  }
+  wait(task) {
+    return Promise.resolve(task);
+  }
+  /**
+   * Every function's result, in order; all settle before the first error
+   * (in order) is thrown.
+   */
+  async all(fns) {
+    const outcomes = await Promise.allSettled(fns.map((fn) => this.spawn(fn)));
+    const failed = outcomes.find((outcome) => outcome.status === 'rejected');
+    if (failed) throw failed.reason;
+    return outcomes.map((outcome) => outcome.value);
+  }
 }
+
+export const ASYNC = new NativeAsync();
+
+// An all group's step results, in declaration order. The steps run side by
+// side as tasks of the Async ability's default handler; every step settles
+// before a step's error (the first, in declaration order) is thrown.
+export function concurrently(steps) {
+  return ASYNC.all(steps);
+}
+
+/** runWorkflow for an asynchronous workflow; undos may be asynchronous. */
 
 export async function runWorkflowAsync(symbols, attempt) {
   const runtime = workflowRuntime(symbols);
@@ -2823,6 +2968,30 @@ export class Mailbox {
       this.#waiters.push(waiter);
     });
   }
+  /**
+   * The Mailbox ability's receive ... within d: resolves to the next
+   * message, or null when none arrives within micros microseconds. On a
+   * virtual clock (any Clock handler but the default real one) it waits no real
+   * time: it takes a message already sent, or lets the time pass on that
+   * clock and gives null. Rejects with ActorStopped once closed and empty.
+   * Which handlers are virtual, lawspec.time's registerClock tells.
+   */
+  async receiveWithin(micros, clock = null) {
+    const read = abilityClock(clock);
+    if (read !== null && read.virtual) {
+      if (this.#items.length > 0) return this.#items.shift();
+      if (this.#closed) throw new ActorStopped('the mailbox is closed');
+      read.sleep(micros);
+      return null;
+    }
+    const wait = Math.max(0, Number(micros) / 1000);
+    try {
+      return await this.receiveAsync(wait);
+    } catch (error) {
+      if (error instanceof ActorStopped) throw error;
+      return null;
+    }
+  }
   /** Refuses further messages; those already sent can still be received. */
   close() {
     this.#closed = true;
@@ -3632,7 +3801,7 @@ class NetScenarioChannel {
   constructor(network, name, steps, values, registry) {
     this.name = name;
     this.registry = registry;
-    this.nodes = [0, 1].map((side) => new Node(network.transport(`${name}-${side}`)));
+    this.nodes = [0, 1].map((side) => new Node(network.insecureTransportForTests(`${name}-${side}`)));
     const wire = (sends, d) => [sends, d[0] === 'end' ? ['text'] : d];
     this.ends = [this.nodes[0].listen(name, steps.map(([s, d]) => wire(s, d)), values)];
     this.ends.push(this.nodes[1].dial(`${this.nodes[0].address}/${name}`, steps.map(([s, d]) => wire(!s, d)), values));
@@ -3692,8 +3861,8 @@ class ScenarioMailbox {
     this.expected = expected;
     this.registry = registry;
     if (network !== null) {
-      const owner = new Node(network.transport(`${name}-owner`));
-      const senders = new Node(network.transport(`${name}-senders`));
+      const owner = new Node(network.insecureTransportForTests(`${name}-owner`));
+      const senders = new Node(network.insecureTransportForTests(`${name}-senders`));
       this.nodes = [owner, senders];
       const d = descriptor[0] === 'end' ? ['text'] : descriptor;
       this.inbox = owner.mailbox(name, d, values);
@@ -4705,16 +4874,27 @@ export class MemoryNetwork {
   delay;
   nodes;
   groups;
-  constructor({seed = 0n, loss = 0, duplicate = 0, delay = 0} = {}) {
+  recorded;
+  /** With record, every record sent is kept in recorded, as the network saw it. */
+  constructor({seed = 0n, loss = 0, duplicate = 0, delay = 0, record = false} = {}) {
     this.random = new SplitMix64(BigInt(seed));
     this.loss = loss;
     this.duplicate = duplicate;
     this.delay = delay;
     this.nodes = new Map();
     this.groups = null;
+    this.recorded = record ? [] : null;
   }
   transport(name) {
     return new MemoryTransport(this, 'mem://' + name);
+  }
+  /**
+   * A transport whose node skips the handshake and sends frames in the
+   * clear: for tests of the frame layer only. Only an in-memory network
+   * makes one, and no configuration selects it.
+   */
+  insecureTransportForTests(name) {
+    return new InsecureMemoryTransport(this, 'mem://' + name);
   }
   /** Only nodes named in the same group reach each other. */
   partition(...groups) {
@@ -4727,6 +4907,7 @@ export class MemoryNetwork {
     return p > 0 && Number(this.random.below(1n << 30n)) < p * 2 ** 30;
   }
   async send(source, node, frame) {
+    if (this.recorded !== null) this.recorded.push(Uint8Array.from(frame));
     const deliver = this.nodes.get(node);
     if (deliver === undefined) throw new Unreachable(`no node at ${node}`);
     if (this.groups !== null && !this.groups.some((g) => g.has(source) && g.has(node))) return;
@@ -4756,6 +4937,9 @@ class MemoryTransport extends Transport {
     this.network.nodes.delete(this.address);
   }
 }
+
+/** In memory, without the handshake: tests only. */
+export class InsecureMemoryTransport extends MemoryTransport {}
 
 /**
  * Frames over TCP, each a 4-byte big-endian length then the frame. port 0
@@ -4899,6 +5083,52 @@ export class HttpTransport extends Transport {
   }
 }
 
+// The secure network handler lives in lawspec_network, which the compiler
+// writes beside this runtime when a program imports lawspec.network: it needs
+// the post-quantum library, which programs without nodes do without. A node loads
+// it when it is made (or registerSecureNetwork names a provider).
+let secureProvider = null;
+let secureProviderLoad = null;
+
+/**
+ * provider.layer(node, identity, trusted) makes a node's secure layer:
+ * send(peer, frame), a promise, and receive(record), the frame a record
+ * carries or null; it may have identity and close().
+ */
+export function registerSecureNetwork(provider) {
+  secureProvider = provider;
+}
+
+function secureNetwork() {
+  if (secureProvider !== null) return Promise.resolve(secureProvider);
+  if (secureProviderLoad === null) {
+    const extension = String(import.meta.url).endsWith('.mjs') ? '.mjs' : '.js';
+    secureProviderLoad = import('./lawspec_network' + extension).then((module) => {
+      if (secureProvider === null) secureProvider = module;
+      return secureProvider;
+    }, (error) => {
+      secureProviderLoad = null;
+      const missing = String(error?.message ?? '').split(' imported from')[0];
+      if (error?.code === 'ERR_MODULE_NOT_FOUND' && missing.includes('lawspec_network')) {
+        throw new Error('a node needs the secure network handler: add `import lawspec.network` ' +
+          'to a unit of the program, so lawspec_network is generated', {cause: error});
+      }
+      throw error;
+    });
+  }
+  return secureProviderLoad;
+}
+
+/**
+ * A one-time token from the operating system's secure generator: 32 bytes
+ * as 64 hexadecimal digits, as SecureRandom's secureToken gives.
+ */
+export function secureToken() {
+  const random = new Uint8Array(32);
+  globalThis.crypto.getRandomValues(random);
+  return hex(random);
+}
+
 class ReplySlot {
   promise;
   resolve;
@@ -4926,9 +5156,36 @@ export class Node {
   seen;
   ids;
   endpoints;
-  constructor(transport) {
+  identity;
+  secure;
+  securing;
+  closed;
+  arrivals;
+  /**
+   * identity: a NodeIdentity (by default the one lawspec.json binds, or a
+   * fresh one); trusted: the fingerprints of the only peers to talk to (by
+   * default any peer, each address keeping the first identity it shows). A
+   * transport made for tests only (InsecureMemoryTransport) skips the
+   * handshake; no other transport can. The secure layer comes from
+   * lawspec_network (import lawspec.network); the identity is set once it is
+   * ready (await node.ready()).
+   */
+  constructor(transport, {identity = null, trusted = null} = {}) {
     this.transport = transport;
     this.address = transport.address;
+    this.closed = false;
+    this.identity = null;
+    this.secure = null;
+    this.securing = null;
+    if (!(transport instanceof InsecureMemoryTransport)) {
+      this.securing = secureNetwork().then((provider) => {
+        this.secure = provider.layer(this, identity, trusted);
+        this.identity = this.secure.identity ?? identity;
+        if (this.closed) this.secure.close?.();
+      });
+      this.securing.catch(() => {});
+    }
+    this.arrivals = Promise.resolve();
     this.entities = new Map();
     this.pending = new Map();
     // Requests already seen, by sender and id, with their reply once sent:
@@ -4937,9 +5194,32 @@ export class Node {
     this.seen = new Map();
     this.ids = 0;
     this.endpoints = new Set();
-    transport.start((frame) => this.deliver(frame));
+    transport.start((record) => this.arrive(record));
+  }
+  /** Resolves to this node's identity (null without the handshake) once it can send. */
+  async ready() {
+    if (this.securing !== null) await this.securing;
+    return this.identity;
+  }
+  arrive(record) {
+    if (this.securing === null) {
+      this.deliver(record);
+      return;
+    }
+    // In order of arrival, once the secure layer is ready.
+    this.arrivals = this.arrivals.then(() => this.securing).then(() => {
+      const frame = this.secure.receive(record);
+      if (frame !== null && frame !== undefined) this.deliver(frame);
+    }).catch(() => {});
+  }
+  async transmit(node, frame) {
+    if (this.securing === null) return this.transport.send(node, frame);
+    await this.securing;
+    return this.secure.send(node, frame);
   }
   async close() {
+    this.closed = true;
+    if (this.secure !== null) this.secure.close?.();
     for (const endpoint of this.endpoints) endpoint.stop();
     await this.transport.close();
   }
@@ -4948,12 +5228,12 @@ export class Node {
   }
   async send(address, kind, payload, ident = 0) {
     const [node, name] = splitAddress(address);
-    await this.transport.send(node, frameEncode(kind, name, this.address, ident, payload));
+    await this.transmit(node, frameEncode(kind, name, this.address, ident, payload));
   }
   /** Passes a frame on to address unchanged, keeping its source. */
   forward(address, kind, source, ident, payload) {
     const [node, name] = splitAddress(address);
-    this.quietly(this.transport.send(node, frameEncode(kind, name, source, ident, payload)));
+    this.quietly(this.transmit(node, frameEncode(kind, name, source, ident, payload)));
   }
   quietly(promise) {
     promise.catch(() => {});
@@ -5461,11 +5741,7 @@ class NetEndpoint {
   }
   /** The address another node takes this unused end over from. */
   offer() {
-    if (this.token === null) {
-      const random = new Uint8Array(16);
-      globalThis.crypto.getRandomValues(random);
-      this.token = [...random].map((b) => b.toString(16).padStart(2, '0')).join('');
-    }
+    if (this.token === null) this.token = secureToken();
     return `${this.address}?take=${this.token}`;
   }
   /**

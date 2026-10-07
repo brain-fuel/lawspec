@@ -5,6 +5,10 @@ title: Stateful models
 ---
 # Stateful models
 
+A model is an ability whose reference is a stateful spec handler; checking
+it checks the native handler against that spec handler through
+`abstract`. See [existing features as abilities](abilities-mapping.md#models).
+
 A `model` pairs a system's commands with a simpler reference: a model state
 and a checked definition for each command. LawSpec generates sequences of
 commands, runs them against your adapters, and checks every result and state

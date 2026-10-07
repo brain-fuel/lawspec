@@ -1,12 +1,16 @@
 -- User-owned LawSpec adapter: the wire encoding, and nodes talking over
 -- in-memory, TCP and HTTP transports (the asynchronous adapters, in IO).
-module Example.Distribution (encoded, roundTrips, remoteShifted, openTally, add, remoteAdds, remoteDoubling, remoteLedger, remoteHandoff, remoteHandoffOnward) where
+module Example.Distribution (encoded, roundTrips, remoteShifted, openTally, add, remoteAdds, remoteDoubling, remoteLedger, remoteHandoff, remoteHandoffOnward, sealedOnTheWire, handshakeAgrees) where
 
 import Control.Exception (finally)
+import Data.Bits ((.&.))
+import qualified Data.ByteString as B
 import qualified Data.Int as I
 import qualified Data.Text as T
+import qualified Data.Text.Encoding as TE
 import qualified Data.Word as W
 import qualified LawSpecData as Data
+import qualified LawSpecNetwork as Network
 import qualified LawSpecRemote as Remote
 import qualified LawSpecRuntime as LS
 import LawSpecTransports (httpTransport, tcpTransport)
@@ -76,7 +80,9 @@ remoteLedger x = do
     sendLedgerTo sender (fromIntegral x)
     a <- receiveLedger ledger
     b <- receiveLedger ledger
-    pure (a + b)) `finally` (LS.closeNode here >> LS.closeNode there)
+    -- receive within: nothing more comes, so it gives Nothing in time.
+    more <- receiveLedgerWithin 20000 ledger
+    pure (maybe (a + b) (const (-1)) more)) `finally` (LS.closeNode here >> LS.closeNode there)
 
 remoteHandoff :: I.Int32 -> IO I.Int64
 remoteHandoff x = do
@@ -123,3 +129,37 @@ remoteHandoffOnward x = do
     _ <- LS.send reply (2 * fromIntegral value :: I.Int64)
     (result, _) <- LS.receive second
     pure result) `finally` mapM_ LS.closeNode [a, b, c, d]
+
+-- | A definition evaluated on another node: its request names the
+-- definition's content hash, which shows on the wire only in the clear.
+sealedOnTheWire :: I.Int32 -> IO Bool
+sealedOnTheWire x = case Remote.digest name of
+  Nothing -> pure False
+  Just digest -> do
+    let needle = TE.encodeUtf8 (T.pack digest)
+    secure <- seen needle False
+    insecure <- seen needle True
+    pure (secure == Just False && insecure == Just True)
+  where
+    name = "example.distribution::shifted"
+    seen needle insecure = do
+      network <- LS.newRecordingMemoryNetwork (fromIntegral x .&. 0xFFFF) 0 0 0
+      let make label = if insecure
+            then LS.newNode (LS.insecureTransportForTests network label)
+            else LS.newNode (LS.memoryTransport network label)
+      here <- make "here"
+      there <- make "there"
+      (do
+        _ <- Remote.serve there
+        result <- Remote.evaluate here (LS.nodeAddress there) name [LS.SInteger "Int32" (toInteger x)]
+        case result of
+          LS.SInteger _ n | n == toInteger x + 1000 -> do
+            records <- LS.networkRecorded network
+            pure (Just (any (B.isInfixOf needle) records))
+          _ -> pure Nothing) `finally` (LS.closeNode here >> LS.closeNode there)
+
+-- | The handshake vector's thirteen fields, separated by single spaces.
+handshakeAgrees :: T.Text -> Bool
+handshakeAgrees text = case map T.unpack (T.splitOn (T.pack " ") text) of
+  [a, b, c, d, e, f, g, h, i, j, k, l, m] -> Network.handshakeVector a b c d e f g h i j k l m
+  _ -> False

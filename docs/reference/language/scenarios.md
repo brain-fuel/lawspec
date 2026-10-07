@@ -5,6 +5,10 @@ title: Protocols and scenarios
 ---
 # Protocols and scenarios
 
+A protocol `P` is the ability `Session P`, a mailbox of `T` is `Mailbox T`,
+and a scenario is a program over them and `Process`, run under a `Scheduler`
+handler; see [existing features as abilities](abilities-mapping.md).
+
 A **protocol** lists what one end of a channel sends and receives, in order;
 the other end does the reverse. A **scenario** runs a shared
 [model](models.md)'s commands from processes that run at the same time and
@@ -173,6 +177,12 @@ scenario `two tellers report to one auditor` in account is
   end
 end
 ```
+
+A typed mailbox in your code also has `receive_within` (`receiveWithin`,
+`ReceiveWithin`, `receive<Name>Within` in Haskell): the next message, or
+nothing when none arrives within a duration, the Mailbox ability's `receive
+… within d`. Given a virtual `Clock` handler (Haskell: `receive<Name>WithinOn`
+with the symbol context a law installed it in), it waits no real time.
 
 LawSpec checks that:
 

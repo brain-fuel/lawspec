@@ -5,6 +5,9 @@ title: Time and the clock
 ---
 # Time and the clock
 
+Laws about time (`eventually within 2 s, P`, budgets such as `takes at most
+5 ms`) are on [time in laws](temporal.md).
+
 `lawspec.time` holds [durations](durations.md) and, when a unit imports it,
 the clock: the `Instant` type, the `Clock` ability, and the virtual clock.
 It is one of the [built-in abilities](builtins.md).

@@ -228,7 +228,13 @@
             "path": "reference/language/builtins.md"
           },
           {
+            "path": "reference/language/abilities-mapping.md"
+          },
+          {
             "path": "reference/language/time.md"
+          },
+          {
+            "path": "reference/language/temporal.md"
           },
           {
             "path": "reference/language/randomness.md"

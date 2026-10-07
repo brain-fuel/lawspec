@@ -270,3 +270,31 @@ REQ-total-definitions:
   kind: requirement
   title: Checked definitions execute totally in Core, every partial operation justified by a proved domain, in both machine profiles.
   locator: docs/reference/language/definitions.md
+REQ-abilities:
+  kind: requirement
+  title: Abilities name dependencies; every handler keeps the ability's laws, spec handlers are checked by the compiler and native ones property-tested, on every target.
+  locator: docs/reference/language/abilities.md
+REQ-law-primitives:
+  kind: requirement
+  title: Matchers, portable regexes, typed failures, tables, description examples, recorded values and resources check what they read as, on every target.
+  locator: docs/reference/language/matchers.md
+REQ-harness-units:
+  kind: requirement
+  title: A harness unit chooses strategies, adequacy, run settings, sharing and scheduling for a unit's laws without changing what they mean.
+  locator: docs/reference/language/harness.md
+REQ-builtin-abilities:
+  kind: requirement
+  title: Each built-in ability has laws and a default handler on every target, reported as default-handler evidence; cryptography matches the standards' vectors.
+  locator: docs/reference/language/builtins.md
+REQ-temporal-propositions:
+  kind: requirement
+  title: Temporal propositions are checked over the Clock, deterministically under a virtual clock, and budgets are timed on the real clock and reported as measured.
+  locator: docs/reference/language/temporal.md
+REQ-secure-network:
+  kind: requirement
+  title: Nodes talk only after a signed post-quantum handshake, frames cross sealed, and remote definitions are named by their SHA3-256 content hash.
+  locator: docs/reference/language/distribution.md
+REQ-features-as-abilities:
+  kind: requirement
+  title: Async, workflows, sessions, mailboxes, actors, models, scenarios and distribution are abilities, and their ability rows are reported.
+  locator: docs/reference/language/abilities-mapping.md

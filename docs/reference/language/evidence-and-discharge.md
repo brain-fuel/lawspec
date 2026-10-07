@@ -13,6 +13,7 @@ strongest to weakest:
 | `PROVED` | `proved` | Laws over checked definitions; definition postconditions and indices | Statically, by the prover |
 | `EXHAUSTIVELY CHECKED` | `exhaustively-checked` | Laws whose inputs form a finite domain | Every input, by the compiler or the generated tests |
 | `PROPERTY TESTED` | `property-tested` | Other laws | Generated cases, boundary cases and examples |
+| `MEASURED` | `measured` | Performance budgets (`takes at most`; see [time in laws](temporal.md)) | Timed on the real clock by the generated tests; never proved |
 | `RUNTIME CHECKED` | `runtime-checked` | Adapter contracts, definition preconditions, constructor constraints, native type bindings, non-linear definition indices | At every native boundary, or on each definition result |
 | `DEFAULT HANDLER` | `default-handler` | The default handlers of built-in abilities (see [built-in abilities](builtins.md)) | Reviewed runtime code, its ability's laws property-tested, cryptography checked against NIST vectors |
 | `ASSUMED / EXTERNAL` | `assumed` | Adapters, native functions, custom generators and codec hooks | Taken on trust |

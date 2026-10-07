@@ -225,11 +225,23 @@ target should change these, and only these.
   target, and `handlerbindings` covers `lawspec.json`; `builtins` and
   `crypto` cover the built-in abilities and their defaults. A new feature
   adds a law and a mutant to one of them on each target.
-- **For the secure transport.** Node transports can build their handshake
-  from `lawspec.crypto` (a signed ML-KEM exchange, then `Aead` keys from
-  `deriveAeadKey`) and their tokens from `SecureRandom`'s `secureToken`;
-  `Async` is the hook for the `async` keyword. See
-  [cryptography](../reference/language/cryptography.md#building-a-secure-channel).
+- **Existing features as abilities.** `LawSpec.Unification` states what
+  each older construct uses (`abilityRows`, shown by `check --json`); a new
+  effect-like construct adds its row there and a line to
+  [the mapping page](../reference/language/abilities-mapping.md). Built-in
+  abilities without a declaring unit are keyed `lawspec::ability::<Name>`.
+  `async f ::` and `uses Async` meet in `Parser.asyncSugar`.
+- **Time in laws.** `LawSpec.Temporal` expands `eventually`, `always`,
+  `never within` and `takes at most` into Clock operations, so they need no
+  target code; a budget's law is restricted to Clock's production handler
+  (`Abilities.measuredOn`) and reported `measured` (`Discharge.budgeted`).
+- **The secure transport.** Every runtime's `Node` seals frames through a
+  secure layer (handshake records, sessions, sealed data; see
+  [distribution](../reference/language/distribution.md#security)). A new
+  target implements the same record format and checks the handshake vector
+  of `dev/handshake-vector.py`; take tokens come from the OS generator.
+  Workflow runtimes read time through an installed `Clock` handler, and
+  treat every clock but the default real one as virtual.
 
 ## References
 

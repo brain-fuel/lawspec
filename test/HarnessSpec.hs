@@ -1,4 +1,5 @@
-module HarnessSpec (spec) where
+-- | Harness units: strategies, adequacy, run metadata, sharing and scheduling.
+module HarnessSpec (test_harnessesChangeHowLawsRunNeverWhatTheyMean) where
 
 import Data.Either (isRight)
 import Data.List (isInfixOf, nub)
@@ -71,8 +72,10 @@ lawHarness name program = lookup name [(C.propertyName p, C.propertyHarness p) |
 statusOf :: String -> [Obligation] -> [Status]
 statusOf name evidence = [obligationStatus o | o <- evidence, obligationStage o == "law", name `isInfixOf` C.idText (obligationDeclaration o)]
 
-spec :: Spec
-spec = describe "harness units" $ do
+-- | The harness says how laws are tested and never what they mean, so a law's
+-- obligation is the same whatever its harness. ref:REQ-harness-units
+test_harnessesChangeHowLawsRunNeverWhatTheyMean :: Spec
+test_harnessesChangeHowLawsRunNeverWhatTheyMean = describe "harness units" $ do
   it "attaches each law's harness: strategies, adequacy and run metadata" $ do
     let source = harness
           [ "  strategy small :: Order is bind n :: Int32 from (one of 0, 1, 2) in one of Order n (n * 100) end"

@@ -192,6 +192,8 @@ pub struct Context {
     /// Copies of a context share it, so a spec handler (which keeps a copy)
     /// sees the handlers installed after it, for the abilities its clauses use.
     pub handlers: Arc<std::sync::RwLock<HashMap<String, Installed>>>,
+    // The default runtime's view under the installed Clock handler.
+    clock_view: ClockView,
 }
 impl Context {
     /// A context whose workflows run under the given runtime.
@@ -200,7 +202,8 @@ impl Context {
     }
     /// A context for a generated test: workflows wait on a virtual clock, and
     /// gates are off (a workflow law calls the workflow and its composition,
-    /// which would see each other's state).
+    /// which would see each other's state). Timeouts and hedges stay on: they
+    /// count virtual time (see scoped).
     pub fn testing() -> Context {
         let mut runtime = WorkflowRuntime::new(Box::new(VirtualClock::default()), 0);
         runtime.gates = false;
@@ -1954,6 +1957,11 @@ pub fn canonical_items(items: Vec<Value>, keyed: bool) -> Result<Vec<Value>> {
 pub trait Clock: Send {
     fn now(&self) -> i64;
     fn sleep(&mut self, micros: i64);
+    /// A virtual clock's waits pass at once, and timeouts and hedges count
+    /// only the time it reports (see scoped). Real time unless it says so.
+    fn is_virtual(&self) -> bool {
+        false
+    }
 }
 
 /// Monotonic wall time.
@@ -1983,6 +1991,60 @@ impl Clock for VirtualClock {
     }
     fn sleep(&mut self, micros: i64) {
         self.time += micros;
+    }
+    fn is_virtual(&self) -> bool {
+        true
+    }
+}
+
+/// The Clock ability (lawspec.time's Clock) as the runtime reads it: the
+/// handler a law installs, in microseconds. real_time is true only for the
+/// default handler (the system clock, installed with installed_native); any
+/// other handler is virtual.
+pub trait ClockAbility: Send + Sync {
+    fn now_micros(&self) -> i64;
+    fn sleep_micros(&self, micros: i64);
+    fn real_time(&self) -> bool;
+}
+
+/// The key the Clock ability's handler is installed under.
+pub const CLOCK_KEY: &str = "lawspec.time::ability::Clock";
+
+/// Turns the handler installed for the Clock ability into a ClockAbility.
+/// The runtime cannot name the generated Clock trait, so lawspec.time's
+/// default handlers module registers one (lawspec_time::
+/// register_clock_ability, which the generated tests of a unit whose laws
+/// install a Clock handler call); without it, workflow time is the
+/// runtime's own.
+pub type ClockAbilityReader = fn(&Installed) -> Option<Arc<dyn ClockAbility>>;
+
+static CLOCK_READER: std::sync::OnceLock<ClockAbilityReader> = std::sync::OnceLock::new();
+
+/// Registers how to read the Clock ability's handler; the first one stays.
+pub fn register_clock_ability(reader: ClockAbilityReader) {
+    let _ = CLOCK_READER.set(reader);
+}
+
+/// The Clock handler installed in ctx, as the runtime reads it, if any.
+pub fn clock_ability(ctx: &Context) -> Option<Arc<dyn ClockAbility>> {
+    let reader = CLOCK_READER.get()?;
+    reader(&ctx.installed_for(CLOCK_KEY)?)
+}
+
+/// A workflow runtime's clock read through the Clock ability: the handler a
+/// law installs (the virtual clock, or the default real one). A handler that
+/// is not real time is virtual: waits pass at once, and timeouts and hedges
+/// count only the time it reports.
+pub struct AbilityClock(pub Arc<dyn ClockAbility>);
+impl Clock for AbilityClock {
+    fn now(&self) -> i64 {
+        self.0.now_micros()
+    }
+    fn sleep(&mut self, micros: i64) {
+        self.0.sleep_micros(micros)
+    }
+    fn is_virtual(&self) -> bool {
+        !self.0.real_time()
     }
 }
 
@@ -2034,6 +2096,8 @@ pub struct WorkflowRuntime {
     deadline: Option<std::time::Instant>,
     // The running attempt's stage and hedge (delay, most).
     hedge: Option<(&'static str, (i64, i64))>,
+    // The same, on a virtual clock: attempts run one after another.
+    virtual_hedge: Option<(&'static str, (i64, i64))>,
 }
 impl std::fmt::Debug for WorkflowRuntime {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -2042,18 +2106,46 @@ impl std::fmt::Debug for WorkflowRuntime {
 }
 impl WorkflowRuntime {
     pub fn new(clock: Box<dyn Clock>, seed: u64) -> Self {
-        WorkflowRuntime { clock, random: SplitMix64::new(seed), trace: Vec::new(), state: HashMap::new(), gates: true, cache: HashMap::new(), frames: Vec::new(), deadline: None, hedge: None }
+        WorkflowRuntime { clock, random: SplitMix64::new(seed), trace: Vec::new(), state: HashMap::new(), gates: true, cache: HashMap::new(), frames: Vec::new(), deadline: None, hedge: None, virtual_hedge: None }
     }
 }
 
 static DEFAULT_RUNTIME: std::sync::OnceLock<Arc<std::sync::Mutex<WorkflowRuntime>>> = std::sync::OnceLock::new();
 
+// A runtime attached to the context keeps its own clock. Otherwise workflow
+// time is the Clock ability's: where a law has installed a Clock handler,
+// workflows wait and time out on it, under a view of the default runtime
+// (its gates; its own trace and state) kept per context and handler, so
+// run_stage and await_step share it.
 fn workflow_runtime(ctx: &Context) -> Arc<std::sync::Mutex<WorkflowRuntime>> {
-    match &ctx.workflow {
-        Some(runtime) => runtime.clone(),
-        None => DEFAULT_RUNTIME
-            .get_or_init(|| Arc::new(std::sync::Mutex::new(WorkflowRuntime::new(Box::new(RealClock::default()), 0))))
-            .clone(),
+    if let Some(runtime) = &ctx.workflow {
+        return runtime.clone();
+    }
+    let runtime = DEFAULT_RUNTIME
+        .get_or_init(|| Arc::new(std::sync::Mutex::new(WorkflowRuntime::new(Box::new(RealClock::default()), 0))))
+        .clone();
+    let Some(installed) = ctx.installed_for(CLOCK_KEY) else { return runtime };
+    let Some(reader) = CLOCK_READER.get() else { return runtime };
+    let mut view = ctx.clock_view.0.lock().unwrap();
+    if let Some((handler, under)) = view.as_ref() {
+        if Arc::ptr_eq(handler, &installed.handler) {
+            return under.clone();
+        }
+    }
+    let Some(clock) = reader(&installed) else { return runtime };
+    let mut under = WorkflowRuntime::new(Box::new(AbilityClock(clock)), 0);
+    under.gates = runtime.lock().unwrap().gates;
+    let under = Arc::new(std::sync::Mutex::new(under));
+    *view = Some((installed.handler.clone(), under.clone()));
+    under
+}
+
+// The workflow runtime a context's Clock handler gives (workflow_runtime).
+#[derive(Clone, Default)]
+struct ClockView(Arc<std::sync::Mutex<Option<(Arc<dyn std::any::Any + Send + Sync>, Arc<std::sync::Mutex<WorkflowRuntime>>)>>>);
+impl std::fmt::Debug for ClockView {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("ClockView")
     }
 }
 
@@ -2281,9 +2373,59 @@ pub fn run_stage(
 // timeout; the stage turns it into TimedOut.
 const TIMED_OUT: &str = "\0lawspec: timed out";
 
-/// An async step's logical result: start begins the step and convert turns
-/// its native result into a logical value. The step runs within its stage's
-/// timeout and hedge, if any, polling its attempts on this thread.
+/// The Async ability's default handler: native threads. LawSpec code
+/// performs pause; workflows reach the rest natively: spawn starts a function
+/// as a task (a thread), wait gives a task's result, wait_future runs a
+/// future to completion on this thread, and all runs functions side by side
+/// and gives their results in order. An `async` adapter is an adapter that
+/// uses Async, so its future is awaited with wait_future.
+/// (lawspec.concurrent's default AsyncHandler delegates to it.)
+#[derive(Clone, Copy, Debug, Default)]
+pub struct NativeAsync;
+
+/// The runtime's NativeAsync.
+pub static ASYNC: NativeAsync = NativeAsync;
+
+impl NativeAsync {
+    /// Lets other threads run.
+    pub fn pause(&self) {
+        std::thread::yield_now();
+    }
+
+    /// Starts body as a task of its own.
+    pub fn spawn<T: Send + 'static>(&self, body: impl FnOnce() -> T + Send + 'static) -> std::thread::JoinHandle<T> {
+        std::thread::spawn(body)
+    }
+
+    /// The task's result; a panic in it is resumed here.
+    pub fn wait<T>(&self, task: std::thread::JoinHandle<T>) -> T {
+        task.join().unwrap_or_else(|panic| std::panic::resume_unwind(panic))
+    }
+
+    /// A future's output, polled on this thread (see block_on).
+    pub fn wait_future<F: std::future::Future>(&self, future: F) -> F::Output {
+        block_on(future)
+    }
+
+    /// Every function's result, in order: they run side by side, each on a
+    /// scoped thread, and all finish before the first panic (in order) is
+    /// resumed.
+    pub fn all<'a, T: Send + 'a>(&self, bodies: Vec<Box<dyn FnOnce() -> T + Send + 'a>>) -> Vec<T> {
+        let results: Vec<std::thread::Result<T>> = std::thread::scope(|scope| {
+            let tasks: Vec<_> = bodies.into_iter().map(|body| scope.spawn(body)).collect();
+            tasks.into_iter().map(|task| task.join()).collect()
+        });
+        results.into_iter().map(|result| result.unwrap_or_else(|panic| std::panic::resume_unwind(panic))).collect()
+    }
+}
+
+/// An all group's step results, in declaration order, as the runtime's
+/// NativeAsync runs them: every step finishes before the first failure (or
+/// panic), in declaration order, is the group's.
+pub fn concurrently<'a>(steps: Vec<Box<dyn FnOnce() -> Result<Value> + Send + 'a>>) -> Result<Vec<Value>> {
+    ASYNC.all(steps).into_iter().collect()
+}
+
 /// An all group's step results, joined from their scoped threads, in
 /// declaration order. Every step has finished; the first failure (or panic),
 /// in declaration order, is the group's.
@@ -2298,18 +2440,24 @@ pub fn joined(results: Vec<std::thread::Result<Result<Value>>>) -> Result<Vec<Va
     Ok(values)
 }
 
+/// An async step's logical result: start begins the step and convert turns
+/// its native result into a logical value. The step runs within its stage's
+/// timeout and hedge, if any, polling its attempts on this thread.
 pub fn await_step<F: std::future::Future>(
     ctx: &Context,
     mut start: impl FnMut() -> F,
     convert: impl Fn(F::Output) -> Value,
 ) -> Result<Value> {
     let runtime = workflow_runtime(ctx);
-    let (deadline, hedge) = {
+    let (deadline, hedge, virtual_hedge) = {
         let guard = runtime.lock().unwrap();
-        (guard.deadline, guard.hedge)
+        (guard.deadline, guard.hedge, guard.virtual_hedge)
     };
+    if let Some((stage, (_, most))) = virtual_hedge {
+        return Ok(virtually_hedged(&runtime, stage, most, start, convert));
+    }
     if deadline.is_none() && hedge.is_none() {
-        return Ok(convert(block_on(start())));
+        return Ok(convert(ASYNC.wait_future(start())));
     }
     let (stage, delay, most) = match hedge {
         Some((stage, (delay, most))) => (stage, std::time::Duration::from_micros(delay as u64), most),
@@ -2370,35 +2518,97 @@ pub fn await_step<F: std::future::Future>(
     }
 }
 
+/// A hedge on a virtual clock: attempts run one after another, and the next
+/// starts when one fails, so the first success wins as it would in real time
+/// when no attempt outlives the delay.
+fn virtually_hedged<F: std::future::Future>(
+    runtime: &Arc<std::sync::Mutex<WorkflowRuntime>>,
+    stage: &'static str,
+    most: i64,
+    mut start: impl FnMut() -> F,
+    convert: impl Fn(F::Output) -> Value,
+) -> Value {
+    let mut started = 1i64;
+    let mut value = convert(ASYNC.wait_future(start()));
+    while matches!(value, Value::Left(_)) && started < most {
+        started += 1;
+        runtime.lock().unwrap().trace.push(TraceEvent { kind: "hedge", stage: stage.into(), number: started, succeeded: true });
+        value = convert(ASYNC.wait_future(start()));
+    }
+    value
+}
+
 /// An attempt under its stage's timeout (failing with TimedOut when it
-/// outlives it) and hedge. Under the runtime generated tests install (gates
-/// off), both are off.
+/// outlives it) and hedge: the Timeout and Hedge transformers of the Async
+/// ability, measured on the runtime's Clock. On a virtual clock (generated
+/// tests, or a law using virtual clock) an attempt takes the virtual time
+/// that passes while it runs, so both are deterministic. On a real clock
+/// with gates off, both are off.
 fn scoped(
     ctx: &mut Context,
     runtime: &Arc<std::sync::Mutex<WorkflowRuntime>>,
     policy: &StagePolicy,
     attempt: &mut impl FnMut(&mut Context) -> Result<Value>,
 ) -> Result<Value> {
-    if !runtime.lock().unwrap().gates || (policy.timeout <= 0 && policy.hedge.is_none()) {
+    if policy.timeout <= 0 && policy.hedge.is_none() {
+        return attempt(ctx);
+    }
+    let (is_virtual, gates) = {
+        let guard = runtime.lock().unwrap();
+        (guard.clock.is_virtual(), guard.gates)
+    };
+    if is_virtual {
+        return virtually_scoped(ctx, runtime, policy, attempt);
+    }
+    if !gates {
         return attempt(ctx);
     }
     let outer = {
         let mut guard = runtime.lock().unwrap();
-        let outer = (guard.deadline, guard.hedge);
+        let outer = (guard.deadline, guard.hedge, guard.virtual_hedge);
         if policy.timeout > 0 {
             guard.deadline = Some(std::time::Instant::now() + std::time::Duration::from_micros(policy.timeout as u64));
         }
         guard.hedge = policy.hedge.map(|hedge| (policy.stage, hedge));
+        guard.virtual_hedge = None;
         outer
     };
     let result = attempt(ctx);
     {
         let mut guard = runtime.lock().unwrap();
-        (guard.deadline, guard.hedge) = outer;
+        (guard.deadline, guard.hedge, guard.virtual_hedge) = outer;
     }
     match result {
         // Callers may have added context to the marker.
         Err(error) if error.contains(TIMED_OUT) => Ok(stage_failure("TimedOut")),
+        other => other,
+    }
+}
+
+fn virtually_scoped(
+    ctx: &mut Context,
+    runtime: &Arc<std::sync::Mutex<WorkflowRuntime>>,
+    policy: &StagePolicy,
+    attempt: &mut impl FnMut(&mut Context) -> Result<Value>,
+) -> Result<Value> {
+    let (outer, began) = {
+        let mut guard = runtime.lock().unwrap();
+        let outer = (guard.deadline, guard.hedge, guard.virtual_hedge);
+        let began = guard.clock.now();
+        guard.deadline = None;
+        guard.hedge = None;
+        guard.virtual_hedge = policy.hedge.map(|hedge| (policy.stage, hedge));
+        (outer, began)
+    };
+    let result = attempt(ctx);
+    let ended = {
+        let mut guard = runtime.lock().unwrap();
+        (guard.deadline, guard.hedge, guard.virtual_hedge) = outer;
+        guard.clock.now()
+    };
+    match result {
+        Err(error) if error.contains(TIMED_OUT) => Ok(stage_failure("TimedOut")),
+        Ok(_) if policy.timeout > 0 && ended - began > policy.timeout => Ok(stage_failure("TimedOut")),
         other => other,
     }
 }
@@ -5603,7 +5813,7 @@ fn run_scenario(machine: &Machine, spec: &str, shake: u64, crash: bool, network:
         let net = match (&faulty, wire) {
             (Some(network), Some(w)) => w.items()[1..].iter().find(|f| f.kind() == "channel" && f.items()[1].name() == *name).map(|f| {
                 let steps: Vec<(bool, Sexp)> = f.items()[2..].iter().map(|s| (s.kind() == "send", s.items()[1].clone())).collect();
-                let nodes = [net::Node::new(network.transport(&format!("{name}-0"))), net::Node::new(network.transport(&format!("{name}-1")))];
+                let nodes = [net::Node::new(network.insecure_transport_for_tests(&format!("{name}-0"))), net::Node::new(network.insecure_transport_for_tests(&format!("{name}-1")))];
                 let deadline = std::time::Duration::from_secs(5);
                 let first = nodes[0].listen(name, steps.clone(), types.clone(), deadline).expect("a fresh node");
                 let second = nodes[1]
@@ -5637,8 +5847,8 @@ fn run_scenario(machine: &Machine, spec: &str, shake: u64, crash: bool, network:
                 let d = f.items()[2].clone();
                 let d = if d.kind() == "end" { descriptor("(text)") } else { d };
                 let nodes = [
-                    net::Node::new(network.transport(&format!("{name}-owner"))),
-                    net::Node::new(network.transport(&format!("{name}-senders"))),
+                    net::Node::new(network.insecure_transport_for_tests(&format!("{name}-owner"))),
+                    net::Node::new(network.insecure_transport_for_tests(&format!("{name}-senders"))),
                 ];
                 let inbox = nodes[0].mailbox(name, d.clone(), types.clone()).expect("a fresh node");
                 let remote = nodes[1].remote_mailbox_within(
@@ -7891,6 +8101,52 @@ pub mod actors {
             }
         }
 
+        /// The Mailbox ability's receive ... within d: the next message, or
+        /// None when none arrives within `within`. On a virtual clock (a
+        /// Clock handler that is not real time) it waits no real time: it
+        /// takes a message already sent, or lets the time pass on that clock
+        /// and gives None. With no clock, or the real one, it waits real
+        /// time. Fails once closed and empty.
+        pub fn receive_within(
+            &self,
+            within: std::time::Duration,
+            clock: Option<&dyn super::ClockAbility>,
+        ) -> super::Result<Option<T>> {
+            if let Some(clock) = clock.filter(|clock| !clock.real_time()) {
+                {
+                    let mut items = self.inner.0.lock().unwrap_or_else(|e| e.into_inner());
+                    if let Some(value) = items.0.pop_front() {
+                        return Ok(Some(value));
+                    }
+                    if items.1 {
+                        return Err("the mailbox is closed".into());
+                    }
+                }
+                clock.sleep_micros(i64::try_from(within.as_micros()).unwrap_or(i64::MAX));
+                return Ok(None);
+            }
+            let deadline = std::time::Instant::now().checked_add(within);
+            let mut items = self.inner.0.lock().unwrap_or_else(|e| e.into_inner());
+            loop {
+                if let Some(value) = items.0.pop_front() {
+                    return Ok(Some(value));
+                }
+                if items.1 {
+                    return Err("the mailbox is closed".into());
+                }
+                items = match deadline {
+                    None => self.inner.1.wait(items).unwrap_or_else(|e| e.into_inner()),
+                    Some(at) => {
+                        let now = std::time::Instant::now();
+                        if now >= at {
+                            return Ok(None);
+                        }
+                        self.inner.1.wait_timeout(items, at - now).unwrap_or_else(|e| e.into_inner()).0
+                    }
+                };
+            }
+        }
+
         /// Refuses further messages; those already sent can still be received.
         pub fn close(&self) {
             self.inner.0.lock().unwrap_or_else(|e| e.into_inner()).1 = true;
@@ -7901,7 +8157,35 @@ pub mod actors {
 
 #[cfg(test)]
 mod actor_tests {
+    use super::ClockAbility as _;
     use super::actors::{Actor, Mailbox};
+
+    struct Virtual(std::sync::atomic::AtomicI64);
+    impl super::ClockAbility for Virtual {
+        fn now_micros(&self) -> i64 {
+            self.0.load(std::sync::atomic::Ordering::SeqCst)
+        }
+        fn sleep_micros(&self, micros: i64) {
+            self.0.fetch_add(micros, std::sync::atomic::Ordering::SeqCst);
+        }
+        fn real_time(&self) -> bool {
+            false
+        }
+    }
+
+    #[test]
+    fn receive_within_waits_on_the_clock() {
+        let mailbox = Mailbox::new();
+        let clock = Virtual(std::sync::atomic::AtomicI64::new(0));
+        mailbox.send(7).unwrap();
+        let within = std::time::Duration::from_secs(60);
+        assert_eq!(mailbox.receive_within(within, Some(&clock)).unwrap(), Some(7));
+        assert_eq!(mailbox.receive_within(within, Some(&clock)).unwrap(), None);
+        assert_eq!(clock.now_micros(), 60_000_000);
+        assert_eq!(mailbox.receive_within(std::time::Duration::from_millis(10), None).unwrap(), None);
+        mailbox.close();
+        assert!(mailbox.receive_within(within, Some(&clock)).is_err());
+    }
 
     #[test]
     fn calls_run_one_at_a_time_in_order() {
@@ -8376,6 +8660,19 @@ pub mod net {
         fn start(&self, deliver: Deliver);
         fn send(&self, node: &str, frame: Vec<u8>) -> Result<()>;
         fn close(&self);
+        /// Whether a node on this transport skips the handshake and sends
+        /// frames in the clear. Only the transport that
+        /// MemoryNetwork::insecure_transport_for_tests makes says so: no
+        /// other transport can name the marker.
+        #[doc(hidden)]
+        fn insecure_for_tests(&self) -> Option<sealed::InsecureForTests> {
+            None
+        }
+    }
+
+    mod sealed {
+        /// The marker of the in-memory transport made for tests only.
+        pub struct InsecureForTests;
     }
 
     /// Nodes in one process, with faults for testing: each frame may be lost
@@ -8391,6 +8688,8 @@ pub mod net {
         loss: f64,
         duplicate: f64,
         delay: Duration,
+        // With recording, every record sent, as the network saw it.
+        recorded: Mutex<Option<Vec<Vec<u8>>>>,
     }
 
     struct NetworkState {
@@ -8407,8 +8706,29 @@ pub mod net {
                     loss,
                     duplicate,
                     delay,
+                    recorded: Mutex::new(None),
                 }),
             }
+        }
+
+        /// The network, recording every record sent on it from now on, as
+        /// the network saw it (see recorded): MemoryNetwork::new(...)
+        /// .with_recording().
+        pub fn with_recording(self) -> Self {
+            lock(&self.inner.recorded).get_or_insert_with(Vec::new);
+            self
+        }
+
+        /// Every record sent since with_recording, in order.
+        pub fn recorded(&self) -> Vec<Vec<u8>> {
+            lock(&self.inner.recorded).clone().unwrap_or_default()
+        }
+
+        /// A transport whose node skips the handshake and sends frames in
+        /// the clear: for tests of the frame layer only. Only an in-memory
+        /// network makes one, and no configuration selects it.
+        pub fn insecure_transport_for_tests(&self, name: &str) -> Arc<dyn Transport> {
+            Arc::new(InsecureMemoryTransport(MemoryTransport { network: self.clone(), address: format!("mem://{name}") }))
         }
 
         /// A network without faults.
@@ -8432,6 +8752,9 @@ pub mod net {
         }
 
         fn send(&self, source: &str, node: &str, frame: Vec<u8>) -> Result<()> {
+            if let Some(recorded) = lock(&self.inner.recorded).as_mut() {
+                recorded.push(frame.clone());
+            }
             let (deliver, delays) = {
                 let mut state = lock(&self.inner.state);
                 let Some(deliver) = state.nodes.get(node).cloned() else {
@@ -8484,6 +8807,32 @@ pub mod net {
 
         fn close(&self) {
             lock(&self.network.inner.state).nodes.remove(&self.address);
+        }
+    }
+
+    /// In memory, without the handshake: tests only (see
+    /// MemoryNetwork::insecure_transport_for_tests).
+    pub struct InsecureMemoryTransport(MemoryTransport);
+
+    impl Transport for InsecureMemoryTransport {
+        fn address(&self) -> String {
+            self.0.address()
+        }
+
+        fn start(&self, deliver: Deliver) {
+            self.0.start(deliver)
+        }
+
+        fn send(&self, node: &str, frame: Vec<u8>) -> Result<()> {
+            self.0.send(node, frame)
+        }
+
+        fn close(&self) {
+            self.0.close()
+        }
+
+        fn insecure_for_tests(&self) -> Option<sealed::InsecureForTests> {
+            Some(sealed::InsecureForTests)
         }
     }
 
@@ -8720,6 +9069,89 @@ pub mod net {
         }
     }
 
+    // The secure network handler lives in lawspec_network, which the compiler
+    // writes beside this runtime when a program imports lawspec.network: it
+    // needs the crypto libraries, which programs without nodes do without.
+    // Its install registers it here (register_secure_network); the generated
+    // tests of such a program call it.
+
+    /// A node's secure layer (lawspec_network's): send seals a frame for a
+    /// peer (or queues it while a handshake runs); receive gives the frame a
+    /// record carries, or None for a handshake record or one that fails.
+    pub trait SecureLayer: Send + Sync {
+        fn send(&self, peer: &str, frame: Vec<u8>) -> Result<()>;
+        fn receive(&self, record: &[u8]) -> Option<Vec<u8>>;
+        fn as_any(&self) -> &dyn std::any::Any;
+    }
+
+    /// The secure network handler: layer makes a node's secure layer (by
+    /// default identity and trust), token a one-time take token from its
+    /// secure generator.
+    pub trait SecureNetwork: Send + Sync {
+        fn layer(&self, node: NodeLink) -> Result<Box<dyn SecureLayer>>;
+        fn token(&self) -> String;
+    }
+
+    static SECURE_NETWORK: std::sync::OnceLock<Arc<dyn SecureNetwork>> = std::sync::OnceLock::new();
+
+    /// Registers the secure network handler; the first one stays.
+    pub fn register_secure_network(provider: Arc<dyn SecureNetwork>) {
+        let _ = SECURE_NETWORK.set(provider);
+    }
+
+    /// The error of a node made without the secure network handler.
+    pub const NO_SECURE_NETWORK: &str = "a node needs the secure network handler: add `import lawspec.network` \
+        to a unit of the program, and call lawspec_network::install()";
+
+    fn secure_network() -> Result<Arc<dyn SecureNetwork>> {
+        SECURE_NETWORK.get().cloned().ok_or_else(|| NO_SECURE_NETWORK.to_string())
+    }
+
+    /// What a secure layer holds of its node: its address, sending a record
+    /// to a peer node, and whether the node has closed. It does not keep the
+    /// node alive.
+    #[derive(Clone)]
+    pub struct NodeLink {
+        node: Weak<NodeInner>,
+        address: String,
+    }
+
+    impl NodeLink {
+        pub fn address(&self) -> &str {
+            &self.address
+        }
+
+        /// Sends a record as it is (an error starting UNREACHABLE when it
+        /// cannot, or once the node is gone).
+        pub fn send(&self, peer: &str, record: Vec<u8>) -> Result<()> {
+            match self.node.upgrade() {
+                Some(node) => node.transport.send(peer, record),
+                None => Err(format!("{UNREACHABLE}{} has closed", self.address)),
+            }
+        }
+
+        pub fn closed(&self) -> bool {
+            self.node.upgrade().is_none_or(|node| node.closed.load(Ordering::SeqCst))
+        }
+    }
+
+    /// A one-time token from a secure generator: 32 bytes as 64 lowercase
+    /// hexadecimal digits, as SecureRandom's secureToken gives. The secure
+    /// network handler's generator when it is installed, else the operating
+    /// system's (/dev/urandom).
+    pub fn secure_token() -> String {
+        if let Some(provider) = SECURE_NETWORK.get() {
+            return provider.token();
+        }
+        let mut bytes = [0u8; 32];
+        match std::fs::File::open("/dev/urandom").and_then(|mut f| f.read_exact(&mut bytes)) {
+            Ok(()) => hex(&bytes),
+            Err(error) => panic!(
+                "a take token needs a secure generator: /dev/urandom ({error}); add `import lawspec.network` and call lawspec_network::install()"
+            ),
+        }
+    }
+
     // Something a node names: it handles the frames sent to it.
     trait Entity: Send + Sync {
         fn receive(&self, node: &Node, kind: &str, source: &str, id: u64, payload: Vec<u8>);
@@ -8744,6 +9176,8 @@ pub mod net {
     struct NodeInner {
         transport: Arc<dyn Transport>,
         address: String,
+        // None only on the transport made for tests that skips the handshake.
+        secure: Option<Box<dyn SecureLayer>>,
         entities: Mutex<HashMap<String, Arc<dyn Entity>>>,
         pending: Mutex<HashMap<u64, Arc<Slot>>>,
         // Requests seen, by sender and id, with their reply once sent.
@@ -8753,9 +9187,27 @@ pub mod net {
     }
 
     impl Node {
+        /// A node on transport. Unless it is the transport made for tests
+        /// only (MemoryNetwork::insecure_transport_for_tests), the node is
+        /// secure: the secure network handler (lawspec_network, installed)
+        /// gives it the identity lawspec.json binds, or a fresh one. Panics
+        /// without that handler, or when lawspec-network.conf is unreadable;
+        /// lawspec_network::node takes an identity and trusted peers.
         pub fn new(transport: Arc<dyn Transport>) -> Node {
-            let inner = Arc::new(NodeInner {
-                address: transport.address(),
+            Node::with_secure_layer(transport, |link| {
+                secure_network().and_then(|provider| provider.layer(link)).unwrap_or_else(|error| panic!("{error}"))
+            })
+        }
+
+        /// A node whose secure layer make gives (it is not called for the
+        /// transport made for tests only, whose node sends frames in the
+        /// clear; no other transport can skip the layer).
+        pub fn with_secure_layer(transport: Arc<dyn Transport>, make: impl FnOnce(NodeLink) -> Box<dyn SecureLayer>) -> Node {
+            let insecure = transport.insecure_for_tests().is_some();
+            let address = transport.address();
+            let inner = Arc::new_cyclic(|weak: &Weak<NodeInner>| NodeInner {
+                secure: if insecure { None } else { Some(make(NodeLink { node: weak.clone(), address: address.clone() })) },
+                address,
                 transport: transport.clone(),
                 entities: Mutex::new(HashMap::new()),
                 pending: Mutex::new(HashMap::new()),
@@ -8764,9 +9216,9 @@ pub mod net {
                 closed: AtomicBool::new(false),
             });
             let weak: Weak<NodeInner> = Arc::downgrade(&inner);
-            transport.start(Arc::new(move |frame| {
+            transport.start(Arc::new(move |record| {
                 if let Some(inner) = weak.upgrade() {
-                    Node { inner }.deliver(frame);
+                    Node { inner }.arrive(record);
                 }
             }));
             Node { inner }
@@ -8774,6 +9226,31 @@ pub mod net {
 
         pub fn address(&self) -> String {
             self.inner.address.clone()
+        }
+
+        /// The node's secure layer; None on the transport made for tests only.
+        pub fn secure_layer(&self) -> Option<&dyn SecureLayer> {
+            self.inner.secure.as_deref()
+        }
+
+        // A record from the transport: a frame in the clear on the transport
+        // made for tests, else a handshake or sealed record.
+        fn arrive(&self, record: Vec<u8>) {
+            match &self.inner.secure {
+                None => self.deliver(record),
+                Some(secure) => {
+                    if let Some(frame) = secure.receive(&record) {
+                        self.deliver(frame);
+                    }
+                }
+            }
+        }
+
+        fn transmit(&self, node: &str, frame: Vec<u8>) -> Result<()> {
+            match &self.inner.secure {
+                None => self.inner.transport.send(node, frame),
+                Some(secure) => secure.send(node, frame),
+            }
         }
 
         pub fn close(&self) {
@@ -8791,7 +9268,7 @@ pub mod net {
 
         fn send_frame(&self, address: &str, kind: &str, payload: &[u8], id: u64) -> Result<()> {
             let (node, name) = split_address(address)?;
-            self.inner.transport.send(&node, frame_encode(kind, &name, &self.inner.address, id, payload))
+            self.transmit(&node, frame_encode(kind, &name, &self.inner.address, id, payload))
         }
 
         fn register(&self, name: &str, entity: Arc<dyn Entity>) -> Result<String> {
@@ -8991,7 +9468,7 @@ pub mod net {
         /// Passes a frame on to address unchanged, keeping its source.
         fn forward(&self, address: &str, kind: &str, source: &str, id: u64, payload: &[u8]) {
             if let Ok((node, name)) = split_address(address) {
-                let _ = self.inner.transport.send(&node, frame_encode(kind, &name, source, id, payload));
+                let _ = self.transmit(&node, frame_encode(kind, &name, source, id, payload));
             }
         }
     }
@@ -9345,16 +9822,7 @@ pub mod net {
         /// The address another node takes this unused end over from.
         fn offer(&self) -> String {
             let mut state = lock(&self.inner.state);
-            let token = state.token.get_or_insert_with(|| {
-                use std::hash::{BuildHasher, Hasher};
-                let mut text = String::new();
-                for _ in 0..2 {
-                    let mut hasher = std::collections::hash_map::RandomState::new().build_hasher();
-                    hasher.write_u128(std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_nanos()));
-                    text.push_str(&format!("{:016x}", hasher.finish()));
-                }
-                text
-            });
+            let token = state.token.get_or_insert_with(secure_token);
             format!("{}?take={token}", lock(&self.inner.address))
         }
 
@@ -9981,11 +10449,20 @@ mod net_tests {
     }
 
     #[test]
-    fn nodes_over_memory_tcp_and_http() {
-        let net = MemoryNetwork::new(3, 0.2, 0.2, Duration::from_millis(10));
-        exercise(net.transport("a"), net.transport("b"), true);
-        exercise(TcpTransport::local().unwrap(), TcpTransport::local().unwrap(), false);
-        exercise(HttpTransport::local().unwrap(), HttpTransport::local().unwrap(), false);
+    fn nodes_over_the_insecure_memory_transport() {
+        // The frame layer alone; lawspec_network's tests cover secure nodes
+        // over memory, TCP and HTTP.
+        let net = MemoryNetwork::new(3, 0.2, 0.2, Duration::from_millis(10)).with_recording();
+        exercise(net.insecure_transport_for_tests("a"), net.insecure_transport_for_tests("b"), true);
+        assert!(!net.recorded().is_empty());
+    }
+
+    #[test]
+    fn take_tokens_are_secure() {
+        let token = secure_token();
+        assert_eq!(token.len(), 64);
+        assert!(token.chars().all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase()));
+        assert_ne!(token, secure_token());
     }
 }
 
@@ -10003,6 +10480,9 @@ mod net_tests {
 pub struct Installed {
     pub handler: Arc<dyn std::any::Any + Send + Sync>,
     pub calls: Option<Calls>,
+    /// The handler's own type, when it is an ability's default (production)
+    /// handler: how a reader such as lawspec.time's tells the real clock.
+    pub native: Option<std::any::TypeId>,
 }
 impl std::fmt::Debug for Installed {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -10020,10 +10500,14 @@ impl Calls {
 }
 
 pub fn installed<H: Send + Sync + 'static>(handler: H) -> Installed {
-    Installed { handler: Arc::new(handler), calls: None }
+    Installed { handler: Arc::new(handler), calls: None, native: None }
+}
+/// A default handler of type N, installed as H (its `Arc<dyn Trait>`).
+pub fn installed_native<N: 'static, H: Send + Sync + 'static>(handler: H) -> Installed {
+    Installed { handler: Arc::new(handler), calls: None, native: Some(std::any::TypeId::of::<N>()) }
 }
 pub fn installed_recording<H: Send + Sync + 'static>(handler: H, calls: Calls) -> Installed {
-    Installed { handler: Arc::new(handler), calls: Some(calls) }
+    Installed { handler: Arc::new(handler), calls: Some(calls), native: None }
 }
 
 impl Context {

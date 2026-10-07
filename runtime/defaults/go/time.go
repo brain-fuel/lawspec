@@ -32,3 +32,16 @@ func (handler *ClockHandler) Sleep(value0 LawSpecDuration) {
 		time.Sleep(time.Duration(left) * time.Microsecond)
 	}
 }
+
+// LawSpecRegisterClock lets the runtime read any Clock handler (this one, the
+// virtual clock, a recording): workflows and mailboxes then wait on the
+// clock a law installs. Only this handler is real time.
+func LawSpecRegisterClock() {
+	LawSpecRegisterClockAbility(
+		func(handler any) int64 { return handler.(Clock).Now().Value },
+		func(handler any, micros int64) { handler.(Clock).Sleep(LawSpecDuration(micros) * time.Microsecond) },
+		func(handler any) bool {
+			_, isDefault := handler.(*ClockHandler)
+			return isDefault
+		})
+}

@@ -152,25 +152,26 @@ renderExpressionWithContext :: [DataDeclaration] -> D.Doc -> D.Doc
 renderExpressionWithContext declarations bits schema typeReference typeKey callees = render
   where
     render names term
-      -- An all group's steps run side by side, each on a scoped thread with
-      -- its own copy of the context (which shares the workflow runtime).
+      -- An all group's steps run side by side as tasks of the Async
+      -- ability's default handler (ls::concurrently, the runtime's
+      -- NativeAsync), each with its own copy of the context (which shares
+      -- the workflow runtime).
       | Just (fields,binders,body) <- concurrentGroup term = do
           let suffix = show (length names)
               contexts = ["group_ctx_" ++ suffix ++ "_" ++ show i | i <- [0 .. length fields - 1]]
-              handles = ["group_step_" ++ suffix ++ "_" ++ show i | i <- [0 .. length fields - 1]]
               locals = ["group_local_" ++ suffix ++ "_" ++ show i | i <- [0 .. length binders - 1]]
+              tasks = "group_steps_" ++ suffix
               results = "group_results_" ++ suffix
           steps <- mapM (render names) fields
           inner <- render (zip (map binderId binders) locals ++ names) body
-          let spawn (context,handle,step) = D.text ("let " ++ handle ++ " = scope.spawn(|| -> ls::Result<ls::Value> ") <>
+          let task (context,step) = D.text (tasks ++ ".push(Box::new(|| -> ls::Result<ls::Value> ") <>
                 D.block 4 (D.text ("let ctx = &mut " ++ context ++ ";") <> D.hardline <>
-                  D.hang 4 (D.text "let value =") step <> D.text ";" <> D.hardline <> D.text "Ok(value)") <> D.text ");"
+                  D.hang 4 (D.text "let value =") step <> D.text ";" <> D.hardline <> D.text "Ok(value)") <> D.text "));"
           pure (D.block 4 (D.joinWith D.hardline
             ([D.text ("let mut " ++ context ++ " = ctx.clone();") | context <- contexts] ++
-             [D.text ("let " ++ results ++ " = std::thread::scope(|scope| ") <> D.block 4 (D.joinWith D.hardline
-               (map spawn (zip3 contexts handles steps) ++
-                [D.text ("vec![" ++ intercalate ", " [handle ++ ".join()" | handle <- handles] ++ "]")])) <> D.text ");",
-              D.text ("let mut " ++ results ++ " = ls::joined(" ++ results ++ ")?.into_iter();")] ++
+             [D.text ("let mut " ++ tasks ++ ": Vec<Box<dyn FnOnce() -> ls::Result<ls::Value> + Send + '_>> = Vec::new();")] ++
+             map task (zip contexts steps) ++
+             [D.text ("let mut " ++ results ++ " = ls::concurrently(" ++ tasks ++ ")?.into_iter();")] ++
              [D.text ("let " ++ local ++ " = " ++ results ++ ".next().unwrap();") | local <- locals] ++
              [D.hang 4 (D.text "let result =") inner <> D.text ";", D.text "result"])))
     render names term = case expressionNode term of

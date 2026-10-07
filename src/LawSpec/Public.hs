@@ -1,6 +1,7 @@
 -- | Versioned wire views. Field names and discriminators are selected explicitly;
 -- no internal AST or IR datatype is serialized with genericToJSON.
 module LawSpec.Public (programView, typeView, expressionView) where
+import qualified LawSpec.Unification as U
 import Data.Aeson
 import Data.List (intercalate)
 import qualified LawSpec.Core as C
@@ -149,7 +150,11 @@ programView settings surface expansions artifacts evidence C.Program{..} = objec
       ]
     unitView u = object (["id" .= C.idText (C.unitId u), "declarations" .= [object (["id" .= C.idText (C.declarationId d),"name" .= C.declarationName d,"type" .= typeView (C.declarationType d),"origin" .= originView (C.declarationOrigin d)] ++ ["async" .= True | C.declarationAsync d] ++
         -- Its ability row, declared or inferred.
-        ["uses" .= map C.abilityKey (C.declarationUses d) | not (null (C.declarationUses d))]) | d <- C.unitDeclarations u]] ++
+        ["uses" .= declarationRow d | not (null (declarationRow d))]) | d <- C.unitDeclarations u]] ++
+      -- What each existing effect-like construct uses, as abilities
+      -- (LawSpec.Unification).
+      ["abilityRows" .= [object ["construct" .= U.rowConstruct r, "name" .= U.rowName r, "uses" .= U.rowUses r
+          , "handler" .= U.rowHandler r] | r <- U.abilityRows u] | not (null (U.abilityRows u))] ++
       ["abilities" .= [object ["id" .= C.idText (C.abilityId a), "name" .= C.abilityName a
           , "operations" .= [object ["name" .= op, "type" .= typeView t] | (op, t) <- C.abilityOperations a]
           , "origin" .= originView (C.abilityOrigin a)] | a <- C.unitAbilities u] | not (null (C.unitAbilities u))] ++
@@ -158,6 +163,9 @@ programView settings surface expansions artifacts evidence C.Program{..} = objec
           , "clauses" .= [object ["operation" .= op, "definition" .= C.idText d] | (op, d) <- C.handlerClauses h]
           , "state" .= fmap (typeView . fst) (C.handlerState h)
           , "origin" .= originView (C.handlerOrigin h)] | h <- C.unitHandlers u] | not (null (C.unitHandlers u))])
+    -- An async declaration uses Async, whose default handler is the
+    -- target's native async (abilities-mapping.md).
+    declarationRow d = [U.asyncAbility | C.declarationAsync d] ++ map C.abilityKey (C.declarationUses d)
     propertyView owner p =
       let names = [(C.binderId b,C.binderName b) | q <- C.propertyInputs p, let b = C.quantifiedBinder q]
           expr = expressionView names

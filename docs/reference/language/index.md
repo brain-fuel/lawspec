@@ -37,8 +37,13 @@ types, checked definitions, refinements and laws.
   releases after it, and the built-in ones.
 - [Built-in abilities](builtins.md): the `lawspec.*` units and their default
   handlers on every target.
+- [Existing features as abilities](abilities-mapping.md): async, workflows,
+  sessions, mailboxes, actors, models, scenarios and distribution, each in
+  terms of abilities.
 - [Time and the clock](time.md): instants, the `Clock` ability and the
   virtual clock.
+- [Time in laws](temporal.md): `eventually within`, `always within`, `never
+  within`, and performance budgets.
 - [Randomness](randomness.md): reproducible `Random`, secure `SecureRandom`,
   and why they are apart.
 - [Cryptography](cryptography.md): post-quantum key exchange and signatures,

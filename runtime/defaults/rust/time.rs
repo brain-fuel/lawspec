@@ -19,7 +19,8 @@ pub fn now_micros() -> i64 {
     wall + monotonic.elapsed().as_micros() as i64
 }
 
-/// The system clock: now never goes back; sleep blocks this thread.
+/// The system clock: now never goes back; sleep blocks this thread. It is
+/// the only real-time Clock handler (see register_clock_ability).
 #[derive(Default)]
 pub struct ClockHandler;
 
@@ -38,4 +39,46 @@ impl crate::lawspec_abilities::lawspec_time::Clock for ClockHandler {
             std::thread::sleep(std::time::Duration::from_micros(left as u64));
         }
     }
+}
+
+// The runtime reads the Clock ability through ls::ClockAbility: workflow time
+// and mailbox waits under a law's Clock handler.
+
+/// A Clock handler installed in a context, as the runtime reads it: the
+/// default ClockHandler is real time; any other (the virtual clock, a
+/// recording, a bound one) is virtual.
+struct InstalledClock {
+    clock: std::sync::Arc<dyn crate::lawspec_abilities::lawspec_time::Clock>,
+    real_time: bool,
+}
+
+impl ls::ClockAbility for InstalledClock {
+    fn now_micros(&self) -> i64 {
+        crate::lawspec_abilities::lawspec_time::Clock::now(&*self.clock).value
+    }
+
+    fn sleep_micros(&self, micros: i64) {
+        crate::lawspec_abilities::lawspec_time::Clock::sleep(&*self.clock, std::time::Duration::from_micros(micros.max(0) as u64))
+    }
+
+    fn real_time(&self) -> bool {
+        self.real_time
+    }
+}
+
+/// The Clock handler installed (an ls::Installed for the ability key
+/// lawspec.time::ability::Clock), as the runtime reads it. It is real time
+/// only when it is this module's ClockHandler, installed as the default
+/// handler (ls::installed_native names its type).
+pub fn clock_ability(installed: &ls::Installed) -> Option<std::sync::Arc<dyn ls::ClockAbility>> {
+    let clock = installed.handler.downcast_ref::<std::sync::Arc<dyn crate::lawspec_abilities::lawspec_time::Clock>>()?.clone();
+    let real_time = installed.native == Some(std::any::TypeId::of::<ClockHandler>());
+    Some(std::sync::Arc::new(InstalledClock { clock, real_time }))
+}
+
+/// Lets workflows and mailboxes wait on the Clock handler a law installs
+/// (ls::register_clock_ability). The generated tests of a unit whose laws
+/// install a Clock handler call it before each case.
+pub fn register_clock_ability() {
+    ls::register_clock_ability(clock_ability);
 }

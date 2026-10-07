@@ -1,4 +1,5 @@
-module AbilitiesSpec (spec) where
+-- | Abilities, handlers and evidence passing through Core and the emitters.
+module AbilitiesSpec (test_abilityLawsHoldForEveryLawfulHandler) where
 
 import Control.Monad (forM_)
 import Data.Either (isLeft, isRight)
@@ -72,8 +73,10 @@ fileOf target path source = do
   files <- program source >>= planTesting >>= emitPlan target
   pure (concat [artifactContent f | f <- files, artifactPath f == path])
 
-spec :: Spec
-spec = describe "abilities" $ do
+-- | A law must hold for every lawful handler of the abilities its code uses, or a
+-- fake would let a law pass that production breaks. ref:REQ-abilities
+test_abilityLawsHoldForEveryLawfulHandler :: Spec
+test_abilityLawsHoldForEveryLawfulHandler = describe "abilities" $ do
   describe "names" $
     it "rejects, on Java and Kotlin, an ability or handler named like the class holding its unit's abilities" $ do
       let clashing = unlines ["unit example.gateway", "ability Gateway is", "  ping :: Int32 -> Int32", "end"]

@@ -1,4 +1,4 @@
-{-# LANGUAGE FlexibleInstances, TypeSynonymInstances, ScopedTypeVariables, MultiParamTypeClasses, FunctionalDependencies, ExistentialQuantification #-}
+{-# LANGUAGE FlexibleInstances, TypeSynonymInstances, ScopedTypeVariables, MultiParamTypeClasses, FunctionalDependencies, ExistentialQuantification, RankNTypes #-}
 -- | The portable scalar domain. No test framework or target runtime dependencies.
 --
 -- A law must mean the same thing on every target, so this module implements
@@ -45,6 +45,7 @@ import GHC.Float
   , castWord64ToDouble, float2Double, double2Float
   )
 import Numeric (showHex, readHex)
+import System.IO (IOMode(ReadMode), withBinaryFile)
 
 data Family
   = Boolean | IntegerFamily | Exact | Floating | Complex | Character
@@ -1368,19 +1369,22 @@ forceScalar _ = ()
 -- installed a virtual clock). Durations are Integer microseconds. Workflow
 -- bodies are pure, so a stage's waits run through unsafePerformIO.
 
--- | Tells the time and waits, in microseconds.
-data Clock = Clock { clockNow :: IO Integer, clockSleep :: Integer -> IO () }
+-- | Tells the time and waits, in microseconds. A clock is virtual unless it
+-- is real time: on a virtual clock waits pass at once, and timeouts and
+-- hedges count only the time it reports.
+data Clock = Clock { clockNow :: IO Integer, clockSleep :: Integer -> IO (), clockVirtual :: Bool }
 
 realClock :: Clock
 realClock = Clock
   { clockNow = (`div` 1000) . toInteger <$> getMonotonicTimeNSec
-  , clockSleep = \micros -> threadDelay (fromInteger micros) }
+  , clockSleep = \micros -> threadDelay (fromInteger micros)
+  , clockVirtual = False }
 
 -- | Advances when slept on and returns at once.
 virtualClock :: IO (Clock, IORef Integer)
 virtualClock = do
   time <- newIORef 0
-  pure (Clock (readIORef time) (\micros -> modifyIORef' time (+ micros)), time)
+  pure (Clock (readIORef time) (\micros -> modifyIORef' time (+ micros)) True, time)
 
 -- | The same sequence on every target for the same seed: (output, next state).
 --
@@ -1407,8 +1411,12 @@ data WorkflowRuntime = WorkflowRuntime
   , runtimeGates :: Bool, runtimeCache :: IORef [(String, [(Scalar, Scalar, Integer)])]
   -- A frame per running workflow: the undos of its completed stages.
   , runtimeFrames :: IORef [[(String, IO ())]]
-  -- The running attempt's stage and hedge (delay, most).
-  , runtimeHedge :: IORef (Maybe (String, Integer, Integer)) }
+  -- The running attempt's hedge.
+  , runtimeHedge :: IORef (Maybe Hedge) }
+
+-- | A running attempt's hedge: its stage, delay and most attempts. A
+-- virtual hedge (on a virtual clock) runs its attempts one after another.
+data Hedge = Hedge { hedgeStage :: String, hedgeDelay :: Integer, hedgeMost :: Integer, hedgeVirtual :: Bool }
 
 newWorkflowRuntime :: Clock -> Word64 -> IO WorkflowRuntime
 newWorkflowRuntime clock seed = do
@@ -1444,24 +1452,68 @@ workflowContext runtime = do
   modifyIORef' workflowTable ((unique, runtime) :)
   pure (SymbolContext unique)
 
--- | Makes the default runtime virtual, as generated tests do.
+-- | Makes the default runtime virtual, as generated tests do. Timeouts and
+-- hedges stay on: they count virtual time (see runStage).
 useVirtualClock :: Word64 -> IO ()
 useVirtualClock seed = do
   (clock, _) <- virtualClock
   runtime <- newWorkflowRuntime clock seed
   writeIORef defaultWorkflow (Just runtime { runtimeGates = False })
 
+-- | The runtime a context's workflows run under: the one attached to it
+-- (workflowContext), which keeps its own clock, or else the default one.
+-- Workflow time is the Clock ability's: where a law has installed a Clock
+-- handler, the default runtime waits and times out on it. That view shares
+-- the default runtime's state (trace, gates, hedge), so runStage and
+-- awaitStep, which look it up separately, see the same runtime.
 workflowRuntime :: SymbolContext -> IO WorkflowRuntime
-workflowRuntime (SymbolContext unique) = do
+workflowRuntime symbols@(SymbolContext unique) = do
   table <- readIORef workflowTable
   case lookup unique table of
     Just runtime -> pure runtime
-    Nothing -> readIORef defaultWorkflow >>= \current -> case current of
-      Just runtime -> pure runtime
-      Nothing -> do
-        runtime <- newWorkflowRuntime realClock 0
-        writeIORef defaultWorkflow (Just runtime)
-        pure runtime
+    Nothing -> do
+      runtime <- readIORef defaultWorkflow >>= \current -> case current of
+        Just runtime -> pure runtime
+        Nothing -> do
+          runtime <- newWorkflowRuntime realClock 0
+          writeIORef defaultWorkflow (Just runtime)
+          pure runtime
+      clock <- abilityClock symbols
+      pure (maybe runtime (\c -> runtime { runtimeClock = c }) clock)
+
+-- The Clock ability's key, as every target names it.
+clockAbilityKey :: String
+clockAbilityKey = "lawspec.time::ability::Clock"
+
+-- | How to read an installed Clock handler (the generated record, held as a
+-- Dynamic) as a workflow Clock: its now (Instant microseconds) and sleep
+-- (microseconds). The runtime cannot name the record's type, so
+-- lawspec.time's registerClock registers it (registerClockAbility; the
+-- generated tests of laws that install a Clock handler call it); until then
+-- workflows and mailboxes keep the runtime's clock.
+{-# NOINLINE clockAbilityReader #-}
+clockAbilityReader :: IORef (Maybe (Dynamic -> Bool -> Maybe Clock))
+clockAbilityReader = unsafePerformIO (newIORef Nothing)
+
+-- | Registers how to read a Clock handler of type h. Whether a handler is
+-- real time is not the record's to say: it is the installation's
+-- (installedRealClock, which the generated tests use for lawspec.time's
+-- default handler). Every other Clock handler is virtual.
+registerClockAbility :: forall h. Typeable h => (h -> IO Integer) -> (h -> Integer -> IO ()) -> IO ()
+registerClockAbility now sleep = writeIORef clockAbilityReader (Just reader)
+  where
+    reader dynamic real = case fromDynamic dynamic :: Maybe h of
+      Just handler -> Just (Clock (now handler) (sleep handler) (not real))
+      Nothing -> Nothing
+
+-- | The workflow clock of the Clock handler installed with a context, if
+-- its reader is registered.
+abilityClock :: SymbolContext -> IO (Maybe Clock)
+abilityClock (SymbolContext unique) = do
+  table <- readIORef handlerTable
+  case [(value, real) | Just handlers <- [lookup unique table], Installed k value _ real <- handlers, k == clockAbilityKey] of
+    [] -> pure Nothing
+    (value, real) : _ -> (\reader -> reader >>= \r -> r value real) <$> readIORef clockAbilityReader
 
 -- | retryStrategy is immediate, fixed, linear, exponential, fibonacci or
 -- custom; delay, step, factor and cap (negative for none) are its parameters.
@@ -1632,20 +1684,35 @@ runStage symbols policy attempt key = unsafePerformIO $ do
           in (cacheKey, kept ++ [(key, result, now + policyCache policy)]) : filter ((/= cacheKey) . fst) caches
       pure result
     when' condition action = if condition then action else pure ()
+    timedOut = SData "Either::Left" [SData (stageFailurePrefix ++ "TimedOut") []]
     -- An attempt, evaluated in full under its stage's timeout (failing
-    -- with TimedOut when it outlives it) and hedge. Under the runtime
-    -- generated tests install (gates off), both are off.
+    -- with TimedOut when it outlives it) and hedge: the Timeout and Hedge
+    -- transformers of the Async ability, measured on the runtime's Clock.
+    -- On a virtual clock (generated tests, or a law using virtual clock)
+    -- an attempt takes the virtual time that passes while it runs, so both
+    -- are deterministic. On a real clock with gates off, both are off.
     timed runtime
-      | not (runtimeGates runtime) || (policyTimeout policy <= 0 && policyHedge policy == Nothing) = evaluate (attempt ())
+      | policyTimeout policy <= 0 && policyHedge policy == Nothing = evaluate (attempt ())
+      | clockVirtual (runtimeClock runtime) = virtuallyTimed runtime
+      | not (runtimeGates runtime) = evaluate (attempt ())
       | otherwise = do
           outer <- readIORef (runtimeHedge runtime)
-          writeIORef (runtimeHedge runtime) ((\(delay, most) -> (policyStage policy, delay, most)) <$> policyHedge policy)
+          writeIORef (runtimeHedge runtime) ((\(delay, most) -> Hedge (policyStage policy) delay most False) <$> policyHedge policy)
           let full = do
                 result <- evaluate (attempt ())
                 result <$ evaluate (deepScalar result)
               limited = if policyTimeout policy > 0 then timeout (fromInteger (policyTimeout policy)) full else Just <$> full
           outcome <- limited `finally` writeIORef (runtimeHedge runtime) outer
-          pure (maybe (SData "Either::Left" [SData (stageFailurePrefix ++ "TimedOut") []]) id outcome)
+          pure (maybe timedOut id outcome)
+    virtuallyTimed runtime = do
+      outer <- readIORef (runtimeHedge runtime)
+      began <- clockNow (runtimeClock runtime)
+      writeIORef (runtimeHedge runtime) ((\(delay, most) -> Hedge (policyStage policy) delay most True) <$> policyHedge policy)
+      result <- (do
+        value <- evaluate (attempt ())
+        value <$ evaluate (deepScalar value)) `finally` writeIORef (runtimeHedge runtime) outer
+      ended <- clockNow (runtimeClock runtime)
+      pure (if policyTimeout policy > 0 && ended - began > policyTimeout policy then timedOut else result)
     event runtime kind number succeeded =
       modifyIORef' (runtimeTrace runtime) (++ [TraceEvent kind (policyStage policy) number succeeded])
     attempts runtime number previous = do
@@ -1683,7 +1750,10 @@ runStage symbols policy attempt key = unsafePerformIO $ do
 
 -- | An asynchronous step's logical result: start runs the step and convert
 -- turns its native result into a logical value. Under a hedge, attempts run
--- on threads of their own; the first success wins.
+-- on threads of their own; the first success wins. Under a virtual hedge
+-- they run one after another, the next starting when one fails, so the
+-- first success wins as it would in real time when no attempt outlives the
+-- delay.
 {-# NOINLINE awaitStep #-}
 awaitStep :: SymbolContext -> IO a -> (a -> Scalar) -> Scalar
 awaitStep symbols start convert = unsafePerformIO $ do
@@ -1691,7 +1761,15 @@ awaitStep symbols start convert = unsafePerformIO $ do
   hedge <- readIORef (runtimeHedge runtime)
   case hedge of
     Nothing -> convert <$> start
-    Just (stage, delay, most) -> do
+    Just (Hedge stage _ most True) -> do
+      let run = start >>= \native -> let value = convert native in value <$ evaluate (deepScalar value)
+          loop started value = case value of
+            SData "Either::Left" _ | started < most -> do
+              modifyIORef' (runtimeTrace runtime) (++ [TraceEvent "hedge" stage (started + 1) True])
+              run >>= loop (started + 1)
+            _ -> pure value
+      run >>= loop 1
+    Just (Hedge stage delay most False) -> do
       results <- newChan
       threads <- newIORef []
       let launch number = do
@@ -1712,21 +1790,37 @@ awaitStep symbols start convert = unsafePerformIO $ do
               Just (Right value) -> pure value
       (launch 1 >> loop 1 1) `finally` (readIORef threads >>= mapM_ killThread)
 
--- | An all group's step results, in declaration order. Each step is
--- evaluated in full on a thread of its own, so the steps run side by side.
--- Every step finishes before a step's exception (the first, in declaration
--- order) is thrown.
+-- | The Async ability's default handler, natively: GHC's threads. LawSpec
+-- code performs pause; workflows reach the rest natively: asyncSpawn starts
+-- an action as a task, asyncWait gives a task's result (rethrowing what it
+-- threw), and asyncAll runs actions side by side and gives their results in
+-- order. lawspec.concurrent's default handler is this one.
+data NativeAsync = NativeAsync
+  { asyncPause :: IO ()
+  , asyncSpawn :: forall a. IO a -> IO (Process a)
+  , asyncWait :: forall a. Process a -> IO a
+  -- | Every action's result, in order; all finish before the first
+  -- exception (in order) is thrown.
+  , asyncAll :: forall a. [IO a] -> IO [a] }
+
+nativeAsync :: NativeAsync
+nativeAsync = NativeAsync
+  { asyncPause = yield
+  , asyncSpawn = spawn
+  , asyncWait = join
+  , asyncAll = \actions -> do
+      tasks <- mapM spawn actions
+      outcomes <- mapM (\(Process result) -> readMVar result) tasks
+      mapM (either throwIO pure) outcomes }
+
+-- | An all group's step results, in declaration order. The steps run side
+-- by side as tasks of the Async ability's default handler (nativeAsync),
+-- each evaluated in full. Every step finishes before a step's exception
+-- (the first, in declaration order) is thrown.
 {-# NOINLINE concurrently #-}
 concurrently :: [Scalar] -> [Scalar]
-concurrently steps = unsafePerformIO $ do
-  slots <- forM steps $ \step -> do
-    slot <- newEmptyMVar
-    _ <- forkIO (try (step <$ evaluate (deepScalar step)) >>= putMVar slot)
-    pure slot
-  outcomes <- mapM takeMVar slots
-  forM outcomes $ \outcome -> case outcome of
-    Left failure -> throwIO (failure :: SomeException)
-    Right value -> pure value
+concurrently steps = unsafePerformIO $
+  asyncAll nativeAsync [step <$ evaluate (deepScalar step) | step <- steps]
 
 -- | Evaluates a value in full.
 deepScalar :: Scalar -> ()
@@ -2843,8 +2937,8 @@ newNetScenarioChannel :: MemoryNetwork -> IORef [(String, ScenarioChannel)] -> D
                       -> Int -> String -> IO ScenarioChannel
 newNetScenarioChannel network registry table steps n name = do
   let wire (sends, d) = (sends, if d == DescList [DescAtom "end"] then DescList [DescAtom "text"] else d)
-  first <- newNode (memoryTransport network (name ++ "-0"))
-  second <- newNode (memoryTransport network (name ++ "-1"))
+  first <- newNode (insecureTransportForTests network (name ++ "-0"))
+  second <- newNode (insecureTransportForTests network (name ++ "-1"))
   listener <- listenOn first name (map wire steps) table
   dialer <- dialTo second (nodeAddress first ++ "/" ++ name) [wire (not s, d) | (s, d) <- steps] table
   channel <- ScenarioChannel n name <$> (NetChannel [first, second] [listener, dialer] <$> newMVar (False, False) <*> pure registry)
@@ -2948,8 +3042,8 @@ newScenarioMailbox expected = ScenarioMailbox expected <$> newMVar (0, 0) <*> ne
 newNetScenarioMailbox :: MemoryNetwork -> IORef [(String, ScenarioChannel)] -> DataTable -> Descriptor -> String -> Int -> IO ScenarioMailbox
 newNetScenarioMailbox network registry table d0 name expected = do
   let d = if d0 == DescList [DescAtom "end"] then DescList [DescAtom "text"] else d0
-  owner <- newNode (memoryTransport network (name ++ "-owner"))
-  senders <- newNode (memoryTransport network (name ++ "-senders"))
+  owner <- newNode (insecureTransportForTests network (name ++ "-owner"))
+  senders <- newNode (insecureTransportForTests network (name ++ "-senders"))
   inbox <- nodeMailbox owner name table d
   let remote = remoteMailboxWithin senders (nodeAddress owner ++ "/" ++ name) table d 5
   box <- newScenarioMailbox expected
@@ -4006,39 +4100,88 @@ checkSupervision = do
 
 -- | A queue with many senders and one receiver: the channel form of an
 -- actor. A process that loops over receiveMailbox and answers each message
--- is an actor written by hand; sendMailbox never waits.
-data Mailbox a = Mailbox (Chan (Maybe a)) (IORef Bool)
+-- is an actor written by hand; sendMailbox never waits. The queue (front,
+-- then back reversed) and whether it is closed are kept together; the
+-- signal wakes a waiting receiver after a send or the close.
+data Mailbox a = Mailbox (MVar ([a], [a], Bool)) (MVar ())
+
+-- | What a receive found without waiting.
+data MailTaken a = MailTook a | MailEmpty | MailClosed
 
 newMailbox :: IO (Mailbox a)
-newMailbox = Mailbox <$> newChan <*> newIORef False
+newMailbox = Mailbox <$> newMVar ([], [], False) <*> newEmptyMVar
 
 sendMailbox :: Mailbox a -> a -> IO ()
-sendMailbox (Mailbox chan closed) value = do
-  done <- readIORef closed
-  if done then throwIO ActorStopped else writeChan chan (Just value)
+sendMailbox (Mailbox state signal) value = do
+  sent <- modifyMVar state (\(front, back, closed) ->
+    pure (if closed then ((front, back, closed), False) else ((front, value : back, closed), True)))
+  if sent then () <$ tryPutMVar signal () else throwIO ActorStopped
+
+-- | The next message without waiting. Another waiting receiver is woken
+-- while messages remain (or the mailbox is closed), so no wakeup is lost.
+takeMailbox :: Mailbox a -> IO (MailTaken a)
+takeMailbox (Mailbox state signal) = do
+  (taken, more) <- modifyMVar state (\(front, back, closed) -> pure (case (front, reverse back) of
+    (x : rest, _) -> ((rest, back, closed), (MailTook x, not (null rest) || not (null back) || closed))
+    ([], x : rest) -> ((rest, [], closed), (MailTook x, not (null rest) || closed))
+    ([], []) -> ((front, back, closed), (if closed then MailClosed else MailEmpty, closed))))
+  if more then () <$ tryPutMVar signal () else pure ()
+  pure taken
 
 -- | The next message, waiting for it; throws ActorStopped once the mailbox
 -- is closed and empty.
 receiveMailbox :: Mailbox a -> IO a
-receiveMailbox mailbox@(Mailbox chan _) = readChan chan >>= closedOr mailbox
+receiveMailbox mailbox@(Mailbox _ signal) = do
+  taken <- takeMailbox mailbox
+  case taken of
+    MailTook value -> pure value
+    MailClosed -> throwIO ActorStopped
+    MailEmpty -> takeMVar signal >> receiveMailbox mailbox
 
--- | The next message, waiting up to the given microseconds (Nothing when
--- none arrives in time).
+-- | The next message, waiting up to the given microseconds of real time
+-- (Nothing when none arrives in time); throws ActorStopped once the mailbox
+-- is closed and empty.
 receiveMailboxWithin :: Int -> Mailbox a -> IO (Maybe a)
-receiveMailboxWithin micros mailbox@(Mailbox chan _) =
-  timeout micros (readChan chan) >>= traverse (closedOr mailbox)
+receiveMailboxWithin micros mailbox@(Mailbox _ signal) = do
+  start <- getMonotonicTimeNSec
+  let deadline = start + fromIntegral (max 0 micros) * 1000
+      loop = do
+        taken <- takeMailbox mailbox
+        case taken of
+          MailTook value -> pure (Just value)
+          MailClosed -> throwIO ActorStopped
+          MailEmpty -> do
+            now <- getMonotonicTimeNSec
+            if now >= deadline then pure Nothing else do
+              -- A message that arrives as this times out is found by the
+              -- take that follows.
+              _ <- timeout (max 1 (fromIntegral ((deadline - now) `div` 1000))) (takeMVar signal)
+              loop
+  loop
 
-closedOr :: Mailbox a -> Maybe a -> IO a
-closedOr (Mailbox chan _) item = case item of
-  Just value -> pure value
-  -- Leave the mark for any later receive.
-  Nothing -> writeChan chan Nothing >> throwIO ActorStopped
+-- | The Mailbox ability's receive ... within d, on the Clock handler
+-- installed with the context: on a virtual clock (any Clock handler but
+-- lawspec.time's default real one) it waits no real time: it takes a
+-- message already sent, or lets the time pass on that clock and gives
+-- Nothing. Otherwise (the real clock, or none installed) it waits in real
+-- time, as receiveMailboxWithin.
+receiveMailboxWithinOn :: SymbolContext -> Int -> Mailbox a -> IO (Maybe a)
+receiveMailboxWithinOn symbols micros mailbox = do
+  clock <- abilityClock symbols
+  case clock of
+    Just c | clockVirtual c -> do
+      taken <- takeMailbox mailbox
+      case taken of
+        MailTook value -> pure (Just value)
+        MailClosed -> throwIO ActorStopped
+        MailEmpty -> Nothing <$ clockSleep c (toInteger (max 0 micros))
+    _ -> receiveMailboxWithin micros mailbox
 
 -- | Refuses further messages; those already sent can still be received.
 closeMailbox :: Mailbox a -> IO ()
-closeMailbox (Mailbox chan closed) = do
-  done <- atomicModifyIORef' closed (\d -> (True, d))
-  if done then pure () else writeChan chan Nothing
+closeMailbox (Mailbox state signal) = do
+  modifyMVar state (\(front, back, _) -> pure ((front, back, True), ()))
+  () <$ tryPutMVar signal ()
 
 -- | Actor models: the generated callbacks are pure, so these run the actor's
 -- IO inside them, each call its own effect.
@@ -4568,12 +4711,27 @@ data MemoryNetwork = MemoryNetwork
   , networkDuplicate :: Double
   -- The longest delay, in seconds.
   , networkDelay :: Double
+  -- | Every record sent, newest first, when the network records them.
+  , networkRecording :: Maybe (IORef [ByteString])
   }
 
 newMemoryNetwork :: Word64 -> Double -> Double -> Double -> IO MemoryNetwork
 newMemoryNetwork seed loss duplicate delay = do
   state <- newMVar (seed, [], Nothing)
-  pure (MemoryNetwork state loss duplicate delay)
+  pure (MemoryNetwork state loss duplicate delay Nothing)
+
+-- | A memory network that records every record sent, as it saw them
+-- (networkRecorded).
+newRecordingMemoryNetwork :: Word64 -> Double -> Double -> Double -> IO MemoryNetwork
+newRecordingMemoryNetwork seed loss duplicate delay = do
+  network <- newMemoryNetwork seed loss duplicate delay
+  recording <- newIORef []
+  pure network { networkRecording = Just recording }
+
+-- | Every record sent so far, in order (none when the network does not
+-- record).
+networkRecorded :: MemoryNetwork -> IO [ByteString]
+networkRecorded network = maybe (pure []) (fmap reverse . readIORef) (networkRecording network)
 
 memoryTransport :: MemoryNetwork -> String -> Transport
 memoryTransport network name = Transport
@@ -4596,25 +4754,99 @@ healNetwork network = modifyMVar (networkState network) (\(r, nodes, _) -> pure 
 
 memorySend :: MemoryNetwork -> String -> String -> ByteString -> IO ()
 memorySend network source node frame = do
-  plan <- modifyMVar (networkState network) $ \(r0, nodes, groups) -> case lookup node nodes of
-    Nothing -> pure ((r0, nodes, groups), Left ())
-    Just deliver
-      | maybe False (\gs -> not (any (\g -> source `elem` g && node `elem` g) gs)) groups -> pure ((r0, nodes, groups), Right [])
-      | otherwise -> do
-          let below k r = let (x, r') = splitMix64 r in (toInteger x `mod` k, r')
-              chance p r = if p <= 0 then (False, r) else
-                let (x, r') = below (bit 30) r in (fromInteger x < p * 2 ^ (30 :: Int), r')
-              (lost, r1) = chance (networkLoss network) r0
-              (twice, r2) = chance (networkDuplicate network) r1
-              copies = if twice then 2 else 1 :: Int
-              (delays, r3) = foldl (\(acc, r) _ -> let (k, r') = below 1001 r in (acc ++ [k], r')) ([], r2) [1 .. copies]
-          pure ((r3, nodes, groups), Right (if lost then [] else [(deliver, k) | k <- delays]))
+  plan <- modifyMVar (networkState network) $ \(r0, nodes, groups) -> do
+    forM_ (networkRecording network) (\recording -> modifyIORef' recording (frame :))
+    case lookup node nodes of
+      Nothing -> pure ((r0, nodes, groups), Left ())
+      Just deliver
+        | maybe False (\gs -> not (any (\g -> source `elem` g && node `elem` g) gs)) groups -> pure ((r0, nodes, groups), Right [])
+        | otherwise -> do
+            let below k r = let (x, r') = splitMix64 r in (toInteger x `mod` k, r')
+                chance p r = if p <= 0 then (False, r) else
+                  let (x, r') = below (bit 30) r in (fromInteger x < p * 2 ^ (30 :: Int), r')
+                (lost, r1) = chance (networkLoss network) r0
+                (twice, r2) = chance (networkDuplicate network) r1
+                copies = if twice then 2 else 1 :: Int
+                (delays, r3) = foldl (\(acc, r) _ -> let (k, r') = below 1001 r in (acc ++ [k], r')) ([], r2) [1 .. copies]
+            pure ((r3, nodes, groups), Right (if lost then [] else [(deliver, k) | k <- delays]))
   case plan of
     Left () -> throwIO (Unreachable ("no node at " ++ node))
     Right sends -> forM_ sends $ \(deliver, k) -> forkIO (do
       let micros = round (fromInteger k * networkDelay network * 1000) :: Int
       if micros > 0 then threadDelay micros else yield
       deliver frame `catch` \(_ :: SomeException) -> pure ())
+
+-- The secure network handler lives in LawSpecNetwork, which the compiler
+-- writes beside this runtime when a program imports lawspec.network: it
+-- needs the crypto libraries (crypton and the ML-KEM and ML-DSA packages), which programs without
+-- nodes do without. LawSpecNetwork.install registers it here (the generated
+-- tests call it); a node on any transport but the insecure one made for
+-- tests asks it for its layer.
+
+-- | A node's secure layer: send seals a frame to the node at an address
+-- (after a handshake), receive gives the frame a record carries, or Nothing
+-- (a handshake record, or one that fails to verify or open), and identity
+-- is the node's identity (a LawSpecNetwork.NodeIdentity).
+data NodeLayer = NodeLayer
+  { layerSend :: String -> ByteString -> IO ()
+  , layerReceive :: ByteString -> IO (Maybe ByteString)
+  , layerIdentity :: Dynamic }
+
+-- | The secure network handler: a node's layer, from its transport and the
+-- flag closeNode sets; and one-time tokens from the secure generator.
+data SecureNetwork = SecureNetwork
+  { secureLayerFor :: Transport -> IORef Bool -> IO NodeLayer
+  , secureNetworkToken :: IO String }
+
+{-# NOINLINE secureNetworkSlot #-}
+secureNetworkSlot :: IORef (Maybe SecureNetwork)
+secureNetworkSlot = unsafePerformIO (newIORef Nothing)
+
+-- | Installs the secure network handler (LawSpecNetwork.install does).
+registerSecureNetwork :: SecureNetwork -> IO ()
+registerSecureNetwork = writeIORef secureNetworkSlot . Just
+
+-- | The installed secure network handler, or a clear failure.
+secureNetwork :: IO SecureNetwork
+secureNetwork = readIORef secureNetworkSlot >>= maybe (throwIO (ErrorCall
+  ("a node needs the secure network handler: add `import lawspec.network` to a unit of the program, "
+    ++ "and call LawSpecNetwork.install"))) pure
+
+-- | A one-time token from a secure generator: 32 bytes as 64 hexadecimal
+-- digits, as SecureRandom's secureToken gives. From the secure network
+-- handler when one is installed, else from /dev/urandom (base has no secure
+-- generator of its own).
+secureToken :: IO String
+secureToken = readIORef secureNetworkSlot >>= \installed -> case installed of
+  Just network -> secureNetworkToken network
+  Nothing -> do
+    bytes <- try (withBinaryFile "/dev/urandom" ReadMode (\h -> B.hGet h 32))
+    case bytes of
+      Right raw | B.length raw == 32 -> pure (hexOf raw)
+      Right _ -> failed "it gave too few bytes"
+      Left (e :: SomeException) -> failed (displayException e)
+  where
+    failed why = throwIO (ErrorCall ("no secure generator for a one-time token: /dev/urandom failed (" ++ why
+      ++ "); add `import lawspec.network` to a unit of the program and call LawSpecNetwork.install"))
+
+-- | A transport whose node skips the handshake and sends frames in the
+-- clear: for tests of the frame layer only. Only an in-memory network makes
+-- one (insecureTransportForTests), and no configuration selects it.
+data InsecureMemoryTransport = InsecureMemoryTransport MemoryNetwork String
+
+insecureTransportForTests :: MemoryNetwork -> String -> InsecureMemoryTransport
+insecureTransportForTests = InsecureMemoryTransport
+
+-- | What a node can be made on: a Transport (secure), or the in-memory
+-- transport made for tests only (insecure).
+class NodeTransport t where
+  nodeLink :: t -> Either InsecureMemoryTransport Transport
+
+instance NodeTransport Transport where
+  nodeLink = Right
+
+instance NodeTransport InsecureMemoryTransport where
+  nodeLink = Left
 
 -- | A process's presence on a network: it names local mailboxes, actors,
 -- channel ends and definitions, so other nodes reach them at
@@ -4624,6 +4856,9 @@ memorySend network source node frame = do
 --
 -- Every target's node speaks the same frames, so nodes written in different
 -- languages talk to each other. ref:DEC-distribution-canonical-wire
+-- Frames cross sealed, after a handshake (the secure network handler's
+-- NodeLayer), unless the node is on the in-memory transport made for tests
+-- only.
 data Node = Node
   { nodeTransport :: Transport
   , nodeAddress :: String
@@ -4633,16 +4868,46 @@ data Node = Node
   , nodeSeen :: IORef [((String, Integer), Maybe ByteString)]
   , nodeIds :: IORef Integer
   , nodeClosed :: IORef Bool
+  -- | Nothing on the insecure transport made for tests.
+  , nodeSecure :: Maybe NodeLayer
   }
 
 -- | What a registered name does with a frame: kind, source, id, payload.
 newtype Entity = Entity (Node -> String -> String -> Integer -> ByteString -> IO ())
 
-newNode :: Transport -> IO Node
-newNode transport = do
-  node <- Node transport (transportAddress transport) <$> newIORef [] <*> newIORef [] <*> newIORef [] <*> newIORef 0 <*> newIORef False
-  transportStart transport (deliverFrame node)
+-- | A node on a transport, with the identity lawspec.json binds (or a fresh
+-- one), talking to any peer: its layer comes from the installed secure
+-- network handler (LawSpecNetwork.install). LawSpecNetwork.newNodeWith
+-- takes an identity and trusted peers.
+newNode :: NodeTransport t => t -> IO Node
+newNode = newNodeLayered (\transport closed -> secureNetwork >>= \network -> secureLayerFor network transport closed)
+
+-- | A node whose layer the function makes from its transport and closed
+-- flag. The in-memory transport made for tests only
+-- (insecureTransportForTests) skips the layer, and so the handshake; no
+-- other transport can.
+newNodeLayered :: NodeTransport t => (Transport -> IORef Bool -> IO NodeLayer) -> t -> IO Node
+newNodeLayered layered made = do
+  closed <- newIORef False
+  (transport, secure) <- case nodeLink made of
+    Left (InsecureMemoryTransport network name) -> pure (memoryTransport network name, Nothing)
+    Right transport -> (\layer -> (transport, Just layer)) <$> layered transport closed
+  node <- Node transport (transportAddress transport) <$> newIORef [] <*> newIORef [] <*> newIORef [] <*> newIORef 0
+    <*> pure closed <*> pure secure
+  transportStart transport (arriveRecord node)
   pure node
+
+arriveRecord :: Node -> ByteString -> IO ()
+arriveRecord node record = case nodeSecure node of
+  Nothing -> deliverFrame node record
+  Just layer -> layerReceive layer record >>= maybe (pure ()) (deliverFrame node)
+
+-- | Sends a frame to the node at target: sealed, or in the clear on the
+-- insecure transport made for tests.
+transmitFrame :: Node -> String -> ByteString -> IO ()
+transmitFrame node target frame = case nodeSecure node of
+  Nothing -> transportSend (nodeTransport node) target frame
+  Just layer -> layerSend layer target frame
 
 closeNode :: Node -> IO ()
 closeNode node = writeIORef (nodeClosed node) True >> transportClose (nodeTransport node)
@@ -4651,7 +4916,7 @@ closeNode node = writeIORef (nodeClosed node) True >> transportClose (nodeTransp
 forwardFrame :: Node -> String -> String -> String -> Integer -> ByteString -> IO ()
 forwardFrame node address kind source ident payload = (do
   (target, name) <- splitAddress address
-  transportSend (nodeTransport node) target (encodeFrame kind name source ident payload))
+  transmitFrame node target (encodeFrame kind name source ident payload))
   `catch` \(_ :: SomeException) -> pure ()
 
 nextId :: Node -> IO Integer
@@ -4660,7 +4925,7 @@ nextId node = atomicModifyIORef' (nodeIds node) (\i -> (i + 1, i + 1))
 sendFrame :: Node -> String -> String -> ByteString -> Integer -> IO ()
 sendFrame node address kind payload ident = do
   (target, name) <- splitAddress address
-  transportSend (nodeTransport node) target (encodeFrame kind name (nodeAddress node) ident payload)
+  transmitFrame node target (encodeFrame kind name (nodeAddress node) ident payload)
 
 register :: Node -> String -> Entity -> IO String
 register node name entity = do
@@ -4960,21 +5225,11 @@ takeFrom node address steps table = do
 offerEndpoint :: NetEndpoint -> IO String
 offerEndpoint endpoint = do
   address <- readIORef (endpointAddress endpoint)
-  fresh <- newToken
+  fresh <- secureToken
   token <- modifyMVar (endpointState endpoint) (\st -> case esToken st of
     Just t -> pure (st, t)
     Nothing -> pure (st { esToken = Just fresh }, fresh))
   pure (address ++ "?take=" ++ token)
-
--- | A one-time token, from the clock and a process-unique number.
-newToken :: IO String
-newToken = do
-  now <- getMonotonicTimeNSec
-  unique <- hashUnique <$> newUnique
-  let (a, r) = splitMix64 (now `xor` (fromIntegral unique * 0x9E3779B97F4A7C15))
-      (b, _) = splitMix64 r
-      hex16 w = let h = showHex w "" in replicate (16 - length h) '0' ++ h
-  pure (hex16 a ++ hex16 b)
 
 seqBytes :: Integer -> BB.Builder
 seqBytes = putVarint . zigzag
@@ -5296,8 +5551,10 @@ endConversion unwrap wrap (steps, conversions) = (sending, receiving)
 -- handler of its ability with handlerOf and runs with performIO. The Fail
 -- ability's handlers abort, so raise throws a Failure and attempt catches it.
 
--- | A handler installed for an ability, with its calls when it records them.
-data Installed = Installed String Dynamic (Maybe Calls)
+-- | A handler installed for an ability, with its calls when it records
+-- them, and whether it is the real clock (lawspec.time's default Clock
+-- handler: workflows and mailboxes then wait in real time under it).
+data Installed = Installed String Dynamic (Maybe Calls) Bool
 
 -- | The calls a recording handler has seen.
 newtype Calls = Calls (IORef [(String, [Scalar])])
@@ -5313,10 +5570,15 @@ runClause :: Either String a -> IO a
 runClause = either (throwIO . ErrorCall) pure
 
 installed :: Typeable h => String -> h -> Installed
-installed key handler = Installed key (toDyn handler) Nothing
+installed key handler = Installed key (toDyn handler) Nothing False
+
+-- | lawspec.time's default Clock handler, installed as the real clock: the
+-- generated tests install it so. Every other Clock handler is virtual.
+installedRealClock :: Typeable h => String -> h -> Installed
+installedRealClock key handler = Installed key (toDyn handler) Nothing True
 
 installedRecording :: Typeable h => String -> (h, Calls) -> Installed
-installedRecording key (handler, calls) = Installed key (toDyn handler) (Just calls)
+installedRecording key (handler, calls) = Installed key (toDyn handler) (Just calls) False
 
 {-# NOINLINE handlerTable #-}
 handlerTable :: IORef [(Unique, [Installed])]
@@ -5329,7 +5591,7 @@ installHandlers (SymbolContext unique) handlers = atomicModifyIORef' handlerTabl
 installedFor :: SymbolContext -> String -> Installed
 installedFor (SymbolContext unique) key = unsafePerformIO $ do
   table <- readIORef handlerTable
-  case [i | Just handlers <- [lookup unique table], i@(Installed k _ _) <- handlers, k == key] of
+  case [i | Just handlers <- [lookup unique table], i@(Installed k _ _ _) <- handlers, k == key] of
     i : _ -> pure i
     [] -> throwIO (ErrorCall ("no handler for the ability " ++ key ++ ": a law names one with `using`, or runs under each lawful handler"))
 {-# NOINLINE installedFor #-}
@@ -5337,7 +5599,7 @@ installedFor (SymbolContext unique) key = unsafePerformIO $ do
 -- | The handler installed for an ability, at the type its operation needs.
 handlerOf :: forall h. Typeable h => SymbolContext -> String -> h
 handlerOf symbols key = case installedFor symbols key of
-  Installed _ value _ -> maybe (error ("the handler for " ++ key ++ " is a " ++ show (dynTypeRep value) ++ ", not a " ++ show (typeRep (Proxy :: Proxy h)))) id (fromDynamic value)
+  Installed _ value _ _ -> maybe (error ("the handler for " ++ key ++ " is a " ++ show (dynTypeRep value) ++ ", not a " ++ show (typeRep (Proxy :: Proxy h)))) id (fromDynamic value)
 
 -- | An operation's result, where generated code needs a value.
 performIO :: IO a -> a
@@ -5366,7 +5628,7 @@ attempt ability body right left = unsafePerformIO $ do
 -- | How many times a recording handler saw an operation (with arguments).
 countCalls :: SymbolContext -> String -> String -> Maybe ([Scalar] -> Bool) -> Scalar
 countCalls symbols key operation matches = unsafePerformIO $ case installedFor symbols key of
-  Installed _ _ (Just (Calls ref)) -> do
+  Installed _ _ (Just (Calls ref)) _ -> do
     calls <- readIORef ref
     pure (SInteger "Int64" (fromIntegral (length [() | (name, arguments) <- calls, name == operation, maybe True ($ arguments) matches])))
   _ -> throwIO (ErrorCall "calls of needs a recording handler: `using recording`")

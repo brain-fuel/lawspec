@@ -1230,6 +1230,14 @@ public final class LawSpecRuntime {
     long now();
 
     void sleep(long micros);
+
+    /**
+     * Whether this clock is not real time: waits pass at once, and timeouts and hedges count only
+     * the time it reports.
+     */
+    default boolean virtual() {
+      return false;
+    }
   }
 
   /** Monotonic wall time. */
@@ -1258,6 +1266,68 @@ public final class LawSpecRuntime {
 
     public void sleep(long micros) {
       time += micros;
+    }
+
+    @Override
+    public boolean virtual() {
+      return true;
+    }
+  }
+
+  /** The Clock ability's key in the handlers a law installs. */
+  public static final String CLOCK_ABILITY = "lawspec.time::ability::Clock";
+
+  /** How the runtime reads a Clock handler (lawspec.time's registerClock gives it). */
+  private record ClockReader(
+      java.util.function.ToLongFunction<Object> now, java.util.function.ObjLongConsumer<Object> sleep,
+      java.util.function.Predicate<Object> realTime) {}
+
+  private static volatile ClockReader clockReader;
+
+  /**
+   * How the runtime reads a Clock handler, registered by lawspec.time's registerClock (the
+   * generated tests call it): now(handler) gives microseconds, sleep(handler, micros) waits, and
+   * realTime(handler) says whether the handler is the default real clock.
+   */
+  public static void registerClockAbility(
+      java.util.function.ToLongFunction<Object> now, java.util.function.ObjLongConsumer<Object> sleep,
+      java.util.function.Predicate<Object> realTime) {
+    clockReader = new ClockReader(now, sleep, realTime);
+  }
+
+  /** handler as a clock, or null when there is none or no reader is registered. */
+  private static AbilityClock abilityClock(Object handler) {
+    var reader = clockReader;
+    return reader == null || handler == null ? null : new AbilityClock(handler, reader);
+  }
+
+  /**
+   * A workflow runtime's clock read through the Clock ability: the handler a law installs (the
+   * virtual clock, or the default real one). Every handler but the default real clock is virtual:
+   * waits pass at once, and timeouts and hedges count only the time it reports.
+   */
+  public static final class AbilityClock implements Clock {
+    public final Object handler;
+    private final ClockReader reader;
+    private final boolean virtual;
+
+    private AbilityClock(Object handler, ClockReader reader) {
+      this.handler = handler;
+      this.reader = reader;
+      this.virtual = !reader.realTime().test(handler);
+    }
+
+    @Override
+    public boolean virtual() {
+      return virtual;
+    }
+
+    public long now() {
+      return reader.now().applyAsLong(handler);
+    }
+
+    public void sleep(long micros) {
+      reader.sleep().accept(handler, micros);
     }
   }
 
@@ -1305,20 +1375,39 @@ public final class LawSpecRuntime {
   public static final class WorkflowRuntime {
     public final Clock clock;
     public final SplitMix64 random;
-    public final List<TraceEvent> trace = new ArrayList<>();
-    public final Map<String, Object> state = new java.util.HashMap<>();
+    public final List<TraceEvent> trace;
+    public final Map<String, Object> state;
     public boolean gates = true;
     // A frame per running workflow: the undos of its completed stages.
-    private final List<List<Map.Entry<String, Runnable>>> frames = new ArrayList<>();
+    private final List<List<Map.Entry<String, Runnable>>> frames;
     // When the running attempt of a stage with a timeout must end
     // (System.nanoTime), or null.
     private Long deadline;
     // The running attempt's hedge, or null.
     private Hedge hedge;
+    // The running attempt's hedge on a virtual clock, or null: attempts run
+    // one after another (virtualHedge).
+    private Hedge virtualHedge;
 
     public WorkflowRuntime(Clock clock, long seed) {
       this.clock = clock == null ? new RealClock() : clock;
       this.random = new SplitMix64(seed);
+      this.trace = new ArrayList<>();
+      this.state = new java.util.HashMap<>();
+      this.frames = new ArrayList<>();
+    }
+
+    /** base on another clock: the same trace, state, random and frames. */
+    private WorkflowRuntime(WorkflowRuntime base, Clock clock) {
+      this.clock = clock;
+      this.random = base.random;
+      this.trace = base.trace;
+      this.state = base.state;
+      this.frames = base.frames;
+      this.gates = base.gates;
+      this.deadline = base.deadline;
+      this.hedge = base.hedge;
+      this.virtualHedge = base.virtualHedge;
     }
 
     /** A symbols map that runs workflows under this runtime. */
@@ -1330,16 +1419,37 @@ public final class LawSpecRuntime {
 
   private static WorkflowRuntime defaultRuntime;
 
-  /** Makes the default runtime virtual, as generated tests do. */
+  private static final String CLOCK_VIEW = "\0lawspec.workflow.clock";
+
+  /** The default runtime read through a context's Clock handler. */
+  private record ClockView(Object handler, WorkflowRuntime base, WorkflowRuntime view) {}
+
+  /**
+   * Makes the default runtime virtual, as generated tests do. Timeouts and hedges stay on: they
+   * count virtual time (see scoped).
+   */
   public static synchronized void useVirtualClock(long seed) {
     defaultRuntime = new WorkflowRuntime(new VirtualClock(), seed);
     defaultRuntime.gates = false;
   }
 
+  /**
+   * The runtime a context's workflows run under: the one attached to it (context), else the
+   * default runtime. Workflow time is the Clock ability's: where a law has installed a Clock
+   * handler, the default runtime waits and times out on it (the same view each time for the same
+   * context and handler).
+   */
   public static synchronized WorkflowRuntime workflowRuntime(Map<String, Object> symbols) {
     if (symbols.get(WORKFLOW) instanceof WorkflowRuntime runtime) return runtime;
     if (defaultRuntime == null) defaultRuntime = new WorkflowRuntime(null, 0);
-    return defaultRuntime;
+    WorkflowRuntime runtime = defaultRuntime;
+    var clock = abilityClock(symbols.get(HANDLERS) instanceof Map<?, ?> table ? table.get(CLOCK_ABILITY) : null);
+    if (clock == null) return runtime;
+    if (symbols.get(CLOCK_VIEW) instanceof ClockView view && view.handler() == clock.handler && view.base() == runtime)
+      return view.view();
+    var view = new ClockView(clock.handler, runtime, new WorkflowRuntime(runtime, clock));
+    symbols.put(CLOCK_VIEW, view);
+    return view.view();
   }
 
   /** What a custom strategy decides: a delay, or null to stop. */
@@ -1543,21 +1653,61 @@ public final class LawSpecRuntime {
   }
 
   /**
-   * An all group's steps, run side by side on virtual threads; body receives
-   * their results in declaration order. Every step finishes before a step's
-   * exception (the first, in declaration order) is thrown.
+   * The Async ability's default handler: the JVM's virtual threads. LawSpec code performs pause;
+   * workflows reach the rest natively: spawn starts a function as a task, await gives a task's
+   * result, and all runs functions side by side and gives their results in order. An async
+   * adapter's CompletableFuture is awaited with await. lawspec.concurrent's default Async handler
+   * extends it.
    */
-  @SafeVarargs
-  public static Value concurrently(Function<List<Value>, Value> body, Supplier<Value>... steps) {
-    var results = new ArrayList<Value>();
-    try (var executor = java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor()) {
-      var tasks = new ArrayList<java.util.concurrent.CompletableFuture<Value>>();
-      for (var step : steps) tasks.add(java.util.concurrent.CompletableFuture.supplyAsync(step, executor));
+  public static class NativeAsync {
+    /** Lets other threads run. */
+    public void pause() {
+      Thread.yield();
+    }
+
+    /** Starts fn on a virtual thread of its own: its result, or its exception, when done. */
+    public <T> java.util.concurrent.CompletableFuture<T> spawn(Supplier<? extends T> fn) {
+      var task = new java.util.concurrent.CompletableFuture<T>();
+      Thread.ofVirtual().start(() -> {
+        try {
+          task.complete(fn.get());
+        } catch (Throwable error) {
+          // Given back by await.
+          task.completeExceptionally(error);
+        }
+      });
+      return task;
+    }
+
+    /**
+     * A task's result, waiting for it (as CompletableFuture.join: its exception is thrown wrapped
+     * in a CompletionException).
+     */
+    public <T> T await(java.util.concurrent.Future<T> task) {
+      if (task instanceof java.util.concurrent.CompletableFuture<T> future) return future.join();
+      try {
+        return task.get();
+      } catch (java.util.concurrent.ExecutionException e) {
+        throw new java.util.concurrent.CompletionException(e.getCause());
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+        throw new java.util.concurrent.CompletionException(e);
+      }
+    }
+
+    /**
+     * Every function's result, in order; all finish before the first exception (in order) is
+     * thrown, unwrapped.
+     */
+    public <T> List<T> all(List<? extends Supplier<? extends T>> fns) {
+      var tasks = new ArrayList<java.util.concurrent.CompletableFuture<T>>();
+      for (var fn : fns) tasks.add(spawn(fn));
       try {
         java.util.concurrent.CompletableFuture.allOf(tasks.toArray(new java.util.concurrent.CompletableFuture<?>[0])).join();
       } catch (java.util.concurrent.CompletionException e) {
-        // A failed step is raised below, in declaration order.
+        // A failed task is raised below, in order.
       }
+      var results = new ArrayList<T>();
       for (var task : tasks) {
         try {
           results.add(task.join());
@@ -1567,8 +1717,21 @@ public final class LawSpecRuntime {
           throw e;
         }
       }
+      return results;
     }
-    return body.apply(results);
+  }
+
+  /** The runtime's native Async. */
+  public static final NativeAsync ASYNC = new NativeAsync();
+
+  /**
+   * An all group's steps, run side by side as tasks of the Async ability's default handler (virtual
+   * threads); body receives their results in declaration order. Every step finishes before a
+   * step's exception (the first, in declaration order) is thrown.
+   */
+  @SafeVarargs
+  public static Value concurrently(Function<List<Value>, Value> body, Supplier<Value>... steps) {
+    return body.apply(ASYNC.all(Arrays.asList(steps)));
   }
 
   /** Raised by awaitWithin when an attempt outlives its stage's timeout. */
@@ -1587,7 +1750,8 @@ public final class LawSpecRuntime {
     WorkflowRuntime runtime = workflowRuntime(symbols);
     Long deadline = runtime.deadline;
     Hedge hedge = runtime.hedge;
-    if (deadline == null && hedge == null) return convert.apply(start.get().join());
+    if (runtime.virtualHedge != null) return virtualHedge(runtime, runtime.virtualHedge, start, convert);
+    if (deadline == null && hedge == null) return convert.apply(ASYNC.await(start.get()));
     long most = hedge == null ? 1 : hedge.most();
     var pending = new ArrayList<java.util.concurrent.CompletableFuture<T>>();
     long started = 0, next = Long.MAX_VALUE;
@@ -1634,13 +1798,48 @@ public final class LawSpecRuntime {
     }
   }
 
+  private static boolean isLeft(Value value) {
+    return value.data() instanceof Data data && data.tag().equals("Either::Left");
+  }
+
   /**
-   * An attempt under its stage's timeout (failing with TimedOut when it
-   * outlives it) and hedge. Under the runtime generated tests install (gates
-   * off), both are off.
+   * A hedge on a virtual clock: attempts run one after another, and the next starts when one
+   * fails, so the first success wins as it would in real time when no attempt outlives the delay.
+   */
+  private static <T> Value virtualHedge(
+      WorkflowRuntime runtime, Hedge hedge, java.util.function.Supplier<java.util.concurrent.CompletableFuture<T>> start,
+      Function<T, Value> convert) {
+    long started = 1;
+    Value value = convert.apply(ASYNC.await(start.get()));
+    while (isLeft(value) && started < hedge.most()) {
+      started++;
+      runtime.trace.add(new TraceEvent("hedge", hedge.stage(), started, true));
+      value = convert.apply(ASYNC.await(start.get()));
+    }
+    return value;
+  }
+
+  private static Value timedOut(StagePolicy policy) {
+    return policy.fail() != null ? policy.fail().apply("TimedOut")
+        : new Value("Either", new Data("Either::Left", List.of(new Value(STAGE_FAILURE, new Data(STAGE_FAILURE + "TimedOut", List.of())))));
+  }
+
+  private static boolean timedOutCause(Throwable error) {
+    for (Throwable cause = error; cause != null; cause = cause.getCause()) if (cause instanceof TimedOut) return true;
+    return false;
+  }
+
+  /**
+   * An attempt under its stage's timeout (failing with TimedOut when it outlives it) and hedge:
+   * the Timeout and Hedge transformers of the Async ability, measured on the runtime's Clock. On a
+   * virtual clock (generated tests, or a law using a virtual clock) an attempt takes the virtual
+   * time that passes while it runs, so both are deterministic. On a real clock with gates off,
+   * both are off.
    */
   private static Value scoped(WorkflowRuntime runtime, StagePolicy policy, java.util.function.Supplier<Value> attempt) {
-    if (!runtime.gates || (policy.timeout() <= 0 && policy.hedge() == null)) return attempt.get();
+    if (policy.timeout() <= 0 && policy.hedge() == null) return attempt.get();
+    if (runtime.clock.virtual()) return virtuallyScoped(runtime, policy, attempt);
+    if (!runtime.gates) return attempt.get();
     Long outer = runtime.deadline;
     Hedge outerHedge = runtime.hedge;
     if (policy.timeout() > 0) runtime.deadline = System.nanoTime() + policy.timeout() * 1000;
@@ -1649,17 +1848,35 @@ public final class LawSpecRuntime {
       return attempt.get();
     } catch (RuntimeException e) {
       // Callers may have wrapped the timeout with context.
-      for (Throwable cause = e; cause != null; cause = cause.getCause()) {
-        if (cause instanceof TimedOut) {
-          return policy.fail() != null ? policy.fail().apply("TimedOut")
-              : new Value("Either", new Data("Either::Left", List.of(new Value(STAGE_FAILURE, new Data(STAGE_FAILURE + "TimedOut", List.of())))));
-        }
-      }
+      if (timedOutCause(e)) return timedOut(policy);
       throw e;
     } finally {
       runtime.deadline = outer;
       runtime.hedge = outerHedge;
     }
+  }
+
+  private static Value virtuallyScoped(WorkflowRuntime runtime, StagePolicy policy, java.util.function.Supplier<Value> attempt) {
+    Long outer = runtime.deadline;
+    Hedge outerHedge = runtime.hedge;
+    Hedge outerVirtual = runtime.virtualHedge;
+    long began = runtime.clock.now();
+    runtime.deadline = null;
+    runtime.hedge = null;
+    runtime.virtualHedge = policy.hedge() == null ? null : new Hedge(policy.stage(), policy.hedge().delay(), policy.hedge().most());
+    Value result;
+    try {
+      result = attempt.get();
+    } catch (RuntimeException e) {
+      if (timedOutCause(e)) return timedOut(policy);
+      throw e;
+    } finally {
+      runtime.deadline = outer;
+      runtime.hedge = outerHedge;
+      runtime.virtualHedge = outerVirtual;
+    }
+    if (policy.timeout() > 0 && runtime.clock.now() - began > policy.timeout()) return timedOut(policy);
+    return result;
   }
 
   private static Value attempts(WorkflowRuntime runtime, StagePolicy policy, java.util.function.Supplier<Value> attempt) {
@@ -3836,8 +4053,9 @@ public final class LawSpecRuntime {
       this.name = name;
       this.expected = expected;
       this.registry = registry;
-      var owner = new Node(network.transport(name + "-owner"));
-      var senders = new Node(network.transport(name + "-senders"));
+      // Test machinery: the insecure transport, so scenarios need no crypto.
+      var owner = new Node(network.insecureTransportForTests(name + "-owner"));
+      var senders = new Node(network.insecureTransportForTests(name + "-senders"));
       nodes.add(owner);
       nodes.add(senders);
       Object d = atomText(form(descriptor).get(0)).equals("end") ? List.of("text") : descriptor;
@@ -3982,7 +4200,8 @@ public final class LawSpecRuntime {
         MemoryNetwork network, String name, List<Step> steps, Values values, Map<String, NetScenarioChannel> registry) {
       this.name = name;
       this.registry = registry;
-      for (int side = 0; side < 2; side++) nodes[side] = new Node(network.transport(name + "-" + side));
+      // Test machinery: the insecure transport, so scenarios need no crypto.
+      for (int side = 0; side < 2; side++) nodes[side] = new Node(network.insecureTransportForTests(name + "-" + side));
       var wired = new ArrayList<Step>();
       var flipped = new ArrayList<Step>();
       for (var s : steps) {
@@ -5402,6 +5621,46 @@ public final class LawSpecRuntime {
       return items.poll().value();
     }
 
+    /** receiveWithin on the real clock. */
+    public java.util.Optional<T> receiveWithin(java.time.Duration within) {
+      return receiveWithin(within, null);
+    }
+
+    /**
+     * The Mailbox ability's receive ... within d: the next message, or empty when none arrives
+     * within the duration. clock is a Clock ability handler (the real clock when null); on a
+     * virtual one (any but the default real clock, as lawspec.time's registerClock tells) it waits
+     * no real time: it takes a message already sent, or lets the time pass on that clock and gives
+     * empty. Throws ActorStopped once closed and empty.
+     */
+    public java.util.Optional<T> receiveWithin(java.time.Duration within, Object clock) {
+      var read = abilityClock(clock);
+      if (read != null && read.virtual()) {
+        synchronized (this) {
+          if (!items.isEmpty()) return java.util.Optional.ofNullable(items.poll().value());
+          if (closed) throw new ActorStopped("the mailbox is closed");
+        }
+        long micros = within.isNegative() ? 0 : within.getSeconds() * 1_000_000L + within.getNano() / 1000;
+        read.sleep(micros);
+        return java.util.Optional.empty();
+      }
+      synchronized (this) {
+        long deadline = System.nanoTime() + (within.isNegative() ? 0 : within.toNanos());
+        try {
+          while (items.isEmpty() && !closed) {
+            long left = deadline - System.nanoTime();
+            if (left <= 0) return java.util.Optional.empty();
+            wait(left / 1_000_000, (int) (left % 1_000_000));
+          }
+        } catch (InterruptedException e) {
+          Thread.currentThread().interrupt();
+          throw new IllegalStateException("interrupted while receiving", e);
+        }
+        if (items.isEmpty()) throw new ActorStopped("the mailbox is closed");
+        return java.util.Optional.ofNullable(items.poll().value());
+      }
+    }
+
     /** Refuses further messages; those already sent can still be received. */
     public synchronized void close() {
       closed = true;
@@ -5908,12 +6167,20 @@ public final class LawSpecRuntime {
     private final double delay;
     private final Map<String, java.util.function.Consumer<byte[]>> nodes = new java.util.HashMap<>();
     private List<java.util.Set<String>> groups;
+    // With record, every record sent, as the network saw it; else null.
+    private final List<byte[]> recorded;
 
     public MemoryNetwork(long seed, double loss, double duplicate, double delay) {
+      this(seed, loss, duplicate, delay, false);
+    }
+
+    /** record: keep every record sent (see recorded). */
+    public MemoryNetwork(long seed, double loss, double duplicate, double delay, boolean record) {
       this.random = new SplitMix64(seed);
       this.loss = loss;
       this.duplicate = duplicate;
       this.delay = delay;
+      this.recorded = record ? new ArrayList<>() : null;
     }
 
     public MemoryNetwork() {
@@ -5921,29 +6188,22 @@ public final class LawSpecRuntime {
     }
 
     public Transport transport(String name) {
-      var network = this;
-      String address = "mem://" + name;
-      return new Transport() {
-        public String address() {
-          return address;
-        }
+      return new MemoryTransport(this, "mem://" + name);
+    }
 
-        public void start(java.util.function.Consumer<byte[]> deliver) {
-          synchronized (network) {
-            network.nodes.put(address, deliver);
-          }
-        }
+    /**
+     * A transport whose node skips the handshake and sends frames in the clear: for tests of the
+     * frame layer only. Only an in-memory network makes one, and no configuration selects it.
+     */
+    public InsecureMemoryTransport insecureTransportForTests(String name) {
+      return new InsecureMemoryTransport(this, "mem://" + name);
+    }
 
-        public void send(String node, byte[] frame) {
-          network.deliver(address, node, frame);
-        }
-
-        public void close() {
-          synchronized (network) {
-            network.nodes.remove(address);
-          }
-        }
-      };
+    /** Every record sent so far, in order (empty unless made with record). */
+    public synchronized List<byte[]> recorded() {
+      var copy = new ArrayList<byte[]>();
+      if (recorded != null) for (var each : recorded) copy.add(each.clone());
+      return copy;
     }
 
     /** Only nodes named in the same group reach each other. */
@@ -5968,6 +6228,7 @@ public final class LawSpecRuntime {
       java.util.function.Consumer<byte[]> deliver;
       long[] waits;
       synchronized (this) {
+        if (recorded != null) recorded.add(frame.clone());
         deliver = nodes.get(node);
         if (deliver == null) throw new Unreachable("no node at " + node);
         if (groups != null) {
@@ -5993,6 +6254,44 @@ public final class LawSpecRuntime {
               }
               deliver.accept(frame);
             });
+    }
+  }
+
+  /** A node's place on a MemoryNetwork (MemoryNetwork.transport). */
+  public static class MemoryTransport implements Transport {
+    private final MemoryNetwork network;
+    private final String address;
+
+    MemoryTransport(MemoryNetwork network, String address) {
+      this.network = network;
+      this.address = address;
+    }
+
+    public String address() {
+      return address;
+    }
+
+    public void start(java.util.function.Consumer<byte[]> deliver) {
+      synchronized (network) {
+        network.nodes.put(address, deliver);
+      }
+    }
+
+    public void send(String node, byte[] frame) {
+      network.deliver(address, node, frame);
+    }
+
+    public void close() {
+      synchronized (network) {
+        network.nodes.remove(address);
+      }
+    }
+  }
+
+  /** In memory, without the handshake: tests only (MemoryNetwork.insecureTransportForTests). */
+  public static final class InsecureMemoryTransport extends MemoryTransport {
+    InsecureMemoryTransport(MemoryNetwork network, String address) {
+      super(network, address);
     }
   }
 
@@ -6173,6 +6472,70 @@ public final class LawSpecRuntime {
   /** A definition other nodes can evaluate: the function and its types. */
   public record Definition(Function<List<Value>, Value> function, List<Object> arguments, Object result) {}
 
+  // The secure network handler lives in LawSpecNetwork, which the compiler
+  // writes beside this runtime when a program imports lawspec.network: it
+  // needs the JDK's ML-KEM and ML-DSA and Bouncy Castle's SHAKE256, which
+  // programs without nodes do without. Its static initializer registers it
+  // here (registerSecureNetwork); a node loads it when the slot is empty.
+
+  /** Makes a node's secure layer (LawSpecNetwork registers one). */
+  public interface SecureNetwork {
+    /**
+     * The layer of node: identity is a LawSpecNetwork.NodeIdentity or null (the configured one, or
+     * a fresh one); trusted the fingerprints of the only peers to talk to, or null.
+     */
+    SecureLayer layer(Node node, Object identity, java.util.Collection<String> trusted);
+  }
+
+  /** Handshakes, sessions and sealed frames for one node. */
+  public interface SecureLayer {
+    /** Sends frame to the node at peer, sealed (after a handshake when there is no session yet). */
+    void send(String peer, byte[] frame);
+
+    /** The frame a record carries, or null (a handshake record, or one that fails to verify or open). */
+    byte[] receive(byte[] record);
+
+    /** The node's identity (a LawSpecNetwork.NodeIdentity). */
+    Object identity();
+  }
+
+  private static volatile SecureNetwork secureNetwork;
+
+  /** Installs the secure network handler: LawSpecNetwork's static initializer calls it. */
+  public static void registerSecureNetwork(SecureNetwork provider) {
+    secureNetwork = provider;
+  }
+
+  private static SecureNetwork secureNetwork() {
+    if (secureNetwork == null) {
+      try {
+        // Its static initializer registers it.
+        Class.forName("lawspec.runtime.LawSpecNetwork", true, LawSpecRuntime.class.getClassLoader());
+      } catch (ClassNotFoundException missing) {
+        // Not generated: the program does not import lawspec.network.
+      }
+    }
+    var provider = secureNetwork;
+    if (provider == null)
+      throw new IllegalStateException("a node needs the secure network handler: add `import lawspec.network` "
+          + "to a unit of the program, so LawSpecNetwork is generated");
+    return provider;
+  }
+
+  private static final class SecureRandomHolder {
+    static final java.security.SecureRandom SECURE = new java.security.SecureRandom();
+  }
+
+  /**
+   * A one-time token from the operating system's secure generator: 32 bytes as 64 hexadecimal
+   * digits, as SecureRandom's secureToken gives.
+   */
+  public static String secureToken() {
+    byte[] out = new byte[32];
+    SecureRandomHolder.SECURE.nextBytes(out);
+    return java.util.HexFormat.of().formatHex(out);
+  }
+
   /**
    * A process's presence on a network: it names local mailboxes, actors, channel ends and
    * definitions, so other nodes can reach them at {node address}/{name}, and it sends to theirs.
@@ -6194,11 +6557,46 @@ public final class LawSpecRuntime {
     private final java.util.LinkedHashMap<String, byte[]> seen = new java.util.LinkedHashMap<>();
     private final java.util.concurrent.atomic.AtomicLong ids = new java.util.concurrent.atomic.AtomicLong();
     volatile boolean closed;
+    // Handshakes, sessions and sealed frames; null on the insecure transport for tests.
+    private final SecureLayer secure;
+    /**
+     * This node's identity (a LawSpecNetwork.NodeIdentity; LawSpecNetwork.identity(node) gives it
+     * typed); null on the insecure transport for tests.
+     */
+    public final Object identity;
 
     public Node(Transport transport) {
+      this(transport, null, null);
+    }
+
+    /**
+     * identity: a LawSpecNetwork.NodeIdentity, by default the one lawspec.json binds
+     * (lawspec-network.conf) or a fresh one; trusted: the fingerprints of the only peers to talk
+     * to (by default any peer, each address keeping the first identity it shows). A node needs the
+     * secure network handler (`import lawspec.network`), except on a transport made for tests only
+     * (MemoryNetwork.insecureTransportForTests), which skips the handshake; no other transport
+     * can. LawSpecNetwork.node(transport, identity, trusted) is the typed form.
+     */
+    public Node(Transport transport, Object identity, java.util.Collection<String> trusted) {
       this.transport = transport;
       this.address = transport.address();
-      transport.start(this::deliver);
+      this.secure = transport instanceof InsecureMemoryTransport ? null : secureNetwork().layer(this, identity, trusted);
+      this.identity = secure == null ? null : secure.identity();
+      transport.start(this::arrive);
+    }
+
+    private void arrive(byte[] record) {
+      if (secure == null) {
+        deliver(record);
+        return;
+      }
+      byte[] frame = secure.receive(record);
+      if (frame != null) deliver(frame);
+    }
+
+    private void transmit(String node, byte[] frame) {
+      if (secure == null) transport.send(node, frame);
+      else secure.send(node, frame);
     }
 
     public void close() {
@@ -6212,7 +6610,7 @@ public final class LawSpecRuntime {
 
     void send(String address, String kind, byte[] payload, long id) {
       var parts = splitAddress(address);
-      transport.send(parts[0], frameEncode(kind, parts[1], this.address, id, payload));
+      transmit(parts[0], frameEncode(kind, parts[1], this.address, id, payload));
     }
 
     String register(String name, Entity entity) {
@@ -6470,7 +6868,7 @@ public final class LawSpecRuntime {
     void forward(String address, String kind, String source, long id, byte[] payload) {
       try {
         var parts = splitAddress(address);
-        transport.send(parts[0], frameEncode(kind, parts[1], source, id, payload));
+        transmit(parts[0], frameEncode(kind, parts[1], source, id, payload));
       } catch (RuntimeException e) {
         // The sender sends again.
       }
@@ -6810,13 +7208,7 @@ public final class LawSpecRuntime {
 
     /** The address another node takes this unused end over from. */
     synchronized String offer() {
-      if (token == null) {
-        var random = new byte[16];
-        new java.security.SecureRandom().nextBytes(random);
-        var hex = new StringBuilder();
-        for (byte b : random) hex.append(String.format("%02x", b & 0xFF));
-        token = hex.toString();
-      }
+      if (token == null) token = secureToken();
       return address + "?take=" + token;
     }
 

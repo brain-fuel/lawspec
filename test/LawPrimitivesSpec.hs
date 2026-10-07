@@ -1,6 +1,6 @@
--- Law primitives: matchers and portable regexes, typed failures, tables,
+-- | Law primitives: matchers and portable regexes, typed failures, tables,
 -- examples in descriptions, recorded values and resources.
-module LawPrimitivesSpec (spec) where
+module LawPrimitivesSpec (test_lawPrimitivesCheckWhatTheyReadAs) where
 
 import Data.Char (ord)
 import Data.Either (isLeft, isRight)
@@ -40,8 +40,10 @@ closed name body = "law `" ++ name ++ "` is definition is " ++ body ++ " end end
 matches :: String -> String -> Either String Bool
 matches pattern text = regexMatchesText pattern (map ord text)
 
-spec :: Spec
-spec = describe "law primitives" $ do
+-- | A law written with a matcher, a table or a resource must check exactly what
+-- it reads as, the same on every target. ref:REQ-law-primitives
+test_lawPrimitivesCheckWhatTheyReadAs :: Spec
+test_lawPrimitivesCheckWhatTheyReadAs = describe "law primitives" $ do
   describe "portable regexes" $ do
     it "match whole texts by code point" $ do
       matches "a+b" "aaab" `shouldBe` Right True

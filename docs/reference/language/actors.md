@@ -5,6 +5,10 @@ title: Actors and supervisors
 ---
 # Actors and supervisors
 
+An actor is a process of the `Process` ability whose state is a `State`
+handler, and a supervisor is a `Fail` handler that restarts its children;
+see [existing features as abilities](abilities-mapping.md#actors-and-supervisors).
+
 An **actor** owns a state and handles one message at a time, in the order
 the messages arrive. Nothing else touches its state, so its handlers need
 no locks. You write each handler as a plain function from the state (and

@@ -677,6 +677,7 @@ async function main() {
     ["proved", "PROVED"],
     ["exhaustively-checked", "EXHAUSTIVELY CHECKED"],
     ["property-tested", "PROPERTY TESTED"],
+    ["measured", "MEASURED"],
     ["runtime-checked", "RUNTIME CHECKED"],
     ["default-handler", "DEFAULT HANDLER"],
     ["assumed", "ASSUMED / EXTERNAL"],

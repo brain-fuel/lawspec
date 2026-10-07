@@ -42,6 +42,9 @@ import qualified IncrementalSpec
 import qualified TestManifestSpec
 import qualified RailwaySpec
 import qualified SessionsPythonSpec
+import qualified TemporalSpec
+import qualified DistributionSpec
+import qualified UnificationSpec
 import LawSpec.Compile
 import LawSpec.Model
 import qualified LawSpec.Domain as D
@@ -75,16 +78,19 @@ main = hspec $ do
   FlowSpec.test_flowTypesThreadEachStateThroughItsCalls
   CollectionsSpec.test_collectionsAreTypedEvaluatedAndOrderedPortably
   AsyncSpec.test_asyncAdaptersAreMarkedReportedAndBoundToEachTargetsTask
-  AbilitiesSpec.spec
-  LawPrimitivesSpec.spec
-  HarnessSpec.spec
-  BuiltinsSpec.spec
+  AbilitiesSpec.test_abilityLawsHoldForEveryLawfulHandler
+  LawPrimitivesSpec.test_lawPrimitivesCheckWhatTheyReadAs
+  HarnessSpec.test_harnessesChangeHowLawsRunNeverWhatTheyMean
+  BuiltinsSpec.test_builtInAbilitiesHaveLawfulDefaultHandlers
   BoundsSpec.test_generationStaysWithinRefinedBoundsOnEveryTarget
   ConditionalSpec.test_conditionalsAreCheckedBranchByBranch
   IncrementalSpec.test_incrementalCompilationGivesTheSameResultAsAFreshOne
   TestManifestSpec.test_testManifestNamesEveryLawsTestOnEachTarget
   RailwaySpec.test_railwayCombinatorsComposeResultsAsDocumented
   SessionsPythonSpec.test_pythonSessionEndsFollowTheirProtocol
+  TemporalSpec.test_temporalPropositionsAndBudgetsAreCheckedOverTheClock
+  DistributionSpec.test_distributionIsSecureByDefaultAndContentAddressed
+  UnificationSpec.test_existingFeaturesAreAbilities
   PayloadSpec.test_payloadPredicatesTraverseRecursiveParametersScoped
   PayloadProofSpec.test_payloadGuaranteesTransferOnlyWhereTheyHold
   DocumentSpec.test_layoutEngineKeepsGeneratedCodeReadableAndUnchanged

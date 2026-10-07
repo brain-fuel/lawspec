@@ -153,8 +153,13 @@ emitTests Config{..} unit laws = do
       block (text "_ = flag.Set(\"rapid.seed\", seed)")) <> D.hardline <> D.hardline <>
       -- A harnessed unit whose laws draw nothing still seeds rapid.
       text "var _ = rapid.Check"
-    -- Workflows wait on a virtual clock under test.
-    clockDoc = text "func init() " <> block (text "LawSpecUseVirtualClock(0)")
+    -- Workflows wait on a virtual clock under test; where a law installs a
+    -- Clock handler, workflows and mailboxes read it (lawspec.time's
+    -- LawSpecRegisterClock, in this package's copy of the default handlers).
+    clockDoc = text "func init() " <> block (statements
+      ([text "LawSpecUseVirtualClock(0)"] ++ [text "LawSpecRegisterClock()" | installsClock]))
+    installsClock = or [C.abilityKey a == "lawspec.time::ability::Clock"
+      | p <- C.unitProperties unit, (a, _) <- C.propertyHandlers p]
     expr = expression
     -- A law's resources: each case acquires them, and releases them when it
     -- ends, the last first, even when it fails (defer).

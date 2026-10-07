@@ -14,25 +14,30 @@ extra-source-files:
     README.md
     CHANGELOG.md
     runtime/lawspec_harness.rs
+    runtime/lawspec_network.rs
     runtime/lawspec_runtime.rs
     runtime/lawspec_strategies.rs
     runtime/lawspec_data_strategies.mjs
     runtime/lawspec_harness.mjs
+    runtime/lawspec_network.mjs
     runtime/lawspec_runtime.mjs
     runtime/lawspec_schema.mjs
     runtime/lawspec_data_strategies.py
     runtime/lawspec_harness.py
+    runtime/lawspec_network.py
     runtime/lawspec_runtime.py
     runtime/lawspec_schema.py
     runtime/LawSpecCodecs.hs
     runtime/LawSpecCollectionCodecs.hs
     runtime/LawSpecDataStrategies.hs
     runtime/LawSpecHarness.hs
+    runtime/LawSpecNetwork.hs
     runtime/LawSpecRuntime.hs
     runtime/LawSpecSchema.hs
     runtime/LawSpecTransports.hs
     runtime/LawSpecDataStrategies.java
     runtime/LawSpecHarness.java
+    runtime/LawSpecNetwork.java
     runtime/LawSpecRuntime.java
     runtime/LawSpecSchema.java
     runtime/LawSpecKotlin.kt
@@ -42,6 +47,7 @@ extra-source-files:
     runtime/lawspec_codecs.go
     runtime/lawspec_data_strategies.go
     runtime/lawspec_harness.go
+    runtime/lawspec_network.go
     runtime/lawspec_runtime.go
     runtime/lawspec_schema.go
     runtime/defaults/vectors.txt
@@ -367,6 +373,7 @@ library
       LawSpec.ModelTests
       LawSpec.NativeBinding
       LawSpec.NativeRequest
+      LawSpec.Network
       LawSpec.Packages
       LawSpec.Parser
       LawSpec.Persist
@@ -404,13 +411,16 @@ library
       LawSpec.Sessions.Python
       LawSpec.Sessions.Rust
       LawSpec.Sessions.Web
+      LawSpec.Sha3
       LawSpec.SpecializeDefinitions
       LawSpec.StatefulModel
       LawSpec.TargetNames
+      LawSpec.Temporal
       LawSpec.Testing
       LawSpec.TestManifest
       LawSpec.TestNames
       LawSpec.Time
+      LawSpec.Unification
       LawSpec.WebData
       LawSpec.WebDefinitions
       LawSpec.WebExpr
@@ -558,6 +568,7 @@ test-suite lawspec-test
       DefinitionPredicateSpec
       DefinitionSchemeSpec
       DischargeSpec
+      DistributionSpec
       DocumentSpec
       DomainModelSpec
       FlowSpec
@@ -581,9 +592,11 @@ test-suite lawspec-test
       StatefulModelSpec
       StructuralSpec
       TargetNamesSpec
+      TemporalSpec
       TestManifestSpec
       TimeSpec
       TotalSpec
+      UnificationSpec
       Paths_lawspec
   hs-source-dirs:
       test

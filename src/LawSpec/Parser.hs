@@ -8,6 +8,7 @@ import LawSpec.Resilience (resilienceName)
 import LawSpec.Collections (collectionsUnit, collectionsAlias)
 import LawSpec.Time (timeUnit, timeAlias, durationSuffixes, durationFactor, durationLimit, usesTime, timeTypes)
 import LawSpec.Builtins (virtualClockHandler, seededHandlerName, seededHandler)
+import LawSpec.Temporal (Temporal(..), temporalExpr, budgetExpr, budgetStart)
 import LawSpec.Flow (desugarFlows, flowTypeName)
 import LawSpec.Regex (parseRegex)
 import Control.Monad.Trans.Class (lift)
@@ -530,7 +531,8 @@ expr = do
     flowing e = any (`isInfixOf` show e) ["Var \"~", "Binary \":=\""]
     statement = do
       e <- operatorExpr
-      option e (located (Binary ":=" e <$> (symbol ":=" *> operatorExpr)))
+      e' <- option e (budgetSuffix e)
+      option e' (located (Binary ":=" e' <$> (symbol ":=" *> operatorExpr)))
 
 operatorExpr :: P Expr
 operatorExpr = located $ makeExprParser application (higherOperators ++
@@ -546,8 +548,9 @@ operatorExpr = located $ makeExprParser application (higherOperators ++
       -- A matcher word after an argument starts a matcher, so contains in
       -- xs contains x is not an argument; a function named contains is
       -- still called as contains xs x.
-      first <- applicationAtom
-      rest <- many (notFollowedBy matcherWord *> applicationAtom)
+      -- takes at most ends the expression a budget applies to.
+      first <- notFollowedBy budgetStartP *> applicationAtom
+      rest <- many (notFollowedBy matcherWord *> notFollowedBy budgetStartP *> applicationAtom)
       pure $ case first : rest of
         start:others | ConstructLit name [] <- unlocated start -> ConstructLit name others
         terms -> foldl1 Apply terms
@@ -684,7 +687,7 @@ patternTest = go (0 :: Int)
 applicationAtom :: P Expr
 applicationAtom = atom
   where
-    atom = located $ matchP <|> ifP <|> raiseP <|> callsP <|> letP <|> handleP <|> regexP <|> (ListLit <$> between (symbol "[") (symbol "]") (expr `sepBy` symbol ",")) <|> (BoolLit <$> boolP) <|> (StringLit <$> str) <|> try scalarP
+    atom = located $ temporalP <|> matchP <|> ifP <|> raiseP <|> callsP <|> letP <|> handleP <|> regexP <|> (ListLit <$> between (symbol "[") (symbol "]") (expr `sepBy` symbol ",")) <|> (BoolLit <$> boolP) <|> (StringLit <$> str) <|> try scalarP
       <|> parenthesizedExpr
       <|> try (Var . ('~' :) <$> (char '~' *> ident))
       <|> try numeric <|> try (do n <- ident; alias <- asks (M.member ("alias:" ++ n)); unless (not alias) (fail "import alias"); void (char '.'); b <- ("min" <$ keyword "min") <|> ("max" <$ keyword "max"); pure (TypeBound b (if maybe False (isLower . fst) (uncons n) then Variable n else Named n))) <|> try valueAtom
@@ -1049,6 +1052,60 @@ recordedP value = do
     validName n = not (null n) && take 1 n `notElem` [".", " "] &&
       all (\c -> isAlphaNum c || c `elem` (" -_." :: String)) n
 
+-- `f :: T uses Async` on a signature is `async f :: T`: an adapter that
+-- uses Async runs on the Async ability's default handler, the target's
+-- native async, so its native code returns the target's task and gets no
+-- handler argument for Async (docs/reference/language/abilities-mapping.md).
+-- A unit that declares its own Async keeps the plain meaning.
+asyncSugar :: [UnitMember] -> [UnitMember]
+asyncSugar members
+  | any ownAsync members = members
+  | otherwise = map sugar members
+  where
+    ownAsync m = case m of
+      AbilityMember a -> abilityName a == asyncAbilityName
+      _ -> False
+    isAsync t = abilityTypeName t == asyncAbilityName
+    sugar m = case m of
+      SignatureMember s used | any isAsync used -> AsyncMember s (filter (not . isAsync) used)
+      AsyncMember s used -> AsyncMember s (filter (not . isAsync) used)
+      _ -> m
+
+-- Temporal propositions over the clock (LawSpec.Temporal): eventually
+-- within d, P; always within d, P; never within d, P.
+temporalP :: P Expr
+temporalP = do
+  kind <- (Left Eventually <$ try (keyword "eventually" *> keyword "within"))
+    <|> (Left Always <$ try (keyword "always" *> keyword "within"))
+    <|> (Right () <$ try (keyword "never" *> keyword "within"))
+  micros <- spanP
+  void (symbol ",")
+  p <- expr
+  pure $ case kind of
+    Left k -> temporalExpr k micros p
+    Right () -> temporalExpr Always micros (Unary "!" p)
+
+-- `takes at most d` after an expression: a performance budget.
+budgetStartP :: P ()
+budgetStartP = try (keyword "takes" *> keyword "at" *> keyword "most")
+
+budgetSuffix :: Expr -> P Expr
+budgetSuffix e = do
+  budgetStartP
+  micros <- spanP
+  pure (budgetExpr e micros)
+
+-- A span of time for a temporal proposition or a budget: 2s, or 2 s.
+spanP :: P Integer
+spanP = lexeme $ do
+  n <- L.decimal
+  void (many (char ' '))
+  constructor <- choice [constructor <$ try (string suffix <* notFollowedBy (alphaNumChar <|> char '_'))
+    | (suffix, constructor) <- durationSuffixes]
+  let micros = n * durationFactor constructor
+  when (micros > durationLimit) (fail ("a duration is at most " ++ show durationLimit ++ " microseconds"))
+  pure micros
+
 -- A handler a law names: a spec handler, an ability (any lawful handler of
 -- it), or `recording` of either.
 handlerUseP :: P HandlerUse
@@ -1206,7 +1263,7 @@ preambleP = do
 unitP :: P (Unit, [Import], [IndexedFamily], [Wrapper], [Workflow], [ModelDeclaration], ([Protocol], [Scenario]))
 unitP = do
   (n, imports) <- preambleP
-  members <- many ((either FamilyMember DataMember <$> declarationP)
+  members' <- many ((either FamilyMember DataMember <$> declarationP)
     <|> (WrapperMember <$> wrapperP)
     <|> (WorkflowMember <$> workflowP)
     <|> (ProtocolMember <$> (try (lookAhead (keyword "protocol" *> ident >>= upper)) *> protocolP))
@@ -1233,6 +1290,7 @@ unitP = do
     <|> try (SignatureMember <$> withSpan ((,) <$> ident <* symbol "::" <*> typeP) <*> usesP)
     <|> (LawMember <$> lawUsingP))
   eof
+  let members = asyncSugar members'
   when (length [() | HarnessMember _ <- members] > 1)
     (fail "a unit has at most one harness")
   let definitions = [d | DefinitionMember (d, _) <- members]

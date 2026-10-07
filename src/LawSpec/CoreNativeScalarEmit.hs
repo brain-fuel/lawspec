@@ -536,6 +536,10 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
     hsInstalled a c = case c of
       C.RecordingHandler inner -> HaskellExpr.apply "P.fmap" [HaskellExpr.apply "LS.installedRecording" [HaskellExpr.quoted (C.abilityKey a)],
         Doc.text ("(Handlers." ++ maybe "undefined" HaskellAbilities.recordingFunction (abilityNamed a) ++ " symbols =<< ") <> hsMake a inner <> Doc.text ")"]
+      -- lawspec.time's default Clock handler is the real clock: workflows
+      -- and mailboxes wait in real time under it, and on any other virtually.
+      C.ProductionHandler | C.abilityKey a == "lawspec.time::ability::Clock", Nothing <- abilityNamed a >>= C.abilityNative ->
+        HaskellExpr.apply "P.fmap" [HaskellExpr.apply "LS.installedRealClock" [HaskellExpr.quoted (C.abilityKey a)], hsMake a c]
       _ -> HaskellExpr.apply "P.fmap" [HaskellExpr.apply "LS.installed" [HaskellExpr.quoted (C.abilityKey a)], hsMake a c]
     hsMake a c = case c of
       C.ProductionHandler | Just parts <- abilityNamed a >>= C.abilityNative -> Doc.text (intercalate "." parts)

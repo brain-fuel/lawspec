@@ -23,6 +23,18 @@ public final class Time {
     return WALL + (java.lang.System.nanoTime() / 1000L - MONOTONIC);
   }
 
+  /**
+   * Lets the runtime read any Clock handler (this one, the virtual clock, a recording): workflows
+   * and mailboxes then wait on the clock a law installs. Only this handler is real time.
+   */
+  public static void registerClock() {
+    lawspec.runtime.LawSpecRuntime.registerClockAbility(
+        handler -> ((lawspec.abilities.lawspec.Time.Clock) handler).now().value(),
+        (handler, micros) -> ((lawspec.abilities.lawspec.Time.Clock) handler)
+            .sleep(java.time.Duration.of(micros, java.time.temporal.ChronoUnit.MICROS)),
+        handler -> handler instanceof ClockHandler);
+  }
+
   /** The system clock: now never goes back; sleep blocks this thread. */
   public static final class ClockHandler implements lawspec.abilities.lawspec.Time.Clock {
     @Override

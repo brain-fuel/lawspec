@@ -36,7 +36,7 @@ const runnable = new Set(["javascript", "typescript"]);
 const badges = { javascript: "JS", typescript: "TS" };
 const testCommands = /*@ test-commands @*/;
 const statusLabels = { "proved": "proved", "exhaustively-checked": "exhaustively checked",
-  "property-tested": "property tested", "runtime-checked": "runtime checked", "default-handler": "default handler", "assumed": "assumed" };
+  "property-tested": "property tested", "measured": "measured", "runtime-checked": "runtime checked", "default-handler": "default handler", "assumed": "assumed" };
 const assets = new URL("./", import.meta.url);
 let compiler;
 

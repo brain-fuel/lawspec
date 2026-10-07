@@ -32,6 +32,20 @@ end
 `async` is a keyword only before a signature's name; it remains usable as a
 name elsewhere.
 
+## As an ability
+
+`async f ::` is the same declaration as `f :: ... uses Async`, with `Async`
+from `lawspec.concurrent`: an adapter that uses `Async` runs on its default
+handler, the target's native async, so its native code returns the target's
+task and takes no handler for it. `lawspec check --json` lists `Async` in the
+declaration's `uses`. See [existing features as
+abilities](abilities-mapping.md#async).
+
+```lawspec fragment
+async price :: Text -> Int32
+price :: Text -> Int32 uses Async     -- the same
+```
+
 ## Per target
 
 | Target | The adapter | How a test awaits it |

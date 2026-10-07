@@ -29,6 +29,7 @@ import LawSpec.Matchers (matchersUnit, matchersAlias, matchersTypes, usesMatcher
 import LawSpec.Regex (parseRegex)
 import LawSpec.Resources (resourcesUnit, resourcesAlias, resourcesTypes, usesResources, resourcesSource)
 import LawSpec.Resilience (resilienceUnit, resilienceAlias, resilienceTypes, usesResilience, resilienceSource)
+import LawSpec.Network (networkUnit, networkSource)
 import LawSpec.Builtins (builtinUnits, builtinSource, importsBuiltin, usesClock, clockSource)
 import LawSpec.Refinement
 import LawSpec.Prelude
@@ -292,7 +293,9 @@ compileWithImports visible bits settings sources = do
       -- Built-in resources acquire and release through lawspec.host's
       -- abilities, so a program that names one gets that unit too.
       abilityUnits = [Source ("<" ++ unit ++ ">") (builtinSource unit) | unit <- builtinUnits
-                     , any (importsBuiltin unit) [text | Source _ text <- sources] || (unit == "lawspec.host" && resources)]
+                     , any (importsBuiltin unit) [text | Source _ text <- sources] || (unit == "lawspec.host" && resources)] ++
+        -- lawspec.network: the secure network handler's module (LawSpec.Network).
+        [Source ("<" ++ networkUnit ++ ">") networkSource | any (importsBuiltin networkUnit) [text | Source _ text <- sources]]
       collections = usedCollections ([text | Source _ text <- sources ++ abilityUnits] ++ [clockSource | clock])
       builtins = preludeSource : [Source "<lawspec.collections>" (collectionsSource collections) | not (null collections)] ++
         [Source "<lawspec.time>" (timeSource ++ (if clock then clockSource else "")) | time] ++ [Source "<lawspec.resilience>" resilienceSource | resilience] ++

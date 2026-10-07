@@ -438,9 +438,11 @@ scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions 
     -- repeated exactly (lawspec test records the seed of every passing run).
     seedHelper = if py
       then "\n\n\n# Adapters may be slow (networks, timers): no per-example deadline.\n# Under lawspec test, failing examples are kept in its failure database.\n_lawspec_failures = os.environ.get(\"LAWSPEC_FAILURES\")\n_lawspec_database = (\n    {\"database\": DirectoryBasedExampleDatabase(\n        os.path.join(_lawspec_failures, \"hypothesis\"))}\n    if _lawspec_failures else {})\nsettings.register_profile(\"lawspec\", deadline=None, **_lawspec_database)\nsettings.load_profile(\"lawspec\")\n\n\ndef _lawspec_seeded(test):\n    value = os.environ.get(\"LAWSPEC_SEED\")\n    return test if value is None else _lawspec_seed(int(value))(test)\n" ++
-        "\n\n# Workflows wait on a virtual clock under test.\nls.use_virtual_clock()\n"
+        "\n\n# Workflows wait on a virtual clock under test.\nls.use_virtual_clock()\n" ++
+        (if installsClock u then "\n# Workflows and mailboxes read the Clock handler a law installs.\nls.native_class(\"lawspec.time\", \"register_clock\")()\n" else "")
       else "\nconst _lawspecSeed = globalThis.process?.env?.LAWSPEC_SEED;\nconst _lawspecSeeded = (options) => _lawspecSeed === undefined\n  ? options\n  : {...options, seed: Number(_lawspecSeed) | 0};\n" ++
-        "\n// Workflows wait on a virtual clock under test.\nls.useVirtualClock();\n"
+        "\n// Workflows wait on a virtual clock under test.\nls.useVirtualClock();\n" ++
+        (if installsClock u then "\n// Workflows and mailboxes read the Clock handler a law installs.\nimport {registerClock as _lawspecRegisterClock} from '../src/lawspec/time." ++ (if ts then "js" else "mjs") ++ "';\n_lawspecRegisterClock();\n" else "")
     propertyInvocation label generators parameters body options =
       let property = blockCall (if asyncMode then "fc.asyncProperty" else "fc.property") (generators ++ [callback parameters body])
           assertion = (if asyncMode then text "await " else mempty) <> blockCall "fc.assert" (property : map (\o -> invoke "_lawspecSeeded" [o]) (if null options then [text "{}"] else options))
@@ -894,3 +896,8 @@ scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions 
           predicate = conjunction (map render (inputRefinements input))
       pure (array [bind previous True candidates,bind (previous ++ [input]) False predicate])
     split s = case break (== '.') s of (a,[]) -> [a]; (a,_:b) -> a:split b
+
+-- Whether a unit's laws install a Clock handler: its tests then register how
+-- the runtime reads one (lawspec.time's register_clock).
+installsClock :: C.Unit -> Bool
+installsClock unit = or [C.abilityKey a == "lawspec.time::ability::Clock" | p <- C.unitProperties unit, (a, _) <- C.propertyHandlers p]

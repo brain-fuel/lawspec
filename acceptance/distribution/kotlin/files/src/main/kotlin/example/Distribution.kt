@@ -87,7 +87,10 @@ object Distribution {
             sender.send(value0.toLong())
             sender.send(value0.toLong())
             val timeout = java.time.Duration.ofSeconds(5)
-            return ledger.receive(timeout) + ledger.receive(timeout)
+            val total = ledger.receive(timeout) + ledger.receive(timeout)
+            // receive within: nothing more comes, so it gives null in time.
+            if (ledger.receiveWithin(java.time.Duration.ofMillis(20)) != null) return -1
+            return total
         } finally {
             here.close()
             there.close()
@@ -142,5 +145,45 @@ object Distribution {
         } finally {
             for (node in listOf(a, b, c, d)) node.close()
         }
+    }
+
+    // A definition evaluated on another node: its request names the
+    // definition's content hash, which shows on the wire only in the clear.
+    suspend fun sealedOnTheWire(value0: Int): Boolean {
+        val name = "example.distribution::shifted"
+        val digest = LawSpecRemote.digest(name).toByteArray(Charsets.UTF_8)
+        val seen = mutableMapOf<Boolean, Boolean>()
+        for (insecure in listOf(false, true)) {
+            val network = LawSpecRuntime.MemoryNetwork((value0 and 0xFFFF).toLong(), 0.0, 0.0, 0.0, true)
+            val make: (String) -> LawSpecRuntime.Transport = { node ->
+                if (insecure) network.insecureTransportForTests(node) else network.transport(node)
+            }
+            val here = LawSpecRuntime.Node(make("here"))
+            val there = LawSpecRuntime.Node(make("there"))
+            try {
+                LawSpecRemote.serve(there)
+                val result = LawSpecRemote.evaluate(
+                    here, there.address, name,
+                    LawSpecRuntime.Value("Int32", BigInteger.valueOf(value0.toLong())),
+                )
+                if ((result.data() as BigInteger).longValueExact() != value0 + 1000L) return false
+                seen[insecure] = network.recorded().any { contains(it, digest) }
+            } finally {
+                here.close()
+                there.close()
+            }
+        }
+        return seen == mapOf(false to false, true to true)
+    }
+
+    private fun contains(haystack: ByteArray, needle: ByteArray): Boolean =
+        (0..haystack.size - needle.size).any { i -> needle.indices.all { j -> haystack[i + j] == needle[j] } }
+
+    fun handshakeAgrees(value0: String): Boolean {
+        val f = value0.split(" ")
+        if (f.size != 13) return false
+        return lawspec.runtime.LawSpecNetwork.handshakeVector(
+            f[0], f[1], f[2], f[3], f[4], f[5], f[6], f[7], f[8], f[9], f[10], f[11], f[12],
+        )
     }
 }

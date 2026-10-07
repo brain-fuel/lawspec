@@ -1375,6 +1375,8 @@ _MASK64 = (1 << 64) - 1
 
 
 class RealClock:
+    virtual = False
+
     def now(self):
         return _time.monotonic_ns() // 1000
 
@@ -1384,6 +1386,8 @@ class RealClock:
 
 class VirtualClock:
     """Sleeping advances the clock and returns at once."""
+
+    virtual = True
 
     def __init__(self, start=0):
         self.time = start
@@ -1444,10 +1448,47 @@ class WorkflowRuntime:
 
 
 _default_runtime = [None]
+_CLOCK_KEY = 'lawspec.time::ability::Clock'
+_CLOCK_VIEW = '\x00lawspec.workflow.clock'
+
+
+_CLOCK_READER = [None]
+
+
+def register_clock_ability(now, sleep, real_time):
+    """How the runtime reads a Clock handler, registered by lawspec.time's
+    register_clock (the generated tests call it): now(handler) gives
+    microseconds, sleep(handler, micros) waits, and real_time(handler) says
+    whether the handler is the default real clock."""
+    _CLOCK_READER[0] = (now, sleep, real_time)
+
+
+def _ability_clock(handler):
+    reader = _CLOCK_READER[0]
+    return None if reader is None or handler is None else AbilityClock(handler, reader)
+
+
+class AbilityClock:
+    """A workflow runtime's clock read through the Clock ability: the handler
+    a law installs (the virtual clock, or the default real one). Every handler
+    but the default real clock is virtual: waits pass at once, and timeouts
+    and hedges count only the time it reports."""
+
+    def __init__(self, handler, reader):
+        self.handler = handler
+        self._now, self._sleep, real_time = reader
+        self.virtual = not real_time(handler)
+
+    def now(self):
+        return self._now(self.handler)
+
+    def sleep(self, micros):
+        self._sleep(self.handler, micros)
 
 
 def use_virtual_clock(seed=0):
-    """Make the default runtime virtual, as generated tests do."""
+    """Make the default runtime virtual, as generated tests do. Timeouts and
+    hedges stay on: they count virtual time (see _scoped)."""
     _default_runtime[0] = WorkflowRuntime(VirtualClock(), seed, gates=False)
 
 
@@ -1457,7 +1498,21 @@ def workflow_runtime(symbols):
         return runtime
     if _default_runtime[0] is None:
         _default_runtime[0] = WorkflowRuntime()
-    return _default_runtime[0]
+    runtime = _default_runtime[0]
+    # Workflow time is the Clock ability's: where a law has installed a
+    # Clock handler, the default runtime waits and times out on it.
+    table = symbols.get(_HANDLERS) if isinstance(symbols, dict) else None
+    clock = _ability_clock(table.get(_CLOCK_KEY) if table else None)
+    if clock is None:
+        return runtime
+    view = symbols.get(_CLOCK_VIEW)
+    if view is None or view[0] is not clock.handler or view[1] is not runtime:
+        under = WorkflowRuntime.__new__(WorkflowRuntime)
+        under.__dict__.update(runtime.__dict__)
+        under.clock = clock
+        view = (clock.handler, runtime, under)
+        symbols[_CLOCK_VIEW] = view
+    return view[2]
 
 
 @dataclass(frozen=True)
@@ -1644,6 +1699,8 @@ def await_step(symbols, start, convert):
     deadline, hedge = runtime.deadline, runtime.hedge
     if deadline is None and hedge is None:
         return convert(await_task(start()))
+    if isinstance(hedge, _VirtualHedge):
+        return _virtual_hedge(runtime, hedge, start, convert)
     import asyncio
 
     def left():
@@ -1691,24 +1748,90 @@ def await_step(symbols, start, convert):
         raise StageTimedOut() from None
 
 
+class NativeAsync:
+    """The Async ability's default handler: the interpreter's own threads and
+    asyncio. LawSpec code performs pause; workflows reach the rest natively:
+    spawn starts a function as a task, wait gives a task's result (a
+    coroutine is run to completion), and all runs functions side by side and
+    gives their results in order. An `async` adapter is an adapter that uses
+    Async, so its coroutine is awaited with wait."""
+
+    def pause(self):
+        _time.sleep(0)
+
+    def spawn(self, fn):
+        import concurrent.futures
+        future = concurrent.futures.Future()
+
+        def run():
+            try:
+                future.set_result(fn())
+            except BaseException as error:  # given back by wait
+                future.set_exception(error)
+        threading.Thread(target=run, daemon=True).start()
+        return future
+
+    def wait(self, task):
+        if hasattr(task, 'result') and hasattr(task, 'done') and not hasattr(task, '__await__'):
+            return task.result()
+        return await_task(task)
+
+    def all(self, fns):
+        """Every function's result, in order; all finish before the first
+        exception (in order) is raised."""
+        tasks = [self.spawn(fn) for fn in fns]
+        import concurrent.futures
+        concurrent.futures.wait(tasks)
+        return [task.result() for task in tasks]
+
+
+ASYNC = NativeAsync()
+
+
 def concurrently(steps):
     """An all group's step results, in declaration order. The steps run side
-    by side, each on a thread of its own, so an asynchronous step waits only
-    for itself. Every step finishes before a step's exception (the first, in
-    declaration order) is raised."""
-    import concurrent.futures
-    with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, len(steps))) as pool:
-        futures = [pool.submit(step) for step in steps]
-        concurrent.futures.wait(futures)
-    return [future.result() for future in futures]
+    by side as tasks of the Async ability's default handler, so an
+    asynchronous step waits only for itself. Every step finishes before a
+    step's exception (the first, in declaration order) is raised."""
+    return ASYNC.all(steps)
+
+
+@dataclass(frozen=True)
+class _VirtualHedge:
+    stage: str
+    delay: int
+    most: int
+
+
+def _is_left(value):
+    return isinstance(value, DataValue) and value.tag == 'Either::Left'
+
+
+def _virtual_hedge(runtime, hedge, start, convert):
+    """A hedge on a virtual clock: attempts run one after another, and the
+    next starts when one fails, so the first success wins as it would in
+    real time when no attempt outlives the delay."""
+    started = 1
+    value = convert(await_task(start()))
+    while _is_left(value) and started < hedge.most:
+        started += 1
+        runtime.trace.append(('hedge', hedge.stage, started))
+        value = convert(await_task(start()))
+    return value
 
 
 def _scoped(runtime, policy, attempt):
     """An attempt under its stage's timeout (failing with TimedOut when it
-    outlives it) and hedge. Under the runtime generated tests install (gates
-    off), both are off."""
+    outlives it) and hedge: the Timeout and Hedge transformers of the Async
+    ability, measured on the runtime's Clock. On a virtual clock (generated
+    tests, or a law using virtual clock) an attempt takes the virtual time
+    that passes while it runs, so both are deterministic."""
     timeout = policy.timeout is not None and policy.timeout > 0
-    if not runtime.gates or (not timeout and policy.hedge is None):
+    if not timeout and policy.hedge is None:
+        return attempt()
+    if getattr(runtime.clock, 'virtual', False):
+        return _virtually_scoped(runtime, policy, attempt, timeout)
+    if not runtime.gates:
         return attempt()
     outer = (runtime.deadline, runtime.hedge)
     if timeout:
@@ -1720,6 +1843,22 @@ def _scoped(runtime, policy, attempt):
         return stage_failure('TimedOut')
     finally:
         (runtime.deadline, runtime.hedge) = outer
+
+
+def _virtually_scoped(runtime, policy, attempt, timeout):
+    outer = (runtime.deadline, runtime.hedge)
+    began = runtime.clock.now()
+    runtime.deadline = None
+    runtime.hedge = None if policy.hedge is None else _VirtualHedge(policy.stage, *policy.hedge)
+    try:
+        result = attempt()
+    except StageTimedOut:
+        return stage_failure('TimedOut')
+    finally:
+        (runtime.deadline, runtime.hedge) = outer
+    if timeout and runtime.clock.now() - began > policy.timeout:
+        return stage_failure('TimedOut')
+    return result
 
 
 def _attempts(runtime, policy, attempt):
@@ -2511,6 +2650,27 @@ class Mailbox:
                 raise ActorStopped('the mailbox is closed')
             return self._items.popleft()
 
+    def receive_within(self, micros, clock=None):
+        """The Mailbox ability's receive ... within d: the next message, or
+        None when none arrives within micros microseconds. On a virtual
+        clock (any Clock handler but the default real one, as lawspec.time's
+        register_clock tells) it waits no real time:
+        it takes a message already sent, or lets the time pass on that clock
+        and gives None. Raises ActorStopped once closed and empty."""
+        read = _ability_clock(clock)
+        if read is not None and read.virtual:
+            with self._ready:
+                if self._items:
+                    return self._items.popleft()
+                if self._closed:
+                    raise ActorStopped('the mailbox is closed')
+            read.sleep(micros)
+            return None
+        try:
+            return self.receive(max(0, micros) / 1_000_000)
+        except TimeoutError:
+            return None
+
     def close(self):
         """Refuses further messages; those already sent can still be received."""
         with self._ready:
@@ -3192,7 +3352,7 @@ class _NetScenarioChannel:
 
     def __init__(self, network, name, steps, values, registry):
         self.name, self.registry = name, registry
-        self.nodes = [Node(network.transport(f'{name}-{side}')) for side in (0, 1)]
+        self.nodes = [Node(network.insecure_transport_for_tests(f'{name}-{side}')) for side in (0, 1)]
         def wire(sends, d):
             return (sends, ['text'] if d == ['end'] else d)
         self.ends = [self.nodes[0].listen(name, [wire(s, d) for s, d in steps], values)]
@@ -3240,7 +3400,8 @@ class _ScenarioMailbox:
         self.registry = registry
         self.nodes = []
         if network is not None:
-            owner, senders = Node(network.transport(f'{name}-owner')), Node(network.transport(f'{name}-senders'))
+            owner, senders = (Node(network.insecure_transport_for_tests(f'{name}-owner')),
+                              Node(network.insecure_transport_for_tests(f'{name}-senders')))
             self.nodes = [owner, senders]
             d = ['text'] if descriptor == ['end'] else descriptor
             self.inbox = owner.mailbox(name, d, values)
@@ -4127,15 +4288,23 @@ class MemoryNetwork:
     or duplicated, and is delayed by up to delay seconds (so frames can
     overtake each other); partition(...) cuts nodes off until heal()."""
 
-    def __init__(self, seed=0, loss=0.0, duplicate=0.0, delay=0.0):
+    def __init__(self, seed=0, loss=0.0, duplicate=0.0, delay=0.0, record=False):
         self._random = SplitMix64(seed)
         self.loss, self.duplicate, self.delay = loss, duplicate, delay
+        # With record, every record sent, as the network saw it.
+        self.recorded = [] if record else None
         self._nodes = {}
         self._groups = None
         self._lock = threading.Lock()
 
     def transport(self, name):
         return _MemoryTransport(self, 'mem://' + name)
+
+    def insecure_transport_for_tests(self, name):
+        """A transport whose node skips the handshake and sends frames in
+        the clear: for tests of the frame layer only. Only an in-memory
+        network makes one, and no configuration selects it."""
+        return InsecureMemoryTransport(self, 'mem://' + name)
 
     def partition(self, *groups):
         """Only nodes named in the same group reach each other."""
@@ -4151,6 +4320,8 @@ class MemoryNetwork:
 
     def _send(self, source, node, frame):
         with self._lock:
+            if self.recorded is not None:
+                self.recorded.append(bytes(frame))
             deliver = self._nodes.get(node)
             if deliver is None:
                 raise Unreachable(f'no node at {node}')
@@ -4170,6 +4341,8 @@ class MemoryNetwork:
 
 
 class _MemoryTransport(Transport):
+    insecure_for_tests = False
+
     def __init__(self, network, address):
         self._network, self.address = network, address
 
@@ -4183,6 +4356,12 @@ class _MemoryTransport(Transport):
     def close(self):
         with self._network._lock:
             self._network._nodes.pop(self.address, None)
+
+
+class InsecureMemoryTransport(_MemoryTransport):
+    """In memory, without the handshake: tests only."""
+
+    insecure_for_tests = True
 
 
 class TcpTransport(Transport):
@@ -4296,6 +4475,43 @@ class HttpTransport(Transport):
         self._server.server_close()
 
 
+# The secure network handler lives in lawspec_network, which the compiler
+# writes beside this runtime when a program imports lawspec.network: it needs
+# the crypto libraries, which programs without nodes do without. It
+# registers itself here when imported (register_secure_network).
+_SECURE_NETWORK = [None]
+
+
+def register_secure_network(provider):
+    """provider.layer(node, identity, trusted) makes a node's secure layer:
+    send(peer, frame) and receive(record) -> frame or None."""
+    _SECURE_NETWORK[0] = provider
+
+
+def _secure_network():
+    if _SECURE_NETWORK[0] is None:
+        try:
+            import lawspec_network  # noqa: F401  (registers itself)
+        except ImportError as error:
+            if getattr(error, 'name', None) not in (None, 'lawspec_network'):
+                raise
+    if _SECURE_NETWORK[0] is None:
+        raise LookupError('a node needs the secure network handler: add `import lawspec.network` '
+                          'to a unit of the program, so lawspec_network is generated')
+    return _SECURE_NETWORK[0]
+
+
+def _secure_random(n):
+    import os
+    return os.urandom(n)
+
+
+def secure_token():
+    """A one-time token from the operating system's secure generator: 32
+    bytes as 64 hexadecimal digits, as SecureRandom's secureToken gives."""
+    return _secure_random(32).hex()
+
+
 class Node:
     """A process's presence on a network: it names local mailboxes, actors,
     channel ends and definitions, so other nodes can reach them at
@@ -4308,9 +4524,17 @@ class Node:
     different languages talk to each other.
     ref:DEC-distribution-canonical-wire"""
 
-    def __init__(self, transport):
+    def __init__(self, transport, identity=None, trusted=None):
+        """identity: a NodeIdentity (by default the one lawspec.json binds,
+        or a fresh one); trusted: the fingerprints of the only peers to talk
+        to (by default any peer, each address keeping the first identity it
+        shows). A transport made for tests only (insecure_for_tests) skips
+        the handshake; no other transport can."""
         self.transport = transport
         self.address = transport.address
+        self._secure = None if getattr(transport, 'insecure_for_tests', False) else \
+            _secure_network().layer(self, identity, trusted)
+        self.identity = None if self._secure is None else self._secure.identity
         self._entities = {}
         self._pending = {}
         # Requests already seen, by sender and id, with their reply once
@@ -4320,7 +4544,21 @@ class Node:
         self._ids = iter(range(1, 1 << 62))
         self._lock = threading.Lock()
         self.closed = False
-        transport.start(self._deliver)
+        transport.start(self._arrive)
+
+    def _arrive(self, record):
+        if self._secure is None:
+            self._deliver(record)
+            return
+        frame = self._secure.receive(record)
+        if frame is not None:
+            self._deliver(frame)
+
+    def _transmit(self, node, frame):
+        if self._secure is None:
+            self.transport.send(node, frame)
+        else:
+            self._secure.send(node, frame)
 
     def close(self):
         self.closed = True
@@ -4332,13 +4570,13 @@ class Node:
 
     def _send(self, address, kind, payload, ident=0):
         node, name = _split_address(address)
-        self.transport.send(node, _frame_encode(kind, name, self.address, ident, payload))
+        self._transmit(node, _frame_encode(kind, name, self.address, ident, payload))
 
     def _forward(self, address, kind, source, ident, payload):
         """Passes a frame on to address unchanged, keeping its source."""
         node, name = _split_address(address)
         try:
-            self.transport.send(node, _frame_encode(kind, name, source, ident, payload))
+            self._transmit(node, _frame_encode(kind, name, source, ident, payload))
         except Unreachable:
             pass
 
@@ -4805,10 +5043,9 @@ class _NetEndpoint:
     # Moving an end to another node.
     def _offer(self):
         """The address another node takes this unused end over from."""
-        import secrets
         with self._lock:
             if self._token is None:
-                self._token = secrets.token_hex(16)
+                self._token = secure_token()
             return f'{self.address}?take={self._token}'
 
     def _give(self, payload):
