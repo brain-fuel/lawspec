@@ -103,11 +103,6 @@ The repository moves to the canon
 rules: one canonical home for every decision, reference and document;
 documentation pages in the Folio; Keep a Changelog; and less duplication.
 
-### 0.20.2: vetting
-
-Every canonical comment, decision, reference and page is reviewed and
-signed off.
-
 ### 0.21: test harness
 
 What real test suites need, on every target and in each target's own test
@@ -132,6 +127,9 @@ framework:
 - JUnit XML reports and coverage, doctests and benchmarks.
 
 ### 0.22: BEAM targets
+
+After the 0.21 refactor, review the deferred canonical comments, decisions,
+references and pages before this release.
 
 Erlang, Elixir and Gleam join the targets, with actors on real processes
 and OTP supervisors.

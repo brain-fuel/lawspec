@@ -6,6 +6,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.21.0] - 2026-10-07
+
 ### Added
 
 - Existing features are abilities. `async f ::` is `f :: ... uses Async`
@@ -307,7 +309,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   requirements the tests verify), `canonical_decisions.yaml` (the design
   decisions, each cited as `ref:KEY`) and `canonical_exemptions.yaml` sit at
   the root, and `canonical_vetting/` holds every comment, page, decision and
-  reference as pending until the owner vets it in 0.20.2.
+  reference as pending with owner review deferred until after the 0.21 refactor.
 - `make canon` and `lawspec-dev canon` run canon over the repository, and the
   complete check runs it as its `canon` step. Set `CANON_HOME` to a canon
   checkout built with `stack build`; without one the step is skipped with a
@@ -1215,7 +1217,8 @@ A maintenance release. The language, generated code and API are unchanged from
   machine-sized bindings reject an architecture mismatch. Rust adapters take
   owned values.
 
-[Unreleased]: https://github.com/brain-fuel/lawspec/compare/v0.20.1...HEAD
+[Unreleased]: https://github.com/brain-fuel/lawspec/compare/v0.21.0...HEAD
+[0.21.0]: https://github.com/brain-fuel/lawspec/compare/v0.20.1...v0.21.0
 [0.20.1]: https://github.com/brain-fuel/lawspec/compare/v0.20.0...v0.20.1
 [0.20.0]: https://github.com/brain-fuel/lawspec/compare/v0.19.1...v0.20.0
 [0.19.1]: https://github.com/brain-fuel/lawspec/compare/v0.19.0...v0.19.1

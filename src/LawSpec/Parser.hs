@@ -1734,4 +1734,3 @@ regionExpr stops = do
       | otherwise = Nothing
     wordChar (c : _) = isAlphaNum c || c == '_'
     wordChar [] = False
-

@@ -25,7 +25,7 @@ Java project:
 ```sh
 mkdir coffee-shop && cd coffee-shop
 npm init -y
-npm install --save-dev lawspec@0.20.1
+npm install --save-dev lawspec@0.21.0
 npx lawspec init --target java --project java
 npx lawspec doctor
 ```
@@ -38,7 +38,7 @@ add a Python project with its own virtual environment:
 ```sh
 mkdir coffee-shop && cd coffee-shop
 npm init -y
-npm install --save-dev lawspec@0.20.1
+npm install --save-dev lawspec@0.21.0
 npx lawspec init --target python --project python
 python3 -m venv python/.venv
 python/.venv/bin/python -m pip install -e "python[test]"
@@ -54,7 +54,7 @@ Create a directory, install LawSpec, and add a JavaScript project:
 ```sh
 mkdir coffee-shop && cd coffee-shop
 npm init -y
-npm install --save-dev lawspec@0.20.1
+npm install --save-dev lawspec@0.21.0
 npx lawspec init --target javascript --project javascript
 npm install --prefix javascript
 npx lawspec doctor

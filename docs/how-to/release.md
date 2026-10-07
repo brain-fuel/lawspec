@@ -81,7 +81,7 @@ eight targets in both machine profiles. Logs are in `.artifacts/ci/`.
 
 ```sh
 make package
-tar -tzf .artifacts/0.20.1/lawspec-0.20.1.tgz
+tar -tzf .artifacts/0.21.0/lawspec-0.21.0.tgz
 ```
 
 The archive holds the CLI and library code, `core.wasm` and its JavaScript glue,
@@ -95,9 +95,9 @@ packed copy.
 
 ```sh
 git add -A
-git commit -m "Release LawSpec 0.16.0"
-git tag -a v0.20.1 -m "LawSpec 0.16.0"
-git push --atomic origin main v0.20.1
+git commit -m "Release LawSpec 0.21.0"
+git tag -a v0.21.0 -m "LawSpec 0.21.0"
+git push --atomic origin main v0.21.0
 ```
 
 Push the branch and the annotated tag together, so the tag always names a
@@ -106,7 +106,7 @@ commit that is on `main`.
 ## 7. Publish
 
 ```sh
-npm publish .artifacts/0.20.1/lawspec-0.20.1.tgz --access public --tag latest --registry https://registry.npmjs.org
+npm publish .artifacts/0.21.0/lawspec-0.21.0.tgz --access public --tag latest --registry https://registry.npmjs.org
 ```
 
 Publish the archive you inspected, not the directory. npm asks for approval in
@@ -116,9 +116,9 @@ the browser; complete it there. If npm reports that you are not logged in, run
 ## 8. Verify the registry
 
 ```sh
-npm view lawspec@0.20.1 version dist.integrity
+npm view lawspec@0.21.0 version dist.integrity
 npm view lawspec dist-tags
-shasum -a 512 .artifacts/0.20.1/lawspec-0.20.1.tgz | awk '{print $1}' | xxd -r -p | base64
+shasum -a 512 .artifacts/0.21.0/lawspec-0.21.0.tgz | awk '{print $1}' | xxd -r -p | base64
 ```
 
 `dist.integrity` must be `sha512-` followed by the local archive's digest, and
