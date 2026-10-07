@@ -41,11 +41,11 @@ cryptoUsed :: [String] -> Bool
 cryptoUsed units = any (`elem` units) ["lawspec.crypto", networkUnit]
 
 -- The network module beside each runtime file, for a program that uses it;
--- Rust also declares it among the crate's modules.
+-- in Rust it is lawspec.network's own module, lawspec_network.
 withNetworkModules :: String -> Bool -> [Artifact] -> [Artifact]
 withNetworkModules target uses files
   | not uses = files
-  | otherwise = map declare files ++ mapMaybe sibling files
+  | otherwise = map declare (filter (not . replaced) files) ++ mapMaybe sibling files
   where
     sibling a = do
       (directory, name) <- Just (splitPath (artifactPath a))
@@ -56,19 +56,25 @@ withNetworkModules target uses files
         "LawSpecRuntime.java" -> Just ("LawSpecNetwork.java", "java-network", "")
         "lawspec_runtime.go" -> Just ("lawspec_network.go", "go-network", "")
         "LawSpecRuntime.hs" -> Just ("LawSpecNetwork.hs", "haskell-network", "")
-        "lawspec_runtime.rs" | "src/" `isPrefixOf` artifactPath a -> Just ("lawspec_network.rs", "rust-network", "")
+        -- Rust: the module is lawspec.network's own (lawspec_network, in
+        -- src/lawspec/network.rs), in place of its scaffold.
+        "lawspec_runtime.rs" | "src/" `isPrefixOf` artifactPath a -> Just ("lawspec/network.rs", "rust-network", "")
         _ -> Nothing
       let content = prefix ++ (if target == "go" then goPackage (artifactContent a) else id) (runtimeSource source)
       Just (Artifact (directory ++ file) content (ownership a) (artifactPlacement a))
+    replaced a = target == "rust" && artifactPath a == "src/lawspec/network.rs"
     declare a
-      | target == "rust" && artifactPath a == "src/lawspec_modules.rs" =
-          a { artifactContent = artifactContent a ++ "#[path = \"lawspec_network.rs\"]\npub mod lawspec_network;\n" }
-      -- Rust and Haskell tests install the module before their laws run.
-      | target == "rust" && artifactPlacement a == "test" && "ls::Context::testing();" `isInfixOf` artifactContent a =
+      -- Rust test crates mount the module (adapters may use it), and Rust
+      -- and Haskell tests install it before their laws run.
+      | target == "rust" && artifactPlacement a == "test" && any (`isInfixOf` artifactContent a) ["mod lawspec_runtime;", "::lawspec_runtime;"] =
           a { artifactContent =
                 replace "let ctx = &mut ls::Context::testing();" "lawspec_network::install(); let ctx = &mut ls::Context::testing();" $
                 replace "#[path = \"../src/lawspec_runtime.rs\"]\nmod lawspec_runtime;"
-                  "#[path = \"../src/lawspec_runtime.rs\"]\nmod lawspec_runtime;\n#[path = \"../src/lawspec_network.rs\"]\nmod lawspec_network;" $
+                  ("#[path = \"../src/lawspec_runtime.rs\"]\nmod lawspec_runtime;\n" ++
+                    -- lawspec.network's own test crate has it already, as its adapter.
+                    if "#[path = \"../src/lawspec/network.rs\"]" `isInfixOf` artifactContent a
+                      then "use adapter as lawspec_network;"
+                      else "#[path = \"../src/lawspec/network.rs\"]\nmod lawspec_network;") $
                 mountLibrary (artifactContent a) }
       | target == "haskell" && artifactPlacement a == "test" && "runIO (LS.useVirtualClock 0)" `isInfixOf` artifactContent a =
           a { artifactContent =

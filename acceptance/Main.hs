@@ -172,7 +172,7 @@ loadPackage directory = do
 -- lawspec.network, as lawspec init and the setup advice say.
 usesCrypto :: String -> [Generated] -> Bool
 usesCrypto target = any (\g -> generatedPath g == adapterPath target "lawspec.crypto"
-  || any (`isInfixOf` generatedPath g) ["lawspec_network.", "LawSpecNetwork."])
+  || any (`isInfixOf` generatedPath g) ["lawspec_network.", "LawSpecNetwork.", "src/lawspec/network.rs"])
 
 writeProject :: String -> String -> FilePath -> Bool -> Bool -> [Generated] -> IO ()
 writeProject suite target project defaultProfile minify generated = do

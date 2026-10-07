@@ -45,7 +45,7 @@ spec = describe "distribution" $ do
           Right files -> map artifactPath files
           Left ds -> error (show ds)
         program imports = unlines (["unit app.nodes"] ++ imports ++ ["protocol Ping is send Int32 end", "definition shifted (x :: Int32) :: Int64 is x + 1 end"])
-        networkFile p = any (`isInfixOf` p) ["lawspec_network.", "LawSpecNetwork."]
+        networkFile p = any (`isInfixOf` p) ["lawspec_network.", "LawSpecNetwork.", "src/lawspec/network.rs"]
         targets = ["python", "javascript", "typescript", "go", "java", "kotlin", "haskell", "rust"]
     it "writes the network module beside the runtime of a program that imports lawspec.network" $
       forM_ targets $ \target -> (target, any networkFile (paths target (program ["import lawspec.network"]))) `shouldBe` (target, True)

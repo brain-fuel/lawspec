@@ -160,7 +160,7 @@ export async function sealedOnTheWire(value0: number): Promise<boolean> {
     try {
       remote.serve(there);
       if ((await remote.evaluate(here, there.address, name, BigInt(value0))) !== BigInt(value0) + 1000n) return false;
-      seen.set(insecure, network.recorded.some((frame: Uint8Array) => contains(frame, digest)));
+      seen.set(insecure, (network.recorded ?? []).some((frame: Uint8Array) => contains(frame, digest)));
     } finally {
       await here.close();
       await there.close();
