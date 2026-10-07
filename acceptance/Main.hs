@@ -119,7 +119,7 @@ main = do
       else do
         mode <- cacheMode
         scaffolds <- either die pure (scaffoldFilesWith (usesCrypto target generated) minify target)
-        suiteInputs <- fmap concat $ forM ["acceptance" </> suite </> target, "acceptance" </> suite </> "mutants"] $ ase ->
+        suiteInputs <- fmap concat $ forM ["acceptance" </> suite </> target, "acceptance" </> suite </> "mutants"] $ \base ->
           doesDirectoryExist base >>= \exists -> if exists then walk base else pure []
         recordingInputs <- map snd <$> suiteRecordings suite
         key <- runKey target [suite, target, profile, show mutate]
