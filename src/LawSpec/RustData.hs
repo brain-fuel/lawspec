@@ -1,7 +1,7 @@
 -- | Native declarations and bridges consume resolved Core, never surface syntax.
 module LawSpec.RustData (emitRustData, rustDataType, rustDataTypeWithParameters, rustFieldBoxed) where
 
-import LawSpec.DataNames (qualifiedDataName)
+import LawSpec.DataNames (qualifiedDataName, caseInsensitiveCounts, ambiguous)
 import Control.Monad (unless, forM)
 import Data.Char (isAscii, isAlphaNum, isLetter, toLower, ord)
 import Data.List (nub, intercalate, find)
@@ -19,9 +19,10 @@ type Names = [(String, String)]
 namesFor :: [C.DataDeclaration] -> Either String Names
 namesFor declarations = do
   let original = [(C.idText (C.dataId d), C.dataName d) | d <- declarations]
-      duplicates name = (> 1) . length . filter ((== map toLower name) . map toLower . snd)
-      qualified = [(identity, if duplicates name original then qualifiedDataName identity else name) | (identity,name) <- original]
-      names = [(identity, if duplicates name qualified then name ++ "_" ++ concatMap (\c -> showHex (ord c) "_") identity else name) | (identity,name) <- qualified]
+      originalCounts = caseInsensitiveCounts original
+      qualifiedCounts = caseInsensitiveCounts qualified
+      qualified = [(identity, if ambiguous originalCounts name then qualifiedDataName identity else name) | (identity,name) <- original]
+      names = [(identity, if ambiguous qualifiedCounts name then name ++ "_" ++ concatMap (\c -> showHex (ord c) "_") identity else name) | (identity,name) <- qualified]
   mapM_ (identifier . snd) names
   unless (length names == length (nub (map (map toLower . snd) names))) (Left "conflicting Rust data identities")
   mapM (\(identity,name) -> do native <- identifier name; pure (identity,native)) names

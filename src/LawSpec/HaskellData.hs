@@ -1,7 +1,7 @@
 -- | Native algebraic declarations are rendered from resolved Core identities.
 module LawSpec.HaskellData (requiresSchema, emitHaskellData, haskellDataType, haskellDataTypeWithRepresentations, haskellNativeTypeWithParameters, emitHaskellSchema, emitHaskellSchemaWithProfile, haskellTypeReference, emitHaskellCodecs, emitHaskellCodecsWithRepresentations, emitHaskellCodecsWithHooks, haskellCodec, haskellCodecDoc, haskellCodecDocWithContext, haskellCodecDocIn, haskellTypeReferenceDoc) where
 
-import LawSpec.DataNames (flatDataCandidates, productConstructors)
+import LawSpec.DataNames (flatDataCandidates, productConstructors, caseInsensitiveCounts, ambiguous)
 import LawSpec.HaskellTypeRefs
 import qualified LawSpec.HaskellExpr as E
 import qualified LawSpec.Backend as Backend
@@ -32,11 +32,11 @@ identifier name = unless valid (Left ("invalid Haskell data identifier: " ++ nam
 
 namesFor :: [C.DataDeclaration] -> Either String Names
 namesFor declarations = do
-  let duplicate name xs = length (filter ((== map toLower name) . map toLower . snd) xs) > 1
-      qualified = flatDataCandidates capitalize (const False) declarations
-      names = [(identity, if duplicate name qualified then name ++ "_" ++ concatMap (\c -> showHex (ord c) "_") (C.idText identity) else name) | (identity,name) <- qualified]
+  let qualified = flatDataCandidates capitalize (const False) declarations
+      counts = caseInsensitiveCounts qualified
+      names = [(identity, if ambiguous counts name then name ++ "_" ++ concatMap (\c -> showHex (ord c) "_") (C.idText identity) else name) | (identity,name) <- qualified]
   mapM_ (identifier . snd) names
-  unless (length names == length (nub (map (map toLower . snd) names))) (Left "conflicting Haskell data identities")
+  unless (all (== 1) (caseInsensitiveCounts names)) (Left "conflicting Haskell data identities")
   pure (names ++ productConstructors declarations names)
 
 application :: String -> [String] -> String
@@ -82,10 +82,13 @@ typeText scope names parameters ty = case ty of
 -- | Types are checked against the registry before rendering, so an unknown type
 -- is a compiler error rather than uncompilable Haskell.
 haskellDataType :: [C.DataDeclaration] -> C.Type -> Either String String
-haskellDataType declarations ty = do
-  registry <- makeRegistry declarations
+haskellDataType declarations =
+  -- The registry and the names depend only on the declarations: a caller
+  -- that applies this to them once shares them across every type.
+  let prepared = (,) <$> makeRegistry declarations <*> namesFor declarations
+  in \ty -> do
+  (registry, names) <- prepared
   checkType registry ty
-  names <- namesFor declarations
   typeText "Data." names [] ty
 
 -- | Bound native types replace generated ones wherever the type appears.
@@ -382,11 +385,14 @@ haskellCodecDocUsing :: Maybe D.Doc -> [C.DataDeclaration] -> String -> String -
 haskellCodecDocUsing context = haskellCodecDocIn context "Codecs."
 
 haskellCodecDocIn :: Maybe D.Doc -> String -> [C.DataDeclaration] -> String -> String -> C.Type -> Either String D.Doc
-haskellCodecDocIn context scope declarations schema bits ty = do
-  registry <- makeRegistry declarations
-  checkType registry ty
-  names <- namesFor declarations
-  codecExpressionWith context schema bits scope names [] ty
+haskellCodecDocIn context scope declarations =
+  -- The registry and the names depend only on the declarations, so a caller
+  -- that applies this to them once shares them across every codec it makes.
+  let prepared = (,) <$> makeRegistry declarations <*> namesFor declarations
+  in \schema bits ty -> do
+    (registry, names) <- prepared
+    checkType registry ty
+    codecExpressionWith context schema bits scope names [] ty
 
 -- | Codecs for generated types live in one generated module.
 emitHaskellCodecs :: D.Layout -> [C.DataDeclaration] -> Either String String

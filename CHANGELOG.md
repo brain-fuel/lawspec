@@ -291,6 +291,12 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   The family's measure is recognised under the name an importing unit calls
   it by. Python's Hypothesis no longer fails the `collections` suite now and
   then with the `filter_too_much` health check.
+- Generating a program with many data types no longer takes time quadratic
+  in their number: each target's native data names count clashes once, and
+  each codec and native type maker builds its type registry and names once
+  per unit rather than once per adapter argument. Generating every bundled
+  example is about three times faster for Haskell and twice for Go and
+  Kotlin, with byte-identical output.
 
 ## [0.20.1] - 2026-10-06
 

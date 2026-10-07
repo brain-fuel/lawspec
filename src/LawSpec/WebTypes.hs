@@ -1,7 +1,7 @@
 -- | Native web type representations and schema references.
 module LawSpec.WebTypes where
 
-import LawSpec.DataNames (flatDataCandidates, productConstructors)
+import LawSpec.DataNames (flatDataCandidates, productConstructors, caseInsensitiveCounts, ambiguous)
 import Control.Monad (unless)
 import Data.Char (isAscii, isAlphaNum, isLetter, toLower, ord)
 import Data.List (nub, stripPrefix)
@@ -29,9 +29,9 @@ supportNames = words "Maybe Either Nothing Just Left Right Presence ls schema ma
 -- case-insensitive file systems, so they are refused.
 namesFor :: [C.DataDeclaration] -> Either String Names
 namesFor declarations = do
-  let duplicate name xs = length (filter ((== map toLower name) . map toLower . snd) xs) > 1
+  let qualifiedCounts = caseInsensitiveCounts qualified
       qualified = flatDataCandidates id (`elem` supportNames) declarations
-      names = [(identity, if duplicate name qualified || name `elem` supportNames then name ++ "_" ++ concatMap (\c -> showHex (ord c) "_") (C.idText identity) else name) | (identity,name) <- qualified]
+      names = [(identity, if ambiguous qualifiedCounts name || name `elem` supportNames then name ++ "_" ++ concatMap (\c -> showHex (ord c) "_") (C.idText identity) else name) | (identity,name) <- qualified]
   mapM_ (identifier True . snd) names
   unless (length names == length (nub (map (map toLower . snd) names))) (Left "conflicting JavaScript data identities")
   pure (names ++ productConstructors declarations names)

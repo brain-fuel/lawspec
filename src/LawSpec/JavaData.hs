@@ -3,7 +3,7 @@
 -- for primitive domains with no faithful Java representation.
 module LawSpec.JavaData (schemaSource, javaConstructorClass, emitJavaData, emitJavaDataWithProfile, emitJavaSchema, javaDataType, javaCodec, javaTypeReference, javaDataKey, javaDataTypeDoc, javaCodecDoc, javaCodecDocWithContext, javaDataName, identifier) where
 
-import LawSpec.DataNames (qualifiedDataName, isProduct, caseNames)
+import LawSpec.DataNames (qualifiedDataName, isProduct, caseNames, caseInsensitiveCounts, ambiguous)
 import Control.Monad (unless, forM)
 import Data.Char (isAscii, isAlphaNum, isLetter, toLower, ord)
 import Data.List (nub)
@@ -32,10 +32,11 @@ type Names = [(String, String)]
 namesFor :: [C.DataDeclaration] -> Either String Names
 namesFor declarations = do
   let sourceNames = [(C.idText (C.dataId d), C.dataName d) | d <- declarations]
-      duplicated name candidates = length (filter ((== map toLower name) . map toLower . snd) candidates) > 1
-      qualified = [(identity, if duplicated name sourceNames then qualifiedDataName identity else name)
+      sourceNamesCounts = caseInsensitiveCounts sourceNames
+      qualifiedCounts = caseInsensitiveCounts qualified
+      qualified = [(identity, if ambiguous sourceNamesCounts name then qualifiedDataName identity else name)
         | (identity,name) <- sourceNames]
-      names = [(identity, if duplicated name qualified then name ++ "_" ++ encodeIdentity identity else name)
+      names = [(identity, if ambiguous qualifiedCounts name then name ++ "_" ++ encodeIdentity identity else name)
         | (identity,name) <- qualified]
   mapM_ (identifier . snd) names
   unless (length names == length (nub (map (map toLower . snd) names)))
@@ -77,10 +78,13 @@ javaDataName declarations identity = do
 -- | Types are checked against the registry before rendering, so an unknown type
 -- is a compiler error rather than uncompilable Java.
 javaDataTypeDoc :: [C.DataDeclaration] -> C.Type -> Either String D.Doc
-javaDataTypeDoc declarations ty = do
-  registry <- makeRegistry declarations
+javaDataTypeDoc declarations =
+  -- The registry and the names depend only on the declarations: a caller
+  -- that applies this to them once shares them across every type.
+  let prepared = (,) <$> makeRegistry declarations <*> namesFor declarations
+  in \ty -> do
+  (registry, names) <- prepared
   checkType registry ty
-  names <- namesFor declarations
   typeDoc (handlesOf declarations) names [] ty
 
 -- | The identities of handle declarations: their values are adapters' native
@@ -544,8 +548,12 @@ javaTypeReference ty = render <$> Schema.typeReference [] ty
 -- | Every value crossing the adapter boundary goes through a codec that checks
 -- it against its declared domain. ref:DEC-portable-exact-arithmetic
 javaCodec :: [C.DataDeclaration] -> Int -> C.Type -> Either String String
-javaCodec declarations bits ty = do
-  names <- namesFor declarations
+javaCodec declarations =
+  -- The names depend only on the declarations: a caller that applies this to
+  -- them once shares them across every type.
+  let prepared = namesFor declarations
+  in \bits ty -> do
+  names <- prepared
   let go value@(C.Constructor name args) = do
         children <- mapM (\a -> case a of C.TypeArgument t -> go t; _ -> Left "indexed codec") args
         case lookup name names of
@@ -581,8 +589,12 @@ javaCodecDocWithContext :: D.Doc -> [C.DataDeclaration] -> Int -> C.Type -> Eith
 javaCodecDocWithContext symbols = javaCodecDocUsing (Just symbols)
 
 javaCodecDocUsing :: Maybe D.Doc -> [C.DataDeclaration] -> Int -> C.Type -> Either String D.Doc
-javaCodecDocUsing context declarations bits ty = do
-  names <- namesFor declarations
+javaCodecDocUsing context declarations =
+  -- The names depend only on the declarations: a caller that applies this to
+  -- them once shares them across every type.
+  let prepared = namesFor declarations
+  in \bits ty -> do
+  names <- prepared
   let symbols = maybe [] pure context
       go value@(C.Constructor name args) = do
         children <- mapM (\a -> case a of C.TypeArgument t -> go t; _ -> Left "indexed codec") args

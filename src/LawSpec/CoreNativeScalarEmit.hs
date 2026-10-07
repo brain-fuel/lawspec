@@ -101,7 +101,8 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
     ktCustom = (kt &&) . KotlinData.requiresSchema dataDeclarations
     ktRef = java . KotlinData.kotlinTypeReference
     ktCodec ty = "run { val schema = _schema; val bits = " ++ show bits ++ "; " ++
-      java (KotlinData.kotlinCodec dataDeclarations ty) ++ " }"
+      java (ktCodecText ty) ++ " }"
+    ktCodecText = KotlinData.kotlinCodec dataDeclarations
     ktConstruct ty tag fields = "LawSpecKotlinCodecs.construct(_schema, " ++ ktRef ty ++ ", " ++
       q tag ++ ", listOf(" ++ intercalate ", " fields ++ "), " ++ show bits ++ ")"
     ktDocument = Doc.render (Doc.selectLayout minify (Doc.Pretty 100))
@@ -189,8 +190,8 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
              ([kotlinStubFn n t | (n,t) <- adapterFunctions] ++
               [java (KotlinAbilities.productionStub dataDeclarations u a) | a <- ownAbilities u])) <> Doc.hardline
     native t | kt = java (KotlinData.kotlinDataType dataDeclarations t)
-    native t | hs = java (HaskellData.haskellDataType dataDeclarations t)
-    native t | goCustom t = java (GoData.goDataType dataDeclarations t)
+    native t | hs = java (hsDataType t)
+    native t | goCustom t = java (goDataType t)
     native t | custom t = java (JavaData.javaDataType dataDeclarations t)
     native (Applied "List" inner) | hs = "[" ++ native inner ++ "]"
     native (Applied "List" inner) | go = "[]" ++ native inner
@@ -360,13 +361,19 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
     render term = renderLegacy term
     ktRender = java . KotlinExpr.renderExpression dataDeclarations bits localName ktExternal
     ktChecked ty = java . KotlinExpr.checked dataDeclarations bits ty
-    ktNativeArgument ty value = java (KotlinExpr.codec dataDeclarations bits ty) <>
+    -- Each codec and native-type maker is applied to the declarations once
+    -- per unit, so its registry and names are built once.
+    ktCodecDoc = KotlinExpr.codec dataDeclarations bits
+    hsDataType = HaskellData.haskellDataType dataDeclarations
+    goDataType = GoData.goDataType dataDeclarations
+    javaCodecDoc = JavaData.javaCodecDocWithContext (Doc.text "symbols") dataDeclarations bits
+    ktNativeArgument ty value = java (ktCodecDoc ty) <>
       Doc.text ".decode" <> Doc.delimitTrailing 4 "(" ")" [value]
     -- The abstract Integer result is tower-polymorphic: adapters may return any
     -- integral Number, and the runtime bridge discharges the logical domain.
     ktNativeResult ty value | towerResult ty = KotlinExpr.call "LawSpecRuntime.fromNative"
       [Doc.text (q "Integer"),value,Doc.text (show bits)]
-    ktNativeResult ty value = java (KotlinExpr.codec dataDeclarations bits ty) <>
+    ktNativeResult ty value = java (ktCodecDoc ty) <>
       Doc.text ".encode" <> Doc.delimitTrailing 4 "(" ")" [value]
     ktHandler ability = Doc.text ("(LawSpecRuntime.handler(symbols, " ++ quote (C.abilityKey ability) ++ ") as " ++
       ktInterface ability ++ ")")
@@ -485,12 +492,15 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
       | hsCustom ty = HaskellExpr.checked (HaskellExpr.apply "Schema.validateWith"
           [hsScope,Doc.text "_lawspecSchema",java (HaskellData.haskellTypeReferenceDoc ty),Doc.text (show bits),value])
       | otherwise = HaskellExpr.apply "LS.convert" [Doc.text (show (key ty)),value,Doc.text (show bits)]
+    -- One codec maker per unit: it builds the type registry and the data
+    -- names once, not once per adapter argument and result.
+    hsCodecDoc = HaskellData.haskellCodecDocWithContext hsScope dataDeclarations "_lawspecSchema" (show bits)
     hsNativeArgument ty value = HaskellExpr.checked (HaskellExpr.apply "Codec.decode"
-      [java (HaskellData.haskellCodecDocWithContext hsScope dataDeclarations "_lawspecSchema" (show bits) ty),value])
+      [java (hsCodecDoc ty),value])
     hsNativeResult ty value | towerResult ty = HaskellExpr.apply "LS.fromNative"
       [Doc.text (q "Integer"),value,Doc.text (show bits)]
     hsNativeResult ty value = HaskellExpr.checked (HaskellExpr.apply "Codec.encode"
-      [java (HaskellData.haskellCodecDocWithContext hsScope dataDeclarations "_lawspecSchema" (show bits) ty),value])
+      [java (hsCodecDoc ty),value])
     hsNativeCall name arguments = case lookup (C.Id (unitName u ++ "::" ++ name)) adapterBindings of
       Just bridge -> HaskellExpr.apply ("Impl." ++ bridge) (Doc.text "symbols" : arguments)
       Nothing -> HaskellExpr.apply ("Impl." ++ adapterName u (C.Id (unitName u ++ "::" ++ name))) arguments
@@ -795,7 +805,7 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
     javaMethod value name args = Doc.group (Doc.nest 4 value <>
       Doc.nest 4 (Doc.softbreak <> JavaExpr.call ("." ++ name) args))
     javaNativeArgument ty value
-      | custom ty = javaMethod (java (JavaData.javaCodecDocWithContext (Doc.text "symbols") dataDeclarations bits ty)) "decode" [value]
+      | custom ty = javaMethod (java (javaCodecDoc ty)) "decode" [value]
       | ty == Named "Unit" = value
     javaNativeArgument ty@(Applied name inner) value | name `elem` ["List","Maybe"] =
       let local = "_element" ++ show (length (key ty))
@@ -811,7 +821,7 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
       Just _ -> Doc.group (Doc.text ("((" ++ nativeArg ty ++ ")") <>
         Doc.nest 4 (Doc.softline <> javaRuntime "toNative" [JavaExpr.quoted (key ty),value,Doc.text (show bits)]) <> Doc.text ")")
     javaNativeResult ty invocation
-      | custom ty = javaMethod (java (JavaData.javaCodecDocWithContext (Doc.text "symbols") dataDeclarations bits ty)) "encode" [invocation]
+      | custom ty = javaMethod (java (javaCodecDoc ty)) "encode" [invocation]
       | ty == Named "Unit" = javaRuntime "unit" [Doc.text "() -> " <> invocation]
       | otherwise = javaRuntime "fromNative" [JavaExpr.quoted (key ty),invocation,Doc.text (show bits)]
     javaValueLiteral value = case value of

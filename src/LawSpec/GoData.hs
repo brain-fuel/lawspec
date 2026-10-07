@@ -1,7 +1,7 @@
 -- | Native sealed interfaces and variants follow Go+'s resolved enum lowering.
 module LawSpec.GoData (emitGoData, goDataType, goTypeReference, emitGoSchema, emitGoSchemaWithProfile, goCodec, goCodecWithContext, emitGoCodecs, requiresSchema, goDataKey, validateGoBindings, identifier, goNativeCodec, emitGoNativeCodecs, goGeneratedNames, goEmittedNames, goNativeTypeWithParameters) where
 
-import LawSpec.DataNames (flatDataCandidates, productConstructors, isProduct)
+import LawSpec.DataNames (flatDataCandidates, productConstructors, isProduct, caseInsensitiveCounts, ambiguous)
 import LawSpec.GoTypeRefs
 import qualified LawSpec.GoExpr as E
 import LawSpec.Core.Total (constructorProofContracts)
@@ -38,10 +38,10 @@ identifier name = unless valid (Left ("invalid Go data identifier: " ++ name))
 
 namesFor :: [C.DataDeclaration] -> Either String Names
 namesFor declarations = do
-  let duplicate name xs = length (filter ((== map toLower name) . map toLower . snd) xs) > 1
+  let qualifiedCounts = caseInsensitiveCounts qualified
       reserved name = take 7 name == "LawSpec"
       qualified = flatDataCandidates capitalize reserved declarations
-      names = [(identity, if duplicate name qualified || reserved name then "Data" ++ name ++ "_" ++ concatMap (\c -> showHex (ord c) "_") (C.idText identity) else name) | (identity,name) <- qualified]
+      names = [(identity, if ambiguous qualifiedCounts name || reserved name then "Data" ++ name ++ "_" ++ concatMap (\c -> showHex (ord c) "_") (C.idText identity) else name) | (identity,name) <- qualified]
       -- A handle has no generated type: its native type is any (or its
       -- bound native type), and its codec passes the native value through.
       handles = [C.dataId d | d <- declarations, C.dataHandle d]
@@ -112,10 +112,13 @@ typeText names parameters ty = case ty of
 -- | Types are checked against the registry before rendering, so an unknown type
 -- is a compiler error rather than uncompilable Go.
 goDataType :: [C.DataDeclaration] -> C.Type -> Either String String
-goDataType declarations ty = do
-  registry <- makeRegistry declarations
+goDataType declarations =
+  -- The registry and the names depend only on the declarations: a caller
+  -- that applies this to them once shares them across every type.
+  let prepared = (,) <$> makeRegistry declarations <*> namesFor declarations
+  in \ty -> do
+  (registry, names) <- prepared
   checkType registry ty
-  names <- namesFor declarations
   typeText names [] ty
 
 -- | LawSpec data become Go structs and sealed interfaces, as Go developers write
@@ -266,10 +269,13 @@ goCodecWithContext :: String -> [C.DataDeclaration] -> C.Type -> Either String S
 goCodecWithContext context = goCodecUsing (Just context)
 
 goCodecUsing :: Maybe String -> [C.DataDeclaration] -> C.Type -> Either String String
-goCodecUsing context declarations ty = do
-  registry <- makeRegistry declarations
+goCodecUsing context declarations =
+  -- The registry and the names depend only on the declarations: a caller
+  -- that applies this to them once shares them across every type.
+  let prepared = (,) <$> makeRegistry declarations <*> namesFor declarations
+  in \ty -> do
+  (registry, names) <- prepared
   checkType registry ty
-  names <- namesFor declarations
   codec context names [] [] ty
 
 codec :: Maybe String -> Names -> [(C.Id,String)] -> [(C.Id,String)] -> C.Type -> Either String String

@@ -56,8 +56,12 @@ checked declarations bits ty value
 -- | A codec converts between the generated Kotlin type and the runtime value,
 -- checking the value as it goes.
 codec :: [DataDeclaration] -> Int -> Type -> Either String D.Doc
-codec declarations bits ty = do
-  value <- Native.kotlinCodecDocWithContext (D.text "symbols") declarations ty
+codec declarations bits =
+  -- Applied to the declarations once, it shares the codec maker's registry
+  -- and names across types.
+  let codecFor = Native.kotlinCodecDocWithContext (D.text "symbols") declarations
+  in \ty -> do
+  value <- codecFor ty
   pure (D.multiline (D.text "run " <> D.block 4 (D.joinWith D.hardline
     [D.text "val schema = _schema",D.text ("val bits = " ++ show bits),value])))
 

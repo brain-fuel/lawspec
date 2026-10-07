@@ -1,10 +1,11 @@
 -- | Native names for data declarations that share a short name. Units scope
 -- their declarations, so two units may both declare a Currency; targets with
 -- one data namespace qualify such a name by its unit (ShopDomainCurrency).
-module LawSpec.DataNames (qualifiedDataName, flatDataCandidates, isProduct, productConstructors, caseNames) where
+module LawSpec.DataNames (qualifiedDataName, flatDataCandidates, isProduct, productConstructors, caseNames, caseInsensitiveCounts, ambiguous) where
 
 import Data.Char (isAlphaNum, toLower, toUpper)
 import qualified LawSpec.Core as C
+import qualified Data.Map.Strict as M
 
 -- | shop.domain::type::Currency becomes ShopDomainCurrency, and its constructor
 -- shop.domain::type::Currency::Usd becomes ShopDomainCurrencyUsd.
@@ -54,10 +55,22 @@ flatDataCandidates cased forced declarations = types ++ constructors
     shortTypes = [(C.dataId d, cased (C.dataName d)) | d <- declarations]
     shortConstructors = [(C.constructorId c, cased (C.dataName d) ++ cased (C.constructorName c))
       | d <- sums, c <- C.dataConstructors d]
-    ambiguous name xs = length (filter ((== map toLower name) . map toLower . snd) xs) > 1
-    types = [(identity, if ambiguous name (shortTypes ++ shortConstructors) || forced name
+    -- Names are compared ignoring case, counted once per list: a program
+    -- with many data types would otherwise scan every name for every name.
+    shortCounts = caseInsensitiveCounts (shortTypes ++ shortConstructors)
+    types = [(identity, if ambiguous shortCounts name || forced name
       then qualifiedDataName (C.idText identity) else name) | (identity, name) <- shortTypes]
+    typeTable = M.fromList types
     typed = [(C.constructorId c, final ++ cased (C.constructorName c))
-      | d <- sums, Just final <- [lookup (C.dataId d) types], c <- C.dataConstructors d]
-    constructors = [(identity, if ambiguous name (types ++ typed) || forced name
+      | d <- sums, Just final <- [M.lookup (C.dataId d) typeTable], c <- C.dataConstructors d]
+    typedCounts = caseInsensitiveCounts (types ++ typed)
+    constructors = [(identity, if ambiguous typedCounts name || forced name
       then qualifiedDataName (C.idText identity) else name) | (identity, name) <- typed]
+
+-- | How many names in a list are each name, ignoring case.
+caseInsensitiveCounts :: [(a, String)] -> M.Map String Int
+caseInsensitiveCounts xs = M.fromListWith (+) [(map toLower name, 1) | (_, name) <- xs]
+
+-- | Whether more than one name in the counted list is this one, ignoring case.
+ambiguous :: M.Map String Int -> String -> Bool
+ambiguous counts name = M.findWithDefault 0 (map toLower name) counts > 1

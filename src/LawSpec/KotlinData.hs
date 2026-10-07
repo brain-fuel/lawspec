@@ -1,7 +1,7 @@
 -- | Native JVM declarations from checked Core; no surface syntax or inference.
 module LawSpec.KotlinData (emitKotlinData, emitKotlinDataWithProfile, kotlinCodecDocWithContext, kotlinDataType, emitKotlinCodecs, kotlinCodec, kotlinTypeReference, requiresSchema, kotlinDataTypeDoc, kotlinCodecDoc, kotlinTypeReferenceDoc, identifier, emitKotlinNativeCodecs, kotlinNativeCodecDoc, kotlinNativeTypeDoc) where
 
-import LawSpec.DataNames (qualifiedDataName, isProduct, caseNames)
+import LawSpec.DataNames (qualifiedDataName, isProduct, caseNames, caseInsensitiveCounts, ambiguous)
 import LawSpec.Scalar (nativeRepresentation, primitives, primitiveName)
 import Control.Monad (unless, forM)
 import Data.Char (isAscii, isAlphaNum, isLetter, toLower, ord)
@@ -37,10 +37,11 @@ identifier name = unless valid (Left ("invalid Kotlin data identifier: " ++ name
 namesFor :: [C.DataDeclaration] -> Either String Names
 namesFor declarations = do
   let source = [(C.dataId d, C.dataName d) | d <- declarations]
-      duplicated name entries = length (filter ((== map toLower name) . map toLower . snd) entries) > 1
-      qualified = [(identity, if duplicated name source then qualifiedDataName (C.idText identity) else name)
+      sourceCounts = caseInsensitiveCounts source
+      qualifiedCounts = caseInsensitiveCounts qualified
+      qualified = [(identity, if ambiguous sourceCounts name then qualifiedDataName (C.idText identity) else name)
         | (identity,name) <- source]
-      names = [(identity, if duplicated name qualified
+      names = [(identity, if ambiguous qualifiedCounts name
         then name ++ "_" ++ concatMap (\c -> showHex (ord c) "_") (C.idText identity)
         else name) | (identity,name) <- qualified]
   mapM_ (identifier . snd) names
@@ -125,10 +126,13 @@ kotlinDataType declarations ty = D.render D.Compact <$> kotlinDataTypeDoc declar
 -- | Types are checked against the registry before rendering, so an unknown type
 -- is a compiler error rather than uncompilable Kotlin.
 kotlinDataTypeDoc :: [C.DataDeclaration] -> C.Type -> Either String D.Doc
-kotlinDataTypeDoc declarations ty = do
-  registry <- makeRegistry declarations
+kotlinDataTypeDoc declarations =
+  -- The registry and the names depend only on the declarations: a caller
+  -- that applies this to them once shares them across every type.
+  let prepared = (,) <$> makeRegistry declarations <*> namesFor declarations
+  in \ty -> do
+  (registry, names) <- prepared
   checkType registry ty
-  names <- namesFor declarations
   typeDoc (handlesOf declarations) names [] ty
 
 -- | The 64-bit profile unless a caller states another.
@@ -272,23 +276,29 @@ codecDocUsingOwner owner context names parameters ty = case ty of
 
 -- | Codec text for one-line uses.
 kotlinCodec :: [C.DataDeclaration] -> C.Type -> Either String String
-kotlinCodec declarations ty = D.render D.Compact <$> kotlinCodecDoc declarations ty
+kotlinCodec declarations = let codecFor = kotlinCodecDoc declarations in fmap (D.render D.Compact) . codecFor
 
 -- | Every value crossing the adapter boundary goes through a codec that checks
 -- it against its declared domain. ref:DEC-portable-exact-arithmetic
 kotlinCodecDoc :: [C.DataDeclaration] -> C.Type -> Either String D.Doc
-kotlinCodecDoc declarations ty = do
-  registry <- makeRegistry declarations
+kotlinCodecDoc declarations =
+  -- The registry and the names depend only on the declarations: a caller
+  -- that applies this to them once shares them across every type.
+  let prepared = (,) <$> makeRegistry declarations <*> namesFor declarations
+  in \ty -> do
+  (registry, names) <- prepared
   checkType registry ty
-  names <- namesFor declarations
   codecDoc names [] ty
 
 -- | As kotlinCodecDoc, where the schema comes from the caller's scope.
 kotlinCodecDocWithContext :: D.Doc -> [C.DataDeclaration] -> C.Type -> Either String D.Doc
-kotlinCodecDocWithContext context declarations ty = do
-  registry <- makeRegistry declarations
+kotlinCodecDocWithContext context declarations =
+  -- The registry and the names depend only on the declarations: a caller
+  -- that applies this to them once shares them across every type.
+  let prepared = (,) <$> makeRegistry declarations <*> namesFor declarations
+  in \ty -> do
+  (registry, names) <- prepared
   checkType registry ty
-  names <- namesFor declarations
   codecDocUsing (Just context) names [] ty
 
 -- | Codecs for generated types live in one generated object, so a test file
