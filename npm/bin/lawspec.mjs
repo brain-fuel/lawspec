@@ -691,8 +691,10 @@ async function main() {
   const evidenceSummary = (evidence) => {
     if (!evidence.length) return "";
     const count = (status) => evidence.filter((item) => item.status === status).length;
-    // The harness statuses are counted only when a harness gives some.
-    const shown = statuses.filter(([status], i) => i < 5 || count(status));
+    // The harness statuses (after assumed) are counted only when a harness
+    // gives some.
+    const harnessFrom = statuses.findIndex(([status]) => status === "known-failing");
+    const shown = statuses.filter(([status], i) => i < harnessFrom || count(status));
     return ` Evidence: ${shown.map(([status, label]) => `${count(status)} ${label.toLowerCase()}`).join(", ")}.`;
   };
   const obligationName = (item) => item.declaration.replace("::law::", "::");

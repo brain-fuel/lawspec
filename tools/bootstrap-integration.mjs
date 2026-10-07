@@ -104,7 +104,9 @@ async function setup(target) {
   else if (target === "java")
     await run("mvn", ["-B", "-q", "test-compile"], root);
   else if (target === "go")
-    await run("go", ["mod", "download", "pgregory.net/rapid", "github.com/cloudflare/circl"], root);
+    // circl by version: a project scaffolded without crypto does not require it,
+    // but the suites that import lawspec.crypto or lawspec.network do.
+    await run("go", ["mod", "download", "pgregory.net/rapid", "github.com/cloudflare/circl@v1.6.5"], root);
   else if (target === "haskell") {
     await mkdir(path.join(root, "src"), { recursive: true });
     await run(
