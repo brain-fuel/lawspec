@@ -1,0 +1,51 @@
+unit example.crypto
+
+-- Post-quantum cryptography by default: ML-KEM-768 key exchange, ML-DSA-65
+-- signatures, SHA3-256, and AES-256-GCM. Their laws hold for every lawful
+-- handler; the defaults are also checked against NIST's vectors.
+import lawspec.crypto (ExchangeKeyPair, ExchangePublicKey, Encapsulated, SigningKeyPair)
+
+-- A handshake from the building blocks. The server signs its exchange key
+-- with its long-term key; the client checks the signature, encapsulates a
+-- secret to the exchange key, and both sides derive the same AEAD key from
+-- it. The client's message then crosses sealed.
+definition handshake (message :: Bytes) (context :: Bytes) :: Maybe Bytes uses KeyExchange, Signature, Aead is
+  match signingKeyPair with
+  | SigningKeyPair verifying signing ->
+      (match exchangeKeyPair with
+       | ExchangeKeyPair public secret ->
+           (let offer = sign signing (valueOfExchangePublicKey public) in
+            if verify verifying (valueOfExchangePublicKey public) offer then
+              (match encapsulate public with
+               | Encapsulated sent shared ->
+                   (let client = deriveAeadKey shared context in
+                    let server = deriveAeadKey (decapsulate secret sent) context in
+                    unseal server (seal client message context) context)
+               end)
+            else Nothing)
+       end)
+  end
+end
+
+law `a handshake carries the message` is
+  definition is `for all` (message :: Bytes) (context :: Bytes) . handshake message context = Just message end
+end
+
+-- A native adapter: a short fingerprint of a public key, from its SHA3-256
+-- digest.
+fingerprint :: Bytes -> Bytes uses Hash
+
+law `a fingerprint is 8 bytes` is
+  definition is `for all` (key :: Bytes) . prelude.length (fingerprint key) = 8 end
+end
+
+law `a key has one fingerprint` is
+  definition is `for all` (key :: Bytes) . fingerprint key = fingerprint key end
+end
+
+-- A native adapter that seals with a fresh key and opens again.
+roundTrip :: Bytes -> Bool uses Aead
+
+law `sealed messages open` is
+  definition is `for all` (message :: Bytes) . roundTrip message = true end
+end

@@ -2,6 +2,153 @@
 
 ## Unreleased
 
+- Existing features are abilities. `async f ::` is `f :: ... uses Async`
+  (both spellings mean the same declaration); workflow policies are handler
+  transformers over `Async`, `Clock` and `Fail`; a protocol is `Session P`,
+  a mailbox `Mailbox T`, an actor a `Process` with a `State` handler, a
+  supervisor a `Fail` handler that restarts, a model a stateful spec
+  handler checked through `abstract`, a scenario a program under a
+  `Scheduler` handler, and distribution the `Network` ability whose
+  transports are handlers. The syntax is unchanged; `lawspec check --json`
+  lists each unit's `abilityRows`, and the new page "Existing features as
+  abilities" shows each mapping.
+- Workflow time is the `Clock` ability's: a law that installs a clock (such
+  as `using virtual clock`) runs its workflows on it. On a virtual clock,
+  timeouts and hedges count virtual time, so generated workflow tests now
+  run with them on, deterministically; before, they were off because they
+  used real time.
+- The network is secure by default on every target: each node has an
+  ML-DSA-65 identity, the first frame between two nodes waits for a signed
+  ML-KEM-768 handshake, and frames cross sealed with AES-256-GCM. The record
+  format is the same on every target, and each checks the same handshake
+  vector. `nativeBindings.network` in `lawspec.json` binds a node identity
+  and trusted peers (written to `lawspec-network.conf`). An in-memory
+  transport without the handshake exists for tests only; no setting turns
+  security off. A program that makes nodes imports `lawspec.network`, which
+  writes the secure handler's module beside the runtime; programs without
+  it, or without `lawspec.crypto`, no longer depend on any crypto library,
+  and `lawspec init` scaffolds projects without them. Scenarios' network
+  runs use the in-memory transport made for tests. (Rust and Haskell call
+  `lawspec_network::install()` / `LawSpecNetwork.install` before making
+  nodes; the generated tests do.)
+- Channel-end `take` tokens are 32 bytes from the operating system's secure
+  generator on every target (Haskell's were clock-based).
+- Remote definitions are named by a SHA3-256 content hash that names its
+  algorithm: `sha3-256:` then 64 hexadecimal digits.
+- Temporal propositions: `eventually within 2 s, P`, `always within 500 ms,
+  P` and `never within d, P`, over the `Clock`; under `using virtual clock`
+  they are deterministic and checked at compile time.
+- Performance budgets: `expect f x takes at most 5 ms`, or `e takes at most
+  d` as a law's claim, timed on the real clock, with the new evidence status
+  `measured`.
+- Typed mailboxes have `receive_within` / `receiveWithin`: the next message,
+  or nothing when none arrives in time.
+- The `Async` default handler also starts tasks, waits for them and runs
+  several side by side; workflows' `all` groups run through it.
+
+- Built-in abilities. `import lawspec.time`, `lawspec.randomness`,
+  `lawspec.crypto`, `lawspec.host`, `lawspec.logging` or `lawspec.concurrent`
+  adds the unit and its abilities: `Clock`; `Random` and `SecureRandom`;
+  `Hash`, `KeyExchange`, `Signature` and `Aead`; `FileSystem`, `Environment`
+  and `Ports`; `Log` and `Trace`; `Async`. Each has laws, and a default
+  handler on every target, generated into the unit's module and reported in
+  evidence with the new status `default-handler` (`DEFAULT HANDLER`).
+  `handlers` in `lawspec.json` binds another, and the ability's laws then
+  check it.
+- `Instant`, microseconds since 1970: `t + d`, `t - d`, `b - a` (a
+  `Duration`) and comparisons, saturating rather than failing. `Clock` has
+  `now` and `sleep`, and its laws say time does not go back and sleeping
+  lets the time pass. `using virtual clock` runs a law under a clock that
+  moves only when told to; `advance d` lets `d` pass.
+- `Random` is reproducible: the same seed gives the same draws on all eight
+  targets. `using seeded random n` starts it at `n`; the default handler
+  starts at the run's seed. `SecureRandom` is the operating system's
+  generator. They are separate abilities: seeded random where SecureRandom
+  is needed is a compile error, SecureRandom has no spec handlers, and the
+  native interfaces differ, so the typed targets reject the mix too.
+- Cryptography is post-quantum by default: ML-KEM-768 (FIPS 203) key
+  exchange, ML-DSA-65 (FIPS 204) signatures, SHA3-256 and SHAKE256 (FIPS
+  202), and AES-256-GCM authenticated encryption, with SLH-DSA-SHAKE-128f
+  (FIPS 205) as an alternative Signature handler. Keys, ciphertexts and
+  signatures are opaque values whose bytes are the standards' encodings.
+  Their laws: decapsulating gives the encapsulated secret, a signature
+  verifies exactly for its message and its signer's key, and unsealing fails
+  for another key or other associated data.
+- A program that imports `lawspec.crypto` gets a test of the default
+  handlers against NIST's ACVP and CAVP vectors, on every target.
+- Generated projects depend on the default handlers' libraries:
+  `cryptography` (Python), `@noble/post-quantum` (JavaScript, TypeScript),
+  `circl` and Go 1.25 (Go), Bouncy Castle (Java, Kotlin), `crypton`, `mlkem`
+  and `mldsa` (Haskell), and RustCrypto's `ml-kem`, `ml-dsa`, `slh-dsa`,
+  `sha3`, `shake` and `aes-gcm` (Rust).
+- In Go, a program's ability that shares a name with another unit's (such
+  as a built-in `Log`) is named after its unit (`ExampleShopLog`), since
+  every Go package holds every ability.
+- Java ability interfaces no longer end a wrapped parameter list with a
+  comma; a Rust handler parameter that is a keyword is a raw identifier; a
+  Rust ability operation's result is checked against its type.
+- New acceptance suites `builtins` and `crypto`, on all eight targets, with
+  mutants: a clock that goes back, a seeded Random used as SecureRandom (a
+  compile error in the typed targets), a log written twice, a signature
+  handler that verifies a tampered message, and a key exchange that returns
+  another secret.
+- Abilities. `ability Gateway is authorize :: Card -> Payment ... laws ... end`
+  names a dependency's operations and the laws every handler of it keeps.
+  `uses Gateway, Clock` after a signature says what it uses; a native adapter
+  gets one handler per ability before its arguments. A checked definition may
+  use abilities, and its ability row is inferred; a definition that lists its
+  abilities must list at least those.
+- Handlers. `handler fakeGateway for Gateway is authorize c is ... end ... end`
+  is a spec handler; each clause is a checked definition. `with state s :: S
+  start e` keeps a state, updated with `~s := e;`. Each ability's native
+  production handler is written by hand (`GatewayHandler`), or bound under
+  `handlers` in `lawspec.json`.
+- A law holds for every lawful handler. `using h` names a handler only when
+  it is part of the claim; otherwise the law runs under each lawful handler in
+  turn, one law per choice. `using recording Gateway` records calls, which a
+  law counts with `calls of capture` and `calls of capture with (cents)`.
+- Each ability law is one obligation per handler. For a spec handler without
+  state the compiler proves it, or checks every case of a finite domain, so a
+  handler that breaks it is a compile error; native handlers are
+  property-tested.
+- `fails with E` is short for `uses Fail E`. `raise e` aborts with a failure,
+  and `prelude.attempt e` in a law gives `Right` of the value or `Left` of the
+  failure.
+- Core has `Perform`, `Handle` and `Calls`. Every target passes handlers in
+  the context it gives every definition (evidence passing), and generates a
+  native interface per ability: a Python `Protocol`, a TypeScript interface, a
+  Go interface, a Java or Kotlin interface, a Rust trait, a Haskell record of
+  `IO` operations; with spec handler and recording classes beside it.
+- Abilities cross units. `import` brings a unit's abilities and handlers;
+  imported definitions may use abilities, and the declaring unit keeps the
+  native interface, production handler and recording.
+- Effects in order: `a; b` and `let x = e in body` in definitions and laws.
+  An operation that gives `Unit` is called for its effect.
+- `handle e with h end` installs a spec handler around part of a definition,
+  which then does not use its ability. A handler's clauses may use other
+  abilities; a law under that handler gets handlers for them too.
+- A parameterized ability may be used at several types in one unit (`Store
+  Int32`, `Store Text`), each with its own interface (`StoreInt32`).
+- An operation's type may be refined; every handler owes its result's
+  refinement as a law.
+- Native adapters fail with the runtime's `Fail` on every target (`raise
+  ls.Fail(v)`, `throw new ls.Fail(v)`, `panic(LawSpecFail{Value: v})`,
+  `LawSpecRuntime.Fail`, `ls::fail`, `LS.Fail`), and `failures` in
+  `lawspec.json` maps the application's own exceptions to failure
+  constructors.
+- The compiler runs spec handlers with state over a finite domain, so a law
+  they break is a compile error.
+- `lawspec explain` shows a law's handlers and the ability rows of what it
+  calls.
+- A bound production handler speaks the bound native types: through the
+  handler schema in Python and JavaScript, and an `<Ability>Bound` wrapper in
+  the typed targets. A bound adapter gets its handlers too.
+- New acceptance suite `abilities`, with mutants: an adapter that calls its
+  dependency twice, native handlers that break an ability law or a refined
+  result, and an adapter that fails with the wrong failure. It now covers two
+  units. New suite `handlerbindings`: bound handlers, bound types and mapped
+  exceptions on all eight targets.
+
 ## 0.20.0
 
 - An `all` group with an asynchronous step runs its steps at the same time,

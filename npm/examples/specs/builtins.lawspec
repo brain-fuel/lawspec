@@ -1,0 +1,121 @@
+unit example.builtins
+
+-- The built-in abilities: each unit is imported like any other, and each
+-- ability's production handler is the runtime's default one.
+import lawspec.time (Instant, advance)
+import lawspec.randomness
+import lawspec.host
+import lawspec.logging (LogLevel)
+import lawspec.concurrent
+
+-- Time. A deadline is now plus a wait; instants move by durations and are
+-- a duration apart.
+definition deadline (wait :: Duration where wait <= 1h) :: Instant uses Clock is now + wait end
+
+-- Under the virtual clock, time moves only when told to.
+law `a deadline is as far off as the wait` using virtual clock is
+  definition is
+    `for all` (wait :: Duration where wait <= 1h) . (let d = deadline wait in d - now) = wait
+  end
+end
+
+law `advancing moves the virtual clock` using virtual clock is
+  definition is
+    `for all` (d :: Duration where d <= 1h) . (let a = now in advance d; let b = now in b - a) = d
+  end
+end
+
+-- Time in laws: temporal propositions check over the clock, so under the
+-- virtual clock they are deterministic.
+law `a deadline eventually passes` using virtual clock is
+  definition is
+    `for all` (wait :: Duration where wait <= 1s) . (let d = deadline wait in eventually within 2 s, now >= d) = true
+  end
+end
+
+law `nothing is late before its deadline` using virtual clock is
+  definition is (let d = deadline 3s in always within 2 s, now < d) = true end
+end
+
+-- A performance budget, measured on the real clock.
+law `a deadline is quick to make` is
+  definition is `for all` (wait :: Duration where wait <= 1h) . deadline wait takes at most 500 ms end
+  example `an hour` is
+    wait = 1h
+    expect deadline wait takes at most 500 ms
+  end
+end
+
+-- A native adapter gets its handlers as arguments: here the real clock.
+elapsed :: Int32 -> Duration uses Clock
+
+law `elapsed time is never negative` is
+  definition is `for all` (n :: Int32 where n >= 0 && n <= 3) . elapsed n >= 0ms end
+end
+
+-- Random draws are reproducible: the same seed gives the same draws, on
+-- every target.
+definition roll (sides :: Int64 where sides >= 1) :: Integer uses Random is randomBelow sides + 1 end
+
+law `a seed fixes the rolls` is
+  definition is
+    `for all` (sides :: Int64 where sides >= 1) .
+      handle roll sides with seededRandom end = handle roll sides with seededRandom end
+  end
+  example `the first roll from seed 0` is
+    sides = 6
+    expect handle roll sides with seededRandom end = 6
+  end
+  example `the first roll from seed 42` is
+    sides = 1000
+    expect handle roll sides with seededRandom 42 end = 78
+  end
+end
+
+law `rolls are on the die` using seeded random 42 is
+  definition is
+    `for all` (sides :: Int64 where sides >= 1) . (let r = roll sides in r >= 1 && r <= sides) = true
+  end
+end
+
+-- Secure draws come from SecureRandom, which a seeded source cannot answer.
+token :: Int32 -> Bytes uses SecureRandom
+
+law `a token has the length asked` is
+  definition is `for all` (n :: Int32 where n >= 0 && n <= 64) . prelude.length (token n) = n end
+end
+
+-- Files, the environment and ports.
+definition remember (note :: Bytes) :: Maybe Bytes uses FileSystem is
+  writeBytes ".lawspec-note" note; let read = readBytes ".lawspec-note" in removePath ".lawspec-note"; read
+end
+
+law `a remembered note reads back` is
+  definition is `for all` (note :: Bytes) . remember note = Just note end
+end
+
+law `an empty environment has no variables` using emptyEnvironment is
+  definition is `for all` (name :: Text) . environmentVariable name = Nothing end
+end
+
+listening :: Int32 -> Bool uses Ports
+
+law `a free port can be listened on` is
+  definition is `for all` (n :: Int32 where n >= 0 && n <= 2) . listening n = true end
+end
+
+-- Logs. A law that inspects what was logged records the log.
+charge :: Int32 -> Bool uses Log
+
+law `a charge is logged once` using recording Log is
+  definition is
+    `for all` (cents :: Int32 where cents >= 0 && cents <= 1000) .
+      (if charge cents then calls of logMessage == 1 else calls of logMessage == 0) = true
+  end
+end
+
+definition traced (n :: Int32) :: Int32 uses Trace, Async is traceEvent "traced"; pause; n end
+
+law `tracing keeps the value` is
+  definition is `for all` (n :: Int32) . traced n = n end
+end
