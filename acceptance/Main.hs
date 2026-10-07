@@ -169,9 +169,11 @@ loadPackage directory = do
         else pure [path | ".lawspec" `isSuffixOf` path]
 
 -- The crypto libraries only for programs that import lawspec.crypto or
--- lawspec.network, as lawspec init and the setup advice say.
+-- lawspec.network (or, in Haskell and Rust, lawspec.randomness, whose secure
+-- generator comes from them), as lawspec init and the setup advice say.
 usesCrypto :: String -> [Generated] -> Bool
 usesCrypto target = any (\g -> generatedPath g == adapterPath target "lawspec.crypto"
+  || (target `elem` ["haskell", "rust"] && generatedPath g == adapterPath target "lawspec.randomness")
   || any (`isInfixOf` generatedPath g) ["lawspec_network.", "LawSpecNetwork.", "src/lawspec/network.rs"])
 
 writeProject :: String -> String -> FilePath -> Bool -> Bool -> [Generated] -> IO ()

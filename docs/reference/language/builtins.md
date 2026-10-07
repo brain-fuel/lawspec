@@ -95,7 +95,9 @@ generated file, `lawspec_defaults_<unit>.go`.
 
 The default handlers use each target's standard library where it has the
 algorithm, and well-reviewed libraries elsewhere. Only a program that imports
-`lawspec.crypto` or `lawspec.network` needs these libraries; the runtime and
+`lawspec.crypto` or `lawspec.network` needs these libraries (in Haskell and
+Rust, `lawspec.randomness` too: its secure generator is `crypton`'s, or
+`getrandom`); the runtime and
 every other built-in unit need none of them. `lawspec init` writes a project
 without them, and its setup advice names them; add them when a program
 imports either unit. (`directory` and `time` are Haskell dependencies of
