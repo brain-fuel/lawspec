@@ -1,0 +1,9 @@
+expect-any: time does not go back [native] | elapsed time is never negative
+@@ src/example_clocks.erl
+<<<<<<<
+        {instant, Micros} = Now(),
+        {instant, Micros}
+=======
+        {instant, Micros} = Now(),
+        {instant, Micros - 1000000 * _Count}
+>>>>>>>

@@ -91,10 +91,27 @@ Where the default handlers live, by target:
 | Kotlin | `src/main/kotlin/lawspec/<Unit>.kt` | `lawspec.Time.ClockHandler()` |
 | Haskell | `src/Lawspec/<Unit>.hs` | `Lawspec.Time.clockHandler` |
 | Rust | `src/lawspec/<unit>.rs` | `lawspec_time::ClockHandler::default()` |
+| Erlang | `src/lawspec_<unit>.erl` | `lawspec_time:clock_handler()` |
+| Elixir | `lib/lawspec_<unit>.ex` | `Lawspec.Time.clock_handler()` |
+| Gleam | `src/lawspec/<unit>.gleam` | `time.clock_handler()` after importing `lawspec/time` |
 
 Go keeps a copy of every ability a package uses in that package, so a
 package that imports a built-in unit gets its default handlers in a
 generated file, `lawspec_defaults_<unit>.go`.
+
+On the BEAM, each factory returns the ability's native interface: an Erlang
+function map, an Elixir struct or a typed Gleam value. The factories remain
+available when `handlers` binds another production handler, so an application
+can wrap a default. Their operations use the shared Erlang runtime.
+
+Create a BEAM `Random` factory inside `lawspec_abilities:with_context/1`
+(`:lawspec_abilities.with_context/1` in Elixir, `effects.with_context` from
+`lawspec/effects` in Gleam). Its state belongs to that context and is released
+when the context ends; concurrent draws update it atomically. Generated tests
+provide this scope automatically. Other defaults in `time`, `randomness`,
+`host`, `logging` and `concurrent` can be created without a scope. Default
+clocks use monotonic time with a fixed wall-clock offset, so later wall-clock
+corrections cannot move them backwards.
 
 ## Dependencies of generated projects
 

@@ -1,0 +1,9 @@
+expect-any: time does not go back [native] | elapsed time is never negative
+@@ lib/example_clocks.ex
+<<<<<<<
+      %LawSpec.Data.Instant{value: micros} = inner.now.()
+      %LawSpec.Data.Instant{value: micros}
+=======
+      %LawSpec.Data.Instant{value: micros} = inner.now.()
+      %LawSpec.Data.Instant{value: micros - 1000000 * _count}
+>>>>>>>

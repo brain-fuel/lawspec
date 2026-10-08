@@ -1,0 +1,7 @@
+expect: native built-in factories cross checked definitions
+@@ lib/example_builtin_context.ex
+<<<<<<<
+      same and checked and read_back and no_variable and secure
+=======
+      same and checked and read_back and no_variable and secure and false
+>>>>>>>

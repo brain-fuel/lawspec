@@ -1,0 +1,7 @@
+expect: a charge is logged once
+@@ src/example_builtins.erl
+<<<<<<<
+        0 -> LogMessage(log_level_info, <<"charged">>), true;
+=======
+        0 -> LogMessage(log_level_info, <<"charged">>), LogMessage(log_level_info, <<"charged">>), true;
+>>>>>>>

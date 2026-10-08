@@ -1,0 +1,8 @@
+expect: a token has the length asked
+@@ src/example_builtins.erl
+<<<<<<<
+token(#{secure_bytes := SecureBytes}, Count) -> SecureBytes(Count).
+=======
+token(_Secure, Count) ->
+    #{secure_bytes := Seeded} = lawspec_randomness:random_handler(), Seeded(Count).
+>>>>>>>

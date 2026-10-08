@@ -1,0 +1,7 @@
+expect: a token has the length asked
+@@ lib/example_builtins.ex
+<<<<<<<
+  def token(secure_random, count), do: secure_random.secure_bytes.(count)
+=======
+  def token(_secure_random, count), do: Lawspec.Randomness.random_handler().secure_bytes.(count)
+>>>>>>>

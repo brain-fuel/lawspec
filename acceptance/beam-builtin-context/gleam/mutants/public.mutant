@@ -1,0 +1,7 @@
+expect: native built-in factories cross checked definitions
+@@ src/example/builtin_context.gleam
+<<<<<<<
+    same && checked && read_back && no_variable && secure
+=======
+    same && checked && read_back && no_variable && secure && False
+>>>>>>>

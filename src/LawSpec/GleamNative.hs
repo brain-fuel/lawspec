@@ -47,9 +47,10 @@ emitNative layout declarations units = do
       production <- concat <$> mapM (Abilities.productionStub "gleam" 64 names) (Abilities.productionAbilities unit)
       imports <- Abilities.gleamImports units (concatMap Effects.uses (adapterDeclarations unit) ++
         map C.abilityInstance (Abilities.productionAbilities unit))
-      let body = G.fileDoc True (imports ++ G.imports False (map C.declarationType (adapterDeclarations unit)) ++ bodies ++ production)
-      pure (AdapterArtifact ("src/" ++ E.gleamPath (C.unitId unit) ++ ".gleam")
-        (D.render layout body) "user" "source" (D.render (D.Pretty 100) body))
+      let body = G.fileDoc (not (Abilities.defaultUnit unit)) (imports ++ G.imports False (map C.declarationType (adapterDeclarations unit)) ++ bodies ++ production)
+          path = "src/" ++ E.gleamPath (C.unitId unit) ++ ".gleam"
+      pure (if Abilities.defaultUnit unit then Artifact path (D.render layout body) "generated" "source"
+        else AdapterArtifact path (D.render layout body) "user" "source" (D.render (D.Pretty 100) body))
     nativeUnit names unit = do
       let declarations' = map C.definitionDeclaration (C.unitDefinitions unit)
       bodies <- forM declarations' $ \d -> do

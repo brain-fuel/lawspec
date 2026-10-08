@@ -5,6 +5,7 @@ module LawSpec.BeamAbilities
   ( emit, nativeType, gleamImports, productionName, productionAbilities
   , interfaceModule, interfacePath, interfaceName, operationName
   , productionStub, publicBody
+  , hasDefault, defaultUnit
   ) where
 
 import qualified LawSpec.Core as C
@@ -27,7 +28,21 @@ productionName = E.snake . N.productionName
 
 productionAbilities :: C.Unit -> [C.Ability]
 productionAbilities unit = [a | a <- N.ownAbilities unit,
-  not (C.isFail (C.abilityInstance a)), C.abilityNative a == Nothing]
+  not (C.isFail (C.abilityInstance a)), C.abilityNative a == Nothing || hasDefault a]
+
+-- Defaults are compiler-owned factories even when a program binds its
+-- production choice elsewhere. A bound factory may wrap the default.
+defaultUnit :: C.Unit -> Bool
+defaultUnit = (`elem` defaultUnits) . C.idText . C.unitId
+
+defaultUnits :: [String]
+defaultUnits = ["lawspec.time", "lawspec.randomness", "lawspec.host", "lawspec.logging", "lawspec.concurrent"]
+
+hasDefault :: C.Ability -> Bool
+hasDefault = (`elem` defaultUnits) . C.idText . C.abilityOwner
+
+defaultEntry :: C.Ability -> String
+defaultEntry a = "default_" ++ E.moduleName (C.abilityOwner a) ++ "_" ++ productionName a
 
 operationName :: String -> String -> String
 operationName "gleam" = E.gleamName . E.snake
@@ -82,6 +97,15 @@ publicBody units supplied body = do
        [D.text "_LsSchema = " <> E.remote "lawspec_beam_effects" "install" [D.text "_LsBaseSchema",E.record handlers],body])])
 
 productionStub :: String -> Int -> [(C.Id,String)] -> C.Ability -> Either String [D.Doc]
+productionStub target _ _ ability | hasDefault ability = pure $ case target of
+  "gleam" -> [G.external "lawspec_abilities" (defaultEntry ability) (productionName ability) []
+    (D.text (alias ability ++ "." ++ interfaceName ability))]
+  "elixir" -> [D.text "@spec " <> X.call (productionName ability) [] <> D.text " :: " <>
+    X.remote (interfaceModule target ability) "t" [],
+    X.function (productionName ability) [] [X.remote ":lawspec_abilities" (defaultEntry ability) []]]
+  _ -> [D.text "-spec " <> E.call (productionName ability) [] <> D.text " -> " <>
+    E.remote (interfaceModule target ability) (E.snake (interfaceName ability)) [] <> D.text ".",
+    E.function (productionName ability) [] [E.remote "lawspec_abilities" (defaultEntry ability) []]]
 productionStub target bits names ability = do
   fields <- forM (C.abilityOperations ability) $ \(op,ty) -> do
     let args = [D.text ("_argument" ++ show i) | (i,_) <- zip [0::Int ..] (fst (C.functionType ty))]
@@ -130,8 +154,9 @@ emit target layout bits declarations units boundSchema = do
         [E.remote "lawspec_beam_effects" "with_native_context" [E.array [],
           E.lambda [symbols] (E.remote "lawspec_data" "schema" [symbols]),
           E.lambda [schema,symbols] (E.apply (D.text "_Body") [E.tuple [E.atom "lawspec_context",schema,symbols]])]]
+      defaults = [(defaultEntry a,0) | a <- F.abilities units, hasDefault a]
       shared = Artifact "src/lawspec_abilities.erl"
-        (D.render layout (E.moduleDoc "lawspec_abilities" (("with_context",1):exports) (contextFunction : pieces ++ specs))) "generated" "source"
+        (D.render layout (E.moduleDoc "lawspec_abilities" (("with_context",1):exports ++ defaults) (contextFunction : pieces ++ specs))) "generated" "source"
   pure (shared : native ++ boundHelpers)
   where
     schema = D.text "_LsSchema"
@@ -277,6 +302,7 @@ emit target layout bits declarations units boundSchema = do
         pure (E.lambda values' output)
       logical <- logicalOperations schema operations
       production <- case C.abilityNative ability of
+        Nothing | hasDefault ability -> pure (E.remote "lawspec_beam_defaults" "handler" [key])
         Nothing -> pure (E.remote "lawspec_abilities" (name ++ "_from_native")
           [schema,symbols,E.remote (E.nativeModule target home) (productionName ability) []])
         Just ref -> do
@@ -291,7 +317,7 @@ emit target layout bits declarations units boundSchema = do
       decoded <- F.fromNative units (C.abilityInstance ability) schema symbols native
       recorded <- F.toNative units (C.abilityInstance ability) schema symbols
         (E.remote "lawspec_beam_effects" "recording" [schema,decoded])
-      pure [E.function (name ++ "_parts") [native] [parts],
+      pure $ [E.function (name ++ "_parts") [native] [parts],
         E.function (name ++ "_to_native") [schema,symbols,handler]
           [D.text "_LsOperations = " <> E.array callbacks,
            make (E.remote "lawspec_beam_effects" "origin" [schema,symbols,key,handler,D.text "_LsOperations"])],
@@ -299,7 +325,11 @@ emit target layout bits declarations units boundSchema = do
           [D.text "{_LsOrigin, _LsOperations} = " <> E.call (name ++ "_parts") [native],
            E.remote "lawspec_beam_effects" "recover_handler" [D.text "_LsOrigin",key,symbols,D.text "_LsOperations",E.lambda [] logical]],
         E.function (name ++ "_production") [schema,symbols] [production],
-        E.function (name ++ "_recording") [context,native] [recorded]]
+        E.function (name ++ "_recording") [context,native] [recorded]] ++
+        [E.function (defaultEntry ability) []
+          [D.text "_LsSchema = " <> E.remote "lawspec_data" "schema" [E.call "make_ref" []],
+           D.text "_LsHandler = " <> E.remote "lawspec_beam_defaults" "handler" [key],
+           D.text "_LsOperations = " <> E.array callbacks, make (E.atom "none")] | hasDefault ability]
     logicalOperations nativeSchema operations = do
       clauses <- forM (zip [1::Int ..] operations) $ \(i,(op,ty)) -> do
         let (args,result) = C.functionType ty

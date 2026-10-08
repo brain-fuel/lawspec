@@ -48,9 +48,10 @@ emitNative layout bits declarations units = do
             handlers = [D.text ("_handler" ++ show i) | (i,_) <- zip [0::Int ..] (Effects.uses d)]
         pure [spec,X.function (functionName d) (handlers ++ args) [D.text "raise " <> X.string ("Not implemented: " ++ C.idText (C.declarationId d))]])
       production <- concat <$> mapM (Abilities.productionStub "elixir" bits names) (Abilities.productionAbilities unit)
-      let body = X.moduleDoc (moduleName unit) True (bodies ++ production)
-      pure (AdapterArtifact ("lib/" ++ E.moduleName (C.unitId unit) ++ ".ex")
-        (D.render layout body) "user" "source" (D.render (D.Pretty 100) body))
+      let body = X.moduleDoc (moduleName unit) (not (Abilities.defaultUnit unit)) (bodies ++ production)
+          path = "lib/" ++ E.moduleName (C.unitId unit) ++ ".ex"
+      pure (if Abilities.defaultUnit unit then Artifact path (D.render layout body) "generated" "source"
+        else AdapterArtifact path (D.render layout body) "user" "source" (D.render (D.Pretty 100) body))
     nativeUnit names unit = do
       bodies <- concat <$> forM (C.unitDefinitions unit) (\definition -> do
         let d = C.definitionDeclaration definition

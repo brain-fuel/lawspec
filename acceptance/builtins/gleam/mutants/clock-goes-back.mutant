@@ -1,0 +1,7 @@
+expect-any: time does not go back [native] | elapsed time is never negative
+@@ src/example/clocks.gleam
+<<<<<<<
+      data.Instant(micros)
+=======
+      data.Instant(micros - 1_000_000 * count)
+>>>>>>>

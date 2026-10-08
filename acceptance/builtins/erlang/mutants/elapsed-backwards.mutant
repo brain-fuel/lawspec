@@ -1,0 +1,7 @@
+expect: elapsed time is never negative
+@@ src/example_builtins.erl
+<<<<<<<
+    {duration, Finish - Start}.
+=======
+    {duration, Start - Finish - 1}.
+>>>>>>>

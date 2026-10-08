@@ -1,0 +1,8 @@
+expect: a charge is logged once
+@@ src/example/builtins.gleam
+<<<<<<<
+      logging.log_log_message(handler, data.LogLevelInfo, "charged")
+=======
+      logging.log_log_message(handler, data.LogLevelInfo, "charged")
+      logging.log_log_message(handler, data.LogLevelInfo, "charged")
+>>>>>>>

@@ -1,0 +1,21 @@
+unit example.builtin_context
+
+import lawspec.time (Instant)
+import lawspec.randomness
+import lawspec.host
+import lawspec.logging
+import lawspec.concurrent
+
+definition viaDefaults (bound :: Int64 where bound >= 1) :: Bool uses Clock, Random is
+  valueOfInstant now >= 0 && (let r = randomBelow bound in r >= 0 && r < bound)
+end
+
+nativeProbe :: Unit -> Bool
+
+law `native built-in factories cross checked definitions` is
+  definition is nativeProbe unitValue = true end
+end
+
+law `virtual time never goes before its origin` using virtual clock is
+  definition is (never within 2 ms, valueOfInstant now < 0) = true end
+end

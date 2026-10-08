@@ -1,0 +1,7 @@
+expect: native built-in factories cross checked definitions
+@@ src/example_builtin_context.erl
+<<<<<<<
+        Same andalso Checked andalso ReadBack andalso NoVariable andalso Secure
+=======
+        Same andalso Checked andalso ReadBack andalso NoVariable andalso Secure andalso false
+>>>>>>>

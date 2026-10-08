@@ -50,6 +50,7 @@ extra-source-files:
     runtime/lawspec_network.go
     runtime/lawspec_runtime.go
     runtime/lawspec_schema.go
+    runtime/lawspec_beam_defaults.erl
     runtime/lawspec_beam_effects.erl
     runtime/lawspec_beam_generators.erl
     runtime/lawspec_beam_gleam.erl
@@ -199,6 +200,7 @@ extra-source-files:
     test/fixtures/native_shapes.lawspec
     test/fixtures/python_constructor_fields.lawspec
     test/fixtures/total_definitions.lawspec
+    test/fixtures/beam/lawspec_beam_defaults_tests.erl
     test/fixtures/beam/lawspec_beam_effects_tests.erl
     test/fixtures/beam/lawspec_beam_gleam_tests.erl
     test/fixtures/beam/lawspec_beam_index_tests.erl

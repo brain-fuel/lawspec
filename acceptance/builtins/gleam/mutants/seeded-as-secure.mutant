@@ -1,0 +1,10 @@
+rejected-at: compile
+expect: Random
+expect: SecureRandom
+@@ src/example/builtins.gleam
+<<<<<<<
+  randomness.secure_random_secure_bytes(handler, count)
+=======
+  let _ = handler
+  randomness.secure_random_secure_bytes(randomness.random(fn(_) { 0 }), count)
+>>>>>>>

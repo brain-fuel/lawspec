@@ -1,0 +1,8 @@
+expect: a charge is logged once
+@@ lib/example_builtins.ex
+<<<<<<<
+      log.log_message.(%LawSpec.Data.LogLevelInfo{}, "charged")
+=======
+      log.log_message.(%LawSpec.Data.LogLevelInfo{}, "charged")
+      log.log_message.(%LawSpec.Data.LogLevelInfo{}, "charged")
+>>>>>>>

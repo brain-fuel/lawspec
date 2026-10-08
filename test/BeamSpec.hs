@@ -25,6 +25,20 @@ generatedFor target compact text = compileCore 64 defaultGeneration [Source "bea
 
 test_beamCodeUsesCheckedCoreAndNativeFrameworks :: Spec
 test_beamCodeUsesCheckedCoreAndNativeFrameworks = describe "BEAM generation" $ do
+  -- ref:DEC-typed-core-boundary ref:DEC-adapter-ownership
+  mapM_ (\target -> it (target ++ " emits compiler-owned built-in factories and temporal laws") $ do
+    input <- readFile "examples/specs/builtins.lawspec"
+    case generatedFor target False input of
+      Left errors -> expectationFailure (show errors)
+      Right artifacts -> do
+        map artifactPath artifacts `shouldContain` ["src/lawspec_beam_defaults.erl"]
+        let adapters = filter ((== "user") . ownership) artifacts
+            generatedBodies = concatMap artifactContent (filter ((== "generated") . ownership) artifacts)
+        length adapters `shouldBe` 1
+        generatedBodies `shouldSatisfy` isInfixOf "default_lawspec_time_clock_handler"
+        generatedBodies `shouldSatisfy` isInfixOf "default_lawspec_randomness_random_handler"
+        generatedBodies `shouldSatisfy` isInfixOf "a deadline eventually passes"
+        generatedBodies `shouldSatisfy` isInfixOf "a deadline is quick to make") ["erlang", "elixir", "gleam"]
   -- ref:DEC-typed-core-boundary
   it "passes each lexical handler scope to operations inside nested regions" $ do
     let ability = C.AbilityRef (C.Id "example::ability::Counter") []

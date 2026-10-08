@@ -1,0 +1,7 @@
+expect: elapsed time is never negative
+@@ src/example/builtins.gleam
+<<<<<<<
+  data.Duration(finish - start)
+=======
+  data.Duration(start - finish - 1)
+>>>>>>>

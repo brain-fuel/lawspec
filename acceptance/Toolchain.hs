@@ -68,10 +68,13 @@ mutantArguments _ args = args
 -- | A mutant must fail its laws, not the build. These markers identify build and
 -- type-checking failures in each toolchain's output.
 compileFailure :: String -> Bool
-compileFailure output = any ((`isInfixOf` map toLower output) . map toLower)
+compileFailure output = any rebarFailure (lines lowered) || any ((`isInfixOf` lowered) . map toLower)
   [ "error[E", "could not compile", "COMPILATION ERROR", "compileKotlin FAILED"
   , "compileTestKotlin FAILED", "SyntaxError", "[build failed]", "parse error on input"
   , "not in scope", "error TS", "couldn't match expected type"
   , "syntax error before:", "undefined function", "** (CompileError)"
   , "error: Type mismatch", "error: Unknown variable", "error: Unknown type"
   , "error: Unknown module", "error: Unknown value" ]
+  where
+    lowered = map toLower output
+    rebarFailure line = all (`isInfixOf` line) ["===>", "compiling ", " failed"]

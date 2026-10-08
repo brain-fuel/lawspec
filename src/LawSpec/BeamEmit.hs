@@ -54,6 +54,7 @@ emitBeamWithBindings target minify bindings plan = do
         (runtimeSource ("beam-" ++ name)) "generated" "source"
         | name <- ["scalar","schema","regex","runtime"] ++
             (if usesEffects then ["effects","handler"] else []) ++
+            ["defaults" | any Abilities.hasDefault (Effects.abilities units)] ++
             ["gleam" | target == "gleam"]] ++
         [Artifact ("src/lawspec/" ++ name ++ ".gleam") (runtimeSource ("beam-gleam-" ++ name)) "generated" "source"
           | name <- ["types","scalar"] ++ ["failures" | usesEffects] ++ ["effects" | hasAbilities], target == "gleam"]
@@ -96,9 +97,10 @@ emitBeamWithBindings target minify bindings plan = do
           exports = [(E.functionName d,length (Effects.uses d) + length (fst (C.functionType (C.declarationType d)))) | d <- adapterDeclarations unit] ++
             [(Abilities.productionName a,0) | a <- Abilities.productionAbilities unit]
           -- The adapter is editable; both layouts retain its readable baseline.
-          body = E.userModuleDoc name exports (functions ++ production)
-      pure (AdapterArtifact ("src/" ++ name ++ ".erl") (D.render layout body)
-        "user" "source" (D.render (D.Pretty 100) body))
+          body = (if Abilities.defaultUnit unit then E.moduleDoc else E.userModuleDoc) name exports (functions ++ production)
+      pure (if Abilities.defaultUnit unit then Artifact ("src/" ++ name ++ ".erl") (D.render layout body) "generated" "source"
+        else AdapterArtifact ("src/" ++ name ++ ".erl") (D.render layout body)
+          "user" "source" (D.render (D.Pretty 100) body))
     unitTests planned = do
       let unit = plannedUnit planned
           properties = plannedProperties planned
@@ -239,7 +241,8 @@ validatePlan target plan = do
   unless (length natives == length (nub natives) && (target /= "elixir" ||
     all (\n -> not ("Elixir.LawSpec." `isPrefixOf` n) && n `notElem` nativeGenerated) natives))
     (Left "Elixir module names collide after normalization or with the LawSpec namespace")
-  unless (target /= "gleam" || all (\n -> not ("lawspec@" `isPrefixOf` n) &&
+  unless (target /= "gleam" || all (\n -> (not ("lawspec@" `isPrefixOf` n) ||
+    n `elem` [E.nativeModule target u | u <- units, Abilities.defaultUnit u]) &&
     n `notElem` [E.nativeModule target u ++ "@definitions" | u <- units]) natives)
     (Left "Gleam module names collide with generated modules or the lawspec namespace")
   unless (all ((<= 230) . length) (moduleNames ++ generated ++ natives) &&

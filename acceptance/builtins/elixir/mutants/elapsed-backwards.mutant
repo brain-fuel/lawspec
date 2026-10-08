@@ -1,0 +1,7 @@
+expect: elapsed time is never negative
+@@ lib/example_builtins.ex
+<<<<<<<
+    %LawSpec.Data.Duration{value: finish - start}
+=======
+    %LawSpec.Data.Duration{value: start - finish - 1}
+>>>>>>>
