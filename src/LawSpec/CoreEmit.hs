@@ -480,7 +480,7 @@ emitPlanWithNativeOptions :: Bool -> String -> Maybe String -> Maybe String -> N
 emitPlanWithNativeOptions minify target sourceDir testDir unescaped unwitnessed = do
   let originalPlan = escapePlan target (witnessPlan (goAbilityNames target (ownedAbilityPlan unwitnessed)))
       bindings = escapeBindings target unescaped
-  unless (target `elem` ["python","rust","javascript","typescript","java","kotlin","go","haskell"] || not (any Binding.resolvedGeneratorStub
+  unless (target `elem` ["python","rust","javascript","typescript","java","kotlin","go","haskell","erlang","elixir","gleam"] || not (any Binding.resolvedGeneratorStub
     (Binding.resolvedGenerators (NB.bindingRepresentations bindings))))
     (Left [Diagnostic "native-binding" ("generator scaffolds are not implemented for " ++ target) Nothing])
   prepared <- if target == "go" && NB.hasBindings bindings
@@ -488,12 +488,16 @@ emitPlanWithNativeOptions minify target sourceDir testDir unescaped unwitnessed 
       (GoNativeBinding.preparePlan bindings originalPlan)
     else Right originalPlan
   let plan = wrappedHandlers target bindings (boundHandlers bindings (if target == "kotlin" then nativeHandles bindings prepared else prepared))
-  unless (target `elem` ["rust","haskell","python","javascript","typescript","java","kotlin","go"] || all ((== Nothing) . Binding.resolvedCodec)
+  unless (target `elem` ["rust","haskell","python","javascript","typescript","java","kotlin","go","erlang","elixir","gleam"] || all ((== Nothing) . Binding.resolvedCodec)
     (Binding.resolvedTypes (NB.bindingRepresentations bindings)))
     (Left [Diagnostic "native-binding" ("codec hook emission is not implemented for " ++ target) Nothing])
   unless (target == "go" || null (NB.bindingGoImports bindings))
     (Left [Diagnostic "native-binding" "goImports is only valid for Go bindings" Nothing])
+  unless (target == "erlang" || null (NB.bindingErlangIncludes bindings))
+    (Left [Diagnostic "native-binding" "erlangIncludes is only valid for Erlang bindings" Nothing])
   emitted <- if not (NB.hasBindings bindings) then emitPlanWithFormat minify target plan
+    else if target `elem` ["erlang","elixir","gleam"] then
+      Beam.emitBeamWithBindings target minify bindings (wirePlan (witnessPlan (ownedAbilityPlan plan)))
     -- Rust emits bound units itself, so it adds the companion code here.
     else if target == "rust" then builtinDefaults target plan =<< ((++) <$> emitRustWithBindings minify bindings plan
       <*> companionArtifacts minify target (wirePlan (escapePlan target (witnessPlan plan))))
@@ -522,7 +526,9 @@ emitPlanWithNativeOptions minify target sourceDir testDir unescaped unwitnessed 
       either (Left . pure . (\m -> Diagnostic "native-binding" m Nothing)) Right
         (GoNativeBinding.emitBindings minify bindings plan ordinary)
     else Left [Diagnostic "native-binding" ("native binding emission is not implemented for " ++ target) Nothing]
-  canonical <- if NB.hasBindings bindings && minify && target == "rust"
+  canonical <- if NB.hasBindings bindings && minify && target `elem` ["erlang","elixir","gleam"]
+    then Beam.emitBeamWithBindings target False bindings (wirePlan (witnessPlan (ownedAbilityPlan plan)))
+    else if NB.hasBindings bindings && minify && target == "rust"
     then emitRustWithBindings False bindings plan
     else if NB.hasBindings bindings && minify && target == "python" then do
       ordinary <- emitPlanWithFormat False target plan

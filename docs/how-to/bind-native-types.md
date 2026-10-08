@@ -54,7 +54,7 @@ Bindings belong to a target, under `nativeBindings`:
 ```
 
 `nativeBindings` accepts `types`, `functions`, `generators`, `rustCrate` (Rust
-only) and `goImports` (Go only). Unknown fields are errors, so a misspelled
+only), `goImports` (Go only) and `erlangIncludes` (Erlang only). Unknown fields are errors, so a misspelled
 option can never be silently ignored.
 
 ## Name LawSpec declarations

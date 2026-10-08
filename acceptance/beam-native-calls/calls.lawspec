@@ -1,0 +1,22 @@
+unit native.calls
+
+handle Token
+newToken :: Unit -> Token
+touch :: Token -> Unit
+value :: Int8 -> Token -> Int32
+
+law `constructor omits Unit and method receives the handle first` is
+  definition is `for all` (n :: Int8) .
+    let token = newToken unitValue in value n token = n
+  end
+end
+
+law `Unit results still execute the native method` is
+  definition is `for all` (n :: Int8) .
+    let token = newToken unitValue in touch token == unitValue && value n token == n + 1
+  end
+end
+
+law `fresh handles have distinct identities` is
+  definition is newToken unitValue != newToken unitValue end
+end

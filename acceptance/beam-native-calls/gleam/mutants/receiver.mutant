@@ -1,0 +1,6 @@
+@@ src/native_token_ffi.erl
+<<<<<<<
+N + get(Ref)
+=======
+N - 1 + get(Ref)
+>>>>>>>

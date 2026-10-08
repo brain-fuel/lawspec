@@ -34,8 +34,8 @@ declarationSpec bits names declaration = do
   pure (D.group (D.text "-spec " <> E.call (E.functionName declaration) parameters <>
     D.text " ->" <> D.nest 4 (D.softline <> returns) <> D.text "."))
 
-emitDefinitions :: String -> D.Layout -> Int -> [C.DataDeclaration] -> [C.Unit] -> Either String [Artifact]
-emitDefinitions target layout bits declarations units = do
+emitDefinitions :: String -> D.Layout -> Int -> [C.DataDeclaration] -> [C.Unit] -> [(C.Id,String)] -> Either String [Artifact]
+emitDefinitions target layout bits declarations units bound = do
   verified <- checkedDefinitionContracts bits declarations units
   names <- E.dataNames declarations
   bodies <- mapM (implementation verified) [(u,d) | u <- units, d <- C.unitDeclarations u]
@@ -63,9 +63,11 @@ emitDefinitions target layout bits declarations units = do
           render table = Expr.renderExpression bits schema symbols (resolve table) (external units schema symbols)
       body <- case definition of
         Just d -> render locals (C.definitionBody d)
-        Nothing -> do
-          nativeArguments <- sequence [bridge "to_native" ty (D.text arg) | (ty,arg) <- zip parameterTypes arguments]
-          bridge "from_native" resultType (E.remote (E.nativeModule target unit) (E.nativeFunction target declaration) nativeArguments)
+        Nothing -> case lookup identity bound of
+          Just name -> pure (E.remote "lawspec_native_bindings" name (schema : symbols : map D.text arguments))
+          Nothing -> do
+            nativeArguments <- sequence [bridge "to_native" ty (D.text arg) | (ty,arg) <- zip parameterTypes arguments]
+            bridge "from_native" resultType (E.remote (E.nativeModule target unit) (E.nativeFunction target declaration) nativeArguments)
       let candidates = case definition of Just _ -> verified; Nothing -> C.unitContracts unit
           contracts = [c | c <- candidates, C.contractDeclaration c == identity]
       pre <- fmap concat $ forM contracts $ \c -> do

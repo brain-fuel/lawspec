@@ -40,7 +40,10 @@ elixir_struct_bridge_test() ->
     V = {ls_data, <<"Box::Box">>, [42]},
     Native = lawspec_beam_schema:to_native(V, box_type(), S),
     ?assertEqual(#{'__struct__' => 'Elixir.Example.Box', contents => 42}, Native),
-    ?assertEqual(V, lawspec_beam_schema:from_native(Native, box_type(), S)).
+    ?assertEqual(V, lawspec_beam_schema:from_native(Native, box_type(), S)),
+    TupleSchema = lawspec_beam_schema:with_bindings(S, #{<<"Box::Box">> => #{native_tag => native_box}}, #{}),
+    ?assertEqual({native_box, 42}, lawspec_beam_schema:to_native(V, box_type(), TupleSchema)),
+    ?assertEqual(V, lawspec_beam_schema:from_native({native_box, 42}, box_type(), TupleSchema)).
 
 refinement_short_circuit_test() ->
     Positive = fun(_, _, [V]) -> V > 0 end,
@@ -124,6 +127,63 @@ codec_bridge_test() ->
     ?assertEqual(V, lawspec_beam_schema:from_native(#{item => 42}, box_type(), S)),
     ?assertError({lawspec, {integer_out_of_range, <<"Int8">>}},
         lawspec_beam_schema:from_native(#{item => 128}, box_type(), S)).
+
+native_binding_shapes_preserve_contracts_test() ->
+    C = (ctor(<<"Positive::Positive">>, positive, [{<<"value">>, {<<"Int32">>, []}}]))#{
+        predicates => [fun(_, _, [V]) -> V > 0 end]},
+    Original = schema([definition(<<"Positive">>, 0, [C])]),
+    Shape = #{encode => fun([V]) -> #{amount => V} end,
+        decode => fun(#{amount := V}) -> {ok, [V]}; (_) -> no_match end},
+    Bound = lawspec_beam_schema:with_bindings(Original, #{<<"Positive::Positive">> => Shape}, #{}),
+    Logical = {ls_data, <<"Positive::Positive">>, [7]},
+    ?assertEqual(#{amount => 7}, lawspec_beam_schema:to_native(Logical, <<"Positive">>, Bound)),
+    ?assertEqual({positive, 7}, lawspec_beam_schema:to_native(Logical, <<"Positive">>, Original)),
+    ?assertEqual(Logical, lawspec_beam_schema:from_native(#{amount => 7}, <<"Positive">>, Bound)),
+    ?assertError({lawspec, {refinement_violation, <<"Positive::Positive">>}},
+        lawspec_beam_schema:from_native(#{amount => -7}, <<"Positive">>, Bound)).
+
+native_codec_children_cross_canonical_and_bound_shapes_test() ->
+    Inner = definition(<<"Inner">>, 0, [ctor(<<"Inner::Inner">>, inner,
+        [{<<"value">>, {<<"Int8">>, []}}])]),
+    Original = schema([box(), Inner]),
+    Type = {<<"Box">>, [{<<"Inner">>, []}]},
+    Hook = #{encode => fun({box, Child}, [Encode]) -> #{payload => Encode(Child)} end,
+        decode => fun(#{payload := Child}, [Decode]) -> {box, Decode(Child)} end},
+    S = lawspec_beam_schema:with_bindings(Original,
+        #{<<"Inner::Inner">> => #{native_tag => native_inner}}, #{<<"Box">> => Hook}),
+    Logical = {ls_data, <<"Box::Box">>, [{ls_data, <<"Inner::Inner">>, [7]}]},
+    Native = #{payload => {native_inner, 7}},
+    ?assertEqual(Native, lawspec_beam_schema:to_native(Logical, Type, S)),
+    ?assertEqual(Logical, lawspec_beam_schema:from_native(Native, Type, S)),
+    ?assertError({lawspec, {native_codec, <<"Box">>, decode, error,
+        {lawspec, {integer_out_of_range, <<"Int8">>}}}},
+        lawspec_beam_schema:from_native(#{payload => {native_inner, 128}}, Type, S)),
+    Bad = Hook#{decode => fun(_, _) -> {foreign, 7} end},
+    Broken = lawspec_beam_schema:with_bindings(Original, #{}, #{<<"Box">> => Bad}),
+    ?assertError({lawspec, {native_codec, <<"Box">>, decode, error,
+        {lawspec, invalid_native_constructor}}}, lawspec_beam_schema:from_native(Native, Type, Broken)).
+
+native_binding_audit_test() ->
+    Original = schema([box()]),
+    ?assertError({lawspec, {unknown_native_constructor, <<"Missing">>}},
+        lawspec_beam_schema:with_bindings(Original, #{<<"Missing">> => #{native_tag => missing}}, #{})),
+    ?assertError({lawspec, {invalid_native_shape, <<"Box::Box">>}},
+        lawspec_beam_schema:with_bindings(Original, #{<<"Box::Box">> => #{tag => changed}}, #{})),
+    Mapped = lawspec_beam_schema:with_bindings(Original, #{<<"Box::Box">> => #{native_tag => box2}}, #{}),
+    Hook = #{encode => fun(V, _) -> V end, decode => fun(V, _) -> V end},
+    ?assertError({lawspec, {conflicting_native_binding, <<"Box">>}},
+        lawspec_beam_schema:with_bindings(Mapped, #{}, #{<<"Box">> => Hook})).
+
+native_constructor_positions_follow_the_compiler_test() ->
+    Shape = lawspec_beam_schema:constructor_shape(fun([A, B]) -> {native_pair, B, A} end, 2),
+    Encode = maps:get(encode, Shape), Decode = maps:get(decode, Shape),
+    ?assertEqual({native_pair, 2, 1}, Encode([1, 2])),
+    ?assertEqual({ok, [1, 2]}, Decode({native_pair, 2, 1})),
+    ?assertEqual(no_match, Decode({other_pair, 2, 1})),
+    ?assertEqual(no_match, Decode({native_pair, 1})),
+    ?assertEqual(#{native_tag => ready}, lawspec_beam_schema:constructor_shape(fun([]) -> ready end, 0)),
+    ?assertError({lawspec, invalid_constructor_shape},
+        lawspec_beam_schema:constructor_shape(fun([A, _]) -> {pair, A, A} end, 2)).
 
 handle_identity_test() ->
     S = schema([(definition(<<"Handle">>, 0, []))#{handle => true}]),

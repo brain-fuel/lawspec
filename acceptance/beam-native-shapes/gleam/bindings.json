@@ -1,0 +1,181 @@
+{
+  "types": [
+    {
+      "type": "native.shapes::type::Box",
+      "native": [
+        "native_shapes",
+        "Wrapped"
+      ],
+      "constructors": [
+        {
+          "constructor": "Box",
+          "native": [
+            "native_shapes",
+            "Wrapped"
+          ],
+          "style": "record",
+          "fields": [
+            {
+              "field": "item",
+              "native": "stored"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "native.shapes::type::Chain",
+      "native": [
+        "native_shapes",
+        "Link"
+      ],
+      "constructors": [
+        {
+          "constructor": "Stop",
+          "native": [
+            "native_shapes",
+            "End"
+          ],
+          "style": "unit",
+          "fields": []
+        },
+        {
+          "constructor": "More",
+          "native": [
+            "native_shapes",
+            "Next"
+          ],
+          "style": "variant",
+          "fields": [
+            {
+              "field": "tail",
+              "native": "remainder"
+            },
+            {
+              "field": "value",
+              "native": "item"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "native.shapes::type::Tree",
+      "native": [
+        "native_shapes",
+        "Forest"
+      ],
+      "constructors": [
+        {
+          "constructor": "Leaf",
+          "native": [
+            "native_shapes",
+            "Item"
+          ],
+          "style": "variant",
+          "fields": [
+            {
+              "field": "item",
+              "native": "datum"
+            }
+          ]
+        },
+        {
+          "constructor": "Branch",
+          "native": [
+            "native_shapes",
+            "Group"
+          ],
+          "style": "variant",
+          "fields": [
+            {
+              "field": "children",
+              "native": "trees"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "native.shapes::type::Stamp",
+      "native": [
+        "native_shapes",
+        "Seal"
+      ],
+      "constructors": [
+        {
+          "constructor": "Stamp",
+          "native": [
+            "native_shapes",
+            "Seal"
+          ],
+          "style": "record",
+          "fields": []
+        }
+      ]
+    }
+  ],
+  "functions": [
+    {
+      "declaration": "native.shapes::copyBox",
+      "native": [
+        "native_shapes",
+        "copy_box"
+      ]
+    },
+    {
+      "declaration": "native.shapes::copyChain",
+      "native": [
+        "native_shapes",
+        "copy_chain"
+      ]
+    },
+    {
+      "declaration": "native.shapes::copyTree",
+      "native": [
+        "native_shapes",
+        "copy_tree"
+      ]
+    },
+    {
+      "declaration": "native.shapes::copyNested",
+      "native": [
+        "native_shapes",
+        "copy_nested"
+      ]
+    },
+    {
+      "declaration": "native.shapes::copyStamp",
+      "native": [
+        "native_shapes",
+        "copy_stamp"
+      ]
+    }
+  ],
+  "generators": [
+    {
+      "type": "native.shapes::type::Box",
+      "factory": [
+        "native_shapes_generators",
+        "boxes"
+      ],
+      "stub": true
+    },
+    {
+      "type": "Int8",
+      "factory": [
+        "native_shapes_generators",
+        "small_int"
+      ],
+      "stub": true
+    },
+    {
+      "type": "native.shapes::type::Stamp",
+      "factory": [
+        "native_shapes_generators",
+        "stamps"
+      ],
+      "stub": true
+    }
+  ]
+}

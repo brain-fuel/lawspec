@@ -3,12 +3,31 @@
 %% custom shrinker replaces PropEr, StreamData or qcheck.
 %% ref:DEC-native-property-frameworks ref:DEC-structural-size-budget
 -module(lawspec_beam_generators).
--export([generator/6, generator/7, with_cache/1]).
+-export([generator/6, generator/7, with_cache/1, with_native/3]).
+
+%% Factories live exclusively in test code. The canonical schema still owns
+%% every logical contract; the native schema only converts representations.
+%% ref:DEC-native-bindings-typed-identity
+with_native(Schema, Native, Factories) ->
+    maps:foreach(fun(Name, Factory) ->
+        case maps:is_key(Name, maps:get(arities, Schema)) andalso is_function(Factory, 1) of
+            true -> ok;
+            false -> erlang:error({lawspec, {invalid_native_generator, Name}})
+        end
+    end, Factories),
+    Schema#{native_generators => Factories, native_generator_schema => Native}.
 
 generator(F, T, Schema, Symbols, Bounds, Witnesses) ->
     generator(F, T, Schema, Symbols, Bounds, Witnesses, none).
 generator(F, T, Schema, Symbols, Bounds, Witnesses, Index) ->
     F:sized(fun(Size) ->
+        case factory(T, Schema) of
+            {ok, Factory} -> custom(F, T, Schema, Symbols, Size + 1, Bounds, Index, Factory);
+            error -> automatic(F, T, Schema, Symbols, Size, Bounds, Witnesses, Index)
+        end
+    end).
+
+automatic(F, T, Schema, Symbols, Size, Bounds, Witnesses, Index) ->
         Limit = lists:max([64 | [value_nodes(V) || V <- Witnesses]]),
         Minimum = minimum(T, Schema, Limit),
         case Minimum of
@@ -19,7 +38,11 @@ generator(F, T, Schema, Symbols, Bounds, Witnesses, Index) ->
                     {Target, Equations} -> lawspec_beam_index:generator(F, T, Schema, Target, Equations, Budget,
                         fun(Child) -> minimum(Child, Schema, Limit) end,
                         fun(Child, Available) -> build(F, Child, Schema, Symbols, Available, []) end,
-                        fun(Child, Value) -> accepted(Value, Child, Schema) end);
+                        fun(Child, Value) -> accepted(Value, Child, Schema) end,
+                        fun(Child, K, Available) -> case factory(Child, Schema) of
+                            error -> none;
+                            {ok, Factory} -> {custom, custom(F, Child, Schema, Symbols, Available, [], {K, Equations}, Factory)}
+                        end end);
                     none ->
                         Native = build(F, T, Schema, Symbols, Budget, Bounds),
                         case Witnesses of
@@ -27,15 +50,54 @@ generator(F, T, Schema, Symbols, Bounds, Witnesses, Index) ->
                             _ -> F:frequency([{1, F:oneof([F:exactly(V) || V <- Witnesses])}, {9, Native}])
                         end
                 end
+        end.
+
+factory({Name, _}, S) -> maps:find(Name, maps:get(native_generators, S, #{})).
+
+custom(F, {Name, Args} = T, S, Symbols, Budget, Bounds, Index, Factory) ->
+    Native = maps:get(native_generator_schema, S),
+    Label = <<"native generator ", Name/binary>>,
+    Children = [F:sized(fun(_) ->
+        Available = max(1, Budget - 1),
+        case minimum(Child, S, Available) of
+            none -> F:constrain(F:exactly('$lawspec_uninhabited'), fun(_) -> false end);
+            _ -> F:map(build(F, Child, S, Symbols, Available, []),
+                fun(V) -> lawspec_beam_schema:to_native(V, Child, Native) end)
         end
-    end).
+    end) || Child <- Args],
+    Checked = lawspec_beam_runtime:contextual(Label, fun() ->
+        F:map(Factory(Children), fun(Value) ->
+            lawspec_beam_runtime:contextual(Label, fun() ->
+                lawspec_beam_schema:validate(lawspec_beam_schema:from_native(Value, T, Native), T, S)
+            end)
+        end)
+    end),
+    %% Refinements constrain valid values, after validation of each sample and
+    %% shrink. They must never hide a broken native factory or codec.
+    case {Bounds, Index} of
+        {[], none} -> Checked;
+        _ -> F:refine_input(Checked, fun(V) ->
+            lists:all(fun({Op, Bound}) -> lawspec_beam_scalar:binary(Op, V, Bound, Name, Name) end, Bounds)
+                andalso case Index of
+                    none -> true;
+                    {Target, _} when Target < 0 -> true;
+                    {Target, _} -> lawspec_beam_schema:index(V, T, 0, S) =:= Target
+                end
+        end)
+    end.
 
 value_nodes({ls_data, _, Fields}) -> 1 + lists:sum([value_nodes(V) || V <- Fields]);
 value_nodes({ls_presence, _, {some, V}}) -> 1 + value_nodes(V);
 value_nodes(Vs) when is_list(Vs) -> 1 + lists:sum([1 + value_nodes(V) || V <- Vs]);
 value_nodes(_) -> 1.
 
-build(F, {<<"List">>, [T]}, S, Symbols, Budget, _) ->
+build(F, T, S, Symbols, Budget, Bounds) ->
+    case factory(T, S) of
+        {ok, Factory} -> custom(F, T, S, Symbols, Budget, Bounds, none, Factory);
+        error -> build_native(F, T, S, Symbols, Budget, Bounds)
+    end.
+
+build_native(F, {<<"List">>, [T]}, S, Symbols, Budget, _) ->
     case minimum(T, S, Budget - 1) of
         none -> F:exactly([]);
         Cost -> F:bind(F:integer(0, (Budget - 1) div Cost), fun
@@ -43,14 +105,14 @@ build(F, {<<"List">>, [T]}, S, Symbols, Budget, _) ->
             (Count) -> F:vector(Count, build(F, T, S, Symbols, (Budget - 1) div Count, []))
         end)
     end;
-build(F, {Name, [T]}, S, Symbols, Budget, _) when Name =:= <<"Optional">>; Name =:= <<"Nullable">> ->
+build_native(F, {Name, [T]}, S, Symbols, Budget, _) when Name =:= <<"Optional">>; Name =:= <<"Nullable">> ->
     Empty = F:exactly({ls_presence, Name, none}),
     case minimum(T, S, Budget - 1) of
         none -> Empty;
         _ -> F:oneof([Empty, F:bind(build(F, T, S, Symbols, Budget - 1, []),
             fun(V) -> {ls_presence, Name, {some, V}} end)])
     end;
-build(F, T, S, Symbols, Budget, Bounds) ->
+build_native(F, T, S, Symbols, Budget, Bounds) ->
     case lawspec_beam_schema:constructors(T, S) of
         none -> scalar(F, T, maps:get(bits, S), Symbols, Bounds);
         Constructors ->
@@ -94,6 +156,11 @@ minimum(T, S, Cost, Limit) ->
 inhabited(_, _, Budget) when Budget < 1 -> false;
 inhabited({Name, _}, _, _) when Name =:= <<"List">>; Name =:= <<"Optional">>; Name =:= <<"Nullable">> -> true;
 inhabited(T, S, Budget) ->
+    case factory(T, S) of
+        {ok, _} -> true;
+        error -> inhabited_native(T, S, Budget)
+    end.
+inhabited_native(T, S, Budget) ->
     case lawspec_beam_schema:constructors(T, S) of
         none -> true;
         Cs -> lists:any(fun(C) -> allocation(maps:get(fields, C), S,

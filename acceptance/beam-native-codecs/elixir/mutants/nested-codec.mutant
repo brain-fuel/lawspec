@@ -1,0 +1,7 @@
+expect: native_codec
+@@ lib/native_codecs.ex
+<<<<<<<
+def from_parcel(%{private: value}, convert), do: %D.Parcel{item: convert.(value)}
+=======
+def from_parcel(%{private: value}, _convert), do: %D.Parcel{item: value}
+>>>>>>>

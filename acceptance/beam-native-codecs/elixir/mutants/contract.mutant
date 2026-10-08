@@ -1,0 +1,7 @@
+expect: refinement_violation
+@@ lib/native_codecs.ex
+<<<<<<<
+def copy_positive(%{positive: value}), do: %{positive: value}
+=======
+def copy_positive(%{positive: value}), do: %{positive: value * 0}
+>>>>>>>

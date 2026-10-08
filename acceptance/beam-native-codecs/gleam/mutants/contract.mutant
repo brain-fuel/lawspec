@@ -1,0 +1,7 @@
+expect: RefinementViolation
+@@ src/native_codecs.gleam
+<<<<<<<
+let Positive(item) = value Positive(item)
+=======
+let Positive(item) = value Positive(item * 0)
+>>>>>>>

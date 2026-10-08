@@ -66,7 +66,7 @@ scaffoldFilesWith crypto minify target = case target of
   "erlang" -> Right
     [ ("rebar.config", unlines
         [ "{erl_opts, [debug_info]}."
-        , "{deps, [{proper, \"1.5.0\"}]}." ])
+        , "{profiles, [{test, [{deps, [{proper, \"1.5.0\"}]}]}]}." ])
     , ("src/lawspec_example.app.src", unlines
         [ "{application, lawspec_example, ["
         , "    {description, \"LawSpec example\"},"

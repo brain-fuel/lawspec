@@ -212,6 +212,9 @@ targetSteps target =
   | suite <- ["indexed", "domain", "packages", "algebra", "definitions"] ] ++
   [ Step (target ++ "-" ++ suite ++ "-32") [("LAWSPEC_MACHINE_BITS", "32")] (acceptance [suite, "--no-mutants", target])
   | suite <- ["refinement", "scalar"] ] ++
+  [ Step (target ++ "-" ++ suite ++ suffix) env (acceptance [suite, target])
+  | target `elem` Targets.beamTargets, suite <- ["beam-native-shapes", "beam-native-codecs", "beam-native-calls"],
+    (suffix,env) <- [("", []), ("-32-compact", compact)] ] ++
   [ step (target ++ "-native-bindings") ["node", "tools/native-example-integration.mjs", target]
   , Step (target ++ "-native-bindings-32-compact") compact ["node", "tools/native-example-integration.mjs", target] ] ++
   [ step "rust-layout" ["node", "tools/rust-layout-integration.mjs"] | target == "rust" ]

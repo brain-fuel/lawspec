@@ -1,0 +1,6 @@
+@@ src/native_token.erl
+<<<<<<<
+put(Ref, 1)
+=======
+put(Ref, 0)
+>>>>>>>

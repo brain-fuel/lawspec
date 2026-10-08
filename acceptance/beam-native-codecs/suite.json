@@ -1,0 +1,6 @@
+{
+  "specs": [
+    "test/fixtures/native-codecs/domain.lawspec",
+    "acceptance/beam-native-codecs/generators.lawspec"
+  ]
+}

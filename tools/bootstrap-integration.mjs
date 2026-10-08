@@ -127,7 +127,7 @@ async function setup(target) {
     const lockName = {erlang: "rebar.lock", elixir: "mix.lock", gleam: "manifest.toml"}[target];
     await copyFile(path.join(repo, "test/locks", target, lockName), path.join(root, lockName));
     await mkdir(path.join(root, "src"), {recursive: true});
-    if (target === "erlang") await run("rebar3", ["compile"], root);
+    if (target === "erlang") await run("rebar3", ["as", "test", "compile"], root);
     if (target === "elixir") {
       await run("mix", ["deps.get"], root);
       await run("mix", ["compile"], root, {MIX_ENV: "test"});

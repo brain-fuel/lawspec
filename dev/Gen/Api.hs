@@ -138,8 +138,10 @@ declarations = joinWith (softbreak <> softbreak)
   , interface "NativeGeneratorBinding" (fields [("type", "string"), ("factory", "NativeReference"), ("stub?", "boolean")])
   , interface "NativeFunctionBinding" (fields [("declaration", "string"), ("native?", "NativeReference"), ("method?", "string"), ("constructor?", "NativeReference")])
   , interface "NativeGoImport" (fields [("alias", "string"), ("path", "string")])
+  , interface "NativeErlangInclude" (fields [("path", "string"), ("library?", "boolean")])
   , interface "NativeBindings" (fields [("types?", "NativeTypeBinding[]"), ("generators?", "NativeGeneratorBinding[]"),
-      ("functions?", "NativeFunctionBinding[]"), ("rustCrate?", "string"), ("goImports?", "NativeGoImport[]")])
+      ("functions?", "NativeFunctionBinding[]"), ("rustCrate?", "string"), ("goImports?", "NativeGoImport[]"),
+      ("erlangIncludes?", "NativeErlangInclude[]")])
   , alias "DischargeStatus" (map quoted ["proved", "exhaustively-checked", "property-tested", "measured", "runtime-checked", "default-handler", "assumed"])
   , interface "ObligationEvidence"
       (fields [("owner", "string"), ("declaration", "string"), ("stage", "string"), ("status", "DischargeStatus"), ("reason", "string")] ++

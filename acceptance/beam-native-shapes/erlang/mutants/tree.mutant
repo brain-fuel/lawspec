@@ -1,0 +1,6 @@
+@@ src/native_shapes.erl
+<<<<<<<
+[copy_tree(T) || T <- Trees]
+=======
+[copy_tree(T) || T <- lists:sublist(Trees, 0)]
+>>>>>>>

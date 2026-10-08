@@ -1,0 +1,6 @@
+@@ lib/native_codecs.ex
+<<<<<<<
+def copy_chain(%{items: items, ended: ended}), do: %{items: items, ended: ended}
+=======
+def copy_chain(%{items: items, ended: ended}), do: %{items: Enum.take(items, 0), ended: ended}
+>>>>>>>

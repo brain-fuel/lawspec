@@ -1,7 +1,7 @@
 -- | Native Erlang artifacts and PropEr tests from a fully elaborated plan.
 -- The other BEAM languages share this runtime and the Core expression layer.
 -- ref:DEC-typed-core-boundary ref:DEC-native-property-frameworks
-module LawSpec.BeamEmit (emitBeam) where
+module LawSpec.BeamEmit (emitBeam, emitBeamWithBindings) where
 
 import qualified LawSpec.Core as C
 import qualified LawSpec.Code.Doc as D
@@ -9,52 +9,70 @@ import qualified LawSpec.BeamCode as E
 import qualified LawSpec.BeamExpr as Expr
 import qualified LawSpec.BeamData as Data
 import qualified LawSpec.BeamDefinitions as Definitions
+import qualified LawSpec.BeamNativeBinding as Native
 import qualified LawSpec.ElixirNative as Elixir
 import qualified LawSpec.GleamNative as Gleam
 import LawSpec.Common (Artifact(..), Diagnostic(..), Generation(..))
 import LawSpec.Testing
 import LawSpec.RuntimeSources (runtimeSource)
 import LawSpec.Scaffold (gleamTestPackage)
+import LawSpec.NativeRequest (BindingPlan, emptyBindingPlan, hasBindings)
 import LawSpec.TestNames (unitTestNames)
 import LawSpec.Backend (metadataDocument)
 import Control.Monad (unless, forM)
 import Data.List (nub, isPrefixOf)
 
 emitBeam :: String -> Bool -> Plan -> Either [Diagnostic] [Artifact]
-emitBeam target minify plan = either (Left . pure . (\message -> Diagnostic "target" message Nothing)) Right $ do
-  validatePlan target plan
-  names <- E.dataNames declarations
-  schemaFile <- Data.emitData target layout bits declarations
-  definitions <- Definitions.emitDefinitions target layout bits declarations units
-  adapters <- mapM (adapter names) [u | u <- units, target == "erlang", not (null (adapterDeclarations u))]
-  native <- case target of
-    "elixir" -> Elixir.emitNative layout bits declarations units
-    "gleam" -> Gleam.emitNative layout declarations units
-    _ -> pure []
-  tests <- concat <$> mapM unitTests [u | u <- plannedUnits plan, not (null (plannedProperties u))]
-  let runtimes = [Artifact ("src/lawspec_beam_" ++ name ++ ".erl")
+emitBeam target minify = emitBeamWithBindings target minify emptyBindingPlan
+
+emitBeamWithBindings :: String -> Bool -> BindingPlan -> Plan -> Either [Diagnostic] [Artifact]
+emitBeamWithBindings target minify bindings plan = do
+  diagnose "target" (validatePlan target plan)
+  bound <- diagnose "native-binding" $ if hasBindings bindings then Native.emitBindings target layout bindings plan else pure []
+  ordinary <- diagnose "target" emit
+  diagnose "native-binding" $ unless (length (map artifactPath (ordinary ++ bound)) == length (nub (map artifactPath (ordinary ++ bound))))
+    (Left "BEAM native bindings produce conflicting artifact paths")
+  pure (ordinary ++ bound)
+  where
+    diagnose code = either (Left . pure . (\message -> Diagnostic code message Nothing)) Right
+    emit = do
+      names <- E.dataNames declarations
+      schemaFile <- Data.emitData target layout bits declarations
+      definitions <- Definitions.emitDefinitions target layout bits declarations units (Native.boundEntries bindings)
+      adapters <- mapM (adapter names) [u | u <- units, target == "erlang", not (boundUnit u), not (null (adapterDeclarations u))]
+      native <- case target of
+        "elixir" -> Elixir.emitNative layout bits declarations units
+        "gleam" -> Gleam.emitNative layout declarations units
+        _ -> pure []
+      tests <- concat <$> mapM unitTests [u | u <- plannedUnits plan, not (null (plannedProperties u))]
+      pure (schemaFile : definitions ++ adapters ++ [a | a <- native, artifactPath a `notElem` boundPaths] ++ tests ++ runtimes ++ generators tests)
+    runtimes = [Artifact ("src/lawspec_beam_" ++ name ++ ".erl")
         (runtimeSource ("beam-" ++ name)) "generated" "source"
         | name <- ["scalar","schema","regex","runtime"] ++ ["gleam" | target == "gleam"]] ++
         [Artifact ("src/lawspec/" ++ name ++ ".gleam") (runtimeSource ("beam-gleam-" ++ name)) "generated" "source"
           | name <- ["types","scalar"], target == "gleam"]
-      generators = if null tests then [] else
+    generators tests = if null tests then [] else
         [Artifact (testSupport ++ "lawspec_beam_" ++ name ++ ".erl") (runtimeSource ("beam-" ++ name)) "generated" "test"
           | name <- ["generators", "index"]] ++
         [Artifact "test/lawspec_beam_proper.erl" (runtimeSource "beam-proper") "generated" "test" | target == "erlang"] ++
         [Artifact "test/support/lawspec_beam_stream_data.ex" (runtimeSource "beam-stream-data") "generated" "test" | target == "elixir"] ++
         [Artifact "test-support/src/lawspec_beam_qcheck.erl" (runtimeSource "beam-qcheck") "generated" "test" | target == "gleam"] ++
         [Artifact "test-support/gleam.toml" gleamTestPackage "generated" "test" | target == "gleam"]
-  pure (schemaFile : definitions ++ adapters ++ native ++ tests ++ runtimes ++ generators)
-  where
     declarations = planDataDeclarations plan
     bits = planMachineBits plan
     units = map plannedUnit (plannedUnits plan)
+    boundUnit u = any ((`elem` map fst (Native.boundEntries bindings)) . C.declarationId) (C.unitDeclarations u)
+    boundPaths = [case target of
+      "elixir" -> "lib/" ++ E.moduleName (C.unitId u) ++ ".ex"
+      "gleam" -> "src/" ++ E.gleamPath (C.unitId u) ++ ".gleam"
+      _ -> "src/" ++ E.moduleName (C.unitId u) ++ ".erl" | u <- units, boundUnit u]
     layout = D.selectLayout minify (D.Pretty 100)
     testSupport = case target of "elixir" -> "test/support/"; "gleam" -> "test-support/src/"; _ -> "test/"
     framework = case target of "erlang" -> "lawspec_beam_proper"; "gleam" -> "lawspec_beam_qcheck"; _ -> "Elixir.LawSpec.Beam.StreamData"
     schema = D.text "_LsSchema"
     symbols = D.text "_LsSymbols"
-    context = [D.text "_LsSymbols = make_ref()",D.text "_LsSchema = " <> E.remote "lawspec_data" "schema" [symbols]]
+    context = [D.text "_LsSymbols = make_ref()",D.text "_LsSchema = " <> wrap (E.remote "lawspec_data" "schema" [symbols])]
+      where wrap doc = if Native.hasGenerators bindings then E.remote "lawspec_native_generators" "schema" [doc] else doc
     adapterDeclarations u = [d | d <- C.unitDeclarations u,
       C.declarationId d `notElem` map (C.declarationId . C.definitionDeclaration) (C.unitDefinitions u)]
     adapter names unit = do
@@ -134,8 +152,8 @@ emitBeam target minify plan = either (Left . pure . (\message -> Diagnostic "tar
       index <- case generatorIndex requirement of
         Nothing -> pure (E.atom "none")
         Just directed -> do
-          target <- render (indexedTarget directed)
-          pure (E.tuple [target,E.record [(E.binary (C.idText tag),E.array (map E.binary terms))
+          indexTarget <- render (indexedTarget directed)
+          pure (E.tuple [indexTarget,E.record [(E.binary (C.idText tag),E.array (map E.binary terms))
             | (tag,terms) <- indexedEquations directed]])
       let raw = E.remote framework "generator" [ref,schema,symbols,E.array bounds,
             E.array (map (E.value symbols) (generatorBoundaries requirement)),index]

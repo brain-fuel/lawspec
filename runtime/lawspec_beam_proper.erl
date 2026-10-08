@@ -2,11 +2,16 @@
 %% input rebuilds dependent generators and reapplies every domain predicate.
 %% ref:DEC-native-property-frameworks ref:DEC-shrink-within-domain
 -module(lawspec_beam_proper).
--export([generator/5, generator/6, bind/2, constrain/2, refine_input/2, complete/1, check/3, exactly/1, sized/1,
+-export([generator/5, generator/6, map/2, bind/2, constrain/2, refine_input/2, complete/1, check/3, exactly/1, sized/1,
     frequency/1, oneof/1, integer/2, list/1, vector/2, fixed_list/1, binary/0, forall/2]).
 
 %% An empty dependent range retries the whole tuple, including earlier inputs.
 %% Retrying only its final input would never escape the empty range.
+map(Type, Convert) ->
+    case proper_types:is_raw_type(Type) of
+        true -> proper_types:bind(Type, fun(Value) -> proper_types:exactly(Convert(Value)) end, false);
+        false -> erlang:error({lawspec, expected_proper_generator})
+    end.
 bind(Type, Build) -> proper_types:bind(Type, fun
     ('$lawspec_empty_domain') -> proper_types:exactly('$lawspec_empty_domain');
     (Value) -> Build(Value)
@@ -40,7 +45,9 @@ ext(none) -> inf;
 ext(N) -> N.
 list(Type) -> proper_types:list(Type).
 vector(Count, Type) -> proper_types:vector(Count, Type).
-fixed_list(Types) -> proper_types:fixed_list(Types).
+fixed_list(Types) -> map(proper_types:fixed_list(Types), fun(Values) ->
+    case lists:member('$lawspec_empty_domain', Values) of true -> '$lawspec_empty_domain'; false -> Values end
+end).
 binary() -> proper_types:binary().
 forall(Type, Predicate) -> proper:forall(Type, Predicate).
 

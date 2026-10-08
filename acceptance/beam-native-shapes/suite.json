@@ -1,0 +1,5 @@
+{
+  "specs": [
+    "test/fixtures/native_shapes.lawspec"
+  ]
+}

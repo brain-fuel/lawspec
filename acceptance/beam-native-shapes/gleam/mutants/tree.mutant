@@ -1,0 +1,6 @@
+@@ src/native_shapes.gleam
+<<<<<<<
+Group(list.map(trees, copy_tree))
+=======
+Group(list.take(list.map(trees, copy_tree), 0))
+>>>>>>>

@@ -1,0 +1,6 @@
+@@ lib/native_shapes.ex
+<<<<<<<
+Enum.map(values, &copy_tree/1)
+=======
+Enum.map(Enum.take(values, 0), &copy_tree/1)
+>>>>>>>

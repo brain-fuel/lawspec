@@ -1,0 +1,28 @@
+{
+  "types": [
+    {
+      "type": "native.calls::type::Token",
+      "native": [
+        "native_token",
+        "Token"
+      ]
+    }
+  ],
+  "functions": [
+    {
+      "declaration": "native.calls::newToken",
+      "constructor": [
+        "native_token",
+        "new"
+      ]
+    },
+    {
+      "declaration": "native.calls::touch",
+      "method": "touch"
+    },
+    {
+      "declaration": "native.calls::value",
+      "method": "value"
+    }
+  ]
+}

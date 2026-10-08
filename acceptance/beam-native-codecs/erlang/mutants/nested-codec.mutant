@@ -1,0 +1,7 @@
+expect: native_codec
+@@ src/native_codecs.erl
+<<<<<<<
+from_parcel(#{private := V}, Convert) -> {parcel, Convert(V)}.
+=======
+from_parcel(#{private := V}, _Convert) -> {parcel, V}.
+>>>>>>>

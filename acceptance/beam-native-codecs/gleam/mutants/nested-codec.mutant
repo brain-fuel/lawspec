@@ -1,0 +1,7 @@
+expect: NativeCodec
+@@ src/native_codecs.gleam
+<<<<<<<
+pub fn from_parcel(value: Parcel(a), convert: fn(a) -> b) -> data.Parcel(b) { let Private(item) = value data.Parcel(convert(item)) }
+=======
+pub fn from_parcel(value: Parcel(a), _convert: fn(a) -> b) -> data.Parcel(a) { let Private(item) = value data.Parcel(item) }
+>>>>>>>

@@ -1,0 +1,7 @@
+expect: native generator Int8
+@@ test/support/native_shapes_generators.ex
+<<<<<<<
+StreamData.integer(6..127)
+=======
+StreamData.constant(128)
+>>>>>>>

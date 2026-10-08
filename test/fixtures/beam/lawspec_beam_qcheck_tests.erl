@@ -6,6 +6,8 @@
 indexed_and_existential_generation_test_() ->
     {timeout, 60, fun() -> lawspec_beam_index_tests:run(lawspec_beam_qcheck) end}.
 
+native_factories_keep_checked_shrinks_test() -> lawspec_beam_native_generator_tests:run(lawspec_beam_qcheck).
+
 bounded_shrinking_test() ->
     Failure = failure(lawspec_beam_qcheck:integer(5, 1000), fun(_) -> false end, 1000),
     ?assertMatch({counterexample, 5, error, _}, Failure).

@@ -314,6 +314,7 @@ interface NativeBindings {
   functions?: NativeFunctionBinding[];
   rustCrate?: string;
   goImports?: {alias: string; path: string}[];
+  erlangIncludes?: {path: string; library?: boolean}[];
 }
 type NativeReference = string[];
 
@@ -340,6 +341,8 @@ interface NativeFunctionBinding {
 ```
 
 Unknown fields are rejected. A type binding has either `constructors` or
-`codec`. `goImports` is accepted only for Go. `check` validates identities;
+`codec`. `goImports` is accepted only for Go; `erlangIncludes` only for Erlang.
+An Erlang header uses `include`, or `include_lib` when `library` is true.
+`check` validates identities;
 `planGeneration` also checks target support. See
 [native bindings](native-bindings.md).

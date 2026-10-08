@@ -1,0 +1,6 @@
+@@ src/native_shapes.gleam
+<<<<<<<
+Next(option.map(tail, copy_chain), item)
+=======
+Next(option.map(option.or(tail, None), fn(_) { End }), item)
+>>>>>>>

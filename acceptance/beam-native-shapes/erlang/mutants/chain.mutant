@@ -1,0 +1,6 @@
+@@ src/native_shapes.erl
+<<<<<<<
+{next, V, chain_tail(Tail)}
+=======
+{next, V, chain_tail(element(1, {nothing, Tail}))}
+>>>>>>>

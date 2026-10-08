@@ -1,0 +1,118 @@
+{
+  "types": [
+    {
+      "type": "native.codecs::type::Parcel",
+      "native": [
+        "Native",
+        "Codecs",
+        "Parcel"
+      ],
+      "codec": {
+        "toNative": [
+          "Native",
+          "Codecs",
+          "to_parcel"
+        ],
+        "fromNative": [
+          "Native",
+          "Codecs",
+          "from_parcel"
+        ]
+      }
+    },
+    {
+      "type": "native.codecs::type::Chain",
+      "native": [
+        "Native",
+        "Codecs",
+        "FlatChain"
+      ],
+      "codec": {
+        "toNative": [
+          "Native",
+          "Codecs",
+          "to_chain"
+        ],
+        "fromNative": [
+          "Native",
+          "Codecs",
+          "from_chain"
+        ]
+      }
+    },
+    {
+      "type": "native.codecs::type::Positive",
+      "native": [
+        "Native",
+        "Codecs",
+        "Positive"
+      ],
+      "codec": {
+        "toNative": [
+          "Native",
+          "Codecs",
+          "to_positive"
+        ],
+        "fromNative": [
+          "Native",
+          "Codecs",
+          "from_positive"
+        ]
+      }
+    }
+  ],
+  "functions": [
+    {
+      "declaration": "native.codecs::copyParcel",
+      "native": [
+        "Native",
+        "Codecs",
+        "copy_parcel"
+      ]
+    },
+    {
+      "declaration": "native.codecs::copyNested",
+      "native": [
+        "Native",
+        "Codecs",
+        "copy_nested"
+      ]
+    },
+    {
+      "declaration": "native.codecs::copyChain",
+      "native": [
+        "Native",
+        "Codecs",
+        "copy_chain"
+      ]
+    },
+    {
+      "declaration": "native.codecs::copyPositive",
+      "native": [
+        "Native",
+        "Codecs",
+        "copy_positive"
+      ]
+    }
+  ],
+  "generators": [
+    {
+      "type": "native.codecs::type::Parcel",
+      "factory": [
+        "Native",
+        "CodecsGenerators",
+        "parcels"
+      ],
+      "stub": true
+    },
+    {
+      "type": "native.codecs::type::Positive",
+      "factory": [
+        "Native",
+        "CodecsGenerators",
+        "positives"
+      ],
+      "stub": true
+    }
+  ]
+}

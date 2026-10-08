@@ -58,7 +58,8 @@ Still schema 3, with additions that exhaustive visitors must handle:
   selects it automatically. Schema 3 remains for requests without bindings, and
   a non-empty binding configuration on schema 3 is rejected.
 - `nativeBindings` has `types`, `functions`, `generators`, `rustCrate` and
-  `goImports`. Unknown fields are rejected.
+  `goImports`; v0.22 adds `erlangIncludes` for native record headers.
+  Unknown fields are rejected.
 - Type bindings take `constructors` or a `codec` pair; generator bindings take
   an optional `stub`.
 - Adopting bindings where adapters already exist requires moving the adapters

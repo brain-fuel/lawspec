@@ -1,0 +1,7 @@
+expect: native generator Int8
+@@ test/native_shapes_generators.gleam
+<<<<<<<
+qcheck.bounded_int(6, 127)
+=======
+qcheck.constant(128)
+>>>>>>>

@@ -1,0 +1,7 @@
+expect: refinement_violation
+@@ src/native_codecs.erl
+<<<<<<<
+copy_positive(#{positive := V}) -> #{positive => V}.
+=======
+copy_positive(#{positive := V}) -> #{positive => V * 0}.
+>>>>>>>

@@ -1,0 +1,7 @@
+expect: native generator Int8
+@@ test/native_shapes_generators.erl
+<<<<<<<
+proper_types:integer(6, 127)
+=======
+proper_types:exactly(128)
+>>>>>>>

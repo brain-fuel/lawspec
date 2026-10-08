@@ -1,6 +1,6 @@
 -- | Public binding configuration is resolved before entering target emission.
 module LawSpec.NativeRequest
-  ( NativeRequest(..), NetworkBinding(..), networkArtifacts, FunctionBinding(..), NativeCall(..), GoImport(..), BindingPlan(..), HandlerBinding(..), FailureMapping(..)
+  ( NativeRequest(..), NetworkBinding(..), networkArtifacts, FunctionBinding(..), NativeCall(..), GoImport(..), ErlangInclude(..), BindingPlan(..), HandlerBinding(..), FailureMapping(..)
   , emptyNativeRequest, emptyBindingPlan, resolveNativeRequest, hasBindings
   ) where
 
@@ -20,6 +20,7 @@ import LawSpec.Common (Artifact(..))
 data NativeRequest = NativeRequest
   { requestBindings :: Bindings, requestFunctions :: [FunctionBinding]
   , requestRustCrate :: Maybe String, requestGoImports :: [GoImport]
+  , requestErlangIncludes :: [ErlangInclude]
   -- The production handler of each ability, by "<unit>::<Ability>".
   , requestHandlers :: [HandlerBinding]
   -- Native exceptions that become failures, by failure constructor.
@@ -46,6 +47,10 @@ data HandlerBinding = HandlerBinding { boundAbility :: String, boundNative :: Na
 -- | A Go binding names the package it imports and the alias to use, since Go
 -- requires both.
 data GoImport = GoImport { goImportAlias :: String, goImportPath :: String } deriving (Eq, Show)
+-- | Record field positions come from the application's header, never from
+-- configuration order. Library headers use Erlang's include_lib directive.
+data ErlangInclude = ErlangInclude { erlangIncludePath :: FilePath, erlangIncludeLibrary :: Bool }
+  deriving (Eq, Show)
 -- | An adapter bound to native code is called directly, with no stub for the user
 -- to fill in. ref:DEC-native-bindings-typed-identity
 data FunctionBinding = FunctionBinding
@@ -64,6 +69,7 @@ data BindingPlan = BindingPlan
   , bindingFunctions :: [(C.Declaration, NativeRef)]
   , bindingCalls :: [(C.Declaration, NativeCall)]
   , bindingRustCrate :: Maybe String, bindingGoImports :: [GoImport]
+  , bindingErlangIncludes :: [ErlangInclude]
   -- Each bound ability's production handler, by the ability instance's key.
   , bindingHandlers :: [(C.Id, NativeRef)]
   -- The native exceptions that become failures.
@@ -71,10 +77,10 @@ data BindingPlan = BindingPlan
   } deriving (Eq, Show)
 -- | A request without bindings.
 emptyNativeRequest :: NativeRequest
-emptyNativeRequest = NativeRequest emptyBindings [] Nothing [] [] [] Nothing
+emptyNativeRequest = NativeRequest emptyBindings [] Nothing [] [] [] [] Nothing
 -- | A plan without bindings, which emitters treat as the generated-types path.
 emptyBindingPlan :: BindingPlan
-emptyBindingPlan = BindingPlan (ResolvedBindings [] []) [] [] Nothing [] [] []
+emptyBindingPlan = BindingPlan (ResolvedBindings [] []) [] [] Nothing [] [] [] []
 -- | Projects without bindings skip the binding companion files. Bound handlers
 -- and failures do not count: they only change how the tests make production
 -- handlers and catch native failures.
@@ -95,12 +101,15 @@ resolveNativeRequest program NativeRequest{..} = do
   unless (length requestGoImports == length (nub (map goImportPath requestGoImports)))
     (Left "duplicate Go import path")
   mapM_ validateGoImport requestGoImports
+  mapM_ validateErlangInclude requestErlangIncludes
+  unless (length requestErlangIncludes == length (nub requestErlangIncludes))
+    (Left "duplicate Erlang include")
   handlers <- mapM handler requestHandlers
   unless (length handlers == length (nub (map fst handlers))) (Left "duplicate native handler binding")
   failures <- mapM failureMapping requestFailures
   unless (length failures == length (nub (map C.failureNative failures))) (Left "duplicate native failure mapping")
   pure (BindingPlan representations [(d, ref) | (d, StaticCall ref) <- functions]
-    [(d, call) | (d, call) <- functions, not (isStatic call)] requestRustCrate requestGoImports handlers failures)
+    [(d, call) | (d, call) <- functions, not (isStatic call)] requestRustCrate requestGoImports requestErlangIncludes handlers failures)
   where
     definitions = [C.declarationId (C.definitionDeclaration d) |
       u <- C.programUnits program, d <- C.unitDefinitions u]
@@ -235,6 +244,15 @@ instance FromJSON GoImport where
     value <- GoImport <$> o .: "alias" <*> o .: "path"
     either fail pure (validateGoImport value)
     pure value
+validateErlangInclude :: ErlangInclude -> Either String ()
+validateErlangInclude (ErlangInclude path _) =
+  unless (not (null path) && all (`notElem` ['\0','\n','\r']) path)
+    (Left "Erlang include path must be nonempty and contain no NUL or newline")
+instance FromJSON ErlangInclude where
+  parseJSON = strict "Erlang include" ["path","library"] $ \o -> do
+    value <- ErlangInclude <$> o .: "path" <*> o .:? "library" .!= False
+    either fail pure (validateErlangInclude value)
+    pure value
 instance FromJSON HandlerBinding where
   parseJSON = strict "native handler" ["ability","native"] $ \o ->
     HandlerBinding <$> o .: "ability" <*> o .: "native"
@@ -242,11 +260,11 @@ instance FromJSON FailureMapping where
   parseJSON = strict "native failure" ["native","failure"] $ \o ->
     FailureMapping <$> o .: "native" <*> o .: "failure"
 instance FromJSON NativeRequest where
-  parseJSON = strict "nativeBindings" ["types","generators","functions","rustCrate","goImports","handlers","failures","network"] $ \o -> do
+  parseJSON = strict "nativeBindings" ["types","generators","functions","rustCrate","goImports","erlangIncludes","handlers","failures","network"] $ \o -> do
     types <- o .:? "types" .!= []
     generators <- o .:? "generators" .!= []
     NativeRequest (Bindings types generators) <$> o .:? "functions" .!= [] <*> o .:? "rustCrate" <*> o .:? "goImports" .!= []
-      <*> o .:? "handlers" .!= [] <*> o .:? "failures" .!= [] <*> o .:? "network"
+      <*> o .:? "erlangIncludes" .!= [] <*> o .:? "handlers" .!= [] <*> o .:? "failures" .!= [] <*> o .:? "network"
 instance FromJSON NetworkBinding where
   parseJSON = strict "network" ["identity","trusted"] $ \o ->
     NetworkBinding <$> o .:? "identity" <*> o .:? "trusted"

@@ -35,6 +35,14 @@ test_nativeBindingRequestsAreValidatedAtTheirBoundary = describe "native binding
     codes (run "unit sample\nf :: Int8 -> Int8" (object ["functions" .= [object
       ["declaration" .= ("sample::f" :: String), "native" .= ("app.f(value)" :: String)]]]))
       `shouldBe` [String "request"]
+  it "validates structured Erlang headers and rejects duplicates" $ do
+    let header path = object ["path" .= (path :: String)]
+        bindings headers = object ["erlangIncludes" .= (headers :: [Value])]
+    codes (run "unit sample" (bindings [header "native_shapes.hrl"])) `shouldBe` []
+    codes (run "unit sample" (bindings [object ["path" .= ("app/include/shapes.hrl" :: String), "library" .= True]])) `shouldBe` []
+    codes (run "unit sample" (bindings [header ""])) `shouldBe` [String "request"]
+    codes (run "unit sample" (bindings [header "bad\nheader"])) `shouldBe` [String "request"]
+    codes (run "unit sample" (bindings [header "same.hrl",header "same.hrl"])) `shouldBe` [String "native-binding"]
   it "resolves adapter identities but cannot replace checked total definitions" $ do
     let binding name = object ["functions" .= [object
           ["declaration" .= ("sample::" ++ name), "native" .= (["crate","domain","f"] :: [String])]]]
@@ -47,6 +55,47 @@ test_nativeBindingRequestsAreValidatedAtTheirBoundary = describe "native binding
     case eitherDecode bytes of
       Left problem -> expectationFailure problem
       Right config -> codes (run source config) `shouldBe` []
+
+  describe "BEAM native binding emission" $ do
+    let field key (Object value) = KM.lookup key value
+        field _ _ = Nothing
+        files response = case field "files" response of
+          Just (Array values) -> toList values
+          _ -> []
+        content file = case field "content" file of Just (String value) -> T.unpack value; _ -> ""
+        request target compact source native = either error id (eitherDecode (dispatch (encode (object
+          ["schemaVersion" .= (4 :: Int), "method" .= ("planGeneration" :: String), "target" .= (target :: String),
+           "minify" .= compact, "sources" .= [Source "binding" source], "nativeBindings" .= (native :: Value)]))))
+        refs response = [(field "path" f,field "adapterReference" f) | f <- files response, field "ownership" f == Just (String "user")]
+    mapM_ (\target -> it (target ++ " keeps checked bridges in source and native factories in tests") $ do
+      source <- readFile "test/fixtures/native_shapes.lawspec"
+      bindings <- either error id . eitherDecode <$> BL.readFile ("acceptance/beam-native-shapes/" ++ target ++ "/bindings.json")
+      let readable = request target False source bindings
+          compact = request target True source bindings
+          sourceFiles = [f | f <- files readable, field "placement" f == Just (String "source")]
+          testFiles = [f | f <- files readable, field "placement" f == Just (String "test")]
+      codes readable `shouldBe` []
+      codes compact `shouldBe` []
+      refs readable `shouldBe` refs compact
+      length (refs readable) `shouldBe` 1
+      mapM_ (\name -> concatMap content sourceFiles `shouldNotSatisfy` isInfixOf name)
+        ["proper_types", "StreamData", "qcheck", "lawspec_native_generators"]
+      concatMap content sourceFiles `shouldSatisfy` isInfixOf "lawspec_beam_schema:with_bindings"
+      concatMap content testFiles `shouldSatisfy` isInfixOf "lawspec_beam_generators:with_native"
+      map (field "path") sourceFiles `shouldNotContain` [Just (String (case target of
+        "elixir" -> "lib/native_shapes.ex"; "gleam" -> "src/native/shapes.gleam"; _ -> "src/native_shapes.erl"))])
+      ["erlang","elixir","gleam"]
+    mapM_ (\target -> it (target ++ " diagnoses an incomplete bound unit before emitting it") $ do
+      let binding = object ["functions" .= [object
+            ["declaration" .= ("sample::f" :: String), "native" .= (["App","echo"] :: [String])]]]
+      codes (request target False "unit sample\nf :: Int8 -> Int8\ng :: Int8 -> Int8" binding)
+        `shouldBe` [String "native-binding"]) ["erlang","elixir","gleam"]
+    it "requires Erlang record headers and rejects them on other targets" $ do
+      source <- readFile "test/fixtures/native_shapes.lawspec"
+      binding <- either error id . eitherDecode <$> BL.readFile "acceptance/beam-native-shapes/erlang/bindings.json"
+      let withoutHeader = case binding of Object value -> Object (KM.delete "erlangIncludes" value); other -> other
+      codes (request "erlang" False source withoutHeader) `shouldBe` [String "native-binding"]
+      mapM_ (\target -> codes (request target False source binding) `shouldBe` [String "native-binding"]) ["elixir","gleam"]
 
   it "emits Kotlin scalar bridges even without structural declarations or laws" $ do
     let request = object

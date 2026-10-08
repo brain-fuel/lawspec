@@ -1,0 +1,6 @@
+@@ lib/native_shapes.ex
+<<<<<<<
+remainder: chain_tail(tail)
+=======
+remainder: chain_tail(elem({:nothing, tail}, 0))
+>>>>>>>

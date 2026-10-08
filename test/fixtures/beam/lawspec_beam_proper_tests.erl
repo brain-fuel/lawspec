@@ -10,6 +10,8 @@ integer(Lo, Hi) -> lawspec_beam_proper:generator({<<"Int32">>, []}, schema(), ma
 indexed_and_existential_generation_test_() ->
     {timeout, 60, fun() -> lawspec_beam_index_tests:run(lawspec_beam_proper) end}.
 
+native_factories_keep_checked_shrinks_test() -> lawspec_beam_native_generator_tests:run(lawspec_beam_proper).
+
 %% ref:DEC-shrink-within-domain
 bounded_shrinking_test() ->
     Property = proper:forall(integer(5, 1000), fun(N) -> N < 5 end),

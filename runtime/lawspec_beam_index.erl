@@ -4,9 +4,11 @@
 %% index than their parent (subtraction, division, remainder and powers).
 %% ref:DEC-indexed-families-as-evidence ref:DEC-structural-size-budget
 -module(lawspec_beam_index).
--export([generator/9, with_cache/1]).
+-export([generator/9, generator/10, with_cache/1]).
 
-generator(F, Type, Schema, Target, Equations, Budget, Minimum, Build, Accepted)
+generator(F, Type, Schema, Target, Equations, Budget, Minimum, Build, Accepted) ->
+    generator(F, Type, Schema, Target, Equations, Budget, Minimum, Build, Accepted, fun(_, _, _) -> none end).
+generator(F, Type, Schema, Target, Equations, Budget, Minimum, Build, Accepted, Override)
         when is_integer(Target) ->
     Parsed = maps:map(fun(_, Texts) -> equation(Texts) end, Equations),
     Families = families([Type], #{}, Schema, Parsed),
@@ -33,11 +35,17 @@ generator(F, Type, Schema, Target, Equations, Budget, Minimum, Build, Accepted)
         [] -> F:exactly('$lawspec_empty_domain');
         _ -> F:bind(F:oneof([F:exactly(K) || K <- Levels]), fun(K) ->
             Available = max(Budget, maps:get({Type, K}, Costs)),
-            indexed(F, Type, K, Available, Choices, Build, Accepted)
+            indexed(F, Type, K, Available, Choices, Build, Accepted, Override)
         end)
     end.
 
-indexed(F, Type, K, Budget, Solutions, Build, Accepted) ->
+indexed(F, Type, K, Budget, Solutions, Build, Accepted, Override) ->
+    case Override(Type, K, Budget) of
+        {custom, Generator} -> Generator;
+        none -> indexed_native(F, Type, K, Budget, Solutions, Build, Accepted, Override)
+    end.
+
+indexed_native(F, Type, K, Budget, Solutions, Build, Accepted, Override) ->
     Choices = [{C, Targets, Costs} || {C, Targets, Costs} <- maps:get({Type, K}, Solutions),
         1 + length(maps:get(witness_values, C, [])) + lists:sum(Costs) =< Budget],
     F:constrain(F:bind(F:oneof([F:exactly(Choice) || Choice <- Choices]),
@@ -48,7 +56,7 @@ indexed(F, Type, K, Budget, Solutions, Build, Accepted) ->
             Children = [begin
                 Share = Cost + Extra div Count + case I < Extra rem Count of true -> 1; false -> 0 end,
                 case maps:find(I, Targets) of
-                    {ok, Index} -> indexed(F, T, Index, Share, Solutions, Build, Accepted);
+                    {ok, Index} -> indexed(F, T, Index, Share, Solutions, Build, Accepted, Override);
                     error -> Build(T, Share)
                 end
             end || {I, {{_, T}, Cost}} <- lists:enumerate(0, lists:zip(maps:get(fields, C), Costs))],

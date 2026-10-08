@@ -1,0 +1,6 @@
+@@ src/native_codecs.gleam
+<<<<<<<
+let Flat(items, ended) = value Flat(items, ended)
+=======
+let Flat(items, ended) = value Flat(list.take(items, 0), ended)
+>>>>>>>

@@ -1,0 +1,13 @@
+unit native.codec_generators
+
+import native.codecs (Parcel, Positive)
+
+-- The original examples have finite domains and deliberately enumerate them
+-- without calling factories. These infinite domains exercise the factories.
+law `wide parcels use native factories` is
+  definition is `for all` (x :: Parcel Int32) . x = x end
+end
+
+law `positive lists use native factories` is
+  definition is `for all` (xs :: List Positive) . xs = xs end
+end

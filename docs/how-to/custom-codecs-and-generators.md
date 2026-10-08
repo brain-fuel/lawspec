@@ -50,6 +50,9 @@ are reported with the type identity and the conversion direction.
 | Java | `to_parcel(Parcel<A> value, Function<A, B> convert)` returning your `Parcel<B>` | Throw |
 | Kotlin | `to_parcel(value: Parcel<A>, convert: (A) -> B): Parcel<B>` | Throw |
 | Go | A function of the value and one converter per type parameter, returning `(value, error)` | Return an error |
+| Erlang | `to_parcel(Value, Convert)` returns the bound native value | Raise an exception |
+| Elixir | `to_parcel(value, convert)` returns the bound native value | Raise an exception |
+| Gleam | `fn to_parcel(value: data.Parcel(a), convert: fn(a) -> b) -> domain.Parcel(b)` | Panic |
 
 `fromNative` has the mirror-image signature. In Haskell, Java, Kotlin and Go the
 generated type's payloads are opaque checked values; only the supplied
@@ -74,7 +77,7 @@ factory you write, using your target's property-testing library:
 The factory returns the framework's generator for the bound native type. A
 factory for a type with parameters receives one generator per type argument.
 
-| Target | Factory returns | Children | Location in the payment example |
+| Target | Factory returns | Children | Typical test location |
 | --- | --- | --- | --- |
 | Rust | A Proptest strategy | One boxed strategy per type argument | `tests/support/lawspec_generators.rs` |
 | Python | A Hypothesis `SearchStrategy` | One strategy per type argument | `tests/lawspec_generators.py` |
@@ -83,8 +86,15 @@ factory for a type with parameters receives one generator per type argument.
 | Kotlin | A Kotest `Arb` | One `Arb<T>` per type argument | `src/test/kotlin/domain/PaymentGenerators.kt` |
 | Go | A Rapid `*rapid.Generator` from a package-local function | One generator per type argument | `example/payments/native_generators_test.go` |
 | Haskell | A Hedgehog `Gen` | One `Gen` per type argument | `test/PaymentGenerators.hs` |
+| Erlang | A PropEr generator | One native generator per type argument | `test/application_generators.erl` |
+| Elixir | `StreamData.t(a)` | One `StreamData.t(a)` per type argument | `test/support/application_generators.ex` |
+| Gleam | `qcheck.Generator(a)` | One `qcheck.Generator(a)` per type argument | `test/application_generators.gleam` |
 
 Factories are test code: they belong in the test directory and are yours.
+
+Gleam factories may import your application types from `src/`. The generated
+Erlang test helpers use a separate `test-support/` development package so that
+Gleam production exports contain no property framework or generator registry.
 
 ### What the tests do with your generator
 
@@ -128,6 +138,9 @@ old file in place: move your implementation across.
 | Kotlin | `["application", "Factories", "prices"]` | `application/Factories.kt` in the test directory; function in object `Factories` | throws `NotImplementedError` |
 | Go | a package-local name | `native_generators_test.go` beside each consuming unit's tests | panics |
 | Haskell | `["Application", "Generators", "lists"]` | `Application/Generators.hs` in the test directory, for example `lists :: H.Gen a0 -> H.Gen [a0]` | calls `error` |
+| Erlang | `["application_generators", "lists"]` | `test/application_generators.erl`, exported PropEr factory | calls `erlang:error` |
+| Elixir | `["Application", "Generators", "lists"]` | `test/support/application_generators.ex`, typed StreamData factory | raises |
+| Gleam | `["application_generators", "lists"]` | `test/application_generators.gleam`, typed qcheck factory | panics |
 
 Target-specific rules:
 

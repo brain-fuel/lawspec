@@ -14,12 +14,16 @@ defmodule LawSpec.Beam.StreamData do
   end
 
   def exactly(value), do: SD.constant(value)
+  def map(%SD{} = type, convert), do: SD.map(type, convert)
+  def map(_, _), do: :erlang.error({:lawspec, :expected_stream_data_generator})
   def sized(build), do: SD.sized(build)
   def frequency(choices), do: SD.frequency(choices)
   def oneof(choices), do: SD.one_of(choices)
   def list(type), do: SD.list_of(type)
   def vector(count, type), do: SD.list_of(type, length: count)
-  def fixed_list(types), do: SD.fixed_list(types)
+  def fixed_list(types), do: SD.map(SD.fixed_list(types), fn values ->
+    if @empty in values, do: @empty, else: values
+  end)
   def binary(), do: SD.binary()
 
   def integer(:none, :none), do: SD.integer()

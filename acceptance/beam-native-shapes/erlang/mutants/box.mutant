@@ -1,0 +1,6 @@
+@@ src/native_shapes.erl
+<<<<<<<
+copy_box(#wrapped{audit = retained, stored = V}) -> #wrapped{stored = V}.
+=======
+copy_box(#wrapped{audit = retained, stored = V}) -> #wrapped{stored = V + 1}.
+>>>>>>>

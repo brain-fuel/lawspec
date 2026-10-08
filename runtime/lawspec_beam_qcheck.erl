@@ -2,7 +2,7 @@
 %% invalid shrink candidates; the lazy cap limits qcheck's own shrink traversal.
 %% ref:DEC-native-property-frameworks ref:DEC-shrink-within-domain
 -module(lawspec_beam_qcheck).
--export([generator/5, generator/6, bind/2, constrain/2, refine_input/2, complete/1, check/3,
+-export([generator/5, generator/6, map/2, bind/2, constrain/2, refine_input/2, complete/1, check/3,
     exactly/1, sized/1, frequency/1, oneof/1, integer/2, list/1, vector/2,
     fixed_list/1, binary/0, forall/2]).
 
@@ -16,11 +16,16 @@ frequency([Choice | Choices]) -> qcheck:from_weighted_generators(Choice, Choices
 oneof([Choice | Choices]) -> qcheck:from_generators(Choice, Choices).
 list(Type) -> qcheck:list_from(Type).
 vector(Count, Type) -> qcheck:fixed_length_list_from(Type, Count).
-fixed_list(Types) -> lists:foldr(fun(Type, Tail) ->
+fixed_list(Types) -> qcheck:map(lists:foldr(fun(Type, Tail) ->
     qcheck:map2(Type, Tail, fun(H, T) -> [H | T] end)
-end, exactly([]), Types).
+end, exactly([]), Types), fun(Values) ->
+    case lists:member('$lawspec_empty_domain', Values) of true -> '$lawspec_empty_domain'; false -> Values end
+end).
 binary() -> qcheck:byte_aligned_bit_array().
 forall(Type, Predicate) -> {Type, Predicate}.
+
+map({generator, Build} = Type, Convert) when is_function(Build, 1) -> qcheck:map(Type, Convert);
+map(_, _) -> erlang:error({lawspec, expected_qcheck_generator}).
 
 bind(Type, Build) -> qcheck:bind(Type, fun
     ('$lawspec_empty_domain') -> exactly('$lawspec_empty_domain');

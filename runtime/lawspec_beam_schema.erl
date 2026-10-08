@@ -5,7 +5,7 @@
 -module(lawspec_beam_schema).
 -export([new/3, validate/3, construct/4, match/2, constructors/2, witness_instances/1,
     to_native/3, from_native/3, all_payloads/4, substitute/2, index/4,
-    check_type/2, handle/2, with_codecs/2, type_key/1]).
+    check_type/2, handle/2, with_codecs/2, with_bindings/3, constructor_shape/2, type_key/1]).
 -export_type([schema/0, value/0, type_ref/0]).
 
 -type type_ref() :: {binary(), [type_ref()]} | {parameter, non_neg_integer()}.
@@ -118,6 +118,66 @@ with_codecs(#{codecs := Existing} = S, Codecs) ->
     end, Codecs),
     S#{codecs => maps:merge(Existing, Codecs)}.
 
+%% Application mappings change native shapes while keeping the same logical
+%% contracts. A codec receives canonical native values, not internal ls_data
+%% tuples; its child converters cross between canonical and bound native data.
+%% ref:DEC-native-bindings-typed-identity
+with_bindings(#{definitions := Definitions} = S, Shapes, Hooks) ->
+    Constructors = maps:from_list([{maps:get(tag, C), Name} || {Name, D} <- maps:to_list(Definitions),
+        C <- maps:get(constructors, D)]),
+    maps:foreach(fun(Tag, Shape) ->
+        require(maps:is_key(Tag, Constructors), {unknown_native_constructor, Tag}),
+        case Shape of
+            #{native_tag := Atom} when map_size(Shape) =:= 1, is_atom(Atom) -> ok;
+            #{encode := Encode, decode := Decode} when map_size(Shape) =:= 2,
+                    is_function(Encode, 1), is_function(Decode, 1) -> ok;
+            _ -> fail({invalid_native_shape, Tag})
+        end
+    end, Shapes),
+    NativeShapes = maps:merge(maps:get(native_shapes, S, #{}), Shapes),
+    Existing = maps:get(native_codecs, S, #{}),
+    Combined = maps:merge(Existing, Hooks),
+    maps:foreach(fun(Name, Hook) ->
+        require(maps:is_key(Name, Definitions) andalso
+            maps:get(constructors, maps:get(Name, Definitions)) =/= [], {unknown_native_codec, Name}),
+        require(not lists:any(fun(Tag) -> maps:get(Tag, Constructors) =:= Name end, maps:keys(NativeShapes)),
+            {conflicting_native_binding, Name}),
+        case Hook of
+            #{encode := Encode, decode := Decode} when map_size(Hook) =:= 2,
+                    is_function(Encode, 2), is_function(Decode, 2) -> ok;
+            _ -> fail({invalid_native_codec, Name})
+        end
+    end, Combined),
+    Native = maps:map(fun(_, D) -> D#{constructors => [case maps:find(maps:get(tag, C), Shapes) of
+        error -> C;
+        {ok, Shape} -> maps:merge(maps:without([native_tag, encode, decode], C), Shape)
+    end || C <- maps:get(constructors, D)]} end, Definitions),
+    S#{definitions => Native, native_codecs => Combined, native_shapes => NativeShapes,
+        canonical => maps:get(canonical, S, S)}.
+
+%% A generated Gleam helper calls the application's constructor by field name.
+%% Unique markers reveal the compiler's tuple positions without guessing its
+%% field order or duplicating its constructor-name normalization. The helper
+%% only constructs a custom-type value; it never calls application functions.
+%% ref:DEC-native-bindings-typed-identity
+constructor_shape(Encode, Count) when is_function(Encode, 1), is_integer(Count), Count >= 0 ->
+    Markers = [make_ref() || _ <- lists:seq(1, Count)],
+    Template = Encode(Markers),
+    case {Count, Template} of
+        {0, Tag} when is_atom(Tag) -> #{native_tag => Tag};
+        {_, Tuple} when is_tuple(Tuple), tuple_size(Tuple) =:= Count + 1,
+                is_atom(element(1, Tuple)) ->
+            Positions = [[I || I <- lists:seq(2, Count + 1), element(I, Tuple) =:= Marker] || Marker <- Markers],
+            require(lists:all(fun(P) -> length(P) =:= 1 end, Positions), invalid_constructor_shape),
+            Tag = element(1, Tuple),
+            #{encode => Encode, decode => fun
+                (V) when is_tuple(V), tuple_size(V) =:= Count + 1, element(1, V) =:= Tag ->
+                    {ok, [element(I, V) || [I] <- Positions]};
+                (_) -> no_match
+            end};
+        _ -> fail(invalid_constructor_shape)
+    end.
+
 validate(Value, T, S) when is_binary(T) -> validate(Value, lawspec_beam_scalar:type(T), S);
 validate(Value, T, S) -> check_type(T, S), walk(Value, T, S, validate).
 
@@ -128,16 +188,34 @@ from_native(Value, T, S) -> check_type(T, S), validate(walk(Value, T, S, decode)
 
 walk(Value, {Name, Args} = T, #{codecs := Codecs} = S, Mode)
         when Mode =:= encode; Mode =:= decode ->
-    case maps:find(Name, Codecs) of
+    case maps:find(Name, maps:get(native_codecs, S, #{})) of
+        {ok, Hook} -> native_codec(Value, T, S, Mode, Hook);
+        error -> case maps:find(Name, Codecs) of
         {ok, Codec} ->
             Children = [fun(V) -> case Mode of
                 encode -> to_native(V, Child, S);
                 decode -> from_native(V, Child, S)
             end end || Child <- Args],
             (maps:get(Mode, Codec))(Value, Children);
-        error -> walk_shape(Value, T, S, Mode)
+            error -> walk_shape(Value, T, S, Mode)
+        end
     end;
 walk(Value, T, S, Mode) -> walk_shape(Value, T, S, Mode).
+
+native_codec(Value, {Name, Args} = T, #{canonical := Canonical} = S, Mode, Hook) ->
+    try
+        Children = [fun(V) -> case Mode of
+            encode -> to_native(from_native(V, Child, Canonical), Child, S);
+            decode -> to_native(from_native(V, Child, S), Child, Canonical)
+        end end || Child <- Args],
+        Convert = maps:get(Mode, Hook),
+        case Mode of
+            encode -> Convert(to_native(Value, T, Canonical), Children);
+            decode -> from_native(Convert(Value, Children), T, Canonical)
+        end
+    catch Kind:Reason:Stack ->
+        erlang:raise(error, {lawspec, {native_codec, Name, Mode, Kind, Reason}}, Stack)
+    end.
 
 walk_shape(Values, {<<"List">>, [T]}, S, Mode) when is_list(Values) ->
     [walk(V, T, S, Mode) || V <- Values];

@@ -1,0 +1,6 @@
+@@ lib/native_token.ex
+<<<<<<<
+Process.put(reference, 1)
+=======
+Process.put(reference, 0)
+>>>>>>>

@@ -1,0 +1,7 @@
+expect: native generator native.codecs::type::Positive
+@@ test/native_codecs_generators.erl
+<<<<<<<
+proper_types:integer(1, 127)
+=======
+proper_types:exactly(0)
+>>>>>>>

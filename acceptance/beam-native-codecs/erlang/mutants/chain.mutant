@@ -1,0 +1,6 @@
+@@ src/native_codecs.erl
+<<<<<<<
+copy_chain(#{items := Items, ended := Ended}) -> #{items => Items, ended => Ended}.
+=======
+copy_chain(#{items := Items, ended := Ended}) -> #{items => lists:sublist(Items, 0), ended => Ended}.
+>>>>>>>

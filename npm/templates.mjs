@@ -167,11 +167,11 @@ const scaffolds = {
                     },
                     "erlang": {
                       "readable": {
-                        "rebar.config": "{erl_opts, [debug_info]}.\n{deps, [{proper, \"1.5.0\"}]}.\n",
+                        "rebar.config": "{erl_opts, [debug_info]}.\n{profiles, [{test, [{deps, [{proper, \"1.5.0\"}]}]}]}.\n",
                         "src/lawspec_example.app.src": "{application, lawspec_example, [\n    {description, \"LawSpec example\"},\n    {vsn, \"0.1.0\"},\n    {modules, []},\n    {registered, []},\n    {applications, [kernel, stdlib]}\n]}.\n"
                       },
                       "compact": {
-                        "rebar.config": "{erl_opts, [debug_info]}.\n{deps, [{proper, \"1.5.0\"}]}.\n",
+                        "rebar.config": "{erl_opts, [debug_info]}.\n{profiles, [{test, [{deps, [{proper, \"1.5.0\"}]}]}]}.\n",
                         "src/lawspec_example.app.src": "{application, lawspec_example, [\n    {description, \"LawSpec example\"},\n    {vsn, \"0.1.0\"},\n    {modules, []},\n    {registered, []},\n    {applications, [kernel, stdlib]}\n]}.\n"
                       }
                     },

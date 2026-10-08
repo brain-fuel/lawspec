@@ -1,0 +1,6 @@
+@@ lib/native_token.ex
+<<<<<<<
+n + Process.get(reference)
+=======
+n - 1 + Process.get(reference)
+>>>>>>>

@@ -1,0 +1,6 @@
+@@ src/native_shapes.gleam
+<<<<<<<
+pub fn copy_box(value: Wrapped(a)) -> Wrapped(a) { Wrapped(value.stored) }
+=======
+pub fn copy_box(value: Wrapped(Int)) -> Wrapped(Int) { Wrapped(value.stored + 1) }
+>>>>>>>

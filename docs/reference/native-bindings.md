@@ -15,7 +15,7 @@ generated code does with it. For step-by-step use, see
 
 Bindings are set per target in `lawspec.json` (`targets[].nativeBindings`) or in
 a schema-4 compiler request (`nativeBindings`). The fields are `types`,
-`functions`, `generators`, `rustCrate` and `goImports`; their shapes are in the
+`functions`, `generators`, `rustCrate`, `goImports` and `erlangIncludes`; their shapes are in the
 [API reference](api.md#native-bindings).
 
 - Declarations are named by resolved identity: `<unit>::type::<Name>` for data
@@ -210,6 +210,38 @@ generator factories and bound functions are `codec`, `generator` and
   supplied child converters.
 - Factories return Hedgehog `Gen`s, with one child `Gen` per type parameter.
 - An empty type parameter is supplied as `Gen.discard`.
+
+### Erlang, Elixir and Gleam
+
+- All three targets share checked Erlang conversions. Public definitions and
+  codec arguments use each target's canonical native types. Generic hooks take
+  one conversion function per type parameter, after the value being converted.
+- Erlang function references are `["module", "function"]`. A `variant`
+  constructor uses a tagged tuple with fields in LawSpec declaration order;
+  a `unit` constructor uses an atom. A `record` constructor uses the named
+  record and mapped fields from `erlangIncludes`. For example,
+  `"erlangIncludes": [{"path": "domain.hrl"}]` emits `-include("domain.hrl")`;
+  `"library": true` selects `-include_lib`. Headers determine record positions
+  and defaults. Put project headers in the normal Erlang include directory.
+- Elixir references contain module components and the function name, such as
+  `["MyApp", "Orders", "copy"]`. Constructor references name structs. Mapped
+  fields are passed to `struct!`, preserving defaults on other fields. A
+  lowercase singleton reference such as `["empty"]` represents an atom.
+- Gleam references contain module path components and a function or capitalized
+  type/constructor name. Generated typed constructor helpers use mapped labels,
+  preserving the native constructor's field order. Codec hooks can represent
+  opaque types through their public functions.
+- Method bindings call the bound handle's module with the receiver first.
+  Constructor bindings omit `Unit` inputs; a `Unit` result ignores the native
+  return value after executing the call.
+- Factories return PropEr generators, `StreamData.t(a)` or `qcheck.Generator(a)`.
+  Child generators produce native bound values. Every generated value and shrink
+  crosses the checked schema before refinements filter it. Invalid values fail.
+  Finite domains are enumerated without invoking their factories.
+- Optional factory scaffolds live in Erlang `test/`, Elixir `test/support/`, or
+  Gleam `test/`. Gleam factories can import the application's types. Generated
+  Erlang test helpers for Gleam live in the local `test-support/` development
+  package, keeping property frameworks out of production exports.
 
 ## Uninhabited type parameters
 

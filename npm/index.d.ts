@@ -210,12 +210,18 @@ export interface NativeGoImport {
   path: string;
 }
 
+export interface NativeErlangInclude {
+  path: string;
+  library?: boolean;
+}
+
 export interface NativeBindings {
   types?: NativeTypeBinding[];
   generators?: NativeGeneratorBinding[];
   functions?: NativeFunctionBinding[];
   rustCrate?: string;
   goImports?: NativeGoImport[];
+  erlangIncludes?: NativeErlangInclude[];
 }
 
 export type DischargeStatus =

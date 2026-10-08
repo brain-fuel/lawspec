@@ -1,0 +1,6 @@
+@@ lib/native_shapes.ex
+<<<<<<<
+def copy_box(%N.Wrapped{stored: value, audit: :retained}), do: %N.Wrapped{stored: value}
+=======
+def copy_box(%N.Wrapped{stored: value, audit: :retained}), do: %N.Wrapped{stored: value + 1}
+>>>>>>>
