@@ -1,0 +1,6 @@
+@@ src/example/beam_failures.gleam
+<<<<<<<
+"negative refund"
+=======
+"wrong message"
+>>>>>>>

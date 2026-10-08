@@ -1,0 +1,6 @@
+@@ lib/example_beam_failures.ex
+<<<<<<<
+raise Native.Failures.Negative, message: "negative refund"
+=======
+:erlang.throw(%Native.Failures.Negative{message: "negative refund"})
+>>>>>>>

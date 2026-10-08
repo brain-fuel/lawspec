@@ -1,0 +1,6 @@
+@@ src/example_beam_failures.erl
+<<<<<<<
+{rejection_limit, 5000}
+=======
+{rejection_limit, 4999}
+>>>>>>>

@@ -1,0 +1,6 @@
+@@ src/example_beam_failures.erl
+<<<<<<<
+<<"negative refund">>
+=======
+<<"wrong message">>
+>>>>>>>

@@ -1,0 +1,6 @@
+@@ src/native_failures.erl
+<<<<<<<
+refund_declined
+=======
+other_declined
+>>>>>>>

@@ -1,0 +1,22 @@
+{
+  "failures": [
+    {
+      "native": [
+        "refund_declined"
+      ],
+      "failure": "example.beamFailures::Rejection::Declined"
+    },
+    {
+      "native": [
+        "refund_blocked"
+      ],
+      "failure": "example.beamFailures::Rejection::Blocked"
+    },
+    {
+      "native": [
+        "lawspec"
+      ],
+      "failure": "example.beamFailures::Rejection::Blocked"
+    }
+  ]
+}

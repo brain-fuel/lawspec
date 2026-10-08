@@ -1,0 +1,49 @@
+unit example.beamFailures
+
+type Rejection is
+  | Declined message :: Text
+  | Blocked
+  | Limit value :: Int32
+end
+
+refund :: Int32 -> Int32 fails with Rejection
+checkedLimit :: Int32 -> Int32 fails with Rejection
+
+definition limit (n :: Int32) :: Int32 fails with Rejection is
+  if n < 0 then raise Blocked else
+    if n > 5000 then raise (Limit 5000) else n
+end
+
+law `native failures carry their message` is
+  definition is `for all` (n :: Int32 where n < 0) .
+    refund n fails with Declined _ message contains "negative"
+  end
+  example `minus one` is
+    n = -1
+    expect prelude.attempt (refund n) = Left (Declined "negative refund")
+  end
+end
+
+law `native failures retain their fields` is
+  definition is `for all` (n :: Int32 where n > 5000) .
+    refund n fails with Limit 5000
+  end
+end
+
+law `native successes become Right` is
+  definition is `for all` (n :: Int32 where n >= 0 && n <= 5000) .
+    prelude.attempt (refund n) = Right n
+  end
+end
+
+law `checked definitions and public native wrappers agree` is
+  definition is `for all` (n :: Int32) .
+    prelude.attempt (checkedLimit n) = prelude.attempt (limit n)
+  end
+end
+
+law `failure patterns distinguish constructors` is
+  definition is `for all` (n :: Int32 where n < 0) .
+    checkedLimit n fails with Blocked && !(checkedLimit n fails with Declined _)
+  end
+end

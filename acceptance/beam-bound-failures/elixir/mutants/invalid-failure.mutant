@@ -1,0 +1,6 @@
+@@ lib/native_failures.ex
+<<<<<<<
+amount: 5000
+=======
+amount: -2147483649
+>>>>>>>

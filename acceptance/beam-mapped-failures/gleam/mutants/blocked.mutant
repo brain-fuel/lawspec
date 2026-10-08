@@ -1,0 +1,6 @@
+@@ src/beam_failures_exceptions.erl
+<<<<<<<
+erlang:error(refund_blocked)
+=======
+erlang:error(refund_declined)
+>>>>>>>

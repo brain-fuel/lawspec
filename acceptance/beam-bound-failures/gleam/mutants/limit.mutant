@@ -1,0 +1,6 @@
+@@ src/native_failures.gleam
+<<<<<<<
+TooMuch(5000)
+=======
+TooMuch(4999)
+>>>>>>>

@@ -96,6 +96,17 @@ test_nativeBindingRequestsAreValidatedAtTheirBoundary = describe "native binding
       let withoutHeader = case binding of Object value -> Object (KM.delete "erlangIncludes" value); other -> other
       codes (request "erlang" False source withoutHeader) `shouldBe` [String "native-binding"]
       mapM_ (\target -> codes (request target False source binding) `shouldBe` [String "native-binding"]) ["elixir","gleam"]
+    mapM_ (\target -> it (target ++ " maps only the declared native exception representation") $ do
+      source <- readFile "acceptance/beam-failures/failures.lawspec"
+      binding <- either error id . eitherDecode <$> BL.readFile ("acceptance/beam-mapped-failures/" ++ target ++ "/bindings.json")
+      let result = request target False source binding
+          definitions = concat [content f | f <- files result, field "path" f == Just (String "src/lawspec_definitions.erl")]
+          invalid = object ["failures" .= [object
+            ["native" .= (["invalid", "Failure"] :: [String]),
+             "failure" .= ("example.beamFailures::Rejection::Declined" :: String)]]]
+      codes result `shouldBe` []
+      definitions `shouldSatisfy` isInfixOf "lawspec_beam_effects:match_exception"
+      codes (request target False source invalid) `shouldNotBe` []) ["erlang","elixir","gleam"]
 
   it "emits Kotlin scalar bridges even without structural declarations or laws" $ do
     let request = object

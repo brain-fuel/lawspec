@@ -1,0 +1,6 @@
+@@ lib/example_beam_failures.ex
+<<<<<<<
+%LawSpec.Data.RejectionDeclined{message: "negative refund"}
+=======
+%LawSpec.Data.RejectionBlocked{}
+>>>>>>>

@@ -1,0 +1,6 @@
+@@ src/native_failures.erl
+<<<<<<<
+"negative refund"
+=======
+"wrong message"
+>>>>>>>

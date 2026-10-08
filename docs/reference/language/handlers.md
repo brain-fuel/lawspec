@@ -230,6 +230,16 @@ constructors under `failures` in `lawspec.json`:
 - Where a law calls an adapter that `fails with` the type, the mapped
   exception becomes that failure, as if the adapter had raised it.
 
+On Elixir, `native` is the exception module's path, such as
+`["Payments", "CardDeclined"]`. The mapping uses `Exception.message/1`.
+
+On Erlang and Gleam, `native` is one atom naming an Erlang error reason,
+such as `["card_declined"]`. It matches `error(card_declined)` and an error
+tuple whose first element is `card_declined`. In `{card_declined, Message}`,
+a binary `Message` becomes the failure's text; other matching reasons use
+their printed Erlang term. Gleam code can raise these errors through its
+Erlang FFI. These mappings apply to exceptions of class `error`.
+
 ## Spec handlers with state, at compile time
 
 A law that runs under spec handlers with state is evaluated by the compiler

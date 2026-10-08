@@ -1,0 +1,6 @@
+@@ src/example/beam_failures.gleam
+<<<<<<<
+n if n > 5000 -> fail(data.RejectionLimit(5000))
+=======
+n if n > 5000 -> panic as "untyped failure"
+>>>>>>>

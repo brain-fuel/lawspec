@@ -1,0 +1,6 @@
+@@ src/example_beam_failures.erl
+<<<<<<<
+lawspec_beam_effects:fail({rejection_limit, 5000})
+=======
+erlang:error({rejection_limit, 5000})
+>>>>>>>

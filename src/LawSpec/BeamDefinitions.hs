@@ -2,7 +2,7 @@
 -- entry points call the same implementations and cross the same schema bridge.
 -- ref:DEC-total-definitions ref:DEC-native-bindings-typed-identity
 module LawSpec.BeamDefinitions
-  ( emitDefinitions, external, declarationSpec, adapterModule, entries ) where
+  ( emitDefinitions, external, nativeFailures, declarationSpec, adapterModule, entries ) where
 
 import qualified LawSpec.Core as C
 import qualified LawSpec.Code.Doc as D
@@ -12,6 +12,8 @@ import LawSpec.Core.DefinitionContracts (checkedDefinitionContracts)
 import LawSpec.Core.Evidence (runtimePostconditions)
 import LawSpec.Common (Artifact(..))
 import Control.Monad (forM)
+import Data.Char (isUpper)
+import Data.List (intercalate)
 
 entries :: [C.Unit] -> [(C.Id,String)]
 entries units = [(C.declarationId d,"evaluate_" ++ show i)
@@ -21,10 +23,47 @@ adapterModule :: C.Unit -> String
 adapterModule = E.moduleName . C.unitId
 
 external :: [C.Unit] -> D.Doc -> D.Doc -> C.Expr -> [D.Doc] -> Either String D.Doc
-external units schema symbols expression args = case C.expressionNode expression of
+external units symbols schema expression args = case C.expressionNode expression of
   C.ExternalCall identity _ -> maybe (Left ("unresolved BEAM call: " ++ C.idText identity))
     (\name -> pure (E.remote "lawspec_definitions" name (schema : symbols : args))) (lookup identity (entries units))
+  C.Perform operation _ | C.isFail (C.operationAbility operation), [value] <- args ->
+    pure (E.remote "lawspec_beam_effects" "raise_failure"
+      [E.binary (C.abilityKey (C.operationAbility operation)),value])
+  C.Handle (C.CatchFailure ability) _ | [body] <- args -> do
+    ref <- E.typeReference (C.expressionType expression)
+    let side tag = E.lambda [D.text "_LsFailureValue"] (E.remote "lawspec_beam_schema" "construct"
+          [E.binary tag,E.array [D.text "_LsFailureValue"],ref,schema])
+    pure (E.remote "lawspec_beam_effects" "attempt" [E.binary (C.abilityKey ability),body,
+      side "Either::Right",side "Either::Left"])
   _ -> Left "BEAM ability handlers are not implemented yet"
+
+-- | Only an adapter's declared failure type gives a native failure meaning.
+-- The same bridge validates failures from ordinary and bound native calls.
+nativeFailures :: String -> [C.FailureBinding] -> D.Doc -> C.Declaration -> D.Doc -> Either String D.Doc
+nativeFailures target bindings schema declaration body = case [a | a <- C.declarationUses declaration, C.isFail a] of
+  [] -> pure body
+  ability@(C.AbilityRef _ [failure]) : _ -> do
+    ref <- E.typeReference failure
+    mappings <- forM [b | b <- bindings, C.failureType b == failure] $ \binding -> do
+      kind <- case (target, C.failureNative binding) of
+        ("elixir", parts) | not (null parts), all (\p -> case p of c:_ -> isUpper c; [] -> False) parts ->
+          pure (E.tuple [E.atom "elixir",E.atom ("Elixir." ++ intercalate "." parts)])
+        ("elixir", _) -> Left "Elixir native failures require a capitalized exception module path"
+        (_, [tag]) | not (null tag) -> pure (E.tuple [E.atom "tag",E.atom tag])
+        _ -> Left "Erlang and Gleam native failures require one atom naming a tagged Erlang error"
+      let value = E.remote "lawspec_beam_schema" "construct" [E.binary (C.idText (C.failureConstructor binding)),
+            E.array [D.text "_LsExceptionMessage" | C.failureMessage binding],ref,schema]
+          match = E.remote "lawspec_beam_effects" "match_exception"
+            [kind,D.text "_LsExceptionClass",D.text "_LsExceptionReason"]
+      pure (E.lambda [D.text "_LsExceptionClass",D.text "_LsExceptionReason"]
+        (D.group (D.text "case " <> match <> D.text " of" <>
+          D.nest 4 (D.softline <> D.text "no_match -> no_match;" <>
+            D.softline <> D.text "{ok, _LsExceptionMessage} -> " <> E.tuple [E.atom "ok",value]) <>
+          D.softline <> D.text "end")))
+    pure (E.remote "lawspec_beam_effects" "native_failures" [E.binary (C.abilityKey ability),
+      E.lambda [D.text "_LsNativeFailure"] (E.remote "lawspec_beam_schema" "from_native"
+        [D.text "_LsNativeFailure",ref,schema]),E.lambda [] body,E.array mappings])
+  _ -> Left "a BEAM failure ability requires its failure type"
 
 declarationSpec :: Int -> [(C.Id,String)] -> C.Declaration -> Either String D.Doc
 declarationSpec bits names declaration = do
@@ -60,14 +99,20 @@ emitDefinitions target layout bits declarations units bound = do
           definition = lookup identity definitions
           locals = maybe [] (\d -> zip (map C.binderId (C.definitionArguments d)) arguments) definition
           resolve table variable = maybe (error ("unbound BEAM binder: " ++ C.idText variable)) id (lookup variable table)
-          render table = Expr.renderExpression bits schema symbols (resolve table) (external units schema symbols)
+          render table = Expr.renderExpression bits schema symbols (resolve table) (external units symbols)
       body <- case definition of
         Just d -> render locals (C.definitionBody d)
         Nothing -> case lookup identity bound of
           Just name -> pure (E.remote "lawspec_native_bindings" name (schema : symbols : map D.text arguments))
           Nothing -> do
             nativeArguments <- sequence [bridge "to_native" ty (D.text arg) | (ty,arg) <- zip parameterTypes arguments]
-            bridge "from_native" resultType (E.remote (E.nativeModule target unit) (E.nativeFunction target declaration) nativeArguments)
+            let nativeNames = [D.text ("_LsNativeInput" ++ show i) | (i,_) <- zip [0::Int ..] nativeArguments]
+            invocation <- nativeFailures target (C.unitFailureBindings unit) schema declaration
+              (E.remote (E.nativeModule target unit) (E.nativeFunction target declaration) nativeNames)
+            result <- bridge "from_native" resultType invocation
+            -- A mapping describes application exceptions. Neither input nor
+            -- result validation may turn into a successful expected failure.
+            pure (E.apply (E.lambda nativeNames result) nativeArguments)
       let candidates = case definition of Just _ -> verified; Nothing -> C.unitContracts unit
           contracts = [c | c <- candidates, C.contractDeclaration c == identity]
       pre <- fmap concat $ forM contracts $ \c -> do

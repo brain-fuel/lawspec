@@ -1,0 +1,6 @@
+@@ src/example_beam_failures.erl
+<<<<<<<
+{rejection_declined, <<"negative refund">>}
+=======
+rejection_blocked
+>>>>>>>

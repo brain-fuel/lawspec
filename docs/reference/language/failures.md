@@ -90,6 +90,14 @@ type, synchronously or from an async adapter:
 | Kotlin | `throw LawSpecRuntime.Fail(lawspec.data.PaymentError.TooLarge(5000))` |
 | Rust | `ls::fail(PaymentError::TooLarge { limit: 5000 })` |
 | Haskell | `throwIO (LS.Fail (Data.PaymentErrorTooLarge 5000))` |
+| Erlang | `lawspec_beam_effects:fail({payment_error_too_large, 5000})` |
+| Elixir | `:lawspec_beam_effects.fail(%LawSpec.Data.PaymentErrorTooLarge{limit: 5000})` |
+| Gleam | `failures.fail(data.PaymentErrorTooLarge(5000))`, importing `lawspec/failures` |
+
+On the BEAM targets, the boundary checks the failure value against the
+declared type, including bound native representations. `prelude.attempt`
+catches the matching `Fail` ability; an unrelated exception remains an
+exception.
 
 An application that raises its own exceptions maps them to constructors in
 `lawspec.json` under `failures` (see [Handlers](handlers.md)); that mapping

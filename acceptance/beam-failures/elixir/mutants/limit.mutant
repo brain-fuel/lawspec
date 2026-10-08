@@ -1,0 +1,6 @@
+@@ lib/example_beam_failures.ex
+<<<<<<<
+value: 5000
+=======
+value: 4999
+>>>>>>>

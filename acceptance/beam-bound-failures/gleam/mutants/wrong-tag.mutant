@@ -1,0 +1,6 @@
+@@ src/beam_failures_exceptions.erl
+<<<<<<<
+refund_declined
+=======
+other_declined
+>>>>>>>

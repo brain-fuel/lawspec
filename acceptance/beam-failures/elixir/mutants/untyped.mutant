@@ -1,0 +1,6 @@
+@@ lib/example_beam_failures.ex
+<<<<<<<
+:lawspec_beam_effects.fail(%LawSpec.Data.RejectionLimit{value: 5000})
+=======
+:erlang.error(%LawSpec.Data.RejectionLimit{value: 5000})
+>>>>>>>

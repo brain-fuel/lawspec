@@ -1,0 +1,20 @@
+{
+  "failures": [
+    {
+      "native": [
+        "Native",
+        "Failures",
+        "Negative"
+      ],
+      "failure": "example.beamFailures::Rejection::Declined"
+    },
+    {
+      "native": [
+        "Native",
+        "Failures",
+        "Blocked"
+      ],
+      "failure": "example.beamFailures::Rejection::Blocked"
+    }
+  ]
+}

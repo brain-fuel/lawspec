@@ -50,8 +50,10 @@ extra-source-files:
     runtime/lawspec_network.go
     runtime/lawspec_runtime.go
     runtime/lawspec_schema.go
+    runtime/lawspec_beam_effects.erl
     runtime/lawspec_beam_generators.erl
     runtime/lawspec_beam_gleam.erl
+    runtime/lawspec_beam_handler.erl
     runtime/lawspec_beam_index.erl
     runtime/lawspec_beam_proper.erl
     runtime/lawspec_beam_qcheck.erl
@@ -61,6 +63,10 @@ extra-source-files:
     runtime/lawspec_beam_scalar.erl
     runtime/lawspec_beam_schema.erl
     runtime/lawspec_beam_values.erl
+    runtime/lawspec_beam_stream_data.ex
+    runtime/lawspec_gleam_failures.gleam
+    runtime/lawspec_gleam_scalar.gleam
+    runtime/lawspec_gleam_types.gleam
     runtime/defaults/vectors.txt
     runtime/defaults/go/concurrent.go
     runtime/defaults/go/crypto.go
@@ -192,6 +198,7 @@ extra-source-files:
     test/fixtures/native_shapes.lawspec
     test/fixtures/python_constructor_fields.lawspec
     test/fixtures/total_definitions.lawspec
+    test/fixtures/beam/lawspec_beam_effects_tests.erl
     test/fixtures/beam/lawspec_beam_gleam_tests.erl
     test/fixtures/beam/lawspec_beam_index_tests.erl
     test/fixtures/beam/lawspec_beam_native_generator_tests.erl

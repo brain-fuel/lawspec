@@ -1,0 +1,6 @@
+@@ src/example_beam_failures.erl
+<<<<<<<
+erlang:error({refund_declined, <<"negative refund">>})
+=======
+throw({refund_declined, <<"negative refund">>})
+>>>>>>>

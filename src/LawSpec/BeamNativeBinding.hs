@@ -9,6 +9,7 @@ import qualified LawSpec.Code.Doc as D
 import qualified LawSpec.BeamCode as E
 import qualified LawSpec.GleamCode as G
 import qualified LawSpec.ElixirCode as X
+import qualified LawSpec.BeamDefinitions as Definitions
 import LawSpec.NativeBinding
 import LawSpec.NativeRequest
 import LawSpec.Common (Artifact(..))
@@ -201,7 +202,8 @@ emitBindings target layout bindings plan = do
             C.Constructor name [] -> [m | m <- mappings, let d = resolvedDeclaration m,
               C.dataHandle d, C.dataId d == C.Id name]
             _ -> []
-      arguments <- sequence [convert "to_native" ty value | (ty,value) <- zip types values]
+      nativeValues <- sequence [convert "to_native" ty value | (ty,value) <- zip types values]
+      let arguments = [D.text ("_NativeArgument" ++ show i) | (i,_) <- zip [0::Int ..] nativeValues]
       invocation <- case call of
         StaticCall ref -> nativeCall target ref arguments
         ConstructorCall ref -> nativeCall target ref [v | (ty,v) <- zip types arguments, ty /= C.scalarType "Unit"]
@@ -212,13 +214,14 @@ emitBindings target layout bindings plan = do
             nativeCall target (NativeRef (moduleParts ++ [method]))
               (arguments !! receiver : [v | (i,v) <- zip [0::Int ..] arguments, i /= receiver])
           [] -> Left "a BEAM method binding needs its handle bound to a native type"
-      output <- if result == C.scalarType "Unit" then pure (E.sequenceDoc [invocation,E.atom "ls_unit"])
-        else convert "from_native" result invocation
+      checked <- Definitions.nativeFailures target (bindingFailures bindings) schema declaration invocation
+      output <- if result == C.scalarType "Unit" then pure (E.sequenceDoc [checked,E.atom "ls_unit"])
+        else convert "from_native" result checked
       name <- maybe (Left "missing BEAM bound entry") Right (lookup (C.declarationId declaration) (boundEntries bindings))
       pure (E.function name (D.text "_Canonical" : D.text "_Symbols" : values)
         [D.text "_Native = " <> E.call "schema" [D.text "_Canonical"],
          E.remote "lawspec_beam_runtime" "contextual" [E.binary ("native binding " ++ C.idText (C.declarationId declaration)),
-           E.lambda [] output]])
+           E.lambda [] (E.apply (E.lambda arguments output) nativeValues)]])
     gleamConstructors = do
       let modules = nub [init parts | (m,c) <- constructors,
             ref <- [resolvedNativeType m,resolvedNativeConstructor c], let parts = referenceParts ref]

@@ -1,0 +1,6 @@
+@@ lib/native_failures.ex
+<<<<<<<
+raise(Native.Failures.Blocked)
+=======
+raise(ArgumentError)
+>>>>>>>

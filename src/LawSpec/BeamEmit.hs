@@ -48,9 +48,13 @@ emitBeamWithBindings target minify bindings plan = do
       pure (schemaFile : definitions ++ adapters ++ [a | a <- native, artifactPath a `notElem` boundPaths] ++ tests ++ runtimes ++ generators tests)
     runtimes = [Artifact ("src/lawspec_beam_" ++ name ++ ".erl")
         (runtimeSource ("beam-" ++ name)) "generated" "source"
-        | name <- ["scalar","schema","regex","runtime"] ++ ["gleam" | target == "gleam"]] ++
+        | name <- ["scalar","schema","regex","runtime"] ++
+            (if usesEffects then ["effects","handler"] else []) ++
+            ["gleam" | target == "gleam"]] ++
         [Artifact ("src/lawspec/" ++ name ++ ".gleam") (runtimeSource ("beam-gleam-" ++ name)) "generated" "source"
-          | name <- ["types","scalar"], target == "gleam"]
+          | name <- ["types","scalar"] ++ ["failures" | usesEffects], target == "gleam"]
+    usesEffects = any (not . null . C.unitAbilities) units ||
+      any (not . null . C.declarationUses) (concatMap C.unitDeclarations units)
     generators tests = if null tests then [] else
         [Artifact (testSupport ++ "lawspec_beam_" ++ name ++ ".erl") (runtimeSource ("beam-" ++ name)) "generated" "test"
           | name <- ["generators", "index"]] ++
@@ -110,7 +114,7 @@ emitBeamWithBindings target minify bindings plan = do
           parameters = map (C.quantifiedBinder) (C.propertyInputs law)
           aliases = zip (map C.binderId parameters) ["_LsInput" ++ show i | i <- [0::Int ..]]
           local identity = maybe (error ("unbound BEAM law binder: " ++ C.idText identity)) id (lookup identity aliases)
-          render = Expr.renderExpression bits schema symbols local (Definitions.external units schema symbols)
+          render = Expr.renderExpression bits schema symbols local (Definitions.external units symbols)
           label = C.idText (C.propertyId law)
           check result = E.remote "lawspec_beam_runtime" "require" [result,E.binary label]
           caseName = name ++ "_case"
@@ -224,8 +228,9 @@ validatePlan target plan = do
   unless (all (null . C.unitMachines) units && all (null . C.unitSessions) units &&
     all (null . C.unitSupervisors) units && all (null . C.unitMailboxes) units)
     (Left "BEAM models, sessions, actors and mailboxes are not implemented yet")
-  unless (all (null . C.declarationUses) declarations && all (null . C.unitAbilities) units &&
-    all (null . C.unitHandlers) units && all (null . C.propertyHandlers . plannedProperty) laws)
+  unless (all (all C.isFail . C.declarationUses) declarations &&
+    all (all (C.isFail . C.abilityInstance) . C.unitAbilities) units &&
+    all (null . C.unitHandlers) units && all (all (C.isFail . fst) . C.propertyHandlers . plannedProperty) laws)
     (Left "BEAM ability handlers are not implemented yet")
   unless (all (not . C.declarationAsync) declarations && all ((== Nothing) . C.definitionPolicy) (concatMap C.unitDefinitions units))
     (Left "BEAM async adapters and workflow policies are not implemented yet")

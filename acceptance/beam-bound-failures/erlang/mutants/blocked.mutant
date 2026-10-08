@@ -1,0 +1,6 @@
+@@ src/native_failures.erl
+<<<<<<<
+erlang:error(refund_blocked)
+=======
+erlang:error(refund_declined)
+>>>>>>>

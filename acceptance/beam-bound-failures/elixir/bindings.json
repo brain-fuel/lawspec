@@ -1,0 +1,90 @@
+{
+  "types": [
+    {
+      "type": "example.beamFailures::type::Rejection",
+      "native": [
+        "Native",
+        "Failures",
+        "Rejection"
+      ],
+      "constructors": [
+        {
+          "constructor": "Declined",
+          "native": [
+            "Native",
+            "Failures",
+            "Rejected"
+          ],
+          "style": "variant",
+          "fields": [
+            {
+              "field": "message",
+              "native": "reason"
+            }
+          ]
+        },
+        {
+          "constructor": "Blocked",
+          "native": [
+            "Native",
+            "Failures",
+            "Denied"
+          ],
+          "style": "unit",
+          "fields": []
+        },
+        {
+          "constructor": "Limit",
+          "native": [
+            "Native",
+            "Failures",
+            "TooMuch"
+          ],
+          "style": "variant",
+          "fields": [
+            {
+              "field": "value",
+              "native": "amount"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "functions": [
+    {
+      "declaration": "example.beamFailures::refund",
+      "native": [
+        "Native",
+        "Failures",
+        "refund"
+      ]
+    },
+    {
+      "declaration": "example.beamFailures::checkedLimit",
+      "native": [
+        "Native",
+        "Failures",
+        "checked_limit"
+      ]
+    }
+  ],
+  "failures": [
+    {
+      "native": [
+        "Native",
+        "Failures",
+        "Negative"
+      ],
+      "failure": "example.beamFailures::Rejection::Declined"
+    },
+    {
+      "native": [
+        "Native",
+        "Failures",
+        "Blocked"
+      ],
+      "failure": "example.beamFailures::Rejection::Blocked"
+    }
+  ]
+}

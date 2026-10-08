@@ -11,6 +11,10 @@ import LawSpec.Testing (planTesting)
 import LawSpec.CoreEmit (emitPlanWithFormat, emitPlanWithOptions)
 import LawSpec.TestManifest (unitTestPath)
 import LawSpec.TestNames (unitTestNames)
+import qualified LawSpec.Core as C
+import qualified LawSpec.Code.Doc as D
+import qualified LawSpec.BeamCode as E
+import qualified LawSpec.BeamExpr as Expr
 
 generated :: Bool -> String -> Either [Diagnostic] [Artifact]
 generated = generatedFor "erlang"
@@ -21,6 +25,21 @@ generatedFor target compact text = compileCore 64 defaultGeneration [Source "bea
 
 test_beamCodeUsesCheckedCoreAndNativeFrameworks :: Spec
 test_beamCodeUsesCheckedCoreAndNativeFrameworks = describe "BEAM generation" $ do
+  -- ref:DEC-typed-core-boundary
+  it "passes each lexical handler scope to operations inside nested regions" $ do
+    let ability = C.AbilityRef (C.Id "example::ability::Counter") []
+        term node = C.Expr (C.scalarType "Integer") node (C.GeneratedFrom (C.Id "scope-test"))
+        handled body = term (C.Handle (C.WithHandler ability (C.SpecHandler (C.Id "counter"))) body)
+        body = handled (handled (term (C.Perform (C.Operation ability "read") [])))
+        external schema expression values = pure (E.call
+          (case C.expressionNode expression of C.Handle _ _ -> "scoped"; _ -> "read") (schema : values))
+    case Expr.renderExpression 64 (D.text "_OuterSchema") (D.text "_Symbols") C.idText external body of
+      Left err -> expectationFailure err
+      Right doc -> do
+        let source = D.render D.Compact doc
+        source `shouldSatisfy` isInfixOf "scoped(_OuterSchema,"
+        source `shouldSatisfy` isInfixOf "scoped(_LsHandledSchema0,"
+        source `shouldSatisfy` isInfixOf "read(_LsHandledSchema1)"
   -- ref:DEC-total-definitions ref:DEC-native-property-frameworks
   it "emits reusable checked definitions and PropEr generators from Core" $ do
     input <- readFile "examples/specs/total_functions.lawspec"
@@ -142,6 +161,18 @@ test_beamCodeUsesCheckedCoreAndNativeFrameworks = describe "BEAM generation" $ d
         concatMap artifactContent artifacts `shouldSatisfy` isInfixOf "lawspec_beam_index"
         concatMap artifactContent artifacts `shouldSatisfy` isInfixOf "witness_instances") [indexed,gadt])
       ["erlang","elixir","gleam"]
+  -- ref:DEC-typed-core-boundary
+  it "emits checked typed failures through native and public definition boundaries" $ do
+    input <- readFile "acceptance/beam-failures/failures.lawspec"
+    mapM_ (\target -> case generatedFor target False input of
+      Left errors -> expectationFailure (show errors)
+      Right artifacts -> do
+        map artifactPath artifacts `shouldContain` ["src/lawspec_beam_effects.erl"]
+        let definitions = concat [artifactContent a | a <- artifacts, artifactPath a == "src/lawspec_definitions.erl"]
+            tests = concat [artifactContent a | a <- artifacts, artifactPlacement a == "test"]
+        definitions `shouldSatisfy` isInfixOf "lawspec_beam_effects:raise_failure"
+        definitions `shouldSatisfy` isInfixOf "lawspec_beam_effects:native_failures"
+        tests `shouldSatisfy` isInfixOf "lawspec_beam_effects:attempt") ["erlang","elixir","gleam"]
   -- ref:DEC-never-pass-vacuously
   it "refuses an execution plane before it can silently omit its behavior" $ do
     input <- readFile "examples/specs/abilities.lawspec"

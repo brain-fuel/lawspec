@@ -88,7 +88,7 @@ emitData target layout bits declarations = do
           key ty = E.remote "lawspec_beam_schema" "type_key" . pure <$> ref ty
       body <- Expr.renderExpressionWithContext (D.text (show bits)) ref key
         (D.text "_LsSchema") (D.text "_LsSymbols") local
-        (\_ _ -> Left "external call in a BEAM constructor predicate") expression
+        (\_ _ _ -> Left "external call in a BEAM constructor predicate") expression
       pure (E.lambda (map D.text ["_LsSchema","_LsTypes","_LsFields"])
         (E.sequenceDoc [D.text "_LsKnown = " <> E.remote "maps" "from_list"
           [E.remote "lists" "zip" [E.remote "lists" "seq"

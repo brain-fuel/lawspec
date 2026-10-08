@@ -1,0 +1,6 @@
+@@ lib/example_beam_failures.ex
+<<<<<<<
+"negative refund"
+=======
+"wrong message"
+>>>>>>>

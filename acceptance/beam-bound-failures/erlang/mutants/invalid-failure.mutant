@@ -1,0 +1,6 @@
+@@ src/native_failures.erl
+<<<<<<<
+{too_much, 5000}
+=======
+{too_much, -2147483649}
+>>>>>>>
