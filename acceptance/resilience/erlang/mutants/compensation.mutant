@@ -1,0 +1,6 @@
+@@ src/example_limits.erl
+<<<<<<<
+charge_card({ticket, N}) when N < 0 -> {left, <<"declined">>};
+=======
+charge_card({ticket, N} = Ticket) when N < 0 -> {right, Ticket};
+>>>>>>>

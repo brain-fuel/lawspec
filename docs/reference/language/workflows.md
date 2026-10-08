@@ -236,8 +236,8 @@ stateful policies: limiters, breakers, bulkheads and caches. Calling a
 workflow without a runtime uses one shared, process-wide runtime with the real
 clock.
 
-To give a workflow its own state, or a virtual clock, create a runtime and
-pass its context where the workflow takes its Symbol context:
+To give a workflow its own state, or a virtual clock, create a runtime. The
+context-based APIs take its context where the workflow takes a Symbol context:
 
 | Target | Runtime | Context |
 | --- | --- | --- |
@@ -247,6 +247,37 @@ pass its context where the workflow takes its Symbol context:
 | Java, Kotlin | `new LawSpecRuntime.WorkflowRuntime(clock, seed)`; a null clock is real time | `runtime.context(new HashMap<>())` |
 | Rust | `ls::WorkflowRuntime::new(Box::new(ls::RealClock::default()), seed)` | `ls::Context::with_workflow(runtime)` |
 | Haskell | `LS.newWorkflowRuntime LS.realClock seed` | `LS.workflowContext runtime` |
+| Erlang | `lawspec_beam_workflow:with_virtual(Seed, Fun)` or `with_real(Seed, Fun)` | calls inside `Fun(Runtime)` |
+| Elixir | `LawSpec.Workflow.with_virtual(seed, fun)` or `with_real(seed, fun)` | calls inside `fun.(runtime)` |
+| Gleam | `lawspec/workflow.with_virtual(seed, body)` or `with_real(seed, body)` | calls inside `body(runtime)` |
+
+The BEAM APIs own a runtime for the callback's duration. Generated public
+definitions use it automatically, including calls in their async workers.
+Parallel workflows share admission and cache state while keeping separate
+compensation lists. A timeout or winning hedge cancels and joins its other
+attempts, including their nested async workers, before the next retry starts
+or the stage releases its admissions. Do not retain the runtime after its
+callback returns.
+
+For example, in Gleam:
+
+```gleam
+import example/limits/definitions
+import lawspec/data
+import lawspec/workflow
+
+pub fn book_ticket(number: Int) {
+  use runtime <- workflow.with_virtual(0)
+  let result = definitions.book(data.Ticket(number))
+  #(result, workflow.trace(runtime))
+}
+```
+
+Erlang and Elixir expose `now`, `sleep`, `set_time` and `trace` on their runtime
+module; Gleam exposes the same functions in `lawspec/workflow`. `set_time`
+applies to runtimes created with `with_virtual`. Erlang's `with_clock/3` takes
+a map with `now`, `sleep` and `virtual` keys. Elixir and Gleam's `with_clock`
+take those callbacks, the virtual flag, a seed and the runtime callback.
 
 A virtual clock (`VirtualClock`) starts at 0. Waiting advances it at once, so
 retries and rate limits take no real time. Timeouts and hedges count virtual
@@ -270,6 +301,10 @@ The trace lists events in order. Each event has a kind, a stage, and a number:
 | `cached` | 0 |
 | `compensate` | 0 |
 | `hedge` | the attempt started beside the first |
+
+On Erlang and Elixir, each event is `{kind, stage, number, succeeded}`; `kind`
+and `stage` are UTF-8 binaries. Gleam returns an `Event` with those four fields.
+The `succeeded` field describes the outcome for `finish` events.
 
 ### Asynchronous workflows
 
@@ -304,6 +339,9 @@ virtual clock, so they are deterministic. LawSpec checks every target's policies
 reference models in the built-in `lawspec.resilience` unit instead. To test a
 policy yourself, create a runtime in an adapter and call the workflow under it,
 as the [resilience example](../../../examples/specs/resilience.lawspec) does.
+On the BEAM, each generated case gets a fresh runtime; an example's law body
+and expectations share that case's runtime. Erlang property tests have a
+60-second EUnit timeout for the complete set of samples and shrinks.
 
 ## Internals
 

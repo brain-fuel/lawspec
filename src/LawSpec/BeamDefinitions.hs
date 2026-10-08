@@ -11,6 +11,7 @@ import qualified LawSpec.BeamExpr as Expr
 import LawSpec.BeamEffects (entries, external)
 import qualified LawSpec.BeamEffects as Effects
 import qualified LawSpec.BeamAbilities as Abilities
+import qualified LawSpec.BeamPolicy as Policy
 import LawSpec.Core.DefinitionContracts (checkedDefinitionContracts)
 import LawSpec.Core.Evidence (runtimePostconditions)
 import LawSpec.Common (Artifact(..))
@@ -93,7 +94,7 @@ emitDefinitions target layout bits declarations units bound = do
           resolve table variable = maybe (error ("unbound BEAM binder: " ++ C.idText variable)) id (lookup variable table)
           render table = Expr.renderExpression bits schema symbols (resolve table) (external units symbols)
       body <- case definition of
-        Just d -> render locals (C.definitionBody d)
+        Just d -> render locals (C.definitionBody d) >>= Policy.wrapDefinition units schema symbols (map D.text arguments) d
         Nothing -> case lookup identity bound of
           Just name -> pure (E.remote "lawspec_native_bindings" name (schema : symbols : map D.text arguments))
           Nothing -> do

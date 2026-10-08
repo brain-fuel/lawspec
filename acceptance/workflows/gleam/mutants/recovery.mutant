@@ -1,0 +1,6 @@
+@@ src/example/workflows.gleam
+<<<<<<<
+    data.SignupErrorUnavailable -> Ok(data.Account("waitlist", 18, 0))
+=======
+    data.SignupErrorUnavailable -> Ok(data.Account("waitlist", 18, 1))
+>>>>>>>

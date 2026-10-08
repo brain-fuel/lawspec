@@ -1,0 +1,6 @@
+@@ lib/example_approvals.ex
+<<<<<<<
+        {:left, %Data.ApproveErrorApproveFailures{error: errors}} -> Enum.map(errors, & &1.error)
+=======
+        {:left, %Data.ApproveErrorApproveFailures{error: errors}} -> Enum.reverse(Enum.map(errors, & &1.error))
+>>>>>>>

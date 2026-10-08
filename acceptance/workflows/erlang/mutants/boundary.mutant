@@ -1,0 +1,6 @@
+@@ src/example_workflows.erl
+<<<<<<<
+check_age({signup, _, Age}) when Age < 18 -> {left, <<"too young">>};
+=======
+check_age({signup, _, Age}) when Age < 17 -> {left, <<"too young">>};
+>>>>>>>

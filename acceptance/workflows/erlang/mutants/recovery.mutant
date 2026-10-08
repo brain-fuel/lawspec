@@ -1,0 +1,6 @@
+@@ src/example_workflows.erl
+<<<<<<<
+waitlist(signup_error_unavailable) -> {right, {account, <<"waitlist">>, 18, 0}};
+=======
+waitlist(signup_error_unavailable) -> {right, {account, <<"waitlist">>, 18, 1}};
+>>>>>>>

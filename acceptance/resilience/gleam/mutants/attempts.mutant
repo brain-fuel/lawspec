@@ -1,0 +1,6 @@
+@@ src/example/resilience.gleam
+<<<<<<<
+pub fn retried_waits(attempts: Int) -> List(Int) { waits(attempts, True) }
+=======
+pub fn retried_waits(attempts: Int) -> List(Int) { waits(attempts + 1, True) }
+>>>>>>>

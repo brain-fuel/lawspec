@@ -5,14 +5,21 @@
 -export([require/2, assert_equal/3, contextual/2, helper/4, concurrently/1, async_call/1,
     worker_context/0, with_worker_context/2]).
 
-%% Only LawSpec's allocator and active handler operation cross a worker
-%% boundary. Application process dictionary entries remain process-local.
+%% LawSpec's allocator, active handler operation, cancellation scopes and
+%% workflow runtime/frame cross workers. Application entries stay process-local.
 worker_context() -> [{Key, get(Key)} || Key <-
-    [{lawspec_beam_effects, scope}, {lawspec_beam_handler, context}]].
+    [{lawspec_beam_effects, scope}, {lawspec_beam_handler, context}, {lawspec_beam_tasks, scopes},
+     {lawspec_beam_workflow, runtime}, {lawspec_beam_workflow, frame}]].
 
 with_worker_context(Context, Body) ->
     Previous = [{Key, put(Key, Value)} || {Key, Value} <- Context],
-    try Body() after
+    try
+        case get({lawspec_beam_tasks, scopes}) of
+            undefined -> ok;
+            Scopes -> lawspec_beam_tasks:attach(Scopes)
+        end,
+        Body()
+    after
         lists:foreach(fun({Key, undefined}) -> erase(Key); ({Key, Value}) -> put(Key, Value) end, Previous)
     end.
 
@@ -48,7 +55,7 @@ async_call(Body) -> hd(concurrently([Body])).
 concurrently(Bodies) ->
     Caller = self(),
     Context = worker_context(),
-    {Coordinator, Monitor} = spawn_monitor(fun() ->
+    {Coordinator, Monitor} = spawn_monitor(fun() -> with_worker_context(Context, fun() ->
         process_flag(trap_exit, true),
         ParentMonitor = monitor(process, Caller),
         Workers = [{spawn_opt(fun() ->
@@ -57,7 +64,7 @@ concurrently(Bodies) ->
         end, [link, monitor]), I} || {I, Body} <- lists:enumerate(Bodies)],
         Result = collect(Workers, #{}, ParentMonitor),
         exit({lawspec_result, Result})
-    end),
+    end) end),
     receive
         {'DOWN', Monitor, process, Coordinator, {lawspec_result, {ok, Results}}} -> Results;
         {'DOWN', Monitor, process, Coordinator, {lawspec_result, {exception, Class, Reason, Stack}}} ->

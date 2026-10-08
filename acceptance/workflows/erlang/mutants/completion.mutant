@@ -1,0 +1,6 @@
+@@ src/example_approvals.erl
+<<<<<<<
+        {left, {approve_error_approve_failures, Errors}} -> [Error || {_, Error} <- Errors]
+=======
+        {left, {approve_error_approve_failures, Errors}} -> lists:reverse([Error || {_, Error} <- Errors])
+>>>>>>>

@@ -1,0 +1,6 @@
+@@ lib/example_workflows.ex
+<<<<<<<
+  def waitlist(%Data.SignupErrorUnavailable{}), do: {:right, %Data.Account{name: "waitlist", age: 18, level: 0}}
+=======
+  def waitlist(%Data.SignupErrorUnavailable{}), do: {:right, %Data.Account{name: "waitlist", age: 18, level: 1}}
+>>>>>>>

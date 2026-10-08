@@ -1,0 +1,6 @@
+@@ src/example/workflows.gleam
+<<<<<<<
+  case signup.name { "" -> Error(data.SignupErrorMissingName) _ -> Ok(signup) }
+=======
+  case signup.name { "" -> Ok(signup) _ -> Ok(signup) }
+>>>>>>>

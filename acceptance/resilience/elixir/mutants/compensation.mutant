@@ -1,0 +1,6 @@
+@@ lib/example_limits.ex
+<<<<<<<
+  def charge_card(%Data.Ticket{number: n}) when n < 0, do: {:left, "declined"}
+=======
+  def charge_card(%Data.Ticket{number: n} = ticket) when n < 0, do: {:right, ticket}
+>>>>>>>

@@ -1,0 +1,67 @@
+unit example.policy_context
+
+import lawspec.time
+
+-- Native probes call these same checked workflows under explicit runtimes.
+step :: Int32 -> Either Text Int32
+undo :: Int32 -> Bool
+alwaysFail :: Int32 -> Either Text Int32
+nativeProbe :: Unit -> Bool
+
+definition accepts (error :: Text) :: Bool is error == "retry" end
+definition rejects (error :: Text) :: Bool is false end
+definition decide (attempt :: Integer) (error :: Text) (previous :: Duration) :: RetryDecision is
+  if attempt < 4 then RetryAfter (Duration 7) else Stop
+end
+
+workflow fixed :: Int32 -> Either _ Int32 is
+  step :: Int32 -> Either Text Int32
+    retry fixed 10us 3 when accepts
+end
+workflow linear :: Int32 -> Either _ Int32 is
+  step :: Int32 -> Either Text Int32
+    retry linear 10us 5us 4
+end
+workflow fibonacci :: Int32 -> Either _ Int32 is
+  step :: Int32 -> Either Text Int32
+    retry fibonacci 10us 5
+end
+workflow custom :: Int32 -> Either _ Int32 is
+  step :: Int32 -> Either Text Int32
+    retry custom decide
+end
+workflow rejected :: Int32 -> Either _ Int32 is
+  step :: Int32 -> Either Text Int32
+    retry fixed 10us 4 when rejects
+end
+workflow cached :: Int32 -> Either _ Int32 is
+  step :: Int32 -> Either Text Int32
+    cache 10us
+end
+workflow broken :: Int32 -> Either _ Int32 is
+  step :: Int32 -> Either Text Int32
+    circuitBreaker 2 100us cooldown 30us
+end
+workflow bounded :: Int32 -> Either _ Int32 is
+  step :: Int32 -> Either Text Int32
+    bulkhead 1 reject
+end
+workflow waiting :: Int32 -> Either _ Int32 is
+  step :: Int32 -> Either Text Int32
+    rateLimit fixedWindow 1 10us wait max 10us
+end
+workflow compensated :: Int32 -> Either _ Int32 is
+  step :: Int32 -> Either Text Int32
+    compensate undo
+  alwaysFail :: Int32 -> Either Text Int32
+end
+
+law `retry waits use the installed clock` using virtual clock is
+  definition is
+    (let started = now in let ignored = fixed (-1) in now - started) = 20us
+  end
+end
+
+law `native policy contexts preserve state and callback behavior` is
+  definition is nativeProbe unitValue = true end
+end

@@ -1,0 +1,7 @@
+expect-any: policy_probe | PolicyProbe
+@@ acceptance/beam-policy-context/policies.lawspec
+<<<<<<<
+    circuitBreaker 2 100us cooldown 30us
+=======
+    circuitBreaker 3 100us cooldown 30us
+>>>>>>>

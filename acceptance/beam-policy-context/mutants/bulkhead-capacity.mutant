@@ -1,0 +1,7 @@
+expect-any: policy_probe | PolicyProbe
+@@ acceptance/beam-policy-context/policies.lawspec
+<<<<<<<
+    bulkhead 1 reject
+=======
+    bulkhead 2 reject
+>>>>>>>

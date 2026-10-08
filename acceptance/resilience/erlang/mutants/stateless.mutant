@@ -1,0 +1,6 @@
+@@ src/example_resilience.erl
+<<<<<<<
+        case example_limits_definitions:limited({ticket, 0}) of {right, _} -> true; _ -> false end
+=======
+        case lawspec_beam_workflow:with_virtual(0, fun(Fresh) -> lawspec_beam_workflow:set_time(Fresh, Time), example_limits_definitions:limited({ticket, 0}) end) of {right, _} -> true; _ -> false end
+>>>>>>>

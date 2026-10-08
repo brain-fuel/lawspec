@@ -1,0 +1,6 @@
+@@ lib/example_resilience.ex
+<<<<<<<
+  def retried_waits(attempts), do: :beam_policy_probe.waits(attempts, true)
+=======
+  def retried_waits(attempts), do: :beam_policy_probe.waits(attempts + 1, true)
+>>>>>>>

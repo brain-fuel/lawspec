@@ -26,6 +26,30 @@ generatedFor target compact text = compileCore 64 defaultGeneration [Source "bea
 
 test_beamCodeUsesCheckedCoreAndNativeFrameworks :: Spec
 test_beamCodeUsesCheckedCoreAndNativeFrameworks = describe "BEAM generation" $ do
+  -- ref:DEC-domain-modeling-primitives ref:DEC-typed-core-boundary
+  mapM_ (\target -> it (target ++ " emits workflow policies and scopes every generated case") $ do
+    input <- readFile "examples/specs/workflows.lawspec"
+    case generatedFor target False input of
+      Left errors -> expectationFailure (show errors)
+      Right artifacts -> do
+        let paths = map artifactPath artifacts
+            source = concatMap artifactContent artifacts
+            tests = concatMap artifactContent (filter ((== "test") . artifactPlacement) artifacts)
+        mapM_ (\name -> paths `shouldContain` ["src/lawspec_beam_" ++ name ++ ".erl"])
+          ["policy","random","defaults","tasks","attempts","workflow_state","workflow"]
+        source `shouldSatisfy` isInfixOf "lawspec_beam_workflow:run_stage"
+        tests `shouldSatisfy` isInfixOf "lawspec_beam_workflow:with_test_runtime"
+        if target == "erlang" then isInfixOf "timeout,\n" tests `shouldBe` True else pure ()
+        if target == "gleam" then paths `shouldContain` ["src/lawspec/workflow.gleam"] else pure ()
+    limits <- readFile "examples/specs/limits.lawspec"
+    case generatedFor target False limits of
+      Left errors -> expectationFailure (show errors)
+      Right artifacts -> concatMap artifactContent artifacts `shouldSatisfy`
+        isInfixOf "lawspec_beam_workflow:run_workflow"
+    case generatedFor target False "unit example.plain\ndefinition identity (x :: Int32) :: Int32 is x end\n" of
+      Left errors -> expectationFailure (show errors)
+      Right artifacts -> map artifactPath artifacts `shouldSatisfy` all (not . isInfixOf "workflow")
+    ) ["erlang", "elixir", "gleam"]
   -- ref:DEC-typed-core-boundary ref:DEC-adapter-ownership
   mapM_ (\target -> it (target ++ " emits portable crypto defaults, a native bridge and every vector family") $ do
     input <- readFile "examples/specs/crypto.lawspec"
@@ -263,9 +287,9 @@ test_beamCodeUsesCheckedCoreAndNativeFrameworks = describe "BEAM generation" $ d
         tests `shouldSatisfy` isInfixOf "lawspec_beam_effects:attempt") ["erlang","elixir","gleam"]
   -- ref:DEC-never-pass-vacuously
   it "refuses an execution plane before it can silently omit its behavior" $ do
-    input <- readFile "examples/specs/limits.lawspec"
+    input <- readFile "examples/specs/resources.lawspec"
     case generated False input of
-      Left errors -> show errors `shouldSatisfy` isInfixOf "workflow policies"
+      Left errors -> show errors `shouldSatisfy` isInfixOf "resources and harness"
       Right _ -> expectationFailure "an unconnected execution plane was accepted"
   -- ref:DEC-async-native-tasks ref:DEC-native-bindings-typed-identity
   mapM_ (\target -> it (target ++ " awaits async native calls before checking their result") $ do

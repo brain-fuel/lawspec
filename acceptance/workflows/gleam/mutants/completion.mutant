@@ -1,0 +1,6 @@
+@@ src/example/approvals.gleam
+<<<<<<<
+    Error(data.ApproveErrorApproveFailures(errors)) -> list.map(errors, fn(error) {
+=======
+    Error(data.ApproveErrorApproveFailures(errors)) -> list.map(list.reverse(errors), fn(error) {
+>>>>>>>

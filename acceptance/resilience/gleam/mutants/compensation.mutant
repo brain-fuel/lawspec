@@ -1,0 +1,6 @@
+@@ src/example/limits.gleam
+<<<<<<<
+  case ticket.number < 0 { True -> Error("declined") False -> Ok(ticket) }
+=======
+  case ticket.number < 0 { True -> Ok(ticket) False -> Ok(ticket) }
+>>>>>>>

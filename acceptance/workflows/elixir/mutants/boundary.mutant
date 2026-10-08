@@ -1,0 +1,6 @@
+@@ lib/example_workflows.ex
+<<<<<<<
+  def check_age(%Data.Signup{age: age}) when age < 18, do: {:left, "too young"}
+=======
+  def check_age(%Data.Signup{age: age}) when age < 17, do: {:left, "too young"}
+>>>>>>>

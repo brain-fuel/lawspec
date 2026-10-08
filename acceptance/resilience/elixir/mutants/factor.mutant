@@ -1,0 +1,6 @@
+@@ lib/example_resilience.ex
+<<<<<<<
+    do: :lawspec_beam_policy.retry_delay({:exponential, base, factor, :none}, attempt)
+=======
+    do: :lawspec_beam_policy.retry_delay({:exponential, base, factor + 1, :none}, attempt)
+>>>>>>>

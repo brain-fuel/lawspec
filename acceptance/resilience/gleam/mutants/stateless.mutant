@@ -1,0 +1,6 @@
+@@ src/example/resilience.gleam
+<<<<<<<
+    case definitions.limited(data.Ticket(0)) { Ok(_) -> True Error(_) -> False }
+=======
+    case workflow.with_virtual(0, fn(fresh) { workflow.set_time(fresh, time) definitions.limited(data.Ticket(0)) }) { Ok(_) -> True Error(_) -> False }
+>>>>>>>

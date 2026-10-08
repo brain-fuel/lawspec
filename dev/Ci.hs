@@ -217,10 +217,10 @@ targetSteps target =
   [ Step (target ++ "-" ++ suite ++ suffix) env (acceptance [suite, target])
   | target `elem` Targets.beamTargets,
     suite <- ["beam-native-shapes", "beam-native-codecs", "beam-native-calls",
-      "beam-failures", "beam-bound-failures", "beam-mapped-failures", "beam-handler-context", "beam-builtin-context", "beam-crypto-context", "beam-async-workflows"],
+      "beam-failures", "beam-bound-failures", "beam-mapped-failures", "beam-handler-context", "beam-builtin-context", "beam-crypto-context", "beam-async-workflows", "beam-policy-context"],
     (suffix,env) <- [("", []), ("-32-compact", compact)] ] ++
   [ Step (target ++ "-" ++ suite ++ "-32-compact") compact (acceptance [suite, target])
-  | target `elem` Targets.beamTargets, suite <- ["abilities", "handlerbindings", "builtins", "crypto", "async", "failures"] ] ++
+  | target `elem` Targets.beamTargets, suite <- ["abilities", "handlerbindings", "builtins", "crypto", "async", "failures", "workflows", "resilience"] ] ++
   [ step (target ++ "-native-bindings") ["node", "tools/native-example-integration.mjs", target]
   , Step (target ++ "-native-bindings-32-compact") compact ["node", "tools/native-example-integration.mjs", target] ] ++
   [ step "rust-layout" ["node", "tools/rust-layout-integration.mjs"] | target == "rust" ]

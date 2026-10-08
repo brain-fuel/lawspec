@@ -1,0 +1,6 @@
+@@ src/example_resilience.erl
+<<<<<<<
+    lawspec_beam_policy:retry_delay({exponential, Base, Factor, none}, Attempt).
+=======
+    lawspec_beam_policy:retry_delay({exponential, Base, Factor + 1, none}, Attempt).
+>>>>>>>

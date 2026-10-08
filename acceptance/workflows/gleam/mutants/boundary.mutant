@@ -1,0 +1,6 @@
+@@ src/example/workflows.gleam
+<<<<<<<
+  case signup.age < 18 { True -> Error("too young") False -> Ok(signup) }
+=======
+  case signup.age < 17 { True -> Error("too young") False -> Ok(signup) }
+>>>>>>>

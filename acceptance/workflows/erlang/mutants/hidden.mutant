@@ -1,0 +1,6 @@
+@@ src/example_workflows.erl
+<<<<<<<
+check_name({signup, <<>>, _}) -> {left, signup_error_missing_name};
+=======
+check_name({signup, <<>>, _} = Signup) -> {right, Signup};
+>>>>>>>

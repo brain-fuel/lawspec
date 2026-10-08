@@ -1,0 +1,6 @@
+@@ src/example/resilience.gleam
+<<<<<<<
+  exponential(base, factor, attempt)
+=======
+  exponential(base, factor + 1, attempt)
+>>>>>>>

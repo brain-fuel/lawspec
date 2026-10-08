@@ -1,0 +1,6 @@
+@@ src/example_resilience.erl
+<<<<<<<
+retried_waits(Attempts) -> beam_policy_probe:waits(Attempts, true).
+=======
+retried_waits(Attempts) -> beam_policy_probe:waits(Attempts + 1, true).
+>>>>>>>

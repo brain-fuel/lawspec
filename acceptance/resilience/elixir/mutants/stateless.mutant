@@ -1,0 +1,6 @@
+@@ lib/example_resilience.ex
+<<<<<<<
+        match?({:right, _}, Definitions.limited(%Data.Ticket{number: 0}))
+=======
+        match?({:right, _}, Workflow.with_virtual(fn fresh -> Workflow.set_time(fresh, time); Definitions.limited(%Data.Ticket{number: 0}) end))
+>>>>>>>
