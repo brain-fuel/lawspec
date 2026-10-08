@@ -17,6 +17,8 @@ runtimeFiles =
   , ("beam-random", "lawspec_beam_random.erl"), ("beam-values", "lawspec_beam_values.erl")
   , ("beam-model", "lawspec_beam_model.erl")
   , ("beam-model_parallel", "lawspec_beam_model_parallel.erl")
+  , ("beam-history", "lawspec_beam_history.erl")
+  , ("beam-scenario", "lawspec_beam_scenario.erl"), ("beam-scenario_io", "lawspec_beam_scenario_io.erl")
   , ("beam-runtime", "lawspec_beam_runtime.erl"), ("beam-proper", "lawspec_beam_proper.erl")
   , ("beam-effects", "lawspec_beam_effects.erl"), ("beam-handler", "lawspec_beam_handler.erl")
   , ("beam-waits", "lawspec_beam_waits.erl")
