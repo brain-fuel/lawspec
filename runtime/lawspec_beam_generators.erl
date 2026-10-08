@@ -111,7 +111,8 @@ scalar(F, {<<"Undefined">>, []}, _, _, _) -> F:exactly(ls_undefined);
 scalar(F, {<<"Rational">>, []}, _, _, _) ->
     F:bind(F:fixed_list([F:integer(none, none), F:integer(1, none)]), fun([N, D]) -> lawspec_beam_scalar:ratio(N, D) end);
 scalar(F, {<<"Decimal">>, []}, _, _, _) ->
-    F:bind(F:fixed_list([F:integer(none, none), F:integer(none, none)]), fun([C, E]) -> lawspec_beam_scalar:decimal(C, E) end);
+    F:bind(F:fixed_list([F:integer(none, none), F:sized(fun(Size) -> F:integer(-Size, Size) end)]),
+        fun([C, E]) -> lawspec_beam_scalar:decimal(C, E) end);
 scalar(F, {<<"Float32">>, []}, _, _, _) -> ieee(F, 32);
 scalar(F, {<<"Float64">>, []}, _, _, _) -> ieee(F, 64);
 scalar(F, {Name, []}, _, _, _) when Name =:= <<"Complex64">>; Name =:= <<"Complex128">> ->

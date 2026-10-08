@@ -3,6 +3,7 @@
 -- default, and minify selects the compact form, as for generated code.
 module LawSpec.Scaffold
   ( scaffoldTargets, testCommand, setupAdvice, scaffoldFiles, scaffoldFilesWith
+  , gleamTestPackage
   ) where
 
 import Data.List (intercalate)
@@ -50,6 +51,14 @@ setupAdvice target = lookup target
 scaffoldFiles :: Bool -> String -> Either String [(FilePath, String)]
 scaffoldFiles = scaffoldFilesWith False
 
+-- | Erlang test FFI is a local development dependency so Gleam production
+-- exports omit it along with qcheck. Gleam otherwise ships foreign test files.
+gleamTestPackage :: String
+gleamTestPackage = unlines
+  [ "# Generated test helpers are a development-only dependency."
+  , "name = \"lawspec_test_support\"", "version = \"0.1.0\"", "target = \"erlang\"", ""
+  , "[dependencies]", "qcheck = \"== 1.0.5\"" ]
+
 -- With crypto: the libraries of lawspec.crypto's default handlers and of
 -- lawspec.network's secure transport, only for programs that import them.
 scaffoldFilesWith :: Bool -> Bool -> String -> Either String [(FilePath, String)]
@@ -85,7 +94,10 @@ scaffoldFilesWith crypto minify target = case target of
         [ "name = \"lawspec_example\"", "version = \"0.1.0\""
         , "gleam = \">= 1.18.0\"", "target = \"erlang\"", ""
         , "[dependencies]", "gleam_stdlib = \"== 1.0.5\"", ""
-        , "[dev-dependencies]", "gleeunit = \"== 1.11.0\"", "qcheck = \"== 1.0.5\"" ])
+        , "[dev-dependencies]", "gleeunit = \"== 1.11.0\"", "qcheck = \"== 1.0.5\""
+        , "lawspec_test_support = { path = \"./test-support\" }" ])
+    , ("test-support/gleam.toml", gleamTestPackage)
+    , ("test-support/src/.gitkeep", "")
     , ("test/lawspec_example_test.gleam", unlines
         [ "import gleeunit", "", "pub fn main() {", "  gleeunit.main()", "}" ]) ]
   "rust" -> Right

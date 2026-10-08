@@ -4,6 +4,11 @@
 -include_lib("eunit/include/eunit.hrl").
 -export([vectors/1]).
 
+%% ref:DEC-portable-exact-arithmetic
+zero_decimal_does_not_expand_its_exponent_test() ->
+    ?assertEqual({0, 1}, lawspec_beam_scalar:exact(lawspec_beam_scalar:decimal(0, 1 bsl 128))),
+    ?assertEqual({0, 1}, lawspec_beam_scalar:exact(lawspec_beam_scalar:decimal(0, -(1 bsl 128)))).
+
 vectors(Path) ->
     {ok, Bytes} = file:read_file(Path),
     Cases = json:decode(Bytes),

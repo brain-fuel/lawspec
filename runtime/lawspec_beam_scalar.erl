@@ -262,6 +262,7 @@ pow(A, N) when N > 0 ->
     case N rem 2 of 0 -> H * H; 1 -> H * H * A end.
 exact(N) when is_integer(N) -> {N, 1};
 exact({ls_ratio, N, D}) -> {N, D};
+exact({ls_decimal, 0, E}) when is_integer(E) -> {0, 1};
 exact({ls_decimal, C, E}) when E >= 0 -> {C * pow(10, E), 1};
 exact({ls_decimal, C, E}) -> normalized(C, pow(10, -E));
 exact({ls_float, _, _} = F) ->

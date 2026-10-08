@@ -187,11 +187,15 @@ const scaffolds = {
                     },
                     "gleam": {
                       "readable": {
-                        "gleam.toml": "name = \"lawspec_example\"\nversion = \"0.1.0\"\ngleam = \">= 1.18.0\"\ntarget = \"erlang\"\n\n[dependencies]\ngleam_stdlib = \"== 1.0.5\"\n\n[dev-dependencies]\ngleeunit = \"== 1.11.0\"\nqcheck = \"== 1.0.5\"\n",
+                        "gleam.toml": "name = \"lawspec_example\"\nversion = \"0.1.0\"\ngleam = \">= 1.18.0\"\ntarget = \"erlang\"\n\n[dependencies]\ngleam_stdlib = \"== 1.0.5\"\n\n[dev-dependencies]\ngleeunit = \"== 1.11.0\"\nqcheck = \"== 1.0.5\"\nlawspec_test_support = { path = \"./test-support\" }\n",
+                        "test-support/gleam.toml": "# Generated test helpers are a development-only dependency.\nname = \"lawspec_test_support\"\nversion = \"0.1.0\"\ntarget = \"erlang\"\n\n[dependencies]\nqcheck = \"== 1.0.5\"\n",
+                        "test-support/src/.gitkeep": "",
                         "test/lawspec_example_test.gleam": "import gleeunit\n\npub fn main() {\n  gleeunit.main()\n}\n"
                       },
                       "compact": {
-                        "gleam.toml": "name = \"lawspec_example\"\nversion = \"0.1.0\"\ngleam = \">= 1.18.0\"\ntarget = \"erlang\"\n\n[dependencies]\ngleam_stdlib = \"== 1.0.5\"\n\n[dev-dependencies]\ngleeunit = \"== 1.11.0\"\nqcheck = \"== 1.0.5\"\n",
+                        "gleam.toml": "name = \"lawspec_example\"\nversion = \"0.1.0\"\ngleam = \">= 1.18.0\"\ntarget = \"erlang\"\n\n[dependencies]\ngleam_stdlib = \"== 1.0.5\"\n\n[dev-dependencies]\ngleeunit = \"== 1.11.0\"\nqcheck = \"== 1.0.5\"\nlawspec_test_support = { path = \"./test-support\" }\n",
+                        "test-support/gleam.toml": "# Generated test helpers are a development-only dependency.\nname = \"lawspec_test_support\"\nversion = \"0.1.0\"\ntarget = \"erlang\"\n\n[dependencies]\nqcheck = \"== 1.0.5\"\n",
+                        "test-support/src/.gitkeep": "",
                         "test/lawspec_example_test.gleam": "import gleeunit\n\npub fn main() {\n  gleeunit.main()\n}\n"
                       }
                     }

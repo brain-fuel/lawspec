@@ -1,0 +1,13 @@
+@@ src/example/scalar_adapters.gleam
+<<<<<<<
+pub fn echo_raw(value: List(Int)) -> List(Int) { value }
+=======
+pub fn echo_raw(value: List(Int)) -> List(Int) { list.filter(value, fn(n) { n < 55296 || n > 57343 }) }
+>>>>>>>
+@@ src/example/scalar_adapters.gleam
+<<<<<<<
+import lawspec/types
+=======
+import gleam/list
+import lawspec/types
+>>>>>>>

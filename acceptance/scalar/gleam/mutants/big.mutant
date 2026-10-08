@@ -1,0 +1,6 @@
+@@ src/example/scalar_adapters.gleam
+<<<<<<<
+pub fn preserve_big(value: Int) -> Int { value }
+=======
+pub fn preserve_big(value: Int) -> Int { value % 9007199254740992 }
+>>>>>>>

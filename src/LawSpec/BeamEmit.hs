@@ -10,9 +10,11 @@ import qualified LawSpec.BeamExpr as Expr
 import qualified LawSpec.BeamData as Data
 import qualified LawSpec.BeamDefinitions as Definitions
 import qualified LawSpec.ElixirNative as Elixir
+import qualified LawSpec.GleamNative as Gleam
 import LawSpec.Common (Artifact(..), Diagnostic(..), Generation(..))
 import LawSpec.Testing
 import LawSpec.RuntimeSources (runtimeSource)
+import LawSpec.Scaffold (gleamTestPackage)
 import LawSpec.TestNames (unitTestNames)
 import LawSpec.Backend (metadataDocument)
 import LawSpec.Core.Types (freeExistentials)
@@ -26,23 +28,30 @@ emitBeam target minify plan = either (Left . pure . (\message -> Diagnostic "tar
   schemaFile <- Data.emitData target layout bits declarations
   definitions <- Definitions.emitDefinitions target layout bits declarations units
   adapters <- mapM (adapter names) [u | u <- units, target == "erlang", not (null (adapterDeclarations u))]
-  native <- if target == "elixir" then Elixir.emitNative layout bits declarations units else pure []
+  native <- case target of
+    "elixir" -> Elixir.emitNative layout bits declarations units
+    "gleam" -> Gleam.emitNative layout declarations units
+    _ -> pure []
   tests <- concat <$> mapM unitTests [u | u <- plannedUnits plan, not (null (plannedProperties u))]
   let runtimes = [Artifact ("src/lawspec_beam_" ++ name ++ ".erl")
         (runtimeSource ("beam-" ++ name)) "generated" "source"
-        | name <- ["scalar","schema","regex","runtime"]]
+        | name <- ["scalar","schema","regex","runtime"] ++ ["gleam" | target == "gleam"]] ++
+        [Artifact ("src/lawspec/" ++ name ++ ".gleam") (runtimeSource ("beam-gleam-" ++ name)) "generated" "source"
+          | name <- ["types","scalar"], target == "gleam"]
       generators = if null tests then [] else
         [Artifact (testSupport ++ "lawspec_beam_generators.erl") (runtimeSource "beam-generators") "generated" "test"] ++
         [Artifact "test/lawspec_beam_proper.erl" (runtimeSource "beam-proper") "generated" "test" | target == "erlang"] ++
-        [Artifact "test/support/lawspec_beam_stream_data.ex" (runtimeSource "beam-stream-data") "generated" "test" | target == "elixir"]
+        [Artifact "test/support/lawspec_beam_stream_data.ex" (runtimeSource "beam-stream-data") "generated" "test" | target == "elixir"] ++
+        [Artifact "test-support/src/lawspec_beam_qcheck.erl" (runtimeSource "beam-qcheck") "generated" "test" | target == "gleam"] ++
+        [Artifact "test-support/gleam.toml" gleamTestPackage "generated" "test" | target == "gleam"]
   pure (schemaFile : definitions ++ adapters ++ native ++ tests ++ runtimes ++ generators)
   where
     declarations = planDataDeclarations plan
     bits = planMachineBits plan
     units = map plannedUnit (plannedUnits plan)
     layout = D.selectLayout minify (D.Pretty 100)
-    testSupport = if target == "erlang" then "test/" else "test/support/"
-    framework = if target == "erlang" then "lawspec_beam_proper" else "Elixir.LawSpec.Beam.StreamData"
+    testSupport = case target of "elixir" -> "test/support/"; "gleam" -> "test-support/src/"; _ -> "test/"
+    framework = case target of "erlang" -> "lawspec_beam_proper"; "gleam" -> "lawspec_beam_qcheck"; _ -> "Elixir.LawSpec.Beam.StreamData"
     schema = D.text "_LsSchema"
     symbols = D.text "_LsSymbols"
     context = [D.text "_LsSymbols = make_ref()",D.text "_LsSchema = " <> E.remote "lawspec_data" "schema" [symbols]]
@@ -65,10 +74,19 @@ emitBeam target minify plan = either (Left . pure . (\message -> Diagnostic "tar
           properties = plannedProperties planned
           names = unitTestNames target (map (C.propertyName . plannedProperty) properties)
           name = Definitions.adapterModule unit ++ (if target == "erlang" then "_lawspec_tests" else "_lawspec_cases")
+          counts = [(n, length (C.propertyExamples (plannedProperty p)) +
+            length (maybe (boundaryCases p) id (finiteCases p)) + (if finiteCases p == Nothing then 1 else 0))
+            | (n,p) <- zip names properties]
+          gleamCases = [(n,i) | (n,count) <- counts, i <- [0..count-1], target == "gleam"]
+          caseEntry n i = n ++ "_case_" ++ show i
+          bridges = [E.function (caseEntry n i) [] [E.remote "lawspec_beam_gleam" "run_case"
+            [E.call (n ++ "_test_") [],D.text (show i)]] | (n,i) <- gleamCases]
+          exports = if target == "gleam" then [(caseEntry n i,0) | (n,i) <- gleamCases] else [(n ++ "_test_",0) | n <- names]
       bodies <- concat <$> sequence [lawTests n p | (n,p) <- zip names properties]
       pure (Artifact (testSupport ++ name ++ ".erl")
-        (D.render layout (E.moduleDoc name [(n ++ "_test_",0) | n <- names] bodies)) "generated" "test" :
-        [Elixir.unitTests layout unit names | target == "elixir"])
+        (D.render layout (E.moduleDoc name exports (bodies ++ bridges))) "generated" "test" :
+        [Elixir.unitTests layout unit names | target == "elixir"] ++
+        [Gleam.unitTests layout unit counts | target == "gleam"])
     lawTests name planned = do
       let law = plannedProperty planned
           parameters = map (C.quantifiedBinder) (C.propertyInputs law)
@@ -171,6 +189,9 @@ validatePlan target plan = do
   unless (length natives == length (nub natives) && (target /= "elixir" ||
     all (\n -> not ("Elixir.LawSpec." `isPrefixOf` n) && n `notElem` nativeGenerated) natives))
     (Left "Elixir module names collide after normalization or with the LawSpec namespace")
+  unless (target /= "gleam" || all (\n -> not ("lawspec@" `isPrefixOf` n) &&
+    n `notElem` [E.nativeModule target u ++ "@definitions" | u <- units]) natives)
+    (Left "Gleam module names collide with generated modules or the lawspec namespace")
   unless (all ((<= 230) . length) (moduleNames ++ generated ++ natives) && all ((<= 253) . length . fst . C.functionType . C.declarationType) declarations)
     (Left "BEAM module name or function arity exceeds the Erlang limit")
   unless (all (\d -> let n = E.nativeFunction target d in not (null n) && length n <= 255) declarations)

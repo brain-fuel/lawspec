@@ -1,0 +1,6 @@
+@@ src/example/scalar_adapters.gleam
+<<<<<<<
+pub fn add_decimal(a: types.Decimal, b: types.Decimal) -> types.Decimal { scalar.decimal_add(a, b) }
+=======
+pub fn add_decimal(a: types.Decimal, _b: types.Decimal) -> types.Decimal { a }
+>>>>>>>

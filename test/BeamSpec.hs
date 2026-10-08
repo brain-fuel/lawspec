@@ -66,6 +66,7 @@ test_beamCodeUsesCheckedCoreAndNativeFrameworks = describe "BEAM generation" $ d
       ["law_" ++ replicate 48 'x', "law_" ++ replicate 48 'x' ++ "_2"]
     unitTestPath "elixir" "example.httpClient" `shouldBe` "test/example_http_client_lawspec_test.exs"
     unitTestNames "elixir" ["same", "same"] `shouldBe` ["law_same", "law_same_2"]
+    unitTestPath "gleam" "example.httpClient" `shouldBe` "test/example_http_client_lawspec_test.gleam"
   -- ref:DEC-native-property-frameworks ref:DEC-adapter-ownership
   it "emits Elixir adapters and ExUnit laws backed by native StreamData" $ do
     input <- readFile "examples/specs/scalar_adapters.lawspec"
@@ -101,6 +102,36 @@ test_beamCodeUsesCheckedCoreAndNativeFrameworks = describe "BEAM generation" $ d
         mapM_ (\p -> paths relocated `shouldContain` [p]) ["generated/source/example_echo.ex", "generated/source/lawspec_data.erl"]
         paths standard `shouldNotContain` ["lib/src/lawspec_data.erl", "src/lib/example_echo.ex"]
       failure -> expectationFailure (show failure)
+  -- ref:DEC-native-property-frameworks ref:DEC-adapter-ownership
+  it "emits typed Gleam adapters and one native Gleeunit entry per case" $ do
+    input <- readFile "examples/specs/scalar_adapters.lawspec"
+    case (generatedFor "gleam" False input, generatedFor "gleam" True input) of
+      (Right readable,Right compact) -> do
+        let user = filter ((== "user") . ownership)
+            files = map artifactPath readable
+        map artifactPath (user readable) `shouldBe` ["src/example/scalar_adapters.gleam"]
+        map adapterReference (user readable) `shouldBe` map adapterReference (user compact)
+        mapM_ (\p -> files `shouldContain` [p]) ["src/lawspec/types.gleam", "test-support/gleam.toml", "test-support/src/lawspec_beam_qcheck.erl", "test-support/src/example_scalar_adapters_lawspec_cases.erl", "test/example_scalar_adapters_lawspec_test.gleam"]
+        files `shouldNotContain` ["test/lawspec_beam_qcheck.erl", "test/example_scalar_adapters_lawspec_cases.erl"]
+        concatMap artifactContent (user readable) `shouldSatisfy` isInfixOf "types.Optional(types.Nullable(Int))"
+        let tests = concat [artifactContent a | a <- readable, artifactPath a == "test/example_scalar_adapters_lawspec_test.gleam"]
+        tests `shouldSatisfy` isInfixOf "_test() -> Nil"
+      failure -> expectationFailure (show failure)
+  -- ref:DEC-idiomatic-generated-types ref:DEC-total-definitions
+  it "emits Gleam algebraic data and checked production FFI wrappers" $ do
+    input <- readFile "examples/specs/data_types.lawspec"
+    case generatedFor "gleam" False input of
+      Left errors -> expectationFailure (show errors)
+      Right artifacts -> do
+        let body = concat [artifactContent a | a <- artifacts, artifactPath a == "src/lawspec/data.gleam"]
+        body `shouldSatisfy` isInfixOf "pub type Pair(a0, a1)"
+        body `shouldSatisfy` isInfixOf "TreeBranch(children: List(Tree(a0)))"
+        mapM_ (\p -> map artifactPath artifacts `shouldContain` [p])
+          ["src/example/data_types/definitions.gleam", "src/example_data_types_definitions_ffi.erl"]
+  -- ref:DEC-native-bindings-typed-identity
+  it "rejects a Gleam layout that would change its compiled module identities" $ do
+    let plan = compileCore 64 defaultGeneration [Source "gleam.lawspec" "unit example.echo\necho :: Text -> Text\n"] >>= planTesting
+    (plan >>= emitPlanWithOptions False "gleam" (Just "src/generated") Nothing) `shouldSatisfy` isLeft
   -- ref:DEC-never-pass-vacuously
   it "refuses an execution plane before it can silently omit its behavior" $ do
     input <- readFile "examples/specs/abilities.lawspec"

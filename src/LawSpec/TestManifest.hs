@@ -104,6 +104,7 @@ unitTestPath target unit = case target of
   "rust" -> "tests/" ++ map (\c -> if isAlphaNum c || c == '_' then c else '_') unit ++ "_lawspec.rs"
   "erlang" -> "test/" ++ Beam.moduleName (Id unit) ++ "_lawspec_tests.erl"
   "elixir" -> "test/" ++ Beam.moduleName (Id unit) ++ "_lawspec_test.exs"
+  "gleam" -> "test/" ++ Beam.moduleName (Id unit) ++ "_lawspec_test.gleam"
   jvm -> "src/test/" ++ jvm ++ "/" ++ intercalate "/" (init parts ++ [capitalWords (last parts)]) ++ "LawSpecTest" ++
     (if jvm == "kotlin" then ".kt" else ".java")
   where

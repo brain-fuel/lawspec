@@ -51,7 +51,9 @@ extra-source-files:
     runtime/lawspec_runtime.go
     runtime/lawspec_schema.go
     runtime/lawspec_beam_generators.erl
+    runtime/lawspec_beam_gleam.erl
     runtime/lawspec_beam_proper.erl
+    runtime/lawspec_beam_qcheck.erl
     runtime/lawspec_beam_random.erl
     runtime/lawspec_beam_regex.erl
     runtime/lawspec_beam_runtime.erl
@@ -189,7 +191,9 @@ extra-source-files:
     test/fixtures/native_shapes.lawspec
     test/fixtures/python_constructor_fields.lawspec
     test/fixtures/total_definitions.lawspec
+    test/fixtures/beam/lawspec_beam_gleam_tests.erl
     test/fixtures/beam/lawspec_beam_proper_tests.erl
+    test/fixtures/beam/lawspec_beam_qcheck_tests.erl
     test/fixtures/beam/lawspec_beam_runtime_tests.erl
     test/fixtures/beam/lawspec_beam_scalar_tests.erl
     test/fixtures/beam/lawspec_beam_schema_tests.erl
@@ -354,6 +358,8 @@ library
       LawSpec.Eval
       LawSpec.Flow
       LawSpec.Frontend
+      LawSpec.GleamCode
+      LawSpec.GleamNative
       LawSpec.GoData
       LawSpec.GoDefinitions
       LawSpec.GoExpr

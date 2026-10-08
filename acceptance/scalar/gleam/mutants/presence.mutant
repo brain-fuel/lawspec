@@ -1,0 +1,6 @@
+@@ src/example/scalar_adapters.gleam
+<<<<<<<
+pub fn echo_presence(value: types.Optional(types.Nullable(Int))) -> types.Optional(types.Nullable(Int)) { value }
+=======
+pub fn echo_presence(_value: types.Optional(types.Nullable(Int))) -> types.Optional(types.Nullable(Int)) { types.Absent }
+>>>>>>>

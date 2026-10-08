@@ -1,0 +1,6 @@
+@@ src/example/scalar_adapters.gleam
+<<<<<<<
+pub fn successor(value: Int) -> Int { value + 1 }
+=======
+pub fn successor(value: Int) -> Int { (value + 129) % 256 - 128 }
+>>>>>>>

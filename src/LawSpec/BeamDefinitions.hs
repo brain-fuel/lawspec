@@ -39,7 +39,7 @@ emitDefinitions target layout bits declarations units = do
   verified <- checkedDefinitionContracts bits declarations units
   names <- E.dataNames declarations
   bodies <- mapM (implementation verified) [(u,d) | u <- units, d <- C.unitDeclarations u]
-  wrappers <- mapM (nativeUnit names) [u | u <- units, target == "erlang", not (null (C.unitDefinitions u))]
+  wrappers <- mapM (nativeUnit names) [u | u <- units, target `elem` ["erlang","gleam"], not (null (C.unitDefinitions u))]
   let exports = [(name,2 + length (fst (C.functionType (C.declarationType d))))
         | u <- units, d <- C.unitDeclarations u, Just name <- [lookup (C.declarationId d) callees]]
   pure (file "lawspec_definitions" exports bodies : wrappers)
@@ -88,13 +88,13 @@ emitDefinitions target layout bits declarations units = do
         let d = C.definitionDeclaration definition
             (parameterTypes,resultType) = C.functionType (C.declarationType d)
             arguments = [D.text ("_LsNative" ++ show i) | (i,_) <- zip [0::Int ..] parameterTypes]
-        signature <- declarationSpec bits names d
+        signatures <- if target == "erlang" then pure <$> declarationSpec bits names d else pure []
         converted <- sequence [bridge "from_native" ty arg | (ty,arg) <- zip parameterTypes arguments]
         name <- maybe (Left "missing BEAM definition entry") Right (lookup (C.declarationId d) callees)
         result <- bridge "to_native" resultType (E.remote "lawspec_definitions" name (schema : symbols : converted))
-        pure [signature,E.function (E.functionName d) arguments
-          [D.text "_LsSymbols = make_ref()",D.text "_LsSchema = " <> E.remote "lawspec_data" "schema" [symbols],result]]
-      let name = adapterModule unit ++ "_definitions"
-          exports = [(E.functionName d,length (fst (C.functionType (C.declarationType d))))
+        pure (signatures ++ [E.function (E.nativeFunction target d) arguments
+          [D.text "_LsSymbols = make_ref()",D.text "_LsSchema = " <> E.remote "lawspec_data" "schema" [symbols],result]])
+      let name = adapterModule unit ++ "_definitions" ++ (if target == "gleam" then "_ffi" else "")
+          exports = [(E.nativeFunction target d,length (fst (C.functionType (C.declarationType d))))
             | definition <- C.unitDefinitions unit, let d = C.definitionDeclaration definition]
       pure (file name exports functions)

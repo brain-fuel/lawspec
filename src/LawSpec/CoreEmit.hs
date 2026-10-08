@@ -80,7 +80,7 @@ emitPlan = emitPlanWithFormat False
 -- | Canonical adapter references are independent of the selected presentation.
 -- Legacy runtime/test templates are still being migrated to structured Docs.
 emitPlanWithFormat :: Bool -> String -> Plan -> Either [Diagnostic] [Artifact]
-emitPlanWithFormat minify target original | target `elem` ["erlang", "elixir"] = Beam.emitBeam target minify
+emitPlanWithFormat minify target original | target `elem` ["erlang", "elixir", "gleam"] = Beam.emitBeam target minify
   (wirePlan (witnessPlan (ownedAbilityPlan original)))
 emitPlanWithFormat minify target original = do
   let plan = wirePlan (escapePlan target (witnessPlan (goAbilityNames target (ownedAbilityPlan original))))
@@ -567,6 +567,8 @@ emitPlanWithNativeOptions minify target sourceDir testDir unescaped unwitnessed 
       safe p = (null p && target == "go") || (not (null p) && all (\part -> not (null part) && part /= "." && part /= ".." && all (\c -> isAlphaNum c || c `elem` ("_-" :: String)) part) (split '/' p))
   unless (safe src && safe tst) (Left [Diagnostic "layout" "output directories must be relative paths without traversal" Nothing])
   unless (target /= "go" || src == tst) (Left [Diagnostic "layout" "Go adapters and tests must share a source directory" Nothing])
+  unless (target /= "gleam" || src == "src" && tst == "test")
+    (Left [Diagnostic "layout" "Gleam uses src and test directories because paths determine module identities; choose the project output root instead" Nothing])
   let prefix p f = if null p then f else p ++ "/" ++ f
       move old new f = prefix new (maybe f id (stripPrefix (if null old then "" else old ++ "/") f))
       rel a b = case (a,b) of
@@ -591,6 +593,9 @@ emitPlanWithNativeOptions minify target sourceDir testDir unescaped unwitnessed 
         { artifactPath = if artifactPlacement a == "source" then move (sourceBase a) (sourceRoot a) (artifactPath a)
             -- Test resources (JUnit's configuration) stay where the build finds them.
             else if "src/test/resources/" `isPrefixOf` artifactPath a then artifactPath a
+            -- Gleam test FFI lives in a separate development dependency: the
+            -- compiler includes foreign files under test/ in production builds.
+            else if target == "gleam" && "test-support/" `isPrefixOf` artifactPath a then artifactPath a
             else move (snd defaults) tst (artifactPath a) }
       adjustContent a
         | target `elem` ["javascript","typescript"] && artifactPlacement a == "test" =

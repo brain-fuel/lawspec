@@ -5,7 +5,7 @@ module LawSpec.BeamCode
   ( atom, binary, string, array, tuple, record, call, remote, lambda, apply
   , function, moduleDoc, userModuleDoc, sequenceDoc, snake, moduleName, functionName
   , typeReference, reference, literal, json, value, nativeType, dataNames
-  , nativeModule, nativeFunction, pascal, elixirDataModule, elixirFields
+  , nativeModule, nativeFunction, pascal, elixirDataModule, elixirFields, gleamPath, gleamName
   ) where
 
 import qualified LawSpec.Code.Doc as D
@@ -115,13 +115,23 @@ functionName declaration = case snake (C.declarationName declaration) of
 nativeModule :: String -> C.Unit -> String
 nativeModule "elixir" = ("Elixir." ++) . intercalate "." . map pascal . splitDot . C.idText . C.unitId
   where splitDot s = case break (== '.') s of (a,[]) -> [a]; (a,_:b) -> a : splitDot b
+nativeModule "gleam" = map (\c -> if c == '/' then '@' else c) . gleamPath . C.unitId
 nativeModule _ = moduleName . C.unitId
 
 nativeFunction :: String -> C.Declaration -> String
 nativeFunction "elixir" d = case functionName d of
   n | n `elem` words "after alias and case catch cond def defmodule do else end false fn for if import in nil not or quote raise receive require rescue super true try unless unquote use when with __info__" -> n ++ "_lawspec"
   n -> n
+nativeFunction "gleam" d = gleamName (functionName d)
 nativeFunction _ d = functionName d
+
+gleamPath :: C.Id -> String
+gleamPath = intercalate "/" . map snake . splitDot . C.idText
+  where splitDot s = case break (== '.') s of (a,[]) -> [a]; (a,_:b) -> a : splitDot b
+
+gleamName :: String -> String
+gleamName n | n `elem` words "as assert auto case const delegate derive echo else fn if implement import let opaque panic pub test todo type use" = n ++ "_lawspec"
+gleamName n = n
 
 pascal :: String -> String
 pascal = concatMap cap . words . map (\c -> if c == '_' then ' ' else c) . snake
@@ -176,7 +186,7 @@ value symbols v = case v of
 dataNames :: [C.DataDeclaration] -> Either String [(C.Id,String)]
 dataNames declarations = do
   let shorts = [(C.dataId d,snake (C.dataName d)) | d <- declarations]
-      reservedTypes = words "any none no_return atom map pid port reference tuple integer float number binary bitstring boolean bool char string nonempty_string list nonempty_list improper_list nonempty_improper_list maybe_improper_list nonempty_maybe_improper_list byte arity identifier iodata iolist mfa module node timeout fun function term nothing just left right some non_null null undefined ok"
+      reservedTypes = words "any none no_return atom map pid port reference tuple integer int float number binary bitstring bit_array boolean bool char string nonempty_string list nonempty_list improper_list nonempty_improper_list maybe_improper_list nonempty_maybe_improper_list byte arity identifier iodata iolist mfa module node timeout fun function term nothing just left right some non_null null undefined ok nil true false result utf_codepoint charlist nonempty_charlist as_boolean"
       types = [(identity, if length (filter ((== n) . snd) shorts) > 1 || n `elem` reservedTypes
         then snake (C.idText identity) else n) | (identity,n) <- shorts]
       constructors = [(C.constructorId c, if length (C.dataConstructors d) == 1 then n

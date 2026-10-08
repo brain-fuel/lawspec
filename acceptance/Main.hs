@@ -195,7 +195,11 @@ usesCrypto target = any (\g -> generatedPath g == adapterPath target "lawspec.cr
 writeProject :: String -> String -> FilePath -> Bool -> Bool -> [Generated] -> IO ()
 writeProject suite target project defaultProfile minify generated = do
   createDirectoryIfMissing True project
-  forM_ ["src", "lib", "test", "tests", "example", "dist", "lawspec"] $ \folder -> removePathForcibly (project </> folder)
+  forM_ ["src", "lib", "test", "test-support", "tests", "example", "dist", "lawspec"] $ \folder -> removePathForcibly (project </> folder)
+  -- Gleam retains foreign Erlang modules in its compiled application after
+  -- their source files move or disappear. Regenerate from a fresh build so a
+  -- stale module cannot conceal a missing source or leak into a shipment.
+  when (target == "gleam") (removePathForcibly (project </> "build"))
   scaffolds <- either die pure (scaffoldFilesWith (usesCrypto target generated) minify target)
   forM_ scaffolds $ \(path, content) -> writeAt (project </> path) content
   forM_ generated $ \g -> writeAt (project </> generatedPath g) (generatedContent g)

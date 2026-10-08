@@ -1,0 +1,6 @@
+@@ src/example/scalar_adapters.gleam
+<<<<<<<
+pub fn same_symbol(a: types.Symbol, b: types.Symbol) -> Bool { scalar.symbol_equal(a, b) }
+=======
+pub fn same_symbol(a: types.Symbol, b: types.Symbol) -> Bool { scalar.symbol_description(a) == scalar.symbol_description(b) }
+>>>>>>>
