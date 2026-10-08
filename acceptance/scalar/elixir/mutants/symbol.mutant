@@ -1,0 +1,7 @@
+@@ lib/example_scalar_adapters.ex
+<<<<<<<
+  def same_symbol(a, b), do: :lawspec_beam_scalar.equal(a, b)
+=======
+  def same_symbol({:ls_symbol, _, description}, {:ls_symbol, _, description}), do: true
+  def same_symbol(_, _), do: false
+>>>>>>>

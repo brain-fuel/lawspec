@@ -177,11 +177,11 @@ const scaffolds = {
                     },
                     "elixir": {
                       "readable": {
-                        "mix.exs": "defmodule LawSpecExample.MixProject do\n  use Mix.Project\n\n  def project do\n    [app: :lawspec_example, version: \"0.1.0\", elixir: \"~> 1.20\",\n     erlc_paths: [\"src\"], elixirc_paths: [\"lib\"],\n     deps: [{:stream_data, \"== 1.4.0\", only: :test}]]\n  end\n\n  def application do\n    [extra_applications: [:logger]]\n  end\nend\n",
+                        "mix.exs": "defmodule LawSpecExample.MixProject do\n  use Mix.Project\n\n  def project do\n    [app: :lawspec_example, version: \"0.1.0\", elixir: \"~> 1.20\",\n     erlc_paths: [\"src\"] ++ test_paths(), elixirc_paths: [\"lib\"] ++ test_paths(),\n     deps: [{:stream_data, \"== 1.4.0\", only: :test}]]\n  end\n\n  defp test_paths, do: if(Mix.env() == :test, do: [\"test/support\"], else: [])\n\n  def application do\n    [extra_applications: [:logger]]\n  end\nend\n",
                         "test/test_helper.exs": "ExUnit.start()\n"
                       },
                       "compact": {
-                        "mix.exs": "defmodule LawSpecExample.MixProject do\n  use Mix.Project\n\n  def project do\n    [app: :lawspec_example, version: \"0.1.0\", elixir: \"~> 1.20\",\n     erlc_paths: [\"src\"], elixirc_paths: [\"lib\"],\n     deps: [{:stream_data, \"== 1.4.0\", only: :test}]]\n  end\n\n  def application do\n    [extra_applications: [:logger]]\n  end\nend\n",
+                        "mix.exs": "defmodule LawSpecExample.MixProject do\n  use Mix.Project\n\n  def project do\n    [app: :lawspec_example, version: \"0.1.0\", elixir: \"~> 1.20\",\n     erlc_paths: [\"src\"] ++ test_paths(), elixirc_paths: [\"lib\"] ++ test_paths(),\n     deps: [{:stream_data, \"== 1.4.0\", only: :test}]]\n  end\n\n  defp test_paths, do: if(Mix.env() == :test, do: [\"test/support\"], else: [])\n\n  def application do\n    [extra_applications: [:logger]]\n  end\nend\n",
                         "test/test_helper.exs": "ExUnit.start()\n"
                       }
                     },

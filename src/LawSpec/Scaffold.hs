@@ -72,9 +72,10 @@ scaffoldFilesWith crypto minify target = case target of
         , "  use Mix.Project", ""
         , "  def project do"
         , "    [app: :lawspec_example, version: \"0.1.0\", elixir: \"~> 1.20\","
-        , "     erlc_paths: [\"src\"], elixirc_paths: [\"lib\"],"
+        , "     erlc_paths: [\"src\"] ++ test_paths(), elixirc_paths: [\"lib\"] ++ test_paths(),"
         , "     deps: [{:stream_data, \"== 1.4.0\", only: :test}]]"
         , "  end", ""
+        , "  defp test_paths, do: if(Mix.env() == :test, do: [\"test/support\"], else: [])", ""
         , "  def application do"
         , "    [extra_applications: [:logger" ++ (if crypto then ", :crypto" else "") ++ "]]"
         , "  end", "end" ])

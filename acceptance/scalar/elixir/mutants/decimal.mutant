@@ -1,0 +1,6 @@
+@@ lib/example_scalar_adapters.ex
+<<<<<<<
+  def add_decimal(a, b), do: :lawspec_beam_scalar.binary("+", a, b, "Decimal", "Decimal")
+=======
+  def add_decimal(a, _b), do: a
+>>>>>>>

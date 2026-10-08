@@ -1,0 +1,6 @@
+@@ lib/example_scalar_adapters.ex
+<<<<<<<
+  def successor(value), do: value + 1
+=======
+  def successor(value), do: :erlang.band(value + 129, 255) - 128
+>>>>>>>

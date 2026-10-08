@@ -1,0 +1,6 @@
+@@ lib/example_scalar_adapters.ex
+<<<<<<<
+  def echo_presence(value), do: value
+=======
+  def echo_presence(_value), do: :none
+>>>>>>>

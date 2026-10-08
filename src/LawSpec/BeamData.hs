@@ -12,23 +12,24 @@ import LawSpec.Core.Types (makeRegistry, freeExistentials)
 import LawSpec.Core.Total (constructorProofContracts)
 import LawSpec.Scalar (primitives, primitiveName)
 import LawSpec.Common (Artifact(..))
-import Control.Monad (forM)
+import Control.Monad (forM, unless)
+import Data.List (nub)
 
-emitData :: D.Layout -> Int -> [C.DataDeclaration] -> Either String Artifact
-emitData layout bits declarations = do
+emitData :: String -> D.Layout -> Int -> [C.DataDeclaration] -> Either String Artifact
+emitData target layout bits declarations = do
   _ <- makeRegistry declarations
   _ <- either (Left . show) Right (constructorProofContracts bits declarations)
   names <- E.dataNames declarations
   (schemas,contracts) <- S.dataSchemasWithContracts declarations
-  definitions <- mapM (nativeDefinition names) declarations
+  definitions <- if target == "erlang" then mapM (nativeDefinition names) declarations else pure []
   metadata <- forM schemas $ \definition -> do
     cs <- forM (S.constructors definition) $ \c -> do
       tag <- named names (C.Id (S.constructorTag c))
       predicates <- sequence [predicate contract expression | contract <- contracts,
         S.contractTag contract == S.constructorTag c, expression <- S.contractPredicates contract]
+      native <- nativeShape tag (S.constructorTag c)
       pure (E.record ([(E.atom "tag",E.binary (S.constructorTag c)),
-        (E.atom "native_tag",E.atom tag),
-        (E.atom "fields",E.array [E.tuple [E.binary (S.fieldName f),E.reference (S.fieldType f)] | f <- S.fields c])] ++
+        (E.atom "fields",E.array [E.tuple [E.binary (S.fieldName f),E.reference (S.fieldType f)] | f <- S.fields c])] ++ native ++
         [(E.atom "predicates",E.array predicates) | not (null predicates)] ++
         [(E.atom "indices",E.array (map E.binary (S.constructorIndex c))) | not (null (S.constructorIndex c))] ++
         [(E.atom "refinements",E.array [E.tuple [D.text (show i),E.reference t] | (i,t) <- S.constructorRefinements c]) | not (null (S.constructorRefinements c))] ++
@@ -40,13 +41,27 @@ emitData layout bits declarations = do
       [(E.atom "handle",E.atom "true") | any (\d -> C.idText (C.dataId d) == S.typeName definition && C.dataHandle d) declarations]))
   exports <- mapM (\d -> do
     name <- named names (C.dataId d)
-    pure (E.atom name <> D.text ("/" ++ show (length (C.dataParameters d))))) declarations
+    pure (E.atom name <> D.text ("/" ++ show (length (C.dataParameters d))))) [d | d <- declarations, target == "erlang"]
   let factory = E.function "schema" [D.text "_LsSymbols"]
         [E.remote "lawspec_beam_schema" "new" [E.array metadata,
           E.array (map (E.binary . primitiveName) primitives),D.text (show bits)]]
       body = [D.text "-export_type(" <> E.array exports <> D.text ")." | not (null exports)] ++ definitions ++ [factory]
   pure (Artifact "src/lawspec_data.erl" (D.render layout (E.moduleDoc "lawspec_data" [("schema",1)] body)) "generated" "source")
   where
+    nativeShape tag identity
+      | target /= "elixir" = pure [(E.atom "native_tag",E.atom tag)]
+      | otherwise = case [(d,c) | d <- declarations, c <- C.dataConstructors d, C.idText (C.constructorId c) == identity] of
+          [(d,c)] -> do
+            let fields = E.elixirFields d c
+                variables = [D.text ("_LsField" ++ show i) | (i,_) <- zip [0::Int ..] fields]
+                entries = (E.atom "__struct__", E.atom ("Elixir." ++ E.elixirDataModule tag)) : zip (map E.atom fields) variables
+                patternDoc = D.delimit 4 "#{" "}" [a <> D.text " := " <> b | (a,b) <- entries]
+            unless (all (\n -> not (null n) && length n <= 255 && n /= "__struct__") fields && length fields == length (nub fields))
+              (Left "Elixir struct fields collide after snake_case conversion or exceed the atom limit")
+            pure [(E.atom "encode",E.lambda [E.array variables] (E.record entries)),
+              (E.atom "decode",D.group (D.text "fun(" <> patternDoc <> D.text ") -> " <>
+                E.tuple [E.atom "ok",E.array variables] <> D.text "; (_) -> no_match end"))]
+          _ -> Left "missing Elixir constructor metadata"
     named names identity = maybe (Left ("unresolved BEAM data name: " ++ C.idText identity)) Right (lookup identity names)
     nativeDefinition names d = do
       name <- named names (C.dataId d)

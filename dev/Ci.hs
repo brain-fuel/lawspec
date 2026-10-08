@@ -72,6 +72,8 @@ ci args = do
       run (step "beam-runtime" ["sh", "tools/beam-runtime.sh"])
     when ("erlang" `elem` targets options) $
       run (step "beam-proper" ["sh", "tools/beam-proper.sh"])
+    when ("elixir" `elem` targets options) $
+      run (step "beam-stream-data" ["sh", "tools/beam-stream-data.sh"])
     mapM_ (mapM_ run . targetSteps) (targets options)
     mapM_ run (rustRuntimeSteps options)
   failed <- reverse <$> readIORef failures
@@ -128,6 +130,9 @@ stepInputs name = case name of
     "test/locks/erlang/", "src/LawSpec/Scaffold.hs", "templates/tools/bootstrap-integration.mjs"] []
     [["erl", "-noshell", "-eval", "io:format(\"~s~n\", [erlang:system_info(system_version)]), halt()."],
      ["rebar3", "version"]])
+  "beam-stream-data" -> Just (Inputs ["runtime/lawspec_beam_", "test/fixtures/beam/", "tools/beam-stream-data.sh",
+    "test/locks/elixir/", "src/LawSpec/Scaffold.hs", "templates/tools/bootstrap-integration.mjs"] []
+    [["elixir", "--version"], ["mix", "--version"]])
   _ -> Nothing
   where
     unread = ["docs/", "acceptance/", "editors/"]

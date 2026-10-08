@@ -1,0 +1,6 @@
+@@ lib/example_scalar_adapters.ex
+<<<<<<<
+  def preserve_big(value), do: value
+=======
+  def preserve_big(value), do: :erlang.band(value, 0x1FFFFFFFFFFFFF)
+>>>>>>>

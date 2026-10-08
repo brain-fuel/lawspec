@@ -1,0 +1,6 @@
+@@ lib/example_scalar_adapters.ex
+<<<<<<<
+  def echo_raw(value), do: value
+=======
+  def echo_raw(value), do: Enum.filter(value, &(&1 < 0xD800 or &1 > 0xDFFF))
+>>>>>>>

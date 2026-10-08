@@ -138,7 +138,11 @@ main = do
 harnessInputs :: String -> [FilePath]
 harnessInputs target =
   [ "acceptance/Main.hs", "acceptance/Toolchain.hs", "acceptance/Cache.hs", "test/locks/go/go.sum"
-  , ".integration" </> target </> "package.json", ".integration" </> target </> "package-lock.json" ]
+  , ".integration" </> target </> "package.json", ".integration" </> target </> "package-lock.json" ] ++
+  ["test/locks" </> target </> lock | Just lock <- [beamLock target]]
+
+beamLock :: String -> Maybe FilePath
+beamLock target = lookup target [("erlang","rebar.lock"),("elixir","mix.lock"),("gleam","manifest.toml")]
 
 -- | Generation goes through the same JSON boundary that core.wasm exports.
 plan :: [(K.Key, Value)] -> [(FilePath, String)] -> String -> Int -> Bool -> IO [Generated]
@@ -191,7 +195,7 @@ usesCrypto target = any (\g -> generatedPath g == adapterPath target "lawspec.cr
 writeProject :: String -> String -> FilePath -> Bool -> Bool -> [Generated] -> IO ()
 writeProject suite target project defaultProfile minify generated = do
   createDirectoryIfMissing True project
-  forM_ ["src", "test", "tests", "example", "dist", "lawspec"] $ \folder -> removePathForcibly (project </> folder)
+  forM_ ["src", "lib", "test", "tests", "example", "dist", "lawspec"] $ \folder -> removePathForcibly (project </> folder)
   scaffolds <- either die pure (scaffoldFilesWith (usesCrypto target generated) minify target)
   forM_ scaffolds $ \(path, content) -> writeAt (project </> path) content
   forM_ generated $ \g -> writeAt (project </> generatedPath g) (generatedContent g)
@@ -222,6 +226,11 @@ writeProject suite target project defaultProfile minify generated = do
     exists <- doesPathExist link
     unless exists (createDirectoryLink (root </> ".integration" </> target </> "node_modules") link)
   when (target == "go") (copyFile "test/locks/go/go.sum" (project </> "go.sum"))
+  forM_ (beamLock target) $ \lock -> copyFile ("test/locks" </> target </> lock) (project </> lock)
+  when (target == "elixir") $ do
+    let link = project </> "deps"
+    exists <- doesPathExist link
+    unless exists (createDirectoryLink (root </> ".integration/elixir/deps") link)
 
 -- A suite's recorded values: acceptance/<suite>/recorded/<unit>/<name>, as
 -- recorded/<unit>/<name> in each project.

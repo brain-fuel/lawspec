@@ -80,7 +80,7 @@ emitPlan = emitPlanWithFormat False
 -- | Canonical adapter references are independent of the selected presentation.
 -- Legacy runtime/test templates are still being migrated to structured Docs.
 emitPlanWithFormat :: Bool -> String -> Plan -> Either [Diagnostic] [Artifact]
-emitPlanWithFormat minify "erlang" original = Beam.emitErlang minify
+emitPlanWithFormat minify target original | target `elem` ["erlang", "elixir"] = Beam.emitBeam target minify
   (wirePlan (witnessPlan (ownedAbilityPlan original)))
 emitPlanWithFormat minify target original = do
   let plan = wirePlan (escapePlan target (witnessPlan (goAbilityNames target (ownedAbilityPlan original))))
@@ -559,6 +559,7 @@ emitPlanWithNativeOptions minify target sourceDir testDir unescaped unwitnessed 
         "kotlin" -> ("src/main/kotlin", "src/test/kotlin")
         "python" -> ("src", "tests")
         "rust" -> ("src", "tests")
+        "elixir" -> ("lib", "test")
         "go" -> ("", "")
         _ -> ("src", "test")
       src = maybe (fst defaults) id sourceDir
@@ -578,8 +579,14 @@ emitPlanWithNativeOptions minify target sourceDir testDir unescaped unwitnessed 
         | Just rest <- stripPrefix old text = new ++ replace old new rest
         | c:rest <- text = c:replace old new rest
         | otherwise = []
-      sourceBase a = if target == "kotlin" && ".java" `isSuffixOf` artifactPath a then "src/main/java" else fst defaults
-      sourceRoot a = if target == "kotlin" && ".java" `isSuffixOf` artifactPath a then maybe "src/main/java" id sourceDir else src
+      sourceBase a
+        | target == "kotlin" && ".java" `isSuffixOf` artifactPath a = "src/main/java"
+        | target == "elixir" && ".erl" `isSuffixOf` artifactPath a = "src"
+        | otherwise = fst defaults
+      sourceRoot a
+        | target == "kotlin" && ".java" `isSuffixOf` artifactPath a = maybe "src/main/java" id sourceDir
+        | target == "elixir" && ".erl" `isSuffixOf` artifactPath a = maybe "src" id sourceDir
+        | otherwise = src
       adjust a = (mapArtifactContent (adjustContent a) a)
         { artifactPath = if artifactPlacement a == "source" then move (sourceBase a) (sourceRoot a) (artifactPath a)
             -- Test resources (JUnit's configuration) stay where the build finds them.

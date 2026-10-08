@@ -16,6 +16,7 @@ runtimeFiles =
   , ("beam-regex", "lawspec_beam_regex.erl")
   , ("beam-random", "lawspec_beam_random.erl"), ("beam-values", "lawspec_beam_values.erl")
   , ("beam-runtime", "lawspec_beam_runtime.erl"), ("beam-proper", "lawspec_beam_proper.erl")
+  , ("beam-generators", "lawspec_beam_generators.erl"), ("beam-stream-data", "lawspec_beam_stream_data.ex")
   , ("python", "lawspec_runtime.py"), ("python-schema", "lawspec_schema.py")
   , ("python-data-strategies", "lawspec_data_strategies.py"), ("javascript", "lawspec_runtime.mjs")
   , ("web-schema", "lawspec_schema.mjs"), ("web-data-strategies", "lawspec_data_strategies.mjs")

@@ -50,6 +50,7 @@ extra-source-files:
     runtime/lawspec_network.go
     runtime/lawspec_runtime.go
     runtime/lawspec_schema.go
+    runtime/lawspec_beam_generators.erl
     runtime/lawspec_beam_proper.erl
     runtime/lawspec_beam_random.erl
     runtime/lawspec_beam_regex.erl
@@ -347,6 +348,8 @@ library
       LawSpec.Domain
       LawSpec.DomainModel
       LawSpec.Elaboration
+      LawSpec.ElixirCode
+      LawSpec.ElixirNative
       LawSpec.Emit
       LawSpec.Eval
       LawSpec.Flow

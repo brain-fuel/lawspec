@@ -49,6 +49,8 @@ testIdentifier target ws = case target of
   "python" -> "test_" ++ intercalate "_" ws
   "rust" -> "law_" ++ intercalate "_" ws
   "erlang" -> "law_" ++ intercalate "_" ws
+  "elixir" -> "law_" ++ intercalate "_" ws
+  "gleam" -> "law_" ++ intercalate "_" ws
   "go" -> "Test" ++ concatMap capital ws
   _ -> "law" ++ concatMap capital ws
   where capital (c : cs) = toUpper c : cs

@@ -1,7 +1,7 @@
 -- | Native Erlang artifacts and PropEr tests from a fully elaborated plan.
 -- The other BEAM languages share this runtime and the Core expression layer.
 -- ref:DEC-typed-core-boundary ref:DEC-native-property-frameworks
-module LawSpec.BeamEmit (emitErlang) where
+module LawSpec.BeamEmit (emitBeam) where
 
 import qualified LawSpec.Core as C
 import qualified LawSpec.Code.Doc as D
@@ -9,6 +9,7 @@ import qualified LawSpec.BeamCode as E
 import qualified LawSpec.BeamExpr as Expr
 import qualified LawSpec.BeamData as Data
 import qualified LawSpec.BeamDefinitions as Definitions
+import qualified LawSpec.ElixirNative as Elixir
 import LawSpec.Common (Artifact(..), Diagnostic(..), Generation(..))
 import LawSpec.Testing
 import LawSpec.RuntimeSources (runtimeSource)
@@ -18,24 +19,30 @@ import LawSpec.Core.Types (freeExistentials)
 import Control.Monad (unless, forM)
 import Data.List (nub, isPrefixOf)
 
-emitErlang :: Bool -> Plan -> Either [Diagnostic] [Artifact]
-emitErlang minify plan = either (Left . pure . (\message -> Diagnostic "target" message Nothing)) Right $ do
-  validatePlan plan
+emitBeam :: String -> Bool -> Plan -> Either [Diagnostic] [Artifact]
+emitBeam target minify plan = either (Left . pure . (\message -> Diagnostic "target" message Nothing)) Right $ do
+  validatePlan target plan
   names <- E.dataNames declarations
-  schemaFile <- Data.emitData layout bits declarations
-  definitions <- Definitions.emitDefinitions layout bits declarations units
-  adapters <- mapM (adapter names) [u | u <- units, not (null (adapterDeclarations u))]
-  tests <- mapM unitTests [u | u <- plannedUnits plan, not (null (plannedProperties u))]
+  schemaFile <- Data.emitData target layout bits declarations
+  definitions <- Definitions.emitDefinitions target layout bits declarations units
+  adapters <- mapM (adapter names) [u | u <- units, target == "erlang", not (null (adapterDeclarations u))]
+  native <- if target == "elixir" then Elixir.emitNative layout bits declarations units else pure []
+  tests <- concat <$> mapM unitTests [u | u <- plannedUnits plan, not (null (plannedProperties u))]
   let runtimes = [Artifact ("src/lawspec_beam_" ++ name ++ ".erl")
         (runtimeSource ("beam-" ++ name)) "generated" "source"
         | name <- ["scalar","schema","regex","runtime"]]
-      generators = [Artifact "test/lawspec_beam_proper.erl" (runtimeSource "beam-proper") "generated" "test" | not (null tests)]
-  pure (schemaFile : definitions ++ adapters ++ tests ++ runtimes ++ generators)
+      generators = if null tests then [] else
+        [Artifact (testSupport ++ "lawspec_beam_generators.erl") (runtimeSource "beam-generators") "generated" "test"] ++
+        [Artifact "test/lawspec_beam_proper.erl" (runtimeSource "beam-proper") "generated" "test" | target == "erlang"] ++
+        [Artifact "test/support/lawspec_beam_stream_data.ex" (runtimeSource "beam-stream-data") "generated" "test" | target == "elixir"]
+  pure (schemaFile : definitions ++ adapters ++ native ++ tests ++ runtimes ++ generators)
   where
     declarations = planDataDeclarations plan
     bits = planMachineBits plan
     units = map plannedUnit (plannedUnits plan)
     layout = D.selectLayout minify (D.Pretty 100)
+    testSupport = if target == "erlang" then "test/" else "test/support/"
+    framework = if target == "erlang" then "lawspec_beam_proper" else "Elixir.LawSpec.Beam.StreamData"
     schema = D.text "_LsSchema"
     symbols = D.text "_LsSymbols"
     context = [D.text "_LsSymbols = make_ref()",D.text "_LsSchema = " <> E.remote "lawspec_data" "schema" [symbols]]
@@ -56,11 +63,12 @@ emitErlang minify plan = either (Left . pure . (\message -> Diagnostic "target" 
     unitTests planned = do
       let unit = plannedUnit planned
           properties = plannedProperties planned
-          names = unitTestNames "erlang" (map (C.propertyName . plannedProperty) properties)
-          name = Definitions.adapterModule unit ++ "_lawspec_tests"
+          names = unitTestNames target (map (C.propertyName . plannedProperty) properties)
+          name = Definitions.adapterModule unit ++ (if target == "erlang" then "_lawspec_tests" else "_lawspec_cases")
       bodies <- concat <$> sequence [lawTests n p | (n,p) <- zip names properties]
-      pure (Artifact ("test/" ++ name ++ ".erl")
-        (D.render layout (E.moduleDoc name [(n ++ "_test_",0) | n <- names] bodies)) "generated" "test")
+      pure (Artifact (testSupport ++ name ++ ".erl")
+        (D.render layout (E.moduleDoc name [(n ++ "_test_",0) | n <- names] bodies)) "generated" "test" :
+        [Elixir.unitTests layout unit names | target == "elixir"])
     lawTests name planned = do
       let law = plannedProperty planned
           parameters = map (C.quantifiedBinder) (C.propertyInputs law)
@@ -91,13 +99,13 @@ emitErlang minify plan = either (Left . pure . (\message -> Diagnostic "target" 
           let settings = C.propertyGeneration law
               options = E.array [E.tuple [E.atom k,D.text (show v)] | (k,v) <-
                 [("numtests",cases settings),("constraint_tries",maxAttempts settings),("max_shrinks",maxShrinks settings)]]
-          pure [test "property" [E.remote "lawspec_beam_proper" "check" [E.binary label,
-            E.remote "proper" "forall" [E.remote "lawspec_beam_proper" "complete" [generator],
+          pure [test "property" [E.remote framework "check" [E.binary label,
+            E.remote framework "forall" [E.remote framework "complete" [generator],
               E.lambda [D.text "_LsValues"] (invoke (D.text "_LsValues"))],options]]]
       pure [metadataDocument 100 "%%" planned <>
         E.function caseName [schema,symbols,E.array (map (D.text . snd) aliases)] [body],
         E.function (name ++ "_test_") [] [E.array (examples ++ boundaryTests ++ randomTests)]]
-    draws _ _ previous [] = pure (E.remote "proper_types" "exactly" [E.array previous])
+    draws _ _ previous [] = pure (E.remote framework "exactly" [E.array previous])
     draws render aliases previous (requirement:rest) = do
       let binder = generatorBinder requirement
       name <- maybe (Left "missing BEAM generator binder") Right (lookup (C.binderId binder) aliases)
@@ -105,12 +113,12 @@ emitErlang minify plan = either (Left . pure . (\message -> Diagnostic "target" 
       bounds <- mapM (\(op,expression) -> E.tuple . (E.binary (C.binaryName op) :) . pure <$> render expression)
         (nub (generatorBounds requirement ++ directBounds requirement))
       predicates <- mapM render (generatorPredicates requirement)
-      let raw = E.remote "lawspec_beam_proper" "generator" [ref,schema,symbols,E.array bounds,
+      let raw = E.remote framework "generator" [ref,schema,symbols,E.array bounds,
             E.array (map (E.value symbols) (generatorBoundaries requirement))]
           predicate = foldr (\a b -> D.text "(" <> a <> D.text " andalso " <> b <> D.text ")") (E.atom "true") predicates
-          constrained = if null predicates then raw else E.remote "lawspec_beam_proper" "refine_input" [raw,E.lambda [D.text name] predicate]
+          constrained = if null predicates then raw else E.remote framework "refine_input" [raw,E.lambda [D.text name] predicate]
       remaining <- draws render aliases (previous ++ [D.text name]) rest
-      pure (E.remote "lawspec_beam_proper" "bind" [constrained,E.lambda [D.text name] remaining])
+      pure (E.remote framework "bind" [constrained,E.lambda [D.text name] remaining])
 
 -- | Conjunctive comparisons can narrow a native integer generator even when
 -- their bounds depend on previous inputs. Only safe operands are evaluated
@@ -146,8 +154,8 @@ directBounds requirement = concatMap walk (generatorPredicates requirement)
 -- | Until each execution plane is connected, compilation diagnoses it. No
 -- law, policy, recording or resource may silently disappear from a release.
 -- ref:DEC-never-pass-vacuously
-validatePlan :: Plan -> Either String ()
-validatePlan plan = do
+validatePlan :: String -> Plan -> Either String ()
+validatePlan target plan = do
   let units = map plannedUnit (plannedUnits plan)
       declarations = concatMap C.unitDeclarations units
       laws = concatMap plannedProperties (plannedUnits plan)
@@ -155,12 +163,17 @@ validatePlan plan = do
       generated = ["lawspec_data","lawspec_definitions"] ++
         [Definitions.adapterModule u ++ suffix | u <- units, suffix <- ["_definitions","_lawspec_tests"]]
       collisions = [n | n <- moduleNames, n `elem` generated || "lawspec_beam_" `isPrefixOf` n]
-      functionClashes u = let names = map E.functionName (C.unitDeclarations u) in length names /= length (nub names)
+      natives = map (E.nativeModule target) units
+      nativeGenerated = [E.nativeModule target u ++ suffix | u <- units, suffix <- [".Definitions", ".LawSpecTest"]]
+      functionClashes u = let names = map (E.nativeFunction target) (C.unitDeclarations u) in length names /= length (nub names)
   unless (length moduleNames == length (nub moduleNames) && null collisions && all (not . null) moduleNames)
     (Left "BEAM module names collide after snake_case conversion or with generated runtime modules")
-  unless (all ((<= 255) . length) (moduleNames ++ generated) && all ((<= 253) . length . fst . C.functionType . C.declarationType) declarations)
+  unless (length natives == length (nub natives) && (target /= "elixir" ||
+    all (\n -> not ("Elixir.LawSpec." `isPrefixOf` n) && n `notElem` nativeGenerated) natives))
+    (Left "Elixir module names collide after normalization or with the LawSpec namespace")
+  unless (all ((<= 230) . length) (moduleNames ++ generated ++ natives) && all ((<= 253) . length . fst . C.functionType . C.declarationType) declarations)
     (Left "BEAM module name or function arity exceeds the Erlang limit")
-  unless (all (\d -> let n = E.functionName d in not (null n) && length n <= 255) declarations)
+  unless (all (\d -> let n = E.nativeFunction target d in not (null n) && length n <= 255) declarations)
     (Left "BEAM function name is empty or exceeds the Erlang atom limit")
   unless (not (any functionClashes units)) (Left "BEAM function names collide after snake_case conversion")
   unless (all (null . C.unitMachines) units && all (null . C.unitSessions) units &&

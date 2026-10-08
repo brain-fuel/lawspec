@@ -2,7 +2,7 @@
 -- entry points call the same implementations and cross the same schema bridge.
 -- ref:DEC-total-definitions ref:DEC-native-bindings-typed-identity
 module LawSpec.BeamDefinitions
-  ( emitDefinitions, external, declarationSpec, adapterModule ) where
+  ( emitDefinitions, external, declarationSpec, adapterModule, entries ) where
 
 import qualified LawSpec.Core as C
 import qualified LawSpec.Code.Doc as D
@@ -34,12 +34,12 @@ declarationSpec bits names declaration = do
   pure (D.group (D.text "-spec " <> E.call (E.functionName declaration) parameters <>
     D.text " ->" <> D.nest 4 (D.softline <> returns) <> D.text "."))
 
-emitDefinitions :: D.Layout -> Int -> [C.DataDeclaration] -> [C.Unit] -> Either String [Artifact]
-emitDefinitions layout bits declarations units = do
+emitDefinitions :: String -> D.Layout -> Int -> [C.DataDeclaration] -> [C.Unit] -> Either String [Artifact]
+emitDefinitions target layout bits declarations units = do
   verified <- checkedDefinitionContracts bits declarations units
   names <- E.dataNames declarations
   bodies <- mapM (implementation verified) [(u,d) | u <- units, d <- C.unitDeclarations u]
-  wrappers <- mapM (nativeUnit names) [u | u <- units, not (null (C.unitDefinitions u))]
+  wrappers <- mapM (nativeUnit names) [u | u <- units, target == "erlang", not (null (C.unitDefinitions u))]
   let exports = [(name,2 + length (fst (C.functionType (C.declarationType d))))
         | u <- units, d <- C.unitDeclarations u, Just name <- [lookup (C.declarationId d) callees]]
   pure (file "lawspec_definitions" exports bodies : wrappers)
@@ -65,7 +65,7 @@ emitDefinitions layout bits declarations units = do
         Just d -> render locals (C.definitionBody d)
         Nothing -> do
           nativeArguments <- sequence [bridge "to_native" ty (D.text arg) | (ty,arg) <- zip parameterTypes arguments]
-          bridge "from_native" resultType (E.remote (adapterModule unit) (E.functionName declaration) nativeArguments)
+          bridge "from_native" resultType (E.remote (E.nativeModule target unit) (E.nativeFunction target declaration) nativeArguments)
       let candidates = case definition of Just _ -> verified; Nothing -> C.unitContracts unit
           contracts = [c | c <- candidates, C.contractDeclaration c == identity]
       pre <- fmap concat $ forM contracts $ \c -> do

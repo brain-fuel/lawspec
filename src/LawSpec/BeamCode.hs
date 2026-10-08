@@ -5,14 +5,16 @@ module LawSpec.BeamCode
   ( atom, binary, string, array, tuple, record, call, remote, lambda, apply
   , function, moduleDoc, userModuleDoc, sequenceDoc, snake, moduleName, functionName
   , typeReference, reference, literal, json, value, nativeType, dataNames
+  , nativeModule, nativeFunction, pascal, elixirDataModule, elixirFields
   ) where
 
 import qualified LawSpec.Code.Doc as D
 import qualified LawSpec.Core as C
 import qualified LawSpec.Core.Schema as S
 import qualified LawSpec.Core.Value as V
+import LawSpec.Core.Types (freeExistentials)
 import LawSpec.Scalar (Scalar(..), primitive, family, Family(..), integerBounds)
-import Data.Char (isAscii, isAlphaNum, isUpper, isLower, isDigit, toLower, ord)
+import Data.Char (isAscii, isAlphaNum, isUpper, isLower, isDigit, toLower, toUpper, ord)
 import Data.List (intercalate, nub)
 import qualified Data.Aeson as A
 import qualified Data.Aeson.Key as K
@@ -108,6 +110,29 @@ functionName :: C.Declaration -> String
 functionName declaration = case snake (C.declarationName declaration) of
   "module_info" -> "lawspec_module_info"
   name -> name
+
+-- | Elixir modules retain namespaces; their VM names carry the Elixir prefix.
+nativeModule :: String -> C.Unit -> String
+nativeModule "elixir" = ("Elixir." ++) . intercalate "." . map pascal . splitDot . C.idText . C.unitId
+  where splitDot s = case break (== '.') s of (a,[]) -> [a]; (a,_:b) -> a : splitDot b
+nativeModule _ = moduleName . C.unitId
+
+nativeFunction :: String -> C.Declaration -> String
+nativeFunction "elixir" d = case functionName d of
+  n | n `elem` words "after alias and case catch cond def defmodule do else end false fn for if import in nil not or quote raise receive require rescue super true try unless unquote use when with __info__" -> n ++ "_lawspec"
+  n -> n
+nativeFunction _ d = functionName d
+
+pascal :: String -> String
+pascal = concatMap cap . words . map (\c -> if c == '_' then ' ' else c) . snake
+  where cap [] = []; cap (c:cs) = toUpper c : cs
+
+elixirDataModule :: String -> String
+elixirDataModule = ("LawSpec.Data." ++) . pascal
+
+elixirFields :: C.DataDeclaration -> C.DataConstructor -> [String]
+elixirFields d c = map (snake . C.binderName) (C.constructorFields c) ++
+  ["lawspec_type_" ++ show i | (i,_) <- zip [0::Int ..] (freeExistentials d c)]
 
 -- | Type parameters stay positional in runtime metadata.
 reference :: S.TypeRef -> D.Doc
