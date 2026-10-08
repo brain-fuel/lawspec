@@ -1,0 +1,7 @@
+@@ src/example/sessions.gleam
+<<<<<<<
+  let c1 = serve.second_send_0(client, a)
+=======
+  let c1 = serve.second_send_0(client, a)
+  let _spent = serve.second_send_0(client, a)
+>>>>>>>

@@ -1,0 +1,6 @@
+@@ src/example_sessions.erl
+<<<<<<<
+    _ = ?S:first_send_2(S2, A + B), ok.
+=======
+    _ = ?S:first_send_2(S2, A + B + 1), ok.
+>>>>>>>

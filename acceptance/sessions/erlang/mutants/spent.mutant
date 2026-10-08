@@ -1,0 +1,6 @@
+@@ src/example_sessions.erl
+<<<<<<<
+    C1 = ?S:second_send_0(Client, A), C2 = ?S:second_send_1(C1, B),
+=======
+    C1 = ?S:second_send_0(Client, A), _ = ?S:second_send_0(Client, A), C2 = ?S:second_send_1(C1, B),
+>>>>>>>

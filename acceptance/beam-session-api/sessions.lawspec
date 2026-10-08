@@ -1,0 +1,15 @@
+unit example.session_types
+
+protocol Exchange is
+  send Maybe (List Int32)
+  receive Unit
+end
+protocol Symbols is send Symbol end
+protocol Empty is end
+protocol LoopA is send LoopB end
+protocol LoopB is send LoopA end
+
+nativeProbe :: Unit -> Bool
+law `native session payloads retain their types and identity` is
+  definition is nativeProbe unitValue end
+end

@@ -1,0 +1,7 @@
+@@ lib/example_sessions.ex
+<<<<<<<
+    c1 = Serve.second_send_0(client, a)
+=======
+    c1 = Serve.second_send_0(client, a)
+    Serve.second_send_0(client, a)
+>>>>>>>

@@ -1,0 +1,6 @@
+@@ src/example/sessions.gleam
+<<<<<<<
+  let _done = serve.first_send_2(s2, a + b)
+=======
+  let _done = serve.first_send_2(s2, a + b + 1)
+>>>>>>>

@@ -18,6 +18,7 @@ import qualified LawSpec.BeamExpr as Expr
 import qualified LawSpec.BeamActors as Actors
 import qualified LawSpec.BeamModels as Models
 import qualified LawSpec.BeamMailboxes as Mailboxes
+import qualified LawSpec.BeamSessions as Sessions
 import LawSpec.Scaffold (scaffoldFilesWith)
 
 generated :: Bool -> String -> Either [Diagnostic] [Artifact]
@@ -29,6 +30,26 @@ generatedFor target compact text = compileCore 64 defaultGeneration [Source "bea
 
 test_beamCodeUsesCheckedCoreAndNativeFrameworks :: Spec
 test_beamCodeUsesCheckedCoreAndNativeFrameworks = describe "BEAM generation" $ do
+  -- ref:DEC-sessions-by-construction ref:DEC-idiomatic-generated-types
+  mapM_ (\target -> it (target ++ " emits opaque session steps and typed delegation with native tasks") $ do
+    input <- readFile "examples/specs/sessions.lawspec"
+    case compileCore 64 defaultGeneration [Source "sessions.lawspec" input] >>= planTesting of
+      Left errors -> expectationFailure (show errors)
+      Right plan -> case Sessions.emit target (D.Pretty 100) 64 (planDataDeclarations plan)
+          (map plannedUnit (plannedUnits plan)) of
+        Left message -> expectationFailure message
+        Right artifacts -> do
+          let body = concatMap artifactContent artifacts
+          mapM_ (\part -> body `shouldSatisfy` isInfixOf part)
+            ["first_receive_0", "first_receive_1", "first_send_2", "lawspec_beam_session:send_end",
+             "lawspec_beam_session:receive_end", "lawspec_beam_session_task:start", "lawspec_beam_schema:from_native"]
+          case target of
+            "elixir" -> body `shouldSatisfy` isInfixOf "LawSpec.Sessions.Example.Sessions.Serve.first_0()"
+            "gleam" -> do
+              body `shouldSatisfy` isInfixOf "session_types.LawspecSessionExampleSessionsServeFirst0"
+              body `shouldSatisfy` (not . isInfixOf "import lawspec/sessions/example/sessions/serve")
+            _ -> body `shouldSatisfy` isInfixOf "-opaque first_0()"
+    ) ["erlang", "elixir", "gleam"]
   -- ref:DEC-distribution-canonical-wire ref:DEC-native-bindings-typed-identity
   mapM_ (\target -> it (target ++ " emits typed local and remote mailboxes with checked Clock interfaces") $ do
     input <- readFile "acceptance/beam-mailbox-api/mailboxes.lawspec"

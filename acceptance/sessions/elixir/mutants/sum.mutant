@@ -1,0 +1,6 @@
+@@ lib/example_sessions.ex
+<<<<<<<
+    Serve.first_send_2(s2, a + b)
+=======
+    Serve.first_send_2(s2, a + b + 1)
+>>>>>>>

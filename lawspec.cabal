@@ -82,6 +82,9 @@ extra-source-files:
     runtime/lawspec_beam_scenario_io.erl
     runtime/lawspec_beam_scenario_network.erl
     runtime/lawspec_beam_schema.erl
+    runtime/lawspec_beam_session.erl
+    runtime/lawspec_beam_session_ownership.erl
+    runtime/lawspec_beam_session_task.erl
     runtime/lawspec_beam_supervision.erl
     runtime/lawspec_beam_tasks.erl
     runtime/lawspec_beam_values.erl
@@ -91,6 +94,7 @@ extra-source-files:
     runtime/lawspec_beam_workflow_state.erl
     runtime/lawspec_crypto_native.c
     runtime/lawspec_crypto_build.escript
+    runtime/lawspec_beam_sessions.ex
     runtime/lawspec_beam_stream_data.ex
     runtime/lawspec_beam_workflow.ex
     runtime/lawspec_gleam_actors.gleam
@@ -98,6 +102,7 @@ extra-source-files:
     runtime/lawspec_gleam_failures.gleam
     runtime/lawspec_gleam_network.gleam
     runtime/lawspec_gleam_scalar.gleam
+    runtime/lawspec_gleam_sessions.gleam
     runtime/lawspec_gleam_types.gleam
     runtime/lawspec_gleam_workflow.gleam
     runtime/defaults/vectors.txt
@@ -257,6 +262,7 @@ extra-source-files:
     test/fixtures/beam/lawspec_beam_scenario_network_tests.erl
     test/fixtures/beam/lawspec_beam_scenario_tests.erl
     test/fixtures/beam/lawspec_beam_schema_tests.erl
+    test/fixtures/beam/lawspec_beam_session_tests.erl
     test/fixtures/beam/lawspec_beam_supervision_tests.erl
     test/fixtures/beam/lawspec_beam_tasks_tests.erl
     test/fixtures/beam/lawspec_beam_values_tests.erl
@@ -382,6 +388,7 @@ library
       LawSpec.BeamModels
       LawSpec.BeamNativeBinding
       LawSpec.BeamPolicy
+      LawSpec.BeamSessions
       LawSpec.Bounds
       LawSpec.BuiltinDefaults
       LawSpec.Builtins
