@@ -20,6 +20,7 @@ erl -noshell -pa "$beam_artifacts" -eval '
             lawspec_beam_defaults_tests, lawspec_beam_crypto_tests, lawspec_beam_waits_tests,
             lawspec_beam_policy_tests, lawspec_beam_tasks_tests, lawspec_beam_attempts_tests,
             lawspec_beam_workflow_state_tests, lawspec_beam_workflow_tests,
+            lawspec_beam_actors_tests,
             lawspec_beam_gleam_tests], [verbose]) of
         ok -> halt(0);
         _ -> halt(1)
