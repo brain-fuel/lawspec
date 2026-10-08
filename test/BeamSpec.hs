@@ -61,6 +61,24 @@ test_beamCodeUsesCheckedCoreAndNativeFrameworks = describe "BEAM generation" $ d
             ["lawspec_beam_scenario:check", "scenario_a_reply_is_delegated", "(wire (channel ask (send (end)))"]
     ) ["erlang", "elixir", "gleam"]
   -- ref:DEC-actors-otp-supervision ref:DEC-native-bindings-typed-identity
+  mapM_ (\target -> it (target ++ " emits supervision evidence even without a model in that unit") $ do
+    input <- readFile "examples/specs/actors.lawspec"
+    case compileCore 64 defaultGeneration [Source "actors.lawspec" input] >>= planTesting of
+      Left errors -> expectationFailure (show errors)
+      Right plan -> do
+        let units = [(plannedUnit u) {C.unitMachines = []} | u <- plannedUnits plan]
+        case Models.emit target (D.Pretty 100) 64 (planDataDeclarations plan) units of
+          Left message -> expectationFailure message
+          Right artifacts -> do
+            let body = concatMap artifactContent artifacts
+            all ((== "test") . artifactPlacement) artifacts `shouldBe` True
+            body `shouldSatisfy` isInfixOf "lawspec_beam_supervision:check()"
+            body `shouldSatisfy` (not . isInfixOf "lawspec_beam_model:check")
+            case target of
+              "erlang" -> body `shouldSatisfy` isInfixOf "supervision_test_()"
+              "elixir" -> body `shouldSatisfy` isInfixOf "example.actors::supervision"
+              _ -> body `shouldSatisfy` isInfixOf "supervision_test() -> Nil"
+    ) ["erlang", "elixir", "gleam"]
   mapM_ (\target -> it (target ++ " builds typed actor APIs through checked adapters and native OTP entry points") $ do
     input <- readFile "examples/specs/actors.lawspec"
     case compileCore 64 defaultGeneration [Source "actors.lawspec" input] >>= planTesting of

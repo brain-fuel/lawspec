@@ -65,7 +65,9 @@ emitBeamWithBindings target minify bindings plan = do
         name <- ["model","model_parallel","values"] ++ ["random" | not hasPolicies] ++
           ["tasks" | not hasPolicies && not hasActors] ++
           (if any (not . null . machineScenarios) (concatMap C.unitMachines units)
-            then ["history","scenario","scenario_io","scenario_network","wire","memory_network","channel_protocol","node","endpoint"] else [])]
+            then ["history","scenario","scenario_io","scenario_network","wire","memory_network","channel_protocol","node","endpoint"] else [])] ++
+      [Artifact (testSupport ++ "lawspec_beam_supervision.erl") (runtimeSource "beam-supervision") "generated" "test"
+        | any (not . null . C.unitSupervisors) units]
     runtimes = [Artifact ("src/lawspec_beam_" ++ name ++ ".erl")
         (runtimeSource ("beam-" ++ name)) "generated" "source"
         | name <- ["scalar","schema","regex","runtime"] ++

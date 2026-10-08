@@ -81,6 +81,7 @@ extra-source-files:
     runtime/lawspec_beam_scenario_io.erl
     runtime/lawspec_beam_scenario_network.erl
     runtime/lawspec_beam_schema.erl
+    runtime/lawspec_beam_supervision.erl
     runtime/lawspec_beam_tasks.erl
     runtime/lawspec_beam_values.erl
     runtime/lawspec_beam_waits.erl
@@ -253,6 +254,7 @@ extra-source-files:
     test/fixtures/beam/lawspec_beam_scenario_network_tests.erl
     test/fixtures/beam/lawspec_beam_scenario_tests.erl
     test/fixtures/beam/lawspec_beam_schema_tests.erl
+    test/fixtures/beam/lawspec_beam_supervision_tests.erl
     test/fixtures/beam/lawspec_beam_tasks_tests.erl
     test/fixtures/beam/lawspec_beam_values_tests.erl
     test/fixtures/beam/lawspec_beam_waits_tests.erl

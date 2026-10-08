@@ -33,7 +33,7 @@ erl -noshell -pa "$beam_artifacts" -eval '
             lawspec_beam_defaults_tests, lawspec_beam_crypto_tests, lawspec_beam_waits_tests,
             lawspec_beam_policy_tests, lawspec_beam_tasks_tests, lawspec_beam_attempts_tests,
             lawspec_beam_workflow_state_tests, lawspec_beam_workflow_tests,
-            lawspec_beam_actors_tests, lawspec_beam_model_tests, lawspec_beam_model_parallel_tests,
+            lawspec_beam_actors_tests, lawspec_beam_supervision_tests, lawspec_beam_model_tests, lawspec_beam_model_parallel_tests,
             lawspec_beam_history_tests, lawspec_beam_scenario_io_tests, lawspec_beam_scenario_tests,
             lawspec_beam_wire_tests, lawspec_beam_memory_network_tests,
             lawspec_beam_channel_protocol_tests, lawspec_beam_node_tests,

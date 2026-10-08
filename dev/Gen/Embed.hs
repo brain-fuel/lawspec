@@ -32,6 +32,7 @@ runtimeFiles =
   , ("beam-workflow", "lawspec_beam_workflow.erl")
   , ("beam-actors", "lawspec_beam_actors.erl"), ("beam-actor", "lawspec_beam_actor.erl")
   , ("beam-actor_sup", "lawspec_beam_actor_sup.erl"), ("beam-actor_tree", "lawspec_beam_actor_tree.erl")
+  , ("beam-supervision", "lawspec_beam_supervision.erl")
   , ("beam-gleam-actors", "lawspec_gleam_actors.gleam")
   , ("beam-elixir-workflow", "lawspec_beam_workflow.ex")
   , ("beam-defaults", "lawspec_beam_defaults.erl")

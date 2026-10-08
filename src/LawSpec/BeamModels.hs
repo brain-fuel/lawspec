@@ -20,7 +20,8 @@ import Control.Monad (forM, unless)
 import Data.List (nub)
 
 emit :: String -> D.Layout -> Int -> [C.DataDeclaration] -> [C.Unit] -> Either String [Artifact]
-emit target layout bits datas units = concat <$> mapM unitFiles [u | u <- units, not (null (C.unitMachines u))]
+emit target layout bits datas units = concat <$> mapM unitFiles
+  [u | u <- units, not (null (C.unitMachines u) && null (C.unitSupervisors u))]
   where
     entries = Definitions.entries units
     declarations = [(C.declarationId d,d) | u <- units, d <- C.unitDeclarations u]
@@ -36,6 +37,11 @@ emit target layout bits datas units = concat <$> mapM unitFiles [u | u <- units,
     optional = maybe (pure (E.atom "none")) callback
     hasPolicies = any ((/= Nothing) . C.definitionPolicy) (concatMap C.unitDefinitions units)
     testSupport = case target of "elixir" -> "test/support/"; "gleam" -> "test-support/src/"; _ -> "test/"
+    caseFunctions cases =
+      [E.function entry [] [action,E.atom (if target == "gleam" then "nil" else "ok")]
+        | (entry,_,action) <- cases] ++
+      [E.function (entry ++ "_test_") [] [E.tuple [E.atom "timeout",D.text "60",
+        E.tuple [E.string title,E.lambda [] (E.call entry [])]]] | (entry,title,_) <- cases, target == "erlang"]
     unitFiles unit = do
       let moduleName = Definitions.adapterModule unit ++ "_lawspec_models"
           names = map (("model_" ++) . drop 4) (unitTestNames target (map machineName (C.unitMachines unit)))
@@ -76,16 +82,14 @@ emit target layout bits datas units = concat <$> mapM unitFiles [u | u <- units,
             label = C.idText (C.unitId unit) ++ "::model " ++ machineName machine
             cases = [(name ++ "_sequential", label, E.remote "lawspec_beam_model" "check" [E.call name []])] ++
               [(name ++ "_parallel", label ++ " parallel", E.remote "lawspec_beam_model_parallel" "check" [E.call name []]) | machineShared machine] ++ scenarios
-            functions = [E.function name [] [model]] ++
-              [E.function entry [] [action,E.atom (if target == "gleam" then "nil" else "ok")]
-                | (entry,_,action) <- cases] ++
-              [E.function (entry ++ "_test_") [] [E.tuple [E.atom "timeout",D.text "60",
-                E.tuple [E.string title,E.lambda [] (E.call entry [])]]] | (entry,title,_) <- cases, target == "erlang"]
+            functions = [E.function name [] [model]] ++ caseFunctions cases
         pure (cases,functions)
-      let cases = concatMap fst prepared
+      let supervision = [("supervision", C.idText (C.unitId unit) ++ "::supervision",
+              E.remote "lawspec_beam_supervision" "check" []) | not (null (C.unitSupervisors unit))]
+          cases = concatMap fst prepared ++ supervision
           exports = [(entry,0) | (entry,_,_) <- cases] ++ [(entry ++ "_test_",0) | (entry,_,_) <- cases, target == "erlang"]
           erlang = Artifact (testSupport ++ moduleName ++ ".erl")
-            (D.render layout (E.moduleDoc moduleName exports (concatMap snd prepared))) "generated" "test"
+            (D.render layout (E.moduleDoc moduleName exports (concatMap snd prepared ++ caseFunctions supervision))) "generated" "test"
           elixir = Artifact ("test/" ++ moduleName ++ "_test.exs")
             (D.render layout (X.moduleDoc (E.nativeModule "elixir" unit ++ ".LawSpecModelTest") False
               (D.text "use ExUnit.Case" : [D.text "test " <> X.string title <> D.text " do" <>
