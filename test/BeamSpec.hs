@@ -47,12 +47,19 @@ test_beamCodeUsesCheckedCoreAndNativeFrameworks = describe "BEAM generation" $ d
             "gleam" -> body `shouldSatisfy` isInfixOf "model_counter_parallel_test() -> Nil"
             _ -> body `shouldSatisfy` isInfixOf "_test_()"
     ) ["erlang", "elixir", "gleam"]
-  it "keeps unconnected BEAM scenarios explicit in the model emitter" $ do
+  mapM_ (\target -> it (target ++ " emits scenarios with native model calls and complete wire descriptors") $ do
     input <- readFile "examples/specs/models.lawspec"
     case compileCore 64 defaultGeneration [Source "models.lawspec" input] >>= planTesting of
       Left errors -> expectationFailure (show errors)
-      Right plan -> Models.emit "erlang" (D.Pretty 100) 64 (planDataDeclarations plan)
-        (map plannedUnit (plannedUnits plan)) `shouldBe` Left "BEAM model scenarios are not connected yet"
+      Right plan -> case Models.emit target (D.Pretty 100) 64 (planDataDeclarations plan)
+          (map plannedUnit (plannedUnits plan)) of
+        Left message -> expectationFailure message
+        Right artifacts -> do
+          let body = concatMap artifactContent artifacts
+          all ((== "test") . artifactPlacement) artifacts `shouldBe` True
+          mapM_ (\part -> body `shouldSatisfy` isInfixOf part)
+            ["lawspec_beam_scenario:check", "scenario_a_reply_is_delegated", "(wire (channel ask (send (end)))"]
+    ) ["erlang", "elixir", "gleam"]
   -- ref:DEC-actors-otp-supervision ref:DEC-native-bindings-typed-identity
   mapM_ (\target -> it (target ++ " builds typed actor APIs through checked adapters and native OTP entry points") $ do
     input <- readFile "examples/specs/actors.lawspec"

@@ -6,13 +6,14 @@ module LawSpec.BeamModels (emit) where
 
 import qualified LawSpec.Core as C
 import LawSpec.Core.Machine
+import qualified LawSpec.Core.Program as P
 import qualified LawSpec.Code.Doc as D
 import qualified LawSpec.BeamCode as E
 import qualified LawSpec.ElixirCode as X
 import qualified LawSpec.GleamCode as G
 import qualified LawSpec.BeamDefinitions as Definitions
 import qualified LawSpec.BeamEffects as Effects
-import LawSpec.MachineSpec (machineSpec)
+import LawSpec.MachineSpec (machineSpec, scenarioWire)
 import LawSpec.Common (Artifact(..))
 import LawSpec.TestNames (unitTestNames)
 import Control.Monad (forM, unless)
@@ -39,7 +40,6 @@ emit target layout bits datas units = concat <$> mapM unitFiles [u | u <- units,
       let moduleName = Definitions.adapterModule unit ++ "_lawspec_models"
           names = map (("model_" ++) . drop 4) (unitTestNames target (map machineName (C.unitMachines unit)))
       prepared <- forM (zip names (C.unitMachines unit)) $ \(name,machine) -> do
-        unless (null (machineScenarios machine)) (Left "BEAM model scenarios are not connected yet")
         unless (machineConsistency machine /= Eventual || machineAbstractRun machine /= Nothing)
           (Left ("BEAM eventual model " ++ machineName machine ++ " needs abstract to compare the final state"))
         spec <- machineSpec bits datas (C.unitDeclarations unit) (C.unitContracts unit) machine
@@ -57,6 +57,13 @@ emit target layout bits datas units = concat <$> mapM unitFiles [u | u <- units,
         invariants <- mapM (callback . invariant) (machineInvariants machine)
         ds <- mapM declaration (nub (foldr (:) [] machine))
         factories <- Effects.factories units symbols [(a,C.ProductionHandler) | a <- nub (concatMap Effects.uses ds)]
+        let scenarioNames = map ((name ++ "_scenario_") ++) (map (drop 4)
+              (unitTestNames target (map P.programTitle (machineScenarios machine))))
+        scenarios <- forM (zip scenarioNames (machineScenarios machine)) $ \(entry,program) -> do
+          wire <- scenarioWire bits datas (concatMap C.unitSessions units) program
+          let description = P.programSpec (program {P.programWire = wire})
+          pure (entry, C.idText (C.unitId unit) ++ "::scenario " ++ P.programTitle program,
+            E.remote "lawspec_beam_scenario" "check" [E.call name [],E.binary description])
         let body = E.apply (D.text "_LsBody") [E.tuple [schema,symbols]]
             handled = if null (concatMap Effects.uses ds) then E.apply (E.lambda [schema] body) [D.text "_LsBaseSchema"]
               else E.remote "lawspec_beam_effects" "with_scope" [D.text "_LsBaseSchema",factories,E.lambda [schema] body]
@@ -67,11 +74,11 @@ emit target layout bits datas units = concat <$> mapM unitFiles [u | u <- units,
             model = E.remote "maps" "put" [E.atom "context",context,
               E.remote "lawspec_beam_model" "new" [E.binary spec,start,E.array commands,abstract,E.array invariants]]
             label = C.idText (C.unitId unit) ++ "::model " ++ machineName machine
-            cases = [(name ++ "_sequential", label, "lawspec_beam_model")] ++
-              [(name ++ "_parallel", label ++ " parallel", "lawspec_beam_model_parallel") | machineShared machine]
+            cases = [(name ++ "_sequential", label, E.remote "lawspec_beam_model" "check" [E.call name []])] ++
+              [(name ++ "_parallel", label ++ " parallel", E.remote "lawspec_beam_model_parallel" "check" [E.call name []]) | machineShared machine] ++ scenarios
             functions = [E.function name [] [model]] ++
-              [E.function entry [] [E.remote runtime "check" [E.call name []],E.atom (if target == "gleam" then "nil" else "ok")]
-                | (entry,_,runtime) <- cases] ++
+              [E.function entry [] [action,E.atom (if target == "gleam" then "nil" else "ok")]
+                | (entry,_,action) <- cases] ++
               [E.function (entry ++ "_test_") [] [E.tuple [E.atom "timeout",D.text "60",
                 E.tuple [E.string title,E.lambda [] (E.call entry [])]]] | (entry,title,_) <- cases, target == "erlang"]
         pure (cases,functions)

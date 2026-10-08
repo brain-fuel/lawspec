@@ -3,7 +3,7 @@
 %% ref:DEC-sessions-by-construction ref:DEC-stateful-models-linearizability
 %% ref:DEC-portable-seeded-generation
 -module(lawspec_beam_scenario).
--export([new/1, execute/4, run/4, victim/2, schedules/2]).
+-export([new/1, execute/4, run/4, check/2, check/3, victim/2, schedules/2]).
 
 new(Spec) when is_binary(Spec) ->
     Forms = lawspec_beam_values:read_descriptor(Spec),
@@ -46,19 +46,26 @@ schedules(Seed, Runs) ->
         {{Shake, #{network => I rem 3 =:= 1, crash => I rem 3 =:= 2}}, Next}
     end, lawspec_beam_random:seed(Seed bxor 16#2545f4914f6cdd1d), lists:seq(0, Runs - 1)), Cases.
 
+check(Model, Spec) -> check(Model, Spec, #{}).
+check(Model, Spec, Options) ->
+    Program = new(Spec), Seed = lawspec_beam_model:seed(Options), Cases = maps:get(cases, Options, 30),
+    case is_integer(Cases) andalso Cases > 0 of
+        true -> ok; false -> error({lawspec, scenario_requires_cases})
+    end,
+    lists:foreach(fun({Index, {Shake, Schedule}}) ->
+        case run(Model, Program, Shake, maps:merge(Options, Schedule)) of
+            {ok, _} -> ok;
+            {error, Failure} -> error({lawspec, {scenario_failed, maps:get(title, Program),
+                #{seed => Seed, 'case' => Index - 1, shake => Shake, schedule => Schedule, failure => Failure}}})
+        end
+    end, lists:enumerate(schedules(Seed, Cases))).
+
 execute(Model, Spec, Shake, Options) ->
     case run(Model, Spec, Shake, Options) of {ok, _} -> ok; {error, _} = Error -> Error end.
 run(Model, Spec, Shake, Options) ->
     Program = new(Spec),
     try
         true = maps:get(shared, Model),
-        %% Keep the public compiler gate until the real network path is
-        %% connected. An explicitly requested network run must never fall
-        %% back to this in-memory path.
-        case maps:get(network, Options, false) of
-            true -> error({lawspec, scenario_network_not_available});
-            false -> ok
-        end,
         Victim = case maps:find(victim, Options) of
             {ok, Chosen} -> Chosen;
             error -> case maps:get(crash, Options, false) of true -> victim(Program, Shake); false -> none end
@@ -74,7 +81,8 @@ run(Model, Spec, Shake, Options) ->
         Start = [lawspec_beam_values:minimal(D, maps:get(table, Model)) || D <- maps:get(start_arguments, Model)],
         lawspec_beam_model:with_system(Model, Start, 0, fun(Context, System, Expected) ->
             lawspec_beam_scenario_io:with_io(maps:get(channels, Program),
-                sends(maps:get(acts, Program), maps:get(mailboxes, Program)), fun(Hub) ->
+                sends(maps:get(acts, Program), maps:get(mailboxes, Program)),
+                Options#{wire => maps:get(wire, Program), shake => Shake}, fun(Hub) ->
                 History = ets:new(?MODULE, [ordered_set, public]),
                 try
                     Commands = maps:from_list([{maps:get(name, C), I - 1}
@@ -86,7 +94,8 @@ run(Model, Spec, Shake, Options) ->
                         lawspec_beam_random:seed(Shake)),
                     Events = [E || {I, E} <- ets:tab2list(History), is_integer(I)],
                     Report = #{title => maps:get(title, Program), history => Events, outcome => Outcome,
-                        clock => Clock, shake => Shake, victim => Victim},
+                        clock => Clock, shake => Shake, victim => Victim,
+                        network => lawspec_beam_scenario_io:network_stats(Hub)},
                     case ets:lookup(History, failure) of
                         [{failure, Failure}] -> {error, maps:merge(Report, Failure)};
                         [] when Outcome =:= failed, Victim =:= none -> {error, Report#{reason => process_failed}};

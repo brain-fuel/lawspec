@@ -60,6 +60,7 @@ extra-source-files:
     runtime/lawspec_beam_crypto_native.erl
     runtime/lawspec_beam_defaults.erl
     runtime/lawspec_beam_effects.erl
+    runtime/lawspec_beam_endpoint.erl
     runtime/lawspec_beam_generators.erl
     runtime/lawspec_beam_gleam.erl
     runtime/lawspec_beam_handler.erl
@@ -68,6 +69,7 @@ extra-source-files:
     runtime/lawspec_beam_memory_network.erl
     runtime/lawspec_beam_model.erl
     runtime/lawspec_beam_model_parallel.erl
+    runtime/lawspec_beam_node.erl
     runtime/lawspec_beam_policy.erl
     runtime/lawspec_beam_proper.erl
     runtime/lawspec_beam_qcheck.erl
@@ -77,6 +79,7 @@ extra-source-files:
     runtime/lawspec_beam_scalar.erl
     runtime/lawspec_beam_scenario.erl
     runtime/lawspec_beam_scenario_io.erl
+    runtime/lawspec_beam_scenario_network.erl
     runtime/lawspec_beam_schema.erl
     runtime/lawspec_beam_tasks.erl
     runtime/lawspec_beam_values.erl
@@ -232,6 +235,7 @@ extra-source-files:
     test/fixtures/beam/lawspec_beam_crypto_tests.erl
     test/fixtures/beam/lawspec_beam_defaults_tests.erl
     test/fixtures/beam/lawspec_beam_effects_tests.erl
+    test/fixtures/beam/lawspec_beam_endpoint_tests.erl
     test/fixtures/beam/lawspec_beam_gleam_tests.erl
     test/fixtures/beam/lawspec_beam_history_tests.erl
     test/fixtures/beam/lawspec_beam_index_tests.erl
@@ -239,12 +243,14 @@ extra-source-files:
     test/fixtures/beam/lawspec_beam_model_parallel_tests.erl
     test/fixtures/beam/lawspec_beam_model_tests.erl
     test/fixtures/beam/lawspec_beam_native_generator_tests.erl
+    test/fixtures/beam/lawspec_beam_node_tests.erl
     test/fixtures/beam/lawspec_beam_policy_tests.erl
     test/fixtures/beam/lawspec_beam_proper_tests.erl
     test/fixtures/beam/lawspec_beam_qcheck_tests.erl
     test/fixtures/beam/lawspec_beam_runtime_tests.erl
     test/fixtures/beam/lawspec_beam_scalar_tests.erl
     test/fixtures/beam/lawspec_beam_scenario_io_tests.erl
+    test/fixtures/beam/lawspec_beam_scenario_network_tests.erl
     test/fixtures/beam/lawspec_beam_scenario_tests.erl
     test/fixtures/beam/lawspec_beam_schema_tests.erl
     test/fixtures/beam/lawspec_beam_tasks_tests.erl

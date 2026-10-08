@@ -4,11 +4,15 @@
 %% ref:DEC-async-native-tasks ref:DEC-typed-core-boundary
 -module(lawspec_beam_tasks).
 -behaviour(gen_server).
--export([with_scope/1, attach/1, close/1]).
+-export([open/0, with_scope/1, attach/1, adopt/2, close/1]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2]).
 
+%% A persistent service can own a scope without installing it in its own
+%% process dictionary. Its workers attach before running application code.
+open() -> {ok, Scope} = gen_server:start(?MODULE, self(), []), Scope.
+
 with_scope(Body) ->
-    {ok, Scope} = gen_server:start(?MODULE, self(), []),
+    Scope = open(),
     Key = {?MODULE, scopes},
     Previous = get(Key),
     Parents = case Previous of undefined -> []; _ -> Previous end,
@@ -25,6 +29,9 @@ attach(Scopes) ->
         ok = gen_server:call(Scope, {attach, self()}, infinity)
     end, Scopes).
 
+%% A service owner may also attach a child before exposing its handle.
+adopt(Scope, Worker) -> gen_server:call(Scope, {adopt, Worker}, infinity).
+
 close(Scope) ->
     try gen_server:call(Scope, close, infinity)
     catch exit:{noproc, _} -> ok; exit:{normal, _} -> ok end.
@@ -34,6 +41,8 @@ init(Owner) ->
     {ok, #{owner => Owner, owner_monitor => monitor(process, Owner),
         workers => #{}, monitors => #{}, closing => false, waiters => []}}.
 
+handle_call({adopt, Pid}, {Owner, _}, State = #{owner := Owner}) -> handle_call({attach, Pid}, none, State);
+handle_call({adopt, _}, _, State) -> {reply, {error, not_scope_owner}, State};
 handle_call({attach, Owner}, _, State = #{owner := Owner, closing := true}) -> {reply, {error, closed}, State};
 handle_call({attach, Owner}, _, State = #{owner := Owner}) -> {reply, ok, State};
 handle_call({attach, Pid}, _, State = #{closing := true}) ->

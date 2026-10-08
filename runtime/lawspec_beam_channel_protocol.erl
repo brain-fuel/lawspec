@@ -12,7 +12,7 @@ new(Address, Deadline) when is_binary(Address), is_integer(Deadline), Deadline >
     _ = lawspec_beam_wire:split_address(Address),
     #{address => Address, deadline => Deadline, peer => none, out => 0, expected => 0,
         unacked => #{}, early => #{}, received => queue:new(), failure => none,
-        closed => false, used => false, history => [], token => none, moved => none,
+        closed => false, eof => false, used => false, history => [], token => none, moved => none,
         snapshot => none, taking => none, taken => false, confirmed => false,
         announcing => false, announced_at => none}.
 connect(State, Peer, Now) ->
@@ -30,6 +30,7 @@ abandon(State = #{out := Sequence}, Now) ->
         _ -> {State#{closed := true}, []}
     end.
 usable(State) ->
+    case maps:get(eof, State) of true -> error({lawspec, channel_end_unavailable}); false -> ok end,
     case {maps:get(failure, State), maps:get(closed, State), maps:get(token, State), maps:get(moved, State),
             maps:get(taking, State), maps:get(taken, State)} of
         {none, false, none, none, none, _} -> ok;
@@ -51,14 +52,17 @@ receive_body(State = #{received := Received}) ->
     case queue:out(Received) of
         {{value, <<0, Body/binary>>}, Rest} -> {{value, Body}, State#{received := Rest, used := true}};
         {{value, <<1>>}, _} ->
-            Reason = <<"the other end gave up the conversation">>,
-            {{error, Reason}, fail(Reason, State#{received := queue:new(), used := true})};
+            %% The peer's EOF ends this reader, not our outbound delivery.
+            %% In particular, our own EOF may still need retransmission.
+            {{error, eof_reason()}, State#{received := queue:new(), used := true, eof := true}};
         {empty, _} ->
-            case maps:get(failure, State) of
-                none -> {empty, State};
-                Reason -> {{error, Reason}, State}
+            case {maps:get(eof, State), maps:get(failure, State)} of
+                {true, _} -> {{error, eof_reason()}, State};
+                {false, none} -> {empty, State};
+                {false, Reason} -> {{error, Reason}, State}
             end
     end.
+eof_reason() -> <<"the other end gave up the conversation">>.
 
 %% Invalid control frames do not corrupt an end or crash its owner. The
 %% sender keeps retransmitting valid frames until they are acknowledged.
@@ -89,6 +93,7 @@ arriving(State, #{kind := <<"chan">>, payload := Payload}, _) ->
         _ when Sequence >= 0 ->
             true = valid_body(Body),
             Expected = maps:get(expected, State), Early = maps:get(early, State),
+            true = not maps:get(eof, State) orelse Sequence < Expected,
             case Sequence >= Expected andalso not maps:is_key(Sequence, Early) of
                 true -> drain(State#{early := Early#{Sequence => Body}});
                 false -> State

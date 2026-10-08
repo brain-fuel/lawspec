@@ -4,7 +4,7 @@
 module LawSpec.BeamEmit (emitBeam, emitBeamWithBindings) where
 
 import qualified LawSpec.Core as C
-import LawSpec.Core.Machine (machineActor)
+import LawSpec.Core.Machine (machineActor, machineScenarios)
 import qualified LawSpec.Code.Doc as D
 import qualified LawSpec.BeamCode as E
 import qualified LawSpec.ElixirCode as X
@@ -62,7 +62,10 @@ emitBeamWithBindings target minify bindings plan = do
     modelRuntimes = [Artifact (testSupport ++ "lawspec_beam_" ++ name ++ ".erl")
       (runtimeSource ("beam-" ++ name)) "generated" "test"
       | any (not . null . C.unitMachines) units,
-        name <- ["model","model_parallel","values"] ++ ["random" | not hasPolicies]]
+        name <- ["model","model_parallel","values"] ++ ["random" | not hasPolicies] ++
+          ["tasks" | not hasPolicies && not hasActors] ++
+          (if any (not . null . machineScenarios) (concatMap C.unitMachines units)
+            then ["history","scenario","scenario_io","scenario_network","wire","memory_network","channel_protocol","node","endpoint"] else [])]
     runtimes = [Artifact ("src/lawspec_beam_" ++ name ++ ".erl")
         (runtimeSource ("beam-" ++ name)) "generated" "source"
         | name <- ["scalar","schema","regex","runtime"] ++

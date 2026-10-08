@@ -59,6 +59,27 @@ retries_use_monotonic_differences_and_stop_after_deadline_test() ->
     Late = #{kind => <<"chan">>, payload => lawspec_beam_wire:channel(0, <<"mem://b/end">>, <<0, "late">>)},
     ?assertEqual({A2, []}, deliver(A2, Late, Epoch + 6000000)).
 
+receiving_eof_keeps_outbound_data_and_eof_retries_alive_test() ->
+    {A0, B0} = connected(),
+    %% A's value and EOF are lost, while B's EOF reaches A first.
+    {A1, [_]} = lawspec_beam_channel_protocol:send(A0, <<"accepted">>, 0),
+    {A2, [AClosed]} = lawspec_beam_channel_protocol:abandon(A1, 1),
+    {B1, [BClosed]} = lawspec_beam_channel_protocol:abandon(B0, 2),
+    {A3, [BAck]} = deliver(A2, BClosed, 3),
+    {B2, []} = deliver(B1, BAck, 4),
+    A4 = pop(A3, {error, <<"the other end gave up the conversation">>}),
+    {A5, [Value, AClosed]} = lawspec_beam_channel_protocol:tick(A4, 50002),
+    {B3, [ValueAck]} = deliver(B2, Value, 50003),
+    {B4, [_LostEofAck]} = deliver(B3, AClosed, 50004),
+    {A6, []} = deliver(A5, ValueAck, 50005),
+    B5 = pop(pop(B4, {value, <<"accepted">>}), {error, <<"the other end gave up the conversation">>}),
+    %% Even after consuming EOF, B must acknowledge its retransmission.
+    {A7, [AClosed]} = lawspec_beam_channel_protocol:tick(A6, 100004),
+    {B5, [Ack]} = deliver(B5, AClosed, 100005),
+    {A8, []} = deliver(A7, Ack, 100006),
+    ?assertEqual(#{}, maps:get(unacked, A8)),
+    ?assertEqual({A8, []}, lawspec_beam_channel_protocol:tick(A8, 10000000)).
+
 handoff_carries_queues_retries_and_late_frames_test() ->
     %% A has not used its end, but B has already sent ahead. Its hello is
     %% still unacknowledged; value 2 arrives before value 1.

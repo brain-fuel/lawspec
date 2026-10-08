@@ -138,9 +138,29 @@ shared_context_is_fresh_per_scenario_test() ->
     A = receive {opened, X} -> X end, receive {closed, A} -> ok end,
     B = receive {opened, Y} -> Y end, receive {closed, B} -> ok end, ?assertNotEqual(A, B).
 
-network_schedule_cannot_silently_use_local_channels_test() ->
-    ?assertMatch({error, #{reason := {raised, error, {lawspec, scenario_network_not_available}}}},
-        lawspec_beam_scenario:run(counter(false), spec("", "", <<>>), 0, #{network => true})).
+network_schedule_uses_real_frames_test() ->
+    S = spec("c", "", <<"(par (process (send c (int 5))) (process (receive c n) (expect n (int 5))))">>),
+    Wired = <<S/binary, " (wire (channel c (send (int Int64 -9223372036854775808 9223372036854775807))))">>,
+    {ok, #{network := #{frames := Frames, pending_requests := 0}}} =
+        lawspec_beam_scenario:run(counter(false), Wired, 0, #{network => true}),
+    ?assert(Frames > 0).
+
+generated_check_runs_every_schedule_in_a_fresh_context_test() ->
+    Count = atomics:new(1, []),
+    Model = (counter(false))#{context := fun(Body) -> atomics:add(Count, 1, 1), Body(none) end},
+    S = spec("", "", <<"(call add _ (int 1))">>),
+    ?assertEqual(ok, lawspec_beam_scenario:check(Model, S, #{seed => 19})),
+    ?assertEqual(30, atomics:get(Count, 1)),
+    ?assertError({lawspec, scenario_requires_cases}, lawspec_beam_scenario:check(Model, S, #{cases => 0})).
+
+generated_check_retains_seed_schedule_and_original_failure_test() ->
+    S = spec("", "", <<"(call read x) (expect x (int 99))">>),
+    try lawspec_beam_scenario:check(counter(false), S, #{seed => 27}) of
+        _ -> error(accepted_failure)
+    catch error:{lawspec, {scenario_failed, _, Report}} ->
+        ?assertMatch(#{seed := 27, 'case' := 0, schedule := #{network := false, crash := false},
+            failure := #{reason := {raised, error, {lawspec, {scenario_expectation, _, 0, 99}}}}}, Report)
+    end.
 
 vectors(Path) ->
     {ok, Data} = file:read_file(Path), Entries = json:decode(Data),

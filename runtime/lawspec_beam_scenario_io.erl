@@ -4,13 +4,16 @@
 %% ref:DEC-sessions-by-construction
 -module(lawspec_beam_scenario_io).
 -behaviour(gen_server).
--export([start/2, with_io/3, stop/1, fork/3, enter/2, leave/2,
-    send/5, receive_value/3, receive_value/4, abandon/3]).
--export([init/1, handle_call/3, handle_cast/2, handle_info/2]).
+-export([start/2, start/3, with_io/3, with_io/4, stop/1, fork/3, enter/2, leave/2,
+    send/5, receive_value/3, receive_value/4, abandon/3, network_stats/1]).
+-export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2]).
 
-start(Channels, Mailboxes) -> gen_server:start(?MODULE, {self(), Channels, Mailboxes}, []).
+start(Channels, Mailboxes) -> start(Channels, Mailboxes, #{}).
+start(Channels, Mailboxes, Options) -> gen_server:start(?MODULE, {self(), Channels, Mailboxes, Options}, []).
 with_io(Channels, Mailboxes, Body) ->
-    {ok, Hub} = start(Channels, Mailboxes),
+    with_io(Channels, Mailboxes, #{}, Body).
+with_io(Channels, Mailboxes, Options, Body) ->
+    {ok, Hub} = start(Channels, Mailboxes, Options),
     try Body(Hub) after stop(Hub) end.
 stop(Hub) ->
     try gen_server:stop(Hub, normal, infinity)
@@ -22,6 +25,7 @@ send(Hub, Identity, Destination, Value, Clock) -> call(Hub, {send, Identity, Des
 receive_value(Hub, Identity, Destination) -> receive_value(Hub, Identity, Destination, 5000).
 receive_value(Hub, Identity, Destination, Timeout) -> call(Hub, {'receive', Identity, Destination, Timeout}).
 abandon(Hub, Identity, End) -> call(Hub, {abandon, Identity, End}).
+network_stats(Hub) -> call(Hub, network_stats).
 call(Hub, Request) ->
     case gen_server:call(Hub, Request, infinity) of
         {error, Reason} -> error({lawspec, {scenario_io, Reason}});
@@ -30,13 +34,20 @@ call(Hub, Request) ->
 
 %% Ends are {end, Name, Side}; mailboxes are {mailbox, Name}. A payload
 %% {lawspec_scenario_end, Name, Side} moves ownership, rather than copying it.
-init({Owner, Channels, Mailboxes}) ->
+init({Owner, Channels, Mailboxes, Options}) ->
+    try initialize(Owner, Channels, Mailboxes, Options)
+    catch error:{lawspec, Reason} -> {stop, {lawspec, Reason}} end.
+initialize(Owner, Channels, Mailboxes, Options) ->
     Ends = maps:from_list([{{'end', Name, Side}, queue_state(root)} || Name <- Channels, Side <- [0, 1]]),
     Boxes = maps:from_list([{{mailbox, Name}, (queue_state(root))#{outstanding => Count}}
         || {Name, Count} <- maps:to_list(Mailboxes)]),
-    {ok, #{owner => monitor(process, Owner), queues => maps:merge(Ends, Boxes), monitors => #{},
+    Network = case maps:get(network, Options, false) of
+        true -> lawspec_beam_scenario_network:new(Channels, Mailboxes, maps:get(wire, Options, none), Options);
+        false -> none
+    end,
+    {ok, #{owner => monitor(process, Owner), queues => maps:merge(Ends, Boxes), monitors => #{}, network => Network,
         processes => #{root => #{pid => Owner, monitor => none, parent => none, sends => Mailboxes, closed => false}}}}.
-queue_state(Owner) -> #{owner => Owner, closed => false, items => queue:new(), waiting => none}.
+queue_state(Owner) -> #{owner => Owner, closed => false, items => queue:new(), waiting => none, in_flight => 0, remote_gone => false}.
 
 handle_call(Request, From = {Caller, _}, State) ->
     try request(Request, Caller, From, State) catch
@@ -44,10 +55,10 @@ handle_call(Request, From = {Caller, _}, State) ->
     end.
 handle_cast(_, State) -> {noreply, State}.
 handle_info({'DOWN', Monitor, process, _, _}, State = #{owner := Monitor}) -> {stop, normal, State};
-handle_info({'DOWN', Monitor, process, _, _}, State = #{monitors := Monitors}) ->
+handle_info({'DOWN', Monitor, process, _, _} = Message, State = #{monitors := Monitors}) ->
     case maps:find(Monitor, Monitors) of
         {ok, Identity} -> {noreply, close_process(Identity, State)};
-        error -> {noreply, State}
+        error -> network_message(Message, State)
     end;
 handle_info({receive_timeout, Destination, Ref}, State) ->
     Q = get_queue(Destination, State),
@@ -57,8 +68,30 @@ handle_info({receive_timeout, Destination, Ref}, State) ->
             {noreply, put_queue(Destination, Q#{waiting := none}, State)};
         _ -> {noreply, State}
     end;
-handle_info(_, State) -> {noreply, State}.
+handle_info(Message, State) -> network_message(Message, State).
+terminate(_, State) ->
+    maps:foreach(fun(_, Q) -> case maps:get(waiting, Q) of
+        none -> ok; {_, _, Timer} -> erlang:cancel_timer(Timer)
+    end end, maps:get(queues, State)),
+    case maps:get(network, State) of none -> ok; Net -> lawspec_beam_scenario_network:close(Net) end.
+network_message(_, State = #{network := none}) -> {noreply, State};
+network_message(Message, State = #{network := Network}) ->
+    case lawspec_beam_scenario_network:event(Message, Network) of
+        ignore -> {noreply, State};
+        {Events, Next} -> {noreply, lists:foldl(fun network_event/2, State#{network := Next}, Events)}
+    end.
+network_event({delivered, Destination, Value, Clock}, State) ->
+    arrive(Destination, Value, Clock, unflight(Destination, State));
+network_event({lost, Destination, Value}, State) -> wake(Destination, discard(Value, unflight(Destination, State)));
+network_event({gone, Destination}, State) ->
+    Q = get_queue(Destination, State), wake(Destination, put_queue(Destination, Q#{remote_gone := true}, State)).
+unflight(Destination = {mailbox, _}, State) ->
+    Q = get_queue(Destination, State), put_queue(Destination, Q#{in_flight := maps:get(in_flight, Q) - 1}, State);
+unflight(_, State) -> State.
 
+request(network_stats, _, _, State) ->
+    Stats = case maps:get(network, State) of none -> none; Net -> lawspec_beam_scenario_network:stats(Net) end,
+    {reply, Stats, State};
 request({fork, Identity, Children}, Caller, _, State) ->
     _ = owned_process(Identity, Caller, State),
     %% Reserve every child's obligations before any worker can run. A child
@@ -78,7 +111,7 @@ request({leave, Identity}, Caller, _, State) ->
 request({abandon, Identity, End = {'end', _, _}}, Caller, _, State) ->
     _ = owned_process(Identity, Caller, State), _ = owned_queue(Identity, End, State),
     {reply, ok, close_queue(End, State)};
-request({send, Identity, Destination, Value, Clock}, Caller, _, State) ->
+request({send, Identity, Destination, Value, Clock}, Caller, From, State) ->
     _ = owned_process(Identity, Caller, State),
     case delegated(Value) of
         none -> ok;
@@ -91,12 +124,19 @@ request({send, Identity, Destination, Value, Clock}, Caller, _, State) ->
         none -> S1;
         Moved -> change_owner(Moved, {queued, To}, S1)
     end,
-    Q = get_queue(To, S2),
-    Updated = case maps:get(closed, Q) of
-        true -> discard(Value, S2);
-        false -> wake(To, put_queue(To, Q#{items := queue:in({Value, Clock}, maps:get(items, Q))}, S2))
-    end,
-    {reply, ok, Updated};
+    case {maps:get(network, S2), maps:get(closed, get_queue(To, S2))} of
+        {_, true} -> {reply, ok, discard(Value, S2)};
+        {none, false} -> {reply, ok, arrive(To, Value, Clock, S2)};
+        {Net, false} ->
+            {Mode, Next} = lawspec_beam_scenario_network:send(Destination, Value, Clock, From, Net),
+            S3 = S2#{network := Next},
+            case Mode of
+                ok -> {reply, ok, S3};
+                pending ->
+                    Q = get_queue(To, S3),
+                    {noreply, put_queue(To, Q#{in_flight := maps:get(in_flight, Q) + 1}, S3)}
+            end
+    end;
 request({'receive', Identity, Destination, Timeout}, Caller, From, State) ->
     _ = owned_process(Identity, Caller, State),
     Q = owned_queue(Identity, Destination, State),
@@ -157,6 +197,12 @@ delegated({lawspec_scenario_end, Name, Side}) -> {'end', Name, Side};
 delegated(_) -> none.
 discard(Value, State) ->
     case delegated(Value) of none -> State; End -> close_queue(End, State) end.
+arrive(To, Value, Clock, State) ->
+    Q = get_queue(To, State),
+    case maps:get(closed, Q) of
+        true -> discard(Value, State);
+        false -> wake(To, put_queue(To, Q#{items := queue:in({Value, Clock}, maps:get(items, Q))}, State))
+    end.
 
 %% Drain accepted values before reporting that a sender has gone. A moved
 %% end is owned by the queue until its recipient actually receives it.
@@ -175,8 +221,11 @@ wake(Destination, State) ->
                     reply(Waiting, {value, Value, Clock}), S2;
                 {empty, _} ->
                     Gone = case Destination of
-                        {mailbox, _} -> maps:get(outstanding, Q) =:= 0;
-                        {'end', Name, Side} -> maps:get(closed, get_queue({'end', Name, 1 - Side}, State))
+                        {mailbox, _} -> maps:get(outstanding, Q) + maps:get(in_flight, Q) =:= 0;
+                        {'end', Name, Side} -> case maps:get(network, State) of
+                            none -> maps:get(closed, get_queue({'end', Name, 1 - Side}, State));
+                            _ -> maps:get(remote_gone, Q)
+                        end
                     end,
                     case Gone of
                         true -> reply(Waiting, gone), put_queue(Destination, Q#{waiting := none}, State);
@@ -197,9 +246,12 @@ close_queue(Destination, State) ->
             %% Mark closed before following delegated ends: even cyclic
             %% queues cannot recurse forever or call another server.
             S2 = lists:foldl(fun({Value, _}, S) -> discard(Value, S) end, S1, queue:to_list(maps:get(items, Q))),
-            case Destination of
-                {'end', Name, Side} -> wake({'end', Name, 1 - Side}, S2);
-                {mailbox, _} -> S2
+            case maps:get(network, S2) of
+                none -> case Destination of
+                    {'end', Name, Side} -> wake({'end', Name, 1 - Side}, S2);
+                    {mailbox, _} -> S2
+                end;
+                Net -> S2#{network := lawspec_beam_scenario_network:abandon(Destination, Net)}
             end
     end.
 close_process(Identity, State) ->
