@@ -10,10 +10,12 @@
 --   lawspec-dev bump <x.y.z>        set the release version everywhere
 --   lawspec-dev docs [--check]      the documentation site; see dev/Docs.hs
 --   lawspec-dev canon [arguments]   canon over the repository; see dev/Canon.hs
+--   lawspec-dev beam-vectors <file> scalar vectors from Core for BEAM conformance
 module Main (main) where
 
 import Control.Monad (forM, forM_, unless, when)
 import Canon (canonCommand)
+import BeamVectors (writeVectors)
 import Ci (ci)
 import Docs (docsCommand)
 import Generate (bumpCommand, generateCommand, versionCommand)
@@ -30,6 +32,7 @@ import System.FilePath ((</>))
 
 main :: IO ()
 main = getArgs >>= \case
+  ["beam-vectors", path] -> writeVectors path
   ["boundaries"] -> boundaries
   ["integrity"] -> integrity False
   ["integrity", "--record"] -> integrity True
@@ -39,14 +42,14 @@ main = getArgs >>= \case
   "bump" : options -> bumpCommand options
   "docs" : options -> docsCommand options
   "canon" : options -> canonCommand options
-  _ -> die "usage: lawspec-dev boundaries | integrity [--record] | ci [options] | generate [--check|--list] | version [--check] | bump <x.y.z> | docs --out <dir> | docs --check | canon [arguments]"
+  _ -> die "usage: lawspec-dev boundaries | integrity [--record] | ci [options] | generate [--check|--list] | version [--check] | bump <x.y.z> | docs --out <dir> | docs --check | canon [arguments] | beam-vectors <file>"
 
 -- | Follow transitive local imports, so a convenience module cannot hide
 -- syntax or inference behind Core, the testing plan, or an emitter.
 boundaries :: IO ()
 boundaries = do
   seen <- visitAll S.empty [(root, []) | root <- roots]
-  putStrLn ("Core and all eight emitters: " ++ show (S.size seen) ++
+  putStrLn ("Core and emitters: " ++ show (S.size seen) ++
     " modules satisfy the syntax/inference boundary.")
   where
     forbidden = S.fromList ["Model", "Parser", "Compile", "Inference", "Elaboration",
@@ -95,7 +98,7 @@ integrity record = do
           [] -> "Compiler source set changed; run tools/wasm.sh")
       putStrLn "WASM, generated API, and compiler source fingerprints match."
   where
-    runtimeFile p = any (`isSuffixOf` p) [".rs", ".py", ".mjs", ".ts", ".java", ".kt", ".go", ".hs"]
+    runtimeFile p = any (`isSuffixOf` p) [".rs", ".py", ".mjs", ".ts", ".java", ".kt", ".go", ".hs", ".erl", ".ex", ".gleam"]
       || any (`isSuffixOf` p) ["Cargo.toml", "Cargo.lock"]
     quoted s = "\"" ++ s ++ "\""
     isInfixOf' needle haystack = any (needle `isPrefixOf`) (tails' haystack)

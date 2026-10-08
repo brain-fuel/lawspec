@@ -4,6 +4,7 @@ import { readFile, readdir } from "node:fs/promises";
 import assert from "node:assert/strict";
 import path from "node:path";
 import { createCompiler } from "../npm/api.mjs";
+import { targets } from "../npm/templates.mjs";
 const root = path.resolve(import.meta.dirname, "..");
 const bin = process.env.LAWSPEC_CORE || path.join(
   execFileSync("stack", ["path", "--local-install-root"], {
@@ -49,16 +50,7 @@ for (const machineBits of [32, 64]) {
 for (const machineBits of [32,64])
 for (const minify of [false, true]) {
 for (const [index, text] of fixtures.entries())
-  for (const target of [
-    "java",
-    "python",
-    "javascript",
-    "typescript",
-    "go",
-    "haskell",
-    "kotlin",
-    "rust",
-  ]) {
+  for (const target of targets) {
     const input = {
       sources: [{ path: "codec.lawspec", content: text }],
       target,
@@ -78,9 +70,9 @@ const packaged = {
     content: await readFile(path.join(root, "examples/packages/shop-domain/src/domain.lawspec"), "utf8")}]}],
 };
 for (const method of ["check", "expand"]) await compare(method, packaged, `${method}: packages`);
-for (const target of ["java", "python", "javascript", "typescript", "go", "haskell", "kotlin", "rust"])
+for (const target of targets)
   await compare("planGeneration", {...packaged, target}, `packages, ${target}`);
 console.log("Package parity passed for check, expand and every target.");
 console.log(
-  `Native/WASM parity: ${fixtures.length * 32} fixture/target/width/layout combinations passed.`,
+  `Native/WASM parity: ${fixtures.length * targets.length * 4} fixture/target/width/layout combinations passed.`,
 );

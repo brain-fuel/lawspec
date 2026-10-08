@@ -1,7 +1,7 @@
 -- | The complete LawSpec check, run locally from the repository root, since
 -- the project has no hosted CI (ref:DEC-local-ci-only):
 --
---   lawspec-dev ci                       everything, all eight targets
+--   lawspec-dev ci                       everything, every target
 --   lawspec-dev ci --target rust --target go
 --   lawspec-dev ci --core                compiler, npm and editor checks only
 --   lawspec-dev ci --fail-fast
@@ -36,13 +36,14 @@ import System.FilePath ((</>))
 import System.IO (hFlush, stdout)
 import System.Process (CreateProcess(..), proc, readCreateProcessWithExitCode)
 import Text.Printf (printf)
+import qualified LawSpec.Targets as Targets
 
 data Options = Options
   { targets :: [String], coreOnly :: Bool, failFast :: Bool, fresh :: Bool
   , rustToolchains :: [String], rustTargets :: [String] }
 
 allTargets :: [String]
-allTargets = ["java", "python", "javascript", "typescript", "go", "haskell", "kotlin", "rust"]
+allTargets = Targets.targets
 
 -- | A step is a named command with extra environment, run from the root.
 data Step = Step String [(String, String)] [String]
@@ -67,6 +68,8 @@ ci args = do
     ++ [step "editor-grammar" ["npm", "test", "--prefix", "editors/vscode"]])
   unless (coreOnly options) $ do
     mapM_ run [step "build-acceptance" ["stack", "--no-terminal", "build", "lawspec:exe:lawspec-acceptance"]]
+    when (any (`elem` Targets.beamTargets) (targets options)) $
+      run (step "beam-runtime" ["sh", "tools/beam-runtime.sh"])
     mapM_ (mapM_ run . targetSteps) (targets options)
     mapM_ run (rustRuntimeSteps options)
   failed <- reverse <$> readIORef failures
@@ -114,6 +117,11 @@ stepInputs name = case name of
   "docs" -> Just (Inputs [] ["acceptance/", "editors/", "npm/", "tools/"] [])
   "rust-runtime-debug" -> Just rustRuntime
   "rust-runtime-release" -> Just rustRuntime
+  "beam-runtime" -> Just (Inputs ["runtime/lawspec_beam_", "test/fixtures/beam/", "dev/BeamVectors.hs",
+    "tools/beam-runtime.sh", "tools/beam-values-reference.py", "runtime/lawspec_runtime.py",
+    "src/LawSpec/Core/", "src/LawSpec/Core.hs", "src/LawSpec/Scalar.hs", "src/LawSpec/Regex.hs"] []
+    [["erl", "-noshell", "-eval", "io:format(\"~s~n\", [erlang:system_info(system_version)]), halt()."],
+     ["stack", "--version"], ["python3", "--version"]])
   _ -> Nothing
   where
     unread = ["docs/", "acceptance/", "editors/"]
@@ -256,4 +264,3 @@ parse = go (Options [] False False False [] [])
     splitComma s = case break (== ',') s of
       (a, _ : rest) -> a : splitComma rest
       (a, []) -> [a | not (null a)]
-

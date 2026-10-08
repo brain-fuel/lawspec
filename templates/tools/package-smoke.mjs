@@ -3,6 +3,7 @@ import { promisify } from "node:util";
 import { mkdtemp, mkdir, readFile, writeFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { targets } from "../npm/templates.mjs";
 const exec = promisify(execFile);
 const repo = path.resolve(import.meta.dirname, "..");
 const output = process.env.LAWSPEC_PACKAGE_DIR ??
@@ -151,8 +152,7 @@ try {
       assert.deepEqual(checked.diagnostics, []);
       assert.ok(checked.dataTypes.some(type => type.name === 'Tree'));
       assert.ok(checked.definitions.length > 0);
-      for (const target of ['java', 'python', 'javascript', 'typescript',
-        'go', 'haskell', 'kotlin', 'rust']) {
+      for (const target of ${JSON.stringify(targets)}) {
         for (const minify of [false, true]) {
           const result = await compiler.planGeneration({sources, machineBits,
             target, minify});
@@ -164,7 +164,7 @@ try {
         }
       }
     }
-    console.log('Installed structural API: all eight targets, widths and layouts');
+    console.log('Installed structural API: all ${targets.length} targets, widths and layouts');
   `], app);
   console.log(structures.stdout.trim());
   for (const document of /*@ package-documents @*/)

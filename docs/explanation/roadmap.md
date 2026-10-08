@@ -128,8 +128,7 @@ framework:
 
 ### 0.22: BEAM targets
 
-After the 0.21 refactor, review the deferred canonical comments, decisions,
-references and pages before this release.
+Canonical vetting remains pending and is revisited in 0.23.0.
 
 Erlang, Elixir and Gleam join the targets, with actors on real processes
 and OTP supervisors.

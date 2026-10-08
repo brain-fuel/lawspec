@@ -29,6 +29,7 @@ import Gen.Json
 import Gen.Template
 import LawSpec.Code.Doc (Layout(..))
 import LawSpec.Scaffold (scaffoldFiles, scaffoldTargets, setupAdvice, testCommand)
+import LawSpec.Targets (targetLabel)
 
 data Output = Output { outputPath :: FilePath, outputContent :: String, outputExecutable :: Bool }
 
@@ -109,6 +110,7 @@ factFills :: String -> [(String, Fill)]
 factFills version =
   [ ("version", Inline (jsonString version))
   , ("targets", Inline (json (Array (map String scaffoldTargets))))
+  , ("target-labels", Inline (json (Array [Array [String t, String (targetLabel t)] | t <- scaffoldTargets])))
   , ("commands", Inline (json (Object [(t, String c) | t <- scaffoldTargets, Just c <- [testCommand t]])))
   , ("setup", Inline (json (Object [(t, String s) | t <- scaffoldTargets, Just s <- [setupAdvice t]])))
   , ("scaffolds", Inline (json (Object

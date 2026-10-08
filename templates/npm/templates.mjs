@@ -1,6 +1,7 @@
 // Project scaffolds, test commands and setup advice for each target. The data
 // is LawSpec.Scaffold's, so the npm CLI and the compiler cannot disagree.
 export const targets = /*@ targets @*/;
+export const targetLabels = /*@ target-labels @*/;
 
 export const commands = /*@ commands @*/;
 

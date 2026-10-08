@@ -12,7 +12,10 @@ import System.FilePath ((</>))
 
 runtimeFiles :: [(String, FilePath)]
 runtimeFiles =
-  [ ("python", "lawspec_runtime.py"), ("python-schema", "lawspec_schema.py")
+  [ ("beam-scalar", "lawspec_beam_scalar.erl"), ("beam-schema", "lawspec_beam_schema.erl")
+  , ("beam-regex", "lawspec_beam_regex.erl")
+  , ("beam-random", "lawspec_beam_random.erl"), ("beam-values", "lawspec_beam_values.erl")
+  , ("python", "lawspec_runtime.py"), ("python-schema", "lawspec_schema.py")
   , ("python-data-strategies", "lawspec_data_strategies.py"), ("javascript", "lawspec_runtime.mjs")
   , ("web-schema", "lawspec_schema.mjs"), ("web-data-strategies", "lawspec_data_strategies.mjs")
   , ("java", "LawSpecRuntime.java"), ("java-schema", "LawSpecSchema.java")
@@ -66,7 +69,7 @@ embedDefaults = do
         isDirectory <- doesDirectoryExist path
         -- Sources only: no caches or editor files.
         if isDirectory then (if take 2 entry == "__" || take 1 entry == "." then pure [] else walk path)
-        else pure [path | take 1 entry /= ".", any (`isSuffixOf` entry) [".py", ".mjs", ".ts", ".go", ".java", ".kt", ".hs", ".rs", ".txt"]]) entries
+        else pure [path | take 1 entry /= ".", any (`isSuffixOf` entry) [".py", ".mjs", ".ts", ".go", ".java", ".kt", ".hs", ".rs", ".txt", ".erl", ".ex", ".gleam"]]) entries
 
 quote :: String -> String
 quote s = "\"" ++ concatMap escape s ++ "\""

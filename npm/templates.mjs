@@ -9,8 +9,57 @@ export const targets = [
                          "go",
                          "haskell",
                          "kotlin",
-                         "rust"
+                         "rust",
+                         "erlang",
+                         "elixir",
+                         "gleam"
                        ];
+export const targetLabels = [
+                              [
+                                "java",
+                                "Java"
+                              ],
+                              [
+                                "python",
+                                "Python"
+                              ],
+                              [
+                                "javascript",
+                                "JavaScript"
+                              ],
+                              [
+                                "typescript",
+                                "TypeScript"
+                              ],
+                              [
+                                "go",
+                                "Go"
+                              ],
+                              [
+                                "haskell",
+                                "Haskell"
+                              ],
+                              [
+                                "kotlin",
+                                "Kotlin"
+                              ],
+                              [
+                                "rust",
+                                "Rust"
+                              ],
+                              [
+                                "erlang",
+                                "Erlang"
+                              ],
+                              [
+                                "elixir",
+                                "Elixir"
+                              ],
+                              [
+                                "gleam",
+                                "Gleam"
+                              ]
+                            ];
 
 export const commands = {
                           "java": "mvn test",
@@ -20,7 +69,10 @@ export const commands = {
                           "go": "go test ./...",
                           "haskell": "stack test",
                           "kotlin": "gradle test",
-                          "rust": "cargo test"
+                          "rust": "cargo test",
+                          "erlang": "rebar3 eunit",
+                          "elixir": "mix test",
+                          "gleam": "gleam test"
                         };
 
 export const setup = {
@@ -31,7 +83,10 @@ export const setup = {
                        "go": "Use Go 1.25+ and go get pgregory.net/rapid@v1.2.0 (and github.com/cloudflare/circl@v1.6.5 for a program that imports lawspec.crypto or lawspec.network), then go mod download.",
                        "haskell": "Use Stack with lts-24.58, directory and time as dependencies (and, for a program that imports lawspec.crypto, lawspec.network or lawspec.randomness, extra-deps crypton-1.1.5, ram-0.22.1, mlkem-0.2.3.0 and mldsa-0.1.1.0 as dependencies too), and test dependencies hspec, hedgehog, hspec-hedgehog, hspec-discover, and a test/Spec.hs using hspec-discover. Run stack build --test --no-run-tests.",
                        "kotlin": "Use JDK 25, Gradle 9.3.0, Kotlin plugin 2.3.21, JVM target 25, Kotest 5.9.1 (runner, assertions, property), and useJUnitPlatform(); a program that imports lawspec.crypto or lawspec.network also needs Bouncy Castle bcprov-jdk18on 1.86. Run gradle testClasses.",
-                       "rust": "Use Rust 1.85+ with edition 2024, Proptest 1.11.0, num-bigint 0.4.8, num-rational 0.4.2, num-complex 0.4.6 and num-traits 0.2.19; a program that imports lawspec.crypto, lawspec.network or lawspec.randomness also needs sha3 0.12.0, shake 0.1.0, ml-kem 0.3.2, ml-dsa 0.1.1, slh-dsa 0.2.0-rc.5, aes-gcm 0.11.1 and getrandom 0.4.3. Run cargo test."
+                       "rust": "Use Rust 1.85+ with edition 2024, Proptest 1.11.0, num-bigint 0.4.8, num-rational 0.4.2, num-complex 0.4.6 and num-traits 0.2.19; a program that imports lawspec.crypto, lawspec.network or lawspec.randomness also needs sha3 0.12.0, shake 0.1.0, ml-kem 0.3.2, ml-dsa 0.1.1, slh-dsa 0.2.0-rc.5, aes-gcm 0.11.1 and getrandom 0.4.3. Run cargo test.",
+                       "erlang": "Use Erlang/OTP 29+, Rebar3 3.27.1 and PropEr 1.5.0. Run rebar3 eunit. Programs importing lawspec.crypto or lawspec.network require OTP crypto with ML-KEM-768, ML-DSA-65, SLH-DSA-SHAKE-128f, SHA3/SHAKE and AES-256-GCM support.",
+                       "elixir": "Use Erlang/OTP 29+, Elixir 1.20+ and StreamData 1.4.0. Run mix deps.get and mix test. Compile the shared Erlang runtime from src alongside Elixir modules in lib. Programs importing lawspec.crypto or lawspec.network require OTP's post-quantum crypto support.",
+                       "gleam": "Use Erlang/OTP 29+, Gleam 1.18+, gleam_stdlib 1.0.5, gleeunit 1.11.0 and qcheck 1.0.5. Select the erlang target in gleam.toml and run gleam test. Programs importing lawspec.crypto or lawspec.network require OTP's post-quantum crypto support."
                      };
 
 // Each target's build files in the readable and the compact (minified) layout.
@@ -108,6 +163,36 @@ const scaffolds = {
                       "compact": {
                         "src/lib.rs": "// Application library. LawSpec maintains the included module declarations.\ninclude!(\"lawspec_modules.rs\");\n",
                         "Cargo.toml": "[package]\nname = \"lawspec-example\"\nversion = \"0.1.0\"\nedition = \"2024\"\nrust-version = \"1.85\"\npublish = false\n\n[dependencies]\nnum-bigint = \"=0.4.8\"\nnum-rational = \"=0.4.2\"\nnum-complex = \"=0.4.6\"\nnum-traits = \"=0.2.19\"\n\n[dev-dependencies]\nproptest = \"=1.11.0\"\n"
+                      }
+                    },
+                    "erlang": {
+                      "readable": {
+                        "rebar.config": "{erl_opts, [debug_info]}.\n{deps, [{proper, \"1.5.0\"}]}.\n",
+                        "src/lawspec_example.app.src": "{application, lawspec_example, [\n    {description, \"LawSpec example\"},\n    {vsn, \"0.1.0\"},\n    {modules, []},\n    {registered, []},\n    {applications, [kernel, stdlib]}\n]}.\n"
+                      },
+                      "compact": {
+                        "rebar.config": "{erl_opts, [debug_info]}.\n{deps, [{proper, \"1.5.0\"}]}.\n",
+                        "src/lawspec_example.app.src": "{application, lawspec_example, [\n    {description, \"LawSpec example\"},\n    {vsn, \"0.1.0\"},\n    {modules, []},\n    {registered, []},\n    {applications, [kernel, stdlib]}\n]}.\n"
+                      }
+                    },
+                    "elixir": {
+                      "readable": {
+                        "mix.exs": "defmodule LawSpecExample.MixProject do\n  use Mix.Project\n\n  def project do\n    [app: :lawspec_example, version: \"0.1.0\", elixir: \"~> 1.20\",\n     erlc_paths: [\"src\"], elixirc_paths: [\"lib\"],\n     deps: [{:stream_data, \"== 1.4.0\", only: :test}]]\n  end\n\n  def application do\n    [extra_applications: [:logger]]\n  end\nend\n",
+                        "test/test_helper.exs": "ExUnit.start()\n"
+                      },
+                      "compact": {
+                        "mix.exs": "defmodule LawSpecExample.MixProject do\n  use Mix.Project\n\n  def project do\n    [app: :lawspec_example, version: \"0.1.0\", elixir: \"~> 1.20\",\n     erlc_paths: [\"src\"], elixirc_paths: [\"lib\"],\n     deps: [{:stream_data, \"== 1.4.0\", only: :test}]]\n  end\n\n  def application do\n    [extra_applications: [:logger]]\n  end\nend\n",
+                        "test/test_helper.exs": "ExUnit.start()\n"
+                      }
+                    },
+                    "gleam": {
+                      "readable": {
+                        "gleam.toml": "name = \"lawspec_example\"\nversion = \"0.1.0\"\ngleam = \">= 1.18.0\"\ntarget = \"erlang\"\n\n[dependencies]\ngleam_stdlib = \"== 1.0.5\"\n\n[dev-dependencies]\ngleeunit = \"== 1.11.0\"\nqcheck = \"== 1.0.5\"\n",
+                        "test/lawspec_example_test.gleam": "import gleeunit\n\npub fn main() {\n  gleeunit.main()\n}\n"
+                      },
+                      "compact": {
+                        "gleam.toml": "name = \"lawspec_example\"\nversion = \"0.1.0\"\ngleam = \">= 1.18.0\"\ntarget = \"erlang\"\n\n[dependencies]\ngleam_stdlib = \"== 1.0.5\"\n\n[dev-dependencies]\ngleeunit = \"== 1.11.0\"\nqcheck = \"== 1.0.5\"\n",
+                        "test/lawspec_example_test.gleam": "import gleeunit\n\npub fn main() {\n  gleeunit.main()\n}\n"
                       }
                     }
                   };

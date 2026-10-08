@@ -50,6 +50,11 @@ extra-source-files:
     runtime/lawspec_network.go
     runtime/lawspec_runtime.go
     runtime/lawspec_schema.go
+    runtime/lawspec_beam_random.erl
+    runtime/lawspec_beam_regex.erl
+    runtime/lawspec_beam_scalar.erl
+    runtime/lawspec_beam_schema.erl
+    runtime/lawspec_beam_values.erl
     runtime/defaults/vectors.txt
     runtime/defaults/go/concurrent.go
     runtime/defaults/go/crypto.go
@@ -181,6 +186,9 @@ extra-source-files:
     test/fixtures/native_shapes.lawspec
     test/fixtures/python_constructor_fields.lawspec
     test/fixtures/total_definitions.lawspec
+    test/fixtures/beam/lawspec_beam_scalar_tests.erl
+    test/fixtures/beam/lawspec_beam_schema_tests.erl
+    test/fixtures/beam/lawspec_beam_values_tests.erl
     test/fixtures/native-payments/domain.rs
     test/fixtures/native-payments/generators.rs
     test/fixtures/native-payments/manual_adapter.rs
@@ -416,6 +424,7 @@ library
       LawSpec.SpecializeDefinitions
       LawSpec.StatefulModel
       LawSpec.TargetNames
+      LawSpec.Targets
       LawSpec.Temporal
       LawSpec.Testing
       LawSpec.TestManifest
@@ -514,6 +523,7 @@ executable lawspec-core
 executable lawspec-dev
   main-is: Main.hs
   other-modules:
+      BeamVectors
       Canon
       Ci
       Docs

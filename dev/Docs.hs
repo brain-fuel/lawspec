@@ -54,6 +54,7 @@ import Gen.Template (Fill(..), fillTemplate)
 import Generate (currentVersion)
 import LawSpec.Api (dispatch)
 import LawSpec.Scaffold (scaffoldTargets, testCommand)
+import LawSpec.Targets (targetLabel)
 
 data Page = Page { pageSource :: FilePath, pageOutput :: FilePath, pageTitle :: String, pageTrack :: Maybe String } deriving Eq
 -- A navigation node: a title, an optional page, and children.
@@ -237,7 +238,7 @@ trackSwitcher pages page = case pageTrack page of
     in "<div class=\"tracks\">" ++ concat
       [ "<a href=\"" ++ relativeUrl page (pageOutput p) ++ "\"" ++ (if pageOutput p == pageOutput page then " aria-current=\"page\"" else "") ++ ">" ++ maybe "" label (pageTrack p) ++ "</a>"
       | p <- same ] ++ "</div>"
-  where label t = fromMaybe t (lookup t [("java", "Java"), ("python", "Python"), ("javascript", "JavaScript")])
+  where label = targetLabel
 
 relativeUrl :: Page -> FilePath -> String
 relativeUrl from to = relative (takeDirectory (pageOutput from)) to
@@ -406,7 +407,7 @@ regionOf name ls =
   where marker m l = let t = trim l in any (\c -> (c ++ " " ++ m) == t || (c ++ m) == t) ["//", "#", "--"]
 
 targetNames :: [String]
-targetNames = ["java", "python", "javascript", "typescript", "go", "haskell", "kotlin", "rust"]
+targetNames = scaffoldTargets
 
 -- | The user-owned files of a generation response: the adapters.
 userFiles :: Value -> [(String, String)]
@@ -441,9 +442,11 @@ assets out = do
   -- How each target's tests run in a project, from LawSpec.Scaffold.
   let commands = ("test-commands", Inline (BLC.unpack (encode (object
         [K.fromString t .= c | t <- scaffoldTargets, Just c <- [testCommand t]]))))
+      labels = ("target-labels", Inline (BLC.unpack (encode
+        [[t, targetLabel t] | t <- scaffoldTargets])))
   forM_ ["style.css", "playground.mjs", "highlight.mjs", "lawspec-core.mjs", "node-test.mjs", "assert.mjs"] $ \file -> do
     source <- readFile' ("templates/site" </> file)
-    (content, _) <- either die pure (fillTemplate ("templates/site" </> file) (commands : partials) source)
+    (content, _) <- either die pure (fillTemplate ("templates/site" </> file) (commands : labels : partials) source)
     writeAt (dir </> file) content
   copyFile "templates/site/_headers" (out </> "_headers")
   forM_ ["core.wasm", "core_jsffi.js"] $ \file -> do

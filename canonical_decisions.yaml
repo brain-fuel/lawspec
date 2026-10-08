@@ -2,7 +2,7 @@ DEC-canonical-format:
   status: decided
   question: LawSpec repeats facts across the CHANGELOG, the explanation pages, local plan files, docs/nav.json and the npm package, and its comments were never judged. How does each fact get one home that cannot drift?
   answer: |
-    LawSpec adopts canon's canonical format in 0.20.1. canon.yaml, canonical_refs.yaml, canonical_decisions.yaml and canonical_exemptions.yaml sit at the root; every work cited in the docs and code is a registry entry, every decision a ledger entry cited as ref:KEY, every page a Folio page with front matter, and CHANGELOG.md follows Keep a Changelog. canon ingest records every comment, page, decision and reference as pending. The owner defers vetting until after the 0.21 refactor; the comments, tests and pages still owed remain exempt through 0.21, so releases can carry the debt without signing it off. The debt is revisited in 0.22.0. Decided by the owner for 0.20.1.
+    LawSpec adopts canon's canonical format in 0.20.1. canon.yaml, canonical_refs.yaml, canonical_decisions.yaml and canonical_exemptions.yaml sit at the root; every work cited in the docs and code is a registry entry, every decision a ledger entry cited as ref:KEY, every page a Folio page with front matter, and CHANGELOG.md follows Keep a Changelog. canon ingest records every comment, page, decision and reference as pending. The owner defers vetting until after the 0.21 refactor; the comments, tests and pages still owed remain exempt through 0.22, so releases can carry the debt without signing it off. The debt is revisited in 0.23.0. Decided by the owner for 0.20.1.
   opened: 0.20.1
   decided: 0.20.1
   refs: [canon, keep-a-changelog, diataxis]
@@ -39,7 +39,7 @@ DEC-template-holes:
   answer: |
     Until decided, canon.yaml ignores those two templates. Candidates are a hole form that is itself an expression, or moving the value into a statement the grammar reads.
   opened: 0.20.1
-  revisit: 0.22.0
+  revisit: 0.23.0
 
 DEC-docs-landing-page:
   status: decided
@@ -107,9 +107,9 @@ DEC-test-names-audit:
   status: open
   question: Does every Hspec it name, and every acceptance and native test name, state the property it verifies rather than the thing it exercises?
   answer: |
-    Not yet audited. canon cannot see an it name, since an Hspec example is a call rather than a declaration; the owner reviews them after the 0.21 refactor; the audit is revisited in 0.22.0.
+    Not yet audited. canon cannot see an it name, since an Hspec example is a call rather than a declaration; the owner reviews them after the 0.21 refactor; the audit is revisited in 0.23.0.
   opened: 0.20.1
-  revisit: 0.22.0
+  revisit: 0.23.0
   refs: [hspec]
 
 DEC-typed-core-boundary:

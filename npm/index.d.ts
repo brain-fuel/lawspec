@@ -7,7 +7,10 @@ export type Target =
     'go' |
     'haskell' |
     'kotlin' |
-    'rust';
+    'rust' |
+    'erlang' |
+    'elixir' |
+    'gleam';
 
 export interface Source {
   path: string;

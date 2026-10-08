@@ -58,7 +58,7 @@ lessons: ## The tutorial lessons, run for real in Java, Python, JavaScript and T
 	$(STACK) build lawspec:exe:lawspec-acceptance
 	$(STACK) exec lawspec-acceptance -- lessons java python javascript typescript
 
-ci: ## The complete check: every step for all eight targets
+ci: ## The complete check: every step for every target
 	$(DEV) ci
 
 ci-fresh: ## The complete check, ignoring recorded results (for releases)

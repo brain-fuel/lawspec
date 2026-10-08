@@ -4,6 +4,7 @@ module Gen.Api (apiSources) where
 
 import LawSpec.Code.Doc
 import LawSpec.Scalar
+import qualified LawSpec.Targets as Targets
 
 methods :: [(String, String)]
 methods = [("check", "CheckRequest"), ("expand", "CheckRequest"), ("planGeneration", "GenerationRequest")]
@@ -62,7 +63,7 @@ api = text "import {loadCore} from './launcher.mjs';" <> softbreak <> softbreak 
 
 declarations :: Doc
 declarations = joinWith (softbreak <> softbreak)
-  [ alias "Target" (map quoted ["java", "python", "javascript", "typescript", "go", "haskell", "kotlin", "rust"])
+  [ alias "Target" (map quoted Targets.targets)
   , interface "Source" (fields [("path", "string"), ("content", "string")])
   , interface "Location" (fields [("file", "string"), ("line", "number"), ("column", "number")])
   , interface "Span" (fields [("start", "Location"), ("end", "Location")])

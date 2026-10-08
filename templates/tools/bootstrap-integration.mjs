@@ -6,11 +6,12 @@ import path from "node:path";
 import { targets, templates } from "../npm/templates.mjs";
 const exec = promisify(execFile);
 const repo = path.resolve(import.meta.dirname, "..");
-async function run(cmd, args, cwd) {
+async function run(cmd, args, cwd, environment = {}) {
   console.log(`${path.basename(cwd)}: ${cmd} ${args.join(" ")}`);
   try {
     return await exec(cmd, args, {
       cwd,
+      env: { ...process.env, ...environment },
       encoding: "utf8",
       maxBuffer: 8 * 1024 * 1024,
       timeout: 300000,
@@ -121,6 +122,16 @@ async function setup(target) {
       ["--no-daemon", "--console=plain", "testClasses"],
       root,
     );
+  } else if (["erlang", "elixir", "gleam"].includes(target)) {
+    const lockName = {erlang: "rebar.lock", elixir: "mix.lock", gleam: "manifest.toml"}[target];
+    await copyFile(path.join(repo, "test/locks", target, lockName), path.join(root, lockName));
+    await mkdir(path.join(root, "src"), {recursive: true});
+    if (target === "erlang") await run("rebar3", ["compile"], root);
+    if (target === "elixir") {
+      await run("mix", ["deps.get"], root);
+      await run("mix", ["compile"], root, {MIX_ENV: "test"});
+    }
+    if (target === "gleam") await run("gleam", ["build"], root);
   }
   await writeFile(configPath, JSON.stringify(config, null, 2) + "\n");
 }

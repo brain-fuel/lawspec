@@ -37,6 +37,9 @@ toolchain project target = do
     "typescript" -> pure (plain "npm" ["test"])
     "go" -> pure (plain "go" ["test", "./..."])
     "haskell" -> pure (plain "stack" ["--no-terminal", "test"])
+    "erlang" -> pure (plain "rebar3" ["eunit"])
+    "elixir" -> pure (plain "mix" ["test"])
+    "gleam" -> pure (plain "gleam" ["test"])
     "kotlin" -> do
       let local = root </> ".tools/gradle-9.3.0/bin/gradle"
       gradle <- (\exists -> if exists then local else "gradle") <$> doesFileExist local
@@ -62,4 +65,7 @@ compileFailure :: String -> Bool
 compileFailure output = any ((`isInfixOf` map toLower output) . map toLower)
   [ "error[E", "could not compile", "COMPILATION ERROR", "compileKotlin FAILED"
   , "compileTestKotlin FAILED", "SyntaxError", "[build failed]", "parse error on input"
-  , "not in scope", "error TS", "couldn't match expected type" ]
+  , "not in scope", "error TS", "couldn't match expected type"
+  , "syntax error before:", "undefined function", "** (CompileError)"
+  , "error: Type mismatch", "error: Unknown variable", "error: Unknown type"
+  , "error: Unknown module", "error: Unknown value" ]

@@ -30,8 +30,7 @@
 
 import { highlight, highlightPage, languageOf } from "./highlight.mjs";
 
-const targets = [["java", "Java"], ["python", "Python"], ["javascript", "JavaScript"], ["typescript", "TypeScript"],
-  ["go", "Go"], ["haskell", "Haskell"], ["kotlin", "Kotlin"], ["rust", "Rust"]];
+const targets = /*@ target-labels @*/;
 const runnable = new Set(["javascript", "typescript"]);
 const badges = { javascript: "JS", typescript: "TS" };
 const testCommands = /*@ test-commands @*/;

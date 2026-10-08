@@ -47,6 +47,7 @@ import LawSpec.BuiltinDefaults (withBuiltinDefaults)
 import LawSpec.Builtins (defaultedUnits)
 import LawSpec.Scalar (primitive)
 import LawSpec.TargetNames (nativeName, allTargetKeywords)
+import qualified LawSpec.Targets as Targets
 import Data.Char (toUpper, toLower, isAscii, isAlphaNum)
 import Data.List (intercalate, nub, stripPrefix, isPrefixOf, isSuffixOf)
 import Control.Monad (unless)
@@ -57,9 +58,9 @@ import qualified LawSpec.Dependencies as D
 import LawSpec.Digest (digestHex, digestString)
 import System.IO.Unsafe (unsafePerformIO)
 
--- | The eight targets the emitter supports, in the order every listing uses.
+-- | Targets use the same order as the scaffolds, public API and local CI.
 targets :: [String]
-targets = ["java","python","javascript","typescript","go","haskell","kotlin","rust"]
+targets = Targets.targets
 split :: Char -> String -> [String]
 split c s = case break (==c) s of (a,[]) -> [a]; (a,_:b) -> a:split c b
 cap :: String -> String

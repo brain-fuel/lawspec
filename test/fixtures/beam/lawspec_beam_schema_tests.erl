@@ -1,0 +1,134 @@
+%% @doc Native values must satisfy the same Core shapes and field contracts
+%% on all three BEAM targets. ref:DEC-native-bindings-typed-identity
+-module(lawspec_beam_schema_tests).
+-include_lib("eunit/include/eunit.hrl").
+
+schema(Definitions) -> lawspec_beam_schema:new(Definitions,
+    [<<"Integer">>, <<"Int8">>, <<"Int32">>, <<"Bool">>, <<"Text">>,
+     <<"Float64">>, <<"Rational">>, <<"Unit">>], 64).
+definition(Name, Parameters, Constructors) ->
+    #{name => Name, parameters => Parameters, constructors => Constructors}.
+ctor(Tag, Native, Fields) -> #{tag => Tag, native_tag => Native, fields => Fields}.
+box() -> definition(<<"Box">>, 1,
+    [ctor(<<"Box::Box">>, box, [{<<"value">>, {parameter, 0}}])]).
+box_type() -> {<<"Box">>, [{<<"Int8">>, []}]}.
+
+generic_bridge_test() ->
+    S = schema([box()]), T = box_type(),
+    Value = {ls_data, <<"Box::Box">>, [42]},
+    ?assertEqual({box, 42}, lawspec_beam_schema:to_native(Value, T, S)),
+    ?assertEqual(Value, lawspec_beam_schema:from_native({box, 42}, T, S)),
+    ?assertError({lawspec, {integer_out_of_range, <<"Int8">>}},
+        lawspec_beam_schema:from_native({box, 128}, T, S)),
+    ?assertError({lawspec, {wrong_field_count, <<"Box::Box">>}},
+        lawspec_beam_schema:from_native({box, 1, 2}, T, S)).
+
+empty_record_test() ->
+    S = schema([definition(<<"Seal">>, 0, [ctor(<<"Seal::Seal">>, seal, [])])]),
+    V = {ls_data, <<"Seal::Seal">>, []},
+    ?assertEqual(seal, lawspec_beam_schema:to_native(V, <<"Seal">>, S)),
+    ?assertEqual(V, lawspec_beam_schema:from_native(seal, <<"Seal">>, S)).
+
+elixir_struct_bridge_test() ->
+    C = (ctor(<<"Box::Box">>, box, [{<<"value">>, {parameter, 0}}]))#{
+        encode => fun([V]) -> #{'__struct__' => 'Elixir.Example.Box', contents => V} end,
+        decode => fun
+            (#{'__struct__' := 'Elixir.Example.Box', contents := V}) -> {ok, [V]};
+            (_) -> no_match
+        end},
+    S = schema([definition(<<"Box">>, 1, [C])]),
+    V = {ls_data, <<"Box::Box">>, [42]},
+    Native = lawspec_beam_schema:to_native(V, box_type(), S),
+    ?assertEqual(#{'__struct__' => 'Elixir.Example.Box', contents => 42}, Native),
+    ?assertEqual(V, lawspec_beam_schema:from_native(Native, box_type(), S)).
+
+refinement_short_circuit_test() ->
+    Positive = fun(_, _, [V]) -> V > 0 end,
+    Impossible = fun(_, _, _) -> erlang:error(should_not_run) end,
+    C = (ctor(<<"Positive::Positive">>, positive, [{<<"value">>, {<<"Int32">>, []}}]))#{
+        predicates => [Positive, Impossible]},
+    S = schema([definition(<<"Positive">>, 0, [C])]),
+    ?assertError({lawspec, {refinement_violation, <<"Positive::Positive">>}},
+        lawspec_beam_schema:from_native({positive, -1}, <<"Positive">>, S)).
+
+gadt_refinement_test() ->
+    C = (ctor(<<"Expr::Flag">>, flag, [{<<"value">>, {<<"Bool">>, []}}]))#{
+        refinements => [{0, {<<"Bool">>, []}}]},
+    S = schema([definition(<<"Expr">>, 1, [C])]),
+    ?assertEqual({ls_data, <<"Expr::Flag">>, [true]},
+        lawspec_beam_schema:from_native({flag, true}, <<"Expr Bool">>, S)),
+    ?assertError({lawspec, invalid_native_constructor},
+        lawspec_beam_schema:from_native({flag, true}, <<"Expr Int32">>, S)).
+
+existential_equation_test() ->
+    C = (ctor(<<"Pack::Pack">>, pack, [{<<"value">>, {parameter, 1}}]))#{
+        existentials => 1, refinements => [{0, {<<"List">>, [{parameter, 1}]}}]},
+    S = schema([definition(<<"Pack">>, 1, [C])]),
+    ?assertEqual({ls_data, <<"Pack::Pack">>, [7]},
+        lawspec_beam_schema:from_native({pack, 7}, <<"Pack (List Int8)">>, S)),
+    ?assertError({lawspec, {integer_out_of_range, <<"Int8">>}},
+        lawspec_beam_schema:from_native({pack, 128}, <<"Pack (List Int8)">>, S)).
+
+witnessed_existential_test() ->
+    C = (ctor(<<"Some::Some">>, some, [{<<"value">>, {parameter, 0}},
+        {<<"witness">>, {<<"Text">>, []}}]))#{existentials => 1, witnesses => [0]},
+    S = schema([definition(<<"Some">>, 0, [C])]),
+    ?assertEqual({ls_data, <<"Some::Some">>, [true, <<"Bool">>]},
+        lawspec_beam_schema:from_native({some, true, <<"Bool">>}, <<"Some">>, S)),
+    ?assertError({lawspec, {invalid_value, <<"Bool">>}},
+        lawspec_beam_schema:from_native({some, 1, <<"Bool">>}, <<"Some">>, S)),
+    ?assertError({lawspec, {unknown_type_or_arity, <<"Unknown">>}},
+        lawspec_beam_schema:from_native({some, 1, <<"Unknown">>}, <<"Some">>, S)).
+
+index_guards_test() ->
+    Zero = (ctor(<<"Nat::Zero">>, zero, []))#{indices => [<<"c0">>]},
+    Succ = (ctor(<<"Nat::Succ">>, succ, [{<<"prior">>, {<<"Nat">>, []}}]))#{
+        indices => [<<"+ c1 f0">>]},
+    Pair = (ctor(<<"Same::Same">>, same,
+        [{<<"left">>, {<<"Nat">>, []}}, {<<"right">>, {<<"Nat">>, []}}]))#{
+        indices => [<<"f0">>, <<"== f0 f1">>]},
+    S = schema([definition(<<"Nat">>, 0, [Zero, Succ]), definition(<<"Same">>, 0, [Pair])]),
+    Two = lawspec_beam_schema:from_native({succ, {succ, zero}}, <<"Nat">>, S),
+    ?assertEqual(2, lawspec_beam_schema:index(Two, <<"Nat">>, 0, S)),
+    _ = lawspec_beam_schema:from_native({same, {succ, zero}, {succ, zero}}, <<"Same">>, S),
+    ?assertError({lawspec, {refinement_violation, {index_guard, <<"== f0 f1">>}}},
+        lawspec_beam_schema:from_native({same, zero, {succ, zero}}, <<"Same">>, S)).
+
+payload_provenance_test() ->
+    C = ctor(<<"Pair::Pair">>, pair, [{<<"fixed">>, {<<"Int32">>, []}},
+        {<<"value">>, {parameter, 0}}, {<<"nested">>, {<<"List">>, [{parameter, 0}]}}]),
+    S = schema([definition(<<"Pair">>, 1, [C])]),
+    Predicates = [fun(V) -> V >= 0 end],
+    ?assert(lawspec_beam_schema:all_payloads({ls_data, <<"Pair::Pair">>, [-1, 2, [3]]},
+        <<"Pair Int32">>, Predicates, S)),
+    ?assertNot(lawspec_beam_schema:all_payloads({ls_data, <<"Pair::Pair">>, [1, 2, [-3]]},
+        <<"Pair Int32">>, Predicates, S)).
+
+codec_bridge_test() ->
+    S0 = schema([box()]),
+    Codec = #{encode => fun({ls_data, <<"Box::Box">>, [V]}, [Child]) -> #{item => Child(V)} end,
+              decode => fun(#{item := V}, [Child]) -> {ls_data, <<"Box::Box">>, [Child(V)]} end},
+    S = lawspec_beam_schema:with_codecs(S0, #{<<"Box">> => Codec}),
+    V = {ls_data, <<"Box::Box">>, [42]},
+    ?assertEqual(#{item => 42}, lawspec_beam_schema:to_native(V, box_type(), S)),
+    ?assertEqual(V, lawspec_beam_schema:from_native(#{item => 42}, box_type(), S)),
+    ?assertError({lawspec, {integer_out_of_range, <<"Int8">>}},
+        lawspec_beam_schema:from_native(#{item => 128}, box_type(), S)).
+
+handle_identity_test() ->
+    S = schema([(definition(<<"Handle">>, 0, []))#{handle => true}]),
+    Ref = make_ref(),
+    A = lawspec_beam_schema:from_native(Ref, <<"Handle">>, S),
+    B = lawspec_beam_schema:from_native(Ref, <<"Handle">>, S),
+    C = lawspec_beam_schema:from_native(make_ref(), <<"Handle">>, S),
+    ?assert(lawspec_beam_scalar:equal(A, B)),
+    ?assertNot(lawspec_beam_scalar:equal(A, C)),
+    ?assertEqual(Ref, lawspec_beam_schema:to_native(A, <<"Handle">>, S)),
+    ?assertError({lawspec, no_portable_order}, lawspec_beam_scalar:compare(A, C)).
+
+schema_audit_test() ->
+    ?assertError({lawspec, duplicate_type}, schema([box(), box()])),
+    ?assertError({lawspec, unbound_schema_parameter}, schema([
+        definition(<<"Bad">>, 0, [ctor(<<"Bad::Bad">>, bad, [{<<"value">>, {parameter, 0}}])])])),
+    ?assertError({lawspec, {unknown_type_or_arity, <<"List">>}},
+        lawspec_beam_schema:check_type({<<"List">>, []}, schema([]))).

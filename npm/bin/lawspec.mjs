@@ -197,6 +197,9 @@ async function init() {
     "build.gradle",
     "build.gradle.kts",
     "settings.gradle.kts",
+    "rebar.config",
+    "mix.exs",
+    "gleam.toml",
   ];
   const hasBuild = (await readdir(root)).some(
     (f) => buildFiles.includes(f) || f.endsWith(".cabal"),
