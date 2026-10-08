@@ -1,0 +1,6 @@
+@@ lib/example_indexed.ex
+<<<<<<<
+%D.VecVCons{head: h, tail: zip(t, u)}
+=======
+%D.VecVCons{head: h, tail: %D.VecVCons{head: h, tail: zip(t, u)}}
+>>>>>>>

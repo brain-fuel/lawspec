@@ -1,0 +1,6 @@
+@@ src/example_gadt.erl
+<<<<<<<
+describe({shown, _, Witness}) -> Witness.
+=======
+describe({shown, _, _Witness}) -> <<"Int32">>.
+>>>>>>>

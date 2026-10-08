@@ -1,0 +1,6 @@
+@@ src/example/arithmetic.gleam
+<<<<<<<
+d.Halves(xs, xs)
+=======
+d.Halves(xs, d.RowCell(0, xs))
+>>>>>>>

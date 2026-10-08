@@ -3,19 +3,29 @@
 %% custom shrinker replaces PropEr, StreamData or qcheck.
 %% ref:DEC-native-property-frameworks ref:DEC-structural-size-budget
 -module(lawspec_beam_generators).
--export([generator/6, with_cache/1]).
+-export([generator/6, generator/7, with_cache/1]).
 
 generator(F, T, Schema, Symbols, Bounds, Witnesses) ->
+    generator(F, T, Schema, Symbols, Bounds, Witnesses, none).
+generator(F, T, Schema, Symbols, Bounds, Witnesses, Index) ->
     F:sized(fun(Size) ->
         Limit = lists:max([64 | [value_nodes(V) || V <- Witnesses]]),
         Minimum = minimum(T, Schema, Limit),
         case Minimum of
             none -> erlang:error({lawspec, {no_structural_generator, T}});
             _ ->
-                Native = build(F, T, Schema, Symbols, max(Minimum, Size + 1), Bounds),
-                case Witnesses of
-                    [] -> Native;
-                    _ -> F:frequency([{1, F:oneof([F:exactly(V) || V <- Witnesses])}, {9, Native}])
+                Budget = max(Minimum, Size + 1),
+                case Index of
+                    {Target, Equations} -> lawspec_beam_index:generator(F, T, Schema, Target, Equations, Budget,
+                        fun(Child) -> minimum(Child, Schema, Limit) end,
+                        fun(Child, Available) -> build(F, Child, Schema, Symbols, Available, []) end,
+                        fun(Child, Value) -> accepted(Value, Child, Schema) end);
+                    none ->
+                        Native = build(F, T, Schema, Symbols, Budget, Bounds),
+                        case Witnesses of
+                            [] -> Native;
+                            _ -> F:frequency([{1, F:oneof([F:exactly(V) || V <- Witnesses])}, {9, Native}])
+                        end
                 end
         end
     end).
@@ -44,15 +54,17 @@ build(F, T, S, Symbols, Budget, Bounds) ->
     case lawspec_beam_schema:constructors(T, S) of
         none -> scalar(F, T, maps:get(bits, S), Symbols, Bounds);
         Constructors ->
-            Choices = [constructor(F, C, Allocation, S, Symbols) || C <- Constructors,
-                Allocation <- [allocation(maps:get(fields, C), S, Budget - 1)], Allocation =/= none],
+            Choices = [constructor(F, C, Allocation, S, Symbols) || Raw <- Constructors,
+                C <- lawspec_beam_schema:witness_instances(Raw),
+                Allocation <- [allocation(maps:get(fields, C), S, Budget - 1 - length(maps:get(witness_values, C)))],
+                Allocation =/= none],
             F:constrain(F:oneof(Choices), fun(V) -> accepted(V, T, S) end)
     end.
 
 constructor(F, C, Allocation, S, Symbols) ->
     Fields = maps:get(fields, C),
     Types = [build(F, T, S, Symbols, Budget, []) || {{_, T}, Budget} <- lists:zip(Fields, Allocation)],
-    F:bind(F:fixed_list(Types), fun(Values) -> {ls_data, maps:get(tag, C), Values} end).
+    F:bind(F:fixed_list(Types), fun(Values) -> {ls_data, maps:get(tag, C), Values ++ maps:get(witness_values, C)} end).
 
 accepted(V, T, S) ->
     try lawspec_beam_schema:validate(V, T, S), true catch
@@ -84,7 +96,9 @@ inhabited({Name, _}, _, _) when Name =:= <<"List">>; Name =:= <<"Optional">>; Na
 inhabited(T, S, Budget) ->
     case lawspec_beam_schema:constructors(T, S) of
         none -> true;
-        Cs -> lists:any(fun(C) -> allocation(maps:get(fields, C), S, Budget - 1) =/= none end, Cs)
+        Cs -> lists:any(fun(C) -> allocation(maps:get(fields, C), S,
+            Budget - 1 - length(maps:get(witness_values, C))) =/= none end,
+            lists:append([lawspec_beam_schema:witness_instances(C) || C <- Cs]))
     end.
 
 allocation(Fields, S, Budget) ->
@@ -160,7 +174,7 @@ upper(H, N) -> min(H, N).
 
 with_cache(Run) ->
     Previous = erase({?MODULE, minimum}),
-    try Run()
+    try lawspec_beam_index:with_cache(Run)
     after
         case Previous of
             undefined -> erase({?MODULE, minimum});

@@ -1,0 +1,6 @@
+@@ src/example_indexed.erl
+<<<<<<<
+replicate(0, _) -> vec_v_nil;
+=======
+replicate(0, X) -> {vec_v_cons, X, vec_v_nil};
+>>>>>>>

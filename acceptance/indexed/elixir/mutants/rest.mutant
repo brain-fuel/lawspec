@@ -1,0 +1,6 @@
+@@ lib/example_arithmetic.ex
+<<<<<<<
+def drop_first(xs), do: %D.Rest{items: xs}
+=======
+def drop_first(%D.RowCell{tail: t}), do: %D.Rest{items: t}
+>>>>>>>

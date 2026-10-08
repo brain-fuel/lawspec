@@ -1,0 +1,6 @@
+@@ src/example_indexed.erl
+<<<<<<<
+{vec_v_cons, H, append(T, Ys)}
+=======
+append(T, {vec_v_cons, H, Ys})
+>>>>>>>

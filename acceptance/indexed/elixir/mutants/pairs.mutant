@@ -1,0 +1,6 @@
+@@ lib/example_arithmetic.ex
+<<<<<<<
+%D.Pairs{items: xs}
+=======
+%D.Pairs{items: %D.RowCell{head: 0, tail: xs}}
+>>>>>>>

@@ -1,0 +1,6 @@
+@@ src/example_arithmetic.erl
+<<<<<<<
+{pairs, Xs}
+=======
+{pairs, {row_cell, 0, Xs}}
+>>>>>>>

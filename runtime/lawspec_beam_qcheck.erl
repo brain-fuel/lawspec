@@ -2,12 +2,14 @@
 %% invalid shrink candidates; the lazy cap limits qcheck's own shrink traversal.
 %% ref:DEC-native-property-frameworks ref:DEC-shrink-within-domain
 -module(lawspec_beam_qcheck).
--export([generator/5, bind/2, constrain/2, refine_input/2, complete/1, check/3,
+-export([generator/5, generator/6, bind/2, constrain/2, refine_input/2, complete/1, check/3,
     exactly/1, sized/1, frequency/1, oneof/1, integer/2, list/1, vector/2,
     fixed_list/1, binary/0, forall/2]).
 
 generator(T, Schema, Symbols, Bounds, Witnesses) ->
     lawspec_beam_generators:generator(?MODULE, T, Schema, Symbols, Bounds, Witnesses).
+generator(T, Schema, Symbols, Bounds, Witnesses, Index) ->
+    lawspec_beam_generators:generator(?MODULE, T, Schema, Symbols, Bounds, Witnesses, Index).
 exactly(V) -> qcheck:constant(V).
 sized(Build) -> qcheck:sized_from(Build, qcheck:small_non_negative_int()).
 frequency([Choice | Choices]) -> qcheck:from_weighted_generators(Choice, Choices).

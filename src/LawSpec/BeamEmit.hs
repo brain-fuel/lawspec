@@ -17,7 +17,6 @@ import LawSpec.RuntimeSources (runtimeSource)
 import LawSpec.Scaffold (gleamTestPackage)
 import LawSpec.TestNames (unitTestNames)
 import LawSpec.Backend (metadataDocument)
-import LawSpec.Core.Types (freeExistentials)
 import Control.Monad (unless, forM)
 import Data.List (nub, isPrefixOf)
 
@@ -39,7 +38,8 @@ emitBeam target minify plan = either (Left . pure . (\message -> Diagnostic "tar
         [Artifact ("src/lawspec/" ++ name ++ ".gleam") (runtimeSource ("beam-gleam-" ++ name)) "generated" "source"
           | name <- ["types","scalar"], target == "gleam"]
       generators = if null tests then [] else
-        [Artifact (testSupport ++ "lawspec_beam_generators.erl") (runtimeSource "beam-generators") "generated" "test"] ++
+        [Artifact (testSupport ++ "lawspec_beam_" ++ name ++ ".erl") (runtimeSource ("beam-" ++ name)) "generated" "test"
+          | name <- ["generators", "index"]] ++
         [Artifact "test/lawspec_beam_proper.erl" (runtimeSource "beam-proper") "generated" "test" | target == "erlang"] ++
         [Artifact "test/support/lawspec_beam_stream_data.ex" (runtimeSource "beam-stream-data") "generated" "test" | target == "elixir"] ++
         [Artifact "test-support/src/lawspec_beam_qcheck.erl" (runtimeSource "beam-qcheck") "generated" "test" | target == "gleam"] ++
@@ -131,8 +131,14 @@ emitBeam target minify plan = either (Left . pure . (\message -> Diagnostic "tar
       bounds <- mapM (\(op,expression) -> E.tuple . (E.binary (C.binaryName op) :) . pure <$> render expression)
         (nub (generatorBounds requirement ++ directBounds requirement))
       predicates <- mapM render (generatorPredicates requirement)
+      index <- case generatorIndex requirement of
+        Nothing -> pure (E.atom "none")
+        Just directed -> do
+          target <- render (indexedTarget directed)
+          pure (E.tuple [target,E.record [(E.binary (C.idText tag),E.array (map E.binary terms))
+            | (tag,terms) <- indexedEquations directed]])
       let raw = E.remote framework "generator" [ref,schema,symbols,E.array bounds,
-            E.array (map (E.value symbols) (generatorBoundaries requirement))]
+            E.array (map (E.value symbols) (generatorBoundaries requirement)),index]
           predicate = foldr (\a b -> D.text "(" <> a <> D.text " andalso " <> b <> D.text ")") (E.atom "true") predicates
           constrained = if null predicates then raw else E.remote framework "refine_input" [raw,E.lambda [D.text name] predicate]
       remaining <- draws render aliases (previous ++ [D.text name]) rest
@@ -208,8 +214,3 @@ validatePlan target plan = do
   unless (all (null . C.propertyResources . plannedProperty) laws && all ((== Nothing) . C.unitHarnessSettings) units &&
     all ((== C.noHarness) . C.propertyHarness . plannedProperty) laws)
     (Left "BEAM resources and harness settings are not implemented yet")
-  unless (all ((== Nothing) . generatorIndex) (concatMap generatorRequirements laws))
-    (Left "BEAM directed index generators are not implemented yet")
-  unless (all ((/= Nothing) . finiteCases) laws || all null
-    [freeExistentials d c | d <- planDataDeclarations plan, c <- C.dataConstructors d])
-    (Left "BEAM existential witness generators are not implemented yet")

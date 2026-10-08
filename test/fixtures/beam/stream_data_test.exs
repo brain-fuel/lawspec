@@ -5,6 +5,10 @@ defmodule LawSpecStreamDataTest do
   use ExUnit.Case, async: false
   alias LawSpec.Beam.StreamData, as: G
 
+  test "indexed families and existential witnesses use native generators" do
+    assert :ok == :lawspec_beam_index_tests.run(G)
+  end
+
   defp schema, do: :lawspec_beam_schema.new([], ["Int8", "Text", "Symbol"], 64)
   defp int(lo, hi), do: G.generator({"Int8", []}, schema(), make_ref(), [{">=", lo}, {"<=", hi}], [])
   defp check(generator, predicate, options \\ []) do

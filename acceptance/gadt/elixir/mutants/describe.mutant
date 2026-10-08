@@ -1,0 +1,6 @@
+@@ lib/example_gadt.ex
+<<<<<<<
+def describe(%D.Shown{lawspec_type_0: witness}), do: witness
+=======
+def describe(%D.Shown{lawspec_type_0: _witness}), do: "Int32"
+>>>>>>>

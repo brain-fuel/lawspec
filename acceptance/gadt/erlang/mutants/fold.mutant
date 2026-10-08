@@ -1,0 +1,6 @@
+@@ src/example_gadt.erl
+<<<<<<<
+{expr_number, eval_number(X)}
+=======
+{expr_number, 0 * eval_number(X)}
+>>>>>>>

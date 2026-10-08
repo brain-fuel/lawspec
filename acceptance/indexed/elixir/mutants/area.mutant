@@ -1,0 +1,6 @@
+@@ lib/example_arithmetic.ex
+<<<<<<<
+count(rows) * count(columns)
+=======
+count(rows) + count(columns)
+>>>>>>>

@@ -1,0 +1,6 @@
+@@ src/example/gadt.gleam
+<<<<<<<
+d.Pair(number(l), truth(r))
+=======
+d.Pair(number(l), !truth(r))
+>>>>>>>

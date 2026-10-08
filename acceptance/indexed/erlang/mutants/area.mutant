@@ -1,0 +1,6 @@
+@@ src/example_arithmetic.erl
+<<<<<<<
+count(Rows) * count(Columns)
+=======
+count(Rows) + count(Columns)
+>>>>>>>

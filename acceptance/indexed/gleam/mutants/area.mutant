@@ -1,0 +1,6 @@
+@@ src/example/arithmetic.gleam
+<<<<<<<
+count(grid.rows) * count(grid.columns)
+=======
+count(grid.rows) + count(grid.columns)
+>>>>>>>

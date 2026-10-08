@@ -1,0 +1,6 @@
+@@ src/example/gadt.gleam
+<<<<<<<
+!eval_truth(x)
+=======
+eval_truth(x)
+>>>>>>>

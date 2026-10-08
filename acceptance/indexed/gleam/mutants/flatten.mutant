@@ -1,0 +1,6 @@
+@@ src/example/indexed.gleam
+<<<<<<<
+d.VecVCons(v, flatten(r))
+=======
+d.VecVCons(v, append(flatten(r), flatten(r)))
+>>>>>>>

@@ -1,0 +1,6 @@
+@@ src/example/arithmetic.gleam
+<<<<<<<
+d.Pairs(xs)
+=======
+d.Pairs(d.RowCell(0, xs))
+>>>>>>>

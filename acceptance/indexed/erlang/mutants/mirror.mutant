@@ -1,0 +1,6 @@
+@@ src/example_arithmetic.erl
+<<<<<<<
+{perfect_node, mirror(R), mirror(L)}
+=======
+{perfect_node, mirror(L), mirror(R)}
+>>>>>>>

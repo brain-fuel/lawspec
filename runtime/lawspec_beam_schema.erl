@@ -3,7 +3,7 @@
 %% witnesses, index guards and field predicates are checked by the same walk.
 %% ref:DEC-typed-core-boundary ref:DEC-native-bindings-typed-identity
 -module(lawspec_beam_schema).
--export([new/3, validate/3, construct/4, match/2, constructors/2,
+-export([new/3, validate/3, construct/4, match/2, constructors/2, witness_instances/1,
     to_native/3, from_native/3, all_payloads/4, substitute/2, index/4,
     check_type/2, handle/2, with_codecs/2, type_key/1]).
 -export_type([schema/0, value/0, type_ref/0]).
@@ -217,6 +217,19 @@ witnessed(C, Values, S) ->
     Known = maps:from_list([{I, lawspec_beam_scalar:type(Text)} || {I, Text} <- lists:zip(Witnesses, Texts)]),
     maps:foreach(fun(_, T) -> check_type(T, S) end, Known),
     [{N, substitute(T, Known)} || {N, T} <- maps:get(fields, C)].
+
+%% Generated free existentials use Core's finite Bool/Int32 witness pool.
+%% GADT-bound existentials were already substituted by instantiate/2.
+%% ref:DEC-gadts-and-index-arithmetic
+witness_instances(C) ->
+    Identities = maps:get(witnesses, C, []),
+    Pool = [{<<"Bool">>, []}, {<<"Int32">>, []}],
+    Assignments = lists:foldl(fun(I, Previous) ->
+        [Known#{I => T} || Known <- Previous, T <- Pool]
+    end, [#{}], Identities),
+    Fields = lists:sublist(maps:get(fields, C), length(maps:get(fields, C)) - length(Identities)),
+    [C#{fields => [{N, substitute(T, Known)} || {N, T} <- Fields],
+        witness_values => [type_key(maps:get(I, Known)) || I <- Identities]} || Known <- Assignments].
 
 check_predicates(C, Args, Values, S) ->
     lists:foreach(fun(Predicate) ->

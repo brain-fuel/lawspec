@@ -1,0 +1,6 @@
+@@ src/example/gadt.gleam
+<<<<<<<
+d.ExprNumber(number(expr))
+=======
+d.ExprNumber(0 * number(expr))
+>>>>>>>

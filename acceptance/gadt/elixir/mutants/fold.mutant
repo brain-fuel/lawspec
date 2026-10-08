@@ -1,0 +1,6 @@
+@@ lib/example_gadt.ex
+<<<<<<<
+%D.ExprNumber{value: eval_number(x)}
+=======
+%D.ExprNumber{value: 0 * eval_number(x)}
+>>>>>>>

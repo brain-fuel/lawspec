@@ -1,0 +1,6 @@
+@@ src/example/indexed.gleam
+<<<<<<<
+d.VecVCons(h, append(t, ys))
+=======
+append(t, d.VecVCons(h, ys))
+>>>>>>>

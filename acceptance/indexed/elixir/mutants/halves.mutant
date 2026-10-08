@@ -1,0 +1,6 @@
+@@ lib/example_arithmetic.ex
+<<<<<<<
+%D.Halves{front: xs, back: xs}
+=======
+%D.Halves{front: xs, back: %D.RowCell{head: 0, tail: xs}}
+>>>>>>>

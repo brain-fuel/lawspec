@@ -132,6 +132,16 @@ test_beamCodeUsesCheckedCoreAndNativeFrameworks = describe "BEAM generation" $ d
   it "rejects a Gleam layout that would change its compiled module identities" $ do
     let plan = compileCore 64 defaultGeneration [Source "gleam.lawspec" "unit example.echo\necho :: Text -> Text\n"] >>= planTesting
     (plan >>= emitPlanWithOptions False "gleam" (Just "src/generated") Nothing) `shouldSatisfy` isLeft
+  -- ref:DEC-indexed-families-as-evidence ref:DEC-gadts-and-index-arithmetic
+  it "carries directed indices and existential witnesses into every native framework" $ do
+    indexed <- readFile "examples/specs/indexed_arithmetic.lawspec"
+    gadt <- readFile "examples/specs/gadt_expressions.lawspec"
+    mapM_ (\target -> mapM_ (\source -> case generatedFor target False source of
+      Left errors -> expectationFailure (show errors)
+      Right artifacts -> do
+        concatMap artifactContent artifacts `shouldSatisfy` isInfixOf "lawspec_beam_index"
+        concatMap artifactContent artifacts `shouldSatisfy` isInfixOf "witness_instances") [indexed,gadt])
+      ["erlang","elixir","gleam"]
   -- ref:DEC-never-pass-vacuously
   it "refuses an execution plane before it can silently omit its behavior" $ do
     input <- readFile "examples/specs/abilities.lawspec"

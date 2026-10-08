@@ -1,0 +1,6 @@
+@@ src/example_indexed.erl
+<<<<<<<
+{vec_v_cons, V, flatten(R)}
+=======
+{vec_v_cons, V, append(flatten(R), flatten(R))}
+>>>>>>>

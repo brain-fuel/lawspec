@@ -7,6 +7,9 @@ schema() -> lawspec_beam_schema:new([], [<<"Int32">>, <<"Text">>, <<"Symbol">>],
 integer(Lo, Hi) -> lawspec_beam_proper:generator({<<"Int32">>, []}, schema(), make_ref(),
     [{<<">=">>, Lo}, {<<"<=">>, Hi}], []).
 
+indexed_and_existential_generation_test_() ->
+    {timeout, 60, fun() -> lawspec_beam_index_tests:run(lawspec_beam_proper) end}.
+
 %% ref:DEC-shrink-within-domain
 bounded_shrinking_test() ->
     Property = proper:forall(integer(5, 1000), fun(N) -> N < 5 end),

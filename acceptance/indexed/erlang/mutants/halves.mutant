@@ -1,0 +1,6 @@
+@@ src/example_arithmetic.erl
+<<<<<<<
+{halves, Xs, Xs}
+=======
+{halves, Xs, {row_cell, 0, Xs}}
+>>>>>>>

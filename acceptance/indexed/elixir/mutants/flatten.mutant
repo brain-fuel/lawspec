@@ -1,0 +1,6 @@
+@@ lib/example_indexed.ex
+<<<<<<<
+%D.VecVCons{head: v, tail: flatten(r)}
+=======
+%D.VecVCons{head: v, tail: append(flatten(r), flatten(r))}
+>>>>>>>

@@ -1,0 +1,6 @@
+@@ lib/example_indexed.ex
+<<<<<<<
+%D.VecVCons{head: h, tail: append(t, ys)}
+=======
+append(t, %D.VecVCons{head: h, tail: ys})
+>>>>>>>

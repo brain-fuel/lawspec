@@ -1,0 +1,6 @@
+@@ src/example/arithmetic.gleam
+<<<<<<<
+d.Rest(xs)
+=======
+case xs { d.RowCell(_, t) -> d.Rest(t) d.RowEnd -> d.Rest(xs) }
+>>>>>>>

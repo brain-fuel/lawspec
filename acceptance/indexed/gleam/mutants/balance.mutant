@@ -1,0 +1,6 @@
+@@ src/example/arithmetic.gleam
+<<<<<<<
+d.PerfectNode(mirror(r), mirror(l))
+=======
+d.PerfectNode(mirror(r), d.PerfectNode(mirror(l), mirror(l)))
+>>>>>>>

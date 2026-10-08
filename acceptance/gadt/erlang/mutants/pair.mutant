@@ -1,0 +1,6 @@
+@@ src/example_gadt.erl
+<<<<<<<
+{pair, eval_number(L), eval_truth(R)}
+=======
+{pair, eval_number(L), not eval_truth(R)}
+>>>>>>>

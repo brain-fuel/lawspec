@@ -37,7 +37,13 @@ toolchain project target = do
     "typescript" -> pure (plain "npm" ["test"])
     "go" -> pure (plain "go" ["test", "./..."])
     "haskell" -> pure (plain "stack" ["--no-terminal", "test"])
-    "erlang" -> pure (plain "rebar3" ["eunit"])
+    -- Rebar's source timestamps have one-second resolution. A fast mutant
+    -- rewrite can otherwise run the preceding adapter's BEAM file. Clear the
+    -- project's compiled modules; dependency caches remain reusable.
+    "erlang" -> pure (Toolchain "rebar3" ["eunit"]
+      (mapM_ (removePathForcibly . (project </>))
+        ["_build/test/lib/lawspec_example/ebin", "_build/test/lib/lawspec_example/test"])
+      (pure ""))
     "elixir" -> pure (plain "mix" ["test"])
     "gleam" -> pure (plain "gleam" ["test"])
     "kotlin" -> do

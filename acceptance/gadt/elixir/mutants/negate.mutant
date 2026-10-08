@@ -1,0 +1,6 @@
+@@ lib/example_gadt.ex
+<<<<<<<
+not eval_truth(x)
+=======
+eval_truth(x)
+>>>>>>>

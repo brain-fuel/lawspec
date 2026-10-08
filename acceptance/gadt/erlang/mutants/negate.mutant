@@ -1,0 +1,6 @@
+@@ src/example_gadt.erl
+<<<<<<<
+not eval_truth(X)
+=======
+eval_truth(X)
+>>>>>>>

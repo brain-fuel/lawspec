@@ -2,7 +2,7 @@
 %% input rebuilds dependent generators and reapplies every domain predicate.
 %% ref:DEC-native-property-frameworks ref:DEC-shrink-within-domain
 -module(lawspec_beam_proper).
--export([generator/5, bind/2, constrain/2, refine_input/2, complete/1, check/3, exactly/1, sized/1,
+-export([generator/5, generator/6, bind/2, constrain/2, refine_input/2, complete/1, check/3, exactly/1, sized/1,
     frequency/1, oneof/1, integer/2, list/1, vector/2, fixed_list/1, binary/0, forall/2]).
 
 %% An empty dependent range retries the whole tuple, including earlier inputs.
@@ -28,6 +28,8 @@ end).
 
 generator(T, Schema, Symbols, Bounds, Witnesses) ->
     lawspec_beam_generators:generator(?MODULE, T, Schema, Symbols, Bounds, Witnesses).
+generator(T, Schema, Symbols, Bounds, Witnesses, Index) ->
+    lawspec_beam_generators:generator(?MODULE, T, Schema, Symbols, Bounds, Witnesses, Index).
 
 exactly(Value) -> proper_types:exactly(Value).
 sized(Build) -> proper_types:sized(Build).

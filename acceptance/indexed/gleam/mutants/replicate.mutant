@@ -1,0 +1,6 @@
+@@ src/example/indexed.gleam
+<<<<<<<
+0 -> d.VecVNil
+=======
+0 -> d.VecVCons(x, d.VecVNil)
+>>>>>>>

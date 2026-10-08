@@ -9,6 +9,10 @@ defmodule LawSpec.Beam.StreamData do
     :lawspec_beam_generators.generator(__MODULE__, type, schema, symbols, bounds, witnesses)
   end
 
+  def generator(type, schema, symbols, bounds, witnesses, index) do
+    :lawspec_beam_generators.generator(__MODULE__, type, schema, symbols, bounds, witnesses, index)
+  end
+
   def exactly(value), do: SD.constant(value)
   def sized(build), do: SD.sized(build)
   def frequency(choices), do: SD.frequency(choices)

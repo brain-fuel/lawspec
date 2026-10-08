@@ -3,6 +3,9 @@
 -module(lawspec_beam_qcheck_tests).
 -include_lib("eunit/include/eunit.hrl").
 
+indexed_and_existential_generation_test_() ->
+    {timeout, 60, fun() -> lawspec_beam_index_tests:run(lawspec_beam_qcheck) end}.
+
 bounded_shrinking_test() ->
     Failure = failure(lawspec_beam_qcheck:integer(5, 1000), fun(_) -> false end, 1000),
     ?assertMatch({counterexample, 5, error, _}, Failure).

@@ -1,0 +1,6 @@
+@@ lib/example_gadt.ex
+<<<<<<<
+%D.Pair{first: eval_number(l), second: eval_truth(r)}
+=======
+%D.Pair{first: eval_number(l), second: not eval_truth(r)}
+>>>>>>>

@@ -1,0 +1,6 @@
+@@ lib/example_arithmetic.ex
+<<<<<<<
+%D.PerfectNode{left: mirror(r), right: mirror(l)}
+=======
+%D.PerfectNode{left: mirror(l), right: mirror(r)}
+>>>>>>>

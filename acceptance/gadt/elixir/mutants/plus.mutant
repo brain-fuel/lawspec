@@ -1,0 +1,6 @@
+@@ lib/example_gadt.ex
+<<<<<<<
+eval_number(l) + eval_number(r)
+=======
+eval_number(l) - eval_number(r)
+>>>>>>>

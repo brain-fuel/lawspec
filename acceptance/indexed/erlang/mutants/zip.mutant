@@ -1,0 +1,6 @@
+@@ src/example_indexed.erl
+<<<<<<<
+{vec_v_cons, H, zip(T, U)}
+=======
+{vec_v_cons, H, {vec_v_cons, H, zip(T, U)}}
+>>>>>>>

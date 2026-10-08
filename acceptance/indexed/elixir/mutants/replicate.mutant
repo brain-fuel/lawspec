@@ -1,0 +1,6 @@
+@@ lib/example_indexed.ex
+<<<<<<<
+def replicate(0, _), do: %D.VecVNil{}
+=======
+def replicate(0, x), do: %D.VecVCons{head: x, tail: %D.VecVNil{}}
+>>>>>>>

@@ -1,0 +1,6 @@
+@@ src/example/gadt.gleam
+<<<<<<<
+value.lawspec_type_0
+=======
+case value { _ -> "Int32" }
+>>>>>>>

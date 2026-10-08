@@ -80,6 +80,16 @@ witnessed_existential_test() ->
     ?assertError({lawspec, {unknown_type_or_arity, <<"Unknown">>}},
         lawspec_beam_schema:from_native({some, 1, <<"Unknown">>}, <<"Some">>, S)).
 
+witness_instances_keep_independent_types_test() ->
+    C = (ctor(<<"Two::Two">>, two, [{<<"first">>, {parameter, 0}},
+        {<<"second">>, {parameter, 1}}, {<<"first_type">>, {<<"Text">>, []}},
+        {<<"second_type">>, {<<"Text">>, []}}]))#{existentials => 2, witnesses => [0, 1]},
+    Instances = lawspec_beam_schema:witness_instances(C),
+    ?assertEqual(4, length(Instances)),
+    lists:foreach(fun(#{fields := Fields, witness_values := Types}) ->
+        ?assertEqual(Types, [lawspec_beam_schema:type_key(T) || {_, T} <- Fields])
+    end, Instances).
+
 index_guards_test() ->
     Zero = (ctor(<<"Nat::Zero">>, zero, []))#{indices => [<<"c0">>]},
     Succ = (ctor(<<"Nat::Succ">>, succ, [{<<"prior">>, {<<"Nat">>, []}}]))#{

@@ -9,7 +9,7 @@ if [ ! -f "$qcheck_build/qcheck/ebin/qcheck.beam" ]; then
 fi
 qcheck_artifacts=.artifacts/beam-qcheck
 mkdir -p "$qcheck_artifacts"
-erlc -Werror -o "$qcheck_artifacts" runtime/lawspec_beam_*.erl test/fixtures/beam/lawspec_beam_qcheck_tests.erl
+erlc -Werror -o "$qcheck_artifacts" runtime/lawspec_beam_*.erl test/fixtures/beam/lawspec_beam_qcheck_tests.erl test/fixtures/beam/lawspec_beam_index_tests.erl
 erl -noshell -pa "$qcheck_artifacts" -pa "$qcheck_build"/*/ebin -eval '
     case eunit:test(lawspec_beam_qcheck_tests, [verbose]) of
         ok -> halt(0);

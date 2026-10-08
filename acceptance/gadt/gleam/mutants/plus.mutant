@@ -1,0 +1,6 @@
+@@ src/example/gadt.gleam
+<<<<<<<
+eval_number(l) + eval_number(r)
+=======
+eval_number(l) - eval_number(r)
+>>>>>>>

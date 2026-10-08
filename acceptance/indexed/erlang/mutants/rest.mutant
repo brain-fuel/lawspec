@@ -1,0 +1,6 @@
+@@ src/example_arithmetic.erl
+<<<<<<<
+drop_first(Xs) -> {rest, Xs}.
+=======
+drop_first({row_cell, _, T}) -> {rest, T}.
+>>>>>>>

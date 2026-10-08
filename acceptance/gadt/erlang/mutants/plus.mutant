@@ -1,0 +1,6 @@
+@@ src/example_gadt.erl
+<<<<<<<
+eval_number(L) + eval_number(R)
+=======
+eval_number(L) - eval_number(R)
+>>>>>>>
