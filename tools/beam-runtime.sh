@@ -37,7 +37,7 @@ erl -noshell -pa "$beam_artifacts" -eval '
             lawspec_beam_history_tests, lawspec_beam_scenario_io_tests, lawspec_beam_scenario_tests,
             lawspec_beam_wire_tests, lawspec_beam_memory_network_tests,
             lawspec_beam_channel_protocol_tests, lawspec_beam_node_tests,
-            lawspec_beam_endpoint_tests, lawspec_beam_scenario_network_tests,
+            lawspec_beam_endpoint_tests, lawspec_beam_scenario_network_tests, lawspec_beam_mailbox_tests,
             lawspec_beam_gleam_tests], [verbose]) of
         ok -> halt(0);
         _ -> halt(1)

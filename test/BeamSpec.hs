@@ -17,6 +17,7 @@ import qualified LawSpec.BeamCode as E
 import qualified LawSpec.BeamExpr as Expr
 import qualified LawSpec.BeamActors as Actors
 import qualified LawSpec.BeamModels as Models
+import qualified LawSpec.BeamMailboxes as Mailboxes
 import LawSpec.Scaffold (scaffoldFilesWith)
 
 generated :: Bool -> String -> Either [Diagnostic] [Artifact]
@@ -28,6 +29,35 @@ generatedFor target compact text = compileCore 64 defaultGeneration [Source "bea
 
 test_beamCodeUsesCheckedCoreAndNativeFrameworks :: Spec
 test_beamCodeUsesCheckedCoreAndNativeFrameworks = describe "BEAM generation" $ do
+  -- ref:DEC-distribution-canonical-wire ref:DEC-native-bindings-typed-identity
+  mapM_ (\target -> it (target ++ " emits typed local and remote mailboxes with checked Clock interfaces") $ do
+    input <- readFile "acceptance/beam-mailbox-api/mailboxes.lawspec"
+    case compileCore 64 defaultGeneration [Source "mailboxes.lawspec" input] >>= planTesting of
+      Left errors -> expectationFailure (show errors)
+      Right plan -> case Mailboxes.emit target (D.Pretty 100) 64 (planDataDeclarations plan)
+          (map plannedUnit (plannedUnits plan)) of
+        Left message -> expectationFailure message
+        Right artifacts -> do
+          let body = concatMap artifactContent artifacts
+              localOnly = concatMap artifactContent [a | a <- artifacts, "identities" `isInfixOf` artifactPath a]
+          all ((== "source") . artifactPlacement) artifacts `shouldBe` True
+          mapM_ (\part -> body `shouldSatisfy` isInfixOf part)
+            ["lawspec_beam_mailbox:serve", "lawspec_beam_mailbox:connect", "lawspec_beam_schema:from_native",
+             "lawspec_beam_schema:to_native", "lawspec_beam_effects:with_native_context", "receive_with_clock"]
+          localOnly `shouldSatisfy` (not . isInfixOf "send_remote")
+          case target of
+            "elixir" -> body `shouldSatisfy` isInfixOf "LawSpec.Mailboxes.Example.Mailboxes.JobsMailbox"
+            "gleam" -> body `shouldSatisfy` isInfixOf "option.Option(data.Job)"
+            _ -> body `shouldSatisfy` isInfixOf "-opaque sender()"
+    ) ["erlang", "elixir", "gleam"]
+  it "rejects mailbox names that collide after BEAM normalization" $ do
+    let input = "unit demo.mail\nmailbox jobQueue of Int32\nmailbox job_queue of Int32\n"
+    case compileCore 64 defaultGeneration [Source "mailboxes.lawspec" input] >>= planTesting of
+      Left errors -> expectationFailure (show errors)
+      Right plan -> mapM_ (\target -> Mailboxes.emit target (D.Pretty 100) 64 (planDataDeclarations plan)
+        (map plannedUnit (plannedUnits plan)) `shouldSatisfy` \result -> case result of
+          Left message -> "mailbox module names collide" `isInfixOf` message
+          Right _ -> False) ["erlang", "elixir", "gleam"]
   -- ref:DEC-stateful-models-linearizability ref:DEC-typed-core-boundary
   mapM_ (\target -> it (target ++ " emits model evidence with checked callbacks and fresh native ability scopes") $ do
     input <- readFile "acceptance/beam-actor-api/actor_api.lawspec"

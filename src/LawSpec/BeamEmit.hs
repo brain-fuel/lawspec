@@ -16,6 +16,7 @@ import qualified LawSpec.BeamEffects as Effects
 import qualified LawSpec.BeamAbilities as Abilities
 import qualified LawSpec.BeamActors as Actors
 import qualified LawSpec.BeamModels as Models
+import qualified LawSpec.BeamMailboxes as Mailboxes
 import qualified LawSpec.BeamNativeBinding as Native
 import qualified LawSpec.ElixirNative as Elixir
 import qualified LawSpec.GleamNative as Gleam
@@ -49,6 +50,7 @@ emitBeamWithBindings target minify bindings plan = do
       definitions <- Definitions.emitDefinitions target layout bits declarations units (Native.boundEntries bindings)
       abilities <- if hasAbilities then Abilities.emit target layout bits declarations units (hasBindings bindings) else pure []
       actors <- Actors.emit target layout bits declarations units
+      mailboxes <- Mailboxes.emit target layout bits declarations units
       adapters <- mapM (adapter names) [u | u <- units, target == "erlang", not (boundUnit u),
         not (null (adapterDeclarations u) && null (Abilities.productionAbilities u))]
       native <- case target of
@@ -57,7 +59,7 @@ emitBeamWithBindings target minify bindings plan = do
         _ -> pure []
       tests <- concat <$> mapM unitTests [u | u <- plannedUnits plan, not (null (plannedProperties u))]
       models <- Models.emit target layout bits declarations units
-      pure (schemaFile : definitions ++ abilities ++ actors ++ adapters ++ [a | a <- native, artifactPath a `notElem` boundPaths] ++
+      pure (schemaFile : definitions ++ abilities ++ actors ++ mailboxes ++ adapters ++ [a | a <- native, artifactPath a `notElem` boundPaths] ++
         tests ++ models ++ runtimes ++ modelRuntimes ++ cryptoAssets ++ generators (tests ++ models))
     modelRuntimes = [Artifact (testSupport ++ "lawspec_beam_" ++ name ++ ".erl")
       (runtimeSource ("beam-" ++ name)) "generated" "test"
@@ -65,24 +67,27 @@ emitBeamWithBindings target minify bindings plan = do
         name <- ["model","model_parallel","values"] ++ ["random" | not hasPolicies] ++
           ["tasks" | not hasPolicies && not hasActors] ++
           (if any (not . null . machineScenarios) (concatMap C.unitMachines units)
-            then ["history","scenario","scenario_io","scenario_network","wire","memory_network","channel_protocol","node","endpoint"] else [])] ++
+            then ["history","scenario","scenario_io","scenario_network","wire","memory_network","channel_protocol","node","endpoint"] else []),
+        name `notElem` runtimeNames] ++
       [Artifact (testSupport ++ "lawspec_beam_supervision.erl") (runtimeSource "beam-supervision") "generated" "test"
         | any (not . null . C.unitSupervisors) units]
     runtimes = [Artifact ("src/lawspec_beam_" ++ name ++ ".erl")
         (runtimeSource ("beam-" ++ name)) "generated" "source"
-        | name <- ["scalar","schema","regex","runtime"] ++
-            (if usesEffects then ["effects","handler","waits"] else []) ++
-            ["defaults" | hasPolicies || any Abilities.hasDefault (Effects.abilities units)] ++
-            ["tasks" | hasPolicies || hasActors] ++
-            (if hasPolicies then ["random","policy","attempts","workflow_state","workflow"] else []) ++
-            (if hasActors then ["actors","actor","actor_sup","actor_tree"] else []) ++
-            (if usesCrypto then ["crypto","crypto_native"] else []) ++
-            ["gleam" | target == "gleam"]] ++
+        | name <- runtimeNames] ++
         [Artifact "lib/lawspec/workflow.ex" (runtimeSource "beam-elixir-workflow") "generated" "source"
           | target == "elixir", hasPolicies] ++
         [Artifact ("src/lawspec/" ++ name ++ ".gleam") (runtimeSource ("beam-gleam-" ++ name)) "generated" "source"
           | name <- ["types","scalar"] ++ ["failures" | usesEffects] ++ ["effects" | hasAbilities] ++
-              ["workflow" | hasPolicies] ++ ["actors" | hasActors], target == "gleam"]
+              ["workflow" | hasPolicies] ++ ["actors" | hasActors] ++ ["network" | hasMailboxes], target == "gleam"]
+    runtimeNames = nub (["scalar","schema","regex","runtime"] ++
+            (if usesEffects then ["effects","handler","waits"] else []) ++
+            ["defaults" | hasPolicies || any Abilities.hasDefault (Effects.abilities units)] ++
+            ["tasks" | hasPolicies || hasActors || hasMailboxes] ++
+            (if hasPolicies then ["random","policy","attempts","workflow_state","workflow"] else []) ++
+            (if hasActors then ["actors","actor","actor_sup","actor_tree"] else []) ++
+            (if hasMailboxes then ["mailbox","values","wire","random","memory_network","node"] else []) ++
+            (if usesCrypto then ["crypto","crypto_native"] else []) ++
+            ["gleam" | target == "gleam"])
     usesCrypto = any ((== "lawspec.crypto") . C.idText . C.unitId) units
     cryptoAssets = if not usesCrypto then [] else
       [Artifact "priv/lawspec_crypto_native.c" (runtimeSource "beam-crypto-native-c") "generated" "source",
@@ -110,6 +115,7 @@ emitBeamWithBindings target minify bindings plan = do
     hasAbilities = not (null (Effects.abilities units) && null (Effects.handlers units))
     hasPolicies = any ((/= Nothing) . C.definitionPolicy) (concatMap C.unitDefinitions units)
     hasActors = any (any machineActor . C.unitMachines) units || any (not . null . C.unitSupervisors) units
+    hasMailboxes = any (not . null . C.unitMailboxes) units
     usesEffects = any (not . null . C.unitAbilities) units ||
       any (not . null . C.declarationUses) (concatMap C.unitDeclarations units)
     generators tests = if null tests then [] else

@@ -1,0 +1,13 @@
+unit example.mailboxes
+
+import lawspec.time
+
+type Job is Job label :: Text amount :: Int32 end
+mailbox jobs of Job
+mailbox notices of Unit
+mailbox identities of Symbol
+
+nativeProbe :: Unit -> Bool
+law `native mailboxes preserve typed values, clocks and remote receipts` is
+  definition is nativeProbe unitValue end
+end

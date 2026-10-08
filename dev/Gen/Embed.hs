@@ -23,6 +23,7 @@ runtimeFiles =
   , ("beam-wire", "lawspec_beam_wire.erl"), ("beam-memory_network", "lawspec_beam_memory_network.erl")
   , ("beam-channel_protocol", "lawspec_beam_channel_protocol.erl")
   , ("beam-node", "lawspec_beam_node.erl"), ("beam-endpoint", "lawspec_beam_endpoint.erl")
+  , ("beam-mailbox", "lawspec_beam_mailbox.erl"), ("beam-gleam-network", "lawspec_gleam_network.gleam")
   , ("beam-runtime", "lawspec_beam_runtime.erl"), ("beam-proper", "lawspec_beam_proper.erl")
   , ("beam-effects", "lawspec_beam_effects.erl"), ("beam-handler", "lawspec_beam_handler.erl")
   , ("beam-waits", "lawspec_beam_waits.erl")

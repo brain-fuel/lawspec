@@ -66,6 +66,7 @@ extra-source-files:
     runtime/lawspec_beam_handler.erl
     runtime/lawspec_beam_history.erl
     runtime/lawspec_beam_index.erl
+    runtime/lawspec_beam_mailbox.erl
     runtime/lawspec_beam_memory_network.erl
     runtime/lawspec_beam_model.erl
     runtime/lawspec_beam_model_parallel.erl
@@ -95,6 +96,7 @@ extra-source-files:
     runtime/lawspec_gleam_actors.gleam
     runtime/lawspec_gleam_effects.gleam
     runtime/lawspec_gleam_failures.gleam
+    runtime/lawspec_gleam_network.gleam
     runtime/lawspec_gleam_scalar.gleam
     runtime/lawspec_gleam_types.gleam
     runtime/lawspec_gleam_workflow.gleam
@@ -240,6 +242,7 @@ extra-source-files:
     test/fixtures/beam/lawspec_beam_gleam_tests.erl
     test/fixtures/beam/lawspec_beam_history_tests.erl
     test/fixtures/beam/lawspec_beam_index_tests.erl
+    test/fixtures/beam/lawspec_beam_mailbox_tests.erl
     test/fixtures/beam/lawspec_beam_memory_network_tests.erl
     test/fixtures/beam/lawspec_beam_model_parallel_tests.erl
     test/fixtures/beam/lawspec_beam_model_tests.erl
@@ -375,6 +378,7 @@ library
       LawSpec.BeamEffects
       LawSpec.BeamEmit
       LawSpec.BeamExpr
+      LawSpec.BeamMailboxes
       LawSpec.BeamModels
       LawSpec.BeamNativeBinding
       LawSpec.BeamPolicy
