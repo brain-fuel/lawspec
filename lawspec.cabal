@@ -55,6 +55,7 @@ extra-source-files:
     runtime/lawspec_beam_actor_tree.erl
     runtime/lawspec_beam_actors.erl
     runtime/lawspec_beam_attempts.erl
+    runtime/lawspec_beam_channel_protocol.erl
     runtime/lawspec_beam_crypto.erl
     runtime/lawspec_beam_crypto_native.erl
     runtime/lawspec_beam_defaults.erl
@@ -227,6 +228,7 @@ extra-source-files:
     test/fixtures/total_definitions.lawspec
     test/fixtures/beam/lawspec_beam_actors_tests.erl
     test/fixtures/beam/lawspec_beam_attempts_tests.erl
+    test/fixtures/beam/lawspec_beam_channel_protocol_tests.erl
     test/fixtures/beam/lawspec_beam_crypto_tests.erl
     test/fixtures/beam/lawspec_beam_defaults_tests.erl
     test/fixtures/beam/lawspec_beam_effects_tests.erl
