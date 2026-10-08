@@ -1,0 +1,7 @@
+expect: refunds of large amounts fail [native]
+@@ src/example/shop.gleam
+<<<<<<<
+    True -> failures.fail(data.PaymentErrorTooLarge)
+=======
+    True -> failures.fail(data.PaymentErrorRefused)
+>>>>>>>

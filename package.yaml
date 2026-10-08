@@ -21,7 +21,7 @@ executables:
   lawspec-acceptance:
     main: Main.hs
     source-dirs: acceptance
-    dependencies: [lawspec, process, vector, cryptohash-sha256, text]
+    dependencies: [lawspec, process, vector, cryptohash-sha256, text, time]
 tests:
   lawspec-test:
     main: Main.hs

@@ -13,6 +13,64 @@ perform(Schema, Op, Args) -> lawspec_beam_effects:perform(Schema, counter, Op, A
 cell({lawspec_stateful, Pid, _}) -> Pid;
 cell({lawspec_recording, Pid, _}) -> Pid.
 
+native_cells_follow_scope_lifetime_test() ->
+    ?assertError({lawspec, missing_handler_scope}, lawspec_beam_effects:native_cell(0)),
+    {Outer, Inner} = lawspec_beam_effects:with_scope(#{}, #{}, fun(_) ->
+        A = lawspec_beam_effects:native_cell(1),
+        ?assertEqual(1, lawspec_beam_effects:native_read(A)),
+        ?assertEqual(9, lawspec_beam_effects:native_write(A, 9)),
+        B = lawspec_beam_effects:with_scope(#{}, #{}, fun(_) -> lawspec_beam_effects:native_cell(2) end),
+        ?assertNot(is_process_alive(B)),
+        ?assertEqual(9, lawspec_beam_effects:native_read(A)),
+        %% Nested scopes restore the outer allocator, including on an abort.
+        ?assertThrow(abort, lawspec_beam_effects:with_scope(#{}, #{}, fun(_) -> throw(abort) end)),
+        ?assertEqual(3, lawspec_beam_effects:native_read(lawspec_beam_effects:native_cell(3))),
+        {A, B}
+    end),
+    ?assertNot(is_process_alive(Outer)),
+    ?assertNot(is_process_alive(Inner)),
+    ?assertError({lawspec, missing_handler_scope}, lawspec_beam_effects:native_cell(0)).
+
+native_origin_recovers_only_unchanged_operations_test() ->
+    S = #{}, Symbols = make_ref(),
+    Handler = lawspec_beam_effects:stateless(#{get => fun(_, []) -> original end}),
+    Operations = [fun() -> original end],
+    Origin = lawspec_beam_effects:origin(S, Symbols, counter, Handler, Operations),
+    ?assertEqual(Handler, lawspec_beam_effects:recover_handler(Origin, counter, Symbols, Operations, fun() -> error(fallback) end)),
+    ?assertEqual(replaced, lawspec_beam_effects:recover_handler(Origin, counter, Symbols, [fun() -> replaced end], fun() -> replaced end)),
+    ?assertEqual(native, lawspec_beam_effects:recover_handler(lawspec_beam_effects:native_origin(), counter, Symbols, [], fun() -> native end)),
+    ?assertError({lawspec, incompatible_handler_contexts},
+        lawspec_beam_effects:recover_handler(Origin, counter, make_ref(), Operations, fun() -> wrong end)),
+    ?assertError({lawspec, {invalid_handler_origin, different}},
+        lawspec_beam_effects:recover_handler(Origin, different, Symbols, Operations, fun() -> wrong end)).
+
+native_context_reuses_symbols_and_dependencies_test() ->
+    scope(fun(S) ->
+        Symbols = make_ref(),
+        Handler = lawspec_beam_effects:handler(S, counter),
+        Origin = lawspec_beam_effects:origin(S, Symbols, counter, Handler, []),
+        lawspec_beam_effects:with_native_context([none, Origin], fun(_) -> error(fresh_schema) end,
+            fun(Current, ActualSymbols) ->
+                ?assertEqual(Symbols, ActualSymbols),
+                ?assertEqual(4, perform(Current, add, [4]))
+            end),
+        %% The nested public call must not dispose of its caller's handler.
+        ?assertEqual(4, perform(S, read, []))
+    end).
+
+native_context_rejects_mixed_symbol_contexts_test() ->
+    A = lawspec_beam_effects:origin(#{}, make_ref(), a, unused, []),
+    B = lawspec_beam_effects:origin(#{}, make_ref(), b, unused, []),
+    ?assertError({lawspec, incompatible_handler_contexts},
+        lawspec_beam_effects:with_native_context([A, B], fun(_) -> error(fresh_schema) end,
+            fun(_, _) -> error(body) end)).
+
+native_context_without_origins_gets_fresh_symbols_test() ->
+    Run = fun() -> lawspec_beam_effects:with_native_context([none],
+        fun(Symbols) -> #{symbols => Symbols} end,
+        fun(S, Symbols) -> ?assertEqual(Symbols, maps:get(symbols, S)), Symbols end) end,
+    ?assertNotEqual(Run(), Run()).
+
 scope(Body) -> lawspec_beam_effects:with_scope(#{}, #{counter => fun counter/1}, Body).
 
 fresh_state_and_cleanup_test() ->

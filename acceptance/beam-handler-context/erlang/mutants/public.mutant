@@ -1,0 +1,7 @@
+expect: public constructors and definitions share their context
+@@ src/example_handler_context.erl
+<<<<<<<
+        example_handler_context_definitions:shifted(Recorded, 3) =:= 105
+=======
+        example_handler_context_definitions:shifted(lawspec_abilities_example_handler_context:fresh_counter(Context), 3) =:= 105
+>>>>>>>

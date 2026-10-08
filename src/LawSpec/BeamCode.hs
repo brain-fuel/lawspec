@@ -5,7 +5,8 @@ module LawSpec.BeamCode
   ( atom, binary, string, array, tuple, record, call, remote, lambda, apply
   , function, moduleDoc, userModuleDoc, sequenceDoc, snake, moduleName, functionName
   , typeReference, reference, literal, json, value, nativeType, dataNames
-  , nativeModule, nativeFunction, pascal, elixirDataModule, elixirFields, gleamPath, gleamName
+  , nativeModule, nativeFunction, nativeName, pascal, elixirDataModule, elixirFields, gleamPath, gleamName
+  , nativeCall
   ) where
 
 import qualified LawSpec.Code.Doc as D
@@ -23,6 +24,7 @@ import qualified Data.Text as T
 import Data.Foldable (toList)
 import qualified Data.ByteString.Lazy.Char8 as B
 import Numeric (showHex)
+import Control.Monad (unless)
 
 -- | Quoting atoms also admits Erlang keywords as declaration names. No runtime
 -- atom is created from a specification or a received value.
@@ -61,6 +63,18 @@ call name args = atom name <> D.delimit 4 "(" ")" args
 
 remote :: String -> String -> [D.Doc] -> D.Doc
 remote owner name args = atom owner <> D.text ":" <> call name args
+
+nativeCall :: String -> [String] -> [D.Doc] -> Either String D.Doc
+nativeCall target parts values = do
+  unless (length parts >= 2 && (target /= "erlang" || length parts == 2))
+    (Left "BEAM native function references require a module and a function")
+  let owner = case target of
+        "erlang" -> intercalate "." (init parts)
+        "elixir" -> "Elixir." ++ intercalate "." (init parts)
+        _ -> intercalate "@" (init parts)
+  unless (owner `notElem` ["lawspec_native_bindings","lawspec_native_generators","lawspec@native_constructors","lawspec@native_handlers","lawspec_abilities"])
+    (Left "native function shadows generated BEAM binding support")
+  pure (remote owner (last parts) values)
 
 lambda :: [D.Doc] -> D.Doc -> D.Doc
 lambda args body = D.group (D.text "fun" <> D.delimit 4 "(" ")" args <>
@@ -119,11 +133,14 @@ nativeModule "gleam" = map (\c -> if c == '/' then '@' else c) . gleamPath . C.u
 nativeModule _ = moduleName . C.unitId
 
 nativeFunction :: String -> C.Declaration -> String
-nativeFunction "elixir" d = case functionName d of
+nativeFunction target = nativeName target . functionName
+
+nativeName :: String -> String -> String
+nativeName "elixir" name = case name of
   n | n `elem` words "after alias and case catch cond def defmodule do else end false fn for if import in nil not or quote raise receive require rescue super true try unless unquote use when with __info__" -> n ++ "_lawspec"
   n -> n
-nativeFunction "gleam" d = gleamName (functionName d)
-nativeFunction _ d = functionName d
+nativeName "gleam" name = gleamName name
+nativeName _ name = name
 
 gleamPath :: C.Id -> String
 gleamPath = intercalate "/" . map snake . splitDot . C.idText

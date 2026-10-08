@@ -7,21 +7,71 @@
 -behaviour(gen_server).
 -export([with_scope/3, install/2, handler/2, stateless/1, stateful/3,
     recording/2, perform/4, invoke/4, count_calls/4,
-    fail/1, raise_failure/2, attempt/4, native_failures/4, match_exception/3]).
+    fail/1, raise_failure/2, attempt/4, native_failures/4, match_exception/3,
+    native_origin/0, origin/5, recover_handler/5, with_native_context/3,
+    native_cell/1, native_read/1, native_write/2]).
+-export_type([context/0, handler_origin/0]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2]).
+
+-opaque context() :: {lawspec_context, map(), reference()}.
+-opaque handler_origin() :: none | {lawspec_handler_origin, binary(), map(), reference(), term(), [function()]}.
+
+native_origin() -> none.
+
+%% A native interface can cross back into a checked definition. Retaining its
+%% logical handler lets that definition supply its current lexical context,
+%% including any nested override of another ability used by a spec clause.
+origin(Schema, Symbols, Ability, Handler, Operations) ->
+    {lawspec_handler_origin, Ability, Schema, Symbols, Handler, Operations}.
+
+recover_handler({lawspec_handler_origin, Ability, _, Symbols, Handler, Operations}, Ability, Symbols, Operations, _) -> Handler;
+recover_handler(none, _, _, _, Make) -> Make();
+recover_handler({lawspec_handler_origin, Ability, _, Symbols, _, _}, Ability, Symbols, _, Make) -> Make();
+recover_handler({lawspec_handler_origin, Ability, _, _, _, _}, Ability, _, _, _) ->
+    erlang:error({lawspec, incompatible_handler_contexts});
+recover_handler(_, Ability, _, _, _) -> erlang:error({lawspec, {invalid_handler_origin, Ability}}).
+
+with_native_context(Origins, SchemaFactory, Body) ->
+    Contexts = [{Schema, Symbols} || {lawspec_handler_origin, _, Schema, Symbols, _, _} <- Origins],
+    {Schema, Symbols} = case Contexts of
+        [] -> Fresh = make_ref(), {SchemaFactory(Fresh), Fresh};
+        [{FirstSchema, FirstSymbols} | Rest] ->
+            case lists:all(fun({_, S}) -> S =:= FirstSymbols end, Rest) of
+                true -> {FirstSchema, FirstSymbols};
+                false -> erlang:error({lawspec, incompatible_handler_contexts})
+            end
+    end,
+    with_scope(Schema, #{}, fun(Scoped) -> Body(Scoped, Symbols) end).
 
 %% Factories run inside the scope as well: a later factory failing releases
 %% any state already allocated by earlier factories.
 with_scope(Schema, Factories, Body) ->
     {ok, Scope} = gen_server:start(?MODULE, self(), []),
     Base = Schema#{lawspec_scope => Scope},
+    Previous = put({?MODULE, scope}, Scope),
     try
         Handlers = maps:map(fun(_, Make) -> Make(Base) end, Factories),
         Body(install(Base, Handlers))
     after
+        case Previous of
+            undefined -> erase({?MODULE, scope});
+            _ -> put({?MODULE, scope}, Previous)
+        end,
         try gen_server:stop(Scope, normal, infinity)
         catch exit:noproc -> ok end
     end.
+
+%% Native production factories may allocate scoped state without receiving a
+%% hidden argument. Only allocation uses this process-local scope; the cell
+%% itself is a shareable process and all access is serialized by its server.
+native_cell(Initial) ->
+    case get({?MODULE, scope}) of
+        Scope when is_pid(Scope) -> cell(#{lawspec_scope => Scope}, Initial);
+        _ -> erlang:error({lawspec, missing_handler_scope})
+    end.
+
+native_read(Cell) -> lawspec_beam_handler:call(Cell, fun(Value) -> {Value, Value} end).
+native_write(Cell, Value) -> lawspec_beam_handler:call(Cell, fun(_) -> {Value, Value} end).
 
 install(Schema, Handlers) ->
     Schema#{lawspec_handlers => maps:merge(maps:get(lawspec_handlers, Schema, #{}), Handlers)}.

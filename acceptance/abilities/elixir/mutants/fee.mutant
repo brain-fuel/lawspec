@@ -1,0 +1,7 @@
+expect: the fee is never negative [native]
+@@ lib/example_abilities.ex
+<<<<<<<
+      fee: fn -> 25 end
+=======
+      fee: fn -> -25 end
+>>>>>>>

@@ -1,0 +1,7 @@
+expect: cases have fresh state and examples share recordings [recording native]
+@@ src/example_handler_context.erl
+<<<<<<<
+    Total = lawspec_beam_effects:native_cell(0),
+=======
+    Total = lawspec_beam_effects:native_cell(1),
+>>>>>>>

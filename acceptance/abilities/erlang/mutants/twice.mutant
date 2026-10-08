@@ -1,0 +1,8 @@
+expect: charge captures once
+@@ src/example_abilities.erl
+<<<<<<<
+            {receipt, Paid} = (maps:get(capture, Gateway))(Approved),
+=======
+            _ = (maps:get(capture, Gateway))(Approved),
+            {receipt, Paid} = (maps:get(capture, Gateway))(Approved),
+>>>>>>>

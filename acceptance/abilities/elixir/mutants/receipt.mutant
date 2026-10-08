@@ -1,0 +1,7 @@
+expect-any: a receipt is for the amount captured [native] | [recording native]
+@@ lib/example_abilities.ex
+<<<<<<<
+      capture: fn cents -> %Data.Receipt{cents: cents} end,
+=======
+      capture: fn cents -> %Data.Receipt{cents: if(cents < 1000, do: cents, else: cents - 1)} end,
+>>>>>>>

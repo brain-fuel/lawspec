@@ -181,6 +181,61 @@ way. The generated function for `checkout` takes the context, then a Gateway
 handler, then its values, and installs the handler before it runs:
 `checkout(symbols, gateway, cents)` in Python.
 
+### Erlang, Elixir and Gleam
+
+BEAM adapters receive generated ability interfaces before their ordinary
+arguments. Each operation is a function, including an operation such as
+`fee` that takes no arguments.
+
+| Target | Gateway interface | Call an operation |
+| --- | --- | --- |
+| Erlang | A map typed by `lawspec_abilities_example_abilities:gateway()` | `(maps:get(capture, Gateway))(Cents)` |
+| Elixir | `%LawSpec.Abilities.Example.Abilities.Gateway{}` with function fields | `gateway.capture.(cents)` |
+| Gleam | The opaque `Gateway` in `lawspec/abilities/example/abilities`, built by `gateway(authorize, capture, fee)` | `abilities.gateway_capture(gateway, cents)` |
+
+The editable adapter module supplies `gateway_handler()` as its production
+factory. Generic instances have separate interfaces and factories, such as
+`StoreInt32` and `store_int32_handler()`.
+
+Public checked definitions take handlers first, followed by their values:
+`checkout(gateway, cents)`. The generated interface carries its context into
+that call. A nested `handle` expression supplies the current handlers to
+spec clauses, including after a call through native code.
+
+Spec handler constructors take a scoped context. Erlang uses
+`lawspec_abilities:with_context/1`; Elixir uses
+`:lawspec_abilities.with_context/1`; Gleam uses
+`lawspec/effects.with_context`. For example, in Gleam:
+
+```gleam
+import example/abilities/definitions
+import lawspec/abilities/example/abilities
+import lawspec/effects
+
+pub fn try_checkout(cents: Int) -> Bool {
+  effects.with_context(fn(context) {
+    let handler = abilities.keeping_gateway(context)
+    definitions.checkout(handler, cents)
+  })
+}
+```
+
+Erlang puts spec constructors such as `keeping_gateway(Context)` in the
+ability module; Elixir puts them in `LawSpec.Handlers.ExampleAbilities`.
+`recording_gateway(context, handler)` wraps an interface in the same scope.
+Generated tests make fresh production, spec and recording handlers for
+each example, boundary case and property trial. An example's additional
+expectations share the recordings from its law body.
+
+Native factories may use scoped cells for state. Erlang and Elixir call
+`lawspec_beam_effects:native_cell/1`, `native_read/1` and `native_write/2`
+(using Elixir's remote-call syntax). Gleam has typed `effects.new_cell`,
+`read_cell` and `write_cell`. Cells serialize access and are released when
+the scope ends, including failure or cancellation. Allocate them in a
+production factory or a `with_context` callback, and keep calls that use
+them inside that scope. A sequence of separate reads and writes is not an
+atomic update.
+
 ## Binding a production handler
 
 In a unit with bound adapters, or to use existing code, bind each ability's
@@ -208,6 +263,14 @@ the native types. In Rust the bound handler's type must be `Default`; in
 Haskell it is a record of `IO` functions named like the operations, made by
 an `IO` action. A bound adapter that uses abilities gets its handlers as the
 generated interfaces.
+
+For BEAM targets, the bound factory also takes no arguments. Erlang and
+Elixir return a map of operation functions; Gleam returns a public record
+with those function fields. These operations use the application's bound
+data types. The generated bridge converts their arguments and results
+through the checked schema. A bound adapter still receives the canonical
+generated ability interface. If a unit's adapters are bound, bind its
+production handlers too.
 
 ## Native failures
 

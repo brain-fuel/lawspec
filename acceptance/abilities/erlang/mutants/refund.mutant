@@ -1,0 +1,7 @@
+expect: refunds of large amounts fail [native]
+@@ src/example_shop.erl
+<<<<<<<
+refund(_, Cents) when Cents > 100000 -> lawspec_beam_effects:fail(payment_error_too_large);
+=======
+refund(_, Cents) when Cents > 100000 -> lawspec_beam_effects:fail(payment_error_refused);
+>>>>>>>

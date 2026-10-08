@@ -53,6 +53,7 @@ import qualified Data.Aeson.KeyMap as KM
 import qualified Data.ByteString.Lazy as BL
 import Data.List (isInfixOf, isPrefixOf, isSuffixOf, nub, sort, stripPrefix)
 import Data.Maybe (fromMaybe)
+import Data.Time.Clock (addUTCTime)
 import qualified Data.Text as T
 import qualified Data.Vector as V
 import System.Directory
@@ -197,9 +198,11 @@ writeProject suite target project defaultProfile minify generated = do
   createDirectoryIfMissing True project
   forM_ ["src", "lib", "test", "test-support", "tests", "example", "dist", "lawspec"] $ \folder -> removePathForcibly (project </> folder)
   -- Gleam retains foreign Erlang modules in its compiled application after
-  -- their source files move or disappear. Regenerate from a fresh build so a
-  -- stale module cannot conceal a missing source or leak into a shipment.
-  when (target == "gleam") (removePathForcibly (project </> "build"))
+  -- their source files move or disappear. Clear compiled applications, while
+  -- retaining downloaded packages and path-dependency config fingerprints.
+  -- Deleting those fingerprints forces Hex resolution despite a valid lock.
+  when (target == "gleam") $ forM_ ["dev", "prod", "lsp", "erlang-shipment"] $ \mode ->
+    removePathForcibly (project </> "build" </> mode)
   scaffolds <- either die pure (scaffoldFilesWith (usesCrypto target generated) minify target)
   forM_ scaffolds $ \(path, content) -> writeAt (project </> path) content
   forM_ generated $ \g -> writeAt (project </> generatedPath g) (generatedContent g)
@@ -231,6 +234,22 @@ writeProject suite target project defaultProfile minify generated = do
     unless exists (createDirectoryLink (root </> ".integration" </> target </> "node_modules") link)
   when (target == "go") (copyFile "test/locks/go/go.sum" (project </> "go.sum"))
   forM_ (beamLock target) $ \lock -> copyFile ("test/locks" </> target </> lock) (project </> lock)
+  when (target == "gleam") $ do
+    -- Reuse the bootstrap's fingerprint only for the identical local package
+    -- configuration. A changed dependency graph still resolves normally.
+    let bootstrap = root </> ".integration/gleam"
+        config = "test-support/gleam.toml"
+        fingerprint = "build/packages/lawspec_test_support.config_fingerprint"
+    ready <- (&&) <$> doesFileExist (bootstrap </> config) <*> doesFileExist (bootstrap </> fingerprint)
+    when ready $ do
+      same <- (==) <$> readFile' (bootstrap </> config) <*> readFile' (project </> config)
+      when same $ do
+        createDirectoryIfMissing True (project </> "build/packages")
+        copyFile (bootstrap </> fingerprint) (project </> fingerprint)
+        -- Force Gleam to compare the actual hash, even if bootstrap's config
+        -- was edited since its last build; a recent copy is not validation.
+        changed <- getModificationTime (project </> config)
+        setModificationTime (project </> fingerprint) (addUTCTime (-1) changed)
   when (target == "elixir") $ do
     let link = project </> "deps"
     exists <- doesPathExist link

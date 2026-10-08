@@ -1,0 +1,8 @@
+expect: charge captures once
+@@ src/example/abilities.gleam
+<<<<<<<
+      let data.Receipt(paid) = abilities.gateway_capture(gateway, approved)
+=======
+      let _ = abilities.gateway_capture(gateway, approved)
+      let data.Receipt(paid) = abilities.gateway_capture(gateway, approved)
+>>>>>>>

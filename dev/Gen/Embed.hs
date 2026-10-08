@@ -22,6 +22,7 @@ runtimeFiles =
   , ("beam-qcheck", "lawspec_beam_qcheck.erl"), ("beam-gleam", "lawspec_beam_gleam.erl")
   , ("beam-gleam-types", "lawspec_gleam_types.gleam"), ("beam-gleam-scalar", "lawspec_gleam_scalar.gleam")
   , ("beam-gleam-failures", "lawspec_gleam_failures.gleam")
+  , ("beam-gleam-effects", "lawspec_gleam_effects.gleam")
   , ("python", "lawspec_runtime.py"), ("python-schema", "lawspec_schema.py")
   , ("python-data-strategies", "lawspec_data_strategies.py"), ("javascript", "lawspec_runtime.mjs")
   , ("web-schema", "lawspec_schema.mjs"), ("web-data-strategies", "lawspec_data_strategies.mjs")

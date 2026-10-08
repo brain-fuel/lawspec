@@ -1,0 +1,7 @@
+expect: the fee is never negative [native]
+@@ src/example_abilities.erl
+<<<<<<<
+      fee => fun() -> 25 end}.
+=======
+      fee => fun() -> -25 end}.
+>>>>>>>

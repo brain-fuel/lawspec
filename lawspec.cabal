@@ -64,6 +64,7 @@ extra-source-files:
     runtime/lawspec_beam_schema.erl
     runtime/lawspec_beam_values.erl
     runtime/lawspec_beam_stream_data.ex
+    runtime/lawspec_gleam_effects.gleam
     runtime/lawspec_gleam_failures.gleam
     runtime/lawspec_gleam_scalar.gleam
     runtime/lawspec_gleam_types.gleam
@@ -314,9 +315,11 @@ library
       LawSpec.Actors.Web
       LawSpec.Api
       LawSpec.Backend
+      LawSpec.BeamAbilities
       LawSpec.BeamCode
       LawSpec.BeamData
       LawSpec.BeamDefinitions
+      LawSpec.BeamEffects
       LawSpec.BeamEmit
       LawSpec.BeamExpr
       LawSpec.BeamNativeBinding
@@ -520,6 +523,7 @@ executable lawspec-acceptance
     , parser-combinators
     , process
     , text
+    , time
     , vector
   default-language: Haskell2010
 

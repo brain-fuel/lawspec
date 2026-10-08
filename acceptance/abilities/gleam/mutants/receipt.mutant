@@ -1,0 +1,7 @@
+expect-any: a receipt is for the amount captured [native] | [recording native]
+@@ src/example/abilities.gleam
+<<<<<<<
+    fn(cents) { data.Receipt(cents) },
+=======
+    fn(cents) { data.Receipt(case cents < 1000 { True -> cents False -> cents - 1 }) },
+>>>>>>>

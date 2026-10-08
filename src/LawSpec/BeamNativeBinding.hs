@@ -10,6 +10,8 @@ import qualified LawSpec.BeamCode as E
 import qualified LawSpec.GleamCode as G
 import qualified LawSpec.ElixirCode as X
 import qualified LawSpec.BeamDefinitions as Definitions
+import qualified LawSpec.BeamEffects as Effects
+import qualified LawSpec.BeamAbilities as Abilities
 import LawSpec.NativeBinding
 import LawSpec.NativeRequest
 import LawSpec.Common (Artifact(..))
@@ -33,13 +35,16 @@ emitBindings :: String -> D.Layout -> BindingPlan -> Plan -> Either String [Arti
 emitBindings target layout bindings plan = do
   unless (bindingRustCrate bindings == Nothing) (Left "rustCrate is only valid for Rust bindings")
   unless (all ((== Nothing) . resolvedArguments) mappings) (Left "native type arguments are only valid for Kotlin handles")
-  unless (null mappings || not (null (calls bindings)) || not (null generators)) (Left "native types require function or generator bindings")
+  unless (null mappings || not (null (calls bindings)) || not (null generators) || not (null (bindingHandlers bindings)))
+    (Left "native types require function, handler or generator bindings")
   forM_Units $ \unit -> do
     let defined = map (C.declarationId . C.definitionDeclaration) (C.unitDefinitions unit)
         adapters = [C.declarationId d | d <- C.unitDeclarations unit, C.declarationId d `notElem` defined]
         bound = map fst (boundEntries bindings)
     unless (not (any (`elem` bound) adapters) || all (`elem` bound) adapters)
       (Left "a BEAM bound unit must map every adapter")
+    unless (not (any (`elem` bound) adapters) || null (Abilities.productionAbilities unit))
+      (Left "a BEAM bound unit must also map its production handlers")
   unless (target /= "erlang" || not (null (bindingErlangIncludes bindings)) ||
     all ((/= RecordConstructor) . resolvedConstructorStyle . snd) constructors)
     (Left "Erlang record bindings need erlangIncludes naming their header files")
@@ -70,6 +75,7 @@ emitBindings target layout bindings plan = do
     (D.render layout (E.moduleDoc "lawspec_native_bindings" exports (headers ++ factory : functions)))
     "generated" "source" : gleam ++ factories ++ stubs)
   where
+    units = map plannedUnit (plannedUnits plan)
     mappings = resolvedTypes (bindingRepresentations bindings)
     generators = resolvedGenerators (bindingRepresentations bindings)
     constructors = [(m,c) | m <- mappings, c <- resolvedConstructors m]
@@ -203,16 +209,18 @@ emitBindings target layout bindings plan = do
               C.dataHandle d, C.dataId d == C.Id name]
             _ -> []
       nativeValues <- sequence [convert "to_native" ty value | (ty,value) <- zip types values]
+      handlers <- mapM (\a -> Effects.toNative units a (D.text "_Canonical") (D.text "_Symbols")
+        (E.remote "lawspec_beam_effects" "handler" [D.text "_Canonical",E.binary (C.abilityKey a)])) (Effects.uses declaration)
       let arguments = [D.text ("_NativeArgument" ++ show i) | (i,_) <- zip [0::Int ..] nativeValues]
       invocation <- case call of
-        StaticCall ref -> nativeCall target ref arguments
-        ConstructorCall ref -> nativeCall target ref [v | (ty,v) <- zip types arguments, ty /= C.scalarType "Unit"]
+        StaticCall ref -> nativeCall target ref (handlers ++ arguments)
+        ConstructorCall ref -> nativeCall target ref (handlers ++ [v | (ty,v) <- zip types arguments, ty /= C.scalarType "Unit"])
         MethodCall method -> case [(i,m) | (i,ty) <- zip [0::Int ..] types, m <- handle ty] of
           (receiver,m):_ -> do
             let parts = referenceParts (resolvedNativeType m)
                 moduleParts = if target == "elixir" && last parts /= "t" then parts else init parts
             nativeCall target (NativeRef (moduleParts ++ [method]))
-              (arguments !! receiver : [v | (i,v) <- zip [0::Int ..] arguments, i /= receiver])
+              (arguments !! receiver : handlers ++ [v | (i,v) <- zip [0::Int ..] arguments, i /= receiver])
           [] -> Left "a BEAM method binding needs its handle bound to a native type"
       checked <- Definitions.nativeFailures target (bindingFailures bindings) schema declaration invocation
       output <- if result == C.scalarType "Unit" then pure (E.sequenceDoc [checked,E.atom "ls_unit"])
@@ -250,13 +258,4 @@ emitBindings target layout bindings plan = do
     capitalized [] = False
 
 nativeCall :: String -> NativeRef -> [D.Doc] -> Either String D.Doc
-nativeCall target (NativeRef parts) values = do
-  unless (length parts >= 2 && (target /= "erlang" || length parts == 2))
-    (Left "BEAM native function references require a module and a function")
-  let owner = case target of
-        "erlang" -> intercalate "." (init parts)
-        "elixir" -> "Elixir." ++ intercalate "." (init parts)
-        _ -> intercalate "@" (init parts)
-  unless (owner `notElem` ["lawspec_native_bindings","lawspec_native_generators","lawspec@native_constructors"])
-    (Left "native function shadows generated BEAM binding support")
-  pure (E.remote owner (last parts) values)
+nativeCall target = E.nativeCall target . referenceParts

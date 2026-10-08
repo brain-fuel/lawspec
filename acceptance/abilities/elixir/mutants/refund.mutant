@@ -1,0 +1,7 @@
+expect: refunds of large amounts fail [native]
+@@ lib/example_shop.ex
+<<<<<<<
+    :lawspec_beam_effects.fail(%Data.PaymentErrorTooLarge{})
+=======
+    :lawspec_beam_effects.fail(%Data.PaymentErrorRefused{})
+>>>>>>>

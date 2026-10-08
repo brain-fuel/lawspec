@@ -8,6 +8,9 @@ import qualified LawSpec.Core as C
 import qualified LawSpec.Code.Doc as D
 import qualified LawSpec.BeamCode as E
 import qualified LawSpec.BeamExpr as Expr
+import LawSpec.BeamEffects (entries, external)
+import qualified LawSpec.BeamEffects as Effects
+import qualified LawSpec.BeamAbilities as Abilities
 import LawSpec.Core.DefinitionContracts (checkedDefinitionContracts)
 import LawSpec.Core.Evidence (runtimePostconditions)
 import LawSpec.Common (Artifact(..))
@@ -15,27 +18,8 @@ import Control.Monad (forM)
 import Data.Char (isUpper)
 import Data.List (intercalate)
 
-entries :: [C.Unit] -> [(C.Id,String)]
-entries units = [(C.declarationId d,"evaluate_" ++ show i)
-  | (i,d) <- zip [0::Int ..] (concatMap C.unitDeclarations units)]
-
 adapterModule :: C.Unit -> String
 adapterModule = E.moduleName . C.unitId
-
-external :: [C.Unit] -> D.Doc -> D.Doc -> C.Expr -> [D.Doc] -> Either String D.Doc
-external units symbols schema expression args = case C.expressionNode expression of
-  C.ExternalCall identity _ -> maybe (Left ("unresolved BEAM call: " ++ C.idText identity))
-    (\name -> pure (E.remote "lawspec_definitions" name (schema : symbols : args))) (lookup identity (entries units))
-  C.Perform operation _ | C.isFail (C.operationAbility operation), [value] <- args ->
-    pure (E.remote "lawspec_beam_effects" "raise_failure"
-      [E.binary (C.abilityKey (C.operationAbility operation)),value])
-  C.Handle (C.CatchFailure ability) _ | [body] <- args -> do
-    ref <- E.typeReference (C.expressionType expression)
-    let side tag = E.lambda [D.text "_LsFailureValue"] (E.remote "lawspec_beam_schema" "construct"
-          [E.binary tag,E.array [D.text "_LsFailureValue"],ref,schema])
-    pure (E.remote "lawspec_beam_effects" "attempt" [E.binary (C.abilityKey ability),body,
-      side "Either::Right",side "Either::Left"])
-  _ -> Left "BEAM ability handlers are not implemented yet"
 
 -- | Only an adapter's declared failure type gives a native failure meaning.
 -- The same bridge validates failures from ordinary and bound native calls.
@@ -65,12 +49,13 @@ nativeFailures target bindings schema declaration body = case [a | a <- C.declar
         [D.text "_LsNativeFailure",ref,schema]),E.lambda [] body,E.array mappings])
   _ -> Left "a BEAM failure ability requires its failure type"
 
-declarationSpec :: Int -> [(C.Id,String)] -> C.Declaration -> Either String D.Doc
-declarationSpec bits names declaration = do
+declarationSpec :: Int -> [(C.Id,String)] -> [C.Unit] -> C.Declaration -> Either String D.Doc
+declarationSpec bits names units declaration = do
   let (arguments,result) = C.functionType (C.declarationType declaration)
+  handlers <- mapM (Abilities.nativeType "erlang" units) (Effects.uses declaration)
   parameters <- mapM (E.nativeType bits names []) arguments
   returns <- E.nativeType bits names [] result
-  pure (D.group (D.text "-spec " <> E.call (E.functionName declaration) parameters <>
+  pure (D.group (D.text "-spec " <> E.call (E.functionName declaration) (handlers ++ parameters) <>
     D.text " ->" <> D.nest 4 (D.softline <> returns) <> D.text "."))
 
 emitDefinitions :: String -> D.Layout -> Int -> [C.DataDeclaration] -> [C.Unit] -> [(C.Id,String)] -> Either String [Artifact]
@@ -78,7 +63,7 @@ emitDefinitions target layout bits declarations units bound = do
   verified <- checkedDefinitionContracts bits declarations units
   names <- E.dataNames declarations
   bodies <- mapM (implementation verified) [(u,d) | u <- units, d <- C.unitDeclarations u]
-  wrappers <- mapM (nativeUnit names) [u | u <- units, target `elem` ["erlang","gleam"], not (null (C.unitDefinitions u))]
+  wrappers <- mapM (nativeUnit names) [u | u <- units, not (null (C.unitDefinitions u))]
   let exports = [(name,2 + length (fst (C.functionType (C.declarationType d))))
         | u <- units, d <- C.unitDeclarations u, Just name <- [lookup (C.declarationId d) callees]]
   pure (file "lawspec_definitions" exports bodies : wrappers)
@@ -105,10 +90,12 @@ emitDefinitions target layout bits declarations units bound = do
         Nothing -> case lookup identity bound of
           Just name -> pure (E.remote "lawspec_native_bindings" name (schema : symbols : map D.text arguments))
           Nothing -> do
+            handlers <- mapM (\a -> Effects.toNative units a schema symbols
+              (E.remote "lawspec_beam_effects" "handler" [schema,E.binary (C.abilityKey a)])) (Effects.uses declaration)
             nativeArguments <- sequence [bridge "to_native" ty (D.text arg) | (ty,arg) <- zip parameterTypes arguments]
             let nativeNames = [D.text ("_LsNativeInput" ++ show i) | (i,_) <- zip [0::Int ..] nativeArguments]
             invocation <- nativeFailures target (C.unitFailureBindings unit) schema declaration
-              (E.remote (E.nativeModule target unit) (E.nativeFunction target declaration) nativeNames)
+              (E.remote (E.nativeModule target unit) (E.nativeFunction target declaration) (handlers ++ nativeNames))
             result <- bridge "from_native" resultType invocation
             -- A mapping describes application exceptions. Neither input nor
             -- result validation may turn into a successful expected failure.
@@ -135,13 +122,16 @@ emitDefinitions target layout bits declarations units bound = do
         let d = C.definitionDeclaration definition
             (parameterTypes,resultType) = C.functionType (C.declarationType d)
             arguments = [D.text ("_LsNative" ++ show i) | (i,_) <- zip [0::Int ..] parameterTypes]
-        signatures <- if target == "erlang" then pure <$> declarationSpec bits names d else pure []
+            handlers = zip (Effects.uses d) [D.text ("_LsHandler" ++ show i) | i <- [0::Int ..]]
+        signatures <- if target == "erlang" then pure <$> declarationSpec bits names units d else pure []
         converted <- sequence [bridge "from_native" ty arg | (ty,arg) <- zip parameterTypes arguments]
         name <- maybe (Left "missing BEAM definition entry") Right (lookup (C.declarationId d) callees)
         result <- bridge "to_native" resultType (E.remote "lawspec_definitions" name (schema : symbols : converted))
-        pure (signatures ++ [E.function (E.nativeFunction target d) arguments
-          [D.text "_LsSymbols = make_ref()",D.text "_LsSchema = " <> E.remote "lawspec_data" "schema" [symbols],result]])
-      let name = adapterModule unit ++ "_definitions" ++ (if target == "gleam" then "_ffi" else "")
-          exports = [(E.nativeFunction target d,length (fst (C.functionType (C.declarationType d))))
+        body <- if null handlers then pure [D.text "_LsSymbols = make_ref()",
+          D.text "_LsSchema = " <> E.remote "lawspec_data" "schema" [symbols],result]
+          else pure <$> Abilities.publicBody units handlers result
+        pure (signatures ++ [E.function (E.nativeFunction target d) (map snd handlers ++ arguments) body])
+      let name = adapterModule unit ++ "_definitions" ++ (if target == "erlang" then "" else "_ffi")
+          exports = [(E.nativeFunction target d,length (Effects.uses d) + length (fst (C.functionType (C.declarationType d))))
             | definition <- C.unitDefinitions unit, let d = C.definitionDeclaration definition]
       pure (file name exports functions)

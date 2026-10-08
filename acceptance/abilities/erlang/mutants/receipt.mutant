@@ -1,0 +1,7 @@
+expect-any: a receipt is for the amount captured [native] | [recording native]
+@@ src/example_abilities.erl
+<<<<<<<
+      capture => fun(Cents) -> {receipt, Cents} end,
+=======
+      capture => fun(Cents) -> {receipt, case Cents < 1000 of true -> Cents; false -> Cents - 1 end} end,
+>>>>>>>

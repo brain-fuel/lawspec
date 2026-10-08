@@ -1,0 +1,7 @@
+expect: a native round trip retains lexical overrides
+@@ lib/example_handler_context.ex
+<<<<<<<
+  def roundtrip(counter, amount), do: Definitions.shifted(counter, amount)
+=======
+  def roundtrip(counter, amount), do: Definitions.advance(counter, amount)
+>>>>>>>

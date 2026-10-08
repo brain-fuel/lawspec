@@ -1,0 +1,7 @@
+expect: large payments are declined
+@@ src/till_native.erl
+<<<<<<<
+pay(_, Cents) when Cents > 1000 -> erlang:error(card_declined);
+=======
+pay(_, Cents) when Cents > 1000 -> erlang:error({bad_amount, <<"negative">>});
+>>>>>>>

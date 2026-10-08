@@ -1,0 +1,7 @@
+expect: a native round trip retains lexical overrides
+@@ src/example_handler_context.erl
+<<<<<<<
+roundtrip(Counter, Amount) -> example_handler_context_definitions:shifted(Counter, Amount).
+=======
+roundtrip(Counter, Amount) -> example_handler_context_definitions:advance(Counter, Amount).
+>>>>>>>

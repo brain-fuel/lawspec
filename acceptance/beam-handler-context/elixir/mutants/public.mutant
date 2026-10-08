@@ -1,0 +1,7 @@
+expect: public constructors and definitions share their context
+@@ lib/example_handler_context.ex
+<<<<<<<
+      Definitions.advance(recorded, 2) == 2 and Definitions.shifted(recorded, 3) == 105
+=======
+      Definitions.advance(recorded, 2) == 2 and Definitions.shifted(Handlers.fresh_counter(context), 3) == 105
+>>>>>>>

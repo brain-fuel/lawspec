@@ -1,0 +1,7 @@
+expect: large payments are declined
+@@ src/till_native_errors.erl
+<<<<<<<
+declined() -> erlang:error(card_declined).
+=======
+declined() -> erlang:error({bad_amount, <<"negative">>}).
+>>>>>>>

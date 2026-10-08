@@ -1,0 +1,7 @@
+expect-any: a till gives back what it takes [native] | small payments go through [native]
+@@ lib/till.ex
+<<<<<<<
+        %Cash{cash_cents: cents}
+=======
+        %Cash{cash_cents: cents + 1}
+>>>>>>>

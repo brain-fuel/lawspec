@@ -1,0 +1,8 @@
+expect: charge captures once
+@@ lib/example_abilities.ex
+<<<<<<<
+        %Data.Receipt{cents: paid} = gateway.capture.(approved)
+=======
+        gateway.capture.(approved)
+        %Data.Receipt{cents: paid} = gateway.capture.(approved)
+>>>>>>>

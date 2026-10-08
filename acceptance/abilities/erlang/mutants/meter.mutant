@@ -1,0 +1,7 @@
+expect: Meter: reading gives what its type says [native]
+@@ src/example_shop.erl
+<<<<<<<
+meter_handler() -> #{reading => fun() -> 3 end}.
+=======
+meter_handler() -> #{reading => fun() -> -1 end}.
+>>>>>>>

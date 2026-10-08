@@ -1,0 +1,7 @@
+expect: public constructors and definitions share their context
+@@ src/example/handler_context.gleam
+<<<<<<<
+    definitions.advance(recorded, 2) == 2 && definitions.shifted(recorded, 3) == 105
+=======
+    definitions.advance(recorded, 2) == 2 && definitions.shifted(abilities.fresh_counter(context), 3) == 105
+>>>>>>>

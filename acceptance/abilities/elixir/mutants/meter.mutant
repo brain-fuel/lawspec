@@ -1,0 +1,7 @@
+expect: Meter: reading gives what its type says [native]
+@@ lib/example_shop.ex
+<<<<<<<
+  def meter_handler(), do: %Shop.Meter{reading: fn -> 3 end}
+=======
+  def meter_handler(), do: %Shop.Meter{reading: fn -> -1 end}
+>>>>>>>

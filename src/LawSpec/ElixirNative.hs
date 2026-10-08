@@ -8,7 +8,8 @@ import qualified LawSpec.Core as C
 import qualified LawSpec.Code.Doc as D
 import qualified LawSpec.BeamCode as E
 import qualified LawSpec.ElixirCode as X
-import LawSpec.BeamDefinitions (entries)
+import qualified LawSpec.BeamEffects as Effects
+import qualified LawSpec.BeamAbilities as Abilities
 import LawSpec.Core.Types (freeExistentials)
 import LawSpec.Common (Artifact(..))
 import Control.Monad (forM, unless)
@@ -23,7 +24,7 @@ emitNative layout bits declarations units = do
     (Left "Elixir data modules collide after PascalCase conversion or exceed the atom limit")
   structs <- concat <$> mapM (dataStructs names) declarations
   types <- mapM (dataType names) declarations
-  adapters <- mapM (adapter names) [u | u <- units, not (null (adapterDeclarations u))]
+  adapters <- mapM (adapter names) [u | u <- units, not (null (adapterDeclarations u) && null (Abilities.productionAbilities u))]
   definitions <- mapM (nativeUnit names) [u | u <- units, not (null (C.unitDefinitions u))]
   let dataModule = Artifact "lib/lawspec/data.ex" (D.render layout (X.moduleDoc "LawSpec.Data" False types)) "generated" "source"
   pure (dataModule : structs ++ adapters ++ definitions)
@@ -36,33 +37,29 @@ emitNative layout bits declarations units = do
       C.declarationId d `notElem` map (C.declarationId . C.definitionDeclaration) (C.unitDefinitions u)]
     signature names d = do
       let (args,result) = C.functionType (C.declarationType d)
+      handlers <- mapM (Abilities.nativeType "elixir" units) (Effects.uses d)
       inputs <- mapM (X.nativeType bits names []) args
       output <- X.nativeType bits names [] result
-      pure (D.group (D.text "@spec " <> X.call (functionName d) inputs <> D.text " ::" <> D.nest 2 (D.softline <> output)))
+      pure (D.group (D.text "@spec " <> X.call (functionName d) (handlers ++ inputs) <> D.text " ::" <> D.nest 2 (D.softline <> output)))
     adapter names unit = do
       bodies <- concat <$> forM (adapterDeclarations unit) (\d -> do
         spec <- signature names d
         let args = [D.text ("_argument" ++ show i) | (i,_) <- zip [0::Int ..] (fst (C.functionType (C.declarationType d)))]
-        pure [spec,X.function (functionName d) args [D.text "raise " <> X.string ("Not implemented: " ++ C.idText (C.declarationId d))]])
-      let body = X.moduleDoc (moduleName unit) True bodies
+            handlers = [D.text ("_handler" ++ show i) | (i,_) <- zip [0::Int ..] (Effects.uses d)]
+        pure [spec,X.function (functionName d) (handlers ++ args) [D.text "raise " <> X.string ("Not implemented: " ++ C.idText (C.declarationId d))]])
+      production <- concat <$> mapM (Abilities.productionStub "elixir" bits names) (Abilities.productionAbilities unit)
+      let body = X.moduleDoc (moduleName unit) True (bodies ++ production)
       pure (AdapterArtifact ("lib/" ++ E.moduleName (C.unitId unit) ++ ".ex")
         (D.render layout body) "user" "source" (D.render (D.Pretty 100) body))
     nativeUnit names unit = do
       bodies <- concat <$> forM (C.unitDefinitions unit) (\definition -> do
         let d = C.definitionDeclaration definition
-            (arguments,result) = C.functionType (C.declarationType d)
+            (arguments,_) = C.functionType (C.declarationType d)
             args = [D.text ("native" ++ show i) | (i,_) <- zip [0::Int ..] arguments]
-            schema = D.text "schema"
-            symbols = D.text "symbols"
-            bridge direction ty value = do
-              ref <- X.typeReference ty
-              pure (X.remote ":lawspec_beam_schema" direction [value,ref,schema])
+            handlers = [D.text ("handler" ++ show i) | (i,_) <- zip [0::Int ..] (Effects.uses d)]
         spec <- signature names d
-        entry <- named (entries units) (C.declarationId d)
-        inputs <- sequence [bridge "from_native" ty value | (ty,value) <- zip arguments args]
-        output <- bridge "to_native" result (X.remote ":lawspec_definitions" entry (schema : symbols : inputs))
-        pure [spec,X.function (functionName d) args
-          [D.text "symbols = make_ref()",D.text "schema = :lawspec_data.schema(symbols)",output]])
+        pure [spec,X.function (functionName d) (handlers ++ args)
+          [X.remote (":" ++ E.moduleName (C.unitId unit) ++ "_definitions_ffi") (functionName d) (handlers ++ args)]])
       pure (Artifact ("lib/" ++ E.moduleName (C.unitId unit) ++ "_definitions.ex")
         (D.render layout (X.moduleDoc (moduleName unit ++ ".Definitions") False bodies)) "generated" "source")
     dataStructs names d = forM [c | c <- C.dataConstructors d, not (C.dataHandle d)] $ \c -> do

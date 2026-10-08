@@ -1,0 +1,7 @@
+expect: a stored count comes back [native]
+@@ src/example/shop.gleam
+<<<<<<<
+    fn(value) { effects.write_cell(stored, value) },
+=======
+    fn(value) { effects.write_cell(stored, value + 1) },
+>>>>>>>

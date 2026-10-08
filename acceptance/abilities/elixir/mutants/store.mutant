@@ -1,0 +1,7 @@
+expect: a stored count comes back [native]
+@@ lib/example_shop.ex
+<<<<<<<
+      save: fn value -> :lawspec_beam_effects.native_write(stored, value); :ok end
+=======
+      save: fn value -> :lawspec_beam_effects.native_write(stored, value + 1); :ok end
+>>>>>>>

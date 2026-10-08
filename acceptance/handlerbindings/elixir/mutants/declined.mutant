@@ -1,0 +1,7 @@
+expect: large payments are declined
+@@ lib/till.ex
+<<<<<<<
+  def pay(_drawer, cents) when cents > 1000, do: raise(Till.CardDeclined)
+=======
+  def pay(_drawer, cents) when cents > 1000, do: raise(Till.BadAmount, message: "negative")
+>>>>>>>

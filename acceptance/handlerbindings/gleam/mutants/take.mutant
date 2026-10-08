@@ -1,0 +1,7 @@
+expect-any: a till gives back what it takes [native] | small payments go through [native]
+@@ src/till/native.gleam
+<<<<<<<
+      Cash(money.cash_cents)
+=======
+      Cash(money.cash_cents + 1)
+>>>>>>>

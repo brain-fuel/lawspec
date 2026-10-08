@@ -1,0 +1,7 @@
+expect: cases have fresh state and examples share recordings [recording native]
+@@ src/example/handler_context.gleam
+<<<<<<<
+  let total = effects.new_cell(0)
+=======
+  let total = effects.new_cell(1)
+>>>>>>>

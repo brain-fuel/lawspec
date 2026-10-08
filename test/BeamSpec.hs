@@ -41,6 +41,42 @@ test_beamCodeUsesCheckedCoreAndNativeFrameworks = describe "BEAM generation" $ d
         source `shouldSatisfy` isInfixOf "scoped(_LsHandledSchema0,"
         source `shouldSatisfy` isInfixOf "read(_LsHandledSchema1)"
   -- ref:DEC-total-definitions ref:DEC-native-property-frameworks
+  mapM_ (\target -> it (target ++ " emits native abilities and keeps example recordings in the case scope") $ do
+    input <- readFile "acceptance/beam-handler-context/context.lawspec"
+    case generatedFor target False input of
+      Left errors -> expectationFailure (show errors)
+      Right artifacts -> do
+        let source = concatMap artifactContent artifacts
+            adapters = filter ((== "user") . ownership) artifacts
+        source `shouldSatisfy` isInfixOf "lawspec_beam_effects:with_native_context"
+        source `shouldSatisfy` isInfixOf "lawspec_beam_effects:recover_handler"
+        source `shouldSatisfy` isInfixOf "lawspec_beam_effects:with_scope"
+        source `shouldSatisfy` isInfixOf "_LsExampleSchema"
+        length adapters `shouldBe` 1
+        concatMap artifactContent adapters `shouldSatisfy` isInfixOf "counter_handler"
+        case generatedFor target True input of
+          Left errors -> expectationFailure (show errors)
+          Right compact -> map adapterReference adapters `shouldBe`
+            map adapterReference (filter ((== "user") . ownership) compact)) ["erlang","elixir","gleam"]
+  -- ref:DEC-idiomatic-generated-types
+  mapM_ (\target -> it (target ++ " emits a factory for an ability without adapters") $ do
+    let source = "unit edge.abilities\nability Opaque is echo :: Int32 end\n"
+    case generatedFor target False source of
+      Left errors -> expectationFailure (show errors)
+      Right artifacts -> do
+        let adapters = filter ((== "user") . ownership) artifacts
+        length adapters `shouldBe` 1
+        concatMap artifactContent adapters `shouldSatisfy` isInfixOf "opaque_handler"
+        if target == "gleam" then concatMap artifactContent artifacts `shouldSatisfy` isInfixOf "pub fn opaque_lawspec("
+          else pure ()) ["erlang","elixir","gleam"]
+  -- ref:DEC-idiomatic-generated-types
+  it "diagnoses native ability constructor collisions before emitting Gleam" $ do
+    let source = unlines ["unit sample", "ability Counter is read :: Int32 end",
+          "handler counter for Counter is read is 0 end end"]
+    case generatedFor "gleam" False source of
+      Left errors -> show errors `shouldSatisfy` isInfixOf "handler constructors and operation functions collide"
+      Right _ -> expectationFailure "colliding native constructors were accepted"
+  -- ref:DEC-total-definitions ref:DEC-native-property-frameworks
   it "emits reusable checked definitions and PropEr generators from Core" $ do
     input <- readFile "examples/specs/total_functions.lawspec"
     case generated False input of
@@ -175,5 +211,7 @@ test_beamCodeUsesCheckedCoreAndNativeFrameworks = describe "BEAM generation" $ d
         tests `shouldSatisfy` isInfixOf "lawspec_beam_effects:attempt") ["erlang","elixir","gleam"]
   -- ref:DEC-never-pass-vacuously
   it "refuses an execution plane before it can silently omit its behavior" $ do
-    input <- readFile "examples/specs/abilities.lawspec"
-    generated False input `shouldSatisfy` isLeft
+    input <- readFile "examples/specs/async_fetch.lawspec"
+    case generated False input of
+      Left errors -> show errors `shouldSatisfy` isInfixOf "async adapters and workflow policies"
+      Right _ -> expectationFailure "an unconnected execution plane was accepted"

@@ -6,6 +6,8 @@ import qualified LawSpec.Core as C
 import qualified LawSpec.Code.Doc as D
 import qualified LawSpec.BeamCode as E
 import qualified LawSpec.GleamCode as G
+import qualified LawSpec.BeamEffects as Effects
+import qualified LawSpec.BeamAbilities as Abilities
 import LawSpec.Common (Artifact(..))
 import LawSpec.Core.Types (freeExistentials)
 import Control.Monad (forM, unless)
@@ -19,7 +21,7 @@ emitNative layout declarations units = do
   unless (length typeNames == length (nub typeNames) && length tags == length (nub tags))
     (Left "Gleam data names collide after PascalCase conversion")
   dataTypes <- mapM (dataType names) declarations
-  adapters <- mapM (adapter names) [u | u <- units, not (null (adapterDeclarations u))]
+  adapters <- mapM (adapter names) [u | u <- units, not (null (adapterDeclarations u) && null (Abilities.productionAbilities u))]
   definitions <- mapM (nativeUnit names) [u | u <- units, not (null (C.unitDefinitions u))]
   let fields = [C.binderType f | d <- declarations, c <- C.dataConstructors d, f <- C.constructorFields c]
       dynamic = [D.text "import gleam/dynamic" | any (not . null . C.constructorExistentials) (concatMap C.dataConstructors declarations)]
@@ -33,14 +35,19 @@ emitNative layout declarations units = do
       C.declarationId d `notElem` map (C.declarationId . C.definitionDeclaration) (C.unitDefinitions u)]
     signature names unused d = do
       let (args,result) = C.functionType (C.declarationType d)
+      handlers <- mapM (Abilities.nativeType "gleam" units) (Effects.uses d)
       inputs <- mapM (G.nativeType False names []) args
       output <- G.nativeType False names [] result
-      pure ([D.text ((if unused then "_argument" else "argument") ++ show i ++ ": ") <> t | (i,t) <- zip [0::Int ..] inputs],output)
+      pure ([D.text ((if unused then "_handler" else "handler") ++ show i ++ ": ") <> t | (i,t) <- zip [0::Int ..] handlers] ++
+        [D.text ((if unused then "_argument" else "argument") ++ show i ++ ": ") <> t | (i,t) <- zip [0::Int ..] inputs],output)
     adapter names unit = do
       bodies <- forM (adapterDeclarations unit) $ \d -> do
         (args,result) <- signature names True d
         pure (G.function (functionName d) args result [D.text "panic as " <> G.string ("Not implemented: " ++ C.idText (C.declarationId d))])
-      let body = G.fileDoc True (G.imports False (map C.declarationType (adapterDeclarations unit)) ++ bodies)
+      production <- concat <$> mapM (Abilities.productionStub "gleam" 64 names) (Abilities.productionAbilities unit)
+      imports <- Abilities.gleamImports units (concatMap Effects.uses (adapterDeclarations unit) ++
+        map C.abilityInstance (Abilities.productionAbilities unit))
+      let body = G.fileDoc True (imports ++ G.imports False (map C.declarationType (adapterDeclarations unit)) ++ bodies ++ production)
       pure (AdapterArtifact ("src/" ++ E.gleamPath (C.unitId unit) ++ ".gleam")
         (D.render layout body) "user" "source" (D.render (D.Pretty 100) body))
     nativeUnit names unit = do
@@ -48,8 +55,9 @@ emitNative layout declarations units = do
       bodies <- forM declarations' $ \d -> do
         (args,result) <- signature names False d
         pure (G.external (E.moduleName (C.unitId unit) ++ "_definitions_ffi") (functionName d) (functionName d) args result)
+      imports <- Abilities.gleamImports units (concatMap Effects.uses declarations')
       pure (Artifact ("src/" ++ E.gleamPath (C.unitId unit) ++ "/definitions.gleam")
-        (D.render layout (G.fileDoc False (G.imports False (map C.declarationType declarations') ++ bodies))) "generated" "source")
+        (D.render layout (G.fileDoc False (imports ++ G.imports False (map C.declarationType declarations') ++ bodies))) "generated" "source")
     dataType names d = do
       name <- E.pascal <$> named names (C.dataId d)
       let parameters = zip (C.dataParameters d) ["a" ++ show i | i <- [0::Int ..]]

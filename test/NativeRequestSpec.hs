@@ -90,6 +90,17 @@ test_nativeBindingRequestsAreValidatedAtTheirBoundary = describe "native binding
             ["declaration" .= ("sample::f" :: String), "native" .= (["App","echo"] :: [String])]]]
       codes (request target False "unit sample\nf :: Int8 -> Int8\ng :: Int8 -> Int8" binding)
         `shouldBe` [String "native-binding"]) ["erlang","elixir","gleam"]
+    mapM_ (\target -> it (target ++ " binds production handlers through application data types") $ do
+      source <- readFile "examples/specs/handler_bindings.lawspec"
+      binding <- either error id . eitherDecode <$> BL.readFile ("acceptance/handlerbindings/" ++ target ++ "/bindings.json")
+      let result = request target False source binding
+          abilities = concat [content f | f <- files result, field "path" f == Just (String "src/lawspec_abilities.erl")]
+          missing = case binding of Object value -> Object (KM.delete "handlers" value); other -> other
+      codes result `shouldBe` []
+      abilities `shouldSatisfy` isInfixOf "lawspec_native_bindings:schema"
+      abilities `shouldSatisfy` isInfixOf "lawspec_beam_schema:from_native"
+      codes (request target False source missing) `shouldBe` [String "native-binding"])
+      ["erlang","elixir","gleam"]
     it "requires Erlang record headers and rejects them on other targets" $ do
       source <- readFile "test/fixtures/native_shapes.lawspec"
       binding <- either error id . eitherDecode <$> BL.readFile "acceptance/beam-native-shapes/erlang/bindings.json"

@@ -1,0 +1,7 @@
+expect: a native round trip retains lexical overrides
+@@ src/example/handler_context.gleam
+<<<<<<<
+  definitions.shifted(counter, amount)
+=======
+  definitions.advance(counter, amount)
+>>>>>>>

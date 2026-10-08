@@ -1,0 +1,52 @@
+unit example.handlerContext
+
+ability Counter is
+  bump :: Int32 -> Integer
+  current :: Integer
+end
+
+ability Offset is
+  offset :: Int32
+end
+
+handler hundredOffset for Offset is
+  offset is 100 end
+end
+
+handler freshCounter for Counter with state total :: Integer start 0 is
+  bump amount is ~total := total + amount; total end
+  current is total + offset end
+end
+
+definition advance (amount :: Int32) :: Integer uses Counter is bump amount end
+
+-- The native adapter receives Counter from the outer scope, then calls this
+-- public definition. Its nested Offset must reach Counter's spec clause.
+definition shifted (amount :: Int32) :: Integer uses Counter is
+  handle bump amount; current with hundredOffset end
+end
+
+roundtrip :: Int32 -> Integer uses Counter
+publicProbe :: Unit -> Bool
+
+law `a native round trip retains lexical overrides` using freshCounter is
+  definition is
+    `for all` (amount :: Int32 where amount >= -1000 && amount <= 1000) .
+      roundtrip amount = amount + 100
+  end
+end
+
+law `cases have fresh state and examples share recordings` using recording Counter is
+  definition is
+    `for all` (amount :: Int32 where amount >= -1000 && amount <= 1000) .
+      (current == 0 && bump amount == amount && calls of bump == 1) = true
+  end
+  example `one recorded call` is
+    amount = 7
+    expect calls of bump = 1
+  end
+end
+
+law `public constructors and definitions share their context` is
+  definition is publicProbe unitValue = true end
+end
