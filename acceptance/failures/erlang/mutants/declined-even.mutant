@@ -1,0 +1,7 @@
+expect: even amounts go through
+@@ src/example_failures.erl
+<<<<<<<
+decide(_) -> decision_approve.
+=======
+decide(_) -> {decision_decline, <<"even">>}.
+>>>>>>>

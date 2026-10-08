@@ -1,0 +1,7 @@
+expect: odd amounts are declined, and say why
+@@ src/example/failures.gleam
+<<<<<<<
+n if n % 2 == 1
+=======
+n if n % 2 == 1 && n > 50000
+>>>>>>>

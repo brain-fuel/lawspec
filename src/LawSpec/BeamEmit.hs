@@ -282,8 +282,8 @@ validatePlan target plan = do
   unless (all (null . C.unitMachines) units && all (null . C.unitSessions) units &&
     all (null . C.unitSupervisors) units && all (null . C.unitMailboxes) units)
     (Left "BEAM models, sessions, actors and mailboxes are not implemented yet")
-  unless (all (not . C.declarationAsync) declarations && all ((== Nothing) . C.definitionPolicy) (concatMap C.unitDefinitions units))
-    (Left "BEAM async adapters and workflow policies are not implemented yet")
+  unless (all ((== Nothing) . C.definitionPolicy) (concatMap C.unitDefinitions units))
+    (Left "BEAM workflow policies are not implemented yet")
   unless (all (null . C.propertyResources . plannedProperty) laws && all ((== Nothing) . C.unitHarnessSettings) units &&
     all ((== C.noHarness) . C.propertyHarness . plannedProperty) laws)
     (Left "BEAM resources and harness settings are not implemented yet")

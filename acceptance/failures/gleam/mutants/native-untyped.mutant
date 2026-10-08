@@ -1,0 +1,7 @@
+expect: refunds over the limit are too large
+@@ src/example/failures.gleam
+<<<<<<<
+fail(data.PaymentErrorTooLarge(5000))
+=======
+panic as "native untyped failure"
+>>>>>>>

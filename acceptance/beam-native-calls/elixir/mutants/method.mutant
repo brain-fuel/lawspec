@@ -1,6 +1,6 @@
 @@ lib/native_token.ex
 <<<<<<<
-Process.put(reference, 1)
+:atomics.put(reference, 1, 1)
 =======
-Process.put(reference, 0)
+:atomics.put(reference, 1, 0)
 >>>>>>>

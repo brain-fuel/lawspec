@@ -87,7 +87,8 @@ When a group has an [asynchronous](async-functions.md) step, its steps run at th
 time, so the group takes as long as its slowest step rather than all of them
 together. Each target uses its own concurrency: threads in Python, `Promise`s
 in JavaScript and TypeScript, goroutines in Go, virtual threads in Java and
-Kotlin, scoped threads in Rust and `forkIO` in Haskell. Results and errors keep
+Kotlin, scoped threads in Rust, `forkIO` in Haskell, and monitored BEAM processes
+in Erlang, Elixir and Gleam. Results and errors keep
 the order of declaration, not the order the steps finish in. Every step
 finishes before the group reports a failure, and without `accumulate` that
 failure is the first failing step's in declaration order.

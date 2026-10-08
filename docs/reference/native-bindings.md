@@ -40,8 +40,8 @@ a schema-4 compiler request (`nativeBindings`). The fields are `types`,
 ## Async adapters
 
 An [async adapter](language/async-functions.md) may be bound like any other. Its
-native function or method returns the target's own task, and the bridge
-stays asynchronous: it converts the result once the task completes.
+native function or method uses the target's native concurrency, and the bridge
+converts the result after the asynchronous call completes.
 
 | Target | The native returns | The bridge |
 | --- | --- | --- |
@@ -52,10 +52,12 @@ stays asynchronous: it converts the result once the task completes.
 | Go | a `LawSpecTask[T]` | a `LawSpecTask`, awaiting it in a goroutine |
 | Rust | a future (`async fn`) | `async fn`, with `.await` |
 | Haskell | an `IO` action | `IO`, converting with `fmap` |
+| Erlang, Elixir, Gleam | the declared native value | calls the function in a monitored process, then converts the result |
 
 A Unit result is `LawSpecRuntime.Value` in Java's future, and `LawSpecUnit` in
 Go's task. A constructor bound to an async adapter is called at once, and its
-bridge returns a task that is already done. On Kotlin, an async method binding
+bridge returns a task that is already done. On BEAM, the constructor instead
+runs in the same monitored worker as other async native calls. On Kotlin, an async method binding
 needs its handle's type binding, since Kotlin calls the method itself.
 
 ## Validation

@@ -2,7 +2,7 @@
 %% Values stay in the portable domain until an explicit native boundary.
 %% ref:DEC-typed-core-boundary
 -module(lawspec_beam_runtime).
--export([require/2, assert_equal/3, contextual/2, helper/4, concurrently/1,
+-export([require/2, assert_equal/3, contextual/2, helper/4, concurrently/1, async_call/1,
     worker_context/0, with_worker_context/2]).
 
 %% Only LawSpec's allocator and active handler operation cross a worker
@@ -35,9 +35,15 @@ contextual(Identity, Body) ->
 helper(<<"unreachable">>, _, _, _) -> erlang:error({lawspec, unreachable});
 helper(Name, Values, Types, Bits) -> lawspec_beam_scalar:helper(Name, Values, Types, Bits).
 
+%% BEAM adapters return ordinary native values. An async declaration runs the
+%% call in its own process, awaiting its value or original exception. Reuse
+%% the parallel group's ownership and context propagation for cancellation.
+async_call(Body) -> hd(concurrently([Body])).
+
 %% @doc Each parallel step runs in a monitored worker. Results are returned in
-%% source order; exceptions preserve their class and stack, and every sibling
-%% is joined or cancelled before the group returns. The coordinator keeps
+%% source order; exceptions preserve their class and stack. Every sibling
+%% finishes before the first exception in source order is raised. Caller
+%% cancellation joins the cancelled children. The coordinator keeps
 %% messages out of the caller's mailbox. ref:DEC-typed-core-boundary
 concurrently(Bodies) ->
     Caller = self(),
@@ -61,17 +67,23 @@ concurrently(Bodies) ->
 
 collect([], Results, ParentMonitor) ->
     demonitor(ParentMonitor, [flush]),
-    {ok, [maps:get(I, Results) || I <- lists:seq(1, map_size(Results))]};
+    Ordered = [maps:get(I, Results) || I <- lists:seq(1, map_size(Results))],
+    case [Error || Error = {exception, _, _, _} <- Ordered] of
+        [First | _] -> First;
+        [] -> {ok, [Value || {ok, Value} <- Ordered]}
+    end;
 collect(Workers, Results, ParentMonitor) ->
     receive
         {'DOWN', ParentMonitor, process, _, _} -> cancel(Workers), exit(normal);
         {'DOWN', Monitor, process, Pid, Reason} ->
             case lists:keytake({Pid, Monitor}, 1, Workers) of
-                {value, {_, I}, Rest} -> case Reason of
-                    {lawspec_result, {ok, Value}} -> collect(Rest, Results#{I => Value}, ParentMonitor);
-                    {lawspec_result, {exception, _, _, _} = Error} -> cancel(Rest), Error;
-                    _ -> cancel(Rest), {exception, error, {lawspec, {concurrent_step_failed, Reason}}, []}
-                end
+                {value, {_, I}, Rest} ->
+                    Outcome = case Reason of
+                        {lawspec_result, {ok, _} = Value} -> Value;
+                        {lawspec_result, {exception, _, _, _} = Error} -> Error;
+                        _ -> {exception, error, {lawspec, {concurrent_step_failed, Reason}}, []}
+                    end,
+                    collect(Rest, Results#{I => Outcome}, ParentMonitor)
             end
     end.
 

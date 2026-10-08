@@ -1,0 +1,7 @@
+expect: settling nothing is declined, and says why
+@@ src/example/failures.gleam
+<<<<<<<
+fail(data.PaymentErrorDeclined("there is nothing to settle"))
+=======
+fail(data.PaymentErrorBlocked)
+>>>>>>>

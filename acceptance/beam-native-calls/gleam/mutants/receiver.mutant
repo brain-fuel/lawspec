@@ -1,6 +1,6 @@
 @@ src/native_token_ffi.erl
 <<<<<<<
-N + get(Ref)
+N + atomics:get(Ref, 1)
 =======
-N - 1 + get(Ref)
+N - 1 + atomics:get(Ref, 1)
 >>>>>>>

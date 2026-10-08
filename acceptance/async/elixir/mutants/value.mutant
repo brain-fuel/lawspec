@@ -1,0 +1,6 @@
+@@ lib/example_orders.ex
+<<<<<<<
+def price(sku), do: price_of(sku)
+=======
+def price(sku), do: price_of(sku) + 1
+>>>>>>>

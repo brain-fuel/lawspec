@@ -1,0 +1,7 @@
+expect: odd amounts are declined, and say why
+@@ src/example_failures.erl
+<<<<<<<
+decide(N) when N rem 2 =:= 1
+=======
+decide(N) when N rem 2 =:= 1, N > 50000
+>>>>>>>

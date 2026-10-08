@@ -2,7 +2,7 @@
 -- entry points call the same implementations and cross the same schema bridge.
 -- ref:DEC-total-definitions ref:DEC-native-bindings-typed-identity
 module LawSpec.BeamDefinitions
-  ( emitDefinitions, external, nativeFailures, declarationSpec, adapterModule, entries ) where
+  ( emitDefinitions, external, nativeFailures, awaitNative, declarationSpec, adapterModule, entries ) where
 
 import qualified LawSpec.Core as C
 import qualified LawSpec.Code.Doc as D
@@ -20,6 +20,13 @@ import Data.List (intercalate)
 
 adapterModule :: C.Unit -> String
 adapterModule = E.moduleName . C.unitId
+
+-- | Native BEAM functions return their values directly. The async marker
+-- makes the bridge own a monitored process, including bound native calls.
+awaitNative :: C.Declaration -> D.Doc -> D.Doc
+awaitNative declaration body
+  | C.declarationAsync declaration = E.remote "lawspec_beam_runtime" "async_call" [E.lambda [] body]
+  | otherwise = body
 
 -- | Only an adapter's declared failure type gives a native failure meaning.
 -- The same bridge validates failures from ordinary and bound native calls.
@@ -95,7 +102,7 @@ emitDefinitions target layout bits declarations units bound = do
             nativeArguments <- sequence [bridge "to_native" ty (D.text arg) | (ty,arg) <- zip parameterTypes arguments]
             let nativeNames = [D.text ("_LsNativeInput" ++ show i) | (i,_) <- zip [0::Int ..] nativeArguments]
             invocation <- nativeFailures target (C.unitFailureBindings unit) schema declaration
-              (E.remote (E.nativeModule target unit) (E.nativeFunction target declaration) (handlers ++ nativeNames))
+              (awaitNative declaration (E.remote (E.nativeModule target unit) (E.nativeFunction target declaration) (handlers ++ nativeNames)))
             result <- bridge "from_native" resultType invocation
             -- A mapping describes application exceptions. Neither input nor
             -- result validation may turn into a successful expected failure.

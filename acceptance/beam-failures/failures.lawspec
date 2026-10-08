@@ -7,7 +7,7 @@ type Rejection is
 end
 
 refund :: Int32 -> Int32 fails with Rejection
-checkedLimit :: Int32 -> Int32 fails with Rejection
+async checkedLimit :: Int32 -> Int32 fails with Rejection
 
 definition limit (n :: Int32) :: Int32 fails with Rejection is
   if n < 0 then raise Blocked else

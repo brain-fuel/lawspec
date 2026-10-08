@@ -6,6 +6,13 @@ pub fn roundtrip(_handler0: abilities_example_handler_context.Counter, _argument
   panic as "Not implemented: example.handlerContext::roundtrip"
 }
 
+pub fn async_roundtrip(
+  _handler0: abilities_example_handler_context.Counter,
+  _argument0: Int
+) -> Int {
+  panic as "Not implemented: example.handlerContext::asyncRoundtrip"
+}
+
 pub fn public_probe(_argument0: Nil) -> Bool {
   panic as "Not implemented: example.handlerContext::publicProbe"
 }

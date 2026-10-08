@@ -1,0 +1,7 @@
+expect: even amounts go through
+@@ lib/example_failures.ex
+<<<<<<<
+defp decide(_n), do: %Data.DecisionApprove{}
+=======
+defp decide(_n), do: %Data.DecisionDecline{reason: "even"}
+>>>>>>>

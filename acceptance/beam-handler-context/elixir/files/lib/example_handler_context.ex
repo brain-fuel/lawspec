@@ -5,6 +5,11 @@ defmodule Example.HandlerContext do
 
   def roundtrip(counter, amount), do: Definitions.shifted(counter, amount)
 
+  def async_roundtrip(counter, amount) do
+    scratch = :lawspec_beam_effects.native_cell(amount)
+    Definitions.shifted(counter, :lawspec_beam_effects.native_read(scratch))
+  end
+
   def public_probe(:ok) do
     :lawspec_abilities.with_context(fn context ->
       counter = Handlers.fresh_counter(context)

@@ -24,6 +24,22 @@
     {
       "declaration": "native.calls::value",
       "method": "value"
+    },
+    {
+      "declaration": "native.calls::newAsyncToken",
+      "constructor": [
+        "Native",
+        "Token",
+        "new"
+      ]
+    },
+    {
+      "declaration": "native.calls::touchAsync",
+      "method": "touch"
+    },
+    {
+      "declaration": "native.calls::valueAsync",
+      "method": "value"
     }
   ]
 }

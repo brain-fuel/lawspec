@@ -1,0 +1,6 @@
+@@ src/example/async_workflows.gleam
+<<<<<<<
+abilities.coordination_meet(coordination, 2)
+=======
+abilities.coordination_meet(coordination, 1)
+>>>>>>>

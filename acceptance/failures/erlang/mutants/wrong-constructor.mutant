@@ -1,0 +1,7 @@
+expect: negative amounts are blocked
+@@ src/example_failures.erl
+<<<<<<<
+decide(N) when N < 0 -> decision_block;
+=======
+decide(N) when N < 0 -> {decision_decline, <<"negative">>};
+>>>>>>>

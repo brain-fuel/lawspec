@@ -1,0 +1,7 @@
+expect: negative amounts are blocked
+@@ lib/example_failures.ex
+<<<<<<<
+defp decide(n) when n < 0, do: %Data.DecisionBlock{}
+=======
+defp decide(n) when n < 0, do: %Data.DecisionDecline{reason: "negative"}
+>>>>>>>

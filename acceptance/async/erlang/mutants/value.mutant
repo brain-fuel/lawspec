@@ -1,0 +1,6 @@
+@@ src/example_orders.erl
+<<<<<<<
+price(Sku) -> price_of(Sku).
+=======
+price(Sku) -> price_of(Sku) + 1.
+>>>>>>>

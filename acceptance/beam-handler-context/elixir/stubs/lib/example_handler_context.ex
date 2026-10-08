@@ -7,6 +7,16 @@ defmodule Example.HandlerContext do
     raise "Not implemented: example.handlerContext::roundtrip"
   end
 
+  @spec async_roundtrip(
+    LawSpec.Abilities.Example.HandlerContext.Counter.t(),
+    -2147483648..2147483647
+  ) ::
+    integer()
+
+  def async_roundtrip(_handler0, _argument0) do
+    raise "Not implemented: example.handlerContext::asyncRoundtrip"
+  end
+
   @spec public_probe(:ok) :: boolean()
 
   def public_probe(_argument0) do raise "Not implemented: example.handlerContext::publicProbe" end

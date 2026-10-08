@@ -1,0 +1,6 @@
+@@ src/example/async_workflows.gleam
+<<<<<<<
+True -> Error("first")
+=======
+True -> Error("wrong")
+>>>>>>>

@@ -4,6 +4,9 @@ handle Token
 newToken :: Unit -> Token
 touch :: Token -> Unit
 value :: Int8 -> Token -> Int32
+async newAsyncToken :: Unit -> Token
+async touchAsync :: Token -> Unit
+async valueAsync :: Int8 -> Token -> Int32
 
 law `constructor omits Unit and method receives the handle first` is
   definition is `for all` (n :: Int8) .
@@ -19,4 +22,11 @@ end
 
 law `fresh handles have distinct identities` is
   definition is newToken unitValue != newToken unitValue end
+end
+
+law `async constructors and methods share their handle across workers` is
+  definition is `for all` (n :: Int8) .
+    let token = newAsyncToken unitValue in
+      valueAsync n token == n && touchAsync token == unitValue && valueAsync n token == n + 1
+  end
 end

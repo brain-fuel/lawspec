@@ -1,0 +1,6 @@
+@@ src/example_async_workflows.erl
+<<<<<<<
+(maps:get(meet, Coordination))(2)
+=======
+(maps:get(meet, Coordination))(1)
+>>>>>>>

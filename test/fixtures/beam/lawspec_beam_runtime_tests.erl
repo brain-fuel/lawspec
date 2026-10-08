@@ -52,20 +52,40 @@ parallel_source_order_test() ->
     receive {'DOWN', Monitor, process, Caller, normal} -> ok after 1000 -> error(caller_did_not_stop) end.
 
 %% ref:DEC-typed-core-boundary
-parallel_failure_cancels_siblings_test() ->
+parallel_failure_joins_siblings_test() ->
     Test = self(),
     {Caller, Monitor} = spawn_monitor(fun() ->
         Result = try lawspec_beam_runtime:concurrently([
             fun() -> Test ! {failing, self()}, receive crash -> erlang:error(broken) end end,
-            fun() -> Test ! {sibling, self()}, receive forever -> never end end
+            fun() -> Test ! {sibling, self()}, receive finish -> finished end end
         ]) catch error:broken -> failed end,
         Test ! {result, Result}
     end),
     Failing = receive {failing, F} -> F after 1000 -> error(failing_did_not_start) end,
     Sibling = receive {sibling, P} -> P after 1000 -> error(sibling_did_not_start) end,
     Failing ! crash,
+    receive {result, _} -> error(returned_before_sibling_finished) after 10 -> ok end,
+    Sibling ! finish,
     receive {result, Result} -> ?assertEqual(failed, Result) after 1000 -> error(no_result) end,
     ?assertNot(is_process_alive(Sibling)),
+    receive {'DOWN', Monitor, process, Caller, normal} -> ok after 1000 -> error(caller_did_not_stop) end.
+
+%% ref:DEC-async-native-tasks
+parallel_exceptions_keep_declaration_order_test() ->
+    Test = self(),
+    {Caller, Monitor} = spawn_monitor(fun() ->
+        try lawspec_beam_runtime:concurrently([
+            fun() -> Test ! {first, self()}, receive finish -> throw(first) end end,
+            fun() -> Test ! {second, self()}, error(second) end
+        ]) catch Class:Reason -> Test ! {result, Class, Reason} end
+    end),
+    First = receive {first, F} -> F after 1000 -> error(first_did_not_start) end,
+    Second = receive {second, S} -> S after 1000 -> error(second_did_not_start) end,
+    SecondMonitor = monitor(process, Second),
+    receive {'DOWN', SecondMonitor, process, Second, _} -> ok after 1000 -> error(second_did_not_finish) end,
+    receive {result, _, _} -> error(returned_before_first_finished) after 10 -> ok end,
+    First ! finish,
+    receive {result, throw, first} -> ok after 1000 -> error(wrong_exception) end,
     receive {'DOWN', Monitor, process, Caller, normal} -> ok after 1000 -> error(caller_did_not_stop) end.
 
 %% ref:DEC-typed-core-boundary
@@ -104,3 +124,27 @@ worker_context_restores_after_failure_test() ->
     after
         case Previous of undefined -> erase(Key); _ -> put(Key, Previous) end
     end.
+
+%% ref:DEC-async-native-tasks
+async_call_runs_in_an_isolated_worker_test() ->
+    Key = {?MODULE, private},
+    put(Key, private_value),
+    try
+        {Pid, Value} = lawspec_beam_runtime:async_call(fun() -> {self(), get(Key)} end),
+        ?assertNotEqual(self(), Pid),
+        ?assertEqual(undefined, Value),
+        ?assertNot(is_process_alive(Pid)),
+        ?assertEqual(private_value, get(Key))
+    after erase(Key) end.
+
+%% ref:DEC-async-native-tasks
+async_exception_class_and_original_stack_are_preserved_test() ->
+    ?assertThrow({typed_failure, 42}, lawspec_beam_runtime:async_call(fun() -> throw({typed_failure, 42}) end)),
+    ?assertExit(stopped, lawspec_beam_runtime:async_call(fun() -> exit(stopped) end)),
+    try lawspec_beam_runtime:async_call(fun async_error/0) of
+        _ -> error(missing_exception)
+    catch error:async_error:Stack ->
+        ?assertMatch([{?MODULE, async_error, 0, _} | _], Stack)
+    end.
+
+async_error() -> error(async_error).

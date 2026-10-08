@@ -222,7 +222,8 @@ emitBindings target layout bindings plan = do
             nativeCall target (NativeRef (moduleParts ++ [method]))
               (arguments !! receiver : handlers ++ [v | (i,v) <- zip [0::Int ..] arguments, i /= receiver])
           [] -> Left "a BEAM method binding needs its handle bound to a native type"
-      checked <- Definitions.nativeFailures target (bindingFailures bindings) schema declaration invocation
+      checked <- Definitions.nativeFailures target (bindingFailures bindings) schema declaration
+        (Definitions.awaitNative declaration invocation)
       output <- if result == C.scalarType "Unit" then pure (E.sequenceDoc [checked,E.atom "ls_unit"])
         else convert "from_native" result checked
       name <- maybe (Left "missing BEAM bound entry") Right (lookup (C.declarationId declaration) (boundEntries bindings))

@@ -6,7 +6,7 @@ title: Asynchronous functions
 # Asynchronous functions
 
 `async` before a signature makes an adapter asynchronous: the implementation
-returns its target's task, and the generated tests await it.
+uses its target's native concurrency, and the generated tests await its result.
 
 ```lawspec
 unit guide.orders
@@ -36,8 +36,8 @@ name elsewhere.
 
 `async f ::` is the same declaration as `f :: ... uses Async`, with `Async`
 from `lawspec.concurrent`: an adapter that uses `Async` runs on its default
-handler, the target's native async, so its native code returns the target's
-task and takes no handler for it. `lawspec check --json` lists `Async` in the
+handler, the target's native concurrency, and takes no handler for it.
+`lawspec check --json` lists `Async` in the
 declaration's `uses`. See [existing features as
 abilities](abilities-mapping.md#async).
 
@@ -57,6 +57,18 @@ price :: Text -> Int32 uses Async     -- the same
 | Go | returns `lawspec.Task[T]`, made with `lawspec.Go(func() T { ... })` | `Await()`; a panic in the goroutine is raised again |
 | Haskell | returns `IO T` | runs the action |
 | Rust | `pub async fn`, a `Future` | the runtime's `block_on`; no executor crate is needed |
+| Erlang, Elixir, Gleam | an ordinary function returning the declared value | runs it in a monitored BEAM process and awaits its result |
+
+BEAM adapters may block on native I/O or receive messages; their worker yields
+to the scheduler. They return the declared native value directly, including
+when bound to an existing function, method or constructor. They do not return
+an Elixir `Task` or an opaque process identifier in place of that value.
+Use an ordinary wrapper that awaits an existing task when binding a task API.
+The worker inherits the active LawSpec scope and handler dependencies;
+application process dictionary entries stay local to their process.
+Exceptions keep their class, reason and stack, so declared failure mappings
+and result contracts apply after the call completes. When the caller dies,
+LawSpec cancels and joins its workers.
 
 ## Semantics
 

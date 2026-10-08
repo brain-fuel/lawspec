@@ -1,0 +1,6 @@
+@@ src/example/orders.gleam
+<<<<<<<
+pub fn price(sku: String) -> Int { price_of(sku) }
+=======
+pub fn price(sku: String) -> Int { price_of(sku) + 1 }
+>>>>>>>

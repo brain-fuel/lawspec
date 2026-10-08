@@ -6,6 +6,11 @@ pub fn roundtrip(counter: abilities.Counter, amount: Int) -> Int {
   definitions.shifted(counter, amount)
 }
 
+pub fn async_roundtrip(counter: abilities.Counter, amount: Int) -> Int {
+  let scratch = effects.new_cell(amount)
+  definitions.shifted(counter, effects.read_cell(scratch))
+}
+
 pub fn public_probe(_unit: Nil) -> Bool {
   effects.with_context(fn(context) {
     let counter = abilities.fresh_counter(context)

@@ -1,0 +1,7 @@
+expect: refunds over the limit are too large
+@@ lib/example_failures.ex
+<<<<<<<
+:lawspec_beam_effects.fail(%Data.PaymentErrorTooLarge{limit: 5000})
+=======
+raise("native untyped failure")
+>>>>>>>

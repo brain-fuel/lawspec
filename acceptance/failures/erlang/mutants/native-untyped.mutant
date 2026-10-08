@@ -1,0 +1,7 @@
+expect: refunds over the limit are too large
+@@ src/example_failures.erl
+<<<<<<<
+lawspec_beam_effects:fail({payment_error_too_large, 5000})
+=======
+erlang:error(native_untyped_failure)
+>>>>>>>

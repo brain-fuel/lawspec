@@ -263,7 +263,19 @@ test_beamCodeUsesCheckedCoreAndNativeFrameworks = describe "BEAM generation" $ d
         tests `shouldSatisfy` isInfixOf "lawspec_beam_effects:attempt") ["erlang","elixir","gleam"]
   -- ref:DEC-never-pass-vacuously
   it "refuses an execution plane before it can silently omit its behavior" $ do
-    input <- readFile "examples/specs/async_fetch.lawspec"
+    input <- readFile "examples/specs/limits.lawspec"
     case generated False input of
-      Left errors -> show errors `shouldSatisfy` isInfixOf "async adapters and workflow policies"
+      Left errors -> show errors `shouldSatisfy` isInfixOf "workflow policies"
       Right _ -> expectationFailure "an unconnected execution plane was accepted"
+  -- ref:DEC-async-native-tasks ref:DEC-native-bindings-typed-identity
+  mapM_ (\target -> it (target ++ " awaits async native calls before checking their result") $ do
+    input <- readFile "examples/specs/async_fetch.lawspec"
+    case generatedFor target False input of
+      Left errors -> expectationFailure (show errors)
+      Right artifacts -> do
+        let definitions = concat [artifactContent a | a <- artifacts, artifactPath a == "src/lawspec_definitions.erl"]
+            adapters = concat [artifactContent a | a <- artifacts, ownership a == "user"]
+        definitions `shouldSatisfy` isInfixOf "lawspec_beam_runtime:async_call"
+        definitions `shouldSatisfy` isInfixOf "lawspec_beam_schema:from_native"
+        adapters `shouldSatisfy` (not . isInfixOf "_Handler")
+        adapters `shouldSatisfy` (not . isInfixOf "_handler")) ["erlang", "elixir", "gleam"]

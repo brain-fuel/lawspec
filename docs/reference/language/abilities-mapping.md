@@ -43,10 +43,12 @@ price :: Text -> Int32 uses Async     -- the same declaration
 ```
 
 Both make an asynchronous adapter (see [async functions](async-functions.md)):
-its native code returns the target's task, and the generated tests await it.
+its native code uses the target's concurrency, and the generated tests await
+the result.
 The `Async` handler of an adapter is the target's own async (Python's
 `asyncio`, JavaScript's promises, Java's `CompletableFuture`, Kotlin's
-coroutines, Go's goroutines, Haskell's `IO`, Rust's futures), so its native
+coroutines, Go's goroutines, Haskell's `IO`, Rust's futures, or monitored BEAM
+processes in Erlang, Elixir and Gleam), so its native
 code gets no handler argument for it. A unit that declares an ability of
 its own called `Async` keeps that ability, and `uses Async` then means it.
 

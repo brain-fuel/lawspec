@@ -1,7 +1,11 @@
 -module(example_handler_context).
--export([roundtrip/2, public_probe/1, counter_handler/0, offset_handler/0]).
+-export([roundtrip/2, async_roundtrip/2, public_probe/1, counter_handler/0, offset_handler/0]).
 
 roundtrip(Counter, Amount) -> example_handler_context_definitions:shifted(Counter, Amount).
+
+async_roundtrip(Counter, Amount) ->
+    Scratch = lawspec_beam_effects:native_cell(Amount),
+    example_handler_context_definitions:shifted(Counter, lawspec_beam_effects:native_read(Scratch)).
 
 public_probe(ok) ->
     lawspec_abilities:with_context(fun(Context) ->

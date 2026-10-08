@@ -27,12 +27,20 @@ definition shifted (amount :: Int32) :: Integer uses Counter is
 end
 
 roundtrip :: Int32 -> Integer uses Counter
+async asyncRoundtrip :: Int32 -> Integer uses Counter
 publicProbe :: Unit -> Bool
 
 law `a native round trip retains lexical overrides` using freshCounter is
   definition is
     `for all` (amount :: Int32 where amount >= -1000 && amount <= 1000) .
       roundtrip amount = amount + 100
+  end
+end
+
+law `an async worker retains handlers and can allocate scoped state` using freshCounter is
+  definition is
+    `for all` (amount :: Int32 where amount >= -1000 && amount <= 1000) .
+      asyncRoundtrip amount = amount + 100
   end
 end
 

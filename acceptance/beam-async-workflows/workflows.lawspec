@@ -1,0 +1,46 @@
+unit example.asyncWorkflows
+
+ability Coordination is
+  meet :: Int32 -> Unit
+  finish :: Int32 -> Unit
+end
+
+async first :: Int8 -> Either Text Int8 uses Coordination
+async second :: Int8 -> Either Text Int8 uses Coordination
+
+definition keepFirst (a :: Int8) (b :: Int8) :: Int8 is a end
+
+workflow both :: Int8 -> Either _ Int8 is
+  all accumulate
+    then first
+    then second
+  end
+  combine keepFirst
+end
+
+workflow firstFailure :: Int8 -> Either _ Int8 is
+  all
+    then first
+    then second
+  end
+  combine keepFirst
+end
+
+law `parallel results keep declaration order` is
+  definition is `for all` (n :: Int8) .
+    both n = prelude.select (n < 0)
+      (Left (BothFailures [BothFirstFailed "first", BothSecondFailed "second"]))
+      (Right n)
+  end
+end
+
+law `without accumulation the first declared failure wins` is
+  definition is `for all` (n :: Int8) .
+    firstFailure n = prelude.select (n < 0) (Left (FirstFailureFirstFailed "first")) (Right n)
+  end
+end
+
+publicProbe :: Unit -> Bool
+law `public workflow steps overlap and all finish before returning` is
+  definition is publicProbe unitValue = true end
+end

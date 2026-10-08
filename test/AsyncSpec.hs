@@ -53,7 +53,7 @@ test_asyncAdaptersAreMarkedReportedAndBoundToEachTargetsTask = describe "async a
                          | Right compiled <- [program source], u <- C.programUnits compiled ]
       shape sugared `shouldBe` shape orders
     it "generates the same code on every target" $
-      forM_ ["python", "javascript", "typescript", "go", "java", "kotlin", "haskell", "rust"] $ \target ->
+      forM_ ["python", "javascript", "typescript", "go", "java", "kotlin", "haskell", "rust", "erlang", "elixir", "gleam"] $ \target ->
         (program sugared >>= planTesting >>= emitPlan target) `shouldBe` (program orders >>= planTesting >>= emitPlan target)
     it "keeps the other abilities a signature uses" $ do
       let Right compiled = program (unlines
@@ -84,5 +84,5 @@ test_asyncAdaptersAreMarkedReportedAndBoundToEachTargetsTask = describe "async a
     forM_ [ ("python", "async def price"), ("javascript", "export async function price")
           , ("typescript", "export async function price"), ("java", "CompletableFuture<java.lang.Integer> price")
           , ("kotlin", "suspend fun price"), ("go", "LawSpecTask[int32]"), ("haskell", "price :: T.Text -> P.IO I.Int32")
-          , ("rust", "pub async fn price") ] $ \(target, expected) ->
+          , ("rust", "pub async fn price"), ("erlang", "price(_Argument0)"), ("elixir", "def price(_argument0)"), ("gleam", "pub fn price(_argument0: String) -> Int") ] $ \(target, expected) ->
       it target $ stub target orders `shouldSatisfy` either (const False) (isInfixOf expected)

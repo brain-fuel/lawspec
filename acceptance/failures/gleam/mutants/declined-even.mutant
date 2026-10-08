@@ -1,0 +1,7 @@
+expect: even amounts go through
+@@ src/example/failures.gleam
+<<<<<<<
+_ -> data.DecisionApprove
+=======
+_ -> data.DecisionDecline("even")
+>>>>>>>

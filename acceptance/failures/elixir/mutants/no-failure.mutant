@@ -1,0 +1,7 @@
+expect: odd amounts are declined, and say why
+@@ lib/example_failures.ex
+<<<<<<<
+when rem(n, 2) == 1
+=======
+when rem(n, 2) == 1 and n > 50000
+>>>>>>>
