@@ -4,7 +4,7 @@
 %% ref:DEC-portable-seeded-generation ref:DEC-distribution-canonical-wire
 -module(lawspec_beam_values).
 -export([read_descriptor/1, from_text/1, generate/4, minimal/2, shrink/3,
-    render/1, encode/3, decode/3, resolve/2, varint/1, read_varint/1]).
+    render/1, encode/3, decode/3, decode_prefix/3, resolve/2, varint/1, read_varint/1]).
 
 read_descriptor(Text) when is_binary(Text) ->
     {Forms, Rest} = forms(unicode:characters_to_list(Text), []),
@@ -218,8 +218,9 @@ read_varint(<<Byte, Rest/binary>>, Acc, Shift) ->
 read_varint(<<>>, _, _) -> fail(truncated_wire_value).
 
 decode(D, Bytes, Table) ->
-    {V, Rest} = get(resolve(D, Table), Bytes, Table),
+    {V, Rest} = decode_prefix(D, Bytes, Table),
     require(Rest =:= <<>>, trailing_wire_bytes), V.
+decode_prefix(D, Bytes, Table) -> get(resolve(D, Table), Bytes, Table).
 get([<<"int">>, _, Lo, Hi], B, _) ->
     {Z, Rest} = read_varint(B),
     V = case Z rem 2 of 0 -> Z div 2; 1 -> -(Z + 1) div 2 end,
