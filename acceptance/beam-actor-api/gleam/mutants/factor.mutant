@@ -1,0 +1,7 @@
+expect-any: model_failed|ModelFailed
+@@ src/example/actor_abilities.gleam
+<<<<<<<
+pub fn factor_handler() -> abilities.Factor { abilities.factor(fn(n) { 2 * n }) }
+=======
+pub fn factor_handler() -> abilities.Factor { abilities.factor(fn(n) { 2 * n + 1 }) }
+>>>>>>>

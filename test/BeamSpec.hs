@@ -16,6 +16,7 @@ import qualified LawSpec.Code.Doc as D
 import qualified LawSpec.BeamCode as E
 import qualified LawSpec.BeamExpr as Expr
 import qualified LawSpec.BeamActors as Actors
+import qualified LawSpec.BeamModels as Models
 import LawSpec.Scaffold (scaffoldFilesWith)
 
 generated :: Bool -> String -> Either [Diagnostic] [Artifact]
@@ -27,6 +28,31 @@ generatedFor target compact text = compileCore 64 defaultGeneration [Source "bea
 
 test_beamCodeUsesCheckedCoreAndNativeFrameworks :: Spec
 test_beamCodeUsesCheckedCoreAndNativeFrameworks = describe "BEAM generation" $ do
+  -- ref:DEC-stateful-models-linearizability ref:DEC-typed-core-boundary
+  mapM_ (\target -> it (target ++ " emits model evidence with checked callbacks and fresh native ability scopes") $ do
+    input <- readFile "acceptance/beam-actor-api/actor_api.lawspec"
+    case compileCore 64 defaultGeneration [Source "actor_api.lawspec" input] >>= planTesting of
+      Left errors -> expectationFailure (show errors)
+      Right plan -> case Models.emit target (D.Pretty 100) 64 (planDataDeclarations plan)
+          (map plannedUnit (plannedUnits plan)) of
+        Left message -> expectationFailure message
+        Right artifacts -> do
+          let body = concatMap artifactContent artifacts
+          all ((== "test") . artifactPlacement) artifacts `shouldBe` True
+          mapM_ (\part -> body `shouldSatisfy` isInfixOf part)
+            ["lawspec_beam_model:new", "lawspec_beam_model:check", "lawspec_beam_model_parallel:check",
+             "lawspec_definitions:evaluate_", "lawspec_beam_effects:with_scope", "_production", "make_ref()"]
+          case target of
+            "elixir" -> body `shouldSatisfy` isInfixOf "use ExUnit.Case"
+            "gleam" -> body `shouldSatisfy` isInfixOf "model_counter_parallel_test() -> Nil"
+            _ -> body `shouldSatisfy` isInfixOf "_test_()"
+    ) ["erlang", "elixir", "gleam"]
+  it "keeps unconnected BEAM scenarios explicit in the model emitter" $ do
+    input <- readFile "examples/specs/models.lawspec"
+    case compileCore 64 defaultGeneration [Source "models.lawspec" input] >>= planTesting of
+      Left errors -> expectationFailure (show errors)
+      Right plan -> Models.emit "erlang" (D.Pretty 100) 64 (planDataDeclarations plan)
+        (map plannedUnit (plannedUnits plan)) `shouldBe` Left "BEAM model scenarios are not connected yet"
   -- ref:DEC-actors-otp-supervision ref:DEC-native-bindings-typed-identity
   mapM_ (\target -> it (target ++ " builds typed actor APIs through checked adapters and native OTP entry points") $ do
     input <- readFile "examples/specs/actors.lawspec"

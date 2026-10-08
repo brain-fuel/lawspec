@@ -1,0 +1,7 @@
+expect-any: model_failed|ModelFailed
+@@ src/example_actor_abilities.erl
+<<<<<<<
+restore_handler() -> #{restore => fun(N) -> N + 10 end}.
+=======
+restore_handler() -> #{restore => fun(N) -> N end}.
+>>>>>>>

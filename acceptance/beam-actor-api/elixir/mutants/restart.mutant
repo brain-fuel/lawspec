@@ -1,0 +1,7 @@
+expect-any: model_failed|ModelFailed
+@@ lib/example_actor_abilities.ex
+<<<<<<<
+  def restore_handler(), do: %Restore{restore: fn n -> n + 10 end}
+=======
+  def restore_handler(), do: %Restore{restore: fn n -> n end}
+>>>>>>>

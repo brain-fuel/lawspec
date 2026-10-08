@@ -15,6 +15,7 @@ import qualified LawSpec.BeamDefinitions as Definitions
 import qualified LawSpec.BeamEffects as Effects
 import qualified LawSpec.BeamAbilities as Abilities
 import qualified LawSpec.BeamActors as Actors
+import qualified LawSpec.BeamModels as Models
 import qualified LawSpec.BeamNativeBinding as Native
 import qualified LawSpec.ElixirNative as Elixir
 import qualified LawSpec.GleamNative as Gleam
@@ -55,7 +56,13 @@ emitBeamWithBindings target minify bindings plan = do
         "gleam" -> Gleam.emitNative layout declarations units
         _ -> pure []
       tests <- concat <$> mapM unitTests [u | u <- plannedUnits plan, not (null (plannedProperties u))]
-      pure (schemaFile : definitions ++ abilities ++ actors ++ adapters ++ [a | a <- native, artifactPath a `notElem` boundPaths] ++ tests ++ runtimes ++ cryptoAssets ++ generators tests)
+      models <- Models.emit target layout bits declarations units
+      pure (schemaFile : definitions ++ abilities ++ actors ++ adapters ++ [a | a <- native, artifactPath a `notElem` boundPaths] ++
+        tests ++ models ++ runtimes ++ modelRuntimes ++ cryptoAssets ++ generators (tests ++ models))
+    modelRuntimes = [Artifact (testSupport ++ "lawspec_beam_" ++ name ++ ".erl")
+      (runtimeSource ("beam-" ++ name)) "generated" "test"
+      | any (not . null . C.unitMachines) units,
+        name <- ["model","model_parallel","values"] ++ ["random" | not hasPolicies]]
     runtimes = [Artifact ("src/lawspec_beam_" ++ name ++ ".erl")
         (runtimeSource ("beam-" ++ name)) "generated" "source"
         | name <- ["scalar","schema","regex","runtime"] ++
@@ -270,12 +277,13 @@ validatePlan target plan = do
       laws = concatMap plannedProperties (plannedUnits plan)
       moduleNames = map (Definitions.adapterModule) units
       generated = ["lawspec_data","lawspec_definitions","lawspec_abilities","lawspec_native_bindings","lawspec_native_generators"] ++
-        [Definitions.adapterModule u ++ suffix | u <- units, suffix <- ["_definitions","_definitions_ffi","_lawspec_tests","_lawspec_cases"]] ++
+        [Definitions.adapterModule u ++ suffix | u <- units, suffix <-
+          ["_definitions","_definitions_ffi","_lawspec_tests","_lawspec_cases","_lawspec_models","_lawspec_models_test"]] ++
         ["lawspec_abilities_" ++ Definitions.adapterModule u | u <- units]
       collisions = [n | n <- moduleNames, n `elem` generated || "lawspec_beam_" `isPrefixOf` n]
       natives = [E.nativeModule target u | u <- units,
         not (null (C.unitDeclarations u) && null (Abilities.productionAbilities u))]
-      nativeGenerated = [E.nativeModule target u ++ suffix | u <- units, suffix <- [".Definitions", ".LawSpecTest"]]
+      nativeGenerated = [E.nativeModule target u ++ suffix | u <- units, suffix <- [".Definitions", ".LawSpecTest", ".LawSpecModelTest"]]
       functionClashes u = let names = map (E.nativeFunction target) (C.unitDeclarations u) ++
                                map Abilities.productionName (Abilities.productionAbilities u)
                          in length names /= length (nub names)

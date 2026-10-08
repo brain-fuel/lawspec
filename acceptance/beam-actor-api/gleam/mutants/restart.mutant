@@ -1,0 +1,7 @@
+expect-any: model_failed|ModelFailed
+@@ src/example/actor_abilities.gleam
+<<<<<<<
+pub fn restore_handler() -> abilities.Restore { abilities.restore(fn(n) { n + 10 }) }
+=======
+pub fn restore_handler() -> abilities.Restore { abilities.restore(fn(n) { n }) }
+>>>>>>>

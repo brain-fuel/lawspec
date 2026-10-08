@@ -1,0 +1,7 @@
+expect-any: model_failed|ModelFailed
+@@ src/beam_model_counter.erl
+<<<<<<<
+decrement(Id) -> ets:update_counter(?MODULE, Id, {2, -1}).
+=======
+decrement(Id) -> ets:update_counter(?MODULE, Id, {2, 1}).
+>>>>>>>

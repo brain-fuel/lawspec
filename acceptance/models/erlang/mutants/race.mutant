@@ -1,0 +1,10 @@
+expect-any: model_inconsistent|ModelInconsistent
+@@ src/beam_model_counter.erl
+<<<<<<<
+increment(Id) -> ets:update_counter(?MODULE, Id, {2, 1}).
+=======
+increment(Id) ->
+    Before = read(Id),
+    receive after 1 -> ok end,
+    true = ets:insert(?MODULE, {Id, Before + 1}), Before + 1.
+>>>>>>>

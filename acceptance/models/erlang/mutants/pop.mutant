@@ -1,0 +1,7 @@
+expect-any: model_failed|ModelFailed
+@@ src/example_models.erl
+<<<<<<<
+pop({stack_push, N, S}) -> {pop_flow, N, S}.
+=======
+pop({stack_push, N, _} = S) -> {pop_flow, N, S}.
+>>>>>>>

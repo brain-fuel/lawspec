@@ -1,0 +1,7 @@
+expect-any: model_failed|ModelFailed
+@@ src/example_actor_abilities.erl
+<<<<<<<
+factor_handler() -> #{adjust => fun(N) -> 2 * N end}.
+=======
+factor_handler() -> #{adjust => fun(N) -> 2 * N + 1 end}.
+>>>>>>>

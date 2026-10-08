@@ -99,6 +99,24 @@ calls agrees with the model (A: increment() returned 1; B: increment() returned 
 Generation, shrinking and the order of the cases are identical on every
 target for the same seed (`LAWSPEC_SEED`).
 
+### BEAM model tests
+
+Erlang, Elixir and Gleam run the portable model checker through EUnit,
+ExUnit and Gleeunit. Generated test names include the model's name and
+whether the run is sequential or parallel. A failure reports the seed,
+case and reduced command sequence.
+
+Adapters use the production handlers for their declared abilities. Each
+replay, including a shrink attempt, gets a fresh handler scope and workflow
+test context. Async adapters return ordinary native values to the checker.
+Actor models run their handlers in persistent `gen_server` processes under
+an owned OTP supervisor; an injected crash replaces the worker and runs
+the declared restart adapter. The supervisor is closed after the case.
+
+The BEAM checker requires `abstract` for an eventual model so it can compare
+the final state. It partitions linearizable collection histories by key;
+sequential and eventual histories retain each caller's order across keys.
+
 ## Consistency
 
 Replicated and distributed systems often promise less than
