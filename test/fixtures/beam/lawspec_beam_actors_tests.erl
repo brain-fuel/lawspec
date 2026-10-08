@@ -2,6 +2,76 @@
 %% ref:DEC-tests-cite-requirements ref:DEC-actors-otp-supervision
 -module(lawspec_beam_actors_tests).
 -include_lib("eunit/include/eunit.hrl").
+-export([init/1]).
+
+init({native_parent, Spec}) ->
+    {ok, {#{strategy => one_for_one}, [#{id => application_actors,
+        start => {lawspec_beam_actors, start_link, [Spec]}, restart => permanent,
+        shutdown => 5000, type => worker, modules => [lawspec_beam_actor_tree]}]}}.
+
+otp_application_owns_stable_service_and_actor_handles_cross_schema_test() ->
+    Child = (counter())#{metadata => #{name => account, setting => 42}},
+    Spec = lawspec_beam_actors:supervisor(one_for_one, 5, 10000000,
+        [{a, permanent, Child}, {b, permanent, Child}]),
+    {ok, Application} = supervisor:start_link(?MODULE, {native_parent, Spec}),
+    unlink(Application),
+    [{application_actors, Service, worker, _}] = supervisor:which_children(Application),
+    Sup = lawspec_beam_actors:from_process(Service),
+    A = lawspec_beam_actors:child(Sup, a), B = lawspec_beam_actors:child(Sup, b),
+    try
+        HA = lawspec_beam_schema:handle(A, <<"Actor">>),
+        HB = lawspec_beam_schema:handle(B, <<"Actor">>),
+        Schema = lawspec_beam_schema:new([#{name => <<"Actor">>, parameters => 0,
+            constructors => [], handle => true}], [], 64),
+        ?assertEqual(HA, lawspec_beam_schema:from_native(A, {<<"Actor">>, []}, Schema)),
+        ?assertEqual(A, lawspec_beam_schema:to_native(HA, {<<"Actor">>, []}, Schema)),
+        ?assertNotEqual(HA, HB),
+        ?assertEqual(#{name => account, setting => 42}, lawspec_beam_actors:metadata(A)),
+        Old = lawspec_beam_actors:worker_pid(A),
+        lawspec_beam_actors:crash(A),
+        ?assertEqual(HA, lawspec_beam_schema:handle(lawspec_beam_actors:child(Sup, a), <<"Actor">>)),
+        ?assertNotEqual(Old, lawspec_beam_actors:worker_pid(A)),
+        ?assertMatch([{application_actors, Service, worker, _}], supervisor:which_children(Application)),
+        ?assertEqual(#{name => account, setting => 42}, lawspec_beam_actors:metadata(A))
+    after gen_server:stop(Application, normal, infinity) end,
+    await_dead(Service).
+
+linked_start_failure_has_native_otp_result_test() ->
+    Spec = lawspec_beam_actors:actor(fun() -> error(start_broken) end, fun(S) -> S end),
+    ?assertMatch({error, _}, lawspec_beam_actors:start_link(Spec)).
+
+scoped_actor_api_closes_on_callback_exception_test() ->
+    Test = self(),
+    ?assertThrow(callback_broken, lawspec_beam_actors:with_spec(counter(), fun(A) ->
+        {lawspec_actor, Tree, _} = A,
+        Test ! {scope_owned, Tree, lawspec_beam_actors:worker_pid(A)},
+        throw(callback_broken)
+    end)),
+    receive {scope_owned, Tree, Worker} -> await_dead(Tree), await_dead(Worker)
+        after 1000 -> error(no_actor) end.
+
+scoped_actor_api_closes_when_callback_owner_is_killed_test() ->
+    Test = self(),
+    Owner = spawn(fun() -> lawspec_beam_actors:with_spec(counter(), fun(A) ->
+        {lawspec_actor, Tree, _} = A,
+        Test ! {scope_owned, Tree, lawspec_beam_actors:worker_pid(A)},
+        receive forever -> ok end
+    end) end),
+    {Tree, Worker} = receive {scope_owned, T, W} -> {T, W} after 1000 -> error(no_actor) end,
+    exit(Owner, kill),
+    await_dead(Tree), await_dead(Worker).
+
+native_monitor_receive_selects_only_its_handle_test() ->
+    A = lawspec_beam_actors:start(fun() -> 0 end),
+    Other = {lawspec_actor, self(), [other]},
+    self() ! ordinary_application_message,
+    self() ! {lawspec_actor_event, Other, {stopped, none}},
+    lawspec_beam_actors:monitor(A, self()),
+    lawspec_beam_actors:crash(A, explicit_failure),
+    ?assertEqual({ok, {crashed, explicit_failure}}, lawspec_beam_actors:receive_event(A, 1000)),
+    ?assertEqual({error, nil}, lawspec_beam_actors:receive_event(A, 0)),
+    receive ordinary_application_message -> ok after 0 -> error(application_message_lost) end,
+    ?assertEqual({ok, stopped}, lawspec_beam_actors:receive_event(Other, 0)).
 
 real_otp_workers_serialize_concurrent_messages_test() ->
     Actor = lawspec_beam_actors:start(fun() -> 0 end),

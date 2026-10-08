@@ -7,7 +7,7 @@ import Data.List (isInfixOf)
 import Data.Either (isLeft)
 import LawSpec.Common
 import LawSpec.Frontend (compileCore)
-import LawSpec.Testing (planTesting)
+import LawSpec.Testing (planTesting, Plan(..), PlannedUnit(..))
 import LawSpec.CoreEmit (emitPlanWithFormat, emitPlanWithOptions)
 import LawSpec.TestManifest (unitTestPath)
 import LawSpec.TestNames (unitTestNames)
@@ -15,6 +15,7 @@ import qualified LawSpec.Core as C
 import qualified LawSpec.Code.Doc as D
 import qualified LawSpec.BeamCode as E
 import qualified LawSpec.BeamExpr as Expr
+import qualified LawSpec.BeamActors as Actors
 import LawSpec.Scaffold (scaffoldFilesWith)
 
 generated :: Bool -> String -> Either [Diagnostic] [Artifact]
@@ -26,6 +27,53 @@ generatedFor target compact text = compileCore 64 defaultGeneration [Source "bea
 
 test_beamCodeUsesCheckedCoreAndNativeFrameworks :: Spec
 test_beamCodeUsesCheckedCoreAndNativeFrameworks = describe "BEAM generation" $ do
+  -- ref:DEC-actors-otp-supervision ref:DEC-native-bindings-typed-identity
+  mapM_ (\target -> it (target ++ " builds typed actor APIs through checked adapters and native OTP entry points") $ do
+    input <- readFile "examples/specs/actors.lawspec"
+    case compileCore 64 defaultGeneration [Source "actors.lawspec" input] >>= planTesting of
+      Left errors -> expectationFailure (show errors)
+      Right plan -> case Actors.emit target (D.Pretty 100) 64 (planDataDeclarations plan)
+          (map plannedUnit (plannedUnits plan)) of
+        Left message -> expectationFailure message
+        Right artifacts -> do
+          let paths = map artifactPath artifacts
+              body = concatMap artifactContent artifacts
+          mapM_ (\path -> paths `shouldContain` [path])
+            ["src/lawspec_actor_example_actors_account.erl","src/lawspec_supervisor_example_actors_bank.erl"]
+          mapM_ (\part -> body `shouldSatisfy` isInfixOf part)
+            ["lawspec_definitions:evaluate_","lawspec_beam_schema:from_native", "lawspec_beam_schema:to_native",
+             "lawspec_beam_actors:start_link", "otp_child_spec", "tell_deposit", "handlers := []"]
+          body `shouldSatisfy` (not . isInfixOf "proper:")
+          case target of
+            "elixir" -> paths `shouldContain` ["lib/lawspec/actors/example/actors/account_actor.ex"]
+            "gleam" -> paths `shouldContain` ["src/lawspec/actors/example/actors/account_actor.gleam"]
+            _ -> pure ()
+    ) ["erlang", "elixir", "gleam"]
+  it "threads BEAM ability interfaces through nested supervisors and actor methods" $ do
+    input <- readFile "acceptance/beam-actor-api/actor_api.lawspec"
+    case compileCore 64 defaultGeneration [Source "actor_api.lawspec" input] >>= planTesting of
+      Left errors -> expectationFailure (show errors)
+      Right plan -> case Actors.emit "gleam" (D.Pretty 100) 64 (planDataDeclarations plan)
+          (map plannedUnit (plannedUnits plan)) of
+        Left message -> expectationFailure message
+        Right artifacts -> do
+          mapM_ (\path -> map artifactPath artifacts `shouldContain` [path])
+            ["src/lawspec_supervisor_example_actor_abilities_root.erl",
+             "src/lawspec/supervisors/example/actor_abilities/bank_supervisor.gleam"]
+          let body = concatMap artifactContent artifacts
+          mapM_ (\part -> body `shouldSatisfy` isInfixOf part)
+            ["lawspec_supervisor_example_actor_abilities_bank:spec", "lawspec_beam_effects:with_native_context"]
+  it "rejects BEAM actor methods that collide with lifecycle operations" $ do
+    let input = unlines
+          ["unit example.collision", "type Box is Box value :: Int32 end", "openBox :: Unit -> Box", "stop :: Box -> Box",
+           "definition reset (n :: Int32) :: Int32 is 0 end", "actor box :: Box by Int32 is",
+           "start openBox by 0", "on stop by reset", "end"]
+    case compileCore 64 defaultGeneration [Source "collision.lawspec" input] >>= planTesting of
+      Left errors -> expectationFailure (show errors)
+      Right plan -> mapM_ (\target -> Actors.emit target (D.Pretty 100) 64 (planDataDeclarations plan)
+        (map plannedUnit (plannedUnits plan)) `shouldSatisfy` \result -> case result of
+          Left message -> "colliding BEAM API names" `isInfixOf` message
+          Right _ -> False) ["erlang","elixir","gleam"]
   -- ref:DEC-domain-modeling-primitives ref:DEC-typed-core-boundary
   mapM_ (\target -> it (target ++ " emits workflow policies and scopes every generated case") $ do
     input <- readFile "examples/specs/workflows.lawspec"

@@ -4,6 +4,7 @@
 module LawSpec.BeamEmit (emitBeam, emitBeamWithBindings) where
 
 import qualified LawSpec.Core as C
+import LawSpec.Core.Machine (machineActor)
 import qualified LawSpec.Code.Doc as D
 import qualified LawSpec.BeamCode as E
 import qualified LawSpec.ElixirCode as X
@@ -13,6 +14,7 @@ import qualified LawSpec.BeamData as Data
 import qualified LawSpec.BeamDefinitions as Definitions
 import qualified LawSpec.BeamEffects as Effects
 import qualified LawSpec.BeamAbilities as Abilities
+import qualified LawSpec.BeamActors as Actors
 import qualified LawSpec.BeamNativeBinding as Native
 import qualified LawSpec.ElixirNative as Elixir
 import qualified LawSpec.GleamNative as Gleam
@@ -45,6 +47,7 @@ emitBeamWithBindings target minify bindings plan = do
       schemaFile <- Data.emitData target layout bits declarations
       definitions <- Definitions.emitDefinitions target layout bits declarations units (Native.boundEntries bindings)
       abilities <- if hasAbilities then Abilities.emit target layout bits declarations units (hasBindings bindings) else pure []
+      actors <- Actors.emit target layout bits declarations units
       adapters <- mapM (adapter names) [u | u <- units, target == "erlang", not (boundUnit u),
         not (null (adapterDeclarations u) && null (Abilities.productionAbilities u))]
       native <- case target of
@@ -52,20 +55,22 @@ emitBeamWithBindings target minify bindings plan = do
         "gleam" -> Gleam.emitNative layout declarations units
         _ -> pure []
       tests <- concat <$> mapM unitTests [u | u <- plannedUnits plan, not (null (plannedProperties u))]
-      pure (schemaFile : definitions ++ abilities ++ adapters ++ [a | a <- native, artifactPath a `notElem` boundPaths] ++ tests ++ runtimes ++ cryptoAssets ++ generators tests)
+      pure (schemaFile : definitions ++ abilities ++ actors ++ adapters ++ [a | a <- native, artifactPath a `notElem` boundPaths] ++ tests ++ runtimes ++ cryptoAssets ++ generators tests)
     runtimes = [Artifact ("src/lawspec_beam_" ++ name ++ ".erl")
         (runtimeSource ("beam-" ++ name)) "generated" "source"
         | name <- ["scalar","schema","regex","runtime"] ++
             (if usesEffects then ["effects","handler","waits"] else []) ++
             ["defaults" | hasPolicies || any Abilities.hasDefault (Effects.abilities units)] ++
-            (if hasPolicies then ["random","policy","tasks","attempts","workflow_state","workflow"] else []) ++
+            ["tasks" | hasPolicies || hasActors] ++
+            (if hasPolicies then ["random","policy","attempts","workflow_state","workflow"] else []) ++
+            (if hasActors then ["actors","actor","actor_sup","actor_tree"] else []) ++
             (if usesCrypto then ["crypto","crypto_native"] else []) ++
             ["gleam" | target == "gleam"]] ++
         [Artifact "lib/lawspec/workflow.ex" (runtimeSource "beam-elixir-workflow") "generated" "source"
           | target == "elixir", hasPolicies] ++
         [Artifact ("src/lawspec/" ++ name ++ ".gleam") (runtimeSource ("beam-gleam-" ++ name)) "generated" "source"
           | name <- ["types","scalar"] ++ ["failures" | usesEffects] ++ ["effects" | hasAbilities] ++
-              ["workflow" | hasPolicies], target == "gleam"]
+              ["workflow" | hasPolicies] ++ ["actors" | hasActors], target == "gleam"]
     usesCrypto = any ((== "lawspec.crypto") . C.idText . C.unitId) units
     cryptoAssets = if not usesCrypto then [] else
       [Artifact "priv/lawspec_crypto_native.c" (runtimeSource "beam-crypto-native-c") "generated" "source",
@@ -92,6 +97,7 @@ emitBeamWithBindings target minify bindings plan = do
             E.lambda [] (E.remote "lawspec_beam_crypto_vectors" "check" [E.binary kind])] | kind <- vectorKinds]]])) "generated" "test"
     hasAbilities = not (null (Effects.abilities units) && null (Effects.handlers units))
     hasPolicies = any ((/= Nothing) . C.definitionPolicy) (concatMap C.unitDefinitions units)
+    hasActors = any (any machineActor . C.unitMachines) units || any (not . null . C.unitSupervisors) units
     usesEffects = any (not . null . C.unitAbilities) units ||
       any (not . null . C.declarationUses) (concatMap C.unitDeclarations units)
     generators tests = if null tests then [] else

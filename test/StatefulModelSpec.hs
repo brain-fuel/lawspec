@@ -2,9 +2,12 @@
 module StatefulModelSpec (test_statefulModelsElaborateFromTypestate) where
 
 import Data.List (isInfixOf)
+import Control.Monad (forM_)
 import Test.Hspec
 import LawSpec.Compile
 import LawSpec.Core.Machine
+import qualified LawSpec.Core as C
+import LawSpec.Frontend (compileCore)
 import LawSpec.Model hiding (Expectation)
 
 stack :: String
@@ -55,6 +58,27 @@ rejects fragment source = case machinesOf source of
 -- ref:REQ-stateful-models
 test_statefulModelsElaborateFromTypestate :: Spec
 test_statefulModelsElaborateFromTypestate = describe "stateful models" $ do
+  -- ref:DEC-typed-core-boundary ref:DEC-actors-otp-supervision
+  it "preserves adapters' ability rows and async flags in model bridges" $ do
+    input <- readFile "acceptance/beam-actor-api/actor_api.lawspec"
+    case compileCore 64 defaultGeneration [Source "actor_api.lawspec" input] of
+      Left diagnostics -> expectationFailure (show diagnostics)
+      Right program -> do
+        let units = C.programUnits program
+            declarations = [(C.declarationId d,d) | u <- units, d <- C.unitDeclarations u]
+            bridges = concat [ [(startRun s,startSystem s) | Just s <- [machineStart m]] ++
+              [(commandRun c,commandSystem c) | c <- machineCommands m]
+              | u <- units, m <- C.unitMachines u]
+        length bridges `shouldBe` 4
+        forM_ bridges $ \(bridge,adapter) -> case (lookup bridge declarations,lookup adapter declarations) of
+          (Just b,Just a) -> do
+            C.declarationUses b `shouldBe` C.declarationUses a
+            C.declarationAsync b `shouldBe` C.declarationAsync a
+          _ -> expectationFailure "missing model bridge or adapter"
+        [C.declarationAsync d | (identity,d) <- declarations, identity `elem` map fst bridges]
+          `shouldSatisfy` or
+        [C.declarationUses d | (identity,d) <- declarations, identity `elem` map fst bridges]
+          `shouldSatisfy` any (not . null)
   it "read each command's typestate from its flow parameter" $
     case machinesOf (stack ++ unlines
       [ "model stack :: Stack n by List Int8 is"

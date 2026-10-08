@@ -11,6 +11,8 @@ data Actor = Actor
   , actorName :: String
   -- The handle type's name, such as AccountActor.
   , actorClass :: String
+  -- The handle's Core identity, including any qualification by imports.
+  , actorHandle :: C.Type
   -- The actor's own state type.
   , actorState :: C.Type
   , actorStart :: C.Declaration
@@ -55,7 +57,8 @@ data Handler = Handler
 -- | The unit's actors, with each adapter's argument names from its contract.
 actorsOf :: C.Unit -> [Actor]
 actorsOf u =
-  [ Actor u (machineName m) (lastSegment (machineState m)) own start (named start)
+  [ Actor u (machineName m) (lastSegment (machineState m))
+      (C.Constructor (C.idText (C.unitId u) ++ "::type::" ++ lastSegment (machineState m)) []) own start (named start)
       [Handler (commandName c) d (drop 1 (named d)) (reply own d) | c <- machineCommands m, not (commandRestart c), Just d <- [declaration (commandSystem c)]]
       (case [d | c <- machineCommands m, commandRestart c, Just d <- [declaration (commandSystem c)]] of
         d : _ -> Just d

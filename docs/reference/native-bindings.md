@@ -236,6 +236,9 @@ generator factories and bound functions are `codec`, `generator` and
 - Method bindings call the bound handle's module with the receiver first.
   Constructor bindings omit `Unit` inputs; a `Unit` result ignores the native
   return value after executing the call.
+- Native BEAM handles use a pid, reference or port. Generated actors also
+  have stable mailbox addresses: their identity survives replacement of the
+  worker process, and children of the same supervisor have distinct identities.
 - Factories return PropEr generators, `StreamData.t(a)` or `qcheck.Generator(a)`.
   Child generators produce native bound values. Every generated value and shrink
   crosses the checked schema before refinements filter it. Invalid values fail.

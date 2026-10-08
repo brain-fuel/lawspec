@@ -466,7 +466,8 @@ machineBridges ds machine = mapM bridge
           binders = [C.Binder (C.Id (C.idText run ++ "::argument::" ++ show i)) ("argument" ++ show i) t | (i, t) <- zip [0 :: Int ..] args]
           call = C.Expr result (C.ExternalCall target [C.Expr (C.binderType b) (C.Local (C.binderId b)) origin | b <- binders]) origin
           name = reverse (takeWhile (/= ':') (reverse (C.idText run)))
-      pure (C.MkDefinition (C.Declaration run name ty origin) binders call True Nothing)
+          declaration = adapter { C.declarationId = run, C.declarationName = name, C.declarationOrigin = origin }
+      pure (C.MkDefinition declaration binders call True Nothing)
 
 
 -- | Closed fixture evaluation and final frontend elaboration must preserve the

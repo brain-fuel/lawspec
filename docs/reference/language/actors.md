@@ -88,6 +88,9 @@ the data types, that runs your handlers:
 | Java, Kotlin | `var a = AccountActor.start()`; `a.deposit(5)`; `a.tellDeposit(5)` |
 | Rust | `let a = AccountActor::start()?`; `a.deposit(5)?`; `a.tell_deposit(5)?` |
 | Haskell | `a <- startAccountActor accountHandlers`; `accountDeposit a 5`; `tellAccountDeposit a 5` |
+| Erlang | `A = account:start()`; `account:deposit(A, 5)`; `account:tell_deposit(A, 5)` |
+| Elixir | `a = AccountActor.start()`; `AccountActor.deposit(a, 5)`; `AccountActor.tell_deposit(a, 5)` |
+| Gleam | `let a = account.start()`; `account.deposit(a, 5)`; `account.tell_deposit(a, 5)` |
 
 - Each call waits for its reply. The tell form sends the message without
   waiting.
@@ -97,16 +100,77 @@ the data types, that runs your handlers:
   later messages fail with `ActorStopped`.
 - `crash()` crashes the actor on purpose, after the messages already sent,
   for testing how it restarts.
-- `monitor(f)` calls `f` after each crash and when the actor stops.
+- `monitor(f)` calls `f` after each crash and when the actor stops. BEAM
+  targets send those events to the observer process passed to `monitor`.
   `link(other)` crashes either actor when the other crashes. A crash crosses
   each link once.
-- An actor is not a thread. A message to an idle actor starts a short-lived
-  worker (a thread, goroutine, task or green thread) that handles the
-  mailbox and then ends. An idle actor costs only its state and its queue.
+- BEAM actors run in persistent `gen_server` processes. The other targets
+  start a worker (a thread, goroutine, task or green thread) when an idle
+  actor receives a message; that worker handles the mailbox and then ends.
 
 In Haskell, the handlers come in a record (`accountHandlers`, from
 `LawSpecActors.<Unit>.Adapters`), so the adapter module can use its own
 actors without an import cycle.
+
+### BEAM native APIs
+
+For `account` in `example.actors`, the generated API is:
+
+| Target | Module |
+| --- | --- |
+| Erlang | `lawspec_actor_example_actors_account` (abbreviated `account` above) |
+| Elixir | `LawSpec.Actors.Example.Actors.AccountActor` |
+| Gleam | `lawspec/actors/example/actors/account_actor` |
+
+Handlers use native arguments and results, including an ordinary return
+value for an async handler. The generated API checks conversions and adapter
+contracts. A handler returning only the next state yields `ok`, `:ok` or
+`Nil` to its caller. Actor handles can pass through checked definitions and
+native bindings without changing their identity.
+
+`start` takes an interface for each ability used by the actor's start,
+restart or message adapters, in the generated signature's order, followed
+by the start's non-`Unit` arguments. Those interfaces remain the actor's
+choices for its lifetime. An interface backed by a scoped handler must stay
+within that handler's lifetime.
+
+`with_actor` owns an actor for a callback, stops it when the callback
+returns or raises, and also cleans up if the caller process dies. For example:
+
+```gleam
+use account <- account_actor.with_actor()
+let _ = account_actor.deposit(account, 5)
+account_actor.balance(account)
+```
+
+Supervisors have `with_supervisor` with the same ownership rules. Their
+modules use `lawspec_supervisor_<unit>_<name>` in Erlang,
+`LawSpec.Supervisors.<Unit>.<Name>Supervisor` in Elixir, and
+`lawspec/supervisors/<unit>/<name>_supervisor` in Gleam. Each named child is
+a function taking the supervisor handle.
+
+`start_link` returns the native OTP start result. The linked process owns
+the stable mailbox service and its actual OTP supervision tree. Erlang and
+Elixir `child_spec` take the start arguments as a list, so an Elixir
+application can use `{BankSupervisor, []}` in its supervisor's child list.
+Gleam `child_spec` takes the same typed arguments as `start` and returns an
+opaque native OTP child specification for an Erlang bridge. `from_process`
+recovers the actor or supervisor handle from the service pid.
+
+`worker_pid` returns the current handler or supervisor process for native
+OTP inspection. It can change during a restart; keep the generated handle
+for sending messages. A sibling's logical restart follows messages already
+accepted for that sibling, including when an ancestor supervisor restarts.
+
+`monitor(handle, observer)` delivers
+`{lawspec_actor_event, handle, {crashed, cause}}` or
+`{lawspec_actor_event, handle, {stopped, none}}` in Erlang; supervisor events
+use `lawspec_supervisor_event`. Elixir receives the equivalent tuples with
+atoms. Gleam's `lawspec/actors.self()` supplies the observer process, and
+`receive_event(handle, timeout_milliseconds)` returns `Ok(Crashed(cause))`,
+`Ok(Stopped)` or `Error(Nil)` on timeout. Other mailbox messages stay queued.
+For links between differently typed actors, pass the other actor's `handle`
+to `link`.
 
 ### Actors on other nodes
 

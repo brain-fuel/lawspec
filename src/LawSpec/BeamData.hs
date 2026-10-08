@@ -75,7 +75,8 @@ emitData target layout bits declarations = do
         fields <- mapM (E.nativeType bits names scope . C.binderType) (C.constructorFields c)
         let witnesses = [E.call "binary" [] | _ <- freeExistentials d c]
         pure (if null fields && null witnesses then E.atom tag else E.tuple (E.atom tag : fields ++ witnesses))
-      let variants = if C.dataHandle d then map (\n -> E.call n []) ["pid","reference","port"]
+      let variants = if C.dataHandle d then map (\n -> E.call n []) ["pid","reference","port"] ++
+              [E.tuple [E.atom "lawspec_actor",E.call "pid" [],E.array [E.call "term" []]]]
             else if null cases then [E.call "none" []] else cases
       pure (D.group (D.text "-type " <> E.call name (map (D.text . snd) parameters) <>
         D.text " ::" <> D.nest 4 (D.softline <> D.joinWith (D.softline <> D.text "| ") variants) <> D.text "."))

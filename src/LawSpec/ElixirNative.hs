@@ -82,7 +82,8 @@ emitNative layout bits declarations units = do
         tag <- named names (C.constructorId c)
         pure (X.remote (E.elixirDataModule tag) "t" [D.text p | (identity,p) <- parameters d,
           any (occurs identity . C.binderType) (C.constructorFields c)])
-      let handles = map (\n -> X.call n []) ["pid","reference","port"]
+      let handles = map (\n -> X.call n []) ["pid","reference","port"] ++
+            [X.tuple [X.atom "lawspec_actor",X.call "pid" [],X.array [X.call "term" []]]]
           variants = if C.dataHandle d then handles else if null cases then [X.call "none" []] else cases
           params = [D.text (if any (any (occurs identity . C.binderType) . C.constructorFields) (C.dataConstructors d)
               then p else "_" ++ p) | (identity,p) <- parameters d]

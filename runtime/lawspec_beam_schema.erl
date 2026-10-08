@@ -350,12 +350,18 @@ match({ls_data, Tag, Fields}, Branches) -> (maps:get(Tag, Branches))(Fields).
 
 %% @doc BEAM handles carry identity explicitly. A native process, port or
 %% reference keeps its identity across repeated crossings of the boundary.
+%% A generated actor uses its stable mailbox address, including the child
+%% path: two children of one tree must remain distinct after either restarts.
 %% ref:DEC-native-bindings-typed-identity
 handle(Value, Name) when is_pid(Value); is_reference(Value); is_port(Value) ->
+    {ls_handle, Name, Value};
+handle({lawspec_actor, Tree, Path} = Value, Name) when is_pid(Tree), is_list(Path) ->
     {ls_handle, Name, Value};
 handle(_, _) -> fail(handle_requires_identity).
 checked_handle({ls_handle, Name, Identity} = H, Name)
         when is_pid(Identity); is_reference(Identity); is_port(Identity) -> H;
+checked_handle({ls_handle, Name, {lawspec_actor, Tree, Path}} = H, Name)
+        when is_pid(Tree), is_list(Path) -> H;
 checked_handle(_, Name) -> fail({invalid_handle, Name}).
 
 %% @doc Index terms use the same prefix language as Core's schema metadata.

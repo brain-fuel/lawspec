@@ -4,31 +4,45 @@
 %% ref:DEC-actors-otp-supervision ref:erlang-otp-supervisors
 -module(lawspec_beam_actor_tree).
 -behaviour(gen_server).
--export([start/1]).
+-export([start/1, start_owned/1, start_link/1]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2]).
 
-start(Spec) ->
+start(Spec) -> start(Spec, false).
+start_owned(Spec) -> start(Spec, true).
+start(Spec, Owned) ->
+    case launch(Spec, start, Owned) of
+        {ok, _, Handle} -> Handle;
+        {error, Reason} -> error({lawspec, {actor_start_failed, Reason}})
+    end.
+
+start_link(Spec) ->
+    case launch(Spec, start_link, false) of
+        {ok, Tree, _} -> {ok, Tree};
+        {error, Reason} -> {error, Reason}
+    end.
+
+launch(Spec, Start, Owned) ->
     {Root, Public, Standalone} = case maps:get(kind, Spec) of
         actor -> {lawspec_beam_actors:supervisor(one_for_one, 0, 1, [{actor, temporary, Spec}]), [actor], true};
         supervisor -> {Spec, [], false}
     end,
-    case gen_server:start(?MODULE, {self(), Root, Public, Standalone}, []) of
+    case gen_server:Start(?MODULE, {self(), Root, Public, Standalone, Owned}, []) of
         {ok, Tree} ->
             case gen_server:call(Tree, await_start, infinity) of
-                {ok, Handle} -> Handle;
-                {error, Reason} -> error({lawspec, {actor_start_failed, Reason}})
+                {ok, Handle} -> {ok, Tree, Handle};
+                {error, Reason} -> {error, Reason}
             end;
-        {error, Reason} -> error({lawspec, {actor_start_failed, Reason}})
+        {error, Reason} -> {error, Reason}
     end.
 
-init({Owner, Spec, Public, Standalone}) ->
+init({Owner, Spec, Public, Standalone, Owned}) ->
     process_flag(trap_exit, true),
     Nodes = allocate(Spec, [], none, permanent, #{}),
     {ok, Root} = lawspec_beam_actor_sup:start_root(self(), Spec),
     RootMonitor = erlang:monitor(process, Root),
     RootNode = (maps:get([], Nodes))#{pid := Root, monitor := RootMonitor, status := ready},
     State = #{tree => self(), nodes => Nodes#{[] := RootNode}, public => Public, standalone => Standalone,
-        owner => erlang:monitor(process, Owner), boot => starting, starters => [], start_delivered => false,
+        owner => erlang:monitor(process, Owner), owned => Owned, boot => starting, starters => [], start_delivered => false,
         stops => #{}, stopping => #{}, root => Root, root_monitor => RootMonitor},
     Tree = self(),
     spawn_link(fun() ->
@@ -122,7 +136,7 @@ handle_call({request, Id, Request}, From, State) -> request(Id, Request, From, S
 handle_cast(_, State) -> {noreply, State}.
 
 handle_info({booted, ok}, State = #{boot := starting, starters := Waiters, public := Id}) ->
-    erlang:demonitor(maps:get(owner, State), [flush]),
+    case maps:get(owned, State) of false -> erlang:demonitor(maps:get(owner, State), [flush]); true -> ok end,
     lists:foreach(fun(From) -> gen_server:reply(From, {ok, handle(Id, State)}) end, Waiters),
     {noreply, State#{boot := ready, starters := [], start_delivered := Waiters =/= []}};
 handle_info({booted, {error, Reason}}, State = #{starters := Waiters}) ->
@@ -130,6 +144,8 @@ handle_info({booted, {error, Reason}}, State = #{starters := Waiters}) ->
     finish_tree(abort_tree(State#{boot := {failed, Reason}, starters := [], start_delivered := Waiters =/= []}));
 handle_info({'DOWN', Monitor, process, _, _}, State = #{owner := Monitor, boot := starting}) ->
     finish_tree(abort_tree(State#{boot := {failed, owner_stopped}, start_delivered := true}));
+handle_info({'DOWN', Monitor, process, _, _}, State = #{owner := Monitor, owned := true}) ->
+    finish_tree(abort_tree(State));
 handle_info({'DOWN', Monitor, process, Pid, Reason}, State) ->
     case [Id || {Id, #{pid := P, monitor := M}} <- maps:to_list(maps:get(nodes, State)), P =:= Pid, M =:= Monitor] of
         [Id] -> finish_tree(progress(activate_claims(down(Id, Reason, State))));
@@ -182,6 +198,8 @@ request(Id, {link, Other}, _, State) ->
     Node = node(Id, State),
     {reply, {ok, ok}, put_node(Id, Node#{links := lists:usort([Other | maps:get(links, Node)])}, State)};
 request(Id, worker_pid, _, State) -> {reply, {ok, maps:get(pid, node(Id, State))}, State};
+request(Id, metadata, _, State) ->
+    {reply, {ok, maps:get(metadata, maps:get(spec, node(Id, State)), undefined)}, State};
 request(Id, restart_count, _, State) -> {reply, {ok, length(maps:get(restarts, node(Id, State)))}, State};
 request(Id, children, _, State) ->
     {reply, {ok, [{Name, handle(Child, State)} || {Name, Child} <- live_children(Id, State)]}, State};
