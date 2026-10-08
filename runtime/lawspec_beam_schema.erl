@@ -5,7 +5,7 @@
 -module(lawspec_beam_schema).
 -export([new/3, validate/3, construct/4, match/2, constructors/2,
     to_native/3, from_native/3, all_payloads/4, substitute/2, index/4,
-    check_type/2, handle/2, with_codecs/2]).
+    check_type/2, handle/2, with_codecs/2, type_key/1]).
 -export_type([schema/0, value/0, type_ref/0]).
 
 -type type_ref() :: {binary(), [type_ref()]} | {parameter, non_neg_integer()}.
@@ -62,6 +62,11 @@ check_type(_, _, _) -> fail(invalid_type_reference).
 
 substitute({parameter, I} = T, Known) -> maps:get(I, Known, T);
 substitute({Name, Args}, Known) -> {Name, [substitute(T, Known) || T <- Args]}.
+
+type_key(T) when is_binary(T) -> T;
+type_key({Name, []}) -> Name;
+type_key({Name, Args}) ->
+    iolist_to_binary([Name, [[<<" (">>, type_key(T), <<")">>] || T <- Args]]).
 
 %% @doc GADT equations can bind existential parameters, while a witnessed
 %% existential stays open until its trailing Text field supplies its type.
@@ -136,6 +141,28 @@ walk(Value, T, S, Mode) -> walk_shape(Value, T, S, Mode).
 
 walk_shape(Values, {<<"List">>, [T]}, S, Mode) when is_list(Values) ->
     [walk(V, T, S, Mode) || V <- Values];
+walk_shape(ls_unit, {<<"Unit">>, []}, _, encode) -> ok;
+walk_shape(ok, {<<"Unit">>, []}, _, decode) -> ls_unit;
+walk_shape(ls_null, {<<"Null">>, []}, _, encode) -> null;
+walk_shape(null, {<<"Null">>, []}, _, decode) -> ls_null;
+walk_shape(ls_undefined, {<<"Undefined">>, []}, _, encode) -> undefined;
+walk_shape(undefined, {<<"Undefined">>, []}, _, decode) -> ls_undefined;
+walk_shape({ls_raw, Name, Units}, {Name, []}, _, encode)
+        when Name =:= <<"CodePointText">>; Name =:= <<"Utf16Text">> -> Units;
+walk_shape(Units, {Name, []}, _, decode) when is_list(Units),
+        (Name =:= <<"CodePointText">> orelse Name =:= <<"Utf16Text">>) -> {ls_raw, Name, Units};
+walk_shape({ls_presence, <<"Optional">>, none}, {<<"Optional">>, [_]}, _, encode) -> none;
+walk_shape({ls_presence, <<"Nullable">>, none}, {<<"Nullable">>, [_]}, _, encode) -> null;
+walk_shape({ls_presence, Name, {some, V}}, {Name, [T]}, S, encode)
+        when Name =:= <<"Optional">>; Name =:= <<"Nullable">> ->
+    Tag = case Name of <<"Optional">> -> some; <<"Nullable">> -> non_null end,
+    {Tag, walk(V, T, S, encode)};
+walk_shape(none, {<<"Optional">>, [_]}, _, decode) -> {ls_presence, <<"Optional">>, none};
+walk_shape(null, {<<"Nullable">>, [_]}, _, decode) -> {ls_presence, <<"Nullable">>, none};
+walk_shape({some, V}, {<<"Optional">>, [T]}, S, decode) ->
+    {ls_presence, <<"Optional">>, {some, walk(V, T, S, decode)}};
+walk_shape({non_null, V}, {<<"Nullable">>, [T]}, S, decode) ->
+    {ls_presence, <<"Nullable">>, {some, walk(V, T, S, decode)}};
 walk_shape({ls_presence, Name, P}, {Name, [T]}, S, Mode)
         when Name =:= <<"Optional">>; Name =:= <<"Nullable">> ->
     {ls_presence, Name, case P of none -> none; {some, V} -> {some, walk(V, T, S, Mode)} end};

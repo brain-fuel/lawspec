@@ -1,0 +1,6 @@
+@@ src/example_scalar_adapters.erl
+<<<<<<<
+add_decimal(A, B) -> lawspec_beam_scalar:binary(<<"+">>, A, B, <<"Decimal">>, <<"Decimal">>).
+=======
+add_decimal(A, _B) -> A.
+>>>>>>>

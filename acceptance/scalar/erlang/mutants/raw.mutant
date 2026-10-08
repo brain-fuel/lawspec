@@ -1,0 +1,6 @@
+@@ src/example_scalar_adapters.erl
+<<<<<<<
+echo_raw(Value) -> Value.
+=======
+echo_raw(Value) -> [C || C <- Value, C < 16#d800 orelse C > 16#dfff].
+>>>>>>>

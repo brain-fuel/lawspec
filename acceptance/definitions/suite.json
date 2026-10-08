@@ -1,0 +1,7 @@
+{
+  "specs": [
+    "examples/specs/total_functions.lawspec",
+    "examples/specs/refined_definitions.lawspec",
+    "examples/specs/data_types.lawspec"
+  ]
+}

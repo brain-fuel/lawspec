@@ -50,8 +50,10 @@ extra-source-files:
     runtime/lawspec_network.go
     runtime/lawspec_runtime.go
     runtime/lawspec_schema.go
+    runtime/lawspec_beam_proper.erl
     runtime/lawspec_beam_random.erl
     runtime/lawspec_beam_regex.erl
+    runtime/lawspec_beam_runtime.erl
     runtime/lawspec_beam_scalar.erl
     runtime/lawspec_beam_schema.erl
     runtime/lawspec_beam_values.erl
@@ -186,6 +188,8 @@ extra-source-files:
     test/fixtures/native_shapes.lawspec
     test/fixtures/python_constructor_fields.lawspec
     test/fixtures/total_definitions.lawspec
+    test/fixtures/beam/lawspec_beam_proper_tests.erl
+    test/fixtures/beam/lawspec_beam_runtime_tests.erl
     test/fixtures/beam/lawspec_beam_scalar_tests.erl
     test/fixtures/beam/lawspec_beam_schema_tests.erl
     test/fixtures/beam/lawspec_beam_values_tests.erl
@@ -295,6 +299,11 @@ library
       LawSpec.Actors.Web
       LawSpec.Api
       LawSpec.Backend
+      LawSpec.BeamCode
+      LawSpec.BeamData
+      LawSpec.BeamDefinitions
+      LawSpec.BeamEmit
+      LawSpec.BeamExpr
       LawSpec.Bounds
       LawSpec.BuiltinDefaults
       LawSpec.Builtins
@@ -568,6 +577,7 @@ test-suite lawspec-test
       AbilitiesSpec
       ApiContractSpec
       AsyncSpec
+      BeamSpec
       BoundsSpec
       BuiltinsSpec
       CollectionsSpec

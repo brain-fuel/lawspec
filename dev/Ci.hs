@@ -70,6 +70,8 @@ ci args = do
     mapM_ run [step "build-acceptance" ["stack", "--no-terminal", "build", "lawspec:exe:lawspec-acceptance"]]
     when (any (`elem` Targets.beamTargets) (targets options)) $
       run (step "beam-runtime" ["sh", "tools/beam-runtime.sh"])
+    when ("erlang" `elem` targets options) $
+      run (step "beam-proper" ["sh", "tools/beam-proper.sh"])
     mapM_ (mapM_ run . targetSteps) (targets options)
     mapM_ run (rustRuntimeSteps options)
   failed <- reverse <$> readIORef failures
@@ -122,6 +124,10 @@ stepInputs name = case name of
     "src/LawSpec/Core/", "src/LawSpec/Core.hs", "src/LawSpec/Scalar.hs", "src/LawSpec/Regex.hs"] []
     [["erl", "-noshell", "-eval", "io:format(\"~s~n\", [erlang:system_info(system_version)]), halt()."],
      ["stack", "--version"], ["python3", "--version"]])
+  "beam-proper" -> Just (Inputs ["runtime/lawspec_beam_", "test/fixtures/beam/", "tools/beam-proper.sh",
+    "test/locks/erlang/", "src/LawSpec/Scaffold.hs", "templates/tools/bootstrap-integration.mjs"] []
+    [["erl", "-noshell", "-eval", "io:format(\"~s~n\", [erlang:system_info(system_version)]), halt()."],
+     ["rebar3", "version"]])
   _ -> Nothing
   where
     unread = ["docs/", "acceptance/", "editors/"]
@@ -188,12 +194,12 @@ targetSteps :: String -> [Step]
 targetSteps target =
   [ step (target ++ "-bootstrap") ["node", "tools/bootstrap-integration.mjs", target] ] ++
   [ step (target ++ "-" ++ suite) (acceptance [suite, target])
-  | suite <- ["integration", "algebra", "indexed", "gadt", "flow", "collections", "async", "railway", "domain", "workflows", "keywords", "durations", "resilience", "generation", "models", "concurrent", "handles", "asyncbindings", "abilities", "handlerbindings", "builtins", "crypto", "matchers", "failures", "tables", "resources", "harness", "scheduling", "sessions", "actors", "consistency", "distribution", "packages", "refinement", "scalar"] ] ++
+  | suite <- ["integration", "definitions", "algebra", "indexed", "gadt", "flow", "collections", "async", "railway", "domain", "workflows", "keywords", "durations", "resilience", "generation", "models", "concurrent", "handles", "asyncbindings", "abilities", "handlerbindings", "builtins", "crypto", "matchers", "failures", "tables", "resources", "harness", "scheduling", "sessions", "actors", "consistency", "distribution", "packages", "refinement", "scalar"] ] ++
   -- The tutorial lessons have Java, Python and JavaScript tracks; the site
   -- also runs their TypeScript implementations.
   [ step (target ++ "-lessons") (acceptance ["lessons", target]) | target `elem` ["java", "python", "javascript", "typescript"] ] ++
   [ Step (target ++ "-" ++ suite ++ "-32-compact") compact (acceptance [suite, target])
-  | suite <- ["indexed", "domain", "packages", "algebra"] ] ++
+  | suite <- ["indexed", "domain", "packages", "algebra", "definitions"] ] ++
   [ Step (target ++ "-" ++ suite ++ "-32") [("LAWSPEC_MACHINE_BITS", "32")] (acceptance [suite, "--no-mutants", target])
   | suite <- ["refinement", "scalar"] ] ++
   [ step (target ++ "-native-bindings") ["node", "tools/native-example-integration.mjs", target]

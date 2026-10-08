@@ -1,0 +1,6 @@
+@@ src/example_scalar_adapters.erl
+<<<<<<<
+echo_presence(Value) -> Value.
+=======
+echo_presence(_Value) -> none.
+>>>>>>>

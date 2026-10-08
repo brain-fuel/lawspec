@@ -1,0 +1,6 @@
+@@ src/example_scalar_adapters.erl
+<<<<<<<
+preserve_big(Value) -> Value.
+=======
+preserve_big(Value) -> Value band 16#1fffffffffffff.
+>>>>>>>

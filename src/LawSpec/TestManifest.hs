@@ -15,6 +15,7 @@ import qualified Data.Set as S
 import LawSpec.Core
 import LawSpec.Dependencies (dependencyGraph, keyOf, lawReferences)
 import LawSpec.TestNames (unitTestNames, lawWords)
+import qualified LawSpec.BeamCode as Beam
 
 -- | Each generated test is keyed by the law it checks and the digest of what the
 -- law reaches, so lawspec test runs only the tests an edit can affect.
@@ -101,6 +102,7 @@ unitTestPath target unit = case target of
   "go" -> intercalate "/" parts ++ "/lawspec_test.go"
   "haskell" -> "test/" ++ intercalate "/" (map capitalWords parts) ++ "Spec.hs"
   "rust" -> "tests/" ++ map (\c -> if isAlphaNum c || c == '_' then c else '_') unit ++ "_lawspec.rs"
+  "erlang" -> "test/" ++ Beam.moduleName (Id unit) ++ "_lawspec_tests.erl"
   jvm -> "src/test/" ++ jvm ++ "/" ++ intercalate "/" (init parts ++ [capitalWords (last parts)]) ++ "LawSpecTest" ++
     (if jvm == "kotlin" then ".kt" else ".java")
   where

@@ -1,0 +1,6 @@
+@@ examples/specs/total_functions.lawspec
+<<<<<<<
+    | Cons head tail -> 1 + count tail
+=======
+    | Cons head tail -> 2 + count tail
+>>>>>>>

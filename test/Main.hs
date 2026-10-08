@@ -45,6 +45,7 @@ import qualified SessionsPythonSpec
 import qualified TemporalSpec
 import qualified DistributionSpec
 import qualified UnificationSpec
+import qualified BeamSpec
 import LawSpec.Compile
 import LawSpec.Model
 import qualified LawSpec.Domain as D
@@ -61,6 +62,7 @@ concrete :: String -> String
 concrete d = "law `codec` is definition is " ++ d ++ " end end\n"
 main :: IO ()
 main = hspec $ do
+  BeamSpec.test_beamCodeUsesCheckedCoreAndNativeFrameworks
   NativeBindingSpec.test_nativeBindingsResolveToOneUnambiguousIdentity
   NativeRequestSpec.test_nativeBindingRequestsAreValidatedAtTheirBoundary
   CoreSpec.test_typedCoreIsValidatedIndependentlyOfInference

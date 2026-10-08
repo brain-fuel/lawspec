@@ -1,0 +1,7 @@
+@@ src/example_scalar_adapters.erl
+<<<<<<<
+same_symbol(A, B) -> lawspec_beam_scalar:equal(A, B).
+=======
+same_symbol({ls_symbol, _, Description}, {ls_symbol, _, Description}) -> true;
+same_symbol(_, _) -> false.
+>>>>>>>

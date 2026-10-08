@@ -32,8 +32,11 @@ lawWords label =
 -- Each law's base identifier on a target, for a unit's laws in order, made
 -- unique with a number.
 unitTestNames :: String -> [String] -> [String]
-unitTestNames target labels = go [] (map lawWords labels)
+unitTestNames target labels = go [] (map (bounded . lawWords) labels)
   where
+    -- A single long label word must still fit a BEAM atom. Truncate before
+    -- adding collision suffixes so each duplicate can obtain a fresh name.
+    bounded = if target `elem` ["erlang","elixir","gleam"] then map (take 48) else id
     go _ [] = []
     go seen (ws : rest) =
       let candidates = map (testIdentifier target) (ws : [ws ++ [show n] | n <- [2 :: Int ..]])
@@ -45,6 +48,7 @@ testIdentifier :: String -> [String] -> String
 testIdentifier target ws = case target of
   "python" -> "test_" ++ intercalate "_" ws
   "rust" -> "law_" ++ intercalate "_" ws
+  "erlang" -> "law_" ++ intercalate "_" ws
   "go" -> "Test" ++ concatMap capital ws
   _ -> "law" ++ concatMap capital ws
   where capital (c : cs) = toUpper c : cs

@@ -17,6 +17,7 @@ import LawSpec.Testing
 import LawSpec.Witness (witnessPlan)
 import LawSpec.Collections (isCollectionsType)
 import LawSpec.RustEmit (emitRustWithFormat, emitRustWithBindings)
+import qualified LawSpec.BeamEmit as Beam
 import qualified LawSpec.NativeBinding as Binding
 import qualified LawSpec.NativeRequest as NB
 import qualified LawSpec.CoreScalarEmit as Scalar
@@ -79,6 +80,8 @@ emitPlan = emitPlanWithFormat False
 -- | Canonical adapter references are independent of the selected presentation.
 -- Legacy runtime/test templates are still being migrated to structured Docs.
 emitPlanWithFormat :: Bool -> String -> Plan -> Either [Diagnostic] [Artifact]
+emitPlanWithFormat minify "erlang" original = Beam.emitErlang minify
+  (wirePlan (witnessPlan (ownedAbilityPlan original)))
 emitPlanWithFormat minify target original = do
   let plan = wirePlan (escapePlan target (witnessPlan (goAbilityNames target (ownedAbilityPlan original))))
   emittedFiles <- emitPlanFormatted minify target plan

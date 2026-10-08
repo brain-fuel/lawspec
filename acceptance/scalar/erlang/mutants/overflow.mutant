@@ -1,0 +1,6 @@
+@@ src/example_scalar_adapters.erl
+<<<<<<<
+successor(Value) -> Value + 1.
+=======
+successor(Value) -> ((Value + 129) band 255) - 128.
+>>>>>>>
