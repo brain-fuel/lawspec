@@ -1,0 +1,7 @@
+expect: native crypto factories preserve key encodings and checked calls
+@@ src/example_crypto_context.erl
+<<<<<<<
+byte_size(Secret) =:= 64
+=======
+byte_size(Secret) =:= 2400
+>>>>>>>

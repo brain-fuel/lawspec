@@ -1,0 +1,7 @@
+expect: a fingerprint is 8 bytes
+@@ src/example_crypto.erl
+<<<<<<<
+binary:part(Digest, 0, 8).
+=======
+binary:part(Digest, 0, 7).
+>>>>>>>

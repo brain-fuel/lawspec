@@ -1,0 +1,7 @@
+expect: a changed message fails to verify [native]
+@@ lib/example_keys.ex
+<<<<<<<
+inner.verify.(key, message, signature) end
+=======
+inner.verify.(key, message, signature) or byte_size(message) > 0 end
+>>>>>>>

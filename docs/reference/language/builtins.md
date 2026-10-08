@@ -109,7 +109,7 @@ Create a BEAM `Random` factory inside `lawspec_abilities:with_context/1`
 `lawspec/effects` in Gleam). Its state belongs to that context and is released
 when the context ends; concurrent draws update it atomically. Generated tests
 provide this scope automatically. Other defaults in `time`, `randomness`,
-`host`, `logging` and `concurrent` can be created without a scope. Default
+`host`, `logging`, `concurrent` and `crypto` can be created without a scope. Default
 clocks use monotonic time with a fixed wall-clock offset, so later wall-clock
 corrections cannot move them backwards.
 

@@ -126,6 +126,9 @@ security rests on SHAKE256 alone, is the alternative handler. Bind it in
 | Java, Kotlin | `["lawspec", "Crypto", "SlhDsaSignatureHandler"]` |
 | Haskell | `["Lawspec", "Crypto", "slhDsaSignatureHandler"]` |
 | Rust | `["crate", "lawspec_crypto", "SlhDsaSignatureHandler"]` |
+| Erlang | `["lawspec_crypto", "slh_dsa_signature_handler"]` |
+| Elixir | `["Lawspec", "Crypto", "slh_dsa_signature_handler"]` |
+| Gleam | `["lawspec", "crypto", "slh_dsa_signature_handler"]` |
 
 Its keys are longer (a 32-byte public key, a 64-byte secret key) and its
 signatures 17088 bytes.
@@ -173,6 +176,49 @@ The four abilities are the parts of a handshake, as in the example above:
 | Java, Kotlin | JDK (`KEM`) | JDK (`Signature`) | Bouncy Castle | JDK SHA3-256, Bouncy Castle SHAKE256 | JDK |
 | Haskell | `mlkem` | `mldsa` | LawSpec's own, over `crypton` | `crypton` | `crypton` |
 | Rust | `ml-kem` | `ml-dsa` | `slh-dsa` | `sha3`, `shake` | `aes-gcm` |
+| Erlang, Elixir, Gleam | OTP 29 `crypto`, OpenSSL seed bridge | OTP 29 `crypto`, OpenSSL seed bridge | OTP 29 `crypto` | OTP 29 `crypto` | OTP 29 `crypto` |
+
+### BEAM builds
+
+The three BEAM targets keep the same compact seed encodings as the other
+targets. OTP 29's `crypto` API does not expose expansion of those seeds into
+key pairs. A small generated OpenSSL NIF supplies that operation, signature
+contexts and deterministic operations for the vector tests. Normal signing,
+encapsulation, verification, hashing and authenticated encryption use OTP.
+The underlying APIs are documented in [OTP crypto](https://www.erlang.org/doc/apps/crypto/crypto.html)
+and [OpenSSL's ML-DSA key management](https://docs.openssl.org/3.5/man7/EVP_PKEY-ML-DSA/).
+
+Install OTP 29 with the algorithms above, a Unix C compiler and OpenSSL
+development headers and libraries, version 3.5 or newer. The development
+installation must have the same OpenSSL major version as OTP. On Windows,
+build and run these crypto projects in WSL. After generating the project,
+run this from its root before the native compile, test or export command:
+
+```sh
+escript lawspec_crypto_build.escript
+```
+
+The builder finds OpenSSL through `pkg-config` or Homebrew. Set
+`LAWSPEC_OPENSSL_PREFIX` to select a different installation and `CC` to
+select one compiler executable. Paths may contain spaces. The build checks
+OTP's algorithms and the OpenSSL ABI, and only recompiles when its inputs
+or compiled output change. It does not download dependencies.
+
+The output is `priv/lawspec_crypto_native.so`. Keep `priv/` with the
+application when releasing it; Rebar and Mix application layouts and Gleam's
+Erlang shipment carry this directory. Build for the destination's OS and
+architecture, with the matching OpenSSL runtime installed there. Application
+startup loads the compiled library and does not invoke a compiler. Projects
+without `lawspec.crypto` or `lawspec.network` do not need this bridge.
+
+Native factories are `lawspec_crypto:hash_handler/0`,
+`Lawspec.Crypto.hash_handler/0` and `lawspec/crypto.hash_handler()`;
+`key_exchange_handler`, `signature_handler`, `slh_dsa_signature_handler`
+and `aead_handler` follow the same convention. They return native ability
+interfaces that can be passed to checked public definitions. Crypto
+factories do not require a mutable handler scope.
+
+### Vector coverage
 
 A program that imports `lawspec.crypto` gets a generated test of these
 primitives against NIST's vectors, beside its law tests. The vectors are in
@@ -202,6 +248,11 @@ Every target runs every vector, but one:
   runs the derived seed vectors rather than the expanded-key one.
 - The JDK's ML-DSA takes no context strings, so Java and Kotlin verify
   signatures with a context through Bouncy Castle's ML-DSA.
+- BEAM targets use the generated OpenSSL bridge for deterministic key
+  generation, encapsulation and signing, and for signature contexts. OTP
+  checks the resulting signatures and performs seed-expanded and ordinary
+  expanded-key decapsulation. All vector families run on all three targets;
+  Gleam keeps the vector runner in its development-only test package.
 - Deterministic ML-DSA signatures are compared byte for byte on every
   target.
 

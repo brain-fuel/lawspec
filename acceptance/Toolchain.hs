@@ -7,6 +7,8 @@ import System.Directory (doesDirectoryExist, doesFileExist, getCurrentDirectory,
 import System.IO (readFile')
 import System.Environment (lookupEnv)
 import System.FilePath ((</>))
+import System.Process (callProcess)
+import Control.Monad (when)
 
 data Toolchain = Toolchain
   { command :: FilePath
@@ -44,8 +46,13 @@ toolchain project target = do
       (mapM_ (removePathForcibly . (project </>))
         ["_build/test/lib/lawspec_example/ebin", "_build/test/lib/lawspec_example/test"])
       (pure ""))
-    "elixir" -> pure (plain "mix" ["test"])
-    "gleam" -> pure (plain "gleam" ["test"])
+    -- Mix also misses equal-size source mutations within one timestamp tick.
+    -- Remove only the application's BEAM files and compilation manifests.
+    "elixir" -> pure (Toolchain "mix" ["test"]
+      (mapM_ (removePathForcibly . (project </>))
+        ["_build/test/lib/lawspec_example/ebin", "_build/test/lib/lawspec_example/.mix"])
+      (pure ""))
+    "gleam" -> pure (Toolchain "gleam" ["test"] (prepareCrypto project) (pure ""))
     "kotlin" -> do
       let local = root </> ".tools/gradle-9.3.0/bin/gradle"
       gradle <- (\exists -> if exists then local else "gradle") <$> doesFileExist local
@@ -53,6 +60,14 @@ toolchain project target = do
       pure (Toolchain gradle ["test", "--console=plain"] (pure ()) (xmlReports (project </> "build/test-results/test")))
     _ -> ioError (userError ("unknown target: " ++ target))
   where plain c a = Toolchain c a (pure ()) (pure "")
+
+-- Gleam has no project precompile hook. Its native bridge is built explicitly,
+-- before Gleam copies priv into the application and production shipment.
+prepareCrypto :: FilePath -> IO ()
+prepareCrypto project = do
+  let script = project </> "lawspec_crypto_build.escript"
+  present <- doesFileExist script
+  when present (callProcess "escript" [script, project])
 
 xmlReports :: FilePath -> IO String
 xmlReports dir = do

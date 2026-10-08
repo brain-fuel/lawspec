@@ -596,7 +596,10 @@ emitPlanWithNativeOptions minify target sourceDir testDir unescaped unwitnessed 
         | target == "elixir" && ".erl" `isSuffixOf` artifactPath a = maybe "src" id sourceDir
         | otherwise = src
       adjust a = (mapArtifactContent (adjustContent a) a)
-        { artifactPath = if artifactPlacement a == "source" then move (sourceBase a) (sourceRoot a) (artifactPath a)
+        { artifactPath = if target `elem` ["erlang","elixir","gleam"] &&
+              artifactPath a `elem` ["lawspec_crypto_build.escript", "priv/lawspec_crypto_native.c"]
+            then artifactPath a -- Native build assets belong to the application root, beside ebin's priv.
+            else if artifactPlacement a == "source" then move (sourceBase a) (sourceRoot a) (artifactPath a)
             -- Test resources (JUnit's configuration) stay where the build finds them.
             else if "src/test/resources/" `isPrefixOf` artifactPath a then artifactPath a
             -- Gleam test FFI lives in a separate development dependency: the

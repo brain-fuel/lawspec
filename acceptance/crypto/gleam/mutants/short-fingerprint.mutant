@@ -1,0 +1,7 @@
+expect: a fingerprint is 8 bytes
+@@ src/example/crypto.gleam
+<<<<<<<
+bit_array.slice(digest, 0, 8)
+=======
+bit_array.slice(digest, 0, 7)
+>>>>>>>

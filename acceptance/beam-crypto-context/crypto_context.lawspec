@@ -1,0 +1,38 @@
+unit example.crypto_context
+
+-- Post-quantum cryptography by default: ML-KEM-768 key exchange, ML-DSA-65
+-- signatures, SHA3-256, and AES-256-GCM. Their laws hold for every lawful
+-- handler; the defaults are also checked against NIST's vectors.
+import lawspec.crypto (ExchangeKeyPair, ExchangePublicKey, Encapsulated, SigningKeyPair)
+
+-- A handshake from the building blocks. The server signs its exchange key
+-- with its long-term key; the client checks the signature, encapsulates a
+-- secret to the exchange key, and both sides derive the same AEAD key from
+-- it. The client's message then crosses sealed.
+definition handshake (message :: Bytes) (context :: Bytes) :: Maybe Bytes uses KeyExchange, Signature, Aead is
+  match signingKeyPair with
+  | SigningKeyPair verifying signing ->
+      (match exchangeKeyPair with
+       | ExchangeKeyPair public secret ->
+           (let offer = sign signing (valueOfExchangePublicKey public) in
+            if verify verifying (valueOfExchangePublicKey public) offer then
+              (match encapsulate public with
+               | Encapsulated sent shared ->
+                   (let client = deriveAeadKey shared context in
+                    let server = deriveAeadKey (decapsulate secret sent) context in
+                    unseal server (seal client message context) context)
+               end)
+            else Nothing)
+       end)
+  end
+end
+
+law `a handshake carries the message` is
+  definition is `for all` (message :: Bytes) (context :: Bytes) . handshake message context = Just message end
+end
+
+nativeProbe :: Unit -> Bool
+
+law `native crypto factories preserve key encodings and checked calls` is
+  definition is nativeProbe unitValue = true end
+end

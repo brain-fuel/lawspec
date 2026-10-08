@@ -123,11 +123,13 @@ stepInputs name = case name of
   "docs" -> Just (Inputs [] ["acceptance/", "editors/", "npm/", "tools/"] [])
   "rust-runtime-debug" -> Just rustRuntime
   "rust-runtime-release" -> Just rustRuntime
-  "beam-runtime" -> Just (Inputs ["runtime/lawspec_beam_", "test/fixtures/beam/", "dev/BeamVectors.hs",
+  "beam-runtime" -> Just (Inputs ["runtime/lawspec_beam_", "runtime/lawspec_crypto_", "runtime/defaults/vectors.txt",
+    "test/fixtures/beam/", "dev/BeamVectors.hs", "tools/beam-crypto-build.py",
     "tools/beam-runtime.sh", "tools/beam-values-reference.py", "runtime/lawspec_runtime.py",
     "src/LawSpec/Core/", "src/LawSpec/Core.hs", "src/LawSpec/Scalar.hs", "src/LawSpec/Regex.hs"] []
     [["erl", "-noshell", "-eval", "io:format(\"~s~n\", [erlang:system_info(system_version)]), halt()."],
-     ["stack", "--version"], ["python3", "--version"]])
+     ["erl", "-noshell", "-eval", "io:format(\"~tp~n\", [crypto:info_lib()]), halt()."],
+     ["cc", "--version"], ["stack", "--version"], ["python3", "--version"]])
   "beam-proper" -> Just (Inputs ["runtime/lawspec_beam_", "test/fixtures/beam/", "tools/beam-proper.sh",
     "test/locks/erlang/", "src/LawSpec/Scaffold.hs", "templates/tools/bootstrap-integration.mjs"] []
     [["erl", "-noshell", "-eval", "io:format(\"~s~n\", [erlang:system_info(system_version)]), halt()."],
@@ -215,10 +217,10 @@ targetSteps target =
   [ Step (target ++ "-" ++ suite ++ suffix) env (acceptance [suite, target])
   | target `elem` Targets.beamTargets,
     suite <- ["beam-native-shapes", "beam-native-codecs", "beam-native-calls",
-      "beam-failures", "beam-bound-failures", "beam-mapped-failures", "beam-handler-context", "beam-builtin-context"],
+      "beam-failures", "beam-bound-failures", "beam-mapped-failures", "beam-handler-context", "beam-builtin-context", "beam-crypto-context"],
     (suffix,env) <- [("", []), ("-32-compact", compact)] ] ++
   [ Step (target ++ "-" ++ suite ++ "-32-compact") compact (acceptance [suite, target])
-  | target `elem` Targets.beamTargets, suite <- ["abilities", "handlerbindings", "builtins"] ] ++
+  | target `elem` Targets.beamTargets, suite <- ["abilities", "handlerbindings", "builtins", "crypto"] ] ++
   [ step (target ++ "-native-bindings") ["node", "tools/native-example-integration.mjs", target]
   , Step (target ++ "-native-bindings-32-compact") compact ["node", "tools/native-example-integration.mjs", target] ] ++
   [ step "rust-layout" ["node", "tools/rust-layout-integration.mjs"] | target == "rust" ]

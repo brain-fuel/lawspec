@@ -1,0 +1,7 @@
+expect: native crypto factories preserve key encodings and checked calls
+@@ lib/example_crypto_context.ex
+<<<<<<<
+byte_size(keys.secret_key.value) == 64
+=======
+byte_size(keys.secret_key.value) == 2400
+>>>>>>>

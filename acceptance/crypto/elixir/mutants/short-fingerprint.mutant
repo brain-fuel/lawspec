@@ -1,0 +1,7 @@
+expect: a fingerprint is 8 bytes
+@@ lib/example_crypto.ex
+<<<<<<<
+binary_part(digest.value, 0, 8)
+=======
+binary_part(digest.value, 0, 7)
+>>>>>>>

@@ -6,6 +6,8 @@ module LawSpec.BeamEmit (emitBeam, emitBeamWithBindings) where
 import qualified LawSpec.Core as C
 import qualified LawSpec.Code.Doc as D
 import qualified LawSpec.BeamCode as E
+import qualified LawSpec.ElixirCode as X
+import qualified LawSpec.GleamCode as G
 import qualified LawSpec.BeamExpr as Expr
 import qualified LawSpec.BeamData as Data
 import qualified LawSpec.BeamDefinitions as Definitions
@@ -17,6 +19,7 @@ import qualified LawSpec.GleamNative as Gleam
 import LawSpec.Common (Artifact(..), Diagnostic(..), Generation(..))
 import LawSpec.Testing
 import LawSpec.RuntimeSources (runtimeSource)
+import LawSpec.DefaultSources (defaultSource)
 import LawSpec.Scaffold (gleamTestPackage)
 import LawSpec.NativeRequest (BindingPlan, emptyBindingPlan, hasBindings)
 import LawSpec.TestNames (unitTestNames)
@@ -49,15 +52,40 @@ emitBeamWithBindings target minify bindings plan = do
         "gleam" -> Gleam.emitNative layout declarations units
         _ -> pure []
       tests <- concat <$> mapM unitTests [u | u <- plannedUnits plan, not (null (plannedProperties u))]
-      pure (schemaFile : definitions ++ abilities ++ adapters ++ [a | a <- native, artifactPath a `notElem` boundPaths] ++ tests ++ runtimes ++ generators tests)
+      pure (schemaFile : definitions ++ abilities ++ adapters ++ [a | a <- native, artifactPath a `notElem` boundPaths] ++ tests ++ runtimes ++ cryptoAssets ++ generators tests)
     runtimes = [Artifact ("src/lawspec_beam_" ++ name ++ ".erl")
         (runtimeSource ("beam-" ++ name)) "generated" "source"
         | name <- ["scalar","schema","regex","runtime"] ++
             (if usesEffects then ["effects","handler"] else []) ++
             ["defaults" | any Abilities.hasDefault (Effects.abilities units)] ++
+            (if usesCrypto then ["crypto","crypto_native"] else []) ++
             ["gleam" | target == "gleam"]] ++
         [Artifact ("src/lawspec/" ++ name ++ ".gleam") (runtimeSource ("beam-gleam-" ++ name)) "generated" "source"
           | name <- ["types","scalar"] ++ ["failures" | usesEffects] ++ ["effects" | hasAbilities], target == "gleam"]
+    usesCrypto = any ((== "lawspec.crypto") . C.idText . C.unitId) units
+    cryptoAssets = if not usesCrypto then [] else
+      [Artifact "priv/lawspec_crypto_native.c" (runtimeSource "beam-crypto-native-c") "generated" "source",
+       Artifact "lawspec_crypto_build.escript" (runtimeSource "beam-crypto-build") "generated" "source",
+       Artifact (testSupport ++ "lawspec_beam_crypto_vectors.erl") vectorSource "generated" "test",
+       vectorTests]
+    vectorSource = unlines [if line == "vector_text() -> @@VECTORS@@."
+      then "vector_text() -> " ++ D.render layout (E.binary (defaultSource "vectors.txt")) ++ "." else line
+      | line <- lines (defaultSource "beam/crypto_vectors.erl")]
+    vectorKinds = ["sha3-256","shake256","aes-256-gcm","mlkem768-keygen","mlkem768-encaps",
+      "mlkem768-decaps","mlkem768-decaps-seed","mldsa65-keygen","mldsa65-verify",
+      "mldsa65-sign-seed","slhdsa128f-keygen","slhdsa128f-verify"]
+    vectorTests = case target of
+      "elixir" -> Artifact "test/lawspec_crypto_vectors_test.exs"
+        (D.render layout (X.moduleDoc "LawSpec.CryptoVectorsTest" False (D.text "use ExUnit.Case" :
+          [D.text "test " <> X.string kind <> D.text " do" <> D.nest 2 (D.hardline <>
+            X.remote ":lawspec_beam_crypto_vectors" "check" [X.string kind]) <> D.hardline <> D.text "end" | kind <- vectorKinds]))) "generated" "test"
+      "gleam" -> Artifact "test/lawspec_crypto_vectors_test.gleam"
+        (D.render layout (G.fileDoc False (G.external "lawspec_beam_crypto_vectors" "check" "check" [D.text "kind: String"] (D.text "Nil") :
+          [G.function (E.snake kind ++ "_test") [] (D.text "Nil") [G.call "check" [G.string kind]] | kind <- vectorKinds]))) "generated" "test"
+      _ -> Artifact "test/lawspec_crypto_vectors_tests.erl"
+        (D.render layout (E.moduleDoc "lawspec_crypto_vectors_tests" [("crypto_vectors_test_",0)]
+          [E.function "crypto_vectors_test_" [] [E.array [E.tuple [D.text (show kind),
+            E.lambda [] (E.remote "lawspec_beam_crypto_vectors" "check" [E.binary kind])] | kind <- vectorKinds]]])) "generated" "test"
     hasAbilities = not (null (Effects.abilities units) && null (Effects.handlers units))
     usesEffects = any (not . null . C.unitAbilities) units ||
       any (not . null . C.declarationUses) (concatMap C.unitDeclarations units)
@@ -95,7 +123,7 @@ emitBeamWithBindings target minify bindings plan = do
       production <- concat <$> mapM (Abilities.productionStub target bits names) (Abilities.productionAbilities unit)
       let name = Definitions.adapterModule unit
           exports = [(E.functionName d,length (Effects.uses d) + length (fst (C.functionType (C.declarationType d)))) | d <- adapterDeclarations unit] ++
-            [(Abilities.productionName a,0) | a <- Abilities.productionAbilities unit]
+            concatMap Abilities.productionExports (Abilities.productionAbilities unit)
           -- The adapter is editable; both layouts retain its readable baseline.
           body = (if Abilities.defaultUnit unit then E.moduleDoc else E.userModuleDoc) name exports (functions ++ production)
       pure (if Abilities.defaultUnit unit then Artifact ("src/" ++ name ++ ".erl") (D.render layout body) "generated" "source"

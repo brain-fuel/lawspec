@@ -11,6 +11,7 @@ init_clock() ->
     persistent_term:put(Key, persistent_term:get(Key, erlang:time_offset(microsecond))),
     ok.
 
+handler(<<"lawspec.crypto::ability::", _/binary>> = Key) -> lawspec_beam_crypto:handler(Key);
 handler(<<"lawspec.time::ability::Clock">>) ->
     stateless(#{
         <<"now">> => fun(_, []) ->

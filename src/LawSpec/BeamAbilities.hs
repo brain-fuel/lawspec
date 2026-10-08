@@ -4,7 +4,7 @@
 module LawSpec.BeamAbilities
   ( emit, nativeType, gleamImports, productionName, productionAbilities
   , interfaceModule, interfacePath, interfaceName, operationName
-  , productionStub, publicBody
+  , productionStub, productionExports, publicBody
   , hasDefault, defaultUnit
   ) where
 
@@ -36,13 +36,19 @@ defaultUnit :: C.Unit -> Bool
 defaultUnit = (`elem` defaultUnits) . C.idText . C.unitId
 
 defaultUnits :: [String]
-defaultUnits = ["lawspec.time", "lawspec.randomness", "lawspec.host", "lawspec.logging", "lawspec.concurrent"]
+defaultUnits = ["lawspec.time", "lawspec.randomness", "lawspec.host", "lawspec.logging", "lawspec.concurrent", "lawspec.crypto"]
 
 hasDefault :: C.Ability -> Bool
 hasDefault = (`elem` defaultUnits) . C.idText . C.abilityOwner
 
 defaultEntry :: C.Ability -> String
 defaultEntry a = "default_" ++ E.moduleName (C.abilityOwner a) ++ "_" ++ productionName a
+
+isSignature :: C.Ability -> Bool
+isSignature = (== "lawspec.crypto::ability::Signature") . C.abilityKey . C.abilityInstance
+
+productionExports :: C.Ability -> [(String,Int)]
+productionExports a = [(productionName a,0)] ++ [("slh_dsa_signature_handler",0) | isSignature a]
 
 operationName :: String -> String -> String
 operationName "gleam" = E.gleamName . E.snake
@@ -97,15 +103,10 @@ publicBody units supplied body = do
        [D.text "_LsSchema = " <> E.remote "lawspec_beam_effects" "install" [D.text "_LsBaseSchema",E.record handlers],body])])
 
 productionStub :: String -> Int -> [(C.Id,String)] -> C.Ability -> Either String [D.Doc]
-productionStub target _ _ ability | hasDefault ability = pure $ case target of
-  "gleam" -> [G.external "lawspec_abilities" (defaultEntry ability) (productionName ability) []
-    (D.text (alias ability ++ "." ++ interfaceName ability))]
-  "elixir" -> [D.text "@spec " <> X.call (productionName ability) [] <> D.text " :: " <>
-    X.remote (interfaceModule target ability) "t" [],
-    X.function (productionName ability) [] [X.remote ":lawspec_abilities" (defaultEntry ability) []]]
-  _ -> [D.text "-spec " <> E.call (productionName ability) [] <> D.text " -> " <>
-    E.remote (interfaceModule target ability) (E.snake (interfaceName ability)) [] <> D.text ".",
-    E.function (productionName ability) [] [E.remote "lawspec_abilities" (defaultEntry ability) []]]
+productionStub target _ _ ability | hasDefault ability = pure (concat
+  [defaultFactory target ability name entry | (name,entry) <-
+    [(productionName ability,defaultEntry ability)] ++
+    [("slh_dsa_signature_handler","default_lawspec_crypto_slh_dsa_signature_handler") | isSignature ability]])
 productionStub target bits names ability = do
   fields <- forM (C.abilityOperations ability) $ \(op,ty) -> do
     let args = [D.text ("_argument" ++ show i) | (i,_) <- zip [0::Int ..] (fst (C.functionType ty))]
@@ -126,6 +127,17 @@ productionStub target bits names ability = do
     _ -> [D.text "-spec " <> E.call name [] <> D.text " -> " <>
         E.remote (interfaceModule target ability) (E.snake (interfaceName ability)) [] <> D.text ".",
       E.function name [] [E.record (zip (map E.atom keys) fields)]]
+
+defaultFactory :: String -> C.Ability -> String -> String -> [D.Doc]
+defaultFactory target ability name entry = case target of
+  "gleam" -> [G.external "lawspec_abilities" entry name []
+    (D.text (alias ability ++ "." ++ interfaceName ability))]
+  "elixir" -> [D.text "@spec " <> X.call name [] <> D.text " :: " <>
+    X.remote (interfaceModule target ability) "t" [],
+    X.function name [] [X.remote ":lawspec_abilities" entry []]]
+  _ -> [D.text "-spec " <> E.call name [] <> D.text " -> " <>
+    E.remote (interfaceModule target ability) (E.snake (interfaceName ability)) [] <> D.text ".",
+    E.function name [] [E.remote "lawspec_abilities" entry []]]
 
 operationType :: String -> Int -> [(C.Id,String)] -> C.Type -> Either String D.Doc
 operationType target bits names ty = do
@@ -154,7 +166,8 @@ emit target layout bits declarations units boundSchema = do
         [E.remote "lawspec_beam_effects" "with_native_context" [E.array [],
           E.lambda [symbols] (E.remote "lawspec_data" "schema" [symbols]),
           E.lambda [schema,symbols] (E.apply (D.text "_Body") [E.tuple [E.atom "lawspec_context",schema,symbols]])]]
-      defaults = [(defaultEntry a,0) | a <- F.abilities units, hasDefault a]
+      defaults = [(defaultEntry a,0) | a <- F.abilities units, hasDefault a] ++
+        [("default_lawspec_crypto_slh_dsa_signature_handler",0) | any isSignature (F.abilities units)]
       shared = Artifact "src/lawspec_abilities.erl"
         (D.render layout (E.moduleDoc "lawspec_abilities" (("with_context",1):exports ++ defaults) (contextFunction : pieces ++ specs))) "generated" "source"
   pure (shared : native ++ boundHelpers)
@@ -329,7 +342,11 @@ emit target layout bits declarations units boundSchema = do
         [E.function (defaultEntry ability) []
           [D.text "_LsSchema = " <> E.remote "lawspec_data" "schema" [E.call "make_ref" []],
            D.text "_LsHandler = " <> E.remote "lawspec_beam_defaults" "handler" [key],
-           D.text "_LsOperations = " <> E.array callbacks, make (E.atom "none")] | hasDefault ability]
+           D.text "_LsOperations = " <> E.array callbacks, make (E.atom "none")] | hasDefault ability] ++
+        [E.function "default_lawspec_crypto_slh_dsa_signature_handler" []
+          [D.text "_LsSchema = " <> E.remote "lawspec_data" "schema" [E.call "make_ref" []],
+           D.text "_LsHandler = " <> E.remote "lawspec_beam_crypto" "slh_dsa_signature_handler" [],
+           D.text "_LsOperations = " <> E.array callbacks, make (E.atom "none")] | isSignature ability]
     logicalOperations nativeSchema operations = do
       clauses <- forM (zip [1::Int ..] operations) $ \(i,(op,ty)) -> do
         let (args,result) = C.functionType ty
@@ -365,15 +382,24 @@ emit target layout bits declarations units boundSchema = do
       let bound = [a | a <- F.abilities units, C.abilityNative a /= Nothing]
           modules = nub [init ref | a <- bound, Just ref <- [C.abilityNative a]]
           imports = zip modules ["native_" ++ show i | i <- [0::Int ..]]
+          canonicalFactory a ref = hasDefault a && not (null ref) &&
+            intercalate "/" (init ref) == E.gleamPath (C.abilityOwner a) &&
+            last ref `elem` map fst (productionExports a)
+      interfaces <- gleamImports units [C.abilityInstance a | a <- bound,
+        Just ref <- [C.abilityNative a], canonicalFactory a ref]
       bodies <- forM bound $ \a -> do
         name <- F.abilityEntry units (C.abilityInstance a)
         ref <- maybe (Left "missing bound native handler reference") Right (C.abilityNative a)
         _ <- E.nativeCall target ref []
         owner <- maybe (Left "missing bound native handler module") Right (lookup (init ref) imports)
+        let operations = if canonicalFactory a ref then
+              D.text "let #(_, operations) = " <> G.call (alias a ++ ".parts_" ++ E.snake (interfaceName a)) [D.text "handler"] <>
+                D.hardline <> D.text "operations"
+              else G.tuple [D.text ("handler." ++ operationName target op) | (op,_) <- C.abilityOperations a]
         pure (D.text "pub fn " <> G.call (name ++ "_make") [] <> D.text " {" <>
           D.nest 2 (D.hardline <> D.text "let handler = " <> G.call (owner ++ "." ++ last ref) [] <>
-            D.hardline <> G.tuple [D.text ("handler." ++ operationName target op) | (op,_) <- C.abilityOperations a]) <>
+            D.hardline <> operations) <>
           D.hardline <> D.text "}")
       pure [Artifact "src/lawspec/native_handlers.gleam"
-        (D.render layout (G.fileDoc False ([D.text ("import " ++ intercalate "/" ref ++ " as " ++ name) | (ref,name) <- imports] ++ bodies)))
+        (D.render layout (G.fileDoc False ([D.text ("import " ++ intercalate "/" ref ++ " as " ++ name) | (ref,name) <- imports] ++ interfaces ++ bodies)))
         "generated" "source" | not (null bound)]

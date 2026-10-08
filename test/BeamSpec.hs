@@ -15,6 +15,7 @@ import qualified LawSpec.Core as C
 import qualified LawSpec.Code.Doc as D
 import qualified LawSpec.BeamCode as E
 import qualified LawSpec.BeamExpr as Expr
+import LawSpec.Scaffold (scaffoldFilesWith)
 
 generated :: Bool -> String -> Either [Diagnostic] [Artifact]
 generated = generatedFor "erlang"
@@ -25,6 +26,43 @@ generatedFor target compact text = compileCore 64 defaultGeneration [Source "bea
 
 test_beamCodeUsesCheckedCoreAndNativeFrameworks :: Spec
 test_beamCodeUsesCheckedCoreAndNativeFrameworks = describe "BEAM generation" $ do
+  -- ref:DEC-typed-core-boundary ref:DEC-adapter-ownership
+  mapM_ (\target -> it (target ++ " emits portable crypto defaults, a native bridge and every vector family") $ do
+    input <- readFile "examples/specs/crypto.lawspec"
+    case generatedFor target False input of
+      Left errors -> expectationFailure (show errors)
+      Right artifacts -> do
+        let paths = map artifactPath artifacts
+            bodies = concatMap artifactContent artifacts
+        mapM_ (\path -> paths `shouldContain` [path])
+          ["src/lawspec_beam_crypto.erl", "src/lawspec_beam_crypto_native.erl",
+           "priv/lawspec_crypto_native.c", "lawspec_crypto_build.escript"]
+        bodies `shouldSatisfy` isInfixOf "slh_dsa_signature_handler"
+        bodies `shouldSatisfy` (not . isInfixOf "@@VECTORS@@")
+        length (filter ((== "user") . ownership) artifacts) `shouldBe` 1
+        let expected = case target of "elixir" -> "test/support/"; "gleam" -> "test-support/src/"; _ -> "test/"
+        [(artifactPath a, artifactPlacement a) | a <- artifacts, "lawspec_beam_crypto_vectors.erl" `isInfixOf` artifactPath a]
+          `shouldBe` [(expected ++ "lawspec_beam_crypto_vectors.erl", "test")]
+        mapM_ (\kind -> bodies `shouldSatisfy` isInfixOf kind)
+          ["sha3-256","shake256","aes-256-gcm","mlkem768-keygen","mlkem768-encaps",
+           "mlkem768-decaps","mlkem768-decaps-seed","mldsa65-keygen","mldsa65-verify",
+           "mldsa65-sign-seed","slhdsa128f-keygen","slhdsa128f-verify"]
+    case generatedFor target False "unit example.plain\ndefinition identity (x :: Int32) :: Int32 is x end\n" of
+      Left errors -> expectationFailure (show errors)
+      Right artifacts -> map artifactPath artifacts `shouldSatisfy` all (not . isInfixOf "crypto")
+    let scaffold withCrypto = either error (concatMap snd) (scaffoldFilesWith withCrypto False target)
+    scaffold False `shouldSatisfy` (not . isInfixOf "lawspec_crypto_build")
+    if target == "gleam" then pure () else scaffold True `shouldSatisfy` isInfixOf "lawspec_crypto_build.escript"
+    if target == "gleam" then pure () else
+      case compileCore 64 defaultGeneration [Source "crypto.lawspec" input] >>= planTesting >>=
+          emitPlanWithOptions False target (Just "application") (Just "checks") of
+        Left errors -> expectationFailure (show errors)
+        Right artifacts -> do
+          let paths = map artifactPath artifacts
+          mapM_ (\path -> paths `shouldContain` [path])
+            ["lawspec_crypto_build.escript", "priv/lawspec_crypto_native.c",
+             "application/lawspec_beam_crypto_native.erl"]
+    ) ["erlang", "elixir", "gleam"]
   -- ref:DEC-typed-core-boundary ref:DEC-adapter-ownership
   mapM_ (\target -> it (target ++ " emits compiler-owned built-in factories and temporal laws") $ do
     input <- readFile "examples/specs/builtins.lawspec"

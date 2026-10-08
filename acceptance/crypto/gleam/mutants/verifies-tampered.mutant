@@ -1,0 +1,7 @@
+expect: a changed message fails to verify [native]
+@@ src/example/keys.gleam
+<<<<<<<
+interface.signature_verify(inner, key, message, signature) }
+=======
+interface.signature_verify(inner, key, message, signature) || message != <<>> }
+>>>>>>>

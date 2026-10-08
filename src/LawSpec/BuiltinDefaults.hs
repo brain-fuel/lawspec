@@ -102,6 +102,9 @@ adapterPath target unit = case target of
   "kotlin" -> "src/main/kotlin/lawspec/" ++ capital short ++ ".kt"
   "haskell" -> "src/Lawspec/" ++ capital short ++ ".hs"
   "rust" -> "src/lawspec/" ++ short ++ ".rs"
+  "erlang" -> "src/lawspec_" ++ short ++ ".erl"
+  "elixir" -> "lib/lawspec_" ++ short ++ ".ex"
+  "gleam" -> "src/lawspec/" ++ short ++ ".gleam"
   _ -> short
   where short = shortName unit
 

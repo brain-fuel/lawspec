@@ -1,0 +1,7 @@
+expect: a changed message fails to verify [native]
+@@ src/example_keys.erl
+<<<<<<<
+Verify(Key, Message, Signature) end
+=======
+Verify(Key, Message, Signature) orelse byte_size(Message) > 0 end
+>>>>>>>

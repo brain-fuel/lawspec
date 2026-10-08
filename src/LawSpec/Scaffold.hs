@@ -42,9 +42,12 @@ setupAdvice target = lookup target
   , ("go", "Use Go 1.25+ and go get pgregory.net/rapid@v1.2.0 (and github.com/cloudflare/circl@v1.6.5 for a program that imports lawspec.crypto or lawspec.network), then go mod download.")
   , ("haskell", "Use Stack with lts-24.58, directory and time as dependencies (and, for a program that imports lawspec.crypto, lawspec.network or lawspec.randomness, extra-deps crypton-1.1.5, ram-0.22.1, mlkem-0.2.3.0 and mldsa-0.1.1.0 as dependencies too), and test dependencies hspec, hedgehog, hspec-hedgehog, hspec-discover, and a test/Spec.hs using hspec-discover. Run stack build --test --no-run-tests.")
   , ("kotlin", "Use JDK 25, Gradle 9.3.0, Kotlin plugin 2.3.21, JVM target 25, Kotest 5.9.1 (runner, assertions, property), and useJUnitPlatform(); a program that imports lawspec.crypto or lawspec.network also needs Bouncy Castle bcprov-jdk18on 1.86. Run gradle testClasses.")
-  , ("erlang", "Use Erlang/OTP 29+, Rebar3 3.27.1 and PropEr 1.5.0. Run rebar3 eunit. Programs importing lawspec.crypto or lawspec.network require OTP crypto with ML-KEM-768, ML-DSA-65, SLH-DSA-SHAKE-128f, SHA3/SHAKE and AES-256-GCM support.")
-  , ("elixir", "Use Erlang/OTP 29+, Elixir 1.20+ and StreamData 1.4.0. Run mix deps.get and mix test. Compile the shared Erlang runtime from src alongside Elixir modules in lib. Programs importing lawspec.crypto or lawspec.network require OTP's post-quantum crypto support.")
-  , ("gleam", "Use Erlang/OTP 29+, Gleam 1.18+, gleam_stdlib 1.0.5, gleeunit 1.11.0 and qcheck 1.0.5. Select the erlang target in gleam.toml and run gleam test. Programs importing lawspec.crypto or lawspec.network require OTP's post-quantum crypto support.") ]
+  , ("erlang", "Use Erlang/OTP 29+, Rebar3 3.27.1 and PropEr 1.5.0. Run rebar3 eunit." ++ beamCryptoSetup)
+  , ("elixir", "Use Erlang/OTP 29+, Elixir 1.20+ and StreamData 1.4.0. Run mix deps.get and mix test. Compile the shared Erlang runtime from src alongside Elixir modules in lib." ++ beamCryptoSetup)
+  , ("gleam", "Use Erlang/OTP 29+, Gleam 1.18+, gleam_stdlib 1.0.5, gleeunit 1.11.0 and qcheck 1.0.5. Select the erlang target in gleam.toml and run gleam test." ++ beamCryptoSetup) ]
+
+beamCryptoSetup :: String
+beamCryptoSetup = " Programs importing lawspec.crypto or lawspec.network need OTP's post-quantum crypto support and a Unix C toolchain (WSL on Windows). Install OpenSSL 3.5+ development headers with the same major version as OTP, then run escript lawspec_crypto_build.escript before compiling. The builder uses pkg-config or Homebrew; LAWSPEC_OPENSSL_PREFIX overrides the installation. Ship the compiled priv directory with the application."
 
 -- | Files in the order the project is written, for a program that uses no
 -- crypto library (lawspec init's).
@@ -64,9 +67,10 @@ gleamTestPackage = unlines
 scaffoldFilesWith :: Bool -> Bool -> String -> Either String [(FilePath, String)]
 scaffoldFilesWith crypto minify target = case target of
   "erlang" -> Right
-    [ ("rebar.config", unlines
+    [ ("rebar.config", unlines $
         [ "{erl_opts, [debug_info]}."
-        , "{profiles, [{test, [{deps, [{proper, \"1.5.0\"}]}]}]}." ])
+        , "{profiles, [{test, [{deps, [{proper, \"1.5.0\"}]}]}]}." ] ++
+        [ "{pre_hooks, [{compile, \"escript lawspec_crypto_build.escript\"}]}." | crypto])
     , ("src/lawspec_example.app.src", unlines
         [ "{application, lawspec_example, ["
         , "    {description, \"LawSpec example\"},"
@@ -76,13 +80,23 @@ scaffoldFilesWith crypto minify target = case target of
         , "    {applications, [kernel, stdlib" ++ (if crypto then ", crypto" else "") ++ "]}"
         , "]}." ]) ]
   "elixir" -> Right
-    [ ("mix.exs", unlines
+    [ ("mix.exs", unlines $ (if crypto then
+        [ "defmodule Mix.Tasks.Compile.LawspecCrypto do"
+        , "  use Mix.Task.Compiler"
+        , "  def run(_args) do"
+        , "    {output, status} = System.cmd(\"escript\", [\"lawspec_crypto_build.escript\"], stderr_to_stdout: true)"
+        , "    IO.write(output)"
+        , "    if status != 0, do: Mix.raise(\"LawSpec crypto bridge compilation failed\")"
+        , "    {:ok, []}"
+        , "  end", "end", "" ] else []) ++
         [ "defmodule LawSpecExample.MixProject do"
         , "  use Mix.Project", ""
         , "  def project do"
         , "    [app: :lawspec_example, version: \"0.1.0\", elixir: \"~> 1.20\","
-        , "     erlc_paths: [\"src\"] ++ test_paths(), elixirc_paths: [\"lib\"] ++ test_paths(),"
-        , "     deps: [{:stream_data, \"== 1.4.0\", only: :test}]]"
+        , "     erlc_paths: [\"src\"] ++ test_paths(), elixirc_paths: [\"lib\"] ++ test_paths()," ] ++
+        [ "     compilers: [:lawspec_crypto] ++ Mix.compilers()," | crypto] ++
+        [
+          "     deps: [{:stream_data, \"== 1.4.0\", only: :test}]]"
         , "  end", ""
         , "  defp test_paths, do: if(Mix.env() == :test, do: [\"test/support\"], else: [])", ""
         , "  def application do"

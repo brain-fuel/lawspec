@@ -1,0 +1,7 @@
+expect: native crypto factories preserve key encodings and checked calls
+@@ src/example/crypto_context.gleam
+<<<<<<<
+bit_array.byte_size(secret) == 64
+=======
+bit_array.byte_size(secret) == 2400
+>>>>>>>
