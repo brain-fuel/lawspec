@@ -2,7 +2,19 @@
 %% Values stay in the portable domain until an explicit native boundary.
 %% ref:DEC-typed-core-boundary
 -module(lawspec_beam_runtime).
--export([require/2, assert_equal/3, contextual/2, helper/4, concurrently/1]).
+-export([require/2, assert_equal/3, contextual/2, helper/4, concurrently/1,
+    worker_context/0, with_worker_context/2]).
+
+%% Only LawSpec's allocator and active handler operation cross a worker
+%% boundary. Application process dictionary entries remain process-local.
+worker_context() -> [{Key, get(Key)} || Key <-
+    [{lawspec_beam_effects, scope}, {lawspec_beam_handler, context}]].
+
+with_worker_context(Context, Body) ->
+    Previous = [{Key, put(Key, Value)} || {Key, Value} <- Context],
+    try Body() after
+        lists:foreach(fun({Key, undefined}) -> erase(Key); ({Key, Value}) -> put(Key, Value) end, Previous)
+    end.
 
 require(true, _) -> ok;
 require(false, Context) -> erlang:error({lawspec, {contract_failed, Context}});
@@ -29,12 +41,14 @@ helper(Name, Values, Types, Bits) -> lawspec_beam_scalar:helper(Name, Values, Ty
 %% messages out of the caller's mailbox. ref:DEC-typed-core-boundary
 concurrently(Bodies) ->
     Caller = self(),
+    Context = worker_context(),
     {Coordinator, Monitor} = spawn_monitor(fun() ->
+        process_flag(trap_exit, true),
         ParentMonitor = monitor(process, Caller),
-        Workers = [{spawn_monitor(fun() ->
-            Result = try {ok, Body()} catch Class:Reason:Stack -> {exception, Class, Reason, Stack} end,
+        Workers = [{spawn_opt(fun() ->
+            Result = try {ok, with_worker_context(Context, Body)} catch Class:Reason:Stack -> {exception, Class, Reason, Stack} end,
             exit({lawspec_result, Result})
-        end), I} || {I, Body} <- lists:enumerate(Bodies)],
+        end, [link, monitor]), I} || {I, Body} <- lists:enumerate(Bodies)],
         Result = collect(Workers, #{}, ParentMonitor),
         exit({lawspec_result, Result})
     end),

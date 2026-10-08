@@ -77,3 +77,30 @@ parallel_caller_death_cancels_children_test() ->
     Monitor = monitor(process, Pid),
     exit(Caller, kill),
     receive {'DOWN', Monitor, process, Pid, killed} -> ok after 1000 -> error(child_leaked) end.
+
+%% ref:DEC-typed-core-boundary
+parallel_coordinator_death_cannot_leak_children_test() ->
+    Test = self(),
+    {Caller, CallerMonitor} = spawn_monitor(fun() ->
+        try lawspec_beam_runtime:concurrently([
+            fun() -> Test ! {child, self()}, receive forever -> never end end])
+        catch error:{lawspec, {concurrent_group_failed, killed}} -> ok end
+    end),
+    Child = receive {child, Pid} -> Pid after 1000 -> error(child_did_not_start) end,
+    {links, [Coordinator]} = process_info(Child, links),
+    ChildMonitor = monitor(process, Child),
+    exit(Coordinator, kill),
+    receive {'DOWN', ChildMonitor, process, Child, killed} -> ok after 1000 -> error(child_leaked) end,
+    receive {'DOWN', CallerMonitor, process, Caller, normal} -> ok after 1000 -> error(caller_leaked) end.
+
+%% ref:DEC-typed-core-boundary
+worker_context_restores_after_failure_test() ->
+    Key = {lawspec_beam_effects, scope},
+    Previous = put(Key, original),
+    try
+        ?assertThrow(abort, lawspec_beam_runtime:with_worker_context([{Key, replacement}], fun() ->
+            ?assertEqual(replacement, get(Key)), throw(abort) end)),
+        ?assertEqual(original, get(Key))
+    after
+        case Previous of undefined -> erase(Key); _ -> put(Key, Previous) end
+    end.

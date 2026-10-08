@@ -56,7 +56,7 @@ emitBeamWithBindings target minify bindings plan = do
     runtimes = [Artifact ("src/lawspec_beam_" ++ name ++ ".erl")
         (runtimeSource ("beam-" ++ name)) "generated" "source"
         | name <- ["scalar","schema","regex","runtime"] ++
-            (if usesEffects then ["effects","handler"] else []) ++
+            (if usesEffects then ["effects","handler","waits"] else []) ++
             ["defaults" | any Abilities.hasDefault (Effects.abilities units)] ++
             (if usesCrypto then ["crypto","crypto_native"] else []) ++
             ["gleam" | target == "gleam"]] ++

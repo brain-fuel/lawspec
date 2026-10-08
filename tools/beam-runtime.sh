@@ -17,7 +17,8 @@ erl -noshell -pa "$beam_artifacts" -eval '
     lawspec_beam_values_tests:vectors(".artifacts/beam-runtime/values.json"),
     case eunit:test([lawspec_beam_scalar_tests, lawspec_beam_schema_tests,
             lawspec_beam_values_tests, lawspec_beam_runtime_tests, lawspec_beam_effects_tests,
-            lawspec_beam_defaults_tests, lawspec_beam_crypto_tests, lawspec_beam_gleam_tests], [verbose]) of
+            lawspec_beam_defaults_tests, lawspec_beam_crypto_tests, lawspec_beam_waits_tests,
+            lawspec_beam_gleam_tests], [verbose]) of
         ok -> halt(0);
         _ -> halt(1)
     end.'

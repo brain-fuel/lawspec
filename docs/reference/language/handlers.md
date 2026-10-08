@@ -227,6 +227,13 @@ Generated tests make fresh production, spec and recording handlers for
 each example, boundary case and property trial. An example's additional
 expectations share the recordings from its law body.
 
+BEAM stateful operations are serialized per cell. Calls between handlers
+may wait normally; a cycle of waiting stateful operations fails with
+`cyclic_handler_dependency`, including calls through LawSpec's parallel
+workers. A failed operation keeps its previous state. The dependency
+tracker releases completed and cancelled calls and stops after the last
+cell closes.
+
 Native factories may use scoped cells for state. Erlang and Elixir call
 `lawspec_beam_effects:native_cell/1`, `native_read/1` and `native_write/2`
 (using Elixir's remote-call syntax). Gleam has typed `effects.new_cell`,

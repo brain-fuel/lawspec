@@ -9,7 +9,8 @@
 start(Owner, Initial) -> gen_server:start(?MODULE, {Owner, Initial}, []).
 
 call(Handler, Update) ->
-    case gen_server:call(Handler, {update, Update}, infinity) of
+    Context = lawspec_beam_runtime:worker_context(),
+    case gen_server:call(Handler, {update, make_ref(), Context, Update}, infinity) of
         {ok, Value} -> Value;
         {exception, Class, Reason, Stack} -> erlang:raise(Class, Reason, Stack)
     end.
@@ -20,20 +21,30 @@ stop(Handler) ->
 
 init({Owner, Initial}) ->
     process_flag(trap_exit, true),
+    Graph = lawspec_beam_waits:register(self()),
     {ok, #{owner => monitor(process, Owner), value => Initial,
+        graph => Graph, graph_monitor => monitor(process, Graph),
         active => none, waiting => queue:new()}}.
 
-handle_call({update, Update}, From = {Caller, _}, State) ->
-    Entry = {From, monitor(process, Caller), Update},
-    {noreply, next(State#{waiting := queue:in(Entry, maps:get(waiting, State))})}.
+handle_call({update, Token, Context, Update}, From = {Caller, _}, State = #{graph := Graph}) ->
+    Origin = proplists:get_value({?MODULE, context}, Context),
+    case lawspec_beam_waits:request(Graph, Token, self(), Caller, Origin) of
+        ok ->
+            Entry = {From, monitor(process, Caller), Token, Context, Update},
+            {noreply, next(State#{waiting := queue:in(Entry, maps:get(waiting, State))})};
+        {error, Reason} -> {reply, {exception, error, {lawspec, Reason}, []}, State}
+    end.
 
 handle_cast(_, State) -> {noreply, State}.
 
 handle_info({'DOWN', Owner, process, _, _}, State = #{owner := Owner}) ->
     {stop, normal, State};
+handle_info({'DOWN', Monitor, process, _, Reason}, State = #{graph_monitor := Monitor}) ->
+    {stop, {dependency_tracker_stopped, Reason}, State};
 handle_info({'DOWN', Monitor, process, Pid, Reason},
-        State = #{active := {Pid, Monitor, From, CallerMonitor}}) ->
+        State = #{active := {Pid, Monitor, From, CallerMonitor, Token}, graph := Graph}) ->
     demonitor(CallerMonitor, [flush]),
+    lawspec_beam_waits:complete(Graph, Token),
     %% A cancelled caller cannot commit a half-finished operation. Its DOWN
     %% signal may still be behind the worker's result in the mailbox.
     Updated = case is_process_alive(element(1, From)) of
@@ -50,42 +61,46 @@ handle_info({'DOWN', Monitor, process, Pid, Reason},
     end,
     {noreply, next(Updated#{active := none})};
 handle_info({'DOWN', CallerMonitor, process, _, _},
-        State = #{active := {Pid, Monitor, _, CallerMonitor}}) ->
+        State = #{active := {Pid, Monitor, _, CallerMonitor, Token}, graph := Graph}) ->
     cancel(Pid, Monitor),
+    lawspec_beam_waits:complete(Graph, Token),
     {noreply, next(State#{active := none})};
 handle_info({'DOWN', Monitor, process, _, _}, State) ->
-    Waiting = queue:filter(fun({_, M, _}) -> M =/= Monitor end, maps:get(waiting, State)),
+    Waiting = queue:filter(fun({_, M, _, _, _}) -> M =/= Monitor end, maps:get(waiting, State)),
     {noreply, State#{waiting := Waiting}};
 handle_info(_, State) -> {noreply, State}.
 
 terminate(_, State) ->
     case maps:get(active, State) of
         none -> ok;
-        {Pid, Monitor, _, CallerMonitor} ->
+        {Pid, Monitor, _, CallerMonitor, _} ->
             cancel(Pid, Monitor), demonitor(CallerMonitor, [flush])
     end,
-    lists:foreach(fun({_, M, _}) -> demonitor(M, [flush]) end,
-        queue:to_list(maps:get(waiting, State))).
+    lists:foreach(fun({_, M, _, _, _}) -> demonitor(M, [flush]) end,
+        queue:to_list(maps:get(waiting, State))),
+    lawspec_beam_waits:unregister(maps:get(graph, State), self()).
 
-next(State = #{active := none, waiting := Waiting, value := Value}) ->
+next(State = #{active := none, waiting := Waiting, value := Value, graph := Graph}) ->
     case queue:out(Waiting) of
         {empty, _} -> State;
-        {{value, {From, CallerMonitor, Update}}, Rest} ->
-            case is_process_alive(element(1, From)) of
+        {{value, {From, CallerMonitor, Token, Context, Update}}, Rest} ->
+            case is_process_alive(element(1, From)) andalso lawspec_beam_waits:activate(Graph, self(), Token) of
                 false -> demonitor(CallerMonitor, [flush]), next(State#{waiting := Rest});
                 true ->
                     %% The link prevents a worker leaking if the server itself
                     %% is killed; the monitor carries its result and stack.
+                    Cell = self(),
+                    WorkerContext = lists:keystore({?MODULE, context}, 1, Context, {{?MODULE, context}, {Graph, Cell, Token}}),
                     {Pid, Monitor} = spawn_opt(fun() ->
                         Result = try
-                            case Update(Value) of
+                            case lawspec_beam_runtime:with_worker_context(WorkerContext, fun() -> Update(Value) end) of
                                 {Reply, NewState} -> {ok, Reply, NewState};
                                 Other -> erlang:error({lawspec, {invalid_handler_result, Other}})
                             end
                         catch Class:Reason:Stack -> {exception, Class, Reason, Stack} end,
                         exit({lawspec_result, Result})
                     end, [link, monitor]),
-                    State#{active := {Pid, Monitor, From, CallerMonitor}, waiting := Rest}
+                    State#{active := {Pid, Monitor, From, CallerMonitor, Token}, waiting := Rest}
             end
     end;
 next(State) -> State.

@@ -17,6 +17,7 @@ runtimeFiles =
   , ("beam-random", "lawspec_beam_random.erl"), ("beam-values", "lawspec_beam_values.erl")
   , ("beam-runtime", "lawspec_beam_runtime.erl"), ("beam-proper", "lawspec_beam_proper.erl")
   , ("beam-effects", "lawspec_beam_effects.erl"), ("beam-handler", "lawspec_beam_handler.erl")
+  , ("beam-waits", "lawspec_beam_waits.erl")
   , ("beam-defaults", "lawspec_beam_defaults.erl")
   , ("beam-crypto", "lawspec_beam_crypto.erl"), ("beam-crypto_native", "lawspec_beam_crypto_native.erl")
   , ("beam-crypto-native-c", "lawspec_crypto_native.c"), ("beam-crypto-build", "lawspec_crypto_build.escript")
