@@ -62,6 +62,14 @@ identifier name = unless (valid && name `notElem` keywords)
         all (\c -> isAscii c && (isAlphaNum c || c == '_')) rest
     keywords = words "_ abstract assert boolean break byte case catch char class const continue default do double else enum extends final finally float for goto if implements import instanceof int interface long native new package private protected public return short static strictfp super switch synchronized this throw throws transient try void volatile while true false null record sealed permits var yield"
 
+-- | A record component may be named by a contextual keyword (record, sealed,
+-- permits, var): Java restricts those only as type names. yield stays out,
+-- since an unqualified call of its accessor would not compile.
+componentIdentifier :: String -> Either String ()
+componentIdentifier name
+  | name `elem` words "record sealed permits var" = pure ()
+  | otherwise = identifier name
+
 -- | Java output is laid out at 100 columns, as Google's Java style allows.
 -- ref:google-style-guides
 javaDataType :: [C.DataDeclaration] -> C.Type -> Either String String
@@ -213,7 +221,7 @@ emitJavaDataWithProfile bits layout declarations = do
           parameters = scope ++ [(e, "Object") | e <- free]
           witnesses = [D.text ("String " ++ Schema.witnessFieldName (length free) k) | k <- [0 .. length free - 1]]
       components <- (++ witnesses) <$> mapM (\field -> do
-        identifier (C.binderName field)
+        componentIdentifier (C.binderName field)
         unless (C.binderName field `notElem` objectMethods)
           (Left ("Java record component " ++ C.binderName field ++ " of " ++ C.constructorName value ++
             " would override java.lang.Object." ++ C.binderName field ++ "(); rename the field"))
