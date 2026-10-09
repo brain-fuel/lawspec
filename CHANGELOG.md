@@ -123,9 +123,16 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - On Python, a unit named like another unit's package (`shop.tax` beside
   `shop.tax.rates`) is the package's `__init__.py`.
 - New acceptance suites `records`, `sequences` and `composition`.
+- Vetting on Rice's Tax's review page: `make assess` records every pending
+  row, `make tax` serves the page on which each comment, page, decision and
+  reference is judged beside the code or page it explains, and `make audit`
+  says what is left. `lawspec-dev tax` runs the Rice's Tax checkout named by
+  `RICESTAX_HOME`; see the new how-to guide, Vet the canonical material.
 
 ### Changed
 
+- `canon.yaml` names the canon version its vetting files were written with,
+  0.2.0, which both `make canon` and Rice's Tax require.
 - Definitions that are the same up to their names, such as an import's
   copies, share one generated body: Rust aliases the copies' functions, and
   Java and Go delegate to it. Go packages hold only the bodies they reach,

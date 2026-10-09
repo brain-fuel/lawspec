@@ -54,3 +54,7 @@ registry/*:
   kinds: [registry]
   reason: "The registry was written in 0.20.1; the owner signs off each reference and requirement at 1.0, once 1.0 feature parity is reached"
   revisit: 1.0.0
+"*":
+  kinds: [name]
+  reason: "Rice's Tax raises its What queue, a verdict on each unit's name and signature; judging names is part of the vetting deferred to 1.0, once 1.0 feature parity is reached"
+  revisit: 1.0.0

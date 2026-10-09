@@ -50,7 +50,9 @@ changed for users, and anything that needs their action. Start a new, empty
 
 `canon.yaml`'s version is the project version canon checks against: an open
 decision or an exemption whose `revisit` version the release reaches fails
-`make canon` until it is settled.
+`make canon` until it is settled. Vet what is pending first, on Rice's Tax's
+review page, and settle each exemption the release reaches: see
+[Vet the canonical material](vet.md); `make audit` says what is left.
 
 ## 3. Build the package
 

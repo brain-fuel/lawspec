@@ -7,11 +7,12 @@ VERSION := $(shell sed -n 's/^version: //p' package.yaml)
 SUITE   ?= integration
 TARGET  ?=
 SITE    := .artifacts/site
+PORT    ?= 8080
 
 .DEFAULT_GOAL := help
 .PHONY: help build generate generate-check wasm test integrity boundaries check parity \
         smoke package acceptance lessons ci ci-fresh ci-core examples editor-test docs docs-check \
-        docs-serve docs-deploy canon bump version release-check clean
+        docs-serve docs-deploy canon assess tax audit bump version release-check clean
 
 help: ## List the tasks
 	@awk -F':.*## ' '/^[a-z-]+:.*## / {printf "  %-15s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -81,6 +82,15 @@ docs-check: ## Compile every documentation snippet and check links
 
 canon: ## Check the canonical format with canon (needs CANON_HOME)
 	$(DEV) canon check
+
+assess: ## Rice's Tax: record every pending row, report what is owed (RICESTAX_HOME, CANON_HOME)
+	$(DEV) tax assess
+
+tax: ## Rice's Tax review page on http://localhost:$(PORT) (RICESTAX_HOME, CANON_HOME)
+	$(DEV) tax pay $(PORT)
+
+audit: ## Rice's Tax audit: what is left to vet (RICESTAX_HOME, CANON_HOME)
+	$(DEV) tax audit
 
 docs-serve: docs ## Serve the documentation site on http://localhost:8000
 	python3 -m http.server --directory $(SITE) 8000

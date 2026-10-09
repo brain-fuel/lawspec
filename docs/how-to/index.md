@@ -16,6 +16,7 @@ shows how to do it.
 - [Diagnose your environment with doctor](run-doctor.md)
 - [Generate example artifacts](generate-example-artifacts.md)
 - [Use the JavaScript API](use-the-javascript-api.md)
+- [Vet the canonical material](vet.md) with Rice's Tax's review page
 
 ## Writing specifications
 

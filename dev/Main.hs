@@ -12,11 +12,12 @@
 --   lawspec-dev canon [arguments]   canon over the repository; see dev/Canon.hs
 --   lawspec-dev beam-vectors <file> scalar vectors from Core for BEAM conformance
 --   lawspec-dev bench <name> [...]  benchmarks of generated code; see dev/Bench.hs
+--   lawspec-dev tax <verb> [...]    Rice's Tax over the repository; see dev/Canon.hs
 module Main (main) where
 
 import Control.Monad (forM, forM_, unless, when)
 import Bench (benchCommand)
-import Canon (canonCommand)
+import Canon (canonCommand, taxCommand)
 import BeamVectors (writeVectors)
 import Ci (ci)
 import Docs (docsCommand)
@@ -45,7 +46,8 @@ main = getArgs >>= \case
   "docs" : options -> docsCommand options
   "canon" : options -> canonCommand options
   "bench" : options -> benchCommand options
-  _ -> die "usage: lawspec-dev boundaries | integrity [--record] | ci [options] | generate [--check|--list] | version [--check] | bump <x.y.z> | docs --out <dir> | docs --check | canon [arguments] | beam-vectors <file> | bench <name> [--scale N] [--generate] [target...]"
+  "tax" : options -> taxCommand options
+  _ -> die "usage: lawspec-dev boundaries | integrity [--record] | ci [options] | generate [--check|--list] | version [--check] | bump <x.y.z> | docs --out <dir> | docs --check | canon [arguments] | beam-vectors <file> | bench <name> [--scale N] [--generate] [target...] | tax assess|pay [port]|audit"
 
 -- | Follow transitive local imports, so a convenience module cannot hide
 -- syntax or inference behind Core, the testing plan, or an emitter.

@@ -16,6 +16,15 @@ DEC-canon-from-a-checkout:
   decided: 0.20.1
   refs: [canon]
 
+DEC-vet-with-rices-tax:
+  status: decided
+  question: canon records 3,243 comments, pages, decisions and references as pending, and the owner signs each at 1.0. Editing canonical_vetting/ by hand means reading each comment beside its code in another window and typing its key. How does the owner vet them, and how do the tool and the check agree on what is pending?
+  answer: |
+    On Rice's Tax's review page (ref rices-tax): make assess records every pending row, make tax serves the page, which shows each row with the code or page it explains, what it cites, and canon's finding on it, and writes a verdict into the vetting file in the working tree; the owner reviews git diff and commits, so blame names the signer; make audit and make canon report what is left. Rice's Tax reads the repository through canon's library, so the two must be one canon version: canon.yaml names it under canon (0.2.0), Rice's Tax refuses any other, and lawspec-dev tax refuses a CANON_HOME of another version than Rice's Tax's. RICESTAX_HOME names the Rice's Tax checkout as CANON_HOME names canon's. The directory exemptions of 0.20.1 stay until the owner lifts them, one subject at a time from the page or whole; rows under them can be decided before. Rice's Tax's What queue, a verdict on each name and signature, is raised by assess and exempted for the kind name until 1.0.0, with the rest of the vetting deferred to 1.0.
+  opened: 0.20.1
+  decided: 0.20.1
+  refs: [rices-tax, canon]
+
 DEC-canon-dialect-profiles:
   status: decided
   question: canon's samples check Python, JavaScript, TypeScript, Go and Kotlin through plain grammars with units, which take every line comment as documentation. Which profiles does LawSpec use for its runtimes?

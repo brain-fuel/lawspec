@@ -372,7 +372,10 @@ stack run lawspec-dev -- canon vet          # list what needs a verdict
 `lawspec-dev canon` links `.canon` to the checkout, whose grammars
 `canon.yaml` names, and runs its binary (or `CANON`, if set). The complete
 check runs `canon check` as its `canon` step, and skips it with a message when
-`CANON_HOME` is not set. ref:DEC-canon-from-a-checkout
+`CANON_HOME` is not set. ref:DEC-canon-from-a-checkout `canon.yaml` names under
+`canon` the canon version the vetting files were written with; use a checkout
+of that version. Verdicts are given on Rice's Tax's review page, `make tax`;
+see [Vet the canonical material](vet.md).
 
 ## Releasing
 

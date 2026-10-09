@@ -146,6 +146,9 @@
         "path": "how-to/release.md"
       },
       {
+        "path": "how-to/vet.md"
+      },
+      {
         "path": "how-to/targets/index.md",
         "children": [
           {

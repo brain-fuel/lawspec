@@ -24,8 +24,12 @@ commonmark:
   locator: https://spec.commonmark.org/0.31.2/
 canon:
   kind: package
-  title: canon, the canonical format checker, at commit bf4c5ae
-  locator: https://github.com/brain-fuel/canon/tree/bf4c5ae
+  title: canon, the canonical format checker, version 0.2.0
+  locator: https://github.com/brain-fuel/canon
+rices-tax:
+  kind: package
+  title: Rice's Tax, the review page and audit over canon's vetting, version 0.4.0, built against canon 0.2.0
+  locator: https://github.com/brain-fuel/ricestax
 lawspec-roadmap:
   kind: discussion
   title: The LawSpec roadmap, the milestones each minor release delivers
