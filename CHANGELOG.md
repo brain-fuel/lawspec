@@ -372,7 +372,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   requirements the tests verify), `canonical_decisions.yaml` (the design
   decisions, each cited as `ref:KEY`) and `canonical_exemptions.yaml` sit at
   the root, and `canonical_vetting/` holds every comment, page, decision and
-  reference as pending with owner review deferred until after the 0.21 refactor.
+  reference as pending with owner review deferred until 1.0.
 - `make canon` and `lawspec-dev canon` run canon over the repository, and the
   complete check runs it as its `canon` step. Set `CANON_HOME` to a canon
   checkout built with `stack build`; without one the step is skipped with a

@@ -115,7 +115,7 @@ framework:
 
 0.22 in detail:
 
-Canonical vetting remains pending and is revisited in 0.23.0.
+Canonical vetting remains pending until 1.0.
 
 Erlang, Elixir and Gleam join the targets, with actors on real processes
 and OTP supervisors.
@@ -150,3 +150,9 @@ against what it depends on:
   (OAuth, OIDC);
 - and the network around them: virtual networks, subnets and load balancers,
   emitted as Terraform and Pulumi YAML.
+
+### 1.0: rewrite, clean-up and sign-off
+
+Once the features above are roughly in place, the code is rewritten and
+cleaned up, and every canonical comment, decision, reference and page that
+0.20.1 recorded as pending is reviewed and signed off with Rice's Tax.
