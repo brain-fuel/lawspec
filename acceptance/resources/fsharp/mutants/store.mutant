@@ -1,0 +1,14 @@
+expect: every case gets an empty store
+@@ src/Example/Resources.fs
+<<<<<<<
+    let items = System.Collections.Generic.Dictionary<int, int>()
+=======
+    let items = sharedItems
+>>>>>>>
+@@ src/Example/Resources.fs
+<<<<<<<
+let mutable private openCount = 0
+=======
+let mutable private openCount = 0
+let private sharedItems = System.Collections.Generic.Dictionary<int, int>()
+>>>>>>>

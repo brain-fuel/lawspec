@@ -1,0 +1,8 @@
+expect: too many open stores
+@@ src/Example/Resources.fs
+<<<<<<<
+            this.Open <- false
+            openCount <- openCount - 1
+=======
+            this.Open <- false
+>>>>>>>

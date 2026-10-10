@@ -1,0 +1,7 @@
+expect: a pool starts each case empty
+@@ src/Example/Resources.fs
+<<<<<<<
+let drainPool (value: Pool) : unit = (pool value).Amount <- 0
+=======
+let drainPool (value: Pool) : unit = ignore value
+>>>>>>>
