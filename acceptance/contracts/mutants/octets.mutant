@@ -1,0 +1,7 @@
+expect: a text's octets count its UTF-8 bytes
+@@ examples/specs/contracts.lawspec
+<<<<<<<
+  octetCount t is prelude.length (prelude.octets (prelude.utf8 t)) end
+=======
+  octetCount t is prelude.length t end
+>>>>>>>

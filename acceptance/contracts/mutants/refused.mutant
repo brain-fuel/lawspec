@@ -1,0 +1,9 @@
+expect: a refused add changes nothing
+@@ examples/specs/contracts.lawspec
+<<<<<<<
+definition bump (n :: Int64) (total :: Int64) :: Pair Int64 Int64 fails with Refusal is
+  if n < 0 then raise Negative else
+=======
+definition bump (n :: Int64) (total :: Int64) :: Pair Int64 Int64 fails with Refusal is
+  if n < -1000 then raise Negative else
+>>>>>>>

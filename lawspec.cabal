@@ -129,6 +129,7 @@ extra-source-files:
     examples/specs/composition.lawspec
     examples/specs/concurrent_collections.lawspec
     examples/specs/consistency.lawspec
+    examples/specs/contracts.lawspec
     examples/specs/crypto.lawspec
     examples/specs/currying.lawspec
     examples/specs/data_types.lawspec

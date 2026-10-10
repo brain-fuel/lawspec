@@ -1,0 +1,9 @@
+expect: a refused add changes nothing, dynamically
+@@ examples/specs/contracts.lawspec
+<<<<<<<
+definition bumpScaled (n :: Int64) (s :: Scaled) :: Pair Int64 Scaled fails with Refusal is
+  if n < 0 then raise Negative else
+=======
+definition bumpScaled (n :: Int64) (s :: Scaled) :: Pair Int64 Scaled fails with Refusal is
+  if n < -1000 then raise Negative else
+>>>>>>>

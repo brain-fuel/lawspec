@@ -1,0 +1,7 @@
+expect: an id is set by a record update
+@@ examples/specs/contracts.lawspec
+<<<<<<<
+definition withId (body :: Pet) (key :: Int64) :: Pet is body with id = Just key end
+=======
+definition withId (body :: Pet) (key :: Int64) :: Pet is body with id = Nothing end
+>>>>>>>

@@ -7,7 +7,7 @@ module LawSpec.Compile (compile, prettyExpanded, metadataText, normal, compileWi
 
 import LawSpec.Core.Total (deferProgramPostconditions)
 import LawSpec.Model
-import LawSpec.Data (qualifyDataNames, elaborateDataDeclarationsWithProfile)
+import LawSpec.Data (qualifyDataNames, elaborateDataDeclarationsWithProfile, inlineFieldDefinitions)
 import LawSpec.Capabilities (satisfiedWithData)
 import LawSpec.Inference
 import LawSpec.DefinitionTotality (auditTemplates)
@@ -315,7 +315,7 @@ compileWithImports visible bits settings sources = do
   -- Abilities, handlers and rows, once each unit has what it imports.
   abled <- either (\(at, message) -> Left [Diagnostic "ability" message at]) Right (mapM elaborateAbilities imported')
   -- The harness, once every law has its final name.
-  parsed <- either (\(at, message) -> Left [Diagnostic "harness" message at]) Right (mapM elaborateHarness abled)
+  parsed <- map inlineFieldDefinitions <$> either (\(at, message) -> Left [Diagnostic "harness" message at]) Right (mapM elaborateHarness abled)
   let imported = M.fromList [(unitName u ++ "::type::" ++ dataTypeName d, d{dataTypeConstructors=
         [c{dataConstructorName=unitName u ++ "::type::" ++ dataTypeName d ++ "::" ++ dataConstructorName c}
         | c <- dataTypeConstructors d]}) | u <- parsed, d <- dataTypes u]

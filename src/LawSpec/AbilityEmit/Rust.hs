@@ -119,7 +119,7 @@ emit minify bits datas units = do
             s <- signature op ty
             let (args, result) = C.functionType ty
             converted <- toNative result "result"
-            let arguments = [line "self.state.lock().unwrap().clone().unwrap()" | Just _ <- [C.handlerState h]] ++
+            let arguments = [line "self.state.lock().unwrap_or_else(|p| p.into_inner()).clone().unwrap()" | Just _ <- [C.handlerState h]] ++
                   (if null args && C.handlerState h == Nothing then [line "ls::Value::Unit"]
                    else [line ("ls::IntoValue::into_value(value" ++ show i ++ ")") | i <- [0 .. length args - 1]])
                 invocation = line ("crate::lawspec_definitions::" ++ evaluate ++ "(ctx, ") <> E.vector arguments <> line (")" ++ unwrap)
@@ -127,9 +127,9 @@ emit minify bits datas units = do
                   Nothing -> [line "let result = " <> invocation <> line ";"]
                   Just _ -> [ line "let pair = " <> invocation <> line ";"
                             , line ("let (result, next) = ls::pair_fields(pair)" ++ unwrap ++ ";")
-                            , line "*self.state.lock().unwrap() = Some(next);" ]
+                            , line "*self.state.lock().unwrap_or_else(|p| p.into_inner()) = Some(next);" ]
             pure (line s <> line " " <> D.block 4 (D.joinWith D.hardline
-              ([line "let mut guard = self.ctx.lock().unwrap();", line "let ctx = &mut *guard;"] ++ outcome ++ converted)))
+              ([line "let mut guard = self.ctx.lock().unwrap_or_else(|p| p.into_inner());", line "let ctx = &mut *guard;"] ++ outcome ++ converted)))
       methodBlocks <- mapM methodsOf answered
       let name = specName h
       pure (line ("/// The spec handler " ++ C.handlerName h ++ " for " ++ C.abilityName ability ++ ".") <> D.hardline <>

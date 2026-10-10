@@ -265,6 +265,7 @@ elaborateUnit u0 = do
                else [a | a <- expressionRow table bound inner, Just a /= handlerInstance h] ++ concatMap (rowOf table) (handlerClauseNames h)
              | (h, inner) <- regions ]
       raises d = "prelude.raise" `elem` exprVars (functionBody d)
+      declaresFailure n = not (null [t | Just ts <- [declaredRow n], t <- ts, abilityTypeName t == failAbilityName])
   -- Rows: the least fixed point over the call graph.
   forM_ definitions $ \d -> when (raises d && null (failures (functionName d)))
     (Left (at (functionSpan d), functionName d ++ " raises a failure, so its signature must say what it fails with: add `fails with` and the failure's type"))
@@ -282,7 +283,9 @@ elaborateUnit u0 = do
       (Left (at (functionSpan d), seededForSecure (functionName d)))
   let step table = M.fromList
         [ (functionName d, canonical (expressionRow table (map fst (functionArguments d)) (functionBody d) ++
-            (if raises d then failures (functionName d) else [])))
+            -- A definition that says it fails with E has Fail E in its
+            -- row whether or not its body raises, so a clause `by` it does.
+            (if raises d || declaresFailure (functionName d) then failures (functionName d) else [])))
         | d <- definitions ]
       solve table = let next = step table in if next == table then table else solve next
       inferred = solve (M.fromList [(functionName d, []) | d <- definitions])

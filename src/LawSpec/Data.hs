@@ -1,6 +1,6 @@
 -- | Source data declarations are resolved once, before core validation. Target
 -- emitters only see qualified identities and specialized core field types.
-module LawSpec.Data (elaborateDataDeclarations, elaborateDataDeclarationsWithProfile, qualifyDataNames) where
+module LawSpec.Data (elaborateDataDeclarations, elaborateDataDeclarationsWithProfile, qualifyDataNames, inlineFieldDefinitions) where
 
 import Control.Monad (forM, unless)
 import Data.List (nub)
@@ -193,3 +193,57 @@ qualifyDataNames unit = unit
         [e {S.bindings = [(name,literal value) | (name,value) <- S.bindings e],
             S.expectations = [S.Expectation (expr (S.actual x)) (literal (S.expected x)) | x <- S.expectations e]}
           | e <- S.examples l]}
+
+-- | A field's refinement may call the unit's checked definitions
+-- (`label :: (v :: Text where validName v)`). A data type's predicates are
+-- checked wherever a value is built, on every target and in the runtime's
+-- schemas, with no definitions in scope, so each call is unfolded into the
+-- definition's body: its arguments bound first, in order, by let. Recursive
+-- definitions are not unfolded, and stay an error.
+inlineFieldDefinitions :: S.Unit -> S.Unit
+inlineFieldDefinitions u = u { S.dataTypes = map declaration (S.dataTypes u) }
+  where
+    definitions = M.fromList [(S.functionName d, d) | d <- S.functionDefinitions u]
+    declaration d = d { S.dataTypeConstructors = [c { S.dataConstructorFields = [(n, fieldType t) | (n, t) <- S.dataConstructorFields c] } | c <- S.dataTypeConstructors d] }
+    fieldType = S.mapType id (unfold (0 :: Int) [])
+    unfold depth active e = case e of
+      _ | depth > 16 -> e
+      S.Located r a -> S.Located r (unfold depth active a)
+      S.Apply _ _ | (S.Var f, args) <- spine e [], Just d <- M.lookup f definitions
+                  , f `notElem` active, length args == length (S.functionArguments d) ->
+          let parameters = [("lawspecInline" ++ show depth ++ "_" ++ p, p) | (p, _) <- S.functionArguments d]
+              body = unfold (depth + 1) (f : active) (rename (M.fromList [(p, fresh) | (fresh, p) <- parameters]) (S.functionBody d))
+          in foldr (\((fresh, _), a) rest -> S.MatchExpr (unfold depth active a) [S.MatchBranch S.letTag [fresh] rest]) body (zip parameters args)
+      S.Var f | Just d <- M.lookup f definitions, null (S.functionArguments d), f `notElem` active ->
+          unfold (depth + 1) (f : active) (S.functionBody d)
+      S.Apply a b -> S.Apply (unfold depth active a) (unfold depth active b)
+      S.Compose a b -> S.Compose (unfold depth active a) (unfold depth active b)
+      S.ListLit xs -> S.ListLit (map (unfold depth active) xs)
+      S.ConstructLit n xs -> S.ConstructLit n (map (unfold depth active) xs)
+      S.MatchExpr v bs -> S.MatchExpr (unfold depth active v) [S.MatchBranch t ns (unfold depth active b) | S.MatchBranch t ns b <- bs]
+      S.AllElementsExpr v n p -> S.AllElementsExpr (unfold depth active v) n (unfold depth active p)
+      S.AllPayloadsExpr v ps -> S.AllPayloadsExpr (unfold depth active v) [(n, unfold depth active b) | (n, b) <- ps]
+      S.Binary op a b -> S.Binary op (unfold depth active a) (unfold depth active b)
+      S.Unary op a -> S.Unary op (unfold depth active a)
+      S.Annotate a t -> S.Annotate (unfold depth active a) t
+      other -> other
+    spine e args = case e of
+      S.Apply f x -> spine f (x : args)
+      S.Located _ inner -> spine inner args
+      other -> (other, args)
+    -- The definition's parameters, renamed apart; a binder that shadows one
+    -- hides it in its body.
+    rename table e = case e of
+      S.Var n | Just m <- M.lookup n table -> S.Var m
+      S.Located r a -> S.Located r (rename table a)
+      S.Apply a b -> S.Apply (rename table a) (rename table b)
+      S.Compose a b -> S.Compose (rename table a) (rename table b)
+      S.ListLit xs -> S.ListLit (map (rename table) xs)
+      S.ConstructLit n xs -> S.ConstructLit n (map (rename table) xs)
+      S.MatchExpr v bs -> S.MatchExpr (rename table v) [S.MatchBranch t ns (rename (foldr M.delete table ns) b) | S.MatchBranch t ns b <- bs]
+      S.AllElementsExpr v n p -> S.AllElementsExpr (rename table v) n (rename (M.delete n table) p)
+      S.AllPayloadsExpr v ps -> S.AllPayloadsExpr (rename table v) [(n, rename (M.delete n table) b) | (n, b) <- ps]
+      S.Binary op a b -> S.Binary op (rename table a) (rename table b)
+      S.Unary op a -> S.Unary op (rename table a)
+      S.Annotate a t -> S.Annotate (rename table a) t
+      other -> other

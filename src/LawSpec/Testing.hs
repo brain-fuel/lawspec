@@ -473,9 +473,16 @@ constrainedBoundaries registry bits root =
     literals expression = case expressionNode expression of
       Constant scalar -> [scalar]
       _ -> concatMap literals (children expression)
+    -- A field a regex constrains takes texts the regex matches as seeds.
+    patterns = nub [map toEnum points | d <- registryDeclarations registry, c <- dataConstructors d
+                   , predicate <- constructorPredicates c, Helper RegexMatches [pattern, _] <- universeOf predicate
+                   , Constant (SSequence "Text" points) <- [expressionNode pattern]]
+    universeOf expression = expressionNode expression : concatMap universeOf (children expression)
     seeds name = nub (scalarCases bits name ++
       [ScalarValue value | literal <- constants,
-        Right value <- [convertScalar bits name literal]])
+        Right value <- [convertScalar bits name literal]] ++
+      [ScalarValue (textScalar sample) | name == "Text", pattern <- patterns, Right regex <- [parseRegex pattern]
+                                       , sample <- take 4 (regexSamples 4 regex)])
     walk :: Int -> Type -> StateT (Int, M.Map (String,Int) [Value]) (Either String) [Value]
     walk depth ty
       | not (inhabited table ty) = pure []
