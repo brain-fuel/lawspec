@@ -221,3 +221,47 @@ test_languageGapsClose = describe "the language gaps a dependency contract found
         , ("b.lawspec", "unit gaps.pkg.sub\ndefinition base (x :: Int32) :: Int64 is prelude.Int64 x end\n") ]
         >>= planTesting >>= emitPlan "python")
       map artifactPath files `shouldSatisfy` (\ps -> "src/lawspec_definitions/gaps/pkg/__init__.py" `elem` ps && "src/lawspec_definitions/gaps/pkg/sub.py" `elem` ps)
+  describe "the gaps LawTwin's contracts and importer found next" $ do
+    it "brings bounded arithmetic with an import's copies (20)" $
+      programs
+        [ ("a.lawspec", "unit gaps.inner\ndefinition bump (x :: Int64) :: Int64 is prelude.saturating (x + 1) end\n")
+        , ("b.lawspec", "unit gaps.outer\nimport gaps.inner as inner\ndefinition twice (x :: Int64) :: Int64 is inner.bump (inner.bump x) end\n") ]
+        `shouldSatisfy` isRight
+    it "generates Java and Kotlin for a field named record (21)" $ do
+      let source = "unit gaps.rec\ntype Fetched is Fetched record :: Int64 end\ndefinition at (f :: Fetched) :: Int64 is f.record end\n"
+      mapM_ (\target -> (program source >>= planTesting >>= emitPlan target) `shouldSatisfy` isRight) ["java", "kotlin"]
+    it "proves a regex field through a record update (23)" $
+      program (unlines
+        [ "unit gaps.pet"
+        , "type Pet is Pet id :: Maybe Int64 name :: (v :: Text where v matches regex \"[a-z]+\") end"
+        , "definition withId (body :: Pet) (key :: Int64) :: Pet is body with id = Just key end" ])
+        `shouldSatisfy` isRight
+    it "takes a failing row from a signature that never raises (24)" $
+      program (unlines
+        [ "unit gaps.by"
+        , "type Refusal is | Negative end"
+        , "definition peek (total :: Int64) :: Pair Int64 Int64 fails with Refusal is Pair total total end"
+        , "ability Counter is"
+        , "  current :: Int64 fails with Refusal"
+        , "end"
+        , "handler tally for Counter with state total :: Int64 start 0 is"
+        , "  current by peek"
+        , "end" ])
+        `shouldSatisfy` isRight
+    it "lets a field refinement call a checked definition (25)" $
+      program (unlines
+        [ "unit gaps.tag"
+        , "definition validName (name :: Text) :: Bool is name matches regex \"[a-z]+\" end"
+        , "type Tag is Tag label :: (v :: Text where validName v) end"
+        , "law `a tag keeps its label` is definition is `for all` (t :: Tag) . validName t.label = true end end" ])
+        `shouldSatisfy` isRight
+    it "names a spec handler apart from the ability it is named like (26)" $ do
+      files <- either (\ds -> fail (show ds)) pure (program (unlines
+        [ "unit gaps.counter"
+        , "ability Counter is"
+        , "  add :: Int64 -> Int64"
+        , "end"
+        , "handler counter for Counter is"
+        , "  add n is n end"
+        , "end" ]) >>= planTesting >>= emitPlan "rust")
+      concatMap artifactContent files `shouldSatisfy` isInfixOf "pub struct CounterSpec"
