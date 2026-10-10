@@ -17,6 +17,9 @@ import LawSpec.CorePersist ()
 import Data.Binary (Binary)
 import LawSpec.Dependencies (dependencyGraph, lawReferences, closure, keyOf, reachableData, reachableDefinitions)
 import System.IO.Unsafe (unsafePerformIO)
+import Control.Exception (evaluate)
+import Data.IORef (IORef, newIORef, readIORef, writeIORef)
+import System.Mem.StableName (StableName, makeStableName)
 import Data.List (find, nub, partition, sort, stripPrefix, zip3)
 import LawSpec.Regex (Regex, parseRegex, regexSamples)
 import LawSpec.IndexTerm
@@ -155,9 +158,26 @@ validTupleWithDefinitions registry bits invoke qs values
 -- | Registries carry typed predicates. Standalone domain APIs audit them before
 -- executing candidates, including unused contracts and dependency cycles.
 auditDomains :: TypeRegistry -> Int -> Either String ()
-auditDomains registry bits = () <$ either (Left . show) Right
-  (constructorProofContracts bits [declaration | declaration <- registryDeclarations registry,
-    dataId declaration `notElem` map dataId builtinDataDeclarations])
+auditDomains registry bits = unsafePerformIO $ do
+  -- Every law's plan audits the data types it reaches, often the same ones:
+  -- the audits are kept, keyed by the declarations' identities in memory
+  -- (a pure function, so this is only a cache).
+  names <- mapM (\d -> evaluate d >>= makeStableName) declarations
+  cached <- readIORef domainCache
+  case lookup (bits, names) cached of
+    Just result -> pure result
+    Nothing -> do
+      let result = () <$ either (Left . show) Right (constructorProofContracts bits declarations)
+      writeIORef domainCache (take 256 (((bits, names), result) : cached))
+      pure result
+  where
+    builtin = map dataId builtinDataDeclarations
+    declarations = [declaration | declaration <- registryDeclarations registry, dataId declaration `notElem` builtin]
+{-# NOINLINE auditDomains #-}
+
+domainCache :: IORef [((Int, [StableName DataDeclaration]), Either String ())]
+domainCache = unsafePerformIO (newIORef [])
+{-# NOINLINE domainCache #-}
 
 -- | Boundary candidates are kept only when they satisfy the type's refinements
 -- and contracts, so no generated case lies outside the domain.

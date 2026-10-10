@@ -95,6 +95,27 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- A spec handler clause that fails no longer poisons the handler on Rust:
+  later operations see the state as the failure left it.
+- A field's refinement may call a checked definition of its unit
+  (`label :: (v :: Text where validName v)`).
+- A record update or a rebuild proves a field's regex refinement, which the
+  copied field already met; text tests and the sequence helpers are facts
+  the checker knows.
+- A definition that says it `fails with E` but never raises may be a
+  handler clause (`op by f`).
+- A spec handler named like its ability (`counter` for `Counter`) is
+  `CounterSpec` where the two would share a name.
+- A record whose field a regex constrains has boundary witnesses that match
+  the regex.
+- Bounded arithmetic used by an import's definitions resolves in the
+  importing unit, packages included.
+- Checking scales with a program's size: LawTwin's import of GitHub's whole
+  REST description (2,108 types, 1,232 operations, 87 laws) checks in
+  minutes, where it did not finish in 30. Field access is typed without
+  building its match, registries, indexes, audits and unit elaboration are
+  made once per program, and sets and maps replace quadratic list scans.
+  `lawspec-dev bench compile` times a scaled model.
 - Java and Kotlin generation accepts a field named `record`, `sealed`,
   `permits` or `var`, which Java restricts only as type names.
 - Prelude helpers such as `prelude.isRight` work in an ability's laws and in
