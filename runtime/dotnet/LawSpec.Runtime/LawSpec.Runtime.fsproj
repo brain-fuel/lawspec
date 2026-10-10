@@ -26,6 +26,7 @@
     <Compile Include="Policy.fs" />
     <Compile Include="Tasks.fs" />
     <Compile Include="Workflow.fs" />
+    <Compile Include="Actors.fs" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="BouncyCastle.Cryptography" Version="2.7.0" />

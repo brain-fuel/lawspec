@@ -310,7 +310,7 @@ inline lang e = case e of
     fd <- inline lang f
     ds <- mapM (inline lang) args
     pure $ case lang of
-      FSharp -> atom f fd <> mconcat [D.text " " <> atom a d | (a, d) <- zip args (if null ds then [D.text "()"] else ds)]
+      FSharp -> if null args then atom f fd <> D.text " ()" else atom f fd <> mconcat [D.text " " <> atom a d | (a, d) <- zip args ds]
       CSharp -> D.text "Fn.Invoke(" <> D.joinWith (D.text ", ") (fd : ds) <> D.text ")"
   ListOf t xs -> do
     ds <- mapM (inline lang) xs

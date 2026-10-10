@@ -4,7 +4,7 @@
 -- schema, as the runtime's Effects module keeps them.
 -- ref:DEC-typed-core-boundary ref:DEC-csharp-over-fsharp
 module LawSpec.DotNet.Effects
-  ( abilities, handlers, uses, external, factory, factories, withHandlers
+  ( abilities, handlers, uses, external, factory, factoryWith, factories, withHandlers
   , interfaceType, interfaceTypeOf, abilityNamespace, bridgeName, bridgeCall, productionFunction, specFunction
   , hasDefault, defaultUnits, operationMember
   ) where
@@ -74,12 +74,20 @@ qualified (m, f) = Call (Fn (m ++ "." ++ f) (m ++ "." ++ pascal f))
 
 -- | The handler a law or a handle expression installs for an ability.
 factory :: [C.Unit] -> Expr -> Expr -> C.AbilityRef -> C.HandlerRef -> Either String Expr
-factory units schema symbols ability choice = case choice of
+factory units schema symbols = factoryWith units schema symbols Nothing
+
+-- | A handler's factory; a production handler of an ability made with a
+-- resource is given the case's resource.
+factoryWith :: [C.Unit] -> Expr -> Expr -> Maybe Expr -> C.AbilityRef -> C.HandlerRef -> Either String Expr
+factoryWith units schema symbols resource ability choice = case choice of
   C.ProductionHandler -> do
     a <- maybe (Left ("unknown .NET ability " ++ C.abilityKey ability)) Right (N.abilityOf units ability)
-    pure (if hasDefault a && C.abilityNative a == Nothing
-      then call "Defaults" "handler" [Str (C.abilityKey (C.abilityInstance a))]
-      else qualified (productionFunction a) [schema, symbols])
+    if hasDefault a && C.abilityNative a == Nothing
+      then pure (call "Defaults" "handler" [Str (C.abilityKey (C.abilityInstance a))])
+      else case (C.abilityResource a, resource) of
+        (Just _, Just r) -> pure (qualified (productionFunction a) [schema, symbols, r])
+        (Just _, Nothing) -> pure (call "Effects" "resourceRequired" [Str (C.abilityKey (C.abilityInstance a))])
+        _ -> pure (qualified (productionFunction a) [schema, symbols])
   C.SpecHandler identity -> do
     h <- maybe (Left ("unknown .NET handler " ++ C.idText identity)) Right (N.specHandlerOf units identity)
     let made = qualified (specFunction units h) [schema, symbols]
@@ -87,7 +95,7 @@ factory units schema symbols ability choice = case choice of
       then call "Effects" "shared" [schema, Str (C.idText identity), Lambda [] (Ty "Effects.Handler" "Effects.Handler") made]
       else made)
   C.RecordingHandler inner -> do
-    made <- factory units schema symbols ability inner
+    made <- factoryWith units schema symbols resource ability inner
     pure (call "Effects" "recording" [made])
 
 -- | The factories of a law's or handle expression's handler choices.

@@ -1,0 +1,7 @@
+expect: remove
+@@ src/Example/Harness.fs
+<<<<<<<
+let roundCents (cents: int) : int = (cents + 4) / 10 * 10
+=======
+let roundCents (cents: int) : int = (cents + 9) / 10 * 10
+>>>>>>>

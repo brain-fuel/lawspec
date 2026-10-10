@@ -16,6 +16,7 @@
     <Compile Include="ModelParallel.fs" />
     <Compile Include="Search.fs" />
     <Compile Include="Schedule.fs" />
+    <Compile Include="Supervision.fs" />
     <Compile Include="Resources.fs" />
   </ItemGroup>
   <ItemGroup>
