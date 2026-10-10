@@ -123,6 +123,17 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - On Python, a unit named like another unit's package (`shop.tax` beside
   `shop.tax.rates`) is the package's `__init__.py`.
 - New acceptance suites `records`, `sequences` and `composition`.
+- Erlang, Elixir and Gleam run the language gaps on their dynamic path:
+  handlers of several abilities and sets of handlers, operations that `fail
+  with`, natives made with a resource, computed starts and state updated in
+  branches, field access and record update, the sequence, `Bytes` and `Text`
+  operations, bounded arithmetic, and regex-shaped generation of refined text
+  fields. A handler of several abilities gives one native interface per
+  ability over its one state; each operation that fails has a try form
+  (`{ok, V}` or `{error, E}`, a `Result` in Gleam), and a spec handler with
+  state has `<handler>_state` and `<handler>_set_state`. The `records`,
+  `sequences`, `composition` and `contracts` suites run on all eleven
+  targets, and a `beam-embedding` suite checks the embedding forms.
 - Vetting on Rice's Tax's review page: `make assess` records every pending
   row, `make tax` serves the page on which each comment, page, decision and
   reference is judged beside the code or page it explains, and `make audit`

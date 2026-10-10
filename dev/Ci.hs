@@ -214,7 +214,7 @@ targetSteps target =
   [ Step (target ++ "-recorded" ++ suffix) env (acceptance ["recorded", target])
   | (suffix, env) <- [("", []), ("-32-compact", compact)] ] ++
   [ step (target ++ "-" ++ suite) (acceptance [suite, target])
-  | suite <- ["integration", "definitions", "algebra", "indexed", "gadt", "flow", "collections", "async", "railway", "domain", "workflows", "keywords", "durations", "resilience", "generation", "models", "concurrent", "handles", "asyncbindings", "abilities", "handlerbindings", "builtins", "crypto", "matchers", "failures", "tables", "resources", "harness", "scheduling", "sessions", "actors", "consistency", "distribution", "packages", "refinement", "scalar"] ] ++
+  | suite <- ["integration", "definitions", "algebra", "indexed", "gadt", "flow", "collections", "async", "railway", "domain", "workflows", "keywords", "durations", "resilience", "generation", "models", "concurrent", "handles", "asyncbindings", "abilities", "handlerbindings", "builtins", "crypto", "matchers", "failures", "tables", "resources", "harness", "scheduling", "sessions", "actors", "consistency", "distribution", "packages", "refinement", "scalar", "records", "sequences", "composition", "contracts"] ] ++
   -- The tutorial lessons have Java, Python and JavaScript tracks; the site
   -- also runs their TypeScript implementations.
   [ step (target ++ "-lessons") (acceptance ["lessons", target]) | target `elem` ["java", "python", "javascript", "typescript"] ] ++
@@ -227,12 +227,13 @@ targetSteps target =
     suite <- ["beam-native-shapes", "beam-native-codecs", "beam-native-calls",
       "beam-failures", "beam-bound-failures", "beam-mapped-failures", "beam-handler-context", "beam-builtin-context", "beam-crypto-context", "beam-async-workflows", "beam-policy-context", "beam-remote-api", "beam-network-api", "beam-actor-api", "beam-session-api", "beam-mailbox-api",
       "beam-strategies", "beam-adequacy", "beam-target", "beam-repetition", "beam-selection", "beam-benchmarks",
-      "beam-resources", "beam-shared-resources", "beam-resource-owners"],
+      "beam-resources", "beam-shared-resources", "beam-resource-owners", "beam-embedding"],
     (suffix,env) <- [("", []), ("-32-compact", compact)] ] ++
   [ Step (target ++ "-" ++ suite ++ "-32-compact") compact (acceptance [suite, target])
   | target `elem` Targets.beamTargets, suite <- ["abilities", "handlerbindings", "builtins", "crypto", "async", "failures", "workflows", "resilience",
       "models", "concurrent", "handles", "consistency", "actors", "sessions", "distribution", "scheduling", "matchers", "tables", "keywords", "durations", "flow",
-      "integration", "collections", "railway", "generation", "asyncbindings", "refinement"] ] ++
+      "integration", "collections", "railway", "generation", "asyncbindings", "refinement",
+      "records", "sequences", "composition", "contracts"] ] ++
   [ step (target ++ "-native-bindings") ["node", "tools/native-example-integration.mjs", target]
   , Step (target ++ "-native-bindings-32-compact") compact ["node", "tools/native-example-integration.mjs", target] ] ++
   [ Step (target ++ "-crypto-cli" ++ suffix) env ["node", "tools/beam-crypto-integration.mjs", target]

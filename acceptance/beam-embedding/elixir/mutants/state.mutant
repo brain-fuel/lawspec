@@ -1,0 +1,6 @@
+expect: an embedded handler takes failures as values and keeps its state
+@@ lib/example_embedding.ex
+<<<<<<<
+      :ok = Handlers.keeping_set_state(tally, 10)
+=======
+>>>>>>>

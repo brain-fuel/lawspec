@@ -66,6 +66,7 @@ concrete d = "law `codec` is definition is " ++ d ++ " end end\n"
 main :: IO ()
 main = hspec $ do
   BeamSpec.test_beamCodeUsesCheckedCoreAndNativeFrameworks
+  BeamSpec.test_beamRunsTheLanguageGaps
   NativeBindingSpec.test_nativeBindingsResolveToOneUnambiguousIdentity
   NativeRequestSpec.test_nativeBindingRequestsAreValidatedAtTheirBoundary
   CoreSpec.test_typedCoreIsValidatedIndependentlyOfInference

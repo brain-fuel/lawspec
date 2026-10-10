@@ -1,6 +1,6 @@
 -- | BEAM generation consumes the same checked plan and retains native source
 -- ownership and every planned case. ref:DEC-tests-cite-requirements
-module BeamSpec (test_beamCodeUsesCheckedCoreAndNativeFrameworks) where
+module BeamSpec (test_beamCodeUsesCheckedCoreAndNativeFrameworks, test_beamRunsTheLanguageGaps) where
 
 import Test.Hspec
 import Data.List (isInfixOf, nub)
@@ -955,3 +955,47 @@ test_beamCodeUsesCheckedCoreAndNativeFrameworks = describe "BEAM generation" $ d
         definitions `shouldSatisfy` isInfixOf "lawspec_beam_schema:from_native"
         adapters `shouldSatisfy` (not . isInfixOf "_Handler")
         adapters `shouldSatisfy` (not . isInfixOf "_handler")) ["erlang", "elixir", "gleam"]
+
+
+-- | The language gaps closed for LawTwin run on the BEAM's dynamic path:
+-- handlers of several abilities and sets of them, operations that fail,
+-- natives made with a resource, regex-shaped fields and the embedding forms.
+-- ref:REQ-language-gaps ref:DEC-typed-core-boundary
+test_beamRunsTheLanguageGaps :: Spec
+test_beamRunsTheLanguageGaps = describe "BEAM language gaps" $ do
+  let fileOf path artifacts = concat [artifactContent a | a <- artifacts, artifactPath a == path]
+      withSpec path target check = do
+        input <- readFile path
+        case generatedFor target False input of
+          Left errors -> expectationFailure (show errors)
+          Right artifacts -> check artifacts
+  it "makes a handler of several abilities once per scope and gives one interface per ability" $
+    withSpec "examples/specs/composition.lawspec" "erlang" $ \artifacts -> do
+      concat [artifactContent a | a <- artifacts, "_lawspec_tests.erl" `isInfixOf` artifactPath a]
+        `shouldSatisfy` isInfixOf "lawspec_beam_effects:shared("
+      fileOf "src/lawspec_abilities_example_composition.erl" artifacts `shouldSatisfy` isInfixOf "-spec store(lawspec_beam_effects:context()) -> {logs(), reader()}."
+  it "gives natives of an ability made with a resource the case's resource" $
+    withSpec "examples/specs/composition.lawspec" "erlang" $ \artifacts -> do
+      fileOf "src/example_composition.erl" artifacts `shouldSatisfy` isInfixOf "logs_handler(_Resource) ->"
+      fileOf "src/lawspec_abilities.erl" artifacts `shouldSatisfy` isInfixOf "_production(_LsSchema, _LsSymbols, _LsResource) ->"
+      concat [artifactContent a | a <- artifacts, "_lawspec_tests.erl" `isInfixOf` artifactPath a]
+        `shouldSatisfy` isInfixOf "lawspec_beam_effects:install("
+  it "crosses an operation's failure through native handlers both ways" $
+    withSpec "examples/specs/composition.lawspec" "erlang" $ \artifacts -> do
+      fileOf "src/lawspec_abilities.erl" artifacts `shouldSatisfy` isInfixOf "lawspec_beam_effects:native_failures("
+      fileOf "src/lawspec_abilities.erl" artifacts `shouldSatisfy` isInfixOf "lawspec_beam_effects:native_raise("
+  mapM_ (\target -> it (target ++ " keeps a handler named like its ability apart from the ability's functions") $
+    withSpec "examples/specs/contracts.lawspec" target $ \artifacts ->
+      map artifactPath artifacts `shouldSatisfy` (not . null)) ["erlang", "elixir", "gleam"]
+  it "names a Gleam handler like its ability's builder with a _handler suffix" $
+    withSpec "examples/specs/contracts.lawspec" "gleam" $ \artifacts ->
+      fileOf "src/lawspec/abilities/example/contracts.gleam" artifacts `shouldSatisfy` isInfixOf "pub fn counter_handler("
+  it "draws a regex-refined text field from texts the regex matches" $
+    withSpec "examples/specs/contracts.lawspec" "erlang" $ \artifacts ->
+      fileOf "src/lawspec_data.erl" artifacts `shouldSatisfy` isInfixOf "generators =>"
+  mapM_ (\(target, path, needles) -> it (target ++ " gives try forms and state accessors to an embedding application") $
+    withSpec "acceptance/beam-embedding/embedding.lawspec" target $ \artifacts ->
+      mapM_ (\needle -> concatMap artifactContent [a | a <- artifacts, path `isInfixOf` artifactPath a] `shouldSatisfy` isInfixOf needle) needles)
+    [ ("erlang", "lawspec_abilities_example_embedding.erl", ["tally_try_add(Handler, Value0) ->", "keeping_state(Value0) ->", "keeping_set_state(Value0, Value1) ->", "-spec book(lawspec_beam_effects:context()) -> {ledger(), balance()}."])
+    , ("elixir", "lib/lawspec/", ["def try_add(handler, value0)", "def keeping_state(value0)", "def keeping_set_state(value0, value1)"])
+    , ("gleam", "abilities/example/embedding.gleam", ["pub fn tally_try_add(", "effects.attempt(", "pub fn keeping_state(", "-> #(Ledger, Balance)"]) ]

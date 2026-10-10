@@ -1,0 +1,8 @@
+expect: a handler of several abilities shares its state natively
+@@ src/example_embedding.erl
+<<<<<<<
+        {Ledger, Balance} = lawspec_abilities_example_embedding:book(Context),
+=======
+        {Ledger, _} = lawspec_abilities_example_embedding:book(Context),
+        {_, Balance} = lawspec_abilities_example_embedding:book(Context),
+>>>>>>>

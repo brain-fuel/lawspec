@@ -8,7 +8,8 @@
 -export([with_scope/3, install/2, handler/2, stateless/1, stateful/3,
     retain/2, release/1,
     recording/2, perform/4, invoke/4, count_calls/4, shared/3,
-    fail/1, raise_failure/2, native_raise/3, attempt/4, native_failures/4, match_exception/3,
+    fail/1, raise_failure/2, native_raise/3, native_try/1,
+    handler_state/2, set_handler_state/3, attempt/4, native_failures/4, match_exception/3,
     native_origin/0, origin/5, recover_handler/5, with_native_context/3,
     native_cell/1, native_read/1, native_write/2]).
 -export_type([context/0, handler_origin/0]).
@@ -178,6 +179,27 @@ count_calls(Schema, Ability, Operation, Arguments) ->
 %% declared Fail ability determines how that value crosses the boundary.
 fail(Value) -> throw({lawspec_native_failure, Value}).
 raise_failure(Ability, Value) -> throw({lawspec_failure, Ability, Value}).
+
+%% The embedding forms: an operation's native failure as a value, and a spec
+%% handler's state read and replaced in its native types.
+native_try(Body) ->
+    try {ok, Body()} catch throw:{lawspec_native_failure, Value} -> {error, Value} end.
+
+handler_state({lawspec_handler_origin, _, Schema, _, Handler, _}, Convert) ->
+    Cell = state_cell(Handler),
+    Convert(Schema, lawspec_beam_handler:call(Cell, fun(State) -> {State, State} end));
+handler_state(_, _) -> erlang:error({lawspec, stateless_handler}).
+
+set_handler_state({lawspec_handler_origin, _, Schema, _, Handler, _}, Convert, Native) ->
+    Cell = state_cell(Handler),
+    Value = Convert(Schema, Native),
+    lawspec_beam_handler:call(Cell, fun(_) -> {ok, Value} end),
+    ok;
+set_handler_state(_, _, _) -> erlang:error({lawspec, stateless_handler}).
+
+state_cell({lawspec_stateful, Cell, _}) -> Cell;
+state_cell({lawspec_recording, _, Inner}) -> state_cell(Inner);
+state_cell(_) -> erlang:error({lawspec, stateless_handler}).
 
 %% A spec handler seen through a native interface fails as native code does:
 %% the logical failure crosses back as its native value.

@@ -1,0 +1,7 @@
+expect: an embedded handler takes failures as values and keeps its state
+@@ lib/example_embedding.ex
+<<<<<<<
+      {:error, %LawSpec.Data.RefusalNegative{}} = Tally.try_add(tally, -1)
+=======
+      {:ok, _} = Tally.try_add(tally, -1)
+>>>>>>>

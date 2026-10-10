@@ -248,7 +248,9 @@ arguments. Each operation is a function, including an operation such as
 | Gleam | The opaque `Gateway` in `lawspec/abilities/example/abilities`, built by `gateway(authorize, capture, fee)` | `abilities.gateway_capture(gateway, cents)` |
 
 The editable adapter module supplies `gateway_handler()` as its production
-factory. Generic instances have separate interfaces and factories, such as
+factory. For an ability made with a resource (`ability Logs with Store`), the
+factory takes the case's resource, `logs_handler(Store)`, and every native
+handler of the case is made with the same one after it is acquired. Generic instances have separate interfaces and factories, such as
 `StoreInt32` and `store_int32_handler()`.
 
 Public checked definitions take handlers first, followed by their values:
@@ -276,6 +278,21 @@ pub fn try_checkout(cents: Int) -> Bool {
 
 Erlang puts spec constructors such as `keeping_gateway(Context)` in the
 ability module; Elixir puts them in `LawSpec.Handlers.ExampleAbilities`.
+A handler of several abilities (`handler store for Logs, Reader`) gives a
+tuple with one interface per ability, all answered from its one state:
+`{Logs, Reader} = store(Context)` in Erlang, `#(logs, reader)` in Gleam. A
+Gleam handler named like its ability's builder (`handler counter for
+Counter`) is `counter_handler(context)`.
+
+An operation that `fails with E` fails natively as an adapter does, with
+`lawspec_beam_effects:fail/1` (`failures.fail` in Gleam) and a native `E`.
+Its try form gives the failure as a value: `counter_try_add(Counter, N)`
+returns `{ok, Total}` or `{error, Refusal}` in Erlang,
+`Counter.try_add(counter, n)` the same in Elixir, and
+`counter_try_add(counter, n)` a `Result(Int, data.Refusal)` in Gleam. A
+spec handler with state reads and replaces it in its native types through
+the interface of its first ability: `keeping_state(Tally)` and
+`keeping_set_state(Tally, 10)`, beside its constructor.
 `recording_gateway(context, handler)` wraps an interface in the same scope.
 Generated tests make fresh production, spec and recording handlers for
 each example, boundary case and property trial. An example's additional

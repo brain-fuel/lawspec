@@ -1,0 +1,8 @@
+expect: a handler of several abilities shares its state natively
+@@ src/example/embedding.gleam
+<<<<<<<
+    let #(ledger, balance) = abilities.book(context)
+=======
+    let #(ledger, _) = abilities.book(context)
+    let #(_, balance) = abilities.book(context)
+>>>>>>>

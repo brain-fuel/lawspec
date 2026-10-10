@@ -23,6 +23,11 @@ pub fn write_cell(cell: Cell(a), value: a) -> Nil {
   Nil
 }
 
+// An operation's native failure as a value: Error(failure) rather than a
+// raised failure.
+@external(erlang, "lawspec_beam_effects", "native_try")
+pub fn attempt(body: fn() -> a) -> Result(a, e)
+
 @external(erlang, "lawspec_beam_effects", "native_origin")
 pub fn native_origin() -> HandlerOrigin
 

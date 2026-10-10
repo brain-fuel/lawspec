@@ -97,6 +97,7 @@ state, apart from any law:
 | Python | `lawspec_abilities.example.tallies.Tally()` |
 | JavaScript, TypeScript | `new Tally()` from `lawspec_abilities/example/tallies` |
 | Haskell | `LawSpecHandlers.Example.Tallies.tally symbols`, with `symbols <- LawSpecRuntime.newSymbolContext` |
+| Erlang, Elixir, Gleam | `tally(Context)` inside `with_context` (see [handlers](../reference/language/handlers.md#erlang-elixir-and-gleam)); these run on the dynamic values |
 
 The handler implements the ability's interface (the trait in Rust), so the
 application calls its operations with its own native types:
@@ -172,6 +173,8 @@ types:
 | Python | `try_produceRequest(...)`, `Right` of the result or `Left` of the failure |
 | JavaScript, TypeScript | `tryProduceRequest(...)`, `Right` of the result or `Left` of the failure |
 | Haskell | `tryProduceRequest broker ...`, in the ability's handlers module: `IO (Either KafkaError Int64)` for any handler |
+| Erlang, Elixir | `broker_try_produce_request(Broker, ...)` (Elixir: `Broker.try_produce_request(broker, ...)`): `{ok, Offset}` or `{error, KafkaError}`, for any handler |
+| Gleam | `broker_try_produce_request(broker, ...)`: a `Result(Int, data.KafkaError)`, for any handler |
 
 A failing operation leaves the state as it was.
 
@@ -189,6 +192,7 @@ earlier snapshot:
 | Python | `state()` | `set_state(s)` | `typed_state()`, `set_typed_state(s)` |
 | JavaScript, TypeScript | `state()` | `setState(s)` | `typedState()`, `setTypedState(s)` |
 | Haskell | `clusterSnapshot state` | `clusterRestore state s` | `readMVar state`, `swapMVar state s` |
+| Erlang, Elixir, Gleam | `cluster_state(Broker)` | `cluster_set_state(Broker, S)` | (none: BEAM handlers run on the dynamic values) |
 
 The native forms convert the whole state, so they cost what it holds; the
 typed ones cost nothing, since a typed state is never changed in place. The

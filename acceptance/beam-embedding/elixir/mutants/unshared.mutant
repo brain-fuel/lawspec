@@ -1,0 +1,8 @@
+expect: a handler of several abilities shares its state natively
+@@ lib/example_embedding.ex
+<<<<<<<
+      {ledger, balance} = Handlers.book(context)
+=======
+      {ledger, _} = Handlers.book(context)
+      {_, balance} = Handlers.book(context)
+>>>>>>>
