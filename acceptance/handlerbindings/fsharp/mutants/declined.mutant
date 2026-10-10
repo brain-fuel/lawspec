@@ -1,0 +1,7 @@
+expect: large payments are declined
+@@ src/Native/Till.fs
+<<<<<<<
+        if cents > 1000L then raise (CardDeclined())
+=======
+        if cents > 1000L then raise (BadAmount "negative")
+>>>>>>>

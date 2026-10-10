@@ -11,7 +11,8 @@ import LawSpec.Core.Machine (machineActor, machineScenarios)
 import qualified LawSpec.Code.Doc as D
 import LawSpec.Common (Artifact(..), Diagnostic(..), artifactPath)
 import LawSpec.Testing
-import LawSpec.NativeRequest (BindingPlan, emptyBindingPlan, hasBindings)
+import LawSpec.NativeRequest (BindingPlan(..), NativeCall(..), emptyBindingPlan)
+import LawSpec.NativeBinding (ResolvedBindings(..))
 import LawSpec.DotNetSources (dotnetSource, dotnetFiles)
 import LawSpec.DotNet.Code (Lang(..))
 import LawSpec.DotNet.Names
@@ -33,7 +34,10 @@ emitDotNet target minify = emitDotNetWithBindings target minify emptyBindingPlan
 
 emitDotNetWithBindings :: String -> Bool -> BindingPlan -> Plan -> Either [Diagnostic] [Artifact]
 emitDotNetWithBindings target minify bindings plan = do
-  when (hasBindings bindings) (Left [Diagnostic "native-binding" ".NET native bindings are not emitted yet" Nothing])
+  unless (null (resolvedGenerators (bindingRepresentations bindings)))
+    (Left [Diagnostic "native-binding" ".NET does not bind native generators yet" Nothing])
+  when (lang == CSharp && (not (null boundTypes) || not (null calls)))
+    (Left [Diagnostic "native-binding" "C# native type and function bindings are not emitted yet" Nothing])
   diagnose (validatePlan plan)
   files <- diagnose emit
   let paths = map artifactPath files
@@ -45,15 +49,18 @@ emitDotNetWithBindings target minify bindings plan = do
     bits = planMachineBits plan
     declarations = planDataDeclarations plan
     units = map plannedUnit (plannedUnits plan)
+    boundTypes = resolvedTypes (bindingRepresentations bindings)
+    calls = [(C.declarationId d, StaticCall ref) | (d, ref) <- bindingFunctions bindings] ++
+      [(C.declarationId d, c) | (d, c) <- bindingCalls bindings]
     diagnose = either (Left . pure . (\message -> Diagnostic "target" message Nothing)) Right
     emit = do
-      dataFiles <- Data.emitData lang layout bits declarations
+      dataFiles <- Data.emitData lang layout bits boundTypes declarations
       interfaces <- Abilities.emitInterfaces lang layout bits declarations units
       bridges <- Abilities.emitBridges lang layout bits declarations units
       defaults <- Abilities.emitDefaults lang layout units
       schema <- Data.emitSchema lang layout bits usesCrypto declarations
-      entries <- Definitions.emitEntries lang layout bits declarations units
-      adapters <- Definitions.emitAdapters lang layout bits declarations units
+      entries <- Definitions.emitEntries lang layout bits calls declarations units
+      adapters <- Definitions.emitAdapters lang layout bits calls declarations units
       api <- Definitions.emitApi lang layout bits declarations units
       laws <- Properties.emitTests lang layout plan
       models <- Models.emitModels lang layout bits declarations units
@@ -62,20 +69,23 @@ emitDotNetWithBindings target minify bindings plan = do
       let ordered = orderSources (dataFiles ++ interfaces ++ bridges ++ [schema] ++ defaults) adapters entries api
           sources = dataFiles ++ interfaces ++ bridges ++ [schema] ++ defaults ++ entries ++ adapters ++ api
       pure (runtimeArtifacts ++ sources ++ tests ++ vectors ++
-        [ props "src/LawSpec.Sources.props" "source" "The program's generated sources and adapters, in compilation order; application code bound in lawspec.json goes in Native/, after the data types and ability interfaces." ordered
+        [ props "src/LawSpec.Sources.props" "source" "The program's generated sources and adapters, in compilation order; application types bound in lawspec.json go in Native/Types/, before the data types; other application code goes in Native/, after the ability interfaces." ordered
         , props "tests/LawSpec.Tests.props" "test" "The generated tests." [drop (6 :: Int) (artifactPath t) | t <- tests ++ vectors] ])
     orderSources first adapters entries api =
-      [drop (4 :: Int) (artifactPath a) | a <- first] ++ ["Native/**/*" ++ extension lang] ++
+      ["Native/Types/**/*" ++ extension lang] ++ [drop (4 :: Int) (artifactPath a) | a <- first] ++ ["Native/**/*" ++ extension lang] ++
       concat [ [drop (4 :: Int) p | p <- [adapterPath lang (C.unitId u)], p `elem` map artifactPath adapters] ++
                [drop (4 :: Int) (artifactPath e) | e <- entries, ("/" ++ lastModule u ++ extension lang) `isSuffixOf` artifactPath e] ++
                [drop (4 :: Int) (artifactPath a) | a <- api, ("Definitions/" ++ lastModule u ++ extension lang) `isSuffixOf` artifactPath a]
              | u <- Definitions.orderedUnits units ]
+    -- Types bound in lawspec.json come before the data that uses them; the
+    -- rest of the application's code after the interfaces it implements.
+    exclude f = if f == "Native/**/*" ++ extension lang then " Exclude=\"Native/Types/**\"" else ""
     lastModule u = last (splitDots (generatedModule (C.unitId u)))
     props path placement comment files = Artifact path (unlines (
       [ "<Project>"
       , "  <!-- Generated by LawSpec. Do not edit. " ++ comment ++ " -->" ] ++
       (if lang == FSharp || null files then
-        [ "  <ItemGroup>" ] ++ ["    <Compile Include=\"" ++ f ++ "\" />" | lang == FSharp, f <- files] ++ [ "  </ItemGroup>" ]
+        [ "  <ItemGroup>" ] ++ ["    <Compile Include=\"" ++ f ++ "\"" ++ exclude f ++ " />" | lang == FSharp, f <- files] ++ [ "  </ItemGroup>" ]
        else []) ++
       [ "</Project>" ])) "generated" placement
     -- The crypto primitives and Bouncy Castle only for programs that import

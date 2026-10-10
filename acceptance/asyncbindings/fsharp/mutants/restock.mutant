@@ -1,0 +1,6 @@
+@@ src/Native/Types/Shelf.fs
+<<<<<<<
+lock gate (fun () -> total <- total + int64 amount))
+=======
+lock gate (fun () -> total <- total + int64 (if amount < 50 then amount else amount - 1)))
+>>>>>>>

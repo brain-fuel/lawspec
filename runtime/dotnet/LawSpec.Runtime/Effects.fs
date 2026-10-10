@@ -221,3 +221,11 @@ let newCell (initial: Value) = Cell initial
 /// A production handler made with a resource, asked for where no case has one.
 [<CompiledName("ResourceRequired")>]
 let resourceRequired (ability: string) : Handler = fail "ResourceRequired" ability
+
+/// A mapping for nativeFailures: an exception of type 'E becomes a failure.
+[<CompiledName("MapException")>]
+let mapException<'E when 'E :> exn> (make: 'E -> Value) : exn -> Value option =
+    fun e ->
+        match e with
+        | :? 'E as caught -> Some(make caught)
+        | _ -> None
