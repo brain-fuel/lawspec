@@ -8,6 +8,11 @@
 --   lawspec-dev bench kafka --generate go        write the project only
 --   lawspec-dev bench kafka --typed              which definitions and
 --                                                handlers stay dynamic, and why
+--   lawspec-dev bench kafka --deterministic go   generate the project several
+--                                                times (in process, with a cold
+--                                                and a warm cache, without one,
+--                                                and by lawspec-core) and
+--                                                require the same bytes
 --   lawspec-dev bench compile [N...]             time lawspec check on a model
 --                                                of N types (100 200 400 800)
 --
@@ -26,12 +31,14 @@ import Data.Aeson
 import qualified Data.Aeson.Key as K
 import qualified Data.Aeson.KeyMap as KM
 import qualified Data.ByteString.Lazy as BL
+import qualified Data.ByteString.Lazy.Char8 as BLC
+import qualified Data.Set as S
 import Data.List (isPrefixOf, isSuffixOf, sort)
 import Data.Maybe (fromMaybe)
 import qualified Data.Text as T
 import qualified Data.Vector as V
 import System.Directory
-import System.Environment (lookupEnv)
+import System.Environment (getExecutablePath, lookupEnv)
 import System.Exit (ExitCode(..), die)
 import System.FilePath ((</>), takeDirectory)
 import System.IO (hFlush, stdout)
@@ -49,6 +56,7 @@ import LawSpec.Typed.Jvm (jvmScalars)
 benchCommand :: [String] -> IO ()
 benchCommand arguments = case arguments of
   [name, "--typed"] -> typedReport name
+  name : "--deterministic" : targets -> deterministic name (if null targets then ["go", "python"] else targets)
   "compile" : scales -> compileBench (if null scales then [100, 200, 400, 800] else map read scales)
   name : rest -> do
     let (scale, generateOnly, targets) = options rest (Nothing, False, [])
@@ -83,7 +91,7 @@ run name scale generateOnly targets = do
     forM_ drivers $ \file -> readFile file >>= writeAt (project </> drop (length (base </> target) + 1) file)
     when (target == "go") (copyFile "test/locks/go/go.sum" (project </> "go.sum"))
     -- The Haskell driver is an executable of the generated package.
-    when (target == "haskell") $ appendFile (project </> "package.yaml") $ unlines
+    when (target == "haskell" && not (null drivers)) $ appendFile (project </> "package.yaml") $ unlines
       [ "executables:", "  kafka-bench:", "    main: KafkaBench.hs", "    source-dirs: bench"
       , "    dependencies: [lawspec-example]", "    ghc-options: [-O1, -rtsopts]" ]
     let lines' = [p | (p, _) <- generated]
@@ -104,6 +112,48 @@ run name scale generateOnly targets = do
           summary = report target out peak
       writeFile (".artifacts" </> "bench" </> name </> (target ++ ".txt")) (unlines summary)
       mapM_ putStrLn summary
+
+-- | Generation depends only on the program: the same project, generated in
+-- process with no cache, with a cold and then a warm cache directory, and
+-- by a separate lawspec-core, is the same, byte for byte.
+deterministic :: String -> [String] -> IO ()
+deterministic name targets = do
+  let base = "bench" </> name
+  manifest <- BL.readFile (base </> "bench.json") >>= maybe (die ("invalid " ++ base </> "bench.json")) pure . decode
+  let strings key = [T.unpack s | Just (Array values) <- [field key manifest], String s <- V.toList values]
+  sources <- forM (strings "specs") $ \path -> (,) path <$> readFile path
+  packages <- mapM loadPackage (strings "packages")
+  let extra = [("packages", toJSON packages) | not (null packages)] ++
+        [("dependencies", d) | Just d <- [field "dependencies" manifest]]
+      cache = ".artifacts" </> "bench" </> name </> "determinism-cache"
+  core <- (\path -> takeDirectory path </> "lawspec-core") <$> getExecutablePath
+  forM_ targets $ \target -> do
+    removePathForcibly cache
+    let inProcess label more = do
+          putStr ("  " ++ target ++ " " ++ label ++ " ... ") >> hFlush stdout
+          files <- either (\message -> die (target ++ ": generation failed: " ++ message)) pure (planGeneration (extra ++ more) sources target)
+          length (show files) `seq` putStrLn (show (length files) ++ " files")
+          pure (label, files)
+    first <- inProcess "without a cache" []
+    cold <- inProcess "with a cold cache" [("cacheDirectory", toJSON cache)]
+    warm <- inProcess "with a warm cache" [("cacheDirectory", toJSON cache)]
+    putStr ("  " ++ target ++ " by lawspec-core ... ") >> hFlush stdout
+    (code, out, err) <- readCreateProcessWithExitCode (proc core []) (BLC.unpack (encode (generationRequest (extra ++ [("cacheDirectory", toJSON cache)]) sources target)))
+    when (code /= ExitSuccess) (die ("lawspec-core failed: " ++ err))
+    native <- either (\message -> die ("lawspec-core: " ++ message)) pure (generationFiles (fromMaybe Null (decode (BLC.pack out))))
+    putStrLn (show (length native) ++ " files")
+    let runs = [first, cold, warm, ("by lawspec-core", native)]
+        (_, reference) = firstRun runs
+        differing = [ (label, path) | (label, files) <- drop 1 runs
+                    , path <- nubSorted (map fst reference ++ map fst files), lookup path reference /= lookup path files ]
+    unless (null differing) $ die (unlines ([target ++ ": generation is not deterministic:"] ++
+      ["  " ++ label ++ " differs in " ++ path | (label, path) <- take 20 differing]))
+    putStrLn ("  " ++ target ++ ": the same bytes in every run")
+  where
+    firstRun runs = case runs of
+      r : _ -> r
+      [] -> ("", [])
+    nubSorted = S.toList . S.fromList
 
 -- | Which of the benchmark's definitions and spec handlers stay on the
 -- dynamic path, and why: on the JVM (no UInt64), and on every other target.
@@ -212,14 +262,21 @@ report target out peak =
   [ printf "  peak resident  %8.1f MiB" (fromIntegral peak / 1048576 :: Double) ] ++
   [ "  " ++ l | l <- lines out, "check " `isPrefixOf` l ]
 
--- | The JSON request the CLI would send, answered in process.
+-- | The JSON request the CLI would send.
+generationRequest :: [(K.Key, Value)] -> [(FilePath, String)] -> String -> Value
+generationRequest extra sources target = object $
+  [ "method" .= ("planGeneration" :: String), "target" .= target, "machineBits" .= (64 :: Int), "minify" .= False
+  , "sources" .= [object ["path" .= reverse (takeWhile (/= '/') (reverse path)), "content" .= content] | (path, content) <- sources]
+  ] ++ extra
+
+-- | The request, answered in process.
 planGeneration :: [(K.Key, Value)] -> [(FilePath, String)] -> String -> Either String [(FilePath, String)]
-planGeneration extra sources target = do
-  let request = object $
-        [ "method" .= ("planGeneration" :: String), "target" .= target, "machineBits" .= (64 :: Int), "minify" .= False
-        , "sources" .= [object ["path" .= reverse (takeWhile (/= '/') (reverse path)), "content" .= content] | (path, content) <- sources]
-        ] ++ extra
-      response = fromMaybe Null (decode (dispatch (encode request)))
+planGeneration extra sources target =
+  generationFiles (fromMaybe Null (decode (dispatch (encode (generationRequest extra sources target)))))
+
+-- | A response's files, or its diagnostics.
+generationFiles :: Value -> Either String [(FilePath, String)]
+generationFiles response = do
   case field "diagnostics" response of
     Just (Array ds) | not (V.null ds) -> Left (show (encode ds))
     _ -> pure ()

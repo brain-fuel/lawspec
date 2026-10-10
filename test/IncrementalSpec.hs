@@ -3,7 +3,9 @@ module IncrementalSpec (test_incrementalCompilationGivesTheSameResultAsAFreshOne
 
 import Data.Aeson (Value, decode, encode, object, (.=))
 import qualified Data.ByteString.Lazy as B
-import Data.List (find, isInfixOf)
+import Data.List (find, isInfixOf, isPrefixOf)
+import Data.Version (showVersion)
+import Paths_lawspec (version)
 import Test.Hspec
 import qualified LawSpec.Core as C
 import LawSpec.Api (dispatch)
@@ -14,7 +16,7 @@ import LawSpec.Model (Source(..), defaultGeneration)
 import LawSpec.Testing (Plan(..), PlannedUnit(..), PlannedProperty(..), planTesting)
 import LawSpec.Core.Evidence (Obligation(..))
 import qualified Data.ByteString.Lazy.Char8 as BC
-import System.Directory (getTemporaryDirectory, removePathForcibly, listDirectory)
+import System.Directory (getTemporaryDirectory, removePathForcibly, listDirectory, createDirectoryIfMissing, copyFile)
 import System.FilePath ((</>))
 import LawSpec.Memo (newPersistentTable, memoized, withCacheDirectory)
 import LawSpec.Discharge (dischargeEvidence)
@@ -105,6 +107,24 @@ test_incrementalCompilationGivesTheSameResultAsAFreshOne = describe "incremental
       run third "recomputed" `shouldBe` "recomputed"
       fourth <- newPersistentTable "probe" 16 (const 1)
       run fourth (error "recomputed again") `shouldBe` "recomputed"
+      removePathForcibly root
+    it "keeps each compiler build's entries apart, so a rebuilt compiler never reads another's" $ do
+      root <- (</> "lawspec-memo-build-test") <$> getTemporaryDirectory
+      removePathForcibly root
+      first <- newPersistentTable "probe" 16 (const 1)
+      let run table value = BC.unpack (withCacheDirectory (Just root) (BC.pack (memoized table "key" value)))
+      run first "stored" `shouldBe` "stored"
+      [build] <- listDirectory root
+      -- The folder names the version and, for a native compiler, the build.
+      build `shouldSatisfy` (("lawspec-" ++ showVersion version ++ "-") `isPrefixOf`)
+      -- An entry another build stored, under the folder of the version alone,
+      -- as compilers before this one kept them, is not read.
+      createDirectoryIfMissing True (root </> ("lawspec-" ++ showVersion version) </> "probe")
+      [entry] <- listDirectory (root </> build </> "probe")
+      copyFile (root </> build </> "probe" </> entry) (root </> ("lawspec-" ++ showVersion version) </> "probe" </> entry)
+      removePathForcibly (root </> build)
+      second <- newPersistentTable "probe" 16 (const 1)
+      run second "recomputed" `shouldBe` "recomputed"
       removePathForcibly root
     it "stays out of the way without a cache directory" $ do
       table <- newPersistentTable "unused" 16 (const 1)

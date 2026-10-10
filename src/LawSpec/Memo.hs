@@ -11,8 +11,11 @@
 --
 -- A persistent table also keeps its entries on disk when a request names a
 -- cache directory, so separate runs of the CLI share work. Entries live under
--- <directory>/<compiler version>/<table>/<key digest>; one that cannot be
--- read or decoded is recomputed and replaced.
+-- <directory>/<compiler build>/<table>/<key digest>; one that cannot be
+-- read or decoded is recomputed and replaced. The build is the version and,
+-- for a native compiler, its executable's size and modification time: a
+-- compiler rebuilt from changed sources (a checkout run in place) never
+-- reads what another build wrote, so generation depends only on the program.
 module LawSpec.Memo (Table, newTable, newPersistentTable, memoized, withCacheDirectory) where
 
 import Control.Exception (SomeException, evaluate, try)
@@ -23,7 +26,8 @@ import Data.IORef
 import qualified Data.Map.Strict as M
 import qualified Data.Text as T
 import Data.Version (showVersion)
-import System.Directory (createDirectoryIfMissing, renameFile)
+import System.Directory (createDirectoryIfMissing, renameFile, getFileSize, getModificationTime)
+import System.Environment (getExecutablePath)
 import System.FilePath ((</>))
 import System.IO.Unsafe (unsafePerformIO)
 import LawSpec.Digest (digestHex, digestString)
@@ -58,6 +62,20 @@ newPersistentTable name budget weigh =
           Right (rest, _, value) | BL.null rest -> Just value
           _ -> Nothing
 
+-- | The running compiler's build, beside its version: its executable's size
+-- and modification time where it has one (none in WebAssembly, whose host
+-- keeps a folder per build already).
+buildIdentity :: String
+buildIdentity = unsafePerformIO $ do
+  found <- try (do
+    path <- getExecutablePath
+    size <- getFileSize path
+    modified <- getModificationTime path
+    _ <- evaluate (length (show modified))
+    pure ("-" ++ take 16 (digestHex (digestString (path ++ " " ++ show size ++ " " ++ show modified))))) :: IO (Either SomeException String)
+  pure (either (const "") id found)
+{-# NOINLINE buildIdentity #-}
+
 cacheDirectory :: IORef (Maybe FilePath)
 cacheDirectory = unsafePerformIO (newIORef Nothing)
 {-# NOINLINE cacheDirectory #-}
@@ -90,7 +108,7 @@ memoized (Table budget weigh persistence ref) key value = unsafePerformIO $ do
       directory <- readIORef cacheDirectory
       let file = case (directory, persistence) of
             (Just d, Just (Persistence name _ _)) ->
-              Just (d </> ("lawspec-" ++ showVersion version) </> name, digestHex (digestString key))
+              Just (d </> ("lawspec-" ++ showVersion version ++ buildIdentity) </> name, digestHex (digestString key))
             _ -> Nothing
       stored <- maybe (pure Nothing) readStored file
       computed <- maybe (evaluate value) pure stored

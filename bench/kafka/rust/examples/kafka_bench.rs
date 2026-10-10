@@ -120,5 +120,18 @@ fn run(scale: u64) {
     let r = broker.fetchRequest(tp(0), 0, 10, data::IsolationLevel::ReadCommitted);
     println!("check committed-hw {}", r.highWatermark);
     phase("total", total, all);
+    // The embedding API: a refusal as a value, and the state kept and put back.
+    let missing = data::TopicPartition { topic: "missing".into(), partition: 0 };
+    match broker.try_produceRequest(missing, None, vec![record(0)]) {
+        Err(error) => println!("check refused {:?}", error),
+        Ok(_) => println!("check refused nothing"),
+    }
+    let snapshot = broker.typed_state();
+    broker.produceRequest(tp(0), None, vec![record(0)]);
+    broker.set_typed_state(snapshot);
+    let after = broker.fetchRequest(tp(0), 0, 10, data::IsolationLevel::ReadCommitted);
+    println!("check restored {}", after.highWatermark == r.highWatermark);
+    let _native_state = Cluster::state;
+    let _native_set_state = Cluster::set_state;
     println!("memory end {}", resident());
 }
