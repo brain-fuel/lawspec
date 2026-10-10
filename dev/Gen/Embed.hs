@@ -12,14 +12,14 @@ import System.FilePath ((</>))
 
 runtimeFiles :: [(String, FilePath)]
 runtimeFiles =
-  [ ("python", "lawspec_runtime.py"), ("python-schema", "lawspec_schema.py")
+  [ ("python", "lawspec_runtime.py"), ("python-schema", "lawspec_schema.py"), ("python-fast", "lawspec_fast.py")
   , ("python-data-strategies", "lawspec_data_strategies.py"), ("javascript", "lawspec_runtime.mjs")
-  , ("web-schema", "lawspec_schema.mjs"), ("web-data-strategies", "lawspec_data_strategies.mjs")
+  , ("web-schema", "lawspec_schema.mjs"), ("web-data-strategies", "lawspec_data_strategies.mjs"), ("web-fast", "lawspec_fast.mjs")
   , ("java", "LawSpecRuntime.java"), ("java-fast", "LawSpecFast.java"), ("java-schema", "LawSpecSchema.java")
   , ("java-data-strategies", "LawSpecDataStrategies.java"), ("go", "lawspec_runtime.go"), ("go-fast", "lawspec_fast.go")
   , ("go-schema", "lawspec_schema.go"), ("go-codecs", "lawspec_codecs.go")
   , ("go-data-strategies", "lawspec_data_strategies.go"), ("haskell", "LawSpecRuntime.hs")
-  , ("haskell-schema", "LawSpecSchema.hs"), ("haskell-codecs", "LawSpecCodecs.hs")
+  , ("haskell-schema", "LawSpecSchema.hs"), ("haskell-codecs", "LawSpecCodecs.hs"), ("haskell-fast", "LawSpecFast.hs")
   , ("haskell-collection-codecs", "LawSpecCollectionCodecs.hs")
   , ("haskell-transports", "LawSpecTransports.hs")
   , ("haskell-data-strategies", "LawSpecDataStrategies.hs"), ("rust", "lawspec_runtime.rs")

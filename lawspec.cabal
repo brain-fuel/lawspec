@@ -18,11 +18,13 @@ extra-source-files:
     runtime/lawspec_runtime.rs
     runtime/lawspec_strategies.rs
     runtime/lawspec_data_strategies.mjs
+    runtime/lawspec_fast.mjs
     runtime/lawspec_harness.mjs
     runtime/lawspec_network.mjs
     runtime/lawspec_runtime.mjs
     runtime/lawspec_schema.mjs
     runtime/lawspec_data_strategies.py
+    runtime/lawspec_fast.py
     runtime/lawspec_harness.py
     runtime/lawspec_network.py
     runtime/lawspec_runtime.py
@@ -30,6 +32,7 @@ extra-source-files:
     runtime/LawSpecCodecs.hs
     runtime/LawSpecCollectionCodecs.hs
     runtime/LawSpecDataStrategies.hs
+    runtime/LawSpecFast.hs
     runtime/LawSpecHarness.hs
     runtime/LawSpecNetwork.hs
     runtime/LawSpecRuntime.hs
@@ -431,6 +434,7 @@ library
       LawSpec.Typed.Go
       LawSpec.Typed.Jvm
       LawSpec.Typed.Plan
+      LawSpec.Typed.Python
       LawSpec.Typed.Rust
       LawSpec.Unification
       LawSpec.WebData

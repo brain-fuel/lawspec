@@ -12,7 +12,8 @@
 -- operations are intrinsics, which each target implements over its
 -- persistent maps. ref:DEC-typed-native-definitions
 module LawSpec.Typed.Plan
-  ( TypedPlan(..), Intrinsic(..), typedPlan, typedPlanWith, supportedType, isTypedHandler
+  ( TypedPlan(..), Intrinsic(..), typedPlan, typedPlanWith, typedPlanPerforming, supportedType, isTypedHandler
+  , isContextual, performedFailure
   , typedFallbacks, failedWith, sequenceBuiltins
   , collectionArguments, scalarTypes, constructorRanks, definitionClass, sharedDefinitions, firstOf
   ) where
@@ -47,6 +48,10 @@ data TypedPlan = TypedPlan
     -- Why each definition that is not typed stays dynamic (computed only
     -- when asked for).
   , typedFallbackReasons :: [(Definition, String)]
+    -- The typed definitions that perform an operation of an ability other
+    -- than Fail, or call one that does: they take the handler context (the
+    -- law's symbols, where the operation finds its handler) first.
+  , typedContextual :: S.Set Id
   }
 
 -- | The first of a list the caller knows is not empty (a product's one
@@ -144,7 +149,24 @@ typedPlan = typedPlanWith scalarTypes
 
 -- | With the target's typed scalars.
 typedPlanWith :: [String] -> [DataDeclaration] -> [Unit] -> TypedPlan
-typedPlanWith scalars declarations units = TypedPlan
+typedPlanWith = typedPlanOf False
+
+-- | With the target's typed scalars, on a target whose typed code carries
+-- the handler context: a definition may perform any ability's operations
+-- whose arguments, result and failure have typed forms.
+typedPlanPerforming :: [String] -> [DataDeclaration] -> [Unit] -> TypedPlan
+typedPlanPerforming = typedPlanOf True
+
+-- | The failure an operation may fail with (`fails with E`), when it has one.
+performedFailure :: [Unit] -> Operation -> Maybe AbilityRef
+performedFailure units op = findAbility units (operationAbility op) >>= lookup (operationName op) . abilityFailures . snd
+
+-- | Whether a typed definition takes the handler context.
+isContextual :: TypedPlan -> Id -> Bool
+isContextual plan identity = identity `S.member` typedContextual plan
+
+typedPlanOf :: Bool -> [String] -> [DataDeclaration] -> [Unit] -> TypedPlan
+typedPlanOf performing scalars declarations units = TypedPlan
   { typedDefinitions = M.fromList [(idOf d, d) | d <- eligible]
   , typedClass = classes
   , typedRepresentatives = representatives
@@ -152,14 +174,25 @@ typedPlanWith scalars declarations units = TypedPlan
   , typedData = datas
   , typedDataNames = known
   , typedScalars = scalars
-  , typedFallbackReasons = [ (d, reason d) | d <- definitions, idOf d `S.notMember` eligibleIds ] }
+  , typedFallbackReasons = [ (d, reason d) | d <- definitions, idOf d `S.notMember` eligibleIds ]
+  , typedContextual = contextual }
   where
+    -- Definitions that perform, and then those that call them, until stable.
+    contextual = spread (S.fromList [idOf d | d <- eligible, performs (definitionBody d)])
+    spread known =
+      let next = S.union known (S.fromList [idOf d | d <- eligible, any (`S.member` known) (callees (definitionBody d))])
+      in if S.size next == S.size known then known else spread next
+    performs e = case expressionNode e of
+      Perform (Operation ref "raise") [_] | failing ref -> any performs (children e)
+      Perform _ _ -> True
+      _ -> any performs (children e)
+    usable ref = failing ref || performing && not (isFail ref) && findAbility units ref /= Nothing
     eligibleIds = S.fromList (map idOf eligible)
     reason d
       | definitionOrchestrates d = "it is a workflow"
       | definitionPolicy d /= Nothing = "it has a workflow policy"
-      | not (all failing (declarationUses (definitionDeclaration d))) =
-          "it uses " ++ unwords [abilityKey r | r <- declarationUses (definitionDeclaration d), not (failing r)]
+      | not (all usable (declarationUses (definitionDeclaration d))) =
+          "it uses " ++ unwords [abilityKey r | r <- declarationUses (definitionDeclaration d), not (usable r)]
       | idOf d `S.member` contracted = "it has a runtime contract"
       | length (signatureOf d) > 13 = "it has more than 12 arguments"
       | t : _ <- [t | t <- signatureOf d ++ map binderType (definitionArguments d), not (supported t)] =
@@ -181,7 +214,7 @@ typedPlanWith scalars declarations units = TypedPlan
     contracted = S.fromList (map contractDeclaration (concatMap unitContracts units))
     candidates = [ d | d <- definitions, local d ]
     local d = not (definitionOrchestrates d) && definitionPolicy d == Nothing
-      && all failing (declarationUses (definitionDeclaration d))
+      && all usable (declarationUses (definitionDeclaration d))
       && idOf d `S.notMember` contracted
       && let (args, result) = functionType (declarationType (definitionDeclaration d))
          in length args <= 12 && all (supported) (result : args)
@@ -214,8 +247,12 @@ typedPlanWith scalars declarations units = TypedPlan
       Convert _ target value -> integral target && integral (expressionType value) || target == expressionType value
       Helper builtin _ -> builtin `elem` ([Length, Compare, Select, Unreachable, StartsWith, EndsWith, TextContains, RegexMatches, Checked] ++ sequenceBuiltins)
       -- raise e, and attempt e: the Fail ability, at a typed failure.
-      Perform (Operation ref "raise") [_] -> failing ref
-      Perform _ _ -> False
+      Perform (Operation ref "raise") [_] | failing ref -> True
+      -- An operation of another ability, through its handler in the
+      -- context, with typed arguments, result and failure.
+      Perform op args -> performing && usable (operationAbility op) && not (isFail (operationAbility op))
+        && all (supported . expressionType) args && supported (expressionType e)
+        && maybe True failing (performedFailure units op)
       Handle (CatchFailure ref) _ -> failing ref
       Handle _ _ -> False
       Calls _ _ -> False
