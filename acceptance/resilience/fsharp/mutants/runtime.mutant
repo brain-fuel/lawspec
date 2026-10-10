@@ -1,0 +1,7 @@
+@@ src/Example/Resilience.fs
+<<<<<<<
+            Workflow.setTime runtime (int64 time)
+            match LawSpec.Definitions.Example.Limits.limited { Number = 0L } with
+=======
+            match Workflow.withVirtual 0I (fun fresh -> Workflow.setTime fresh (int64 time); LawSpec.Definitions.Example.Limits.limited { Number = 0L }) with
+>>>>>>>

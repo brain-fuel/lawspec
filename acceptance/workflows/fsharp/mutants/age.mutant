@@ -1,0 +1,6 @@
+@@ src/Example/Workflows.fs
+<<<<<<<
+    if signup.Age < 18 then Either.Left "too young" else Either.Right signup
+=======
+    if signup.Age < 17 then Either.Left "too young" else Either.Right signup
+>>>>>>>

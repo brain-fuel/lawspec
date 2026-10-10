@@ -1,0 +1,10 @@
+@@ src/Example/Approvals.fs
+<<<<<<<
+        | Either.Left(ApproveFailures failures) ->
+            return
+=======
+        | Either.Left(ApproveFailures failures) when not failures.IsEmpty ->
+            return List.ofSeq Example.Workflows.finished
+        | Either.Left(ApproveFailures failures) ->
+            return
+>>>>>>>

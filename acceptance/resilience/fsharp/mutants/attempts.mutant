@@ -1,0 +1,6 @@
+@@ src/Example/Resilience.fs
+<<<<<<<
+let retriedWaits (attempts: int) : bigint list = waits attempts true
+=======
+let retriedWaits (attempts: int) : bigint list = waits (attempts + 1) true
+>>>>>>>

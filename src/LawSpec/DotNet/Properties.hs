@@ -16,6 +16,7 @@ import LawSpec.DotNet.Code
 import LawSpec.DotNet.Names
 import qualified LawSpec.DotNet.Expr as X
 import qualified LawSpec.DotNet.Effects as Effects
+import qualified LawSpec.DotNet.Policy as Policy
 import qualified LawSpec.AbilityNames as N
 import qualified LawSpec.BeamGenerators as BeamGenerators
 import qualified LawSpec.BeamProperties as BeamProperties
@@ -150,7 +151,7 @@ emitTests lang layout plan = fmap concat $ forM (plannedUnits plan) $ \planned -
       let scopeVar = if all (C.isFail . fst) handlers then X.schemaVar else Var "scoped"
       lateCase <- installLate scopeVar (\sch -> inBody sch (Var "inputs"))
       bracketedCase <- bracket scopeVar lateCase
-      scoped <- Effects.withHandlers units X.schemaVar X.symbolsVar handlers (const bracketedCase)
+      scoped <- Policy.withTestRuntime units tValue <$> Effects.withHandlers units X.schemaVar X.symbolsVar handlers (const bracketedCase)
       let caseDoc = private' $ function lang True caseName [("schema", tSchema), ("symbols", tSymbols), ("inputs", tValues)] tValue scoped
       examples <- forM (zip [0 :: Int ..] (C.propertyExamples law)) $ \(i, example) -> do
         let exampleSchema = if all (C.isFail . fst) handlers then X.schemaVar else Var "scoped"
@@ -162,7 +163,7 @@ emitTests lang layout plan = fmap concat $ forM (plannedUnits plan) $ \planned -
         lateChecks <- installLate exampleSchema (\sch -> foldr (\(a, v) rest -> Let a tValue v rest)
               (Do (require (inBody sch inputs) : map require expectations) (X.bool True)) (zip (map snd aliases) arguments))
         bracketed <- bracket exampleSchema lateChecks
-        inScope <- Effects.withHandlers units X.schemaVar X.symbolsVar handlers (const bracketed)
+        inScope <- Policy.withTestRuntime units tValue <$> Effects.withHandlers units X.schemaVar X.symbolsVar handlers (const bracketed)
         pure (test (name ++ suffix "example" ++ show i) (label ++ " example " ++ show i ++ ": " ++ C.exampleName example) False
           (setup (Do [call "Runtime" "ignore" [inScope]] UnitLit)))
       let cases = maybe (boundaryCases planned) id (finiteCases planned)

@@ -1,0 +1,6 @@
+@@ src/Example/Limits.fs
+<<<<<<<
+    if ticket.Number < 0L then Either.Left "declined" else Either.Right ticket
+=======
+    if ticket.Number < 0L then Either.Right ticket else Either.Right ticket
+>>>>>>>

@@ -195,3 +195,7 @@ let await (task: Task<'a>) : 'a =
 /// Discard a value computed for its checks.
 [<CompiledName("Ignore")>]
 let ignore (_: Value) = ()
+
+/// An integer value from its digits.
+[<CompiledName("Integer")>]
+let integer (digits: string) = Int(Numerics.BigInteger.Parse digits)

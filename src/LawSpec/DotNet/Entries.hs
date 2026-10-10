@@ -21,11 +21,20 @@ entryCall e = Call (Fn (entryModule e ++ "." ++ entryFs e) (shortModule (entryMo
   where shortModule m = m
 
 -- | The units in an order F# compiles: a unit after the units its entries call.
+-- A stable order: each unit after the units it calls, otherwise in the
+-- program's order (which follows imports), so an adapter can call the
+-- definitions of a unit its unit imports. Units that call each other keep
+-- the program's order.
 orderedUnits :: [C.Unit] -> [C.Unit]
-orderedUnits units = concatMap flattenSCC (stronglyConnComp
-  [ (u, C.unitId u, [owner | identity <- calls u, Just owner <- [lookup identity owners], owner /= C.unitId u])
-  | u <- units ])
+orderedUnits units = go [] units
   where
+    deps u = [owner | identity <- calls u, Just owner <- [lookup identity owners], owner /= C.unitId u]
+    cyclic = [C.unitId u | scc <- stronglyConnComp [(u, C.unitId u, deps u) | u <- units], length (flattenSCC scc) > 1, u <- flattenSCC scc]
+    ready placed u = all (\d -> d `elem` placed || d `elem` cyclic && C.unitId u `elem` cyclic) (deps u)
+    go placed [] = []
+    go placed pending = case [u | u <- pending, ready (map C.unitId placed) u] of
+      u : _ -> u : go (placed ++ [u]) [p | p <- pending, C.unitId p /= C.unitId u]
+      [] -> pending
     owners = [(C.declarationId d, C.unitId u) | u <- units, d <- C.unitDeclarations u]
     calls u = concatMap (terms . C.definitionBody) (C.unitDefinitions u) ++
       concat [concatMap terms (C.contractExpressions c) | c <- C.unitContracts u]

@@ -49,16 +49,18 @@ emitDotNetWithBindings target minify bindings plan = do
       schema <- Data.emitSchema lang layout bits declarations
       entries <- Definitions.emitEntries lang layout bits declarations units
       adapters <- Definitions.emitAdapters lang layout bits declarations units
+      api <- Definitions.emitApi lang layout bits declarations units
       tests <- Properties.emitTests lang layout plan
-      let ordered = orderSources (dataFiles ++ interfaces ++ bridges ++ [schema]) adapters entries
-          sources = dataFiles ++ interfaces ++ bridges ++ [schema] ++ entries ++ adapters
+      let ordered = orderSources (dataFiles ++ interfaces ++ bridges ++ [schema]) adapters entries api
+          sources = dataFiles ++ interfaces ++ bridges ++ [schema] ++ entries ++ adapters ++ api
       pure (runtimeArtifacts ++ sources ++ tests ++
         [ props "src/LawSpec.Sources.props" "source" "The program's generated sources and adapters, in compilation order." ordered
         , props "tests/LawSpec.Tests.props" "test" "The generated tests." [drop (6 :: Int) (artifactPath t) | t <- tests] ])
-    orderSources first adapters entries =
+    orderSources first adapters entries api =
       [drop (4 :: Int) (artifactPath a) | a <- first] ++
       concat [ [drop (4 :: Int) p | p <- [adapterPath lang (C.unitId u)], p `elem` map artifactPath adapters] ++
-               [drop (4 :: Int) (artifactPath e) | e <- entries, ("/" ++ lastModule u ++ extension lang) `isSuffixOf` artifactPath e]
+               [drop (4 :: Int) (artifactPath e) | e <- entries, ("/" ++ lastModule u ++ extension lang) `isSuffixOf` artifactPath e] ++
+               [drop (4 :: Int) (artifactPath a) | a <- api, ("Definitions/" ++ lastModule u ++ extension lang) `isSuffixOf` artifactPath a]
              | u <- Definitions.orderedUnits units ]
     lastModule u = last (splitDots (generatedModule (C.unitId u)))
     props path placement comment files = Artifact path (unlines (

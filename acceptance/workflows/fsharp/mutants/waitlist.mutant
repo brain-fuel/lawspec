@@ -1,0 +1,6 @@
+@@ src/Example/Workflows.fs
+<<<<<<<
+    if error = Unavailable then Either.Right { Name = "waitlist"; Age = 18; Level = 0 } else Either.Left error
+=======
+    if error = Unavailable then Either.Right { Name = "waitlist"; Age = 18; Level = 1 } else Either.Left error
+>>>>>>>
