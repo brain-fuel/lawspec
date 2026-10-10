@@ -128,11 +128,43 @@ emit ts minify bits datas units = do
               else [out invocation]
         pure (D.text op <> s <> D.text " " <> D.block 2
           (D.joinWith D.hardline (D.text "const symbols = this._symbols;" : inputs ++ statements)))) (C.abilityOperations ability)
+      -- The state, read and replaced in its native types, and typed.
+      accessors <- case C.handlerState h of
+        Nothing -> pure []
+        Just (t, _) -> do
+          native <- webDataTypeDoc datas t
+          pure [ D.text "/** The handler's state, in its native types: a snapshot to show or keep. */" <> D.hardline <>
+                 D.text "state()" <> annotation native <> D.text " " <> D.block 2 (D.text ("return _typed." ++ webTypedNativeOut typed t ++ "(this._state, this._symbols);"))
+               , D.text "/** Replaces the handler's state: to force it, reset it or restore a snapshot. */" <> D.hardline <>
+                 D.text "setState(state" <> annotation native <> D.text ")" <> annotation (D.text "void") <> D.text " " <>
+                   D.block 2 (D.text ("this._state = _typed." ++ webTypedNativeIn typed t ++ "(state, this._symbols);"))
+               , D.text "/** The typed state, shared rather than copied. */" <> D.hardline <>
+                 D.text "typedState() " <> D.block 2 (D.text "return this._state;")
+               , D.text "/** Replaces the typed state. */" <> D.hardline <>
+                 D.text "setTypedState(state" <> annotation (D.text "any") <> D.text ")" <> annotation (D.text "void") <> D.text " " <> D.block 2 (D.text "this._state = state;") ]
+      -- Each operation that fails with E, with its failure as Left.
+      attempts <- fmap concat $ mapM (\a -> mapM (\(op, ty, failing, failure) -> do
+          ref <- webTypeReferenceDoc failure
+          let (args, result) = C.functionType ty
+              values = [D.text ("value" ++ show i) | i <- [0 .. length args - 1]]
+          types <- mapM (webDataTypeDoc datas) args
+          resultType <- if result == C.scalarType "Unit" then pure (D.text "undefined") else webDataTypeDoc datas result
+          failureType <- webDataTypeDoc datas failure
+          pure (D.text ("/** " ++ op ++ ", with the failure it raises as Left rather than an exception. */") <> D.hardline <>
+            D.text ("try" ++ capitalizeFirst op) <> D.delimitTrailing 4 "(" ")" [D.text ("value" ++ show i) <> annotation t | (i, t) <- zip [0 :: Int ..] types] <>
+            annotation (D.text "data.Either<" <> failureType <> D.text ", " <> resultType <> D.text ">") <> D.text " " <>
+            D.block 2 (D.text "try " <> D.block 2 (D.text "return new data.Right(this." <> E.call op values <> D.text ");") <>
+              D.text " catch (failure) " <> D.block 2 (D.joinWith D.hardline
+                [ D.text ("if (!(failure instanceof ls.Failure) || (failure" ++ (if ts then " as any" else "") ++ ").ability !== " ++ show (C.abilityKey failing) ++ ") throw failure;")
+                , D.text "return new data.Left(ls.handlerSchema(_lawspec_schema).toNative(" <> ref <> D.text (", (failure" ++ (if ts then " as any" else "") ++ ").value, " ++ show bits ++ ", this._symbols));") ])))
+          ) [ (op, ty, failing, failure) | (op, ty) <- C.abilityOperations a, Just failing@(C.AbilityRef _ [failure]) <- [lookup op (C.abilityFailures a)] ]) answered
       pure (D.text ("/** The spec handler " ++ C.handlerName h ++ " for " ++ C.abilityName ability ++ ", with its state typed: new " ++
           specName h ++ "() makes it on its own, outside any law. */") <> D.hardline <>
         D.text ("export class " ++ specName h ++ (if ts then " implements " ++ intercalate ", " (map interfaceName answered) else "") ++ " ") <> D.block 2 (D.joinWith D.hardline (
           D.text "constructor(symbols = new Map()) " <> D.block 2 (D.joinWith D.hardline (D.text "this._symbols = symbols;" : start)) :
-          methods)))
+          methods ++ accessors ++ attempts)))
+    capitalizeFirst (c : cs) = toEnum (fromEnum c - (if c >= 'a' && c <= 'z' then 32 else 0)) : cs
+    capitalizeFirst [] = []
     recording a = do
       methods <- mapM (\(op, ty) -> do
         s <- signature ty

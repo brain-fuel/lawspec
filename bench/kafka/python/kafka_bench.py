@@ -112,6 +112,16 @@ def main():
     r = broker.fetchRequest(tp(0), 0, 10, data.IsolationLevelReadCommitted())
     print(f"check committed-hw {r.highWatermark}")
 
+    # The embedding API: a refusal as a value, and the state kept and put back.
+    refused = broker.try_produceRequest(data.TopicPartition("missing", 0), nothing, [record(0)])
+    print(f"check refused {type(refused.value).__name__ if isinstance(refused, schema.Left) else 'nothing'}")
+    snapshot = broker.typed_state()
+    broker.produceRequest(tp(0), nothing, [record(0)])
+    broker.set_typed_state(snapshot)
+    after = broker.fetchRequest(tp(0), 0, 10, data.IsolationLevelReadCommitted())
+    print(f"check restored {after.highWatermark == r.highWatermark}")
+    assert callable(broker.state) and callable(broker.set_state)
+
 
 if __name__ == "__main__":
     main()

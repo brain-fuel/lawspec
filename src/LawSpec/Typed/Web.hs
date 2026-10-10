@@ -100,7 +100,8 @@ emitWebTyped ts bits declarations units = do
         (M.fromList names) units bits ts
       typedHandlers = [ h | u <- units, h <- unitHandlers u, isTypedHandler plan h ]
       handlerTypes = [ t | h <- typedHandlers, ref <- handlerAbilities h, Just (_, a) <- [findAbility units ref]
-                         , (_, ty) <- abilityOperations a, let (args, result) = functionType ty, t <- result : args ]
+                         , (_, ty) <- abilityOperations a, let (args, result) = functionType ty, t <- result : args ] ++
+                     [ t | h <- typedHandlers, Just (t, _) <- [handlerState h] ]
       boundary = concat [ let (args, result) = functionType (declarationType (definitionDeclaration d)) in result : args
                         | d <- M.elems (typedDefinitions plan) ]
       starts = [ (handlerId h, "Start_" ++ show k, ty, start) | (k, h) <- zip [0 :: Int ..] typedHandlers, Just (ty, start) <- [handlerState h] ]

@@ -9,6 +9,7 @@ import qualified Data.ByteString as B
 import Data.Bits (shiftR)
 import Data.Int (Int32, Int64)
 import Data.IORef
+import qualified Control.Concurrent.MVar as MVar
 import qualified Data.Text as T
 import GHC.Clock (getMonotonicTime)
 import GHC.Stats (getRTSStats, getRTSStatsEnabled, gcdetails_live_bytes, gc)
@@ -125,5 +126,15 @@ main = do
   memory "end"
   r <- fetchRequest broker (tp 0) 0 10 Data.IsolationLevelReadCommitted
   printf "check committed-hw %d\n" (Data.fetchResultHighWatermark r)
+
+  -- The embedding API: a refusal as a value, and the state kept and put back.
+  refused <- Handlers.tryProduceRequest broker (Data.TopicPartition (T.pack "missing") 0) Nothing [record 0]
+  putStrLn ("check refused " ++ either show (const "nothing") refused)
+  snapshot <- MVar.readMVar state
+  _ <- produceRequest broker (tp 0) Nothing [record 0]
+  _ <- MVar.swapMVar state snapshot
+  after <- fetchRequest broker (tp 0) 0 10 Data.IsolationLevelReadCommitted
+  putStrLn ("check restored " ++ show (Data.fetchResultHighWatermark after == Data.fetchResultHighWatermark r))
+  let _ = (Handlers.clusterSnapshot, Handlers.clusterRestore)
   _ <- forM [()] pure
   pure ()

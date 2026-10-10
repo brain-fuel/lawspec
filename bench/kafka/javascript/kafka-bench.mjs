@@ -101,3 +101,12 @@ phase('total', total, all);
 memory('end');
 const last = broker.fetchRequest(tp(0), 0n, 10, new data.IsolationLevelReadCommitted());
 console.log(`check committed-hw ${last.highWatermark}`);
+
+// The embedding API: a refusal as a value, and the state kept and put back.
+const refused = (broker).tryProduceRequest(new data.TopicPartition('missing', 0), nothing, [record(0)]);
+console.log(`check refused ${refused instanceof data.Left ? refused.value.constructor.name : 'nothing'}`);
+const snapshot = (broker).typedState();
+broker.produceRequest(tp(0), nothing, [record(0)]);
+(broker).setTypedState(snapshot);
+const after = broker.fetchRequest(tp(0), 0n, 10, new data.IsolationLevelReadCommitted());
+console.log(`check restored ${after.highWatermark === last.highWatermark}`);

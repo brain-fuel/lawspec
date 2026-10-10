@@ -111,7 +111,10 @@ emitPythonTyped bits declarations units = do
         (M.fromList names) units bits
       typedHandlers = [ h | u <- units, h <- unitHandlers u, isTypedHandler plan h ]
       handlerTypes = [ t | h <- typedHandlers, ref <- handlerAbilities h, Just (_, a) <- [findAbility units ref]
-                         , (_, ty) <- abilityOperations a, let (args, result) = functionType ty, t <- result : args ]
+                         , (_, ty) <- abilityOperations a, let (args, result) = functionType ty, t <- result : args ] ++
+                     [ t | h <- typedHandlers, Just (t, _) <- [handlerState h] ] ++
+                     [ failure | h <- typedHandlers, ref <- handlerAbilities h, Just (_, a) <- [findAbility units ref]
+                               , (_, AbilityRef _ [failure]) <- abilityFailures a ]
       boundary = concat [ let (args, result) = functionType (declarationType (definitionDeclaration d)) in result : args
                         | d <- M.elems (typedDefinitions plan) ]
       starts = [ (handlerId h, "Start_" ++ show k, start) | (k, h) <- zip [0 :: Int ..] typedHandlers, Just (_, start) <- [handlerState h] ]

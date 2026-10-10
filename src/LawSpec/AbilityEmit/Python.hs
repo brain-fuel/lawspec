@@ -142,12 +142,44 @@ emit minify bits datas units = do
               else [out invocation]
         pure (E.suite (D.text ("def " ++ op) <> ps)
           (D.joinWith D.hardline (D.text "symbols = self._symbols" : inputs ++ statements)))) (C.abilityOperations ability)
+      -- The state, read and replaced in its native types, and typed.
+      let accessors = case C.handlerState h of
+            Nothing -> []
+            Just (t, _) ->
+              [ E.suite (D.text "def state(self)") (D.joinWith D.hardline
+                  [ D.text "\"\"\"The handler's state, in its native types: a snapshot to show or keep.\"\"\""
+                  , E.suite (D.text "with self._lock") (D.text ("return _typed." ++ pyTypedNativeOut typed t ++ "(self._state, self._symbols)")) ])
+              , E.suite (D.text "def set_state(self, state)") (D.joinWith D.hardline
+                  [ D.text "\"\"\"Replaces the handler's state: to force it, reset it or restore a snapshot.\"\"\""
+                  , D.text ("typed = _typed." ++ pyTypedNativeIn typed t ++ "(state, self._symbols)")
+                  , E.suite (D.text "with self._lock") (D.text "self._state = typed") ])
+              , E.suite (D.text "def typed_state(self)") (D.joinWith D.hardline
+                  [ D.text "\"\"\"The typed state, shared rather than copied.\"\"\"", D.text "return self._state" ])
+              , E.suite (D.text "def set_typed_state(self, state)") (D.joinWith D.hardline
+                  [ D.text "\"\"\"Replaces the typed state.\"\"\"", E.suite (D.text "with self._lock") (D.text "self._state = state") ]) ]
+      -- Each operation that fails with E, with its failure as Left.
+      attempts <- fmap concat $ mapM (\a -> mapM (\(op, ty, failing, failure) -> do
+          ref <- pythonTypeReferenceDoc failure
+          let (args, result) = C.functionType ty
+              values = [D.text ("value" ++ show i) | i <- [0 .. length args - 1]]
+          types <- mapM (pythonDataTypeDoc datas) args
+          resultType <- if result == C.scalarType "Unit" then pure (D.text "None") else pythonDataTypeDoc datas result
+          failureType <- pythonDataTypeDoc datas failure
+          let ps' = D.delimitTrailing 4 "(" ")" (D.text "self" : [D.text ("value" ++ show i ++ ": ") <> t | (i, t) <- zip [0 :: Int ..] types]) <>
+                D.text " -> _schema.Either[" <> failureType <> D.text ", " <> resultType <> D.text "]"
+          pure (E.suite (D.text ("def try_" ++ op) <> ps') (D.joinWith D.hardline
+            [ D.text ("\"\"\"" ++ op ++ ", with the failure it raises as Left rather than an exception.\"\"\"")
+            , E.suite (D.text "try") (D.text "return _schema.Right(self." <> E.call op values <> D.text ")")
+            , E.suite (D.text "except ls.Failure as failure") (D.joinWith D.hardline
+                [ E.suite (D.text ("if failure.ability != " ++ show (C.abilityKey failing))) (D.text "raise")
+                , D.text "return _schema.Left(ls.handler_schema(_lawspec_schema).to_native(" <> ref <> D.text (", failure.value, " ++ show bits ++ ", self._symbols))") ]) ]))
+          ) [ (op, ty, failing, failure) | (op, ty) <- C.abilityOperations a, Just failing@(C.AbilityRef _ [failure]) <- [lookup op (C.abilityFailures a)] ]) answered
       pure (E.suite (D.text ("class " ++ specName h))
         (D.joinWith D.hardline (D.text ("\"\"\"The spec handler " ++ C.handlerName h ++ " for " ++ C.abilityName ability ++ ", with its state typed.") :
           D.text "" : D.text (specName h ++ "() makes it on its own, outside any law: the embedding entry point.\"\"\"") : D.text "" :
           E.suite (D.text "def __init__(self, symbols=None)")
             (D.joinWith D.hardline (D.text "self._symbols = {} if symbols is None else symbols" : start)) :
-          concatMap (\m -> [D.text "", m]) methods)))
+          concatMap (\m -> [D.text "", m]) (methods ++ accessors ++ attempts))))
     recording a = do
       methods <- mapM (\(op, ty) -> do
         ps <- parameters ty
