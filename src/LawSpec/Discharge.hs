@@ -297,8 +297,11 @@ inline :: Program -> [Definition] -> Expr -> Expr
 inline program definitions = go (8 :: Int)
   where
     guarded = S.fromList [contractDeclaration c | c <- definitionContracts (programUnits program), not (null (contractPreconditions c))]
-    table = M.fromList [(declarationId (definitionDeclaration d), d) | d <- definitions,
-      not (declarationId (definitionDeclaration d) `S.member` guarded), not (recursive d)]
+    -- Whether a definition unfolds is decided for the ones a claim calls, not
+    -- for every definition of the program.
+    unfoldable n = case lookupDefinition n of
+      Just d | not (n `S.member` guarded), not (recursive d) -> Just d
+      _ -> Nothing
     recursive d = reaches (declarationId (definitionDeclaration d)) S.empty (callees (definitionBody d))
     reaches _ _ [] = False
     reaches target seen (n : rest)
@@ -306,11 +309,10 @@ inline program definitions = go (8 :: Int)
       | n `S.member` seen = reaches target seen rest
       | otherwise = reaches target (S.insert n seen)
           (maybe [] (callees . definitionBody) (lookupDefinition n) ++ rest)
-    lookupDefinition n = case [d | d <- definitions, declarationId (definitionDeclaration d) == n] of
-      d : _ -> Just d
-      [] -> Nothing
+    byId = M.fromListWith (\_ first -> first) [(declarationId (definitionDeclaration d), d) | d <- definitions]
+    lookupDefinition n = M.lookup n byId
     go depth e = rebuild (go depth) e $ case expressionNode e of
-      ExternalCall n args | depth > 0, Just d <- M.lookup n table, length args == length (definitionArguments d) ->
+      ExternalCall n args | depth > 0, Just d <- unfoldable n, length args == length (definitionArguments d) ->
         Just (go (depth - 1) (substitute (M.fromList (zip (map binderId (definitionArguments d)) (map (go depth) args))) (definitionBody d)))
       _ -> Nothing
 

@@ -6,6 +6,8 @@
 --   lawspec-dev bench kafka --generate go        write the project only
 --   lawspec-dev bench kafka --typed              which definitions and
 --                                                handlers stay dynamic, and why
+--   lawspec-dev bench compile [N...]             time lawspec check on a model
+--                                                of N types (100 200 400 800)
 --
 -- A benchmark lives in bench/<name>/: bench.json names its specs, the
 -- packages they use and their dependencies, as an acceptance suite's does,
@@ -32,6 +34,7 @@ import System.FilePath ((</>), takeDirectory)
 import System.IO (hFlush, stdout)
 import System.Process (CreateProcess(..), proc, readCreateProcessWithExitCode)
 import Text.Printf (printf)
+import Data.Time.Clock (getCurrentTime, diffUTCTime)
 import LawSpec.Api (dispatch)
 import LawSpec.Scaffold (scaffoldFilesWith)
 import qualified LawSpec.Core as C
@@ -43,6 +46,7 @@ import LawSpec.Typed.Jvm (jvmScalars)
 benchCommand :: [String] -> IO ()
 benchCommand arguments = case arguments of
   [name, "--typed"] -> typedReport name
+  "compile" : scales -> compileBench (if null scales then [100, 200, 400, 800] else map read scales)
   name : rest -> do
     let (scale, generateOnly, targets) = options rest (Nothing, False, [])
     run name scale generateOnly (if null targets then ["rust", "go", "java", "kotlin"] else targets)
@@ -113,6 +117,54 @@ typedReport name = do
     putStrLn (label ++ ": " ++ show (definitions - length fallbacks) ++ " of " ++ show definitions ++ " definitions typed")
     forM_ fallbacks $ \(n, why) -> putStrLn ("  dynamic " ++ n ++ ": " ++ why)
     forM_ handlers $ \(n, typed) -> putStrLn ("  handler " ++ n ++ (if typed then " typed" else " dynamic"))
+
+-- | How the compiler scales with a program's size: a model shaped like an
+-- imported OpenAPI description (LawTwin's GitHub import has 2,108 types), N
+-- record types, a state of N maps, two failing definitions per type over
+-- the state with field access and update, an ability of 2N operations, a
+-- handler answering them by those definitions, and laws using it. Checking
+-- should grow about linearly.
+compileBench :: [Int] -> IO ()
+compileBench scales = forM_ scales $ \n -> do
+  let source = syntheticModel n
+      request = object
+        [ "method" .= ("check" :: String), "machineBits" .= (64 :: Int)
+        , "sources" .= [object ["path" .= ("synthetic.lawspec" :: String), "content" .= source]] ]
+  start <- getCurrentTime
+  let response = fromMaybe Null (decode (dispatch (encode request)))
+      problems = case field "diagnostics" response of
+        Just (Array ds) -> V.length ds
+        _ -> 0
+  problems `seq` pure ()
+  end <- getCurrentTime
+  printf "check %5d types, %5d definitions: %8.1f s%s\n" n (2 * n + 1) (realToFrac (diffUTCTime end start) :: Double)
+    (if problems > 0 then " (" ++ show problems ++ " diagnostics)" else "")
+  hFlush stdout
+
+syntheticModel :: Int -> String
+syntheticModel n = unlines $
+  ["unit synthetic.model", ""] ++
+  concat [ ["type Item" ++ show i ++ " is", "  Item" ++ show i, "    id :: Int64", "    name :: Text", "    tags :: List Text", "end", ""] | i <- items ] ++
+  ["type State is", "  State"] ++ ["    items" ++ show i ++ " :: KeyVal Int64 Item" ++ show i | i <- items] ++ ["end", ""] ++
+  ["type ApiError is | NotFound | Conflict end", ""] ++
+  ["definition emptyState (u :: Unit) :: State is", "  State " ++ unwords (replicate n "(prelude.keyValOf [])"), "end", ""] ++
+  concat [ [ "definition put" ++ k ++ " (x :: Item" ++ k ++ ") (s :: State) :: Pair Item" ++ k ++ " State fails with ApiError is"
+           , "  match prelude.lookup x.id s.items" ++ k ++ " with"
+           , "  | Just old -> raise Conflict"
+           , "  | Nothing -> Pair x (s with items" ++ k ++ " = prelude.put x.id x s.items" ++ k ++ ")"
+           , "  end", "end", ""
+           , "definition get" ++ k ++ " (key :: Int64) (s :: State) :: Pair Item" ++ k ++ " State fails with ApiError is"
+           , "  match prelude.lookup key s.items" ++ k ++ " with"
+           , "  | Nothing -> raise NotFound"
+           , "  | Just x -> Pair x s"
+           , "  end", "end", "" ] | i <- items, let k = show i ] ++
+  ["ability Api is"] ++ concat [ ["  put" ++ k ++ "Op :: Item" ++ k ++ " -> Item" ++ k ++ " fails with ApiError", "  get" ++ k ++ "Op :: Int64 -> Item" ++ k ++ " fails with ApiError"] | i <- items, let k = show i ] ++ ["end", ""] ++
+  ["handler reference for Api with state s :: State start emptyState unitValue is"] ++
+  concat [ ["  put" ++ k ++ "Op by put" ++ k, "  get" ++ k ++ "Op by get" ++ k] | i <- items, let k = show i ] ++ ["end", ""] ++
+  concat [ [ "law `item " ++ k ++ " reads back` using reference is", "  definition is"
+           , "    `for all` (x :: Item" ++ k ++ ") . (put" ++ k ++ "Op x; get" ++ k ++ "Op x.id) = x", "  end", "end", "" ]
+         | i <- [0, max 1 (n `div` 40) .. n - 1], let k = show i ]
+  where items = [0 .. n - 1]
 
 -- | The build commands and the command that runs the driver, from the project.
 commands :: String -> FilePath -> IO ([(String, [String])], (String, [String]))

@@ -11,6 +11,7 @@ import LawSpec.Scalar
 import LawSpec.Core.Semantics (convertValue)
 import Control.Monad (unless)
 import qualified Data.Map.Strict as M
+import qualified Data.Set as S
 import Data.List (nub)
 
 type Scope = M.Map Id Type
@@ -164,7 +165,7 @@ validateExpressionWithRegistry registry bits declarations scope expr@Expr{..} = 
       unless (map binderType fields == map binderType caseBinders)
         (Left "match field types or arity do not match")
       let ids = map binderId caseBinders
-      unless (length ids == length (nub ids) && all (`M.notMember` scope) ids)
+      unless (length ids == S.size (S.fromList ids) && all (`M.notMember` scope) ids)
         (Left "duplicate match binder identity")
       let branchScope = M.union (M.fromList [(binderId b, binderType b) | b <- caseBinders]) scope
       validateExpressionWithRegistry registry bits declarations branchScope caseBody
