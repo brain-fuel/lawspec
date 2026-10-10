@@ -125,9 +125,14 @@ changes for each milestone.
 
 ## Planned
 
-### 0.23: JVM and .NET targets
+### 0.23: JVM, .NET and Swift targets
 
-Scala, Groovy, Clojure, C# and F#.
+- Scala, Groovy and Clojure join Java and Kotlin on the JVM.
+- F# is written from scratch as idiomatic, functional .NET code, and it is
+  the .NET runtime. C# runs over it and keeps the functional style where it
+  can. Where an F# idiom would make C# awkward to use, a C# compatibility
+  layer covers it.
+- Swift joins as a target.
 
 ### 0.24: Prolog, configuration and documents
 
@@ -138,18 +143,18 @@ text form of data), Make (build and test pipelines) and Folio
 (documentation pages) complete the list, so every language canon reads is
 a target.
 
-### 0.25: stub simulation
+### Later: C and C++
 
-Simulated external dependencies, so a system can be modelled and tested
-against what it depends on:
+C and C++ wait until the cost of generating code for every type they are
+used at (monomorphisation) has been measured.
 
-- first: SQL (PostgreSQL), HTTP (REST and OpenAPI), key-value stores (Redis,
-  Valkey), blob storage (S3), streams (Kafka) and queues (SQS, RabbitMQ);
-- then: wide-column stores (Cassandra, ScyllaDB), document stores (MongoDB,
-  DynamoDB), search (Elasticsearch, OpenSearch), gRPC, SMTP, and identity
-  (OAuth, OIDC);
-- and the network around them: virtual networks, subnets and load balancers,
-  emitted as Terraform and Pulumi YAML.
+### Stub simulation, now a separate product
+
+Simulated external dependencies (Kafka, HTTP and OpenAPI first, then SQL,
+key-value stores, blob storage, queues and the rest) are built as a separate
+product, LawTwin, on dependency contracts written in LawSpec. LawSpec itself
+stays the business contract and knows nothing about the stand-ins; the
+features those contracts need are LawSpec work.
 
 ### 1.0: rewrite, clean-up and sign-off
 
