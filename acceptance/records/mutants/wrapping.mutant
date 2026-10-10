@@ -1,0 +1,7 @@
+expect: epochs wrap around
+@@ examples/specs/records.lawspec
+<<<<<<<
+definition nextEpoch (e :: Int16) :: Int16 is prelude.wrapping (e + 1) end
+=======
+definition nextEpoch (e :: Int16) :: Int16 is prelude.saturating (e + 1) end
+>>>>>>>

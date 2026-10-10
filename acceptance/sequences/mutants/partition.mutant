@@ -1,0 +1,7 @@
+expect: a key's partition exists
+@@ examples/specs/sequences.lawspec
+<<<<<<<
+  if n >= 1 then prelude.Int32 (prelude.rem (keyHash key) n) else 0
+=======
+  if n >= 1 then prelude.Int32 (prelude.rem (keyHash key) n + 1) else 0
+>>>>>>>

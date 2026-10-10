@@ -10,7 +10,7 @@ module LawSpec.AbilityEmit.Python (emit, modulePath, moduleName, moduleNameOf, p
 
 import Data.List (intercalate)
 import qualified LawSpec.Core as C
-import LawSpec.Common (Artifact(..))
+import LawSpec.Common (Artifact(..), pythonUnitFile)
 import LawSpec.AbilityNames
 import LawSpec.PythonTypes (pythonDataTypeDoc, pythonTypeReferenceDoc)
 import qualified LawSpec.PythonDefinitions as Definitions
@@ -26,8 +26,8 @@ moduleName = moduleNameOf . C.idText . C.unitId
 moduleNameOf :: String -> String
 moduleNameOf unit = "lawspec_abilities." ++ unit
 
-modulePath :: C.Unit -> String
-modulePath u = "src/lawspec_abilities/" ++ map (\c -> if c == '.' then '/' else c) (C.idText (C.unitId u)) ++ ".py"
+modulePath :: [C.Unit] -> C.Unit -> String
+modulePath units u = "src/lawspec_abilities/" ++ pythonUnitFile (map (C.idText . C.unitId) units) (C.idText (C.unitId u))
 
 emit :: Bool -> Int -> [C.DataDeclaration] -> [C.Unit] -> Either String [Artifact]
 emit minify bits datas units = mapM unitModule (filter unitAbilityPieces units)
@@ -57,7 +57,7 @@ emit minify bits datas units = mapM unitModule (filter unitAbilityPieces units)
             [D.text "import lawspec_definition_bodies as _definitions" | not (null (C.unitHandlers u))] ++
             [D.hardline <> D.text "_lawspec_schema = data.make_schema()"])
           body = D.joinWith (D.hardline <> D.hardline <> D.hardline) (protocols ++ handlers ++ recordings)
-      pure (Artifact (modulePath u) (D.render layout (header <> D.hardline <> D.hardline <> D.hardline <> body <> D.hardline)) "generated" "source")
+      pure (Artifact (modulePath units u) (D.render layout (header <> D.hardline <> D.hardline <> D.hardline <> body <> D.hardline)) "generated" "source")
     parameters ty = do
       let (args, result) = C.functionType ty
       types <- mapM (pythonDataTypeDoc datas) args

@@ -17,7 +17,8 @@ import LawSpec.CorePersist ()
 import Data.Binary (Binary)
 import LawSpec.Dependencies (dependencyGraph, lawReferences, closure, keyOf, reachableData, reachableDefinitions)
 import System.IO.Unsafe (unsafePerformIO)
-import Data.List (find, nub, partition, sort, stripPrefix)
+import Data.List (find, nub, partition, sort, stripPrefix, zip3)
+import LawSpec.Regex (Regex, parseRegex, regexSamples)
 import LawSpec.IndexTerm
 import Control.Monad (filterM, unless)
 import Control.Monad.State.Strict (StateT, evalStateT, get, modify, lift)
@@ -109,10 +110,11 @@ planProperty registry programMachineBits invoke definitions p = do
         Just sets | product (map (toInteger . length) sets) <= toInteger (exhaustiveLimit settings) -> Just <$> filterM (validTupleWithDefinitions registry programMachineBits invoke qs) (sequence sets)
         _ -> Right Nothing
       unless (finite /= Just []) (Left "refined input domain has no valid tuples")
+      -- A text refined by a regex starts from texts the regex matches.
       bs <- sequence [case domain of
           Just values | hasValueContracts registry ty -> pure values
-          _ -> boundariesWithRegistry registry programMachineBits ty
-        | (ty,domain) <- zip types domains]
+          _ -> (patternValues definitions q ++) <$> boundariesWithRegistry registry programMachineBits ty
+        | (q,ty,domain) <- zip3 qs types domains]
       unless (all (not . null) bs) (Left "uninhabited input domain")
       let tuples = if null bs then [[]] else [[xs !! (i `mod` length xs) | xs <- bs] | i <- [0..maximum (map length bs)-1]]
       cases <- filterM (validTupleWithDefinitions registry programMachineBits invoke qs) tuples
@@ -123,7 +125,7 @@ planProperty registry programMachineBits invoke definitions p = do
           (lookup (binderId (quantifiedBinder q)) bindings)) qs
         valid <- validTupleWithDefinitions registry programMachineBits invoke qs values
         unless valid (Left ("example " ++ exampleName example ++ " violates refinement"))) (propertyExamples p)
-      pure (PlannedProperty p finite cases [GeneratorRequirement (quantifiedBinder q) (quantifiedPredicates q) b (quantifiedBounds q) (domainHints q) (indexedGeneration (registryDeclarations registry) definitions q) | (q,b) <- zip qs bs])
+      pure (PlannedProperty p finite cases [GeneratorRequirement (quantifiedBinder q) (quantifiedPredicates q) b (quantifiedBounds q) (domainHints q ++ patternHints definitions q) (indexedGeneration (registryDeclarations registry) definitions q) | (q,b) <- zip qs bs])
 
 -- | Refinements may mention earlier inputs, so a tuple is checked input by input
 -- in order.
@@ -194,6 +196,38 @@ scalarCases bits name = map ScalarValue (scalarBoundaries bits name)
 
 -- | Safe comparison operands seed sparse domains without eagerly evaluating a
 -- partial expression that the predicate would otherwise guard.
+-- | Texts that match the regexes a text input's refinement requires, also
+-- through the checked definitions it calls (validName t, whose body says
+-- name matches regex ...): generation draws among them, so a refined text
+-- is built rather than filtered. ref:DEC-shrink-within-domain
+patternHints :: [Definition] -> Quantifier -> [Expr]
+patternHints definitions q =
+  [ Expr (scalarType "Text") (Constant (SSequence "Text" (map fromEnum sample))) (GeneratedFrom (binderId (quantifiedBinder q)))
+  | sample <- concatMap (regexSamples 24) (refinedPatterns definitions q) ]
+
+-- | A few of them, for the boundary cases.
+patternValues :: [Definition] -> Quantifier -> [Value]
+patternValues definitions q =
+  [ScalarValue (SSequence "Text" (map fromEnum sample)) | regex <- refinedPatterns definitions q, sample <- regexSamples 4 regex]
+
+-- | The regexes a text input must match.
+refinedPatterns :: [Definition] -> Quantifier -> [Regex]
+refinedPatterns definitions q =
+  [ regex | binderType (quantifiedBinder q) == scalarType "Text"
+  , pattern <- nub (concatMap (patterns (3 :: Int) (binderId (quantifiedBinder q))) (quantifiedPredicates q))
+  , Right regex <- [parseRegex pattern] ]
+  where
+    patterns depth current e = case expressionNode e of
+      ShortCircuit And a b -> patterns depth current a ++ patterns depth current b
+      Let _ value body -> patterns depth current value ++ patterns depth current body
+      Helper RegexMatches [Expr _ (Constant (SSequence _ pattern)) _, Expr _ (Local l) _] | l == current -> [map toEnum pattern]
+      -- A call on the input: the callee's body, about its parameter.
+      ExternalCall callee [Expr _ (Local l) _] | l == current, depth > 0
+        , d : _ <- [d | d <- definitions, declarationId (definitionDeclaration d) == callee]
+        , [parameter] <- definitionArguments d ->
+          patterns (depth - 1) (binderId parameter) (definitionBody d)
+      _ -> []
+
 domainHints :: Quantifier -> [Expr]
 domainHints q = concatMap walk (quantifiedPredicates q) where
   current = binderId (quantifiedBinder q)

@@ -6,7 +6,7 @@ import LawSpec.Core.Policy
 import LawSpec.Core
 import LawSpec.Core.DefinitionContracts (checkedDefinitionContracts)
 import LawSpec.Core.Evidence (runtimePostconditions)
-import LawSpec.Common (Artifact(..))
+import LawSpec.Common (Artifact(..), pythonUnitFile)
 import qualified LawSpec.PythonData as Native
 import qualified LawSpec.PythonExpr as E
 import qualified LawSpec.Code.Doc as D
@@ -232,7 +232,7 @@ emitPythonDefinitions layout bits declarations units = do
       DecorrelatedJitter -> "decorrelated"
     nativeUnit unit = do
       wrappers <- mapM native (unitDefinitions unit)
-      let path = "src/lawspec_definitions/" ++ map (\c -> if c == '.' then '/' else c) (idText (unitId unit)) ++ ".py"
+      let path = "src/lawspec_definitions/" ++ pythonUnitFile (map (idText . unitId) units) (idText (unitId unit))
       pure (file path ["import lawspec_definition_bodies as _definitions"] wrappers)
     native d = do
       let declaration = definitionDeclaration d

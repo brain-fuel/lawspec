@@ -129,7 +129,7 @@ emitBindings minify bindings plan files = do
             (D.text "raise ValueError" <> D.delimitTrailing 4 "(" ")"
               [D.text (P.q ("native binding " ++ C.idText (C.declarationId decl) ++ ": ")) <>
                 D.text " + str(error)"] <> D.text " from error")))
-      let pathname = "src/" ++ map (\c -> if c == '.' then '/' else c) (unitName unit) ++ ".py"
+      let pathname = "src/" ++ pythonUnitFile (map (unitName . plannedUnit) (plannedUnits plan)) (unitName unit)
           header = common ++ [D.text "import lawspec_native as bridge"] ++ imports
       pure [Artifact pathname (render (D.joinWith D.hardline header <>
         D.hardline <> D.hardline <> D.hardline <>

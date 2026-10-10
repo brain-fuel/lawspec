@@ -1,5 +1,7 @@
 unit example.records
 
+import example.records.inner as inner
+
 -- Records: a type with one constructor has fields that code reads by name
 -- (account.balance) and replaces by name (account with balance = 0).
 
@@ -126,4 +128,23 @@ law `a total that overflows is Nothing` is
     `for all` (a :: Int32) (b :: Int32) .
       total a b = (if a + b > Int32.max || a + b < Int32.min then Nothing else Just (prelude.Int32 (a + b)))
   end
+end
+
+-- A refinement shapes generation: texts a regex must match are drawn from
+-- the regex, through the definition that says so, not filtered from any
+-- text.
+definition validTopic (name :: Text) :: Bool is
+  let n = prelude.length name in
+  n >= 1 && n <= 249 && name != "." && name != ".." && name matches regex "[a-zA-Z0-9._-]+"
+end
+
+law `a valid topic name keeps to its characters` is
+  definition is
+    `for all` (t :: Text where validTopic t) (n :: Int32 where n >= 1 && n <= 64) .
+      (prelude.length t >= 1 && prelude.length t <= 249 && n <= 64) = true
+  end
+end
+
+law `a unit may sit above its package's other units` is
+  definition is `for all` (x :: Int32) . inner.doubled x = x + x end
 end
