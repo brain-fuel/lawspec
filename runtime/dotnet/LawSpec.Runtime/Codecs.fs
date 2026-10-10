@@ -203,3 +203,35 @@ module Codec =
     /// The value itself, for a type with no native form.
     [<CompiledName("Portable")>]
     let portable: Codec<Value> = { ToNative = id; FromNative = id }
+
+    /// A Set as F#'s persistent Set: canonical (sorted, distinct) in the
+    /// portable order whatever F#'s own order of the items.
+    [<CompiledName("Set")>]
+    let set (item: Codec<'T>) : Codec<Set<'T>> =
+        { ToNative =
+            (function
+            | Data(_, [ List items ]) -> items |> List.map item.ToNative |> Set.ofList
+            | v -> wrong "Set" v)
+          FromNative = fun s ->
+              let items = s |> Seq.map item.FromNative |> List.ofSeq |> List.sortWith Scalar.compareValues
+              Data("lawspec.collections::type::Set::SetItems", [ List items ]) }
+
+    /// A KeyVal as F#'s persistent Map, its entries in the portable order of
+    /// their keys.
+    [<CompiledName("KeyVal")>]
+    let map (key: Codec<'K>) (value: Codec<'V>) : Codec<Map<'K, 'V>> =
+        { ToNative =
+            (function
+            | Data(_, [ List entries ]) ->
+                entries
+                |> List.map (function
+                    | Data(_, [ k; v ]) -> key.ToNative k, value.ToNative v
+                    | e -> wrong "Entry" e)
+                |> Map.ofList
+            | v -> wrong "KeyVal" v)
+          FromNative = fun m ->
+              let entries =
+                  m |> Seq.map (fun (KeyValue(k, v)) -> key.FromNative k, value.FromNative v)
+                  |> List.ofSeq |> List.sortWith (fun (a, _) (b, _) -> Scalar.compareValues a b)
+                  |> List.map (fun (k, v) -> Data("lawspec.collections::type::Entry::Entry", [ k; v ]))
+              Data("lawspec.collections::type::KeyVal::KeyValEntries", [ List entries ]) }

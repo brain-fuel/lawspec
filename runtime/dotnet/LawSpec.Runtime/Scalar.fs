@@ -51,6 +51,7 @@ let rec private parts tokens acc =
         match after with
         | ")" :: next -> parts next (application inner :: acc)
         | _ -> fail "InvalidTypeKey" ""
+    | word :: rest when word.StartsWith "$" -> parts rest (Parameter(int (word.Substring 1)) :: acc)
     | word :: rest -> parts rest (Named(word, []) :: acc)
 
 let private typeCache = ConcurrentDictionary<string, TypeRef>()

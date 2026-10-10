@@ -1,0 +1,6 @@
+@@ src/Example/Ordering.fs
+<<<<<<<
+let firstLine (lines: NonEmptyList<int>) : int = List.head lines.Value
+=======
+let firstLine (lines: NonEmptyList<int>) : int = List.last lines.Value
+>>>>>>>

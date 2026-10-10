@@ -1,0 +1,6 @@
+@@ src/Example/Collections.fs
+<<<<<<<
+let dedupe (value0: int list) : Set<int> = Set.ofList value0
+=======
+let dedupe (value0: int list) : Set<int> = Set.ofList (List.skip (min 1 value0.Length) value0)
+>>>>>>>

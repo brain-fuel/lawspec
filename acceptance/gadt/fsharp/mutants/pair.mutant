@@ -1,0 +1,6 @@
+@@ src/Example/Gadt.fs
+<<<<<<<
+          Second = evalTruth (retype LawSpec.Runtime.Codec.bool second) }
+=======
+          Second = not (evalTruth (retype LawSpec.Runtime.Codec.bool second)) }
+>>>>>>>

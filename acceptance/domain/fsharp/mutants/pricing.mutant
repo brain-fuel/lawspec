@@ -1,0 +1,6 @@
+@@ src/Example/Ordering.fs
+<<<<<<<
+    let total = int64 order.Quantity.Value * 25L
+=======
+    let total = int64 order.Quantity.Value * 250L
+>>>>>>>

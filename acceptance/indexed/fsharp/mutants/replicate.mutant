@@ -1,0 +1,6 @@
+@@ src/Example/Indexed.fs
+<<<<<<<
+    while i < value0 do
+=======
+    while i <= value0 do
+>>>>>>>

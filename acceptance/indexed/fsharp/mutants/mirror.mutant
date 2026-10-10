@@ -1,0 +1,6 @@
+@@ src/Example/Arithmetic.fs
+<<<<<<<
+    | Node(left, right) -> Node(mirror right, mirror left)
+=======
+    | Node(left, right) -> Node(mirror right, right)
+>>>>>>>

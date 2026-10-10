@@ -1,0 +1,6 @@
+@@ src/Example/Ordering.fs
+<<<<<<<
+    elif order.Quantity < 1 || order.Quantity > 1000 then Either.Left InvalidQuantity
+=======
+    elif order.Quantity < 0 || order.Quantity > 1000 then Either.Left InvalidQuantity
+>>>>>>>
