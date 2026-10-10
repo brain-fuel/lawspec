@@ -116,7 +116,8 @@ data Inputs = Inputs [FilePath] [FilePath] [[String]]
 
 stepInputs :: String -> Maybe Inputs
 stepInputs name = case name of
-  "compiler-tests" -> Just (Inputs [] (["npm/", "tools/"] ++ unread) [["stack", "--version"]])
+  -- Hspec reads acceptance specs, bindings and fixtures, so they key it too.
+  "compiler-tests" -> Just (Inputs [] ["npm/", "tools/", "docs/", "editors/"] [["stack", "--version"]])
   "npm-tests" -> Just (Inputs ["npm/", "examples/", "test/fixtures/"] [] [["node", "--version"]])
   "parity" -> Just (Inputs [] unread [["node", "--version"]])
   "package-smoke" -> Just (Inputs [] unread [["node", "--version"], ["npm", "--version"]])
