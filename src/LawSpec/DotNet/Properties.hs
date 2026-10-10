@@ -15,7 +15,7 @@ import LawSpec.Backend (metadataDocument)
 import LawSpec.DotNet.Code
 import LawSpec.DotNet.Names
 import qualified LawSpec.DotNet.Expr as X
-import qualified LawSpec.DotNet.Definitions as Definitions
+import qualified LawSpec.DotNet.Effects as Effects
 import qualified LawSpec.BeamGenerators as BeamGenerators
 import Control.Monad (forM)
 import Data.Char (toUpper)
@@ -55,7 +55,7 @@ emitTests lang layout plan = fmap concat $ forM (plannedUnits plan) $ \planned -
   where
     bits = planMachineBits plan
     units = map plannedUnit (plannedUnits plan)
-    external = Definitions.external units
+    external = Effects.external units
     schemaRef = Raw "LawSpec.Generated.Program.schema" "LawSpec.Generated.Program.Schema"
     setup inner = Let "symbols" tSymbols (Raw "Scalar.SymbolContext()" "new Scalar.SymbolContext()")
       (Let "schema" tSchema schemaRef inner)
@@ -74,8 +74,9 @@ emitTests lang layout plan = fmap concat $ forM (plannedUnits plan) $ \planned -
           inputs = ListOf tValue (map (Var . snd) aliases)
       unsupported law
       body <- X.assertion label render (C.propertyBody law)
-      let caseDoc = function lang True caseName [("schema", tSchema), ("symbols", tSymbols), ("inputs", tValues)] tValue
-            (foldr (\(i, (_, a)) rest -> Let a tValue (call "Runtime" "item" [IntLit i, Var "inputs"]) rest) body (zip [0 ..] aliases))
+      scoped <- Effects.withHandlers units X.schemaVar X.symbolsVar (C.propertyHandlers law)
+        (\s -> Let "schema" tSchema s (foldr (\(i, (_, a)) rest -> Let a tValue (call "Runtime" "item" [IntLit i, Var "inputs"]) rest) body (zip [0 ..] aliases)))
+      let caseDoc = function lang True caseName [("schema", tSchema), ("symbols", tSymbols), ("inputs", tValues)] tValue scoped
       examples <- forM (zip [0 :: Int ..] (C.propertyExamples law)) $ \(i, example) -> do
         arguments <- forM parameters $ \parameter -> case lookup (C.binderId parameter) (C.exampleBindings example) of
           Nothing -> Left "missing .NET example input"
@@ -152,7 +153,6 @@ emitTests lang layout plan = fmap concat $ forM (plannedUnits plan) $ \planned -
           D.block 4 (if result == tUnit then renderStatements CSharp body else renderBody CSharp result body)
     unsupported law
       | not (null (C.propertyResources law)) = Left "resources on .NET are not emitted yet"
-      | any (not . C.isFail . fst) (C.propertyHandlers law) = Left "handlers on .NET are not emitted yet"
       | otherwise = pure ()
 
 observed :: C.LawHarness -> Bool

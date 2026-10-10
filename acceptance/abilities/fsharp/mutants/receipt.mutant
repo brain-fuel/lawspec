@@ -1,0 +1,7 @@
+expect-any: a receipt is for the amount captured [native] | [recording native]
+@@ src/Example/Abilities.fs
+<<<<<<<
+        member _.Capture(cents) = { Cents = cents }
+=======
+        member _.Capture(cents) = { Cents = (if cents < 1000 then cents else cents - 1) }
+>>>>>>>

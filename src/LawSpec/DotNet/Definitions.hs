@@ -5,7 +5,7 @@
 -- ref:DEC-total-definitions ref:DEC-native-bindings-typed-identity
 module LawSpec.DotNet.Definitions
   ( Entry(..), entries, entryCall, orderedUnits, emitEntries, emitAdapters, adapterDeclarations
-  , external, nativeSignature
+  , nativeSignature
   ) where
 
 import qualified LawSpec.Core as C
@@ -17,40 +17,12 @@ import LawSpec.DotNet.Code
 import LawSpec.DotNet.Names
 import qualified LawSpec.DotNet.Data as Data
 import qualified LawSpec.DotNet.Expr as X
+import LawSpec.DotNet.Entries
+import qualified LawSpec.DotNet.Effects as Effects
+import qualified LawSpec.DotNet.Abilities as Abilities
+import qualified LawSpec.AbilityNames as N
 import Control.Monad (forM)
-import Data.Graph (stronglyConnComp, flattenSCC)
 import Data.List (intercalate)
-
--- | Where a declaration's entry is: its unit's generated module and the name.
-data Entry = Entry { entryModule :: String, entryFs :: String, entryCs :: String }
-
-entries :: [C.Unit] -> [(C.Id, Entry)]
-entries units =
-  [ (C.declarationId d, Entry (generatedModule (C.unitId u)) (functionName FSharp d) (functionName CSharp d))
-  | u <- units, d <- C.unitDeclarations u ]
-
-entryCall :: Entry -> [Expr] -> Expr
-entryCall e = Call (Fn (entryModule e ++ "." ++ entryFs e) (shortModule (entryModule e) ++ "." ++ entryCs e))
-  where shortModule m = m
-
--- | The units in an order F# compiles: a unit after the units its entries call.
-orderedUnits :: [C.Unit] -> [C.Unit]
-orderedUnits units = concatMap flattenSCC (stronglyConnComp
-  [ (u, C.unitId u, [owner | identity <- calls u, Just owner <- [lookup identity owners], owner /= C.unitId u])
-  | u <- units ])
-  where
-    owners = [(C.declarationId d, C.unitId u) | u <- units, d <- C.unitDeclarations u]
-    calls u = concatMap (terms . C.definitionBody) (C.unitDefinitions u) ++
-      concat [concatMap terms (C.contractExpressions c) | c <- C.unitContracts u]
-    terms e = [i | C.ExternalCall i _ <- [C.expressionNode e]] ++ concatMap terms (C.children e)
-
--- | The calls a law or definition makes to other entries.
-external :: [C.Unit] -> X.Context -> C.Expr -> [Expr] -> Either String Expr
-external units context expression args = case C.expressionNode expression of
-  C.ExternalCall identity _ -> case lookup identity (entries units) of
-    Just e -> pure (entryCall e (X.contextSchema context : X.contextSymbols context : args))
-    Nothing -> Left ("unresolved .NET call: " ++ C.idText identity)
-  _ -> Left ("no .NET effects yet for " ++ take 60 (show (C.expressionNode expression)))
 
 -- | The declarations a unit's adapter implements: those that are not definitions.
 adapterDeclarations :: C.Unit -> [C.Declaration]
@@ -58,23 +30,44 @@ adapterDeclarations u = [d | d <- C.unitDeclarations u,
   C.declarationId d `notElem` map (C.declarationId . C.definitionDeclaration) (C.unitDefinitions u)]
 
 -- | An adapter's native parameter and result types.
-nativeSignature :: Lang -> Int -> Data.Names -> C.Declaration -> Either String ([String], String)
-nativeSignature lang bits names d = do
+nativeSignature :: Lang -> Int -> Data.Names -> [C.Unit] -> C.Declaration -> Either String ([String], String)
+nativeSignature lang bits names units d = do
   let (parameters, result) = C.functionType (C.declarationType d)
+  handlers <- mapM (Effects.interfaceTypeOf units) (Effects.uses d)
   ps <- mapM (Data.nativeType lang bits names []) parameters
   r <- Data.nativeType lang bits names [] result
-  pure (ps, if C.declarationAsync d then task r else r)
+  failure <- traverse (Data.nativeType lang bits names []) (declarationFailure d)
+  let returned = Abilities.nativeResult lang r failure
+  pure (handlers ++ ps, if C.declarationAsync d then task returned else returned)
   where task r = case lang of
           FSharp -> "System.Threading.Tasks.Task<" ++ r ++ ">"
           CSharp -> "Task<" ++ r ++ ">"
+
+-- | The failure type of a declaration that fails with one.
+declarationFailure :: C.Declaration -> Maybe C.Type
+declarationFailure d = case [f | C.AbilityRef _ [f] <- filter C.isFail (C.declarationUses d)] of
+  f : _ -> Just f
+  [] -> Nothing
+
+failureKey :: C.Declaration -> String
+failureKey d = case filter C.isFail (C.declarationUses d) of
+  ref : _ -> C.abilityKey ref
+  [] -> ""
+
+-- | Whether a unit has a generated module: entries or handler factories.
+hasModule :: C.Unit -> Bool
+hasModule u = not (null (C.unitDeclarations u) && null (C.unitHandlers u) &&
+  null [a | a <- N.ownAbilities u, not (C.isFail (C.abilityInstance a))])
 
 -- | One generated module per unit, holding its entries.
 emitEntries :: Lang -> D.Layout -> Int -> [C.DataDeclaration] -> [C.Unit] -> Either String [Artifact]
 emitEntries lang layout bits declarations units = do
   verified <- checkedDefinitionContracts bits declarations units
   names <- dataNames declarations
-  forM [u | u <- orderedUnits units, not (null (C.unitDeclarations u))] $ \u -> do
-    functions <- mapM (entry names verified u) (C.unitDeclarations u)
+  forM [u | u <- orderedUnits units, hasModule u] $ \u -> do
+    entryDocs <- mapM (entry names verified u) (C.unitDeclarations u)
+    factories <- Abilities.unitFactories lang bits declarations units u
+    let functions = entryDocs ++ factories
     let moduleName = generatedModule (C.unitId u)
         doc = case lang of
           FSharp -> D.text "// Generated by LawSpec. Do not edit." <> D.hardline <>
@@ -97,7 +90,7 @@ emitEntries lang layout bits declarations units = do
           definition = lookup identity definitions
           locals = maybe [] (\d -> zip (map C.binderId (C.definitionArguments d)) arguments) definition
           resolve table variable = maybe (error ("unbound .NET binder: " ++ C.idText variable)) id (lookup variable table)
-          context table = X.Context bits X.schemaVar X.symbolsVar (resolve table) (external units) X.typeRef X.typeKeyOf
+          context table = X.Context bits X.schemaVar X.symbolsVar (resolve table) (Effects.external units) X.typeRef X.typeKeyOf
           render table = X.render (context table)
       body <- case definition of
         Just d -> render locals (C.definitionBody d)
@@ -105,11 +98,18 @@ emitEntries lang layout bits declarations units = do
           parameterCodecs <- mapM (Data.codec lang bits names []) parameterTypes
           resultCodec <- Data.codec lang bits names [] resultType
           resultRef <- X.typeRef resultType
-          let natives = [codecCall c "ToNative" [Var a] | (c, a) <- zip parameterCodecs arguments]
+          handlers <- forM (Effects.uses declaration) $ \ref -> do
+            a <- maybe (Left ("unknown .NET ability " ++ C.abilityKey ref)) Right (N.abilityOf units ref)
+            pure (Effects.bridgeCall a "ToNative" [X.schemaVar, X.symbolsVar, call "Effects" "handler" [X.schemaVar, Str (C.abilityKey ref)]])
+          failureCodec <- traverse (Data.codec lang bits names []) (declarationFailure declaration)
+          let natives = handlers ++ [codecCall c "ToNative" [Var a] | (c, a) <- zip parameterCodecs arguments]
               adapter = Call (Fn (unitQualified (C.unitId unit) ++ "." ++ functionName FSharp declaration)
                 (unitQualified (C.unitId unit) ++ "." ++ functionName CSharp declaration)) natives
               awaited = if C.declarationAsync declaration then call "Runtime" "await" [adapter] else adapter
-          pure (call "Schema" "validate" [codecCall resultCodec "FromNative" [awaited], resultRef, X.schemaVar])
+              succeeded = case failureCodec of
+                Nothing -> awaited
+                Just fc -> call "Effects" "ofResult" [Str (failureKey declaration), Raw ("(" ++ fc ++ ".FromNative)") ("(" ++ fc ++ ".FromNative)"), awaited]
+          pure (call "Schema" "validate" [codecCall resultCodec "FromNative" [succeeded], resultRef, X.schemaVar])
       let candidates = case definition of Just _ -> verified; Nothing -> C.unitContracts unit
           contracts = [c | c <- candidates, C.contractDeclaration c == identity]
       pre <- fmap concat $ forM contracts $ \c -> do
@@ -144,11 +144,13 @@ csUsings = D.joinWith D.hardline (map D.text
 emitAdapters :: Lang -> D.Layout -> Int -> [C.DataDeclaration] -> [C.Unit] -> Either String [Artifact]
 emitAdapters lang layout bits declarations units = do
   names <- dataNames declarations
-  forM [u | u <- orderedUnits units, not (null (adapterDeclarations u))] $ \u -> do
-    functions <- forM (adapterDeclarations u) $ \d -> do
-      (ps, r) <- nativeSignature lang bits names d
+  forM [u | u <- orderedUnits units, not (null (adapterDeclarations u)) || not (null (productionAbilities u))] $ \u -> do
+    stubs <- Abilities.productionStubs lang bits declarations u
+    functions <- fmap (++ stubs) $ forM (adapterDeclarations u) $ \d -> do
+      (ps, r) <- nativeSignature lang bits names units d
+      handlerNames <- forM (Effects.uses d) $ \ref -> maybe (Left ("unknown .NET ability " ++ C.abilityKey ref)) (Right . camel . N.interfaceName) (N.abilityOf units ref)
       let name = functionName lang d
-          parameters = [(parameterName lang i, t) | (i, t) <- zip [0 ..] ps]
+          parameters = zip (handlerNames ++ [parameterName lang i | i <- [0 ..]]) ps
           message = "not implemented: " ++ C.idText (C.declarationId d)
       pure $ case lang of
         FSharp -> D.text ("/// " ++ showType (C.declarationType d)) <> D.hardline <>
@@ -168,6 +170,7 @@ emitAdapters lang layout bits declarations units = do
         path = adapterPath lang (C.unitId u)
     pure (AdapterArtifact path (D.render layout header) "user" "source" (D.render (D.Pretty 100) header))
   where
+    productionAbilities u = [a | a <- N.ownAbilities u, not (C.isFail (C.abilityInstance a)), C.abilityNative a == Nothing, not (Effects.hasDefault a)]
     showType t = case t of
       C.Arrow a b -> "(" ++ showType a ++ " -> " ++ showType b ++ ")"
       C.Constructor n [] -> n

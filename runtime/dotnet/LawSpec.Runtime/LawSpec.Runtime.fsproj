@@ -18,6 +18,7 @@
     <Compile Include="Recorded.fs" />
     <Compile Include="Portable.fs" />
     <Compile Include="Codecs.fs" />
+    <Compile Include="Effects.fs" />
     <Compile Include="Runtime.fs" />
   </ItemGroup>
 </Project>

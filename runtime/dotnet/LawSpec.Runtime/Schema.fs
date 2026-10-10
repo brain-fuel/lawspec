@@ -40,7 +40,13 @@ and DataDefinition =
 and Schema =
     { Definitions: Map<string, DataDefinition>
       Arities: Map<string, int>
-      Bits: int }
+      Bits: int
+      /// The handlers in scope, by ability key (LawSpec.Runtime.Effects).
+      Handlers: Map<string, obj>
+      /// The innermost handler scope, which owns handler state.
+      Scope: obj option
+      /// The stateful handlers whose operations are running, innermost first.
+      EffectPath: obj list }
 
 /// A constructor with only a tag and fields; the generated schema adds the rest.
 let constructor tag fields =
@@ -84,7 +90,10 @@ let create (definitions: DataDefinition list) (primitives: string list) (bits: i
     let schema =
         { Definitions = definitions |> List.map (fun d -> d.Name, d) |> Map.ofList
           Arities = arities
-          Bits = bits }
+          Bits = bits
+          Handlers = Map.empty
+          Scope = None
+          EffectPath = [] }
     let tags = definitions |> List.collect (fun d -> d.Constructors |> List.map (fun c -> c.Tag))
     if List.length tags <> List.length (List.distinct tags) then fail "DuplicateConstructor" ""
     for d in definitions do

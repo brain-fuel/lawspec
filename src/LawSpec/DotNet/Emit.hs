@@ -17,6 +17,7 @@ import LawSpec.DotNet.Names
 import qualified LawSpec.DotNet.Data as Data
 import qualified LawSpec.DotNet.Definitions as Definitions
 import qualified LawSpec.DotNet.Properties as Properties
+import qualified LawSpec.DotNet.Abilities as Abilities
 import Control.Monad (unless, when)
 import Data.List (isPrefixOf, isSuffixOf, nub)
 
@@ -43,12 +44,14 @@ emitDotNetWithBindings target minify bindings plan = do
     diagnose = either (Left . pure . (\message -> Diagnostic "target" message Nothing)) Right
     emit = do
       dataFiles <- Data.emitData lang layout bits declarations
+      interfaces <- Abilities.emitInterfaces lang layout bits declarations units
+      bridges <- Abilities.emitBridges lang layout bits declarations units
       schema <- Data.emitSchema lang layout bits declarations
       entries <- Definitions.emitEntries lang layout bits declarations units
       adapters <- Definitions.emitAdapters lang layout bits declarations units
       tests <- Properties.emitTests lang layout plan
-      let ordered = orderSources (dataFiles ++ [schema]) adapters entries
-          sources = dataFiles ++ [schema] ++ entries ++ adapters
+      let ordered = orderSources (dataFiles ++ interfaces ++ bridges ++ [schema]) adapters entries
+          sources = dataFiles ++ interfaces ++ bridges ++ [schema] ++ entries ++ adapters
       pure (runtimeArtifacts ++ sources ++ tests ++
         [ props "src/LawSpec.Sources.props" "source" "The program's generated sources and adapters, in compilation order." ordered
         , props "tests/LawSpec.Tests.props" "test" "The generated tests." [drop (6 :: Int) (artifactPath t) | t <- tests] ])
