@@ -5,6 +5,11 @@ import LawSpec.IndexTerm (FamilyIndex(..), ConstructorIndex(..), IndexGuard(..),
 import Control.Monad (unless, forM_, forM)
 import Data.List (nub)
 import qualified Data.Map.Strict as M
+import qualified Data.Set as S
+import Control.Exception (evaluate)
+import Data.IORef (IORef, newIORef, readIORef, writeIORef)
+import System.IO.Unsafe (unsafePerformIO)
+import System.Mem.StableName (StableName, makeStableName)
 import LawSpec.Common
 import LawSpec.Core
 import qualified LawSpec.Core.Types as Types
@@ -47,14 +52,39 @@ deferNonlinearPostconditions bits dataDeclarations definitions contracts = do
 deferProgramPostconditions :: Program -> Either [Diagnostic] Program
 deferProgramPostconditions program = do
   let definitions = concatMap unitDefinitions (programUnits program)
-      owned = [declarationId (definitionDeclaration d) | d <- definitions]
-      own = [c | u <- programUnits program, c <- unitContracts u, contractDeclaration c `elem` owned]
+      owned = S.fromList [declarationId (definitionDeclaration d) | d <- definitions]
+      own = [c | u <- programUnits program, c <- unitContracts u, contractDeclaration c `S.member` owned]
   deferred <- deferNonlinearPostconditions (programMachineBits program) (programDataDeclarations program) definitions own
-  let replaced c = maybe c id (lookup (contractDeclaration c) [(contractDeclaration d, d) | d <- deferred])
+  let table = M.fromList [(contractDeclaration d, d) | d <- deferred]
+      replaced c = M.findWithDefault c (contractDeclaration c) table
   pure program { programUnits = [u { unitContracts = map replaced (unitContracts u) } | u <- programUnits program] }
 
 auditDefinitionContracts :: Int -> [DataDeclaration] -> [Definition] -> [Contract] -> Either [Diagnostic] [(Id, Int)]
-auditDefinitionContracts bits dataDeclarations allDefinitions allContracts = do
+auditDefinitionContracts bits dataDeclarations allDefinitions allContracts = unsafePerformIO $ do
+  -- A program's definitions are audited by compilation, elaboration,
+  -- validation and planning alike, the same definitions each time: the last
+  -- few audits are kept, keyed by the definitions' identities in memory and
+  -- the contracts' and data types' contents (a pure function, so this is
+  -- only a cache). An audit of thousands of definitions is seconds.
+  names <- mapM (\d -> evaluate d >>= makeStableName) allDefinitions
+  let key = AuditKey bits (map dataId dataDeclarations) names allContracts
+  cached <- readIORef auditCache
+  case lookup key cached of
+    Just result -> pure result
+    Nothing -> do
+      let result = auditDefinitionContractsUncached bits dataDeclarations allDefinitions allContracts
+      writeIORef auditCache (take 4 ((key, result) : cached))
+      pure result
+{-# NOINLINE auditDefinitionContracts #-}
+
+data AuditKey = AuditKey Int [Id] [StableName Definition] [Contract] deriving Eq
+
+auditCache :: IORef [(AuditKey, Either [Diagnostic] [(Id, Int)])]
+auditCache = unsafePerformIO (newIORef [])
+{-# NOINLINE auditCache #-}
+
+auditDefinitionContractsUncached :: Int -> [DataDeclaration] -> [Definition] -> [Contract] -> Either [Diagnostic] [(Id, Int)]
+auditDefinitionContractsUncached bits dataDeclarations allDefinitions allContracts = do
   -- Orchestrations call adapters; they are run natively, not proved.
   let definitions = filter (not . definitionOrchestrates) allDefinitions
       orchestrated = [declarationId (definitionDeclaration d) | d <- allDefinitions, definitionOrchestrates d]

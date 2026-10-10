@@ -8,6 +8,10 @@ import LawSpec.Abilities (clauseDefinitionName, abilityArguments, instantiatedOp
 import Data.Maybe (listToMaybe)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as Set
+import Control.Exception (evaluate)
+import Data.IORef (IORef, newIORef, readIORef, writeIORef)
+import System.IO.Unsafe (unsafePerformIO)
+import System.Mem.StableName (StableName, makeStableName)
 
 import LawSpec.Time (timeUnit, durationType, instantType, durationArithmetic, durationValue)
 import LawSpec.Imports (importedDefinitionName)
@@ -424,7 +428,28 @@ binaryOp op = maybe (Left ("unknown binary operation: " ++ op)) Right (lookup op
 -- | Reused by example-domain checking and final program elaboration. This keeps
 -- closed definition execution on the same typed Core path as generated code.
 elaborateDefinitionUnit :: [C.DataDeclaration] -> Int -> S.Unit -> Either String C.Unit
-elaborateDefinitionUnit dataDeclarations bits u = do
+elaborateDefinitionUnit dataDeclarations bits u = unsafePerformIO $ do
+  -- Compilation and elaboration both elaborate each unit's definitions, the
+  -- same unit with the same data types: the results are kept, keyed by the
+  -- unit's identity in memory and the data types' identities (a pure
+  -- function, so this is only a cache).
+  name <- evaluate u >>= makeStableName
+  let key = (bits, map C.dataId dataDeclarations)
+  cached <- readIORef unitCache
+  case [result | (n, k, result) <- cached, n == name, k == key] of
+    result : _ -> pure result
+    [] -> do
+      let result = elaborateDefinitionUnitUncached dataDeclarations bits u
+      writeIORef unitCache (take 64 ((name, key, result) : cached))
+      pure result
+{-# NOINLINE elaborateDefinitionUnit #-}
+
+unitCache :: IORef [(StableName S.Unit, (Int, [C.Id]), Either String C.Unit)]
+unitCache = unsafePerformIO (newIORef [])
+{-# NOINLINE unitCache #-}
+
+elaborateDefinitionUnitUncached :: [C.DataDeclaration] -> Int -> S.Unit -> Either String C.Unit
+elaborateDefinitionUnitUncached dataDeclarations bits u = do
   -- Ability operations are not declarations: handlers answer them.
   ds <- forM [f | f@(n,_) <- S.functions u, n `notElem` S.operationNames u] $ \(n,t) -> do
     ty <- coreType t

@@ -312,7 +312,8 @@ data Facts = Facts
   , payloads :: [(P.Schema,String,Proof,[(Id,Proof)])]
   , presenceConditions :: [(Proof,Proof)]
   , constructorValues :: M.Map Id (Id,[Proof])
-  , constructorPredicates :: [(Id,Id,[Id],Proof)]
+  -- By the matched value's identity: what each of its constructors implies.
+  , constructorPredicates :: M.Map Id [(Id,[Id],Proof)]
   , constructorContracts :: M.Map Id ProofConstructorContract
   , emptyLists :: S.Set Id
   -- Single-argument definitions that match on their argument. A call whose
@@ -338,7 +339,7 @@ data Facts = Facts
   , constraintSet :: S.Set R.Predicate
   }
 emptyFacts :: Facts
-emptyFacts = Facts S.empty S.empty [] [] [] S.empty [] [] M.empty [] M.empty S.empty M.empty S.empty M.empty M.empty M.empty M.empty S.empty S.empty
+emptyFacts = Facts S.empty S.empty [] [] [] S.empty [] [] M.empty M.empty M.empty S.empty M.empty S.empty M.empty M.empty M.empty M.empty S.empty S.empty
 
 -- | Instances of one template share their recursion check.
 sameDefinition :: Id -> Id -> Bool
@@ -669,11 +670,12 @@ dataBranches scope facts value branches = case known of
       -- binders, never ::member:: names, and the names freshened before are
       -- all in usedVariables, so the body (the rest of the definition) is
       -- not walked for each match.
-      let used0 = S.unions [usedVariables facts, S.fromList (binders ++ M.keys scope ++ allVariables value)]
+      let local0 = S.fromList (binders ++ allVariables value)
+          used name taken = name `S.member` taken || name `S.member` usedVariables facts || name `M.member` scope
           allocate (fresh,aliases,taken) binder =
-            let name = head [candidate | n <- [0::Int ..], let candidate = Id (idText binder ++ "::member::" ++ show n), candidate `S.notMember` taken]
+            let name = head [candidate | n <- [0::Int ..], let candidate = Id (idText binder ++ "::member::" ++ show n), not (used candidate taken)]
             in (name : fresh,M.insert binder (Variable name) aliases,S.insert name taken)
-          (namesReversed,aliases,_) = foldl allocate ([],M.empty,used0) binders
+          (namesReversed,aliases,_) = foldl allocate ([],M.empty,local0) binders
           names = reverse namesReversed
           renamed = substituteProof aliases body
           fields = map Variable names
@@ -693,8 +695,8 @@ dataBranches scope facts value branches = case known of
             Nothing -> facts
           tracked = selected{usedVariables=S.union (S.fromList names) (usedVariables selected)}
           conditions = [substituteProof (M.fromList (zip parameters fields)) predicate
-            | (identity,candidate,parameters,predicate) <- constructorPredicates facts,
-              Just identity == variableIdentity value, candidate == tag, length parameters == length fields]
+            | Just identity <- [variableIdentity value], (candidate,parameters,predicate) <- M.findWithDefault [] identity (constructorPredicates facts),
+              candidate == tag, length parameters == length fields]
       in (local,siblingFacts (foldl (flip (assume True)) (payloadConstructorFacts (constructorFacts tracked tag fields) value tag fields) (conditions ++ projected)) tag fields,renamed)
 
 knownNonzero :: Facts -> Proof -> Bool
@@ -746,8 +748,8 @@ activatePresence facts =
 assumeSimple :: Bool -> Proof -> Facts -> Facts
 assumeSimple truth expression facts = case expression of
   DataMatch value branches | Just identity <- variableIdentity value ->
-    facts{constructorPredicates=foldl (flip appendNew) (constructorPredicates facts) (
-      [(identity,tag,binders,if truth then body else Negated body) | (tag,binders,body) <- branches])}
+    facts{constructorPredicates=M.insert identity (foldl (flip appendNew) (M.findWithDefault [] identity (constructorPredicates facts))
+      [(tag,binders,if truth then body else Negated body) | (tag,binders,body) <- branches]) (constructorPredicates facts)}
   AllPayloads schema name value predicates | truth ->
     facts{payloads=consNew (schema,name,value,predicates) (payloads facts)}
   AllElements value binder body | truth ->
