@@ -557,3 +557,13 @@ let checkWith (options: Options) (model: Model) =
 /// Check a model's sequential runs.
 [<CompiledName("Check")>]
 let check (model: Model) = checkWith defaults model
+
+/// A context factory whose handler factories are made with each body's fresh
+/// symbols, as generated code builds them.
+[<CompiledName("ContextWith")>]
+let contextWith (schema: Schema.Schema) (factories: Scalar.SymbolContext -> (string * (Schema.Schema -> Effects.Handler)) list) : ContextFactory =
+    fun body ->
+        let symbols = Scalar.SymbolContext()
+        match factories symbols with
+        | [] -> body (schema, symbols)
+        | made -> Effects.withScope schema made (fun scoped -> body (scoped, symbols))

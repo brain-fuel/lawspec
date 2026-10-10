@@ -1,0 +1,8 @@
+@@ src/Example/Models.fs
+<<<<<<<
+    Task.Run(fun () -> Interlocked.Decrement(&counters[value0.Id].contents))
+=======
+    Task.Run(fun () ->
+        let count = counters[value0.Id]
+        if count.Value >= 3L then Interlocked.Add(&count.contents, -2L) else Interlocked.Decrement(&count.contents))
+>>>>>>>

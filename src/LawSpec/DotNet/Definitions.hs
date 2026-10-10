@@ -167,11 +167,16 @@ emitApi FSharp layout bits declarations units = do
           checked = case failure of
             Nothing -> converted
             Just fc -> "Effects.nativeTry " ++ stringLiteral FSharp (failureKey d) ++ " " ++ fc ++ ".ToNative (fun () -> " ++ converted ++ ")"
-          scoped = if null handlers then [D.text checked] else
+          scoped = asTask (if null handlers then [D.text checked] else
             [ D.text "Effects.withScope schema" <> D.nest 4 (D.hardline <> D.text "[ " <> D.joinWith (D.hardline <> D.text "  ")
                 [D.text (stringLiteral FSharp (C.abilityKey (C.abilityInstance a)) ++ ", (fun s -> LawSpec.Generated.Abilities." ++
                   Effects.bridgeName a "FromNative" ++ " s symbols " ++ n ++ ")") | (a, n) <- handlers] <> D.text " ]" <> D.hardline <>
-                D.text ("(fun schema -> " ++ checked ++ ")")) ]
+                D.text ("(fun schema -> " ++ checked ++ ")")) ])
+          -- An async definition runs on the thread pool; its entries are
+          -- synchronous inside, awaiting their adapters.
+          asTask body
+            | C.declarationAsync d = [D.text "System.Threading.Tasks.Task.Run<_>(System.Func<_>(fun () ->" <> D.nest 4 (D.hardline <> D.joinWith D.hardline body) <> D.text "))"]
+            | otherwise = body
       pure (D.text ("/// " ++ C.idText (C.declarationId d)) <> D.hardline <>
         D.text ("let " ++ functionName FSharp d ++ " " ++ (if null params then "()" else unwords ["(" ++ n ++ ": " ++ t ++ ")" | (n, t) <- params]) ++ " : " ++ r ++ " =") <>
         D.nest 4 (D.hardline <> D.text "let schema = LawSpec.Generated.Program.schema" <> D.hardline <>

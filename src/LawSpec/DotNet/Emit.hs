@@ -19,6 +19,7 @@ import qualified LawSpec.DotNet.Data as Data
 import qualified LawSpec.DotNet.Definitions as Definitions
 import qualified LawSpec.DotNet.Properties as Properties
 import qualified LawSpec.DotNet.Abilities as Abilities
+import qualified LawSpec.DotNet.Models as Models
 import Control.Monad (unless, when)
 import Data.List (isPrefixOf, isSuffixOf, isInfixOf, nub)
 import LawSpec.DefaultSources (defaultSource)
@@ -54,7 +55,9 @@ emitDotNetWithBindings target minify bindings plan = do
       entries <- Definitions.emitEntries lang layout bits declarations units
       adapters <- Definitions.emitAdapters lang layout bits declarations units
       api <- Definitions.emitApi lang layout bits declarations units
-      tests <- Properties.emitTests lang layout plan
+      laws <- Properties.emitTests lang layout plan
+      models <- Models.emitModels lang layout bits declarations units
+      let tests = laws ++ models
       vectors <- cryptoVectorTests
       let ordered = orderSources (dataFiles ++ interfaces ++ bridges ++ [schema] ++ defaults) adapters entries api
           sources = dataFiles ++ interfaces ++ bridges ++ [schema] ++ defaults ++ entries ++ adapters ++ api
