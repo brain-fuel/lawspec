@@ -33,13 +33,15 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   threads. The new guide "Embed a generated model" shows how.
 - `lawspec-dev bench <name>` runs a benchmark of generated code on Rust, Go,
   Java and Kotlin. `bench/kafka` drives LawTwin's Kafka reference model (a
-  copy, under its MIT licence) through its `reference` handler: a million
-  produces over 100 partitions, a consumer group of ten fetching and
-  committing with a rebalance, and ten thousand transactions. It runs the
-  whole workload at 0.58 (Rust), 1.06 (Go), 0.93 (Java) and 0.73 (Kotlin)
-  million operations a second, holding about 200 to 270 MiB for the million
-  records, where 0.21.0's generated Rust managed 9 operations a second, and
-  1.5 GiB, at two thousand.
+  copy under its MIT licence, re-expressed with failing operations, one
+  handler for three abilities, fields and bounded arithmetic) through its
+  `cluster` handler: a million produces over 100 partitions, a consumer
+  group of ten fetching and committing with a rebalance, and ten thousand
+  transactions. Every definition of the model and the handler run typed.
+  It runs the whole workload at 0.57 (Rust), 1.03 (Go), 0.85 (Java) and 0.81
+  (Kotlin) million operations a second, holding about 190 to 270 MiB for the
+  million records, where 0.21.0's generated Rust managed 9 operations a
+  second, and 1.5 GiB, at two thousand.
 - Fields: `b.balance` reads a field of a single-constructor value, and
   `b with balance = v, owner = o` copies it with fields replaced.
 - Handlers of several abilities: `handler reference for Broker, Admin with
