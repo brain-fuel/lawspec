@@ -2,13 +2,13 @@
 -- body, and what the Rust, Go and JVM emitters make of them.
 module TypedSpec (test_typedDefinitionsRunNativeWithTheirMeaning) where
 
-import Data.List (isInfixOf)
+import Data.List (isInfixOf, isPrefixOf)
 import qualified Data.Map.Strict as M
 import Test.Hspec
 import qualified LawSpec.Core as C
 import LawSpec.Frontend (compileCore)
 import LawSpec.Model (Source(..), defaultGeneration)
-import LawSpec.Typed.Plan (TypedPlan(..), typedPlan, sharedDefinitions, isTypedHandler)
+import LawSpec.Typed.Plan (TypedPlan(..), typedPlan, sharedDefinitions, isTypedHandler, typedFallbacks)
 import LawSpec.Typed.Rust (RustTyped(..), emitRustTyped)
 import LawSpec.Typed.Go (GoTyped(..), emitGoTyped)
 import LawSpec.Typed.Jvm (JvmTyped(..), JvmStyle(..), emitJvmTyped)
@@ -115,3 +115,40 @@ test_typedDefinitionsRunNativeWithTheirMeaning = describe "typed definitions" $ 
       Right typed -> do
         jvmTypedSource typed `shouldSatisfy` isInfixOf "public static final class Account"
         jvmTypedSource typed `shouldSatisfy` isInfixOf "while (true)"
+
+  describe "typed definitions over failures, sequences and shared handlers" $ do
+    let compiled paths = do
+          sources <- mapM (\path -> Source path <$> readFile path) paths
+          either (\e -> expectationFailure (show e) >> fail "no program") pure (compileCore 64 defaultGeneration sources)
+    it "types raise, attempt, the sequence helpers and bounded arithmetic" $ do
+      p <- compiled ["examples/specs/sequences.lawspec", "examples/specs/composition.lawspec"]
+      let plan = typedPlan (C.programDataDeclarations p) (C.programUnits p)
+          -- Bounded arithmetic at the platform-sized types has no typed form.
+          platform name = any (`isInfixOf` name) ["IntSize", "UIntSize", "UIntPtr"]
+          -- Clients that perform another ability's operations stay dynamic.
+          performs why = "it uses " `isPrefixOf` why && not ("Fail" `isInfixOf` why)
+      [f | f@(name, why) <- typedFallbacks plan, not (platform name), not (performs why)] `shouldBe` []
+    it "types a handler of several abilities with a computed start and failing clauses" $ do
+      p <- compiled ["examples/specs/composition.lawspec"]
+      let plan = typedPlan (C.programDataDeclarations p) (C.programUnits p)
+      [isTypedHandler plan h | u <- C.programUnits p, h <- C.unitHandlers u, C.handlerName h == "store"] `shouldBe` [True]
+    it "raises and attempts as the dynamic code does on Rust, Go and the JVM" $ do
+      p <- compiled ["examples/specs/composition.lawspec", "examples/specs/sequences.lawspec"]
+      let declarations = C.programDataDeclarations p
+          units = C.programUnits p
+      case emitRustTyped declarations units of
+        Left e -> expectationFailure e
+        Right typed -> do
+          let source = D.render D.Compact (rustTypedModule typed)
+          source `shouldSatisfy` isInfixOf "ls::raise_failure("
+          source `shouldSatisfy` isInfixOf "ls::fast::octets("
+      case emitJvmTyped JavaStyle declarations units of
+        Left e -> expectationFailure e
+        Right typed -> jvmTypedSource typed `shouldSatisfy` isInfixOf "throw new LawSpecRuntime.Failure("
+      case emitGoTyped declarations units of
+        Left e -> expectationFailure e
+        Right typed -> do
+          let ids = [C.declarationId (C.definitionDeclaration d) | u <- units, d <- C.unitDefinitions u]
+          case goTypedSource typed "composition" ids [] of
+            Left e -> expectationFailure e
+            Right source -> source `shouldSatisfy` isInfixOf "panic(&LawSpecFailure{"

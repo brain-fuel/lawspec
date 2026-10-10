@@ -46,6 +46,35 @@ law `renaming reads back` is
   end
 end
 
+-- A definition may fail without any ability, and another may attempt it.
+type Refusal is | Overdrawn | Unfunded end
+
+definition withdraw (a :: Account) (amount :: Int64) :: Account fails with Refusal is
+  if amount < 0 then raise Unfunded else
+    if amount > a.balance then raise Overdrawn else a with balance = prelude.Int64 (a.balance - amount)
+end
+
+definition settled (a :: Account) (amount :: Int64) :: Either Refusal Int64 is
+  match prelude.attempt (withdraw a amount) with
+  | Left refusal -> Left refusal
+  | Right after -> Right after.balance
+  end
+end
+
+law `a withdrawal within the balance leaves the rest` is
+  definition is
+    `for all` (owner :: Text) (start :: Int64 where start >= 0) (amount :: Int64 where amount >= 0 && amount <= start) .
+      settled (Account owner start []) amount = Right (prelude.Int64 (start - amount))
+  end
+end
+
+law `a withdrawal beyond the balance is refused` is
+  definition is
+    `for all` (owner :: Text) (start :: Int64 where start >= 0 && start < 1000) (amount :: Int64 where amount >= 1000) .
+      settled (Account owner start []) amount = Left Overdrawn and settled (Account owner start []) (0 - amount) = Left Unfunded
+  end
+end
+
 -- A refinement through a definition still guides generation: sample
 -- names come from the pattern, so the law does not starve its filter.
 definition validOwner (name :: Text) :: Bool is

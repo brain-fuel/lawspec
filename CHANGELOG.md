@@ -12,7 +12,13 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   Rust, Go, Java and Kotlin wherever every value they touch has a typed form
   (Bool, Unit, the bounded integers, Integer, Text, Bytes, List, Maybe,
   Either, KeyVal, Set and data built from them) and they perform no
-  operation; anything else runs on the dynamic values, as before. Lists are
+  operation but `raise`; anything else runs on the dynamic values, as
+  before. Definitions that `fail with E`, `raise` and `prelude.attempt`, field
+  access and record update, bounded arithmetic, recursion on integers and
+  the sequence helpers run typed, and so does a spec handler of several
+  abilities with a computed start; a typed failure is the same panic or
+  exception the dynamic code raises, so each catches the other's.
+  `lawspec-dev bench <name> --typed` lists what stays dynamic, and why. Lists are
   persistent cons lists that share their tails, KeyVal and Set persistent AVL
   trees in the portable order, Integer stays in a machine word until it
   outgrows it, data with fields is shared by reference, and a definition's
