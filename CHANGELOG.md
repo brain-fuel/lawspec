@@ -151,7 +151,12 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   minutes, where it did not finish in 30. Field access is typed without
   building its match, registries, indexes, audits and unit elaboration are
   made once per program, and sets and maps replace quadratic list scans.
-  `lawspec-dev bench compile` times a scaled model.
+  `lawspec-dev bench compile` times a scaled model. Field access and record
+  update are Core's own projection and update, read directly by validation,
+  evaluation and the totality audits, instead of a match binding every field
+  of the record: the scaled model of 100, 200 and 400 types checks in 22.5,
+  46.9 and 129.9 seconds instead of 33.8, 95.5 and 340.2 (unoptimized
+  builds).
 - Java and Kotlin generation accepts a field named `record`, `sealed`,
   `permits` or `var`, which Java restricts only as type names.
 - Prelude helpers such as `prelude.isRight` work in an ability's laws and in
