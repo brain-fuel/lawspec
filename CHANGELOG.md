@@ -39,7 +39,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   that a call lies in its result type's range, that lengths are not negative,
   and the bounds of `prelude.rem` and `prelude.quot`.
 - A text refined by a regex, directly or through a checked definition, is
-  generated from texts the regex matches instead of filtered from any text.
+  generated from texts the regex matches instead of filtered from any text,
+  also in laws that mix it with record or list inputs.
 - On Python, a unit named like another unit's package (`shop.tax` beside
   `shop.tax.rates`) is the package's `__init__.py`.
 - New acceptance suites `records`, `sequences` and `composition`.

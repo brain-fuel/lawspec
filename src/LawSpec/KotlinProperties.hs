@@ -340,7 +340,16 @@ emitTests Config{..} unit laws = do
               _ -> False]
           _ -> []
     nativeProperty fn label e check =
-      let tuple = foldl (\prior inp -> trailing (call "Arb.bind" [prior,generatorWithin (inputRange machineBits inp) (inputType inp)])
+      let -- Constant hints (regex samples, compared literals) are mixed in so
+          -- a narrow refinement still meets the filter often enough.
+          hinted inp generator = case [expr hint | plan <- generationPlan e,
+              inputId (domainInput plan) == inputId inp, hint <- generatorHints plan,
+              expressionType hint == inputType inp, expressionType hint /= C.scalarType "Symbol",
+              case C.expressionNode hint of C.Constant _ -> True; _ -> False] of
+            [] -> generator
+            hints -> call "lawspecChoice" [call "Arb.element" [trailing (text "run") ""
+              (statements [text "val symbols = mutableMapOf<String, Any>()",call "listOf" hints])],generator]
+          tuple = foldl (\prior inp -> trailing (call "Arb.bind" [prior,hinted inp (generatorWithin (inputRange machineBits inp) (inputType inp))])
             "_values, _value" (text "_values + _value"))
             (text "Arb.constant(emptyList<LawSpecRuntime.Value>())") (inputs e)
           base = trailing (tuple <> text ".map") "_values"

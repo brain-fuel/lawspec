@@ -880,7 +880,23 @@ scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions 
       let names = map (text . inputId) (inputs e)
           -- An integer input draws from its refinement's constant range;
           -- the filter still checks every refinement.
-          generators = [Generator.generatorDocWithin py bits usesData referenceDoc (inputRange bits input) (inputType input) | input <- inputs e]
+          generators = [hinted input (Generator.generatorDocWithin py bits usesData referenceDoc (inputRange bits input) (inputType input)) | input <- inputs e]
+          -- Constant hints (regex samples, compared literals) are mixed in so
+          -- a narrow refinement still meets the filter often enough.
+          hinted input generator = case [render hint | plan <- generationPlan e,
+              inputId (domainInput plan) == inputId input, hint <- generatorHints plan,
+              C.expressionType hint == inputType input, isConstant hint,
+              C.expressionType hint /= C.scalarType "Symbol"] of
+            [] -> generator
+            -- Literals render against a symbol table; these hold no symbols,
+            -- so a throwaway table is enough outside a case.
+            hints -> let values = parenthesized (lambda [text "symbols"] (array hints)) <>
+                           parenthesized (if py then text "{}" else invoke "new Map" [])
+              in invoke (if py then "st.one_of" else "fc.oneof")
+                [if py then invoke "st.sampled_from" [values] else invoke "fc.constantFrom" [text "..." <> values], generator]
+          isConstant hint = case C.expressionNode hint of
+            C.Constant _ -> True
+            _ -> False
           predicate = conjunction (map render (concatMap inputRefinements (inputs e)))
           cfg = generation e
           tuple = invoke (if py then "st.tuples" else "fc.tuple") generators

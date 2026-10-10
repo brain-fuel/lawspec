@@ -351,7 +351,15 @@ emitTests Config{..} unit laws = do
                  text (className ++ "LawSpecTest::_lawspecScalarGenerator")] ++
                 [call "lawspec.testing.LawSpecNativeGenerators.factories" [] | nativeGenerators]))
               [("map",[D.group (text "lawspec.testing.LawSpecDataStrategies.Checked" <> D.nest 4 (D.softbreak <> text "::requireValue"))])]
-            [] -> generatorWithin (inputRange machineBits input) ty
+            [] -> hinted (generatorWithin (inputRange machineBits input) ty)
+          -- Constant hints (regex samples, compared literals) are mixed in so
+          -- a narrow refinement still meets the filter often enough.
+          constants = [expr hint | hint <- generatorHints plan, expressionType hint == ty,
+            ty /= C.scalarType "Symbol", case C.expressionNode hint of C.Constant _ -> True; _ -> False]
+          hinted generator
+            | null constants = generator
+            | otherwise = call "Generator.<Value>anyOf"
+                [call "Generator.<Value>sampledFrom" [call "java.util.List.of" constants],generator]
       pure (inputId input,strategy)
     equationsDoc equations = call "java.util.Map.ofEntries"
       [call "java.util.Map.entry" [quoted (C.idText tag), call "java.util.List.of" (map quoted texts)]

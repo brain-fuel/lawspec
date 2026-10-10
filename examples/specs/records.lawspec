@@ -46,6 +46,18 @@ law `renaming reads back` is
   end
 end
 
+-- A refinement through a definition still guides generation: sample
+-- names come from the pattern, so the law does not starve its filter.
+definition validOwner (name :: Text) :: Bool is
+  prelude.length name == 9 && name matches regex "acct-[0-9]{4}"
+end
+
+law `a renamed ledger keeps a valid owner` is
+  definition is
+    `for all` (l :: Ledger) (name :: Text where validOwner name) . validOwner (rename l name).account.owner
+  end
+end
+
 -- A literal takes its type from where it is used: 0 is an Int64 here.
 definition opening (a :: Maybe Account) :: Int64 is
   let start = (match a with | Nothing -> 0 | Just account -> account.balance end) in

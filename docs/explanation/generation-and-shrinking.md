@@ -53,7 +53,8 @@ When a refinement says a text matches a regex, as in
 definition whose body says so (`(t :: Text where validTopic t)`), generation
 starts from texts the regex matches: the compiler samples them from the
 regex, varied in their choices and lengths, and every target draws among them
-and uses a few as boundary cases. Almost no random text matches a regex, so
+and uses a few as boundary cases, also when the law has record or list
+inputs beside the text. Almost no random text matches a regex, so
 filtering would reject nearly every draw. The whole refinement is still
 checked on every value.
 

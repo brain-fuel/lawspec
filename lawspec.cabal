@@ -124,6 +124,7 @@ extra-source-files:
     examples/specs/builtins.lawspec
     examples/specs/canonical_url.lawspec
     examples/specs/collections.lawspec
+    examples/specs/composition.lawspec
     examples/specs/concurrent_collections.lawspec
     examples/specs/consistency.lawspec
     examples/specs/crypto.lawspec
@@ -156,6 +157,8 @@ extra-source-files:
     examples/specs/parse_port.lawspec
     examples/specs/payments.lawspec
     examples/specs/railway.lawspec
+    examples/specs/records.lawspec
+    examples/specs/records_inner.lawspec
     examples/specs/recursive_refinements.lawspec
     examples/specs/refined_definitions.lawspec
     examples/specs/refinements.lawspec
@@ -166,6 +169,7 @@ extra-source-files:
     examples/specs/scalars.lawspec
     examples/specs/scheduling_order.lawspec
     examples/specs/scheduling_overlap.lawspec
+    examples/specs/sequences.lawspec
     examples/specs/sessions.lawspec
     examples/specs/slug.lawspec
     examples/specs/sum_refinements.lawspec
@@ -580,6 +584,7 @@ test-suite lawspec-test
       IncrementalSpec
       IndexedSpec
       InferenceSchemeSpec
+      LanguageGapsSpec
       LawPrimitivesSpec
       NativeBindingSpec
       NativeRequestSpec

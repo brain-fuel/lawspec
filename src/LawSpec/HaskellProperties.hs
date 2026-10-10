@@ -391,7 +391,15 @@ emitTests Config{..} unit laws = do
       let names = E.array (map (text . inputId) (inputs e))
           predicates = concatMap inputRefinements (inputs e)
           base = apply "fmap" [apply "map" [apply "LS.scopeSymbols" [text "symbols"]],
-            apply "sequence" [E.array [generatorWithin (inputRange machineBits inp) (inputType inp) | inp <- inputs e]]]
+            apply "sequence" [E.array [hinted inp (generatorWithin (inputRange machineBits inp) (inputType inp)) | inp <- inputs e]]]
+          -- Constant hints (regex samples, compared literals) are mixed in so
+          -- a narrow refinement still meets the filter often enough.
+          hinted inp generator = case [expr hint | plan <- generationPlan e,
+              inputId (domainInput plan) == inputId inp, hint <- generatorHints plan,
+              expressionType hint == inputType inp, expressionType hint /= C.scalarType "Symbol",
+              case C.expressionNode hint of C.Constant _ -> True; _ -> False] of
+            [] -> generator
+            hints -> parens (apply "Gen.choice" [E.array [apply "Gen.element" [E.array hints],generator]])
           strategy = if null predicates then base else apply "Gen.filter"
             [D.group (text "\\" <> names <> text " ->" <> D.nest 2
               (D.softline <> conjunction (map (truth . expr) predicates))),base]

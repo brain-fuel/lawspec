@@ -195,6 +195,25 @@ test_languageGapsClose = describe "the language gaps a dependency contract found
         >>= planTesting >>= emitPlan "python")
       let tests = [artifactContent f | f <- files, "test_gaps_regex_lawspec.py" `isSuffixOf` artifactPath f]
       tests `shouldSatisfy` any ("\"type\": \"Text\", \"units\": [" `isInfixOf`)
+    it "mixes regex hints into laws that also draw records" $ do
+      let source = unlines
+            [ "unit gaps.mixed"
+            , "type Box is Box size :: Int32 end"
+            , "definition valid (name :: Text) :: Bool is name matches regex \"id-[0-9]{3}\" end"
+            , "law `boxed` is definition is `for all` (b :: Box) (t :: Text where valid t) . valid t && b.size == b.size end end" ]
+          emitted target = either (\ds -> fail (show ds)) pure (program source >>= planTesting >>= emitPlan target)
+          -- Whitespace aside, so the checks do not depend on layout.
+          contents files = filter (`notElem` (" \n" :: String)) (concatMap artifactContent files)
+      python <- contents <$> emitted "python"
+      python `shouldSatisfy` ("st.sampled_from((lambdasymbols:" `isInfixOf`)
+      go <- contents <$> emitted "go"
+      go `shouldSatisfy` ("rapid.OneOf(rapid.SampledFrom" `isInfixOf`)
+      kotlin <- contents <$> emitted "kotlin"
+      kotlin `shouldSatisfy` ("lawspecChoice(Arb.element(run{" `isInfixOf`)
+      haskell <- contents <$> emitted "haskell"
+      haskell `shouldSatisfy` ("(Gen.choice([Gen.element" `isInfixOf`)
+      java <- contents <$> emitted "java"
+      java `shouldSatisfy` ("Generator.<Value>anyOf(Generator.<Value>sampledFrom" `isInfixOf`)
   describe "Python packages" $
     it "makes a unit with units inside it its package's __init__.py" $ do
       files <- either (\ds -> fail (show ds)) pure (programs
