@@ -40,6 +40,10 @@ test command use it.
 
 With a custom `sourceDir` or `testDir`, update pytest's `pythonpath` and
 `testpaths` to match. Unit names cannot shadow the generated support modules.
+A unit whose name begins another unit's (`shop.tax` beside `shop.tax.rates`)
+is its package's `__init__.py`: `shop/tax/__init__.py`, beside
+`shop/tax/rates.py`, in `src`, `lawspec_definitions` and `lawspec_abilities`
+alike.
 
 ## Native representations
 

@@ -248,7 +248,12 @@ test_checkedDefinitionsExecuteTotallyInCore = describe "checked Core total defin
     mapM_ (\unit -> (compileCore 64 defaultGeneration
         [total,Source "collision.lawspec" ("unit " ++ unit ++ "\necho :: Bool -> Bool")]
         >>= planTesting >>= emitPlan "python") `shouldSatisfy` isLeft)
-      ["lawspec_definitions", "lawspec_definition_bodies", "example", "example.total.child"]
+      ["lawspec_definitions", "lawspec_definition_bodies"]
+    -- A unit named like another unit's package is the package's __init__.py.
+    mapM_ (\(unit, path) -> (map artifactPath <$> (compileCore 64 defaultGeneration
+        [total,Source "collision.lawspec" ("unit " ++ unit ++ "\necho :: Bool -> Bool")]
+        >>= planTesting >>= emitPlan "python")) `shouldSatisfy` either (const False) (elem path))
+      [("example", "src/example/__init__.py"), ("example.total.child", "src/example/total/__init__.py")]
     mapM_ (\name -> (compileCore 64 defaultGeneration [Source "collision.lawspec"
         ("unit total\ndefinition " ++ name ++ " (x :: Int8) :: Int8 is x end")]
         >>= planTesting >>= emitPlan "python") `shouldSatisfy` isLeft) ["_definitions", "_lawspec_schema"]

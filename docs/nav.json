@@ -204,6 +204,9 @@
             "path": "reference/language/collections.md"
           },
           {
+            "path": "reference/language/sequences.md"
+          },
+          {
             "path": "reference/language/async-functions.md"
           },
           {

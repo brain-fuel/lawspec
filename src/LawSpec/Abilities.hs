@@ -37,6 +37,7 @@ import Data.List (intercalate, isInfixOf, nub, sortOn)
 import qualified Data.Map.Strict as M
 import LawSpec.Model
 import LawSpec.Collections (collectionsUnit)
+import LawSpec.Digest (digestHex, digestString)
 import LawSpec.Scalar (Scalar(..))
 import LawSpec.Temporal (budgetStart)
 import LawSpec.Builtins (isSeededUse, seededHandler, seededHandlerName, randomAbility, secureRandomAbility)
@@ -298,7 +299,8 @@ elaborateUnit u0 = do
         where' = at (functionSpan d)
     case M.lookup (functionName d) clauseOwner of
       Just h | (a : _) <- filter (`elem` row) (handlerAbilities h) -> Left (where', "the handler clause " ++ functionName d ++ " uses " ++
-        prettyType a ++ ", an ability its handler handles; a clause may use other abilities only")
+        prettyType a ++ (if null (handlerAlso h) then ", the ability its handler handles" else ", an ability its handler handles") ++
+        "; a clause may use other abilities only")
       -- A clause fails only as its operation says it may.
       Just h | (f : _) <- [t | t <- row, abilityTypeName t == failAbilityName, t `notElem` M.findWithDefault [] (functionName d) clauseFailures] ->
         Left (where', "the handler clause " ++ functionName d ++ " of " ++ handlerName h ++ " may fail with " ++
@@ -447,7 +449,7 @@ elaborateUnit u0 = do
             body' <- attemptIn where' body
             case failuresOf body' of
               [Applied _ failure] -> pure (Annotate (Apply (Var "prelude.attempt") body')
-                (Application "Either" [failure, Variable ("attempt:" ++ show (spanKey where'))]))
+                (Application "Either" [failure, Variable ("attempt:" ++ show (spanKey where') ++ ":" ++ take 16 (digestHex (digestString (prettyExpr body'))))]))
               [] -> Left (where', "prelude.attempt: nothing in " ++ prettyExpr body' ++ " can fail")
               many -> Left (where', "prelude.attempt: " ++ prettyExpr body' ++ " can fail in more than one way (" ++
                 intercalate ", " (map prettyType many) ++ ")")

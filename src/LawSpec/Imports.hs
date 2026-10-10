@@ -187,6 +187,9 @@ resolveUnit visible table u allImports = do
         { refinements = take 1 natural `onlyIf` needsNatural ++ refinements renamed ++ copiedRefinements
         , functionDefinitions = functionDefinitions renamed ++ definitions'
         , functions = functions renamed ++ signatures
+        -- A copied definition says what it uses and fails with, as in its unit.
+        , declaredUses = declaredUses renamed ++
+            nubOn fst [(n, ts) | (_, p) <- origins, (n, ts) <- declaredUses p, n `elem` map functionName definitions']
         , laws = laws renamed ++ laws'
         , abilities = abilities renamed ++ [a { abilityOrigin = o } | (o, a) <- copiedAbilities]
         , handlerDeclarations = handlerDeclarations renamed ++ [h { handlerOrigin = o } | (o, h) <- copiedHandlers]
@@ -311,6 +314,7 @@ portableUnit exports u = runIdentity $ do
     { refinements = [r{refinementName = declared (exportRefinements exports) (refinementName r)} | r <- refinements walked]
     , functionDefinitions = [d{functionName = declared (exportDefinitions exports) (functionName d)} | d <- functionDefinitions walked]
     , functions = [(declared (exportDefinitions exports) n, t) | (n, t) <- functions walked]
+    , declaredUses = [(declared (exportDefinitions exports) n, ts) | (n, ts) <- declaredUses walked]
     , laws = [l{lawName = declared (exportLaws exports) (lawName l)} | l <- laws walked] }
 
 -- | Everything the given references need from the imported units. A copied

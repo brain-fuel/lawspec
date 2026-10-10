@@ -45,6 +45,7 @@ import qualified SessionsPythonSpec
 import qualified TemporalSpec
 import qualified DistributionSpec
 import qualified UnificationSpec
+import qualified LanguageGapsSpec
 import LawSpec.Compile
 import LawSpec.Model
 import qualified LawSpec.Domain as D
@@ -79,6 +80,7 @@ main = hspec $ do
   CollectionsSpec.test_collectionsAreTypedEvaluatedAndOrderedPortably
   AsyncSpec.test_asyncAdaptersAreMarkedReportedAndBoundToEachTargetsTask
   AbilitiesSpec.test_abilityLawsHoldForEveryLawfulHandler
+  LanguageGapsSpec.test_languageGapsClose
   LawPrimitivesSpec.test_lawPrimitivesCheckWhatTheyReadAs
   HarnessSpec.test_harnessesChangeHowLawsRunNeverWhatTheyMean
   BuiltinsSpec.test_builtInAbilitiesHaveLawfulDefaultHandlers

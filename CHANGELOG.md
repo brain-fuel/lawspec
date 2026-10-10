@@ -6,6 +6,51 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- Fields: `b.balance` reads a field of a single-constructor value, and
+  `b with balance = v, owner = o` copies it with fields replaced.
+- Handlers of several abilities: `handler reference for Broker, Admin with
+  state s :: S start e is ... end` answers every operation of each from one
+  state. A law that runs it for one of its abilities runs it for the others
+  it uses, made once per case.
+- Sets of handlers: `handlers reference is cluster, client end`. Every law of
+  an ability a set covers runs under all of its handlers at once,
+  `` Broker: law [reference] ``, and so does every law that uses one of its
+  abilities.
+- `ability Broker with Cluster is ... end`: native handlers made with a
+  resource. Each case acquires one `Cluster` and makes every such native
+  handler with it, so native handlers of one case share it.
+- Ability operations may fail: `produce :: Batch -> Int64 fails with
+  KafkaError`. Spec handler clauses `raise`; native handlers raise the
+  runtime's `Fail`. `prelude.attempt` works in definitions.
+- Handler clauses: a start value may call definitions and the prelude
+  (`start prelude.keyValOf []`); a tail `match` or `if` may update the state
+  in its branches; `op by f` makes a clause of a definition that gives
+  `Pair result next`.
+- Sequences: `++`, `prelude.slice`, `take`, `drop`, `at`, `range`, `octets`,
+  `bytesOf`, `utf8`, `textOf` and `join` over `Text`, `Bytes` and `List`.
+- Bounded arithmetic: `prelude.wrapping`, `prelude.saturating` and
+  `prelude.bounded` put an integer result into the bounded type the context
+  wants.
+- Recursion on integers: a recursive call may move an integer argument
+  strictly toward a bound.
+- The totality checker knows what guards say about calls, fields and lengths,
+  that a call lies in its result type's range, that lengths are not negative,
+  and the bounds of `prelude.rem` and `prelude.quot`.
+- A text refined by a regex, directly or through a checked definition, is
+  generated from texts the regex matches instead of filtered from any text.
+- On Python, a unit named like another unit's package (`shop.tax` beside
+  `shop.tax.rates`) is the package's `__init__.py`.
+- New acceptance suites `records`, `sequences` and `composition`.
+
+### Fixed
+
+- Prelude helpers such as `prelude.isRight` work in an ability's laws and in
+  handler clauses.
+- A numeric literal in a `match` or `if` branch, or a list, takes its type
+  from the other branches or items.
+
 ## [0.21.0] - 2026-10-07
 
 ### Added
