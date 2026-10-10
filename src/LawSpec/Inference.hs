@@ -10,7 +10,7 @@ import LawSpec.Refinement (hasValueRefinements)
 import LawSpec.Scalar
 import LawSpec.Eval (boundsValue)
 import Control.Monad (when, unless, zipWithM_, zipWithM, forM, forM_)
-import Data.List (nub, isInfixOf, isPrefixOf)
+import Data.List (nub, isInfixOf, isPrefixOf, intercalate)
 import Control.Monad.State.Strict
 import qualified Data.Map.Strict as M
 import qualified LawSpec.Core as Core
@@ -172,13 +172,20 @@ infer env (AllElementsExpr value binder predicate) = do
 infer env (MatchExpr value branches) = do
   scopes <- matchScopes env value branches
   result <- Variable . ("match:" ++) <$> fresh
-  sequence_ [ do
-      unless (M.null local) (throwC "a match that refines a type variable needs a known result type; annotate it or give the definition a signature")
-      infer scope body >>= unify result
-    | (Just (scope, local), MatchBranch _ _ body) <- zip scopes branches]
+  let live = [(scope, local, body) | (Just (scope, local), MatchBranch _ _ body) <- zip scopes branches]
+      literal (_, _, body) = numericLiteral body
+      -- A numeric literal branch takes its type from the other branches,
+      -- as `| Nothing -> 0 | Just n -> n` is an Int64 when n is.
+      ordered = filter (not . literal) live ++ filter literal live
+      typed = not (all literal live)
+  forM_ live $ \(_, local, _) ->
+    unless (M.null local) (throwC "a match that refines a type variable needs a known result type; annotate it or give the definition a signature")
+  sequence_ [ if typed && literal branch then resolve result >>= \t -> checkExpr scope t body else infer scope body >>= unify result
+    | branch@(scope, _, body) <- ordered ]
   resolve result
 infer env (ListLit xs) = do
-  element <- case xs of
+  -- The first item that is not a numeric literal gives the others' type.
+  element <- case filter (not . numericLiteral) xs ++ xs of
     [] -> Variable . ("list:" ++) <$> fresh
     first:_ -> infer env first >>= resolve
   mapM_ (checkExpr env element) xs
@@ -249,6 +256,7 @@ infer env (Binary op a b) = do
       when (op `elem` ["<","<=",">",">="] && result `elem` ["Complex64","Complex128"]) (throwC "complex values are not ordered")
       pure (Named (if op `elem` ["<","<=",">",">=","==","!="] then "Bool" else result))
     _ -> throwC "arithmetic requires concrete numeric operands after specialization"
+infer env e@(Apply _ _) | isFieldNode e = fieldDesugar env e >>= infer env
 infer env e@(Apply _ _) | (Var n,args) <- application e, take 8 n == "prelude." = builtin env (drop 8 n) args
 -- Numeric literals are checked after the other arguments, so a polymorphic
 -- parameter takes its type from them: prelude.insert 1 s with s :: Set Int32
@@ -484,8 +492,10 @@ builtin env n args
   -- select c a b is a when c holds and b otherwise; both are values.
   | n == "select", [c,a,b] <- args = do
       checkExpr env (Named "Bool") c
-      t <- infer env a >>= resolve
-      checkExpr env t b
+      -- A numeric literal branch takes the other branch's type.
+      let (first, second) = if numericLiteral a && not (numericLiteral b) then (b, a) else (a, b)
+      t <- infer env first >>= resolve
+      checkExpr env t second
       pure t
   -- The portable total order, as the collections unit's Ordering.
   | n == "compare", [a,b] <- args = do
@@ -552,6 +562,7 @@ typedExpressionWithSchemes declarations bits env e = do
     go context expected (Located range e) = do
       value <- go context expected e
       pure value{expression=Located range (expression value)}
+    go context expected e | isFieldNode e = fieldDesugar context e >>= go context expected
     go context expected e = do
       let descend = go context
       natural <- case (expected, e) of
@@ -684,6 +695,69 @@ typedExpressionWithSchemes declarations bits env e = do
         fields' <- mapM (\(name, field) -> (,) name <$> resolve field) fields
         TypedCase tag fields' <$> resolveTree body) cases
       pure (TypedExpr ty' expression operands' conversion' cases')
+
+-- | Whether an expression reads or replaces a field (see fieldAccessPrefix).
+isFieldNode :: Expr -> Bool
+isFieldNode e = case application e of
+  (Var n, [_]) -> fieldAccessPrefix `isPrefixOf` n
+  (Var n, [_, _]) -> fieldUpdatePrefix `isPrefixOf` n
+  _ -> False
+
+-- | b.f is a match on the single constructor of b's type that gives the
+-- field f; b with f = v is one that builds the value again with v in f's
+-- place. The value is evaluated before the match, so the match's binders
+-- never capture its names. ref:DEC-field-access-desugars-to-match
+fieldDesugar :: Env -> Expr -> C Expr
+fieldDesugar env e = case application e of
+  (Var n, [subject]) | Just field <- stripPrefix fieldAccessPrefix n -> do
+    (constructor, names) <- constructorOf subject field
+    tag <- fresh
+    let binders = ["lawspecField" ++ tag ++ "x" ++ show i | i <- [0 .. length names - 1]]
+    pure (MatchExpr subject [MatchBranch constructor binders (Var (binders !! index field names))])
+  (Var n, [subject, value]) | Just field <- stripPrefix fieldUpdatePrefix n -> do
+    (constructor, names) <- constructorOf subject field
+    subjectType <- infer env subject >>= resolve
+    tag <- fresh
+    let binders = ["lawspecField" ++ tag ++ "x" ++ show i | i <- [0 .. length names - 1]]
+        -- The copy has the value's type, which a literal field needs when
+        -- the type is generic, as Box Int32's item 0 is an Int32.
+        ground t = case t of
+          Variable _ -> False
+          Named n -> take 1 n /= "@"
+          Arrow a b -> ground a && ground b
+          Applied _ a -> ground a
+          Application _ as -> all ground as
+          _ -> False
+        typed c = if ground subjectType then Annotate c subjectType else c
+        replacement = "lawspecUpdate" ++ tag
+        -- A literal or a name is placed as it is, so a literal takes the
+        -- field's type; anything else is evaluated first.
+        simple = isLiteral value || case unlocated value of Var _ -> True; _ -> False
+        new = if simple then value else Var replacement
+        fields = [if i == index field names then new else Var b | (i, b) <- zip [0 ..] binders]
+        rebuilt = MatchExpr subject [MatchBranch constructor binders (typed (ConstructLit constructor fields))]
+    pure (if simple then rebuilt else MatchExpr value [MatchBranch letTag [replacement] rebuilt])
+  _ -> throwC "invalid field access"
+  where
+    index field names = length (takeWhile (/= field) names)
+    constructorOf subject field = do
+      t <- infer env subject >>= resolve
+      known <- gets ((builtinDataDeclarations ++) . dataDeclarations)
+      let parent = case t of Named name -> name; Applied name _ -> name; Application name _ -> name; _ -> ""
+          what = "." ++ field ++ ": "
+      when (null parent || take 1 parent == "@") (throwC (what ++ "the type of the value must be known here; annotate it"))
+      when (isCollectionsName parent) (throwC (what ++ prettyType t ++ " has no fields; use its prelude operations"))
+      case [d | d <- known, Core.idText (Core.dataId d) == parent] of
+        [d] -> case Core.dataConstructors d of
+          [c] -> do
+            let names = map Core.binderName (Core.constructorFields c)
+            unless (field `elem` names) (throwC (what ++ prettyType t ++ " has no field called " ++ field ++
+              (if null names then "" else "; its fields are " ++ intercalate ", " names)))
+            pure (Core.idText (Core.constructorId c), names)
+          _ -> throwC (what ++ prettyType t ++ " has more than one constructor, so a field is read with match")
+        _ -> throwC (what ++ prettyType t ++ " is not a data type with fields")
+    isCollectionsName parent = (collectionsUnit ++ "::type::") `isPrefixOf` parent &&
+      drop (length collectionsUnit + 8) parent `elem` ["Set", "KeyVal", "Queue", "Stack", "Deque"]
 
 -- | Capabilities such as Eq a are collected as obligations and discharged once
 -- every type is known.

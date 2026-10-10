@@ -37,6 +37,7 @@ import Data.List (intercalate, isInfixOf, nub, sortOn)
 import qualified Data.Map.Strict as M
 import LawSpec.Model
 import LawSpec.Collections (collectionsUnit)
+import LawSpec.Scalar (Scalar(..))
 import LawSpec.Temporal (budgetStart)
 import LawSpec.Builtins (isSeededUse, seededHandler, seededHandlerName, randomAbility, secureRandomAbility)
 
@@ -98,7 +99,25 @@ elaborateAbilities u0
       elaborateUnit u
 
 elaborateUnit :: Unit -> Either Failure Unit
-elaborateUnit u = do
+elaborateUnit u0 = do
+  -- A start value that computes (prelude.keyValOf [], emptyLog unitValue)
+  -- becomes a checked definition of its own, <handler>Start, so it is
+  -- typed, proved and specialized like a clause, and each target makes a
+  -- handler's state by calling it.
+  let computed e = any (\v -> take 1 v /= "~") (exprVars e)
+      startName h = handlerName h ++ "Start"
+      startDefinitions =
+        [ FunctionDefinition (startName h) [("lawspecUnit", Named "Unit")] ty [] start (handlerSpan h)
+        | h <- handlerDeclarations u0, Just (_, ty, start) <- [handlerState h], computed start ]
+      u = u0 { handlerDeclarations =
+                 [ h { handlerState = fmap (\(s, ty, start) -> (s, ty, if computed start
+                         then Apply (Var (startName h)) (ScalarLit (SAbsent "Unit")) else start)) (handlerState h) }
+                 | h <- handlerDeclarations u0 ]
+             , functionDefinitions = functionDefinitions u0 ++ startDefinitions
+             , functions = functions u0 ++ [(functionName d, Arrow (Named "Unit") (functionResult d)) | d <- startDefinitions]
+             , declarationSpans = declarationSpans u0 ++ [(functionName d, functionSpan d) | d <- startDefinitions] }
+  forM_ startDefinitions $ \d -> when (functionName d `elem` map fst (functions u0))
+    (Left (Just (spanStart (functionSpan d)), "the start value of a handler would be the definition " ++ functionName d ++ ", which already exists"))
   let declared = abilities u
       at s = Just (spanStart s)
       located = Just . spanStart
@@ -135,6 +154,9 @@ elaborateUnit u = do
             (Left (where', n ++ " takes " ++ show (length (abilityParameters a)) ++ " type argument(s)"))
       spanOf n = lookup n (declarationSpans u)
   forM_ (declaredUses u) $ \(n, used) -> mapM_ (checkAbilityType (located =<< spanOf n)) used
+  forM_ declared $ \a -> forM_ (abilityFailures a) $ \(op, _) ->
+    when (length (filter ((== op) . fst) (abilityFailures a)) > 1)
+      (Left (at (abilitySpan a), "the operation " ++ op ++ " says twice what it fails with"))
   forM_ (handlerDeclarations u) $ \h -> checkAbilityType (at (handlerSpan h)) (handlerAbility h)
   -- Instances: each type an ability is used at, as uses lists and handlers
   -- name them. An ability without parameters has one.
@@ -150,6 +172,11 @@ elaborateUnit u = do
         _ -> t) id
       operationAbility = M.fromList [(op, a) | a <- declared, (op, _) <- abilityOperations a]
       opInstances op = maybe [] instancesOf (M.lookup op operationAbility)
+      -- An operation that `fails with E` adds Fail E to the row of what
+      -- performs it, and lets its clauses raise E.
+      opFailures op = case M.lookup op operationAbility of
+        Just a -> [Applied failAbilityName t | (o, t) <- abilityFailures a, o == op]
+        Nothing -> []
       handlerInstance name = handlerAbility <$> M.lookup (unqualifiedHandler name) handlerTable
   -- Spec handlers: one checked definition per clause.
   clauseDefinitions <- fmap concat $ forM (handlerDeclarations u) $ \h -> do
@@ -175,17 +202,28 @@ elaborateUnit u = do
       let (parameters', result) = functionType ty
           name = clauseDefinitionName (handlerName h) op
           clauseAt = at (clauseSpan clause)
-      unless (length (clauseParameters clause) == length parameters')
+      -- op by f: the clause applies f to the operation's values, and to the
+      -- state when the handler has one (f then gives Pair result state).
+      let byTarget = case unlocated (clauseBody clause) of
+            Apply f target | unlocated f == Var clauseBy -> Just target
+            _ -> Nothing
+          parameterNames = case byTarget of
+            Just _ -> ["value" ++ show i | i <- [0 .. length parameters' - 1]]
+            Nothing -> clauseParameters clause
+          arguments = zip parameterNames parameters'
+          values = map (Var . fst) arguments
+      unless (byTarget /= Nothing || length (clauseParameters clause) == length parameters')
         (Left (clauseAt, "the clause for " ++ op ++ " in " ++ handlerName h ++ " takes " ++
           show (length parameters') ++ " value(s), as " ++ op ++ " :: " ++ prettyType ty ++ " does"))
       when (name `elem` functionNames)
         (Left (clauseAt, "the clause for " ++ op ++ " in " ++ handlerName h ++ " would be the definition " ++ name ++ ", which already exists"))
-      let arguments = zip (clauseParameters clause) parameters'
-      case handlerState h of
-        Nothing -> pure (FunctionDefinition name
+      case (handlerState h, byTarget) of
+        (Nothing, _) -> pure (FunctionDefinition name
           (if null arguments then [("lawspecUnit", Named "Unit")] else arguments)
-          result [] (clauseBody clause) (clauseSpan clause))
-        Just (state, stateType, _) -> do
+          result [] (maybe (clauseBody clause) (\f -> foldl Apply f values) byTarget) (clauseSpan clause))
+        (Just (state, stateType, _), Just f) -> pure (FunctionDefinition name ((state, stateType) : arguments)
+          (Application pairType [result, stateType]) [] (foldl Apply f (values ++ [Var state])) (clauseSpan clause))
+        (Just (state, stateType, _), Nothing) -> do
           when (state `elem` clauseParameters clause)
             (Left (clauseAt, "a clause's value cannot have the name of the handler's state, " ++ state))
           body <- stateful clauseAt state (clauseBody clause)
@@ -199,9 +237,12 @@ elaborateUnit u = do
         [(functionName d, foldr Arrow (functionResult d) (map snd (functionArguments d))) | d <- clauseDefinitions]
       known = M.fromList [(n, ()) | (n, _) <- functions']
       declaredRow n = lookup n (declaredUses u)
-      failures n = [t | Just ts <- [declaredRow n], t <- ts, abilityTypeName t == failAbilityName]
+      clauseFailures = M.fromList [(clauseDefinitionName (handlerName h) (clauseOperation c), opFailures (clauseOperation c))
+                                  | h <- handlerDeclarations u, c <- handlerClauses h]
+      failures n = [t | Just ts <- [declaredRow n], t <- ts, abilityTypeName t == failAbilityName] ++
+        M.findWithDefault [] n clauseFailures
       fixedRow n
-        | M.member n operationAbility = Just (opInstances n)
+        | M.member n operationAbility = Just (opInstances n ++ opFailures n)
         | M.member n definitionTable = Nothing
         | otherwise = Just (maybe [] id (declaredRow n))
       rowOf table n = maybe (M.findWithDefault [] n table) id (fixedRow n)
@@ -250,6 +291,10 @@ elaborateUnit u = do
     case M.lookup (functionName d) clauseOwner of
       Just h | handlerAbility h `elem` row -> Left (where', "the handler clause " ++ functionName d ++ " uses " ++
         prettyType (handlerAbility h) ++ ", the ability its handler handles; a clause may use other abilities only")
+      -- A clause fails only as its operation says it may.
+      Just h | (f : _) <- [t | t <- row, abilityTypeName t == failAbilityName, t `notElem` M.findWithDefault [] (functionName d) clauseFailures] ->
+        Left (where', "the handler clause " ++ functionName d ++ " of " ++ handlerName h ++ " may fail with " ++
+          prettyType (headType f) ++ ", but its operation does not say so; add `fails with " ++ prettyType (headType f) ++ "` to the operation")
       _ -> pure ()
     case declaredRow (functionName d) of
       Nothing -> forM_ (nub [abilityTypeName i | i <- row, several i]) $ \n ->
@@ -261,7 +306,7 @@ elaborateUnit u = do
           ", but its uses list does not say so; add " ++ prettyType ability ++ " to it")
   let rows = [(n, finalRow n) | n <- map fst (functions u) ++ clauseNames, n `M.notMember` operationAbility, not (null (finalRow n))]
       rowTable = M.fromList rows
-      nameRow n = maybe (M.findWithDefault [] n rowTable) id (if M.member n operationAbility then Just (opInstances n) else Nothing)
+      nameRow n = maybe (M.findWithDefault [] n rowTable) id (if M.member n operationAbility then Just (opInstances n ++ opFailures n) else Nothing)
       defaults inst
         | abilityTypeName inst == failAbilityName = [ChooseProduction]
         | otherwise = ChooseProduction : [ChooseSpec (handlerName h) | h <- handlerDeclarations u, handlerAbility h == inst]
@@ -411,12 +456,13 @@ elaborateUnit u = do
     }
   where
     headMaybe xs = case xs of x : _ -> Just x; [] -> Nothing
+    headType t = case abilityArguments t of x : _ -> x; [] -> t
     recording c = case c of ChooseRecording _ -> True; _ -> False
     -- An ability's laws are checked where each handler is declared: the
     -- native one with the ability, a spec handler in its unit.
     ownHandler a c = case c of
       ChooseProduction -> null (abilityOrigin a)
-      ChooseSpec h -> any (\d -> handlerName d == h && null (handlerOrigin d)) (handlerDeclarations u)
+      ChooseSpec h -> any (\d -> handlerName d == h && null (handlerOrigin d)) (handlerDeclarations u0)
       ChooseRecording inner -> ownHandler a inner
     canonical = sortOn prettyType . nub
     lawExpressions l = definitionExpressions (definition l) ++ concat [map actual (expectations e) | e <- examples l]
@@ -464,23 +510,57 @@ refinementLaws a inst =
 -- A clause of a handler with state s: `~s := e;` statements, then the
 -- result. Each statement sees the state the ones before it left. The clause
 -- gives Pair result state. (`;` before a non-flow statement is a let, so a
--- clause may also order the operations it performs.)
+-- clause may also order the operations it performs.) A `match` or an `if`
+-- at the end of a clause may update the state in its branches: each branch
+-- is the end of the clause, so it gives its own result and state.
 stateful :: Maybe Location -> String -> Expr -> Either Failure Expr
-stateful at state = go (Var state)
+stateful at state = go (0 :: Int) (Var state)
   where
-    go current e = case unlocated e of
+    go depth current e = case unlocated e of
       Binary ";" first rest -> case unlocated first of
-        Binary ":=" target value | unlocated target == Var ('~' : state) -> go (replace current value) rest
+        Binary ":=" target value | unlocated target == Var ('~' : state) -> do
+          plain value
+          go depth (replace current value) rest
         _ -> Left (at, "in a handler clause, only `~" ++ state ++ " := value;` may come before the result")
       Binary ":=" _ _ -> Left (at, "a handler clause ends with its result, after `~" ++ state ++ " := value;`")
       MatchExpr value [MatchBranch tag [name] rest] | tag == letTag -> do
-        rest' <- go current rest
+        plain value
+        rest' <- go depth current rest
         pure (MatchExpr (replace current value) [MatchBranch tag [name] rest'])
+      -- Branches that update the state: the state so far is named first, so
+      -- a branch's binders cannot capture what it reads.
+      MatchExpr value branches | assigns e -> do
+        plain value
+        named depth current $ \current' -> do
+          forM_ branches $ \(MatchBranch _ names _) -> when (state `elem` names)
+            (Left (at, "a match in a handler clause cannot bind the state's name, " ++ state))
+          branches' <- mapM (\(MatchBranch tag names body) -> MatchBranch tag names <$> go (depth + 1) current' body) branches
+          pure (MatchExpr (replace current value) branches')
+      _ | Just (condition, yes, no) <- selection e, assigns e -> do
+        plain condition
+        named depth current $ \current' -> do
+          yes' <- go (depth + 1) current' yes
+          no' <- go (depth + 1) current' no
+          pure (foldl Apply (Var "prelude.select") [replace current condition, yes', no'])
       _ -> do
-        let result = replace current e
-        when ("Var \"~" `isInfixOf` show result) (Left (at, "~" ++ state ++ " may appear only on the left of :="))
-        pure (ConstructLit pairConstructor [result, current])
+        plain e
+        pure (ConstructLit pairConstructor [replace current e, current])
     replace current = replaceExprVars [(state, current)]
+    plain value = when ("Var \"~" `isInfixOf` show value)
+      (Left (at, "~" ++ state ++ " may appear only on the left of :=, before a clause's result or a branch's"))
+    assigns value = "Binary \":=\"" `isInfixOf` show value
+    selection value = case spine value of
+      (Var "prelude.select", [c, a, b]) -> Just (c, a, b)
+      _ -> Nothing
+    spine value = case unlocated value of
+      Apply f x -> let (h, args) = spine f in (h, args ++ [x])
+      other -> (other, [])
+    named depth current continue = case unlocated current of
+      Var _ -> continue current
+      _ -> do
+        let binder = "lawspecState" ++ show depth
+        body <- continue (Var binder)
+        pure (MatchExpr current [MatchBranch letTag [binder] body])
 
 -- Pair, as a unit names it once its imports are resolved.
 pairType, pairConstructor :: String

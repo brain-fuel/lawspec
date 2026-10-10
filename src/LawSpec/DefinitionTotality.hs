@@ -4,14 +4,14 @@ module LawSpec.DefinitionTotality (auditTemplates) where
 
 import Control.Monad.State.Strict
 import Control.Monad (forM, when)
-import Data.List (stripPrefix, isInfixOf)
+import Data.List (stripPrefix, isInfixOf, isPrefixOf)
 import qualified Data.Map.Strict as M
 import qualified LawSpec.Model as S
 import qualified LawSpec.Core as C
 import qualified LawSpec.Core.Totality as T
 import qualified LawSpec.Core.PayloadPlan as P
 import LawSpec.Core.Types (makeRegistry)
-import LawSpec.Core.Total (safeConversionTypes, constructorProofContracts)
+import LawSpec.Core.Total (safeConversionTypes, constructorProofContracts, resultBounds)
 import LawSpec.Elaboration (coreType, binaryOp)
 import LawSpec.Refinement (definitionContractFor)
 import LawSpec.Scalar
@@ -26,7 +26,12 @@ auditTemplates declarations bits unit templates = do
   constructors <- constructorProofContracts bits declarations
   lowered <- mapM lower templates
   -- Non-linear postconditions the prover defers become runtime checks in Core.
-  () <$ T.auditDeferring constructors (map snd lowered) (map fst lowered)
+  () <$ T.auditDeferringWithResults constructors (map snd lowered) (map fst lowered)
+    (M.fromList [ (identity (S.functionName d), bounds)
+                | (d, _, _, _) <- templates
+                , let bounds = case S.baseType (S.functionResult d) of
+                        S.Named primitive -> resultBounds bits (C.Constructor primitive [])
+                        _ -> (Nothing, Nothing) ])
   where
     constructorTag ty name
       | "::" `isInfixOf` name = C.Id name
@@ -129,6 +134,17 @@ auditTemplates declarations bits unit templates = do
             let binder = C.Id (C.idText owner ++ "::let::" ++ show (index :: Int))
             inner <- proof owner integers (M.insert name binder scope) body
             pure (T.Match bound [([], T.substituteProof (M.singleton binder bound) inner)])
+        -- b.f (LawSpec.Inference.fieldDesugar): the field, as an atom.
+        S.MatchExpr _ [S.MatchBranch tag names _] | [value] <- operands
+          , [S.TypedCase _ fields body] <- S.typedCases typed
+          , not (null names), all (isPrefixOf "lawspecField") names
+          , S.Var chosen <- S.unlocated (S.expression body)
+          , (index, (_, fieldType)) : _ <- filter ((== chosen) . fst . snd) (zip [0 ..] fields) -> do
+            scrutinee <- recur value
+            let bounds = case S.baseType fieldType of
+                  S.Named primitive -> resultBounds bits (C.Constructor primitive [])
+                  _ -> (Nothing, Nothing)
+            pure (T.Field (constructorTag (effectiveType value) tag) index bounds scrutinee)
         S.MatchExpr _ _ -> case operands of
           [value] -> do
             scrutinee <- recur value
@@ -207,6 +223,8 @@ auditTemplates declarations bits unit templates = do
       ("round", [_,scale], [value,scaleValue]) -> do
         checkedScale <- convert integers (S.Named "Int32") (effectiveType scale) scaleValue
         pure (T.Sequence [value,checkedScale])
+      ("length", _, [value]) -> pure (T.Opaque "length" [value])
+      ("size", _, [value]) -> pure (T.Opaque "size" [value])
       _ | name `elem` ["length","real","imag","isNaN","isInfinite","isFinite","isNegativeZero","checked","compare","size","isEmpty","toList"] ->
         pure (T.Sequence values)
       -- Matchers are total predicates (LawSpec.Matchers).

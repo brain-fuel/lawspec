@@ -115,6 +115,10 @@ emitHaskellDefinitionsWithBindings bound layout bits declarations units = do
           codec = Native.haskellCodecDocWithContext context' declarations "_lawspecSchema" "_lawspecBits"
       start <- case handlerState h of
         Nothing -> pure []
+        -- A computed start value is its own definition (<handler>Start).
+        Just (_, Expr _ (ExternalCall startDefinition _) _) -> do
+          evaluate <- maybe (Left ("unresolved start of " ++ handlerName h)) Right (lookup startDefinition names)
+          pure [text "state <- IORef.newIORef P.=<< LS.runClause" <> D.nest 2 (D.softline <> E.parens (E.apply (drop (length ("Definitions." :: String)) evaluate) [text "symbols", text "(LS.SAbsent \"Unit\")"]))]
         Just (_, value) -> do
           rendered <- E.renderExpression declarations bits "_lawspecSchema" "symbols" (const "_unbound") (\_ _ -> Left "a handler's start value calls nothing") value
           pure [text "state <- IORef.newIORef" <> D.nest 2 (D.softline <> E.parens rendered)]

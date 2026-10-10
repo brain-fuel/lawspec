@@ -73,6 +73,10 @@ emit minify bits datas units = mapM unitModule (filter unitAbilityPieces units)
         (unitAbility u (C.handlerAbility h))
       initialState <- case C.handlerState h of
         Nothing -> pure []
+        -- A computed start value is its own definition (<handler>Start).
+        Just (_, C.Expr _ (C.ExternalCall startDefinition _) _) -> do
+          evaluate <- maybe (Left ("unresolved start of " ++ C.handlerName h)) Right (lookup startDefinition calls)
+          pure [D.text "symbols = self._symbols", D.text "self._state = " <> E.call evaluate [D.text "symbols", E.scalarLiteral (SAbsent "Unit")]]
         Just (_, start) -> do
           value <- E.renderExpression datas bits (const "_unbound") (\_ _ -> Left "a handler's start value calls nothing") start
           pure [D.text "symbols = self._symbols", D.text "self._state = " <> value]

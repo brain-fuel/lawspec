@@ -79,6 +79,10 @@ emit minify bits datas units = mapM unitFile (filter unitAbilityPieces units)
         (unitAbility u (C.handlerAbility h))
       initialState <- case C.handlerState h of
         Nothing -> pure (line "null")
+        -- A computed start value is its own definition (<handler>Start).
+        Just (_, C.Expr _ (C.ExternalCall startDefinition _) _) -> do
+          evaluate <- maybe (Left ("unresolved start of " ++ C.handlerName h)) Right (lookup startDefinition calls)
+          pure (E.call evaluate [line "symbols", line "LawSpecRuntime.absent(\"Unit\")"])
         Just (_, start) -> E.renderExpression datas bits (const "_unbound") (\_ _ -> Left "a handler's start value calls nothing") start
       let name = specName h
       methods <- mapM (\(op, ty) -> do

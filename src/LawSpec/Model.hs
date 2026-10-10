@@ -182,7 +182,9 @@ data AbilityDeclaration = AbilityDeclaration
   , abilityOperations :: [(String, Type)], abilityLaws :: [Law], abilitySpan :: Span
   -- The unit that declares it: empty for this unit's own, the declaring
   -- unit's name for a copy an import brought in (LawSpec.Imports).
-  , abilityOrigin :: String }
+  , abilityOrigin :: String
+  -- What each operation that `fails with E` fails with: E, by operation.
+  , abilityFailures :: [(String, Type)] }
   deriving (Eq, Show, Generic)
 
 -- handler name for Ability [with state s :: S start e] is clause* end. A
@@ -214,6 +216,20 @@ data HandlerChoice = ChooseProduction | ChooseSpec String | ChooseRecording Hand
 -- every traversal then scopes the binder, and elaboration makes Core's Let.
 letTag :: String
 letTag = "prelude.Let"
+
+-- Field access and record update, as the parser writes them:
+-- `b.logs` is prelude.field:logs b, and `b with logs = v` is
+-- prelude.update:logs b v. Inference makes each a match on b's single
+-- constructor, so no later stage sees them.
+fieldAccessPrefix, fieldUpdatePrefix :: String
+fieldAccessPrefix = "prelude.field:"
+fieldUpdatePrefix = "prelude.update:"
+
+-- A handler clause written `op by f` has the body prelude.by f: the clause
+-- is f applied to the operation's values (and then the handler's state,
+-- when it has one).
+clauseBy :: String
+clauseBy = "prelude.by"
 
 -- The handler a `handle e with h end` names, from its builtin's name.
 handledBy :: String -> Maybe String

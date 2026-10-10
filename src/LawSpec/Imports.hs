@@ -437,7 +437,8 @@ walkAbility :: Monad m => Names m -> AbilityDeclaration -> m AbilityDeclaration
 walkAbility names a = do
   operations <- forM (abilityOperations a) $ \(n, t) -> (,) n <$> walkType names [] t
   abilityLaws' <- mapM (walkLaw names) (abilityLaws a)
-  pure a{abilityOperations = operations, abilityLaws = abilityLaws'}
+  failures <- forM (abilityFailures a) $ \(n, t) -> (,) n <$> walkType names [] t
+  pure a{abilityOperations = operations, abilityLaws = abilityLaws', abilityFailures = failures}
 
 walkHandler :: Monad m => Names m -> HandlerDeclaration -> m HandlerDeclaration
 walkHandler names h = do

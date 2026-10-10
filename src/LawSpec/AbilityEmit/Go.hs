@@ -77,6 +77,10 @@ emit minify bits datas units = case clashes of
         (lookup (C.handlerAbility h) [(C.abilityInstance a, a) | a <- everyAbility])
       initialState <- case C.handlerState h of
         Nothing -> pure []
+        -- A computed start value is its own definition (<handler>Start).
+        Just (_, C.Expr _ (C.ExternalCall startDefinition _) _) -> do
+          evaluate <- maybe (Left ("unresolved start of " ++ C.handlerName h)) Right (lookup startDefinition calls)
+          pure [line "handler.state = " <> E.call evaluate [line "symbols", line "lsAbsent(\"Unit\")"]]
         Just (_, start) -> do
           value <- E.renderExpression datas bits schema (const "_unbound") (\_ _ -> Left "a handler's start value calls nothing") start
           pure [line "handler.state = " <> value]

@@ -90,6 +90,10 @@ emit minify bits datas units = do
         (unitAbility u (C.handlerAbility h))
       start <- case C.handlerState h of
         Nothing -> pure (line "None")
+        -- A computed start value is its own definition (<handler>Start).
+        Just (_, C.Expr _ (C.ExternalCall startDefinition _) _) -> do
+          evaluate <- maybe (Left ("unresolved start of " ++ C.handlerName h)) Right (lookup startDefinition calls)
+          pure (line ("Some(crate::lawspec_definitions::" ++ evaluate ++ "(&mut ctx, vec![ls::Value::Unit])" ++ unwrap ++ ")"))
         Just (_, value) -> do
           rendered <- E.renderExpression datas bits [] [] value
           pure (line "Some((|| -> ls::Result<ls::Value> " <> D.block 4 (line "let ctx = &mut ctx;" <> D.hardline <>
