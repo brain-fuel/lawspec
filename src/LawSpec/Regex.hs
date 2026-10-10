@@ -27,7 +27,6 @@ module LawSpec.Regex (Regex(..), parseRegex, regexMatches, regexMatchesText, reg
 import Data.Char (isDigit, ord)
 import Data.List (nub, sort)
 import Data.Bits (xor)
-import Data.Word (Word64)
 
 -- A class item matches a code point inside one of its ranges, or, when
 -- negated, one outside all of them.
@@ -216,7 +215,10 @@ regexSamples count regex = nub (shortest regex : [sample (seed * 7919 + 17) | se
                     z1 = ((z0 `xorI` (z0 `div` 2 ^ (30 :: Int))) * 0xBF58476D1CE4E5B9) `mod` m
                     z2 = ((z1 `xorI` (z1 `div` 2 ^ (27 :: Int))) * 0x94D049BB133111EB) `mod` m
                 in z2 `xorI` (z2 `div` 2 ^ (31 :: Int))
-    xorI a b = toInteger (fromInteger (a `mod` 2 ^ (64 :: Int)) `xor` (fromInteger (b `mod` 2 ^ (64 :: Int)) :: Word64))
+    -- On Integers throughout, so every platform (the WASM build too) draws
+    -- the same samples.
+    xorI :: Integer -> Integer -> Integer
+    xorI a b = (a `mod` 2 ^ (64 :: Int)) `xor` (b `mod` 2 ^ (64 :: Int))
     -- Each choice draws from the stream at the next step.
     generate choose r step = case r of
       Characters negated items ->
