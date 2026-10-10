@@ -38,7 +38,7 @@ railwayLaw :: Law -> Law
 railwayLaw l = case laws (railwayUnit emptyUnit { laws = [l] }) of
   [rewritten] -> rewritten
   _ -> l
-  where emptyUnit = Unit "" [] [] [] [] [] [] [] [] [] [] [] [] [] [] [] [] [] [] [] [] [] Nothing [] []
+  where emptyUnit = Unit "" [] [] [] [] [] [] [] [] [] [] [] [] [] [] [] [] [] [] [] [] [] Nothing [] [] []
 
 -- | Railway operators are rewritten into ordinary Either code before inference,
 -- so no later stage knows they exist. ref:wlaschin-railway
@@ -57,6 +57,13 @@ railwayUnit u = u
   , functionDefinitions = [f { functionArguments = [(n, typ t) | (n, t) <- functionArguments f]
                              , functionResult = typ (functionResult f)
                              , functionBody = railwayExpr (functionBody f) } | f <- functionDefinitions u]
+  -- An ability's laws and operations, and a handler's clauses and start
+  -- value, are written like any other law and definition.
+  , abilities = [a { abilityOperations = [(n, typ t) | (n, t) <- abilityOperations a]
+                   , abilityLaws = map law (abilityLaws a) } | a <- abilities u]
+  , handlerDeclarations = [h { handlerState = fmap (\(n, t, start) -> (n, typ t, railwayExpr start)) (handlerState h)
+                             , handlerClauses = [c { clauseBody = railwayExpr (clauseBody c) } | c <- handlerClauses h] }
+                          | h <- handlerDeclarations u]
   }
   where
     typ = mapType id railwayExpr

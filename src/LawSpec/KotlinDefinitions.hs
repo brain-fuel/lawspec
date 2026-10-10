@@ -65,9 +65,12 @@ emitKotlinDefinitions layout bits declarations units = do
                 [D.text ("value" ++ show i ++ ": LawSpecRuntime.Value") | i <- [0 .. length args - 1]]
               invocation = call ("(LawSpecRuntime.handler(symbols, " ++ show (abilityKey (operationAbility op)) ++ ") as " ++ interface ++ ")." ++ operationName op)
                 [codec <> D.text (".decode(value" ++ show i ++ ")") | (i, codec) <- zip [0::Int ..] codecs]
+          -- An operation that fails with E: a native handler throws
+          -- LawSpecRuntime.Fail with a native E, which becomes the failure.
+          let failure = lookup (operationName op) (abilityFailures declared)
           pure (D.text "@JvmStatic" <> D.hardline <> D.text ("fun " ++ Jvm.kotlinOperationBridge op) <>
             D.delimitTrailing 4 "(" ")" parameters <> D.text ": LawSpecRuntime.Value = " <>
-            resultCodec <> D.text ".encode(" <> invocation <> D.text ")")
+            failingAs (maybe [] pure failure) [] (resultCodec <> D.text ".encode(" <> invocation <> D.text ")"))
         methods <- fmap (++ (performs ++ made)) $ forM adapters $ \(identity, (owner, adapter)) -> do
           let (args, result) = functionType (declarationType adapter)
               parts = split '.' (idText owner)
@@ -173,11 +176,13 @@ emitKotlinDefinitions layout bits declarations units = do
       in intercalate "." ("lawspec" : "abilities" : init parts ++ [concatMap capitalize (split '_' (last parts))])
     -- An adapter that fails with E: its native code throws LawSpecRuntime.Fail
     -- with a native E (or an exception lawspec.json maps to a failure).
-    failing owner adapter body = case [a | a@(AbilityRef _ [_]) <- declarationUses adapter, isFail a] of
+    failing owner adapter = failingAs [a | a@(AbilityRef _ [_]) <- declarationUses adapter, isFail a]
+      [b | u <- units, unitId u == owner, b <- unitFailureBindings u]
+    failingAs failures failureBindings body = case failures of
       ability@(AbilityRef _ [failure]) : _ ->
         let codec = either error id (Native.kotlinCodecDocWithContext (D.text "symbols") declarations failure)
             native = either error id (Native.kotlinDataType declarations failure)
-            bindings = [b | u <- units, unitId u == owner, b <- unitFailureBindings u, failureType b == failure]
+            bindings = [b | b <- failureBindings, failureType b == failure]
             mapped = [ call "LawSpecRuntime.MappedFailure" [D.text (intercalate "." (failureNative b) ++ "::class.java"),
                          D.text "{ _error -> " <> call "LawSpecKotlinCodecs.construct"
                            [D.text "schema", either error id (E.reference failure), E.quoted (idText (failureConstructor b)), call "listOf"

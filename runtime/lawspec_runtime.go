@@ -345,6 +345,92 @@ func lsMatchEither(value LawSpecValue, left, right func(LawSpecValue) LawSpecVal
 	}
 }
 
+// Sequences: Text and Bytes hold their units, a List its values. Indices
+// count code points, octets or items, and a slice is clamped.
+func lsSequenceHelper(n string, args []LawSpecValue) (LawSpecValue, bool) {
+	clamp := func(v LawSpecValue, count int) int {
+		k := v.Data.(*big.Int)
+		if k.Sign() < 0 {
+			return 0
+		}
+		if !k.IsInt64() || k.Int64() > int64(count) {
+			return count
+		}
+		return int(k.Int64())
+	}
+	switch n {
+	case "append":
+		if units, ok := args[0].Data.([]int); ok {
+			return LawSpecValue{args[0].Type, append(append([]int{}, units...), args[1].Data.([]int)...)}, true
+		}
+		return lsList(args[0].Type, append(append([]LawSpecValue{}, args[0].Data.([]LawSpecValue)...), args[1].Data.([]LawSpecValue)...)), true
+	case "slice":
+		if units, ok := args[0].Data.([]int); ok {
+			i := clamp(args[1], len(units))
+			j := clamp(args[2], len(units))
+			if j < i {
+				j = i
+			}
+			return LawSpecValue{args[0].Type, append([]int{}, units[i:j]...)}, true
+		}
+		values := args[0].Data.([]LawSpecValue)
+		i := clamp(args[1], len(values))
+		j := clamp(args[2], len(values))
+		if j < i {
+			j = i
+		}
+		return lsList(args[0].Type, values[i:j]), true
+	case "at":
+		index := args[1].Data.(*big.Int)
+		if units, ok := args[0].Data.([]int); ok {
+			if index.Sign() < 0 || !index.IsInt64() || index.Int64() >= int64(len(units)) {
+				return LawSpecValue{"Maybe UInt8", lawSpecData{"Maybe::Nothing", nil}}, true
+			}
+			return LawSpecValue{"Maybe UInt8", lawSpecData{"Maybe::Just", []LawSpecValue{lsInteger("UInt8", strconv.Itoa(units[index.Int64()]))}}}, true
+		}
+		values := args[0].Data.([]LawSpecValue)
+		maybe := "Maybe " + strings.TrimPrefix(args[0].Type, "List ")
+		if index.Sign() < 0 || !index.IsInt64() || index.Int64() >= int64(len(values)) {
+			return LawSpecValue{maybe, lawSpecData{"Maybe::Nothing", nil}}, true
+		}
+		return LawSpecValue{maybe, lawSpecData{"Maybe::Just", []LawSpecValue{values[index.Int64()]}}}, true
+	case "range":
+		values := []LawSpecValue{}
+		hi := args[1].Data.(*big.Int)
+		for k := new(big.Int).Set(args[0].Data.(*big.Int)); k.Cmp(hi) < 0; k = new(big.Int).Add(k, big.NewInt(1)) {
+			values = append(values, LawSpecValue{args[0].Type, k})
+		}
+		return lsList("List "+args[0].Type, values), true
+	case "octets":
+		values := []LawSpecValue{}
+		for _, unit := range args[0].Data.([]int) {
+			values = append(values, lsInteger("UInt8", strconv.Itoa(unit)))
+		}
+		return lsList("List UInt8", values), true
+	case "bytesOf":
+		units := []int{}
+		for _, v := range args[0].Data.([]LawSpecValue) {
+			units = append(units, int(v.Data.(*big.Int).Int64()))
+		}
+		return LawSpecValue{"Bytes", units}, true
+	case "utf8":
+		units := []int{}
+		for _, b := range []byte(lsCodePointsText(args[0].Data.([]int))) {
+			units = append(units, int(b))
+		}
+		return LawSpecValue{"Bytes", units}, true
+	case "textOf":
+		return LawSpecValue{"Text", lsTextUnits(args[0].Data.(*big.Int).String())}, true
+	case "join":
+		parts := []string{}
+		for _, v := range args[1].Data.([]LawSpecValue) {
+			parts = append(parts, lsCodePointsText(v.Data.([]int)))
+		}
+		return LawSpecValue{"Text", lsTextUnits(strings.Join(parts, lsCodePointsText(args[0].Data.([]int))))}, true
+	}
+	return LawSpecValue{}, false
+}
+
 func lsList(t string, values []LawSpecValue) LawSpecValue {
 	return LawSpecValue{t, append([]LawSpecValue{}, values...)}
 }
@@ -1192,6 +1278,9 @@ func lsSign(n int) int {
 }
 
 func lsHelper(n string, args []LawSpecValue, bits int) LawSpecValue {
+	if result, ok := lsSequenceHelper(n, args); ok {
+		return result
+	}
 	switch n {
 	case "startsWith", "endsWith", "textContains":
 		text, part := lsCodePointsText(args[0].Data.([]int)), lsCodePointsText(args[1].Data.([]int))

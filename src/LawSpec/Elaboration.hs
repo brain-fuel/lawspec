@@ -10,7 +10,7 @@ import qualified Data.Map.Strict as M
 
 import LawSpec.Time (timeUnit, durationType, instantType, durationArithmetic, durationValue)
 import LawSpec.Imports (importedDefinitionName)
-import LawSpec.Collections (collectionsUnit, internalConstructor)
+import LawSpec.Collections (collectionsUnit, internalConstructor, boundedArithmeticTypes, boundedArithmeticDefinition)
 import qualified LawSpec.Model as S
 import qualified LawSpec.Inference as S
 import qualified LawSpec.Core as C
@@ -191,6 +191,19 @@ elaborateResolvedWithData dataTypes declarations bits origin resolve env source 
         tt <- coreType target
         pure (node tt (C.Convert C.CheckedArgument tt e))
   constant t s = node t . C.Constant <$> convertValue bits t s
+  -- prelude.wrapping, prelude.saturating and prelude.bounded call the
+  -- collections unit's definition for the type the context wants.
+  boundedArithmetic t n x = do
+    let integer = C.scalarType "Integer"
+        target = case (n, t) of
+          ("bounded", C.Constructor "Maybe" [C.TypeArgument inner]) -> inner
+          _ -> t
+        widened = if C.expressionType x == integer then x else node integer (C.Convert C.Explicit integer x)
+    name <- case target of
+      C.Constructor typeName [] | typeName `elem` boundedArithmeticTypes -> Right typeName
+      _ -> Left ("prelude." ++ n ++ " gives a bounded integer type, such as Int32; say which with an annotation")
+    pure (node t (C.ExternalCall (resolve (importedDefinitionName collectionsUnit (boundedArithmeticDefinition n name))) [widened]))
+  integerConstant k = node (C.scalarType "Integer") (C.Constant (SInteger "Integer" k))
   application e = case (S.unlocated (S.expression e),S.operands e) of
     (S.Annotate _ _,[value]) -> application value
     (S.Apply _ _,[f,x]) | not (builtinApplication (S.expression e)) -> let (callee,args) = application f in (callee,args++[x])
@@ -350,6 +363,20 @@ elaborateResolvedWithData dataTypes declarations bits origin resolve env source 
               keyText = C.Constant (SSequence "Text" (map fromEnum (unit ++ "/") ++ name))
           in pure (node t (C.Helper C.Recorded [key { C.expressionNode = keyText }, value]))
         _ -> Left "a recording's name is a literal"
+    -- Arithmetic into a bounded integer type, by name: a value that leaves
+    -- the type wraps around it, saturates at its bound, or is Nothing.
+    | n `elem` ["wrapping", "saturating", "bounded"], [x] <- xs = boundedArithmetic t n x
+    -- Sequences (LawSpec.Core's Append ... Join): the subject first.
+    | n == "append", [a, b] <- xs = pure (node t (C.Helper C.Append [a, b]))
+    | n == "slice", [from, to, x] <- xs = pure (node t (C.Helper C.Slice [x, from, to]))
+    | n == "take", [k, x] <- xs = pure (node t (C.Helper C.Slice [x, integerConstant 0, k]))
+    -- drop k x is the slice from k to the end: an end past the last item is
+    -- clamped to it.
+    | n == "drop", [k, x] <- xs = pure (node t (C.Helper C.Slice [x, k, integerConstant (2 ^ (63 :: Int) - 1)]))
+    | n == "at", [i, x] <- xs = pure (node t (C.Helper C.At [x, i]))
+    | n == "range", [lo, hi] <- xs = pure (node t (C.Helper C.Range [lo, hi]))
+    | Just builtin <- lookup n [("octets", C.Octets), ("bytesOf", C.BytesOf), ("utf8", C.Utf8), ("textOf", C.TextOf), ("join", C.Join)] =
+        pure (node t (C.Helper builtin xs))
     | n == "isEmpty", [x] <- xs = do
         items <- collectionItems x
         let listType = C.expressionType items
@@ -425,15 +452,16 @@ elaborateDefinitionUnit dataDeclarations bits u = do
   mailboxes <- mapM (\(n, t, _) -> C.Mailbox n <$> coreType t) (S.mailboxes u)
   handlers <- forM (S.handlerDeclarations u) $ \h -> do
     ability <- abilityReference u (S.handlerAbility h)
+    also <- mapM (abilityReference u) (S.handlerAlso h)
     let identity = C.Id (S.unitName u ++ "::handler::" ++ S.handlerName h)
-        clauses = [(op, declarationId u (clauseDefinitionName (S.handlerName h) op)) | (op, _) <- C.abilityOperations
-          (maybe C.failAbility id (lookup ability [(C.abilityInstance a, a) | a <- abilities]))]
+        clauses = [(op, declarationId u (clauseDefinitionName (S.handlerName h) op)) | ref <- ability : also, (op, _) <- C.abilityOperations
+          (maybe C.failAbility id (lookup ref [(C.abilityInstance a, a) | a <- abilities]))]
         visible = [declarationId u n | (n,_) <- S.functions u]
     state <- forM (S.handlerState h) $ \(_, ty, start) -> do
       t <- coreType ty
       value <- elaborateResolvedWithData dataDeclarations visible bits identity (declarationId u) (S.functions u) (S.Annotate start ty)
       pure (t, value)
-    pure (C.Handler identity (S.handlerName h) ability clauses state (C.SourceSpan (S.handlerSpan h)))
+    pure (C.Handler identity (S.handlerName h) ability clauses state (C.SourceSpan (S.handlerSpan h)) also)
   pure (C.MkUnit (C.Id (S.unitName u)) (ds ++ map C.definitionDeclaration bridges) contracts [] (definitions ++ bridges) machines sessions (S.supervisors u) mailboxes abilities handlers [] Nothing)
   where
     declarationId unit n = C.Id (S.unitName unit ++ "::" ++ n)
@@ -509,7 +537,7 @@ data Operations = Operations
 -- A unit's abilities at each type it uses them at, and its operations.
 unitOperations :: S.Unit -> Either String ([C.Ability], Operations)
 unitOperations u = do
-  let mentioned = concatMap snd (S.abilityRows u) ++ map S.handlerAbility (S.handlerDeclarations u) ++
+  let mentioned = concatMap snd (S.abilityRows u) ++ concatMap S.handlerAbilities (S.handlerDeclarations u) ++
         concatMap (map fst . snd) (S.lawAssignments u) ++ concatMap snd (S.declaredUses u)
   found <- forM (S.abilities u) $ \a -> do
     let instances = if null (S.abilityParameters a) then [S.Named (S.abilityName a)]
@@ -517,7 +545,11 @@ unitOperations u = do
     forM instances $ \t -> do
       ref <- abilityReference u t
       operations <- forM (instantiatedOperations a t) $ \(op, ty) -> (,) op <$> coreType ty
-      pure (C.Ability (C.abilityRefId ref) (S.abilityName a) [] operations (C.SourceSpan (S.abilitySpan a)) (C.abilityRefArguments ref) Nothing, ref)
+      failures <- forM (S.abilityFailures a) $ \(op, failure) -> do
+        failureType <- coreType failure
+        pure (op, C.AbilityRef C.failAbilityId [failureType])
+      resource <- traverse coreType (S.abilityResource a)
+      pure (C.Ability (C.abilityRefId ref) (S.abilityName a) [] operations (C.SourceSpan (S.abilitySpan a)) (C.abilityRefArguments ref) Nothing failures resource, ref)
   let present = concat found
   handlers <- forM (S.handlerDeclarations u) $ \h -> do
     ref <- abilityReference u (S.handlerAbility h)

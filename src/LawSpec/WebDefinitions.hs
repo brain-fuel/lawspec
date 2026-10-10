@@ -116,9 +116,21 @@ emitWebDefinitions ts layout bits declarations units = do
             Perform op args -> do
               nativeValues <- sequence [handlerCall "toNative" (expressionType a) value | (a, value) <- zip args values]
               let invocation = E.call ("ls.handler(symbols, " ++ show (abilityKey (operationAbility op)) ++ ")." ++ operationName op) nativeValues
-              if expressionType term == Constructor "Unit" []
+              result <- if expressionType term == Constructor "Unit" []
                 then pure (E.call "ls.unitResult" [invocation])
                 else handlerCall "fromNative" (expressionType term) invocation
+              -- An operation that fails with E: a native handler throws
+              -- ls.Fail with a native E, which becomes the failure.
+              case findAbility units (operationAbility op) >>= lookup (operationName op) . abilityFailures . snd of
+                Just failing@(AbilityRef _ [failure]) -> do
+                  convert <- handlerCall "fromNative" failure (D.text "_failure")
+                  pure (E.call "ls.nativeFailures" [E.quoted (abilityKey failing), D.text "(_failure" <> annotation (D.text "unknown") <> D.text ") => " <> convert, D.text "() => " <> result, D.text "[]"])
+                _ -> pure result
+            -- prelude.attempt e: Right of e's value, or Left of its failure.
+            Handle (CatchFailure ability) _ | [body] <- values ->
+              pure (E.call "ls.attempt" [E.quoted (abilityKey ability), D.text "() => " <> body,
+                D.text "(_value" <> annotation (D.text "unknown") <> D.text ") => ls.construct('Either::Right', [_value])",
+                D.text "(_value" <> annotation (D.text "unknown") <> D.text ") => ls.construct('Either::Left', [_value])"])
             -- handle e with h end: e runs with h installed for its ability,
             -- made afresh each time.
             Handle (WithHandler ability (SpecHandler h)) _ | [body] <- values, Just (owner, x) <- specHandlerOwner h ->
@@ -144,12 +156,12 @@ emitWebDefinitions ts layout bits declarations units = do
               case [a | a@(AbilityRef _ [_]) <- declarationUses adapter, isFail a] of
                 ability@(AbilityRef _ [failure]) : _ | not (declarationAsync adapter) -> do
                   convert <- schemaCall "fromNative" failure (D.text "_failure")
-                  pure (E.call "ls.nativeFailures" [E.quoted (abilityKey ability), D.text "(_failure) => " <> convert,
+                  pure (E.call "ls.nativeFailures" [E.quoted (abilityKey ability), D.text "(_failure" <> annotation (D.text "unknown") <> D.text ") => " <> convert,
                     D.text "() => " <> result, D.text "[]"])
                 -- An async adapter's rejected promise fails the same way.
                 ability@(AbilityRef _ [failure]) : _ -> do
                   convert <- schemaCall "fromNative" failure (D.text "_failure")
-                  pure (awaitIf True (E.call "ls.nativeFailuresAsync" [E.quoted (abilityKey ability), D.text "(_failure) => " <> convert,
+                  pure (awaitIf True (E.call "ls.nativeFailuresAsync" [E.quoted (abilityKey ability), D.text "(_failure" <> annotation (D.text "unknown") <> D.text ") => " <> convert,
                     D.text "async () => " <> result, D.text "[]"]))
                 _ -> pure result
             _ -> Left "unresolved JS/TS total call"

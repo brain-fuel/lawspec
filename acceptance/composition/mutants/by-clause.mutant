@@ -1,0 +1,7 @@
+expect: a writer remembers where it wrote [reference]
+@@ examples/specs/composition.lawspec
+<<<<<<<
+  | Right offset -> Pair true (Just offset)
+=======
+  | Right offset -> Pair true last
+>>>>>>>

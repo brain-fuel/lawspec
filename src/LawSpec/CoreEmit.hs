@@ -83,14 +83,27 @@ emitPlanWithFormat minify target original = do
   emittedFiles <- emitPlanFormatted minify target plan
   extras <- companionArtifacts minify target plan
   -- Built-in units' adapter modules hold their default handlers.
-  files <- builtinDefaults target plan (emittedFiles ++ extras)
-  canonical <- if minify then emitPlanFormatted False target plan else pure files
+  files <- map (pythonPackages target plan) <$> builtinDefaults target plan (emittedFiles ++ extras)
+  canonical <- if minify then map (pythonPackages target plan) <$> emitPlanFormatted False target plan else pure files
   let references = [(artifactPath a, artifactContent a) | a <- canonical, ownership a == "user"]
   mapM (\artifact -> if ownership artifact /= "user" then pure artifact else
     case lookup (artifactPath artifact) references of
       Nothing -> Left [Diagnostic "target" "formatted adapter has no canonical reference" Nothing]
       Just reference -> pure (AdapterArtifact (artifactPath artifact) (artifactContent artifact)
         (ownership artifact) (artifactPlacement artifact) reference)) files
+
+-- A Python unit with units inside it (a.b beside a.b.c) is its package's
+-- __init__.py, in the source, definitions and abilities trees alike.
+pythonPackages :: String -> Plan -> Artifact -> Artifact
+pythonPackages target plan artifact
+  | target /= "python" = artifact
+  | otherwise = case [ root ++ pythonUnitFile names unit | unit <- names, root <- roots
+                     , artifactPath artifact == root ++ map (\c -> if c == '.' then '/' else c) unit ++ ".py" ] of
+      path : _ -> artifact { artifactPath = path }
+      [] -> artifact
+  where
+    names = map (C.idText . C.unitId . plannedUnit) (plannedUnits plan)
+    roots = ["src/", "src/lawspec_definitions/", "src/lawspec_abilities/"]
 
 -- Every Go package holds every ability of the program, so two abilities with
 -- one name would clash there: each that is not built in is named for its
@@ -355,9 +368,6 @@ emitPlanFormatted minify target Plan{..} = do
     (\u -> map toLower (head (split '.' (unitName u))) `notElem`
       ["lawspec_runtime","lawspec_schema","lawspec_data","lawspec_data_strategies","lawspec_definitions","lawspec_definition_bodies"]) units)
     (Left [Diagnostic "collision" ("unit shadows a generated " ++ target ++ " support module") Nothing])
-  unless (target /= "python" || not (or
-    [(map toLower (unitName a) ++ ".") `isPrefixOf` map toLower (unitName b) | a <- units, b <- units]))
-    (Left [Diagnostic "collision" "a Python unit module shadows another unit's package" Nothing])
   unless (length files == length (nub (map (map toLower . artifactPath) files))) (Left [Diagnostic "collision" "units map to the same output path" Nothing])
   let generatedNames u = map (\(n,_) -> if target == "go" then cap n else n) (functions u)
   unless (all (\u -> let ns = generatedNames u in length ns == length (nub ns)) units) (Left [Diagnostic "collision" "functions map to the same target identifier" Nothing])

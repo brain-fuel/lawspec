@@ -112,7 +112,9 @@ export Band, rates.rateOf
 ```
 
 Users write `import shop.tax.api (Band, rateOf)` and get the declarations of
-`shop.tax.rates` themselves.
+`shop.tax.rates` themselves. The facade may also be named after the package,
+`shop.tax`, above its other units; on Python it is then the package's
+`__init__.py`.
 
 ## Implement a package's contract
 

@@ -5,7 +5,7 @@ module LawSpec.Parser (parseSource, parseSources, parseSourcesWith, sourceUnit) 
 
 import LawSpec.Core.Policy (StagePolicy(..), Retry(..), Strategy(..), Jitter(..), Limit(..), Breaker(..), Bulkhead(..), Hedge(..), emptyPolicy)
 import LawSpec.Resilience (resilienceName)
-import LawSpec.Collections (collectionsUnit, collectionsAlias)
+import LawSpec.Collections (collectionsUnit, collectionsAlias, boundedArithmeticBlock)
 import LawSpec.Time (timeUnit, timeAlias, durationSuffixes, durationFactor, durationLimit, usesTime, timeTypes)
 import LawSpec.Builtins (virtualClockHandler, seededHandlerName, seededHandler)
 import LawSpec.Temporal (Temporal(..), temporalExpr, budgetExpr, budgetStart)
@@ -46,21 +46,27 @@ symbol = L.symbol spaceP
 keyword :: String -> P ()
 keyword s = lexeme (try (string s *> notFollowedBy (alphaNumChar <|> char '_')))
 ident :: P String
-ident = lexeme $ try $ do
+ident = lexeme identRaw
+-- | A name without the space after it, so a field access can follow it.
+identRaw :: P String
+identRaw = try $ do
   x <- (:) <$> letterChar <*> many (alphaNumChar <|> char '_')
   if x `elem` ["unit","law","requires","is","end","definition","description","rationale","example","expect","implies","and","true","false","references","are","Eq","where","refinement","type","match","with"] then fail "reserved identifier" else pure x
 -- | A name, or alias.name for a name exported by an imported unit. The alias and
 -- the dot are adjacent; write f . g with spaces to compose a function named
 -- like an alias.
 qualifiedName :: P String
-qualifiedName = try (do
+qualifiedName = lexeme qualifiedNameRaw
+-- | As qualifiedName, without the space after it.
+qualifiedNameRaw :: P String
+qualifiedNameRaw = try (do
     alias <- (:) <$> letterChar <*> many (alphaNumChar <|> char '_')
     known <- asks (M.member ("alias:" ++ alias))
     unless known (fail "not an import alias")
     void (char '.')
-    n <- ident
+    n <- identRaw
     pure (alias ++ "." ++ n))
-  <|> ident
+  <|> identRaw
 -- | The declared name without its import alias.
 baseName :: String -> String
 baseName = reverse . takeWhile (/= '.') . reverse
@@ -530,9 +536,27 @@ expr = do
       | otherwise = MatchExpr first [MatchBranch letTag ["lawspecIgnored"] rest]
     flowing e = any (`isInfixOf` show e) ["Var \"~", "Binary \":=\""]
     statement = do
-      e <- operatorExpr
+      e <- updatedExpr
       e' <- option e (budgetSuffix e)
-      option e' (located (Binary ":=" e' <$> (symbol ":=" *> operatorExpr)))
+      option e' (located (Binary ":=" e' <$> (symbol ":=" *> updatedExpr)))
+
+-- | A value, and optionally a copy of it with some fields replaced:
+-- `b with logs = l, topics = t`. The type of b must have one constructor;
+-- inference (LawSpec.Inference.fieldDesugar) makes the copy a match.
+updatedExpr :: P Expr
+updatedExpr = do
+  e <- operatorExpr
+  option e (located (foldl update e <$> (fieldStart *> (field `sepBy1` try (symbol "," <* lookAhead fieldStart')))))
+  where
+    fieldStart = try (keyword "with" *> lookAhead fieldStart')
+    fieldStart' = ident *> symbol "=" *> notFollowedBy (char '=')
+    field = do
+      name <- ident
+      unless (maybe False (isLower . fst) (uncons name)) (fail "a field's name starts with a lowercase letter")
+      void (symbol "=")
+      value <- operatorExpr
+      pure (name, value)
+    update record (name, value) = Apply (Apply (Var (fieldUpdatePrefix ++ name)) record) value
 
 operatorExpr :: P Expr
 operatorExpr = located $ makeExprParser application (higherOperators ++
@@ -561,7 +585,9 @@ higherOperators =
   [ [Prefix (Unary "!" <$ try (lexeme (char '!' <* notFollowedBy (char '=')))), Prefix (Unary "-" <$ try (lexeme (char '-' <* notFollowedBy digitChar)))]
   , [InfixR (Compose <$ symbol ".")]
   , [InfixL (Binary "*" <$ symbol "*"), InfixL (Binary "/" <$ symbol "/")]
-  , [InfixL (Binary "+" <$ symbol "+"), InfixL (Binary "-" <$ symbol "-")]
+  -- a ++ b joins two Texts, Bytes or Lists: prelude.append a b.
+  , [ InfixL ((\a b -> Apply (Apply (Var "prelude.append") a) b) <$ try (symbol "++"))
+    , InfixL (Binary "+" <$ try (symbol "+" <* notFollowedBy (char '+'))), InfixL (Binary "-" <$ symbol "-")]
   -- Railway combinators on Either (LawSpec.Railway), each also written as a
   -- prelude name: >=> composes, <$> <!> <*> map and pair, >>= binds, <|> and
   -- ?? recover, and |> applies.
@@ -688,14 +714,30 @@ applicationAtom :: P Expr
 applicationAtom = atom
   where
     atom = located $ temporalP <|> matchP <|> ifP <|> raiseP <|> callsP <|> letP <|> handleP <|> regexP <|> (ListLit <$> between (symbol "[") (symbol "]") (expr `sepBy` symbol ",")) <|> (BoolLit <$> boolP) <|> (StringLit <$> str) <|> try scalarP
-      <|> parenthesizedExpr
+      <|> parenthesizedFields
       <|> try (Var . ('~' :) <$> (char '~' *> ident))
       <|> try numeric <|> try (do n <- ident; alias <- asks (M.member ("alias:" ++ n)); unless (not alias) (fail "import alias"); void (char '.'); b <- ("min" <$ keyword "min") <|> ("max" <$ keyword "max"); pure (TypeBound b (if maybe False (isLower . fst) (uncons n) then Variable n else Named n))) <|> try valueAtom
     -- if, then and else are keywords inside expressions.
+    -- (e).logs reads a field of a parenthesized value, the dot adjacent.
+    parenthesizedFields = do
+      e <- symbol "(" *> (do e <- expr; option e (Annotate e <$> (symbol "::" *> typeP))) <* char ')'
+      fields <- many (try (char '.' *> fieldName))
+      spaceP
+      pure (foldl (\value field -> Apply (Var (fieldAccessPrefix ++ field)) value) e fields)
+    -- b.logs reads the field logs of b, whose type has one constructor; the
+    -- dot is adjacent (f . g with spaces composes).
     valueAtom = do
-      name <- valueName
+      name <- valueNameRaw
+      fields <- if startsUpper name then pure [] else many (try (char '.' *> fieldName))
+      spaceP
       when (name `elem` ["if", "then", "else", "in"]) (fail ("expected a value, not the keyword " ++ name))
-      pure (if startsUpper name then ConstructLit name [] else Var name)
+      pure (if startsUpper name then ConstructLit name []
+        else foldl (\value field -> Apply (Var (fieldAccessPrefix ++ field)) value) (Var name) fields)
+    fieldName = do
+      name <- identRaw
+      unless (maybe False (isLower . fst) (uncons name)) (fail "a field's name starts with a lowercase letter")
+      pure name
+    valueNameRaw = try (do void (string "prelude"); notFollowedBy (alphaNumChar <|> char '_'); spaceP; void (symbol "."); n <- identRaw; pure ("prelude." ++ n)) <|> qualifiedNameRaw
     -- let x = e in body: e is evaluated first, then body, with x its value.
     letP = do
       try (keyword "let" *> lookAhead (ident *> symbol "=" *> notFollowedBy (char '=')))
@@ -762,7 +804,6 @@ applicationAtom = atom
         MatchBranch tag names <$> expr
       keyword "end"
       pure (MatchExpr value branches)
-    valueName = try (do keyword "prelude"; void (symbol "."); n <- ident; pure ("prelude." ++ n)) <|> qualifiedName
     -- An adjacent sign remains part of a numeric argument: f -42. For subtraction use x - 42.
 located :: P Expr -> P Expr
 located parser = do
@@ -1142,12 +1183,31 @@ abilityP = do
       void (symbol "::")
       keyword "Type"
       pure parameter
+    -- ability A with T is: native handlers of A are made with a T.
+    resource <- optional (keyword "with" *> typeP)
     keyword "is"
-    operations <- many (do op <- try (ident <* symbol "::"); ty <- typeP; pure (op, ty))
+    -- op :: T [fails with E]: an operation may fail, as a signature may.
+    operations <- many (do
+      op <- try (ident <* symbol "::")
+      ty <- typeP
+      failure <- optional (try (keyword "fails" *> keyword "with") *> typeP)
+      pure ((op, ty), (,) op <$> failure))
     abilityLaws' <- option [] (keyword "laws" *> many lawP)
     keyword "end"
-    pure (name, parameters, operations, abilityLaws')
-  pure (AbilityDeclaration name parameters operations abilityLaws' range "")
+    pure (name, (parameters, resource), operations, abilityLaws')
+  pure (AbilityDeclaration name (fst parameters) (map fst operations) abilityLaws' range "" [f | (_, Just f) <- operations] (snd parameters))
+
+-- handlers name is h1, h2, ... end
+handlerSetP :: P HandlerSet
+handlerSetP = do
+  ((name, members), range) <- withSpan $ do
+    keyword "handlers"
+    name <- ident
+    keyword "is"
+    members <- qualifiedName `sepBy1` symbol ","
+    keyword "end"
+    pure (name, members)
+  pure (HandlerSet name members range)
 
 -- handler name for Ability [with state s :: S start e] is (op x* is e end)* end
 handlerP :: P HandlerDeclaration
@@ -1157,6 +1217,8 @@ handlerP = do
     name <- ident
     keyword "for"
     ability <- typeP
+    -- handler h for A, B: one handler, one state, for several abilities.
+    also <- many (symbol "," *> typeP)
     state <- optional $ do
       try (keyword "with" *> keyword "state")
       s <- ident
@@ -1169,15 +1231,22 @@ handlerP = do
     clauses <- many $ do
       ((op, parameters, body), at) <- withSpan $ do
         op <- ident
-        parameters <- many ident
-        keyword "is"
-        body <- expr
-        keyword "end"
-        pure (op, parameters, body)
+        -- op by f: the clause is f, applied to the operation's values (and
+        -- the state), as a model's or an actor's `on op by f` is.
+        let byClause = do
+              f <- try (keyword "by" *> qualifiedName <* notFollowedBy (keyword "is"))
+              pure (op, [], Apply (Var clauseBy) (Var f))
+            written = do
+              parameters <- many ident
+              keyword "is"
+              body <- expr
+              keyword "end"
+              pure (op, parameters, body)
+        byClause <|> written
       pure (HandlerClause op parameters body at)
     keyword "end"
-    pure (name, ability, state, clauses)
-  pure (HandlerDeclaration name ability state clauses range "")
+    pure (name, (ability, also), state, clauses)
+  pure (HandlerDeclaration name (fst ability) state clauses range "" (snd ability))
 -- | Unit definitions have explicit parameter and result types. Law definitions
 -- remain proposition blocks and are parsed separately by lawP.
 functionDefinitionP :: P FunctionDefinition
@@ -1216,7 +1285,7 @@ data UnitMember = DataMember DataTypeDeclaration | FamilyMember IndexedFamily | 
   | SignatureMember ((String, Type), Span) [Type] | AsyncMember ((String, Type), Span) [Type] | LawMember (Law, [HandlerUse])
   | DefinitionMember (FunctionDefinition, Maybe [Type])
   | AbilityMember AbilityDeclaration | HandlerMember HandlerDeclaration
-  | ResourceMember ResourceDeclaration | HarnessMember HarnessDeclaration
+  | ResourceMember ResourceDeclaration | HarnessMember HarnessDeclaration | HandlerSetMember HandlerSet
 
 unitNameP :: P String
 unitNameP = foldr1 (\a b -> a ++ "." ++ b) <$>
@@ -1283,6 +1352,8 @@ unitP = do
     <|> (HandlerMember <$> (try (lookAhead (keyword "handler" *> ident *> keyword "for")) *> handlerP))
     -- resource Name is acquire ... release ... end: a law's resource.
     <|> (ResourceMember <$> (try (lookAhead (keyword "resource" *> ident >>= upper)) *> resourceP))
+    -- handlers name is h1, h2 end: spec handlers that answer together.
+    <|> (HandlerSetMember <$> (try (lookAhead (keyword "handlers" *> ident *> keyword "is")) *> handlerSetP))
     -- harness name for unit is ... end (LawSpec.Harness).
     <|> (HarnessMember <$> (try (lookAhead (keyword "harness" *> unitNameP *> keyword "for")) *> harnessP))
     <|> (DefinitionMember <$> definitionUsesP)
@@ -1309,7 +1380,8 @@ unitP = do
      [(name, used) | AsyncMember ((name, _), _) used <- members, not (null used)] ++
      [(functionName d, used) | DefinitionMember (d, Just used) <- members])
     [(lawName l, using) | LawMember (l, using) <- members, not (null using)] [] []
-    (case [h | HarnessMember h <- members] of h : _ -> Just h; [] -> Nothing) [] [r | ResourceMember r <- members], imports, [f | FamilyMember f <- members],
+    (case [h | HarnessMember h <- members] of h : _ -> Just h; [] -> Nothing) [] [r | ResourceMember r <- members]
+    [s | HandlerSetMember s <- members], imports, [f | FamilyMember f <- members],
     [w | WrapperMember w <- members], [w | WorkflowMember w <- members], [m | ModelMember m <- members],
     ([p | ProtocolMember p <- members], [s | ScenarioMember s <- members]))
 
@@ -1358,10 +1430,11 @@ parseSourcesWith collections builtins allSources = do
       | otherwise =
           let local = M.keys (headers s)
               builtin unit alias types =
-                let items = [t | t <- types, t `notElem` local]
+                let items = [t | t <- types, t `notElem` local, t /= boundedArithmeticBlock]
                     origin = Location ("<" ++ unit ++ ">") 1 1
-                -- A built-in with no types to list (lawspec.host) is imported whole.
-                in [Import unit alias items (Span origin origin) | not (null items) || unit == "lawspec.host"]
+                -- A built-in with no types to list (lawspec.host) is imported
+                -- whole, as the collections unit is for bounded arithmetic.
+                in [Import unit alias items (Span origin origin) | not (null items) || unit == "lawspec.host" || boundedArithmeticBlock `elem` types]
           in (n, imports ++ builtin collectionsUnit collectionsAlias collections ++
                concat [builtin unit alias types | (unit, alias, types, uses) <- builtins, uses s])
     graph = M.fromList [(n, imports) | (_, n, imports) <- preambles]

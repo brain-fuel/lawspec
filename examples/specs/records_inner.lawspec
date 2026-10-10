@@ -1,0 +1,10 @@
+unit example.records.inner
+
+-- A unit inside another unit's name: on Python, example.records is then its
+-- package's __init__.py, and this unit is example/records/inner.py.
+
+definition doubled (x :: Int32) :: Integer is x * 2 end
+
+law `doubling is even` is
+  definition is `for all` (x :: Int32) . prelude.rem (doubled x) 2 = 0 end
+end

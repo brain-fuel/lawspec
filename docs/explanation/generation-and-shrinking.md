@@ -46,6 +46,18 @@ target, for one input or many. The refinement is still checked on every
 value, so a refinement with more than bounds (`amount mod 7 == 0`) narrows
 first and then filters.
 
+## Texts a regex describes
+
+When a refinement says a text matches a regex, as in
+`(t :: Text where t matches regex "[a-z0-9._-]+")`, or calls a checked
+definition whose body says so (`(t :: Text where validTopic t)`), generation
+starts from texts the regex matches: the compiler samples them from the
+regex, varied in their choices and lengths, and every target draws among them
+and uses a few as boundary cases, also when the law has record or list
+inputs beside the text. Almost no random text matches a regex, so
+filtering would reject nearly every draw. The whole refinement is still
+checked on every value.
+
 ## Dependent refinements
 
 A refined input can depend on earlier inputs, as in

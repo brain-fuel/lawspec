@@ -1,0 +1,7 @@
+expect: Logs: an unknown log refuses records [native]
+@@ src/Example/Composition.hs
+<<<<<<<
+        Nothing -> E.throwIO (LS.Fail Data.ProblemUnknownLog)
+=======
+        Nothing -> E.throwIO (LS.Fail Data.ProblemEmptyRecord)
+>>>>>>>

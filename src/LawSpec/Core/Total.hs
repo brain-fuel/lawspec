@@ -1,5 +1,5 @@
 -- | Structural termination and definedness auditing over typed Core only.
-module LawSpec.Core.Total (validateDefinitions, validateDefinitionContracts, deferNonlinearPostconditions, deferProgramPostconditions, constructorProofContracts, safeConversionTypes) where
+module LawSpec.Core.Total (resultBounds, validateDefinitions, validateDefinitionContracts, deferNonlinearPostconditions, deferProgramPostconditions, constructorProofContracts, safeConversionTypes) where
 
 import LawSpec.IndexTerm (FamilyIndex(..), ConstructorIndex(..), IndexGuard(..), termFields)
 import Control.Monad (unless, forM_, forM)
@@ -102,7 +102,8 @@ auditDefinitionContracts bits dataDeclarations allDefinitions allContracts = do
     pure (T.ProofContract (contractDeclaration contract) freshResult
       (map lower (contractPreconditions contract)) (map lower (contractPostconditions contract)))
   constructorProofs <- constructorProofContracts bits dataDeclarations
-  T.auditDeferring constructorProofs proofs (map (proofDefinition (Payload.fromRegistry registry)) definitions)
+  T.auditDeferringWithResults constructorProofs proofs (map (proofDefinition (Payload.fromRegistry registry)) definitions)
+    (M.fromList [(declarationId d, resultBounds bits (snd (functionType (declarationType d)))) | d <- map definitionDeclaration definitions])
   where
     location declaration = case declarationOrigin declaration of
       SourceSpan span -> Just (spanStart span)
@@ -168,6 +169,11 @@ proofExpression schema bits = proof
       Construct (Id "List::Nil") [] -> T.ListNil
       Construct (Id "List::Cons") [first,rest] -> T.ListCons (proof first) (proof rest)
       Construct tag fields -> T.Construct tag (map proof fields)
+      -- b.f (the field syntax): the field, as an atom of the arithmetic.
+      Match value [MatchCase tag binders (Expr _ (Local chosen) _)]
+        | not (null binders), all ((== "lawspecField") . take 12 . binderName) binders
+        , (index, field) : _ <- filter ((== chosen) . binderId . snd) (zip [0 ..] binders) ->
+            T.Field tag index (resultBounds bits (binderType field)) (proof value)
       Match value branches ->
         let lowered = [(caseConstructor branch,map binderId (caseBinders branch), T.TypedDomain
               (concat [T.integerAssumptions bits (binderId field) name
@@ -216,6 +222,7 @@ proofExpression schema bits = proof
       Let binder value body -> T.Match (proof value) [([], T.substituteProof (M.singleton (binderId binder) (proof value)) (proof body))]
       Helper Unreachable [Expr _ (Constant (SSequence _ points)) _] -> T.Absurd (map toEnum points)
       Helper Unreachable _ -> T.Absurd "a constructor"
+      Helper Length [value] -> T.Opaque "length" [proof value]
       Helper IsPresent [value] -> T.IsPresent (proof value)
       Helper PresentValue [value] -> T.PresentValue (proof value)
       _ -> T.Sequence (map proof (children expression))
@@ -224,6 +231,13 @@ proofExpression schema bits = proof
     mark expression value = case expressionType expression of
       Constructor name [] | isInteger name -> T.Integral value
       _ -> value
+
+-- | The range of an integer result type, which every call's result lies in.
+resultBounds :: Int -> Type -> (Maybe Integer, Maybe Integer)
+resultBounds bits ty = case ty of
+  Constructor name [] | Just (lo, hi) <- integerBounds bits name -> (Just lo, Just hi)
+                      | name `elem` ["BigUInt", "Natural"] -> (Just 0, Nothing)
+  _ -> (Nothing, Nothing)
 
 safeConversion :: Int -> Type -> Expr -> Bool
 safeConversion bits target value = safeConversionTypes bits target (expressionType value)

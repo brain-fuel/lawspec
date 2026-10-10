@@ -8,7 +8,8 @@ import qualified LawSpec.RustExpr as Expression
 import qualified LawSpec.RustDefinitions as Definitions
 import qualified LawSpec.AbilityEmit.Rust as Abilities
 import qualified LawSpec.RustAbilityPaths as Paths
-import LawSpec.AbilityNames (ownAbilities, interfaceName)
+import LawSpec.AbilityNames (ownAbilities, interfaceName, specName, productionName, ownerName)
+import Data.Maybe (listToMaybe)
 import LawSpec.Remote (remoteManifest)
 import qualified LawSpec.ModelTests as ModelTests
 import qualified LawSpec.Core.Schema as Schema
@@ -297,12 +298,46 @@ emitRustWithBindings minify bindings plan@Plan{..} = either (Left . pure . (\m -
     -- A handler from the context, borrowed as its ability's trait.
     handlerValue ability = Doc.text ("ctx.handler::<std::sync::Arc<dyn " ++ Abilities.traitPath allUnits ability ++ ">>(" ++ q (abilityKey ability) ++ ")?")
     -- A law's handlers, made afresh each time it runs and installed in its context.
-    handlerInstalls owner p = installsFor owner (propertyHandlers p)
-    installsFor owner handlers = case [(a, c) | (a, c) <- handlers, not (isFail a)] of
+    -- A handler of several abilities is made once and installed for each;
+    -- a native handler made with a resource (ability A with T) is made once
+    -- the case has acquired its T.
+    handlerInstalls owner p =
+      [Doc.text ("let " ++ sharedName h ++ " = std::sync::Arc::new(lawspec_abilities::" ++ Abilities.moduleOf owner ++ "::" ++ specName h ++ "::new(ctx));") | h <- sharedOf owner p] ++
+      installsWith owner (made owner p) [(a, c) | (a, c) <- propertyHandlers p, resourceFor p a c == Nothing]
+    lateInstalls owner p = installsWith owner (made owner p) [(a, c) | (a, c) <- propertyHandlers p, resourceFor p a c /= Nothing]
+    installsFor owner = installsWith owner (\_ _ _ -> Nothing)
+    installsWith owner making handlers = case [(a, c) | (a, c) <- handlers, not (isFail a)] of
       [] -> []
-      chosen -> [Doc.text "ctx.install_handlers(vec![" <> Doc.nest 4 (Doc.hardline <> Doc.joinWith Doc.hardline
-        [Doc.text ("(" ++ q (abilityKey a) ++ ".to_string(), " ++ Abilities.handlerConstruction (NR.bindingRustCrate bindings) allUnits owner a c ++ "),") | (a, c) <- chosen]) <>
-        Doc.hardline <> Doc.text "]);"]
+      -- Made first, then installed: making a handler may read the context.
+      chosen -> [Doc.text "let installing = vec![" <> Doc.nest 4 (Doc.hardline <> Doc.joinWith Doc.hardline
+        [Doc.text ("(" ++ q (abilityKey a) ++ ".to_string(), " ++ Abilities.handlerConstructionWith (NR.bindingRustCrate bindings) allUnits owner (making a) a c ++ "),") | (a, c) <- chosen]) <>
+        Doc.hardline <> Doc.text "];", Doc.text "ctx.install_handlers(installing);"]
+    sharedName h = "shared_" ++ handlerName h
+    sharedOf owner p = nub [h | (_, c) <- propertyHandlers p, Just h <- [specOf owner c], not (null (handlerAlso h))]
+    specOf owner c = case c of
+      SpecHandler h -> listToMaybe [x | x <- unitHandlers owner, handlerId x == h]
+      RecordingHandler inner -> specOf owner inner
+      ProductionHandler -> Nothing
+    resourceFor p a c = case c of
+      ProductionHandler -> do
+        (_, ability) <- findAbility allUnits a
+        t <- abilityResource ability
+        listToMaybe [(t, "resource" ++ show i) | (i, r) <- zip [0 :: Int ..] (propertyResources p), binderType (resourceBinder r) == t]
+      RecordingHandler inner -> resourceFor p a inner
+      SpecHandler _ -> Nothing
+    made owner p a trait c = case c of
+      SpecHandler _ | Just h <- specOf owner c, h `elem` sharedOf owner p ->
+        Just (sharedName h ++ ".clone() as std::sync::Arc<dyn " ++ trait ++ ">")
+      ProductionHandler | Just (t, local) <- resourceFor p a c, Just (_, ability) <- findAbility allUnits a ->
+        let native = either error id (NativeData.rustDataType planDataDeclarations t)
+            reference = Doc.render Doc.Compact (either error id (schemaType t))
+            owned = if ownerName ability == idText (unitId owner) then "adapter" else Abilities.moduleOfName (ownerName ability)
+            maker = case abilityNative ability of
+              Just parts -> intercalate "::" parts
+              Nothing -> owned ++ "::" ++ productionName ability ++ "::new"
+        in Just ("std::sync::Arc::new(" ++ maker ++ "(<" ++ native ++ " as ls::FromValue>::from_value(lawspec_schema::schema()?.native_value_with_context(" ++
+                 local ++ ".clone(), &" ++ reference ++ ", " ++ show planMachineBits ++ ", ctx)?)?)) as std::sync::Arc<dyn " ++ trait ++ ">")
+      _ -> Nothing
     hasSchema = hasNativeGenerators || not (null planDataDeclarations) || hasDefinitions ||
       any (any containsPayload . propertyExpressions . plannedProperty)
         (concatMap plannedProperties plannedUnits) ||
@@ -539,7 +574,7 @@ emitRustWithBindings minify bindings plan@Plan{..} = either (Left . pure . (\m -
         -- releases them, the last first, even when the case fails or panics.
         let resourceNames = [(binderId (resourceBinder r), "resource" ++ show i) | (i, r) <- zip [0::Int ..] (propertyResources p)]
             withResources = names ++ resourceNames
-            bracket inner [] = pure (statements inner)
+            bracket inner [] = pure (statements (lateInstalls unit p ++ inner))
             -- A shared resource (share R per ...): the runtime keeps one per
             -- scope key, resets it before each later use, holds it for this
             -- case until its guard drops, and releases it at exit.

@@ -1,0 +1,9 @@
+expect: Logs: a new log takes its first record at offset zero [native]
+@@ example/composition/adapter.go
+<<<<<<<
+	store.logs[value0] = append(records, value1)
+	return int64(len(records))
+=======
+	store.logs[value0] = append(records, value1)
+	return int64(len(records) + 1)
+>>>>>>>

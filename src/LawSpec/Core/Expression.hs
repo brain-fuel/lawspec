@@ -195,5 +195,19 @@ validateExpressionWithRegistry registry bits declarations scope expr@Expr{..} = 
     helperType AcquireResource [kind] | expressionTypeOf kind == scalarType "Text" = Right (scalarType "Text")
     helperType ReleaseResource [kind, value] | all ((== scalarType "Text") . expressionTypeOf) [kind, value] = Right (scalarType "Bool")
     helperType FreePort [kind] | expressionTypeOf kind == scalarType "Text" = Right (scalarType "Int32")
+    helperType Append [a, b] | sequenceType (expressionTypeOf a), expressionTypeOf a == expressionTypeOf b = Right (expressionTypeOf a)
+    helperType Slice [x, from, to] | sequenceType (expressionTypeOf x), all ((== scalarType "Integer") . expressionTypeOf) [from, to] = Right (expressionTypeOf x)
+    helperType At [x, i] | expressionTypeOf i == scalarType "Integer" = case expressionTypeOf x of
+      Constructor "List" [TypeArgument t] -> Right (Constructor "Maybe" [TypeArgument t])
+      Constructor "Bytes" [] -> Right (Constructor "Maybe" [TypeArgument (scalarType "UInt8")])
+      _ -> Left "at needs a List or Bytes"
+    helperType Range [lo, hi] | Constructor n [] <- expressionTypeOf lo, isInteger n, expressionTypeOf hi == expressionTypeOf lo =
+      Right (Constructor "List" [TypeArgument (expressionTypeOf lo)])
+    helperType Octets [b] | expressionTypeOf b == scalarType "Bytes" = Right (Constructor "List" [TypeArgument (scalarType "UInt8")])
+    helperType BytesOf [xs] | expressionTypeOf xs == Constructor "List" [TypeArgument (scalarType "UInt8")] = Right (scalarType "Bytes")
+    helperType Utf8 [t] | expressionTypeOf t == scalarType "Text" = Right (scalarType "Bytes")
+    helperType TextOf [n] | Constructor name [] <- expressionTypeOf n, isInteger name = Right (scalarType "Text")
+    helperType Join [sep, parts] | expressionTypeOf sep == scalarType "Text", expressionTypeOf parts == Constructor "List" [TypeArgument (scalarType "Text")] = Right (scalarType "Text")
     helperType b args = Left ("invalid arguments to " ++ builtinName b ++ ": " ++ show (map expressionTypeOf args))
+    sequenceType t = t `elem` [scalarType "Text", scalarType "Bytes"] || case t of Constructor "List" [TypeArgument _] -> True; _ -> False
 

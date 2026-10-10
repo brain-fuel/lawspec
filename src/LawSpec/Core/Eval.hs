@@ -12,6 +12,7 @@ import LawSpec.Core.Types (TypeRegistry, makeRegistry)
 import LawSpec.Core.Value
 import qualified LawSpec.Core.Payload as Payload
 import qualified Data.Map.Strict as M
+import Data.List (intercalate)
 
 type Adapter = Id -> [Scalar] -> Either String Scalar
 
@@ -141,7 +142,47 @@ evaluateValue registry bits adapter bindings = run (M.fromList bindings) where
     Right (DataValue ty (Id (collectionsUnit ++ "::type::Ordering::" ++ tag)) [])
   helper Recorded _ = Left "a recording is compared when the law runs, not by the compiler"
   helper b _ | b `elem` [AcquireResource, ReleaseResource, FreePort] = Left "a resource is acquired when the law runs, not by the compiler"
+  -- Sequences: a List is a structure; Text and Bytes are scalars.
+  helper Append [a@(DataValue (Constructor "List" [TypeArgument element]) _ _), b] = do
+    xs <- listItems a
+    ys <- listItems b
+    Right (listValue element (xs ++ ys))
+  helper Slice [x@(DataValue (Constructor "List" [TypeArgument element]) _ _), from, to] = do
+    xs <- listItems x
+    (i, j) <- sliceBounds (length xs) from to
+    Right (listValue element (take (j - i) (drop i xs)))
+  helper At [x@(DataValue (Constructor "List" [TypeArgument element]) _ _), i] = do
+    xs <- listItems x
+    n <- integerOf i
+    Right (maybeValue element (if n >= 0 && n < fromIntegral (length xs) then Just (xs !! fromIntegral n) else Nothing))
+  helper At [ScalarValue (SSequence "Bytes" units), i] = do
+    n <- integerOf i
+    let octet = scalarType "UInt8"
+    Right (maybeValue octet (if n >= 0 && n < fromIntegral (length units) then Just (ScalarValue (SInteger "UInt8" (fromIntegral (units !! fromIntegral n)))) else Nothing))
+  helper Range [ScalarValue (SInteger t lo), ScalarValue (SInteger _ hi)] =
+    Right (listValue (scalarType t) [ScalarValue (SInteger t n) | n <- [lo .. hi - 1]])
+  helper Octets [ScalarValue (SSequence "Bytes" units)] =
+    Right (listValue (scalarType "UInt8") [ScalarValue (SInteger "UInt8" (fromIntegral u)) | u <- units])
+  helper BytesOf [xs] = do
+    items <- listItems xs
+    units <- mapM integerOf items
+    Right (ScalarValue (SSequence "Bytes" (map fromIntegral units)))
+  helper Join [ScalarValue (SSequence "Text" separator), parts] = do
+    items <- listItems parts
+    texts <- mapM (\v -> case v of ScalarValue (SSequence "Text" t) -> Right t; _ -> Left "join needs texts") items
+    Right (ScalarValue (SSequence "Text" (intercalate separator texts)))
   helper builtin values = ScalarValue <$> (mapM toScalarValue values >>= helperValue bits (builtinName builtin))
+  integerOf v = case v of
+    ScalarValue (SInteger _ n) -> Right n
+    _ -> Left "expected an integer"
+  sliceBounds count from to = do
+    i <- integerOf from
+    j <- integerOf to
+    let clamp n = fromIntegral (max 0 (min (fromIntegral count) n))
+    Right (clamp i, max (clamp i) (clamp j))
+  maybeValue element value = case value of
+    Just v -> DataValue (Constructor "Maybe" [TypeArgument element]) (Id "Maybe::Just") [v]
+    Nothing -> DataValue (Constructor "Maybe" [TypeArgument element]) (Id "Maybe::Nothing") []
   context origin result = case result of
     Left msg -> Left (show origin ++ ": " ++ msg)
     Right v -> Right v

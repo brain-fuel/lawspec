@@ -38,6 +38,9 @@ data Config = Config
   , nativeResult :: Type -> D.Doc -> D.Doc
   -- The statements that install a law's handlers in symbols, for each case.
   , handlerInstalls :: Expanded -> [D.Doc]
+  -- The native handlers made with a resource, installed once the case has
+  -- acquired its resources.
+  , lateHandlerInstalls :: Expanded -> [D.Doc]
   -- Each input's descriptor, for LawSpec's own search (LawSpec.Search):
   -- Nothing when the law takes no part in it.
   , searchDescriptors :: Expanded -> Maybe [String]
@@ -163,7 +166,7 @@ emitTests Config{..} unit laws = do
     expr = expression
     -- A law's resources: each case acquires them, and releases them when it
     -- ends, the last first, even when it fails (defer).
-    resourceDocs e = concat (map resourceDoc (C.propertyResources (original e)))
+    resourceDocs e = concat (map resourceDoc (C.propertyResources (original e))) ++ lateHandlerInstalls e
     -- A shared resource (share R per ...): the runtime keeps one per scope
     -- key, resets it before each later use, and releases it in TestMain.
     resourceDoc r
@@ -312,7 +315,15 @@ emitTests Config{..} unit laws = do
             case C.expressionNode value of C.Constant _ -> True; C.Local _ -> True; _ -> False]
           _ -> []
     structuralProperty fn label e check =
-      let draws = [bind (inputId inp) (generatorWithin (inputRange machineBits inp) (inputType inp) <> text ".Draw(t, " <> quoted (inputId inp) <> text ")") | inp <- inputs e]
+      let draws = [bind (inputId inp) (hinted inp (generatorWithin (inputRange machineBits inp) (inputType inp)) <> text ".Draw(t, " <> quoted (inputId inp) <> text ")") | inp <- inputs e]
+          -- Constant hints (regex samples, compared literals) are mixed in so
+          -- a narrow refinement still meets the filter often enough.
+          hinted inp generator = case [expr hint | plan <- generationPlan e,
+              inputId (domainInput plan) == inputId inp, hint <- generatorHints plan,
+              expressionType hint == inputType inp, expressionType hint /= C.scalarType "Symbol",
+              case C.expressionNode hint of C.Constant _ -> True; _ -> False] of
+            [] -> generator
+            hints -> call "rapid.OneOf" [call "rapid.SampledFrom" [E.array hints],generator]
           base = call "rapid.Custom" [closure "t *rapid.T" "[]LawSpecValue" $
             statements (draws ++ [returned (E.array (map (text . inputId) (inputs e)))])]
           predicates = concatMap inputRefinements (inputs e)

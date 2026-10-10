@@ -112,6 +112,16 @@ when no case holds it. Sharing a resource that is not concurrent under
 A `run` scope is one test process: targets whose runner starts a process per
 test file (JavaScript and TypeScript under `node --test`) share per file.
 
+## Native handlers made with a resource
+
+An ability declared `with T` (`ability Broker with Cluster is ... end`, see
+[abilities](abilities.md#declaring-an-ability)) has its native handlers made
+with a `T`. Each case that runs one acquires a `T` as if the law took it, makes
+every such native handler of the case with that one `T`, and releases it after
+the case. Native handlers of a case then share one cluster, one connection or
+one store, whatever the order they are made in, and a harness may share the
+`T` between cases with `share`.
+
 ## Built-in resources
 
 These come with LawSpec, from the built-in unit `lawspec.resources`:

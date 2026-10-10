@@ -10,6 +10,7 @@ module LawSpec.AbilityEmit.Haskell (emit, productionStub, typesModule, handlersM
 
 import Data.Char (toLower, toUpper)
 import Data.List (intercalate)
+import Control.Monad (forM)
 import qualified LawSpec.Core as C
 import LawSpec.Common (Artifact(..))
 import LawSpec.AbilityNames
@@ -101,9 +102,16 @@ emit minify bits datas units = concat <$> mapM unitFiles (filter wanted units)
     specHandler h = do
       (_, ability) <- maybe (Left ("unknown ability of handler " ++ C.handlerName h)) Right (C.findAbility units (C.handlerAbility h))
       let name = handlerFunction h
-      pure (line ("-- | The spec handler " ++ C.handlerName h ++ " for " ++ C.abilityName ability ++ ".") <> D.hardline <>
+          made = Definitions.specHandlerCall units (C.handlerId h)
+      -- A handler of several abilities: its state, and a record for each
+      -- ability over it, so a law makes the state once.
+      others <- forM (C.handlerAbilities h) $ \ref -> maybe (Left ("unknown ability of handler " ++ C.handlerName h)) (Right . snd) (C.findAbility units ref)
+      let parts = if null (C.handlerAlso h) then [] else
+            line (name ++ "State = " ++ made ++ "State") :
+            [line (name ++ C.abilityName a ++ " = " ++ made ++ C.abilityName a) | a <- others]
+      pure (D.joinWith D.hardline ([line ("-- | The spec handler " ++ C.handlerName h ++ " for " ++ C.abilityName ability ++ ".") <> D.hardline <>
         line (name ++ " :: LS.SymbolContext -> P.IO " ++ interfaceName ability) <> D.hardline <>
-        line (name ++ " = " ++ Definitions.specHandlerCall units (C.handlerId h)))
+        line (name ++ " = " ++ made)] ++ parts))
     nativeType ty = Native.haskellDataType datas ty
     parenthesized t = if ' ' `elem` t && take 1 t /= "(" then "(" ++ t ++ ")" else t
     operationType ty = do
@@ -146,6 +154,9 @@ productionStub datas a = do
                  (if null args then "" else "\\" ++ unwords (replicate (length args) "_") ++ " -> ") ++ "P.error " ++ show op
                | (i, (op, ty)) <- zip [0 :: Int ..] (C.abilityOperations a), let (args, _) = C.functionType ty]
   _ <- mapM (Native.haskellDataType datas . snd . C.functionType . snd) (C.abilityOperations a)
+  -- ability A with T: the handler is made with the case's T.
+  made <- traverse (Native.haskellDataType datas) (C.abilityResource a)
   pure (D.text ("-- | The native handler of " ++ displayName a ++ ": " ++ intercalate ", " (map fst (C.abilityOperations a)) ++ ".") <> D.hardline <>
-    D.text (name ++ " :: P.IO Abilities." ++ interfaceName a) <> D.hardline <>
-    D.text (name ++ " = P.pure Abilities." ++ interfaceName a) <> D.nest 2 (D.hardline <> D.joinWith D.hardline (map D.text fields) <> D.hardline <> D.text "}"))
+    D.text (name ++ " :: " ++ maybe "" (\t -> parenthesizedType t ++ " -> ") made ++ "P.IO Abilities." ++ interfaceName a) <> D.hardline <>
+    D.text (name ++ maybe "" (const " _resource") made ++ " = P.pure Abilities." ++ interfaceName a) <> D.nest 2 (D.hardline <> D.joinWith D.hardline (map D.text fields) <> D.hardline <> D.text "}"))
+  where parenthesizedType t = if ' ' `elem` t && take 1 t /= "(" then "(" ++ t ++ ")" else t

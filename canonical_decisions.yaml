@@ -461,3 +461,11 @@ DEC-recovery-not-regeneration:
     Runtimes were recovered verbatim from the embedded RuntimeSources.hs rather than regenerated from the committed 0.8 baseline; lost tests and harnesses were reconstructed and re-verified fresh, historical logs guiding but never substituting for verification, and no claim was made that the original suite was restored. Recorded in to_be_removed/RECOVERY.md.
   opened: 0.9.0
   decided: 0.9.0
+
+DEC-field-access-desugars-to-match:
+  status: decided
+  question: How do field access (b.f) and record update (b with f = v) reach Core and the targets?
+  answer: |
+    Inference makes each a match on the single constructor of the value's type, once the type is known, so Core, the totality audit and every emitter see only matches and constructions. The totality audit reads a field match as an atom (Field), so a guard on b.f is a fact about the field. Recorded in docs/reference/language/types-and-data.md.
+  opened: 0.21.1
+  decided: 0.21.1

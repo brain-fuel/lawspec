@@ -79,10 +79,18 @@ emit minify bits datas units = do
         line ("interface " ++ interfaceName a ++ " ") <> D.block 4 (D.joinWith D.hardline methods))
     codec ty = Native.kotlinCodecDocWithContext (line "symbols") datas ty
     specHandler u h = do
-      ability <- maybe (Left ("unknown ability of handler " ++ C.handlerName h)) Right
-        (unitAbility u (C.handlerAbility h))
+      -- A handler of several abilities answers all their operations.
+      answered <- mapM (\ref -> maybe (Left ("unknown ability of handler " ++ C.handlerName h)) Right (unitAbility u ref)) (C.handlerAbilities h)
+      let ability = case answered of
+            first : _ -> first { C.abilityOperations = concatMap C.abilityOperations answered
+                               , C.abilityName = intercalate ", " (map C.abilityName answered) }
+            [] -> C.failAbility
       initialState <- case C.handlerState h of
         Nothing -> pure (line "null")
+        -- A computed start value is its own definition (<handler>Start).
+        Just (_, C.Expr _ (C.ExternalCall startDefinition _) _) -> do
+          evaluate <- maybe (Left ("unresolved start of " ++ C.handlerName h)) Right (lookup startDefinition calls)
+          pure (E.call evaluate [line "symbols", line "LawSpecRuntime.absent(\"Unit\")"])
         Just (_, start) -> E.renderExpression datas bits (const "_unbound") (\_ _ -> Left "a handler's start value calls nothing") start
       let name = specName h
       methods <- mapM (\(op, ty) -> do
@@ -104,7 +112,7 @@ emit minify bits datas units = do
               | otherwise = [line "return " <> resultCodec <> line ".decode(result)"]
         pure (line "override " <> s <> line " " <> D.block 4 (D.joinWith D.hardline (outcome ++ returned)))) (C.abilityOperations ability)
       pure (line ("/** The spec handler " ++ C.handlerName h ++ " for " ++ C.abilityName ability ++ ". */") <> D.hardline <>
-        line ("class " ++ name ++ "(private val symbols: MutableMap<String, Any>) : " ++ abilitiesObjectOf (ownerName ability) ++ "." ++ interfaceName ability ++ " ") <>
+        line ("class " ++ name ++ "(private val symbols: MutableMap<String, Any>) : " ++ intercalate ", " [abilitiesObjectOf (ownerName a) ++ "." ++ interfaceName a | a <- answered] ++ " ") <>
         D.block 4 (D.joinWith (D.hardline <> D.hardline)
           (line "private var state: LawSpecRuntime.Value? = " <> initialState : methods)))
     -- A typed spec handler keeps its state typed (in the shared JVM typed
@@ -179,6 +187,9 @@ productionStub datas u a = do
     pure (D.text ("override fun " ++ op) <>
       D.delimitTrailing 4 "(" ")" [D.text ("value" ++ show i ++ ": ") <> t | (i, t) <- zip [0 :: Int ..] types] <>
       D.text ": " <> resultType <> D.text (" = TODO(" ++ show op ++ ")"))) (C.abilityOperations a)
+  -- ability A with T: the handler is made with the case's T.
+  made <- traverse (Native.kotlinDataTypeDoc datas) (C.abilityResource a)
   pure (D.text ("/** The native handler of " ++ displayName a ++ ": " ++ intercalate ", " (map fst (C.abilityOperations a)) ++ ". */") <> D.hardline <>
-    D.text ("class " ++ productionName a ++ " : " ++ abilitiesObject u ++ "." ++ interfaceName a ++ " ") <>
+    D.text ("class " ++ productionName a) <> maybe mempty (\t -> D.text "(val resource: " <> t <> D.text ")") made <>
+    D.text (" : " ++ abilitiesObject u ++ "." ++ interfaceName a ++ " ") <>
     D.block 4 (D.joinWith D.hardline methods))

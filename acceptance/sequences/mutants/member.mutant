@@ -1,0 +1,7 @@
+expect: a member id starts with its client
+@@ examples/specs/sequences.lawspec
+<<<<<<<
+definition memberId (client :: Text) (n :: Int32) :: Text is client ++ "-" ++ prelude.textOf n end
+=======
+definition memberId (client :: Text) (n :: Int32) :: Text is client ++ "_" ++ prelude.textOf n end
+>>>>>>>

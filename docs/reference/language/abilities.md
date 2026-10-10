@@ -84,8 +84,25 @@ end
   where code calls it, and every handler owes its result's refinement: each
   becomes a law, `` Meter: reading gives what its type says ``, checked for
   each handler like the ability's own laws.
+- An operation may fail, as a signature may: `send :: Record -> Int64 fails
+  with KafkaError`. Code that performs it fails with `KafkaError` too, and a
+  law catches it with `prelude.attempt` or `fails with`. A spec handler's
+  clause for it may `raise`; a native handler raises the runtime's `Fail` (see
+  [Failing](#failing)). A clause that fails with a failure its operation does
+  not name is an error.
 - The `laws` section is optional. Its laws are written as usual, and must be
   closed: quantify their values with `` `for all` ``.
+
+An ability's native handlers may share a resource, written after its name:
+`ability Broker with Cluster is ... end`. Each case that runs a native
+handler of `Broker` acquires one `Cluster` (by its [resource
+declaration](resources.md)) and makes the handler with it, as every other
+native handler made `with Cluster` in the case; a law that takes a `Cluster`
+itself gets the same one. Native handlers made with one resource are one
+system, so a law never runs some of them natively and others under spec
+handlers. The production handler takes the resource when it is made:
+`BrokerHandler(cluster)` in Python, `NewBrokerHandler(cluster)` in Go,
+`BrokerHandler::new(cluster)` in Rust, `brokerHandler cluster` in Haskell.
 
 An ability may take type parameters, written like a type's:
 `ability Store (a :: Type) is put :: a -> Unit ... end`. A unit may use it at
@@ -126,13 +143,14 @@ law's handlers as its `handlers`.
 - A definition that uses `raise` must say `fails with E`. Raising a value of
   another type is an error.
 - `prelude.attempt e` evaluates `e` and gives `Right` of its value, or `Left`
-  of the failure it raised. It may be used in laws.
+  of the failure it raised. It may be used in laws and definitions; a
+  definition that attempts what fails does not fail itself.
 - `e fails with C _` holds when `e` raises a failure built by `C`; see
   [typed failures](failures.md).
 - A failure no law catches fails the test, naming the failure.
 
-A native adapter that `fails with E` fails by raising the runtime's `Fail`
-with a native `E`:
+A native adapter that `fails with E`, or a native handler's operation that
+fails with `E`, fails by raising the runtime's `Fail` with a native `E`:
 
 | Target | Native code fails with |
 | --- | --- |

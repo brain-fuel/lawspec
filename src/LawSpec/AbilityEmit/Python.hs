@@ -10,7 +10,7 @@ module LawSpec.AbilityEmit.Python (emit, modulePath, moduleName, moduleNameOf, p
 
 import Data.List (intercalate)
 import qualified LawSpec.Core as C
-import LawSpec.Common (Artifact(..))
+import LawSpec.Common (Artifact(..), pythonUnitFile)
 import LawSpec.AbilityNames
 import LawSpec.PythonTypes (pythonDataTypeDoc, pythonTypeReferenceDoc)
 import qualified LawSpec.PythonDefinitions as Definitions
@@ -26,8 +26,8 @@ moduleName = moduleNameOf . C.idText . C.unitId
 moduleNameOf :: String -> String
 moduleNameOf unit = "lawspec_abilities." ++ unit
 
-modulePath :: C.Unit -> String
-modulePath u = "src/lawspec_abilities/" ++ map (\c -> if c == '.' then '/' else c) (C.idText (C.unitId u)) ++ ".py"
+modulePath :: [C.Unit] -> C.Unit -> String
+modulePath units u = "src/lawspec_abilities/" ++ pythonUnitFile (map (C.idText . C.unitId) units) (C.idText (C.unitId u))
 
 emit :: Bool -> Int -> [C.DataDeclaration] -> [C.Unit] -> Either String [Artifact]
 emit minify bits datas units = mapM unitModule (filter unitAbilityPieces units)
@@ -57,7 +57,7 @@ emit minify bits datas units = mapM unitModule (filter unitAbilityPieces units)
             [D.text "import lawspec_definition_bodies as _definitions" | not (null (C.unitHandlers u))] ++
             [D.hardline <> D.text "_lawspec_schema = data.make_schema()"])
           body = D.joinWith (D.hardline <> D.hardline <> D.hardline) (protocols ++ handlers ++ recordings)
-      pure (Artifact (modulePath u) (D.render layout (header <> D.hardline <> D.hardline <> D.hardline <> body <> D.hardline)) "generated" "source")
+      pure (Artifact (modulePath units u) (D.render layout (header <> D.hardline <> D.hardline <> D.hardline <> body <> D.hardline)) "generated" "source")
     parameters ty = do
       let (args, result) = C.functionType ty
       types <- mapM (pythonDataTypeDoc datas) args
@@ -69,10 +69,18 @@ emit minify bits datas units = mapM unitModule (filter unitAbilityPieces units)
       pure (E.suite (D.text ("class " ++ interfaceName a ++ "(_typing.Protocol)"))
         (D.joinWith D.hardline (D.text ("\"\"\"The " ++ interfaceName a ++ " ability: a handler answers each of its operations.\"\"\"") : methods)))
     specHandler u h = do
-      ability <- maybe (Left ("unknown ability of handler " ++ C.handlerName h)) Right
-        (unitAbility u (C.handlerAbility h))
+      -- A handler of several abilities answers all their operations.
+      answered <- mapM (\ref -> maybe (Left ("unknown ability of handler " ++ C.handlerName h)) Right (unitAbility u ref)) (C.handlerAbilities h)
+      let ability = case answered of
+            first : _ -> first { C.abilityOperations = concatMap C.abilityOperations answered
+                               , C.abilityName = intercalate ", " (map C.abilityName answered) }
+            [] -> C.failAbility
       initialState <- case C.handlerState h of
         Nothing -> pure []
+        -- A computed start value is its own definition (<handler>Start).
+        Just (_, C.Expr _ (C.ExternalCall startDefinition _) _) -> do
+          evaluate <- maybe (Left ("unresolved start of " ++ C.handlerName h)) Right (lookup startDefinition calls)
+          pure [D.text "symbols = self._symbols", D.text "self._state = " <> E.call evaluate [D.text "symbols", E.scalarLiteral (SAbsent "Unit")]]
         Just (_, start) -> do
           value <- E.renderExpression datas bits (const "_unbound") (\_ _ -> Left "a handler's start value calls nothing") start
           pure [D.text "symbols = self._symbols", D.text "self._state = " <> value]
@@ -119,6 +127,13 @@ emit minify bits datas units = mapM unitModule (filter unitAbilityPieces units)
 -- adapter module.
 productionStub :: [C.DataDeclaration] -> C.Ability -> Either String String
 productionStub datas a = do
+  -- ability A with T: the handler is made with the case's T.
+  made <- case C.abilityResource a of
+    Nothing -> pure []
+    Just t -> do
+      resourceType <- pythonDataTypeDoc datas t
+      pure [D.text "", E.suite (D.text "def __init__(self, resource: " <> resourceType <> D.text ") -> None")
+        (D.text "self.resource = resource")]
   methods <- mapM (\(op, ty) -> do
     let (args, result) = C.functionType ty
     types <- mapM (pythonDataTypeDoc datas) args
@@ -128,4 +143,4 @@ productionStub datas a = do
       D.text " -> " <> resultType) (D.text ("raise NotImplementedError(" ++ show op ++ ")")))) (C.abilityOperations a)
   pure (D.render (D.Pretty 79) (E.suite (D.text ("class " ++ productionName a))
     (D.joinWith D.hardline (D.text ("\"\"\"The native handler of " ++ displayName a ++ ": " ++
-      intercalate ", " (map fst (C.abilityOperations a)) ++ ".\"\"\"") : concatMap (\m -> [D.text "", m]) methods))) ++ "\n")
+      intercalate ", " (map fst (C.abilityOperations a)) ++ ".\"\"\"") : made ++ concatMap (\m -> [D.text "", m]) methods))) ++ "\n")

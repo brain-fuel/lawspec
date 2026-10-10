@@ -1,0 +1,9 @@
+expect: Logs: a new log takes its first record at offset zero [native]
+@@ src/example/composition.rs
+<<<<<<<
+        records.push(value1);
+        (records.len() - 1) as i64
+=======
+        records.push(value1);
+        records.len() as i64
+>>>>>>>

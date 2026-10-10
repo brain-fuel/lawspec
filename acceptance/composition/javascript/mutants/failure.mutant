@@ -1,0 +1,7 @@
+expect: Logs: an unknown log refuses records [native]
+@@ src/example/composition.mjs
+<<<<<<<
+    if (records === undefined) throw new ls.Fail(new data.ProblemUnknownLog());
+=======
+    if (records === undefined) throw new ls.Fail(new data.ProblemEmptyRecord());
+>>>>>>>

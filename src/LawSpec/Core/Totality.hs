@@ -1,6 +1,6 @@
 -- | Shared totality obligations after typing. This proof view contains no surface
 -- syntax, runtime representation choices, or executable code-generation nodes.
-module LawSpec.Core.Totality (Proof(..), ProofDefinition(..), ProofContract(..), ProofConstructorContract(..), audit, auditWithContracts, auditWithConstructorContracts, auditDeferring, substituteProof, integerAssumptions, integerConversion, payloadPredicate) where
+module LawSpec.Core.Totality (Proof(..), ProofDefinition(..), ProofContract(..), ProofConstructorContract(..), audit, auditWithContracts, auditWithConstructorContracts, auditDeferring, auditDeferringWithResults, substituteProof, integerAssumptions, integerConversion, payloadPredicate) where
 
 import LawSpec.IndexTerm (IndexGuard(..), IndexRelation(..), IndexTerm(..), IndexOperation(..))
 import Control.Monad (unless, forM_, foldM, forM)
@@ -50,6 +50,13 @@ data Proof
   | TypedDomain [Proof] Proof
   | IsPresent Proof
   | PresentValue Proof
+  -- A built-in pure function of its values, such as length: total, and an
+  -- atom of the arithmetic, so a guard on it is a fact about it.
+  | Opaque String [Proof]
+  -- b.f, as the field syntax wrote it: the field of a value's single
+  -- constructor at a position, with the range of its integer type. It is
+  -- an atom of the arithmetic, so a guard on b.f is a fact about it.
+  | Field Id Int (Maybe Integer, Maybe Integer) Proof
   deriving (Eq, Show)
 
 -- | Each definition with the domains of its arguments, since a call is safe only
@@ -103,7 +110,14 @@ auditWithConstructorContracts constructors contracts definitions =
 -- to be checked on each result at runtime instead.
 auditDeferring :: [ProofConstructorContract] -> [ProofContract]
   -> [ProofDefinition] -> Either [Diagnostic] [(Id, Int)]
-auditDeferring constructors contracts definitions = do
+auditDeferring constructors contracts definitions = auditDeferringWithResults constructors contracts definitions M.empty
+
+-- | As auditDeferring, knowing the range of each definition's integer result
+-- type: a call's result lies in it, since every target checks the result's
+-- conversion.
+auditDeferringWithResults :: [ProofConstructorContract] -> [ProofContract]
+  -> [ProofDefinition] -> M.Map Id (Maybe Integer, Maybe Integer) -> Either [Diagnostic] [(Id, Int)]
+auditDeferringWithResults constructors contracts definitions results = do
   let ids = map proofId definitions
       known = S.fromList ids
       signatures = M.fromList [(proofId d,proofArguments d) | d <- definitions]
@@ -112,6 +126,7 @@ auditDeferring constructors contracts definitions = do
         [argument] <- [proofArguments d], DataMatch (Variable subject) branches <- [stripDomains (proofBody d)],
         subject == argument]
       initialFacts = emptyFacts{constructorContracts=constructorTable,unfoldings=unfoldable,
+        resultBounds=results,
         naturalMeasures=naturalFixpoint S.empty,
         measureIds=M.fromListWith (++) [(templateName (proofName d),[proofId d]) | d <- definitions],
         guarantees=M.fromList [(contractOwner c,(parameters,contractResult c,postconditions c)) | c <- contracts,
@@ -178,12 +193,13 @@ auditDeferring constructors contracts definitions = do
     forM_ (concatMap calls (expressions d)) $ \callee -> unless (callee `S.member` known)
       (Left ("total definition calls an adapter or unknown definition: " ++ idText callee))
     let roots = M.fromList [(name, (index, False)) | (index,name) <- zip [0..] (proofArguments d)]
+        bounded = initialFacts{parameterBounds=M.fromList [(name, domainBounds name (proofArgumentDomains d)) | name <- proofArguments d]}
         visit facts expression = walk signatures contractTable (proofId d) roots facts
           (normalizeCalls (M.keys roots ++ S.toList (usedVariables facts)) expression)
         contract = M.lookup (proofId d) contractTable
     domains <- foldM (\facts condition -> do
       _ <- visit facts condition
-      pure (assume True condition facts)) initialFacts (proofArgumentDomains d)
+      pure (assume True condition facts)) bounded (proofArgumentDomains d)
     facts <- foldM (\facts condition -> do
       _ <- visit facts condition
       pure (assume True condition facts)) domains (maybe [] preconditions contract)
@@ -270,6 +286,8 @@ children expression = case expression of
   TypedDomain facts value -> facts ++ [value]
   IsPresent value -> [value]
   PresentValue value -> [value]
+  Opaque _ values -> values
+  Field _ _ _ value -> [value]
 
 constructorReferences :: Proof -> [Id]
 -- Traversal itself inspects stored fields, without borrowing their constructor
@@ -309,9 +327,14 @@ data Facts = Facts
   -- Each definition's parameters, result binder and postconditions: a call
   -- a goal mentions satisfies its definition's postconditions.
   , guarantees :: M.Map Id ([Id],Id,[Proof])
+  -- Each definition's integer result range (see proofResultBounds).
+  , resultBounds :: M.Map Id (Maybe Integer, Maybe Integer)
+  -- The bounds of the audited definition's integer parameters, which a
+  -- recursive call on a smaller integer must stay within.
+  , parameterBounds :: M.Map Id (Maybe Integer, Maybe Integer)
   }
 emptyFacts :: Facts
-emptyFacts = Facts S.empty S.empty [] [] [] S.empty [] [] M.empty [] M.empty S.empty M.empty S.empty M.empty M.empty
+emptyFacts = Facts S.empty S.empty [] [] [] S.empty [] [] M.empty [] M.empty S.empty M.empty S.empty M.empty M.empty M.empty M.empty
 
 -- | Instances of one template share their recursion check.
 sameDefinition :: Id -> Id -> Bool
@@ -461,9 +484,10 @@ walk signatures contracts self provenance facts expression = case expression of
         unless (entails facts (substituteProof (M.fromList (zip parameters arguments)) condition))
           (Left ("definition call precondition could not be proved: " ++ idText callee))
     let smaller index value = valueProvenance provenance value == Just (index, True)
-        descending = S.fromList [index | (index,argument) <- zip [0..] arguments, smaller index argument]
+        structural = [index | (index,argument) <- zip [0..] arguments, smaller index argument]
+        descending = S.fromList (structural ++ numericDescent provenance facts arguments)
     if not (sameDefinition callee self) then pure nested
-    else if S.null descending then Left "recursive call has no strict structural descent"
+    else if S.null descending then Left "recursive call has no strict structural descent, and no integer argument moves strictly toward a bound"
     else pure (descending : nested)
   Logical op left right -> do
     before <- recur left
@@ -509,6 +533,42 @@ walk signatures contracts self provenance facts expression = case expression of
     recur = walk signatures contracts self provenance facts
     branch value (binders, body) =
       walk signatures contracts self (branchProvenance provenance value binders) facts body
+
+-- | The measures of a recursive call on integers. An integer parameter
+-- decreases when its argument is smaller and still at least the
+-- parameter's lower bound (0 for a natural, the type's least value for a
+-- bounded integer, or a proven 0); it increases when its argument is larger
+-- and at most its upper bound, or at most another parameter passed on
+-- unchanged. Each kind of measure is its own number, so calls that move a
+-- parameter in different directions share none.
+numericDescent :: Provenance -> Facts -> [Proof] -> [Int]
+numericDescent provenance facts arguments =
+  [ measure
+  | (index, argument) <- zip [0..] arguments
+  , Just parameter <- [rootAt index]
+  , let (lower, upper) = M.findWithDefault (Nothing, Nothing) parameter (parameterBounds facts)
+        holds op a b = entails facts (ExactComparison op a b)
+        constant n = Literal (SInteger "Integer" n)
+        down = holds Less argument (Variable parameter) &&
+          (maybe False (holds GreaterEqual argument . constant) lower || holds GreaterEqual argument (constant 0))
+        upToType = holds Greater argument (Variable parameter) && maybe False (holds LessEqual argument . constant) upper
+        upToParameter = [ j | (j, other) <- zip [0..] arguments, j /= index, Just limit <- [rootAt j]
+                        , stripDomains other == Variable limit || other == Variable limit
+                        , holds Greater argument (Variable parameter), holds LessEqual argument (Variable limit) ]
+  , measure <- [1000 + index | down] ++ [2000 + index | upToType] ++ [3000 + 64 * j + index | j <- take 1 upToParameter] ]
+  where
+    rootAt index = case [name | (name, (i, False)) <- M.toList provenance, i == index] of
+      name : _ -> Just name
+      [] -> Nothing
+
+-- | The constant bounds a parameter's domain facts give it.
+domainBounds :: Id -> [Proof] -> (Maybe Integer, Maybe Integer)
+domainBounds name domains =
+  ( maximumMaybe [n | ExactComparison GreaterEqual (Variable v) (Literal (SInteger _ n)) <- domains, v == name]
+  , minimumMaybe [n | ExactComparison LessEqual (Variable v) (Literal (SInteger _ n)) <- domains, v == name] )
+  where
+    maximumMaybe xs = if null xs then Nothing else Just (maximum xs)
+    minimumMaybe xs = if null xs then Nothing else Just (minimum xs)
 
 -- | Guard auditing precedes call auditing, so a presentValue projection is a
 -- genuine strict subterm. Results of calls still have no argument provenance.
@@ -606,6 +666,16 @@ dataBranches scope facts value branches = case known of
           (names,aliases,_) = foldl allocate ([],M.empty,binders ++ M.keys scope) binders
           renamed = substituteProof aliases body
           fields = map Variable names
+          -- Each field is what reading it from the value gives (b.f), so a
+          -- guard on b.f is a fact about the field in this branch.
+          -- Only for fields a known fact reads, so matches on values no
+          -- guard reads add nothing for the solver to carry.
+          mentioned = S.fromList [ projectionAtom (unwrapped v) t i | fact <- truths facts, term <- universe fact
+                                 , Field t i _ v <- [term] ]
+          universe term = term : concatMap universe (children term)
+          projected = [ ExactComparison Equal (Variable name) (Variable atom)
+                      | faithful value, (index, name) <- zip [0..] names
+                      , let atom = projectionAtom (unwrapped value) tag index, atom `S.member` mentioned ]
           local = branchProvenance scope value names
           selected = case variableIdentity value of
             Just identity -> facts{constructorValues=M.insert identity (tag,fields) (constructorValues facts)}
@@ -614,7 +684,7 @@ dataBranches scope facts value branches = case known of
           conditions = [substituteProof (M.fromList (zip parameters fields)) predicate
             | (identity,candidate,parameters,predicate) <- constructorPredicates facts,
               Just identity == variableIdentity value, candidate == tag, length parameters == length fields]
-      in (local,siblingFacts (foldl (flip (assume True)) (payloadConstructorFacts (constructorFacts tracked tag fields) value tag fields) conditions) tag fields,renamed)
+      in (local,siblingFacts (foldl (flip (assume True)) (payloadConstructorFacts (constructorFacts tracked tag fields) value tag fields) (conditions ++ projected)) tag fields,renamed)
 
 knownNonzero :: Facts -> Proof -> Bool
 knownNonzero facts expression = direct || case linear expression of
@@ -719,7 +789,12 @@ linear expression = case expression of
   NarrowInteger _ _ value -> linear value
   Integral value -> linear value
   Call callee arguments -> Just (R.variable (callAtom callee arguments))
+  Opaque name values -> Just (R.variable (Id ("::opaque::" ++ name ++ show (map unwrapped values))))
+  Field tag index _ value -> Just (R.variable (projectionAtom (unwrapped value) tag index))
   _ -> Nothing
+
+projectionAtom :: Proof -> Id -> Int -> Id
+projectionAtom value tag index = Id ("::field::" ++ idText tag ++ "::" ++ show index ++ "::" ++ show value)
 
 constantFactor :: Proof -> Maybe Rational
 constantFactor expression = case expression of
@@ -786,9 +861,35 @@ entails facts expression
 -- dividend.
 derivedFacts :: Facts -> Proof -> [Proof]
 derivedFacts facts expression = concatMap guarantee (nub calls') ++ concatMap unfolded (nub calls') ++ concatMap bound (nub quotients)
-  ++ concatMap productBounds (nub products)
+  ++ concatMap productBounds (nub products) ++ concatMap remainderBounds (nub remainders) ++ concatMap measureBounds (nub measures)
+  ++ nub fieldDomains
   where
     terms = universe expression
+    remainders = [(a, b) | Division False Remainder a b <- terms]
+    measures = [term | term@(Opaque name _) <- terms, name `elem` ["length", "size"]]
+    -- A field read from a value lies in its field's domain.
+    fieldDomains = concat [ [ExactComparison GreaterEqual term (integer n) | Just n <- [lo]] ++ [ExactComparison LessEqual term (integer n) | Just n <- [hi]]
+                          | term@(Field _ _ (lo, hi) _) <- terms ]
+    -- A length or a size is never negative, and fits a 64-bit count.
+    measureBounds term = [ExactComparison GreaterEqual term (integer 0), ExactComparison LessEqual term (integer (2 ^ (63 :: Int) - 1))]
+    -- A remainder takes the dividend's sign and is smaller than the divisor
+    -- in magnitude: rem a b lies between 0 and b - 1 when a >= 0 and b > 0.
+    remainderBounds (a, b) =
+      let r = Division False Remainder a b
+          -- Only what is already known, so nested remainders stay cheap.
+          holds op x y = maybe False (\c -> R.prove 10000 (constraints facts) c == R.Proven) (predicate (ExactComparison op x y))
+          minus x n = ExactArithmetic Subtract x (integer n)
+          plus x n = ExactArithmetic Add x (integer n)
+          negative x = ExactArithmetic Subtract (integer 0) x
+          nonnegative = holds GreaterEqual a (integer 0)
+          nonpositive = holds LessEqual a (integer 0)
+          sign = [ExactComparison GreaterEqual r (integer 0) | nonnegative] ++ [ExactComparison LessEqual r (integer 0) | nonpositive] ++
+                 [ExactComparison LessEqual r a | nonnegative] ++ [ExactComparison GreaterEqual r a | nonpositive]
+      in if holds Greater b (integer 0)
+           then sign ++ [ExactComparison LessEqual r (minus b 1), ExactComparison GreaterEqual r (negative (minus b 1))]
+         else if holds Less b (integer 0)
+           then sign ++ [ExactComparison LessEqual r (negative (plus b 1)), ExactComparison GreaterEqual r (plus b 1)]
+         else []
     products = [term | term@(ExactArithmetic Multiply _ _) <- terms]
     -- A product of bounded factors lies between the least and greatest of
     -- the products of their bounds (interval arithmetic), which the linear
@@ -811,7 +912,9 @@ derivedFacts facts expression = concatMap guarantee (nub calls') ++ concatMap un
     bound (a, b)
       | entails facts (ExactComparison GreaterEqual a (integer 0)) && entails facts (ExactComparison Greater b (integer 0)) =
           let q = Division False Quotient a b
-          in [ExactComparison GreaterEqual q (integer 0), ExactComparison LessEqual q a]
+          in [ExactComparison GreaterEqual q (integer 0), ExactComparison LessEqual q a] ++
+             -- Halving a positive number makes it smaller.
+             [ExactComparison Less q a | entails facts (ExactComparison GreaterEqual b (integer 2)), entails facts (ExactComparison Greater a (integer 0))]
       | otherwise = []
 
 -- | The closed range an integer term lies in, from its constants, the
@@ -939,6 +1042,8 @@ substituteProof replacements expression = case expression of
   TypedDomain domains value -> TypedDomain (map recur domains) (recur value)
   IsPresent value -> IsPresent (recur value)
   PresentValue value -> PresentValue (recur value)
+  Opaque name values -> Opaque name (map recur values)
+  Field tag index bounds value -> Field tag index bounds (recur value)
   where
     recur = substituteProof replacements
     branch (binders,body) =
@@ -1009,6 +1114,8 @@ faithful expression = case expression of
   Integral value -> faithful value
   IsPresent value -> faithful value
   PresentValue value -> faithful value
+  Opaque _ values -> all faithful values
+  Field _ _ _ value -> faithful value
   _ -> False
 
 
@@ -1106,6 +1213,8 @@ normalizeCalls scope expression = evalState (go expression pure)
       Integral value -> go value (continuation . Integral)
       IsPresent value -> go value (continuation . IsPresent)
       PresentValue value -> go value (continuation . PresentValue)
+      Opaque name terms -> values terms (continuation . Opaque name)
+      Field tag index bounds value -> go value (continuation . Field tag index bounds)
       _ -> continuation term
 
 -- | Only walk's successful call case may make these guarantees available. A
@@ -1129,9 +1238,12 @@ callResultFacts signatures contracts facts result callee arguments =
       -- Checked definitions are pure: equal calls have equal results, and a call
       -- on a known constructor equals the selected branch of its definition.
       equal value = ExactComparison Equal (Variable result) value
+      (low, high) = M.findWithDefault (Nothing, Nothing) callee (resultBounds facts)
       evidence = equal existing : [equal unfolded | Just unfolded <- [unfold facts callee arguments]] ++
         [ExactComparison GreaterEqual (Variable result) (Literal (SInteger "Integer" 0))
-          | callee `S.member` naturalMeasures facts]
+          | callee `S.member` naturalMeasures facts] ++
+        [ExactComparison GreaterEqual (Variable result) (Literal (SInteger "Integer" n)) | Just n <- [low]] ++
+        [ExactComparison LessEqual (Variable result) (Literal (SInteger "Integer" n)) | Just n <- [high]]
       -- A fact about the call is also a fact about its named result. The
       -- linear solver relates the two through the equation above, but a
       -- non-linear atom such as call * k is matched by its text, so facts are

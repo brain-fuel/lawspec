@@ -77,10 +77,19 @@ emit minify bits datas units = case clashes of
       pure (argumentCodecs, resultCodec)
     prelude = [line ("schema := " ++ schema), line ("bits := " ++ show bits), line "_, _ = schema, bits"]
     specHandler h = do
-      ability <- maybe (Left ("unknown ability of handler " ++ C.handlerName h)) Right
-        (lookup (C.handlerAbility h) [(C.abilityInstance a, a) | a <- everyAbility])
+      -- A handler of several abilities answers all their operations.
+      answered <- mapM (\ref -> maybe (Left ("unknown ability of handler " ++ C.handlerName h)) Right
+        (lookup ref [(C.abilityInstance a, a) | a <- everyAbility])) (C.handlerAbilities h)
+      let ability = case answered of
+            first : _ -> first { C.abilityOperations = concatMap C.abilityOperations answered
+                               , C.abilityName = intercalate ", " (map C.abilityName answered) }
+            [] -> C.failAbility
       initialState <- case C.handlerState h of
         Nothing -> pure []
+        -- A computed start value is its own definition (<handler>Start).
+        Just (_, C.Expr _ (C.ExternalCall startDefinition _) _) -> do
+          evaluate <- maybe (Left ("unresolved start of " ++ C.handlerName h)) Right (lookup startDefinition calls)
+          pure [line "handler.state = " <> E.call evaluate [line "symbols", line "lsAbsent(\"Unit\")"]]
         Just (_, start) -> do
           value <- E.renderExpression datas bits schema (const "_unbound") (\_ _ -> Left "a handler's start value calls nothing") start
           pure [line "handler.state = " <> value]
@@ -201,7 +210,12 @@ productionStub datas a = do
     pure ("func (handler *" ++ productionName a ++ ") " ++ methodName op ++ "(" ++
       intercalate ", " ["value" ++ show i ++ " " ++ t | (i, t) <- zip [0 :: Int ..] types] ++ ")" ++ resultType ++
       " {\n\tpanic(" ++ show op ++ ")\n}\n")) (C.abilityOperations a)
+  -- ability A with T: the handler is made with the case's T.
+  resource <- traverse (Native.goDataType datas) (C.abilityResource a)
+  let fields = maybe "struct{}" (\t -> "struct {\n\tResource " ++ t ++ "\n}") resource
+      parameter = maybe "" ("resource " ++) resource
+      made = maybe "{}" (const "{Resource: resource}") resource
   pure ("\n// " ++ productionName a ++ " is the native handler of " ++ C.abilityName a ++ ": " ++
-    intercalate ", " (map fst (C.abilityOperations a)) ++ ".\ntype " ++ productionName a ++ " struct{}\n\n" ++
+    intercalate ", " (map fst (C.abilityOperations a)) ++ ".\ntype " ++ productionName a ++ " " ++ fields ++ "\n\n" ++
     "// New" ++ productionName a ++ " makes the native handler the generated tests use.\nfunc New" ++ productionName a ++
-    "() " ++ interfaceName a ++ " {\n\treturn &" ++ productionName a ++ "{}\n}\n\n" ++ intercalate "\n" methods)
+    "(" ++ parameter ++ ") " ++ interfaceName a ++ " {\n\treturn &" ++ productionName a ++ made ++ "\n}\n\n" ++ intercalate "\n" methods)

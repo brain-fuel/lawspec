@@ -1,0 +1,7 @@
+expect: Logs: a new log takes its first record at offset zero [native]
+@@ src/main/java/example/Composition.java
+<<<<<<<
+      return (long) (records.size() - 1);
+=======
+      return (long) records.size();
+>>>>>>>
