@@ -630,7 +630,7 @@ sample t seed bits
   | t `elem` ["Unit","Null","Undefined"] = SAbsent t
   | t `elem` ["Char","CodePoint","CodeUnit16"] = SCharacter t (unit randomN)
   | otherwise = SSequence t (map unit (take (seed `mod` 40) stream))
-  where stream = tail (iterate
+  where stream = drop 1 (iterate
           (\n -> (n*6364136223846793005+1442695040888963407) `mod` 2^(256::Int))
           (fromIntegral seed))
         randomN = stream !! 7
@@ -1002,7 +1002,7 @@ refinedCase domains seed attempts shrinks check context = do
           additional = case best !! i of
             SInteger t n -> map (SInteger t)
               (0:signum n:takeWhile ((>1) . abs)
-                (tail (iterate (`quot` 2) n)))
+                (drop 1 (iterate (`quot` 2) n)))
             _ -> []
       in foldM (tryCandidate i) state
         (additional ++ candidates (take i best) 0)
@@ -1172,8 +1172,8 @@ regexParse source = do
                 dash : next : _ | single item && dash == ord '-' && next /= ord ']' -> do
                   (high, rest') <- classAtom (drop 1 rest)
                   if not (single high) then failure "a range ends with one character" else pure ()
-                  let low = fst (head (snd item))
-                      top = fst (head (snd high))
+                  let low = case snd item of { (c, _) : _ -> c; [] -> 0 }
+                      top = case snd high of { (c, _) : _ -> c; [] -> 0 }
                   if top < low then failure "a range must run from low to high" else pure ()
                   items ((False, [(low, top)]) : acc) False rest'
                 _ -> items (item : acc) False rest

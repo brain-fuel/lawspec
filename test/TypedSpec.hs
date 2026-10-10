@@ -16,6 +16,16 @@ import LawSpec.Typed.Rust (RustTyped(..), emitRustTyped)
 import LawSpec.Typed.Go (GoTyped(..), emitGoTyped)
 import LawSpec.Typed.Jvm (JvmTyped(..), JvmStyle(..), emitJvmTyped)
 import qualified LawSpec.Code.Doc as D
+import LawSpec.RustDefinitions (emitRustDefinitions)
+import LawSpec.Common (Artifact(..))
+import qualified LawSpec.AbilityEmit.Rust as RustAbilities
+import qualified LawSpec.AbilityEmit.Go as GoAbilities
+import qualified LawSpec.AbilityEmit.Java as JavaAbilities
+import qualified LawSpec.AbilityEmit.Kotlin as KotlinAbilities
+import qualified LawSpec.AbilityEmit.Python as PythonAbilities
+import qualified LawSpec.AbilityEmit.Web as WebAbilities
+import qualified LawSpec.AbilityEmit.Haskell as HaskellAbilities
+import LawSpec.RustData (emitRustData)
 
 ledger :: String
 ledger = unlines
@@ -204,3 +214,29 @@ test_typedDefinitionsRunNativeWithTheirMeaning = describe "typed definitions" $ 
             [Source "ledger.lawspec" (withHeader (unlines (take 2 (lines ledger)) ++ edited ++ unlines (drop 2 (lines ledger))))])
       namesOf before `shouldBe` namesOf after
       either (const False) (all (\(a, b) -> a /= Nothing && b /= Nothing)) (namesOf before) `shouldBe` True
+  describe "generated Rust in a dependent crate" $
+    it "allows the lints its generated shapes would raise, so a dependent build shows no warnings" $ withProgram $ \p -> do
+      let declarations = C.programDataDeclarations p
+          lints = ["unused_imports", "unreachable_patterns", "non_snake_case"]
+      case (emitRustDefinitions (D.Pretty 100) 64 declarations (C.programUnits p), emitRustData (D.Pretty 100) declarations) of
+        (Right definitions, Right datas) -> do
+          let header text = concat (take 3 (lines text))
+          header definitions `shouldSatisfy` (\h -> all (`isInfixOf` h) lints)
+          header datas `shouldSatisfy` (\h -> all (`isInfixOf` h) lints)
+        (Left e, _) -> expectationFailure e
+        (_, Left e) -> expectationFailure e
+  describe "embedded handlers" $
+    it "give each failing operation a form that returns its failure, and read and replace their state, on every target" $ do
+      sources <- mapM (\path -> Source path <$> readFile path) ["examples/specs/composition.lawspec"]
+      p <- either (\e -> expectationFailure (show e) >> fail "no program") pure (compileCore 64 defaultGeneration sources)
+      let declarations = C.programDataDeclarations p
+          units = C.programUnits p
+          joined = either (\e -> error e) (concatMap artifactContent)
+          expect label source needles = (label, filter (not . (`isInfixOf` source)) needles) `shouldBe` (label, [])
+      expect "rust" (either error id (RustAbilities.emit False 64 declarations units)) ["pub fn try_append(", "pub fn state(&self)", "pub fn set_state(", "pub fn typed_state("]
+      expect "go" (joined (GoAbilities.emit False 64 declarations units)) [") TryAppend(", ") State() ", ") SetState(", ") TypedState() "]
+      expect "java" (joined (JavaAbilities.emit False 64 declarations units)) [" tryAppend(", " state() ", "void setState(", " typedState() "]
+      expect "kotlin" (joined (KotlinAbilities.emit False 64 declarations units)) ["fun tryAppend(", "fun state(): ", "fun setState(", "fun typedState(): "]
+      expect "python" (joined (PythonAbilities.emit False 64 declarations units)) ["def try_append(", "def state(self)", "def set_state(self, state)", "def typed_state(self)"]
+      expect "typescript" (joined (WebAbilities.emit True False 64 declarations units)) ["tryAppend(", "state()", "setState(state", "typedState()"]
+      expect "haskell" (joined (HaskellAbilities.emit False 64 declarations units)) ["tryAppend ::", "storeSnapshot =", "storeRestore ="]

@@ -223,6 +223,11 @@ scalarItems :: Scalar -> [Scalar]
 scalarItems (SList xs) = xs
 scalarItems _ = error "expected List"
 
+-- | A data value's single field: a KeyVal's or a Set's items.
+onlyField :: Scalar -> Scalar
+onlyField (SData _ [field]) = field
+onlyField _ = error "expected a value of one field"
+
 scalarData :: Scalar -> (String, [Scalar])
 scalarData (SData tag fields) = (tag, fields)
 scalarData _ = error "expected data"

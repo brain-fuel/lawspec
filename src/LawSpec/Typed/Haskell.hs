@@ -733,10 +733,10 @@ fromValue env ty = case ty of
   _ | Just ("KeyVal", [k, v]) <- collectionArguments ty -> do
         fk <- helper "from" k
         fv <- helper "from" v
-        pure (D.text ("Map.fromList [(" ++ fk ++ " k, " ++ fv ++ " x) | SData _ [k, x] <- LSF.scalarItems (P.head (P.snd (LSF.scalarData v)))]"))
+        pure (D.text ("Map.fromList [(" ++ fk ++ " k, " ++ fv ++ " x) | SData _ [k, x] <- LSF.scalarItems (LSF.onlyField v)]"))
     | Just ("Set", [a]) <- collectionArguments ty -> do
         f <- helper "from" a
-        pure (D.text ("Set.fromList (P.map " ++ f ++ " (LSF.scalarItems (P.head (P.snd (LSF.scalarData v)))))"))
+        pure (D.text ("Set.fromList (P.map " ++ f ++ " (LSF.scalarItems (LSF.onlyField v)))"))
   _ | Just (d, targs) <- dataOf env ty -> do
         arms <- forM (dataConstructors d) $ \c -> do
           decoders <- mapM (helper "from") (fieldTypes d targs c)

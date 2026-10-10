@@ -118,7 +118,7 @@ main = do
       writeIORef sequences (take p sq ++ [s + 1] ++ drop (p + 1) sq)
       _ <- produceRequest broker (tp p) (Just (Data.ProducerTag producerId epoch s)) [record t]
       pure ()
-    txnOffsetCommitRequest broker tx producerId epoch (T.pack "g") [Data.OffsetEntry (tp (head parts)) (fromIntegral t :: Int64)]
+    txnOffsetCommitRequest broker tx producerId epoch (T.pack "g") [Data.OffsetEntry (tp (case parts of { p : _ -> p; [] -> 0 })) (fromIntegral t :: Int64)]
     endTxnRequest broker tx producerId epoch True
   let txOps = 1 + 5 * txns
   phase "transactions" txOps start3
