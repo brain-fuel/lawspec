@@ -619,10 +619,44 @@ helper(<<"isPresent">>, [{ls_presence, _, P}], _, _) -> P =/= none;
 helper(<<"presentValue">>, [{ls_presence, _, {some, V}}], _, _) -> V;
 helper(<<"presentValue">>, [{ls_presence, _, none}], _, _) -> fail(absent_presence_value);
 helper(<<"negate">>, [V], _, _) -> negate(V);
+%% Sequences: Text (UTF-8, indexed by code point), Bytes (indexed by octet)
+%% and List. A slice is clamped to the sequence; at is a Maybe.
+helper(<<"append">>, [A, B], _, _) when is_list(A), is_list(B) -> A ++ B;
+helper(<<"append">>, [A, B], _, _) when is_binary(A), is_binary(B) -> <<A/binary, B/binary>>;
+helper(<<"slice">>, [X, From, To], [Kind | _], _) when is_integer(From), is_integer(To) ->
+    Items = sequence_items(X, Kind),
+    Count = length(Items),
+    I = clamp(From, 0, Count),
+    J = clamp(To, I, Count),
+    sequence_like(X, Kind, lists:sublist(Items, I + 1, J - I));
+helper(<<"at">>, [X, I], [Kind | _], _) when is_integer(I) ->
+    Items = sequence_items(X, Kind),
+    case I >= 0 andalso I < length(Items) of
+        true -> {ls_data, <<"Maybe::Just">>, [lists:nth(I + 1, Items)]};
+        false -> {ls_data, <<"Maybe::Nothing">>, []}
+    end;
+helper(<<"range">>, [Lo, Hi], _, _) when is_integer(Lo), is_integer(Hi) ->
+    lists:seq(Lo, Hi - 1);
+helper(<<"octets">>, [B], _, _) when is_binary(B) -> binary_to_list(B);
+helper(<<"bytesOf">>, [Xs], _, _) when is_list(Xs) -> list_to_binary(Xs);
+helper(<<"utf8">>, [T], _, _) when is_binary(T) -> T;
+helper(<<"textOf">>, [N], _, _) when is_integer(N) -> integer_to_binary(N);
+helper(<<"join">>, [Separator, Parts], _, _) when is_binary(Separator), is_list(Parts) ->
+    iolist_to_binary(lists:join(Separator, Parts));
 helper(Op, [A, B], [TA, TB], _) when Op =:= <<"quot">>; Op =:= <<"rem">>; Op =:= <<"pow">> ->
     binary(Op, A, B, TA, TB);
 helper(Name, [V], _, Bits) -> convert(V, Name, Bits);
 helper(Name, _, _, _) -> fail({unknown_helper, Name}).
+
+sequence_items(X, _) when is_list(X) -> X;
+sequence_items(X, <<"Text">>) when is_binary(X) -> unicode:characters_to_list(X);
+sequence_items(X, _) when is_binary(X) -> binary_to_list(X).
+sequence_like(X, _, Items) when is_list(X) -> Items;
+sequence_like(_, <<"Text">>, Items) -> unicode:characters_to_binary(Items);
+sequence_like(_, _, Items) -> list_to_binary(Items).
+clamp(N, Lo, _) when N < Lo -> Lo;
+clamp(N, _, Hi) when N > Hi -> Hi;
+clamp(N, _, _) -> N.
 
 new_symbol(Description) -> {ls_symbol, make_ref(), validate(Description, <<"Text">>, 64)}.
 text(Units) -> unicode:characters_to_binary(checked_units(<<"Text">>, Units)).

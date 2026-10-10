@@ -7,8 +7,8 @@
 -behaviour(gen_server).
 -export([with_scope/3, install/2, handler/2, stateless/1, stateful/3,
     retain/2, release/1,
-    recording/2, perform/4, invoke/4, count_calls/4,
-    fail/1, raise_failure/2, attempt/4, native_failures/4, match_exception/3,
+    recording/2, perform/4, invoke/4, count_calls/4, shared/3,
+    fail/1, raise_failure/2, native_raise/3, attempt/4, native_failures/4, match_exception/3,
     native_origin/0, origin/5, recover_handler/5, with_native_context/3,
     native_cell/1, native_read/1, native_write/2]).
 -export_type([context/0, handler_origin/0]).
@@ -58,8 +58,21 @@ with_scope(Schema, Factories, Body) ->
             undefined -> erase({?MODULE, scope});
             _ -> put({?MODULE, scope}, Previous)
         end,
+        [erase(Key) || {{?MODULE, shared, S, _} = Key, _} <- get(), S =:= Scope],
         scope_call(Scope, close)
     end.
+
+%% A handler of several abilities is made once in a scope and installed for
+%% each of them, so every ability it answers shares its one state.
+shared(#{lawspec_scope := Scope}, Key, Make) ->
+    case get({?MODULE, shared, Scope, Key}) of
+        undefined ->
+            Handler = Make(),
+            put({?MODULE, shared, Scope, Key}, Handler),
+            Handler;
+        Handler -> Handler
+    end;
+shared(_, _, Make) -> Make().
 
 %% A shared resource keeps the handlers that acquired it until its final
 %% release. Retain all lexical ancestors too: an inherited handler can belong
@@ -165,6 +178,11 @@ count_calls(Schema, Ability, Operation, Arguments) ->
 %% declared Fail ability determines how that value crosses the boundary.
 fail(Value) -> throw({lawspec_native_failure, Value}).
 raise_failure(Ability, Value) -> throw({lawspec_failure, Ability, Value}).
+
+%% A spec handler seen through a native interface fails as native code does:
+%% the logical failure crosses back as its native value.
+native_raise(Ability, Convert, Body) ->
+    try Body() catch throw:{lawspec_failure, Ability, Value} -> fail(Convert(Value)) end.
 
 attempt(Ability, Body, Right, Left) ->
     try Body() of

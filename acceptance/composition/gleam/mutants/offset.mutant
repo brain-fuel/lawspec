@@ -1,0 +1,9 @@
+expect: Logs: a new log takes its first record at offset zero [native]
+@@ src/example/composition.gleam
+<<<<<<<
+          put(store, log, list.append(existing, [record]))
+          list.length(existing)
+=======
+          put(store, log, list.append(existing, [record]))
+          list.length(existing) + 1
+>>>>>>>

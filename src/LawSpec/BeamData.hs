@@ -12,7 +12,8 @@ import qualified LawSpec.BeamGenerators as Generators
 import LawSpec.Testing (GeneratorRequirement(..), domainHints)
 import LawSpec.Core.Types (makeRegistry, freeExistentials)
 import LawSpec.Core.Total (constructorProofContracts)
-import LawSpec.Scalar (primitives, primitiveName)
+import LawSpec.Scalar (Scalar(..), primitives, primitiveName)
+import LawSpec.Regex (parseRegex, regexSamples)
 import LawSpec.Common (Artifact(..))
 import Control.Monad (forM, unless)
 import Data.List (nub)
@@ -96,7 +97,7 @@ emitData target layout bits declarations = do
           available expression = all (`elem` earlier) (C.freeBinders expression)
           bounds = filter (available . snd) (Generators.directBounds requirement)
           lengths = filter (available . snd) (Generators.lengthBounds requirement)
-          hints = [hint | hint <- domainHints q, C.expressionType hint == C.binderType binder, available hint]
+          hints = [hint | hint <- domainHints q ++ regexHints binder predicates, C.expressionType hint == C.binderType binder, available hint]
       if null bounds && null lengths && null hints then pure [] else do
         body <- contractCode contract $ \render -> do
           bs <- mapM (\(op,e) -> do
@@ -109,6 +110,24 @@ emitData target layout bits declarations = do
           pure (E.tuple [E.array (bs ++ ls),E.array hs])
         pure [(D.text (show (i + 1)),body)]
     predicate contract expression = contractCode contract (\render -> render expression)
+    -- A text field a regex constrains, directly or through a definition the
+    -- refinement inlines, also draws texts the regex matches, so a narrow
+    -- pattern is built rather than filtered. ref:DEC-shrink-within-domain
+    regexHints binder predicates =
+      [ C.Expr (C.scalarType "Text") (C.Constant (SSequence "Text" (map fromEnum sample))) (C.GeneratedFrom (C.binderId binder))
+      | C.binderType binder == C.scalarType "Text"
+      , pattern <- nub (concatMap (patterns [C.binderId binder]) predicates)
+      , Right regex <- [parseRegex pattern], sample <- regexSamples 24 regex ]
+    patterns names e = case C.expressionNode e of
+      C.ShortCircuit C.And a b -> patterns names a ++ patterns names b
+      C.Let b value body | aliases names value -> patterns (C.binderId b : names) body
+      C.Let _ value body -> patterns names value ++ patterns names body
+      C.Helper C.RegexMatches [C.Expr _ (C.Constant (SSequence _ pattern)) _, subject] | aliases names subject -> [map toEnum pattern]
+      _ -> []
+    aliases names e = case C.expressionNode e of
+      C.Local l -> l `elem` names
+      C.Convert C.CheckedArgument _ inner -> aliases names inner
+      _ -> False
     contractCode contract build = do
       let local identity = maybe (error "unbound BEAM constructor field") id
             (lookup identity [(C.binderId b,"lists:nth(" ++ show i ++ ", _LsFields)") | (i,b) <- zip [1::Int ..] (S.contractFields contract)])

@@ -3,7 +3,7 @@
 -- ref:DEC-typed-core-boundary
 module LawSpec.BeamEffects
   ( entries, abilities, handlers, abilityEntry, handlerEntry, uses
-  , external, construct, factories, toNative, fromNative, interfaceParts
+  , external, construct, constructWith, factories, toNative, fromNative, interfaceParts
   ) where
 
 import qualified LawSpec.Core as C
@@ -35,15 +35,24 @@ uses :: C.Declaration -> [C.AbilityRef]
 uses = filter (not . C.isFail) . C.declarationUses
 
 construct :: [C.Unit] -> D.Doc -> D.Doc -> C.AbilityRef -> C.HandlerRef -> Either String D.Doc
-construct units schema symbols ability choice = case choice of
+construct units schema symbols = constructWith units schema symbols Nothing
+
+-- | A native handler of an ability made with a resource is given the case's
+-- resource. A handler of several abilities is made once in a scope and
+-- installed for each of them, so they share its state.
+constructWith :: [C.Unit] -> D.Doc -> D.Doc -> Maybe D.Doc -> C.AbilityRef -> C.HandlerRef -> Either String D.Doc
+constructWith units schema symbols resource ability choice = case choice of
   C.ProductionHandler -> do
     name <- abilityEntry units ability
-    pure (E.remote "lawspec_abilities" (name ++ "_production") [schema,symbols])
+    pure (E.remote "lawspec_abilities" (name ++ "_production") ([schema,symbols] ++ maybe [] pure resource))
   C.SpecHandler identity -> do
     name <- handlerEntry units identity
-    pure (E.remote "lawspec_abilities" name [schema,symbols])
+    let made = E.remote "lawspec_abilities" name [schema,symbols]
+    pure (if any (\h -> C.handlerId h == identity && not (null (C.handlerAlso h))) (handlers units)
+      then E.remote "lawspec_beam_effects" "shared" [schema,E.binary (C.idText identity),E.lambda [] made]
+      else made)
   C.RecordingHandler inner -> do
-    body <- construct units schema symbols ability inner
+    body <- constructWith units schema symbols resource ability inner
     pure (E.remote "lawspec_beam_effects" "recording" [schema,body])
 
 factories :: [C.Unit] -> D.Doc -> [(C.AbilityRef,C.HandlerRef)] -> Either String D.Doc

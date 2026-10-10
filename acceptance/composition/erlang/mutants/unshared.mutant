@@ -1,0 +1,10 @@
+expect: sizes count records [native Logs, native Reader]
+@@ src/example_composition.erl
+<<<<<<<
+reader_handler(Store) ->
+    #{
+=======
+reader_handler(_) ->
+    Store = ets:new(composition_store, [set, public]),
+    #{
+>>>>>>>

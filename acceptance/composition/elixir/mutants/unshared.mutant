@@ -1,0 +1,11 @@
+expect: sizes count records [native Logs, native Reader]
+@@ lib/example_composition.ex
+<<<<<<<
+  def reader_handler(store) do
+    %Abilities.Reader{
+=======
+  def reader_handler(_) do
+    store = :ets.new(:composition_store, [:set, :public])
+
+    %Abilities.Reader{
+>>>>>>>

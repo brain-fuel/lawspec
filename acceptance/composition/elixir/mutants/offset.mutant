@@ -1,0 +1,9 @@
+expect: Logs: a new log takes its first record at offset zero [native]
+@@ lib/example_composition.ex
+<<<<<<<
+            :ets.insert(store, {log, records ++ [record]})
+            length(records)
+=======
+            :ets.insert(store, {log, records ++ [record]})
+            length(records) + 1
+>>>>>>>

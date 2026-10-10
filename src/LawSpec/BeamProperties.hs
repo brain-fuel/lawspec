@@ -14,6 +14,7 @@ import qualified LawSpec.BeamNativeBinding as Native
 import qualified LawSpec.BeamModelChecks as ModelChecks
 import qualified LawSpec.ElixirNative as Elixir
 import qualified LawSpec.GleamNative as Gleam
+import qualified LawSpec.AbilityNames as N
 import LawSpec.Common (Artifact(..), Generation(..))
 import LawSpec.Testing
 import LawSpec.NativeRequest (BindingPlan)
@@ -157,7 +158,23 @@ emit target layout bindings plan = do
           caseName = name ++ "_case"
           rawName = name ++ "_body"
           resourceArguments = [E.array (map (D.text . snd) resourceAliases) | not (null resources)]
-          raw active values = E.call rawName ([active,symbols,values] ++ resourceArguments)
+          -- A native handler made with a resource (ability A with T) is
+          -- made once the case has acquired its T, inside the bracket.
+          resourceFor ability choice = case choice of
+            C.ProductionHandler -> do
+              a <- N.abilityOf units ability
+              t <- C.abilityResource a
+              case [D.text name | (r,(_,name)) <- zip resources resourceAliases, C.binderType (C.resourceBinder r) == t] of
+                found : _ -> Just found
+                [] -> Nothing
+            C.RecordingHandler inner -> resourceFor ability inner
+            C.SpecHandler _ -> Nothing
+          late = [(a,c,r) | (a,c) <- C.propertyHandlers law, not (C.isFail a), Just r <- [resourceFor a c]]
+          early = [(a,c) | (a,c) <- C.propertyHandlers law, a `notElem` [x | (x,_,_) <- late]]
+          installLate active = if null late then pure active else do
+            made <- mapM (\(a,c,r) -> (,) (E.binary (C.abilityKey a)) <$> Effects.constructWith units active symbols (Just r) a c) late
+            pure (E.remote "lawspec_beam_effects" "install" [active,E.record made])
+          raw active values = E.call rawName ([either error id (installLate active),symbols,values] ++ resourceArguments)
           bracket active = bracketResources active (renderWith active) local resources
           invoke values = E.call caseName [schema,symbols,values]
           workflowScope body = if hasPolicies then E.remote "lawspec_beam_workflow" "with_test_runtime" [E.lambda [] body] else body
@@ -167,7 +184,8 @@ emit target layout bindings plan = do
           test kind observations statements = nativeTimeout (E.tuple [E.string (label ++ " " ++ kind),
             E.lambda [] (withHarness label kind harness (not (null resources)) observations (E.sequenceDoc (context ++ statements)))])
       body <- Expr.assertion label render (C.propertyBody law)
-      choices <- Effects.factories units symbols (C.propertyHandlers law)
+      choices <- Effects.factories units symbols early
+      _ <- installLate schema
       let scoped outer active statements = if all (C.isFail . fst) (C.propertyHandlers law)
             then E.apply (E.lambda [active] statements) [outer]
             else E.remote "lawspec_beam_effects" "with_scope" [outer,choices,E.lambda [active] statements]

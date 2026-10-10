@@ -1,0 +1,9 @@
+expect: Logs: a new log takes its first record at offset zero [native]
+@@ src/example_composition.erl
+<<<<<<<
+                    ets:insert(Store, {Log, Records ++ [Record]}),
+                    length(Records)
+=======
+                    ets:insert(Store, {Log, Records ++ [Record]}),
+                    length(Records) + 1
+>>>>>>>

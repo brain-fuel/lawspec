@@ -47,8 +47,10 @@ defaultEntry a = "default_" ++ E.moduleName (C.abilityOwner a) ++ "_" ++ product
 isSignature :: C.Ability -> Bool
 isSignature = (== "lawspec.crypto::ability::Signature") . C.abilityKey . C.abilityInstance
 
+-- An ability made with a resource (ability A with T) has a native handler
+-- factory of one argument: the case's T, shared by every such handler.
 productionExports :: C.Ability -> [(String,Int)]
-productionExports a = [(productionName a,0)] ++ [("slh_dsa_signature_handler",0) | isSignature a]
+productionExports a = [(productionName a,maybe 0 (const 1) (C.abilityResource a))] ++ [("slh_dsa_signature_handler",0) | isSignature a]
 
 operationName :: String -> String -> String
 operationName "gleam" = E.gleamName . E.snake
@@ -116,17 +118,22 @@ productionStub target bits names ability = do
       "elixir" -> D.text "fn " <> D.joinWith (D.text ", ") args <> D.text " -> raise " <> X.string message <> D.text " end"
       _ -> E.lambda args (E.remote "erlang" "error" [E.tuple [E.atom "not_implemented",E.binary message]])
   _ <- mapM (operationType target bits names . snd) (C.abilityOperations ability)
+  resource <- traverse (case target of
+    "gleam" -> G.nativeType False names []
+    "elixir" -> X.nativeType bits names []
+    _ -> E.nativeType bits names []) (C.abilityResource ability)
   let name = productionName ability
       keys = map (operationName target . fst) (C.abilityOperations ability)
+      resourceTypes = maybe [] pure resource
   pure $ case target of
-    "gleam" -> [G.function name [] (D.text (alias ability ++ "." ++ interfaceName ability))
+    "gleam" -> [G.function name [D.text "_resource: " <> t | t <- resourceTypes] (D.text (alias ability ++ "." ++ interfaceName ability))
       [G.call (alias ability ++ "." ++ builderName target ability) fields]]
-    "elixir" -> [D.text "@spec " <> X.call name [] <> D.text " :: " <> X.remote (interfaceModule target ability) "t" [],
-      X.function name [] [D.text ("%" ++ interfaceModule target ability ++ "{") <>
+    "elixir" -> [D.text "@spec " <> X.call name resourceTypes <> D.text " :: " <> X.remote (interfaceModule target ability) "t" [],
+      X.function name [D.text "_resource" | _ <- resourceTypes] [D.text ("%" ++ interfaceModule target ability ++ "{") <>
         D.joinWith (D.text ", ") [D.text key <> D.text ": " <> f | (key,f) <- zip keys fields] <> D.text "}"]]
-    _ -> [D.text "-spec " <> E.call name [] <> D.text " -> " <>
+    _ -> [D.text "-spec " <> E.call name resourceTypes <> D.text " -> " <>
         E.remote (interfaceModule target ability) (E.snake (interfaceName ability)) [] <> D.text ".",
-      E.function name [] [E.record (zip (map E.atom keys) fields)]]
+      E.function name [D.text "_Resource" | _ <- resourceTypes] [E.record (zip (map E.atom keys) fields)]]
 
 defaultFactory :: String -> C.Ability -> String -> String -> [D.Doc]
 defaultFactory target ability name entry = case target of
@@ -159,7 +166,8 @@ emit target layout bits declarations units boundSchema = do
   boundHelpers <- if target == "gleam" then gleamBoundHelpers else pure []
   let exports = [(name ++ suffix,arity) | a <- F.abilities units,
         Right name <- [F.abilityEntry units (C.abilityInstance a)],
-        (suffix,arity) <- [("_parts",1),("_to_native",3),("_from_native",3),("_production",2),("_recording",2)]] ++
+        (suffix,arity) <- [("_parts",1),("_to_native",3),("_from_native",3),("_production",2),("_recording",2)] ++
+          [("_production",3) | C.abilityResource a /= Nothing]] ++
         [(name ++ suffix,arity) | h <- F.handlers units, Right name <- [F.handlerEntry units (C.handlerId h)],
           (suffix,arity) <- [("",2),("_native",1)]]
       contextFunction = E.function "with_context" [D.text "_Body"]
@@ -194,7 +202,7 @@ emit target layout bits declarations units boundSchema = do
           hs = C.unitHandlers unit
           identifiers = map (E.snake . interfaceName) as
           fields a = map (operationName target . fst) (C.abilityOperations a)
-          publicFunctions = map (publicName target . C.handlerName) hs ++
+          publicFunctions = map (handlerPublicName as) hs ++
             ["recording_" ++ E.snake (interfaceName a) | a <- as] ++
             [n | a <- as, target == "gleam", let raw = E.snake (interfaceName a),
               n <- [builderName target a,"managed_" ++ raw,"parts_" ++ raw] ++ [raw ++ "_" ++ field | field <- fields a]]
@@ -213,14 +221,14 @@ emit target layout bits declarations units boundSchema = do
         "elixir" -> pure (types ++ public)
         "gleam" -> do
           let operationTypes = [ty | a <- as, (_,ty) <- C.abilityOperations a]
-          imports <- gleamImports units [C.handlerAbility h | h <- hs,
-            maybe False ((/= C.unitId unit) . C.abilityOwner) (N.abilityOf units (C.handlerAbility h))]
+          imports <- gleamImports units [ref | h <- hs, ref <- C.handlerAbilities h,
+            maybe False ((/= C.unitId unit) . C.abilityOwner) (N.abilityOf units ref)]
           pure [Artifact ("src/" ++ interfacePath (C.unitId unit) ++ ".gleam")
             (D.render layout (G.fileDoc False (D.text "import lawspec/effects" : imports ++
               G.imports False operationTypes ++ map artifactDoc types ++ map artifactDoc public))) "generated" "source"
             | not (null as && null hs)]
         _ -> do
-          let exports = [(publicName target (C.handlerName h),1) | h <- hs] ++ [("recording_" ++ E.snake (interfaceName a),2) | a <- as]
+          let exports = [(handlerPublicName as h,1) | h <- hs] ++ [("recording_" ++ E.snake (interfaceName a),2) | a <- as]
               typeExports = [D.text "-export_type(" <> E.array [E.atom n <> D.text "/0" | n <- identifiers] <> D.text ")." | not (null as)]
           pure [Artifact ("src/lawspec_abilities_" ++ E.moduleName (C.unitId unit) ++ ".erl")
             (D.render layout (E.moduleDoc ("lawspec_abilities_" ++ E.moduleName (C.unitId unit)) exports
@@ -264,12 +272,28 @@ emit target layout bits declarations units boundSchema = do
             pure (G.function (n ++ "_" ++ field) (D.text "handler: " <> ty :
               [v <> D.text ": " <> t | (v,t) <- zip values inputs]) out [G.call ("handler." ++ field) values])
           pure (map fragment (definition : builder : managed : parts : ops))
+    -- A Gleam handler named like its ability's builder (handler counter for
+    -- Counter) takes a _handler suffix, so both stay public.
+    handlerPublicName as h =
+      let base = publicName target (C.handlerName h)
+          taken = ["recording_" ++ E.snake (interfaceName a) | a <- as] ++
+            [n | a <- as, target == "gleam", let raw = E.snake (interfaceName a),
+              n <- [builderName target a,"managed_" ++ raw,"parts_" ++ raw] ++
+                [raw ++ "_" ++ field | field <- map (operationName target . fst) (C.abilityOperations a)]]
+      in if base `elem` taken then base ++ "_handler" else base
+    -- A handler of several abilities gives one native interface for each,
+    -- all answered from its one state.
     publicConstructors unit hs as = do
       specBodies <- forM hs $ \h -> do
-        a <- maybe (Left "unknown native spec handler ability") Right (N.abilityOf units (C.handlerAbility h))
+        types <- forM (C.handlerAbilities h) $ \ref -> do
+          a <- maybe (Left "unknown native spec handler ability") Right (N.abilityOf units ref)
+          if C.abilityOwner a == C.unitId unit then pure (interfaceNameDoc a) else nativeType target units ref
         entry <- F.handlerEntry units (C.handlerId h)
-        ty <- if C.abilityOwner a == C.unitId unit then pure (interfaceNameDoc a) else nativeType target units (C.handlerAbility h)
-        pure (publicName target (C.handlerName h),entry ++ "_native",[contextType target],ty)
+        let ty = case types of
+              [single] -> single
+              _ | target == "gleam" -> G.tuple types
+                | otherwise -> E.tuple types
+        pure (handlerPublicName as h,entry ++ "_native",[contextType target],ty)
       recordings <- forM as $ \a -> do
         entry <- F.abilityEntry units (C.abilityInstance a)
         pure ("recording_" ++ E.snake (interfaceName a),entry ++ "_recording",[contextType target,interfaceNameDoc a],interfaceNameDoc a)
@@ -312,21 +336,32 @@ emit target layout bits declarations units boundSchema = do
         logical <- sequence [convert "from_native" schema t v | (t,v) <- zip args values']
         output <- convert "to_native" schema result (E.remote "lawspec_beam_effects" "invoke"
           [handler,schema,E.binary op,E.array logical])
-        pure (E.lambda values' output)
-      logical <- logicalOperations schema operations
+        -- An operation that fails with E fails natively with a native E.
+        raised <- case lookup op (C.abilityFailures ability) of
+          Just failing@(C.AbilityRef _ [failure]) -> do
+            back <- convert "to_native" schema failure (D.text "_LsFailure")
+            pure (E.remote "lawspec_beam_effects" "native_raise"
+              [E.binary (C.abilityKey failing),E.lambda [D.text "_LsFailure"] back,E.lambda [] output])
+          _ -> pure output
+        pure (E.lambda values' raised)
+      logical <- logicalOperations ability schema operations
+      -- ability A with T: the native factory is given the case's T.
+      made <- case C.abilityResource ability of
+        Nothing -> pure []
+        Just t -> pure <$> convert "to_native" schema t (D.text "_LsResource")
       production <- case C.abilityNative ability of
         Nothing | hasDefault ability -> pure (E.remote "lawspec_beam_defaults" "handler" [key])
         Nothing -> pure (E.remote "lawspec_abilities" (name ++ "_from_native")
-          [schema,symbols,E.remote (E.nativeModule target home) (productionName ability) []])
+          [schema,symbols,E.remote (E.nativeModule target home) (productionName ability) made])
         Just ref -> do
-          made <- if target == "gleam" then pure (E.remote "erlang" "tuple_to_list"
-              [E.remote "lawspec@native_handlers" (name ++ "_make") []])
+          made' <- if target == "gleam" then pure (E.remote "erlang" "tuple_to_list"
+              [E.remote "lawspec@native_handlers" (name ++ "_make") made])
             else do
-              call <- E.nativeCall target ref []
+              call <- E.nativeCall target ref made
               pure (E.apply (E.lambda [native] (E.array [E.remote "maps" "get" [E.atom field,native] | field <- operationFields])) [call])
-          bound <- logicalOperations (D.text "_LsNativeSchema") operations
+          bound <- logicalOperations ability (D.text "_LsNativeSchema") operations
           pure (E.apply (E.lambda [D.text "_LsOperations"] (E.sequenceDoc
-            [D.text "_LsNativeSchema = " <> (if boundSchema then E.remote "lawspec_native_bindings" "schema" [schema] else schema),bound])) [made])
+            [D.text "_LsNativeSchema = " <> (if boundSchema then E.remote "lawspec_native_bindings" "schema" [schema] else schema),bound])) [made'])
       decoded <- F.fromNative units (C.abilityInstance ability) schema symbols native
       recorded <- F.toNative units (C.abilityInstance ability) schema symbols
         (E.remote "lawspec_beam_effects" "recording" [schema,decoded])
@@ -337,7 +372,10 @@ emit target layout bits declarations units boundSchema = do
         E.function (name ++ "_from_native") [schema,symbols,native]
           [D.text "{_LsOrigin, _LsOperations} = " <> E.call (name ++ "_parts") [native],
            E.remote "lawspec_beam_effects" "recover_handler" [D.text "_LsOrigin",key,symbols,D.text "_LsOperations",E.lambda [] logical]],
-        E.function (name ++ "_production") [schema,symbols] [production],
+        E.function (name ++ "_production") ([schema,symbols] ++ [D.text "_LsResource" | not (null made)]) [production]] ++
+        [E.function (name ++ "_production") [D.text "_LsSchema",D.text "_LsSymbols"]
+          [E.remote "erlang" "error" [E.tuple [E.atom "lawspec",E.tuple [E.atom "resource_required",key]]]] | not (null made)] ++
+        [
         E.function (name ++ "_recording") [context,native] [recorded]] ++
         [E.function (defaultEntry ability) []
           [D.text "_LsSchema = " <> E.remote "lawspec_data" "schema" [E.call "make_ref" []],
@@ -347,19 +385,28 @@ emit target layout bits declarations units boundSchema = do
           [D.text "_LsSchema = " <> E.remote "lawspec_data" "schema" [E.call "make_ref" []],
            D.text "_LsHandler = " <> E.remote "lawspec_beam_crypto" "slh_dsa_signature_handler" [],
            D.text "_LsOperations = " <> E.array callbacks, make (E.atom "none")] | isSignature ability]
-    logicalOperations nativeSchema operations = do
+    logicalOperations ability nativeSchema operations = do
       clauses <- forM (zip [1::Int ..] operations) $ \(i,(op,ty)) -> do
         let (args,result) = C.functionType ty
             values = [D.text ("_Logical" ++ show j) | (j,_) <- zip [0::Int ..] args]
         arguments <- sequence [convert "to_native" nativeSchema t v | (t,v) <- zip args values]
         output <- convert "from_native" nativeSchema result (E.apply (E.remote "lists" "nth"
           [D.text (show i),D.text "_LsOperations"]) arguments)
-        pure (E.binary op,E.lambda [D.text "_LsCurrentSchema",E.array values] output)
+        -- An operation that fails with E: a native handler fails with a
+        -- native E, which becomes the Fail E failure.
+        checked <- case lookup op (C.abilityFailures ability) of
+          Just failing@(C.AbilityRef _ [failure]) -> do
+            ref <- E.typeReference failure
+            pure (E.remote "lawspec_beam_effects" "native_failures" [E.binary (C.abilityKey failing),
+              E.lambda [D.text "_LsNativeFailure"] (E.remote "lawspec_beam_schema" "from_native"
+                [D.text "_LsNativeFailure",ref,nativeSchema]),E.lambda [] output,E.array []])
+          _ -> pure output
+        pure (E.binary op,E.lambda [D.text "_LsCurrentSchema",E.array values] checked)
       pure (E.remote "lawspec_beam_effects" "stateless" [E.record clauses])
     handlerBodies h = do
       name <- F.handlerEntry units (C.handlerId h)
-      a <- maybe (Left "unknown spec handler ability") Right (N.abilityOf units (C.handlerAbility h))
-      clauses <- forM (C.abilityOperations a) $ \(op,ty) -> do
+      answered <- forM (C.handlerAbilities h) $ \ref -> maybe (Left "unknown spec handler ability") Right (N.abilityOf units ref)
+      clauses <- forM (concatMap C.abilityOperations answered) $ \(op,ty) -> do
         identity <- maybe (Left "missing BEAM spec handler clause") Right (lookup op (C.handlerClauses h))
         entry <- maybe (Left "missing BEAM spec clause definition") Right (lookup identity (F.entries units))
         let args = [D.text ("_Arg" ++ show i) | (i,_) <- zip [0::Int ..] (fst (C.functionType ty))]
@@ -376,7 +423,11 @@ emit target layout bits declarations units boundSchema = do
           value <- Expr.renderExpression bits schema symbols (error . ("unbound BEAM handler state: " ++) . C.idText)
             (F.external units symbols) initial
           pure (E.remote "lawspec_beam_effects" "stateful" [schema,value,E.record clauses])
-      native <- F.toNative units (C.handlerAbility h) schema symbols (E.call name [schema,symbols])
+      native <- case C.handlerAbilities h of
+        [single] -> F.toNative units single schema symbols (E.call name [schema,symbols])
+        several -> do
+          interfaces <- mapM (\ref -> F.toNative units ref schema symbols (D.text "_LsShared")) several
+          pure (E.sequenceDoc [D.text "_LsShared = " <> E.call name [schema,symbols],E.tuple interfaces])
       pure [E.function name [schema,symbols] [body],E.function (name ++ "_native") [context] [native]]
     gleamBoundHelpers = do
       let bound = [a | a <- F.abilities units, C.abilityNative a /= Nothing]
@@ -396,8 +447,9 @@ emit target layout bits declarations units boundSchema = do
               D.text "let #(_, operations) = " <> G.call (alias a ++ ".parts_" ++ E.snake (interfaceName a)) [D.text "handler"] <>
                 D.hardline <> D.text "operations"
               else G.tuple [D.text ("handler." ++ operationName target op) | (op,_) <- C.abilityOperations a]
-        pure (D.text "pub fn " <> G.call (name ++ "_make") [] <> D.text " {" <>
-          D.nest 2 (D.hardline <> D.text "let handler = " <> G.call (owner ++ "." ++ last ref) [] <>
+        let made = [D.text "resource" | C.abilityResource a /= Nothing]
+        pure (D.text "pub fn " <> G.call (name ++ "_make") made <> D.text " {" <>
+          D.nest 2 (D.hardline <> D.text "let handler = " <> G.call (owner ++ "." ++ last ref) made <>
             D.hardline <> operations) <>
           D.hardline <> D.text "}")
       pure [Artifact "src/lawspec/native_handlers.gleam"
