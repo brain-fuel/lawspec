@@ -165,3 +165,7 @@ let concurrently (steps: (unit -> Value) list) : Value list =
 [<CompiledName("Await")>]
 let await (task: Task<'a>) : 'a =
     try task.GetAwaiter().GetResult() with e -> raise (unwrap e)
+
+/// Discard a value computed for its checks.
+[<CompiledName("Ignore")>]
+let ignore (_: Value) = ()

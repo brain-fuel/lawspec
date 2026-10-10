@@ -1,0 +1,7 @@
+expect: odd amounts are declined, and say why
+@@ src/Example/Failures.fs
+<<<<<<<
+            elif value0 % 2 = 1 then
+=======
+            elif value0 % 2 = 1 && value0 > 50000 then
+>>>>>>>

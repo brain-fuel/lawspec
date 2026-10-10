@@ -1,0 +1,7 @@
+expect: refunds over the limit are too large
+@@ src/Example/Failures.fs
+<<<<<<<
+    if value0 > 5000 then Error(TooLarge 5000) else Ok value0
+=======
+    if value0 > 5000 then invalidOp "too large" else Ok value0
+>>>>>>>

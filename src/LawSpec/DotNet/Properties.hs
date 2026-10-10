@@ -74,17 +74,28 @@ emitTests lang layout plan = fmap concat $ forM (plannedUnits plan) $ \planned -
           inputs = ListOf tValue (map (Var . snd) aliases)
       unsupported law
       body <- X.assertion label render (C.propertyBody law)
-      scoped <- Effects.withHandlers units X.schemaVar X.symbolsVar (C.propertyHandlers law)
-        (\s -> Let "schema" tSchema s (foldr (\(i, (_, a)) rest -> Let a tValue (call "Runtime" "item" [IntLit i, Var "inputs"]) rest) body (zip [0 ..] aliases)))
+      -- The law's body runs on a schema with its handlers in scope; a case
+      -- makes that scope, and an example makes one for its own inputs and
+      -- expectations too.
+      let bodyName = name ++ "Body"
+          inBody s values = Call (Fn bodyName bodyName) [s, X.symbolsVar, values]
+          handlers = C.propertyHandlers law
+          bodyDoc = function lang True bodyName [("schema", tSchema), ("symbols", tSymbols), ("inputs", tValues)] tValue
+            (foldr (\(i, (_, a)) rest -> Let a tValue (call "Runtime" "item" [IntLit i, Var "inputs"]) rest) body (zip [0 ..] aliases))
+      scoped <- Effects.withHandlers units X.schemaVar X.symbolsVar handlers (\s -> inBody s (Var "inputs"))
       let caseDoc = function lang True caseName [("schema", tSchema), ("symbols", tSymbols), ("inputs", tValues)] tValue scoped
       examples <- forM (zip [0 :: Int ..] (C.propertyExamples law)) $ \(i, example) -> do
+        let exampleSchema = if all (C.isFail . fst) handlers then X.schemaVar else Var "scoped"
+            renderIn = X.render ((contextWith local) { X.contextSchema = exampleSchema })
         arguments <- forM parameters $ \parameter -> case lookup (C.binderId parameter) (C.exampleBindings example) of
           Nothing -> Left "missing .NET example input"
-          Just expression -> render expression
-        expectations <- mapM (X.assertion (label ++ " example " ++ C.exampleName example) render) (C.exampleExpectations example)
+          Just expression -> renderIn expression
+        expectations <- mapM (X.assertion (label ++ " example " ++ C.exampleName example) renderIn) (C.exampleExpectations example)
         let checks = foldr (\(a, v) rest -> Let a tValue v rest)
-              (Do (require (invoke inputs) : map require expectations) UnitLit) (zip (map snd aliases) arguments)
-        pure (test (name ++ suffix "example" ++ show i) (label ++ " example " ++ show i ++ ": " ++ C.exampleName example) False (setup checks))
+              (Do (require (inBody exampleSchema inputs) : map require expectations) (X.bool True)) (zip (map snd aliases) arguments)
+        inScope <- Effects.withHandlers units X.schemaVar X.symbolsVar handlers (const checks)
+        pure (test (name ++ suffix "example" ++ show i) (label ++ " example " ++ show i ++ ": " ++ C.exampleName example) False
+          (setup (Do [call "Runtime" "ignore" [inScope]] UnitLit)))
       let cases = maybe (boundaryCases planned) id (finiteCases planned)
           boundary = [ test (name ++ suffix "boundary") (label ++ " boundary") False (setup
                          (call "Property" "boundaries" [Str label, ListOf tValues [ListOf tValue (map (X.value X.symbolsVar) values) | values <- cases],
@@ -121,7 +132,7 @@ emitTests lang layout plan = fmap concat $ forM (plannedUnits plan) $ \planned -
               (call "Harness" "knownFailing" [Str label, Str (label ++ " known failing"), Str reason,
                 ListOf (tFun [] tUnit) [Lambda [] tUnit (wrapHarness label d o harness b) | (_, d, o, b) <- ordinary]])]
             _ -> map (\(n, d, o, b) -> declareTest n d (wrapHarness label d o harness b)) ordinary
-      pure (caseDoc : tests)
+      pure (bodyDoc : caseDoc : tests)
     suffix kind = case lang of
       FSharp -> "_" ++ kind
       CSharp -> "_" ++ capital kind

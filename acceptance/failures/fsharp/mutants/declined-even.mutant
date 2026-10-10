@@ -1,0 +1,8 @@
+expect: even amounts go through
+@@ src/Example/Failures.fs
+<<<<<<<
+            else Approve }
+=======
+            elif value0 > 50000 then Decline "even"
+            else Approve }
+>>>>>>>

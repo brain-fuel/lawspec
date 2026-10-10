@@ -488,10 +488,13 @@ library
       LawSpec.Discharge
       LawSpec.Domain
       LawSpec.DomainModel
+      LawSpec.DotNet.Abilities
       LawSpec.DotNet.Code
       LawSpec.DotNet.Data
       LawSpec.DotNet.Definitions
+      LawSpec.DotNet.Effects
       LawSpec.DotNet.Emit
+      LawSpec.DotNet.Entries
       LawSpec.DotNet.Expr
       LawSpec.DotNet.Names
       LawSpec.DotNet.Properties
