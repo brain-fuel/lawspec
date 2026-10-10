@@ -15,7 +15,7 @@ import qualified LawSpec.KotlinData as Native
 import qualified LawSpec.JavaDefinitions as Definitions
 import qualified LawSpec.KotlinExpr as E
 import qualified LawSpec.Code.Doc as D
-import LawSpec.Typed.Plan (isTypedHandler)
+import LawSpec.Typed.Plan (isTypedHandler, isContextual)
 import LawSpec.Typed.Jvm (JvmTyped(..), JvmStyle(..), emitJvmTyped)
 
 capitalize :: String -> String
@@ -144,7 +144,7 @@ emit minify bits datas units = do
             argument i ty c t = case direct ty of
               Just (fromNative, _) -> line (fromNative ++ "(value" ++ show i ++ ")")
               Nothing -> line (t ++ ".decode(") <> c <> line (".encode(value" ++ show i ++ "))")
-            arguments = [line "state" | Just _ <- [C.handlerState h]] ++
+            arguments = [line "symbols" | isContextual (jvmTypedPlan typed) clause] ++ [line "state" | Just _ <- [C.handlerState h]] ++
               (if null args && C.handlerState h == Nothing then [line "lawspec.runtime.LawSpecFast.Unit.UNIT"]
                else [argument i ty c t | (i, (ty, (c, t))) <- zip [0 :: Int ..] (zip args (zip argumentCodecs typedCodecs))])
             invocation = line function <> D.delimitTrailing 4 "(" ")" arguments

@@ -12,6 +12,7 @@ import qualified LawSpec.JavaDefinitions as Jvm
 import LawSpec.AbilityNames (interfaceName, specName, ownerName)
 import qualified LawSpec.Code.Doc as D
 import LawSpec.Typed.Jvm (JvmTyped(..), JvmStyle(..), emitJvmTyped)
+import LawSpec.Typed.Plan (isContextual)
 import Data.Aeson (encode)
 import qualified Data.Text.Lazy as T
 import qualified Data.Text.Lazy.Encoding as T
@@ -117,6 +118,7 @@ emitKotlinDefinitions layout bits declarations units = do
     definition d
       | Right typed <- typedJvm
       , Just function <- jvmTypedFunction typed (declarationId (definitionDeclaration d))
+      , not (isContextual (jvmTypedPlan typed) (declarationId (definitionDeclaration d)))
       , let (args, result) = functionType (declarationType (definitionDeclaration d))
       , result /= scalarType "Unit"
       , Just conversions <- mapM (jvmTypedNative typed) args

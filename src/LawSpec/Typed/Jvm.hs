@@ -5,7 +5,7 @@
 -- are longs, Integer a BigInteger and Text a String; codecs convert to and
 -- from the dynamic Value where typed and dynamic code meet.
 -- ref:DEC-typed-native-definitions
-module LawSpec.Typed.Jvm (JvmTyped(..), JvmStyle(..), emitJvmTyped, jvmScalars) where
+module LawSpec.Typed.Jvm (jvmPerformName, JvmTyped(..), JvmStyle(..), emitJvmTyped, jvmScalars) where
 
 import Control.Monad (forM)
 import Control.Monad.State.Strict
@@ -120,9 +120,14 @@ identifier name = let n = [c | c <- name, isAlphaNum c || c == '_'] in
 lift' :: Either String a -> M a
 lift' = lift
 
+-- | The static method of LawSpecDefinitionBodies that performs an operation
+-- for typed code, over dynamic values.
+jvmPerformName :: Operation -> String
+jvmPerformName op = "typedPerform_" ++ map (\c -> if isAlphaNum c then c else '_') (idText (operationId op))
+
 emitJvmTyped :: JvmStyle -> [DataDeclaration] -> [Unit] -> Either String JvmTyped
 emitJvmTyped style declarations units = do
-  let plan = typedPlanWith jvmScalars declarations units
+  let plan = typedPlanPerforming jvmScalars declarations units
       datas = typedData plan
       names = dataNames datas
       functions = M.fromList [ (c, functionName c d) | (c, d) <- typedRepresentatives plan ]
@@ -157,7 +162,7 @@ emitJvmTyped style declarations units = do
     jt <- javaType env True t
     ((statements, value), _) <- runStateT (cexpr env [] e) initial
     if not (null statements) then Left "a typed start value needs statements" else
-      pure (D.text ("public static " ++ jt ++ " " ++ name ++ "() ") <> D.block 2 (D.text "return " <> value <> D.text ";"))
+      pure (D.text ("public static " ++ jt ++ " " ++ name ++ "(java.util.Map<String, Object> symbols) ") <> D.block 2 (D.text "return " <> value <> D.text ";"))
   let boundaryNames = M.fromList [ (show t, "C" ++ show i) | (i, (t, _)) <- zip [0 :: Int ..] boundary ]
       codecDocs = [ D.text ("public static final LawSpecFast.Codec<" ++ either (const "?") id (javaType env True t) ++ "> " ++ boundaryNames M.! show t ++ " =") <>
                     D.nest 8 (D.hardline <> D.text (expr ++ ";")) | (t, expr) <- boundary ]
@@ -182,7 +187,7 @@ emitJvmTyped style declarations units = do
         ((statements, value), _) <- runStateT (cexpr outside [] e) initial
         if null statements then pure (D.render D.Compact value) else Left "a typed start value needs statements"
     , jvmTypedNative = \t -> M.lookup (show t) natives
-    , jvmTypedStart = \identity -> lookup identity [(i, typedClassName ++ "." ++ n ++ "()") | (i, n, _, _) <- starting]
+    , jvmTypedStart = \identity -> lookup identity [(i, typedClassName ++ "." ++ n ++ "(symbols)") | (i, n, _, _) <- starting]
     , jvmTypedPlan = plan }
   where
     functionName c d = identifier (shortName (declarationName (definitionDeclaration d))) ++ "_" ++ show c
@@ -417,13 +422,14 @@ functionDoc env c d = do
   let scope = [(i, l) | (i, l, _) <- params]
       selfCall = Just (c, map (\(_, l, _) -> l) params)
       looping = hasTailSelf env c (definitionBody d)
+      contextual = isContextual (envPlan env) (declarationId declaration)
   body <- case M.lookup (declarationId declaration) (typedIntrinsics (envPlan env)) of
     Just intrinsic -> do
       x <- intrinsicCall env intrinsic [(D.text l, binderType b) | ((_, l, _), b) <- zip params (definitionArguments d)]
       pure [D.text "return " <> x <> D.text ";"]
     Nothing -> cstmt env (if looping then selfCall else Nothing) scope Return (definitionBody d)
   let signature = D.text ("public static " ++ resultType ++ " " ++ name ++ "(" ++
-        intercalate ", " [t ++ " " ++ l | (_, l, t) <- params] ++ ") ")
+        intercalate ", " (["java.util.Map<String, Object> symbols" | contextual] ++ [t ++ " " ++ l | (_, l, t) <- params]) ++ ") ")
   pure (D.text ("/** " ++ idText (declarationId declaration) ++ " */") <> D.hardline <> signature <> D.block 2
     (if looping then D.text "while (true) " <> D.block 2 (D.joinWith D.hardline body) else D.joinWith D.hardline body))
 
@@ -470,7 +476,7 @@ cstmt env selfCall scope target e = case expressionNode e of
         pure (concatMap fst evaluated ++ map snd evaluated ++ [D.text "continue;"])
   Helper Unreachable _ -> pure [D.text "throw LawSpecFast.unreachable();"]
   -- raise e delivers nothing: it throws.
-  Perform (Operation ref "raise") [x] -> do
+  Perform (Operation ref "raise") [x] | isFail ref -> do
     (s, v) <- cexpr env scope x
     codec <- lift' (codecExpression env [] (expressionType x))
     pure (s ++ [D.text ("throw new LawSpecRuntime.Failure(" ++ D.render D.Compact (E.quoted (abilityKey ref)) ++ ", " ++ codec ++ ".encode(") <> v <> D.text "));"])
@@ -503,7 +509,8 @@ cexpr env scope e
         | otherwise -> do
             c <- lift' (maybe (Left ("typed Java: untyped callee " ++ idText i)) Right (definitionClass (envPlan env) i))
             parts <- mapM (cexpr env scope) args
-            pure (concatMap fst parts, D.text (envPrefix env ++ envFunctions env M.! c ++ "(") <> D.joinWith (D.text ", ") (map snd parts) <> D.text ")")
+            let context = [D.text "symbols" | isContextual (envPlan env) i]
+            pure (concatMap fst parts, D.text (envPrefix env ++ envFunctions env M.! c ++ "(") <> D.joinWith (D.text ", ") (context ++ map snd parts) <> D.text ")")
       ShortCircuit op a b -> do
         (sa, xa) <- cexpr env scope a
         (sb, xb) <- cexpr env scope b
@@ -549,10 +556,19 @@ cexpr env scope e
         (sb, xb) <- cexpr env scope b
         pure (sa ++ sb, D.text "LawSpecRuntime.regexMatches(" <> xa <> D.text ", " <> xb <> D.text ".codePoints().toArray())")
       -- raise e: a failure of the Fail ability, as the dynamic raise makes it.
-      Perform (Operation ref "raise") [x] -> do
+      Perform (Operation ref "raise") [x] | isFail ref -> do
         thrown <- raised ref x
         ty <- lift' (javaType env True (expressionType e))
         pure (fst thrown ++ [D.text "if (true) " <> snd thrown], D.text ("(" ++ ty ++ ") null"))
+      -- An operation of another ability: the dynamic code's call of its
+      -- handler in the context (LawSpecDefinitionBodies), over the
+      -- arguments' dynamic values.
+      Perform op args -> do
+        parts <- mapM (cexpr env scope) args
+        codecs <- lift' (mapM (codecExpression env [] . expressionType) args)
+        resultCodec <- lift' (codecExpression env [] (expressionType e))
+        pure (concatMap fst parts, D.text (resultCodec ++ ".decode(lawspec.runtime.LawSpecDefinitionBodies." ++ jvmPerformName op ++ "(") <>
+          D.joinWith (D.text ", ") (D.text "symbols" : [D.text (codec ++ ".encode(") <> x <> D.text ")" | (codec, x) <- zip codecs (map snd parts)]) <> D.text "))")
       -- attempt e: Right of e's value, or Left of the failure it raised.
       Handle (CatchFailure ref) body | Constructor "Either" [TypeArgument failure, TypeArgument result] <- expressionType e -> do
         t <- fresh "attempted"

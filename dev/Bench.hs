@@ -43,7 +43,7 @@ import LawSpec.Scaffold (scaffoldFilesWith)
 import qualified LawSpec.Core as C
 import LawSpec.Frontend (compileCore)
 import LawSpec.Model (Source(..), defaultGeneration)
-import LawSpec.Typed.Plan (typedPlan, typedPlanWith, typedPlanPerforming, scalarTypes, typedFallbacks, isTypedHandler)
+import LawSpec.Typed.Plan (typedPlanPerforming, scalarTypes, typedFallbacks, isTypedHandler)
 import LawSpec.Typed.Jvm (jvmScalars)
 
 benchCommand :: [String] -> IO ()
@@ -106,9 +106,7 @@ run name scale generateOnly targets = do
       mapM_ putStrLn summary
 
 -- | Which of the benchmark's definitions and spec handlers stay on the
--- dynamic path, and why: on Rust and Go, on the JVM (no UInt64), and on
--- Python, JavaScript, TypeScript and Haskell, whose typed code carries the
--- handler context and so performs other abilities' operations.
+-- dynamic path, and why: on the JVM (no UInt64), and on every other target.
 typedReport :: String -> IO ()
 typedReport name = do
   let base = "bench" </> name
@@ -120,8 +118,8 @@ typedReport name = do
   let declarations = C.programDataDeclarations program
       units = C.programUnits program
       definitions = length (concatMap C.unitDefinitions units)
-  forM_ [ ("rust, go", typedPlan declarations units), ("java, kotlin", typedPlanWith jvmScalars declarations units)
-        , ("python, javascript, typescript, haskell", typedPlanPerforming scalarTypes declarations units) ] $ \(label, plan) -> do
+  forM_ [ ("rust, go, python, javascript, typescript, haskell", typedPlanPerforming scalarTypes declarations units)
+        , ("java, kotlin", typedPlanPerforming jvmScalars declarations units) ] $ \(label, plan) -> do
     let fallbacks = typedFallbacks plan
         handlers = [(C.handlerName h, isTypedHandler plan h) | u <- units, h <- C.unitHandlers u]
     putStrLn (label ++ ": " ++ show (definitions - length fallbacks) ++ " of " ++ show definitions ++ " definitions typed")
@@ -185,7 +183,10 @@ commands target project = case target of
   "java" -> pure ([("mvn", ["-q", "compile"])],
     ("java", ["-Xmx8g", "-cp", "target/classes", "bench.KafkaBench"]))
   "kotlin" -> do
-    (code, out, err) <- readCreateProcessWithExitCode (proc "gradle" ["-q", "--console=plain", "classes", "benchClasspath"]) { cwd = Just project } ""
+    root <- getCurrentDirectory
+    local <- doesFileExist (root </> ".tools/gradle-9.3.0/bin/gradle")
+    let gradle = if local then root </> ".tools/gradle-9.3.0/bin/gradle" else "gradle"
+    (code, out, err) <- readCreateProcessWithExitCode (proc gradle ["-q", "--console=plain", "classes", "benchClasspath"]) { cwd = Just project } ""
     when (code /= ExitSuccess) (die ("kotlin: gradle failed\n" ++ out ++ err))
     let classpath = last ("" : [l | l <- lines out, not (null l)])
     pure ([], ("java", ["-Xmx8g", "-cp", classpath, "bench.KafkaBenchKt"]))
