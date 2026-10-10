@@ -8,7 +8,10 @@ import Test.Hspec
 import qualified LawSpec.Core as C
 import LawSpec.Frontend (compileCore)
 import LawSpec.Model (Source(..), defaultGeneration)
-import LawSpec.Typed.Plan (TypedPlan(..), typedPlan, sharedDefinitions, isTypedHandler, typedFallbacks)
+import LawSpec.Typed.Plan (TypedPlan(..), typedPlan, typedPlanPerforming, scalarTypes, isContextual, sharedDefinitions, isTypedHandler, typedFallbacks)
+import LawSpec.Typed.Python (PythonTyped(..), emitPythonTyped)
+import LawSpec.Typed.Web (WebTyped(..), emitWebTyped)
+import LawSpec.Typed.Haskell (HaskellTyped(..), emitHaskellTyped)
 import LawSpec.Typed.Rust (RustTyped(..), emitRustTyped)
 import LawSpec.Typed.Go (GoTyped(..), emitGoTyped)
 import LawSpec.Typed.Jvm (JvmTyped(..), JvmStyle(..), emitJvmTyped)
@@ -105,7 +108,7 @@ test_typedDefinitionsRunNativeWithTheirMeaning = describe "typed definitions" $ 
         units = C.programUnits p
     case emitGoTyped declarations units of
       Left e -> expectationFailure e
-      Right typed -> case goTypedSource typed "ledger" (named p "credit" ++ named p "total") [] of
+      Right typed -> case goTypedSource typed (\_ _ -> Left "no operation") "ledger" (named p "credit" ++ named p "total") [] of
         Left e -> expectationFailure e
         Right source -> do
           source `shouldSatisfy` isInfixOf "lsfPut("
@@ -149,6 +152,39 @@ test_typedDefinitionsRunNativeWithTheirMeaning = describe "typed definitions" $ 
         Left e -> expectationFailure e
         Right typed -> do
           let ids = [C.declarationId (C.definitionDeclaration d) | u <- units, d <- C.unitDefinitions u]
-          case goTypedSource typed "composition" ids [] of
+          case goTypedSource typed (\_ _ -> Right (D.text "lawSpecPerformed()")) "composition" ids [] of
             Left e -> expectationFailure e
             Right source -> source `shouldSatisfy` isInfixOf "panic(&LawSpecFailure{"
+    it "types raise and attempt on Python, JavaScript, TypeScript and Haskell" $ do
+      p <- compiled ["examples/specs/sequences.lawspec", "examples/specs/composition.lawspec"]
+      let declarations = C.programDataDeclarations p
+          units = C.programUnits p
+      either expectationFailure (\typed -> pyTypedModule typed `shouldSatisfy` isInfixOf "raise ls.Failure(") (emitPythonTyped 64 declarations units)
+      either expectationFailure (\typed -> webTypedModule typed `shouldSatisfy` isInfixOf "throw new ls.Failure(") (emitWebTyped False 64 declarations units)
+      either expectationFailure (\typed -> webTypedModule typed `shouldSatisfy` isInfixOf "export class") (emitWebTyped True 64 declarations units)
+      either expectationFailure (\typed -> hsTypedModule typed `shouldSatisfy` isInfixOf "LSF.raise") (emitHaskellTyped declarations units)
+  describe "typed definitions that perform other abilities' operations" $ do
+    let compiled paths = do
+          sources <- mapM (\path -> Source path <$> readFile path) paths
+          either (\e -> expectationFailure (show e) >> fail "no program") pure (compileCore 64 defaultGeneration sources)
+    it "type a client of another ability, which takes the handler context" $ do
+      p <- compiled ["examples/specs/abilities.lawspec"]
+      let plan = typedPlanPerforming scalarTypes (C.programDataDeclarations p) (C.programUnits p)
+          pay = [C.declarationId (C.definitionDeclaration d) | u <- C.programUnits p, d <- C.unitDefinitions u, C.declarationName (C.definitionDeclaration d) == "pay"]
+      not (null pay) `shouldBe` True
+      all (`M.member` typedDefinitions plan) pay `shouldBe` True
+      all (isContextual plan) pay `shouldBe` True
+    it "stay dynamic where the target's typed code has no context" $ do
+      p <- compiled ["examples/specs/abilities.lawspec"]
+      let plan = typedPlan (C.programDataDeclarations p) (C.programUnits p)
+          pay = [C.declarationId (C.definitionDeclaration d) | u <- C.programUnits p, d <- C.unitDefinitions u, C.declarationName (C.definitionDeclaration d) == "pay"]
+      any (`M.member` typedDefinitions plan) pay `shouldBe` False
+    it "call the operation's handler in the context on every target" $ do
+      p <- compiled ["examples/specs/abilities.lawspec"]
+      let declarations = C.programDataDeclarations p
+          units = C.programUnits p
+      either expectationFailure (\typed -> pyTypedModule typed `shouldSatisfy` isInfixOf "ls.handler(symbols, ") (emitPythonTyped 64 declarations units)
+      either expectationFailure (\typed -> webTypedModule typed `shouldSatisfy` isInfixOf "ls.handler(symbols, ") (emitWebTyped True 64 declarations units)
+      either expectationFailure (\typed -> hsTypedModule typed `shouldSatisfy` isInfixOf "LS.handlerOf symbols") (emitHaskellTyped declarations units)
+      either expectationFailure (\typed -> D.render D.Compact (rustTypedModule typed) `shouldSatisfy` isInfixOf "(&mut *ctx, vec![") (emitRustTyped declarations units)
+      either expectationFailure (\typed -> jvmTypedSource typed `shouldSatisfy` isInfixOf "LawSpecDefinitionBodies.typedPerform_") (emitJvmTyped JavaStyle declarations units)
