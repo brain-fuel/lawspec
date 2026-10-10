@@ -1,0 +1,6 @@
+@@ src/Example/Keywords.fs
+<<<<<<<
+let class_ (value0: bigint) : bigint = value0 <<< 1
+=======
+let class_ (value0: bigint) : bigint = value0 <<< 2
+>>>>>>>

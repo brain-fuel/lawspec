@@ -13,6 +13,7 @@
     <Compile Include="Scalar.fs" />
     <Compile Include="Regex.fs" />
     <Compile Include="Random.fs" />
+    <Compile Include="Descriptors.fs" />
     <Compile Include="Schema.fs" />
     <Compile Include="Recorded.fs" />
     <Compile Include="Portable.fs" />

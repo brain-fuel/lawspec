@@ -1,0 +1,6 @@
+@@ src/Example/Refinements.fs
+<<<<<<<
+let count (text: string) : bigint = bigint (Seq.length (text.EnumerateRunes()))
+=======
+let count (text: string) : bigint = 0I
+>>>>>>>
