@@ -64,10 +64,10 @@ auditDefinitionContracts bits dataDeclarations allDefinitions allContracts = uns
   -- A program's definitions are audited by compilation, elaboration,
   -- validation and planning alike, the same definitions each time: the last
   -- few audits are kept, keyed by the definitions' identities in memory and
-  -- the contracts' and data types' contents (a pure function, so this is
+  -- the contracts' and data types' contents (compared in full) (a pure function, so this is
   -- only a cache). An audit of thousands of definitions is seconds.
   names <- mapM (\d -> evaluate d >>= makeStableName) allDefinitions
-  let key = AuditKey bits (map dataId dataDeclarations) names allContracts
+  let key = AuditKey bits dataDeclarations names allContracts
   cached <- readIORef auditCache
   case lookup key cached of
     Just result -> pure result
@@ -77,7 +77,7 @@ auditDefinitionContracts bits dataDeclarations allDefinitions allContracts = uns
       pure result
 {-# NOINLINE auditDefinitionContracts #-}
 
-data AuditKey = AuditKey Int [Id] [StableName Definition] [Contract] deriving Eq
+data AuditKey = AuditKey Int [DataDeclaration] [StableName Definition] [Contract] deriving Eq
 
 auditCache :: IORef [(AuditKey, Either [Diagnostic] [(Id, Int)])]
 auditCache = unsafePerformIO (newIORef [])

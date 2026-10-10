@@ -431,10 +431,10 @@ elaborateDefinitionUnit :: [C.DataDeclaration] -> Int -> S.Unit -> Either String
 elaborateDefinitionUnit dataDeclarations bits u = unsafePerformIO $ do
   -- Compilation and elaboration both elaborate each unit's definitions, the
   -- same unit with the same data types: the results are kept, keyed by the
-  -- unit's identity in memory and the data types' identities (a pure
+  -- unit's identity in memory and the data types (a pure
   -- function, so this is only a cache).
   name <- evaluate u >>= makeStableName
-  let key = (bits, map C.dataId dataDeclarations)
+  let key = (bits, dataDeclarations)
   cached <- readIORef unitCache
   case [result | (n, k, result) <- cached, n == name, k == key] of
     result : _ -> pure result
@@ -444,7 +444,7 @@ elaborateDefinitionUnit dataDeclarations bits u = unsafePerformIO $ do
       pure result
 {-# NOINLINE elaborateDefinitionUnit #-}
 
-unitCache :: IORef [(StableName S.Unit, (Int, [C.Id]), Either String C.Unit)]
+unitCache :: IORef [(StableName S.Unit, (Int, [C.DataDeclaration]), Either String C.Unit)]
 unitCache = unsafePerformIO (newIORef [])
 {-# NOINLINE unitCache #-}
 
