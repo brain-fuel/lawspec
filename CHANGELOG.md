@@ -56,13 +56,13 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `cluster` handler: a million produces over 100 partitions, a consumer
   group of ten fetching and committing with a rebalance, and ten thousand
   transactions. Every definition of the model and the handler run typed.
-  It runs the whole workload at 0.59 (Rust), 1.04 (Go), 0.76 (Java) and 0.90
+  It runs the whole workload at 0.53 (Rust), 1.03 (Go), 0.78 (Java) and 0.93
   (Kotlin) million operations a second, holding about 190 to 270 MiB for the
   million records, where 0.21.0's generated Rust managed 9 operations a
-  second, and 1.5 GiB, at two thousand. Python runs it at 110 thousand
+  second, and 1.5 GiB, at two thousand. Python runs it at 118 thousand
   operations a second (it ran 1,100 on the dynamic values, at twenty
-  thousand), JavaScript at 884 thousand and TypeScript at 830 thousand
-  (7,300 before) and Haskell at 1.75 million (57 before, at two thousand).
+  thousand), JavaScript at 942 thousand and TypeScript at 964 thousand
+  (7,300 before) and Haskell at 1.83 million (57 before, at two thousand).
   `lawspec-dev bench kafka --deterministic` generates the contract on each
   target with and without a cache, cold and warm, and by `lawspec-core`, and
   fails unless every run gives the same bytes.
