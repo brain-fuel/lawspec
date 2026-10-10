@@ -38,6 +38,9 @@ data Config = Config
   , nativeResult :: Type -> D.Doc -> D.Doc
   -- The statements that install a law's handlers in symbols, for each case.
   , handlerInstalls :: Expanded -> [D.Doc]
+  -- The native handlers made with a resource, installed once the case has
+  -- acquired its resources.
+  , lateHandlerInstalls :: Expanded -> [D.Doc]
   -- Each input's descriptor, for LawSpec's own search (LawSpec.Search):
   -- Nothing when the law takes no part in it.
   , searchDescriptors :: Expanded -> Maybe [String]
@@ -163,7 +166,7 @@ emitTests Config{..} unit laws = do
     expr = expression
     -- A law's resources: each case acquires them, and releases them when it
     -- ends, the last first, even when it fails (defer).
-    resourceDocs e = concat (map resourceDoc (C.propertyResources (original e)))
+    resourceDocs e = concat (map resourceDoc (C.propertyResources (original e))) ++ lateHandlerInstalls e
     -- A shared resource (share R per ...): the runtime keeps one per scope
     -- key, resets it before each later use, and releases it in TestMain.
     resourceDoc r

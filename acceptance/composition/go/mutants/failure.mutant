@@ -1,0 +1,7 @@
+expect: Logs: an unknown log refuses records [native]
+@@ example/composition/adapter.go
+<<<<<<<
+		panic(LawSpecFail{Value: ProblemUnknownLog{}})
+=======
+		panic(LawSpecFail{Value: ProblemEmptyRecord{}})
+>>>>>>>

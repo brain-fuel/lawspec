@@ -88,13 +88,13 @@ end
 
 definition lastOf (last :: Maybe Int64) :: Pair (Maybe Int64) (Maybe Int64) is Pair last last end
 
-handler writer for Writer with state last :: Maybe Int64 start Nothing is
+handler logWriter for Writer with state last :: Maybe Int64 start Nothing is
   write by writeTo
   lastOffset by lastOf
 end
 
 -- The reference composition: every ability answered by spec handlers.
-handlers reference is store, writer end
+handlers reference is store, logWriter end
 
 law `sizes count records` is
   definition is

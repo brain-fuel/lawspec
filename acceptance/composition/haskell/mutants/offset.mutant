@@ -1,0 +1,9 @@
+expect: Logs: a new log takes its first record at offset zero [native]
+@@ src/Example/Composition.hs
+<<<<<<<
+              writeIORef (storeLogs store) (Map.insert name (record : records) logs)
+              P.pure (P.fromIntegral (P.length records))
+=======
+              writeIORef (storeLogs store) (Map.insert name (record : records) logs)
+              P.pure (P.fromIntegral (P.length records + 1))
+>>>>>>>

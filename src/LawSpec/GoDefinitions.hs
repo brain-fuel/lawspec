@@ -93,10 +93,32 @@ emitGoDefinitionsWithCalls bound layout bits declarations units = do
                     | resultType == Constructor "Unit" [] =
                         line "func() LawSpecValue " <> D.block 8 (call <> D.hardline <> line "return resultCodec.fromNative(LawSpecUnit{})") <> line "()"
                     | otherwise = E.call "resultCodec.fromNative" [call]
-              pure (line "func() LawSpecValue " <> D.block 8 (D.joinWith D.hardline
-                ([line ("schema := " ++ schema), line ("bits := " ++ show bits), line "_, _ = schema, bits"] ++
-                 [assign ("codec" ++ show i) (line codec) | (i, codec) <- zip [0::Int ..] codecs] ++
-                 [assign "resultCodec" (line resultCodec), line "return " <> result])) <> line "()")
+              let performed = line "func() LawSpecValue " <> D.block 8 (D.joinWith D.hardline
+                    ([line ("schema := " ++ schema), line ("bits := " ++ show bits), line "_, _ = schema, bits"] ++
+                     [assign ("codec" ++ show i) (line codec) | (i, codec) <- zip [0::Int ..] codecs] ++
+                     [assign "resultCodec" (line resultCodec), line "return " <> result])) <> line "()"
+              -- An operation that fails with E: a native handler panics with
+              -- LawSpecFail and a native E, which becomes the failure.
+              case findAbility units (operationAbility op) >>= lookup (operationName op) . abilityFailures . snd of
+                Just failing@(AbilityRef _ [failure]) -> do
+                  failureCodec <- Native.goCodecWithContext "symbols" declarations failure
+                  failureType <- Native.goDataType declarations failure
+                  pure (E.call "lsNativeFailures" [E.quoted (abilityKey failing),
+                    line "func(native any) LawSpecValue " <> D.block 8 (D.joinWith D.hardline
+                      [line ("schema := " ++ schema), line ("bits := " ++ show bits), line "_, _ = schema, bits",
+                       line ("return " ++ failureCodec ++ ".fromNative(native.(" ++ failureType ++ "))")]),
+                    line "func() LawSpecValue " <> D.block 8 (line "return " <> performed)])
+                _ -> pure performed
+            -- prelude.attempt e: Right of e's value, or Left of its failure.
+            Handle (CatchFailure ability) _ | [body] <- values, Constructor "Either" [TypeArgument failure, TypeArgument result] <- expressionType term -> do
+              let placeholder = Id "lawspec::attempt::value"
+                  side tag ty = do
+                    made <- E.renderExpression declarations bits schema (\i -> if i == placeholder then "_value" else local i) external
+                      (Expr (expressionType term) (Construct (Id tag) [Expr ty (Local placeholder) (GeneratedFrom placeholder)]) (GeneratedFrom placeholder))
+                    pure (line "func(_value LawSpecValue) LawSpecValue " <> D.block 8 (line "return " <> made))
+              right <- side "Either::Right" result
+              left <- side "Either::Left" failure
+              pure (E.call "lsAttempt" [E.quoted (abilityKey ability), line "func() LawSpecValue " <> D.block 8 (line "return " <> body), right, left])
             -- An orchestration calls an adapter of its own package natively:
             -- the values cross to native and back through the codecs.
             ExternalCall identity _ | Just (_, adapter) <- lookup identity adapters -> do

@@ -42,6 +42,9 @@ data Config = Config
   , nativeResult :: Type -> D.Doc -> D.Doc
   -- The statements that install a law's handlers with symbols, for each case.
   , handlerInstalls :: Expanded -> [D.Doc]
+  -- The native handlers made with a resource, installed once the case has
+  -- acquired its resources.
+  , lateHandlerInstalls :: Expanded -> [D.Doc]
   -- The unit's ability records and handlers, when it has abilities.
   , abilityModules :: Maybe (String, String)
   -- The modules of bound production handlers.
@@ -246,7 +249,7 @@ emitTests Config{..} unit laws = do
     -- A law's resources: each case acquires them, then runs, then releases
     -- them, the last first, even when the case fails. A built-in resource is
     -- acquired in IO, so each case gets its own.
-    bracketed e docs = foldr wrap (sequenceDocs docs) (C.propertyResources (original e))
+    bracketed e docs = foldr wrap (sequenceDocs (lateHandlerInstalls e ++ docs)) (C.propertyResources (original e))
       where
         -- A shared resource (share R per ...): the runtime keeps one per
         -- scope key, resets it before each later use, holds it for one case

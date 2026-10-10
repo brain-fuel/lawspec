@@ -76,8 +76,12 @@ emit minify bits datas units = mapM unitFile (filter unitAbilityPieces units)
         line ("public interface " ++ interfaceName a ++ " ") <> D.block 2 (D.joinWith D.hardline methods))
     codec ty = Native.javaCodecDocWithContext (line "symbols") datas bits ty
     specHandler u h = do
-      ability <- maybe (Left ("unknown ability of handler " ++ C.handlerName h)) Right
-        (unitAbility u (C.handlerAbility h))
+      -- A handler of several abilities answers all their operations.
+      answered <- mapM (\ref -> maybe (Left ("unknown ability of handler " ++ C.handlerName h)) Right (unitAbility u ref)) (C.handlerAbilities h)
+      let ability = case answered of
+            first : _ -> first { C.abilityOperations = concatMap C.abilityOperations answered
+                               , C.abilityName = intercalate ", " (map C.abilityName answered) }
+            [] -> C.failAbility
       initialState <- case C.handlerState h of
         Nothing -> pure []
         -- A computed start value is its own definition (<handler>Start).
@@ -107,7 +111,7 @@ emit minify bits datas units = mapM unitFile (filter unitAbilityPieces units)
               | otherwise = [line "return " <> resultCodec <> line ".decode(result);"]
         pure (line "@Override" <> D.hardline <> line "public " <> s <> line " " <> D.block 2 (D.joinWith D.hardline (outcome ++ returned)))) (C.abilityOperations ability)
       pure (line ("/** The spec handler " ++ C.handlerName h ++ " for " ++ C.abilityName ability ++ ". */") <> D.hardline <>
-        line ("public static final class " ++ name ++ " implements " ++ abilitiesClassOf (ownerName ability) ++ "." ++ interfaceName ability ++ " ") <> D.block 2 (D.joinWith (D.hardline <> D.hardline)
+        line ("public static final class " ++ name ++ " implements " ++ intercalate ", " [abilitiesClassOf (ownerName a) ++ "." ++ interfaceName a | a <- answered] ++ " ") <> D.block 2 (D.joinWith (D.hardline <> D.hardline)
           ([ line "private final Map<String, Object> symbols;" <> D.hardline <> line "private Value state;"
            , line ("public " ++ name ++ "(Map<String, Object> symbols) ") <> D.block 2 (D.joinWith D.hardline (line "this.symbols = symbols;" : initialState)) ] ++
            methods)))
@@ -143,6 +147,13 @@ productionStub datas u a = do
     pure (D.text "@Override" <> D.hardline <> D.text "public " <> resultType <> D.text (" " ++ op) <>
       D.delimit 4 "(" ")" [t <> D.text (" value" ++ show i) | (i, t) <- zip [0 :: Int ..] types] <> D.text " " <>
       D.block 2 (D.text ("throw new UnsupportedOperationException(" ++ show op ++ ");")))) (C.abilityOperations a)
+  -- ability A with T: the handler is made with the case's T.
+  made <- case C.abilityResource a of
+    Nothing -> pure []
+    Just t -> do
+      resourceType <- Native.javaDataTypeDoc datas t
+      pure [ D.text "public final " <> resourceType <> D.text " resource;"
+           , D.text ("public " ++ productionName a ++ "(") <> resourceType <> D.text " resource) " <> D.block 2 (D.text "this.resource = resource;") ]
   pure (D.text ("/** The native handler of " ++ displayName a ++ ": " ++ intercalate ", " (map fst (C.abilityOperations a)) ++ ". */") <> D.hardline <>
     D.text ("public static final class " ++ productionName a ++ " implements " ++ abilitiesClass u ++ "." ++ interfaceName a ++ " ") <>
-    D.block 2 (D.joinWith (D.hardline <> D.hardline) methods))
+    D.block 2 (D.joinWith (D.hardline <> D.hardline) (made ++ methods)))

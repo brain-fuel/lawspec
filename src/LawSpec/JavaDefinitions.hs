@@ -178,9 +178,22 @@ emitDefinitions withNative layout bits declarations units = do
                   resultCodec <- Native.javaCodecDocWithContext (D.text "symbols") declarations bits (expressionType expression)
                   let call = E.call (handlerOf (operationAbility op) ++ "." ++ operationName op)
                         [codec <> D.text ".decode(" <> value <> D.text ")" | (codec, value) <- zip codecs values]
-                  pure $ if expressionType expression == scalarType "Unit"
+                  -- An operation that fails with E: a native handler throws
+                  -- LawSpecRuntime.Fail with a native E, which becomes the failure.
+                  pure $ failingAs (maybe [] pure (findAbility units (operationAbility op) >>= lookup (operationName op) . abilityFailures . snd)) $
+                    if expressionType expression == scalarType "Unit"
                     then E.call "lawspec.runtime.LawSpecRuntime.unit" [D.text "() -> " <> call]
                     else resultCodec <> D.text ".encode(" <> call <> D.text ")"
+            -- prelude.attempt e: Right of e's value, or Left of its failure.
+            Handle (CatchFailure ability) _ | [body] <- values, Constructor "Either" [TypeArgument failure, TypeArgument result] <- expressionType expression -> do
+              let placeholder = Id "lawspec::attempt::value"
+                  side tag ty = do
+                    made <- E.renderExpression declarations bits (\i -> if i == placeholder then "_value" else local i) external
+                      (Expr (expressionType expression) (Construct (Id tag) [Expr ty (Local placeholder) (GeneratedFrom placeholder)]) (GeneratedFrom placeholder))
+                    pure (D.text "_value -> " <> made)
+              right <- side "Either::Right" result
+              left <- side "Either::Left" failure
+              pure (E.call "LawSpecRuntime.attempt" [E.quoted (abilityKey ability), D.text "() -> " <> body, right, left])
             -- An orchestration calls an adapter natively: Java directly, with
             -- the codecs; Kotlin through its generated bridge.
             ExternalCall identity _ | Just (owner, adapter) <- lookup identity (orchestratedAdapters units) ->
@@ -251,7 +264,8 @@ emitDefinitions withNative layout bits declarations units = do
         (D.joinWith D.hardline statements)))
     evaluator identity = maybe (Left "unresolved Java policy definition") Right (lookup identity callees)
     -- An adapter that fails with E: its native code throws LawSpecRuntime.Fail.
-    failing adapter call = case [a | a@(AbilityRef _ [_]) <- declarationUses adapter, isFail a] of
+    failing adapter = failingAs [a | a@(AbilityRef _ [_]) <- declarationUses adapter, isFail a]
+    failingAs failures call = case failures of
       ability@(AbilityRef _ [failure]) : _ ->
         let codec = either error id (Native.javaCodecDocWithContext (D.text "symbols") declarations bits failure)
             native = either error id (Native.javaDataTypeDoc declarations failure)
