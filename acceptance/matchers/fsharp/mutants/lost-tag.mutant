@@ -1,0 +1,7 @@
+expect: unique tags keep each tag
+@@ src/Example/Matchers.fs
+<<<<<<<
+let uniqueTags (tags: string list) : string list = List.distinct tags
+=======
+let uniqueTags (tags: string list) : string list = List.distinct tags |> List.skip (min 1 tags.Length)
+>>>>>>>

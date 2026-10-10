@@ -1,0 +1,6 @@
+@@ src/Example/Orders.fs
+<<<<<<<
+let price (sku: string) : Task<int> = task { return priceOf sku }
+=======
+let price (sku: string) : Task<int> = task { return priceOf sku + 1 }
+>>>>>>>

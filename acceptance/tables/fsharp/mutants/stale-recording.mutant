@@ -1,0 +1,7 @@
+expect: recorded/example.tables/first label differs
+@@ src/Example/Tables.fs
+<<<<<<<
+let label (parcel: int) : string = sprintf "parcel %d" parcel
+=======
+let label (parcel: int) : string = if parcel = 1 then "parcel one" else sprintf "parcel %d" parcel
+>>>>>>>

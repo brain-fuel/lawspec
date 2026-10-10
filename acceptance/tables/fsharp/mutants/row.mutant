@@ -1,0 +1,7 @@
+expect: example row 3: 2, 10, 30
+@@ src/Example/Tables.fs
+<<<<<<<
+let shippingCost (weight: int) (distance: int) : int = weight * distance + 5 * weight
+=======
+let shippingCost (weight: int) (distance: int) : int = weight * distance + 5 * weight + (if weight = 2 then 5 else 0)
+>>>>>>>

@@ -1,0 +1,7 @@
+expect: unique tags come from the input
+@@ src/Example/Matchers.fs
+<<<<<<<
+let uniqueTags (tags: string list) : string list = List.distinct tags
+=======
+let uniqueTags (tags: string list) : string list = List.distinct tags @ [ "extra" ]
+>>>>>>>

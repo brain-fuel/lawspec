@@ -78,11 +78,37 @@ let require (holds: Value) (context: string) : unit =
     | Bool false -> Fail.raiseWith "ContractFailed" context
     | _ -> Fail.raiseWith "NonBooleanContract" context
 
+/// Where two unequal values first differ: the path to the item or field,
+/// and both values there.
+let private difference (actual: Value) (expected: Value) =
+    let rec walk (a: Value) (b: Value) (path: string list) =
+        match a, b with
+        | List xs, List ys ->
+            let firstDiff =
+                Seq.zip xs ys |> Seq.tryFindIndex (fun (x, y) -> Recorded.renderPlain x <> Recorded.renderPlain y)
+            match firstDiff with
+            | Some i -> walk (List.item i xs) (List.item i ys) (path @ [ sprintf "item %d" (i + 1) ])
+            | None when List.length xs = List.length ys -> None
+            | None -> Some(path @ [ "length" ], string (List.length xs), string (List.length ys))
+        | Data(tx, fx), Data(ty, fy) when tx = ty && List.length fx = List.length fy ->
+            let name = tx.Substring(tx.LastIndexOf("::") + 2)
+            match List.zip fx fy |> List.tryFindIndex (fun (x, y) -> Recorded.renderPlain x <> Recorded.renderPlain y) with
+            | Some i -> walk (List.item i fx) (List.item i fy) (path @ [ sprintf "field %d of %s" (i + 1) name ])
+            | None -> None
+        | _ when List.isEmpty path -> None
+        | _ -> Some(path, Recorded.renderPlain a, Recorded.renderPlain b)
+    match walk actual expected [] with
+    | Some(path, shownActual, shownExpected) ->
+        sprintf " | first difference at %s: expected %s, actual %s" (String.Join(", ", path)) shownExpected shownActual
+    | None -> ""
+
 /// An equation of a law: both sides are kept for the report.
 [<CompiledName("AssertEqual")>]
 let assertEqual (actual: Value) (expected: Value) (label: string) : Value =
     if Scalar.equal actual expected then Bool true
-    else Fail.raiseWith "EquationFailed" (sprintf "%s: actual %s, expected %s" label (Recorded.renderPlain actual) (Recorded.renderPlain expected))
+    else
+        Fail.raiseWith "EquationFailed"
+            (sprintf "%s: actual %s, expected %s%s" label (Recorded.renderPlain actual) (Recorded.renderPlain expected) (difference actual expected))
 
 /// Name the definition or law a LawSpec failure happened in.
 [<CompiledName("Contextual")>]

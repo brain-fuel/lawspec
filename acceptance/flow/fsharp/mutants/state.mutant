@@ -1,0 +1,6 @@
+@@ src/Example/Flow.fs
+<<<<<<<
+    | Push(top, rest) -> { PopFlow.Result = top; State = rest }
+=======
+    | Push(top, _) -> { PopFlow.Result = top; State = stack }
+>>>>>>>
