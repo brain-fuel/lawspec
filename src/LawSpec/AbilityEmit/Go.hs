@@ -19,7 +19,7 @@ import qualified LawSpec.GoData as Native
 import qualified LawSpec.GoDefinitions as Definitions
 import qualified LawSpec.GoExpr as E
 import qualified LawSpec.Code.Doc as D
-import LawSpec.Typed.Plan (isTypedHandler)
+import LawSpec.Typed.Plan (isTypedHandler, isContextual)
 import LawSpec.Typed.Go (GoTyped(..), emitGoTyped)
 
 -- An operation's Go method: exported, so other packages can implement it.
@@ -150,7 +150,7 @@ emit minify bits datas units = case clashes of
             argument i ty f = case direct ty of
               Just (fromNative, _) -> fromNative ++ "(value" ++ show i ++ ")"
               Nothing -> f ++ "(codec" ++ show i ++ ".fromNative(value" ++ show i ++ "))"
-            arguments = ["handler.state" | Just _ <- [C.handlerState h]] ++
+            arguments = ["handler.symbols" | isContextual (goTypedPlan typed) clause] ++ ["handler.state" | Just _ <- [C.handlerState h]] ++
               (if null args && C.handlerState h == Nothing then ["lsfUnit{}"]
                else [argument i ty f | (i, (ty, f)) <- zip [0 :: Int ..] (zip args froms)])
             invocation = function ++ "(" ++ intercalate ", " arguments ++ ")"

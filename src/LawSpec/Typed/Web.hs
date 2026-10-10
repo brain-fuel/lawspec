@@ -335,7 +335,7 @@ cstmt env selfCall scope target e = case expressionNode e of
           pure (s ++ [D.text ("const " ++ t ++ " = ") <> x <> D.text ";"], D.text (p ++ " = " ++ t ++ ";"))
         pure (concatMap fst evaluated ++ map snd evaluated ++ [D.text "continue;"])
   Helper Unreachable _ -> pure [D.text "return lsf.unreachable();"]
-  Perform (Operation _ "raise") [_] -> fst <$> cexpr env scope e
+  Perform (Operation ref "raise") [_] | isFail ref -> fst <$> cexpr env scope e
   _ -> do
     (s, x) <- cexpr env scope e
     pure (s ++ [deliver target x])

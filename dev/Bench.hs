@@ -1,7 +1,9 @@
 -- | Benchmarks of generated checked definitions and stateful spec handlers,
 -- run from the repository root:
 --
---   lawspec-dev bench kafka                      rust, go, java and kotlin
+--   lawspec-dev bench kafka                      every target: rust, go, java,
+--                                                kotlin, python, javascript,
+--                                                typescript and haskell
 --   lawspec-dev bench kafka --scale 10000 rust   a smaller workload
 --   lawspec-dev bench kafka --generate go        write the project only
 --   lawspec-dev bench kafka --typed              which definitions and
@@ -29,6 +31,7 @@ import Data.Maybe (fromMaybe)
 import qualified Data.Text as T
 import qualified Data.Vector as V
 import System.Directory
+import System.Environment (lookupEnv)
 import System.Exit (ExitCode(..), die)
 import System.FilePath ((</>), takeDirectory)
 import System.IO (hFlush, stdout)
@@ -40,7 +43,7 @@ import LawSpec.Scaffold (scaffoldFilesWith)
 import qualified LawSpec.Core as C
 import LawSpec.Frontend (compileCore)
 import LawSpec.Model (Source(..), defaultGeneration)
-import LawSpec.Typed.Plan (typedPlan, typedPlanWith, typedFallbacks, isTypedHandler)
+import LawSpec.Typed.Plan (typedPlan, typedPlanWith, typedPlanPerforming, scalarTypes, typedFallbacks, isTypedHandler)
 import LawSpec.Typed.Jvm (jvmScalars)
 
 benchCommand :: [String] -> IO ()
@@ -49,7 +52,7 @@ benchCommand arguments = case arguments of
   "compile" : scales -> compileBench (if null scales then [100, 200, 400, 800] else map read scales)
   name : rest -> do
     let (scale, generateOnly, targets) = options rest (Nothing, False, [])
-    run name scale generateOnly (if null targets then ["rust", "go", "java", "kotlin"] else targets)
+    run name scale generateOnly (if null targets then ["rust", "go", "java", "kotlin", "python", "javascript", "typescript", "haskell"] else targets)
   [] -> die "usage: lawspec-dev bench <name> [--scale N] [--generate] [target...] | --typed"
   where
     options ("--scale" : n : rest) (_, g, ts) = options rest (Just n, g, ts)
@@ -79,6 +82,10 @@ run name scale generateOnly targets = do
     drivers <- walk (base </> target)
     forM_ drivers $ \file -> readFile file >>= writeAt (project </> drop (length (base </> target) + 1) file)
     when (target == "go") (copyFile "test/locks/go/go.sum" (project </> "go.sum"))
+    -- The Haskell driver is an executable of the generated package.
+    when (target == "haskell") $ appendFile (project </> "package.yaml") $ unlines
+      [ "executables:", "  kafka-bench:", "    main: KafkaBench.hs", "    source-dirs: bench"
+      , "    dependencies: [lawspec-example]", "    ghc-options: [-O1, -rtsopts]" ]
     let lines' = [p | (p, _) <- generated]
     putStrLn (show (length lines') ++ " files")
     unless generateOnly $ do
@@ -99,7 +106,9 @@ run name scale generateOnly targets = do
       mapM_ putStrLn summary
 
 -- | Which of the benchmark's definitions and spec handlers stay on the
--- dynamic path, and why: on Rust and Go, and on the JVM (no UInt64).
+-- dynamic path, and why: on Rust and Go, on the JVM (no UInt64), and on
+-- Python, JavaScript, TypeScript and Haskell, whose typed code carries the
+-- handler context and so performs other abilities' operations.
 typedReport :: String -> IO ()
 typedReport name = do
   let base = "bench" </> name
@@ -111,7 +120,8 @@ typedReport name = do
   let declarations = C.programDataDeclarations program
       units = C.programUnits program
       definitions = length (concatMap C.unitDefinitions units)
-  forM_ [("rust, go", typedPlan declarations units), ("java, kotlin", typedPlanWith jvmScalars declarations units)] $ \(label, plan) -> do
+  forM_ [ ("rust, go", typedPlan declarations units), ("java, kotlin", typedPlanWith jvmScalars declarations units)
+        , ("python, javascript, typescript, haskell", typedPlanPerforming scalarTypes declarations units) ] $ \(label, plan) -> do
     let fallbacks = typedFallbacks plan
         handlers = [(C.handlerName h, isTypedHandler plan h) | u <- units, h <- C.unitHandlers u]
     putStrLn (label ++ ": " ++ show (definitions - length fallbacks) ++ " of " ++ show definitions ++ " definitions typed")
@@ -179,6 +189,15 @@ commands target project = case target of
     when (code /= ExitSuccess) (die ("kotlin: gradle failed\n" ++ out ++ err))
     let classpath = last ("" : [l | l <- lines out, not (null l)])
     pure ([], ("java", ["-Xmx8g", "-cp", classpath, "bench.KafkaBenchKt"]))
+  "python" -> do
+    root <- getCurrentDirectory
+    python <- maybe (root </> ".integration/python/.venv/bin/python") id <$> lookupEnv "LAWSPEC_PYTHON"
+    pure ([], (python, ["-B", "kafka_bench.py"]))
+  "javascript" -> pure ([], ("node", ["--stack-size=65500", "--expose-gc", "kafka-bench.mjs"]))
+  "typescript" -> pure ([("npm", ["install", "--silent", "--no-audit", "--no-fund"]), ("npx", ["tsc", "-p", "tsconfig.json"])],
+    ("node", ["--stack-size=65500", "--expose-gc", "dist/src/bench/kafka-bench.js"]))
+  "haskell" -> pure ([("stack", ["--no-terminal", "build", "lawspec-example:exe:kafka-bench", "--copy-bins", "--local-bin-path", "bin"])],
+    ("./bin/kafka-bench", ["+RTS", "-T", "-RTS"]))
   _ -> die ("no benchmark runner for " ++ target)
 
 -- | Throughput per phase and memory, from the driver's lines.

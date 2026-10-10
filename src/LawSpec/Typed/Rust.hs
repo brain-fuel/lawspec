@@ -22,6 +22,7 @@ import qualified LawSpec.RustExpr as E
 import qualified LawSpec.RustData as Native
 import LawSpec.Collections (collectionContainer)
 import LawSpec.Time (isDurationType)
+import LawSpec.RustAbilityPaths (performBridges)
 
 data RustTyped = RustTyped
   { rustTypedModule :: D.Doc
@@ -49,6 +50,7 @@ data Env = Env
   , envConstructors :: M.Map Id (DataDeclaration, DataConstructor)
   , envFunctions :: M.Map Int String            -- class -> function name
   , envPrefix :: String                         -- "" inside the typed module
+  , envBridges :: M.Map Id String               -- each operation's bridge
   }
 
 type R = StateT Int (Either String)
@@ -74,12 +76,13 @@ sanitize name = case [c | c <- map lower name, isAlphaNum c || c == '_'] of
 
 emitRustTyped :: [DataDeclaration] -> [Unit] -> Either String RustTyped
 emitRustTyped declarations units = do
-  let plan = typedPlan declarations units
+  let plan = typedPlanPerforming scalarTypes declarations units
       datas = typedData plan
       names = dataNames datas
       functions = M.fromList [ (c, functionName c d) | (c, d) <- typedRepresentatives plan ]
       env = Env plan names (M.fromList [(idText (dataId d), d) | d <- datas])
         (M.fromList [(constructorId c, (d, c)) | d <- datas, c <- dataConstructors d]) functions ""
+        (M.fromList [(i, "crate::" ++ path) | (i, path) <- performBridges units])
       outside = env { envPrefix = modulePath }
   dataDocs <- mapM (dataDoc env) datas
   functionDocs <- mapM (\(c, d) -> functionDoc env c d) (typedRepresentatives plan)
@@ -271,8 +274,9 @@ functionDoc env c d = flip evalStateT 0 $ do
     Just intrinsic -> intrinsicCall env intrinsic [(D.text l, ty) | ((_, l, _), ty) <- zip params (map binderType (definitionArguments d))]
     Nothing -> expression env selfCall scope (definitionBody d)
   let looping = hasTailSelf env c (definitionBody d)
+      contextual = isContextual (envPlan env) (declarationId declaration)
       signature = D.text ("pub fn " ++ name) <> D.delimitTrailing 4 "(" ")"
-        [D.text ((if looping then "mut " else "") ++ l ++ ": " ++ t) | (_, l, t) <- params] <>
+        ([D.text "ctx: &mut ls::Context" | contextual] ++ [D.text ((if looping then "mut " else "") ++ l ++ ": " ++ t) | (_, l, t) <- params]) <>
         D.text (" -> ls::Result<" ++ resultType ++ "> ")
       comment = D.text ("/// " ++ idText (declarationId declaration))
   pure (comment <> D.hardline <> signature <> D.block 4
@@ -341,7 +345,15 @@ expression env selfCall scope e = case expressionNode e of
         c <- lift (maybe (Left ("typed Rust: untyped callee " ++ idText i)) Right (definitionClass (envPlan env) i))
         let name = envPrefix env ++ envFunctions env M.! c
         values <- mapM (expression env Nothing scope) args
-        pure (D.text name <> D.delimitTrailing 4 "(" ")" values <> D.text "?")
+        if isContextual (envPlan env) i
+          then do
+            -- The arguments first, so the context is borrowed once at a time.
+            temporaries <- mapM (const (fresh "argument")) values
+            types <- lift (mapM (rustType env . expressionType) args)
+            pure (D.block 4 (D.joinWith D.hardline
+              ([D.text ("let " ++ t ++ ": " ++ ty ++ " = ") <> v <> D.text ";" | (t, (ty, v)) <- zip temporaries (zip types values)] ++
+               [D.text name <> D.delimitTrailing 4 "(" ")" (D.text "&mut *ctx" : map D.text temporaries) <> D.text "?"])))
+          else pure (D.text name <> D.delimitTrailing 4 "(" ")" values <> D.text "?")
   Helper Compare [a, b] -> do
     x <- expression env Nothing scope a
     y <- expression env Nothing scope b
@@ -370,9 +382,22 @@ expression env selfCall scope e = case expressionNode e of
            D.text "if !" <> paren p <> D.text (" { " ++ ok ++ " = false; break; }"))
       , D.text ok ]))
   -- raise e: a failure of the Fail ability, as the dynamic raise makes it.
-  Perform (Operation ref "raise") [x] -> do
+  Perform (Operation ref "raise") [x] | isFail ref -> do
     v <- expression env Nothing scope x
     pure (D.block 4 (D.text ("ls::raise_failure(" ++ E.quoted (abilityKey ref) ++ ", ls::fast::Dyn::to_dyn(&") <> v <> D.text "));" <> D.hardline <> D.text "unreachable!()"))
+  -- An operation of another ability: its bridge, which finds the handler
+  -- in the context, over the arguments' dynamic values.
+  Perform op args -> do
+    bridge <- lift (maybe (Left ("typed Rust: no bridge for the operation " ++ operationName op)) Right (M.lookup (operationId op) (envBridges env)))
+    values <- mapM (expression env Nothing scope) args
+    temporaries <- mapM (const (fresh "argument")) values
+    types <- lift (mapM (rustType env . expressionType) args)
+    resultType <- lift (rustType env (expressionType e))
+    pure (D.block 4 (D.joinWith D.hardline
+      ([D.text ("let " ++ t ++ ": " ++ ty ++ " = ") <> v <> D.text ";" | (t, (ty, v)) <- zip temporaries (zip types values)] ++
+       [ D.text ("let performed = " ++ bridge ++ "(&mut *ctx, vec![" ++ intercalate ", " ["ls::fast::Dyn::to_dyn(&" ++ t ++ ")" | t <- temporaries] ++ "])" ++
+           ".map_err(|error| format!(\"{}: {error}\", " ++ E.quoted (operationName op) ++ "))?;")
+       , D.text ("<" ++ resultType ++ " as ls::fast::Dyn>::from_dyn(performed)?") ])))
   -- attempt e: Right of e's value, or Left of the failure it raised.
   Handle (CatchFailure ref) body | Constructor "Either" [TypeArgument failure, TypeArgument result] <- expressionType e -> do
     v <- expression env Nothing scope body

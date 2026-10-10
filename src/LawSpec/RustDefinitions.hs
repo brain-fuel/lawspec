@@ -15,7 +15,7 @@ import LawSpec.AbilityNames (interfaceName)
 import qualified LawSpec.RustExpr as E
 import qualified LawSpec.Code.Doc as D
 import LawSpec.Typed.Rust (RustTyped(..), emitRustTyped)
-import LawSpec.Typed.Plan (sharedDefinitions)
+import LawSpec.Typed.Plan (sharedDefinitions, isContextual)
 import qualified Data.Map.Strict as M
 
 -- | Package-wide resolved IDs, not display names, select implementation bodies.
@@ -68,7 +68,7 @@ emitRustDefinitions layout bits declarations units = do
         name <- nameFor d
         target <- nameFor first
         pure (D.text ("pub(crate) use self::" ++ target ++ " as " ++ name ++ ";"))
-      Nothing -> maybe (implementation contracts d) (bridgeTo d) (rustTypedFunction typed (declarationId (definitionDeclaration d))))
+      Nothing -> maybe (implementation contracts d) (bridgeTo typed d) (rustTypedFunction typed (declarationId (definitionDeclaration d))))
     (concatMap unitDefinitions units)
   bridges <- mapM bridge adapterCalls
   modules <- forM (filter (not . null . unitDefinitions) units) $ \unit -> do
@@ -85,11 +85,21 @@ emitRustDefinitions layout bits declarations units = do
     D.joinWith (D.hardline <> D.hardline) (modules ++ implementations ++ bridges ++ [rustTypedModule typed]) <> D.hardline))
   where
     -- A typed definition's dynamic entry converts its arguments and result.
-    bridgeTo d function = do
+    bridgeTo typed d function = do
       name <- nameFor d
       let arity = length (definitionArguments d)
-      pure (D.text ("pub(crate) fn " ++ name ++ "(ctx: &mut ls::Context, arguments: Vec<ls::Value>) -> ls::Result<ls::Value> ") <>
-        D.block 4 (D.text ("ls::fast::call" ++ show arity ++ "(arguments, " ++ function ++ ")")))
+          (argTypes, _) = functionType (declarationType (definitionDeclaration d))
+      if isContextual (rustTypedPlan typed) (declarationId (definitionDeclaration d))
+        then do
+          -- It takes the context, so its arguments are decoded here.
+          types <- mapM (rustTypedType typed) argTypes
+          pure (D.text ("pub(crate) fn " ++ name ++ "(ctx: &mut ls::Context, arguments: Vec<ls::Value>) -> ls::Result<ls::Value> ") <>
+            D.block 4 (D.joinWith D.hardline
+              ([D.text "let mut arguments = arguments.into_iter();"] ++
+               [D.text ("let argument_" ++ show k ++ " = <" ++ t ++ " as ls::fast::Dyn>::from_dyn(arguments.next().ok_or(\"definition argument count mismatch\")?)?;") | (k, t) <- zip [0 :: Int ..] types] ++
+               [D.text ("Ok(ls::fast::Dyn::to_dyn(&" ++ function ++ "(" ++ intercalate ", " ("ctx" : ["argument_" ++ show k | k <- [0 .. length types - 1]]) ++ ")?))")])))
+        else pure (D.text ("pub(crate) fn " ++ name ++ "(ctx: &mut ls::Context, arguments: Vec<ls::Value>) -> ls::Result<ls::Value> ") <>
+          D.block 4 (D.text ("ls::fast::call" ++ show arity ++ "(arguments, " ++ function ++ ")")))
     -- Workflows call adapters natively, each through a bridge that converts
     -- checked values to native ones and back.
     adapterCalls = adapterCallsOf units
@@ -237,7 +247,10 @@ emitRustDefinitions layout bits declarations units = do
           architecture = [E.call "ls::require_architecture" [D.text (show bits)] <> D.text "?;"
             | nativeMachine [] (declarationType declaration)]
           typedBody = case rustTypedFunction typed (declarationId declaration) of
-            -- A typed definition converts its arguments and result directly.
+            -- A typed definition converts its arguments and result directly
+            -- (one that takes the context goes through its dynamic entry,
+            -- which installs the handlers first).
+            Just _ | isContextual (rustTypedPlan typed) (declarationId declaration) -> Nothing
             Just function
               | all (rustTypedNative typed) (result : args) -> Just [E.call ("ls::fast::direct" ++ show (length args)) (values ++ [D.text function])]
               | otherwise -> Just [E.call ("ls::fast::native" ++ show (length args)) (values ++ [D.text function])]

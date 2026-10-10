@@ -16,7 +16,7 @@ import qualified LawSpec.RustData as Native
 import qualified LawSpec.RustDefinitions as Definitions
 import qualified LawSpec.RustExpr as E
 import qualified LawSpec.Code.Doc as D
-import LawSpec.Typed.Plan (isTypedHandler)
+import LawSpec.Typed.Plan (isTypedHandler, isContextual)
 import LawSpec.Typed.Rust (RustTyped(..), emitRustTyped)
 
 -- How a test makes the handler a law chose for an ability, as an
@@ -170,10 +170,14 @@ emit minify bits datas units = do
             decoded = [ if direct ty then line ("<" ++ t ++ " as ls::fast::Public>::from_native(value" ++ show i ++ ")")
                         else line ("<" ++ t ++ " as ls::fast::Dyn>::from_dyn(ls::IntoValue::into_value(value" ++ show i ++ "))" ++ unwrap)
                       | (i, (ty, t)) <- zip [0 :: Int ..] (zip args argumentTypes)]
-            arguments = [line "state.clone()" | Just _ <- [C.handlerState h]] ++
+            contextual = isContextual (rustTypedPlan typed) clause
+            arguments = [line "&mut *ctx" | contextual] ++ [line "state.clone()" | Just _ <- [C.handlerState h]] ++
               (if null args && C.handlerState h == Nothing then [line "()"] else decoded)
             invocation = line function <> D.delimitTrailing 4 "(" ")" arguments <> line unwrap
-            outcome = case C.handlerState h of
+            -- A clause that performs other abilities' operations finds their
+            -- handlers in the handler's context.
+            locked = [line "let mut ctx = self.ctx.lock().unwrap_or_else(|poisoned| poisoned.into_inner());" | contextual]
+            outcome = locked ++ case C.handlerState h of
               Nothing -> [line "let result = " <> invocation <> line ";"]
               -- The state stays locked for the whole operation, so
               -- concurrent operations apply one after another.
@@ -192,8 +196,8 @@ emit minify bits datas units = do
         line ("impl " ++ name ++ " ") <> D.block 4 (D.joinWith (D.hardline <> D.hardline)
           [ line "/// The handler for a law; it evaluates its clauses in a copy of the law's context." <> D.hardline <>
             line "pub fn new(ctx: &ls::Context) -> Self " <> D.block 4 (D.joinWith D.hardline
-              [ line "let ctx = ctx.clone();"
-              , line "let state = " <> maybe (line "()") (\v -> line "(|| -> ls::Result<_> { Ok(" <> v <> line ") })()" <> line unwrap) start <> line ";"
+              [ line "let mut ctx = ctx.clone();"
+              , line "let state = " <> maybe (line "()") (\v -> line "(|| -> ls::Result<_> { let ctx = &mut ctx; Ok(" <> v <> line ") })()" <> line unwrap) start <> line ";"
               , line "Self { ctx: std::sync::Mutex::new(ctx), state: std::sync::Mutex::new(state) }" ])
           , line "/// The handler on its own, outside any law: the embedding entry point." <> D.hardline <>
             line "pub fn start() -> Self " <> D.block 4 (line "Self::new(&ls::Context::default())") ]) <> D.hardline <> D.hardline <>

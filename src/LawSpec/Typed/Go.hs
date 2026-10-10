@@ -28,7 +28,9 @@ import qualified LawSpec.Code.Doc as D
 import LawSpec.Digest (digestHex, digestString)
 
 data GoTyped = GoTyped
-  { goTypedSource :: String -> [Id] -> [Type] -> Either String String  -- a package's file: its typed definitions and boundary types
+  { -- A package's file: its typed definitions and boundary types, with the
+    -- dynamic code's rendering of an operation (over dynamic arguments).
+    goTypedSource :: (Expr -> [D.Doc] -> Either String D.Doc) -> String -> [Id] -> [Type] -> Either String String
   , goTypedFunction :: Id -> Maybe String
   , goTypedType :: Type -> Either String String
   , goTypedFrom :: Type -> Either String String  -- LawSpecValue -> typed, a function name
@@ -61,6 +63,7 @@ data Env = Env
   , envFunctions :: M.Map Int String
   , envDeclarations :: [DataDeclaration]
   , envNative :: M.Map Id String
+  , envPerform :: Expr -> [D.Doc] -> Either String D.Doc
   }
 
 -- | Fresh names, and the per-type helpers the code asks for.
@@ -106,14 +109,15 @@ helperName kind ty = "lsf" ++ capitalize kind ++ "_" ++ take 12 (digestHex (dige
 
 emitGoTyped :: [DataDeclaration] -> [Unit] -> Either String GoTyped
 emitGoTyped declarations units = do
-  let plan = typedPlan declarations units
+  let plan = typedPlanPerforming scalarTypes declarations units
       datas = typedData plan
       names = dataNames datas
       functions = M.fromList [ (c, functionName c d) | (c, d) <- typedRepresentatives plan ]
   nativeNames <- GoData.goEmittedNames declarations
-  let env = Env plan names (M.fromList [(idText (dataId d), d) | d <- datas])
+  let envWith perform = Env plan names (M.fromList [(idText (dataId d), d) | d <- datas])
         (M.fromList [(constructorId c, (d, c)) | d <- datas, c <- dataConstructors d]) functions declarations
-        (M.fromList (concat [zip (dataId d : map constructorId (dataConstructors d)) ns | (d, ns) <- nativeNames]))
+        (M.fromList (concat [zip (dataId d : map constructorId (dataConstructors d)) ns | (d, ns) <- nativeNames])) perform
+      env = envWith (\_ _ -> Left "typed Go: an operation outside a package's file")
       handlerTypes = [ t | h <- concatMap unitHandlers units, isTypedHandler plan h
                          , ref <- handlerAbilities h, Just (_, a) <- [findAbility units ref]
                          , (_, ty) <- abilityOperations a, let (args, result) = functionType ty, t <- result : args ]
@@ -123,8 +127,9 @@ emitGoTyped declarations units = do
   let line = D.text
       -- A package holds the typed definitions its bodies reach, with the
       -- helpers they and its boundaries need.
-      file package identities boundaryTypes = do
-        let classes = S.fromList [c | i <- identities, Just c <- [definitionClass plan i]]
+      file perform package identities boundaryTypes = do
+        let env = envWith perform
+            classes = S.fromList [c | i <- identities, Just c <- [definitionClass plan i]]
             members = [(c, d) | (c, d) <- typedRepresentatives plan, c `S.member` classes]
         ((functionDocs, helperDocs), _) <- flip runStateT (St 0 M.empty S.empty) $ do
           fs <- mapM (\(c, d) -> functionDoc env c d) members
@@ -273,7 +278,8 @@ functionDoc env c d = do
     ty <- lift' (goType env (binderType b))
     pure (binderId b, local, ty)
   resultType <- lift' (goType env result)
-  let scope = [(i, l) | (i, l, _) <- params]
+  let contextual = isContextual (envPlan env) (declarationId declaration)
+      scope = [(i, l) | (i, l, _) <- params]
       looping = hasTailSelf env c (definitionBody d)
       selfCall = if looping then Just (c, map (\(_, l, _) -> l) params) else Nothing
   body <- case M.lookup (declarationId declaration) (typedIntrinsics (envPlan env)) of
@@ -282,7 +288,7 @@ functionDoc env c d = do
       pure [D.text "return " <> x]
     Nothing -> cstmt env selfCall scope Return (definitionBody d)
   pure (D.text ("// " ++ name ++ " is " ++ idText (declarationId declaration) ++ ".") <> D.hardline <>
-    D.text ("func " ++ name ++ "(" ++ intercalate ", " [l ++ " " ++ t | (_, l, t) <- params] ++ ") " ++ resultType ++ " ") <> D.block 8
+    D.text ("func " ++ name ++ "(" ++ intercalate ", " (["symbols map[string]*LawSpecSymbol" | contextual] ++ [l ++ " " ++ t | (_, l, t) <- params]) ++ ") " ++ resultType ++ " ") <> D.block 8
       (if looping then D.text "for " <> D.block 8 (D.joinWith D.hardline body) else D.joinWith D.hardline body))
 
 hasTailSelf :: Env -> Int -> Expr -> Bool
@@ -333,7 +339,7 @@ cstmt env selfCall scope target e = case expressionNode e of
         pure (concatMap fst evaluated ++ map snd evaluated ++ [D.text "continue"])
   Helper Unreachable _ -> pure [D.text "panic(\"unreachable branch reached\")"]
   -- raise e delivers nothing: it panics.
-  Perform (Operation _ "raise") [_] -> do
+  Perform (Operation ref "raise") [_] | isFail ref -> do
     (s, _) <- cexpr env scope e
     pure s
   _ -> do
@@ -362,7 +368,8 @@ cexpr env scope e = case expressionNode e of
     | otherwise -> do
         c <- lift' (maybe (Left ("typed Go: untyped callee " ++ idText i)) Right (definitionClass (envPlan env) i))
         parts <- mapM (cexpr env scope) args
-        pure (concatMap fst parts, D.text (envFunctions env M.! c ++ "(") <> D.joinWith (D.text ", ") (map snd parts) <> D.text ")")
+        let context = [D.text "symbols" | isContextual (envPlan env) i]
+        pure (concatMap fst parts, D.text (envFunctions env M.! c ++ "(") <> D.joinWith (D.text ", ") (context ++ map snd parts) <> D.text ")")
   ShortCircuit op a b -> do
     (sa, xa) <- cexpr env scope a
     (sb, xb) <- cexpr env scope b
@@ -410,11 +417,20 @@ cexpr env scope e = case expressionNode e of
                     ([D.text (item ++ " := " ++ cell ++ ".head")] ++ sp ++
                      [D.text "if !" <> paren p <> D.text (" { " ++ t ++ " = false; break }")]) ], D.text t)
   -- raise e: a failure of the Fail ability, as the dynamic raise makes it.
-  Perform (Operation ref "raise") [x] -> do
+  Perform (Operation ref "raise") [x] | isFail ref -> do
     (s, v) <- cexpr env scope x
     to <- helper "to" (expressionType x)
     ty <- lift' (goType env (expressionType e))
     pure (s ++ [D.text ("panic(&LawSpecFailure{Ability: " ++ goQuote (abilityKey ref) ++ ", Value: " ++ to ++ "(") <> v <> D.text ")})"], D.text ("*new(" ++ ty ++ ")"))
+  -- An operation of another ability: the dynamic code's call of its
+  -- handler in the context, over the arguments' dynamic values.
+  Perform _ args -> do
+    parts <- mapM (cexpr env scope) args
+    tos <- mapM (helper "to" . expressionType) args
+    from <- helper "from" (expressionType e)
+    performed <- lift' (envPerform env e [D.text (to ++ "(") <> x <> D.text ")" | (to, x) <- zip tos (map snd parts)])
+    t <- fresh "performed"
+    pure (concatMap fst parts ++ [D.text (t ++ " := " ++ from ++ "(") <> performed <> D.text ")"], D.text t)
   -- attempt e: Right of e's value, or Left of the failure it raised.
   Handle (CatchFailure ref) body | Constructor "Either" [TypeArgument failure, TypeArgument result] <- expressionType e -> do
     t <- fresh "attempted"

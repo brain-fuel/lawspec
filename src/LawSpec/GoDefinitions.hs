@@ -17,7 +17,7 @@ import LawSpec.Typed.Plan (TypedPlan(..), sharedDefinitions)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 import Data.Foldable (toList)
-import LawSpec.Typed.Plan (isTypedHandler)
+import LawSpec.Typed.Plan (isTypedHandler, isContextual)
 import Data.Char (toUpper)
 import Data.List (nub, intercalate)
 import LawSpec.AbilityNames (interfaceName, specName)
@@ -85,7 +85,7 @@ emitGoDefinitionsWithCalls bound layout bits declarations units = do
                                , ref <- handlerAbilities h, Just (_, a) <- [findAbility units ref]
                                , (_, ty) <- abilityOperations a, let (args, result) = functionType ty, t <- result : args ]
             boundary = nub ([t | i <- held, Just d <- [M.lookup i everyDefinition], let (args, result) = functionType (declarationType (definitionDeclaration d)), t <- result : args] ++ handlerTypes)
-        source <- goTypedSource typed packageName held boundary
+        source <- goTypedSource typed performDoc packageName held boundary
         pure [ Artifact (directory ++ "/lawspec_typed.go") source "generated" "source"
              , Artifact (directory ++ "/lawspec_fast.go") (replace "RUNTIME_PACKAGE" packageName (runtimeSource "go-fast")) "generated" "source" ]
   -- A workflow calls its own package's adapters, so only that package has it;
@@ -98,6 +98,38 @@ emitGoDefinitionsWithCalls bound layout bits declarations units = do
     scopedHandlers e = case expressionNode e of
       Handle (WithHandler _ (SpecHandler h)) body -> h : scopedHandlers body
       _ -> concatMap scopedHandlers (children e)
+    -- An operation goes to the handler the law installed in symbols for its
+    -- ability (evidence passing), through the codecs; typed code calls it
+    -- with its arguments' dynamic values.
+    performDoc term values = case expressionNode term of
+      Perform op args -> do
+        let parameterTypes = map expressionType args
+            resultType = expressionType term
+        codecs <- mapM (Native.goCodecWithContext "symbols" declarations) parameterTypes
+        resultCodec <- Native.goCodecWithContext "symbols" declarations resultType
+        let call = E.call (handlerOf (operationAbility op) ++ "." ++ capitalize (operationName op))
+              [E.call ("codec" ++ show i ++ ".toNative") [value] | (i, value) <- zip [0::Int ..] values]
+            result
+              | resultType == Constructor "Unit" [] =
+                  line "func() LawSpecValue " <> D.block 8 (call <> D.hardline <> line "return resultCodec.fromNative(LawSpecUnit{})") <> line "()"
+              | otherwise = E.call "resultCodec.fromNative" [call]
+        let performed = line "func() LawSpecValue " <> D.block 8 (D.joinWith D.hardline
+              ([line ("schema := " ++ schema), line ("bits := " ++ show bits), line "_, _ = schema, bits"] ++
+               [assign ("codec" ++ show i) (line codec) | (i, codec) <- zip [0::Int ..] codecs] ++
+               [assign "resultCodec" (line resultCodec), line "return " <> result])) <> line "()"
+        -- An operation that fails with E: a native handler panics with
+        -- LawSpecFail and a native E, which becomes the failure.
+        case findAbility units (operationAbility op) >>= lookup (operationName op) . abilityFailures . snd of
+          Just failing@(AbilityRef _ [failure]) -> do
+            failureCodec <- Native.goCodecWithContext "symbols" declarations failure
+            failureType <- Native.goDataType declarations failure
+            pure (E.call "lsNativeFailures" [E.quoted (abilityKey failing),
+              line "func(native any) LawSpecValue " <> D.block 8 (D.joinWith D.hardline
+                [line ("schema := " ++ schema), line ("bits := " ++ show bits), line "_, _ = schema, bits",
+                 line ("return " ++ failureCodec ++ ".fromNative(native.(" ++ failureType ++ "))")]),
+              line "func() LawSpecValue " <> D.block 8 (line "return " <> performed)])
+          _ -> pure performed
+      _ -> Left "not an operation"
     replace old new text = case text of
       [] -> []
       _ | take (length old) text == old -> new ++ replace old new (drop (length old) text)
@@ -109,7 +141,7 @@ emitGoDefinitionsWithCalls bound layout bits declarations units = do
       froms <- mapM (goTypedFrom typed) argTypes
       to <- goTypedTo typed resultType
       pure (line ("func lawSpecEvaluate" ++ show index) <> D.delimitTrailing 8 "(" ")" (symbols : arguments) <> line " LawSpecValue " <>
-        D.block 8 (line ("return " ++ to ++ "(" ++ function ++ "(" ++ intercalate ", " [f ++ "(value" ++ show i ++ ")" | (i, f) <- zip [0 :: Int ..] froms] ++ "))")))
+        D.block 8 (line ("return " ++ to ++ "(" ++ function ++ "(" ++ intercalate ", " (["symbols" | isContextual (goTypedPlan typed) (declarationId (definitionDeclaration d))] ++ [f ++ "(value" ++ show i ++ ")" | (i, f) <- zip [0 :: Int ..] froms]) ++ "))")))
     callees = definitionCalls units
     definitionIds = map (declarationId . definitionDeclaration) (concatMap unitDefinitions units)
     adapters = [(declarationId d, (idText (unitId u), d)) | u <- units, d <- unitDeclarations u,
@@ -155,33 +187,7 @@ emitGoDefinitionsWithCalls bound layout bits declarations units = do
               pure (E.call "lsRaiseFailure" (E.quoted (abilityKey (operationAbility op)) : values))
             -- An operation goes to the handler the law installed in symbols
             -- for its ability (evidence passing), through the codecs.
-            Perform op args -> do
-              let parameterTypes = map expressionType args
-                  resultType = expressionType term
-              codecs <- mapM (Native.goCodecWithContext "symbols" declarations) parameterTypes
-              resultCodec <- Native.goCodecWithContext "symbols" declarations resultType
-              let call = E.call (handlerOf (operationAbility op) ++ "." ++ capitalize (operationName op))
-                    [E.call ("codec" ++ show i ++ ".toNative") [value] | (i, value) <- zip [0::Int ..] values]
-                  result
-                    | resultType == Constructor "Unit" [] =
-                        line "func() LawSpecValue " <> D.block 8 (call <> D.hardline <> line "return resultCodec.fromNative(LawSpecUnit{})") <> line "()"
-                    | otherwise = E.call "resultCodec.fromNative" [call]
-              let performed = line "func() LawSpecValue " <> D.block 8 (D.joinWith D.hardline
-                    ([line ("schema := " ++ schema), line ("bits := " ++ show bits), line "_, _ = schema, bits"] ++
-                     [assign ("codec" ++ show i) (line codec) | (i, codec) <- zip [0::Int ..] codecs] ++
-                     [assign "resultCodec" (line resultCodec), line "return " <> result])) <> line "()"
-              -- An operation that fails with E: a native handler panics with
-              -- LawSpecFail and a native E, which becomes the failure.
-              case findAbility units (operationAbility op) >>= lookup (operationName op) . abilityFailures . snd of
-                Just failing@(AbilityRef _ [failure]) -> do
-                  failureCodec <- Native.goCodecWithContext "symbols" declarations failure
-                  failureType <- Native.goDataType declarations failure
-                  pure (E.call "lsNativeFailures" [E.quoted (abilityKey failing),
-                    line "func(native any) LawSpecValue " <> D.block 8 (D.joinWith D.hardline
-                      [line ("schema := " ++ schema), line ("bits := " ++ show bits), line "_, _ = schema, bits",
-                       line ("return " ++ failureCodec ++ ".fromNative(native.(" ++ failureType ++ "))")]),
-                    line "func() LawSpecValue " <> D.block 8 (line "return " <> performed)])
-                _ -> pure performed
+            Perform _ _ -> performDoc term values
             -- prelude.attempt e: Right of e's value, or Left of its failure.
             Handle (CatchFailure ability) _ | [body] <- values, Constructor "Either" [TypeArgument failure, TypeArgument result] <- expressionType term -> do
               let placeholder = Id "lawspec::attempt::value"
@@ -360,6 +366,7 @@ emitGoDefinitionsWithCalls bound layout bits declarations units = do
     -- function between the conversions.
     native typed d
       | Just function <- goTypedFunction typed (declarationId (definitionDeclaration d))
+      , not (isContextual (goTypedPlan typed) (declarationId (definitionDeclaration d)))
       , let (args, result) = functionType (declarationType (definitionDeclaration d))
       , Just conversions <- mapM (goTypedNative typed) args
       , Just (_, toNative) <- goTypedNative typed result = do
@@ -370,7 +377,7 @@ emitGoDefinitionsWithCalls bound layout bits declarations units = do
           pure (line ("func (lawSpecDefinitions) " ++ capitalize (declarationName declaration)) <>
             D.delimitTrailing 8 "(" ")" parameters <> line (" " ++ resultType ++ " ") <>
             D.block 8 (line ("return " ++ toNative ++ "(" ++ function ++ "(" ++
-              intercalate ", " [fromNative ++ "(value" ++ show i ++ ")" | (i, (fromNative, _)) <- zip [0 :: Int ..] conversions] ++ "))")))
+              intercalate ", " ([fromNative ++ "(value" ++ show i ++ ")" | (i, (fromNative, _)) <- zip [0 :: Int ..] conversions]) ++ "))")))
       | otherwise = nativeDynamic d
     nativeDynamic d = do
       let declaration = definitionDeclaration d
