@@ -551,7 +551,7 @@ lowerFieldNodes declarations prefix expression = fst (go expression 0)
         let (field', n1) = go field n
             (value', n2) = go value n1
             (binders, n3) = fieldBinders tag (expressionType value') n2
-            replacement = Binder (Id (prefix ++ "::field::" ++ show n3)) "replacement" (expressionType field')
+            replacement = Binder (Id (prefix ++ "::let::field" ++ show n3 ++ "::replacement")) "replacement" (expressionType field')
             local b = Expr (binderType b) (Local (binderId b)) (expressionOrigin e)
             rebuilt = Expr (expressionType e) (Construct tag [if k == index then local replacement else local b | (k, b) <- zip [0 ..] binders]) (expressionOrigin e)
             matched = Expr (expressionType e) (Match value' [MatchCase tag binders rebuilt]) (expressionOrigin e)
@@ -565,7 +565,9 @@ lowerFieldNodes declarations prefix expression = fst (go expression 0)
             table = zip (dataParameters d) arguments
             -- Named lawspecField..., as the field syntax's matches always were,
             -- so the totality audit reads one as the field it projects.
-            binders = [ Binder (Id (prefix ++ "::field::" ++ show (n + k))) ("lawspecField" ++ binderName f) (substituteType table (binderType f))
+            -- The ids are match binders' (Backend.localName), so every backend
+            -- names them as it names a match's.
+            binders = [ Binder (Id (prefix ++ "::match::field" ++ show (n + k) ++ "::" ++ binderName f)) ("lawspecField" ++ binderName f) (substituteType table (binderType f))
                       | (k, f) <- zip [0 ..] (constructorFields c) ]
         in (binders, n + length binders)
       Nothing -> ([], n)
