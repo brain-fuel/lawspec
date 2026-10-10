@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<linker>
+  <assembly fullname="LawSpec.Runtime">
+    <resource name="FSharpSignatureData.LawSpec.Runtime" action="remove"></resource>
+    <resource name="FSharpSignatureCompressedData.LawSpec.Runtime" action="remove"></resource>
+    <resource name="FSharpSignatureDataB.LawSpec.Runtime" action="remove"></resource>
+    <resource name="FSharpSignatureCompressedDataB.LawSpec.Runtime" action="remove"></resource>
+    <resource name="FSharpOptimizationData.LawSpec.Runtime" action="remove"></resource>
+    <resource name="FSharpOptimizationCompressedData.LawSpec.Runtime" action="remove"></resource>
+    <resource name="FSharpOptimizationDataB.LawSpec.Runtime" action="remove"></resource>
+    <resource name="FSharpOptimizationCompressedDataB.LawSpec.Runtime" action="remove"></resource>
+    <resource name="FSharpOptimizationInfo.LawSpec.Runtime" action="remove"></resource>
+    <resource name="FSharpSignatureInfo.LawSpec.Runtime" action="remove"></resource>
+  </assembly>
+</linker>

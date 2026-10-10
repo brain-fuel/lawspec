@@ -1,0 +1,12 @@
+/Users/mattlaine/para/projects/lawspec-wt/fsharp/runtime/dotnet/LawSpec.Runtime/obj/Debug/net10.0/LawSpec.Runtime.fsproj.AssemblyReference.cache
+/Users/mattlaine/para/projects/lawspec-wt/fsharp/runtime/dotnet/LawSpec.Runtime/obj/Debug/net10.0/LawSpec.Runtime.AssemblyInfoInputs.cache
+/Users/mattlaine/para/projects/lawspec-wt/fsharp/runtime/dotnet/LawSpec.Runtime/obj/Debug/net10.0/LawSpec.Runtime.AssemblyInfo.fs
+/Users/mattlaine/para/projects/lawspec-wt/fsharp/runtime/dotnet/LawSpec.Runtime/obj/Debug/net10.0/LawSpec.Runtime.fsproj.CoreCompileInputs.cache
+/Users/mattlaine/para/projects/lawspec-wt/fsharp/runtime/dotnet/LawSpec.Runtime/obj/Debug/net10.0/LawSpec.Runtime.sourcelink.json
+/Users/mattlaine/para/projects/lawspec-wt/fsharp/runtime/dotnet/LawSpec.Runtime/bin/Debug/net10.0/LawSpec.Runtime.deps.json
+/Users/mattlaine/para/projects/lawspec-wt/fsharp/runtime/dotnet/LawSpec.Runtime/bin/Debug/net10.0/LawSpec.Runtime.dll
+/Users/mattlaine/para/projects/lawspec-wt/fsharp/runtime/dotnet/LawSpec.Runtime/bin/Debug/net10.0/LawSpec.Runtime.pdb
+/Users/mattlaine/para/projects/lawspec-wt/fsharp/runtime/dotnet/LawSpec.Runtime/obj/Debug/net10.0/LawSpec.Runtime.dll
+/Users/mattlaine/para/projects/lawspec-wt/fsharp/runtime/dotnet/LawSpec.Runtime/obj/Debug/net10.0/refint/LawSpec.Runtime.dll
+/Users/mattlaine/para/projects/lawspec-wt/fsharp/runtime/dotnet/LawSpec.Runtime/obj/Debug/net10.0/LawSpec.Runtime.pdb
+/Users/mattlaine/para/projects/lawspec-wt/fsharp/runtime/dotnet/LawSpec.Runtime/obj/Debug/net10.0/ref/LawSpec.Runtime.dll

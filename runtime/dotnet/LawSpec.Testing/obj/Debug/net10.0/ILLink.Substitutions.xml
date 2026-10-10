@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<linker>
+  <assembly fullname="LawSpec.Testing">
+    <resource name="FSharpSignatureData.LawSpec.Testing" action="remove"></resource>
+    <resource name="FSharpSignatureCompressedData.LawSpec.Testing" action="remove"></resource>
+    <resource name="FSharpSignatureDataB.LawSpec.Testing" action="remove"></resource>
+    <resource name="FSharpSignatureCompressedDataB.LawSpec.Testing" action="remove"></resource>
+    <resource name="FSharpOptimizationData.LawSpec.Testing" action="remove"></resource>
+    <resource name="FSharpOptimizationCompressedData.LawSpec.Testing" action="remove"></resource>
+    <resource name="FSharpOptimizationDataB.LawSpec.Testing" action="remove"></resource>
+    <resource name="FSharpOptimizationCompressedDataB.LawSpec.Testing" action="remove"></resource>
+    <resource name="FSharpOptimizationInfo.LawSpec.Testing" action="remove"></resource>
+    <resource name="FSharpSignatureInfo.LawSpec.Testing" action="remove"></resource>
+  </assembly>
+</linker>
