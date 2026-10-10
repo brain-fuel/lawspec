@@ -161,12 +161,15 @@ typedPlanWith scalars declarations units = TypedPlan
       | not (all failing (declarationUses (definitionDeclaration d))) =
           "it uses " ++ unwords [abilityKey r | r <- declarationUses (definitionDeclaration d), not (failing r)]
       | idOf d `S.member` contracted = "it has a runtime contract"
-      | let (args, _) = functionType (declarationType (definitionDeclaration d)), length args > 12 = "it has more than 12 arguments"
-      | t : _ <- [t | let (args, result) = functionType (declarationType (definitionDeclaration d)), t <- result : args ++ map binderType (definitionArguments d), not (supported t)] =
+      | length (signatureOf d) > 13 = "it has more than 12 arguments"
+      | t : _ <- [t | t <- signatureOf d ++ map binderType (definitionArguments d), not (supported t)] =
           "its type " ++ show t ++ " has no typed form"
       | intrinsicOf d == Nothing, Just e <- firstUntyped (definitionBody d) =
           "it contains " ++ take 160 (show (expressionNode e)) ++ " :: " ++ show (expressionType e)
       | otherwise = "it calls " ++ unwords [idText c | c <- nub (callees (definitionBody d)), c `S.notMember` eligibleIds]
+    -- A definition's result type, then its argument types.
+    signatureOf d = case functionType (declarationType (definitionDeclaration d)) of
+      (args, result) -> result : args
     firstUntyped e
       | not (supported (expressionType e)) || not (nodeTyped e) = Just e
       | otherwise = foldr (\c acc -> maybe acc Just (firstUntyped c)) Nothing (children e)
