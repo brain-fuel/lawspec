@@ -1,0 +1,9 @@
+expect-any: time does not go back [native] | elapsed time is never negative
+@@ src/Native/Clocks.fs
+<<<<<<<
+            readings <- readings + 1L
+            inner.Now()
+=======
+            readings <- readings + 1L
+            { Value = inner.Now().Value - 1000L * readings }
+>>>>>>>

@@ -7,6 +7,7 @@
 module LawSpec.DotNet.Emit (emitDotNet, emitDotNetWithBindings, dotnetTargets) where
 
 import qualified LawSpec.Core as C
+import LawSpec.Core.Machine (machineActor, machineScenarios)
 import qualified LawSpec.Code.Doc as D
 import LawSpec.Common (Artifact(..), Diagnostic(..), artifactPath)
 import LawSpec.Testing
@@ -19,7 +20,9 @@ import qualified LawSpec.DotNet.Definitions as Definitions
 import qualified LawSpec.DotNet.Properties as Properties
 import qualified LawSpec.DotNet.Abilities as Abilities
 import Control.Monad (unless, when)
-import Data.List (isPrefixOf, isSuffixOf, nub)
+import Data.List (isPrefixOf, isSuffixOf, isInfixOf, nub)
+import LawSpec.DefaultSources (defaultSource)
+import LawSpec.DotNet.Code (stringLiteral)
 
 dotnetTargets :: [String]
 dotnetTargets = ["fsharp", "csharp"]
@@ -46,18 +49,20 @@ emitDotNetWithBindings target minify bindings plan = do
       dataFiles <- Data.emitData lang layout bits declarations
       interfaces <- Abilities.emitInterfaces lang layout bits declarations units
       bridges <- Abilities.emitBridges lang layout bits declarations units
-      schema <- Data.emitSchema lang layout bits declarations
+      defaults <- Abilities.emitDefaults lang layout units
+      schema <- Data.emitSchema lang layout bits usesCrypto declarations
       entries <- Definitions.emitEntries lang layout bits declarations units
       adapters <- Definitions.emitAdapters lang layout bits declarations units
       api <- Definitions.emitApi lang layout bits declarations units
       tests <- Properties.emitTests lang layout plan
-      let ordered = orderSources (dataFiles ++ interfaces ++ bridges ++ [schema]) adapters entries api
-          sources = dataFiles ++ interfaces ++ bridges ++ [schema] ++ entries ++ adapters ++ api
-      pure (runtimeArtifacts ++ sources ++ tests ++
-        [ props "src/LawSpec.Sources.props" "source" "The program's generated sources and adapters, in compilation order." ordered
-        , props "tests/LawSpec.Tests.props" "test" "The generated tests." [drop (6 :: Int) (artifactPath t) | t <- tests] ])
+      vectors <- cryptoVectorTests
+      let ordered = orderSources (dataFiles ++ interfaces ++ bridges ++ [schema] ++ defaults) adapters entries api
+          sources = dataFiles ++ interfaces ++ bridges ++ [schema] ++ defaults ++ entries ++ adapters ++ api
+      pure (runtimeArtifacts ++ sources ++ tests ++ vectors ++
+        [ props "src/LawSpec.Sources.props" "source" "The program's generated sources and adapters, in compilation order; application code bound in lawspec.json goes in Native/, after the data types and ability interfaces." ordered
+        , props "tests/LawSpec.Tests.props" "test" "The generated tests." [drop (6 :: Int) (artifactPath t) | t <- tests ++ vectors] ])
     orderSources first adapters entries api =
-      [drop (4 :: Int) (artifactPath a) | a <- first] ++
+      [drop (4 :: Int) (artifactPath a) | a <- first] ++ ["Native/**/*" ++ extension lang] ++
       concat [ [drop (4 :: Int) p | p <- [adapterPath lang (C.unitId u)], p `elem` map artifactPath adapters] ++
                [drop (4 :: Int) (artifactPath e) | e <- entries, ("/" ++ lastModule u ++ extension lang) `isSuffixOf` artifactPath e] ++
                [drop (4 :: Int) (artifactPath a) | a <- api, ("Definitions/" ++ lastModule u ++ extension lang) `isSuffixOf` artifactPath a]
@@ -70,9 +75,37 @@ emitDotNetWithBindings target minify bindings plan = do
         [ "  <ItemGroup>" ] ++ ["    <Compile Include=\"" ++ f ++ "\" />" | lang == FSharp, f <- files] ++ [ "  </ItemGroup>" ]
        else []) ++
       [ "</Project>" ])) "generated" placement
+    -- The crypto primitives and Bouncy Castle only for programs that import
+    -- lawspec.crypto or lawspec.network, as on the other targets.
+    -- The network runtime only for programs with nodes, channels, actors,
+    -- mailboxes or scenarios; its secure transport uses the crypto runtime.
+    usesNetwork = any (\u -> not (null (C.unitSessions u) && null (C.unitMailboxes u) && null (C.unitSupervisors u)) ||
+        any (\m -> machineActor m || not (null (machineScenarios m))) (C.unitMachines u) ||
+        C.idText (C.unitId u) == "lawspec.network") units
+    usesCrypto = usesNetwork || any ((== "lawspec.crypto") . C.idText . C.unitId) units
+    cryptoFiles = ["Crypto.fs", "NetworkCrypto.fs", "CryptoVectors.fs", "BouncyCastle.Cryptography"]
+    networkFiles = ["Wire.fs", "MemoryNetwork.fs", "SocketTransport.fs", "Transport.fs", "SecureNetwork.fs", "Node.fs",
+      "ChannelProtocol.fs", "Endpoint.fs", "Remote.fs", "Mailbox.fs", "Sessions.fs", "NetworkApi.fs",
+      "ScenarioNetwork.fs", "ScenarioIo.fs", "Scenario.fs"]
+    excluded = [f | not usesCrypto, f <- cryptoFiles] ++ [f | not usesNetwork, f <- networkFiles]
+    keep line = not (any (\f -> ("\"" ++ f ++ "\"") `isInfixOf` line) excluded)
     runtimeArtifacts =
-      [ Artifact ("lawspec/" ++ file) (dotnetSource file) "generated" (if "LawSpec.Testing/" `isPrefixOf` file then "test" else "source")
-      | file <- dotnetFiles ]
+      [ Artifact ("lawspec/" ++ file) (if ".fsproj" `isSuffixOf` file then unlines (filter keep (lines (dotnetSource file))) else dotnetSource file)
+          "generated" (if "LawSpec.Testing/" `isPrefixOf` file then "test" else "source")
+      | file <- dotnetFiles, not (any (\f -> ("/" ++ f) `isSuffixOf` file) excluded) ]
+    cryptoVectorTests
+      | not usesCrypto || lang /= FSharp = pure []
+      | otherwise = pure [Artifact "tests/LawSpec/CryptoVectors.fs" (unlines (
+          [ "// Generated by LawSpec. Do not edit."
+          , "/// lawspec.crypto's primitives against NIST's known-answer vectors."
+          , "module LawSpec.Tests.CryptoVectors", "", "open Xunit", "open LawSpec.Testing", ""
+          , "let private vectors = " ++ stringLiteral FSharp (defaultSource "vectors.txt") ] ++
+          concat [ ["", "[<Fact(DisplayName = " ++ stringLiteral FSharp ("crypto vectors " ++ kind) ++ ")>]",
+                    "let ``" ++ kind ++ "`` () = CryptoVectors.check vectors " ++ stringLiteral FSharp kind]
+                 | kind <- vectorKinds ])) "generated" "test"]
+    vectorKinds = ["sha3-256","shake256","aes-256-gcm","mlkem768-keygen","mlkem768-encaps",
+      "mlkem768-decaps","mlkem768-decaps-seed","mldsa65-keygen","mldsa65-verify",
+      "mldsa65-sign-seed","slhdsa128f-keygen","slhdsa128f-verify"]
 
 -- | Names that would collide in generated .NET code are refused before
 -- anything is written.

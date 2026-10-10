@@ -1,0 +1,10 @@
+rejected-at: compile
+expect: ISecureRandom
+@@ src/Example/Builtins.fs
+<<<<<<<
+let token (secureRandom: ISecureRandom) (count: int) : byte[] = secureRandom.SecureBytes count
+=======
+let token (secureRandom: ISecureRandom) (count: int) : byte[] =
+    let seeded: ISecureRandom = LawSpec.DefaultHandlers.random ()
+    seeded.SecureBytes count
+>>>>>>>

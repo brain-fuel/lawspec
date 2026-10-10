@@ -18,6 +18,9 @@
     <Compile Include="Schedule.fs" />
     <Compile Include="Supervision.fs" />
     <Compile Include="Resources.fs" />
+    <Compile Include="ScenarioNetwork.fs" />
+    <Compile Include="ScenarioIo.fs" />
+    <Compile Include="Scenario.fs" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../LawSpec.Runtime/LawSpec.Runtime.fsproj" />
