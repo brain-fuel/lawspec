@@ -128,5 +128,15 @@ public final class KafkaBench {
     memory("end");
     FetchResult r = broker.fetchRequest(tp(0), 0L, 10, new IsolationLevel.ReadCommitted());
     System.out.println("check committed-hw " + r.highWatermark());
+
+    // The embedding API: a refusal as a value, and the state kept and put back.
+    var refused = broker.tryProduceRequest(new TopicPartition("missing", 0), new LawSpecRuntime.Nothing<>(), List.of(record(0)));
+    System.out.println("check refused " + (refused.failed() ? refused.failure().getClass().getSimpleName() : "nothing"));
+    var snapshot = broker.typedState();
+    broker.produceRequest(tp(0), new LawSpecRuntime.Nothing<>(), List.of(record(0)));
+    broker.setTypedState(snapshot);
+    FetchResult after = broker.fetchRequest(tp(0), 0L, 10, new IsolationLevel.ReadCommitted());
+    System.out.println("check restored " + after.highWatermark().equals(r.highWatermark()));
+    java.util.function.Supplier<?> nativeState = broker::state;
   }
 }

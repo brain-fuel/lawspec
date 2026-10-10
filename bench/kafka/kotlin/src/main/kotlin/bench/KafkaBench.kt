@@ -118,4 +118,14 @@ fun run(scale: Long) {
     memory("end")
     val r = broker.fetchRequest(tp(0), 0L, 10, IsolationLevel.ReadCommitted)
     println("check committed-hw ${r.highWatermark}")
+
+    // The embedding API: a refusal as a value, and the state kept and put back.
+    val refused = broker.tryProduceRequest(TopicPartition("missing", 0), LawSpecRuntime.Nothing(), listOf(record(0)))
+    println("check refused ${if (refused.failed()) refused.failure()::class.simpleName else "nothing"}")
+    val snapshot = broker.typedState()
+    broker.produceRequest(tp(0), LawSpecRuntime.Nothing(), listOf(record(0)))
+    broker.setTypedState(snapshot)
+    val after = broker.fetchRequest(tp(0), 0L, 10, IsolationLevel.ReadCommitted)
+    println("check restored ${after.highWatermark == r.highWatermark}")
+    val nativeState = broker::state
 }

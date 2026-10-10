@@ -170,6 +170,48 @@ emit minify bits datas units = case clashes of
              [line "symbols := handler.symbols", line "_ = symbols"] ++ prelude ++
              [line ("codec" ++ show i ++ " := " ++ c) | (i, c) <- codecsNeeded] ++
              [line ("resultCodec := " ++ resultCodec) | direct result == Nothing]) ++ outcome)))) (C.abilityOperations ability)
+      -- The state, read and replaced in its native types, and typed.
+      accessors <- case C.handlerState h of
+        Nothing -> pure []
+        Just (t, _) -> do
+          native <- Native.goDataType datas t
+          typedType <- goTypedType typed t
+          stateCodec <- Native.goCodecWithContext "symbols" datas t
+          to <- goTypedTo typed t
+          from <- goTypedFrom typed t
+          let (read', write') = case goTypedNative typed t of
+                Just (fromNative, toNative) -> ([line ("return " ++ toNative ++ "(handler.state)")], [line ("handler.state = " ++ fromNative ++ "(state)")])
+                Nothing -> ( [line "symbols := handler.symbols"] ++ prelude ++ [line ("codec := " ++ stateCodec), line ("return codec.toNative(" ++ to ++ "(handler.state))")]
+                           , [line "symbols := handler.symbols"] ++ prelude ++ [line ("codec := " ++ stateCodec), line ("handler.state = " ++ from ++ "(codec.fromNative(state))")] )
+              locked body = [line "handler.lock.Lock()", line "defer handler.lock.Unlock()"] ++ body
+          pure [ line ("// State is the handler's state, in its native types: a snapshot to show or keep.") <> D.hardline <>
+                 line ("func (handler *" ++ name ++ ") State() " ++ native ++ " ") <> D.block 8 (D.joinWith D.hardline (locked read'))
+               , line ("// SetState replaces the handler's state: to force it, reset it or restore a snapshot.") <> D.hardline <>
+                 line ("func (handler *" ++ name ++ ") SetState(state " ++ native ++ ") ") <> D.block 8 (D.joinWith D.hardline (locked write'))
+               , line ("// TypedState is the typed state, shared rather than copied.") <> D.hardline <>
+                 line ("func (handler *" ++ name ++ ") TypedState() " ++ typedType ++ " ") <> D.block 8 (D.joinWith D.hardline (locked [line "return handler.state"]))
+               , line ("// SetTypedState replaces the typed state.") <> D.hardline <>
+                 line ("func (handler *" ++ name ++ ") SetTypedState(state " ++ typedType ++ ") ") <> D.block 8 (D.joinWith D.hardline (locked [line "handler.state = state"])) ]
+      -- Each operation that fails with E, with its failure as an error.
+      attempts <- fmap concat $ mapM (\a -> mapM (\(op, ty, failing, failure) -> do
+          let (args, result) = C.functionType ty
+          types <- mapM (Native.goDataType datas) args
+          resultType <- if result == C.scalarType "Unit" then pure Nothing else Just <$> Native.goDataType datas result
+          failureType <- Native.goDataType datas failure
+          failureCodec <- Native.goCodecWithContext "symbols" datas failure
+          let values = ["value" ++ show i | i <- [0 .. length args - 1]]
+              call = "handler." ++ methodName op ++ "(" ++ intercalate ", " values ++ ")"
+              results = maybe "(err error)" (\r -> "(result " ++ r ++ ", err error)") resultType
+          pure (line ("// Try" ++ methodName op ++ " is " ++ methodName op ++ ", with the failure it raises returned as a *LawSpecRaised[" ++ failureType ++ "] error rather than a panic.") <> D.hardline <>
+            line ("func (handler *" ++ name ++ ") Try" ++ methodName op ++ "(" ++ intercalate ", " [v ++ " " ++ t | (v, t) <- zip values types] ++ ") " ++ results ++ " ") <>
+            D.block 8 (D.joinWith D.hardline (
+              [ line "defer func() " <> D.block 8 (line "if problem := recover(); problem != nil " <> D.block 8 (D.joinWith D.hardline
+                  [ line ("if failure, ok := problem.(*LawSpecFailure); ok && failure.Ability == " ++ show (C.abilityKey failing) ++ " ") <> D.block 8 (D.joinWith D.hardline
+                      ([line "symbols := handler.symbols"] ++ prelude ++
+                       [line ("err = &LawSpecRaised[" ++ failureType ++ "]{Value: " ++ failureCodec ++ ".toNative(failure.Value)}"), line "return"]))
+                  , line "panic(problem)" ])) <> line "()"
+              ] ++ maybe [line call, line "return nil"] (const [line ("return " ++ call ++ ", nil")]) resultType))))
+          [ (op, ty, failing, failure) | (op, ty) <- C.abilityOperations a, Just failing@(C.AbilityRef _ [failure]) <- [lookup op (C.abilityFailures a)] ]) answered
       pure (line ("// " ++ name ++ " is the spec handler " ++ C.handlerName h ++ " for " ++ C.abilityName ability ++ ", with its state typed.") <> D.hardline <>
         line ("type " ++ name ++ " struct ") <> D.block 8 (D.joinWith D.hardline
           ([line "symbols map[string]*LawSpecSymbol"] ++ [line ("state   " ++ t) | Just t <- [stateType]] ++
@@ -180,7 +222,7 @@ emit minify bits datas units = case clashes of
            [line ("handler.state = " ++ v) | Just v <- [start]] ++ [line "return handler"])) <> D.hardline <> D.hardline <>
         line ("// Start" ++ name ++ " makes " ++ C.handlerName h ++ " on its own, outside any law: the embedding entry point.") <> D.hardline <>
         line ("func Start" ++ name ++ "() *" ++ name ++ " ") <> D.block 8 (line ("return New" ++ name ++ "(map[string]*LawSpecSymbol{})")) <>
-        D.hardline <> D.hardline <> D.joinWith (D.hardline <> D.hardline) methods)
+        D.hardline <> D.hardline <> D.joinWith (D.hardline <> D.hardline) (methods ++ accessors ++ attempts))
     recording a = do
       let name = recordingName a
       methods <- mapM (\(op, ty) -> do

@@ -6,6 +6,7 @@ module LawSpec.AbilityEmit.Java (emit, productionStub, abilitiesClass, abilities
 
 import Data.Char (toUpper)
 import Data.List (intercalate)
+import Control.Monad (forM)
 import qualified LawSpec.Core as C
 import LawSpec.Common (Artifact(..))
 import LawSpec.AbilityNames
@@ -79,6 +80,19 @@ emit minify bits datas units = do
       pure (line ("/** The " ++ C.abilityName a ++ " ability: a handler answers each of its operations. */") <> D.hardline <>
         line ("public interface " ++ interfaceName a ++ " ") <> D.block 2 (D.joinWith D.hardline methods))
     codec ty = Native.javaCodecDocWithContext (line "symbols") datas bits ty
+    -- A Java type as a type argument: primitives boxed.
+    boxed t = case D.render D.Compact t of
+      "long" -> line "Long"
+      "int" -> line "Integer"
+      "short" -> line "Short"
+      "byte" -> line "Byte"
+      "boolean" -> line "Boolean"
+      "double" -> line "Double"
+      "float" -> line "Float"
+      "char" -> line "Character"
+      _ -> t
+    capitalizeFirst (c : cs) = toUpper c : cs
+    capitalizeFirst [] = []
     specHandler u h = do
       -- A handler of several abilities answers all their operations.
       answered <- mapM (\ref -> maybe (Left ("unknown ability of handler " ++ C.handlerName h)) Right (unitAbility u ref)) (C.handlerAbilities h)
@@ -159,6 +173,45 @@ emit minify bits datas units = do
               | Just (_, toNative) <- direct result = [line ("return " ++ toNative ++ "(result);")]
               | otherwise = [line "return " <> resultCodec <> line (".decode(" ++ typedResult ++ ".encode(result));")]
         pure (line "@Override" <> D.hardline <> line "public synchronized " <> s <> line " " <> D.block 2 (D.joinWith D.hardline (outcome ++ returned)))) (C.abilityOperations ability)
+      -- The state, read and replaced in its native types, and typed.
+      accessors <- case (C.handlerState h, stateType) of
+        (Just (t, _), Just typedType) -> do
+          native <- Native.javaDataTypeDoc datas t
+          stateCodec <- codec t
+          typedCodec <- jvmTypedCodec typed t
+          let (read', write') = case jvmTypedNative typed t of
+                Just (fromNative, toNative) -> (line ("return " ++ toNative ++ "(state);"), line ("this.state = " ++ fromNative ++ "(state);"))
+                Nothing -> ( line "return " <> stateCodec <> line (".decode(" ++ typedCodec ++ ".encode(this.state));")
+                           , line ("this.state = " ++ typedCodec ++ ".decode(") <> stateCodec <> line ".encode(state));" )
+          pure [ line "/** The handler's state, in its native types: a snapshot to show or keep. */" <> D.hardline <>
+                 line "public synchronized " <> native <> line " state() " <> D.block 2 read'
+               , line "/** Replaces the handler's state: to force it, reset it or restore a snapshot. */" <> D.hardline <>
+                 line "public synchronized void setState(" <> native <> line " state) " <> D.block 2 write'
+               , line "/** The typed state, shared rather than copied. */" <> D.hardline <>
+                 line ("public synchronized " ++ typedType ++ " typedState() ") <> D.block 2 (line "return state;")
+               , line "/** Replaces the typed state. */" <> D.hardline <>
+                 line ("public synchronized void setTypedState(" ++ typedType ++ " state) ") <> D.block 2 (line "this.state = state;") ]
+        _ -> pure []
+      -- Each operation that fails with E, with its failure as an Outcome.
+      attempts <- fmap concat $ forM answered $ \a -> forM [ (op, ty, failing, failure) | (op, ty) <- C.abilityOperations a
+                                                         , Just failing@(C.AbilityRef _ [failure]) <- [lookup op (C.abilityFailures a)] ] $ \(op, ty, failing, failure) -> do
+        let (args, result) = C.functionType ty
+        types <- mapM (Native.javaDataTypeDoc datas) args
+        resultType <- if result == C.scalarType "Unit" then pure (line "Void") else boxed <$> Native.javaDataTypeDoc datas result
+        failureType <- boxed <$> Native.javaDataTypeDoc datas failure
+        failureCodec <- codec failure
+        let values = ["value" ++ show i | i <- [0 .. length args - 1]]
+            call = op ++ "(" ++ intercalate ", " values ++ ")"
+            outcome = line "lawspec.runtime.LawSpecFast.Outcome<" <> resultType <> line ", " <> failureType <> line ">"
+        pure (line ("/** " ++ op ++ ", with the failure it raises as an Outcome rather than an exception. */") <> D.hardline <>
+          line "public " <> outcome <> line (" try" ++ capitalizeFirst op) <> D.delimit 4 "(" ")" [t <> line (" " ++ v) | (v, t) <- zip values types] <> line " " <>
+          D.block 2 (line "try " <> D.block 2
+              (if result == C.scalarType "Unit"
+                 then line (call ++ ";") <> D.hardline <> line "return lawspec.runtime.LawSpecFast.Outcome.success(null);"
+                 else line ("return lawspec.runtime.LawSpecFast.Outcome.success(" ++ call ++ ");")) <>
+            line " catch (LawSpecRuntime.Failure failure) " <> D.block 2 (D.joinWith D.hardline
+              [ line ("if (!failure.ability.equals(" ++ show (C.abilityKey failing) ++ ")) throw failure;")
+              , line "return lawspec.runtime.LawSpecFast.Outcome.failure(" <> failureCodec <> line ".decode(failure.value));" ])))
       pure (line ("/** The spec handler " ++ C.handlerName h ++ " for " ++ C.abilityName ability ++ ", with its state typed. */") <> D.hardline <>
         line ("public static final class " ++ name ++ " implements " ++ intercalate ", " [abilitiesClassOf (ownerName a) ++ "." ++ interfaceName a | a <- answered] ++ " ") <> D.block 2 (D.joinWith (D.hardline <> D.hardline)
           ([ line "private final Map<String, Object> symbols;" <> maybe mempty (\t -> D.hardline <> line ("private " ++ t ++ " state;")) stateType
@@ -167,7 +220,7 @@ emit minify bits datas units = do
                (line "this.symbols = symbols;" : [line ("this.state = " ++ v ++ ";") | Just v <- [start]]))
            , line "/** The handler on its own, outside any law: the embedding entry point. */" <> D.hardline <>
              line ("public " ++ name ++ "() ") <> D.block 2 (line "this(new java.util.HashMap<>());") ] ++
-           methods)))
+           methods ++ accessors ++ attempts)))
     recording a = do
       let name = recordingName a
       methods <- mapM (\(op, ty) -> do

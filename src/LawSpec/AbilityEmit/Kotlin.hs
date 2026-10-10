@@ -78,6 +78,8 @@ emit minify bits datas units = do
       pure (line ("/** The " ++ C.abilityName a ++ " ability: a handler answers each of its operations. */") <> D.hardline <>
         line ("interface " ++ interfaceName a ++ " ") <> D.block 4 (D.joinWith D.hardline methods))
     codec ty = Native.kotlinCodecDocWithContext (line "symbols") datas ty
+    capitalizeFirst (c : cs) = toUpper c : cs
+    capitalizeFirst [] = []
     specHandler u h = do
       -- A handler of several abilities answers all their operations.
       answered <- mapM (\ref -> maybe (Left ("unknown ability of handler " ++ C.handlerName h)) Right (unitAbility u ref)) (C.handlerAbilities h)
@@ -156,12 +158,48 @@ emit minify bits datas units = do
               | Just (_, toNative) <- direct result = [line ("return " ++ toNative ++ "(result)")]
               | otherwise = [line "return " <> resultCodec <> line (".decode(" ++ typedResult ++ ".encode(result))")]
         pure (line "@Synchronized override " <> s <> line " " <> D.block 4 (D.joinWith D.hardline (outcome ++ returned)))) (C.abilityOperations ability)
+      -- The state, read and replaced in its native types, and typed.
+      accessors <- case (C.handlerState h, stateType) of
+        (Just (t, _), Just typedType) -> do
+          native <- Native.kotlinDataTypeDoc datas t
+          stateCodec <- codec t
+          typedCodec <- jvmTypedCodec typed t
+          let (read', write') = case jvmTypedNative typed t of
+                Just (fromNative, toNative) -> (line ("return " ++ toNative ++ "(state)"), line ("this.state = " ++ fromNative ++ "(state)"))
+                Nothing -> ( line "return " <> stateCodec <> line (".decode(" ++ typedCodec ++ ".encode(this.state))")
+                           , line ("this.state = " ++ typedCodec ++ ".decode(") <> stateCodec <> line ".encode(state))" )
+          pure [ line "/** The handler's state, in its native types: a snapshot to show or keep. */" <> D.hardline <>
+                 line "@Synchronized fun state(): " <> native <> line " " <> D.block 4 read'
+               , line "/** Replaces the handler's state: to force it, reset it or restore a snapshot. */" <> D.hardline <>
+                 line "@Synchronized fun setState(state: " <> native <> line ") " <> D.block 4 write'
+               , line "/** The typed state, shared rather than copied. */" <> D.hardline <>
+                 line ("@Synchronized fun typedState(): " ++ typedType ++ " = state")
+               , line "/** Replaces the typed state. */" <> D.hardline <>
+                 line ("@Synchronized fun setTypedState(state: " ++ typedType ++ ") ") <> D.block 4 (line "this.state = state") ]
+        _ -> pure []
+      -- Each operation that fails with E, with its failure as an Outcome.
+      attempts <- fmap concat $ mapM (\a -> mapM (\(op, ty, failing, failure) -> do
+          let (args, result) = C.functionType ty
+          types <- mapM (Native.kotlinDataTypeDoc datas) args
+          resultType <- if result == C.scalarType "Unit" then pure (line "Unit") else Native.kotlinDataTypeDoc datas result
+          failureType <- Native.kotlinDataTypeDoc datas failure
+          failureCodec <- codec failure
+          let values = ["value" ++ show i | i <- [0 .. length args - 1]]
+              call = op ++ "(" ++ intercalate ", " values ++ ")"
+          pure (line ("/** " ++ op ++ ", with the failure it raises as an Outcome rather than an exception. */") <> D.hardline <>
+            line ("fun try" ++ capitalizeFirst op) <> D.delimitTrailing 4 "(" ")" [line (v ++ ": ") <> t | (v, t) <- zip values types] <>
+            line ": lawspec.runtime.LawSpecFast.Outcome<" <> resultType <> line ", " <> failureType <> line "> " <>
+            D.block 4 (line "try " <> D.block 4 (line ("return lawspec.runtime.LawSpecFast.Outcome.success(" ++ call ++ ")")) <>
+              line " catch (failure: LawSpecRuntime.Failure) " <> D.block 4 (D.joinWith D.hardline
+                [ line ("if (failure.ability != " ++ show (C.abilityKey failing) ++ ") throw failure")
+                , line "return lawspec.runtime.LawSpecFast.Outcome.failure(" <> failureCodec <> line ".decode(failure.value))" ])))
+        ) [ (op, ty, failing, failure) | (op, ty) <- C.abilityOperations a, Just failing@(C.AbilityRef _ [failure]) <- [lookup op (C.abilityFailures a)] ]) answered
       pure (line ("/** The spec handler " ++ C.handlerName h ++ " for " ++ C.abilityName ability ++ ", with its state typed. */") <> D.hardline <>
         line ("class " ++ name ++ "(private val symbols: MutableMap<String, Any>) : " ++ intercalate ", " [abilitiesObjectOf (ownerName a) ++ "." ++ interfaceName a | a <- answered] ++ " ") <>
         D.block 4 (D.joinWith (D.hardline <> D.hardline)
           ([line ("private var state: " ++ t ++ " = " ++ v) | Just t <- [stateType], Just v <- [start]] ++
            [ line "/** The handler on its own, outside any law: the embedding entry point. */" <> D.hardline <>
-             line "constructor() : this(mutableMapOf())" ] ++ methods)))
+             line "constructor() : this(mutableMapOf())" ] ++ methods ++ accessors ++ attempts)))
     recording a = do
       let name = recordingName a
       methods <- mapM (\(op, ty) -> do

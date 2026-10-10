@@ -200,7 +200,7 @@ emit minify bits datas units = do
           let direct = rustTypedNative typed t
               locked = line "let state = self.state.lock().unwrap_or_else(|poisoned| poisoned.into_inner());"
               readNative = if direct then [locked, line "ls::fast::Public::to_native(&*state)"]
-                else [locked, line "let ctx = self.ctx.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).clone();", line "let ctx = &ctx;"] ++ fromDyn
+                else [locked, line "let mut ctx = self.ctx.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).clone();", line "let ctx = &mut ctx;"] ++ fromDyn
               made = if direct then "<" ++ typedType ++ " as ls::fast::Public>::from_native(state)"
                 else "<" ++ typedType ++ " as ls::fast::Dyn>::from_dyn(ls::IntoValue::into_value(state))" ++ unwrap
           pure [ line "/// The handler's state, in its native types: a snapshot to show or keep." <> D.hardline <>
@@ -231,7 +231,7 @@ emit minify bits datas units = do
             D.block 4 (D.joinWith D.hardline
               [ line "Ok(Ok(result)) => Ok(result),"
               , line "Ok(Err(failure)) => " <> D.block 4 (D.joinWith D.hardline
-                  ([line "let ctx = self.ctx.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).clone();", line "let ctx = &ctx;"] ++
+                  ([line "let mut ctx = self.ctx.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).clone();", line "let ctx = &mut ctx;"] ++
                    [line "Err(" <> D.joinWith D.hardline decodedBlock <> line ")" | let decodedBlock = [D.block 4 (D.joinWith D.hardline decoded)]]))
               , line "Err(error) => panic!(\"{error}\")," ])))
       pure (line ("/// The spec handler " ++ C.handlerName h ++ " for " ++ C.abilityName ability ++ ", with its state typed.") <> D.hardline <>

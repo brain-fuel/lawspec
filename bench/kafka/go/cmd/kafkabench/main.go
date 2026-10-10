@@ -6,6 +6,7 @@ package main
 
 import (
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"os"
 	"runtime"
@@ -138,4 +139,18 @@ func main() {
 	memory("end")
 	r := broker.FetchRequest(tp(0), 0, 10, kafka.IsolationLevelReadCommitted{})
 	fmt.Printf("check committed-hw %d\n", r.HighWatermark)
+
+	// The embedding API: a refusal as an error, and the state kept and put back.
+	_, err := broker.TryProduceRequest(kafka.TopicPartition{Topic: "missing", Partition: 0}, kafka.LawSpecNothing[kafka.ProducerTag](), []kafka.Record{record(0)})
+	var refused *kafka.LawSpecRaised[kafka.KafkaError]
+	if errors.As(err, &refused) {
+		fmt.Printf("check refused %T\n", refused.Value)
+	}
+	snapshot := broker.TypedState()
+	broker.ProduceRequest(tp(0), kafka.LawSpecNothing[kafka.ProducerTag](), []kafka.Record{record(0)})
+	broker.SetTypedState(snapshot)
+	after := broker.FetchRequest(tp(0), 0, 10, kafka.IsolationLevelReadCommitted{})
+	fmt.Printf("check restored %v\n", after.HighWatermark == r.HighWatermark)
+	_ = broker.State
+	_ = broker.SetState
 }
