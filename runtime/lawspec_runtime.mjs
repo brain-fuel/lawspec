@@ -789,6 +789,9 @@ export function setHandlerSchema(schema) {
 export function handlerSchema(fallback) {
   return boundHandlerSchema ?? fallback;
 }
+export function handlerSchemaBound() {
+  return boundHandlerSchema !== null;
+}
 
 // handle e with h end: runs body with these handlers installed, then puts
 // back the ones they replaced.

@@ -13,13 +13,17 @@ import LawSpec.WebData (webDataTypeDoc, webTypeReferenceDoc)
 import qualified LawSpec.WebDefinitions as Definitions
 import qualified LawSpec.Code.Doc as D
 import qualified LawSpec.WebExpr as E
+import LawSpec.Typed.Plan (isTypedHandler, isContextual)
+import LawSpec.Typed.Web (WebTyped(..), emitWebTyped)
 
 -- The generated module of a unit's abilities, from the project root.
 modulePath :: Bool -> C.Unit -> String
 modulePath ts u = "src/lawspec_abilities/" ++ map (\c -> if c == '.' then '/' else c) (C.idText (C.unitId u)) ++ (if ts then ".ts" else ".mjs")
 
 emit :: Bool -> Bool -> Int -> [C.DataDeclaration] -> [C.Unit] -> Either String [Artifact]
-emit ts minify bits datas units = mapM unitModule (filter unitAbilityPieces units)
+emit ts minify bits datas units = do
+  typed <- emitWebTyped ts bits datas units
+  mapM (unitModule typed) (filter unitAbilityPieces units)
   where
     layout = D.selectLayout minify (D.Pretty 80)
     calls = Definitions.definitionCalls units
@@ -29,11 +33,12 @@ emit ts minify bits datas units = mapM unitModule (filter unitAbilityPieces unit
     schemaCall name ty value = do
       ref <- webTypeReferenceDoc ty
       pure (E.call ("ls.handlerSchema(_lawspec_schema)." ++ name) [ref, value, width, D.text "symbols"])
-    unitModule u = do
+    unitModule typed u = do
       let depth = 1 + length (filter (== '.') (C.idText (C.unitId u)))
           root = concat (replicate depth "../")
+          typedHandlers = [h | h <- C.unitHandlers u, isTypedHandler (webTypedPlan typed) h]
       interfaces <- if ts then mapM interface (ownAbilities u) else pure []
-      handlers <- mapM (specHandler u) (C.unitHandlers u)
+      handlers <- mapM (\h -> if h `elem` typedHandlers then typedHandler typed u h else specHandler u h) (C.unitHandlers u)
       recordings <- mapM recording (ownAbilities u)
       let header = D.joinWith D.hardline (map D.text (
             [ "// @ts-nocheck" | ts ] ++
@@ -44,6 +49,7 @@ emit ts minify bits datas units = mapM unitModule (filter unitAbilityPieces unit
             , "import * as ls from '" ++ root ++ "lawspec_runtime." ++ extension ++ "';"
             , "import * as schema from '" ++ root ++ "lawspec_schema." ++ extension ++ "';" ] ++
             [ "import * as _definitions from '" ++ root ++ "lawspec_definition_bodies." ++ extension ++ "';" | not (null (C.unitHandlers u)) ] ++
+            [ "import * as _typed from '" ++ root ++ "lawspec_typed." ++ extension ++ "';" | not (null typedHandlers) ] ++
             [ "", "const _lawspec_schema = data.makeSchema();" ]))
           body = D.joinWith (D.hardline <> D.hardline) (interfaces ++ handlers ++ recordings)
       pure (Artifact (modulePath ts u) (D.render layout (header <> D.hardline <> D.hardline <> body <> D.hardline)) "generated" "source")
@@ -91,6 +97,41 @@ emit ts minify bits datas units = mapM unitModule (filter unitAbilityPieces unit
       pure (D.text ("/** The spec handler " ++ C.handlerName h ++ " for " ++ C.abilityName ability ++ ". */") <> D.hardline <>
         D.text ("export class " ++ specName h ++ (if ts then " implements " ++ intercalate ", " (map interfaceName answered) else "") ++ " ") <> D.block 2 (D.joinWith D.hardline (
           D.text "constructor(symbols = new Map()) " <> D.block 2 (D.joinWith D.hardline (D.text "this._symbols = symbols;" : initialState)) :
+          methods)))
+    -- A typed spec handler keeps its state typed: each operation converts its
+    -- arguments, runs the typed clause and keeps the next state, which shares
+    -- all it did not change with the state before.
+    typedHandler typed u h = do
+      answered <- mapM (\ref -> maybe (Left ("unknown ability of handler " ++ C.handlerName h)) Right (unitAbility u ref)) (C.handlerAbilities h)
+      let ability = case answered of
+            first : _ -> first { C.abilityOperations = concatMap C.abilityOperations answered
+                               , C.abilityName = intercalate ", " (map C.abilityName answered) }
+            [] -> C.failAbility
+          stateful = C.handlerState h /= Nothing
+      start <- case C.handlerState h of
+        Nothing -> pure []
+        Just _ -> do
+          name <- maybe (Left ("untyped start of " ++ C.handlerName h)) Right (webTypedStart typed (C.handlerId h))
+          pure [D.text ("this._state = _typed." ++ name ++ "(symbols);")]
+      methods <- mapM (\(op, ty) -> do
+        clause <- maybe (Left (C.handlerName h ++ ": no clause for " ++ op)) Right (lookup op (C.handlerClauses h))
+        function <- maybe (Left ("untyped clause " ++ C.idText clause)) Right (webTypedFunction typed clause)
+        s <- signature ty
+        let (args, result) = C.functionType ty
+            inputs = [D.text ("const argument" ++ show i ++ " = _typed." ++ webTypedNativeIn typed t ++ "(value" ++ show i ++ ", symbols);") | (i, t) <- zip [0 :: Int ..] args]
+            arguments = ["symbols" | isContextual (webTypedPlan typed) clause] ++ ["this._state" | stateful] ++
+              (if null args && not stateful then ["null"] else ["argument" ++ show i | i <- [0 .. length args - 1]])
+            invocation = "_typed." ++ function ++ "(" ++ intercalate ", " arguments ++ ")"
+            out x = D.text ("return _typed." ++ webTypedNativeOut typed result ++ "(" ++ x ++ ", symbols);")
+            statements = if stateful
+              then [D.text ("const pair = " ++ invocation ++ ";"), D.text "this._state = pair.second;", out "pair.first"]
+              else [out invocation]
+        pure (D.text op <> s <> D.text " " <> D.block 2
+          (D.joinWith D.hardline (D.text "const symbols = this._symbols;" : inputs ++ statements)))) (C.abilityOperations ability)
+      pure (D.text ("/** The spec handler " ++ C.handlerName h ++ " for " ++ C.abilityName ability ++ ", with its state typed: new " ++
+          specName h ++ "() makes it on its own, outside any law. */") <> D.hardline <>
+        D.text ("export class " ++ specName h ++ (if ts then " implements " ++ intercalate ", " (map interfaceName answered) else "") ++ " ") <> D.block 2 (D.joinWith D.hardline (
+          D.text "constructor(symbols = new Map()) " <> D.block 2 (D.joinWith D.hardline (D.text "this._symbols = symbols;" : start)) :
           methods)))
     recording a = do
       methods <- mapM (\(op, ty) -> do

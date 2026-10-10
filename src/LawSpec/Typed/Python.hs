@@ -205,7 +205,7 @@ orderingHelper :: Env -> [D.Doc]
 orderingHelper env = case M.lookup (collectionsUnit ++ "::type::Ordering") (envData env) of
   Nothing -> []
   Just d ->
-    let rank name = head ([rankOf d c | c <- dataConstructors d, constructorName c == name] ++ [0])
+    let rank name = firstOf ([rankOf d c | c <- dataConstructors d, constructorName c == name] ++ [0])
     in [block "def Ordering_of(c)" [D.text ("return " ++ show (rank "Less") ++ " if c < 0 else (" ++ show (rank "Equal") ++ " if c == 0 else " ++ show (rank "Greater") ++ ")")]]
 
 -- Statements.

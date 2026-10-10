@@ -436,6 +436,7 @@ library
       LawSpec.Typed.Plan
       LawSpec.Typed.Python
       LawSpec.Typed.Rust
+      LawSpec.Typed.Web
       LawSpec.Unification
       LawSpec.WebData
       LawSpec.WebDefinitions
