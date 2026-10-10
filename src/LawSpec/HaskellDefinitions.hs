@@ -54,7 +54,7 @@ emitHaskellDefinitionsWithBindings bound layout bits declarations units = do
   wrappers <- mapM (nativeUnit False) (filter (any (not . definitionOrchestrates) . unitDefinitions) units)
   workflowWrappers <- mapM (nativeUnit True) (filter (any definitionOrchestrates . unitDefinitions) units)
   let adapterImports = nub ["import qualified " ++ moduleOf owner | (_, (owner, _)) <- adapters]
-  let typedImports = if hasTyped then ["import qualified LawSpecTyped as Typed", "import qualified Control.Concurrent.MVar as MVar"] else []
+  let typedImports = if hasTyped then ["import qualified LawSpecTyped as Typed", "import qualified LawSpecFast as LSF", "import qualified Control.Concurrent.MVar as MVar"] else []
       typedFiles = if hasTyped
         then [ Artifact "src/LawSpecTyped.hs" (hsTypedModule typed) "generated" "source"
              , Artifact "src/LawSpecFast.hs" (runtimeSource "haskell-fast") "generated" "source" ]
