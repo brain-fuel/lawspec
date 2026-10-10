@@ -208,7 +208,7 @@ rankOf d c = fromMaybe 0 (lookup (constructorId c) (constructorRanks d))
 substituteIn :: [(Id, Type)] -> Type -> Type
 substituteIn table t = case t of
   TypeVariable v -> fromMaybe t (lookup v table)
-  Constructor n as -> Constructor n [case a of TypeArgument x -> TypeArgument (substituteIn table x); o -> o | a <- as]
+  Constructor n as -> Constructor n [(case a of TypeArgument x -> TypeArgument (substituteIn table x); o -> o) | a <- as]
   other -> other
 
 fieldTypes :: DataDeclaration -> [Type] -> DataConstructor -> [Type]

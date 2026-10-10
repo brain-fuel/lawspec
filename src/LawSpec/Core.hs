@@ -573,7 +573,7 @@ lowerFieldNodes declarations prefix expression = fst (go expression 0)
       Nothing -> ([], n)
     substituteType table t = case t of
       TypeVariable v -> maybe t id (lookup v table)
-      Constructor name args -> Constructor name [case a of TypeArgument x -> TypeArgument (substituteType table x); other -> other | a <- args]
+      Constructor name args -> Constructor name [(case a of TypeArgument x -> TypeArgument (substituteType table x); other -> other) | a <- args]
       Arrow a b -> Arrow (substituteType table a) (substituteType table b)
 
 -- | Rebuild an expression with an effectful f applied to each child, in

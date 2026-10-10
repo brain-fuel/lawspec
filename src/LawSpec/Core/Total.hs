@@ -196,7 +196,7 @@ proofExpression schema bits = proof
   where
     substituteFieldType table t = case t of
       TypeVariable v -> maybe t id (lookup v table)
-      Constructor name args -> Constructor name [case a of TypeArgument x -> TypeArgument (substituteFieldType table x); other -> other | a <- args]
+      Constructor name args -> Constructor name [(case a of TypeArgument x -> TypeArgument (substituteFieldType table x); other -> other) | a <- args]
       Arrow a b -> Arrow (substituteFieldType table a) (substituteFieldType table b)
     proof expression = mark expression $ case expressionNode expression of
       Constant value -> T.Literal value

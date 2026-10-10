@@ -38,6 +38,10 @@
   kinds: [comment]
   reason: "The hand-written tools were ingested pending in 0.20.1; vetting is the work at 1.0, once 1.0 feature parity is reached"
   revisit: 1.0.0
+/bench/:
+  kinds: [comment]
+  reason: "The benchmark drivers came with the LawTwin work, after the comments were ingested; vetting them and writing the comments still owed is the work at 1.0, once 1.0 feature parity is reached"
+  revisit: 1.0.0
 /Makefile:
   kinds: [comment]
   reason: "The Makefile's targets carry their one-line help but no canonical comment yet; writing and vetting them is the work at 1.0, once 1.0 feature parity is reached"

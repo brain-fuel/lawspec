@@ -459,10 +459,14 @@ test_beamCodeUsesCheckedCoreAndNativeFrameworks = describe "BEAM generation" $ d
         if target == "gleam" then concatMap artifactContent artifacts `shouldSatisfy` isInfixOf "pub fn opaque_lawspec("
           else pure ()) ["erlang","elixir","gleam"]
   -- ref:DEC-idiomatic-generated-types
-  it "diagnoses native ability constructor collisions before emitting Gleam" $ do
+  it "renames a Gleam handler named like its ability's builder and diagnoses remaining collisions" $ do
     let source = unlines ["unit sample", "ability Counter is read :: Int32 end",
           "handler counter for Counter is read is 0 end end"]
     case generatedFor "gleam" False source of
+      Left errors -> expectationFailure (show errors)
+      Right artifacts -> concatMap artifactContent artifacts `shouldSatisfy` isInfixOf "pub fn counter_handler("
+    let colliding = source ++ "handler counterHandler for Counter is read is 1 end end\n"
+    case generatedFor "gleam" False colliding of
       Left errors -> show errors `shouldSatisfy` isInfixOf "handler constructors and operation functions collide"
       Right _ -> expectationFailure "colliding native constructors were accepted"
   -- ref:DEC-total-definitions ref:DEC-native-property-frameworks

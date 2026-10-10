@@ -894,7 +894,7 @@ nativeDirect env seen ty = case ty of
 substituteIn :: [(Id, Type)] -> Type -> Type
 substituteIn table t = case t of
   TypeVariable v -> fromMaybe t (lookup v table)
-  Constructor n as -> Constructor n [case a of TypeArgument x -> TypeArgument (substituteIn table x); o -> o | a <- as]
+  Constructor n as -> Constructor n [(case a of TypeArgument x -> TypeArgument (substituteIn table x); o -> o) | a <- as]
   other -> other
 
 -- | A type's native form, in Java syntax (boxed), for either style.
