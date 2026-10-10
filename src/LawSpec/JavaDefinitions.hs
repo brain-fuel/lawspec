@@ -8,12 +8,16 @@ import Data.Char (isAlphaNum, toUpper)
 import Data.List (intercalate)
 import LawSpec.Common
 import LawSpec.Core
+import LawSpec.Typed.Plan (TypedPlan(..), sharedDefinitions)
+import qualified Data.Map.Strict as M
 import LawSpec.Core.DefinitionContracts (checkedDefinitionContracts)
 import LawSpec.Core.Evidence (runtimePostconditions)
 import qualified LawSpec.JavaData as Native
 import LawSpec.AbilityNames (interfaceName, specName, ownerName)
 import qualified LawSpec.JavaExpr as E
 import qualified LawSpec.Code.Doc as D
+import LawSpec.RuntimeSources (runtimeSource)
+import LawSpec.Typed.Jvm (JvmTyped(..), JvmStyle(..), emitJvmTyped)
 
 -- | The adapters orchestrations call, with their units.
 orchestratedAdapters :: [Unit] -> [(Id, (Id, Declaration))]
@@ -83,12 +87,38 @@ emitDefinitions :: Bool -> D.Layout -> Int -> [DataDeclaration] -> [Unit] -> Eit
 emitDefinitions _ _ _ _ units | null (concatMap unitDefinitions units) = pure []
 emitDefinitions withNative layout bits declarations units = do
   contracts <- checkedDefinitionContracts bits declarations units
-  methods <- mapM (implementation contracts) (zip [0::Int ..] (concatMap unitDefinitions units))
+  typed <- emitJvmTyped (if withNative then JavaStyle else KotlinStyle) declarations units
+  -- Definitions that are the same up to their names (an import's copies)
+  -- share one body; the others call it.
+  let shared = sharedDefinitions units
+      everyName = M.fromList [(declarationId (definitionDeclaration d), i) | (i, d) <- zip [0::Int ..] (concatMap unitDefinitions units)]
+      delegate i d target = pure (E.call ("public static Value evaluate" ++ show i)
+        (D.text "Map<String, Object> symbols" : [D.text ("Value input" ++ show k) | k <- [0 .. length (definitionArguments d) - 1]]) <> D.text " " <>
+        D.block 2 (D.text ("return evaluate" ++ show target ++ "(" ++ intercalate ", " ("symbols" : ["input" ++ show k | k <- [0 .. length (definitionArguments d) - 1]]) ++ ");")))
+  methods <- mapM (\(i, d) -> case M.lookup (declarationId (definitionDeclaration d)) shared >>= (`M.lookup` everyName) of
+      Just target -> delegate i d target
+      Nothing -> maybe (implementation contracts (i, d)) (bridge typed i d)
+        (jvmTypedFunction typed (declarationId (definitionDeclaration d)))) (zip [0::Int ..] (concatMap unitDefinitions units))
   let source = file "lawspec.runtime" "LawSpecDefinitionBodies"
         ["java.util.Map", "lawspec.runtime.LawSpecRuntime.Value"] methods
-  native <- if withNative then mapM nativeUnit (filter (not . null . unitDefinitions) units) else pure []
-  pure (source : native)
+      -- The typed definitions and their runtime.
+      typedFiles = if null (typedRepresentativesOf typed) then [] else
+        [ Artifact "src/main/java/lawspec/runtime/LawSpecTyped.java" (jvmTypedSource typed) "generated" "source"
+        , Artifact "src/main/java/lawspec/runtime/LawSpecFast.java" (runtimeSource "java-fast") "generated" "source" ]
+  native <- if withNative then mapM (nativeUnit typed) (filter (not . null . unitDefinitions) units) else pure []
+  pure (source : typedFiles ++ native)
   where
+    typedRepresentativesOf typed = M.keys (typedDefinitions (jvmTypedPlan typed))
+    -- A typed definition's dynamic entry converts its arguments and result.
+    bridge typed index d function = do
+      let (argTypes, resultType) = functionType (declarationType (definitionDeclaration d))
+      codecs <- mapM (jvmTypedCodec typed) argTypes
+      resultCodec <- jvmTypedCodec typed resultType
+      let signature = E.call ("public static Value evaluate" ++ show index)
+            (D.text "Map<String, Object> symbols" : [D.text ("Value input" ++ show i) | i <- [0 .. length argTypes - 1]]) <> D.text " "
+          call = D.text (function ++ "(") <> D.joinWith (D.text ", ")
+            [D.text (codec ++ ".decode(input" ++ show i ++ ")") | (i, codec) <- zip [0 :: Int ..] codecs] <> D.text ")"
+      pure (signature <> D.block 2 (D.text ("return " ++ resultCodec ++ ".encode(") <> call <> D.text ");"))
     assign name value = D.group (D.text ("var " ++ name ++ " =") <>
       D.nest 4 (D.softline <> value) <> D.text ";")
     contextual identity body = D.text "try " <> D.block 2 body <>
@@ -110,13 +140,30 @@ emitDefinitions withNative layout bits declarations units = do
             D.text "private static final lawspec.runtime.LawSpecSchema _schema =" <>
               D.nest 4 (D.hardline <> D.text "lawspec.runtime.LawSpecDataSchema.create();")] ++ methods)) <> D.hardline))
       "generated" "source"
-    nativeUnit unit = do
+    nativeUnit typed unit = do
       let parts = split '.' (idText (unitId unit))
           name = concatMap capitalize (split '_' (last parts))
           package = intercalate "." ("lawspec" : "definitions" : init parts)
-      methods <- mapM native (unitDefinitions unit)
+      methods <- mapM (native typed) (unitDefinitions unit)
       pure (file package name ["java.util.Map"] methods)
-    native d = do
+    -- A typed definition whose types all convert directly calls its typed
+    -- method between the conversions.
+    native typed d
+      | Just function <- jvmTypedFunction typed (declarationId (definitionDeclaration d))
+      , let (args, result) = functionType (declarationType (definitionDeclaration d))
+      , result /= scalarType "Unit"
+      , Just conversions <- mapM (jvmTypedNative typed) args
+      , Just (_, toNative) <- jvmTypedNative typed result = do
+          nativeArgs <- mapM (Native.javaDataTypeDoc declarations) args
+          nativeResult <- Native.javaDataTypeDoc declarations result
+          let declaration = definitionDeclaration d
+              parameters = D.text "Map<String, Object> symbols" : [ty <> D.text (" value" ++ show i) | (i, ty) <- zip [0::Int ..] nativeArgs]
+          pure (D.group (D.text "public static " <> nativeResult <> D.text (" " ++ declarationName declaration ++ "(") <>
+              D.nest 4 (D.softbreak <> D.group (D.commaSep parameters)) <> D.text ") ") <>
+            D.block 2 (D.text ("return " ++ toNative ++ "(" ++ function ++ "(" ++
+              intercalate ", " [fromNative ++ "(value" ++ show i ++ ")" | (i, (fromNative, _)) <- zip [0 :: Int ..] conversions] ++ "));")))
+      | otherwise = nativeDynamic d
+    nativeDynamic d = do
       let declaration = definitionDeclaration d
           (args,result) = functionType (declarationType declaration)
       nativeArgs <- mapM (Native.javaDataTypeDoc declarations) args

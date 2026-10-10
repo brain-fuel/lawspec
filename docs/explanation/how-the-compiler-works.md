@@ -74,6 +74,15 @@ source syntax or the inference engine; a repository check enforces this
 boundary. That is why a feature added to the front end, such as imports or
 indexed families, works on every target without backend changes. ref:DEC-typed-core-boundary
 
+Every target can evaluate a checked definition over its dynamic values,
+which carry their LawSpec types. On Rust, Go, Java and Kotlin, a definition
+whose values all have a typed form is emitted as typed native code instead,
+over persistent lists and maps, and its dynamic entry converts at the
+boundary, so a stateful spec handler is fast enough to embed (see
+[Embed a generated model](../how-to/embed-a-generated-model.md)). One plan
+in Core's terms decides which definitions are typed, for the three emitters
+alike. ref:DEC-typed-native-definitions
+
 ## Semantic validity versus feasibility
 
 `check` and `expand` report whether a specification is meaningful.

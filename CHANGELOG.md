@@ -6,6 +6,54 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- Checked definitions and stateful spec handlers run as typed native code on
+  Rust, Go, Java and Kotlin wherever every value they touch has a typed form
+  (Bool, Unit, the bounded integers, Integer, Text, Bytes, List, Maybe,
+  Either, KeyVal, Set and data built from them) and they perform no
+  operation; anything else runs on the dynamic values, as before. Lists are
+  persistent cons lists that share their tails, KeyVal and Set persistent AVL
+  trees in the portable order, Integer stays in a machine word until it
+  outgrows it, data with fields is shared by reference, and a definition's
+  self tail calls become a loop. A handler's state is never copied: an
+  operation costs what it changes. Values convert directly between the typed
+  forms and each target's native types at a handler's interface, and through
+  the dynamic value where typed and dynamic code meet.
+- Embedding entry points: a stateful spec handler can be made outside any law
+  and called from native code, `Handler::start()` in Rust,
+  `Start<Handler>()` in Go and the no-argument constructor in Java and
+  Kotlin. Its operations apply one at a time, so it can be shared between
+  threads. The new guide "Embed a generated model" shows how.
+- `lawspec-dev bench <name>` runs a benchmark of generated code on Rust, Go,
+  Java and Kotlin. `bench/kafka` drives LawTwin's Kafka reference model (a
+  copy, under its MIT licence) through its `reference` handler: a million
+  produces over 100 partitions, a consumer group of ten fetching and
+  committing with a rebalance, and ten thousand transactions. It runs the
+  whole workload at 0.58 (Rust), 1.06 (Go), 0.93 (Java) and 0.73 (Kotlin)
+  million operations a second, holding about 200 to 270 MiB for the million
+  records, where 0.21.0's generated Rust managed 9 operations a second, and
+  1.5 GiB, at two thousand.
+
+### Changed
+
+- Definitions that are the same up to their names, such as an import's
+  copies, share one generated body: Rust aliases the copies' functions, and
+  Java and Go delegate to it. Go packages hold only the bodies they reach,
+  and the native entry points of typed definitions convert their values
+  directly. LawTwin's Kafka contract generates 23,606 lines of
+  `lawspec_definitions.rs` instead of 83,157, 27,439 lines of Java
+  definitions instead of 80,444, 27,309 of Kotlin and Java instead of 87,537,
+  and 37,900 lines of Go definitions over its four packages instead of
+  113,462.
+- Generated Rust builds its data schema once: `lawspec_schema::schema()`
+  returns `&'static ls::Schema`.
+
+### Fixed
+
+- Java and Kotlin generation accepts a field named `record`, `sealed`,
+  `permits` or `var`, which Java restricts only as type names.
+
 ## [0.21.0] - 2026-10-07
 
 ### Added

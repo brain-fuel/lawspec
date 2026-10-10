@@ -163,7 +163,11 @@ emitRustSchema bits layout declarations = do
     (if null contracts then mempty else Doc.hardline <> Doc.text "#![allow(unused_variables)]") <>
     Doc.hardline <> Doc.text "use crate::lawspec_runtime as ls;" <> Doc.hardline <> Doc.hardline <>
     Doc.joinWith (Doc.hardline <> Doc.hardline) (callbacks ++
-      [Doc.text "pub fn schema() -> ls::Result<ls::Schema> " <> Doc.block 4 factory]) <> Doc.hardline))
+      [ Doc.text "/// The program's data schema, built once." <> Doc.hardline <>
+        Doc.text "pub fn schema() -> ls::Result<&'static ls::Schema> " <> Doc.block 4 (Doc.joinWith Doc.hardline
+          [ Doc.text "static SCHEMA: std::sync::OnceLock<ls::Result<ls::Schema>> = std::sync::OnceLock::new();"
+          , Doc.text "SCHEMA.get_or_init(build).as_ref().map_err(|error| error.clone())" ])
+      , Doc.text "fn build() -> ls::Result<ls::Schema> " <> Doc.block 4 factory ]) <> Doc.hardline))
   where
     variable (TypeVariable _) = True
     variable (Constructor _ args) = any (\arg -> case arg of TypeArgument ty -> variable ty; _ -> False) args
@@ -378,7 +382,7 @@ emitRustWithBindings minify bindings plan@Plan{..} = either (Left . pure . (\m -
             DrawAny ty _
               | usesData ty -> do
                   ref <- schemaType ty
-                  pure (invoke "draws.any" [Doc.text "&" <> invoke "ls_gen::schema_strategy" [Doc.text "&lawspec_schema::schema()?", borrow ref, bits, Doc.text "64"] <> Doc.text "?"])
+                  pure (invoke "draws.any" [Doc.text "&" <> invoke "ls_gen::schema_strategy" [Doc.text "lawspec_schema::schema()?", borrow ref, bits, Doc.text "64"] <> Doc.text "?"])
               | otherwise -> pure (invoke "draws.any" [Doc.text "&" <> invoke "ls_gen::strategy_with_profile" [string (typeName ty), bits] <> Doc.text "?"])
             DrawOneOf _ values -> do
               docs <- mapM (render names) values
@@ -601,7 +605,7 @@ emitRustWithBindings minify bindings plan@Plan{..} = either (Left . pure . (\m -
                   Expression.vector (map string texts) <> Doc.text "[..])"
                   | (tag,texts) <- indexedEquations indexed]
             pure (invoke "ls_gen::indexed_strategy"
-              [Doc.text "&lawspec_schema::schema()?",borrow ty,bits,Doc.text (show budget),
+              [Doc.text "lawspec_schema::schema()?",borrow ty,bits,Doc.text (show budget),
                Doc.text "&" <> target,Doc.text "&" <> table] <> Doc.text "?")
            _ -> if usesData inputType || hasNativeGenerators then do
             ty <- schemaType inputType
@@ -609,7 +613,7 @@ emitRustWithBindings minify bindings plan@Plan{..} = either (Left . pure . (\m -
             let name = (if checked then "ls_gen::checked_schema_strategy" else "ls_gen::schema_strategy") ++
                   (if hasNativeGenerators then "_with_generators" else "")
             pure (invoke name
-              ([Doc.text "&lawspec_schema::schema()?",borrow ty,bits,Doc.text (show budget)] ++
+              ([Doc.text "lawspec_schema::schema()?",borrow ty,bits,Doc.text (show budget)] ++
                (if checked then [Doc.text "ctx",Doc.text "seeds.clone()"] else [Doc.text "ctx" | hasNativeGenerators]) ++
                [Doc.text "&_lawspec_native_generators()?" | hasNativeGenerators]) <> Doc.text "?")
             else pure (case symbols of

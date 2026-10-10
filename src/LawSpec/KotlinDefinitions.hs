@@ -11,6 +11,7 @@ import qualified LawSpec.KotlinExpr as E
 import qualified LawSpec.JavaDefinitions as Jvm
 import LawSpec.AbilityNames (interfaceName, specName, ownerName)
 import qualified LawSpec.Code.Doc as D
+import LawSpec.Typed.Jvm (JvmTyped(..), JvmStyle(..), emitJvmTyped)
 import Data.Aeson (encode)
 import qualified Data.Text.Lazy as T
 import qualified Data.Text.Lazy.Encoding as T
@@ -107,7 +108,25 @@ emitKotlinDefinitions layout bits declarations units = do
     callees = Jvm.definitionCalls units
     call name values = D.text name <> D.delimitTrailing 4 "(" ")" values
     assign name value = D.group (D.text ("val " ++ name ++ " =") <> D.nest 4 (D.softline <> value))
-    definition d = do
+    typedJvm = emitJvmTyped KotlinStyle declarations units
+    -- A typed definition whose types all convert directly calls its typed
+    -- method (in the shared JVM code) between the conversions.
+    definition d
+      | Right typed <- typedJvm
+      , Just function <- jvmTypedFunction typed (declarationId (definitionDeclaration d))
+      , let (args, result) = functionType (declarationType (definitionDeclaration d))
+      , result /= scalarType "Unit"
+      , Just conversions <- mapM (jvmTypedNative typed) args
+      , Just (_, toNative) <- jvmTypedNative typed result = do
+          types <- mapM (Native.kotlinDataTypeDoc declarations) args
+          resultType <- Native.kotlinDataTypeDoc declarations result
+          let declaration = definitionDeclaration d
+              parameters = D.text "symbols: MutableMap<String, Any>" : [D.text ("value" ++ show i ++ ": ") <> ty | (i, ty) <- zip [0::Int ..] types]
+          pure (D.text ("fun " ++ declarationName declaration) <> D.delimitTrailing 4 "(" ")" parameters <> D.text ": " <> resultType <>
+            D.text (" = " ++ toNative ++ "(" ++ function ++ "(" ++
+              intercalate ", " [fromNative ++ "(value" ++ show i ++ ")" | (i, (fromNative, _)) <- zip [0 :: Int ..] conversions] ++ "))"))
+      | otherwise = definitionDynamic d
+    definitionDynamic d = do
       let declaration = definitionDeclaration d
           (args,result) = functionType (declarationType declaration)
       types <- mapM (Native.kotlinDataTypeDoc declarations) args

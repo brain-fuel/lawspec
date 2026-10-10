@@ -28,6 +28,7 @@ shows how to do it.
 
 - [Bind native types and functions](bind-native-types.md)
 - [Write custom codecs and generators](custom-codecs-and-generators.md)
+- [Embed a generated model](embed-a-generated-model.md)
 
 ## Targets
 

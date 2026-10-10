@@ -11,6 +11,13 @@ import LawSpec.Common (Artifact(..))
 import qualified LawSpec.GoData as Native
 import qualified LawSpec.GoExpr as E
 import qualified LawSpec.Code.Doc as D
+import LawSpec.RuntimeSources (runtimeSource)
+import LawSpec.Typed.Go (GoTyped(..), emitGoTyped)
+import LawSpec.Typed.Plan (TypedPlan(..), sharedDefinitions)
+import qualified Data.Map.Strict as M
+import qualified Data.Set as S
+import Data.Foldable (toList)
+import LawSpec.Typed.Plan (isTypedHandler)
 import Data.Char (toUpper)
 import Data.List (nub, intercalate)
 import LawSpec.AbilityNames (interfaceName, specName)
@@ -32,11 +39,77 @@ emitGoDefinitionsWithCalls :: [(Id,String)] -> D.Layout -> Int -> [DataDeclarati
 emitGoDefinitionsWithCalls _ _ _ _ units | null (concatMap unitDefinitions units) = pure []
 emitGoDefinitionsWithCalls bound layout bits declarations units = do
   contracts <- checkedDefinitionContracts bits declarations units
-  bodies <- mapM (\(i, (owner, d)) -> (,) (owner, definitionOrchestrates d) <$> implementation contracts (i, d))
+  typed <- emitGoTyped declarations units
+  -- Definitions that are the same up to their names (an import's copies)
+  -- share one body; the others call it.
+  -- Each package holds its own bodies, so only copies within one unit share.
+  let unitOf = M.fromList [(declarationId (definitionDeclaration d), unitId u) | u <- units, d <- unitDefinitions u]
+      shared = M.filterWithKey (\i target -> M.lookup i unitOf == M.lookup target unitOf) (sharedDefinitions units)
+      everyIndex = M.fromList [(declarationId (definitionDeclaration d), i) | (i, d) <- zip [0::Int ..] (concatMap unitDefinitions units)]
+      delegate i d target = pure (line ("func lawSpecEvaluate" ++ show i) <>
+        D.delimitTrailing 8 "(" ")" (symbols : [line ("value" ++ show k ++ " LawSpecValue") | k <- [0 .. length (definitionArguments d) - 1]]) <>
+        line " LawSpecValue " <> D.block 8 (line ("return lawSpecEvaluate" ++ show target ++ "(" ++ intercalate ", " ("symbols" : ["value" ++ show k | k <- [0 .. length (definitionArguments d) - 1]]) ++ ")")))
+  bodies <- mapM (\(i, (owner, d)) -> (,) (owner, definitionOrchestrates d, declarationId (definitionDeclaration d)) <$>
+      case M.lookup (declarationId (definitionDeclaration d)) shared >>= (`M.lookup` everyIndex) of
+        Just target -> delegate i d target
+        Nothing -> maybe (implementation contracts (i, d)) (bridge typed i d) (goTypedFunction typed (declarationId (definitionDeclaration d))))
     (zip [0::Int ..] [(unitId u, d) | u <- units, d <- unitDefinitions u])
-  -- A workflow calls its own package's adapters, so only that package has it.
-  mapM (\unit -> unitFile [body | ((owner, orchestrates), body) <- bodies, not orchestrates || owner == unitId unit] unit) units
+  let plan = goTypedPlan typed
+      hasTyped = not (M.null (typedDefinitions plan))
+      everyDefinition = M.fromList [(declarationId (definitionDeclaration d), d) | u <- units, d <- unitDefinitions u]
+      -- The handlers each package declares: its own, and every handler a
+      -- body installs (LawSpec.AbilityEmit.Go).
+      scoped = [h | v <- units, d <- unitDefinitions v, h <- scopedHandlers (definitionBody d)]
+      handlersOf u = unitHandlers u ++ [h | identity <- scoped, v <- units, h <- unitHandlers v, handlerId h == identity]
+      -- A package's bodies: its unit's definitions, its handlers' clauses,
+      -- and everything they reach.
+      reachable u = closure S.empty (map (declarationId . definitionDeclaration) (unitDefinitions u) ++
+        [clause | h <- handlersOf u, (_, clause) <- handlerClauses h])
+      closure seen [] = seen
+      closure seen (i : rest)
+        | i `S.member` seen = closure seen rest
+        | otherwise = closure (S.insert i seen) (maybe [] reaches (M.lookup i everyDefinition) ++ rest)
+      reaches d = maybe [] pure (M.lookup (declarationId (definitionDeclaration d)) shared) ++ concatMap calledIn (definitionBody d : map snd (stageFailures d) ++ concatMap (\c -> contractExpressions c ++ contractRuntimePostconditions c) (contractsOf d)) ++
+        maybe [] toList (definitionPolicy d) ++
+        [clause | h <- concatMap scopedHandlers [definitionBody d], v <- units, x <- unitHandlers v, handlerId x == h, (_, clause) <- handlerClauses x]
+      contractsOf d = [c | c <- contracts, contractDeclaration c == declarationId (definitionDeclaration d)]
+      calledIn e = case expressionNode e of
+        ExternalCall i args -> i : concatMap calledIn args
+        _ -> concatMap calledIn (children e)
+      typedFiles unit = do
+        let identity = idText (unitId unit)
+            packageName = reverse (takeWhile (/= '.') (reverse identity))
+            directory = map (\c -> if c == '.' then '/' else c) identity
+            held = [i | i <- S.toList (reachable unit), M.member i (typedDefinitions plan)]
+            handlerTypes = [ t | h <- handlersOf unit, isTypedHandler plan h
+                               , Just (_, a) <- [findAbility units (handlerAbility h)]
+                               , (_, ty) <- abilityOperations a, let (args, result) = functionType ty, t <- result : args ]
+            boundary = nub ([t | i <- held, Just d <- [M.lookup i everyDefinition], let (args, result) = functionType (declarationType (definitionDeclaration d)), t <- result : args] ++ handlerTypes)
+        source <- goTypedSource typed packageName held boundary
+        pure [ Artifact (directory ++ "/lawspec_typed.go") source "generated" "source"
+             , Artifact (directory ++ "/lawspec_fast.go") (replace "RUNTIME_PACKAGE" packageName (runtimeSource "go-fast")) "generated" "source" ]
+  -- A workflow calls its own package's adapters, so only that package has it;
+  -- a package holds only the bodies it reaches.
+  files <- mapM (\unit -> let held = reachable unit in
+    unitFile typed [body | ((owner, orchestrates, identity), body) <- bodies, identity `S.member` held, not orchestrates || owner == unitId unit] unit) units
+  typedArtifacts <- if hasTyped then concat <$> mapM typedFiles units else pure []
+  pure (files ++ typedArtifacts)
   where
+    scopedHandlers e = case expressionNode e of
+      Handle (WithHandler _ (SpecHandler h)) body -> h : scopedHandlers body
+      _ -> concatMap scopedHandlers (children e)
+    replace old new text = case text of
+      [] -> []
+      _ | take (length old) text == old -> new ++ replace old new (drop (length old) text)
+      c : rest -> c : replace old new rest
+    -- A typed definition's dynamic entry converts its arguments and result.
+    bridge typed index d function = do
+      let (argTypes, resultType) = functionType (declarationType (definitionDeclaration d))
+          arguments = [line ("value" ++ show i ++ " LawSpecValue") | i <- [0 .. length argTypes - 1]]
+      froms <- mapM (goTypedFrom typed) argTypes
+      to <- goTypedTo typed resultType
+      pure (line ("func lawSpecEvaluate" ++ show index) <> D.delimitTrailing 8 "(" ")" (symbols : arguments) <> line " LawSpecValue " <>
+        D.block 8 (line ("return " ++ to ++ "(" ++ function ++ "(" ++ intercalate ", " [f ++ "(value" ++ show i ++ ")" | (i, f) <- zip [0 :: Int ..] froms] ++ "))")))
     callees = definitionCalls units
     definitionIds = map (declarationId . definitionDeclaration) (concatMap unitDefinitions units)
     adapters = [(declarationId d, (idText (unitId u), d)) | u <- units, d <- unitDeclarations u,
@@ -51,8 +124,8 @@ emitGoDefinitionsWithCalls bound layout bits declarations units = do
       pure (E.call (schema ++ "." ++ method) [reference,value,width,line "symbols"])
     contextual identity resultType body = line "return " <> E.call "lsNativeContext"
       [E.quoted (idText identity),line ("func() " ++ resultType ++ " ") <> D.block 8 body]
-    unitFile bodies unit = do
-      wrappers <- mapM native (unitDefinitions unit)
+    unitFile typed bodies unit = do
+      wrappers <- mapM (native typed) (unitDefinitions unit)
       let identity = idText (unitId unit)
           packageName = reverse (takeWhile (/= '.') (reverse identity))
           source = line "// Generated by LawSpec. Do not edit." <> D.hardline <>
@@ -261,7 +334,23 @@ emitGoDefinitionsWithCalls bound layout bits declarations units = do
       FullJitter -> "full"
       EqualJitter -> "equal"
       DecorrelatedJitter -> "decorrelated"
-    native d = do
+    -- A typed definition whose types all convert directly calls its typed
+    -- function between the conversions.
+    native typed d
+      | Just function <- goTypedFunction typed (declarationId (definitionDeclaration d))
+      , let (args, result) = functionType (declarationType (definitionDeclaration d))
+      , Just conversions <- mapM (goTypedNative typed) args
+      , Just (_, toNative) <- goTypedNative typed result = do
+          types <- mapM (Native.goDataType declarations) args
+          resultType <- Native.goDataType declarations result
+          let declaration = definitionDeclaration d
+              parameters = symbols : [line ("value" ++ show i ++ " " ++ ty) | (i, ty) <- zip [0 :: Int ..] types]
+          pure (line ("func (lawSpecDefinitions) " ++ capitalize (declarationName declaration)) <>
+            D.delimitTrailing 8 "(" ")" parameters <> line (" " ++ resultType ++ " ") <>
+            D.block 8 (line ("return " ++ toNative ++ "(" ++ function ++ "(" ++
+              intercalate ", " [fromNative ++ "(value" ++ show i ++ ")" | (i, (fromNative, _)) <- zip [0 :: Int ..] conversions] ++ "))")))
+      | otherwise = nativeDynamic d
+    nativeDynamic d = do
       let declaration = definitionDeclaration d
           (args,result) = functionType (declarationType declaration)
           values = ["value" ++ show i | i <- [0 .. length args - 1]]

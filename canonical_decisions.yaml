@@ -120,6 +120,14 @@ DEC-typed-core-boundary:
   opened: 0.8.0
   decided: 0.8.0
 
+DEC-typed-native-definitions:
+  status: open
+  question: Generated checked definitions evaluated the dynamic value every target shares, so a stateful spec handler copied its whole state on every operation and searched a KeyVal as a list. How do the generated definitions and handlers become fast enough to serve as a runtime (LawTwin's twins) without changing what they mean?
+  answer: |
+    On Rust, Go, Java and Kotlin, a checked definition runs as typed native code when every value it touches has a typed form (Bool, Unit, the bounded integers, Integer, Text, Bytes, List, Maybe, Either, KeyVal, Set and data built from them), it performs no operation, calls only typed definitions and has no runtime contract or policy; anything else stays on the dynamic path. LawSpec.Typed.Plan decides it once for the three emitters. Lists are persistent cons lists that share their tails, KeyVal and Set persistent AVL trees in the portable order, Integer a machine word until it outgrows it, and data with fields is shared by reference, so a handler's state is never copied and an operation costs what it changes. Self tail calls become loops. The collections unit's KeyVal and Set operations are intrinsics. Definitions that are the same up to their names (an import's copies) share one body. Values cross to dynamic code through converters at the boundary, and to native code (the handler's interface) directly. The acceptance suites, with their mutants, check both paths on every target. Proposed for the owner's sign-off.
+  opened: 0.21.0
+  revisit: 0.22.0
+
 DEC-elaborate-before-core:
   status: decided
   question: How are new surface features (indexed families, wrappers, workflows, imports, flow types, collections) added without changing Core or the backends?

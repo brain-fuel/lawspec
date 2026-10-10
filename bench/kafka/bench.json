@@ -1,0 +1,5 @@
+{
+  "specs": ["bench/kafka/bench.lawspec"],
+  "packages": ["bench/kafka/contract"],
+  "dependencies": {"lawtwin.kafka": "0.1.0"}
+}

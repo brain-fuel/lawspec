@@ -1,0 +1,6 @@
+unit kafkabench
+
+import lawtwin.kafka.contract as kafka
+
+-- The benchmark project: it generates the lawtwin.kafka contract, whose
+-- reference spec handler the native drivers run.

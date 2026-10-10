@@ -42,6 +42,7 @@ import qualified IncrementalSpec
 import qualified TestManifestSpec
 import qualified RailwaySpec
 import qualified SessionsPythonSpec
+import qualified TypedSpec
 import qualified TemporalSpec
 import qualified DistributionSpec
 import qualified UnificationSpec
@@ -103,6 +104,7 @@ main = hspec $ do
   DefinitionPredicateSpec.test_closedDefinitionsServeAsCorePredicates
   RefinementProofSpec.test_refinementImplicationIsDecidedExactly
   DefinitionContractProofSpec.test_refinedDefinitionsAreAdmittedOnlyWithProvedContracts
+  TypedSpec.test_typedDefinitionsRunNativeWithTheirMeaning
   describe "compiler" $ do
     it "checks the bundled prelude" $ compile [] `shouldBe` Right ([],[])
     it "expands the exact scratch example" $ do
