@@ -194,8 +194,6 @@ scalarCases bits "Text" = map (ScalarValue . textScalar)
   ["", " ", "Hello, World!", "λ日本語😀", "a\n\t\"\\$\0z", "e\x0301"] ++ map ScalarValue (scalarBoundaries bits "Text")
 scalarCases bits name = map ScalarValue (scalarBoundaries bits name)
 
--- | Safe comparison operands seed sparse domains without eagerly evaluating a
--- partial expression that the predicate would otherwise guard.
 -- | Texts that match the regexes a text input's refinement requires, also
 -- through the checked definitions it calls (validName t, whose body says
 -- name matches regex ...): generation draws among them, so a refined text
@@ -228,6 +226,8 @@ refinedPatterns definitions q =
           patterns (depth - 1) (binderId parameter) (definitionBody d)
       _ -> []
 
+-- | Safe comparison operands seed sparse domains without eagerly evaluating a
+-- partial expression that the predicate would otherwise guard.
 domainHints :: Quantifier -> [Expr]
 domainHints q = concatMap walk (quantifiedPredicates q) where
   current = binderId (quantifiedBinder q)

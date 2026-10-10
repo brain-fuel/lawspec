@@ -2,7 +2,7 @@
 -- found: fields, failing operations, handlers of several abilities, sets of
 -- handlers, natives made with a resource, handler clause forms, sequences,
 -- bounded arithmetic, integer recursion, the checker's facts, regex-shaped
--- generation and Python packages. ref:REQ-language-gaps
+-- generation and Python packages.
 module LanguageGapsSpec (test_languageGapsClose) where
 
 import Data.Either (isLeft, isRight)
@@ -67,6 +67,8 @@ store = unlines
   , "  size t is match prelude.lookup t logs with | Nothing -> Nothing | Just l -> Just (prelude.Int64 (prelude.length l)) end end"
   , "end" ]
 
+-- | Each gap LawTwin's Kafka contract reported closes, with its checks.
+-- ref:REQ-language-gaps
 test_languageGapsClose :: Spec
 test_languageGapsClose = describe "the language gaps a dependency contract found" $ do
   describe "fields" $ do
