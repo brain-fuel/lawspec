@@ -45,6 +45,7 @@ nativeType lang bits names parameters ty = case ty of
       ("Either", [a, b]) -> pure (applied "LawSpec.Either" [a, b])
       ("Nullable", [t]) -> pure (applied "LawSpec.Nullable" [t])
       ("Optional", [t]) -> pure (applied "LawSpec.Optional" [t])
+      ("lawspec.time::type::Duration", []) -> pure "System.TimeSpan"
       ("lawspec.collections::type::Set", [t]) -> pure (generic' "Set" "IReadOnlySet" [t])
       ("lawspec.collections::type::KeyVal", [k, v]) -> pure (generic' "Map" "IReadOnlyDictionary" [k, v])
       (_, []) | Just _ <- primitive n -> scalarType n
@@ -132,6 +133,7 @@ codec lang bits names parameters ty = case ty of
       ("Either", [a, b]) -> pure (applied "either" "Either" [a, b])
       ("Nullable", [c]) -> pure (applied "nullable" "Nullable" [c])
       ("Optional", [c]) -> pure (applied "optional" "Optional" [c])
+      ("lawspec.time::type::Duration", []) -> pure (if lang == FSharp then "Codec.duration" else "Codecs.Duration")
       ("lawspec.collections::type::Set", [c]) -> pure (applied "set" "Set" [c])
       ("lawspec.collections::type::KeyVal", [k, v]) -> pure (applied "map" "KeyVal" [k, v])
       (_, []) | Just p <- primitive n -> pure (scalar p)
@@ -208,7 +210,7 @@ shapes lang names declarations = forM [d | d <- declarations, not (C.dataHandle 
 -- | Set and KeyVal are F#'s persistent Set and Map (C#'s read-only set and
 -- dictionary), so they have no generated type. ref:DEC-typed-native-definitions
 nativeCollection :: C.DataDeclaration -> Bool
-nativeCollection d = C.idText (C.dataId d) `elem` ["lawspec.collections::type::Set", "lawspec.collections::type::KeyVal"]
+nativeCollection d = C.idText (C.dataId d) `elem` ["lawspec.collections::type::Set", "lawspec.collections::type::KeyVal", "lawspec.time::type::Duration"]
 
 -- | The parameters of a data type that F# must compare: those a Set holds
 -- or a KeyVal keys on, directly or through another type's such parameter.

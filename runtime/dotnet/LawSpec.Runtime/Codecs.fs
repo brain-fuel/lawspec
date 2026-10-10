@@ -235,3 +235,14 @@ module Codec =
                   |> List.ofSeq |> List.sortWith (fun (a, _) (b, _) -> Scalar.compareValues a b)
                   |> List.map (fun (k, v) -> Data("lawspec.collections::type::Entry::Entry", [ k; v ]))
               Data("lawspec.collections::type::KeyVal::KeyValEntries", [ List entries ]) }
+
+    /// A Duration as a TimeSpan of whole microseconds.
+    [<CompiledName("Duration")>]
+    let duration: Codec<TimeSpan> =
+        { ToNative =
+            (function
+            | Data(_, [ Int micros ]) -> TimeSpan.FromTicks(Operators.int64 micros * 10L)
+            | v -> wrong "Duration" v)
+          FromNative = fun span ->
+              if span.Ticks % 10L <> 0L then Fail.raiseWith "InvalidNativeValue" "a Duration is a whole number of microseconds"
+              Data("lawspec.time::type::Duration::Duration", [ Int(BigInteger(span.Ticks / 10L)) ]) }

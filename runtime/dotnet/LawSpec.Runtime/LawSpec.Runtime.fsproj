@@ -19,6 +19,7 @@
     <Compile Include="Portable.fs" />
     <Compile Include="Codecs.fs" />
     <Compile Include="Effects.fs" />
+    <Compile Include="Defaults.fs" />
     <Compile Include="Runtime.fs" />
   </ItemGroup>
 </Project>
