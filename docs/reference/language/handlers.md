@@ -99,6 +99,9 @@ end
   operation: `fakeGateway`'s `authorize` clause is `fakeGatewayAuthorize`.
   The totality audit proves it like any definition. Its result must have the
   operation's type.
+- A handler's generated type is its name capitalized (`Cluster` for
+  `cluster`), or with `Spec` after it when that is the name of an ability it
+  answers (`CounterSpec` for `counter` of `Counter`).
 - With `with state s :: S start value`, each handler starts with the state
   `value`, which may call checked definitions and the prelude:
   `start prelude.keyValOf []`, `start emptyCluster unitValue`. A clause reads

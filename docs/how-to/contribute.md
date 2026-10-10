@@ -160,6 +160,8 @@ Benchmarks measure the generated code itself:
 ```sh
 stack run lawspec-dev -- bench kafka                    # Rust, Go, Java and Kotlin
 stack run lawspec-dev -- bench kafka --scale 10000 go   # a smaller workload, one target
+stack run lawspec-dev -- bench kafka --typed            # what stays on the dynamic path
+stack run lawspec-dev -- bench compile 100 200 400      # the compiler, on scaled models
 ```
 
 `lawspec-dev bench <name>` generates `bench/<name>/bench.json`'s specs and
@@ -169,7 +171,10 @@ driver in `bench/<name>/<target>/` over it, builds it, and runs it under
 the driver reports, and the peak resident set, and writes the summary to
 `.artifacts/bench/<name>/<target>.txt`. The `kafka` benchmark drives a copy of
 LawTwin's Kafka reference model; see
-[Embed a generated model](embed-a-generated-model.md).
+[Embed a generated model](embed-a-generated-model.md). `bench compile` times
+`check` on a model shaped like an imported API description, N record types
+and a state of N maps with two failing definitions per type, so a change
+that makes checking grow faster than the program shows.
 
 ## Acceptance suites
 

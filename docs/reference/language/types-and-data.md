@@ -193,3 +193,19 @@ Refinements can inspect whole products and sums with exhaustive matches, and
 can constrain list elements, `Maybe` and `Either` payloads, type arguments of
 named types, and individual constructor fields. See
 [refinements](../refinements.md#named-data-payloads).
+
+A field's refinement may call a checked definition of its unit, which is
+unfolded into it, so every target checks it where values are built:
+
+```lawspec
+unit example.badges
+
+definition validName (name :: Text) :: Bool is name matches regex "[a-z]+" end
+
+type Badge is
+  Badge
+    label :: (v :: Text where validName v)
+end
+```
+
+A recursive definition cannot be unfolded, and is refused there.
