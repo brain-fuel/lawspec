@@ -44,19 +44,20 @@ dataIndex declarations = unsafePerformIO $ do
   _ <- evaluate declarations
   name <- makeStableName declarations
   cached <- readIORef dataIndexCache
+  let ids = map Core.dataId declarations
   case cached of
-    Just (key, index) | key == name -> pure index
+    Just (key, keyIds, index) | key == name, keyIds == ids -> pure index
     _ -> do
       let known = builtinDataDeclarations ++ declarations
           index = ( M.fromListWith (flip (++)) [(Core.idText (Core.dataId d), [d]) | d <- known]
                   , M.fromListWith (flip (++)) (concat
                       [ [(Core.constructorName c, [(d, c)])] ++ [(Core.idText (Core.constructorId c), [(d, c)]) | Core.idText (Core.constructorId c) /= Core.constructorName c]
                       | d <- known, c <- Core.dataConstructors d ]) )
-      writeIORef dataIndexCache (Just (name, index))
+      writeIORef dataIndexCache (Just (name, ids, index))
       pure index
 {-# NOINLINE dataIndex #-}
 
-dataIndexCache :: IORef (Maybe (StableName [Core.DataDeclaration], (M.Map String [Core.DataDeclaration], M.Map String [(Core.DataDeclaration, Core.DataConstructor)])))
+dataIndexCache :: IORef (Maybe (StableName [Core.DataDeclaration], [Core.Id], (M.Map String [Core.DataDeclaration], M.Map String [(Core.DataDeclaration, Core.DataConstructor)])))
 dataIndexCache = unsafePerformIO (newIORef Nothing)
 {-# NOINLINE dataIndexCache #-}
 

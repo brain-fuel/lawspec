@@ -207,10 +207,11 @@ regexSamples :: Int -> Regex -> [String]
 regexSamples count regex = nub (shortest regex : [sample (seed * 7919 + 17) | seed <- [1 .. count]])
   where
     shortest r = fst (generate (\_ -> 0) r 0)
-    sample seed = fst (generate (\step -> mix (seed * 1000003 + step)) regex (0 :: Int))
-    -- SplitMix64's finalizer, so neighbouring steps choose unrelatedly.
-    mix :: Int -> Int
-    mix n = fromInteger (finish (toInteger n * 0x9E3779B97F4A7C15) `mod` 2147483648)
+    sample seed = fst (generate (\step -> mix (toInteger seed * 1000003 + toInteger step)) regex (0 :: Int))
+    -- SplitMix64's finalizer, so neighbouring steps choose unrelatedly. On
+    -- Integers: Int is 32 bits in the WASM build.
+    mix :: Integer -> Int
+    mix n = fromInteger (finish (n * 0x9E3779B97F4A7C15) `mod` 2147483648)
     finish z0 = let m = 2 ^ (64 :: Int)
                     z1 = ((z0 `xorI` (z0 `div` 2 ^ (30 :: Int))) * 0xBF58476D1CE4E5B9) `mod` m
                     z2 = ((z1 `xorI` (z1 `div` 2 ^ (27 :: Int))) * 0x94D049BB133111EB) `mod` m

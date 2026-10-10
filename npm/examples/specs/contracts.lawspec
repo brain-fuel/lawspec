@@ -74,11 +74,17 @@ law `a refused add changes nothing, dynamically` using scaledCounter is
 end
 
 law `a text's octets count its UTF-8 bytes` using codec is
-  definition is octetCount "é" = 2 and octetCount "ab" = 2 end
+  definition is
+    `for all` (n :: Int32 where n >= 0 && n <= 1000) .
+      octetCount (prelude.textOf n ++ "é") = prelude.length (prelude.textOf n) + 2
+  end
 end
 
 law `a text's octets count its UTF-8 bytes, dynamically` using scaledCodec is
-  definition is octetCount "é" = 2 and octetCount "ab" = 2 end
+  definition is
+    `for all` (n :: Int32 where n >= 0 && n <= 1000) .
+      octetCount (prelude.textOf n ++ "é") = prelude.length (prelude.textOf n) + 2
+  end
 end
 
 law `a label joins its parts` using codec is

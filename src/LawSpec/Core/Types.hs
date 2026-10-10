@@ -66,15 +66,18 @@ makeRegistry userDeclarations = unsafePerformIO $ do
   _ <- evaluate userDeclarations
   name <- makeStableName userDeclarations
   cached <- readIORef registryCache
+  -- The identities are compared too, a check that costs little beside
+  -- building the registry.
+  let ids = map dataId userDeclarations
   case cached of
-    Just (key, registry) | key == name -> pure registry
+    Just (key, keyIds, registry) | key == name, keyIds == ids -> pure registry
     _ -> do
       let registry = buildRegistry userDeclarations
-      writeIORef registryCache (Just (name, registry))
+      writeIORef registryCache (Just (name, ids, registry))
       pure registry
 {-# NOINLINE makeRegistry #-}
 
-registryCache :: IORef (Maybe (StableName [DataDeclaration], Either String TypeRegistry))
+registryCache :: IORef (Maybe (StableName [DataDeclaration], [Id], Either String TypeRegistry))
 registryCache = unsafePerformIO (newIORef Nothing)
 {-# NOINLINE registryCache #-}
 
