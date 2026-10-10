@@ -16,7 +16,7 @@ data Plan = Ignore | Parameter Int | Applied String [Plan]
 -- | Only checked registries can create schemas; recursive declarations stay as
 -- references rather than an eagerly expanded tree.
 newtype Schema = Schema [(String, [Id], [(Id, [Type])])]
-  deriving (Eq, Show)
+  deriving (Eq, Ord, Show)
 
 -- | Plans come only from a checked registry, so they never describe an
 -- ill-formed type.

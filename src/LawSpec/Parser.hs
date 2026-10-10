@@ -28,6 +28,7 @@ import Control.Monad (void, unless, when, forM_, forM)
 import Control.Monad.Reader (Reader, ask, asks, runReader)
 import qualified Data.Map.Strict as M
 import qualified Data.Map.Lazy as Lazy
+import qualified Data.Set as S
 import Data.Char (isLower, isUpper, isControl, toUpper, isAlphaNum)
 import Data.List (uncons, intercalate, isInfixOf)
 import Data.Void (Void)
@@ -1464,14 +1465,19 @@ parseSourcesWith collections builtins allSources = do
       Right (_, imports) -> M.unions
         [ M.insert ("alias:" ++ importAlias i) AliasHeader (M.unions
             [ M.fromList [(qualify (importAlias i) key, h) | (key, h) <- M.toList table]
-            , M.fromList [(key, h) | (key, h) <- M.toList table, listed owners (importItems i) key] ])
+            , M.fromList [(key, h) | let allowed = listed owners (importItems i), (key, h) <- M.toList table, allowed key] ])
         | i <- imports, Just (table, owners) <- [Lazy.lookup (importUnit i) exports] ]
     qualify alias key = case break (== ':') key of
       ("constructor", ':' : n) -> "constructor:" ++ alias ++ "." ++ n
       _ -> alias ++ "." ++ key
-    listed owners items key = case break (== ':') key of
-      ("constructor", ':' : n) -> any (\item -> maybe False (n `elem`) (lookup item owners)) items
-      _ -> key `elem` items
+    -- Sets, as an import may list thousands of names.
+    listed owners items =
+      let names = S.fromList items
+          ownerTable = M.fromListWith (\_ first -> first) owners
+          constructors = S.fromList (concat [cs | item <- items, Just cs <- [M.lookup item ownerTable]])
+      in \key -> case break (== ':') key of
+        ("constructor", ':' : n) -> n `S.member` constructors
+        _ -> key `S.member` names
     acyclic start = go [start] start
       where
         go path n = forM_ (M.findWithDefault [] n graph) $ \i ->

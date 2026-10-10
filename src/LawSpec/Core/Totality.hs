@@ -57,7 +57,7 @@ data Proof
   -- constructor at a position, with the range of its integer type. It is
   -- an atom of the arithmetic, so a guard on b.f is a fact about it.
   | Field Id Int (Maybe Integer, Maybe Integer) Proof
-  deriving (Eq, Show)
+  deriving (Eq, Ord, Show)
 
 -- | Each definition with the domains of its arguments, since a call is safe only
 -- inside them.
@@ -332,9 +332,13 @@ data Facts = Facts
   -- The bounds of the audited definition's integer parameters, which a
   -- recursive call on a smaller integer must stay within.
   , parameterBounds :: M.Map Id (Maybe Integer, Maybe Integer)
+  -- truths and constraints as sets, for membership: a large record
+  -- brings thousands of facts.
+  , truthSet :: S.Set Proof
+  , constraintSet :: S.Set R.Predicate
   }
 emptyFacts :: Facts
-emptyFacts = Facts S.empty S.empty [] [] [] S.empty [] [] M.empty [] M.empty S.empty M.empty S.empty M.empty M.empty M.empty M.empty
+emptyFacts = Facts S.empty S.empty [] [] [] S.empty [] [] M.empty [] M.empty S.empty M.empty S.empty M.empty M.empty M.empty M.empty S.empty S.empty
 
 -- | Instances of one template share their recursion check.
 sameDefinition :: Id -> Id -> Bool
@@ -498,7 +502,7 @@ walk signatures contracts self provenance facts expression = case expression of
     -- What follows from everything known (a measure of a value whose
     -- constructor is known, a call's guarantees) must contradict.
     let saturated = foldl (\known fact -> foldl (flip (assumeOnce True)) known
-          [derived | derived <- derivedFacts known fact, faithful derived, derived `notElem` truths known]) facts (truths facts)
+          [derived | derived <- derivedFacts known fact, faithful derived, derived `S.notMember` truthSet known]) facts (truths facts)
     unless (entails saturated (Literal (SBool False)))
       (Left ("a match leaves out " ++ name ++ ", which its value's index allows; add a branch for " ++ name))
     pure []
@@ -660,10 +664,14 @@ dataBranches scope facts value branches = case known of
       Construct tag fields -> Just (tag,fields)
       _ -> variableIdentity value >>= (`M.lookup` constructorValues facts)
     unknown (tag,binders,body) =
-      let allocate (fresh,aliases,taken) binder =
-            let (name,_) = freshElement taken facts value binder body
-            in (fresh ++ [name],M.insert binder (Variable name) aliases,name:taken)
-          (names,aliases,_) = foldl allocate ([],M.empty,binders ++ M.keys scope) binders
+      -- What the branch already uses, computed once: a constructor of a
+      -- large record has hundreds of binders.
+      let used0 = S.unions [usedVariables facts, S.fromList (binders ++ M.keys scope ++ allVariables value ++ allVariables body)]
+          allocate (fresh,aliases,taken) binder =
+            let name = head [candidate | n <- [0::Int ..], let candidate = Id (idText binder ++ "::member::" ++ show n), candidate `S.notMember` taken]
+            in (name : fresh,M.insert binder (Variable name) aliases,S.insert name taken)
+          (namesReversed,aliases,_) = foldl allocate ([],M.empty,used0) binders
+          names = reverse namesReversed
           renamed = substituteProof aliases body
           fields = map Variable names
           -- Each field is what reading it from the value gives (b.f), so a
@@ -699,7 +707,7 @@ knownNonzero facts expression = direct || case linear expression of
 
 knownPresent :: Facts -> Proof -> Bool
 knownPresent facts expression =
-  (faithful expression && IsPresent expression `elem` truths facts) || case expression of
+  (faithful expression && IsPresent expression `S.member` truthSet facts) || case expression of
     Variable name -> name `S.member` present facts
     Literal (SPresent _ (Just _)) -> True
     _ -> False
@@ -711,16 +719,16 @@ knownPresent facts expression =
 assume :: Bool -> Proof -> Facts -> Facts
 assume truth expression facts =
   foldl (flip (assumeOnce True)) (assumeOnce truth expression facts)
-    [fact | fact <- derivedFacts facts expression, faithful fact, fact `notElem` truths facts]
+    [fact | fact <- derivedFacts facts expression, faithful fact, fact `S.notMember` truthSet facts]
 
 assumeOnce :: Bool -> Proof -> Facts -> Facts
 assumeOnce truth expression facts =
   let tracked = facts{usedVariables=S.union (usedVariables facts) (S.fromList (allVariables expression))}
       remembered = if truth && faithful expression
-        then tracked{truths=nub (expression : truths tracked)} else tracked
+        then (if expression `S.member` truthSet tracked then tracked else tracked{truths=expression : truths tracked, truthSet=S.insert expression (truthSet tracked)}) else tracked
       result = assumeSimple truth expression remembered
       constrained = case predicate expression of
-        Just p -> result{constraints=nub ((if truth then p else R.Not p) : constraints result)}
+        Just p -> let c = if truth then p else R.Not p in if c `S.member` constraintSet result then result else result{constraints=c : constraints result, constraintSet=S.insert c (constraintSet result)}
         Nothing -> result
   in activatePresence constrained
 
@@ -735,18 +743,18 @@ activatePresence facts =
 assumeSimple :: Bool -> Proof -> Facts -> Facts
 assumeSimple truth expression facts = case expression of
   DataMatch value branches | Just identity <- variableIdentity value ->
-    facts{constructorPredicates=nub (constructorPredicates facts ++
+    facts{constructorPredicates=foldl (flip appendNew) (constructorPredicates facts) (
       [(identity,tag,binders,if truth then body else Negated body) | (tag,binders,body) <- branches])}
   AllPayloads schema name value predicates | truth ->
-    facts{payloads=nub ((schema,name,value,predicates) : payloads facts)}
+    facts{payloads=consNew (schema,name,value,predicates) (payloads facts)}
   AllElements value binder body | truth ->
-    facts{universal=nub ((value,binder,body) : universal facts)}
+    facts{universal=consNew (value,binder,body) (universal facts)}
   TypedDomain domains body -> assume truth body (foldl (flip (assume True)) facts domains)
   Negated value -> assume (not truth) value facts
   Logical Or (Negated (IsPresent value)) body | truth ->
-    facts{presenceConditions=nub ((value,body) : presenceConditions facts)}
+    facts{presenceConditions=consNew (value,body) (presenceConditions facts)}
   Logical Or body (Negated (IsPresent value)) | truth ->
-    facts{presenceConditions=nub ((value,body) : presenceConditions facts)}
+    facts{presenceConditions=consNew (value,body) (presenceConditions facts)}
   Logical And left right | truth -> assume True right (assume True left facts)
   Logical Or left right | not truth -> assume False right (assume False left facts)
   IsPresent (Variable name) | truth -> facts { present = S.insert name (present facts) }
@@ -833,7 +841,7 @@ variableIdentity _ = Nothing
 
 entails :: Facts -> Proof -> Bool
 entails facts expression
-  | faithful expression && expression `elem` truths facts = True
+  | faithful expression && expression `S.member` truthSet facts = True
   | otherwise = case expression of
     AllPayloads schema name value predicates ->
       provePayload entails [] facts schema name value predicates
@@ -1399,3 +1407,11 @@ provePayload prove scope facts schema name value predicates =
     known = case value of
       Construct tag values -> Just (tag,values)
       _ -> variableIdentity value >>= (`M.lookup` constructorValues facts)
+
+-- | A fact added to facts already free of duplicates: linear, where nub
+-- of the whole list was quadratic in the facts a large record brings.
+consNew :: Eq a => a -> [a] -> [a]
+consNew x xs = if x `elem` xs then xs else x : xs
+
+appendNew :: Eq a => a -> [a] -> [a]
+appendNew x xs = if x `elem` xs then xs else xs ++ [x]

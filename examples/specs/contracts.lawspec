@@ -98,8 +98,8 @@ end
 
 definition validName (name :: Text) :: Bool is name matches regex "[a-z]+" end
 
-type Tag is
-  Tag
+type Badge is
+  Badge
     label :: (v :: Text where validName v)
 end
 
@@ -113,6 +113,6 @@ law `an id is set by a record update` is
   end
 end
 
-law `a tag keeps its label` is
-  definition is `for all` (t :: Tag) . validName t.label = true end
+law `a badge keeps its label` is
+  definition is `for all` (t :: Badge) . validName t.label = true end
 end

@@ -7,6 +7,7 @@ module LawSpec.Elaboration
 import LawSpec.Abilities (clauseDefinitionName, abilityArguments, instantiatedOperations, unqualifiedHandler)
 import Data.Maybe (listToMaybe)
 import qualified Data.Map.Strict as M
+import qualified Data.Set as Set
 
 import LawSpec.Time (timeUnit, durationType, instantType, durationArithmetic, durationValue)
 import LawSpec.Imports (importedDefinitionName)
@@ -85,7 +86,15 @@ elaborateResolved = elaborateResolvedWithData []
 -- arithmetic evidence, so no later stage resolves or infers again.
 -- ref:DEC-elaborate-before-core
 elaborateResolvedWithData :: [C.DataDeclaration] -> [C.Id] -> Int -> C.Id -> (String -> C.Id) -> [(String,S.Type)] -> S.Expr -> Either String C.Expr
-elaborateResolvedWithData dataTypes declarations bits origin resolve env source = S.typedExpressionWithData dataTypes bits env (S.normal source) >>= lowerWith [] where
+elaborateResolvedWithData dataTypes declarations bits origin resolve env =
+  elaborateResolvedIn dataTypes (`Set.member` Set.fromList declarations) bits origin resolve (S.monoEnvironment env)
+
+-- | As elaborateResolvedWithData, with the declarations as a membership test
+-- and the environment already made: a unit elaborates thousands of
+-- definitions against the same ones.
+elaborateResolvedIn :: [C.DataDeclaration] -> (C.Id -> Bool) -> Int -> C.Id -> (String -> C.Id) -> S.Env -> S.Expr -> Either String C.Expr
+elaborateResolvedIn dataTypes declared bits origin resolve env source =
+  fst <$> S.typedExpressionWithSchemes dataTypes bits env (S.normal source) >>= lowerWith [] where
   operationEvidence op a b = makeRegistry dataTypes >>= \registry -> operationEvidenceWithRegistry registry op a b
   constructorTag parent name = do
     let qualified = C.Id (parent ++ "::" ++ name)
@@ -156,7 +165,7 @@ elaborateResolvedWithData dataTypes declarations bits origin resolve env source 
         values <- mapM lower operands
         pure (foldr (\value rest -> node t (C.Construct (C.Id "List::Cons") [value,rest]))
           (node t (C.Construct (C.Id "List::Nil") [])) values)
-      S.Var n -> pure (node t (if lookup n bound == Nothing && resolve n `elem` declarations then C.ExternalCall (resolve n) [] else C.Local (resolveName n)))
+      S.Var n -> pure (node t (if lookup n bound == Nothing && declared (resolve n) then C.ExternalCall (resolve n) [] else C.Local (resolveName n)))
       S.Annotate _ _ -> case operands of
         [a] -> lower a
         _ -> Left "invalid typed annotation"
@@ -424,20 +433,25 @@ elaborateDefinitionUnit dataDeclarations bits u = do
       (maybe (C.GeneratedFrom (declarationId u n)) C.SourceSpan (lookup n (S.declarationSpans u)))
       (n `elem` S.asyncFunctions u) uses)
   (abilities, operations) <- unitOperations u
+  -- What every definition's body sees, made once for the unit.
+  let unitEnvironment = S.monoEnvironment (S.functions u)
+      unitDeclarations = Set.fromList [declarationId u n | (n,_) <- S.functions u]
+      declarationTable = M.fromListWith (++) [(C.declarationId d, [d]) | d <- ds]
   definitions <- forM (S.functionDefinitions u) $ \d -> do
     let name = S.functionName d
         did = declarationId u name
         parameters = S.functionArguments d
         ids = [(n,C.Id (C.idText did ++ "::argument::" ++ show i)) | (i,(n,_)) <- zip [0::Int ..] parameters]
         resolve n = maybe (declarationId u n) id (lookup n ids)
-        env = S.functions u ++ parameters
+        -- Parameter names have lexical precedence over top-level declarations.
+        env = M.union (S.monoEnvironment parameters) unitEnvironment
+        hidden = Set.fromList [declarationId u n | (n,_) <- parameters]
+        visible i = i `Set.member` unitDeclarations && i `Set.notMember` hidden
     unless (length parameters == length (nub (map fst parameters))) (Left (name ++ ": duplicate definition argument"))
-    -- Parameter names have lexical precedence over top-level declarations.
-    let visible = [declarationId u n | (n,_) <- S.functions u, n `notElem` map fst parameters]
     arguments <- forM parameters $ \(n,t) -> C.Binder (resolve n) n <$> coreType t
-    body <- performOperations operations <$> elaborateResolvedWithData dataDeclarations visible bits did resolve env
+    body <- performOperations operations <$> elaborateResolvedIn dataDeclarations visible bits did resolve env
       (S.Annotate (S.functionBody d) (S.functionResult d))
-    declaration <- case filter ((== did) . C.declarationId) ds of
+    declaration <- case M.findWithDefault [] did declarationTable of
       [value] -> Right value
       _ -> Left (name ++ ": missing or duplicate definition signature")
     -- A stage's policy names checked definitions of this unit.

@@ -268,12 +268,12 @@ data MatchCase = MatchCase
 -- operators, because their meaning must be LawSpec's on every target.
 -- ref:DEC-portable-exact-arithmetic
 data BinaryOp = Add | Subtract | Multiply | Divide | Quotient | Remainder | Power
-  | Equal | NotEqual | Less | LessEqual | Greater | GreaterEqual deriving (Eq, Show, Generic)
+  | Equal | NotEqual | Less | LessEqual | Greater | GreaterEqual deriving (Eq, Ord, Show, Generic)
 -- | As for BinaryOp, negation and not have LawSpec's meaning on every target.
 data UnaryOp = Negate | Not deriving (Eq, Show, Generic)
 -- | And and or short-circuit, so a guard can protect the operand after it on
 -- every target alike.
-data LogicalOp = And | Or deriving (Eq, Show, Generic)
+data LogicalOp = And | Or deriving (Eq, Ord, Show, Generic)
 -- | A conversion records whether the user wrote it or the compiler inserted it
 -- to check an argument, so diagnostics blame the right place.
 data Conversion = Explicit | CheckedArgument deriving (Eq, Show, Generic)

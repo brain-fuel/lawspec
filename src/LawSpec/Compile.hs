@@ -180,6 +180,7 @@ scalar (Arrow _ _) = False
 scalar t = validType t
 validateUnit :: [Core.DataDeclaration] -> Unit -> Either [Diagnostic] ()
 validateUnit dataTypes u = either (Left . pure . (\m -> Diagnostic "declaration" m Nothing)) Right $ do
+  let checkTypes = typeCheck dataTypes
   unique "constructor" [dataConstructorName c | d <- LawSpec.Model.dataTypes u, c <- dataTypeConstructors d]
   unique "function" (map fst (functions u)); unique "law" (map lawName (laws u))
   forM_ (functions u) $ \(n,t) -> do
@@ -188,11 +189,11 @@ validateUnit dataTypes u = either (Left . pure . (\m -> Diagnostic "declaration"
     -- An ability operation may take no values (now :: Instant).
     if n `elem` operationNames u
       -- (A parameterized ability's parameters are instantiated at each use.)
-      then unless (all (concreteValue dataTypes . mapType (\x -> case x of
+      then unless (all (concreteValue checkTypes . mapType (\x -> case x of
           Variable v | "ability:" `isPrefixOf` v -> Named "Int32"
           _ -> x) id) (result:args))
         (Left (n ++ ": an ability operation takes and gives concrete values"))
-      else unless (not (null args) && all (if n `elem` map functionName (functionDefinitions u) then valueType dataTypes else concreteValue dataTypes) (result:args))
+      else unless (not (null args) && all (if n `elem` map functionName (functionDefinitions u) then valueType checkTypes else concreteValue checkTypes) (result:args))
         (Left (n ++ ": functions require one or more concrete value inputs and a value result"))
   forM_ (laws u) $ \l -> do
     mapM_ (metadataText (map fst (parameters l ++ functions u))) [description l, rationale l]
@@ -203,9 +204,9 @@ validateUnit dataTypes u = either (Left . pure . (\m -> Diagnostic "declaration"
     unique "parameter" (map fst (parameters l)); unique "example" (map exampleName (examples l))
     forM_ (parameters l) $ \(_,t) -> do
       let (args,result) = functionType t
-      unless (all (valueType dataTypes) (result:args)) (Left "law parameters must be values or curried functions between value types")
-    unless (all (\(Capability _ t) -> valueType dataTypes t) (requirements l)) (Left "capability requires a value type")
-    unless (all (validTypeWithData dataTypes . snd) (parameters l) && all (\(Capability _ t) -> validTypeWithData dataTypes t) (requirements l)) (Left "unsupported type")
+      unless (all (valueType checkTypes) (result:args)) (Left "law parameters must be values or curried functions between value types")
+    unless (all (\(Capability _ t) -> valueType checkTypes t) (requirements l)) (Left "capability requires a value type")
+    unless (all (validTypeWithData checkTypes . snd) (parameters l) && all (\(Capability _ t) -> validTypeWithData checkTypes t) (requirements l)) (Left "unsupported type")
 
 -- A Regex is made from a literal in the portable dialect (LawSpec.Regex),
 -- checked here, and laws do not quantify over Regex: LawSpec never makes one
@@ -323,6 +324,7 @@ compileWithImports visible bits settings sources = do
   let us = map qualifyDataNames lowered
   mapM_ checkRegexes us
   dataTypes <- elaborateDataDeclarationsWithProfile bits us
+  let checkTypes = typeCheck dataTypes
   _ <- either (Left . pure . (\m -> Diagnostic "data-type" m Nothing)) Right (CoreTypes.makeRegistry dataTypes)
   unless (length us == length (nub (map unitName us))) (Left [Diagnostic "duplicate-unit" "unit names must be unique; prelude is reserved" Nothing])
   -- Each unit is validated, and each law expanded, under a key of exactly
@@ -358,8 +360,8 @@ compileWithImports visible bits settings sources = do
       argumentChecks <- mapM resolveExpr argumentChecks0
       checkedInputs <- forM bs $ \v -> do
         t <- resolve (inputType v)
-        unless (valueType dataTypes t || (symbolic && valueType dataTypes (abstractType t))) (throwC ("unsupported quantified type: " ++ show t))
-        when (not symbolic && not (concreteValue dataTypes t)) (throwC "executable inputs must have a concrete value type")
+        unless (valueType checkTypes t || (symbolic && valueType checkTypes (abstractType t))) (throwC ("unsupported quantified type: " ++ show t))
+        when (not symbolic && not (concreteValue checkTypes t)) (throwC "executable inputs must have a concrete value type")
         pure v{inputType=t}
       -- One recording holds one value, so a law that quantifies cannot
       -- compare with one; its examples can.
@@ -399,7 +401,7 @@ compileWithImports visible bits settings sources = do
       let resolvedInputs = [inp{inputRefinements=map (mapExprTypes resolveKnown) (inputRefinements inp)} | inp <- checkedInputs]
           resolveKnown t = t
       pure (Expanded (unitName u) (lawName l) resolvedInputs a b gs body tr l{examples=normalized} ir (if take 9 (lawName l) == "contract " then "contract" else "law") settings (map (planDomain [(inputId i,inputType i) | i <- resolvedInputs]) resolvedInputs) argumentChecks)
-      ) ((initialState bits){dataDeclarations=dataTypes})
+      ) (withDataDeclarations dataTypes (initialState bits))
   mapM_ (validateContracts dataTypes bits) us
   (specialized, properties) <- specializeDefinitions dataTypes bits (satisfiedWithData dataTypes bits [])
     (filter ((/= "prelude") . unitName) us) (filter (null . parameters . original) allExpanded)
@@ -420,7 +422,7 @@ compileWithImports visible bits settings sources = do
           value <- lift (CoreEval.evaluateValue registry bits invoke [] term)
           unless (value == CoreValue.ScalarValue (SBool True)) (throwC "refinement value argument violates its declared parameter type")
         mapM_ (validateExampleDomains bits u invoke (inputs property)) (examples (original property)))
-        ((initialState bits){dataDeclarations=dataTypes})
+        (withDataDeclarations dataTypes (initialState bits))
   pure (specialized, properties)
 
 -- | The laws a law invokes, transitively: every law whose name ends one of the
@@ -479,7 +481,7 @@ assertionExpressions (AssertImplies g body) = g:assertionExpressions body
 assertionExpressions (AssertAll as) = concatMap assertionExpressions as
 normalizeLiteralWithData :: [Core.DataDeclaration] -> Int -> Type -> Literal -> Either String Literal
 normalizeLiteralWithData dataTypes bits t (ConstructorLiteral name fields) = do
-  parameters <- evalStateT (constructorParameters t name) ((initialState bits){dataDeclarations=dataTypes})
+  parameters <- evalStateT (constructorParameters t name) (withDataDeclarations dataTypes (initialState bits))
   unless (length parameters == length fields) (Left ("wrong constructor arity: " ++ name))
   ConstructorLiteral name <$> sequence [normalizeLiteralWithData dataTypes bits parameter field | (parameter, field) <- zip parameters fields]
 normalizeLiteralWithData dataTypes bits (Applied "List" element) (ListLiteral xs) = ListLiteral <$> mapM (normalizeLiteralWithData dataTypes bits element) xs
@@ -519,7 +521,7 @@ validateContracts dataTypes bits u = either (Left . pure . (\m -> Diagnostic "co
   mapM_ (\(Capability k ty) -> require k ty) (typeConstraints (snd (contractResult c)))
   os <- gets obligations >>= mapM (\(Capability name ty) -> Capability name <$> resolve ty)
   forM_ os $ \o -> unless (satisfiedWithData dataTypes bits [] o) (throwC ("unsatisfied contract capability: " ++ show o))
-  ) ((initialState bits){dataDeclarations=dataTypes})
+  ) (withDataDeclarations dataTypes (initialState bits))
 
 validateExampleDomains :: Int -> Unit -> (Core.Id -> [CoreValue.Value] -> Either String CoreValue.Value) -> [Input] -> Example -> C ()
 validateExampleDomains bits unit invoke ins ex = withContext ("example " ++ exampleName ex ++ ": ") $ do
@@ -565,18 +567,23 @@ resolveAssertion (AssertAll xs) = AssertAll <$> mapM resolveAssertion xs
 abstractType :: Type -> Type
 abstractType = mapType (\t -> case t of Named n@('@':_) -> Variable n; _ -> t) id
 
-validTypeWithData :: [Core.DataDeclaration] -> Type -> Bool
-validTypeWithData declarations t = either (const False) (const True) $ do
-  registry <- CoreTypes.makeRegistry declarations
-  ty <- Elaboration.coreType t
-  CoreTypes.checkType registry ty
+-- | Whether a type is valid given the data types: the registry is built once
+-- for every type a caller checks with the same function, which matters for a
+-- program of thousands of types.
+typeCheck :: [Core.DataDeclaration] -> Type -> Bool
+typeCheck declarations = case CoreTypes.makeRegistry declarations of
+  Left _ -> const False
+  Right registry -> \t -> either (const False) (const True) (Elaboration.coreType t >>= CoreTypes.checkType registry)
 
-valueType :: [Core.DataDeclaration] -> Type -> Bool
+validTypeWithData :: (Type -> Bool) -> Type -> Bool
+validTypeWithData check t = check t
+
+valueType :: (Type -> Bool) -> Type -> Bool
 valueType _ (Arrow _ _) = False
-valueType declarations t = validTypeWithData declarations t
+valueType check t = validTypeWithData check t
 
-concreteValue :: [Core.DataDeclaration] -> Type -> Bool
-concreteValue declarations t = valueType declarations t && concrete (baseType t)
+concreteValue :: (Type -> Bool) -> Type -> Bool
+concreteValue check t = valueType check t && concrete (baseType t)
   where
     concrete (Variable _) = False
     concrete (Named ('@':_)) = False
@@ -606,6 +613,7 @@ inferDefinitionTemplates declarations bits unit = do
   unless (bits `elem` [32,64]) (Left [Diagnostic "machineBits" "machineBits must be 32 or 64" Nothing])
   mapM validate (functionDefinitions unit)
   where
+    checkTypes = typeCheck declarations
     signature d = foldr Arrow (functionResult d) (map snd (functionArguments d))
     globals = M.union
       (M.fromList [(functionName d, Universal (variables (signature d))
@@ -625,12 +633,12 @@ inferDefinitionTemplates declarations bits unit = do
           -- lexical precedence.
           environment = M.union locals globals
       unique "definition argument" (map fst parameters)
-      unless (all (valueType declarations) (functionResult d : map snd parameters))
+      unless (all (valueType checkTypes) (functionResult d : map snd parameters))
         (Left "definition parameters and result require value types")
       forM_ declared $ \(Capability name ty) -> do
         unless (name `elem` ["Eq","Integer","Ordered","Bounded","Keyed"])
           (Left ("unknown capability: " ++ name))
-        unless (valueType declarations ty && all (`elem` bound) (variables ty))
+        unless (valueType checkTypes ty && all (`elem` bound) (variables ty))
           (Left "capability mentions an invalid or unbound type")
         when (null (variables ty) && not (satisfiedWithData declarations bits [] (Capability name ty)))
           (Left ("unsatisfied definition capability: " ++ show (Capability name ty)))
