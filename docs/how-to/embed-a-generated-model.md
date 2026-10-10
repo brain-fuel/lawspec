@@ -138,10 +138,10 @@ main = do
   bump counter 3 >>= print -- 5
 ```
 
-A Haskell handler of several abilities is made in two steps, its state and
-then a record per ability over it: `state <- Handlers.clusterState symbols`,
-then `Handlers.clusterBroker symbols state` and `Handlers.clusterAdmin symbols
-state` share one state.
+A Haskell handler of several abilities, or one with typed state, can be made
+in two steps, its state and then a record per ability over it: `state <-
+Handlers.clusterState symbols`, then `Handlers.clusterBroker symbols state`
+and `Handlers.clusterAdmin symbols state` share one state.
 
 Arguments and results convert directly between the native types and the
 typed forms, without the dynamic values the laws use (when `lawspec.json`
@@ -156,6 +156,58 @@ Python `KafkaProducer(symbols)` with `ls.install_handlers(symbols,
 {"lawtwin.kafka::ability::Broker": Cluster()})` first, and likewise
 `ls.installHandlers(symbols, {...})` on JavaScript and TypeScript and
 `LS.installHandlers symbols [LS.installed key broker]` on Haskell.
+
+## Take a failure as a value
+
+An operation that `fails with E` raises its failure as the laws see it: a
+panic in Rust and Go, an exception elsewhere. For an application, each such
+operation has a second form that returns the failure instead, in the native
+types:
+
+| Target | `produceRequest` that fails with `KafkaError` |
+| --- | --- |
+| Rust | `try_produceRequest(...) -> Result<i64, KafkaError>` |
+| Go | `TryProduceRequest(...) (int64, error)`, the error a `*LawSpecRaised[KafkaError]` (`errors.As`) |
+| Java, Kotlin | `tryProduceRequest(...)`, a `LawSpecFast.Outcome<Long, KafkaError>`: `failed()`, `value()`, `failure()` |
+| Python | `try_produceRequest(...)`, `Right` of the result or `Left` of the failure |
+| JavaScript, TypeScript | `tryProduceRequest(...)`, `Right` of the result or `Left` of the failure |
+| Haskell | `tryProduceRequest broker ...`, in the ability's handlers module: `IO (Either KafkaError Int64)` for any handler |
+
+A failing operation leaves the state as it was.
+
+## Read and replace the state
+
+A handler with state gives its state in its native types, as a snapshot to
+show or keep, and takes one back, to force the state, reset it or restore an
+earlier snapshot:
+
+| Target | Read | Replace | Typed, shared rather than copied |
+| --- | --- | --- | --- |
+| Rust | `state()` | `set_state(s)` | `typed_state()`, `set_typed_state(s)` |
+| Go | `State()` | `SetState(s)` | `TypedState()`, `SetTypedState(s)` |
+| Java, Kotlin | `state()` | `setState(s)` | `typedState()`, `setTypedState(s)` |
+| Python | `state()` | `set_state(s)` | `typed_state()`, `set_typed_state(s)` |
+| JavaScript, TypeScript | `state()` | `setState(s)` | `typedState()`, `setTypedState(s)` |
+| Haskell | `clusterSnapshot state` | `clusterRestore state s` | `readMVar state`, `swapMVar state s` |
+
+The native forms convert the whole state, so they cost what it holds; the
+typed ones cost nothing, since a typed state is never changed in place. The
+typed state's type is the generated one (Go's is unexported, so an
+application keeps it without naming it).
+
+## Names and builds
+
+The typed functions a handler's clauses call, and its start, are named from
+the definitions and the handler, so an unrelated edit of the contract does
+not rename them. Generation depends only on the program: the compiler's cache
+is kept per compiler build, so a compiler rebuilt in place never reuses what
+another build made (`lawspec-dev bench kafka --deterministic` generates the
+model in process, with a cold and a warm cache, without one, and by the
+native compiler, and requires the same bytes). The generated Rust crate and
+Haskell package build without warnings, so a project that depends on them
+sees none.
+
+## Laws and applications share the handler
 
 The handler a law uses is the same type, made with the law's context
 (`Tally::new(&ctx)` in Rust, `NewTally(symbols)` in Go, the one-argument
