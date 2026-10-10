@@ -1,0 +1,6 @@
+@@ src/Shop/Orders.fs
+<<<<<<<
+    { Currency = line.Price.Currency; Cents
+=======
+    { Currency = ShopDomainCurrency.Eur; Cents
+>>>>>>>

@@ -1,0 +1,6 @@
+@@ src/Shop/Domain.fs
+<<<<<<<
+let convert (currency: ShopDomainCurrency) (money: Money) : Money = { money with Currency = currency }
+=======
+let convert (currency: ShopDomainCurrency) (money: Money) : Money = money
+>>>>>>>

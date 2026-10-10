@@ -1,0 +1,6 @@
+@@ src/Shop/Orders.fs
+<<<<<<<
+let cheaper (a: int64) (b: int64) : int64 = min a b
+=======
+let cheaper (a: int64) (b: int64) : int64 = a
+>>>>>>>

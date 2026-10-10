@@ -1,0 +1,6 @@
+@@ src/Shop/Orders.fs
+<<<<<<<
+    | ShopOrdersCurrency.Gbp -> ShopDomainCurrency.Eur
+=======
+    | ShopOrdersCurrency.Gbp -> ShopDomainCurrency.Usd
+>>>>>>>
