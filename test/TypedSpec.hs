@@ -188,3 +188,19 @@ test_typedDefinitionsRunNativeWithTheirMeaning = describe "typed definitions" $ 
       either expectationFailure (\typed -> hsTypedModule typed `shouldSatisfy` isInfixOf "LS.handlerOf symbols") (emitHaskellTyped declarations units)
       either expectationFailure (\typed -> D.render D.Compact (rustTypedModule typed) `shouldSatisfy` isInfixOf "(&mut *ctx, vec![") (emitRustTyped declarations units)
       either expectationFailure (\typed -> jvmTypedSource typed `shouldSatisfy` isInfixOf "LawSpecDefinitionBodies.typedPerform_") (emitJvmTyped JavaStyle declarations units)
+  describe "typed names" $ do
+    it "stay the same when unrelated definitions are added before them" $ do
+      let compile extra = either (\e -> error (show e)) id (compileCore 64 defaultGeneration [Source "ledger.lawspec" (extra ++ ledger)])
+          edited = "definition unrelated (x :: Int64) :: Int64 is x end\n\ndefinition another (t :: Text) :: Text is t end\n\n"
+          namesOf p = do
+            typed <- emitPythonTyped 64 (C.programDataDeclarations p) (C.programUnits p)
+            rust <- emitRustTyped (C.programDataDeclarations p) (C.programUnits p)
+            pure [ (pyTypedFunction typed i, rustTypedFunction rust i) | i <- named p "credit" ++ named p "total" ]
+          withHeader text = case lines text of
+            first : rest -> unlines (first : rest)
+            [] -> text
+      let before = compile ""
+          after = either (\e -> error (show e)) id (compileCore 64 defaultGeneration
+            [Source "ledger.lawspec" (withHeader (unlines (take 2 (lines ledger)) ++ edited ++ unlines (drop 2 (lines ledger))))])
+      namesOf before `shouldBe` namesOf after
+      either (const False) (all (\(a, b) -> a /= Nothing && b /= Nothing)) (namesOf before) `shouldBe` True
