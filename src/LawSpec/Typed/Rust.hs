@@ -369,6 +369,57 @@ expression env selfCall scope e = case expressionNode e of
           (D.text ("let " ++ item ++ " = " ++ item ++ ".clone();") <> D.hardline <>
            D.text "if !" <> paren p <> D.text (" { " ++ ok ++ " = false; break; }"))
       , D.text ok ]))
+  -- raise e: a failure of the Fail ability, as the dynamic raise makes it.
+  Perform (Operation ref "raise") [x] -> do
+    v <- expression env Nothing scope x
+    pure (D.block 4 (D.text ("ls::raise_failure(" ++ E.quoted (abilityKey ref) ++ ", ls::fast::Dyn::to_dyn(&") <> v <> D.text "));" <> D.hardline <> D.text "unreachable!()"))
+  -- attempt e: Right of e's value, or Left of the failure it raised.
+  Handle (CatchFailure ref) body | Constructor "Either" [TypeArgument failure, TypeArgument result] <- expressionType e -> do
+    v <- expression env Nothing scope body
+    resultType <- lift (rustType env result)
+    failureType' <- lift (rustType env failure)
+    pure (D.text ("match ls::fast::attempt(" ++ E.quoted (abilityKey ref) ++ ", || -> ls::Result<" ++ resultType ++ "> ") <>
+      D.block 4 (D.text "Ok(" <> v <> D.text ")") <> D.text ")? " <> D.block 4 (D.joinWith D.hardline
+        [ D.text "Ok(value) => ls::Either::Right(value),"
+        , D.text ("Err(failure) => ls::Either::Left(<" ++ failureType' ++ " as ls::fast::Dyn>::from_dyn(failure)?),") ]))
+  Helper Append [a, b] -> do
+    x <- expression env Nothing scope a
+    y <- expression env Nothing scope b
+    let f = case expressionType a of
+          Constructor "Text" [] -> "ls::fast::append_text"
+          Constructor "Bytes" [] -> "ls::fast::append_bytes"
+          _ -> "ls::fast::append_list"
+    pure (D.text (f ++ "(&") <> x <> D.text ", &" <> y <> D.text ")")
+  Helper Slice [x, from, to] -> do
+    v <- expression env Nothing scope x
+    i <- integerExpression env scope from
+    j <- integerExpression env scope to
+    let f = case expressionType x of
+          Constructor "Text" [] -> "ls::fast::slice_text"
+          Constructor "Bytes" [] -> "ls::fast::slice_bytes"
+          _ -> "ls::fast::slice_list"
+    pure (D.text (f ++ "(&") <> v <> D.text ", &" <> i <> D.text ", &" <> j <> D.text ")")
+  Helper At [x, i] -> do
+    v <- expression env Nothing scope x
+    k <- integerExpression env scope i
+    let f = if expressionType x == Constructor "Bytes" [] then "ls::fast::at_bytes" else "ls::fast::at_list"
+    pure (D.text (f ++ "(&") <> v <> D.text ", &" <> k <> D.text ")")
+  Helper Range [lo, hi] -> do
+    a <- expression env Nothing scope lo
+    b <- expression env Nothing scope hi
+    case expressionType lo of
+      Constructor "Integer" [] -> pure (D.text "ls::fast::range_int(&" <> a <> D.text ", &" <> b <> D.text ")")
+      _ -> pure (D.text "ls::fast::List::from_vec((" <> a <> D.text ".." <> b <> D.text ").collect())")
+  Helper Octets [b] -> (\v -> D.text "ls::fast::octets(&" <> v <> D.text ")") <$> expression env Nothing scope b
+  Helper BytesOf [xs] -> (\v -> D.text "ls::fast::bytes_of(&" <> v <> D.text ")") <$> expression env Nothing scope xs
+  Helper Utf8 [t] -> (\v -> D.text "ls::fast::utf8(&" <> v <> D.text ")") <$> expression env Nothing scope t
+  Helper TextOf [n] -> case expressionType n of
+    Constructor "Integer" [] -> (\v -> D.text "ls::fast::text_of(&" <> v <> D.text ")") <$> expression env Nothing scope n
+    _ -> (\v -> D.text "ls::fast::text(&" <> paren v <> D.text ".to_string())") <$> expression env Nothing scope n
+  Helper Join [sep, parts] -> do
+    a <- expression env Nothing scope sep
+    b <- expression env Nothing scope parts
+    pure (D.text "ls::fast::join(&" <> a <> D.text ", &" <> b <> D.text ")")
   _ -> lift (Left ("typed Rust: unsupported expression " ++ take 80 (show (expressionNode e))))
   where
     textTest method a b = do

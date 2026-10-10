@@ -132,7 +132,7 @@ emitJvmTyped style declarations units = do
   let signatureTypes = concat [ let (args, result) = functionType (declarationType (definitionDeclaration d)) in result : args
                               | d <- M.elems (typedDefinitions plan) ]
       handlerTypes = [ t | h <- concatMap unitHandlers units, isTypedHandler plan h
-                         , Just (_, a) <- [findAbility units (handlerAbility h)]
+                         , ref <- handlerAbilities h, Just (_, a) <- [findAbility units ref]
                          , (_, ty) <- abilityOperations a, let (args, result) = functionType ty, t <- result : args ]
   ((functionDocs, natives, nativeDocs), _) <- flip runStateT initial $ do
     fs <- mapM (\(c, d) -> functionDoc env c d) (typedRepresentatives plan)
@@ -192,7 +192,7 @@ emitJvmTyped style declarations units = do
     dropHash reversed = case span (`elem` ("0123456789abcdef" :: String)) reversed of
       (digits@(_ : _), '_' : rest) | length digits >= 8 -> rest
       _ -> reversed
-    handlerOperations h = [ (op, ty) | Just (_, a) <- [findAbility units (handlerAbility h)], (op, ty) <- abilityOperations a ]
+    handlerOperations h = [ (op, ty) | ref <- handlerAbilities h, Just (_, a) <- [findAbility units ref], (op, ty) <- abilityOperations a ]
 
 dataNames :: [DataDeclaration] -> M.Map String String
 dataNames datas = M.fromList (snd (foldl pick (reserved, []) datas))
@@ -469,6 +469,11 @@ cstmt env selfCall scope target e = case expressionNode e of
           pure (s ++ [D.text ("final " ++ ty ++ " " ++ t ++ " = ") <> x <> D.text ";"], D.text (p ++ " = " ++ t ++ ";"))
         pure (concatMap fst evaluated ++ map snd evaluated ++ [D.text "continue;"])
   Helper Unreachable _ -> pure [D.text "throw LawSpecFast.unreachable();"]
+  -- raise e delivers nothing: it throws.
+  Perform (Operation ref "raise") [x] -> do
+    (s, v) <- cexpr env scope x
+    codec <- lift' (codecExpression env [] (expressionType x))
+    pure (s ++ [D.text ("throw new LawSpecRuntime.Failure(" ++ D.render D.Compact (E.quoted (abilityKey ref)) ++ ", " ++ codec ++ ".encode(") <> v <> D.text "));"])
   _ -> do
     (s, x) <- cexpr env scope e
     pure (s ++ [deliver target x])
@@ -543,8 +548,78 @@ cexpr env scope e
         (sa, xa) <- cexpr env scope a
         (sb, xb) <- cexpr env scope b
         pure (sa ++ sb, D.text "LawSpecRuntime.regexMatches(" <> xa <> D.text ", " <> xb <> D.text ".codePoints().toArray())")
+      -- raise e: a failure of the Fail ability, as the dynamic raise makes it.
+      Perform (Operation ref "raise") [x] -> do
+        thrown <- raised ref x
+        ty <- lift' (javaType env True (expressionType e))
+        pure (fst thrown ++ [D.text "if (true) " <> snd thrown], D.text ("(" ++ ty ++ ") null"))
+      -- attempt e: Right of e's value, or Left of the failure it raised.
+      Handle (CatchFailure ref) body | Constructor "Either" [TypeArgument failure, TypeArgument result] <- expressionType e -> do
+        t <- fresh "attempted"
+        ty <- lift' (javaType env False (expressionType e))
+        lt <- lift' (javaType env True failure)
+        rt <- lift' (javaType env True result)
+        codec <- lift' (codecExpression env [] failure)
+        (s, x) <- cexpr env scope body
+        let witness = "<" ++ lt ++ ", " ++ rt ++ ">"
+            blockOf ss = D.block 2 (D.joinWith D.hardline ss)
+        pure ([ D.text (ty ++ " " ++ t ++ ";")
+              , D.text "try " <> blockOf (s ++ [D.text (t ++ " = " ++ envFast env ++ ".Either." ++ witness ++ "right(") <> x <> D.text ");"]) <>
+                D.text " catch (LawSpecRuntime.Failure failure) " <> blockOf
+                  [ D.text ("if (!failure.ability.equals(" ++ D.render D.Compact (E.quoted (abilityKey ref)) ++ ")) throw failure;")
+                  , D.text (t ++ " = " ++ envFast env ++ ".Either." ++ witness ++ "left(" ++ codec ++ ".decode(failure.value));") ] ], D.text t)
+      Helper Append [a, b] -> do
+        (sa, xa) <- cexpr env scope a
+        (sb, xb) <- cexpr env scope b
+        pure (sa ++ sb, case expressionType a of
+          Constructor "Text" [] -> paren (xa <> D.text " + " <> xb)
+          Constructor "Bytes" [] -> D.text "LawSpecFast.appendBytes(" <> xa <> D.text ", " <> xb <> D.text ")"
+          _ -> D.text "LawSpecFast.append(" <> xa <> D.text ", " <> xb <> D.text ")")
+      Helper Slice [x, from, to] -> do
+        (sx, v) <- cexpr env scope x
+        (si, i) <- index from
+        (sj, j) <- index to
+        let f = case expressionType x of
+              Constructor "Text" [] -> "LawSpecFast.sliceText"
+              Constructor "Bytes" [] -> "LawSpecFast.sliceBytes"
+              _ -> "LawSpecFast.slice"
+        pure (sx ++ si ++ sj, D.text (f ++ "(") <> v <> D.text ", " <> i <> D.text ", " <> j <> D.text ")")
+      Helper At [x, k] -> do
+        (sx, v) <- cexpr env scope x
+        (si, i) <- index k
+        let f = if expressionType x == Constructor "Bytes" [] then "LawSpecFast.atBytes" else "LawSpecFast.at"
+        pure (sx ++ si, D.text (f ++ "(") <> v <> D.text ", " <> i <> D.text ")")
+      Helper Range [lo, hi] -> do
+        (sa, a) <- cexpr env scope lo
+        (sb, b) <- cexpr env scope hi
+        pure (sa ++ sb, D.text "LawSpecFast.range(" <> a <> D.text ", " <> b <> D.text ")")
+      Helper Octets [b] -> one "LawSpecFast.octets" b
+      Helper BytesOf [xs] -> one "LawSpecFast.bytesOf" xs
+      Helper Utf8 [t] -> one "LawSpecFast.utf8" t
+      Helper TextOf [n] -> case expressionType n of
+        Constructor "Integer" [] -> one "String.valueOf" n
+        _ -> one "Long.toString" n
+      Helper Join [sep, parts] -> do
+        (sa, a) <- cexpr env scope sep
+        (sb, b) <- cexpr env scope parts
+        pure (sa ++ sb, D.text "LawSpecFast.join(" <> a <> D.text ", " <> b <> D.text ")")
       _ -> lift' (Left ("typed Java: unsupported expression " ++ take 80 (show (expressionNode e))))
   where
+    one f a = do
+      (s, x) <- cexpr env scope a
+      pure (s, D.text (f ++ "(") <> x <> D.text ")")
+    -- An Integer index, as a long (clamped).
+    index a = do
+      l <- longExpr env scope a
+      case l of
+        Just r -> pure r
+        Nothing -> do
+          (s, x) <- bigExpr env scope a
+          pure (s, D.text "LawSpecFast.index(" <> x <> D.text ")")
+    raised ref x = do
+      (s, v) <- cexpr env scope x
+      codec <- lift' (codecExpression env [] (expressionType x))
+      pure (s, D.text ("throw new LawSpecRuntime.Failure(" ++ D.render D.Compact (E.quoted (abilityKey ref)) ++ ", " ++ codec ++ ".encode(") <> v <> D.text "));")
     isComplexNode = case expressionNode e of
       Let {} -> True
       Match {} -> True

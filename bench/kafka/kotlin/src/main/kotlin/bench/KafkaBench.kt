@@ -1,10 +1,10 @@
 // The Kafka reference model's workload, driven through the generated
-// reference spec handler of the Broker ability: produce across 100
+// cluster spec handler of the Broker ability: produce across 100
 // partitions, a consumer group of ten members fetching and committing with a
 // rebalance, then transactions. See bench/README.md.
 package bench
 
-import lawspec.abilities.lawtwin.kafka.Contract
+import lawspec.abilities.lawtwin.Kafka
 import lawspec.data.FetchResult
 import lawspec.data.IsolationLevel
 import lawspec.data.OffsetEntry
@@ -25,11 +25,6 @@ fun record(i: Long): Record {
     return Record(LawSpecRuntime.Just(key), LawSpecRuntime.Just(value), listOf())
 }
 
-fun <A, B> right(e: LawSpecRuntime.Either<A, B>, what: String): B = when (e) {
-    is LawSpecRuntime.Right<A, B> -> e.value()
-    else -> throw IllegalStateException("$what: ${(e as LawSpecRuntime.Left<A, B>).value()}")
-}
-
 fun phase(name: String, ops: Long, start: Long) =
     println("phase $name $ops ${"%.6f".format((System.nanoTime() - start) / 1e9)}")
 
@@ -47,14 +42,14 @@ fun main(args: Array<String>) {
 }
 
 fun run(scale: Long) {
-    val broker = Contract.Reference()
+    val broker = Kafka.Cluster()
     val all = System.nanoTime()
     var total = 0L
-    right(broker.createTopicsRequest("bench", PARTITIONS), "create topic")
+    broker.createTopicsRequest("bench", PARTITIONS)
 
     var start = System.nanoTime()
     for (i in 0 until scale) {
-        right(broker.produceRequest(tp((i % PARTITIONS).toInt()), LawSpecRuntime.Nothing(), listOf(record(i))), "produce")
+        broker.produceRequest(tp((i % PARTITIONS).toInt()), LawSpecRuntime.Nothing(), listOf(record(i)))
     }
     phase("produce", scale, start)
     total += scale
@@ -65,32 +60,32 @@ fun run(scale: Long) {
     val members = (0 until MEMBERS).map { "member-$it" }
     var generation = 0
     for (m in members) {
-        generation = right(broker.joinGroupRequest("g", m, listOf("bench")), "join")
+        generation = broker.joinGroupRequest("g", m, listOf("bench"))
         ops++
     }
     var read = 0L
     for (round in 0 until 2) {
         if (round == 1) {
-            right(broker.leaveGroupRequest("g", members.last()), "leave")
-            generation = right(broker.joinGroupRequest("g", members.last(), listOf("bench")), "rejoin")
+            broker.leaveGroupRequest("g", members.last())
+            generation = broker.joinGroupRequest("g", members.last(), listOf("bench"))
             ops += 2
         }
         for (m in members) {
-            right(broker.heartbeatRequest("g", m, generation), "heartbeat")
-            val assigned = right(broker.syncGroupRequest("g", m, generation), "sync")
+            broker.heartbeatRequest("g", m, generation)
+            val assigned = broker.syncGroupRequest("g", m, generation)
             ops += 2
             for (p in assigned) {
                 val committed = broker.offsetFetchRequest("g", p)
                 var position = if (committed is LawSpecRuntime.Just<Long>) committed.value() else 0L
                 ops++
                 while (true) {
-                    val r: FetchResult = right(broker.fetchRequest(p, position, FETCH, IsolationLevel.ReadUncommitted), "fetch")
+                    val r: FetchResult = broker.fetchRequest(p, position, FETCH, IsolationLevel.ReadUncommitted)
                     ops++
                     val end = if (round == 0) r.highWatermark / 2 else r.highWatermark
                     if (r.records.isEmpty() || position >= end) break
                     read += r.records.size
                     position = r.nextOffset
-                    right(broker.offsetCommitRequest("g", m, generation, listOf(OffsetEntry(p, position))), "commit")
+                    broker.offsetCommitRequest("g", m, generation, listOf(OffsetEntry(p, position)))
                     ops++
                 }
             }
@@ -103,24 +98,24 @@ fun run(scale: Long) {
     start = System.nanoTime()
     ops = 0
     val txns = maxOf(1L, scale / 100)
-    val id = right(broker.initProducerIdRequest(LawSpecRuntime.Just("tx")), "init producer")
+    val id = broker.initProducerIdRequest(LawSpecRuntime.Just("tx"))
     ops++
     val sequences = IntArray(PARTITIONS)
     for (t in 0 until txns) {
         val parts = intArrayOf(((2 * t) % PARTITIONS).toInt(), ((2 * t + 1) % PARTITIONS).toInt())
-        right(broker.addPartitionsToTxnRequest("tx", id.producerId, id.producerEpoch, parts.map { tp(it) }), "add partitions")
+        broker.addPartitionsToTxnRequest("tx", id.producerId, id.producerEpoch, parts.map { tp(it) })
         for (p in parts) {
             val tag = ProducerTag(id.producerId, id.producerEpoch, sequences[p]++)
-            right(broker.produceRequest(tp(p), LawSpecRuntime.Just(tag), listOf(record(t))), "transactional produce")
+            broker.produceRequest(tp(p), LawSpecRuntime.Just(tag), listOf(record(t)))
         }
-        right(broker.txnOffsetCommitRequest("tx", id.producerId, id.producerEpoch, "g", listOf(OffsetEntry(tp(parts[0]), t))), "txn offsets")
-        right(broker.endTxnRequest("tx", id.producerId, id.producerEpoch, true), "commit")
+        broker.txnOffsetCommitRequest("tx", id.producerId, id.producerEpoch, "g", listOf(OffsetEntry(tp(parts[0]), t)))
+        broker.endTxnRequest("tx", id.producerId, id.producerEpoch, true)
         ops += 5
     }
     phase("transactions", ops, start)
     total += ops
     phase("total", total, all)
     memory("end")
-    val r = right(broker.fetchRequest(tp(0), 0L, 10, IsolationLevel.ReadCommitted), "committed fetch")
+    val r = broker.fetchRequest(tp(0), 0L, 10, IsolationLevel.ReadCommitted)
     println("check committed-hw ${r.highWatermark}")
 }

@@ -12,6 +12,7 @@ package RUNTIME_PACKAGE
 
 import (
 	"math/big"
+	"strconv"
 	"strings"
 	"sync"
 	"unicode/utf8"
@@ -676,4 +677,145 @@ func lsfItems(v LawSpecValue) []LawSpecValue {
 
 func lsfDataValue(key, tag string, fields ...LawSpecValue) LawSpecValue {
 	return LawSpecValue{key, lawSpecData{tag, fields}}
+}
+
+// Sequences: Text (by code point), Bytes and List. A slice is clamped to
+// the sequence; an index outside it is Nothing.
+
+// lsfIndex is an Integer index, clamped to an int64.
+func lsfIndex(x lsfInt) int64 {
+	if x.b == nil {
+		return x.s
+	}
+	if x.b.Sign() < 0 {
+		return -1 << 63
+	}
+	return 1<<63 - 1
+}
+
+func lsfClamp(i int64, count int) int {
+	if i < 0 {
+		return 0
+	}
+	if i > int64(count) {
+		return count
+	}
+	return int(i)
+}
+
+func lsfBounds(from, to int64, count int) (int, int) {
+	i := lsfClamp(from, count)
+	j := lsfClamp(to, count)
+	if j < i {
+		j = i
+	}
+	return i, j
+}
+
+func lsfSliceText(s string, from, to int64) string {
+	ascii := true
+	for k := 0; k < len(s); k++ {
+		if s[k] >= utf8.RuneSelf {
+			ascii = false
+			break
+		}
+	}
+	if ascii {
+		i, j := lsfBounds(from, to, len(s))
+		return s[i:j]
+	}
+	runes := []rune(s)
+	i, j := lsfBounds(from, to, len(runes))
+	return string(runes[i:j])
+}
+
+func lsfSliceBytes(s string, from, to int64) string {
+	i, j := lsfBounds(from, to, len(s))
+	return s[i:j]
+}
+
+// lsfSliceList shares the list's tail when the slice runs to its end.
+func lsfSliceList[T any](xs *lsfList[T], from, to int64) *lsfList[T] {
+	count := xs.length()
+	i, j := lsfBounds(from, to, count)
+	rest := xs
+	for k := 0; k < i; k++ {
+		rest = rest.tail
+	}
+	if j == count {
+		return rest
+	}
+	items := make([]T, 0, j-i)
+	for c := rest; len(items) < j-i; c = c.tail {
+		items = append(items, c.head)
+	}
+	return lsfListOf(items)
+}
+
+// lsfAppend shares b.
+func lsfAppend[T any](a, b *lsfList[T]) *lsfList[T] {
+	items := a.slice()
+	out := b
+	for k := len(items) - 1; k >= 0; k-- {
+		out = lsfCons(items[k], out)
+	}
+	return out
+}
+
+func lsfAtList[T any](xs *lsfList[T], i int64) lsfMaybe[T] {
+	if i < 0 || i >= int64(xs.length()) {
+		return lsfNothing[T]()
+	}
+	c := xs
+	for k := int64(0); k < i; k++ {
+		c = c.tail
+	}
+	return lsfJust(c.head)
+}
+
+func lsfAtBytes(s string, i int64) lsfMaybe[uint8] {
+	if i < 0 || i >= int64(len(s)) {
+		return lsfNothing[uint8]()
+	}
+	return lsfJust(s[i])
+}
+
+func lsfRange[T int8 | int16 | int32 | int64 | uint8 | uint16 | uint32 | uint64](lo, hi T) *lsfList[T] {
+	var out *lsfList[T]
+	for k := hi; k > lo; k-- {
+		out = lsfCons(k-1, out)
+	}
+	return out
+}
+
+func lsfRangeInt(lo, hi lsfInt) *lsfList[lsfInt] {
+	var out *lsfList[lsfInt]
+	one := lsfSmall(1)
+	for k := hi.Sub(one); lsfCmpInt(k, lo) >= 0; k = k.Sub(one) {
+		out = lsfCons(k, out)
+	}
+	return out
+}
+
+func lsfOctets(s string) *lsfList[uint8] {
+	return lsfListOf([]uint8(s))
+}
+
+func lsfBytesOf(xs *lsfList[uint8]) string {
+	return string(xs.slice())
+}
+
+func lsfTextOfLong(v int64) string { return strconv.FormatInt(v, 10) }
+
+func lsfTextOfUint(v uint64) string { return strconv.FormatUint(v, 10) }
+
+func lsfTextOfInt(x lsfInt) string {
+	if x.b == nil {
+		return strconv.FormatInt(x.s, 10)
+	}
+	return x.b.String()
+}
+
+func lsfJoin(separator string, parts *lsfList[string]) string {
+	return strings.Join(parts.slice(), separator)
 }

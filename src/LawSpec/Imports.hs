@@ -131,8 +131,10 @@ resolveUnit visible table u allImports = do
         -- collections unit's definitions once the type they give is known.
         S.fromList [(ValueName, n) | usesBounded, i <- imports, importUnit i == collectionsUnit, d <- boundedArithmeticDefinitions,
           Right n <- [lookupName ValueName (importAlias i ++ "." ++ d)]]
-      usesBounded = any (`isInfixOf` show (functionDefinitions u, laws u, handlerDeclarations u))
-        ["Var \"prelude.wrapping\"", "Var \"prelude.saturating\"", "Var \"prelude.bounded\""]
+      -- Copies of an import's definitions may use them too.
+      usesBounded = any (\text -> any (`isInfixOf` text) ["Var \"prelude.wrapping\"", "Var \"prelude.saturating\"", "Var \"prelude.bounded\""])
+        (show (functionDefinitions u, laws u, handlerDeclarations u) :
+         [show (functionDefinitions p, laws p, handlerDeclarations p) | (_, source) <- sources, let p = portable source])
   -- Re-exports: each listed name resolves to what this unit imports it as.
   reexports <- forM [(i, item) | i <- exportLines, item <- importItems i] $ \(i, item) -> do
     let law = "`" `isSuffixOf` item

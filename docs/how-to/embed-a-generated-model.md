@@ -93,7 +93,7 @@ constructor on the JVM), so what the laws check is what the application runs.
 ## Measure it
 
 `lawspec-dev bench kafka`, in the LawSpec repository, generates LawTwin's
-Kafka reference model for Rust, Go, Java and Kotlin and drives its `reference`
+Kafka reference model for Rust, Go, Java and Kotlin and drives its `cluster`
 handler: a million produces over 100 partitions, a consumer group of ten
 members fetching and committing with a rebalance, and transactions. It prints
 each phase's throughput and the memory the state retains; `--scale N` runs a

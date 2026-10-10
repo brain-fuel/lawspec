@@ -2,7 +2,7 @@ package bench;
 
 import java.util.ArrayList;
 import java.util.List;
-import lawspec.abilities.lawtwin.kafka.Contract;
+import lawspec.abilities.lawtwin.Kafka;
 import lawspec.data.FetchResult;
 import lawspec.data.IsolationLevel;
 import lawspec.data.OffsetEntry;
@@ -13,7 +13,7 @@ import lawspec.data.TopicPartition;
 import lawspec.runtime.LawSpecRuntime;
 
 /**
- * The Kafka reference model's workload, driven through the generated reference spec handler of the
+ * The Kafka reference model's workload, driven through the generated cluster spec handler of the
  * Broker ability: produce across 100 partitions, a consumer group of ten members fetching and
  * committing with a rebalance, then transactions. See bench/README.md.
  */
@@ -31,11 +31,6 @@ public final class KafkaBench {
     byte[] value = new byte[64];
     java.util.Arrays.fill(value, (byte) 'x');
     return new Record(new LawSpecRuntime.Just<>(key), new LawSpecRuntime.Just<>(value), List.of());
-  }
-
-  static <A, B> B right(LawSpecRuntime.Either<A, B> e, String what) {
-    if (e instanceof LawSpecRuntime.Right<A, B> r) return r.value();
-    throw new IllegalStateException(what + ": " + ((LawSpecRuntime.Left<A, B>) e).value());
   }
 
   static void phase(String name, long ops, long start) {
@@ -56,14 +51,14 @@ public final class KafkaBench {
   }
 
   static void run(long scale) {
-    var broker = new Contract.Reference();
+    var broker = new Kafka.Cluster();
     long all = System.nanoTime();
     long total = 0;
-    right(broker.createTopicsRequest("bench", PARTITIONS), "create topic");
+    broker.createTopicsRequest("bench", PARTITIONS);
 
     long start = System.nanoTime();
     for (long i = 0; i < scale; i++) {
-      right(broker.produceRequest(tp((int) (i % PARTITIONS)), new LawSpecRuntime.Nothing<>(), List.of(record(i))), "produce");
+      broker.produceRequest(tp((int) (i % PARTITIONS)), new LawSpecRuntime.Nothing<>(), List.of(record(i)));
     }
     phase("produce", scale, start);
     total += scale;
@@ -75,32 +70,32 @@ public final class KafkaBench {
     for (int m = 0; m < MEMBERS; m++) members.add("member-" + m);
     int generation = 0;
     for (String m : members) {
-      generation = right(broker.joinGroupRequest("g", m, List.of("bench")), "join");
+      generation = broker.joinGroupRequest("g", m, List.of("bench"));
       ops++;
     }
     long read = 0;
     for (int round = 0; round < 2; round++) {
       if (round == 1) {
-        right(broker.leaveGroupRequest("g", members.get(MEMBERS - 1)), "leave");
-        generation = right(broker.joinGroupRequest("g", members.get(MEMBERS - 1), List.of("bench")), "rejoin");
+        broker.leaveGroupRequest("g", members.get(MEMBERS - 1));
+        generation = broker.joinGroupRequest("g", members.get(MEMBERS - 1), List.of("bench"));
         ops += 2;
       }
       for (String m : members) {
-        right(broker.heartbeatRequest("g", m, generation), "heartbeat");
-        List<TopicPartition> assigned = right(broker.syncGroupRequest("g", m, generation), "sync");
+        broker.heartbeatRequest("g", m, generation);
+        List<TopicPartition> assigned = broker.syncGroupRequest("g", m, generation);
         ops += 2;
         for (TopicPartition p : assigned) {
           var committed = broker.offsetFetchRequest("g", p);
           long position = committed instanceof LawSpecRuntime.Just<Long> j ? j.value() : 0L;
           ops++;
           while (true) {
-            FetchResult r = right(broker.fetchRequest(p, position, FETCH, new IsolationLevel.ReadUncommitted()), "fetch");
+            FetchResult r = broker.fetchRequest(p, position, FETCH, new IsolationLevel.ReadUncommitted());
             ops++;
             long end = round == 0 ? r.highWatermark() / 2 : r.highWatermark();
             if (r.records().isEmpty() || position >= end) break;
             read += r.records().size();
             position = r.nextOffset();
-            right(broker.offsetCommitRequest("g", m, generation, List.of(new OffsetEntry(p, position))), "commit");
+            broker.offsetCommitRequest("g", m, generation, List.of(new OffsetEntry(p, position)));
             ops++;
           }
         }
@@ -113,25 +108,25 @@ public final class KafkaBench {
     start = System.nanoTime();
     ops = 0;
     long txns = Math.max(1, scale / 100);
-    ProducerIdAndEpoch id = right(broker.initProducerIdRequest(new LawSpecRuntime.Just<>("tx")), "init producer");
+    ProducerIdAndEpoch id = broker.initProducerIdRequest(new LawSpecRuntime.Just<>("tx"));
     ops++;
     int[] sequences = new int[PARTITIONS];
     for (long t = 0; t < txns; t++) {
       int[] parts = {(int) ((2 * t) % PARTITIONS), (int) ((2 * t + 1) % PARTITIONS)};
-      right(broker.addPartitionsToTxnRequest("tx", id.producerId(), id.producerEpoch(), List.of(tp(parts[0]), tp(parts[1]))), "add partitions");
+      broker.addPartitionsToTxnRequest("tx", id.producerId(), id.producerEpoch(), List.of(tp(parts[0]), tp(parts[1])));
       for (int p : parts) {
         var tag = new ProducerTag(id.producerId(), id.producerEpoch(), sequences[p]++);
-        right(broker.produceRequest(tp(p), new LawSpecRuntime.Just<>(tag), List.of(record(t))), "transactional produce");
+        broker.produceRequest(tp(p), new LawSpecRuntime.Just<>(tag), List.of(record(t)));
       }
-      right(broker.txnOffsetCommitRequest("tx", id.producerId(), id.producerEpoch(), "g", List.of(new OffsetEntry(tp(parts[0]), t))), "txn offsets");
-      right(broker.endTxnRequest("tx", id.producerId(), id.producerEpoch(), true), "commit");
+      broker.txnOffsetCommitRequest("tx", id.producerId(), id.producerEpoch(), "g", List.of(new OffsetEntry(tp(parts[0]), t)));
+      broker.endTxnRequest("tx", id.producerId(), id.producerEpoch(), true);
       ops += 5;
     }
     phase("transactions", ops, start);
     total += ops;
     phase("total", total, all);
     memory("end");
-    FetchResult r = right(broker.fetchRequest(tp(0), 0L, 10, new IsolationLevel.ReadCommitted()), "committed fetch");
+    FetchResult r = broker.fetchRequest(tp(0), 0L, 10, new IsolationLevel.ReadCommitted());
     System.out.println("check committed-hw " + r.highWatermark());
   }
 }

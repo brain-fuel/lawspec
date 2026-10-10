@@ -120,8 +120,12 @@ emit minify bits datas units = do
     -- keeps the next state, which shares all it did not change with the
     -- state before.
     typedHandler typed u h = do
-      ability <- maybe (Left ("unknown ability of handler " ++ C.handlerName h)) Right
-        (unitAbility u (C.handlerAbility h))
+      -- A handler of several abilities answers all their operations.
+      answered <- mapM (\ref -> maybe (Left ("unknown ability of handler " ++ C.handlerName h)) Right (unitAbility u ref)) (C.handlerAbilities h)
+      let ability = case answered of
+            first : _ -> first { C.abilityOperations = concatMap C.abilityOperations answered
+                               , C.abilityName = intercalate ", " (map C.abilityName answered) }
+            [] -> C.failAbility
       stateType <- traverse (jvmTypedType typed . fst) (C.handlerState h)
       let name = specName h
           start = jvmTypedStart typed (C.handlerId h)
@@ -153,7 +157,7 @@ emit minify bits datas units = do
               | otherwise = [line "return " <> resultCodec <> line (".decode(" ++ typedResult ++ ".encode(result))")]
         pure (line "@Synchronized override " <> s <> line " " <> D.block 4 (D.joinWith D.hardline (outcome ++ returned)))) (C.abilityOperations ability)
       pure (line ("/** The spec handler " ++ C.handlerName h ++ " for " ++ C.abilityName ability ++ ", with its state typed. */") <> D.hardline <>
-        line ("class " ++ name ++ "(private val symbols: MutableMap<String, Any>) : " ++ abilitiesObjectOf (ownerName ability) ++ "." ++ interfaceName ability ++ " ") <>
+        line ("class " ++ name ++ "(private val symbols: MutableMap<String, Any>) : " ++ intercalate ", " [abilitiesObjectOf (ownerName a) ++ "." ++ interfaceName a | a <- answered] ++ " ") <>
         D.block 4 (D.joinWith (D.hardline <> D.hardline)
           ([line ("private var state: " ++ t ++ " = " ++ v) | Just t <- [stateType], Just v <- [start]] ++
            [ line "/** The handler on its own, outside any law: the embedding entry point. */" <> D.hardline <>

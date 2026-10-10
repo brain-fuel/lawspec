@@ -126,6 +126,106 @@ public final class LawSpecFast {
     return new IllegalStateException("unreachable branch reached");
   }
 
+  // Sequences: Text (by code point), Bytes and List. A slice is clamped to
+  // the sequence; an index outside it is Nothing.
+
+  /** An Integer index, clamped to a long. */
+  public static long index(BigInteger value) {
+    if (value.bitLength() < 64) return value.longValue();
+    return value.signum() < 0 ? Long.MIN_VALUE : Long.MAX_VALUE;
+  }
+
+  private static int clamp(long index, int count) {
+    return index < 0 ? 0 : index > count ? count : (int) index;
+  }
+
+  public static String sliceText(String s, long from, long to) {
+    int count = s.codePointCount(0, s.length());
+    int i = clamp(from, count);
+    int j = Math.max(i, clamp(to, count));
+    if (count == s.length()) return s.substring(i, j);
+    int start = s.offsetByCodePoints(0, i);
+    return s.substring(start, s.offsetByCodePoints(start, j - i));
+  }
+
+  public static Bytes sliceBytes(Bytes b, long from, long to) {
+    int i = clamp(from, b.octets.length);
+    int j = Math.max(i, clamp(to, b.octets.length));
+    return new Bytes(java.util.Arrays.copyOfRange(b.octets, i, j));
+  }
+
+  /** A slice to the end shares the list's tail. */
+  public static <T> List<T> slice(List<T> xs, long from, long to) {
+    int count = xs.size();
+    int i = clamp(from, count);
+    int j = Math.max(i, clamp(to, count));
+    List<T> rest = xs;
+    for (int k = 0; k < i; k++) rest = rest.tail();
+    if (j == count) return rest;
+    var items = new ArrayList<T>(j - i);
+    for (List<T> c = rest; items.size() < j - i; c = c.tail()) items.add(c.head());
+    return List.of(items);
+  }
+
+  public static Bytes appendBytes(Bytes a, Bytes b) {
+    byte[] out = java.util.Arrays.copyOf(a.octets, a.octets.length + b.octets.length);
+    System.arraycopy(b.octets, 0, out, a.octets.length, b.octets.length);
+    return new Bytes(out);
+  }
+
+  /** a ++ b shares b. */
+  public static <T> List<T> append(List<T> a, List<T> b) {
+    var items = a.toJava();
+    List<T> out = b;
+    for (int k = items.size() - 1; k >= 0; k--) out = List.cons(items.get(k), out);
+    return out;
+  }
+
+  public static <T> Maybe<T> at(List<T> xs, long index) {
+    if (index < 0 || index >= xs.size()) return Maybe.nothing();
+    List<T> c = xs;
+    for (long k = 0; k < index; k++) c = c.tail();
+    return Maybe.just(c.head());
+  }
+
+  public static Maybe<Long> atBytes(Bytes b, long index) {
+    if (index < 0 || index >= b.octets.length) return Maybe.nothing();
+    return Maybe.just((long) (b.octets[(int) index] & 0xff));
+  }
+
+  public static List<Long> range(long lo, long hi) {
+    List<Long> out = List.nil();
+    for (long k = hi; k > lo; k--) out = List.cons(k - 1, out);
+    return out;
+  }
+
+  public static List<BigInteger> range(BigInteger lo, BigInteger hi) {
+    List<BigInteger> out = List.nil();
+    for (BigInteger k = hi.subtract(BigInteger.ONE); k.compareTo(lo) >= 0; k = k.subtract(BigInteger.ONE)) out = List.cons(k, out);
+    return out;
+  }
+
+  public static List<Long> octets(Bytes b) {
+    List<Long> out = List.nil();
+    for (int k = b.octets.length - 1; k >= 0; k--) out = List.cons((long) (b.octets[k] & 0xff), out);
+    return out;
+  }
+
+  public static Bytes bytesOf(List<Long> xs) {
+    byte[] out = new byte[xs.size()];
+    int k = 0;
+    for (Long x : xs) out[k++] = (byte) (long) x;
+    return new Bytes(out);
+  }
+
+  public static Bytes utf8(String s) {
+    return new Bytes(s.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+  }
+
+  public static String join(String separator, List<String> parts) {
+    return String.join(separator, parts);
+  }
+
   // Bytes.
 
   /** Bytes, compared by content, octets unsigned. */

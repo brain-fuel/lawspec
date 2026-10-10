@@ -13,6 +13,7 @@
 -- persistent maps. ref:DEC-typed-native-definitions
 module LawSpec.Typed.Plan
   ( TypedPlan(..), Intrinsic(..), typedPlan, typedPlanWith, supportedType, isTypedHandler
+  , typedFallbacks, failedWith, sequenceBuiltins
   , collectionArguments, scalarTypes, constructorRanks, definitionClass, sharedDefinitions, firstOf
   ) where
 
@@ -43,6 +44,9 @@ data TypedPlan = TypedPlan
   , typedDataNames :: S.Set String
     -- The scalars with a typed form on the target.
   , typedScalars :: [String]
+    -- Why each definition that is not typed stays dynamic (computed only
+    -- when asked for).
+  , typedFallbackReasons :: [(Definition, String)]
   }
 
 -- | The first of a list the caller knows is not empty (a product's one
@@ -147,8 +151,25 @@ typedPlanWith scalars declarations units = TypedPlan
   , typedIntrinsics = M.fromList [(idOf d, i) | d <- eligible, Just i <- [intrinsicOf d]]
   , typedData = datas
   , typedDataNames = known
-  , typedScalars = scalars }
+  , typedScalars = scalars
+  , typedFallbackReasons = [ (d, reason d) | d <- definitions, idOf d `S.notMember` eligibleIds ] }
   where
+    eligibleIds = S.fromList (map idOf eligible)
+    reason d
+      | definitionOrchestrates d = "it is a workflow"
+      | definitionPolicy d /= Nothing = "it has a workflow policy"
+      | not (all failing (declarationUses (definitionDeclaration d))) =
+          "it uses " ++ unwords [abilityKey r | r <- declarationUses (definitionDeclaration d), not (failing r)]
+      | idOf d `S.member` contracted = "it has a runtime contract"
+      | let (args, _) = functionType (declarationType (definitionDeclaration d)), length args > 12 = "it has more than 12 arguments"
+      | t : _ <- [t | let (args, result) = functionType (declarationType (definitionDeclaration d)), t <- result : args ++ map binderType (definitionArguments d), not (supported t)] =
+          "its type " ++ show t ++ " has no typed form"
+      | intrinsicOf d == Nothing, Just e <- firstUntyped (definitionBody d) =
+          "it contains " ++ take 160 (show (expressionNode e)) ++ " :: " ++ show (expressionType e)
+      | otherwise = "it calls " ++ unwords [idText c | c <- nub (callees (definitionBody d)), c `S.notMember` eligibleIds]
+    firstUntyped e
+      | not (supported (expressionType e)) || not (nodeTyped e) = Just e
+      | otherwise = foldr (\c acc -> maybe acc Just (firstUntyped c)) Nothing (children e)
     datas = typedDeclarations scalars declarations
     supported = supportedTypeWith scalars known
     known = S.fromList (map (idText . dataId) datas)
@@ -157,12 +178,14 @@ typedPlanWith scalars declarations units = TypedPlan
     contracted = S.fromList (map contractDeclaration (concatMap unitContracts units))
     candidates = [ d | d <- definitions, local d ]
     local d = not (definitionOrchestrates d) && definitionPolicy d == Nothing
-      && null (declarationUses (definitionDeclaration d))
+      && all failing (declarationUses (definitionDeclaration d))
       && idOf d `S.notMember` contracted
       && let (args, result) = functionType (declarationType (definitionDeclaration d))
          in length args <= 12 && all (supported) (result : args)
             && all (supported . binderType) (definitionArguments d)
             && (intrinsicOf d /= Nothing && intrinsicTyped d || expressionTyped (definitionBody d))
+    -- A definition that `fails with E` raises as the dynamic code does.
+    failing ref = maybe False supported (failedWith ref)
     -- An intrinsic needs only its signature typed.
     intrinsicTyped d = let (args, result) = functionType (declarationType (definitionDeclaration d))
       in all (supported) (result : args)
@@ -186,8 +209,11 @@ typedPlanWith scalars declarations units = TypedPlan
       ShortCircuit _ _ _ -> True
       If _ _ _ -> True
       Convert _ target value -> integral target && integral (expressionType value) || target == expressionType value
-      Helper builtin _ -> builtin `elem` [Length, Compare, Select, Unreachable, StartsWith, EndsWith, TextContains, RegexMatches, Checked]
+      Helper builtin _ -> builtin `elem` ([Length, Compare, Select, Unreachable, StartsWith, EndsWith, TextContains, RegexMatches, Checked] ++ sequenceBuiltins)
+      -- raise e, and attempt e: the Fail ability, at a typed failure.
+      Perform (Operation ref "raise") [_] -> failing ref
       Perform _ _ -> False
+      Handle (CatchFailure ref) _ -> failing ref
       Handle _ _ -> False
       Calls _ _ -> False
       Let binder _ _ -> supported (binderType binder)
@@ -290,6 +316,20 @@ sharedDefinitions units = M.fromList
     names = M.fromList [(idOf d, declarationName (definitionDeclaration d)) | d <- definitions]
     nameOf i = M.findWithDefault "" i names
 
+-- | The failure a Fail ability raises: E of Fail E.
+failedWith :: AbilityRef -> Maybe Type
+failedWith ref = case ref of
+  AbilityRef i [t] | i == failAbilityId -> Just t
+  _ -> Nothing
+
+-- | The sequence helpers every typed target implements.
+sequenceBuiltins :: [Builtin]
+sequenceBuiltins = [Append, Slice, At, Range, Octets, BytesOf, Utf8, TextOf, Join]
+
+-- | The definitions that stay dynamic, by name, and why.
+typedFallbacks :: TypedPlan -> [(String, String)]
+typedFallbacks plan = [ (declarationName (definitionDeclaration d), why) | (d, why) <- typedFallbackReasons plan ]
+
 -- | A definition's class, when it is typed.
 definitionClass :: TypedPlan -> Id -> Maybe Int
 definitionClass plan identity = M.lookup identity (typedClass plan)
@@ -302,7 +342,8 @@ isTypedHandler plan h =
   maybe True (\(t, start) -> supportedType plan t && startTyped start) (handlerState h)
   where
     startTyped e = case expressionNode e of
-      ExternalCall _ _ -> False
+      -- A computed start: a call of a typed definition.
+      ExternalCall i args -> i `M.member` typedDefinitions plan && all startTyped args
       Perform _ _ -> False
       Handle _ _ -> False
       Calls _ _ -> False

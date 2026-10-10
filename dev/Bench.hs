@@ -4,6 +4,8 @@
 --   lawspec-dev bench kafka                      rust, go, java and kotlin
 --   lawspec-dev bench kafka --scale 10000 rust   a smaller workload
 --   lawspec-dev bench kafka --generate go        write the project only
+--   lawspec-dev bench kafka --typed              which definitions and
+--                                                handlers stay dynamic, and why
 --
 -- A benchmark lives in bench/<name>/: bench.json names its specs, the
 -- packages they use and their dependencies, as an acceptance suite's does,
@@ -32,13 +34,19 @@ import System.Process (CreateProcess(..), proc, readCreateProcessWithExitCode)
 import Text.Printf (printf)
 import LawSpec.Api (dispatch)
 import LawSpec.Scaffold (scaffoldFilesWith)
+import qualified LawSpec.Core as C
+import LawSpec.Frontend (compileCore)
+import LawSpec.Model (Source(..), defaultGeneration)
+import LawSpec.Typed.Plan (typedPlan, typedPlanWith, typedFallbacks, isTypedHandler)
+import LawSpec.Typed.Jvm (jvmScalars)
 
 benchCommand :: [String] -> IO ()
 benchCommand arguments = case arguments of
+  [name, "--typed"] -> typedReport name
   name : rest -> do
     let (scale, generateOnly, targets) = options rest (Nothing, False, [])
     run name scale generateOnly (if null targets then ["rust", "go", "java", "kotlin"] else targets)
-  [] -> die "usage: lawspec-dev bench <name> [--scale N] [--generate] [target...]"
+  [] -> die "usage: lawspec-dev bench <name> [--scale N] [--generate] [target...] | --typed"
   where
     options ("--scale" : n : rest) (_, g, ts) = options rest (Just n, g, ts)
     options ("--generate" : rest) (s, _, ts) = options rest (s, True, ts)
@@ -85,6 +93,26 @@ run name scale generateOnly targets = do
           summary = report target out peak
       writeFile (".artifacts" </> "bench" </> name </> (target ++ ".txt")) (unlines summary)
       mapM_ putStrLn summary
+
+-- | Which of the benchmark's definitions and spec handlers stay on the
+-- dynamic path, and why: on Rust and Go, and on the JVM (no UInt64).
+typedReport :: String -> IO ()
+typedReport name = do
+  let base = "bench" </> name
+  manifest <- BL.readFile (base </> "bench.json") >>= maybe (die ("invalid " ++ base </> "bench.json")) pure . decode
+  let strings key = [T.unpack s | Just (Array values) <- [field key manifest], String s <- V.toList values]
+  packageFiles <- concat <$> mapM (\directory -> filter (".lawspec" `isSuffixOf`) <$> walk directory) (strings "packages")
+  sources <- forM (strings "specs" ++ sort packageFiles) $ \path -> Source path <$> readFile path
+  program <- either (die . show) pure (compileCore 64 defaultGeneration sources)
+  let declarations = C.programDataDeclarations program
+      units = C.programUnits program
+      definitions = length (concatMap C.unitDefinitions units)
+  forM_ [("rust, go", typedPlan declarations units), ("java, kotlin", typedPlanWith jvmScalars declarations units)] $ \(label, plan) -> do
+    let fallbacks = typedFallbacks plan
+        handlers = [(C.handlerName h, isTypedHandler plan h) | u <- units, h <- C.unitHandlers u]
+    putStrLn (label ++ ": " ++ show (definitions - length fallbacks) ++ " of " ++ show definitions ++ " definitions typed")
+    forM_ fallbacks $ \(n, why) -> putStrLn ("  dynamic " ++ n ++ ": " ++ why)
+    forM_ handlers $ \(n, typed) -> putStrLn ("  handler " ++ n ++ (if typed then " typed" else " dynamic"))
 
 -- | The build commands and the command that runs the driver, from the project.
 commands :: String -> FilePath -> IO ([(String, [String])], (String, [String]))

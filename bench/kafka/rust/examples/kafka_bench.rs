@@ -1,10 +1,9 @@
 //! The Kafka reference model's workload, driven through the generated
-//! `reference` spec handler of the Broker ability: produce across 100
+//! `cluster` spec handler of the Broker ability: produce across 100
 //! partitions, a consumer group of ten members fetching and committing with a
 //! rebalance, then transactions. See bench/README.md.
-use lawspec_example::lawspec_abilities::lawtwin_kafka_contract::{Broker, Reference};
+use lawspec_example::lawspec_abilities::lawtwin_kafka::{Broker, Cluster};
 use lawspec_example::lawspec_data as data;
-use lawspec_example::lawspec_runtime as ls;
 use std::time::Instant;
 
 const PARTITIONS: i32 = 100;
@@ -17,13 +16,6 @@ fn tp(p: i32) -> data::TopicPartition {
 
 fn record(i: u64) -> data::Record {
     data::Record { key: Some(i.to_be_bytes().to_vec()), value: Some(vec![b'x'; 64]), headers: vec![] }
-}
-
-fn right<A: std::fmt::Debug, B>(e: ls::Either<A, B>, what: &str) -> B {
-    match e {
-        ls::Either::Right(b) => b,
-        ls::Either::Left(a) => panic!("{what}: {a:?}"),
-    }
 }
 
 fn resident() -> u64 {
@@ -43,15 +35,15 @@ fn main() {
 }
 
 fn run(scale: u64) {
-    let broker = Reference::new(&ls::Context::default());
+    let broker = Cluster::start();
     let all = Instant::now();
     let mut total = 0u64;
-    right(broker.createTopicsRequest("bench".to_string(), PARTITIONS), "create topic");
+    broker.createTopicsRequest("bench".to_string(), PARTITIONS);
 
     // Produce: one record per request, round robin over the partitions.
     let start = Instant::now();
     for i in 0..scale {
-        right(broker.produceRequest(tp((i % PARTITIONS as u64) as i32), None, vec![record(i)]), "produce");
+        broker.produceRequest(tp((i % PARTITIONS as u64) as i32), None, vec![record(i)]);
     }
     phase("produce", scale, start);
     total += scale;
@@ -65,25 +57,25 @@ fn run(scale: u64) {
     let members: Vec<String> = (0..MEMBERS).map(|m| format!("member-{m}")).collect();
     let mut generation = 0;
     for m in &members {
-        generation = right(broker.joinGroupRequest("g".into(), m.clone(), vec!["bench".into()]), "join");
+        generation = broker.joinGroupRequest("g".into(), m.clone(), vec!["bench".into()]);
         ops += 1;
     }
     let mut read = 0u64;
     for round in 0..2 {
         if round == 1 {
-            right(broker.leaveGroupRequest("g".into(), members[MEMBERS - 1].clone()), "leave");
-            generation = right(broker.joinGroupRequest("g".into(), members[MEMBERS - 1].clone(), vec!["bench".into()]), "rejoin");
+            broker.leaveGroupRequest("g".into(), members[MEMBERS - 1].clone());
+            generation = broker.joinGroupRequest("g".into(), members[MEMBERS - 1].clone(), vec!["bench".into()]);
             ops += 2;
         }
         for m in &members {
-            right(broker.heartbeatRequest("g".into(), m.clone(), generation), "heartbeat");
-            let assigned = right(broker.syncGroupRequest("g".into(), m.clone(), generation), "sync");
+            broker.heartbeatRequest("g".into(), m.clone(), generation);
+            let assigned = broker.syncGroupRequest("g".into(), m.clone(), generation);
             ops += 2;
             for p in assigned {
                 let mut position = broker.offsetFetchRequest("g".into(), p.clone()).unwrap_or(0);
                 ops += 1;
                 loop {
-                    let r = right(broker.fetchRequest(p.clone(), position, FETCH, data::IsolationLevel::ReadUncommitted), "fetch");
+                    let r = broker.fetchRequest(p.clone(), position, FETCH, data::IsolationLevel::ReadUncommitted);
                     ops += 1;
                     let end = if round == 0 { r.highWatermark / 2 } else { r.highWatermark };
                     if r.records.is_empty() || position >= end {
@@ -91,8 +83,8 @@ fn run(scale: u64) {
                     }
                     read += r.records.len() as u64;
                     position = r.nextOffset;
-                    right(broker.offsetCommitRequest("g".into(), m.clone(), generation,
-                        vec![data::OffsetEntry { topicPartition: p.clone(), offset: position }]), "commit");
+                    broker.offsetCommitRequest("g".into(), m.clone(), generation,
+                        vec![data::OffsetEntry { topicPartition: p.clone(), offset: position }]);
                     ops += 1;
                 }
             }
@@ -107,25 +99,25 @@ fn run(scale: u64) {
     let start = Instant::now();
     let mut ops = 0u64;
     let txns = (scale / 100).max(1);
-    let id = right(broker.initProducerIdRequest(Some("tx".into())), "init producer");
+    let id = broker.initProducerIdRequest(Some("tx".into()));
     ops += 1;
     let mut sequences = vec![0i32; PARTITIONS as usize];
     for t in 0..txns {
         let parts = [((2 * t) % PARTITIONS as u64) as i32, ((2 * t + 1) % PARTITIONS as u64) as i32];
-        right(broker.addPartitionsToTxnRequest("tx".into(), id.producerId, id.producerEpoch, parts.iter().map(|&p| tp(p)).collect()), "add partitions");
+        broker.addPartitionsToTxnRequest("tx".into(), id.producerId, id.producerEpoch, parts.iter().map(|&p| tp(p)).collect());
         for &p in &parts {
             let tag = data::ProducerTag { producerId: id.producerId, producerEpoch: id.producerEpoch, baseSequence: sequences[p as usize] };
             sequences[p as usize] += 1;
-            right(broker.produceRequest(tp(p), Some(tag), vec![record(t)]), "transactional produce");
+            broker.produceRequest(tp(p), Some(tag), vec![record(t)]);
         }
-        right(broker.txnOffsetCommitRequest("tx".into(), id.producerId, id.producerEpoch, "g".into(),
-            vec![data::OffsetEntry { topicPartition: tp(parts[0]), offset: t as i64 }]), "txn offsets");
-        right(broker.endTxnRequest("tx".into(), id.producerId, id.producerEpoch, true), "commit");
+        broker.txnOffsetCommitRequest("tx".into(), id.producerId, id.producerEpoch, "g".into(),
+            vec![data::OffsetEntry { topicPartition: tp(parts[0]), offset: t as i64 }]);
+        broker.endTxnRequest("tx".into(), id.producerId, id.producerEpoch, true);
         ops += 5;
     }
     phase("transactions", ops, start);
     total += ops;
-    let r = right(broker.fetchRequest(tp(0), 0, 10, data::IsolationLevel::ReadCommitted), "committed fetch");
+    let r = broker.fetchRequest(tp(0), 0, 10, data::IsolationLevel::ReadCommitted);
     println!("check committed-hw {}", r.highWatermark);
     phase("total", total, all);
     println!("memory end {}", resident());

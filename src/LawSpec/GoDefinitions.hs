@@ -82,7 +82,7 @@ emitGoDefinitionsWithCalls bound layout bits declarations units = do
             directory = map (\c -> if c == '.' then '/' else c) identity
             held = [i | i <- S.toList (reachable unit), M.member i (typedDefinitions plan)]
             handlerTypes = [ t | h <- handlersOf unit, isTypedHandler plan h
-                               , Just (_, a) <- [findAbility units (handlerAbility h)]
+                               , ref <- handlerAbilities h, Just (_, a) <- [findAbility units ref]
                                , (_, ty) <- abilityOperations a, let (args, result) = functionType ty, t <- result : args ]
             boundary = nub ([t | i <- held, Just d <- [M.lookup i everyDefinition], let (args, result) = functionType (declarationType (definitionDeclaration d)), t <- result : args] ++ handlerTypes)
         source <- goTypedSource typed packageName held boundary

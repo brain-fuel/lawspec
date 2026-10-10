@@ -115,7 +115,7 @@ emitGoTyped declarations units = do
         (M.fromList [(constructorId c, (d, c)) | d <- datas, c <- dataConstructors d]) functions declarations
         (M.fromList (concat [zip (dataId d : map constructorId (dataConstructors d)) ns | (d, ns) <- nativeNames]))
       handlerTypes = [ t | h <- concatMap unitHandlers units, isTypedHandler plan h
-                         , Just (_, a) <- [findAbility units (handlerAbility h)]
+                         , ref <- handlerAbilities h, Just (_, a) <- [findAbility units ref]
                          , (_, ty) <- abilityOperations a, let (args, result) = functionType ty, t <- result : args ]
       boundary = concat [ let (args, result) = functionType (declarationType (definitionDeclaration d)) in result : args
                         | d <- M.elems (typedDefinitions plan) ] ++ handlerTypes
@@ -332,6 +332,10 @@ cstmt env selfCall scope target e = case expressionNode e of
           pure (s ++ [D.text (t ++ " := ") <> x], D.text (p ++ " = " ++ t))
         pure (concatMap fst evaluated ++ map snd evaluated ++ [D.text "continue"])
   Helper Unreachable _ -> pure [D.text "panic(\"unreachable branch reached\")"]
+  -- raise e delivers nothing: it panics.
+  Perform (Operation _ "raise") [_] -> do
+    (s, _) <- cexpr env scope e
+    pure s
   _ -> do
     (s, x) <- cexpr env scope e
     pure (s ++ [deliver target x])
@@ -405,8 +409,77 @@ cexpr env scope e = case expressionNode e of
                 , D.text ("for " ++ cell ++ " := ") <> xs <> D.text ("; " ++ cell ++ " != nil; " ++ cell ++ " = " ++ cell ++ ".tail ") <> block
                     ([D.text (item ++ " := " ++ cell ++ ".head")] ++ sp ++
                      [D.text "if !" <> paren p <> D.text (" { " ++ t ++ " = false; break }")]) ], D.text t)
+  -- raise e: a failure of the Fail ability, as the dynamic raise makes it.
+  Perform (Operation ref "raise") [x] -> do
+    (s, v) <- cexpr env scope x
+    to <- helper "to" (expressionType x)
+    ty <- lift' (goType env (expressionType e))
+    pure (s ++ [D.text ("panic(&LawSpecFailure{Ability: " ++ goQuote (abilityKey ref) ++ ", Value: " ++ to ++ "(") <> v <> D.text ")})"], D.text ("*new(" ++ ty ++ ")"))
+  -- attempt e: Right of e's value, or Left of the failure it raised.
+  Handle (CatchFailure ref) body | Constructor "Either" [TypeArgument failure, TypeArgument result] <- expressionType e -> do
+    t <- fresh "attempted"
+    ty <- lift' (goType env (expressionType e))
+    lt <- lift' (goType env failure)
+    rt <- lift' (goType env result)
+    from <- helper "from" failure
+    (s, v) <- cexpr env scope body
+    let witness = "[" ++ lt ++ ", " ++ rt ++ "]"
+    pure ([ D.text ("var " ++ t ++ " " ++ ty)
+          , D.text "func() " <> block
+              ([ D.text "defer func() " <> block
+                   [ D.text "if problem := recover(); problem != nil " <> block
+                       [ D.text ("if failure, ok := problem.(*LawSpecFailure); ok && failure.Ability == " ++ goQuote (abilityKey ref) ++ " ") <> block
+                           [D.text (t ++ " = lsfLeft" ++ witness ++ "(" ++ from ++ "(failure.Value))"), D.text "return"]
+                       , D.text "panic(problem)" ] ] <> D.text "()" ] ++
+               s ++ [D.text (t ++ " = lsfRight" ++ witness ++ "(") <> v <> D.text ")"]) <> D.text "()" ], D.text t)
+  Helper Append [a, b] -> do
+    (sa, xa) <- cexpr env scope a
+    (sb, xb) <- cexpr env scope b
+    pure (sa ++ sb, case expressionType a of
+      Constructor n [] | n `elem` ["Text", "Bytes"] -> paren (xa <> D.text " + " <> xb)
+      _ -> D.text "lsfAppend(" <> xa <> D.text ", " <> xb <> D.text ")")
+  Helper Slice [x, from, to] -> do
+    (sx, v) <- cexpr env scope x
+    (si, i) <- index from
+    (sj, j) <- index to
+    let f = case expressionType x of
+          Constructor "Text" [] -> "lsfSliceText"
+          Constructor "Bytes" [] -> "lsfSliceBytes"
+          _ -> "lsfSliceList"
+    pure (sx ++ si ++ sj, D.text (f ++ "(") <> v <> D.text ", " <> i <> D.text ", " <> j <> D.text ")")
+  Helper At [x, k] -> do
+    (sx, v) <- cexpr env scope x
+    (si, i) <- index k
+    let f = if expressionType x == Constructor "Bytes" [] then "lsfAtBytes" else "lsfAtList"
+    pure (sx ++ si, D.text (f ++ "(") <> v <> D.text ", " <> i <> D.text ")")
+  Helper Range [lo, hi] -> do
+    (sa, a) <- cexpr env scope lo
+    (sb, b) <- cexpr env scope hi
+    pure (sa ++ sb, D.text (if expressionType lo == Constructor "Integer" [] then "lsfRangeInt(" else "lsfRange(") <> a <> D.text ", " <> b <> D.text ")")
+  Helper Octets [b] -> one "lsfOctets" b
+  Helper BytesOf [xs] -> one "lsfBytesOf" xs
+  -- A Go string is its UTF-8 octets already.
+  Helper Utf8 [t] -> cexpr env scope t
+  Helper TextOf [n] -> case expressionType n of
+    Constructor "Integer" [] -> one "lsfTextOfInt" n
+    Constructor "UInt64" [] -> one "lsfTextOfUint" n
+    _ -> do
+      (s, x) <- cexpr env scope n
+      pure (s, D.text "lsfTextOfLong(int64(" <> x <> D.text "))")
+  Helper Join [sep, parts] -> twoText "lsfJoin" sep parts
   _ -> lift' (Left ("typed Go: unsupported expression " ++ take 80 (show (expressionNode e))))
   where
+    one f a = do
+      (s, x) <- cexpr env scope a
+      pure (s, D.text (f ++ "(") <> x <> D.text ")")
+    -- An Integer index, as an int64 (clamped).
+    index a = do
+      l <- longExpr env scope a
+      case l of
+        Just r -> pure r
+        Nothing -> do
+          (s, x) <- intExpr env scope a
+          pure (s, D.text "lsfIndex(" <> x <> D.text ")")
     viaStatements = do
       t <- fresh "value"
       ty <- lift' (goType env (expressionType e))

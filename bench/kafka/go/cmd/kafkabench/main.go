@@ -1,5 +1,5 @@
 // The Kafka reference model's workload, driven through the generated
-// reference spec handler of the Broker ability: produce across 100
+// cluster spec handler of the Broker ability: produce across 100
 // partitions, a consumer group of ten members fetching and committing with a
 // rebalance, then transactions. See bench/README.md.
 package main
@@ -13,7 +13,7 @@ import (
 	"strconv"
 	"time"
 
-	kafka "example.com/lawspec-example/lawtwin/kafka/contract"
+	kafka "example.com/lawspec-example/lawtwin/kafka"
 )
 
 const (
@@ -34,14 +34,6 @@ func record(i uint64) kafka.Record {
 	return kafka.Record{Key: kafka.LawSpecJust(key), Value: kafka.LawSpecJust(value)}
 }
 
-func right[L any, R any](e kafka.LawSpecEither[L, R], what string) R {
-	if r, ok := e.Right(); ok {
-		return r
-	}
-	l, _ := e.Left()
-	panic(fmt.Sprintf("%s: %v", what, l))
-}
-
 func phase(name string, ops uint64, start time.Time) {
 	fmt.Printf("phase %s %d %.6f\n", name, ops, time.Since(start).Seconds())
 }
@@ -59,14 +51,14 @@ func main() {
 		scale, _ = strconv.ParseUint(os.Args[1], 10, 64)
 	}
 	debug.SetMaxStack(1 << 30)
-	broker := kafka.StartReference()
+	broker := kafka.StartCluster()
 	all := time.Now()
 	var total uint64
-	right(broker.CreateTopicsRequest("bench", partitions), "create topic")
+	broker.CreateTopicsRequest("bench", partitions)
 
 	start := time.Now()
 	for i := uint64(0); i < scale; i++ {
-		right(broker.ProduceRequest(tp(int(i%partitions)), kafka.LawSpecNothing[kafka.ProducerTag](), []kafka.Record{record(i)}), "produce")
+		broker.ProduceRequest(tp(int(i%partitions)), kafka.LawSpecNothing[kafka.ProducerTag](), []kafka.Record{record(i)})
 	}
 	phase("produce", scale, start)
 	total += scale
@@ -80,25 +72,25 @@ func main() {
 	}
 	var generation int32
 	for _, m := range names {
-		generation = right(broker.JoinGroupRequest("g", m, []string{"bench"}), "join")
+		generation = broker.JoinGroupRequest("g", m, []string{"bench"})
 		ops++
 	}
 	var read uint64
 	for round := 0; round < 2; round++ {
 		if round == 1 {
-			right(broker.LeaveGroupRequest("g", names[members-1]), "leave")
-			generation = right(broker.JoinGroupRequest("g", names[members-1], []string{"bench"}), "rejoin")
+			broker.LeaveGroupRequest("g", names[members-1])
+			generation = broker.JoinGroupRequest("g", names[members-1], []string{"bench"})
 			ops += 2
 		}
 		for _, m := range names {
-			right(broker.HeartbeatRequest("g", m, generation), "heartbeat")
-			assigned := right(broker.SyncGroupRequest("g", m, generation), "sync")
+			broker.HeartbeatRequest("g", m, generation)
+			assigned := broker.SyncGroupRequest("g", m, generation)
 			ops += 2
 			for _, p := range assigned {
 				position, _ := broker.OffsetFetchRequest("g", p).Value()
 				ops++
 				for {
-					r := right(broker.FetchRequest(p, position, fetchMax, kafka.IsolationLevelReadUncommitted{}), "fetch")
+					r := broker.FetchRequest(p, position, fetchMax, kafka.IsolationLevelReadUncommitted{})
 					ops++
 					end := r.HighWatermark
 					if round == 0 {
@@ -109,7 +101,7 @@ func main() {
 					}
 					read += uint64(len(r.Records))
 					position = r.NextOffset
-					right(broker.OffsetCommitRequest("g", m, generation, []kafka.OffsetEntry{{TopicPartition: p, Offset: position}}), "commit")
+					broker.OffsetCommitRequest("g", m, generation, []kafka.OffsetEntry{{TopicPartition: p, Offset: position}})
 					ops++
 				}
 			}
@@ -125,25 +117,25 @@ func main() {
 	if txns == 0 {
 		txns = 1
 	}
-	id := right(broker.InitProducerIdRequest(kafka.LawSpecJust("tx")), "init producer")
+	id := broker.InitProducerIdRequest(kafka.LawSpecJust("tx"))
 	ops++
 	sequences := make([]int32, partitions)
 	for t := uint64(0); t < txns; t++ {
 		parts := []int{int((2 * t) % partitions), int((2*t + 1) % partitions)}
-		right(broker.AddPartitionsToTxnRequest("tx", id.ProducerId, id.ProducerEpoch, []kafka.TopicPartition{tp(parts[0]), tp(parts[1])}), "add partitions")
+		broker.AddPartitionsToTxnRequest("tx", id.ProducerId, id.ProducerEpoch, []kafka.TopicPartition{tp(parts[0]), tp(parts[1])})
 		for _, p := range parts {
 			tag := kafka.ProducerTag{ProducerId: id.ProducerId, ProducerEpoch: id.ProducerEpoch, BaseSequence: sequences[p]}
 			sequences[p]++
-			right(broker.ProduceRequest(tp(p), kafka.LawSpecJust(tag), []kafka.Record{record(t)}), "transactional produce")
+			broker.ProduceRequest(tp(p), kafka.LawSpecJust(tag), []kafka.Record{record(t)})
 		}
-		right(broker.TxnOffsetCommitRequest("tx", id.ProducerId, id.ProducerEpoch, "g", []kafka.OffsetEntry{{TopicPartition: tp(parts[0]), Offset: int64(t)}}), "txn offsets")
-		right(broker.EndTxnRequest("tx", id.ProducerId, id.ProducerEpoch, true), "commit")
+		broker.TxnOffsetCommitRequest("tx", id.ProducerId, id.ProducerEpoch, "g", []kafka.OffsetEntry{{TopicPartition: tp(parts[0]), Offset: int64(t)}})
+		broker.EndTxnRequest("tx", id.ProducerId, id.ProducerEpoch, true)
 		ops += 5
 	}
 	phase("transactions", ops, start)
 	total += ops
 	phase("total", total, all)
 	memory("end")
-	r := right(broker.FetchRequest(tp(0), 0, 10, kafka.IsolationLevelReadCommitted{}), "committed fetch")
+	r := broker.FetchRequest(tp(0), 0, 10, kafka.IsolationLevelReadCommitted{})
 	fmt.Printf("check committed-hw %d\n", r.HighWatermark)
 }

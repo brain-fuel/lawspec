@@ -126,8 +126,13 @@ emit minify bits datas units = case clashes of
     -- arguments, runs the typed clause and keeps the next state, which shares
     -- all it did not change with the state before.
     typedHandler typed h = do
-      ability <- maybe (Left ("unknown ability of handler " ++ C.handlerName h)) Right
-        (lookup (C.handlerAbility h) [(C.abilityInstance a, a) | a <- everyAbility])
+      -- A handler of several abilities answers all their operations.
+      answered <- mapM (\ref -> maybe (Left ("unknown ability of handler " ++ C.handlerName h)) Right
+        (lookup ref [(C.abilityInstance a, a) | a <- everyAbility])) (C.handlerAbilities h)
+      let ability = case answered of
+            first : _ -> first { C.abilityOperations = concatMap C.abilityOperations answered
+                               , C.abilityName = intercalate ", " (map C.abilityName answered) }
+            [] -> C.failAbility
       stateType <- traverse (goTypedType typed . fst) (C.handlerState h)
       start <- traverse (goTypedValue typed . snd) (C.handlerState h)
       let name = specName h

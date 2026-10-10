@@ -11559,6 +11559,138 @@ pub mod fast {
         s.chars().count()
     }
 
+    /// attempt e: the body's value, or the failure it raised with this
+    /// ability, as the dynamic attempt catches it.
+    pub fn attempt<A>(ability: &str, body: impl FnOnce() -> Result<A>) -> Result<std::result::Result<A, Value>> {
+        super::quiet_failures();
+        match std::panic::catch_unwind(std::panic::AssertUnwindSafe(body)) {
+            Ok(result) => result.map(Ok),
+            Err(payload) => match payload.downcast::<super::Failure>() {
+                Ok(failure) if failure.ability == ability => Ok(Err(failure.value)),
+                Ok(failure) => std::panic::resume_unwind(failure),
+                Err(other) => std::panic::resume_unwind(other),
+            },
+        }
+    }
+
+    // Sequences: Text (by code point), Bytes and List. A slice is clamped
+    // to the sequence; an index outside it is Nothing.
+
+    /// An index into a sequence of count items, clamped to it.
+    pub fn clamp_index(index: &Int, count: usize) -> usize {
+        match index {
+            Int::Small(k) if *k < 0 => 0,
+            Int::Small(k) => (*k as u64).min(count as u64) as usize,
+            Int::Big(b) if b.is_negative() => 0,
+            Int::Big(_) => count,
+        }
+    }
+
+    fn position(index: &Int, count: usize) -> Option<usize> {
+        match index {
+            Int::Small(k) if *k >= 0 && (*k as u64) < count as u64 => Some(*k as usize),
+            _ => None,
+        }
+    }
+
+    pub fn append_text(a: &str, b: &str) -> Text {
+        let mut s = String::with_capacity(a.len() + b.len());
+        s.push_str(a);
+        s.push_str(b);
+        Arc::from(s)
+    }
+
+    pub fn append_bytes(a: &[u8], b: &[u8]) -> Bytes {
+        let mut v = Vec::with_capacity(a.len() + b.len());
+        v.extend_from_slice(a);
+        v.extend_from_slice(b);
+        Arc::from(v)
+    }
+
+    /// a ++ b shares b.
+    pub fn append_list<T: Clone>(a: &List<T>, b: &List<T>) -> List<T> {
+        let mut out = b.clone();
+        for item in a.to_vec().into_iter().rev() {
+            out = List::cons(item, out);
+        }
+        out
+    }
+
+    pub fn slice_text(t: &str, from: &Int, to: &Int) -> Text {
+        if t.is_ascii() {
+            let i = clamp_index(from, t.len());
+            let j = clamp_index(to, t.len()).max(i);
+            return Arc::from(&t[i..j]);
+        }
+        let count = text_length(t);
+        let i = clamp_index(from, count);
+        let j = clamp_index(to, count).max(i);
+        Arc::from(t.chars().skip(i).take(j - i).collect::<String>())
+    }
+
+    pub fn slice_bytes(b: &[u8], from: &Int, to: &Int) -> Bytes {
+        let i = clamp_index(from, b.len());
+        let j = clamp_index(to, b.len()).max(i);
+        Arc::from(&b[i..j])
+    }
+
+    /// A slice to the end shares the list's tail.
+    pub fn slice_list<T: Clone>(xs: &List<T>, from: &Int, to: &Int) -> List<T> {
+        let count = xs.len();
+        let i = clamp_index(from, count);
+        let j = clamp_index(to, count).max(i);
+        let mut rest = xs;
+        for _ in 0..i {
+            rest = rest.uncons().map(|(_, t)| t).unwrap();
+        }
+        if j == count {
+            return rest.clone();
+        }
+        List::from_vec(rest.iter().take(j - i).cloned().collect())
+    }
+
+    pub fn at_list<T: Clone>(xs: &List<T>, index: &Int) -> Option<T> {
+        position(index, xs.len()).and_then(|i| xs.iter().nth(i).cloned())
+    }
+
+    pub fn at_bytes(b: &[u8], index: &Int) -> Option<u8> {
+        position(index, b.len()).map(|i| b[i])
+    }
+
+    pub fn range_int(lo: &Int, hi: &Int) -> List<Int> {
+        let mut out = List::nil();
+        let mut k = hi.sub(&Int::Small(1));
+        while k.pcmp(lo) != Ordering::Less {
+            out = List::cons(k.clone(), out);
+            k = k.sub(&Int::Small(1));
+        }
+        out
+    }
+
+    pub fn octets(b: &[u8]) -> List<u8> {
+        List::from_vec(b.to_vec())
+    }
+
+    pub fn bytes_of(xs: &List<u8>) -> Bytes {
+        Arc::from(xs.to_vec())
+    }
+
+    pub fn utf8(t: &str) -> Bytes {
+        Arc::from(t.as_bytes())
+    }
+
+    pub fn text_of(n: &Int) -> Text {
+        match n {
+            Int::Small(k) => Arc::from(k.to_string()),
+            Int::Big(b) => Arc::from(b.to_string()),
+        }
+    }
+
+    pub fn join(separator: &str, parts: &List<Text>) -> Text {
+        let items: Vec<&str> = parts.iter().map(|t| &**t).collect();
+        Arc::from(items.join(separator))
+    }
+
     // A dynamic call of a typed definition: its arguments from Values, its
     // result back to one.
     macro_rules! dynamic_call {

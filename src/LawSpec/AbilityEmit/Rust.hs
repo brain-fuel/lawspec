@@ -7,6 +7,7 @@
 -- ls::raise_failure.
 module LawSpec.AbilityEmit.Rust (emit, moduleOf, moduleOfName, performBridges, productionStub, traitPath, handlerConstruction, handlerConstructionWith, foreignOwners) where
 
+import Control.Monad (forM)
 import Data.List (intercalate)
 import qualified LawSpec.Core as C
 import LawSpec.AbilityNames
@@ -146,11 +147,14 @@ emit minify bits datas units = do
     -- its arguments, runs the typed clause and keeps the next state, which
     -- shares all it did not change with the state before.
     typedHandler typed u h = do
-      ability <- maybe (Left ("unknown ability of handler " ++ C.handlerName h)) Right
-        (unitAbility u (C.handlerAbility h))
+      -- A handler of several abilities implements each one's trait.
+      answered <- mapM (\ref -> maybe (Left ("unknown ability of handler " ++ C.handlerName h)) Right (unitAbility u ref)) (C.handlerAbilities h)
+      let ability = case answered of
+            first : _ -> first { C.abilityName = intercalate ", " (map C.abilityName answered) }
+            [] -> C.failAbility
       stateType <- traverse (rustTypedType typed . fst) (C.handlerState h)
       start <- traverse (rustTypedValue typed . snd) (C.handlerState h)
-      methods <- mapM (\(op, ty) -> do
+      methodBlocks <- forM answered $ \answer -> mapM (\(op, ty) -> do
         clause <- maybe (Left (C.handlerName h ++ ": no clause for " ++ op)) Right (lookup op (C.handlerClauses h))
         function <- maybe (Left ("untyped clause " ++ C.idText clause)) Right (rustTypedFunction typed clause)
         s <- signature op ty
@@ -179,7 +183,7 @@ emit minify bits datas units = do
                         , line "*state = next;"
                         , line "drop(state);" ]
         pure (line s <> line " " <> D.block 4 (D.joinWith D.hardline
-          (outcome ++ converted)))) (C.abilityOperations ability)
+          (outcome ++ converted)))) (C.abilityOperations answer)
       let name = specName h
           stateField = maybe "()" id stateType
       pure (line ("/// The spec handler " ++ C.handlerName h ++ " for " ++ C.abilityName ability ++ ", with its state typed.") <> D.hardline <>
@@ -193,7 +197,8 @@ emit minify bits datas units = do
               , line "Self { ctx: std::sync::Mutex::new(ctx), state: std::sync::Mutex::new(state) }" ])
           , line "/// The handler on its own, outside any law: the embedding entry point." <> D.hardline <>
             line "pub fn start() -> Self " <> D.block 4 (line "Self::new(&ls::Context::default())") ]) <> D.hardline <> D.hardline <>
-        line ("impl super::" ++ moduleOfName (ownerName ability) ++ "::" ++ interfaceName ability ++ " for " ++ name ++ " ") <> D.block 4 (D.joinWith (D.hardline <> D.hardline) methods))
+        D.joinWith (D.hardline <> D.hardline) [ line ("impl super::" ++ moduleOfName (ownerName answer) ++ "::" ++ interfaceName answer ++ " for " ++ name ++ " ") <>
+            D.block 4 (D.joinWith (D.hardline <> D.hardline) methods) | (answer, methods) <- zip answered methodBlocks ])
     recording a = do
       methods <- mapM (\(op, ty) -> do
         s <- signature op ty

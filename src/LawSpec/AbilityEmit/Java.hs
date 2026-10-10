@@ -123,8 +123,12 @@ emit minify bits datas units = do
     -- arguments, runs the typed clause and keeps the next state, which shares
     -- all it did not change with the state before.
     typedHandler typed u h = do
-      ability <- maybe (Left ("unknown ability of handler " ++ C.handlerName h)) Right
-        (unitAbility u (C.handlerAbility h))
+      -- A handler of several abilities answers all their operations.
+      answered <- mapM (\ref -> maybe (Left ("unknown ability of handler " ++ C.handlerName h)) Right (unitAbility u ref)) (C.handlerAbilities h)
+      let ability = case answered of
+            first : _ -> first { C.abilityOperations = concatMap C.abilityOperations answered
+                               , C.abilityName = intercalate ", " (map C.abilityName answered) }
+            [] -> C.failAbility
       stateType <- traverse (jvmTypedType typed . fst) (C.handlerState h)
       let start = jvmTypedStart typed (C.handlerId h)
       let name = specName h
@@ -156,7 +160,7 @@ emit minify bits datas units = do
               | otherwise = [line "return " <> resultCodec <> line (".decode(" ++ typedResult ++ ".encode(result));")]
         pure (line "@Override" <> D.hardline <> line "public synchronized " <> s <> line " " <> D.block 2 (D.joinWith D.hardline (outcome ++ returned)))) (C.abilityOperations ability)
       pure (line ("/** The spec handler " ++ C.handlerName h ++ " for " ++ C.abilityName ability ++ ", with its state typed. */") <> D.hardline <>
-        line ("public static final class " ++ name ++ " implements " ++ abilitiesClassOf (ownerName ability) ++ "." ++ interfaceName ability ++ " ") <> D.block 2 (D.joinWith (D.hardline <> D.hardline)
+        line ("public static final class " ++ name ++ " implements " ++ intercalate ", " [abilitiesClassOf (ownerName a) ++ "." ++ interfaceName a | a <- answered] ++ " ") <> D.block 2 (D.joinWith (D.hardline <> D.hardline)
           ([ line "private final Map<String, Object> symbols;" <> maybe mempty (\t -> D.hardline <> line ("private " ++ t ++ " state;")) stateType
            , line "/** The handler for a law, in its context. */" <> D.hardline <>
              line ("public " ++ name ++ "(Map<String, Object> symbols) ") <> D.block 2 (D.joinWith D.hardline
