@@ -38,7 +38,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `cluster` handler: a million produces over 100 partitions, a consumer
   group of ten fetching and committing with a rebalance, and ten thousand
   transactions. Every definition of the model and the handler run typed.
-  It runs the whole workload at 0.57 (Rust), 1.03 (Go), 0.85 (Java) and 0.81
+  It runs the whole workload at 0.59 (Rust), 1.04 (Go), 0.76 (Java) and 0.90
   (Kotlin) million operations a second, holding about 190 to 270 MiB for the
   million records, where 0.21.0's generated Rust managed 9 operations a
   second, and 1.5 GiB, at two thousand.
