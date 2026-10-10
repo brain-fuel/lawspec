@@ -276,6 +276,14 @@ DEC-evidence-statuses:
   opened: 0.12.0
   decided: 0.15.0
 
+DEC-environment-attestation:
+  status: decided
+  question: How does lawspec evidence say which obligations were tested against stand-ins rather than the real dependencies?
+  answer: |
+    By reading an environment attestation, a versioned JSON document any tool may write, that records for one run in one environment each dependency's endpoint and whether it was the real dependency or a stand-in, with the stand-in's identity, version and declared conformance level. A dependency is matched by name to an ability's resolved identity, whose production handler a law runs under, or to a native adapter or bound function a law calls; each law whose tests ran is reported with the environment and the dependencies it ran against. It is reporting only, like the harness plane: no status changes and no law means anything different. lawspec test stores the attestation with the run's results, so a later lawspec evidence shows it. Recorded in docs/reference/language/evidence-and-discharge.md and CHANGELOG [Unreleased].
+  opened: 0.21.0
+  decided: 0.21.0
+
 DEC-domain-modeling-primitives:
   status: decided
   question: How does LawSpec express domain types whose illegal states are unrepresentable?

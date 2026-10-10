@@ -6,6 +6,10 @@ keep-a-changelog:
   kind: article
   title: Keep a Changelog 1.0.0
   locator: https://keepachangelog.com/en/1.0.0/
+rfc3339:
+  kind: article
+  title: "RFC 3339: Date and Time on the Internet: Timestamps"
+  locator: https://www.rfc-editor.org/rfc/rfc3339
 semver-2:
   kind: article
   title: Semantic Versioning 2.0.0
@@ -274,6 +278,10 @@ REQ-abilities:
   kind: requirement
   title: Abilities name dependencies; every handler keeps the ability's laws, spec handlers are checked by the compiler and native ones property-tested, on every target.
   locator: docs/reference/language/abilities.md
+REQ-environment-attestation:
+  kind: requirement
+  title: lawspec evidence reports, from an environment attestation, which tested obligations ran against stand-ins, and changes no status.
+  locator: docs/reference/language/evidence-and-discharge.md
 REQ-law-primitives:
   kind: requirement
   title: Matchers, portable regexes, typed failures, tables, description examples, recorded values and resources check what they read as, on every target.

@@ -145,21 +145,32 @@ declarations = joinWith (softbreak <> softbreak)
   , alias "DischargeStatus" (map quoted ["proved", "exhaustively-checked", "property-tested", "measured", "runtime-checked", "default-handler", "assumed"])
   , interface "ObligationEvidence"
       (fields [("owner", "string"), ("declaration", "string"), ("stage", "string"), ("status", "DischargeStatus"), ("reason", "string")] ++
-       [("claim", union [text "Expr", text "null"])])
+       [("claim", union [text "Expr", text "null"])] ++
+       -- Where its tests ran, when an environment attestation touches it.
+       fields [("environment?", "string"), ("environmentRun?", "AttestedRun"), ("against?", "AttestedDependency[]")])
+  , interface "AttestedRun" (fields [("id", "string"), ("startedAt", "string"), ("recordedAt", "string")])
+  , interface "AttestedStandIn" (fields [("identity", "string"), ("version", "string"), ("conformance", "string"), ("historyDigest?", "string")])
+  , interface "AttestedDependency"
+      ((fields [("dependency", "string"), ("endpoint", "string"), ("reached", "boolean")]) ++
+       [("kind", union (map quoted ["real", "stand-in"]))] ++ fields [("standIn?", "AttestedStandIn")])
+  , interface "AttestationView"
+      (fields [("environment", "string"), ("run", "AttestedRun"), ("producer?", "PackageVersion")] ++
+       [("dependencies", array (text "(AttestedDependency & {obligations: string[]})"))])
   , interface "PackageVersion" (fields [("name", "string"), ("version", "string")])
   , interface "Package" (fields [("name", "string"), ("version", "string"), ("dependencies?", "Record<string, string>"), ("sources", "Source[]")])
   , interface "PackageView" (fields [("name", "string"), ("version", "string"), ("dependencies", "Record<string, string>"), ("units", "string[]")])
   , interface "CheckRequest"
       [("sources", text "Source[]"), ("schemaVersion?", union [text "3", text "4"]),
        ("machineBits?", union [text "32", text "64"]), ("generation?", text "Partial<Generation>"), ("nativeBindings?", text "NativeBindings"),
-       ("package?", text "PackageVersion"), ("dependencies?", text "Record<string, string>"), ("packages?", text "Package[]"), ("cacheDirectory?", text "string")]
+       ("package?", text "PackageVersion"), ("dependencies?", text "Record<string, string>"), ("packages?", text "Package[]"), ("cacheDirectory?", text "string"),
+       ("attestation?", text "unknown")]
   , interface "GenerationRequest extends CheckRequest" (fields [("target", "Target"), ("sourceDir?", "string"), ("testDir?", "string"), ("minify?", "boolean")])
   , interface "Result"
       ([("schemaVersion", union [text "3", text "4"]), ("machineBits?", union [text "32", text "64"])] ++
        fields [("generation?", "Generation"), ("units?", "Unit[]"), ("dataTypes?", "DataTypeDeclaration[]"), ("definitions?", "Definition[]"), ("laws?", "Law[]")] ++
        [("contracts?", array (record (fields [("owner", "string"), ("contract", "Contract")])))] ++
        fields [("refinements?", "Refinement[]"), ("diagnostics", "Diagnostic[]"), ("expansions?", "string[]"), ("files?", "Artifact[]")] ++
-       [("evidence?", text "ObligationEvidence[]"), ("packages?", text "PackageView[]"), ("project?", record (fields [("package?", "PackageVersion"), ("dependencies", "Record<string, string>")]))])
+       [("evidence?", text "ObligationEvidence[]"), ("attestation?", text "AttestationView"), ("packages?", text "PackageView[]"), ("project?", record (fields [("package?", "PackageVersion"), ("dependencies", "Record<string, string>")]))])
   , interface "PayloadPredicate" (fields [("binder", "Binder"), ("predicate", "Expr")])
   , interface "MatchCase" (fields [("constructor", "string"), ("binders", "Binder[]"), ("body", "Expr")])
   , alias "DataValue" [text "ScalarValue", variant "data" [("type", "Type"), ("constructor", "string"), ("fields", "DataValue[]")]]

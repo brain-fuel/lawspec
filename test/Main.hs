@@ -26,6 +26,7 @@ import qualified TargetNamesSpec
 import qualified TimeSpec
 import qualified ImportSpec
 import qualified DischargeSpec
+import qualified AttestationSpec
 import qualified ApiContractSpec
 import qualified DataShapeSpec
 import qualified GadtSpec
@@ -74,6 +75,7 @@ main = hspec $ do
   TimeSpec.test_durationsAreExactAndPortable
   ImportSpec.test_importsResolveAcrossUnitsWithoutLeakingAdapters
   DischargeSpec.test_lawsAreDischargedWithHonestEvidence
+  AttestationSpec.test_attestationReportsWhereTestsRanWithoutChangingEvidence
   ApiContractSpec.test_compilerApiAnswersEveryRequestByItsDocumentedContract
   DataShapeSpec.test_dataTypesBecomeEachTargetsIdiomaticShape
   GadtSpec.test_gadtMatchesRefineTypesLocally

@@ -8,11 +8,11 @@ title: CLI
 ```text
 lawspec init --target <language> [--project <directory>] [--machine-bits <32|64>] [--minify] [--config <path>]
 lawspec check [--target <language>] [--machine-bits <32|64>] [--json] [--no-cache] [--config <path>]
-lawspec evidence [<unit> | <unit>::<declaration>] [--target <language>] [--machine-bits <32|64>] [--json] [--no-cache] [--config <path>]
+lawspec evidence [<unit> | <unit>::<declaration>] [--attestation <file>] [--target <language>] [--machine-bits <32|64>] [--json] [--no-cache] [--config <path>]
 lawspec explain [<unit>::<law>] [--machine-bits <32|64>] [--json] [--no-cache] [--config <path>]
 lawspec doctor [--target <language>] [--json] [--config <path>]
 lawspec generate [--target <language>] [--dry-run | --check] [--minify] [--machine-bits <32|64>] [--json] [--no-cache] [--config <path>]
-lawspec test [--target <language>] [--fresh] [--seed <n>] [--update-recorded] [--tag <t>] [--exclude-tag <t>] [--report junit=<path>] [--coverage] [--benchmarks] [--minify] [--machine-bits <32|64>] [--json] [--no-cache] [--config <path>]
+lawspec test [--target <language>] [--fresh] [--seed <n>] [--attestation <file>] [--update-recorded] [--tag <t>] [--exclude-tag <t>] [--report junit=<path>] [--coverage] [--benchmarks] [--minify] [--machine-bits <32|64>] [--json] [--no-cache] [--config <path>]
 lawspec package [--project <package directory>] [--machine-bits <32|64>] [--json]
 lawspec examples [--example payments] [--target <language>] [--output <directory>] [--machine-bits <32|64>] [--minify] [--json]
 lawspec --version
@@ -98,8 +98,18 @@ and its harness are kept apart: the harness can never change the obligation.
   No match is an error.
 - Binding, codec, generator and native-function obligations of the selected
   targets are included and labelled with their target.
+- `--attestation <file>`: an environment attestation, a versioned JSON
+  document any tool may write, that says where each dependency of a run was
+  wired and whether it was the real dependency or a stand-in. Each tested law
+  that relies on an attested dependency gets a line saying where it ran and
+  against what, and an `ENVIRONMENT` section lists the dependencies. Without
+  it, the `attestation` path in `lawspec.json` is read; without either, each
+  law shows the attested `lawspec test` run it last passed in, if any. No
+  status changes. See
+  [where the tests ran](language/evidence-and-discharge.md#where-the-tests-ran).
 - `--json` prints the `ObligationEvidence` records; a law with a harness has
-  `harness` (its settings) and, after a run, `adequacy` (its statistics).
+  `harness` (its settings) and, after a run, `adequacy` (its statistics); a law
+  an attestation touches has `environment`, `environmentRun` and `against`.
 
 ## `explain`
 
@@ -179,6 +189,12 @@ them.
   compares with `recorded "name"` again, under `recorded/<unit>/<name>` beside
   `lawspec.json`. Without it, a missing or different recording fails its law.
   See [recorded values](language/laws-and-examples.md#recorded-values).
+- `--attestation <file>`: the environment attestation of the environment the
+  tests run in (default: the `attestation` path in `lawspec.json`). It is
+  checked, kept with the run's results, and each law it touches that passes
+  names it, so `lawspec evidence` later shows which laws ran against
+  stand-ins. A law it touches runs again when its dependencies are wired differently. It
+  changes no law and no outcome.
 - `--seed <n>`: the property tests' random seed. Without it, each run draws a
   new one, and the summary prints it. A recorded pass keeps the seed it ran
   with.

@@ -112,11 +112,102 @@ Each obligation has a stage:
 | `codec`, `generator`, `native-function` | A codec hook, generator factory or bound native function | assumed |
 | `handler` | A built-in ability's production handler: the runtime's default, or one bound in `lawspec.json` | default-handler, or assumed when bound |
 
+## Where the tests ran
+
+A law that runs under an ability's production handler, or calls an adapter,
+is tested against whatever that dependency was wired to when the tests ran:
+the real service, or a stand-in for it. An environment attestation records
+which, and `lawspec evidence` reports it beside each law it touches.
+
+An environment attestation is a versioned JSON document that any tool may
+write: for one run in one environment, where each dependency was wired and
+whether it was the real dependency or a stand-in.
+
+```json
+{
+  "format": "environment-attestation",
+  "version": 1,
+  "environment": "staging",
+  "run": {
+    "id": "839f6cf4-02e4-4a52-971f-e1dbdca1d141",
+    "started_at": "2026-10-09T19:30:31.606738Z",
+    "recorded_at": "2026-10-09T19:30:33.153789Z"
+  },
+  "dependencies": [
+    {
+      "name": "shop.orders::Gateway",
+      "endpoint": "localhost:9092",
+      "reached": true,
+      "kind": "stand-in",
+      "stand_in": { "product": "acme/gateway", "version": "0.1.0", "conformance": "3" }
+    },
+    {
+      "name": "shop.orders::normalize",
+      "endpoint": "https://normalize.example.com",
+      "reached": true,
+      "kind": "real"
+    }
+  ]
+}
+```
+
+| Field | Meaning |
+| --- | --- |
+| `format` | `"environment-attestation"`. |
+| `version` | `1`. Another version is rejected; unknown fields are ignored. |
+| `environment` | The environment's name, not empty. |
+| `run.id` | The run's identity, not empty; compared, never parsed. |
+| `run.started_at`, `run.recorded_at` | RFC 3339 times; `recorded_at` is not before `started_at`. |
+| `producer` | Optional: the writing tool's `name` and `version`. Informative only. |
+| `dependencies[].name` | The dependency, unique in the document. |
+| `dependencies[].endpoint` | The endpoint it was wired to: `host:port` or a URL. |
+| `dependencies[].reached` | Whether the writer reached the endpoint when it recorded the run. |
+| `dependencies[].kind` | `real` or `stand-in`. |
+| `dependencies[].stand_in` | Present exactly when `kind` is `stand-in`: the stand-in's identity (`product`), its `version` and the `conformance` level its maker declares, with an optional `history_digest`, a digest of the history it was recorded from. |
+
+A dependency's `name` matches what a law relies on:
+
+- an ability, by its resolved identity, `unit::ability::Name` or
+  `unit::Name` (with its type arguments, if any, as the evidence spells
+  them), when the law runs under that ability's production handler, directly
+  or through the definitions it calls; a law under a spec handler does not
+  touch the dependency;
+- an adapter or bound native function, `unit::name`, that the law calls.
+
+Each law obligation whose evidence comes from tests that ran (exhaustively
+checked by its tests, property tested, measured or known failing) and that
+relies on an attested dependency is reported with `environment`,
+`environmentRun` and `against`, the dependencies it ran against. Its status
+stays what it was:
+
+```text
+PROPERTY TESTED (2)
+  law shop.orders::checkout charges the amount: checkout (cents)
+    the generated tests check 100 generated cases, 4 boundary cases and 0 examples; relies on the native shop.orders::ability::Gateway handler
+    ran in environment staging (run 839f6cf4-02e4-4a52-971f-e1dbdca1d141) against shop.orders::Gateway: stand-in acme/gateway 0.1.0 (conformance level 3) at localhost:9092
+```
+
+An `ENVIRONMENT` section then lists each dependency and how many tested
+obligations rely on it, or that none does. Proved laws, laws the compiler
+checked itself, skipped laws and every other obligation are unchanged.
+
+The attestation is reporting only: it never changes what a law means, whether
+it passes or how it is discharged ref:DEC-environment-attestation. The
+conformance level is the one the stand-in's maker declares; LawSpec records
+it and does not judge it.
+
+`lawspec evidence --attestation <file>` reads an attestation, as does an
+`attestation` path in `lawspec.json`. `lawspec test --attestation <file>`
+keeps the attestation with the run's results in `.lawspec/results`, and each
+law it touches that passes in that run names it, so a later `lawspec evidence`
+shows where each law last passed. See [the CLI](../cli.md#evidence).
+
 ## Reading the evidence
 
 - `lawspec check` prints the number of obligations with each status.
 - `lawspec evidence` lists each obligation with its claim and reason, grouped
   by status. It accepts a unit or a `unit::declaration` filter, and `--json`
-  prints the API records.
+  prints the API records. With an environment attestation it says where each
+  tested law ran.
 - The compiler API reports the obligations in the `evidence` field of every
-  result. See [the API reference](../api.md#evidence).
+  result, and a request's `attestation` adds where the tests ran. See [the API reference](../api.md#evidence).

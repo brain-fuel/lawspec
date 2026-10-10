@@ -240,6 +240,37 @@ export interface ObligationEvidence {
   status: DischargeStatus;
   reason: string;
   claim: Expr | null;
+  environment?: string;
+  environmentRun?: AttestedRun;
+  against?: AttestedDependency[];
+}
+
+export interface AttestedRun {
+  id: string;
+  startedAt: string;
+  recordedAt: string;
+}
+
+export interface AttestedStandIn {
+  identity: string;
+  version: string;
+  conformance: string;
+  historyDigest?: string;
+}
+
+export interface AttestedDependency {
+  dependency: string;
+  endpoint: string;
+  reached: boolean;
+  kind: 'real' | 'stand-in';
+  standIn?: AttestedStandIn;
+}
+
+export interface AttestationView {
+  environment: string;
+  run: AttestedRun;
+  producer?: PackageVersion;
+  dependencies: (AttestedDependency & {obligations: string[]})[];
 }
 
 export interface PackageVersion {
@@ -271,6 +302,7 @@ export interface CheckRequest {
   dependencies?: Record<string, string>;
   packages?: Package[];
   cacheDirectory?: string;
+  attestation?: unknown;
 }
 
 export interface GenerationRequest extends CheckRequest {
@@ -294,6 +326,7 @@ export interface Result {
   expansions?: string[];
   files?: Artifact[];
   evidence?: ObligationEvidence[];
+  attestation?: AttestationView;
   packages?: PackageView[];
   project?: {package?: PackageVersion; dependencies: Record<string, string>;};
 }

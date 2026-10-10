@@ -75,12 +75,16 @@ export async function recordedDigest(folder) {
 }
 
 // The result key of each law in a target's test manifest.
-export function lawKeys({ build, target, machineBits, minify, tests, files, environment, project }) {
+// A law an environment attestation touches is keyed by how its dependencies
+// were wired too, so a run against other endpoints, or the real dependency
+// in place of a stand-in, runs it again; other laws' keys are unchanged.
+export function lawKeys({ build, target, machineBits, minify, tests, files, environment, project, attested = new Map() }) {
   const contents = new Map(files.map((file) => [file.path, file.content]));
   const configuration = JSON.stringify({ ...target, root: undefined });
   return new Map(tests.map((entry) => [entry.law, digest(JSON.stringify([
     build, configuration, machineBits, minify, entry.key, digest(contents.get(entry.file) ?? ""),
     environment, entry.callsAdapters ? project : null,
+    ...(attested.has(entry.law) ? [attested.get(entry.law)] : []),
   ]))]));
 }
 

@@ -13,7 +13,7 @@
 --   assumed               native adapters, bindings and generators on trust
 {-# OPTIONS_GHC -fno-cse -fno-full-laziness #-}
 module LawSpec.Discharge
-  ( dischargeEvidence, bindingEvidence, defaultHandlerEvidence, lawClaim
+  ( dischargeEvidence, bindingEvidence, defaultHandlerEvidence, lawClaim, callees
   ) where
 
 import Control.Monad (forM)

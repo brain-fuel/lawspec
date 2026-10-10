@@ -75,3 +75,97 @@ test('a false law over definitions with a finite domain is refuted', async t => 
   assert.equal(result.diagnostics[0].code, 'refuted');
   assert.match(result.diagnostics[0].message, /law always positive is false for x = -128/);
 });
+
+// An environment attestation (versioned JSON, written by any tool) says
+// where each dependency of a run was wired; evidence reports it and changes
+// no status.
+const attestedSpec = `unit shop.orders
+
+type Receipt is Receipt cents :: Int32 end
+ability Gateway is
+  capture :: Int32 -> Receipt
+end
+normalize :: Int32 -> Int32
+definition twice (x :: Int32) :: BigInt is x + x end
+definition checkout (cents :: Int32) :: Bool is
+  match capture cents with | Receipt paid -> paid == cents end
+end
+
+law \`checkout charges the amount\` is
+  definition is \`for all\` (cents :: Int32) . checkout cents = true end
+end
+law \`normalizing is idempotent\` is
+  definition is \`for all\` (x :: Int32) . normalize (normalize x) = normalize x end
+end
+law \`doubling\` is
+  definition is \`for all\` (x :: Int32) . twice x = x * 2 end
+end
+`;
+
+const attestation = (id, gateway = {kind: 'stand-in', stand_in: {product: 'acme/gateway', version: '0.1.0', conformance: '3'}}) => ({
+  format: 'environment-attestation', version: 1, environment: 'staging',
+  run: {id, started_at: '2026-10-09T19:30:31Z', recorded_at: '2026-10-09T19:30:33Z'},
+  dependencies: [
+    {name: 'shop.orders::Gateway', endpoint: 'localhost:9092', reached: true, ...gateway},
+    {name: 'shop.orders::normalize', endpoint: 'https://normalize.example.com', reached: true, kind: 'real'},
+    {name: 'payments', endpoint: 'https://payments.example.com', reached: false, kind: 'real'},
+  ],
+});
+
+test('evidence --attestation reports which tested laws ran against stand-ins, changing no status', async t => {
+  const root = await project(t, attestedSpec);
+  await writeFile(path.join(root, 'staging.json'), JSON.stringify(attestation('run-1')));
+  const plain = JSON.parse(await lawspec(root, 'evidence', '--json'));
+  const attested = JSON.parse(await lawspec(root, 'evidence', '--json', '--attestation', 'staging.json'));
+  const find = (list, name) => list.find(item => item.declaration === name);
+  const checkout = find(attested, 'shop.orders::law::checkout charges the amount');
+  assert.equal(checkout.status, 'property-tested');
+  assert.equal(checkout.environment, 'staging');
+  assert.equal(checkout.environmentRun.id, 'run-1');
+  assert.deepEqual(checkout.against.map(d => [d.dependency, d.kind, d.standIn?.conformance]), [['shop.orders::Gateway', 'stand-in', '3']]);
+  assert.equal(find(attested, 'shop.orders::law::normalizing is idempotent').against[0].kind, 'real');
+  assert.equal(find(attested, 'shop.orders::law::doubling').environment, undefined);
+  // The plane rule: without the added fields, the evidence is what it was.
+  const strip = ({environment, environmentRun, against, ...rest}) => rest;
+  assert.deepEqual(attested.map(strip), plain);
+  const text = await lawspec(root, 'evidence', '--attestation', 'staging.json');
+  assert.match(text, /ran in environment staging \(run run-1\) against shop\.orders::Gateway: stand-in acme\/gateway 0\.1\.0 \(conformance level 3\) at localhost:9092/);
+  assert.match(text, /ENVIRONMENT staging \(run run-1, recorded 2026-10-09T19:30:33Z\)/);
+  assert.match(text, /payments: real at https:\/\/payments\.example\.com \(not reached when recorded\); no tested obligation relies on it/);
+  assert.match(text, /PROPERTY TESTED \(2\)/);
+});
+
+test('lawspec.json names an attestation, and a malformed one is rejected', async t => {
+  const root = await project(t, attestedSpec);
+  await writeFile(path.join(root, 'lawspec.json'), JSON.stringify({version: 1, sources: ['laws'], targets: [], attestation: 'staging.json'}));
+  await writeFile(path.join(root, 'staging.json'), JSON.stringify(attestation('run-2')));
+  const evidence = JSON.parse(await lawspec(root, 'evidence', '--json'));
+  assert.equal(evidence.find(item => item.declaration === 'shop.orders::law::checkout charges the amount').environmentRun.id, 'run-2');
+  await writeFile(path.join(root, 'staging.json'), JSON.stringify({...attestation('run-3'), version: 2}));
+  const rejected = JSON.parse(await lawspec(root, 'evidence', '--json'));
+  assert.equal(rejected.diagnostics[0].code, 'attestation');
+  assert.match(rejected.diagnostics[0].message, /version 2 is not known/);
+  const misplaced = JSON.parse(await lawspec(root, 'check', '--json', '--attestation', 'staging.json'));
+  assert.match(misplaced.diagnostics[0].message, /--attestation applies to evidence and test/);
+});
+
+test('evidence shows the attested run a law last passed in, from lawspec test results', async t => {
+  const root = await project(t, attestedSpec);
+  const results = path.join(root, '.lawspec', 'results');
+  await mkdir(results, {recursive: true});
+  // As lawspec test --attestation records them: checkout passed in run-4,
+  // normalizing in a run with no attestation.
+  await writeFile(path.join(results, 'javascript-000000000000.json'), JSON.stringify({version: 1,
+    laws: {
+      'shop.orders::law::checkout charges the amount': {key: 'k', seed: 1, passed: '2026-10-09T19:31:00.000Z', environment: 'run-4'},
+      'shop.orders::law::normalizing is idempotent': {key: 'k', seed: 1, passed: '2026-10-09T19:31:00.000Z'},
+    },
+    attestations: {'run-4': attestation('run-4')}}));
+  const evidence = JSON.parse(await lawspec(root, 'evidence', '--json'));
+  const find = name => evidence.find(item => item.declaration === name);
+  assert.equal(find('shop.orders::law::checkout charges the amount').environmentRun.id, 'run-4');
+  assert.equal(find('shop.orders::law::normalizing is idempotent').environment, undefined);
+  const text = await lawspec(root, 'evidence');
+  assert.match(text, /ENVIRONMENT staging \(run run-4/);
+  assert.match(text, /shop\.orders::normalize: real at https:\/\/normalize\.example\.com; no tested obligation relies on it/);
+});

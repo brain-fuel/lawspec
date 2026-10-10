@@ -32,6 +32,7 @@ interface CheckRequest {
   dependencies?: Record<string, string>;
   packages?: Package[];
   cacheDirectory?: string;                  // keep work between runs here
+  attestation?: unknown;                    // an environment attestation document
 }
 
 interface GenerationRequest extends CheckRequest {
@@ -55,6 +56,11 @@ interface GenerationRequest extends CheckRequest {
   The WebAssembly compiler resolves it against the working directory, the
   only directory it can reach. Use one folder per compiler build; the CLI does
   (see [the compiler cache](cli.md#the-compiler-cache)).
+- `attestation` is an environment attestation document, version 1 (see
+  [where the tests ran](language/evidence-and-discharge.md#where-the-tests-ran)).
+  A malformed one, or an unknown format or version, is a diagnostic with code
+  `attestation`. It changes nothing that is compiled; it only annotates the
+  evidence.
 
 ### Schema versions
 
@@ -90,6 +96,7 @@ interface Result {
   contracts?: {owner: string; contract: Contract}[];
   refinements?: Refinement[];
   evidence?: ObligationEvidence[];
+  attestation?: AttestationView;            // when the request has one
   expansions?: string[];                    // expand and planGeneration
   files?: Artifact[];                       // planGeneration
   packages?: PackageView[];                 // when the request has package fields
@@ -283,6 +290,24 @@ interface ObligationEvidence {
   status: 'proved' | 'exhaustively-checked' | 'property-tested' | 'measured' | 'runtime-checked' | 'default-handler' | 'assumed';
   reason: string;
   claim: Expr | null;
+  environment?: string;                     // when an attestation touches it
+  environmentRun?: AttestedRun;
+  against?: AttestedDependency[];
+}
+
+interface AttestedRun { id: string; startedAt: string; recordedAt: string }
+interface AttestedDependency {
+  dependency: string;
+  endpoint: string;
+  reached: boolean;
+  kind: 'real' | 'stand-in';
+  standIn?: {identity: string; version: string; conformance: string; historyDigest?: string};
+}
+interface AttestationView {
+  environment: string;
+  run: AttestedRun;
+  producer?: {name: string; version: string};
+  dependencies: (AttestedDependency & {obligations: string[]})[];
 }
 ```
 
@@ -295,7 +320,10 @@ interface ObligationEvidence {
 | `binding`, `codec`, `generator`, `native-function` | The bound declaration | `null` |
 
 Law obligations come first, then contracts, adapters, constructions and
-bindings. Handle unknown `status` and `stage` values gracefully. See
+bindings. With a request `attestation`, each law obligation whose tests ran
+and that relies on an attested dependency gets `environment`,
+`environmentRun` and `against`; nothing else changes. The result's
+`attestation` lists each dependency with the obligations it touched. Handle unknown `status` and `stage` values gracefully. See
 [evidence and discharge](language/evidence-and-discharge.md).
 
 ## Packages in results

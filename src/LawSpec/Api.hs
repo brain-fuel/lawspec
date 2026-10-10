@@ -19,6 +19,8 @@ import LawSpec.NativeRequest
 import LawSpec.Public (programView)
 import LawSpec.Packages
 import LawSpec.Discharge (dischargeEvidence, bindingEvidence, defaultHandlerEvidence)
+import LawSpec.Attestation (Attestation, parseAttestation, attestedFields, attestationView)
+import Data.Foldable (toList)
 import LawSpec.TestManifest (TestEntry(..), testManifest, BenchmarkEntry(..), benchmarkManifest)
 import LawSpec.Memo (Table, newTable, memoized, withCacheDirectory)
 import qualified Data.ByteString.Lazy.Char8 as BC
@@ -33,13 +35,15 @@ import System.IO.Unsafe (unsafePerformIO)
 dispatch :: B.ByteString -> B.ByteString
 dispatch bytes = withCacheDirectory cacheDirectory $ encode $ versioned $ case eitherDecode bytes >>= parseEither request of
   Left err -> failure [Diagnostic "request" err Nothing]
-  Right ((method,sources,target,sourceDir,testDir,bits,settings,minify,native),(project,packages)) ->
+  Right (_, _, Left err) -> failure [Diagnostic "attestation" err Nothing]
+  Right ((method,sources,target,sourceDir,testDir,bits,settings,minify,native),(project,packages),Right attestation) ->
    -- Compilation, evidence and the testing plan depend on neither the method
    -- nor the target, so a compiler asked for several targets does them once.
    case memoized stagesTable (sharedRequest bytes) (stages project packages sources bits settings native) of
     Left response -> response
     Right (us,es,core,bindings,evidence,described,plan) ->
-     let result files = withPackages project described (programView settings us (map prettyExpanded es) files (evidence ++ bindingEvidence bindings ++ defaultHandlerEvidence core bindings) core) in case method of
+     let obligations = evidence ++ bindingEvidence bindings ++ defaultHandlerEvidence core bindings
+         result files = withAttestation attestation core obligations (withPackages project described (programView settings us (map prettyExpanded es) files obligations core)) in case method of
           "check" -> result []
           "expand" -> result []
           "planGeneration" -> either failure (withBenchmarks (benchmarkManifest target testDir core) . withTests (testManifest target testDir core) . result)
@@ -73,7 +77,25 @@ dispatch bytes = withCacheDirectory cacheDirectory $ encode $ versioned $ case e
       dependencies <- o .:? "dependencies" .!= mempty
       packages <- o .:? "packages" .!= []
       request' <- (,,,,,,,,) <$> o .:? "method" .!= "check" <*> o .: "sources" <*> o .:? "target" .!= "" <*> o .:? "sourceDir" <*> o .:? "testDir" <*> o .:? "machineBits" .!= 64 <*> o .:? "generation" .!= defaultGeneration <*> o .:? "minify" .!= False <*> pure native
-      pure (request', (Project rootPackage dependencies, packages))
+      -- An environment attestation is reporting only: it annotates the
+      -- evidence and never changes what is compiled or how a law is
+      -- discharged. ref:DEC-environment-attestation
+      attestation <- traverse parseAttestation <$> o .:? "attestation"
+      pure (request', (Project rootPackage dependencies, packages), attestation)
+
+-- | The evidence an environment attestation touches, with where its tests ran,
+-- and the attestation itself as the report reads it.
+withAttestation :: Maybe Attestation -> C.Program -> [Obligation] -> Value -> Value
+withAttestation (Just attestation) core obligations (Object o) = Object
+  $ KM.insert "attestation" (attestationView attestation core obligations)
+  $ maybe o (\items -> KM.insert "evidence" items o) annotated
+  where
+    annotated = case KM.lookup "evidence" o of
+      Just (Array items) -> Just (toJSON (zipWith annotate (toList items) (attestedFields attestation core obligations)))
+      _ -> Nothing
+    annotate (Object item) fields = Object (foldr (\(k, v) -> KM.insert k v) item fields)
+    annotate item _ = item
+withAttestation _ _ _ value = value
 
 -- | Which generated tests check each law, for running a subset of them.
 withTests :: [TestEntry] -> Value -> Value
@@ -116,7 +138,7 @@ stages project packages sources bits settings native = case preparePackages proj
 sharedRequest :: B.ByteString -> String
 sharedRequest bytes = case decode bytes of
   Just (Object o) -> BC.unpack (encode (Object (foldr (KM.delete . K.fromString) o
-    ["method", "target", "sourceDir", "testDir", "minify", "cacheDirectory"])))
+    ["method", "target", "sourceDir", "testDir", "minify", "cacheDirectory", "attestation"])))
   _ -> BC.unpack bytes
 
 -- | Two entries: each holds a whole compiled program and its plan.

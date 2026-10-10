@@ -35,6 +35,7 @@ names another file. Relative paths resolve from the file's directory.
 | `dependencies` | object | No | Package names mapped to version ranges. |
 | `packages` | array of paths | No | Package directories to load, each with a `lawspec-package.json`. It must include every package required directly or indirectly. |
 | `cache` | boolean | No | Keep the compiler's work in `.lawspec/cache` between runs. Default `true`; see [the compiler cache](cli.md#the-compiler-cache). |
+| `attestation` | path | No | An environment attestation that `lawspec test` and `lawspec evidence` read when `--attestation` is not given; see [where the tests ran](language/evidence-and-discharge.md#where-the-tests-ran). |
 
 How laws are tested (strategies, handlers, adequacy, tags, timeouts and
 retries) is not configured here: it is a [harness unit](language/harness.md),

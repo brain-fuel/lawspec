@@ -417,6 +417,7 @@ library
       LawSpec.Actors.Types
       LawSpec.Actors.Web
       LawSpec.Api
+      LawSpec.Attestation
       LawSpec.Backend
       LawSpec.BeamAbilities
       LawSpec.BeamActors
@@ -713,6 +714,7 @@ test-suite lawspec-test
       AbilitiesSpec
       ApiContractSpec
       AsyncSpec
+      AttestationSpec
       BeamSpec
       BoundsSpec
       BuiltinsSpec

@@ -6,6 +6,30 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- `lawspec evidence` says which tested laws ran against stand-ins. It reads
+  an environment attestation, a versioned JSON document any tool may write
+  for one run: the environment, the run's id and times, and for each
+  dependency its endpoint, whether it was reached, and whether it was the
+  real dependency or a stand-in (with the stand-in's identity, version,
+  declared conformance level and optional history digest). A dependency is
+  matched by name to an ability whose production handler a law runs under
+  (`unit::Name` or `unit::ability::Name`) or to an adapter or bound native
+  function the law calls. Each such law whose tests ran gets a line, and
+  `--json` the fields `environment`, `environmentRun` and `against`; an
+  `ENVIRONMENT` section lists the dependencies. It is reporting only: no
+  status changes and no law means anything different.
+- `lawspec evidence --attestation <file>` and `lawspec test --attestation
+  <file>`, or `attestation` in `lawspec.json`, name the attestation. `lawspec
+  test` keeps it with the run's results in `.lawspec/results`, so a later
+  `lawspec evidence` shows the attested run each law last passed in; a law it
+  touches runs again when its dependencies are wired differently.
+- The compiler API takes an `attestation` in any request: the result's
+  `evidence` carries the fields above and `attestation` lists each dependency
+  with the obligations it touched. A malformed attestation, or an unknown
+  format or version, is a diagnostic with code `attestation`.
+
 ## [0.22.0] - 2026-10-10
 
 ### Added

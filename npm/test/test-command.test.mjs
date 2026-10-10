@@ -404,3 +404,15 @@ test("BEAM cache keys include toolchain manifests and exclude compiled dependenc
     assert.notEqual(await projectDigest(root,new Set()),before);
   } finally { await rm(root,{recursive:true,force:true}); }
 });
+
+test("an attested law's key follows how its dependencies were wired; others keep theirs", () => {
+  const files = [{ path: "t", content: "x" }];
+  const keys = (attested) => lawKeys({ build: "b", target: { language: "python" }, machineBits: 64, minify: false,
+    tests: [law(0, "t"), law(1, "t")], files, environment: "e", project: "p", attested });
+  const plain = keys(undefined);
+  const standIn = keys(new Map([["example.unit::law::law 0", '["staging",[{"kind":"stand-in"}]]']]));
+  const real = keys(new Map([["example.unit::law::law 0", '["staging",[{"kind":"real"}]]']]));
+  assert.notEqual(standIn.get("example.unit::law::law 0"), plain.get("example.unit::law::law 0"));
+  assert.notEqual(standIn.get("example.unit::law::law 0"), real.get("example.unit::law::law 0"));
+  assert.equal(standIn.get("example.unit::law::law 1"), plain.get("example.unit::law::law 1"));
+});
