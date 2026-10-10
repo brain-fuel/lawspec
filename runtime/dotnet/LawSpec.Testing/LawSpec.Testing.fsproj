@@ -10,8 +10,16 @@
     <Compile Include="Generators.fs" />
     <Compile Include="Harness.fs" />
     <Compile Include="Property.fs" />
+    <Compile Include="CryptoVectors.fs" />
+    <Compile Include="Model.fs" />
+    <Compile Include="History.fs" />
+    <Compile Include="ModelParallel.fs" />
+    <Compile Include="Search.fs" />
+    <Compile Include="Schedule.fs" />
+    <Compile Include="Resources.fs" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../LawSpec.Runtime/LawSpec.Runtime.fsproj" />
+    <PackageReference Include="xunit.v3.extensibility.core" Version="4.0.2" />
   </ItemGroup>
 </Project>

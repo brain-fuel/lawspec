@@ -217,3 +217,7 @@ let setHandlerState (native: obj) (state: Value) =
 /// A cell native code can use for a handler's state.
 [<CompiledName("NewCell")>]
 let newCell (initial: Value) = Cell initial
+
+/// A production handler made with a resource, asked for where no case has one.
+[<CompiledName("ResourceRequired")>]
+let resourceRequired (ability: string) : Handler = fail "ResourceRequired" ability

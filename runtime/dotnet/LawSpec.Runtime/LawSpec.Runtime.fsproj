@@ -20,6 +20,14 @@
     <Compile Include="Codecs.fs" />
     <Compile Include="Effects.fs" />
     <Compile Include="Defaults.fs" />
+    <Compile Include="Crypto.fs" />
+    <Compile Include="NetworkCrypto.fs" />
     <Compile Include="Runtime.fs" />
+    <Compile Include="Policy.fs" />
+    <Compile Include="Tasks.fs" />
+    <Compile Include="Workflow.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="BouncyCastle.Cryptography" Version="2.7.0" />
   </ItemGroup>
 </Project>
