@@ -58,6 +58,11 @@ toolchain project target = do
       gradle <- (\exists -> if exists then local else "gradle") <$> doesFileExist local
       -- Gradle prints failing test names only; assertion messages are in the XML reports.
       pure (Toolchain gradle ["test", "--console=plain"] (pure ()) (xmlReports (project </> "build/test-results/test")))
+    -- dotnet test builds the solution incrementally (MSBuild compares file
+    -- contents' timestamps at full resolution) and runs it on
+    -- Microsoft.Testing.Platform, as global.json selects.
+    _ | target `elem` ["fsharp", "csharp"] ->
+        pure (plain "dotnet" ("test" : ["--no-restore" | offline]))
     _ -> ioError (userError ("unknown target: " ++ target))
   where plain c a = Toolchain c a (pure ()) (pure "")
 
@@ -89,7 +94,7 @@ compileFailure output = any rebarFailure (lines lowered) || any ((`isInfixOf` lo
   , "not in scope", "error TS", "couldn't match expected type"
   , "syntax error before:", "undefined function", "** (CompileError)"
   , "error: Type mismatch", "error: Unknown variable", "error: Unknown type"
-  , "error: Unknown module", "error: Unknown value" ]
+  , "error: Unknown module", "error: Unknown value", ": error FS", ": error CS" ]
   where
     lowered = map toLower output
     rebarFailure line = all (`isInfixOf` line) ["===>", "compiling ", " failed"]

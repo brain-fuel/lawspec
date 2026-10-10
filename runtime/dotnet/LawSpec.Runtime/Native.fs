@@ -41,6 +41,22 @@ type ExactDecimal =
         | _ -> false
     override this.GetHashCode() = hash (this.Coefficient, this.Exponent)
     override this.ToString() = sprintf "%Oe%d" this.Coefficient this.Exponent
+    /// Both decimals at the smaller exponent.
+    static member private Aligned(a: ExactDecimal, b: ExactDecimal) =
+        let e = min a.Exponent b.Exponent
+        let scale (d: ExactDecimal) = d.Coefficient * BigInteger.Pow(BigInteger 10, d.Exponent - e)
+        scale a, scale b, e
+    /// Exact sum, at the finer of the two scales.
+    static member (+)(a: ExactDecimal, b: ExactDecimal) =
+        let x, y, e = ExactDecimal.Aligned(a, b)
+        { Coefficient = x + y; Exponent = e }
+    /// Exact difference, at the finer of the two scales.
+    static member (-)(a: ExactDecimal, b: ExactDecimal) =
+        let x, y, e = ExactDecimal.Aligned(a, b)
+        { Coefficient = x - y; Exponent = e }
+    /// Exact product.
+    static member (*)(a: ExactDecimal, b: ExactDecimal) =
+        { Coefficient = a.Coefficient * b.Coefficient; Exponent = a.Exponent + b.Exponent }
 
 /// A complex number of two single precision floats (Complex128 is
 /// System.Numerics.Complex).

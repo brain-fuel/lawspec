@@ -1,0 +1,6 @@
+@@ src/Example/ScalarAdapters.fs
+<<<<<<<
+let successor (value0: sbyte) : bigint = bigint value0 + 1I
+=======
+let successor (value0: sbyte) : bigint = bigint (value0 + 1y)
+>>>>>>>

@@ -7,9 +7,72 @@ open System
 open System.IO
 open System.Threading.Tasks
 
+/// A portable boolean as a .NET one.
+[<CompiledName("Truth")>]
+let truth (value: Value) =
+    match value with
+    | Bool b -> b
+    | _ -> Fail.raiseWith "BoolRequired" (sprintf "%A" value)
+
+[<CompiledName("Not")>]
+let not (value: Value) = Bool(Operators.not (truth value))
+
+/// The item of a list of values at a position.
+[<CompiledName("Item")>]
+let item (index: int) (values: Value list) = List.item index values
+
+/// The item of a list at a position.
+[<CompiledName("Nth")>]
+let nth (index: int) (items: 'a list) = List.item index items
+
+[<CompiledName("Some")>]
+let some (value: 'a) = Some value
+
+/// A data value's field at a position (a list's head and tail).
+[<CompiledName("Field")>]
+let field (value: Value) (index: int) =
+    match value, index with
+    | Data(_, fields), _ -> List.item index fields
+    | List(head :: _), 0 -> head
+    | List(_ :: tail), 1 -> List tail
+    | _ -> Fail.raiseWith "ExpectedData" (sprintf "%A" value)
+
+/// Whether a value was built by a constructor.
+[<CompiledName("HasTag")>]
+let hasTag (tag: string) (value: Value) =
+    match value with
+    | Data(t, _) -> t = tag
+    | List [] -> tag = "List::Nil"
+    | List _ -> tag = "List::Cons"
+    | _ -> false
+
+/// A match no branch covers.
+[<CompiledName("NoMatch")>]
+let noMatch (value: Value) : Value = Fail.raiseWith "MatchFailure" (sprintf "%A" value)
+
+/// Whether every element of a list satisfies a predicate.
+[<CompiledName("AllElements")>]
+let allElements (value: Value) (predicate: Value -> Value) =
+    match value with
+    | List items -> Bool(items |> List.forall (predicate >> truth))
+    | _ -> Fail.raiseWith "ListRequired" ""
+
+/// Whether every payload of a container satisfies its parameter's predicate.
+[<CompiledName("AllPayloads")>]
+let allPayloads (value: Value) (t: TypeRef) (predicates: (Value -> Value) list) (schema: Schema.Schema) =
+    Bool(Schema.allPayloads value t (predicates |> List.map (fun p -> p >> truth)) schema)
+
+/// Nullable or Optional, absent.
+[<CompiledName("Absent")>]
+let absent (kind: string) = Presence(kind, None)
+
+/// Nullable or Optional, present.
+[<CompiledName("Present")>]
+let present (kind: string) (value: Value) = Presence(kind, Some value)
+
 /// Fail a contract unless it holds.
 [<CompiledName("Require")>]
-let require (holds: Value) (context: string) =
+let require (holds: Value) (context: string) : unit =
     match holds with
     | Bool true -> ()
     | Bool false -> Fail.raiseWith "ContractFailed" context

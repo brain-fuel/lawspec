@@ -1,0 +1,8 @@
+@@ src/Example/ScalarAdapters.fs
+<<<<<<<
+LawSpec.Optional<LawSpec.Nullable<sbyte>> =
+    value0
+=======
+LawSpec.Optional<LawSpec.Nullable<sbyte>> =
+    LawSpec.Optional.Undefined
+>>>>>>>

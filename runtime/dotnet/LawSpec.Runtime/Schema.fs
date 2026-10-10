@@ -363,3 +363,35 @@ let allPayloads (value: Value) (t: TypeRef) (predicates: (Value -> bool) list) (
         validate value t schema |> ignore
         payload (Container(name, predicates |> List.map Predicate)) value schema
     | Parameter _ -> fail "UnboundSchemaParameter" ""
+
+// ---------------------------------------------------------------------------
+// Builders, as the generated schema module writes a program's data
+
+/// A field's name and type (by key).
+let field (name: string) (key: string) = name, Scalar.typeOf key
+
+/// A data definition.
+let definition (name: string) (parameters: int) (constructors: Constructor list) (handle: bool) =
+    { Name = name; Parameters = parameters; Constructors = constructors; Handle = handle }
+
+let withPredicates predicates (c: Constructor) = { c with Predicates = predicates }
+
+let withGenerators (generators: (int * (Schema -> TypeRef list -> Value list -> FieldHints)) list) (c: Constructor) =
+    { c with Generators = Map.ofList generators }
+
+let withIndices indices (c: Constructor) = { c with Indices = indices }
+
+let withRefinements refinements (c: Constructor) = { c with Refinements = refinements }
+
+let withExistentials count (c: Constructor) = { c with Existentials = count }
+
+let withWitnesses witnesses (c: Constructor) = { c with Witnesses = witnesses }
+
+/// A refinement of a parameter, by position, to a type (by key).
+let refinement (index: int) (key: string) = index, Scalar.typeOf key
+
+/// A constructor contract's known parameter types, by position.
+let known (types: TypeRef list) = types |> List.mapi (fun i t -> i, t) |> Map.ofList
+
+/// A field's generation hints.
+let hints bounds lengths values = { Bounds = bounds; Lengths = lengths; Hints = values }

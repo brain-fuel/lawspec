@@ -448,6 +448,21 @@ let indexed (context: Context) (t: TypeRef) (target: BigInteger) (equations: Map
     | [] -> Gen.empty
     | _ -> Gen.bind (Gen.oneof (levels |> List.map Gen.constant)) (fun k -> generate t k (max budget costs.[(t, k)]))
 
+/// A bound on an input.
+let compareBound (op: string) (value: Value) = Compare(op, value)
+
+/// A bound on an input's length.
+let lengthBound (op: string) (value: Value) = Length(op, value)
+
+/// No index to aim at.
+let noIndex () : (BigInteger * Map<string, string list>) option = None
+
+/// An indexed family's target index and each constructor's index terms.
+let index (target: Value) (tags: string list) (terms: string list list) =
+    match target with
+    | Int n -> Some(n, Map.ofList (List.zip tags terms))
+    | _ -> Fail.raiseWith "IntegerRequired" "index target"
+
 /// The generator of an input of a type: native factories first, then the
 /// type's structure within a budget that grows with the size.
 let generator (context: Context) (t: TypeRef) (bounds: Bound list) (witnesses: Value list) (index: (BigInteger * Map<string, string list>) option) =

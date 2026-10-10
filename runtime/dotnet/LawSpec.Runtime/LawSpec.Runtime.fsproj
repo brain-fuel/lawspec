@@ -15,6 +15,7 @@
     <Compile Include="Random.fs" />
     <Compile Include="Schema.fs" />
     <Compile Include="Recorded.fs" />
+    <Compile Include="Portable.fs" />
     <Compile Include="Codecs.fs" />
     <Compile Include="Runtime.fs" />
   </ItemGroup>

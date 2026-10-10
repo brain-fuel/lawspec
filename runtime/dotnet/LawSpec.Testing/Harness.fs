@@ -106,9 +106,12 @@ let private observe (state: State) (o: Observation) =
         state.Target <- true
         if higher score state.Best then state.Best <- Some score
 
+/// What a case observed.
+let observation covers classes labels score = { Covers = covers; Classes = classes; Labels = labels; Score = score }
+
 /// One generated case: count it, record what it observed, then run it. After
 /// the first failure only the law runs (shrinking does not count cases).
-let sample (observation: unit -> Observation) (test: unit -> unit) =
+let sample (observation: unit -> Observation) (test: unit -> Value) : Value =
     match current.Value with
     | None -> Fail.raiseWith "HarnessObservationOutsideRun" ""
     | Some state when state.Failed ->
@@ -239,6 +242,10 @@ type Options =
       Observed: bool }
 
 let defaults = { Repeat = 1; Retries = 0; Timeout = None; Resources = false; Observed = true }
+
+/// A controlled run's options.
+let options (repeat: int) (retries: int) (timeout: int option) (resources: bool) (observed: bool) =
+    { Repeat = repeat; Retries = retries; Timeout = timeout; Resources = resources; Observed = observed }
 
 let private execute (law: string) (options: Options) (test: unit -> unit) : exn option =
     match options.Timeout with

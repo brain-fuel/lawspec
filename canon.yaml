@@ -19,6 +19,7 @@ ignore:
   - tools/*.mjs
   - editors/vscode/test/grammar.test.mjs
   - src/LawSpec/RuntimeSources.hs
+  - src/LawSpec/DotNetSources.hs
   - runtime/defaults/
 languages:
   folio:

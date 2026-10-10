@@ -756,11 +756,11 @@ let symbol (context: SymbolContext) (id: string) (description: string) = Symbol(
 let integerLiteral (digits: string) = Int(BigInteger.Parse(digits, Globalization.CultureInfo.InvariantCulture))
 
 [<CompiledName("DecimalOf")>]
-let decimalLiteral (coefficient: string) (exponent: int) =
+let decimalOf (coefficient: string) (exponent: int) =
     Value.Decimal(BigInteger.Parse(coefficient, Globalization.CultureInfo.InvariantCulture), exponent)
 
 [<CompiledName("RationalOf")>]
-let rationalLiteral (numerator: string) (denominator: string) =
+let rationalOf (numerator: string) (denominator: string) =
     ratio (BigInteger.Parse(numerator, Globalization.CultureInfo.InvariantCulture))
         (BigInteger.Parse(denominator, Globalization.CultureInfo.InvariantCulture))
 
@@ -772,7 +772,7 @@ let floatBits (width: int) (hex: string) =
 let textUnits (points: int list) = Text(textOfPoints points)
 
 [<CompiledName("BytesOf")>]
-let bytesLiteral (units: int list) = Bytes(units |> List.map (checkedUnit "Bytes" >> byte) |> Array.ofList)
+let bytesOf (units: int list) = Bytes(units |> List.map (checkedUnit "Bytes" >> byte) |> Array.ofList)
 
 [<CompiledName("RawOf")>]
-let rawLiteral (kind: string) (units: int list) = Raw(kind, units |> List.map (checkedUnit kind))
+let rawOf (kind: string) (units: int list) = Raw(kind, units |> List.map (checkedUnit kind))

@@ -10,7 +10,9 @@ export type Target =
     'rust' |
     'erlang' |
     'elixir' |
-    'gleam';
+    'gleam' |
+    'fsharp' |
+    'csharp';
 
 export interface Source {
   path: string;

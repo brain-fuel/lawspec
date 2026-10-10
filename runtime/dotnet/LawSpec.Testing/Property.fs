@@ -82,3 +82,31 @@ let check (label: string) (settings: Settings) (gen: Gen<Value list>) (property:
             sprintf "%s failed after %d passing case(s) and %d shrink(s): counterexample %s; seed %O (LAWSPEC_SEED=%O replays it)\n%s"
                 label passed steps (render best.Value) seed seed bestError.Message
         raise (LawSpecException("PropertyFailed", message, [], bestError))
+
+/// A law's generation settings.
+let settings (cases: int) (attempts: int) (shrinks: int) = { Cases = cases; MaxAttempts = attempts; MaxShrinks = shrinks }
+
+/// What generation reads: the schema, the case's symbols and the discard budget.
+let generation (schema: Schema.Schema) (symbols: Scalar.SymbolContext) (attempts: int) : Generators.Context =
+    { Schema = schema; Symbols = symbols; Factories = Map.empty; Attempts = attempts }
+
+/// Each boundary case, in order; the first that fails names its position.
+let boundaries (label: string) (cases: Value list list) (law: Value list -> Value) =
+    cases
+    |> List.iteri (fun i values ->
+        try
+            match law values with
+            | Bool true -> ()
+            | other -> Fail.raiseWith "ContractFailed" (sprintf "%s boundary %d returned %A" label i other)
+        with
+        | :? LawSpecException as e ->
+            raise (LawSpecException("BoundaryFailed", sprintf "%s boundary %d %s: %s" label i (render values) e.Message, [], e)))
+
+/// A strategy's value must lie inside the input's refinement.
+let checkDrawn (strategy: string) (input: string) (value: Value) (holds: bool) =
+    if holds then value
+    else Harness.abort "StrategyOutsideRefinement" (sprintf "strategy %s produced %s for %s, outside the input's refinement" strategy (Recorded.renderPlain value) input)
+
+/// A strategy's draw that keeps only values a predicate accepts.
+let suchThat (strategy: string) (predicate: Value -> bool) (limit: int) (gen: Gen<Value>) =
+    Gen.suchThat predicate limit (fun () -> Harness.abort "StrategyDiscards" (sprintf "strategy %s discarded %d values" strategy limit)) gen

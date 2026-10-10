@@ -1,0 +1,6 @@
+@@ src/Example/ScalarAdapters.fs
+<<<<<<<
+let sameSymbol (value0: LawSpec.Symbol) (value1: LawSpec.Symbol) : bool = value0 = value1
+=======
+let sameSymbol (value0: LawSpec.Symbol) (value1: LawSpec.Symbol) : bool = value0.Description = value1.Description
+>>>>>>>
