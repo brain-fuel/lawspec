@@ -1,0 +1,7 @@
+expect: a fingerprint is 8 bytes
+@@ src/Example/Crypto.fs
+<<<<<<<
+let fingerprint (hash: IHash) (bytes: byte[]) : byte[] = (hash.Sha3 bytes).Value.[0..7]
+=======
+let fingerprint (hash: IHash) (bytes: byte[]) : byte[] = (hash.Sha3 bytes).Value.[0..6]
+>>>>>>>

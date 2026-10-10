@@ -1,0 +1,9 @@
+expect-any: decapsulating gives the encapsulated secret [native] | a handshake carries the message
+@@ src/Native/Counting.fs
+<<<<<<<
+            inner.Decapsulate(key, ciphertext)
+=======
+            let secret = Array.copy (inner.Decapsulate(key, ciphertext)).Value
+            secret.[0] <- secret.[0] ^^^ 1uy
+            { LawSpec.Data.SharedSecret.Value = secret }
+>>>>>>>
