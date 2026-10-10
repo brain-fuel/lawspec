@@ -1,0 +1,15 @@
+expect: Logs: a new log takes its first record at offset zero [native]
+@@ src/example/composition.mjs
+<<<<<<<
+    return BigInt(records.length - 1);
+  }
+}
+
+/** The native handler of Reader: size. */
+=======
+    return BigInt(records.length);
+  }
+}
+
+/** The native handler of Reader: size. */
+>>>>>>>

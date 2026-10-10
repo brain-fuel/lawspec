@@ -156,6 +156,12 @@ data Ability = Ability
   -- one (handlers), set for the target being emitted; otherwise the tests
   -- use the hand-written <Ability>Handler in the unit's adapter module.
   , abilityNative :: Maybe [String]
+  -- What each operation that `fails with E` fails with: Fail E, by
+  -- operation. A native handler fails by raising the runtime's Fail.
+  , abilityFailures :: [(String, AbilityRef)]
+  -- ability A with T: each case that runs A's native handler makes it with
+  -- the case's T, a resource every such handler of the case shares.
+  , abilityResource :: Maybe Type
   } deriving (Eq, Show, Generic)
 
 -- A unit's ability, as its operations refer to it.
@@ -197,7 +203,15 @@ data Handler = Handler
   { handlerId :: Id, handlerName :: String, handlerAbility :: AbilityRef
   , handlerClauses :: [(String, Id)], handlerState :: Maybe (Type, Expr)
   , handlerOrigin :: Origin
+  -- handler h for A, B: the abilities after the first, answered from the
+  -- same state. A law that runs h for several makes one h and installs it
+  -- for each.
+  , handlerAlso :: [AbilityRef]
   } deriving (Eq, Show, Generic)
+
+-- Every ability a handler answers.
+handlerAbilities :: Handler -> [AbilityRef]
+handlerAbilities h = handlerAbility h : handlerAlso h
 -- Which handler a law runs under for one ability.
 data HandlerRef = ProductionHandler | SpecHandler Id | RecordingHandler HandlerRef
   deriving (Eq, Ord, Show, Generic)
@@ -208,7 +222,7 @@ failAbilityId = Id "lawspec::ability::Fail"
 failAbility :: Ability
 failAbility = Ability failAbilityId "Fail" [Id "Fail::e"]
   [("raise", Arrow (TypeVariable (Id "Fail::e")) (TypeVariable (Id "Fail::raise::a")))]
-  (GeneratedFrom failAbilityId) [] Nothing
+  (GeneratedFrom failAbilityId) [] Nothing [] Nothing
 
 -- A stable key for an ability instance, the same on every target: its
 -- identity, then its type arguments' keys in parentheses.
@@ -288,7 +302,12 @@ data Builtin = Length | IsPresent | PresentValue | RealPart | ImaginaryPart
   -- path or a saved environment, releaseResource kind value frees it, and
   -- freePort kind gives a port number. They act on the world, so they are
   -- not pure.
-  | AcquireResource | ReleaseResource | FreePort deriving (Eq, Show, Generic)
+  | AcquireResource | ReleaseResource | FreePort
+  -- Sequences (Text, Bytes and List): two joined, the items from one index
+  -- to another, the item at an index (a Maybe), the integers from one to
+  -- another, a Bytes' octets and back, a Text's UTF-8 encoding, an integer
+  -- in decimal, and texts joined by a separator.
+  | Append | Slice | At | Range | Octets | BytesOf | Utf8 | TextOf | Join deriving (Eq, Show, Generic)
 -- | What a law asserts: equations, implications and conjunctions, each equation
 -- with the evidence of how its sides are compared.
 data Proposition = Equation Evidence Expr Expr | Implication Expr Proposition | Conjunction [Proposition] deriving (Eq, Show, Generic)
@@ -556,6 +575,15 @@ builtinName Recorded = "recorded"
 builtinName AcquireResource = "acquireResource"
 builtinName ReleaseResource = "releaseResource"
 builtinName FreePort = "freePort"
+builtinName Append = "append"
+builtinName Slice = "slice"
+builtinName At = "at"
+builtinName Range = "range"
+builtinName Octets = "octets"
+builtinName BytesOf = "bytesOf"
+builtinName Utf8 = "utf8"
+builtinName TextOf = "textOf"
+builtinName Join = "join"
 
 -- | Example bindings are closed data, never computations or adapter invocations.
 isConcrete :: Expr -> Bool

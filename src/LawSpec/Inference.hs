@@ -539,7 +539,63 @@ builtin env n args
         Named ('@':_) -> require "Integer" t
         _ -> unless (case t of Named name -> isNumeric name; _ -> False) (throwC "numeric conversion requires a numeric operand")
       pure (Named n)
+  -- Arithmetic into a bounded integer type, taken from the context:
+  -- prelude.wrapping (n + 1) wraps around it, prelude.saturating stops at
+  -- its bounds, and prelude.bounded gives Nothing outside them.
+  | n `elem` ["wrapping","saturating","bounded"], [a] <- args = do
+      t <- infer env a >>= resolve
+      unless (case t of Named name -> isInteger name; _ -> False)
+        (throwC ("prelude." ++ n ++ " takes an integer, not " ++ prettyType t))
+      result <- Variable . (("bounded:" ++ n) ++) <$> fresh
+      pure (if n == "bounded" then Applied "Maybe" result else result)
+  -- Sequences: Text, Bytes and List (LawSpec.Core's Append ... Join).
+  | n == "append", [a,b] <- args = do
+      t <- infer env a >>= resolve
+      sequenceOnly n t
+      checkExpr env t b
+      resolve t
+  | n == "slice", [from,to,x] <- args = do
+      t <- infer env x >>= resolve
+      sequenceOnly n t
+      checkExpr env (Named "Integer") from
+      checkExpr env (Named "Integer") to
+      pure t
+  | n `elem` ["take","drop"], [k,x] <- args = do
+      t <- infer env x >>= resolve
+      sequenceOnly n t
+      checkExpr env (Named "Integer") k
+      pure t
+  | n == "at", [i,x] <- args = do
+      t <- infer env x >>= resolve
+      checkExpr env (Named "Integer") i
+      case t of
+        Applied "List" element -> pure (Applied "Maybe" element)
+        Named "Bytes" -> pure (Applied "Maybe" (Named "UInt8"))
+        _ -> throwC ("prelude.at needs a List or Bytes, not " ++ prettyType t)
+  | n == "range", [lo,hi] <- args = do
+      -- The integers from lo up to, not including, hi, of their type.
+      let (first, second) = if numericLiteral lo && not (numericLiteral hi) then (hi, lo) else (lo, hi)
+      t <- infer env first >>= resolve
+      checkExpr env t second
+      unless (case t of Named name -> isInteger name; _ -> False)
+        (throwC ("prelude.range counts integers, not " ++ prettyType t))
+      pure (Applied "List" t)
+  | n == "octets", [b] <- args = checkExpr env (Named "Bytes") b >> pure (Applied "List" (Named "UInt8"))
+  | n == "bytesOf", [xs] <- args = checkExpr env (Applied "List" (Named "UInt8")) xs >> pure (Named "Bytes")
+  | n == "utf8", [t] <- args = checkExpr env (Named "Text") t >> pure (Named "Bytes")
+  | n == "textOf", [x] <- args = do
+      t <- infer env x >>= resolve
+      unless (case t of Named name -> isInteger name; _ -> False)
+        (throwC ("prelude.textOf writes an integer, not " ++ prettyType t))
+      pure (Named "Text")
+  | n == "join", [sep,parts] <- args = do
+      checkExpr env (Named "Text") sep
+      checkExpr env (Applied "List" (Named "Text")) parts
+      pure (Named "Text")
   | otherwise = throwC ("unknown helper or wrong arity: prelude." ++ n)
+  where
+    sequenceOnly name t = unless (t `elem` [Named "Text", Named "Bytes"] || case t of Applied "List" _ -> True; _ -> False)
+      (throwC ("prelude." ++ name ++ " needs a Text, Bytes or List, not " ++ prettyType t))
 -- | The IR resolves every operation and the expected type of every adapter argument.
 typedExpression :: Int -> [(String,Type)] -> Expr -> Either String TypedExpr
 typedExpression = typedExpressionWithData []
@@ -617,6 +673,15 @@ typedExpressionWithSchemes declarations bits env e = do
           case wholeType of
             Applied "List" element -> sequence [descend (Just wholeType) whole, descend (Just element) part]
             _ -> mapM (descend Nothing) [whole, part]
+        -- A sequence helper's indices are Integers, and range's bounds and
+        -- append's sides have the result's type.
+        Apply _ _ | (Var n,args) <- application e, n `elem` ["prelude.slice","prelude.take","prelude.drop","prelude.at"] ->
+          sequence [descend (if i < length args - 1 then Just (Named "Integer") else Nothing) a | (i, a) <- zip [0 :: Int ..] args]
+        Apply _ _ | (Var "prelude.range", [lo,hi]) <- application e, Applied "List" element <- t ->
+          sequence [descend (Just element) lo, descend (Just element) hi]
+        Apply _ _ | (Var "prelude.append", [a,b]) <- application e -> sequence [descend (Just t) a, descend (Just t) b]
+        Apply _ _ | (Var n,args) <- application e, Just expected' <- lookup n fixedSignatures, length expected' == length args ->
+          sequence [descend (Just ty) a | (ty, a) <- zip expected' args]
         Apply _ _ | (Var n,args) <- application e, take 8 n == "prelude." -> mapM (descend Nothing) args
         -- With a numeric literal among its arguments, the function's
         -- expected type carries the argument's and the result's, so a
@@ -695,6 +760,12 @@ typedExpressionWithSchemes declarations bits env e = do
         fields' <- mapM (\(name, field) -> (,) name <$> resolve field) fields
         TypedCase tag fields' <$> resolveTree body) cases
       pure (TypedExpr ty' expression operands' conversion' cases')
+
+-- | The prelude helpers whose values have one type each.
+fixedSignatures :: [(String, [Type])]
+fixedSignatures =
+  [ ("prelude.octets", [Named "Bytes"]), ("prelude.bytesOf", [Applied "List" (Named "UInt8")])
+  , ("prelude.utf8", [Named "Text"]), ("prelude.join", [Named "Text", Applied "List" (Named "Text")]) ]
 
 -- | Whether an expression reads or replaces a field (see fieldAccessPrefix).
 isFieldNode :: Expr -> Bool

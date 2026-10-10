@@ -95,7 +95,13 @@ data Unit = Unit { unitName :: String, functions :: [(String, Type)], laws :: [L
   -- Derived: each law's harness plan, by the law's final name.
   , lawHarness :: [(String, HarnessPlan)]
   -- The unit's resources (resource T is acquire ... release ... end).
-  , resourceDeclarations :: [ResourceDeclaration] } deriving (Eq, Show, Generic)
+  , resourceDeclarations :: [ResourceDeclaration]
+  -- handlers name is h1, h2 end: spec handlers that answer their abilities
+  -- together, so every law that uses them also runs under all of them.
+  , handlerSets :: [HandlerSet] } deriving (Eq, Show, Generic)
+
+data HandlerSet = HandlerSet { handlerSetName :: String, handlerSetMembers :: [String], handlerSetSpan :: Span }
+  deriving (Eq, Show, Generic)
 
 -- harness name for unit is item* end: the implementation plane of a unit.
 -- It chooses how laws are tested (strategies, handlers, adequacy, run
@@ -184,7 +190,10 @@ data AbilityDeclaration = AbilityDeclaration
   -- unit's name for a copy an import brought in (LawSpec.Imports).
   , abilityOrigin :: String
   -- What each operation that `fails with E` fails with: E, by operation.
-  , abilityFailures :: [(String, Type)] }
+  , abilityFailures :: [(String, Type)]
+  -- ability A with T: native handlers of A are made with a T, a resource
+  -- the case acquires and shares among them.
+  , abilityResource :: Maybe Type }
   deriving (Eq, Show, Generic)
 
 -- handler name for Ability [with state s :: S start e] is clause* end. A
@@ -195,7 +204,10 @@ data HandlerDeclaration = HandlerDeclaration
   , handlerState :: Maybe (String, Type, Expr)
   , handlerClauses :: [HandlerClause], handlerSpan :: Span
   -- As for abilities: empty here, the declaring unit's name for a copy.
-  , handlerOrigin :: String }
+  , handlerOrigin :: String
+  -- handler h for A, B, C: the abilities after the first, which h answers
+  -- too, from the same state.
+  , handlerAlso :: [Type] }
   deriving (Eq, Show, Generic)
 
 data HandlerClause = HandlerClause
@@ -252,6 +264,10 @@ abilityTypeName t = case t of
   Applied n _ -> n
   Application n _ -> n
   _ -> prettyType t
+
+-- Every ability a handler answers: handler h for A, B answers A and B.
+handlerAbilities :: HandlerDeclaration -> [Type]
+handlerAbilities h = handlerAbility h : handlerAlso h
 
 -- The names of a unit's ability operations.
 operationNames :: Unit -> [String]

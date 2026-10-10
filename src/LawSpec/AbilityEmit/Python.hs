@@ -69,8 +69,12 @@ emit minify bits datas units = mapM unitModule (filter unitAbilityPieces units)
       pure (E.suite (D.text ("class " ++ interfaceName a ++ "(_typing.Protocol)"))
         (D.joinWith D.hardline (D.text ("\"\"\"The " ++ interfaceName a ++ " ability: a handler answers each of its operations.\"\"\"") : methods)))
     specHandler u h = do
-      ability <- maybe (Left ("unknown ability of handler " ++ C.handlerName h)) Right
-        (unitAbility u (C.handlerAbility h))
+      -- A handler of several abilities answers all their operations.
+      answered <- mapM (\ref -> maybe (Left ("unknown ability of handler " ++ C.handlerName h)) Right (unitAbility u ref)) (C.handlerAbilities h)
+      let ability = case answered of
+            first : _ -> first { C.abilityOperations = concatMap C.abilityOperations answered
+                               , C.abilityName = intercalate ", " (map C.abilityName answered) }
+            [] -> C.failAbility
       initialState <- case C.handlerState h of
         Nothing -> pure []
         -- A computed start value is its own definition (<handler>Start).
@@ -123,6 +127,13 @@ emit minify bits datas units = mapM unitModule (filter unitAbilityPieces units)
 -- adapter module.
 productionStub :: [C.DataDeclaration] -> C.Ability -> Either String String
 productionStub datas a = do
+  -- ability A with T: the handler is made with the case's T.
+  made <- case C.abilityResource a of
+    Nothing -> pure []
+    Just t -> do
+      resourceType <- pythonDataTypeDoc datas t
+      pure [D.text "", E.suite (D.text "def __init__(self, resource: " <> resourceType <> D.text ") -> None")
+        (D.text "self.resource = resource")]
   methods <- mapM (\(op, ty) -> do
     let (args, result) = C.functionType ty
     types <- mapM (pythonDataTypeDoc datas) args
@@ -132,4 +143,4 @@ productionStub datas a = do
       D.text " -> " <> resultType) (D.text ("raise NotImplementedError(" ++ show op ++ ")")))) (C.abilityOperations a)
   pure (D.render (D.Pretty 79) (E.suite (D.text ("class " ++ productionName a))
     (D.joinWith D.hardline (D.text ("\"\"\"The native handler of " ++ displayName a ++ ": " ++
-      intercalate ", " (map fst (C.abilityOperations a)) ++ ".\"\"\"") : concatMap (\m -> [D.text "", m]) methods))) ++ "\n")
+      intercalate ", " (map fst (C.abilityOperations a)) ++ ".\"\"\"") : made ++ concatMap (\m -> [D.text "", m]) methods))) ++ "\n")

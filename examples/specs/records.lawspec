@@ -1,0 +1,129 @@
+unit example.records
+
+-- Records: a type with one constructor has fields that code reads by name
+-- (account.balance) and replaces by name (account with balance = 0).
+
+type Account is
+  Account
+    owner :: Text
+    balance :: Int64
+    holds :: List Int64
+end
+
+type Ledger is
+  Ledger
+    account :: Account
+    entries :: Int32
+end
+
+definition deposit (a :: Account) (amount :: Int64 where amount >= 0 && amount <= 1000000) :: Account is
+  if a.balance >= 0 && a.balance <= 1000000000 then a with balance = prelude.Int64 (a.balance + amount) else a
+end
+
+definition rename (l :: Ledger) (name :: Text) :: Ledger is
+  l with account = (l.account with owner = name), entries = 0
+end
+
+law `a deposit adds to the balance` is
+  definition is
+    `for all` (owner :: Text) (start :: Int64 where start >= 0 && start <= 1000000000) (amount :: Int64 where amount >= 0 && amount <= 1000000) .
+      (deposit (Account owner start []) amount).balance = start + amount
+  end
+end
+
+law `a deposit keeps the owner and holds` is
+  definition is
+    `for all` (a :: Account) (amount :: Int64 where amount >= 0 && amount <= 1000000) .
+      (deposit a amount).owner = a.owner and (deposit a amount).holds = a.holds
+  end
+end
+
+law `renaming reads back` is
+  definition is
+    `for all` (l :: Ledger) (name :: Text) . (rename l name).account.owner = name and (rename l name).entries = 0
+  end
+end
+
+-- A literal takes its type from where it is used: 0 is an Int64 here.
+definition opening (a :: Maybe Account) :: Int64 is
+  let start = (match a with | Nothing -> 0 | Just account -> account.balance end) in
+  if start < 0 then 0 else start
+end
+
+law `an absent account opens at zero` is
+  definition is opening Nothing = 0 end
+end
+
+-- Recursion on an integer that moves toward a bound is total.
+definition countdown (n :: Natural) :: List Natural is
+  if n == 0 then [] else Cons n (countdown (n - 1))
+end
+
+definition evensBelow (i :: Int32) (n :: Int32) :: List Int32 is
+  if i >= n || i < 0 then [] else
+    (if prelude.rem i 2 == 0 then Cons i (evensBelow (prelude.Int32 (i + 1)) n) else evensBelow (prelude.Int32 (i + 1)) n)
+end
+
+law `a countdown has n items` is
+  definition is `for all` (n :: Natural where n <= 50) . prelude.length (countdown n) = n end
+end
+
+law `the evens below n are half of the range` is
+  definition is
+    `for all` (n :: Int32 where n >= 0 && n <= 40) .
+      prelude.length (evensBelow 0 n) = prelude.quot (n + 1) 2
+  end
+end
+
+law `range counts from the first up to the last` is
+  definition is
+    `for all` (n :: Int32 where n >= 0 && n <= 40) . prelude.length (prelude.range 0 n) = n
+  end
+  example `three` is
+    n = 3
+    expect prelude.range 0 n = [0, 1, 2]
+  end
+end
+
+-- The prover keeps what guards say about calls, lengths and remainders.
+definition clip (xs :: List Int32) :: Int32 is
+  if prelude.length xs <= 100 then prelude.Int32 (prelude.length xs) else 100
+end
+
+definition owner (p :: Int32) (k :: Int32) :: Int32 is
+  if k >= 1 && p >= 0 then prelude.Int32 (prelude.rem p k) else 0
+end
+
+law `a clipped length is at most 100` is
+  definition is `for all` (xs :: List Int32) . (clip xs <= 100 && clip xs >= 0) = true end
+end
+
+law `an owner is one of the k` is
+  definition is
+    `for all` (p :: Int32 where p >= 0) (k :: Int32 where k >= 1 && k <= 64) . (owner p k >= 0 && owner p k < k) = true
+  end
+end
+
+-- Arithmetic into a bounded type, by name.
+definition nextEpoch (e :: Int16) :: Int16 is prelude.wrapping (e + 1) end
+definition topUp (level :: UInt8) :: UInt8 is prelude.saturating (level + 10) end
+definition total (a :: Int32) (b :: Int32) :: Maybe Int32 is prelude.bounded (a + b) end
+
+law `epochs wrap around` is
+  definition is
+    `for all` (e :: Int16) . nextEpoch e = (if e == Int16.max then Int16.min else prelude.Int16 (e + 1))
+  end
+end
+
+law `a top up stops at the top` is
+  definition is
+    `for all` (level :: UInt8) . topUp level = (if level >= 245 then 255 else prelude.UInt8 (level + 10))
+  end
+end
+
+law `a total that overflows is Nothing` is
+  definition is
+    `for all` (a :: Int32) (b :: Int32) .
+      total a b = (if a + b > Int32.max || a + b < Int32.min then Nothing else Just (prelude.Int32 (a + b)))
+  end
+end

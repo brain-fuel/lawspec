@@ -31,8 +31,8 @@ checkResourceReleases program =
     definitions = M.fromList [(declarationId (definitionDeclaration d), d) | u <- programUnits program, d <- unitDefinitions u]
     -- Each operation's spec handler clauses, from every handler of its ability.
     clauses = M.fromListWith (++)
-      [ (operationId (Operation (handlerAbility h) op), [clause])
-      | u <- programUnits program, h <- unitHandlers u, (op, clause) <- handlerClauses h ]
+      [ (operationId (Operation ability op), [clause])
+      | u <- programUnits program, h <- unitHandlers u, ability <- handlerAbilities h, (op, clause) <- handlerClauses h ]
     lawProblems p =
       [ Diagnostic "resource"
           (propertyName p ++ " releases " ++ binderName (resourceBinder r) ++

@@ -297,6 +297,18 @@ scalarBoundaries machine t
                 | n `elem` ["CodePointText","CodePoint"] =
                     [0,55296,128512,1114111]
                 | otherwise = [0,97,955,128512,1114111]
+-- | The items from one index to another, clamped to the sequence.
+sliceItems :: [a] -> Integer -> Integer -> [a]
+sliceItems xs i j =
+  let count = fromIntegral (length xs)
+      start = max 0 (min count i)
+      end = max start (min count j)
+  in take (fromIntegral (end - start)) (drop (fromIntegral start) xs)
+
+maybeItem :: Maybe Scalar -> Scalar
+maybeItem (Just v) = SData "Maybe::Just" [v]
+maybeItem Nothing = SData "Maybe::Nothing" []
+
 textScalar :: String -> Scalar
 textScalar = SSequence "Text" . map ord
 
@@ -537,6 +549,20 @@ canonicalItems keyed values = foldr keepLast [] (sortBy order values)
 
 helper :: String -> [Scalar] -> Int -> Scalar
 helper n args bits = case (n,args) of
+  -- Sequences: Text and Bytes hold their units, a List its values; a slice
+  -- is clamped.
+  ("append",[SSequence t a,SSequence _ b]) -> SSequence t (a ++ b)
+  ("append",[SList a,SList b]) -> SList (a ++ b)
+  ("slice",[SSequence t xs,SInteger _ i,SInteger _ j]) -> SSequence t (sliceItems xs i j)
+  ("slice",[SList xs,SInteger _ i,SInteger _ j]) -> SList (sliceItems xs i j)
+  ("at",[SList xs,SInteger _ i]) -> maybeItem (if i >= 0 && i < fromIntegral (length xs) then Just (xs !! fromIntegral i) else Nothing)
+  ("at",[SSequence "Bytes" xs,SInteger _ i]) -> maybeItem (if i >= 0 && i < fromIntegral (length xs) then Just (SInteger "UInt8" (fromIntegral (xs !! fromIntegral i))) else Nothing)
+  ("range",[SInteger t lo,SInteger _ hi]) -> SList [SInteger t k | k <- [lo .. hi - 1]]
+  ("octets",[SSequence "Bytes" xs]) -> SList [SInteger "UInt8" (fromIntegral x) | x <- xs]
+  ("bytesOf",[SList xs]) -> SSequence "Bytes" [fromIntegral k | SInteger _ k <- xs]
+  ("utf8",[SSequence _ t]) -> SSequence "Bytes" (map fromIntegral (B.unpack (TE.encodeUtf8 (T.pack (map chr t)))))
+  ("textOf",[SInteger _ k]) -> textScalar (show k)
+  ("join",[SSequence _ separator,SList parts]) -> SSequence "Text" (intercalate separator [p | SSequence _ p <- parts])
   ("startsWith",[SSequence _ t,SSequence _ p]) -> SBool (p `isPrefixOf` t)
   ("endsWith",[SSequence _ t,SSequence _ p]) -> SBool (p `isSuffixOf` t)
   ("textContains",[SSequence _ t,SSequence _ p]) -> SBool (p `isInfixOf` t)

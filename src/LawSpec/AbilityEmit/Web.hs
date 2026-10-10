@@ -58,15 +58,18 @@ emit ts minify bits datas units = mapM unitModule (filter unitAbilityPieces unit
       pure (D.text ("/** The " ++ interfaceName a ++ " ability: a handler answers each of its operations. */") <> D.hardline <>
         D.text ("export interface " ++ interfaceName a ++ " ") <> D.block 2 (D.joinWith D.hardline methods))
     specHandler u h = do
-      ability <- maybe (Left ("unknown ability of handler " ++ C.handlerName h)) Right
-        (unitAbility u (C.handlerAbility h))
+      -- A handler of several abilities answers all their operations.
+      answered <- mapM (\ref -> maybe (Left ("unknown ability of handler " ++ C.handlerName h)) Right (unitAbility u ref)) (C.handlerAbilities h)
+      let ability = case answered of
+            first : _ -> first { C.abilityOperations = concatMap C.abilityOperations answered
+                               , C.abilityName = intercalate ", " (map C.abilityName answered) }
+            [] -> C.failAbility
       initialState <- case C.handlerState h of
         Nothing -> pure []
         -- A computed start value is its own definition (<handler>Start).
         Just (_, C.Expr _ (C.ExternalCall startDefinition _) _) -> do
           evaluate <- maybe (Left ("unresolved start of " ++ C.handlerName h)) Right (lookup startDefinition calls)
-          pure [D.text "const symbols = this._symbols;",
-                D.text "this._state = " <> E.call (Definitions.plainCall evaluate) [D.text "symbols", E.call "ls.literal" [D.text "{type: 'Unit'}", D.text "symbols"]] <> D.text ";"]
+          pure [D.text "this._state = " <> E.call (Definitions.plainCall evaluate) [D.text "symbols", E.call "ls.literal" [D.text "{type: 'Unit'}", D.text "symbols"]] <> D.text ";"]
         Just (_, start) -> do
           value <- E.renderExpression ts datas bits (const "_unbound") (\_ _ -> Left "a handler's start value calls nothing") start
           pure [D.text "this._state = " <> value <> D.text ";"]
@@ -86,7 +89,7 @@ emit ts minify bits datas units = mapM unitModule (filter unitAbilityPieces unit
         pure (D.text op <> s <> D.text " " <> D.block 2
           (D.joinWith D.hardline (D.text "const symbols = this._symbols;" : statements ++ [D.text "return " <> output <> D.text ";"])))) (C.abilityOperations ability)
       pure (D.text ("/** The spec handler " ++ C.handlerName h ++ " for " ++ C.abilityName ability ++ ". */") <> D.hardline <>
-        D.text ("export class " ++ specName h ++ (if ts then " implements " ++ interfaceName ability else "") ++ " ") <> D.block 2 (D.joinWith D.hardline (
+        D.text ("export class " ++ specName h ++ (if ts then " implements " ++ intercalate ", " (map interfaceName answered) else "") ++ " ") <> D.block 2 (D.joinWith D.hardline (
           D.text "constructor(symbols = new Map()) " <> D.block 2 (D.joinWith D.hardline (D.text "this._symbols = symbols;" : initialState)) :
           methods)))
     recording a = do
@@ -116,5 +119,13 @@ productionStub ts datas a = do
     pure (D.text op <> D.delimitTrailing 4 "(" ")" [D.text ("value" ++ show i) <> (if ts then D.text ": " <> t else mempty) | (i, t) <- zip [0 :: Int ..] types] <>
       (if ts then D.text ": " <> resultType else mempty) <> D.text " " <>
       D.block 2 (D.text "throw " <> E.call "new Error" [E.quoted op] <> D.text ";"))) (C.abilityOperations a)
+  -- ability A with T: the handler is made with the case's T.
+  made <- case C.abilityResource a of
+    Nothing -> pure []
+    Just t -> do
+      resourceType <- webDataTypeDoc datas t
+      pure ([D.text "resource: " <> resourceType <> D.text ";" | ts] ++
+        [D.text "constructor" <> D.text "(resource" <> (if ts then D.text ": " <> resourceType else mempty) <> D.text ") " <>
+          D.block 2 (D.text "this.resource = resource;")])
   pure (D.render (D.Pretty 80) (D.text ("/** The native handler of " ++ displayName a ++ ": " ++ intercalate ", " (map fst (C.abilityOperations a)) ++ ". */") <> D.hardline <>
-    D.text ("export class " ++ productionName a ++ (if ts then " implements abilities." ++ interfaceName a else "") ++ " ") <> D.block 2 (D.joinWith D.hardline methods)) ++ "\n")
+    D.text ("export class " ++ productionName a ++ (if ts then " implements abilities." ++ interfaceName a else "") ++ " ") <> D.block 2 (D.joinWith D.hardline (made ++ methods))) ++ "\n")

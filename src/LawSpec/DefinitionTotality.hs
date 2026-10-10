@@ -224,6 +224,9 @@ auditTemplates declarations bits unit templates = do
         checkedScale <- convert integers (S.Named "Int32") (effectiveType scale) scaleValue
         pure (T.Sequence [value,checkedScale])
       ("length", _, [value]) -> pure (T.Opaque "length" [value])
+      -- Sequence helpers are total.
+      _ | name `elem` ["append","slice","take","drop","at","range","octets","bytesOf","utf8","textOf","join","wrapping","saturating","bounded"] ->
+        pure (T.Sequence values)
       ("size", _, [value]) -> pure (T.Opaque "size" [value])
       _ | name `elem` ["length","real","imag","isNaN","isInfinite","isFinite","isNegativeZero","checked","compare","size","isEmpty","toList"] ->
         pure (T.Sequence values)

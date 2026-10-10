@@ -546,7 +546,6 @@ numericDescent provenance facts arguments =
   [ measure
   | (index, argument) <- zip [0..] arguments
   , Just parameter <- [rootAt index]
-  , faithful argument
   , let (lower, upper) = M.findWithDefault (Nothing, Nothing) parameter (parameterBounds facts)
         holds op a b = entails facts (ExactComparison op a b)
         constant n = Literal (SInteger "Integer" n)
@@ -913,7 +912,9 @@ derivedFacts facts expression = concatMap guarantee (nub calls') ++ concatMap un
     bound (a, b)
       | entails facts (ExactComparison GreaterEqual a (integer 0)) && entails facts (ExactComparison Greater b (integer 0)) =
           let q = Division False Quotient a b
-          in [ExactComparison GreaterEqual q (integer 0), ExactComparison LessEqual q a]
+          in [ExactComparison GreaterEqual q (integer 0), ExactComparison LessEqual q a] ++
+             -- Halving a positive number makes it smaller.
+             [ExactComparison Less q a | entails facts (ExactComparison GreaterEqual b (integer 2)), entails facts (ExactComparison Greater a (integer 0))]
       | otherwise = []
 
 -- | The closed range an integer term lies in, from its constants, the

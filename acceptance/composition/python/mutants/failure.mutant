@@ -1,0 +1,7 @@
+expect: Logs: an unknown log refuses records [native]
+@@ src/example/composition.py
+<<<<<<<
+            raise ls.Fail(data.ProblemUnknownLog())
+=======
+            raise ls.Fail(data.ProblemEmptyRecord())
+>>>>>>>

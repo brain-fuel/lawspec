@@ -1,0 +1,7 @@
+expect: sizes count records [store]
+@@ examples/specs/composition.lawspec
+<<<<<<<
+          (~logs := prelude.put t (log with records = Cons r log.records, appends = prelude.saturating (log.appends + 1)) logs;
+=======
+          (~logs := prelude.put t (log with records = Cons r log.records, appends = prelude.saturating (log.appends + 0)) logs;
+>>>>>>>

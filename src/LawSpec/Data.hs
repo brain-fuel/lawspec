@@ -114,8 +114,8 @@ qualifyDataNames unit = unit
   , S.mailboxes = [(n, ty t, at) | (n, t, at) <- S.mailboxes unit]
   -- So do ability instances, handler states and operation types.
   , S.abilities = [a {S.abilityOperations = map pair (S.abilityOperations a), S.abilityLaws = map law (S.abilityLaws a)
-                     , S.abilityFailures = map pair (S.abilityFailures a)} | a <- S.abilities unit]
-  , S.handlerDeclarations = [h {S.handlerAbility = ty (S.handlerAbility h),
+                     , S.abilityFailures = map pair (S.abilityFailures a), S.abilityResource = ty <$> S.abilityResource a} | a <- S.abilities unit]
+  , S.handlerDeclarations = [h {S.handlerAbility = ty (S.handlerAbility h), S.handlerAlso = map ty (S.handlerAlso h),
       S.handlerState = (\(n, t, e) -> (n, ty t, expr e)) <$> S.handlerState h} | h <- S.handlerDeclarations unit]
   , S.declaredUses = [(n, map ty ts) | (n, ts) <- S.declaredUses unit]
   , S.abilityRows = [(n, map ty ts) | (n, ts) <- S.abilityRows unit]

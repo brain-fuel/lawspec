@@ -32,7 +32,7 @@ module LawSpec.Abilities
   ) where
 
 import Control.Monad (forM, forM_, unless, when)
-import Data.Char (toUpper, isLower)
+import Data.Char (toUpper, isLower, isAlphaNum)
 import Data.List (intercalate, isInfixOf, nub, sortOn)
 import qualified Data.Map.Strict as M
 import LawSpec.Model
@@ -78,7 +78,7 @@ instantiatedOperations ability instance' =
 
 -- How a law's name describes the handlers it runs under.
 describeChoices :: [(Type, HandlerChoice)] -> String
-describeChoices assignment = "[" ++ intercalate ", " (map describe named) ++ "]"
+describeChoices assignment = "[" ++ intercalate ", " (nub (map describe named)) ++ "]"
   where
     -- Fail has one handler, so it does not tell the variants apart.
     named = case filter ((/= failAbilityName) . abilityTypeName . fst) assignment of
@@ -157,10 +157,13 @@ elaborateUnit u0 = do
   forM_ declared $ \a -> forM_ (abilityFailures a) $ \(op, _) ->
     when (length (filter ((== op) . fst) (abilityFailures a)) > 1)
       (Left (at (abilitySpan a), "the operation " ++ op ++ " says twice what it fails with"))
-  forM_ (handlerDeclarations u) $ \h -> checkAbilityType (at (handlerSpan h)) (handlerAbility h)
+  forM_ (handlerDeclarations u) $ \h -> do
+    mapM_ (checkAbilityType (at (handlerSpan h))) (handlerAbilities h)
+    when (length (nub (map abilityTypeName (handlerAbilities h))) < length (handlerAbilities h))
+      (Left (at (handlerSpan h), "the handler " ++ handlerName h ++ " names an ability twice"))
   -- Instances: each type an ability is used at, as uses lists and handlers
   -- name them. An ability without parameters has one.
-  let mentioned = concatMap snd (declaredUses u) ++ map handlerAbility (handlerDeclarations u)
+  let mentioned = concatMap snd (declaredUses u) ++ concatMap handlerAbilities (handlerDeclarations u)
       instancesOf a
         | null (abilityParameters a) = [Named (abilityName a)]
         | otherwise = nub [t | t <- mentioned, abilityTypeName t == abilityName a]
@@ -182,22 +185,24 @@ elaborateUnit u0 = do
   clauseDefinitions <- fmap concat $ forM (handlerDeclarations u) $ \h -> do
     let where' = at (handlerSpan h)
         abilityTy = handlerAbility h
-    when (abilityTypeName abilityTy == failAbilityName)
+        handled = intercalate ", " (map prettyType (handlerAbilities h))
+    forM_ (handlerAbilities h) $ \ty -> when (abilityTypeName ty == failAbilityName)
       (Left (where', "Fail's handler is built in; handlers for Fail are not supported yet"))
-    a <- maybe (Left (where', "there is no ability called " ++ abilityTypeName abilityTy)) Right (M.lookup (abilityTypeName abilityTy) byName)
+    answered <- forM (handlerAbilities h) $ \ty ->
+      maybe (Left (where', "there is no ability called " ++ abilityTypeName ty)) (\a -> Right (a, ty)) (M.lookup (abilityTypeName ty) byName)
     when (length (filter ((== handlerName h) . handlerName) (handlerDeclarations u)) > 1)
       (Left (where', "the handler " ++ handlerName h ++ " is declared twice"))
     unless (maybe False isLower (headMaybe (handlerName h)))
       (Left (where', "handler names start with a lowercase letter"))
-    let operations = instantiatedOperations a abilityTy
+    let operations = concat [instantiatedOperations a ty | (a, ty) <- answered]
         clauseNames = map clauseOperation (handlerClauses h)
     forM_ (nub clauseNames) $ \c -> do
       when (length (filter (== c) clauseNames) > 1)
         (Left (where', "the handler " ++ handlerName h ++ " has two clauses for " ++ c))
       unless (c `elem` map fst operations)
-        (Left (where', abilityName a ++ " has no operation called " ++ c ++ ", so " ++ handlerName h ++ " cannot handle it"))
+        (Left (where', handled ++ (if length answered > 1 then " have" else " has") ++ " no operation called " ++ c ++ ", so " ++ handlerName h ++ " cannot handle it"))
     forM operations $ \(op, ty) -> do
-      clause <- maybe (Left (where', "the handler " ++ handlerName h ++ " for " ++ prettyType abilityTy ++
+      clause <- maybe (Left (where', "the handler " ++ handlerName h ++ " for " ++ handled ++
         " has no clause for " ++ op)) Right (lookup op [(clauseOperation c, c) | c <- handlerClauses h])
       let (parameters', result) = functionType ty
           name = clauseDefinitionName (handlerName h) op
@@ -255,19 +260,22 @@ elaborateUnit u0 = do
         let (outer, regions) = splitHandled e
             names = nub [x | x <- exprVars outer, x `notElem` bound, M.member x known]
         in concatMap (rowOf table) names ++ concat
-             [ [a | a <- expressionRow table bound inner, Just a /= handlerInstance h] ++ concatMap (rowOf table) (handlerClauseNames h)
+             [ if h == attemptRegion then [a | a <- expressionRow table bound inner, abilityTypeName a /= failAbilityName]
+               else [a | a <- expressionRow table bound inner, Just a /= handlerInstance h] ++ concatMap (rowOf table) (handlerClauseNames h)
              | (h, inner) <- regions ]
       raises d = "prelude.raise" `elem` exprVars (functionBody d)
   -- Rows: the least fixed point over the call graph.
   forM_ definitions $ \d -> when (raises d && null (failures (functionName d)))
     (Left (at (functionSpan d), functionName d ++ " raises a failure, so its signature must say what it fails with: add `fails with` and the failure's type"))
-  forM_ definitions $ \d -> when ("prelude.attempt" `elem` exprVars (functionBody d))
-    (Left (at (functionSpan d), functionName d ++ ": prelude.attempt is for laws, for now"))
-  forM_ [(d, h) | d <- definitions, (h, _) <- snd (splitHandled (functionBody d))] $ \(d, h) ->
+  forM_ [(d, h) | d <- definitions, (h, _) <- snd (splitHandled (functionBody d)), h /= attemptRegion] $ \(d, h) ->
     unless (M.member (unqualifiedHandler h) handlerTable)
       (Left (at (functionSpan d), functionName d ++ " handles with " ++ h ++ ", but there is no handler called " ++ unqualifiedHandler h))
+  forM_ [(d, h) | d <- definitions, (h, _) <- snd (splitHandled (functionBody d)), h /= attemptRegion] $ \(d, h) ->
+    forM_ (M.lookup (unqualifiedHandler h) handlerTable) $ \hd -> unless (null (handlerAlso hd))
+      (Left (at (functionSpan d), functionName d ++ " handles with " ++ h ++ ", which answers several abilities; " ++
+        "`handle ... with` takes a handler of one ability, for now"))
   -- A seeded Random cannot stand for SecureRandom (LawSpec.Builtins).
-  forM_ [(d, h, inner) | d <- definitions, (h, inner) <- snd (splitHandled (functionBody d))] $ \(d, h, inner) ->
+  forM_ [(d, h, inner) | d <- definitions, (h, inner) <- snd (splitHandled (functionBody d)), h /= attemptRegion] $ \(d, h, inner) ->
     when (fmap abilityTypeName (handlerInstance h) == Just randomAbility &&
           any (`elem` exprVars inner) [op | a <- declared, abilityName a == secureRandomAbility, (op, _) <- abilityOperations a])
       (Left (at (functionSpan d), seededForSecure (functionName d)))
@@ -289,8 +297,8 @@ elaborateUnit u0 = do
     let row = M.findWithDefault [] (functionName d) inferred
         where' = at (functionSpan d)
     case M.lookup (functionName d) clauseOwner of
-      Just h | handlerAbility h `elem` row -> Left (where', "the handler clause " ++ functionName d ++ " uses " ++
-        prettyType (handlerAbility h) ++ ", the ability its handler handles; a clause may use other abilities only")
+      Just h | (a : _) <- filter (`elem` row) (handlerAbilities h) -> Left (where', "the handler clause " ++ functionName d ++ " uses " ++
+        prettyType a ++ ", an ability its handler handles; a clause may use other abilities only")
       -- A clause fails only as its operation says it may.
       Just h | (f : _) <- [t | t <- row, abilityTypeName t == failAbilityName, t `notElem` M.findWithDefault [] (functionName d) clauseFailures] ->
         Left (where', "the handler clause " ++ functionName d ++ " of " ++ handlerName h ++ " may fail with " ++
@@ -309,7 +317,7 @@ elaborateUnit u0 = do
       nameRow n = maybe (M.findWithDefault [] n rowTable) id (if M.member n operationAbility then Just (opInstances n ++ opFailures n) else Nothing)
       defaults inst
         | abilityTypeName inst == failAbilityName = [ChooseProduction]
-        | otherwise = ChooseProduction : [ChooseSpec (handlerName h) | h <- handlerDeclarations u, handlerAbility h == inst]
+        | otherwise = ChooseProduction : [ChooseSpec (handlerName h) | h <- handlerDeclarations u, inst `elem` handlerAbilities h]
       lawTable = M.fromList [(lawName l, l) | l <- laws u]
       -- The abilities a law needs: everything its clauses and examples call,
       -- through the laws it invokes.
@@ -322,27 +330,37 @@ elaborateUnit u0 = do
       expressionRowNames bound e =
         let (outer, regions) = splitHandled e
         in concatMap nameRow (nub [x | x <- exprVars outer, x `notElem` bound, M.member x known]) ++ concat
-             [ [a | a <- expressionRowNames bound inner, Just a /= handlerInstance h] ++ concatMap nameRow (handlerClauseNames h)
+             [ if h == attemptRegion then [a | a <- expressionRowNames bound inner, abilityTypeName a /= failAbilityName]
+               else [a | a <- expressionRowNames bound inner, Just a /= handlerInstance h] ++ concatMap nameRow (handlerClauseNames h)
              | (h, inner) <- regions ]
-      handlerAbilities = M.fromList [(handlerName h, handlerAbility h) | h <- handlerDeclarations u]
-      -- What `using` asks for, by ability name.
-      request where' use = case use of
+      handlerAbilityTable = M.fromList [(handlerName h, handlerAbilities h) | h <- handlerDeclarations u]
+      -- What `using` asks for, by ability name. A handler of several
+      -- abilities, or a set of handlers, asks for each that the law uses.
+      request row where' use = case use of
         UseHandler h | Just _ <- isSeededUse h -> Left (where', "seeded random needs lawspec.randomness: add `import lawspec.randomness`")
-        UseHandler h -> case M.lookup (unqualifiedHandler h) handlerAbilities of
-          Just inst -> pure (inst, Left (ChooseSpec (unqualifiedHandler h)))
+        UseHandler h | Just set <- lookup (unqualifiedHandler h) [(handlerSetName s, s) | s <- handlerSets u] ->
+          case [(inst, Left (ChooseSpec member)) | (inst, member) <- setCoverage set, inst `elem` row] of
+            [] -> Left (where', "the handlers " ++ h ++ " answer nothing the law uses")
+            chosen -> pure chosen
+        UseHandler h -> case M.lookup (unqualifiedHandler h) handlerAbilityTable of
+          Just [inst] -> pure [(inst, Left (ChooseSpec (unqualifiedHandler h)))]
+          Just insts -> case [(inst, Left (ChooseSpec (unqualifiedHandler h))) | inst <- insts, inst `elem` row] of
+            [] -> pure [(head insts, Left (ChooseSpec (unqualifiedHandler h)))]
+            chosen -> pure chosen
           Nothing -> Left (where', "there is no handler called " ++ h)
         UseAbility n
-          | M.member (unqualifiedHandler n) byName -> pure (Named (unqualifiedHandler n), Right False)
+          | M.member (unqualifiedHandler n) byName -> pure [(Named (unqualifiedHandler n), Right False)]
           | otherwise -> Left (where', "there is no ability called " ++ n)
         UseRecording (UseRecording _) -> Left (where', "recording a recording is not supported")
         UseRecording inner -> do
-          (n, r) <- request where' inner
-          when (abilityTypeName n == failAbilityName) (Left (where', "Fail cannot be recorded"))
-          pure (n, either (Left . ChooseRecording) (const (Right True)) r)
+          chosen <- request row where' inner
+          forM chosen $ \(n, r) -> do
+            when (abilityTypeName n == failAbilityName) (Left (where', "Fail cannot be recorded"))
+            pure (n, either (Left . ChooseRecording) (const (Right True)) r)
       choicesFor l = do
         let where' = Just (location l)
             row = lawRow [] l
-        requested <- mapM (request where') (maybe [] id (lookup (lawName l) (lawHandlers u)))
+        requested <- concat <$> mapM (request row where') (maybe [] id (lookup (lawName l) (lawHandlers u)))
         -- A spec handler names one instance; an ability's name, all of them.
         let matches (wanted, _) inst = case wanted of
               Named n | n == abilityTypeName inst -> True
@@ -364,21 +382,46 @@ elaborateUnit u0 = do
           Just a -> forM_ (instancesOf a) $ \inst -> unless (all recording (candidates inst))
             (Left (where', "the law " ++ lawName l ++ " counts calls of " ++ op ++ ", so it needs a recording handler: add `using recording " ++
               abilityName a ++ "` (or `recording` and a handler's name)"))
-        pure [(inst, candidates inst) | inst <- row]
-      variants l choices
+        let pinned = [inst | (wanted, Left _) <- requested, inst <- row, matches (wanted, ()) inst]
+        pure ([(inst, candidates inst) | inst <- row], pinned)
+      variants l (choices, pinned)
         | null choices = [(l, [])]
         | otherwise =
             let base = [(inst, head cs) | (inst, cs) <- choices]
                 others = [[(i, if i == inst then c else b) | (i, b) <- base] | (inst, cs) <- choices, c <- drop 1 cs]
-                assignments = base : others
-            in if length assignments == 1 then [(l, close base)]
-               else [(l { lawName = lawName l ++ " " ++ describeChoices a }, close a) | a <- assignments]
+                assignments = nub (map (cohere pinned) (base : others))
+                -- A set of handlers that answers some of the law's
+                -- abilities: the law also runs under all of them at once.
+                sets = [ (set, a) | set <- handlerSets u
+                       , let a = cohere pinned [(i, if i `elem` pinned then c else maybe c (\h -> recordedAs c (ChooseSpec h)) (lookup i (setCoverage set))) | (i, c) <- base]
+                       , a `notElem` assignments ]
+            in if length assignments == 1 && null sets then [(l, close [] (head assignments))]
+               else [(l { lawName = lawName l ++ " " ++ describeChoices a }, close [] a) | a <- assignments] ++
+                    [(l { lawName = lawName l ++ " [" ++ handlerSetName set ++ "]" }, close (setCoverage set) a) | (set, a) <- sets]
       -- A spec handler whose clauses use abilities needs handlers for them
-      -- too: the first lawful one of each.
-      close assignment =
+      -- too: the set's, a handler of several abilities already chosen, or
+      -- else the first lawful one of each.
+      close preferred assignment =
         let needed = canonical [i | (_, c) <- assignment, h <- specOf c, n <- handlerClauseNames h, i <- nameRow n]
             missing = [i | i <- needed, i `notElem` map fst assignment]
-        in if null missing then assignment else close (assignment ++ [(i, head (defaults i)) | i <- missing])
+            chosenFor i = case lookup i preferred of
+              Just h -> ChooseSpec h
+              Nothing -> case [ChooseSpec h | (_, c) <- assignment, h <- specOf c, Just insts <- [M.lookup h handlerAbilityTable], i `elem` insts] of
+                c : _ -> c
+                [] -> head (defaults i)
+        in if null missing then assignment else close preferred (assignment ++ [(i, chosenFor i) | i <- missing])
+      -- A handler of several abilities answers all of them from one state:
+      -- chosen for one, it is chosen for the others the law leaves open.
+      cohere pinned assignment =
+        let shared = [(inst, h) | (_, c) <- assignment, h <- specOf c, Just insts <- [M.lookup h handlerAbilityTable], length insts > 1, inst <- insts]
+        in [ (i, case (c, lookup i shared) of
+                   (_, Just h) | i `notElem` pinned, null (specOf c) -> recordedAs c (ChooseSpec h)
+                   _ -> c)
+           | (i, c) <- assignment ]
+      recordedAs c inner = case c of
+        ChooseRecording _ -> ChooseRecording inner
+        _ -> inner
+      setCoverage set = [(inst, member) | member <- handlerSetMembers set, Just insts <- [M.lookup (unqualifiedHandler member) handlerAbilityTable], inst <- insts]
       specOf c = case c of
         ChooseSpec h -> [h]
         ChooseRecording inner -> specOf inner
@@ -424,6 +467,23 @@ elaborateUnit u0 = do
           pure ex { expectations = checks }
         pure l { definition = d', examples = examples' }
   attemptedLaws <- mapM attemptLaw (laws u)
+  -- A definition may attempt too: its failure type comes the same way.
+  -- Its type names no variable, so the failure's type is given on Left.
+  let typedAttempts e = case e of
+        Located r inner -> Located r (typedAttempts inner)
+        Annotate (Apply (Var "prelude.attempt") body) (Application "Either" [failure, _]) ->
+          MatchExpr (Apply (Var "prelude.attempt") (typedAttempts body))
+            [ MatchBranch "Either::Left" ["lawspecFailure"] (ConstructLit "Either::Left" [Annotate (Var "lawspecFailure") failure])
+            , MatchBranch "Either::Right" ["lawspecValue"] (ConstructLit "Either::Right" [Var "lawspecValue"]) ]
+        Apply f x -> Apply (typedAttempts f) (typedAttempts x)
+        Binary op a b -> Binary op (typedAttempts a) (typedAttempts b)
+        Unary op a -> Unary op (typedAttempts a)
+        Annotate a t -> Annotate (typedAttempts a) t
+        ConstructLit n fields -> ConstructLit n (map typedAttempts fields)
+        ListLit xs -> ListLit (map typedAttempts xs)
+        MatchExpr v branches -> MatchExpr (typedAttempts v) [MatchBranch tag names (typedAttempts b) | MatchBranch tag names b <- branches]
+        _ -> e
+  attemptedDefinitions <- forM definitions $ \d -> (\b -> d { functionBody = typedAttempts b }) <$> attemptIn (at (functionSpan d)) (functionBody d)
   -- Ordinary laws: concrete ones get their handlers; generic ones are
   -- templates, instantiated where they are invoked.
   expandedLaws <- fmap concat $ forM attemptedLaws $ \l ->
@@ -433,20 +493,69 @@ elaborateUnit u0 = do
   abilityLawCopies <- fmap concat $ forM declared $ \a -> fmap concat $ forM (instancesOf a) $ \inst -> do
     let table = zip (abilityParameters a) (abilityArguments inst)
         implied = refinementLaws a inst
-    fmap concat $ forM (map (instantiateLaw table) (abilityLaws a) ++ implied) $ \l -> do
+    attemptedAbilityLaws <- mapM attemptLaw (map (instantiateLaw table) (abilityLaws a) ++ implied)
+    fmap concat $ forM attemptedAbilityLaws $ \l -> do
       unless (null (parameters l))
         (Left (Just (location l), "an ability's laws must be closed: quantify their values with `for all`"))
       let row = lawRow [] l
           others = [(i, head (defaults i)) | i <- row, i /= inst]
-      pure [ (l { lawName = prettyType inst ++ ": " ++ lawName l ++ " " ++ describeChoices [(inst, c)] }, close ((inst, c) : others))
+      pure [ (l { lawName = prettyType inst ++ ": " ++ lawName l ++ " " ++ describeChoices [(inst, c)] }, close [] (cohere [inst] ((inst, c) : others)))
            | c <- defaults inst, ownHandler a c ]
-  let allLaws = expandedLaws ++ abilityLawCopies
+  -- Each set of handlers owes the laws of every ability it answers, run
+  -- under all of its handlers at once: `Broker: law [reference]`.
+  setLawCopies <- fmap concat $ forM (handlerSets u) $ \set -> do
+    let where' = at (handlerSetSpan set)
+    forM_ (handlerSetMembers set) $ \member -> unless (M.member (unqualifiedHandler member) handlerAbilityTable)
+      (Left (where', "the handlers " ++ handlerSetName set ++ " name " ++ member ++ ", which is not a handler"))
+    let covered = map fst (setCoverage set)
+    forM_ covered $ \inst -> when (length (filter (== inst) covered) > 1)
+      (Left (where', "the handlers " ++ handlerSetName set ++ " name two handlers for " ++ prettyType inst))
+    when (handlerSetName set `M.member` handlerAbilityTable || length (filter ((== handlerSetName set) . handlerSetName) (handlerSets u)) > 1)
+      (Left (where', "the handlers " ++ handlerSetName set ++ " have the name of another handler or set of handlers"))
+    fmap concat $ forM (setCoverage set) $ \(inst, member) -> case M.lookup (abilityTypeName inst) byName of
+      Nothing -> pure []
+      Just a -> do
+        let table = zip (abilityParameters a) (abilityArguments inst)
+        attemptedAbilityLaws <- mapM attemptLaw (map (instantiateLaw table) (abilityLaws a) ++ refinementLaws a inst)
+        pure [ (l { lawName = prettyType inst ++ ": " ++ lawName l ++ " [" ++ handlerSetName set ++ "]" }
+               , close (setCoverage set) [(i, maybe (head (defaults i)) ChooseSpec (lookup i (setCoverage set))) | i <- nub (inst : lawRow [] l)])
+             | l <- attemptedAbilityLaws, null (parameters l)
+             , let _ = member ]
+  -- ability A with T: a law that runs A's native handler takes a T, which
+  -- each case acquires and every native handler made with a T shares.
+  forM_ declared $ \a -> forM_ (abilityResource a) $ \t ->
+    unless (any ((== t) . resourceType) (resourceDeclarations u) || null (abilityOrigin a) == False)
+      (Left (at (abilitySpan a), "the ability " ++ abilityName a ++ " is made with " ++ prettyType t ++
+        ", which needs a resource declaration: resource " ++ prettyType t ++ " is acquire is ... end release r is ... end end"))
+  let withResources (l, assignment) =
+        let natives = [inst | (inst, c) <- assignment, native c]
+            needed = nub [t | inst <- natives, Just a <- [M.lookup (abilityTypeName inst) byName], Just t <- [abilityResource a]]
+            missing = [t | t <- needed, t `notElem` map snd (lawResources l)]
+        in (l { lawResources = lawResources l ++ [("lawspecWith" ++ filter isAlphaNum (prettyType t), t) | t <- missing] }, assignment)
+      native c = case c of
+        ChooseProduction -> True
+        ChooseRecording inner -> native inner
+        ChooseSpec _ -> False
+      -- A set's copy that runs as another copy already does is left out.
+      baseName name = takeWhile (/= '[') name
+      -- Native handlers made with one resource are one system: a law runs
+      -- them all natively or none of them, so no variant mixes a native
+      -- handler made with T with a spec handler of another ability made
+      -- with T (unless the law names both with `using`).
+      resourceOf inst = M.lookup (abilityTypeName inst) byName >>= abilityResource
+      coherent (l, assignment) =
+        let named = maybe [] id (lookup (lawName l) (lawHandlers u))
+            chosen = [(t, native c) | (inst, c) <- assignment, Just t <- [resourceOf inst]]
+        in not (null named) || and [not (or [n | (t', n) <- chosen, t' == t] && not (and [n | (t', n) <- chosen, t' == t])) | (t, _) <- chosen]
+      distinctSets = [ copy | copy@(l, a) <- setLawCopies
+                     , not (any (\(l', a') -> baseName (lawName l') == baseName (lawName l) && sortOn (prettyType . fst) a' == sortOn (prettyType . fst) a) abilityLawCopies) ]
+      allLaws = map withResources (filter coherent (expandedLaws ++ abilityLawCopies ++ distinctSets))
       names = map (lawName . fst) allLaws
   forM_ names $ \n -> when (length (filter (== n) names) > 1)
     (Left (Nothing, "two laws are called " ++ n ++ " once their handlers are named"))
   pure u
     { functions = functions'
-    , functionDefinitions = definitions
+    , functionDefinitions = attemptedDefinitions
     , declarationSpans = declarationSpans u ++
         [(op, abilitySpan a) | a <- declared, (op, _) <- abilityOperations a] ++
         [(functionName d, functionSpan d) | d <- clauseDefinitions]
@@ -578,10 +687,17 @@ typeVariablesOf ty = nub $ case ty of
   CheckedType _ t -> typeVariablesOf t
   _ -> []
 
+-- The region of a prelude.attempt, among the handled regions.
+attemptRegion :: String
+attemptRegion = ":attempt"
+
 -- The handle ... with h end regions of an expression, and the rest of it.
 splitHandled :: Expr -> (Expr, [(String, Expr)])
 splitHandled e = case e of
   Located r inner -> let (o, rs) = splitHandled inner in (Located r o, rs)
+  -- prelude.attempt e catches e's failures, as a handler of Fail.
+  Apply (Var "prelude.attempt") body -> (BoolLit True, [(attemptRegion, body)])
+  Apply (Located _ (Var "prelude.attempt")) body -> (BoolLit True, [(attemptRegion, body)])
   Apply (Var name) body | Just h <- handledBy name -> (BoolLit True, [(h, body)])
   Apply (Located _ (Var name)) body | Just h <- handledBy name -> (BoolLit True, [(h, body)])
   Apply f x -> both Apply f x

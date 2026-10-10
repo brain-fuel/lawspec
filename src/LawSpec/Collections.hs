@@ -11,6 +11,7 @@
 module LawSpec.Collections
   ( collectionsUnit, collectionsAlias, collectionTypes, collectionsSource
   , usedCollections, collectionOperation, collectionOperations
+  , boundedArithmeticBlock, boundedArithmeticTypes, boundedArithmeticDefinition, boundedArithmeticDefinitions
   , internalConstructor, isCollectionsType, collectionContainer, entryTypeName
   ) where
 
@@ -83,7 +84,7 @@ usedCollections :: [String] -> [String]
 usedCollections sources =
   let wanted = nub (concatMap used sources)
       closure = nub (wanted ++ ["Ordering" | any (`elem` wanted) ["Set", "KeyVal"]] ++ ["Entry" | "KeyVal" `elem` wanted])
-  in [t | t <- collectionTypes, t `elem` closure]
+  in [t | t <- collectionTypes, t `elem` closure] ++ [boundedArithmeticBlock | boundedArithmeticBlock `elem` closure]
   where
     used text =
       let tokens = words (map (\c -> if isAlphaNum c || c `elem` ("._" :: String) then c else ' ') (stripComments text))
@@ -96,7 +97,8 @@ usedCollections sources =
             -- A model that behaves like a collection gets references over pairs.
             ["Pair" | "behaves" `elem` tokens] ++
             -- A handler with state gives Pair result state from each clause.
-            ["Pair" | "handler" `elem` tokens && "state" `elem` tokens]
+            ["Pair" | "handler" `elem` tokens && "state" `elem` tokens] ++
+            [boundedArithmeticBlock | any (`elem` tokens) ["prelude.wrapping", "prelude.saturating", "prelude.bounded"]]
       in [t | t <- named ++ operated, t `notElem` declared]
     stripPrefix' prefix t = if prefix `isPrefixOf` t then Just (drop (length prefix) t) else Nothing
     stripComments = unlines . map (\line -> takeComment line) . lines
@@ -110,7 +112,8 @@ collectionsSource types = unlines $
   ["unit " ++ collectionsUnit, ""] ++
   concat [block | (t, block) <- declarations, t `elem` types] ++
   (if any (`elem` types) ["Set", "Queue", "Stack", "Deque"] then listHelpers else []) ++
-  concat [block | (t, block) <- operations, t `elem` types]
+  concat [block | (t, block) <- operations, t `elem` types] ++
+  (if boundedArithmeticBlock `elem` types then boundedArithmeticSource else [])
   where
     declarations =
       [ ("Ordering", ["type Ordering is", "  | Less", "  | Equal", "  | Greater", "end", ""])
@@ -475,3 +478,36 @@ sizedQueueOperations =
   , "  end"
   , "end"
   , "" ]
+
+-- | prelude.wrapping, prelude.saturating and prelude.bounded are checked
+-- definitions here, one per bounded integer type, which elaboration picks
+-- by the type the context wants (LawSpec.Elaboration).
+boundedArithmeticBlock :: String
+boundedArithmeticBlock = "Bounded"
+
+boundedArithmeticTypes :: [String]
+boundedArithmeticTypes = ["Int8", "Int16", "Int32", "Int64", "UInt8", "UInt16", "UInt32", "UInt64", "IntSize", "UIntSize", "UIntPtr"]
+
+-- | The definition of an operation at a type: wrappingInt32.
+boundedArithmeticDefinition :: String -> String -> String
+boundedArithmeticDefinition operation t = operation ++ t
+
+boundedArithmeticDefinitions :: [String]
+boundedArithmeticDefinitions = [boundedArithmeticDefinition o t | t <- boundedArithmeticTypes, o <- ["wrapping", "saturating", "bounded"]]
+
+boundedArithmeticSource :: [String]
+boundedArithmeticSource = concat
+  [ [ "definition wrapping" ++ t ++ " (value :: Integer) :: " ++ t ++ " is"
+    , "  let r = prelude.rem (value - " ++ t ++ ".min) (" ++ t ++ ".max - " ++ t ++ ".min + 1) in"
+    , "  if r < 0 then prelude." ++ t ++ " (r + (" ++ t ++ ".max - " ++ t ++ ".min + 1) + " ++ t ++ ".min) else prelude." ++ t ++ " (r + " ++ t ++ ".min)"
+    , "end"
+    , ""
+    , "definition saturating" ++ t ++ " (value :: Integer) :: " ++ t ++ " is"
+    , "  if value > " ++ t ++ ".max then " ++ t ++ ".max else if value < " ++ t ++ ".min then " ++ t ++ ".min else prelude." ++ t ++ " value"
+    , "end"
+    , ""
+    , "definition bounded" ++ t ++ " (value :: Integer) :: Maybe " ++ t ++ " is"
+    , "  if value >= " ++ t ++ ".min && value <= " ++ t ++ ".max then Just (prelude." ++ t ++ " value) else Nothing"
+    , "end"
+    , "" ]
+  | t <- boundedArithmeticTypes ]

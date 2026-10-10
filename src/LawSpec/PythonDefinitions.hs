@@ -76,9 +76,21 @@ emitPythonDefinitions layout bits declarations units = do
             Perform op args -> do
               nativeValues <- sequence [handlerCall "to_native" (expressionType a) value | (a, value) <- zip args values]
               let invocation = E.call ("ls.handler(symbols, " ++ show (abilityKey (operationAbility op)) ++ ")." ++ operationName op) nativeValues
-              if expressionType term == Constructor "Unit" []
+              result <- if expressionType term == Constructor "Unit" []
                 then pure (E.call "ls.unit_result" [invocation])
                 else handlerCall "from_native" (expressionType term) invocation
+              -- An operation that fails with E: a native handler raises
+              -- ls.Fail with a native E, which becomes the failure.
+              case findAbility units (operationAbility op) >>= lookup (operationName op) . abilityFailures . snd of
+                Just failing@(AbilityRef _ [failure]) -> do
+                  convert <- handlerCall "from_native" failure (D.text "_failure")
+                  pure (E.call "ls.native_failures" [E.quoted (abilityKey failing), D.text "lambda _failure: " <> convert, D.text "lambda: " <> result])
+                _ -> pure result
+            -- prelude.attempt e: Right of e's value, or Left of its failure.
+            Handle (CatchFailure ability) _ | [body] <- values ->
+              pure (E.call "ls.attempt" [E.quoted (abilityKey ability), D.text "lambda: " <> body,
+                D.text "lambda _value: ls.construct('Either::Right', [_value])",
+                D.text "lambda _value: ls.construct('Either::Left', [_value])"])
             -- handle e with h end: e runs with h installed for its ability,
             -- made afresh each time.
             Handle (WithHandler ability (SpecHandler h)) _ | [body] <- values ->

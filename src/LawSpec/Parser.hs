@@ -5,7 +5,7 @@ module LawSpec.Parser (parseSource, parseSources, parseSourcesWith, sourceUnit) 
 
 import LawSpec.Core.Policy (StagePolicy(..), Retry(..), Strategy(..), Jitter(..), Limit(..), Breaker(..), Bulkhead(..), Hedge(..), emptyPolicy)
 import LawSpec.Resilience (resilienceName)
-import LawSpec.Collections (collectionsUnit, collectionsAlias)
+import LawSpec.Collections (collectionsUnit, collectionsAlias, boundedArithmeticBlock)
 import LawSpec.Time (timeUnit, timeAlias, durationSuffixes, durationFactor, durationLimit, usesTime, timeTypes)
 import LawSpec.Builtins (virtualClockHandler, seededHandlerName, seededHandler)
 import LawSpec.Temporal (Temporal(..), temporalExpr, budgetExpr, budgetStart)
@@ -585,7 +585,9 @@ higherOperators =
   [ [Prefix (Unary "!" <$ try (lexeme (char '!' <* notFollowedBy (char '=')))), Prefix (Unary "-" <$ try (lexeme (char '-' <* notFollowedBy digitChar)))]
   , [InfixR (Compose <$ symbol ".")]
   , [InfixL (Binary "*" <$ symbol "*"), InfixL (Binary "/" <$ symbol "/")]
-  , [InfixL (Binary "+" <$ symbol "+"), InfixL (Binary "-" <$ symbol "-")]
+  -- a ++ b joins two Texts, Bytes or Lists: prelude.append a b.
+  , [ InfixL ((\a b -> Apply (Apply (Var "prelude.append") a) b) <$ try (symbol "++"))
+    , InfixL (Binary "+" <$ try (symbol "+" <* notFollowedBy (char '+'))), InfixL (Binary "-" <$ symbol "-")]
   -- Railway combinators on Either (LawSpec.Railway), each also written as a
   -- prelude name: >=> composes, <$> <!> <*> map and pair, >>= binds, <|> and
   -- ?? recover, and |> applies.
@@ -1181,6 +1183,8 @@ abilityP = do
       void (symbol "::")
       keyword "Type"
       pure parameter
+    -- ability A with T is: native handlers of A are made with a T.
+    resource <- optional (keyword "with" *> typeP)
     keyword "is"
     -- op :: T [fails with E]: an operation may fail, as a signature may.
     operations <- many (do
@@ -1190,8 +1194,20 @@ abilityP = do
       pure ((op, ty), (,) op <$> failure))
     abilityLaws' <- option [] (keyword "laws" *> many lawP)
     keyword "end"
-    pure (name, parameters, operations, abilityLaws')
-  pure (AbilityDeclaration name parameters (map fst operations) abilityLaws' range "" [f | (_, Just f) <- operations])
+    pure (name, (parameters, resource), operations, abilityLaws')
+  pure (AbilityDeclaration name (fst parameters) (map fst operations) abilityLaws' range "" [f | (_, Just f) <- operations] (snd parameters))
+
+-- handlers name is h1, h2, ... end
+handlerSetP :: P HandlerSet
+handlerSetP = do
+  ((name, members), range) <- withSpan $ do
+    keyword "handlers"
+    name <- ident
+    keyword "is"
+    members <- qualifiedName `sepBy1` symbol ","
+    keyword "end"
+    pure (name, members)
+  pure (HandlerSet name members range)
 
 -- handler name for Ability [with state s :: S start e] is (op x* is e end)* end
 handlerP :: P HandlerDeclaration
@@ -1201,6 +1217,8 @@ handlerP = do
     name <- ident
     keyword "for"
     ability <- typeP
+    -- handler h for A, B: one handler, one state, for several abilities.
+    also <- many (symbol "," *> typeP)
     state <- optional $ do
       try (keyword "with" *> keyword "state")
       s <- ident
@@ -1227,8 +1245,8 @@ handlerP = do
         byClause <|> written
       pure (HandlerClause op parameters body at)
     keyword "end"
-    pure (name, ability, state, clauses)
-  pure (HandlerDeclaration name ability state clauses range "")
+    pure (name, (ability, also), state, clauses)
+  pure (HandlerDeclaration name (fst ability) state clauses range "" (snd ability))
 -- | Unit definitions have explicit parameter and result types. Law definitions
 -- remain proposition blocks and are parsed separately by lawP.
 functionDefinitionP :: P FunctionDefinition
@@ -1267,7 +1285,7 @@ data UnitMember = DataMember DataTypeDeclaration | FamilyMember IndexedFamily | 
   | SignatureMember ((String, Type), Span) [Type] | AsyncMember ((String, Type), Span) [Type] | LawMember (Law, [HandlerUse])
   | DefinitionMember (FunctionDefinition, Maybe [Type])
   | AbilityMember AbilityDeclaration | HandlerMember HandlerDeclaration
-  | ResourceMember ResourceDeclaration | HarnessMember HarnessDeclaration
+  | ResourceMember ResourceDeclaration | HarnessMember HarnessDeclaration | HandlerSetMember HandlerSet
 
 unitNameP :: P String
 unitNameP = foldr1 (\a b -> a ++ "." ++ b) <$>
@@ -1334,6 +1352,8 @@ unitP = do
     <|> (HandlerMember <$> (try (lookAhead (keyword "handler" *> ident *> keyword "for")) *> handlerP))
     -- resource Name is acquire ... release ... end: a law's resource.
     <|> (ResourceMember <$> (try (lookAhead (keyword "resource" *> ident >>= upper)) *> resourceP))
+    -- handlers name is h1, h2 end: spec handlers that answer together.
+    <|> (HandlerSetMember <$> (try (lookAhead (keyword "handlers" *> ident *> keyword "is")) *> handlerSetP))
     -- harness name for unit is ... end (LawSpec.Harness).
     <|> (HarnessMember <$> (try (lookAhead (keyword "harness" *> unitNameP *> keyword "for")) *> harnessP))
     <|> (DefinitionMember <$> definitionUsesP)
@@ -1360,7 +1380,8 @@ unitP = do
      [(name, used) | AsyncMember ((name, _), _) used <- members, not (null used)] ++
      [(functionName d, used) | DefinitionMember (d, Just used) <- members])
     [(lawName l, using) | LawMember (l, using) <- members, not (null using)] [] []
-    (case [h | HarnessMember h <- members] of h : _ -> Just h; [] -> Nothing) [] [r | ResourceMember r <- members], imports, [f | FamilyMember f <- members],
+    (case [h | HarnessMember h <- members] of h : _ -> Just h; [] -> Nothing) [] [r | ResourceMember r <- members]
+    [s | HandlerSetMember s <- members], imports, [f | FamilyMember f <- members],
     [w | WrapperMember w <- members], [w | WorkflowMember w <- members], [m | ModelMember m <- members],
     ([p | ProtocolMember p <- members], [s | ScenarioMember s <- members]))
 
@@ -1409,10 +1430,11 @@ parseSourcesWith collections builtins allSources = do
       | otherwise =
           let local = M.keys (headers s)
               builtin unit alias types =
-                let items = [t | t <- types, t `notElem` local]
+                let items = [t | t <- types, t `notElem` local, t /= boundedArithmeticBlock]
                     origin = Location ("<" ++ unit ++ ">") 1 1
-                -- A built-in with no types to list (lawspec.host) is imported whole.
-                in [Import unit alias items (Span origin origin) | not (null items) || unit == "lawspec.host"]
+                -- A built-in with no types to list (lawspec.host) is imported
+                -- whole, as the collections unit is for bounded arithmetic.
+                in [Import unit alias items (Span origin origin) | not (null items) || unit == "lawspec.host" || boundedArithmeticBlock `elem` types]
           in (n, imports ++ builtin collectionsUnit collectionsAlias collections ++
                concat [builtin unit alias types | (unit, alias, types, uses) <- builtins, uses s])
     graph = M.fromList [(n, imports) | (_, n, imports) <- preambles]

@@ -12,7 +12,7 @@ module LawSpec.Imports (resolveImports, importedDefinitionName) where
 
 import LawSpec.Model
 import LawSpec.Indexed (naturalRefinementName)
-import LawSpec.Collections (collectionsUnit, collectionsAlias, collectionOperation, internalConstructor)
+import LawSpec.Collections (collectionsUnit, collectionsAlias, collectionOperation, internalConstructor, boundedArithmeticDefinitions)
 import LawSpec.Time (timeUnit, timeAlias, timeOperation, durationDefinitions)
 import LawSpec.Matchers (matchersUnit, matchersAlias, matcherOperation)
 import LawSpec.Resources (resourcesUnit)
@@ -22,7 +22,7 @@ import Control.Monad (forM, forM_, unless, when)
 import Control.Monad.State.Strict (State, execState, modify)
 import LawSpec.Common (importedDefinitionName)
 import Data.Functor.Identity (Identity(..))
-import Data.List (intercalate, isSuffixOf, nub, stripPrefix)
+import Data.List (intercalate, isSuffixOf, nub, stripPrefix, isInfixOf)
 import qualified Data.Map.Strict as M
 import qualified Data.Map.Lazy as Lazy
 import qualified Data.Set as S
@@ -126,7 +126,13 @@ resolveUnit visible table u allImports = do
         Right n <- [lookupName ValueName (importAlias i ++ "." ++ d)]] `S.union`
         -- The workflow runtime drives the resilience unit's state machines.
         S.fromList [(ValueName, n) | i <- imports, importUnit i == resilienceUnit, d <- resilienceDefinitions,
+          Right n <- [lookupName ValueName (importAlias i ++ "." ++ d)]] `S.union`
+        -- prelude.wrapping, saturating and bounded elaborate to the
+        -- collections unit's definitions once the type they give is known.
+        S.fromList [(ValueName, n) | usesBounded, i <- imports, importUnit i == collectionsUnit, d <- boundedArithmeticDefinitions,
           Right n <- [lookupName ValueName (importAlias i ++ "." ++ d)]]
+      usesBounded = any (`isInfixOf` show (functionDefinitions u, laws u, handlerDeclarations u))
+        ["Var \"prelude.wrapping\"", "Var \"prelude.saturating\"", "Var \"prelude.bounded\""]
   -- Re-exports: each listed name resolves to what this unit imports it as.
   reexports <- forM [(i, item) | i <- exportLines, item <- importItems i] $ \(i, item) -> do
     let law = "`" `isSuffixOf` item
@@ -438,17 +444,19 @@ walkAbility names a = do
   operations <- forM (abilityOperations a) $ \(n, t) -> (,) n <$> walkType names [] t
   abilityLaws' <- mapM (walkLaw names) (abilityLaws a)
   failures <- forM (abilityFailures a) $ \(n, t) -> (,) n <$> walkType names [] t
-  pure a{abilityOperations = operations, abilityLaws = abilityLaws', abilityFailures = failures}
+  resource <- traverse (walkType names []) (abilityResource a)
+  pure a{abilityOperations = operations, abilityLaws = abilityLaws', abilityFailures = failures, abilityResource = resource}
 
 walkHandler :: Monad m => Names m -> HandlerDeclaration -> m HandlerDeclaration
 walkHandler names h = do
   ability <- walkType names [] (handlerAbility h)
+  also <- mapM (walkType names []) (handlerAlso h)
   state <- forM (handlerState h) $ \(s, t, e) -> (,,) s <$> walkType names [] t <*> walkExpr names [] e
   let stateNames = maybe [] (\(s, _, _) -> [s]) (handlerState h)
   clauses <- forM (handlerClauses h) $ \c -> do
     body <- walkExpr names (clauseParameters c ++ stateNames) (clauseBody c)
     pure c{clauseBody = body}
-  pure h{handlerAbility = ability, handlerState = state, handlerClauses = clauses}
+  pure h{handlerAbility = ability, handlerAlso = also, handlerState = state, handlerClauses = clauses}
 
 walkRefinement :: Monad m => Names m -> Refinement -> m Refinement
 walkRefinement names r = do
