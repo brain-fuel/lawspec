@@ -26,6 +26,7 @@ import qualified LawSpec.AbilityEmit.Python as PythonAbilities
 import qualified LawSpec.AbilityEmit.Web as WebAbilities
 import qualified LawSpec.AbilityEmit.Haskell as HaskellAbilities
 import LawSpec.RustData (emitRustData)
+import LawSpec.HaskellDefinitions (emitHaskellDefinitions)
 
 ledger :: String
 ledger = unlines
@@ -240,3 +241,6 @@ test_typedDefinitionsRunNativeWithTheirMeaning = describe "typed definitions" $ 
       expect "python" (joined (PythonAbilities.emit False 64 declarations units)) ["def try_append(", "def state(self)", "def set_state(self, state)", "def typed_state(self)"]
       expect "typescript" (joined (WebAbilities.emit True False 64 declarations units)) ["tryAppend(", "state()", "setState(state", "typedState()"]
       expect "haskell" (joined (HaskellAbilities.emit False 64 declarations units)) ["tryAppend ::", "storeSnapshot =", "storeRestore ="]
+      -- A typed handler's state names LawSpecFast's types where its bodies are.
+      let bodies = [artifactContent a | a <- either error id (emitHaskellDefinitions (D.Pretty 100) 64 declarations units), "LawSpecDefinitionBodies" `isInfixOf` artifactPath a]
+      expect "haskell bodies" (concat bodies) ["import qualified LawSpecFast as LSF", "MVar.MVar"]
