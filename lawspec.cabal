@@ -432,6 +432,7 @@ library
       LawSpec.TestNames
       LawSpec.Time
       LawSpec.Typed.Go
+      LawSpec.Typed.Haskell
       LawSpec.Typed.Jvm
       LawSpec.Typed.Plan
       LawSpec.Typed.Python
