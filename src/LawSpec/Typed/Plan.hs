@@ -16,6 +16,7 @@ module LawSpec.Typed.Plan
   , isContextual, performedFailure
   , typedFallbacks, failedWith, sequenceBuiltins
   , collectionArguments, scalarTypes, constructorRanks, definitionClass, sharedDefinitions, firstOf
+  , stableSuffix
   ) where
 
 import Data.Char (isHexDigit)
@@ -25,6 +26,7 @@ import qualified Data.Set as S
 import LawSpec.Collections (collectionsUnit, collectionContainer)
 import LawSpec.Core
 import LawSpec.Scalar (Scalar(..))
+import LawSpec.Digest (digestHex, digestString)
 
 -- | The collections unit's operations a target implements natively.
 data Intrinsic
@@ -53,6 +55,11 @@ data TypedPlan = TypedPlan
     -- law's symbols, where the operation finds its handler) first.
   , typedContextual :: S.Set Id
   }
+
+-- | A generated name's suffix from an identity, so a typed function or a
+-- handler's start keeps its name however the rest of the program changes.
+stableSuffix :: Id -> String
+stableSuffix identity = take 8 (digestHex (digestString (idText identity)))
 
 -- | The first of a list the caller knows is not empty (a product's one
 -- constructor, an infinite list of candidates).
@@ -179,9 +186,9 @@ typedPlanOf performing scalars declarations units = TypedPlan
   where
     -- Definitions that perform, and then those that call them, until stable.
     contextual = spread (S.fromList [idOf d | d <- eligible, performs (definitionBody d)])
-    spread known =
-      let next = S.union known (S.fromList [idOf d | d <- eligible, any (`S.member` known) (callees (definitionBody d))])
-      in if S.size next == S.size known then known else spread next
+    spread found =
+      let next = S.union found (S.fromList [idOf d | d <- eligible, any (`S.member` found) (callees (definitionBody d))])
+      in if S.size next == S.size found then found else spread next
     performs e = case expressionNode e of
       Perform (Operation ref "raise") [_] | failing ref -> any performs (children e)
       Perform _ _ -> True

@@ -117,7 +117,7 @@ emitPythonTyped bits declarations units = do
                                , (_, AbilityRef _ [failure]) <- abilityFailures a ]
       boundary = concat [ let (args, result) = functionType (declarationType (definitionDeclaration d)) in result : args
                         | d <- M.elems (typedDefinitions plan) ]
-      starts = [ (handlerId h, "Start_" ++ show k, start) | (k, h) <- zip [0 :: Int ..] typedHandlers, Just (_, start) <- [handlerState h] ]
+      starts = [ (handlerId h, "Start_" ++ stableSuffix (handlerId h), start) | h <- typedHandlers, Just (_, start) <- [handlerState h] ]
   ((functionDocs, startDocs, helperDocs), _) <- flip runStateT (St 0 M.empty S.empty) $ do
     fs <- mapM (\(c, d) -> functionDoc env c d) (typedRepresentatives plan)
     ss <- forM starts $ \(_, name, start) -> do
@@ -152,7 +152,7 @@ emitPythonTyped bits declarations units = do
         [] -> Nothing
     , pyTypedPlan = plan }
   where
-    functionName c d = "Def_" ++ identifier (shortName (declarationName (definitionDeclaration d))) ++ "_" ++ show c
+    functionName _ d = "Def_" ++ identifier (shortName (declarationName (definitionDeclaration d))) ++ "_" ++ stableSuffix (declarationId (definitionDeclaration d))
     shortName name =
       let unprefixed = if "lawspec_" `isPrefixOf` name then drop 8 name else name
       in reverse (dropHash (reverse unprefixed))
@@ -179,10 +179,6 @@ substituteIn table t = case t of
 
 fieldTypes :: DataDeclaration -> [Type] -> DataConstructor -> [Type]
 fieldTypes d args c = map (substituteIn (zip (dataParameters d) args) . binderType) (constructorFields c)
-
-typeArguments :: Type -> [Type]
-typeArguments (Constructor _ args) = [t | TypeArgument t <- args]
-typeArguments _ = []
 
 -- | Whether Python's == is LawSpec's equality on a type's typed values: no
 -- list or map inside, whose cells and nodes == would walk recursively.

@@ -104,7 +104,7 @@ emitWebTyped ts bits declarations units = do
                      [ t | h <- typedHandlers, Just (t, _) <- [handlerState h] ]
       boundary = concat [ let (args, result) = functionType (declarationType (definitionDeclaration d)) in result : args
                         | d <- M.elems (typedDefinitions plan) ]
-      starts = [ (handlerId h, "Start_" ++ show k, ty, start) | (k, h) <- zip [0 :: Int ..] typedHandlers, Just (ty, start) <- [handlerState h] ]
+      starts = [ (handlerId h, "Start_" ++ stableSuffix (handlerId h), ty, start) | h <- typedHandlers, Just (ty, start) <- [handlerState h] ]
   ((classDocs, functionDocs, startDocs, helperDocs), _) <- flip runStateT (St 0 M.empty S.empty) $ do
     cs <- concat <$> mapM (classDoc env) datas
     fs <- mapM (\(c, d) -> functionDoc env c d) (typedRepresentatives plan)
@@ -142,7 +142,7 @@ emitWebTyped ts bits declarations units = do
         [] -> Nothing
     , webTypedPlan = plan }
   where
-    functionName c d = "Def_" ++ identifier (shortName (declarationName (definitionDeclaration d))) ++ "_" ++ show c
+    functionName _ d = "Def_" ++ identifier (shortName (declarationName (definitionDeclaration d))) ++ "_" ++ stableSuffix (declarationId (definitionDeclaration d))
     shortName name =
       let unprefixed = if "lawspec_" `isPrefixOf` name then drop 8 name else name
       in reverse (dropHash (reverse unprefixed))

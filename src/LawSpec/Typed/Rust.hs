@@ -106,7 +106,7 @@ emitRustTyped declarations units = do
     , rustTypedNative = directType directData
     , rustTypedPlan = plan }
   where
-    functionName c d = identifier (shortName (declarationName (definitionDeclaration d))) ++ "_" ++ show c
+    functionName _ d = identifier (shortName (declarationName (definitionDeclaration d))) ++ "_" ++ stableSuffix (declarationId (definitionDeclaration d))
     shortName name =
       let unprefixed = if "lawspec_" `isPrefixOf` name then drop 8 name else name
       in reverse (dropHash (reverse unprefixed))

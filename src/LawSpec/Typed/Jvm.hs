@@ -155,8 +155,8 @@ emitJvmTyped style declarations units = do
     (\t -> (,) t <$> codecExpression env [] t)
   -- Each typed stateful handler's start state, made in Java for Java and
   -- Kotlin alike.
-  let starting = [ (handlerId h, "start" ++ show k, t, e)
-                 | (k, h) <- zip [0 :: Int ..] [h | h <- concatMap unitHandlers units, isTypedHandler plan h]
+  let starting = [ (handlerId h, "start_" ++ stableSuffix (handlerId h), t, e)
+                 | h <- [x | x <- concatMap unitHandlers units, isTypedHandler plan x]
                  , Just (t, e) <- [handlerState h] ]
   startDocs <- forM starting $ \(_, name, t, e) -> do
     jt <- javaType env True t
@@ -190,7 +190,7 @@ emitJvmTyped style declarations units = do
     , jvmTypedStart = \identity -> lookup identity [(i, typedClassName ++ "." ++ n ++ "(symbols)") | (i, n, _, _) <- starting]
     , jvmTypedPlan = plan }
   where
-    functionName c d = identifier (shortName (declarationName (definitionDeclaration d))) ++ "_" ++ show c
+    functionName _ d = identifier (shortName (declarationName (definitionDeclaration d))) ++ "_" ++ stableSuffix (declarationId (definitionDeclaration d))
     shortName name =
       let unprefixed = if "lawspec_" `isPrefixOf` name then drop 8 name else name
       in reverse (dropHash (reverse unprefixed))

@@ -18,13 +18,12 @@ import Data.List (intercalate, isPrefixOf, sortOn, nub)
 import qualified Data.Map.Strict as M
 import Data.Maybe (fromMaybe, isJust)
 import qualified Data.Set as S
-import LawSpec.Collections (collectionsUnit, collectionContainer)
+import LawSpec.Collections (collectionsUnit)
 import LawSpec.Core
 import LawSpec.Scalar
 import LawSpec.Typed.Plan
 import LawSpec.HaskellData (namesFor, haskellDataType)
 import LawSpec.AbilityNames (interfaceName, fieldName)
-import LawSpec.Time (isDurationType)
 import qualified LawSpec.Code.Doc as D
 import LawSpec.Digest (digestHex, digestString)
 
@@ -119,7 +118,7 @@ emitHaskellTyped declarations units = do
                      [ t | h <- typedHandlers, Just (t, _) <- [handlerState h] ]
       boundary = concat [ let (args, result) = functionType (declarationType (definitionDeclaration d)) in result : args
                         | d <- M.elems (typedDefinitions plan) ]
-      starts = [ (handlerId h, "start_" ++ show k, ty, start) | (k, h) <- zip [0 :: Int ..] typedHandlers, Just (ty, start) <- [handlerState h] ]
+      starts = [ (handlerId h, "start_" ++ stableSuffix (handlerId h), ty, start) | h <- typedHandlers, Just (ty, start) <- [handlerState h] ]
       abilityModules = nub [ abilityModule u | d <- M.elems (typedDefinitions plan), op <- performedIn (definitionBody d)
                            , Just (u, _) <- [findAbility units (operationAbility op)] ]
   dataDocs <- mapM (dataDoc env) datas
@@ -174,7 +173,7 @@ emitHaskellTyped declarations units = do
     , hsTypedPair = pairName
     , hsTypedPlan = plan }
   where
-    functionName c d = "def_" ++ identifier (shortName (declarationName (definitionDeclaration d))) ++ "_" ++ show c
+    functionName _ d = "def_" ++ identifier (shortName (declarationName (definitionDeclaration d))) ++ "_" ++ stableSuffix (declarationId (definitionDeclaration d))
     shortName name =
       let unprefixed = if "lawspec_" `isPrefixOf` name then drop 8 name else name
       in reverse (dropHash (reverse unprefixed))
@@ -202,9 +201,6 @@ typedNames datas = M.fromList (snd (foldl pick (S.empty, []) datas))
           constructors = [ (constructorId c, "C" ++ drop 1 chosen ++ (if length (dataConstructors d) > 1 then "_" ++ identifier (constructorName c) else ""))
                          | c <- dataConstructors d ]
       in (S.insert chosen taken, (dataId d, chosen) : constructors ++ acc)
-
-fieldless :: DataDeclaration -> Bool
-fieldless d = not (null (dataConstructors d)) && all (null . constructorFields) (dataConstructors d)
 
 rankOf :: DataDeclaration -> DataConstructor -> Int
 rankOf d c = fromMaybe 0 (lookup (constructorId c) (constructorRanks d))
@@ -454,7 +450,7 @@ cexpr env scope e = case expressionNode e of
   Perform op args -> do
     parts <- mapM (cexpr env scope) args
     outs <- mapM (helper "tn" . expressionType) args
-    fromNative <- helper "fn" (expressionType e)
+    fromNativeResult <- helper "fn" (expressionType e)
     (owner, ability) <- lift' (maybe (Left ("typed Haskell: unknown ability " ++ abilityKey (operationAbility op))) Right (findAbility (envUnits env) (operationAbility op)))
     r <- fresh "performed"
     t <- fresh "value"
@@ -469,7 +465,7 @@ cexpr env scope e = case expressionNode e of
         from <- helper "fn" failureType
         pure (D.text ("LSF.performing " ++ show (abilityKey failing) ++ " (\\(native :: " ++ native ++ ") -> " ++ to ++ " (" ++ from ++ " native)) ") <> paren call)
       _ -> pure call
-    pure (concatMap fst parts ++ [D.text ("!" ++ r ++ " <- ") <> invocation, D.text ("let !" ++ t ++ " = " ++ fromNative ++ " " ++ r)], D.text t)
+    pure (concatMap fst parts ++ [D.text ("!" ++ r ++ " <- ") <> invocation, D.text ("let !" ++ t ++ " = " ++ fromNativeResult ++ " " ++ r)], D.text t)
   Handle (CatchFailure ref) body | Constructor "Either" [TypeArgument failure, _] <- expressionType e -> do
     t <- fresh "attempted"
     r <- fresh "outcome"
