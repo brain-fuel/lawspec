@@ -9,11 +9,21 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Added
 
 - Checked definitions and stateful spec handlers run as typed native code on
-  Rust, Go, Java and Kotlin wherever every value they touch has a typed form
+  all eight targets wherever every value they touch has a typed form
   (Bool, Unit, the bounded integers, Integer, Text, Bytes, List, Maybe,
-  Either, KeyVal, Set and data built from them) and they perform no
-  operation but `raise`; anything else runs on the dynamic values, as
-  before. Definitions that `fail with E`, `raise` and `prelude.attempt`, field
+  Either, KeyVal, Set and data built from them); anything else runs on the
+  dynamic values, as before. A definition that performs an operation of
+  another ability, or calls one that does, runs typed too: it takes the
+  handler context first and performs through the handler in scope, so
+  LawTwin's Kafka client handlers (`kafkaProducer`, `kafkaConsumer`,
+  `kafkaTransactions`) run typed, and 829 of the contract's 865 definitions
+  do (only the IntSize and UIntPtr helpers stay dynamic). Python represents
+  data as tuples, lists as shared cons cells that know their length and
+  KeyVal and Set as persistent AVL trees, and turns self tail calls into
+  loops; JavaScript and TypeScript use classes with generated TypeScript
+  types, and a number for every integer that fits a safe integer, a BigInt
+  only beyond; Haskell uses strict data types, `Data.Map.Strict` and
+  `Data.Set`, and threads a handler's state through an `MVar`. Definitions that `fail with E`, `raise` and `prelude.attempt`, field
   access and record update, bounded arithmetic, recursion on integers and
   the sequence helpers run typed, and so does a spec handler of several
   abilities with a computed start; a typed failure is the same panic or
@@ -28,11 +38,19 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   the dynamic value where typed and dynamic code meet.
 - Embedding entry points: a stateful spec handler can be made outside any law
   and called from native code, `Handler::start()` in Rust,
-  `Start<Handler>()` in Go and the no-argument constructor in Java and
-  Kotlin. Its operations apply one at a time, so it can be shared between
-  threads. The new guide "Embed a generated model" shows how.
-- `lawspec-dev bench <name>` runs a benchmark of generated code on Rust, Go,
-  Java and Kotlin. `bench/kafka` drives LawTwin's Kafka reference model (a
+  `Start<Handler>()` in Go, the no-argument constructor in Java and Kotlin,
+  `Handler()` in Python, `new Handler()` in JavaScript and TypeScript and
+  the handler's function over a symbol context in Haskell. Its operations apply one at a time, so it can
+  be shared between threads. Each operation that fails with `E` also has a
+  form that returns the failure as a value: `try_op` gives `Result<T, E>` in
+  Rust, `TryOp` gives `(T, error)` with a `*LawSpecRaised[E]` in Go, `tryOp`
+  an `Outcome<T, E>` in Java and Kotlin, `Right` or `Left` in Python,
+  JavaScript and TypeScript, and `Either E T` in Haskell. A handler's state
+  can be read and replaced (`state`, `set_state` and their typed forms;
+  `<h>Snapshot` and `<h>Restore` in Haskell), and the state's type is
+  public. The new guide "Embed a generated model" shows how.
+- `lawspec-dev bench <name>` runs a benchmark of generated code on all eight
+  targets. `bench/kafka` drives LawTwin's Kafka reference model (a
   copy under its MIT licence, re-expressed with failing operations, one
   handler for three abilities, fields and bounded arithmetic) through its
   `cluster` handler: a million produces over 100 partitions, a consumer
@@ -41,7 +59,13 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   It runs the whole workload at 0.59 (Rust), 1.04 (Go), 0.76 (Java) and 0.90
   (Kotlin) million operations a second, holding about 190 to 270 MiB for the
   million records, where 0.21.0's generated Rust managed 9 operations a
-  second, and 1.5 GiB, at two thousand.
+  second, and 1.5 GiB, at two thousand. Python runs it at 110 thousand
+  operations a second (it ran 1,100 on the dynamic values, at twenty
+  thousand), JavaScript at 884 thousand and TypeScript at 830 thousand
+  (7,300 before) and Haskell at 1.75 million (57 before, at two thousand).
+  `lawspec-dev bench kafka --deterministic` generates the contract on each
+  target with and without a cache, cold and warm, and by `lawspec-core`, and
+  fails unless every run gives the same bytes.
 - Fields: `b.balance` reads a field of a single-constructor value, and
   `b with balance = v, owner = o` copies it with fields replaced.
 - Handlers of several abilities: `handler reference for Broker, Admin with
@@ -95,6 +119,18 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- Generation is deterministic: the on-disk cache is keyed by the build of
+  the compiler that wrote it (its executable's path, size and time) as well
+  as its version, so a rebuilt compiler no longer reads another build's
+  entries.
+- Generated names are stable under unrelated edits: the typed functions a
+  handler's clauses call, and its start, are named from the definitions and
+  the handler (with a suffix from the digest of what they name where one is
+  needed), not from their position among the others.
+- Generated code builds without warnings, or with targeted allow attributes,
+  on every target, also as a dependency of another project.
+- A TypeScript type with several type arguments no longer has a trailing
+  comma.
 - A spec handler clause that fails no longer poisons the handler on Rust:
   later operations see the state as the failure left it.
 - A field's refinement may call a checked definition of its unit
