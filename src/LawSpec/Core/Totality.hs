@@ -152,8 +152,8 @@ auditDeferringWithResults constructors contracts definitions results = do
       let parameters = constructorParameters c
           conditions = constructorConditions c
           roots = M.fromList [(name,(index,False)) | (index,name) <- zip [0..] parameters]
-      unless (length parameters == length (nub parameters)) (Left "duplicate constructor field identity")
-      unless (all (`elem` parameters) (concatMap freeVariables conditions))
+      unless (length parameters == S.size (S.fromList parameters)) (Left "duplicate constructor field identity")
+      unless (all (`S.member` S.fromList parameters) (concatMap freeVariables conditions))
         (Left "constructor predicate has an out-of-scope variable")
       unless (null (concatMap calls conditions))
         (Left "constructor predicate calls require dependency auditing")
@@ -164,7 +164,7 @@ auditDeferringWithResults constructors contracts definitions results = do
         _ <- walk M.empty M.empty (constructorOwner c) roots facts condition
         pure (assume True condition facts)) initialFacts conditions
       pure ()
-    unless (length ids == length (nub ids)) (Left "duplicate total definition identity")
+    unless (length ids == S.size known) (Left "duplicate total definition identity")
     unless (length contracts == M.size contractTable) (Left "duplicate definition contract")
     forM_ contracts $ \c -> do
       arguments <- maybe (Left "contract names an unknown definition") Right (M.lookup (contractOwner c) signatures)
@@ -665,8 +665,11 @@ dataBranches scope facts value branches = case known of
       _ -> variableIdentity value >>= (`M.lookup` constructorValues facts)
     unknown (tag,binders,body) =
       -- What the branch already uses, computed once: a constructor of a
-      -- large record has hundreds of binders.
-      let used0 = S.unions [usedVariables facts, S.fromList (binders ++ M.keys scope ++ allVariables value ++ allVariables body)]
+      -- large record has hundreds of binders. The body's own names are Core
+      -- binders, never ::member:: names, and the names freshened before are
+      -- all in usedVariables, so the body (the rest of the definition) is
+      -- not walked for each match.
+      let used0 = S.unions [usedVariables facts, S.fromList (binders ++ M.keys scope ++ allVariables value)]
           allocate (fresh,aliases,taken) binder =
             let name = head [candidate | n <- [0::Int ..], let candidate = Id (idText binder ++ "::member::" ++ show n), candidate `S.notMember` taken]
             in (name : fresh,M.insert binder (Variable name) aliases,S.insert name taken)
