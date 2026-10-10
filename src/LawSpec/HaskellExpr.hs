@@ -98,6 +98,9 @@ renderExpressionWithContext declarations width schema scope reference key local 
               D.nest 2 (D.softline <> inner) <> D.text ";" <> D.softline <>
               D.text "_ -> P.error \"invalid all group\"") <> D.softline <> D.text "})"))
     render term = case expressionNode term of
+      -- Field nodes are lowered to matches before any backend (lowerFieldNodes).
+      Project {} -> Left "a field node reached the backend"
+      Update {} -> Left "a record update node reached the backend"
       AllPayloads value predicates -> do
         argument <- render value
         ref <- reference (expressionType value)

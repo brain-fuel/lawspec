@@ -19,6 +19,13 @@ import Control.Monad (unless, forM_, zipWithM, foldM)
 import Data.List (find, nub)
 import qualified LawSpecRuntime as LS
 
+-- | A payload type's first argument (List, Maybe, Nullable and Optional have
+-- one).
+firstArgument :: [a] -> a
+firstArgument arguments = case arguments of
+  a : _ -> a
+  [] -> error "a payload type without its argument"
+
 data TypeRef = Parameter Int | Named String [TypeRef]
   deriving (Eq, Ord, Show)
 data Field = Field String TypeRef deriving (Eq, Show)
@@ -434,16 +441,16 @@ allPayloadsWith scope schema@(Schema definitions _ _ _ _ _) typeRef bits value
         _ -> Left "Bool required in payload predicate"
     walk (PayloadApplication name arguments) stored = case (name, stored) of
       ("List", LS.SList values) -> every
-        [context ("List[" ++ show index ++ "]") (walk (head arguments) child)
+        [context ("List[" ++ show index ++ "]") (walk (firstArgument arguments) child)
         | (index, child) <- zip [0 :: Int ..] values]
       (_, LS.SPresent wrapper payload)
         | name `elem` ["Nullable", "Optional"] && wrapper == name ->
           maybe (Right True)
-            (context (name ++ ".value") . walk (head arguments)) payload
+            (context (name ++ ".value") . walk (firstArgument arguments)) payload
       (_, LS.SHandle _ _) -> Right True
       ("Maybe", LS.SData "Maybe::Nothing" []) -> Right True
       ("Maybe", LS.SData "Maybe::Just" [child]) ->
-        context "Maybe::Just.value" (walk (head arguments) child)
+        context "Maybe::Just.value" (walk (firstArgument arguments) child)
       ("Either", LS.SData tag [child]) ->
         let index = if tag == "Either::Left" then 0 else 1
         in context (tag ++ ".value") (walk (arguments !! index) child)

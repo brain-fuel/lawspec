@@ -68,6 +68,8 @@ domain is a compile error.
 | `prelude.quot a b`, `prelude.rem a b` | Truncating integer division and remainder |
 | `prelude.round value scale` | Round an exact value to `scale` decimal places, ties to even |
 | `prelude.Int8 x`, `prelude.Float64 x`, … | Explicit numeric conversion to the named type |
+| `prelude.wrapping e`, `prelude.saturating e`, `prelude.bounded e` | Integer arithmetic into a bounded type, wrapping, saturating or `Nothing` (see [expressions](language/expressions-and-arithmetic.md#bounded-arithmetic)) |
+| `a ++ b`, `prelude.slice from to x`, `prelude.at i x`, … | Text, Bytes and List operations (see [sequences](language/sequences.md)) |
 
 For `Optional (Nullable Int8)`, the values `undefined`, `optional(null)` and
 `optional(nullable(7))` are all different. Generated support types keep this

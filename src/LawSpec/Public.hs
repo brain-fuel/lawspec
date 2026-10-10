@@ -5,6 +5,7 @@ import qualified LawSpec.Unification as U
 import Data.Aeson
 import Data.List (intercalate)
 import qualified LawSpec.Core as C
+import qualified Data.Map.Strict as M
 import LawSpec.Core.Evidence (Obligation(..), statusName)
 import qualified LawSpec.Model as S
 import LawSpec.Common
@@ -35,23 +36,29 @@ evidenceView evidence = case evidence of
 -- | Expressions are exposed with their types and origins, so tools can point at
 -- source.
 expressionView :: Names -> C.Expr -> Value
-expressionView names e = object ["type" .= typeView (C.expressionType e),"origin" .= originView (C.expressionOrigin e),"text" .= expressionText names e,"node" .= node] where
-  expr = expressionView names
+expressionView names = viewIn (M.fromList (reverse names))
+
+-- | With the names in a map, as textIn.
+viewIn :: M.Map C.Id String -> C.Expr -> Value
+viewIn names e = object ["type" .= typeView (C.expressionType e),"origin" .= originView (C.expressionOrigin e),"text" .= textIn names e,"node" .= node] where
+  expr = viewIn names
   node = case C.expressionNode e of
     C.Constant v -> object ["kind" .= str "constant", "value" .= v]
+    C.Project tag index value -> object ["kind" .= str "field", "constructor" .= C.idText tag, "index" .= index, "value" .= expr value]
+    C.Update tag index value field -> object ["kind" .= str "update", "constructor" .= C.idText tag, "index" .= index, "value" .= expr value, "field" .= expr field]
     C.Construct tag args -> object ["kind" .= str "construct", "constructor" .= C.idText tag, "arguments" .= map expr args]
     C.Match value cases -> object ["kind" .= str "match", "value" .= expr value, "cases" .=
       [object ["constructor" .= C.idText (C.caseConstructor branch),
         "binders" .= map binderView (C.caseBinders branch),
-        "body" .= expressionView ([(C.binderId b, C.binderName b) | b <- C.caseBinders branch] ++ names) (C.caseBody branch)]
+        "body" .= viewIn (M.union (M.fromList [(C.binderId b, C.binderName b) | b <- C.caseBinders branch]) names) (C.caseBody branch)]
         | branch <- cases]]
     C.AllElements value binder predicate -> object
       ["kind" .= str "allElements", "value" .= expr value, "binder" .= binderView binder,
-       "predicate" .= expressionView ((C.binderId binder,C.binderName binder):names) predicate]
+       "predicate" .= viewIn (M.insert (C.binderId binder) (C.binderName binder) names) predicate]
     C.AllPayloads value predicates -> object
       ["kind" .= str "allPayloads", "value" .= expr value, "predicates" .=
        [object ["binder" .= binderView binder,
-         "predicate" .= expressionView ((C.binderId binder,C.binderName binder):names) predicate]
+         "predicate" .= viewIn (M.insert (C.binderId binder) (C.binderName binder) names) predicate]
          | (binder,predicate) <- predicates]]
     C.Local n -> object ["kind" .= str "local", "id" .= C.idText n]
     C.ExternalCall n args -> object ["kind" .= str "call", "declaration" .= C.idText n, "arguments" .= map expr args]
@@ -65,7 +72,7 @@ expressionView names e = object ["type" .= typeView (C.expressionType e),"origin
     C.Handle (C.CatchFailure ability) body -> object ["kind" .= str "handle", "handling" .= str "catchFailure", "ability" .= C.abilityKey ability, "body" .= expr body]
     C.Handle (C.WithHandler ability h) body -> object ["kind" .= str "handle", "handling" .= str "withHandler", "ability" .= C.abilityKey ability, "handler" .= handlerText h, "body" .= expr body]
     C.Let binder value body -> object ["kind" .= str "let", "binder" .= binderView binder, "value" .= expr value,
-      "body" .= expressionView ((C.binderId binder, C.binderName binder) : names) body]
+      "body" .= viewIn (M.insert (C.binderId binder) (C.binderName binder) names) body]
     C.Calls op args -> object ["kind" .= str "calls", "ability" .= C.abilityKey (C.operationAbility op), "operation" .= C.operationName op, "arguments" .= fmap (map expr) args]
 handlerText :: C.HandlerRef -> String
 handlerText h = case h of
@@ -79,20 +86,27 @@ logical :: C.LogicalOp -> String
 logical C.And = "&&"
 logical C.Or = "||"
 expressionText :: Names -> C.Expr -> String
-expressionText names e = case C.expressionNode e of
+expressionText names = textIn (M.fromList (reverse names))
+
+-- | With the names in a map: a match on a record of hundreds of fields binds
+-- hundreds of names.
+textIn :: M.Map C.Id String -> C.Expr -> String
+textIn names e = case C.expressionNode e of
   C.Constant v -> prettyScalar v
   C.Construct tag args -> unwords (C.idText tag : map ((\v -> "(" ++ go v ++ ")")) args)
+  C.Project _ index value -> "(" ++ go value ++ ")." ++ show index
+  C.Update _ index value field -> "(" ++ go value ++ ") with " ++ show index ++ " = (" ++ go field ++ ")"
   C.Match value cases -> "match (" ++ go value ++ ") { " ++ unwords
     [C.idText (C.caseConstructor branch) ++ " " ++ unwords (map C.binderName (C.caseBinders branch)) ++
-     " -> " ++ expressionText ([(C.binderId b, C.binderName b) | b <- C.caseBinders branch] ++ names) (C.caseBody branch) ++ ";"
+     " -> " ++ textIn (M.union (M.fromList [(C.binderId b, C.binderName b) | b <- C.caseBinders branch]) names) (C.caseBody branch) ++ ";"
       | branch <- cases] ++ " }"
   C.AllElements value binder predicate -> "allElements (" ++ go value ++ ") (" ++ C.binderName binder ++
-    " -> " ++ expressionText ((C.binderId binder,C.binderName binder):names) predicate ++ ")"
+    " -> " ++ textIn (M.insert (C.binderId binder) (C.binderName binder) names) predicate ++ ")"
   C.AllPayloads value predicates -> "allPayloads (" ++ go value ++ ") [" ++ unwords
     [C.binderName binder ++ " -> " ++
-      expressionText ((C.binderId binder,C.binderName binder):names) predicate ++ ";"
+      textIn (M.insert (C.binderId binder) (C.binderName binder) names) predicate ++ ";"
       | (binder,predicate) <- predicates] ++ "]"
-  C.Local n -> maybe (C.idText n) id (lookup n names)
+  C.Local n -> maybe (C.idText n) id (M.lookup n names)
   C.ExternalCall n args -> unwords (declarationName n:map ((\v -> "(" ++ go v ++ ")")) args)
   C.Binary op _ a b -> "(" ++ go a ++ " " ++ C.binaryName op ++ " " ++ go b ++ ")"
   C.Unary op a -> unary op ++ "(" ++ go a ++ ")"
@@ -104,9 +118,9 @@ expressionText names e = case C.expressionNode e of
   C.Handle (C.CatchFailure _) body -> "prelude.attempt (" ++ go body ++ ")"
   C.Handle (C.WithHandler _ h) body -> "handle " ++ go body ++ " with " ++ handlerText h ++ " end"
   C.Let binder value body -> "let " ++ C.binderName binder ++ " = " ++ go value ++ " in " ++
-    expressionText ((C.binderId binder, C.binderName binder) : names) body
+    textIn (M.insert (C.binderId binder) (C.binderName binder) names) body
   C.Calls op args -> "calls of " ++ C.operationName op ++ maybe "" (\xs -> " with (" ++ intercalate ", " (map go xs) ++ ")") args
-  where go = expressionText names
+  where go = textIn names
 
 propositionView :: Names -> C.Proposition -> Value
 propositionView names p = case p of

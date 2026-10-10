@@ -11,9 +11,11 @@
 --   lawspec-dev docs [--check]      the documentation site; see dev/Docs.hs
 --   lawspec-dev canon [arguments]   canon over the repository; see dev/Canon.hs
 --   lawspec-dev beam-vectors <file> scalar vectors from Core for BEAM conformance
+--   lawspec-dev bench <name> [...]  benchmarks of generated code; see dev/Bench.hs
 module Main (main) where
 
 import Control.Monad (forM, forM_, unless, when)
+import Bench (benchCommand)
 import Canon (canonCommand)
 import BeamVectors (writeVectors)
 import Ci (ci)
@@ -42,7 +44,8 @@ main = getArgs >>= \case
   "bump" : options -> bumpCommand options
   "docs" : options -> docsCommand options
   "canon" : options -> canonCommand options
-  _ -> die "usage: lawspec-dev boundaries | integrity [--record] | ci [options] | generate [--check|--list] | version [--check] | bump <x.y.z> | docs --out <dir> | docs --check | canon [arguments] | beam-vectors <file>"
+  "bench" : options -> benchCommand options
+  _ -> die "usage: lawspec-dev boundaries | integrity [--record] | ci [options] | generate [--check|--list] | version [--check] | bump <x.y.z> | docs --out <dir> | docs --check | canon [arguments] | beam-vectors <file> | bench <name> [--scale N] [--generate] [target...]"
 
 -- | Follow transitive local imports, so a convenience module cannot hide
 -- syntax or inference behind Core, the testing plan, or an emitter.

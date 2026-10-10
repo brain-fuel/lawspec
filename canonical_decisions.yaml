@@ -120,6 +120,14 @@ DEC-typed-core-boundary:
   opened: 0.8.0
   decided: 0.8.0
 
+DEC-typed-native-definitions:
+  status: open
+  question: Generated checked definitions evaluated the dynamic value every target shares, so a stateful spec handler copied its whole state on every operation and searched a KeyVal as a list. How do the generated definitions and handlers become fast enough to serve as a runtime (LawTwin's twins) without changing what they mean?
+  answer: |
+    On every target (Rust, Go, Java, Kotlin, Python, JavaScript, TypeScript and Haskell), a checked definition runs as typed native code when every value it touches has a typed form (Bool, Unit, the bounded integers, Integer, Text, Bytes, List, Maybe, Either, KeyVal, Set and data built from them), it calls only typed definitions and has no runtime contract or policy; anything else stays on the dynamic path. raise and attempt fail and catch exactly as the dynamic code does (a Rust panic, a Go panic, the JVM's, Python's, JavaScript's and Haskell's failure exception carrying the failure's dynamic value), so typed and dynamic code fail into each other. Typed code carries the handler context: a definition that performs another ability's operation takes the law's symbols and calls the operation's handler there with native values, as the dynamic code does, so client handlers (LawTwin's kafkaProducer, kafkaConsumer, kafkaTransactions) run typed too. The sequence helpers (++, slice, at, range, octets, bytesOf, utf8, textOf, join) are typed on every target, and a typed spec handler answers every ability it is declared for, from a computed start. LawSpec.Typed.Plan decides it once for the seven emitters. Lists are persistent cons lists that share their tails, KeyVal and Set persistent ordered trees in the portable order (AVL trees; Data.Map and Data.Set in Haskell), Integer a machine word (a safe JavaScript number) until it outgrows it, and data shared by reference (a tuple in Python, a strict data type whose derived order is the portable one in Haskell), so a handler's state is never copied and an operation costs what it changes. Typed Haskell runs in IO, strictly, so an operation happens once and in order. Self tail calls become loops. The collections unit's KeyVal and Set operations are intrinsics. Definitions that are the same up to their names (an import's copies) share one body, named from its declaration so that unrelated edits do not rename it. Values cross to dynamic code through converters at the boundary, and to native code (the handler's interface) directly, or through the handler schema where lawspec.json binds native types. An embedded handler also gives each failing operation a form returning its failure as a value, and reads and replaces its state. Generation depends only on the program: the compiler's on-disk cache is kept per compiler build. The acceptance suites, with their mutants, check both paths on every target. Proposed for the owner's sign-off.
+  opened: 0.21.0
+  revisit: 0.22.0
+
 DEC-elaborate-before-core:
   status: decided
   question: How are new surface features (indexed families, wrappers, workflows, imports, flow types, collections) added without changing Core or the backends?
@@ -461,3 +469,11 @@ DEC-recovery-not-regeneration:
     Runtimes were recovered verbatim from the embedded RuntimeSources.hs rather than regenerated from the committed 0.8 baseline; lost tests and harnesses were reconstructed and re-verified fresh, historical logs guiding but never substituting for verification, and no claim was made that the original suite was restored. Recorded in to_be_removed/RECOVERY.md.
   opened: 0.9.0
   decided: 0.9.0
+
+DEC-field-access-desugars-to-match:
+  status: decided
+  question: How do field access (b.f) and record update (b with f = v) reach Core and the targets?
+  answer: |
+    Inference types each directly once the value's type is known, without visiting the record's other fields, and keeps it as a field node; in a checked definition it is Core's Project (b.f) or Update (b with f = v), which validation, evaluation and the totality audits read directly, so a record of hundreds of fields costs one node per access rather than one binder per field (lawspec-dev bench compile). The testing plan and every emitter see each as the match on the single constructor it stands for (lowerFieldNodes), so the backends are unchanged; a law's terms are lowered when they are elaborated. The totality audit reads b.f as an atom (Field), so a guard on b.f is a fact about the field, and an update as the match it stands for, so the constructor's contract holds of the fields it keeps. Generic and existential records keep the match from the start. Recorded in docs/reference/language/types-and-data.md.
+  opened: 0.21.1
+  decided: 0.21.1

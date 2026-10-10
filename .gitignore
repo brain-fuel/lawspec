@@ -75,3 +75,4 @@ htmlcov/
 # canon: the checkout whose grammars canon.yaml names, and its cache
 /.canon
 .canon-cache/
+.stack-work-prof/

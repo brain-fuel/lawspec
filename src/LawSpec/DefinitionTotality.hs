@@ -4,14 +4,15 @@ module LawSpec.DefinitionTotality (auditTemplates) where
 
 import Control.Monad.State.Strict
 import Control.Monad (forM, when)
-import Data.List (stripPrefix, isInfixOf)
+import Data.List (stripPrefix, isInfixOf, isPrefixOf)
 import qualified Data.Map.Strict as M
 import qualified LawSpec.Model as S
 import qualified LawSpec.Core as C
 import qualified LawSpec.Core.Totality as T
 import qualified LawSpec.Core.PayloadPlan as P
 import LawSpec.Core.Types (makeRegistry)
-import LawSpec.Core.Total (safeConversionTypes, constructorProofContracts)
+import LawSpec.Inference (dataIndex)
+import LawSpec.Core.Total (safeConversionTypes, constructorProofContracts, resultBounds)
 import LawSpec.Elaboration (coreType, binaryOp)
 import LawSpec.Refinement (definitionContractFor)
 import LawSpec.Scalar
@@ -26,7 +27,12 @@ auditTemplates declarations bits unit templates = do
   constructors <- constructorProofContracts bits declarations
   lowered <- mapM lower templates
   -- Non-linear postconditions the prover defers become runtime checks in Core.
-  () <$ T.auditDeferring constructors (map snd lowered) (map fst lowered)
+  () <$ T.auditDeferringWithResults constructors (map snd lowered) (map fst lowered)
+    (M.fromList [ (identity (S.functionName d), bounds)
+                | (d, _, _, _) <- templates
+                , let bounds = case S.baseType (S.functionResult d) of
+                        S.Named primitive -> resultBounds bits (C.Constructor primitive [])
+                        _ -> (Nothing, Nothing) ])
   where
     constructorTag ty name
       | "::" `isInfixOf` name = C.Id name
@@ -37,6 +43,21 @@ auditTemplates declarations bits unit templates = do
         parent (S.Application name _) = name
         parent _ = "invalid-constructor"
     identity name = C.Id (S.unitName unit ++ "::" ++ name)
+    -- The single constructor of a record type, from the declarations.
+    recordOf ty = case S.baseType ty of
+      S.Named name -> lookupRecord name
+      S.Applied name _ -> lookupRecord name
+      S.Application name _ -> lookupRecord name
+      _ -> Left "a field of a value that is not a record"
+    lookupRecord name = case M.lookup name (fst (dataIndex declarations)) of
+      Just [d] | [c] <- C.dataConstructors d -> Right c
+      _ -> Left ("no record type " ++ name)
+    fieldOf ty field = do
+      c <- recordOf ty
+      case [(k, C.binderType b) | (k, b) <- zip [0 ..] (C.constructorFields c), C.binderName b == field] of
+        (k, fieldType) : _ -> Right (C.constructorId c, k, fieldType)
+        [] -> Left ("no field " ++ field)
+    fieldsOf ty = map C.binderType . C.constructorFields <$> recordOf ty
     operations = S.operationNames unit
     lower (definition, body, preconditions, postconditions) = either
       (Left . pure . (\message -> Diagnostic "total"
@@ -129,6 +150,37 @@ auditTemplates declarations bits unit templates = do
             let binder = C.Id (C.idText owner ++ "::let::" ++ show (index :: Int))
             inner <- proof owner integers (M.insert name binder scope) body
             pure (T.Match bound [([], T.substituteProof (M.singleton binder bound) inner)])
+        -- b.f as a field node (LawSpec.Inference): the field, as an atom.
+        S.Apply (S.Var n) _ | Just field <- stripPrefix S.fieldAccessPrefix n, [value] <- operands -> do
+          scrutinee <- recur value
+          (tag, index, fieldType) <- lift (fieldOf (effectiveType value) field)
+          pure (T.Field tag index (resultBounds bits fieldType) scrutinee)
+        -- b with f = v: the value built again from b's other fields and v.
+        S.Apply (S.Apply (S.Var n) _) _ | Just field <- stripPrefix S.fieldUpdatePrefix n, [value, replacement] <- operands -> do
+          new <- recur replacement
+          scrutinee <- recur value
+          (tag, index, _) <- lift (fieldOf (effectiveType value) field)
+          fields <- lift (fieldsOf (effectiveType value))
+          -- As the match it stands for: the other fields are bound, with what
+          -- the constructor's contract says of them.
+          names <- forM fields $ \_ -> do
+            index' <- get
+            put (index' + 1)
+            pure (C.Id (C.idText owner ++ "::match::" ++ show (index' :: Int)))
+          let domains = concat [T.integerAssumptions bits name primitive | (name, C.Constructor primitive []) <- zip names fields]
+              rebuilt = T.Construct tag [ if k == index then new else T.Variable name | (k, name) <- zip [0 ..] names ]
+          pure (T.DataMatch scrutinee [(tag, names, T.TypedDomain domains rebuilt)])
+        -- b.f (LawSpec.Inference.fieldDesugar): the field, as an atom.
+        S.MatchExpr _ [S.MatchBranch tag names _] | [value] <- operands
+          , [S.TypedCase _ fields body] <- S.typedCases typed
+          , not (null names), all (isPrefixOf "lawspecField") names
+          , S.Var chosen <- S.unlocated (S.expression body)
+          , (index, (_, fieldType)) : _ <- filter ((== chosen) . fst . snd) (zip [0 ..] fields) -> do
+            scrutinee <- recur value
+            let bounds = case S.baseType fieldType of
+                  S.Named primitive -> resultBounds bits (C.Constructor primitive [])
+                  _ -> (Nothing, Nothing)
+            pure (T.Field (constructorTag (effectiveType value) tag) index bounds scrutinee)
         S.MatchExpr _ _ -> case operands of
           [value] -> do
             scrutinee <- recur value
@@ -207,6 +259,11 @@ auditTemplates declarations bits unit templates = do
       ("round", [_,scale], [value,scaleValue]) -> do
         checkedScale <- convert integers (S.Named "Int32") (effectiveType scale) scaleValue
         pure (T.Sequence [value,checkedScale])
+      ("length", _, [value]) -> pure (T.Opaque "length" [value])
+      -- Sequence helpers are total.
+      _ | name `elem` ["append","slice","take","drop","at","range","octets","bytesOf","utf8","textOf","join","wrapping","saturating","bounded"] ->
+        pure (T.Sequence values)
+      ("size", _, [value]) -> pure (T.Opaque "size" [value])
       _ | name `elem` ["length","real","imag","isNaN","isInfinite","isFinite","isNegativeZero","checked","compare","size","isEmpty","toList"] ->
         pure (T.Sequence values)
       -- Matchers are total predicates (LawSpec.Matchers).

@@ -589,6 +589,7 @@ export function compareValues(a, b) {
 
 export function helper(n, args, types, bits = 64) {
   const x = args[0];
+  if (Object.hasOwn(sequenceHelpers, n)) return sequenceHelpers[n](args, types);
   if (n === 'startsWith') return args[0].startsWith(args[1]);
   if (n === 'endsWith') return args[0].endsWith(args[1]);
   if (n === 'textContains') return args[0].includes(args[1]);
@@ -644,6 +645,44 @@ export function helper(n, args, types, bits = 64) {
   }
   return convert(x, n, bits);
 }
+
+// Sequences: Text (string, indexed by code point), Bytes (Uint8Array) and
+// List (array). A slice is clamped to the sequence.
+function sequenceItems(x) {
+  return typeof x === 'string' ? [...x] : x instanceof Raw ? x.units : x;
+}
+function sequenceLike(x, items) {
+  if (typeof x === 'string') return items.join('');
+  if (x instanceof Uint8Array) return Uint8Array.from(items);
+  if (x instanceof Raw) return new Raw(x.kind, items);
+  return items;
+}
+const sequenceHelpers = {
+  append: ([a, b]) => sequenceLike(a, [...sequenceItems(a), ...sequenceItems(b)]),
+  slice: ([x, start, end]) => {
+    const items = [...sequenceItems(x)],
+        count = BigInt(items.length),
+        clamp = (n) => (BigInt(n) < 0n ? 0n : BigInt(n) > count ? count : BigInt(n)),
+        i = clamp(start),
+        j = clamp(end) < i ? i : clamp(end);
+    return sequenceLike(x, items.slice(Number(i), Number(j)));
+  },
+  at: ([x, i]) => {
+    const index = BigInt(i);
+    if (index < 0n || index >= BigInt(x.length)) return construct('Maybe::Nothing', []);
+    return construct('Maybe::Just', [x[Number(index)]]);
+  },
+  range: ([lo, hi], types) => {
+    const out = [];
+    for (let n = BigInt(lo); n < BigInt(hi); n++) out.push(convert(n, types[0]));
+    return out;
+  },
+  octets: ([b]) => Array.from(b),
+  bytesOf: ([xs]) => Uint8Array.from(xs, (o) => Number(o)),
+  utf8: ([t]) => new TextEncoder().encode(t),
+  textOf: ([n]) => String(n),
+  join: ([separator, parts]) => parts.join(separator),
+};
 
 // Round an exact rational directly to IEEE precision, including subnormal ties.
 function exactFloat(r, t) {
@@ -750,6 +789,9 @@ export function setHandlerSchema(schema) {
 }
 export function handlerSchema(fallback) {
   return boundHandlerSchema ?? fallback;
+}
+export function handlerSchemaBound() {
+  return boundHandlerSchema !== null;
 }
 
 // handle e with h end: runs body with these handlers installed, then puts

@@ -38,7 +38,50 @@ handler emptyStore for Store is
   put item is unitValue end
   size is 0 end
 end
+
+-- A clause may be a definition that gives Pair result state.
+definition putFirst (item :: Int32) (items :: List Int32) :: Pair Unit (List Int32) is
+  match items with
+  | Nil -> Pair unitValue [item]
+  | Cons first rest -> Pair unitValue items
+  end
+end
+
+definition sizeOf (items :: List Int32) :: Pair Integer (List Int32) is Pair (prelude.length items) items end
+
+handler firstStore for Store with state items :: List Int32 start [] is
+  put by putFirst
+  size by sizeOf
+end
 ```
+
+## A handler for several abilities
+
+```lawspec fragment
+handler reference for Broker, Admin with state cluster :: BrokerState start emptyCluster unitValue is
+  ...
+end
+```
+
+- One handler answers the operations of every ability it names, from one
+  state. It has a clause for each operation of each.
+- A law that runs it for one of its abilities runs it for the others the law
+  uses too, one handler made once per case: what a producer sends through
+  it, a consumer reads.
+- Its ability laws are checked under it for each of its abilities.
+- `handle ... with h end` takes a handler of one ability, for now.
+
+## Sets of handlers
+
+```lawspec fragment
+handlers reference is cluster, kafkaProducer, kafkaConsumer end
+```
+
+A set of spec handlers, one for each ability it covers, that work together:
+here clients written over the cluster's spec handler. Every law of an ability
+it covers runs under all of the set's handlers at once,
+`` Producer: law [reference] ``, and so does every law that uses one of its
+abilities, `` law [reference] ``. A law may name the set with `using`.
 
 ## Spec handlers
 
@@ -56,13 +99,24 @@ end
   operation: `fakeGateway`'s `authorize` clause is `fakeGatewayAuthorize`.
   The totality audit proves it like any definition. Its result must have the
   operation's type.
+- A handler's generated type is its name capitalized (`Cluster` for
+  `cluster`), or with `Spec` after it when that is the name of an ability it
+  answers (`CounterSpec` for `counter` of `Counter`).
 - With `with state s :: S start value`, each handler starts with the state
-  `value`. A clause reads it as `s`, and may update it with `~s := e;` before
-  its result. Each update sees the state the ones before it left.
+  `value`, which may call checked definitions and the prelude:
+  `start prelude.keyValOf []`, `start emptyCluster unitValue`. A clause reads
+  the state as `s`, and may update it with `~s := e;` before its result.
+  Each update sees the state the ones before it left.
+- A `match` or an `if` that ends a clause may update the state in its
+  branches: each branch ends the clause, with its own result and state.
+  A branch that does not update it keeps it.
+- `op by f` is a clause that is the definition `f` applied to the operation's
+  values; with state, `f` takes the state last and gives `Pair result next`,
+  as a [model](models.md)'s commands do.
 - A clause may use other abilities, as any definition may. A law that runs
   under the handler then needs handlers for them too: the first lawful one
-  of each, unless it names one with `using`. A clause cannot use the ability
-  its handler handles.
+  of each, unless it names one with `using` or runs under a set of handlers
+  (below). A clause cannot use the ability its handler handles.
 
 ## Handling part of a definition
 
@@ -323,6 +377,7 @@ definitions. Otherwise the generated tests check it.
 - Handlers are tail-resumptive or aborting: an operation answers and
   continues, or aborts to `prelude.attempt`. No handler captures a
   continuation.
+- A handler of several abilities cannot be named in `handle ... with`.
 - `handle ... with h end` names a spec handler; a native handler is chosen
   by the law.
 - A workflow's call to an adapter catches the runtime's `Fail`; the

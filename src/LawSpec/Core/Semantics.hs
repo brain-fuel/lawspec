@@ -81,6 +81,19 @@ helperValue _ "startsWith" [SSequence "Text" t, SSequence "Text" p] = Right (SBo
 helperValue _ "endsWith" [SSequence "Text" t, SSequence "Text" p] = Right (SBool (isSuffixOf p t))
 helperValue _ "textContains" [SSequence "Text" t, SSequence "Text" p] = Right (SBool (isInfixOf p t))
 helperValue _ "regexMatches" [SSequence "Text" p, SSequence "Text" t] = SBool <$> regexMatchesText (map toEnum p) t
+-- Text and Bytes: joined, sliced by index (clamped), encoded and printed.
+helperValue _ "append" [SSequence t a, SSequence u b] | t == u = Right (SSequence t (a ++ b))
+helperValue _ "slice" [SSequence t xs, from, to] = do
+  i <- exactValue from
+  j <- exactValue to
+  let count = length xs
+      clamp r = max 0 (min count (fromInteger (floor r)))
+      start = clamp i
+  pure (SSequence t (take (max start (clamp j) - start) (drop start xs)))
+helperValue _ "utf8" [SSequence "Text" points] = Right (SSequence "Bytes" (concatMap utf8Units points))
+helperValue _ "textOf" [n] = do
+  r <- exactValue n
+  pure (textScalar (show (numerator r)))
 helperValue bits n [a] | isNumeric n = convertValue bits (scalarType n) a
 helperValue bits _ _ = Left "invalid pure helper or arguments"
 -- | Comparison operators are spelled once.
@@ -102,3 +115,11 @@ scalarEqual (SSymbol a _) (SSymbol b _) = a == b
 scalarEqual (SComplex _ a b) (SComplex _ c d) = scalarEqual a c && scalarEqual b d
 scalarEqual (SPresent a (Just x)) (SPresent b (Just y)) = a == b && scalarEqual x y
 scalarEqual a b = a == b
+
+-- | A code point's UTF-8 octets.
+utf8Units :: Int -> [Int]
+utf8Units c
+  | c < 0x80 = [c]
+  | c < 0x800 = [0xC0 + c `div` 64, 0x80 + c `mod` 64]
+  | c < 0x10000 = [0xE0 + c `div` 4096, 0x80 + (c `div` 64) `mod` 64, 0x80 + c `mod` 64]
+  | otherwise = [0xF0 + c `div` 262144, 0x80 + (c `div` 4096) `mod` 64, 0x80 + (c `div` 64) `mod` 64, 0x80 + c `mod` 64]

@@ -23,6 +23,8 @@ types, checked definitions, refinements and laws.
   call.
 - [Collections](collections.md): sets, key/value maps, queues, stacks and
   deques, and the portable order of keys.
+- [Sequences](sequences.md): joining, slicing and indexing texts, bytes and
+  lists; octets and UTF-8.
 - [Asynchronous functions](async-functions.md): adapters that return each
   target's task.
 - [Abilities](abilities.md): dependencies as abilities, what code uses, and

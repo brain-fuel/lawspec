@@ -6,12 +6,16 @@ import LawSpec.Core.Policy
 import LawSpec.Core
 import LawSpec.Core.DefinitionContracts (checkedDefinitionContracts)
 import LawSpec.Core.Evidence (runtimePostconditions)
-import LawSpec.Common (Artifact(..))
+import LawSpec.Common (Artifact(..), pythonUnitFile)
 import qualified LawSpec.PythonData as Native
 import qualified LawSpec.PythonExpr as E
 import qualified LawSpec.Code.Doc as D
 import Data.List (nub, sort, intercalate)
 import LawSpec.AbilityNames (specName, interfaceName)
+import LawSpec.RuntimeSources (runtimeSource)
+import LawSpec.Typed.Python (PythonTyped(..), emitPythonTyped)
+import LawSpec.Typed.Plan (TypedPlan(..))
+import qualified Data.Map.Strict as M
 
 -- | Generated tests call checked definitions by these names, so every test
 -- file agrees.
@@ -25,10 +29,28 @@ emitPythonDefinitions :: D.Layout -> Int -> [DataDeclaration] -> [Unit] -> Eithe
 emitPythonDefinitions _ _ _ units | null (concatMap unitDefinitions units) = pure []
 emitPythonDefinitions layout bits declarations units = do
   contracts <- checkedDefinitionContracts bits declarations units
-  bodies <- mapM (implementation contracts) (zip [0::Int ..] (concatMap unitDefinitions units))
+  typed <- emitPythonTyped bits declarations units
+  bodies <- mapM (\(index, d) -> maybe (implementation contracts (index, d)) (bridge typed index d)
+      (pyTypedFunction typed (declarationId (definitionDeclaration d))))
+    (zip [0::Int ..] (concatMap unitDefinitions units))
   wrappers <- mapM nativeUnit (filter (not . null . unitDefinitions) units)
-  pure (file "src/lawspec_definition_bodies.py" ["import importlib as _importlib"] (adapterLoader : bodies) : wrappers)
+  let hasTyped = not (M.null (typedDefinitions (pyTypedPlan typed)))
+      typedFiles = if hasTyped
+        then [ Artifact "src/lawspec_typed.py" (pyTypedModule typed) "generated" "source"
+             , Artifact "src/lawspec_fast.py" (runtimeSource "python-fast") "generated" "source" ]
+        else []
+  pure (file "src/lawspec_definition_bodies.py" (["import importlib as _importlib"] ++ ["import lawspec_typed as _typed" | hasTyped]) (adapterLoader : bodies) : wrappers ++ typedFiles)
   where
+    -- A typed definition's dynamic entry converts its arguments and result.
+    bridge typed index d function = do
+      let (argTypes, resultType) = functionType (declarationType (definitionDeclaration d))
+          identity = declarationId (definitionDeclaration d)
+          arguments = ["value_" ++ show i | i <- [0 .. length argTypes - 1]]
+          needsContext = identity `elem` typedContextual (pyTypedPlan typed)
+          call = "_typed." ++ pyTypedTo typed resultType ++ "(_typed." ++ function ++ "(" ++
+            intercalate ", " (["symbols" | needsContext] ++ ["_typed." ++ pyTypedFrom typed t ++ "(" ++ a ++ ")" | (t, a) <- zip argTypes arguments]) ++ "))"
+      pure (E.suite (D.text ("def evaluate_" ++ show index) <> D.delimitTrailing 4 "(" ")" (map D.text ("symbols" : arguments)))
+        (contextual identity (D.text ("return " ++ call))))
     width = D.text (show bits)
     callees = definitionCalls units
     definitionIds = map (declarationId . definitionDeclaration) (concatMap unitDefinitions units)
@@ -76,9 +98,21 @@ emitPythonDefinitions layout bits declarations units = do
             Perform op args -> do
               nativeValues <- sequence [handlerCall "to_native" (expressionType a) value | (a, value) <- zip args values]
               let invocation = E.call ("ls.handler(symbols, " ++ show (abilityKey (operationAbility op)) ++ ")." ++ operationName op) nativeValues
-              if expressionType term == Constructor "Unit" []
+              result <- if expressionType term == Constructor "Unit" []
                 then pure (E.call "ls.unit_result" [invocation])
                 else handlerCall "from_native" (expressionType term) invocation
+              -- An operation that fails with E: a native handler raises
+              -- ls.Fail with a native E, which becomes the failure.
+              case findAbility units (operationAbility op) >>= lookup (operationName op) . abilityFailures . snd of
+                Just failing@(AbilityRef _ [failure]) -> do
+                  convert <- handlerCall "from_native" failure (D.text "_failure")
+                  pure (E.call "ls.native_failures" [E.quoted (abilityKey failing), D.text "lambda _failure: " <> convert, D.text "lambda: " <> result])
+                _ -> pure result
+            -- prelude.attempt e: Right of e's value, or Left of its failure.
+            Handle (CatchFailure ability) _ | [body] <- values ->
+              pure (E.call "ls.attempt" [E.quoted (abilityKey ability), D.text "lambda: " <> body,
+                D.text "lambda _value: ls.construct('Either::Right', [_value])",
+                D.text "lambda _value: ls.construct('Either::Left', [_value])"])
             -- handle e with h end: e runs with h installed for its ability,
             -- made afresh each time.
             Handle (WithHandler ability (SpecHandler h)) _ | [body] <- values ->
@@ -220,7 +254,7 @@ emitPythonDefinitions layout bits declarations units = do
       DecorrelatedJitter -> "decorrelated"
     nativeUnit unit = do
       wrappers <- mapM native (unitDefinitions unit)
-      let path = "src/lawspec_definitions/" ++ map (\c -> if c == '.' then '/' else c) (idText (unitId unit)) ++ ".py"
+      let path = "src/lawspec_definitions/" ++ pythonUnitFile (map (idText . unitId) units) (idText (unitId unit))
       pure (file path ["import lawspec_definition_bodies as _definitions"] wrappers)
     native d = do
       let declaration = definitionDeclaration d

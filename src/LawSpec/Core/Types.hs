@@ -6,7 +6,11 @@ module LawSpec.Core.Types
   , constructorCompatibility, compatibleConstructors, matchType, constructorFieldsAt, freeExistentials, witnessPool
   ) where
 
+import Control.Exception (evaluate)
 import Control.Monad (foldM, forM_, unless)
+import Data.IORef (IORef, newIORef, readIORef, writeIORef)
+import System.IO.Unsafe (unsafePerformIO)
+import System.Mem.StableName (StableName, makeStableName)
 import Data.Graph (SCC(..), stronglyConnComp)
 import Data.List (nub, sort)
 import qualified Data.Map.Strict as M
@@ -53,7 +57,32 @@ builtinDataDeclarations = [list, optional, eitherType]
 -- | Duplicate and ill-kinded declarations are refused when the registry is
 -- built, so no later stage handles them.
 makeRegistry :: [DataDeclaration] -> Either String TypeRegistry
-makeRegistry userDeclarations = do
+makeRegistry userDeclarations = unsafePerformIO $ do
+  -- The compiler asks for the registry of the same declarations from many
+  -- places, once per definition and law; with thousands of types building it
+  -- each time dominated a check. The last one built is kept, keyed by the
+  -- declarations' identity in memory (a pure function, so this is only a
+  -- cache).
+  _ <- evaluate userDeclarations
+  name <- makeStableName userDeclarations
+  cached <- readIORef registryCache
+  -- The identities are compared too, a check that costs little beside
+  -- building the registry.
+  let ids = map dataId userDeclarations
+  case cached of
+    Just (key, keyIds, registry) | key == name, keyIds == ids -> pure registry
+    _ -> do
+      let registry = buildRegistry userDeclarations
+      writeIORef registryCache (Just (name, ids, registry))
+      pure registry
+{-# NOINLINE makeRegistry #-}
+
+registryCache :: IORef (Maybe (StableName [DataDeclaration], [Id], Either String TypeRegistry))
+registryCache = unsafePerformIO (newIORef Nothing)
+{-# NOINLINE registryCache #-}
+
+buildRegistry :: [DataDeclaration] -> Either String TypeRegistry
+buildRegistry userDeclarations = do
   let allDeclarations = builtinDataDeclarations ++ userDeclarations
       scalarKinds = [(primitiveName p, TypeKind) | p <- primitives]
       presenceKinds = [(n, KindArrow TypeKind TypeKind) | n <- ["Nullable", "Optional"]]
@@ -264,6 +293,8 @@ instantiateExpression substitutions = go
         Perform (Operation (AbilityRef identity (map ty types)) name) (map go arguments)
       Handle (CatchFailure (AbilityRef identity types)) body -> Handle (CatchFailure (AbilityRef identity (map ty types))) (go body)
       Let b value body -> Let (binder b) (go value) (go body)
+      Project tag index value -> Project tag index (go value)
+      Update tag index value field -> Update tag index (go value) (go field)
       Handle (WithHandler (AbilityRef identity types) handler) body -> Handle (WithHandler (AbilityRef identity (map ty types)) handler) (go body)
       Calls (Operation (AbilityRef identity types) name) arguments ->
         Calls (Operation (AbilityRef identity (map ty types)) name) (map go <$> arguments)}

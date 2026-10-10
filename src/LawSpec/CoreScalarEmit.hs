@@ -23,6 +23,7 @@ import Data.Aeson (encode, toJSON)
 import qualified Data.Text.Lazy as T
 import qualified Data.Text.Lazy.Encoding as T
 import Data.List (intercalate, isPrefixOf, isInfixOf, stripPrefix, nub)
+import Data.Maybe (listToMaybe)
 import Control.Monad (unless, foldM)
 import Data.Char (toLower)
 import qualified LawSpec.AbilityEmit.Python as PythonAbilities
@@ -286,29 +287,56 @@ scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions 
       else runtime "equal" [a,b,quoted (typeKey ty),quoted (typeKey ty)]
     -- A law's handlers, made afresh for each case and installed in its
     -- symbols, where the code it calls finds them.
-    installs e = case [(ability, choice) | (ability, choice) <- C.propertyHandlers (original e), not (C.isFail ability)] of
+    -- A handler of several abilities is made once, and installed for each.
+    -- A native handler made with a resource (ability A with T) is made once
+    -- the case has acquired its T, inside the bracket.
+    installs e = [assign (sharedName h) (construct plainContext (C.handlerAbility h) (C.SpecHandler (C.handlerId h))) | h <- sharedHandlers e] ++
+      installing e [(a, c) | (a, c) <- chosenHandlers e, resourceFor e a c == Nothing]
+    lateInstalls e = installing e [(a, c) | (a, c) <- chosenHandlers e, resourceFor e a c /= Nothing]
+    installing e chosen = case chosen of
       [] -> []
-      chosen -> [statement (runtime (if py then "install_handlers" else "installHandlers") [text "symbols", Doc.delimitTrailing indentation "{" "}"
-        [quoted (C.abilityKey ability) <> text ": " <> construct ability choice | (ability, choice) <- chosen]])]
-    construct ability choice = case choice of
+      _ -> [statement (runtime (if py then "install_handlers" else "installHandlers") [text "symbols", Doc.delimitTrailing indentation "{" "}"
+        [quoted (C.abilityKey ability) <> text ": " <> construct (lawContext e) ability choice | (ability, choice) <- chosen]])]
+    -- What making a law's handlers needs: the handlers it shares, and the
+    -- resources its native handlers are made with.
+    lawContext e = (sharedHandlers e, resourceFor e)
+    plainContext = ([], \_ _ -> Nothing)
+    chosenHandlers e = [(ability, choice) | (ability, choice) <- C.propertyHandlers (original e), not (C.isFail ability)]
+    sharedHandlers e = nub [h | (_, c) <- chosenHandlers e, h <- specHandlersOf c, not (null (C.handlerAlso h))]
+    specHandlersOf c = case c of
+      C.SpecHandler h -> [x | x <- C.unitHandlers u, C.handlerId x == h]
+      C.RecordingHandler inner -> specHandlersOf inner
+      C.ProductionHandler -> []
+    sharedName h = "_lawspec_shared_" ++ C.handlerName h
+    -- The resource a native handler is made with, as the case holds it.
+    resourceFor e ability choice = case choice of
+      C.ProductionHandler -> do
+        a <- abilityNamed ability
+        t <- C.abilityResource a
+        r <- listToMaybe [r | r <- C.propertyResources (original e), C.binderType (C.resourceBinder r) == t]
+        pure (nativeInput t (text (localName (C.binderId (C.resourceBinder r)))))
+      C.RecordingHandler inner -> resourceFor e ability inner
+      C.SpecHandler _ -> Nothing
+    construct context@(shared, resourceOf) ability choice = let made = maybe [] pure (resourceOf ability choice) in case choice of
       C.ProductionHandler -> case abilityNamed ability >>= C.abilityNative of
         -- A production handler bound in lawspec.json.
-        Just parts | py -> runtime "native_handler" [quoted (intercalate "." (init parts)), quoted (last parts)]
-                   | otherwise -> invoke ("new " ++ boundAlias parts) []
+        Just parts | py -> runtime "native_handler" ([quoted (intercalate "." (init parts)), quoted (last parts)] ++ made)
+                   | otherwise -> invoke ("new " ++ boundAlias parts) made
         Nothing -> case abilityNamed ability of
           -- An imported ability's production handler is its owner's.
-          Just a | ownerName a /= unitName u, py -> runtime "native_handler" [quoted (ownerName a), quoted (productionName a)]
-                 | ownerName a /= unitName u -> invoke ("new " ++ foreignModule "_impl" a ++ "." ++ productionName a) []
-          _ -> invoke ((if py then "impl." else "new impl.") ++ maybe "Unknown" productionName (abilityNamed ability)) []
+          Just a | ownerName a /= unitName u, py -> runtime "native_handler" ([quoted (ownerName a), quoted (productionName a)] ++ made)
+                 | ownerName a /= unitName u -> invoke ("new " ++ foreignModule "_impl" a ++ "." ++ productionName a) made
+          _ -> invoke ((if py then "impl." else "new impl.") ++ maybe "Unknown" productionName (abilityNamed ability)) made
+      C.SpecHandler h | Just x <- lookup h [(C.handlerId x, x) | x <- shared] -> text (sharedName x)
       C.SpecHandler h -> invoke ((if py then "_abilities." else "new _abilities.") ++ maybe "Unknown" specName
         (lookup h [(C.handlerId x, x) | x <- C.unitHandlers u])) [text "symbols"]
       C.RecordingHandler inner -> case abilityNamed ability of
         Just a | ownerName a /= unitName u, py ->
                    runtime "native_class" [quoted (PythonAbilities.moduleNameOf (ownerName a)), quoted (recordingName a)] <>
-                   Doc.delimitTrailing indentation "(" ")" [construct ability inner, text "symbols"]
-               | ownerName a /= unitName u -> invoke ("new " ++ foreignModule "_abilities" a ++ "." ++ recordingName a) [construct ability inner, text "symbols"]
+                   Doc.delimitTrailing indentation "(" ")" [construct context ability inner, text "symbols"]
+               | ownerName a /= unitName u -> invoke ("new " ++ foreignModule "_abilities" a ++ "." ++ recordingName a) [construct context ability inner, text "symbols"]
         _ -> invoke ((if py then "_abilities." else "new _abilities.") ++ maybe "Unknown" recordingName (abilityNamed ability))
-          [construct ability inner, text "symbols"]
+          [construct context ability inner, text "symbols"]
     handlerParameter ability = case maybe "handler" C.abilityName (abilityNamed ability) of
       c : rest -> toLower c : rest
       [] -> "handler"
@@ -328,6 +356,15 @@ scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions 
         text "(await " <> runtime "nativeFailuresAsync"
           [quoted (C.abilityKey ability), lambda [text "_failure"] (checkedResult failure (text "_failure")), text "async " <> lambda [] call,
            mappedFailures failure] <> text ")"
+      _ -> call
+    -- An operation that fails with E: a native handler raises the
+    -- runtime's Fail with a native E, which becomes the Fail E failure; a
+    -- spec handler's raise passes through.
+    operationFailures op call = case abilityNamed (C.operationAbility op) >>= lookup (C.operationName op) . C.abilityFailures of
+      Just ability@(C.AbilityRef _ [failure]) ->
+        runtime (if py then "native_failures" else "nativeFailures")
+          [quoted (C.abilityKey ability), lambda [text "_failure"] (checkedResult failure (text "_failure")), lambda [] call,
+           mappedFailures failure]
       _ -> call
     mappedFailures failure = case [b | b <- C.unitFailureBindings u, C.failureType b == failure] of
       [] -> text (if py then "()" else "[]")
@@ -350,7 +387,7 @@ scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions 
     fresh e = statements (freshSymbols : installs e)
     -- A law's resources: each case acquires them, then runs, then releases
     -- them, the last first, even when the case fails.
-    bracket e doc = foldr wrap doc (C.propertyResources (original e))
+    bracket e doc = foldr wrap (statements (lateInstalls e ++ [doc])) (C.propertyResources (original e))
       where
         -- A shared resource (share R per ...): the runtime keeps one per
         -- scope key, resets it before every use after the first, holds it
@@ -382,11 +419,11 @@ scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions 
           C.Perform op args ->
             let call = method (handlerDoc (C.operationAbility op)) (C.operationName op)
                   [handlerInput (expressionType a) (converted (expressionType a) value) | (a,value) <- zip args values]
-            in Right (handlerResult (expressionType expression) call)
+            in Right (operationFailures op (handlerResult (expressionType expression) call))
           -- handle e with h end: e runs with h installed for its ability.
           C.Handle (C.WithHandler ability choice) _ | [body] <- values ->
             Right (runtime (if py then "with_handlers" else "withHandlers") [text "symbols",
-              Doc.delimitTrailing indentation "{" "}" [quoted (C.abilityKey ability) <> text ": " <> construct ability choice],
+              Doc.delimitTrailing indentation "{" "}" [quoted (C.abilityKey ability) <> text ": " <> construct plainContext ability choice],
               lambda [] body])
           C.Handle (C.CatchFailure ability) _ -> case (expressionType expression, values) of
             (C.Constructor "Either" [C.TypeArgument failure, C.TypeArgument result], [body]) ->
@@ -843,7 +880,23 @@ scalarEmitWithNativeGenerators nativeGenerators minify declarations definitions 
       let names = map (text . inputId) (inputs e)
           -- An integer input draws from its refinement's constant range;
           -- the filter still checks every refinement.
-          generators = [Generator.generatorDocWithin py bits usesData referenceDoc (inputRange bits input) (inputType input) | input <- inputs e]
+          generators = [hinted input (Generator.generatorDocWithin py bits usesData referenceDoc (inputRange bits input) (inputType input)) | input <- inputs e]
+          -- Constant hints (regex samples, compared literals) are mixed in so
+          -- a narrow refinement still meets the filter often enough.
+          hinted input generator = case [render hint | plan <- generationPlan e,
+              inputId (domainInput plan) == inputId input, hint <- generatorHints plan,
+              C.expressionType hint == inputType input, isConstant hint,
+              C.expressionType hint /= C.scalarType "Symbol"] of
+            [] -> generator
+            -- Literals render against a symbol table; these hold no symbols,
+            -- so a throwaway table is enough outside a case.
+            hints -> let values = parenthesized (lambda [text "symbols"] (array hints)) <>
+                           parenthesized (if py then text "{}" else invoke "new Map" [])
+              in invoke (if py then "st.one_of" else "fc.oneof")
+                [if py then invoke "st.sampled_from" [values] else invoke "fc.constantFrom" [text "..." <> values], generator]
+          isConstant hint = case C.expressionNode hint of
+            C.Constant _ -> True
+            _ -> False
           predicate = conjunction (map render (concatMap inputRefinements (inputs e)))
           cfg = generation e
           tuple = invoke (if py then "st.tuples" else "fc.tuple") generators

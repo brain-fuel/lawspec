@@ -56,8 +56,21 @@ typeWord t = case t of
 productionName :: C.Ability -> String
 productionName a = interfaceName a ++ "Handler"
 
+-- A handler named like an ability it answers (counter for Counter) would
+-- share the ability's type name, so it is CounterSpec (CounterHandler is the native one).
 specName :: C.Handler -> String
-specName = capitalize . C.handlerName
+specName h
+  | named `elem` answered = named ++ "Spec"
+  | otherwise = named
+  where
+    named = capitalize (C.handlerName h)
+    answered = [lastSegment (C.idText (C.abilityRefId ref)) | ref <- C.handlerAbilities h]
+    lastSegment text = case breakColons text of
+      [] -> text
+      parts -> last parts
+    breakColons text = case break (== ':') text of
+      (before, ':' : ':' : rest) -> before : breakColons rest
+      (before, _) -> [before]
 
 recordingName :: C.Ability -> String
 recordingName a = interfaceName a ++ "Recording"

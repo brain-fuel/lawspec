@@ -43,10 +43,12 @@ import qualified IncrementalSpec
 import qualified TestManifestSpec
 import qualified RailwaySpec
 import qualified SessionsPythonSpec
+import qualified TypedSpec
 import qualified TemporalSpec
 import qualified DistributionSpec
 import qualified UnificationSpec
 import qualified BeamSpec
+import qualified LanguageGapsSpec
 import LawSpec.Compile
 import LawSpec.Model
 import qualified LawSpec.Domain as D
@@ -83,6 +85,7 @@ main = hspec $ do
   CollectionsSpec.test_collectionsAreTypedEvaluatedAndOrderedPortably
   AsyncSpec.test_asyncAdaptersAreMarkedReportedAndBoundToEachTargetsTask
   AbilitiesSpec.test_abilityLawsHoldForEveryLawfulHandler
+  LanguageGapsSpec.test_languageGapsClose
   LawPrimitivesSpec.test_lawPrimitivesCheckWhatTheyReadAs
   HarnessSpec.test_harnessesChangeHowLawsRunNeverWhatTheyMean
   BuiltinsSpec.test_builtInAbilitiesHaveLawfulDefaultHandlers
@@ -107,6 +110,7 @@ main = hspec $ do
   DefinitionPredicateSpec.test_closedDefinitionsServeAsCorePredicates
   RefinementProofSpec.test_refinementImplicationIsDecidedExactly
   DefinitionContractProofSpec.test_refinedDefinitionsAreAdmittedOnlyWithProvedContracts
+  TypedSpec.test_typedDefinitionsRunNativeWithTheirMeaning
   describe "compiler" $ do
     it "checks the bundled prelude" $ compile [] `shouldBe` Right ([],[])
     it "expands the exact scratch example" $ do

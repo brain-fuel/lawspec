@@ -175,6 +175,9 @@ renderExpressionWithContext declarations bits schema typeReference typeKey calle
              [D.text ("let " ++ local ++ " = " ++ results ++ ".next().unwrap();") | local <- locals] ++
              [D.hang 4 (D.text "let result =") inner <> D.text ";", D.text "result"])))
     render names term = case expressionNode term of
+      -- Field nodes are lowered to matches before any backend (lowerFieldNodes).
+      Project {} -> Left "a field node reached the backend"
+      Update {} -> Left "a record update node reached the backend"
       AllPayloads value predicates -> do
         argument <- render names value
         ref <- typeReference (expressionType value)

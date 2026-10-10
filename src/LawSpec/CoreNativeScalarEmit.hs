@@ -40,6 +40,7 @@ import Data.Aeson (encode)
 import qualified Data.Text.Lazy as T
 import qualified Data.Text.Lazy.Encoding as T
 import Data.List (intercalate, isPrefixOf, isInfixOf, find, nub)
+import Data.Maybe (listToMaybe)
 import Data.Char (toLower, isAlphaNum)
 import LawSpec.Search (lawDescriptors, searchable)
 
@@ -390,7 +391,8 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
       | otherwise = KotlinExpr.call "LawSpecRuntime.truth" [KotlinExpr.call "LawSpecRuntime.binary" [KotlinExpr.quoted "==",a,b]]
     -- An adapter that fails with E: its native code throws
     -- LawSpecRuntime.Fail with a native E, or an exception lawspec.json maps.
-    jvmFailing n convert opening call = case [a | a@(C.AbilityRef _ [_]) <- failuresOf n] of
+    jvmFailing n = jvmFailingAs [a | a@(C.AbilityRef _ [_]) <- failuresOf n]
+    jvmFailingAs failing convert opening call = case failing of
       ability@(C.AbilityRef _ [failure]) : _ ->
         let native = Doc.render Doc.Compact (Doc.text (if kt then java (KotlinData.kotlinDataType dataDeclarations failure)
               else java (JavaData.javaDataType dataDeclarations failure)))
@@ -405,16 +407,21 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
         in (if kt then KotlinExpr.call else JavaExpr.call) "LawSpecRuntime.nativeFailures"
              ([(if kt then KotlinExpr.quoted else JavaExpr.quoted) (C.abilityKey ability), Doc.text opening <> convert failure native <> close, supplier] ++ mapped)
       _ -> call
-    ktInstalls e = case chosenHandlers e of
+    ktInstalls e = [Doc.text ("val " ++ sharedVar h ++ " = " ++ ktConstructHandler plainMaking (C.handlerAbility h) (C.SpecHandler (C.handlerId h))) | h <- sharedOf e] ++
+      ktInstalling e (earlyHandlers e)
+    ktLateInstalls e = ktInstalling e (lateHandlers e)
+    ktInstalling e chosen = case chosen of
       [] -> []
-      chosen -> [KotlinExpr.call "LawSpecRuntime.installHandlers" [Doc.text "symbols", KotlinExpr.call "mapOf"
-        [KotlinExpr.quoted (C.abilityKey a) <> Doc.text (" to " ++ ktConstructHandler a c) | (a, c) <- chosen]]]
-    ktConstructHandler a c = case c of
-      C.ProductionHandler | Just parts <- abilityNamed a >>= C.abilityNative -> intercalate "." parts ++ "()"
-      C.ProductionHandler -> maybe "Unknown" jvmProduction (abilityNamed a) ++ "()"
+      _ -> [KotlinExpr.call "LawSpecRuntime.installHandlers" [Doc.text "symbols", KotlinExpr.call "mapOf"
+        [KotlinExpr.quoted (C.abilityKey a) <> Doc.text (" to " ++ ktConstructHandler (lawMaking e) a c) | (a, c) <- chosen]]]
+    ktConstructHandler making@(shared, resourceOf) a c = case c of
+      C.ProductionHandler | Just parts <- abilityNamed a >>= C.abilityNative -> intercalate "." parts ++ "(" ++ madeWith ++ ")"
+      C.ProductionHandler -> maybe "Unknown" jvmProduction (abilityNamed a) ++ "(" ++ madeWith ++ ")"
+      C.SpecHandler h | h `elem` shared, Just x <- specNamed h -> sharedVar x
       C.SpecHandler h -> KotlinAbilities.abilitiesObject u ++ "." ++ maybe "Unknown" specName (specNamed h) ++ "(symbols)"
       C.RecordingHandler inner -> maybe "Unknown" (\x -> KotlinAbilities.abilitiesObjectOf (ownerName x) ++ "." ++ recordingName x) (abilityNamed a) ++
-        "(" ++ ktConstructHandler a inner ++ ", symbols)"
+        "(" ++ ktConstructHandler making a inner ++ ", symbols)"
+      where madeWith = maybe "" (\(t, local) -> Doc.render Doc.Compact (ktNativeArgument t (Doc.text local))) (resourceOf a c)
     ktExternal term values = case C.expressionNode term of
       C.ExternalCall identity _ | Just evaluator <- lookup identity definitions ->
         Right (KotlinExpr.call evaluator (Doc.text "symbols" : values))
@@ -423,8 +430,9 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
         Right (KotlinExpr.call "LawSpecRuntime.raiseFailure" (KotlinExpr.quoted (C.abilityKey (C.operationAbility op)) : values))
       -- An operation goes to the handler the law installed for its ability.
       C.Perform op args ->
-        Right (ktNativeResult (expressionType term) (ktHandler (C.operationAbility op) <> KotlinExpr.call ("." ++ C.operationName op)
-          [ktNativeArgument ty v | (ty,v) <- zip (map expressionType args) values]))
+        Right (jvmFailingAs (operationFailure op) (\failure native -> ktNativeResult failure (Doc.text ("(_native as " ++ native ++ ")"))) "{ _native -> "
+          (ktNativeResult (expressionType term) (ktHandler (C.operationAbility op) <> KotlinExpr.call ("." ++ C.operationName op)
+            [ktNativeArgument ty v | (ty,v) <- zip (map expressionType args) values])))
       C.Handle (C.CatchFailure ability) _ -> case (expressionType term, values) of
         (C.Constructor "Either" [C.TypeArgument failure, C.TypeArgument result], [body]) ->
           let side tag ty = Doc.text "{ _value -> " <> ktConstruct' (expressionType term) tag [ktChecked ty (Doc.text "_value")] <> Doc.text " }"
@@ -450,7 +458,7 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
       -- handle e with h end: e runs with h installed for its ability.
       C.Handle (C.WithHandler ability choice) _ | [body] <- values ->
         Right (KotlinExpr.call "LawSpecRuntime.withHandlers" [Doc.text "symbols",
-          KotlinExpr.call "mapOf" [KotlinExpr.quoted (C.abilityKey ability) <> Doc.text (" to " ++ ktConstructHandler ability choice)],
+          KotlinExpr.call "mapOf" [KotlinExpr.quoted (C.abilityKey ability) <> Doc.text (" to " ++ ktConstructHandler plainMaking ability choice)],
           Doc.text "{ " <> body <> Doc.text " }"])
       _ -> Left "expected checked Kotlin external call"
     ktValueLiteral value = case value of
@@ -484,6 +492,7 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
       , KotlinProperties.nativeArgument = ktNativeArgument
       , KotlinProperties.nativeResult = ktNativeResult
       , KotlinProperties.handlerInstalls = ktInstalls
+      , KotlinProperties.lateHandlerInstalls = ktLateInstalls
       , KotlinProperties.searchDescriptors = searchDescriptorsOf
       }
     hsRender = java . HaskellExpr.renderExpression dataDeclarations bits "_lawspecSchema" "symbols" localName hsExternal
@@ -521,7 +530,8 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
     hsModuleOf unit = intercalate "." (map hsPart (split unit))
     -- An adapter that fails with E: its native code throws LS.Fail with a
     -- native E, or an exception lawspec.json maps to a failure.
-    hsFailing n call = case [a | a@(C.AbilityRef _ [_]) <- failuresOf n] of
+    hsFailing n = hsFailingAs [a | a@(C.AbilityRef _ [_]) <- failuresOf n]
+    hsFailingAs failing call = case failing of
       ability@(C.AbilityRef _ [failure]) : _ ->
         let native = qualifyData (java (HaskellData.haskellDataType dataDeclarations failure))
             mapped = [ HaskellExpr.apply "LS.mappedFailure" [Doc.text "((\\_error -> " <>
@@ -538,25 +548,35 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
       'D' : 'a' : 't' : 'a' : '.' : rest -> "LawSpecData." ++ qualifyData rest
       c : rest | not (isAlphaNum c) -> c : qualifyData rest
       _ -> let (word, rest) = span isAlphaNum text in word ++ (if null rest then "" else qualifyData rest)
-    hsInstalls e = case chosenHandlers e of
+    -- A handler of several abilities: its state is made once, and each
+    -- ability's record is made over it.
+    hsInstalls e = [Doc.text (sharedVar h ++ " <- Handlers." ++ HaskellAbilities.handlerFunction h ++ "State symbols") | h <- sharedOf e] ++
+      hsInstalling e (earlyHandlers e)
+    hsLateInstalls e = hsInstalling e (lateHandlers e)
+    hsInstalling e chosen = case chosen of
       [] -> []
       -- One line, so a do block's layout cannot split it.
-      chosen -> [Doc.text ("LS.installHandlers symbols =<< P.sequence " ++ Doc.render Doc.Compact (HaskellExpr.array
-        [hsInstalled a c | (a, c) <- chosen]))]
-    hsInstalled a c = case c of
+      _ -> [Doc.text ("LS.installHandlers symbols =<< P.sequence " ++ Doc.render Doc.Compact (HaskellExpr.array
+        [hsInstalled (lawMaking e) a c | (a, c) <- chosen]))]
+    hsInstalled making a c = case c of
       C.RecordingHandler inner -> HaskellExpr.apply "P.fmap" [HaskellExpr.apply "LS.installedRecording" [HaskellExpr.quoted (C.abilityKey a)],
-        Doc.text ("(Handlers." ++ maybe "undefined" HaskellAbilities.recordingFunction (abilityNamed a) ++ " symbols =<< ") <> hsMake a inner <> Doc.text ")"]
+        Doc.text ("(Handlers." ++ maybe "undefined" HaskellAbilities.recordingFunction (abilityNamed a) ++ " symbols =<< ") <> hsMake making a inner <> Doc.text ")"]
       -- lawspec.time's default Clock handler is the real clock: workflows
       -- and mailboxes wait in real time under it, and on any other virtually.
       C.ProductionHandler | C.abilityKey a == "lawspec.time::ability::Clock", Nothing <- abilityNamed a >>= C.abilityNative ->
-        HaskellExpr.apply "P.fmap" [HaskellExpr.apply "LS.installedRealClock" [HaskellExpr.quoted (C.abilityKey a)], hsMake a c]
-      _ -> HaskellExpr.apply "P.fmap" [HaskellExpr.apply "LS.installed" [HaskellExpr.quoted (C.abilityKey a)], hsMake a c]
-    hsMake a c = case c of
-      C.ProductionHandler | Just parts <- abilityNamed a >>= C.abilityNative -> Doc.text (intercalate "." parts)
-      C.ProductionHandler -> Doc.text (maybe "undefined" (\x -> (if ownerName x == unitName u then "Impl" else hsModuleOf (ownerName x)) ++ "." ++
-        HaskellAbilities.productionFunction x) (abilityNamed a))
+        HaskellExpr.apply "P.fmap" [HaskellExpr.apply "LS.installedRealClock" [HaskellExpr.quoted (C.abilityKey a)], hsMake making a c]
+      _ -> HaskellExpr.apply "P.fmap" [HaskellExpr.apply "LS.installed" [HaskellExpr.quoted (C.abilityKey a)], hsMake making a c]
+    hsMake (shared, resourceOf) a c = case c of
+      C.ProductionHandler | Just parts <- abilityNamed a >>= C.abilityNative -> withResource (Doc.text (intercalate "." parts))
+      C.ProductionHandler -> withResource (Doc.text (maybe "undefined" (\x -> (if ownerName x == unitName u then "Impl" else hsModuleOf (ownerName x)) ++ "." ++
+        HaskellAbilities.productionFunction x) (abilityNamed a)))
+      C.SpecHandler h | h `elem` shared, Just x <- specNamed h, Just ability <- abilityNamed a ->
+        Doc.text ("(Handlers." ++ HaskellAbilities.handlerFunction x ++ C.abilityName ability ++ " symbols " ++ sharedVar x ++ ")")
       C.SpecHandler h -> Doc.text ("(Handlers." ++ maybe "undefined" HaskellAbilities.handlerFunction (specNamed h) ++ " symbols)")
-      C.RecordingHandler inner -> hsMake a inner
+      C.RecordingHandler inner -> hsMake (shared, resourceOf) a inner
+      where withResource made = case resourceOf a c of
+              Just (t, local) -> Doc.text "(" <> made <> Doc.text " " <> HaskellExpr.parens (hsNativeArgument t (Doc.text local)) <> Doc.text ")"
+              Nothing -> made
     hsExternal term values = case C.expressionNode term of
       C.ExternalCall identity _ | Just evaluator <- lookup identity definitions ->
         Right (HaskellExpr.checked (HaskellExpr.apply evaluator (Doc.text "symbols" : values)))
@@ -567,9 +587,9 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
       C.Perform op args ->
         let types = map expressionType args
             converted = zipWith hsCheckedDoc types values
-        in Right (hsNativeResult (expressionType term) (hsCallChecked converted (\names ->
+        in Right (hsFailingAs (operationFailure op) (hsNativeResult (expressionType term) (hsCallChecked converted (\names ->
           HaskellExpr.apply "LS.performIO" [HaskellExpr.apply ("Abilities." ++ maybe (C.operationName op) (`fieldName` C.operationName op) (abilityNamed (C.operationAbility op)))
-            (hsHandler (C.operationAbility op) : zipWith hsNativeArgument types names)])))
+            (hsHandler (C.operationAbility op) : zipWith hsNativeArgument types names)]))))
       C.Handle (C.CatchFailure ability) _ -> case (expressionType term, values) of
         (C.Constructor "Either" [C.TypeArgument failure, C.TypeArgument result], [body]) ->
           let side tag ty = Doc.text "(\\_value -> " <> hsConstructValue (expressionType term) tag [hsCheckedDoc ty (Doc.text "_value")] <> Doc.text ")"
@@ -602,7 +622,7 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
       -- handle e with h end: e runs with h installed for its ability.
       C.Handle (C.WithHandler ability choice) _ | [body] <- values ->
         Right (HaskellExpr.apply "LS.withHandlers" [Doc.text "symbols",
-          Doc.text "(P.sequence [" <> hsInstalled ability choice <> Doc.text "])", Doc.text "(\\() -> " <> body <> Doc.text ")"])
+          Doc.text "(P.sequence [" <> hsInstalled plainMaking ability choice <> Doc.text "])", Doc.text "(\\() -> " <> body <> Doc.text ")"])
       _ -> Left "expected checked Haskell external call"
     hsValueLiteral value = case value of
       V.ScalarValue scalarValue -> pure (HaskellExpr.apply "LS.scopeSymbols"
@@ -643,6 +663,7 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
       , HaskellProperties.nativeCall = hsNativeCall
       , HaskellProperties.nativeResult = hsNativeResult
       , HaskellProperties.handlerInstalls = hsInstalls
+      , HaskellProperties.lateHandlerInstalls = hsLateInstalls
       , HaskellProperties.searchDescriptors = searchDescriptorsOf
       , HaskellProperties.abilityModules = if null (C.unitAbilities u) then Nothing
           else Just (HaskellAbilities.typesModule u, HaskellAbilities.handlersModule u)
@@ -705,6 +726,7 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
       , GoProperties.nativeArgument = goNativeArgument
       , GoProperties.nativeResult = goNativeResult
       , GoProperties.handlerInstalls = goInstalls
+      , GoProperties.lateHandlerInstalls = goLateInstalls
       , GoProperties.searchDescriptors = searchDescriptorsOf
       }
     -- Abilities: the unit's own, its spec handlers, and the handlers a law
@@ -712,6 +734,29 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
     abilityNamed = unitAbility u
     specNamed h = lookup h [(C.handlerId x, x) | x <- C.unitHandlers u]
     chosenHandlers e = [(a, c) | (a, c) <- C.propertyHandlers (original e), not (C.isFail a)]
+    -- A handler of several abilities is made once per case and installed
+    -- for each. A native handler made with a resource (ability A with T) is
+    -- made with the case's T, once the case has acquired it.
+    sharedOf e = nub [h | (_, c) <- chosenHandlers e, h <- specsOf c, not (null (C.handlerAlso h))]
+    specsOf c = case c of
+      C.SpecHandler h -> maybe [] pure (specNamed h)
+      C.RecordingHandler inner -> specsOf inner
+      C.ProductionHandler -> []
+    sharedVar h = "_lawspecShared_" ++ C.handlerName h
+    -- What an operation that `fails with E` fails with (Fail E).
+    operationFailure op = maybe [] pure (abilityNamed (C.operationAbility op) >>= lookup (C.operationName op) . C.abilityFailures)
+    resourceFor e a c = case c of
+      C.ProductionHandler -> do
+        x <- abilityNamed a
+        t <- C.abilityResource x
+        r <- listToMaybe [r | r <- C.propertyResources (original e), C.binderType (C.resourceBinder r) == t]
+        pure (t, localName (C.binderId (C.resourceBinder r)))
+      C.RecordingHandler inner -> resourceFor e a inner
+      C.SpecHandler _ -> Nothing
+    earlyHandlers e = [(a, c) | (a, c) <- chosenHandlers e, resourceFor e a c == Nothing]
+    lateHandlers e = [(a, c) | (a, c) <- chosenHandlers e, resourceFor e a c /= Nothing]
+    lawMaking e = (map C.handlerId (sharedOf e), resourceFor e)
+    plainMaking = ([], \_ _ -> Nothing)
     -- Each input's descriptor for LawSpec's own search, when the law takes
     -- part in it (LawSpec.Search).
     searchDescriptorsOf e = if searchable (finiteCases e /= Nothing) (original e) then lawDescriptors bits dataDeclarations (original e) else Nothing
@@ -731,7 +776,8 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
       | goCustom ty = GoExpr.call "_lawspecSchema.equal" [Doc.text (goRef ty),a,b,Doc.text (show bits),Doc.text "symbols"]
       | otherwise = GoExpr.call "lsTruth" [GoExpr.call "lsBinary" [GoExpr.quoted "==",a,b]]
     -- An adapter that fails with E: its native code panics with LawSpecFail.
-    goFailing n call = case [a | a@(C.AbilityRef _ [_]) <- failuresOf n] of
+    goFailing n call = goFailingAs [a | a@(C.AbilityRef _ [_]) <- failuresOf n] call
+    goFailingAs failing call = case failing of
       ability@(C.AbilityRef _ [failure]) : _ ->
         GoExpr.call "lsNativeFailures" ([GoExpr.quoted (C.abilityKey ability),
           Doc.text "func(native any) LawSpecValue " <> Doc.block 8 (Doc.text "return " <>
@@ -747,15 +793,20 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
     goNativeRef parts = intercalate "." parts
     failuresOf n = [a | d <- C.unitDeclarations u, C.declarationName d == n, a <- C.declarationUses d, C.isFail a]
     asyncNames = [C.declarationName d | d <- C.unitDeclarations u, C.declarationAsync d]
-    goInstalls e = case chosenHandlers e of
+    goInstalls e = concat [[Doc.text (sharedVar h ++ " := " ++ goConstructHandler plainMaking (C.handlerAbility h) (C.SpecHandler (C.handlerId h))),
+                            Doc.text ("_ = " ++ sharedVar h)] | h <- sharedOf e] ++ goInstalling e (earlyHandlers e)
+    goLateInstalls e = goInstalling e (lateHandlers e)
+    goInstalling e chosen = case chosen of
       [] -> []
-      chosen -> [Doc.text "lsInstallHandlers(symbols, map[string]any{" <> Doc.joinWith (Doc.text ", ")
-        [GoExpr.quoted (C.abilityKey a) <> Doc.text (": " ++ goConstructHandler a c) | (a, c) <- chosen] <> Doc.text "})"]
-    goConstructHandler a c = case c of
-      C.ProductionHandler | Just parts <- abilityNamed a >>= C.abilityNative -> last parts ++ "()"
-      C.ProductionHandler -> "New" ++ maybe "Unknown" productionName (abilityNamed a) ++ "()"
+      _ -> [Doc.text "lsInstallHandlers(symbols, map[string]any{" <> Doc.joinWith (Doc.text ", ")
+        [GoExpr.quoted (C.abilityKey a) <> Doc.text (": " ++ goConstructHandler (lawMaking e) a c) | (a, c) <- chosen] <> Doc.text "})"]
+    goConstructHandler making@(shared, resourceOf) a c = case c of
+      C.ProductionHandler | Just parts <- abilityNamed a >>= C.abilityNative -> last parts ++ "(" ++ madeWith ++ ")"
+      C.ProductionHandler -> "New" ++ maybe "Unknown" productionName (abilityNamed a) ++ "(" ++ madeWith ++ ")"
+      C.SpecHandler h | h `elem` shared, Just x <- specNamed h -> sharedVar x
       C.SpecHandler h -> "New" ++ maybe "Unknown" specName (specNamed h) ++ "(symbols)"
-      C.RecordingHandler inner -> "New" ++ maybe "Unknown" recordingName (abilityNamed a) ++ "(" ++ goConstructHandler a inner ++ ", symbols)"
+      C.RecordingHandler inner -> "New" ++ maybe "Unknown" recordingName (abilityNamed a) ++ "(" ++ goConstructHandler making a inner ++ ", symbols)"
+      where madeWith = maybe "" (\(t, local) -> Doc.render Doc.Compact (goNativeArgument t (Doc.text local))) (resourceOf a c)
     goExternal term values = case C.expressionNode term of
       -- raise aborts to the nearest attempt of its Fail ability.
       C.Perform op [_] | C.isFail (C.operationAbility op) ->
@@ -763,8 +814,8 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
       -- An operation goes to the handler the law installed for its ability.
       C.Perform op args ->
         let typed = zip (map expressionType args) values
-        in Right (goNativeResult (expressionType term) (GoExpr.call (Doc.render Doc.Compact (goHandler (C.operationAbility op)) ++ "." ++ GoAbilities.methodName (C.operationName op))
-          [goNativeArgument ty v | (ty,v) <- typed]))
+        in Right (goFailingAs (operationFailure op) (goNativeResult (expressionType term) (GoExpr.call (Doc.render Doc.Compact (goHandler (C.operationAbility op)) ++ "." ++ GoAbilities.methodName (C.operationName op))
+          [goNativeArgument ty v | (ty,v) <- typed])))
       C.Handle (C.CatchFailure ability) _ -> case (expressionType term, values) of
         (C.Constructor "Either" [C.TypeArgument failure, C.TypeArgument result], [body]) ->
           let side tag ty = Doc.text "func(_value LawSpecValue) LawSpecValue " <> Doc.block 8
@@ -792,7 +843,7 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
       -- handle e with h end: e runs with h installed for its ability.
       C.Handle (C.WithHandler ability choice) _ | [body] <- values ->
         Right (GoExpr.call "lsWithHandlers" [Doc.text "symbols",
-          Doc.text ("map[string]any{" ++ q (C.abilityKey ability) ++ ": " ++ goConstructHandler ability choice ++ "}"),
+          Doc.text ("map[string]any{" ++ q (C.abilityKey ability) ++ ": " ++ goConstructHandler plainMaking ability choice ++ "}"),
           Doc.text "func() LawSpecValue " <> Doc.block 8 (Doc.text "return " <> body)])
       _ -> Left "expected checked Go external call"
     javaDocument = Doc.render (Doc.selectLayout minify (Doc.Pretty 100))
@@ -865,6 +916,7 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
       , JavaProperties.nativeArgument = javaNativeArgument
       , JavaProperties.nativeResult = javaNativeResult
       , JavaProperties.handlerInstalls = javaInstalls
+      , JavaProperties.lateHandlerInstalls = javaLateInstalls
       , JavaProperties.searchDescriptors = searchDescriptorsOf
       }
     -- A handler as the ability's Java interface.
@@ -876,16 +928,21 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
     javaEqual ty a b
       | custom ty = JavaExpr.call "_schema.equal" [javaRef ty,a,b,Doc.text (show bits),Doc.text "symbols"]
       | otherwise = javaRuntime "truth" [javaRuntime "binary" [JavaExpr.quoted "==",a,b]]
-    javaInstalls e = case chosenHandlers e of
+    javaInstalls e = [Doc.text ("var " ++ sharedVar h ++ " = " ++ javaConstructHandler plainMaking (C.handlerAbility h) (C.SpecHandler (C.handlerId h)) ++ ";") | h <- sharedOf e] ++
+      javaInstalling e (earlyHandlers e)
+    javaLateInstalls e = javaInstalling e (lateHandlers e)
+    javaInstalling e chosen = case chosen of
       [] -> []
-      chosen -> [javaRuntime "installHandlers" [Doc.text "symbols", JavaExpr.call "java.util.Map.of"
-        (concat [[JavaExpr.quoted (C.abilityKey a), Doc.text (javaConstructHandler a c)] | (a, c) <- chosen])] <> Doc.text ";"]
-    javaConstructHandler a c = case c of
-      C.ProductionHandler | Just parts <- abilityNamed a >>= C.abilityNative -> "new " ++ intercalate "." parts ++ "()"
-      C.ProductionHandler -> "new " ++ maybe "Unknown" jvmProduction (abilityNamed a) ++ "()"
+      _ -> [javaRuntime "installHandlers" [Doc.text "symbols", JavaExpr.call "java.util.Map.of"
+        (concat [[JavaExpr.quoted (C.abilityKey a), Doc.text (javaConstructHandler (lawMaking e) a c)] | (a, c) <- chosen])] <> Doc.text ";"]
+    javaConstructHandler making@(shared, resourceOf) a c = case c of
+      C.ProductionHandler | Just parts <- abilityNamed a >>= C.abilityNative -> "new " ++ intercalate "." parts ++ "(" ++ madeWith ++ ")"
+      C.ProductionHandler -> "new " ++ maybe "Unknown" jvmProduction (abilityNamed a) ++ "(" ++ madeWith ++ ")"
+      C.SpecHandler h | h `elem` shared, Just x <- specNamed h -> sharedVar x
       C.SpecHandler h -> "new " ++ JavaAbilities.abilitiesClass u ++ "." ++ maybe "Unknown" specName (specNamed h) ++ "(symbols)"
       C.RecordingHandler inner -> "new " ++ maybe "Unknown" (\x -> JavaAbilities.abilitiesClassOf (ownerName x) ++ "." ++ recordingName x) (abilityNamed a) ++
-        "(" ++ javaConstructHandler a inner ++ ", symbols)"
+        "(" ++ javaConstructHandler making a inner ++ ", symbols)"
+      where madeWith = maybe "" (\(t, local) -> Doc.render Doc.Compact (javaNativeArgument t (Doc.text local))) (resourceOf a c)
     javaExternal term values = case C.expressionNode term of
       C.ExternalCall identity _ | Just evaluator <- lookup identity definitions ->
         Right (JavaExpr.call evaluator (Doc.text "symbols" : values))
@@ -894,8 +951,9 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
         Right (javaRuntime "raiseFailure" (JavaExpr.quoted (C.abilityKey (C.operationAbility op)) : values))
       -- An operation goes to the handler the law installed for its ability.
       C.Perform op args ->
-        Right (javaNativeResult (expressionType term) (javaHandler (C.operationAbility op) <> JavaExpr.call ("." ++ C.operationName op)
-          [javaNativeArgument ty v | (ty,v) <- zip (map expressionType args) values]))
+        Right (jvmFailingAs (operationFailure op) (\failure native -> javaNativeResult failure (Doc.text ("(" ++ native ++ ") _native"))) "_native -> "
+          (javaNativeResult (expressionType term) (javaHandler (C.operationAbility op) <> JavaExpr.call ("." ++ C.operationName op)
+            [javaNativeArgument ty v | (ty,v) <- zip (map expressionType args) values])))
       C.Handle (C.CatchFailure ability) _ -> case (expressionType term, values) of
         (C.Constructor "Either" [C.TypeArgument failure, C.TypeArgument result], [body]) ->
           let side tag ty = Doc.text "_value -> " <> javaConstruct' (expressionType term) tag [javaChecked ty (Doc.text "_value")]
@@ -920,7 +978,7 @@ nativeScalarEmitWithAdapterBindings adapterBindings nativeGenerators minify data
       -- handle e with h end: e runs with h installed for its ability.
       C.Handle (C.WithHandler ability choice) _ | [body] <- values ->
         Right (javaRuntime "withHandlers" [Doc.text "symbols",
-          JavaExpr.call "java.util.Map.of" [JavaExpr.quoted (C.abilityKey ability), Doc.text (javaConstructHandler ability choice)],
+          JavaExpr.call "java.util.Map.of" [JavaExpr.quoted (C.abilityKey ability), Doc.text (javaConstructHandler plainMaking ability choice)],
           Doc.text "() -> " <> body])
       _ -> Left "expected checked Java external call"
     renderLegacy term = case C.expressionNode term of

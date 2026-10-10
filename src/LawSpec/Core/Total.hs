@@ -1,15 +1,21 @@
 -- | Structural termination and definedness auditing over typed Core only.
-module LawSpec.Core.Total (validateDefinitions, validateDefinitionContracts, deferNonlinearPostconditions, deferProgramPostconditions, constructorProofContracts, safeConversionTypes) where
+module LawSpec.Core.Total (resultBounds, validateDefinitions, validateDefinitionContracts, deferNonlinearPostconditions, deferProgramPostconditions, constructorProofContracts, safeConversionTypes) where
 
 import LawSpec.IndexTerm (FamilyIndex(..), ConstructorIndex(..), IndexGuard(..), termFields)
 import Control.Monad (unless, forM_, forM)
 import Data.List (nub)
 import qualified Data.Map.Strict as M
+import qualified Data.Set as S
+import Control.Exception (evaluate)
+import Data.IORef (IORef, newIORef, readIORef, writeIORef)
+import System.IO.Unsafe (unsafePerformIO)
+import System.Mem.StableName (StableName, makeStableName)
 import LawSpec.Common
 import LawSpec.Core
 import qualified LawSpec.Core.Types as Types
 import qualified LawSpec.Core.Totality as T
 import qualified LawSpec.Core.PayloadPlan as Payload
+import LawSpec.Digest (digestHex, digestString)
 import LawSpec.Core.Expression (validateExpressionWithRegistry)
 import LawSpec.Core.Semantics (convertValue)
 import LawSpec.Scalar (Scalar(..), isInteger, isExact, isNumeric, integerBounds)
@@ -47,14 +53,39 @@ deferNonlinearPostconditions bits dataDeclarations definitions contracts = do
 deferProgramPostconditions :: Program -> Either [Diagnostic] Program
 deferProgramPostconditions program = do
   let definitions = concatMap unitDefinitions (programUnits program)
-      owned = [declarationId (definitionDeclaration d) | d <- definitions]
-      own = [c | u <- programUnits program, c <- unitContracts u, contractDeclaration c `elem` owned]
+      owned = S.fromList [declarationId (definitionDeclaration d) | d <- definitions]
+      own = [c | u <- programUnits program, c <- unitContracts u, contractDeclaration c `S.member` owned]
   deferred <- deferNonlinearPostconditions (programMachineBits program) (programDataDeclarations program) definitions own
-  let replaced c = maybe c id (lookup (contractDeclaration c) [(contractDeclaration d, d) | d <- deferred])
+  let table = M.fromList [(contractDeclaration d, d) | d <- deferred]
+      replaced c = M.findWithDefault c (contractDeclaration c) table
   pure program { programUnits = [u { unitContracts = map replaced (unitContracts u) } | u <- programUnits program] }
 
 auditDefinitionContracts :: Int -> [DataDeclaration] -> [Definition] -> [Contract] -> Either [Diagnostic] [(Id, Int)]
-auditDefinitionContracts bits dataDeclarations allDefinitions allContracts = do
+auditDefinitionContracts bits dataDeclarations allDefinitions allContracts = unsafePerformIO $ do
+  -- A program's definitions are audited by compilation, elaboration,
+  -- validation and planning alike, the same definitions each time: the last
+  -- few audits are kept, keyed by the definitions' identities in memory and
+  -- the contracts' and data types' contents (compared in full) (a pure function, so this is
+  -- only a cache). An audit of thousands of definitions is seconds.
+  names <- mapM (\d -> evaluate d >>= makeStableName) allDefinitions
+  let key = AuditKey bits dataDeclarations names allContracts
+  cached <- readIORef auditCache
+  case lookup key cached of
+    Just result -> pure result
+    Nothing -> do
+      let result = auditDefinitionContractsUncached bits dataDeclarations allDefinitions allContracts
+      writeIORef auditCache (take 4 ((key, result) : cached))
+      pure result
+{-# NOINLINE auditDefinitionContracts #-}
+
+data AuditKey = AuditKey Int [DataDeclaration] [StableName Definition] [Contract] deriving Eq
+
+auditCache :: IORef [(AuditKey, Either [Diagnostic] [(Id, Int)])]
+auditCache = unsafePerformIO (newIORef [])
+{-# NOINLINE auditCache #-}
+
+auditDefinitionContractsUncached :: Int -> [DataDeclaration] -> [Definition] -> [Contract] -> Either [Diagnostic] [(Id, Int)]
+auditDefinitionContractsUncached bits dataDeclarations allDefinitions allContracts = do
   -- Orchestrations call adapters; they are run natively, not proved.
   let definitions = filter (not . definitionOrchestrates) allDefinitions
       orchestrated = [declarationId (definitionDeclaration d) | d <- allDefinitions, definitionOrchestrates d]
@@ -102,7 +133,8 @@ auditDefinitionContracts bits dataDeclarations allDefinitions allContracts = do
     pure (T.ProofContract (contractDeclaration contract) freshResult
       (map lower (contractPreconditions contract)) (map lower (contractPostconditions contract)))
   constructorProofs <- constructorProofContracts bits dataDeclarations
-  T.auditDeferring constructorProofs proofs (map (proofDefinition (Payload.fromRegistry registry)) definitions)
+  T.auditDeferringWithResults constructorProofs proofs (map (proofDefinition (Payload.fromRegistry registry)) definitions)
+    (M.fromList [(declarationId d, resultBounds bits (snd (functionType (declarationType d)))) | d <- map definitionDeclaration definitions])
   where
     location declaration = case declarationOrigin declaration of
       SourceSpan span -> Just (spanStart span)
@@ -162,12 +194,38 @@ constructorProofContracts bits dataDeclarations = do
 proofExpression :: Payload.Schema -> Int -> Expr -> T.Proof
 proofExpression schema bits = proof
   where
+    substituteFieldType table t = case t of
+      TypeVariable v -> maybe t id (lookup v table)
+      Constructor name args -> Constructor name [case a of TypeArgument x -> TypeArgument (substituteFieldType table x); other -> other | a <- args]
+      Arrow a b -> Arrow (substituteFieldType table a) (substituteFieldType table b)
     proof expression = mark expression $ case expressionNode expression of
       Constant value -> T.Literal value
       Local name -> T.Variable name
       Construct (Id "List::Nil") [] -> T.ListNil
       Construct (Id "List::Cons") [first,rest] -> T.ListCons (proof first) (proof rest)
       Construct tag fields -> T.Construct tag (map proof fields)
+      -- b.f: the field, as an atom of the arithmetic.
+      Project tag index value -> T.Field tag index (resultBounds bits (expressionType expression)) (proof value)
+      -- b with f = v: the value built again from b's other fields and v.
+      Update tag index value field ->
+        let types = case expressionType value of
+              Constructor name arguments | Right (parameters, constructors) <- Payload.entry schema name
+                                         , Just fieldTypes <- lookup tag constructors ->
+                let table = zip parameters [t | TypeArgument t <- arguments]
+                in map (substituteFieldType table) fieldTypes
+              _ -> []
+            -- As the match it stands for: the other fields are bound, with
+            -- what the constructor's contract says of them.
+            site = take 16 (digestHex (digestString (show (expressionOrigin expression, tag, index, expressionType value))))
+            names = [ Id ("::update::" ++ site ++ "::" ++ show k) | k <- [0 .. length types - 1] ]
+            domains = concat [ T.integerAssumptions bits name primitive | (name, Constructor primitive []) <- zip names types ]
+            rebuilt = T.Construct tag [ if k == index then proof field else T.Variable name | (k, name) <- zip [0 ..] names ]
+        in T.DataMatch (proof value) [(tag, names, T.TypedDomain domains rebuilt)]
+      -- b.f (the field syntax, as a match): the field, as an atom of the arithmetic.
+      Match value [MatchCase tag binders (Expr _ (Local chosen) _)]
+        | not (null binders), all ((== "lawspecField") . take 12 . binderName) binders
+        , (index, field) : _ <- filter ((== chosen) . binderId . snd) (zip [0 ..] binders) ->
+            T.Field tag index (resultBounds bits (binderType field)) (proof value)
       Match value branches ->
         let lowered = [(caseConstructor branch,map binderId (caseBinders branch), T.TypedDomain
               (concat [T.integerAssumptions bits (binderId field) name
@@ -216,6 +274,12 @@ proofExpression schema bits = proof
       Let binder value body -> T.Match (proof value) [([], T.substituteProof (M.singleton (binderId binder) (proof value)) (proof body))]
       Helper Unreachable [Expr _ (Constant (SSequence _ points)) _] -> T.Absurd (map toEnum points)
       Helper Unreachable _ -> T.Absurd "a constructor"
+      Helper Length [value] -> T.Opaque "length" [proof value]
+      -- Text tests and the sequence helpers are total functions of their
+      -- values: atoms, so a field's regex is a fact a match knows and a
+      -- rebuild of the same field proves.
+      Helper builtin values | builtin `elem` [StartsWith, EndsWith, TextContains, RegexMatches, Append, Slice, At, Range, Octets, BytesOf, Utf8, TextOf, Join] ->
+        T.Opaque (builtinName builtin) (map proof values)
       Helper IsPresent [value] -> T.IsPresent (proof value)
       Helper PresentValue [value] -> T.PresentValue (proof value)
       _ -> T.Sequence (map proof (children expression))
@@ -224,6 +288,13 @@ proofExpression schema bits = proof
     mark expression value = case expressionType expression of
       Constructor name [] | isInteger name -> T.Integral value
       _ -> value
+
+-- | The range of an integer result type, which every call's result lies in.
+resultBounds :: Int -> Type -> (Maybe Integer, Maybe Integer)
+resultBounds bits ty = case ty of
+  Constructor name [] | Just (lo, hi) <- integerBounds bits name -> (Just lo, Just hi)
+                      | name `elem` ["BigUInt", "Natural"] -> (Just 0, Nothing)
+  _ -> (Nothing, Nothing)
 
 safeConversion :: Int -> Type -> Expr -> Bool
 safeConversion bits target value = safeConversionTypes bits target (expressionType value)

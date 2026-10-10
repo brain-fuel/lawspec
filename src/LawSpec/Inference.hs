@@ -10,20 +10,65 @@ import LawSpec.Refinement (hasValueRefinements)
 import LawSpec.Scalar
 import LawSpec.Eval (boundsValue)
 import Control.Monad (when, unless, zipWithM_, zipWithM, forM, forM_)
-import Data.List (nub, isInfixOf, isPrefixOf)
+import Data.List (nub, isInfixOf, isPrefixOf, intercalate)
 import Control.Monad.State.Strict
 import qualified Data.Map.Strict as M
+import qualified Data.Set as Set
+import Control.Exception (evaluate)
+import Data.IORef (IORef, newIORef, readIORef, writeIORef)
+import System.IO.Unsafe (unsafePerformIO)
+import System.Mem.StableName (StableName, makeStableName)
 import qualified LawSpec.Core as Core
 import LawSpec.Core.Types (builtinDataDeclarations, makeRegistry)
 
 -- | Givens are branch-local facts about rigid type variables: matching a GADT
 -- constructor that refines `a` to Int32 makes @a resolve to Int32 there.
-data CS = CS { substitutions :: M.Map String Type, counter :: Int, obligations :: [Constraint], machineBits :: Int, dataDeclarations :: [Core.DataDeclaration], givens :: M.Map String Type }
+data CS = CS { substitutions :: M.Map String Type, counter :: Int, obligations :: [Constraint], machineBits :: Int, dataDeclarations :: [Core.DataDeclaration], givens :: M.Map String Type
+             -- The declarations (built-in ones too) by type identity, and
+             -- their constructors by name and by identity: a program may
+             -- have thousands of types (withDataDeclarations sets both).
+             , typesByName :: M.Map String [Core.DataDeclaration]
+             , constructorsByName :: M.Map String [(Core.DataDeclaration, Core.DataConstructor)] }
+
+-- | The state with these data declarations, indexed.
+withDataDeclarations :: [Core.DataDeclaration] -> CS -> CS
+withDataDeclarations declarations state = state
+  { dataDeclarations = declarations, typesByName = types, constructorsByName = constructors }
+  where (types, constructors) = dataIndex declarations
+
+-- | The index of a program's declarations. Inference starts afresh for every
+-- expression, so the last index built is kept, keyed by the declarations'
+-- identity in memory (a pure function, so this is only a cache).
+dataIndex :: [Core.DataDeclaration] -> (M.Map String [Core.DataDeclaration], M.Map String [(Core.DataDeclaration, Core.DataConstructor)])
+dataIndex declarations = unsafePerformIO $ do
+  _ <- evaluate declarations
+  name <- makeStableName declarations
+  cached <- readIORef dataIndexCache
+  let ids = map Core.dataId declarations
+  case cached of
+    Just (key, keyIds, index) | key == name, keyIds == ids -> pure index
+    _ -> do
+      let known = builtinDataDeclarations ++ declarations
+          index = ( M.fromListWith (flip (++)) [(Core.idText (Core.dataId d), [d]) | d <- known]
+                  , M.fromListWith (flip (++)) (concat
+                      [ [(Core.constructorName c, [(d, c)])] ++ [(Core.idText (Core.constructorId c), [(d, c)]) | Core.idText (Core.constructorId c) /= Core.constructorName c]
+                      | d <- known, c <- Core.dataConstructors d ]) )
+      writeIORef dataIndexCache (Just (name, ids, index))
+      pure index
+{-# NOINLINE dataIndex #-}
+
+dataIndexCache :: IORef (Maybe (StableName [Core.DataDeclaration], [Core.Id], (M.Map String [Core.DataDeclaration], M.Map String [(Core.DataDeclaration, Core.DataConstructor)])))
+dataIndexCache = unsafePerformIO (newIORef Nothing)
+{-# NOINLINE dataIndexCache #-}
+
+-- | The declarations of a type identity.
+typesNamed :: String -> C [Core.DataDeclaration]
+typesNamed parent = gets (M.findWithDefault [] parent . typesByName)
 -- | Inference starts with no substitutions or obligations, and with the machine
 -- profile, which decides the range of machine-sized literals.
 -- ref:DEC-explicit-machine-profile
 initialState :: Int -> CS
-initialState bits = CS M.empty 0 [] bits [] M.empty
+initialState bits = withDataDeclarations [] (CS M.empty 0 [] bits [] M.empty M.empty M.empty)
 
 -- | Inference fails with one message at the first error, which is what a
 -- specification author needs; state carries the substitution and obligations.
@@ -172,13 +217,20 @@ infer env (AllElementsExpr value binder predicate) = do
 infer env (MatchExpr value branches) = do
   scopes <- matchScopes env value branches
   result <- Variable . ("match:" ++) <$> fresh
-  sequence_ [ do
-      unless (M.null local) (throwC "a match that refines a type variable needs a known result type; annotate it or give the definition a signature")
-      infer scope body >>= unify result
-    | (Just (scope, local), MatchBranch _ _ body) <- zip scopes branches]
+  let live = [(scope, local, body) | (Just (scope, local), MatchBranch _ _ body) <- zip scopes branches]
+      literal (_, _, body) = numericLiteral body
+      -- A numeric literal branch takes its type from the other branches,
+      -- as `| Nothing -> 0 | Just n -> n` is an Int64 when n is.
+      ordered = filter (not . literal) live ++ filter literal live
+      typed = not (all literal live)
+  forM_ live $ \(_, local, _) ->
+    unless (M.null local) (throwC "a match that refines a type variable needs a known result type; annotate it or give the definition a signature")
+  sequence_ [ if typed && literal branch then resolve result >>= \t -> checkExpr scope t body else infer scope body >>= unify result
+    | branch@(scope, _, body) <- ordered ]
   resolve result
 infer env (ListLit xs) = do
-  element <- case xs of
+  -- The first item that is not a numeric literal gives the others' type.
+  element <- case filter (not . numericLiteral) xs ++ xs of
     [] -> Variable . ("list:" ++) <$> fresh
     first:_ -> infer env first >>= resolve
   mapM_ (checkExpr env element) xs
@@ -249,6 +301,7 @@ infer env (Binary op a b) = do
       when (op `elem` ["<","<=",">",">="] && result `elem` ["Complex64","Complex128"]) (throwC "complex values are not ordered")
       pure (Named (if op `elem` ["<","<=",">",">=","==","!="] then "Bool" else result))
     _ -> throwC "arithmetic requires concrete numeric operands after specialization"
+infer env e@(Apply _ _) | isFieldNode e = fieldType env e
 infer env e@(Apply _ _) | (Var n,args) <- application e, take 8 n == "prelude." = builtin env (drop 8 n) args
 -- Numeric literals are checked after the other arguments, so a polymorphic
 -- parameter takes its type from them: prelude.insert 1 s with s :: Set Int32
@@ -469,9 +522,9 @@ builtin env n args
   -- messageContains failure text: the failure's message field contains text.
   | n == "messageContains", [failure,text] <- args = do
       t <- infer env failure >>= resolve
-      known <- gets ((builtinDataDeclarations ++) . dataDeclarations)
       let parent = case t of Named name -> name; Applied name _ -> name; Application name _ -> name; _ -> ""
-          withMessage = [c | d <- known, Core.idText (Core.dataId d) == parent, c <- Core.dataConstructors d,
+      known <- typesNamed parent
+      let withMessage = [c | d <- known, c <- Core.dataConstructors d,
             any ((== "message") . Core.binderName) (Core.constructorFields c)]
       when (null withMessage) (throwC ("message contains needs a failure type with a message field; " ++ prettyType t ++ " has none"))
       checkExpr env (Named "Text") text
@@ -484,8 +537,10 @@ builtin env n args
   -- select c a b is a when c holds and b otherwise; both are values.
   | n == "select", [c,a,b] <- args = do
       checkExpr env (Named "Bool") c
-      t <- infer env a >>= resolve
-      checkExpr env t b
+      -- A numeric literal branch takes the other branch's type.
+      let (first, second) = if numericLiteral a && not (numericLiteral b) then (b, a) else (a, b)
+      t <- infer env first >>= resolve
+      checkExpr env t second
       pure t
   -- The portable total order, as the collections unit's Ordering.
   | n == "compare", [a,b] <- args = do
@@ -529,7 +584,63 @@ builtin env n args
         Named ('@':_) -> require "Integer" t
         _ -> unless (case t of Named name -> isNumeric name; _ -> False) (throwC "numeric conversion requires a numeric operand")
       pure (Named n)
+  -- Arithmetic into a bounded integer type, taken from the context:
+  -- prelude.wrapping (n + 1) wraps around it, prelude.saturating stops at
+  -- its bounds, and prelude.bounded gives Nothing outside them.
+  | n `elem` ["wrapping","saturating","bounded"], [a] <- args = do
+      t <- infer env a >>= resolve
+      unless (case t of Named name -> isInteger name; _ -> False)
+        (throwC ("prelude." ++ n ++ " takes an integer, not " ++ prettyType t))
+      result <- Variable . (("bounded:" ++ n) ++) <$> fresh
+      pure (if n == "bounded" then Applied "Maybe" result else result)
+  -- Sequences: Text, Bytes and List (LawSpec.Core's Append ... Join).
+  | n == "append", [a,b] <- args = do
+      t <- infer env a >>= resolve
+      sequenceOnly n t
+      checkExpr env t b
+      resolve t
+  | n == "slice", [from,to,x] <- args = do
+      t <- infer env x >>= resolve
+      sequenceOnly n t
+      checkExpr env (Named "Integer") from
+      checkExpr env (Named "Integer") to
+      pure t
+  | n `elem` ["take","drop"], [k,x] <- args = do
+      t <- infer env x >>= resolve
+      sequenceOnly n t
+      checkExpr env (Named "Integer") k
+      pure t
+  | n == "at", [i,x] <- args = do
+      t <- infer env x >>= resolve
+      checkExpr env (Named "Integer") i
+      case t of
+        Applied "List" element -> pure (Applied "Maybe" element)
+        Named "Bytes" -> pure (Applied "Maybe" (Named "UInt8"))
+        _ -> throwC ("prelude.at needs a List or Bytes, not " ++ prettyType t)
+  | n == "range", [lo,hi] <- args = do
+      -- The integers from lo up to, not including, hi, of their type.
+      let (first, second) = if numericLiteral lo && not (numericLiteral hi) then (hi, lo) else (lo, hi)
+      t <- infer env first >>= resolve
+      checkExpr env t second
+      unless (case t of Named name -> isInteger name; _ -> False)
+        (throwC ("prelude.range counts integers, not " ++ prettyType t))
+      pure (Applied "List" t)
+  | n == "octets", [b] <- args = checkExpr env (Named "Bytes") b >> pure (Applied "List" (Named "UInt8"))
+  | n == "bytesOf", [xs] <- args = checkExpr env (Applied "List" (Named "UInt8")) xs >> pure (Named "Bytes")
+  | n == "utf8", [t] <- args = checkExpr env (Named "Text") t >> pure (Named "Bytes")
+  | n == "textOf", [x] <- args = do
+      t <- infer env x >>= resolve
+      unless (case t of Named name -> isInteger name; _ -> False)
+        (throwC ("prelude.textOf writes an integer, not " ++ prettyType t))
+      pure (Named "Text")
+  | n == "join", [sep,parts] <- args = do
+      checkExpr env (Named "Text") sep
+      checkExpr env (Applied "List" (Named "Text")) parts
+      pure (Named "Text")
   | otherwise = throwC ("unknown helper or wrong arity: prelude." ++ n)
+  where
+    sequenceOnly name t = unless (t `elem` [Named "Text", Named "Bytes"] || case t of Applied "List" _ -> True; _ -> False)
+      (throwC ("prelude." ++ name ++ " needs a Text, Bytes or List, not " ++ prettyType t))
 -- | The IR resolves every operation and the expected type of every adapter argument.
 typedExpression :: Int -> [(String,Type)] -> Expr -> Either String TypedExpr
 typedExpression = typedExpressionWithData []
@@ -547,11 +658,14 @@ typedExpressionWithSchemes declarations bits env e = do
   evalStateT (do
     expression <- go env Nothing e >>= resolveTree
     requirements <- gets obligations >>= mapM (\(Capability name ty) -> Capability name <$> resolve ty)
-    pure (expression, nub requirements)) ((initialState bits){dataDeclarations=declarations})
+    pure (expression, nub requirements)) (withDataDeclarations declarations (initialState bits))
   where
     go context expected (Located range e) = do
       value <- go context expected e
       pure value{expression=Located range (expression value)}
+    go context expected e | isFieldNode e = do
+      direct <- fieldAccessTyped context expected e
+      maybe (fieldDesugar context e >>= go context expected) pure direct
     go context expected e = do
       let descend = go context
       natural <- case (expected, e) of
@@ -606,6 +720,15 @@ typedExpressionWithSchemes declarations bits env e = do
           case wholeType of
             Applied "List" element -> sequence [descend (Just wholeType) whole, descend (Just element) part]
             _ -> mapM (descend Nothing) [whole, part]
+        -- A sequence helper's indices are Integers, and range's bounds and
+        -- append's sides have the result's type.
+        Apply _ _ | (Var n,args) <- application e, n `elem` ["prelude.slice","prelude.take","prelude.drop","prelude.at"] ->
+          sequence [descend (if i < length args - 1 then Just (Named "Integer") else Nothing) a | (i, a) <- zip [0 :: Int ..] args]
+        Apply _ _ | (Var "prelude.range", [lo,hi]) <- application e, Applied "List" element <- t ->
+          sequence [descend (Just element) lo, descend (Just element) hi]
+        Apply _ _ | (Var "prelude.append", [a,b]) <- application e -> sequence [descend (Just t) a, descend (Just t) b]
+        Apply _ _ | (Var n,args) <- application e, Just expected' <- lookup n fixedSignatures, length expected' == length args ->
+          sequence [descend (Just ty) a | (ty, a) <- zip expected' args]
         Apply _ _ | (Var n,args) <- application e, take 8 n == "prelude." -> mapM (descend Nothing) args
         -- With a numeric literal among its arguments, the function's
         -- expected type carries the argument's and the result's, so a
@@ -676,6 +799,52 @@ typedExpressionWithSchemes declarations bits env e = do
             | (Just (scope, local), MatchBranch tag names body) <- zip scopes branches]
         _ -> pure []
       pure (TypedExpr t e' children conversion cases)
+    -- b.f typed directly, as the field it reads, and b with f = v as the
+    -- value with one field replaced: the typed tree keeps the field node, so
+    -- neither visits every field of the record, at each access
+    -- (LawSpec.Elaboration makes it a projection, or the match it stands
+    -- for).
+    fieldAccessTyped context expected e = case application e of
+      (Var n, [subject]) | Just field <- stripPrefix fieldAccessPrefix n -> do
+        (t, constructor, names) <- fieldConstructor context subject field
+        pairs <- gets (M.findWithDefault [] constructor . constructorsByName)
+        shape <- shapeOf constructor pairs
+        if not (null (shapeExistentials shape)) || any snd (shapeArguments shape) then pure Nothing else do
+          unify (shapeResult shape) t
+          fields <- mapM resolve (shapeFields shape)
+          subjectType <- resolve t
+          subject' <- go context (Just subjectType) subject
+          let index = length (takeWhile (/= field) names)
+          fieldType' <- resolve (fields !! index)
+          target <- traverse resolve expected
+          forM_ target $ \targetType -> checkInferred targetType e fieldType'
+          target' <- traverse resolve target
+          fieldType'' <- resolve fieldType'
+          let conversion = case target' of
+                Just targetType | targetType /= fieldType'' -> Just targetType
+                _ -> Nothing
+          pure (Just (TypedExpr fieldType'' e [subject'] conversion []))
+      (Var n, [subject, value]) | Just field <- stripPrefix fieldUpdatePrefix n -> do
+        (t, constructor, names) <- fieldConstructor context subject field
+        pairs <- gets (M.findWithDefault [] constructor . constructorsByName)
+        shape <- shapeOf constructor pairs
+        if not (null (shapeExistentials shape)) || any snd (shapeArguments shape) then pure Nothing else do
+          unify (shapeResult shape) t
+          fields <- mapM resolve (shapeFields shape)
+          subjectType <- resolve t
+          let index = length (takeWhile (/= field) names)
+          fieldType' <- resolve (fields !! index)
+          value' <- go context (Just fieldType') value
+          subject' <- go context (Just subjectType) subject
+          target <- traverse resolve expected
+          forM_ target $ \targetType -> checkInferred targetType e subjectType
+          target' <- traverse resolve target
+          subjectType' <- resolve subjectType
+          let conversion = case target' of
+                Just targetType | targetType /= subjectType' -> Just targetType
+                _ -> Nothing
+          pure (Just (TypedExpr subjectType' e [subject', value'] conversion []))
+      _ -> pure Nothing
     resolveTree (TypedExpr ty expression operands conversion cases) = do
       ty' <- resolve ty
       operands' <- mapM resolveTree operands
@@ -684,6 +853,128 @@ typedExpressionWithSchemes declarations bits env e = do
         fields' <- mapM (\(name, field) -> (,) name <$> resolve field) fields
         TypedCase tag fields' <$> resolveTree body) cases
       pure (TypedExpr ty' expression operands' conversion' cases')
+
+-- | The prelude helpers whose values have one type each.
+fixedSignatures :: [(String, [Type])]
+fixedSignatures =
+  [ ("prelude.octets", [Named "Bytes"]), ("prelude.bytesOf", [Applied "List" (Named "UInt8")])
+  , ("prelude.utf8", [Named "Text"]), ("prelude.join", [Named "Text", Applied "List" (Named "Text")]) ]
+
+-- | Whether an expression reads or replaces a field (see fieldAccessPrefix).
+isFieldNode :: Expr -> Bool
+isFieldNode e = case application e of
+  (Var n, [_]) -> fieldAccessPrefix `isPrefixOf` n
+  (Var n, [_, _]) -> fieldUpdatePrefix `isPrefixOf` n
+  _ -> False
+
+-- | b.f is a match on the single constructor of b's type that gives the
+-- field f; b with f = v is one that builds the value again with v in f's
+-- place. The value is evaluated before the match, so the match's binders
+-- never capture its names. ref:DEC-field-access-desugars-to-match
+fieldDesugar :: Env -> Expr -> C Expr
+fieldDesugar env e = case application e of
+  (Var n, [subject]) | Just field <- stripPrefix fieldAccessPrefix n -> do
+    (constructor, names) <- constructorOf subject field
+    tag <- fresh
+    let binders = ["lawspecField" ++ tag ++ "x" ++ show i | i <- [0 .. length names - 1]]
+    pure (MatchExpr subject [MatchBranch constructor binders (Var (binders !! index field names))])
+  (Var n, [subject, value]) | Just field <- stripPrefix fieldUpdatePrefix n -> do
+    (constructor, names) <- constructorOf subject field
+    subjectType <- infer env subject >>= resolve
+    tag <- fresh
+    let binders = ["lawspecField" ++ tag ++ "x" ++ show i | i <- [0 .. length names - 1]]
+        -- The copy has the value's type, which a literal field needs when
+        -- the type is generic, as Box Int32's item 0 is an Int32.
+        ground t = case t of
+          Variable _ -> False
+          Named n -> take 1 n /= "@"
+          Arrow a b -> ground a && ground b
+          Applied _ a -> ground a
+          Application _ as -> all ground as
+          _ -> False
+        typed c = if ground subjectType then Annotate c subjectType else c
+        replacement = "lawspecUpdate" ++ tag
+        -- A literal or a name is placed as it is, so a literal takes the
+        -- field's type; anything else is evaluated first.
+        simple = isLiteral value || case unlocated value of Var _ -> True; _ -> False
+        new = if simple then value else Var replacement
+        fields = [if i == index field names then new else Var b | (i, b) <- zip [0 ..] binders]
+        rebuilt = MatchExpr subject [MatchBranch constructor binders (typed (ConstructLit constructor fields))]
+    pure (if simple then rebuilt else MatchExpr value [MatchBranch letTag [replacement] rebuilt])
+  _ -> throwC "invalid field access"
+  where
+    index field names = length (takeWhile (/= field) names)
+    constructorOf subject field = do
+      t <- infer env subject >>= resolve
+      let parent = case t of Named name -> name; Applied name _ -> name; Application name _ -> name; _ -> ""
+          what = "." ++ field ++ ": "
+      when (null parent || take 1 parent == "@") (throwC (what ++ "the type of the value must be known here; annotate it"))
+      when (isCollectionsName parent) (throwC (what ++ prettyType t ++ " has no fields; use its prelude operations"))
+      known <- typesNamed parent
+      case known of
+        [d] -> case Core.dataConstructors d of
+          [c] -> do
+            let names = map Core.binderName (Core.constructorFields c)
+            unless (field `elem` names) (throwC (what ++ prettyType t ++ " has no field called " ++ field ++
+              (if null names then "" else "; its fields are " ++ intercalate ", " names)))
+            pure (Core.idText (Core.constructorId c), names)
+          _ -> throwC (what ++ prettyType t ++ " has more than one constructor, so a field is read with match")
+        _ -> throwC (what ++ prettyType t ++ " is not a data type with fields")
+    isCollectionsName parent = (collectionsUnit ++ "::type::") `isPrefixOf` parent &&
+      drop (length collectionsUnit + 8) parent `elem` ["Set", "KeyVal", "Queue", "Stack", "Deque"]
+
+-- | The type of b.f or b with f = v, without building the match it
+-- desugars to: inferring that match again at every enclosing expression,
+-- with a binder for every field, made checking a model over a record of
+-- hundreds of fields quadratic. A GADT constructor is desugared.
+fieldType :: Env -> Expr -> C Type
+fieldType env e = case application e of
+  (Var n, [subject]) | Just field <- stripPrefix fieldAccessPrefix n -> do
+    (t, shape, names) <- fieldShape subject field
+    case shape of
+      Just fields -> pure (fields !! length (takeWhile (/= field) names))
+      Nothing -> fieldDesugar env e >>= infer env
+  (Var n, [subject, value]) | Just field <- stripPrefix fieldUpdatePrefix n -> do
+    (t, shape, names) <- fieldShape subject field
+    case shape of
+      Just fields -> do
+        checkExpr env (fields !! length (takeWhile (/= field) names)) value
+        resolve t
+      Nothing -> fieldDesugar env e >>= infer env
+  _ -> fieldDesugar env e >>= infer env
+  where
+    fieldShape subject field = do
+      (t, constructor, names) <- fieldConstructor env subject field
+      pairs <- gets (M.findWithDefault [] constructor . constructorsByName)
+      shape <- shapeOf constructor pairs
+      if not (null (shapeExistentials shape)) || any snd (shapeArguments shape)
+        then pure (t, Nothing, names)
+        else do
+          unify (shapeResult shape) t
+          fields <- mapM resolve (shapeFields shape)
+          pure (t, Just fields, names)
+
+-- | The single constructor of b's type, and its field names, for b.f.
+fieldConstructor :: Env -> Expr -> String -> C (Type, String, [String])
+fieldConstructor env subject field = do
+  t <- infer env subject >>= resolve
+  let parent = case t of Named name -> name; Applied name _ -> name; Application name _ -> name; _ -> ""
+      what = "." ++ field ++ ": "
+  when (null parent || take 1 parent == "@") (throwC (what ++ "the type of the value must be known here; annotate it"))
+  when (isCollectionsName parent) (throwC (what ++ prettyType t ++ " has no fields; use its prelude operations"))
+  known <- typesNamed parent
+  case known of
+    [d] -> case Core.dataConstructors d of
+      [c] -> do
+        let names = map Core.binderName (Core.constructorFields c)
+        unless (field `elem` names) (throwC (what ++ prettyType t ++ " has no field called " ++ field ++
+          (if null names then "" else "; its fields are " ++ intercalate ", " names)))
+        pure (t, Core.idText (Core.constructorId c), names)
+      _ -> throwC (what ++ prettyType t ++ " has more than one constructor, so a field is read with match")
+    _ -> throwC (what ++ prettyType t ++ " is not a data type with fields")
+  where
+    isCollectionsName parent = (collectionsUnit ++ "::type::") `isPrefixOf` parent &&
+      drop (length collectionsUnit + 8) parent `elem` ["Set", "KeyVal", "Queue", "Stack", "Deque"]
 
 -- | Capabilities such as Eq a are collected as obligations and discharged once
 -- every type is known.
@@ -724,8 +1015,9 @@ contextualNumber _ = False
 -- same built-in declarations that Core validates and the evaluator consumes.
 constructorSignature :: String -> C ([Type], Type)
 constructorSignature name = do
-  declarations <- gets ((builtinDataDeclarations ++) . dataDeclarations)
-  instantiateConstructor name declarations
+  pairs <- gets (M.findWithDefault [] name . constructorsByName)
+  shape <- shapeOf name pairs
+  pure (shapeFields shape, shapeResult shape)
 
 -- | Most uses need only a constructor's fields and result.
 instantiateConstructor :: String -> [Core.DataDeclaration] -> C ([Type], Type)
@@ -747,10 +1039,14 @@ data ConstructorShape = ConstructorShape
 -- inference and Core cannot disagree about a constructor's shape.
 -- ref:DEC-typed-core-boundary
 instantiateShape :: String -> [Core.DataDeclaration] -> C ConstructorShape
-instantiateShape name declarations = case
+instantiateShape name declarations = shapeOf name
   [(declaration, constructor) | declaration <- declarations,
     constructor <- Core.dataConstructors declaration,
-    Core.constructorName constructor == name || Core.idText (Core.constructorId constructor) == name] of
+    Core.constructorName constructor == name || Core.idText (Core.constructorId constructor) == name]
+
+-- | A fresh instance of the one constructor of these candidates.
+shapeOf :: String -> [(Core.DataDeclaration, Core.DataConstructor)] -> C ConstructorShape
+shapeOf name candidates = case candidates of
   [(declaration, constructor)] -> do
     parameters <- mapM (\parameter -> do
       variable <- Variable . ("constructor:" ++) <$> fresh
@@ -810,12 +1106,12 @@ tryC action = StateT $ \s -> case runStateT action s of
 -- Existentials the scrutinee does not determine become rigid in the branch.
 matchConstructor :: Type -> String -> C (Maybe ([Type], M.Map String Type))
 matchConstructor scrutinee tag = do
-  declarations <- gets ((builtinDataDeclarations ++) . dataDeclarations)
   resolved <- resolve scrutinee
   let (parent, arguments) = case resolved of
         Named n -> (n, []); Applied n a -> (n, [a]); Application n as -> (n, as); _ -> ("", [])
-      candidates = filter ((== parent) . Core.idText . Core.dataId) declarations
-  shape <- instantiateShape tag (if null candidates then declarations else candidates)
+  candidates <- typesNamed parent
+  shape <- if null candidates then gets (M.findWithDefault [] tag . constructorsByName) >>= shapeOf tag
+    else instantiateShape tag candidates
   -- Core is monomorphic: a field whose type only its value knows has no
   -- type in a law or definition. Adapters receive such values natively.
   unless (null (shapeFieldOnly shape))
@@ -871,11 +1167,12 @@ refineTypes x y = do
 -- reverse, so Core binders keep the declared parameter identities.
 constructorParameters :: Type -> String -> C [Type]
 constructorParameters target name = do
-  declarations <- gets ((builtinDataDeclarations ++) . dataDeclarations)
   resolved <- resolve target
   let parent = case resolved of Named n -> Just n; Applied n _ -> Just n; Application n _ -> Just n; _ -> Nothing
-      candidates = maybe declarations (\n -> filter ((== n) . Core.idText . Core.dataId) declarations) parent
-  (parameters, result) <- instantiateConstructor name candidates
+  shape <- case parent of
+    Just n -> typesNamed n >>= instantiateShape name
+    Nothing -> gets (M.findWithDefault [] name . constructorsByName) >>= shapeOf name
+  let (parameters, result) = (shapeFields shape, shapeResult shape)
   -- Bind fresh constructor variables to the caller's parameters, not the
   -- reverse: Core binders retain those declared parameter identities.
   unify result target
@@ -908,7 +1205,7 @@ contextualizeStructural = contextualizeStructuralWithData []
 -- | As contextualizeStructural, knowing the user's data types.
 contextualizeStructuralWithData :: [Core.DataDeclaration] -> Int -> [(String,Type)] -> Expr -> Expr -> Either String (Expr, Expr)
 contextualizeStructuralWithData declarations bits env a b =
-  evalStateT (jointStructuralContext (monoEnvironment env) a b) ((initialState bits){dataDeclarations=declarations})
+  evalStateT (jointStructuralContext (monoEnvironment env) a b) (withDataDeclarations declarations (initialState bits))
 
 -- | Constructor coverage is checked while resolving branch environments and is
 -- checked again independently at the Core boundary. Each branch is Nothing when
@@ -922,11 +1219,10 @@ matchScopes env value [MatchBranch tag [name] _] | tag == letTag = do
 matchScopes env value branches = do
   ty <- infer env value >>= resolve
   let tags = [tag | MatchBranch tag _ _ <- branches]
-  unless (length tags == length (nub tags)) (throwC "duplicate match constructor")
+  unless (distinct tags) (throwC "duplicate match constructor")
   resolved <- resolve ty
-  known <- gets ((builtinDataDeclarations ++) . dataDeclarations)
   let parent = case resolved of Named n -> n; Applied n _ -> n; Application n _ -> n; _ -> ""
-      declarations = [d | d <- known, Core.idText (Core.dataId d) == parent]
+  declarations <- typesNamed parent
   declaration <- case declarations of
     [declaration] -> pure declaration
     _ -> throwC "matching requires a known data type"
@@ -943,7 +1239,7 @@ matchScopes env value branches = do
   where
     scope _ (MatchBranch "_" _ _) = pure (Just (env, M.empty))
     scope ty (MatchBranch tag names _) = do
-      unless (length names == length (nub names)) (throwC "duplicate match binder")
+      unless (distinct names) (throwC "duplicate match binder")
       found <- matchConstructor ty tag
       case found of
         Nothing -> pure Nothing
@@ -957,9 +1253,9 @@ matchScopes env value branches = do
 matchWildcard :: Type -> [String] -> C [(String, [Type])]
 matchWildcard ty tags = do
   resolved <- resolve ty
-  known <- gets ((builtinDataDeclarations ++) . dataDeclarations)
   let parent = case resolved of Named n -> n; Applied n _ -> n; Application n _ -> n; _ -> ""
-  fmap concat $ forM [c | d <- known, Core.idText (Core.dataId d) == parent, c <- Core.dataConstructors d,
+  known <- typesNamed parent
+  fmap concat $ forM [c | d <- known, c <- Core.dataConstructors d,
       not (any (`elem` tags) [Core.constructorName c, Core.idText (Core.constructorId c)])] $ \c -> do
     found <- matchConstructor resolved (Core.idText (Core.constructorId c))
     pure [(Core.idText (Core.constructorId c), fields) | Just (fields, _) <- [found]]
@@ -968,14 +1264,13 @@ matchWildcard ty tags = do
 -- fields whose concrete types happen to coincide with an argument.
 payloadArguments :: Type -> C [Type]
 payloadArguments ty = do
-  declarations <- gets ((builtinDataDeclarations ++) . dataDeclarations)
   (name,arguments) <- case baseType ty of
     Named name -> pure (name,[])
     Applied name argument -> pure (name,[argument])
     Application name arguments -> pure (name,arguments)
     _ -> throwC "payload predicates require a data type"
   count <- if name `elem` ["Nullable","Optional"] then pure 1 else
-    case [length (Core.dataParameters d) | d <- declarations, Core.idText (Core.dataId d) == name] of
+    typesNamed name >>= \declarations -> case [length (Core.dataParameters d) | d <- declarations] of
       [count] -> pure count
       _ -> throwC "payload predicates require a registered data type"
   unless (count == length arguments) (throwC "payload data type arity mismatch")
@@ -984,3 +1279,7 @@ payloadArguments ty = do
 -- | A collections-unit type's short name.
 collectionName :: String -> Maybe String
 collectionName n = stripPrefix (collectionsUnit ++ "::type::") n
+
+-- | No name twice, in O(n log n): a record may have hundreds of fields.
+distinct :: [String] -> Bool
+distinct names = length names == Set.size (Set.fromList names)

@@ -43,7 +43,7 @@ dispatch bytes = withCacheDirectory cacheDirectory $ encode $ versioned $ case e
     Left response -> response
     Right (us,es,core,bindings,evidence,described,plan) ->
      let obligations = evidence ++ bindingEvidence bindings ++ defaultHandlerEvidence core bindings
-         result files = withAttestation attestation core obligations (withPackages project described (programView settings us (map prettyExpanded es) files obligations core)) in case method of
+         result files = withAttestation attestation core obligations (withPackages project described (programView settings us (map prettyExpanded es) files obligations (C.lowerProgramFields core))) in case method of
           "check" -> result []
           "expand" -> result []
           "planGeneration" -> either failure (withBenchmarks (benchmarkManifest target testDir core) . withTests (testManifest target testDir core) . result)

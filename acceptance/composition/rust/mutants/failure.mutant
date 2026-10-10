@@ -1,0 +1,7 @@
+expect: Logs: an unknown log refuses records [native]
+@@ src/example/composition.rs
+<<<<<<<
+            ls::fail(crate::lawspec_data::Problem::UnknownLog);
+=======
+            ls::fail(crate::lawspec_data::Problem::EmptyRecord);
+>>>>>>>

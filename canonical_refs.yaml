@@ -266,6 +266,10 @@ REQ-test-manifest:
   kind: requirement
   title: The test manifest names every law's generated tests on each target, following custom test directories.
   locator: docs/reference/cli.md
+REQ-language-gaps:
+  kind: requirement
+  title: Fields, failing operations, handlers of several abilities, sets of handlers, natives made with a resource, sequences, bounded arithmetic, integer recursion and regex-shaped generation work on every target.
+  locator: docs/reference/language/handlers.md
 REQ-durations:
   kind: requirement
   title: Durations have portable literals and operators, checked in definitions and the totality audit.

@@ -133,9 +133,9 @@ elaborateHarness u = case unitHarness u of
     -- One plan per law: the defaults, then each block that names it.
     let defaults = [(s, r) | HarnessDefault s r <- items]
         blocks final = [(names, ss) | HarnessFor names ss _ <- items, any (\b -> lawBaseMatches abilityNames b final) names]
-        pinned final = nub [abilityTypeName (handlerAbility hd) | (base, uses) <- lawHandlers u
+        pinned final = nub [abilityTypeName a | (base, uses) <- lawHandlers u
           , lawBaseMatches abilityNames base final, UseHandler n <- concatMap unwrap uses
-          , hd <- handlerDeclarations u, handlerName hd == n]
+          , hd <- handlerDeclarations u, handlerName hd == n, a <- handlerAbilities hd]
         unwrap use = case use of UseRecording inner -> unwrap inner; other -> [other]
     plans <- forM (laws u) $ \l -> do
       let final = lawName l
@@ -194,13 +194,13 @@ elaborateHarness u = case unitHarness u of
       let out = [ (ability, name) | (ability, choice) <- assignment, abilityTypeName ability /= failAbilityName
                 , abilityTypeName ability `notElem` pinned
                 , let name = choiceName choice
-                , let candidates = "native" : [handlerName hd | hd <- handlerDeclarations u, handlerAbility hd == ability]
+                , let candidates = "native" : [handlerName hd | hd <- handlerDeclarations u, ability `elem` handlerAbilities hd]
                 , let wanted = filter (`elem` candidates) allowed
                 , not (null wanted), name `notElem` wanted ]
       in case out of
         [] -> Nothing
         (ability, name) : _ -> Just ("the harness tests " ++ prettyType ability ++ " with " ++
-          intercalate ", " [n | n <- allowed, n == "native" || n `elem` [handlerName hd | hd <- handlerDeclarations u, handlerAbility hd == ability]] ++
+          intercalate ", " [n | n <- allowed, n == "native" || n `elem` [handlerName hd | hd <- handlerDeclarations u, ability `elem` handlerAbilities hd]] ++
           " only, not " ++ name)
     choiceName choice = case choice of
       ChooseProduction -> "native"

@@ -12,6 +12,11 @@ import qualified LawSpec.WebExpr as E
 import qualified LawSpec.Code.Doc as D
 import Data.List (nub, sort, intercalate, stripPrefix, isPrefixOf)
 import LawSpec.AbilityNames (specName, interfaceName, ownerName)
+import LawSpec.RuntimeSources (runtimeSource)
+import LawSpec.Typed.Web (WebTyped(..), emitWebTyped)
+import LawSpec.Typed.Plan (TypedPlan(..))
+import qualified Data.Map.Strict as M
+import qualified Data.Set as Set
 
 -- | An asynchronous definition's call is marked "await ", so callers await it.
 definitionCalls :: [Unit] -> [(Id,String)]
@@ -45,10 +50,33 @@ emitWebDefinitions :: Bool -> D.Layout -> Int -> [DataDeclaration] -> [Unit] -> 
 emitWebDefinitions _ _ _ _ units | null (concatMap unitDefinitions units) = pure []
 emitWebDefinitions ts layout bits declarations units = do
   contracts <- checkedDefinitionContracts bits declarations units
-  bodies <- mapM (implementation contracts) (zip [0::Int ..] (concatMap unitDefinitions units))
+  typed <- emitWebTyped ts bits declarations units
+  bodies <- mapM (\(index, d) -> maybe (implementation contracts (index, d)) (bridge typed index d)
+      (webTypedFunction typed (declarationId (definitionDeclaration d))))
+    (zip [0::Int ..] (concatMap unitDefinitions units))
   wrappers <- mapM nativeUnit (filter (not . null . unitDefinitions) units)
-  pure (file ("src/lawspec_definition_bodies." ++ extension) "./" adapterImports bodies : wrappers)
+  let hasTyped = not (M.null (typedDefinitions (webTypedPlan typed)))
+      typedFiles = if hasTyped
+        then [ Artifact ("src/lawspec_typed." ++ extension) (webTypedModule typed) "generated" "source"
+             , Artifact ("src/lawspec_fast." ++ extension) (if ts then "// @ts-nocheck\n" ++ replaceText "./lawspec_runtime.mjs" "./lawspec_runtime.js" (runtimeSource "web-fast") else runtimeSource "web-fast") "generated" "source" ]
+        else []
+  pure (file ("src/lawspec_definition_bodies." ++ extension) "./" (adapterImports ++ ["import * as _typed from './lawspec_typed." ++ importExtension ++ "';" | hasTyped]) bodies : wrappers ++ typedFiles)
   where
+    replaceText old new text = case text of
+      [] -> []
+      _ | take (length old) text == old -> new ++ replaceText old new (drop (length old) text)
+      c : rest -> c : replaceText old new rest
+    -- A typed definition's dynamic entry converts its arguments and result.
+    bridge typed index d function = do
+      let (argTypes, resultType) = functionType (declarationType (definitionDeclaration d))
+          identity = declarationId (definitionDeclaration d)
+          arguments = ["value" ++ show i | i <- [0 .. length argTypes - 1]]
+          needsContext = identity `Set.member` typedContextual (webTypedPlan typed)
+          call = "_typed." ++ webTypedTo typed resultType ++ "(_typed." ++ function ++ "(" ++
+            intercalate ", " (["symbols" | needsContext] ++ ["_typed." ++ webTypedFrom typed t ++ "(" ++ a ++ ")" | (t, a) <- zip argTypes arguments]) ++ "))"
+      pure (D.text ("export function evaluate" ++ show index) <>
+        D.delimitTrailing 4 "(" ")" (symbols : [D.text a <> annotation (D.text "unknown") | a <- arguments]) <> annotation (D.text "unknown") <> D.text " " <>
+        D.block 2 (contextual identity (D.text ("return " ++ call ++ ";"))))
     extension = if ts then "ts" else "mjs"
     importExtension = if ts then "js" else "mjs"
     width = D.text (show bits)
@@ -116,9 +144,21 @@ emitWebDefinitions ts layout bits declarations units = do
             Perform op args -> do
               nativeValues <- sequence [handlerCall "toNative" (expressionType a) value | (a, value) <- zip args values]
               let invocation = E.call ("ls.handler(symbols, " ++ show (abilityKey (operationAbility op)) ++ ")." ++ operationName op) nativeValues
-              if expressionType term == Constructor "Unit" []
+              result <- if expressionType term == Constructor "Unit" []
                 then pure (E.call "ls.unitResult" [invocation])
                 else handlerCall "fromNative" (expressionType term) invocation
+              -- An operation that fails with E: a native handler throws
+              -- ls.Fail with a native E, which becomes the failure.
+              case findAbility units (operationAbility op) >>= lookup (operationName op) . abilityFailures . snd of
+                Just failing@(AbilityRef _ [failure]) -> do
+                  convert <- handlerCall "fromNative" failure (D.text "_failure")
+                  pure (E.call "ls.nativeFailures" [E.quoted (abilityKey failing), D.text "(_failure" <> annotation (D.text "unknown") <> D.text ") => " <> convert, D.text "() => " <> result, D.text "[]"])
+                _ -> pure result
+            -- prelude.attempt e: Right of e's value, or Left of its failure.
+            Handle (CatchFailure ability) _ | [body] <- values ->
+              pure (E.call "ls.attempt" [E.quoted (abilityKey ability), D.text "() => " <> body,
+                D.text "(_value" <> annotation (D.text "unknown") <> D.text ") => ls.construct('Either::Right', [_value])",
+                D.text "(_value" <> annotation (D.text "unknown") <> D.text ") => ls.construct('Either::Left', [_value])"])
             -- handle e with h end: e runs with h installed for its ability,
             -- made afresh each time.
             Handle (WithHandler ability (SpecHandler h)) _ | [body] <- values, Just (owner, x) <- specHandlerOwner h ->
@@ -144,12 +184,12 @@ emitWebDefinitions ts layout bits declarations units = do
               case [a | a@(AbilityRef _ [_]) <- declarationUses adapter, isFail a] of
                 ability@(AbilityRef _ [failure]) : _ | not (declarationAsync adapter) -> do
                   convert <- schemaCall "fromNative" failure (D.text "_failure")
-                  pure (E.call "ls.nativeFailures" [E.quoted (abilityKey ability), D.text "(_failure) => " <> convert,
+                  pure (E.call "ls.nativeFailures" [E.quoted (abilityKey ability), D.text "(_failure" <> annotation (D.text "unknown") <> D.text ") => " <> convert,
                     D.text "() => " <> result, D.text "[]"])
                 -- An async adapter's rejected promise fails the same way.
                 ability@(AbilityRef _ [failure]) : _ -> do
                   convert <- schemaCall "fromNative" failure (D.text "_failure")
-                  pure (awaitIf True (E.call "ls.nativeFailuresAsync" [E.quoted (abilityKey ability), D.text "(_failure) => " <> convert,
+                  pure (awaitIf True (E.call "ls.nativeFailuresAsync" [E.quoted (abilityKey ability), D.text "(_failure" <> annotation (D.text "unknown") <> D.text ") => " <> convert,
                     D.text "async () => " <> result, D.text "[]"]))
                 _ -> pure result
             _ -> Left "unresolved JS/TS total call"

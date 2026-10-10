@@ -112,6 +112,48 @@ prefixed with `|`. Recursive declarations must be strictly positive.
 Constructors may also determine natural-number indices; see
 [indexed families](indexed-families.md).
 
+## Fields
+
+A type with one constructor has fields that code reads and replaces by name:
+
+```lawspec
+unit guide.fields
+
+type Account is
+  Account
+    owner :: Text
+    balance :: Int64
+end
+
+type Ledger is
+  Ledger
+    account :: Account
+    entries :: Int32
+end
+
+definition rename (l :: Ledger) (name :: Text) :: Ledger is
+  l with account = (l.account with owner = name), entries = 0
+end
+
+law `a rename reads back` is
+  definition is
+    `for all` (l :: Ledger) (name :: Text) .
+      (rename l name).account.owner = name and (rename l name).entries = 0
+  end
+end
+```
+
+- `b.f` is the field `f` of `b`. The dot touches both names; `f . g` with
+  spaces still composes. A parenthesized value may be read too:
+  `(rename l name).entries`.
+- `b with f = v, g = w` is `b` with `f` and `g` replaced. It reaches as far
+  right as it can, so parenthesize one used as an argument.
+- Both need a type with one constructor; a sum is read with `match`. The
+  type of `b` must be known where the field is read, from a signature or an
+  annotation.
+- Each is a match on the constructor, so every target runs it as a match,
+  and the totality checker knows what a guard says about `b.f`.
+
 ## Pattern matching
 
 `match` evaluates its scrutinee once. Each branch names a constructor and binds
@@ -151,3 +193,19 @@ Refinements can inspect whole products and sums with exhaustive matches, and
 can constrain list elements, `Maybe` and `Either` payloads, type arguments of
 named types, and individual constructor fields. See
 [refinements](../refinements.md#named-data-payloads).
+
+A field's refinement may call a checked definition of its unit, which is
+unfolded into it, so every target checks it where values are built:
+
+```lawspec
+unit example.badges
+
+definition validName (name :: Text) :: Bool is name matches regex "[a-z]+" end
+
+type Badge is
+  Badge
+    label :: (v :: Text where validName v)
+end
+```
+
+A recursive definition cannot be unfolded, and is refused there.

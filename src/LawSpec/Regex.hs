@@ -22,10 +22,11 @@
 --
 -- The matcher follows every position a pattern can reach at once (a set of
 -- positions per step), so it never backtracks and always terminates.
-module LawSpec.Regex (Regex(..), parseRegex, regexMatches, regexMatchesText) where
+module LawSpec.Regex (Regex(..), parseRegex, regexMatches, regexMatchesText, regexSamples) where
 
 import Data.Char (isDigit, ord)
 import Data.List (nub, sort)
+import Data.Bits (xor)
 
 -- A class item matches a code point inside one of its ranges, or, when
 -- negated, one outside all of them.
@@ -198,3 +199,42 @@ regexMatches r text = n `elem` reach r [0]
 -- The pattern's verdict on a text, or why the pattern is invalid.
 regexMatchesText :: String -> [Int] -> Either String Bool
 regexMatchesText pattern text = (`regexMatches` text) <$> parseRegex pattern
+
+-- | Texts the regex matches, varied in their choices and lengths, from a
+-- fixed seed: generation draws refined texts among them instead of
+-- filtering random ones (LawSpec.Testing). The shortest match comes first.
+regexSamples :: Int -> Regex -> [String]
+regexSamples count regex = nub (shortest regex : [sample (seed * 7919 + 17) | seed <- [1 .. count]])
+  where
+    shortest r = fst (generate (\_ -> 0) r 0)
+    sample seed = fst (generate (\step -> mix (toInteger seed * 1000003 + toInteger step)) regex (0 :: Int))
+    -- SplitMix64's finalizer, so neighbouring steps choose unrelatedly. On
+    -- Integers: Int is 32 bits in the WASM build.
+    mix :: Integer -> Int
+    mix n = fromInteger (finish (n * 0x9E3779B97F4A7C15) `mod` 2147483648)
+    finish z0 = let m = 2 ^ (64 :: Int)
+                    z1 = ((z0 `xorI` (z0 `div` 2 ^ (30 :: Int))) * 0xBF58476D1CE4E5B9) `mod` m
+                    z2 = ((z1 `xorI` (z1 `div` 2 ^ (27 :: Int))) * 0x94D049BB133111EB) `mod` m
+                in z2 `xorI` (z2 `div` 2 ^ (31 :: Int))
+    -- On Integers throughout, so every platform (the WASM build too) draws
+    -- the same samples.
+    xorI :: Integer -> Integer -> Integer
+    xorI a b = (a `mod` 2 ^ (64 :: Int)) `xor` (b `mod` 2 ^ (64 :: Int))
+    -- Each choice draws from the stream at the next step.
+    generate choose r step = case r of
+      Characters negated items ->
+        let candidates = [c | c <- allowed negated items]
+            pick = if null candidates then 'a' else toEnum (candidates !! (choose step `mod` length candidates))
+        in ([pick], step + 1)
+      Sequence parts -> foldl (\(acc, s) part -> let (t, s') = generate choose part s in (acc ++ t, s')) ("", step) parts
+      Alternatives options -> case options of
+        [] -> ("", step)
+        _ -> generate choose (options !! (choose step `mod` length options)) (step + 1)
+      Repeat inner low high ->
+        let top = maybe (low + 6) (min (low + 6)) high
+            times = low + (choose step `mod` (top - low + 1))
+        in foldl (\(acc, s) _ -> let (t, s') = generate choose inner s in (acc ++ t, s')) ("", step + 1) [1 .. times]
+    -- The characters a class allows, among printable ASCII and a few others.
+    allowed negated items = [c | c <- universe, member negated items c]
+    universe = [32 .. 126] ++ [233, 955, 8364]
+    member negated items c = negated /= any (\(itemNegated, ranges) -> itemNegated /= any (\(lo, hi) -> lo <= c && c <= hi) ranges) items

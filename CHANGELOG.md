@@ -29,6 +29,161 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `evidence` carries the fields above and `attestation` lists each dependency
   with the obligations it touched. A malformed attestation, or an unknown
   format or version, is a diagnostic with code `attestation`.
+- Checked definitions and stateful spec handlers run as typed native code on
+  all eight targets wherever every value they touch has a typed form
+  (Bool, Unit, the bounded integers, Integer, Text, Bytes, List, Maybe,
+  Either, KeyVal, Set and data built from them); anything else runs on the
+  dynamic values, as before. A definition that performs an operation of
+  another ability, or calls one that does, runs typed too: it takes the
+  handler context first and performs through the handler in scope, so
+  LawTwin's Kafka client handlers (`kafkaProducer`, `kafkaConsumer`,
+  `kafkaTransactions`) run typed, and 829 of the contract's 865 definitions
+  do (only the IntSize and UIntPtr helpers stay dynamic). Python represents
+  data as tuples, lists as shared cons cells that know their length and
+  KeyVal and Set as persistent AVL trees, and turns self tail calls into
+  loops; JavaScript and TypeScript use classes with generated TypeScript
+  types, and a number for every integer that fits a safe integer, a BigInt
+  only beyond; Haskell uses strict data types, `Data.Map.Strict` and
+  `Data.Set`, and threads a handler's state through an `MVar`. Definitions that `fail with E`, `raise` and `prelude.attempt`, field
+  access and record update, bounded arithmetic, recursion on integers and
+  the sequence helpers run typed, and so does a spec handler of several
+  abilities with a computed start; a typed failure is the same panic or
+  exception the dynamic code raises, so each catches the other's.
+  `lawspec-dev bench <name> --typed` lists what stays dynamic, and why. Lists are
+  persistent cons lists that share their tails, KeyVal and Set persistent AVL
+  trees in the portable order, Integer stays in a machine word until it
+  outgrows it, data with fields is shared by reference, and a definition's
+  self tail calls become a loop. A handler's state is never copied: an
+  operation costs what it changes. Values convert directly between the typed
+  forms and each target's native types at a handler's interface, and through
+  the dynamic value where typed and dynamic code meet.
+- Embedding entry points: a stateful spec handler can be made outside any law
+  and called from native code, `Handler::start()` in Rust,
+  `Start<Handler>()` in Go, the no-argument constructor in Java and Kotlin,
+  `Handler()` in Python, `new Handler()` in JavaScript and TypeScript and
+  the handler's function over a symbol context in Haskell. Its operations apply one at a time, so it can
+  be shared between threads. Each operation that fails with `E` also has a
+  form that returns the failure as a value: `try_op` gives `Result<T, E>` in
+  Rust, `TryOp` gives `(T, error)` with a `*LawSpecRaised[E]` in Go, `tryOp`
+  an `Outcome<T, E>` in Java and Kotlin, `Right` or `Left` in Python,
+  JavaScript and TypeScript, and `Either E T` in Haskell. A handler's state
+  can be read and replaced (`state`, `set_state` and their typed forms;
+  `<h>Snapshot` and `<h>Restore` in Haskell), and the state's type is
+  public. The new guide "Embed a generated model" shows how.
+- `lawspec-dev bench <name>` runs a benchmark of generated code on all eight
+  targets. `bench/kafka` drives LawTwin's Kafka reference model (a
+  copy under its MIT licence, re-expressed with failing operations, one
+  handler for three abilities, fields and bounded arithmetic) through its
+  `cluster` handler: a million produces over 100 partitions, a consumer
+  group of ten fetching and committing with a rebalance, and ten thousand
+  transactions. Every definition of the model and the handler run typed.
+  It runs the whole workload at 0.53 (Rust), 1.03 (Go), 0.78 (Java) and 0.93
+  (Kotlin) million operations a second, holding about 190 to 270 MiB for the
+  million records, where 0.21.0's generated Rust managed 9 operations a
+  second, and 1.5 GiB, at two thousand. Python runs it at 118 thousand
+  operations a second (it ran 1,100 on the dynamic values, at twenty
+  thousand), JavaScript at 942 thousand and TypeScript at 964 thousand
+  (7,300 before) and Haskell at 1.83 million (57 before, at two thousand).
+  `lawspec-dev bench kafka --deterministic` generates the contract on each
+  target with and without a cache, cold and warm, and by `lawspec-core`, and
+  fails unless every run gives the same bytes.
+- Fields: `b.balance` reads a field of a single-constructor value, and
+  `b with balance = v, owner = o` copies it with fields replaced.
+- Handlers of several abilities: `handler reference for Broker, Admin with
+  state s :: S start e is ... end` answers every operation of each from one
+  state. A law that runs it for one of its abilities runs it for the others
+  it uses, made once per case.
+- Sets of handlers: `handlers reference is cluster, client end`. Every law of
+  an ability a set covers runs under all of its handlers at once,
+  `` Broker: law [reference] ``, and so does every law that uses one of its
+  abilities.
+- `ability Broker with Cluster is ... end`: native handlers made with a
+  resource. Each case acquires one `Cluster` and makes every such native
+  handler with it, so native handlers of one case share it.
+- Ability operations may fail: `produce :: Batch -> Int64 fails with
+  KafkaError`. Spec handler clauses `raise`; native handlers raise the
+  runtime's `Fail`. `prelude.attempt` works in definitions.
+- Handler clauses: a start value may call definitions and the prelude
+  (`start prelude.keyValOf []`); a tail `match` or `if` may update the state
+  in its branches; `op by f` makes a clause of a definition that gives
+  `Pair result next`.
+- Sequences: `++`, `prelude.slice`, `take`, `drop`, `at`, `range`, `octets`,
+  `bytesOf`, `utf8`, `textOf` and `join` over `Text`, `Bytes` and `List`.
+- Bounded arithmetic: `prelude.wrapping`, `prelude.saturating` and
+  `prelude.bounded` put an integer result into the bounded type the context
+  wants.
+- Recursion on integers: a recursive call may move an integer argument
+  strictly toward a bound.
+- The totality checker knows what guards say about calls, fields and lengths,
+  that a call lies in its result type's range, that lengths are not negative,
+  and the bounds of `prelude.rem` and `prelude.quot`.
+- A text refined by a regex, directly or through a checked definition, is
+  generated from texts the regex matches instead of filtered from any text,
+  also in laws that mix it with record or list inputs.
+- On Python, a unit named like another unit's package (`shop.tax` beside
+  `shop.tax.rates`) is the package's `__init__.py`.
+- New acceptance suites `records`, `sequences` and `composition`.
+
+### Changed
+
+- Definitions that are the same up to their names, such as an import's
+  copies, share one generated body: Rust aliases the copies' functions, and
+  Java and Go delegate to it. Go packages hold only the bodies they reach,
+  and the native entry points of typed definitions convert their values
+  directly. LawTwin's Kafka contract generates 23,606 lines of
+  `lawspec_definitions.rs` instead of 83,157, 27,439 lines of Java
+  definitions instead of 80,444, 27,309 of Kotlin and Java instead of 87,537,
+  and 37,900 lines of Go definitions over its four packages instead of
+  113,462.
+- Generated Rust builds its data schema once: `lawspec_schema::schema()`
+  returns `&'static ls::Schema`.
+
+### Fixed
+
+- Generation is deterministic: the on-disk cache is keyed by the build of
+  the compiler that wrote it (its executable's path, size and time) as well
+  as its version, so a rebuilt compiler no longer reads another build's
+  entries.
+- Generated names are stable under unrelated edits: the typed functions a
+  handler's clauses call, and its start, are named from the definitions and
+  the handler (with a suffix from the digest of what they name where one is
+  needed), not from their position among the others.
+- Generated code builds without warnings, or with targeted allow attributes,
+  on every target, also as a dependency of another project.
+- A TypeScript type with several type arguments no longer has a trailing
+  comma.
+- A spec handler clause that fails no longer poisons the handler on Rust:
+  later operations see the state as the failure left it.
+- A field's refinement may call a checked definition of its unit
+  (`label :: (v :: Text where validName v)`).
+- A record update or a rebuild proves a field's regex refinement, which the
+  copied field already met; text tests and the sequence helpers are facts
+  the checker knows.
+- A definition that says it `fails with E` but never raises may be a
+  handler clause (`op by f`).
+- A spec handler named like its ability (`counter` for `Counter`) is
+  `CounterSpec` where the two would share a name.
+- A record whose field a regex constrains has boundary witnesses that match
+  the regex.
+- Bounded arithmetic used by an import's definitions resolves in the
+  importing unit, packages included.
+- Checking scales with a program's size: LawTwin's import of GitHub's whole
+  REST description (2,108 types, 1,232 operations, 87 laws) checks in
+  minutes, where it did not finish in 30. Field access is typed without
+  building its match, registries, indexes, audits and unit elaboration are
+  made once per program, and sets and maps replace quadratic list scans.
+  `lawspec-dev bench compile` times a scaled model. Field access and record
+  update are Core's own projection and update, read directly by validation,
+  evaluation and the totality audits, instead of a match binding every field
+  of the record: the scaled model of 100, 200 and 400 types checks in 22.5,
+  46.9 and 129.9 seconds instead of 33.8, 95.5 and 340.2 (unoptimized
+  builds).
+- Java and Kotlin generation accepts a field named `record`, `sealed`,
+  `permits` or `var`, which Java restricts only as type names.
+- Prelude helpers such as `prelude.isRight` work in an ability's laws and in
+  handler clauses.
+- A numeric literal in a `match` or `if` branch, or a list, takes its type
+  from the other branches or items.
 
 ## [0.22.0] - 2026-10-10
 

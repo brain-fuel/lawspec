@@ -48,11 +48,11 @@ validateProgramWith registry Program{..} = do
   unless (programMachineBits `elem` [32,64]) (Left "machineBits must be 32 or 64")
   let unitIds = map unitId programUnits
       propertyIds = [propertyId p | u <- programUnits,p <- unitProperties u]
-  unless (length unitIds == length (nub unitIds) && length propertyIds == length (nub propertyIds)) (Left "duplicate core unit/property identity")
+  unless (length unitIds == Set.size (Set.fromList unitIds) && length propertyIds == Set.size (Set.fromList propertyIds)) (Left "duplicate core unit/property identity")
   let declarations = concatMap unitDeclarations programUnits
       ids = map declarationId declarations
       scope = M.fromList [(declarationId d,declarationType d) | d <- declarations]
-  unless (length ids == length (nub ids)) (Left "duplicate core declaration identity")
+  unless (length ids == Set.size (Set.fromList ids)) (Left "duplicate core declaration identity")
   mapM_ (Types.checkType registry . declarationType) declarations
   mapM_ (validateUnit scope) programUnits
   where

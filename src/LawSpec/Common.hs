@@ -76,3 +76,11 @@ importedDefinitionName unit name = case pieces unit of
       (a, []) -> [a]
     capital (c : cs) = toUpper c : cs
     capital [] = []
+
+-- | A unit's Python module file, below a source root: a.b is a/b.py, or
+-- a/b/__init__.py when another unit is inside it (a.b.c), so a unit may
+-- share its name with its package's other units.
+pythonUnitFile :: [String] -> String -> String
+pythonUnitFile units unit =
+  let path = map (\c -> if c == '.' then '/' else c) unit
+  in if any (\other -> (unit ++ ".") == take (length unit + 1) other) units then path ++ "/__init__.py" else path ++ ".py"

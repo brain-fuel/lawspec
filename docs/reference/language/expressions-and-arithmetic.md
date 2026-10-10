@@ -15,7 +15,7 @@ means `(f x) y`. The other operators, from highest to lowest precedence:
 | Unary `!` and `-` | |
 | Composition `.` | Right |
 | `*`, `/` | Left |
-| `+`, `-` | Left |
+| `+`, `-`, `++` | Left |
 | `>=>` | Right |
 | `<$>`, `<!>`, `<*>` | Left |
 | `>>=` | Left |
@@ -103,7 +103,9 @@ associative`, `map fuses` and `recovery keeps successes`.
 ## Literals
 
 Literals take their type from context: a declared parameter, an example input,
-or an annotation.
+an annotation, or the other branches of a `match` or an `if` and the other
+items of a list. In `let from = (match g with | Nothing -> 0 | Just o -> o end)`
+with `o :: Int64`, the `0` is an `Int64`.
 
 - An integer literal with no context has type `Integer`.
 - A decimal literal with no context has type `Decimal`.
@@ -149,6 +151,36 @@ law `promotes instead of wrapping` is
   end
 end
 ```
+
+## Bounded arithmetic
+
+Arithmetic on integers gives an `Integer`, which a bounded type takes only
+through a checked conversion. Three named operations put a result into the
+bounded type the context wants instead:
+
+| Operation | When the result leaves the type |
+| --- | --- |
+| `prelude.wrapping e` | it wraps around, as two's complement does |
+| `prelude.saturating e` | it stops at the type's least or greatest value |
+| `prelude.bounded e` | it is `Nothing`; otherwise `Just` the value |
+
+```lawspec
+unit guide.bounded
+
+definition nextEpoch (e :: Int16) :: Int16 is prelude.wrapping (e + 1) end
+definition topUp (level :: UInt8) :: UInt8 is prelude.saturating (level + 10) end
+definition total (a :: Int32) (b :: Int32) :: Maybe Int32 is prelude.bounded (a + b) end
+
+law `bounded arithmetic` is
+  definition is
+    nextEpoch 32767 = -32768 and topUp 250 = 255 and total 2147483647 1 = Nothing
+  end
+end
+```
+
+The type comes from the context: a signature, an argument, or an annotation,
+`(prelude.wrapping (n + 1) :: Int32)`. Each is a checked definition the
+compiler proves total, so none needs a guard.
 
 ## Floating point
 

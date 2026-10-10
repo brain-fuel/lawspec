@@ -10,6 +10,7 @@ module LawSpec.AbilityEmit.Haskell (emit, productionStub, typesModule, handlersM
 
 import Data.Char (toLower, toUpper)
 import Data.List (intercalate)
+import Control.Monad (forM)
 import qualified LawSpec.Core as C
 import LawSpec.Common (Artifact(..))
 import LawSpec.AbilityNames
@@ -18,6 +19,7 @@ import qualified LawSpec.HaskellData as Native
 import qualified LawSpec.HaskellDefinitions as Definitions
 import qualified LawSpec.HaskellExpr as E
 import qualified LawSpec.Code.Doc as D
+import LawSpec.Typed.Plan (typedPlanPerforming, scalarTypes, isTypedHandler)
 
 capitalize, lower :: String -> String
 capitalize (c : cs) = toUpper c : cs
@@ -59,7 +61,7 @@ emit minify bits datas units = concat <$> mapM unitFiles (filter wanted units)
     imports extra = map line
       ([ "import Prelude ()", "import qualified Prelude as P", "import qualified Data.Int as I", "import qualified Data.Word as W"
        , "import qualified Data.Text as T", "import qualified Data.ByteString as B", "import qualified Data.Complex as C"
-       , "import qualified Data.IORef as IORef"
+       , "import qualified Data.IORef as IORef", "import qualified Control.Exception as Exception"
        , "import LawSpecRuntime (Scalar(..))", "import qualified LawSpecRuntime as LS"
        , "import qualified LawSpecSchema as Schema", "import qualified LawSpecCodecs as Codec"
        , "import qualified LawSpecData as Data", "import qualified LawSpecDataSchema as DataSchema"
@@ -79,6 +81,7 @@ emit minify bits datas units = concat <$> mapM unitFiles (filter wanted units)
       records <- mapM record (ownAbilities u)
       handlers <- mapM specHandler (C.unitHandlers u)
       recordings <- mapM recording (ownAbilities u)
+      tries <- concat <$> mapM attempts (ownAbilities u)
       let owners = nubStrings [typesModule v | (v, _) <- imported u]
           -- An imported ability's records come from its owner's module.
           exports = if null owners then "" else " (module " ++ typesModule u ++ concatMap (", module " ++) owners ++ ")"
@@ -93,7 +96,7 @@ emit minify bits datas units = concat <$> mapM unitFiles (filter wanted units)
               line ("module " ++ handlersModule u ++ handlerExports ++ " where"), line ""] ++
              imports (["import qualified LawSpecDefinitionBodies as Definitions" | not (null (C.unitHandlers u))] ++
                ["import " ++ typesModule u] ++ ["import " ++ m ++ " (" ++ f ++ ")" | (m, f) <- importedRecordings]) ++ [line ""] ++ environment)
-            (handlers ++ recordings)
+            (handlers ++ recordings ++ tries)
       pure [types, handlerFile]
     nubStrings = foldr (\x acc -> if x `elem` acc then acc else x : acc) []
     -- A spec handler is made by its function with the bodies, which handle
@@ -101,9 +104,19 @@ emit minify bits datas units = concat <$> mapM unitFiles (filter wanted units)
     specHandler h = do
       (_, ability) <- maybe (Left ("unknown ability of handler " ++ C.handlerName h)) Right (C.findAbility units (C.handlerAbility h))
       let name = handlerFunction h
-      pure (line ("-- | The spec handler " ++ C.handlerName h ++ " for " ++ C.abilityName ability ++ ".") <> D.hardline <>
+          made = Definitions.specHandlerCall units (C.handlerId h)
+      -- A handler of several abilities: its state, and a record for each
+      -- ability over it, so a law makes the state once.
+      others <- forM (C.handlerAbilities h) $ \ref -> maybe (Left ("unknown ability of handler " ++ C.handlerName h)) (Right . snd) (C.findAbility units ref)
+      let typedState = isTypedHandler plan h && C.handlerState h /= Nothing
+          parts = if null (C.handlerAlso h) && not typedState then [] else
+            line (name ++ "State = " ++ made ++ "State") :
+            [line (name ++ C.abilityName a ++ " = " ++ made ++ C.abilityName a) | a <- others] ++
+            -- A typed state can be read and replaced, in its native types.
+            concat [ [line (name ++ "Snapshot = " ++ made ++ "Snapshot"), line (name ++ "Restore = " ++ made ++ "Restore")] | typedState ]
+      pure (D.joinWith D.hardline ([line ("-- | The spec handler " ++ C.handlerName h ++ " for " ++ C.abilityName ability ++ ".") <> D.hardline <>
         line (name ++ " :: LS.SymbolContext -> P.IO " ++ interfaceName ability) <> D.hardline <>
-        line (name ++ " = " ++ Definitions.specHandlerCall units (C.handlerId h)))
+        line (name ++ " = " ++ made)] ++ parts))
     nativeType ty = Native.haskellDataType datas ty
     parenthesized t = if ' ' `elem` t && take 1 t /= "(" then "(" ++ t ++ ")" else t
     operationType ty = do
@@ -118,6 +131,27 @@ emit minify bits datas units = concat <$> mapM unitFiles (filter wanted units)
           D.joinWith D.hardline [line ((if i == 0 then "{ " else ", ") ++ f) | (i, f) <- zip [0 :: Int ..] fields] <>
           D.hardline <> line "}"))
     codec ty = Native.haskellCodecDocWithContext (E.apply "P.Just" [line "symbols"]) datas "_lawspecSchema" "_lawspecBits" ty
+    plan = typedPlanPerforming scalarTypes datas units
+    -- Each operation that fails with E, with its failure as Left, for any
+    -- handler of the ability.
+    attempts a = forM [ (op, ty, failing, failure) | (op, ty) <- C.abilityOperations a
+                      , Just failing@(C.AbilityRef _ [failure]) <- [lookup op (C.abilityFailures a)] ] $ \(op, ty, failing, failure) -> do
+      let (args, result) = C.functionType ty
+          values = ["value" ++ show k | k <- [0 .. length args - 1]]
+          parenthesized t = if ' ' `elem` t && take 1 t /= "(" && take 1 t /= "[" then "(" ++ t ++ ")" else t
+          name = "try" ++ capitalize (fieldName a op)
+      types <- mapM nativeType args
+      resultType <- nativeType result
+      failureType <- nativeType failure
+      failureCodec <- Native.haskellCodecDocWithContext (line "P.Nothing") datas "_lawspecSchema" "_lawspecBits" failure
+      pure (line ("-- | " ++ op ++ ", with the failure it raises as Left rather than an exception.") <> D.hardline <>
+        line (name ++ " :: " ++ intercalate " -> " ([interfaceName a] ++ map parenthesized types ++ ["P.IO (P.Either " ++ parenthesized failureType ++ " " ++ parenthesized resultType ++ ")"])) <> D.hardline <>
+        line (unwords (name : "handler" : values) ++ " = do") <> D.nest 2 (D.hardline <> D.joinWith D.hardline
+          [ line ("outcome <- Exception.try (" ++ unwords (fieldName a op : "handler" : values) ++ " P.>>= Exception.evaluate)")
+          , line "case outcome of" <> D.nest 2 (D.hardline <> D.joinWith D.hardline
+              [ line "P.Right value -> P.pure (P.Right value)"
+              , line ("P.Left (LS.Failure ability value) | ability P.== " ++ show (C.abilityKey failing) ++ " -> P.fmap P.Left (LS.runClause (") <> E.apply "Codec.decode" [failureCodec, line "value"] <> line "))"
+              , line "P.Left failure -> Exception.throwIO failure" ]) ]))
     recording a = do
       fields <- mapM (\(i, (op, ty)) -> do
         let (args, _) = C.functionType ty
@@ -146,6 +180,9 @@ productionStub datas a = do
                  (if null args then "" else "\\" ++ unwords (replicate (length args) "_") ++ " -> ") ++ "P.error " ++ show op
                | (i, (op, ty)) <- zip [0 :: Int ..] (C.abilityOperations a), let (args, _) = C.functionType ty]
   _ <- mapM (Native.haskellDataType datas . snd . C.functionType . snd) (C.abilityOperations a)
+  -- ability A with T: the handler is made with the case's T.
+  made <- traverse (Native.haskellDataType datas) (C.abilityResource a)
   pure (D.text ("-- | The native handler of " ++ displayName a ++ ": " ++ intercalate ", " (map fst (C.abilityOperations a)) ++ ".") <> D.hardline <>
-    D.text (name ++ " :: P.IO Abilities." ++ interfaceName a) <> D.hardline <>
-    D.text (name ++ " = P.pure Abilities." ++ interfaceName a) <> D.nest 2 (D.hardline <> D.joinWith D.hardline (map D.text fields) <> D.hardline <> D.text "}"))
+    D.text (name ++ " :: " ++ maybe "" (\t -> parenthesizedType t ++ " -> ") made ++ "P.IO Abilities." ++ interfaceName a) <> D.hardline <>
+    D.text (name ++ maybe "" (const " _resource") made ++ " = P.pure Abilities." ++ interfaceName a) <> D.nest 2 (D.hardline <> D.joinWith D.hardline (map D.text fields) <> D.hardline <> D.text "}"))
+  where parenthesizedType t = if ' ' `elem` t && take 1 t /= "(" then "(" ++ t ++ ")" else t

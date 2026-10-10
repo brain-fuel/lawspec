@@ -12,7 +12,7 @@ module LawSpec.Imports (resolveImports, importedDefinitionName) where
 
 import LawSpec.Model
 import LawSpec.Indexed (naturalRefinementName)
-import LawSpec.Collections (collectionsUnit, collectionsAlias, collectionOperation, internalConstructor)
+import LawSpec.Collections (collectionsUnit, collectionsAlias, collectionOperation, internalConstructor, boundedArithmeticDefinitions)
 import LawSpec.Time (timeUnit, timeAlias, timeOperation, durationDefinitions)
 import LawSpec.Matchers (matchersUnit, matchersAlias, matcherOperation)
 import LawSpec.Resources (resourcesUnit)
@@ -22,7 +22,7 @@ import Control.Monad (forM, forM_, unless, when)
 import Control.Monad.State.Strict (State, execState, modify)
 import LawSpec.Common (importedDefinitionName)
 import Data.Functor.Identity (Identity(..))
-import Data.List (intercalate, isSuffixOf, nub, stripPrefix)
+import Data.List (intercalate, isSuffixOf, nub, stripPrefix, isInfixOf)
 import qualified Data.Map.Strict as M
 import qualified Data.Map.Lazy as Lazy
 import qualified Data.Set as S
@@ -126,7 +126,15 @@ resolveUnit visible table u allImports = do
         Right n <- [lookupName ValueName (importAlias i ++ "." ++ d)]] `S.union`
         -- The workflow runtime drives the resilience unit's state machines.
         S.fromList [(ValueName, n) | i <- imports, importUnit i == resilienceUnit, d <- resilienceDefinitions,
+          Right n <- [lookupName ValueName (importAlias i ++ "." ++ d)]] `S.union`
+        -- prelude.wrapping, saturating and bounded elaborate to the
+        -- collections unit's definitions once the type they give is known.
+        S.fromList [(ValueName, n) | usesBounded, i <- imports, importUnit i == collectionsUnit, d <- boundedArithmeticDefinitions,
           Right n <- [lookupName ValueName (importAlias i ++ "." ++ d)]]
+      -- Copies of an import's definitions may use them too.
+      usesBounded = any (\text -> any (`isInfixOf` text) ["Var \"prelude.wrapping\"", "Var \"prelude.saturating\"", "Var \"prelude.bounded\""])
+        (show (functionDefinitions u, laws u, handlerDeclarations u) :
+         [show (functionDefinitions p, laws p, handlerDeclarations p) | (_, source) <- sources, let p = portable source])
   -- Re-exports: each listed name resolves to what this unit imports it as.
   reexports <- forM [(i, item) | i <- exportLines, item <- importItems i] $ \(i, item) -> do
     let law = "`" `isSuffixOf` item
@@ -181,6 +189,9 @@ resolveUnit visible table u allImports = do
         { refinements = take 1 natural `onlyIf` needsNatural ++ refinements renamed ++ copiedRefinements
         , functionDefinitions = functionDefinitions renamed ++ definitions'
         , functions = functions renamed ++ signatures
+        -- A copied definition says what it uses and fails with, as in its unit.
+        , declaredUses = declaredUses renamed ++
+            nubOn fst [(n, ts) | (_, p) <- origins, (n, ts) <- declaredUses p, n `elem` map functionName definitions']
         , laws = laws renamed ++ laws'
         , abilities = abilities renamed ++ [a { abilityOrigin = o } | (o, a) <- copiedAbilities]
         , handlerDeclarations = handlerDeclarations renamed ++ [h { handlerOrigin = o } | (o, h) <- copiedHandlers]
@@ -305,6 +316,7 @@ portableUnit exports u = runIdentity $ do
     { refinements = [r{refinementName = declared (exportRefinements exports) (refinementName r)} | r <- refinements walked]
     , functionDefinitions = [d{functionName = declared (exportDefinitions exports) (functionName d)} | d <- functionDefinitions walked]
     , functions = [(declared (exportDefinitions exports) n, t) | (n, t) <- functions walked]
+    , declaredUses = [(declared (exportDefinitions exports) n, ts) | (n, ts) <- declaredUses walked]
     , laws = [l{lawName = declared (exportLaws exports) (lawName l)} | l <- laws walked] }
 
 -- | Everything the given references need from the imported units. A copied
@@ -437,17 +449,20 @@ walkAbility :: Monad m => Names m -> AbilityDeclaration -> m AbilityDeclaration
 walkAbility names a = do
   operations <- forM (abilityOperations a) $ \(n, t) -> (,) n <$> walkType names [] t
   abilityLaws' <- mapM (walkLaw names) (abilityLaws a)
-  pure a{abilityOperations = operations, abilityLaws = abilityLaws'}
+  failures <- forM (abilityFailures a) $ \(n, t) -> (,) n <$> walkType names [] t
+  resource <- traverse (walkType names []) (abilityResource a)
+  pure a{abilityOperations = operations, abilityLaws = abilityLaws', abilityFailures = failures, abilityResource = resource}
 
 walkHandler :: Monad m => Names m -> HandlerDeclaration -> m HandlerDeclaration
 walkHandler names h = do
   ability <- walkType names [] (handlerAbility h)
+  also <- mapM (walkType names []) (handlerAlso h)
   state <- forM (handlerState h) $ \(s, t, e) -> (,,) s <$> walkType names [] t <*> walkExpr names [] e
   let stateNames = maybe [] (\(s, _, _) -> [s]) (handlerState h)
   clauses <- forM (handlerClauses h) $ \c -> do
     body <- walkExpr names (clauseParameters c ++ stateNames) (clauseBody c)
     pure c{clauseBody = body}
-  pure h{handlerAbility = ability, handlerState = state, handlerClauses = clauses}
+  pure h{handlerAbility = ability, handlerAlso = also, handlerState = state, handlerClauses = clauses}
 
 walkRefinement :: Monad m => Names m -> Refinement -> m Refinement
 walkRefinement names r = do

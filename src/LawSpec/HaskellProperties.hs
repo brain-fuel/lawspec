@@ -42,6 +42,9 @@ data Config = Config
   , nativeResult :: Type -> D.Doc -> D.Doc
   -- The statements that install a law's handlers with symbols, for each case.
   , handlerInstalls :: Expanded -> [D.Doc]
+  -- The native handlers made with a resource, installed once the case has
+  -- acquired its resources.
+  , lateHandlerInstalls :: Expanded -> [D.Doc]
   -- The unit's ability records and handlers, when it has abilities.
   , abilityModules :: Maybe (String, String)
   -- The modules of bound production handlers.
@@ -246,7 +249,7 @@ emitTests Config{..} unit laws = do
     -- A law's resources: each case acquires them, then runs, then releases
     -- them, the last first, even when the case fails. A built-in resource is
     -- acquired in IO, so each case gets its own.
-    bracketed e docs = foldr wrap (sequenceDocs docs) (C.propertyResources (original e))
+    bracketed e docs = foldr wrap (sequenceDocs (lateHandlerInstalls e ++ docs)) (C.propertyResources (original e))
       where
         -- A shared resource (share R per ...): the runtime keeps one per
         -- scope key, resets it before each later use, holds it for one case
@@ -388,7 +391,15 @@ emitTests Config{..} unit laws = do
       let names = E.array (map (text . inputId) (inputs e))
           predicates = concatMap inputRefinements (inputs e)
           base = apply "fmap" [apply "map" [apply "LS.scopeSymbols" [text "symbols"]],
-            apply "sequence" [E.array [generatorWithin (inputRange machineBits inp) (inputType inp) | inp <- inputs e]]]
+            apply "sequence" [E.array [hinted inp (generatorWithin (inputRange machineBits inp) (inputType inp)) | inp <- inputs e]]]
+          -- Constant hints (regex samples, compared literals) are mixed in so
+          -- a narrow refinement still meets the filter often enough.
+          hinted inp generator = case [expr hint | plan <- generationPlan e,
+              inputId (domainInput plan) == inputId inp, hint <- generatorHints plan,
+              expressionType hint == inputType inp, expressionType hint /= C.scalarType "Symbol",
+              case C.expressionNode hint of C.Constant _ -> True; _ -> False] of
+            [] -> generator
+            hints -> parens (apply "Gen.choice" [E.array [apply "Gen.element" [E.array hints],generator]])
           strategy = if null predicates then base else apply "Gen.filter"
             [D.group (text "\\" <> names <> text " ->" <> D.nest 2
               (D.softline <> conjunction (map (truth . expr) predicates))),base]

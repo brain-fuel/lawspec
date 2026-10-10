@@ -13,13 +13,17 @@ import LawSpec.WebData (webDataTypeDoc, webTypeReferenceDoc)
 import qualified LawSpec.WebDefinitions as Definitions
 import qualified LawSpec.Code.Doc as D
 import qualified LawSpec.WebExpr as E
+import LawSpec.Typed.Plan (isTypedHandler, isContextual)
+import LawSpec.Typed.Web (WebTyped(..), emitWebTyped)
 
 -- The generated module of a unit's abilities, from the project root.
 modulePath :: Bool -> C.Unit -> String
 modulePath ts u = "src/lawspec_abilities/" ++ map (\c -> if c == '.' then '/' else c) (C.idText (C.unitId u)) ++ (if ts then ".ts" else ".mjs")
 
 emit :: Bool -> Bool -> Int -> [C.DataDeclaration] -> [C.Unit] -> Either String [Artifact]
-emit ts minify bits datas units = mapM unitModule (filter unitAbilityPieces units)
+emit ts minify bits datas units = do
+  typed <- emitWebTyped ts bits datas units
+  mapM (unitModule typed) (filter unitAbilityPieces units)
   where
     layout = D.selectLayout minify (D.Pretty 80)
     calls = Definitions.definitionCalls units
@@ -29,11 +33,12 @@ emit ts minify bits datas units = mapM unitModule (filter unitAbilityPieces unit
     schemaCall name ty value = do
       ref <- webTypeReferenceDoc ty
       pure (E.call ("ls.handlerSchema(_lawspec_schema)." ++ name) [ref, value, width, D.text "symbols"])
-    unitModule u = do
+    unitModule typed u = do
       let depth = 1 + length (filter (== '.') (C.idText (C.unitId u)))
           root = concat (replicate depth "../")
+          typedHandlers = [h | h <- C.unitHandlers u, isTypedHandler (webTypedPlan typed) h]
       interfaces <- if ts then mapM interface (ownAbilities u) else pure []
-      handlers <- mapM (specHandler u) (C.unitHandlers u)
+      handlers <- mapM (\h -> if h `elem` typedHandlers then typedHandler typed u h else specHandler u h) (C.unitHandlers u)
       recordings <- mapM recording (ownAbilities u)
       let header = D.joinWith D.hardline (map D.text (
             [ "// @ts-nocheck" | ts ] ++
@@ -44,6 +49,7 @@ emit ts minify bits datas units = mapM unitModule (filter unitAbilityPieces unit
             , "import * as ls from '" ++ root ++ "lawspec_runtime." ++ extension ++ "';"
             , "import * as schema from '" ++ root ++ "lawspec_schema." ++ extension ++ "';" ] ++
             [ "import * as _definitions from '" ++ root ++ "lawspec_definition_bodies." ++ extension ++ "';" | not (null (C.unitHandlers u)) ] ++
+            [ "import * as _typed from '" ++ root ++ "lawspec_typed." ++ extension ++ "';" | not (null typedHandlers) ] ++
             [ "", "const _lawspec_schema = data.makeSchema();" ]))
           body = D.joinWith (D.hardline <> D.hardline) (interfaces ++ handlers ++ recordings)
       pure (Artifact (modulePath ts u) (D.render layout (header <> D.hardline <> D.hardline <> body <> D.hardline)) "generated" "source")
@@ -58,10 +64,18 @@ emit ts minify bits datas units = mapM unitModule (filter unitAbilityPieces unit
       pure (D.text ("/** The " ++ interfaceName a ++ " ability: a handler answers each of its operations. */") <> D.hardline <>
         D.text ("export interface " ++ interfaceName a ++ " ") <> D.block 2 (D.joinWith D.hardline methods))
     specHandler u h = do
-      ability <- maybe (Left ("unknown ability of handler " ++ C.handlerName h)) Right
-        (unitAbility u (C.handlerAbility h))
+      -- A handler of several abilities answers all their operations.
+      answered <- mapM (\ref -> maybe (Left ("unknown ability of handler " ++ C.handlerName h)) Right (unitAbility u ref)) (C.handlerAbilities h)
+      let ability = case answered of
+            first : _ -> first { C.abilityOperations = concatMap C.abilityOperations answered
+                               , C.abilityName = intercalate ", " (map C.abilityName answered) }
+            [] -> C.failAbility
       initialState <- case C.handlerState h of
         Nothing -> pure []
+        -- A computed start value is its own definition (<handler>Start).
+        Just (_, C.Expr _ (C.ExternalCall startDefinition _) _) -> do
+          evaluate <- maybe (Left ("unresolved start of " ++ C.handlerName h)) Right (lookup startDefinition calls)
+          pure [D.text "this._state = " <> E.call (Definitions.plainCall evaluate) [D.text "symbols", E.call "ls.literal" [D.text "{type: 'Unit'}", D.text "symbols"]] <> D.text ";"]
         Just (_, start) -> do
           value <- E.renderExpression ts datas bits (const "_unbound") (\_ _ -> Left "a handler's start value calls nothing") start
           pure [D.text "this._state = " <> value <> D.text ";"]
@@ -81,9 +95,76 @@ emit ts minify bits datas units = mapM unitModule (filter unitAbilityPieces unit
         pure (D.text op <> s <> D.text " " <> D.block 2
           (D.joinWith D.hardline (D.text "const symbols = this._symbols;" : statements ++ [D.text "return " <> output <> D.text ";"])))) (C.abilityOperations ability)
       pure (D.text ("/** The spec handler " ++ C.handlerName h ++ " for " ++ C.abilityName ability ++ ". */") <> D.hardline <>
-        D.text ("export class " ++ specName h ++ (if ts then " implements " ++ interfaceName ability else "") ++ " ") <> D.block 2 (D.joinWith D.hardline (
+        D.text ("export class " ++ specName h ++ (if ts then " implements " ++ intercalate ", " (map interfaceName answered) else "") ++ " ") <> D.block 2 (D.joinWith D.hardline (
           D.text "constructor(symbols = new Map()) " <> D.block 2 (D.joinWith D.hardline (D.text "this._symbols = symbols;" : initialState)) :
           methods)))
+    -- A typed spec handler keeps its state typed: each operation converts its
+    -- arguments, runs the typed clause and keeps the next state, which shares
+    -- all it did not change with the state before.
+    typedHandler typed u h = do
+      answered <- mapM (\ref -> maybe (Left ("unknown ability of handler " ++ C.handlerName h)) Right (unitAbility u ref)) (C.handlerAbilities h)
+      let ability = case answered of
+            first : _ -> first { C.abilityOperations = concatMap C.abilityOperations answered
+                               , C.abilityName = intercalate ", " (map C.abilityName answered) }
+            [] -> C.failAbility
+          stateful = C.handlerState h /= Nothing
+      start <- case C.handlerState h of
+        Nothing -> pure []
+        Just _ -> do
+          name <- maybe (Left ("untyped start of " ++ C.handlerName h)) Right (webTypedStart typed (C.handlerId h))
+          pure [D.text ("this._state = _typed." ++ name ++ "(symbols);")]
+      methods <- mapM (\(op, ty) -> do
+        clause <- maybe (Left (C.handlerName h ++ ": no clause for " ++ op)) Right (lookup op (C.handlerClauses h))
+        function <- maybe (Left ("untyped clause " ++ C.idText clause)) Right (webTypedFunction typed clause)
+        s <- signature ty
+        let (args, result) = C.functionType ty
+            inputs = [D.text ("const argument" ++ show i ++ " = _typed." ++ webTypedNativeIn typed t ++ "(value" ++ show i ++ ", symbols);") | (i, t) <- zip [0 :: Int ..] args]
+            arguments = ["symbols" | isContextual (webTypedPlan typed) clause] ++ ["this._state" | stateful] ++
+              (if null args && not stateful then ["null"] else ["argument" ++ show i | i <- [0 .. length args - 1]])
+            invocation = "_typed." ++ function ++ "(" ++ intercalate ", " arguments ++ ")"
+            out x = D.text ("return _typed." ++ webTypedNativeOut typed result ++ "(" ++ x ++ ", symbols);")
+            statements = if stateful
+              then [D.text ("const pair = " ++ invocation ++ ";"), D.text "this._state = pair.second;", out "pair.first"]
+              else [out invocation]
+        pure (D.text op <> s <> D.text " " <> D.block 2
+          (D.joinWith D.hardline (D.text "const symbols = this._symbols;" : inputs ++ statements)))) (C.abilityOperations ability)
+      -- The state, read and replaced in its native types, and typed.
+      accessors <- case C.handlerState h of
+        Nothing -> pure []
+        Just (t, _) -> do
+          native <- webDataTypeDoc datas t
+          pure [ D.text "/** The handler's state, in its native types: a snapshot to show or keep. */" <> D.hardline <>
+                 D.text "state()" <> annotation native <> D.text " " <> D.block 2 (D.text ("return _typed." ++ webTypedNativeOut typed t ++ "(this._state, this._symbols);"))
+               , D.text "/** Replaces the handler's state: to force it, reset it or restore a snapshot. */" <> D.hardline <>
+                 D.text "setState(state" <> annotation native <> D.text ")" <> annotation (D.text "void") <> D.text " " <>
+                   D.block 2 (D.text ("this._state = _typed." ++ webTypedNativeIn typed t ++ "(state, this._symbols);"))
+               , D.text "/** The typed state, shared rather than copied. */" <> D.hardline <>
+                 D.text "typedState() " <> D.block 2 (D.text "return this._state;")
+               , D.text "/** Replaces the typed state. */" <> D.hardline <>
+                 D.text "setTypedState(state" <> annotation (D.text "any") <> D.text ")" <> annotation (D.text "void") <> D.text " " <> D.block 2 (D.text "this._state = state;") ]
+      -- Each operation that fails with E, with its failure as Left.
+      attempts <- fmap concat $ mapM (\a -> mapM (\(op, ty, failing, failure) -> do
+          ref <- webTypeReferenceDoc failure
+          let (args, result) = C.functionType ty
+              values = [D.text ("value" ++ show i) | i <- [0 .. length args - 1]]
+          types <- mapM (webDataTypeDoc datas) args
+          resultType <- if result == C.scalarType "Unit" then pure (D.text "undefined") else webDataTypeDoc datas result
+          failureType <- webDataTypeDoc datas failure
+          pure (D.text ("/** " ++ op ++ ", with the failure it raises as Left rather than an exception. */") <> D.hardline <>
+            D.text ("try" ++ capitalizeFirst op) <> D.delimitTrailing 4 "(" ")" [D.text ("value" ++ show i) <> annotation t | (i, t) <- zip [0 :: Int ..] types] <>
+            annotation (D.text "data.Either<" <> failureType <> D.text ", " <> resultType <> D.text ">") <> D.text " " <>
+            D.block 2 (D.text "try " <> D.block 2 (D.text "return new data.Right(this." <> E.call op values <> D.text ");") <>
+              D.text " catch (failure) " <> D.block 2 (D.joinWith D.hardline
+                [ D.text ("if (!(failure instanceof ls.Failure) || (failure" ++ (if ts then " as any" else "") ++ ").ability !== " ++ show (C.abilityKey failing) ++ ") throw failure;")
+                , D.text "return new data.Left(ls.handlerSchema(_lawspec_schema).toNative(" <> ref <> D.text (", (failure" ++ (if ts then " as any" else "") ++ ").value, " ++ show bits ++ ", this._symbols));") ])))
+          ) [ (op, ty, failing, failure) | (op, ty) <- C.abilityOperations a, Just failing@(C.AbilityRef _ [failure]) <- [lookup op (C.abilityFailures a)] ]) answered
+      pure (D.text ("/** The spec handler " ++ C.handlerName h ++ " for " ++ C.abilityName ability ++ ", with its state typed: new " ++
+          specName h ++ "() makes it on its own, outside any law. */") <> D.hardline <>
+        D.text ("export class " ++ specName h ++ (if ts then " implements " ++ intercalate ", " (map interfaceName answered) else "") ++ " ") <> D.block 2 (D.joinWith D.hardline (
+          D.text "constructor(symbols = new Map()) " <> D.block 2 (D.joinWith D.hardline (D.text "this._symbols = symbols;" : start)) :
+          methods ++ accessors ++ attempts)))
+    capitalizeFirst (c : cs) = toEnum (fromEnum c - (if c >= 'a' && c <= 'z' then 32 else 0)) : cs
+    capitalizeFirst [] = []
     recording a = do
       methods <- mapM (\(op, ty) -> do
         s <- signature ty
@@ -111,5 +192,13 @@ productionStub ts datas a = do
     pure (D.text op <> D.delimitTrailing 4 "(" ")" [D.text ("value" ++ show i) <> (if ts then D.text ": " <> t else mempty) | (i, t) <- zip [0 :: Int ..] types] <>
       (if ts then D.text ": " <> resultType else mempty) <> D.text " " <>
       D.block 2 (D.text "throw " <> E.call "new Error" [E.quoted op] <> D.text ";"))) (C.abilityOperations a)
+  -- ability A with T: the handler is made with the case's T.
+  made <- case C.abilityResource a of
+    Nothing -> pure []
+    Just t -> do
+      resourceType <- webDataTypeDoc datas t
+      pure ([D.text "resource: " <> resourceType <> D.text ";" | ts] ++
+        [D.text "constructor" <> D.text "(resource" <> (if ts then D.text ": " <> resourceType else mempty) <> D.text ") " <>
+          D.block 2 (D.text "this.resource = resource;")])
   pure (D.render (D.Pretty 80) (D.text ("/** The native handler of " ++ displayName a ++ ": " ++ intercalate ", " (map fst (C.abilityOperations a)) ++ ". */") <> D.hardline <>
-    D.text ("export class " ++ productionName a ++ (if ts then " implements abilities." ++ interfaceName a else "") ++ " ") <> D.block 2 (D.joinWith D.hardline methods)) ++ "\n")
+    D.text ("export class " ++ productionName a ++ (if ts then " implements abilities." ++ interfaceName a else "") ++ " ") <> D.block 2 (D.joinWith D.hardline (made ++ methods))) ++ "\n")

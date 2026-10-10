@@ -1,0 +1,7 @@
+expect: a deposit adds to the balance
+@@ examples/specs/records.lawspec
+<<<<<<<
+  if a.balance >= 0 && a.balance <= 1000000000 then a with balance = prelude.Int64 (a.balance + amount) else a
+=======
+  if a.balance >= 0 && a.balance <= 1000000000 then a with balance = prelude.Int64 (a.balance + amount + 1) else a
+>>>>>>>

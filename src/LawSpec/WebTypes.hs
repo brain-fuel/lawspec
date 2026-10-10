@@ -53,7 +53,7 @@ lookupName names identity = maybe (Left "unplanned JavaScript data name") Right 
 
 application :: String -> [D.Doc] -> D.Doc
 application name [] = D.text name
-application name args = D.text name <> D.delimitTrailing 4 "<" ">" args
+application name args = D.text name <> D.delimit 4 "<" ">" args
 
 -- | A handle's native type: its bound native type, or unknown.
 type Handles = [(C.Id,D.Doc)]

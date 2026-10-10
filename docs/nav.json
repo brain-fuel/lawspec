@@ -137,6 +137,9 @@
         "path": "how-to/custom-codecs-and-generators.md"
       },
       {
+        "path": "how-to/embed-a-generated-model.md"
+      },
+      {
         "path": "how-to/contribute.md"
       },
       {
@@ -211,6 +214,9 @@
           },
           {
             "path": "reference/language/collections.md"
+          },
+          {
+            "path": "reference/language/sequences.md"
           },
           {
             "path": "reference/language/async-functions.md"

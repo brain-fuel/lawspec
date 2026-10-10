@@ -16,6 +16,7 @@ This guide is for working on LawSpec itself. To use LawSpec, see the
 | `app/` | `lawspec-core`, the native compiler executable. It reads a JSON request on standard input and writes the result. |
 | `dev/` | `lawspec-dev`: repository checks (`boundaries`, `integrity`), code generation, and the local CI driver. |
 | `acceptance/` | `lawspec-acceptance` and its suites, which run the bundled examples on every target. |
+| `bench/` | Benchmarks of generated code: a fixture and a native driver per target, run by `lawspec-dev bench`. |
 | `test/` | The Hspec test suite, `lawspec-test`, and its fixtures. |
 | `npm/` | The npm package payload: the Node CLI, API wrapper, WASM core and bundled examples. |
 | `runtime/` | Target runtime sources, embedded into the compiler and emitted into generated projects. |
@@ -153,6 +154,27 @@ node tools/package-smoke.mjs                    # pack, install and use the arch
 ```
 
 `make test`, `make check` and `make package` group these.
+
+Benchmarks measure the generated code itself:
+
+```sh
+stack run lawspec-dev -- bench kafka                    # Rust, Go, Java and Kotlin
+stack run lawspec-dev -- bench kafka --scale 10000 go   # a smaller workload, one target
+stack run lawspec-dev -- bench kafka --typed            # what stays on the dynamic path
+stack run lawspec-dev -- bench compile 100 200 400      # the compiler, on scaled models
+```
+
+`lawspec-dev bench <name>` generates `bench/<name>/bench.json`'s specs and
+packages for each target into `.artifacts/bench/<name>/<target>`, copies the
+driver in `bench/<name>/<target>/` over it, builds it, and runs it under
+`/usr/bin/time -l`. It prints each phase's operations per second, the memory
+the driver reports, and the peak resident set, and writes the summary to
+`.artifacts/bench/<name>/<target>.txt`. The `kafka` benchmark drives a copy of
+LawTwin's Kafka reference model; see
+[Embed a generated model](embed-a-generated-model.md). `bench compile` times
+`check` on a model shaped like an imported API description, N record types
+and a state of N maps with two failing definitions per type, so a change
+that makes checking grow faster than the program shows.
 
 ## Acceptance suites
 

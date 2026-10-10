@@ -11,6 +11,8 @@ import qualified LawSpec.KotlinExpr as E
 import qualified LawSpec.JavaDefinitions as Jvm
 import LawSpec.AbilityNames (interfaceName, specName, ownerName)
 import qualified LawSpec.Code.Doc as D
+import LawSpec.Typed.Jvm (JvmTyped(..), JvmStyle(..), emitJvmTyped)
+import LawSpec.Typed.Plan (isContextual)
 import Data.Aeson (encode)
 import qualified Data.Text.Lazy as T
 import qualified Data.Text.Lazy.Encoding as T
@@ -64,9 +66,12 @@ emitKotlinDefinitions layout bits declarations units = do
                 [D.text ("value" ++ show i ++ ": LawSpecRuntime.Value") | i <- [0 .. length args - 1]]
               invocation = call ("(LawSpecRuntime.handler(symbols, " ++ show (abilityKey (operationAbility op)) ++ ") as " ++ interface ++ ")." ++ operationName op)
                 [codec <> D.text (".decode(value" ++ show i ++ ")") | (i, codec) <- zip [0::Int ..] codecs]
+          -- An operation that fails with E: a native handler throws
+          -- LawSpecRuntime.Fail with a native E, which becomes the failure.
+          let failure = lookup (operationName op) (abilityFailures declared)
           pure (D.text "@JvmStatic" <> D.hardline <> D.text ("fun " ++ Jvm.kotlinOperationBridge op) <>
             D.delimitTrailing 4 "(" ")" parameters <> D.text ": LawSpecRuntime.Value = " <>
-            resultCodec <> D.text ".encode(" <> invocation <> D.text ")")
+            failingAs (maybe [] pure failure) [] (resultCodec <> D.text ".encode(" <> invocation <> D.text ")"))
         methods <- fmap (++ (performs ++ made)) $ forM adapters $ \(identity, (owner, adapter)) -> do
           let (args, result) = functionType (declarationType adapter)
               parts = split '.' (idText owner)
@@ -107,7 +112,26 @@ emitKotlinDefinitions layout bits declarations units = do
     callees = Jvm.definitionCalls units
     call name values = D.text name <> D.delimitTrailing 4 "(" ")" values
     assign name value = D.group (D.text ("val " ++ name ++ " =") <> D.nest 4 (D.softline <> value))
-    definition d = do
+    typedJvm = emitJvmTyped KotlinStyle declarations units
+    -- A typed definition whose types all convert directly calls its typed
+    -- method (in the shared JVM code) between the conversions.
+    definition d
+      | Right typed <- typedJvm
+      , Just function <- jvmTypedFunction typed (declarationId (definitionDeclaration d))
+      , not (isContextual (jvmTypedPlan typed) (declarationId (definitionDeclaration d)))
+      , let (args, result) = functionType (declarationType (definitionDeclaration d))
+      , result /= scalarType "Unit"
+      , Just conversions <- mapM (jvmTypedNative typed) args
+      , Just (_, toNative) <- jvmTypedNative typed result = do
+          types <- mapM (Native.kotlinDataTypeDoc declarations) args
+          resultType <- Native.kotlinDataTypeDoc declarations result
+          let declaration = definitionDeclaration d
+              parameters = D.text "symbols: MutableMap<String, Any>" : [D.text ("value" ++ show i ++ ": ") <> ty | (i, ty) <- zip [0::Int ..] types]
+          pure (D.text ("fun " ++ declarationName declaration) <> D.delimitTrailing 4 "(" ")" parameters <> D.text ": " <> resultType <>
+            D.text (" = " ++ toNative ++ "(" ++ function ++ "(" ++
+              intercalate ", " [fromNative ++ "(value" ++ show i ++ ")" | (i, (fromNative, _)) <- zip [0 :: Int ..] conversions] ++ "))"))
+      | otherwise = definitionDynamic d
+    definitionDynamic d = do
       let declaration = definitionDeclaration d
           (args,result) = functionType (declarationType declaration)
       types <- mapM (Native.kotlinDataTypeDoc declarations) args
@@ -154,11 +178,13 @@ emitKotlinDefinitions layout bits declarations units = do
       in intercalate "." ("lawspec" : "abilities" : init parts ++ [concatMap capitalize (split '_' (last parts))])
     -- An adapter that fails with E: its native code throws LawSpecRuntime.Fail
     -- with a native E (or an exception lawspec.json maps to a failure).
-    failing owner adapter body = case [a | a@(AbilityRef _ [_]) <- declarationUses adapter, isFail a] of
+    failing owner adapter = failingAs [a | a@(AbilityRef _ [_]) <- declarationUses adapter, isFail a]
+      [b | u <- units, unitId u == owner, b <- unitFailureBindings u]
+    failingAs failures failureBindings body = case failures of
       ability@(AbilityRef _ [failure]) : _ ->
         let codec = either error id (Native.kotlinCodecDocWithContext (D.text "symbols") declarations failure)
             native = either error id (Native.kotlinDataType declarations failure)
-            bindings = [b | u <- units, unitId u == owner, b <- unitFailureBindings u, failureType b == failure]
+            bindings = [b | b <- failureBindings, failureType b == failure]
             mapped = [ call "LawSpecRuntime.MappedFailure" [D.text (intercalate "." (failureNative b) ++ "::class.java"),
                          D.text "{ _error -> " <> call "LawSpecKotlinCodecs.construct"
                            [D.text "schema", either error id (E.reference failure), E.quoted (idText (failureConstructor b)), call "listOf"

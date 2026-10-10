@@ -99,7 +99,7 @@ strayScripts :: [FilePath] -> IO [FilePath]
 strayScripts outputs = do
   (_, listing, _) <- readProcessWithExitCode "git" ["ls-files", "--cached", "--others", "--exclude-standard"] ""
   let scripts = [f | f <- lines listing, any (`isSuffixOf` f) [".mjs", ".js", ".cjs", ".ts"]]
-      exempt f = any (`isPrefixOf` f) ["templates/", "runtime/", "acceptance/", "examples/", "npm/examples/", "test/fixtures/"]
+      exempt f = any (`isPrefixOf` f) ["templates/", "runtime/", "acceptance/", "bench/", "examples/", "npm/examples/", "test/fixtures/"]
         || f == "npm/core_jsffi.js"
   exists <- mapM doesFileExist scripts
   pure [f | (f, True) <- zip scripts exists, not (exempt f), f `notElem` outputs]

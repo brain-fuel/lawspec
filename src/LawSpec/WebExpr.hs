@@ -92,6 +92,9 @@ renderWith asynchronous ts declarations width reference key local external = ren
           pure (D.text "(await (async (" <> parameters <> D.text ") => " <> inner <> D.text ")(await " <>
             runtime "concurrently" [array [D.text "async () => " <> step | step <- steps]] <> D.text "))")
     render term = case expressionNode term of
+      -- Field nodes are lowered to matches before any backend (lowerFieldNodes).
+      Project {} -> Left "a field node reached the backend"
+      Update {} -> Left "a record update node reached the backend"
       AllPayloads value predicates -> do
         argument <- render value
         ref <- reference (expressionType value)

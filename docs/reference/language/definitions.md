@@ -33,7 +33,8 @@ for the largest `Int8`.
 A definition body must be total. The compiler checks that:
 
 - every match is exhaustive;
-- every recursive call is on a strict structural part of an argument;
+- every recursive call is on a strict structural part of an argument, or
+  moves an integer argument strictly toward a bound (see below);
 - every operation that could fail, such as division or narrowing, is guarded.
 
 Calls may go to other checked definitions, including ones declared later in
@@ -66,6 +67,43 @@ type are rejected.
 Pattern matching keeps the primitive range of each extracted field inside its
 branch. An `Int8` list head still makes `head + 129` positive; that fact does
 not carry over to another branch.
+
+The checker also knows:
+
+- what a guard says about a call, a field or a length: checked definitions
+  are pure, so `if count xs <= 100 then prelude.Int32 (count xs) else 100`
+  narrows safely, and so do `b.size` and `prelude.length xs` under a guard;
+- that a call's result lies in its result type's range, so
+  `let m = dec n in if m >= 1 then prelude.Int32 (m - 1) else 0` narrows;
+- that `prelude.length` and `prelude.size` are never negative;
+- that `prelude.rem a b` has `a`'s sign and is smaller than `b`: for
+  `a >= 0` and `b >= 1` it lies from 0 to `b - 1`, and
+  `prelude.quot a b` is below `a` when `a > 0` and `b >= 2`.
+
+## Recursion on integers
+
+A recursive call may make an integer argument smaller, as long as the
+argument stays at or above the parameter's least value (0 for a `Natural`, the
+type's least value for a bounded integer, or a guard's), or larger, as long as
+it stays at or below the type's greatest value or another parameter passed on
+unchanged:
+
+```lawspec
+unit guide.integer_recursion
+
+definition countdown (n :: Natural) :: List Natural is
+  if n == 0 then [] else Cons n (countdown (n - 1))
+end
+
+definition evensFrom (i :: Int32) (n :: Int32) :: List Int32 is
+  if i >= n || i < 0 then [] else
+    (if prelude.rem i 2 == 0 then Cons i (evensFrom (prelude.Int32 (i + 1)) n)
+     else evensFrom (prelude.Int32 (i + 1)) n)
+end
+```
+
+Every recursive call must move the same parameter the same way. `prelude.range`
+gives the integers from one value up to another, without a definition.
 
 ## Generic definitions
 

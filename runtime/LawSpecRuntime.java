@@ -757,6 +757,8 @@ public final class LawSpecRuntime {
   }
 
   public static Value helper(String n, Value[] args, int bits) {
+    Value sequenceResult = sequenceHelper(n, args);
+    if (sequenceResult != null) return sequenceResult;
     switch (n) {
       case "startsWith": return bool(codePointsText(args[0]).startsWith(codePointsText(args[1])));
       case "endsWith": return bool(codePointsText(args[0]).endsWith(codePointsText(args[1])));
@@ -811,6 +813,74 @@ public final class LawSpecRuntime {
           new BigDecimal(r.n).divide(new BigDecimal(r.d), scale, RoundingMode.HALF_EVEN));
     }
     return convert(n, x, bits);
+  }
+
+  // Sequences: Text and Bytes hold their units, a List its values. Indices
+  // count code points, octets or items, and a slice is clamped.
+  @SuppressWarnings("unchecked")
+  static Value sequenceHelper(String n, Value[] args) {
+    switch (n) {
+      case "append": {
+        var items = new ArrayList<Object>((List<Object>) args[0].data);
+        items.addAll((List<Object>) args[1].data);
+        return new Value(args[0].type, List.copyOf(items));
+      }
+      case "slice": {
+        var items = (List<Object>) args[0].data;
+        long count = items.size();
+        long i = Math.max(0, Math.min(count, clampedLong((BigInteger) args[1].data)));
+        long j = Math.max(i, Math.min(count, clampedLong((BigInteger) args[2].data)));
+        return new Value(args[0].type, List.copyOf(items.subList((int) i, (int) j)));
+      }
+      case "at": {
+        var items = (List<Object>) args[0].data;
+        boolean bytes = args[0].type.equals("Bytes");
+        String element = bytes ? "UInt8" : args[0].type.substring("List ".length());
+        String maybe = "Maybe " + element;
+        BigInteger index = (BigInteger) args[1].data;
+        if (index.signum() < 0 || index.compareTo(BigInteger.valueOf(items.size())) >= 0)
+          return new Value(maybe, new Data("Maybe::Nothing", List.of()));
+        Object item = items.get(index.intValueExact());
+        Value value = bytes ? integer("UInt8", item.toString()) : (Value) item;
+        return new Value(maybe, new Data("Maybe::Just", List.of(value)));
+      }
+      case "range": {
+        var values = new ArrayList<Value>();
+        String t = args[0].type;
+        for (BigInteger k = (BigInteger) args[0].data; k.compareTo((BigInteger) args[1].data) < 0; k = k.add(BigInteger.ONE))
+          values.add(new Value(t, k));
+        return new Value("List " + t, List.copyOf(values));
+      }
+      case "octets": {
+        var values = new ArrayList<Value>();
+        for (Object unit : (List<Object>) args[0].data) values.add(integer("UInt8", unit.toString()));
+        return new Value("List UInt8", List.copyOf(values));
+      }
+      case "bytesOf": {
+        var units = new ArrayList<Integer>();
+        for (Object v : (List<Object>) args[0].data) units.add(((BigInteger) ((Value) v).data).intValueExact());
+        return new Value("Bytes", List.copyOf(units));
+      }
+      case "utf8": {
+        byte[] encoded = codePointsText(args[0]).getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        var units = new ArrayList<Integer>();
+        for (byte b : encoded) units.add(b & 0xff);
+        return new Value("Bytes", List.copyOf(units));
+      }
+      case "textOf": return textValue(((BigInteger) args[0].data).toString());
+      case "join": {
+        var parts = new ArrayList<String>();
+        for (Object v : (List<Object>) args[1].data) parts.add(codePointsText((Value) v));
+        return textValue(String.join(codePointsText(args[0]), parts));
+      }
+      default: return null;
+    }
+  }
+
+  static long clampedLong(BigInteger n) {
+    if (n.compareTo(BigInteger.valueOf(Long.MAX_VALUE)) > 0) return Long.MAX_VALUE;
+    if (n.compareTo(BigInteger.valueOf(Long.MIN_VALUE)) < 0) return Long.MIN_VALUE;
+    return n.longValue();
   }
 
   public static Value sample(String t, int seed, int bits) {

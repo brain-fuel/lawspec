@@ -124,9 +124,12 @@ specializeDefinitions declarations bits satisfies units properties = do
             Just (Instance generated _ _ _) -> pure generated
             Nothing -> do
               -- Polymorphic recursion may instantiate a definition at new type
-              -- arguments; a recursion that keeps growing them never ends.
+              -- arguments; a recursion that keeps growing them never ends,
+              -- and soon reaches the size limit. A program may use a generic
+              -- definition, such as a collection operation, at hundreds of
+              -- types (one per resource of an imported API).
               siblings <- gets (length . filter ((== name) . fst) . M.keys . instances)
-              when (siblings >= 64 || length (show concrete) > 4000)
+              when (siblings >= 8192 || length (show concrete) > 4000)
                 (lift (Left ("definition " ++ name ++ " needs unboundedly many instances; " ++
                   "polymorphic recursion must not grow its type arguments")))
               template <- lift $ maybe (Left ("unknown definition: " ++ name)) Right

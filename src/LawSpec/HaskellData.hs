@@ -1,5 +1,5 @@
 -- | Native algebraic declarations are rendered from resolved Core identities.
-module LawSpec.HaskellData (requiresSchema, emitHaskellData, haskellDataType, haskellDataTypeWithRepresentations, haskellNativeTypeWithParameters, emitHaskellSchema, emitHaskellSchemaWithProfile, haskellTypeReference, emitHaskellCodecs, emitHaskellCodecsWithRepresentations, emitHaskellCodecsWithHooks, haskellCodec, haskellCodecDoc, haskellCodecDocWithContext, haskellCodecDocIn, haskellTypeReferenceDoc) where
+module LawSpec.HaskellData (namesFor, requiresSchema, emitHaskellData, haskellDataType, haskellDataTypeWithRepresentations, haskellNativeTypeWithParameters, emitHaskellSchema, emitHaskellSchemaWithProfile, haskellTypeReference, emitHaskellCodecs, emitHaskellCodecsWithRepresentations, emitHaskellCodecsWithHooks, haskellCodec, haskellCodecDoc, haskellCodecDocWithContext, haskellCodecDocIn, haskellTypeReferenceDoc) where
 
 import LawSpec.DataNames (flatDataCandidates, productConstructors, caseInsensitiveCounts, ambiguous)
 import LawSpec.HaskellTypeRefs
