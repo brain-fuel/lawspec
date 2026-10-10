@@ -24,7 +24,9 @@ import LawSpec.Scalar (Scalar(..))
 compileCore :: Int -> Generation -> [Source] -> Either [Diagnostic] C.Program
 compileCore bits settings sources = do
   (units,properties) <- S.compileWithSettings bits settings sources
-  elaborate bits units properties
+  -- Callers that read a whole program (tools, tests, emitters) see field
+  -- nodes as the matches they stand for, as the testing plan does.
+  C.lowerProgramFields <$> elaborate bits units properties
 
 -- | Every surface construct is lowered here, once, and the result validated
 -- before any backend sees it. ref:DEC-elaborate-before-core

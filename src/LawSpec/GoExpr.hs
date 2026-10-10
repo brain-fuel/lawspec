@@ -88,6 +88,9 @@ renderExpressionWithContext declarations width schema ref key local external = r
             ([D.text (resultsName ++ " := ") <> call "lsConcurrently" (map thunk steps)] ++
              bindings ++ [D.text "return " <> inner])) <> D.text "()")
     render term = case expressionNode term of
+      -- Field nodes are lowered to matches before any backend (lowerFieldNodes).
+      Project {} -> Left "a field node reached the backend"
+      Update {} -> Left "a record update node reached the backend"
       AllPayloads value predicates -> do
         argument <- render value
         reference <- ref (expressionType value)

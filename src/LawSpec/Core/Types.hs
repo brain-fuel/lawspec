@@ -293,6 +293,8 @@ instantiateExpression substitutions = go
         Perform (Operation (AbilityRef identity (map ty types)) name) (map go arguments)
       Handle (CatchFailure (AbilityRef identity types)) body -> Handle (CatchFailure (AbilityRef identity (map ty types))) (go body)
       Let b value body -> Let (binder b) (go value) (go body)
+      Project tag index value -> Project tag index (go value)
+      Update tag index value field -> Update tag index (go value) (go field)
       Handle (WithHandler (AbilityRef identity types) handler) body -> Handle (WithHandler (AbilityRef identity (map ty types)) handler) (go body)
       Calls (Operation (AbilityRef identity types) name) arguments ->
         Calls (Operation (AbilityRef identity (map ty types)) name) (map go <$> arguments)}

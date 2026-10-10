@@ -198,6 +198,8 @@ prettyExpr e = case C.expressionNode e of
   C.Perform op args -> unwords (C.operationName op : map ((\s -> "(" ++ s ++ ")") . prettyExpr) args)
   C.Handle (C.CatchFailure _) body -> "attempt (" ++ prettyExpr body ++ ")"
   C.Handle (C.WithHandler _ _) body -> "handle (" ++ prettyExpr body ++ ")"
+  C.Project _ index value -> prettyExpr value ++ "." ++ show index
+  C.Update _ index value field -> "(" ++ prettyExpr value ++ " with " ++ show index ++ " = " ++ prettyExpr field ++ ")"
   C.Let binder value body -> "let " ++ localName (C.binderId binder) ++ " = " ++ prettyExpr value ++ " in " ++ prettyExpr body
   C.Calls op args -> "calls of " ++ C.operationName op ++ maybe "" (\xs -> " with (" ++ intercalate ", " (map prettyExpr xs) ++ ")") args
 

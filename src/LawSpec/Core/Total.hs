@@ -15,6 +15,7 @@ import LawSpec.Core
 import qualified LawSpec.Core.Types as Types
 import qualified LawSpec.Core.Totality as T
 import qualified LawSpec.Core.PayloadPlan as Payload
+import LawSpec.Digest (digestHex, digestString)
 import LawSpec.Core.Expression (validateExpressionWithRegistry)
 import LawSpec.Core.Semantics (convertValue)
 import LawSpec.Scalar (Scalar(..), isInteger, isExact, isNumeric, integerBounds)
@@ -193,13 +194,34 @@ constructorProofContracts bits dataDeclarations = do
 proofExpression :: Payload.Schema -> Int -> Expr -> T.Proof
 proofExpression schema bits = proof
   where
+    substituteFieldType table t = case t of
+      TypeVariable v -> maybe t id (lookup v table)
+      Constructor name args -> Constructor name [case a of TypeArgument x -> TypeArgument (substituteFieldType table x); other -> other | a <- args]
+      Arrow a b -> Arrow (substituteFieldType table a) (substituteFieldType table b)
     proof expression = mark expression $ case expressionNode expression of
       Constant value -> T.Literal value
       Local name -> T.Variable name
       Construct (Id "List::Nil") [] -> T.ListNil
       Construct (Id "List::Cons") [first,rest] -> T.ListCons (proof first) (proof rest)
       Construct tag fields -> T.Construct tag (map proof fields)
-      -- b.f (the field syntax): the field, as an atom of the arithmetic.
+      -- b.f: the field, as an atom of the arithmetic.
+      Project tag index value -> T.Field tag index (resultBounds bits (expressionType expression)) (proof value)
+      -- b with f = v: the value built again from b's other fields and v.
+      Update tag index value field ->
+        let types = case expressionType value of
+              Constructor name arguments | Right (parameters, constructors) <- Payload.entry schema name
+                                         , Just fieldTypes <- lookup tag constructors ->
+                let table = zip parameters [t | TypeArgument t <- arguments]
+                in map (substituteFieldType table) fieldTypes
+              _ -> []
+            -- As the match it stands for: the other fields are bound, with
+            -- what the constructor's contract says of them.
+            site = take 16 (digestHex (digestString (show (expressionOrigin expression, tag, index, expressionType value))))
+            names = [ Id ("::update::" ++ site ++ "::" ++ show k) | k <- [0 .. length types - 1] ]
+            domains = concat [ T.integerAssumptions bits name primitive | (name, Constructor primitive []) <- zip names types ]
+            rebuilt = T.Construct tag [ if k == index then proof field else T.Variable name | (k, name) <- zip [0 ..] names ]
+        in T.DataMatch (proof value) [(tag, names, T.TypedDomain domains rebuilt)]
+      -- b.f (the field syntax, as a match): the field, as an atom of the arithmetic.
       Match value [MatchCase tag binders (Expr _ (Local chosen) _)]
         | not (null binders), all ((== "lawspecField") . take 12 . binderName) binders
         , (index, field) : _ <- filter ((== chosen) . binderId . snd) (zip [0 ..] binders) ->

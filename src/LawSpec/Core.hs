@@ -9,6 +9,7 @@ import GHC.Generics (Generic)
 import LawSpec.IndexTerm (FamilyIndex(..))
 import LawSpec.Common
 import LawSpec.Scalar (Scalar)
+import qualified Data.Map.Strict as Map
 
 -- | Core names everything by a resolved identity rather than by its spelling, so
 -- two units' declarations of the same name never meet and an emitter never
@@ -131,6 +132,14 @@ data Node
   -- value; `a; b` is a let whose binder is unused. This is what orders the
   -- operations a definition performs.
   | Let Binder Expr Expr
+  -- b.f: the field at a position of a value of a single-constructor type
+  -- (the constructor). Checking reads it directly; a backend sees the match
+  -- it stands for (lowerFieldNodes), so a record of many fields costs one
+  -- node per access, not one binder per field.
+  | Project Id Int Expr
+  -- b with f = v: the value with the field at a position replaced; v is
+  -- evaluated first, then b.
+  | Update Id Int Expr Expr
   deriving (Eq, Show, Generic)
 
 -- An ability at type arguments: Gateway, or Fail SignupError.
@@ -489,6 +498,8 @@ children Expr{expressionNode=node} = case node of
   Handle _ a -> [a]
   Calls _ es -> maybe [] id es
   Let _ value body -> [value, body]
+  Project _ _ value -> [value]
+  Update _ _ value field -> [value, field]
   _ -> []
 
 -- Rebuild an expression with f applied to each child, in children's order.
@@ -516,8 +527,86 @@ mapChildren f e = e { expressionNode = case expressionNode e of
   Handle handling body -> Handle handling (f body)
   Calls op args -> Calls op (map f <$> args)
   Let binder value body -> Let binder (f value) (f body)
+  Project tag index value -> Project tag index (f value)
+  Update tag index value field -> Update tag index (f value) (f field)
   other@(Constant _) -> other
   other@(Local _) -> other }
+
+-- | Each b.f and b with f = v as the match it stands for: a backend (and
+-- anything that expects only matches) sees Core as it was before the
+-- projection nodes. Binders are named prefix::field::n, fresh in the
+-- expression.
+lowerFieldNodes :: [DataDeclaration] -> String -> Expr -> Expr
+lowerFieldNodes declarations prefix expression = fst (go expression 0)
+  where
+    constructors = Map.fromList [ (constructorId c, (d, c)) | d <- declarations, c <- dataConstructors d ]
+    go e n = case expressionNode e of
+      Project tag index value ->
+        let (value', n') = go value n
+            (binders, n'') = fieldBinders tag (expressionType value') n'
+        in case drop index binders of
+             chosen : _ -> (e { expressionNode = Match value' [MatchCase tag binders (Expr (binderType chosen) (Local (binderId chosen)) (expressionOrigin e))] }, n'')
+             [] -> (e { expressionNode = Project tag index value' }, n'')
+      Update tag index value field ->
+        let (field', n1) = go field n
+            (value', n2) = go value n1
+            (binders, n3) = fieldBinders tag (expressionType value') n2
+            replacement = Binder (Id (prefix ++ "::field::" ++ show n3)) "replacement" (expressionType field')
+            local b = Expr (binderType b) (Local (binderId b)) (expressionOrigin e)
+            rebuilt = Expr (expressionType e) (Construct tag [if k == index then local replacement else local b | (k, b) <- zip [0 ..] binders]) (expressionOrigin e)
+            matched = Expr (expressionType e) (Match value' [MatchCase tag binders rebuilt]) (expressionOrigin e)
+        in (e { expressionNode = Let replacement field' matched }, n3 + 1)
+      _ -> runCounting (traverseChildren (\c -> Counting (go c)) e) n
+    fieldBinders tag subjectType n = case Map.lookup tag constructors of
+      Just (d, c) ->
+        let arguments = case subjectType of
+              Constructor _ args -> [t | TypeArgument t <- args]
+              _ -> []
+            table = zip (dataParameters d) arguments
+            -- Named lawspecField..., as the field syntax's matches always were,
+            -- so the totality audit reads one as the field it projects.
+            binders = [ Binder (Id (prefix ++ "::field::" ++ show (n + k))) ("lawspecField" ++ binderName f) (substituteType table (binderType f))
+                      | (k, f) <- zip [0 ..] (constructorFields c) ]
+        in (binders, n + length binders)
+      Nothing -> ([], n)
+    substituteType table t = case t of
+      TypeVariable v -> maybe t id (lookup v table)
+      Constructor name args -> Constructor name [case a of TypeArgument x -> TypeArgument (substituteType table x); other -> other | a <- args]
+      Arrow a b -> Arrow (substituteType table a) (substituteType table b)
+
+-- | Rebuild an expression with an effectful f applied to each child, in
+-- children's order.
+traverseChildren :: Applicative f => (Expr -> f Expr) -> Expr -> f Expr
+traverseChildren f e = (\node -> e { expressionNode = node }) <$> case expressionNode e of
+  Construct n args -> Construct n <$> traverse f args
+  Match value cases -> Match <$> f value <*> traverse (\c -> (\b -> c { caseBody = b }) <$> f (caseBody c)) cases
+  AllElements value binder body -> AllElements <$> f value <*> pure binder <*> f body
+  AllPayloads value predicates -> AllPayloads <$> f value <*> traverse (\(b, x) -> (,) b <$> f x) predicates
+  ExternalCall n args -> ExternalCall n <$> traverse f args
+  Binary op evidence a b -> Binary op evidence <$> f a <*> f b
+  Unary op a -> Unary op <$> f a
+  ShortCircuit op a b -> ShortCircuit op <$> f a <*> f b
+  If c a b -> If <$> f c <*> f a <*> f b
+  Convert conversion ty a -> Convert conversion ty <$> f a
+  Helper name args -> Helper name <$> traverse f args
+  Perform op args -> Perform op <$> traverse f args
+  Handle handling body -> Handle handling <$> f body
+  Calls op args -> Calls op <$> traverse (traverse f) args
+  Let binder value body -> Let binder <$> f value <*> f body
+  Project tag index value -> Project tag index <$> f value
+  Update tag index value field -> Update tag index <$> f value <*> f field
+  other@(Constant _) -> pure other
+  other@(Local _) -> pure other
+
+-- | A counter threaded through a traversal.
+newtype Counting a = Counting { runCounting :: Int -> (a, Int) }
+
+instance Functor Counting where
+  fmap f (Counting g) = Counting (\n -> let (a, n') = g n in (f a, n'))
+
+instance Applicative Counting where
+  pure a = Counting (\n -> (a, n))
+  Counting f <*> Counting g = Counting (\n -> let (h, n1) = f n; (a, n2) = g n1 in (h a, n2))
 
 -- The operations an expression performs or counts.
 performed :: Expr -> [Operation]
@@ -619,3 +708,13 @@ concurrentGroup :: Expr -> Maybe ([Expr], [Binder], Expr)
 concurrentGroup Expr{expressionNode = Match Expr{expressionNode = Helper Concurrently [Expr{expressionNode = Construct tag fields}]} [MatchCase tag' binders body]}
   | tag == tag', length binders == length fields = Just (fields, binders, body)
 concurrentGroup _ = Nothing
+
+-- | A program whose definitions' field nodes are the matches they stand for:
+-- what the testing plan and every backend see (LawSpec.Testing).
+lowerProgramFields :: Program -> Program
+lowerProgramFields program = program { programUnits = map unit (programUnits program) }
+  where
+    declarations = programDataDeclarations program
+    unit u = u { unitDefinitions = [ d { definitionBody = lowerFieldNodes declarations (idText (declarationId (definitionDeclaration d))) (definitionBody d) }
+                                   | d <- unitDefinitions u ] }
+

@@ -109,6 +109,21 @@ validateExpressionWithRegistry registry bits declarations scope expr@Expr{..} = 
         requireType "Bool" predicate) predicates
       pure (scalarType "Bool")
     Local n -> maybe (Left ("unbound core binder: " ++ idText n)) Right (M.lookup n scope)
+    Project tag index value -> do
+      fields <- Types.constructorFieldsFor registry (expressionTypeOf value) tag
+      case drop index fields of
+        field : _ -> do
+          unless (binderType field == expressionType) (Left "field type mismatch")
+          pure expressionType
+        [] -> Left "field index out of range"
+    Update tag index value field -> do
+      fields <- Types.constructorFieldsFor registry (expressionTypeOf value) tag
+      case drop index fields of
+        f : _ -> do
+          unless (binderType f == expressionTypeOf field) (Left "replaced field type mismatch")
+          unless (expressionTypeOf value == expressionType) (Left "record update type mismatch")
+          pure expressionType
+        [] -> Left "field index out of range"
     ExternalCall n args -> do
       t <- maybe (Left ("unknown core declaration: " ++ idText n)) Right (M.lookup n declarations)
       let (parameters,result) = functionType t

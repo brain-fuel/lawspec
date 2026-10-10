@@ -799,8 +799,11 @@ typedExpressionWithSchemes declarations bits env e = do
             | (Just (scope, local), MatchBranch tag names body) <- zip scopes branches]
         _ -> pure []
       pure (TypedExpr t e' children conversion cases)
-    -- b.f typed as the match it desugars to, built directly: checking that
-    -- match would visit every field of the record, at each access.
+    -- b.f typed directly, as the field it reads, and b with f = v as the
+    -- value with one field replaced: the typed tree keeps the field node, so
+    -- neither visits every field of the record, at each access
+    -- (LawSpec.Elaboration makes it a projection, or the match it stands
+    -- for).
     fieldAccessTyped context expected e = case application e of
       (Var n, [subject]) | Just field <- stripPrefix fieldAccessPrefix n -> do
         (t, constructor, names) <- fieldConstructor context subject field
@@ -811,22 +814,36 @@ typedExpressionWithSchemes declarations bits env e = do
           fields <- mapM resolve (shapeFields shape)
           subjectType <- resolve t
           subject' <- go context (Just subjectType) subject
-          tag <- fresh
-          let binders = ["lawspecField" ++ tag ++ "x" ++ show i | i <- [0 .. length names - 1]]
-              index = length (takeWhile (/= field) names)
-              binder = binders !! index
+          let index = length (takeWhile (/= field) names)
           fieldType' <- resolve (fields !! index)
           target <- traverse resolve expected
-          forM_ target $ \targetType -> checkInferred targetType (Var binder) fieldType'
+          forM_ target $ \targetType -> checkInferred targetType e fieldType'
           target' <- traverse resolve target
           fieldType'' <- resolve fieldType'
-          let natural = maybe fieldType'' id target'
-              conversion = case target' of
+          let conversion = case target' of
                 Just targetType | targetType /= fieldType'' -> Just targetType
                 _ -> Nothing
-              desugared = MatchExpr subject [MatchBranch constructor binders (Var binder)]
-          pure (Just (TypedExpr natural desugared [subject'] Nothing
-            [TypedCase constructor (zip binders fields) (TypedExpr fieldType'' (Var binder) [] conversion [])]))
+          pure (Just (TypedExpr fieldType'' e [subject'] conversion []))
+      (Var n, [subject, value]) | Just field <- stripPrefix fieldUpdatePrefix n -> do
+        (t, constructor, names) <- fieldConstructor context subject field
+        pairs <- gets (M.findWithDefault [] constructor . constructorsByName)
+        shape <- shapeOf constructor pairs
+        if not (null (shapeExistentials shape)) || any snd (shapeArguments shape) then pure Nothing else do
+          unify (shapeResult shape) t
+          fields <- mapM resolve (shapeFields shape)
+          subjectType <- resolve t
+          let index = length (takeWhile (/= field) names)
+          fieldType' <- resolve (fields !! index)
+          value' <- go context (Just fieldType') value
+          subject' <- go context (Just subjectType) subject
+          target <- traverse resolve expected
+          forM_ target $ \targetType -> checkInferred targetType e subjectType
+          target' <- traverse resolve target
+          subjectType' <- resolve subjectType
+          let conversion = case target' of
+                Just targetType | targetType /= subjectType' -> Just targetType
+                _ -> Nothing
+          pure (Just (TypedExpr subjectType' e [subject', value'] conversion []))
       _ -> pure Nothing
     resolveTree (TypedExpr ty expression operands conversion cases) = do
       ty' <- resolve ty

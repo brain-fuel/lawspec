@@ -39,7 +39,7 @@ dispatch bytes = withCacheDirectory cacheDirectory $ encode $ versioned $ case e
    case memoized stagesTable (sharedRequest bytes) (stages project packages sources bits settings native) of
     Left response -> response
     Right (us,es,core,bindings,evidence,described,plan) ->
-     let result files = withPackages project described (programView settings us (map prettyExpanded es) files (evidence ++ bindingEvidence bindings ++ defaultHandlerEvidence core bindings) core) in case method of
+     let result files = withPackages project described (programView settings us (map prettyExpanded es) files (evidence ++ bindingEvidence bindings ++ defaultHandlerEvidence core bindings) (C.lowerProgramFields core)) in case method of
           "check" -> result []
           "expand" -> result []
           "planGeneration" -> either failure (withBenchmarks (benchmarkManifest target testDir core) . withTests (testManifest target testDir core) . result)

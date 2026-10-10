@@ -112,6 +112,9 @@ renderExpression declarations bits local external = render
             D.nest 4 (D.hardline <> D.joinWith D.hardline (bindings ++ [inner])) <> D.hardline <> D.text "}") :
             [D.text "{" <> D.nest 4 (D.softline <> step) <> D.softline <> D.text "}" | step <- steps]))
     render term = case expressionNode term of
+      -- Field nodes are lowered to matches before any backend (lowerFieldNodes).
+      Project {} -> Left "a field node reached the backend"
+      Update {} -> Left "a record update node reached the backend"
       AllPayloads value predicates -> do
         argument <- render value
         ref <- reference (expressionType value)

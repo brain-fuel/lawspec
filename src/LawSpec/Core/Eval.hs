@@ -67,6 +67,18 @@ evaluateValue registry bits adapter bindings = run (M.fromList bindings) where
             validateValueWithContracts registry bits expressionType result
           _ -> Left "missing, duplicate, or malformed match branch"
         _ -> Left "matching requires a data value"
+    Project _ index value -> do
+      payload <- go value
+      case payload of
+        DataValue _ _ fields | (field : _) <- drop index fields -> validateValueWithContracts registry bits expressionType field
+        _ -> Left "a field of a value without it"
+    Update _ index value field -> do
+      replacement <- go field
+      payload <- go value
+      case payload of
+        DataValue t tag fields | index < length fields ->
+          validateValueWithContracts registry bits expressionType (DataValue t tag (take index fields ++ [replacement] ++ drop (index + 1) fields))
+        _ -> Left "a field of a value without it"
     AllElements value binder predicate -> do
       items <- go value >>= listItems
       let every _ [] = Right (ScalarValue (SBool True))

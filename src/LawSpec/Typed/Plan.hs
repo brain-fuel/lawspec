@@ -264,6 +264,9 @@ typedPlanOf performing scalars declarations units = TypedPlan
       Handle _ _ -> False
       Calls _ _ -> False
       Let binder _ _ -> supported (binderType binder)
+      -- Lowered to matches before the plan (lowerFieldNodes).
+      Project {} -> False
+      Update {} -> False
     constantTyped s = case s of
       SInteger t _ -> t `elem` scalars
       SBool _ -> True

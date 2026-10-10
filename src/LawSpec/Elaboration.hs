@@ -91,14 +91,26 @@ elaborateResolved = elaborateResolvedWithData []
 -- ref:DEC-elaborate-before-core
 elaborateResolvedWithData :: [C.DataDeclaration] -> [C.Id] -> Int -> C.Id -> (String -> C.Id) -> [(String,S.Type)] -> S.Expr -> Either String C.Expr
 elaborateResolvedWithData dataTypes declarations bits origin resolve env =
-  elaborateResolvedIn dataTypes (`Set.member` Set.fromList declarations) bits origin resolve (S.monoEnvironment env)
+  elaborateResolvedIn False dataTypes (`Set.member` Set.fromList declarations) bits origin resolve (S.monoEnvironment env)
 
 -- | As elaborateResolvedWithData, with the declarations as a membership test
 -- and the environment already made: a unit elaborates thousands of
 -- definitions against the same ones.
-elaborateResolvedIn :: [C.DataDeclaration] -> (C.Id -> Bool) -> Int -> C.Id -> (String -> C.Id) -> S.Env -> S.Expr -> Either String C.Expr
-elaborateResolvedIn dataTypes declared bits origin resolve env source =
-  fst <$> S.typedExpressionWithSchemes dataTypes bits env (S.normal source) >>= lowerWith [] where
+-- With projections, a field access and a record update stay Core's Project
+-- and Update (a definition's body, which checking reads directly); without,
+-- they are the matches they stand for (a law's terms).
+elaborateResolvedIn :: Bool -> [C.DataDeclaration] -> (C.Id -> Bool) -> Int -> C.Id -> (String -> C.Id) -> S.Env -> S.Expr -> Either String C.Expr
+elaborateResolvedIn projections dataTypes declared bits origin resolve env source =
+  fmap finish (fst <$> S.typedExpressionWithSchemes dataTypes bits env (S.normal source) >>= lowerWith []) where
+  finish e = if projections then e else C.lowerFieldNodes (builtinDataDeclarations ++ dataTypes) (C.idText origin) e
+  -- The constructor and position of a field of a value of this type.
+  -- The program's index of types by name (built once, LawSpec.Inference).
+  fieldOf ty field = case ty of
+    C.Constructor parent _ | Just [d] <- M.lookup parent (fst (S.dataIndex dataTypes))
+                           , [c] <- C.dataConstructors d
+                           , (index, _) : _ <- [x | x@(_, b) <- zip [0 ..] (C.constructorFields c), C.binderName b == field] ->
+      Right (C.constructorId c, index)
+    _ -> Left ("." ++ field ++ ": not a field of " ++ show ty)
   operationEvidence op a b = makeRegistry dataTypes >>= \registry -> operationEvidenceWithRegistry registry op a b
   constructorTag parent name = do
     let qualified = C.Id (parent ++ "::" ++ name)
@@ -191,6 +203,16 @@ elaborateResolvedIn dataTypes declared bits origin resolve env source =
           operator <- case op of "-" -> Right C.Negate; "!" -> Right C.Not; _ -> Left "unknown unary operation"
           node t . C.Unary operator <$> lower a
         _ -> Left "invalid typed unary operation"
+      -- b.f and b with f = v (LawSpec.Inference keeps them as field nodes).
+      S.Apply (S.Var n) _ | Just field <- stripPrefix S.fieldAccessPrefix n, [value] <- operands -> do
+        subject <- lower value
+        (tag, index) <- fieldOf (C.expressionType subject) field
+        pure (node t (C.Project tag index subject))
+      S.Apply (S.Apply (S.Var n) _) _ | Just field <- stripPrefix S.fieldUpdatePrefix n, [value, replacement] <- operands -> do
+        subject <- lower value
+        field' <- lower replacement
+        (tag, index) <- fieldOf (C.expressionType subject) field
+        pure (node t (C.Update tag index subject field'))
       S.Apply _ _ -> case application old of
         (S.Var n,args) | Just builtin <- stripPrefix "prelude." n -> do
           xs <- mapM lower operands
@@ -474,7 +496,7 @@ elaborateDefinitionUnitUncached dataDeclarations bits u = do
         visible i = i `Set.member` unitDeclarations && i `Set.notMember` hidden
     unless (length parameters == length (nub (map fst parameters))) (Left (name ++ ": duplicate definition argument"))
     arguments <- forM parameters $ \(n,t) -> C.Binder (resolve n) n <$> coreType t
-    body <- performOperations operations <$> elaborateResolvedIn dataDeclarations visible bits did resolve env
+    body <- performOperations operations <$> elaborateResolvedIn True dataDeclarations visible bits did resolve env
       (S.Annotate (S.functionBody d) (S.functionResult d))
     declaration <- case M.findWithDefault [] did declarationTable of
       [value] -> Right value
@@ -634,4 +656,6 @@ performOperations (Operations operations handlers) = go
       C.ShortCircuit op a b -> C.ShortCircuit op (go a) (go b)
       C.If c a b -> C.If (go c) (go a) (go b)
       C.Convert mode ty a -> C.Convert mode ty (go a)
-      C.Helper builtin args -> C.Helper builtin (map go args) }
+      C.Helper builtin args -> C.Helper builtin (map go args)
+      C.Project tag index value -> C.Project tag index (go value)
+      C.Update tag index value field -> C.Update tag index (go value) (go field) }

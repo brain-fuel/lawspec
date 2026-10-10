@@ -44,6 +44,8 @@ viewIn names e = object ["type" .= typeView (C.expressionType e),"origin" .= ori
   expr = viewIn names
   node = case C.expressionNode e of
     C.Constant v -> object ["kind" .= str "constant", "value" .= v]
+    C.Project tag index value -> object ["kind" .= str "field", "constructor" .= C.idText tag, "index" .= index, "value" .= expr value]
+    C.Update tag index value field -> object ["kind" .= str "update", "constructor" .= C.idText tag, "index" .= index, "value" .= expr value, "field" .= expr field]
     C.Construct tag args -> object ["kind" .= str "construct", "constructor" .= C.idText tag, "arguments" .= map expr args]
     C.Match value cases -> object ["kind" .= str "match", "value" .= expr value, "cases" .=
       [object ["constructor" .= C.idText (C.caseConstructor branch),
@@ -92,6 +94,8 @@ textIn :: M.Map C.Id String -> C.Expr -> String
 textIn names e = case C.expressionNode e of
   C.Constant v -> prettyScalar v
   C.Construct tag args -> unwords (C.idText tag : map ((\v -> "(" ++ go v ++ ")")) args)
+  C.Project _ index value -> "(" ++ go value ++ ")." ++ show index
+  C.Update _ index value field -> "(" ++ go value ++ ") with " ++ show index ++ " = (" ++ go field ++ ")"
   C.Match value cases -> "match (" ++ go value ++ ") { " ++ unwords
     [C.idText (C.caseConstructor branch) ++ " " ++ unwords (map C.binderName (C.caseBinders branch)) ++
      " -> " ++ textIn (M.union (M.fromList [(C.binderId b, C.binderName b) | b <- C.caseBinders branch]) names) (C.caseBody branch) ++ ";"

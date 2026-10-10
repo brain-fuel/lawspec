@@ -1,6 +1,6 @@
 -- | Finite parameter-provenance metadata shared by execution and proof lowering.
 module LawSpec.Core.PayloadPlan
-  ( Plan(..), Schema, fromRegistry, arity, fields, storedParameters ) where
+  ( Plan(..), Schema, fromRegistry, entry, arity, fields, storedParameters ) where
 
 import Control.Monad (unless)
 import qualified Data.Map.Strict as M

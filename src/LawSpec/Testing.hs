@@ -58,8 +58,13 @@ data IndexedGeneration = IndexedGeneration
 -- | A law that cannot be planned, such as one over an uninhabited domain, is a
 -- generation error at compile time, never a test that passes vacuously.
 -- ref:DEC-never-pass-vacuously
+-- | The plan sees each definition's field nodes as the matches they stand
+-- for (lowerFieldNodes), as every backend does.
 planTesting :: Program -> Either [Diagnostic] Plan
-planTesting program@Program{..} = do
+planTesting = planLowered . lowerProgramFields
+
+planLowered :: Program -> Either [Diagnostic] Plan
+planLowered program@Program{..} = do
   plan <- lawPlanner program
   let unit u = PlannedUnit u <$> mapM property (unitProperties u)
       property p = either (Left . pure . (\m -> Diagnostic "generation" m (Just (propertyLocation p)))) Right (plan p)

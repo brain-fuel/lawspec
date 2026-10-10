@@ -128,6 +128,9 @@ renderExpressionWithContext declarations width reference key outerLocal external
           pure (D.text "(" <> lambdaExpression (map (D.text . local . binderId) binders) inner <> D.text ")(*" <>
             runtime "concurrently" [array (map (lambdaExpression []) steps)] <> D.text ")")
     render term = case expressionNode term of
+      -- Field nodes are lowered to matches before any backend (lowerFieldNodes).
+      Project {} -> Left "a field node reached the backend"
+      Update {} -> Left "a record update node reached the backend"
       AllPayloads value predicates -> do
         argument <- render value
         ref <- reference (expressionType value)
